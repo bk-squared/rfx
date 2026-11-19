@@ -5,7 +5,8 @@ Physics. At every E edge the step applies one coefficient
 operand of the branch that steps the edge: the tensor diagonal ``tensor.eps``
 (smoothed, full tensor, conformal ``eps/w``), the Stage-2 inverse
 ``u = tensor.inv_eps`` (``Cb = (dt*u/eps0) / (1 + sigma*dt*u/(2*eps0))``), or the
-UPML form (float32 diagonal, cell-owned conductivity). A port drive and a soft
+UPML form (cell-owned operands: the float32 diagonal with a tensor, else
+``upml_eps``; the cell-owned conductivity ``upml_sigma``). A port drive and a soft
 current source are currents in Ampere's law at their edge; a lumped RLC
 element's implicit solve uses the edge's denominator ``D0 = 1/Cb``
 (``eps0*eps/dt + sigma/2``, inverse form ``eps0/(dt*u) + sigma/2``). Both enter
@@ -30,6 +31,7 @@ Expected values never call the code's coefficient helpers.
 
 from __future__ import annotations
 
+import re
 import sys
 
 import jax
@@ -68,9 +70,12 @@ def _simulation_with(**override):
     return make
 
 
-def _scene(operator, branch, *, graded=False, upml=False, radius=None):
-    """O2's scene for ``operator``; a soft current source replaces O2's lumped port."""
-    o2_branch = 'smooth' if branch in ('kottke', 'upml') else branch
+def _scene(operator, branch, *, graded=False, upml=False, radius=None, sigma=None):
+    """O2's scene for ``operator``; a soft current source replaces O2's lumped port.
+
+    ``sigma`` gives O2's eps_r 4 sphere that conductivity (S/m).
+    """
+    o2_branch = 'smooth' if branch in ('kottke', 'upml', 'upml_plain') else branch
     override = {}
     if graded:
         override['dx_profile'] = _GRADED_X_PROFILE
@@ -80,6 +85,8 @@ def _scene(operator, branch, *, graded=False, upml=False, radius=None):
         if override:
             patch.setattr(rfx, 'Simulation', _simulation_with(**override))
         sim = _o2_scene('lumped' if operator == 'soft' else operator, o2_branch)
+    if sigma is not None:
+        sim.add_material('dielectric', eps_r=4., sigma=sigma)
     if operator == 'soft':
         port = sim._ports.pop()
         sim.add_source(port.position, port.component, waveform=jnp.ones_like,
@@ -96,7 +103,7 @@ def _entry_options(branch, entry, extra=None):
         options = dict(subpixel_smoothing='kottke_pec')
     elif branch == 'upml':
         options = dict(subpixel_smoothing=True)
-    elif branch == 'occupancy':
+    elif branch in ('occupancy', 'upml_plain'):
         options = {}
     else:
         options = dict(_o2_options(branch))
@@ -113,8 +120,15 @@ def _inverse(branch):
     return branch in ('kottke', 'occupancy')
 
 
+def _upml(branch):
+    return branch in ('upml', 'upml_plain')
+
+
 def _operand(components, branch, axis):
-    """The step's operand array: the inverse on Stage-2 lanes, else the diagonal."""
+    """The step's operand array: the inverse on Stage-2 lanes, UPML's cell-owned
+    ``upml_eps`` under UPML without a tensor, else the diagonal."""
+    if branch == 'upml_plain':
+        return np.asarray(components.upml_eps[axis], dtype=np.float64)
     tensor = components.tensor
     return np.asarray(tensor.inv_eps[axis] if _inverse(branch) else tensor.eps[axis],
                       dtype=np.float64)
@@ -138,7 +152,7 @@ def _judge(seen, kind, branch, change):
 
 def _step_cb(seen, branch, axis, edge):
     """The step's Cb at the edge, in numpy float64 from the captured operand."""
-    if branch == 'upml':
+    if _upml(branch):
         return float(np.asarray(getattr(seen['upml_coeffs'], 'cb_' + AXES[axis]))[edge])
     materials, dt = seen['materials'], seen['dt']
     if _inverse(branch):
@@ -153,7 +167,7 @@ def _reference(seen, branch, call):
     axis, edge = call['axis'], call['edge']
     if call['kind'] != 'rlc':
         return _step_cb(seen, branch, axis, edge) * call['multiplier']
-    if branch == 'upml':
+    if _upml(branch):
         return 1. / _step_cb(seen, branch, axis, edge)
     materials, dt = seen['materials'], seen['dt']
     s = float(np.asarray(materials.components.sigma_update[axis], np.float64)[edge])
@@ -165,7 +179,11 @@ def _reference(seen, branch, call):
 
 
 def _scale_on_attach(patch, branch, change, seen):
-    """Scale only the step's operand at the judged edge, once, when it is attached."""
+    """Scale only the step's operand at the judged edge, once, when it is attached.
+
+    Under UPML without a tensor the operand is ``upml_eps``, scaled when the
+    components first form.
+    """
     from dataclasses import replace
     from rfx.model import materials as model
     original = model.with_components
@@ -174,7 +192,14 @@ def _scale_on_attach(patch, branch, change, seen):
         previous = materials.components
         result = original(materials, grid, *args, **kwargs)
         tensor = result.components.tensor
-        if (change is not None and tensor is not None
+        if change is not None and branch == 'upml_plain' and previous is None:
+            axis, edge = change
+            moved = list(result.components.upml_eps)
+            moved[axis] = jnp.asarray(moved[axis]).at[edge].multiply(1.7)
+            result = result._replace(components=replace(
+                result.components, upml_eps=tuple(moved)))
+            seen['scaled'] = True
+        elif (change is not None and tensor is not None
                 and (previous is None or previous.tensor is None)):
             axis, edge = change
             name = 'inv_eps' if _inverse(branch) else 'eps'
@@ -317,7 +342,11 @@ def _measure(make_scene, entry, branch, kind, *, lane='uniform', change=None, ex
     axis, edge = call['axis'], call['edge']
     cb = _step_cb(seen, branch, axis, edge)
     ref = _reference(seen, branch, call)
+    c = seen['materials'].components
     return dict(kind=kind, branch=branch, entry=entry, axis=axis, edge=edge,
+                sigma_mean=float(np.asarray(c.sigma_update[axis], np.float64)[edge]),
+                sigma_owner=(float(np.asarray(c.upml_sigma[axis], np.float64)[edge])
+                             if _upml(branch) else None),
                 value=call['value'], ref=ref, rel=abs(call['value'] - ref) / abs(ref),
                 increment=seen['increment'], step_cb=cb,
                 operand=float(_operand(seen['materials'].components, branch, axis)[edge]),
@@ -345,6 +374,7 @@ def _judge_row(make_scene, entry, branch, kind, *, lane='uniform', extra=None):
                                err_msg=str(follow))
     print(f'drives-after-tensor row {lane} {entry} {kind}-{branch}: {row}; follows {follow}',
           file=sys.stderr)
+    return row
 
 
 
@@ -391,20 +421,87 @@ def test_kottke_drives_read_the_inverse_operand(entry, operator, kind):
 
 
 
+@pytest.mark.parametrize('branch', ('upml', 'upml_plain'),
+                         ids=('smoothing_on', 'smoothing_off'))
 @pytest.mark.parametrize('entry', ('run', 'forward'))
 @pytest.mark.parametrize('operator,kind', (('lumped', 'port'), ('soft', 'soft'), ('rlc', 'rlc')))
-def test_upml_drives_read_the_upml_coefficient(entry, operator, kind):
-    """Lumped Cb, soft Cb and RLC D0 under UPML with ``subpixel_smoothing=True``.
+def test_upml_drives_read_the_upml_coefficient(entry, operator, kind, branch):
+    """Lumped Cb, soft Cb and RLC D0 under UPML, smoothing on and off.
 
-    Reference: ``ctx.upml_coeffs.cb_<c>[edge]`` (formed once by ``init_upml`` from
-    the float32 tensor diagonal and the cell-owned conductivity) and ``1/that``
-    for D0. Kernel self-check: ``apply_upml_e``'s increment for a unit curl.
-    Follows: ``components.tensor.eps`` scaled 1.7x at the attach, before
-    ``init_upml``. Equal on both sides: scene (O2's smooth scene with
-    ``boundary='upml'``), interior edge, dt. Sign: Cb, D0 > 0.
+    Smoothing on (``subpixel_smoothing=True``): ``init_upml`` forms Cb from the
+    attached tensor's float32 diagonal. Smoothing off: from the cell-owned
+    ``components.upml_eps``, not the four-cell edge mean; on O2's judged edge
+    ez(6, 6, 6) the owner cell is eps 4 and the mean 1.75. Both arms use the
+    cell-owned conductivity ``upml_sigma``.
+    Reference: ``ctx.upml_coeffs.cb_<c>[edge]`` (formed once by ``init_upml``)
+    and ``1/that`` for D0. Kernel self-check: ``apply_upml_e``'s increment for a
+    unit curl. Follows: the operand (``components.tensor.eps`` at the attach, or
+    ``components.upml_eps`` where the components form) scaled 1.7x at the
+    judged edge, before ``init_upml``. Equal on both sides: scene (O2's smooth
+    scene with ``boundary='upml'``), interior edge, dt. Sign: Cb, D0 > 0.
     """
-    _judge_row(lambda: _scene(operator, 'upml', upml=True), entry, 'upml', kind)
+    _judge_row(lambda: _scene(operator, branch, upml=True), entry, branch, kind)
 
+
+@pytest.mark.parametrize('entry', ('run', 'forward'))
+def test_upml_rlc_reads_the_cell_owned_conductivity(entry):
+    """RLC D0 under UPML with smoothing on, on a lossy edge.
+
+    O2's sphere carries 0.5 S/m, so at the judged edge ez(6, 6, 6) the owner
+    cell's ``upml_sigma`` is 0.5 S/m and the four-cell mean ``sigma_update``
+    0.125 S/m (one of the four cells is in the sphere). D0 must be ``1/Cb`` of
+    ``init_upml``, which reads the owner cell's conductivity: the edge mean
+    would move D0 by 0.1875 S/m, about 1e-2 of D0.
+    """
+    row = _judge_row(lambda: _scene('rlc', 'upml', upml=True, sigma=.5), entry, 'upml', 'rlc')
+    assert row['edge'] == (6, 6, 6), row
+    np.testing.assert_allclose(row['sigma_owner'], .5, rtol=1e-6)
+    np.testing.assert_allclose(row['sigma_mean'], .125, rtol=1e-6)
+
+
+def _upml_pad_rlc_scene(side):
+    """O2's plain UPML rlc scene with the element moved onto an x pad edge.
+
+    Returns the scene and the edge the element must realize: one cell inside
+    the x-lo pad at x = -1 mm, or the first x-hi pad cell, whose position is
+    computed from the grid's shape and pad counts.
+    """
+    sim = _scene('rlc', 'upml_plain', upml=True)
+    spec = sim._lumped_rlc.pop()
+    grid = sim._build_grid()
+    _, j, k = (round(v / grid.dx) + pad for v, pad in
+               zip(spec.position, (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)))
+    if side == 'x_lo':
+        i = grid.pad_x_lo - 1
+    else:
+        i = grid.shape[0] - grid.pad_x_hi
+    x = (i - grid.pad_x_lo) * grid.dx
+    sim.add_lumped_rlc((x, spec.position[1], spec.position[2]), spec.component,
+                       R=spec.R, L=spec.L, C=spec.C, topology=spec.topology)
+    return sim, (i, j, k)
+
+
+@pytest.mark.parametrize('entry', ('run', 'forward'))
+@pytest.mark.parametrize('side', ('x_lo', 'x_hi'))
+def test_upml_rlc_on_an_absorber_pad_edge_is_refused(entry, side):
+    """A lumped RLC element on a UPML absorber pad edge is refused before any step.
+
+    On a pad edge the UPML step's Cb includes the perpendicular absorber
+    conductivity, while the element's D0 is the interior 1/Cb. Scene: O2's
+    smooth scene with ``boundary='upml'``, no smoothing, the series element
+    ez moved to x = -1 mm (edge (1, 6, 6), inside the two-cell x-lo pad) or
+    to the first x-hi pad cell. The interior element stays admitted (the
+    ``smoothing_off`` rows of ``test_upml_drives_read_the_upml_coefficient``).
+    """
+    from rfx.errors import RfxRefusal
+    sim, edge = _upml_pad_rlc_scene(side)
+    if side == 'x_lo':
+        assert edge == (1, 6, 6), edge
+    with pytest.raises(RfxRefusal, match=(
+            re.escape(f'realizes edge {edge}, which lies inside a UPML absorber pad')
+            + '.*' + re.escape('Place the element inside the physical domain, '
+                               'or enlarge the domain.'))):
+        getattr(sim, entry)(**_entry_options('upml_plain', entry))
 
 
 @pytest.mark.parametrize('entry', ('run', 'forward'))
