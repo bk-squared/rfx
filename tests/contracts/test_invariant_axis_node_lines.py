@@ -19,16 +19,19 @@ def cpu():
         yield
 
 
-@pytest.mark.parametrize("mode,entry,faces", [
-    ("2d_tez", "run", "x-lo, x-hi"),
-    ("2d_tez", "forward", "x-lo, x-hi"),
-    ("2d_tmz", "run", None),
-    ("2d_tmz", "forward", None),
-    ("3d", "forward", "x-lo, x-hi, z-lo, z-hi"),
+@pytest.mark.parametrize("mode,entry,faces,declared_z", [
+    ("2d_tez", "run", "x-lo, x-hi", None),
+    ("2d_tez", "forward", "x-lo, x-hi", None),
+    ("2d_tez", "forward", "x-lo, x-hi", 0.0005),
+    ("2d_tmz", "run", None, None),
+    ("2d_tmz", "forward", None, None),
+    ("3d", "forward", "x-lo, x-hi, z-lo, z-hi", None),
 ])
-def test_port_termination(mode, entry, faces):
+def test_port_termination(mode, entry, faces, declared_z):
     domain_z, box_lo, box_hi, port_z = (
         (0.006, 0.0, 0.006, 0.003) if mode == "3d" else (0.001, -0.001, 0.002, 0.0))
+    if declared_z is not None:
+        port_z = declared_z
     sim = Simulation(freq_max=10e9, domain=(0.060, 0.024, domain_z), dx=0.001,
                      mode=mode, boundary="cpml", cpml_layers=16)
     sim.add(Box((0.0, 0.010, box_lo), (0.060, 0.011, box_hi)), material="pec")

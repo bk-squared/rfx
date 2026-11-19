@@ -193,7 +193,17 @@ def default_msl_terminates(sim, grid, *, position, width, height, direction):
 
 
 def port_terminal_points(collection, port, grid, nodes):
-    """The two physical terminal points, for diagnostics only."""
+    """The two physical terminal points, for diagnostics only.
+
+    Each point takes the node coordinate on every axis with a single node.
+    Coordinates on other axes retain their values and types.
+    """
+    return tuple(tuple(nodes[a][0] if len(nodes[a]) == 1 else value
+                       for a, value in enumerate(point))
+                 for point in _port_terminal_points(collection, port, grid, nodes))
+
+
+def _port_terminal_points(collection, port, grid, nodes):
     if collection == "_msl_ports":
         return tuple(port.position), (*port.position[:2], port.position[2] + port.height)
     if hasattr(grid, "dx_arr"):
