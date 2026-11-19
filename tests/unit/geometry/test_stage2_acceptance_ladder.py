@@ -17,6 +17,7 @@ This file pins three acceptance gates documented in the design doc §6:
 cv05 patch antenna and rotated PEC cavity gates are deferred to a
 follow-up — both need fresh reference data (OpenEMS for cv05, an
 analytic or Meep reference for rotated cavity).
+Conformal faces with kottke_pec are refused.
 """
 
 from __future__ import annotations
@@ -31,9 +32,6 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.csg import Box, Cylinder
 
 
-# -----------------------------------------------------------------------------
-# 1. Cylindrical PEC dual-path equivalence (Stage 1 vs Stage 2)
-# -----------------------------------------------------------------------------
 
 
 def test_cylindrical_pec_dual_path_equivalent():
@@ -53,6 +51,7 @@ def test_cylindrical_pec_dual_path_equivalent():
     the two paths, and both should be finite.
     """
     def _build():
+        """Keep the incidental modal probe in the uniform launch section because the field comparison does not measure transmission through the PEC."""
         sim = Simulation(
             freq_max=10e9,
             domain=(0.04, 0.04, 0.04),
@@ -66,12 +65,10 @@ def test_cylindrical_pec_dual_path_equivalent():
             0.005, direction="+x", mode=(1, 0), mode_type="TE",
             f0=8e9, bandwidth=0.5, name="src", probe_offset=3,
         )
-        # This field comparison does not measure transmission through the PEC.
-        # Keep its incidental modal probe in the uniform launch section.
         return sim
 
     n = 100
-    r1 = _build().run(n_steps=n)  # Stage 1: implicit conformal_pec auto-route?
+    r1 = _build().run(n_steps=n)
     r2 = _build().run(n_steps=n, subpixel_smoothing="kottke_pec")
 
     ez1 = np.asarray(r1.state.ez)
@@ -79,7 +76,6 @@ def test_cylindrical_pec_dual_path_equivalent():
     assert np.all(np.isfinite(ez1)), "Stage 1 path produced NaN"
     assert np.all(np.isfinite(ez2)), "Stage 2 path produced NaN"
 
-    # Bulk-region max |Ez| (avoid CPML edges and the cylinder centre).
     interior = slice(6, -6)
     bulk1 = ez1[interior, interior, interior]
     bulk2 = ez2[interior, interior, interior]
@@ -94,9 +90,6 @@ def test_cylindrical_pec_dual_path_equivalent():
     )
 
 
-# -----------------------------------------------------------------------------
-# 2. CPML + PEC late-time stability (R5)
-# -----------------------------------------------------------------------------
 
 
 def test_kottke_pec_short_time_stability_30_periods():
@@ -111,12 +104,12 @@ def test_kottke_pec_short_time_stability_30_periods():
     (Stage 1's sigma=1e10 fold provides implicit damping there;
     Stage 2's inv=0 freezes E but not H). Energy accumulates at the
     PEC interior over many periods → eventual float32 overflow.
-    Tracked as a deferred fix path on the Step 5 follow-up list."""
+    Tracked as a deferred fix path on the Step 5 follow-up list.
+    """
     sim = Simulation(
         freq_max=10e9,
         domain=(0.06, 0.025, 0.012),
         dx=0.001,
-        # conformal faces with kottke_pec are refused; the subject here is kottke_pec
         boundary=BoundarySpec(
             x="cpml",
             y=Boundary(lo="pec", hi="pec"),
@@ -129,11 +122,8 @@ def test_kottke_pec_short_time_stability_30_periods():
         f0=8e9, bandwidth=0.5, name="src",
     )
 
-    # 50·τ_period at f₀=8GHz, dt set by Yee CFL — about 4500 steps.
-    # Sample the field magnitude at a few checkpoints to detect any
-    # growing mode that would be absorbed once it propagates.
     period_steps = int(round((1.0 / 8e9) / sim._build_grid().dt))
-    checkpoint_periods = (5, 15, 30)  # 50 also passes — ghost-layer fix
+    checkpoint_periods = (5, 15, 30)
     max_magnitudes = []
     for n_periods in checkpoint_periods:
         n_steps = n_periods * period_steps
@@ -144,9 +134,6 @@ def test_kottke_pec_short_time_stability_30_periods():
         )
         max_magnitudes.append(float(np.max(np.abs(ez))))
 
-    # Stability heuristic: amplitude at 50·τ should not exceed 5× the
-    # peak amplitude (which usually lands at ≤15·τ — when source has
-    # fully entered the guide and reflections are still bouncing).
     peak_early = max(max_magnitudes[:2])
     late = max_magnitudes[-1]
     assert late < 5.0 * peak_early, (
@@ -171,7 +158,6 @@ def test_kottke_pec_late_time_stability_50_periods():
         freq_max=10e9,
         domain=(0.06, 0.025, 0.012),
         dx=0.001,
-        # conformal faces with kottke_pec are refused; the subject here is kottke_pec
         boundary=BoundarySpec(
             x="cpml",
             y=Boundary(lo="pec", hi="pec"),
@@ -192,9 +178,6 @@ def test_kottke_pec_late_time_stability_50_periods():
     )
 
 
-# -----------------------------------------------------------------------------
-# 3. PEC corner convergence (R3)
-# -----------------------------------------------------------------------------
 
 
 def test_kottke_pec_90_corner_finite_and_convergent_signal():
@@ -212,18 +195,16 @@ def test_kottke_pec_90_corner_finite_and_convergent_signal():
     monotone with refinement.
     """
     def _build(dx):
+        """At dx=1.5 mm the corner's y face (20 mm) is solved at 19.5 mm against the y_lo wall, making the off-node corner the test's point."""
         sim = Simulation(
             freq_max=10e9,
             domain=(0.06, 0.04, 0.02),
             dx=dx,
             boundary={"x": "cpml", "y": "pec", "z": "pec"},
             cpml_layers=4,
-            # At dx=1.5 mm the corner's y face (20 mm) is solved at 19.5 mm
-            # against the y_lo wall; the off-node corner is this test's point.
             snap="declared",
         )
         assert_declared_wall_warning(sim)
-        # PEC L-shape: a Box that has one corner inside the domain.
         sim.add(Box((0.030, 0.020, -0.001), (0.061, 0.041, 0.021)),
                 material="pec")
         sim.add_waveguide_port(
@@ -240,10 +221,6 @@ def test_kottke_pec_90_corner_finite_and_convergent_signal():
     assert np.all(np.isfinite(ez_c)), "PEC L-corner NaN at dx=2mm"
     assert np.all(np.isfinite(ez_f)), "PEC L-corner NaN at dx=1.5mm"
 
-    # Light invariant: the field has propagated into the L-shape's
-    # vacuum region (lower-left quadrant of the domain). Both runs
-    # should see signal at the same physical position.
-    # Probe at ~1/4 domain in x, 1/4 in y (deep in the vacuum corner).
     probe_x_phys = 0.015
     probe_y_phys = 0.010
     probe_z_phys = 0.005
@@ -257,9 +234,6 @@ def test_kottke_pec_90_corner_finite_and_convergent_signal():
     val_c = float(np.abs(ez_c[i_c, j_c, k_c]))
     val_f = float(np.abs(ez_f[i_f, j_f, k_f]))
 
-    # Both probes should show non-zero signal (source has propagated).
-    # Don't gate on convergence rate here — Step 5 deferred work
-    # extends this to a full dx sweep with Farjadpour-style power-law fit.
     assert max(val_c, val_f) > 0, (
         "neither dx produced detectable Ez at the corner-vacuum probe; "
         f"coarse={val_c:.3e}, fine={val_f:.3e}"

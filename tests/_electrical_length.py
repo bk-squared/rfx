@@ -14,16 +14,14 @@ phase at a single bin is not judged (``docs/design_notes/chain_closure_contract.
 
 The batteries hold a stored S to its closed form with this; the drift locks in
 ``tests/locks/`` hold a live S to the stored one.
+The bar is written here, not read from a fixture, so a fixture cannot move the bar it is judged by.
 """
 from __future__ import annotations
 
 import numpy as np
 
-# The bar. Written here, not read from a fixture, so a fixture cannot move the
-# bar it is judged by.
 ELECTRICAL_LENGTH_FRAC = 0.01
 
-# Below this a curve carries no phase worth reading (the bar's deep-null level).
 LEVEL_DB = -20.0
 
 

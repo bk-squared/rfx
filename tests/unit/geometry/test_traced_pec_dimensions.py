@@ -58,8 +58,7 @@ def test_dielectric_box_refuses_traced_bounds(smoothing, graded, route):
 
 @pytest.mark.parametrize("kind,material", [("Box", "pec"), ("Box", "dielectric"), ("Sphere", "pec")])
 def test_traced_dimension_refusal_is_a_jax_concretization_error(kind, material):
-    # optimize(jit=True), observables' eval_shape guard and the distributed
-    # entry catch JAX's error to fall back; the named refusal must stay one.
+    """The optimizer and observables' eval_shape guard catch JAX's error to fall back; the named refusal must stay a JAX concretization error."""
     fn = lambda value: _shape_run(value, kind, False, False, material=material)
     from rfx._traced_refusal import TracedStructureRefusal
     with pytest.raises(jax.errors.ConcretizationTypeError, match=f"{kind}.*traced") as exc:

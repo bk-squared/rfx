@@ -53,7 +53,6 @@ def scene(kind, *, boundary="pec", graded=False, drop=False, seam=None):
             omega_0=2*np.pi*8e9, delta=2*np.pi*1e9, kappa=(2*np.pi*8e9)**2)]
     if kind in ("debye", "lorentz"):
         sim.add_material("pole", eps_r=3., **poles)
-        # Continues through both x CPML faces, as in the accumulated-law scene.
         sim.add(Box((-1., .002, .002), (1., .006, .006)), material="pole")
     if kind == "film" and not drop:
         sim.add_thin_conductor(Box((.006, .002, .002), (.006, .006, .006)),
@@ -89,7 +88,6 @@ def perturb_cell(sim, n_devices, *, graded=False):
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     seam = (grid.shape[0] + n_devices - 1) // n_devices
     x = grid.node_of("x", seam)
-    # Base material is eps_inf=3 in the pole block, vacuum otherwise.
     base = sim._materials.get("pole")
     eps = base.eps_r if base is not None else 1.
     poles = (dict(debye_poles=base.debye_poles, lorentz_poles=base.lorentz_poles)

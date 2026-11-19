@@ -18,8 +18,6 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 
 @pytest.fixture(autouse=True)
 def _silence_legacy_warnings(monkeypatch):
-    # The explicit-BoundarySpec path itself emits no DeprecationWarning;
-    # this fixture ensures nothing else surfaces one either.
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
@@ -40,7 +38,6 @@ def test_patch_antenna_mix_preflight_no_error():
     )
     sim.add_source((0.005, 0.005, 0.0025), "ez")
     sim.add_probe((0.005, 0.005, 0.003), "ez")
-    # preflight + run must complete without unexpected errors.
     res = sim.run(n_steps=20)
     assert np.asarray(res.time_series).shape[0] == 20
     assert sim._boundary_spec.pec_faces() == {"z_lo"}
@@ -54,10 +51,7 @@ def test_periodic_cpml_mix_preflight_suppresses_cpml_on_periodic_axis():
         freq_max=10e9, domain=(0.01, 0.01, 0.01), dx=0.5e-3,
         boundary=spec,
     )
-    # periodic must be reflected in the legacy view for downstream code.
     assert sim._periodic_axes == "x"
-    # Allocator-level check: the Grid built from this sim must have no
-    # CPML on the periodic x axis (via BoundarySpec shim).
     grid = sim._build_grid()
     assert "x" not in grid.cpml_axes, (
         f"CPML was allocated on the periodic x axis; got cpml_axes="

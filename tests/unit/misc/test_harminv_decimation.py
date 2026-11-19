@@ -70,6 +70,7 @@ def test_fir_interior_preserves_a_known_damped_pole(n, samples_per_period, real_
     These well-conditioned clean signals have an exact answer. The 1e-7
     relative bar separates arithmetic error from filter transients; it is
     not an uncertainty bound on noisy experimental records.
+    Four poles allow room for a conjugate pair while exercising FIR stages on short exact records.
     """
     f, q = 1e9, 100.0
     dt = 1 / (samples_per_period * f)
@@ -77,8 +78,6 @@ def test_fir_interior_preserves_a_known_damped_pole(n, samples_per_period, real_
     signal = np.exp((-np.pi * f / q + 2j * np.pi * f) * t + 0.3j)
     if real_signal:
         signal = signal.real
-    # Four poles allow room for a conjugate pair and exercise FIR stages even
-    # on these short exact records (the production default reserves 50).
     modes = matrix_pencil(signal, dt, 0.8e9, 1.2e9, max_modes=4)
     assert len(modes) == 1
     assert modes[0].freq == pytest.approx(f, rel=1e-7)
@@ -136,6 +135,7 @@ def test_short_record_keeps_raw_samples_instead_of_disappearing():
 @pytest.mark.parametrize("pencil_parameter,max_modes", [(0.33, 50), (0.2, 8), (0.5, 12)])
 def test_reported_duration_matches_samples_actually_passed_to_svd(
         n, pencil_parameter, max_modes, monkeypatch):
+    """The single-channel Hankel matrix has M=N-L rows and L columns."""
     import importlib
     module = importlib.import_module("rfx.harminv")
     decimate_original, svd_original = module.scipy_decimate, np.linalg.svd
@@ -157,7 +157,7 @@ def test_reported_duration_matches_samples_actually_passed_to_svd(
     matrix_pencil(np.exp((-np.pi * 1e9 / 100 + 2j * np.pi * 1e9) * t),
             dt, 0.8e9, 1.2e9, **settings)
     (shape,) = observed_shapes
-    used_samples = sum(shape)  # Hankel M=N-L rows and L columns
+    used_samples = sum(shape)
     effective_dt = dt * np.prod(observed_factors, dtype=int)
     assert matrix_pencil_record_duration(n, dt, 1.2e9, **settings) == pytest.approx(
         (used_samples - 1) * effective_dt)
@@ -169,11 +169,9 @@ def test_reported_duration_matches_samples_actually_passed_to_svd(
 
 @pytest.mark.parametrize("pencil_parameter", [-0.1, 0.0, 1.0, 1.1])
 def test_clamped_pencil_fractions_do_not_disable_all_decimation(pencil_parameter):
+    """A 51-direction requirement is impossible for pencil shapes clamped to four columns or two rows, so it would turn even huge records into a raw SVD."""
     from rfx.harminv import _decimation_plan
 
-    # Historically the core clamps these shapes to four columns or two rows.
-    # An impossible 51-direction requirement would turn even huge records
-    # into a raw SVD. Preserve their actual capacity without promising 50 poles.
     n = 1_000_000
     factors, kept = _decimation_plan(n, 1e-15, 1e9, "auto",
                                       pencil_parameter=pencil_parameter)
@@ -183,16 +181,13 @@ def test_clamped_pencil_fractions_do_not_disable_all_decimation(pencil_parameter
 
 
 def test_short_multimode_record_keeps_enough_dimensions_to_resolve_its_poles():
-    # Twelve distinct complex poles fit the requested rank, but not the
-    # five-column pencil produced by the former ten-sample-only stop rule.
+    """Poles outside the report band still affect the fit."""
     n, dt = 1846, 1 / 1280e9
-    # All poles also lie below the old q45 Nyquist (14.22 GHz), so lost
-    # dimensions, rather than aliasing, distinguish the two plans.
     freqs = np.linspace(1.0e9, 12e9, 12)
+    assert float(np.max(freqs)) < 1 / (2 * dt * 45), "All planted poles must lie below the factor-45 Nyquist so lost dimensions distinguish the plans"
     t = np.arange(n) * dt
     signal = sum(np.exp((-np.pi * f / 100 + 2j * np.pi * f) * t)
                  for f in freqs)
-    # Most poles lie outside the report band yet still affect the fit.
     modes = matrix_pencil(signal, dt, 1e9, 6.9e9, max_modes=12, sv_threshold=1e-6)
     expected = freqs[freqs <= 6.9e9 * 1.1]
     assert len(modes) == len(expected)

@@ -16,6 +16,8 @@ dtype/dispatch assertions on 40**3-and-smaller grids, and the marker's own
 definition is "tests that need GPU — too slow on CPU or GPU-specific".
 Measured on CPU (``JAX_PLATFORMS=cpu``): the original 13 tests ran in 6.5 s
 wall, slowest single test 1.27 s.
+Every domain length written as ``N * (c / 5 GHz / 20)`` is a whole number of cells of
+dx, so the solved domain equals the declared one.
 """
 
 import warnings
@@ -29,10 +31,6 @@ from rfx.api import Simulation
 from rfx.boundaries.cpml import init_cpml
 from rfx.sources.sources import GaussianPulse
 
-
-# ---------------------------------------------------------------------------
-# Unit tests for core init_state
-# ---------------------------------------------------------------------------
 
 class TestInitState:
     def test_default_dtype_is_float32(self):
@@ -48,7 +46,6 @@ class TestInitState:
         assert state.hx.dtype == jnp.float16
         assert state.hy.dtype == jnp.float16
         assert state.hz.dtype == jnp.float16
-        # step counter stays int32 regardless
         assert state.step.dtype == jnp.int32
 
     def test_float16_memory_half_of_float32(self):
@@ -62,16 +59,11 @@ class TestInitState:
         assert bytes_16 == bytes_32 // 2
 
 
-# ---------------------------------------------------------------------------
-# Yee update tests with float16 state
-# ---------------------------------------------------------------------------
-
 class TestYeeUpdateMixedPrecision:
     def test_update_h_preserves_dtype(self):
         from rfx.stepping.yee import update_h
         state = init_state((10, 10, 10), field_dtype=jnp.float16)
         materials = init_materials((10, 10, 10))
-        # Set a nonzero E field to get nonzero H update
         state = state._replace(ez=state.ez.at[5, 5, 5].set(jnp.float16(1.0)))
         new_state = update_h(state, materials, 1e-12, 1e-3, high_wall=(False, False, False))
         assert new_state.hx.dtype == jnp.float16
@@ -99,10 +91,6 @@ class TestYeeUpdateMixedPrecision:
         assert new_state.hx.dtype == jnp.float16
 
 
-# ---------------------------------------------------------------------------
-# API-level integration tests
-# ---------------------------------------------------------------------------
-
 class TestSimulationMixedPrecision:
     def test_precision_parameter_validation(self):
         with pytest.raises(ValueError, match="precision"):
@@ -116,14 +104,12 @@ class TestSimulationMixedPrecision:
             domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
             precision="mixed",
-        )  # solved length
+        )
         sim.add_source(position=(0.01, 0.01, 0.01), component="ez", amplitude_kind="field")
         result = sim.run(n_steps=100)
         assert result is not None
-        # Fields should be float16
         assert result.state.ex.dtype == jnp.float16
         assert result.state.hx.dtype == jnp.float16
-        # No NaN in final state
         assert not jnp.any(jnp.isnan(result.state.ez))
         assert not jnp.any(jnp.isnan(result.state.hz))
 
@@ -139,7 +125,7 @@ class TestSimulationMixedPrecision:
             freq_max=5e9,
             domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )  # solved length
+        )
         n_steps = 50
 
         sim32 = Simulation(**kwargs, precision="float32")
@@ -150,14 +136,12 @@ class TestSimulationMixedPrecision:
         sim16.add_source(position=(0.01, 0.01, 0.01), component="ez", amplitude_kind="field")
         r16 = sim16.run(n_steps=n_steps)
 
-        # Compare Ez field L2 norms
         ez32 = np.array(r32.state.ez, dtype=np.float32)
         ez16 = np.array(r16.state.ez, dtype=np.float32)
 
         norm32 = np.linalg.norm(ez32)
         if norm32 > 0:
             rel_error = np.linalg.norm(ez32 - ez16) / norm32
-            # Allow up to 5% relative error for 50 steps with float16
             assert rel_error < 0.05, f"Relative error {rel_error:.4f} exceeds 5%"
 
     def test_mixed_precision_with_probe(self):
@@ -167,13 +151,12 @@ class TestSimulationMixedPrecision:
             domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
             precision="mixed",
-        )  # solved length
+        )
         sim.add_source(position=(0.01, 0.01, 0.01), component="ez", amplitude_kind="field")
         sim.add_probe(position=(0.015, 0.01, 0.01), component="ez")
         result = sim.run(n_steps=50)
         ts = np.array(result.time_series).ravel()
         assert len(ts) == 50
-        # Probe should record nonzero values (source is active)
         assert np.any(ts != 0)
         assert not np.any(np.isnan(ts))
 
@@ -184,14 +167,14 @@ class TestSimulationMixedPrecision:
             domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
             precision="mixed",
-        )  # solved length
+        )
         sim.add_source(position=(0.01, 0.01, 0.01), component="ez", amplitude_kind="field")
         result = sim.run(n_steps=10)
         st = result.state
-        # Each field component should be float16 (2 bytes per element)
         assert st.ex.dtype == jnp.float16
         field_bytes = st.ex.nbytes
-        expected_f32_bytes = st.ex.size * 4  # float32 would be 4 bytes
+        FLOAT32_BYTES = 4
+        expected_f32_bytes = st.ex.size * FLOAT32_BYTES
         assert field_bytes == expected_f32_bytes // 2
 
     def test_float32_precision_default(self):
@@ -200,7 +183,7 @@ class TestSimulationMixedPrecision:
             freq_max=5e9,
             domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )  # solved length
+        )
         sim.add_source(position=(0.01, 0.01, 0.01), component="ez")
         result = sim.run(n_steps=10)
         assert result.state.ex.dtype == jnp.float32
@@ -211,42 +194,32 @@ class TestSimulationMixedPrecision:
             domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
             precision="mixed",
-        )  # solved length
+        )
         r = repr(sim)
         assert "precision='mixed'" in r
 
 
-# ---------------------------------------------------------------------------
-# CPML dtype policy
-#
-# The psi_* arrays are ACCUMULATION state (a recursive convolution integrated
-# over every timestep), so they are allocated at
-# ``promote_types(field_dtype, float32)`` and never below float32.  Before the
-# fix they followed ``field_dtype`` verbatim, which put them at float16 under
-# ``precision="mixed"`` while the CPML coefficients stayed hard-pinned float32
-# — ``psi = b*psi + c*curl`` then promoted float16 -> float32 and the lax.scan
-# carry signature stopped matching its own input (TypeError).
-#
-# Note this is promote_types, NOT a flat float32 pin: psi followed field_dtype
-# for a REASON (the oblique Bloch path needs a complex carry),
-# and a flat float32 pin would have fixed float16 by breaking complex64.
-# ---------------------------------------------------------------------------
-
 def _cpml_grid():
     return Simulation(
         freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="cpml",
-    )._build_grid()  # solved length
+    )._build_grid()
 
 
 class TestCPMLPsiDtype:
-    """Unit-level dtype policy — no FDTD stepping, runs in milliseconds."""
+    """Unit-level dtype policy — no FDTD stepping, runs in milliseconds.
+
+    The psi_* arrays are accumulation state (a recursive convolution integrated over
+    every timestep), so they are allocated at ``promote_types(field_dtype, float32)``
+    and never below float32.
+    """
 
     @pytest.mark.parametrize("field_dtype,expected", [
         (jnp.float16, jnp.float32),
-        (jnp.float32, jnp.float32),     # unchanged / bit-identical
-        (jnp.complex64, jnp.complex64),  # oblique Bloch — must survive
+        (jnp.float32, jnp.float32),
+        (jnp.complex64, jnp.complex64),
     ])
     def test_psi_dtype_is_promoted_to_at_least_float32(self, field_dtype, expected):
+        """The complex64 row is the oblique Bloch carry, which must survive."""
         _, st = init_cpml(_cpml_grid(), field_dtype=field_dtype)
         actual = {getattr(st, f).dtype for f in st._fields}
         assert actual == {jnp.dtype(expected)}, (
@@ -277,7 +250,7 @@ class TestMixedPrecisionCPML:
         sim = Simulation(
             freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary=boundary, precision=precision,
-        )  # solved length
+        )
         sim.add_source(position=(0.01, 0.01, 0.01), component="ez",
                        amplitude_kind="field")
         if probe:
@@ -285,11 +258,13 @@ class TestMixedPrecisionCPML:
         return sim
 
     def test_mixed_precision_cpml_runs(self):
-        """Issue #644 regression: this raised TypeError (lax.scan carry) before."""
+        """Issue #644 regression: this raised TypeError (lax.scan carry) before.
+
+        The mode's promise is float16 storage, so the fields stay float16: a run must
+        not avoid the carry error by silently upcasting the fields.
+        """
         result = self._sim("mixed").run(n_steps=100)
         assert result is not None
-        # The mode's promise is float16 STORAGE — the fix must not have bought
-        # its way out of the crash by silently upcasting the fields.
         assert result.state.ex.dtype == jnp.float16
         assert result.state.hx.dtype == jnp.float16
         for f in ("ex", "ey", "ez", "hx", "hy", "hz"):
@@ -319,7 +294,7 @@ class TestMixedPrecisionCPML:
             ("pec", "float32"): jnp.dtype(jnp.float32),
             ("pec", "mixed"): jnp.dtype(jnp.float16),
             ("cpml", "float32"): jnp.dtype(jnp.float32),
-            ("cpml", "mixed"): jnp.dtype(jnp.float16),  # <- was TypeError
+            ("cpml", "mixed"): jnp.dtype(jnp.float16),
         }
 
     def test_mixed_precision_cpml_accuracy(self):
@@ -389,7 +364,7 @@ def test_mixed_precision_refuses_oversized_current_before_stepping(boundary, lan
 
     def make_sim(amplitude):
         sim = Simulation(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
-                         boundary=boundary, precision="mixed")  # solved length
+                         boundary=boundary, precision="mixed")
         with pytest.warns(DeprecationWarning, match="now means 'current'"):
             sim.add_source((0.01, 0.01, 0.01), "ez",
                            waveform=GaussianPulse(f0=5e9, amplitude=amplitude))

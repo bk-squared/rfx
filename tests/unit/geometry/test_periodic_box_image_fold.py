@@ -42,16 +42,12 @@ def _assembled(sim):
     return np.asarray(out[3])
 
 
-# Bounds chosen off the lattice and off multiples of the period, partly covering
-# a period, covering none of an axis's base cell centres, and spanning many.
 CASES = [((-0.0004, 0.0003), (0.0011, 0.0009)),
          ((-0.0052, -0.0031), (0.0047, 0.0029)),
          ((0.0007, -0.0100), (0.0008, 0.0100)),
          ((-0.0300, -0.0200), (0.0300, 0.0200)),
-         # entirely outside the base period: only shifted images contribute
          ((0.0061, 0.0041), (0.0079, 0.0052)),
          ((-0.0052, 0.0021), (-0.0034, 0.0032)),
-         # on the lattice and on the periodic seam (closed-footprint rims)
          ((0.0, 0.0), (0.003, 0.002)),
          ((-0.003, 0.001), (0.0, 0.004)),
          ((0.001, -0.002), (0.015, 0.0))]
@@ -63,14 +59,13 @@ def test_per_axis_fold_equals_the_nested_fold(kind, lo, hi, monkeypatch):
     import rfx._internal._periodic as periodic
     try:
         fast = _assembled(_sim(kind, lo, hi))
-    except ValueError as exc:          # an empty footprint is refused either way
+    except ValueError as exc:
         fast = str(exc)
     original = periodic.periodic_mask
 
-    def nested(*args, **kwargs):       # the old route: outer-product sampler only
+    def nested(*args, **kwargs):
         kwargs.pop('axis_samplers', None)
         return original(*args, **kwargs)
-    # Both callers import the function inside their bodies, from this module.
     monkeypatch.setattr(periodic, 'periodic_mask', nested)
     try:
         slow = _assembled(_sim(kind, lo, hi))
@@ -85,16 +80,15 @@ def test_per_axis_fold_equals_the_nested_fold(kind, lo, hi, monkeypatch):
 
 @pytest.mark.parametrize('kind', ['sheet', 'volume'])
 def test_assembly_time_grows_with_the_sum_of_image_counts(kind):
+    """An earlier nested fold took 18 s (sheet) and 45 s (volume), and the per-axis fold about 0.02 s, giving a bound a product law cannot meet and a loaded machine can."""
     def seconds(half):
         sim = _sim(kind, (-half, -half), (half, half), nx=40, ny=2, nz=2)
         start = time.perf_counter()
         _assembled(sim)
         return time.perf_counter() - start
-    seconds(0.004)                      # warm-up
-    many = seconds(1.024)               # 1024 periods per axis
-    # The nested fold took 18 s (sheet) and 45 s (volume) here; the per-axis
-    # fold takes about 0.02 s. A bound a product law cannot meet and a loaded
-    # machine can.
+    seconds(0.004)
+    MANY_PERIOD_HALF_SPAN_METRES = 1.024
+    many = seconds(MANY_PERIOD_HALF_SPAN_METRES)
     assert many < 2.0, many
 
 
@@ -127,7 +121,7 @@ def test_zero_width_sheet_on_the_periodic_seam_is_the_same_line_as_anywhere_else
     across the seam follows the rule wide sheets already have there; not pinned.)"""
     middle = _line_sheet_footprint(0.01)
     expected = np.zeros_like(middle)
-    expected[10, 0, 5:16] = True          # written by hand: x plane 10, y node 0, z 5..15 mm
+    expected[10, 0, 5:16] = True
     assert np.array_equal(np.roll(middle, -10, axis=1), expected)
     for y in (0.0, 0.02):
         assert np.array_equal(_line_sheet_footprint(y), expected), y

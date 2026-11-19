@@ -106,6 +106,10 @@ its real-pass NrTS/EndCriteria, its mesh-summary and meta callbacks, and its
 spectral-feature callback. It does not take a way to skip a gate. A case that
 needs a different band gives a band; a case that needs a different verdict does
 not get one here.
+
+The tutorial's CalcPort grid starts near 1 MHz, where both port voltages are at the
+numerical floor and ``uf_ref/uf_inc`` is a ratio of two such numbers rather than an
+S-parameter the structure produced, so the tutorial's Stage A is read over 2-7 GHz.
 """
 from __future__ import annotations
 
@@ -119,27 +123,22 @@ from pathlib import Path
 
 import numpy as np
 
-# ---------------------------------------------------------------------------
-# Constants -- the tutorial's own, copied from validation/crossval/
-# 20_msl_phase_referee.py's Stage A block.
-# ---------------------------------------------------------------------------
-_C0 = 2.998e8  # m/s -- matches the coax/notch precedent's own constant
+_SPEED_OF_LIGHT_M_S = 2.998e8
+_C0 = _SPEED_OF_LIGHT_M_S
 
-A_UNIT = 1.0e-6  # CSXCAD length unit: um (tutorial's own choice)
+MICROMETRE_M = 1.0e-6
+A_UNIT = MICROMETRE_M
 A_MSL_LENGTH_UM = 50000.0
 A_MSL_WIDTH_UM = 600.0
 A_SUBSTRATE_THICKNESS_UM = 254.0
 A_SUBSTRATE_EPR = 3.66
 A_STUB_LENGTH_UM = 12.0e3
 A_F_MAX_HZ = 7.0e9
-A_N_FREQS = 1601  # tutorial's own np.linspace(1e6, f_max, 1601)
+A_N_FREQS = 1601
 
 A_BOUNDARY = ["PML_8", "PML_8", "MUR", "MUR", "PEC", "MUR"]
-A_PML_CELLS = 8  # "PML_8" -- the x faces only
+A_PML_CELLS = 8
 
-# Quarter-wave open-stub notch, Hammerstad-Jensen eps_eff. Recomputed here, not
-# copy-pasted, exactly as the precedent does (it cross-checks to 5 significant
-# figures against this repo's own recorded "fringing-free analytic 3.69 GHz").
 _A_STUB_LEN_M = 12.0e-3
 _A_W_TRACE_M = 600e-6
 _A_H_SUB_M = 254e-6
@@ -148,8 +147,6 @@ _A_U = _A_W_TRACE_M / _A_H_SUB_M
 _A_EPS_EFF = (_A_EPS_R + 1.0) / 2.0 + (_A_EPS_R - 1.0) / 2.0 * (1.0 + 12.0 / _A_U) ** -0.5
 F_NOTCH_AN_HZ = _C0 / (4.0 * _A_STUB_LEN_M * np.sqrt(_A_EPS_EFF))
 
-# The recorded reproduction, as an audit artifact carried into every record this
-# script writes (the precedent's REPRODUCE_GATE_RECORD, narrowed to Stage A).
 REPRODUCE_GATE_RECORD = {
     "tutorial": {
         "repo": "thliebig/openEMS",
@@ -158,8 +155,6 @@ REPRODUCE_GATE_RECORD = {
         "fetched_verbatim_on": "2026-08-04",
         "fetched_via": "gh api repos/thliebig/openEMS/contents/python/Tutorials/MSL_NotchFilter.py",
     },
-    # The reproduction ran in the MSL thru-line phase case's script, whose port
-    # this module copies byte for byte.
     "port_in_this_repository": (
         "tests/crossval/_openems_tutorial_gate.py (the run itself used "
         "validation/crossval/20_msl_phase_referee.py, removed 2026-09-23)"
@@ -180,35 +175,15 @@ REPRODUCE_GATE_RECORD = {
     "verified_on": "2026-08-04",
 }
 
-# STAGE_A_GATE -- copied, with its justification, from the port's own
-# REPRODUCE_GATE_RECORD["gate"]:
-#
-#   One-sided-low-biased band: measurements showed
-#   openEMS reading ~7% LOW vs the fringing-free analytic on a DIFFERENT (not
-#   identical) line-length/domain combination of this SAME substrate/trace/stub
-#   -- PREDICTED, not yet measured for THIS exact tutorial geometry, hence the
-#   generosity.
-#
-# The band is unchanged here. What the band is applied TO changed: the shared
-# estimator's refined frequency over 2-7 GHz, not a bare argmin over
-# 0.5-1.5 x F_NOTCH_AN_HZ.
 STAGE_A_GATE = {
     "f_notch_lo_hz": 0.80 * float(F_NOTCH_AN_HZ),
     "f_notch_hi_hz": 1.05 * float(F_NOTCH_AN_HZ),
 }
 
-# A frequency band alone does not say a notch is there. A through line with no
-# stub has a |S21| minimum somewhere in 2-7 GHz too, and it would sit inside the
-# band above. The gate therefore also requires the minimum to be a NOTCH: at
-# least 20 dB below unity -- the same deep-null level the case itself uses.
-# A thru line fails it, which is what the self-check plants.
 STAGE_A_MIN_DEPTH_DB = -20.0
 
 
-# The passivity tolerance, unchanged: max(|S11|^2+|S21|^2) <= 1.05.
 PASSIVITY_TOL = 0.05
-# The tutorial's own substrate z recipe is linspace(0, h_sub, 5) -- 4 cells.
-# The rung factor scales it too (see DELTA 2).
 A_SUBSTRATE_Z_CELLS = 4
 
 
@@ -216,20 +191,10 @@ def substrate_z_cells(resolution_factor: float) -> int:
     """Substrate cells at a rung: round(4 / factor). 4, 6, 8 at 1.0, 1/sqrt2, 0.5."""
     return max(1, int(round(A_SUBSTRATE_Z_CELLS / resolution_factor)))
 
-# The band the TUTORIAL's own Stage A is read over: 2-7 GHz. The tutorial's
-# CalcPort grid starts near 1 MHz -- three and a half decades below the
-# Gaussian excitation's 3.5 GHz centre -- where both port voltages are at the
-# numerical floor and ``uf_ref/uf_inc`` is a ratio of two such numbers rather
-# than an S-parameter the structure produced. A case's OWN Stage B band is the
-# case's to declare; this one is not.
 STAGE_A_WITNESS_BAND_HZ = (2.0e9, 7.0e9)
 STAGE_A_NOTCH_BAND_GHZ = (STAGE_A_WITNESS_BAND_HZ[0] / 1e9,
                           STAGE_A_WITNESS_BAND_HZ[1] / 1e9)
 
-# ---------------------------------------------------------------------------
-# openEMS import plumbing (deferred, matches the coax/thru precedent so
-# this module stays importable -- and testable -- without openEMS).
-# ---------------------------------------------------------------------------
 def _ensure_openems_numpy_compat() -> None:
     for name, value in {"float": float, "int": int, "complex": complex, "mat": np.matrix}.items():
         if not hasattr(np, name):
@@ -244,45 +209,13 @@ def _import_openems():
     return ContinuousStructure, openEMS, MSLPort
 
 
-# ---------------------------------------------------------------------------
-# Shared sanity-check helpers (ticked against the coax/thru precedent above)
-# ---------------------------------------------------------------------------
 _BAD_STDOUT_PATTERNS = ("Unused primitive", "not on the mesh", "unused excitation")
 
-# Truncation patterns: openEMS's own excitation-pulse-clipping warnings. Checked ONLY
-# via ``check_truncation=True`` (real-run scans), NEVER for smoke scans --
-# the smoke runs in THIS script are deliberately tiny (NrTS=200,
-# EndCriteria=0.0/"-infdB", see ``_build_stage_a_notch_tutorial``/
-# ``_build_stage_b``'s own smoke calls), so their excitation pulse (tens of
-# thousands of timesteps at this script's own f0/fc) is ALWAYS clipped by
-# construction -- run-1's own committed log (``tests/crossval/msl_notch_filter/
-# reference/tutorial_reproduction_20260804T070702Z_run.log``) shows both strings
-# firing for the smoke portion of BOTH stages while the REAL portion (which
-# reached its own EndCriteria, per REPRODUCE_GATE_RECORD["settling_evidence"])
-# shows neither -- the exact positive control this scoping relies on: same
-# binary, same stream, smoke trips it and real does not.
 _TRUNCATION_STDOUT_PATTERNS = (
     "Cutting to max number of timesteps",
     "max. number of timesteps is smaller than three times the excitation",
 )
 
-# Benign, narrowly-scoped exception: CSXCAD's "Unused primitive (type: Box) detected in property:
-# ..." warning fires for port0_metal/port1_metal on EVERY real Stage B run,
-# for a structural reason, not a defect -- Stage B's M3 topology fix (module
-# docstring "Port topology") gives the thru line's own trace box (property
-# "copper") a span EXACTLY feed_x0..feed_x1, which fully covers each port's
-# own SHORTER metal box ([start, start+port_w]); CSXCAD's own priority-based
-# rasterizer resolves the overlap to the higher-priority primitive (both are
-# priority=10 in this script, and the trace is added to the CSX tree first),
-# so the port's own box never contributes a rasterized cell of its own and
-# CSXCAD reports it "unused". This is a REPORTING artifact of two PEC
-# primitives sharing the same physical footprint, not a missing-conductor
-# defect -- the conduction proof is |S21| ~= 1.0 band-wide (run-1: 0.9985 to
-# 1.0087, self_consistency_openems/passivity BOTH passed), which would be
-# impossible if the line were actually open-circuited at either port.
-# Scoped to the EXACT two property names below -- any OTHER "Unused
-# primitive" (e.g. property: substrate!, a genuinely dropped conductor
-# elsewhere) still trips the gate.
 _ALLOWLISTED_UNUSED_PRIMITIVE_PROPERTIES = ("port0_metal!", "port1_metal!")
 
 
@@ -292,6 +225,9 @@ def _scan_stdout_for_bad_patterns(log_text: str, label: str, *, check_truncation
     ONLY for a REAL run's own captured log, never a smoke run's (see
     ``_TRUNCATION_STDOUT_PATTERNS``'s own docstring for why: smoke's tiny
     NrTS/EndCriteria budget makes those patterns fire by design there).
+
+    The port0_metal/port1_metal exception is for a reporting artifact of two PEC
+    primitives sharing the same physical footprint, not a missing-conductor defect.
     """
     patterns = _BAD_STDOUT_PATTERNS + (_TRUNCATION_STDOUT_PATTERNS if check_truncation else ())
     hits = []
@@ -303,7 +239,7 @@ def _scan_stdout_for_bad_patterns(log_text: str, label: str, *, check_truncation
             f"property: {prop}".lower() in line_lower
             for prop in _ALLOWLISTED_UNUSED_PRIMITIVE_PROPERTIES
         ):
-            continue  # allowlisted -- see _ALLOWLISTED_UNUSED_PRIMITIVE_PROPERTIES docstring
+            continue
         hits.append(line.strip())
     if hits:
         raise RuntimeError(
@@ -440,9 +376,6 @@ def _passivity_witness(s11: np.ndarray, s21: np.ndarray, label: str, *,
     return {"balance": balance.tolist(), "max_balance": max_balance,
             "tol": tol, "passed": passed}
 
-# ---------------------------------------------------------------------------
-# STAGE A: faithful port of MSL_NotchFilter.py.
-# ---------------------------------------------------------------------------
 def _build_stage_a_notch_tutorial(ContinuousStructure, openEMS, MSLPort, *,
                                   nrts: int | None, end_criteria: float | None):
     """Build MSL_NotchFilter.py's geometry fresh (smoke + real run, matching
@@ -529,11 +462,6 @@ def _builder_body_after_kw(func) -> str:
     return src[src.index(marker) + 1:]
 
 
-# ---------------------------------------------------------------------------
-# The repository's one spectral-feature estimator module, loaded by path
-# (validation/ is not a package; it imports numpy only). Same loader the cases'
-# own tests use.
-# ---------------------------------------------------------------------------
 def _repo_root() -> Path:
     env = os.environ.get("RFX_REPO_ROOT")
     if env:
@@ -566,16 +494,6 @@ def load_refined_extremum():
     return load_spectral_features().refined_extremum
 
 
-# ---------------------------------------------------------------------------
-# Pure-numpy geometry / mesh plan. No openEMS, no CSXCAD.
-#
-# WHAT IT CANNOT DO: CSXCAD's own SmoothMeshLines grades the transition between
-# a fine and a coarse region, and it is a CSXCAD call. The estimate below only
-# subdivides each gap into equal parts no wider than the target, so every line
-# count it reports is a LOWER BOUND and every cell width it reports near a
-# fine/coarse transition is an UPPER bound. Away from such a transition -- which
-# is where the x boundaries and therefore the PML sit -- the two agree.
-# ---------------------------------------------------------------------------
 def _smooth_estimate(lines, max_res: float) -> np.ndarray:
     lines = np.unique(np.asarray(lines, dtype=float))
     out = [lines[0]]
@@ -584,9 +502,6 @@ def _smooth_estimate(lines, max_res: float) -> np.ndarray:
         out.extend(np.linspace(a, b, n + 1)[1:])
     return np.unique(np.asarray(out, dtype=float))
 
-# ---------------------------------------------------------------------------
-# What the solver actually built, read back
-# ---------------------------------------------------------------------------
 _VERSION_RE = re.compile(r"openEMS[^\n]*?(v\d[\w.\-+]*)", re.IGNORECASE)
 _TIMESTEP_RE = re.compile(r"Timestep:\s*(\d+)")
 
@@ -638,27 +553,6 @@ def _timesteps_executed(log_text: str):
     return max(hits) if hits else None
 
 
-# openEMS prints one progress line every few seconds while it timesteps. Its own
-# format (openems.cpp, DumpStatistics) is, with the widths it pads to:
-#
-#   [@       3m12s] Timestep:        12000 || Speed:   18.64 MC/s (1.234e-02 s/TS)
-#                   || Energy: ~1.234e-14 (-42.17dB)
-#
-# The dB figure is the box energy relative to the peak it reached after the
-# source switched off -- the same quantity this repository's ring-down rule is
-# written against -- and the minus sign is printed literally inside the
-# parentheses.
-#
-# ASSUMPTION, STATED BECAUSE IT IS NOT VERIFIED HERE: no captured log from a real
-# openEMS run was available on the machine this was written on (only stub
-# banners), so the pattern below was written from openEMS's own print statement
-# rather than matched against a capture. It is deliberately tolerant of the
-# things that vary between builds: the space ``setw`` can leave after the minus
-# sign, a space before ``dB``, and ``inf``/``nan`` on the first lines while the
-# peak is still zero. It is applied PER LINE, so ``.*?`` cannot run past a line
-# end and pair one line's timestep with another line's energy. If a build prints
-# something else, every field below comes back None or empty and nothing else in
-# the record changes -- this is reporting, not a gate.
 _PROGRESS_LINE_RE = re.compile(
     r"Timestep:\s*(\d+)"
     r".*?Energy:"
@@ -667,45 +561,20 @@ _PROGRESS_LINE_RE = re.compile(
 )
 
 
-# The solver's setup banner. These patterns are matched against the REAL
-# container log (stage_b_coarse_real_openems_stdout.log), not written from openEMS's source:
-#
-#   Timestep (s)\t\t: 0.00
-#   FDTD timestep is: 0.00 s; Nyquist rate: 149 timesteps @20006339607.00 Hz
-#   Excitation signal length is: 1708 timesteps (0.00s)
-#   Max. number of timesteps: 3000 ( --> 1.76 * Excitation signal length)
-#
-# THE TIMESTEP IS NOT READABLE FROM THE LINE THAT PRINTS IT. openEMS formats it
-# with two decimals, and dt here is ~1.7e-13 s, so both lines say "0.00". The
-# exact parse is still tried first -- a build that prints enough digits is then
-# used as-is -- and when it yields nothing usable dt is DERIVED from the Nyquist
-# line instead: openEMS reports the Nyquist rate as the integer number of
-# timesteps per half period at f_max, N = floor(1 / (2 f dt)), so
-#
-#     dt = 1 / (2 f N)
-#
-# and the floor bounds the error at one step in N, i.e. 1/N relative (0.67 % at
-# N = 149). That is recorded beside the value rather than left for a reader to
-# work out, and it is well inside the 5 % the merge allows between rungs.
 _DT_LINE_RE = re.compile(
     r"(?:FDTD\s+timestep\s+is|Used\s+timestep|timestep\s+is)"
     r"\s*[:=]?\s*([0-9]+\.?[0-9]*(?:[eE][+-]?[0-9]+)?)\s*(?:s\b|sec)",
     re.IGNORECASE,
 )
-# "Nyquist rate: 149 timesteps @20006339607.00 Hz"
 _NYQUIST_RE = re.compile(
     r"Nyquist\s+rate\s*:\s*([0-9]+)\s*timesteps?\s*@\s*"
     r"([0-9]*\.?[0-9]+(?:[eE][+-]?[0-9]+)?)\s*Hz",
     re.IGNORECASE,
 )
-# "Excitation signal length is: 1708 timesteps (0.00s)"
 _EXCITATION_LEN_RE = re.compile(
     r"Excitation\s+signal\s+length\s+is\s*:\s*([0-9]+)\s*timesteps?",
     re.IGNORECASE,
 )
-# "Max. number of timesteps: 3000 ( --> 1.76 * Excitation signal length)".
-# The colon is what keeps this from matching openEMS's truncation WARNING,
-# which reads "Max. number of timesteps was reached before ...".
 _MAX_TIMESTEPS_RE = re.compile(
     r"Max\.?\s*number\s+of\s+timesteps\s*:\s*([0-9]+)",
     re.IGNORECASE,
@@ -748,6 +617,9 @@ def _solver_setup(log_text: str) -> dict:
     ``dt_s_source`` always says which route produced the value, because the two
     routes have different precision: an exact print is exact, and the Nyquist
     derivation is good to one step in N.
+
+    openEMS reports the Nyquist rate as the integer number of timesteps per half period
+    at f_max, N = floor(1 / (2 f dt)).
     """
     out = {
         "dt_s": None,
@@ -807,6 +679,9 @@ def _energy_progress(log_text: str) -> dict:
     NrTS cap it is how far the ring-down had actually got when the cap stopped
     it, which is the number a record-length judgement needs and which nothing
     recorded before.
+
+    The dB figure in the progress log is the box energy relative to the peak it reached
+    after the source switched off.
     """
     trace = []
     for line in log_text.splitlines():
@@ -921,8 +796,6 @@ def _port_declared_and_snap(lines_x_um, *, start_x_um: float, direction: float,
     else:
         out.update({"feed_plane_nearest_line_mm": None, "feed_plane_snap_um": None,
                     "meas_plane_nearest_line_mm": None, "meas_plane_snap_um": None})
-    # What MSLPort itself reports after its own snap, kept separate from both the
-    # declared numbers and the line measurement above.
     for attr, key in (("feed_shift", "port_object_feed_shift_mm"),
                       ("measplane_shift", "port_object_meas_plane_shift_mm")):
         try:
@@ -992,6 +865,12 @@ def stage_a_gate_verdict(f_notch_hz: float, depth_db: float) -> dict:
     """The reproduce gate: the right frequency AND an actual notch.
 
     Pure arithmetic so a case's self-check can plant curves at it.
+
+    Earlier measurements showed openEMS reading ~7% LOW vs the fringing-free analytic on
+    a DIFFERENT line-length/domain combination of the tutorial's substrate/trace/stub,
+    hence the one-sided-low-biased band's generosity; a through line with no stub has a
+    |S21| minimum somewhere in 2-7 GHz too, so the gate requires a NOTCH at least 20 dB
+    below unity.
     """
     f_ok = bool(STAGE_A_GATE["f_notch_lo_hz"] <= f_notch_hz <= STAGE_A_GATE["f_notch_hi_hz"])
     depth_ok = bool(depth_db <= STAGE_A_MIN_DEPTH_DB)
@@ -1041,9 +920,6 @@ def build_stage_a(ContinuousStructure, openEMS, MSLPort, *, nrts, end_criteria):
         ContinuousStructure, openEMS, MSLPort, nrts=nrts, end_criteria=end_criteria)
 
 
-# ---------------------------------------------------------------------------
-# The run
-# ---------------------------------------------------------------------------
 def run_stage(*, label: str, sim_root: str, threads: int, build,
               freqs_hz, witness_band_hz, passivity_tol: float,
               real_nrts, real_end_criteria,
@@ -1093,6 +969,11 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
     its maximum and minimum above the band, to the record. A case whose structure
     radiates wants them; a case whose grid ends at the band edge would only get
     NaNs, so it is off unless asked for.
+
+    Pass 1 carries no ref_impedance, so port.Z_ref is the measured line impedance rather
+    than the value it was told to assume; a container that reports no openEMS version
+    refuses the record, but the measured arrays still reach the evidence file instead of
+    a bare traceback.
     """
     ContinuousStructure, openEMS, MSLPort = _import_openems()
 
@@ -1124,8 +1005,6 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
         elapsed = time.time() - t0
 
         freqs = np.asarray(freqs_hz, dtype=float)
-        # Pass 1 carries no ref_impedance, so port.Z_ref is the measured line
-        # impedance rather than the value it was told to assume.
         port0.CalcPort(sim_dir, freqs)
         port1.CalcPort(sim_dir, freqs)
         re_z0 = None
@@ -1168,8 +1047,6 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
             record["re_z0"] = re_z0.tolist()
             record["re_z0_median_ohm"] = float(np.median(re_z0))
 
-        # Printed before the guards run, so the numbers reach the log even when
-        # the next line raises.
         print(f"  energy sum max(|S11|^2+|S21|^2): "
               f"band {band_ghz[0]:.1f}-{band_ghz[1]:.1f} GHz "
               f"{summary['max_energy_sum_band']:.4f} | "
@@ -1178,17 +1055,10 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
               f"1-2 GHz {summary['max_energy_sum_below_band']['1_2_ghz']:.4f} "
               f"(tol {summary['passivity_tol']:.2f}, judged on the band)", flush=True)
 
-        # Inside the guarded block on purpose: a container that reports no
-        # openEMS version refuses the record, but the arrays measured above
-        # still reach the evidence file instead of a bare traceback.
         openems_info = _openems_version(real_log)
 
         record.update(features_fn(freqs_ghz, s11, s21))
 
-        # Everything above is pure post-processing of what the solver produced,
-        # so it runs whether or not the run was cut short: a truncated pass is
-        # precisely the one whose arrays have to be inspectable. The gate itself
-        # is unchanged and still blocks the record.
         if truncated:
             record["truncated"] = True
             record["final_energy_db"] = progress["final_energy_db"]
@@ -1215,8 +1085,6 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
 
         _non_physical_guard(np.abs(s11), label + "_s11")
         _non_physical_guard(np.abs(s21), label + "_s21")
-        # The witness function is byte-identical to the precedent's; the band is
-        # supplied through its own idx argument.
         _passivity_witness(s11, s21, label,
                            tol=passivity_tol, idx=summary["band_mask"])
     except RuntimeError as exc:
@@ -1235,20 +1103,10 @@ def run_stage(*, label: str, sim_root: str, threads: int, build,
         "openems": openems_info,
     })
     meta.update(progress)
-    # A step count is not a record length: dt shrinks with the cell, so two
-    # rungs capped at the same NrTS have recorded different amounts of time.
-    # This is what makes them comparable, and what a merge can check.
     setup = _solver_setup(real_log)
     meta.update(setup)
     dt_s = setup["dt_s"]
 
-    # WHICH step count. ``timesteps_executed`` is the largest number on a
-    # PROGRESS line, and openEMS prints one only every few seconds -- on the real
-    # container log the last one says 2146 while the run was
-    # capped at 3000. For a run stopped at its cap the record really is the cap
-    # long, so the declared maximum is used and the field says so. A run that
-    # ended on its own end criterion stopped where the last progress line is, so
-    # that one is used.
     executed = meta.get("timesteps_executed")
     declared_cap = setup["max_timesteps_declared"]
     if truncated and declared_cap is not None:
@@ -1336,11 +1194,6 @@ def stages_for(stage: str) -> list:
     return ["stage_a", "stage_b_coarse", "stage_b_mid", "stage_b_fine"]
 
 
-# ---------------------------------------------------------------------------
-# The TUTORIAL's own geometry and mesh, as numbers. One copy: both the dry-run
-# table and the Stage A record's plan_estimate read it, and the MSL notch
-# filter's Stage B is the tutorial at a mesh rung, so its rungs read it too.
-# ---------------------------------------------------------------------------
 def tutorial_plan(label: str, msl_length_um: float, resolution_factor: float) -> dict:
     """The geometry and mesh the named stage builds, as numbers."""
     resolution = _C0 / (A_F_MAX_HZ * np.sqrt(A_SUBSTRATE_EPR)) / A_UNIT / 50.0 * resolution_factor
@@ -1373,7 +1226,6 @@ def tutorial_plan(label: str, msl_length_um: float, resolution_factor: float) ->
 
     feed_shift = 10.0 * resolution
     measplane_shift = msl_length_um / 3.0
-    # PML_8 on the x faces only: it eats the outermost 8 cells at each end.
     pml_lo = float(x[A_PML_CELLS]) if x.size > A_PML_CELLS else float(x[-1])
     pml_hi = float(x[-1 - A_PML_CELLS]) if x.size > A_PML_CELLS else float(x[0])
     feed_x = -msl_length_um + feed_shift
@@ -1454,9 +1306,6 @@ def print_tutorial_plan(plan: dict) -> None:
     print(f"    meas plane downstream of the feed  {plan['measplane_downstream_of_feed']}")
 
 
-# ---------------------------------------------------------------------------
-# Stage A, end to end. A case calls this and gets the tutorial's own record.
-# ---------------------------------------------------------------------------
 def stage_a_freqs_hz() -> np.ndarray:
     """The tutorial's own CalcPort grid: linspace(1e6, 7e9, 1601)."""
     return np.linspace(1.0e6, A_F_MAX_HZ, A_N_FREQS)

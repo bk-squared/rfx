@@ -55,6 +55,7 @@ is checked by running the module rather than argued: VESSL run 369367259193
 ``docs/design_notes/931_migration/T6-RECOMPUTE.md``. If the |Gamma| envelope or
 either AD-vs-FD leg moves, the far face at ``xpec`` is what moved it and this
 row becomes a re-measure.
+The 25 MHz bins over 7-10 GHz hold the null of every thickness the fixture can realize near dx = 0.5 mm.
 """
 from __future__ import annotations
 
@@ -83,24 +84,19 @@ X_BACK = X_IFACE + LAYER_D
 PEC_D = 0.002
 PLATEAU = (0.020, 0.036)
 BAND = np.linspace(6e9, 10e9, 21)
-# The absorption null is read on a finer grid than BAND: 25 MHz bins over 7-10 GHz
-# hold the null of every thickness the fixture can realize near dx = 0.5 mm.
 NULL_BAND = np.linspace(7.0e9, 10.0e9, 121)
-MAG_BAR_DB = 2.0     # v2 accuracy bar, magnitude
-NULL_BAR = 0.01      # v2 accuracy bar, frequency
-DEEP_NULL_DB = -20.0  # bins at or below it are judged by the null's frequency
+MAG_BAR_DB = 2.0
+NULL_BAR = 0.01
+DEEP_NULL_DB = -20.0
 
 
-# --------------------------------------------------------------------------- #
-# Analytic TMM reflection oracle (e^{+jwt}: passive loss => eps_r - j sigma/w eps0).
-# Layers FRONT-to-BACK; backing is a PEC short (Z_load = 0).
-# --------------------------------------------------------------------------- #
 def _eps_c(eps_r, sigma, freq):
     w = 2.0 * np.pi * freq
     return eps_r - 1j * sigma / (w * EPS0)
 
 
 def _tmm_reflection(freqs, layers, backing="pec", method="impedance"):
+    """Layers are FRONT-to-BACK."""
     z_load = 0.0 if backing == "pec" else ETA0
     freqs = np.atleast_1d(np.asarray(freqs, float))
     out = np.empty(freqs.shape, complex)
@@ -121,7 +117,6 @@ def _tmm_reflection(freqs, layers, backing="pec", method="impedance"):
                 eta = ETA0 / n
                 c, s = np.cos(k0 * n * d), np.sin(k0 * n * d)
                 M = M @ np.array([[c, 1j * eta * s], [1j * s / eta, c]], complex)
-            # Z_in = (A z_load + B)/(C z_load + D); PEC short (z_load=0) -> B/D.
             z_in = (M[0, 0] * z_load + M[0, 1]) / (M[1, 0] * z_load + M[1, 1])
         out[i] = (z_in - ETA0) / (z_in + ETA0)
     return out
@@ -142,9 +137,6 @@ def _tmm_grad_abs(freq, d, var, x0, sigma0=1.0, eps0=4.0, h=1e-4):
     return (absg(x0 + h) - absg(x0 - h)) / (2 * h)
 
 
-# --------------------------------------------------------------------------- #
-# FAST — oracle physical-limit validation (comparator-first) + AD-tape contract.
-# --------------------------------------------------------------------------- #
 def test_tmm_oracle_physical_limits():
     band = np.linspace(6e9, 14e9, 41)
     for layers in ([(4.0, 0.0, 5e-3)], [(2.0, 0.0, 3e-3), (6.0, 0.0, 2e-3)]):
@@ -202,9 +194,6 @@ def test_tmm_analytic_gradient_is_independent_oracle():
     assert 0.1 < abs(g) < 1.0, f"analytic d|Gamma|/dsigma out of expected range: {g}"
 
 
-# --------------------------------------------------------------------------- #
-# SLOW — FDTD forward() reflection off a PEC-backed lossy layer vs the TMM oracle.
-# --------------------------------------------------------------------------- #
 def _build():
     grid = Grid(freq_max=16e9, domain=DOMAIN, dx=DX, cpml_layers=10)
     xi = grid.position_to_index((X_IFACE, 0.010, 0.00075))[0]
@@ -214,7 +203,7 @@ def _build():
     probe_idx = np.array([grid.position_to_index((float(xp), 0.010, 0.00075))[0] for xp in xprobes])
     dists = (xi - probe_idx).astype(np.float64) * DX
     ns = int(12.0 * (2.0 * X_BACK / C0) / grid.dt)
-    d_raster = (xb - xi) * DX  # ACTUAL rasterized layer thickness (removes the 4.69/4.50 mismatch)
+    d_raster = (xb - xi) * DX
 
     sim = Simulation(freq_max=16e9, domain=DOMAIN, dx=DX, boundary="cpml", cpml_layers=10, mode="3d")
     sim.add_tfsf_source(f0=F0, bandwidth=0.6, polarization="ez", direction="+x",
@@ -257,10 +246,10 @@ def _settle_db(series, ns):
 @pytest.fixture(scope="module")
 def ram_run():
     sim, shape, xi, xb, xpec, dists, dt, ns, d_raster = _build()
-    inc = _run(sim, shape, xi, xb, ns)                                    # vacuum
+    inc = _run(sim, shape, xi, xb, ns)
     tot_lossless = _run(sim, shape, xi, xb, ns, eps_r=4.0, pec_ab=(xb, xpec))
     tot_lossy = _run(sim, shape, xi, xb, ns, eps_r=4.0, sigma=1.4, pec_ab=(xb, xpec))
-    tot_barepec = _run(sim, shape, xi, xb, ns, pec_ab=(xi, xi + PEC_D_cells()))  # PEC at ref plane
+    tot_barepec = _run(sim, shape, xi, xb, ns, pec_ab=(xi, xi + PEC_D_cells()))
 
     def band_gamma(tot):
         return np.array([complex(fresnel_reflection_coefficient(
@@ -342,7 +331,6 @@ def test_ram_magnitude_vs_tmm(ram_run):
     err 0.159->0.054->0.033 as dx 0.75->0.375 mm)."""
     g_fd, g_nom, g_ras = _lossy_vs_tmm(ram_run)
     lo, hi = np.minimum(g_nom, g_ras), np.maximum(g_nom, g_ras)
-    # distance from the FDTD point to the TMM thickness-band [lo, hi]
     err = np.where(g_fd < lo, lo - g_fd, np.where(g_fd > hi, g_fd - hi, 0.0))
     assert np.max(g_fd) < 1.02, "nonphysical |Gamma|>1 (extraction/instability)"
     assert np.mean(err) < 0.05, f"mean dist to TMM thickness-band = {np.mean(err):.3f}"
@@ -424,12 +412,6 @@ def test_realized_tmm_comparison_rejects_a_layer_half_a_cell_thick():
     assert abs(old["null_err"]) > NULL_BAR, old
 
 
-# highmem: the [sigma-1.0] case was the test killed in shard 3 -- its own footprint is UNMEASURED in CI, since
-# the [rss] post-test hook never fired for it (the process died first). The
-# process was already at 14,854 MB *entering* it -- that number belongs to
-# the PRECEDING mu_r highmem test, not this one. The eps case shares the
-# same checkpointed forward and is marked with it (pytest marks apply
-# per-function, not per-parametrize-case).
 @pytest.mark.slow
 @pytest.mark.highmem
 @pytest.mark.parametrize("var,x0", [("sigma", 1.0), ("eps", 4.0)])
@@ -535,6 +517,5 @@ def test_ram_inverse_design_brackets_analytic_optimum(ram_run):
 
     assert g_best < g_star + 0.05, f"best |Gamma|={g_best:.3f} did not reach analytic {g_star:.3f}"
     assert g_best < 0.3 * g_start, f"|Gamma| {g_start:.3f} -> best {g_best:.3f} (no real descent)"
-    # FDTD optimum is ~15% above analytic sigma* (discretization) — honest bracket:
     assert 0.8 * sigma_star < sig_at_best < 2.0 * sigma_star, \
         f"sigma_at_best={sig_at_best:.3f} does not bracket analytic sigma*={sigma_star:.3f}"

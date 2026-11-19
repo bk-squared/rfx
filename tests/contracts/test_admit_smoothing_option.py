@@ -2,6 +2,7 @@
 
 Direct scan and uniform-run refusals pin unsupported full-tensor inputs, while
 supported direct scans retain finite results.
+Subgridded and distributed entries refuse smoothing before shared admission.
 """
 
 import ast
@@ -19,7 +20,6 @@ from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
 from rfx.runners import run_uniform
 
 
-# (file, enclosing function): (disposition, call count)
 ADMIT_CALLS = {
     ("rfx/probes/sparam_driver.py", "compute_lumped_wire_s_matrix_via_scan"): ("passes", 1),
     ("rfx/runners/_admission.py", "admit_run_s_matrix"): ("passes", 1),
@@ -27,12 +27,10 @@ ADMIT_CALLS = {
     ("rfx/runners/uniform_forward.py", "_forward_from_materials"): ("passes", 1),
     ("rfx/runners/nonuniform.py", "run_nonuniform_path"): ("passes", 1),
     ("rfx/sparams/waveguide.py", "compute_waveguide_s_matrix"): ("passes", 2),
-    # Subgridded and distributed entries refuse smoothing before these calls.
     ("rfx/runners/subgridded.py", "_run_subgridded_once"): ("no option", 1),
     ("rfx/subgridding/_notice.py", "require_experimental"): ("no option", 1),
     ("rfx/runners/distributed_v2.py", "run_distributed"): ("no option", 1),
     ("rfx/model/distributed_ports.py", "assemble"): ("no option", 1),
-    # These entries expose no smoothing option.
     ("rfx/sparams/coax.py", "compute_coaxial_line_reflection"): ("no option", 1),
     ("rfx/sparams/coax.py", "compute_coaxial_two_port"): ("no option", 1),
     ("rfx/sparams/coax.py", "compute_coax_msl_transition"): ("no option", 1),

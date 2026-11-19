@@ -14,6 +14,7 @@ contain each trap exactly once:
 Also locks the non-findings: exactly-on-lattice faces report 0.0 um
 residuals (the report must not cry wolf), and coordinates are DOMAIN
 coordinates (the CPML pad offset is compensated).
+The DOMAIN row must count grid CELLS, not NODES.
 """
 from __future__ import annotations
 
@@ -29,19 +30,19 @@ def _fixture(*, include_unresolved=False):
                      boundary="cpml", cpml_layers=4)
     sim.add_material("sub", eps_r=3.38, sigma=0.0)
     sim.add_material("override", eps_r=2.2, sigma=0.0)
-    sim.add(Box((0, 0, 2.0e-3), (10e-3, 10e-3, 2.5e-3)), material="pec")     # [0] ground sheet
-    sim.add(Box((0, 0, 2.5e-3), (10e-3, 10e-3, 4.0e-3)), material="sub")     # [1] substrate
+    sim.add(Box((0, 0, 2.0e-3), (10e-3, 10e-3, 2.5e-3)), material="pec")
+    sim.add(Box((0, 0, 2.5e-3), (10e-3, 10e-3, 4.0e-3)), material="sub")
     sim.add(Box((3.13e-3, 3.0e-3, 4.0e-3), (6.87e-3, 7.0e-3, 4.5e-3)),
-            material="pec")                                                  # [2] patch, off-lattice x
+            material="pec")
     sim.add(Box((1.0e-3, 1.0e-3, 2.5e-3), (3.0e-3, 3.0e-3, 3.0e-3)),
-            material="override")                                             # [3] overwrites part of [1]
+            material="override")
     if not include_unresolved:
         return sim
     sim.add_material("thinfilm", eps_r=8.0, sigma=0.0)
     sim.add(Box((4.0e-3, 4.0e-3, 5.10e-3), (6.0e-3, 6.0e-3, 5.15e-3)),
-            material="thinfilm")   # [4] 50 um dielectric film mid-cell -> absent
+            material="thinfilm")
     sim.add(Box((4.0e-3, 4.0e-3, 9.0e-3), (6.0e-3, 6.0e-3, 9.2e-3)),
-            material="thinfilm")   # [5] beyond even the CPML pad -> absent
+            material="thinfilm")
     return sim
 
 
@@ -82,7 +83,7 @@ def test_finding_classes_are_detected():
     sub = _geo(rep, 1)
     assert "materialization-overridden" in _kinds(sub)
     assert sub["assembled_matches_declared_frac"] < 0.999
-    assert min(sub["assembled_eps_r"]) < 3.0   # the 2.2 override is visible
+    assert min(sub["assembled_eps_r"]) < 3.0
 
 
 @pytest.mark.parametrize('entry', [4, 5], ids=['no-centre-film', 'outside-grid-film'])
@@ -104,7 +105,6 @@ def test_exact_faces_report_zero_residual_in_domain_coords():
     for ax in ground["axes"]:
         assert max(ax["face_residual_um"]) < 1e-6, (
             f"exact face read nonzero residual on {ax['axis']}: {ax}")
-    # domain coordinates, not padded-array coordinates:
     assert abs(ground["axes"][2]["realized_um"][0] - 2000.0) < 1e-6
 
 
@@ -117,12 +117,6 @@ def test_remedies_are_present_and_mechanical():
                 "fidelity findings must never predict result-side impact")
 
 
-# ---------------------------------------------------------------------------
-# Adversarial traps: models built to be WRONG in ways a user
-# would not notice. Every one of these was a MISS on the first implementation
-# — the tool reported "all clean" for models with invisible metal, silently
-# dropped conductivity, and conductors inside the absorber.
-# ---------------------------------------------------------------------------
 
 
 def _plain(dx=1e-3):
@@ -201,12 +195,6 @@ def test_dispersive_material_states_that_poles_are_not_verified():
     assert "dispersion-not-audited" in kinds
 
 
-# ---------------------------------------------------------------------------
-# Readout conventions. Both of these were shipped wrong: a
-# sphere sitting dead centre of the grid it is solved on was reported as
-# "offset half a cell", and a 17 um sheet landing in its cell was reported as
-# "181% of the declared extent".
-# ---------------------------------------------------------------------------
 
 
 def test_curved_body_offset_reports_the_convention_free_midpoint():
@@ -230,13 +218,12 @@ def test_sub_cell_body_is_measured_against_the_cell_not_its_own_thickness():
     sim = Simulation(freq_max=40e9, domain=(2e-3, 2e-3, 2e-3), dx=50e-6,
                      boundary="cpml", cpml_layers=4)
     sim.add(Box((0.5e-3, 0.5e-3, 0.98e-3), (1.5e-3, 1.5e-3, 0.997e-3)),
-            material="pec")            # 17 um sheet in a 50 um cell
+            material="pec")
     item = _geo(sim.fidelity_report(print_report=False), 0)
     kinds = _kinds(item)
     assert "sub-cell-placement" in kinds
     f = [x for x in item["findings"] if x["kind"] == "sub-cell-placement"][0]
     assert "cell" in f["detail"] and "not a meaningful measure" in f["detail"]
-    # and the z axis must NOT also produce a percentage-of-extent finding
     z_off = [x for x in item["findings"]
              if x["kind"] == "off-lattice-face" and x.get("axis") == "z"]
     assert not z_off, (
@@ -244,19 +231,6 @@ def test_sub_cell_body_is_measured_against_the_cell_not_its_own_thickness():
         f"thickness as well: {z_off}")
 
 
-# ---------------------------------------------------------------------------
-# The DOMAIN row must count grid CELLS, not NODES.
-#
-# `_node_arrays` builds one array entry per NODE (grid.shape[a] entries for
-# n cells, since an n-cell span needs n+1 nodes — rfx/grid.py's fence-post
-# comment). Summing that whole array as if each entry were a cell inflated
-# an exactly-commensurate domain's "realized" length by one dx on every
-# axis and raised a false [domain-extent-quantized] finding, while the
-# entity row for a Box filling the identical span (which reads `nodes`,
-# not `sizes`) was correct. The domain row is the ONLY row for
-# cavity/waveguide models where the box IS the geometry (cv09, cv14, cv21),
-# so this defect landed exactly where the report is trusted most.
-# ---------------------------------------------------------------------------
 
 
 def _dom(rep):
@@ -313,14 +287,16 @@ def test_domain_row_is_cells_on_every_pad_mesh_and_uniformity():
     test_pmc_face_reports_the_half_cell_realized_wall below for that
     convention's own test). Checking the mesh span here keeps this test's
     original purpose -- cell-vs-node counting, issue #729 -- decoupled
-    from the PMC convention it would otherwise be conflated with."""
+    from the PMC convention it would otherwise be conflated with.
+    The z axis is not solved in 2D (grid.nz == 1), so it must not raise a domain-extent-quantized finding.
+    """
     from rfx.boundaries.spec import Boundary, BoundarySpec
 
     L = (20e-3, 10e-3, 10e-3)
     asym = BoundarySpec(x=Boundary(lo="pec", hi="cpml"),
                         y=Boundary(lo="cpml", hi="pmc"), z="pec")
     cases = []
-    for dx in (1e-3, 0.5e-3, 0.25e-3):           # mesh 1x / 2x / 4x
+    for dx in (1e-3, 0.5e-3, 0.25e-3):
         cases.append((f"pec dx={dx}", dict(boundary="pec", dx=dx)))
         cases.append((f"cpml4 dx={dx}",
                       dict(boundary="cpml", cpml_layers=4, dx=dx)))
@@ -337,8 +313,6 @@ def test_domain_row_is_cells_on_every_pad_mesh_and_uniformity():
         dom = _dom(sim.fidelity_report(print_report=False))
         for a in range(3):
             if tag == "2d_tmz" and a == 2:
-                # z is not solved in 2D (grid.nz == 1): must not raise a
-                # domain-extent-quantized finding on it.
                 if any(f["axis"] == "z" for f in dom["findings"]):
                     bad.append((tag, "z", "unexpected finding on z"))
                 continue
@@ -409,26 +383,9 @@ def test_2d_not_solved_axis_note_reaches_the_printed_report(capsys):
     assert z["note"] in printed, (
         "the note is in the returned dict but not in the printed report:\n"
         + printed)
-    # the x/y rows ARE compared, so they must NOT carry a note
     assert "note" not in dom["axes"][0] and "note" not in dom["axes"][1]
 
 
-# ---------------------------------------------------------------------------
-# The report reads the SAME exact node line
-# and cell sizes the rasterizer reads. Before, `_node_arrays` re-derived its
-# own node line by cumsumming the solver's float32 cell-size stores on the
-# non-uniform lane (a float64 np.full on the uniform lane). Measured,
-# both x64 flags: on a graded 0.3048 mm profile
-# the report's nodes sat 3.927e-10 m off the rasterizer's; a uniform-valued
-# non-uniform axis reported a declared 500.0 um cell as 500.00002374872565
-# um and a node-aligned box as realized (5000.000237, 5500.000261) um; and
-# exactly-on-node faces carried 3.7e-05 / 1.85e-04 um residuals. A second
-# node line is a second chance to disagree with the mask; there is now one.
-#
-# Every test below runs at the session's x64 flag AND again under the scoped
-# enable_x64() context (never a module-level flip), so a single process
-# covers both realizations; CI additionally runs the file at each flag.
-# ---------------------------------------------------------------------------
 
 import contextlib
 import warnings
@@ -436,7 +393,7 @@ import warnings
 
 from tests._x64_compat import enable_x64
 
-_DX_WR90 = 0.3048e-3   # the WR-90 a/30 class cell the residuals were measured at
+_DX_WR90 = 0.3048e-3
 _D_HALF_MM = 0.5e-3
 
 
@@ -451,12 +408,13 @@ def _both_flags(build):
 def _graded_z_sim():
     """z: 20 cells of DX, 10 of DX/2, 20 of DX; x/y uniform DX. One
     dielectric box with node-aligned x/y faces and z faces on the graded
-    axis' own cumsum nodes (20*DX .. 25*DX)."""
+    axis' own cumsum nodes (20*DX .. 25*DX).
+    The grading-ratio advisory (2.0 > 1.4) is not what is under test.
+    """
     from rfx.boundaries.spec import BoundarySpec
     D = _DX_WR90
     dz = np.concatenate([np.full(20, D), np.full(10, D / 2), np.full(20, D)])
     with warnings.catch_warnings():
-        # the grading-ratio advisory (2.0 > 1.4) is not what is under test
         warnings.simplefilter("ignore")
         sim = Simulation(freq_max=12e9,
                          domain=(30 * D, 20 * D, float(dz.sum())), dx=D,
@@ -492,9 +450,7 @@ def test_report_node_line_is_the_rasterizer_node_line_on_a_graded_profile():
                 err_msg=f"{tag}: report node line != rasterizer node line "
                         f"on {'xyz'[a]} (a cumsum of the float32 store)")
             assert nodes[a][pads[a]] == 0.0, tag
-            # far edge of the last cell, from the same exact cell sizes
             assert nodes[a][-1] == line[-1] + sizes[a][-1], tag
-        # cell sizes come from the exact profile, not the float32 store
         assert sizes[2][pads[2] + 20] == _DX_WR90 / 2, tag
         assert sizes[2][pads[2]] == _DX_WR90, tag
         assert sizes[0][pads[0]] == _DX_WR90, tag
@@ -505,13 +461,13 @@ def test_node_aligned_faces_on_uniform_valued_axes_report_zero_residual():
     uniform-valued axes, whose exact node line is the same product; the
     report must read them back as exactly on-node. Pre-fix residuals:
     3.704e-05 um (lo) / 1.852e-04 um (hi) on x, from the widened float32
-    cell size 0.00030479999259114265."""
+    cell size 0.00030479999259114265.
+    The expected 2000 cells are 20 * 10 * 10 because z = [20D, 25D) spans ten D/2 cells, with D = _DX_WR90.
+    """
     def build():
         return _geo(_graded_z_sim().fidelity_report(print_report=False), 0)
 
     for tag, item in _both_flags(build):
-        # z = [20D, 25D) spans ten D/2 cells; #1138 keeps the low-face
-        # node instead of losing a layer to cumsum dust: 20 * 10 * 10.
         assert item["n_cells"] == 2000, tag
         for ax in item["axes"][:2]:
             assert ax["face_residual_um"] == (0.0, 0.0), (tag, ax)
@@ -597,7 +553,6 @@ def test_one_cell_conductor_reports_walls_on_both_of_its_faces(lane):
     assert "BOTH" in item["realization"]
     z_um = item["realized_wall_planes"]["z"]["planes_um"]
     assert [round(v, 6) for v in z_um] == [5000.0, 5500.0], z_um
-    # in plane the drawn rectangle is realized closed: 5000 .. 7500 um
     for ax in ("x", "y"):
         p = item["realized_wall_planes"][ax]["planes_um"]
         assert round(p[0], 6) == 2500.0 and round(p[-1], 6) == 7500.0, (ax, p)
@@ -635,6 +590,7 @@ def test_off_lattice_pec_box_reports_the_cell_count_the_solve_builds(lane):
 
     The expectation is not a hand-computed number: it is the cell mask the
     assembly itself built, read through the shared realization helper.
+    Cells in the absorbers are rfx's continuation, not the drawing the report is about.
     """
     from tests._realized_geometry import realized
 
@@ -648,10 +604,6 @@ def test_off_lattice_pec_box_reports_the_cell_count_the_solve_builds(lane):
             material="pec")
 
     rz = realized(sim)
-    # Counted inside the declared domain. The box fills the first cell layer on
-    # x-lo and y-lo (0.3 dx is inside the cell whose centre is at 0.5 dx), so it
-    # continues through those two absorbers, and those cells are rfx's
-    # continuation, not the drawing the report is about.
     g = rz.grid
     full = np.asarray(rz.pec_mask, dtype=bool)
     interior = full[g.pad_x_lo:full.shape[0] - g.pad_x_hi,
@@ -663,14 +615,9 @@ def test_off_lattice_pec_box_reports_the_cell_count_the_solve_builds(lane):
     item = _geo(sim.fidelity_report(print_report=False), 0)
 
     assert item["n_cells"] == n_solve, (item["n_cells"], n_solve)
-    # 11 x 11 x 2 cells: the centre sampler keeps the cell whose centre is
-    # at 10.5 dx, inside the drawn 10.6 dx face.
     assert n_solve == 11 * 11 * 2, n_solve
     x = item["axes"][0]
     assert x["realized_um"] == (0.0, 11 * D * 1e6), x
-    # ... and the walls the solve realizes are the ones the row quotes:
-    # a solid 11-cell body shorts every plane it spans, so the bounding
-    # pair is what carries the sampler question.
     planes = item["realized_wall_planes"]["x"]["planes_um"]
     assert round(planes[0], 6) == 0.0 and round(planes[-1], 6) == 11 * D * 1e6, planes
     assert len(planes) == 12, planes

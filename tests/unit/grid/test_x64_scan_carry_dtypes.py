@@ -69,10 +69,6 @@ from tests._x64_compat import enable_x64
 PEC_SIGMA = 1e7
 
 
-# ---------------------------------------------------------------------------
-# The premise the whole issue rests on
-# ---------------------------------------------------------------------------
-
 def test_dt_is_a_numpy_float64_scalar():
     """``grid.dt`` is an np.float64 scalar -> strongly typed in JAX.
 
@@ -88,24 +84,22 @@ def test_dt_is_a_numpy_float64_scalar():
     assert jnp.dtype(np.asarray(grid.dt).dtype) == jnp.float64
 
     with enable_x64():
-        # A numpy float64 scalar promotes a complex64 array; a Python float
-        # (weakly typed) does not. That asymmetry is the whole defect.
         c = jnp.zeros(3, dtype=jnp.complex64)
         assert (c * np.float64(1e-12)).dtype == jnp.complex128
         assert (c * 1e-12).dtype == jnp.complex64
 
 
-# ---------------------------------------------------------------------------
-# The dtype policy itself
-# ---------------------------------------------------------------------------
-
 @pytest.mark.parametrize("field_dtype,expected", [
-    (jnp.float16, jnp.complex64),     # mixed precision -> float32 FLOOR
-    (jnp.float32, jnp.complex64),     # default -> unchanged
-    (jnp.complex64, jnp.complex64),   # oblique Bloch -> stays COMPLEX
+    (jnp.float16, jnp.complex64),
+    (jnp.float32, jnp.complex64),
+    (jnp.complex64, jnp.complex64),
 ])
 def test_ntff_accum_dtype_promotes_never_pins(field_dtype, expected):
-    """Holds identically with x64 off and on."""
+    """Holds identically with x64 off and on.
+
+    The rows are mixed precision (float16 fields, float32 floor), the default float32
+    lane (unchanged) and oblique Bloch (the complex carry stays complex).
+    """
     assert ntff_accum_dtype(field_dtype) == expected
     with enable_x64():
         assert ntff_accum_dtype(field_dtype) == expected
@@ -167,13 +161,8 @@ def test_rlc_carry_follows_ambient_float_with_a_float32_floor():
         st = init_rlc_state()
         assert st.inductor_current.dtype == jnp.float64
         assert st.capacitor_charge.dtype == jnp.float64
-    # flag restored -> back to the ambient default
     assert init_rlc_state().inductor_current.dtype == ambient
 
-
-# ---------------------------------------------------------------------------
-# The three scans must actually CLOSE under x64
-# ---------------------------------------------------------------------------
 
 def _lumped_sim():
     sim = Simulation(freq_max=5e9, domain=(0.01, 0.01, 0.01), dx=1e-3,
@@ -253,10 +242,6 @@ def test_oblique_tfsf_2d_scan_closes_under_x64():
     assert np.all(np.isfinite(np.asarray(r.time_series)))
 
 
-# ---------------------------------------------------------------------------
-# x64 must not change the default-precision numbers
-# ---------------------------------------------------------------------------
-
 def test_float32_ntff_accumulator_is_complex64_even_under_x64():
     """Turning x64 on must not silently widen (or narrow) the default lane.
 
@@ -295,10 +280,6 @@ def test_enable_x64_context_restores_the_flag():
         assert bool(jax.config.jax_enable_x64) is True
     assert bool(jax.config.jax_enable_x64) is before
 
-
-# ---------------------------------------------------------------------------
-# The dispersion ADE carry
-# ---------------------------------------------------------------------------
 
 def _dispersive_sim(kind, precision="float32", n=None):
     """Small PEC cavity with one dispersive Box.
@@ -359,12 +340,16 @@ def _scan_body_dtypes(monkeypatch, kind, precision):
 
 
 @pytest.mark.parametrize("field_dtype,expected", [
-    (jnp.float16, jnp.float32),      # mixed precision -> float32 FLOOR
-    (jnp.float32, jnp.float32),      # default -> unchanged
-    (jnp.complex64, jnp.complex64),  # complex fields -> stays COMPLEX
+    (jnp.float16, jnp.float32),
+    (jnp.float32, jnp.float32),
+    (jnp.complex64, jnp.complex64),
 ])
 def test_ade_state_dtype_promotes_never_pins(field_dtype, expected):
-    """Holds identically with x64 off and on."""
+    """Holds identically with x64 off and on.
+
+    The rows are mixed precision (float16 fields, float32 floor), the default float32
+    lane (unchanged) and complex fields (the carry stays complex).
+    """
     assert ade_state_dtype(field_dtype) == expected
     with enable_x64():
         assert ade_state_dtype(field_dtype) == expected
@@ -411,7 +396,6 @@ def test_ade_allocation_sites_honour_the_policy():
                           field_dtype=jnp.float16, high_wall=(False, False, False))
     _, deb = init_debye([DebyePole(delta_eps=2.0, tau=1e-10)], mats, dt,
                         field_dtype=jnp.float16, high_wall=(False, False, False))
-    # float16 fields must NOT give a float16 recursive accumulator
     assert lor.px.dtype == jnp.float32
     assert lor.vx.dtype == jnp.float32
     assert deb.px.dtype == jnp.float32
@@ -423,8 +407,6 @@ def test_ade_allocation_sites_honour_the_policy():
         assert lor64.px.dtype == jnp.float64
         assert deb64.px.dtype == jnp.float64
 
-
-# ---- the scans must actually CLOSE, per pole family ----
 
 @pytest.mark.parametrize("kind", ["lorentz", "debye", "drude", "both"])
 def test_dispersive_scan_closes_under_x64(kind):
@@ -465,8 +447,6 @@ def test_dispersive_float64_actually_reaches_float64():
         assert r.state.ex.dtype == jnp.float64
         assert np.asarray(r.time_series).dtype == jnp.float64
 
-
-# ---- precision="mixed": float16 FIELDS, float32 ACCUMULATION ----
 
 @pytest.mark.parametrize("kind", ["lorentz", "debye"])
 def test_mixed_precision_keeps_float16_fields_and_a_float32_ade_state(

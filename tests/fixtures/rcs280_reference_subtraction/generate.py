@@ -12,6 +12,7 @@ same lobe -> pure leakage. It is target-independent, so a two-run subtraction
 E_scat = E_far[target] - E_far[vacuum] cancels it exactly (standard TF/SF
 normalization). Backscatter leakage ~0, so the validated monostatic bin is
 unchanged (default subtract_incident_reference=False is byte-identical).
+The uncorrected path equals the sibling rcs_sphere_mie monostatic fixture only while the two rigs match.
 """
 import json
 import subprocess
@@ -23,12 +24,6 @@ import jax.numpy as jnp
 
 _HERE = Path(__file__).resolve().parent
 _REPO = _HERE.parents[2]
-# Pin THIS repo tree ahead of any installed rfx. Running the script directly puts
-# only the script's own directory on sys.path, so an editable/site-packages rfx
-# from another checkout wins silently -- and it did: a regeneration
-# ran the sibling checkout's earlier auxiliary absorber with THIS file's 24-cell
-# CPML, a rig that exists nowhere, and produced a corrected-pattern mean of
-# 0.41 dB instead of 0.70.
 sys.path.insert(0, str(_REPO))
 sys.path.insert(0, str(_REPO / "tests/fixtures/rcs_sphere_mie"))
 from mie_oracle import bistatic_over_pi_a2  # noqa: E402
@@ -47,15 +42,12 @@ from rfx.measurement.rcs import compute_rcs
 
 F0 = 3e9
 LAM = C0 / F0
-A = 0.0159                     # sphere radius (m); rcs_sphere_mie geometry
-RES = 40                       # dx = lam/40 (6.4 cells/radius)
+SPHERE_RADIUS_M = 0.0159
+A = SPHERE_RADIUS_M
+CELLS_PER_WAVELENGTH = 40
+RES = CELLS_PER_WAVELENGTH
 DX = LAM / RES
 DOMAIN = 0.10
-# 24, was 8. This fixture's claim ("the uncorrected path equals the sibling
-# rcs_sphere_mie monostatic, SAME GEOMETRY") only holds while the two rigs match,
-# and that one moved to a converged 24-cell absorber -- see
-# ../rcs_sphere_mie/generate_fixture.py for the depth derivation and why the old
-# 8-cell agreement with Mie was a cancellation against the earlier auxiliary absorber's echo.
 CPML = 24
 N_PHI = 37
 N_STEPS = 700
@@ -72,7 +64,7 @@ def _sphere_bistatic(subtract):
                     polarization="ez", theta_obs=np.array([np.pi / 2]), phi_obs=phi,
                     freqs=np.array([F0]), boundary="cpml", cpml_layers=CPML,
                     subtract_incident_reference=subtract)
-    return np.asarray(r.rcs_linear[0, 0, :]) / (np.pi * A ** 2)   # sigma/(pi a^2)
+    return np.asarray(r.rcs_linear[0, 0, :]) / (np.pi * A ** 2)
 
 
 def _empty_leakage():
@@ -88,6 +80,7 @@ def _empty_leakage():
 
 
 def main():
+    """An artifact that does not declare cpml_layers cannot be checked against the rig it was measured on."""
     mie = np.array([bistatic_over_pi_a2(KA, float(p), "H") for p in phi])
     uncorr = _sphere_bistatic(False)
     corr = _sphere_bistatic(True)
@@ -113,10 +106,6 @@ def main():
             f"{_db(corr)[-1] - _db(mie)[-1]:+.2f} dB. The empty-domain run isolates the "
             "leakage (a spurious far-field with NO scatterer). Default OFF is byte-"
             "identical on the validated monostatic path."),
-        # cpml_layers is part of the RIG, not a detail: it moved 8 -> 24 here and
-        # re-baselined every number below, so an artifact that does not declare it
-        # cannot be checked against the rig it was measured on (the sibling
-        # rcs_sphere_mie fixture has always recorded it).
         "geometry": {"shape": "pec_sphere", "radius_m": A, "f0_hz": F0, "ka": KA,
                      "dx_m": DX, "res_cells_per_lambda": RES,
                      "cells_per_radius": A / DX, "n_steps": N_STEPS,

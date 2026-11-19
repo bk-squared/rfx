@@ -67,9 +67,7 @@ from rfx.probes.probes import flux_spectrum
 
 C0 = 299792458.0
 FREQ_MAX = 10e9
-#: The nominal vacuum default (C0 / freq_max / 20), explicitly pinned so
-#: later geometry additions cannot refine away this coarse-mesh stress case.
-DX_DEFAULT = C0 / FREQ_MAX / 20.0          # 1.4990 mm
+DX_DEFAULT = C0 / FREQ_MAX / 20.0
 N_CELLS = 30
 DOMAIN = (N_CELLS * DX_DEFAULT,) * 3
 EPS_SLAB = 4.0
@@ -102,9 +100,6 @@ def _interior(eps, grid, axis):
     return eps[tuple(mid)], (lo, hi)
 
 
-# --------------------------------------------------------------------------
-# 1. The array-level lock, at the DEFAULT mesh, on all three hi faces.
-# --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("axis,name", [(0, "x"), (1, "y"), (2, "z")])
 def test_flush_box_reads_material_through_the_face_default_mesh(axis, name):
@@ -113,7 +108,7 @@ def test_flush_box_reads_material_through_the_face_default_mesh(axis, name):
     lo = [4 * DX_DEFAULT] * 3
     hi = [26 * DX_DEFAULT] * 3
     lo[axis] = 0.0
-    hi[axis] = DOMAIN[axis]                      # flush with the hi face
+    hi[axis] = DOMAIN[axis]
     sim = _default_mesh_sim()
     sim.add_material("slab", eps_r=EPS_SLAB)
     sim.add(Box(tuple(lo), tuple(hi)), material="slab")
@@ -122,7 +117,6 @@ def test_flush_box_reads_material_through_the_face_default_mesh(axis, name):
     eps = np.asarray(sim._assemble_materials(grid)[0].eps_r)
     cut, (pad_lo, pad_hi) = _interior(eps, grid, axis)
 
-    # R5: the whole interior trace, not a single sampled node.
     assert not np.any(cut == 1.0), (
         f"{name}-hi: vacuum node(s) at interior index "
         f"{np.where(cut == 1.0)[0].tolist()} of {len(cut)} for a box flush "
@@ -131,7 +125,6 @@ def test_flush_box_reads_material_through_the_face_default_mesh(axis, name):
         f"{name}-hi: last interior node reads {float(cut[-1])}, expected "
         f"{EPS_SLAB}. Full interior cut: {cut.tolist()}")
 
-    # #627a must be untouched: the pad still carries the material.
     pad_axis_hi = np.take(eps, eps.shape[axis] - 1, axis=axis)
     assert float(pad_axis_hi.reshape(-1)[pad_axis_hi.size // 2]) == EPS_SLAB, (
         f"{name}-hi pad lost its material — this is #627a's lock, not #655's")
@@ -156,14 +149,6 @@ def test_flush_box_lossy_and_magnetic_materials_reach_the_face():
     assert float(np.asarray(mats.mu_r)[last, j, k]) == pytest.approx(2.0)
 
 
-# --------------------------------------------------------------------------
-# 2. The paired MUST-STILL-BE-VACUUM cases.
-#
-# Test 1 asserts "no vacuum at the face". The wrong way to satisfy it is to
-# over-fire the repair and fill things that should be air. Every assertion
-# above is therefore paired with a case on the SAME code path that must come
-# out vacuum, so a blanket fill reds here.
-# --------------------------------------------------------------------------
 
 def test_inset_box_keeps_its_vacuum_gap_including_the_last_interior_node():
     """(#655 over-fire guard) A box that stops short of the face must keep
@@ -172,7 +157,6 @@ def test_inset_box_keeps_its_vacuum_gap_including_the_last_interior_node():
     #655 repair inherits that bound and must not walk further."""
     sim = _default_mesh_sim()
     sim.add_material("slab", eps_r=EPS_SLAB)
-    # 10 cells of air before the x-hi face, on every axis.
     sim.add(Box((4 * DX_DEFAULT,) * 3, (20 * DX_DEFAULT,) * 3), material="slab")
     grid = sim._build_grid()
     eps = np.asarray(sim._assemble_materials(grid)[0].eps_r)
@@ -203,10 +187,6 @@ def test_two_cell_gap_at_the_face_is_not_bridged():
         f"nodes read {float(cut[-2])}, {float(cut[-1])}. Cut: {cut.tolist()}")
 
 
-# --------------------------------------------------------------------------
-# 3. Primitive-agnostic: Sphere / Cylinder reach the same state by the
-#    float32 knife edge rather than by half-openness.
-# --------------------------------------------------------------------------
 
 def test_repair_keys_off_the_assembled_array_not_off_box():
     """(#655) Primitive-agnosticism, locked deterministically.
@@ -222,13 +202,12 @@ def test_repair_keys_off_the_assembled_array_not_off_box():
     from rfx.geometry.rasterize_grid import extend_cpml_pad_materials
 
     pad = 4
-    n = 2 * pad + 6                    # 6 interior nodes per axis
+    INTERIOR_NODES_PER_AXIS = 6
+    n = 2 * pad + INTERIOR_NODES_PER_AXIS
     for axis in (0, 1, 2):
         eps = np.ones((n, n, n), dtype=np.float32)
         sigma = np.zeros((n, n, n), dtype=np.float32)
         mu = np.ones((n, n, n), dtype=np.float32)
-        # Material over every interior node EXCEPT the outermost one on
-        # ``axis`` — exactly the state a dropped boundary node leaves.
         sl = [slice(pad, n - pad)] * 3
         sl[axis] = slice(pad, n - pad - 1)
         eps[tuple(sl)] = EPS_SLAB
@@ -241,14 +220,14 @@ def test_repair_keys_off_the_assembled_array_not_off_box():
         out_eps = np.asarray(out_eps)
 
         probe = [n // 2] * 3
-        probe[axis] = n - pad - 1                      # last interior node
+        probe[axis] = n - pad - 1
         assert float(out_eps[tuple(probe)]) == EPS_SLAB, (
             f"axis {'xyz'[axis]}: the dropped boundary node was not repaired "
             f"(reads {float(out_eps[tuple(probe)])}); the repair must key off "
             f"the array pattern, not off any particular primitive")
         assert float(np.asarray(out_sigma)[tuple(probe)]) == pytest.approx(0.05)
         assert float(np.asarray(out_mu)[tuple(probe)]) == pytest.approx(2.0)
-        probe[axis] = n - pad                          # first pad node
+        probe[axis] = n - pad
         assert float(out_eps[tuple(probe)]) == EPS_SLAB, "#627a's pad lock"
 
 
@@ -306,10 +285,6 @@ def test_face_touching_sphere_and_cylinder_reach_the_face(kind):
         f"x-column: {col.tolist()}")
 
 
-# --------------------------------------------------------------------------
-# 4. The non-uniform lane carries the same defect through the same shared
-#    helper, so it must carry the same repair.
-# --------------------------------------------------------------------------
 
 def test_flush_box_reads_material_through_the_face_nonuniform():
     """(#655) NU mirror. ``rfx/runners/nonuniform.py`` calls the same
@@ -326,14 +301,6 @@ def test_flush_box_reads_material_through_the_face_nonuniform():
             f"{np.where(cut == 1.0)[0].tolist()}. Cut: {cut.tolist()}")
 
 
-# --------------------------------------------------------------------------
-# 5. The physics gate: the notch's reflection, at the default mesh.
-#
-# An array-shape assertion alone can be satisfied by an artifact. This one
-# binds the quantity the issue is actually about — how much power a slab
-# touching an absorbing face throws back — and it is pinned at the default
-# mesh where that quantity is largest.
-# --------------------------------------------------------------------------
 
 def _reflection_1d(*, extend_half_cell, dx, n_steps, lz, f0):
     """1-D plane-wave FDTD: eps_r=4 fills the domain, periodic transverse.
@@ -347,7 +314,6 @@ def _reflection_1d(*, extend_half_cell, dx, n_steps, lz, f0):
                                            z="cpml"),
                      cpml_layers=10)
     sim.add_material("diel", eps_r=EPS_SLAB)
-    # Fill the declared transverse periods without an out-of-period span.
     sim.add(Box((0.0, 0.0, 0.0),
                 (dx, dx, lz + (0.5 * dx if extend_half_cell else 0.0))),
             material="diel")
@@ -374,6 +340,8 @@ def test_face_touching_slab_does_not_reflect_off_a_phantom_film_default_mesh():
     matching thin-film theory for a vacuum layer one cell thick to 0.8 %.
     After the repair the same fixture must agree with the half-cell-extended
     reference, i.e. the reflection must collapse into the CPML floor.
+
+    Asserting the production fixture's own array state would fire FIRST on a broken tree and the |r| gate would never be reached.
     """
     f0 = FREQ_MAX
     dx = DX_DEFAULT
@@ -386,8 +354,6 @@ def test_face_touching_slab_does_not_reflect_off_a_phantom_film_default_mesh():
     fm_ref, ts_ref, li_r, pad_r = _reflection_1d(
         extend_half_cell=True, dx=dx, n_steps=n_steps, lz=lz, f0=f0)
 
-    # R5 witness: prove each variant is the configuration its label claims,
-    # by printing the STATE, before trusting any number derived from it.
     witness = (f"notch-run last-interior-eps={li_n} pad={pad_n} | "
                f"reference-run last-interior-eps={li_r} pad={pad_r}")
     assert pad_n == EPS_SLAB and pad_r == EPS_SLAB, (
@@ -396,14 +362,7 @@ def test_face_touching_slab_does_not_reflect_off_a_phantom_film_default_mesh():
     assert li_r == EPS_SLAB, (
         f"the half-cell-extended REFERENCE run did not occupy the last "
         f"interior node, so it is not a notch-free reference ({witness})")
-    # NOTE: deliberately NO assert on ``li_n`` here. Asserting the production
-    # fixture's own array state would fire FIRST on a broken tree and the |r|
-    # gate below would never be reached — a gate that reds for the wrong
-    # reason proves nothing about the quantity it claims to bind. ``li_n``
-    # travels in the witness string instead, so the failure that does fire
-    # carries the array state with it.
 
-    # Ring-down settling witness (mandatory for CPML claims-bearing numbers).
     for tag, ts in (("notch", ts_notch), ("ref", ts_ref)):
         db = 20 * np.log10(max(np.abs(ts[-len(ts) // 20:]).max(), 1e-300)
                            / np.abs(ts).max())
@@ -411,8 +370,6 @@ def test_face_touching_slab_does_not_reflect_off_a_phantom_film_default_mesh():
             f"{tag} run has not settled: tail/peak {db:.1f} dB at "
             f"n_steps={n_steps}; the DFT is truncation-contaminated")
 
-    # Field-level subtraction (flux is bilinear in E,H — subtract the E/H
-    # accumulators, then form the flux; the repo's canonical R/T recipe).
     diff = fm_notch._replace(
         e1_dft=fm_notch.e1_dft - fm_ref.e1_dft,
         e2_dft=fm_notch.e2_dft - fm_ref.e2_dft,
