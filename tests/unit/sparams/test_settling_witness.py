@@ -21,18 +21,18 @@ from tests._realized_geometry import assert_sheet_planes, assert_wall_planes
 # ===========================================================================
 
 def _msl_thru(domain_y=0.008, y_c=0.004):
-    # #1138: geometry[2] y solved +11.67 % off; this test checks truncated record fails the witness loudly.
+    # Geometry[2] y solved +11.67 % off; this test checks truncated record fails the witness loudly.
     sim = Simulation(snap="declared", freq_max=20e9, domain=(0.012, domain_y, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, domain_y, 0.0008)), material="sub")
     sim.add(Box((0, 0, 0), (0.012, domain_y, 0)), material="pec")
-    # 35 um foil: a SHEET (#931 §1.3), declared by a zero-thickness Box
+    # 35 um foil: a SHEET, declared by a zero-thickness Box
     # on the laminate top. h_sub / dx = 0.8 mm / 0.2 mm = 4, so the substrate face is a
     # node line and the sheet lands on it exactly. Drawn one cell thick
     # before the contract, it would now be a VOLUME — walls at BOTH z
     # faces and the Ez edge between them shorted.
-    # #1512: the strip spans the two port nodes (2 and 10 mm). Drawn across the whole
+    # The strip spans the two port nodes (2 and 10 mm). Drawn across the whole
     # domain it left 2 mm open stubs whose effective quarter wave (23.8 GHz) is within
     # 1.5x of the 2-18 GHz read.
     sim.add(Box((0.002, y_c - 0.0006, 0.0008),
@@ -105,7 +105,7 @@ def test_result_field_is_optional_for_backward_compatibility():
 
 
 # ===========================================================================
-# 2. Enforcement of the -40 dB bar (issue #662; formerly
+# 2. Enforcement of the -40 dB bar (formerly
 #    test_settling_witness_enforcement.py)
 # ===========================================================================
 
@@ -119,7 +119,7 @@ _EXECUTE_SRC = pathlib.Path(
 _MEASUREMENT_SETTLING_SRC = pathlib.Path(
     __import__("rfx.measurement.settling", fromlist=["settling"]).__file__
 )
-# #980 Phase 2 moves the ``compute_*`` bodies verbatim out of
+# Phase 2 moves the ``compute_*`` bodies verbatim out of
 # ``rfx/api/_sparams.py`` into per-family modules under ``rfx/sparams/``, one
 # leg per PR. The scan follows the code by globbing that package rather than
 # naming each module as it lands -- exactly the widening the
@@ -416,7 +416,7 @@ def test_differentiable_coax_path_leaves_the_witness_nan_and_silent():
 
 
 # ===========================================================================
-# 3. Waveguide lane (#538; formerly test_waveguide_settling_witness.py)
+# 3. Waveguide lane (formerly test_waveguide_settling_witness.py)
 # ===========================================================================
 
 _WG_FREQS = np.linspace(8.2e9, 12.4e9, 5)

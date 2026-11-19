@@ -48,8 +48,9 @@ def test_one_e_update_observes_cross_coupling():
     hz = jnp.broadcast_to(jnp.sin(jnp.arange(grid.shape[1], dtype=jnp.float32))[None, :, None], grid.shape)
     state = init_state(grid.shape)._replace(hz=hz)
     outputs = []
-    for build in (compute_smoothed_eps, compute_node_tensor_eps):
-        eps = build(grid, [(sphere, 4.)])
+    for build, kwargs in ((compute_smoothed_eps, {'dtype': jnp.float32}),
+                          (compute_node_tensor_eps, {})):
+        eps = build(grid, [(sphere, 4.)], **kwargs)
         materials = with_components(init_materials(grid.shape), grid, periodic=(True,) * 3,
                                     tensor=TensorOperands.of(eps))
         outputs.append(update_e_aniso(state, materials, *eps, grid.dt, grid.dx, periodic=(True,) * 3, high_wall=unpadded_high_walls(grid)))
@@ -71,11 +72,10 @@ def test_oblique_full_tensor_pad_refusal_is_specific(entry):
     for smoothing in (True, 'full_tensor'):
         with pytest.raises(ValueError, match=r"TF/SF y_lo, y_hi: .*periodic.*closed_box=True, theta_deg"):
             getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing=smoothing)
-    # Invariance admits the slab's faces, but its tensor update omits the Bloch phase.
     slab = Simulation(freq_max=20e9, domain=(.024, .012, .012), dx=.001, cpml_layers=2)
     slab.add_material('slab', eps_r=4.)
     slab.add(Box((.010, -1., -1.), (.014, 1., 1.)), material='slab')
     slab.add_tfsf_source(f0=10e9, bandwidth=.8, direction='+x', polarization='ez', angle_deg=30.)
     from rfx.errors import RfxUnsupported
-    with pytest.raises(RfxUnsupported, match="subpixel_smoothing='full_tensor'.*does not apply the Bloch phase"):
+    with pytest.raises(RfxUnsupported, match="off-diagonal node coupling.*does not apply the Bloch phase"):
         getattr(slab, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')

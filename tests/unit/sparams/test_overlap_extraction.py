@@ -265,7 +265,7 @@ def test_overlap_passivity():
     # overlap and V/I paths match to < 1e-4 (assertion 1 above), so this
     # secondary check is really a sanity bound on single-port extractor
     # absolute error in mid-band — dominated by mode-projection
-    # (|S11|~0.26 even on empty guide). After the 2026-04-22 CPML retune
+    # (|S11|~0.26 even on empty guide). After the CPML retune
     # (kappa_max 1->5, order 2->3) the observed max moved from ~1.09 to
     # ~1.11; the mechanism is extractor/CPML interaction on the
     # single-port path, not a physics regression. Tighten when the

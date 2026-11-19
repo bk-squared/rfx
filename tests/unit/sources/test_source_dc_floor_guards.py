@@ -35,7 +35,7 @@ import pytest
 from rfx import Simulation, GaussianPulse, ModulatedGaussian
 from rfx.measurement.decay import warn_dc_floor
 
-DEMO_DT = 1.2e-12  # the issue-#388 measurement dt (patch_antenna_demo scale)
+DEMO_DT = 1.2e-12  # the measurement dt (patch_antenna_demo scale)
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +156,7 @@ def test_gaussian_pulse_float32_table_matches_float64_near_the_start(cutoff):
 
 
 # ---------------------------------------------------------------------------
-# 3. until_decay DC-floor warning — predeclared four-case matrix (#388)
+# 3. until_decay DC-floor warning — four-case matrix
 # ---------------------------------------------------------------------------
 
 def _dc_floor_fires(waveform, n_table=50_000) -> list[str]:
@@ -200,7 +200,7 @@ def test_until_decay_dc_floor_matrix(label, waveform, expect_fire):
         # not the truncation branch.
         assert "truncation-dominated" not in fired[0]
         assert "thin source cells" in fired[0]
-        # #388: the intrinsic-DC advisory must route to the purpose-built
+        # The intrinsic-DC advisory must route to the purpose-built
         # remedy (the radiated-flux stop criterion), not just the weaker
         # reduce-DC / fixed-n_steps options.
         assert "radiated_flux_box" in fired[0], (
@@ -255,7 +255,7 @@ def test_until_decay_dc_floor_wired_into_run():
 
 
 # ---------------------------------------------------------------------------
-# 3b. truncation-aware branch (post-#392 review): rel_DC over the planned
+# 3b. truncation-aware branch: rel_DC over the planned
 #     table conflates intrinsic waveform DC with table-truncation DC.
 # ---------------------------------------------------------------------------
 
@@ -337,9 +337,8 @@ def test_dc_floor_silent_on_passive_msl_port():
 
 
 # ---------------------------------------------------------------------------
-# 3c. add_polarized_source must thread the waveform cutoff (post-#392
-#     review): the real-Jones reconstruction rebuilds GaussianPulse and
-#     previously dropped cutoff — silently reverting the #392 remedy.
+# 3c. add_polarized_source must thread the waveform cutoff:
+#     the real-Jones reconstruction rebuilds GaussianPulse.
 # ---------------------------------------------------------------------------
 
 def test_polarized_source_threads_cutoff():
@@ -358,7 +357,7 @@ def test_polarized_source_threads_cutoff():
 
 
 # ---------------------------------------------------------------------------
-# 3d. decay-parameter sanity advisories (post-#392 review; behaviour-
+# 3d. decay-parameter sanity advisories (behaviour-
 #     neutral, single run()-level site covering both honoured lanes).
 # ---------------------------------------------------------------------------
 
@@ -410,7 +409,7 @@ def test_until_decay_zero_forced_n_escape_stays_silent():
 
 
 # ---------------------------------------------------------------------------
-# 3e. MEASURED static-remnant cap-hit advisory (#388 candidate 3). Complements the
+# 3e. MEASURED static-remnant cap-hit advisory. Complements the
 #     pre-run waveform-DC advisory: it fires on the ACTUAL run outcome (final-state
 #     physical E/H energy share), catching thin-source-cell floors the pre-run
 #     advisory cannot predict. Physical energy (½εE² vs ½μH²) separates a static
@@ -497,7 +496,7 @@ def test_static_remnant_advisory_silent_when_field_balanced():
 
 
 # ---------------------------------------------------------------------------
-# 4. unresolved-pulse preflight advisory (#386)
+# 4. unresolved-pulse preflight advisory
 # ---------------------------------------------------------------------------
 
 def _demo_class_sim(bandwidth):
@@ -574,7 +573,7 @@ def _hz_drive_sim(kind):
                          boundary="pec")
         sim.add_coaxial_port((0.01, 0.01, 0.02), face="top", waveform=hz)
     elif kind.startswith("waveguide"):
-        sim = Simulation(freq_max=12e9, domain=(0.06, 0.02286, 0.011),  # main's solved length; #1887
+        sim = Simulation(freq_max=12e9, domain=(0.06, 0.02286, 0.011),  # main's solved length
                          dx=1e-3, boundary="cpml", cpml_layers=8)
         sim.add_waveguide_port(0.012, f0=10e9, bandwidth=5e9, direction="+x",
                                waveform=kind.split(":")[1])

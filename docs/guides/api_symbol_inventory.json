@@ -364,7 +364,8 @@
       "kind": "function",
       "params": [
         "rho",
-        "radius_cells"
+        "radius_cells",
+        "dtype"
       ]
     },
     "apply_projection": {
@@ -1052,7 +1053,8 @@
         "freqs",
         "eps_measured",
         "n_poles",
-        "eps_inf"
+        "eps_inf",
+        "tau"
       ]
     },
     "fit_lorentz": {
@@ -1335,7 +1337,8 @@
         "waveform_fn",
         "n_steps",
         "materials",
-        "amplitude_kind"
+        "amplitude_kind",
+        "dtype"
       ]
     },
     "make_nonuniform_grid": {
@@ -1345,6 +1348,7 @@
         "dz_profile",
         "dx",
         "cpml_layers",
+        "dtype",
         "dx_profile",
         "dy_profile",
         "pec_faces",
@@ -2768,6 +2772,7 @@
       "print_report"
     ],
     "forward": [
+      "tfsf_angle_override",
       "eps_override",
       "sigma_override",
       "mu_r_override",

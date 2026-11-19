@@ -30,6 +30,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.core.jax_utils import is_tracer
+from rfx.errors import RfxUnsupported
 from rfx.core.yee import lumped_components
 from rfx.model.materials import e_update_material_at
 
@@ -46,7 +47,7 @@ def validate_radius(radius):
     if radius is None:
         return
     if is_tracer(radius):
-        raise NotImplementedError("wire-port radius must be a static declaration")
+        raise RfxUnsupported("wire-port radius must be a static declaration")
     if not np.isscalar(radius) or not math.isfinite(float(radius)) or radius <= 0:
         raise ValueError("wire-port radius must be a finite positive length in metres")
 

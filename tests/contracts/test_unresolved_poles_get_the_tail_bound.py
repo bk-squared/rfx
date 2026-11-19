@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from rfx import ringdown as rd
+import rfx.sparams._tail_witness as tail_witness
 from rfx.sparams._tail_witness import tail_share_witness
 
 DT, N, D = 1.2e-12, 15252, 15
@@ -112,6 +113,9 @@ def fit_exact(monkeypatch, model, series, *, normalize=False):
                        c=model.c*np.exp(model.s[:, None]*DT*(lo-REF))/scale)
 
     monkeypatch.setattr(rd, 'identify', identify)
+
+    monkeypatch.setattr(tail_witness, '_IDENTIFICATION',
+                        replace(tail_witness._IDENTIFICATION, identify=identify))
 
 
 def test_t6_resolved_decay_keeps_settling_tail_rule(monkeypatch):

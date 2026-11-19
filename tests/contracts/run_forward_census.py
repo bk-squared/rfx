@@ -123,6 +123,33 @@ def build_pw_closed(path):
     return base_scene(path, source=False).add_tfsf_source(closed_box=True)
 
 
+def build_plane_wave_companion(path, *, first=False, port=False, closed_box=True):
+    sim = base_scene(path, source=False)
+
+    def companion():
+        if port:
+            sim.add_port(SOURCE, 'ez', impedance=50.)
+        else:
+            sim.add_source(SOURCE, 'ez', amplitude_kind='current')
+
+    if first:
+        companion()
+    sim.add_tfsf_source(closed_box=closed_box)
+    if not first:
+        companion()
+    return sim
+
+
+def build_waveguide_soft_source(path, *, first=False):
+    sim = base_scene(path, source=False, boundary=BoundarySpec(x='cpml', y='pec', z='pec'))
+    if first:
+        sim.add_source(SOURCE, 'ez', amplitude_kind='current')
+    sim.add_waveguide_port(.006, f0=10e9, freqs=np.array([10e9]), probe_offset=3, ref_offset=2)
+    if not first:
+        sim.add_source(SOURCE, 'ez', amplitude_kind='current')
+    return sim
+
+
 def build_p_lumped(path):
     return base_scene(path, source=False).add_port(SOURCE, 'ez', impedance=50.)
 
@@ -186,6 +213,40 @@ def build_p_msl(path):
                      direction='+x', impedance=50., eps_r_sub=2.2,
                      n_probe_offset=3, n_probe_spacing=2, n_probes=3)
     return sim
+
+
+def build_p_msl_s(path):
+    # Copied from tests/contracts/run_forward_census.py:174-188; only source=False added.
+    # Layout: tests/unit/preflight/test_line_stub.py:278-289, strip starts at
+    # the port plane and reaches the domain end, over substrate and ground.
+    # Relative to base: x domain 30 -> 40 mm; substrate/ground added; strip
+    # x=6..40 mm, y=10..14 mm, z=3 mm. Base probe retained; no source.
+    sim = base_scene(path, source=False, domain=(.040, .020, .012))
+    sim.add_material('sub', eps_r=2.2)
+    sim.add(Box((0., 0., 0.), (.040, .020, .003)), material='sub')
+    sim.add(Box((0., 0., 0.), (.040, .020, 0.)), material='pec')
+    trace_z = sum(v * .001 for v in PROFILE[:3]) if path in ('graded', 'multi-device-graded') else 3 * .001
+    sim.add(Box((.006, (10 - .35) * .001, trace_z), (.040, (14 + .35) * .001, trace_z)), material='pec')
+    sim.add_msl_port(position=(.006, .012, 0.), width=.004, height=.003,
+                     direction='+x', impedance=50., eps_r_sub=2.2,
+                     n_probe_offset=3, n_probe_spacing=2, n_probes=3)
+    return sim
+
+
+def msl_noop_eps_override(sim, path):
+    import jax.numpy as jnp
+
+    if path == 'uniform':
+        # tests/unit/autodiff/test_msl_forward_identity.py:146-155.
+        grid = sim._build_grid()
+        materials = sim._assemble_materials(
+            grid, sheet_specs=[], pec_sheets=[], pec_wires=[])[0]
+    else:
+        # The graded lane's grid: rfx/runners/nonuniform.py:712.
+        grid = sim._build_nonuniform_grid()
+        materials = sim._assemble_materials_nu(
+            grid, sheet_specs=[], pec_sheets=[], pec_wires=[])[0]
+    return jnp.asarray(materials.eps_r)
 
 
 def build_p_waveguide(path):
@@ -339,6 +400,14 @@ BUILDERS = {
     'B-asym': build_b_asym, 'B-closed': build_b_closed,
     'S-field': build_s_field, 'S-polarized': build_s_polarized,
     'PW-A': build_pw_a, 'PW-B': build_pw_b, 'PW-oblique': build_pw_oblique,
+    'PW-closed-soft-last': build_plane_wave_companion,
+    'PW-closed-soft-first': partial(build_plane_wave_companion, first=True),
+    'PW-port-last': partial(build_plane_wave_companion, port=True),
+    'PW-port-first': partial(build_plane_wave_companion, port=True, first=True),
+    'PW-slab-soft-last': partial(build_plane_wave_companion, closed_box=False),
+    'PW-slab-soft-first': partial(build_plane_wave_companion, closed_box=False, first=True),
+    'WG-soft-last': build_waveguide_soft_source,
+    'WG-soft-first': partial(build_waveguide_soft_source, first=True),
     'PW-closed': build_pw_closed, 'P-lumped': build_p_lumped,
     'P-lumped2': build_p_lumped2, 'P-wire': build_p_wire,
     'P-wire-driven': build_p_wire_driven,
@@ -935,3 +1004,35 @@ def port_s_pair(declaration, path, *, n_steps=150):
         assert np.isnan(actual[:, column]).all()
     return {'run': {'outcome': 'admitted', 'result': run},
             'forward': {'outcome': 'admitted', 'result': forward}}
+
+
+def build_s_request_declaration(path, *, kind):
+    """Explicit S declarations, independently of fields-only companion scenes."""
+    if kind == 'soft':
+        return BUILDERS['S-field'](path)
+    if kind == 'plane-soft':
+        sim = base_scene(path, source=False)
+        sim.add_tfsf_source(closed_box=True)
+        sim.add_source(SOURCE, 'ez')
+        return sim
+    if kind == 'soft-plane':
+        sim = base_scene(path, source=False)
+        sim.add_source(SOURCE, 'ez')
+        sim.add_tfsf_source(closed_box=True)
+        return sim
+    if kind in ('msl', 'msl-only'):
+        from tests.unit.sparams.test_mixed_port_sparam import _base_sim, _add_feed, _add_msl
+        sim, y_c = _base_sim()
+        if kind == 'msl':
+            _add_feed(sim, y_c)
+        _add_msl(sim, y_c)
+        return sim
+    assert kind == 'floquet'
+    sim = base_scene(path, source=False, boundary=BoundarySpec(x='periodic', y='periodic', z='cpml'))
+    sim.add_floquet_port(.003, freqs=np.array([10e9]), f0=10e9)
+    sim.add_port(SOURCE, 'ez', impedance=50.)
+    return sim
+
+
+S_REQUEST_BUILDERS = {kind: partial(build_s_request_declaration, kind=kind)
+                      for kind in ('soft', 'plane-soft', 'soft-plane', 'msl-only', 'msl', 'floquet')}

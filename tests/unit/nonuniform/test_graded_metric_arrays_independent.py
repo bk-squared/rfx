@@ -19,7 +19,7 @@ from tests import _nu_cavity_gates as G
 
 
 def _rfx_arrays(profile):
-    inv_e, inv_h = _profile_to_inv_arrays(_append_bounding_node(profile))
+    inv_e, inv_h = _profile_to_inv_arrays(_append_bounding_node(profile), dtype="float32")
     return np.asarray(inv_e, np.float64), np.asarray(inv_h, np.float64)
 
 

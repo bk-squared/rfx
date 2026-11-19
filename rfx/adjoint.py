@@ -67,6 +67,7 @@ edges × components × bins, plus monitor bins and ordinary field carries.
 
 
 """
+from rfx.errors import RfxUnsupported
 from rfx.measurement.wavelet import _wavelet_basis, _wavelet_coefficients
 
 
@@ -108,10 +109,9 @@ def admit_forward_adjoint(sim, *, distributed, ringdown, design_box, design_eps,
     elif design_box is None or design_eps is None:
         reason = "calls without design_box and design_eps_override"
     if reason is not None:
-        raise NotImplementedError(f"gradient='adjoint' does not support {reason}")
+        raise RfxUnsupported(f"gradient='adjoint' does not support {reason}")
 
 
-# Lazy compatibility exports avoid a cycle with the moved implementation.
 _LAZY_EXPORTS = {
     "_plane_slice": "rfx.stepping.adjoint_scan",
     "design_adjoint_scan": "rfx.stepping.adjoint_scan",

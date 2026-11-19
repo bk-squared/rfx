@@ -93,6 +93,8 @@ PENDING_ROWS = {
         "#1961: lazily created declaration; its row needs a detector in rfx/runners/_admission.py"),
     "_dft_plane_regions": (
         "#1961: lazily created declaration; its row needs a detector in rfx/runners/_admission.py"),
+    "_time_recorded_dft_planes": (
+        "#1961: lazily created declaration; its row needs a detector in rfx/runners/_admission.py"),
 }
 
 CARRIES = "carries"

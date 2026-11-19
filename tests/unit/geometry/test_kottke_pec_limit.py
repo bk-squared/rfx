@@ -202,7 +202,7 @@ def test_compute_inv_eps_tensor_diag_wr90_perpendicular_boundary_cell():
         dielectric_shapes=[],
         pec_shapes=[pec_box],
         background_eps=1.0,
-    )
+    dtype='float32')
 
     i_mid = grid.shape[0] // 2
     k_mid = grid.shape[2] // 2
@@ -261,10 +261,10 @@ def test_compute_inv_eps_tensor_diag_no_pec_matches_smoothed_eps_inverse():
     diel_box = Box((0.012, 0.012, 0.012), (0.028, 0.028, 0.028))
     shapes = [(diel_box, 4.0)]
 
-    eps_ex, eps_ey, eps_ez = compute_smoothed_eps(grid, shapes, background_eps=1.0)
+    eps_ex, eps_ey, eps_ez = compute_smoothed_eps(grid, shapes, background_eps=1.0, dtype='float32')
     inv_xx, inv_yy, inv_zz = compute_inv_eps_tensor_diag(
         grid, dielectric_shapes=shapes, pec_shapes=[], background_eps=1.0,
-    )
+    dtype='float32')
 
     np.testing.assert_allclose(np.asarray(inv_xx), 1.0 / np.asarray(eps_ex),
                                 rtol=1e-6, atol=1e-9)
@@ -275,7 +275,7 @@ def test_compute_inv_eps_tensor_diag_no_pec_matches_smoothed_eps_inverse():
 
 
 # -----------------------------------------------------------------------------
-# Post-review hardening tests (HIGH/MEDIUM findings from 2026-05-01 PR review)
+# Hardening tests
 # -----------------------------------------------------------------------------
 
 
@@ -308,7 +308,7 @@ def test_two_non_overlapping_pec_walls_per_component_min_correct():
         dielectric_shapes=[],
         pec_shapes=[pec_y, pec_z],
         background_eps=1.0,
-    )
+    dtype='float32')
 
     inv_xx_np = np.asarray(inv_xx)
     inv_yy_np = np.asarray(inv_yy)
@@ -339,15 +339,13 @@ def test_two_non_overlapping_pec_walls_per_component_min_correct():
     # neighbor-max" + Heaviside projection): a cell whose own occupancy exceeds
     # 0.5 is projected to FULL PEC → inv_zz = 0 (hard mirror), not the
     # pre-projection subpixel (1−0.84)=0.16.
-    # The reference it was matched against was the pre-#931 binary
+    # The reference it was matched against was the earlier binary
     # apply_pec_mask rule; #931 §1.8 fences this subpixel path OUT of the
     # lattice ownership contract, so 0.0 is unchanged and the "AD-smooth
     # analogue of the binary rule" claim is scope-limited to that
     # superseded rule. The VESSL witness |s21| 0.27 -> 0.77 stands as
     # recorded. The y_hi cell above (only ~14% PEC,
-    # < 0.5) stays subpixel (0.86). The 0.16 was stale — same root cause as the
-    # test_kottke_inv_eps_from_occupancy re-bless (PR #115). (Was sharding-masked on CI
-    # until #115 fixed the sibling and this shard surfaced.)
+    # < 0.5) stays subpixel (0.86).
     assert inv_zz_np[i_mid, 5, 10] == pytest.approx(0.0, abs=1e-2), (
         f"z_hi boundary cell (~84% PEC) expected ~0 (post-60939e0 Heaviside); "
         f"got {inv_zz_np[i_mid, 5, 10]:.4f}"
@@ -480,7 +478,7 @@ def test_compute_inv_eps_tensor_diag_returns_float32():
     pec = Box((-1.0, 0.011, -1.0), (1.0, 1.0, 1.0))
     inv_xx, inv_yy, inv_zz = compute_inv_eps_tensor_diag(
         grid, dielectric_shapes=[], pec_shapes=[pec], background_eps=1.0,
-    )
+    dtype='float32')
     assert inv_xx.dtype == jnp.float32
     assert inv_yy.dtype == jnp.float32
     assert inv_zz.dtype == jnp.float32

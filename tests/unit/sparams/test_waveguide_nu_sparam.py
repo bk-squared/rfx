@@ -184,7 +184,7 @@ def test_nu_s_params_finite():
 
 # ---------------------------------------------------------------------------
 # Test 3: NU dispatch / DFT-liveness gate on the air-thru identity
-# (NOT a physical passivity gate — issue #395)
+# (NOT a physical passivity gate)
 # ---------------------------------------------------------------------------
 
 
@@ -344,7 +344,7 @@ def test_nu_assembly_ad_traceable():
 
 
 # ---------------------------------------------------------------------------
-# W1.1 (roadmap 2026-06-10): the NU dispatch must REJECT kwargs it cannot
+# The NU dispatch must REJECT kwargs it cannot
 # forward. eps_override/sigma_override are the documented differentiable
 # channels (G-AD-WIRE-WG2); silently dropping them produced silently-wrong
 # gradients on graded meshes.

@@ -38,7 +38,7 @@ def scene(theta=0, phi=0, pol='s', direction='+x', *, cpml_layers=8):
 def line(theta=0, phi=0, pol='s', n_steps=300, **kwargs):
     return plane.init_plane_wave(41, DX, DT, ny=41, nz=41, cpml_layers=8,
         tfsf_margin=4, f0=10e9, bandwidth=.8, theta_deg=theta, phi_deg=phi,
-        polarization=pol, max_component=40, n_steps=n_steps, **kwargs)
+        polarization=pol, max_component=40, n_steps=n_steps, **kwargs, dtype='float32')
 
 
 @pytest.mark.parametrize('pol', ('ey', 'ez'))
@@ -324,7 +324,7 @@ def _probe_scene(theta, phi, pol, cpml_layers):
         grid.nx, float(grid.cells('x')[0]), grid.dt, ny=grid.ny, nz=grid.nz,
         cpml_layers=cpml_layers, tfsf_margin=4, f0=10e9, bandwidth=.8,
         theta_deg=theta, phi_deg=phi, polarization=pol, max_component=40,
-        n_steps=300)
+        n_steps=300, dtype='float32')
     # Independent Yee coordinates, not the correction table's gathers.
     offset = OFFSETS[COMP.index(component)]
     index = int(np.floor((np.asarray(centre) + offset) @ cfg.m)) - cfg.origin
@@ -518,7 +518,7 @@ def test_v14_max_component_pair(pol, record_property):
     for cap in (40, 100):
         cfg, state = plane.init_plane_wave(41, DX, DT, ny=41, nz=41, cpml_layers=8,
             tfsf_margin=4, f0=10e9, bandwidth=.8, theta_deg=30, phi_deg=0,
-            polarization=pol, max_component=cap, n_steps=300)
+            polarization=pol, max_component=cap, n_steps=300, dtype='float32')
         spectra.append(co_spectrum(cfg, state)[0])
     ratio = np.abs(spectra[1]) / np.abs(spectra[0])
     record_property('ratio_100_over_40', ratio.tolist())

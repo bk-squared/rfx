@@ -88,7 +88,7 @@ def _build(theta):
     n = np.sqrt(EPS_R)
     t_back = (2 * (X_IFACE - PLATEAU[1]) / C0) + (2 * (X_SLAB_END - X_IFACE) / (C0 / n))
     # + 223 steps = 2 tau (f0 5 GHz, bw 0.15, dt 3.81 ps): the Bloch pulse, and its back-face echo,
-    # arrive 2 tau later since #1831, when the pulse began to peak at 5 tau.
+    # arrive 2 tau later, when the pulse began to peak at 5 tau.
     ns = min(int(0.9 * t_back / grid.dt), 1700) + 223
     sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary="cpml", cpml_layers=10, mode="3d")
     sim.add_tfsf_source(f0=F0, bandwidth=BW, polarization="ez", direction="+x",
@@ -149,8 +149,7 @@ def test_oblique_complex_gamma_vs_analytic(theta, magtol):
     assert dph < 20.0, f"∠Γ={np.degrees(np.angle(g)):.1f}° vs 180° (θ={theta}, off {dph:.1f}°)"
 
 
-# highmem (issue #545): measured +10.7 GB RSS high-water delta in weekly
-# run 31103127491.
+# highmem: measured +10.7 GB RSS high-water delta.
 @pytest.mark.slow
 @pytest.mark.highmem
 def test_oblique_complex_gamma_differentiable():

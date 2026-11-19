@@ -180,7 +180,7 @@ AD_CLASSIFICATION = {
         UNTESTED,
         "jnp-pure legacy helper, no direct grad smoke test",
     ),
-    # --- rfx.observables (issue #579) ---------------------------------------
+    # --- rfx.observables ---------------------------------------
     "observables.dft_field": (
         GRAD_SAFE,
         "pure selection/stack of an already-traced DFT-plane accumulator (no "
@@ -231,7 +231,7 @@ def _exported_surface() -> set[str]:
     for n, _ in inspect.getmembers(Simulation, predicate=inspect.isfunction):
         if n.startswith("compute_"):
             names.add(f"Simulation.{n}")
-    # #579: rfx.observables' public factories (dft_field/field_energy/
+    # rfx.observables' public factories (dft_field/field_energy/
     # field_softmax) are a new differentiable-observable surface class, not
     # compute_*/extract_*-shaped, so the prefix scan above never sees them.
     # The stale-key half of test_every_sparam_entry_point_is_ad_classified

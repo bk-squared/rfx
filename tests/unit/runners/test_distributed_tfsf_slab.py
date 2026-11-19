@@ -43,7 +43,7 @@ def test_f4_one_device_mie_anchor():
     # correction planes, with the face-centred H interpolation outside TF.
     sim.add_ntff_box((2 * dx,) * 3, (40 * dx,) * 3, freqs=[f0])
     cfg, state = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max,
-                                       n_steps=geo["n_steps"])
+                                       n_steps=geo["n_steps"], dtype='float32')
     assert (cfg.x_lo, cfg.x_hi) == (27, 62)
     with redirect_stdout(sys.stderr):
         result = sim.run(n_steps=geo["n_steps"])
