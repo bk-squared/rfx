@@ -383,7 +383,7 @@ def test_payload_shape_is_json_serialisable_scalars_only():
 
 
 # ---------------------------------------------------------------------------
-# the PolylineWire radius threshold (#931 §1.4)
+# the PolylineWire radius threshold
 # ---------------------------------------------------------------------------
 
 def test_a_polyline_wire_round_trips_on_both_sides_of_the_filament_threshold():

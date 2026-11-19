@@ -58,7 +58,7 @@ TH_B, PH_B = np.array([np.pi / 2]), np.array([np.pi])
 
 def _setup():
     grid = Grid(freq_max=15e9, domain=DOMAIN, dx=DX, cpml_layers=CPML)
-    # the incident the grid carries, as compute_rcs normalizes (#820)
+    # the incident the grid carries, as compute_rcs normalizes
     e_inc = measure_normal_incident_spectrum(*_tfsf(grid), N_STEPS, FREQS, grid.dt)
     sx, sy, sz = grid.shape
     blk = np.zeros(grid.shape, np.float32)
@@ -69,7 +69,7 @@ def _setup():
 def _tfsf(grid):
     return init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=CPML, tfsf_margin=3,
                      f0=F0, bandwidth=BW, amplitude=1.0, polarization="ez",
-                     direction="+x", angle_deg=0.0)
+                     direction="+x", angle_deg=0.0, dtype='float32')
 
 
 def _band_rcs(grid, e_inc, blk, sigma_scale):

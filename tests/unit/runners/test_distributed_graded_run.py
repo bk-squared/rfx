@@ -21,7 +21,7 @@ def model(case):
                              z=Boundary(lo="cpml", hi="pec"))
                 if absorbing else "pec")
     sim = Simulation(
-        freq_max=15e9, domain=(15.3e-3, 8 * 1e-3, 8 * 1e-3),  dx=1e-3,  # solved length; #1887
+        freq_max=15e9, domain=(15.3e-3, 8 * 1e-3, 8 * 1e-3),  dx=1e-3,  # solved length
         dx_profile=np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 13), 1e-3],
         boundary=boundary, cpml_layers=2 if absorbing else 0, snap="declared",
     )
@@ -126,7 +126,7 @@ def test_graded_run_empty_probes_and_resolved_steps(two_devices):
     assert int(result.state.step) == expected
 
 
-# Ports are carried since #1402 step 2 (tests/unit/runners/test_distributed_nu_ports.py).
+# Ports are carried (tests/unit/runners/test_distributed_nu_ports.py).
 @pytest.mark.parametrize("feature, message", [
     ("cpml_kappa", "cpml_kappa_max"),
     ("s_params", "compute_s_params"),

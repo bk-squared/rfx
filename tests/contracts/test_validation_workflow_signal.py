@@ -61,7 +61,7 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 NOTIFY_JOB = "notify"
-#: Each scheduled lane with the #717 notifier, and the one cron it declares.
+#: Each scheduled lane with the notifier, and the one cron it declares.
 LANES = {"validation.yml": "0 6 * * 1"}
 lanes = pytest.mark.parametrize("name", sorted(LANES))
 
@@ -229,7 +229,7 @@ def _weekly_test_step(job: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_weekly_uses_sixteen_shards() -> None:
-    # 2026-10-25: 16, was 8 (runner spread 1.78; tests/contracts/test_weekly_shard_headroom.py).
+    # 16, was 8 (runner spread 1.78; tests/contracts/test_weekly_shard_headroom.py).
     job = _workflow("validation.yml")["jobs"]["slow-tests"]
     assert job["strategy"]["matrix"]["group"] == list(range(1, 17))
     assert _slow_shards(job)["splits"] == 16

@@ -5,6 +5,8 @@ Probe planes and post-processing reference_plane shifts are not this interval.
 """
 from __future__ import annotations
 
+from rfx.preflight._not_judged import is_tracer_error, not_judged
+
 import numpy as np
 
 from rfx.model.waveguide_planes import entry_planes
@@ -18,7 +20,9 @@ def _bounds(shape):
         c1, c2 = shape.bounding_box()
         corners = np.asarray((c1, c2), dtype=float)
         return corners.min(axis=0), corners.max(axis=0)
-    except (NotImplementedError, TypeError):
+    except (NotImplementedError, TypeError) as _traced_exc:
+        if is_tracer_error(_traced_exc):
+            not_judged(None, "_validate_cfg_waveguide_port_span")
         return None
 
 

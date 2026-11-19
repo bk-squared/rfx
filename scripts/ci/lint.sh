@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # The ruff gate, in one place. `.github/workflows/lint.yml` calls this file and
 # nothing else, so the line CI runs is the line you can run.
+# check_comment_content.py checks added Python comments after ruff.
 #
 # Scope: the packages under test plus the CI/dev helpers. The rest of the tree
 # has 197 findings under this selector and is its own cleanup, but an unlinted
@@ -24,3 +25,4 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PYTHON="${PYTHON:-python3}"
 
 "$PYTHON" -m ruff check rfx/ tests/ validation/ scripts/ci/ scripts/dev/ scripts/changelog/ --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402 "$@"
+"$PYTHON" scripts/ci/check_comment_content.py

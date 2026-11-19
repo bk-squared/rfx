@@ -148,7 +148,7 @@ def test_the_gate_fires_on_a_repository_that_does_track_them(tmp_path: Path) -> 
 # invisible to a local test run because `git rm --cached` leaves the files on
 # disk.
 #
-# The 2026-09-15 pass first looked for those readers with a line grep for
+# The pass first looked for those readers with a line grep for
 # "research_notes" next to an open/load/import call. It missed
 # tests/unit/sparams/test_msl_dump_power_replay.py, which splits both of its
 # reads across two lines, and it could not have seen a path assembled segment by

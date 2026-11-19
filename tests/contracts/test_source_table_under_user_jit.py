@@ -1,6 +1,5 @@
 """Concrete source samples agree across plain and user-jitted entry points."""
 
-import sys
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -69,9 +68,6 @@ def test_a_port_table_under_user_jit():
     assert_same_bits(jax.jit(table)(), expected)
 
 
-@pytest.mark.xfail(sys.platform == "darwin", strict=True,
-                   reason="#2241 compiled graded step differs under a user jit on macOS CPU "
-                          "(loop inputs identical; Linux x86 CPU bit-identical)")
 def test_b_graded_current_run_under_user_jit():
     sim = scene()
     pulse = sim._ports[0].waveform
@@ -86,7 +82,7 @@ def test_b_graded_current_run_under_user_jit():
     assert actual.shape == expected.shape and actual.dtype == expected.dtype
     peak = np.max(np.abs(expected), axis=0)
     assert np.all(peak > 0)
-    # #2241 amendment 2: identical source tables still permit the standing
+    # Identical source tables still permit the standing
     # cross-trace rounding bars for the compiled time step and record sum.
     # Each probe uses its own peak, including the smaller magnetic trace.
     per_step_error = np.abs(actual - expected)
@@ -131,8 +127,8 @@ def test_other_concrete_source_samples_under_user_jit(sampler):
             return uniform_source_table(grid, (2, 2, 2), "ez", waveform,
                                         2000, None, "field")
         if sampler == "graded":
-            return current_source_samples(grid, waveform, 2000)
-        return field_source_samples(waveform, 2000, grid.dt)
+            return current_source_samples(grid, waveform, 2000, dtype='float32')
+        return field_source_samples(waveform, 2000, grid.dt, dtype='float32')
 
     # The reference is the original plain evaluation, not the new guard.
     expected = jax.vmap(waveform)(jnp.arange(2000, dtype=jnp.float32) * grid.dt)
@@ -231,7 +227,7 @@ def test_msl_jm_samples_under_user_jit(monkeypatch):
 
     def build():
         # Mode data and material coefficients are consumed after sampling.
-        return make_msl_port_sources_jm(grid, port, None, 2000, None)
+        return make_msl_port_sources_jm(grid, port, None, 2000, None, dtype='float32')
 
     assert_builder_samples_under_user_jit(monkeypatch, build, waveform, 2)
 
@@ -246,7 +242,7 @@ def test_traced_source_parameters_keep_the_traced_path(parameter):
             base, **{parameter: getattr(base, parameter) * scale})
         if reference:
             return jax.vmap(pulse)(jnp.arange(2000, dtype=jnp.float32) * dt)
-        return field_source_samples(pulse, 2000, dt)
+        return field_source_samples(pulse, 2000, dt, dtype='float32')
 
     def evaluate(reference):
         return jax.jit(lambda scale: jax.jvp(
