@@ -29,15 +29,15 @@ EPS_R = 4.0
 
 
 def _build(theta):
+    """The 223-step delay corresponds to 2 tau at f0 = 5 GHz, bandwidth = 0.15 and dt = 3.81 ps."""
     grid = Grid(freq_max=10e9, domain=DOMAIN, dx=DX, cpml_layers=10)
     xi = grid.position_to_index((X_IFACE, 0.06, 0.003))[0]
     xe = grid.position_to_index((X_SLAB_END, 0.06, 0.003))[0]
     xprobes = np.arange(PLATEAU[0], PLATEAU[1], DX)
     n_slab = np.sqrt(EPS_R)
     t_back = (2 * (X_IFACE - PLATEAU[1]) / C0) + (2 * (X_SLAB_END - X_IFACE) / (C0 / n_slab))
-    # + 223 steps = 2 tau (f0 5 GHz, bw 0.15, dt 3.81 ps): the Bloch pulse, and its back-face echo,
-    # arrive 2 tau later, when the pulse began to peak at 5 tau.
-    ns = min(int(0.9 * t_back / grid.dt), 1700) + 223
+    BLOCH_TWO_TAU_DELAY_STEPS = 223
+    ns = min(int(0.9 * t_back / grid.dt), 1700) + BLOCH_TWO_TAU_DELAY_STEPS
     sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary="cpml", cpml_layers=10, mode="3d")
     sim.add_tfsf_source(f0=F0, bandwidth=BW, polarization="ez", direction="+x",
                         angle_deg=theta, waveform="modulated_gaussian")
@@ -79,8 +79,9 @@ def _build_lean(theta):
 
 
 def _series(sim, eps_arr, ns, ckpt=False):
+    """Oblique time series are complex."""
     return sim.forward(eps_override=eps_arr, n_steps=ns, checkpoint=ckpt,
-                       skip_preflight=True).time_series  # complex for oblique
+                       skip_preflight=True).time_series
 
 
 @pytest.mark.parametrize("theta,tol", [(30.0, 0.10), (45.0, 0.08)])
@@ -95,16 +96,11 @@ def test_oblique_fresnel_magnitude_vs_analytic(theta, tol):
     assert abs(g - ga) / ga < tol, f"|Γ|={g:.3f} vs R_TE={ga:.3f} (θ={theta}, {abs(g-ga)/ga*100:.1f}%)"
 
 
-# highmem: this test's own footprint is UNMEASURED in CI -- it
-# was the test killed in shard 2, so its own
-# post-test [rss] hook line never fired (the process died first). The
-# process was already at 12,187 MB *entering* this test -- that number
-# belongs to the PRECEDING msl-referee highmem test, not this one.
 @pytest.mark.slow
 @pytest.mark.highmem
 def test_oblique_reflection_magnitude_differentiable():
     """d|Γ|/dε flows through the checkpointed oblique forward and matches finite difference."""
-    sim, shape, xi, xe, _idx, dt, ns = _build_lean(30.0)  # lean config: AD tape fits GPU memory
+    sim, shape, xi, xe, _idx, dt, ns = _build_lean(30.0)
     inc = _series(sim, _eps_slab(shape, xi, xe, 1.0), ns, ckpt=True)
 
     def absg(eps):
@@ -123,10 +119,9 @@ def test_oblique_magnitude_kernel_sign_and_shape_guard():
     -j kernel would average the incident to noise. Also the shape guard fires."""
     ns, nprobe, dt = 400, 6, 1.0 / (F0 * 20)
     t = np.arange(ns) * dt
-    env = np.exp(-1j * 2 * np.pi * F0 * t)             # analytic envelope P ∝ e^{-j2πf0t}
+    env = np.exp(-1j * 2 * np.pi * F0 * t)
     gmag_true = 0.4
     inc = np.outer(env, np.ones(nprobe))
-    # reflected envelope with random per-probe phases (magnitude gmag_true)
     phases = np.linspace(0, 3 * np.pi, nprobe)
     refl = gmag_true * np.outer(env, np.exp(1j * phases))
     tot = inc + refl

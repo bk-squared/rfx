@@ -30,16 +30,13 @@ C0 = 299792458.0
 EPS_R = 4.0
 
 
-# --------------------------------------------------------------------------- #
-# FAST synthetic contract: extraction math + differentiability, no FDTD.
-# --------------------------------------------------------------------------- #
 def _synth(gamma_true, kx, idx, iface, f0=F0, n_periods=6, spp=24):
     """Complex Bloch-envelope two-run series carrying a planted Γ and phase ramp e^{-j k_x x}."""
     dt = 1.0 / (f0 * spp)
     n = n_periods * spp
-    env = np.exp(-1j * 2 * np.pi * f0 * np.arange(n) * dt)   # analytic envelope P ∝ e^{-j2πf0t}
-    ip = np.exp(-1j * kx * idx)                              # incident phasor (phase ramp)
-    rp = gamma_true * np.exp(-1j * kx * (2 * iface - idx))   # reflected: round-trip to interface
+    env = np.exp(-1j * 2 * np.pi * f0 * np.arange(n) * dt)
+    ip = np.exp(-1j * kx * idx)
+    rp = gamma_true * np.exp(-1j * kx * (2 * iface - idx))
     inc = ip[None, :] * env[:, None]
     tot = (ip + rp)[None, :] * env[:, None]
     return jnp.asarray(tot), jnp.asarray(inc), dt
@@ -76,10 +73,8 @@ def test_oblique_phase_recovers_planted_complex_gamma():
                                        probe_index=idx, interface_index=iface)
 
 
-# --------------------------------------------------------------------------- #
-# SLOW physics: oblique forward() reflection vs analytic Fresnel (magnitude + phase).
-# --------------------------------------------------------------------------- #
 def _build(theta):
+    """The 223-step delay corresponds to 2 tau at f0 = 5 GHz, bandwidth = 0.15 and dt = 3.81 ps."""
     grid = Grid(freq_max=10e9, domain=DOMAIN, dx=DX, cpml_layers=10)
     xi = grid.position_to_index((X_IFACE, 0.06, 0.003))[0]
     xe = grid.position_to_index((X_SLAB_END, 0.06, 0.003))[0]
@@ -87,9 +82,8 @@ def _build(theta):
     probe_idx = np.array([grid.position_to_index((float(xp), 0.06, 0.003))[0] for xp in xprobes], float)
     n = np.sqrt(EPS_R)
     t_back = (2 * (X_IFACE - PLATEAU[1]) / C0) + (2 * (X_SLAB_END - X_IFACE) / (C0 / n))
-    # + 223 steps = 2 tau (f0 5 GHz, bw 0.15, dt 3.81 ps): the Bloch pulse, and its back-face echo,
-    # arrive 2 tau later, when the pulse began to peak at 5 tau.
-    ns = min(int(0.9 * t_back / grid.dt), 1700) + 223
+    BLOCH_TWO_TAU_DELAY_STEPS = 223
+    ns = min(int(0.9 * t_back / grid.dt), 1700) + BLOCH_TWO_TAU_DELAY_STEPS
     sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary="cpml", cpml_layers=10, mode="3d")
     sim.add_tfsf_source(f0=F0, bandwidth=BW, polarization="ez", direction="+x",
                         angle_deg=theta, waveform="modulated_gaussian")
@@ -149,12 +143,11 @@ def test_oblique_complex_gamma_vs_analytic(theta, magtol):
     assert dph < 20.0, f"∠Γ={np.degrees(np.angle(g)):.1f}° vs 180° (θ={theta}, off {dph:.1f}°)"
 
 
-# highmem: measured +10.7 GB RSS high-water delta.
 @pytest.mark.slow
 @pytest.mark.highmem
 def test_oblique_complex_gamma_differentiable():
     """The complex-target RIS loss |Γ-Γ_target|² is differentiable through oblique forward()."""
-    sim, shape, xi, xe, idx, dt, ns = _build_lean(30.0)  # lean config: AD tape fits GPU memory
+    sim, shape, xi, xe, idx, dt, ns = _build_lean(30.0)
     inc = _series(sim, _eps_slab(shape, xi, xe, 1.0), ns, ckpt=True)
     g_target = 0.30 * np.exp(1j * 2.5)
 

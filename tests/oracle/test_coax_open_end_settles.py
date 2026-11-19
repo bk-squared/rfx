@@ -45,9 +45,9 @@ DRIVER = "scripts/diagnostics/coax_chain_battery_measure.py"
 RUNG = 4
 BOARD_M = (0.008, 0.008, 0.025)
 RECORD_UNITS = (12.0, 24.0)
-RECORD_STEPS = (2200, 4400)           # the swept records' own step counts
+RECORD_STEPS = (2200, 4400)
 MAX_ABS_GAMMA = 1.02
-DOUBLING_SHIFT_MAX = (10 ** (2.0 / 20.0) - 1.0) / 10.0          # 0.025893
+DOUBLING_SHIFT_MAX = (10 ** (2.0 / 20.0) - 1.0) / 10.0
 
 
 def test_the_open_end_is_passive_and_settled():
