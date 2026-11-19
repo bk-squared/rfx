@@ -22,13 +22,14 @@ def _scene(kind, on):
     paths._block(sim, lo=(lo, 3, 3), hi=(hi, 9, 9), eps_r=4.)
     if kind == 'pec':
         sim.add(Box(paths.mm(3.5, 3, 3), paths.mm(5.5, 9, 9)), material='pec')
-    # Source and the existing x=8 mm probe are both outside the PEC drawing.
     sim.add_source(paths.mm(6, 6, 6), 'ez', waveform=paths.WAVEFORM)
+    assert kind != 'pec' or all(entry.position[0] > sim._geometry[-1].shape.corner_hi[0] for entry in (*sim._ports, *sim._probes)), "Source and probe must remain outside the PEC drawing"
     return sim, widths, (lo, hi)
 
 
 @pytest.mark.parametrize('kind', ['constant', 'graded', 'pec', 'cpml'])
 def test_component_eps_equal_on_live_edges(kind):
+    """The independent drawing, cell centres, and four-cell edge ownership are in mm."""
     sim, x_widths, (lo, hi) = _scene(kind, True)
     grid = sim._build_nonuniform_grid()
     materials, _, _, pec_mask, *_ = assemble_cells(sim, grid)
@@ -36,7 +37,6 @@ def test_component_eps_equal_on_live_edges(kind):
     sampled = edge_averaged_materials(materials.eps_r, materials.sigma,
                                      high_wall=wall, cell_sizes=electric_cell_sizes(grid))[0]
     dual = assemble_interface_eps_nu(sim, grid, materials, pec_mask=pec_mask, high_wall=wall)
-    # Independent drawing, cell centres, and four-cell edge ownership, in mm.
     pads = (4, 4, 4) if kind == 'cpml' else (0, 0, 0)
     widths = tuple(np.pad(w, (pad, pad + 1), mode='edge')
                    for w, pad in zip((x_widths, np.ones(12), np.ones(12)), pads))
@@ -46,7 +46,6 @@ def test_component_eps_equal_on_live_edges(kind):
     dielectric = ((x >= lo - 1e-12) & (x < hi - 1e-12)
                   & (y >= 3) & (y < 9) & (z >= 3) & (z < 9))
     if kind == 'cpml':
-        # A slab touching both absorbing x faces continues through both pads.
         dielectric = (y >= 3) & (y < 9) & (z >= 3) & (z < 9)
     eps = np.where(dielectric, 4., 1.)
     pec = ((x >= 3.5 - 1e-12) & (x < 5.5 - 1e-12)
