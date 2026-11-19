@@ -141,8 +141,7 @@ def test_graded_current_forward_spectrum_and_drive_coefficient(monkeypatch, eps_
     sim, grid = _graded_current_scene()
     dt = float(grid.dt)
     eps = jnp.full(grid.shape, eps_r, jnp.float32)
-    conductivity = jnp.full(grid.shape, sigma, jnp.float32)
-    kwargs = {} if sigma == 0 else {'sigma_override': conductivity}
+    conductivity = np.full(grid.shape, sigma, np.float32)
     observations = []
     original = model.e_update_coefficient_at
 
@@ -154,6 +153,8 @@ def test_graded_current_forward_spectrum_and_drive_coefficient(monkeypatch, eps_
         return cb
 
     def probe(e):
+        kwargs = {} if sigma == 0 else {
+            'sigma_override': jnp.full(grid.shape, sigma, jnp.float32)}
         return sim.forward(n_steps=n_steps, eps_override=e, skip_preflight=True,
                            checkpoint=False, **kwargs).time_series
 
