@@ -70,29 +70,22 @@ _LADDER_NPZ = (
     / "witnesses_369367257533_attempt3_x64-0_ladders.npz"
 )
 
-# The token every near-field standoff advisory carries, at BOTH emission
-# sites (preflight check 5 and compute_coax_msl_transition's realized-ladder
-# warning). Frozen here so the two sites cannot drift apart silently.
 STANDOFF_TOKEN = "near-field standoff"
 
 
-# ---------------------------------------------------------------------------
-# 1. The predicate itself
-# ---------------------------------------------------------------------------
 
 def test_standoff_helper_is_the_repo_s_existing_5_h_sub_constant():
     """The shipped threshold is ``max(3, round(5*h_sub/dx))`` -- the SAME
     number ``rfx/api/__init__.py::add_msl_port`` already floors its auto
-    ``n_probe_offset`` to (issue #80 Fix B). Not a new constant."""
+    ``n_probe_offset`` to (issue #80 Fix B). Not a new constant.
+    The floor is 3 because add_msl_port refuses anything below it.
+    """
     assert msl_source_near_field_standoff_cells(300e-6, 100e-6) == 15
     assert msl_source_near_field_standoff_cells(254e-6, 80e-6) == 16
     assert msl_source_near_field_standoff_cells(254e-6, 127e-6) == 10
     assert msl_source_near_field_standoff_cells(254e-6, 64e-6) == 20
     assert msl_source_near_field_standoff_cells(1000e-6, 250e-6) == 20
-    # Floor at 3: add_msl_port refuses anything below it anyway.
     assert msl_source_near_field_standoff_cells(10e-6, 100e-6) == 3
-    # Degenerate inputs fall back to the floor rather than raising: an
-    # advisory must never crash a run.
     assert msl_source_near_field_standoff_cells(300e-6, 0.0) == 3
     assert msl_source_near_field_standoff_cells(0.0, 100e-6) == 3
 
@@ -108,7 +101,8 @@ def test_near_field_decay_length_matches_the_substrate_transverse_resonance():
     """
     d = np.load(_LADDER_NPZ, allow_pickle=False)
     x = d["msl_ladder_x_m"]
-    v = d["msl_ladder_v"][1]                    # MSL drive
+    MSL_DRIVE_INDEX = 1
+    v = d["msl_ladder_v"][MSL_DRIVE_INDEX]
     ref = float(d["ref_msl_m"])
     idx = np.arange(6)
     rho = np.empty((3, 9))
@@ -124,33 +118,29 @@ def test_near_field_decay_length_matches_the_substrate_transverse_resonance():
         rho[fi] = np.abs(v[:, fi] - model) / np.abs(model)
 
     floor = np.median(rho[:, :6], axis=1)
-    assert np.all(floor < 2.0e-3), floor          # flat float32 noise floor
-    excess_04 = rho[:, 8] - floor                 # probe at d = 0.4 mm
-    excess_14 = rho[:, 7] - floor                 # probe at d = 1.4 mm
-    assert np.all(excess_04 > 0.8), excess_04     # 0.817 / 1.017 / 1.273
+    assert np.all(floor < 2.0e-3), floor
+    PROBE_AT_0_4_MM = 8
+    excess_04 = rho[:, PROBE_AT_0_4_MM] - floor
+    PROBE_AT_1_4_MM = 7
+    excess_14 = rho[:, PROBE_AT_1_4_MM] - floor
+    assert np.all(excess_04 > 0.8), excess_04
     delta = 1.0e-3 / np.log(excess_04 / excess_14)
 
     h_sub = 300e-6
-    delta_model = 2.0 * h_sub / math.pi           # 0.19099 mm
+    delta_model = 2.0 * h_sub / math.pi
     assert abs(float(delta.mean()) - delta_model) / delta_model < 0.02, (
         float(delta.mean()), delta_model)
     for dm in delta:
         assert abs(float(dm) - delta_model) / delta_model < 0.10, float(dm)
 
-    # Amplitude referred back to the port plane, and the resulting floor.
     r0 = float(np.max(excess_04 * np.exp(0.4e-3 / delta)))
-    assert 11.0 < r0 < 11.7, r0                   # measured 11.323
+    assert 11.0 < r0 < 11.7, r0
     d_min_over_h = (2.0 / math.pi) * math.log(r0 / 0.02)
-    assert 4.0 < d_min_over_h < 4.1, d_min_over_h  # measured 4.0354
-    # The SHIPPED 5*h rule is conservative against that floor, and its own
-    # predicted residual at 5*h clears the 0.02 bar with two decades.
+    assert 4.0 < d_min_over_h < 4.1, d_min_over_h
     assert d_min_over_h < 5.0
     assert r0 * math.exp(-5.0 * h_sub / delta_model) < 0.02
 
 
-# ---------------------------------------------------------------------------
-# 2. Preflight check 5 -- the registered-port advisory (fail before fix)
-# ---------------------------------------------------------------------------
 
 _EPS_R = 3.66
 _H_SUB = 254e-6
@@ -162,19 +152,19 @@ def _sim_with_msl_port(*, dx: float = 80e-6, n_probe_offset=None) -> Simulation:
     """RO4350B-class MSL line, the ``test_msl_port_preflight`` geometry.
 
     dx = 80um, h_sub = 254um -> the standoff is 16 cells (1.27 mm = 5*h_sub).
+    Declared snapping keeps the earlier measured off-node ladder geometry.
     """
     ly = _W_TRACE + 2.0 * (2.0 * _H_SUB + 8.0 * dx) + 4.0 * dx
     lz = _H_SUB + 1.5e-3
     sim = Simulation(
         freq_max=5e9, domain=(_LX, ly, lz), dx=dx, cpml_layers=8,
-        snap="declared",  # Keep the measured off-node ladder geometry.
+        snap="declared",
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
     )
     sim.add_material("ro4350b", eps_r=_EPS_R)
     sim.add(Box((0, 0, 0), (_LX, ly, _H_SUB)), material="ro4350b")
     y_c = ly / 2.0
-    # 35 um foil -> a SHEET on the laminate face.
     sim.add(Box((0, y_c - _W_TRACE / 2, _H_SUB),
                 (_LX, y_c + _W_TRACE / 2, _H_SUB)), material="pec")
     sim.add_msl_port(position=(4e-3, y_c, 0), width=_W_TRACE, height=_H_SUB,
@@ -213,7 +203,7 @@ def test_the_standoff_advisory_carries_the_msl_port_geometry_code():
     hits = [i for i in sim.preflight() if STANDOFF_TOKEN in str(i)]
     assert len(hits) == 1, [str(i) for i in hits]
     assert hits[0].code == "msl_port_geometry"
-    assert hits[0].severity == "warning"        # report-only, never an error
+    assert hits[0].severity == "warning"
 
 
 def test_a_compliant_registered_port_draws_no_standoff_advisory():
@@ -244,9 +234,9 @@ def test_committed_example_msl_port_geometries_are_all_compliant():
     cheap test first.
 
     Note the margin: two of the six clear the threshold by exactly ONE cell.
+    The committed row order is (n_probe_offset, h_sub_m, dx_m, required_cells).
     """
     committed = (
-        # (n_probe_offset, h_sub_m, dx_m, required_cells)
         (20, 1000e-6, 250e-6, 20),
         (20, 1000e-6, 250e-6, 20),
         (11, 254e-6, 127e-6, 10),
@@ -260,13 +250,7 @@ def test_committed_example_msl_port_geometries_are_all_compliant():
         assert off >= got, (off, h, dx, got)
 
 
-# ---------------------------------------------------------------------------
-# 3. The coax<->MSL lane's own realized ladder (method-side advisory)
-# ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# 4. The ladder self-consistency witness
-# ---------------------------------------------------------------------------
 
 def test_ladder_split_witness_separates_a_corrupt_ladder_from_a_clean_one():
     """FAIL-BEFORE-FIX gate for the witness, on the COMMITTED attempt-3 dump.
@@ -286,15 +270,14 @@ def test_ladder_split_witness_separates_a_corrupt_ladder_from_a_clean_one():
     assert gdev.shape == decades.shape == (2, 3)
     assert gdev.dtype == decades.dtype == np.float64
 
-    # MSL drive (index 1) on the MSL array -- the discriminating channel.
-    assert np.all(decades[1] > 4.3) and np.all(decades[1] < 4.5), decades[1]
-    assert np.all(gdev[1] > 1.6), gdev[1]
+    DISCRIMINATING_MSL_DRIVE_INDEX = 1
+    assert np.all(decades[DISCRIMINATING_MSL_DRIVE_INDEX] > 4.3) and np.all(decades[DISCRIMINATING_MSL_DRIVE_INDEX] < 4.5), decades[DISCRIMINATING_MSL_DRIVE_INDEX]
+    assert np.all(gdev[DISCRIMINATING_MSL_DRIVE_INDEX] > 1.6), gdev[DISCRIMINATING_MSL_DRIVE_INDEX]
 
-    # The compliant 8-probe subset of the SAME dump.
     gdev8, decades8 = _ladder_split_witness(x[:8], v[:, :8, :], ref)
-    assert np.all(decades8[1] <= 0.05), decades8[1]
+    assert np.all(decades8[DISCRIMINATING_MSL_DRIVE_INDEX] <= 0.05), decades8[DISCRIMINATING_MSL_DRIVE_INDEX]
     assert np.all(decades8[0] <= 0.05), decades8[0]
-    assert np.all(gdev8[1] < 0.05), gdev8[1]
+    assert np.all(gdev8[DISCRIMINATING_MSL_DRIVE_INDEX] < 0.05), gdev8[DISCRIMINATING_MSL_DRIVE_INDEX]
 
 
 def test_ladder_split_witness_uses_disjoint_halves_and_drops_the_middle():
@@ -306,7 +289,8 @@ def test_ladder_split_witness_uses_disjoint_halves_and_drops_the_middle():
     v = np.array(d["msl_ladder_v"])
     ref = float(d["ref_msl_m"])
     base = _ladder_split_witness(x, v, ref)
-    v[:, 4, :] *= 3.7                       # middle probe of nine
+    MIDDLE_OF_NINE_PROBES = 4
+    v[:, MIDDLE_OF_NINE_PROBES, :] *= 3.7
     poisoned = _ladder_split_witness(x, v, ref)
     assert np.array_equal(base[0], poisoned[0])
     assert np.array_equal(base[1], poisoned[1])
@@ -322,7 +306,6 @@ def test_ladder_split_witness_is_nan_below_six_probes():
     gdev, decades = _ladder_split_witness(x[:5], v[:, :5, :], ref)
     assert gdev.shape == (2, 3)
     assert np.all(np.isnan(gdev)) and np.all(np.isnan(decades))
-    # Six is the smallest ladder that HAS one.
     gdev6, decades6 = _ladder_split_witness(x[:6], v[:, :6, :], ref)
     assert np.all(np.isfinite(gdev6)) and np.all(np.isfinite(decades6))
 
@@ -340,9 +323,6 @@ def test_witness_reproduces_the_committed_coax_ladder_reading():
     assert np.all(decades < 0.35), decades
 
 
-# ---------------------------------------------------------------------------
-# 5. End to end on an aligned instrumentation fixture (one short FDTD pair)
-# ---------------------------------------------------------------------------
 
 _N_STEPS_SMOKE = 200
 
@@ -382,26 +362,25 @@ def test_realized_ladder_standoff_advisory_fires_on_aligned_junction(_instrument
     assert len(hits) == 1, msgs
     msg = hits[0]
     assert "2 of 9" in msg
-    assert "11.00" in msg          # the MSL port feed plane, x = 11.0 mm
-    assert "1.50" in msg           # the required standoff, 1.50 mm
+    MSL_FEED_PLANE_MM_TOKEN = "11.00"
+    assert MSL_FEED_PLANE_MM_TOKEN in msg
+    REQUIRED_STANDOFF_MM_TOKEN = "1.50"
+    assert REQUIRED_STANDOFF_MM_TOKEN in msg
 
 
 def test_witness_fields_are_on_the_result_and_report_only(_instrument_smoke):
     """The two witness fields exist (the fixture opted in with
     ``return_ladder_voltages=True``), are shaped like the diagnostics they
-    sit beside, and refuse nothing."""
+    sit beside, and refuse nothing.
+    The witness fields use [port_array, drive, freq] indexing.
+    """
     res, _msgs = _instrument_smoke
     n_f = len(res.freqs)
     for name in ("ladder_split_gamma_dev", "ladder_split_reflection_decades"):
         arr = np.asarray(getattr(res, name))
         assert arr.shape == (2, 2, n_f), (name, arr.shape)
         assert arr.dtype == np.float64, (name, arr.dtype)
-    # Same [port_array, drive, freq] indexing as fit_residual / gamma, so the
-    # rows line up with the existing diagnostics.
     assert res.fit_residual.shape == res.ladder_split_gamma_dev.shape
-    # The 9-probe MSL ladder disagrees with itself; the 6-probe coax ladder
-    # carries its own known 1 mm-span limitation. Neither refuses anything --
-    # the call returned a result.
     assert np.all(np.isfinite(res.ladder_split_gamma_dev))
     assert res.status == "experimental"
 
@@ -410,7 +389,9 @@ def test_witness_matches_a_standalone_refit_of_the_dumped_ladders():
     """The result's witness IS the disjoint-half refit of the SAME ladders,
     not a parallel re-derivation: recompute it from the ladder dump and
     require bit equality. Proved on the committed settled dump so this costs
-    no FDTD."""
+    no FDTD.
+    The port-array order is (coax, MSL).
+    """
     d = np.load(_LADDER_NPZ, allow_pickle=False)
     gdev_msl, dec_msl = _ladder_split_witness(
         d["msl_ladder_x_m"], d["msl_ladder_v"], float(d["ref_msl_m"]))
@@ -419,7 +400,5 @@ def test_witness_matches_a_standalone_refit_of_the_dumped_ladders():
     stacked_g = np.stack([gdev_coax, gdev_msl])
     stacked_d = np.stack([dec_coax, dec_msl])
     assert stacked_g.shape == stacked_d.shape == (2, 2, 3)
-    # Port array 0 = coax, 1 = msl -- the same order as every other
-    # (port_array, drive, freq) field on the result.
     assert np.array_equal(stacked_g[1], gdev_msl)
     assert np.array_equal(stacked_d[0], dec_coax)

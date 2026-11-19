@@ -80,6 +80,7 @@ def _install_manufactured_backends(monkeypatch, sim, grid, profiles, direction, 
     calls, snapshots = [], []
 
     def record(self, scale):
+        """The plant is the physically stamped field because the DFT kernel stamps H at (n + 1/2) dt itself."""
         planes, registrations = {}, []
         for entry in self._dft_planes:
             assert entry.axis == direction[-1]
@@ -93,7 +94,7 @@ def _install_manufactured_backends(monkeypatch, sim, grid, profiles, direction, 
             shape = (hi_w - lo_w, hi_z - lo_z)
             if entry.component == "ez":
                 sample = nodes[prop][index]
-                field = np.ones(shape)  # Existing production convention: V = sum(Ez*dz) = 2U.
+                field = np.ones(shape)
                 phase = np.ones(len(entry.freqs), dtype=complex)
                 field_scale = 1.0
             else:
@@ -106,13 +107,6 @@ def _install_manufactured_backends(monkeypatch, sim, grid, profiles, direction, 
                     field = np.broadcast_to(
                         0.25 * centres[width][lo_w:hi_w][:, None] / U, shape)
                 field = orientation * sign * s * field
-                # Spatial coordinates remain the actual H centres, so
-                # production must interpolate. History (S2 M2): this plant
-                # also carried exp(-j omega dt / 2), an H plane stamped at E's
-                # time, which the extractor then undid; the DFT kernel stamps
-                # H at (n + 1/2) dt itself now, so the plant is the physically
-                # stamped field (left in, the current read 1.75e-3 off, the
-                # omega dt / 2 of the 1.2 GHz bin).
                 phase = np.ones(len(np.asarray(entry.freqs)))
                 field_scale = scale
             accumulator = (jnp.asarray(field, dtype=jnp.complex64)[None, :, :]
@@ -134,11 +128,9 @@ def _install_manufactured_backends(monkeypatch, sim, grid, profiles, direction, 
         return record(self, 1.0)
 
     def fake_forward(self, *, eps_override, **kwargs):
+        """One interior material cell avoids unrelated float32 summation error in the scalar-parameter pullback."""
         calls.append("forward")
         assert eps_override.shape == grid.shape
-        # Depend on one interior material cell: a reduction over thousands
-        # of identical cells would add unrelated float32 summation error to
-        # this scalar-parameter pullback, without testing another H sample.
         cell = tuple(pad + 1 for pad in grid.axis_pads)
         return record(self, eps_override[cell])
 
@@ -177,8 +169,7 @@ def _knob(grid, scale):
 
 
 def _expected_vi(graded, scale):
-    # Five width-node segments and one normal segment around the thin trace.
-    # The H_width pair contributes +5U*s, H_z contributes -0.25*5U*s.
+    """The (H_width, H_z) contributions are (+5U*s, -0.25*5U*s)."""
     target = (13 if graded else 12) * U
     return 2 * U, scale * 0.75 * 5 * U * (1 + target / (16 * U))
 
@@ -215,8 +206,6 @@ def test_public_msl_driver_centres_current_at_voltage_plane(
     zref = float(hammerstad_jensen_z0_eps_eff(4 * U, 2 * U, EPS_R)[0])
     expected_s = (voltage - zref * current) / (voltage + zref * current)
     assert result.assembly == "multi_drive_solve"
-    # The wave split is formed at the line Z0 (S is then referred to
-    # the declared impedance), so it is checked on S brought back there.
     np.testing.assert_allclose(probe0_s(result, line_s(result)), expected_s, rtol=2e-6, atol=1e-7)
 
 
@@ -273,7 +262,6 @@ def test_mismatched_override_moves_s_along_the_override_line(monkeypatch, direct
         result = sim.compute_msl_s_matrix(
             freqs=FREQS, n_steps=1, num_periods=1, enforce_passivity=False,
             eps_override=jnp.full(grid.shape, scale))
-        # The phase: its derivative is almost all plane term here.
         return jnp.mean(jnp.angle(result.S[0, 0])), result.S[0, 0]
 
     scale = 1.25
@@ -281,7 +269,6 @@ def test_mismatched_override_moves_s_along_the_override_line(monkeypatch, direct
         jnp.asarray(scale, dtype=jnp.float32))
     assert calls == ["forward"]
     want = _mismatched_chain(scale)
-    # The declared line's chain gives another S, by 50x the tolerance or more.
     assert np.max(np.abs(want - _mismatched_chain_declared(scale))) > 50 * 2e-6
     np.testing.assert_allclose(np.asarray(s00), want, rtol=0, atol=2e-6)
 
@@ -289,7 +276,6 @@ def test_mismatched_override_moves_s_along_the_override_line(monkeypatch, direct
         return (np.mean(np.angle(chain(scale + h))) - np.mean(np.angle(chain(scale - h)))) / (2 * h)
 
     g_fd, g_declared = fd(_mismatched_chain), fd(_mismatched_chain_declared)
-    # Measured: the declared line's chain gives 2 % of this derivative.
     assert abs(g_fd - g_declared) > 0.5 * abs(g_fd), (g_fd, g_declared)
     np.testing.assert_allclose(float(derivative), g_fd, rtol=2e-3)
 
