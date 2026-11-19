@@ -164,8 +164,8 @@ def test_simulation_auto_mesh_sets_dx():
     """When dx=None and geometry exists, run() should auto-set dx from features.
 
     Auto mesh accounts for the material eps_r, so dx is finer than a simple lambda/20:
-    for FR4 (eps_r = 4.4) at 5 GHz, lambda_min_medium = 60 mm / 2.1 ≈ 28.6 mm and
-    dx ≈ 28.6 mm / 20 ≈ 1.4 mm (rounded).
+    for FR4 (eps_r = 4.4) at 5 GHz, lambda_min_medium = 60 mm / 2.1 ≈ 28.6 mm and dx ≈
+    28.6 mm / 20 ≈ 1.4 mm (rounded).
     """
     import warnings
     from rfx import Simulation, Box, GaussianPulse
@@ -332,7 +332,6 @@ def test_thin_pec_is_a_sheet_that_owns_no_cell_and_changes_no_material():
 
     Geometry: dx = 2 mm, substrate ``[0, 0.002)``, trace on the substrate
     top face z = 0.002 = node plane k = 1.
-
     The sheet owns no cells, and its -3 % size error blocks run().
     """
     import warnings

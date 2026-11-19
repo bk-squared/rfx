@@ -74,7 +74,7 @@ _B_WG = 0.01016
 #                 message).
 # ---------------------------------------------------------------------------
 DZ_ONLY_CONTRACT = {
-    "compute_waveguide_s_matrix": "nu-lane",   # THE #811 fix
+    "compute_waveguide_s_matrix": "nu-lane",
     "compute_msl_s_matrix": "nu-lane",         # dz-aware since the NU MSL lane
     "compute_mixed_s_matrix": "raises",
     "compute_coaxial_line_reflection": "raises",
@@ -232,7 +232,7 @@ def test_mixed_dz_only_raises():
     sim.add_material("sub", eps_r=4.3)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
     y_c = ly / 2.0
-    # #931: the MSL trace is a FOIL, so it is a sheet on the substrate-top
+    # The MSL trace is a FOIL, so it is a sheet on the substrate-top
     # node plane — a zero-extent axis IS the sheet declaration (§1.5). Drawn
     # one cell thick it would be a VOLUME: walls at z = H_SUB and
     # z = H_SUB + dx with Ez shorted between, a 0.25 mm solid bar where the

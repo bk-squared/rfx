@@ -262,7 +262,7 @@ def test_compiled_runner_tfsf_matches_manual_loop():
         f0=4e9,
         bandwidth=0.5,
         amplitude=1.0,
-    )
+    dtype='float32')
     probe = ProbeSpec(
         i=tfsf_cfg.x_lo + 8,
         j=grid.ny // 2,
@@ -325,7 +325,7 @@ def test_compiled_runner_tfsf_ey_matches_manual_loop():
         bandwidth=0.5,
         amplitude=1.0,
         polarization="ey",
-    )
+    dtype='float32')
     probe = ProbeSpec(
         i=tfsf_cfg.x_lo + 8,
         j=grid.ny // 2,
@@ -389,7 +389,7 @@ def test_compiled_runner_tfsf_negative_x_matches_manual_loop():
         amplitude=1.0,
         polarization="ez",
         direction="-x",
-    )
+    dtype='float32')
     probe = ProbeSpec(
         i=tfsf_cfg.x_lo + 8,
         j=grid.ny // 2,
@@ -456,7 +456,7 @@ def test_compiled_runner_tfsf_oblique_matches_manual_loop():
         polarization="ez",
         angle_deg=30.0,
         ny=grid.ny,
-    )
+    dtype='float32')
     probe = ProbeSpec(
         i=tfsf_cfg.x_lo + 5,
         j=grid.ny // 2,
@@ -812,7 +812,7 @@ def test_init_tfsf_rejects_impossible_geometry():
     """Oversized CPML+margin should fail loudly instead of misconfiguring TFSF."""
     dt = Grid.courant_dt(0.001)
     with pytest.raises(ValueError, match="too large for the grid"):
-        init_tfsf(nx=21, dx=0.001, dt=dt, cpml_layers=4, tfsf_margin=6)
+        init_tfsf(nx=21, dx=0.001, dt=dt, cpml_layers=4, tfsf_margin=6, dtype='float32')
 
 
 def test_s_matrix_two_port_reciprocity():

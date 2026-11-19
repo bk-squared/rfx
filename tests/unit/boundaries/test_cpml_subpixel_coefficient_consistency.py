@@ -152,7 +152,7 @@ def amplification_rho(n_layers, dx, dt, eps_a, eps_b, n=24, absorber=True):
     b = np.ones(n)
     c = np.zeros(n)
     if absorber:
-        p = _cpml_profile(n_layers, dt, dx)
+        p = _cpml_profile(n_layers, dt, dx, dtype="float32")
         b[:n_layers] = np.asarray(p.b, dtype=float)
         c[:n_layers] = np.asarray(p.c, dtype=float)
     ea = np.full(n, float(eps_a))
@@ -305,11 +305,11 @@ def test_threading_an_equal_permittivity_is_bit_identical():
 
 
 @pytest.mark.parametrize("subpixel,dispersive,expect_threaded", [
-    (False, False, True),    # #1210: the plain E update is per-component too
+    (False, False, True),    # the plain E update is per-component too
     (True, False, True),     # Stage 1 -> 1/aniso_eps
     # dispersion wins the E update, so it wins here too (with subpixel on,
     # a dispersive run is refused since 2.0: the tensor would be dropped);
-    # since #1260 its eps_inf is the same per-component edge mean
+    # its eps_inf is the same per-component edge mean
     (False, True, True),
 ])
 def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
@@ -392,7 +392,7 @@ def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
         sim.add(rfx.Box((2.0 * A, sy / 2 - 0.2 * A, 0),
                         (4.0 * A, sy / 2 + 0.2 * A, DX)), material="disp")
     # Long enough for the pulse to actually couple; a handful of steps leaves
-    # "no field energy was recorded" (#336) on the record, which makes a
+    # "no field energy was recorded" on the record, which makes a
     # passing spy test look like it measured nothing.
     sim.run(n_steps=120, subpixel_smoothing=subpixel, skip_preflight=True)
 

@@ -52,7 +52,7 @@ _FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
 # Freqs are pinned in-band (source f0=5 GHz, bw=0.9) where the incident wave is
 # strong — below-cutoff / weak-incident bins would NaN the gradient silently.
 #
-# WHY THE ELEMENT IS NOT AT THE PORT CELL (2026-09-21): a driven port reads its
+# WHY THE ELEMENT IS NOT AT THE PORT CELL: a driven port reads its
 # S11 from the terminal V/I pair, and the Ampere-loop current I is the current
 # leaving the port cell into the surrounding field.  An element sitting INSIDE
 # that cell is in parallel with the source, not in the external network, so it
@@ -60,7 +60,7 @@ _FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
 # fixture: co-located, R = 50 and R = 500 move |S11| by 1.8e-07 and 2.4e-07 —
 # the float32 floor, R-independent — and dS11^2/dR collapses to -1.15e-10.  One
 # cell away at R = 500 the same quantities are 8.7e-03 and -8.16e-05.  The old
-# co-located fixture could only see the element because the pre-2026-09-21
+# co-located fixture could only see the element because the earlier
 # extractor read a pre-injection sample at the driven cell, which carries the
 # drive level; that sample is not the terminal voltage of the circuit
 # (scripts/diagnostics/lumped_port_known_load_line.py).
@@ -83,7 +83,7 @@ _RLC_OFFSET_CELLS = 1
 # the requested f64 arrays — see the dtype warnings this file emits), so
 # eps_solve is the float32 epsilon and the cube-root rule gives ~7.1e-3.
 #
-# ROOT CAUSE this replaces (item B2 review, 2026-09-05): the previous 1e-4
+# ROOT CAUSE this replaces: the previous 1e-4
 # sat deep in the ROUND-OFF-dominated branch. Measured on this fixture, the
 # ABSOLUTE AD-vs-FD discrepancy at h/x0 = 1e-4 is ~5.2e-6 with the port-current
 # phase correction disabled and ~5.4e-6 with it enabled — i.e. a fixed noise
@@ -203,15 +203,13 @@ def test_run_series_rlc_byte_identity():
     passes 1e-3 of the peak at step 25, has 1494 of 1500 samples outside
     and grows to 7.5e3x the golden's peak; the current update reads 0.
     """
-    # #1373: measured factor 2.3958724e7 equals predicted Cb/dV (2.3958726e7).
-    # Regenerated 2026-10-12 (issue 1668): the pulse took bandwidth=f0*0.5 in
-    # Hz, so its only drive was the old pulse's 7.4e-4 jump at t=0 (golden
-    # sha256 d363c4df..., peak 1.774e4 at n=0). Now fractional 0.8 (sha256
-    # f91d06f6..., peak 3.097e7 at n=105); tolerances unchanged.
+    # Measured factor 2.3958724e7 equals predicted Cb/dV (2.3958726e7).
+    # Regenerated: the pulse took bandwidth=f0*0.5 in
+    # Hz, so its only drive was the old pulse's 7.4e-4 jump at t=0 (golden peak 1.774e4 at n=0). Now fractional 0.8 (peak 3.097e7 at n=105); tolerances unchanged.
     golden = np.load(os.path.join(_FIXTURE_DIR, "golden_lumped_rlc_run_series.npy"))
     R, L, C = 50.0, 10e-9, 1e-12
     f0 = 1 / (2 * np.pi * np.sqrt(L * C))
-    sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+    sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length
     sim.add_source(position=(0.005, 0.005, 0.005), component="ez",
                    waveform=GaussianPulse(f0=f0, bandwidth=0.8))
     sim.add_lumped_rlc(position=(0.005, 0.005, 0.005), component="ez",
@@ -238,7 +236,7 @@ def test_forward_no_rlc_byte_identity():
     # max|S11 - #1012's previous golden| = 5.139599368e-2.
     # Both changes are in this golden; tolerances unchanged.
     # WHY: the port sits in a six-layer CPML box, and #1012 samples the magnetic CPML profile at the Yee half cell,
-    # and since 965b2db8 the port loads only its own edge. The test still guards what it
+    # and the port loads only its own edge. The test still guards what it
     # was written for: forward() without an RLC element is a pure skip.
     golden = np.load(os.path.join(_FIXTURE_DIR, "golden_forward_no_rlc_s11.npy"))
     sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=0.02 / 15,

@@ -255,7 +255,7 @@ def test_numpy_scalars_and_arrays_still_accepted():
 
 
 # --------------------------------------------------------------------------
-# #931: what the codec must NOT start refusing.
+# What the codec must NOT start refusing.
 #
 # The inventory's suggestion for this module was to extend the refusal set
 # with the ownership contract's new errors — a sub-cell PEC Box, an empty
@@ -264,7 +264,7 @@ def test_numpy_scalars_and_arrays_still_accepted():
 # §1.7) rather than effort: this codec encodes SHAPES. "Sub-cell" needs a
 # grid, "PEC" needs a material, and a codec that re-implemented either would
 # be the second copy of a rule that drifts from the first — which is the
-# defect #931 exists to remove, not one to add on the way out.
+# defect, not one to add on the way out.
 #
 # So the codec-side statement is the opposite one, and it does need pinning:
 # a zero-extent Box is now the canonical spelling of a SHEET (§1.5), so it

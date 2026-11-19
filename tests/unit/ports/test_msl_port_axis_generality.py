@@ -75,7 +75,7 @@ from rfx.sources.msl_port import (
 from tests._line_stub_geometry import trim_resonant_trace
 
 EPS_R, H_SUB, W_TRACE = 3.66, 254e-6, 600e-6
-# ON-LATTICE board (#931 §1.3): h_sub / dx = 3 exactly, so the laminate
+# ON-LATTICE board: h_sub / dx = 3 exactly, so the laminate
 # face is a node line and the foil sheet lands on it. The module ran at
 # dx = 80 um (h_sub/dx = 3.175); that mesh is now used only by the
 # substrate-resolution advisory test, which is ABOUT the off-lattice
@@ -348,7 +348,7 @@ class _Mat:
         import jax.numpy as jnp
         self.sigma = jnp.zeros(shape)
         self.eps_r = jnp.ones(shape)
-        # #1210: the edge-owned record of a lumped stamp. This stand-in only
+        # The edge-owned record of a lumped stamp. This stand-in only
         # reads sigma back, but the stamping helper writes both.
         self.sigma_lumped = None
         self.eps_r_lumped = None
@@ -424,7 +424,7 @@ def _board(domain, direction, feed, lat_c, *, trace_len_axis, dx=DX):
     sim.add_material("ro4350b", eps_r=EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (domain[0], domain[1], H_SUB)),
             material="ro4350b")
-    # 35 um foil -> a SHEET on the laminate face (#931 §1.3), declared by
+    # 35 um foil -> a SHEET on the laminate face, declared by
     # a zero-thickness Box. One cell thick it is a VOLUME: walls at both z
     # faces and the Ez edge between them shorted.
     if trace_len_axis == "x":
@@ -572,7 +572,7 @@ def _thru(axis, n_freqs, num_periods):
         thi = (lat_c + W_TRACE / 2, L_PROP, H_SUB)
         p0, p1, d0, d1 = ((lat_c, PORT_MARGIN, 0.0),
                           (lat_c, PORT_MARGIN + L_LINE, 0.0), "+y", "-y")
-    # #1138: trace transverse x/y solved +8.656% off; this tests rotation equivalence.
+    # trace transverse x/y solved +8.656% off; this tests rotation equivalence.
     sim = Simulation(snap="declared", freq_max=F_MAX, domain=domain, dx=DX, cpml_layers=8,
                      boundary=BoundarySpec(x="cpml", y="cpml",
                                            z=Boundary(lo="pec", hi="cpml")))
@@ -636,7 +636,7 @@ def test_y_directed_thru_reproduces_the_x_directed_thru():
     # Preflight output is part of the result (repo rule): the two lanes must raise the SAME
     # advisories once the y lane's axis letters are read through the x<->y mirror that built it.
     # The y lane's standalone x / y tokens are SWAPPED, not blanked: blanking both lanes to one
-    # placeholder (what this test did until 2026-09-21, one spelling at a time -- "y-CPML",
+    # placeholder (what this test did earlier, one spelling at a time -- "y-CPML",
     # "y: extent", then "y: drawn" reddened the weekly lane) also hides a real asymmetry, e.g. the
     # y lane reporting a different dimension as off-size. Also normalised: numeric literals (the
     # reported Z0 differs in its last printed digit, 57.61 vs 57.60 ohm, from the float32 fit
@@ -715,7 +715,7 @@ def test_equivalence_harness_can_move():
     # One cell (W_TRACE + DX) realizes the SAME 7-cell sheet as the baseline and only widens
     # the port aperture; two cells really widen the solved strip (asserted below).
     w_bad = W_TRACE + 2 * DX
-    # Same snap mode as _thru, which it is compared with (#1138): without it
+    # Same snap mode as _thru, which it is compared with: without it
     # the sheet-size preflight refuses the off-mesh trace and the control never runs.
     sim = Simulation(snap="declared", freq_max=F_MAX, domain=(L_LAT, L_PROP, LZ), dx=DX,
                      cpml_layers=8,

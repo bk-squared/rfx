@@ -24,7 +24,7 @@ def _guide(graded=False, internal=False):
     sim = Simulation(
         12e9, (.04, .02286, .01016), dx=.002032, cpml_layers=4,
         boundary={"x": "cpml", "y": "pec", "z": "pec"}, **extra,
-        snap="declared")  # off-node WR-90 width is this fixture's aperture case (#1887)
+        snap="declared")  # off-node WR-90 width is this fixture's aperture case
     for x, direction in ((.008, "+x"), (.030, "-x")):
         sim.add_waveguide_port(x, direction=direction, f0=10e9,
                                freqs=np.array([9e9, 10e9, 11e9]),
@@ -60,7 +60,7 @@ def _enter(sim, route):
 ROUTES = ["run", "run_distributed", "forward", "forward_distributed",
           "compute_waveguide_s_matrix", "compute_s_matrix"]
 # Multi-device lanes refuse every waveguide port before any config is built,
-# so a DG declaration there meets that refusal first (#2053).
+# so a DG declaration there meets that refusal first.
 MULTI_DEVICE = {"run_distributed", "forward_distributed"}
 PORT_REFUSAL = r"waveguide ports \(add_waveguide_port\) are not supported on"
 
@@ -189,7 +189,7 @@ def test_graded_config_preserves_declared_mode_profile(mode_profile, n_modes, mo
     sim = Simulation(
         12e9, (.04, .02286, .01016), dx=.002032, cpml_layers=4,
         boundary={"x": "cpml", "y": "pec", "z": "pec"},
-        dz_profile=np.array([.0015, .002, .003, .002, .00166]), snap="declared")  # (#1887)
+        dz_profile=np.array([.0015, .002, .003, .002, .00166]), snap="declared")
     freqs = np.array([10e9])
     sim.add_waveguide_port(.008, f0=10e9, freqs=freqs,
                            probe_offset=2, ref_offset=1,

@@ -135,11 +135,11 @@ def test_out_of_program_admission_judges_concrete_primals_and_refuses_traced(tra
                                       np.full((2,), 9.) if transform == "vmap" else
                                       np.full((2,), 6.) if transform == "grad_vmap" else 9.)
     if transform != "jit":
-        # An eager vmap carries concrete members; each is judged (#1934).
+        # An eager vmap carries concrete members; each is judged.
         with pytest.raises(ValueError, match="unstable at this model's time step"):
             call(1.)
     else:
-        # #1934: outside a program a jit-traced value cannot be judged; it is refused, stable or not.
+        # Outside a program a jit-traced value cannot be judged; it is refused, stable or not.
         for eps in (3., 1.):
             with pytest.raises(ValueError, match=r"traced by an outer jax\.jit"):
                 call(eps)
@@ -173,7 +173,7 @@ def test_traced_mask_pattern_cap(n_poles, transform):
         jax.block_until_ready(result)
 
     if n_poles == 9 and transform in ("jit", "vmap"):
-        with pytest.raises(ValueError, match=r"cannot judge: 9 poles give 2\^9 patterns"):
+        with pytest.raises(ValueError, match=r"9 distinct poles, with cell occupancy traced"):
             call()
     else:
         call()

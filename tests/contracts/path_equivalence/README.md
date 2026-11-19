@@ -104,8 +104,6 @@ Only `RFX_S0_FULL=1` enables the full matrix; the weekly slow job sets it.
 The six base families `_freq_max`, `_domain`, `_dx`, `_boundary`, `_cpml_layers`,
 and `_probes` share one cached base solve per lane/grid/dt/record length via
 `BASE_ROWS` (also shared with its material/source/profile aliases).
-`_adi_cfl_factor` is a no-op row on the Yee lanes: its self-comparison is
-expected and does not provide ADI coverage.
 
 Run PR tests: `python -m pytest tests/contracts/path_equivalence -q`.
 Run full tests: `RFX_S0_FULL=1 python -m pytest tests/contracts/path_equivalence -q -o addopts="" -m "not gpu"`.

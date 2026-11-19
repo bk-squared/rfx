@@ -673,4 +673,8 @@ if __name__ == "__main__":
     elif sys.argv[1] == "addressable_dispersion":
         _addressable_dispersion_slabs()
     else:
+        import gc
+        # The census must not depend on when the cyclic collector runs: a whole-domain
+        # array held only by a reference cycle stays alive here and fails the census (#2769).
+        gc.disable()
         _measure(sys.argv[1], bool(int(sys.argv[2])))

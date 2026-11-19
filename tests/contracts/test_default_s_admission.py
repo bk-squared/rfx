@@ -78,7 +78,7 @@ def test_forward_family_check_before_step(before_step, graded, distributed, kind
     message = str(caught.value)
     assert {"microstrip": "MSL ports use compute_msl_s_matrix()",
             "passive_microstrip": "MSL ports use compute_msl_s_matrix()",
-            "waveguide": "waveguide ports use compute_waveguide_s_matrix()",
+            "waveguide": "add_waveguide_port(...) uses compute_waveguide_s_matrix()",
             "Floquet": "Floquet ports are experimental and have no forward S11 path",
             "TFSF": "TFSF is a plane-wave source, not a port"}[kind] in message
     assert "isolated drive" not in message
@@ -92,7 +92,7 @@ def test_forward_two_drives_order(before_step, waveguide):
     if not waveguide:
         sim._waveguide_ports.clear()
     error = NotImplementedError if waveguide else ValueError
-    message = "waveguide ports use compute_waveguide_s_matrix" if waveguide else "isolated drive"
+    message = r"add_waveguide_port\(.*\) uses compute_waveguide_s_matrix" if waveguide else "isolated drive"
     with pytest.raises(error, match=message):
         sim.forward(n_steps=1, skip_preflight=True, port_s11_freqs=np.array([2.5e9]))
 

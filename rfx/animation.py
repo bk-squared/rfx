@@ -103,9 +103,6 @@ def save_field_animation(
     plt = _pyplot()
     from matplotlib.animation import FuncAnimation, PillowWriter
 
-    # ------------------------------------------------------------------
-    # Extract snapshot data
-    # ------------------------------------------------------------------
     snapshots: dict | None
     if isinstance(result, dict):
         snapshots = result
@@ -131,9 +128,6 @@ def save_field_animation(
 
     data = np.asarray(snapshots[component])
 
-    # ------------------------------------------------------------------
-    # Apply frame stride
-    # ------------------------------------------------------------------
     if interval > 1:
         data = data[::interval]
     times_s = _animation_frame_times(result, component, interval)
@@ -146,9 +140,6 @@ def save_field_animation(
     if n_frames == 0:
         raise ValueError("No frames in snapshot data")
 
-    # ------------------------------------------------------------------
-    # Slice 3D volumes to 2D
-    # ------------------------------------------------------------------
     axis_map = {"x": 0, "y": 1, "z": 2}
     if slice_axis not in axis_map:
         raise ValueError(
@@ -157,7 +148,6 @@ def save_field_animation(
     axis_idx = axis_map[slice_axis]
 
     if data.ndim == 4:
-        # (n_frames, nx, ny, nz) — full volume snapshots
         if slice_index is None:
             slice_index = data.shape[axis_idx + 1] // 2
         if axis_idx == 0:
@@ -167,7 +157,6 @@ def save_field_animation(
         else:
             data = data[:, :, :, slice_index]
     elif data.ndim == 3:
-        # (n_frames, n1, n2) — already 2D sliced, nothing to do
         pass
     else:
         raise ValueError(
@@ -175,17 +164,11 @@ def save_field_animation(
             f"(n_frames, nx, ny, nz) or (n_frames, n1, n2)"
         )
 
-    # ------------------------------------------------------------------
-    # Determine colour limits
-    # ------------------------------------------------------------------
     if vmax is None:
         vmax = float(np.max(np.abs(data))) or 1.0
     if vmin is None:
         vmin = -vmax
 
-    # ------------------------------------------------------------------
-    # Build animation
-    # ------------------------------------------------------------------
     axis_labels = {"x": ("y", "z"), "y": ("x", "z"), "z": ("x", "y")}
     xlabel, ylabel = axis_labels[slice_axis]
 
@@ -219,9 +202,6 @@ def save_field_animation(
         fig, _update, frames=n_frames, blit=True, interval=1000 // fps,
     )
 
-    # ------------------------------------------------------------------
-    # Determine output format and save
-    # ------------------------------------------------------------------
     filename = str(filename)
     lower = filename.lower()
 
@@ -230,13 +210,11 @@ def save_field_animation(
             from matplotlib.animation import FFMpegWriter
             writer = FFMpegWriter(fps=fps)
         except ImportError:
-            # ffmpeg not available — fall back to GIF
             filename = filename[:-4] + ".gif"
             writer = PillowWriter(fps=fps)
     elif lower.endswith(".gif"):
         writer = PillowWriter(fps=fps)
     else:
-        # Default to GIF
         if not lower.endswith(".gif"):
             filename = filename + ".gif"
         writer = PillowWriter(fps=fps)

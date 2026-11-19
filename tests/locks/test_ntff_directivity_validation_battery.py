@@ -232,8 +232,8 @@ _XPOL_SHAPE_DEV_MAX = 0.05
 _XPOL_PEAK_RATIO_BAND = (0.9, 1.1)
 
 # P_ntff/P_flux is 1/2 in the continuum. With the magnetic CPML profile at the Yee half
-# cell the ratio reads 0.4985 / 0.5022 / 0.5022 at dx 3 / 1.5 / 0.75 mm (VESSL
-# 369367264100). Before #1012 it drifted to 0.5150 / 0.5226 as the cells shrank; the A/B
+# cell the ratio reads 0.4985 / 0.5022 / 0.5022 at dx 3 / 1.5 / 0.75 mm.
+# Earlier it drifted to 0.5150 / 0.5226 as the cells shrank; the A/B
 # on one GPU differs only in that profile, so the drift came from the absorber's H-side
 # grading sitting half a cell off, not from thinning a fixed-layer absorber. Every rung
 # is gated at |ratio − 0.5| ≤ 0.005.
@@ -675,7 +675,7 @@ def test_dx_ladder_directivity_converges_and_ratio_stable(base_rung):
 # structure, not a different lane. At 20 cells both lanes realize
 # 33 x 33 x 33 and the NU lane reproduces the uniform one.
 #
-# Measured on this tree (2026-09-21), dz_profile = 20 uniform 3.0 mm cells:
+# Measured on this tree, dz_profile = 20 uniform 3.0 mm cells:
 #   realized 33 x 33 x 33, D = 1.761428040 dBi (|err| 0.000515 dB),
 #   P_ntff/P_flux = 0.500321038 (uniform rung: 0.500320703),
 #   ring-down settling -78.40 dB, probe tail/peak 1.30e-04.

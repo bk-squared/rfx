@@ -142,7 +142,7 @@ def test_forward_s11_rejects_non_port_source_only_request():
     sim = Simulation(freq_max=5e9, domain=(0.01, 0.01, 0.01), dx=1e-3, boundary="pec")
     sim.add_source((0.005, 0.005, 0.005), "ez")
 
-    with pytest.raises(ValueError, match="add_source.*not an impedance port"):
+    with pytest.raises(ValueError, match="add_source.*not impedance ports"):
         sim.forward(n_steps=1, port_s11_freqs=np.array([1.0e9]), skip_preflight=True)
 
 
@@ -165,7 +165,7 @@ def test_preflight_sparameters_routes_forward_specialized_families():
 
     issues = sim.preflight_sparameters(calculator="forward")
 
-    assert any("waveguide ports use compute_waveguide_s_matrix" in issue for issue in issues)
+    assert any("add_waveguide_port(...) uses compute_waveguide_s_matrix" in issue for issue in issues)
 
 
 def test_preflight_sparameters_rejects_unknown_calculator():
@@ -241,7 +241,7 @@ def test_msl_nu_fence_message_parity_sparams_vs_preflight():
 
 
 # Which single profile makes the sim non-uniform. dz joined the waveguide
-# dispatch in the #811 fix, so the fence/parity contracts below bind on it
+# dispatch, so the fence/parity contracts below bind on it
 # too. The dz profile is genuinely graded (a uniform-valued profile only
 # tests plumbing, never NU metrics); it sums exactly to the 0.010 m z
 # extent with adjacent ratios <= 1.4.

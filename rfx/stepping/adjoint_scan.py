@@ -75,6 +75,7 @@ def design_adjoint_scan(ctx, initial, xs):
     ab = (ctx.design_box.ca, ctx.design_box.cb)
     base = replace(ctx, design_box=ctx.design_box._replace(ca=None, cb=None))
     invariants = core_step_invariants(base)
+    step_base = base if ctx.pad_plan is None else invariants["ctx"]
     nf = len(freqs)
     cdtype = jnp.complex128 if dtype == jnp.float64 else jnp.complex64
     z = tuple(jnp.zeros((nf,) + a.shape, cdtype) for a in ab[0])
@@ -83,7 +84,7 @@ def design_adjoint_scan(ctx, initial, xs):
     wavelet_length = min(steps, max(16, steps // 4))
 
     def run(coeffs, targets=None, recording=False):
-        local = replace(base, design_box=base.design_box._replace(ca=coeffs[0], cb=coeffs[1]))
+        local = replace(step_base, design_box=base.design_box._replace(ca=coeffs[0], cb=coeffs[1]))
         if targets is not None:
             # Suppress primal drives. CPML and ordinary Yee updates are reused.
             local = replace(local, drives=None,

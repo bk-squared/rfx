@@ -143,8 +143,33 @@ f_max, ...)` or `matrix_pencil_from_probe(...)`.
 `forward()` returns a smaller named tuple: `time_series`, `s_params` and
 `freqs` (lumped/wire S11 vectors when `port_s11_freqs=` is set),
 `lumped_port_sparams`, `wire_port_sparams`, `dft_planes`, `ntff_data`,
-`ntff_box`, `grid`, `dt` and `settling_probe_info`. Everything in it can carry
+`ntff_box`, `grid`, `dt` and `settling_probe_info`. Its JAX arrays can carry
 a gradient.
+
+### `ForwardResult` under JAX transforms
+
+A whole `ForwardResult` can be returned from `jax.jit`, `jax.vmap`, `jax.jvp`
+and `jax.eval_shape`, or as auxiliary output with `has_aux=True` from
+`jax.vjp`, `jax.grad`, `jax.value_and_grad` and `jax.jacfwd`. Only its JAX
+arrays pass through the transform. Host data (grid objects, names, Python
+numbers and NumPy arrays) stays as computed during the trace.
+
+- On a graded mesh with traced cell widths and no pinned time step, `dt` and
+  `grid.dt` are arrays, the float64 width copies of traced axes are `None`, and
+  host fields come from the declared widths.
+- `freqs` is batched by `jax.vmap` when it is a JAX array and stays unbatched
+  when the lane returns a NumPy array.
+- Read a vmapped result one element at a time, after
+  `jax.tree_util.tree_map(lambda a: a[i], result)`. `settling_db` and
+  `settling_witness` refuse a result whose arrays changed shape since it was
+  built, including a sliced frequency band. `_replace` drops that record, so
+  replacing fields on a batched result disables the refusal.
+- In a JVP tangent or a Jacobian, host data (names, NumPy arrays such as
+  concrete run frequencies, Python numbers) is the primal's, not a derivative.
+  The tangent keeps the result type, but its settling diagnostics and ring-down
+  report have no meaning: read them on the primal result.
+- Passing a new result into a jitted function compiles again, because its
+  realized geometry record and uniform `Grid` compare by identity.
 
 ### `ForwardResult.ringdown`
 

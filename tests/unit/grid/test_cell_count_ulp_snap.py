@@ -13,7 +13,6 @@ accident. The two sides that matter are named explicitly everywhere:
 what must snap DOWN to the integer, and what must still take the cell.
 
 Nothing here builds a grid; these are statements about one arithmetic rule.
-
 The rig is RO4003C at h = 0.787 mm, with dx = h/4 and a domain of 38h + 2*(pad*h).
 """
 from __future__ import annotations

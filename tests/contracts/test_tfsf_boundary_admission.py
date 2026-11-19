@@ -149,7 +149,7 @@ def test_finite_scatterer_refuses_every_dispatch_path(skip, path, monkeypatch):
     import jax
     mesh = {"dz_profile": np.full(10, .001)} if path in ("nonuniform", "distributed_nu") else {}
     pass
-    # Both meshes run the same invariance admission (#1794): a finite scatterer
+    # Both meshes run the same invariance admission: a finite scatterer
     # under an open plane wave is refused on the graded paths too.
     sim = plane(finite=True, **mesh)
     if path == "subgridded":
@@ -168,10 +168,10 @@ def test_low_level_explicit_wrap_keeps_caller_declaration(monkeypatch, broadcast
     grid = sim._build_grid()
     materials = sim._assemble_materials(grid)[0]
     source = init_tfsf(grid.nx, grid.dx, grid.dt, cpml_layers=2,
-                       tfsf_margin=1, f0=5e9, bandwidth=.5)
+                       tfsf_margin=1, f0=5e9, bandwidth=.5, dtype='float32')
     # The y variation stays inside the total-field region, one cell clear of
     # the injection planes x_lo-1, x_lo, x_hi, x_hi+1: the H update there
-    # reads mu averaged with its x neighbour, which must be vacuum too (#1676).
+    # reads mu averaged with its x neighbour, which must be vacuum too.
     inside = slice(source[0].x_lo + 2, source[0].x_hi - 1)
     assert inside.start < inside.stop
     shape = (grid.nx, grid.ny, 1) if broadcast else grid.shape
@@ -263,8 +263,7 @@ def assert_graded_admitted(sim, skip, distributed, monkeypatch, *, wall_pair=Fal
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("distributed", [False, True])
 def test_graded_plane_wave_keeps_absorbers(skip, distributed, monkeypatch):
-    # A laterally invariant slab; a finite one is refused on both meshes (#1794,
-    # test_finite_scatterer_refuses_every_dispatch_path).
+    # A laterally invariant slab; a finite one is refused on both meshes (test_finite_scatterer_refuses_every_dispatch_path).
     sim = plane(finite=False, dz_profile=np.full(10, .001))
     if distributed:
         import jax
@@ -378,7 +377,7 @@ def test_normal_finite_box_message_unchanged():
 
 @pytest.mark.parametrize("skip", [False, True])
 def test_oblique_padded_period_bar_refuses(skip):
-    # The declared 16 mm period would have wrapped 49 mm at dx=1 mm (#2693).
+    # The declared 16 mm period would have wrapped 49 mm at dx=1 mm.
     sim = Simulation(freq_max=10e9, domain=(.30, .016, .004), dx=.001, boundary="cpml")
     sim.add_material("bar", eps_r=4)
     sim.add(Box((.043, .003, .0), (.053, .009, .004)), material="bar")
@@ -444,18 +443,21 @@ def test_small_angle_has_normal_incidence_admission(scene, graded, polarization,
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("smoothing", [True, "full_tensor"])
 @pytest.mark.parametrize("polarization", ["ez", "ey"])
-def test_oblique_invariant_slab_refuses_smoothing(entry, skip, smoothing, polarization):
-    # The scan spy remains installed: the unsupported update must never step.
+def test_oblique_invariant_slab_smoothing_admission(entry, skip, smoothing, polarization):
     from rfx.errors import RfxUnsupported
-    expected_input = f"subpixel smoothing (subpixel_smoothing={smoothing!r})"
     sim = Simulation(freq_max=20e9, domain=(.024, .012, .012), dx=.001, cpml_layers=2)
     sim.add_material("slab", eps_r=4.)
     sim.add(Box((.010, -1., -1.), (.014, 1., 1.)), material="slab")
     sim.add_tfsf_source(f0=10e9, bandwidth=.8, direction="+x", angle_deg=30.,
                         polarization=polarization, method="bloch")
+    if smoothing is True:
+        with pytest.raises(AssertionError, match="admission judge reached a field scan"):
+            getattr(sim, entry)(n_steps=1, skip_preflight=skip, subpixel_smoothing=smoothing)
+        return
     with pytest.raises(RfxUnsupported) as caught:
         getattr(sim, entry)(n_steps=1, skip_preflight=skip, subpixel_smoothing=smoothing)
     assert str(caught.value) == (
         "An oblique Bloch plane wave (angle_deg=30.0, method='bloch') cannot be combined with "
-        f"{expected_input}: the electric-field update for it does not apply the Bloch phase, "
-        "so the fields would be wrong. Use normal incidence, or subpixel_smoothing=False.")
+        "off-diagonal node coupling (node_smoothing): the off-diagonal node coupling "
+        "does not apply the Bloch phase, so the fields would be wrong. "
+        "Use normal incidence, or no off-diagonal node coupling.")
