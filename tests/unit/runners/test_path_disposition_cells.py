@@ -80,7 +80,7 @@ def _base(lane, *, ref=False, source="field", refine=True, **ctor):
         sim.add_source(mm(4, 6, 6), "ez", waveform=WAVEFORM, amplitude_kind=source)
     sim.add_probe(mm(8, 6, 6), "ez")
     if subgrid and refine:
-        # #1465: explicitly opt in to exercise the experimental subgrid lane.
+        # Explicitly opt in to exercise the experimental subgrid lane.
         sim.add_refinement(z_range=(0.0, 14e-3), ratio=2, validation="research")
     return sim
 
@@ -178,7 +178,7 @@ def _board(lane, on, ref=False):
                          impedance=50.0, waveform=GaussianPulse(f0=7e9, bandwidth=0.8))
     sim.add_probe(mm(12, 6, 2.5), "ez")
     if subgrid:
-        # #1465: explicitly opt in to exercise the experimental subgrid lane.
+        # Explicitly opt in to exercise the experimental subgrid lane.
         sim.add_refinement(z_range=(0.0, 7e-3), ratio=2, validation="research")
     return sim
 
@@ -193,7 +193,7 @@ def _guide(lane, on, ref=False, n_modes=1):
                                probe_offset=4, ref_offset=2, n_modes=n_modes)
     sim.add_probe(mm(20, 6, 3), "ez")
     if lane == "run_subgridded" and not ref:
-        # #1465: explicitly opt in to exercise the experimental subgrid lane.
+        # Explicitly opt in to exercise the experimental subgrid lane.
         sim.add_refinement(z_range=(0.0, 3e-3), ratio=2, validation="research")
     return sim
 
@@ -204,7 +204,7 @@ def _plane_wave(lane, on, ref=False, *, closed=False):
         sim.add_tfsf_source(f0=5e9, bandwidth=0.5, margin=3, closed_box=closed)
     sim.add_probe(mm(14, 5, 6) if closed else mm(14, 3, 3), "ez")
     if lane == "run_subgridded" and not ref:
-        # #1465: explicitly opt in to exercise the experimental subgrid lane.
+        # Explicitly opt in to exercise the experimental subgrid lane.
         sim.add_refinement(z_range=(0.0, 3e-3), ratio=2, validation="research")
     return sim
 
@@ -219,7 +219,7 @@ def _floquet_cell(scan_theta):
             sim.add_floquet_port(4e-3, axis="z", f0=5e9, scan_theta=scan_theta if on else 0.0)
         sim.add_probe(mm(3, 3, 14), "ez")
         if lane == "run_subgridded" and not ref:
-            # #1465: explicitly opt in to exercise the experimental subgrid lane.
+            # Explicitly opt in to exercise the experimental subgrid lane.
             sim.add_refinement(z_range=(0.0, 3e-3), ratio=2, validation="research")
         return sim
     return build
@@ -278,7 +278,7 @@ def _mode(lane, on, ref=False):
     sim.add_source(mm(4, 6, thick // 2), "ez", waveform=WAVEFORM, amplitude_kind="field")
     sim.add_probe(mm(8, 6, thick // 2), "ez")
     if lane == "run_subgridded" and not ref:
-        # #1465: explicitly opt in to exercise the experimental subgrid lane.
+        # Explicitly opt in to exercise the experimental subgrid lane.
         sim.add_refinement(z_range=(0.0, 1e-3), ratio=2, validation="research")
     return sim
 
@@ -613,7 +613,7 @@ def test_cell(attr, feature, lane):
             carries = c.kind == T.CARRIES
             # A cell the table calls carried-with-a-known-departure always
             # measures the effect too: its departure is the expected failure,
-            # a lane that drops the input altogether is not (#1338 re-check).
+            # a lane that drops the input altogether is not.
             problems = _carried(name, spec, lane, parity=carries, first_only=not carries)
             dropped = [p for p in problems if p.startswith("declaring it moved the record")]
             if carries and dropped:

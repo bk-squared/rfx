@@ -51,7 +51,7 @@ def _sphere(c):
 def _smoothed(mesh, L, kind):
     grid, fn, c = (_uniform if mesh == 'uniform' else _graded)(L)
     make = kind(c)
-    return jax.jit(lambda lo, hi: jnp.stack([jnp.asarray(a) for a in fn(grid, [(make(lo, hi), 4.)])]))
+    return jax.jit(lambda lo, hi: jnp.stack([jnp.asarray(a) for a in fn(grid, [(make(lo, hi), 4.)], dtype=jnp.float32)]))
 
 
 REFUSED = [

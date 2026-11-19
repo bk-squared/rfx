@@ -92,7 +92,7 @@ def oracle():
     kx0_L, _, _ = _measure(0.0, 1.0, **_LONG)
     dkx_meas, dkx_txt, r_dbased, settle = _ratio(0.20, 1.0, **_LONG, kx0=kx0_L)
 
-    # falsifier: the pre-#448 increment operator (scale the E-update increment) — must NOT pass.
+    # falsifier: the earlier increment operator (scale the E-update increment) — must NOT pass.
     shipped = _nl.apply_kerr_ade
 
     def _increment(state, e_prev, chi3_arr, eps_r_arr):

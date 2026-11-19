@@ -74,7 +74,7 @@ def _make_wr90_sim():
             z=Boundary(lo="pec", hi="pec"),
         ),
         cpml_layers=8,
-    )  # solved length; #1887
+    )  # solved length
     sim.add_waveguide_port(
         0.010, direction="+x", mode=(1, 0), mode_type="TE",
         freqs=_FREQS, f0=6e9, bandwidth=0.5, name="left",
@@ -304,7 +304,7 @@ def test_wg_smatrix_upstream_builder_tape_break_documented():
                 z=Boundary(lo="pec", hi="pec"),
             ),
             cpml_layers=8,
-        )  # solved length; #1887
+        )  # solved length
         sim.add_waveguide_port(
             0.010, direction="+x", mode=(1, 0), mode_type="TE",
             freqs=freqs, f0=6e9, bandwidth=0.5, name="left",

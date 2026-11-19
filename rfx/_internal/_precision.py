@@ -57,3 +57,9 @@ def resolve_field_dtype(precision):
             raise ValueError(FLOAT64_MODE_ERROR)
         return jnp.float64
     return jnp.float16 if precision == "mixed" else None
+
+
+def resolve_coefficient_dtype(precision):
+    """Run coefficient precision, retaining the float32 floor for mixed fields."""
+    import jax.numpy as jnp
+    return jnp.promote_types(resolve_field_dtype(precision) or jnp.float32, jnp.float32)

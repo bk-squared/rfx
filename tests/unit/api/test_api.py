@@ -33,7 +33,7 @@ from rfx.simulation import make_port_source, make_probe, run as low_level_run
 
 def test_basic_simulation():
     """Minimal simulation: PEC cavity with a source and probe."""
-    sim = Simulation(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+    sim = Simulation(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length
     sim.add_port((0.015, 0.015, 0.015), "ez")
     sim.add_probe((0.02, 0.02, 0.02), "ez")
 
@@ -200,7 +200,7 @@ def test_tfsf_oblique_incidence_through_api():
     )
     sim.add_probe((0.04, 0.06, 0.003), "ez")
 
-    # + 83 steps = 2 tau (f0 5 GHz, bw 0.2, dt 7.63 ps): the Bloch pulse peaks at 5 tau since #1831.
+    # + 83 steps = 2 tau (f0 5 GHz, bw 0.2, dt 7.63 ps): the Bloch pulse peaks at 5 tau.
     n_steps = 120 + 83
     result = sim.run(n_steps=n_steps, compute_s_params=False)
 
@@ -211,7 +211,7 @@ def test_tfsf_oblique_incidence_through_api():
 
 def test_dft_plane_probe_through_api():
     """High-level API should expose plane DFT monitors."""
-    sim = Simulation(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+    sim = Simulation(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length
     sim.add_port((0.015, 0.015, 0.015), "ez")
     sim.add_dft_plane_probe(
         axis="x",
@@ -444,9 +444,9 @@ def test_waveguide_four_port_parallel_guides_through_api():
         cpml_layers=10,
         dx=0.002,
     )
-    # A full-height septum: a VOLUME (#931 §1.2), 10 cells across in y and
+    # A full-height septum: a VOLUME, 10 cells across in y and
     # drawn node to node. It realizes electric walls on BOTH bounding planes
-    # (y = 40 mm and y = 60 mm, 11 planes against the pre-#931 10), so each
+    # (y = 40 mm and y = 60 mm, 11 planes against the earlier 10), so each
     # guide either side of it is one cell narrower than before and every
     # number below was re-measured under that realization.
     sim.add(Box((0.0, 0.04, 0.0), (0.12, 0.06, 0.02)), material="pec")
@@ -533,8 +533,7 @@ def test_waveguide_two_port_y_normal_s_matrix_through_api():
     sim.add_waveguide_port(0.09, direction="-y", name="top", **common)
 
     # normalize=True — raw path retains |S|>1 / reciprocity-error by
-    # design; migration matches the 3 tests migrated in Step 5a
-    # (2026-04-21 handoff).
+    # design.
     result = sim.compute_waveguide_s_matrix(num_periods=30, normalize=True)
     s_bottom_top = result.s_params[1, 0, :]
     s_top_bottom = result.s_params[0, 1, :]
@@ -1006,7 +1005,7 @@ def test_tfsf_requires_supported_configuration():
         dx=0.001,
     )
     sim_ports.add_tfsf_source()
-    with pytest.raises(ValueError, match="Lumped ports|lumped ports"):
+    with pytest.raises(ValueError, match="a lumped or wire port"):
         sim_ports.add_port((0.01, 0.003, 0.003), "ez")
 
     with pytest.raises(ValueError, match="polarization"):
@@ -1095,7 +1094,7 @@ def test_fluent_api():
 
 def test_checkpoint_through_api():
     """Checkpoint mode works through the high-level API."""
-    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length
     sim.add_port((0.005, 0.0075, 0.0075), "ez")
     sim.add_probe((0.01, 0.0075, 0.0075), "ez")
 
@@ -1108,7 +1107,7 @@ def test_checkpoint_through_api():
 
 def test_gradient_through_api():
     """AD gradient flows through the high-level API."""
-    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length
     sim.add_probe((0.01, 0.0075, 0.0075), "ez")
 
     grid = sim._build_grid()
@@ -1202,7 +1201,7 @@ def test_five_line_patch_workflow():
 
     Centre sampling includes the 1.6 mm substrate at dx=3mm.
     """
-    # #1138: geometry[0] y solved -18.97 % off its domain-clipped drawing; this test checks five line patch workflow.
+    # geometry[0] y solved -18.97 % off its domain-clipped drawing; this test checks five line patch workflow.
     sim = rfx.Simulation(snap="declared",
         freq_max=4e9, domain=(0.08, 0.06, 0.02),
         boundary="cpml", cpml_layers=8, dx=3e-3,

@@ -22,7 +22,7 @@ pytestmark = pytest.mark.gpu
 
 def test_gradient_matches_finite_diff():
     """AD gradient w.r.t. eps_r matches central finite difference."""
-    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length
     n_steps = 30
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
@@ -44,7 +44,7 @@ def test_gradient_matches_finite_diff():
 
     # Central FD at cells between source and probe. Its float32 rounding error is about
     # eps*|J|/h (eps = 2**-24, J ~ 8.7e-4): 0.54 % of the smallest tested gradient
-    # (~9.5e-6) at h = 1e-3, 5.4 % at h = 1e-4, i.e. on the 5 % bar (#2071).
+    # (~9.5e-6) at h = 1e-3, 5.4 % at h = 1e-4, i.e. on the 5 % bar.
     h = 1e-3
     cx, cy, cz = grid.nx // 2, grid.ny // 2, grid.nz // 2
     test_cells = [
@@ -72,7 +72,7 @@ def test_gradient_matches_finite_diff():
 
 def test_checkpoint_same_forward():
     """Checkpointed run produces the same forward result."""
-    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length
     materials = init_materials(grid.shape)
     n_steps = 30
 
@@ -91,7 +91,7 @@ def test_checkpoint_same_forward():
 
 def test_checkpoint_gradient_matches():
     """Checkpointed gradient matches non-checkpointed gradient."""
-    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length
     n_steps = 30
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
@@ -122,7 +122,7 @@ def test_gradient_descent_step():
     Start with uniform eps_r=2, maximise time-integrated |Ez|² at a
     downstream probe.  One gradient step should improve the objective.
     """
-    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length
     n_steps = 50
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)

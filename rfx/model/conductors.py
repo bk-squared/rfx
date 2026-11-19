@@ -256,6 +256,8 @@ def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root
     root = replace(root, materials=materials, pec_cells=cells, pec_edges=edges,
         stamped_entities=tuple(entities), provenance=root.provenance + (
             ConductorStage(tuple(e.entity_id for e in entities), 'coax stamp'),))
+    from rfx.model.source_admission import refuse_shorted_lumped_rlc
+    refuse_shorted_lumped_rlc(sim, root)
     release_declaration_caches(sim)
     if not _traced_product(root):
         from rfx.model.coax import stamp_check_findings
@@ -546,10 +548,13 @@ def solve_conductors(sim, grid, *, nonuniform=False, preflight=None, n_devices=1
                      realization_not_evaluated=None):
     """Assemble once for execution and lend the pre-port object to its checks."""
     import jax
-    from rfx.model.source_admission import refuse_dead_soft_sources
+    from rfx.model.source_admission import conductor_operator, refuse_dead_soft_sources, refuse_shorted_lumped_rlc
     with jax.ensure_compile_time_eval():
         root = realized_conductors(sim, grid, nonuniform=nonuniform, mode="solve", n_devices=n_devices)
         refuse_dead_soft_sources(sim, root)
+        smoothing, conformal = realization_options or (False, False)
+        refuse_shorted_lumped_rlc(sim, root, operator=conductor_operator(
+            smoothing=smoothing, conformal=conformal))
     # The prepared owner survives transfer to slabs; the assembly view need not.
     root = replace(root)
     from rfx.model.realization_table import bind_table
@@ -624,8 +629,10 @@ def assembled_materials(root, **collectors):
 
 
 def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
-                      *, periodic, sheet_specs=(), root=None):
+                      *, periodic, sheet_specs=(), root=None, operator="staircase"):
     """Carry explicit solve products forward, retaining material/PEC overrides."""
+    import jax
+    from rfx.model.source_admission import refuse_dead_soft_sources, refuse_shorted_lumped_rlc
     if root is not None and root.mode != "solve":
         raise ValueError("A runner cannot consume audit-mode conductors")
     if (root is not None and _same_grid(root.grid, grid)
@@ -633,11 +640,11 @@ def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
             and tuple(map(id, sheets)) == tuple(map(id, root.sheets))
             and tuple(map(id, wires)) == tuple(map(id, root.wires))
             and tuple(periodic) == root.periodic):
+        with jax.ensure_compile_time_eval():
+            refuse_shorted_lumped_rlc(sim, root, operator=operator)
         return replace(root, materials=materials, sheet_impedance=tuple(sheet_specs),
                        _prepared_owner=root._prepared_owner or root)
     # Internal override/S-parameter entry points already have assembled products.
-    import jax
-    from rfx.model.source_admission import refuse_dead_soft_sources
     with jax.ensure_compile_time_eval():
         obj = realized_conductors(sim, grid, nonuniform=hasattr(grid, 'dx_arr'),
             assembly=(materials, None, None, pec_cells), pec_sheets=sheets,
@@ -645,6 +652,7 @@ def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
             geometry_masks=() if root is None else root.geometry_masks.items(),
             assembly_entries=() if root is None else root.assembly_entries)
         refuse_dead_soft_sources(sim, obj)
+        refuse_shorted_lumped_rlc(sim, obj, operator=operator)
     return (replace(obj, assembly_from_sim=False) if root is None else
             replace(obj, assembly=root.assembly, assembly_from_sim=root.assembly_from_sim,
                     _prepared_solve=root._prepared_solve,
@@ -890,12 +898,12 @@ def uniform_solve_inputs(assembly):
 
 
 def forward_products(sim, grid, materials, cells, sheets, wires, periodic, root,
-                     sheet_operator=None):
+                     sheet_operator=None, *, operator="staircase"):
     """Bind overrides while keeping the original substrate for MSL launches."""
     unbound = root is None
     drawn = None if unbound else root.assembly[0]
     root = kernel_conductors(sim, grid, materials, cells, sheets, wires,
-        periodic=periodic, root=root,
+        periodic=periodic, root=root, operator=operator,
         sheet_specs=() if root is None else root.sheet_impedance)
     return replace(root, sheet_operator=sheet_operator), drawn, root.pec_edges
 

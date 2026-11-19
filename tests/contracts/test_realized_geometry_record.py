@@ -209,7 +209,7 @@ def test_frozen_unresolved_volume_still_refuses_execution(entry, diagnostic_firs
 
 
 def _terminated_trace(nonuniform):
-    # Reviewer's synth.py: prime the record BEFORE registering the MSL ports.
+    # Prime the record BEFORE registering the MSL ports.
     d = 127e-6
     kw = {"dz_profile": np.full(10, d)} if nonuniform else {}
     sim = Simulation(freq_max=20e9, domain=(60.4*d, 30*d, 10*d), dx=d,
@@ -312,7 +312,7 @@ def test_subgrid_record_names_unrepresented_refinement(monkeypatch):
     from rfx import Result
     sim = Simulation(freq_max=10e9, domain=(.012, .012, .012), dx=.001, boundary="pec")
     sim.add(Box((.002, .002, .002), (.004, .004, .004)), material="pec")
-    # #1465: explicitly opt in to exercise the experimental subgrid lane.
+    # Explicitly opt in to exercise the experimental subgrid lane.
     sim.add_refinement(z_range=(.004, .008), ratio=2, validation="research")
     monkeypatch.setattr(sim, "_run_subgridded", lambda *a, **k: Result(None, np.zeros((0, 0)), None, None))
     monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)

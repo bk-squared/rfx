@@ -18,7 +18,7 @@ from rfx import Simulation
 def _wr90_sim() -> Simulation:
     sim = Simulation(
         freq_max=12e9,
-        domain=(0.05, 0.024, 0.012),  # main's solved length; #1887
+        domain=(0.05, 0.024, 0.012),  # main's solved length
         dx=2e-3,
         boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=8,

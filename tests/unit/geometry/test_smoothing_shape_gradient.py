@@ -112,10 +112,10 @@ def objective(build, s0):
     # Fixed interface-voxel mask, chosen at s0 so the objective the gradient
     # and the finite difference see is literally the same function.
     e0 = np.asarray(sm.compute_smoothed_eps(grid, [(build(s0), EPS)],
-                                            background_eps=1.0)[0], np.float64)
+                                            background_eps=1.0, dtype='float32')[0], np.float64)
     mask = jnp.asarray((e0 > 1.0 + 1e-9) & (e0 < EPS - 1e-9))
     def f(s):
-        ex = sm.compute_smoothed_eps(grid, [(build(s), EPS)], background_eps=1.0)[0]
+        ex = sm.compute_smoothed_eps(grid, [(build(s), EPS)], background_eps=1.0, dtype='float32')[0]
         return jnp.sum(jnp.where(mask, ex, 0.0))
     return f, int(np.asarray(mask).sum())
 

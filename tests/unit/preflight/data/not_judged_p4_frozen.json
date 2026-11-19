@@ -1,0 +1,298 @@
+{
+  "base_commit": "084b5032b7d014f12b65b4b947cf61a840970bf4",
+  "scenes": {
+    "coarse_dielectric": [
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "dielectric 'dielectric' on x: 7.5 cells per \u03bb_eff (eps_r=16.00, freq_max=10GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+        "region": {
+          "bounds_m": [
+            [
+              0.003,
+              0.003,
+              0.003
+            ],
+            [
+              0.009000000000000001,
+              0.009000000000000001,
+              0.009000000000000001
+            ]
+          ],
+          "cells": [
+            [
+              7,
+              13
+            ],
+            [
+              7,
+              13
+            ],
+            [
+              7,
+              13
+            ]
+          ]
+        },
+        "scope": "object",
+        "severity": "warning",
+        "source": "_validate_mesh_quality",
+        "subjects": [
+          "geometry[0]"
+        ]
+      },
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "dielectric 'dielectric' on y: 7.5 cells per \u03bb_eff (eps_r=16.00, freq_max=10GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+        "region": {
+          "bounds_m": [
+            [
+              0.003,
+              0.003,
+              0.003
+            ],
+            [
+              0.009000000000000001,
+              0.009000000000000001,
+              0.009000000000000001
+            ]
+          ],
+          "cells": [
+            [
+              7,
+              13
+            ],
+            [
+              7,
+              13
+            ],
+            [
+              7,
+              13
+            ]
+          ]
+        },
+        "scope": "object",
+        "severity": "warning",
+        "source": "_validate_mesh_quality",
+        "subjects": [
+          "geometry[0]"
+        ]
+      },
+      {
+        "code": "mesh_resolution",
+        "loc": null,
+        "message": "dielectric 'dielectric' on z: 7.5 cells per \u03bb_eff (eps_r=16.00, freq_max=10GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+        "region": {
+          "bounds_m": [
+            [
+              0.003,
+              0.003,
+              0.003
+            ],
+            [
+              0.009000000000000001,
+              0.009000000000000001,
+              0.009000000000000001
+            ]
+          ],
+          "cells": [
+            [
+              7,
+              13
+            ],
+            [
+              7,
+              13
+            ],
+            [
+              7,
+              13
+            ]
+          ]
+        },
+        "scope": "object",
+        "severity": "warning",
+        "source": "_validate_mesh_quality",
+        "subjects": [
+          "geometry[0]"
+        ]
+      },
+      {
+        "code": "no_sources",
+        "loc": null,
+        "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
+        "region": null,
+        "scope": "model",
+        "severity": "warning",
+        "source": "_validate_cfg_no_sources",
+        "subjects": []
+      },
+      {
+        "code": "lossless_q",
+        "loc": null,
+        "message": "all dielectric(s) ['dielectric'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "region": {
+          "bounds_m": [
+            [
+              0.003,
+              0.003,
+              0.003
+            ],
+            [
+              0.009000000000000001,
+              0.009000000000000001,
+              0.009000000000000001
+            ]
+          ],
+          "cells": [
+            [
+              7,
+              13
+            ],
+            [
+              7,
+              13
+            ],
+            [
+              7,
+              13
+            ]
+          ]
+        },
+        "scope": "object",
+        "severity": "warning",
+        "source": "_validate_cfg_lossless_resonator_in_absorber",
+        "subjects": [
+          "geometry[0]"
+        ]
+      },
+      {
+        "code": "thin_absorber",
+        "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+        "message": "face x_lo is declared cpml with 4 layers. face x_hi is declared cpml with 4 layers. face y_lo is declared cpml with 4 layers. face y_hi is declared cpml with 4 layers. face z_lo is declared cpml with 4 layers. face z_hi is declared cpml with 4 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha: 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+        "region": {
+          "bounds_m": [
+            [
+              -0.004,
+              -0.004,
+              -0.004
+            ],
+            [
+              0.016,
+              0.016,
+              0.016
+            ]
+          ],
+          "cells": [
+            [
+              0,
+              20
+            ],
+            [
+              0,
+              20
+            ],
+            [
+              0,
+              20
+            ]
+          ]
+        },
+        "scope": "place",
+        "severity": "warning",
+        "source": "_validate_cfg_thin_absorber",
+        "subjects": []
+      }
+    ],
+    "thin_absorber_wire_port": [
+      {
+        "code": "thin_absorber",
+        "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+        "message": "face x_lo is declared cpml with 4 layers. face x_hi is declared cpml with 4 layers. face y_lo is declared cpml with 4 layers. face y_hi is declared cpml with 4 layers. face z_lo is declared cpml with 4 layers. face z_hi is declared cpml with 4 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha: 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+        "region": {
+          "bounds_m": [
+            [
+              -0.004,
+              -0.004,
+              -0.004
+            ],
+            [
+              0.016,
+              0.016,
+              0.016
+            ]
+          ],
+          "cells": [
+            [
+              0,
+              20
+            ],
+            [
+              0,
+              20
+            ],
+            [
+              0,
+              20
+            ]
+          ]
+        },
+        "scope": "place",
+        "severity": "warning",
+        "source": "_validate_cfg_thin_absorber",
+        "subjects": []
+      }
+    ],
+    "vacuum_without_source": [
+      {
+        "code": "no_sources",
+        "loc": null,
+        "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
+        "region": null,
+        "scope": "model",
+        "severity": "warning",
+        "source": "_validate_cfg_no_sources",
+        "subjects": []
+      },
+      {
+        "code": "thin_absorber",
+        "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+        "message": "face x_lo is declared cpml with 4 layers. face x_hi is declared cpml with 4 layers. face y_lo is declared cpml with 4 layers. face y_hi is declared cpml with 4 layers. face z_lo is declared cpml with 4 layers. face z_hi is declared cpml with 4 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha: 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+        "region": {
+          "bounds_m": [
+            [
+              -0.004,
+              -0.004,
+              -0.004
+            ],
+            [
+              0.016,
+              0.016,
+              0.016
+            ]
+          ],
+          "cells": [
+            [
+              0,
+              20
+            ],
+            [
+              0,
+              20
+            ],
+            [
+              0,
+              20
+            ]
+          ]
+        },
+        "scope": "place",
+        "severity": "warning",
+        "source": "_validate_cfg_thin_absorber",
+        "subjects": []
+      }
+    ]
+  }
+}

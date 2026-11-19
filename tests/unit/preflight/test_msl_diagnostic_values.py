@@ -145,7 +145,7 @@ SCALARS.update({
 LENGTHS['feed_reflector_gap_m'] = r'the reflector ' + L + ' from the feed'
 
 
-# Additional observations found by the reviewer's independent setup matrix.
+# Additional observations.
 # No unknown numeric key is ignored: printed() raises for any new key.
 LENGTHS.update({
     'five_heights_m': r'five substrate thicknesses, ' + L,

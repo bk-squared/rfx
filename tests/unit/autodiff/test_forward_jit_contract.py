@@ -342,7 +342,7 @@ def test_the_fallback_records_the_time_stepping_over_opaque_operands(
 
 
 # Arm64 CPU only. Measured: 34 ULP on macOS arm64; within the bar on x86-64
-# Linux (VESSL 369367268769) and 0 ULP on GPU (VESSL 369367268759).
+# Linux and 0 ULP on GPU.
 @pytest.mark.xfail(
     jax.default_backend() == "cpu"
     and platform.machine().lower() in ("arm64", "aarch64"),
