@@ -33,7 +33,7 @@ def _build_patch(*, feed_extent: float | None, add_pec_pin: bool = False):
     # warning and avoids CPML-proximity noise on a small test domain.
     domain = (0.02, 0.015, 0.02)
     sim = Simulation(
-        freq_max=2 * F0, domain=(domain[0], 38 * DX, domain[2]), dx=DX, snap="declared",  # solved length; #1887
+        freq_max=2 * F0, domain=(domain[0], 38 * DX, domain[2]), dx=DX, snap="declared",  # solved length
         boundary="pec",
     )
     sim.add_material("sub", eps_r=EPS_R)
@@ -43,7 +43,7 @@ def _build_patch(*, feed_extent: float | None, add_pec_pin: bool = False):
                 (domain[0] - 0.005, domain[1], sub_z0 + H_SUB)),
             material="sub")
     # Patch sits at the top of the substrate (>= 2 cells above the
-    # mid-substrate port cell). It is foil, so a SHEET (#931 §1.3): a
+    # mid-substrate port cell). It is foil, so a SHEET: a
     # zero-thickness Box on the substrate top, realized as one wall plane
     # with Ez through it live. One cell thick it is a VOLUME, which would
     # add a second wall a cell higher and short the Ez between them.

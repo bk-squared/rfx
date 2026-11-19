@@ -1,6 +1,8 @@
 """Subgridded (SBP-SAT) run path extracted from Simulation."""
 
 from __future__ import annotations
+
+from rfx.measurement.calculator_drive import calculator_drive
 from rfx._warning_origin import user_stacklevel
 
 from rfx._internal._grid_metric import field_index
@@ -830,7 +832,7 @@ def run_subgridded_path(
     try:
         for driven in range(n_ports):
             sim._ports = [
-                replace(pe, excite=(idx == driven))
+                replace(pe, excite=calculator_drive(idx == driven, excite=pe.excite))
                 for idx, pe in enumerate(port_entries)
             ]
             column_result = _run_subgridded_once(

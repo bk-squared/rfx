@@ -37,7 +37,7 @@ def _issue(sim, code):
 
 def _sim(boundary, position, component, **kw):
     with warnings.catch_warnings():
-        # The #571 amplitude_kind DeprecationWarning and the pec_faces= one are
+        # The amplitude_kind DeprecationWarning and the pec_faces= one are
         # not what this file measures.
         warnings.simplefilter("ignore")
         sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX,
@@ -47,7 +47,7 @@ def _sim(boundary, position, component, **kw):
 
 
 # ---------------------------------------------------------------------------
-# The #1075 gap: scalar boundary="pec"
+# The gap: scalar boundary="pec"
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("face,position,component", [
@@ -113,7 +113,7 @@ def test_strict_preflight_raises_on_whole_boundary_pec_face():
 
 # ---------------------------------------------------------------------------
 # Regression: the per-face BoundarySpec spelling must keep working (the
-# pec_faces= keyword was removed in #1448; tests/contracts/test_api_1448.py)
+# pec_faces= keyword was removed; tests/contracts/test_api_1448.py)
 # ---------------------------------------------------------------------------
 
 def test_per_face_boundary_spec_still_fires():
@@ -141,7 +141,7 @@ def test_two_spellings_of_one_wall_agree():
 
 
 # ---------------------------------------------------------------------------
-# The message has to be true on BOTH lanes (#1075)
+# The message has to be true on BOTH lanes
 # ---------------------------------------------------------------------------
 
 def test_message_states_refusal_and_remedy():

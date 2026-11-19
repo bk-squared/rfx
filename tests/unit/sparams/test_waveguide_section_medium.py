@@ -147,7 +147,7 @@ def test_axes_and_h_index(graded, axis, direction):
 @pytest.mark.parametrize("profile", ["analytic", "discrete"])
 def test_profiles_and_multimode(profile):
     # Several modes reach the fill check only on the uniform waveguide S calculator:
-    # run()/forward() and the graded calculator refuse the mode count first (#2070).
+    # run()/forward() and the graded calculator refuse the mode count first.
     sim = guide(n_modes=2, mode_profile=profile)
     fill(sim, 0, L)
     sim.add_waveguide_port(.10, direction="-x", f0=9e9, freqs=np.array([8e9, 10e9]),
@@ -279,7 +279,7 @@ def test_two_device_routes(graded, route, record_property, monkeypatch):
     if route == "forward":
         kwargs["distributed"] = True
     # Multi-device lanes refuse waveguide ports by name before any step
-    # instead of running the whole domain on one device (#2053).
+    # instead of running the whole domain on one device.
     monkeypatch.setattr(jax.lax, "scan", _scan_must_not_run)
     with pytest.raises(NotImplementedError,
                        match=r"waveguide ports \(add_waveguide_port\) are not supported on"):
@@ -375,7 +375,7 @@ def _assert_vacuum_main(profile,mode,dtype):
                                   main_beta(freqs,fc,modal_dt,dx))
     np.testing.assert_array_equal(_compute_mode_impedance(freqs,fc,mode,medium=PortMedium(),dt=modal_dt,dx=dx),
                                   main_impedance(freqs,fc,mode,modal_dt,dx))
-    # The source tables changed on purpose for every medium in #2013 (causal admittance, record-independent build);
+    # The source tables changed on purpose for every medium (causal admittance, record-independent build);
     # tests/unit/ports/test_waveguide_incident_tables.py pins them against an independent build.
 
 

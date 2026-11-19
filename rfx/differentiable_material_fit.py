@@ -80,6 +80,8 @@ import numpy as np
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz
 from rfx.optimize import _adam_update
+from rfx.errors import RfxRefusal
+from rfx.material_fit import _EPS_INF_FLOOR, _warn_fit_bounds
 
 
 # ---------------------------------------------------------------------------
@@ -431,7 +433,8 @@ def differentiable_material_fit(
         Adam learning rate.
     initial_guess : DebyeFitResult, LorentzFitResult, or None
         Initial pole parameters from ``fit_debye`` / ``fit_lorentz``.
-        If None, a frequency-band-based default is used.
+        If None, a frequency-band-based default is used. Initial eps_inf below
+        1 is refused; Adam updates project eps_inf to at least 1.
     weight_mag, weight_phase : float
         Weights for magnitude and phase in the S-parameter loss.
     checkpoint : bool
@@ -489,6 +492,12 @@ def differentiable_material_fit(
     else:
         eps_inf_init, debye_init = _default_debye_guess(freqs, n_debye_poles)
         lorentz_init = _default_lorentz_guess(freqs, n_lorentz_poles)
+
+    if eps_inf_init < _EPS_INF_FLOOR:
+        raise RfxRefusal(
+            f"initial eps_inf={eps_inf_init:g} is below {_EPS_INF_FLOOR:g}; "
+            "fit_debye and fit_lorentz return eps_inf >= 1 when fitted freely; "
+            "older results or fits with a fixed eps_inf below 1 are not accepted")
 
     # Pad if needed
     while len(debye_init) < n_debye_poles:
@@ -684,6 +693,7 @@ def differentiable_material_fit(
 
         step, m, v = _adam_update(m, v, grad, it, learning_rate)
         params = params - step
+        params = params.at[0].set(jnp.maximum(params[0], np.log(_EPS_INF_FLOOR)))
 
         if verbose and (it % 10 == 0 or it == n_iterations - 1):
             print(f"  iter {it:4d}  loss = {loss_val:.6e}  "
@@ -698,6 +708,7 @@ def differentiable_material_fit(
 
     # Convert from JAX scalars to Python floats
     eps_inf_out = float(final_eps_inf)
+    _warn_fit_bounds(eps_inf_out)
     debye_out = [
         DebyePole(delta_eps=float(p.delta_eps), tau=float(p.tau))
         for p in final_debye

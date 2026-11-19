@@ -212,7 +212,7 @@ def test_waveguide_resolution_warns():
 
 
 # ---------------------------------------------------------------------------
-# Issue #303: run() advisory tier + honest summary + probe exclusion
+# run() advisory tier + honest summary + probe exclusion
 # ---------------------------------------------------------------------------
 
 def _pec_overlap_sim(*, aligned=False):
@@ -349,7 +349,7 @@ def test_zero_issue_summary_line_is_honest(capsys):
 
 
 # ---------------------------------------------------------------------------
-# Issue #314: wire-port MIDPOINT V/I probe cell inside PEC
+# Wire-port MIDPOINT V/I probe cell inside PEC
 # ---------------------------------------------------------------------------
 
 def _microstrip_sim(port_extent_m: float,
@@ -407,7 +407,7 @@ def test_wire_midpoint_in_gap_does_not_warn():
 
 
 # ---------------------------------------------------------------------------
-# Issue #319: non-midpoint wire-port extent cells inside PEC (dead cells)
+# Non-midpoint wire-port extent cells inside PEC (dead cells)
 # ---------------------------------------------------------------------------
 
 def test_wire_dead_extent_cell_warns_with_live_count():

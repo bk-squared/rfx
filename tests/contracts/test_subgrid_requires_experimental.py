@@ -75,7 +75,7 @@ def test_opt_in_runs_with_one_warning(mode, monkeypatch):
     assert 'validation="research"' not in str(notices[0].message)
     assert notices[0].filename == __file__
     assert result.time_series.shape[0] == 2
-    assert closures == [True]  # #1465: same closure as the former production default
+    assert closures == [True]  # same closure as the former production default
 
 
 @pytest.mark.parametrize("mode", ["production", "research", "off"])

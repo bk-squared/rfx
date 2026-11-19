@@ -108,7 +108,7 @@ def test_main_paths_build_drives_and_rlc_after_realization(monkeypatch, graded, 
     if kind == "msl":
         sim.add(Box(((2 - .35) * .001, (2 - .35) * .001, .003),
                     ((10 + .35) * .001, (9 + .35) * .001, .003)), material="pec")
-        # #1512: the strip starts at the port's grid node. Drawn from 2 mm it left a 3 mm
+        # The strip starts at the port's grid node. Drawn from 2 mm it left a 3 mm
         # open stub whose effective quarter wave (11.9 GHz) is within 1.5x of 0..8 GHz.
         from rfx.preflight.line_port_coverage import port_node_coordinate
         node = port_node_coordinate(sim, (.005, .005, .003))
@@ -173,7 +173,7 @@ def test_main_paths_build_drives_and_rlc_after_realization(monkeypatch, graded, 
 
 import sys
 
-# #1961: references use stored operands, independently of every consumer helper.
+# References use stored operands, independently of every consumer helper.
 # The public smooth, full-tensor and conformal paths all step with tensor.eps;
 # the inverse-tensor kernel is outside this table.
 def _o2_operands(materials, branch, axis):
@@ -328,14 +328,6 @@ UNREACHABLE = {}
 
 # Measured |observed-reference|/|reference|, identical on run and forward.
 _O2_XFAIL_REL = {
-    ('lumped', 'smooth'): .192144888, ('lumped', 'full'): .174978157,
-    ('lumped', 'conformal'): 84.8711297,
-    ('wire', 'smooth'): .123831689, ('wire', 'full'): .112768240,
-    ('wire', 'conformal'): 50.4323076,
-    ('msl', 'smooth'): .258927820, ('msl', 'full'): .000376344724,
-    ('msl', 'conformal'): 2.26802405,
-    ('rlc', 'smooth'): .75, ('rlc', 'full'): .640101789,
-    ('rlc', 'conformal'): .996277330,
     ('waveguide', 'conformal'): .666666605,
     ('sheet', 'plain'): .562499985,
     ('kerr', 'plain'): 1.285714286, ('kerr', 'conformal'): .0692840508,
@@ -345,18 +337,6 @@ _O2_XFAIL_REL = {
 # Each xfail row's judged edge and operands, measured on run and forward.
 # component, index, operator epsilon, update epsilon, sigma, applied w, length cut.
 _O2_XFAIL_AT_EDGE = {
-    ('lumped', 'smooth'): ('ez', (6, 6, 6), 1.75, 1.0, 20.0, None, None),
-    ('lumped', 'full'): ('ez', (6, 6, 6), 1.75, 1.0670069456100464, 20.0, None, None),
-    ('lumped', 'conformal'): ('ez', (7, 6, 9), 1.0, 268.6243896484375, 20.0, 0.0037226700223982334, True),
-    ('wire', 'smooth'): ('ez', (6, 6, 6), 1.75, 1.0, 40.0, None, None),
-    ('wire', 'full'): ('ez', (6, 6, 6), 1.75, 1.0670069456100464, 40.0, None, None),
-    ('wire', 'conformal'): ('ez', (7, 6, 9), 1.0, 268.6243896484375, 40.0, 0.0037226700223982334, True),
-    ('msl', 'smooth'): ('ez', (6, 6, 6), 1.75, 1.0, 10.649312019348145, None, None),
-    ('msl', 'full'): ('ez', (6, 6, 5), 1.0, 1.000807762145996, 10.649312019348145, None, None),
-    ('msl', 'conformal'): ('ez', (7, 4, 8), 1.0, 5.8684492111206055, 10.649312019348145, 0.17040276527404785, True),
-    ('rlc', 'smooth'): ('ez', (6, 6, 6), 1.75, 1.0, 0.0, None, None),
-    ('rlc', 'full'): ('ez', (6, 6, 6), 1.75, 1.0670069456100464, 0.0, None, None),
-    ('rlc', 'conformal'): ('ez', (7, 6, 9), 1.0, 268.6243896484375, 0.0, 0.0037226700223982334, True),
     ('waveguide', 'conformal'): ('ez', (6, 0, 6), 1.0, 1.6666666269302368, 0.0, 0.6000000238418579, True),
     ('sheet', 'plain'): ('ez', (6, 6, 6), 4.0, 1.75, 0.0, None, None),
     ('kerr', 'plain'): ('ez', (5, 7, 7), 4.0, 1.75, 0.0, None, None),

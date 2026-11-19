@@ -100,7 +100,7 @@ def test_empty_schedule_raises():
 
 
 # ---------------------------------------------------------------------------
-# Issue #69 — distributed=True thread-through
+# distributed=True thread-through
 # ---------------------------------------------------------------------------
 
 def _make_nu_factory(domain=(0.01, 0.01, 0.01), dx=5e-3):

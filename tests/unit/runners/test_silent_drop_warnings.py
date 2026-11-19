@@ -72,7 +72,7 @@ def _subgrid_sim(pec=False):
     def build():
         sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02),
                          dx=1e-3, boundary="pec")
-        # #1465: explicitly opt in to exercise the experimental subgrid lane.
+        # Explicitly opt in to exercise the experimental subgrid lane.
         sim.add_refinement((0.012, 0.02), ratio=2, validation="research")
         if pec:
             sim.add(Box((0.002, 0.002, 0.002), (0.005, 0.005, 0.005)),
@@ -290,7 +290,7 @@ def _wr90_sim(debye, conformal=False, dz=None, *, solved_domain=False):
         sim = Simulation(freq_max=8e9, domain=(0.06, 0.02286, 0.01016) if not solved_domain else (0.06, 8 * 3e-3, 4 * 3e-3),
                          dx=3e-3, cpml_layers=6,
                          boundary=BoundarySpec(x="cpml", y=walls, z=walls),
-                         **({"dz_profile": dz} if dz is not None else {}), snap="declared")  # solved length; #1887
+                         **({"dz_profile": dz} if dz is not None else {}), snap="declared")  # solved length
         assert_declared_wall_warning(sim)
         if debye:
             sim.add_material("disp", eps_r=2.0, debye_poles=[
@@ -415,7 +415,7 @@ def test_forward_without_a_conformal_boundary_still_runs(nonuniform):
 
 
 # --------------------------------------------------------------------
-# Review of #1297: what the refusals must NOT catch, and remedies that
+# What the refusals must NOT catch, and remedies that
 # must lead to a lane that carries the argument.
 # --------------------------------------------------------------------
 
@@ -533,7 +533,7 @@ def _graded_pec_sim(nonuniform=True, pec=False):
     return _quiet(build)
 
 
-# Graded multi-device runs carry snapshot= since #1402 step 4g (rfx/runners/_distributed_records.py).
+# Graded multi-device runs carry snapshot= (rfx/runners/_distributed_records.py).
 @pytest.mark.parametrize("kw", [kw for kw in ASKS if kw != "snapshot"])
 def test_distributed_nu_remedies_lead_to_a_lane_that_runs(kw):
     """devices= on a graded mesh: the remedy for each argument names a lane
@@ -682,7 +682,7 @@ def test_uniform_lane_still_runs_a_separate_s_parameter_record():
     different s_param_n_steps is honoured there."""
     def build():
         sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
-                         boundary="pec")  # solved length; #1887
+                         boundary="pec")  # solved length
         sim.add_port((0.002, 0.005, 0.005), "ez")
         sim.add_port((0.008, 0.005, 0.005), "ez")
         return sim
@@ -710,10 +710,10 @@ def test_nu_path_until_decay_runs_on_absorbing_boundary():
             decay_max_steps=200,
         )
     msgs = [str(w.message) for w in caught]
-    # Post-#392 review: this fixture's planned 200-step table (0.38 ns)
+    # This fixture's planned 200-step table (0.38 ns)
     # ends inside the default source pulse (completion t0+3*tau ~
     # 0.48 ns), so its high rel_DC (measured 2.2e-2) is a pure
-    # truncation artifact. The #388 advisory must classify it as
+    # truncation artifact. The advisory must classify it as
     # truncation-dominated (longer decay_max_steps / fixed n_steps) —
     # NOT recommend a higher cutoff, which lengthens the onset and
     # makes truncation worse.
@@ -871,7 +871,7 @@ def test_nu_grid_asymmetric_pmc_allocation():
     assert g.pad_x_lo == 4 and g.pad_x_hi == 4
     # ny = interior + pad_y_hi (no lo padding) = 8 + 4 = 12.
     # 8 interior cells + 0 lo pad (PMC face) + 4 hi pad = 12 cells,
-    # bounded by 13 nodes (#562).
+    # bounded by 13 nodes.
     assert g.ny == 13, f"expected ny=13, got {g.ny}"
     # axis_pads property carries the leading (lo) pad per axis.
     assert g.axis_pads == (4, 0, 4)
@@ -938,7 +938,7 @@ def test_uniform_grid_asymmetric_pmc_allocation():
     assert g.shape[1] == int(np.ceil(10e-3 / 1e-3)) + 1 + 8
 
 
-# forward() CALL ARGUMENTS: graded carries fixed by #1410. Numerical carry
+# forward() CALL ARGUMENTS: graded carries. Numerical carry
 # witnesses live in nonuniform/test_nu_forward_port_freqs.py.
 FORWARD_CALL_ARGUMENTS = {
     "port_s11_freqs": {

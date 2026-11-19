@@ -123,7 +123,7 @@ def _methodB_pattern(theta_deg):
     nx, ny, nz = grid.shape
     cfg, st = init_tfsf_methodB(nx, ny, DX, grid.dt, nz=nz, cpml_layers=CPML,
                                 tfsf_margin=MARGIN, f0=F0, polarization="ez",
-                                direction="+x", theta_deg=theta_deg)
+                                direction="+x", theta_deg=theta_deg, dtype='float32')
     off = 3
     kz = nz // 2
     box = NTFFBox.from_grid(

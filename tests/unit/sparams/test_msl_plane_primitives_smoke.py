@@ -57,7 +57,7 @@ def _build_thru_line():
     sim.add_material("ro4350b", eps_r=EPS_R)
     sim.add(Box((0, 0, 0), (LX, LY, H_SUB)), material="ro4350b")
     y_trace = (2 * H_SUB + 8 * DX) + W_TRACE / 2
-    # 35 um copper foil: a SHEET (#931 §1.3), declared by a zero-thickness
+    # 35 um copper foil: a SHEET, declared by a zero-thickness
     # Box on the substrate top. H_SUB / DX = 254 / 127 = 2 exactly, so the
     # laminate face is a node line and the sheet lands on it with no snap.
     # It was drawn one cell thick before the contract; that made it a

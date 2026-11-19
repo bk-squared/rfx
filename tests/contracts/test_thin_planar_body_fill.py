@@ -46,8 +46,8 @@ def _grid(mesh):
 
 
 def _build(mesh, grid, pairs):
-    return (compute_smoothed_eps_nonuniform(grid, pairs) if mesh == 'graded'
-            else compute_smoothed_eps(grid, pairs))
+    return (compute_smoothed_eps_nonuniform(grid, pairs, dtype='float32') if mesh == 'graded'
+            else compute_smoothed_eps(grid, pairs, dtype='float32'))
 
 
 def _slab(shape, lo, hi):
@@ -111,7 +111,7 @@ def test_kottke_pec_dielectric_stage_reads_the_slab_length():
     scene = SCENES['uniform']
     grid = _grid('uniform')
     inverse = compute_inv_eps_tensor_diag(
-        grid, dielectric_shapes=[(_slab('box', scene['lo'], scene['hi']), EPS)])
+        grid, dielectric_shapes=[(_slab('box', scene['lo'], scene['hi']), EPS)], dtype='float32')
     values = [1 / v for v in _components(inverse, (4, 4, 4))]
     _read('kottke-pec uniform box host Ex Ey Ez', values)
     np.testing.assert_allclose(values, _expected('uniform', scene['lo'], scene['hi']), rtol=1e-6)
@@ -141,7 +141,7 @@ def test_periodic_image_of_a_slab_reads_its_own_length():
     at 0.05-0.20 mm lies in the cell [0, 0.5] mm and in the seam node's
     support [-0.25, 0.25] mm."""
     grid = _periodic_grid()
-    values = _components(compute_smoothed_eps(grid, [(_slab('box', 4.05 * MM, 4.20 * MM), EPS)]),
+    values = _components(compute_smoothed_eps(grid, [(_slab('box', 4.05 * MM, 4.20 * MM), EPS)], dtype='float32'),
                          (4, 4, 0))
     _read('periodic image 4.05-4.20 Ex Ey Ez', values)
     np.testing.assert_allclose(values, [_tangential(.3), _tangential(.3), _normal(.3)], rtol=1e-6)
@@ -151,7 +151,7 @@ def test_slab_straddling_the_periodic_seam_reads_its_own_length():
     """Declared at z 3.95-4.10 mm: the seam node's support [-0.25, 0.25] mm
     holds the run [-0.05, 0.10] mm."""
     grid = _periodic_grid()
-    values = _components(compute_smoothed_eps(grid, [(_slab('box', 3.95 * MM, 4.10 * MM), EPS)]),
+    values = _components(compute_smoothed_eps(grid, [(_slab('box', 3.95 * MM, 4.10 * MM), EPS)], dtype='float32'),
                          (4, 4, 0))
     _read('periodic straddle 3.95-4.10 Ex Ey', values[:2])
     np.testing.assert_allclose(values[:2], [_tangential(.3)] * 2, rtol=1e-6)
@@ -188,7 +188,7 @@ def test_realization_capture_reads_the_thin_fill():
     grid = _grid('uniform')
     shape = _slab('box', scene['lo'], scene['hi'])
     with record_cell_table_capture(grid, [shape]) as calls:
-        compute_smoothed_eps(grid, [(shape, EPS)])
+        compute_smoothed_eps(grid, [(shape, EPS)], dtype='float32')
     fills = [c['fraction'][4, 4, 4] for c in calls if int(c['component']) == 2]
     _read('captured Ez fill', fills)
     assert len(fills) == 1
@@ -207,7 +207,7 @@ def test_thin_slab_beside_another_medium_reads_both_sides(traced):
     far = (Box((-.1, -.1, 2.40 * MM), (.1, .1, 4 * MM)), 2.)
 
     def evaluate(hi):
-        return compute_smoothed_eps(grid, [far, (_slab('box', scene['lo'], hi), EPS)])
+        return compute_smoothed_eps(grid, [far, (_slab('box', scene['lo'], hi), EPS)], dtype='float32')
 
     result = jax.jit(evaluate)(jnp.float32(scene['hi'])) if traced else evaluate(scene['hi'])
     value = float(np.asarray(result[2])[4, 4, 4])

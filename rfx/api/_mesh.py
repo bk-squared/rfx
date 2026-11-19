@@ -7,7 +7,7 @@ grid selection, execution and inspection use the resolved fields.
 from __future__ import annotations
 from rfx._warning_origin import user_stacklevel
 
-from rfx.errors import RfxUnsupported, RfxWarning
+from rfx.errors import RfxRefusal, RfxUnsupported, RfxWarning
 import warnings
 
 import jax
@@ -109,7 +109,7 @@ class _MeshMixin:
         except (jax.errors.ConcretizationTypeError,
                 jax.errors.TracerBoolConversionError,
                 jax.errors.TracerArrayConversionError) as exc:
-            raise ValueError(
+            raise RfxRefusal(
                 "Auto mesh requires static geometry and materials; supply "
                 "dx= explicitly (and fixed profiles) before tracing design inputs."
             ) from exc

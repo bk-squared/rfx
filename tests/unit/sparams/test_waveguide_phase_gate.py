@@ -48,14 +48,14 @@ from rfx.model.waveguide_modes import _compute_beta
 # port moved interior so the reference/probe planes sit OUTSIDE the CPML, and
 # the band kept single-mode (< 0.9·fc_TE01 = 6.745 GHz) — both per the preflight
 # advisories the R5 prototype surfaced. The guide is declared at the width it
-# is solved at (18 and 9 cells of the automatic dx, 41.51 x 20.75 mm; #1887),
+# is solved at (18 and 9 cells of the automatic dx, 41.51 x 20.75 mm),
 # and the predictor's TE10 cutoff c/(2a) reads that width from the built grid.
 DOMAIN = (0.12, 0.04, 0.02)
 BAND_HZ = (4.2e9, 6.5e9)
 N_FREQS = 12
 
 # Gate tolerance: with the predictor on the solved width the masked residual is
-# 0.18° in both directions (#1887; the earlier 3.6° came from a predictor on the
+# 0.18° in both directions (the earlier 3.6° came from a predictor on the
 # drawn 40 mm width while the guide was solved 41.51 mm wide). 1° is ~5x the
 # measured residual; broken cases are 58–180°.
 PHASE_TOL_DEG = 1.0
@@ -85,7 +85,7 @@ def _measure_phase(direction: str, port_x: float):
     f0 = float(freqs.mean())
     bandwidth = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / max(f0, 1.0)))
     dx = 299792458.0 / float(freqs[-1]) / 20.0
-    domain = (DOMAIN[0], 18 * dx, 9 * dx)  # solved length; #1887
+    domain = (DOMAIN[0], 18 * dx, 9 * dx)  # solved length
     sim = Simulation(
         freq_max=float(freqs[-1]), domain=domain, dx=dx,
         boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10,
@@ -169,7 +169,7 @@ def test_phase_slope_recovers_known_plane_separation(direction, port_x):
     # R² ≥ 0.998 (observed ~0.9991) — 0.999 sat on a knife-edge cross-machine.
     assert r2 >= 0.998, f"phase-vs-β fit not linear (R²={r2:.5f})"
     # Slope recovers the plane separation to within 1 % (measured +0.35 %). The
-    # 3.3 % deficit seen before #1887 was the geometry: the predictor used the
+    # 3.3 % deficit seen earlier was the geometry: the predictor used the
     # drawn 40 mm width while the guide was solved 41.51 mm wide.
     assert abs(slope - (-d["dx_local"])) <= 0.01 * abs(d["dx_local"]), (
         f"recovered plane sep {slope*1e3:.3f} mm != known {-d['dx_local']*1e3:.3f} mm"
@@ -224,7 +224,7 @@ def test_deembed_step_sign_rotation_correct(direction, port_x):
     f0 = float(freqs.mean())
     bandwidth = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / max(f0, 1.0)))
     dx = 299792458.0 / float(freqs[-1]) / 20.0
-    domain = (DOMAIN[0], 18 * dx, 9 * dx)  # solved length; #1887
+    domain = (DOMAIN[0], 18 * dx, 9 * dx)  # solved length
     sim = Simulation(
         freq_max=float(freqs[-1]), domain=domain, dx=dx,
         boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10,
@@ -258,7 +258,7 @@ def test_deembed_step_sign_rotation_correct(direction, port_x):
     wrong_resid = np.degrees(np.abs(_wrap(measured_rot - wrong_sign)))
     print(f"\n[de-embed {direction}] max|resid correct-sign|={resid_deg[mask].max():.3f}°  "
           f"max|resid wrong-sign|={wrong_resid[mask].max():.3f}° (bug would be caught)")
-    # Measured 0.03° on the solved width (#1887); 0.5° leaves room across machines.
+    # Measured 0.03° on the solved width; 0.5° leaves room across machines.
     assert resid_deg[mask].max() <= 0.5, (
         f"{direction} de-embed rotation {resid_deg[mask].max():.2f}° != analytic "
         f"-β·(step_sign·Δ) — _shift_modal_waves step_sign regression"

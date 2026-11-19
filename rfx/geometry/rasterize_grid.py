@@ -117,7 +117,7 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
             cum = jnp.concatenate([jnp.zeros((1,), dtype=d_j.dtype),
                                    jnp.cumsum(d_j)])
             nodes = cum[:-1] - cum[pad_lo]
-            return nodes.astype(jnp.float32)
+            return nodes.astype(jnp.promote_types(d_j.dtype, jnp.float32))
         # Concrete path: HOST float64, no f32 cast (a cast re-quantizes node positions and
         # can place the NU lane one plane away from the uniform lane at node-aligned
         # faces).
@@ -640,7 +640,7 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
             "OrientedBox is a volume; axis-aligned sheet conversion is not implemented")
 
     if _is_traced_coords(coords):
-        raise ValueError(
+        raise RfxRefusal(
             f"sheet {name!r}: a sheet's plane is a static integer, and this "
             "mesh is a JAX tracer (mesh-as-design-variable), so the nearest "
             "node plane cannot be resolved. Pin the mesh, or declare the "

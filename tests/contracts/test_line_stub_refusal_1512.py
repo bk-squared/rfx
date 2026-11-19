@@ -80,7 +80,7 @@ def reviewer_line(length):
 
 
 @pytest.mark.parametrize('length,band,old_refuses,new_refuses', [
-    # Solved notch: 29.5 GHz for 0.75 mm, 22.5 GHz for 1.25 mm (review record).
+    # Solved notch: 29.5 GHz for 0.75 mm, 22.5 GHz for 1.25 mm.
     (.00075, (4e9, 23.5e9), False, False),
     (.00075, (4e9, 39e9), False, True),
     (.00125, (4e9, 23.5e9), False, True),

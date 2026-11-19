@@ -2,6 +2,7 @@
 import numpy as np
 
 from rfx.core.jax_utils import is_tracer
+from rfx.errors import RfxUnsupported
 
 
 def admit_graded_periodic(sim):
@@ -21,6 +22,6 @@ def admit_graded_periodic(sim):
         profile = getattr(sim, f"_d{axis}_profile")
         if profile is not None and (is_tracer(profile) or not np.all(
                 np.asarray(profile) == np.asarray(profile)[0])):
-            raise NotImplementedError(
+            raise RfxUnsupported(
                 f"Graded periodic axis {axis!r} requires a constant profile; "
                 "use a constant spacing along a periodic axis")
