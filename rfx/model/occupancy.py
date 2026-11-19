@@ -4,6 +4,8 @@ The single-device uniform and graded steps multiply by these arrays,
 built once before the time loop.
 """
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 from rfx.errors import RfxRefusal, RfxUnsupported
 from functools import partial
 
@@ -211,15 +213,15 @@ def publish_slab_occupancy(materials, cut_occupancy, mesh):
     return materials._replace(edge_keep=local(cut_occupancy))
 
 
-def occupancy_from_design(shape, window, values):
-    """Topology's existing full-grid float32 occupancy input, before release."""
+def occupancy_from_design(shape, window, values, *, dtype):
+    """Topology's existing full-grid run-typed occupancy input, before release."""
     if values is None:
         return None
-    return jnp.zeros(shape, dtype=jnp.float32).at[window].set(values)
+    return jnp.zeros(shape, dtype=jnp.promote_types(dtype, jnp.float32)).at[window].set(values)
 
 
 def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
-                              periodic_bool, design_occupancy):
+                              periodic_bool, design_occupancy, *, debye=None, lorentz=None):
     """Keep the existing optional tensor path and all of its refusals."""
     if (self._pec_occupancy_model == "kottke"
             and design_occupancy is not None and pec_occupancy_local is None):
@@ -232,6 +234,12 @@ def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
     pec_occupancy_for_run = pec_occupancy_local
     tensor = pec_occupancy_local is not None and self._pec_occupancy_model == "kottke"
     if tensor:
+        if debye is not None or lorentz is not None:
+            raise RfxUnsupported(
+                "pec_occupancy_override with pec_occupancy_model='kottke' cannot be "
+                "combined with a Debye or Lorentz pole material: the dispersive "
+                "electric-field update does not use the occupancy inverse permittivity tensor. "
+                "Use no pec_occupancy_override, or a material without poles.")
         from rfx.current_moments import refuse_h_side_conductor
         refuse_h_side_conductor(
             self, "the Kottke occupancy lane (pec_occupancy_model='kottke')")
@@ -240,13 +248,13 @@ def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
         # The plain path's four-cell edge mean, not the per-cell
         # value: occupancy only scales it where a conductor sits.
         inv_baseline = tuple(
-            (1.0 / eps_c).astype(jnp.float32)
+            (1.0 / eps_c).astype(resolve_coefficient_dtype(self._precision))
             for eps_c in materials.components.eps)
         aniso_inv_eps_run = kottke_inv_eps_from_occupancy(
             grid,
             pec_occupancy_local,
             aniso_inv_eps_baseline=inv_baseline,
-            periodic=periodic_bool,
+            periodic=periodic_bool, dtype=resolve_coefficient_dtype(self._precision),
         )
         # Occupancy acts on the volume; the capacitor stays on its
         # declared edge, added once after that correction.

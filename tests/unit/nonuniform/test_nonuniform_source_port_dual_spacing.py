@@ -158,7 +158,7 @@ def test_source_control_volume_is_the_mixed_primal_dual_volume(component):
         f"{component}: realized dV {got:.6e} vs mixed primal/dual "
         f"{expected:.6e} (ratio {got / expected:.6f})")
     # Blindness guard: the fixture must still be graded enough that the
-    # all-primal form is clearly excluded (it is what shipped before #672).
+    # all-primal form is clearly excluded.
     assert abs(primal_only / expected - 1.0) > BLIND_GUARD, (
         f"{component}: fixture stopped discriminating — all-primal dV "
         f"{primal_only:.6e} is within {BLIND_GUARD:.0%} of the correct one")
@@ -228,7 +228,7 @@ def test_source_control_volume_stays_on_the_ad_path():
 
 # Distinct grading per axis, so a leg weighted by the WRONG axis cannot
 # coincide with the right one.
-# Ratios chosen so EVERY leg's wrong weight (the pre-#672 primal/wrong-axis
+# Ratios chosen so EVERY leg's wrong weight (the primal/wrong-axis
 # one) is at least 30% off its correct dual weight — see the blindness guard.
 LOOP_PROFS = [
     np.concatenate([np.full(5, D), np.full(6, 4.0 * D), np.full(5, D)]),
@@ -639,7 +639,6 @@ def test_wp_meta_live_cell_slots_carry_primal_widths(monkeypatch):
     assert isinstance(live_cells, tuple) and len(live_cells) >= 2, live_cells
     assert len(d_par) == len(live_cells)
 
-    # Slots 0..2 are the midpoint of the LIVE run (issue #764).
     assert tuple(meta[0:3]) == tuple(live_cells[len(live_cells) // 2]), (
         f"mid slots {meta[0:3]} are not the live-run midpoint of {live_cells}")
 

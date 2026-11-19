@@ -259,7 +259,7 @@ def test_one_assembly_and_lent_product_is_reused(monkeypatch):
 
 def _solve_only_model(case, graded, monkeypatch):
     if case == 'dead_soft_source':
-        # Reviewer scen7.py: a soft source at the centre of an interior volume.
+        # A soft source at the centre of an interior volume.
         sim = Simulation(10e9, (.024,) * 3, dx=.001, boundary='pec',
                          **({'dz_profile': np.full(24, .001)} if graded else {}))
         sim.add(Box((.006,) * 3, (.018,) * 3), material='pec')

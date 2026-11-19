@@ -173,7 +173,7 @@ def _tiny_tfsf_setup():
     mats = init_materials(grid.shape)
     cfg, st = init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt,
                         cpml_layers=6, tfsf_margin=3, f0=10e9, bandwidth=0.5,
-                        amplitude=1.0, polarization="ez", direction="+x")
+                        amplitude=1.0, polarization="ez", direction="+x", dtype='float32')
     return grid, mats, cfg, st
 
 
@@ -216,10 +216,10 @@ def test_nonuniform_run_refuses_the_same_placement():
 
     dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
     domain = (0.08, 0.006, float(np.sum(dz)))
-    grid = build_nonuniform_grid(8e9, domain, 0.001, 8, dz)
+    grid = build_nonuniform_grid(8e9, domain, 0.001, 8, dz, dtype="float32")
     cfg, _ = init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=8,
                        tfsf_margin=3, f0=4e9, bandwidth=0.5,
-                       polarization="ez", direction="+x")
+                       polarization="ez", direction="+x", dtype='float32')
     x_lo, x_hi = tfsf_injection_planes(cfg)["x"]
 
     def x_position_of(index):
@@ -256,7 +256,7 @@ def test_oblique_source_reports_both_injected_axes():
     assert nx != ny
     cfg, _ = init_tfsf_methodB(nx, ny, 0.002, grid.dt, nz=nz, cpml_layers=6,
                                tfsf_margin=6, f0=10e9, polarization="ez",
-                               direction="+x", theta_deg=20.0)
+                               direction="+x", theta_deg=20.0, dtype='float32')
     planes = tfsf_injection_planes(cfg)
     assert set(planes) == {"x", "y"}
     CPML_PLUS_MARGIN_CELLS = 12

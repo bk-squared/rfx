@@ -158,7 +158,7 @@ def msl_response(lane, mode, *, mutation=False):
         profiles['dz_profile'][4:6] = [.0008, .0012]
     sim = Simulation(freq_max=20e9, domain=(.016, .014, .014), dx=.001,
                      cpml_layers=3, boundary='cpml', **profiles)
-    # #1512: the upper plate starts at the port's grid node. Drawn from 4 mm it left a
+    # The upper plate starts at the port's grid node. Drawn from 4 mm it left a
     # 2 mm open stub behind the port whose effective quarter wave (23.7 GHz) is within
     # 1.5x of the 0..20 GHz default read. The pinned V/w ratios are unchanged by this.
     from rfx.preflight.line_port_coverage import port_node_coordinate

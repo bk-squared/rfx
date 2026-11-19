@@ -1214,10 +1214,10 @@ GRADED_SETUP_SRC = REPO_ROOT / "rfx" / "stepping" / "graded_setup.py"
 GRADED_SRC = REPO_ROOT / "rfx" / "stepping" / "graded.py"
 
 _SNAP_UNI = ("        if ctx.use_current_moments:\n"
-             "            frame.e_prev_slab = _slab_e_snapshot(frame.st, ctx.current_moments)\n")
+             "            frame.e_prev_slab = _slab_e_snapshot(view(frame.st), ctx.current_moments)\n")
 _ACC_UNI = ("        if ctx.use_current_moments:\n"
             "            frame.cm_new = ctx.accumulate_current_moments(\n"
-            "                frame.carry[\"current_moments\"], frame.st, frame.e_prev_slab,\n"
+            "                frame.carry[\"current_moments\"], st, frame.e_prev_slab,\n"
             "                ctx.current_moments, dt, frame.step_idx)\n")
 _RLC_UNI = ("        if ctx.use_lumped_rlc:\n"
             "            frame.st, frame.new_rlc_states = ctx.update_rlc_elements(")
@@ -1247,6 +1247,7 @@ def _runner_mutations(kind):
         before_sources = [
             (acc, ""),
             ("    attachments = {", "    def moved_current_moments(frame):\n"
+             "        st = frame.st\n"
              + acc + "\n    attachments = {"),
             ("(port_specs or ctx.use_wire_refplanes) else ()),",
              "(port_specs or ctx.use_wire_refplanes) else ())"

@@ -610,7 +610,7 @@ def test_a_plain_missing_line_does_not_get_the_adornment_hint() -> None:
 
 # --------------------------------------------------------------------------
 # Closing keywords: GitHub links the PR to every issue its body names after one,
-# wherever it sits, and closes that issue on merge (#1132)
+# wherever it sits, and closes that issue on merge
 # --------------------------------------------------------------------------
 
 _IN_PROSE = (
@@ -649,8 +649,8 @@ def test_a_closing_reference_that_starts_its_line_passes(line: str) -> None:
     "line",
     [
         # the two sentences from merged PR bodies, the first with its last words reworded
-        "It does not close #737. The three decisions the tracker needs from the maintainer",  # PR #1086
-        "It was opened as `Fixes #752`; that is withdrawn. What it does fix still",  # PR #1125
+        "It does not close #737. The three decisions the tracker needs from the maintainer",
+        "It was opened as `Fixes #752`; that is withdrawn. What it does fix still",
         "Rejected: Close #726 from settling alone",
         "Fixes #752 is withdrawn from the PR body",
         "Closes #742 items 1-2; item 3 rides with the next PR",  # closes ALL of #742

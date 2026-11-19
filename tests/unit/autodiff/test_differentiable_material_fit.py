@@ -55,7 +55,7 @@ def test_init_debye_is_differentiable():
         pole = DebyePole(delta_eps=delta_eps, tau=tau)
         coeffs, _ = init_debye([pole], materials, dt, high_wall=(False, False, False))
         # Loss = sum of squared ADE coefficients (differentiable scalar)
-        # ca / cb are per-E-component (x, y, z) tuples since #1260
+        # ca / cb are per-E-component (x, y, z) tuples
         return (sum(jnp.sum(c ** 2) for c in coeffs.ca)
                 + sum(jnp.sum(c ** 2) for c in coeffs.cb))
 
@@ -103,7 +103,7 @@ def test_init_lorentz_is_differentiable():
     def loss_c(kappa):
         pole = LorentzPole(omega_0=w0, delta=d, kappa=kappa)
         coeffs, _ = init_lorentz([pole], materials, dt, high_wall=(False, False, False))
-        return sum(jnp.sum(c) for c in coeffs.c)   # per component (#1260)
+        return sum(jnp.sum(c) for c in coeffs.c)   # per component
 
     g_k = jax.grad(loss_c)(jnp.float32(1e20))
 
@@ -130,7 +130,7 @@ def test_gradient_through_fdtd():
     Uses a tiny 8x8x8 grid with a Debye material to verify that
     the gradient of sum(|Ez_probe|^2) w.r.t. (delta_eps, tau) is non-zero.
     """
-    grid = Grid(freq_max=5e9, domain=(5 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(5 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length
     n_steps = 30
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
@@ -261,7 +261,7 @@ def test_recover_known_debye():
     then use jax.value_and_grad to fit starting from a perturbed initial guess.
     Verify the optimizer moves toward the true parameters.
     """
-    grid = Grid(freq_max=5e9, domain=(5 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(5 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length
     n_steps = 50
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
@@ -356,7 +356,7 @@ def test_recover_known_debye():
 
 
 # ---------------------------------------------------------------------------
-# #580: recovery through the PUBLIC entry with the magnitude-preserving
+# Recovery through the PUBLIC entry with the magnitude-preserving
 # reference_probe mode (acceptance criterion 1). The measurement-harvest
 # trick: n_iterations=1 with learning_rate=0.0 leaves params untouched, so
 # MaterialFitResult.final_s_params IS the model observation at the given
@@ -433,7 +433,7 @@ def test_recover_debye_reference_mode_public_entry():
         poles=[DebyePole(delta_eps=true_de * 2.0, tau=true_tau * 2.0)],
         fit_error=0.0,
     )
-    # VESSL 369367264028: 25 iterations stop short of the truth; at 100,
+    # 25 iterations stop short of the truth; at 100,
     # main recovers tau=51.09 ps and #1012 55.41 ps, both within 15%.
     # The loss at the truth is zero on both; keep the recovery tolerances.
     fit = differentiable_material_fit(
@@ -451,8 +451,8 @@ def test_recover_debye_reference_mode_public_entry():
     # moved toward truth from the 2x start on both parameters
     assert abs(rec_de - true_de) < abs(true_de * 2.0 - true_de)
     assert abs(rec_tau - true_tau) < abs(true_tau * 2.0 - true_tau)
-    # documented recovery tolerance (issue #580 acceptance), pinned from the
-    # 2026-08-07 CPU measurement: de 6.00->3.331 (11% rel err, gate 20%),
+    # documented recovery tolerance, pinned from the
+    # CPU measurement: de 6.00->3.331 (11% rel err, gate 20%),
     # tau 1.00e-10->5.29e-11 (5.8% rel err, gate 15%), loss 1.44e-4->8.40e-6
     # (25 Adam iterations, lr=0.05). Gates carry ~1.8x/2.6x margin over the
     # measured errors, same envelope-with-margin convention as the repo's

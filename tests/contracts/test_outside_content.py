@@ -44,8 +44,8 @@ def test_b1_and_b1prime(eps, reverse, traced, mode):
         shapes = pair(faces, eps)
         if reverse:
             shapes.reverse()
-        return samples(compute_inv_eps_tensor_diag(grid, dielectric_shapes=shapes)
-                       if mode == 'pec' else compute_smoothed_eps(grid, shapes))
+        return samples(compute_inv_eps_tensor_diag(grid, dielectric_shapes=shapes, dtype='float32')
+                       if mode == 'pec' else compute_smoothed_eps(grid, shapes, dtype='float32'))
 
     faces = np.array([.00218, .00228])
     result = jax.jit(evaluate)(jnp.asarray(faces)) if traced else evaluate(faces)
@@ -64,14 +64,14 @@ def test_b1doubleprime_paint(traced):
         shapes = [(Box((-.1, -.1, z), (.1, .1, .1)), 4.),
                   (Box((-.1, -.1, z), (.1, .1, .003)), 10.),
                   (Box((-.1, -.1, -.1), (.1, .1, .00218)), 2.)]
-        return compute_smoothed_eps(grid, shapes)[2][4, 4, 4]
+        return compute_smoothed_eps(grid, shapes, dtype='float32')[2][4, 4, 4]
 
     result = jax.jit(evaluate)(jnp.float32(.00228)) if traced else evaluate(.00228)
     np.testing.assert_allclose(result, .5 / (.18 / 2 + .10 + .22 / 10), rtol=2e-5 if traced else 1e-6)
 
 
 def test_b1g_graded():
-    result = compute_smoothed_eps_nonuniform(grid_of(True), pair((.00218, .00228)))
+    result = compute_smoothed_eps_nonuniform(grid_of(True), pair((.00218, .00228)), dtype='float32')
     np.testing.assert_allclose(samples(result), [2.5, 3.7, 3.7, 3.7, 3.7], rtol=1e-6)
 
 
@@ -99,7 +99,7 @@ def test_b2c_depth_cdf(normal):
 
 def test_b6_far_wall_gradient():
     grid = grid_of()
-    derivative = jax.grad(lambda z: compute_smoothed_eps(grid, pair((.00218, z)))[2][4, 4, 4])(jnp.float32(.00228))
+    derivative = jax.grad(lambda z: compute_smoothed_eps(grid, pair((.00218, z)), dtype='float32')[2][4, 4, 4])(jnp.float32(.00228))
     np.testing.assert_allclose(derivative, -9375., rtol=1e-4)
 
 
@@ -120,7 +120,7 @@ def test_b8_continuity(case, eps, mode):
         shapes = pair((.00218, base + (delta if case != 5 else 0)), eps,
                       cylinder=mode == 'cylinder', xhi=.0024 + delta if case == 5 else .1)
         results.append(floating_arrays(compute_node_tensor_eps(grid, shapes) if mode == 'cylinder'
-                                       else compute_smoothed_eps(grid, shapes)))
+                                       else compute_smoothed_eps(grid, shapes, dtype='float32')))
     for a, b in zip(*results):
         a, b = np.asarray(a), np.asarray(b)
         peak = np.float32(max(np.max(np.abs(a)), np.max(np.abs(b))))
@@ -150,8 +150,8 @@ def test_b8_case6_known_limitations(graded, scene):
         else:
             shapes = [(Box((.0046 + delta, .0036, .0033), (.009, .0084, .0083)), 10.),
                       (Sphere((.0021, .0036, .006), .0015), 10.)]
-        results.append(compute_smoothed_eps_nonuniform(grid, shapes) if graded
-                       else compute_smoothed_eps(grid, shapes))
+        results.append(compute_smoothed_eps_nonuniform(grid, shapes, dtype='float32') if graded
+                       else compute_smoothed_eps(grid, shapes, dtype='float32'))
     for a, b in zip(*results):
         a, b = np.asarray(a), np.asarray(b)
         peak = np.float32(max(np.max(np.abs(a)), np.max(np.abs(b))))

@@ -4,7 +4,7 @@ Only the realized update arrays can establish invariance. Declared geometry
 and read-only monitors are not used as proxies for those arrays.
 """
 
-from rfx.errors import AccuracyWarning, RfxRefusal
+from rfx.errors import AccuracyWarning, RfxRefusal, RfxUnsupported
 from rfx._warning_origin import user_stacklevel
 from dataclasses import fields, is_dataclass
 import warnings
@@ -78,7 +78,23 @@ def validate_realized_vacuum_boundary(
             window = tuple(slice(b[2 * d], min(b[2 * d + 1] + 1, grid.shape[d]))
                            for d in range(3))
             nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
-    sim._validate_tfsf_vacuum_boundary(materials, cfg, nonvacuum_masks=tuple(nonvacuum))
+    sim._validate_tfsf_vacuum_boundary(without_attached_tensor(materials), cfg,
+                                       nonvacuum_masks=tuple(nonvacuum))
+
+
+def without_attached_tensor(materials):
+    """The materials view the vacuum-boundary check walks: no attached tensor.
+
+    The tensor reaches that check as the caller's aniso_eps, aniso_inv_eps
+    and conformal_weights masks, as before it was attached to the model.
+    """
+    components = getattr(materials, "components", None)
+    if components is None:
+        return materials
+    if getattr(components, "tensor", None) is None:
+        return materials
+    from dataclasses import replace
+    return materials._replace(components=replace(components, tensor=None))
 
 
 def validate_source_boundary(sim, *, closed_box):
@@ -462,3 +478,37 @@ def admit_setup(*, grid, tfsf, materials, waveguide_ports, ntff, updates,
                  localized=localized, nonuniform=nonuniform)
 
     return waveguide_ports
+
+
+def admit_tfsf_angle_override(sim, lane, override):
+    """Admit an angle operand after the existing forward dispatch refusals."""
+    if override is None:
+        return
+    from rfx.sources.tfsf import is_oblique
+    entry = sim._tfsf
+    if entry is None:
+        kind = "missing incident source"
+    elif entry.closed_box:
+        kind = "closed box"
+    elif entry.method != "bloch":
+        kind = entry.method
+    elif not is_oblique(entry.angle_deg):
+        kind = "normal incidence"
+    else:
+        kind = None
+    if kind is not None:
+        raise RfxUnsupported(f"tfsf_angle_override is not supported for {kind}")
+    if lane == "fwd_nonuniform":
+        raise RfxUnsupported("tfsf_angle_override is not supported on fwd_nonuniform")
+
+    def check_angle(theta):
+        if not abs(float(theta)) < 90:
+            raise RfxRefusal("tfsf_angle_override requires |angle| < 90 degrees")
+
+    from rfx._traced_check import traced_check
+    from rfx.core.jax_utils import is_tracer
+    traced_check("tfsf_angle_override", "angle range", check_angle, override)
+    if not is_tracer(override):
+        from rfx.sources.tfsf_discrete_plane_wave import warn_bloch_cutoff
+        warn_bloch_cutoff(float(override), entry.bandwidth,
+                         entry.f0 if entry.f0 is not None else sim._freq_max / 2)

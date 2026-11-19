@@ -105,7 +105,7 @@ def test_refusal_matrix(obj, lane, monkeypatch):
         warnings.simplefilter('ignore')
         sim = scene(obj, graded=lane.endswith('graded'))
         grid = sim._build_nonuniform_grid() if lane.endswith('graded') else sim._build_grid()
-        cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1)[0]
+        cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1, dtype='float32')[0]
         # Independently pinned by placement.py's geometry: x=6mm is x_lo=14.
         assert cfg.x_lo == 14 and cfg.x_hi == 15
         started = []
@@ -158,7 +158,7 @@ def closed_box_controls(request):
         for obj in INVENTORY:  # INVENTORY already includes pec_volume.
             sim = scene(obj, interior=True, kind='box')
             grid = sim._build_grid()
-            cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1)[0]
+            cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1, dtype='float32')[0]
             # Volume cells 18,19 (edge endpoints 18..20); sheets/wires/RL
             # at x=19. All transverse extents are within nodes 16..24.
             lo, hi = grid.interval_to_indices(mm(10, 8, 8), mm(12, 16, 16))
@@ -194,7 +194,7 @@ def test_closed_box_distributed_injection_plane(obj, closed_box_controls, monkey
         warnings.simplefilter('ignore')
         sim = scene(obj, kind='box')
         grid = sim._build_grid()
-        cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1)[0]
+        cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1, dtype='float32')[0]
         # x=6 mm maps to node 14; volumes span cells 13,14.
         assert grid.position_to_index(mm(6, 10, 10))[0] == cfg.x_lo == 14
         assert cfg.x_hi == 26
@@ -238,7 +238,7 @@ def test_off_plane_controls(obj):
         warnings.simplefilter('ignore')
         sim = scene(obj, interior=True)
         grid = sim._build_grid()
-        cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1)[0]
+        cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1, dtype='float32')[0]
         assert cfg.x_hi - cfg.x_lo >= 6
         # Objects now occupy x=18,19 (edges through 20), safely inside 14..26.
         assert cfg.x_lo + 2 <= 18 and 20 <= cfg.x_hi - 2
@@ -255,11 +255,11 @@ def test_off_plane_controls(obj):
     ('series_RL', 18.5, False),
 ])
 def test_normal_component_half_cell_admission(entry, kind, x, smoothing):
-    # Review scenes: 24 mm, 1 mm cells, 8 pad cells, margin 6. Literal
+    # Scenes: 24 mm, 1 mm cells, 8 pad cells, margin 6. Literal
     # positions give faces +0.5/+0.6/+1.2/+1.5 cells from x_lo and Ex edges
     # at x_lo+1/2 and x_hi+1/2; no slicing/placement helper sets these values.
     sim = scene(interior=True)
-    cfg = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=2)[0]
+    cfg = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=2, dtype='float32')[0]
     assert (cfg.x_lo, cfg.x_hi) == (14, 26)
     if kind == 'dielectric':
         sim.add_material('dielectric', eps_r=4.)
@@ -303,7 +303,7 @@ def test_other_injection_kinds(kind, obj):
 @pytest.mark.parametrize('kind', ['staircase_eps', 'series_RL_ez', 'thin_pec_sheet'])
 def test_uncorrected_high_e_component_admitted(entry, kind):
     sim = scene(interior=True)
-    cfg = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=2)[0]
+    cfg = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=2, dtype='float32')[0]
     assert (cfg.x_lo, cfg.x_hi) == (14, 26)
     # 8 pad cells and 1 mm cells: node x_hi=26 is x=18 mm. The literal
     # slab [9,18) mm ends with cell 25 (center 17.5 mm), i.e. x_hi-1.
@@ -323,7 +323,7 @@ def test_uncorrected_high_e_component_admitted(entry, kind):
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_staircase_slab_filling_high_cell_refused(entry):
     sim = scene(interior=True)
-    cfg = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=2)[0]
+    cfg = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=2, dtype='float32')[0]
     assert cfg.x_hi == 26
     # One extra cell: [9,19) mm fills cell x_hi=26 (center 18.5 mm).
     sim.add_material('dielectric', eps_r=4.)

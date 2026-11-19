@@ -1,6 +1,8 @@
 """Saved carry and formulation-specific AD tape accounting."""
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 import math
 
 from rfx.api._ad_memory_types import ADMemoryUnavailable
@@ -120,7 +122,7 @@ def carried_closed_box_line_bytes(sim, grid, n_steps, saved):
     from rfx.sources.tfsf_discrete_plane_wave import COMPONENTS
 
     state = jax.eval_shape(lambda: tfsf_from_declaration(
-        sim._tfsf, grid, sim._freq_max, n_steps=n_steps)[1])
+        sim._tfsf, grid, sim._freq_max, n_steps=n_steps, dtype=resolve_coefficient_dtype(sim._precision))[1])
     signatures = Counter((tuple(getattr(state, name).shape), str(getattr(state, name).dtype))
                          for name in COMPONENTS)
     matching = [leaf for leaf in saved if (tuple(leaf["shape"]), leaf["dtype"]) in signatures]
@@ -197,7 +199,7 @@ def face_record_resident_bytes(sim, grid, n_steps, **knobs):
     resident = []
 
     def abstract_cost():
-        cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=n_steps)
+        cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=n_steps, dtype=resolve_coefficient_dtype(sim._precision))
         resident.append(face_record_bytes(cfg, n_steps) if face_record_pays(cfg, n_steps, **knobs) else 0)
         return ()
 

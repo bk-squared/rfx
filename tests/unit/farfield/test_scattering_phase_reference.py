@@ -42,7 +42,7 @@ def test_incident_phase_matches_actual_3d_e_clock_and_position(polarization):
     """Probe samples are the post-update E field, not samples at n*dt."""
     grid, vacuum = _rig()
     cfg, state = init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=8,
-                           f0=F0, polarization=polarization, tfsf_margin=3)
+                           f0=F0, polarization=polarization, tfsf_margin=3, dtype='float32')
     indices = [cfg.x_lo + 2, grid.nx // 2, cfg.x_hi - 2]
     probes = [ProbeSpec(i, grid.ny // 2, grid.nz // 2, polarization) for i in indices]
     result = run(grid, vacuum, STEPS, boundary="cpml", tfsf=(cfg, state), probes=probes)
@@ -185,6 +185,6 @@ def test_unsupported_phase_contract_refuses_before_solving(monkeypatch, change, 
 @pytest.mark.parametrize("index", [-1, 0.5, True, 999])
 def test_incident_reference_index_refuses_outside_slab(index):
     grid, _ = _rig()
-    cfg, state = init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=8, f0=F0)
+    cfg, state = init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=8, f0=F0, dtype='float32')
     with pytest.raises(ValueError, match="integer E-node"):
         measure_normal_incident_spectrum(cfg, state, STEPS, FREQS, grid.dt, reference_index=index)

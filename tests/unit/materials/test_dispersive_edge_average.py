@@ -295,7 +295,7 @@ def test_the_distributed_mixed_update_is_the_single_device_one():
 C0 = 299792458.0
 L, H = 24e-3, 12e-3
 KT = np.pi / L
-F_STATIC = 5.217729982e9              # the static eps 4 root (#1213's oracle)
+F_STATIC = 5.217729982e9              # the static eps 4 root
 BOUND = 5e-3                          # cell-owned reads 1.7e-2, edge mean 3.4e-4
 
 

@@ -4,6 +4,7 @@ from itertools import product
 from inspect import signature
 from types import SimpleNamespace
 
+import jax.numpy as jnp
 import pytest
 
 from rfx import Simulation
@@ -71,9 +72,10 @@ def test_asymmetric_faces_and_absorber_terminal_metres():
     ("upml", upml._sigma_profile_1d, ("order", "R_asymptotic")),
 ])
 def test_absorber_parameters_match_profile_defaults(absorber, profile, names):
+    """Absorber metadata keeps the public float32 cpml profile record."""
     expected = {name: signature(profile).parameters[name].default for name in names}
     if absorber == "cpml":
-        expected["alpha_max"] = float(profile(8, 1e-12, .001).alpha.max())
+        expected["alpha_max"] = float(profile(8, 1e-12, .001, dtype=jnp.float32).alpha.max())
     model = resolve_kinds(BoundarySpec.uniform(absorber), mode="3d", features=Features())
     compare_faces(expected, dict(model.absorber_parameters))
     for name, value in expected.items():

@@ -1,0 +1,264 @@
+"""Admission contracts, a design-box forward regression, and entry frames."""
+
+import inspect
+import json
+import sys
+import warnings
+from dataclasses import dataclass
+from pathlib import Path
+from typing import NamedTuple
+
+import jax
+import jax.numpy as jnp
+import pytest
+
+from rfx import DesignRegion, GaussianPulse, Simulation, TopologyDesignRegion
+from rfx._traced_input_table import ROWS
+from rfx._traced_inputs import TracedStaticInput, admit_traced_inputs, walk
+from rfx.ringdown import RingdownSpec
+
+pytestmark = pytest.mark.source_scan
+
+
+def transform_call(transform, call):
+    if transform == "make_jaxpr":
+        return jax.make_jaxpr(call)(1.0)
+    if transform == "vmap":
+        return jax.vmap(call)(jnp.ones(2))
+    if transform == "grad":
+        return jax.grad(call)(1.0)
+    return jax.jvp(call, (1.0,), (1.0,))
+
+
+@pytest.mark.parametrize("owner,parameter", [
+    ("Simulation.forward", "eps_override"),
+    ("Sphere", "radius"),
+    ("Simulation.forward", "sigma_override"),
+])
+@pytest.mark.parametrize("transform", ["make_jaxpr", "vmap", "grad", "jvp"])
+def test_t4_nonstatic_tracer_passes(owner, parameter, transform):
+    def call(value):
+        admit_traced_inputs(owner, {parameter: value})
+        return value * 2
+
+    transform_call(transform, call)
+
+
+def test_t4_concrete_array_passes_static():
+    admit_traced_inputs("Simulation.forward", {"n_steps": jnp.array(3.0)})
+
+
+@pytest.mark.parametrize("transform", ["make_jaxpr", "grad"])
+@pytest.mark.parametrize("build_box,refuses", [
+    (lambda t: DesignRegion((.004, .004, .004), (.006, .006, .006), eps_range=(t, 12.)), False),
+    (lambda t: TopologyDesignRegion((.004, .004, .004), (.006, .006, .006), beta_projection=t), False),
+    (lambda t: DesignRegion((t, .004, .004), (.006, .006, .006)), True),
+    (lambda t: TopologyDesignRegion((t, .004, .004), (.006, .006, .006)), True),
+    (lambda t: ((.004, .004, .004), (.006, .006, t)), True),
+], ids=["eps-range", "beta-projection", "design-lo", "topology-lo", "tuple-hi"])
+def test_design_box_admission_checks_only_corners(transform, build_box, refuses):
+    def call(value):
+        admit_traced_inputs("Simulation.forward", {"design_box": build_box(value)})
+        return value * 2
+
+    if refuses:
+        with pytest.raises(TracedStaticInput, match=r"Simulation.forward\(design_box="):
+            transform_call(transform, call)
+    else:
+        result = transform_call(transform, call)
+        if transform == "grad":
+            assert float(result) == 2.0
+
+
+@pytest.mark.parametrize("transform", ["make_jaxpr", "grad"])
+def test_forward_design_box_ignores_traced_eps_range(transform):
+    """The design box includes both corner indices, so it covers cells 4, 5 and 6 on each axis and the override is 3 by 3 by 3."""
+    sim = Simulation(freq_max=16e9, domain=(.010, .010, .010), dx=.001,
+                     boundary="pec")
+    sim.add_source((.002, .005, .005), "ez", amplitude_kind="field",
+                   waveform=GaussianPulse(f0=8e9, bandwidth=.8))
+    sim.add_probe((.008, .005, .005), "ez")
+    assert sim.freeze_mesh().shape == (11, 11, 11)
+    eps = jnp.full((3, 3, 3), 2., jnp.float32)
+
+    def call(value):
+        box = DesignRegion((.004, .004, .004), (.006, .006, .006), eps_range=(value, 12.))
+        result = sim.forward(design_box=box, design_eps_override=eps,
+                             n_steps=8, skip_preflight=True)
+        loss = jnp.sum(result.time_series ** 2)
+        return loss, loss
+
+    if transform == "make_jaxpr":
+        jax.make_jaxpr(call)(1.0)
+        value, _ = jax.jit(call)(1.0)
+    else:
+        gradient, value = jax.grad(call, has_aux=True)(1.0)
+        assert float(gradient) == 0.0
+    assert bool(jnp.isfinite(value))
+
+
+def test_t4_private_entry_accepts_resolved_spec_but_refuses_traced_count():
+    @dataclass
+    class ResolvedSpec:
+        eps_r: object
+
+    def call(value, *, n_steps):
+        admit_traced_inputs("Simulation._forward_from_materials", {
+            "design_box": ResolvedSpec(value), "n_steps": n_steps,
+        })
+        return value * 2
+
+    jax.make_jaxpr(lambda t: call(t, n_steps=10))(1.0)
+    with pytest.raises(TracedStaticInput, match=r"Simulation._forward_from_materials\(n_steps="):
+        jax.make_jaxpr(lambda t: call(t, n_steps=t))(1.0)
+
+
+def test_walker_containers_pytrees_cycles_and_depth():
+    @dataclass
+    class Record:
+        value: object
+
+    class Pair(NamedTuple):
+        value: object
+
+    @jax.tree_util.register_pytree_node_class
+    class Tree:
+        def __init__(self, value):
+            self.value = value
+
+        def tree_flatten(self):
+            return (self.value,), None
+
+        @classmethod
+        def tree_unflatten(cls, aux, children):
+            return cls(children[0])
+
+    for build in (lambda t: (t,), lambda t: [t], lambda t: {"v": t}, Record, Pair, Tree):
+        def call(value):
+            admit_traced_inputs("Simulation.forward", {"n_steps": build(value)})
+            return value * 0
+        with pytest.raises(TracedStaticInput, match=r"Simulation.forward\(n_steps="):
+            jax.make_jaxpr(call)(1.0)
+    root = []
+    root.append(root)
+    assert len(list(walk(root))) == 5
+    marker = object()
+    assert any(item is marker for item in walk([[[[marker]]]]))
+    assert not any(item is marker for item in walk([[[[[marker]]]]]))
+
+
+BASE_WRAPPED = {
+    "forward", "_forward_from_materials", "_forward_nonuniform_from_materials",
+    "compute_waveguide_s_matrix",
+}
+
+
+def test_t9_only_baseline_callables_have_wrapped():
+    inventory = json.loads((Path(__file__).resolve().parents[2] / "docs/guides/api_symbol_inventory.json").read_text())
+    names = {"__init__", *inventory["simulation_methods"],
+             "_forward_from_materials", "_forward_nonuniform_from_materials"}
+    assert {name for name in names if hasattr(getattr(Simulation, name), "__wrapped__")} == BASE_WRAPPED
+    for name in BASE_WRAPPED:
+        fn = getattr(Simulation, name)
+        assert not hasattr(fn.__wrapped__, "__wrapped__"), name
+    from tests.contracts.test_traced_input_classification import VALUE_CLASSES
+    for cls in VALUE_CLASSES.values():
+        for name in ("__init__", "__new__", "__post_init__"):
+            if hasattr(cls, name):
+                assert not hasattr(getattr(cls, name), "__wrapped__"), (cls, name)
+
+
+FRAME_CASES = (
+    ("add_source", "rfx/api/__init__.py", 0),
+    ("add_polarized_source", "rfx/api/__init__.py", 0),
+    ("add_coaxial_port", "rfx/api/__init__.py", 0),
+    ("add_port", "rfx/api/__init__.py", 0),
+    ("add_lumped_rlc", "rfx/api/__init__.py", 0),
+    ("add_floquet_port", "rfx/api/__init__.py", 0),
+    ("add_probe", "rfx/api/__init__.py", 0),
+    ("add_vector_probe", "rfx/api/__init__.py", 0),
+    ("add_dft_plane_probe", "rfx/api/__init__.py", 0),
+    ("add_flux_monitor", "rfx/api/__init__.py", 0),
+    ("add_ntff_box", "rfx/api/__init__.py", 0),
+    ("add_current_moment_monitor", "rfx/api/__init__.py", 0),
+    ("run", "rfx/api/_execute.py", 0),
+    ("forward", "rfx/api/_execute.py", 1),
+    ("_forward_from_materials", "rfx/runners/uniform_forward.py", 1),
+    ("compute_coaxial_line_reflection", "rfx/sparams/coax.py", 0),
+    ("compute_coaxial_two_port", "rfx/sparams/coax.py", 0),
+    ("compute_coax_msl_transition", "rfx/sparams/coax.py", 0),
+    ("compute_msl_s_matrix", "rfx/sparams/msl.py", 0),
+    ("compute_mixed_s_matrix", "rfx/sparams/mixed.py", 0),
+    ("compute_waveguide_s_matrix", "rfx/sparams/waveguide.py", 1),
+    ("add_tfsf_source", "rfx/sources/tfsf_discrete_plane_wave.py", 0),
+    ("__post_init__", "rfx/ringdown/__init__.py", 0),
+)
+
+
+@pytest.mark.parametrize("method,source,baseline_frames", FRAME_CASES)
+def test_t9_body_warning_keeps_caller(method, source, baseline_frames):
+    sim = Simulation(domain=(.01, .01, .01), dx=.001, freq_max=1e9)
+    entry = RingdownSpec().__post_init__ if method == "__post_init__" else getattr(sim, method)
+    kwargs = {name: None for name, parameter in inspect.signature(entry).parameters.items()
+              if parameter.default is inspect.Parameter.empty
+              and parameter.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)}
+
+    class ReachedEntry(Exception):
+        pass
+
+    def trace(frame, event, arg):
+        if event == "line" and frame.f_code.co_name == method and frame.f_code.co_filename.endswith(source):
+            warnings.warn("entry caller diagnostic", UserWarning, stacklevel=2 + 1 + baseline_frames)
+            raise ReachedEntry
+        return trace
+
+    previous = sys.gettrace()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            sys.settrace(trace)
+            with pytest.raises(ReachedEntry):
+                entry(**kwargs)
+        finally:
+            sys.settrace(previous)
+    warning, = caught
+    assert warning.filename == __file__, (method, warning.filename, warning.lineno)
+
+
+def test_t9_every_static_owner_has_a_frame_case():
+    owners = {owner for owner, _, state, _ in ROWS if state == "static"}
+    expected = {"__post_init__" if owner == "RingdownSpec" else owner.removeprefix("Simulation.")
+                for owner in owners}
+    assert expected <= {method for method, _, _ in FRAME_CASES}
+
+
+@pytest.mark.parametrize("method,kwargs,exception,message", [
+    ("add_source", {"position": (.005, .005, .005), "component": "bad"}, ValueError,
+     "component must be ex/ey/ez, got 'bad'"),
+    ("add_lumped_rlc", {"position": (.005, .005, .005), "component": "bad"}, ValueError,
+     "component must be ex/ey/ez, got 'bad'"),
+    ("add_floquet_port", {"position": .005, "axis": "bad"}, ValueError,
+     "axis must be 'x', 'y', or 'z', got 'bad'"),
+    ("add_probe", {"position": (.005, .005, .005), "component": "bad"}, ValueError,
+     "component must be a field name, got 'bad'"),
+    ("add_flux_monitor", {"coordinate": .005, "axis": "bad"}, ValueError,
+     "axis must be 'x', 'y', or 'z', got 'bad'"),
+    ("add_current_moment_monitor", {"corner_lo": (.003, .003, .003),
+                                    "corner_hi": (.007, .007, .007),
+                                    "block_size": 0.0, "freqs": (1e9,)}, ValueError,
+     "add_current_moment_monitor(block_size=0.0): the block side must be positive."),
+])
+def test_declaration_opening_check_preserves_concrete_error(method, kwargs, exception, message):
+    sim = Simulation(domain=(.01, .01, .01), dx=.001, freq_max=1e9)
+    with pytest.raises(exception) as caught:
+        getattr(sim, method)(**kwargs)
+    assert type(caught.value) is exception
+    assert str(caught.value) == message
+
+
+def test_forward_invalid_binding_falls_through_to_type_error():
+    sim = Simulation(domain=(.01, .01, .01), dx=.001, freq_max=1e9)
+    with pytest.raises(TypeError) as caught:
+        sim.forward(1)
+    assert not isinstance(caught.value, TracedStaticInput)
+    assert "takes 1 positional argument but 2 were given" in str(caught.value)

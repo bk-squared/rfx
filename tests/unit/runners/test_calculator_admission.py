@@ -63,7 +63,7 @@ def declare_physics(sim, feature):
 
 
 # The 1 mm fixture's solved lengths, 13 x 14 x 13 cells, declared at
-# construction (#1887).
+# construction.
 SOLVED_1MM = (13 * .001, 14 * .001, 13 * .001)
 
 
@@ -99,7 +99,7 @@ def calculator_case(calculator, *, feature=None):
             lambda *args: sim, np.zeros((1, 1, 3), complex),
             np.array([2e9, 3e9, 4e9]), n_iterations=1, verbose=False)
     elif calculator == "mixed_s_matrix":
-        sim = _mixed(False, domain=(.0123, 13 * .0005, .0047))  # solved length; #1887
+        sim = _mixed(False, domain=(.0123, 13 * .0005, .0047))  # solved length
         call = lambda: sim.compute_mixed_s_matrix(
             n_steps=4, skip_preflight=True, magnitude_channel="wave")
     else:

@@ -51,10 +51,10 @@ def arrays_for(grid, pairs, mode):
         return {'diagonal': np.asarray(result.diagonal), 'xi': np.asarray(result.nodes.xi),
                 'triplets': np.asarray(result.nodes.triplets)}
     if mode == 'kottke_pec':
-        return {'inverse_diagonal': np.asarray(smoothing.compute_inv_eps_tensor_diag(grid, pairs, []))}
+        return {'inverse_diagonal': np.asarray(smoothing.compute_inv_eps_tensor_diag(grid, pairs, [], dtype='float32'))}
     build = (smoothing.compute_smoothed_eps_nonuniform if hasattr(grid, 'dx_arr')
              else smoothing.compute_smoothed_eps)
-    return {'diagonal': np.asarray(build(grid, pairs))}
+    return {'diagonal': np.asarray(build(grid, pairs, dtype='float32'))}
 
 
 @pytest.mark.parametrize('path,mode', [('uniform', m) for m in MODES] +
@@ -194,7 +194,7 @@ def mesh_arrays(delta, mode, *, nominal=True, adjacent=False, order='ADC',
                   'triplets': result.nodes.triplets}
     else:
         arrays = {'diagonal': jnp.stack(smoothing.compute_smoothed_eps_nonuniform(
-            grid, pairs, nominal_h_max=maximum))}
+            grid, pairs, nominal_h_max=maximum, dtype='float32'))}
     return membership, arrays
 
 

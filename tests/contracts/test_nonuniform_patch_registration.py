@@ -76,7 +76,7 @@ def test_committed_board_is_solved_at_its_drawn_size():
 
 def test_the_uniform_lattice_is_refused_at_build():
     mod = _load()
-    mod.edge_aware_profiles = lambda *a, **k: {}  # the pre-#1383 x/y mesh
+    mod.edge_aware_profiles = lambda *a, **k: {}  # the earlier x/y mesh
     with pytest.raises(RuntimeError, match="not solved where it is drawn") as exc:
         _build(mod)
     msg = str(exc.value)

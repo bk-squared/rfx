@@ -18,7 +18,7 @@ Two independent witnesses, neither of which shares code with the normalization:
   checked -- not what a helper would return if it were called;
 * the closed form of the 1-D soft-source launch, derived from the Yee update equations.
 
-An earlier measurement on this rig gave errors of 1e-5 .. 2e-4 dB for the 0.01 dB
+An earlier measurement on this rig gave errors of 1e-5 to 2e-4 dB for the 0.01 dB
 tolerance.
 """
 from __future__ import annotations
@@ -134,7 +134,7 @@ def test_the_aux_line_launches_the_soft_source_closed_form():
         grid = Grid(freq_max=F0 * 1.5, domain=(DOMAIN,) * 3, dx=dx, cpml_layers=CPML)
         dt = float(grid.dt)
         cfg, st = init_tfsf(nx=grid.nx, dx=dx, dt=grid.dt, cpml_layers=CPML,
-                            tfsf_margin=3, f0=F0, bandwidth=BW)
+                            tfsf_margin=3, f0=F0, bandwidth=BW, dtype='float32')
         launched = measure_normal_incident_spectrum(cfg, st, n_steps, FREQS, grid.dt)
 
         t = np.arange(n_steps) * dt

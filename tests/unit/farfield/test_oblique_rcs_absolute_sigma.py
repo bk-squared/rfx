@@ -138,7 +138,7 @@ def test_measured_incident_spectrum_captures_mismatch_and_launch():
         cfg, st = init_tfsf_methodB(nx, ny, DX, dt, nz=nz, cpml_layers=CPML,
                                     tfsf_margin=MARGIN, f0=F0,
                                     polarization="ez", direction="+x",
-                                    theta_deg=theta)
+                                    theta_deg=theta, dtype='float32')
         S_meas = measure_incident_spectrum(cfg, st, N_STEPS, freqs, DX)
         times = np.arange(N_STEPS) * dt
         arg = (times - cfg.src_t0) / cfg.src_tau
@@ -200,7 +200,7 @@ def test_validator_covers_x_planes_too():
     nx, ny, nz = grid.shape
     cfg, _ = init_tfsf_methodB(nx, ny, DX, grid.dt, nz=nz, cpml_layers=6,
                                tfsf_margin=6, f0=F0, polarization="ez",
-                               direction="+x", theta_deg=20.0)
+                               direction="+x", theta_deg=20.0, dtype='float32')
     sig = mats.sigma.at[cfg.x_lo, 20:24, :].set(PEC_SIGMA)
     bad = MaterialArrays(eps_r=mats.eps_r, sigma=sig, mu_r=mats.mu_r)
     with pytest.raises(ValueError, match="x_lo"):
@@ -282,7 +282,7 @@ def test_sigma_scales_as_aperture_height_squared():
         cfg, st = init_tfsf_methodB(nx, ny, DX, dt, nz=nz, cpml_layers=CPML,
                                     tfsf_margin=MARGIN, f0=F0,
                                     polarization="ez", direction="+x",
-                                    theta_deg=20.0)
+                                    theta_deg=20.0, dtype='float32')
         kz = nz // 2
         box = NTFFBox.from_grid(
             grid, i_lo=cfg.x_lo - 3, i_hi=cfg.x_hi + 3,

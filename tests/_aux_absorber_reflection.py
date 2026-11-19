@@ -100,7 +100,7 @@ CUTOFF_ARG = math.sqrt(math.log(1000.0))     # cv26's bandwidth_for
 # 2.0e-03 (60 deg) and 2.4e-01 (70 deg) -- two decades of clear air between the
 # angles the rig resolves and the one it does not. The gate still checks every angle
 # it measures against this limit; the per-angle readings themselves are no longer
-# pinned by a test (#1127).
+# pinned by a test.
 FIT_RESID_LIMIT = 1.0e-2
 
 # Both 2-D rigs here -- and GRAZE_RIG in the test file -- run at DX_M / F0_HZ
@@ -167,7 +167,7 @@ def measure_aux_reflection_2d(theta_deg: float, *, nx: int, n_steps: int,
     rec = np.empty((n_steps, idx.size), dtype=np.complex64)
     # The record window starts 3 tau before the pulse peak, not at t = 0: one rectangular FFT of the whole
     # record reads the pulse's position in the window, by up to 50 % at the fast-rig 60 deg and grazing-rig
-    # 80 deg rows (#1831, #1845). With t0 = 3 tau the window starts at step 0, as before.
+    # 80 deg rows. With t0 = 3 tau the window starts at step 0, as before.
     n0 = int(round((float(cfg.src_t0) - 3.0 * float(cfg.src_tau)) / DT_2D))
     for n in range(n0 + n_steps):
         st = update_tfsf_2d(cfg, st, DX_M, DT_2D, float(n) * DT_2D)
@@ -201,7 +201,7 @@ def measure_aux_reflection_2d(theta_deg: float, *, nx: int, n_steps: int,
 
 def _run_1d(nx: int, n_steps: int, probe_rel, dt: float, bw: float, **aux):
     cfg, st = init_tfsf(nx, DX_M, dt, cpml_layers=20, tfsf_margin=5, f0=F0_HZ,
-                        bandwidth=bw, polarization="ez", direction="+x", **aux)
+                        bandwidth=bw, polarization="ez", direction="+x", **aux, dtype='float32')
     ii = jnp.asarray(np.asarray(probe_rel) + int(cfg.src_idx))
     rec = np.empty((n_steps, len(probe_rel)))
     for n in range(n_steps):

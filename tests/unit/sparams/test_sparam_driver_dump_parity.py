@@ -201,20 +201,18 @@ def test_driver_wire_dump_matches_eager_and_replays():
 
     # --- field names / order identical (mirror the eager NamedTuple) ---
     assert type(drv).__name__ == "WirePortVIReplayBundle"
-    # Schema re-pin (issue #764, written provenance): the bundle grows the
+    # The bundle grows the
     # whole-port gap-voltage channel ``raw_port_voltages_fdt`` — the
     # physical driven diagonal S_jj = (V_port - Z0*I)/(V_port + Z0*I)
     # cannot be replayed from the midpoint-cell V alone (the old pin was on
     # the per-cell-V/whole-port-Z0 frame mismatch: matched load read
-    # +0.35426, PEC short +0.26780).  ``None`` in the field marks a
-    # pre-#764 dump (legacy-diagonal replay fallback).
-    # Schema re-pin (issue #683 x #764, written provenance —
-    # docs/design_notes/issue683_decomposer_flip_predeclaration.md): the
-    # bundle also grows the pre-injection drive-sample reference channel
+    # +0.35426, PEC short +0.26780).  ``None`` in the field marks an
+    # earlier dump (legacy-diagonal replay fallback).
+    # The bundle also grows the pre-injection drive-sample reference channel
     # ``raw_drive_ref_voltages_fdt`` — ``raw_voltages_fdt`` now holds the
-    # physical POST-injection samples, and the #308-calibrated
+    # physical POST-injection samples, and the calibrated
     # off-diagonals cannot be replayed without the reference.  ``None``
-    # marks a pre-#683 dump (its raw voltages ARE the reference).
+    # marks an earlier dump (its raw voltages ARE the reference).
     assert drv._fields == eager._fields == (
         "s_params", "freqs", "raw_voltages_fdt", "raw_currents",
         "port_impedances", "port_cell_counts", "port_names",
@@ -263,11 +261,10 @@ def test_driver_wire_dump_matches_eager_and_replays():
     try:
         np.savez(
             tmp,
-            # Schema re-pin (issue #770, written provenance — the
-            # adjudication pre-declaration + results note): the metadata
+            # The metadata
             # carries the off-diagonal frame tag.  The current extractor
             # records the whole-port frame; a dump without the tag replays
-            # the pre-#770 per-cell #308 frame, so an untagged dump of the
+            # the earlier per-cell frame, so an untagged dump of the
             # CURRENT extractor would replay-mismatch loudly (by the
             # measured frame ratio 1.63-1.75x on the canonical thru).
             metadata_json=np.asarray(json.dumps(
@@ -282,9 +279,9 @@ def test_driver_wire_dump_matches_eager_and_replays():
             port_names=np.asarray(drv.port_names, dtype=object),
             driven_port_indices=np.asarray(drv.driven_port_indices),
             raw_port_voltages_fdt=np.asarray(drv.raw_port_voltages_fdt),
-            # Issue #683 x #764: the pre-injection drive-sample reference
-            # channel — without it a post-#683 dump cannot replay the
-            # #308-calibrated off-diagonals (raw_voltages_fdt now holds
+            # The pre-injection drive-sample reference
+            # channel — without it a later dump cannot replay the
+            # calibrated off-diagonals (raw_voltages_fdt now holds
             # the physical POST samples).
             raw_drive_ref_voltages_fdt=np.asarray(
                 drv.raw_drive_ref_voltages_fdt),
