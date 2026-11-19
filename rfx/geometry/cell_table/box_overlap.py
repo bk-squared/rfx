@@ -66,6 +66,11 @@ def exact_box_overlap(grid, carried, lines, sample_lines, tol):
                                     if low < corner[axis] < high})
         start_order = np.argsort(starts[axis], kind='stable')
         stop_order = np.argsort(stops[axis], kind='stable')
+        lower = np.array([image[0][axis] for image in images])
+        upper = np.array([image[1][axis] for image in images])
+        lower_order = np.argsort(lower, kind='stable')
+        upper_order = np.argsort(upper, kind='stable')
+        entered = exited = active = 0
         tiles = []
         for lo, hi in zip(cuts, cuts[1:]):
             before = np.searchsorted(starts[axis][start_order], hi, side='left')
@@ -73,7 +78,13 @@ def exact_box_overlap(grid, carried, lines, sample_lines, tol):
             selected = np.intersect1d(start_order[:before], stop_order[after:])
             weights = np.maximum(0., np.minimum(stops[axis][selected], hi)
                                  - np.maximum(starts[axis][selected], lo)) / widths[axis][selected]
-            tiles.append(((lo + hi) / 2, selected, _along(weights, axis)))
+            while entered < len(images) and lower[lower_order[entered]] <= hi:
+                active |= 1 << int(lower_order[entered])
+                entered += 1
+            while exited < len(images) and upper[upper_order[exited]] < lo:
+                active &= ~(1 << int(upper_order[exited]))
+                exited += 1
+            tiles.append(((lo + hi) / 2, selected, _along(weights, axis), active))
         parts.append(tiles)
 
     def fraction(varying):
@@ -88,7 +99,13 @@ def exact_box_overlap(grid, carried, lines, sample_lines, tol):
             region = np.ix_(*selected)
             weight = math.prod(tile[2] for tile in tiles)
             occupied = False
-            for lo, hi in images:
+            candidates = (1 << len(images)) - 1
+            for tile in tiles:
+                candidates &= tile[3]
+            while candidates:
+                first = candidates & -candidates
+                lo, hi = images[first.bit_length() - 1]
+                candidates ^= first
                 if all(lo[axis] <= tile[0] <= hi[axis] for axis, tile in zip(varying, tiles)):
                     inside = True
                     for axis in fixed:
