@@ -100,6 +100,13 @@ def held_conductor_entries(sim, grid):
     return entries
 
 
+def lattice_support_end(line, cell_axis):
+    """Upper support at each node. A singleton has no forward cell extent."""
+    if not cell_axis or line.size == 1:
+        return line
+    return np.r_[line[1:], line[-1] + line[-1] - line[-2]]
+
+
 def lattice_intersects_aperture(lattice, nodes, lower, upper):
     """Occupied lattice support intersects the closed aperture, without cell slack."""
     # A footprint includes the segments between adjacent occupied nodes.
@@ -123,10 +130,12 @@ def lattice_intersects_aperture(lattice, nodes, lower, upper):
         indices = []
         for axis, values in enumerate(nodes):
             line = np.asarray(values)
-            high = (np.r_[line[1:], line[-1] + line[-1]-line[-2]]
-                    if cell_axes[axis] else line)
+            high = lattice_support_end(line, cell_axes[axis])
             # Roundoff only, in the node array's precision; no geometric slack.
-            eps = 8*np.finfo(line.dtype).eps*max(np.max(np.abs(line)), np.min(np.diff(line)))
+            scale = np.max(np.abs(line))
+            if line.size > 1:
+                scale = max(scale, np.min(np.diff(line)))
+            eps = 8 * np.finfo(line.dtype).eps * scale
             indices.append(np.flatnonzero((high >= lower[axis]-eps)
                                           & (line <= upper[axis]+eps)))
         if all(len(i) for i in indices) and mask[np.ix_(*indices)].any():

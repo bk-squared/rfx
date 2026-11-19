@@ -14,7 +14,7 @@ import numpy as np
 from rfx._declarations import declaration_root
 from rfx.preflight.msl_codes import msl_diagnostic, msl_text, stub_diagnostic, msl_error
 from rfx.geometry.csg import Box, declared_bounds
-from rfx.geometry.port_termination import conductor_entries
+from rfx.geometry.port_termination import conductor_entries, lattice_support_end
 
 
 @dataclass(frozen=True)
@@ -106,8 +106,7 @@ def _intervals(sim, grid, shape, coords, axis, lower, upper, cache):
         indices = []
         for a, values in enumerate(nodes):
             values = np.asarray(values)
-            end = (np.r_[values[1:], values[-1] + values[-1] - values[-2]]
-                   if cell_axes[a] else values)
+            end = lattice_support_end(values, cell_axes[a])
             indices.append(np.arange(len(values)) if a == axis else
                            np.flatnonzero((end >= lower[a]) & (values <= upper[a])))
         if not all(len(i) for i in indices):

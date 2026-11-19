@@ -2018,10 +2018,11 @@ def refuse_pmc_smoothing(sim, grid):
     nodes = [np.asarray(v) for v in (coords.x, coords.y, coords.z)]
     for face in sorted(faces):
         axis = "xyz".index(face[0])
+        if nodes[axis].size == 1:
+            continue
         hi = face.endswith("hi")
         plane = nodes[axis][-1 if hi else 0]
-        d = (abs(nodes[axis][-1] - nodes[axis][-2]) if hi
-             else abs(nodes[axis][1] - nodes[axis][0]))
+        d = _axis_cells(nodes[axis])[hi]
         face_nodes = list(nodes)
         face_nodes[axis] = np.array([plane])
         xyz = np.meshgrid(*face_nodes, indexing="ij")
