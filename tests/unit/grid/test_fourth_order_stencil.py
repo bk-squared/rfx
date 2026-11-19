@@ -65,7 +65,6 @@ def test_update_order2_state_byte_identical():
     called the disagreement a kernel defect; the kernel was the IEEE-
     faithful side of it. ``np.array_equal`` is unchanged: this is still a
     BYTE gate, now against arithmetic that cannot drift with the compiler.
-
     ey's curl_y spans axis 0 (via bwd(hz, 0)), so asserting .ex and .ey covers all three
     difference axes.
     """

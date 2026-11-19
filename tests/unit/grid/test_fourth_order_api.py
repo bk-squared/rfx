@@ -110,8 +110,6 @@ def test_order4_fenced_nonuniform():
         sim.run(n_steps=10, skip_preflight=True)
 
 
-
-
 def test_order4_fenced_dispersive():
     """stencil_order=4 with a Debye dispersive material raises."""
     from rfx.geometry.csg import Box
