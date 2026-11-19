@@ -1405,12 +1405,15 @@ def test_the_lattice_builds_the_declared_board_on_every_rung():
     """Build-time only: every rung of the ladder realizes the declared board,
     and every other h/n from h/4 to h/12 is refused for realizing another one.
     All candidates are built in the build-only box; h/4 and h/8 are also built
-    in the ladder's box, and the two boxes must realize the same board there."""
+    in the ladder's box, and the two boxes must realize the same board there.
+    The ring-down witness reads Ez halfway up the substrate under the patch near its +x radiating edge, where the TM010 field is strong."""
     assert (
         all(round(WITNESS_PROBE_OFFSET_M[0] / d) != round(FEED_OFFSET_X / d) or
         round(WITNESS_PROBE_OFFSET_M[1] / d) != 0 for d in LADDER_M)
     ), (
         'ring-down witness must occupy a different cell from the drive on every rung')
+    assert all(abs(H_SUB / 2 / d - round(H_SUB / 2 / d)) < 1e-9 for d in LADDER_M), (
+        'the witness height h/2 must be a whole number of cells on every rung')
     fr = BUILD_CHECK_FRAME
     print(f"\n  declared board: patch {L_PATCH*1e3:.2f} × {W_PATCH*1e3:.2f} mm centred "
           f"at ({PATCH_CENTRE_X_M*1e3:.3f}, {PATCH_CENTRE_Y_M*1e3:.3f}) mm, ground "
