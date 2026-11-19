@@ -362,7 +362,8 @@ This field stays to the end of the record instead of decaying.
 The backscatter then depends on the record length: from 6 to 12 ns it changed by 2.3–2.7 dB at most frequencies and by up to 7.7 dB at a backscatter null.
 The extinction from the optical theorem differs from Mie by 20–51 % across the band; the staircase (`subpixel_smoothing=False`) on the same mesh differs by 13–14 %.
 A late field of 1e-2 to 5e-2 of the peak was also seen at ka 10 and on three meshes.
-`run()` warns "no ring-down settling witness" but does not refuse the run.
+`run()` warns "no ring-down settling witness" and names the outputs read from that record,
+but does not refuse the run.
 Until a fix lands, use the staircase on a closed curved PEC body.
 Conformal PEC was not measured on this sphere, and it cannot be combined with `"kottke_pec"` (next entry).
 

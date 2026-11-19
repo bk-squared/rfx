@@ -224,7 +224,9 @@ def test_wire_s_only_resonance_warns_without_internal_double_fire():
     assert np.isfinite(witness['worst_freq_hz'])
     messages = [str(w.message) for w in caught if 'settling witness' in str(w.message)]
     assert len(messages) == 1
-    assert f"worst bin {witness['worst_freq_hz']:.9g} Hz" in messages[0]
+    s_rows = [row for row in witness['runs'] if 'S-parameters' in row.get('reads', ())]
+    worst_s = max(s_rows, key=lambda row: float(np.max(row['share_per_bin'])))
+    assert f"worst bin {worst_s['worst_freq_hz']:.9g} Hz" in messages[0]
     sim._internal_probe_indices = {0}
     with warnings.catch_warnings(record=True) as internal:
         warnings.simplefilter('always')

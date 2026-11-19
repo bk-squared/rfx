@@ -218,6 +218,8 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
     settling_db, witness = decay_stop_first(result, *sim._run_settling_witness(result))
     tail_status = witness["status"]
     settling_db, witness = with_coverage(settling_db, witness, coverage)
+    groups = witness.get("groups") if isinstance(witness, dict) else None
+    witness = {k: v for k, v in witness.items() if k != "groups"} if isinstance(witness, dict) else witness
     if not forward_result:
         result = result._replace(settling_db=settling_db,
                                  settling_witness=witness)
@@ -228,81 +230,121 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
     if tail_status in {"pass", "absent"} and warn_uncovered(witness):
         return result
 
-    from rfx.api._sparams import (
-        _warn_if_ringdown_truncated,
-        settling_verdict,
-    )
+    from types import SimpleNamespace
+    from rfx.api._sparams import _warn_if_ringdown_truncated
+    from rfx.sparams._record_selection import field_outputs_read
 
     has_s = (getattr(result, 's_params', None) is not None
-              or bool(getattr(result, 'waveguide_sparams', None)))
-    if sim._ntff is None and not sim._dft_planes and not has_s:
+             or bool(getattr(result, 'waveguide_sparams', None)))
+    declared = field_outputs_read(SimpleNamespace(
+        ntff_box=sim._ntff, dft_planes=sim._dft_planes,
+        flux_monitors=sim._flux_monitors,
+        current_moment_monitor=sim._current_moments))
+    outputs_read = set(declared) | set(field_outputs_read(result))
+    if has_s:
+        outputs_read.add("S-parameters")
+    if not outputs_read:
         return result
-
-    if has_s and witness['status'] in {'fail', 'undetermined'}:
-        worst = witness['worst_freq_hz']
-        bin_label = (f"worst bin {worst:.9g} Hz" if np.isfinite(worst)
-                     else "worst bin undetermined")
-        shares = np.asarray(witness["share_per_bin"])
-        peak = float(np.max(shares)) if shares.size else float("nan")
-        errors = np.asarray(witness.get('record_end_error_per_bin', ()))
-        kappas = np.asarray(witness.get('kappa_per_bin', ()))
-        quantity = (f", e_Q {np.max(errors):.9g}, kappa_Q {np.max(kappas):.9g}"
-                    if errors.size and kappas.size else "")
-        warning_witness = {**witness, "reason": witness["reason"] if "rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES" in witness["reason"] else f"share {peak:.9g}"}
-        _warn_if_ringdown_truncated(
-            [settling_db], (), witnesses=[warning_witness],
-            n_steps=n_steps, num_periods=None if n_steps is not None else num_periods,
-            drive_labels=(f"S-channel {bin_label}, share {peak:.9g}{quantity}",),
-            consequence="S-parameter truncation is suspect")
-        return result
+    every_output = (("S-parameters",) if has_s else ()) + tuple(
+        name for name in field_outputs_read(SimpleNamespace(
+            ntff_box=True, dft_planes=True, flux_monitors=True, current_moment_monitor=True))
+        if name in outputs_read)
 
     operation = "forward() call" if context == "forward" else "run"
-    verdict = settling_verdict(settling_db)
-    if verdict == "fail":
-        _warn_if_ringdown_truncated(
-            np.array([float(settling_db)]),
-            (),
-            n_steps=None if n_steps is None else int(n_steps),
-            num_periods=None if n_steps is not None else num_periods,
-            drive_labels=(
-                f"worst probe record {witness['worst_record']}"
-                + (_LONE_PROBE_NOTE if witness['worst_record']
-                   in witness.get('lone_records', ()) else ""),),
-            consequence=(
-                f"every DFT-derived quantity of this {operation} — NTFF far "
-                "fields, field-DFT planes, Harminv modes — integrates a "
-                "cut transient"),
-            quoted_thing="any of them",
-        )
-    elif verdict == "absent":
-        import warnings
-        warnings.warn(
-            f"no ring-down settling witness on this {operation}: "
-            f"{witness['reason']}. This {operation} requests NTFF and/or "
-            "field-DFT output, so its truncation is unguarded; "
-            "settling_db is None, which is not a pass.", AccuracyWarning,
-            stacklevel=user_stacklevel(),
-        )
-    elif witness.get("source_dominated"):
-        # A RUNTIME warning, not a preflight advisory: the emission
-        # contract (113 sites / 74 codes) is frozen, and this is a
-        # fact about the finished record, not about the declared
-        # inputs. Scoped exactly like the two above -- NTFF/field-DFT
-        # runs only, silent on library-internal driver runs -- so it
-        # cannot flood. It fires only where the verdict PASSED
-        # on a dominated record, which is the vacuous pass; a
-        # dominated FAIL already warns above, in the safe direction.
-        import warnings
-        warnings.warn(
-            f"ring-down settling witness on this {operation} is "
-            f"source-dominated: {witness['qualifier']} Reported "
-            f"{witness['worst_record']} = {float(settling_db):+.1f} dB "
-            "is a source turn-off measurement, so this "
-            f"{operation}'s NTFF/field-DFT output is effectively "
-            "unguarded.", AccuracyWarning,
-            stacklevel=user_stacklevel(),
-        )
+    groups = _warning_groups(result, witness, every_output, groups)
+    s_untagged = has_s and not any("S-parameters" in g.get("reads", ()) for g in groups)
+    for row in groups:
+        reads = tuple(row.get("reads", ())) or declared
+        if s_untagged:
+            reads = ("S-parameters",) + reads
+        if not outputs_read.intersection(reads):
+            continue
+        status = row['status']
+        if status == 'pass' and not row.get('source_dominated'):
+            continue
+        names = ", ".join(reads)
+        sentence = f" Outputs read from this record: {names}."
+        if "S-parameters" in reads and status in {'fail', 'undetermined'}:
+            worst = row.get('worst_freq_hz')
+            bin_label = (f"worst bin {worst:.9g} Hz"
+                         if worst is not None and np.isfinite(worst)
+                         else "worst bin undetermined")
+            shares = np.asarray(row.get("share_per_bin", ()))
+            peak = float(np.max(shares)) if shares.size else float("nan")
+            errors = np.asarray(row.get('record_end_error_per_bin', ()))
+            kappas = np.asarray(row.get('kappa_per_bin', ()))
+            quantity = (f", e_Q {np.max(errors):.9g}, kappa_Q {np.max(kappas):.9g}"
+                        if errors.size and kappas.size else "")
+            reason = row.get("reason") or ""
+            warning_witness = {**row, "reason": reason if "rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES" in reason else f"share {peak:.9g}"}
+            _warn_if_ringdown_truncated(
+                [np.nan if row.get('db') is None else row['db']], (), witnesses=[warning_witness],
+                n_steps=n_steps, num_periods=None if n_steps is not None else num_periods,
+                drive_labels=(f"S-channel {bin_label}, share {peak:.9g}{quantity}",),
+                consequence="S-parameter truncation is suspect",
+                outputs_sentence=sentence)
+        elif status == 'fail':
+            _warn_if_ringdown_truncated(
+                [row['db']], (), witnesses=[row],
+                n_steps=None if n_steps is None else int(n_steps),
+                num_periods=None if n_steps is not None else num_periods,
+                drive_labels=(
+                    f"worst probe record {row.get('worst_record')}"
+                    + (_LONE_PROBE_NOTE if row.get('worst_record')
+                       in row.get('lone_records', ()) else ""),),
+                consequence=(
+                    f"every DFT-derived quantity of this {operation} — {names}, "
+                    "Harminv modes — integrates a cut transient"),
+                quoted_thing="any of them", outputs_sentence=sentence,
+            )
+        elif status in {'undetermined', 'absent'}:
+            import warnings
+            warnings.warn(
+                f"no ring-down settling witness on this {operation}: "
+                f"{row['reason']}. This {operation} requests {names}, "
+                "so its truncation is unguarded; "
+                "settling_db is None, which is not a pass." + sentence, AccuracyWarning,
+                stacklevel=user_stacklevel(),
+            )
+        elif row.get("source_dominated"):
+            import warnings
+            warnings.warn(
+                f"ring-down settling witness on this {operation} is "
+                f"source-dominated: {row['qualifier']} Reported "
+                f"{row['worst_record']} = {float(row['db']):+.1f} dB "
+                "is a source turn-off measurement, so this "
+                f"{operation}'s {names} output is effectively "
+                "unguarded." + sentence, AccuracyWarning,
+                stacklevel=user_stacklevel(),
+            )
     return result
+
+
+def _warning_groups(result, witness, every_output, groups=None):
+    """The record-end groups one warning each speaks for (DESIGN Addendum 2).
+
+    A witness from ``build_settling_witness`` carries ``groups`` (rows of one
+    ``reads`` tuple, combined). One group is the witness itself, so the
+    whole witness's later edits (decay stop line) stay in its text. A witness
+    handed in whole with tagged ``runs`` is grouped from them; with neither,
+    it is one group that reads every output (the conservative side).
+    """
+    from rfx.measurement import decay_stop_first
+    from rfx.sparams._record_selection import _combine_rows
+
+    if not groups:
+        runs = witness.get("runs") or ()
+        if runs and all("reads" in run for run in runs):
+            by_reads: dict[tuple, list] = {}
+            for run in runs:
+                by_reads.setdefault(tuple(run["reads"]), []).append(run)
+            groups = [{**_combine_rows(members, np.empty(0)), "reads": reads}
+                      for reads, members in by_reads.items()]
+        else:
+            return [{**witness, "reads": every_output}]
+    if len(groups) == 1:
+        return [{**witness, "reads": tuple(groups[0].get("reads", ()))}]
+    return [decay_stop_first(result, None, group)[1] for group in groups]
 
 
 def tfsf_source_drive(cfg, grid):
