@@ -29,8 +29,7 @@ def _dump_path(name: str) -> Path:
 
 
 def _reliability_from_dump(name: str):
-    # These historical v2 records lack actual S references. The low-signal
-    # test needs only measured V/I; do not invent references to replay S.
+    """Do not invent references to replay S from records lacking actual S references."""
     with np.load(_dump_path(name), allow_pickle=False) as dump:
         reliable = _msl_wave_split_reliability(
             dump['raw_v'][:, 0, 0, :], dump['raw_i1'][:, 0, :], dump['freqs_hz']
@@ -110,13 +109,13 @@ def test_voltage_only_dip_remains_reliable():
 
 
 def test_unreliable_bins_emit_one_aggregate_warning():
+    """The warning's purpose includes the uncertainty caveat."""
     reliable = np.array([[True, False, False], [True, True, False]])
     with pytest.warns(UserWarning) as recorded:
         _warn_msl_wave_split_unreliable(
             reliable, np.array([8.4e9, 8.45e9, 8.5e9])
         )
     assert len(recorded) == 1
-    # The warning's purpose includes the uncertainty caveat, not its prose.
     message = str(recorded[0].message)
     assert "not proof" in message
     assert "transmission zero" in message

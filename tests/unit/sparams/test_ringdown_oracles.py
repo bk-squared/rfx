@@ -20,12 +20,13 @@ import pytest
 import rfx.measurement.ringdown_tail as ringdown_tail
 from rfx import ringdown as rd
 
-DT = 1.2148552052451076e-12            # patch board step (s)
-F_MAX = 4.0e9                           # that board's freq_max
-N_RECORD = 8000                         # 9.72 ns: the slow modes still ring
+PATCH_BOARD_STEP_S = 1.2148552052451076e-12
+DT = PATCH_BOARD_STEP_S
+PATCH_BOARD_MAX_FREQUENCY_HZ = 4.0e9
+F_MAX = PATCH_BOARD_MAX_FREQUENCY_HZ
+N_RECORD = 8000
 FREQS = 1.5e9 + 1.0e7 * np.arange(201)
 
-# (f Hz, Q, residue channel 0, residue channel 1); each one conjugate pair.
 MODES = (
     (2.03e9, 60.0, 0.50 * np.exp(0.3j), 0.15 * np.exp(-1.1j)),
     (2.51e9, 100.0, 0.40 * np.exp(-0.7j), 0.50 * np.exp(2.0j)),
@@ -35,6 +36,7 @@ MODES = (
 
 
 def _true_poles(modes=MODES):
+    """Each mode is (f Hz, Q, residue channel 0, residue channel 1)."""
     s, r = [], []
     for f, q, *res in modes:
         w = 2.0 * np.pi * f
@@ -78,10 +80,6 @@ def _identify(y, dt=DT, f_max=F_MAX, **kw):
     return rd.identify(y, dt, int(round(0.5 * n)), n, freq_max=f_max, **kw)
 
 
-# ---------------------------------------------------------------------------
-# The closed form and its index convention
-# ---------------------------------------------------------------------------
-
 def test_the_tail_is_large_on_this_record():
     """The record stops while the slow modes ring, so a wrong tail cannot hide:
     the unrecorded part is a sizeable fraction of the infinite DFT."""
@@ -104,7 +102,6 @@ def test_tail_index_convention_with_the_true_model():
                                _model(s, r * np.exp(s * DT * n_ref)[:, None], n_ref),
                                N_RECORD)
     assert _rel(got2, y_inf) < 1e-11, _rel(got2, y_inf)
-    # the same record cut shorter: its own tail, the same infinite DFT
     got3 = rd.complete_spectra(y, DT, FREQS, _model(s, r, 0), 5000)
     assert _rel(got3, y_inf) < 1e-11, _rel(got3, y_inf)
 
@@ -118,14 +115,14 @@ def test_tail_keeps_its_digits_next_to_a_slow_pole():
     from decimal import Decimal, getcontext
 
     getcontext().prec = 50
-    dt = 2.0 ** -40                                   # 0.909 ps, exact products
+    dt = 2.0 ** -40
     f0, q, n_last = 2.5e9, 1.0e7, 99
     w0 = 2.0 * np.pi * f0
     alpha = w0 / (2.0 * q)
     s = np.array([-alpha + 1j * w0])
     tail = ringdown_tail.tail_dft(_model(s, np.array([[1.0 + 0.0j]]), 0, dt=dt), n_last,
                        np.array([f0]))[0, 0]
-    eps = Decimal(alpha) * Decimal(dt)                # exact: dt is 2**-40
+    eps = Decimal(alpha) * Decimal(dt)
     n1 = n_last + 1
     ref = Decimal(dt) * (-eps * n1).exp() / (1 - (-eps).exp())
     rel = abs(complex(tail) - float(ref)) / float(ref)
@@ -134,12 +131,8 @@ def test_tail_keeps_its_digits_next_to_a_slow_pole():
     rel_naive = abs(naive - float(ref)) / float(ref)
     assert abs(tail.imag) < 1e-14 * abs(tail.real)
     assert rel < 1e-14, rel
-    assert rel_naive > 1e-9, rel_naive              # the digits expm1 keeps
+    assert rel_naive > 1e-9, rel_naive
 
-
-# ---------------------------------------------------------------------------
-# Identification on a window
-# ---------------------------------------------------------------------------
 
 def test_completion_from_the_window_is_the_infinite_dft():
     """Identify on [N/2, N) and complete: the analytic infinite-record DFT to
@@ -189,22 +182,6 @@ def test_a_growing_component_is_discarded_and_counted():
     assert np.all(np.abs(model.lam) <= 1.0 + 1e-6)
 
 
-# harminv's documented rule, applied by hand. Decimate when 1/dt > 8 f_max,
-# toward the target int(1/dt / (4 f_max)), as the largest factor <= target
-# built from stages <= 13 (tried largest stage first); keep a stage only while
-# kept = ceil(n/q) - 20 >= 10 and the pencil of the kept samples
-# (columns = int(0.33 kept)) still holds min(columns, kept - columns) >= 51.
-#   patch step, 4 GHz: 1/dt/(4 f_max) = 51.45 -> target 51 = 3 x 17 (17 > 13),
-#     50 = 10 x 5 -> stages (10, 5).
-#     n = 6431: q=10 keeps 644 - 20 = 624, int(0.33*624) = 205, min(205, 419) = 205
-#     >= 51 ok; q=5 keeps 125 - 20 = 105, int(34.65) = 34 < 51 stop -> ((10,), 624)
-#     n = 2058: q=10 keeps 206 - 20 = 186, 61 >= 51 ok; q=5 keeps 38 - 20 = 18,
-#     5 < 51 stop -> ((10,), 186)
-#   cavity step, 12 GHz: 21.85 -> 21 = 7 x 3. n = 13000: q=7 keeps 1858 - 20 = 1838
-#     (606 ok); q=3 keeps 613 - 20 = 593 (195 ok) -> ((7, 3), 593)
-#   cavity step, 4 GHz: 65.56 -> 65 = 13 x 5. n = 13000: q=13 keeps 1000 - 20 = 980
-#     (323 ok); q=5 keeps 196 - 20 = 176 (58 ok) -> ((13, 5), 176)
-#   1 ps step, 200 GHz: 1/dt = 1e12 < 8 f_max = 1.6e12 -> no decimation
 @pytest.mark.parametrize("dt, f_max, n_window, plan", [
     (1.2148552052451076e-12, 4.0e9, 6431, ((10,), 624)),
     (1.2148552052451076e-12, 4.0e9, 2058, ((10,), 186)),
@@ -213,14 +190,14 @@ def test_a_growing_component_is_discarded_and_counted():
     (1.0e-12, 200.0e9, 5000, ((), 5000)),
 ])
 def test_the_decimation_plan_follows_harminvs_documented_rule(dt, f_max, n_window, plan):
+    """The hand-calculated kept-sample counts are ceil(6431/10)-20=624 and
+    ceil(2058/10)-20=186 (the next q=5 leaves only 34/5 pencil columns),
+    ceil((ceil(13000/7)-20)/3)-20=593, and ceil((ceil(13000/13)-20)/5)-20=176."""
     assert rd.decimation_plan(n_window, dt, f_max) == plan
 
 
-# ---------------------------------------------------------------------------
-# The decimation reference is the run's band
-# ---------------------------------------------------------------------------
-
-DT_CAV = 9.532874347654823e-13         # cavity board step (s)
+CAVITY_BOARD_STEP_S = 9.532874347654823e-13
+DT_CAV = CAVITY_BOARD_STEP_S
 F_MAX_CAV = 12.0e9
 FREQS_CAV = 5.5e9 + 2.0e7 * np.arange(251)
 MODES_CAV = (
@@ -250,10 +227,6 @@ def test_decimating_toward_a_reference_below_the_band_loses_the_pair():
         assert np.min(np.abs(f - f0)) < 1e3, f0
 
 
-# ---------------------------------------------------------------------------
-# The transition-band guard
-# ---------------------------------------------------------------------------
-
 def test_the_guard_removes_the_branch_cut():
     """A decimated eigenvalue on the negative real axis is the decimated
     Nyquist frequency. Which side of the log's cut it lands on is decided by
@@ -272,8 +245,6 @@ def test_the_guard_removes_the_branch_cut():
     g_up, gn_up = rd._to_original_rate(up, D, DT, 0.9)
     g_dn, gn_dn = rd._to_original_rate(down, D, DT, 0.9)
     assert gn_up == gn_dn == 1 and g_up.size == g_dn.size == 0
-    # an in-band pole passes the guard untouched, and without decimation there
-    # is no cut to guard (exp(s dt) is lambda itself)
     inband = np.array([0.9 * np.exp(0.3j * np.pi)])
     assert rd._to_original_rate(inband, D, DT, 0.9)[0].size == 1
     assert rd._to_original_rate(up, 1, DT, 0.9)[0].size == 1
@@ -305,7 +276,8 @@ def test_a_discarded_growing_component_is_sized_at_the_record_end():
     relative to the channel's RMS over the window: each of its two poles
     carries half the cosine's amplitude."""
     t = np.arange(N_RECORD) * DT
-    rate = 5.0e6                                            # 1/s
+    GROWTH_RATE_PER_S = 5.0e6
+    rate = GROWTH_RATE_PER_S
     base = _record()
     for end_amp in (1e-2, 5e-3):
         grow = end_amp * np.exp(rate * (t - t[-1])) * np.cos(2.0 * np.pi * 2.2e9 * t)
@@ -321,27 +293,20 @@ def test_a_discarded_growing_component_is_sized_at_the_record_end():
 
 
 def test_poles_carry_their_amplitude_largest_first():
+    """The slow 2.51 GHz, Q 100 pair is the largest at the window start on channel 1, with the fast 3.40 GHz, Q 40 pair the smallest."""
     y = _record()
     model = _identify(y)
     amp = [p.amplitude for p in model.poles()]
     assert amp == sorted(amp, reverse=True)
-    # the slow 2.51 GHz, Q 100 pair is the largest at the window start on
-    # channel 1; the fast 3.40 GHz, Q 40 pair the smallest
     top, bottom = model.poles()[0], model.poles()[-1]
     assert abs(abs(top.f_hz) - 2.51e9) < 1e3 and abs(abs(bottom.f_hz) - 3.40e9) < 1e3
 
-
-# ---------------------------------------------------------------------------
-# The two-window witness and the growing-pole rule
-# ---------------------------------------------------------------------------
 
 def test_the_two_window_witness_is_small_on_a_clean_record_and_flags_a_short_one():
     y = _record()
     w = rd.two_window_witness(y, DT, FREQS, N_RECORD, N_RECORD // 2, freq_max=F_MAX)
     assert w.value < 1e-9 * np.max(np.abs(w.spectra)), w.value
     assert _rel(w.spectra, _analytic_infinite_dft()) < 1e-9
-    # a record cut at 0.5 ns, while the pulse-like start dominates: the two
-    # windows disagree, and W2 says so at the size of the actual error
     rng = np.random.default_rng(7)
     n_short = 1200
     ys = _record(n_short) + 1e-4 * rng.standard_normal((n_short, 2))
@@ -351,7 +316,6 @@ def test_the_two_window_witness_is_small_on_a_clean_record_and_flags_a_short_one
     assert 0.1 <= ws.value / actual <= 10.0, (ws.value, actual)
 
 
-#: Two equal Q 400 modes at 2.5 GHz, 0.1 % apart, and a Q 60 mode at 2.03 GHz.
 PAIR = (
     (2.5e9, 400.0, 0.5 * np.exp(0.2j)),
     (2.5e9 * 1.001, 400.0, 0.5 * np.exp(2.5j)),
@@ -416,7 +380,6 @@ def test_the_tail_is_built_from_real_products():
     assert np.array_equal(ab.real, a.real * b.real - a.imag * b.imag)
     assert np.array_equal(ab.imag, a.real * b.imag + a.imag * b.real)
     assert np.max(np.abs(ab - a * b)) <= 4 * np.finfo(np.float64).eps * np.max(np.abs(ab))
-    # the closed form, spelled out with the real-product formula
     n1 = 3000
     e = np.exp(m.s * m.dt * (n1 - m.n_ref))[:, None]
     amp = np.empty(m.c.shape, dtype=np.complex128)
@@ -426,16 +389,16 @@ def test_the_tail_is_built_from_real_products():
     zn1 = np.exp(-1j * wdt * n1)
     one_minus = -np.expm1(m.s[None, :] * m.dt - 1j * wdt[:, None])
     tail = m.dt * ((zn1[:, None] / one_minus) @ amp)
-    for _ in range(20):                          # and the same bits every call
+    for _ in range(20):
         assert np.array_equal(ringdown_tail.tail_dft(m, n1 - 1, FREQS), tail)
 
 
 def test_the_growing_pole_rule_exempts_only_zero_frequency():
     record_s = 1e-8
     s = np.array([
-        1e-9 / DT + 1e3j,                               # |lambda| = 1 + 1e-9, 159 Hz
-        1e-9 / DT + 2j * np.pi * 3e9,                   # same growth at 3 GHz
-        -1e8 + 2j * np.pi * 2e9,                        # decaying
+        1e-9 / DT + 1e3j,
+        1e-9 / DT + 2j * np.pi * 3e9,
+        -1e8 + 2j * np.pi * 2e9,
     ])
     grow, exempt = rd.growing_poles(_model(s, np.ones((3, 1)), 0), record_s, 1e-6)
     assert len(exempt) == 1 and abs(exempt[0].f_hz) < 1e3

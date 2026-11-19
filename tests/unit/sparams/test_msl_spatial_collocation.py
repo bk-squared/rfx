@@ -20,8 +20,8 @@ from rfx.sources.msl_port import (
     msl_h_plane_stencil,
 )
 
-# Dyadic metres make the independently declared nodes exact in either dtype.
-U = 2.0**-12
+DYADIC_METRE = 2.0**-12
+U = DYADIC_METRE
 DIRECTIONS = ("+x", "-x", "+y", "-y")
 
 
@@ -35,7 +35,6 @@ def _uniform(dx=U, **kwargs):
 
 
 def _graded(*, swapped=False):
-    # x nodes: 0,1,2,4,8,9,10 U; y nodes: 0,1,4,5,7,8 U.
     x = U * np.array([1, 1, 2, 4, 1, 1], dtype=float)
     y = U * np.array([1, 3, 1, 2, 1], dtype=float)
     if swapped:
@@ -80,7 +79,6 @@ def test_graded_stencil_reproduces_an_affine_field_at_the_physical_e_node(direct
     np.testing.assert_allclose(got["sample_coordinates"],
                                U * np.array(samples), rtol=0, atol=0)
     np.testing.assert_allclose(got["weights"], weights, rtol=1e-14, atol=0)
-    # Samples come from the hand geometry, not from the helper's receipt.
     with enable_x64():
         slope, intercept = 2.0 - 0.75j, -3.0 + 0.5j
         left, right = [jnp.asarray([intercept + slope * p]) for p in samples]
@@ -149,7 +147,6 @@ def test_perfect_reflector_preserves_unit_magnitude_with_either_sampling_rule(di
     ("float64", True), ("complex128", True),
 ])
 def test_collocation_preserves_field_dtype_and_jitted_field_sensitivities(dtype, x64):
-    # f64 weights must not promote c64/f32 fields even with x64 enabled.
     weights = (np.float64(2 / 3), np.float64(1 / 3))
     with enable_x64(x64):
         complex_field = dtype.startswith("complex")

@@ -10,6 +10,8 @@ refuse before execution (tracker #1567).
 
 x64 is scoped per test through the context manager, never flipped at
 module level (that leaks into every same-process shard).
+The domain lengths written as ``14 * 0.003`` and ``7 * 0.003`` are whole numbers of cells of dx, so
+their solved lengths equal the declared ones.
 """
 
 from __future__ import annotations
@@ -40,7 +42,7 @@ def _wr90_sim(precision):
         ),
         cpml_layers=8,
         precision=precision,
-    )  # solved length
+    )
     freqs = jnp.linspace(5e9, 6.5e9, 4)
     sim.add_waveguide_port(0.010, direction="+x", mode=(1, 0), mode_type="TE",
                            freqs=freqs, f0=6e9, bandwidth=0.5, name="left")

@@ -39,9 +39,8 @@ import pytest
 from rfx.probes.msl_wave_decomp import extract_msl_nprobe
 
 
-# ---------------------------------------------------------------------------
-# Synthetic analytic fixture
-# ---------------------------------------------------------------------------
+MINIMUM_PROBE_COUNT = 3
+DEFAULT_PROBE_COUNT = 5
 
 
 def _planted_voltages(alpha, gamma, beta, x):
@@ -53,24 +52,25 @@ def _planted_voltages(alpha, gamma, beta, x):
 @pytest.mark.parametrize(
     "beta_true,n_probes",
     [
-        (250.0, 3),    # minimal N
-        (250.0, 5),    # default N
-        (180.0, 7),    # over-determined
-        (420.0, 9),    # higher β
+        (250.0, MINIMUM_PROBE_COUNT),
+        (250.0, DEFAULT_PROBE_COUNT),
+        (180.0, 7),
+        (420.0, 9),
     ],
 )
 def test_nprobe_recovers_planted_amplitudes(beta_true, n_probes):
-    """Recover α / γ / β / Z0 from a planted analytic fixture."""
+    """Recover α / γ / β / Z0 from a planted analytic fixture.
+    For a lossless planted line |q| == 1 exactly, so allow a tiny fp32 margin above 1."""
     spacing = 0.4e-3
     x = jnp.arange(n_probes, dtype=jnp.float32) * spacing
     alpha = jnp.asarray(1.0 + 0.0j, dtype=jnp.complex64)
     gamma = jnp.asarray(0.30 * np.exp(1j * 0.7), dtype=jnp.complex64)
     z0_true = 50.0
 
-    v = _planted_voltages(alpha, gamma, beta_true, x)[None, :]  # (1, N)
+    v = _planted_voltages(alpha, gamma, beta_true, x)[None, :]
     i1 = jnp.asarray([(alpha - gamma) / z0_true])
-    # Analytic guess deliberately offset 6 % to exercise the β scan.
     beta0 = jnp.asarray([beta_true * 1.06])
+    assert np.isclose(float(beta0[0]) / beta_true, 1.06), 'The beta scan needs an analytic guess offset by six percent'
 
     res = extract_msl_nprobe(v, x, i1, beta0, z0_hj=z0_true)
 
@@ -84,9 +84,6 @@ def test_nprobe_recovers_planted_amplitudes(beta_true, n_probes):
     assert alpha_err < 5e-3, f"α error {alpha_err:.2e}"
     assert gamma_err < 5e-3, f"γ error {gamma_err:.2e}"
     assert z0_err < 1e-2, f"Z0 error {z0_err:.2e} (got {res['z0'][0]})"
-    # The 3-probe failure mode is |q| > 1; the N-probe extractor must
-    # stay at or below 1.  For a lossless planted line |q| == 1 exactly,
-    # so allow a tiny fp32 margin above 1.
     assert q_abs < 1.0 + 1e-5, f"|q| = {q_abs:.6f} (non-physical)"
 
 
@@ -98,7 +95,7 @@ def test_nprobe_well_conditioned_low_loss():
     """
     n_probes = 6
     spacing = 0.2e-3
-    beta_true = 120.0          # β·Δ ≈ 0.024 rad — deep in the singular regime
+    beta_true = 120.0
     x = jnp.arange(n_probes, dtype=jnp.float32) * spacing
     alpha = jnp.asarray(1.0 + 0.0j, dtype=jnp.complex64)
     s11_true = 0.25 * np.exp(1j * 1.1)
@@ -130,8 +127,6 @@ def test_nprobe_lossy_line():
     n_probes = 8
     spacing = 0.3e-3
     beta_real = 300.0
-    # Small attenuation (~0.3 % per probe step) — representative of a
-    # low-loss engineering MSL, the regime Fix C targets.
     beta_true = complex(beta_real, -3.0)
     x = jnp.arange(n_probes, dtype=jnp.float32) * spacing
     alpha = jnp.asarray(1.0 + 0.0j, dtype=jnp.complex64)
@@ -144,8 +139,6 @@ def test_nprobe_lossy_line():
 
     res = extract_msl_nprobe(v, x, i1, beta0, z0_hj=z0_true)
     q_abs = abs(complex(res["q"][0]))
-    # Real-β fit → |q| = 1 (lossless ceiling). The point of Fix C is
-    # that |q| never EXCEEDS 1 (the 3-probe non-physical regime).
     assert q_abs < 1.0 + 1e-5, f"|q| = {q_abs:.6f} > 1 (non-physical)"
     z0_err = abs(complex(res["z0"][0]).real - z0_true) / z0_true
     assert z0_err < 1.5e-2, f"Z0 error {z0_err:.2e}"
@@ -166,7 +159,7 @@ def test_nprobe_multi_frequency_batch():
     rows = []
     for b, g in zip(betas, gammas):
         rows.append(np.asarray(_planted_voltages(alpha, g, float(b), x)))
-    v = jnp.asarray(np.stack(rows, axis=0))           # (n_freqs, N)
+    v = jnp.asarray(np.stack(rows, axis=0))
     i1 = jnp.asarray((alpha - gammas) / z0_true)
     beta0 = jnp.asarray(betas * 1.05)
 
@@ -177,11 +170,6 @@ def test_nprobe_multi_frequency_batch():
     assert np.all(beta_err < 5e-3), f"max β error {beta_err.max():.2e}"
     assert np.all(s11_err < 5e-3), f"max S11 error {s11_err.max():.2e}"
     assert np.all(np.abs(np.asarray(res["q"])) < 1.0 + 1e-5)
-
-
-# ---------------------------------------------------------------------------
-# Differentiability — finite-difference jax.grad check
-# ---------------------------------------------------------------------------
 
 
 def _s11_mag_loss(theta):
@@ -228,19 +216,11 @@ def test_nprobe_grad_matches_finite_difference(theta0):
 
 
 def test_nprobe_grad_is_nonzero():
-    """Sanity: the gradient is not silently zeroed out (a dead pipeline)."""
+    """Sanity: the gradient is not silently zeroed out (a dead pipeline).
+    The true derivative of |S11|^2 = 0.09 is exactly zero, so a floor on float32 fit error would
+    require the numerical error to stay large."""
     theta = jnp.asarray(1.2, dtype=jnp.float32)
     grad_ad = jax.grad(_s11_mag_loss)(theta)
-    # This is a dead-pipeline check and nothing more. The loss plants
-    # alpha = 1 and gamma = 0.3*exp(j*theta), so |S11|^2 = 0.09 for every
-    # theta and its TRUE derivative is exactly zero; whatever AD returns here
-    # is float32 fit error, not physics. It read -3.45e-4 while the beta
-    # refinement ran through the L2 norm and +4.08e-5 after it moved to the
-    # squared residual (central differences agree with AD on both sides), and
-    # a better estimator will shrink it further. A floor on that number would
-    # require the numerical error to stay large -- the 1e-4 floor did exactly
-    # that and went red when the estimator improved. A zeroed or
-    # stop_gradient-ed pipeline returns exactly 0.0, which is all this asserts.
     assert float(grad_ad) != 0.0, (
         f"gradient is exactly {grad_ad} — AD is not flowing through the "
         f"lstsq/beta-refinement pipeline"
