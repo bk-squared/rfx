@@ -57,6 +57,7 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 
 
 _DX = 0.5e-3
+THICK_FACE_OUTER_INDEX = -1
 _CPML_BUDGET = 16
 
 
@@ -89,10 +90,9 @@ def test_asymmetric_sigma_max_ratio_matches_analytic():
     )
     params = _build_params(spec)
 
-    # Thin (4-layer) lo-face: σ_max is at index 0 of the active region.
-    sigma_max_thin = float(np.asarray(params.z_lo.sigma)[0])
-    # Thick (16-layer) hi-face (pre-flipped): σ_max at index -1.
-    sigma_max_thick = float(np.asarray(params.z_hi.sigma)[-1])
+    THIN_FACE_OUTER_INDEX = 0
+    sigma_max_thin = float(np.asarray(params.z_lo.sigma)[THIN_FACE_OUTER_INDEX])
+    sigma_max_thick = float(np.asarray(params.z_hi.sigma)[THICK_FACE_OUTER_INDEX])
 
     analytic_thin = _sigma_max_from_n(4)
     analytic_thick = _sigma_max_from_n(16)
@@ -122,17 +122,14 @@ def test_polynomial_grading_shape_preserved():
         z=Boundary(lo="cpml", hi="cpml", lo_thickness=4, hi_thickness=16),
     )
     params = _build_params(spec)
-    # Thin lo-face: sigma[0]/sigma[1] ratio for m=3 polynomial
-    # rho_i = 1 - i/(n-1). For n=4: rho = [1, 2/3, 1/3, 0].
-    # sigma_i / sigma_{i+1} = (rho_i / rho_{i+1})^3.
-    # sigma[0]/sigma[1] = (1 / (2/3))^3 = 27/8 = 3.375
     sigma_thin = np.asarray(params.z_lo.sigma)[:4]
     assert sigma_thin[0] > sigma_thin[1] > sigma_thin[2] > 0, (
         f"thin-face σ must be strictly descending over n_active=4, "
         f"got {sigma_thin[:3]}"
     )
+    CUBIC_FOUR_LAYER_SIGMA_RATIO = 3.375
     ratio_thin = float(sigma_thin[0] / sigma_thin[1])
-    assert abs(ratio_thin - 3.375) / 3.375 < 1e-4, (
+    assert abs(ratio_thin - CUBIC_FOUR_LAYER_SIGMA_RATIO) / CUBIC_FOUR_LAYER_SIGMA_RATIO < 1e-4, (
         f"thin-face σ[0]/σ[1] must match (1 / (2/3))^3 = 3.375 for m=3 "
         f"polynomial; got {ratio_thin:.4f}"
     )
@@ -148,8 +145,7 @@ def test_asymmetric_sigma_arrays_differ():
     )
     params = _build_params(spec)
     sigma_lo = np.asarray(params.z_lo.sigma)
-    # hi is pre-flipped; compare magnitude at the outer-boundary end.
-    sigma_hi_outer = float(np.asarray(params.z_hi.sigma)[-1])
+    sigma_hi_outer = float(np.asarray(params.z_hi.sigma)[THICK_FACE_OUTER_INDEX])
     sigma_lo_outer = float(sigma_lo[0])
     assert abs(sigma_lo_outer - sigma_hi_outer) > 1e-6, (
         f"σ_max identical on thin and thick faces ({sigma_lo_outer:.3e} "
