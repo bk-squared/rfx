@@ -8,7 +8,7 @@ keeps what it returns; the messages are the ones the constructor raised.
 """
 from __future__ import annotations
 
-from rfx.errors import AccuracyWarning, RfxWarning
+from rfx.errors import AccuracyWarning, RfxRefusal, RfxWarning
 from rfx.model.realization_verdict import legacy_mismatch
 import warnings
 from collections.abc import Mapping
@@ -103,7 +103,7 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
     if dx_profile is not None:
         if is_tracer(dx_profile):
             if len(domain) < 1 or domain[0] <= 0:
-                raise ValueError(
+                raise RfxRefusal(
                     "dx_profile is a JAX tracer; provide a concrete "
                     "domain[0] (profile sum cannot be host-coerced)."
                 )
@@ -114,7 +114,7 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
     if dy_profile is not None:
         if is_tracer(dy_profile):
             if len(domain) < 2 or domain[1] <= 0:
-                raise ValueError(
+                raise RfxRefusal(
                     "dy_profile is a JAX tracer; provide a concrete "
                     "domain[1] (profile sum cannot be host-coerced)."
                 )
@@ -127,7 +127,7 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
             raise ValueError(f"domain x/y must be positive, got {domain}")
         if is_tracer(dz_profile):
             if len(domain) < 3 or domain[2] <= 0:
-                raise ValueError(
+                raise RfxRefusal(
                     "dz_profile is a JAX tracer; provide a concrete "
                     "domain=(..., ..., dz_total) extent (the profile "
                     "sum cannot be host-coerced during tracing)."
@@ -254,7 +254,7 @@ def admit_nominal_profiles(nominal_profiles, profiles, domain=None):
         if isinstance(value, NominalProfile):
             value = value.cells
         if is_tracer(value):
-            raise ValueError(
+            raise RfxRefusal(
                 f"nominal_profiles[{key!r}] is a JAX tracer; declare the "
                 f"concrete {key} cell widths at the primal point.")
         widths = np.array(value, dtype=np.float64)
@@ -296,7 +296,7 @@ def admit_traced_windows(nominal_profiles):
         for w in windows:
             if (not isinstance(w, tuple) or len(w) != 2
                     or any(type(i) is not int for i in w)):
-                raise ValueError(
+                raise RfxRefusal(
                     f"nominal_profiles[{axis!r}].traced_cells must be a 2-tuple "
                     "of Python ints (not bool), or a non-empty tuple of them.")
             if not 0 <= w[0] < w[1] <= n:
@@ -338,7 +338,7 @@ def nominal_cells(grid, axis, padded: bool = False):
     widths = np.asarray(widths, dtype=np.float64)
     if not padded:
         return widths
-    return np.asarray(_append_bounding_node(_pad_profile(widths, pad_lo, pad_hi)),
+    return np.asarray(_append_bounding_node(_pad_profile(widths, pad_lo, pad_hi, dtype=np.float64)),
                       dtype=np.float64)
 
 
@@ -367,7 +367,7 @@ def host_cells(grid, axis, *, store=False):
     """Host widths in the precision previously read by a metric consumer.
 
     By default this is the concrete float64 spine (``grid.cells``);
-    ``store=True`` preserves the solver's float32 widths (``dx_arr``,
+    ``store=True`` preserves the solver's stored widths (``dx_arr``,
     ``dy_arr``, ``dz``). A traced axis with a declared deformation window
     returns its padded nominal widths in that same precision; consumers
     refuse reads within the window, and waveguide admission checks its
@@ -381,7 +381,7 @@ def host_cells(grid, axis, *, store=False):
         widths = nominal_cells(grid, axis, padded=True)
         if widths is None or traced_cell_mask(grid, axis) is None:
             return stored if store else grid.cells(axis)
-        return np.asarray(widths, dtype=np.float32 if store else np.float64)
+        return np.asarray(widths, dtype=getattr(stored, "dtype", np.float64) if store else np.float64)
     if store and stored is not None and not np.isscalar(stored):
         return np.asarray(stored)
     return np.asarray(grid.cells(axis), dtype=np.float64)

@@ -23,3 +23,13 @@ class AccuracyWarning(RfxWarning):
 
 class ConfigurationWarning(RfxWarning):
     """rfx adjusted, defaulted or ignored part of the request as the message states."""
+
+
+class RingdownSecondDerivativeWarning(RfxWarning):
+    """A second derivative reached the identification window of ``forward(ringdown=...)``.
+
+    The completion moves its poles by a first-order step, so any second-order
+    form of an objective that reads a completed output is NaN; first
+    derivatives, and every derivative of an objective that reads no completed
+    output, are exact.
+    """

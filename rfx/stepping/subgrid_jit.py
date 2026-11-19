@@ -121,6 +121,8 @@ def _make_step_fn(ctx):
     body closes over; ctx.get keeps closure semantics for captures that
     are only conditionally bound and only conditionally used.
     """
+    from rfx.stepping.vector_pad import refuse_if_forced
+    refuse_if_forced("subgridded")
     _sync_box_shadow = ctx.get("_sync_box_shadow")
     apply_cpml_e = ctx.get("apply_cpml_e")
     apply_cpml_h = ctx.get("apply_cpml_h")

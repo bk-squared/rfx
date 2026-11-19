@@ -92,12 +92,13 @@ def test_sc_three_cell_incidence():
         np.testing.assert_array_equal(actual, want)
 
 
-def test_union_is_taken_at_nodes_before_edge_roots():
+def test_two_box_union_keeps_a_sub_cell_gap_open():
+    """An x edge from a node inside one Box to a node inside the other crosses the half-cell gap between them; its free length is that gap."""
     grid = RectGrid(widths=(1.,) * 3, pad_x_lo=0, pad_y_lo=0, pad_z_lo=0)
     shapes = [Box((-10.,) * 3, (.25, 10., 10.)),
               Box((.75, -10., -10.), (10.,) * 3)]
     lengths, _ = compute_conformal_fractions(grid, shapes, clamp=False, field_dtype=np.float32)
-    assert float(lengths[0][0, 1, 1]) == 0.
+    assert float(lengths[0][0, 1, 1]) == .5
 
 
 @pytest.mark.parametrize('value', [0., .05, .2, float('nan')])

@@ -191,7 +191,7 @@ def test_anisotropic_normal_reach(monkeypatch, radius, reader):
     def operands():
         if reader == 'node':
             return compute_node_tensor_eps(grid, [(sphere, 4.)], field_dtype=np.float64)
-        return compute_smoothed_eps_nonuniform(grid, [(sphere, 4.)])
+        return compute_smoothed_eps_nonuniform(grid, [(sphere, 4.)], dtype='float32')
 
     with enable_x64(True):
         actual = operands()

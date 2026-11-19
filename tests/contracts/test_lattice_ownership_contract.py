@@ -1006,8 +1006,9 @@ def test_degenerate_sheet_and_wire_declarations_are_refused():
 def test_a_sigma_fill_conductor_is_not_a_pec_body():
     """§1.8: the raw high-sigma ``rasterize`` path is OUT of the contract.
 
-    Three oracle modules (``tests/oracle/test_rcs.py``,
-    ``test_oblique_rcs_specular.py``, ``test_rcs_mie_fixture.py``), cv16,
+    Two oracle modules (``tests/oracle/test_rcs.py``,
+    ``test_oblique_rcs_specular.py``), the sphere lock
+    ``tests/locks/test_rcs_sphere_backscatter_window.py``, cv16,
     cv21 and the coax stamp model metal as a LOSSY VOLUME: they call
     ``rasterize(grid, [(shape, eps, 1e7)])`` and hand the resulting
     ``sigma`` array straight to the kernel. Fields decay INSIDE such a
@@ -1115,7 +1116,7 @@ def test_kottke_owns_its_own_volume_the_ownership_rule_does_not_overwrite_it():
         grid,
         dielectric_shapes=[(e.shape, sim._resolve_material(e.material_name).eps_r)
                            for e in sim._geometry],
-        pec_shapes=[e.shape for e in sim._geometry], background_eps=1.0)
+        pec_shapes=[e.shape for e in sim._geometry], background_eps=1.0, dtype='float32')
 
     # the premise, measured: this edge is a FRACTIONAL Kottke edge, not a
     # frozen one — so anything that zeroes it is overwriting the model.

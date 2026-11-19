@@ -136,7 +136,7 @@ def test_periodic_reference_is_refused_before_conductor_realization(monkeypatch)
 # The main guide runs horizontally (y in [0.04, 0.08]); the top arm opens at
 # x in [0.04, 0.08], y in [0.08, 0.12].
 #
-# The walls are PEC VOLUMES (#931 §1.2). Under the ownership contract each
+# The walls are PEC VOLUMES. Under the ownership contract each
 # block realizes tangential walls on BOTH of its drawn faces, so the guide
 # between the y = 0.04 and y = 0.08 faces is 40.0 mm — the number the
 # declaration states. Before the contract a body's far face was never a
@@ -144,7 +144,7 @@ def test_periodic_reference_is_refused_before_conductor_realization(monkeypatch)
 # realized a 42.0 mm guide; the ports' declared ``y_range=(0.04, 0.08)``
 # lands ON the walls for the first time. Anything this file's prose quotes
 # that was measured on the 42 mm guide (aperture areas, cutoffs, the
-# |S11| blow-up figures) is a pre-#931 measurement and is re-read with the
+# |S11| blow-up figures) is an earlier measurement and is re-read with the
 # fixtures, not translated.
 # ``test_tj_walls_are_realized_where_they_are_drawn`` below is the
 # build-time witness, and it costs no solve.
@@ -259,7 +259,7 @@ def test_port_reference_sims_clearance_advisory_fires(monkeypatch):
         raise ReachedExtractor
 
     monkeypatch.setattr(
-        # #980 Phase 2: compute_waveguide_s_matrix's body lives in
+        # compute_waveguide_s_matrix's body lives in
         # rfx/sparams/waveguide.py, so this is where the extractor name is
         # looked up. The re-export in rfx.api._sparams would still accept the
         # patch and silently not be the binding the lane reads.
@@ -297,7 +297,7 @@ def test_identical_port_references_have_no_junction_clearance_advisory(
         raise ReachedExtractor
 
     monkeypatch.setattr(
-        # #980 Phase 2: compute_waveguide_s_matrix's body lives in
+        # compute_waveguide_s_matrix's body lives in
         # rfx/sparams/waveguide.py, so this is where the extractor name is
         # looked up. The re-export in rfx.api._sparams would still accept the
         # patch and silently not be the binding the lane reads.

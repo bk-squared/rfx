@@ -15,8 +15,20 @@ uses its midpoint. tol is the table's 1e-6 times its least cell width. Thus zero
 endpoints, coincident surfaces, and saddle ties have explicit reference rules.
 The SC edge bound is twice the least incident face area; a missing low face
 has area one. Raw fractions are checked separately from the binding clamp.
+
+Carried Boxes use independent interval and rectangle unions after coordinates
+within tol of a sample node are placed on that node. An element reached by
+another body retains the node-distance rule. Reach uses the individual
+Sphere or capped Cylinder distance at the element nodes, including periodic
+images, within the element diagonal plus tol. Other carried types are refused.
 """
+import itertools
+import math
+
 import numpy as np
+
+from rfx.geometry.csg import Box, Cylinder, Sphere
+from tests._box_overlap_reference import _along, _hand_arrays
 
 
 def assert_spacings(actual, expected, count):
@@ -110,6 +122,68 @@ def face_reference(corners, widths):
     return np.clip(result, 0., 1.)
 
 
+def _body_distance(shape, grid, lines):
+    """Own Sphere or capped Cylinder distance, including the periodic images."""
+    if not isinstance(shape, (Sphere, Cylinder)):
+        raise TypeError(f'conformal reference has no distance for {type(shape).__name__}')
+    center = np.asarray(shape.center, dtype=np.float64)
+    half = np.full(3, shape.radius, dtype=np.float64)
+    if isinstance(shape, Cylinder):
+        axial = 'xyz'.index(shape.axis)
+        half[axial] = shape.height / 2
+    padding = max(float(np.max(grid.cells(a))) for a in range(3))
+    shifts = [range(math.floor((center[a] - half[a] - padding) / float(grid.domain[a])),
+                    math.floor((center[a] + half[a] + padding) / float(grid.domain[a])) + 1)
+              if 'xyz'[a] in grid.periodic_axes else (0,) for a in range(3)]
+    distance = np.full(tuple(len(line) for line in lines), np.inf)
+    for image in itertools.product(*shifts):
+        delta = [_along(line + k * float(grid.domain[a]) - center[a], a)
+                 for a, (line, k) in enumerate(zip(lines, image))]
+        if isinstance(shape, Sphere):
+            own = np.sqrt(sum(d ** 2 for d in delta)) - shape.radius
+        else:
+            radial = np.sqrt(sum(delta[a] ** 2 for a in range(3) if a != axial)) - shape.radius
+            cap = np.abs(delta[axial]) - shape.height / 2
+            own = (np.sqrt(np.maximum(radial, 0.) ** 2 + np.maximum(cap, 0.) ** 2)
+                   + np.minimum(np.maximum(radial, cap), 0.))
+        distance = np.minimum(distance, own)
+    return distance
+
+
+def _box_reference(samples, lengths, areas):
+    """Exact closed Box overlap outside each other body's diagonal reach."""
+    carried = samples.get('carried', ())
+    boxes = [shape for shape in carried if isinstance(shape, Box)]
+    others = [shape for shape in carried if not isinstance(shape, Box)]
+    for shape in others:
+        if not isinstance(shape, (Sphere, Cylinder)):
+            raise TypeError(f'conformal reference has no distance for {type(shape).__name__}')
+    if not boxes:
+        return tuple(lengths), tuple(areas)
+    grid, lines = samples['grid'], samples['lines']
+    widths = [np.diff(line) for line in samples['sample_lines']]
+    exact = _hand_arrays(grid, boxes, lines=lines, sample_lines=samples['sample_lines'],
+                         tol=samples['tol'])
+    distances = [_body_distance(shape, grid, lines) for shape in others]
+    result = []
+    for kind, old, hand in zip(('edge', 'face'), (lengths, areas), exact):
+        values = []
+        for axis in range(3):
+            varying = (axis,) if kind == 'edge' else tuple(a for a in range(3) if a != axis)
+            diagonal = np.sqrt(sum(_along(widths[a], a) ** 2 for a in varying))
+            reach = np.zeros_like(old[axis], dtype=bool)
+            for distance in distances:
+                for moves in itertools.product((0, 1), repeat=len(varying)):
+                    corner = [slice(None, -1)] * 3
+                    for a, moved in zip(varying, moves):
+                        if moved:
+                            corner[a] = slice(1, None)
+                    reach |= distance[tuple(corner)] <= diagonal + samples['tol']
+            values.append(np.where(reach, old[axis], hand[axis]))
+        result.append(tuple(values))
+    return tuple(result)
+
+
 def conformal_reference(samples):
     sdf, widths, tol = samples['sdf'], samples['widths'], samples['tol']
     base = sdf[:-1, :-1, :-1]
@@ -136,7 +210,7 @@ def conformal_reference(samples):
         touching = np.all(distances <= tol, axis=0) & np.any(np.abs(distances) <= tol, axis=0)
         area = face_reference(corners, (widths[u], widths[v]))
         areas.append(np.where(touching, samples['midpoints'][(u, v)] > tol, area))
-    return tuple(lengths), tuple(areas)
+    return _box_reference(samples, lengths, areas)
 
 
 def clamp_reference(lengths, areas):

@@ -17,6 +17,8 @@ from tests._cell_table_scenes import SCENES, cell_table_scene
 
 REFERENCE = Path(__file__).resolve().parents[2] / 'data' / 'cell_table_56653420b.npz'
 CAPTURE_REFERENCE = REFERENCE.with_name('cell_table_capture_56653420b.npz')
+BOX_OFF_REFERENCE = REFERENCE.with_name('cell_table_box_off_dea200684.npz')
+BOX_OFF_CAPTURE_REFERENCE = REFERENCE.with_name('cell_table_capture_box_off_dea200684.npz')
 
 
 def _declared_sets(scene, grid, shapes):
@@ -118,7 +120,7 @@ def test_frozen_capture_calls(scene, rule):
     for index, call in enumerate(calls):
         for argument, value in call.items():
             actual[f'{prefix}{index}_{argument}'] = value
-    with np.load(CAPTURE_REFERENCE) as frozen:
+    with np.load(BOX_OFF_CAPTURE_REFERENCE if scene == 'box_off' else CAPTURE_REFERENCE) as frozen:
         assert set(actual) == {key for key in frozen.files if key.startswith(prefix)}
         for key, value in actual.items():
             assert value.dtype == frozen[key].dtype, key
@@ -140,7 +142,7 @@ def test_frozen_operands(scene, rule):
     actual = conformal_fractions_from_table(
         table, grid, 'cut_cell_floor' if rule == 'floor' else None,
         clamp=rule != 'raw', field_dtype=np.float32)
-    with np.load(REFERENCE) as frozen:
+    with np.load(BOX_OFF_REFERENCE if scene == 'box_off' else REFERENCE) as frozen:
         for kind, values in zip(('edges', 'faces'), actual):
             for axis, value in enumerate(values):
                 assert value.shape == grid.shape

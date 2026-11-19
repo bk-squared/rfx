@@ -150,7 +150,7 @@ def tracked_or_none(repo: Path = REPO) -> frozenset[str] | None:
         # question is being asked, so a ``rev-parse`` first would only
         # confirm what an empty or failed ``ls-files`` says anyway -- and
         # ``tracked_set`` already swallows a missing binary into an empty
-        # set (review of PR #1135, D).
+        # set.
         tracked = tracked_set(repo)
         if not tracked:
             raise GitCannotAnswerHere(

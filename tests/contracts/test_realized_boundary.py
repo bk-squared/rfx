@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 BASELINE = json.loads((ROOT / "scripts/diagnostics/boundary_model/B1/MATRIX.json").read_text())
 # PR3a supersedes the explicit-guide departure rows without rewriting B1's record.
 WALLED_DEFAULT_ENTRIES = {"run", "forward", "distributed", "sweep", "gpu-query", "subgridded"}
-# Addendum 5f (2026-10-11) supersedes the graded explicit-guide rows; B1's record stays immutable.
+# Addendum 5f supersedes the graded explicit-guide rows; B1's record stays immutable.
 # The graded default stays refused (5d), so it has no walled-default twin below.
 GUIDE_REFUSAL_ENTRIES = WALLED_DEFAULT_ENTRIES | {"nonuniform"}
 CELLS = [dict(c, status="REFUSED_AT_DISPATCH", departures=[])
@@ -146,7 +146,7 @@ EXPECTED = [pytest.param(cell["case"], cell["entry"], departure["face"], departu
                                 pytest.mark.xfail(strict=True, raises=BoundaryDeparture,
                                                   reason=f"{departure['code']}; {departure['detail']}; fixed in {departure['step']}")])
             for cell in CELLS if cell["status"] == "MEASURED"
-            and cell["case"] != "floquet"  # refused since #1944; pinned in test_no_unlisted_departures
+            and cell["case"] != "floquet"  # refused; pinned in test_no_unlisted_departures
             and not (cell["case"] == "tfsf" and cell["entry"] != "nonuniform")
             for departure in cell["departures"]]
 # PMC images are checked at the declared plane on both device counts.

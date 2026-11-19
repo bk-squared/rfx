@@ -57,7 +57,14 @@ def regenerate_size(repo: Path, ours: dict, theirs: dict,
     """Merge ratchet ceilings; count sources to verify, without spending slack.
 
     An entry the --base side does not list is dropped (the checker refuses an entry its base
-    does not list); its file is then governed by the merged cap."""
+    does not list); its file is then governed by the merged cap. Sources are counted with
+    ``ratchet_lines`` and the result carries ``counts: code-lines-without-docstrings``. When the
+    two sides carry different ``counts`` (a side without one is ``legacy``), nothing is merged
+    and the only error names the units, sorted."""
+    units = sorted({side.get("counts", "legacy") for side in (ours, theirs)})
+    if len(units) > 1:
+        return {}, [f"file_size_baseline.json: the two sides count in different units "
+                    f"({', '.join(units)}); take main's file and lower your entries again"], []
     cap = min(ours["cap"], theirs["cap"])
     listed = ours["files"].keys() | theirs["files"].keys()
     files, errors, notes = {}, [], []
@@ -67,7 +74,7 @@ def regenerate_size(repo: Path, ours: dict, theirs: dict,
         source = repo / path
         if not source.exists():
             continue
-        count = size.code_lines(source.read_bytes())
+        count = size.ratchet_lines(source.read_bytes(), path)
         left = ours["files"].get(path, ours["cap"])
         right = theirs["files"].get(path, theirs["cap"])
         limit = min(left, right)
@@ -88,7 +95,7 @@ def regenerate_size(repo: Path, ours: dict, theirs: dict,
         if count > limit:
             errors.append(f"file_size_baseline.json {path}: merged count {count} exceeds "
                           f"min(ours {left}, theirs {right}) — real conflict")
-    return {"counts": "code-lines", "cap": cap, "files": files}, errors, notes
+    return {"counts": size.UNIT, "cap": cap, "files": files}, errors, notes
 
 
 def regenerate_layer(repo: Path, ours: dict, theirs: dict) -> tuple[dict, list[str]]:

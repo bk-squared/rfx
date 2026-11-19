@@ -2,6 +2,7 @@
 
 import ast
 import importlib
+import inspect
 import sys
 from pathlib import Path
 
@@ -33,22 +34,21 @@ def test_constructor_refuses_adi(graded):
     assert "local refinement where it is supported" in str(caught.value)
 
 
-@pytest.mark.parametrize("factor", [2.0, 0, False, "unused"])
-def test_factor_refuses_any_value(factor):
-    with pytest.raises(ValueError) as caught:
+@pytest.mark.parametrize("factor", [2.0, 0, False, "unused", None])
+def test_factor_keyword_is_gone(factor):
+    with pytest.raises(TypeError, match="adi_cfl_factor"):
         declaration(adi_cfl_factor=factor)
-    assert "removed in 2.1" in str(caught.value)
-    assert 'solver="yee" on a graded mesh' in str(caught.value)
-    assert "local refinement where it is supported" in str(caught.value)
+    assert "adi_cfl_factor" not in inspect.signature(rfx.Simulation.__init__).parameters
+    assert list(inspect.signature(rfx.model.admit_solver).parameters) == ["solver"]
 
 
 @pytest.mark.parametrize("name", NAMES)
 def test_removed_attribute(name):
     with pytest.raises(AttributeError) as caught:
         getattr(rfx, name)
-    assert "removed in 2.1" in str(caught.value)
-    assert 'solver="yee" on a graded mesh' in str(caught.value)
-    assert "local refinement where it is supported" in str(caught.value)
+    assert str(caught.value) == f"module 'rfx' has no attribute '{name}'"
+    assert "__getattr__" not in vars(rfx)
+    assert "_REMOVED_ADI_NAMES" not in vars(rfx)
 
 
 def test_old_yee_document_ignores_factor():

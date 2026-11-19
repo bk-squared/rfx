@@ -372,7 +372,7 @@ class TestDeembedSeriesImpedance:
         s_meas, _ = self._embedded_fixture(freqs, L, L)
         # Perturb into a slightly non-reciprocal "measurement";
         # the symmetric cascade must scale S21/S12 identically
-        # (predeclaration section 2: S21d/S12d == S21/S12).
+        # (S21d/S12d == S21/S12).
         s_meas[0, 1, :] *= (1.0 + 1e-4)
         s_dut = deembed_series_inductance(s_meas, freqs, [L, L])
         ratio_meas = s_meas[1, 0] / s_meas[0, 1]

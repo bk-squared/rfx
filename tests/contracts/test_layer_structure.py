@@ -325,7 +325,7 @@ def test_calibration_from_declaration_and_leader_correction(generated):
     assert "run_nonuniform" in {name for name, _, _ in gate.units(real_tree("rfx/stepping/graded_loop.py"))}
     assert "run_nonuniform" in gate.public_names(gate.Sources(REPO), "rfx.stepping")
     # Graded-grid construction (NonUniformGrid, its module-level tables) moved to
-    # rfx/model/ in #1643; nonuniform.py now imports it from the package top, not counted under I.
+    # rfx/model/; nonuniform.py now imports it from the package top, not counted under I.
     assert "NonUniformGrid.node_of" not in all_units
     assert "rfx.model.graded_grid:make_nonuniform_grid" not in nonuniform["I"]
     assert "make_nonuniform_grid" in gate.public_names(gate.Sources(REPO), "rfx.model")
@@ -639,7 +639,7 @@ _MODULE_PHASE = jnp.exp(1j * angle)
 
 
 def test_review_pseudo_unit_calibration(generated):
-    # nonuniform.py lost its module-level hit when #1643 moved the grid tables out.
+    # nonuniform.py lost its module-level hit when the grid tables moved out.
     assert "<module>" not in generated["files"]["rfx/nonuniform.py"]["G"]
     # waveguide_port.py lost both when its definitions moved to the layer
     # packages and the file kept only re-exports.
@@ -1336,7 +1336,7 @@ def test_read_of_a_five_file_definition_through_a_reexport_is_refused(tmp_path, 
 
 
 # Loading a layer module must not run a five file through a module outside the layers: a package top
-# re-exporting a five file, or a helper importing one. Rule R sees only the layer module's own imports (rfx#1818).
+# re-exporting a five file, or a helper importing one. Rule R sees only the layer module's own imports.
 LOAD_CHAIN = "{path} L: loading runs {five} ({chain})"
 
 

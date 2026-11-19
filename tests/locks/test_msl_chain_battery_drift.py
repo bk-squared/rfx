@@ -118,7 +118,7 @@ def _solve_live(fixture, driver, key: str, dut: str):
     # the same trace rows (and, on the notch, stub columns and open end), the
     # same substrate cells under the strip, the same port feed and probe planes,
     # the same drive.
-    # #1138: trace y/stub x solved +11.667% off; this locks stored S-parameters.
+    # trace y/stub x solved +11.667% off; this locks stored S-parameters.
     sim = driver.build_sim(dx, dut, drive=entry["drive"], snap="declared")
     live_geometry = driver.assert_realized(sim, dx, dut)
     moved = drift.realized_differences(entry["realized"], live_geometry)
@@ -132,7 +132,7 @@ def _solve_live(fixture, driver, key: str, dut: str):
                                rtol=1e-6, atol=0.0)
     # The record is at the probe-0 planes; compare there (see the module
     # docstring): the live S with the feed-plane shift undone, back at the line
-    # Z0 the record was taken at (#2014: S is now at the declared impedance=).
+    # Z0 the record was taken at (S is now at the declared impedance=).
     return entry, result, freqs, drift.complex_array(entry["S"]), np.asarray(probe0_s(result, line_s(result)))
 
 

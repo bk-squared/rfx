@@ -328,7 +328,7 @@ def test_graded_tfsf_keeps_oblique_refusal(entry):
             messages.append(str(info.value))
         else:
             from rfx.errors import RfxUnsupported
-            with pytest.raises(RfxUnsupported, match="subpixel_smoothing='full_tensor'.*does not apply the Bloch phase") as info:
+            with pytest.raises(RfxUnsupported, match="off-diagonal node coupling.*does not apply the Bloch phase") as info:
                 getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')
             messages.append(str(info.value))
     print(f'A2 TF/SF {entry}: uniform={messages[0]}; graded={messages[1]}')

@@ -31,7 +31,7 @@ def solve(row, lane, graded, steps, dt, traced=True, precision=None):
             devices = jax.devices('cpu')
             assert len(devices) == 2, 'S0 requires exactly two CPU devices'
             kwargs.update(distributed=True, devices=devices)
-        # An all-passive record has no S column to form (#1929): forward refuses it.
+        # An all-passive record has no S column to form: forward refuses it.
         if row[0] == '_ports' and row[1] in ('lumped_port', 'wire_port'):
             from .builders import FREQS
             kwargs['port_s11_freqs'] = FREQS

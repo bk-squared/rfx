@@ -196,7 +196,7 @@ def test_compute_inv_eps_tensor_diag_wr90_perpendicular_boundary_cell():
         dielectric_shapes=[],
         pec_shapes=[pec_box],
         background_eps=1.0,
-    )
+    dtype='float32')
 
     i_mid = grid.shape[0] // 2
     k_mid = grid.shape[2] // 2
@@ -250,10 +250,10 @@ def test_compute_inv_eps_tensor_diag_no_pec_matches_smoothed_eps_inverse():
     diel_box = Box((0.012, 0.012, 0.012), (0.028, 0.028, 0.028))
     shapes = [(diel_box, 4.0)]
 
-    eps_ex, eps_ey, eps_ez = compute_smoothed_eps(grid, shapes, background_eps=1.0)
+    eps_ex, eps_ey, eps_ez = compute_smoothed_eps(grid, shapes, background_eps=1.0, dtype='float32')
     inv_xx, inv_yy, inv_zz = compute_inv_eps_tensor_diag(
         grid, dielectric_shapes=shapes, pec_shapes=[], background_eps=1.0,
-    )
+    dtype='float32')
 
     np.testing.assert_allclose(np.asarray(inv_xx), 1.0 / np.asarray(eps_ex),
                                 rtol=1e-6, atol=1e-9)
@@ -294,7 +294,7 @@ def test_two_non_overlapping_pec_walls_per_component_min_correct():
         dielectric_shapes=[],
         pec_shapes=[pec_y, pec_z],
         background_eps=1.0,
-    )
+    dtype='float32')
 
     inv_xx_np = np.asarray(inv_xx)
     inv_yy_np = np.asarray(inv_yy)
@@ -424,7 +424,7 @@ def test_compute_inv_eps_tensor_diag_returns_float32():
     pec = Box((-1.0, 0.011, -1.0), (1.0, 1.0, 1.0))
     inv_xx, inv_yy, inv_zz = compute_inv_eps_tensor_diag(
         grid, dielectric_shapes=[], pec_shapes=[pec], background_eps=1.0,
-    )
+    dtype='float32')
     assert inv_xx.dtype == jnp.float32
     assert inv_yy.dtype == jnp.float32
     assert inv_zz.dtype == jnp.float32

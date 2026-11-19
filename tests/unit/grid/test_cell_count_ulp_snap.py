@@ -26,7 +26,7 @@ from rfx.grid import CELL_COUNT_ULP_BUDGET, cells_spanning
 
 EPS = float(np.finfo(float).eps)
 
-#: The #1070 rig: RO4003C at h = 0.787 mm, dx = h/4, domain 38h + 2*(pad*h).
+#: The rig: RO4003C at h = 0.787 mm, dx = h/4, domain 38h + 2*(pad*h).
 H = 0.787e-3
 DX = H / 4.0
 

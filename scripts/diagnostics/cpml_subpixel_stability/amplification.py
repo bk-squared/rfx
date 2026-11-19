@@ -46,6 +46,7 @@ import pathlib
 import subprocess
 
 import numpy as np
+import jax.numpy as jnp
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 
@@ -100,7 +101,7 @@ def main() -> None:
     dx = 1.0e-7
     courant = 0.5
     dt = courant * dx / C0
-    prof = _cpml_profile(n_layers, dt, dx)
+    prof = _cpml_profile(n_layers, dt, dx, dtype=jnp.float32)
     c_out = float(np.asarray(prof.c, dtype=float)[0])
     b_out = float(np.asarray(prof.b, dtype=float)[0])
     kappa_max = float(np.asarray(prof.kappa, dtype=float).max())

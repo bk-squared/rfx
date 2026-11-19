@@ -78,7 +78,7 @@ def test_touching_traced_and_concrete_bodies_average_against_each_other():
     grid, (i, j, k) = _grid_and_index()
 
     def smoothed(eps):
-        ex, ey, _ = smoothing.compute_smoothed_eps(grid, [(BOX_A, eps), (BOX_B, 2.0)], 1.0)
+        ex, ey, _ = smoothing.compute_smoothed_eps(grid, [(BOX_A, eps), (BOX_B, 2.0)], 1.0, dtype='float32')
         return jnp.stack([ex[i, j, k], ey[i, j, k]])
 
     eps0 = 4.0
@@ -99,7 +99,7 @@ def test_concrete_key_is_the_value():
     CONCRETE_PERMITTIVITY = 4.0
     other_four = float.fromhex("0x1p2")
     assert other_four == CONCRETE_PERMITTIVITY and other_four is not CONCRETE_PERMITTIVITY, "equal concrete permittivities must be distinct objects to test value grouping"
-    ex, ey, _ = smoothing.compute_smoothed_eps(grid, [(BOX_A, CONCRETE_PERMITTIVITY), (BOX_B, other_four)], 1.0)
+    ex, ey, _ = smoothing.compute_smoothed_eps(grid, [(BOX_A, CONCRETE_PERMITTIVITY), (BOX_B, other_four)], 1.0, dtype='float32')
     assert float(ex[i, j, k]) == 4.0 and float(ey[i, j, k]) == 4.0
 
 
