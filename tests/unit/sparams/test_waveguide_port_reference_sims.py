@@ -25,6 +25,7 @@ Coverage
   the two figures above are prose and are refreshed with the correction. Companion committed evidence lives
   at ``tests/fixtures/waveguide_tjunction_e4/`` /
   ``tests/crossval/test_waveguide_tjunction_e4e5_gates.py``.
+The quoted aperture areas, cutoffs and |S11| blow-up figures are earlier measurements on the 42 mm guide to be re-read on the 40 mm guide rather than translated.
 """
 
 import warnings
@@ -225,7 +226,9 @@ def _tj_refs(freqs, f0):
 def test_port_reference_sims_clearance_advisory_fires(monkeypatch):
     """Probe planes sitting on top of the junction must fire the clearance
     advisory. The band is kept below the TE20 cutoff (fc2 = C0/a = 7.5 GHz for
-    a = 0.04 m) so the advisory is not skipped for an in-band higher mode."""
+    a = 0.04 m) so the advisory is not skipped for an in-band higher mode.
+    Patch ``rfx.sparams.waveguide.extract_waveguide_s_matrix_flux`` because the waveguide function resolves its own module global rather than the ``rfx.api._sparams`` re-export.
+    """
     freqs = jnp.linspace(4.5e9, 6.5e9, 3)
     f0 = 5.5e9
 
@@ -254,7 +257,7 @@ def test_identical_port_references_have_no_junction_clearance_advisory(
     monkeypatch, subpixel_smoothing,
 ):
     """Kottke clearing solver edge masks must not erase advisory geometry.
-    The top port inside PEC is excluded to satisfy setup’s section-operand checks before the mocked extractor."""
+    Patch ``rfx.sparams.waveguide.extract_waveguide_s_matrix_flux`` because the waveguide function resolves its own module global rather than the ``rfx.api._sparams`` re-export."""
     freqs = jnp.linspace(4.5e9, 6.5e9, 3)
 
     class ReachedExtractor(Exception):

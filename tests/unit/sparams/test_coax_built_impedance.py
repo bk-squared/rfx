@@ -35,7 +35,7 @@ def _section(h, *, small=False):
 
 
 def _jacobi_energy_impedance(grid, port, k, cells):
-    """Stored electrostatic energy is per metre because h cancels for square edge areas."""
+    """Stored electrostatic energy is per metre (h cancels for square edge areas)."""
     mx, my, _ = [np.asarray(m)[:, :, k] for m in realized_pec_edge_masks(cells)]
     metal = mx | my
     metal[1:] |= mx[:-1]

@@ -26,7 +26,6 @@ Three things are locked here.
 
 Cheap and offline: the advisory is exercised at the helper level on synthetic
 S-matrices, no FDTD.
-Reciprocity cannot be a preflight check because preflight validates input fidelity before the solve, while reciprocity is measured on the extracted S-matrix.
 """
 from __future__ import annotations
 

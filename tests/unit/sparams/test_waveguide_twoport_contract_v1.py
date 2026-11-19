@@ -169,7 +169,7 @@ def test_normalized_twoport_dielectric_binds_reciprocity_and_transmission():
 
 
 def test_normalized_twoport_pec_short_is_strongly_reflective():
-    """A lossless PEC short is a total reflector, so |S11| sits at unity."""
+    """The (0.98, 1.005) mean-|S11| band and 1.05 maximum-column-power bound leave margin around the 0.9998 mean |S11| and 1.0208 maximum column power measured earlier with the 0.75-lambda_g absorber."""
     sim = _build_twoport_sim(kind="pec_short")
     result = sim.compute_waveguide_s_matrix(num_periods=40, normalize=True)
     s = np.asarray(result.s_params)
@@ -199,7 +199,6 @@ def test_normalized_twoport_reference_plane_magnitude_invariant_on_reflecting_du
 
     Transmission uses driven-port reference incidence, retaining propagation;
     its doubled phase rotation equals the sum of the reflection rotations.
-    The DUT reflects, so the diagonal is exercised by the reference-plane magnitude check.
     """
     base = _build_twoport_sim(kind="dielectric").compute_waveguide_s_matrix(
         num_periods=40, normalize=True

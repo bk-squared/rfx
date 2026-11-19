@@ -167,7 +167,6 @@ def test_msl_thru_line_passive_gate():
     The foil sheet lands on the laminate face at dx = h_sub/3.
     """
 
-    assert H_SUB / DX == 3, "The board cell size must put the laminate face at node 3"
     sim = Simulation(snap="declared",
         freq_max=F_MAX,
         domain=(LX, LY, LZ),
@@ -192,6 +191,7 @@ def test_msl_thru_line_passive_gate():
         Box((0.0, trace_y_lo, H_SUB), (LX, trace_y_hi, H_SUB)),
         material="pec",
     )
+    assert [(int(spec.normal_axis), int(spec.plane) - sim.realized_geometry().domain[2].padding[0]) for spec in sim.realized_geometry().sheets] == [(2, 3)], "The realized foil sheet must occupy z node 3 on the uniform board"
 
     sim.add_msl_port(
         position=(PORT_MARGIN, y_centre, 0.0),

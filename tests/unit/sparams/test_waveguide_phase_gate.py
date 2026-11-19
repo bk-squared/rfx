@@ -140,7 +140,7 @@ def test_phase_slope_recovers_known_plane_separation(direction, port_x):
     A value hardwired to the predictor cannot recover the geometrically-known
     plane separation from the FDTD fields; recovering it (high R²) proves the
     measured leg is the physical propagation, not an echo of the predictor.
-    The R² bar is 0.998 because an earlier 0.999 bar sat on a knife-edge across machines.
+    The R² bar is 0.998 because the earlier observed ~0.9991 leaves a 0.999 threshold on a knife-edge across machines.
     """
     d = _measure_phase(direction, port_x)
     m = d["mask"]

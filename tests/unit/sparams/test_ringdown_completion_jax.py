@@ -34,7 +34,7 @@ empty mask; without x64 the map runs in complex64 and stays finite.
 Moved from the research lane's E3' map
 (``validation/research/fdtd_acc/e3_completion_jax.py`` and its tests), with the lane's own
 identification replaced by ``rfx.ringdown.identify``.
-The float32 bars are 3–4 times the largest errors measured in an earlier comparison against the analytic answer, relative to the peak.
+The float32 value/JVP bars of 2e-5/5e-5 allow about 3–4 times the largest peak-relative errors measured earlier against the analytic answer, 4.6e-6/1.6e-5 respectively.
 """
 
 from __future__ import annotations

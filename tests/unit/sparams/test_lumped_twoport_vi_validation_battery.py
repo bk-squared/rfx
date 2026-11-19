@@ -491,8 +491,8 @@ def test_extract_lumped_s11_is_the_decompose_diagonal():
     i = (rng.normal(3.0, 0.3, (n_ports, n_ports, n_freqs))
          + 1j * rng.normal(0.0, 0.3, (n_ports, n_ports, n_freqs)))
 
-    assert np.all(np.abs(v - z0 * i) > 0.0), (
-        "Synthetic V/I must stay away from the zero incident-wave guard.")
+    assert np.all(np.abs(v - z0 * i) > 0.1 * (np.abs(v) + np.abs(z0 * i))), (
+        "Synthetic V/I must keep a cancellation margin above 10% of the summed phasor magnitudes.")
     s_lumped = np.asarray(decompose_lumped_s_matrix(v, i, [z0, z0]))
     s_wire = np.asarray(decompose_wire_s_matrix(v, i, [z0, z0], [3, 3]))
     for p in range(n_ports):

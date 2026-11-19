@@ -5,7 +5,7 @@ Kirschning-Jansen dispersion (Electron. Lett. 18(6):272-274, 1982) on top of
 a quasi-static eps_eff(0). Three properties pin it: it starts at eps_eff(0)
 as f -> 0, it rises monotonically toward eps_r, and it reproduces an
 independent implementation (scikit-rf) on three boards.
-The reference columns are w [m], h [m], eps_r, f [Hz], scikit-rf ep_reff (its own quasi-static eps_eff(0)), and scikit-rf ep_reff_f (Kirschning-Jansen eps_eff(f)).
+The reference columns w [m], h [m], eps_r, f [Hz], ep_reff (quasi-static eps_eff(0)) and ep_reff_f (dispersive eps_eff(f)) come from scikit-rf 2.1.0 MLine(frequency=Frequency.from_f([f], unit="Hz"), w=w, h=h, t=0.0, ep_r=eps_r, tand=0.0, rho=0, model="hammerstadjensen", disp="kirschningjansen", diel="frequencyinvariant", compatibility_mode="qucs").
 """
 from __future__ import annotations
 

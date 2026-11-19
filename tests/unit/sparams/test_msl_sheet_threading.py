@@ -142,7 +142,6 @@ def build_msl_thru(sheet=None, dz_profile=None):
     z extent is then ``sum(dz_profile)``).
     Declared snapping accepts the trace y +8.656% and PEC witness x/y −2.069%/−5.052% offsets for sheet threading.
     """
-    assert H_SUB / DX == 3, "The board cell size must put the laminate face at node 3"
     if dz_profile is None:
         sim = Simulation(snap="declared",
             freq_max=F_MAX, domain=(LX, LY, LZ), dx=DX, cpml_layers=8,
@@ -162,6 +161,7 @@ def build_msl_thru(sheet=None, dz_profile=None):
     y_c = LY / 2.0
     sim.add(Box((0.0, y_c - W_TRACE / 2, H_SUB),
                 (LX, y_c + W_TRACE / 2, H_SUB)), material="pec")
+    assert dz_profile is not None or [(int(spec.normal_axis), int(spec.plane) - sim.realized_geometry().domain[2].padding[0]) for spec in sim.realized_geometry().sheets] == [(2, 3)], "The realized foil sheet must occupy z node 3 on the uniform board"
     if sheet is not None:
         box = Box((SHEET_X[0], y_c - SHEET_HALF_W, SHEET_Z),
                   (SHEET_X[1], y_c + SHEET_HALF_W, SHEET_Z))
