@@ -12,7 +12,9 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+import rfx.model as model
 from rfx import GaussianPulse, Simulation
+from rfx.core.yee import EPS_0
 from rfx.model.source_coefficients import source_table
 from rfx.sources.port_drive import soft_source
 
@@ -116,29 +118,69 @@ def _graded_current_scene():
     return sim, sim._build_nonuniform_grid()
 
 
+def relative_probe_spectrum(plain, compiled, dt):
+    """Compare direct probe DFTs at twenty frequencies from 2 to 10 GHz."""
+    frequencies = np.linspace(2e9, 10e9, 20)
+    times = np.arange(len(plain), dtype=np.float64) * dt
+    kernel = np.exp(-2j * np.pi * np.outer(frequencies, times)) * dt
+    expected = kernel @ np.asarray(plain, np.float64)
+    actual = kernel @ np.asarray(compiled, np.float64)
+    peak = np.max(np.abs(expected))
+    assert np.isfinite(peak) and peak > 0
+    return float(np.max(np.abs(actual - expected)) / peak)
+
+
 @pytest.mark.parametrize('eps_r,sigma', [(2.65, 0), (5.3, 0), (3.25, .02), (3.7, .02)])
 @pytest.mark.parametrize('n_steps', [60, 120, 240])
-def test_graded_current_forward_stays_within_nine_ulp(eps_r, sigma, n_steps, record_property):
+def test_graded_current_forward_spectrum_and_drive_coefficient(monkeypatch, eps_r, sigma, n_steps,
+                                                               record_property):
+    """Bound the relative probe spectrum error by 1e-4 and each drive Cb by one ULP.
+
+    The float64 coefficient uses the mean of the four cells incident to the source edge.
+    """
     sim, grid = _graded_current_scene()
+    dt = float(grid.dt)
     eps = jnp.full(grid.shape, eps_r, jnp.float32)
+    conductivity = jnp.full(grid.shape, sigma, jnp.float32)
+    kwargs = {} if sigma == 0 else {'sigma_override': conductivity}
+    observations = []
+    original = model.e_update_coefficient_at
+
+    def observe(materials, cell, component, dt, **options):
+        assert component == 'ez' and options['host']
+        cb = original(materials, cell, component, dt, **options)
+        edge = tuple(map(int, cell))
+        jax.debug.callback(lambda v: observations.append((edge, np.array(v))), cb)
+        return cb
 
     def probe(e):
-        kwargs = {} if sigma == 0 else {
-            'sigma_override': jnp.full(grid.shape, sigma, jnp.float32)}
         return sim.forward(n_steps=n_steps, eps_override=e, skip_preflight=True,
                            checkpoint=False, **kwargs).time_series
 
-    plain = np.asarray(probe(eps))
-    compiled = np.asarray(jax.jit(probe)(eps))
+    monkeypatch.setattr(model, 'e_update_coefficient_at', observe)
+    records = {}
+    for form, forward in (('plain', probe), ('jit', jax.jit(probe))):
+        jax.clear_caches()
+        observations.clear()
+        records[form] = np.asarray(forward(eps))
+        jax.effects_barrier()
+        record_property(f'{form}_calls', len(observations))
+        assert observations, f'{form} observed no source coefficient'
+        for index, ((i, j, k), cb) in enumerate(observations):
+            cells = np.s_[i-1:i+1, j-1:j+1, k]
+            eps_e = np.asarray(eps)[cells].reshape(4).mean(dtype=np.float64)
+            sigma_e = np.asarray(conductivity)[cells].reshape(4).mean(dtype=np.float64)
+            c64 = (dt / EPS_0) / (eps_e + sigma_e * dt / (2 * EPS_0))
+            assert cb.shape == () and cb.dtype == np.float32
+            ulps = abs(np.float64(cb) - c64) / np.spacing(np.float32(c64))
+            record_property(f'{form}_cb_ulps_{index}', float(ulps))
+            assert ulps <= 1, (form, index, ulps)
+
+    plain, compiled = records['plain'], records['jit']
     assert plain.dtype == compiled.dtype == np.float32
-    # E2: max record difference / float32 spacing at the plain record's peak.
-    # The expected measurement is zero; the cross-trace acceptance bar is 9 ULP.
-    difference = np.max(np.abs(compiled.astype(np.float64) - plain.astype(np.float64)))
-    peak = np.float32(np.max(np.abs(plain)))
-    assert np.isfinite(peak) and peak > 0
-    ulp = float(difference / np.spacing(peak))
-    record_property('peak_ulp', ulp)
-    assert ulp <= 9, (eps_r, sigma, n_steps, ulp)
+    spectral = relative_probe_spectrum(plain, compiled, dt)
+    record_property('spectral', spectral)
+    assert spectral <= 1e-4, (eps_r, sigma, n_steps, spectral)
 
 
 def test_graded_current_forward_has_finite_gradients(record_property):

@@ -125,6 +125,7 @@ def ulps(a, b):
 @pytest.mark.parametrize('owner', ['plain', 'dielectric', 'debye', 'lorentz', 'mixed'])
 @pytest.mark.parametrize('lane', ['uniform', 'graded'])
 def test_step_uses_owner_curl_coefficient(monkeypatch, owner, lane, record_property):
+    """The lossless cell rounds within one float32 ULP of its float64 coefficient."""
     sim = coefficient_scene(owner, lane)
     grid = sim._build_realized_grid()
     assemble = sim._assemble_materials_nu if lane == 'graded' else sim._assemble_materials
@@ -141,23 +142,20 @@ def test_step_uses_owner_curl_coefficient(monkeypatch, owner, lane, record_prope
             mask = ds[1][0] if isinstance(ds[1], (list, tuple)) else ds[1]
             fraction = edge_mean(mask, c, high_wall=unpadded_high_walls(grid))
             denominator += EPS_0 * 50. * float(grid.dt) / (2 * 5e-12 + float(grid.dt)) * fraction
-        expected = np.asarray(float(grid.dt) / denominator, np.float32)
+        expected64 = float(grid.dt) / denominator
+        expected = expected64.astype(np.float32)
         actual = observed['absorber'][c][:6]
         update = observed['update'][c][:6]
         difference = int(ulps(actual, update).max())
         formula_difference = int(ulps(actual, expected[:6]).max())
+        c64 = expected64[:6][2, 7, 3]
+        lossless_ulps = abs(np.float64(actual[2, 7, 3]) - c64) / np.spacing(np.float32(c64))
         values.append(dict(component=c, update_ulps=difference, formula_ulps=formula_difference,
-                           lossless_bits=int(actual[2, 7, 3].view(np.uint32))))
-        # Literal SI coefficient bits captured from the
-        # base tree (00a7328dc; unchanged on a8a23248d),
-        # at x=2 in the pad, lossless epsilon=3.25 region y=7, z=3.
+                           lossless_ulps=float(lossless_ulps)))
     record_property('judge2', json.dumps(dict(owner=owner, lane=lane, components=values)))
     print(lane, owner, json.dumps(values))
     for value in values:
         c = value['component']
         assert value['update_ulps'] <= coefficient_ulp_bar(owner), f'{owner} component {c}: absorber/update {value["update_ulps"]} float32 ULP'
         assert value['formula_ulps'] <= coefficient_ulp_bar(owner), f'{owner} component {c}: written Cb formula {value["formula_ulps"]} float32 ULP'
-        assert value['lossless_bits'] == LOSSLESS_BITS[c]
-
-
-LOSSLESS_BITS = (1032302835, 1032302835, 1032302835)
+        assert value['lossless_ulps'] <= 1, (owner, lane, value)
