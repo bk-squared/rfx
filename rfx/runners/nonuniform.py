@@ -5,7 +5,7 @@ from __future__ import annotations
 from rfx._internal._precision import resolve_coefficient_dtype
 from rfx._warning_origin import user_stacklevel
 
-from rfx.errors import ConfigurationWarning
+from rfx.errors import ConfigurationWarning, RfxRefusal
 from rfx.model.graded_admission import host_cells
 
 from rfx._internal._grid_metric import field_index
@@ -50,7 +50,7 @@ def _validate_interface_eps_nu(sim, *, subpixel_smoothing=False, eps_override=No
         raise ValueError("interface_eps='dual_average' cannot combine with thin conductors or lumped RLC")
     if any(is_tracer(getattr(sim, name, None))
            for name in ("_dx_profile", "_dy_profile", "_dz_profile")):
-        raise ValueError("interface_eps='dual_average' requires concrete profiles, not traced profiles")
+        raise RfxRefusal("interface_eps='dual_average' requires concrete profiles, not traced profiles")
 
 
 def assemble_interface_eps_nu(sim, grid, materials, *, pec_mask, high_wall: tuple[bool, bool, bool]):

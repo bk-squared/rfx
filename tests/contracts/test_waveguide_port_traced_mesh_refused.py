@@ -9,7 +9,9 @@ absorber depth and flux planes from host cell widths, and the flux monitor
 refuses traced cells, so no cell-width derivative reaches S. Before the fix the
 first host read raised a raw TracerArrayConversionError; admission now refuses
 before the first time step, naming the ports and the traced axis. The same
-guide on the uniform mesh with its one cell size traced is refused the same way.
+guide on the uniform mesh with its one cell size traced is refused earlier, at
+the Simulation declaration, because the host turns the cell size into the
+grid's cell counts.
 
 Physical anchor: none. This file pins a refusal, not a number a user receives;
 the concrete primal still runs (row 3). Imitates
@@ -104,7 +106,7 @@ def _uniform_guide(dx):
 
 
 @pytest.mark.parametrize("entry", ("s_matrix", "run"))
-def test_traced_scalar_cell_size_refused_by_port_name(monkeypatch, entry):
+def test_traced_scalar_cell_size_refused_at_the_declaration(monkeypatch, entry):
     def forbidden(*args, **kwargs):
         pytest.fail("a waveguide port with a traced cell size reached lax.scan")
 
@@ -112,5 +114,5 @@ def test_traced_scalar_cell_size_refused_by_port_name(monkeypatch, entry):
     with pytest.raises(TracedStructureRefusal) as caught:
         jax.jacfwd(lambda d: _read(_uniform_guide(d), entry))(0.00127)
     message = str(caught.value)
-    assert "waveguide port(s) 'left', 'right'" in message
-    assert "whose dx cell widths are traced" in message
+    assert message.startswith("Simulation(dx=...) is traced")
+    assert "Keep dx concrete" in message

@@ -10,12 +10,19 @@ from numbers import Integral
 import numpy as np
 
 from rfx._traced_inputs import admit_traced_inputs
+from rfx._traced_refusal import TracedStructureRefusal
+from rfx.core.jax_utils import is_tracer
 
 
 def _validate_constructor_choices(
-    snap: str, interface_eps: str, pec_occupancy_model: str,
+    snap: str, interface_eps: str, pec_occupancy_model: str, dx: object = None,
 ) -> tuple[str, str, str]:
-    """Validate constructor choices in their established error order."""
+    """Validate constructor choices in their established error order.
+
+    A traced scalar ``dx`` raises ``TracedStructureRefusal`` last: the host
+    turns the cell size into the grid's cell counts, so no path can build a
+    grid from it.
+    """
     from rfx.runners.nonuniform import INTERFACE_EPS_RULES
 
     if snap not in ("strict", "declared"):
@@ -25,6 +32,12 @@ def _validate_constructor_choices(
     pec_occupancy_model = validate_occupancy_model(pec_occupancy_model)
     if interface_eps not in INTERFACE_EPS_RULES:
         raise ValueError(f"interface_eps must be one of {INTERFACE_EPS_RULES}, got {interface_eps!r}")
+    if is_tracer(dx):
+        raise TracedStructureRefusal(
+            "Simulation(dx=...) is traced (under jax.jit, jax.grad or jax.vmap): the cell size "
+            "sets the grid's cell counts on the host. Keep dx concrete; for a differentiable mesh "
+            "trace dx_profile, dy_profile or dz_profile instead and declare its concrete widths at "
+            "the primal point in nominal_profiles so positions on that axis resolve.")
     return snap, interface_eps, pec_occupancy_model
 
 
