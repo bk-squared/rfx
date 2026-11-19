@@ -154,105 +154,50 @@ from rfx.farfield import directivity
 from rfx.grid import C0
 from rfx.probes.probes import flux_spectrum
 
-# ===========================================================================
-# Fixture geometry (all lengths in metres; multiples of every rung dx)
-# ===========================================================================
-F0_HZ = 3.0e9            # DFT bin / pulse centre
-FREQ_MAX_HZ = 5.0e9      # Simulation freq_max (sets default mesh checks)
-DOMAIN_M = 0.06          # cube edge
-CENTER_M = 0.03          # dipole position on every axis
-NTFF_LO_M, NTFF_HI_M = 0.021, 0.039    # NTFF box corners
-FLUX_LO_M, FLUX_HI_M = 0.015, 0.045    # closed flux box, outside NTFF box
+F0_HZ = 3.0e9
+FREQ_MAX_HZ = 5.0e9
+DOMAIN_M = 0.06
+CENTER_M = 0.03
+NTFF_LO_M, NTFF_HI_M = 0.021, 0.039
+FLUX_LO_M, FLUX_HI_M = 0.015, 0.045
 CPML_LAYERS = 6
-BASE_DX_M = 3.0e-3       # base rung (fast suite)
-BASE_N_STEPS = 400       # probe tail/peak <= 1.8e-4 at all rungs (settled)
+BASE_DX_M = 3.0e-3
+BASE_N_STEPS = 400
 
-D_THEORY_DBI = 10.0 * np.log10(1.5)    # Hertzian dipole: 1.7609 dBi
+D_THEORY_DBI = 10.0 * np.log10(1.5)
 
-# Dense observation sphere (recipe pitfall 6: phi >= 24 samples over 2*pi,
-# endpoint=False, REQUIRED for the P_rad integral).
 THETA_GRID = np.linspace(0.01, np.pi - 0.01, 73)
 PHI_GRID = np.linspace(0.0, 2.0 * np.pi, 48, endpoint=False)
 
-# ===========================================================================
-# Gate constants (R5: every gate = measured value + honest margin)
-# ===========================================================================
-# Measured base rung (this tree, after the second-order NTFF fix):
-# ratio = 0.5003207 -> |off from the derived 0.5| = 0.00032. The old gate
-# was 0.05, which no defect in the transform's time register could reach.
-# Band 0.003 chosen from the two slot mutations measured on this fixture:
-# E stamped at n*dt gives 0.4922200 (|off| 0.0078, 2.6x the band) and
-# moving the NTFF accumulate above the E update gives 0.5062186 (|off|
-# 0.0062, 2.1x the band). The unmutated value sits 9x inside it. Predicted
-# 0.5 derived from source (see module docstring), not fitted.
 _RATIO_PREDICTED = 0.5
 _RATIO_TOL_BASE = 0.003
 
-# Measured base rung (this tree): D = 1.7614298 dBi, |err| = 0.00052 dB.
-# Old gate 0.25 dB, measured against the old rule's 0.0391 dB. Re-pinned to
-# 0.005 dB: ~10x the new measurement and ~8x BELOW the 0.0391 dB a full
-# revert of the second-order NTFF fix produces, so a revert cannot pass.
-# Both slot mutations also cross it (0.0101 and 0.0107 dB). Still not a
-# licence to widen: the flux cross-check above pins the absolute scale that
-# D (a ratio) cannot see.
 _D_ERR_MAX_DB = 0.005
 
-# Measured base rung: bright-region [20, 160] deg max |10*log10(U/sin^2)|
-# = 0.0586 dB (finest rung: 0.0056 dB). Gate 0.30 dB (~5x measured base).
 _BRIGHT_DEV_MAX_DB = 0.30
 
-# Measured base rung: max|E_phi|/max|E_theta| over the full sphere
-# = 0.003882 (finest rung: 0.000984). Gate 0.02 (~5x measured base).
 _CROSSPOL_MAX = 0.02
 
-# Measured base rung: per-face |jnp - f64 recompute| / |f64| <= 3.0e-7.
-# Gate 1e-4 — validates the float64 recompute helper against the shipped
-# flux_spectrum on a rung where float32 does NOT flush.
 _FLUX_RECOMPUTE_RTOL = 1e-4
 
-# Offset-dipole phase/direction witness (F1). delta_z = +2*dx = 6 mm is an
-# exact grid multiple that keeps the dipole 3 mm INSIDE the NTFF box (the
-# suggested 4*dx = 12 mm would place it outside the [0.021, 0.039] box and
-# break Huygens equivalence). Measured bright-region slope of unwrapped
-# arg(E_theta(theta, phi=0)), offset-minus-centered, vs cos(theta):
-# +0.380369 rad vs expected +k*delta_z = +0.377252 rad (+0.83% dev);
-# max linear-fit residual 0.0050 rad. Gates ~6x/10x measured.
 _OFFSET_DZ_M = 2 * BASE_DX_M
-_PHASE_SLOPE_EXPECTED = 2.0 * np.pi * F0_HZ / C0 * _OFFSET_DZ_M  # +k*delta_z
-_PHASE_SLOPE_RTOL = 0.05        # measured |dev| 0.83%
-_PHASE_FIT_RESID_MAX = 0.05     # rad; measured 0.0050
+_PHASE_SLOPE_EXPECTED = 2.0 * np.pi * F0_HZ / C0 * _OFFSET_DZ_M
+_PHASE_SLOPE_RTOL = 0.05
+_PHASE_FIT_RESID_MAX = 0.05
 
-# x-dipole variant (F2). Measured base rung: E_phi theta=90 ring vs
-# |sin(phi)| max|dev| = 0.004593; E_theta phi=0 cut vs |cos(theta)|
-# max|dev| = 0.004575. Gate 0.05 (~10x measured, linear normalized units).
 _XPOL_SHAPE_DEV_MAX = 0.05
-# Measured max|E_phi|/max|E_theta| over the sphere = 1.002629 (ideal
-# x-dipole: 1.0). Band [0.9, 1.1] — a wide honest margin that still proves
-# the E_phi channel carries co-pol-class magnitude (non-vacuous).
 _XPOL_PEAK_RATIO_BAND = (0.9, 1.1)
 
-# P_ntff/P_flux is 1/2 in the continuum. With the magnetic CPML profile at the Yee half
-# cell the ratio reads 0.4985 / 0.5022 / 0.5022 at dx 3 / 1.5 / 0.75 mm.
-# Earlier it drifted to 0.5150 / 0.5226 as the cells shrank; the A/B
-# on one GPU differs only in that profile, so the drift came from the absorber's H-side
-# grading sitting half a cell off, not from thinning a fixed-layer absorber. Every rung
-# is gated at |ratio − 0.5| ≤ 0.005.
 _LADDER_RUNGS = (
-    # (dx_m, n_steps, err_cap_db)
     (3.0e-3, 400, 0.005),
     (1.5e-3, 800, 0.002),
     (0.75e-3, 1600, 0.001),
 )
 _RATIO_BAND_LADDER = 0.005
 
-# Guard: the ladder's first rung must BE the shared base-rung fixture
-# (the ladder test reuses it instead of re-running).
 assert _LADDER_RUNGS[0][:2] == (BASE_DX_M, BASE_N_STEPS)
 
 
-# ===========================================================================
-# Shared helpers
-# ===========================================================================
 def _build_sim(dx: float, *, component: str = "ez",
                source_pos: tuple = None) -> Simulation:
     """Hertzian-dipole calibration fixture at cell size ``dx``.
@@ -331,11 +276,11 @@ def _realized_shape(grid) -> tuple:
 def _run_rung(dx: float, n_steps: int, *, component: str = "ez",
               source_pos: tuple = None) -> dict:
     """Run one fixture rung; return the derived calibration observables."""
+    assert len(PHI_GRID) >= 24 and PHI_GRID[0] == 0.0 and PHI_GRID[-1] < 2.0 * np.pi, (
+        "radiated power needs at least 24 azimuth samples without a duplicate endpoint")
     sim = _build_sim(dx, component=component, source_pos=source_pos)
     res = sim.run(n_steps=n_steps)
 
-    # Decay witness: the rect-window DFT is only trustworthy if the pulse
-    # has left the domain within the window (measured tail/peak <= 1.8e-4).
     ts = np.asarray(res.time_series)
     tail = ts[int(0.9 * ts.shape[0]):]
     tail_over_peak = float(np.max(
@@ -365,7 +310,6 @@ def _run_rung(dx: float, n_steps: int, *, component: str = "ez",
 def base_rung():
     """Base rung (dx=3 mm, 400 steps, ~2.3 s) — shared by all fast tests."""
     rung = _run_rung(BASE_DX_M, BASE_N_STEPS)
-    # R5 breadcrumb for -s runs.
     print(f"\n[ntff-battery base rung] D={rung['d_dbi']:.6f} dBi "
           f"(theory {D_THEORY_DBI:.4f}), "
           f"P_ntff={rung['p_ntff']:.6e} W, "
@@ -384,6 +328,8 @@ def offset_rung():
     All magnitude gates stay on the centered fixture; this fixture feeds
     ONLY the phase/direction witness.
     """
+    assert NTFF_LO_M < CENTER_M + _OFFSET_DZ_M < NTFF_HI_M, (
+        "offset dipole must remain inside the NTFF box for Huygens equivalence")
     rung = _run_rung(BASE_DX_M, BASE_N_STEPS,
                      source_pos=(CENTER_M, CENTER_M, CENTER_M + _OFFSET_DZ_M))
     print(f"\n[ntff-battery offset rung] dz=+{_OFFSET_DZ_M * 1e3:.1f}mm, "
@@ -405,9 +351,6 @@ def xdipole_rung():
     return rung
 
 
-# ===========================================================================
-# FAST battery (default suite)
-# ===========================================================================
 
 def test_pulse_settled_within_window(base_rung):
     """Rect-window validity witness: probe tail/peak <= 1e-3.
@@ -493,7 +436,7 @@ def test_bright_region_pattern_matches_sin2_theta(base_rung):
     dx=0.75 mm); gate 0.30 dB (~5x measured base). A point dipole has no
     staircase, so this isolates pure NTFF surface-integration error.
     """
-    U = _radiation_intensity(base_rung["ff"])[0]        # (n_theta, n_phi)
+    U = _radiation_intensity(base_rung["ff"])[0]
     U_phi_mean = U.mean(axis=1)
     U_norm = U_phi_mean / U_phi_mean.max()
     sin2 = np.sin(THETA_GRID) ** 2
@@ -545,7 +488,7 @@ def test_offset_dipole_phase_slope_is_plus_k_dz_cos_theta(base_rung,
         f"offset fixture not settled: "
         f"tail/peak = {offset_rung['tail_over_peak']:.3e}")
 
-    e_cen = base_rung["ff"].E_theta[0, :, 0]     # phi = 0 cut
+    e_cen = base_rung["ff"].E_theta[0, :, 0]
     e_off = offset_rung["ff"].E_theta[0, :, 0]
     dphase = np.unwrap(np.angle(e_off * np.conj(e_cen)))
     x = np.cos(THETA_GRID)
@@ -583,11 +526,12 @@ def test_xdipole_pattern_shapes_make_e_phi_non_vacuous(xdipole_rung):
         f"x-dipole fixture not settled: "
         f"tail/peak = {xdipole_rung['tail_over_peak']:.3e}")
 
-    E_th = np.abs(xdipole_rung["ff"].E_theta[0])   # (n_theta, n_phi)
+    E_th = np.abs(xdipole_rung["ff"].E_theta[0])
     E_ph = np.abs(xdipole_rung["ff"].E_phi[0])
 
-    # E_phi shape on the theta = 90 deg ring (exact grid midpoint).
     i90 = int(np.argmin(np.abs(THETA_GRID - np.pi / 2)))
+    assert np.isclose(THETA_GRID[i90], np.pi / 2, rtol=0.0, atol=1e-12), (
+        "E_phi shape needs the selected ring at theta = pi/2")
     ring = E_ph[i90, :]
     assert ring.max() > 0.0
     model_ph = np.abs(np.sin(PHI_GRID))
@@ -597,7 +541,6 @@ def test_xdipole_pattern_shapes_make_e_phi_non_vacuous(xdipole_rung):
         f"E_phi theta=90 ring deviates from |sin(phi)| by {dev_ph:.4f} "
         f"(measured 0.004593, gate {_XPOL_SHAPE_DEV_MAX})")
 
-    # E_theta shape on the phi = 0 cut.
     cut = E_th[:, 0]
     assert cut.max() > 0.0
     model_th = np.abs(np.cos(THETA_GRID))
@@ -608,7 +551,6 @@ def test_xdipole_pattern_shapes_make_e_phi_non_vacuous(xdipole_rung):
         f"E_theta phi=0 cut deviates from |cos(theta)| by {dev_th:.4f} "
         f"(measured 0.004575, gate {_XPOL_SHAPE_DEV_MAX})")
 
-    # Non-vacuousness: E_phi must carry co-pol-class magnitude.
     peak_ratio = float(E_ph.max() / E_th.max())
     lo, hi = _XPOL_PEAK_RATIO_BAND
     assert lo < peak_ratio < hi, (
@@ -616,9 +558,6 @@ def test_xdipole_pattern_shapes_make_e_phi_non_vacuous(xdipole_rung):
         f"(measured 1.002629, ideal 1.0) — E_phi channel scale is off")
 
 
-# ===========================================================================
-# slow_physics battery (opt-in: -m slow_physics)
-# ===========================================================================
 
 def test_dx_ladder_directivity_converges_and_ratio_stable(base_rung):
     """Dipole directivity error shrinks; each power ratio stays within 0.005 of 1/2.
@@ -664,27 +603,9 @@ def test_dx_ladder_directivity_converges_and_ratio_stable(base_rung):
         f"measured 0.00052 -> 0.00006")
 
 
-# ===========================================================================
-# Non-uniform lane: the same fixture, forced through the NU runner
-# ===========================================================================
-# The z profile must REALIZE the uniform fixture's grid, not merely declare
-# the same cell size. 28 cells of 3.0 mm builds 33 x 33 x 41 against the
-# uniform rung's 33 x 33 x 33 — the +z absorber eight cells further out —
-# and the power ratio follows it (measured before the magnetic CPML half-cell correction): 0.4953 at 28 cells and 0.5039 at 21, the NTFF
-# power unchanged to 1e-5 and the flux-box power moving. That is a different
-# structure, not a different lane. At 20 cells both lanes realize
-# 33 x 33 x 33 and the NU lane reproduces the uniform one.
-#
-# Measured on this tree, dz_profile = 20 uniform 3.0 mm cells:
-#   realized 33 x 33 x 33, D = 1.761428040 dBi (|err| 0.000515 dB),
-#   P_ntff/P_flux = 0.500321038 (uniform rung: 0.500320703),
-#   ring-down settling -78.40 dB, probe tail/peak 1.30e-04.
-# The ratio is therefore gated against the DERIVED 0.5 with the same
-# tolerance as the uniform lane, not against a lane-specific centre.
 _NU_Z_CELLS = 20
 _NU_D_ERR_MAX_DB = 0.005
 _NU_SETTLING_MAX_DB = -40.0
-# Cross-lane agreement, measured: ratio 3.4e-07 apart, D 1.8e-06 dB apart.
 _NU_VS_UNIFORM_RATIO_MAX = 1e-4
 _NU_VS_UNIFORM_D_MAX_DB = 1e-4
 
@@ -786,18 +707,6 @@ def test_nonuniform_lane_power_calibration_and_slot(base_rung):
         f"gate {_NU_VS_UNIFORM_D_MAX_DB} dB)")
 
 
-# ===========================================================================
-# Box-size witness: the error must stay small however large the box is drawn
-# ===========================================================================
-# Same dipole, same margins, the Huygens box drawn at three sizes. A
-# first-order surface rule integrates a larger surface with a larger
-# per-cell error and the pattern error reaches a sixth of a dB; the
-# second-order one grows too, from a base eighty times lower, and stays at
-# thousandths of a dB. Measured (this tree, 0.09 m domain, dx = 1.5 mm, 800 steps,
-# CPML 6): |D err| 0.00013 / 0.00050 / 0.00204 dB at half-width 9 / 18 /
-# 27 mm. The first-order rule on the same fixture: 0.0212 / 0.0677 /
-# 0.1660 dB. Cap 0.01 dB — ~5x the worst measurement here and below the
-# first-order value at EVERY box, so a revert goes red on all three.
 _BOX_SWEEP_DX_M = 1.5e-3
 _BOX_SWEEP_DOMAIN_M = 0.09
 _BOX_SWEEP_CENTER_M = 0.045
@@ -818,6 +727,7 @@ def test_directivity_error_stays_small_however_large_the_huygens_box(half_width_
     same fixture gave 0.0212 / 0.0677 / 0.1660 dB. Both grow with the box;
     this gate is an absolute cap that the first-order rule fails at every
     size, not a claim that the error is flat.
+    Cap 0.01 dB is ~5x the worst measurement and below the first-order value at every box.
     """
     lo = _BOX_SWEEP_CENTER_M - half_width_m
     hi = _BOX_SWEEP_CENTER_M + half_width_m
