@@ -98,7 +98,10 @@ def observe():
             samples[tuple(local['half_axes'])] = np.asarray(value)
         if event == 'return' and name == 'build_cell_table' and 'sdf' in local:
             tables[id(value)] = dict(sdf=local['sdf'], widths=local['widths'],
-                                     tol=local['tol'], midpoints=dict(samples))
+                                     tol=local['tol'], midpoints=dict(samples),
+                                     carried=tuple(shape for shape, _ in local['carried']),
+                                     grid=local['grid'], lines=local['lines'],
+                                     sample_lines=local['sample_lines'])
         if event == 'return' and name == 'conformal_fractions_from_table':
             rows['conformal_reference_inputs'].append((tables[id(local['table'])], local['table'], value))
         if event == 'return' and frame.f_code.co_name in names and frame.f_globals.get('__name__', '').startswith('rfx.'):
