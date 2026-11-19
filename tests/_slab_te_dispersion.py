@@ -80,10 +80,9 @@ def slab_te0_neff(eps_core: float, eps_clad: float, thickness: float,
     def residual(u: float) -> float:
         return u * np.tan(u) - np.sqrt(max(V * V - u * u, 0.0))
 
-    # residual(0+) = -V < 0; residual(u -> min(V, pi/2)-) > 0.
     hi = min(V, 0.5 * np.pi)
     lo, hi = 1e-15, hi * (1.0 - 1e-14)
-    if residual(hi) <= 0.0:          # V < pi/2: the root is at u -> V
+    if residual(hi) <= 0.0:
         hi = V * (1.0 - 1e-15)
     for _ in range(200):
         mid = 0.5 * (lo + hi)

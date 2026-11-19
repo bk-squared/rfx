@@ -101,16 +101,13 @@ class RealizedPec:  # noqa: D101 - documented below
         exactly a material reading, not an edge one. The lane is not
         re-decided here: it is read off the grid the shared reader already
         built.
+        The collectors are passed and dropped so the material read states "cells only" instead of tripping the assembler's refusal on a sheet model.
         """
         import warnings as _warnings
 
         from rfx.nonuniform import NonUniformGrid
         with _warnings.catch_warnings():
             _warnings.simplefilter("ignore")
-            # Materials only — the realized conductors are already on
-            # ``self.inner``. The collectors are passed and dropped so
-            # this read states "cells only" instead of tripping the
-            # assembler's refusal on a sheet model.
             if isinstance(self.grid, NonUniformGrid):
                 return self.sim._assemble_materials_nu(
                     self.grid, pec_sheets=[], pec_wires=[])[0]
@@ -235,7 +232,7 @@ def _full_wall(realized: RealizedPec, axis: int, k: int, footprint) -> bool:
         m = np.asarray(realized.edges[t], dtype=bool)
         idx = [slice(None)] * 3
         idx[axis] = k
-        plane = m[tuple(idx)]                     # (n_p, n_q) in in-plane order
+        plane = m[tuple(idx)]
         along = 0 if t == in_plane[0] else 1
         if along == 0:
             need = fp[:-1, :] & fp[1:, :]

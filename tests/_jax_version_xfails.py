@@ -12,7 +12,6 @@ Ids are exact node ids, parameters included, because several parametrized tests 
 """
 import pytest
 
-# issue: (first jax (major, minor) that fails, reason, node ids)
 JAX_XFAILS = {
     2125: (
         (0, 11),
