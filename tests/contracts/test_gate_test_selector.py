@@ -386,7 +386,6 @@ def test_package_directory_summary_counts_only_new_candidates():
 
 
 def test_geometry_change_selects_oracle_that_imports_no_geometry():
-    # rfx/geometry changed, the oracle reaches it only through rfx.Simulation.
     sources = {
         "tests/oracle/test_leontovich.py": "from rfx import Simulation",
         "tests/oracle/test_other_oracle.py": "",
@@ -910,7 +909,7 @@ def test_local_shell_passes_selected_node_ids_unchanged(tmp_path):
 
 @pytest.mark.parametrize("status", [0, 1, 2, 3, 4, 5, 130])
 def test_selected_status_handling_in_isolated_bash(tmp_path, status):
-    # The stage now needs collection + JUnit evidence, even for exit zero.
+    """The stage needs collection + JUnit evidence, even for exit zero."""
     spec = importlib.util.spec_from_file_location(
         "stage2_contract", ROOT / "tests/contracts/test_gate_stage2_outcome.py")
     module = importlib.util.module_from_spec(spec)

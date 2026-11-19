@@ -190,7 +190,7 @@ def test_traced_radius_below_the_cell_is_refused():
     assert traced.any()
 
 
-ROD_CENTRE = (5.5 * H, 5.5 * H, 5.0 * H)  # a cell centre across the rod; its 4 mm height ends on nodes 3 and 7
+ROD_CENTRE = (5.5 * H, 5.5 * H, 5.0 * H)
 
 
 @pytest.mark.parametrize('material, swept, values, expected', [
@@ -202,6 +202,7 @@ def test_material_sweep_applies_the_size_rule_to_a_non_pec_body_only(material, s
     sim = _sim()
     sim.add_material('rod', **material)
     sim.add(Cylinder(ROD_CENTRE, 0.5 * H, 4 * H, 'z'), material='rod')
+    assert np.allclose(np.asarray(ROD_CENTRE[:2]) / H % 1, .5, rtol=0, atol=1e-12) and np.allclose(np.asarray(sim._geometry[-1].shape.bounding_box())[:, 2] / H, (3, 7), rtol=0, atol=1e-12), "Rod must be transversely cell-centred with axial ends on nodes 3 and 7"
     sim.add_source((2.5 * H, 2.5 * H, 5.5 * H), 'ez', waveform=GaussianPulse(f0=20e9, bandwidth=0.8))
     sim.add_probe((8.5 * H, 8.5 * H, 5.5 * H), 'ez')
     if expected == 'refused':
