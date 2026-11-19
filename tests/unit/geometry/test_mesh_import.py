@@ -63,12 +63,10 @@ def test_mesh_rotated_box_matches_analytic_within_one_cell():
     x = _coords(-0.05, 0.05, dx)
     m_mesh = np.asarray(mesh.mask_on_coords(x, x, x))
 
-    # independent analytic mask: rotate points back into the box frame, half-extent test
     X, Y, Z = np.meshgrid(x, x, x, indexing="ij")
     xr = np.cos(theta) * X + np.sin(theta) * Y
     yr = -np.sin(theta) * X + np.cos(theta) * Y
     m_ana = (np.abs(xr) <= ex / 2) & (np.abs(yr) <= ey / 2) & (np.abs(Z) <= ez / 2)
-    # surface distance in the box frame (min distance to any face plane, signed→abs)
     dfx = np.abs(np.abs(xr) - ex / 2)
     dfy = np.abs(np.abs(yr) - ey / 2)
     dfz = np.abs(np.abs(Z) - ez / 2)
@@ -84,7 +82,6 @@ def test_mesh_rotated_box_matches_analytic_within_one_cell():
 def test_mesh_requires_watertight():
     """A non-watertight mesh (open surface) is rejected at construction — a leaky mesh
     gives an undefined inside/outside test and a silently-wrong occupancy mask."""
-    # a single triangle: has open edges, not watertight
     leaky = trimesh.Trimesh(vertices=[[0, 0, 0], [1, 0, 0], [0, 1, 0]], faces=[[0, 1, 2]])
     assert not leaky.is_watertight
     with pytest.raises(ValueError, match="watertight"):
@@ -94,16 +91,16 @@ def test_mesh_requires_watertight():
 def test_mesh_from_file_roundtrip_and_scale(tmp_path):
     """from_file loads an STL, applies the REQUIRED explicit scale (STL is unitless), and
     positions via translate; bounding_box and a known interior point come out right."""
-    R_mm = 30.0  # sphere drawn in millimetres
+    SPHERE_RADIUS_MM = 30.0
+    R_mm = SPHERE_RADIUS_MM
     sphere_mm = trimesh.creation.icosphere(subdivisions=3, radius=R_mm)
     stl = tmp_path / "sphere_mm.stl"
     sphere_mm.export(stl)
 
-    # load with mm→m scale and an offset
-    shape = MeshShape.from_file(str(stl), scale=1e-3, translate=(0.1, 0.0, 0.0))
+    MILLIMETRES_TO_METRES = 1e-3
+    shape = MeshShape.from_file(str(stl), scale=MILLIMETRES_TO_METRES, translate=(0.1, 0.0, 0.0))
     (lox, loy, loz), (hix, hiy, hiz) = shape.bounding_box()
     assert lox == pytest.approx(0.1 - 0.03, abs=2e-3) and hix == pytest.approx(0.1 + 0.03, abs=2e-3)
-    # centre point is inside; a point well outside is not
     inside = np.asarray(shape.mask_on_coords(np.array([0.1]), np.array([0.0]), np.array([0.0])))
     outside = np.asarray(shape.mask_on_coords(np.array([0.2]), np.array([0.0]), np.array([0.0])))
     assert bool(inside[0, 0, 0]) and not bool(outside[0, 0, 0])
@@ -135,28 +132,28 @@ def test_mesh_preflight_underresolved_advisory():
     #931: the remedy a thin CONDUCTOR plate wants is the sheet declaration
     (``add_thin_conductor``, or a zero-thickness Box), not a finer mesh —
     the advisory's wording is preflight's to update (design note §3,
-    ``_validate_mesh_quality``). The fire/no-fire pair here is unchanged."""
+    ``_validate_mesh_quality``). The fire/no-fire pair here is unchanged.
+    Use 4 mm: work scales with cells.
+    """
     from rfx.api import Simulation
 
     sim = Simulation(freq_max=5e9, domain=(0.06, 0.06, 0.06), dx=0.006,
                      boundary="cpml", cpml_layers=6, mode="3d")
     sim.add_source((0.03, 0.03, 0.03), component="ez")
-    # a thin plate: 0.8 mm thick << 2·dx (12 mm) — its thickness is lost by rasterisation
     plate = trimesh.creation.box(extents=(0.03, 0.02, 0.0008))
     plate.apply_translation([0.03, 0.03, 0.03])
+    assert 0 < float(np.min(plate.extents)) < 2 * sim._dx, "plate thickness must be below two cells to exercise the underresolution advisory"
     sim.add(MeshShape(plate), material="pec")
     report = sim.preflight()
     assert any("thinnest dimension" in str(m) and "below 2 cells" in str(m) for m in report), (
         f"under-resolved (thin-plate) mesh advisory did not fire; report={[str(m) for m in report]}")
 
-    # control: a finely-tessellated but WELL-RESOLVED sphere must NOT trip the advisory — its
-    # triangle edges are ~2.6 mm, but its thinnest dimension (diameter 80 mm) spans many cells.
-    # Use 4 mm: work scales with cells; product cost is tracked separately.
     sim2 = Simulation(freq_max=5e9, domain=(0.12, 0.12, 0.12), dx=0.004,
                       boundary="cpml", cpml_layers=6, mode="3d")
     sim2.add_source((0.06, 0.06, 0.06), component="ez")
     ball = trimesh.creation.icosphere(subdivisions=4, radius=0.04)
     ball.apply_translation([0.06, 0.06, 0.06])
+    assert float(np.min(ball.extents)) > 2 * sim2._dx, "control sphere diameter must exceed two cells so tessellation alone cannot trigger the advisory"
     sim2.add(MeshShape(ball), material="pec")
     report2 = sim2.preflight()
     assert not any("thinnest dimension" in str(m) for m in report2), (
@@ -171,7 +168,7 @@ def test_mesh_from_step_file():
     import os
 
     step = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures", "mesh", "box_30x20x2mm.step")
-    shape = MeshShape.from_file(step, scale=1.0)  # cascadio → metres already
+    shape = MeshShape.from_file(step, scale=1.0)
     (lox, loy, loz), (hix, hiy, hiz) = shape.bounding_box()
     assert (hix - lox, hiy - loy, hiz - loz) == pytest.approx((0.03, 0.02, 0.002), abs=1e-4)
 
@@ -199,7 +196,7 @@ def test_mesh_caches_occupancy():
     m1 = shape.mask_on_coords(x, x, x)
     m2 = shape.mask_on_coords(x, x, x)
     assert m1 is m2, "repeat rasterisation of the same grid should return the cached mask"
-    m3 = shape.mask_on_coords(x * 0.5, x, x)   # different grid → cache miss, distinct entry
+    m3 = shape.mask_on_coords(x * 0.5, x, x)
     assert m3 is not m1 and len(shape._mask_cache) == 2
 
 
@@ -219,17 +216,6 @@ def test_mesh_rejects_traced_coordinates():
         jax.jit(rasterize)(coords)
 
 
-# --------------------------------------------------------------------------- #
-# Deterministic rasterization of surface-registered sample points.
-#
-# The boundary-fitted meshers register conductor sheets at mid-plane NODES, so
-# rasterization sample points land exactly on mesh faces. trimesh's
-# ``contains`` decides such points along an OS-entropy-random ray direction
-# (measured: a sample 1 ulp off a sheet's lateral face flipped
-# inside/outside across 40 fresh calls, states 0,1,1,0,1,0,...; a point
-# 0.2 um strictly INSIDE a face returned True,False,False,... over 8 calls).
-# MeshShape therefore casts its own fixed-direction parity rays from a
-# tie-break-nudged origin (mesh_import.py module block).
 
 
 def _box_volume_expectation(x, y, z, lo, hi, tie_break=False):
@@ -278,7 +264,7 @@ def test_surface_on_nodes_matches_box_convention_both_sides():
       half-open tie-break expectation (wrong=1)``.
     """
     dx = 50e-6
-    nodes = np.arange(13) * dx                       # exact f64 multiples
+    nodes = np.arange(13) * dx
     lo, hi = (3 * dx,) * 3, (11 * dx,) * 3
     cube = trimesh.creation.box(bounds=[lo, hi])
     m = np.asarray(MeshShape(cube).mask_on_coords(nodes, nodes, nodes))
@@ -286,18 +272,11 @@ def test_surface_on_nodes_matches_box_convention_both_sides():
     assert np.array_equal(m, expect), (
         f"cells={int(m.sum())} expected {int(expect.sum())} "
         f"wrong={int((m ^ expect).sum())}")
-    # both sides of the lo x-face, spelled out
     assert m[3, 6, 6] and not m[2, 6, 6], "lo face: on-surface in, one-out out"
-    # both sides of the hi x-face
     assert m[10, 6, 6] and not m[11, 6, 6], "hi face: one-in in, on-surface out"
 
-    # A sample plane 1 ulp BELOW the lo face is a tie-class point whose f64
-    # answer is 'outside' but whose intended registration is the face; the
-    # documented tie-break (positive nudge ~1e-12 m, orders above ulp noise)
-    # must pull it INSIDE deterministically — this is the assertion that pins
-    # the nudge itself (without it the outcome follows per-point roundoff).
     x_shift = nodes.copy()
-    x_shift[3] = np.nextafter(nodes[3], -np.inf)     # 1 ulp below the face
+    x_shift[3] = np.nextafter(nodes[3], -np.inf)
     m2 = np.asarray(MeshShape(trimesh.creation.box(bounds=[lo, hi]))
                     .mask_on_coords(x_shift, nodes, nodes))
     assert m2[3, 6, 6], "1-ulp-below-lo-face sample must tie-break INSIDE"
@@ -319,9 +298,9 @@ def test_mid_plane_registered_sheet_deterministic_and_correct_both_sides():
     dx = 50e-6
     dz = np.full(15, 31.43e-6)
     znodes = np.concatenate([[0.0], np.cumsum(dz)])
-    zmid = float(znodes[7])                          # mid-plane-registered
+    zmid = float(znodes[7])
     xnodes = np.cumsum(np.full(12, dx)) - dx
-    rng = np.random.default_rng(0)                   # jitter is the fixture
+    rng = np.random.default_rng(0)
 
     def _jit(v):
         return v + rng.integers(-4, 5, size=np.shape(v)) * np.spacing(v)
@@ -331,7 +310,7 @@ def test_mid_plane_registered_sheet_deterministic_and_correct_both_sides():
     hi = (float(xnodes[8]), float(xnodes[8]), zmid + 8.5e-6)
 
     masks = []
-    for _ in range(5):                               # fresh MeshShape: no cache
+    for _ in range(5):
         sheet = trimesh.creation.box(bounds=[lo, hi])
         masks.append(np.asarray(MeshShape(sheet).mask_on_coords(xs, ys, znodes)))
     for k, mk in enumerate(masks[1:], 1):
@@ -342,13 +321,10 @@ def test_mid_plane_registered_sheet_deterministic_and_correct_both_sides():
     assert np.array_equal(m, expect), (
         f"sheet occupancy != f64 half-open tie-break expectation "
         f"(wrong={int((m ^ expect).sum())})")
-    # both sides of the lateral surface at the registered mid-plane, spelled
-    # out: strictly-inside node occupied, strictly-outside node empty.
     assert m[4, 5, 7] and m[7, 5, 7], "interior mid-plane cells must be PEC"
     assert not m[2, 5, 7] and not m[9, 5, 7], "exterior mid-plane cells empty"
 
 
-# Scanline bars: independent solid inequalities, plus the pinned legacy comparison.
 def _scanline_nudge():
     d = np.array([1.0, np.sqrt(2) / 2, np.sqrt(3) / 3])
     return 1e-12 * (d / np.linalg.norm(d))
@@ -359,6 +335,7 @@ def _scanline_points(coords):
 
 
 def _scanline_fixture(kind, rotation, offset):
+    """The radius inequality alone is not the solid of a faceted icosphere."""
     angles = np.deg2rad([20, 30, 45, 60])
     rx = trimesh.transformations.rotation_matrix(angles[0], [1, 0, 0])
     rz = trimesh.transformations.rotation_matrix(angles[1], [0, 0, 1])
@@ -377,8 +354,6 @@ def _scanline_fixture(kind, rotation, offset):
         half = np.array([.005, .006, .007])
         expected = np.all((local >= -half) & (local < half), axis=1)
     else:
-        # Closed-form convex polyhedron: intersection of its supporting half-spaces.
-        # An icosphere is faceted; the radius inequality alone is not its solid.
         normals = original.face_normals
         distances = np.einsum("ij,ij->i", normals, original.triangles[:, 0])
         expected = np.concatenate([
@@ -500,7 +475,6 @@ def test_scanline_b3_grid2_and_mac_timing():
     points = _scanline_points(coords) + _scanline_nudge()
     normals = mesh.face_normals
     distances = np.einsum("ij,ij->i", normals, mesh.triangles[:, 0])
-    # Restrict half-space work to the bounding sphere; this is an analytic cull.
     inside = np.linalg.norm(points - .06, axis=1) < .04
     expected = np.zeros(len(points), dtype=bool)
     expected[inside] = np.concatenate([
@@ -517,15 +491,12 @@ def test_scanline_b3_grid2_and_mac_timing():
 
 @pytest.mark.parametrize("original_rounding", [False, True])
 def test_scanline_b6_tetrahedron_edge_and_vertex_after_nudge(original_rounding):
+    """Reassociating the nudge expression moves the lower x face one ULP above the sample."""
     from fractions import Fraction as F
 
-    # Axis intercept tetrahedron: nonnegative local coordinates and
-    # sum(local_i / intercept_i) < 1, using the actual float64 vertices.
     length = .004
     shift = _scanline_nudge()
     if original_rounding:
-        # Preserve the previous run's geometry as a regression: reassociating
-        # this expression moves the lower x face one ULP above the sample.
         d = np.array([1.0, np.sqrt(2) / 2, np.sqrt(3) / 3])
         shift = 1e-12 * d / np.linalg.norm(d)
     vertices = np.array([[0., 0., 0.], [length, 0., 0.],
@@ -559,12 +530,9 @@ def test_scanline_b6_tetrahedron_edge_and_vertex_after_nudge(original_rounding):
 
 
 def test_scanline_b6_tetrahedron_shared_projected_diagonal():
+    """In normalized coordinates, strict +x crossings include X=0 and X=Y-Z, exclude X=Y and X=1-Z."""
     from fractions import Fraction as F
 
-    # Barycentric weights at A,B,C,D are 1-X-Z, X, Z-Y+X, Y-X.
-    # Thus the solid is 0 <= X <= Y, Y-X <= Z, X+Z <= 1.
-    # Its lower faces share projected A-D; projected vertices retain exact ties.
-    # Strict +x crossings include X=0 and X=Y-Z, exclude X=Y and X=1-Z.
     length = .004
     vertices = np.array([[0., 0., 0.], [length, length, 0.],
                          [0., 0., length], [0., length, length]]) + _scanline_nudge()
@@ -584,10 +552,9 @@ def test_scanline_b6_tetrahedron_shared_projected_diagonal():
 
 
 def test_scanline_b6_box_x_face_after_nudge():
+    """creation.box's centre/extents arithmetic can round away the deliberately exact nudge tie."""
     axis = np.array([-.001, 0., .001, .002, .003])
     lo, hi = _scanline_nudge(), np.full(3, .002) + _scanline_nudge()
-    # Assign vertices directly: creation.box's centre/extents arithmetic can
-    # round away the deliberately exact nudge tie.
     mesh = trimesh.creation.box()
     mesh.vertices = np.where(np.asarray(mesh.vertices) < 0, lo, hi)
     expected = _box_volume_expectation(axis, axis, axis, lo, hi, tie_break=True)

@@ -31,7 +31,7 @@ class TestCurvedPatch:
             axis="x",
         )
         boxes = patch.to_staircase(dx=1e-3)
-        assert len(boxes) == 40  # 40mm / 1mm
+        assert len(boxes) == 40
 
     def test_segments_have_correct_width(self):
         """Each segment should span the full patch width in the non-curvature axis."""
@@ -44,7 +44,6 @@ class TestCurvedPatch:
         )
         boxes = patch.to_staircase(dx=1e-3)
         for box in boxes:
-            # For x-axis curvature, width is along y
             y_extent = box.corner_hi[1] - box.corner_lo[1]
             assert abs(y_extent - 10e-3) < 1e-10, f"y-width should be 10mm, got {y_extent}"
 
@@ -59,18 +58,18 @@ class TestCurvedPatch:
         )
         boxes = patch.to_staircase(dx=1e-3)
         z_values = [b.corner_lo[2] for b in boxes]
-        # Center segments have lowest z, edge segments highest
         center_z = z_values[len(z_values) // 2]
         edge_z = z_values[0]
         assert edge_z > center_z, "Edge segments should be higher than center"
 
     def test_flat_patch_when_large_radius(self):
         """Very large radius ~ flat patch (all z nearly equal)."""
+        NEAR_FLAT_RADIUS = 100.0
         patch = CurvedPatch(
             center=(0, 0, 0),
             length=20e-3,
             width=10e-3,
-            radius=100.0,  # Very large
+            radius=NEAR_FLAT_RADIUS,
             axis="x",
         )
         boxes = patch.to_staircase(dx=1e-3)
@@ -88,7 +87,6 @@ class TestCurvedPatch:
             axis="y",
         )
         boxes = patch.to_staircase(dx=1e-3)
-        # For y-axis curvature, z still varies
         z_values = [b.corner_lo[2] for b in boxes]
         assert max(z_values) > min(z_values)
 
@@ -114,7 +112,6 @@ class TestCurvedPatch:
             axis="x",
         )
         boxes = patch.to_staircase(dx=1e-3)
-        # First segment should start at -length/2, last should end at +length/2
         x_lo = min(b.corner_lo[0] for b in boxes)
         x_hi = max(b.corner_hi[0] for b in boxes)
         assert abs(x_lo - (-10e-3)) < 1e-12

@@ -26,12 +26,11 @@ def _graded(cells):
 
 @pytest.mark.parametrize('clamp', [False, True], ids=['raw', 'SC'])
 def test_uniform_whole_cell_translation(clamp):
+    """The translated float32 operands agree bitwise despite host-coordinate roundoff."""
     grid = _uniform()
     seam, interior = [compute_conformal_fractions(
         grid, [Sphere((cx, .006, .006), .0008)], clamp=clamp, field_dtype=np.float32)
         for cx in (.0105, .0105 - 3 * grid.dx)]
-    # Keep the record's decimal dimensions. Device operands are float32;
-    # the translated operands agree bitwise despite host-coordinate roundoff.
     for original, translated in zip(seam, interior):
         for a, b in zip(original, translated):
             np.testing.assert_array_equal(a, np.roll(b, 3, axis=0))
@@ -48,23 +47,23 @@ def _chord_free(nodes, cells, centre, radius):
 
 
 def test_uniform_seam_edge_closed_form():
+    """Check the seam-edge fraction before its deliberate float32 cast because 0.70 is not dyadic."""
     grid = _uniform()
     table = build_cell_table(grid, [Sphere((.0105, .006, .006), .0008)])
     row = table.lengths[0][1:grid.nx + 1, 7, 7]
     cells = np.full(grid.nx, grid.dx)
     expected = _chord_free(np.arange(grid.nx) * grid.dx, cells, .0105, .0008)
-    # Check before the operand's deliberate float32 cast (0.70 is not dyadic).
     np.testing.assert_allclose(row, expected, rtol=0, atol=1e-12)
     assert row[-1] == pytest.approx(.70, rel=0, abs=1e-12)
 
 
 @pytest.mark.parametrize('centre', [.0101, .0091], ids=['S2', 'beyond-first-cell'])
 def test_graded_translation_and_seam_distances(centre):
+    """Linear node-SDF interpolation is not the chord overlap on the last edge [9.5, 12] mm straddling the sphere centre at 10.1 mm."""
     cells = .001 * np.array([1., 2., 3., 2., 1.5, 2.5])
     grid = _graded(cells)
     radius = .0012
     seam = build_cell_table(grid, [Sphere((.006, .006, centre), radius)])
-    # A graded mesh is invariant only when its cell widths move with the body.
     translated_grid = _graded(np.roll(cells, -3))
     interior = build_cell_table(translated_grid, [
         Sphere((.006, .006, centre - np.sum(cells[:3])), radius)])
@@ -73,15 +72,8 @@ def test_graded_translation_and_seam_distances(centre):
         for a, b in zip(getattr(seam, field), getattr(interior, field)):
             np.testing.assert_allclose(a[physical], np.roll(b[physical], 3, axis=2),
                                        rtol=0, atol=1e-12)
-    # The last edge [9.5, 12] mm straddles the sphere centre at 10.1 mm.
-    # Linear node-SDF interpolation is not the chord overlap on that edge:
-    # its endpoint distances are -0.6 and +0.7 mm, giving 0.7 / 1.3.
-    # This pins the linear endpoint-SDF limitation: 0.538..., versus the
-    # exact chord's 0.28, with the nearest seam image.
     expected = [1., 1., 1., 1., .6, .7 / 1.3]
     if centre == .0091:
-        # A 1.7 mm seam gap exceeds the first cell (1 mm). Here the seam
-        # edge lies on one side of the centre, so chord overlap is exact.
         nodes = np.r_[0., np.cumsum(cells)[:-1]]
         expected = _chord_free(nodes, cells, centre, radius)
     np.testing.assert_allclose(seam.lengths[2][7, 7, 1:grid.nz + 1], expected,
@@ -107,8 +99,6 @@ def test_box_content_enumerates_the_sdf_images(graded):
                  tuple(hi[a] - shift[a] for a in range(3))) for shift in visited]
     actual = _images(grid, box, (lo, hi))
     assert set(expected) < set(actual)
-    # Independent integer shifts: SDF reaches only the base Box here;
-    # the wider R+h reach also reads the image across the nearest seam.
     assert len(expected) == 1
     shift = [0.] * 3
     shift[axis] = -grid.domain[axis] if graded else grid.domain[axis]
@@ -119,6 +109,7 @@ def test_box_content_enumerates_the_sdf_images(graded):
 
 @pytest.mark.parametrize('centre', [.0105, .0015], ids=['high', 'low'])
 def test_node_tensor_change_is_confined_to_seam(monkeypatch, centre):
+    """One-cell edge supports can touch either side of the seam."""
     from rfx.geometry.node_tensor import compute_node_tensor_eps
 
     grid = _uniform()
@@ -132,8 +123,6 @@ def test_node_tensor_change_is_confined_to_seam(monkeypatch, centre):
 
     monkeypatch.setattr(_periodic, '_sdf_image_ranges', old_ranges)
     previous = compute_node_tensor_eps(grid, shapes)
-    # One-cell edge supports can touch either side of the seam. Interior
-    # diagonal operands, node tensors and all eight triplets stay bitwise equal.
     for a, b in zip(actual, previous):
         np.testing.assert_array_equal(np.asarray(a)[1:-1], np.asarray(b)[1:-1])
     for field in ('xi', 'bulk', 'active', 'cross'):
@@ -196,9 +185,8 @@ def test_anisotropic_normal_reach(monkeypatch, radius, reader):
 
     dz = .0002
     grid = _graded(np.full(12, dz))
-    # Offset from the coarse x nodes so even the tiny sphere's seam samples
-    # have a normal with a coarse-axis component, rather than a pure z normal.
     sphere = Sphere((.0062, .006, grid.domain[2] - 1.05 * dz - radius), radius)
+    assert not float(sphere.center[0] / grid.cells(0)[0]).is_integer(), "sphere x offset must give seam normals a coarse-axis component"
 
     def operands():
         if reader == 'node':

@@ -11,6 +11,7 @@ The unified Stage 2 path runs alongside Stage 1's:
 
 This test file exercises the wiring at three levels: simulation
 scan body, runners/uniform.py public API, and NU runner hard-fail.
+The y-domain length written as 27 * (299792458.0 / 10e9 / 20.0) is a whole number of cells of dx, so the solved y domain equals the declared one.
 """
 
 from __future__ import annotations
@@ -23,9 +24,6 @@ from rfx.api import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 
-# -----------------------------------------------------------------------------
-# Test A: simulation.run smoke with aniso_inv_eps
-# -----------------------------------------------------------------------------
 
 
 def test_simulation_run_with_aniso_inv_eps_runs_finite():
@@ -58,28 +56,20 @@ def test_simulation_run_with_aniso_inv_eps_runs_finite():
     assert np.all(np.isfinite(np.asarray(result.state.ez)))
 
 
-# NOTE: PEC-tangential-freeze contract is already pinned at the
-# kernel level by ``test_update_e_aniso_inv_pec_tangential_frozen`` in
-# tests/unit/geometry/test_update_e_aniso_inv.py — ``simulation.run`` does not
-# currently accept a ``state=`` kwarg for explicit seeding, so we rely
-# on the kernel-level test for the freeze semantics and verify
-# integration via the smoke + dual-path-differs tests below.
 
 
-# -----------------------------------------------------------------------------
-# Test B: runners/uniform.py public API with subpixel_smoothing="kottke_pec"
-# -----------------------------------------------------------------------------
 
 
 def test_runners_uniform_kottke_pec_smoke():
     """Public API: ``Simulation.run(subpixel_smoothing='kottke_pec')``
     auto-routes through the unified path. End-to-end smoke on a small
-    WR-90 sim: expect no exception and finite fields after 20 steps."""
+    WR-90 sim: expect no exception and finite fields after 20 steps.
+    Conformal faces with kottke_pec are refused.
+    """
     sim = Simulation(
         freq_max=10e9,
         domain=(0.06, 0.025, 0.012),
         dx=0.001,
-        # conformal faces with kottke_pec are refused (refusal PR); the subject here is kottke_pec
         boundary=BoundarySpec(
             x="cpml",
             y=Boundary(lo="pec", hi="pec"),
@@ -113,11 +103,11 @@ def test_runners_uniform_kottke_pec_differs_from_default():
     from rfx.geometry.csg import Box
 
     def _build():
+        """Conformal faces with kottke_pec are refused."""
         sim = Simulation(
             freq_max=10e9,
             domain=(0.06, 0.025, 0.012),
             dx=0.001,
-            # conformal faces with kottke_pec are refused (refusal PR); the subject here is kottke_pec
             boundary=BoundarySpec(
                 x="cpml",
                 y=Boundary(lo="pec", hi="pec"),
@@ -125,13 +115,9 @@ def test_runners_uniform_kottke_pec_differs_from_default():
             ),
             cpml_layers=4,
         )
-        # PEC iris one cell thick (1 mm in x at dx = 1 mm), with both
-        # x faces shifted off the nodes by 0.3 dx to 25.3 and 26.3 mm.
-        # These off-node faces make Kottke's fractional inverse tensor
-        # differ from Stage 1's staircase masks. Node-aligned faces
-        # reduce to the staircase and do not exercise this difference.
         sim.add(Box((0.0253, 0.005, 0.002), (0.0263, 0.020, 0.010)),
                 material="pec")
+        assert all(not float(face[0] / sim._dx).is_integer() for face in (sim._geometry[0].shape.corner_lo, sim._geometry[0].shape.corner_hi)), "iris x faces must be off nodes to distinguish fractional Kottke tensors from staircase masks"
         sim.add_waveguide_port(
             0.010, direction="+x", mode=(1, 0), mode_type="TE",
             f0=8e9, bandwidth=0.5, name="left",
@@ -149,9 +135,6 @@ def test_runners_uniform_kottke_pec_differs_from_default():
     )
 
 
-# -----------------------------------------------------------------------------
-# Test C: default behavior (no opt-in) is bit-identical to pre-Stage-2
-# -----------------------------------------------------------------------------
 
 
 def test_default_simulation_run_unchanged():
@@ -191,9 +174,6 @@ def test_default_simulation_run_unchanged():
     )
 
 
-# -----------------------------------------------------------------------------
-# Test D: NU runner hard-fail on kottke_pec
-# -----------------------------------------------------------------------------
 
 
 def test_dual_path_dielectric_only_equivalent_to_ulp():
@@ -214,6 +194,7 @@ def test_dual_path_dielectric_only_equivalent_to_ulp():
     from rfx.geometry.csg import Box
 
     def _build():
+        """Keep the launch-to-reference segment vacuum on both compared paths."""
         sim = Simulation(
             freq_max=10e9,
             domain=(0.04, 0.04, 0.04),
@@ -222,7 +203,6 @@ def test_dual_path_dielectric_only_equivalent_to_ulp():
             cpml_layers=4,
         )
         sim.add_material("substrate", eps_r=4.0, sigma=0.0)
-        # Keep the launch-to-reference segment vacuum on both compared paths.
         sim.add(Box((0.028, 0.012, 0.012), (0.036, 0.028, 0.028)),
                 material="substrate")
         sim.add_waveguide_port(
@@ -270,14 +250,15 @@ def test_pec_short_s11_with_kottke_pec_path():
     PEC box at x=[84 mm, 87 mm]: both faces are integer multiples of
     dx=3 mm so Kottke reduces to a binary mask (inv=0 or inv=1 only).
     Gate ≥ 0.99: a value below 0.99 in the clean 5–6.5 GHz window
-    signals unfrozen cells or CPML interaction in the Stage 2 path."""
+    signals unfrozen cells or CPML interaction in the Stage 2 path.
+    Conformal faces with kottke_pec are refused.
+    """
     from rfx.geometry.csg import Box
 
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.039, 0.021),
         dx=0.003,
-        # conformal faces with kottke_pec are refused (refusal PR); the subject here is kottke_pec
         boundary=BoundarySpec(
             x="cpml",
             y=Boundary(lo="pec", hi="pec"),
@@ -286,19 +267,16 @@ def test_pec_short_s11_with_kottke_pec_path():
         cpml_layers=10,
     )
     sim.add(Box((0.084, 0, 0), (0.087, 0.039, 0.021)), material="pec")
-    # 5–6.5 GHz lies above TE10 cutoff (3.85 GHz) and below TE20
-    # cutoff (7.69 GHz) for the 39 mm guide width.
     freqs = jnp.linspace(5e9, 6.5e9, 6)
     sim.add_waveguide_port(
         0.010, direction="+x", mode=(1, 0), mode_type="TE",
         freqs=freqs, f0=6e9, bandwidth=0.5, name="left",
     )
-    # 4 cells behind the short's far face (87 mm), so the port's 3-cell
-    # reflection plane is in front of it; |S11| is bit-identical to 90 mm.
     sim.add_waveguide_port(
         0.099, direction="-x", mode=(1, 0), mode_type="TE",
         freqs=freqs, f0=6e9, bandwidth=0.5, name="right",
     )
+    assert np.isclose((sim._waveguide_ports[-1].x_position - sim._geometry[0].shape.corner_hi[0]) / sim._dx, 4, rtol=0, atol=1e-12), "the port must be four cells behind the short so its three-cell reflection plane is in front of it"
     res = sim.compute_waveguide_s_matrix(
         num_periods=40, normalize=False,
         subpixel_smoothing="kottke_pec",
@@ -320,13 +298,12 @@ def test_nu_runner_hard_fails_on_kottke_pec():
     of scope for v1. Must hard-fail at run time, not silently
     misbehave.
     Addendum 5f requires transverse z PEC so guide admission reaches Kottke.
+    On a non-uniform mesh conformal=True is refused on its own before kottke_pec is reached.
     """
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.04, 27 * (299792458.0 / 10e9 / 20.0), 0.04), dx=299792458.0 / 10e9 / 20.0,  # solved length
+        domain=(0.04, 27 * (299792458.0 / 10e9 / 20.0), 0.04), dx=299792458.0 / 10e9 / 20.0,
         dz_profile=[0.002] * 20,
-        # No ``conformal=True`` here: on a non-uniform mesh that declaration
-        # is refused on its own (conformal_pec) before kottke_pec is reached.
         boundary=BoundarySpec(
             x="cpml",
             y=Boundary(lo="pec", hi="pec"),

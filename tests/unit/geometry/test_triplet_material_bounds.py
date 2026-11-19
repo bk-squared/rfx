@@ -9,8 +9,6 @@ from rfx.geometry.triplet_tensor import guarded_tensor
 
 @pytest.mark.parametrize('xp', [np, jnp])
 def test_addendum2_nonsymmetric_pi_is_spectrally_clipped(xp):
-    # a/16 node (6,15): displacement (-2,5), +++ lengths zero,
-    # a_x=1/16, a_y=a_z=0. Pi's only nonidentity row is its x row.
     normal = np.array([-2., 5., 0.]) / np.sqrt(29.)
     p = 1 + 99 * 25 / (16 * 29)
     q = 99 * 10 / (16 * 29)
@@ -32,8 +30,6 @@ def test_addendum2_nonsymmetric_pi_is_spectrally_clipped(xp):
 @pytest.mark.parametrize('xp', [np, jnp])
 @pytest.mark.parametrize('bulk', [False, True])
 def test_in_range_and_bulk_keep_exact_bits(xp, bulk):
-    # Axis normal: Gamma_x=1/2, Pi_x=1; transverse Pi=4.
-    # Different y/z lengths do not matter since their Gamma rows are I.
     lengths = xp.ones(3) if bulk else xp.asarray([1., .25, .75])
     areas = xp.ones(3) if bulk else xp.asarray([.25, 0., 0.])
     expected = xp.eye(3) / 2 if bulk else xp.diag(xp.asarray([.5, .25, .25]))
