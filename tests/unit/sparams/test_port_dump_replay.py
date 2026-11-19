@@ -38,7 +38,7 @@ def _synthetic_two_port_dump():
     sqrt_z = np.sqrt(z0).reshape(1, 2, 1)
     voltages = sqrt_z * (a + b)
     currents = (a - b) / sqrt_z
-    # Role-selected dump convention (issue #308): production dumps register
+    # Role-selected dump convention: production dumps register
     # the arriving wave at a PASSIVE receive port with the opposite voltage
     # sign relative to the textbook split (the port-cell field sense in
     # V = -E*dx), so the replay's receive channel is b_recv = -(V + Z0*I) /

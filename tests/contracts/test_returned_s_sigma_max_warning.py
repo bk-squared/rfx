@@ -393,12 +393,10 @@ def test_waveguide_returned_s_contract(monkeypatch, path, entry, case):
     before = [(s11.copy(), s21.copy()) for s11, s21 in zip(reflections, transmissions)]
     sim = _waveguide_scene(path, frequencies)
     if case == "shared":
-        # #2449: two guide ports cannot return isolated S from one record.
         with pytest.raises(ValueError) as caught:
             getattr(sim, entry)(n_steps=1, skip_preflight=True)
         assert str(caught.value) == (
-            "One run() or forward() record supports a single waveguide port; use "
-            "compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
+            "One run() or forward() record supports at most one driven waveguide port; driven ports: port0, port1. Set amplitude 0.0 on all but one, or use compute_waveguide_s_matrix() for the full matrix, with every port's amplitude nonzero."
         )
         return
     if case == "lumped":
@@ -421,7 +419,7 @@ def test_waveguide_returned_s_contract(monkeypatch, path, entry, case):
         fields.append(tuple(kwargs.values()))
         return result
 
-    monkeypatch.setattr(waveguide, "extract_waveguide_sparams", extract)
+    monkeypatch.setattr(waveguide, "_extract_waveguide_sparams", extract)
     monkeypatch.setattr(spec, "WaveguideSParamResult", assemble)
     with warnings.catch_warnings(record=True) as seen:
         warnings.simplefilter("always")
@@ -468,7 +466,7 @@ def test_waveguide_forward_gradient_unchanged(monkeypatch, path, n_ports):
     sim = _waveguide_scene(path, [np.array([9e9, 10e9, 11e9])] * n_ports)
     grid = sim._build_nonuniform_grid() if path == "graded" else sim._build_grid()
     eps = jnp.ones(grid.shape, dtype=jnp.float32)
-    extract = waveguide.extract_waveguide_sparams
+    extract = waveguide._extract_waveguide_sparams
     traced = []
     extracted = []
     helper_calls = []
@@ -492,11 +490,11 @@ def test_waveguide_forward_gradient_unchanged(monkeypatch, path, n_ports):
             assert result.waveguide_sparams[name].s11 is extracted[index]
         return sum(jnp.real(jnp.sum(port.s11)) for port in result.waveguide_sparams.values())
 
-    monkeypatch.setattr(waveguide, "extract_waveguide_sparams", capture)
+    monkeypatch.setattr(waveguide, "_extract_waveguide_sparams", capture)
     monkeypatch.setattr(declared, "warn_if_singular_value_exceeds_one", check)
     if n_ports > 1:
-        # #2449: refusal also precedes S extraction in a traced forward call.
-        with pytest.raises(ValueError, match="supports a single waveguide port"):
+        # Refusal also precedes S extraction in a traced forward call.
+        with pytest.raises(ValueError, match="supports at most one driven waveguide port"):
             jax.grad(loss)(eps)
         assert not extracted
         assert not helper_calls

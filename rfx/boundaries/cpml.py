@@ -120,9 +120,15 @@ def _cpml_profile(
     R_asymptotic: float = 1e-15,
     sample_offset: float = 0.0,
     *,
+    dtype,
     sigma_max: float | None = None,
 ) -> CPMLParams:
     """Compute graded CPML profile using polynomial grading.
+
+    Traced dt or dx (mesh as a design variable) stays in-trace and computes in
+    the coefficient dtype. A concrete grid computes in float64 numpy and casts
+    to the coefficient dtype at the CPMLParams boundary, so CPMLParams stays a
+    constant pytree under JIT.
 
     Parameters
     ----------
@@ -154,15 +160,9 @@ def _cpml_profile(
         target is below the floating-point range.
     """
 
-    # Stay in-trace when dt/dx are JAX tracers (mesh-as-design-variable
-    # path); fall back to numpy for the standard concrete-grid case so
-    # CPMLParams stays a constant pytree under JIT.  The concrete path
-    # uses float64 intermediate computation, cast to float32 only at the CPMLParams boundary.
-    # The traced path stays
-    # at float32 to match the default JAX dtype policy.
     traced = is_tracer(dt) or is_tracer(dx) or is_tracer(sigma_max)
     xp = jnp if traced else np
-    work_dtype = jnp.float32 if traced else np.float64
+    work_dtype = dtype if traced else np.float64
 
     eta = float(np.sqrt(MU_0 / EPS_0))  # ≈ 376.73 Ω (constant)
     d = n_layers * dx             # PML physical thickness
@@ -200,11 +200,11 @@ def _cpml_profile(
     c = xp.where(denom > 1e-30, sigma * (b - 1.0) / denom, 0.0)
 
     return CPMLParams(
-        sigma=jnp.asarray(sigma, dtype=jnp.float32),
-        kappa=jnp.asarray(kappa, dtype=jnp.float32),
-        alpha=jnp.asarray(alpha, dtype=jnp.float32),
-        b=jnp.asarray(b, dtype=jnp.float32),
-        c=jnp.asarray(c, dtype=jnp.float32),
+        sigma=jnp.asarray(sigma, dtype=dtype),
+        kappa=jnp.asarray(kappa, dtype=dtype),
+        alpha=jnp.asarray(alpha, dtype=dtype),
+        b=jnp.asarray(b, dtype=dtype),
+        c=jnp.asarray(c, dtype=dtype),
     )
 
 
@@ -270,7 +270,7 @@ def _flip_profile(p: CPMLParams) -> CPMLParams:
     )
 
 
-def _cpml_noop_profile(n_layers: int) -> CPMLParams:
+def _cpml_noop_profile(n_layers: int, *, dtype) -> CPMLParams:
     """Return a no-op CPML profile (identity: no absorption).
 
     Used for faces where PEC boundary is desired instead of CPML.
@@ -278,11 +278,11 @@ def _cpml_noop_profile(n_layers: int) -> CPMLParams:
     the natural PEC boundary condition takes effect.
     """
     return CPMLParams(
-        sigma=jnp.zeros(n_layers, dtype=jnp.float32),
-        kappa=jnp.ones(n_layers, dtype=jnp.float32),
-        alpha=jnp.zeros(n_layers, dtype=jnp.float32),
-        b=jnp.ones(n_layers, dtype=jnp.float32),
-        c=jnp.zeros(n_layers, dtype=jnp.float32),
+        sigma=jnp.zeros(n_layers, dtype=dtype),
+        kappa=jnp.ones(n_layers, dtype=dtype),
+        alpha=jnp.zeros(n_layers, dtype=dtype),
+        b=jnp.ones(n_layers, dtype=dtype),
+        c=jnp.zeros(n_layers, dtype=dtype),
     )
 
 
@@ -480,7 +480,8 @@ def init_cpml(grid, *, kappa_max: float | None = None,
     n = grid.cpml_layers
     dx_x_lo, dx_x_hi, dx_y_lo, dx_y_hi, dz_lo, dz_hi = _get_axis_cell_sizes(grid)
 
-    noop = _cpml_noop_profile(n)
+    dtype = jnp.promote_types(jnp.finfo(field_dtype).dtype, jnp.float32)
+    noop = _cpml_noop_profile(n, dtype=dtype)
     # Per-face active layer counts. The allocation
     # budget ``n`` stays uniform (CPMLState shape unchanged, JIT cache
     # preserved on the symmetric common case). Faces with an active
@@ -505,7 +506,7 @@ def init_cpml(grid, *, kappa_max: float | None = None,
         if is_noop or n_active == 0:
             return noop
         p = _cpml_profile(n_active, grid.dt, cell_size, kappa_max=kappa_max,
-                          sample_offset=sample_offset)
+                          sample_offset=sample_offset, dtype=dtype)
         return _pad_profile_at_end(p, n_active, n)
 
     def _hi_face_profile(is_noop: bool, cell_size, face_name: str,
@@ -514,7 +515,7 @@ def init_cpml(grid, *, kappa_max: float | None = None,
         if is_noop or n_active == 0:
             return noop
         base = _cpml_profile(n_active, grid.dt, cell_size, kappa_max=kappa_max,
-                             sample_offset=sample_offset)
+                             sample_offset=sample_offset, dtype=dtype)
         return _pad_profile_at_start(_flip_profile(base), n_active, n)
 
     prof_x_lo = _lo_face_profile("x_lo" in noop_faces, dx_x_lo, "x_lo")
@@ -732,12 +733,11 @@ def apply_cpml_e(
     # Falls back to free-space eps_0 when materials is None.
     if inv_eps_r_update is not None:
         # Follow the ambient MATERIAL dtype, exactly as the ``materials``
-        # branch below does (eps_r carries the run's
-        # material precision). ``compute_smoothed_eps`` returns float64 under
-        # JAX_ENABLE_X64 while ``materials.eps_r`` stays float32, and letting
-        # that through changed the psi-scatter precision — and with it the
-        # field bytes of runs whose pads hold nothing but vacuum, which this
-        # change must not touch.
+        # branch below does (eps_r carries the run's material precision).
+        # ``compute_smoothed_eps`` can return float64 under JAX_ENABLE_X64
+        # even for a float32 run. Retain the material dtype so smoothing
+        # does not change psi-scatter precision or the field bytes of runs
+        # whose pads hold nothing but vacuum.
         _mat_dtype = (materials.eps_r.dtype if materials is not None
                       and hasattr(materials.eps_r, "dtype") else None)
 

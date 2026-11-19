@@ -33,7 +33,8 @@ def judge_v_ref(owner, spec, grid):
         env = dict(frame=SimpleNamespace(st=fields), dx=grid.dx, invariants={},
                    port_specs=((spec.component, (), owner.kind, idx, 0),),
                    _port_voltage_value=_port_voltage_value,
-                   pre_injection_samples=pre_injection_samples)
+                   pre_injection_samples=pre_injection_samples,
+                   view=lambda st: st)
         refs = next(n.value for n in statements if isinstance(n, ast.Assign)
                     and any(isinstance(t, ast.Name) and t.id == 'refs' for t in n.targets))
         env['refs'] = eval(compile(ast.Expression(refs), '<production references>', 'eval'), env)

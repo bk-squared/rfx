@@ -64,7 +64,7 @@ def test_naive_spelling_finds_nothing_but_accessor_finds_the_sheet():
     mats, _, _, pec_mask, _, _, _ = sim._assemble_materials(
         grid, sheet_specs=specs)
 
-    # The assembled arrays really are sheet-free (this is #677 working).
+    # The assembled arrays really are sheet-free.
     assert pec_mask is None
     assert int((np.asarray(mats.sigma) > CONDUCTOR_SIGMA_THRESHOLD).sum()) == 0
     assert len(specs) == 1
@@ -347,7 +347,7 @@ def test_driver_drive_pass_registers_planes_on_the_sheet_trace():
 
 
 # --------------------------------------------------------------------------
-# What conductor_mask() MEANS under the lattice ownership contract (#931)
+# What conductor_mask() MEANS under the lattice ownership contract
 # --------------------------------------------------------------------------
 
 def test_conductor_mask_is_a_cell_footprint_not_the_realized_edge_set():

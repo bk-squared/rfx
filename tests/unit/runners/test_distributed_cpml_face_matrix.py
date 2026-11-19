@@ -85,7 +85,7 @@ def test_probe_records_match_single_device(lane, wall, face, n_devices, x_cells,
             single_result = single_sim.forward(n_steps=steps)
             multi_result = multi_sim.forward(n_steps=steps, distributed=True, devices=devices)
     if x_cells != 25:
-        # Read the runner's realized grid, not a separately rebuilt grid (#623).
+        # Read the runner's realized grid, not a separately rebuilt grid.
         nx = int(multi_result.grid.nx)
         pad_x = (-nx) % n_devices
         record_property("realized_nx", nx)

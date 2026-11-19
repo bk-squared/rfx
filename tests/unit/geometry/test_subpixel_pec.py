@@ -332,7 +332,7 @@ def test_run_explicit_false_overrides_conformal_boundary():
 # conformal axes: the staircase shift is now handled by Dey-Mittra
 # eps_correction at the boundary cell, so zeroing the same cell in
 # the modal V/I integral is double-counting (the failure mode the
-# 2026-04-29 first attempt produced).
+# first attempt produced).
 
 
 def _wr90_battery_sim(*, conformal: bool):
@@ -491,7 +491,7 @@ def _pec_short_sim(*, conformal: bool, domain=(0.12, 0.04, 0.02)):
         cpml_layers=10,
      snap="declared")
     assert_declared_wall_warning(sim)
-    # #931: the old 2 mm slab on a 3 mm grid is a sub-cell VOLUME the
+    # The old 2 mm slab on a 3 mm grid is a sub-cell VOLUME the
     # contract refuses (it was realized by the thin branch as one wall at
     # x = 0.087 m). Drawn as one full cell, 0.084 -> 0.087 m: a solid
     # short with walls on both drawn planes, the far one still at 0.087 m.
@@ -502,7 +502,7 @@ def _pec_short_sim(*, conformal: bool, domain=(0.12, 0.04, 0.02)):
         0.010, direction="+x", mode=(1, 0), mode_type="TE",
         freqs=freqs, f0=6e9, bandwidth=0.5, name="left",
     )
-    # #1913: the right port stands 4 cells behind the short's far face (87 mm),
+    # The right port stands 4 cells behind the short's far face (87 mm),
     # so its 3-cell reflection plane (90 mm) is in front of the short; at 90 mm
     # it read the far side of the short. |S11| is bit-identical either way.
     sim.add_waveguide_port(
@@ -697,9 +697,9 @@ def test_pec_short_s11_baseline_unchanged_with_binary_path():
     Dey-Mittra face-PEC lane, which #931 §1.8 fences out of the ownership
     contract, and it is recorded here as an observation, not fixed.)
     """
-    # #1887: declare whole cells, instead of rounding 40/20 mm to 42/21 mm.
+    # Declare whole cells, instead of rounding 40/20 mm to 42/21 mm.
     sim = _pec_short_sim(conformal=False, domain=(0.12, 0.042, 0.021))
-    # build-time: the short realizes walls on BOTH drawn faces (#931 §1.2)
+    # build-time: the short realizes walls on BOTH drawn faces
     from tests._realized_geometry import assert_wall_planes
     assert_wall_planes(sim, 0, [0.084, 0.087], what="cv11-style PEC short")
 
@@ -723,7 +723,7 @@ def test_pec_short_s11_baseline_unchanged_with_binary_path():
 #
 # The binary-PEC mesh-conv case
 # (``test_mesh_convergence_s21_scaled_cpml`` in the validation battery)
-# already passes since the 2026-04-29 Box.mask_on_coords fix; this test
+# already passes since the Box.mask_on_coords fix; this test
 # locks the conformal=True path to the same convergence behaviour so the
 # Dey-Mittra coefficient-modifying lane stays Meep-class on
 # inverse-design / topology-changing geometries where binary staircase
@@ -801,8 +801,8 @@ def test_mesh_convergence_s21_with_conformal_pec_baseline():
     )
 
 
-# Measured envelope for the conformal mesh-convergence ladder, 2026-09-15
-# (#1043 / PR #1047). DERIVED, not chosen: the three rungs read
+# Measured envelope for the conformal mesh-convergence ladder.
+# DERIVED, not chosen: the three rungs read
 # 0.7796 / 0.6974 / 0.7274 on this tree, so the ladder spans [0.6974, 0.7796]
 # and the widening quantum is the ladder's own coarse delta, 0.0822.
 _MESHCONV_CONFORMAL_S21_LO = 0.6974 - 0.0822
@@ -905,7 +905,7 @@ def test_mesh_convergence_s21_with_conformal_pec():
 
 
 # -----------------------------------------------------------------------------
-# G-WI5 guardrail: DELETED 2026-09-15 (#1043 / PR #1047)
+# G-WI5 guardrail: DELETED
 # -----------------------------------------------------------------------------
 
 

@@ -138,7 +138,7 @@ def _plant_ab(s_true, gamma_t, n_f):
 
 # ---------------------------------------------------------------------------
 # The planted fields below are built by the ONE frozen convention helper,
-# ``tests/_wave_convention.py::plant_ladder_voltages_physical`` (issue #822),
+# ``tests/_wave_convention.py::plant_ladder_voltages_physical``,
 # which plants from GEOMETRY -- where the DUT is relative to the ladder --
 # and never from the extractor's own labels.
 #
@@ -268,7 +268,7 @@ def test_planted_fields_are_unchanged_by_the_frozen_planting_contract():
             new = plant_ladder_voltages_physical(
                 a_true[idx, drive], b_true[idx, drive], gamma=gamma,
                 planes_m=planes, ref_m=ref, dut_sign=dut_sign)
-            # Measured 2026-09-01: 4.30e-16 / 2.78e-16 / 5.47e-16 / 7.77e-16.
+            # Measured: 4.30e-16 / 2.78e-16 / 5.47e-16 / 7.77e-16.
             assert np.abs(old - new).max() <= 1e-15, np.abs(old - new).max()
 
 
@@ -386,12 +386,11 @@ def test_swapped_ab_convention_fails_the_same_asymmetric_fixture():
 
 
 # ---------------------------------------------------------------------------
-# FAST: the CALL-SITE drive_idx <-> physical-port wiring (issue #489 "active
-# dev track" leg 2 -- the openEMS referee's own carried-forward item, "the
+# FAST: the CALL-SITE drive_idx <-> physical-port wiring (the openEMS referee's own carried-forward item, "the
 # reverse_drive=True call-site wiring for drive='port2' is correct at HEAD
 # but unpinned by a test", closed by tests/test_coax_two_port_referee_
 # header.py::test_extract_two_port_s_synthetic_forward_and_reverse_drive for
-# the REFEREE's own call site. rfx's OWN compute_coaxial_two_port had the
+# the REFEREE's own call site). rfx's OWN compute_coaxial_two_port had the
 # analogous gap: no test exercises its FDTD call site's `for drive_idx, spec
 # in enumerate((spec_top, spec_bot))` loop end-to-end -- the two tests above
 # call `_assemble_coaxial_two_port_from_voltages` DIRECTLY with arrays the
@@ -539,7 +538,7 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
 
     import rfx.simulation as _simulation_mod
     import rfx.sources.coaxial_port as _coax_mod
-    # #980 Phase 2 moved compute_coaxial_two_port verbatim into
+    # Phase 2 moved compute_coaxial_two_port verbatim into
     # rfx/sparams/coax.py, so ``_assemble_coaxial_two_port_from_voltages`` is
     # looked up as a global of THAT module. Patching the ``rfx.api._sparams``
     # re-export would still succeed and silently stop biting -- ``captured``
@@ -842,7 +841,7 @@ def test_compute_coaxial_two_port_routes_through_finalize_sparam_result():
 #
 # The run below is domain=(0.008, 0.008, 0.060), freq_max=40e9 (dx=0.3747mm,
 # matching the validated 1-port dx), n_steps=6000, freqs=BAND — captured
-# 2026-08-02 via a standalone script (not this test file) run with
+# via a standalone script (not this test file) run with
 # `PYTHONPATH=<this worktree> python3 <script>` (the shared checkout's
 # editable install otherwise shadows the worktree —
 # feedback_stale_editable_install_shadow). Some gates below are pinned fresh
@@ -891,7 +890,7 @@ def test_compute_coaxial_two_port_routes_through_finalize_sparam_result():
 # exp(+Re(gamma_bar) * L12)` (L12 = distance between the two reference
 # planes, from res.reference_planes; gamma_bar = mean of all 4 available
 # fits — both arrays x both drives) landed in [0.979, 0.992] at all 5 band
-# points (measured 2026-08-02) — inside the [0.95, 1.05] window this check
+# points (measured) — inside the [0.95, 1.05] window this check
 # treats as consistent.
 #
 # WHAT THIS CHECK BINDS AND WHAT IT DOES NOT (do not overclaim it as a
@@ -1373,7 +1372,7 @@ def test_ill_conditioned_drives_warn_and_are_reported():
         out = solve_two_port_from_wave_amplitudes(a, b)
     assert np.all(out.cond_a > 1e3)
     # The warning must NOT read as "below this threshold is trustworthy" —
-    # cond(A) also multiplies the caller's amplitude noise (review finding).
+    # cond(A) also multiplies the caller's amplitude noise.
     msg = str(rec[0].message).lower()
     assert "degeneracy only" in msg and "not a reliability certificate" in msg
 

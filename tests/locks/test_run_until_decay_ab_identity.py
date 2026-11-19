@@ -110,14 +110,13 @@ from rfx.simulation import run, run_until_decay, make_source, make_probe
 LOCK_PROVENANCE = {
     "fixture": "none",
     "generator": "hand-derived",
-    # The squash commit of PR #899 on main, filled in after the merge (the repo's
-    # locks name the main commit that produced the pinned number, see ed2d09d3;
+    # The squash commit on main, filled in after the merge (the repo's
+    # locks name the main commit that produced the pinned number;
     # for a squash-merged PR that is not knowable before the merge). f019c89, the
     # first commit of the series, carried the shared-E floor this revision retired.
-    # 2026-10-12 (issue 1668): the scene was re-chosen (tau = 8 dt, bandwidth 0.8;
+    # The scene was re-chosen (tau = 8 dt, bandwidth 0.8;
     # the old one was driven only by a 7.4e-4 jump at t = 0) and the GPU difference
-    # re-measured on it at 9230fde1a. Before: commit 47eb917, 2026-09-05, VESSL
-    # 369367258329 / 369367258350 / 369367258656 on RTX4090.
+    # re-measured on it at the commit below.
     "commit": "9230fde",
     "date": "2026-10-12",
     "run_id": ("local (Mac CPU derivation) + VESSL 369367270791 (GPU: scan-vs-jitloop "
@@ -127,7 +126,7 @@ LOCK_PROVENANCE = {
 }
 
 # Pre-existing scan-vs-loop XLA agreement envelope (see module docstring).
-# Re-measured 2026-09-05 (CPU, jax 0.11.1, this fixture, N=80): probe 8.2e-7
+# Re-measured (CPU, jax 0.11.1, this fixture, N=80): probe 8.2e-7
 # relative (abs 9.2e-12); worst field difference relative to its own component
 # peak 2.3e-6 (hx, abs 1.0e-13); largest absolute field difference 2.9e-11
 # (ez, 1.2e-7 relative).  The previous "field rel ~2.4e-7 (abs 5.8e-11)" pair
@@ -136,16 +135,16 @@ _RTOL = 1e-6
 
 # GPU-observed scan-vs-jitloop probe diff, used below as the magnitude of a
 # realistic reassociation perturbation. It is never used as a threshold.
-# Re-measured 2026-10-12 on the tau = 8 dt scene (VESSL 369367270791, RTX 2070
+# Re-measured on the tau = 8 dt scene (RTX 2070
 # SUPER, jax 0.10.2): 1.583e-8 at a probe peak of 6.59e-3. The earlier
-# 1.037e-10 (VESSL 369367258329, RTX4090) was measured on the old scene, which
+# 1.037e-10 (RTX4090) was measured on the old scene, which
 # was driven only by a one-sample 7.4e-4 jump.
 _GPU_OBSERVED_TS_DIFF = 1.583e-8
 
 # --- Derived scan-vs-jitloop reassociation floors ----------------------------
 #
 # (Replaces the old flat ``_ATOL = 1e-10``.  That literal was calibrated to the
-#  CPU reassociation scale and is EXCEEDED on GPU: VESSL 369367258329 / RTX4090
+#  CPU reassociation scale and is EXCEEDED on GPU: RTX4090
 #  reports max abs diff 1.037e-10 > 1e-10 on the probe series, at a probe peak
 #  ~1.3e-5, i.e. ~64*eps_f32 relative.)
 #
@@ -171,8 +170,7 @@ _GPU_OBSERVED_TS_DIFF = 1.583e-8
 #
 # with C an O(1) per-step coherence constant.  We set C = 4: ~5x margin over the
 # GPU-observed per-step coherence on the old one-sample scene (1.037e-10 /
-# (80 * eps * 1.3e-5) ~ 0.84 eps per step). On the tau = 8 dt scene
-# (2026-10-12, VESSL 369367270791) the probe reads 0.25 eps per step
+# (80 * eps * 1.3e-5) ~ 0.84 eps per step). On the tau = 8 dt scene the probe reads 0.25 eps per step
 # (1.583e-8 / (80 * eps * 6.59e-3)) but final ez reads 4.9, above C = 4: the
 # GPU xfail on the A/B test (issue 1680). C also absorbs the factor 2 from
 # differencing two independently
@@ -206,8 +204,7 @@ _GPU_OBSERVED_TS_DIFF = 1.583e-8
 # absorb: 2 (differencing two independently rounded harnesses) x 1.75
 # (propagated vs one-step coupling) = 3.5, which still fits under C = 4.  The
 # measured hx margin (hx floor / hx A/B difference) was 141.7x on the old
-# fixture; on the tau = 8 dt scene it is 3.35x on the Mac CPU and 15.9x on GPU
-# (VESSL 369367270791). Read the k_he derivation as a scale, not as an exact
+# fixture; on the tau = 8 dt scene it is 3.35x on the Mac CPU and 15.9x on GPU. Read the k_he derivation as a scale, not as an exact
 # coefficient.
 #
 # With one shared E-scale floor the H checks were inert: on the old fixture
@@ -216,7 +213,7 @@ _GPU_OBSERVED_TS_DIFF = 1.583e-8
 # components' own peaks -- a 10% single-element error and a 1% whole-array
 # scale error in hx both PASSED. On the tau = 8 dt scene it sits 443x above
 # hx's own floor, at 1.9% (hx) / 1.7% (hy) of their peaks. Each field
-# therefore gets its own scale (2026-10-06):
+# therefore gets its own scale:
 #
 #     scale(c) = max( max|own E/H group| , k_cross * max|partner group| )
 #
@@ -331,10 +328,7 @@ def _build():
     n_steps = 80
 
     # Fractional bandwidth 0.8 with tau = 8*dt (f0 ~ 17.4 GHz), so the pulse is
-    # complete by about step 60 of the 80. Until 2026-10-12 this read
-    # GaussianPulse(f0=5e9, bandwidth=5e9): bandwidth in Hz, tau 1.3e-20 s, and
-    # the scene was driven only by the old pulse's 7.4e-4 jump at t=0 (issue
-    # 1668).
+    # complete by about step 60 of the 80.
     pulse = GaussianPulse(f0=1.0 / (math.pi * 0.8 * 8.0 * float(grid.dt)),
                           bandwidth=0.8)
     src = make_source(grid, (0.018, 0.024, 0.024), "ez", pulse, n_steps)

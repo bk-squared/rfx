@@ -151,7 +151,7 @@ def test_mesh_preflight_underresolved_advisory():
 
     # control: a finely-tessellated but WELL-RESOLVED sphere must NOT trip the advisory — its
     # triangle edges are ~2.6 mm, but its thinnest dimension (diameter 80 mm) spans many cells.
-    # Use 4 mm: work scales with cells; product cost is tracked separately in #2555.
+    # Use 4 mm: work scales with cells; product cost is tracked separately.
     sim2 = Simulation(freq_max=5e9, domain=(0.12, 0.12, 0.12), dx=0.004,
                       boundary="cpml", cpml_layers=6, mode="3d")
     sim2.add_source((0.06, 0.06, 0.06), component="ez")
@@ -220,12 +220,12 @@ def test_mesh_rejects_traced_coordinates():
 
 
 # --------------------------------------------------------------------------- #
-# #687 — deterministic rasterization of surface-registered sample points.
+# Deterministic rasterization of surface-registered sample points.
 #
 # The boundary-fitted meshers register conductor sheets at mid-plane NODES, so
 # rasterization sample points land exactly on mesh faces. trimesh's
 # ``contains`` decides such points along an OS-entropy-random ray direction
-# (measured 2026-08-24: a sample 1 ulp off a sheet's lateral face flipped
+# (measured: a sample 1 ulp off a sheet's lateral face flipped
 # inside/outside across 40 fresh calls, states 0,1,1,0,1,0,...; a point
 # 0.2 um strictly INSIDE a face returned True,False,False,... over 8 calls).
 # MeshShape therefore casts its own fixed-direction parity rays from a

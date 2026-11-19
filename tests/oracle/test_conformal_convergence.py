@@ -76,7 +76,7 @@ def _cavity_trace(ppw, conformal):
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
     if conformal:
-        lengths, areas = compute_conformal_fractions(grid, [cylinder], clamp=False)
+        lengths, areas = compute_conformal_fractions(grid, [cylinder], clamp=False, field_dtype=np.float32)
         areas = tuple(1 - a for a in areas)
         weights = tuple(jnp.asarray(w) for w in sc_clamp(
             tuple(1 - np.asarray(w) for w in lengths), tuple(np.asarray(a) for a in areas)))
@@ -184,7 +184,7 @@ def _assert_identified(result):
 def test_t0_complement_weights():
     """The cavity's open-edge weights follow an independent radial formula."""
     grid, cylinder = _cavity_geometry(16)
-    lengths, _ = compute_conformal_fractions(grid, [cylinder], clamp=False)
+    lengths, _ = compute_conformal_fractions(grid, [cylinder], clamp=False, field_dtype=np.float32)
     cx, cy, _ = cylinder.center
     # Independent end-node radial distances, before complementing and SC.
     for component, length in enumerate(lengths):
@@ -257,7 +257,7 @@ class TestConformalConvergence:
         Lz = height + 2 * margin
         center = (Lx / 2, Ly / 2, Lz / 2)
 
-        # Placement uses the declared lengths; the grid gets main's solved lengths (#1887).
+        # Placement uses the declared lengths; the grid gets main's solved lengths.
         grid = Grid(freq_max=_tm010_freq(radius) * 3,
                     domain=tuple(cells_spanning(L, dx) * dx for L in (Lx, Ly, Lz)),
                     dx=dx, cpml_layers=0)
@@ -266,7 +266,7 @@ class TestConformalConvergence:
         state = init_state(grid.shape)
         materials = init_materials(grid.shape)
 
-        (w_ex, w_ey, w_ez), areas = compute_conformal_fractions(grid, [cyl])
+        (w_ex, w_ey, w_ez), areas = compute_conformal_fractions(grid, [cyl], field_dtype=np.float32)
         materials = finish_conformal_mu(with_components(
             materials, grid, periodic=(False,) * 3), areas)
         eps_ex, eps_ey, eps_ez = conformal_eps_correction(
@@ -315,7 +315,7 @@ class TestConformalConvergence:
         sim.add_port((0.03, 0.03, 0.005), "ez", waveform=GaussianPulse(f0=3e9))
         sim.add_probe((0.03, 0.045, 0.03), "ez")
 
-        # The port only excites the model; a conformal lumped S-matrix is refused (#1299).
+        # The port only excites the model; a conformal lumped S-matrix is refused.
         result_conf = sim.run(n_steps=200, conformal_pec=True, compute_s_params=False)
         result_stair = sim.run(n_steps=200)
 

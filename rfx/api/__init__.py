@@ -18,7 +18,7 @@ Usage
 
 from __future__ import annotations
 
-from rfx.errors import AccuracyWarning, ConfigurationWarning
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal
 import inspect
 import math
 import json
@@ -106,6 +106,7 @@ from rfx.sources.tfsf_discrete_plane_wave import _bloch_cutoff_level_db  # noqa:
 
 
 from rfx.api._validators import (  # noqa: E402
+    _admit_declaration,
     _require_integral_param,
     _require_positive_finite_scalar,
     _positive_divisors,
@@ -322,7 +323,7 @@ class Simulation(
         from rfx.boundaries import normalize_boundary
 
         self._snap, self._interface_eps, self._pec_occupancy_model = _validate_constructor_choices(
-            snap, interface_eps, pec_occupancy_model)
+            snap, interface_eps, pec_occupancy_model, dx)
 
         # T7-B: accept BoundarySpec directly or normalise a legacy scalar
         # boundary=<str>. A BoundarySpec provided here is authoritative;
@@ -747,8 +748,7 @@ class Simulation(
             (0.18 % amplitude) is a solver defect independent
             of this parameter.
         """
-        if component not in ("ex", "ey", "ez"):
-            raise ValueError(f"component must be ex/ey/ez, got {component!r}")
+        _admit_declaration("Simulation.add_source", locals())
         from rfx.api._source_semantics import (
             resolve_amplitude_kind, legacy_kind_description)
         resolved_kind = resolve_amplitude_kind(amplitude_kind)
@@ -801,6 +801,7 @@ class Simulation(
             ``'current'`` and warns once per simulation; pass the kind explicitly
             to silence the warning.
         """
+        _admit_declaration("Simulation.add_polarized_source", locals())
         if waveform is None:
             waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
 
@@ -904,6 +905,7 @@ class Simulation(
         impedance : float — port impedance (default 50 ohm)
         waveform : excitation pulse (default GaussianPulse at freq_max/2)
         """
+        _admit_declaration("Simulation.add_coaxial_port", locals())
         if waveform is None:
             waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
         from rfx.geometry.port_termination import resolve_terminates
@@ -1189,10 +1191,9 @@ class Simulation(
             1.2%) and closed the closed-box referee within 0.9% at all
             bins.
         """
-        if self._tfsf is not None:
-            raise ValueError(
-                "Lumped ports are not supported together with the TFSF plane-wave source"
-            )
+        _admit_declaration("Simulation.add_port", locals())
+        from rfx.runners._admission import refuse_plane_wave_with_port
+        refuse_plane_wave_with_port(self, adding="port")
         if component not in ("ex", "ey", "ez"):
             raise ValueError(f"component must be ex/ey/ez, got {component!r}")
         from rfx.sources.wire_radius import validate_radius
@@ -1526,8 +1527,7 @@ class Simulation(
         the full series ADE current tracker.  To ensure the series ADE
         path is used, specify at least two non-zero components.
         """
-        if component not in ("ex", "ey", "ez"):
-            raise ValueError(f"component must be ex/ey/ez, got {component!r}")
+        _admit_declaration("Simulation.add_lumped_rlc", locals())
         if topology not in ("series", "parallel"):
             raise ValueError(f"topology must be 'series' or 'parallel', got {topology!r}")
         if R < 0 or L < 0 or C < 0:
@@ -1636,7 +1636,7 @@ class Simulation(
             try:
                 numeric = float(value)
             except (TypeError, ValueError):
-                raise ValueError(f"{label} must be a finite scalar, got {value!r}") from None
+                raise RfxRefusal(f"{label} must be a finite scalar, got {value!r}") from None
             if not math.isfinite(numeric):
                 raise ValueError(f"{label} must be finite, got {value!r}")
             if require_positive and numeric <= 0:
@@ -1651,7 +1651,7 @@ class Simulation(
         if self._periodic_axes:
             raise ValueError("Waveguide port is not supported with manual periodic-axis overrides")
         if self._ports:
-            raise ValueError("Waveguide port is not supported together with lumped ports")
+            raise ValueError("Waveguide port is not supported together with a lumped or wire port, or a soft source (add_source)")
         if self._tfsf is not None:
             raise ValueError("Waveguide port is not supported together with TFSF")
         if direction not in ("+x", "-x", "+y", "-y", "+z", "-z"):
@@ -1689,7 +1689,7 @@ class Simulation(
                 lo_f = float(lo)
                 hi_f = float(hi)
             except (TypeError, ValueError):
-                raise ValueError(f"{label} must contain finite scalars, got {rng!r}") from None
+                raise RfxRefusal(f"{label} must contain finite scalars, got {rng!r}") from None
             if not math.isfinite(lo_f) or not math.isfinite(hi_f):
                 raise ValueError(f"{label} must contain finite scalars, got {rng!r}")
             if lo_f < 0.0 or hi_f > domain_max or hi_f <= lo_f:
@@ -1701,7 +1701,7 @@ class Simulation(
             or len(mode) != 2
             or any(not isinstance(idx, Integral) for idx in mode)
         ):
-            raise ValueError(f"mode must be a tuple of two integers, got {mode!r}")
+            raise RfxRefusal(f"mode must be a tuple of two integers, got {mode!r}")
         if any(idx < 0 for idx in mode):
             raise ValueError(f"mode indices must be non-negative, got {mode!r}")
         if mode_type not in ("TE", "TM"):
@@ -1721,7 +1721,7 @@ class Simulation(
         if probe_offset <= 0 or ref_offset <= 0:
             raise ValueError("probe_offset and ref_offset must be positive integers")
         if not isinstance(n_modes, Integral) or n_modes < 1:
-            raise ValueError(f"n_modes must be a positive integer, got {n_modes!r}")
+            raise RfxRefusal(f"n_modes must be a positive integer, got {n_modes!r}")
         if calibration_preset not in (None, "measured", "source_to_probe"):
             raise ValueError(
                 "calibration_preset must be one of None, 'measured', or 'source_to_probe'"
@@ -1747,7 +1747,7 @@ class Simulation(
             raise ValueError("probe_plane must be >= reference_plane when both are provided")
         if freqs is None:
             if not isinstance(n_freqs, Integral):
-                raise ValueError(f"n_freqs must be a positive integer, got {n_freqs!r}")
+                raise RfxRefusal(f"n_freqs must be a positive integer, got {n_freqs!r}")
             if n_freqs <= 0:
                 raise ValueError(f"n_freqs must be positive, got {n_freqs}")
             freqs_arr = None
@@ -1859,8 +1859,7 @@ class Simulation(
         name : str or None
             Optional name for the port. Auto-generated if None.
         """
-        if axis not in ("x", "y", "z"):
-            raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis!r}")
+        _admit_declaration("Simulation.add_floquet_port", locals())
         if polarization not in ("te", "tm"):
             raise ValueError(f"polarization must be 'te' or 'tm', got {polarization!r}")
         if scan_theta < 0 or scan_theta >= 90:
@@ -1891,7 +1890,7 @@ class Simulation(
         # Reject an explicit incompatible declaration at registration. Auto
         # mesh depends on the completed model and is checked by preflight.
         if self._declared_mesh["_dz_profile"] is not None:
-            raise ValueError(
+            raise RfxRefusal(
                 "Floquet ports do not support non-uniform z mesh (dz_profile). "
                 "Set dx explicitly to prevent auto-mesh from creating NU grid."
             )
@@ -1927,8 +1926,7 @@ class Simulation(
         component: str = "ez", *, allow_in_absorber: bool = False,
     ) -> "Simulation":
         """Add a point field probe."""
-        if component not in ("ex", "ey", "ez", "hx", "hy", "hz"):
-            raise ValueError(f"component must be a field name, got {component!r}")
+        _admit_declaration("Simulation.add_probe", locals())
         self._probes.append(_ProbeEntry(position=position, component=component, allow_in_absorber=allow_in_absorber))
         return self
 
@@ -1941,6 +1939,7 @@ class Simulation(
         Records Ex, Ey, Ez, Hx, Hy, Hz; allow_in_absorber opts into pad positions.
         Results accessible via result.time_series columns [0..5].
         """
+        _admit_declaration("Simulation.add_vector_probe", locals())
         for comp in ("ex", "ey", "ez", "hx", "hy", "hz"):
             self._probes.append(_ProbeEntry(position=position, component=comp, allow_in_absorber=allow_in_absorber))
         return self
@@ -1985,6 +1984,7 @@ class Simulation(
         name : str or None
             Optional result key.
         """
+        _admit_declaration("Simulation.add_dft_plane_probe", locals())
         from rfx.measurement import register_plane
         return register_plane(self, axis, coordinate, component, freqs, n_freqs, name, region)
 
@@ -2032,8 +2032,7 @@ class Simulation(
         name : str or None
             Result key. Default: ``flux_{axis}_{idx}``.
         """
-        if axis not in ("x", "y", "z"):
-            raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis!r}")
+        _admit_declaration("Simulation.add_flux_monitor", locals())
         self._validate_declared_plane_coordinate(axis, coordinate)
         from rfx.probes.flux_region import validate_flux_region_inputs
         validate_flux_region_inputs(size, center)
@@ -2079,6 +2078,7 @@ class Simulation(
         n_freqs : int
             Number of frequencies if freqs is None.
         """
+        _admit_declaration("Simulation.add_ntff_box", locals())
         from rfx.measurement import default_frequency_grid
         freqs = default_frequency_grid(self._freq_max, n_freqs) if freqs is None else freqs
         self._ntff = (corner_lo, corner_hi, freqs)
@@ -2148,10 +2148,7 @@ class Simulation(
         signs and time stamps so the mutation harness can measure what the
         declared checks catch; those never reach a user's declaration.
         """
-        if not float(block_size) > 0.0:
-            raise ValueError(
-                f"add_current_moment_monitor(block_size={block_size}): the "
-                "block side must be positive.")
+        _admit_declaration("Simulation.add_current_moment_monitor", locals())
         if int(order) != 2:
             raise ValueError(
                 f"add_current_moment_monitor(order={order}): only order=2 is "

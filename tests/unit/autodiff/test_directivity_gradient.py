@@ -27,7 +27,7 @@ from rfx.optimize_objectives import (
 
 def _forward(eps_scale: jnp.ndarray):
     """Minimal NTFF-enabled forward that is jax.grad-compatible."""
-    grid = Grid(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length
     materials_base = init_materials(grid.shape)
     # Scale eps_r by a scalar — gradient target.
     materials = materials_base._replace(eps_r=materials_base.eps_r * eps_scale)
@@ -80,7 +80,7 @@ def test_maximize_directivity_gradient_nonzero():
 
 
 # ---------------------------------------------------------------------------
-# GitHub #129 — maximize_directivity wrong-sign gradient for power-changing DoFs.
+# maximize_directivity wrong-sign gradient for power-changing DoFs.
 # The legacy `-U/stop_gradient(P)` drops the -U*P'/P^2 quotient term, so for any
 # DoF that changes total radiated power (here: a lossy `sigma` block) the gradient
 # can come out WRONG-SIGNED vs finite difference. `log_ratio=True` optimizes
@@ -96,7 +96,7 @@ def _forward_lossy(sigma_scale):
     Adding conductivity dissipates power, so P_rad moves with the DoF — the regime
     where the legacy stop_gradient objective is wrong (#129).
     """
-    grid = Grid(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length
     mb = init_materials(grid.shape)
     sx, sy, sz = grid.shape
     mask = np.zeros(grid.shape, dtype=np.float32)

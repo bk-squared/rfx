@@ -102,7 +102,7 @@ def test_dt_is_a_numpy_float64_scalar():
 @pytest.mark.parametrize("field_dtype,expected", [
     (jnp.float16, jnp.complex64),     # mixed precision -> float32 FLOOR
     (jnp.float32, jnp.complex64),     # default -> unchanged
-    (jnp.complex64, jnp.complex64),   # oblique Bloch (#404) -> stays COMPLEX
+    (jnp.complex64, jnp.complex64),   # oblique Bloch -> stays COMPLEX
 ])
 def test_ntff_accum_dtype_promotes_never_pins(field_dtype, expected):
     """Holds identically with x64 off and on."""
@@ -244,7 +244,7 @@ def test_oblique_tfsf_2d_scan_closes_under_x64():
     cfg, st0 = init_tfsf(grid.nx, grid.dx, grid.dt,
                          cpml_layers=grid.cpml_layers, tfsf_margin=3,
                          f0=5e9, bandwidth=0.2, amplitude=1.0,
-                         polarization="ez", angle_deg=30.0, ny=grid.ny)
+                         polarization="ez", angle_deg=30.0, ny=grid.ny, dtype='float32')
     probe = ProbeSpec(i=cfg.x_lo + 3, j=grid.ny // 2, k=grid.nz // 2,
                       component="ez")
     with enable_x64():
@@ -297,7 +297,7 @@ def test_enable_x64_context_restores_the_flag():
 
 
 # ---------------------------------------------------------------------------
-# Issue #656 — the dispersion ADE carry (the family member #646 missed)
+# The dispersion ADE carry
 # ---------------------------------------------------------------------------
 
 def _dispersive_sim(kind, precision="float32", n=None):
@@ -529,7 +529,7 @@ def test_oblique_bloch_with_dispersion_is_refused():
     cfg, st0 = init_tfsf(grid.nx, grid.dx, grid.dt,
                          cpml_layers=grid.cpml_layers, tfsf_margin=3,
                          f0=5e9, bandwidth=0.2, amplitude=1.0,
-                         polarization="ez", angle_deg=30.0, ny=grid.ny)
+                         polarization="ez", angle_deg=30.0, ny=grid.ny, dtype='float32')
     probe = ProbeSpec(i=cfg.x_lo + 3, j=grid.ny // 2, k=grid.nz // 2,
                       component="ez")
     # Off the injection planes, so their material rule admits it

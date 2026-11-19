@@ -50,7 +50,7 @@ def _materials(grid, eps_scale):
 def _tfsf(grid):
     return init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=CPML, tfsf_margin=3,
                      f0=F0, bandwidth=BW, amplitude=1.0, polarization="ez",
-                     direction="+x", angle_deg=0.0)
+                     direction="+x", angle_deg=0.0, dtype='float32')
 
 
 def _setup_run(grid, materials):
@@ -69,7 +69,7 @@ def _setup_run(grid, materials):
 @pytest.fixture(scope="module")
 def rcs_run():
     grid = Grid(freq_max=15e9, domain=DOMAIN, dx=DX, cpml_layers=CPML)
-    # the incident the grid carries, as compute_rcs normalizes (#820)
+    # the incident the grid carries, as compute_rcs normalizes
     e_inc = measure_normal_incident_spectrum(*_tfsf(grid), N_STEPS, FREQS, grid.dt)
     mats = _materials(grid, 1.0)
     ntff_data, box = _setup_run(grid, mats)

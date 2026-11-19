@@ -55,6 +55,7 @@ def _update_e_with_optional_dispersion(
     aniso_inv_eps: tuple | None = None,
     stencil_order: int = 2,
     bloch: tuple | None = None,
+    bloch_operand=None,
     boundary=None,
     frame=None,
     owned=None,
@@ -88,7 +89,7 @@ def _update_e_with_optional_dispersion(
             return update_e_aniso(state, materials, eps_ex, eps_ey, eps_ez,
                                   dt, dx, periodic=periodic, boundary=boundary, high_wall=high_wall), None, None
         return update_e(state, materials, dt, dx, periodic=periodic,
-                        stencil_order=stencil_order, bloch=bloch, boundary=boundary, high_wall=high_wall,
+                        stencil_order=stencil_order, bloch=bloch, bloch_operand=bloch_operand, boundary=boundary, high_wall=high_wall,
                         frame=frame, owned=owned), None, None
 
     if debye is not None and lorentz is None:
@@ -308,11 +309,11 @@ def _build_step_setup(
 
     # ---- boundary configuration ----
     from rfx.model.materials import with_components
-    from rfx.model.tensor_operands import TensorOperands
+    from rfx.model.tensor_operands import TensorOperands, step_tensor
     from rfx.geometry.rasterize_grid import unpadded_high_walls
     materials = with_components(materials, grid, periodic=periodic,
-        high_wall=unpadded_high_walls(grid), tensor=
-        TensorOperands.of(aniso_eps, aniso_inv_eps, conformal_weights, aniso_inv_eps_smooth))
+        high_wall=unpadded_high_walls(grid), tensor=step_tensor(materials,
+        TensorOperands.of(aniso_eps, aniso_inv_eps, conformal_weights, aniso_inv_eps_smooth)))
     tensor = materials.components.tensor
     aniso_eps, aniso_inv_eps = (tensor.eps, tensor.inv_eps) if tensor else (None, None)
     conformal_weights = tensor.conformal_weights if tensor else None
@@ -844,7 +845,8 @@ def _build_step_setup(
 
 
 def make_core_step(ctx: _StepContext, invariants: dict | None = None,
-                   *, design_hook=None, hooks=None, measurement=None, dtype=None):
+                   *, design_hook=None, hooks=None, measurement=None, dtype=None,
+                   lumped_rlc_admission=None):
     """Compose the uniform step; retain the runner and adjoint call signatures.
 
     Returns ``core_step(carry, step_idx, src_vals, mag_src_vals)`` yielding
@@ -854,13 +856,17 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
     """
     from rfx.stepping.uniform import make_uniform_step
     if invariants is None:
-        invariants = (core_step_invariants(ctx) if measurement is None else
-                      core_step_invariants(ctx, measurement=measurement, dtype=dtype))
+        admission_kwargs = ({} if lumped_rlc_admission is None else
+                            {"lumped_rlc_admission": lumped_rlc_admission})
+        invariants = (core_step_invariants(ctx, **admission_kwargs) if measurement is None else
+                      core_step_invariants(ctx, measurement=measurement, dtype=dtype,
+                                           **admission_kwargs))
     return make_uniform_step(invariants["ctx"], invariants,
                              design_hook=design_hook, hooks=hooks)
 
 
-def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None) -> dict:
+def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None,
+                         lumped_rlc_admission=None) -> dict:
     """What :func:`make_core_step`'s kernel reads besides its arguments.
 
     ``ctx`` itself plus arrays derived from it once, before the loop: the
@@ -882,6 +888,18 @@ def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None) -> 
     conformal_zero_masks = None
     if ctx.use_conformal and not ctx.use_aniso_inv:
         conformal_zero_masks = tuple(w == 0.0 for w in tensor.conformal_weights)
+
+    if lumped_rlc_admission is not None and (ctx.use_conformal or
+            (ctx.use_aniso_inv and not ctx.aniso_inv_eps_smooth)):
+        from rfx.boundaries.pec import PEC_INV_THRESHOLD
+        from rfx.model.source_admission import refuse_shorted_lumped_rlc_applied
+        sim, conductors = lumped_rlc_admission
+        with jax.ensure_compile_time_eval():
+            frozen_masks = (tuple(inv < PEC_INV_THRESHOLD for inv in aniso_inv_eps)
+                            if ctx.use_aniso_inv else None)
+            refuse_shorted_lumped_rlc_applied(
+                sim, conductors, hard_edges=ctx.pec_edge_masks,
+                conformal_zero_masks=conformal_zero_masks, frozen_masks=frozen_masks)
 
     # ``apply_cpml_e`` builds its psi coefficient from a permittivity,
     # and it has to be the SAME one the Yee half of this timestep used, or the
@@ -933,4 +951,7 @@ def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None) -> 
         invariants['waveguide_table'] = compile_waveguide_table(
             ctx.grid, ctx.waveguide_meta, measurement=measurement,
             dtype=dtype or ctx.waveguide_meta[0].v_probe_t.dtype)
+    if ctx.pad_plan is not None:
+        from rfx.stepping.vector_pad import pad_invariants
+        invariants = pad_invariants(invariants, ctx.pad_plan)
     return invariants

@@ -25,7 +25,7 @@ def stamped_drive(port, cell):
 
 
 def port_drive_waveform(grid, cell, component, excitation, n_steps, materials,
-                        *, sigma_port, unit_field, time=None):
+                        *, sigma_port, unit_field, time=None, dtype=None):
     """Return ``Cb * sigma_port * unit_field * w(t)`` for one live edge.
 
     ``w`` is the open-circuit Thevenin source voltage across the WHOLE
@@ -40,13 +40,19 @@ def port_drive_waveform(grid, cell, component, excitation, n_steps, materials,
     port/RLC stamps; do not reconstruct permittivity. JAX operations retain
     material and mesh derivatives. ``n_steps=None, time=t`` selects the
     eager single-step application instead of a precomputed waveform.
+
+    ``dtype=None`` takes the materials' dtype, because the frozen
+    ``simulation.make_source``, ``make_j_source``, ``make_port_source`` and
+    ``make_wire_port_sources`` callers omit it.
     """
+    if dtype is None:
+        dtype = materials.eps_r.dtype if materials is not None else jnp.float32
     cb = e_update_coefficient_at(materials, cell, component, grid.dt, **electric_grid_kwargs(grid))
     if n_steps is None:
         samples = excitation(time)
     else:
         with concrete_waveform_eval(excitation, grid.dt):
-            times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+            times = jnp.arange(n_steps, dtype=jnp.promote_types(dtype, jnp.float32)) * grid.dt
             samples = jax.vmap(excitation)(times)
     from rfx.model.source_coefficients import source_table
     return source_table(samples, native="cb", coefficient=cb * sigma_port * unit_field)
@@ -95,7 +101,7 @@ def soft_source(grid, position, component, waveform, n_steps, *, materials,
             f"(add_source resolves None to 'current'), got {amplitude_kind!r}")
     cell = field_index(grid, position, component)
     table = uniform_source_table(grid, cell, component, waveform, n_steps,
-                                 materials, amplitude_kind)
+                                 materials, amplitude_kind, dtype=field_dtype or jnp.float32)
     return SourceSpec(i=cell[0], j=cell[1], k=cell[2], component=component,
                       waveform=guard_float16_source_increment(
                           table, field_dtype, amplitude_kind))

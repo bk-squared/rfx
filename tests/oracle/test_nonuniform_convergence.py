@@ -7,7 +7,7 @@ as dz_substrate is refined. Uses a PEC cavity with thin FR4 slab.
 import numpy as np
 import pytest
 
-# CORE-C2 (2026-05-16): the module was marked `gpu`, which excluded it
+# CORE-C2: the module was marked `gpu`, which excluded it
 # from the default and `-m slow` gates — so the only non-uniform-mesh
 # physics test never ran in CI. These tests are CPU-runnable; the slow
 # resonance scan keeps a `@pytest.mark.slow` mark, the fast CFL check
@@ -75,7 +75,7 @@ def test_nonuniform_z_convergence():
     # Cauchy convergence (oracle-free): as dz_sub is refined the measured
     # resonance must approach a limit — each refinement step must move
     # f_sim by a shrinking amount. A non-convergent stencil (e.g. the
-    # pre-2026-05-16 CORE-C2 spacing bug) fails this.
+    # CORE-C2 spacing bug) fails this.
     freqs_sim = [f for _, f in results]
     assert all(f > 0 for f in freqs_sim), (
         f"resonance not found at every refinement level: {results}"

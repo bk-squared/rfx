@@ -55,7 +55,7 @@ def _patch_sim(gp_x: float, gp_y: float, *, with_ntff: bool = True,
     z_gp = 0.010                       # a node on the 2.5 mm mesh
     z_patch = z_gp + H_SUB             # the next node up
 
-    # #1138: geometry[1] x solved -9.322 % off; this test checks wording is advisory expected physics never error.
+    # geometry[1] x solved -9.322 % off; this test checks wording is advisory expected physics never error.
     sim = Simulation(snap="declared", freq_max=FREQ_MAX, domain=dom, boundary="cpml",
                      cpml_layers=4, dx=DX)
     # ground plane (sheet) + patch element (sheet, smaller footprint)

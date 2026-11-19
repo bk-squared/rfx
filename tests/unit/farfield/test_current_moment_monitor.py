@@ -1275,10 +1275,10 @@ GRADED_SETUP_SRC = REPO_ROOT / "rfx" / "stepping" / "graded_setup.py"
 GRADED_SRC = REPO_ROOT / "rfx" / "stepping" / "graded.py"
 
 _SNAP_UNI = ("        if ctx.use_current_moments:\n"
-             "            frame.e_prev_slab = _slab_e_snapshot(frame.st, ctx.current_moments)\n")
+             "            frame.e_prev_slab = _slab_e_snapshot(view(frame.st), ctx.current_moments)\n")
 _ACC_UNI = ("        if ctx.use_current_moments:\n"
             "            frame.cm_new = ctx.accumulate_current_moments(\n"
-            "                frame.carry[\"current_moments\"], frame.st, frame.e_prev_slab,\n"
+            "                frame.carry[\"current_moments\"], st, frame.e_prev_slab,\n"
             "                ctx.current_moments, dt, frame.step_idx)\n")
 _RLC_UNI = ("        if ctx.use_lumped_rlc:\n"
             "            frame.st, frame.new_rlc_states = ctx.update_rlc_elements(")
@@ -1311,6 +1311,7 @@ def _runner_mutations(kind):
         before_sources = [
             (acc, ""),
             ("    attachments = {", "    def moved_current_moments(frame):\n"
+             "        st = frame.st\n"
              + acc + "\n    attachments = {"),
             ("(port_specs or ctx.use_wire_refplanes) else ()),",
              "(port_specs or ctx.use_wire_refplanes) else ())"
@@ -2161,7 +2162,7 @@ def test_the_checked_msl_edges_hold_every_edge_the_lane_stamps(
 # trace from the port 7 mm to the patch edge, 0.5 mm cells in plane (graded
 # lane: 0.25 mm through the substrate). TM010 near 9.5 GHz. The port, the line
 # and the board lie inside the slab's interior and inside the Huygens box.
-# The bars are the tutorial patch's (#1301: peak directivity 0.011 dB,
+# The bars are the tutorial patch's (peak directivity 0.011 dB,
 # radiated power 0.024 dB, any direction within 20 dB of the peak 0.14 dB).
 MSL_PATCH_FREQS = np.array([8.5e9, 9.5e9, 10.5e9])
 MSL_PATCH_DZ = np.array([0.5] * 4 + [0.4, 0.3, 0.3] + [0.25] * 4
@@ -2274,7 +2275,7 @@ def test_concrete_pec_overrides_are_measured(override, inside):
     sim = _guard_sim()
     shape = sim._build_grid().shape
     # Inside the monitor slab, one cell above the source: off its own Ez edge at
-    # (12, 12, 12): a soft source on a realized PEC edge is refused (#1508).
+    # (12, 12, 12): a soft source on a realized PEC edge is refused.
     cell = (12, 12, 13) if inside else (5, 12, 12)
     if override == "pec_mask_override":
         arr = np.zeros(shape, dtype=bool)

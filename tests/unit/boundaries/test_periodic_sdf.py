@@ -20,7 +20,7 @@ SHIFT = 8
 
 
 def grid_model(periodic=True, *, snap="strict"):
-    # solved length; #1887
+    # solved length
     return Simulation(20e9, (L, 8 * DX, 6 * DX), dx=DX, cpml_layers=0, snap=snap,
                       boundary=BoundarySpec(x='periodic' if periodic else 'pec',
                                             y=Boundary(lo='pec', hi='pmc'), z='pec'))
@@ -45,10 +45,10 @@ def option_arrays(sim, option):
     grid = sim._build_grid()
     built = sim._assemble_materials(grid)
     if option == 'subpixel':
-        return compute_smoothed_eps(grid, [(e.shape, 3.7) for e in sim._geometry])
+        return compute_smoothed_eps(grid, [(e.shape, 3.7) for e in sim._geometry], dtype='float32')
     if option == 'conformal':
         return compute_conformal_weights_sdf(grid, built[4])
-    return compute_inv_eps_tensor_diag(grid, pec_shapes=built[4])
+    return compute_inv_eps_tensor_diag(grid, pec_shapes=built[4], dtype='float32')
 
 
 def option_trace(kind, option, shift=0):
@@ -88,14 +88,18 @@ def traced_smoothing(lo, hi, *, periodic=True):
     sim.add_material('dielectric', eps_r=3.7)
     # Unequal face offsets also avoid a nearest-normal tie between x and y.
     sim.add(Box((lo, .87 * DX, .64 * DX), (hi, 5.23 * DX, 4.17 * DX)), material='dielectric')
-    return compute_smoothed_eps(sim._build_grid(), [(sim._geometry[0].shape, 3.7)])
+    return compute_smoothed_eps(sim._build_grid(), [(sim._geometry[0].shape, 3.7)], dtype='float32')
 
 
 def test_traced_negative_box_sdf_keeps_negative_image_and_gradient():
-    lo, hi = np.float32(-.9 * L), np.float32(-.2 * L)
+    """A traced Box across the low seam uses its negative periodic image and has a correct gradient.
+
+    A Box centred outside [0, L] is refused.
+    """
+    lo, hi = np.float32(-.3 * L), np.float32(.4 * L)
     traced = jax.jit(traced_smoothing)(lo, hi)
-    # Independent translated drawing entirely in the base period.
-    reference = traced_smoothing(float(lo) + L, float(hi) + L)
+    # Concrete bounds form an independent image range for the same declaration.
+    reference = traced_smoothing(float(lo), float(hi))
     for a, b in zip(traced, reference):
         np.testing.assert_allclose(a, b, rtol=0, atol=32 * np.finfo(np.float32).eps * 3.7)
     def total(a):
@@ -105,6 +109,10 @@ def test_traced_negative_box_sdf_keeps_negative_image_and_gradient():
     difference = float((total(lo + h) - total(lo - h)) / (2 * h))
     assert abs(grad) > 1.
     np.testing.assert_allclose(grad, difference, rtol=.01, atol=0)
+
+    with pytest.raises(Exception, match=r"midpoint.*outside \[0, L\]"):
+        values = jax.jit(traced_smoothing)(np.float32(-.9 * L), np.float32(-.2 * L))
+        jax.block_until_ready(values)
 
 
 @pytest.mark.parametrize('outside', ['low', 'high'])

@@ -74,7 +74,7 @@ def test_fresnel_normal_incidence():
     tfsf_cfg, tfsf_st = init_tfsf(
         grid.nx, dx, dt, cpml_layers=nc, tfsf_margin=5,
         f0=5e9, bandwidth=0.5, amplitude=1.0,
-    )
+    dtype='float32')
 
     # Dielectric slab: starts at nx//4, ends 10 cells before x_hi (vacuum buffer)
     # TFSF boundary corrections assume vacuum — dielectric must NOT touch x_lo or x_hi

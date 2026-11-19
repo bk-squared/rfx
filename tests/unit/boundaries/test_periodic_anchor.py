@@ -28,7 +28,7 @@ def build(builder, domain, requested, *, wall_axes, cpml_layers):
     kwargs = dict(periodic_axes='x', pec_faces=faces, cpml_axes='z')
     if builder == 'uniform':
         return Grid(frequency, domain, cpml_layers=cpml_layers, **kwargs)
-    return build_nonuniform_grid(frequency, domain, None, cpml_layers, None, **kwargs)
+    return build_nonuniform_grid(frequency, domain, None, cpml_layers, None, dtype="float32", **kwargs)
 
 
 def wall_span(grid, axis):

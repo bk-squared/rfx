@@ -35,14 +35,17 @@ from rfx.subgridding.jit_runner import (
     _restrict_node_aligned_2d,
 )
 
-# This research topology accepts vacuum fields only, with no material input.
 _VACUUM_MU = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
 C0 = 1.0 / np.sqrt(EPS_0 * _VACUUM_MU)
 Z0 = np.sqrt(_VACUUM_MU / EPS_0)
 
 
 class DisjointSubgridConfig3D(NamedTuple):
-    """Configuration for a disjoint coarse-hole + fine-block domain."""
+    """Configuration for a disjoint coarse-hole + fine-block domain.
+
+    ``sat_strength`` is the dimensionless SAT ``sigma``, with
+    ``alpha = sigma * c0 * dt / dx_f``.
+    """
 
     shape_c: tuple[int, int, int]
     fine_region: tuple[int, int, int, int, int, int]
@@ -51,7 +54,7 @@ class DisjointSubgridConfig3D(NamedTuple):
     dx_f: float
     dt: float
     ratio: int
-    sat_strength: float  # dimensionless SAT sigma; alpha = sigma * c0*dt/dx_f
+    sat_strength: float
     coarse_active_mask: jnp.ndarray
     face_projection: str
     shape_convention: str
@@ -287,6 +290,9 @@ def step_disjoint_topology_3d(
     coarse grid cannot evolve inside the fine-owned volume.
 
     This function intentionally has no interface coupling yet.
+
+    The fine block's six faces are artificial coarse/fine interfaces, not
+    physical PEC walls.
     """
     state = zero_coarse_hole(state, config)
     ex_c, ey_c, ez_c, hx_c, hy_c, hz_c = _yee_step(
@@ -301,11 +307,6 @@ def step_disjoint_topology_3d(
     )
     coarse = zero_coarse_hole(coarse, config)
 
-    # The fine block's six faces are artificial coarse/fine interfaces, not
-    # physical PEC walls.  Leaving them un-zeroed lets the SAT terms carry
-    # tangential fields across the interface instead of first clamping them to a
-    # conductor boundary.  The prototype still uses zero-padded curl stencils at
-    # those faces until the paper-derived interface closure replaces this slice.
     ex_f, ey_f, ez_f, hx_f, hy_f, hz_f = _yee_step(
         state.ex_f, state.ey_f, state.ez_f,
         state.hx_f, state.hy_f, state.hz_f,
@@ -445,6 +446,10 @@ def _apply_faces_maxwell_sat_from_snapshot(
     another makes the result order-dependent at shared edges/corners and
     weakens the discrete-energy interpretation.  This helper accumulates all
     field deltas first and applies them once.
+
+    On a face with normal ``axis``, an E component on ``e_axis`` takes
+    ``(n × H)_e_axis = sign_e * H_h_axis`` and an H component on ``h_axis``
+    takes ``-(n × E)_h_axis = sign_h * E_e_axis``.
     """
     alpha_base = _sat_alpha(config)
     if strength is not None:
@@ -464,7 +469,6 @@ def _apply_faces_maxwell_sat_from_snapshot(
 
         if update_e:
             for e_axis in tangential_axes:
-                # (n × H)_e_axis = sign_e * H_h_axis
                 h_axis = next(ax for ax in tangential_axes if ax != e_axis)
                 sign_e = normal_sign * _levi_civita(e_axis, axis, h_axis)
 
@@ -511,7 +515,6 @@ def _apply_faces_maxwell_sat_from_snapshot(
 
         if update_h:
             for h_axis in tangential_axes:
-                # -(n × E)_h_axis = sign_h * E_e_axis
                 e_axis = next(ax for ax in tangential_axes if ax != h_axis)
                 sign_h = -normal_sign * _levi_civita(h_axis, axis, e_axis)
 

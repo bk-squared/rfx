@@ -138,7 +138,7 @@ def test_mixed_affine_h_matches_constant_reference_and_refutes_single_plane(
         return tuple(jnp.asarray(planes[right].accumulator) for _, right in names)
 
     with monkeypatch.context() as mutation:
-        # #980 Phase 2 moved compute_mixed_s_matrix verbatim into
+        # Phase 2 moved compute_mixed_s_matrix verbatim into
         # rfx/sparams/mixed.py, so ``_collocated_msl_h`` is looked up as a
         # global of THAT module now. Patching the ``rfx.api._sparams``
         # re-export would still succeed and silently not be the binding the
@@ -152,7 +152,7 @@ def test_mixed_affine_h_matches_constant_reference_and_refutes_single_plane(
     expected_s11 = (voltage - zi) / (voltage + zi)
     expected_wrong = (voltage - zi * (1 + SLOPE / 2)) / (voltage + zi * (1 + SLOPE / 2))
     assert abs(expected_wrong - expected_s11) > 0.05
-    # The MSL wave split is formed at the line Z0 (#2014: S is then referred
+    # The MSL wave split is formed at the line Z0 (S is then referred
     # to the declared impedance), so it is checked on S brought back there.
     ref_line, bypassed_line = line_s(reference), line_s(bypassed)
     np.testing.assert_allclose(probe0_s(reference, ref_line)[1, 1], expected_s11, rtol=2e-6, atol=2e-7)

@@ -14,7 +14,7 @@ import pytest
 
 from rfx import Simulation
 
-# A13 (2026-11-09): the measured
+# A13: the measured
 # corrected floor 8.49e-8, times 1.5 and rounded up at quantum=1e7. A11
 # requires a fixed bar so a broken waveform cannot raise its own threshold.
 R_MAX = 2e-7

@@ -58,6 +58,13 @@ def record_selection_detail(result):
 
 
 def forward_settling_witness(result):
+    from rfx.model.realization_transport import forward_arrays_match
+    if not forward_arrays_match(result):
+        raise ValueError(
+            "ForwardResult settling reads one primal result; its arrays are not the arrays "
+            "it was built with (a vmap output, a Jacobian, or a sliced or mapped result). "
+            "For a batch, take one element first: "
+            "jax.tree_util.tree_map(lambda a: a[i], result).")
     from rfx.sparams._tail_witness import result_read_bins
 
     bins = result_read_bins(result)
@@ -92,8 +99,10 @@ def build_settling_witness(result, *, bins, dt, freq_max, probe_info,
     db = rows[0]['db'] if rows else None
     records = s_read_records(result)
     if records:
+        from rfx.measurement.record_readers import result_port_s_reader
         db, detail = port_record_witness(
-            records, dt, port_source_end, bins, freq_max=freq_max)
+            records, dt, port_source_end, bins, freq_max=freq_max,
+            reader=result_port_s_reader(result, records))
         rows.append({**detail, 'reads': ('S-parameters',)})
     if getattr(result, 'waveguide_ports', None):
         db, detail = settling_db_from_port_records(
@@ -138,10 +147,8 @@ def _combine_rows(rows, bins):
     import numpy as np
     from rfx.sparams._tail_witness import combine_witness_details
 
-    if len(rows) == 1:
-        return rows[0]
-    detail = combine_witness_details(*rows)
-    if bins.size:
+    detail = combine_witness_details(*rows) if len(rows) > 1 else rows[0]
+    if len(rows) > 1 and bins.size:
         shares = np.maximum.reduce([row['share_per_bin'] for row in rows])
         errors = np.maximum.reduce([row['error_per_bin'] for row in rows])
         winning = np.argmax([row['share_per_bin'] for row in rows], axis=0)
@@ -154,6 +161,21 @@ def _combine_rows(rows, bins):
                   'worst_freq_hz': (float(bins[np.argmax(shares)])
                                     if np.any(shares) or detail['status'] == 'pass'
                                     else float('nan'))}
+    quantity_rows = [row for row in rows if len(row.get('record_end_error_per_bin', ()))]
+    if quantity_rows:
+        quantity = np.maximum.reduce([row['record_end_error_per_bin'] for row in quantity_rows])
+        detail = {**detail, 'record_end_error_per_bin': quantity,
+                  'kappa_per_bin': np.maximum.reduce([row['kappa_per_bin'] for row in quantity_rows]),
+                  'record_end_floor_per_bin': np.maximum.reduce([
+                      row['record_end_floor_per_bin'] for row in quantity_rows]),
+                  'status_per_entry': {key: value for row in quantity_rows
+                                       for key, value in row['status_per_entry'].items()},
+                  'record_end_error_per_entry': {key: value for row in quantity_rows
+                                                for key, value in row['record_end_error_per_entry'].items()},
+                  'record_end_error_second_per_entry': {key: value for row in quantity_rows
+                                                for key, value in (row.get('record_end_error_second_per_entry') or {}).items()}}
+        if bins.size and detail['status'] in {'pass', 'fail'}:
+            detail['worst_freq_hz'] = float(bins[np.argmax(quantity)])
     return detail
 
 

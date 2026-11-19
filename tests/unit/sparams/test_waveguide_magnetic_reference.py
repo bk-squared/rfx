@@ -29,7 +29,7 @@ def _guide(kind, graded):
 @pytest.mark.parametrize('kind', ['mu', 'debye', 'rlc'])
 def test_empty_reference_scattering_contract(kind):
     if kind == 'rlc':
-        # Both public calculators refuse RLC (#1263). Keep that boundary;
+        # Both public calculators refuse RLC. Keep that boundary;
         # exercise the internal NU reference without claiming public support.
         for graded in (False, True):
             with pytest.raises(NotImplementedError, match='lumped RLC'):
