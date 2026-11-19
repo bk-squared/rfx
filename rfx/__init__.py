@@ -247,29 +247,6 @@ from rfx.convergence import (
     quick_convergence,
 )
 
-# ---------------------------------------------------------------------------
-# Curated public surface (W5.5).
-#
-# ``__all__`` is the *front door*: ``from rfx import *`` and rendered API
-# references use it. It contains 218 names, a strict subset of the flat
-# symbols imported above. Per-step kernel internals,
-# low-level bookkeeping/state classes, and dump/replay round-trip helpers are
-# omitted from the star-import surface.
-#
-# Excluded categories (still importable by explicit attribute access):
-#   - per-step Yee/port kernels: init_*/update_*/inject_*/apply_waveguide_port_*,
-#   - low-level state/bookkeeping classes: RLCState, RLCCellMeta,
-#     Coaxial*PlaneVI, CoaxialPlaneSourceSpec, FloquetDFTAccumulator,
-#     PortVIDump/PortDumpMetadata/PortSMatrixObservable/PortReplayComparison,
-#     SubgridValidationIssue/Report, BATCH_MANIFEST_SCHEMA
-#   - low-level coaxial/floquet/waveguide plane helpers and modal builders
-#     (coaxial_tem_*, *_plane_vi*, extract_floquet_modes, extract_multimode_*,
-#     init_multimode_waveguide_port, solve_rectangular_modes,
-#     waveguide_plane_positions, floquet_phase_shift/wave_vector)
-#   - dump/replay round-trip + secondary IO: save_*/load_*_npz,
-#     save_snapshots/load_snapshots, save_materials/load_materials,
-#     replay_smatrix_from_port_vi_dump, save_optimization_trajectory,
-#     render_artifact_markdown, validate_artifact_report, build_*_report/artifact
 __all__ = [
     "RfxError", "RfxRefusal", "RfxUnsupported",
     "RfxWarning", "AccuracyWarning", "ConfigurationWarning",
