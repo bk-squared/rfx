@@ -18,7 +18,6 @@ FIELDS = ("NTFF far fields", "field-DFT planes", "flux monitors", "current-momen
 
 def _build(scene):
     if scene == 5:
-        # Round 1's declared lossless_2.2 variant, at its measured 80 steps.
         sim = Simulation(freq_max=20e9, domain=(.012, .012, .008), dx=.001,
                          boundary='cpml', cpml_layers=6)
         sim.add_material('fill', eps_r=2.2, sigma=0)
@@ -41,8 +40,6 @@ def _build(scene):
 
 
 def _messages(caught):
-    # Preflight remains on. Select runtime record-end advisories by their
-    # existing phrases, so a missing new suffix cannot hide a warning.
     return [str(w.message) for w in caught if issubclass(w.category, AccuracyWarning)
             and (str(w.message).startswith('no ring-down settling witness')
                  or str(w.message).startswith('ring-down settling witness'))]
@@ -92,8 +89,8 @@ def _row(status, reads):
 
 
 @pytest.mark.parametrize('s_status,field_status,spoken', [
-    ('fail', 'absent', [S, FIELDS]),  # F2: combined absent must not hide failed S.
-    ('pass', 'fail', [FIELDS]),      # F3: passing S must not steal the probe warning.
+    ('fail', 'absent', [S, FIELDS]),
+    ('pass', 'fail', [FIELDS]),
 ], ids=['F2', 'F3'])
 def test_rows_warn_for_their_own_outputs(s_status, field_status, spoken):
     from rfx.sparams._tail_witness import combine_witness_details

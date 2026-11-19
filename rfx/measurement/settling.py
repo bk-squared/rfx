@@ -218,7 +218,6 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
     settling_db, witness = decay_stop_first(result, *sim._run_settling_witness(result))
     tail_status = witness["status"]
     settling_db, witness = with_coverage(settling_db, witness, coverage)
-    # The warning groups stay off the returned witness (run and forward equal).
     groups = witness.get("groups") if isinstance(witness, dict) else None
     witness = {k: v for k, v in witness.items() if k != "groups"} if isinstance(witness, dict) else witness
     if not forward_result:
@@ -253,12 +252,8 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
 
     operation = "forward() call" if context == "forward" else "run"
     groups = _warning_groups(result, witness, every_output, groups)
-    # S returned with no S row (a lane that builds no S record row): the
-    # one probe or field group speaks for S too (Addendum 4).
     s_untagged = has_s and not any("S-parameters" in g.get("reads", ()) for g in groups)
     for row in groups:
-        # Synthetic results may omit declared fields (Addendum 1); a group
-        # that judges only its probe names the declared field outputs.
         reads = tuple(row.get("reads", ())) or declared
         if s_untagged:
             reads = ("S-parameters",) + reads

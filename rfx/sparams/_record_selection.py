@@ -78,7 +78,7 @@ def forward_settling_witness(result):
                     if result.settling_probe_source_end_index is not None
                     else result.settling_source_end_index),
         port_source_end=result.settling_source_end_index, warn=False)
-    witness = {k: v for k, v in witness.items() if k != 'groups'}  # warning-only
+    witness = {k: v for k, v in witness.items() if k != 'groups'}
     from rfx.measurement.coverage import AccumulatorCoverage, with_coverage
     return with_coverage(db, witness, result.settling_coverage or AccumulatorCoverage())
 
@@ -130,8 +130,6 @@ def build_settling_witness(result, *, bins, dt, freq_max, probe_info,
     detail = _combine_rows(rows, bins)
     if len(rows) > 1:
         db = detail['db']
-    # Each distinct `reads` tuple, in row order, combined by the same rule:
-    # the record-end warning names a group's outputs from that group alone.
     by_reads: dict[tuple, list] = {}
     for row in rows:
         by_reads.setdefault(tuple(row.get('reads', ())), []).append(row)

@@ -364,8 +364,6 @@ def test_run_settling_warning_retains_memory_remedies(monkeypatch):
     messages = [str(w.message) for w in caught if 'ring-down settling witness NOT PASSED' in str(w.message)]
     assert len(messages) == 1
     message = messages[0]
-    # The S warning quotes the reasons of the rows that read S (record-end
-    # names design, Addendum 5), not a probe row's that feeds no output.
     for row in result.settling_witness['runs']:
         if 'S-parameters' in row.get('reads', ()) and row['status'] != 'pass':
             assert row['reason'] in message
