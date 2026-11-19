@@ -28,12 +28,9 @@ _BASE = Path(__file__).resolve().parents[3] / 'validation/research/nu_cost/g4/cp
 _spec = importlib.util.spec_from_file_location('cpml_g4_baseline', _BASE)
 old = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(old)
-# The frozen functions receive the existing production parameter/carry types.
 old.CPMLAxisParams = cpml.CPMLAxisParams
 old.CPMLState = cpml.CPMLState
 
-# Opt-in reproduction of the rejected candidate; ordinary unit tests compare
-# the production implementation with the frozen baseline.
 if os.environ.get('RFX_G4_REJECTED_CANDIDATE') == '1':
     _candidate_spec = importlib.util.spec_from_file_location('cpml_g4_candidate', _BASE.with_name('cpml_candidate.py'))
     _candidate = importlib.util.module_from_spec(_candidate_spec)
@@ -45,7 +42,6 @@ if os.environ.get('RFX_G4_REJECTED_CANDIDATE') == '1':
 FIXTURES = ['uniform8', 'graded8', 'mixed8', 'uniform4', 'uniform16', 'periodic8', 'kappa8', 'asymmetric']
 FIELD_NAMES = ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')
 
-# First difference of a finite Gaussian; endpoints zero, zero sum to rounding.
 _gaussian = np.exp(-((np.arange(-1, 81) - 20.0) / 6.0) ** 2).astype(np.float32)
 _gaussian[0] = _gaussian[-1] = 0
 ZERO_MEAN_PULSE = np.diff(_gaussian)
@@ -161,10 +157,9 @@ def _arrays(state, *, reference=False):
 
 
 def _assert_identity(reference, candidate, *, peaks=None):
+    """Jitted null-by-symmetry psi has no scale; family-scale 27-62 ULP stays flat at 200/400/800, fields 0.28."""
     a, b = _arrays(reference, reference=True), _arrays(candidate)
     assert len(a) == len(b) == 30
-    # Jitted null-by-symmetry psi has no scale; family-scale 27-62 ULP stays flat at 200/400/800, fields 0.28.
-    # Psi stays bitwise-judged with jit off.
     for key in a if peaks is None else FIELD_NAMES:
         assert a[key].dtype == b[key].dtype == np.float32
         assert a[key].shape == b[key].shape
@@ -177,8 +172,6 @@ def _assert_identity(reference, candidate, *, peaks=None):
                     peak=peaks[key])
 
 
-# Static scene, base vs base: H 2,160 / 5,070 record-peak ULP at 200 / 400 steps.
-# E 4.5 / 4 ULP (scan vs jitted steps).
 @pytest.mark.parametrize('name', FIXTURES)
 def test_cpml_localization_identity_eager(name):
     with jax.disable_jit():
@@ -202,7 +195,6 @@ def test_cpml_localization_identity_pulse(name):
         candidate = jax.tree.map(lambda value: value[blocks - 1], candidates)
         ah = {key: value[:blocks] for key, value in a.items()}
         bh = {key: value[:blocks] for key, value in b.items()}
-        # All eight scenes are vacuum, nonmagnetic; every cell and step contributes.
         peaks = component_peaks(ah, bh, paired_impedance=wave_impedance_range(1.0))
         try:
             _assert_identity(reference, candidate, peaks=peaks)
@@ -236,9 +228,10 @@ def test_jitted_cpml_leaves_unapplied_psi_bitwise_untouched(faces):
     state = init_state(grid.shape)
     state = state._replace(**{key: jnp.asarray(rng.standard_normal(grid.shape), jnp.float32)
                               for key in FIELD_NAMES})
-    # Nonzero sentinels expose writes even where the field correction is zero.
     psi = psi._replace(**{key: jnp.asarray(rng.standard_normal(value.shape), jnp.float32)
                           for key, value in psi._asdict().items()})
+    assert all(np.all(np.asarray(value) != 0) for value in psi), (
+        'Nonzero psi sentinels expose writes where the field correction is zero')
     requested = set(cpml.ALL_FACES if faces is None else faces)
     applied = {face for face, depth in zip(cpml.ALL_FACES, grid.face_pads)
                if depth > 0 and face in requested}
@@ -262,9 +255,8 @@ def test_jitted_cpml_leaves_unapplied_psi_bitwise_untouched(faces):
 
 @pytest.mark.parametrize('variable', ['dz_profile', 'eps_r'])
 def test_cpml_localization_ad(variable):
+    """The frozen program vs itself under another trace differs by up to 5.5e-6."""
     dz = jnp.linspace(0.5e-3, 1e-3, 12)
-    # Fixed mesh stays concrete when only eps is differentiated. Indexing a
-    # closed-over JAX array inside jit would trace the host grid builder.
     dz_host = np.asarray(dz)
     shape = (fixture('graded8').nx, fixture('graded8').ny, fixture('graded8').nz)
     eps = jnp.full(shape, 1.5, dtype=jnp.float32)
@@ -281,6 +273,4 @@ def test_cpml_localization_ad(variable):
     assert np.isfinite(a).all() and np.isfinite(b).all()
     assert np.max(np.abs(a)) > 0 and np.max(np.abs(b)) > 0
     error = np.max(np.abs(a-b)) / max(np.max(np.abs(a)), 1e-30)
-    # Frozen program vs itself under another trace: up to 5.5e-6.
-    # Per-leaf gradient peak.
     assert error <= 1e-4
