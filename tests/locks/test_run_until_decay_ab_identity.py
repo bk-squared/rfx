@@ -94,6 +94,11 @@ Sensitivity of the derived floors (see ``_field_reassoc_atols``):
 ``test_field_reassoc_floors_still_red_physical_perturbations`` asserts all of
 that on the fields themselves (perturbing hx, not only the probe series), and
 red-lines the previous shared-E-floor behaviour so it cannot come back.
+
+The floors are linear in n_steps because the forward rounding error of an N-step float32
+recurrence grows at most linearly in N, the worst case in which per-step rounding
+accumulates coherently rather than as a sqrt(N) random walk, and one measured N gives no
+growth law to fit instead.
 """
 
 import math
@@ -110,13 +115,6 @@ from rfx.simulation import run, run_until_decay, make_source, make_probe
 LOCK_PROVENANCE = {
     "fixture": "none",
     "generator": "hand-derived",
-    # The squash commit on main, filled in after the merge (the repo's
-    # locks name the main commit that produced the pinned number;
-    # for a squash-merged PR that is not knowable before the merge). f019c89, the
-    # first commit of the series, carried the shared-E floor this revision retired.
-    # The scene was re-chosen (tau = 8 dt, bandwidth 0.8;
-    # the old one was driven only by a 7.4e-4 jump at t = 0) and the GPU difference
-    # re-measured on it at the commit below.
     "commit": "9230fde",
     "date": "2026-10-12",
     "run_id": ("local (Mac CPU derivation) + VESSL 369367270791 (GPU: scan-vs-jitloop "
@@ -125,110 +123,10 @@ LOCK_PROVENANCE = {
     "pinned_until": "2027-04-12",
 }
 
-# Pre-existing scan-vs-loop XLA agreement envelope (see module docstring).
-# Re-measured (CPU, jax 0.11.1, this fixture, N=80): probe 8.2e-7
-# relative (abs 9.2e-12); worst field difference relative to its own component
-# peak 2.3e-6 (hx, abs 1.0e-13); largest absolute field difference 2.9e-11
-# (ez, 1.2e-7 relative).  The previous "field rel ~2.4e-7 (abs 5.8e-11)" pair
-# reproduced neither quantity.
 _RTOL = 1e-6
 
-# GPU-observed scan-vs-jitloop probe diff, used below as the magnitude of a
-# realistic reassociation perturbation. It is never used as a threshold.
-# Re-measured on the tau = 8 dt scene (RTX 2070
-# SUPER, jax 0.10.2): 1.583e-8 at a probe peak of 6.59e-3. The earlier
-# 1.037e-10 (RTX4090) was measured on the old scene, which
-# was driven only by a one-sample 7.4e-4 jump.
 _GPU_OBSERVED_TS_DIFF = 1.583e-8
 
-# --- Derived scan-vs-jitloop reassociation floors ----------------------------
-#
-# (Replaces the old flat ``_ATOL = 1e-10``.  That literal was calibrated to the
-#  CPU reassociation scale and is EXCEEDED on GPU: RTX4090
-#  reports max abs diff 1.037e-10 > 1e-10 on the probe series, at a probe peak
-#  ~1.3e-5, i.e. ~64*eps_f32 relative.)
-#
-# Root cause: ``run`` compiles the shared Yee kernel inside ``jax.lax.scan``
-# while ``run_until_decay`` compiles a standalone ``jax.jit`` step driven from a
-# Python loop.  XLA emits different fusions for the two programs, so the
-# float32 curl arithmetic is contracted/associated differently (FMA contraction
-# and operand order inside the stencil) -- the SAME kernel, two execution
-# harnesses, no physics difference.  Note what this is NOT: the compared
-# quantities contain no reduction at all (the probe is a single point sample,
-# ``ProbeSpec(i,j,k,component)``, and the Yee update is an elementwise
-# stencil), so the CPU-vs-GPU gap is a fusion/contraction-order effect, not a
-# reduction-order one.  The GPU number is larger than the CPU one; with a
-# single measured N we have no evidence for HOW it grows with N, so the floor
-# below uses the worst-case bound rather than a fitted growth law.
-#
-# Bound (numerical limitation, stated so the floor generalizes instead of being
-# pinned to this fixture): the forward rounding error of an N-step float32
-# recurrence grows AT MOST LINEARLY in the step count N (worst case: per-step
-# rounding accumulates coherently rather than as a sqrt(N) random walk).  So
-#
-#     atol(component) = C * n_steps * eps * scale(component)
-#
-# with C an O(1) per-step coherence constant.  We set C = 4: ~5x margin over the
-# GPU-observed per-step coherence on the old one-sample scene (1.037e-10 /
-# (80 * eps * 1.3e-5) ~ 0.84 eps per step). On the tau = 8 dt scene the probe reads 0.25 eps per step
-# (1.583e-8 / (80 * eps * 6.59e-3)) but final ez reads 4.9, above C = 4: the
-# GPU xfail on the A/B test (issue 1680). C also absorbs the factor 2 from
-# differencing two independently
-# rounded harnesses (triangle inequality on both forward errors) and the
-# handful of roundings each curl component costs per step.
-#
-# ``scale(component)`` -- this is where the first revision of this file was
-# wrong.  It used ONE scale, ``max|field|`` over all twelve arrays, arguing
-# that roundoff in the dominant component reaches every component through the
-# Yee curl.  The propagation is real but it has a COEFFICIENT, and in SI units
-# that coefficient is far from 1:
-#
-#     rfx/core/yee.py:  h = h - (dt / (mu_r*MU_0)) * curl(E),  curl ~ 1/d
-#                       e = e + (dt / (eps_r*EPS_0)) * curl(H) (+ loss terms)
-#
-# so an E-side roundoff ``eps*|E|`` enters H as ``k_he * eps*|E|`` with
-# ``k_he = dt/(mu_r*MU_0*d)`` (= 1.517e-3 on this grid), and an H-side roundoff
-# enters E as ``k_eh * eps*|H|`` with ``k_eh = dt/(eps_r*EPS_0*d)`` (= 215.3).
-# Equivalently ``k_he = S/Z0`` and ``k_eh = S*Z0`` with S the Courant number,
-# which is why the two directions are reciprocal and neither is 1.
-#
-# What ``k_he`` is NOT: it is the ONE-STEP injection coefficient, the roundoff
-# an E-side error deposits into H in a single update.  The PROPAGATED
-# (wave-like) E->H coupling that the accumulated state actually shows is
-# larger by 1/S -- ``k_he/S = 1/Z0`` -- and the measurement points the same
-# way: the A/B diff ratios on the old fixture were ez/hx = 290 and ez/hy = 351,
-# nearer ``Z0 = 376.7`` than ``1/k_he = 659.1`` (S = 0.5716, 1/S = 1.75); on the
-# tau = 8 dt scene (Mac CPU) they are 519 and 494.  So
-# the one-step coefficient UNDERSTATES the propagated E->H coupling, and hence
-# the H floor, by ~1.75x.  That factor is one of the things ``C`` has to
-# absorb: 2 (differencing two independently rounded harnesses) x 1.75
-# (propagated vs one-step coupling) = 3.5, which still fits under C = 4.  The
-# measured hx margin (hx floor / hx A/B difference) was 141.7x on the old
-# fixture; on the tau = 8 dt scene it is 3.35x on the Mac CPU and 15.9x on GPU. Read the k_he derivation as a scale, not as an exact
-# coefficient.
-#
-# With one shared E-scale floor the H checks were inert: on the old fixture
-# the floor sat ~4800x above the H group's own ``C*N*eps*max|H|`` and ~660x
-# above the correctly coupled bound, i.e. at 22% (hx) / 18% (hy) of those
-# components' own peaks -- a 10% single-element error and a 1% whole-array
-# scale error in hx both PASSED. On the tau = 8 dt scene it sits 443x above
-# hx's own floor, at 1.9% (hx) / 1.7% (hy) of their peaks. Each field
-# therefore gets its own scale:
-#
-#     scale(c) = max( max|own E/H group| , k_cross * max|partner group| )
-#
-# which (a) tracks roundoff across the component's field, (b) preserves the property
-# the shared floor was introduced for -- a numerically-null component (hz for
-# an Ez source here; ez for a 2D TE case) is bounded by the coupled-state
-# roundoff, not by its own meaningless ~0 magnitude -- and (c) does so with the
-# kernel's own coefficient instead of an implicit 1.  Sibling precedent:
-# tests/unit/nonuniform/test_nonuniform_until_decay.py keeps separate E and H
-# scales for exactly this reason.
-#
-# Everything is read at RUNTIME -- eps and dtype from the arrays, n_steps from
-# the run, the magnitudes from the arrays, dt / cell size / mu_r / eps_r from
-# the grid and material arrays -- so NOTHING is pinned to the observed
-# 1.037e-10 or to this fixture's geometry.
 _REASSOC_COHERENCE_C = 4.0
 
 _E_COMPS = ("ex", "ey", "ez")
@@ -327,10 +225,12 @@ def _build():
     materials = init_materials(grid.shape)
     n_steps = 80
 
-    # Fractional bandwidth 0.8 with tau = 8*dt (f0 ~ 17.4 GHz), so the pulse is
-    # complete by about step 60 of the 80.
-    pulse = GaussianPulse(f0=1.0 / (math.pi * 0.8 * 8.0 * float(grid.dt)),
-                          bandwidth=0.8)
+    FRACTIONAL_BANDWIDTH = 0.8
+    TAU_IN_TIME_STEPS = 8.0
+    pulse = GaussianPulse(f0=1.0 / (math.pi * FRACTIONAL_BANDWIDTH * TAU_IN_TIME_STEPS
+                                    * float(grid.dt)),
+                          bandwidth=FRACTIONAL_BANDWIDTH)
+    assert 2.0 * pulse.t0 <= 60 * float(grid.dt), "the tau = 8 dt pulse is complete by step 60 of the 80-step record"
     src = make_source(grid, (0.018, 0.024, 0.024), "ez", pulse, n_steps)
     prb = make_probe(grid, (0.030, 0.024, 0.024), "ez")
     return grid, materials, n_steps, [src], [prb]
@@ -338,6 +238,8 @@ def _build():
 
 def test_run_until_decay_ab_identity():
     grid, materials, n_steps, sources, probes = _build()
+    assert 2.0 / math.sqrt(math.prod(_curl_roundoff_coupling(grid, materials))) <= _REASSOC_COHERENCE_C, (
+        "C covers the factor 2 between two independently rounded harnesses times 1/S, by which the propagated E-to-H coupling exceeds the one-step k_he")
 
     res_scan = run(
         grid, materials, n_steps,
@@ -356,7 +258,6 @@ def test_run_until_decay_ab_identity():
         return_state=True,
     )
 
-    # Both harnesses must have taken exactly n_steps.
     assert res_scan.time_series.shape[0] == n_steps
     assert res_loop.time_series.shape[0] == n_steps
 
@@ -370,8 +271,6 @@ def test_run_until_decay_ab_identity():
         f"max abs diff = {np.max(np.abs(ts_scan - ts_loop)):.3e}"
     )
 
-    # Final fields use separate E/H field peaks plus the existing curl
-    # coupling and recurrence-growth envelope; never an unscaled E floor for H.
     comps = _E_COMPS + _H_COMPS
     arrays_by_comp = {
         c: [np.asarray(getattr(res_scan.state, c)),
@@ -425,7 +324,6 @@ def test_reassoc_floor_still_reds_on_physical_perturbation():
     imax = int(np.argmax(np.abs(ts)))
     peak = float(np.max(np.abs(ts)))
 
-    # (a) The GPU-observed reassociation diff is below the derived floor.
     assert atol_ts > _GPU_OBSERVED_TS_DIFF, (
         f"derived floor {atol_ts:.3e} must cover the GPU-observed "
         f"reassociation diff {_GPU_OBSERVED_TS_DIFF:.3e}"
@@ -436,8 +334,8 @@ def test_reassoc_floor_still_reds_on_physical_perturbation():
         "derived floor should accept a GPU-scale reassociation diff"
     )
 
-    # (b) A physically meaningful perturbation must still red the lock.
-    delta = 1e-3 * peak  # 0.1% of the field peak
+    FRACTION_OF_FIELD_PEAK = 1e-3
+    delta = FRACTION_OF_FIELD_PEAK * peak
     assert delta > 10.0 * atol_ts, (
         f"perturbation {delta:.3e} must sit well above the reassociation "
         f"floor {atol_ts:.3e} to be a fair regression probe"
@@ -513,12 +411,6 @@ def test_field_reassoc_floors_still_red_physical_perturbations():
         f"atol {atol_hx:.3e}); this fixture cannot probe the H gate"
     )
 
-    # (a) Reassociation-scale noise on H, derived from the GPU-observed E-scale
-    #     diff and the curl coupling coefficient -- must PASS.  When the
-    #     coupling term sets the hx floor (C*n_steps*eps*k_he*max|E|), k_he
-    #     cancels and this is an E-side identity; on the tau = 8 dt scene hx's
-    #     own magnitude sets it (19.9x headroom; measured GPU hx difference
-    #     15.9x under the floor, see the docstring).
     h_reassoc = k_he * _GPU_OBSERVED_TS_DIFF
     assert atol_hx > h_reassoc, (
         f"derived hx floor {atol_hx:.3e} must cover the curl-coupled "
@@ -532,7 +424,6 @@ def test_field_reassoc_floors_still_red_physical_perturbations():
         f"noise {h_reassoc:.3e} (atol {atol_hx:.3e})"
     )
 
-    # (b) 1% whole-array scale error in hx -- must FAIL.
     scaled = (hx * np.asarray(1.01, dtype=hx.dtype)).astype(hx.dtype)
     assert not np.allclose(hx, scaled, rtol=_RTOL, atol=atol_hx), (
         f"derived hx floor {atol_hx:.3e} swallowed a 1% whole-array hx scale "
@@ -540,7 +431,6 @@ def test_field_reassoc_floors_still_red_physical_perturbations():
         "are inert"
     )
 
-    # (c) 10% single-element error in hx -- must FAIL.
     spike = hx.copy()
     spike[np.unravel_index(ihx, hx.shape)] += np.asarray(0.1 * hx_peak, dtype=hx.dtype)
     assert not np.allclose(hx, spike, rtol=_RTOL, atol=atol_hx), (
@@ -548,10 +438,6 @@ def test_field_reassoc_floors_still_red_physical_perturbations():
         f"error ({0.1 * hx_peak:.3e}) -- the H checks are inert"
     )
 
-    # (d) Regression witness, pinning hx floor < half the shared floor: the
-    #     RETIRED shared floor (one E-scale floor for all six components),
-    #     recomputed here at runtime. An hx error of half that floor passes it
-    #     and must be caught by hx's own floor.
     shared_floor = _reassoc_atol([arrays_by_comp[c][0] for c in comps], n_steps)
     assert atol_hx < 0.5 * shared_floor, (
         f"per-component hx floor {atol_hx:.3e} is not below half the shared "
@@ -569,16 +455,11 @@ def test_field_reassoc_floors_still_red_physical_perturbations():
         f"{0.5 * shared_floor:.3e} (half the retired shared floor)"
     )
 
-    # (e) Every signal-carrying component still reds a 0.1% own-peak change;
-    #     numerically-null components are floored by the coupled roundoff.
     for comp in comps:
         a = arrays_by_comp[comp][0]
         atol = atols[comp]
         peak = peaks[comp]
         if peak <= atol:
-            # Numerically null: no relative statement exists. Assert only that
-            # the floor is the coupled-state roundoff, not this component's own
-            # (meaningless) magnitude.
             own_floor = _REASSOC_COHERENCE_C * float(n_steps) * float(
                 np.finfo(a.dtype).eps
             ) * peak
@@ -589,13 +470,6 @@ def test_field_reassoc_floors_still_red_physical_perturbations():
                 "curl-coupled roundoff of the driven components"
             )
             continue
-        # Premise of the 0.1% perturbation: it exceeds the floor only when
-        # peak/atol > 1000. A component in the band atol < peak <= 1000*atol is
-        # neither numerically null nor probeable at 0.1%; fail on that premise
-        # here (a fixture-scale problem) rather than below with a message that
-        # blames the gate. Measured on the tau = 8 dt scene (Mac CPU): 11535
-        # ex, 12964 ey, 26214 ez, 23702 hx, 26214 hy (old fixture: 26200 for
-        # ex/ey/ez, 3048 for hx, 3585 for hy).
         assert peak > 1000.0 * atol, (
             f"{comp}: peak/atol = {peak / atol:.1f} <= 1000 -- the 0.1%-of-peak "
             "perturbation below cannot exceed this component's floor; this "
@@ -638,7 +512,6 @@ def test_checkpoint_segments_raises():
 @pytest.mark.parametrize('field', ['e', 'h'])
 @pytest.mark.parametrize('n_steps', [1, 80])
 def test_field_peak_scale_mutations(monkeypatch, field, n_steps):
-    # Isolate the own-magnitude term from the separately tested curl coupling.
     monkeypatch.setattr(f'{__name__}._curl_roundoff_coupling', lambda *_: (0., 0.))
     peak = np.float32(2.**20)
     ulp = np.spacing(peak)
@@ -653,8 +526,7 @@ def test_field_peak_scale_mutations(monkeypatch, field, n_steps):
         assert np.allclose(tiny, noisy, rtol=_RTOL, atol=atols[comp])
         old = _reassoc_atol([tiny, noisy], n_steps)
         assert not np.allclose(tiny, noisy, rtol=_RTOL, atol=old)
-    # At N=1 the field floor is 4 ULP. N=80 intentionally admits 10 ULP;
-    # its existing recurrence envelope must instead reject an above-bar spike.
+    assert n_steps != 1 or atols[comp] == 4 * ulp, "at N = 1 the field floor is 4 ULP of the peak"
     ten = np.allclose(tiny, tiny + 10 * ulp, rtol=_RTOL, atol=atols[comp])
     assert bool(ten) == (n_steps == 80)
     assert not np.allclose(tiny, tiny + 1.01 * atols[comp], rtol=_RTOL, atol=atols[comp])
