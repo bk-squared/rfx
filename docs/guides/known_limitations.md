@@ -385,25 +385,28 @@ A closed-form check of the conformal update, the TM010 resonance of a hollow PEC
 
 The v2.1 opt-in `run(conformal_pec="cut_cell_floor")` with an explicit half- or quarter-Courant step reduces the measured sphere offset; the q = 0.5 result remains first order and misses the order >= 1.5 target (see the [support matrix](support_matrix.md#conformal-pec-cut-cell-floor-opt-in-v21)).
 
-### Conformal PEC cut-cell areas and lengths deviate from the drawn surface near Box edges and where the mesh is nearly tangent to a curved body.
+### Conformal PEC cut-cell areas and lengths deviate from the drawn surface where the mesh is nearly tangent to a curved body.
 
 Tracker: #2274
 
 With `conformal_pec=True`, the H update uses the open (PEC-free) area of each cut face. The E update uses the open
 length of each cut edge, after a stability bound that caps it by the areas of the faces around it. Measured against
-the drawn surface on 1 mm cells, before that bound:
-- Within one cell of a Box edge or corner, the open areas are off by up to 0.78 of a face and the open lengths by up
-  to 0.60 of an edge.
-- On curved bodies they are off by up to 0.44 of a face (cylinder side) and 0.63 of an edge (sphere), where a mesh face
-  or edge is nearly tangent to the surface.
+the drawn surface on 1 mm cells, before that bound, curved bodies are off by up to 0.44 of a face (cylinder side) and
+0.63 of an edge (sphere), where a mesh face or edge is nearly tangent to the surface.
 
-Open areas and lengths in cells crossed only by a flat face are exact, and a Box face lying on a mesh plane is realized
-at its drawn plane. Effect on S-parameters, resonance frequencies and RCS: not measured.
+An axis-aligned Box takes its exact overlap with each cut cell, its edges and corners included. A cut cell that a
+sphere or cylinder also reaches (within one cell diagonal of its surface) keeps the curved body's rule, so a Box edge
+there is not exact. Open areas and lengths in cells crossed only by a flat face are exact, and a Box face lying on a
+mesh plane is realized at its drawn plane. In a closed PEC cavity, a PEC block whose faces lie off the mesh planes
+resonates as the exact-area computation does on 1, 0.5 and 0.25 mm cells, and an empty cavity with two or three walls
+off the mesh planes puts each wall within 0.01 cell of the closed form. Effect of the curved-body deviation on
+S-parameters, resonance frequencies and RCS: not measured.
 
 A finer mesh shrinks the region affected near an edge. On a sphere at radius 4.3, 8.6 and 17.2 cells it also shrinks
 the share of nearly tangent cells: the faces off by more than 0.1 of a face were 17, 4 and 6, while the cut faces grew
-16x. The largest deviation does not shrink. Judge a body with edges, or a curved body, by a mesh series of at least
-three refinements. Measured 2026-10-31 with the conformal update now on main (open edge lengths and cut-face areas); record kept with the project.
+16x. The largest deviation does not shrink. Judge a curved body by a mesh series of at least three refinements.
+Measured 2026-10-31 with the conformal update now on main (open edge lengths and cut-face areas); the Box overlap
+measured 2026-11-19; records kept with the project.
 
 ### Inside a user `jax.jit`, `run()` refuses a single port's S-parameters on a uniform mesh, `until_decay` and `report_every`, and a multi-device closed-box plane wave is refused
 
