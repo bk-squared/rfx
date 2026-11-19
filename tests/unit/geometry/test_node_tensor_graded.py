@@ -313,7 +313,6 @@ def test_design_box_full_tensor_shared_refusal():
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_graded_tfsf_keeps_oblique_refusal(entry):
-    """The uniform tensor update cannot apply the oblique Bloch phase."""
     messages = []
     for graded in (False, True):
         mesh = {'dz_profile': np.full(12, .001)} if graded else {}
