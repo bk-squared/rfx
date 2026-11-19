@@ -73,3 +73,49 @@ def test_slab_transmission_and_derivative_converge_to_airy(pol):
     assert all(3.5 <= ratio <= 4.6 for ratio in ratios), "Slab transmission error must converge quadratically to Airy theory"
     assert derivatives[-1] < derivatives[0], "Transmission angle derivative error must decrease with mesh refinement"
     assert derivatives[-1] <= .005*abs(derivative), "Fine-mesh transmission angle derivative differs from Airy theory"
+
+
+def smoothed_off_grid_record(theta, slab):
+    from rfx import Box, Simulation
+
+    h = .002
+    sim = Simulation(freq_max=10e9, domain=(.30, .016, 4*h), dx=h,
+                     mode="3d", cpml_layers=16,
+                     boundary={"x": "cpml", "y": "periodic", "z": "periodic"})
+    sim.add_tfsf_source(f0=F0, bandwidth=.15, direction="+x", angle_deg=theta,
+                        waveform="modulated_gaussian", polarization="ez", method="bloch")
+    grid = sim.freeze_mesh()
+    front = grid.node_of(0, grid.cpml_layers+sim._tfsf.margin)+.040+.3*h
+    thickness = .0246
+    nodes = np.array([grid.node_of(0, i) for i in range(grid.shape[0])])
+    assert np.min(abs(nodes-front)) > 1e-12
+    assert np.min(abs(nodes-front-thickness)) > 1e-12
+    if slab:
+        sim.add_material("slab", eps_r=4.)
+        sim.add(Box((front, 0, 0), (front+thickness, .016, 4*h)), material="slab")
+    sim.add_probe((front+.045, .3*.016, 2*h), component="ez")
+    n = math.ceil(12e-9/grid.dt/1.75)
+    result = sim.run(n_steps=n, subpixel_smoothing=True, skip_preflight=False)
+    freqs = np.arange(50e6, 10e9+1, 50e6, dtype=np.float64)
+    weights = np.exp(-2j*np.pi*freqs[:, None]*np.arange(n, dtype=np.float64)*grid.dt)
+    return freqs, weights @ np.asarray(result.time_series)[:, 0]
+
+
+def test_smoothed_off_grid_oblique_slab_adds_no_transmission_error():
+    errors = []
+    for theta0 in (0., 30.):
+        freqs, slab = smoothed_off_grid_record(theta0, True)
+        _, vacuum = smoothed_off_grid_record(theta0, False)
+        band = abs(vacuum) >= .1*np.max(abs(vacuum))
+        f = freqs[band]
+        k0 = 2*np.pi*f/np.float64(299792458.)
+        kt = 2*np.pi*F0/np.float64(299792458.)*np.sin(np.deg2rad(theta0))
+        kx0, kx1 = np.sqrt(k0*k0-kt*kt), np.sqrt(4*k0*k0-kt*kt)
+        r = (kx0-kx1)/(kx0+kx1)
+        propagation = np.exp(-1j*kx1*.0246)
+        reference = abs((1-r*r)*propagation/(1-r*r*propagation*propagation))
+        value = abs(slab[band]/vacuum[band])
+        errors.append(float(np.max(abs(value-reference))))
+        emit("smoothed_off_grid_transmission", theta=theta0, f=f.tolist(),
+             value=value.tolist(), airy=reference.tolist(), max_error=errors[-1])
+    assert errors[1] <= max(3*errors[0], .02)
