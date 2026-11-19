@@ -715,7 +715,8 @@ def _wire_port_cell_centers(self, pe):
             # An E edge is at its node on the transverse axes and at
             # the midpoint of its bounding nodes on its own axis.
             pos = [float(nodes[ax][cell[ax]]) for ax in range(3)]
-            pos[axis] = 0.5 * (pos[axis] + nodes[axis][cell[axis] + 1])
+            if nodes[axis].size > 1:
+                pos[axis] = 0.5 * (pos[axis] + nodes[axis][cell[axis] + 1])
             centers.append(tuple(pos))
         return centers, len(cells) // 2
     except (ValueError, IndexError):

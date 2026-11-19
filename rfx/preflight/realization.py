@@ -722,10 +722,13 @@ class _CampaignStaticsContext:
         return float(self.spacings[axis][j])
 
     def sub_lattice_offsets(self, lo_corner) -> list[float]:
-        """Per-axis fractional offset (in cells) of a corner from the node below."""
+        """Fractional cell offset from the node below, zero on an invariant axis."""
         offs = []
         for a in range(3):
             nodes = self.nodes[a]
+            if len(nodes) == 1:
+                offs.append(0.0)
+                continue
             c = float(lo_corner[a])
             j = int(np.searchsorted(nodes, c + 1e-15)) - 1
             j = min(max(j, 0), len(nodes) - 2)
