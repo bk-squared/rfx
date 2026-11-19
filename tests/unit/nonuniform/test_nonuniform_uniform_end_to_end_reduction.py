@@ -19,8 +19,8 @@ STEPS = 1200
 # Deliberately NOT marked slow: the whole point is that this runs in the default
 # lane. An anchor the fast suite deselects would have missed #562's F1 exactly
 # the way the existing suite did. Measured 38.6 s for the six cases here (it
-# was 29.8 s for five before staircase-slab-cpml was added, #582 E2) — worth
-# keeping in view against the fast-lane time pressure #545 tracks.
+# was 29.8 s for five before staircase-slab-cpml was added) — worth
+# keeping in view against the fast-lane time pressure.
 
 
 def _f110(dx: float) -> float:
@@ -28,7 +28,7 @@ def _f110(dx: float) -> float:
 
 
 # Measured max |ratio - 1| = 3.041e-7.
-# Allow accumulation headroom over 1200 steps; still below the old 1e-5 (#1373).
+# Allow accumulation headroom over 1200 steps; still below the old 1e-5.
 _RATIO_TOL = 2e-6
 
 
@@ -57,8 +57,7 @@ def _run(dx: float, *, nonuniform: bool, smoothing: bool, boundary: str = "pec",
                 material="slab")
     # z = 3*dx, NOT NZ*dx/2: the latter is EXACTLY the slab's upper face, so the
     # factor prediction would ride on Box's exclusive-upper-bound convention and
-    # a future inclusive rule would red this test for an unrelated reason
-    # (#570 review, finding 10). 3*dx is unambiguously vacuum.
+    # a future inclusive rule would red this test for an unrelated reason. 3*dx is unambiguously vacuum.
     sim.add_source((NA * dx / 3, NB * dx / 3, 3.0 * dx), "ez",
                    waveform=GaussianPulse(f0=f0, bandwidth=0.8))
     sim.add_probe((2 * NA * dx / 3, 2 * NB * dx / 3, 3.0 * dx), "ez")
@@ -110,8 +109,7 @@ def test_nu_solve_reduces_to_uniform_solve_with_current_drive(
     assert np.corrcoef(uni, nu)[0, 1] > 1 - 1e-7
     assert int(np.argmax(np.abs(nu))) == int(np.argmax(np.abs(uni)))
 
-    # neither leg grows: a diverging run would break this, and #565 read this
-    # amplitude ratio as divergence
+    # neither leg grows: a diverging run would break this
     for tag, trace in (("uniform", uni), ("nonuniform", nu)):
         head = np.abs(trace[:len(trace) // 4]).max()
         tail = np.abs(trace[3 * len(trace) // 4:]).max()

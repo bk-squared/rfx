@@ -29,7 +29,7 @@ from rfx.auto_config import _make_dz_profile
 # Snap tolerance pre-declared in the design note (never widened): 1e-12 m.
 ATOL = 1e-12
 
-# Demo fixture from the graded-z closure note / issue #763: W = 6*h_sub
+# Demo fixture from the graded-z closure note: W = 6*h_sub
 # low-Z MSL board, h_sub = 254 um, eps_r 3.38, dx = W/8, margin 1.5 mm.
 H_SUB = 254e-6
 DX = 6 * H_SUB / 8            # 190.5 um

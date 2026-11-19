@@ -74,13 +74,9 @@ MEDIUM_OUTCOMES = {
 }
 
 UNPLACEABLE = {
-    (TFSF, OperandKind.SOURCE_STAMP): (
-        "refused before the rule by run_uniform (add_source uses the port list): "
-        "TFSF plane-wave source is not supported together with lumped ports"
-    ),
     (GUIDE, OperandKind.SOURCE_STAMP): (
         "refused before the rule by refuse_mixed_waveguide_sources (add_source uses the port list): "
-        "Waveguide ports are not supported together with lumped ports or TFSF"
+        "Waveguide ports are not supported together with a lumped or wire port, or a soft source (add_source) or TFSF"
     ),
 }
 
@@ -150,6 +146,8 @@ def _run(rule, sim):
 def _note(rule, kind):
     if (rule, kind) in UNPLACEABLE:
         return "earlier-refusal"
+    if OPERAND_RULES[rule][kind] == "accept":
+        return "admitted"
     if rule == GUIDE and kind in MEDIUM_OUTCOMES:
         return "medium-admitted" if MEDIUM_OUTCOMES[kind] is None else "medium-refused"
     return "rule-refused"

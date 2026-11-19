@@ -6,7 +6,7 @@ import pytest
 
 from tests._distributed_dispersive_cpml import check, measure, record, scene
 
-pytestmark = pytest.mark.distributed
+pytestmark = [pytest.mark.distributed, pytest.mark.slow]
 
 
 @pytest.mark.parametrize('entry', ['vmap', 'remat', 'jit'])

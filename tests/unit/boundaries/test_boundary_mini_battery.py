@@ -143,7 +143,7 @@ def test_electric_cube(entry, dx):
 def test_magnetic_cavity_01(entry, dx):
     expected = C0 / (.020 * 2)
     measured = nearest(resonance("magnetic", entry, dx), expected, (6.8e9, 8.2e9))
-    # B3b predeclared 0.1% frequency bound; excludes free termination.
+    # 0.1% frequency bound; excludes free termination.
     compare_quantity(measured, expected, .001 * expected, "f01 / Hz")
 
 
@@ -155,7 +155,7 @@ def test_magnetic_cavity_separation(entry, dx):
     separation = 1 / np.sqrt((2 * frequency / C0)**2 - 1 / .020**2)
     record(f"separation-{entry}-{dx}", dict(frequency_Hz=frequency, derived_separation_m=float(separation),
                                            formula="1/sqrt((2*f/c)^2-(1/0.020)^2)"))
-    # B3b predeclared 0.3% separation bound; the half-cell wall fails.
+    # 0.3% separation bound; the half-cell wall fails.
     compare_quantity(separation, .024, .003 * .024, "derived wall separation / m")
 
 

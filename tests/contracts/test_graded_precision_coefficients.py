@@ -1,4 +1,4 @@
-"""Synthetic box coefficient precision and original float32 bit patterns."""
+"""Synthetic box coefficient precision and float32 field and probe rounding."""
 from pathlib import Path
 import sys
 import warnings
@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from tests.contracts.path_equivalence.builders import build
+from tests.contracts.test_uniform_cpml_precision import check_accumulated_law
 
 
 def solve(entry, precision):
@@ -30,18 +31,15 @@ def solve(entry, precision):
 
 
 @pytest.mark.parametrize('entry', ('run', 'forward'))
-def test_float32_bitwise_original(entry):
-    reference = Path(__file__).with_name('graded_float32_95e66c479.npz')
+def test_float32_within_accumulated_law(entry, record_property):
+    """Bound field and probe errors by 1.2e-7 times accumulated float64 family peaks."""
+    reference = Path(__file__).with_name('graded_float64_reference.npz')
     try:
         with jax.enable_x64(False), warnings.catch_warnings(), np.load(reference) as expected:
             warnings.simplefilter('ignore', UserWarning)
             result, state = solve(entry, 'float32')
             jax.block_until_ready(result.time_series)
-            for name in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz', 'time_series'):
-                actual = np.asarray(result.time_series if name == 'time_series' else getattr(state, name))
-                assert actual.dtype == np.float32
-                np.testing.assert_array_equal(actual.view(np.uint32), expected[f'{entry}_{name}'],
-                                              err_msg=f'B6 {entry}.{name} differs from 95e66c479')
+            check_accumulated_law(result, state, expected, record_property)
     finally:
         jax.clear_caches()
 

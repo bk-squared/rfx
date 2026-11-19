@@ -73,14 +73,14 @@ def emitting_sites():
 
 
 def test_code_completeness():
+    """Traced advisory skips add one model code; every existing code keeps its class."""
     sites = emitting_sites()
     found = {code for _, _, code in sites} - OUTSIDE_GENERAL.keys()
     assert found <= CODE_SCOPE.keys(), sorted(found - CODE_SCOPE.keys())
     assert CODE_SCOPE.keys() <= found, sorted(CODE_SCOPE.keys() - found)
-    # Retained outcomes add declared_z; the f0 sheet-backed gap warning and the located pad refusal each add an object code; existing codes keep their class.
-    assert len(CODE_SCOPE) == 102
+    assert len(CODE_SCOPE) == 103
     assert {scope: list(CODE_SCOPE.values()).count(scope) for scope in set(CODE_SCOPE.values())} == {
-        'object': 74, 'place': 2, 'model': 24, 'mixed': 2}
+        'object': 74, 'place': 2, 'model': 25, 'mixed': 2}
 
 
 def check_report(sim, report, *, unavailable_labels=None):
@@ -411,10 +411,14 @@ def test_traced_mesh_path(monkeypatch):
 
     jax.grad(evaluate)(0.)
     assert len(reports) == 1
-    issues = reports[0].by_code('unresolved_pulse')
-    assert issues
-    assert {issue.subjects for issue in issues} == {('port[0]',)}
-    assert all(issue.region is None for issue in issues)
+    for code, scope, subjects in (
+        ('unresolved_pulse', 'object', ('port[0]',)),
+        ('not_judged_traced', 'model', ()),
+    ):
+        issues = reports[0].by_code(code)
+        assert issues, code
+        assert {(issue.scope, issue.subjects, issue.region) for issue in issues} == {
+            (scope, subjects, None)}
     REACHED.update(issue.code for issue in reports[0])
 
 
@@ -529,12 +533,21 @@ def test_rlc_label_rows_are_non_geometric():
     'cavity_faces', 'stack_snapped_patch', 'off_lattice_edges',
 ])
 def test_rlc_rows_preserve_realization_findings(scene_id):
+    from rfx._internal._grid_metric import field_index
+    from rfx.realized_geometry import _assembly
     from tests.locks.test_preflight_split_snapshot import _FIXTURES
     _, build, kwargs, _ = next(row for row in _FIXTURES if row[0] == scene_id)
     sim = build()
     before = [i.to_dict() for i in sim.preflight(**kwargs)]
     rows = sim.realized_geometry().realization_table.rows
-    sim.add_lumped_rlc(tuple(float(v)/2 for v in sim._domain), 'ez', R=50.)
+    position = tuple(float(v)/2 for v in sim._domain)
+    if scene_id == 'off_lattice_edges':
+        # The centre is inside the PEC box; place the element in vacuum beyond its x face.
+        position = (.011, .004, .004)
+    conductors, _, _, _ = _assembly(sim, sim._campaign_ctx())
+    edge = tuple(map(int, field_index(conductors.grid, position, 'ez')))
+    assert conductors.pec_edges is None or not bool(np.asarray(conductors.pec_edges[2])[edge])
+    sim.add_lumped_rlc(position, 'ez', R=50.)
     after = [i.to_dict() for i in sim.preflight(**kwargs)]
     assert after == before
     assert tuple(r for r in sim.realized_geometry().realization_table.rows

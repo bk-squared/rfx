@@ -37,7 +37,7 @@ SIGMA = 1e5       # S/m -- a short at 10 GHz, below the 1e6 PEC-mask threshold
 def _fixture(debye_block=False):
     sim = Simulation(freq_max=2 * F0, domain=(L, L, L), dx=DX, boundary="pec")
     if debye_block:
-        # #1260: a 1 mm, delta_eps 1e-6 Debye cube in the far upper corner puts
+        # a 1 mm, delta_eps 1e-6 Debye cube in the far upper corner puts
         # the whole grid on the dispersive E update without changing the model.
         from rfx import Box
         from rfx.materials.debye import DebyePole

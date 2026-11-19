@@ -29,14 +29,14 @@ def scene(name):
 def test_bar1_line_length_independent_of_record(name):
     sim, grid = scene(name)
     sizes = [tfsf_from_declaration(sim._tfsf, grid, sim._freq_max,
-                                  n_steps=n)[0].n_nodes for n in (1000, 100000)]
+                                  n_steps=n, dtype='float32')[0].n_nodes for n in (1000, 100000)]
     assert sizes[0] == sizes[1], "record length changed the closed-box line"
 
 
 @pytest.mark.parametrize("name", ("S1", "S2", "S3"))
 def test_line_extent_from_read_range_and_physical_layer(name):
     sim, grid = scene(name)
-    cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1000)
+    cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1000, dtype='float32')
     reads = np.concatenate([t.source_index + cfg.origin for t in cfg.tables_e + cfg.tables_h]
                            + [np.array(cfg.source_nodes) + cfg.origin]
                            + [w.nodes + cfg.origin for w in cfg.source_windows])
@@ -75,5 +75,5 @@ def test_identity_absorber_reproduces_old_padded_extent(monkeypatch, name, radiu
 
     monkeypatch.setattr(plane, "init_plane_wave", padded)
     sim, grid = scene(name)
-    cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1000)
+    cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1000, dtype='float32')
     assert (cfg.n_nodes, cfg.origin) == (n_nodes, origin)

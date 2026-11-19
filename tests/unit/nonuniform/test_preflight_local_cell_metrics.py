@@ -109,7 +109,7 @@ def _screen_record(sim, grid):
 
 
 def test_msl_grading_step_mirror_verdicts():
-    # Reviewer B: each port faces a fine cell at a coarse/fine step.
+    # Each port faces a fine cell at a coarse/fine step.
     # The profiles and conductors mirror about x=10U; the port is off it.
     profile = np.array([U] * 12 + [U / 2] * 8 + [U] * 4)
     cases = ((profile, 12, "+x", ((12.75, 7, 0), (16, 9, 2)), (U, U / 2)),

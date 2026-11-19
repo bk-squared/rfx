@@ -9,7 +9,6 @@ COMMENSURATE_PERIODIC_X_LENGTH_M = 12e-3
 
 
 def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=False):
-    """A plane wave grades a transverse axis because grading along x is refused."""
     domain = (12.3e-3, 9.7e-3, 7.4e-3)
     if feature == "waveguide":
         domain = (30.3e-3, 12.7e-3, 6.4e-3)

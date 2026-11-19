@@ -217,8 +217,7 @@ def test_mu_r_channel_is_live(mag_run):
     assert rel > 1e-3, f"mu_r_override is a no-op (series change {rel:.2e})"
 
 
-# highmem (issue #545): measured +3.3 GB RSS high-water delta in weekly
-# run 31103127491.
+# highmem: measured +3.3 GB RSS high-water delta.
 @pytest.mark.slow
 @pytest.mark.highmem
 def test_mu_r_gradient_ad_vs_fd(mag_run):

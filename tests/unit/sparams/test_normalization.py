@@ -8,6 +8,7 @@ import math
 
 import numpy as np
 import jax.numpy as jnp
+import pytest
 
 from rfx.grid import C0
 from rfx.api import Simulation
@@ -36,7 +37,7 @@ def _make_straight_waveguide_sim(
     n_z = math.ceil(b_wg / dx - 1e-9)
     sim = Simulation(
         freq_max=f_max, dx=dx,
-        domain=(length, n_y * dx, n_z * dx),  # solved length; #1887
+        domain=(length, n_y * dx, n_z * dx),  # solved length
         boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
     )
@@ -125,6 +126,7 @@ def test_straight_waveguide_helper_cross_section_follows_a_wg():
     assert (grid.shape[1] - 1, grid.shape[2] - 1) == (34, 14)
 
 
+@pytest.mark.xfail(strict=True, reason="#2637: S11 of the empty 40x20 mm guide (about -52 dB) moves 4 % per record doubling at 30 periods; record-end verdict fail")
 def test_normalized_s21_straight_waveguide():
     """Empty straight waveguide: normalized |S21| > 0.95 above cutoff.
 

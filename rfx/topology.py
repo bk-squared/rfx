@@ -32,6 +32,8 @@ Key concepts
   0 or 1 (binary), controlled by sharpness parameter beta.
 - **Beta continuation**: Gradually increasing beta during optimization
   starts with a smooth (convex-ish) landscape and ends with near-binary.
+
+Standalone calls of the public helpers keep float32; run callers pass dtype.
 """
 
 from __future__ import annotations
@@ -116,7 +118,7 @@ class TopologyMaterialFields:
     sigma: jnp.ndarray
     pec_occupancy: jnp.ndarray | None = None
 
-def apply_density_filter(rho: jnp.ndarray, radius_cells: float) -> jnp.ndarray:
+def apply_density_filter(rho: jnp.ndarray, radius_cells: float, *, dtype=jnp.float32) -> jnp.ndarray:
     """Cone-shaped density filter for minimum feature size control.
 
     Convolves the density field with a normalized cone kernel:
@@ -149,7 +151,7 @@ def apply_density_filter(rho: jnp.ndarray, radius_cells: float) -> jnp.ndarray:
     # cells near edges see fewer kernel neighbours, so the raw convolution
     # would dip below the true average).
     if ndim == 2:
-        ax = jnp.arange(-r_int, r_int + 1, dtype=jnp.float32)
+        ax = jnp.arange(-r_int, r_int + 1, dtype=jnp.promote_types(dtype, jnp.float32))
         xx, yy = jnp.meshgrid(ax, ax, indexing="ij")
         dist = jnp.sqrt(xx ** 2 + yy ** 2)
         kernel = jnp.maximum(0.0, 1.0 - dist / radius_cells)
@@ -166,7 +168,7 @@ def apply_density_filter(rho: jnp.ndarray, radius_cells: float) -> jnp.ndarray:
                                    padding="SAME", precision=HIGHEST)
         return (numerator / denominator)[0, 0]
     elif ndim == 3:
-        ax = jnp.arange(-r_int, r_int + 1, dtype=jnp.float32)
+        ax = jnp.arange(-r_int, r_int + 1, dtype=jnp.promote_types(dtype, jnp.float32))
         xx, yy, zz = jnp.meshgrid(ax, ax, ax, indexing="ij")
         dist = jnp.sqrt(xx ** 2 + yy ** 2 + zz ** 2)
         kernel = jnp.maximum(0.0, 1.0 - dist / radius_cells)
@@ -232,6 +234,7 @@ def density_to_material_fields(
     *,
     pec_bg: bool = False,
     pec_fg: bool = False,
+    dtype=jnp.float32,
 ) -> TopologyMaterialFields:
     """Convert density to differentiable material fields.
 
@@ -239,10 +242,12 @@ def density_to_material_fields(
     When one side of the interpolation is PEC, it instead keeps the
     non-conducting material properties and emits a relaxed conductor
     occupancy field for the solver-level PEC operator.
+
+    Outside a run the public default ``dtype`` stays float32.
     """
     rho_f = rho
     if filter_radius_cells is not None and filter_radius_cells >= 0.5:
-        rho_f = apply_density_filter(rho, filter_radius_cells)
+        rho_f = apply_density_filter(rho, filter_radius_cells, dtype=dtype)
     rho_p = apply_projection(rho_f, beta)
 
     if pec_bg and pec_fg:
@@ -274,7 +279,10 @@ def density_to_eps(
     sigma_bg: float = 0.0,
     sigma_fg: float = 0.0,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Backward-compatible density -> (eps, sigma) helper."""
+    """Backward-compatible density -> (eps, sigma) helper.
+
+    This public convenience helper has no run and keeps float32 filtering.
+    """
     fields = density_to_material_fields(
         rho,
         eps_bg,
@@ -283,6 +291,7 @@ def density_to_eps(
         beta=beta,
         sigma_bg=sigma_bg,
         sigma_fg=sigma_fg,
+        dtype='float32',
     )
     return fields.eps, fields.sigma
 
@@ -406,7 +415,7 @@ def topology_optimize(
     TopologyResult
         Contains final density, permittivity, loss history, and beta history.
     """
-    resolve_field_dtype(sim._precision)
+    dtype = jnp.promote_types(resolve_field_dtype(sim._precision) or jnp.float32, jnp.float32)
     sim._require_uniform_mesh("topology_optimize")
     sim._auto_preflight(skip=skip_preflight, context="topology_optimize")
     # Refuse unsupported surface-impedance sheets at entry.
@@ -495,7 +504,7 @@ def topology_optimize(
 
     # Initialize density
     if init_density is None:
-        init_density = 0.5 * jnp.ones(design_shape, dtype=jnp.float32)
+        init_density = 0.5 * jnp.ones(design_shape, dtype=dtype)
 
     # We optimize in logit space for unconstrained optimization,
     # then map back via sigmoid to keep density in [0, 1].
@@ -524,6 +533,7 @@ def topology_optimize(
             sigma_fg=sigma_fg,
             pec_bg=bg_is_pec,
             pec_fg=fg_is_pec,
+            dtype=dtype,
         )
 
         si, sj, sk = lo_idx
@@ -539,7 +549,7 @@ def topology_optimize(
             cells, eps_override=fields.eps.astype(base_materials.eps_r.dtype),
             sigma_override=fields.sigma.astype(base_materials.sigma.dtype),
             window=(slice(None),) * 3, box_local=window)._replace(mu_r=base_mu_r)
-        pec_occupancy = occupancy_from_design(grid.shape, window, fields.pec_occupancy)
+        pec_occupancy = occupancy_from_design(grid.shape, window, fields.pec_occupancy, dtype=dtype)
 
         result = sim._forward_from_materials(
             grid,
@@ -572,7 +582,7 @@ def topology_optimize(
 
         req = opt.ask(state)
         logit = req.x
-        loss, grad = grad_fn(req.x, jnp.asarray(beta, dtype=jnp.float32))
+        loss, grad = grad_fn(req.x, jnp.asarray(beta, dtype=dtype))
 
         # NaN/Inf gradient guard (see optimize() for rationale): a non-finite
         # gradient would silently poison ``logit`` via the Adam update and
@@ -621,13 +631,14 @@ def topology_optimize(
         sigma_fg=sigma_fg,
         pec_bg=bg_is_pec,
         pec_fg=fg_is_pec,
+        dtype=dtype,
     )
     final_eps = final_fields.eps
 
     # Compute projected density for reporting
     rho_filtered = final_rho
     if filter_radius_cells is not None and filter_radius_cells >= 0.5:
-        rho_filtered = apply_density_filter(final_rho, filter_radius_cells)
+        rho_filtered = apply_density_filter(final_rho, filter_radius_cells, dtype=dtype)
     rho_projected = apply_projection(
         rho_filtered, _get_beta(n_iterations - 1, beta_schedule),
     )

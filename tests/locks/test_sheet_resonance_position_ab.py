@@ -94,9 +94,7 @@ Y0 = (12e-3 - W_PATCH) / 2
 # Measured provenance; the regression assertions below allow small float drift
 # around these (2*df), and the GATE itself is computed live per contract.
 #
-# Re-pinned 2026-09-07 for #931 from VESSL 369367259230, whose census this
-# module now prints in full. Old pair (24.5646, 28.1318) GHz, measured
-# 2026-08-19; new pair (25.1741, 30.2153) GHz. What the census shows, and the
+# Old pair (24.5646, 28.1318) GHz, measured; new pair (25.1741, 30.2153) GHz. What the census shows, and the
 # reason this is a re-pin and not a moved mode:
 #
 #   PEC arm peaks (GHz, amplitude relative to the loudest)
@@ -128,7 +126,7 @@ MEASURED_PEC_MODES = (25.1741e9, 30.2153e9)
 
 
 def _build(mode):
-    # #1138: PEC patches x/y solved +3.182%/-1.579%; this locks resonance position.
+    # PEC patches x/y solved +3.182%/-1.579%; this locks resonance position.
     sim = Simulation(snap="declared",
                      freq_max=40e9, domain=DOMAIN, dx=DX,
                      dz_profile=[DZ] * NZ, boundary="pec")
@@ -175,7 +173,7 @@ def _run(mode):
     sim = _build(mode)
     grid = sim._build_nonuniform_grid()
     if mode == "prefix":
-        # Reconstruct the PRE-#677 realization: fold each sheet into
+        # Reconstruct the earlier realization: fold each sheet into
         # materials.sigma as a full-cell slab (sigma_eff = 1/(Rs0*d_dual),
         # exactly the emitted spec's sigma_sheet) and strip the operator
         # ctx. This is the G1 NEGATIVE CONTROL — a realization the gate
@@ -199,12 +197,12 @@ def test_g1_resonance_position_ab():
     #
     # This used to compare the f0 operator's node mask against the PEC
     # leg's ``pec_mask`` cells. Under the lattice ownership contract a PEC
-    # sheet owns NO cell (#931 §1.3), so ``pec_mask`` is empty on the PEC
+    # sheet owns NO cell, so ``pec_mask`` is empty on the PEC
     # leg and that comparison reads two different things — it went red for
     # bookkeeping, not physics. Both legs now come back as SHEETS through
     # their own collector, and the witness compares what actually decides
     # the geometry: the realized plane AND the node footprint, per sheet.
-    # That is the #677 G4 identity ("f0 toggles loss, never geometry")
+    # That is the G4 identity ("f0 toggles loss, never geometry")
     # read directly rather than inferred from two different arrays.
     sim_f0 = _build("f0")
     grid = sim_f0._build_nonuniform_grid()
@@ -255,7 +253,7 @@ def test_g1_resonance_position_ab():
     base = sorted(p[0] for p in sorted(pk_pec, key=lambda p: -p[1])[:2])
     assert len(base) == 2
     # Provenance pin: the fixture's PEC modes stay where they were measured.
-    # Re-pinned under #931 — the sheet footprint is sampled CLOSED, so this
+    # The sheet footprint is sampled CLOSED, so this
     # patch realizes the 5.500 mm it declares instead of the 5.250 mm the old
     # half-open node sampling gave it (measured at build time on this grid:
     # Ex rows 13..34 on both patch planes, node span 5.5000 mm). The modes

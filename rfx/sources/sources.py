@@ -287,7 +287,7 @@ def apply_lumped_port(state, grid: Grid, port: LumpedPort, t: float, materials) 
     increment = port_drive_waveform(
         grid, idx, port.component, port.excitation, None, materials,
         sigma_port=stamped_drive(port, idx)[0],
-        unit_field=stamped_drive(port, idx)[1], time=t)
+        unit_field=stamped_drive(port, idx)[1], time=t, dtype=state.ex.dtype)
 
     field = getattr(state, port.component)
     field = field.at[i, j, k].add(increment)
@@ -355,7 +355,7 @@ def apply_wire_port(state, grid, port, t, materials, pec_edge_masks=None):
         increment = port_drive_waveform(
             grid, cell, port.component, port.excitation, None, materials,
             sigma_port=stamped_drive(port, cell)[0],
-            unit_field=stamped_drive(port, cell)[1], time=t)
+            unit_field=stamped_drive(port, cell)[1], time=t, dtype=state.ex.dtype)
         field = field.at[i, j, k].add(increment)
 
     return state._replace(**{port.component: field})

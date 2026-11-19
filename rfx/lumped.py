@@ -72,11 +72,12 @@ with a plane wave on a sheet of pure 2 nH elements on 1 mm cells it read
 
 from __future__ import annotations
 
-from rfx.errors import RfxUnsupported
+from rfx.errors import RfxRefusal, RfxUnsupported
 
 from rfx._internal._grid_metric import field_index
 from dataclasses import dataclass
 from typing import NamedTuple
+import math
 
 import jax.numpy as jnp
 
@@ -269,8 +270,51 @@ def edge_update_denominator(materials, cell, component, dt,
     reproduces the concrete builder's Python-float arithmetic; without it the
     arithmetic stays in the arrays' dtype, so a traced material keeps its
     gradient.
+
+    With an attached tensor the edge's operand is the one the step reads
+    (:func:`rfx.model.materials.tensor_operand_at`): the diagonal, the
+    UPML form (float32 diagonal, cell-owned conductivity), or the Stage-2
+    inverse ``inv``, for which ``D0 = EPS_0/(dt*inv) + sigma/2`` is formed
+    in the inverse form, never from a re-inverted permittivity. A frozen
+    edge (``inv = 0``) has no finite ``D0``; an element there is refused
+    before the first step, and its host value is ``inf`` until then.
+
+    Under UPML (``components.source_upml``) the step's E coefficient is
+    formed from cell-owned operands, never the edge mean, and ``D0`` reads
+    them through :func:`rfx.model.materials.upml_operands_at`, the reader
+    the drive coefficient uses. With no tensor ``D0 = 1/Cb``, ``Cb`` formed
+    in UPML's float32 arithmetic (:func:`rfx.model.materials.upml_update_cb`),
+    so the element and the step agree to the rounding of one division; on an
+    eps 1|4 corner edge the edge mean is 1.75 and the owner cell 4.0, so
+    reading the mean scaled the element's D0 by 1.75/4.0. With a tensor the
+    float32 diagonal and the cell-owned conductivity enter
+    ``eps/dt + sigma/2`` as before. ``D0 = 1/Cb`` holds on interior edges;
+    an element on an absorber pad edge is refused before it is built
+    (:func:`refuse_rlc_in_absorber_pad`).
     """
-    from rfx.model.materials import e_update_material_at
+    from rfx.model.materials import (
+        e_update_material_at, tensor_operand_at, upml_operands_at, upml_update_cb)
+    operand = tensor_operand_at(materials, cell, component)
+    if getattr(getattr(materials, "components", None), "source_upml", False):
+        eps_r, sigma = upml_operands_at(materials, cell, component)
+        if operand is None:
+            cb = upml_update_cb(eps_r, sigma, dt)
+            if as_float and not is_tracer(cb):
+                return 1.0 / float(cb)
+            return 1.0 / cb
+        if as_float and not (is_tracer(eps_r) or is_tracer(sigma)):
+            return _denominator_si(float(eps_r), float(sigma), dt)
+        return si_value_eps_r_grad(_denominator_si, _denominator_eps_r,
+                                   eps_r, sigma, dt)
+    if operand is not None and operand[0] == "inv":
+        axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
+        inv = operand[1]
+        sigma = materials.components.sigma_update[axis][tuple(cell)]
+        if as_float and not (is_tracer(inv) or is_tracer(sigma)):
+            inv = float(inv)
+            return math.inf if inv == 0.0 else _denominator_inv_si(inv, float(sigma), dt)
+        return si_value_eps_r_grad(_denominator_inv_si, _denominator_inv_eps_r,
+                                   inv, sigma, dt)
     eps_r, sigma = e_update_material_at(materials, cell, component, periodic, grid=grid)
     if as_float and not (is_tracer(eps_r) or is_tracer(sigma)):
         # Python floats: host arithmetic, nothing on a tape.
@@ -287,6 +331,14 @@ def _denominator_si(eps_r, sigma, dt):
 
 def _denominator_eps_r(eps_r, sigma, dt):
     return eps_r * (EPS_0 / dt) + sigma / 2.0
+
+
+def _denominator_inv_si(inv, sigma, dt):
+    return EPS_0 / (dt * inv) + sigma / 2.0
+
+
+def _denominator_inv_eps_r(inv, sigma, dt):
+    return (EPS_0 / dt) / inv + sigma / 2.0
 
 
 def _resolve_position_to_index(grid, position):
@@ -391,6 +443,28 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials, *,
     return materials
 
 
+def refuse_rlc_in_absorber_pad(grid, spec, cell, materials):
+    """Refuse an element whose realized edge lies in a UPML absorber pad.
+
+    Under UPML the step's ``Cb`` on such an edge includes the absorber's
+    perpendicular conductivity; the element's ``D0`` is the interior
+    ``1/Cb`` (:func:`edge_update_denominator`), so the element would solve
+    its current against a different update than the one that steps the
+    edge. Same predicate as the drives
+    (:func:`rfx.model.source_coefficients.edge_in_absorber_pad`).
+    """
+    if not getattr(getattr(materials, "components", None), "source_upml", False):
+        return
+    from rfx.model.source_coefficients import edge_in_absorber_pad
+    if edge_in_absorber_pad(grid, cell, spec.component):
+        raise RfxRefusal(
+            f"lumped RLC element at {tuple(spec.position)} ({spec.component}, "
+            f"R={spec.R}, L={spec.L}, C={spec.C}, {spec.topology}) realizes edge "
+            f"{tuple(int(v) for v in cell)}, which lies inside a UPML absorber pad; "
+            "its update denominator does not include the absorber operator. "
+            "Place the element inside the physical domain, or enlarge the domain.")
+
+
 def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
                    r_val=None, l_val=None, c_val=None,
                    periodic=(False, False, False)) -> RLCCellMeta:
@@ -403,10 +477,15 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
     run's periodic flags for that lookup. Topology uses the static spec;
     optional R/L/C overrides supply numeric values. Concrete inputs keep
     host arithmetic and traced inputs retain array arithmetic.
+
+    Under UPML (``materials.components.source_upml``) an element whose
+    realized edge lies in an absorber pad is refused
+    (:func:`refuse_rlc_in_absorber_pad`).
     """
     from rfx.sources.sources import port_d_parallel as _d_par
     from rfx.sources.sources import port_dual_transverse as _dual_t
     idx = field_index(grid, spec.position, spec.component)
+    refuse_rlc_in_absorber_pad(grid, spec, idx, materials)
     i, j, k = idx
     d_par = _d_par(grid, idx, spec.component)
     _b, _c = _dual_t(grid, idx, spec.component)

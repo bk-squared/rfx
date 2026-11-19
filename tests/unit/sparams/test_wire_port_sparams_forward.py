@@ -60,8 +60,6 @@ def test_forward_wire_port_sparams_populated():
     assert len(result.wire_port_sparams) == 1, (
         f"expected 1 wire port spec, got {len(result.wire_port_sparams)}")
     spec, accs = result.wire_port_sparams[0]
-    # Issue #764: the accumulator tuple grew a 4th slot (whole-port
-    # v_port_dft); the asserted channels are unchanged.
     v_dft, i_dft = accs[0], accs[1]  # accs[2] is v_inc_dft, unused here
     assert v_dft.shape == (7,), v_dft.shape
     assert i_dft.shape == (7,), i_dft.shape
@@ -72,9 +70,7 @@ def test_forward_wire_port_sparams_populated():
     # Closed PEC cavity → energy reflects → |S11| should be near 1 in band
     mag = np.abs(s11)
     assert np.all(mag > 0.6), f"|S11| too low for PEC cavity: {mag}"
-    # RESTORED 2026-08-29 (issue #683 x #764 flip, written provenance —
-    # docs/design_notes/issue683_decomposer_flip_predeclaration.md): the
-    # lane now samples the physical V/I/V_port POST-injection, so the
+    # The lane now samples the physical V/I/V_port POST-injection, so the
     # driven whole-port diagonal is the validated terminal pair and the
     # upper bound is live again (on the PRE-injection interim this
     # fixture measured [1.012 ... 1.376, 2.866] — keyed-envelope era,
