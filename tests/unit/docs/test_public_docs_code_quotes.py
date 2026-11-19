@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import re
+import string
 
 import pytest
 
@@ -14,6 +15,58 @@ CODE = re.compile(r'<code\b(?:[^>"\']|"[^"]*"|\'[^\']*\')*>(.*?)</code\s*>', re.
 
 def blank(text: str) -> str:
     return re.sub(r"[^\n]", " ", text)
+
+
+def js_string_end(text: str, start: int) -> int:
+    position = start + 1
+    while position < len(text):
+        if text[position] == "\\":
+            position += 2
+        elif text[position] == text[start]:
+            return position + 1
+        else:
+            position += 1
+    return len(text)
+
+
+def js_template_end(text: str, start: int) -> int:
+    position = start + 1
+    while position < len(text):
+        if text[position] == "\\":
+            position += 2
+        elif text[position] == "`":
+            return position + 1
+        elif text.startswith("${", position):
+            position = expression_end(text, position + 1)
+        else:
+            position += 1
+    return len(text)
+
+
+def expression_end(text: str, start: int) -> int:
+    position = start + 1
+    depth = 1
+    while position < len(text):
+        char = text[position]
+        if text.startswith("/*", position):
+            end = text.find("*/", position + 2)
+            position = len(text) if end == -1 else end + 2
+        elif text.startswith("//", position):
+            end = text.find("\n", position + 2)
+            position = len(text) if end == -1 else end
+        elif char in "\"'":
+            position = js_string_end(text, position)
+        elif char == "`":
+            position = js_template_end(text, position)
+        else:
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if not depth:
+                    return position + 1
+            position += 1
+    return len(text)
 
 
 def offending_lines(page: str) -> list[str]:
@@ -31,33 +84,34 @@ def offending_lines(page: str) -> list[str]:
         else:
             lines.append(line)
     text = "".join(lines)
-    depth = 0
-    quote = None
-    escaped = False
     masked = []
-    for char in text:
-        if depth:
-            masked.append("\n" if char == "\n" else " ")
-            if quote:
-                if escaped:
-                    escaped = False
-                elif char == "\\":
-                    escaped = True
-                elif char == quote:
-                    quote = None
-            elif char in "\"'`":
-                quote = char
-            elif char == "{":
-                depth += 1
-            elif char == "}":
-                depth -= 1
+    position = 0
+    while position < len(text):
+        char = text[position]
+        if char == "\\" and position + 1 < len(text) and text[position + 1] in string.punctuation:
+            masked.append(text[position:position + 2].replace("<", " "))
+            position += 2
+        elif char == "`":
+            opener = re.match(r"`+", text[position:])[0]
+            end = position + len(opener)
+            boundary = re.search(r"\n[^\S\n]*\n", text[end:])
+            limit = end + boundary.start() if boundary else len(text)
+            closer = next((run for run in re.finditer(r"`+", text[end:limit])
+                           if len(run[0]) == len(opener)), None)
+            if closer is not None:
+                end += closer.end()
+                masked.append(blank(text[position:end]))
+            else:
+                masked.append(opener)
+            position = end
         elif char == "{":
-            depth = 1
-            masked.append(" ")
+            end = expression_end(text, position)
+            masked.append(blank(text[position:end]))
+            position = end
         else:
             masked.append(char)
+            position += 1
     text = "".join(masked)
-    text = re.sub(r"(`+)(?!`)(.*?)(?<!`)\1(?!`)", lambda match: blank(match[0]), text, flags=re.DOTALL)
     found = set()
     for element in CODE.finditer(text):
         body = re.sub(r'<[^>]*>', lambda match: blank(match[0]), element[1])
@@ -82,6 +136,16 @@ def offending_lines(page: str) -> list[str]:
     ('```\n<code>"ignored"</code>\n```\n<code>"x"</code>', ['4: <code>"x"</code>']),
     ('<code>{{value: "}"}} "x"</code>', ['1: <code>{{value: "}"}} "x"</code>']),
     ('<code><span title="example">plain</span></code>', []),
+    ('`{` and <code>"x"</code>', ['1: `{` and <code>"x"</code>']),
+    ('\\{ <code>"x"</code>', ['1: \\{ <code>"x"</code>']),
+    ("{/* it's */}\n<code>\"x\"</code>", ['2: <code>"x"</code>']),
+    ('the ` key\n\n<code>"x"</code>\n\nuse `y`', ['3: <code>"x"</code>']),
+    ('`<code>"x"</code>`', []),
+    ('{ /* } " */ value }\n<code>"x"</code>', ['2: <code>"x"</code>']),
+    ('{ // } "\nvalue }\n<code>"x"</code>', ['3: <code>"x"</code>']),
+    ('{`outer ${`inner ${"}"}`} tail`}\n<code>"x"</code>', ['2: <code>"x"</code>']),
+    ('<code>{"a\\\"}b"}</code>', []),
+    ('\\<code>"x"</code>', []),
 ])
 def test_offending_lines(page, expected):
     assert offending_lines(page) == expected
