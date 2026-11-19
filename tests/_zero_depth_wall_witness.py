@@ -13,6 +13,7 @@ from tests.contracts.path_equivalence.comparison import compare
 
 
 def trace(nonuniform, distributed, explicit_pec=False):
+    FIRST_WALL_RETURN_STEPS = 64
     profiles = {"dz_profile": np.full(16, 1e-3)} if nonuniform else {}
     wall = Boundary("pec", "cpml") if explicit_pec else Boundary("cpml", "cpml", 0, 4)
     sim = Simulation(freq_max=15e9, domain=(0.025, 0.024, 0.016), dx=1e-3,
@@ -21,8 +22,7 @@ def trace(nonuniform, distributed, explicit_pec=False):
     sim.add_probe((0.007, 0.003, 0.010), "ez")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        # 64 steps include the first wall return; later cavity round trips accumulate rounding.
-        result = sim.run(n_steps=64, skip_preflight=True,
+        result = sim.run(n_steps=FIRST_WALL_RETURN_STEPS, skip_preflight=True,
                          devices=jax.devices("cpu")[:2] if distributed else None)
     return np.asarray(result.time_series[:, 0])
 
@@ -35,16 +35,12 @@ def measure():
 
 
 def judge(traces, measurements):
+    """Across device counts only the uniform lane is judged at the cross-trace bar because the defect was uniform-only."""
     for mesh in ("uniform", "graded"):
         for devices in ("one", "two"):
             zero, pec = traces[f"{mesh}_{devices}_zero"], traces[f"{mesh}_{devices}_pec"]
             assert zero.dtype == np.float32 and np.max(np.abs(zero)) > 0
-            # §7 Addendum 4: on every lane a zero-depth CPML face is the same
-            # electric wall as a declared PEC face, bit for bit.
             np.testing.assert_array_equal(zero, pec, err_msg=f"{mesh} {devices} device(s)")
-    # Across device counts only the uniform lane is judged at the cross-trace
-    # bar: the defect was uniform-only, and the graded two-device seam rounding
-    # already sits at the 9-ULP bar for a declared PEC face as well.
     reference = traces["uniform_one_zero"]
     actual = traces["uniform_two_zero"]
     compare(reference, actual, record="uniform_two_zero.probe", kind="step", measurements=measurements)

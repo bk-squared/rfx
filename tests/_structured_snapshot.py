@@ -1,21 +1,15 @@
-"""Message-independent snapshot payloads and numeric comparisons."""
+"""Message-independent snapshot payloads and numeric comparisons.
+The unit-independent 1e-12 floor protects near-zero reported message values."""
 import re
 from numbers import Real
 
 
-# Fidelity digests round to 12 significant digits (up to 5e-12 relative).
-# Allow two rounding quanta; near zero use the existing rasterization test's
-# 1e-9 um bound (1e-15 m). Other units get a 1e-12 absolute floor.
 RTOL = 1e-11
 UM_ATOL = 1e-9
-# Message tokens are already presentation-rounded. This permits float64 and
-# digest rounding noise, while detecting changes above one part per billion;
-# the unit-independent 1e-12 floor also protects near-zero reported values.
+OTHER_UNITS_ATOL = 1e-12
 MESSAGE_RTOL = 1e-9
 MESSAGE_ATOL = 1e-12
 _NUMBER = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?")
-# numpy >= 2 prints scalars as ``np.float64(0.005)``, numpy 1 as ``0.005``;
-# strip the wrapper first so the type's digits are not read as a number.
 _NUMPY_SCALAR = re.compile(r"np\.(?:float|int|uint|complex|bool_?)\d*\(([^()]*)\)")
 
 
@@ -41,7 +35,8 @@ def without_prose(value):
 
 
 def assert_structured_close(actual, expected, path="snapshot", *, field=None):
-    """Exact schema/identifiers/counts; tolerant real-valued measurements."""
+    """Exact schema/identifiers/counts; tolerant real-valued measurements.
+    Allow two rounding quanta for fidelity digests rounded to 12 significant digits."""
     import pytest
     if isinstance(expected, dict):
         assert isinstance(actual, dict), path
@@ -55,7 +50,7 @@ def assert_structured_close(actual, expected, path="snapshot", *, field=None):
             assert_structured_close(have, want, f"{path}[{i}]", field=field)
     elif isinstance(expected, float):
         assert isinstance(actual, Real) and not isinstance(actual, bool), path
-        atol = UM_ATOL if field is not None and field.endswith("_um") else 1e-12
+        atol = UM_ATOL if field is not None and field.endswith("_um") else OTHER_UNITS_ATOL
         rtol = RTOL
         if field == "numbers":
             rtol, atol = MESSAGE_RTOL, MESSAGE_ATOL

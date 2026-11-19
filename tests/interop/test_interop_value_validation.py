@@ -25,12 +25,6 @@ def _points(n: int = 5) -> list[tuple[float, float, float]]:
     return [(i * 1e-4, 0.0, 1e-3) for i in range(n)]
 
 
-# --------------------------------------------------------------------------
-# The one that mattered: a one-shot iterator was consumed by exporting it, so
-# the SECOND export emitted an empty sequence with no error, producing a
-# schema-valid design document in which the conductor simply was not there.
-# --------------------------------------------------------------------------
-
 def test_generator_valued_sequence_field_is_refused_not_consumed():
     wire = PolylineWire(points=(p for p in _points()), radius=5e-5)
     with pytest.raises(UnsupportedDesignFeature, match="no length"):
@@ -71,10 +65,6 @@ def test_null_sequence_is_refused_before_iteration():
                          "params": {"points": None, "radius": 5e-5}})
 
 
-# --------------------------------------------------------------------------
-# String fields: str(v) cannot fail, so an unguarded field records a repr.
-# --------------------------------------------------------------------------
-
 def test_none_axis_is_refused_rather_than_stringified():
     with pytest.raises(UnsupportedDesignFeature, match="must be a string"):
         shape_to_dict(Cylinder(center=(0.0, 0.0, 0.0), radius=1e-4,
@@ -108,10 +98,6 @@ def test_traced_string_field_is_refused():
         "a traced value in a string slot must not be stringified into the JSON"
     )
 
-
-# --------------------------------------------------------------------------
-# JSON type discipline: a hand-edited or foreign-generated document.
-# --------------------------------------------------------------------------
 
 def test_digit_string_is_not_silently_read_as_a_vector():
     """'123' is iterable and each character floats, so an unguarded loader turns
@@ -173,10 +159,6 @@ def test_non_string_material_name_is_refused_on_import():
         materials_from_dict(payload)
 
 
-# --------------------------------------------------------------------------
-# The pin test's blind spots.
-# --------------------------------------------------------------------------
-
 def test_constructor_parameter_names_sees_init_var():
     """dataclasses.fields excludes InitVar, so a units InitVar consumed in
     __post_init__ would be invisible to the pin test and every export would
@@ -230,10 +212,6 @@ def test_public_extra_state_is_still_refused():
         shape_to_dict(via)
 
 
-# --------------------------------------------------------------------------
-# Canonical input must keep working — the guards must not over-tighten.
-# --------------------------------------------------------------------------
-
 def test_canonical_shapes_still_round_trip():
     shapes = [
         Box(corner_lo=(0.0, 0.0, 0.0), corner_hi=(1e-3, 1e-3, 1e-3)),
@@ -254,32 +232,15 @@ def test_numpy_scalars_and_arrays_still_accepted():
     assert payload["params"] == {"center": [0.0, 0.0, 0.0], "radius": 5e-4}
 
 
-# --------------------------------------------------------------------------
-# What the codec must NOT start refusing.
-#
-# The inventory's suggestion for this module was to extend the refusal set
-# with the ownership contract's new errors — a sub-cell PEC Box, an empty
-# sheet footprint, a single-node wire. Two of those cannot live here and the
-# third would be wrong, and the reason is the single-owner rule (design note
-# §1.7) rather than effort: this codec encodes SHAPES. "Sub-cell" needs a
-# grid, "PEC" needs a material, and a codec that re-implemented either would
-# be the second copy of a rule that drifts from the first — which is the
-# defect, not one to add on the way out.
-#
-# So the codec-side statement is the opposite one, and it does need pinning:
-# a zero-extent Box is now the canonical spelling of a SHEET (§1.5), so it
-# has to survive a round trip EXACTLY. A codec that normalised a zero extent
-# away, or refused it as degenerate, would turn a declared foil into
-# something else with a schema-valid document to show for it.
-# --------------------------------------------------------------------------
-
 @pytest.mark.parametrize("lo,hi,zero_axes", [
-    ((0.0, 0.0, 1e-3), (5e-3, 4e-3, 1e-3), (2,)),          # a sheet: z flat
-    ((0.0, 2e-3, 0.0), (5e-3, 2e-3, 4e-3), (1,)),          # a sheet: y flat
-    ((1e-3, 0.0, 0.0), (1e-3, 5e-3, 4e-3), (0,)),          # a sheet: x flat
+    ((0.0, 0.0, 1e-3), (5e-3, 4e-3, 1e-3), (2,)),
+    ((0.0, 2e-3, 0.0), (5e-3, 2e-3, 4e-3), (1,)),
+    ((1e-3, 0.0, 0.0), (1e-3, 5e-3, 4e-3), (0,)),
 ])
 def test_a_zero_extent_box_round_trips_exactly_because_it_is_a_sheet(
         lo, hi, zero_axes):
+    """A zero-extent Box is the canonical spelling of a SHEET, so it has to survive a round trip EXACTLY."""
+    assert tuple(a for a in range(3) if lo[a] == hi[a]) == zero_axes, "sheet setup must have exactly its declared zero axis"
     box = Box(lo, hi)
     back = shape_from_dict(shape_to_dict(box))
     assert tuple(back.corner_lo) == tuple(lo)
@@ -291,8 +252,8 @@ def test_a_zero_extent_box_round_trips_exactly_because_it_is_a_sheet(
 
 
 @pytest.mark.parametrize("lo,hi", [
-    ((0.0, 0.0, 0.0), (1e-3, 0.0, 0.0)),   # a line: two zero extents
-    ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0)),    # a point: three
+    ((0.0, 0.0, 0.0), (1e-3, 0.0, 0.0)),
+    ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
 ])
 def test_a_degenerate_box_still_round_trips_so_the_refusal_stays_at_add(lo, hi):
     """A line and a point are refused as CONDUCTORS (§1.5), at ``sim.add``,
@@ -301,6 +262,7 @@ def test_a_degenerate_box_still_round_trips_so_the_refusal_stays_at_add(lo, hi):
     also break a document that legitimately carries such a Box as a
     non-conductor region.
     """
+    assert sum(a == b for a, b in zip(lo, hi)) in (2, 3), "degenerate setup must have two or three zero extents"
     back = shape_from_dict(shape_to_dict(Box(lo, hi)))
     assert tuple(back.corner_lo) == tuple(lo)
     assert tuple(back.corner_hi) == tuple(hi)

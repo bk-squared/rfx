@@ -160,9 +160,8 @@ def override_parity():
         record(row)
         check(row)
 
-    # These four declared probes define the gradient objective; the added
-    # all-cell probes above only observe law C and do not change the model.
     sim = scene('mixed', cells=False)
+    assert len(sim._probes) == 4, "gradient objective requires exactly four declared probes"
     def objective(e, devices=None):
         return jnp.sum(forward(sim, e, devices)**2)
     one = np.asarray(jax.grad(objective)(eps), np.float64)

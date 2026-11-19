@@ -51,6 +51,7 @@ def structure(graded=False, *, name='checked', offset=3, height=2 * U, feed=4 * 
 
 
 def family_warnings(sim):
+    """Keep the warning filename so the emission contract can distinguish warning families."""
     import warnings
     try:
         grid = sim._build_realized_grid()
@@ -66,9 +67,6 @@ def family_warnings(sim):
         if getattr(warning.message, 'code', '').startswith('msl_port'):
             messages.append(warning.message)
         else:
-            # Preserve other emissions for the caller's warning capture, including
-            # uncoded MSL bypasses and unrelated material advisories. Keep the
-            # filename so the emission contract can distinguish their families.
             warnings.warn_explicit(
                 warning.message, warning.category, warning.filename, warning.lineno,
             )
@@ -195,7 +193,6 @@ def captured_cases(graded=False):
             warnings.simplefilter("always")
             msl.preflight_msl_probe_clearance(sim, warnings)
         results["calculator_scan_failed"] = [w.message for w in caught]
-    # The same physical distance/threshold condition as general preflight.
     sim.add(
         Box((10 * U, 4 * U, 0), (11 * U, 8 * U, 2 * U)),
         material="pec",
@@ -215,7 +212,6 @@ def captured_cases(graded=False):
                 warnings.simplefilter("always")
                 stub.preflight_line_stubs(sim, warnings)
         results[key] = [w.message for w in caught]
-    # Physical open tail, large enough to be resonant in this read interval.
     sim = structure(
         graded,
         feed=16 * U,
