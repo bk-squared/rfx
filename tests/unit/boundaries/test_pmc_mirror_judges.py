@@ -21,6 +21,8 @@ def record(name, data):
 @pytest.mark.parametrize("graded", [False, True])
 @pytest.mark.parametrize("entry", ["run", "forward"])
 def test_asymmetric_low_high_mirror(graded, entry):
+    """For reflected discrete lattices, 512 epsilon is the record bound for accumulated float32 arithmetic, not a continuum-discretization tolerance."""
+    QUARTER_WAVE_SEPARATION_FACTOR = .5
     traces, separations = [], []
     for high in (False, True):
         profile = np.r_[1., np.linspace(.8, 1.2, 22), 1.] * .001
@@ -43,15 +45,12 @@ def test_asymmetric_low_high_mirror(graded, entry):
         grid = sim._build_realized_grid()
         modes = matrix_pencil(traces[-1][128:], grid.dt, 9e9, 14e9,
                         min_Q=1, max_modes=16, sv_threshold=1e-3, decimate="auto")
-        # Mixed PMC/PEC x walls have a quarter-wave fundamental; y is PEC.
         fundamental = min(modes, key=lambda m: m.freq).freq
         ly = (grid.ny - 1) * .001
-        separations.append(float(.5 / np.sqrt((2*fundamental/299792458.)**2 - 1/ly**2)))
+        separations.append(float(QUARTER_WAVE_SEPARATION_FACTOR / np.sqrt((2*fundamental/299792458.)**2 - 1/ly**2)))
     relative = np.linalg.norm(traces[0]-traces[1])/np.linalg.norm(traces[1])
     record(f'mirror-{entry}-{graded}', dict(relative_l2=float(relative), derived_separations_m=separations))
     np.testing.assert_allclose(separations[0], separations[1], rtol=512*np.finfo(np.float32).eps)
-    # Reflected discrete lattices: accumulated float32 arithmetic, not
-    # a continuum-discretization tolerance. 512 epsilon is the record bound.
     assert relative <= 512*np.finfo(np.float32).eps
 
 

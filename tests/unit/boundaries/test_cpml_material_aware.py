@@ -40,6 +40,8 @@ in no CI lane).
 The witnesses, run parameters, thresholds and tolerances of every original
 file are kept verbatim; only the module-level helper names carry a section
 prefix so the six fixtures can coexist.
+
+700 steps allow the pre-fix CPML divergence to reach NaN (it first appears ~step 300-400; fewer steps would let the buggy code pass spuriously).
 """
 
 import numpy as np
@@ -52,6 +54,7 @@ import rfx.runners.distributed_nu as _dnu
 import rfx.runners.nonuniform as _rnu
 from rfx.vmap_sweep import vmap_material_sweep
 
+MEASURED_INVERSE_CELL_VOLUME_PER_M3 = 1.25e8
 requires_multidevice = pytest.mark.skipif(
     jax.device_count() < 2,
     reason=(
@@ -80,19 +83,6 @@ def _max_abs_e(result) -> float:
     return _max_abs_e_state(result.state)
 
 
-# ===========================================================================
-# 1. Non-uniform scan body (nonuniform path)
-# ===========================================================================
-#
-# The non-uniform scan body (rfx/nonuniform.py step_fn) called apply_cpml_h/e
-# WITHOUT the materials= argument, so the CPML fell back to free-space
-# eps_0/mu_0 coefficients (rfx/boundaries/cpml.py). Witnessed: a non-uniform
-# (dz_profile) sim whose dielectric fills the whole domain diverges to all-NaN
-# pre-fix at eps_r=4 and eps_r=10, and becomes finite + cleanly absorbing
-# (tail/peak ~1e-4) once materials= is threaded into the two CPML calls
-# (matching the production uniform scan).
-
-
 def _nu_full_dielectric_sim(eps_r):
     """Non-uniform z-mesh, CPML boundary, dielectric filling the entire domain
     (every CPML cell is dielectric) -- the geometry that forces all absorption
@@ -106,7 +96,7 @@ def _nu_full_dielectric_sim(eps_r):
         boundary="cpml", cpml_layers=6, dz_profile=dz_profile,
     )
     sim.add_material("diel", eps_r=eps_r)
-    sim.add(Box((-1.0, -1.0, -1.0), (1.0, 1.0, 1.0)), material="diel")  # fills domain + CPML
+    sim.add(Box((-1.0, -1.0, -1.0), (1.0, 1.0, 1.0)), material="diel")
     sim.add_source((0.015, 0.015, lz / 2), "ez",
                    waveform=GaussianPulse(f0=4e9, bandwidth=0.7))
     sim.add_probe((0.022, 0.015, lz / 2), "ez")
@@ -127,24 +117,11 @@ def test_nonuniform_cpml_dielectric_stable_and_absorbing():
             f"NU CPML diverged (non-finite) in eps_r={eps_r} dielectric (issue #205)"
         peak = float(ts.max())
         tail = float(ts[-200:].max())
-        # A working absorber drives the late-time field far below the peak.
         assert tail <= 0.05 * peak, \
             f"NU CPML did not absorb (eps_r={eps_r}): tail/peak={tail / max(peak, 1e-30):.3e}"
 
 
-# ===========================================================================
-# 2. Live shard_map distributed runner via sim.run(devices=...)
-# ===========================================================================
-#
-# Before this fix the distributed FDTD runners applied the CPML correction with
-# a HARDCODED VACUUM coefficient dt/eps_0 (E) / dt/mu_0 (H), ignoring the local
-# material (witnessed: a 2-device eps_r=9 sim blows up to inf at step ~75 while
-# single-device stays finite at ~3.3e-3). The single-device path
-# (rfx/boundaries/cpml.py) has been material-aware, so sim.run(...)
-# is the correct reference and the distributed path must agree with it.
-
-# --- run parameters (mirrors the witness) ---
-_UNI_DOMAIN = (0.02, 0.02, 0.02)   # 10 x 10 x 10 interior cells at dx=2mm
+_UNI_DOMAIN = (0.02, 0.02, 0.02)
 _UNI_DX = 0.002
 _UNI_CPML_LAYERS = 6
 _UNI_FREQ_MAX = 5e9
@@ -178,14 +155,11 @@ def test_distributed_cpml_dielectric_finite_and_matches_single():
     multi = _max_abs_e(
         _uni_build_sim(_UNI_EPS_DIELECTRIC).run(n_steps=_UNI_N_STEPS, devices=devices))
 
-    # (a) distributed result is finite / bounded (the bug produced inf).
     assert np.isfinite(multi), (
         f"distributed dielectric max|E| not finite ({multi}) -- the #205 "
         "vacuum-coefficient divergence has regressed")
-    # Measured factor 1.25e8 equals predicted 1/dV (dx=2 mm).
-    assert multi < 1e3 * 1.25e8, f"distributed dielectric max|E|={multi} grossly large"
+    assert multi < 1e3 * MEASURED_INVERSE_CELL_VOLUME_PER_M3, f"distributed dielectric max|E|={multi} grossly large"
 
-    # (b) distributed ~= single-device (the correct material-aware reference).
     rel = abs(multi - single) / max(abs(single), 1e-30)
     assert rel < 1e-2, (
         f"distributed dielectric max|E|={multi:.6e} disagrees with single "
@@ -202,40 +176,15 @@ def test_distributed_cpml_responds_to_eps():
     diel = _max_abs_e(
         _uni_build_sim(_UNI_EPS_DIELECTRIC).run(n_steps=_UNI_N_STEPS, devices=devices))
     assert np.isfinite(vac) and np.isfinite(diel)
-    # Different permittivity -> different field magnitude at the same step.
     assert abs(vac - diel) / max(vac, 1e-30) > 1e-3, (
         f"vacuum ({vac:.6e}) and dielectric ({diel:.6e}) responses are "
         "indistinguishable -- eps_r is not influencing the distributed run")
 
 
-# ===========================================================================
-# 3. Distributed NON-UNIFORM runner (NU lane)
-# ===========================================================================
-#
-# Before this fix rfx/runners/distributed_nu.py applied its CPML correction
-# with a HARDCODED VACUUM coefficient (``_apply_cpml_e_local_nu`` /
-# ``_apply_cpml_h_local_nu``). WITNESS (origin/main, captured field-level via
-# the runner's ``final_state``): a small genuinely-non-uniform cube (10
-# interior cells, cpml=6) fully filled with eps_r=9 and a Gaussian source near
-# the absorber blows the 2-device distributed forward to inf while the
-# single-device NU forward (material-aware) stays finite (~4.6e7).
-# After the fix the distributed result matches the single-device reference to
-# < 1e-6 (witnessed rel-diff ~8.8e-8).
-#
-# REACHABILITY (an important finding in itself): the NU-distributed CPML
-# kernels are reached ONLY via ``Simulation.forward(distributed=True,
-# devices=[...], boundary='cpml')`` -- the *differentiable* lane.
-# ``run(devices=...)`` on a non-uniform + CPML grid hard-raises
-# NotImplementedError (Phase C fence) in distributed_v2.py before ever touching
-# distributed_nu.py. So these tests exercise ``forward`` (not ``run``) and
-# ALSO assert the lane is AD-safe. ~11 s wall-clock.
-
-# --- run parameters (mirror the NU witness: small genuinely-NU cube, ---
-# --- source near the absorber so energy is absorbed THROUGH the dielectric) -
 _NU_DX0 = 2e-3
 _NU_CPML = 6
-_NU_RATIO = 1.1            # mild grading -> genuinely non-uniform, ratio <= 5
-_NU_NX = 22                # 22 total = ~10 interior + 2*6 CPML
+_NU_RATIO = 1.1
+_NU_NX = 22
 _NU_FREQ_MAX = 5e9
 _NU_F0 = 3e9
 _NU_N_STEPS = 200
@@ -284,8 +233,6 @@ def _nu_capture_distributed_final_state(eps_r: float, devices) -> object:
     orig = _dnu.run_nonuniform_distributed_pec
 
     def _wrap(*a, **kw):
-        # forward() no longer asks the runner for the gathered state; this
-        # test reads it, so request it explicitly.
         kw["gather_final_state"] = True
         out = orig(*a, **kw)
         cap["state"] = out.get("final_state")
@@ -327,17 +274,17 @@ def test_distributed_nu_cpml_dielectric_finite_and_matches_single():
     """eps_r=9 filling the NU CPML: the distributed-NU forward must be finite
     AND match the material-aware single-device NU reference (pre-#205 the
     distributed-NU path diverged to inf)."""
+    assert 1.0 < _NU_RATIO <= 5.0, (
+        'Nonuniform CPML witness needs genuine mild grading with a ratio at most five')
     devices = jax.devices()[:2]
 
     single = _max_abs_e_state(_nu_capture_single_final_state(_NU_EPS_DIELECTRIC))
     multi = _max_abs_e_state(_nu_capture_distributed_final_state(_NU_EPS_DIELECTRIC, devices))
 
-    # (a) distributed result is finite (the bug produced inf).
     assert np.isfinite(multi), (
         f"distributed-NU dielectric max|E| not finite ({multi}) -- the #205 "
         "vacuum-coefficient divergence has regressed in distributed_nu.py")
 
-    # (b) distributed ~= material-aware single-device reference.
     rel = abs(multi - single) / max(abs(single), 1e-30)
     assert rel < 1e-2, (
         f"distributed-NU dielectric max|E|={multi:.6e} disagrees with the "
@@ -353,8 +300,6 @@ def test_distributed_nu_cpml_forward_is_ad_finite():
     dt/(eps_r*eps_0) coefficient path)."""
     devices = jax.devices()[:2]
 
-    # Offset the probe from the source so the recorded field depends on the
-    # propagation through the (eps_r-dependent) medium + absorber.
     def _build_offset():
         sim = Simulation(
             freq_max=_NU_FREQ_MAX, domain=(_NU_LX, _NU_LY, _NU_LZ), dx=_NU_DX0,
@@ -379,38 +324,11 @@ def test_distributed_nu_cpml_forward_is_ad_finite():
     assert np.isfinite(grad).all(), (
         "gradient through distributed-NU CPML forward is non-finite -- the "
         "#205 per-face eps_r slicing broke AD traceability")
-    # Non-trivial: the eps_r-dependent coefficient must actually influence
-    # the loss (guards against a silently-detached / zeroed gradient).
     assert float(np.abs(grad).max()) > 0.0, (
         "gradient through distributed-NU CPML forward is identically zero -- "
         "eps_r is not influencing the differentiable distributed run")
 
 
-# ===========================================================================
-# 4. The legacy pmap runner's fixture, on the shard_map runner
-# ===========================================================================
-#
-# These two tests guarded the LEGACY pmap runner
-# ``rfx.runners.distributed.run_distributed``. #1296 removed that runner; the
-# fixture, the assertions and the tolerances are kept and now drive
-# ``sim.run(devices=...)``, i.e. ``distributed_v2``, on this second geometry
-# (section 2 is the first). The history below is the pmap runner's.
-#
-# Earlier the pmap scan body passed ``None`` to the
-# (material-aware) CPML kernels (witnessed: eps_r=9, 2 devices -> inf on
-# origin/main, finite after the wire). This pins that the pmap scan body now
-# threads ``materials_slab.eps_r/.mu_r``.
-#
-# Note on tolerance: the legacy pmap runner has an inherent ~1% disagreement
-# with the single-device reference EVEN IN VACUUM (a property of this older
-# domain-decomposition path; the production v2 runner matches to ~1e-7). The
-# fix is not expected to make the dielectric match single-device any better
-# than vacuum does -- only to remove the divergence and restore vacuum-level
-# parity. So we assert (a) finite/bounded and (b) the dielectric agrees with
-# single-device about as well as vacuum does, rather than a tight absolute gate.
-
-# nx must be a multiple of n_devices for the pmap slabber (no padding, unlike
-# v2): domain_x=0.022 / dx=0.002 -> 11 interior + 2*6 cpml + 1 node = 24 cells.
 _PMAP_DOMAIN = (0.022, 0.02, 0.02)
 _PMAP_DX = 0.002
 _PMAP_CPML = 6
@@ -432,11 +350,12 @@ def _pmap_build(eps_r):
 def test_pmap_fixture_cpml_dielectric_finite_and_matches_single():
     """eps_r=9 filling the CPML, on the pmap runner's fixture and now through
     ``sim.run(devices=...)`` (#1296): finite (was inf on main) and as close to
-    single-device as the vacuum case is."""
+    single-device as the vacuum case is.
+
+    The +1e-2 pad was sized empirically against the legacy path's inherent ~1.05e-2 vacuum-vs-single offset (margin ~= the offset itself).
+    """
     devs = jax.devices()[:2]
 
-    # Vacuum baseline: how well does the legacy pmap path track single-device
-    # when the absorber coefficient is unambiguously correct?
     vac_single = _max_abs_e(_pmap_build(1.0).run(n_steps=_PMAP_N_STEPS))
     vac_pmap = _max_abs_e(_pmap_build(1.0).run(n_steps=_PMAP_N_STEPS, devices=devs))
     assert np.isfinite(vac_pmap)
@@ -445,20 +364,12 @@ def test_pmap_fixture_cpml_dielectric_finite_and_matches_single():
     diel_single = _max_abs_e(_pmap_build(_PMAP_EPS).run(n_steps=_PMAP_N_STEPS))
     diel_pmap = _max_abs_e(_pmap_build(_PMAP_EPS).run(n_steps=_PMAP_N_STEPS, devices=devs))
 
-    # (a) finite + bounded -- the bug produced inf.
     assert np.isfinite(diel_pmap), (
         f"pmap dielectric max|E| not finite ({diel_pmap}) -- the #205 "
         "vacuum-coefficient divergence has regressed on the pmap path")
-    # Measured factor 1.25e8 equals predicted 1/dV (dx=2 mm).
-    assert diel_pmap < 1e3 * 1.25e8, f"pmap dielectric max|E|={diel_pmap} grossly large"
+    assert diel_pmap < 1e3 * MEASURED_INVERSE_CELL_VOLUME_PER_M3, f"pmap dielectric max|E|={diel_pmap} grossly large"
 
-    # (b) the dielectric matches single-device about as well as vacuum does --
-    # i.e. the material fix restored vacuum-level parity (it does NOT and need
-    # not beat the legacy path's inherent ~1% offset).
     diel_rel = abs(diel_pmap - diel_single) / max(abs(diel_single), 1e-30)
-    # +1e-2 pad sized empirically against the legacy path's inherent ~1.05e-2
-    # vacuum-vs-single offset (margin ~= the offset itself); assertion (a)
-    # above is the load-bearing inf-regression gate and stands alone.
     assert diel_rel < vac_rel + 1e-2, (
         f"pmap dielectric rel-diff {diel_rel:.3e} is materially worse than the "
         f"vacuum baseline {vac_rel:.3e} -- material-aware coeff suspect")
@@ -476,18 +387,6 @@ def test_pmap_fixture_cpml_responds_to_eps():
     assert abs(vac - diel) / max(vac, 1e-30) > 1e-3, (
         f"vacuum ({vac:.6e}) and dielectric ({diel:.6e}) pmap responses are "
         "indistinguishable -- eps_r is not influencing the pmap run")
-
-
-# ===========================================================================
-# 5. vmap_sweep scan body (CPML-padding guard)
-# ===========================================================================
-#
-# ``rfx/vmap_sweep.py``'s batched scan called ``apply_cpml_e/h`` WITHOUT
-# ``materials=``. The fix is a passthrough: ``materials`` is already the
-# per-batch-element ``MaterialArrays`` inside the vmapped ``run_one``, so
-# passing ``materials=materials`` lets vmap batch it transparently. Witness
-# measured on the buggy tree: vmap diverges (max|.|~1e24-1e26) while the
-# material-aware ``run()`` stays finite (~3e-2).
 
 
 def _vmap_full_dielectric_cpml_sim(eps_r: float):
@@ -543,33 +442,29 @@ def test_vmap_cpml_dielectric_is_finite_and_matches_run():
     matched to eps_r=10.0 while the interior correctly swept to 4.0);
     post-fix both ``ts[0]`` and ``ts[1]`` are exactly bit-identical
     (0.0) with their respective ``run()`` references.
+
+    The buggy free-space CPML tree reaches ~1e26 well before 300 steps.
     """
     eps_values = np.array([4.0, 10.0])
-    n_steps = 300  # buggy tree reaches ~1e26 well before this
+    assert np.any(eps_values != 10.0) and np.any(eps_values == 10.0), (
+        'CPML padding sweep needs both a changed permittivity and the base permittivity')
+    n_steps = 300
 
     res = vmap_material_sweep(
         _vmap_full_dielectric_cpml_sim(10.0), "d.eps_r", eps_values, n_steps=n_steps,
     )
-    ts = np.asarray(res.time_series)  # (2, n_steps, 1)
+    ts = np.asarray(res.time_series)
 
-    # Primary regression guard: a free-space absorber in the dielectric diverges.
     assert np.isfinite(ts).all(), (
         "vmap CPML sweep produced non-finite fields — the dielectric-filled "
         "absorber is not material-aware (issue #205 regression). "
         f"max|.|={np.nanmax(np.abs(ts)):.3e}"
     )
-    # The whole batch must be bounded (passive), not just non-NaN.
-    # Measured factor 1.25e8 equals predicted 1/dV (dx=2 mm).
-    assert float(np.max(np.abs(ts))) < 1.0 * 1.25e8, (
+    assert float(np.max(np.abs(ts))) < 1.0 * MEASURED_INVERSE_CELL_VOLUME_PER_M3, (
         f"vmap CPML sweep fields are implausibly large ({np.max(np.abs(ts)):.3e}) "
         "— absorber likely mismatched."
     )
 
-    # Correctness: EVERY sweep element must reproduce the material-aware
-    # uniform run() path (the supported reference) on the same geometry --
-    # eps_r=4.0 (differs from the base 10.0, the CPML-padding
-    # regression guard) AND eps_r=10.0 (matches base, kept for continuity
-    # with the original pin).
     for idx, ev in enumerate(eps_values):
         ref = np.asarray(
             _vmap_full_dielectric_cpml_sim(float(ev)).run(n_steps=n_steps).time_series
@@ -592,34 +487,6 @@ def test_vmap_cpml_distinct_eps_change_response():
     assert np.max(np.abs(ts[0] - ts[1])) > 0.0, "eps_r had no effect on the sweep"
 
 
-# ===========================================================================
-# 6. Lumped / wire S-parameter extractor re-runs
-# ===========================================================================
-#
-# ``run(compute_s_params=True)`` for a single-cell lumped port (or a wire
-# port) runs a *separate* eager FDTD re-run inside
-# ``rfx.probes.probes.extract_s_matrix`` / ``extract_s_matrix_wire`` to
-# accumulate the port V/I DFTs. Those re-runs called ``apply_cpml_h/e``
-# WITHOUT ``materials=``; inside a dielectric the field diverges to float32
-# overflow (first NaN ~step 300-400), the V/I DFTs are poisoned, and every
-# S-parameter comes back NaN. The production JIT scan body passes
-# ``materials=materials`` and is stable — which is why the *same* run with
-# ``compute_s_params=False`` is healthy.
-#
-# ``test_lumped_...`` is the strict regression: it triggers the
-# divergence deterministically (dielectric spanning the full transverse
-# cross-section so its y/z faces sit in the CPML, run ~700 steps so the
-# pre-fix field blow-up reaches NaN), and was confirmed to FAIL on the pre-fix
-# code and pass after. ``test_wire_...`` exercises the sibling wire extractor
-# on the same geometry; empirically this case stayed finite even pre-fix (the
-# single-cell lumped excitation is what seeded the instability), so it is a
-# forward-looking finiteness/passivity guard, not a proven before/after
-# regression. Both assert only finiteness and passivity (|S| <= 1); the
-# absolute |S11| of a lossless dielectric block on an open domain is a
-# near-total reflector and is not a validated number.
-
-# Enough steps for the pre-fix CPML divergence to reach NaN (it first appears
-# ~step 300-400; fewer steps would let the buggy code pass spuriously).
 _LW_N_STEPS = 700
 
 
@@ -634,7 +501,6 @@ def _lw_dielectric_in_cpml_sim():
         cpml_layers=8,
     )
     sim.add_material("diel", eps_r=4.0)
-    # Spans full y/z extent -> the block's transverse faces sit in the CPML.
     sim.add(Box((0.02, 0.0, 0.0), (0.04, 0.03, 0.02)), material="diel")
     return sim
 
@@ -645,7 +511,6 @@ def test_lumped_port_sparam_cpml_dielectric_finite_passive():
     Pre-fix this returned all-NaN s_params (issue #203 as-filed symptom).
     """
     sim = _lw_dielectric_in_cpml_sim()
-    # Single-cell lumped port (extent=None), interior in x (clear of x-CPML).
     sim.add_port(
         position=(0.03, 0.015, 0.01),
         component="ez",
@@ -685,13 +550,6 @@ def test_wire_port_sparam_cpml_dielectric_finite_passive():
     s = np.asarray(result.s_params)
     assert np.all(np.isfinite(s)), "wire S-params must be finite (issue #203)"
     max_s11 = float(np.max(np.abs(s[0, 0, :])))
-    # RESTORED: the
-    # lane now samples the physical V/I/V_port POST-injection, so the
-    # whole-port driven diagonal is the validated terminal pair and its
-    # physical passivity bound is live again (on the PRE-injection
-    # interim this fixture measured max|S11| = 6.1968 — keyed-envelope
-    # era, history in the git log).  The finiteness guard above — this
-    # test's original regression target — stays live.
     assert max_s11 <= 1.0 + 1e-3, (
         f"driven wire diagonal not passive: max|S11|={max_s11:.4f} "
         f"(physical gate restored by the #683 flip)")
