@@ -394,9 +394,9 @@ length of each cut edge, after a stability bound that caps it by the areas of th
 the drawn surface on 1 mm cells, before that bound, curved bodies are off by up to 0.44 of a face (cylinder side) and
 0.63 of an edge (sphere), where a mesh face or edge is nearly tangent to the surface.
 
-An axis-aligned Box takes its exact overlap with each cut cell, its edges and corners included. A cut cell that a
-sphere or cylinder also reaches (within one cell diagonal of its surface) keeps the curved body's rule, so a Box edge
-there is not exact. Open areas and lengths in cells crossed only by a flat face are exact, and a Box face lying on a
+An axis-aligned Box takes its exact overlap with each cut cell, its edges and corners included. A cut cell that
+another PEC body also reaches (a sphere, a cylinder, or such a body continued into the absorber; within one cell
+diagonal of its surface) keeps that body's rule, so a Box edge there is not exact. Open areas and lengths in cells crossed only by a flat face are exact, and a Box face lying on a
 mesh plane is realized at its drawn plane. In a closed PEC cavity, a PEC block whose faces lie off the mesh planes
 resonates as the exact-area computation does on 1, 0.5 and 0.25 mm cells, and an empty cavity with two or three walls
 off the mesh planes puts each wall within 0.01 cell of the closed form. Effect of the curved-body deviation on
