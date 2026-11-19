@@ -125,7 +125,6 @@ def test_overlap_mode_normalization():
     The sign of C_mode can be negative for y-normal ports (left-handed
     tangential frame with flipped H profiles), but the magnitude should
     be ~1 for all axes.
-    The x-normal C_mode is positive in the right-handed frame.
     """
     a_wg = 0.04
     b_wg = 0.02
@@ -184,7 +183,7 @@ def test_overlap_passivity():
     normalization).  We verify:
     1. Overlap S11/S21 match V/I S11/S21 (< 1e-4 relative error)
     2. In the best-resolved mid-band frequencies, |S11|² + |S21|² < 1.10
-    The 1.15 passivity threshold accommodates an earlier observed maximum of ~1.11 after the CPML retune (kappa_max 1 -> 5, order 2 -> 3).
+    The 1.15 passivity threshold matches the test_passivity_two_port_empty_waveguide gate in test_conservation_laws for consistency.
     """
     a_wg = 0.04
     b_wg = 0.02

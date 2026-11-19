@@ -209,6 +209,7 @@ def test_two_port_s_envelope_on_matched_line():
     mesh, and n_live = 4.  The stub-line fixture is still not a
     calibrated oracle, so the gate is the physical PASSIVITY ceiling
     plus an alive floor, not a physics band.
+    The passive-column bars (<1.01 power, >0.5 |S12|, and <=1e-2 relative reciprocity error) allow margin over values measured earlier (power 0.99913-1.00009, |S12| 0.695-0.990, and max|S12-S21| = 1.0e-3 of max|S|).
     """
     sim = _build_line()
     freqs = jnp.linspace(2e9, 6e9, 51)

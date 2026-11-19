@@ -27,7 +27,6 @@ FIXED (NU-DRIVE-FIX 2026-05-25):
      guard threshold 1e-30 too aggressive — NU TFSF operates at float32 signal
      level ~1e-31 (dt/dx scaling), causing the guard to substitute 1.0 for
      b_ref and breaking the b_dev/b_ref≈1 cancellation. Lowered to 1e-60.
-Scope x64 with ``with jax.experimental.enable_x64(True):`` to avoid leaking into downstream same-process tests.
 """
 from __future__ import annotations
 

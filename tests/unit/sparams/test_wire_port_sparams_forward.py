@@ -39,7 +39,7 @@ def _build_wire_port_cavity():
 
 def test_forward_wire_port_sparams_populated():
     """forward(port_s11_freqs=...) must populate result.s_params + wire_port_sparams.
-    At 160 periods (-33.9 dB), an earlier measurement of the closed PEC cavity's physical POST-injection terminal pair put every bin at 0.93-0.9999."""
+    The 160-period setting is based on measurements made earlier of |S11| = 0.93-0.9999 (-33.9 dB field level), versus 1.05 and 0.36 from the unsettled 40-period record."""
     sim = _build_wire_port_cavity()
     freqs = jnp.linspace(1.5e9, 4.5e9, 7, dtype=jnp.float32)
     result = sim.forward(

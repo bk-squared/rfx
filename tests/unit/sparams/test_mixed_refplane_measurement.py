@@ -143,7 +143,7 @@ def _measurement_fixture(direction, n_probes):
 
 def _run_mixed(direction: str, n_probes: int, num_periods: float = 4.0):
     """One instrumented two-drive call; returns the result or raises.
-    Preserve the diagnostic fixture's off-grid trace and measured ladders."""
+    """
     import contextlib
     import io
 
@@ -195,7 +195,7 @@ def test_t2_crossing_guard_walks_msl_probe_ladders_n_probes_5_trips():
 def test_t2_crossing_guard_silent_at_n_probes_3():
     """The declared deviation: ladder 4.72 / 4.40 / 4.08 mm, all outboard of
     the 2N plane. Must run clean — and must actually register the planes.
-    Keep the measured ladder on its declared off-grid board."""
+    """
     sim = _measurement_fixture(m._FEED_DIRECTION, m._N_PROBES)
     import contextlib
     import io

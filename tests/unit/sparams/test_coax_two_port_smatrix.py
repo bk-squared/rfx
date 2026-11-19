@@ -452,6 +452,7 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
     def _fake_run(grid_, materials, n_steps, *, boundary, cpml_axes, sources,
                  mag_sources, probes, dft_planes, return_state,
                  pec_edge_masks=None, record_dft=False):
+        """The explicit runner signature makes a new argument at the real call site raise TypeError instead of being silently absorbed."""
         assert record_dft is True
         k0 = float(sources[0].k)
         drive_val = DRIVE_PORT1 if k0 > nz_mid else DRIVE_PORT2
@@ -962,7 +963,7 @@ def test_two_drive_solve_removes_the_terminator_floor():
 
 def test_conditioning_grows_slowly_with_terminator_reflection():
     """Pins the measured cond(A) trend so a regression is visible.
-    A bare ``< 3.0`` passed only because an earlier platform's SVD rounded the |Gt|=0.5 value to 2.999999999999999.
+    The closed form is asserted because |Gt|=0.5 gives exactly 3.0 despite this platform's SVD rounding to 2.999999999999999, which a LAPACK/numpy change could flip.
     """
     n_f = 1
     conds = {}
