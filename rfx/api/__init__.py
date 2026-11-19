@@ -18,7 +18,7 @@ Usage
 
 from __future__ import annotations
 
-from rfx.errors import AccuracyWarning, ConfigurationWarning
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal
 import inspect
 import math
 import json
@@ -322,7 +322,7 @@ class Simulation(
         from rfx.boundaries import normalize_boundary
 
         self._snap, self._interface_eps, self._pec_occupancy_model = _validate_constructor_choices(
-            snap, interface_eps, pec_occupancy_model)
+            snap, interface_eps, pec_occupancy_model, dx)
 
         # T7-B: accept BoundarySpec directly or normalise a legacy scalar
         # boundary=<str>. A BoundarySpec provided here is authoritative;
@@ -1635,7 +1635,7 @@ class Simulation(
             try:
                 numeric = float(value)
             except (TypeError, ValueError):
-                raise ValueError(f"{label} must be a finite scalar, got {value!r}") from None
+                raise RfxRefusal(f"{label} must be a finite scalar, got {value!r}") from None
             if not math.isfinite(numeric):
                 raise ValueError(f"{label} must be finite, got {value!r}")
             if require_positive and numeric <= 0:
@@ -1688,7 +1688,7 @@ class Simulation(
                 lo_f = float(lo)
                 hi_f = float(hi)
             except (TypeError, ValueError):
-                raise ValueError(f"{label} must contain finite scalars, got {rng!r}") from None
+                raise RfxRefusal(f"{label} must contain finite scalars, got {rng!r}") from None
             if not math.isfinite(lo_f) or not math.isfinite(hi_f):
                 raise ValueError(f"{label} must contain finite scalars, got {rng!r}")
             if lo_f < 0.0 or hi_f > domain_max or hi_f <= lo_f:
@@ -1700,7 +1700,7 @@ class Simulation(
             or len(mode) != 2
             or any(not isinstance(idx, Integral) for idx in mode)
         ):
-            raise ValueError(f"mode must be a tuple of two integers, got {mode!r}")
+            raise RfxRefusal(f"mode must be a tuple of two integers, got {mode!r}")
         if any(idx < 0 for idx in mode):
             raise ValueError(f"mode indices must be non-negative, got {mode!r}")
         if mode_type not in ("TE", "TM"):
@@ -1720,7 +1720,7 @@ class Simulation(
         if probe_offset <= 0 or ref_offset <= 0:
             raise ValueError("probe_offset and ref_offset must be positive integers")
         if not isinstance(n_modes, Integral) or n_modes < 1:
-            raise ValueError(f"n_modes must be a positive integer, got {n_modes!r}")
+            raise RfxRefusal(f"n_modes must be a positive integer, got {n_modes!r}")
         if calibration_preset not in (None, "measured", "source_to_probe"):
             raise ValueError(
                 "calibration_preset must be one of None, 'measured', or 'source_to_probe'"
@@ -1746,7 +1746,7 @@ class Simulation(
             raise ValueError("probe_plane must be >= reference_plane when both are provided")
         if freqs is None:
             if not isinstance(n_freqs, Integral):
-                raise ValueError(f"n_freqs must be a positive integer, got {n_freqs!r}")
+                raise RfxRefusal(f"n_freqs must be a positive integer, got {n_freqs!r}")
             if n_freqs <= 0:
                 raise ValueError(f"n_freqs must be positive, got {n_freqs}")
             freqs_arr = None
@@ -1889,7 +1889,7 @@ class Simulation(
         # Reject an explicit incompatible declaration at registration. Auto
         # mesh depends on the completed model and is checked by preflight.
         if self._declared_mesh["_dz_profile"] is not None:
-            raise ValueError(
+            raise RfxRefusal(
                 "Floquet ports do not support non-uniform z mesh (dz_profile). "
                 "Set dx explicitly to prevent auto-mesh from creating NU grid."
             )
