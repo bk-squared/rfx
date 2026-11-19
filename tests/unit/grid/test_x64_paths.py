@@ -1,4 +1,8 @@
-"""Public API x64 carry census: small models and explicit lane refusals."""
+"""Public API x64 carry census: small models and explicit lane refusals.
+
+``SLOW_ROWS`` are the rows measured above 5 s in either Mac census; include them
+explicitly with ``-o addopts=`` when validating.
+"""
 import re
 import pytest
 
@@ -22,7 +26,7 @@ def exercise(path, feature):
     multi = path.startswith('multi')
     tfsf = feature in ('normal_open', 'closed_box', 'oblique_open', 'oblique_bloch')
     kw = {'dz_profile': np.array([.001] * 4 + [.0008] * 5 + [.0012] * 5)} if graded else {}
-    # 14 mm graded z; all allocated axes <= 23 nodes, fine slab <= 23.
+    assert not graded or abs(float(np.sum(kw['dz_profile'])) - .014) < 1e-12, "the graded z profile spans the 14 mm domain"
     domain = (.010, .010, .014 if graded else .010)
     boundary = 'cpml' if tfsf or feature in ('ntff', 'waveguide') else 'pec'
     if feature == 'waveguide':
@@ -85,7 +89,6 @@ def exercise(path, feature):
     return result.time_series
 
 
-# Product refusals observed on main; expected values do not use solver helpers.
 REFUSALS = {
     ("graded", "closed_box"): "CustomWaveform and closed_box TFSF require a uniform, 3D second-order Yee run/forward with no subgrids",
     ("graded", "oblique_open"): "TFSF oblique incidence (angle_deg != 0) is not yet supported on nonuniform z mesh — the 2D auxiliary grid is uniform-only. Use angle_deg=0 or run on the uniform lane.",
@@ -118,7 +121,6 @@ REFUSALS = {
     ("subgridded", "ringdown"): "forward(ringdown=...) is not supported on the subgridded lane.",
 }
 
-# >5 s in either Mac census; include explicitly with -o addopts= when validating.
 SLOW_ROWS = {('multi_graded', 'run'), ('multi_graded', 'grad'),
              ('multi_graded', 'ntff'), ('subgridded', 'run')}
 ROWS = [pytest.param(path, feature, id=f'{path}-{feature}',
