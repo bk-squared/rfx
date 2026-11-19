@@ -24,7 +24,7 @@ from tests._gate_policy import gate_from_envelope
 # Live-layer tolerance on |S_live − S_fixture| (absolute, per entry), derived
 # from the measured cross-backend envelope through the shared policy: the 12
 # coarse + mid cells re-measured on this box (CPU, jax 0.6.2) against the
-# fixture (VESSL 369367257823, gpu-rtx4090, jax 0.4.33) differed by at most
+# fixture (gpu-rtx4090, jax 0.4.33) differed by at most
 # 5.000e-6 (pec_short-coarse-flux; the others 9.6e-7 .. 2.6e-6). The quantum
 # is 1e-4 so the pin is not a 2x knife edge on a float32 reassociation
 # envelope; the fine rung (4x the steps) is compared on the GPU lane only.

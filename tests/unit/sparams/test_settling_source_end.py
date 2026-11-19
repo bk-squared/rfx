@@ -73,7 +73,7 @@ def test_waveguide_uses_incident_record_and_farthest_plane():
     record = np.exp(-np.arange(100)/20.)
     incident = np.zeros(100)
     incident[:5] = 1.
-    # The incident E table the port applies (#2030), not the analytic v_inc_t.
+    # The incident E table the port applies, not the analytic v_inc_t.
     cfg = SimpleNamespace(
         src_amp=1., e_inc_table=incident, dt=1., freqs=np.array([.1]), source_x_m=0.,
         reference_x_m=0., probe_x_m=2.5*C0,
@@ -105,16 +105,16 @@ def test_tfsf_uses_its_waveform_and_launch_to_box_reach():
 
     grid = Grid(freq_max=10e9, domain=(.03, .03, .03), dx=.003, cpml_layers=4)
     cfg, _ = init_tfsf(grid.nx, grid.dx, grid.dt, cpml_layers=4,
-                      ny=grid.ny, nz=grid.nz, closed_box=True, n_steps=300)
+                      ny=grid.ny, nz=grid.nz, closed_box=True, n_steps=300, dtype='float32')
     waveform, distance = tfsf_source_drive(cfg, grid)
     expected_distance = (cfg.x_hi - cfg.source_p) * grid.dx
     assert distance(None) == pytest.approx(expected_distance)
     time = jnp.arange(300, dtype=jnp.float32)*grid.dt
-    # #1839: the source-end model must exactly match the line's launched waveform.
+    # The source-end model must exactly match the line's launched waveform.
     actual = jax.vmap(waveform)(time)
     launched = jax.vmap(lambda t: line_source_value(cfg, t, cfg.src_amp))(time)
     np.testing.assert_array_equal(actual, launched)
-    # #1839: independently check the charge-free DG in NumPy float64.
+    # Independently check the charge-free DG in NumPy float64.
     t = np.asarray(time, dtype=np.float64)
     c, u = cfg.src_t0 / cfg.src_tau, t / cfg.src_tau
     arg = (t - cfg.src_t0) / cfg.src_tau

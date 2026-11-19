@@ -336,7 +336,7 @@ def test_public_imports_and_json_roundtrip():
         "checkpoint_segments",
         "ad_active_steps",
         "ad_segmented_active_segments",
-        # #696: the artifact must LABEL which grid it describes and carry
+        # The artifact must LABEL which grid it describes and carry
         # the sheet-operator term, otherwise a number sized against the
         # uniform grid is indistinguishable from one sized against the NU
         # grid the solve actually steps.
@@ -967,7 +967,7 @@ def test_explain_ad_memory_decomposes_selected_estimate():
     assert explanation.strategy == "segmented_checkpoint_every"
     assert explanation.selected_memory_field == "ad_segmented_gb"
     assert explanation.selected_memory_gb == explanation.estimate.ad_segmented_gb
-    # #277: at chunk=500 (well above the balanced ≈141) the live-chunk
+    # At chunk=500 (well above the balanced ≈141) the live-chunk
     # rematerialization tape dominates the decomposition.
     assert explanation.dominant_component == "segmented_live_segment_tape"
     assert {
@@ -977,9 +977,8 @@ def test_explain_ad_memory_decomposes_selected_estimate():
         "calibrated_ad_workspace",
         "segmented_boundary_field_tape",
         "segmented_live_segment_tape",
-        # #696: the f0 sheet operator's three edge masks + sigma_sheet are
-        # a full-grid forward allocation that nothing else counts (since
-        # #677 the sheet is in neither pec_mask nor materials.sigma). The
+        # The f0 sheet operator's three edge masks + sigma_sheet are
+        # a full-grid forward allocation that nothing else counts (the sheet is in neither pec_mask nor materials.sigma). The
         # component is always present and reads 0 GB when no f0 sheet is
         # registered, as here.
         "surface_impedance_sheet_state",
@@ -1035,7 +1034,7 @@ def test_explain_ad_memory_covers_ntff_and_segmented_warmup_paths():
         assert components["segmented_boundary_field_tape"]["count"] == (
             explanation.estimate.ad_segmented_active_segments
         )
-        # #277: both segmented paths carry the same 12-step live tape here
+        # Both segmented paths carry the same 12-step live tape here
         # (segment length 120/10 on the uniform path, chunk 12 on the
         # scan-of-scan path).
         assert components["segmented_live_segment_tape"]["count"] == 12
@@ -1095,7 +1094,7 @@ def test_ad_memory_preflight_full_fit_branch():
     assert artifact["mesh_report"] is None
     # The serialised report must carry the PREFLIGHT honesty labels, not the neighbouring
     # certificate tuple: to_dict() builds this list, so it is not the constant compared with
-    # itself. (Moved here from a removed wording test, #1127.)
+    # itself.
     assert artifact["evidence_boundaries"] == list(AD_MEMORY_PREFLIGHT_BOUNDARIES)
     assert json.loads(report.to_json()) == artifact
 
@@ -1103,7 +1102,7 @@ def test_ad_memory_preflight_full_fit_branch():
 def test_ad_memory_preflight_nonuniform_checkpoint_branch():
     sim = _patch_like_sim()
 
-    # Budget raised 1.0 → 8.0 GB for #277 (see
+    # Budget raised 1.0 → 8.0 GB (see
     # test_plan_ad_memory_recommends_checkpoint_every_for_budget).
     report = sim.ad_memory_preflight(n_steps=10_000, available_memory_gb=8.0)
     hint = next(
@@ -1173,7 +1172,7 @@ def test_ad_memory_preflight_unfit_branch_is_diagnostic_only():
     assert report.full_ad_fits is False
     assert report.checkpointing_fits is False
     assert report.supported_checkpoint_mode == "checkpoint_every"
-    # #277: the diagnostic candidate is the least-memory chunk, not
+    # The diagnostic candidate is the least-memory chunk, not
     # checkpoint_every=n_steps (see test_plan_ad_memory_reports_unfit_budget).
     assert report.checkpoint_every == 100
     assert report.checkpoint_segments is None
@@ -1218,8 +1217,8 @@ def test_memory_reduction_docs_separate_planning_from_certificate_evidence():
         assert boundary in doc
 
 
-# Calibration rows from VESSL 369367233509 (inverse-design gradient smoke,
-# ~603k-cell FR4 patch — see module docstring). The pre-#277 boundary-only
+# Calibration rows (inverse-design gradient smoke,
+# ~603k-cell FR4 patch — see module docstring). The earlier boundary-only
 # formula fails the 0.5x floor at the (64, 2000) row (0.39x observed);
 # these rows are what discriminate the corrected model.
 @pytest.mark.parametrize("chunk,n_steps,observed_gb", [
@@ -1334,7 +1333,7 @@ def test_plan_ad_memory_returns_none_when_full_ad_fits():
 def test_plan_ad_memory_recommends_checkpoint_every_for_budget():
     sim = _patch_like_sim()
 
-    # Budget raised 1.0 → 8.0 GB for #277: with the live-chunk tape counted,
+    # Budget raised 1.0 → 8.0 GB: with the live-chunk tape counted,
     # the least segmented memory for this case is ≈4.3 GB (balanced chunk),
     # so 1.0 GB is genuinely unfit — the old budget only fit under the
     # boundary-only under-count.
@@ -1393,7 +1392,7 @@ def test_plan_ad_memory_reports_unfit_budget():
 
     assert plan.full_ad_fits is False
     assert plan.segmented_fits is False
-    # #277: the diagnostic candidate is the least-memory chunk (boundary and
+    # The diagnostic candidate is the least-memory chunk (boundary and
     # live-chunk terms balanced near sqrt(n_steps)), not
     # checkpoint_every=n_steps, which is ~full-AD-sized under the corrected
     # model.
@@ -1421,7 +1420,7 @@ def test_plan_ad_memory_reports_uniform_unfit_budget():
     assert plan.full_ad_fits is False
     assert plan.segmented_fits is False
     assert plan.checkpoint_every is None
-    # #277: the diagnostic candidate is the least-memory divisor of n_steps
+    # The diagnostic candidate is the least-memory divisor of n_steps
     # (K=10 balances K boundary carries against 120/K live-tape steps), not
     # checkpoint_segments=1, which is ~full-AD-sized under the corrected
     # model.
@@ -1436,7 +1435,7 @@ def test_plan_ad_memory_reports_uniform_unfit_budget():
 def test_plan_ad_memory_uses_valid_custom_target_fraction():
     sim = _patch_like_sim()
 
-    # Budget raised 1.0 → 16.0 GB for #277 (least segmented memory for this
+    # Budget raised 1.0 → 16.0 GB (least segmented memory for this
     # case is ≈4.3 GB once the live-chunk tape is counted).
     plan = sim.plan_ad_memory(
         n_steps=10_000,
@@ -1459,7 +1458,7 @@ def test_plan_ad_memory_uses_valid_custom_target_fraction():
 def test_plan_ad_memory_serializes_artifact():
     sim = _patch_like_sim()
 
-    # Budget raised 1.0 → 8.0 GB for #277 so the serialized artifact still
+    # Budget raised 1.0 → 8.0 GB so the serialized artifact still
     # exercises the segmented-fit branch.
     plan = sim.plan_ad_memory(n_steps=10_000, available_memory_gb=8.0)
     artifact = plan.to_dict()
@@ -1544,7 +1543,7 @@ def test_checkpoint_every_active_count_honors_unaligned_warmup():
     # composition for each instead.
     carry_bytes = 87_604
     overhead = 720_000
-    # #1683: a 50-step chunk is above half of the 71 (70) optimized steps,
+    # A 50-step chunk is above half of the 71 (70) optimized steps,
     # so the runner uses n_opt // 2 = 35 and replays 35 steps (at least two
     # full segments; one segment plus a tail kept the whole tape).
     assert unaligned.ad_segmented_gb * 1e9 == pytest.approx(
@@ -1743,7 +1742,7 @@ def test_warning_uses_realistic_selected_estimate():
     assert "segmented" in chunked.warning
     assert "K_active*carry_bytes = s*tape_step_bytes" in chunked.warning
 
-    # #277 direction-aware advice: when the live-segment tape dominates
+    # Direction-aware advice: when the live-segment tape dominates
     # the boundary term, the fix is to move TOWARD sqrt(n_steps), not
     # away from it.
     live_dominated_segments = sim.estimate_ad_memory(

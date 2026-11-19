@@ -91,6 +91,8 @@ def _format_memory_with_safety(value: float, safety_factor: float) -> str:
 
 
 class _AdMemoryMixin:
+    _periodic_flags: Callable[[], tuple[bool, bool, bool]]
+
     # ---- AD memory estimation ----
 
     def _ad_memory_static_accounting(self) -> dict[str, int]:
@@ -141,7 +143,10 @@ class _AdMemoryMixin:
             ny = _nx(self._domain[1], self._dy_profile)
             nz = _nx(self._domain[2], self._dz_profile)
             grid_source = "estimated_from_domain"
-        cells = int(nx * ny * nz)
+        from rfx.stepping.vector_pad import planned_extents
+        allocated = planned_extents((nx, ny, nz), self._periodic_flags(),
+                                    two_d=bool(getattr(_grid, "is_2d", False)), graded=is_nonuniform)
+        cells = int(math.prod(allocated))
 
         # Forward working set: 6 field + ~6 material + ~4 CPML psi (~15%)
         bytes_per_cell = 4  # float32

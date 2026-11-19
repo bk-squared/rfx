@@ -68,7 +68,7 @@ def test_profile_flat_slab(axis, structure, traced):
         def evaluate(face):
             lo = list(box.corner_lo)
             lo[axis] = face
-            return compute_smoothed_eps_nonuniform(grid, [(Box(tuple(lo), box.corner_hi), 4.)])
+            return compute_smoothed_eps_nonuniform(grid, [(Box(tuple(lo), box.corner_hi), 4.)], dtype='float32')
         actual = (jax.jit(evaluate)(box.corner_lo[axis]) if traced else evaluate(box.corner_lo[axis]))
         for component, value in enumerate(actual):
             expected, _, _ = closed_form(profiles, axis, box, component)
@@ -81,9 +81,9 @@ def test_cubic_scalar_main_closed_form_bit_identical(axis):
     profiles, _, box = slab_case(axis, 'cubic')
     grid = Grid(freq_max=30e9, domain=(1.6e-3,) * 3, dx=0.2e-3, cpml_layers=0)
     with enable_x64(False):
-        dielectric = compute_smoothed_eps(grid, [(box, 4.)])
-        inverse = compute_inv_eps_tensor_diag(grid, dielectric_shapes=[(box, 4.)])
-        pec = compute_inv_eps_tensor_diag(grid, pec_shapes=[box])
+        dielectric = compute_smoothed_eps(grid, [(box, 4.)], dtype='float32')
+        inverse = compute_inv_eps_tensor_diag(grid, dielectric_shapes=[(box, 4.)], dtype='float32')
+        pec = compute_inv_eps_tensor_diag(grid, pec_shapes=[box], dtype='float32')
         for component in range(3):
             expected, fill, distance = closed_form(profiles, axis, box, component)
             def full(value):
@@ -131,7 +131,7 @@ def test_zero_normal_radius_gradient(node_tensor):
             shapes = [(Sphere(center, radius), 4.)]
             if node_tensor:
                 return compute_node_tensor_eps(grid, shapes, field_dtype=jnp.float64)
-            return compute_smoothed_eps_nonuniform(grid, shapes)
+            return compute_smoothed_eps_nonuniform(grid, shapes, dtype='float32')
 
         def loss(radius):
             return sum(jnp.sum(a) for a in build(radius))

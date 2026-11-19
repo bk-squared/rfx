@@ -29,7 +29,7 @@ from rfx.stepping.tfsf_2d import (
 
 _DOMAIN = (0.6, 0.12, 0.006)
 _DX = 0.002
-# The Bloch pulse peaks at 5 tau since #1831, 2 tau later than when the oblique step
+# The Bloch pulse peaks at 5 tau, 2 tau later than when the oblique step
 # counts below were set: 223 steps = 2 tau at f0 5 GHz, bw 0.15, dt 3.81 ps.
 _BLOCH_DELAY_STEPS = 223
 
@@ -93,7 +93,7 @@ def test_run_oblique_matches_handrolled_and_low_leakage():
         f0=5e9, bandwidth=0.15, amplitude=1.0, polarization="ez",
         direction="+x", angle_deg=angle, ny=grid.ny, nz=grid.nz,
         waveform="modulated_gaussian",
-    )
+    dtype='float32')
     assert is_tfsf_2d(cfg)
     bloch = bloch_phase_tuple(cfg, dx)
     per = (False, True, True)

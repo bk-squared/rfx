@@ -1,4 +1,6 @@
 """Reference metadata for inputs whose live geometry cannot be read on host."""
+
+from rfx._internal._precision import resolve_coefficient_dtype
 from dataclasses import fields, is_dataclass
 from weakref import WeakKeyDictionary, ref
 
@@ -146,7 +148,7 @@ def nominal_record(sim, conductors, lane, *, compact):
             else:
                 from rfx.model.tensor_operands import smoothing_nominal_h_max
                 compute_smoothed_eps_nonuniform(
-                    grid, pairs, nominal_h_max=smoothing_nominal_h_max(reference, grid))
+                    grid, pairs, nominal_h_max=smoothing_nominal_h_max(reference, grid), dtype=resolve_coefficient_dtype(reference._precision))
         record = record_from_conductors(reference, root, lane=lane, compact=compact)
         if record is not None:
             object.__setattr__(record, "_quantity_grid", grid)

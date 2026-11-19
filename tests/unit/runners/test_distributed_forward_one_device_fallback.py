@@ -72,7 +72,7 @@ def test_sources_refused_even_above_grading_limit(kind):
     profile[-1] = 6.5 * profile.min()
     sim._dz_profile = profile
     # The declared z follows the lengthened profile, or the sum rule refuses
-    # the model before the source refusal this test pins (#1941).
+    # the model before the source refusal this test pins.
     sim._domain = (*sim._domain[:2], float(profile.sum()))
     for entry in ("forward", "run"):
         options = dict(devices=host_devices(2))

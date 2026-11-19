@@ -172,7 +172,7 @@ def test_inverse_metric_arrays_derive_from_cells_bit_for_bit(name, axis):
     """
     grid = FIXTURES[name]()
     inv_e, inv_h = _inv_pair(grid, axis)
-    got_e, got_h = _profile_to_inv_arrays(grid.cells(axis))
+    got_e, got_h = _profile_to_inv_arrays(grid.cells(axis), dtype="float32")
     assert np.array_equal(np.asarray(got_e), np.asarray(inv_e))
     assert np.array_equal(np.asarray(got_h), np.asarray(inv_h))
 
@@ -345,7 +345,7 @@ def test_mutation_a_a_bad_cell_array_is_refused():
     goes red, because nothing else in the suite looks at the sum.
     """
     profile = np.full(10, 1e-3)
-    padded = _append_bounding_node(_pad_profile(profile, 4, 4))
+    padded = _append_bounding_node(_pad_profile(profile, 4, 4, dtype="float32"))
     tampered = padded.copy()
     tampered[6] *= 1.5        # one interior cell 50 % too wide
     with pytest.raises(ValueError, match="span"):
@@ -365,7 +365,7 @@ def test_mutation_b_the_pre_562_missing_bounding_node_is_refused():
     only the duplicate is gone.
     """
     profile = np.full(10, 1e-3)
-    no_bounding_node = _pad_profile(profile, 4, 4)
+    no_bounding_node = _pad_profile(profile, 4, 4, dtype="float32")
     with pytest.raises(ValueError, match="interior cells"):
         assert_cells_span_declared_profile(no_bounding_node, 4, 4, profile, "z")
 
@@ -375,7 +375,7 @@ def test_mutation_b_an_extra_trailing_cell_is_refused():
     ``d[pad_lo:len-pad_hi]`` and pulled the duplicate into the interior."""
     profile = np.full(10, 1e-3)
     doubled = np.concatenate(
-        [_append_bounding_node(_pad_profile(profile, 4, 4)), profile[-1:]])
+        [_append_bounding_node(_pad_profile(profile, 4, 4, dtype="float32")), profile[-1:]])
     with pytest.raises(ValueError, match="interior cells"):
         assert_cells_span_declared_profile(doubled, 4, 4, profile, "z")
 
@@ -537,7 +537,7 @@ def test_mutation_b_the_core_c2_metric_swap_goes_red():
     swapped_e = inv_local
     swapped_h = jnp.concatenate([inv_mean, jnp.zeros(1, dtype=jnp.float32)])
 
-    good_e, good_h = _profile_to_inv_arrays(cells)
+    good_e, good_h = _profile_to_inv_arrays(cells, dtype="float32")
     assert np.array_equal(np.asarray(good_e), np.asarray(grid.inv_dz))
     assert not np.array_equal(np.asarray(swapped_e), np.asarray(grid.inv_dz))
     assert not np.array_equal(np.asarray(swapped_h), np.asarray(grid.inv_dz_h))
@@ -549,7 +549,7 @@ def test_mutation_b_the_trailing_h_end_rule_goes_red():
     not exist."""
     grid = FIXTURES["padfree_graded_end"]()
     cells = grid.cells("z")
-    _, good_h = _profile_to_inv_arrays(cells)
+    _, good_h = _profile_to_inv_arrays(cells, dtype="float32")
     revived = np.asarray(good_h).copy()
     revived[-1] = np.float32(1.0) / np.float32(cells[-1])
     assert float(revived[-1]) != 0.0
@@ -612,7 +612,7 @@ def test_the_inverse_arrays_cannot_tell_the_spine_from_the_store(name, axis):
         (grid.dx_arr, grid.dy_arr, grid.dz)[AXES.index(axis)],
         dtype=np.float64)
     inv_e, inv_h = _inv_pair(grid, axis)
-    from_store_e, from_store_h = _profile_to_inv_arrays(store)
+    from_store_e, from_store_h = _profile_to_inv_arrays(store, dtype="float32")
     assert np.array_equal(np.asarray(from_store_e), np.asarray(inv_e))
     assert np.array_equal(np.asarray(from_store_h), np.asarray(inv_h))
 

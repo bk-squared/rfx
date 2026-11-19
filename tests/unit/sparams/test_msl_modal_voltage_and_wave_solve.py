@@ -54,7 +54,7 @@ F64_TOL = 1e-12
 F32_TOL = 1e-5
 
 # --------------------------------------------------------------------------
-# #511 — modal voltage spans the substrate, not the trace cell
+# Modal voltage spans the substrate, not the trace cell
 # --------------------------------------------------------------------------
 
 N_FREQS = 4
@@ -137,7 +137,7 @@ def test_zero_substrate_span_fails_loudly():
 
 
 # --------------------------------------------------------------------------
-# #507 — the multi-drive solve, and what the single-ratio rule gets wrong
+# The multi-drive solve, and what the single-ratio rule gets wrong
 # --------------------------------------------------------------------------
 
 def _planted_s(n_freqs=N_FREQS):
@@ -310,8 +310,7 @@ def test_cond_a_reports_a_degenerate_drive_system():
 
 
 # --------------------------------------------------------------------------
-# Issue #520 leg 4 — cond_a on an EXACTLY-singular f32 drive matrix
-# (regression lock for the NEP-50 fix in a5acfa9, PR #516 review)
+# cond_a on an EXACTLY-singular f32 drive matrix
 # --------------------------------------------------------------------------
 #
 # The only committed cond_a test above uses gamma=0.999 (near-, not
@@ -402,7 +401,7 @@ def test_solve_handles_a_one_port_system():
 
 
 # --------------------------------------------------------------------------
-# Issue #520 leg 2 — S vs Sᵀ: every committed fixture up to this point is
+# S vs Sᵀ: every committed fixture up to this point is
 # SYMMETRIC (``_planted_s`` sets S[0,0]=S[1,1] and S[1,0]=S[0,1]), so a
 # solve that silently returned Sᵀ instead of S — e.g. the shipped
 # ``jnp.swapaxes(..., -1, -2)`` "flip back" after the batched
@@ -415,9 +414,7 @@ def test_solve_handles_a_one_port_system():
 # PHYSICALLY REALIZABLE MSL fixture can ever expose this bug — only a
 # fixture that violates reciprocity on purpose can, which is legitimate
 # here because ``msl_solve_s_from_waves`` is a pure n-port linear solve
-# with no reciprocity assumption built in. The re-review that opened this
-# item verified the [receiver, driven] orientation numerically but did not
-# commit a test; this is that test.
+# with no reciprocity assumption built in.
 # --------------------------------------------------------------------------
 
 def _nonreciprocal_planted_s(n_freqs=N_FREQS):
@@ -530,7 +527,7 @@ def test_transpose_bug_is_caught_only_by_the_nonreciprocal_fixture():
 
 
 # --------------------------------------------------------------------------
-# F2 (PR #516 review) — the WIRING: the assembly must anchor the V span on
+# The WIRING: the assembly must anchor the V span on
 # the RASTERIZED trace node, not on round(h_sub/dx)
 # --------------------------------------------------------------------------
 #
@@ -615,7 +612,7 @@ def _raw_v_for_dx(dx, tmp_path):
     sim.add_material("sub", eps_r=_EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
     y_c = ly / 2.0
-    # 35 um foil -> a SHEET on the laminate face (#931 §1.3).
+    # 35 um foil -> a SHEET on the laminate face.
     sim.add(Box((0.0, y_c - _W_TRACE / 2, _H_SUB),
                 (lx, y_c + _W_TRACE / 2, _H_SUB)), material="pec")
     for x, d in ((_MARGIN, "+x"), (_MARGIN + _L_LINE, "-x")):
@@ -685,13 +682,13 @@ def test_v_span_stops_below_the_realized_trace_plane(dx, label, tmp_path):
 
 
 # --------------------------------------------------------------------------
-# #523 — which assembly produced S must be RECORDED, not just warned about
+# Which assembly produced S must be RECORDED, not just warned about
 # --------------------------------------------------------------------------
 #
 # The fallback can be invisible in the numbers: under enforce_passivity=True
 # the projection clips exactly the >1 column power that the fallback warning
 # tells the user to expect, so a caller who reads only S cannot tell a solved
-# result from a fallback one. (The default stopped projecting on 2026-09-21,
+# result from a fallback one. (The default stopped projecting,
 # which leaves that symptom in S — the marker is still what disambiguates it
 # from the other causes of column power > 1.) These tests pin the marker,
 # and — the gap the post-merge sweep found — give the SOLVE branch its first
@@ -703,7 +700,7 @@ def test_v_span_stops_below_the_realized_trace_plane(dx, label, tmp_path):
 # equal: a shared factor makes V and I scale together, so B = diag(b_j/a_j)*A
 # and S = B*A^-1 is exactly diagonal. A diagonal S is symmetric and has nothing
 # in its off-diagonals, so a transposed [receiver, driven] assembly or a dropped
-# transmission term survives every comparison (PR #526 re-review, finding 2).
+# transmission term survives every comparison.
 _MIX_E = 0.23 + 0.11j
 _MIX_H = -0.37 + 0.42j
 
@@ -735,15 +732,14 @@ def _fake_run_drive_dependent(nz_markers, scale_by_run):
                 # fixture whose amplitude factorises as f(run)*g(port) gives
                 # a_j(d) = g(j)*f(d), i.e. a RANK-1 drive matrix, no matter
                 # how the factors are chosen — the solve then runs at
-                # cond >> 1/eps and tests nothing (PR #526 review, F3).
+                # cond >> 1/eps and tests nothing.
                 # Mimic the physical case instead: the driven port carries
                 # the incident wave, the passive port a small echo.
                 #
                 # E and H must ALSO mix differently (see _MIX_H below), or V
                 # and I share one (drive, port) factor, B = diag(b_j/a_j)*A,
                 # and the solved S comes out exactly DIAGONAL — which no
-                # transpose or dropped-transmission mutation can disturb
-                # (PR #526 re-review, finding 2).
+                # transpose or dropped-transmission mutation can disturb.
                 amp = scale_by_run[run_i] * (
                     1.0 if run_i == port_i else _MIX_E)
                 acc = jnp.broadcast_to(
@@ -752,10 +748,7 @@ def _fake_run_drive_dependent(nz_markers, scale_by_run):
                 # z-RAMP, not a uniform plane. A uniform H makes the closed
                 # Ampere loop cancel to EXACTLY zero -> I == 0 -> a == b at
                 # every record -> A is rank-1 and the "solve" runs at
-                # cond ~ 3e8, i.e. zero significant f32 digits. This is the
-                # same trap documented for the #522 fixture below; it was
-                # left unapplied here and made this test unable to detect a
-                # wrong solve at all (PR #526 review, F3).
+                # cond ~ 3e8, i.e. zero significant f32 digits.
                 amp = (0.018 + 0.004j) if entry.component == "hy" else (0.005 + 0.001j)
                 zramp = jnp.asarray(
                     [1.0 + 0.6 * k for k in range(grid.nz)], dtype=jnp.complex64)
@@ -790,7 +783,7 @@ def _run_with(fake_run, tmp_path, tag, freqs_hz=(1.0e9,), **kw):
     sim.add_material("sub", eps_r=_EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
     y_c = ly / 2.0
-    # 35 um foil -> a SHEET on the laminate face (#931 §1.3).
+    # 35 um foil -> a SHEET on the laminate face.
     sim.add(Box((0.0, y_c - _W_TRACE / 2, _H_SUB),
                 (lx, y_c + _W_TRACE / 2, _H_SUB)), material="pec")
     for x, d in ((_MARGIN, "+x"), (_MARGIN + _L_LINE, "-x")):
@@ -807,7 +800,7 @@ def _run_with(fake_run, tmp_path, tag, freqs_hz=(1.0e9,), **kw):
                 num_periods=1.0, raw_3probe_dump_path=dump, **kw,
             )
     # Return the warnings instead of discarding them: a blanket ignore here
-    # swallowed the honesty guard's own verdict (PR #526 review, F3).
+    # swallowed the honesty guard's own verdict.
     return res, dump, [str(w.message) for w in caught]
 
 
@@ -838,7 +831,7 @@ def test_solve_branch_is_recorded_and_is_the_default(tmp_path):
     # meaningless: a rank-1 A (uniform-H fixture -> I == 0 -> a == b) solves at
     # cond ~ 3e8, which is 40x past 1/eps_f32 — zero significant digits, and
     # the earlier version of this test passed with a REVERTED solve because of
-    # it (PR #526 review, F3).
+    # it.
     assert res.cond_a is not None and np.all(np.isfinite(res.cond_a))
     assert float(np.max(res.cond_a)) < 1.0e3, (
         f"drive matrix is near-degenerate (cond={float(np.max(res.cond_a)):.3g}); "
@@ -850,9 +843,7 @@ def test_solve_branch_is_recorded_and_is_the_default(tmp_path):
 
     # THE BINDING ASSERTION: the returned S must equal what the solve helper
     # produces from the recorded waves. Without this the test only checks
-    # branch selection and marker plumbing — the review demonstrated that
-    # reverting to the #507 single-ratio rule, or scaling S by 2, both left
-    # the old version green.
+    # branch selection and marker plumbing.
     d = np.load(dump, allow_pickle=True)
     v = np.asarray(d["raw_v"])[:, :, 0, :].astype(np.complex128)
     i = np.asarray(d["raw_i1"]).astype(np.complex128)
@@ -874,7 +865,7 @@ def test_solve_branch_is_recorded_and_is_the_default(tmp_path):
     # broken; a diagonal S is also symmetric, so S == S.T proves nothing.
     # Assert the fixture actually produced the off-diagonal structure that
     # makes those mutations visible, rather than trusting _MIX_E != _MIX_H to
-    # have had the intended effect (PR #526 re-review, finding 2).
+    # have had the intended effect.
     off = np.abs(S_expected[0, 1]) + np.abs(S_expected[1, 0])
     diag = np.abs(S_expected[0, 0]) + np.abs(S_expected[1, 1])
     assert float(np.min(off / diag)) > 1e-2, (
@@ -887,7 +878,7 @@ def test_solve_branch_is_recorded_and_is_the_default(tmp_path):
         "a transposed [receiver, driven] assembly would be invisible here"
     )
 
-    # The waves are formed at the line Z0 (#2014: S is then referred to the
+    # The waves are formed at the line Z0 (S is then referred to the
     # declared impedance), so the solve is checked on S brought back there.
     np.testing.assert_allclose(
         np.asarray(probe0_s(res, line_s(res))), S_expected, rtol=F32_TOL, atol=F32_TOL,
@@ -954,7 +945,7 @@ def test_assembly_marker_is_none_under_tracing(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# #522 — the reliability mask must cover every record the solve consumes
+# The reliability mask must cover every record the solve consumes
 # --------------------------------------------------------------------------
 #
 # FIRE and CLEAR, per the repo's gate-can-bind-an-artifact rule: a mask test
@@ -1055,7 +1046,7 @@ def test_mask_still_fires_on_an_own_drive_collapse(tmp_path):
 
 
 # --------------------------------------------------------------------------
-# #726 — fitted diagnostics and the measured V/I are different dependencies
+# Fitted diagnostics and the measured V/I are different dependencies
 # --------------------------------------------------------------------------
 
 
@@ -1095,8 +1086,8 @@ def test_fitted_impedance_and_beta_cannot_change_production_s(tmp_path, monkeypa
     b, dump_b, warnings_b = _run_with(planes, tmp_path, "fit_b", **run_args)
     assert any("Fitted Z0/beta are not used in S11/S21" in w
                and "does not certify those inputs" in w for w in warnings_b)
-    # #726: the guard appends the clearance measurement only when the port's
-    # probe_clearance is NOT satisfied (review P1b -- on a satisfied port that
+    # The guard appends the clearance measurement only when the port's
+    # probe_clearance is NOT satisfied (on a satisfied port that
     # text is the wrong advice for the guard's common trigger, coarse-mesh
     # staircase bias). This fixture registers no reflector, so the clearance
     # is satisfied and neither the measurement nor the sentence retracting

@@ -197,11 +197,11 @@ def test_port_bins(kind, path, ringdown):
                       'add_coaxial_port() is not wired into Simulation.forward().')
     elif kind in ('waveguide', 'msl'):
         _same_refusal(eager, actual, ValueError,
-                      'forward(port_s11_freqs=...) computes S11 only for add_port(...)')
-        assert ('waveguide ports use compute_waveguide_s_matrix()' if kind == 'waveguide'
+                      'forward(port_s11_freqs=...) requires add_port(...)')
+        assert ('add_waveguide_port(...) uses compute_waveguide_s_matrix()' if kind == 'waveguide'
                 else 'MSL ports use compute_msl_s_matrix()') in str(eager[1])
     elif path == 'multi-graded':
-        # Graded multi-device ports run the one-device step per slab (#1402 step 2).
+        # Graded multi-device ports run the one-device step per slab.
         _equal(eager, actual)
         _equal(_evaluate(lambda: _call(sim, 'graded', False, REQUEST)), eager)
     elif path == 'multi-uniform' and actual[2]:

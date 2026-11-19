@@ -116,7 +116,7 @@ class TestSimulationMixedPrecision:
             domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
             precision="mixed",
-        )  # solved length; #1887
+        )  # solved length
         sim.add_source(position=(0.01, 0.01, 0.01), component="ez", amplitude_kind="field")
         result = sim.run(n_steps=100)
         assert result is not None
@@ -139,7 +139,7 @@ class TestSimulationMixedPrecision:
             freq_max=5e9,
             domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )  # solved length; #1887
+        )  # solved length
         n_steps = 50
 
         sim32 = Simulation(**kwargs, precision="float32")
@@ -167,7 +167,7 @@ class TestSimulationMixedPrecision:
             domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
             precision="mixed",
-        )  # solved length; #1887
+        )  # solved length
         sim.add_source(position=(0.01, 0.01, 0.01), component="ez", amplitude_kind="field")
         sim.add_probe(position=(0.015, 0.01, 0.01), component="ez")
         result = sim.run(n_steps=50)
@@ -184,7 +184,7 @@ class TestSimulationMixedPrecision:
             domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
             precision="mixed",
-        )  # solved length; #1887
+        )  # solved length
         sim.add_source(position=(0.01, 0.01, 0.01), component="ez", amplitude_kind="field")
         result = sim.run(n_steps=10)
         st = result.state
@@ -200,7 +200,7 @@ class TestSimulationMixedPrecision:
             freq_max=5e9,
             domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )  # solved length; #1887
+        )  # solved length
         sim.add_source(position=(0.01, 0.01, 0.01), component="ez")
         result = sim.run(n_steps=10)
         assert result.state.ex.dtype == jnp.float32
@@ -211,13 +211,13 @@ class TestSimulationMixedPrecision:
             domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
             precision="mixed",
-        )  # solved length; #1887
+        )  # solved length
         r = repr(sim)
         assert "precision='mixed'" in r
 
 
 # ---------------------------------------------------------------------------
-# Issue #644 — CPML dtype policy
+# CPML dtype policy
 #
 # The psi_* arrays are ACCUMULATION state (a recursive convolution integrated
 # over every timestep), so they are allocated at
@@ -228,23 +228,23 @@ class TestSimulationMixedPrecision:
 # carry signature stopped matching its own input (TypeError).
 #
 # Note this is promote_types, NOT a flat float32 pin: psi followed field_dtype
-# originally for a REASON (the #404 oblique Bloch path needs a complex carry),
+# for a REASON (the oblique Bloch path needs a complex carry),
 # and a flat float32 pin would have fixed float16 by breaking complex64.
 # ---------------------------------------------------------------------------
 
 def _cpml_grid():
     return Simulation(
         freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="cpml",
-    )._build_grid()  # solved length; #1887
+    )._build_grid()  # solved length
 
 
 class TestCPMLPsiDtype:
     """Unit-level dtype policy — no FDTD stepping, runs in milliseconds."""
 
     @pytest.mark.parametrize("field_dtype,expected", [
-        (jnp.float16, jnp.float32),     # issue #644: the fix
+        (jnp.float16, jnp.float32),
         (jnp.float32, jnp.float32),     # unchanged / bit-identical
-        (jnp.complex64, jnp.complex64),  # issue #404 oblique Bloch — must survive
+        (jnp.complex64, jnp.complex64),  # oblique Bloch — must survive
     ])
     def test_psi_dtype_is_promoted_to_at_least_float32(self, field_dtype, expected):
         _, st = init_cpml(_cpml_grid(), field_dtype=field_dtype)
@@ -277,7 +277,7 @@ class TestMixedPrecisionCPML:
         sim = Simulation(
             freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary=boundary, precision=precision,
-        )  # solved length; #1887
+        )  # solved length
         sim.add_source(position=(0.01, 0.01, 0.01), component="ez",
                        amplitude_kind="field")
         if probe:
@@ -389,7 +389,7 @@ def test_mixed_precision_refuses_oversized_current_before_stepping(boundary, lan
 
     def make_sim(amplitude):
         sim = Simulation(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
-                         boundary=boundary, precision="mixed")  # solved length; #1887
+                         boundary=boundary, precision="mixed")  # solved length
         with pytest.warns(DeprecationWarning, match="now means 'current'"):
             sim.add_source((0.01, 0.01, 0.01), "ez",
                            waveform=GaussianPulse(f0=5e9, amplitude=amplitude))

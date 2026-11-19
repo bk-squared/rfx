@@ -78,7 +78,7 @@ def test_a_real_reversal_is_not_shown_to_converge():
     ("falling", (3.800, 3.770, 3.755), [False, False]),
     # the RT5880 patch antenna: rising, the last step 0.0955 % (flat)
     ("patch", (2.337070, 2.356146, 2.358396), [False, True]),
-    # the MSL notch filter after #1213: +0.018 % (flat), then -0.298 %
+    # the MSL notch filter: +0.018 % (flat), then -0.298 %
     ("notch", (3.68600, 3.68666, 3.67568), [True, False]),
 ])
 def test_monotone_ladders_converge(name, f_ghz, flat):

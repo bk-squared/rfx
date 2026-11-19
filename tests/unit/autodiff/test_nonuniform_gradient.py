@@ -20,6 +20,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+from tests._fd_minimum import assert_same_minimum_cells
+
 from rfx.core.yee import EPS_0, MaterialArrays
 from rfx.nonuniform import make_nonuniform_grid, run_nonuniform
 
@@ -136,6 +138,8 @@ def test_grad_wrt_dz_profile_matches_fd():
     a bug.  The test uses a strictly-monotone ``dz_profile`` so ``min`` is
     uniquely attained and AD↔FD agreement on dominant cells (>5 % of
     max magnitude) is a meaningful regression guard.
+    The derived dt is part of the differentiated function, and the assertion
+    keeps every FD point on one side of every smallest-cell tie.
     """
     # Strictly-monotone profile — no ties in min(dz_full).
     dz0 = jnp.asarray(
@@ -149,6 +153,9 @@ def test_grad_wrt_dz_profile_matches_fd():
     grad_fd = np.zeros_like(grad_ad)
     for i in range(len(dz0)):
         e = np.zeros(len(dz0), dtype=np.float32); e[i] = h
+        assert_same_minimum_cells(np.asarray(dz0), [
+            (f"index {i} (+)", np.asarray(dz0 + jnp.asarray(e))),
+            (f"index {i} (-)", np.asarray(dz0 - jnp.asarray(e)))])
         lp = float(_loss_from_dz(dz0 + jnp.asarray(e)))
         lm = float(_loss_from_dz(dz0 - jnp.asarray(e)))
         grad_fd[i] = (lp - lm) / (2.0 * h)

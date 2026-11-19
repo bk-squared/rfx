@@ -129,7 +129,7 @@ _GAMMA_T = 0.09          # terminator echo on the NON-driven port (F2 estimate)
 _DUT_SIGN_COAX = +1.0
 _DUT_SIGN_MSL = -1.0
 
-# The OTHER MSL orientation the calling method supports (issue #822 review).
+# The OTHER MSL orientation the calling method supports.
 # ``compute_coax_msl_transition`` accepts a "+x"-facing MSL port -- its
 # ladder monotonicity branch is ``(1 if msl_pe.direction == "+x" else -1)``
 # -- and passes ``ref_msl_m = float(junction_x)`` for either facing. On such
@@ -333,7 +333,7 @@ def test_extractor_forward_amp_means_toward_reference_plane(fi):
 
 
 # ---------------------------------------------------------------------------
-# W5 -- the H1 gate (was RED as xfail(strict=True); GREEN since the #822 fix)
+# W5 -- the H1 gate
 # ---------------------------------------------------------------------------
 
 def test_assembler_wave_roles_follow_the_junction_side_reference_plane():
@@ -384,8 +384,7 @@ def test_wrong_side_planting_returns_the_inverse_of_s_true():
         assert np.abs(s_inv[:, :, fi] - s[:, :, fi]).max() > 1.0
     # The exchanged roles are visible in the raw amplitudes too: the
     # mislabelled 'incident' wave at the non-driven coax port under the MSL
-    # drive is the BIG one (1/gamma_t = 11.1), the symptom family recorded on
-    # the attempt-3 run before the fix.
+    # drive is the BIG one (1/gamma_t = 11.1).
     ratio = np.abs(a_code[0, 1]) / np.abs(b_code[0, 1])
     np.testing.assert_allclose(ratio, 1.0 / _GAMMA_T, rtol=1e-9)
 
