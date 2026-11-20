@@ -26,7 +26,6 @@ from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
 
 
 def test_back_compat_uniform_xy_unchanged():
-    """The uniform profile spans the legacy 20 mm domain with 20 cells of 1 mm."""
     dz = np.full(10, 0.5e-3)
     g_legacy = make_nonuniform_grid((20e-3, 20e-3), dz, dx=1e-3, cpml_layers=8)
 
@@ -115,7 +114,7 @@ def test_coords_from_nonuniform_grid_node_positions():
 
 
 def test_end_to_end_nonuniform_xy_runs():
-    """The 20 interior x cells span 6 + 4 + 6 = 16 mm."""
+    """The declared ``domain=(0, 0, 0)`` is replaced by the profile extents."""
     dx = 1e-3
     n_cpml = 6
     dz = np.full(10, dx)

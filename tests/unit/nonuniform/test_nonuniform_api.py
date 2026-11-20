@@ -17,7 +17,7 @@ except ImportError:
     from tests._x64_compat import enable_x64
 
 
-CELL_WIDTH_STORAGE_ROUNDOFF_RELATIVE_TOL = 1e-4
+WINDOW_AREA_RELATIVE_TOL = 1e-4
 
 
 class TestNonUniformGrid:
@@ -322,8 +322,8 @@ class TestSimulationNonUniform:
         from rfx.grid import C0 as _C0
         f_c = _C0 / (2 * a_wg)
         f0 = f_c * 1.6
-        assert f0 > f_c, "The waveguide drive must be above the TE10 cutoff"
         freqs = jnp.linspace(f_c * 1.3, f_c * 2.2, 8)
+        assert float(freqs[0]) > f_c, "The S11 frequency band must lie above the TE10 cutoff"
 
         def _build(dz_profile):
             """The port x_position is a distance along y from the negative-y face."""
@@ -585,7 +585,9 @@ class TestFluxMonitorOnNonUniform:
     """``add_flux_monitor`` is supported on the NU path for full-plane
     monitors (issue #88 flux-extractor prerequisite) and, since the
     cumulative-edge index conversion landed, for finite-region (``size=``)
-    monitors as well."""
+    monitors as well.
+    Each tangential electric component uses primal widths on its own axis and clipped dual widths on the other tangential axis.
+    """
 
     def _make_nu_sim(self):
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 8, dtype=np.float64)
@@ -639,7 +641,7 @@ class TestFluxMonitorOnNonUniform:
         bookkeeping - index mapping, face-area weights, and a restriction
         identity taken against the full plane on the SAME fields - so the
         advisory does not bear on any of them.
-        Each tangential electric component uses primal widths on its own axis and clipped dual widths on the other tangential axis.
+        The 1e-4 relative area gate allows stored-width roundoff while staying below one 0.25 by 0.5 mm cell's approximately 3.9e-3 fraction of the 8 by 4 mm window.
         """
         from rfx.probes.probes import flux_spectrum
         with enable_x64(True):
@@ -692,7 +694,7 @@ class TestFluxMonitorOnNonUniform:
             print(f"\n[z-normal dA] window=({mon_fin.lo1}:{mon_fin.hi1},"
                   f"{mon_fin.lo2}:{mon_fin.hi2}) cells=({n_x},{n_y}) "
                   f"got={got_dA:.9e} exp={exp_dA:.9e} rel={rel_dA:.2e}")
-            assert rel_dA < CELL_WIDTH_STORAGE_ROUNDOFF_RELATIVE_TOL, (
+            assert rel_dA < WINDOW_AREA_RELATIVE_TOL, (
                 f"summed dA {got_dA:.9e} != the realized graded window area "
                 f"{exp_dA:.9e} (rel {rel_dA:.2e}) - the z-normal window does "
                 "not weight the cells it selected")

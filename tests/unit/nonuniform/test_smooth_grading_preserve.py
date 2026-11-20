@@ -16,7 +16,7 @@ from rfx.auto_config import smooth_grading
 
 
 def _raw_profile():
-    """The profile represents a 0.25 mm substrate between 1 mm air cells."""
+    """The profile represents a 1.5 mm substrate of six 0.25 mm cells between 1 mm air cells."""
     return np.concatenate([
         np.full(12, 1e-3), np.full(6, 0.25e-3), np.full(25, 1e-3)
     ])

@@ -33,6 +33,7 @@ def _run(dx: float, *, nonuniform: bool, smoothing: bool, boundary: str = "pec",
     explicitly to decouple the two — the staircase-slab+cpml combo (#582 E2)
     needs the slab WITHOUT subpixel_smoothing to isolate the CPML pad
     material extension from the smoother.
+    Placing the source and probe at NZ*dx/2 would put them exactly on the slab face, making the amplitude prediction depend on Box's exclusive upper bound.
     """
     if slab is None:
         slab = smoothing
@@ -42,12 +43,13 @@ def _run(dx: float, *, nonuniform: bool, smoothing: bool, boundary: str = "pec",
     sim = Simulation(freq_max=2.5 * f0, domain=(NA * dx, NB * dx, NZ * dx),
                      dx=dx, boundary=boundary,
                      cpml_layers=(0 if boundary == "pec" else 8), **profiles)
+    SLAB_TOP_Z_CELLS = 2.0
     if slab:
         sim.add_material("slab", eps_r=4.0)
-        sim.add(Box((0.0, 0.0, 0.3 * dx), (NA * dx, NB * dx, 2.0 * dx)),
+        sim.add(Box((0.0, 0.0, 0.3 * dx), (NA * dx, NB * dx, SLAB_TOP_Z_CELLS * dx)),
                 material="slab")
     SOURCE_PROBE_Z_CELLS = 3.0
-    assert SOURCE_PROBE_Z_CELLS * dx > 2.0 * dx, (
+    assert SOURCE_PROBE_Z_CELLS * dx > SLAB_TOP_Z_CELLS * dx, (
         "Source and probe must lie in vacuum above the slab face")
     sim.add_source((NA * dx / 3, NB * dx / 3, SOURCE_PROBE_Z_CELLS * dx), "ez",
                    waveform=GaussianPulse(f0=f0, bandwidth=0.8))

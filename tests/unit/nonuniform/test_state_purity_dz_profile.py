@@ -38,7 +38,7 @@ def _same_result(row, actual, expected):
 
 
 def test_entry_order_preserves_graded_records_and_mesh_summary():
-    """The entry-order specification requires byte equality."""
+    """Graded probe records must remain byte-identical across repeated run and forward calls."""
     sim = _dx_only_nu_sim()
     before = sim.artifact_report(n_steps=5)["mesh"]
     reference = _dx_only_nu_sim().run(n_steps=5)

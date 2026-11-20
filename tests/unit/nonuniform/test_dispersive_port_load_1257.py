@@ -57,7 +57,6 @@ What is checked:
    dispersive builds restored (a) turn every check above red; the Debye build
    alone (b) turns the Debye boards red, the Lorentz build alone the Lorentz
    boards.
-An earlier run with the old order measured 0.789259 for the MSL open-circuit 50/5000 drive-coefficient ratio.
 """
 
 from __future__ import annotations

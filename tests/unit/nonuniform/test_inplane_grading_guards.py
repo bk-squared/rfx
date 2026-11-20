@@ -68,7 +68,7 @@ def test_under_resolution_uses_the_local_cell_not_the_global_minimum():
     lo, hi = 3.5e-3, 5.0e-3
     assert (12 * d < lo < hi < 12 * d + 8 * 2 * d
             and np.isclose(hi - lo, 3 * 2 * d, rtol=0, atol=1e-14)), (
-        'The PEC witness must span three coarse cells strictly inside the coarse band so the advisory judges a coarse-region volume.')
+        "The PEC witness must span three coarse cells strictly inside the coarse band because placing its lo face on the band's first node silences the under-resolution advisory.")
     sim.add(Box((lo,) * 3, (hi,) * 3), material="pec")
     for axis in range(3):
         rz, pos = wall_planes_m(sim, axis, nonuniform=True)
