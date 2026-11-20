@@ -17,6 +17,7 @@ The full measured window is stable to 0.013%; h=2e-3 is interior.
 FD loss spans 2.87e12 to 5.74e13 float64 ULPs; field storage remains
 float32, so this does not claim float64 FDTD accuracy. The maximum
 column-normalized complex path difference is 8.22238e-6 (bar 1e-4).
+The phase and record-length phase-gradient bars are each 1.5 times their respective earlier measured CPU maxima of 0.0497% and 0.1236%, rounded up to 0.01%.
 """
 
 from __future__ import annotations
@@ -36,15 +37,14 @@ from tests._msl_probe0 import line_s
 
 def test_coax_band_mean_s21_sq_reduction_is_correct():
     """Unit-check the shared reduction on a synthetic S-matrix: correctness
-    is independent of which AD gate exercises it."""
+    is independent of which AD gate exercises it.
+    The 1e-6 tolerance covers the default complex64 downcast of the complex128 input."""
     n_f = 3
     s21 = np.array([0.9 + 0.1j, 0.7 - 0.2j, 0.5 + 0.0j])
     S = np.zeros((2, 2, n_f), dtype=np.complex128)
     S[1, 0, :] = s21
     got = float(coax_band_mean_s21_sq(jnp.asarray(S)))
     want = float(np.mean(np.abs(s21) ** 2))
-    # float32-precision tolerance: jnp.asarray on a complex128 array
-    # downcasts to complex64 by default (no x64 enabled in this test).
     assert abs(got - want) < 1e-6, (got, want)
 
 
@@ -104,32 +104,11 @@ PROBE_COUNT = 3
 PROBE_START_CELLS = 4
 PROBE_SPACING_CELLS = 2
 _FD_H = 2.0e-3
-# A6000: AD=-1.2760622501, FD=-1.2760970846, gap=0.002730%; retain the 2% policy.
-_REL_ERR_THRESHOLD = 0.02  # Retain the existing AD/FD policy.
+_REL_ERR_THRESHOLD = 0.02
 _MIN_FD_ULP_SPAN = 1.0e4
 assert _MIN_FD_ULP_SPAN * _REL_ERR_THRESHOLD >= 100.0
-# The S21 phase itself against the closed form -beta*L: CPU mesh phase errors at
-# 6/8/10 GHz 0.0237/0.0287/0.0497 % (0.0206/0.0310/0.0456 % after the declared
-# line extent); repository envelope multiplier 1.5, round up to 0.01 %:
-# ceil(0.000497 * 1.5 * 10000) / 10000 = 0.0008 (0.08 %).
-# A6000: 6/8/10 GHz gaps=0.020715/0.030934/0.045568%; CPU envelope still sets the 0.08% bar.
 _PHASE_ERROR_BAR = 0.0008
-# The AD phase gradient's gap to the closed form -beta*L/(2*eps) depends on
-# the record length, so the bar comes from the record-length witness, not
-# from the phase error alone. The earlier 0.08 % (1.5x the 0.0497 % mesh phase
-# error) was read on this 600-step record only; the same gradient from 1.5x
-# and 2x records reads 0.103 % / 0.115 % on the earlier tree and 0.124 % /
-# 0.110 % here (0.105 % at 600 steps), and scaling eps only between the
-# reference planes changes it by < 0.003 %. Largest gap 0.1236 %; repository
-# envelope multiplier 1.5, round up to 0.01 %:
-# ceil(0.001236 * 1.5 * 10000) / 10000 = 0.0019 (0.19 %). A stop_gradient on
-# the traced port voltage puts the gradient 7 % off and still fails.
-# A6000: AD=-1.2760622501, closed=-1.2747280763, gap=0.104663%; CPU envelope still sets the 0.19% bar.
 _PHASE_GRAD_BAR = 0.0019
-# Derived from this fixture: measured |d mean |S21|^2 / d eps_scale|
-# = 0.00263521; round up, then multiply by 3. Catch the pre-fix spurious
-# power slope from the analytic 1/r drive.
-# A6000: power AD=-0.0003003052843; below the CPU envelope and its 3x bound.
 _POWER_GRAD_BOUND = 0.00264 * 3
 
 
@@ -160,17 +139,12 @@ def _band_mean_s21_phase(s):
 
 
 def _band_mean_s21_sq(eps_scale):
-    # Retained for the standalone power diagnostic referee.
     return coax_band_mean_s21_sq(line_s(_two_port(eps_scale)))
 
 
 @pytest.fixture(scope="module")
 def phase_sensitivity():
-    # One forward tape, two pullbacks: the power sanity check reuses the
-    # expensive FDTD trace instead of running a separate simulation.
-    # The closed forms here are the matched line's (phase -beta*L, constant power), so
-    # S is read at the line (z_tem / sqrt(eps_scale)), not at the declared 50 ohm
-    # it is referred to, whose mismatch adds its own eps_scale slope.
+    """The matched-line closed forms require S at z_tem / sqrt(eps_scale), since the declared 50 ohm mismatch adds its own eps_scale slope."""
     def objectives(eps):
         s = line_s(_two_port(eps))
         return _band_mean_s21_phase(s), coax_band_mean_s21_sq(s)
@@ -182,17 +156,14 @@ def phase_sensitivity():
 
 
 def _closed_form(result):
-    # Returned planes are the top/bottom feed planes, NOT source or probe
-    # planes: (nz-pad_z_hi-3-pad_z_lo)*dx and 3*dx respectively.
-    # Here z_top=0.0116169577475 m, z_bottom=0.0011242217175 m;
-    # L=0.01049273603 m, using the returned values rather than rounded ones.
+    """The closed form is the eps_scale = 1 matched line between the top and bottom feed planes."""
     from rfx.sources.coaxial_port import PTFE_EPS_R
     from rfx.core.yee import EPS_0, MU_0
 
     length = abs(float(np.diff(result.reference_planes)[0]))
     beta = 2 * np.pi * np.asarray(FREQ, dtype=np.float64) * np.sqrt(PTFE_EPS_R) * np.sqrt(EPS_0 * MU_0)
     phase = -beta * length
-    return phase, float(np.mean(phase / 2.0))  # eps_scale = 1
+    return phase, float(np.mean(phase / 2.0))
 
 
 @pytest.mark.slow_physics
@@ -201,6 +172,7 @@ def test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent(phase_sensiti
     """The TEM fix removed spurious loss, making the old power objective flat.
     A relative AD/FD comparison then measured residual noise rather than AD
     accuracy; unwrapped transmission phase has the known nonzero line derivative.
+    The power-gradient bound is three times the rounded earlier measured residual derivative of 0.00263521.
     """
     try:
         from jax import enable_x64
@@ -227,8 +199,6 @@ def test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent(phase_sensiti
     print(f"planes={concrete.reference_planes}, mesh phase error={phase_error:.6g}, exact gradient={exact_grad:.10g}")
     assert phase_error <= _PHASE_ERROR_BAR
     assert abs(g_ad - exact_grad) / abs(exact_grad) <= _PHASE_GRAD_BAR
-    # Matched lossless power is constant; allow three times the measured
-    # residual derivative, rather than demanding relative agreement at zero.
     assert abs(g_power) <= _POWER_GRAD_BOUND
 
 
@@ -238,6 +208,7 @@ def test_coax_two_port_eps_scale_unity_matches_concrete_path(phase_sensitivity):
     """The TEM fix drove S22 near zero, where its phase is ill-conditioned.
     The old phase gate amplified tiny complex reassociation errors instead of
     measuring path equivalence; column-normalized complex errors remain meaningful.
+    Equal forward values alone cannot detect stop_gradient.
     """
     a, b = _two_port(), _two_port(jnp.float32(1.0))
     assert a.status == "passed" and b.status == "differentiable"
@@ -247,9 +218,6 @@ def test_coax_two_port_eps_scale_unity_matches_concrete_path(phase_sensitivity):
     assert np.all(scale > 0)
     error = np.abs(sb - sa) / scale
     print(f"column-normalized complex error: {error}; maximum={np.max(error):.10g}")
-    # Measured maximum column-normalized complex difference: 8.22238e-6.
     assert np.all(error <= 1.0e-4)
-    # Equal forward values alone cannot detect stop_gradient. Reuse the
-    # phase tangent witness to require the differentiable path to stay live.
     _, exact_grad = _closed_form(a)
     assert abs(phase_sensitivity[1] - exact_grad) / abs(exact_grad) <= _PHASE_GRAD_BAR

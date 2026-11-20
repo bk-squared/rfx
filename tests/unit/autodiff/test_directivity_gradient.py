@@ -6,6 +6,7 @@ convention), which produced zero gradient in `topology_optimize`.
 
 The ratio-based formulation U(target)/P_rad is scale-invariant and
 must give a non-zero gradient through the NTFF accumulation.
+Every domain length written as ``7 * (299792458.0 / 5e9 / 20.0)`` is a whole number of cells of dx, so the solved domain equals the declared one.
 """
 from __future__ import annotations
 
@@ -27,9 +28,8 @@ from rfx.optimize_objectives import (
 
 def _forward(eps_scale: jnp.ndarray):
     """Minimal NTFF-enabled forward that is jax.grad-compatible."""
-    grid = Grid(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length
+    grid = Grid(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)
     materials_base = init_materials(grid.shape)
-    # Scale eps_r by a scalar — gradient target.
     materials = materials_base._replace(eps_r=materials_base.eps_r * eps_scale)
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
@@ -54,6 +54,7 @@ def test_maximize_directivity_gradient_nonzero():
     This pins the fix for issue #32: the absolute-power objective
     returned ~1e-27 values and 0.0 gradients; the ratio-based one
     should give |dD/dα| >> 1e-12 in single precision.
+    Scale invariance makes a derivative at alpha=1.0 pathological, so the finite-gradient witness includes another probe point.
     """
     obj = maximize_directivity(theta_target=np.pi / 2, phi_target=0.0)
 
@@ -62,32 +63,21 @@ def test_maximize_directivity_gradient_nonzero():
 
     value = float(loss(jnp.array(1.0)))
     assert np.isfinite(value)
-    # log-ratio loss = -(log U - log P) = log(4pi/D); its sign depends on D
-    # (positive below ~11 dBi), so it is not fixed-negative like the old ratio.
 
     grad = float(jax.grad(loss)(jnp.array(1.0)))
     assert np.isfinite(grad)
-    # The ratio is scale-invariant, so d/dα exactly 1.0 is a pathological
-    # case — what matters is that the path through NTFF keeps producing a
-    # meaningful, finite gradient at other probe points.
     grad_off = float(jax.grad(loss)(jnp.array(1.2)))
     assert np.isfinite(grad_off)
-    # Combined magnitude must exceed the float32 noise floor (~1e-7).
-    assert abs(grad) + abs(grad_off) > 1e-6, (
+    GRADIENT_NOISE_BAR = 1e-6
+    assert abs(grad) + abs(grad_off) > GRADIENT_NOISE_BAR, (
         f"directivity gradient collapsed to noise: grad(1.0)={grad:.2e}, "
         f"grad(1.2)={grad_off:.2e} (issue #32 would show ~0.0)"
     )
 
 
-# ---------------------------------------------------------------------------
-# maximize_directivity wrong-sign gradient for power-changing DoFs.
-# The legacy `-U/stop_gradient(P)` drops the -U*P'/P^2 quotient term, so for any
-# DoF that changes total radiated power (here: a lossy `sigma` block) the gradient
-# can come out WRONG-SIGNED vs finite difference. `log_ratio=True` optimizes
-# `-(log U - log P)` (full quotient `U'/U - P'/P`) which is sign-correct, scale-
-# invariant, and NaN-safe.
-# ---------------------------------------------------------------------------
-_S0, _H = 50.0, 5.0  # base lossy-block scale + central-FD half-step
+LOSSY_BLOCK_SCALE = 50.0
+CENTRAL_FD_HALF_STEP = 5.0
+_S0, _H = LOSSY_BLOCK_SCALE, CENTRAL_FD_HALF_STEP
 
 
 def _forward_lossy(sigma_scale):
@@ -96,7 +86,7 @@ def _forward_lossy(sigma_scale):
     Adding conductivity dissipates power, so P_rad moves with the DoF — the regime
     where the legacy stop_gradient objective is wrong (#129).
     """
-    grid = Grid(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length
+    grid = Grid(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)
     mb = init_materials(grid.shape)
     sx, sy, sz = grid.shape
     mask = np.zeros(grid.shape, dtype=np.float32)
@@ -114,7 +104,7 @@ def _u_target_and_p_rad(result):
     from rfx.measurement.farfield import compute_far_field
     th = np.array([np.pi / 2])
     ph = np.array([0.0])
-    th_h = np.linspace(0.0, np.pi, 37)          # full sphere (matches the objective)
+    th_h = np.linspace(0.0, np.pi, 37)
     ph_h = np.linspace(0.0, 2 * np.pi, 73)
     ff = compute_far_field(result.ntff_data, result.ntff_box, result.grid, th, ph)
     u = float(jnp.abs(ff.E_theta[0, 0, 0]) ** 2 + jnp.abs(ff.E_phi[0, 0, 0]) ** 2)
@@ -131,12 +121,12 @@ def test_directivity_logratio_sign_correct_vs_fd_power_changing_dof():
     rm, rp = _forward_lossy(_S0 - _H), _forward_lossy(_S0 + _H)
     um, pm = _u_target_and_p_rad(rm)
     up, pp = _u_target_and_p_rad(rp)
-    d_dir = ((up / pp) - (um / pm)) / (2 * _H)          # true directivity slope
+    d_dir = ((up / pp) - (um / pm)) / (2 * _H)
     assert abs(d_dir) > 1e-9, "setup: directivity must vary with the DoF"
-    true_loss_grad = -d_dir                              # loss = -D
+    true_loss_grad = -d_dir
 
-    # central FD of the log-ratio loss = -(log U - log P), same 1e-37 floor.
-    e = 1e-37
+    LOG_RATIO_POWER_FLOOR = 1e-37
+    e = LOG_RATIO_POWER_FLOOR
     def _log_loss(u, p):
         return -(np.log(max(u, e)) - np.log(max(p, e)))
     g_log_fd = (_log_loss(up, pp) - _log_loss(um, pm)) / (2 * _H)
@@ -147,10 +137,8 @@ def test_directivity_logratio_sign_correct_vs_fd_power_changing_dof():
 
     assert np.isfinite(g_log)
     assert abs(g_log) > 1e-7, "log_ratio gradient collapsed to noise"
-    # (1) FIX is sign-correct vs the true directivity ascent direction.
     assert np.sign(g_log) == np.sign(true_loss_grad), (
         f"log_ratio sign {g_log:+.3e} != true loss grad {true_loss_grad:+.3e}")
-    # (2) FIX AD matches central-FD of its own objective (self-consistent).
     rel = abs(g_log - g_log_fd) / (abs(g_log_fd) + 1e-30)
     assert rel < 0.05, f"log_ratio AD {g_log:+.3e} vs FD {g_log_fd:+.3e} rel_err {rel:.3f}"
 
@@ -162,12 +150,10 @@ def test_directivity_default_is_logratio_and_prad_full_sphere():
     from rfx.measurement.farfield import compute_far_field
     r = _forward_lossy(_S0)
 
-    # (A) default == log_ratio=True (value), and differs from the legacy mode.
     v_def = float(maximize_directivity(np.pi / 2, 0.0)(r))
     v_log = float(maximize_directivity(np.pi / 2, 0.0, log_ratio=True)(r))
     assert v_def == v_log, "default objective is no longer the log-ratio"
 
-    # (B) exp(-loss) = U(target)/P_rad matches the FULL-sphere normalization.
     ff_t = compute_far_field(r.ntff_data, r.ntff_box, r.grid,
                              np.array([np.pi / 2]), np.array([0.0]))
     u_t = float(jnp.abs(ff_t.E_theta[0, 0, 0]) ** 2 + jnp.abs(ff_t.E_phi[0, 0, 0]) ** 2)
@@ -183,7 +169,7 @@ def test_directivity_default_is_logratio_and_prad_full_sphere():
 
     p_full, p_hemi = _prad(np.pi), _prad(np.pi / 2)
     assert abs(p_full - p_hemi) / p_full > 0.1, "setup: full/hemi P_rad must differ"
-    ratio_obj = np.exp(-v_def)                       # single freq -> U/P_rad
+    ratio_obj = np.exp(-v_def)
     assert abs(ratio_obj - u_t / p_full) / (u_t / p_full) < 0.02, \
         "objective P_rad is not full-sphere (regressed to hemisphere?)"
 

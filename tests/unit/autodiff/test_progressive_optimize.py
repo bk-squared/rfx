@@ -99,16 +99,12 @@ def test_empty_schedule_raises():
         progressive_optimize(factory, region, _loss, [])
 
 
-# ---------------------------------------------------------------------------
-# distributed=True thread-through
-# ---------------------------------------------------------------------------
 
 def _make_nu_factory(domain=(0.01, 0.01, 0.01), dx=5e-3):
     """NU-mesh sim_factory (distributed=True requires a non-uniform profile)."""
     import numpy as np
 
     def factory(stage_dx):
-        # dz_profile length is stage-driven; use stage_dx as the cell size.
         nz = max(3, int(round(domain[2] / stage_dx)))
         dz_profile = np.full(nz, stage_dx, dtype=np.float64)
         sim = Simulation(
@@ -187,7 +183,7 @@ def test_progressive_optimize_distributed_rejects_uniform_mesh(jit):
     if len(jax.devices()) < 2:
         pytest.skip("requires 2 devices (conftest XLA_FLAGS)")
 
-    factory = _make_factory()  # uniform mesh
+    factory = _make_factory()
     region = DesignRegion(
         corner_lo=(0.008, 0.008, 0.009),
         corner_hi=(0.012, 0.012, 0.012),
