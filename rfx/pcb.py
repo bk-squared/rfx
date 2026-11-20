@@ -18,6 +18,8 @@ Example
 >>> shapes = stackup.to_shapes(center_xy=(0, 0), size_xy=(0.02, 0.02))
 >>> for shape, material in shapes:
 ...     sim.add(shape, material=material)
+
+``_PCB_PEC_SIGMA_THRESHOLD`` is a conductivity in S/m and must equal ``Simulation._PEC_SIGMA_THRESHOLD``.
 """
 
 from __future__ import annotations

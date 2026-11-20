@@ -116,7 +116,7 @@ def plot_geometry_2d_slice(
     Returns
     -------
     matplotlib Figure
-    On a nonuniform grid, the final array slot supplies a bounding node rather than an additional physical cell."""
+    """
     plt = _pyplot()
 
     from rfx.nonuniform import NonUniformGrid

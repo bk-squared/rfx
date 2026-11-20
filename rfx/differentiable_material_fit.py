@@ -322,7 +322,7 @@ def _normalize_probe_spectra(
 
 
 def _require_supported_fixture(sim) -> None:
-    """Admit each factory declaration, including its traced rebuild. In 2D, the scan treats the z axis as periodic even without a periodic-axis override."""
+    """Admit each factory declaration, including its traced rebuild."""
     from rfx.runners._admission import admit
     admit(sim, "material_fit")
     if any(axis != "z" or sim._mode == "3d" for axis in sim._periodic_axes):

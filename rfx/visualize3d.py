@@ -447,7 +447,7 @@ def save_field_vtk(
     Returns
     -------
     str : path to the written file
-    VTK rectilinear-grid field samples use Fortran order."""
+    """
     nx, ny, nz = grid.shape
     dx = grid.dx * scale
 

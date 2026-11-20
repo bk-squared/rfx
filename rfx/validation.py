@@ -858,7 +858,7 @@ def _msl_dump_reference_impedances(metadata, n_ports):
 
 
 def _replay_msl_port_vi_dump(dump):
-    """Independent NumPy replay of the declared MSL wave/assembly contract. In version 5 MSL dumps, V/I phasors refer to probe-zero planes while production S refers to the declared feed planes."""
+    """Independent NumPy replay of the declared MSL wave/assembly contract."""
     metadata = dump.metadata
     version = metadata.get("schema_version")
     if version not in (3, 4, 5):
