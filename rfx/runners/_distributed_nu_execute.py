@@ -73,9 +73,9 @@ def execute_from_materials(
         build_sharded_nu_grid,
         init_cpml_for_sharded_nu,
         run_nonuniform_distributed_pec,
-        is_forward_sharded_override,
         stage_forward_dispersion_x_slab,
     )
+    from rfx.stepping.slab import is_forward_sharded_override
     from rfx.core.yee import MaterialArrays
     from rfx.model.source_coefficients import (
         make_current_source as _nu_make_current_source,

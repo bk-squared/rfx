@@ -49,7 +49,7 @@ from rfx._internal import _realized
 from rfx.stepping import segmented_scan
 from rfx.stepping.slab_wrap import record_step_kind, runner_step_kind, validate_scan_controls
 from rfx.stepping.slab import (
-    Slab, Fill, cut, cut_poles, cut_pole_coeffs, owned_values, forward_sharding as _forward_sharding,
+    Slab, Fill, cut, cut_poles, cut_pole_coeffs, owned_values,
 )
 
 import jax
@@ -427,26 +427,6 @@ def shard_cpml_state_x_slab(cpml_state_stacked, sharded_grid: ShardedNUGrid,
 from rfx.stepping.slab_update import _concrete_on_mesh
 
 
-
-
-def is_forward_sharded_override(arr, sharded_grid, mesh):
-    """Validate an override's global layout without fetching any device data."""
-    sharding = _forward_sharding(arr)
-    if sharding is None:
-        return False
-    spec = tuple(sharding.spec) + (None,) * (3 - len(sharding.spec))
-    if spec != ("x", None, None):
-        # Any other placement (replicated, or split along y/z or another
-        # mesh axis) is a local whole-domain array, as it was before.
-        return False
-    expected = (sharded_grid.nx_padded, sharded_grid.ny, sharded_grid.nz)
-    if (arr.shape != expected
-            or sharding.mesh.devices.shape != mesh.devices.shape
-            or not np.array_equal(sharding.mesh.devices, mesh.devices)):
-        raise ValueError(
-            f"sharded forward override must have shape {expected}, P('x'), "
-            "and the same ordered devices as forward(devices=...).")
-    return True
 
 
 def stage_sharded_forward_override(arr, sharded_grid, mesh, pad_value=0.0):
