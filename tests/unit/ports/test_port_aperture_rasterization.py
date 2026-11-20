@@ -32,6 +32,7 @@ The first version of this fix used the transverse DOMAIN extent
 unconditionally, which is wrong for every sub-aperture port; the
 _tj_device-shaped case below is the measured counter-example that pins
 it.
+An earlier two-port WR-90 preflight(strict=False) measured 0.07 s at dx = 1 mm (230 cells), 0.39 s at 0.5 mm (920), 4.79 s at 0.25 mm (3731) and 127.21 s / 10.7 GB at 0.125 mm (14823).
 """
 from __future__ import annotations
 
@@ -53,13 +54,6 @@ from tests._realized_geometry import assert_wall_planes
 _A_WR90 = 22.86e-3
 _B_WR90 = 10.16e-3
 
-# cpml_layers is a budget SHARED across all six faces even
-# though only x is an absorbing axis here (y/z are PEC) -- a value sized
-# for the x extent can still exceed the y/z axes' own cell counts and
-# fire an unrelated `absorber_budget_exceeds_axis` finding. Kept small
-# enough (4) to clear the smallest y/z axis this file builds (WR-90 b at
-# dx=2mm -> 7 interior cells) so every fixture here is preflight-clean on
-# everything except the surface under test.
 _CPML_LAYERS = 4
 
 
@@ -75,6 +69,7 @@ def _transverse_pec(direction):
     The same boundary shape as :func:`_pec_walls`, written for an arbitrary
     launch normal so the y- and z-normal fixtures are the x-normal one with
     the axes rotated and nothing else changed.
+    The (u, v) axis mapping per launch normal is x-normal -> (y, z), y-normal -> (x, z), z-normal -> (x, y).
     """
     normal = direction[1]
     kw = {}
@@ -128,10 +123,6 @@ def _codes(sim):
     return [getattr(i, "code", None) for i in _issues(sim)]
 
 
-# --------------------------------------------------------------------------
-# 1. The named defect: a port whose declared width dx does not divide must
-#    raise a finding naming BOTH numbers.
-# --------------------------------------------------------------------------
 
 def test_non_dividing_declared_width_names_both_numbers():
     sim = _build(dx=2e-3, domain=(0.10, _A_WR90, _B_WR90),
@@ -153,9 +144,9 @@ def test_non_dividing_declared_width_names_both_numbers():
 
 def test_margin_heuristic_is_evaluated_on_the_rasterized_guide():
     """11.5 GHz clears 0.90 x fc_next on the drawn 23.5 mm domain width and
-    violates it on the 24.000 mm guide this PEC-walled domain rasterizes."""
-    # Both domain walls lie inside their last solved cells (fraction .75),
-    # retaining the 12-by-6-cell guide and its violated 11.242 GHz margin.
+    violates it on the 24.000 mm guide this PEC-walled domain rasterizes.
+    Both domain walls lie inside their last solved cells (fraction .75), retaining the 12-by-6-cell guide and its violated 11.242 GHz margin.
+    """
     sim = _build(dx=2e-3, domain=(0.10, 11.75 * 2e-3, 5.75 * 2e-3),
                  y_range=(0.0, _A_WR90), z_range=(0.0, _B_WR90),
                  freqs=jnp.linspace(8e9, 11.5e9, 8))
@@ -180,12 +171,6 @@ def test_dividing_declared_width_stays_silent():
     assert "port_aperture_snap" not in _codes(sim)
 
 
-# --------------------------------------------------------------------------
-# 2. Sub-aperture ports: the guide is the walls, not the domain.
-#    (Each of the three asserts
-#    below was verified to fail against the domain-extent version of
-#    _port_transverse_spans.)
-# --------------------------------------------------------------------------
 
 def test_sub_aperture_port_does_not_fire_a_snap_finding():
     """declared == rasterized on both transverse axes -> nothing snapped,
@@ -197,9 +182,6 @@ def test_sub_aperture_port_does_not_fire_a_snap_finding():
         f"40 mm declared / 2 mm cells / 40 mm rasterized: nothing snapped. "
         f"codes={codes!r}"
     )
-    # The note describes the ``value_range is None`` branch.
-    # This port declares y_range AND z_range; the first version of this
-    # fix keyed the note on ``declared == aperture`` and printed it here.
     texts = [str(i) for i in _issues(sim)]
     assert not any("no explicit range" in t for t in texts), texts
 
@@ -313,25 +295,6 @@ def test_aperture_can_snap_above_the_declared_width():
     assert any("22.8600" in t and "23.0000" in t for t in snaps), snaps
 
 
-# --------------------------------------------------------------------------
-# 2b. The advisory must name the cutoff's REAL source, per profile.
-#
-# The message used to say "the solve builds its mode template and cutoff
-# from <the width _range_to_slice reports>" on every port. That is true on
-# ``mode_profile="analytic"`` and false on the API default ``"discrete"``,
-# where ``init_waveguide_port`` takes ``f_c`` from the discrete eigenvalue
-# of the aperture's own CELL widths. Both fixtures below are the SAME
-# geometry -- WR-90 declared, dx = 1 mm, no explicit range, so the reported
-# width is the declared 22.860 mm and the realized aperture is 23 cells --
-# and they differ only in the profile, which is what makes the two messages
-# a contrast rather than two separate claims.
-#
-# Build-only: ``preflight()`` never steps time, and neither does the
-# ``_build_waveguide_port_config`` call these tests use as the oracle. The
-# oracle is the BUILT config, not a formula re-derived here: a formula
-# copied into a test drifts with the builder in the same direction as the
-# message would, which is exactly the tautology.
-# --------------------------------------------------------------------------
 
 _SNAP_DX = 1e-3
 _SNAP_DOMAIN = (0.10, _A_WR90, _B_WR90)
@@ -344,7 +307,9 @@ def _snap_sim(mode_profile):
 
 
 def _built_cfg(sim):
-    """The port config the RUN builds, read on the same grid preflight uses."""
+    """The port config the RUN builds, read on the same grid preflight uses.
+    A formula copied into a test drifts with the builder in the same direction as the message would.
+    """
     grid = sim._build_grid()
     entry = sim._waveguide_ports[0]
     return grid, sim._build_waveguide_port_config(
@@ -461,15 +426,6 @@ def test_the_discrete_row_names_the_mode_and_who_picks_the_eigenvalue():
         )
 
 
-# --------------------------------------------------------------------------
-# 2c. The discrete mode solve is a DENSE eigh of an
-#     (nu*nv, nu*nv) matrix, so preflight must not run it on a large
-#     aperture. Measured on this pod, two-port WR-90 preflight(strict=False):
-#     0.07 s at dx = 1 mm (230 cells), 0.39 s at 0.5 mm (920), 4.79 s at
-#     0.25 mm (3731) and 127.21 s / 10.7 GB at 0.125 mm (14823). The budget
-#     is a committed constant; these tests pin the BEHAVIOUR on either side
-#     of it, not the constant's value.
-# --------------------------------------------------------------------------
 
 class _BuilderMustNotRun(AssertionError):
     """Raised by the monkeypatched builder, so a call cannot pass silently."""
@@ -537,9 +493,6 @@ def test_the_analytic_profile_is_not_subject_to_the_budget():
         assert "is not solved here" not in row, row
 
 
-# --------------------------------------------------------------------------
-# 2d. Both "could not read it" strings must be reachable.
-# --------------------------------------------------------------------------
 
 def test_a_builder_failure_falls_back_to_the_analytic_realized_value(monkeypatch):
     """``preflight(strict=False)`` COLLECTS findings and never crashes, so a
@@ -587,22 +540,8 @@ def test_a_port_with_one_unrasterizable_axis_asserts_nothing_about_the_cutoff():
         )
 
 
-# --------------------------------------------------------------------------
-# 2e. The (u, v) axis mapping, on all three launch normals.
-#
-# ``_build_waveguide_port_config`` assigns ``WaveguidePort.a`` to the u axis
-# and ``.b`` to the v axis, per launch normal: x-normal -> (y, z), y-normal ->
-# (x, z), z-normal -> (x, y). The advisory quotes a per-axis cell count, so a
-# swapped mapping would print b's count against a's width. Every fixture above
-# is x-normal; these two cover the other two normals with DIFFERENT counts on
-# the two axes, so a swap cannot pass.
-# --------------------------------------------------------------------------
 
 _UV_CASES = [
-    # (id, direction, domain, long axis, short axis)
-    # The long transverse wall is 22.86 mm (23 cells at dx = 1 mm), the short
-    # one 10.75 mm (11 cells); both fractions exceed .5, and the launch
-    # axis is 100 mm. Keep the unequal 23/11 counts under nearest rounding.
     ("y_normal", "+y", (_A_WR90, 0.10, 10.75e-3), "x", "z"),
     ("z_normal", "+z", (_A_WR90, 10.75e-3, 0.10), "x", "y"),
 ]
@@ -610,6 +549,7 @@ _UV_CASES = [
 
 @pytest.mark.parametrize("case", _UV_CASES, ids=[c[0] for c in _UV_CASES])
 def test_each_axis_row_quotes_its_own_realized_cell_count(case):
+    """Different 23/11 counts on the two axes make a swapped mapping visible."""
     _id, direction, domain, long_ax, short_ax = case
     sim = Simulation(freq_max=12e9, domain=domain, dx=1e-3,
                      boundary=_transverse_pec(direction),
@@ -627,8 +567,6 @@ def test_each_axis_row_quotes_its_own_realized_cell_count(case):
         f"{_id}: expected a snap row on both transverse axes, got "
         f"{sorted(rows)}"
     )
-    # 22.860 mm -> 23 cells, 10.750 mm -> 11 cells at dx = 1 mm. Different
-    # counts on the two axes is what makes a swapped mapping visible.
     assert "23 cells = 23.0000 mm" in rows[long_ax], (
         f"{_id}: the {long_ax} row must carry the 23-cell count of the "
         f"22.860 mm wall; got {rows[long_ax]!r}"
@@ -639,17 +577,6 @@ def test_each_axis_row_quotes_its_own_realized_cell_count(case):
     )
 
 
-# --------------------------------------------------------------------------
-# 2g. A multimode port, on both sides of the budget.
-#
-# ``init_multimode_waveguide_port`` IGNORES ``port.mode`` and enumerates modes
-# by cutoff, so without a built config there is no mode to name and no
-# mode-specific cutoff to quote. The first version of the budget returned no
-# reading at all in that case, which made an OVER-BUDGET multimode port say
-# "the cutoff this port builds could not be read on this grid" -- a false
-# reason, since the check had declined on COST. The row now gives the real
-# one and quotes no frequency it cannot attribute.
-# --------------------------------------------------------------------------
 
 def _multimode_sim(dx, n_modes=3):
     sim = Simulation(freq_max=12e9, domain=(0.10, _A_WR90, _B_WR90), dx=dx,
@@ -724,23 +651,6 @@ def test_a_multimode_build_failure_is_not_reported_as_a_budget_decline(monkeypat
             "this port carries")[1], row
 
 
-# --------------------------------------------------------------------------
-# 2f. No cubic-cell assumption (repo engineering principle 2).
-#
-# A transverse span is ``cells * that axis' own cell size``, never
-# ``cells * dx``. The uniform ``Grid`` carries only ``dx``, so on every grid
-# that reaches this family today the per-axis read returns ``dx`` and nothing
-# moves numerically -- that no-op is asserted below rather than assumed. The
-# ``dy != dz`` case is exercised through a proxy grid, because the only grid
-# class with per-axis sizes is ``NonUniformGrid`` and
-# ``_check_waveguide_port_evanescent`` routes that to the declared-geometry
-# lane before the spans are computed.
-#
-# What is deliberately NOT made axis-aware here: ``_range_to_slice``'s index
-# math. ``_build_waveguide_port_config`` calls it with ``grid.dx`` on every
-# axis, and preflight mirroring the builder is the whole point of this check.
-# That cubic assumption lives in the builder and is out of scope.
-# --------------------------------------------------------------------------
 
 class _AnisotropicGridProxy:
     """A real grid with two transverse cell sizes bolted on.
@@ -819,8 +729,6 @@ def test_a_nonuniform_axis_size_is_read_per_axis_not_from_dx():
 
     reading = wgpf._waveguide_port_cutoff_reading(sim, entry, proxy, aniso)
     assert reading is not None
-    # The cell COUNT is unchanged -- the same slice, bigger cells -- which is
-    # the thing a dx-based division would get wrong once the span moved.
     for ax in ("y", "z"):
         assert reading["cells"][ax] == int(
             round(cubic[ax]["rasterized"] / dx)), ax
@@ -856,13 +764,8 @@ def test_an_anisotropic_grid_names_the_axis_cell_size_it_used():
         assert f"covers {spans[ax]['rasterized'] * 1e3:.4f} mm" in row, row
 
 
-# --------------------------------------------------------------------------
-# 3. Enumerate-and-classify: every (declared, rasterized) pair the port
-#    surface can produce must land in the table.
-# --------------------------------------------------------------------------
 
 _CASES = [
-    # (id, dx, domain, y_range, z_range)
     ("wr90_dx2_explicit", 2e-3, (0.10, _A_WR90, _B_WR90),
      (0.0, _A_WR90), (0.0, _B_WR90)),
     ("wr90_dx2_default", 2e-3, (0.10, _A_WR90, _B_WR90), None, None),
@@ -874,36 +777,16 @@ _CASES = [
     ("exact_dx2_explicit", 2e-3, (0.10, 0.020, 0.010),
      (0.0, 0.020), (0.0, 0.010)),
     ("battery_dx3_default", 3e-3, (0.10, 0.040, 0.020), None, None),
-    # Sub-aperture: an explicit range NARROWER than
-    # the domain. This is a committed pattern
-    # (tests/unit/sparams/test_waveguide_port_reference_sims.py, tests/unit/api/test_api.py,
-    # tests/unit/runners/test_distributed.py) and it was the table's blind spot -- the
-    # first version of this fix fired a snap finding on all three of that
-    # file's ports with declared == aperture.
     ("sub_aperture_dx2", 2e-3, (0.10, 0.040, 0.020),
      (0.010, 0.030), (0.0, 0.020)),
-    # Round-up case: _range_to_slice's explicit
-    # branch ROUNDS range endpoints to the nearest cell, so an aperture
-    # can snap ABOVE the declared width too, not only below it (as every
-    # other SNAP case above does). domain y is intentionally larger than
-    # the port's declared y_range so the range's upper edge rounds up
-    # into the extra room: 0.02286/0.001 = 22.86 -> rounds to the 23rd
-    # cell -> rasterized 23.000 mm > declared 22.860 mm.
-    # port_aperture_snap is DIRECTION-AGNOSTIC by construction --
-    # `_check_waveguide_port_aperture_snap` fires on
-    # ``declared != rasterized``, never on the sign of the difference --
-    # so this is exercised as an additional SNAP case rather than a new
-    # table row.
     ("wr90_roundup_dx1_y_only", 1e-3, (0.10, 0.030, 0.010),
      (0.0, _A_WR90), None),
 ]
 
 _TABLE = {
-    # classification -> whether a port_aperture_snap finding is required
-    "EXACT": False,          # declared == rasterized
-    "SNAP": True,            # declared != rasterized (either direction --
-                             # see wr90_roundup above)
-    "UNRASTERIZABLE": True,  # _range_to_slice rejects the range outright
+    "EXACT": False,
+    "SNAP": True,
+    "UNRASTERIZABLE": True,
 }
 
 
@@ -917,14 +800,12 @@ def _classify(declared, rasterized, tol=1e-12):
 
 @pytest.mark.parametrize("case", _CASES, ids=[c[0] for c in _CASES])
 def test_every_port_pair_is_classified(case):
+    """The round-up case's domain y is intentionally larger than the port's declared y_range so the range's upper edge rounds up into the extra room."""
     _id, dx, domain, y_range, z_range = case
     sim = _build(dx=dx, domain=domain, y_range=y_range, z_range=z_range,
                  freqs=jnp.asarray([9e9]), f0=9e9)
     grid = sim._build_grid()
     entry = sim._waveguide_ports[0]
-    # Computed from COMMITTED primitives only (grid + _range_to_slice), so
-    # this gate fails on an assertion pre-fix rather than on a missing
-    # helper -- the failure it must catch is preflight staying silent.
     spans = {}
     for ax in "yz":
         ai = "xyz".index(ax)

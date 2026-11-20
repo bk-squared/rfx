@@ -181,8 +181,6 @@ def test_geometry_and_trend_checks_reject_restored_defects():
         assert_realized_separation(replace(line, length=line.length + line.dx), 1.25e-3)
     with pytest.raises(AssertionError):
         assert_first_order(MESHES, [1., 1., 1.])
-    # A solved spec displaced from the declared snap must be observable even
-    # before comparing the measured spectrum (no extra FDTD solve here).
     from types import SimpleNamespace
     spec = SimpleNamespace(i=line.port[0]+1, j=line.port[1], k=line.port[2])
     result = SimpleNamespace(lumped_port_sparams=((spec, None),))

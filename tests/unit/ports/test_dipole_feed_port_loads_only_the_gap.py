@@ -20,6 +20,7 @@ Fixture: the rfx-rcs measurement's dipole (``exp_lumped_transverse/run_case.py``
 case D, mesh L/19: 12 cells of clearance, 10 CPML layers), run for 300 steps --
 the tip's radial field reaches 0.38 of the gap field inside that window. The
 gate threshold 1e-3 is the one pre-declared for it (G1).
+The lateral clearance is 30 mm.
 """
 from __future__ import annotations
 
@@ -29,13 +30,14 @@ import pytest
 from rfx import GaussianPulse, PolylineWire, Simulation, realized_pec_edge_masks
 
 L_DIP = 47.5e-3
-N_CELLS = 19          # L/19 = 2.5 mm, lambda/43 at the realized resonance
-N_LAT = 12            # 30 mm of clearance
+N_CELLS = 19
+N_LAT = 12
 N_CPML = 10
 N_STEPS = 300
 
 
 def _dipole(boundary="cpml", *, radius_ratio=0.):
+    """L/19 = 2.5 mm is lambda/43 at the realized resonance."""
     dx = L_DIP / N_CELLS
     n_arm = (N_CELLS - 1) // 2
     nz = 2 * N_LAT + N_CELLS
@@ -54,10 +56,10 @@ def _dipole(boundary="cpml", *, radius_ratio=0.):
     sim.add_port(position=(xc, yc, z_port), component="ez", impedance=50.0,
                  waveform=GaussianPulse(f0=3e9, bandwidth=0.8))
     probes = {
-        "ex_plus": ((xc, yc, z_port), "ex"),        # edge the old rule loaded
-        "ex_minus": ((xc - dx, yc, z_port), "ex"),  # its mirror, never loaded
-        "ey_plus": ((xc, yc, z_port), "ey"),        # edge the old rule loaded
-        "ey_minus": ((xc, yc - dx, z_port), "ey"),  # its mirror
+        "ex_plus": ((xc, yc, z_port), "ex"),
+        "ex_minus": ((xc - dx, yc, z_port), "ex"),
+        "ey_plus": ((xc, yc, z_port), "ey"),
+        "ey_minus": ((xc, yc - dx, z_port), "ey"),
         "ez_gap": ((xc, yc, z_port), "ez"),
     }
     for pos, comp in probes.values():
@@ -79,20 +81,14 @@ def _assert_realized(sim, n_arm):
         f"arms realized on Ez edges {col}, want {n_arm} each side of k={k}")
     assert int(mz.sum()) == len(col) and not mx.any() and not my.any(), (
         "PEC edges off the wire column")
-    # The two edges the old rule loaded are live (the test needs them).
     assert not mx[i, j, k] and not my[i, j, k]
-    # The fixture is centred: the mirror of node i about the wire is itself.
     nx, ny = grid.shape[0], grid.shape[1]
     assert (i, j) == ((nx - 1) // 2, (ny - 1) // 2) and nx % 2 == 1
 
 
-# UPML replaces the whole E update with its own coefficients
-# (rfx/boundaries/upml.py::init_upml), so it is a separate lane for the port's
-# load and gets its own row.
 @pytest.mark.parametrize("boundary", ["cpml", "upml"])
 def test_the_feed_tip_radial_field_is_the_same_on_the_loaded_and_free_sides(boundary):
-    # Exercise the load-owner regression with legacy radius=0 filaments.
-    # Positive subcell radii have a separate refusal witness below.
+    """UPML replaces the whole E update with its own coefficients, so it is a separate lane for the port's load."""
     sim, names, n_arm = _dipole(boundary)
     _assert_realized(sim, n_arm)
     res = sim.run(n_steps=N_STEPS, skip_preflight=True, compute_s_params=False)
@@ -101,11 +97,9 @@ def test_the_feed_tip_radial_field_is_the_same_on_the_loaded_and_free_sides(boun
     gap_peak = float(np.max(np.abs(ts["ez_gap"])))
     for plus, minus in (("ex_plus", "ex_minus"), ("ey_plus", "ey_minus")):
         peak = float(np.max(np.abs(ts[minus])))
-        # The field under test is not trivially small: 0.38 of the gap field.
         assert peak > 0.2 * gap_peak, (
             f"{minus} peaks at {peak / gap_peak:.3f} of the gap field; the "
             f"fixture no longer carries a radial field at the feed")
-        # Radial field is odd under the mirror: E(+side) = -E(-side).
         mismatch = float(np.max(np.abs(ts[plus] + ts[minus]))) / peak
         ratio = float(np.max(np.abs(ts[plus]))) / peak
         assert mismatch <= 1e-3, (
