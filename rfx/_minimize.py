@@ -347,7 +347,7 @@ def minimize(
         n_iters=n_iters, m=m, jacobian=mode, jit=jit,
         keep_iterates=True, name="minimize",
     )
-    if worst_case:
+    if worst_case and isinstance(opt, _RecordingMMA):
         history = opt.history
     nfev = solves["forward_mode"] // start.size if mode == "fwd" else solves["forward"]
     if isinstance(opt, _RecordingGCMMA):
