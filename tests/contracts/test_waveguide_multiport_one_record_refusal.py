@@ -48,9 +48,6 @@ def _call(sim, path, **options):
 
 
 def _patch_loop(monkeypatch, path, replacement):
-    # Both uniform entries pass rfx.simulation.run to prepared.advance;
-    # both graded entries pass the runner's imported run_nonuniform. These
-    # are the fixed-n_steps time-loop entries, after all source assembly.
     if path.startswith("graded"):
         monkeypatch.setattr("rfx.runners.nonuniform.run_nonuniform", replacement)
     else:
@@ -98,8 +95,7 @@ def test_two_port_step_calculator_returns_matrix():
 
 
 def test_graded_two_port_calculator_returns_matrix():
-    # The graded normalized calculator already requires equal port media;
-    # use the same two-port geometry without the dielectric step for this row.
+    """The graded normalized calculator requires equal port media."""
     result = _guide("graded-run", step=False).compute_waveguide_s_matrix(
         n_steps=2, normalize=True, skip_preflight=True)
     assert np.shape(result.s_params) == (2, 2, 2)

@@ -37,7 +37,7 @@ def test_directivity_refuses_wrong_sign_gradient():
 
 
 def _independent_standard_read(path, n_ports):
-    # Minimal RI/Hz flat parser, independent of rfx.io and scikit-rf.
+    """The RI/Hz flat parser is independent of rfx.io and scikit-rf."""
     lines = path.read_text().splitlines()
     assert "# Hz S RI R 50" in lines
     tokens = [float(t) for line in lines if line and not line.startswith(("!", "#"))
@@ -68,7 +68,7 @@ def test_default_touchstone_standard_independent_reader(tmp_path, n_ports):
     try:
         import skrf
     except ImportError:
-        pass  # Optional extra interop check; the independent parser always runs.
+        pass
     else:
         np.testing.assert_allclose(skrf.Network(str(path)).s.transpose(1, 2, 0), expected)
     np.testing.assert_allclose(read_touchstone_full(path).s_params, expected)
@@ -77,7 +77,6 @@ def test_default_touchstone_standard_independent_reader(tmp_path, n_ports):
 
 @pytest.mark.parametrize("n_ports", [3, 4])
 def test_old_writer_default_layout(tmp_path, n_ports):
-    # Frozen bytes from origin/main's writer, including its identifying header.
     from pathlib import Path
     path = Path(__file__).parents[1] / "fixtures" / "touchstone" / f"old-rfx.s{n_ports}p"
     values = np.arange(1, 1 + n_ports*n_ports*2).reshape(n_ports, n_ports, 2)
@@ -116,8 +115,6 @@ def test_explicit_legacy_layout_overrides_marker(tmp_path):
 
 @pytest.mark.parametrize("n_ports", [3, 4, 5])
 def test_default_read_follows_the_marker_value(tmp_path, n_ports):
-    # A file written today with layout="legacy-rfx" carries that marker; the
-    # default reader must honour its value, not just its presence.
     values = (np.arange(n_ports * n_ports).reshape(n_ports, n_ports, 1) + 1
               + 1j * (np.arange(n_ports * n_ports).reshape(n_ports, n_ports, 1) + 50))
     path = tmp_path / f"legacy_marked.s{n_ports}p"

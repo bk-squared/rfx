@@ -39,7 +39,8 @@ def frontmatter_problem(text: str) -> str | None:
 
 
 def test_there_are_pages_to_check() -> None:
-    assert len(_PAGES) >= 50, _PAGES  # an emptied or moved tree must not pass vacuously
+    """An emptied or moved tree must not pass vacuously."""
+    assert len(_PAGES) >= 50, _PAGES
 
 
 @pytest.mark.reads_docs_for_gate(reason=(

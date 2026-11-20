@@ -65,6 +65,7 @@ def test_bar1_slab_line_length_independent_of_record():
     ("S2", 81, 165781, -80586),
 ))
 def test_identity_absorber_reproduces_old_padded_extent(monkeypatch, name, radius, n_nodes, origin):
+    """The old S1 [4, 28] and S2 [416, 4192] read ranges used padding of 1000 * radius + 2."""
     from rfx.sources import tfsf_discrete_plane_wave as plane
     original = plane.init_plane_wave
 
@@ -75,5 +76,4 @@ def test_identity_absorber_reproduces_old_padded_extent(monkeypatch, name, radiu
     monkeypatch.setattr(plane, "init_plane_wave", padded)
     sim, grid = scene(name)
     cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1000, dtype='float32')
-    # Old ranges: S1 [4, 28], S2 [416, 4192]; padding = 1000 * radius + 2.
     assert (cfg.n_nodes, cfg.origin) == (n_nodes, origin)

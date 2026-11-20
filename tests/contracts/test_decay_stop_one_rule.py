@@ -52,7 +52,6 @@ ROOT = Path(__file__).resolve().parents[2]
 PULSE = dict(f0=10e9, bandwidth=1.0, cutoff=5)
 
 
-# --- (a) ---------------------------------------------------------------------
 
 def test_large_loop_files_hold_no_energy_rule():
     for module in ("simulation", "stepping/graded_loop"):
@@ -65,11 +64,9 @@ def test_large_loop_files_hold_no_energy_rule():
                      if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
         assert not [name for name in functions if "energy" in name.lower()], module
         names = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
-        # The energy reference, its counter and the graded volume weights.
         assert not names & {"peak_U", "energy_below", "_dV", "decay_checks"}, module
 
 
-# --- scenes -----------------------------------------------------------------
 
 def _cube(mesh):
     """The design's dielectric cube (eps 6, 6 mm) in a CPML box, 1 mm cells
@@ -109,7 +106,6 @@ def _open_box(mesh):
     return sim
 
 
-# --- (b) ---------------------------------------------------------------------
 
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 def test_stop_waits_for_the_far_probe(mesh, record_property):
@@ -126,7 +122,6 @@ def test_stop_waits_for_the_far_probe(mesh, record_property):
     assert tail <= 0.1, (len(probe), peak_at, tail)
 
 
-# --- (c) ---------------------------------------------------------------------
 
 def _inline_history(mesh, cap, monkeypatch):
     """W_n for n < cap from a forced-length run, and the drive end n_end.
@@ -164,6 +159,7 @@ def _inline_history(mesh, cap, monkeypatch):
         return original_setup(*args, **kwargs)
 
     def scan(body, init, xs=None, *args, **kwargs):
+        """Each component's Yee control volume uses primal widths along the component axis and dual widths across for E, with the reverse convention for H."""
         if not (isinstance(init, dict) and "fdtd" in init):
             return original_scan(body, init, xs, *args, **kwargs)
         grid, eps, mu, widths = built["grid"], built["eps"], built["mu"], built["widths"]
@@ -172,9 +168,6 @@ def _inline_history(mesh, cap, monkeypatch):
         if widths is None:
             ve = vh = (grid.dx ** 3,) * 3
         else:
-            # Each component's Yee control volume: E_a primal along a, dual (the
-            # mean of the two adjacent cells; the first equals the first cell)
-            # across; H_a the other way round.
             primal = [np.asarray(grid.cells(a), dtype=np.float64)[r[a]] for a in range(3)]
             dual = []
             for a in range(3):
@@ -232,6 +225,7 @@ def _declared_stop(w, n_end, *, interval, thr, min_steps, consecutive=2):
 @pytest.mark.parametrize("mesh", ["uniform", "graded", "uniform-upml", "graded-periodic"])
 def test_stop_is_the_declared_rule_on_an_independent_history(mesh, monkeypatch,
                                                               record_property):
+    """The absolute bar of 9 float32 ULP of the largest post-drive reference W_ref accompanies rtol=1e-4 because the graded-periodic arm64 error measured earlier was 1.26e-4 relative at W_ref/1.5e4 but 1.1e-5 absolute, below one float32 ULP of W_ref."""
     from rfx.runners import nonuniform as nu_runner
 
     cap, thr, min_steps = 600, 1e-3, 100
@@ -253,22 +247,12 @@ def test_stop_is_the_declared_rule_on_an_independent_history(mesh, monkeypatch,
         record_property(f"stop_I{interval}", (n_end, expected, got))
         assert expected is not None and got == expected, (interval, n_end, expected, got)
         if mesh.startswith("graded"):
-            # The loop's own rows: same boundaries, W and reference to 1e-4, or
-            # within 9 float32 ULP of the largest post-drive reference W_ref (the
-            # cross-trace per-step bar; not the drive-time peak of W, which is the
-            # source cell's near field and would make the bar exceed thr*ref).
-            # W is a float32 sum whose leapfrog H^(n-1/2).H^(n+1/2) cross term
-            # cancels as W decays, so its relative rounding grows as W falls:
-            # graded-periodic on arm64 measured 1.26e-4 relative at W_ref/1.5e4
-            # after the drive change (5.6e-5 before), 1.1e-5 absolute, below
-            # one float32 ULP of W_ref.
             checks = returned["decay_checks"]
             assert [c for c, _, _ in checks] == [c for c, _, _ in rows]
             np.testing.assert_allclose(np.asarray(checks)[:, 1:], np.asarray(rows)[:, 1:],
                                        rtol=1e-4, atol=9 * float(np.spacing(np.float32(np.asarray(rows)[:, 2].max()))))
 
 
-# --- (d) ---------------------------------------------------------------------
 
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 def test_stopped_record_is_the_forced_prefix(mesh, record_property):
@@ -288,7 +272,6 @@ def test_stopped_record_is_the_forced_prefix(mesh, record_property):
         assert ulp <= 9
 
 
-# --- (e) ---------------------------------------------------------------------
 
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 @pytest.mark.parametrize("consecutive", [1, 0, -1])
@@ -310,7 +293,6 @@ def test_graded_stop_fn_route_still_takes_one():
     assert len(result["time_series"]) == 40
 
 
-# --- (f) ----------------------------------------------------------------------
 
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 def test_driven_waveguide_port_runs_and_stops(mesh, record_property):
@@ -333,7 +315,6 @@ def test_driven_waveguide_port_runs_and_stops(mesh, record_property):
     assert values["criterion"] != "cap" and values["stop_step"] == len(result.time_series)
 
 
-# --- (g) ----------------------------------------------------------------------
 
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 def test_decay_record_does_not_depend_on_n_steps(mesh, record_property):
@@ -361,7 +342,6 @@ def test_decay_record_does_not_depend_on_n_steps(mesh, record_property):
             == np.asarray(sized.dft_planes["pz"].accumulator).tobytes())
 
 
-# --- (h) ----------------------------------------------------------------------
 
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 def test_cap_advisory_names_charge_relaxing_in_a_lossy_medium(mesh):
@@ -388,7 +368,6 @@ def test_cap_advisory_names_charge_relaxing_in_a_lossy_medium(mesh):
         assert remedy in message[0]
 
 
-# --- (i) ----------------------------------------------------------------------
 
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 @pytest.mark.parametrize("window", ["hann", "tukey"])
@@ -402,7 +381,6 @@ def test_windowed_flux_monitor_is_refused_with_until_decay(mesh, window):
         sim.run(until_decay=1e-3, decay_max_steps=300, skip_preflight=True)
 
 
-# --- (j) ----------------------------------------------------------------------
 
 def test_two_d_tez_stops_on_the_threshold():
     """A 40 mm 2-D TEz CPML square with an Ey current source: W must read Ex, Ey and
@@ -419,7 +397,6 @@ def test_two_d_tez_stops_on_the_threshold():
     assert len(probe) < 3000 and probe[-50:].max() < 1e-2 * probe.max()
 
 
-# --- (k) ----------------------------------------------------------------------
 
 def test_mixed_precision_energy_is_finite_and_stops_on_the_threshold():
     """The open 60 mm box with a 2000 V/m field source at precision="mixed": squaring
@@ -439,7 +416,6 @@ def test_mixed_precision_energy_is_finite_and_stops_on_the_threshold():
     assert stop["reached"] < 1e-3 and int(np.argmax(probe)) < len(probe) - 10, stop
 
 
-# --- (l) ----------------------------------------------------------------------
 
 def test_settling_verdict_leads_with_the_stop_line_on_a_cap():
     """A soft source with a ModulatedGaussian (relative DC 0.68) holds the energy up:
@@ -460,7 +436,6 @@ def test_settling_verdict_leads_with_the_stop_line_on_a_cap():
     assert not stopped.settling_witness["reason"].startswith("until_decay ended")
 
 
-# --- (m) ----------------------------------------------------------------------
 
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 def test_side_step_program_holds_no_grid_size_constant(mesh, monkeypatch):
@@ -502,8 +477,8 @@ def _off(table):
     return off
 
 
-# Closed boxes use the same after-drive rule, including on the uniform mesh.
 def _closed_box_energy_run(mesh, cap, monkeypatch):
+    """The public graded run() refuses closed-boundary until_decay, so the existing runner is exercised directly."""
     import time
     from rfx.runners.nonuniform import run_nonuniform_path
     import rfx.stepping.graded_loop as graded_loop
@@ -520,7 +495,6 @@ def _closed_box_energy_run(mesh, cap, monkeypatch):
     original, rows, ends = owner.make_decay_stop, [], []
 
     def observe(*args, **kwargs):
-        # Inspect the applied tables independently of the production drive-end rule.
         ends.append(max(_off(_table(src)) for src in kwargs["sources"]))
         rule, measure = original(*args, **kwargs)
         if measure is None:
@@ -537,8 +511,6 @@ def _closed_box_energy_run(mesh, cap, monkeypatch):
     start = time.perf_counter()
     with monkeypatch.context() as patch:
         patch.setattr(owner, "make_decay_stop", observe)
-        # Public graded run() refuses closed-box until_decay; exercise its
-        # existing runner directly, leaving that admission policy intact.
         result = (run_nonuniform_path(sim, n_steps=cap, **kwargs) if mesh == "graded"
                   else sim.run(skip_preflight=True, **kwargs))
         jax.block_until_ready(result.time_series)

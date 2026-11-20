@@ -144,20 +144,16 @@ def repo(tmp_path):
     wt = tmp_path / "wt"
     wt.mkdir()
 
-    # (a) merged: branch is an ancestor of origin/main.
     _git(clone, "branch", "feat/merged", "main", env=env)
     _git(clone, "worktree", "add", str(wt / "merged"), "feat/merged", env=env)
 
-    # (b) pushed-idle: on origin, last commit backdated well past --days.
     _git(clone, "worktree", "add", "-b", "feat/pushed", str(wt / "pushed"), "main", env=env)
     _commit(wt / "pushed", "pushed.txt", env, date=OLD_DATE)
     _git(clone, "push", "-u", "origin", "feat/pushed", env=env)
 
-    # (c) unpushed: commits exist nowhere but this worktree.
     _git(clone, "worktree", "add", "-b", "feat/unpushed", str(wt / "unpushed"), "main", env=env)
     _commit(wt / "unpushed", "unpushed.txt", env, date=OLD_DATE)
 
-    # (d) dirty: would be pushed-idle, but has an uncommitted file.
     _git(clone, "worktree", "add", "-b", "feat/dirty", str(wt / "dirty"), "main", env=env)
     _commit(wt / "dirty", "dirty.txt", env, date=OLD_DATE)
     _git(clone, "push", "-u", "origin", "feat/dirty", env=env)
@@ -207,7 +203,6 @@ def _pr(number, state, owner=OWNER):
     return {"number": number, "state": state, "headRepositoryOwner": {"login": owner}}
 
 
-# --- offline classification -------------------------------------------------
 
 
 def test_dry_run_classifies_each_worktree(repo):
@@ -227,7 +222,6 @@ def test_dry_run_classifies_each_worktree(repo):
     assert rows[paths["unpushed"]]["action"].startswith("KEEP")
     assert rows[paths["dirty"]]["class"] == "dirty"
 
-    # A dry run touches nothing.
     for path in paths.values():
         assert os.path.isdir(path)
 
@@ -248,12 +242,13 @@ def test_no_gh_refuses_to_remove_a_pushed_idle_worktree(repo):
 
 
 def test_dry_run_leaves_a_recent_pushed_branch_alone(repo):
-    """The idle window is what removes a pushed branch, not the push itself."""
+    """The idle window is what removes a pushed branch, not the push itself.
+    A merged worktree stays removable because merge does not wait out an idle window.
+    """
     proc = _run_script(repo["clone"], repo["env"], "--no-gh", "--days", "100000")
     assert proc.returncode == 0, proc.stderr
     rows = _table(proc.stdout)
     assert rows[repo["paths"]["pushed"]]["class"] == "pushed-fresh"
-    # Only the merged worktree stays removable: merge does not wait out a window.
     assert "dry run: 1 would be removed" in proc.stdout
 
 
@@ -281,7 +276,6 @@ def test_apply_removes_merged_and_idle_only(repo, gh_stub):
     assert "feat/unpushed" in branches
     assert "feat/dirty" in branches
 
-    # The remote branch of a removed worktree is untouched.
     remote = _git(clone, "ls-remote", "--heads", "origin", env=env).stdout
     assert "refs/heads/feat/pushed" in remote
 
@@ -296,7 +290,6 @@ def test_apply_is_idempotent(repo, gh_stub):
     assert "removed worktree" not in second.stdout
 
 
-# --- detached ---------------------------------------------------------------
 
 
 def test_detached_worktree_is_removed_only_when_idle(repo, tmp_path):
@@ -335,7 +328,6 @@ def test_detached_worktree_on_no_ref_is_never_removed(repo, tmp_path):
     assert rows[path]["action"].startswith("KEEP")
 
 
-# --- uncommitted and ignored work ------------------------------------------
 
 
 def test_dirty_worktree_says_when_its_branch_is_also_unpushed(repo, tmp_path):
@@ -384,7 +376,6 @@ def test_regenerable_caches_do_not_block_removal(repo):
     assert not os.path.exists(paths["merged"])
 
 
-# --- pull-request paths, against a stub gh ---------------------------------
 
 
 def test_merged_pr_keeps_a_branch_holding_a_local_commit(repo, gh_stub):
@@ -474,7 +465,6 @@ def test_archive_pushes_an_unpushed_branch_before_removing_it(repo, gh_stub):
     remote = _git(clone, "ls-remote", "--heads", "origin", env=env).stdout
     assert "refs/heads/feat/unpushed" in remote
     assert not os.path.exists(paths["unpushed"]), proc.stdout
-    # --archive does not make a dirty worktree removable.
     assert os.path.isdir(paths["dirty"])
 
 
@@ -487,7 +477,6 @@ def test_archive_without_gh_pushes_but_keeps_the_worktree(repo):
     assert os.path.isdir(paths["unpushed"])
 
 
-# --- reading a commit's age ------------------------------------------------
 
 
 _MODULE_NAME = "_prune_worktrees_under_test"
@@ -549,7 +538,6 @@ def test_every_worktree_reports_a_known_age(repo):
 def test_now_pins_the_idle_boundary(repo):
     """`--now` makes the idle window exact instead of clock-dependent."""
     env, clone, paths = repo["env"], repo["clone"], repo["paths"]
-    # The pushed worktree's only commit is at OLD_DATE.
     just_short = _run_script(clone, env, "--no-gh", "--now", "2020-01-09T03:04:04+00:00")
     assert _table(just_short.stdout)[paths["pushed"]]["class"] == "pushed-fresh", (
         just_short.stdout
@@ -564,7 +552,6 @@ def test_a_bad_now_is_rejected(repo):
     assert "not an ISO 8601 timestamp" in proc.stderr
 
 
-# --- gh owner resolution ----------------------------------------------------
 
 
 def test_owner_lookup_failure_fails_closed(repo, gh_stub):

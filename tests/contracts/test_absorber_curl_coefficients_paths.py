@@ -25,7 +25,6 @@ from tests.unit.runners.test_distributed_nu_forward_staging import _select_legac
 def observe_faces(monkeypatch, sim, lane, face, *, expected_layout=None):
     """Observe the same twelve face multipliers through the shared kernel."""
     import rfx.boundaries.electric_coefficient as coefficients
-    # Uniform setup captures this shared kernel for the wrapped E boundary stage.
     import rfx.boundaries.cpml as uniform
     import rfx.runners.distributed_nu as graded
     from rfx.boundaries.depths import grid_face_depths
@@ -69,11 +68,8 @@ def observe_faces(monkeypatch, sim, lane, face, *, expected_layout=None):
 
     monkeypatch.setattr(module, 'apply_cpml_e', step)
     if 'graded' in lane:
-        # The wrapped graded step (plain CPML) imports the shared
-        # kernel inside its E boundary stage; observe that call too.
         import rfx.boundaries.cpml as cpml
         monkeypatch.setattr(cpml, 'apply_cpml_e', step)
-        # The legacy graded loop (poles with CPML) calls it from its own import.
         import rfx.stepping.slab_graded_legacy_loop as legacy
         monkeypatch.setattr(legacy, 'apply_cpml_e', step)
     monkeypatch.setattr(coefficients, 'corrected_coefficient', coefficient)
@@ -87,9 +83,8 @@ def observe_faces(monkeypatch, sim, lane, face, *, expected_layout=None):
 @pytest.mark.parametrize('lane', ['distributed_uniform', 'distributed_graded'])
 @pytest.mark.parametrize('face', ['x_lo', 'y_lo'])
 def test_distributed_face_uses_owner_coefficient(monkeypatch, owner, lane, face, record_property):
-    """Each active face component has at most one float32 ULP of lossless-cell error."""
-    # The two faces exercise all three E components with an active psi/kappa
-    # correction: x drives Ey/Ez, y drives Ex/Ez. No inactive-face surrogate.
+    """Each active face component has at most one float32 ULP of lossless-cell error.
+    The two faces exercise all three E components with an active psi/kappa correction."""
     assert len(jax.devices('cpu')) >= 2
     sim = coefficient_scene(owner, lane, face)
     grid = sim._build_realized_grid()
@@ -106,13 +101,9 @@ def test_distributed_face_uses_owner_coefficient(monkeypatch, owner, lane, face,
             denominator += EPS_0 * 50. * float(grid.dt) / (2 * 5e-12 + float(grid.dt)) * edge_mean(mask, c, high_wall=unpadded_high_walls(grid))
         expected64 = float(grid.dt) / denominator
         if face == 'x_lo':
-            # Only rank zero applies the x-low face. Its returned operand has
-            # already been sliced past the one-cell communication ghost.
             actual, expected64 = observed[0, c], expected64[:6]
             cell = (2, 7, 3)
         else:
-            # y-low applies on both x ranks; remove communication ghosts and
-            # stitch their real cells in the same order as the global grid.
             actual = np.concatenate([observed[rank, c][1:-1] for rank in range(2)])[:grid.shape[0]]
             expected64 = expected64[:, :6]
             cell = (7, 2, 3)
@@ -146,8 +137,6 @@ def test_boundary_rank_x_debye_slice(monkeypatch, lane, face, record_property):
         freq_max=20e9, domain=tuple(n * dx for n in dimensions), dx=dx,
         boundary=BoundarySpec(x=boundary, y='pec', z='pec'), cpml_layers=10, **profiles)
     sim.add_material('debye_box', eps_r=2., debye_poles=[DebyePole(delta_eps=50., tau=5e-12)])
-    # Physical x boundaries are 0/30 mm. The pole begins/ends halfway through
-    # the low/high ten-layer pad; occupancy is not extruded to the outer end.
     x_start, x_end = (-5e-3, 10e-3) if low else (20e-3, 35e-3)
     sim.add(Box((x_start, 2e-3, 1e-3), (x_end, 6e-3, 5e-3)), material='debye_box')
     sim.add_source((6e-3, 3e-3, 2e-3), 'ez', amplitude_kind='field')
@@ -165,15 +154,13 @@ def test_boundary_rank_x_debye_slice(monkeypatch, lane, face, record_property):
     assert set(observed) == {(r, c) for r in range(2) for c in (1, 2)}
     values = []
     for c in (1, 2):
-        # Independent NumPy Debye Cb on global four-cell means, then the
-        # first/last ten real x rows. No ghost/alignment row belongs to this face.
         dt = float(grid.dt)
         denominator = EPS_0 * edge_mean(mats.eps_r, c, high_wall=unpadded_high_walls(grid)) + dt * edge_mean(mats.sigma, c, high_wall=unpadded_high_walls(grid)) / 2
         denominator += EPS_0 * 50. * dt / (2 * 5e-12 + dt) * edge_mean(mask, c, high_wall=unpadded_high_walls(grid))
         expected = np.asarray(dt / denominator, np.float32)[pad]
         changed_rows = np.flatnonzero(np.any(expected[1:] != expected[:-1], axis=(1, 2)))
         assert changed_rows.size, 'adjacent x rows must differ to detect a shifted face slice'
-        actual = observed[rank, c]  # Only the FIRST/LAST rank applies x-low/high.
+        actual = observed[rank, c]
         assert actual.shape == expected.shape
         values.append(dict(component=c, formula_ulps=int(ulps(actual, expected).max()),
                            changed_adjacent_rows=changed_rows.tolist()))

@@ -40,7 +40,6 @@ def test_default_graded_refuses_before_field_step(skip, entry, monkeypatch):
     sim = guide()
     with pytest.raises(ValueError) as caught:
         if entry == "s_matrix":
-            # This calculator has no skip_preflight argument or distributed API.
             if not skip:
                 sim.preflight()
             sim.compute_waveguide_s_matrix(n_steps=1, normalize=True)
@@ -192,7 +191,6 @@ def test_explicit_aperture_ranges_on_graded_mesh(full, distributed, skip, monkey
         plan = original(**kwargs)
         assert plan.lane == ("run_distributed_nu" if distributed else "run_nonuniform")
         grid = sim._build_realized_grid()
-        # Main 4acbd7925 build: both aperture declarations keep these pads.
         assert grid.shape == (47, 27, 22)
         assert tuple(getattr(grid, f"pad_{a}_{s}") for a in "xyz" for s in ("lo", "hi")) == (8,) * 6
         raise Admitted
