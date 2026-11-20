@@ -253,7 +253,7 @@ def coax_owner(grid, *, port_id, plane_indices, center_xy, pin_radius, outer_rad
     return Owner(f'coax_port:{port_id}:mode:0', 'coax', channels,
                  _phase_values(frequencies), tuple(refs),
                  mode_profile_reference='positive-x radial ray, bilinear interpolation, trapezoid',
-                 known_differences=('coax calculator only; NU refused; I inferred from voltage fit',))
+                 known_differences=('coax voltage fit; NU refused; no H-current contour',))
 
 
 def build_msl_owners(sim, grid, *, frequencies, pec_edges=_UNSET):

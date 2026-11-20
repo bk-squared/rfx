@@ -29,7 +29,7 @@ def finish_forward(result):
     """Publish the ids selected by uniform forward's accumulator branch."""
     from rfx.measurement.port_s_contract import uniform_record_pairs
     pairs = uniform_record_pairs(result)
-    kind = 'wire' if pairs is result.wire_port_sparams else 'lumped'
+    kind = 'coax' if result.coax_port_metadata else 'wire' if pairs is result.wire_port_sparams else 'lumped'
     selected = read_ids(result.sparam_time_records, kind) if result.s_params is not None else SReadPorts()
     return result._replace(sparam_read_ids=selected)
 
@@ -98,7 +98,12 @@ def build_settling_witness(result, *, bins, dt, freq_max, probe_info,
     rows = [{**row, 'reads': ('S-parameters',)} for row in prior_rows]
     db = rows[0]['db'] if rows else None
     records = s_read_records(result)
-    if records:
+    coax = tuple(r for r in records if r.kind == 'coax')
+    if coax:
+        from rfx.measurement.coax_port import record_witness
+        db, detail = record_witness(coax, dt, port_source_end, bins, freq_max)
+        rows.append({**detail, 'reads': ('S-parameters',)})
+    if records and not coax:
         from rfx.measurement.record_readers import result_port_s_reader
         db, detail = port_record_witness(
             records, dt, port_source_end, bins, freq_max=freq_max,

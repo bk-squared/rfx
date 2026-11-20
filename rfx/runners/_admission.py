@@ -1266,6 +1266,8 @@ def _warn_implicit_s(message):
 
 def default_run_forms_s(sim, *, devices=None):
     """Whether the default lumped/wire request forms S on this declaration."""
+    if sim._coaxial_ports:
+        return not sim._uses_nonuniform_mesh and sim._refinement is None and (devices is None or len(devices) == 1)
     ports = [p for p in sim._ports if p.is_port]
     if (not ports or sim._refinement is not None
             or any(p.is_soft_source for p in sim._ports)):
@@ -1447,8 +1449,6 @@ _S_REQUEST_FAMILIES = (
     ("_floquet_ports", "add_floquet_port(...): Floquet ports are experimental and "
      "have no forward S11 path or claims-bearing run(compute_s_params=True) S-matrix path"),
     ("_tfsf", "add_tfsf_source(...): TFSF is a plane-wave source, not a port"),
-    ("_coaxial_ports", "add_coaxial_port(...): S1 carries model and TEM drive on uniform "
-     "run() and forward(); measurement and S are S2; use the coax calculators for S"),
 )
 
 
@@ -1460,6 +1460,10 @@ def _s_request_family_messages(sim):
 
 def admit_s_request(sim, caller, *, details=()):
     """Refuse missing impedance ports and incompatible S-result families."""
+    if sim._coaxial_ports:
+        from .coax_admission import admit_coax_port, entry_lane
+        admit_coax_port(sim, entry_lane(sim, forward=caller.startswith('forward')))
+        return sim._coaxial_ports
     port_entries = sim._port_sparameter_entries()
     messages = [*_s_request_family_messages(sim), *details]
     if not port_entries:

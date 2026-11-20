@@ -1,4 +1,4 @@
-"""S1 admission for the uniform one-device coax model and drive."""
+"""Admission for the uniform one-device coax model and drive."""
 from rfx.errors import RfxUnsupported
 
 
@@ -7,7 +7,7 @@ def admit_coax_port(sim, lane, *, run_args=None, grid=None):
         return
     args = run_args or {}
     if lane not in {'run_uniform', 'fwd_uniform'}:
-        raise RfxUnsupported(f'{lane}: add_coaxial_port() is supported only on run_uniform and fwd_uniform in S1')
+        raise RfxUnsupported(f'{lane}: add_coaxial_port() is supported only on run_uniform and fwd_uniform')
     gates = (
         (sim._precision != 'float32', "precision='float32'"),
         (sim._stencil_order != 2, 'stencil_order=2'),
@@ -28,7 +28,7 @@ def admit_coax_port(sim, lane, *, run_args=None, grid=None):
     )
     for failed, name in gates:
         if failed:
-            raise RfxUnsupported(f'{lane}: add_coaxial_port() requires {name} (S1)')
+            raise RfxUnsupported(f'{lane}: add_coaxial_port() requires {name}')
     if grid is not None:
         from rfx.model.coax_line import coax_port_layout
         pads = tuple(getattr(grid, f'pad_{a}_{s}') for a in 'xyz' for s in ('lo', 'hi'))

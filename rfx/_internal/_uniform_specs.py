@@ -265,6 +265,7 @@ class SimResult(NamedTuple):
     current_moment_data: object = None
     current_moment_monitor: object = None
     adjoint_settling: object = None
+    coax_sparam_accs: object = None
     sparam_time_records: tuple | None = None
     dft_time_records: tuple | None = None
     decay_stop: object = None   # run_until_decay: the until_decay.stop Diagnostic

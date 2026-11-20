@@ -16,6 +16,7 @@ class CoaxBoreRelease:
     edges: tuple
     occupancy_cells: object
     layout: object
+    z_tem_ohm: float | None = None
 
 
 def radial_mask(grid, port, radius):
@@ -108,6 +109,7 @@ def assemble_coax_port(sim, grid, materials, root, sources, mag_sources, *, n_st
     root = clear_coax_bore(root, bore, layout, edge_bore=edge_bore)
     layout, line = build_coax_port_line(grid, materials, port, absorber_pads=pads,
         ntff=sim._ntff, n_steps=n_steps)
+    root = replace(root, coax_bore_release=replace(root.coax_bore_release, z_tem_ohm=line.ends[0].z_tem_ohm))
     pin = stamp_coax_pin(grid, port, layout)
     if pin.any():
         from rfx.model.coax import StampedEntity

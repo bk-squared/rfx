@@ -826,8 +826,12 @@ def _forward_from_materials(
             ),
         }
 
+    coax_metadata = None
     s_params_out = getattr(result, "s_params", None)
     freqs_out = getattr(result, "freqs", None)
+    if self._coaxial_ports and port_s11_freqs is not None:
+        from rfx.measurement.coax_port import port_result
+        s_params_out, freqs_out, coax_metadata = port_result(self, stepping_product, result, traced=True)
     from rfx.measurement.port_s_contract import uniform_record_pairs
     pairs = uniform_record_pairs(result)
     if pairs:
@@ -857,7 +861,7 @@ def _forward_from_materials(
     from rfx.sparams._record_selection import finish_forward
     return result_with_diagnostics(finish_forward(pack_uniform_forward_result(
         self, grid, result, diagnostics=diagnostics, s_params=s_params_out,
-        freqs=freqs_out, current_moment_monitor=current_moments_fwd,
+        freqs=freqs_out, current_moment_monitor=current_moments_fwd, coax_port_metadata=coax_metadata,
         realized_geometry=stepping_product._realization_record,
     )._replace(tfsf_angle_deg=tfsf_angle_override)), conductors.design_findings)
 

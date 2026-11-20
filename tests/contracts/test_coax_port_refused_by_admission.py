@@ -1,4 +1,4 @@
-"""S1 admits the uniform model lanes and names every other lane's refusal."""
+"""Uniform model and spectral lanes are admitted; other lanes name their refusal."""
 import pytest
 import numpy as np
 
@@ -30,3 +30,9 @@ def test_without_coax_runs_one_step(mesh, entry):
     result = getattr(sim, entry)(n_steps=1, skip_preflight=True)
     assert result.time_series.shape == (1, 1)
     assert np.isfinite(np.asarray(result.time_series)).all()
+
+
+@pytest.mark.parametrize('caller', ['run()', 'forward()'])
+def test_uniform_s_request_admitted(caller):
+    from rfx.runners._admission import admit_s_request
+    admit_s_request(scene(), caller)

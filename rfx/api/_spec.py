@@ -609,6 +609,7 @@ class Result(NamedTuple):
     #: Filled by run_uniform, run_subgridded, run_distributed (uniform), and run_nonuniform; None on other lanes.
     #: Also None for traced mesh coordinates; other record errors propagate.
     realized_geometry: object = None
+    coax_port_metadata: object = None
     sparam_time_records: tuple | None = None
     sparam_read_ids: object = None
     dft_time_records: object = None
@@ -982,6 +983,7 @@ class ForwardResult(NamedTuple):
     #: First post-source sample at the user probes (None: settling_source_end_index).
     settling_probe_source_end_index: object = None
     settling_freq_max: object = None
+    coax_port_metadata: object = None
     sparam_time_records: tuple | None = None
     sparam_read_ids: object = None
     dft_time_records: object = None

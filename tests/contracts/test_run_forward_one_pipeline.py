@@ -1060,3 +1060,19 @@ def test_waveguide_soft_source_refused_before_step(monkeypatch, declaration, ent
     assert raised_in_rfx(record)
     assert record['type'] == ('RfxUnsupported' if declaration == 'WG-soft-last' and entry != 'compute_waveguide_s_matrix' else 'ValueError')
     assert 'a lumped or wire port, or a soft source (add_source)' in record['message']
+
+
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_coax_requested_bins_reach_measurement(monkeypatch, entry):
+    from tests.contracts.test_coax_port_model_and_drive import scene, Captured
+    requested = np.array([4e9, 5e9, 6e9])
+    def kernel(grid, materials, n_steps, **kwargs):
+        owner, = (o for o in kwargs['measurement'].owners if o.kind == 'coax')
+        np.testing.assert_array_equal(owner.frequencies, requested)
+        assert len(owner.channels) == 12
+        assert owner.reference_planes[-1].index == 8
+        raise Captured
+    monkeypatch.setattr('rfx.simulation.run', kernel)
+    options = {'s_param_freqs': requested} if entry == 'run' else {'port_s11_freqs': requested}
+    with pytest.raises(Captured):
+        getattr(scene(), entry)(n_steps=3, skip_preflight=True, **options)

@@ -818,7 +818,7 @@ def equal_request_pair(declaration, path, direction, *, level=None, n_steps=150,
                {**options, 'compute_s_params': False})
     if direction == 'a':
         sim = BUILDERS[declaration](path)
-        if any(port.impedance != 0 for port in sim._ports):
+        if sim._coaxial_ports or any(port.impedance != 0 for port in sim._ports):
             returned = run if level is None else run_l2(BUILDERS[declaration], 'run', path,
                                                          n_steps=1, entry_options=options)
             bins = returned['result'].freqs if returned['outcome'] == 'admitted' else None

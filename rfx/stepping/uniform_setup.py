@@ -963,6 +963,8 @@ def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None,
         from rfx.measurement.time_records import uniform_specs
         specs = uniform_specs(ctx)
         tables = plan_tables(measurement, n_probes=len(ctx.prb_meta), port_specs=specs, dtype=dtype)
+        if tables['coax_table'].n_channels:
+            invariants.update(coax_table=tables['coax_table'], coax_freqs=tables['coax_freqs'])
         invariants.update({key: tables[key] for key, used in
                            (('probe_table', ctx.prb_meta), ('port_table', specs)) if used})
     if ctx.use_waveguide_ports:
