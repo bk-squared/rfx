@@ -103,7 +103,6 @@ def test_gradient_cw_source():
 
 def test_gradient_design_region_only():
     """Gradient should be non-zero only where eps_r differs from background.
-    The design-region and background gradients should be non-zero because the wave passes through everything.
     """
     grid = _small_grid()
     eps_r = jnp.ones(grid.shape, dtype=jnp.float32)

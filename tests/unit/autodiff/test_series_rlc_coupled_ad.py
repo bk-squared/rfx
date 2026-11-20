@@ -64,7 +64,7 @@ def _objective(sim):
 
 
 def test_dS11sq_dR_series_rc_ad_matches_float64_fd():
-    """The FD side runs float64 fields, so round-off is ~1e-16 relative."""
+    """The relative finite-difference step 1e-3 targets the estimated central-difference truncation error (h**2/6)|f'''| near 1e-7 relative, well below the 5% gradient bar."""
     with _enable_x64(True):
         sim32 = _sim("float32")
         sim64 = _sim("float64")

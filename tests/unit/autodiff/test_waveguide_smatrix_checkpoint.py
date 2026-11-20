@@ -8,7 +8,7 @@ Validates the checkpoint_segments plumbing added in issue #131:
 
 Grid: tiny WR-90-like 2-port (~57×15×8 cells), num_periods=4 → n_steps≈70,
 K=7 (divides 70). CPU-only, float32.  Kept fast (each test ≪ 30 s).
-The coarser dx keeps the grid tiny.
+The waveguide cell size of 0.003 m keeps the test grid tiny.
 """
 from __future__ import annotations
 

@@ -1137,7 +1137,6 @@ def test_ad_memory_preflight_uniform_checkpoint_branch():
 
 
 def test_ad_memory_preflight_unfit_branch_is_diagnostic_only():
-    """An unfit diagnostic reports the least-memory candidate to make the remaining budget shortfall actionable."""
     sim = _patch_like_sim()
 
     report = sim.ad_memory_preflight(
@@ -1465,7 +1464,7 @@ def test_checkpoint_segments_rejects_unadmitted_uniform_warmup():
 
 
 def test_checkpoint_every_active_count_honors_unaligned_warmup():
-    """The 35-step cap retains at least two full segments so a single segment plus a tail cannot keep the whole per-step tape."""
+    """The 35-step cap is n_opt//2 for 70 or 71 optimized steps, retaining at least two full segments rather than a single segment plus a tail."""
     sim = _graded_uniform_sim()
 
     unaligned = sim.estimate_ad_memory(

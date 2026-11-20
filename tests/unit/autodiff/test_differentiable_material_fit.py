@@ -366,7 +366,7 @@ def test_recover_debye_reference_mode_public_entry():
     through the public differentiable_material_fit entry under
     normalization='reference_probe', and the per_probe_max proxy's
     structural magnitude blindness is witnessed on the same data.
-    The 20% delta_eps and 15% tau tolerances retain about 1.8x and 2.6x margin over the earlier CPU errors of 11% and 5.8%, respectively.
+    The 20% delta_eps and 15% tau tolerances retain about 1.8x and 2.6x margin, respectively, over the 11% delta_eps and 5.8% tau errors measured earlier on CPU after 25 Adam iterations.
     """
     from rfx.material_fit import DebyeFitResult
     from rfx.differentiable_material_fit import differentiable_material_fit

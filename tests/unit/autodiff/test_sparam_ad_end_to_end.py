@@ -164,7 +164,6 @@ def test_msl_s_matrix_ad_end_to_end():
     3. The finite-record gradient retains its measured sign. This is not
        a monotonicity law or an FD-accuracy qualification.
     4. WI-1 replay golden is unaffected (tested separately).
-    An earlier measurement with segmented checkpointing capped the peak to a few GB.
     """
     sim = _build_msl_sim()
     grid = sim._build_realized_grid()

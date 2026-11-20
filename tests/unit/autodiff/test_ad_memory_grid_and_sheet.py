@@ -65,7 +65,7 @@ def _acc_shape(sim):
 
 
 def test_accounting_matches_the_nonuniform_grid_the_solve_builds():
-    """The explicit uniform grid is a counterexample because the production uniform builder refuses profiled simulations."""
+    """The production uniform builder refuses profiled simulations."""
     sim = Simulation(freq_max=20e9, domain=(0.02, 0.02, float(DZ.sum())),
                      dx=DX, boundary="cpml", cpml_layers=CPML, dz_profile=DZ)
     assert float(DZ.max() / DZ.min()) > 5.0, "fixture dz is not graded"

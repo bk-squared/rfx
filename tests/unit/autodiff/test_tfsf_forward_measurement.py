@@ -44,7 +44,7 @@ def test_graded_plane_wave_matches_run(slab):
      "when x is uniform."),
 ], ids=["oblique", "z-incidence"])
 def test_graded_plane_wave_refusals_match_run(angle, direction, body):
-    """A stored z-directed declaration reaches the preflight guard because public registration refuses z-directed incidence."""
+    """Public registration refuses z-directed incidence."""
     expected_body = (
         " preflight found 1 blocking error(s) (pass skip_preflight=True to bypass):"
         "\n  - ERROR: " + body)
@@ -97,6 +97,7 @@ def test_oblique_plane_wave_matches_run():
 
 
 def test_oblique_reconstruction_hand_computation():
+    """The oracle [[1, 4], [-2, -7]] follows from exp(-j*k_t*j*dy)=(1, -j) at k_t=pi/2, dy=1 and probe indices (0, 1), with real parts Re((a+jb)*1)=a and Re((a+jb)*(-j))=b."""
     result = namedtuple("ToyResult", "state time_series")(state=None, time_series=jnp.array(
         [[1+2j, 3+4j], [-2+5j, 6-7j]], dtype=jnp.complex64))
     cfg = SimpleNamespace(k_transverse=np.pi / 2, transverse_axis="y")

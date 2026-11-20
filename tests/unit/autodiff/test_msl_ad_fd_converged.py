@@ -375,7 +375,7 @@ def test_msl_ad_fd_converged_tight():
     reading of a 0.85 rel_err on a 4.4-ULP reference is "the instrument is
     broken", not "the gradient is wrong". Harness:
     scripts/msl_ad_fd_f64_referee.py.
-    Padding is rejected because it would shift the DFT accumulator windows.
+    Padding the FDTD time record to fill checkpoint segments is rejected because it would shift the DFT accumulator windows.
     """
     assert _NUM_PERIODS >= 20, "converged DFT requires at least 20 periods"
     t_start = time.perf_counter()
@@ -562,7 +562,7 @@ def test_comparator_floor_rejects_the_f32_reference_that_caused_527():
     NOT current-gate numbers, they are the #527 comparator-floor incident
     this test regression-locks): loss 16.00599, g_ad -4.2425e-03 on CPU;
     16.005951 / -4.236159e-03 on gpu-rtx4090, VESSL 369367250775.
-    Requiring N*T >= 100 buys 100x margin between the reference resolution and the gate.
+    The minimum FD resolving power in loss-dtype ULPs times the relative-error threshold must be at least 100 to put quantisation resolution 100 times below the gate.
     """
     loss, g_true = 16.00599, 4.2425e-03
     f_plus, f_minus = loss + _FD_H * g_true, loss - _FD_H * g_true
