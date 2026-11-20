@@ -224,17 +224,18 @@ def test_builder_uses_the_same_identity_validation_before_loading_runtime(tmp_pa
     assert not (tmp_path / "output").exists()
 
 
+@pytest.mark.parametrize("channel", ["release", "development"])
 @pytest.mark.parametrize("has_authored_index", [False, True])
-def test_generated_api_index_preserves_authoring_or_supplies_release_fallback(tmp_path, has_authored_index):
+def test_generated_api_index_preserves_authoring_or_supplies_release_fallback(tmp_path, has_authored_index, channel):
     generated = tmp_path / "api/generated"
     generated.mkdir(parents=True)
     original_menu = b"<html><body><a href='rfx.html'>module</a></body></html>"
     (generated / "index.html").write_bytes(original_menu)
     base = "https://remilab.ai/rfx/versions/v1.8.0"
-    sha = "7" * 40
+    sha = "7777777777777777777777777777777777777777"
     bundle.finish_generated_index(
         generated, has_authored_index=has_authored_index, base_url=base,
-        channel="release", package_version="1.8.0", source_sha=sha,
+        channel=channel, package_version="1.8.0", source_sha=sha,
     )
     assert (generated / "index-pdoc.html").read_bytes() == original_menu
     assert (generated / "index.html").exists() is not has_authored_index
@@ -259,10 +260,60 @@ def test_generated_api_index_preserves_authoring_or_supplies_release_fallback(tm
         parsed.feed(landing)
         assert parsed.refresh == f"0; url={base}/api/generated/rfx.html"
         assert f"{base}/api/generated/rfx.html" in parsed.links
-        assert f"https://github.com/bk-squared/rfx/tree/{sha}" in parsed.links
+        if channel == "release":
+            assert "<p>Release documentation · rfx 1.8.0</p>" in landing
+            assert "7777777777777777777777777777777777777777" not in landing
+            assert "https://github.com/bk-squared/rfx/tree/" not in landing
+        else:
+            assert "Development documentation · rfx 1.8.0" in landing
+            assert "7777777777777777777777777777777777777777" in landing
+            assert "https://github.com/bk-squared/rfx/tree/7777777777777777777777777777777777777777" in parsed.links
         assert all(url.startswith(base + "/") or sha in url for url in parsed.links)
-        assert "1.8.0" in landing and sha in landing
         assert bundle.allowed_artifact("api/generated/index.html")
+
+
+@pytest.mark.parametrize("channel", ["release", "development"])
+def test_generated_html_release_banner_and_rst_tables(channel):
+    source = (
+        '<main class="pdoc">'
+        '<p>\n===== =====\nName  Value\n===== =====\n'
+        '<code><a href="rfx.html#item">item</a></code>  1\n===== =====\n</p>'
+        '<p>+-----+-----+\n| A   | B   |\n+-----+-----+</p>'
+        '<p>a == b and a ==== word</p>'
+        '<a href="index.html">Index</a><a href="sub/index.html">Subindex</a>'
+        '<a href="https://github.com/bk-squared/rfx/blob/main/rfx/example.py">Source</a>'
+        '<a href="https://github.com/bk-squared/rfx/tree/master/rfx">Tree</a>'
+        '<footer>release | rfx 1.8.0 | 777777777777</footer></main>'
+    )
+    result = bundle.finish_generated_html(
+        source, channel=channel, package_version="1.8.0",
+        sha="7777777777777777777777777777777777777777", base_url="https://remilab.ai/rfx",
+    )
+    banner = result.split("<aside", 1)[1].split("</aside>", 1)[0]
+    if channel == "release":
+        assert "Release documentation</strong> · rfx 1.8.0<br>" in banner
+        assert "7777777777777777777777777777777777777777" not in banner
+        assert "777777777777" not in banner
+        assert "https://github.com/bk-squared/rfx/tree/" not in banner
+    else:
+        assert "Development documentation" in banner
+        assert "777777777777" in banner
+        assert 'href="https://github.com/bk-squared/rfx/tree/7777777777777777777777777777777777777777"' in banner
+    assert result.count('<pre class="rst-table">') == 2
+    assert (
+        '<pre class="rst-table">\n===== =====\nName  Value\n===== =====\n'
+        '<code><a href="rfx.html#item">item</a></code>  1\n===== =====\n</pre>'
+    ) in result
+    assert '<pre class="rst-table">+-----+-----+\n| A   | B   |\n+-----+-----+</pre>' in result
+    assert '<p>a == b and a ==== word</p>' in result
+    assert '<a href="https://remilab.ai/rfx/">Manual</a>' in banner
+    assert '<a href="https://remilab.ai/rfx/llms.txt">LLM index</a>' in banner
+    assert '<a href="https://remilab.ai/rfx/api/inventory.json">Typed inventory</a>' in banner
+    assert '<a href="index-pdoc.html">Index</a>' in result
+    assert '<a href="sub/index-pdoc.html">Subindex</a>' in result
+    assert 'href="https://github.com/bk-squared/rfx/blob/7777777777777777777777777777777777777777/rfx/example.py"' in result
+    assert 'href="https://github.com/bk-squared/rfx/tree/7777777777777777777777777777777777777777/rfx"' in result
+    assert '<footer>release | rfx 1.8.0 | 777777777777</footer>' in result
 
 
 def test_clean_markdown_removes_jsx_snippet_markers_and_preserves_python():
