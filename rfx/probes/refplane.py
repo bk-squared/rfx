@@ -53,6 +53,10 @@ precomputed here into :class:`WireRefPlaneSpec`, and the production
 ``jax.lax.scan`` body accumulates the rect-DFT phasors inline (same
 pre-source-injection sample point and DFT kernel as the port-cell
 accumulators).
+
+``_BETA_WRAP_GUARD_FRACTION`` is a chosen safety margin below pi, where the
+two-plane phase ``|beta|*N*dx`` is exactly ambiguous, and is not a measured
+constant.
 """
 
 from __future__ import annotations
@@ -72,19 +76,8 @@ _COMP_AXIS = {"ex": 0, "ey": 1, "ez": 2}
 _H_OF_AXIS = {0: "hx", 1: "hy", 2: "hz"}
 _AXIS_OF_NAME = {"x": 0, "y": 1, "z": 2}
 
-# Zc reality witness: near-field-contaminated planes show up in the measured
-# line impedance as an imaginary part (a lossless uniform line reads a
-# (near-)real Zc).  Measured provenance (canonical 16 mm thru, dx = 0.5 mm,
-# gap-trimmed V): N=3 planes in the port near field read
-# max|Im(Zc)/Re(Zc)| = 8.2%; clean N=10 mid-line planes read <= 1.2%.  0.03
-# is the class boundary between those two measured classes (not a derived
-# threshold).
 _ZC_IM_RE_WARN_RATIO = 0.03
 
-# Beta wrap guard: the measured per-bin beta comes from the phase angle
-# between two planes separated by N*dx, which is unambiguous only for
-# |beta|*N*dx < pi.  Guard at 90% of the wrap limit (safety margin, not a
-# measured constant — the measurement is exactly ambiguous AT pi).
 _BETA_WRAP_GUARD_FRACTION = 0.9
 
 
@@ -95,33 +88,36 @@ class WireRefPlaneSpec(NamedTuple):
     (``plane_slot`` 0 at ``n_cells_outboard = N`` and slot 1 at ``2N``).
     All index fields are Python ints (static under ``jax.jit``);
     ``freqs`` is the DFT frequency array.
+
+    ``outboard_sign`` is +1 when the DUT lies toward +``line_axis`` from the
+    port and -1 when it lies toward -``line_axis``.
     """
 
-    port_index: int          # index into the sparam-eligible port order
-    plane_slot: int          # 0 = reference plane (N cells), 1 = Zc plane (2N)
-    n_cells_outboard: int    # this plane's offset from the port plane (cells)
-    outboard_sign: int       # +1/-1: DUT direction along the line axis
-    line_axis: int           # 0/1/2 — the transmission-line axis
-    plane_index: int         # integer Yee plane index along line_axis
-    e_component: str         # port E component ("ex"/"ey"/"ez")
-    comp_axis: int           # E-component axis
-    e_lo: int                # component-axis cell range of the gap V integral
-    e_hi: int                # (exclusive)
-    third_index: int         # fixed index on the remaining axis
-    hu_component: str        # H along u  ((a, u, v) right-handed cyclic)
-    hv_component: str        # H along v
+    port_index: int
+    plane_slot: int
+    n_cells_outboard: int
+    outboard_sign: int
+    line_axis: int
+    plane_index: int
+    e_component: str
+    comp_axis: int
+    e_lo: int
+    e_hi: int
+    third_index: int
+    hu_component: str
+    hv_component: str
     u_axis: int
     v_axis: int
-    u_lo_leg: int            # Hv legs (columns) just outside the trace bbox
+    u_lo_leg: int
     u_hi_leg: int
-    v_lo_leg: int            # Hu legs (rows) just outside the trace bbox
+    v_lo_leg: int
     v_hi_leg: int
-    u_span_lo: int           # Hu leg span (exclusive hi)
+    u_span_lo: int
     u_span_hi: int
-    v_span_lo: int           # Hv leg span (exclusive hi)
+    v_span_lo: int
     v_span_hi: int
-    freqs: object            # (n_freqs,) jnp.ndarray
-    impedance: float         # port Z0 (bookkeeping only — never used as Zc)
+    freqs: object
+    impedance: float
 
 
 def _tri(by_axis: dict) -> tuple:
@@ -158,7 +154,6 @@ def _trace_bbox_at_plane(pec2d: np.ndarray, seed_uv: tuple[int, int]):
                 "no cell and is not in `pec_mask` either).")
         d2 = (cand[:, 0] - su) ** 2 + (cand[:, 1] - sv) ** 2
         su, sv = (int(x) for x in cand[int(np.argmin(d2))])
-    # 4-connected BFS
     seen = np.zeros_like(pec2d, dtype=bool)
     stack = [(su, sv)]
     seen[su, sv] = True
@@ -227,6 +222,10 @@ def build_wire_refplane_specs(
         no PEC trace at a plane, or a NON-uniform line (the PEC trace
         cross-section bounding boxes at the two planes differ — the
         two-plane Zc invariant requires a uniform line between them).
+
+    The trace component is seeded at the port extent's end node, one index
+    above the last driven edge, since ``_wire_port_cells`` is half-open in
+    edges.
     """
     if direction is None or direction not in ("+x", "-x", "+y", "-y"):
         raise ValueError(
@@ -268,7 +267,6 @@ def build_wire_refplane_specs(
     comp_ids = sorted(c[comp_axis] for c in cells)
     e_lo, e_hi = comp_ids[0], comp_ids[-1] + 1
 
-    # (a, u, v) right-handed cyclic axes for the Ampere loop.
     u_axis = (line_axis + 1) % 3
     v_axis = (line_axis + 2) % 3
     hu_component = _H_OF_AXIS[u_axis]
@@ -277,16 +275,6 @@ def build_wire_refplane_specs(
     pec3d = np.asarray(pec_mask, dtype=bool)
     shape = pec3d.shape
 
-    # The extent's END NODE — the node the port's last driven edge reaches
-    # — seeds the trace connected component, because that is where the
-    # trace sits. ``_wire_port_cells`` is half-open in EDGES, so
-    # the last DRIVEN EDGE is indexed one below that node; while the
-    # extent was endpoint-inclusive the two coincided and this read
-    # ``max(cells)`` directly. Seeding one cell low is not a loud failure:
-    # ``_trace_bbox_at_plane`` falls back to the NEAREST conductor cell,
-    # and on a microstrip cross-section the ground plane below is exactly
-    # as near as the trace above — a tie that would silently measure the
-    # ground.
     _end = list(max(cells, key=lambda c: c[comp_axis]))
     _end[comp_axis] = min(e_hi, shape[comp_axis] - 1)
     end_cell = tuple(_end)
@@ -301,21 +289,13 @@ def build_wire_refplane_specs(
                 f"along axis {line_axis}) is outside the grid "
                 f"(n={shape[line_axis]}; the dual Ampere loops need "
                 "plane_index-1 >= 0). Reduce N or move the port.")
-        # 2D PEC cross-section with axes ordered (u, v).
         sl = np.take(pec3d, plane_index, axis=line_axis)
-        # np.take drops line_axis; remaining axes keep their relative order.
         rem = [a for a in (0, 1, 2) if a != line_axis]
         pos = {a: rem.index(a) for a in rem}
         pec2d = np.transpose(sl, (pos[u_axis], pos[v_axis]))
         seed_uv = (end_cell[u_axis], end_cell[v_axis])
         u_lo, u_hi, v_lo, v_hi = _trace_bbox_at_plane(pec2d, seed_uv)
         bboxes.append((u_lo, u_hi, v_lo, v_hi))
-        # GAP trim for the V line integral: keep only the port-extent
-        # cells NOT PEC-masked at the plane column.  The in-conductor Ez
-        # edge of a one-cell-thick trace is not zeroed by the staircase
-        # mask convention and carries ~0.21 of the gap field (measured
-        # A/B vs point probes) — including it re-scales V (cancels in S,
-        # corrupts the measured Zc).  The gap must be one contiguous run.
         gap = [c for c in range(e_lo, e_hi)
                if not pec3d[_tri({line_axis: plane_index,
                                   comp_axis: c,
@@ -331,8 +311,6 @@ def build_wire_refplane_specs(
                 f"reference plane are not contiguous ({gap}) — the gap-V "
                 "line integral is ill-defined for this geometry.")
         gap_lo, gap_hi = gap[0], gap[-1] + 1
-        # Loop legs: Hv columns half a cell outside the bbox u-faces,
-        # Hu rows half a cell outside the bbox v-faces (Yee stagger).
         u_lo_leg, u_hi_leg = u_lo - 1, u_hi + 1
         v_lo_leg, v_hi_leg = v_lo - 1, v_hi + 1
         u_span_lo, u_span_hi = u_lo, u_hi + 2
@@ -420,9 +398,6 @@ def wire_refplane_step_vi(st, spec: WireRefPlaneSpec, dx):
     return v_plane, _loop(spec.plane_index - 1), _loop(spec.plane_index)
 
 
-# ---------------------------------------------------------------------------
-# Extraction-side math (pure NumPy, complex128)
-# ---------------------------------------------------------------------------
 
 def refplane_centered_current(i_minus, i_plus, freqs, dt):
     """Centre the two already physically stamped H spectra in space."""
@@ -533,15 +508,12 @@ def decompose_wire_s_matrix_with_reference_planes(
         conservation identity ``(|out|^2 - |inc|^2)/Re(Zc)`` equals the
         net line power there. ``gamma_far[(i, j)]`` records
         ``abs(out_i/in_i * exp(+2j*beta_i*N_i*dx))`` in drive pass j.
+
+    ``v_ref`` holds the pre-injection drive-sample reference and ``v_all``
+    holds physical post-injection samples.
     """
     from rfx.probes.probes import decompose_wire_s_matrix
 
-    # np.array (copy): the jnp output buffer is read-only and the plane path
-    # overwrites the opted block in place. ``v_ref`` is the pre-injection
-    # drive-sample reference; v_all contains physical post-injection samples.
-    # Entries outside the opted block retain their per-cell
-    # calibrated reference. None selects v_all for callers whose data already
-    # contains the pre-injection sample.
     S = np.array(
         decompose_wire_s_matrix(v_all, i_all, z0, port_cell_counts,
                                 v_ref=v_ref),
@@ -561,10 +533,6 @@ def decompose_wire_s_matrix_with_reference_planes(
             v1 = np.asarray(plane_v[p, p, 0], dtype=np.complex128)
             v2 = np.asarray(plane_v[p, p, 1], dtype=np.complex128)
             zc[p] = refplane_zc_two_plane(v1, i1, v2, i2)
-            # Zc reality witness (see _ZC_IM_RE_WARN_RATIO provenance): a
-            # large imaginary part in the measured line impedance means the
-            # planes sit in the port near field, where reactive fields
-            # contaminate the two-plane V/I invariant.
             _re = np.abs(zc[p].real)
             _im_re = float(np.max(
                 np.abs(zc[p].imag) / np.where(_re > 0.0, _re, 1.0)))
@@ -585,10 +553,6 @@ def decompose_wire_s_matrix_with_reference_planes(
             out2, in2 = refplane_split(v2, i2, zc[p], outboard_signs[p])
             d_sep = int(plane_offsets[p]) * float(dx)
             beta[p] = refplane_beta(out1, out2, d_sep)
-            # Beta wrap guard: the two-plane phase is unambiguous only for
-            # 0 < beta*N*dx < pi.  Both N and the extraction frequencies
-            # are known here, so fail loudly instead of de-embedding with
-            # a wrapped (or unphysical non-positive) beta.
             _bd = np.abs(beta[p]) * d_sep
             if np.any(beta[p] <= 0.0) or np.any(
                     _bd > _BETA_WRAP_GUARD_FRACTION * np.pi):
@@ -625,7 +589,6 @@ def decompose_wire_s_matrix_with_reference_planes(
                 with np.errstate(divide="ignore", invalid="ignore"):
                     diagnostics["gamma_far"][(i, j)] = np.abs(
                         out_i / in_i * exp_j(beta[i], 2 * d_i))
-        # S A = B => A.T S.T = B.T; transpose, never conjugate or invert.
         block = np.linalg.solve(A.swapaxes(-1, -2), B.swapaxes(-1, -2))
         S[np.ix_(opted, opted, np.arange(S.shape[2]))] = block.transpose(2, 1, 0)
     if return_line_diagnostics:

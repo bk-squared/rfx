@@ -71,15 +71,12 @@ def _mixed_reciprocity_deviation(S):
 
 
 def _warn_partial_nonpassive(s, refused_positions, extractor, strict, passivity_tol, amplitude_eps):
-    # A partial column has no power-sum witness. Individual finite entries
-    # still support the independent amplitude advisory, including wave S_ik.
     refused = np.asarray(refused_positions, dtype=bool)
     if refused.ndim == 2:
         refused = refused[..., None]
     refused = np.broadcast_to(refused, s.shape)
     complete = np.all(np.isfinite(s) & ~refused, axis=0)
     columns = s.transpose(1, 2, 0)[complete]
-    # Match validate_port_smatrix's complex128 normalization for finite data.
     powers = np.sum(np.abs(columns.astype(np.complex128)) ** 2, axis=-1)
     bad_power = powers.size and np.max(powers) > 1.0 + passivity_tol
     finite = np.abs(s[np.isfinite(s) & ~refused])

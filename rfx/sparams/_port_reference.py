@@ -51,7 +51,6 @@ def renormalize_power_waves(S, z_from, z_to):
             f"got shape {tuple(S.shape)}")
     zf, zt = _concrete(z_from), _concrete(z_to)
     if zf is None or zt is None:
-        # A traced reference: every port is transformed, with jnp.
         xp = jnp
         zf, zt = jnp.asarray(z_from), jnp.asarray(z_to)
         if zf.shape != (n,) or zt.shape != (n,):
@@ -69,19 +68,18 @@ def renormalize_power_waves(S, z_from, z_to):
         if np.array_equal(zf, zt):
             return S
         xp = np if isinstance(S, np.ndarray) else jnp
-        m = np.flatnonzero(zf != zt)     # ports whose reference changes
-        k = np.flatnonzero(zf == zt)     # ports whose reference stays
+        m = np.flatnonzero(zf != zt)
+        k = np.flatnonzero(zf == zt)
 
     out_dtype = xp.result_type(S.dtype, xp.complex64)
     r = (zt - zf) / (zt + zf)
     c = (zf + zt) / (2.0 * (np if isinstance(zf, np.ndarray) else jnp).sqrt(zf * zt))
     rm, cm = r[m], c[m]
 
-    s_f = xp.moveaxis(S if S.ndim == 3 else S[..., None], -1, 0)  # (nf, n, n)
+    s_f = xp.moveaxis(S if S.ndim == 3 else S[..., None], -1, 0)
     s_mm = s_f[:, m][:, :, m]
     s_km = s_f[:, k][:, :, m]
     eye_m = xp.eye(m.size, dtype=out_dtype)
-    # Y = (I - R_M S_MM)^-1; P Y is formed as solve(K^T, P^T)^T.
     kmat = eye_m - rm[:, None] * s_mm
 
     def _right_y(p):
@@ -95,7 +93,7 @@ def renormalize_power_waves(S, z_from, z_to):
     if k.size:
         s_mk = s_f[:, m][:, :, k]
         s_kk = s_f[:, k][:, :, k]
-        x = xp.linalg.solve(kmat, rm[:, None] * s_mk)    # Y R_M S_MK
+        x = xp.linalg.solve(kmat, rm[:, None] * s_mk)
         out_mk = cm[:, None] * (s_mk + s_mm_minus_r @ x)
         out_kk = s_kk + s_km @ x
         top = xp.concatenate([out_mm, out_mk], axis=-1)
@@ -166,8 +164,6 @@ def coax_two_port_line_waves(S, grid, eps_scale, z_tem, *, center_xy,
         if np.all(z_tem == z_tem[0]):
             return S, z_tem.copy()
         return S * (root[None, :, None] / root[:, None, None]), z_tem.copy()
-    # The fill's own cells: stamp_coaxial_line's Cylinder masks (node
-    # coordinates), over the whole z extent.
     from rfx.geometry.csg import Cylinder
     span = 2.0 * float(np.sum(grid.cells(2)))
     centre = (float(center_xy[0]), float(center_xy[1]), 0.0)

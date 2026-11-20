@@ -159,16 +159,11 @@ def continued_traced_conductor_shape(sim, grid, shape, *, traced_node_axes,
     if missing:
         refuse_traced_conductor_at_absorber(sim, grid, shape, traced_node_axes=traced_node_axes)
     if not faces:
-        # A nominally clear shape can occupy an outermost layer after the
-        # traced mesh moves. Keep its geometry, but check that decision too.
         unchecked = {(axis, side): None for axis in traced_node_axes for side in ("lo", "hi")
                      if getattr(grid, f"pad_{'xyz'[axis]}_{side}") > 0}
         if unchecked:
             _check_faces(sim, grid, shape, (), unchecked)
         return shape
-    # Non-Box PEC/f0 sheets use equality of two lattice cross-sections.
-    # Outermost occupancy cannot validate that decision, even when the
-    # nominal mesh leaves the sheet unchanged.
     if (not isinstance(shape, Box)
             and any(tc.shape is shape and (tc.is_pec or tc.surface_impedance_f0 is not None)
                     for tc in sim._thin_conductors)):
@@ -194,7 +189,6 @@ def continued_traced_conductor_shape(sim, grid, shape, *, traced_node_axes,
     changed = []
     if isinstance(solved, (Box, Cylinder)):
         new_bounds = declared_bounds(solved)
-        # Reconstructing a cylinder's centre and height can round its held end.
         tolerance = (16 * np.finfo(float).eps * np.max(np.abs(bounds))
                      if isinstance(shape, Cylinder) else 0.)
         changed = [(axis, side) for axis in range(3) for i, side in enumerate(("lo", "hi"))
@@ -213,6 +207,6 @@ def continued_traced_conductor_shape(sim, grid, shape, *, traced_node_axes,
     for axis, side in changed:
         grow = sm._continue_box if isinstance(shape, Box) else sm._continue_cylinder
         target = targets[axis, side]
-        assert target is not None  # set above for every changed face
+        assert target is not None
         result = grow(result, axis, side, target)
     return result
