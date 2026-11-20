@@ -1,6 +1,7 @@
 """Global port metadata and small per-slab partial measurements."""
 from dataclasses import dataclass, replace
 from types import SimpleNamespace
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -57,7 +58,7 @@ def setup_ports(context, carry, invariants, plan, layout, mesh, n_steps, *,
     invariants['port_table'] = port_table
     initial = dict(plan.initial)
     initial['fdtd'] = carry['fdtd']
-    step = make_graded_step(context)
+    step: Any = make_graded_step(context)
     step.port_owners = port_owners
     init_graded_records(initial, n_steps, SimpleNamespace(step_fn_inv=step))
     for key in ('wire_sparams', 'sparam_time_records'):

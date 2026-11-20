@@ -2,6 +2,7 @@
 from contextlib import nullcontext
 from functools import lru_cache
 from types import SimpleNamespace
+from typing import Any
 import sys
 import warnings
 
@@ -545,7 +546,7 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
         carry['cpml'] = initial['cpml']  # type: ignore[misc, valid-type]  # mypy treats the rebound imported function as a type application; publish returned a dict.
         if cpml_state is not None:
             carry['cpml'] = import_state(cpml_state, psi, layout, native=True)
-    step = make_graded_step(ctx)
+    step: Any = make_graded_step(ctx)
     step.port_owners = tables['port_owners']
     return SimpleNamespace(invariants=inv, carry_init=carry, src_waveforms=waves,
                             step_fn_inv=step,
