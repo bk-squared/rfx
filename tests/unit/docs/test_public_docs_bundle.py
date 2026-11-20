@@ -608,6 +608,16 @@ def test_build_uses_pdoc_templates_and_preserves_default_bytes(tmp_path, monkeyp
             bundle.build(root, tmp_path / 'invalid', 'https://remilab.ai/rfx', 'development', None,
                          pdoc_templates=invalid)
         assert len(commands) == 3
+    calls = []
+
+    def fake_build(*args):
+        calls.append(args)
+        return {'pages': [], 'files': {}, 'source_sha': 'a' * 40}
+
+    monkeypatch.setattr(bundle, 'build', fake_build)
+    monkeypatch.setattr(sys, 'argv', ['build_public_docs_bundle.py', '--pdoc-templates', str(templates)])
+    assert bundle.main() == 0
+    assert calls[-1][5] == templates
 
 
 def test_build_indexes_only_allowlisted_agents_and_combines_the_same_pages(built_bundle):
