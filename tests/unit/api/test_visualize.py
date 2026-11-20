@@ -26,7 +26,6 @@ def test_plot_field_slice():
 
     grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.02))
     state = init_state(grid.shape)
-    # Put some data in ez
     state = state._replace(ez=state.ez.at[5, :, :].set(1.0))
 
     fig = plot_field_slice(state, grid, component="ez", axis="z")

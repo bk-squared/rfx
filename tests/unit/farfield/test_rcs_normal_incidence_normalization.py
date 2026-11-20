@@ -17,6 +17,9 @@ Two independent witnesses, neither of which shares code with the normalization:
   (sigma and the far field it divided), so whatever the orchestrator divides by is what is
   checked -- not what a helper would return if it were called;
 * the closed form of the 1-D soft-source launch, derived from the Yee update equations.
+
+An earlier measurement on this rig gave errors of 1e-5 to 2e-4 dB for the 0.01 dB
+tolerance.
 """
 from __future__ import annotations
 
@@ -34,12 +37,13 @@ from rfx.measurement.incident import measure_normal_incident_spectrum
 
 F0 = 6e9
 BW = 0.5
-DOMAIN = 0.05              # m, cubic
-DX = C0 / F0 / 20          # lambda/20 at f0 -> 38^3 cells with the absorber
+CUBIC_DOMAIN_METRES = 0.05
+DOMAIN = CUBIC_DOMAIN_METRES
+DX = C0 / F0 / 20
 CPML = 8
-N_STEPS = 300              # the pulse has passed the centre: |E| at the end is 2e-5 of peak
+N_STEPS = 300
 FREQS = np.array([0.8, 1.0, 1.2]) * F0
-TOL_DB = 0.01              # measured 1e-5 .. 2e-4 dB on this rig
+TOL_DB = 0.01
 
 
 def _vacuum(grid):
@@ -68,7 +72,10 @@ def _charge_free_dg(t, tau, t0):
 def test_compute_rcs_divides_by_the_incident_at_the_domain_centre(monkeypatch):
     """The |E_inc| that compute_rcs divides by equals the incident E the 3-D grid carries at
     the centre of an empty domain, to 0.01 dB, at 0.8 / 1.0 / 1.2 f0. Dividing by the
-    waveform instead (the pre-#820 denominator) reads about +1.05 dB here (lambda/20)."""
+    waveform instead (the pre-#820 denominator) reads about +1.05 dB here (lambda/20).
+
+    The pulse has left the centre before the record ends, else the DFT windows differ.
+    """
     grid = Grid(freq_max=F0 * 1.5, domain=(DOMAIN,) * 3, dx=DX, cpml_layers=CPML)
     centre = (grid.nx // 2, grid.ny // 2, grid.nz // 2)
     seen = {}
@@ -82,7 +89,7 @@ def test_compute_rcs_divides_by_the_incident_at_the_domain_centre(monkeypatch):
 
     def far_field_recorder(*args, **kwargs):
         ff = _real_compute_far_field(*args, **kwargs)
-        seen.setdefault("pattern", ff)      # first call = the observation grid
+        seen.setdefault("pattern", ff)
         return ff
 
     monkeypatch.setattr(rcs_mod, "run", run_with_centre_probe)
@@ -95,12 +102,9 @@ def test_compute_rcs_divides_by_the_incident_at_the_domain_centre(monkeypatch):
         freqs=FREQS, boundary="cpml", cpml_layers=CPML,
     )
 
-    # The pulse has left the centre before the record ends (else the DFT windows differ).
     probe = seen["probe"]
     assert abs(probe[-1]) < 1e-3 * np.abs(probe).max()
 
-    # Denominator read back from compute_rcs's own output: sigma = 4 pi p / |E_inc|^2 on the
-    # bin with the most (leakage) power, so the division is well above float noise.
     ff = seen["pattern"]
     p = (np.abs(np.asarray(ff.E_theta, np.complex128)) ** 2
          + np.abs(np.asarray(ff.E_phi, np.complex128)) ** 2)[:, 0, :]
@@ -121,7 +125,10 @@ def test_the_aux_line_launches_the_soft_source_closed_form():
     E / waveform = 1 / (2 S cos(k~ dx / 2)) with sin(w dt / 2) = S sin(k~ dx / 2),
     on two meshes. Derivation: eliminate H from the 1-D update; an E source added
     after the update enters the second-order recursion as (s^n - s^{n-1}), and the
-    outgoing-wave amplitude at the source node follows."""
+    outgoing-wave amplitude at the source node follows.
+
+    The TF/SF line launches GaussianPulse's charge-free DG.
+    """
     for res_per_lambda, n_steps in ((20, 300), (40, 600)):
         dx = C0 / F0 / res_per_lambda
         grid = Grid(freq_max=F0 * 1.5, domain=(DOMAIN,) * 3, dx=dx, cpml_layers=CPML)
@@ -131,7 +138,6 @@ def test_the_aux_line_launches_the_soft_source_closed_form():
         launched = measure_normal_incident_spectrum(cfg, st, n_steps, FREQS, grid.dt)
 
         t = np.arange(n_steps) * dt
-        # The TF/SF line launches GaussianPulse's charge-free DG.
         waveform = cfg.src_amp * _charge_free_dg(t, cfg.src_tau, cfg.src_t0)
         s = C0 * dt / dx
         k_grid = 2.0 / dx * np.arcsin(np.sin(np.pi * FREQS * dt) / s)
@@ -143,7 +149,6 @@ def test_the_aux_line_launches_the_soft_source_closed_form():
                   f"closed-form error = {error_db:.12g} dB")
         assert np.all(np.abs(ratio_db - 20.0 * np.log10(expected)) <= TOL_DB), (
             res_per_lambda, np.round(ratio_db, 4), np.round(20 * np.log10(expected), 4))
-        # and it is not the waveform: 1.0-1.16 dB below it at this Courant number
         assert np.all(ratio_db < -0.9), ratio_db
 
 

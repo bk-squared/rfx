@@ -17,6 +17,9 @@ def _dipole(theta, phi):
 
 @pytest.mark.parametrize("power_kind", ["ieee", "scalar", "per_frequency"])
 def test_short_dipole_export_gain(tmp_path, power_kind):
+    """For sin^3(theta), endpoint first derivatives vanish, so the trapezoid power integral
+    has relative error h^4/80 + O(h^6), ~1.2e-9 here; CSV rounding dominates, so allow
+    1e-6 dB."""
     theta = np.linspace(0, np.pi, 181)
     phi = np.linspace(0, 2 * np.pi, 24, endpoint=False)
     amplitude = np.array([1.0, 3.0])[:, None, None]
@@ -28,13 +31,10 @@ def test_short_dipole_export_gain(tmp_path, power_kind):
     export_radiation_pattern(path, ff, freq_idx=1, input_power=input_power)
     csv = np.genfromtxt(path, delimiter=",", names=True)
     expected = antenna_gain_dB(ff, input_power=input_power)[1].ravel()
-    # %.6e CSV formatting has <= 5e-7 relative rounding error.
-    np.testing.assert_allclose(csv["gain_dBi"], expected, rtol=5e-7, atol=5e-7)
+    CSV_RELATIVE_ROUNDING = 5e-7
+    np.testing.assert_allclose(csv["gain_dBi"], expected, rtol=CSV_RELATIVE_ROUNDING, atol=CSV_RELATIVE_ROUNDING)
     peak = np.max(csv["gain_dBi"])
     analytic = 10 * np.log10(1.5 if input_power is None else 0.75)
-    # For sin^3(theta), endpoint first derivatives vanish: the trapezoid
-    # power integral has relative error h^4/80 + O(h^6), ~1.2e-9 here.
-    # In dB that is < 1e-8; CSV rounding dominates, so allow 1e-6 dB.
     assert abs(peak - analytic) < 1e-6
     print(f"\n{power_kind}: exported_peak_dBi={peak:.9f}, analytic_dBi={analytic:.9f}")
 
@@ -50,14 +50,12 @@ _PARTIAL_GRIDS = [
 @pytest.mark.parametrize("theta,phi", _PARTIAL_GRIDS)
 @pytest.mark.parametrize("metric", ["power", "gain", "gain_dB", "efficiency", "directivity", "export"])
 def test_partial_sphere_refused(tmp_path, theta, phi, metric):
-    # These cuts omit radiated power. The old export reported 4.7712,
-    # 4.7147 and 4.7472 dBi respectively for the same 1.7609 dBi dipole.
+    """Supplying input power cannot supply the missing P_rad numerator of antenna efficiency."""
     ff = _dipole(theta, phi)
     calls = {
         "power": lambda: _total_radiated_power(ff),
         "gain": lambda: antenna_gain(ff),
         "gain_dB": lambda: antenna_gain_dB(ff),
-        # Supplying input power cannot supply the missing P_rad numerator.
         "efficiency": lambda: antenna_efficiency(ff, input_power=1.0),
         "directivity": lambda: directivity(ff),
         "export": lambda: export_radiation_pattern(tmp_path / "partial.csv", ff),
@@ -87,9 +85,8 @@ def test_short_dipole_absolute_gain(tmp_path, phi):
 @pytest.mark.parametrize("theta,phi", _PARTIAL_GRIDS)
 @pytest.mark.parametrize("per_frequency", [False, True])
 def test_partial_sphere_realized_gain(tmp_path, monkeypatch, theta, phi, per_frequency):
-    # The analytic full-sphere dipole power is 4*pi/(3*eta_0), regardless
-    # of which directions were sampled. Twice that input power gives 0.75
-    # peak realized gain (-1.249387 dBi), with no angular integration.
+    """Twice the analytic full-sphere dipole power of 4*pi/(3*eta_0) gives 0.75 peak
+    realized gain (-1.249387 dBi), with no angular integration."""
     ff = _dipole(theta, phi)
     input_power = 8 * np.pi / (3 * ETA_0)
     if per_frequency:
@@ -114,11 +111,12 @@ def test_partial_sphere_realized_gain(tmp_path, monkeypatch, theta, phi, per_fre
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 @pytest.mark.parametrize("grid", ["closed", "open", "midpoint", "nonuniform", "single"])
 def test_valid_sphere_uses_periodic_phi_weights(dtype, grid):
+    PHI_ORIGIN_OFFSET_RAD = 0.31
     theta = np.linspace(0, np.pi, 37)
     phi = np.linspace(0, 2 * np.pi, 24, endpoint=grid == "closed")
     if grid == "midpoint":
         theta = (np.arange(37) + 0.5) * np.pi / 37
-        phi += 0.31  # A full turn need not start at zero.
+        phi += PHI_ORIGIN_OFFSET_RAD
     elif grid == "nonuniform":
         theta = np.pi * np.linspace(0, 1, 37) ** 1.3
         phi = 2 * np.pi * np.linspace(0, 1, 24) ** 1.2
@@ -134,10 +132,7 @@ def test_valid_sphere_uses_periodic_phi_weights(dtype, grid):
     power = np.abs(et) ** 2 + np.abs(ep) ** 2
 
     def periodic_phi_weights(p):
-        # Periodic trapezoid over one turn; a 0/2*pi seam repeat is one
-        # direction: the first sample takes half its forward interval and the
-        # repeat half its backward interval measured to phi_0 + 2*pi. One
-        # sample: axisymmetric 2*pi.
+        """A 0/2*pi seam repeat is one direction; one sample is axisymmetric over 2*pi."""
         if len(p) == 1:
             return np.array([2 * np.pi])
         p64 = p.astype(np.float64)

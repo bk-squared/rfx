@@ -48,19 +48,21 @@ def test_probe_entry_dataclass():
 
 
 def test_export_touchstone():
-    """export_touchstone should produce valid Touchstone bytes."""
+    """export_touchstone should produce valid Touchstone bytes.
+
+    Touchstone files start with a comment or option line.
+    """
     import numpy as np
 
     from rfx.dashboard.components import export_touchstone
 
-    # 1-port, 10 frequency points
     freqs = np.linspace(1e9, 4e9, 10)
     s_params = np.zeros((1, 1, 10), dtype=complex)
-    s_params[0, 0, :] = -0.1 + 0.2j  # dummy S11
+    s_params[0, 0, :] = -0.1 + 0.2j
 
     data = export_touchstone(s_params, freqs)
     assert isinstance(data, bytes)
     assert len(data) > 0
-    # Touchstone files start with comment or option line
     text = data.decode("utf-8")
-    assert "#" in text  # option line marker
+    TOUCHSTONE_OPTION_MARKER = "#"
+    assert TOUCHSTONE_OPTION_MARKER in text
