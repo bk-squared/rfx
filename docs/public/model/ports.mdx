@@ -18,7 +18,7 @@ gives S-parameters for it:
 | discrete feed, component terminals | `add_port(...)` (lumped; with `extent=` a wire port) | `run(compute_s_params=True)`, or `forward(port_s11_freqs=...)` for gradients |
 | microstrip line | `add_msl_port(...)` | `compute_msl_s_matrix()` |
 | rectangular waveguide | `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` |
-| coaxial line | `add_coaxial_port(...)` | `compute_coaxial_line_reflection()`, `compute_coaxial_two_port()` |
+| coaxial line | `add_coaxial_port(...)` | experimental uniform `run()` / `forward()`; `compute_coaxial_line_reflection()`, `compute_coaxial_two_port()` |
 
 Port families cannot be mixed in one S-parameter calculation. If you are not
 sure which calculator a model needs, `sim.s_matrix_lane()` tells you without
@@ -353,6 +353,12 @@ re-injects it there. Use `waveform="modulated_gaussian"` (the default).
 calibration planes and junctions.
 
 ## Coaxial ports
+
+`add_coaxial_port(...)` builds a coax line, matched feed, TEM drive and voltage planes in experimental uniform single-device `run()` and `forward()`. `position` is the reference plane; `face="top"` or `"bottom"` selects the feed side and `pin_length` extends the pin toward the device. `run(compute_s_params=True, s_param_freqs=...)` and `forward(port_s11_freqs=...)` read S11 at that plane using the built line impedance, then renormalize it to `impedance`. The radii, `pin_length` and `impedance` are static declarations; PEC occupancy elsewhere can be differentiated. The coaxial calculators remain available with their own line layouts and limits.
+
+Uniform mesh, one device, one coax port and no other S-port family; face top or bottom, float32, three-dimensional second-order Yee, CPML on all six faces, no periodic axis or TF/SF. The shell needs at least one whole cell from every lateral absorber, enough axial room for the line, and an NTFF box, when declared, containing the whole port. No conformal PEC, subpixel smoothing, eps_override or sigma_override.
+
+Experimental uniform coax ports: same-line calculator equality, run()/forward() equality, bottom-feed, NTFF-leakage and occupancy-gradient checks define the validation scope; the antenna-level result against an independent solver is not yet shown.
 
 The coaxial calculators build their own line: a coax along z with a matched
 feed, a TEM source, and a row of probe planes. You register one

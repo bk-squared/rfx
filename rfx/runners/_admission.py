@@ -955,7 +955,53 @@ def _subgrid_opted_in(sim) -> bool:
     ref = sim._refinement
     return ref is not None and ref.get("validation", "production") in {"research", "off"}
 
-LANE_GATES: dict[str, dict[Row, Callable]] = {
+def _coax_grid_condition(sim, grid, args):
+    from rfx.model.coax_line import coax_port_layout
+    grid = sim._build_grid() if grid is None else grid
+    pads = tuple(getattr(grid, f'pad_{axis}_{side}') for axis in 'xyz' for side in ('lo', 'hi'))
+    try:
+        coax_port_layout(grid, sim._coaxial_ports[0], absorber_pads=pads, ntff=sim._ntff)
+    except RfxUnsupported as error:
+        return str(error)
+    return True
+
+
+def _gate_failure(gate, sim, grid, args):
+    """Return the first named condition a row fails, or an empty string."""
+    if not isinstance(gate, dict):
+        return '' if gate(sim, grid) else 'lane condition'
+    for condition, check in gate.items():
+        result = check(sim, grid, args or {})
+        if isinstance(result, str):
+            return result
+        if not result:
+            return condition
+    return ''
+
+
+LANE_GATES: dict[str, dict[Row, Callable | dict]] = {
+    **{lane: {('_coaxial_ports', 'coax_port'): {
+        "precision='float32'": lambda sim, grid, args: sim._precision == 'float32',
+        'stencil_order=2': lambda sim, grid, args: sim._stencil_order == 2,
+        "mode='3d'": lambda sim, grid, args: sim._mode == '3d',
+        'no periodic axis': lambda sim, grid, args: not sim._periodic_axes,
+        'CPML on all six faces': lambda sim, grid, args: (
+            sim._boundary == 'cpml' and sim._cpml_layers > 0 and all(
+                getattr(sim._boundary_spec, a).lo == getattr(sim._boundary_spec, a).hi == 'cpml'
+                and getattr(sim._boundary_spec, a).resolved_lo_thickness(sim._cpml_layers) > 0
+                and getattr(sim._boundary_spec, a).resolved_hi_thickness(sim._cpml_layers) > 0
+                for a in 'xyz')),
+        'no TF/SF': lambda sim, grid, args: sim._tfsf is None,
+        'exactly one coax port': lambda sim, grid, args: len(sim._coaxial_ports) == 1,
+        "face='top' or 'bottom'": lambda sim, grid, args: all(p.face in ('top', 'bottom') for p in sim._coaxial_ports),
+        'no other S-port family': lambda sim, grid, args: not (
+            sim._msl_ports or sim._waveguide_ports or sim._floquet_ports or any(p.impedance > 0 for p in sim._ports)),
+        'no conformal_pec': lambda sim, grid, args: not (args.get('conformal_pec') or sim._boundary_spec.conformal_faces()),
+        'no subpixel_smoothing': lambda sim, grid, args: not args.get('subpixel_smoothing'),
+        'no eps_override': lambda sim, grid, args: args.get('eps_override') is None,
+        'no sigma_override': lambda sim, grid, args: args.get('sigma_override') is None,
+        'grid layout': _coax_grid_condition,
+    }} for lane in ('run_uniform', 'fwd_uniform')},
     **{lane: {("_precision", ""): lambda sim, grid: sim._precision == "float64"}
        for lane in ("run_nonuniform", "fwd_nonuniform")},
     "run_subgridded": {
@@ -988,14 +1034,15 @@ def refused(sim, lane: str, run_args=None, grid=None) -> list[Row]:
                 and not sim._uses_nonuniform_mesh
                 and (run_args or {}).get("conformal_pec") == FLOOR_VALUE):
             continue
-        if row in admits:
-            continue
         gate = gates.get(row)
         if gate is not None:
-            if gate not in decided:
-                decided[gate] = gate(sim, grid)
-            if decided[gate]:
+            key = id(gate)
+            if key not in decided:
+                decided[key] = not _gate_failure(gate, sim, grid, run_args)
+            if decided[key]:
                 continue
+        elif row in admits:
+            continue
         out.append(row)
     return out
 
@@ -1007,9 +1054,13 @@ LANE_SELECTORS = frozenset({("_solver", ""), ("_dx_profile", "graded"), ("_dy_pr
                             ("_dt_min_cell", "")})
 
 
-def message(lane: str, rows, sim, run_args=None) -> str:
+def message(lane: str, rows, sim, run_args=None, grid=None) -> str:
     """The refusal, derived from the same table: each input the lane does not
     carry, and the lanes that carry every other input of this model."""
+    for row in rows:
+        gate = LANE_GATES.get(lane, {}).get(row)
+        if isinstance(gate, dict):
+            return f"{lane}: {ROW_WORDS[row]} requires {_gate_failure(gate, sim, grid, run_args)}"
     if lane == "run_subgridded" and ("_refinement", "slab") in rows:
         from rfx.subgridding._notice import SUBGRID_NOTICE
         return SUBGRID_NOTICE
@@ -1079,7 +1130,7 @@ def message(lane: str, rows, sim, run_args=None) -> str:
     if ("_waveguide_ports", "n_modes") in rows:
         where += (" run() and forward() drive and record one mode per waveguide port (n_modes=1); "
                   "compute_waveguide_s_matrix() on a uniform mesh measures several modes per port.")
-    return (f"The {LANE_WORDS[lane]} lane would solve this Simulation as if "
+    return (f"The {LANE_WORDS[lane]} lane ({lane}) would solve this Simulation as if "
             f"{'these inputs were' if len(lines) > 1 else 'this input was'} not "
             "declared, so it is refused before the first time step:\n"
             + "\n".join(lines) + "\n" + where
@@ -1180,8 +1231,6 @@ def admit_forward_entry(sim, args) -> None:
     """Keep the forward entry checks while admitting the coax model lanes."""
     refuse_forward_reference_planes(sim)
     admit_conformal_floor(sim, "fwd_uniform")
-    from rfx.runners.coax_admission import admit_coax_port, entry_lane
-    admit_coax_port(sim, entry_lane(sim, forward=True, distributed=args['distributed']), run_args=args)
 
 
 def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None:
@@ -1190,9 +1239,6 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     the call's static arguments that ``CALL_GATES`` read; ``grid`` is the
     grid the lane built, for its ``LANE_GATES``. A drive whose pulse is not
     resolved by dt is refused first (``refuse_undriven_drives``)."""
-    from rfx.runners.coax_admission import admit_coax_port
-    if lane.startswith(("run_", "fwd_")):
-        admit_coax_port(sim, lane, run_args=run_args, grid=grid)
     if lane in {"run_subgridded", "material_fit"}:
         from rfx.materials.pole_map import refuse_maps
         refuse_maps([p for m in _placed(sim) for p in (m.lorentz_poles or ())], lane)
@@ -1232,8 +1278,8 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     if rows:
         if diagnostics is not None:
             from rfx._diagnostic_transport import diagnostic_refusal
-            raise diagnostic_refusal(RfxUnsupported(message(lane, rows, sim, run_args)), diagnostics)
-        raise NotImplementedError(message(lane, rows, sim, run_args))
+            raise diagnostic_refusal(RfxUnsupported(message(lane, rows, sim, run_args, grid)), diagnostics)
+        raise NotImplementedError(message(lane, rows, sim, run_args, grid))
     from rfx.boundaries.model import refresh_boundary_model
     refresh_boundary_model(sim)
     from rfx.boundaries.features import admit_ntff, admit_waveguide
@@ -1441,6 +1487,8 @@ def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=
 
 
 _S_REQUEST_FAMILIES = (
+    ("_coaxial_ports", "add_coaxial_port(...): S11 on uniform single-device run() and forward(); "
+     "the coaxial line calculators remain available"),
     ("_msl_ports", "add_msl_port(...): MSL ports use compute_msl_s_matrix(); "
      "run(compute_s_params=True) does not include MSL ports in Result.s_params"),
     ("_waveguide_ports", "add_waveguide_port(...) uses compute_waveguide_s_matrix() "
@@ -1461,8 +1509,6 @@ def _s_request_family_messages(sim):
 def admit_s_request(sim, caller, *, details=()):
     """Refuse missing impedance ports and incompatible S-result families."""
     if sim._coaxial_ports:
-        from .coax_admission import admit_coax_port, entry_lane
-        admit_coax_port(sim, entry_lane(sim, forward=caller.startswith('forward')))
         return sim._coaxial_ports
     port_entries = sim._port_sparameter_entries()
     messages = [*_s_request_family_messages(sim), *details]

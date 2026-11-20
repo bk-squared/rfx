@@ -552,3 +552,13 @@ def test_kept_port_metric_refusal_on_traced_spacings():
                      "values on a concrete mesh instead.\n\nBefore this check, the path did not "
                      "raise: it silently used the BOUNDARY cell size for the two transverse axes and "
                      "returned a gradient of exactly 0.0 w.r.t. the mesh. Raising is intentional.")
+
+
+@pytest.mark.parametrize("name", ["pin_radius", "outer_radius", "pin_length", "impedance"])
+def test_coax_port_refuses_a_traced_static_input(name):
+    def declare(value):
+        sim = Simulation(freq_max=10e9, domain=(.012, .012, .040), dx=.0005)
+        sim.add_coaxial_port((.006, .006, .002), **{name: value})
+        return value
+    with pytest.raises(RfxUnsupported, match=rf"add_coaxial_port.*{name}.*static"):
+        jax.make_jaxpr(declare)(.001)

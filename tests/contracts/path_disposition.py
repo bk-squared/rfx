@@ -183,10 +183,8 @@ _SHEET_OWNS_NO_CELL = "a sheet or wire owns no cell, and this lane applies PEC f
 SUBGRID_SHEETS = refuses(_SHEET_OWNS_NO_CELL, raises="does not realize PEC sheets or wires")
 F0 = "surface_impedance_f0) thin conductors are not supported"
 DIST_FWD_PORTS = carries("shared graded load, voltage drive and wrapped in-loop V/I/S; passive ports carry a load only")
-RUN_COAX = refuses("run() refuses add_coaxial_port(); the coax calculators solve it",
-                   raises="add_coaxial_port() is supported only on run_uniform and fwd_uniform")
-FWD_COAX = refuses("forward() refuses add_coaxial_port()",
-                   raises="add_coaxial_port() is supported only on run_uniform and fwd_uniform")
+RUN_COAX = refuses("coax ports require a uniform single-device run()", raises="a coaxial port (add_coaxial_port)")
+FWD_COAX = refuses("coax ports require a uniform single-device forward()", raises="a coaxial port (add_coaxial_port)")
 GRADED_REFINEMENT = refuses("refinement on a graded mesh refused (#1282)",
                             raises="asks for subgridding on a non-uniform mesh")
 
@@ -1650,6 +1648,11 @@ CALCULATOR_CELLS = {
 CALCULATOR_CELLS["_tfsf", "closed_box"] = dict(CALCULATOR_CELLS["_tfsf", "plane_wave"])
 for (_attr, _feature), _cells in CALCULATOR_CELLS.items():
     TABLE[_attr][_feature].update(_cells)
+
+LANE_GATES.update({
+    (lane, ("_coaxial_ports", "coax_port")): "uniform single-device coax conditions and grid layout"
+    for lane in ("run_uniform", "fwd_uniform")
+})
 
 LANE_GATES.update({
     ("run_nonuniform", ("_precision", "")): "float64 carries; mixed refuses with the existing message",

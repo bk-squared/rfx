@@ -141,6 +141,8 @@ def parse_clauses(value: str, column: str):
         if not match:
             raise ValueError(f"invalid clause {clause!r}")
         word, star, qualifier = match.groups()
+        if word == "supported" and qualifier == "experimental":
+            qualifier = None
         selected_qualifiers = qualifier.split(", ") if qualifier is not None else []
         if any(q not in qualifiers for q in selected_qualifiers):
             raise ValueError(f"unknown qualifier ({qualifier})")
@@ -439,6 +441,13 @@ def test_refused_star_removed(page_text):
 def test_stray_qualifier(page_text):
     text = _mutate(page_text, "_materials/kerr", "Uniform", "supported (cpu)")
     _assert_red(text, "_materials/kerr", "unknown qualifier (cpu)")
+
+
+def test_experimental_support_keeps_its_disposition():
+    assert parse_clauses("supported (experimental)", "Uniform") == [
+        ("supported", False, COLUMNS["Uniform"])]
+    with pytest.raises(ValueError, match="unknown qualifier"):
+        parse_clauses("refused (experimental)", "Uniform")
 
 
 def test_mixed_multi_device_qualifiers(page_text):

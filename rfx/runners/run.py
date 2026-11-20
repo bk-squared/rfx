@@ -74,10 +74,6 @@ def run_after_admission(
         decay_max_steps=decay_max_steps,
     )
 
-    from rfx.runners.coax_admission import admit_coax_port, entry_lane
-    admit_coax_port(self, entry_lane(self, distributed=devices is not None and len(devices) > 1),
-                    run_args={"conformal_pec": conformal_pec, "subpixel_smoothing": subpixel_smoothing})
-
     conformal_pec = resolve_run_conformal(self, conformal_pec, devices, subpixel_smoothing)
 
     compute_s_params = self._validate_run_sparameter_request(
@@ -102,7 +98,7 @@ def run_after_admission(
     # NU/distributed lanes (the uniform/subgridded lanes resolve it
     # below from the grid they build and reuse).
     plan = self._dispatch_plan(
-        mode="run", subpixel_smoothing=subpixel_smoothing,
+        mode="run", subpixel_smoothing=subpixel_smoothing, conformal_pec=conformal_pec,
         diagnostics=_diagnostics,
         n_steps=n_steps,
         num_periods=num_periods,

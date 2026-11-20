@@ -166,9 +166,9 @@ def test_s1_refusals(monkeypatch, entry, gate, pattern):
         sim.add_port((.008, .006, .004), 'ez')
     elif gate in ('conformal_pec', 'subpixel_smoothing'):
         if entry == 'forward' and gate == 'conformal_pec':
-            from rfx.runners.coax_admission import admit_coax_port
+            from rfx.runners._admission import admit
             with pytest.raises(NotImplementedError, match=pattern):
-                admit_coax_port(sim, 'fwd_uniform', run_args={'conformal_pec': True})
+                admit(sim, 'fwd_uniform', run_args={'conformal_pec': True})
             return
         options[gate] = True
     elif gate == 'short':

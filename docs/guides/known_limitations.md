@@ -1228,3 +1228,7 @@ tracking, decisions pending, and research narrative are deliberately absent — 
 open work see the
 [issue tracker](https://github.com/bk-squared/rfx/issues), and for what is
 supported at all see the [support matrix](support_matrix.md).
+
+### Uniform coax ports remain experimental
+
+Experimental uniform coax ports: same-line calculator equality, run()/forward() equality, bottom-feed, NTFF-leakage and occupancy-gradient checks define the validation scope; the antenna-level result against an independent solver is not yet shown. NTFF leakage and record-length gradient evidence must be checked for the antenna being reported.

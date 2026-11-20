@@ -251,7 +251,7 @@ Left out of these tables, each for one reason:
 | A microstrip port (`add_msl_port`) | `_msl_ports/msl_port` | supported | supported | refused | refused (waveguide_s_matrix, material_fit) | Run it on one device. Use `compute_msl_s_matrix(...)` for its S-matrix. |
 | A rectangular-waveguide port (`add_waveguide_port`) | `_waveguide_ports/waveguide_port` | supported | supported | refused | refused (mixed_s_matrix, material_fit) | Multi-device `run()` and `forward(distributed=True)` refuse waveguide ports by name on either mesh. Use `compute_waveguide_s_matrix(...)`. |
 | A rectangular-waveguide port with several modes (`add_waveguide_port(n_modes>1)`) in `run()` or `forward()` | `_waveguide_ports/n_modes` | refused | refused | refused | refused (s_matrix_scan, mixed_s_matrix, topology_optimize, material_fit; waveguide_s_matrix on a graded mesh) | Use `compute_waveguide_s_matrix(...)` on a uniform mesh: it drives one run per port and mode. Admission refuses the port on both meshes, one device or several (`tests/contracts/test_waveguide_multimode_refused.py`). |
-| A coaxial port (`add_coaxial_port`) in `run()` or `forward()` | `_coaxial_ports/coax_port` | supported | refused | refused | refused (s_matrix_scan, mixed_s_matrix, topology_optimize, waveguide_s_matrix, material_fit) | Uniform S1 carries the line model and TEM drive under the restrictions above. For coax S use `compute_coaxial_line_reflection(...)` or `compute_coaxial_two_port(...)`. |
+| A coaxial port (`add_coaxial_port`) in `run()` or `forward()` | `_coaxial_ports/coax_port` | supported (experimental) | refused | refused | refused (s_matrix_scan, mixed_s_matrix, topology_optimize, waveguide_s_matrix, material_fit) | Experimental uniform coax ports: same-line calculator equality, run()/forward() equality, bottom-feed, NTFF-leakage and occupancy-gradient checks define the validation scope; the antenna-level result against an independent solver is not yet shown. Uniform mesh, one device, one coax port and no other S-port family; face top or bottom, float32, three-dimensional second-order Yee, CPML on all six faces, no periodic axis or TF/SF. The shell needs at least one whole cell from every lateral absorber, enough axial room for the line, and an NTFF box, when declared, containing the whole port. No conformal PEC, subpixel smoothing, eps_override or sigma_override. |
 | A Floquet port (`add_floquet_port`) | `_floquet_ports/floquet_port` | supported | refused | refused | refused (mixed_s_matrix, waveguide_s_matrix, material_fit) | Use a uniform mesh on one device. |
 | A Floquet port scanned off normal, `scan_theta != 0` | `_floquet_ports/scan_angle` | refused | refused | refused | refused (s_matrix_scan, mixed_s_matrix, topology_optimize, waveguide_s_matrix, material_fit) | Only normal incidence (`scan_theta=0`) is solved. |
 | A lumped resistor, inductor or capacitor (`add_lumped_rlc`) | `_lumped_rlc/R` | supported | supported | supported | refused (waveguide_s_matrix, material_fit) | In a closed box on several devices, an element with its own time update has no one-device comparison; see the RLC row above. |
@@ -449,6 +449,7 @@ therefore means different things for different port families.
 | `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable`, `.probe_clearance`, `.beta_railed`, `.reference_impedances` | **limited**: quasi-TEM (`mode="laplace"`) on a uniform mesh; on a graded mesh experimental; `mode="eigenmode"` refused |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited**: magnitude of single-mode rectangular guides on a uniform mesh; phase and junctions narrower; on a graded mesh experimental outside the cases listed below |
 | `add_waveguide_port(...)` | `run(...)` | `Result.waveguide_sparams[name]` | **limited**: per-port output, not the full matrix |
+| `add_coaxial_port(...)` | `run(...)` / `forward(...)` | `Result` / `ForwardResult` | **experimental**: uniform single-device line, reference-plane S11 and occupancy gradients; antenna-level independent-solver result not yet shown |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited**: one `face="top"` port on a line the calculator builds itself |
 | `add_coaxial_port(...)` | `compute_coaxial_two_port(...)` | `CoaxialTwoPortResult` | **limited**, validated with scope: one through-line family, symmetric (TM0n) discontinuities only |
 | `add_coaxial_port(...)` + `add_msl_port(...)` | `compute_coax_msl_transition(...)` | `CoaxMSLTransitionResult` | **experimental**, diagnostic only: the matrix is not passive (mechanism unresolved) and is refused by default |
@@ -637,6 +638,12 @@ Setup:
 
 ### Coaxial port
 
+Uniform `run()` and `forward()` coax ports are **experimental**. Experimental uniform coax ports: same-line calculator equality, run()/forward() equality, bottom-feed, NTFF-leakage and occupancy-gradient checks define the validation scope; the antenna-level result against an independent solver is not yet shown.
+
+Uniform mesh, one device, one coax port and no other S-port family; face top or bottom, float32, three-dimensional second-order Yee, CPML on all six faces, no periodic axis or TF/SF. The shell needs at least one whole cell from every lateral absorber, enough axial room for the line, and an NTFF box, when declared, containing the whole port. No conformal PEC, subpixel smoothing, eps_override or sigma_override.
+
+`add_coaxial_port(...)` builds a coax line, matched feed, TEM drive and voltage planes in experimental uniform single-device `run()` and `forward()`. `position` is the reference plane; `face="top"` or `"bottom"` selects the feed side and `pin_length` extends the pin toward the device. `run(compute_s_params=True, s_param_freqs=...)` and `forward(port_s11_freqs=...)` read S11 at that plane using the built line impedance, then renormalize it to `impedance`. The radii, `pin_length` and `impedance` are static declarations; PEC occupancy elsewhere can be differentiated. The coaxial calculators remain available with their own line layouts and limits.
+
 Use `compute_coaxial_line_reflection(...)` for the documented TEM-line result.
 The model must contain exactly one `face="top"` coaxial port and no other port family, on a float32,
 three-dimensional, second-order Yee uniform mesh with CPML of positive
@@ -684,7 +691,7 @@ transition keeps its analytic Hammerstad–Jensen impedance.
 S at the 50-ohm `impedance=` therefore includes the built line's mismatch; see
 [known limitations](known_limitations.md) for its size.
 
-`run()` and `forward()` refuse coaxial S-parameter requests. The former
+Uniform single-device `run()` and `forward()` return coax S11 at the declared reference plane. The former
 `compute_coaxial_s_matrix(...)` is removed.
 
 ### Floquet/Bloch and non-port observables

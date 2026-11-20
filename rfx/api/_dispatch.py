@@ -50,11 +50,26 @@ class _DispatchPlan(NamedTuple):
 
 
 
+def _admitted_dispatch(select):
+    @functools.wraps(select)
+    def dispatch(self, **kwargs):
+        plan = select(self, **kwargs)
+        if self._coaxial_ports:
+            from rfx.runners._admission import admit
+            overrides = kwargs.get('tfsf_material_overrides', ())
+            args = dict(kwargs, **dict(zip(('eps_override', 'sigma_override', 'mu_r_override'), overrides)))
+            admit(self, plan.lane, run_args=args, diagnostics=kwargs.get('diagnostics'))
+        return plan
+    return dispatch
+
+
+@_admitted_dispatch
 def _dispatch_plan(
     self,
     *,
     mode: str,
     subpixel_smoothing=False,
+    conformal_pec=None,
     diagnostics=(),
     n_steps: int | None,
     num_periods: float,

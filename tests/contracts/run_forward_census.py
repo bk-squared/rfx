@@ -194,6 +194,7 @@ def build_p_wire_refplane(path):
 
 
 def build_p_coax(path):
+    """Uniform entries carry the coax line; graded and distributed entries refuse it."""
     if path == 'uniform':
         return base_scene(path, domain=(.030, .020, .080), source=False).add_coaxial_port(
             (.006, .006, .004), face='top', pin_length=0.)

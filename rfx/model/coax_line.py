@@ -109,6 +109,34 @@ def coax_port_layout(grid, port, *, absorber_pads, ntff=None):
     """
     import numpy as np
     from rfx.errors import RfxUnsupported
+    from rfx.model.coax_stamp import SHELL_THICKNESS_M
+    dx = float(grid.dx)
+    room = []
+    for axis, name in enumerate('xy'):
+        low, high = absorber_pads[2 * axis:2 * axis + 2]
+        span = (grid.shape[axis] - 1 - low - high) * dx
+        room.extend(((f'{name}-lo', port.position[axis]), (f'{name}-hi', span - port.position[axis])))
+    face, clearance = min(room, key=lambda item: item[1])
+    available = clearance - port.outer_radius - dx
+    if available < dx:
+        raise RfxUnsupported(
+            f'add_coaxial_port(): {face} absorber leaves {available / dx:.2f} wall cells '
+            'after keeping 1 cell of vacuum; needs at least 1 wall cell')
+    radius = port.outer_radius + min(SHELL_THICKNESS_M, available)
+    coords = [(np.arange(grid.shape[a]) - absorber_pads[2 * a]) * dx - port.position[a] for a in (0, 1)]
+    radial = coords[0][:, None] ** 2 + coords[1][None, :] ** 2
+    shell = (radial <= radius ** 2) & (radial > port.outer_radius ** 2)
+    indices = np.nonzero(shell)
+    for axis, name in enumerate('xy'):
+        low, high = absorber_pads[2 * axis:2 * axis + 2]
+        if not indices[axis].size:
+            raise RfxUnsupported('add_coaxial_port(): shell realizes 0 cells; needs at least 1 wall cell')
+        first, last = int(indices[axis].min()), int(indices[axis].max()) + 1
+        for face, gap in ((f'{name}-lo', first - low), (f'{name}-hi', grid.shape[axis] - 1 - high - last)):
+            if gap < 1:
+                raise RfxUnsupported(f'add_coaxial_port(): shell is {gap} cells from the {face} absorber; needs at least 1 cell of vacuum')
+        if ntff is not None and ((first - low) * dx < ntff[0][axis] or (last - low) * dx > ntff[1][axis]):
+            raise RfxUnsupported('add_coaxial_port(): NTFF box must contain the realized shell')
     ref = int(grid.position_to_index(port.position)[2])
     dz = float(grid.dx)
     direction = 1 if port.face == 'top' else -1
