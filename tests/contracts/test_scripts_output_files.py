@@ -22,6 +22,7 @@ OUTPUT_SUFFIXES = {".log", ".out", ".txt", ".npz", ".json"}
 ALLOWED_OUTPUTS = frozenset("""\
 scripts/ci/file_size_baseline.json
 scripts/ci/layer_baseline.json
+scripts/ci/plan_read_baseline.json
 scripts/diagnostics/_artifacts/cpml_subpixel_stability/amplification.json
 scripts/diagnostics/_artifacts/cpml_subpixel_stability/coefficients_main.json
 scripts/diagnostics/_artifacts/cpml_subpixel_stability/cv01_head.json
