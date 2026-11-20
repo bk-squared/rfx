@@ -327,16 +327,14 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
     from rfx.measurement.ringdown_tail_jax import plain_dft, tail_dft
     import jax
     import jax.numpy as jnp
-    from rfx._internal._precision import HIGHEST
 
     rdt, cdt = working_dtypes()
     if mutation not in MUTATIONS:
         raise ValueError(f"mutation {mutation!r} not in {MUTATIONS}")
-    n, C = int(y.shape[0]), int(y.shape[1])
+    n = int(y.shape[0])
     n_start = int(n_start)
     if not (0 <= n_start < n):
         raise ValueError(f"window [{n_start}, {n}) outside {n} samples")
-    M = n - n_start
     K = int(s0.shape[0])
     y = y.astype(rdt)
     yw = y[n_start:]
@@ -345,30 +343,10 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
     mask = (mask > 0).astype(rdt)
     mask_c = mask.astype(cdt)
 
-    # the value: least-squares residues at the host poles
-    B0, t = _basis(s0, M, dt)
-    B0m = B0 * mask_c[None, :]
-    Q0, R0, nrm0 = _qr_masked(B0, mask_c)
-    c0 = _solve_qr(Q0, R0, nrm0, mask_c, Yw)                                   # (K, C)
+    from rfx.ringdown._blocked import fit_window
 
-    if mutation == "poles_constant":
-        ds = jnp.zeros_like(s0)
-    else:
-        # the frozen Gauss-Newton implicit derivative of the poles
-        rms = jnp.sqrt(jnp.mean(jnp.abs(yw) ** 2, axis=0))
-        w = jax.lax.stop_gradient(1.0 / rms).astype(cdt)                       # (C,)
-        D = t.astype(cdt)[:, None, None] * B0m[:, None, :] * (c0.T * w[:, None])[None, :, :]
-        QB = Q0[:M] * mask_c[None, :]
-        PD = D - jnp.einsum("mk,kcj->mcj", QB,
-                            jnp.einsum("mk,mcj->kcj", jnp.conj(QB), D, precision=HIGHEST),
-                            precision=HIGHEST)
-        A = jax.lax.stop_gradient(PD.reshape(M * C, K))
-        ds = _pole_step(Yw, A, w, mask_c)
-    s = s0 + ds
-
-    # residues re-fitted differentiably at s(y); in value, the fit at s0
-    B, _t = _basis(s, M, dt)
-    c = lstsq_masked(B, Yw, mask_c)
+    s, c, c0, ds = fit_window(Yw, s0, dt, mask_c,
+                              constant_poles=mutation == "poles_constant")
     if mutation == "hold_residues":
         c = jax.lax.stop_gradient(c)
 

@@ -40,7 +40,7 @@ def detail(value):
 
 
 STAGE1 = 1.87 * 16 * (3*120*58 + 120*58 + 2*58*58 + 4*58**2)
-STAGE2 = 1.71 * 16 * 5 * 20000 * 2
+STAGE2 = 1.71 * 16 * 5 * (20000 * 3 + 3**2)
 
 
 @pytest.mark.parametrize('stage,bound,needed', [
@@ -115,7 +115,7 @@ else:
     L = int(.33 * nd)
     M, k = nd - L, L
     pencil = 1.87 * 16 * (3*M*L + M*k + 2*k*L + 4*k*k)
-    residue = 1.71 * 16 * 5 * n_win * 2
+    residue = 1.71 * 16 * 5 * (min(n_win, 2**20 // (16*3))*3 + 3**2)
     assert pencil < residue
     rd.IDENTIFY_MEMORY_BOUND_BYTES = (pencil + residue)/2
 before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
