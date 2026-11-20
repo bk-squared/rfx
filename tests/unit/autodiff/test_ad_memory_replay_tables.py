@@ -60,7 +60,7 @@ def test_waveguide_replay_bytes_match_pullback(graded, n_steps, n_bins, segmente
 
 @pytest.mark.parametrize("graded", (False, True), ids=("uniform", "graded"))
 def test_replay_refuses_two_ports_with_shared_bins(graded):
-    # A forward AD objective must not read S polluted by the other drive.
+    """A forward AD objective must not read S polluted by the other drive."""
     sim = _scene(graded)
     for name in ("first", "second"):
         sim.add_waveguide_port(.004, direction="+x", freqs=jnp.linspace(10e9, 14e9, 2),

@@ -52,15 +52,12 @@ from rfx import Box, GaussianPulse, Simulation
 
 F0 = 8e9
 DX = 1e-3
-# Graded z: six 0.5 mm cells through the ground and the substrate, then a
-# 1.25x growth into the air above the patch.
 DZ = np.concatenate([np.full(6, 0.5e-3), 0.5e-3 * 1.25 ** np.arange(1, 9)])
 Z_GND = 1.0e-3
 SUB_H = 1.5e-3
 BOX = ((10e-3, 7e-3, Z_GND + 0.25e-3), (11e-3, 9e-3, Z_GND + 1.25e-3))
 N_STEPS = 30
 
-# The cross-trace tolerance: single-digit ULP at the peak.
 MAX_ULP_AT_PEAK = 9
 
 
@@ -196,8 +193,6 @@ def _probe_energy_loss(sim, checkpoint=False):
     return loss
 
 
-# The models that could not be traced under jax.jit earlier:
-# name -> (builder, objective(sim, checkpoint), design-box permittivity(sim)).
 BOARDS = {
     "graded wire port": (_board, _s11_loss, _box_eps),
     "uniform wire port": (_uniform_board, _uniform_s11_loss, _uniform_box_eps),
@@ -214,8 +209,6 @@ def test_the_public_board_geometry_contains_ground_and_patch_cells():
     print(f"board/all: PEC cells={total}, bar=>0, mesh={mask.shape}, steps=0",
           file=sys.stderr)
     assert total > 0, "graded board public PEC cell mask is empty"
-    # Locate the interior of each declared 0.5 mm metal layer using the
-    # public realized nodes, including their absorber padding.
     for name, z in (("ground", Z_GND - 0.25e-3),
                     ("patch", Z_GND + SUB_H + 0.25e-3)):
         k = int(np.searchsorted(geometry.nodes[2], z, side="right") - 1)
@@ -250,13 +243,10 @@ def test_repeat_calls_of_the_jitted_gradient_do_not_compile():
     (v1, g1), n1 = _compiles(step, eps + 0.1)
     (v2, g2), n2 = _compiles(step, eps + 0.2)
     assert (n1, n2) == (0, 0), f"repeat calls compiled {n1} and {n2} times"
-    # The repeat calls ran the solve at the new design, not a cached answer.
     assert np.isfinite(float(v0)) and float(v1) != float(v0)
     assert float(jnp.max(jnp.abs(g0))) > 0.0
 
 
-#: The rule for quantities summed over the record: port DFT accumulators and the S built from them pass at
-#: this fraction of each array's peak; per-step quantities keep MAX_ULP_AT_PEAK.
 MAX_REL_SUMMED = 1.0e-4
 
 
@@ -357,7 +347,8 @@ def _conductor_and_uniform_lumped_port():
 
 
 def test_eager_shard_map_preserves_the_forward_record_or_body_refusal():
-    """An eager shard_map must preserve the ordinary body, never recurse."""
+    """An eager shard_map must preserve the ordinary body, never recurse.
+    The ordinary body's refusal is an allowed eager shard_map outcome."""
     from jax.sharding import Mesh, PartitionSpec as P
 
     mesh = Mesh(np.asarray(jax.devices("cpu")[:1]), ("cpu",))
@@ -376,9 +367,6 @@ def test_eager_shard_map_preserves_the_forward_record_or_body_refusal():
     except TimeoutError:
         raise
     except Exception as actual_error:
-        # The spec permits the ordinary body's refusal on this JAX. Unwrap
-        # the public callable for that oracle; no Simulation state is read
-        # and no staging predicate is replaced.
         try:
             mapped(inspect.unwrap(Simulation.forward))
         except RecursionError:
@@ -400,8 +388,6 @@ def test_eager_shard_map_preserves_the_forward_record_or_body_refusal():
         assert actual.shape == plain.shape, "shard_map changed the probe record shape"
         assert np.all(np.isfinite(actual)) and np.all(np.isfinite(plain))
         assert np.max(np.abs(plain)) > 0, "plain forward probe record is zero"
-        # Existing cross-trace probe bar:
-        # tests/unit/autodiff/test_forward_jit_contract.py:274.
         error = _ulp_at_peak(plain, actual)
         print(f"shard_map/record: measured={error} ULP at peak, bar={MAX_ULP_AT_PEAK}, "
               f"steps=10, CPU mesh=1, record_shape={plain.shape}", file=sys.stderr)

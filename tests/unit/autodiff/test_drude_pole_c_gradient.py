@@ -33,8 +33,8 @@ def test_drude_pole_c_gradient_matches_finite_difference():
                            amplitude_kind="current")
             for position in PROBES:
                 sim.add_probe(position, component="ez")
-            # 20,980 steps is one period of f_cf at scene P's dt (design A12).
-            result = sim.forward(n_steps=20980, checkpoint=False)
+            PLASMA_MAP_PERIOD_STEPS = 20980
+            result = sim.forward(n_steps=PLASMA_MAP_PERIOD_STEPS, checkpoint=False)
             return jnp.sum(result.time_series**2)
 
         omega = jnp.asarray(2 * np.pi * FP, dtype=jnp.float64)

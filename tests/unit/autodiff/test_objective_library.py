@@ -22,9 +22,6 @@ from rfx.optimize_objectives import (
 pytestmark = pytest.mark.gpu
 
 
-# ---------------------------------------------------------------------------
-# Lightweight mock Result
-# ---------------------------------------------------------------------------
 
 class _MockResult(NamedTuple):
     """Minimal stand-in for rfx.api.Result with s_params and freqs."""
@@ -48,9 +45,7 @@ def _make_mock_result(
     """
     freqs = jnp.linspace(1e9, 10e9, n_freqs)
     s_params = jnp.zeros((n_ports, n_ports, n_freqs), dtype=jnp.complex64)
-    # S11 = s11_mag (constant across freq)
     s_params = s_params.at[0, 0, :].set(s11_mag + 0j)
-    # S21 = s21_mag
     if n_ports > 1:
         s_params = s_params.at[1, 0, :].set(s21_mag + 0j)
     return _MockResult(
@@ -61,9 +56,6 @@ def _make_mock_result(
     )
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
 
 class TestMinimizeS11:
     """Tests for minimize_s11 objective."""
@@ -76,13 +68,13 @@ class TestMinimizeS11:
         loss = obj(result)
         assert loss.shape == (), f"Expected scalar, got shape {loss.shape}"
         assert loss.dtype in (jnp.float32, jnp.float64)
-        # |S11|^2 = 0.25, threshold at -10dB = 0.1, so loss = 0.25 - 0.1 = 0.15
         assert float(loss) > 0.0, "S11 above threshold should give positive loss"
         print(f"\n  minimize_s11 loss = {float(loss):.6f}")
 
     def test_minimize_s11_below_threshold(self):
         """When S11 is already below target, loss should be 0."""
-        result = _make_mock_result(s11_mag=0.1)  # |S11|^2 = 0.01, well below -10dB
+        BELOW_THRESHOLD_S11_MAGNITUDE = 0.1
+        result = _make_mock_result(s11_mag=BELOW_THRESHOLD_S11_MAGNITUDE)
         target_freqs = jnp.linspace(2e9, 8e9, 10)
         obj = minimize_s11(target_freqs, target_db=-10)
         loss = obj(result)
@@ -99,7 +91,6 @@ class TestMaximizeS21:
         obj = maximize_s21(target_freqs)
         loss = obj(result)
         assert loss.shape == (), f"Expected scalar, got shape {loss.shape}"
-        # Negative of |S21|^2 = -0.64
         assert float(loss) < 0.0, "maximize_s21 should return negative loss"
         print(f"\n  maximize_s21 loss = {float(loss):.6f}")
 
@@ -138,7 +129,8 @@ class TestMaximizeBandwidth:
 
     def test_maximize_bandwidth_all_below(self):
         """When all S11 bins are below threshold, loss should be 0."""
-        result = _make_mock_result(s11_mag=0.05)  # -26 dB, well below -10 dB
+        BELOW_THRESHOLD_BAND_S11_MAGNITUDE = 0.05
+        result = _make_mock_result(s11_mag=BELOW_THRESHOLD_BAND_S11_MAGNITUDE)
         obj = maximize_bandwidth(f_center=5e9, f_bw=4e9, s11_threshold=-10)
         loss = obj(result)
         assert float(loss) == 0.0, f"Expected 0.0, got {float(loss)}"
@@ -162,7 +154,6 @@ class TestDifferentiability:
         }
 
         for name, obj_fn in objectives.items():
-            # Differentiate w.r.t. a scalar that scales S-params
             def loss_fn(scale):
                 n_freqs = 20
                 s_params = jnp.zeros((2, 2, n_freqs), dtype=jnp.complex64)

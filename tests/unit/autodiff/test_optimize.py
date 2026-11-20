@@ -5,6 +5,8 @@ Validates:
 2. Latent-to-eps mapping (sigmoid bounds)
 3. OptimizeResult structure
 4. Gradient check (AD vs finite-difference)
+Every domain length written as ``6 * (299792458.0 / 5e9 / 20.0)`` is a whole number of cells of dx,
+so the solved domain equals the declared one.
 """
 
 import pytest
@@ -36,15 +38,12 @@ def test_latent_to_eps_bounds():
     """Sigmoid mapping should stay within [eps_min, eps_max]."""
     eps_min, eps_max = 1.0, 12.0
 
-    # Large negative latent -> eps_min
     eps_lo = _latent_to_eps(jnp.array(-10.0), eps_min, eps_max)
     assert float(eps_lo) < eps_min + 0.01
 
-    # Large positive latent -> eps_max
     eps_hi = _latent_to_eps(jnp.array(10.0), eps_min, eps_max)
     assert float(eps_hi) > eps_max - 0.01
 
-    # Zero latent -> midpoint
     eps_mid = _latent_to_eps(jnp.array(0.0), eps_min, eps_max)
     expected_mid = (eps_min + eps_max) / 2.0
     assert abs(float(eps_mid) - expected_mid) < 0.01
@@ -56,7 +55,6 @@ def test_latent_to_eps_differentiable():
     """Sigmoid mapping should be differentiable."""
     grad_fn = jax.grad(lambda x: _latent_to_eps(x, 1.0, 12.0))
     g = grad_fn(jnp.array(0.0))
-    # Gradient at midpoint should be positive (sigmoid slope * range)
     assert float(g) > 0.0
     print(f"\nGradient at latent=0: {float(g):.4f}")
 
@@ -75,7 +73,7 @@ def test_optimize_result_structure():
 
 def test_optimize_runs_single_iteration():
     """The public optimize() API should complete at least one iteration."""
-    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
     sim.add_port((0.005, 0.0075, 0.0075), "ez")
     sim.add_probe((0.01, 0.0075, 0.0075), "ez")
 
@@ -114,9 +112,6 @@ def test_forward_returns_minimal_result_contract():
     assert not hasattr(result, "state")
 
 
-# ---------------------------------------------------------------------------
-# gradient_check: AD vs finite-difference
-# ---------------------------------------------------------------------------
 
 def test_gradient_check_matches():
     """AD gradient should agree with finite-difference gradient.
@@ -124,14 +119,14 @@ def test_gradient_check_matches():
     Uses a tiny PEC simulation with a single scalar design parameter
     (uniform eps perturbation) so that the finite-difference loop is
     fast (only 2*N forward evaluations for N parameters).
+    The relative-error bar is 0.5 for the coarse gradient check.
     """
-    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
     sim.add_port((0.005, 0.0075, 0.0075), "ez")
     sim.add_probe((0.01, 0.0075, 0.0075), "ez")
 
     grid = sim._build_grid()
 
-    # Single scalar parameter: uniform eps perturbation
     design_params = jnp.zeros(grid.shape, dtype=jnp.float32)
 
     def obj(result):
@@ -146,7 +141,6 @@ def test_gradient_check_matches():
     assert isinstance(result, GradientCheckResult)
     assert result.ad_grad.shape == design_params.shape
     assert result.fd_grad.shape == design_params.shape
-    # Relative error should be reasonable (< 0.5 for such a coarse check)
     assert result.relative_error < 0.5, (
         f"AD/FD relative error too large: {result.relative_error:.4f}"
     )

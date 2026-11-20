@@ -20,11 +20,9 @@ def _model():
 
 
 def test_optimize_traced_box_falls_back_to_eager_losses():
+    """The fallback/eager parity bar is exact equality because both use the same eager computation."""
     def objective(result):
-        # As in test_optimize_wire_conductor_mesh, assemble a second model
-        # inside the objective. This extent is traced by outer jit, but is
-        # concrete during eager AD: differentiating Box dimensions themselves
-        # is separately refused by forward().
+        """The Box extent is traced by outer jit but concrete during eager AD."""
         extent = jnp.asarray(.004, dtype=jnp.float32)
         nested = _model()
         nested.add_material("dielectric", eps_r=3.7)
@@ -59,8 +57,6 @@ def test_optimize_traced_box_falls_back_to_eager_losses():
             print(f"row=jit-True warning={fallback[0].message}", file=sys.stderr)
         histories[jit] = history
 
-    # Existing fallback/eager parity bar (same eager computation):
-    # tests/unit/autodiff/test_optimize_jit_default.py:116, exact equality.
     difference = np.max(np.abs(histories[True] - histories[False]))
     print(f"row=fallback-vs-eager max_abs_loss_difference={difference:.17g} bar=0",
           file=sys.stderr)

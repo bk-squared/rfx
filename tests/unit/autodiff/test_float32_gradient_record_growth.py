@@ -31,7 +31,8 @@ def _position(fractions):
 
 
 def _run_arm(boundary, precision):
-    """Return the primal and tangent of the public probe time series."""
+    """Return the primal and tangent of the public probe time series.
+    Grid arrays include both endpoints, so N cells have N + 1 nodes."""
     use_x64 = precision == "float64"
     with jax.enable_x64(use_x64), jax.default_device(jax.devices()[0]):
         dtype = jnp.float64 if use_x64 else jnp.float32
@@ -41,7 +42,6 @@ def _run_arm(boundary, precision):
             precision=precision,
         )
         grid = sim._build_grid()
-        # Grid arrays include the two endpoints: N cells have N + 1 nodes.
         interior = tuple(s.stop - s.start - 1 for s in grid.interior)
         assert interior == (_N,) * 3, (
             f"{boundary}/{precision}: realised interior {interior}, expected {_N} cells"
@@ -66,7 +66,6 @@ def _run_arm(boundary, precision):
         sim.add_probe(position=_position((0.79, 0.58, 0.36)), component="ez")
         lo = grid.position_to_index(_position((0.30, 0.34, 0.42)))
         hi = grid.position_to_index(_position((0.55, 0.72, 0.72)))
-        # Cell volumes between the declared faces; forward owns edge averaging.
         block = tuple(slice(lower, upper) for lower, upper in zip(lo, hi))
         eps_base = jnp.ones(grid.shape, dtype=dtype)
 
@@ -79,7 +78,6 @@ def _run_arm(boundary, precision):
 
         p = jnp.asarray(1.0, dtype=dtype)
         series, tangent = jax.jvp(probe_series, (p,), (jnp.ones_like(p),))
-        # Host transfer also waits for the entire solve before pytest times it.
         series, tangent = np.asarray(series), np.asarray(tangent)
         expected_dtype = np.dtype(precision)
         assert series.dtype == expected_dtype, (
@@ -98,10 +96,10 @@ def _run_arm(boundary, precision):
 
 
 def _errors(arm32, arm64):
+    """Slot n contains E at (n + 1) dt."""
     x32, dx32, dt32 = arm32
     x64, dx64, dt64 = arm64
     assert dt32 == dt64
-    # Slot n contains E at (n + 1) dt. Use no rfx DFT helpers here.
     times = (np.arange(_T_MAX, dtype=np.float64) + 1) * dt64
     phase = np.exp(-2j * np.pi * np.asarray(_FREQUENCIES)[:, None] * times)
     errors = []
@@ -119,7 +117,6 @@ def _errors(arm32, arm64):
                     np.max(np.abs(d32 - d64)) / np.max(np.abs(d64)),
                 )
             window_errors.append(e_step)
-        # np.maximum preserves NaN so the finite-value bar cannot hide it.
         errors.append(float(np.maximum(np.max(window_errors), _FLOOR)))
     return tuple(errors)
 

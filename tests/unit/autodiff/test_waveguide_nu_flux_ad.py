@@ -53,6 +53,7 @@ def _wr90_nu_sim():
     Same geometry as ``tests/unit/sparams/test_waveguide_nu_flux.py`` so the fixture is
     a known-good NU flux witness; the slab gives the eps_override a real
     |S21| sensitivity for the FD gate.
+    The y and z lengths written as ``15 * dx_coarse`` and ``7 * dx_coarse`` are whole numbers of cells of dx, so their solved lengths equal their declared lengths.
     """
     dx_coarse = 1.5e-3
     dx_fine = 0.75e-3
@@ -69,7 +70,7 @@ def _wr90_nu_sim():
 
     sim = Simulation(
         freq_max=_F_MAX,
-        domain=(domain_x, 15 * dx_coarse, 7 * dx_coarse),  # solved length
+        domain=(domain_x, 15 * dx_coarse, 7 * dx_coarse),
         dx=dx_coarse,
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),
@@ -114,9 +115,6 @@ def _eps_override_for(sim, deps):
         cell_sizes=cell_sizes_from_nonuniform_grid(grid),
         domain_faces=volume_domain_faces(grid),
     )
-    # Perturb the slab region: base slab eps (=4, from the production
-    # assembly) + deps so deps=0 is a no-op vs the assembled materials
-    # (gate 3) and deps>0 changes S21 (FD gate).
     return jnp.where(slab_mask, materials.eps_r + deps, materials.eps_r)
 
 
@@ -128,14 +126,9 @@ def _s21_mag2(deps):
         res = sim.compute_waveguide_s_matrix(
             num_periods=NUM_PERIODS, normalize="flux", eps_override=eps,
         )
-    # |S21|^2 at the band-center bin (index 2 of the 4-point grid)
     return jnp.abs(res.s_params[1, 0, 2]) ** 2
 
 
-# PR-lane gate (v1.8 WP5): deliberately NOT ``slow``-marked so the graded-mesh
-# AD-vs-FD check runs on every PR (fast-suite, ~17 s on the CI runner), not only
-# in the weekly lane. The forward-match and perfect-null siblings in this module
-# stay ``slow``. See docs/design_notes/v18_waveguide_s_chain_plan.md, "WP5".
 def test_nu_flux_smatrix_grad_finite_and_fd_consistent():
     """Gates 1+2: traced NU flux extraction yields a finite, FD-consistent
     grad w.r.t. a substrate-eps scalar."""
