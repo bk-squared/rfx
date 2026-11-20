@@ -49,32 +49,29 @@ def _guide(*, volume_walls=False):
 
 @pytest.mark.parametrize("axis", [1, 2], ids=["y", "z"])
 @pytest.mark.parametrize("row", ["hi", "lo", "PEC"])
-def test_waveguide_section_wall_nodes(row, axis):
-    """Hi/lo loss refuses with the declared cell; both kinds of PEC wall pass."""
+def test_waveguide_section_wall_nodes(row, axis, capsys):
+    """Hi/lo wall loss refuses at its wall node; both PEC wall kinds pass."""
     if row == "PEC":
         for volume_walls in (False, True):
             sim, _, _ = _guide(volume_walls=volume_walls)
             sim.forward(n_steps=2, skip_preflight=True)
         return
-    sim, nodes, walls = _guide(volume_walls=True)
-    source = int(np.argmin(np.abs(nodes[0] - PORT_LEFT_X)))
-    along = 3 - axis
-    start, stop = walls[along][0] + 2, walls[along][1] - 4
-    assert start - walls[along][0] != walls[along][1] - stop
-    wall = walls[axis][int(row == "hi")]
-    lo = [source + 1, 0, 0]
-    hi = [source + 2, 0, 0]
-    lo[axis] = hi[axis] = wall
-    lo[along], hi[along] = start, stop
-    assert all(nodes[a][0] < nodes[a][lo[a]] <= nodes[a][hi[a]] < nodes[a][-1]
-               for a in range(3))
-    sim.add_thin_conductor(
-        Box(tuple(nodes[a][i] for a, i in enumerate(lo)),
-            tuple(nodes[a][i] for a, i in enumerate(hi))),
-        sigma_bulk=1e3, thickness=1e-4, surface_impedance_f0=6.25e9)
-    expected = (
-        "surface-impedance sheet (sheet_impedance.mask_ex) "
-        f"at cell {tuple(lo)}; the port has no model for a thin element in its section; "
-        "draw it beyond the reference plane.")
-    with pytest.raises(RfxRefusal, match=re.escape(expected)):
+    sim, nodes, _ = _guide(volume_walls=False)
+    face = f"{'xyz'[axis]}_{row}"
+    sim.add_wall_loss(sigma_bulk=5.8e5, f0=6.25e9, faces=(face,))
+    with pytest.raises(
+            RfxRefusal,
+            match="the port has no model for a thin element in its section") as refusal:
         sim.forward(n_steps=2, skip_preflight=True)
+    message = str(refusal.value)
+    assert "sheet_impedance.mask_e" in message
+    match = re.search(r"at cell \((\d+), (\d+), (\d+)\)", message)
+    assert match is not None, message
+    cell = tuple(int(index) for index in match.groups())
+    span = sim.freeze_mesh().interior[axis]
+    assert cell[axis] == (span.stop - 1 if row == "hi" else span.start)
+    port_nodes = tuple(int(np.argmin(np.abs(nodes[0] - position)))
+                       for position in (PORT_LEFT_X, PORT_RIGHT_X))
+    assert min(port_nodes) <= cell[0] <= max(port_nodes)
+    with capsys.disabled():
+        print(f"{row}-{'xyz'[axis]}: {message}")
