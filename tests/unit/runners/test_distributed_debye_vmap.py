@@ -11,6 +11,7 @@ pytestmark = pytest.mark.distributed
 
 
 def test_pec_debye_vmap_reaches_wrapped(monkeypatch):
+    """A warm Python cache must not conceal construction under the vmap trace."""
     from rfx.runners import _distributed_nu_wrapped as runner
     from rfx.stepping.slab import _vacuum_dispersion_values
     sim = pole_scene('S1')
@@ -29,7 +30,6 @@ def test_pec_debye_vmap_reaches_wrapped(monkeypatch):
         return np.asarray(jax.vmap(forward)(eps[None])[0])
     one = evaluate()
     calls.clear()
-    # A warm Python cache must not conceal construction under the vmap trace.
     _vacuum_dispersion_values.cache_clear()
     multi = evaluate(jax.devices('cpu')[:2])
     assert calls, 'PEC Debye vmap did not reach the wrapped setup'

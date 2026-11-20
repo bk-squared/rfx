@@ -32,8 +32,6 @@ from tests.unit.runners._until_decay_reference import run_until_decay_reference
 from tests.unit.runners.test_snapshot_interval_and_axes import _loaded_sim, _observables
 from tests.unit.sparams.test_ringdown_run import _box
 
-# rfx CLAUDE.md, accumulated last-bit law: largest |old - new| over a field family
-# <= 1.2e-7 x the running sum over steps of that family's largest |field|.
 _ACCUMULATED_LAW = 1.2e-7
 
 
@@ -86,13 +84,13 @@ def _run(
     branch, driver, monkeypatch, *, cap=None, interval=17, snapshot_interval=7, report_every=None,
     record_dft=False,
 ):
+    """NTFF requires absorbing faces."""
     cap = (1000 if branch in ("energy", "closed", "flux") else 241) if cap is None else cap
     sim = _loaded_sim("pec" if branch in ("closed", "min-cap", "zero-cap") else "cpml")
     if record_dft:
         sim._time_recorded_dft_planes = {entry.name for entry in sim._dft_planes}
     freqs = np.array([2e9, 4e9])
     if branch in ("energy", "flux"):
-        # NTFF needs absorbing faces; the PEC branches preserve the ringing stop-step witness.
         sim.add_ntff_box((0.002, 0.002, 0.002), (0.010, 0.010, 0.010), freqs=freqs)
         sim.add_current_moment_monitor(
             (0.001, 0.001, 0.001), (0.011, 0.011, 0.011), block_size=0.005, freqs=freqs
@@ -110,14 +108,13 @@ def _run(
     captured = {"family_peaks": {} if driver is run_until_decay_reference else None}
 
     def capture(*args, **kwargs):
+        """The frozen reference accepts only a boolean record request."""
         if record_dft:
             kwargs["record_dft"] = True
         elif driver is run_until_decay_reference:
-            # The frozen reference accepts bool only; this fixture requests none.
             assert not any(kwargs["record_dft"])
             kwargs["record_dft"] = False
         if driver is run_until_decay_reference:
-            # The frozen reference keeps its own probe formation (no plan input).
             kwargs.pop("measurement", None)
         if captured["family_peaks"] is not None:
             kwargs["family_peaks"] = captured["family_peaks"]
@@ -188,8 +185,6 @@ def _assert_floor_arrays(left, right, n_steps, grid, materials, record_property,
     for name, b in right.items():
         a = left[name]
         scale = [a, b]
-        # Product structure: NTFFData's c_* partners (rfx/farfield.py:123-146)
-        # and (acc, comp) current moments (rfx/current_moments.py:580-592).
         accumulator = None
         if name.startswith(".ntff_data.c_"):
             accumulator = name.replace(".ntff_data.c_", ".ntff_data.", 1)
@@ -200,9 +195,6 @@ def _assert_floor_arrays(left, right, n_steps, grid, materials, record_property,
             assert a.shape == acc_a.shape and b.shape == acc_b.shape, name
             assert a.dtype == acc_a.dtype and b.dtype == acc_b.dtype, name
             scale = [acc_a, acc_b]
-            # rfx reads acc alone (farfield.py:1063-1074;
-            # current_moments.py:938-941). Keep that check and additionally
-            # compare acc + comp in the accumulator dtype, without promotion.
             a = np.add(acc_a, a, dtype=acc_a.dtype)
             b = np.add(acc_b, b, dtype=acc_b.dtype)
             name = f"{accumulator} + {name}"
@@ -228,8 +220,6 @@ def _assert_contract(got, ref, record_property):
     assert got_steps == ref_steps, f"stop step: got {got_steps}, reference {ref_steps}"
     for result in (got[0], got[1], ref[0], ref[1]):
         assert int(result.state.step) == ref_steps
-    # The loop's record of what ended the run is not an array output of the
-    # run: it is checked against the reference's stop here, then set aside.
     stop = got[1].decay_stop
     records = [d for d in got[0].diagnostics if d.code == "until_decay.stop"]
     assert records == ([] if stop is None else [stop])
@@ -241,8 +231,6 @@ def _assert_contract(got, ref, record_property):
                     comparison="old_loop_api")
     record_property("assertion_bar", "exact stop; existing A/B-lock derived floors and _RTOL")
 
-    # Low-level checks include accumulators and their acc + comp pairs.
-    # API S and derived flux spectra are additional observable outputs.
     a, b = dict(_arrays(got[1])), dict(_arrays(ref[1]))
     api_a, api_b = _observables(got[0]), _observables(ref[0])
     api_a["dt"], api_b["dt"] = np.asarray(got[0].dt), np.asarray(ref[0].dt)
@@ -264,6 +252,7 @@ def _assert_contract(got, ref, record_property):
 def test_decay_chunks_match_old_loop_per_stop_branch(
     branch, snapshot_interval, report_every, monkeypatch, record_property
 ):
+    """Closed boundaries require two after-drive energy checks below threshold."""
     interval = 37 if branch == "closed" else 17
     ref = _run(
         branch,
@@ -289,7 +278,6 @@ def test_decay_chunks_match_old_loop_per_stop_branch(
         assert 35 <= n < 1000
         assert n % interval == 0
         if branch == "closed":
-            # Closed boundaries use two after-drive energy checks below threshold.
             assert n == 481
 
 
@@ -306,11 +294,11 @@ def test_decay_stops_before_absorbed_tail(branch, stop, interval, monkeypatch, r
 @pytest.mark.parametrize(
     "cap,interval,snapshot_interval,report_every",
     [
-        (87, 17, 1, None),  # one-step final chunk; every-step snapshots
-        (83, 17, 7, 13),  # neither snapshot nor progress interval divides chunk
-        (83, 100, 100, 19),  # check/snapshot interval exceeds cap (no frames)
-        (19, 1, 3, None),  # check at every step
-        (1, 17, 1, None),  # first step is also the cap
+        (87, 17, 1, None),
+        (83, 17, 7, 13),
+        (83, 100, 100, 19),
+        (19, 1, 3, None),
+        (1, 17, 1, None),
     ],
 )
 def test_decay_chunk_boundaries_and_snapshots_match_old_loop(

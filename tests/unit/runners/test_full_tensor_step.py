@@ -68,7 +68,6 @@ def test_oblique_full_tensor_pad_refusal_is_specific(entry):
     sim.add_material('rod', eps_r=4.)
     sim.add(Cylinder((.0121, .0058, .006), .0029, .1, 'z'), material='rod')
     sim.add_tfsf_source(f0=10e9, bandwidth=.8, direction='+x', polarization='ez', angle_deg=30.)
-    # The finite-y rod is refused before either smoothing path steps.
     for smoothing in (True, 'full_tensor'):
         with pytest.raises(ValueError, match=r"TF/SF y_lo, y_hi: .*periodic.*closed_box=True, theta_deg"):
             getattr(sim, entry)(n_steps=1, skip_preflight=True, subpixel_smoothing=smoothing)

@@ -6,6 +6,7 @@ this model is below 3e-6 (``test_thresholds_clear_float32_noise`` measures
 it); the parity tolerance is the multi-device PEC criterion of
 ``test_distributed.TestDistributedRunner``, and the effect floor is ten times
 that.
+The lid is 10 mm above the source, so 100 steps allow the wave to return.
 """
 
 from __future__ import annotations
@@ -37,7 +38,6 @@ PARITY_LANES = ("run_nonuniform", "run_distributed", "run_distributed_nu", "fwd_
 GRADED = ("run_nonuniform", "run_distributed_nu", "fwd_nonuniform", "fwd_distributed_nu")
 
 WAVEFORM = GaussianPulse(f0=5e9, bandwidth=0.8)
-# Modules whose lax.scan is a time loop; a refusal must come before any of them.
 _KERNEL_MODULES = ("rfx/stepping/uniform_loop.py", "rfx/stepping/uniform_setup.py", "rfx/nonuniform.py", "rfx/stepping/graded_setup.py", "rfx/stepping/graded_loop.py", "rfx/runners/", "rfx/stepping/slab_",
                    "rfx/subgridding/", "rfx/stepping/subgrid_jit.py", "rfx/stepping/vmap_scan.py",
                    "rfx/stepping/progress_scan.py")
@@ -80,7 +80,6 @@ def _base(lane, *, ref=False, source="field", refine=True, **ctor):
         sim.add_source(mm(4, 6, 6), "ez", waveform=WAVEFORM, amplitude_kind=source)
     sim.add_probe(mm(8, 6, 6), "ez")
     if subgrid and refine:
-        # Explicitly opt in to exercise the experimental subgrid lane.
         sim.add_refinement(z_range=(0.0, 14e-3), ratio=2, validation="research")
     return sim
 
@@ -100,6 +99,7 @@ class Feature(NamedTuple):
 
     ``default_equivalence`` names why a carried option must agree with the
     default within PARITY_TOL instead of changing it.
+    ``observer`` names the result field an observer fills.
     """
     build: Callable
     read: Callable = _probe
@@ -107,7 +107,7 @@ class Feature(NamedTuple):
     run_kwargs: Callable = lambda lane: {}
     variant: Callable = lambda lane: ""
     parity: bool = True
-    observer: str = ""   # result field an observer fills
+    observer: str = ""
     off: str = ""
     boundary: dict = {}
     default_equivalence: str = ""
@@ -178,7 +178,6 @@ def _board(lane, on, ref=False):
                          impedance=50.0, waveform=GaussianPulse(f0=7e9, bandwidth=0.8))
     sim.add_probe(mm(12, 6, 2.5), "ez")
     if subgrid:
-        # Explicitly opt in to exercise the experimental subgrid lane.
         sim.add_refinement(z_range=(0.0, 7e-3), ratio=2, validation="research")
     return sim
 
@@ -193,7 +192,6 @@ def _guide(lane, on, ref=False, n_modes=1):
                                probe_offset=4, ref_offset=2, n_modes=n_modes)
     sim.add_probe(mm(20, 6, 3), "ez")
     if lane == "run_subgridded" and not ref:
-        # Explicitly opt in to exercise the experimental subgrid lane.
         sim.add_refinement(z_range=(0.0, 3e-3), ratio=2, validation="research")
     return sim
 
@@ -204,7 +202,6 @@ def _plane_wave(lane, on, ref=False, *, closed=False):
         sim.add_tfsf_source(f0=5e9, bandwidth=0.5, margin=3, closed_box=closed)
     sim.add_probe(mm(14, 5, 6) if closed else mm(14, 3, 3), "ez")
     if lane == "run_subgridded" and not ref:
-        # Explicitly opt in to exercise the experimental subgrid lane.
         sim.add_refinement(z_range=(0.0, 3e-3), ratio=2, validation="research")
     return sim
 
@@ -219,7 +216,6 @@ def _floquet_cell(scan_theta):
             sim.add_floquet_port(4e-3, axis="z", f0=5e9, scan_theta=scan_theta if on else 0.0)
         sim.add_probe(mm(3, 3, 14), "ez")
         if lane == "run_subgridded" and not ref:
-            # Explicitly opt in to exercise the experimental subgrid lane.
             sim.add_refinement(z_range=(0.0, 3e-3), ratio=2, validation="research")
         return sim
     return build
@@ -278,7 +274,6 @@ def _mode(lane, on, ref=False):
     sim.add_source(mm(4, 6, thick // 2), "ez", waveform=WAVEFORM, amplitude_kind="field")
     sim.add_probe(mm(8, 6, thick // 2), "ez")
     if lane == "run_subgridded" and not ref:
-        # Explicitly opt in to exercise the experimental subgrid lane.
         sim.add_refinement(z_range=(0.0, 1e-3), ratio=2, validation="research")
     return sim
 
@@ -298,7 +293,6 @@ def _lid(lane, on, ref=False, *, lid="cpml", validation="research", z_top=10.0, 
     return sim
 
 
-# The lid is 10 mm above the source: enough steps for the wave to come back.
 LID_STEPS = 100
 
 
@@ -391,7 +385,6 @@ FEATURES: dict[tuple[str, str], Feature] = {
 }
 
 
-# ------------------------------------------------------------------ running
 
 def _run(sim, lane, feature, *, entry=None):
     """Run ``sim`` through ``entry`` (default: ``lane``'s own) for as many
@@ -403,7 +396,6 @@ def _run(sim, lane, feature, *, entry=None):
         if entry.startswith("run_"):
             if entry in ("run_distributed", "run_distributed_nu"):
                 kwargs["devices"] = _devices()
-            # These cells compare field records; S-request cells opt in below.
             kwargs.update(compute_s_params=False)
             kwargs.update(feature.run_kwargs(entry))
             return sim.run(**kwargs)
@@ -521,7 +513,7 @@ def _assert_refused(name, feature, lane, c):
 
 
 def _observed(name, feature, lane):
-    if feature.observer == "time_series":   # the shared base model's record
+    if feature.observer == "time_series":
         return bool(np.any(_without(name, feature, lane) != 0))
     result = _run(_build(feature, lane, True), lane, feature)
     value = getattr(result, feature.observer, None)
@@ -531,7 +523,8 @@ def _observed(name, feature, lane):
 def _carried(name, feature, lane, *, parity, first_only=False):
     """What keeps the lane from carrying the input; empty when it does.
     ``first_only`` (a known-wrong cell) stops at the first problem, so a cell
-    that fails parity does not also run the model without the input."""
+    that fails parity does not also run the model without the input.
+    The periodic row judges periodic faces rather than the independently checked z-absorber backing."""
     if feature.observer:
         return [] if _observed(name, feature, lane) else [f"{feature.observer} came back empty"]
     problems = []
@@ -555,9 +548,6 @@ def _carried(name, feature, lane, *, parity, first_only=False):
     if lane in feature.boundary:
         departures = _boundary_departures(*feature.boundary[lane])
         if name == "_periodic_axes/periodic":
-            # The periodic row judges the periodic faces. The forward lane's
-            # absorber backing on z remains independently held by the B1
-            # face contract (B3); it is not a periodic-period departure.
             departures = [d for d in departures if d["code"] in ("d", "e")]
         if departures:
             problems.append(f"test_realized_boundary.py {feature.boundary[lane]} departs: "
@@ -566,6 +556,7 @@ def _carried(name, feature, lane, *, parity, first_only=False):
 
 
 def _assert_falls_back(name, feature, lane, c):
+    """Fallback parity allows a few float32 rounding steps for the program on one device."""
     sim = _build(feature, lane, True)
     with pytest.warns(UserWarning, match="Falling back to single-device"):
         entry = sim.forward if lane.startswith("fwd_") else sim.run
@@ -573,12 +564,10 @@ def _assert_falls_back(name, feature, lane, c):
         fell = feature.read(entry(n_steps=feature.steps(lane), devices=_devices(),
                                   skip_preflight=True, **options))
     target = _record((name, c.to, True), feature, c.to, True)
-    # The same program on one device: equal to a few float32 rounding steps.
     ulp = 4 * float(np.finfo(np.float32).eps)
     np.testing.assert_allclose(fell, target, rtol=ulp, atol=ulp * np.max(np.abs(target)))
 
 
-# -------------------------------------------------------------------- cells
 
 _RELAXED = ("_refinement", "relaxed_validation")
 
@@ -593,7 +582,7 @@ def _executable():
             continue
         for feature in features:
             if (attr, feature) == _RELAXED:
-                continue   # test_relaxed_subgrid_validation_refuses_or_carries
+                continue
             for lane in T.LANES:
                 c = T.cell(attr, feature, lane)
                 if c.kind in (T.NOT_REACHABLE, T.IGNORABLE):
@@ -608,12 +597,8 @@ def test_cell(attr, feature, lane):
     name = f"{attr}/{feature}"
     spec = FEATURES[attr, feature]
     if c.wrong:
-        # Fixed either way, the cell stops failing: refused, or carried.
         if _refusal(name, spec, lane, _build(spec, lane, True)) is None:
             carries = c.kind == T.CARRIES
-            # A cell the table calls carried-with-a-known-departure always
-            # measures the effect too: its departure is the expected failure,
-            # a lane that drops the input altogether is not.
             problems = _carried(name, spec, lane, parity=carries, first_only=not carries)
             dropped = [p for p in problems if p.startswith("declaring it moved the record")]
             if carries and dropped:
@@ -653,8 +638,6 @@ def _relaxed(mode, add):
 
 def _relaxed_params():
     c = T.cell(*_RELAXED, "run_subgridded")
-    # 'off' runs the same runner as 'research' without the validation report;
-    # it is checked on #1286's own case only.
     cases = [("research", name) for name in RELAXED_INPUTS] + [("off", "debye")]
     return [pytest.param(mode, name, id=f"{mode}-{name}", marks=_xfail(c) if c.wrong else [])
             for mode, name in cases]
@@ -724,7 +707,6 @@ def test_the_guarded_lid_requires_experimental_validation(validation):
                     for on in (True, False))
     effect = relative(lid, pec)
     assert effect > EFFECT_FLOOR, f"validation={validation!r}: the lid moved the record by {effect:.3e}"
-    # kappa_max on the lid is read by this lane (measured), and gated with it.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         stretched = _probe(_run(_lid("run_subgridded", True, validation=validation, kappa=5.0),
@@ -825,7 +807,6 @@ def test_the_refusal_names_lanes_that_carry_the_rest_of_the_model(attr, feature,
     assert named in carriers.split(".\n")[0], message
 
 
-# ------------------------------------------------------ the table's own terms
 
 def test_every_executable_row_has_a_builder():
     rows = {(attr, feature) for attr, features in T.TABLE.items() if T.executable(attr)
@@ -843,11 +824,6 @@ def test_thresholds_clear_float32_noise():
     assert PARITY_TOL >= 30 * noise and EFFECT_FLOOR >= 10 * PARITY_TOL
 
 
-# ------------------------------------------------ what admission sees (J2b)
-# Lane admission (rfx/runners/_admission.py) refuses what a lane does not
-# carry only if a detector sees the input. A detector that never fires would
-# let every drop through again, and one that always fires would refuse every
-# model, so both directions are checked on the models the cells build.
 
 def _declared_models():
     """Every cell above whose model can be built: a ``declared`` refusal
@@ -965,7 +941,6 @@ _WITHOUT = {
     ("_ports", "source"): lambda: _base("run_uniform", source=None),
     ("_probes", "probe"): lambda: _bare(),
     ("_dx", ""): lambda: _bare(dx=None),
-    # the lane selectors, on the uniform base
     ("_dx_profile", "graded"): lambda: _base("run_uniform"),
     ("_solver", ""): lambda: _base("run_uniform"),
     ("_refinement", "slab"): lambda: _base("run_uniform"),

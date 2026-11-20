@@ -22,8 +22,6 @@ def evaluate(sim, devices=None):
     original_run = distributed_v2.run_distributed
 
     def scan(*args, **kwargs):
-        # Forward normally discards the final state. Retain the same solve's
-        # state for observation; this flag does not alter the time step.
         kwargs["return_state"] = True
         result = original_scan(*args, **kwargs)
         states.append(result.state)
