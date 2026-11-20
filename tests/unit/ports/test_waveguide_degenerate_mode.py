@@ -24,7 +24,7 @@ def _shape(u, v, mode, kind='TE', transverse=False):
 
 
 def _axis_values(widths, kind):
-    # Independent numpy finite-volume stiffness, with reflected PEC ghosts.
+    """The finite-volume stiffness uses reflected PEC ghosts."""
     size = len(widths)
     stiffness = np.zeros((size, size))
     for i in range(size - 1):
@@ -43,7 +43,6 @@ def _scene(row):
     if row in ('D7', 'D7f'):
         u = v = np.array([.0015, .0025] * 5)
     if row == 'D7f':
-        # Numpy expectations use the realized widths in the float64 eigh mass.
         u = v = u.astype(np.float32).astype(np.float64)
     kind = 'TM' if row == 'D3' else 'TE'
     target = (1, 2) if kind == 'TM' else ((2, 0) if nu == 20 else (1, 0))

@@ -2,6 +2,7 @@
 
 All geometry expectations use hand coordinates. Public-driver checks replace
 field evolution with manufactured DFTs; no FDTD accuracy claim is made.
+An unlabelled rendering of the earlier measured '+0.026895 -> +0.018065' invites the reading that the near-reflector arm has the smaller deviation.
 """
 from __future__ import annotations
 
@@ -25,6 +26,7 @@ def _coordinate(direction, distance):
 
 
 def _base(direction="+x", *, auto=False):
+    """The ladder starts from node 2 (or 38), not the declared off-node feed."""
     prop = 0 if direction[-1] == "x" else 1
     width = 1 - prop
     domain = [12 * U, 12 * U, 8 * U]
@@ -38,9 +40,8 @@ def _base(direction="+x", *, auto=False):
     lo[width], hi[width] = (4 - .35) * U, (8 + .35) * U
     sim.add(Box(tuple(lo), tuple(hi)), material="pec")
     position = [6 * U, 6 * U, 0.0]
-    # Deliberately off-node: the ladder starts from node 2 (or 38), not
-    # the declared 2.25-cell feed. This distinguishes sampled coordinates.
     position[prop] = _coordinate(direction, 2.25 * U)
+    assert position[prop] / U != round(position[prop] / U), "clearance fixture requires an off-node declared feed"
     sim.add_msl_port(position=tuple(position), width=4 * U, height=2 * U,
                      direction=direction, name="sense_a", mode="uniform", eps_r_sub=2.0,
                      n_probe_offset=None if auto else 10, n_probe_spacing=2, n_probes=3)
@@ -67,6 +68,7 @@ def _assess(sim, pe, grid, **kwargs):
     (18, "insufficient"), (9, "insufficient"),
 ], ids=["no_candidate", "clear", "near", "fully_crossed"])
 def test_all_directions_report_sampled_ladder_and_signed_candidate_gaps(direction, front, status):
+    """A scan starting at the deepest probe would miss the entire box when front=9."""
     sim, pe, grid = _base(direction)
     if front is not None:
         _candidate(sim, direction, front)
@@ -79,7 +81,6 @@ def test_all_directions_report_sampled_ladder_and_signed_candidate_gaps(directio
     assert record.deepest_probe_m == _coordinate(direction, 16 * U)
     assert record.unevaluated_conductors == ()
     if front is None:
-        # The through trace and ground use the existing candidate exclusions.
         assert record.reflector is None
         assert record.first_gap_m is None and record.deepest_gap_m is None
     else:
@@ -87,7 +88,6 @@ def test_all_directions_report_sampled_ladder_and_signed_candidate_gaps(directio
         assert record.first_gap_m == pytest.approx((front - 12) * U)
         assert record.deepest_gap_m == pytest.approx((front - 16) * U)
         if front == 9:
-            # A scan starting at the deepest probe would miss this entire box.
             assert record.first_gap_m < 0 and record.deepest_gap_m < 0
 
 
@@ -116,7 +116,6 @@ def test_feed_inside_a_candidate_keeps_the_actual_entering_boundary(direction):
     assert record.status == "insufficient"
     assert record.first_gap_m == -11 * U
     assert record.deepest_gap_m == -15 * U
-    # Existing placement callers still see zero distance when inside.
     legacy_distance, _, _ = preflight.msl_nearest_downstream_reflector(
         sim._geometry, x_probe=pe.position[prop], x_feed=pe.position[prop],
         y_feed=pe.position[width], w_trace=pe.width, dx=grid.dx,
@@ -205,12 +204,11 @@ def _manufactured_backend(monkeypatch, sim, grid, direction):
 
 @pytest.mark.parametrize("direction", DIRECTIONS)
 def test_preflight_and_result_use_the_resolved_auto_ladder(monkeypatch, direction):
+    """For the four-cell ladder with allowed offset [10,18], the midpoint is 14."""
     sim, pe, grid = _base(direction, auto=True)
     _candidate(sim, direction, 32)
     assert pe.n_probe_offset == 10
     resolved, = sim._resolve_msl_probe_entries(grid)
-    # Feed 2.25U -> candidate 32U, rule gap ~6.86U, four-cell ladder:
-    # allowed offset [10,18], so the existing midpoint is 14.
     assert resolved.n_probe_offset == 14
     seen = []
     real_assessment = preflight_msl.msl_probe_clearance_for_port
@@ -220,15 +218,6 @@ def test_preflight_and_result_use_the_resolved_auto_ladder(monkeypatch, directio
         seen.append((entry.n_probe_offset, record))
         return record
 
-    # ONE patch, TWO readers, and the assertions below check them
-    # separately: sim.preflight() reaches the helper from
-    # _check_msl_port_geometry, which lives in rfx/preflight/msl.py
-    # and therefore looks the name up in THAT module's
-    # globals; sim.compute_msl_s_matrix() reaches it from
-    # rfx/sparams/msl.py, whose function-local import was pointed at the
-    # same module for exactly this reason. Patching the rfx.api._preflight
-    # re-export instead would rebind a third name that neither reader
-    # consults, and both halves below would go quiet at once.
     monkeypatch.setattr(preflight_msl, "msl_probe_clearance_for_port", observe)
     sim.preflight(strict=False, check_ntff=False)
     assert seen and all(offset == 14 for offset, _ in seen)
@@ -276,8 +265,6 @@ def test_legacy_result_constructors_default_clearance_to_none(mixed):
 
 
 def test_mixed_result_contains_only_msl_records_in_registration_order(monkeypatch):
-    # This existing manufactured mixed backend is sufficient for metadata
-    # provenance; spatial interpolation itself has separate field oracles.
     from tests.unit.sparams.test_mixed_port_sparam import _fake_forward_mixed_z_profile
 
     sim, _, grid = _base()
@@ -296,34 +283,12 @@ def test_mixed_result_contains_only_msl_records_in_registration_order(monkeypatc
     assert tuple(item.status for item in result.probe_clearance) == ("satisfied", "insufficient")
 
 
-# --------------------------------------------------------------------------
-# The two honesty messages about this condition must say ONE thing.
-#
-# The extractor's Z0
-# guard said "The V·I-split S11/S21 are unaffected"; preflight said the same
-# condition would make a physical |S11|→1 "read as -5 to -10 dB instead of
-# 0 dB". Which was true decided whether a whole class of results was
-# readable, and the answer came from a measurement
-# (cv06b fixed-source, only the p1 observation offset varied): the fitted
-# β railed on 51/51 bins against 0/51 for the control, and raw S11 at the
-# notch bin moved by 0.009 dB.
-#
-# These tests pin the ANSWER, not the prose: both sites embed the same two
-# module constants, the constants carry their witness and every number, and
-# neither of the two retired claims may reappear at either site. Build-only
-# — the extractor runs on the manufactured backend this file already uses.
-# --------------------------------------------------------------------------
-
 _RETIRED_CLAIMS = (
-    "are unaffected",      # the old Z0-guard claim
-    "-5 to -10 dB",        # the withdrawn shorted-line figure
+    "are unaffected",
+    "-5 to -10 dB",
     "5 to 10 dB",
 )
 
-#: The ONE sentence allowed to quote both retired claims, because it is what
-#: retracts them. Every other occurrence at either site is a regression.
-#: Read from the module so a reworded retraction cannot silently widen what
-#: these tests forgive.
 _RETRACTION = preflight_msl.MSL_PROBE_CLEARANCE_RETRACTION
 
 
@@ -349,29 +314,24 @@ def _z0_guard_message(monkeypatch, sim, grid, direction="+x"):
 
 def test_the_measured_evidence_carries_its_witness_and_every_number():
     """The constant is the answer to #726 item 1; it may be reworded, but
-    not stripped. Each number below is from the run the witness names."""
+    not stripped. Each number below is from the run the witness names.
+    The earlier measured raw S11 values may not be presented as physics because both are above unity."""
     effect = preflight_msl.MSL_PROBE_CLEARANCE_EFFECT
     assert preflight_msl.MSL_PROBE_CLEARANCE_WITNESS in effect
     for token in ("369367260508", "microstrip open-stub notch", "51/51", "0/51", "3.77125",
                   "+0.026895", "+0.018065", "0.009 dB", "-118 dB",
                   "not_read"):
         assert token in effect, f"{token!r} left the measured evidence"
-    # Which arm is which. The numbers alone read the wrong way round: the
-    # LARGER deviation belongs to the near-reflector arm, and an unlabelled
-    # "+0.026895 -> +0.018065" invites the opposite reading.
     near = effect.index("+0.026895")
     compliant = effect.index("+0.018065")
     assert "near-reflector arm" in effect[max(0, near - 80):near + 80], effect
     assert "compliant" in effect[compliant - 40:compliant + 80], effect
     assert "51/51" in effect[:near] and "near-reflector arm" in effect[:near]
-    # Neither raw value may be presented as physics: both are above unity.
     for token in ("ABOVE unity", "0.31 %", "0.21 %", "coherent power excess",
                   "NOT a bound on S", "one fixture", "one bin",
                   "arm-to-arm difference",
                   "same source, load and DUT"):
         assert token in effect, f"{token!r} left the measured evidence"
-    # Both retired claims appear inside the one retraction sentence and
-    # nowhere else; strip it and neither may be left.
     rest = effect.replace(_RETRACTION, "")
     for claim in _RETIRED_CLAIMS:
         assert claim not in rest, (
@@ -382,8 +342,6 @@ def test_the_measured_evidence_carries_its_witness_and_every_number():
     for token in ("probe_clearance", "beta_railed", "reliable",
                   "Hammerstad-Jensen", "UNREADABLE", "BOUNDS"):
         assert token in guidance, f"{token!r} left the guidance text"
-    # The guidance must not turn the retracted number into a bound by
-    # referring to it as a caveat the reader should apply.
     assert "0.009 dB caveat" not in guidance, guidance
 
 
@@ -437,11 +395,10 @@ def test_the_msl_routing_lane_reports_the_condition_it_used_to_hide(front, expec
     while ``preflight()`` on the same sim returned 18 including the layout
     warning and the result's ``probe_clearance`` read ``insufficient``. It
     must report the condition when it applies and stay quiet when it does
-    not — a route that always warns is not a gate either."""
+    not — a route that always warns is not a gate either.
+    The MSL routing lane is told apart by its source, not a new code."""
     sim, _pe, _grid = _base()
     _candidate(sim, "+x", front)
-    # Same family slug as preflight()'s own layout checks (the checks-2c/5
-    # precedent); this route is told apart by its source, not a new code.
     rows = [i for i in sim.preflight_sparameters(calculator="msl")
             if getattr(i, "source", None) == "preflight_sparameters"]
     assert len(rows) == expected, [str(i) for i in rows]
@@ -453,21 +410,14 @@ def test_the_msl_routing_lane_reports_the_condition_it_used_to_hide(front, expec
         assert preflight_msl.MSL_PROBE_CLEARANCE_GUIDANCE in text
 
 
-# --------------------------------------------------------------------------
-# The Z0 guard has more than one cause, and the clearance
-# story is the WRONG advice on a port whose clearance is satisfied -- its
-# common trigger is coarse-mesh staircase bias, where "lengthen the
-# feed" does nothing. The appended text follows the port's own record.
-# --------------------------------------------------------------------------
-
 def test_the_guard_only_tells_the_clearance_story_when_it_applies(monkeypatch):
-    sim, _pe, grid = _base()          # no reflector registered at all
+    """The Z0 guard's common trigger is coarse-mesh staircase bias, where "lengthen the feed" does nothing."""
+    sim, _pe, grid = _base()
     text = _z0_guard_message(monkeypatch, sim, grid)
     assert "probe clearance is satisfied" in text
     assert "standing-wave content at the probes is not the cause" in text
     assert preflight_msl.MSL_PROBE_CLEARANCE_EFFECT not in text
     assert preflight_msl.MSL_PROBE_CLEARANCE_GUIDANCE not in text
-    # The remaining causes are the ones that actually apply.
     assert "rasterized board" in text and "refine the mesh" in text.lower()
 
 
@@ -496,7 +446,6 @@ def test_the_auto_offset_resolver_carries_the_same_evidence():
     text = rows[0]
     assert preflight_msl.MSL_PROBE_CLEARANCE_EFFECT in text
     assert preflight_msl.MSL_PROBE_CLEARANCE_GUIDANCE in text
-    # The fix is stated once, by the guidance.
     assert text.count("lengthen the uniform feed") == 1
     assert "Extend the feed line to fix" not in text
 
