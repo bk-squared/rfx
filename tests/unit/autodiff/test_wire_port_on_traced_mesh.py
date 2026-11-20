@@ -34,6 +34,7 @@ goes and the resonance carries the step change as well as the geometry. A
 concrete ``dt=`` pins one step across the family; ``dt_min_cell=`` is the
 caller's floor for the axes that are traced, because a tracer has no host
 cell size to measure the Courant limit against.
+The intended deformation sweep stays above D_MIN so one pinned step is stable for every member.
 """
 
 from __future__ import annotations
@@ -58,21 +59,25 @@ C0 = 299792458.0
 DX = 0.5e-3
 N_X, N_Y, N_Z = 28, 20, 20
 CPML = 4
-K_GND, K_PATCH = 6, 12                 # ground and patch node planes on z
+GROUND_AND_PATCH_Z_NODES = 6, 12
+K_GND, K_PATCH = GROUND_AND_PATCH_Z_NODES
 Z_G, Z_P = K_GND * DX, K_PATCH * DX
-I_LO, I_HI = 8, 20                     # the patch's two x node lines
-J_LO, J_HI = 6, 14                     # the patch's two y node lines
-N_W = 4                                # cells stretched in / shrunk out
-I_PORT = 17                            # INSIDE the stretch window [16, 20)
+PATCH_X_NODES = 8, 20
+I_LO, I_HI = PATCH_X_NODES
+PATCH_Y_NODES = 6, 14
+J_LO, J_HI = PATCH_Y_NODES
+STRETCH_WINDOW_CELLS = 4
+N_W = STRETCH_WINDOW_CELLS
+I_PORT = 17
 J_PORT = 10
 FREQS = np.arange(10e9, 16e9 + 1e6, 500e6)
 N_STEPS = 400
-BIN = 4                                # 12 GHz, on the slope of the dip
+DIP_SLOPE_BIN_12_GHZ = 4
+BIN = DIP_SLOPE_BIN_12_GHZ
 
-#: The sweep never shrinks a cell below this, so one step is stable for every
-#: member of the family. 0.9 x the Courant step of that cell.
 D_MIN = DX * (1.0 - 0.6 / N_W)
-DT_PIN = 0.9 / (C0 * np.sqrt(1.0 / D_MIN ** 2 + 2.0 / DX ** 2))
+COURANT_SAFETY_FACTOR = 0.9
+DT_PIN = COURANT_SAFETY_FACTOR / (C0 * np.sqrt(1.0 / D_MIN ** 2 + 2.0 / DX ** 2))
 
 
 def _traced(v):
@@ -165,9 +170,6 @@ def _grid(delta, **kw):
         CPML, dx_profile=_prof(delta), **kw)
 
 
-# --------------------------------------------------------------------------
-# 1. the concrete path did not move
-# --------------------------------------------------------------------------
 
 def _host_only_axes(grid):
     """The pre-change spelling: every axis coerced to a host array, which is
@@ -190,7 +192,7 @@ def test_concrete_port_metrics_are_the_same_numbers_as_before(delta):
                                         dtype=np.float64).tobytes()
     assert dy_m.tobytes() == np.asarray(grid.dy_arr,
                                         dtype=np.float64).tobytes()
-    assert dz_m is grid.dz          # never round-tripped through float64
+    assert dz_m is grid.dz
     for i in (I_PORT + CPML, I_HI + CPML):
         assert port_metric(dx_m[i], x_host) == float(
             np.asarray(grid.dx_arr, dtype=np.float64)[i])
@@ -235,9 +237,6 @@ def test_wire_port_meta_stays_plain_floats_on_a_concrete_mesh():
         assert type(meta[slot]) is float
 
 
-# --------------------------------------------------------------------------
-# 2. the pinned step
-# --------------------------------------------------------------------------
 
 def test_a_pinned_step_is_the_step_the_run_uses():
     """Assert realized, not declared: read dt back off the grid and off the
@@ -267,7 +266,7 @@ def test_a_step_past_the_courant_limit_of_the_realized_cells_is_refused():
     delta = 0.5 mm the shrunk cells are 0.375 mm and a step that is fine on
     the nominal mesh is not fine on this one."""
     nominal_ok = 0.99 / (C0 * np.sqrt(3.0) / DX)
-    _grid(0.0, dt=float(nominal_ok), dt_min_cell=DX)          # nominal: fine
+    _grid(0.0, dt=float(nominal_ok), dt_min_cell=DX)
     with pytest.raises(ValueError, match="exceeds the Courant limit"):
         _grid(DX, dt=float(nominal_ok), dt_min_cell=DX)
 
@@ -305,12 +304,9 @@ def test_pinning_a_step_on_the_uniform_lane_is_refused():
         sim.run(n_steps=1, skip_preflight=True)
 
 
-# --------------------------------------------------------------------------
-# 3. the derivative of the feed's own observable
-# --------------------------------------------------------------------------
 
-#: ``h`` rungs for the central difference, as fractions of the nominal cell.
-FD_LADDER = (8, 16, 32)
+FD_CELL_FRACTION_DENOMINATORS = (8, 16, 32)
+FD_LADDER = FD_CELL_FRACTION_DENOMINATORS
 
 
 def _fd(delta, h, **kw):
@@ -339,6 +335,7 @@ def test_s11_gradient_matches_a_central_difference_and_is_second_order():
     smallest cell instead — a different function, differentiated
     consistently — 6.32e-2, 1.67e-2, 4.35e-3, 1.10e-3.
     """
+    assert I_HI - N_W <= I_PORT < I_HI, "The feed must lie inside the stretched cells for port sizing to enter the gradient."
     d0 = 0.25 * DX
     _, ad = jax.jvp(_obs, (jnp.float32(d0),), (jnp.float32(1.0),))
     ad = float(ad)
@@ -409,9 +406,6 @@ def test_a_passive_wire_port_also_sizes_itself_on_the_traced_mesh():
     assert abs(float(tang) - fd) / abs(fd) < 2e-2, f"{float(tang)} vs {fd}"
 
 
-# --------------------------------------------------------------------------
-# 4. the two mutations the gate has to survive
-# --------------------------------------------------------------------------
 
 def test_mutation_a_the_tracer_branch_off_refuses_the_traced_run(monkeypatch):
     """(a) With the metric read forced back to the host-only spelling, the
@@ -459,9 +453,6 @@ def test_mutation_b_a_port_sized_on_the_nominal_cell_goes_red(monkeypatch):
         f"mutation survived: AD {float(ad):+.6e} vs FD {fd:+.6e}")
 
 
-# --------------------------------------------------------------------------
-# 5. the substrate as the design variable — the z spellings
-# --------------------------------------------------------------------------
 
 def _fd_z(delta, h):
     return (float(_obs(delta + h, axis="z"))
@@ -528,13 +519,7 @@ def test_mutation_b_on_the_z_axis_goes_red(monkeypatch):
         f"AD {float(ad):+.6e} vs FD {fd:+.6e}")
 
 
-# --------------------------------------------------------------------------
-# 6. what a tracer hides, and where the check has to run instead
-# --------------------------------------------------------------------------
 
-#: A floor declared LARGER than the cells the mesh really builds. The realized
-#: smallest cell at delta = dx is dx*(1 - 1/N_W) = 0.375 mm; 0.5 mm is the
-#: claim, and the step pinned from it is stable on the claim, not on the mesh.
 _OVER_DECLARED = DX
 _DT_FROM_OVER_DECLARED = 0.9 / (C0 * np.sqrt(3.0) / DX)
 
@@ -624,6 +609,7 @@ def test_the_pinned_step_reaches_the_waveguide_s_matrix_lane(monkeypatch):
     its waveguide S-parameters at the derived one. Measured on the fixture
     below, 3.776953e-12 s derived against a 2.469706e-12 s pin, ratio 1.529.
     Read back off the grid the lane actually built, not off the argument.
+    The y and z lengths written as ``9 * dxc`` and ``4 * dxc`` are whole numbers of cells of dx, so their solved lengths equal their declared lengths.
     """
     from rfx.boundaries.spec import Boundary, BoundarySpec
     import rfx.runners.nonuniform as RNU
@@ -638,7 +624,7 @@ def test_the_pinned_step_reaches_the_waveguide_s_matrix_lane(monkeypatch):
                                  + 1 / b_wg ** 2))
     freqs = np.linspace(9.0e9, 11.0e9, 3)
     sim = Simulation(
-        freq_max=12e9, domain=(lx, 9 * dxc, 4 * dxc), dx=dxc,  # solved length; #1887
+        freq_max=12e9, domain=(lx, 9 * dxc, 4 * dxc), dx=dxc,
         boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
                               y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),

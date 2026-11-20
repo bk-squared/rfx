@@ -5,6 +5,8 @@ Validates that:
 2. Checkpointed forward pass matches non-checkpointed
 3. Checkpointed gradient matches non-checkpointed gradient
 4. A gradient ascent step improves a probe-energy objective
+Every domain length written as ``6 * (299792458.0 / 5e9 / 20.0)`` is a whole number of cells of dx,
+so the solved domain equals the declared one.
 """
 
 import pytest
@@ -21,8 +23,11 @@ pytestmark = pytest.mark.gpu
 
 
 def test_gradient_matches_finite_diff():
-    """AD gradient w.r.t. eps_r matches central finite difference."""
-    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length
+    """AD gradient w.r.t. eps_r matches central finite difference.
+    The central finite difference float32 rounding error is about eps*|J|/h (eps = 2**-24, J ~
+    8.7e-4): 0.54% of the smallest tested gradient (~9.5e-6) at h = 1e-3, against the 5% bar.
+    """
+    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)
     n_steps = 30
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
@@ -39,12 +44,8 @@ def test_gradient_matches_finite_diff():
 
     eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
 
-    # AD gradient
     ad_grad = jax.grad(objective)(eps_r)
 
-    # Central FD at cells between source and probe. Its float32 rounding error is about
-    # eps*|J|/h (eps = 2**-24, J ~ 8.7e-4): 0.54 % of the smallest tested gradient
-    # (~9.5e-6) at h = 1e-3, 5.4 % at h = 1e-4, i.e. on the 5 % bar.
     h = 1e-3
     cx, cy, cz = grid.nx // 2, grid.ny // 2, grid.nz // 2
     test_cells = [
@@ -65,14 +66,13 @@ def test_gradient_matches_finite_diff():
             assert rel_err < 0.05, \
                 f"Gradient mismatch at ({ci},{cj},{ck}): rel_err={rel_err:.4f}"
 
-    # Gradient should be non-trivial
     assert float(jnp.max(jnp.abs(ad_grad))) > 1e-15, "Gradient is all zeros"
     print(f"\nGradient validated at {len(test_cells)} cells (< 5% relative error)")
 
 
 def test_checkpoint_same_forward():
     """Checkpointed run produces the same forward result."""
-    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length
+    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)
     materials = init_materials(grid.shape)
     n_steps = 30
 
@@ -91,7 +91,7 @@ def test_checkpoint_same_forward():
 
 def test_checkpoint_gradient_matches():
     """Checkpointed gradient matches non-checkpointed gradient."""
-    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length
+    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)
     n_steps = 30
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
@@ -122,7 +122,7 @@ def test_gradient_descent_step():
     Start with uniform eps_r=2, maximise time-integrated |Ez|² at a
     downstream probe.  One gradient step should improve the objective.
     """
-    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length
+    grid = Grid(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)
     n_steps = 50
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
@@ -142,7 +142,6 @@ def test_gradient_descent_step():
     val_before = float(objective(eps_r))
     grad = jax.grad(objective)(eps_r)
 
-    # Gradient ascent step (maximise probe energy)
     lr = 0.1
     eps_r_new = jnp.clip(eps_r + lr * grad, 1.0, 10.0)
     val_after = float(objective(eps_r_new))

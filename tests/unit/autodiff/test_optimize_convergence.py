@@ -6,6 +6,8 @@ two real EM problems:
 2. Maximising transmitted probe signal through a design region
 
 Each test must complete in <120 seconds on CPU.
+Every domain length written as ``N * (299792458.0 / 10e9 / 20.0)`` is a whole number of cells of dx,
+so the solved domain equals the declared one.
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -124,22 +126,17 @@ class TestOptimizeDielectricSlabS11:
 
     def test_optimize_dielectric_slab_s11(self):
         """Slab permittivity optimisation converges: final loss < 0.5 * initial."""
-        # Small domain with PEC walls — reflections are strong and the
-        # optimiser has a clear gradient signal to reduce them by tuning
-        # the slab permittivity toward impedance matching.
         sim = Simulation(
             freq_max=10e9,
             domain=(41 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0)), dx=(299792458.0 / 10e9 / 20.0),
             boundary="pec",
-        )  # solved length
+        )
         sim.add_port(
             (0.01, 0.01, 0.01), "ez",
             impedance=50.0,
             waveform=GaussianPulse(f0=5e9, bandwidth=0.5),
         )
-        # Probe at the port to measure total field (incident + reflected)
         sim.add_probe((0.01, 0.01, 0.01), "ez")
-        # Second probe beyond the slab to measure transmitted energy
         sim.add_probe((0.050, 0.01, 0.01), "ez")
 
         region = DesignRegion(
@@ -150,12 +147,7 @@ class TestOptimizeDielectricSlabS11:
 
         n_steps = 200
 
-        # Objective: minimise reflected energy at port (probe 0) while
-        # encouraging transmission to probe 1.
-        # A simple and effective proxy: maximise transmitted energy
-        # (equivalent to minimising S11 in a two-port sense).
         def s11_proxy(result):
-            # Maximise transmitted energy = minimise negative
             ts_tx = result.time_series[:, 1]
             return -jnp.sum(ts_tx ** 2)
 
@@ -166,7 +158,6 @@ class TestOptimizeDielectricSlabS11:
             forward, design_shape, n_iters=n_iters, lr=0.1,
         )
 
-        # ---- assertions ----
         assert len(losses) == n_iters
         assert not any(np.isnan(l) for l in losses), \
             f"NaN in loss history: {losses}"
@@ -191,7 +182,7 @@ class TestOptimizeWaveguideTransmission:
             freq_max=10e9,
             domain=(27 * (299792458.0 / 10e9 / 20.0), 7 * (299792458.0 / 10e9 / 20.0), 7 * (299792458.0 / 10e9 / 20.0)), dx=(299792458.0 / 10e9 / 20.0),
             boundary="pec",
-        )  # solved length
+        )
         sim.add_port(
             (0.008, 0.005, 0.005), "ez",
             impedance=50.0,
@@ -218,17 +209,14 @@ class TestOptimizeWaveguideTransmission:
             forward, design_shape, n_iters=n_iters, lr=0.1,
         )
 
-        # ---- assertions ----
         assert not any(np.isnan(l) for l in losses), \
             f"NaN in loss history: {losses}"
         assert not any(np.isnan(g) for g in grad_norms), \
             f"NaN in gradient norms: {grad_norms}"
 
-        # Gradient is non-zero at step 0
         assert grad_norms[0] > 0.0, \
             "Gradient norm at step 0 is zero — AD path is broken"
 
-        # Objective decreased (transmission increased)
         initial_loss = losses[0]
         final_loss = losses[-1]
         assert final_loss < initial_loss, (

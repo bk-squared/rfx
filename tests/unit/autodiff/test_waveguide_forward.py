@@ -16,9 +16,10 @@ from rfx import Simulation
 
 
 def _wr90_sim() -> Simulation:
+    """The domain lengths written as ``0.05``, ``0.024`` and ``0.012`` are whole numbers of cells of dx, so the solved domain equals the declared one."""
     sim = Simulation(
         freq_max=12e9,
-        domain=(0.05, 0.024, 0.012),  # main's solved length
+        domain=(0.05, 0.024, 0.012),
         dx=2e-3,
         boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=8,

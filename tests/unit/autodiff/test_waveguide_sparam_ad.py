@@ -19,6 +19,8 @@ Out of scope
   freqs is a traced value. That is a separate work item. The tests here
   verify that once the forward pass has run, the returned s_params is
   a proper jax.Array whose downstream computations are AD-traceable.
+Every domain length in ``(0.12, 14 * 0.003, 7 * 0.003)`` is a whole number of cells of dx, so the
+solved domain equals the declared one.
 """
 from __future__ import annotations
 
@@ -31,10 +33,8 @@ import numpy as np
 import pytest
 import warnings
 try:
-    # Modern JAX (the scoped x64 context manager was promoted to top-level;
-    # jax.experimental.enable_x64 was removed in v0.8.0).
     from jax import enable_x64 as _enable_x64
-except ImportError:  # older JAX (< ~0.4.31)
+except ImportError:
     from tests._x64_compat import enable_x64 as _enable_x64
 
 
@@ -52,11 +52,8 @@ def _scoped_x64():
     with _enable_x64(True):
         yield
 
-# ---------------------------------------------------------------------------
-# Fixtures directory (relative to this file)
-# ---------------------------------------------------------------------------
 _FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
-_FREQS = jnp.linspace(5e9, 6.5e9, 4)  # concrete, reused across all tests
+_FREQS = jnp.linspace(5e9, 6.5e9, 4)
 
 
 def _make_wr90_sim():
@@ -74,7 +71,7 @@ def _make_wr90_sim():
             z=Boundary(lo="pec", hi="pec"),
         ),
         cpml_layers=8,
-    )  # solved length
+    )
     sim.add_waveguide_port(
         0.010, direction="+x", mode=(1, 0), mode_type="TE",
         freqs=_FREQS, f0=6e9, bandwidth=0.5, name="left",
@@ -86,9 +83,6 @@ def _make_wr90_sim():
     return sim
 
 
-# ---------------------------------------------------------------------------
-# Golden-snapshot equivalence  (float64, all 3 modes × uniform path)
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("mode_name,normalize", [
     ("false", False),
@@ -96,97 +90,20 @@ def _make_wr90_sim():
     ("flux", "flux"),
 ])
 def test_wg_smatrix_golden_equivalence_float64(mode_name, normalize):
-    """jnp float64 assembly matches pre-refactor numpy golden to 1e-6."""
+    """jnp float64 assembly matches pre-refactor numpy golden to 1e-6.
+    The 4-period snapshot has no physical oracle of its own because the record ends while the pulse
+    is in the guide.
+    """
     golden_path = os.path.join(_FIXTURE_DIR, f"golden_wg_smatrix_normalize_{mode_name}.npy")
     if not os.path.exists(golden_path):
         pytest.skip(f"Golden fixture not found: {golden_path}")
 
-    golden = np.load(golden_path)  # complex128, shape (2, 2, 4)
+    golden = np.load(golden_path)
+    assert golden.dtype == np.complex128 and golden.shape == (2, 2, 4), (
+        "Golden input must be complex128 with shape (2, 2, 4)."
+    )
 
-    # Verify sha256 integrity
     sha = hashlib.sha256(golden.tobytes()).hexdigest()
-    # Re-pinned 2026-05-31 after PR #92 (48a2ce6) introduced the symmetric E/H
-    # stencil, which intentionally shifts the absolute reflection terms (S00/S11
-    # for normalize=False by ~1.4e-2; flux by ~5.7e-4). The ratio-normalized
-    # normalize=True is stencil-bias-invariant — its golden is bit-IDENTICAL to
-    # the pre-#92 snapshot (SHA unchanged below), which corroborates that this is
-    # a fixture refresh to validated behaviour, NOT a masked regression.
-    #
-    # Re-pinned again (issue #868, port aperture cell count). WHY THE NEW NUMBER
-    # IS THE RIGHT ONE, in the order the evidence was taken:
-    #   1. The quantity that moved is derivable in closed form, not fitted. This
-    #      sim declares a = 40.000 mm and rasterizes to 14 cells x 3 mm =
-    #      42.000 mm (preflight already reports that snap as
-    #      ``port_aperture_snap``). The port used to solve its transverse mode
-    #      on 15 cells — the node span — giving the discrete TE10 cutoff
-    #      (2/dx)*sin(pi/30)*c/2pi = 3.324943 GHz, the cutoff of a 45 mm guide.
-    #      It now solves on the guide's 14 cells: (2/dx)*sin(pi/28)*c/2pi =
-    #      3.561474 GHz. Both are the closed form; only the cell count changed,
-    #      and 14 is the count the PEC walls make.
-    #   2. This snapshot itself carries no physical oracle — at num_periods = 4
-    #      the source peak (t0 = 0.318 ns) sits barely inside a 0.667 ns record,
-    #      so its |S21| ~ 0.014 is a half-captured transient. The SAME geometry
-    #      run to settling (num_periods = 40, settling -47.9 / -49.8 dB) is the
-    #      oracle, and it moves the right way: an empty matched guide's |S21|
-    #      deviation from 1 falls 0.91% -> 0.39% and its max column power falls
-    #      1.0349 -> 1.0206 (normalize=False); the flux lane is unchanged to
-    #      1.3e-5, magnitudes from Poynting ratios being cutoff-blind.
-    #   3. Invariance witness, as in #92: normalize=True is unchanged — the
-    #      regenerated array differs from the committed one by max|d| = 0.0 (a
-    #      signed-zero flip only), so its file and SHA are left untouched.
-    # Measured deltas on this snapshot: normalize=False max|d| = 5.925e-02
-    # (S00), normalize=flux max|d| = 5.195e-02 (S10).
-    # Regenerate with scripts/diagnostics/regen_waveguide_smatrix_goldens.py.
-    # Re-pinned for #1012, CPU, same generator and scoped float64:
-    #   max|d|: normalize=False 4.815058529e-4; flux 3.354677095e-3.
-    #   normalize=True regenerates to within 5.6e-17 of the committed array (float64
-    #   rounding of a ratio that is exactly 1); file and SHA unchanged.
-    # Same geometry, num_periods=40; A=457d2411, B includes the Yee half-cell profile:
-    #   normalize=False, A -> B:
-    #     max|S11| 0.1546644294 -> 0.00959402243;
-    #     max ||S21|-1| 0.00390249084 -> 0.00164935979;
-    #     max column power 1.02186853 -> 1.00154209.
-    #   flux, A -> B:
-    #     max|S11| 0 -> 0;
-    #     max ||S21|-1| 0.000606407479 -> 3.97776235e-6;
-    #     max column power 1.00000232 -> 1.00000447.
-    #   Both modes: settling A -47.8906 / -49.7788 dB;
-    #                        B -70.8846 / -70.9755 dB (left / right).
-    # WHY: #1012 samples the magnetic CPML profile at the Yee half cell, so the absorber behind both ports reflects less.
-    # This 4-period snapshot has no oracle of its own; the settled run of the same empty matched guide above is the
-    # oracle, and it moves toward it: max|S11| 0.155 -> 0.0096, column power 1.022 -> 1.0015 (normalize=False).
-    # Re-pinned for #1426 (PR #1464): a waveguide port's record wrote its last sample one step late (the E update
-    # advances state.step before the port samples, and the clamp put step n's sample into slot n-1). The write past
-    # the record is now dropped. This 4-period snapshot ends while the pulse is still in the record, so its last
-    # sample is large and the snapshot moves: max|d| normalize=False 3.792437e-3, flux 1.130798e-2; normalize=True
-    # unchanged (max|d| 0, SHA unchanged).
-    # Re-pinned for #2013 (PR #2022): the port's H source table is built causally on a length set by its own decay, not
-    # circularly over the record. This 4-period record (0.667 ns) is shorter than the pulse, where the old table wrapped
-    # most, so the snapshot moves: max|d| normalize=False 3.086605e-2, flux 1.706986e-1; normalize=True 1.1e-16, file and
-    # SHA unchanged. The settled run of the same guide (num_periods = 40) is the oracle and does not move: max|d|
-    # 3.527e-7 (normalize=False), 2.060e-7 (flux); normalize=False max|S11| 0.009593079 -> 0.009593083,
-    # max ||S21|-1| 0.001657972 -> 0.001657927, max column power 1.001542963 -> 1.00154294; flux max column power
-    # 1.000004464 -> 1.000004471; settling -64.24 / -71.96 -> -65.28 / -72.85 dB (left / right). Regenerated with this
-    # test's own _make_wr90_sim (the diagnostics script's domain no longer matches it).
-    # Re-pinned for #2308: transmission now divides by the driven port's incident wave.
-    # Regenerated with this test's own _make_wr90_sim, num_periods=4 and scoped float64:
-    # normalize=True max|d| against the old golden is 1.0305989378262996.
-    # Independent witness: the empty guide's device run is its reference run, so
-    # max|True_offdiag - committed False_offdiag| = 3.878959614448864e-18 and
-    # max|True_diag| = 0.0. Transmission is the guide's own, no longer 1 by identity.
-    # The normalize=False and flux golden files and their SHAs are unchanged.
-    # Re-pinned because an N-step record now holds the state after step N in its last slot; before, that slot was
-    # unwritten. Regenerated with this test's own _make_wr90_sim, num_periods=4 and scoped float64. This snapshot
-    # ends while the pulse is in the guide, so it moves: max|d| against the old golden is 0.015991765393344213 (False),
-    # 0.0023836337343883132 (True), 0.01967477748770409 (flux). W1 passed at 0.0 in all three modes: reducing only
-    # n_steps_recorded before the DFT to the N-1 sample set reproduces the old golden. W2 remains FAILED: the
-    # num_periods=40 run moves by 1.8779146734548964e-5 (False), 1.877914673441108e-5 (True), 1.4005795176964832e-5
-    # (flux), against a guessed 1e-5 bar not derived from the residual. The root-cause identity control adds the
-    # independent NumPy float64 term 2*dt*x_N*exp(-j*w*t_N) to each 699-sample V/I spectrum, with t_N=N*dt for V
-    # and (N-1/2)*dt for I, then uses the same wave split and normalization with unchanged flux accumulators.
-    # max|S(700)-S_id| is 2.2887833992611187e-16 (False), 1.1102230246251565e-16 (True), 1.1102230246251565e-16
-    # (flux), all below 1e-12: W1 plus this identity attributes the move to the added sample. The earlier "one step
-    # late" fix is not undone: under the physical stamps, slot N-1 is the state after step N.
     _EXPECTED_SHA = {
         "false": "733efc8db8bee6fb39d795e12cafe9b3815ba7b3ccb668938053de4a4455f067",
         "true":  "bcd91d6d198ba9df7943eaeeb77911ca6d5255099e909c19a382d0182b8b11d5",
@@ -206,7 +123,6 @@ def test_wg_smatrix_golden_equivalence_float64(mode_name, normalize):
     s = np.array(res.s_params, dtype=np.complex128)
     diff = np.abs(s - golden)
 
-    # Per-frequency overlay (R5 mandate: full trace, not just scalar norm)
     print(f"\n[normalize={normalize}] per-freq max|delta| per (port_i, port_j):")
     for i in range(s.shape[0]):
         for j in range(s.shape[1]):
@@ -219,9 +135,6 @@ def test_wg_smatrix_golden_equivalence_float64(mode_name, normalize):
     )
 
 
-# ---------------------------------------------------------------------------
-# s_params is a JAX array (not numpy) for all 3 modes
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("normalize", [False, True, "flux"])
 def test_wg_smatrix_returns_jax_array(normalize):
@@ -241,13 +154,6 @@ def test_wg_smatrix_returns_jax_array(normalize):
     )
 
 
-# ---------------------------------------------------------------------------
-# AD smoke test: jax.grad through post-assembly computation
-# ---------------------------------------------------------------------------
-# The upstream port BUILDER (add_waveguide_port) has a pre-existing tape
-# break on np.asarray(freqs_arr) — out of WI-2 scope.  We validate the
-# ASSEMBLY OUTPUT is AD-traceable by differentiating a post-assembly scalar
-# objective through a scale parameter.
 
 @pytest.mark.parametrize("normalize", [False, True, "flux"])
 def test_wg_smatrix_assembly_ad_traceable(normalize):
@@ -258,7 +164,7 @@ def test_wg_smatrix_assembly_ad_traceable(normalize):
             num_periods=4, normalize=normalize,
         )
 
-    s = res.s_params  # jax.Array
+    s = res.s_params
 
     def objective(scale: jax.Array) -> jax.Array:
         return jnp.sum(jnp.abs(s * scale) ** 2).real
@@ -268,15 +174,9 @@ def test_wg_smatrix_assembly_ad_traceable(normalize):
         f"normalize={normalize}: jax.grad returned non-finite value {grad}. "
         "Assembly output is not AD-traceable."
     )
-    # grad must also be non-trivially non-zero for normalize=False
-    # (the True/flux short sims yield near-zero S but the grad of |S*scale|^2
-    #  at scale=1 is 2*sum(|S|^2) which is >= 0; just check finite)
     print(f"\n[normalize={normalize}] AD grad(sum|S*scale|^2)|_{{scale=1}} = {float(grad):.6e}")
 
 
-# ---------------------------------------------------------------------------
-# Pre-existing upstream tape-break documentation test
-# ---------------------------------------------------------------------------
 
 def test_wg_smatrix_upstream_builder_tape_break_documented():
     """Document the known pre-existing tape break in add_waveguide_port.
@@ -304,7 +204,7 @@ def test_wg_smatrix_upstream_builder_tape_break_documented():
                 z=Boundary(lo="pec", hi="pec"),
             ),
             cpml_layers=8,
-        )  # solved length
+        )
         sim.add_waveguide_port(
             0.010, direction="+x", mode=(1, 0), mode_type="TE",
             freqs=freqs, f0=6e9, bandwidth=0.5, name="left",
@@ -321,7 +221,6 @@ def test_wg_smatrix_upstream_builder_tape_break_documented():
     with pytest.raises(Exception) as exc_info:
         jax.grad(build_and_run)(jnp.array(1.0))
 
-    # Confirm it's the expected TracerArrayConversionError (not a new breakage)
     assert "TracerArrayConversionError" in type(exc_info.value).__name__ or \
            "TracerArrayConversionError" in str(exc_info.value), (
         f"Expected TracerArrayConversionError from upstream builder tape break, "

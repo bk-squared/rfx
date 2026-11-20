@@ -19,9 +19,6 @@ from rfx.stepping import plan_checkpoint_lengths, segmented_scan
 from rfx.stepping.remat import checkpoint_lengths, checkpoint_memory
 
 
-# ---------------------------------------------------------------------------
-# Reference: ``effective_chunk`` and ``segmented_scan`` copied verbatim from
-# rfx/stepping/remat.py at commit 1d5712706 (before nested checkpointing).
 def _main_effective_chunk(n, chunk):
     """The segment length a remat over ``n`` steps uses, or None (no remat).
 
@@ -63,21 +60,19 @@ def _main_segmented_scan(step_fn, carry, xs, chunk, scan=jax.lax.scan):
         lambda y: y.reshape((end,) + y.shape[2:]), ys
     )
     if r:
-        # The tail is one more checkpointed segment of length r, run through
-        # the caller's ``scan`` too (a recorded scan must see every step).
         tail = jax.tree_util.tree_map(lambda x: x[end:][None], xs)
         carry, tail_ys = scan(body, carry, tail)
         ys = jax.tree_util.tree_map(
             lambda y, t: jnp.concatenate((y, t[0]), axis=0), ys, tail_ys
         )
     return carry, ys
-# ---------------------------------------------------------------------------
 
 
 N = 40
 
 
 def _run(scan_fn, coef, n, chunk):
+    """An initial field is already present so even a one-step record has a gradient."""
     def step(carry, x):
         ez, hx, hy = carry
         hx = hx - 0.4 * (jnp.roll(ez, -1, axis=1) - ez)
@@ -90,7 +85,6 @@ def _run(scan_fn, coef, n, chunk):
     t = jnp.arange(n, dtype=jnp.float32)
     xs = jnp.exp(-((t - 12.0) / 5.0) ** 2) * jnp.sin(0.6 * t)
     zeros = jnp.zeros((N, N), jnp.float32)
-    # A field already present, so even a one-step record has a gradient.
     r2 = (jnp.arange(N, dtype=jnp.float32)[:, None] - 0.6 * N) ** 2 + (
         jnp.arange(N, dtype=jnp.float32)[None, :] - 0.5 * N) ** 2
     ez0 = jnp.exp(-r2 / 8.0)
@@ -117,7 +111,6 @@ def _bitwise(a, b):
     return a.shape == b.shape and a.dtype == b.dtype and a.tobytes() == b.tobytes()
 
 
-# Invariant (a): a one-length tuple is the int, and the int is main's path.
 @pytest.mark.parametrize("c", (5, 12, 24))
 @pytest.mark.parametrize("n", (1, 2, 23, 24, 25, 47, 97))
 def test_one_length_tuple_is_bit_identical_to_int_and_to_main(c, n):
@@ -129,7 +122,6 @@ def test_one_length_tuple_is_bit_identical_to_int_and_to_main(c, n):
     assert _bitwise(ref_grad, int_grad) and _bitwise(ref_grad, tup_grad)
 
 
-# Invariant (b): any record length gives the plain scan's values.
 LEVELS = ((24, 6), (12, 4), (5, 2), (24, 6, 2))
 
 
@@ -155,7 +147,6 @@ def test_nested_values_equal_plain_scan(lengths, n, record_property):
     assert relative <= 1e-6, relative
 
 
-# Invariant (c): checkpoint nesting depth equals the active levels.
 def _remat_depth(jaxpr):
     depth = 0
     for eqn in jaxpr.eqns:
@@ -178,12 +169,13 @@ def _remat_depth(jaxpr):
     ((24,), 288, 1),
     ((24, 6), 288, 2),
     ((24, 6, 2), 288, 3),
-    ((24, 6), 30, 2),      # outer clamped to 15, inner 6 stays
-    ((24, 6), 20, 1),      # outer skipped (24 >= 20), inner 6 active
-    ((24, 6), 5, 0),       # both skipped
-    ((24, 6, 2), 97, 3),   # tails at the outer level are split again
+    ((24, 6), 30, 2),
+    ((24, 6), 20, 1),
+    ((24, 6), 5, 0),
+    ((24, 6, 2), 97, 3),
 ])
 def test_checkpoint_nesting_depth(chunk, n, expected):
+    """The clamped outer lengths for 30, 20 and 5 steps are 15, inactive and inactive, respectively, leaving nesting depths of two, one and zero for lengths (24, 6)."""
     jaxpr = jax.make_jaxpr(_loss(segmented_scan, chunk, n))(COEF)
     assert _remat_depth(jaxpr.jaxpr) == expected
 
@@ -195,7 +187,6 @@ def test_invalid_lengths_are_refused(chunk):
         segmented_scan(lambda c, x: (c, x), 0.0, jnp.zeros(8), chunk)
 
 
-# The tail of the outermost level is split again by the inner levels.
 def _tail_unit_depth(chunk, n):
     """Checkpoint nesting depth inside the outermost tail unit only: the
     top-level scan of length 1 that runs the r leftover steps."""
@@ -207,23 +198,20 @@ def _tail_unit_depth(chunk, n):
     return _remat_depth(tails[0].params["jaxpr"].jaxpr)
 
 
-# Expected depth = 1 (the tail unit's own checkpoint) + the inner levels the
-# clamp leaves active on the tail's r steps, worked out by hand:
 @pytest.mark.parametrize("chunk,n,expected", [
-    ((24, 6, 2), 118, 3),  # r = 22: 6 active on 22, 2 active on 6
-    ((24, 6, 2), 100, 2),  # r = 4: 6 skipped on 4, 2 active on 4
-    ((36, 6), 287, 2),     # r = 35: 6 active on 35
-    ((24, 6, 2), 97, 1),   # r = 1: no inner level fits one step
+    ((24, 6, 2), 118, 3),
+    ((24, 6, 2), 100, 2),
+    ((36, 6), 287, 2),
+    ((24, 6, 2), 97, 1),
 ])
 def test_outer_tail_is_split_by_the_inner_levels(chunk, n, expected):
+    """The expected tail depth is one for the tail unit's checkpoint plus the inner levels the clamp leaves active on the leftover steps."""
     assert _tail_unit_depth(chunk, n) == expected
 
 
-# Memory: compiled temp bytes, (L1, L2) against (L1,) with the same outer
-# length run as one level. On CPU this is a report of XLA's static analysis;
-# the device gate for the memory claim is the GPU suite.
 def test_two_levels_use_less_compiled_memory_than_their_outer_level(
         record_property):
+    """On CPU the compiled temporary-byte comparison is a report of XLA's static analysis."""
     n = 288
     field = 3 * N * N * 4
     common = dict(boundary_bytes=field, step_bytes=field, static_bytes=0,
@@ -237,7 +225,7 @@ def test_two_levels_use_less_compiled_memory_than_their_outer_level(
             COEF).compile()
         try:
             analysis = compiled.memory_analysis()
-        except Exception:  # backend without memory analysis
+        except Exception:
             return None
         value = getattr(analysis, "temp_size_in_bytes", None)
         return None if value is None else int(value)
@@ -258,21 +246,16 @@ def test_two_levels_use_less_compiled_memory_than_their_outer_level(
     assert nested < flat, report
 
 
-# Planner.
 BYTES = dict(boundary_bytes=1.45e6, step_bytes=3.85e6, static_bytes=2.0e8)
 
 
 def _assert_clamp_leaves_lengths(n, lengths):
-    # Independent restatement of the clamp: every level keeps at least two
-    # full units of its enclosing span and is shorter than that span.
     enclosing = n
     for length in lengths:
         assert 0 < length < enclosing and length <= enclosing // 2, (n, lengths)
         enclosing = length
 
 
-# Boundary carries far dearer than a step: the least peak sits at the clamp's
-# edge (two full units), where a length above n // 2 would hold fewer carries.
 BYTES_EDGE = dict(boundary_bytes=1.0e8, step_bytes=1.0e6, static_bytes=0.0)
 
 
@@ -311,11 +294,10 @@ def test_planner_reports_the_best_peak_when_nothing_fits():
 
 
 def test_memory_model_counts_held_boundaries_and_the_live_record():
-    # 288 steps as (24, 6): 12 outer units + 4 per unit; live record 6 steps.
+    """The outer held-boundary counts are 288/24 = 12 and ceil(97/24) = 5 for the (24, 6) and (24, 6, 2) records, respectively."""
     memory = checkpoint_memory(288, (24, 6), **BYTES)
     assert memory.held_boundaries == 12 + 4 and memory.live_steps == 6
     assert memory.peak_bytes == pytest.approx(2.0e8 + 1.45e6 * 16 + 3.85e6 * 6)
-    # 97 steps as (24, 6, 2): ceil(97/24) = 5, 4, 3 held; live 2.
     memory = checkpoint_memory(97, (24, 6, 2), **BYTES)
     assert memory.held_boundaries == 5 + 4 + 3 and memory.live_steps == 2
     assert memory.forward_passes == 4
