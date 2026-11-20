@@ -115,12 +115,11 @@ def test_plan_mesh_json_markdown_and_artifact_declarations(tmp_path):
 
 
 def test_plan_simulation_mesh_suppresses_preflight_output_and_captures_sparam_issue(capsys):
+    """Only preflight's [PREFLIGHT] lines are the mesh-planning call's to suppress."""
     sim = Simulation(freq_max=3.0e9, domain=(0.03, 0.02, 0.01), boundary="pec", dx=0.005)
 
     plan = plan_simulation_mesh(sim, n_steps=4, sparameter_calculator="msl")
 
-    # Only preflight's [PREFLIGHT] lines are this call's to suppress; another
-    # part of the process may write to stdout.
     assert "[PREFLIGHT]" not in capsys.readouterr().out
     sim.preflight()
     assert "[PREFLIGHT]" in capsys.readouterr().out, "nothing to suppress here"
@@ -159,8 +158,6 @@ def test_waveguide_plan_files_the_e_plane_note_as_info_not_warn():
     assert rows
     info_rows = [r for r in rows if "mirror audit" in r["message"]]
     assert info_rows and all(r["status"] == "info" for r in info_rows), rows
-    # The record-length advisory is a real advisory and stays "warn"; nothing
-    # in a healthy setup is "fail".
     assert any(r["status"] == "warn" and "T/tau_far" in r["message"]
                for r in rows), rows
     assert not any(r["status"] == "fail" for r in rows), rows
@@ -208,9 +205,10 @@ def test_plan_mesh_and_simulation_plan_share_schema_keys():
 
 
 def test_plan_simulation_mesh_reports_nonuniform_extrema_and_limiting_axis():
+    """The z domain length is the sum of the dz_profile cells, so the solved z domain equals the declared one."""
     sim = Simulation(
         freq_max=3.0e9,
-        domain=(0.0, 0.0, sum([0.0015, 0.0025, 0.0035])),  # solved length
+        domain=(0.0, 0.0, sum([0.0015, 0.0025, 0.0035])),
         boundary="pec",
         dx=0.005,
         dx_profile=np.array([0.005, 0.001, 0.002, 0.003, 0.005]),
@@ -242,7 +240,8 @@ def test_simulation_plan_mesh_method_matches_function():
 
 
 def test_simulation_planner_refuses_profiles_the_solver_cannot_build():
-    sim = Simulation(freq_max=3e9, domain=(.006, 1 * .005, 1 * .005),  boundary="pec",  # solved length
+    """The domain lengths written as 1 * .005 are whole numbers of cells of dx, so the solved lengths equal the declared ones."""
+    sim = Simulation(freq_max=3e9, domain=(.006, 1 * .005, 1 * .005),  boundary="pec",
                      dx=.005, dx_profile=np.array([.001, .002, .003]))
     with pytest.raises(ValueError, match=r"dx_profile\[0\].*boundary"):
         plan_simulation_mesh(sim, n_steps=4)

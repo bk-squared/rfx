@@ -84,25 +84,26 @@ from tests._x64_compat import enable_x64
 
 DX = 0.5e-3
 NX, NY = 24, 20
-#: 0.5 mm up to one cell above the patch, then air cells growing to 1 mm.
 DZ = np.array([DX] * 8 + [0.6e-3, 0.7e-3, 0.85e-3, 1.0e-3, 1.0e-3])
 CPML = 6
-K_G, K_P = 5, 8                     # ground and patch node planes on z
+GROUND_Z_NODE = 5
+PATCH_Z_NODE = 8
+K_G, K_P = GROUND_Z_NODE, PATCH_Z_NODE
 Z_G, Z_P = K_G * DX, K_P * DX
-Z_L = (K_G + 2) * DX                # the layer interface: 2 cells + 1 cell
+Z_L = (K_G + 2) * DX
 EPS_LO, EPS_HI = 3.38, 10.2
 Z0 = 50.0
 I_PORT, J_PORT = 9, 10
 PROBE = (20 * DX, J_PORT * DX, 0.5 * (Z_G + Z_P))
 FREQS = np.array([4e9, 6e9, 8e9])
-F_BIN = 8e9                         # the probe field bin of test 2
+F_BIN = 8e9
 T_RECORD = 2.5e-9
-N_AD = 1200                         # the gradient record (1.14 ns)
-F_AD = np.array([9e9])              # on the slope of the patch's dip
-LN_STEP = 0.1                       # test 2: eps_r x e^0.1
+N_AD = 1200
+PATCH_DIP_SLOPE_HZ = 9e9
+F_AD = np.array([PATCH_DIP_SLOPE_HZ])
+LN_STEP = 0.1
 RAISED = (EPS_LO * np.exp(LN_STEP),) * 2
 
-# Pre-declared gates.
 S11_ATOL = 1e-6
 FIELD_RTOL = 1e-6
 KAPPA_RTOL = 1e-5
@@ -113,6 +114,7 @@ EPS_0 = 8.8541878128e-12
 
 
 def _board(eps_lo, eps_hi, *, port="wire", cap=None):
+    """The capacitor is across the port's top edge (the wire's third edge or the lumped port's own edge)."""
     sim = Simulation(freq_max=30e9, domain=(NX * DX, NY * DX, float(DZ.sum())),
                      dx=DX, cpml_layers=CPML, boundary="cpml", dz_profile=DZ)
     sim.add_material("lower", eps_r=float(eps_lo))
@@ -131,16 +133,13 @@ def _board(eps_lo, eps_hi, *, port="wire", cap=None):
                      component="ez", impedance=Z0, extent=Z_P - Z_G,
                      excite=True, waveform=pulse)
     elif port == "lumped":
-        # One Ez edge, in the top (eps_r 10.2) layer.
         sim.add_port(position=(I_PORT * DX, J_PORT * DX, Z_G + 2 * DX),
                      component="ez", impedance=Z0, excite=True,
                      waveform=pulse)
     elif port == "source":
-        # A soft current source (no load), in the top (eps_r 10.2) layer.
         sim.add_source((I_PORT * DX, J_PORT * DX, Z_G + 2 * DX), "ez",
                        amplitude_kind="current", waveform=pulse)
     elif port == "msl":
-        # A 2 mm trace on the laminate face, fed from the -x end.
         sim.add_pinned_sheet(plane_index=K_P, i_range=(2, NX - 2),
                              j_range=(8, 12), name="trace")
         sim.add_msl_port(position=(4 * DX, 10 * DX, Z_G), width=4 * DX,
@@ -149,7 +148,6 @@ def _board(eps_lo, eps_hi, *, port="wire", cap=None):
     else:
         raise ValueError(port)
     if cap is not None:
-        # across the port's top edge (the wire's third, the lumped port's own)
         sim.add_lumped_rlc((I_PORT * DX, J_PORT * DX, Z_G + 2 * DX), "ez",
                            C=float(cap), topology="parallel")
     sim.add_probe(PROBE, "ez")
@@ -254,9 +252,6 @@ def _solve(case, mutated=False):
             float(r.dt))
 
 
-# --------------------------------------------------------------------------
-# 1. the same board, declared by override and by materials
-# --------------------------------------------------------------------------
 
 def _override_vs_materials(mutated):
     s_m, ts_m, _ = _solve("layered")
@@ -267,7 +262,6 @@ def _override_vs_materials(mutated):
 
 
 def test_the_layers_declared_by_override_and_by_materials_are_one_board():
-    # realized, not declared: the column under the wire is 3.38/3.38/10.2
     col = np.asarray(_drawn(_board(EPS_LO, EPS_HI)).eps_r)[
         I_PORT + CPML, J_PORT + CPML, K_G + CPML:K_P + CPML]
     np.testing.assert_allclose(col, [EPS_LO, EPS_LO, EPS_HI], rtol=1e-6)
@@ -278,9 +272,6 @@ def test_the_layers_declared_by_override_and_by_materials_are_one_board():
     assert dts <= FIELD_RTOL, dts
 
 
-# --------------------------------------------------------------------------
-# 2. whole-substrate eps_r x e^0.1: override vs built
-# --------------------------------------------------------------------------
 
 class _Built(Exception):
     pass
@@ -316,8 +307,6 @@ def _built_up_to_the_scan(sim, eps_override=None, mutate_from=None):
         stepped["dt"] = float(grid.dt)
         raise _Built
 
-    # the mutation is entered LAST, so it wraps the recorder and the
-    # recorder sees what the real builder receives
     with mock.patch.object(_nu_runner, "port_drive_waveform", _port), \
             mock.patch.object(_nu_runner, "make_current_source", _cs), \
             mock.patch.object(_msl, "make_msl_port_sources", _msl_src), \
@@ -375,13 +364,12 @@ def test_raising_eps_r_by_override_changes_the_board_not_the_drive():
     assert abs(ratio - 1.0) <= KAPPA_RTOL, ratio
 
 
-# --------------------------------------------------------------------------
-# 3. the derivative through the override
-# --------------------------------------------------------------------------
 
-#: kind -> the drawn board's two layers. ``upper`` scales the eps_r 10.2
-#: layer of the layered board; ``whole`` scales a one-material 3.38 slab.
 _AD_BOARD = {"upper": (EPS_LO, EPS_HI), "whole": (EPS_LO, EPS_LO)}
+
+
+UPPER_LAYER_EPS_THRESHOLD = 5.0
+SUBSTRATE_EPS_THRESHOLD = 2.0
 
 
 def _mask(kind):
@@ -389,16 +377,16 @@ def _mask(kind):
     if kind == "upper":
         m = np.zeros(eps0.shape)
         m[:, :, K_P - 1 + CPML] = 1.0
-        return m * (eps0 > 5.0)          # the eps_r 10.2 cells
-    return (eps0 > 2.0).astype(float)    # every substrate cell
+        return m * (eps0 > UPPER_LAYER_EPS_THRESHOLD)
+    return (eps0 > SUBSTRATE_EPS_THRESHOLD).astype(float)
 
 
 def _observable(r, kind):
-    if kind == "upper":                  # |S11|^2
+    if kind == "upper":
         s = jnp.asarray(r.s_params).reshape(-1)[0]
         return jnp.abs(s) ** 2
     e = _dft(jnp.asarray(r.time_series), float(r.dt), float(F_AD[0]))
-    return jnp.log(jnp.abs(e) ** 2)      # the probe's ln|E|^2
+    return jnp.log(jnp.abs(e) ** 2)
 
 
 def _run_obs(sim, kind, eps_override=None):
@@ -458,14 +446,10 @@ def test_the_gradient_through_the_override_is_the_boards_gradient(kind):
     rel = abs(g - rich) / abs(rich)
     print(f"[grad {kind}] AD {g:.6f}; FD built {d}; Richardson {rich:.6f} "
           f"(coarse pair {rich_coarse:.6f}); |AD/FD - 1| = {rel:.2e}")
-    # the ladder has converged well inside the gate
     assert abs(rich_coarse - rich) / abs(rich) < 5 * GRAD_RTOL
     assert rel <= GRAD_RTOL, (g, rich)
 
 
-# --------------------------------------------------------------------------
-# 4. no override: the pre-#1267 spelling and the shipped one, byte for byte
-# --------------------------------------------------------------------------
 
 def test_without_an_override_the_run_is_byte_identical():
     sim = _board(EPS_LO, EPS_HI)
@@ -479,11 +463,9 @@ def test_without_an_override_the_run_is_byte_identical():
     assert ts_ship.tobytes() == ts_pre.tobytes()
 
 
-# --------------------------------------------------------------------------
-# 5. mutation (b): the drive handed the pre-override arrays
-# --------------------------------------------------------------------------
 
 def test_mutation_the_drive_from_the_drawn_arrays_sends_1_to_3_red():
+    """The system is linear with the drive entering only through its per-step increment."""
     ds, dts, s_m, s_o = _override_vs_materials(mutated=True)
     ratio = _raised_field_ratio(mutated=True)
     kappa = _kappa_closed_form()
@@ -497,33 +479,21 @@ def test_mutation_the_drive_from_the_drawn_arrays_sends_1_to_3_red():
           f"AD whole {g_whole:.6f} vs FD {fd_whole:.6f} "
           f"(excess {g_whole - fd_whole:.6f}, closed form 2*dln(kappa) "
           f"{2 * dlnk})")
-    # 1
     assert np.max(ds) > 1e3 * S11_ATOL
     assert dts > 1e3 * FIELD_RTOL
-    # 2, by the closed form: one ratio on every wire edge, and the system is
-    # linear with the drive entering only through its per-step increment
     assert np.ptp(kappa) < 1e-6 * kappa[0]
     assert abs(ratio - 1.0) > 1e3 * KAPPA_RTOL
     assert abs(ratio / kappa[0] - 1.0) < 1e-5, (ratio, kappa)
-    # 3, and the whole-slab excess is the closed form's 2 d ln(kappa)
-    assert abs(g_up - fd_up) / abs(fd_up) > 3 * GRAD_RTOL     # 1.0e-2
-    assert abs(g_whole - fd_whole) / abs(fd_whole) > 10 * GRAD_RTOL  # 0.82
+    assert abs(g_up - fd_up) / abs(fd_up) > 3 * GRAD_RTOL
+    assert abs(g_whole - fd_whole) / abs(fd_whole) > 10 * GRAD_RTOL
     assert np.ptp(dlnk) < 1e-6 * dlnk[0]
     assert abs((g_whole - fd_whole) / (2 * dlnk[0]) - 1.0) < 1e-2
 
 
-# --------------------------------------------------------------------------
-# 6. build time, every port kind, under an override
-# --------------------------------------------------------------------------
 
-#: port kind -> (port, capacitor across its top edge). The drawn board is a
-#: plain 3.38 slab; the override supplies the layered array, so the port's
-#: top edge sits in eps_r 10.2 only through the override.
 _BUILD_CASES = {
     "wire": ("wire", None),
     "lumped": ("lumped", None),
-    # a soft current source carries no load, so the drawn/override Cb ratio
-    # is the bare permittivity ratio: 10.2/3.38 = 3.018 before the fix
     "source": ("source", None),
     "msl": ("msl", None),
     "wire+C": ("wire", 1e-12),
@@ -543,7 +513,6 @@ def _worst_cb_mismatch(case, *, mutated=False):
         on = {tuple(int(v) for v in c) for c in np.argwhere(lumped != 0)}
         driven = {tuple(int(v) for v in cell) for cell, _, _ in handed}
         assert len(on) == 1 and on <= driven, (on, driven)
-    # realized: some driven cell is eps_r 10.2 by the override only
     drawn_eps, ovr_eps = np.asarray(_drawn(sim).eps_r), np.asarray(ovr)
     assert any(ovr_eps[c] == np.float32(EPS_HI) and drawn_eps[c] ==
                np.float32(EPS_LO) for c, _, _ in handed)
@@ -613,7 +582,7 @@ def test_a_concrete_override_keeps_the_msl_launch_fixture_on_the_drawn_eps():
     is red here. Stating ``eps_r_sub`` on the port takes the read away."""
     sim = _board(EPS_LO, EPS_LO, port="msl")
     raised = np.asarray(_drawn(sim).eps_r) * np.exp(LN_STEP * _mask("whole"))
-    feed = (4 + CPML, 10 + CPML, K_G + 1 + CPML)     # a substrate cell at it
+    feed = (4 + CPML, 10 + CPML, K_G + 1 + CPML)
     assert raised[feed] == pytest.approx(EPS_LO * np.exp(LN_STEP), rel=1e-6)
     seen = []
     with _recording_msl_profile(seen):

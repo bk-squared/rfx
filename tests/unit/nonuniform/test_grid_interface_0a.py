@@ -60,10 +60,8 @@ from rfx.model.graded_grid import (
 
 AXES = ("x", "y", "z")
 
-# The 2:1 transition profile the source/port dual-spacing suite uses.
 D = 0.5e-3
 PROF_2TO1 = np.concatenate([np.full(5, D), np.full(6, 2.0 * D), np.full(5, D)])
-# Coarse-fine-coarse in plane, the shape test_nonuniform_xy builds.
 XY_STEP = np.concatenate([np.full(10, 1e-3), np.full(10, 0.5e-3),
                           np.full(10, 1e-3)])
 
@@ -75,7 +73,6 @@ def _band_xy():
 
 
 FIXTURES = {
-    # --- shapes grepped from tests/unit/nonuniform ---
     "api_basic": lambda: make_nonuniform_grid(
         (0.05, 0.05), np.array([0.4e-3] * 4 + [0.5e-3] * 10), 0.5e-3, 12),
     "api_cfl_10x": lambda: make_nonuniform_grid(
@@ -95,7 +92,6 @@ FIXTURES = {
     "band_builder_xy": lambda: make_nonuniform_grid(
         (27e-3, 27e-3), np.full(10, 1e-3), 1e-3, cpml_layers=8,
         dx_profile=_band_xy(), dy_profile=_band_xy()),
-    # --- two shapes the suite does not build, and the end rules need ---
     "padfree_graded_end": lambda: make_nonuniform_grid(
         (4e-3, 4e-3),
         np.concatenate([np.full(1, 1e-4), np.full(6, 2e-4), np.full(4, 1e-4)]),
@@ -129,9 +125,6 @@ def _inv_pair(grid, axis):
 ALL = [(name, axis) for name in sorted(FIXTURES) for axis in AXES]
 
 
-# ---------------------------------------------------------------------------
-# cells -- the float64 source of truth
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name,axis", ALL)
 def test_cells_is_the_float64_spine_over_the_padded_axis(name, axis):
@@ -157,9 +150,6 @@ def test_the_last_cell_is_the_bounding_node_duplicate(name, axis):
     assert float(cells.sum()) > float(realized.sum())
 
 
-# ---------------------------------------------------------------------------
-# Judge (ii) -- the two inverse-metric arrays derive from cells
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name,axis", ALL)
 def test_inverse_metric_arrays_derive_from_cells_bit_for_bit(name, axis):
@@ -196,9 +186,6 @@ def test_the_two_end_entry_rules_hold(name, axis):
     assert float(np.asarray(inv_e)[0]) == float(np.float32(2.0) / (d0 + d0))
 
 
-# ---------------------------------------------------------------------------
-# Judge (ii) -- duals reproduce the scalar helper at every node
-# ---------------------------------------------------------------------------
 
 def _check_duals(grid, axis):
     """The duals oracle, factored out so a mutation run can re-enter it."""
@@ -237,9 +224,6 @@ def test_a_constant_axis_has_dual_equal_to_primal_bit_for_bit(name, axis):
     assert np.array_equal(grid.duals(axis), grid.cells(axis))
 
 
-# ---------------------------------------------------------------------------
-# nodes and indices
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name,axis", ALL)
 def test_node_of_reproduces_the_coordinate_spine(name, axis):
@@ -323,9 +307,6 @@ def test_the_fixture_set_covers_both_answers():
     assert seen == {True, False}
 
 
-# ---------------------------------------------------------------------------
-# Judge (iv) -- the constructor refuses cells that do not add up
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name,axis", ALL)
 def test_the_realized_interior_spans_the_declared_profile(name, axis):
@@ -347,10 +328,9 @@ def test_mutation_a_a_bad_cell_array_is_refused():
     profile = np.full(10, 1e-3)
     padded = _append_bounding_node(_pad_profile(profile, 4, 4, dtype="float32"))
     tampered = padded.copy()
-    tampered[6] *= 1.5        # one interior cell 50 % too wide
+    tampered[6] *= 1.5
     with pytest.raises(ValueError, match="span"):
         assert_cells_span_declared_profile(tampered, 4, 4, profile, "z")
-    # and the untampered array passes, so the check is not simply always red
     assert_cells_span_declared_profile(padded, 4, 4, profile, "z")
 
 
@@ -380,9 +360,6 @@ def test_mutation_b_an_extra_trailing_cell_is_refused():
         assert_cells_span_declared_profile(doubled, 4, 4, profile, "z")
 
 
-# ---------------------------------------------------------------------------
-# Judge (iv) -- a traced axis refuses to be indexed (G9)
-# ---------------------------------------------------------------------------
 
 def test_a_traced_axis_refuses_index_of_and_keeps_the_gradient():
     """Decision 6. ``position_to_index`` answers a traced axis by substituting
@@ -405,7 +382,6 @@ def test_a_traced_axis_refuses_index_of_and_keeps_the_gradient():
         seen["const_x"] = grid.is_constant("x")
         with pytest.raises(ValueError, match="G9"):
             grid.index_of("z", 1e-3)
-        # the concrete axes still answer
         assert grid.index_of("x", 0.0) == grid.pad_x_lo
         return (jnp.sum(grid.duals("z")) + grid.node_of("z", 10)
                 + grid.boundary_cell("z", "lo"))
@@ -439,9 +415,6 @@ def test_a_traced_axis_is_not_reported_constant():
     jax.jit(f)(jnp.full(8, 5e-4, dtype=jnp.float32))
 
 
-# ---------------------------------------------------------------------------
-# A grid built by hand has no float64 spine
-# ---------------------------------------------------------------------------
 
 def test_a_hand_built_grid_warns_instead_of_silently_degrading():
     """``NonUniformGrid(...)`` called directly leaves the spine fields None.
@@ -458,9 +431,6 @@ def test_a_hand_built_grid_warns_instead_of_silently_degrading():
     assert isinstance(by_hand, NonUniformGrid)
 
 
-# ---------------------------------------------------------------------------
-# Mutations on the metric rules -- (b), helper calls kept
-# ---------------------------------------------------------------------------
 
 def test_mutation_b_duals_revived_to_the_primal_goes_red(monkeypatch):
     """(b) The #669 defect: fold a sheet or a port by the PRIMAL cell instead
@@ -489,7 +459,7 @@ def test_mutation_b_duals_revived_to_the_primal_goes_red(monkeypatch):
     assert gaps.max() == pytest.approx(1.09077e-4, rel=1e-4)
     assert gaps.min() == pytest.approx(2.37703e-5, rel=1e-4)
 
-    _check_duals(grid, "x")          # green before the mutation
+    _check_duals(grid, "x")
 
     monkeypatch.setattr("rfx.model.graded_grid._dual_spacings_from_cells",
                         lambda cells: np.asarray(cells, dtype=np.float64))
@@ -517,7 +487,7 @@ def test_mutation_b_the_leading_dual_end_rule_goes_red(monkeypatch):
     pad_free = FIXTURES["padfree_graded_end"]()
     monkeypatch.setattr("rfx.model.graded_grid._dual_spacings_from_cells", defective)
 
-    _check_duals(padded, "z")        # silent: the pad makes d[0] == d[1]
+    _check_duals(padded, "z")
     with pytest.raises(AssertionError):
         _check_duals(pad_free, "z")
 
@@ -556,9 +526,6 @@ def test_mutation_b_the_trailing_h_end_rule_goes_red():
     assert not np.array_equal(revived, np.asarray(grid.inv_dz_h))
 
 
-# ---------------------------------------------------------------------------
-# Recorded facts -- measured, not asserted as contracts
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("name,axis", ALL)
 def test_the_widened_float32_store_is_not_the_spine(name, axis):
@@ -678,6 +645,7 @@ def test_index_of_refuses_a_coordinate_outside_the_domain(name, axis):
     with the last face index, and whatever the caller was placing lands
     there. The accessor refuses instead, which is what the uniform grid has
     always done.
+    A grid that only claims to place a node to 1e-12 m cannot tell a coordinate 5e-13 m past the face from the face.
     """
     grid = FIXTURES[name]()
     n, pad_lo, pad_hi = _layout(grid, axis)
@@ -688,9 +656,6 @@ def test_index_of_refuses_a_coordinate_outside_the_domain(name, axis):
         with pytest.raises(ValueError, match="outside"):
             grid.index_of(axis, outside)
 
-    # Both ends inclusive, and float dust at a face is not "outside": the
-    # grid only claims to place a node to 1e-12 m, so it cannot tell a
-    # coordinate 5e-13 m past the face from the face.
     assert grid.index_of(axis, 0.0) == pad_lo
     assert grid.index_of(axis, span) == last
     assert grid.index_of(axis, span + 5e-13) == last
@@ -825,5 +790,4 @@ def test_a_spine_whose_length_disagrees_with_the_axis_is_refused(axis):
         with pytest.raises(ValueError, match="spine holds"):
             broken.cells(axis)
 
-    # the untruncated spine still passes, so the guard is not simply always red
     assert grid.cells(axis).shape == full.shape
