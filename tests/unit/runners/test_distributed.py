@@ -54,7 +54,8 @@ class TestSplitGather:
         np.testing.assert_allclose(recovered, arr, atol=1e-6)
 
     def test_split_preserves_ghost_content(self):
-        """Ghost cells should contain neighbor data."""
+        """Ghost cells should contain neighbor data.
+        Device 1 owns x rows 3–5 when twelve rows are split across four devices, so its low and high ghosts are rows 2 and 6."""
         nx, ny, nz = 12, 4, 4
         arr = jnp.arange(nx * ny * nz, dtype=jnp.float32).reshape(nx, ny, nz)
         n_devices = 4

@@ -637,6 +637,7 @@ def _relaxed(mode, add):
 
 
 def _relaxed_params():
+    """Validation off needs only the Debye case because it uses the research runner without producing a validation report."""
     c = T.cell(*_RELAXED, "run_subgridded")
     cases = [("research", name) for name in RELAXED_INPUTS] + [("off", "debye")]
     return [pytest.param(mode, name, id=f"{mode}-{name}", marks=_xfail(c) if c.wrong else [])

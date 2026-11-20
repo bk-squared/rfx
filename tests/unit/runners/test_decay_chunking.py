@@ -291,14 +291,21 @@ def test_decay_stops_before_absorbed_tail(branch, stop, interval, monkeypatch, r
     assert got[0].time_series.shape[0] == stop
 
 
+TWO_STEP_FINAL_CHUNK_EVERY_STEP_SNAPSHOTS = (87, 17, 1, None)
+SNAPSHOT_AND_PROGRESS_INTERVALS_DO_NOT_DIVIDE_CHUNK = (83, 17, 7, 13)
+CHECK_AND_SNAPSHOT_INTERVALS_EXCEED_CAP_NO_FRAMES = (83, 100, 100, 19)
+CHECK_EVERY_STEP = (19, 1, 3, None)
+FIRST_STEP_IS_CAP = (1, 17, 1, None)
+
+
 @pytest.mark.parametrize(
     "cap,interval,snapshot_interval,report_every",
     [
-        (87, 17, 1, None),
-        (83, 17, 7, 13),
-        (83, 100, 100, 19),
-        (19, 1, 3, None),
-        (1, 17, 1, None),
+        TWO_STEP_FINAL_CHUNK_EVERY_STEP_SNAPSHOTS,
+        SNAPSHOT_AND_PROGRESS_INTERVALS_DO_NOT_DIVIDE_CHUNK,
+        CHECK_AND_SNAPSHOT_INTERVALS_EXCEED_CAP_NO_FRAMES,
+        CHECK_EVERY_STEP,
+        FIRST_STEP_IS_CAP,
     ],
 )
 def test_decay_chunk_boundaries_and_snapshots_match_old_loop(

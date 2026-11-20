@@ -216,7 +216,9 @@ def _transforms(sharded):
 
 
 def _loop_counts(hlo):
-    """Count operations in each actual while body and its called computations."""
+    """Count operations in each actual while body and its called computations.
+    XLA 0.4.33 lowers scatters to local while loops without communication, so only communicating loops count toward the forward/transpose exchange gate.
+    """
     computations, current = {}, None
     for line in hlo.splitlines():
         match = re.match(r"^(?:ENTRY )?%([\w.-]+).*\{$", line)
