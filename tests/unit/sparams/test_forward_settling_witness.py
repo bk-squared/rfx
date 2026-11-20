@@ -22,11 +22,11 @@ def test_absent_probe_witness_has_canonical_per_bin_fields(missing):
     _, canonical = settling_db_from_named_records((), freqs=freqs, return_detail=True)
 
     def check(series, selection):
+        """An absent witness carries no NaN: no number rests on it."""
         db, detail = probe_record_settling_witness(series, selection, freqs=freqs)
         assert db is None
         assert detail["status"] == "absent"
         assert canonical.keys() <= detail.keys()
-        # An absent witness carries no NaN: no number rests on it.
         assert detail["db"] is None
         assert detail["worst_freq_hz"] is None
         for key in ("share_per_bin", "error_per_bin"):

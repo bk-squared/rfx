@@ -53,13 +53,8 @@ def _capture(monkeypatch):
 def test_cross_kind_s_is_the_float64_dft_of_both_records_at_the_physical_stamps(monkeypatch):
     seen, assemble = _capture(monkeypatch)
     _mixed_result()
-    # The power-wave S as assembled from the spectra. (The returned S then has
-    # its off-diagonal taken through the flux channel, which changes its
-    # magnitude and its phase by up to 3.4e-3 rad on this fixture; that step
-    # reads no time stamp -- main -> M2 the returned and the assembled S turn
-    # by the same amount at every bin.)
     S = seen["S"]
-    assert len(seen["runs"]) == 2  # one driven run per port
+    assert len(seen["runs"]) == 2
     host = [np.zeros_like(a, dtype=np.complex128) for a in seen["spectra"]]
     v_ref = np.zeros_like(seen["v_ref"], dtype=np.complex128)
     for run, (channels, dt, freqs) in enumerate(seen["runs"]):
@@ -77,7 +72,6 @@ def test_cross_kind_s_is_the_float64_dft_of_both_records_at_the_physical_stamps(
     args, kw = seen["rest"]
     reference, _ = assemble(*host, *args, **{**kw, "v_ref_lw": v_ref})
     reference = np.asarray(reference)
-    # The wire-driven column is refused; retain the same DFT bar on MSL-driven waves.
     assert np.isnan(S[:, 0]).all()
     peak = np.max(np.abs(reference[:, 1]))
     for i, j in ((0, 1),):
