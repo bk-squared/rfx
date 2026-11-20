@@ -23,11 +23,11 @@ STEPS = 2400
 
 
 def fixture(precision="float64", point=True):
+    DC_SUPPRESSION_CUTOFF = 6
     sim = _sim(precision=precision)
-    # cutoff=6 suppresses the differentiated pulse's deposited DC charge.
     sim._ports.clear()
     sim.add_source((4e-3, 10e-3, 8e-3), "ez", amplitude_kind="field",
-                   waveform=GaussianPulse(f0=F0, bandwidth=0.8, cutoff=6))
+                   waveform=GaussianPulse(f0=F0, bandwidth=0.8, cutoff=DC_SUPPRESSION_CUTOFF))
     grid = sim._build_grid()
     ix = grid.position_to_index((18e-3, 10e-3, 8e-3))
     width = 1 if point else 3
@@ -44,7 +44,6 @@ def objective(sim, steps=STEPS, mode="autodiff"):
             design_eps_override=eps, design_sigma_override=sigma,
             n_steps=steps, checkpoint_segments=8, gradient=mode, skip_preflight=True)
         spectrum = result.dft_planes["out"].accumulator / result.dt
-        # Complex and spatially varying cotangents, multiple nonorthogonal bins.
         weights = jnp.arange(spectrum.size).reshape(spectrum.shape) + 1
         return jnp.sum(weights * jnp.abs(spectrum)**2)
     return loss
@@ -95,6 +94,7 @@ def sigma_diagnostic_admission():
 @pytest.mark.parametrize("lossy", [False, True])
 @pytest.mark.parametrize("point", [True, False])
 def test_g1_eps(precision, lossy, point, record_property):
+    """Float32 takes the cross-trace bar for a quantity summed over the record."""
     with enable_x64() if precision == "float64" else nullcontext():
         sim, eps = fixture(precision, point)
         if lossy:
@@ -107,8 +107,6 @@ def test_g1_eps(precision, lossy, point, record_property):
         err = errors(results[1][1], results[0][1])[0]
         record_property("measurement", f"G1 eps {precision=} {lossy=} {point=} {settling=} error={err}")
         assert settling["decay_db"] >= 100
-        # Two traces of one objective summed over the record: float64 keeps 1e-6;
-        # float32 takes the cross-trace bar for a summed quantity.
         if precision == "float64":
             np.testing.assert_allclose(results[0][0], results[1][0], rtol=1e-6)
         else:
@@ -137,6 +135,7 @@ def test_design_sigma_refused_at_admission(sigma):
 ])
 @pytest.mark.parametrize("point", [True, False])
 def test_g1_sigma(precision, lossy, point, record_property):
+    """Float32 takes the cross-trace bar for a quantity summed over the record."""
     with sigma_diagnostic_admission(), (enable_x64() if precision == "float64" else nullcontext()):
         sim, eps = fixture(precision, point)
         sigma = jnp.full_like(eps, 0.2 if lossy else 0.)
@@ -147,8 +146,6 @@ def test_g1_sigma(precision, lossy, point, record_property):
                    for mode in ("autodiff", "adjoint")]
         err = errors(results[1][1], results[0][1])
         record_property("measurement", f"G1 {precision=} {lossy=} {point=} values={[float(r[0]) for r in results]} errors={err}")
-        # Two traces of one objective summed over the record: float64 keeps 1e-6;
-        # float32 takes the cross-trace bar for a summed quantity.
         if precision == "float64":
             np.testing.assert_allclose(results[0][0], results[1][0], rtol=1e-6)
         else:
@@ -202,8 +199,6 @@ def test_g5_mutation(precision, record_property):
         sigma = None
         reference = jax.jit(jax.grad(objective(sim)))(eps, sigma)
         def drop_solve(freqs, dt, length, target):
-            # Mutation: independently normalized carriers; all off-diagonal
-            # leakage and the negative-frequency image are dropped.
             n = jnp.arange(length, dtype=freqs.dtype)
             basis = adjoint._wavelet_basis(freqs, dt, length, n)
             transform = jnp.exp(-2j*jnp.pi*freqs[:, None]*(n+1)*dt)*dt

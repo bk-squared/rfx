@@ -22,7 +22,7 @@ def _sim(angle, waveform, bandwidth):
                      boundary="cpml", cpml_layers=10, mode="3d")
     sim.add_tfsf_source(f0=5e9, bandwidth=bandwidth, polarization="ez",
                         direction="+x", angle_deg=angle, waveform=waveform)
-    sim.add_probe((0.0, 0.0, 0.0), component="ez")  # total-field region (center)
+    sim.add_probe((0.0, 0.0, 0.0), component="ez")
     return sim
 
 
@@ -53,7 +53,6 @@ def test_forward_tfsf_normal_gradient_matches_fd():
     g = float(jax.grad(obj)(4.0))
     assert np.isfinite(g) and abs(g) > 1e-6, f"grad not finite/nonzero: {g}"
 
-    # finite-difference correctness (not just nonzero)
     obj_fd = _objective(sim, shp, n_steps=600, checkpoint=False)
     d = 0.02
     fd = (float(obj_fd(4.0 + d)) - float(obj_fd(4.0 - d))) / (2 * d)
@@ -61,28 +60,21 @@ def test_forward_tfsf_normal_gradient_matches_fd():
     assert rel < 0.05, f"grad {g:.4f} vs FD {fd:.4f} rel_err {rel*100:.1f}% > 5%"
 
 
-# highmem: the default-checkpoint footprint of this test was
-# ~24 GB (23.78 GB / 23,964 MB on two independent local measurements;
-# ~1.5x the ~16 GB runner-class ceiling), which is why it was the test the
-# weekly lane kept killing at exit 143 -- serialization into its own job
-# removed the accumulated baseline but not this test's own
-# demand, and the run confirmed the predicted kill WITH the live
-# sampler attributing it (VmHWM 14,866 MB at death). RESOLVED by an
-# explicit checkpoint_segments=8 (measured,
-# same harness both configs): peak RSS 24,065 MB -> 3,955 MB
-# (6.1x), gradient 2.468510 -> 2.468503 (3e-6 relative -- the recompute
-# reordering, not a numerics change), wall 96 s -> 38 s locally. 8 divides
-# n_steps=1400 (175-step segments); non-divisors are rejected fail-loud by
-# the runner. The highmem marker stays (~4 GB still warrants serial-lane placement).
 @pytest.mark.slow
 @pytest.mark.highmem
 def test_forward_tfsf_oblique_differentiable():
     """forward() couples an OBLIQUE TFSF source (complex Bloch path, auto-activated)
-    and produces a finite, nonzero gradient w.r.t. the scatterer eps."""
+    and produces a finite, nonzero gradient w.r.t. the scatterer eps.
+    The highmem marker stays because an earlier measurement with checkpoint_segments=8 read ~4 GB.
+    """
     sim = _sim(30.0, "modulated_gaussian", 0.15)
     shp = sim.run(n_steps=1).state.ez.shape
+    OBLIQUE_CHECKPOINT_SEGMENTS = 8
+    assert 1400 % OBLIQUE_CHECKPOINT_SEGMENTS == 0, (
+        "oblique checkpoint segment count must divide the 1400-step record"
+    )
     obj = _objective(sim, shp, n_steps=1400, checkpoint=True,
-                     checkpoint_segments=8)
+                     checkpoint_segments=OBLIQUE_CHECKPOINT_SEGMENTS)
 
     val = float(obj(4.0))
     assert val > 1e-3, f"oblique TFSF did not couple (obj={val:.2e})"
