@@ -15,12 +15,6 @@ import pytest
 from rfx.api import Simulation
 from rfx.sources.sources import ModulatedGaussian
 
-# The scene this module is about needs a source WITH DC content: that is what leaves a static
-# charge behind. ``GaussianPulse(f0=4e9, bandwidth=0.8)`` has
-# almost none.
-# Measured on main 72d4b0ff with the waveform below: energy runs to its cap (6000 uniform,
-# 5000 non-uniform), the flux criterion stops at 801 and 1000. Same waveform as the static-
-# remnant fixture in tests/unit/sources/test_source_dc_floor_guards.py.
 _HIGH_DC = dict(f0=2.2e9, bandwidth=1.2)
 
 DOM = (0.08, 0.08, 0.08)
@@ -48,13 +42,11 @@ def _stop_step(radiated_flux_box):
 @pytest.mark.slow
 def test_flux_stops_while_energy_floors():
     """On a soft-source fixture the energy criterion FLOORS (static charge) while the opt-in
-    radiated-flux criterion STOPS — the #388 motivation."""
+    radiated-flux criterion STOPS — the #388 motivation.
+    The energy-cap witness requires the electrostatic advisory because a trapped resonance or failing absorber could hit the cap for another reason."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         rE = _stop_step(None)
-    # Pin WHY the energy run reached its cap: the run's own advisory must say the energy
-    # left inside is electrostatic. A cap-hit for any other reason (trapped resonance, a failing
-    # absorber) would keep `nE >= 5900` green while no longer testing this scene.
     assert [w for w in caught if "relative DC" in str(w.message) and "H-share" in str(w.message)], (
         "the energy run capped, but not with the static-remnant advisory")
     rF = _stop_step(FLUX_BOX)
@@ -86,13 +78,10 @@ def test_flux_stop_finite_and_stops_before_max():
     assert ts.shape[0] < 6000, "flux criterion must fire (not hit decay_max_steps)"
 
 
-# --------------------------------------------------------------------------- #
-# Non-uniform (dz_profile) lane — the actual fixture class is NU.
-# --------------------------------------------------------------------------- #
 def _nu_sim():
     nz = 40
     dz = np.full(nz, 1.5e-3)
-    dz[15:25] = 0.8e-3          # a graded fine band (triggers the NU chunked lane)
+    dz[15:25] = 0.8e-3
     s = Simulation(freq_max=8e9, domain=(0.06, 0.06, 0.0), dx=1.5e-3, dz_profile=dz,
                    boundary="cpml", cpml_layers=8, mode="3d")
     s.add_source(position=(0.03, 0.03, 0.03), component="ez",
@@ -126,6 +115,6 @@ def test_flux_stops_while_energy_floors_nonuniform():
 @pytest.mark.slow
 def test_flux_stop_opt_out_byte_identical_nonuniform():
     """NU opt-out (radiated_flux_box=None) is byte-identical to the NU energy run."""
-    a = _nu_stop(None)                        # keyword omitted
-    b = _nu_stop(None, explicit_none=True)    # radiated_flux_box=None passed explicitly
+    a = _nu_stop(None)
+    b = _nu_stop(None, explicit_none=True)
     assert a.shape == b.shape and np.array_equal(a, b)

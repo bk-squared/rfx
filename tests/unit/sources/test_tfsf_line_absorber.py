@@ -68,7 +68,6 @@ def test_zero_loss_factors_and_full_line_update(angles):
                 half = cfg.m[derivative] / 2
                 plus = np.arange(cfg.n_nodes) + int(offset + half)
                 minus = np.arange(cfg.n_nodes) + int(offset - half)
-                # Explicit zero extension, including negative indices.
                 def read(indices):
                     return jnp.where((indices >= 0) & (indices < cfg.n_nodes),
                                      state[source][np.clip(indices, 0, cfg.n_nodes - 1)], 0.)

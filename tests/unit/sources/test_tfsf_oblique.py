@@ -6,6 +6,7 @@ Tests:
 3. Normal incidence (0 deg) no regression (< 0.1%)
 4. 2D auxiliary grid basic sanity (fields propagate, no NaN)
 5. Dispatch: oblique angle returns TFSF2DConfig, normal returns TFSFConfig
+The 509 extra steps (2 tau at f0 5 GHz, bw 0.15, dt 1.667 ps) keep the snapshot 3.7 tau after the Bloch pulse peak.
 """
 
 import numpy as np
@@ -15,18 +16,10 @@ import pytest
 from rfx.core.yee import init_state, init_materials
 from rfx.stepping.yee import update_h, update_e
 
-# Oblique leakage runs need a narrowband source (bw<=0.15: off-f0 content carries
-# the wrong single-f0 k_y and breaks TFSF cancellation) which in turn needs a long
-# run (~1700 steps) for the pulse to fully develop — hence @pytest.mark.slow. See
-# The Bloch pulse peaks at 5 tau, 2 tau later than when 1700 was set; the
-# 509 steps (2 tau at f0 5 GHz, bw 0.15, dt 1.667 ps) keep the snapshot 3.7 tau after the peak.
 _OBLIQUE_BW = 0.15
 _OBLIQUE_STEPS = 1700 + 509
 
 
-# ---------------------------------------------------------------------------
-# Helper: run a TFSF simulation and measure leakage
-# ---------------------------------------------------------------------------
 
 def _run_tfsf_leakage(angle_deg, nx=80, ny=80, nz=3, n_steps=500,
                        f0=5e9, bandwidth=0.5, cpml_layers=10,
@@ -56,6 +49,7 @@ def _run_tfsf_leakage(angle_deg, nx=80, ny=80, nz=3, n_steps=500,
         bloch_phase_tuple,
     )
 
+    assert angle_deg == 0.0 or bandwidth <= 0.15, "Oblique leakage needs narrow bandwidth because off-f0 content carries the wrong single-f0 k_y."
     dx = 1e-3
     dt = 0.5 * dx / 3e8
 
@@ -74,7 +68,6 @@ def _run_tfsf_leakage(angle_deg, nx=80, ny=80, nz=3, n_steps=500,
     materials = init_materials((nx, ny, nz))
     periodic = (False, True, True)
     is_2d = is_tfsf_2d(cfg)
-    # Oblique 3D grid carries the complex Bloch envelope P.
     if is_2d:
         sim_state = init_state((nx, ny, nz), field_dtype=jnp.complex64)
         bloch = bloch_phase_tuple(cfg, dx)
@@ -85,29 +78,24 @@ def _run_tfsf_leakage(angle_deg, nx=80, ny=80, nz=3, n_steps=500,
     for step in range(n_steps):
         t = step * dt
 
-        # H update
         sim_state = update_h(sim_state, materials, dt, dx, periodic=periodic,
                              bloch=bloch, high_wall=(False, False, False))
         sim_state = apply_tfsf_h(sim_state, cfg, state, dx, dt)
 
-        # Advance aux grid H
         if is_2d:
             state = update_tfsf_2d_h(cfg, state, dx, dt)
         else:
             state = update_tfsf_1d_h(cfg, state, dx, dt)
 
-        # E update
         sim_state = update_e(sim_state, materials, dt, dx, periodic=periodic,
                              bloch=bloch, high_wall=(False, False, False))
         sim_state = apply_tfsf_e(sim_state, cfg, state, dx, dt)
 
-        # Advance aux grid E + source
         if is_2d:
             state = update_tfsf_2d_e(cfg, state, dx, dt, t)
         else:
             state = update_tfsf_1d_e(cfg, state, dx, dt, t)
 
-    # Measure leakage (envelope energy; phase-invariant SF/TF ratio)
     ez = sim_state.ez
     sf_energy = float(jnp.sum(jnp.abs(ez[:cfg.x_lo - 2, :, :]) ** 2))
     tf_energy = float(jnp.sum(jnp.abs(ez[cfg.x_lo:cfg.x_hi, :, :]) ** 2))
@@ -120,7 +108,9 @@ class TestObliqueTFSF:
     """Tests for oblique-incidence TFSF using 2D auxiliary grid."""
 
     def test_2d_aux_grid_basic_sanity(self):
-        """2D auxiliary grid produces non-zero fields without NaN."""
+        """2D auxiliary grid produces non-zero fields without NaN.
+        The extra 153 steps equal 2 tau (f0 5 GHz, bw 0.5, dt 1.667 ps) because the Bloch pulse peaks at 5 tau.
+        """
         from rfx.sources.tfsf_2d import (
             init_tfsf_2d, update_tfsf_2d_h, update_tfsf_2d_e, TFSF2DConfig,
         )
@@ -136,7 +126,6 @@ class TestObliqueTFSF:
         assert isinstance(cfg, TFSF2DConfig)
         assert cfg.n2y == 60, "2D grid y should match 3D ny (periodic)"
 
-        # + 153 steps = 2 tau (f0 5 GHz, bw 0.5, dt 1.667 ps): the Bloch pulse peaks at 5 tau.
         for step in range(200 + 153):
             t = step * dt
             state = update_tfsf_2d_h(cfg, state, dx, dt)

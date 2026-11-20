@@ -71,8 +71,8 @@ def test_flux_mutations(mutation, monkeypatch, tmp_path):
         original = accumulators.flux
 
         def shifted(state, accs, metadata, dt, step, *, window_step=None):
-            # The fixture has global nx=13; only local slab calls are mutated.
-            if state.ex.shape[0] != 13:
+            GLOBAL_NX = 13
+            if state.ex.shape[0] != GLOBAL_NX:
                 window_step = window_step - 1
             return original(state, accs, metadata, dt, step, window_step=window_step)
         monkeypatch.setattr(accumulators, "flux", shifted)
@@ -88,10 +88,10 @@ def test_flux_mutations(mutation, monkeypatch, tmp_path):
 @pytest.mark.parametrize("n_devices", [2, 3])
 @pytest.mark.parametrize("boundary", ["pec", "cpml"])
 def test_finite_flux(boundary, n_devices, entry, tmp_path):
+    """At the first owned row, x-normal H sampling crosses the seam via the ghost."""
     from tests.unit.runners.test_distributed_record_planes import finite_model
     sim, grid, seam = finite_model(boundary, n_devices)
     freqs = [2.5e9, 6.1e9, 11.7e9]
-    # At the first owned row, x-normal H sampling crosses the seam via the ghost.
     sim.add_flux_monitor(axis="x", coordinate=(seam - grid.pad_x_lo) * grid.dx,
                          freqs=freqs, size=(5.2e-3, 3.3e-3), center=(6.1e-3, 3.9e-3), name="finite_x")
     sim.add_flux_monitor(axis="z", coordinate=1.4e-3, freqs=freqs,

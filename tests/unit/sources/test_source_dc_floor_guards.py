@@ -20,6 +20,7 @@ Locks, in order:
    refused (issue 1668); the ``unresolved_pulse`` advisory (issue #386)
    fires on the TF/SF absolute-Hz footgun and stays silent on the
    demo-class fractional-bandwidth configs.
+An earlier modulated-Gaussian measurement gave relative DC 0.68 (DC suppression e^-1/bw^2 ~ 0.5 at bw=1.2).
 """
 
 from __future__ import annotations
@@ -35,18 +36,9 @@ import pytest
 from rfx import Simulation, GaussianPulse, ModulatedGaussian
 from rfx.measurement.decay import warn_dc_floor
 
-DEMO_DT = 1.2e-12  # the measurement dt (patch_antenna_demo scale)
+DEMO_DT = 1.2e-12
 
 
-# ---------------------------------------------------------------------------
-# 1-2. GaussianPulse properties (issue 1668)
-#
-# The expectations come from the closed form evaluated here in float64 NumPy,
-# never from GaussianPulse itself:
-#   s(t) = A [-2x e^(-x^2) - e^(-c^2) e^(-u^2) (2c + (4c^2-2)u - 4cu^2 - 4c^2u^3)]
-#   for t >= 0 and 0 before, x = (t - c tau)/tau, u = t/tau, tau = 1/(pi f0 B).
-# The pulse before issue 1668 was the first term alone, A (-2x) e^(-x^2).
-# ---------------------------------------------------------------------------
 
 _F0, _BW = 2.2e9, 1.2
 _TAU = 1.0 / (math.pi * _F0 * _BW)
@@ -54,6 +46,7 @@ _CUTOFFS = (3.0, 4.5, 6.0)
 
 
 def _pulse64(t, cutoff, amplitude=1.0):
+    """The expectations come from the closed form evaluated in float64 NumPy, never from GaussianPulse itself."""
     t = np.asarray(t, dtype=np.float64)
     x, u, c = t / _TAU - cutoff, t / _TAU, cutoff
     onset = np.exp(-c * c - u * u) * (
@@ -140,14 +133,15 @@ def test_gaussian_pulse_changes_the_old_pulse_by_at_most_1p7e_3(cutoff):
 def test_gaussian_pulse_float32_table_matches_float64_near_the_start(cutoff):
     """Over u < 1/2 the float32 table is within 4 c^2 eps32 of the float64
     closed form at the same times, relative to it, sample by sample (t = 0 is
-    the zero of the previous test)."""
+    the zero of the previous test).
+    exp(-x^2) multiplies the argument's rounding by x^2.
+    """
     pulse = GaussianPulse(f0=_F0, bandwidth=_BW, cutoff=cutoff)
     n = int(math.ceil(0.5 * _TAU / DEMO_DT))
     values, times = _table(pulse, n)
     want = _pulse64(times, cutoff)
     rel = np.abs(values[1:] - want[1:]) / np.abs(want[1:])
     worst = int(np.argmax(rel)) + 1
-    # exp(-x^2) multiplies the argument's rounding by x^2 (the old formula reads 4.35e-6 at c = 4.5).
     bar = 4 * cutoff ** 2 * float(np.finfo(np.float32).eps)
     assert rel.max() <= bar, (
         f"cutoff {cutoff}: relative error {rel.max():.3e} (bar {bar:.2e}) at u = "
@@ -155,11 +149,11 @@ def test_gaussian_pulse_float32_table_matches_float64_near_the_start(cutoff):
         f"float64 {want[worst]:.6e})")
 
 
-# ---------------------------------------------------------------------------
-# 3. until_decay DC-floor warning — four-case matrix
-# ---------------------------------------------------------------------------
 
-def _dc_floor_fires(waveform, n_table=50_000) -> list[str]:
+DC_FLOOR_TABLE_STEPS = 50_000
+
+
+def _dc_floor_fires(waveform, n_table=DC_FLOOR_TABLE_STEPS) -> list[str]:
     sim = Simulation(freq_max=4e9, domain=(0.02, 0.02, 0.02), dx=2e-3,
                      cpml_layers=4)
     sim.add_source((0.01, 0.01, 0.01), "ez", waveform=waveform)
@@ -172,37 +166,24 @@ def _dc_floor_fires(waveform, n_table=50_000) -> list[str]:
 @pytest.mark.parametrize(
     "label, waveform, expect_fire",
     [
-        # measured rel_DC 6.0e-5 < 1e-3
         ("gaussian_cutoff3",
          GaussianPulse(f0=2.2e9, bandwidth=1.2), False),
-        # ~5 decades below the cutoff=3 value
         ("gaussian_cutoff45",
          GaussianPulse(f0=2.2e9, bandwidth=1.2, cutoff=4.5), False),
-        # measured rel_DC 0.68 (DC suppression e^-1/bw^2 ~ 0.5 at bw=1.2)
         ("modgaussian_bw12",
          ModulatedGaussian(f0=2.2e9, bandwidth=1.2), True),
-        # measured rel_DC 4.0e-4: above the 1e-6 threshold (it was 1e-3 until the
-        # after-drive reference, under which 6e-5 already blocked the stop)
         ("modgaussian_bw04",
          ModulatedGaussian(f0=2.2e9, bandwidth=0.4), True),
     ],
 )
 def test_until_decay_dc_floor_matrix(label, waveform, expect_fire):
+    assert DC_FLOOR_TABLE_STEPS * DEMO_DT >= waveform.t0 + 4.5 * waveform.tau, "The full pulse table must select intrinsic-DC remedies rather than truncation remedies."
     fired = _dc_floor_fires(waveform)
     if expect_fire:
         assert fired, f"{label}: expected the #388 DC-floor warning"
-        # Quantitative: the message must carry the rel_DC number.
         assert "relative DC" in fired[0] and "cap-hit" in fired[0]
-        # All matrix fire-cases run a 50k-step table that covers the
-        # full pulse — they must take the INTRINSIC-DC branch (with its
-        # cutoff/bandwidth remedies AND the honesty note about
-        # thin-source-cell-amplified floors this advisory cannot see),
-        # not the truncation branch.
         assert "truncation-dominated" not in fired[0]
         assert "thin source cells" in fired[0]
-        # The intrinsic-DC advisory must route to the purpose-built
-        # remedy (the radiated-flux stop criterion), not just the weaker
-        # reduce-DC / fixed-n_steps options.
         assert "radiated_flux_box" in fired[0], (
             f"{label}: DC-floor warning should point to the flux-stop remedy")
     else:
@@ -218,7 +199,6 @@ def test_static_remnant_cap_hit_points_to_flux_stop():
 
     grid = Grid(freq_max=4e9, domain=(0.02, 0.02, 0.02), dx=2e-3, cpml_layers=4)
     materials = init_materials(grid.shape)
-    # electrostatic remnant: an interior E-only field, H identically zero (H-share → 0)
     state = init_state(grid.shape)
     cx, cy, cz = grid.nx // 2, grid.ny // 2, grid.nz // 2
     state = state._replace(ez=state.ez.at[cx, cy, cz].set(1.0))
@@ -254,10 +234,6 @@ def test_until_decay_dc_floor_wired_into_run():
     )
 
 
-# ---------------------------------------------------------------------------
-# 3b. truncation-aware branch: rel_DC over the planned
-#     table conflates intrinsic waveform DC with table-truncation DC.
-# ---------------------------------------------------------------------------
 
 def test_dc_floor_truncation_branch_when_table_ends_inside_pulse():
     """A 200-step table at the demo dt (0.24 ns) ends inside the default
@@ -336,10 +312,6 @@ def test_dc_floor_silent_on_passive_msl_port():
         "excite=False MSL port must not fire the #388 DC-floor warning")
 
 
-# ---------------------------------------------------------------------------
-# 3c. add_polarized_source must thread the waveform cutoff:
-#     the real-Jones reconstruction rebuilds GaussianPulse.
-# ---------------------------------------------------------------------------
 
 def test_polarized_source_threads_cutoff():
     sim = Simulation(freq_max=4e9, domain=(0.02, 0.02, 0.02), dx=2e-3,
@@ -356,10 +328,6 @@ def test_polarized_source_threads_cutoff():
         assert w.f0 == wf.f0 and w.bandwidth == wf.bandwidth
 
 
-# ---------------------------------------------------------------------------
-# 3d. decay-parameter sanity advisories (behaviour-
-#     neutral, single run()-level site covering both honoured lanes).
-# ---------------------------------------------------------------------------
 
 def _tiny_decay_sim():
     sim = Simulation(freq_max=36e9, domain=(6e-3, 6e-3, 6e-3),
@@ -408,15 +376,9 @@ def test_until_decay_zero_forced_n_escape_stays_silent():
                    for m in msgs), msgs
 
 
-# ---------------------------------------------------------------------------
-# 3e. MEASURED static-remnant cap-hit advisory. Complements the
-#     pre-run waveform-DC advisory: it fires on the ACTUAL run outcome (final-state
-#     physical E/H energy share), catching thin-source-cell floors the pre-run
-#     advisory cannot predict. Physical energy (½εE² vs ½μH²) separates a static
-#     electrostatic remnant (H-share ~1e-10) from a still-ringing field (H-share ~0.2+).
-# ---------------------------------------------------------------------------
 
 def _run_capture(sim, **run_kw):
+    """Physical energy (half epsilon E squared versus half mu H squared) separates a static electrostatic remnant from a still-ringing field."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         res = sim.run(**run_kw)
@@ -440,7 +402,6 @@ def test_static_remnant_cap_hit_advisory_fires():
     assert n == 1500, "high-DC soft source must cap-hit (criterion cannot self-terminate)"
     assert fired, "measured #388 static-remnant advisory must fire on the cap-hit"
     assert "electrostatic" in fired[0] and "H-share" in fired[0]
-    # The drive that blocks the stop is named with its class and relative DC.
     assert "ModulatedGaussian, relative DC" in fired[0], fired[0]
 
 
@@ -476,9 +437,8 @@ def test_static_remnant_advisory_silent_when_field_balanced():
     grid = Grid(freq_max=4e9, domain=(0.02, 0.02, 0.02), dx=2e-3, cpml_layers=2)
     mats = init_materials(grid.shape)
     st = init_state(grid.shape)
-    eta = math.sqrt(MU_0 / EPS_0)  # |E| = eta*|H| -> ½εE² == ½μH² (H-share 0.5)
+    eta = math.sqrt(MU_0 / EPS_0)
 
-    # (a) balanced propagating-like field: E=eta, H=1 -> H-share ~0.5 -> SILENT
     bal = st._replace(ex=st.ex + eta, hy=st.hy + 1.0)
     with warnings.catch_warnings(record=True) as c:
         warnings.simplefilter("always")
@@ -486,7 +446,6 @@ def test_static_remnant_advisory_silent_when_field_balanced():
     assert not [w for w in c if "relative DC" in str(w.message)], \
         "balanced E/H (still-ringing) must NOT trigger the static-remnant advisory"
 
-    # (b) pure electrostatic remnant: E only, H=0 -> H-share 0 -> FIRES
     stat = st._replace(ex=st.ex + eta)
     with warnings.catch_warnings(record=True) as c:
         warnings.simplefilter("always")
@@ -495,9 +454,6 @@ def test_static_remnant_advisory_silent_when_field_balanced():
         "an E-only (electrostatic) remnant must trigger the advisory"
 
 
-# ---------------------------------------------------------------------------
-# 4. unresolved-pulse preflight advisory
-# ---------------------------------------------------------------------------
 
 def _demo_class_sim(bandwidth):
     """patch_antenna_demo scale: dx=2mm, freq_max=4GHz, f0=2.2GHz."""
@@ -553,7 +509,7 @@ def _hz_drive_sim(kind):
         elif kind == "wire":
             sim.add_port((0.01, 0.01, 0.009), "ez", impedance=50., extent=0.002,
                          waveform=hz)
-        else:  # a terminated, not excited, port is not a drive
+        else:
             sim.add_port((0.01, 0.01, 0.01), "ez", impedance=50., waveform=hz,
                          excite=False)
             sim.add_source((0.006, 0.01, 0.01), "ez",
@@ -573,7 +529,7 @@ def _hz_drive_sim(kind):
                          boundary="pec")
         sim.add_coaxial_port((0.01, 0.01, 0.02), face="top", waveform=hz)
     elif kind.startswith("waveguide"):
-        sim = Simulation(freq_max=12e9, domain=(0.06, 0.02286, 0.011),  # main's solved length
+        sim = Simulation(freq_max=12e9, domain=(0.06, 0.02286, 0.011),
                          dx=1e-3, boundary="cpml", cpml_layers=8)
         sim.add_waveguide_port(0.012, f0=10e9, bandwidth=5e9, direction="+x",
                                waveform=kind.split(":")[1])

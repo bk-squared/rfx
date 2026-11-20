@@ -97,9 +97,9 @@ accuracy, not lane parity: both sides of every comparison here carry the
 identical under-resolved body, so it cancels in the difference. The
 empty-domain builds report ``All checks passed (NTFF advisory tier; the
 PEC-overlap error check runs on forward()/preflight())``.
+Offset in z outside the body's 6-11 mm span keeps the rank-1 probe out of the block's geometric shadow, where an earlier on-axis measurement gave relative error 2.651e-04 instead of 3.483e-05.
 """
 
-# Simulate 2 devices on CPU. Must be set BEFORE importing JAX.
 import os  # noqa: I001
 
 os.environ.setdefault(
@@ -126,29 +126,20 @@ import rfx.boundaries.pec as _pec  # noqa: E402
 from rfx import Box, Simulation  # noqa: E402
 
 DX = 1e-3
-NX_CELLS = 31        # -> nx = 32 nodes, so nx_per_rank = 16 and pad_x = 0
-NYZ_CELLS = 15       # -> ny = nz = 16
+NX_CELLS = 31
+NYZ_CELLS = 15
 CENTER = 8e-3
-SOURCE = (8e-3, CENTER, CENTER)       # 8 cells from the seam, inside rank 0
-PROBE_LO = (12e-3, CENTER, CENTER)    # 4 cells inside rank 0
-#: Offset in z, OUTSIDE the body's 6-11 mm span, so the rank-1 probe is not in
-#: the block's geometric shadow. On the axis its peak drops to 24% and the
-#: same absolute float32 difference then divides by a much smaller number --
-#: 2.651e-04 instead of 3.483e-05, for no physical reason.
-PROBE_HI = (20e-3, CENTER, 13e-3)     # 4 cells inside rank 1, off-axis
+SOURCE = (8e-3, CENTER, CENTER)
+PROBE_LO = (12e-3, CENTER, CENTER)
+PROBE_HI = (20e-3, CENTER, 13e-3)
 
-#: x span of the PEC body, metres. The rank seam sits between global node 15
-#: (rank 0's last real cell) and node 16 (rank 1's first).
-SEAM_FACE_BODY_X = (16e-3, 21e-3)   # face ON the seam: the ordering witness
-STRADDLE_BODY_X = (14e-3, 19e-3)    # metal owned by BOTH ranks
-INTERIOR_BODY_X = (22e-3, 27e-3)    # wholly inside rank 1, 6 cells clear
-BODY_YZ = (6e-3, 11e-3)             # 5 cells, centred on the source line
+SEAM_FACE_BODY_X = (16e-3, 21e-3)
+STRADDLE_BODY_X = (14e-3, 19e-3)
+INTERIOR_BODY_X = (22e-3, 27e-3)
+BODY_YZ = (6e-3, 11e-3)
 
 GATE = 1e-3
 
-#: Measured stage-ON relative error per (boundary, body), probe0 then probe1.
-#: Kept as data so the tests assert against the numbers the docstring derives
-#: the gate from, and a drift shows up as a number rather than as a pass.
 MEASURED = {
     ("pec", None): (5.100e-06, 8.889e-05),
     ("pec", SEAM_FACE_BODY_X): (4.332e-06, 3.074e-05),
@@ -256,9 +247,6 @@ _BODIES = [
 ]
 
 
-# ===========================================================================
-# The gate, through the public route.
-# ===========================================================================
 
 @pytest.mark.parametrize("body_x", _BODIES)
 @pytest.mark.parametrize("boundary", ["pec", "cpml"])

@@ -1,6 +1,7 @@
 """A point pulse illuminates one PEC/PMC wall with CPML on the other faces.
 PEC and PMC walls reflect with multi-device parity.
 Probe distances are 3 and 12 mm on a 1 mm boundary mesh, away from box symmetry.
+The one-x-wall cases give 35 or 55 nodes to leave alignment cells on two or three devices.
 """
 
 import jax
@@ -21,8 +22,6 @@ for _wall in ("pec", "pmc"):
             marks=() if _face in ("y_lo", "y_hi") else pytest.mark.slow_physics,
         ))
 CASES.append(pytest.param("unequal", "y_hi", 2, 25, id="unequal", marks=pytest.mark.slow_physics))
-# One x wall gives 35 / 55 nodes, leaving alignment cells on 2 / 3 devices.
-# The longer three-device box also satisfies the NU lane's slab-width check.
 for _devices, _x_cells in ((2, 26), (3, 46)):
     for _wall, _face in (("pec", "x_hi"), ("pmc", "x_lo")):
         CASES.append(pytest.param(
@@ -32,6 +31,7 @@ for _devices, _x_cells in ((2, 26), (3, 46)):
 
 
 def _build(lane, wall, face, x_cells=25):
+    """The longer three-device box satisfies the graded lane's slab-width preflight."""
     dx = 1e-3
     cells = np.array([x_cells, 24, 24])
     axis, side = face.split("_")
@@ -47,16 +47,15 @@ def _build(lane, wall, face, x_cells=25):
     profiles = {}
     if lane == "nu":
         profile = np.full(cells[0], dx)
-        # Keep the 3/12-cell probe positions on integer-mm edges from either
-        # wall; the unequal cell widths cancel before the far-side probes.
         profile[14:16] = 0.95 * dx
         profile[16] = 1.1 * dx
+        assert np.isclose(profile[14:17].sum(), 3 * dx, rtol=0, atol=1e-15), (
+            "the graded cell triplet must preserve the integer-mm probe positions")
         profiles["dx_profile"] = profile
     sim = Simulation(
         freq_max=15e9, domain=tuple(cells * dx), dx=dx,
         cpml_layers=8, boundary=BoundarySpec(**boundaries), **profiles,
     )
-    # Use tangential E for each wall normal, and asymmetric transverse positions.
     component = "ey" if axis == "z" else "ez"
     position = np.array([7, 9, 10], dtype=float)
     position[axis_index] = 6 if side == "lo" else cells[axis_index] - 6
@@ -85,7 +84,6 @@ def test_probe_records_match_single_device(lane, wall, face, n_devices, x_cells,
             single_result = single_sim.forward(n_steps=steps)
             multi_result = multi_sim.forward(n_steps=steps, distributed=True, devices=devices)
     if x_cells != 25:
-        # Read the runner's realized grid, not a separately rebuilt grid.
         nx = int(multi_result.grid.nx)
         pad_x = (-nx) % n_devices
         record_property("realized_nx", nx)

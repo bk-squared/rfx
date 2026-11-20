@@ -8,6 +8,7 @@ Tests:
 5. E-field correction sign independence: verify the fixed (-coeff, +coeff)
    signs in apply_tfsf_2d_e give identical results to the curl_sign-based
    formula for ez polarization (regression guard for the sign fix).
+The additional 509 steps keep the oblique snapshot about 3.7 tau after the Bloch pulse peak at 5 tau.
 """
 
 import jax.numpy as jnp
@@ -32,9 +33,6 @@ from rfx.stepping.tfsf_2d import (
 from rfx.core.yee import init_state, init_materials
 from rfx.stepping.yee import update_h, update_e
 
-# Oblique leakage needs a narrowband source + long run; marked slow.
-# The Bloch pulse peaks at 5 tau, 2 tau later than when 1700 was set; the
-# 509 steps (2 tau at f0 5 GHz, bw 0.15, dt 1.667 ps) keep the snapshot 3.7 tau after the peak.
 _OBLIQUE_BW = 0.15
 _OBLIQUE_STEPS = 1700 + 509
 
@@ -67,23 +65,19 @@ def _run_tfsf_leakage(nx, ny, nz, dx, dt, angle_deg, polarization, direction,
     for step in range(n_steps):
         t = step * dt
 
-        # H update
         sim_state = update_h(sim_state, materials, dt, dx, periodic=periodic,
                              bloch=bloch, high_wall=(False, False, False))
         sim_state = apply_tfsf_h(sim_state, cfg, st, dx, dt)
 
-        # Advance aux grid H
         if is_2d:
             st = update_tfsf_2d_h(cfg, st, dx, dt)
         else:
             st = update_tfsf_1d_h(cfg, st, dx, dt)
 
-        # E update
         sim_state = update_e(sim_state, materials, dt, dx, periodic=periodic,
                              bloch=bloch, high_wall=(False, False, False))
         sim_state = apply_tfsf_e(sim_state, cfg, st, dx, dt)
 
-        # Advance aux grid E + source
         if is_2d:
             st = update_tfsf_2d_e(cfg, st, dx, dt, t)
         else:
@@ -103,10 +97,9 @@ class TestObliqueTFSFCoverage:
 
     @pytest.fixture
     def grid_params_ey_oblique(self):
-        """Grid params for ey oblique tests — needs enough z cells for oblique delay."""
+        """Grid params for ey oblique tests — needs enough z cells for oblique delay.
+        Ey oblique incidence tilts in the xz-plane with no variation along y."""
         dx = 1e-3
-        # For ey oblique, tilt is in xz-plane, so nz must be large enough.
-        # ny can be small since ey is uniform in y.
         return 80, 3, 80, dx, 0.5 * dx / 3e8
 
     def test_ey_polarization_normal(self, grid_params):
@@ -224,7 +217,8 @@ class TestObliqueTFSFCoverage:
         assert cfg.curl_sign == -1.0
 
     def test_init_tfsf_2d_ey_oblique_creates_tez(self):
-        """ey + oblique dispatches to 2D TEz auxiliary grid."""
+        """ey + oblique dispatches to 2D TEz auxiliary grid.
+        The TEz auxiliary grid uses z as its periodic axis."""
         dx = 1e-3
         dt = 0.5 * dx / 3e8
         from rfx.sources.tfsf_2d import TFSF2DConfig
@@ -234,4 +228,4 @@ class TestObliqueTFSFCoverage:
         assert cfg.mode == "TEz"
         assert cfg.electric_component == "ey"
         assert cfg.magnetic_component == "hz"
-        assert cfg.n2y == 80  # periodic axis is z for TEz
+        assert cfg.n2y == 80

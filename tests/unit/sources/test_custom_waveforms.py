@@ -5,6 +5,7 @@ Validates that:
 2. CWSource DFT peak is at f0 with negligible harmonic content
 3. CustomWaveform exactly reproduces a GaussianPulse
 4. CWSource is differentiable through the FDTD simulation
+The domain lengths written as ``11 * (299792458.0 / 5e9 / 20.0)`` or ``11 * (299792458.0 / 10e9 / 20.0)`` are whole numbers of cells of dx, so their solved lengths equal their declared lengths.
 """
 
 import pytest
@@ -41,16 +42,13 @@ def test_cw_source_reaches_steady_state():
 
     ts = np.array(result.time_series[:, 0])
 
-    # Compute envelope via analytic signal (Hilbert transform)
     from numpy.fft import fft, ifft
     n = len(ts)
     spectrum = fft(ts)
-    # Zero out negative frequencies to form analytic signal
     spectrum[n // 2 + 1:] = 0.0
     spectrum[1:n // 2] *= 2.0
     envelope = np.abs(ifft(spectrum))
 
-    # Check the last 100 steps for steady-state
     tail = envelope[-100:]
     cv = np.std(tail) / (np.mean(tail) + 1e-30)
     print(f"Envelope CV (last 100 steps): {cv:.4f}")
@@ -79,7 +77,6 @@ def test_cw_source_dft_peak_at_f0():
     ts = np.array(result.time_series[:, 0])
     dt = grid.dt
 
-    # Compute DFT magnitudes at f0 and 2*f0
     times = np.arange(n_steps) * dt
     dft_f0 = np.abs(np.sum(ts * np.exp(-1j * 2 * np.pi * f0 * times)))
     dft_2f0 = np.abs(np.sum(ts * np.exp(-1j * 2 * np.pi * 2 * f0 * times)))
@@ -93,7 +90,7 @@ def test_cw_source_dft_peak_at_f0():
 
 def test_custom_waveform_matches_gaussian():
     """CustomWaveform wrapping GaussianPulse should produce identical results."""
-    grid = Grid(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length
+    grid = Grid(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)
     materials = init_materials(grid.shape)
     n_steps = 200
 
@@ -125,7 +122,7 @@ def test_custom_waveform_matches_gaussian():
 
 def test_cw_source_differentiable():
     """CW source through checkpointed run() should produce non-zero gradient."""
-    grid = Grid(freq_max=10e9, domain=(11 * (299792458.0 / 10e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length
+    grid = Grid(freq_max=10e9, domain=(11 * (299792458.0 / 10e9 / 20.0),) * 3, cpml_layers=0)
     n_steps = 30
 
     f0 = 5e9

@@ -18,6 +18,7 @@ Not an S11 gate: the subgrid S-parameter path needs a driven two-port fixture
 inside a refinement region, which does not exist yet. The closed-form S11 for
 this class is covered on the uniform lane by
 tests/unit/boundaries/test_magnetic_wall_faces_not_shorted.py.
+DX_F is a subgridded fine cell, ratio 4 on a 1 mm coarse mesh.
 """
 from __future__ import annotations
 
@@ -29,7 +30,7 @@ from rfx.core.yee import (MaterialArrays, cell_component_e_materials,
                           init_materials)
 from rfx.sources.sources import stamp_lumped_sigma
 
-DX_F = 0.25e-3      # a subgridded fine cell, ratio 4 on a 1 mm coarse mesh
+DX_F = 0.25e-3
 SHAPE = (12, 12, 12)
 Z0 = 50.0
 
@@ -49,16 +50,13 @@ def _bare_stamp(materials, cell, value):
                          [(_edge_stamp, 1.0), (_bare_stamp, 0.25)],
                          ids=["edge-owned", "mutation-bare-stamp"])
 def test_the_fine_grid_port_conductance_is_realized_whole(stamp, expect):
+    """The dielectric background is uniform, so everything the edge average does to sigma here is done to the stamp."""
     cell = (6, 6, 6)
-    # The runner's own spelling for a single-cell lumped port on a cubic
-    # fine mesh: sigma_port = 1 / (Z0 * dx_f).
     sigma_port = 1.0 / (Z0 * DX_F)
 
     mats = init_materials(SHAPE)
     mats = stamp(mats, cell, sigma_port)
 
-    # The dielectric background is uniform, so everything the edge average
-    # does to sigma here is done to the stamp.
     _, sigma_edge = cell_component_e_materials(mats, cell, "ez", high_wall=(False, False, False))
     realized = float(sigma_edge)
 
@@ -94,15 +92,12 @@ def test_the_wire_port_branch_stamps_every_live_cell():
 
     assert isinstance(mats, MaterialArrays)
     assert mats.sigma_lumped is not None
-    # The record is per E component: every stamp on the Ez record.
     sx, sy, sz = mats.sigma_lumped
     assert sx is None and sy is None
     assert np.count_nonzero(np.asarray(sz)) == len(cells)
     for c in cells:
         _, s = cell_component_e_materials(mats, c, "ez", high_wall=(False, False, False))
         assert float(s) == pytest.approx(sigma_per_cell, rel=1e-6)
-    # Series conductance of the three-cell wire: each cell carries 3/(Z0*d),
-    # three in series gives 1/(Z0*d) over the whole span.
     total = 1.0 / sum(1.0 / sigma_per_cell for _ in cells)
     assert total == pytest.approx(1.0 / (Z0 * DX_F), rel=1e-6)
     assert float(jnp.sum(mats.sigma)) == pytest.approx(

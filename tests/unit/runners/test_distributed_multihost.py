@@ -1,4 +1,5 @@
-"""Topology-independent scan arguments, local bit pins and global JAX arrays."""
+"""Topology-independent scan arguments, local bit pins and global JAX arrays.
+The 180-second shared deadline allows cold subprocess coordinator rendezvous to take tens of seconds."""
 
 from functools import partial
 import inspect
@@ -20,8 +21,6 @@ from rfx import Simulation
 from rfx.runners import distributed_v2
 from rfx.stepping import slab_wrap
 
-# Included in pr-tests.yml's ubuntu fast suite: no slow/gpu marker. The
-# subprocess test has its own shared deadline instead of a pytest plugin.
 pytestmark = pytest.mark.distributed
 _FIELDS = ("ex", "ey", "ez", "hx", "hy", "hz")
 
@@ -32,7 +31,6 @@ def _build_box(boundary, *, dz_profile=None):
         boundary=boundary, cpml_layers=2 if boundary == "cpml" else 0,
         dz_profile=dz_profile,
     )
-    # Preserve the legacy amplitude default used by the origin/main capture.
     sim.add_source((8e-3, 4e-3, 4e-3), "ez")
     sim.add_probe((6e-3, 4e-3, 4e-3), "ez")
     sim.add_probe((10e-3, 4e-3, 4e-3), "ez")
@@ -85,7 +83,6 @@ def _scan_body_captures(monkeypatch, run):
     captured = []
 
     def walk(value, path, seen):
-        # A jit argument may also satisfy isinstance(value, jax.Array).
         if isinstance(value, jax.core.Tracer):
             return
         if isinstance(value, jax.Array):
@@ -143,7 +140,6 @@ def test_single_process_scan_uses_explicit_array_arguments(boundary, monkeypatch
     gather.assert_not_called()
     assert len(entries) == 1
     entries[0].assert_called_once()
-    # Carry, invariants, waves and ranks are explicit compiled arguments.
     assert len(entries[0].call_args.args) == 4
     assert not entries[0].call_args.kwargs
     np.testing.assert_array_equal(entries[0].call_args.args[3], [0, 1])
@@ -159,7 +155,6 @@ def test_multi_process_topology_is_decided_by_devices_not_process_count(monkeypa
         assert distributed_v2._spans_other_processes([local, foreign])
 
     devices = _cpu_devices()
-    # Only process_count changes: the mesh still contains this process's devices.
     runner_jax = SimpleNamespace(**{**vars(jax), "process_count": lambda: 2})
     monkeypatch.setattr(distributed_v2, "jax", runner_jax)
     assert not distributed_v2._spans_other_processes(devices)
@@ -171,22 +166,13 @@ def test_multi_process_topology_is_decided_by_devices_not_process_count(monkeypa
 
 @pytest.mark.parametrize("boundary", ["pec", "cpml"])
 def test_single_and_multi_process_topologies_are_bit_identical(boundary, monkeypatch):
+    """Byte equality distinguishes +0 from -0."""
     devices = _cpu_devices()
     expected = _snapshot(_build_box(boundary).run(n_steps=20, devices=devices))
-    # Override only the runner's view of its own process index, so every local
-    # device looks like another process's and the runner selects the
-    # multi-process path. JAX itself and process_allgather still see one real
-    # process, so this exercises the same explicit-argument scan under both
-    # topology predicates without starting a distributed runtime or mocking
-    # numerical operations. The real multi-host collective is tested below.
     runner_jax = SimpleNamespace(**{**vars(jax), "process_index": lambda: 1})
     monkeypatch.setattr(distributed_v2, "jax", runner_jax)
     assert distributed_v2._spans_other_processes(devices)
     actual = _snapshot(_build_box(boundary).run(n_steps=20, devices=devices))
-    # Byte equality (np.array_equal would treat +0 and -0 as equal). This pins
-    # that both topology predicates compile the same scan and that the
-    # cross-process gather is a no-op at one real process; agreement across
-    # real hosts is the Linux two-process test below.
     for name in ("trace", *_FIELDS):
         assert actual[name].dtype == expected[name].dtype
         assert actual[name].tobytes() == expected[name].tobytes(), f"{boundary} {name}"
@@ -199,6 +185,7 @@ def test_single_and_multi_process_topologies_are_bit_identical(boundary, monkeyp
             if sys.platform == "darwin" else "requires Linux jax.distributed"),
 )
 def test_two_processes_return_identical_global_results(tmp_path, record_property):
+    """The 1e-4 parity tolerance allows real multi-host compilation to differ from a local mesh."""
     expected = _snapshot(_build_box("pec").run(n_steps=20, devices=_cpu_devices()))
     assert expected["ez"].shape == (16, 8, 8)
     with socket.socket() as listener:
@@ -225,12 +212,9 @@ def test_two_processes_return_identical_global_results(tmp_path, record_property
            "XLA_FLAGS": "--xla_force_host_platform_device_count=1",
            "PYTHONPATH": str(repo), "OMP_NUM_THREADS": "1",
            "MPLCONFIGDIR": str(tmp_path / "mpl")}
-    # Proxy variables can make localhost rendezvous hang in gRPC.
     env = {key: value for key, value in env.items() if not key.lower().endswith("_proxy")}
     processes, logs = [], []
     timed_out = False
-    # Two cold jax.distributed subprocesses on a small CI runner: the
-    # coordinator rendezvous alone can take tens of seconds.
     deadline = time.monotonic() + 180
     try:
         for rank in range(2):
@@ -266,8 +250,6 @@ def test_two_processes_return_identical_global_results(tmp_path, record_property
         record_property(f"{name}_relative_error", relative)
         record_property(f"{name}_max_abs_diff", max_diff)
         if not exact:
-            # Real multi-host compilation may differ from a local mesh. Retain
-            # the repo's distributed parity tolerance (test_distributed.py).
             print(f"{name}: max abs diff={max_diff:.9e}, relative={relative:.9e}")
             assert relative <= 1e-4, f"{name}: {max_diff=:.9e}, {relative=:.9e}"
 
@@ -277,7 +259,6 @@ def test_v2_direct_non_uniform_grid_is_refused(monkeypatch):
     runner_jax = SimpleNamespace(**{**vars(jax), "process_index": lambda: 1})
     monkeypatch.setattr(distributed_v2, "jax", runner_jax)
     assert distributed_v2._spans_other_processes(devices)
-    # Profiles are constructor arguments; Simulation has no set_dz_profile API.
     sim = _build_box("pec", dz_profile=[1e-3] * 7)
     scan = Mock(wraps=slab_wrap.run_steps)
     monkeypatch.setattr(slab_wrap, "run_steps", scan)
