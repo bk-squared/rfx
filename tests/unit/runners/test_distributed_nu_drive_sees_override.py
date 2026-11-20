@@ -82,8 +82,6 @@ import time
 
 import jax
 
-# A two-process worker initializes the distributed runtime before anything
-# touches JAX's backend (as in test_distributed_nu_forward_multiprocess.py).
 if (__name__ == "__main__" and len(sys.argv) > 2 and sys.argv[1] == "worker"
         and sys.argv[2] != "reference"):
     jax.distributed.initialize(sys.argv[2], 2, int(sys.argv[3]),
@@ -108,28 +106,24 @@ ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = Path(__file__).resolve()
 
 DX = 1.0e-3
-NX, NY = 12, 7                       # mm; the grid adds 2 CPML cells a face
-#: graded z: two 0.8 mm cells, then 1 mm
+NX, NY = 12, 7
 DZ = np.array([0.8, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0]) * DX
 CPML = 2
 N_DEVICES = 2
-#: rank 1's first real cell (global i = 9); z = 1.6 mm lies between a 0.8 mm
-#: and a 1.0 mm cell, so the transverse control-volume width is graded
 SEAM = (7.0e-3, 3.0e-3, 1.6e-3)
-INNER = (10.0e-3, 3.0e-3, 1.6e-3)    # global i = 12, inside rank 1
+INNER = (10.0e-3, 3.0e-3, 1.6e-3)
 PROBE = (9.0e-3, 3.0e-3, 3.6e-3)
 SLAB = ((3.0e-3, 1.0e-3, 0.8e-3), (11.0e-3, 6.0e-3, 5.6e-3))
 PULSE = GaussianPulse(f0=8e9, bandwidth=0.8)
 EPS_LO, EPS_HI = 3.38, 10.2
-LN_STEP = 0.1                        # test b: eps_r x e^0.1
-N_RECORD = 200                       # the whole pulse passes the probe
+LN_STEP = 0.1
+N_RECORD = 200
 F_BIN = 8e9
 
-# Pre-declared gates.
-CB_RTOL = 1e-6                       # a: measured <= 1.9e-7
-RATIO_TOL = 9 * 2.0 ** -23           # b, c: 9 float32 ULP of 1
-GRAD_RTOL = 1e-5                     # c: measured <= 6.5e-7
-PEAK_ULP = 9                         # a2, d, e: per array, against its peak
+CB_RTOL = 1e-6
+RATIO_TOL = 9 * 2.0 ** -23
+GRAD_RTOL = 1e-5
+PEAK_ULP = 9
 
 _EDGES = [(where, comp) for where in ("seam", "inner")
           for comp in ("ex", "ey", "ez")]
@@ -144,6 +138,7 @@ def _one_ampere(t):
 
 def _board(eps_slab=EPS_LO, sigma_slab=0.0, *, sources=(("ey", SEAM, "current"),),
            probes=(("ey", PROBE),), waveform=PULSE):
+    """NX and NY give the x and y interior lengths in millimetres."""
     sim = Simulation(freq_max=15e9, domain=(NX * DX, NY * DX, float(DZ.sum())),
                      dx=DX, dz_profile=DZ, boundary="cpml", cpml_layers=CPML)
     sim.add_material("slab", eps_r=float(eps_slab), sigma=float(sigma_slab))
@@ -201,9 +196,6 @@ def _dist(sim, **kw):
                        skip_preflight=True, **kw)
 
 
-# --------------------------------------------------------------------------
-# a. the drive coefficient each edge receives, against the stepper's Cb
-# --------------------------------------------------------------------------
 
 def _control_volume(grid, ijk, comp):
     """The E node's control volume from the realized cell sizes: the width
@@ -246,8 +238,6 @@ def _drive_over_stepper(form):
     sg = nu.build_sharded_nu_grid(grid, N_DEVICES)
     designs = [_random_design(grid.shape, seed) for seed in (1279, 1280)]
     idx = {w: position_to_index(grid, _AT[w]) for w in _AT}
-    # realized, not declared: the seam edge is rank 1's first real cell, its
-    # i-1 cells differ from its own, and the inner edge is inside the slab
     assert idx["seam"][0] == sg.nx_per_rank and idx["inner"][0] > sg.nx_per_rank
     i, j, k = idx["seam"]
     for eps, sigma in designs:
@@ -257,8 +247,6 @@ def _drive_over_stepper(form):
         return _dist(sim, eps_override=e, sigma_override=s, n_steps=1).time_series[0]
 
     if form == "vmap":
-        # A batch of two: vmap over this lane needs a batch the device count
-        # divides (a pre-existing staging limit, main included).
         firsts = jax.vmap(first_step)(*(jnp.stack([jnp.asarray(d[n]) for d in designs])
                                          for n in (0, 1)))
     else:
@@ -283,9 +271,6 @@ def test_every_edge_is_driven_through_the_steppers_cb_under_an_override(form):
     assert max(abs(v) for v in rel.values()) <= CB_RTOL, rel
 
 
-# --------------------------------------------------------------------------
-# a2. the seam drive's gradient comes back to the device that owns its cells
-# --------------------------------------------------------------------------
 
 def _log_energy(ts):
     """ln of the probe records' summed squares (scale-free; the raw sum is
@@ -324,7 +309,6 @@ def _frozen_drive():
                     mesh, drives, dt, ranks=ranks, grid=grid, **film)
 
     def frozen_columns(eps, sigma, *args, **kwargs):
-        # The per-slab drive table (rfx #1402 item 4) reads the edge here.
         return columns(jax.lax.stop_gradient(eps), jax.lax.stop_gradient(sigma), *args, **kwargs)
 
     with pytest.MonkeyPatch.context() as patch:
@@ -334,13 +318,11 @@ def _frozen_drive():
 
 
 def test_the_seam_drives_gradient_reaches_the_cells_on_the_other_device():
+    """The seam gradient is pinned at the i-1 cells owned by the other device."""
     (g_eps, g_sig), (i, j, k) = _seam_gradient("local")
     (s_eps, s_sig), _ = _seam_gradient("sharded")
     (f_eps, f_sig), _ = _seam_gradient("local", frozen_drive=True)
     ulp = {"eps": _peak_ulp(g_eps, s_eps), "sigma": _peak_ulp(g_sig, s_sig)}
-    # The drive's own share of the gradient at the seam edge's i-1 cells
-    # (device 0's), in ULP of the gradient's peak: what the sharded gradient
-    # would lose there if the halo transpose dropped the ghost-row cotangent.
     cells = (i - 1, j, slice(k - 1, k + 1))
     share = {name: float(np.max(np.abs(full[cells] - frozen[cells])))
              / float(np.spacing(np.float32(np.max(np.abs(full)))))
@@ -351,19 +333,15 @@ def test_the_seam_drives_gradient_reaches_the_cells_on_the_other_device():
     assert all(v > 100 * PEAK_ULP for v in share.values()), share
 
 
-# --------------------------------------------------------------------------
-# b. eps_r x e^0.1 by override and by materials: one record
-# --------------------------------------------------------------------------
 
 @functools.lru_cache(maxsize=None)
 def _raised_records(form, mutated=False):
+    """The 200-step record allows the whole pulse to pass the probe."""
     built = _board(EPS_LO * np.exp(LN_STEP))
     drawn_sim = _board(EPS_LO)
     ovr = np.asarray(_drawn(built).eps_r)
     grid = built._build_nonuniform_grid()
     i, j, k = position_to_index(grid, SEAM)
-    # realized: the source's four cells are the raised slab in the override
-    # and the plain one as drawn
     assert np.all(ovr[i - 1:i + 1, j, k - 1:k + 1] == np.float32(EPS_LO * np.exp(LN_STEP)))
     assert np.all(np.asarray(_drawn(drawn_sim).eps_r)[i - 1:i + 1, j, k - 1:k + 1]
                   == np.float32(EPS_LO))
@@ -393,9 +371,6 @@ def test_raising_eps_r_by_override_changes_the_slab_not_the_drive(form):
     assert abs(f_ratio - 1.0) <= RATIO_TOL, f_ratio
 
 
-# --------------------------------------------------------------------------
-# c. the distributed lane against the single-device lane (#1280)
-# --------------------------------------------------------------------------
 
 @functools.lru_cache(maxsize=None)
 def _lane(lane, form=None, mutated=False, warmup=0, checkpoint=None):
@@ -430,9 +405,6 @@ def _lane(lane, form=None, mutated=False, warmup=0, checkpoint=None):
     return ts, grad
 
 
-# (0, None): the plain run. (40, 30): 40 warm-up steps with their own drive
-# table, and segmented remat; deleting the warm-up table's scaling moved the
-# record 1.0096 and the gradient -12.3 % (#1279 review), unseen before.
 @pytest.mark.parametrize("warmup,checkpoint", [(0, None), (40, 30)])
 @pytest.mark.parametrize("form", ["local", "sharded"])
 def test_the_distributed_lane_drives_the_overridden_source_as_the_single_device_lane(
@@ -466,7 +438,8 @@ def test_the_traced_drive_coefficient_has_a_finite_gradient_under_a_large_cotang
 def test_a_large_objective_gives_a_finite_gradient_on_both_lanes():
     """The raw sum of squared probe samples (~1e16 (V/m)^2: two 1 A current
     sources in a lossy slab, 40 steps, eps and sigma overridden) as the objective,
-    the reviewer's board: both lanes give a finite eps and sigma gradient."""
+    the reviewer's board: both lanes give a finite eps and sigma gradient.
+    The objective must exceed 1e15 to exercise the float32 reverse-pass overflow regime."""
     dz = np.array([0.8, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0]) * 1e-3
     sim = Simulation(freq_max=15e9, domain=(12e-3, 7e-3, float(dz.sum())), dx=1e-3,
                      dz_profile=dz, boundary="cpml", cpml_layers=2)
@@ -491,13 +464,10 @@ def test_a_large_objective_gives_a_finite_gradient_on_both_lanes():
         ge, gs = (np.asarray(g) for g in jax.grad(objective, argnums=(0, 1))(eps, sig))
         print(f"[large/{name}] objective {value:.3e}; finite eps/sigma gradient "
               f"{bool(np.isfinite(ge).all())}/{bool(np.isfinite(gs).all())}")
-        assert value > 1e15, value   # the regime that overflowed; else this says nothing
+        assert value > 1e15, value
         assert np.isfinite(ge).all() and np.isfinite(gs).all(), name
 
 
-# --------------------------------------------------------------------------
-# mutations: the defect restored with every builder call kept
-# --------------------------------------------------------------------------
 
 @contextmanager
 def _drive_reads(materials_for_drive):
@@ -554,7 +524,6 @@ def _seam_reads_its_own_row():
     i = nu.build_sharded_nu_grid(_edge_board()._build_nonuniform_grid(), N_DEVICES).nx_per_rank
 
     def own_row(materials, layout, mesh):
-        # Owned input rows include the low ghost and the extra producer row.
         rank, previous_rank = layout.owner(i), layout.owner(i - 1)
         n = i - layout.owned[rank][0] + layout.ghost_width + 1
         previous_n = i - 1 - layout.owned[previous_rank][0] + layout.ghost_width + 1
@@ -592,13 +561,10 @@ def test_mutation_the_seam_edge_reading_its_own_row_sends_a_red():
     for (where, comp), v in rel.items():
         if where == "seam" and comp in ("ey", "ez"):
             assert abs(v) > 1e3 * CB_RTOL, (where, comp, v)
-        else:  # Ex never reads i-1; an inner edge's i-1 row is its own slab
+        else:
             assert abs(v) <= CB_RTOL, (where, comp, v)
 
 
-# --------------------------------------------------------------------------
-# d. opt-in: a 'field' source, and no override, bitwise what main computes
-# --------------------------------------------------------------------------
 
 def _bit_cases():
     """Records and gradients the fix must not move, computed by whichever
@@ -650,7 +616,7 @@ def _main_tree(tmp_path_factory):
     with tarfile.open(fileobj=io.BytesIO(run.stdout)) as archive:
         try:
             archive.extractall(tree, filter="data")
-        except TypeError:  # Python without extraction filters
+        except TypeError:
             archive.extractall(tree)
     return tree
 
@@ -677,9 +643,6 @@ def test_field_sources_and_runs_without_an_override_are_main_bit_for_bit(tmp_pat
     assert all(r["bitwise"] for r in report.values()), report
 
 
-# --------------------------------------------------------------------------
-# e. slow, Linux: the x-sharded override across two processes
-# --------------------------------------------------------------------------
 
 def _worker(address, rank, output):
     rank = int(rank)
@@ -690,8 +653,6 @@ def _worker(address, rank, output):
     shape, sharding = sim.distributed_override_layout()
 
     def design(offset, step):
-        # built from global indices on each owning device; no process holds
-        # the whole design
         def local(index):
             lo, hi, _ = index[0].indices(shape[0])
             flat = np.arange(lo * shape[1] * shape[2], hi * shape[1] * shape[2])

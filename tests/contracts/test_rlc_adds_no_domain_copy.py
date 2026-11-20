@@ -35,6 +35,6 @@ def test_rlc_adds_no_domain_copy(path, topology):
         gc.collect()
     # CPU JAX 0.10.2, origin/main 4e54aa7c, measured at this N=24:
     # k=1 has 8 domain copies in both topologies on both mesh paths.
-    # Leader decision: retain the singleton form that preserves run() bits.
+    # Retain the singleton form that preserves run() bits.
     assert counts[1] <= 8, counts
     assert counts[2] == counts[4] == counts[8] == counts[16], counts

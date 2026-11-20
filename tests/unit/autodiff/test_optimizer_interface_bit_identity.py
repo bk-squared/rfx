@@ -117,16 +117,11 @@ def _reference_adam_multistart_04b960c1c(
         v = jnp.zeros_like(init_lat)
         latent = init_lat
         loss_history: list[float] = []
-        # Only retain visited iterates when best-iterate is requested, so the
-        # default path holds no extra design tensors in memory.
         latents: list = [] if best_iterate else None
-        last_good = latent  # last design with a confirmed-finite forward+gradient
+        last_good = latent
         for it in range(n_iters):
             loss, grad = grad_fn(latent)
 
-            # NaN/Inf gradient guard (unchanged from the legacy loop): a
-            # non-finite gradient silently poisons ``latent`` and every later
-            # iteration, so stop fast and RESTORE the last finite design.
             if not (bool(jnp.isfinite(loss)) and bool(jnp.all(jnp.isfinite(grad)))):
                 import warnings as _w
                 _w.warn(
@@ -141,7 +136,7 @@ def _reference_adam_multistart_04b960c1c(
                 latent = last_good
                 break
 
-            last_good = latent  # this design produced a finite forward+gradient
+            last_good = latent
             if it_count is not None:
                 it_count[0] = it + 1
             loss_val = float(loss)
@@ -149,7 +144,6 @@ def _reference_adam_multistart_04b960c1c(
             if latents is not None:
                 latents.append(latent)
 
-            # Adam update
             step, m, v = _adam_update(
                 m, v, grad, it, lr, beta1, beta2, eps_adam, step_clamp,
             )
@@ -167,14 +161,12 @@ def _reference_adam_multistart_04b960c1c(
                 ret_latent = latent
                 score = loss_history[-1]
         else:
-            # No finite loss was recorded (diverged at iter 0): fail-soft,
-            # return the last-good design (== init_lat) with no score.
             ret_latent = last_good
             score = None
         return loss_history, ret_latent, score
 
     all_histories: list[list[float]] = []
-    results = []  # (loss_history, ret_latent, score)
+    results = []
     for init_lat in latent_inits:
         lh, rl, sc = _run_one(init_lat)
         all_histories.append(lh)
@@ -190,8 +182,6 @@ def _reference_adam_multistart_04b960c1c(
         )
         return best_lat, best_lh, all_histories, best_start
     if len(latent_inits) == 1:
-        # Single-start fail-soft: preserve the legacy warn-and-return-last-good
-        # contract (tests/unit/api/test_result_finite_guard.py).
         lh, rl, _sc = results[0]
         return rl, lh, all_histories, 0
     raise RuntimeError(
@@ -252,30 +242,23 @@ def _reference_topology_optimize_04b960c1c(
     -------
     TopologyResult
         Contains final density, permittivity, loss history, and beta history.
+    Design bounds may touch reflecting or periodic faces because those faces carry no CPML padding.
     """
     resolve_field_dtype(sim._precision)
     sim._require_uniform_mesh("topology_optimize")
     sim._auto_preflight(skip=skip_preflight, context="topology_optimize")
-    # Refuse unsupported surface-impedance sheets at entry.
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     from rfx.model.wall_loss import refuse_wall_loss
     refuse_wall_loss(sim, "topology-optimization")
     _refuse_f0(sim._thin_conductors, "topology-optimization")
     from rfx.runners._admission import admit
     admit(sim, "topology_optimize")
-    # Refuse refinement before constructing the optimization forward.
     sim._require_no_refinement_without_a_subgrid("topology_optimize()")
 
-    # Build grid and compute design region indices
     grid = sim._build_grid()
     from rfx._internal._periodic import interval_indices
     lo_idx, hi_idx = map(list, interval_indices(grid, design_region.corner_lo, design_region.corner_hi))
 
-    # Clamp indices to the interior region (exclude CPML padding).
-    # Without this, a design region at the domain edge can overlap
-    # with CPML cells, causing shape mismatches and incorrect gradients.
-    # Per-face pads: a PMC/PEC/periodic face has pad=0 on its
-    # side, so the design can touch that reflector.
     pads_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)
     pads_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)
     dims = (grid.nx, grid.ny, grid.nz)
@@ -293,9 +276,6 @@ def _reference_topology_optimize_04b960c1c(
             f"region does not lie entirely within the CPML boundary."
         )
 
-    # The design arrays reach the solve whole-grid and traced, so the
-    # current-moment monitor's guard checks the cells they can change: the
-    # design region's bounds. Run the guard here, before tracing the forward.
     design_region_cells = SimpleNamespace(bounds=(
         lo_idx[0], hi_idx[0] + 1, lo_idx[1], hi_idx[1] + 1,
         lo_idx[2], hi_idx[2] + 1))
@@ -309,9 +289,6 @@ def _reference_topology_optimize_04b960c1c(
     if beta_schedule is None:
         beta_schedule = _DEFAULT_BETA_SCHEDULE
 
-    # Resolve material permittivities and conductivities.
-    # _resolve_material checks user-registered materials (sim._materials)
-    # first, then falls back to MATERIAL_LIBRARY.
     try:
         mat_bg = sim._resolve_material(design_region.material_bg)
     except KeyError as exc:
@@ -328,7 +305,6 @@ def _reference_topology_optimize_04b960c1c(
     bg_is_pec = sigma_bg >= pec_threshold
     fg_is_pec = sigma_fg >= pec_threshold
 
-    # Compute filter radius in cells
     filt_r = design_region.effective_filter_radius
     filter_radius_cells = None
     if filt_r is not None:
@@ -340,16 +316,11 @@ def _reference_topology_optimize_04b960c1c(
         grid, pec_sheets=_topo_pec_sheets, pec_wires=_topo_pec_wires)
     base_mu_r = base_materials.mu_r
 
-    # Initialize density
     if init_density is None:
         init_density = 0.5 * jnp.ones(design_shape, dtype=jnp.float32)
 
-    # We optimize in logit space for unconstrained optimization,
-    # then map back via sigmoid to keep density in [0, 1].
-    # logit(0.5) = 0
     init_logit = jnp.log(init_density / (1.0 - init_density + 1e-8) + 1e-8)
 
-    # Adam moments in logit space.
     m = v = jnp.zeros_like(init_logit)
 
     logit = init_logit
@@ -379,14 +350,13 @@ def _reference_topology_optimize_04b960c1c(
         from rfx.core.yee import MaterialArrays
         from rfx.model.occupancy import occupancy_from_design
         window = (slice(si, ei + 1), slice(sj, ej + 1), slice(sk, ek + 1))
-        # Retain the existing fresh-container boundary (including absent records).
         cells = MaterialArrays(eps_r=base_materials.eps_r, sigma=base_materials.sigma,
                                mu_r=base_mu_r, sigma_film=base_materials.sigma_film)
         materials = apply_material_overrides(
             cells, eps_override=fields.eps.astype(base_materials.eps_r.dtype),
             sigma_override=fields.sigma.astype(base_materials.sigma.dtype),
             window=(slice(None),) * 3, box_local=window)._replace(mu_r=base_mu_r)
-        pec_occupancy = occupancy_from_design(grid.shape, window, fields.pec_occupancy)
+        pec_occupancy = occupancy_from_design(grid.shape, window, fields.pec_occupancy, dtype=jnp.float32)
 
         result = sim._forward_from_materials(
             grid,
@@ -399,8 +369,6 @@ def _reference_topology_optimize_04b960c1c(
             pec_sheets=tuple(_topo_pec_sheets),
             pec_wires=tuple(_topo_pec_wires),
             pec_occupancy=pec_occupancy,
-            # The design arrays are whole-grid and traced; the monitor's
-            # guard checks the region they can change instead.
             monitor_overrides={"design_region": design_region_cells},
         )
         import inspect
@@ -410,18 +378,13 @@ def _reference_topology_optimize_04b960c1c(
         return objective(result)
 
     grad_fn = _value_and_grad_with_fallback(forward, jit, "topology_optimize")
-    last_good = logit  # last design with a confirmed-finite forward+gradient
+    last_good = logit
     for it in range(n_iterations):
         beta = _get_beta(it, beta_schedule)
         beta_history.append(beta)
 
         loss, grad = grad_fn(logit, jnp.asarray(beta, dtype=jnp.float32))
 
-        # NaN/Inf gradient guard (see optimize() for rationale): a non-finite
-        # gradient would silently poison ``logit`` via the Adam update and
-        # every later iteration. Stop fast with a cause hint and RESTORE the
-        # last design whose forward was finite (the current ``logit`` is the
-        # one that just diverged).
         if not (bool(jnp.isfinite(loss)) and bool(jnp.all(jnp.isfinite(grad)))):
             import warnings as _w
             _w.warn(
@@ -435,7 +398,7 @@ def _reference_topology_optimize_04b960c1c(
             logit = last_good
             break
 
-        last_good = logit  # this design produced a finite forward+gradient
+        last_good = logit
         loss_val = float(loss)
         history.append(loss_val)
 
@@ -445,14 +408,12 @@ def _reference_topology_optimize_04b960c1c(
         if verbose and (it % 10 == 0 or it == n_iterations - 1):
             rho_raw = jax.nn.sigmoid(logit)
             rho_proj = apply_projection(rho_raw, beta)
-            # Binarization: 0 = fully binary, 1 = maximally intermediate
             binarization = float(jnp.mean(4.0 * rho_proj * (1.0 - rho_proj)))
             print(
                 f"  iter {it:4d}  loss = {loss_val:.6e}  "
                 f"beta = {beta:.1f}  binarization = {binarization:.3f}"
             )
 
-    # Final density and eps
     final_rho = jax.nn.sigmoid(logit)
     final_fields = density_to_material_fields(
         final_rho,
@@ -467,7 +428,6 @@ def _reference_topology_optimize_04b960c1c(
     )
     final_eps = final_fields.eps
 
-    # Compute projected density for reporting
     rho_filtered = final_rho
     if filter_radius_cells is not None and filter_radius_cells >= 0.5:
         rho_filtered = apply_density_filter(final_rho, filter_radius_cells)
@@ -475,9 +435,6 @@ def _reference_topology_optimize_04b960c1c(
         rho_filtered, _get_beta(n_iterations - 1, beta_schedule),
     )
 
-    # The optimization solves through _forward_from_materials, which never reaches
-    # _dispatch_plan, so it releases the inspection products its preflight cached, as the
-    # calculators that bypass dispatch do.
     release_inspection(sim)
     return TopologyResult(
         density=final_rho,
@@ -515,11 +472,11 @@ def _equal(actual, reference):
 
 
 def _equal_optimize(actual, reference):
+    """Finite, moving designs make bit equality an arithmetic witness rather than a comparison of inert runs."""
     assert len(actual.loss_history) == len(reference.loss_history) == 3
     _equal(actual.loss_history, reference.loss_history)
     _equal(actual.latent, reference.latent)
     _equal(actual.eps_design, reference.eps_design)
-    # A finite, moving design makes equality a meaningful arithmetic witness.
     assert np.all(np.isfinite(actual.latent))
     assert np.any(np.asarray(actual.latent) != 0)
 
@@ -538,7 +495,7 @@ def _compare_multistart(cost, inits, **kwargs):
     for history in actual[2]:
         assert len(history) == kwargs["n_iters"]
         assert np.all(np.isfinite(history))
-        assert history[0] != history[-1]  # Every start moves, including the loser.
+        assert history[0] != history[-1]
 
 
 @pytest.mark.parametrize("best_iterate", [False, True], ids=["final", "best-iterate"])
@@ -579,8 +536,6 @@ def test_multistart_nan_restores_last_good():
         _equal(actual, reference)
     _equal(counts[0], counts[1])
     assert counts == [[2], [2]]
-    # The second finite evaluation visits the result of the first update.
-    # Restore that latent, rather than the second update sent to the NaN call.
     first_step, _, _ = _adam_update(jnp.zeros_like(init), jnp.zeros_like(init),
                                     2 * (init - target), 0, 0.1, 0.9, 0.999, 1e-8, None)
     for result in results:
@@ -632,8 +587,6 @@ def test_progressive_two_stages(monkeypatch):
 
 
 def test_topology_beta_restart(monkeypatch):
-    # topology has no n_steps argument. Limit both real FDTD solves identically;
-    # the copied function and all of its setup remain verbatim.
     grid_type = type(_tiny_sim()._build_grid())
     monkeypatch.setattr(grid_type, "num_timesteps", lambda self, num_periods=20.0: 20)
     region = TopologyDesignRegion(_tiny_region().corner_lo, _tiny_region().corner_hi,

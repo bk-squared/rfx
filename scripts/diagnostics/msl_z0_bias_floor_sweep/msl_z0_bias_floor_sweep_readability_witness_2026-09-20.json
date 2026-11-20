@@ -2,7 +2,7 @@
  "method": "Measured AFTER the six-point run, separately and not from it: the solve records that run_one returns carry no probe_clearance, beta_railed or reliable field, so these are not re-typed from it. clearance_and_conductor is BUILD-ONLY (no time stepping) on the identical geometry; fit_conditioning is ONE re-solved point.",
  "provenance": {
   "commit": "28c17ce4c9e07b4e791801b581301aa3df147d5b",
-  "rfx_file": "/root/workspace/bk-workspace/rfx-wt-752/rfx/__init__.py",
+  "rfx_file": "rfx/__init__.py",
   "jax_version": "0.10.2",
   "jax_enable_x64": "0",
   "python": "3.11.16"

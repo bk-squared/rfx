@@ -40,6 +40,7 @@ class TestLosslessCavityReachesCap:
     """Test 1: a point-field dip does not stop a lossless cavity."""
 
     def test_lossless_cavity_reaches_cap(self, monkeypatch, record_property):
+        """A closed lossless box retains energy even when one probe is quiet."""
         grid, materials = _make_cavity()
         max_steps = 10000
         sources, probes, probe_pos = _make_sources_and_probes(grid, max_steps)
@@ -71,7 +72,6 @@ class TestLosslessCavityReachesCap:
 
         actual_steps = result.time_series.shape[0]
 
-        # A closed lossless box retains energy even when one probe is quiet.
         assert actual_steps == max_steps
         values = result.decay_stop.values
         assert values["quantity"] == "conserved_energy"
@@ -116,7 +116,6 @@ class TestDecayProducesBetterDFT:
     def test_decay_produces_better_dft_than_fixed_short(self):
         grid, materials = _make_cavity()
 
-        # Short fixed run (100 steps) — source waveform sized to 100
         n_short = 100
         sources_short, probes_short, probe_pos = _make_sources_and_probes(
             grid, n_short,
@@ -127,7 +126,6 @@ class TestDecayProducesBetterDFT:
             probes=probes_short,
         )
 
-        # Decay-based run — source waveform sized to max_steps
         max_steps = 10000
         sources_decay, probes_decay, _ = _make_sources_and_probes(
             grid, max_steps,
@@ -155,11 +153,9 @@ class TestDecayProducesBetterDFT:
         var_short = spectral_variance(result_short.time_series[:, 0])
         var_decay = spectral_variance(result_decay.time_series[:, 0])
 
-        # Decay run ran longer and should have smoother spectrum
         assert result_decay.time_series.shape[0] > result_short.time_series.shape[0], (
             "Decay run should be longer than the 100-step fixed run"
         )
-        # The longer, converged signal should have lower spectral variance
         assert var_decay < var_short, (
             f"Expected decay spectral var ({var_decay:.6e}) < "
             f"short spectral var ({var_short:.6e})"
@@ -171,13 +167,14 @@ class TestMinMaxStepsHonored:
 
     def test_min_steps_honored(self):
         """Even if decayed early, should run at least min_steps."""
+        GENEROUS_DECAY_THRESHOLD = 0.99
         grid, materials = _make_cavity()
         max_steps = 5000
         sources, probes, probe_pos = _make_sources_and_probes(grid, max_steps)
 
         result = run_until_decay(
             grid, materials,
-            decay_by=0.99,  # Very generous — would stop immediately
+            decay_by=GENEROUS_DECAY_THRESHOLD,
             check_interval=10,
             min_steps=200,
             max_steps=max_steps,
@@ -194,13 +191,14 @@ class TestMinMaxStepsHonored:
 
     def test_max_steps_honored(self):
         """Should stop at max_steps even if not decayed."""
+        TIGHT_DECAY_THRESHOLD = 1e-30
         grid, materials = _make_cavity()
         max_steps = 50
         sources, probes, probe_pos = _make_sources_and_probes(grid, max_steps)
 
         result = run_until_decay(
             grid, materials,
-            decay_by=1e-30,  # Impossibly tight — will never converge
+            decay_by=TIGHT_DECAY_THRESHOLD,
             check_interval=10,
             min_steps=10,
             max_steps=max_steps,

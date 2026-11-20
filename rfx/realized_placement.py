@@ -10,6 +10,8 @@ planes. Index boxes are inclusive ``(lo, hi)`` per axis on the padded grid;
 """
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 import numpy as np
 
 from rfx._internal._grid_metric import field_index
@@ -57,7 +59,7 @@ def _tfsf_row(sim, ctx):
     entry, grid = sim._tfsf, ctx.grid
     try:
         if ctx.lane == "nonuniform":
-            cfg, _ = tfsf_from_declaration(entry, grid, sim._freq_max)
+            cfg, _ = tfsf_from_declaration(entry, grid, sim._freq_max, dtype=resolve_coefficient_dtype(sim._precision))
             planes = tfsf_injection_planes(cfg)
         else:
             planes = sim.tfsf_box_indices()

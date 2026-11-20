@@ -17,6 +17,7 @@ Rows: (a) the resolved nodes are the concrete run's; (b) the traced record at
 the primal is the concrete ``forward()``; (c) a nominal that is not the traced
 primal is refused at run time, naming both nodes; (d) without the declaration
 the old refusal fires and names ``nominal_profiles=``; (e) declaration refusals.
+The node constants count from node 5 at 2.5 mm through eight quarter-millimetre cells to node 13 at 4.5 mm, then half-millimetre cells.
 """
 
 from __future__ import annotations
@@ -40,16 +41,13 @@ C0 = 299792458.0
 DX = 0.5e-3
 PROF = np.concatenate([np.full(5, DX), np.full(8, DX / 2), np.full(15, DX)])
 N_X, N_Y, N_Z = PROF.size, 20, 20
-LX = float(PROF.sum())                       # 12 mm
+LX = float(PROF.sum())
 CPML = 4
 K_GND, K_PATCH = 6, 12
 Z_G, Z_P = K_GND * DX, K_PATCH * DX
 Y_C = 10 * DX
 X_PORT, X_PROBE, X_FINE = 8.0e-3, 9.0e-3, 3.25e-3
-#: Interior x nodes of PROF, counted by hand: node 5 at 2.5 mm, nodes 5..13 a
-#: quarter millimetre apart (node 13 at 4.5 mm), then half a millimetre apart.
 NODE_PORT, NODE_PROBE, NODE_FINE = 20, 22, 8
-#: What the uniform 0.5 mm stand-in names for the same coordinates.
 UNIFORM_PORT = 16
 
 D_MIN = DX / 2
@@ -98,9 +96,6 @@ def _forward(delta, n_steps=N_STEPS, **kw):
 POINTS = ((X_PORT, Y_C, Z_G), (X_PROBE, Y_C, Z_G), (X_FINE, Y_C, Z_G))
 
 
-# --------------------------------------------------------------------------
-# (a) the nodes the traced run resolves are the concrete run's
-# --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("delta", [0.0, 0.25 * DX])
 def test_a_ports_and_probes_past_the_fine_cells_resolve_to_the_concrete_nodes(delta):
@@ -124,9 +119,6 @@ def test_a_ports_and_probes_past_the_fine_cells_resolve_to_the_concrete_nodes(de
     assert traced[0] != UNIFORM_PORT + CPML
 
 
-# --------------------------------------------------------------------------
-# (b) at the primal the traced run is the concrete forward()
-# --------------------------------------------------------------------------
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
     "#1373: the traced and the concrete graded paths form some coefficients "
@@ -151,16 +143,14 @@ def test_b_the_traced_record_at_the_primal_is_the_concrete_forward():
         f"S: {np.max(np.abs(s_t - s_c)) / ulp_s:.1f} ULP of max|S|")
 
 
-# --------------------------------------------------------------------------
-# (c) a nominal that is not the traced primal is refused at run time
-# --------------------------------------------------------------------------
 
-#: The fine cells start two cells later. Same length, same sum; 3.0 mm is node
-#: 7 of PROF but node 6 of this profile.
 SHIFTED = np.concatenate([np.full(7, DX), np.full(8, DX / 2), np.full(13, DX)])
 
 
 def test_c_a_declared_profile_the_run_does_not_build_is_refused():
+    assert (len(SHIFTED) == len(PROF)
+            and np.isclose(SHIFTED.sum(), PROF.sum(), rtol=0, atol=1e-14)), (
+        'The shifted profile must preserve the nominal cell count and span so the refusal isolates node disagreement.')
     def _go(d):
         traced = jnp.asarray(SHIFTED, dtype=jnp.float32) + 0.0 * d
         grid = make_nonuniform_grid(
@@ -175,9 +165,6 @@ def test_c_a_declared_profile_the_run_does_not_build_is_refused():
         jax.jvp(_go, (jnp.float32(0.0),), (jnp.float32(1.0),))
 
 
-# --------------------------------------------------------------------------
-# (d) without the declaration the old refusal fires and names the keyword
-# --------------------------------------------------------------------------
 
 def test_d_without_a_declared_profile_the_graded_scene_is_refused():
     with pytest.raises(ValueError, match=(
@@ -187,9 +174,6 @@ def test_d_without_a_declared_profile_the_graded_scene_is_refused():
                 (jnp.float32(0.0),), (jnp.float32(1.0),))
 
 
-# --------------------------------------------------------------------------
-# (e) what the declaration refuses, before any grid exists
-# --------------------------------------------------------------------------
 
 def _declare(d, nominal, *, traced_x=True):
     return Simulation(freq_max=40e9, domain=(LX, N_Y * DX, N_Z * DX), dx=DX,
@@ -267,5 +251,5 @@ def test_f_the_padded_nominal_widths_index_like_the_grids_own_widths():
     assert seen["x"].shape == (seen["n"],) == (concrete.shape[0],)
     np.testing.assert_array_equal(seen["x"], np.asarray(concrete.dx_arr_f64))
     np.testing.assert_array_equal(seen["interior"], PROF)
-    assert seen["y"] is None                      # y is not traced
+    assert seen["y"] is None
     assert nominal_cells(concrete, "x", padded=True) is None

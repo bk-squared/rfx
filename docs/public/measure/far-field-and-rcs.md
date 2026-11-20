@@ -150,9 +150,11 @@ incidence), so it does not depend on the observation grid you pass.
 ### Which RCS numbers to trust
 
 **Monostatic (backscatter).** `monostatic_rcs` is the quantity checked
-against the exact Mie series for a PEC sphere at ka ≈ 1 (λ/40 cells). In that
-test it reads 0.73 dB above Mie. It is always taken from the plain
-run, whatever you set for `subtract_incident_reference`.
+against the exact Mie series for a PEC sphere over ka 0.75–1.25. It is within
+2 dB of Mie on three meshes (λ/40, λ/60, λ/80), but the difference still falls
+with each refinement, so convergence is not established; at λ/40 and ka ≈ 1 it
+reads 0.56 dB above Mie. It is always taken from the plain run, whatever you
+set for `subtract_incident_reference`.
 
 **Bistatic.** With the default `subtract_incident_reference=False`, the
 **bistatic pattern is not validated**: off-backscatter angles can be several
@@ -240,6 +242,10 @@ for the other helpers.
   ring-down check reads your probes, not the NTFF surface, so it is a guide,
   not a proof. Repeat with a longer run (or `until_decay=`) and compare the
   patterns.
+- **`compute_rcs` warns that the record ends before the field leaves the NTFF
+  box** → raise `n_steps`. Without that warning a resonant target can still be
+  ringing at the end of the record; `compute_rcs` does not check this, so
+  compare the RCS from two record lengths.
 - **Directivity looks wrong** → sample the full sphere; a single cut gives
   the wrong total power.
 - **Box too close to the radiator or touching the absorber** → preflight

@@ -12,7 +12,6 @@ def precision_scene(kind, precision):
         sim.add_source((.00985, .01235, .01085), 'ez', waveform=GaussianPulse(f0=3e9))
         sim.add_probe((.03035, .01785, .01435), 'ez')
     else:
-        # Existing oblique API fixture, tests/unit/api/test_api.py.
         sim = Simulation(freq_max=5e9, domain=(.12, .12, .006), dx=.004,
                          cpml_layers=8, boundary='cpml', precision=precision)
         sim.add_tfsf_source(f0=5e9, bandwidth=.2, amplitude=1., margin=3,

@@ -22,7 +22,6 @@ def tree(nu):
     path = nu if isinstance(nu, str) else ('rfx/nonuniform.py' if nu else 'rfx/simulation.py')
     result = ast.parse((ROOT / path).read_text())
     if not isinstance(nu, str):
-        # Keep the original runner in scope and recognize its extracted step.
         names = ('sequence.py', 'graded.py', 'graded_setup.py', 'graded_loop.py') if nu else ('sequence.py', 'uniform.py')
         for name in names:
             result.body.extend(ast.parse((ROOT / 'rfx/stepping' / name).read_text()).body)
@@ -33,7 +32,6 @@ def assignment(nu, name, dependency=None):
     candidates = [n for n in ast.walk(tree(nu)) if isinstance(n, ast.Assign)
                   and any(isinstance(t, ast.Name) and t.id == name for t in n.targets)
                   and (dependency is None or dependency in {getattr(v, 'id', getattr(v, 'attr', None)) for v in ast.walk(n.value)})]
-    # Identical assignments can occur in multiple runner entry points.
     expressions = {ast.dump(n.value): n.value for n in candidates}
     assert len(expressions) == 1, (name, expressions)
     return compile(ast.Expression(next(iter(expressions.values()))), '<production phase>', 'eval')
@@ -52,8 +50,8 @@ def stamp(nu, family, kind):
              and isinstance(n.func, ast.Name) and n.func.id == name]
     assert len(calls) == 1
     dft_meta = ((field_channel(kind.lower()+'z'), 0, 1, bins, None),)
-    # This synthetic interior plane has a nonperiodic normal axis.
-    flux_meta = ((0, 1, bins, tuple(field_channel(c) for c in ('ey', 'ez', 'hy', 'hz')), ((0, 3, 0, 3),)*4, False, (.5, .5), False),)
+    NORMAL_PERIODIC = False
+    flux_meta = ((0, 1, bins, tuple(field_channel(c) for c in ('ey', 'ez', 'hy', 'hz')), ((0, 3, 0, 3),)*4, False, (.5, .5), NORMAL_PERIODIC),)
     env = dict(planes=planes, flux=flux, st=state, dt=1., step_idx=jnp.int32(3),
                carry={'dft_planes': (acc,), 'flux_monitors': ((acc, acc, acc, acc),)},
                dft_meta=dft_meta, flux_meta=flux_meta,
@@ -84,7 +82,8 @@ def jacobian_nodes(function, shape):
 
 
 def judge_metadata(plan, actual):
-    """Compare every channel's pair of offsets and record slot to production."""
+    """Compare every channel's pair of offsets and record slot to production.
+    Raw probes return post-update state in scan order, so their clock is the physical sample time."""
     from rfx.core.dft_utils import port_dft_phase
     from rfx.sources.waveguide_port import update_waveguide_port_probe
     from rfx.measurement.waveguide_s import _rect_dft
@@ -114,7 +113,6 @@ def judge_metadata(plan, actual):
                                'v_dft', 'i_dft', 'v_ref_dft', 'v_ref_dft_l', 'i_dft_l')})
                 env['frame'] = SimpleNamespace(step_idx=env['step_idx'])
                 env['ctx'] = SimpleNamespace(dt=1., sp_freqs=bins)
-                # Both steppers now execute the sampler's phase statements.
                 env.update(freqs=bins, acc=SimpleNamespace(dtype=jnp.complex64))
                 sampler = 'rfx/measurement/port_sampler.py'
                 phase = eval(assignment(sampler, 'phase'), env)
@@ -125,7 +123,6 @@ def judge_metadata(plan, actual):
                 cfg = actual['waveguide_ports'][int(owner.id.rsplit(':', 1)[1])]
                 cfg = cfg._replace(freqs=jnp.array([.01]))
                 state = SimpleNamespace(step=jnp.int32(4))
-                # Distinct nonzero values reveal the actual write index, independent of the plan.
                 from unittest.mock import patch
                 with patch('rfx.measurement.waveguide_modal.modal_voltage', return_value=jnp.float32(2)), \
                      patch('rfx.measurement.waveguide_modal.modal_current', return_value=jnp.float32(3)):
@@ -138,12 +135,9 @@ def judge_metadata(plan, actual):
                 h_phase = _rect_dft(recorded.v_probe_t, recorded.freqs, 1., recorded.n_steps_recorded, 'H')
                 h = float(-jnp.angle(h_phase[0])/(2*jnp.pi*.01))
             elif owner.kind == 'current_moment':
-                # The actual monitor supplies the accumulator's half-step stamp.
                 e, h = 4., 3+float(actual['current_moments'].half_step)
-                assert channel.kind == 'H'  # Contributions form the current at the H time.
+                assert channel.kind == 'H'
             else:
-                # Raw probes have no Fourier stamp. They return post-update state
-                # in scan order, so their clock is the physical sample time.
                 e, h = 4., 3.5
             np.testing.assert_allclose(channel.e_time_offset, e-4, atol=2e-6, rtol=0)
             np.testing.assert_allclose(channel.h_time_offset, h-3.5, atol=2e-6, rtol=0)

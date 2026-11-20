@@ -35,10 +35,6 @@ import jax.numpy as jnp
 from rfx.optimize import _adam_multistart, optimize, DesignRegion, OptimizeResult
 
 
-# ---------------------------------------------------------------------------
-# Reference: verbatim copy of the LEGACY (pre-WP-4-C) inline optimize() Adam
-# loop.  The bit-identity gate asserts the promoted core reproduces this.
-# ---------------------------------------------------------------------------
 def _legacy_single_start_adam(cost_fn, init_latent, n_iters, lr):
     beta1, beta2, eps_adam = 0.9, 0.999, 1e-8
     m = jnp.zeros_like(init_latent)
@@ -69,9 +65,6 @@ def _bowl_cost(z):
     return jnp.sum((z - target) ** 2)
 
 
-# ---------------------------------------------------------------------------
-# 1. BIT-IDENTITY GATE (load-bearing) — synthetic, portable
-# ---------------------------------------------------------------------------
 def test_bit_identity_eager_matches_legacy_loop():
     """`_adam_multistart(jit=False)` matches the legacy Adam loop bit-for-bit.
 
@@ -96,9 +89,6 @@ def test_bit_identity_eager_matches_legacy_loop():
         "final latent drifted from the legacy loop"
 
 
-# ---------------------------------------------------------------------------
-# Synthetic costs (mirrors tests/unit/autodiff/test_msl_multistart.py)
-# ---------------------------------------------------------------------------
 def _bimodal_cost(x):
     shallow = 0.30 * jnp.exp(-((x - 2.0) ** 2) / (2.0 * 0.6 ** 2))
     deep = 0.90 * jnp.exp(-((x - 8.0) ** 2) / (2.0 * 0.6 ** 2))
@@ -117,10 +107,6 @@ def _scalar(v):
     return jnp.asarray(v, dtype=jnp.float32)
 
 
-# ---------------------------------------------------------------------------
-# 2. The six MSL-G2 behaviors, at the library level
-# ---------------------------------------------------------------------------
-# Behavior 1: multi-start best-of returns the deeper (global) basin.
 def test_behavior1_multistart_finds_global_min_from_both_basins():
     best_latent, lh, all_h, best_start = _adam_multistart(
         _bimodal_cost,
@@ -129,12 +115,10 @@ def test_behavior1_multistart_finds_global_min_from_both_basins():
     )
     assert abs(float(best_latent) - 8.0) < 0.15, \
         f"best_latent={float(best_latent)} should be the global min near 8.0"
-    # best_start's own trajectory holds the deep-well floor.
     assert min(all_h[best_start]) < 0.2
     assert len(all_h) == 3
 
 
-# Behavior 2: best-of selection is independent of seed order.
 def test_behavior2_selection_independent_of_seed_order():
     _, _, _, best_start_a = _adam_multistart(
         _bimodal_cost, [_scalar(2.0), _scalar(8.0)],
@@ -144,15 +128,13 @@ def test_behavior2_selection_independent_of_seed_order():
         _bimodal_cost, [_scalar(8.0), _scalar(2.0)],
         n_iters=100, lr=0.2, best_iterate=True,
     )
-    assert best_start_a == 1   # deep basin listed second wins
-    assert best_start_b == 0   # deep basin listed first wins
+    assert best_start_a == 1
+    assert best_start_b == 0
     assert abs(float(best_latent_b) - 8.0) < 0.15
 
 
-# Behavior 3: step-clamp bounds the per-step DoF (latent) move.
 def test_behavior3_step_clamp_bounds_per_step_move():
-    # Constant-gradient (linear) cost => Adam pushes a large, steady step.
-    w = jnp.asarray([3.0, -4.0], dtype=jnp.float32)  # ||grad|| large
+    w = jnp.asarray([3.0, -4.0], dtype=jnp.float32)
 
     def lin_cost(z):
         return jnp.sum(w * z)
@@ -160,28 +142,24 @@ def test_behavior3_step_clamp_bounds_per_step_move():
     init = jnp.zeros((2,), dtype=jnp.float32)
     clamp = 0.05
 
-    # n_iters=1 isolates a single clamped step: ||Δlatent|| <= step_clamp.
     bl1, _, _, _ = _adam_multistart(lin_cost, [init], n_iters=1, lr=5.0,
                                     step_clamp=clamp)
     move1 = float(jnp.linalg.norm(bl1 - init))
     assert move1 <= clamp + 1e-6, f"single clamped step {move1} exceeded {clamp}"
 
-    # Unclamped: the same huge lr moves far more than the clamp would allow.
     bu1, _, _, _ = _adam_multistart(lin_cost, [init], n_iters=1, lr=5.0)
     move_unclamped = float(jnp.linalg.norm(bu1 - init))
     assert move_unclamped > clamp, "control: unclamped step should exceed clamp"
 
-    # Cumulative bound over K clamped steps: ||final-init|| <= K*step_clamp.
     K = 6
     blK, _, _, _ = _adam_multistart(lin_cost, [init], n_iters=K, lr=5.0,
                                     step_clamp=clamp)
     assert float(jnp.linalg.norm(blK - init)) <= K * clamp + 1e-6
 
 
-# Behavior 4: best-iterate returns the best-visited, not the overshot final.
 def test_behavior4_best_iterate_not_overshot_final():
+    """The high learning rate builds momentum and overshoots the sharp well at x = 8."""
     init = [_scalar(7.0)]
-    # High lr builds momentum and overshoots the sharp well at x=8.
     best_lat, best_lh, _, _ = _adam_multistart(
         _sharp_well, init, n_iters=40, lr=0.8, best_iterate=True,
     )
@@ -190,20 +168,17 @@ def test_behavior4_best_iterate_not_overshot_final():
     )
     c_best = float(_sharp_well(best_lat))
     c_final = float(_sharp_well(final_lat))
-    # best-iterate is no worse than, and here strictly better than, final.
     assert c_best <= c_final + 1e-9
     assert c_best < c_final, "expected an overshoot (best strictly < final)"
     assert abs(float(best_lat) - 8.0) < 0.1, "best-iterate should sit at the well floor"
-    # best-iterate's returned latent achieves the trajectory-min recorded loss.
     assert abs(c_best - min(best_lh)) < 1e-5
 
 
-# Behavior 5: a NaN start listed first must not lock in as best.
 def test_behavior5_nan_start_first_is_rejected():
     with pytest.warns(UserWarning, match="non-finite"):
         best_lat, best_lh, all_h, best_start = _adam_multistart(
             _bimodal_cost_nan_below,
-            [_scalar(-1.0), _scalar(8.0)],   # NaN region first, global basin second
+            [_scalar(-1.0), _scalar(8.0)],
             n_iters=60, lr=0.2, best_iterate=True,
         )
     assert best_start == 1
@@ -212,7 +187,6 @@ def test_behavior5_nan_start_first_is_rejected():
     assert abs(float(best_lat) - 8.0) < 0.15
 
 
-# Behavior 6: all-non-finite multi-start fails loudly (fail-closed).
 def test_behavior6_all_nan_multistart_raises():
     with pytest.warns(UserWarning, match="non-finite"):
         with pytest.raises(RuntimeError, match="non-finite loss at every iterate"):
@@ -223,9 +197,6 @@ def test_behavior6_all_nan_multistart_raises():
             )
 
 
-# ---------------------------------------------------------------------------
-# Fail-soft (single start) + input validation
-# ---------------------------------------------------------------------------
 def test_single_start_nan_is_fail_soft_not_raise():
     """A SINGLE non-finite start preserves the legacy warn-and-return-last-good
     contract (does NOT raise — that is a multi-start-only guard)."""
@@ -236,7 +207,7 @@ def test_single_start_nan_is_fail_soft_not_raise():
         )
     assert best_lh == []
     assert best_start == 0
-    assert float(best_lat) == float(init)  # last-good == the (finite) init
+    assert float(best_lat) == float(init)
 
 
 def test_step_clamp_nonpositive_raises():
@@ -252,16 +223,14 @@ def test_helper_is_pure_no_fdtd():
         [jnp.asarray(3.0, dtype=jnp.float32)],
         n_iters=1, lr=0.1,
     )
-    assert abs(float(bl) - 3.0) < 1e-3   # already at the min
+    assert abs(float(bl) - 3.0) < 1e-3
     assert bs == 0 and len(all_h) == 1
 
 
-# ---------------------------------------------------------------------------
-# End-to-end through optimize() — FDTD (gpu-marked like the other optimize tests)
-# ---------------------------------------------------------------------------
 def _tiny_sim():
+    """Every domain length written as ``6 * (299792458.0 / 5e9 / 20.0)`` is a whole number of cells of dx, so the solved domain equals the declared one."""
     from rfx.api import Simulation
-    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
     sim.add_port((0.005, 0.0075, 0.0075), "ez")
     sim.add_probe((0.011, 0.0075, 0.0075), "ez")
     return sim
@@ -319,7 +288,6 @@ def test_optimize_multistart_and_knobs_plumb_through():
 
 
 def test_optimize_rejects_bad_n_starts():
-    # Raised before any FDTD work, so this stays in the fast (non-gpu) suite.
     with pytest.raises(ValueError, match="n_starts must be >= 1"):
         optimize(_tiny_sim(), _tiny_region(), _obj, n_iters=1, verbose=False,
                  n_starts=0)

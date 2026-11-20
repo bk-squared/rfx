@@ -59,7 +59,7 @@ def test_debye_coefficients():
 
     assert abs(float(coeffs.alpha[0, 2, 2, 2]) - alpha_expected) < 1e-6, \
         f"alpha: {float(coeffs.alpha[0,2,2,2]):.8f} vs {alpha_expected:.8f}"
-    # ca/cb/cc/beta are per E component since #1260; in a homogeneous
+    # ca/cb/cc/beta are per E component; in a homogeneous
     # material all three carry the same value.
     for c in range(3):
         assert abs(float(coeffs.beta[c][0, 2, 2, 2]) - beta_expected) / beta_expected < 1e-4, \
@@ -274,7 +274,7 @@ def test_debye_two_poles():
 
     # Should have 2 poles in alpha/beta arrays
     assert coeffs.alpha.shape[0] == 2
-    assert all(b.shape[0] == 2 for b in coeffs.beta)   # per E component (#1260)
+    assert all(b.shape[0] == 2 for b in coeffs.beta)   # per E component
     assert all(c.shape[0] == 2 for c in coeffs.cc)
 
     # P state should have 2 poles

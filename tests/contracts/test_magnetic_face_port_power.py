@@ -95,7 +95,8 @@ def test_mixed_wave_admits_magnetic_face_port(monkeypatch, wire):
 
 
 def _radiator_power(full, *, wire=False, high_face=False):
-    """Use public rfx.run: one SimResult carries raw V/I and flux DFTs."""
+    """Use public rfx.run: one SimResult carries raw V/I and flux DFTs.
+    PMC carries no normal flux."""
     import time
     from rfx import GaussianPulse, make_port_source, make_probe, run
     from rfx.measurement.plan import build_measurement_plan
@@ -106,15 +107,14 @@ def _radiator_power(full, *, wire=False, high_face=False):
                                      setup_wire_port, _wire_port_live_cells)
 
     started = time.perf_counter()
-    # Full physical y=-Ly..Ly is translated by Ly in the grid's zero frame.
-    yc = .012 if full or high_face else 0.
+    FULL_Y_TRANSLATION_M = .012
+    yc = FULL_Y_TRANSLATION_M if full or high_face else 0.
     half_boundary = Boundary('cpml', 'pmc') if high_face else Boundary('pmc', 'cpml')
     sim = Simulation(freq_max=20e9, domain=(.024, .024 if full else .012, .024),
                      dx=.001, cpml_layers=4, boundary=BoundarySpec(
                          x='cpml', y='cpml' if full else half_boundary, z='cpml'))
     pulse = GaussianPulse(f0=10e9, bandwidth=.8)
     position = (.012, yc, .011 if wire else .012)
-    # Wire spans a two-cell gap centred at z=12 mm.
     sim.add_port(position, 'ez', impedance=50., waveform=pulse, extent=.002 if wire else None)
     bins = np.array([8e9, 10e9, 12e9])
     low = np.array([.008, yc - .004 if full or high_face else 0., .008])
@@ -124,7 +124,7 @@ def _radiator_power(full, *, wire=False, high_face=False):
         tangential = [a for a in range(3) if a != axis]
         for side, sign in ((0, -1), (1, 1)):
             if not full and axis == 1 and side == int(high_face):
-                continue  # PMC carries no normal flux.
+                continue
             sim.add_flux_monitor(axis='xyz'[axis], coordinate=(low if side == 0 else high)[axis],
                                  freqs=bins, size=tuple((high-low)[tangential]),
                                  center=tuple(((high+low)/2)[tangential]))
@@ -149,19 +149,18 @@ def _radiator_power(full, *, wire=False, high_face=False):
     result = run(grid, materials, 768, boundary='cpml', pec_axes='', sources=sources,
                  probes=[make_probe(grid, (.014, yc + (-.002 if high_face else .002), .013), 'ez')],
                  flux_monitors=build_flux_monitor_cfgs(sim, grid, 768), **port_specs)
-    # Independently transform the public records by channel name and the Yee
-    # physical clock. No S, port-power helper, or mirror factor enters P.
     owner = next(o for o in build_measurement_plan(sim, grid, n_steps=768, path='run_uniform').owners
                  if o.id == 'port:0:mode:0')
     record = result.sparam_time_records[0]
     assert record.channels == tuple(c.name for c in owner.channels)
     channels = {name: np.asarray(record[name]) for name in record.channels}
-    voltage = 'V_port' if wire else 'V'  # Whole-gap wire voltage, not midpoint voltage.
+    WHOLE_GAP_VOLTAGE_CHANNEL = 'V_port'
+    voltage = WHOLE_GAP_VOLTAGE_CHANNEL if wire else 'V'
     spectra = {name: (np.exp(-2j*np.pi*bins[:, None]*(np.arange(record.samples.shape[0])+offset)*result.dt)
                      @ channels[name]) * result.dt for name, offset in [(voltage, 1.), ('I', .5)]}
-    power = .5*np.real(spectra[voltage]*np.conj(spectra['I']))
-    # flux_spectrum returns Re(E x H*); .5 puts it in the same power units.
-    flux = .5*sum(sign*flux_spectrum(mon, exact_f64=True)
+    TIME_AVERAGED_POWER_FACTOR = .5
+    power = TIME_AVERAGED_POWER_FACTOR*np.real(spectra[voltage]*np.conj(spectra['I']))
+    flux = TIME_AVERAGED_POWER_FACTOR*sum(sign*flux_spectrum(mon, exact_f64=True)
                   for sign, mon in zip(signs, result.flux_monitors))
     return dict(power=power, flux=flux, field=np.asarray(result.time_series),
                 seconds=time.perf_counter()-started)

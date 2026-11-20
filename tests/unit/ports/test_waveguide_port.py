@@ -171,8 +171,7 @@ def test_waveguide_sparams_recover_traveling_waves(mode_type, mode, freqs):
     v_probe = a_probe + b_probe
     i_probe = (a_probe - b_probe) / z_mode
 
-    # Phase 2 cleanup (2026-04-25): the in-scan DFT accumulators were
-    # removed from WaveguidePortConfig. Pass V/I spectra as explicit
+    # Pass V/I spectra as explicit
     # kwargs into the wave-decomposition extractor.
     s11_full, s21_full = extract_waveguide_sparams(
         cfg,
@@ -234,9 +233,8 @@ def test_waveguide_sparams_support_reference_plane_shifts():
     assert positions["reference"] == pytest.approx(0.016)
     assert positions["probe"] == pytest.approx(0.030)
 
-    # Phase 2 cleanup (2026-04-25): inject mock V/I spectra via the
-    # explicit-kwarg path on extract_waveguide_sparams (the in-scan
-    # DFT accumulator fields were removed from WaveguidePortConfig).
+    # Inject mock V/I spectra via the
+    # explicit-kwarg path on extract_waveguide_sparams.
     s11, s21 = extract_waveguide_sparams(
         cfg,
         ref_shift=ref_plane_shift,
@@ -295,7 +293,7 @@ def _run_waveguide_sim(a_wg, b_wg, length, f0, dx, nc, freqs,
 
     port = WaveguidePort(
         x_index=port_x,
-        y_slice=(0, grid.ny), z_slice=(0, grid.nz),
+        y_slice=(0, grid.ny - 1), z_slice=(0, grid.nz - 1),
         a=a_actual, b=b_actual,
         mode=(1, 0), mode_type="TE",
     )

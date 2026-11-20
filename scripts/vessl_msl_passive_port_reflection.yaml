@@ -7,6 +7,7 @@ resources:
   memory: 16Gi
 image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
 env:
+  RFX_WORKSPACE: "FILL_BEFORE_SUBMIT"
   DEBIAN_FRONTEND: noninteractive
   PYTHONUNBUFFERED: "1"
   HDF5_USE_FILE_LOCKING: "FALSE"
@@ -19,6 +20,7 @@ mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -eux
+  test "$RFX_WORKSPACE" != "FILL_BEFORE_SUBMIT"
   echo "=== rfx #524: |Gamma_passive| re-measurement battery (report-only) ==="
   date
   PY=python
@@ -27,7 +29,7 @@ run: |-
 
   # RUN CLONE, not the primary checkout: this lane must not depend on what
   # research/rfx has checked out.
-  ROOT=/root/workspace/byungkwan-workspace/research/rfx-fidelity-722
+  ROOT=/root/workspace/$RFX_WORKSPACE/research/rfx-fidelity-722
   cd "$ROOT"
   git config --global --add safe.directory "$ROOT" || true
   echo "=== provenance ==="

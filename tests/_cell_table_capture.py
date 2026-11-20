@@ -12,13 +12,13 @@ def record_cell_table_capture(grid, shapes):
     shape_indices = {id(shape): index for index, shape in enumerate(shapes)}
 
     def record(captured_grid, captured_shapes, fraction, owner, component, *, face=False):
+        """Object identities are local to a run, so the capture preserves scene order."""
         assert captured_grid is grid
         calls.append({
             'fraction': np.array(fraction, copy=True),
             'owner': np.array(owner, copy=True),
             'component': np.asarray(component),
             'face': np.asarray(face),
-            # Object identities are local to a run; preserve their scene order.
             'shape_indices': np.array([shape_indices[id(s)] for s in captured_shapes],
                                       dtype=np.int64),
         })

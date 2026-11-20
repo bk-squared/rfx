@@ -83,7 +83,7 @@ def _debye_overlap_entries_and_ratio(make_pole):
     grid = sim._build_grid()
     _, debye, _ = sim._build_materials(grid)
     coeffs, _state = debye
-    # beta / c are per E component since #1260; the overlap cell's three
+    # beta / c are per E component; the overlap cell's three
     # components are equal (interior of the union), Ex's stands for them.
     n_entries = int(coeffs.beta[0].shape[0])
 
@@ -338,7 +338,7 @@ def test_traced_debye_pole_compiles():
         assert debye_spec is not None
         coeffs, _ = init_debye(debye_spec[0], materials, grid.dt,
                                mask=debye_spec[1], high_wall=unpadded_high_walls(grid))
-        return sum(jnp.sum(b) for b in coeffs.beta)   # per component (#1260)
+        return sum(jnp.sum(b) for b in coeffs.beta)   # per component
 
     g = jax.grad(loss)(jnp.float32(3.0))
     assert np.isfinite(float(g))
@@ -386,7 +386,7 @@ def test_traced_lorentz_pole_compiles():
         assert lorentz_spec is not None
         coeffs, _ = init_lorentz(lorentz_spec[0], materials, grid.dt,
                                  mask=lorentz_spec[1], high_wall=unpadded_high_walls(grid))
-        return sum(jnp.sum(c) for c in coeffs.c)   # per component (#1260)
+        return sum(jnp.sum(c) for c in coeffs.c)   # per component
 
     g = jax.grad(loss)(jnp.float32(np.log((2 * np.pi * 3e9) ** 2)))
     assert np.isfinite(float(g))
@@ -419,7 +419,7 @@ def test_rasterize_geometry_path_value_dedupe_and_traced():
             t_sim._geometry, t_sim._resolve_material, t_coords)
         coeffs, _ = init_debye(t_debye_spec[0], materials, t_grid.dt,
                                mask=t_debye_spec[1], high_wall=unpadded_high_walls(grid))
-        return sum(jnp.sum(b) for b in coeffs.beta)   # per component (#1260)
+        return sum(jnp.sum(b) for b in coeffs.beta)   # per component
 
     g = jax.grad(loss)(jnp.float32(3.0))
     assert np.isfinite(float(g))

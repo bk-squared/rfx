@@ -1,6 +1,7 @@
 """Publication-boundary and version-scope contracts; no prose equality gate."""
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -224,17 +225,18 @@ def test_builder_uses_the_same_identity_validation_before_loading_runtime(tmp_pa
     assert not (tmp_path / "output").exists()
 
 
+@pytest.mark.parametrize("channel", ["release", "development"])
 @pytest.mark.parametrize("has_authored_index", [False, True])
-def test_generated_api_index_preserves_authoring_or_supplies_release_fallback(tmp_path, has_authored_index):
+def test_generated_api_index_preserves_authoring_or_supplies_release_fallback(tmp_path, has_authored_index, channel):
     generated = tmp_path / "api/generated"
     generated.mkdir(parents=True)
     original_menu = b"<html><body><a href='rfx.html'>module</a></body></html>"
     (generated / "index.html").write_bytes(original_menu)
     base = "https://remilab.ai/rfx/versions/v1.8.0"
-    sha = "7" * 40
+    sha = "7777777777777777777777777777777777777777"
     bundle.finish_generated_index(
         generated, has_authored_index=has_authored_index, base_url=base,
-        channel="release", package_version="1.8.0", source_sha=sha,
+        channel=channel, package_version="1.8.0", source_sha=sha,
     )
     assert (generated / "index-pdoc.html").read_bytes() == original_menu
     assert (generated / "index.html").exists() is not has_authored_index
@@ -259,10 +261,60 @@ def test_generated_api_index_preserves_authoring_or_supplies_release_fallback(tm
         parsed.feed(landing)
         assert parsed.refresh == f"0; url={base}/api/generated/rfx.html"
         assert f"{base}/api/generated/rfx.html" in parsed.links
-        assert f"https://github.com/bk-squared/rfx/tree/{sha}" in parsed.links
+        if channel == "release":
+            assert "<p>Release documentation · rfx 1.8.0</p>" in landing
+            assert "7777777777777777777777777777777777777777" not in landing
+            assert "https://github.com/bk-squared/rfx/tree/" not in landing
+        else:
+            assert "Development documentation · rfx 1.8.0" in landing
+            assert "7777777777777777777777777777777777777777" in landing
+            assert "https://github.com/bk-squared/rfx/tree/7777777777777777777777777777777777777777" in parsed.links
         assert all(url.startswith(base + "/") or sha in url for url in parsed.links)
-        assert "1.8.0" in landing and sha in landing
         assert bundle.allowed_artifact("api/generated/index.html")
+
+
+@pytest.mark.parametrize("channel", ["release", "development"])
+def test_generated_html_release_banner_and_rst_tables(channel):
+    source = (
+        '<main class="pdoc">'
+        '<p>\n===== =====\nName  Value\n===== =====\n'
+        '<code><a href="rfx.html#item">item</a></code>  1\n===== =====\n</p>'
+        '<p>+-----+-----+\n| A   | B   |\n+-----+-----+</p>'
+        '<p>a == b and a ==== word</p>'
+        '<a href="index.html">Index</a><a href="sub/index.html">Subindex</a>'
+        '<a href="https://github.com/bk-squared/rfx/blob/main/rfx/example.py">Source</a>'
+        '<a href="https://github.com/bk-squared/rfx/tree/master/rfx">Tree</a>'
+        '<footer>release | rfx 1.8.0 | 777777777777</footer></main>'
+    )
+    result = bundle.finish_generated_html(
+        source, channel=channel, package_version="1.8.0",
+        sha="7777777777777777777777777777777777777777", base_url="https://remilab.ai/rfx",
+    )
+    banner = result.split("<aside", 1)[1].split("</aside>", 1)[0]
+    if channel == "release":
+        assert "Release documentation</strong> · rfx 1.8.0<br>" in banner
+        assert "7777777777777777777777777777777777777777" not in banner
+        assert "777777777777" not in banner
+        assert "https://github.com/bk-squared/rfx/tree/" not in banner
+    else:
+        assert "Development documentation" in banner
+        assert "777777777777" in banner
+        assert 'href="https://github.com/bk-squared/rfx/tree/7777777777777777777777777777777777777777"' in banner
+    assert result.count('<pre class="rst-table">') == 2
+    assert (
+        '<pre class="rst-table">\n===== =====\nName  Value\n===== =====\n'
+        '<code><a href="rfx.html#item">item</a></code>  1\n===== =====\n</pre>'
+    ) in result
+    assert '<pre class="rst-table">+-----+-----+\n| A   | B   |\n+-----+-----+</pre>' in result
+    assert '<p>a == b and a ==== word</p>' in result
+    assert '<a href="https://remilab.ai/rfx/">Manual</a>' in banner
+    assert '<a href="https://remilab.ai/rfx/llms.txt">LLM index</a>' in banner
+    assert '<a href="https://remilab.ai/rfx/api/inventory.json">Typed inventory</a>' in banner
+    assert '<a href="index-pdoc.html">Index</a>' in result
+    assert '<a href="sub/index-pdoc.html">Subindex</a>' in result
+    assert 'href="https://github.com/bk-squared/rfx/blob/7777777777777777777777777777777777777777/rfx/example.py"' in result
+    assert 'href="https://github.com/bk-squared/rfx/tree/7777777777777777777777777777777777777777/rfx"' in result
+    assert '<footer>release | rfx 1.8.0 | 777777777777</footer>' in result
 
 
 def test_clean_markdown_removes_jsx_snippet_markers_and_preserves_python():
@@ -492,6 +544,80 @@ def built_bundle(tmp_path, monkeypatch):
     manifest = bundle.build(root, output, 'https://remilab.ai/rfx', 'development', None)
     monkeypatch.setattr('export_public_docs_to_gitops.get_tracked_files', lambda *args: {manual})
     return root, output, manifest
+
+
+def test_build_uses_pdoc_templates_and_preserves_default_bytes(tmp_path, monkeypatch):
+    import types
+    import check_api_reference
+
+    root = tmp_path / 'source'
+    public = root / 'docs/public'
+    public.mkdir(parents=True)
+    manual = public / 'index.mdx'
+    manual.write_text('---\ntitle: Manual\n---\nManual body.')
+    (public / 'site_map.json').write_text('{"groups": []}')
+    for name in bundle.SUPPORT_FILES:
+        path = root / 'docs/guides' / name
+        path.parent.mkdir(exist_ok=True)
+        path.write_text('{}')
+    monkeypatch.setattr(bundle, 'check_source', lambda *args: 'a' * 40)
+    monkeypatch.setattr(bundle, 'get_tracked_files', lambda *args: {manual})
+    monkeypatch.setattr(bundle, 'toolchain', lambda: {})
+    monkeypatch.setitem(sys.modules, 'pdoc', types.SimpleNamespace(__version__='fixture'))
+    monkeypatch.setattr(bundle, 'api_inventory', lambda *args: {'package_version': 'fixture', 'symbols': []})
+    monkeypatch.setattr(check_api_reference, 'check_html', lambda *args: [])
+    monkeypatch.setattr(check_api_reference, 'build_inventory', lambda: {})
+    commands = []
+
+    def render(command, **kwargs):
+        captured = list(command)
+        target = Path(command[command.index('-o') + 1])
+        captured[captured.index('-o') + 1] = '<output>'
+        commands.append(captured)
+        target.mkdir(parents=True)
+        (target / 'index.html').write_text('<html>Index</html>')
+        (target / 'rfx.html').write_text('<main class="pdoc">API</main>')
+
+    monkeypatch.setattr(bundle.subprocess, 'run', render)
+    default = tmp_path / 'default'
+    explicit = tmp_path / 'explicit'
+    custom = tmp_path / 'custom'
+    templates = tmp_path / 'templates'
+    templates.mkdir()
+    (templates / 'module.html.jinja2').write_text('Custom template.\n')
+    bundle.build(root, default, 'https://remilab.ai/rfx', 'development', None)
+    bundle.build(root, explicit, 'https://remilab.ai/rfx', 'development', None,
+                 pdoc_templates=bundle.GENERATOR_ROOT / 'docs/pdoc_templates')
+    manifest = bundle.build(root, custom, 'https://remilab.ai/rfx', 'development', None,
+                            pdoc_templates=templates)
+    assert commands[0][commands[0].index('-t') + 1] == str(bundle.GENERATOR_ROOT / 'docs/pdoc_templates')
+    assert commands[2][commands[2].index('-t') + 1] == str(templates)
+    assert [arg for i, arg in enumerate(commands[0]) if i != commands[0].index('-t') + 1] == [
+        arg for i, arg in enumerate(commands[2]) if i != commands[2].index('-t') + 1]
+    assert {path.relative_to(default): path.read_bytes() for path in default.rglob('*') if path.is_file()} == {
+        path.relative_to(explicit): path.read_bytes() for path in explicit.rglob('*') if path.is_file()}
+    assert manifest['generator']['template_sha256'] == {
+        'module.html.jinja2': hashlib.sha256(b'Custom template.\n').hexdigest()}
+    linked = tmp_path / 'linked'
+    linked.mkdir()
+    (linked / 'module.html.jinja2').symlink_to(templates / 'module.html.jinja2')
+    empty = tmp_path / 'empty'
+    empty.mkdir()
+    for invalid in (tmp_path / 'missing', linked, empty, templates / 'module.html.jinja2'):
+        with pytest.raises(ValueError, match='--pdoc-templates'):
+            bundle.build(root, tmp_path / 'invalid', 'https://remilab.ai/rfx', 'development', None,
+                         pdoc_templates=invalid)
+        assert len(commands) == 3
+    calls = []
+
+    def fake_build(*args):
+        calls.append(args)
+        return {'pages': [], 'files': {}, 'source_sha': 'a' * 40}
+
+    monkeypatch.setattr(bundle, 'build', fake_build)
+    monkeypatch.setattr(sys, 'argv', ['build_public_docs_bundle.py', '--pdoc-templates', str(templates)])
+    assert bundle.main() == 0
+    assert calls[-1][5] == templates
 
 
 def test_build_indexes_only_allowlisted_agents_and_combines_the_same_pages(built_bundle):

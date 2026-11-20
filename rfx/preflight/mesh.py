@@ -76,6 +76,8 @@ instead of leaving two different functions sharing one name.
 
 from __future__ import annotations
 
+from rfx.preflight._not_judged import current_check, is_tracer_error, not_judged
+
 from rfx.preflight._subjects import finding_subjects, runway_region
 
 import math
@@ -85,7 +87,7 @@ import numpy as np
 from rfx.grid import C0
 from rfx._internal._grid_metric import is_one_cell_size
 from rfx.core.jax_utils import is_tracer
-from rfx.geometry.csg import Box
+from rfx.geometry.csg import Box, Cylinder, Sphere
 
 from rfx.preflight._common import (
     _fmt_freq,
@@ -116,6 +118,65 @@ def _local_cell(profile, lo, hi, fallback):
     return float(d[inside].max())
 
 
+def _realized_cell_samples(self, cache):
+    """Primal-cell centres and widths of the grid the run builds, built once."""
+    if not cache:
+        from rfx.geometry.rasterize_grid import (
+            cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
+            centres_from_nonuniform_grid, centres_from_uniform_grid,
+        )
+        grid = self._build_realized_grid()
+        graded = hasattr(grid, "dx_arr")
+        cache.append(((centres_from_nonuniform_grid(grid) if graded
+                       else centres_from_uniform_grid(grid)),
+                      (cell_sizes_from_nonuniform_grid(grid) if graded
+                       else cell_sizes_from_uniform_grid(grid))))
+    return cache[0]
+
+
+def _warn_small_curved_body(self, entry, cache, is_pec) -> None:
+    """Warn for an admitted dielectric Sphere, or a Cylinder across its
+    radius, whose diameter is under three widths of the cell containing its
+    centre along an axis across it. A body below the size rule of
+    :mod:`rfx.geometry.curved_body_size` is refused at assembly instead, and
+    gets no warning here. A Cylinder thin only along its own axis is planar
+    and is not judged here. ``is_pec`` is the mesh check's own decision for
+    the entry's material."""
+    import warnings as _w
+    from rfx.geometry.curved_body_size import body_size_threshold, is_below_size
+    shape = entry.shape
+    if is_tracer(shape.radius) or any(is_tracer(v) for v in shape.center):
+        not_judged(None, "_validate_mesh_quality")
+        return
+    if is_pec:
+        return
+    centres, sizes = _realized_cell_samples(self, cache)
+    rule = body_size_threshold(shape, centres, sizes)
+    if rule is None or is_below_size(shape, centres, sizes):
+        return
+    _, _, widths, axes = rule
+    diameter = 2.0 * float(shape.radius)
+    cells, axis = min((diameter / widths[a], a) for a in axes)
+    if cells >= 3.0:
+        return
+    _w.warn(
+        PreflightWarning(
+            f"Small dielectric body: '{entry.material_name}' ({type(shape).__name__}) "
+            f"diameter {_fmt_len(diameter)} is {cells:.2f} cells across along "
+            f"{'xyz'[axis]} (containing cell {_fmt_len(widths[axis])}). A body this "
+            "small is over-polarized: against the converged result a sphere two "
+            "cells across measured 1.30× with subpixel smoothing and 1.25× without, "
+            "and a rod two cells across 1.10× and 1.13×; its polarizability and "
+            "scattering are overestimated by about that much. A sphere four cells "
+            "across read 1.07×. Put more cells across the body.",
+            **finding_subjects(self, objects=(entry,)),
+            code="mesh_resolution",
+            source="_validate_mesh_quality",
+        ),
+        stacklevel=4,
+    )
+
+
 def _validate_mesh_quality(self) -> None:
     """Pre-simulation mesh quality check (P0).
 
@@ -132,6 +193,7 @@ def _validate_mesh_quality(self) -> None:
         p is not None and is_tracer(p)
         for p in (self._dx_profile, self._dy_profile, self._dz_profile)
     ):
+        not_judged(None, "_validate_mesh_quality")
         return
 
     dx = self._dx
@@ -148,6 +210,7 @@ def _validate_mesh_quality(self) -> None:
     else:
         min_dz = dx
 
+    realized_cells: list = []
     for entry in self._geometry:
         shape = entry.shape
         mat_name = entry.material_name
@@ -169,7 +232,9 @@ def _validate_mesh_quality(self) -> None:
                         f"(finer dx / subpixel smoothing) or thicken the feature.",
                         **finding_subjects(self, objects=(entry,)),
                         code="mesh_import_underresolved", source="_validate_mesh_quality"))
-            except (ValueError, AttributeError, TypeError):
+            except (ValueError, AttributeError, TypeError) as _traced_exc:
+                if is_tracer_error(_traced_exc):
+                    not_judged(None, "_validate_mesh_quality")
                 pass
 
         # Get bounding box dimensions
@@ -177,7 +242,9 @@ def _validate_mesh_quality(self) -> None:
             try:
                 c1, c2 = shape.bounding_box()
                 dims = [abs(c2[i] - c1[i]) for i in range(3)]
-            except (NotImplementedError, TypeError):
+            except (NotImplementedError, TypeError) as _traced_exc:
+                if is_tracer_error(_traced_exc):
+                    not_judged(None, "_validate_mesh_quality")
                 continue
         else:
             continue
@@ -350,6 +417,9 @@ def _validate_mesh_quality(self) -> None:
                             stacklevel=3,
                         )
 
+        if isinstance(shape, (Sphere, Cylinder)):
+            _warn_small_curved_body(self, entry, realized_cells, is_pec)
+
     # Check gaps between PEC structures
     from rfx.model.materials import assembled_as_pec
     pec_entries = [e for e in self._geometry if assembled_as_pec(self, e)]
@@ -376,7 +446,9 @@ def _validate_mesh_quality(self) -> None:
                                 ),
                                 stacklevel=3,
                             )
-                except (NotImplementedError, TypeError, AttributeError):
+                except (NotImplementedError, TypeError, AttributeError) as _traced_exc:
+                    if is_tracer_error(_traced_exc):
+                        not_judged(None, "_validate_mesh_quality")
                     continue
 
     # Physics-based numerical dispersion check (Taflove Ch. 4).
@@ -408,6 +480,7 @@ def _check_numerical_dispersion(self) -> None:
         p is not None and is_tracer(p)
         for p in (self._dx_profile, self._dy_profile, self._dz_profile)
     ):
+        not_judged(None, "_validate_mesh_quality")
         return
 
     dx_nom = self._dx or (C0 / self._freq_max / 20.0)
@@ -476,6 +549,7 @@ def _validate_thin_metal_on_nu_mesh(self) -> None:
     if all(p is None for p in profiles):
         return
     if any(p is not None and is_tracer(p) for p in profiles):
+        not_judged(None, "_validate_mesh_quality")
         # Tracer profiles can't be host-scanned for edge / ratio
         # checks. The warning is advisory only; correctness is
         # preserved downstream.
@@ -532,6 +606,8 @@ def _validate_thin_metal_on_nu_mesh(self) -> None:
 def _validate_cfg_graded_box_rasterization(self, _w) -> None:
     """Warn when a Box misses the fine cells implied by its z-span."""
     if self._dz_profile is None or is_tracer(self._dz_profile):
+        if is_tracer(self._dz_profile):
+            not_judged(None, "_validate_cfg_graded_box_rasterization")
         return
 
     dz = np.asarray(self._dz_profile, dtype=np.float64)
@@ -650,6 +726,8 @@ def _validate_cfg_multiband_grading(self, _w) -> None:
                              ("y", self._dy_profile),
                              ("z", self._dz_profile)):
         if profile is None or is_tracer(profile) or len(profile) < 2:
+            if is_tracer(profile):
+                not_judged(None, "_validate_cfg_multiband_grading")
             continue
         p = np.asarray(profile, dtype=float)
         ratios = p[1:] / p[:-1]
@@ -764,6 +842,8 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
         return
     profiles = (self._dx_profile, self._dy_profile, self._dz_profile)
     if all(p is None or is_tracer(p) for p in profiles):
+        if any(is_tracer(p) for p in profiles):
+            not_judged(None, "_validate_cfg_thin_conductor_graded_node")
         return
 
     for i, tc in enumerate(tcs):
@@ -771,11 +851,14 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
         if lo is None or hi is None:
             continue
         if any(is_tracer(v) for bounds in (lo, hi) for v in bounds):
+            not_judged(None, "_validate_cfg_thin_conductor_graded_node")
             continue  # Assembly reports shapes whose bounds cannot be judged.
         extents = [float(hi[a]) - float(lo[a]) for a in range(3)]
         n_axis = min(range(3), key=lambda a: extents[a])
         prof = profiles[n_axis]
         if prof is None or is_tracer(prof):
+            if is_tracer(prof):
+                not_judged(None, "_validate_cfg_thin_conductor_graded_node")
             continue
         d = np.asarray(prof, dtype=np.float64)
         if d.size < 2:
@@ -876,6 +959,8 @@ def _graded_node_report(self, axis: int, coord: float):
 
     prof = (self._dx_profile, self._dy_profile, self._dz_profile)[axis]
     if prof is None or is_tracer(prof):
+        if is_tracer(prof):
+            not_judged(None, current_check("_graded_node_report"))
         return None
     d = np.asarray(prof, dtype=np.float64)
     if d.size < 2:
@@ -1013,6 +1098,7 @@ def _validate_cfg_nonuniform_limitations(
     self, _w, cpml_thickness: float
 ) -> None:
     """P2: Non-uniform mesh shadow-lane limitations."""
+    from rfx.sources.tfsf import is_oblique
     # Keyed on "is this the non-uniform lane", not on "was a z profile
     # given". A dx-only or dy-only mesh used to skip both checks below and
     # report All checks passed, though the TFSF auxiliary line runs along x
@@ -1035,7 +1121,7 @@ def _validate_cfg_nonuniform_limitations(
                     code="nonuniform_tfsf",
                     source="_validate_cfg_nonuniform_limitations",
                 )
-            if abs(self._tfsf.angle_deg) > 0.01:
+            if is_oblique(self._tfsf.angle_deg):
                 raise PreflightConfigError(
                     "TFSF oblique incidence is not yet supported on "
                     "a nonuniform mesh. Use angle_deg=0 with a uniform x axis.",
@@ -1046,6 +1132,8 @@ def _validate_cfg_nonuniform_limitations(
             _tfsf_ax = self._tfsf.direction[-1]
             _tfsf_prof = {"x": self._dx_profile, "y": self._dy_profile,
                           "z": self._dz_profile}[_tfsf_ax]
+            if self._tfsf.closed_box and is_tracer(_tfsf_prof):
+                not_judged(None, "_validate_cfg_nonuniform_limitations")
             if (self._tfsf.closed_box
                     and _tfsf_prof is not None and not is_tracer(_tfsf_prof)
                     and not is_one_cell_size(_tfsf_prof)):
@@ -1081,6 +1169,8 @@ def _validate_cfg_nonuniform_limitations(
         # thickness it actually allocates.
         _realized_depths = self._preflight_face_layers()
         _z_layers = max(_realized_depths["z_lo"], _realized_depths["z_hi"])
+        if self._boundary == "cpml" and _z_layers > 0 and is_tracer(self._dz_profile):
+            not_judged(None, "_validate_cfg_nonuniform_limitations")
         if (self._boundary == "cpml"
                 and _z_layers > 0
                 and not is_tracer(self._dz_profile)):

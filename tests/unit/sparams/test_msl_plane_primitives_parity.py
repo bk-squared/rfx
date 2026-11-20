@@ -50,21 +50,16 @@ L_LINE = 10e-3
 MARGIN = 2e-3
 F_MAX = 5e9
 
-# Node-dependent synthetic markers so the closed Ampere loop is not
-# identically zero and the V span's inclusive/exclusive boundary is
-# discriminating: Ez varies by z-node (node 3 IS the realized trace plane
-# on both meshes below — #931 §1.3 puts a foil sheet on the node nearest
-# its declared plane, and round(254/84.67) = round(254/80) = 3), Hy varies
-# by k (bottom vs. top leg differ), Hz varies by j (left vs. right leg
-# differ).
 _EZ_MARKER = {0: 1.0, 1: 1.0, 2: 1.0, 3: 10.0, 4: -1000.0}
-_RTOL = 1e-6  # fast (fake-run) lane tolerance -- same-function-call parity
-_BETA = 2500.0  # rad/m; resolves the half-cell error in both test meshes
+_RTOL = 1e-6
+SYNTHETIC_BETA_RAD_PER_M = 2500.0
+_BETA = SYNTHETIC_BETA_RAD_PER_M
 
 
 def _fake_run(self, *, n_steps=None, num_periods=1.0, compute_s_params=False,
               report_every=None, report_label=None):
-    """Sample synthetic fields at their actual Yee positions (no FDTD)."""
+    """Sample synthetic fields at their actual Yee positions (no FDTD).
+    The 2500 rad/m phase resolves the half-cell error in both test meshes."""
     grid = self._build_grid()
     planes = {}
     kk = jnp.arange(grid.nz, dtype=jnp.float32)
@@ -85,7 +80,7 @@ def _fake_run(self, *, n_steps=None, num_periods=1.0, compute_s_params=False,
                 ((1.0 + 0.1 * kk) * (1 + 0.2j)).astype(jnp.complex64)[None, None, :],
                 (1, grid.ny, grid.nz),
             )
-        else:  # hz
+        else:
             acc = jnp.broadcast_to(
                 ((0.5 + 0.01 * jj) * (1 - 0.3j)).astype(jnp.complex64)[None, :, None],
                 (1, grid.ny, grid.nz),
@@ -100,7 +95,8 @@ def _fake_run(self, *, n_steps=None, num_periods=1.0, compute_s_params=False,
 
 def _build_thru(dx: float) -> Simulation:
     """Two-port MSL thru-line, cross-section only wide/tall enough to hold
-    the port geometry -- no forward is ever run against it."""
+    the port geometry -- no forward is ever run against it.
+    The 35 um foil is declared as a sheet on the laminate face."""
     lx = L_LINE + 2 * MARGIN
     ly = W_TRACE + 2 * (2 * H_SUB + 8 * dx)
     lz = H_SUB + 1.5e-3
@@ -111,7 +107,6 @@ def _build_thru(dx: float) -> Simulation:
     sim.add_material("sub", eps_r=EPS_R)
     sim.add(Box((0, 0, 0), (lx, ly, H_SUB)), material="sub")
     y_c = ly / 2
-    # 35 um foil -> a SHEET on the laminate face (#931 §1.3).
     sim.add(
         Box((0, y_c - W_TRACE / 2, H_SUB), (lx, y_c + W_TRACE / 2, H_SUB)),
         material="pec",
@@ -124,13 +119,13 @@ def _build_thru(dx: float) -> Simulation:
 
 
 @pytest.mark.parametrize("dx,label", [
-    (H_SUB / 3, "aligned dx=h_sub/3"),   # h_sub/dx = 3.0 exactly: node-aligned
-    (80e-6, "bisecting dx=80um"),         # h_sub/dx = 3.175: the sheet
-                                          # snaps down to node 3, 14 um
-                                          # below the declared face
+    (H_SUB / 3, "aligned dx=h_sub/3"),
+    (80e-6, "bisecting dx=80um"),
 ])
 @pytest.mark.parametrize("port_index", [0, 1], ids=["plus_x", "minus_x"])
 def test_plane_path_v_and_i_match_production(dx, label, port_index, tmp_path, monkeypatch):
+    """The fixture must be capable of refuting a right-plane-only reader."""
+    assert int(round(H_SUB / dx)) == 3, "The board cell size must place the synthetic trace marker at node 3"
     sim = _build_thru(dx)
     freqs = jnp.asarray([1.0e9], dtype=jnp.float32)
     ps = register_msl_plane_probes(sim, port_index=port_index, freqs=freqs, name_prefix="d")
@@ -145,17 +140,11 @@ def test_plane_path_v_and_i_match_production(dx, label, port_index, tmp_path, mo
                                  (ps.hz_left_name, ps.hz_name)):
         left = np.asarray(fr.dft_planes[left_name].accumulator)
         right = np.asarray(fr.dft_planes[right_name].accumulator)
-        # Keep this fixture capable of refuting a right-plane-only reader.
         assert np.linalg.norm(left - right) > 0.05 * np.linalg.norm(right)
     v_copy = complex(np.asarray(_v_from_plane(fr, ps.ez1_name, ps))[0])
     i_copy = complex(np.asarray(_i_from_plane(fr, ps.hy_name, ps))[0])
 
     dump_path = tmp_path / "dump.npz"
-    # sim.run stays monkeypatched: compute_msl_s_matrix's OWN dft-plane
-    # registrations (different names, same components) are fed through the
-    # identical fake accumulators, so this is a same-input comparison of
-    # the two paths' integration logic, not a comparison across two
-    # different (real vs. fake) field states.
     sim.compute_msl_s_matrix(
         n_steps=1, freqs=freqs, num_periods=1.0, enforce_passivity=False,
         raw_3probe_dump_path=str(dump_path),
@@ -179,12 +168,11 @@ def test_plane_path_v_and_i_match_production(dx, label, port_index, tmp_path, mo
 
 @pytest.mark.parametrize("missing", ["hy_left_name", "hz_left_name", "legacy_metadata"])
 def test_plane_current_refuses_missing_bracketing_data_or_legacy_metadata(missing):
+    """An absent H stencil must not silently select staggered extraction."""
     sim = _build_thru(H_SUB / 3)
     ps = register_msl_plane_probes(sim, port_index=0, freqs=jnp.asarray([1e9]))
     fr = _fake_run(sim)
     if missing == "legacy_metadata":
-        # The original constructor keyword set remains accepted, but its
-        # absent H stencil must not silently select staggered extraction.
         legacy = vars(ps).copy()
         for name in ("hy_left_name", "hz_left_name", "h_weights"):
             legacy.pop(name)

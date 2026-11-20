@@ -87,24 +87,14 @@ def _mesh_shape():
     return mesh_import_mod.MeshShape(box)
 
 
-# Census instances: at least one per shape class; Cylinder on all 3 axes.
-# Node-aligned faces are the point — they are the case the f32 coordinates
-# realized wrongly.
 _SHAPE_CASES = {
     "oriented_box_three_axis": lambda: OrientedBox(
         (1.5e-3, 1.5e-3, 1.0e-3), (1.3e-3, 0.9e-3, 0.7e-3),
         np.array([[1., 2., 2.], [2., 1., -2.], [-2., 2., -1.]]) / 3),
     "box_volume_node_aligned": lambda: Box((0.5e-3, 0.5e-3, 0.4e-3),
                                            (2.5e-3, 2.5e-3, 1.2e-3)),
-    # One cell thick on z. The name said "sheet" until #931; a one-cell PEC
-    # Box is a VOLUME with a wall on both of its bounding node planes, and
-    # the property this census exercises (the same node mask in both lanes
-    # and at both x64 flags) never depended on the sheet reading.
     "box_one_cell_volume": lambda: Box((0.5e-3, 0.5e-3, 0.4e-3),
                                        (2.5e-3, 2.5e-3, 0.5e-3)),
-    # A DECLARED sheet: zero extent on z (#931 §1.5). Its plane is stated,
-    # not inferred from a tie-break, so it belongs in the census beside the
-    # volume it used to be confused with.
     "box_zero_thickness_sheet": lambda: Box((0.5e-3, 0.5e-3, 0.5e-3),
                                             (2.5e-3, 2.5e-3, 0.5e-3)),
     "cylinder_z": lambda: Cylinder((1.5e-3, 1.5e-3, 0.9e-3), radius=0.6e-3,
@@ -123,7 +113,7 @@ _SHAPE_CASES = {
     "curved_patch": lambda: CurvedPatch(center=(1.5e-3, 1.5e-3, 0.5e-3),
                                         length=1.6e-3, width=1.2e-3,
                                         radius=4e-3, axis="x"),
-    "mesh_shape": None,  # trimesh-gated, see _shape_for()
+    "mesh_shape": None,
 }
 
 
@@ -170,7 +160,6 @@ def test_the_one_uniform_node_formula_is_exact_f64():
     assert nodes.dtype == np.float64
     ref = (np.arange(56, dtype=np.float64) - 8) * 100e-6
     assert np.array_equal(nodes, ref)
-    # csg and the uniform coordinate provider both delegate to it
     grid = _grid()
     gx, gy, gz = _grid_coords(grid)
     cu = coords_from_uniform_grid(grid)
@@ -198,7 +187,7 @@ def test_node_aligned_box_realizes_the_documented_convention():
     its centre lies in the Box. Node-aligned faces retain 12750 cells.
     The earlier float32 node-coordinate defect included the x/y hi-face
     nodes and produced 13230 cells at x64=0.
-    """
+    The conductor contract is about where the walls are, rather than the cell count."""
     sim = Simulation(freq_max=20e9, domain=(12.5e-3, 3.4e-3, 3.9e-3),
                      dx=DX, cpml_layers=8, boundary="cpml")
     grid = sim._build_grid()
@@ -212,11 +201,6 @@ def test_node_aligned_box_realizes_the_documented_convention():
         assert occ.min() - pads[axis] == lo_n
         assert occ.max() - pads[axis] == hi_n
 
-    # The same Box declared as a CONDUCTOR is centre-sampled, and the
-    # thing the contract is about — where the walls are — is asserted here
-    # rather than left to the cell count. Drawn z 2.5 -> 2.8 mm, so walls on
-    # node planes 25 AND 28, not 25..27. The cell count above is the
-    # material-cell reading: node-aligned faces retain their cells.
     from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
     from rfx.geometry.rasterize_grid import (
         cell_centres_from_nodes, classify_pec_entry,
@@ -269,7 +253,6 @@ def test_realized_mask_is_x64_invariant(case):
     """Same declaration, same cells, regardless of jax_enable_x64."""
     shape = _shape_for(case)
     grid = _grid()
-    # Zero-cell material declarations refuse identically at both precisions.
     if case in ("curved_patch", "box_zero_thickness_sheet"):
         with pytest.raises(RfxRefusal) as first:
             _material_mask(shape, grid)
@@ -297,7 +280,6 @@ def test_uniform_and_nu_lanes_realize_identical_masks(case, graded):
     shape = _shape_for(case)
     grid = _grid()
     gnu = _nu_grid(tuple(graded))
-    # A surface owns no material cell in either lane.
     if case in ("curved_patch", "box_zero_thickness_sheet"):
         with pytest.raises(RfxRefusal) as first:
             _material_mask(shape, grid)
@@ -307,12 +289,10 @@ def test_uniform_and_nu_lanes_realize_identical_masks(case, graded):
         return
     mu = np.asarray(_material_mask(shape, grid))
     mn = np.asarray(_material_mask(shape, gnu, True))
-    # NU allocates one extra bounding node per axis; compare shared space
     sl = tuple(slice(0, s) for s in mu.shape)
     assert np.array_equal(mu, mn[sl]), (
         f"{case} (graded={graded}): lanes realize different cells "
         f"({int(mu.sum())} vs {int(mn[sl].sum())})")
-    # the stronger by-construction claim: the coordinates themselves agree
     gx, gy, gz = _grid_coords(grid)
     cn = coords_from_nonuniform_grid(gnu)
     for a, b in ((gx, cn.x), (gy, cn.y), (gz, cn.z)):
@@ -342,7 +322,6 @@ def test_one_cell_box_lands_on_one_and_the_same_node_plane_in_both_lanes(axis):
     with enable_x64():
         mu64 = np.asarray(_material_mask(sheet, grid))
     assert np.array_equal(mu, mu64)
-    # The cell's forward-node index is the drawn lower-face node.
     ax_coords = np.asarray(_grid_coords(grid)[axis])
     lo_node = np.where(ax_coords == lo[axis])[0]
     assert lo_node.size == 1, "fixture: lo face must sit bitwise on a node"
@@ -408,10 +387,9 @@ def test_cylinder_boundary_inclusion_convention_is_pinned():
     pad = grid.axis_pads
     cxi, cyi, czi = pad[0] + 15, pad[1] + 15, pad[2] + 9
     cx, cy, cz = float(x[cxi]), float(y[cyi]), float(z[czi])
-    radius = float(x[cxi + 6] - cx)  # exact f64 node distance (6 cells)
+    radius = float(x[cxi + 6] - cx)
     cyl = Cylinder((cx, cy, cz), radius=radius, height=0.75e-3, axis="z")
 
-    # the class's own host arithmetic, replicated exactly
     r2 = ((x - cx) ** 2)[:, None] + ((y - cy) ** 2)[None, :]
     rim = np.argwhere(r2 == radius * radius)
     assert rim.shape[0] >= 1, (
@@ -450,7 +428,7 @@ def test_hand_built_grid_without_the_exact_spine_warns_and_widens():
     g = _nu_grid()
     with warnings.catch_warnings():
         warnings.simplefilter("error", ExactNodeSpineMissingWarning)
-        ref = coords_from_nonuniform_grid(g)          # built grid: silent
+        ref = coords_from_nonuniform_grid(g)
 
     cases = [
         ("z only", dict(dz_f64=None), "axis z"),
@@ -465,8 +443,6 @@ def test_hand_built_grid_without_the_exact_spine_warns_and_widens():
             c = coords_from_nonuniform_grid(g_hand)
         z = np.asarray(c.z)
         assert z.dtype == np.float64, tag
-        # the warning is about a real difference: the widened store moves
-        # the node line (uniform-valued DX = 100 um here)
         dz_max = float(np.max(np.abs(z - np.asarray(ref.z))))
         assert 0.0 < dz_max < 1e-8, (tag, dz_max)
         for keep in ("x", "y"):

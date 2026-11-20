@@ -179,7 +179,7 @@ def test_wire_port_inside_a_volume_ground_has_dead_cells_named_by_owner():
     (hit,) = rep.by_code("wire_port_dead_extent_cells")
     msg = str(hit)
     # extent 3 mm from z = 2 mm rasterizes to 3 Ez edges (production
-    # _wire_port_cells, half-open in EDGES since #931 R8 — it gave 4 while
+    # _wire_port_cells, half-open in EDGES — it gave 4 while
     # the extent was endpoint-inclusive, the fourth spanning one cell above
     # the declared end); only the edge lying between the ground's faces
     # (z = 2 -> 3 mm) is dead.

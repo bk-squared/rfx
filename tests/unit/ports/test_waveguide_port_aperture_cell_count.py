@@ -60,13 +60,13 @@ A_WR90 = 0.02286
 B_WR90 = 0.01016
 FREQS = jnp.asarray([9.0e9, 10.0e9, 11.0e9])
 
-# a/N with N in {9, 18, 36}: dx divides BOTH walls exactly (b = 4a/9), so the
-# rasterized aperture equals the declared one and the invariant below is a
-# statement about the port, not about grid snapping.
 LADDER = ((9, 0.00254), (18, 0.00127), (36, 0.000635))
 
 
 def _sim(dx: float, *, y_range=None, z_range=None) -> Simulation:
+    assert (math.isclose(A_WR90 / dx, round(A_WR90 / dx), rel_tol=1e-12)
+            and math.isclose(B_WR90 / dx, round(B_WR90 / dx), rel_tol=1e-12)), \
+        "waveguide fixture pitch must divide both aperture walls"
     sim = Simulation(
         freq_max=11.6e9,
         domain=(0.12192, A_WR90, B_WR90),
@@ -100,7 +100,6 @@ def test_transverse_operator_is_built_on_the_guides_own_cells(n_cells, dx):
     grid, cfg = _cfg(_sim(dx))
     n_v = int(round(B_WR90 / dx))
 
-    # The node span the builder produced, and the cell span the port kept.
     assert grid.ny == n_cells + 1, (grid.ny, n_cells)
     assert grid.nz == n_v + 1, (grid.nz, n_v)
     assert (cfg.u_hi - cfg.u_lo) == n_cells, (cfg.u_lo, cfg.u_hi, n_cells)
@@ -109,23 +108,20 @@ def test_transverse_operator_is_built_on_the_guides_own_cells(n_cells, dx):
     u_w = np.asarray(cfg.u_widths, dtype=np.float64)
     v_w = np.asarray(cfg.v_widths, dtype=np.float64)
     assert u_w.size == n_cells and v_w.size == n_v
-    # The widths span the guide, not the guide plus a cell past the wall.
     assert float(u_w.sum()) == pytest.approx(cfg.a, rel=1e-6)
     assert float(v_w.sum()) == pytest.approx(cfg.b, rel=1e-6)
 
 
 @pytest.mark.parametrize("n_cells,dx", LADDER, ids=[f"a_over_{n}" for n, _ in LADDER])
 def test_port_cutoff_is_the_discrete_cutoff_of_the_n_cell_guide(n_cells, dx):
+    """The two candidate cutoffs must be far apart because otherwise the comparison would pass whichever operator was built."""
     _, cfg = _cfg(_sim(dx))
     fc_n = _discrete_neumann_cutoff_hz(n_cells, dx)
     fc_n_plus_1 = _discrete_neumann_cutoff_hz(n_cells + 1, dx)
-    # The two candidates must be far apart, otherwise the comparison below
-    # would pass whichever operator was built.
     assert abs(fc_n - fc_n_plus_1) / fc_n > 0.02, (fc_n, fc_n_plus_1)
     assert float(cfg.f_cutoff) == pytest.approx(fc_n, rel=1e-9), (
         f"N={n_cells}: port carries {cfg.f_cutoff:.6e} Hz; the N-cell guide is "
         f"{fc_n:.6e} Hz and an (N+1)-cell aperture would be {fc_n_plus_1:.6e} Hz")
-    # It approaches c/2a from below, and never exceeds it.
     assert float(cfg.f_cutoff) < C0 / (2.0 * A_WR90)
 
 
@@ -180,21 +176,18 @@ def test_abutting_apertures_on_one_face_share_no_cell():
     say what the field arrays say, so the convention is pinned here rather than
     left to be rediscovered: abutting is ``hi_a == lo_b`` exactly, and the node
     spans it came from would have collided.
+    The midpoint y_mid = A/2 = 11.43 mm is exactly node 9 of the 18-cell guide at dx = 1.27 mm.
     """
     dx = 0.00127
-    y_mid = A_WR90 / 2  # 11.43 mm = cell 9 of 18, an exact node
+    y_mid = A_WR90 / 2
     lo_cfg, hi_cfg = _two_ports_on_one_face(dx, [(0.0, y_mid), (y_mid, A_WR90)])
 
-    # Each half solves on its own 9 cells; together they tile the guide's 18.
     assert (lo_cfg.u_hi - lo_cfg.u_lo) == 9, (lo_cfg.u_lo, lo_cfg.u_hi)
     assert (hi_cfg.u_hi - hi_cfg.u_lo) == 9, (hi_cfg.u_lo, hi_cfg.u_hi)
     assert (hi_cfg.u_hi - lo_cfg.u_lo) == int(round(A_WR90 / dx))
 
-    # Abutting: no shared entry, and no gap either.
     assert lo_cfg.u_hi == hi_cfg.u_lo
     assert not (max(lo_cfg.u_lo, hi_cfg.u_lo) < min(lo_cfg.u_hi, hi_cfg.u_hi))
-    # The node spans these came from overlap by exactly one entry, which is the
-    # false positive the guard used to raise on.
     assert max(lo_cfg.u_lo, hi_cfg.u_lo) < min(lo_cfg.u_hi + 1, hi_cfg.u_hi + 1)
 
 

@@ -80,8 +80,6 @@ def test_second_preflight_reuses_context(rcs):
     key = declaration_key(sim)
     if rcs:
         sim.boundary_model(rcs=True)
-        # The derived RCS view must reuse the context even before preflight
-        # refreshes it back to the ordinary requirements.
         assert declaration_key(sim) == key
         assert sim._campaign_ctx() is ctx
     sim.preflight()
@@ -95,7 +93,6 @@ def _calculator_case(monkeypatch, family):
         return _make_wr90_nu_sim(solved_domain=True), {
             "normalize": True, "n_steps": 120, "skip_preflight": True}
     method = f"compute_{family}_s_matrix"
-    # Reuse the lock's geometry, capturing its builder before it starts a solve.
     with monkeypatch.context() as patch:
         patch.setattr(Simulation, method, lambda self, **kwargs: (self, kwargs))
         return getattr(locks, f"_{family}_result")()

@@ -3,6 +3,7 @@
 These tests validate passivity, near-unitarity, reciprocity, mesh
 convergence, and causality without comparing against any external solver.
 They depend only on Maxwell's equations and energy-conservation principles.
+The domain lengths written as n_y * dx and n_z * dx are whole numbers of cells of dx, so their solved lengths equal their declared lengths.
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -14,7 +15,6 @@ from rfx.api import Simulation
 from rfx.geometry.csg import Box
 
 
-# ---- Shared waveguide helpers ----
 
 WAVEGUIDE_DOMAIN = (0.12, 0.04, 0.02)
 PORT_LEFT_X = 0.01
@@ -37,15 +37,13 @@ def _build_waveguide_sim(
         Cell size override.
     obstacle_specs : sequence of ((lo, hi, eps_r),)
         Dielectric obstacles to place inside the waveguide.
+    A dx other than 0.75 mm or C0 / 8 GHz / 20 would get a wrong cross-section, so it is refused.
     """
     freqs = np.asarray(freqs_hz, dtype=float)
     f0 = float(freqs.mean())
     bandwidth = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / max(f0, 1.0)))
 
     dx = (0.75e-3 if obstacle_specs else 299792458.0 / max(float(freqs[-1]), f0) / 20.0) if dx is None else dx
-    # These cross-section counts cover only the two dx values used here:
-    # 0.75 mm (with an obstacle) and C0 / 8 GHz / 20 (empty guide, band to
-    # 8 GHz). Any other dx would get a wrong cross-section, so it is refused.
     if dx == 0.75e-3:
         n_y, n_z = (54, 27)
     elif dx == 299792458.0 / 8.0e9 / 20.0:
@@ -57,7 +55,7 @@ def _build_waveguide_sim(
             f"got dx = {dx * 1e3:.6g} mm")
     sim = Simulation(
         freq_max=max(float(freqs[-1]), f0),
-        domain=(WAVEGUIDE_DOMAIN[0], n_y * dx, n_z * dx),  # solved length; #1887
+        domain=(WAVEGUIDE_DOMAIN[0], n_y * dx, n_z * dx),
         boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=dx,
@@ -107,9 +105,6 @@ def _compute_s_matrix(*, freqs_hz, dx=None, obstacle_specs=(), num_periods=40, n
     return np.asarray(result.s_params), np.asarray(result.freqs), port_index
 
 
-# =========================================================================
-# Test 1: Passivity — empty two-port waveguide
-# =========================================================================
 
 def test_passivity_two_port_empty_waveguide():
     """For a lossless empty waveguide: sum_i |S_ij(f)|^2 <= 1 (+ numerical margin).
@@ -121,8 +116,7 @@ def test_passivity_two_port_empty_waveguide():
         freqs_hz=freqs, num_periods=40, normalize=True,
     )
 
-    # Column-wise power sum: for each excitation port j, sum |S_ij|^2 over i
-    column_powers = np.sum(np.abs(s_params) ** 2, axis=0)  # (n_ports, n_freqs)
+    column_powers = np.sum(np.abs(s_params) ** 2, axis=0)
     max_power = float(np.max(column_powers))
 
     print("\nPassivity: empty two-port waveguide")
@@ -137,15 +131,13 @@ def test_passivity_two_port_empty_waveguide():
     )
 
 
-# =========================================================================
-# Test 2: Unitarity — lossless waveguide with dielectric obstacle
-# =========================================================================
 
 def test_unitarity_lossless_waveguide():
     """For a lossless system: sum_i |S_ij(f)|^2 ~ 1.0.
 
     Total scattered power approximately equals incident power when all
     materials are lossless (sigma=0).
+    The 0.6 lower bound leaves margin below the ~0.73 measured earlier on the εr=4 full-cross-section slab with the two-run normalized extractor.
     """
     freqs = np.linspace(4.5e9, 8.0e9, 20)
     obstacle = [((0.04, 0.0, 0.0), (0.06, 0.04, 0.02), 4.0)]
@@ -155,7 +147,7 @@ def test_unitarity_lossless_waveguide():
         num_periods=40, normalize=True,
     )
 
-    column_powers = np.sum(np.abs(s_params) ** 2, axis=0)  # (n_ports, n_freqs)
+    column_powers = np.sum(np.abs(s_params) ** 2, axis=0)
     mean_power = float(np.mean(column_powers))
 
     print("\nUnitarity: lossless waveguide with dielectric obstacle")
@@ -164,22 +156,11 @@ def test_unitarity_lossless_waveguide():
         print(f"  {port_name}: mean(sum |S_ij|^2) = {col_mean:.6f}")
     print(f"  Global mean column power: {mean_power:.6f}")
 
-    # Lower bound loosened 2026-04-22 from 0.8 to 0.6. Post-CPML retune +
-    # diagonal-subtraction, the two-run normalized extractor measures
-    # ~0.73 on this εr=4 full-cross-section slab. Analytic Airy gives 1.00,
-    # so ~27% power is un-accounted — a real extractor accuracy gap
-    # (slab unitarity residual).
-    # This gate exists to catch GROSS conservation failure (|S|>>1 from
-    # CPML accumulation, or energy collapse < 0.5 from extractor bug);
-    # fine accuracy is owned by test_waveguide_port_validation_battery.
     assert 0.6 < mean_power < 1.40, (
         f"Unexpected mean power balance: {mean_power:.6f} (expected 0.6 < x < 1.40)"
     )
 
 
-# =========================================================================
-# Test 3: Reciprocity — asymmetric dielectric structure
-# =========================================================================
 
 def test_reciprocity_asymmetric_structure():
     """S_ij = S_ji for any linear passive structure, even asymmetric ones.
@@ -190,6 +171,7 @@ def test_reciprocity_asymmetric_structure():
     projected TE10 extractor achieves Meep-class reciprocity on this
     geometry. Modal orthogonality guarantees the projected S-matrix is
     reciprocal regardless of higher-order mode excitation.
+    The 0.05 gate leaves ~20% margin over the earlier observed value of 0.0414 with mod_gaussian + discrete eigenmode.
     """
     freqs = np.linspace(4.5e9, 8.0e9, 20)
     obstacle = [((0.03, 0.0, 0.0), (0.05, 0.02, 0.02), 6.0)]
@@ -210,20 +192,11 @@ def test_reciprocity_asymmetric_structure():
     print(f"  S12 magnitudes: {np.array2string(s12, precision=4, separator=', ')}")
     print(f"  Mean relative difference: {mean_rel_diff:.6f}")
 
-    # 5% gate — Meep-class. With mod_gaussian + discrete eigenmode the
-    # observed value on 2026-04-22 was 0.0414; 0.05 leaves ~20% margin.
     assert mean_rel_diff < 0.05, (
         f"Reciprocity error too large: mean |S21-S12|/max = {mean_rel_diff:.6f} (limit 0.05)"
     )
 
 
-# =========================================================================
-# Test 4: Causality — no signal before wavefront arrival
-# =========================================================================
-# (Mesh-convergence test moved to
-#  test_waveguide_port_validation_battery.test_mesh_convergence_s21_scaled_cpml,
-#  which scales cpml_layers proportionally to keep physical CPML constant
-#  across resolutions.)
 
 def test_causality_no_signal_before_source():
     """No field should appear at a distant probe before the wavefront
@@ -241,7 +214,6 @@ def test_causality_no_signal_before_source():
     from rfx.stepping.yee import update_e, update_h
     from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 
-    # Long domain with CPML on x, periodic y/z
     domain = (0.30, 0.006, 0.006)
     grid = Grid(
         freq_max=10e9,
@@ -257,22 +229,17 @@ def test_causality_no_signal_before_source():
     materials = init_materials(grid.shape)
     cp_cfg, cp_state = init_cpml(grid)
 
-    # Source: additive Gaussian pulse at a point near the left boundary
     src_x = grid.pad_x + 5
     src_idx = (src_x, grid.ny // 2, grid.nz // 2)
 
-    # Probe: near the right boundary
     probe_x = grid.nx - grid.pad_x - 5
     probe_idx = (probe_x, grid.ny // 2, grid.nz // 2)
 
-    # Physical positions
     src_x_phys = (src_x - grid.pad_x) * dx_val
     probe_x_phys = (probe_x - grid.pad_x) * dx_val
     distance = probe_x_phys - src_x_phys
     t_arrival = distance / C0
 
-    # Gaussian pulse parameters: well-delayed so envelope at t=0 is negligible
-    # With t0 = 4.5*tau, envelope at t=0 is exp(-20.25) ~ 1.6e-9
     f0 = 5e9
     tau = 1.0 / (f0 * np.pi)
     t0 = 4.5 * tau
@@ -280,7 +247,6 @@ def test_causality_no_signal_before_source():
     def gaussian_source(t):
         return np.exp(-((t - t0) / tau) ** 2) * np.sin(2 * np.pi * f0 * t)
 
-    # Run enough steps for the signal to arrive and be measurable
     n_steps = int(np.ceil((t0 + t_arrival + 6.0 * tau) / dt))
     n_steps = min(n_steps, 2000)
 
@@ -289,15 +255,12 @@ def test_causality_no_signal_before_source():
     for step in range(n_steps):
         t = step * dt
 
-        # H update
         state = update_h(state, materials, dt, dx_val, periodic, high_wall=unpadded_high_walls(grid))
         state, cp_state = apply_cpml_h(state, cp_cfg, cp_state, grid, axes="x")
 
-        # E update
         state = update_e(state, materials, dt, dx_val, periodic, high_wall=unpadded_high_walls(grid))
         state, cp_state = apply_cpml_e(state, cp_cfg, cp_state, grid, axes="x")
 
-        # Additive (soft) source injection after E update
         src_val = gaussian_source(t)
         state = state._replace(
             ez=state.ez.at[src_idx].add(src_val)
@@ -307,9 +270,8 @@ def test_causality_no_signal_before_source():
 
     times = np.arange(n_steps) * dt
 
-    # Before wavefront arrival (with 5*dt safety margin for numerical dispersion)
-    pre_arrival_mask = times < (t_arrival - 5.0 * dt)
-    # After the source peak has had time to propagate to probe
+    DISPERSION_MARGIN_STEPS = 5.0
+    pre_arrival_mask = times < (t_arrival - DISPERSION_MARGIN_STEPS * dt)
     post_arrival_mask = times >= (t_arrival + t0)
 
     if np.any(pre_arrival_mask):

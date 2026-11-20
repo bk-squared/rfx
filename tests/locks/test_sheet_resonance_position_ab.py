@@ -58,6 +58,7 @@ CPU-sized fixture the copper-loss FWHM is far below the window-limited
 resolution, so the floor df binds on both sides — the gate then reads
 "resonances agree to spectral resolution", which the f0 operator passes
 by ~40x margin and the pre-fix realization fails by ~3.5x.
+The pin takes the two loudest peaks, and the gate compares f0 versus PEC residuals at the same chosen peaks in every arm.
 """
 
 LOCK_PROVENANCE = {
@@ -91,44 +92,11 @@ N_STEPS = 30000
 X0 = (12e-3 - L_PATCH) / 2
 Y0 = (12e-3 - W_PATCH) / 2
 
-# Measured provenance; the regression assertions below allow small float drift
-# around these (2*df), and the GATE itself is computed live per contract.
-#
-# Re-pinned 2026-09-07 for #931 from VESSL 369367259230, whose census this
-# module now prints in full. Old pair (24.5646, 28.1318) GHz, measured
-# 2026-08-19; new pair (25.1741, 30.2153) GHz. What the census shows, and the
-# reason this is a re-pin and not a moved mode:
-#
-#   PEC arm peaks (GHz, amplitude relative to the loudest)
-#     25.1741  1.000     <- pinned, was 24.5646
-#     27.9141  0.117     <- the OLD second pin, 28.1318, still here and
-#                           within one df (0.3265 GHz) of where it was
-#     30.2153  0.418     <- pinned now, because `base` is the two LOUDEST
-#     31.3377  0.165
-#     35.3099  0.019
-#
-# So the old modes did not vanish or move by the patch-length ratio: the
-# selection changed. `base` takes the two loudest peaks, and the 30.2153 line
-# grew past the 27.9141 one. The patch's footprint DID change — the contract
-# samples a sheet footprint closed, so it realizes the drawn 5.500 mm instead
-# of the 5.250 mm the old half-open node sampling gave it (build-time
-# measurement: Ex rows 13..34 on both patch planes) — but that change moved
-# these lines by well under the naive length ratio, and the pin's job is to
-# follow the fixture, not to predict it.
-#
-# WHAT THIS PIN DOES NOT DO, now visible in the census: it does not identify a
-# MODE. Amplitude rank is not a mode label, and this module has no parity
-# check like the one the harminv board uses ("MODE IDENTITY — PARITY, NEVER
-# AMPLITUDE RANK"). A rank swap and a moved mode look the same to it. The
-# census above is the interim instrument; a parity or field-profile label is
-# the fix, and it is not attempted here because the gate below — f0 versus PEC
-# residuals at the SAME frequencies, in the same arms — does not depend on
-# which two peaks are chosen, only that the choice is the same in every arm.
 MEASURED_PEC_MODES = (25.1741e9, 30.2153e9)
 
 
 def _build(mode):
-    # #1138: PEC patches x/y solved +3.182%/-1.579%; this locks resonance position.
+    """The PEC patch x/y sizes are solved +3.182%/-1.579% off the drawing by the preflight effective-size rule, so the resonance-position lock keeps the declared geometry on purpose."""
     sim = Simulation(snap="declared",
                      freq_max=40e9, domain=DOMAIN, dx=DX,
                      dz_profile=[DZ] * NZ, boundary="pec")
@@ -175,11 +143,6 @@ def _run(mode):
     sim = _build(mode)
     grid = sim._build_nonuniform_grid()
     if mode == "prefix":
-        # Reconstruct the PRE-#677 realization: fold each sheet into
-        # materials.sigma as a full-cell slab (sigma_eff = 1/(Rs0*d_dual),
-        # exactly the emitted spec's sigma_sheet) and strip the operator
-        # ctx. This is the G1 NEGATIVE CONTROL — a realization the gate
-        # must FAIL, or the gate is measuring nothing.
         specs = []
         mats, _, _, _ = assemble_materials_nu(sim, grid, sheet_specs=specs)
         sigma = mats.sigma
@@ -195,17 +158,6 @@ def _run(mode):
 
 
 def test_g1_resonance_position_ab():
-    # --- assembly-identity witness: same FOOTPRINT both ways -------------
-    #
-    # This used to compare the f0 operator's node mask against the PEC
-    # leg's ``pec_mask`` cells. Under the lattice ownership contract a PEC
-    # sheet owns NO cell (#931 §1.3), so ``pec_mask`` is empty on the PEC
-    # leg and that comparison reads two different things — it went red for
-    # bookkeeping, not physics. Both legs now come back as SHEETS through
-    # their own collector, and the witness compares what actually decides
-    # the geometry: the realized plane AND the node footprint, per sheet.
-    # That is the #677 G4 identity ("f0 toggles loss, never geometry")
-    # read directly rather than inferred from two different arrays.
     sim_f0 = _build("f0")
     grid = sim_f0._build_nonuniform_grid()
     specs = []
@@ -230,7 +182,6 @@ def test_g1_resonance_position_ab():
             f"plane {k}: the f0 sheet and the PEC sheet must be the SAME "
             "footprint — f0 toggles loss, never geometry (#677 G4)")
 
-    # --- three realizations, identical processing ------------------------
     runs = {}
     for mode in ("pec", "f0", "prefix"):
         _, _, dt, ts = _run(mode)
@@ -238,11 +189,6 @@ def test_g1_resonance_position_ab():
 
     (pk_pec, df), _, _ = runs["pec"]
 
-    # --- R5 trace: the whole peak census, never two headline numbers -----
-    # The two pinned modes used to be reported with nothing behind them, so
-    # a run that moved could not be told from a run whose PEAK PICKER had
-    # swapped two peaks of similar height. Every arm's census is printed
-    # with amplitudes, in one place, before any assertion reads it.
     for mode in ("pec", "f0", "prefix"):
         (pk, dfm), _, _ = runs[mode]
         loud = max((a for _f, a in pk), default=1.0)
@@ -254,13 +200,6 @@ def test_g1_resonance_position_ab():
 
     base = sorted(p[0] for p in sorted(pk_pec, key=lambda p: -p[1])[:2])
     assert len(base) == 2
-    # Provenance pin: the fixture's PEC modes stay where they were measured.
-    # Re-pinned under #931 — the sheet footprint is sampled CLOSED, so this
-    # patch realizes the 5.500 mm it declares instead of the 5.250 mm the old
-    # half-open node sampling gave it (measured at build time on this grid:
-    # Ex rows 13..34 on both patch planes, node span 5.5000 mm). The modes
-    # move with the patch; the GATE below (f0 vs pec residual) is unchanged
-    # and is what this module actually tests.
     for b, m in zip(base, MEASURED_PEC_MODES):
         assert abs(b - m) <= 2 * df, (b, m)
 
@@ -272,21 +211,15 @@ def test_g1_resonance_position_ab():
             out.append(abs(fm - b))
         return out
 
-    # --- the G1 gate (df floor binds on both sides; log-space compare) ---
-    # FWHM_loss for copper sheets is far below the window-limited
-    # resolution on this fixture, so gate = df.
     gate = df
     res_f0 = residuals("f0")
     for r in res_f0:
         assert max(r, df) <= max(gate, df) + 1e-6, (res_f0, df)
 
-    # --- NEGATIVE CONTROL: the pre-fix realization must FAIL ------------
     res_prefix = residuals("prefix")
     for r in res_prefix:
         assert r > gate, (
             f"pre-fix slab realization PASSED the resonance gate "
             f"(residuals {res_prefix}, gate {gate:.3e}) — the gate is "
             f"measuring nothing")
-    # and it fails big (the original evidence was 1.01/3.22 GHz; this
-    # public rebuild measured ~1.19/1.13 GHz)
     assert min(res_prefix) > 0.5e9, res_prefix

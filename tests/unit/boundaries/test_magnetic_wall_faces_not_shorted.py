@@ -42,6 +42,7 @@ def _line(r_over_zc, full=False):
 
 @pytest.mark.parametrize("r_over_zc", [0.5, 2.0])
 def test_wire_port_on_a_magnetic_wall_plane_reads_its_load(r_over_zc):
+    """The reflection comparison permits accumulated float32 sums."""
     s_fwd = np.abs(np.asarray(_line(r_over_zc).forward(
         port_s11_freqs=jnp.asarray(FREQS_HZ), num_periods=20.0,
         skip_preflight=True).s_params).reshape(-1))
@@ -51,10 +52,8 @@ def test_wire_port_on_a_magnetic_wall_plane_reads_its_load(r_over_zc):
     full = np.abs(np.asarray(_line(r_over_zc, full=True).forward(
         port_s11_freqs=jnp.asarray(FREQS_HZ), num_periods=20.0,
         skip_preflight=True).s_params).reshape(-1))
-    # Reflection of the same Yee lattice; permit accumulated float32 sums.
     np.testing.assert_allclose(s_fwd, full, rtol=128*np.finfo(np.float32).eps,
                                atol=128*np.finfo(np.float32).eps)
-    # the two entry points solve one declared boundary
     assert np.allclose(s_fwd, s_run, atol=1e-5), (s_fwd, s_run)
 
 
@@ -65,29 +64,21 @@ def _faces(**spec_kwargs):
 
 
 @pytest.mark.parametrize("declaration, periodic, pec_axes, want_pec, want_pmc", [
-    # the closed box: six electric walls on every lane (#1193)
     ({"boundary": "pec"}, (False, False, False), "xyz",
      {"x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"}, set()),
-    # run() hands None: the same six
     ({"boundary": "pec"}, (False, False, False), None,
      {"x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"}, set()),
-    # magnetic x and y faces, electric z: only z faces are electric,
-    # whatever the caller's axis string says (#1164, #1194)
     ({"boundary": BoundarySpec(x=Boundary(lo="pmc", hi="pmc"),
                                y=Boundary(lo="pmc", hi="pmc"),
                                z=Boundary(lo="pec", hi="pec"))},
      (False, False, False), "xyz", {"z_lo", "z_hi"},
      {"x_lo", "x_hi", "y_lo", "y_hi"}),
-    # one axis mixed: lo electric, hi magnetic
     ({"boundary": BoundarySpec(x=Boundary(lo="pec", hi="pmc"), y="pec", z="pec")},
      (False, False, False), None, {"x_lo", "y_lo", "y_hi", "z_lo", "z_hi"}, {"x_hi"}),
-    # a periodic axis carries no wall
     ({"boundary": BoundarySpec(x="periodic", y="pec", z="pec")},
      (True, False, False), None, {"y_lo", "y_hi", "z_lo", "z_hi"}, set()),
-    # an absorber face is PEC-backed by default (run()) ...
     ({"boundary": "cpml", "cpml_layers": 4}, (False, False, False), None,
      {"x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"}, set()),
-    # ... and the legacy axis string may withhold that backing (forward())
     ({"boundary": "cpml", "cpml_layers": 4}, (False, False, False), "",
      set(), set()),
 ])
@@ -106,15 +97,11 @@ def test_axis_string_cannot_put_an_electric_wall_over_a_magnetic_face():
                 pmc_faces={"y_lo"}, pec_faces={"y_hi"})
     pec, pmc = resolve_wall_faces(grid, (False, False, False), "xyz")
     assert "y_lo" not in pec and "y_lo" in pmc and "y_hi" in pec
-    # a raw grid with no declaration at all: the bare-box default
     raw = Grid(freq_max=10e9, domain=(4e-3, 2e-3, 2e-3), dx=DX, cpml_layers=0)
     pec, pmc = resolve_wall_faces(raw, (False, False, False), None)
     assert len(pec) == 6 and not pmc
 
 
-# ---------------------------------------------------------------------------
-# Port-free witness on every lane that carries the rule
-# ---------------------------------------------------------------------------
 
 def _plane_source_box(**kwargs):
     """A one-cell-wide channel (magnetic y faces) with an Ez source and an Ez

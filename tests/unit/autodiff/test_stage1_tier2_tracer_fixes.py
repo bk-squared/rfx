@@ -49,7 +49,7 @@ def test_geoc3_make_current_source_traceable_with_traced_materials():
 
     def waveform_energy(eps_scale):
         materials = MaterialArrays(
-            eps_r=jnp.ones(shape) * eps_scale,   # traced
+            eps_r=jnp.ones(shape) * eps_scale,
             sigma=jnp.zeros(shape),
             mu_r=jnp.ones(shape),
         )
@@ -58,7 +58,6 @@ def test_geoc3_make_current_source_traceable_with_traced_materials():
 
     grad = jax.grad(waveform_energy)(4.4)
     assert np.isfinite(float(grad))
-    # Cb ~ 1/eps, so the waveform energy genuinely depends on eps_scale.
     assert float(grad) != 0.0
 
 
@@ -90,7 +89,6 @@ def test_material_box_forward_bit_identical():
     widths = tuple(axis_cell_sizes(c) for c in co[:3])
     m = np.asarray(_material_cell_mask(
         box, co, cell_centres_from_nodes(co, widths), cell_sizes=widths))
-    # x-extent (6.5 mm) spans many cells -> volume path, half-open [lo, hi).
     xh = np.asarray(x, dtype=np.float64)
     yh = np.asarray(y, dtype=np.float64)
     zh = np.asarray(z, dtype=np.float64)
@@ -120,7 +118,7 @@ def test_pec_and_dielectric_share_the_volume_sampler():
     )
 
     dx = 1e-3
-    axis = np.arange(11, dtype=np.float64) * dx      # nodes 0 .. 10 mm
+    axis = np.arange(11, dtype=np.float64) * dx
     co = GridCoords(x=axis, y=axis, z=axis, shape=(11, 11, 11))
     box = Box((0.0023, 0.0023, 0.0023), (0.0063, 0.0063, 0.0063))
 
@@ -141,8 +139,10 @@ def test_pec_and_dielectric_share_the_volume_sampler():
 
 def test_probes_update_sparam_probe_traceable_with_traced_step():
     """probes: update_sparam_probe must not float() the traced
-    state.step (a tracer inside the jitted scan)."""
-    grid = Grid(freq_max=5e9, domain=(17 * (299792458.0 / 5e9 / 20.0), 17 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    state.step (a tracer inside the jitted scan).
+    The domain lengths written as N*(299792458.0/5e9/20.0) are whole cell counts times the solved spacing.
+    """
+    grid = Grid(freq_max=5e9, domain=(17 * (299792458.0 / 5e9 / 20.0), 17 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
     port = LumpedPort(
@@ -175,10 +175,10 @@ def test_kottke_clamp_tail_gradient_is_pinned_zero():
         return jnp.sum(inv_xx)
 
     occ = jnp.zeros((8, 8, 8), dtype=jnp.float32)
-    occ = occ.at[2, 2, 2].set(5e-4)   # deep in the clamped tail (f < 1e-3)
-    occ = occ.at[5, 5, 5].set(0.5)    # well above the threshold
+    occ = occ.at[2, 2, 2].set(5e-4)
+    occ = occ.at[5, 5, 5].set(0.5)
+    assert 0.0 < float(occ[2, 2, 2]) < 1e-3 < float(occ[5, 5, 5]), 'The tail witness must lie below the Kottke clamp while the interior witness lies above it'
 
     grad = jax.grad(loss)(occ)
     assert np.all(np.isfinite(np.asarray(grad)))
-    # Tail cell: the f<1e-3 clamp zeroes its gradient — by design.
     assert float(grad[2, 2, 2]) == 0.0

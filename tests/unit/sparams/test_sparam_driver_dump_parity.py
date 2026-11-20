@@ -44,14 +44,13 @@ from rfx.sources.sources import GaussianPulse, LumpedPort, WirePort
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
-# Small shared geometry (matches the Stage-1 gate test).
 _DOMAIN = (0.024, 0.012, 0.012)
 _DX = 1e-3
 _FREQ_MAX = 10e9
 _CPML_LAYERS = 8
 _FREQS = np.linspace(2e9, 9e9, 15)
 _N_STEPS = 1500
-_GATE_ATOL = 2e-3  # CPML byte-closeness
+_GATE_ATOL = 2e-3
 
 
 def _waveform():
@@ -78,11 +77,8 @@ def _load_replay_wire_module():
     return module
 
 
-# ---------------------------------------------------------------------------
-# Lumped 2-port (CPML) — dump parity + end-to-end replay
-# ---------------------------------------------------------------------------
-
 def test_driver_lumped_dump_matches_eager_and_replays():
+    LUMPED_DRIVEN_TERMINAL_FRAME = "driven_terminal"
     wf = _waveform()
     pos0 = (0.008, 0.006, 0.006)
     pos1 = (0.016, 0.006, 0.006)
@@ -103,26 +99,22 @@ def test_driver_lumped_dump_matches_eager_and_replays():
         g, mats, ports, _FREQS, _N_STEPS, boundary="cpml", cpml_axes="xyz",
         return_vi_dump=True)
 
-    # --- field names / order identical (mirror the eager NamedTuple) ---
     assert type(drv).__name__ == "PortVIReplayBundle"
     assert drv._fields == eager._fields == (
         "s_params", "freqs", "voltages", "currents",
         "port_impedances", "port_names", "driven_port_indices",
     )
 
-    # --- shapes identical, (n_driven, n_ports, n_freqs) ---
     n = len(_FREQS)
     assert np.asarray(drv.voltages).shape == np.asarray(eager.voltages).shape == (2, 2, n)
     assert np.asarray(drv.currents).shape == np.asarray(eager.currents).shape == (2, 2, n)
     assert np.asarray(drv.s_params).shape == np.asarray(eager.s_params).shape == (2, 2, n)
 
-    # --- metadata fields equal exactly ---
     assert drv.port_names == eager.port_names == ("port_0", "port_1")
     assert drv.driven_port_indices == eager.driven_port_indices == (0, 1)
     np.testing.assert_array_equal(
         np.asarray(drv.port_impedances), np.asarray(eager.port_impedances))
 
-    # --- V / I / S byte-close on CPML ---
     d_v = float(np.max(np.abs(np.asarray(drv.voltages) - np.asarray(eager.voltages))))
     d_i = float(np.max(np.abs(np.asarray(drv.currents) - np.asarray(eager.currents))))
     d_s = float(np.max(np.abs(np.asarray(drv.s_params) - np.asarray(eager.s_params))))
@@ -132,7 +124,6 @@ def test_driver_lumped_dump_matches_eager_and_replays():
     assert d_i < _GATE_ATOL, f"lumped dump currents diverged: {d_i:.3e}"
     assert d_s < _GATE_ATOL, f"lumped dump s_params diverged: {d_s:.3e}"
 
-    # --- END-TO-END REPLAY of the DRIVER bundle through the public path ---
     tmp = Path(REPO_ROOT) / ".pytest_lumped_dump_parity.npz"
     try:
         save_port_vi_dump_npz(
@@ -144,10 +135,7 @@ def test_driver_lumped_dump_matches_eager_and_replays():
             metadata=PortDumpMetadata(
                 commit_hash="stage2-driver",
                 geometry={"kind": "two_port_lumped_cpml_driver"},
-                # rfx's lumped production diagonal is the driven
-                # terminal reflection; the dump records which frame
-                # its production S used, as the wire dump does.
-                diagonal_frame="driven_terminal",
+                diagonal_frame=LUMPED_DRIVEN_TERMINAL_FRAME,
             ),
             port_names=drv.port_names,
             driven_port_indices=drv.driven_port_indices,
@@ -167,11 +155,9 @@ def test_driver_lumped_dump_matches_eager_and_replays():
         tmp.unlink(missing_ok=True)
 
 
-# ---------------------------------------------------------------------------
-# Wire 2-port (CPML) — dump parity + end-to-end replay
-# ---------------------------------------------------------------------------
-
 def test_driver_wire_dump_matches_eager_and_replays():
+    """The physical driven diagonal cannot be replayed from midpoint-cell voltage alone without the whole-port gap-voltage channel."""
+    WIRE_WHOLE_PORT_FRAME = "wholeport"
     wf = _waveform()
     start0 = (0.008, 0.006, 0.005)
     end0 = (0.008, 0.006, 0.008)
@@ -199,22 +185,7 @@ def test_driver_wire_dump_matches_eager_and_replays():
         g, mats, wports, _FREQS, _N_STEPS, boundary="cpml", cpml_axes="xyz",
         return_vi_dump=True)
 
-    # --- field names / order identical (mirror the eager NamedTuple) ---
     assert type(drv).__name__ == "WirePortVIReplayBundle"
-    # Schema re-pin (issue #764, written provenance): the bundle grows the
-    # whole-port gap-voltage channel ``raw_port_voltages_fdt`` — the
-    # physical driven diagonal S_jj = (V_port - Z0*I)/(V_port + Z0*I)
-    # cannot be replayed from the midpoint-cell V alone (the old pin was on
-    # the per-cell-V/whole-port-Z0 frame mismatch: matched load read
-    # +0.35426, PEC short +0.26780).  ``None`` in the field marks a
-    # pre-#764 dump (legacy-diagonal replay fallback).
-    # Schema re-pin (issue #683 x #764, written provenance —
-    # docs/design_notes/issue683_decomposer_flip_predeclaration.md): the
-    # bundle also grows the pre-injection drive-sample reference channel
-    # ``raw_drive_ref_voltages_fdt`` — ``raw_voltages_fdt`` now holds the
-    # physical POST-injection samples, and the #308-calibrated
-    # off-diagonals cannot be replayed without the reference.  ``None``
-    # marks a pre-#683 dump (its raw voltages ARE the reference).
     assert drv._fields == eager._fields == (
         "s_params", "freqs", "raw_voltages_fdt", "raw_currents",
         "port_impedances", "port_cell_counts", "port_names",
@@ -222,7 +193,6 @@ def test_driver_wire_dump_matches_eager_and_replays():
         "raw_drive_ref_voltages_fdt",
     )
 
-    # --- shapes identical, (n_driven, n_ports, n_freqs) ---
     n = len(_FREQS)
     assert np.asarray(drv.raw_voltages_fdt).shape == \
         np.asarray(eager.raw_voltages_fdt).shape == (2, 2, n)
@@ -232,7 +202,6 @@ def test_driver_wire_dump_matches_eager_and_replays():
         np.asarray(eager.raw_port_voltages_fdt).shape == (2, 2, n)
     assert np.asarray(drv.s_params).shape == np.asarray(eager.s_params).shape == (2, 2, n)
 
-    # --- metadata fields equal exactly ---
     assert drv.port_names == eager.port_names == ("wire_0", "wire_1")
     assert drv.driven_port_indices == eager.driven_port_indices == (0, 1)
     np.testing.assert_array_equal(
@@ -240,7 +209,6 @@ def test_driver_wire_dump_matches_eager_and_replays():
     np.testing.assert_array_equal(
         np.asarray(drv.port_cell_counts), np.asarray(eager.port_cell_counts))
 
-    # --- V / I / S byte-close on CPML ---
     d_v = float(np.max(np.abs(
         np.asarray(drv.raw_voltages_fdt) - np.asarray(eager.raw_voltages_fdt))))
     d_i = float(np.max(np.abs(
@@ -257,22 +225,14 @@ def test_driver_wire_dump_matches_eager_and_replays():
         f"wire dump raw_port_voltages_fdt diverged: {d_vp:.3e}")
     assert d_s < _GATE_ATOL, f"wire dump s_params diverged: {d_s:.3e}"
 
-    # --- END-TO-END REPLAY of the DRIVER bundle through the wire diagnostic ---
     replay_wire = _load_replay_wire_module()
     tmp = Path(REPO_ROOT) / ".pytest_wire_dump_parity.npz"
     try:
         np.savez(
             tmp,
-            # Schema re-pin (issue #770, written provenance — the
-            # adjudication pre-declaration + results note): the metadata
-            # carries the off-diagonal frame tag.  The current extractor
-            # records the whole-port frame; a dump without the tag replays
-            # the pre-#770 per-cell #308 frame, so an untagged dump of the
-            # CURRENT extractor would replay-mismatch loudly (by the
-            # measured frame ratio 1.63-1.75x on the canonical thru).
             metadata_json=np.asarray(json.dumps(
                 {"schema": "rfx.wire_port_vi_dump",
-                 "offdiag_frame": "wholeport"})),
+                 "offdiag_frame": WIRE_WHOLE_PORT_FRAME})),
             freqs_hz=np.asarray(drv.freqs),
             raw_voltages_fdt=np.asarray(drv.raw_voltages_fdt),
             raw_currents=np.asarray(drv.raw_currents),
@@ -282,10 +242,6 @@ def test_driver_wire_dump_matches_eager_and_replays():
             port_names=np.asarray(drv.port_names, dtype=object),
             driven_port_indices=np.asarray(drv.driven_port_indices),
             raw_port_voltages_fdt=np.asarray(drv.raw_port_voltages_fdt),
-            # Issue #683 x #764: the pre-injection drive-sample reference
-            # channel — without it a post-#683 dump cannot replay the
-            # #308-calibrated off-diagonals (raw_voltages_fdt now holds
-            # the physical POST samples).
             raw_drive_ref_voltages_fdt=np.asarray(
                 drv.raw_drive_ref_voltages_fdt),
         )

@@ -24,6 +24,7 @@ def _signature(result):
 @pytest.mark.parametrize('kind', ['lumped', 'wire'])
 @pytest.mark.parametrize('boundary', ['cpml', 'pec'])
 def test_reference_read_preserves_fields_and_s(kind, boundary):
+    """The zero reference sample pins reference sampling before the first source injection."""
     devices = jax.devices('cpu')
     if len(devices) < 2:
         pytest.skip('Requires XLA_FLAGS=--xla_force_host_platform_device_count=2')
@@ -36,8 +37,6 @@ def test_reference_read_preserves_fields_and_s(kind, boundary):
 
         def capture(*args, **kwargs):
             result = runner(*args, **kwargs, _record_vref=sample)
-            # Expected arrays come from the actual unsampled run; no
-            # record/DFT helper constructs them.
             states.append({name: np.array(getattr(result.state, name)) for name in fields})
             return result
 
@@ -48,7 +47,7 @@ def test_reference_read_preserves_fields_and_s(kind, boundary):
 
     expected, baseline = run(False)
     actual, sampled = run(True)
-    assert len(baseline) == len(sampled) == 1  # S comes from the main run's record
+    assert len(baseline) == len(sampled) == 1
     differences = []
     for drive, (old, new) in enumerate(zip(baseline, sampled, strict=True)):
         for name in fields:
@@ -69,8 +68,6 @@ def test_reference_read_preserves_fields_and_s(kind, boundary):
     for record in expected.sparam_time_records:
         assert not np.any(np.asarray(record['V_ref']))
     for record in actual.sparam_time_records:
-        # Initially every field is zero. The first source injection is
-        # nonzero: sampling after it cannot satisfy this independent oracle.
         assert record['V_ref'][0] == 0
         assert record['V'][0] != 0
         assert np.any(np.asarray(record['V_ref'][1:]) != 0)
@@ -120,7 +117,6 @@ def test_records_inside_jit_match_direct_call(kind, entry):
                                  skip_preflight=True)
         return tuple(record.samples for record in result.sparam_time_records)
 
-    # Expected values: the direct (untraced) public call.
     direct = [np.asarray(samples) for samples in call()]
     jitted = [np.asarray(samples) for samples in jax.jit(call)()]
     assert direct and len(jitted) == len(direct)

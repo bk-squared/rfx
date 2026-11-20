@@ -30,22 +30,18 @@ def test_waveguide_calculator_refuses_before_grid_or_scan(monkeypatch, feature):
 
 @pytest.mark.parametrize("feature", ["source", "tfsf", "periodic", "graded_interface"])
 def test_existing_waveguide_value_errors_precede_admission(feature, monkeypatch):
+    """Stored declarations exercise the calculator checks because the public setters refuse the incompatible boundary combinations."""
     from rfx import GaussianPulse, Simulation
     sim = _guide(nonuniform=feature == "graded_interface")
     if feature == "source":
         sim.add_source((.04, .02, .01), "ez", waveform=GaussianPulse(f0=8e9))
     elif feature == "tfsf":
-        # The public setter refuses an open plane wave beside the guide's
-        # declared PEC side faces on the uniform mesh; exercise the
-        # calculator's existing check on a stored declaration.
         with pytest.raises(ValueError, match="TF/SF on the uniform mesh"):
             sim.add_tfsf_source(f0=8e9)
         twin = Simulation(freq_max=12e9, domain=(0.09, 0.04, 0.02), dx=0.005,
                           cpml_layers=4)
         sim._tfsf = twin.add_tfsf_source(f0=8e9)._tfsf
     elif feature == "periodic":
-        # The public setter already refuses this combination; exercise
-        # the calculator's existing check on a stored declaration.
         sim._periodic_axes = "z"
     else:
         sim._interface_eps = "dual_average"

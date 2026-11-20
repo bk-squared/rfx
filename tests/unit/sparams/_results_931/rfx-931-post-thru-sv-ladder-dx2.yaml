@@ -30,7 +30,7 @@ run: |-
   command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
   SRC=<workspace>/research/rfx-931-T2-sparams-ports
   test -d "$SRC" || { echo "ERROR: worktree missing at $SRC"; exit 3; }
-  RUNS=/root/workspace/claude-workspace/rfx/runs
+  RUNS=<workspace>/rfx/runs
   OUT=$RUNS/issue931-post-thru-sv-ladder-dx2-$(date -u +%Y%m%dT%H%M%SZ)
   mkdir -p "$OUT"
   echo "$OUT" > "$RUNS/issue931-post-thru-sv-ladder-dx2.latest"

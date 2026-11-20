@@ -36,31 +36,21 @@ rfx, no solver):
 
 The frequency bar itself (``FREQ_BAR``) is applied by the case, to the judged
 feature, before the magnitude comparison.
+Five bins are used for the crossing fit because three is the fewest points a line can be
+fitted to with any residual left to see, and two more give the residual a margin; and no more,
+so the fit stays near the crossing.
 """
 
 from __future__ import annotations
 
 import numpy as np
 
-# The v2 accuracy bar (rfx CLAUDE.md).
-FREQ_BAR = 0.01          # resonances, cutoffs, notches, band edges: within 1 %
-MAG_BAR_DB = 2.0         # power and magnitude: within 2 dB
-LADDER_AGREEMENT = 0.01  # mesh statement: the last two rungs differ by < 1 %
-DEEP_NULL_DB = -20.0     # a bin where either curve is below this is judged by
-#                          position only, never by magnitude
-# Rule R-a: a ladder step no larger than
-# one tenth of the 1 % frequency bar counts as flat, not as a direction.
+FREQ_BAR = 0.01
+MAG_BAR_DB = 2.0
+LADDER_AGREEMENT = 0.01
+DEEP_NULL_DB = -20.0
 FLAT_STEP = 0.001
-# The RT5880 patch antenna:
-# the input resistance at the resonance, |Re Zin_rfx - Re Zin_ref| / Re Zin_ref.
 RESISTANCE_BAR = 0.02
-# Rule R-c: the reference curve's slope at a level crossing is
-# a least-squares line through CROSSING_FIT_BINS bins, the bin nearest the
-# crossing and two on each side.  Five, because three is the fewest points a
-# line can be fitted to with any residual left to see, and two more give the
-# residual (the flatness guard below reads it) a margin; and no more, so the
-# fit stays near the crossing -- on the Sheen record (24.375 MHz bins) five
-# bins span 97.5 MHz, below the tolerance the fit gives there.
 CROSSING_FIT_BINS = 5
 
 CONVERGED = "converged"

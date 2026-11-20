@@ -51,7 +51,7 @@ ADVISORY_KEY = "far-port discipline"
 
 
 # --------------------------------------------------------------------------- #
-# #493 — how a PEC obstacle's drawn faces become electric walls
+# How a PEC obstacle's drawn faces become electric walls
 # --------------------------------------------------------------------------- #
 A_WR90 = 22.86e-3
 B_WR90 = 10.16e-3
@@ -221,7 +221,7 @@ def test_production_node_coords_equal_the_f64_construction():
 
 
 # Measured on the production realization path under the lattice ownership
-# contract (#931). Every entry was 1 before it: half-open node sampling
+# contract. Every entry was 1 before it: half-open node sampling
 # retreated the lo fin's interior face by a cell, so a fin drawn to its
 # nominal depth left the opening one cell too WIDE. Centre-sampled cells
 # with walls on both drawn faces put the wall on the plane the fixture
@@ -419,7 +419,7 @@ def test_drawn_vs_realized_is_decidable_on_the_FACE_residual():
 
 
 # --------------------------------------------------------------------------- #
-# #494 — thin-absorber advisory on the plain two-port path
+# Thin-absorber advisory on the plain two-port path
 # --------------------------------------------------------------------------- #
 _FREQS = np.linspace(4.5e9, 8.0e9, 4)
 _F0 = float(_FREQS.mean())
@@ -556,7 +556,7 @@ def test_thin_absorber_advisory_honours_per_face_thickness_overrides():
 
 
 # --------------------------------------------------------------------------- #
-# #494 advisory — coverage added after an independent mutation battery
+# Advisory — coverage added after an independent mutation battery
 #
 # The original fixture exercised the advisory at ONE point in its option space
 # (normalize=False, empty geometry, one x-propagating single-mode port pair,
@@ -565,7 +565,7 @@ def test_thin_absorber_advisory_honours_per_face_thickness_overrides():
 # on ``if not self._geometry`` or ``if normalize != "flux"`` left all 40 tests
 # green, and BOTH of those conditions are the actual settings of the WR-90
 # inductive iris case — the setup that motivated issue #494. A one-line
-# regression restoring precisely the #494 blind spot on precisely the
+# regression restoring precisely the blind spot on precisely the
 # motivating setup was invisible.
 # --------------------------------------------------------------------------- #
 def _two_port_with_obstacle(cpml_layers, *, freqs=_FREQS, dx=0.004):
@@ -625,7 +625,7 @@ def test_advisory_message_recomputes_every_number_it_quotes():
     # copy of the constant that can drift from it.
     from rfx.api._sparams import _FAR_PORT_LAMBDA_G_FRACTION
     assert f"documented {_FAR_PORT_LAMBDA_G_FRACTION:g} guide-wavelength" in msg
-    # The #494 ripple ladder is a claims-bearing measurement quoted as fact, so
+    # The ripple ladder is a claims-bearing measurement quoted as fact, so
     # it is pinned too: prose numbers were freely corruptible otherwise.
     from tests._structured_snapshot import message_numbers
     assert all(token in msg for token in ("residual", "|S11|", "ripple", "lambda_g"))
@@ -803,14 +803,11 @@ def test_advisory_is_a_userwarning_so_the_default_filter_shows_it():
 
 
 # --------------------------------------------------------------------------- #
-# #493 characterization — independent oracle for the pinned excess table
+# Characterization — independent oracle for the pinned excess table
 #
 # `_NOMINAL_EXCESS` is a table of measured constants, so a coherent author could
 # mutate the realization rule AND re-pin the table in one commit and stay
-# green. Verified once against the pre-#931 rule: `(coords >= lo)` -> `(coords >
-# lo)` plus five numeric edits passed 40/40, which silently falsified the
-# ambiguity docstring and left the asymmetric branch of the symmetry test dead
-# in every parametrization. The oracle below is re-derived from the ownership
+# green. The oracle below is re-derived from the ownership
 # contract's own arithmetic and never calls the rasterizer.
 # --------------------------------------------------------------------------- #
 def _predicted_excess(cells: int, d_phys: float) -> int:
@@ -915,7 +912,7 @@ def test_advisory_also_fires_on_the_port_reference_sims_junction_path():
 
 
 # --------------------------------------------------------------------------- #
-# #576 review F3 — the advisory has to reach the NON-UNIFORM lane too
+# The advisory has to reach the NON-UNIFORM lane too
 # --------------------------------------------------------------------------- #
 def _two_port_nu(cpml_layers, *, ratio=2.0, freqs=_FREQS, dx=0.004):
     """The same two-port sim on a transversely graded mesh.

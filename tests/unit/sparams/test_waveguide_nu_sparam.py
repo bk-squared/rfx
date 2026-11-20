@@ -38,19 +38,11 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-# NOTE: do NOT set module-level jax.config.update("jax_enable_x64", True) here —
-# it permanently flips x64 ON for the whole pytest process and leaks into
-# downstream same-process tests (test_wire_*/test_verification then fail with
-# lax.scan carry-dtype TypeErrors). These NU tests need only float32 (they check
-# finite/shape/liveness, no f64-precision assertion). If a future test here needs
-# x64, scope it with `with jax.experimental.enable_x64(True):` like
-# tests/unit/autodiff/test_msl_sparam_ad.py — never module-level.
 
-# ---------------------------------------------------------------------------
-# WR-90 dimensions
-# ---------------------------------------------------------------------------
-_A_WG = 0.02286   # m  (broad wall)
-_B_WG = 0.01016   # m  (narrow wall)
+WR90_BROAD_WALL_METRES = 0.02286
+_A_WG = WR90_BROAD_WALL_METRES
+WR90_NARROW_WALL_METRES = 0.01016
+_B_WG = WR90_NARROW_WALL_METRES
 _F_MAX = 12e9
 _FREQS = jnp.linspace(8.2e9, 12.4e9, 5)
 
@@ -60,6 +52,7 @@ def _make_wr90_nu_sim(*, solved_domain=False):
 
     Uses a coarse/fine/coarse dx_profile so dx_profile is not None and the
     dispatch in compute_waveguide_s_matrix routes to _compute_waveguide_s_matrix_nu.
+    Preflight must be able to capture the once-per-sim warning in the declared-geometry snapshot/report.
     """
     from rfx.api import Simulation
     from rfx.boundaries.spec import BoundarySpec, Boundary
@@ -68,7 +61,6 @@ def _make_wr90_nu_sim(*, solved_domain=False):
     dx_coarse = 1.5e-3
     dx_fine = 0.75e-3
 
-    # Build a graded profile: coarse - fine (centre 20mm) - coarse
     n_pre = int(round(0.030 / dx_coarse))
     n_fine = int(round(0.040 / dx_fine))
     n_post = int(round(0.030 / dx_coarse))
@@ -80,10 +72,11 @@ def _make_wr90_nu_sim(*, solved_domain=False):
     dx_profile = smooth_grading(raw, max_ratio=1.3)
     domain_x = float(np.sum(dx_profile))
 
+    DECLARED_GEOMETRY_SNAP = "declared"
     sim = Simulation(
         freq_max=_F_MAX,
         domain=(domain_x, 15 * dx_coarse, 7 * dx_coarse) if solved_domain else (domain_x, _A_WG, _B_WG),
-        snap="declared",  # Preserve the declared-geometry reporting fixture.
+        snap=DECLARED_GEOMETRY_SNAP,
         dx=dx_coarse,
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),
@@ -103,23 +96,17 @@ def _make_wr90_nu_sim(*, solved_domain=False):
         freqs=_FREQS, f0=10.3e9, bandwidth=0.5,
         reference_plane=domain_x - 0.020, name="right",
     )
-    # Do not build merely to assert the once-per-sim warning here: preflight
-    # must be able to capture it in the declared-geometry snapshot/report.
     return sim
 
 
-# ---------------------------------------------------------------------------
-# Helper: run the NU sim, return result (reused across tests via module-level
-# cache to avoid running the sim twice).
-# ---------------------------------------------------------------------------
 _cached_result = None
 
 
 def _get_result():
+    """Allow the pulse to reach the receiver, retaining propagation in transmission."""
     global _cached_result
     if _cached_result is None:
         sim = _make_wr90_nu_sim()
-        # Allow the pulse to reach the receiver; transmission retains propagation.
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             _cached_result = sim.compute_waveguide_s_matrix(
@@ -127,10 +114,6 @@ def _get_result():
             )
     return _cached_result
 
-
-# ---------------------------------------------------------------------------
-# Test 1: dispatch sanity — result has correct shape and is a JAX array
-# ---------------------------------------------------------------------------
 
 def test_nu_dispatch_returns_jax_array():
     """_compute_waveguide_s_matrix_nu must return s_params as a jax.Array."""
@@ -147,10 +130,6 @@ def test_nu_dispatch_returns_jax_array():
     )
 
 
-# ---------------------------------------------------------------------------
-# Test 2: finite S — no NaN/Inf anywhere in s_params
-# ---------------------------------------------------------------------------
-
 def test_nu_s_params_finite():
     """All entries of s_params must be finite (no NaN/Inf).
 
@@ -163,7 +142,6 @@ def test_nu_s_params_finite():
     res = _get_result()
     s = np.array(res.s_params)
 
-    # R5: per-frequency dump — full trace, not a bare scalar
     print("\n[G-NU] Per-frequency S-parameter trace (2-port, 5 freqs):")
     freqs_ghz = np.array(res.freqs) / 1e9
     for i in range(s.shape[0]):
@@ -180,13 +158,6 @@ def test_nu_s_params_finite():
         "s_params contains NaN or Inf — _compute_waveguide_s_matrix_nu "
         "assembly failure. Per-freq trace printed above."
     )
-
-
-# ---------------------------------------------------------------------------
-# Test 3: NU dispatch / DFT-liveness gate on the air-thru identity
-# (NOT a physical passivity gate — issue #395)
-# ---------------------------------------------------------------------------
-
 
 
 def test_nu_s_params_dispatch_and_dft_liveness():
@@ -222,10 +193,6 @@ def test_nu_s_params_dispatch_and_dft_liveness():
     )
 
 
-# ---------------------------------------------------------------------------
-# Test 4: uniform vs nonuniform comparison — documents the divergence (R5)
-# ---------------------------------------------------------------------------
-
 def test_nu_vs_uniform_finite_and_comparable():
     """Compare settled NU and uniform transmission at the declared planes.
 
@@ -233,11 +200,9 @@ def test_nu_vs_uniform_finite_and_comparable():
     The existing bound catches gross assembly disagreement; it does not claim
     equality of two propagation phases or serve as a physics accuracy gate.
     """
-    # Nonuniform result (already cached)
     res_nu = _get_result()
     s_nu = np.array(res_nu.s_params)
 
-    # Uniform counterpart: same WR-90, same ports, no dx_profile
     from rfx.api import Simulation
     from rfx.boundaries.spec import BoundarySpec, Boundary
 
@@ -268,12 +233,10 @@ def test_nu_vs_uniform_finite_and_comparable():
         res_u = sim_u.compute_waveguide_s_matrix(num_periods=32, normalize=True)
     s_u = np.array(res_u.s_params)
 
-    # Shape parity
     assert s_nu.shape == s_u.shape, (
         f"Shape mismatch: NU={s_nu.shape}, uniform={s_u.shape}"
     )
 
-    # Per-frequency overlay (R5)
     print("\n[G-NU] NU vs Uniform per-freq |S| comparison:")
     for i in range(s_nu.shape[0]):
         for j in range(s_nu.shape[1]):
@@ -286,24 +249,17 @@ def test_nu_vs_uniform_finite_and_comparable():
                 f"diff={np.array2string(diff, precision=4)}"
             )
 
-    # Both must be finite
     assert np.all(np.isfinite(s_u)), "Uniform path s_params contains NaN/Inf."
     assert np.all(np.isfinite(s_nu)), "NU path s_params contains NaN/Inf (rechecked)."
 
     max_dev = np.abs(s_nu - s_u).max()
     print(f"\n[G-NU] max |S_nu - S_uniform| = {max_dev:.4f}")
-    # Keep the existing assembly comparison bound on the two settled runs.
-    # The one-plane-set contract supplies the separate physics gates.
     assert max_dev < 1.5, (
         f"NU vs uniform max deviation {max_dev:.4f} >= 1.5 — "
         "suggests assembly-level NaN/explosion (the all-zero-S regression "
         "would show max_dev≈1.0)."
     )
 
-
-# ---------------------------------------------------------------------------
-# Test 5: AD smoke — jax.grad through post-assembly scalar returns finite grad
-# ---------------------------------------------------------------------------
 
 def test_nu_assembly_ad_traceable():
     """jax.grad through a post-assembly scalar objective returns finite grad.
@@ -324,7 +280,7 @@ def test_nu_assembly_ad_traceable():
     removed in issue #395.)
     """
     res = _get_result()
-    s = res.s_params  # jax.Array
+    s = res.s_params
 
     def objective(scale: jax.Array) -> jax.Array:
         return jnp.sum(jnp.abs(s * scale) ** 2).real
@@ -342,13 +298,6 @@ def test_nu_assembly_ad_traceable():
         f"AD grad = {float(grad):.6e} < 0; |sum(|S|^2)| gradient must be non-negative."
     )
 
-
-# ---------------------------------------------------------------------------
-# W1.1 (roadmap 2026-06-10): the NU dispatch must REJECT kwargs it cannot
-# forward. eps_override/sigma_override are the documented differentiable
-# channels (G-AD-WIRE-WG2); silently dropping them produced silently-wrong
-# gradients on graded meshes.
-# ---------------------------------------------------------------------------
 
 def test_nu_dispatch_rejects_eps_override():
     sim = _make_wr90_nu_sim(solved_domain=True)

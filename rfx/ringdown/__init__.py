@@ -26,8 +26,9 @@ The method (every rule fixed here, none tuned per board)
 1. Window: samples ``[n_start, n_stop)`` of the record.
 2. Anti-alias decimation of every channel with ``rfx.harminv``'s own plan and
    FIR stage (``_decimation_plan`` toward ``4 x freq_max`` sampling, harminv's
-   default pencil fraction and model capacity; ``scipy.signal.decimate`` with
-   a zero-phase FIR of order ``20 q``, the ten outputs at each end dropped).
+   default pencil fraction and model capacity; a capacity-keeping fallback
+   only on memory refusal; zero-phase FIR of order ``20 q``, with ten outputs
+   dropped at each end).
    The reference is the run's ``freq_max``: a fixed reference below the band
    filters the band's own modes out before the pencil sees them.
 3. One multichannel matrix pencil: each channel's Hankel pair, scaled by that
@@ -89,6 +90,7 @@ report in ``Result.ringdown.stop``.
 """
 
 from __future__ import annotations
+from rfx._traced_inputs import admit_traced_inputs
 
 from rfx.errors import AccuracyWarning, RfxRefusal, RfxUnsupported; from rfx._warning_origin import user_stacklevel  # noqa: E702
 
@@ -109,6 +111,7 @@ from rfx.ringdown._pencil import (
     _check_run_identification_memory,
     _witness_identification,
     _check_identification_memory,
+    _identification_plan,
     _decimate,
     _fit_residues,
     _pencil,
@@ -119,9 +122,9 @@ from rfx.ringdown._pencil import (
 import inspect
 import math
 import warnings
-from dataclasses import dataclass, replace as _dc_replace
+from dataclasses import dataclass, field, replace as _dc_replace
 from importlib import import_module
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -193,9 +196,18 @@ class RingdownSpec:
         Read-only field channels appended after port V/I for pole identification.
         Positions are physical (x, y, z); components are ex/ey/ez/hx/hy/hz.
         Port residues and S assembly retain their original channels. These
-        extra channels have no W0-style accumulator witness. Port channels
-        are always included; probe-only identification is not offered. A
-        closed structure still needs a weakly coupled driven wire port.
+        extra channels have no W0-style accumulator witness. With probe_freqs=None,
+        port channels are always included. With probe_freqs set, a model driven
+        only by soft sources is identified and completed on these channels alone.
+    probe_freqs : tuple or None
+        Positive concrete frequency bins for completing the identification probes
+        without ports. Spectra use each field kind's physical DFT clock. WE and
+        W2 use each channel's peak over these bins as their relative scale.
+    probe_normalization : {"incident", None}
+        With "incident" (closed-box plane wave at normal incidence, ey and ez
+        channels), each completed channel and every witness operand is divided
+        by the incident E spectrum at the channel's x plane
+        (:mod:`rfx.ringdown._incident_norm`), so the error is judged on that scale.
     window_start : float
         Start of the identification window as a fraction of the record; the
         window is ``[window_start * T, T]``. The source must be off there
@@ -232,8 +244,18 @@ class RingdownSpec:
     passivity_tol: float = 1.0e-3
     source_off_tol: float = 1.0e-6
     identification_probes: tuple = ()
+    probe_freqs: tuple | None = None
+    probe_normalization: str | None = None
 
     def __post_init__(self):
+        admit_traced_inputs("RingdownSpec", locals())
+        if self.probe_normalization not in (None, "incident"):
+            raise ValueError(f"RingdownSpec.probe_normalization must be 'incident' or None, got {self.probe_normalization!r}")
+        if self.probe_freqs is not None:
+            bins = host_bins(self.probe_freqs, np.float64, caller="RingdownSpec", argument="probe_freqs")
+            if bins.ndim != 1 or not bins.size or not np.all(np.isfinite(bins) & (bins > 0)):
+                raise ValueError("RingdownSpec.probe_freqs must be 1-D, non-empty, finite and positive")
+            object.__setattr__(self, "probe_freqs", tuple(float(f) for f in bins))
         probes = []
         for position, component in self.identification_probes:
             position = tuple(float(v) for v in position)
@@ -280,7 +302,7 @@ class RingdownWitness(NamedTuple):
 
 @dataclass(frozen=True)
 class RingdownReport:
-    """What a completed S-matrix rests on: the window, the poles, the witnesses.
+    """What a completed spectrum rests on: the window, the poles, the witnesses.
 
     When a check that decides whether the completion can be trusted at all
     fails (W0, W1, the identification), nothing is completed: ``failure``
@@ -296,7 +318,8 @@ class RingdownReport:
     entry and one column per extra channel: |residue| / window RMS. This
     includes any TM pole the user identifies by frequency; no mode type or
     observability threshold is inferred. These channels have no W0-style
-    accumulator witness; the shares are information only.
+    accumulator witness; the shares are information only. With an incident
+    normalization, ``incident_spectra`` holds the (nf, P) divisor.
 
     ``tail_share`` takes its maximum over the identification-probe channels
     as well as the port channels when ``identification_probes`` is set.
@@ -335,10 +358,12 @@ class RingdownReport:
     # Information only: no W0-style witness, and no TM-mode classification.
     identification_channels: tuple = ()
     identification_amplitude_shares: tuple = ()
+    probe_normalization: str | None = None
+    incident_spectra: np.ndarray | None = field(default=None, compare=False)
 
     @property
     def completed(self) -> bool:
-        """True when the completed S-matrix was produced."""
+        """True when the requested port S or probe spectra were produced."""
         return self.failure is None
 
     @property
@@ -386,13 +411,16 @@ class RingdownResult(NamedTuple):
     at those bins rounded to float32, and so does the completion). It is
     ``None`` when the report says the completion was not produced. ``stop``
     is the :class:`RingdownStopReport` of ``run(..., until_identified=True)``
-    and ``None`` otherwise.
+    and ``None`` otherwise. In probe mode, ``s_params`` is None and
+    ``probe_spectra`` holds complex128 (nf, P) spectra at the declared float64
+    bins; it is None if completion failed. Read ``report.completed``.
     """
 
     s_params: np.ndarray | None
     freqs: np.ndarray
     report: RingdownReport
     stop: object = None
+    probe_spectra: np.ndarray | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -439,7 +467,7 @@ def identify(series, dt, n_start, n_stop, *, freq_max, guard=0.9,
     dt, freq_max = float(dt), float(freq_max)
     win = Y[n_start:n_stop]
     win = win.astype(np.float64 if np.isrealobj(win) else np.complex128)
-    factors, _kept = decimation_plan(win.shape[0], dt, freq_max)
+    factors, _kept = _identification_plan(win.shape[0], dt, freq_max, win.shape[1])
     Yd = _decimate(win, factors) if factors else win
     D = int(np.prod(factors)) if factors else 1
     _check_identification_memory(
@@ -588,88 +616,6 @@ _LOOP_LEGS = {
 _AXIS_OF = {"ex": 0, "ey": 1, "ez": 2}
 
 
-def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
-                       caller: str = "run") -> None:
-    """Raise, with the reason, for every run ``ringdown=`` does not cover.
-
-    ``caller`` names the entry point in the messages (``"run"`` or
-    ``"forward"``); the checks are the same.
-    """
-    if not isinstance(spec, RingdownSpec):
-        raise TypeError(
-            f"ringdown= takes a rfx.ringdown.RingdownSpec, got {type(spec).__name__}")
-    if devices is not None and len(devices) > 1:
-        raise RfxUnsupported(
-            f"{caller}(ringdown=...) is not supported on the distributed lane "
-            "(devices=): the port-channel probes and their check against the "
-            "port accumulators are single-device only.")
-    if until_decay is not None:
-        raise RfxUnsupported(
-            f"{caller}(ringdown=...) completes a record of fixed length; until_decay= "
-            "stops the record on field energy instead, and the two are not "
-            "combined. Pass n_steps= or num_periods=.")
-    if compute_s_params is False:
-        raise RfxRefusal(
-            f"{caller}(ringdown=...) completes the port S-parameters, but "
-            "compute_s_params=False asks for none.")
-    if getattr(sim, "_mode", "3d") != "3d":
-        raise RfxUnsupported(
-            f"{caller}(ringdown=...) needs mode='3d'; this model is mode={sim._mode!r}.")
-    _refuse_stencil_order(sim, caller)
-    if getattr(sim, "_refinement", None) is not None:
-        raise RfxUnsupported(
-            f"{caller}(ringdown=...) is not supported on the subgridded lane.")
-    if getattr(sim, "_periodic_axes", ""):
-        raise RfxUnsupported(
-            f"{caller}(ringdown=...) is not supported with periodic axes: rfx refuses "
-            "wire-port S-parameters there.")
-    if getattr(sim, "_tfsf", None) is not None:
-        wf = getattr(sim._tfsf, "waveform", "")
-        raise RfxUnsupported(
-            f"{caller}(ringdown=...) is not supported with a TFSF plane wave"
-            + (" driven by a continuous wave, which never turns off"
-               if wf == "continuous_wave" else
-               ": the total-field boundary keeps injecting while the auxiliary "
-               "line still carries the pulse, so the injection waveform alone "
-               "does not say when the source is off") + ".")
-    if any(float(getattr(m, "chi3", 0.0) or 0.0) != 0.0
-           for m in getattr(sim, "_materials", {}).values()):
-        raise RfxUnsupported(
-            f"{caller}(ringdown=...) is not supported with a Kerr (chi3) material: "
-            "after the pulse the update is not linear, so the record is not a "
-            "sum of fixed damped oscillations.")
-    for attr, what in (("_msl_ports", "microstrip (add_msl_port)"),
-                       ("_waveguide_ports", "waveguide (add_waveguide_port)"),
-                       ("_coaxial_ports", "coaxial (add_coaxial_port)"),
-                       ("_floquet_ports", "Floquet (add_floquet_port)")):
-        if getattr(sim, attr, None):
-            raise RfxUnsupported(
-                f"{caller}(ringdown=...) completes wire-port S-parameters only; this "
-                f"model has a {what} port.")
-    wire = []
-    for pe in sim._ports:
-        if pe.is_soft_source:
-            continue            # a soft source: checked for being off, below
-        if pe.extent is None:
-            raise RfxUnsupported(
-                f"{caller}(ringdown=...) completes wire-port S-parameters only; the "
-                f"port at {tuple(pe.position)} is a one-cell lumped port "
-                "(add_port without extent=).")
-        if getattr(pe, "reference_plane_cells", None) is not None:
-            raise RfxUnsupported(
-                f"{caller}(ringdown=...) does not cover the reference-plane waves of "
-                f"the wire port at {tuple(pe.position)} (reference_plane_cells=).")
-        wire.append(pe)
-    if not wire:
-        raise RfxRefusal(
-            f"{caller}(ringdown=...) needs a wire port (add_port(..., extent=...), "
-            "impedance > 0); this model has none.")
-    if not any(bool(pe.excite) for pe in wire):
-        raise RfxRefusal(
-            f"{caller}(ringdown=...) needs a driven wire port: with every port passive "
-            "run() reports a per-cell diagnostic, not a scattering parameter.")
-
-
 def _refuse_stencil_order(sim, caller: str) -> None:
     """The completion works in the grid's ``dt``; the (2,4) stencil does not step at it."""
     order = getattr(sim, "_stencil_order", 2)
@@ -681,63 +627,6 @@ def _refuse_stencil_order(sim, caller: str) -> None:
             "supported in this version; use stencil_order=2.")
 
 
-def refuse_run_lane(lane: str, n_wire_ports: int) -> None:
-    """Lane-dependent refusals, once ``run()`` has chosen its lane."""
-    if lane not in ("run_uniform", "run_nonuniform"):
-        raise RfxUnsupported(
-            f"run(ringdown=...) supports the uniform and graded-mesh lanes; this "
-            f"run takes the {lane!r} lane.")
-    if lane == "run_uniform" and n_wire_ports > 1:
-        raise RfxUnsupported(
-            "run(ringdown=...) on the uniform lane supports one wire port: with "
-            "several, run() assembles the S-matrix from separate per-port drive "
-            "runs that the port-channel probes do not see. Use a graded mesh "
-            "(any dx/dy/dz profile), where one run fills the driven column.")
-
-
-def refuse_forward_request(sim, spec, *, distributed, emit_time_series) -> None:
-    """Raise for every ``forward(ringdown=...)`` not covered: :func:`refuse_run_request`'s checks,
-    ``distributed=True``, ``emit_time_series=False``, and a backend without host callbacks."""
-    from rfx._traced_check import backend_class, require_host_callbacks
-    if not (backend := backend_class()).host_callbacks:
-        raise RfxUnsupported(
-            f"forward(ringdown=): pole identification: this backend ({backend.name}) cannot run host code inside compiled code")
-    require_host_callbacks("forward(ringdown=)", "pole identification")
-    if not isinstance(spec, RingdownSpec):
-        raise TypeError(
-            f"ringdown= takes a rfx.ringdown.RingdownSpec, got {type(spec).__name__}")
-    if distributed:
-        raise RfxUnsupported(
-            "forward(ringdown=...) is not supported with distributed=True: the "
-            "port-channel probes and their check against the port accumulators "
-            "are single-device only.")
-    refuse_run_request(sim, spec, devices=None, until_decay=None,
-                       compute_s_params=True, caller="forward")
-    if not emit_time_series:
-        raise RfxRefusal(
-            "forward(ringdown=...) reads the port voltage and current from probe "
-            "series on the port's own cells; emit_time_series=False records none.")
-
-
-def refuse_forward_lane(lane: str, n_wire_ports: int, *, port_s11_freqs) -> None:
-    """Lane-dependent refusals, once ``forward()`` has chosen its lane."""
-    if lane not in ("fwd_uniform", "fwd_nonuniform"):
-        raise RfxUnsupported(
-            f"forward(ringdown=...) supports the uniform and graded-mesh lanes; "
-            f"this call takes the {lane!r} lane.")
-    if lane == "fwd_uniform":
-        if n_wire_ports > 1:
-            raise RfxUnsupported(
-                "forward(ringdown=...) on the uniform lane supports one wire port, "
-                "as run(ringdown=...) does. Use a graded mesh (any dx/dy/dz "
-                "profile), where one run fills the driven column.")
-    if port_s11_freqs is None:
-        raise RfxRefusal(
-            "forward(ringdown=...) needs port_s11_freqs=: the completed "
-            "S-parameters are evaluated at those bins, like forward()'s own "
-            "s_params, which forward() computes only on request.")
-
-
 def _lane_resolver(lane: str, grid):
     """The position -> index function the lane's runner resolves probes with."""
     if lane == "uniform":
@@ -747,6 +636,7 @@ def _lane_resolver(lane: str, grid):
 
 
 from rfx.ringdown._geometry import _user_geometry
+from rfx.ringdown._host_bins import host_bins
 
 
 def _node_position(grid, idx) -> tuple:
@@ -947,18 +837,6 @@ class _NotCompleted(Exception):
         self.name, self.value, self.bar, self.message = name, value, bar, message
 
 
-def host_bins(bins, dtype):
-    """Keep pole identification and its host report on concrete frequencies."""
-    import jax
-
-    if isinstance(bins, jax.core.Tracer):
-        raise jax.errors.ConcretizationTypeError(
-            bins, "forward(ringdown=...) identifies poles on the host and needs "
-            "port_s11_freqs as concrete values; pass a numpy array built outside "
-            "the traced function")
-    return np.asarray(bins, dtype)
-
-
 class RingdownRun:
     """One ``run(..., ringdown=spec)``: probes in, run, probes out, complete.
 
@@ -973,12 +851,16 @@ class RingdownRun:
 
     #: The entry point named in refusal messages.
     caller = "run"
+    probe_mode = False
 
     def __init__(self, sim, spec: RingdownSpec, *, lane: str, n_steps: int, grid, bins=None, warn_identification=True):
         if lane not in ("uniform", "graded"):
             raise ValueError(f"lane must be 'uniform' or 'graded', got {lane!r}")
         self.sim, self.spec, self.lane = sim, spec, lane
-        self.bins = None if bins is None else host_bins(bins, np.float64)
+        self.probe_mode = spec.probe_freqs is not None
+        self.bins = None if bins is None else host_bins(bins, np.float64, caller=self.caller, argument="s_param_freqs" if self.caller == "run" else "port_s11_freqs")
+        if self.probe_mode:
+            self.bins = np.asarray(spec.probe_freqs, dtype=np.float64)
         from rfx.core.yee import CurlBoundary
         self.port_boundary = CurlBoundary(pmc_faces=sim._boundary_spec.pmc_faces(),
                                           periodic=sim._periodic_flags())
@@ -999,6 +881,7 @@ class RingdownRun:
         self.wire_entries = [sim._ports[i] for i in self.wire_port_ids]
         self.source_off, self.source_ratio_long = self._check_sources_off()
         self.probe_keys = self._plan_probes(warn_identification=warn_identification)
+        self.incident_spectra = import_module("rfx.ringdown._incident_norm").incident_normalization(self)
 
     # -- before the run ------------------------------------------------------
 
@@ -1011,28 +894,25 @@ class RingdownRun:
         the main window refuses.
         """
         from rfx.measurement.record_end import source_end_step
+        from rfx.ringdown._plane_wave import (_require_source_off_rows, drive_label, plane_wave_entries,
+                                              still_on_message)
         from rfx.sources._sampling import field_time_step
 
         entries = [pe for pe in self.sim._ports
                    if (pe.is_soft_source or bool(pe.excite))
-                   and pe.waveform is not None]
+                   and pe.waveform is not None] + plane_wave_entries(self)
         _, samples = source_end_step(
             [(pe.waveform, 0.) for pe in entries], self.n_steps, field_time_step(self.dt, self.sim._precision),
             tolerance=self.spec.source_off_tol, return_detail=True)
+        _require_source_off_rows(entries, samples, self.caller, self.probe_mode)
         rows = []
         ratio_long = 0.0
-        for pe, (w, peak, _) in zip(entries, samples):
+        for pe, (w, peak, _) in zip(entries, samples, strict=True):
             ratio = 0.0 if peak == 0.0 else float(np.max(w[self.n_start:]) / peak)
-            kind = "source" if pe.is_soft_source else "wire port"
-            label = f"{kind} at {tuple(float(v) for v in pe.position)} ({pe.component})"
+            label = drive_label(pe)
             if not ratio <= float(self.spec.source_off_tol):
-                raise ValueError(
-                    f"{self.caller}(ringdown=...): the {label} is still on inside the "
-                    f"identification window [{self.n_start * float(self.dt):.4g}, "
-                    f"{self.n_steps * float(self.dt):.4g}] s: its waveform there "
-                    f"reaches {ratio:.3e} of its peak, above source_off_tol = "
-                    f"{self.spec.source_off_tol:.1e}. The window must hold free "
-                    "ringing only; use a longer record or a later window_start.")
+                raise ValueError(still_on_message(pe, self.caller, ratio, self.spec.source_off_tol, (
+                    self.n_start * float(self.dt), self.n_steps * float(self.dt))))
             rows.append((label, ratio))
             if peak != 0.0:
                 ratio_long = max(ratio_long, float(np.max(w[self.n_long:]) / peak))
@@ -1122,6 +1002,9 @@ class RingdownRun:
     # -- after the run -------------------------------------------------------
 
     def _finish(self, result, n_user: int):
+        if self.probe_mode:
+            from rfx.ringdown._probe_channels import finish_probe_run
+            return finish_probe_run(self, result, n_user)
         full = result.time_series
         ts_all = np.asarray(full)
         n_int = len(self.probe_keys)
@@ -1164,10 +1047,13 @@ class RingdownRun:
         Memory refusals raise; other failed checks are reported. A probe layout
         missing a table node raises ``ValueError`` before identification.
         """
+        if self.probe_mode:
+            from rfx.ringdown._probe_channels import host_probe_report
+            return host_probe_report(self, result, ts_all, n_user)
         dt = float(result.grid.dt)
         ref_hz = max(self.freq_max, float(np.max(np.asarray(result.freqs,
                                                             dtype=np.float64))))
-        base = dict(n_record=self.n_steps, dt=dt,
+        base: dict[str, Any] = dict(n_record=self.n_steps, dt=dt,
                     window_steps=(self.n_start, self.n_steps),
                     window_s=(self.n_start * dt, self.n_steps * dt),
                     short_window_steps=(self.n_start, self.n_split),
@@ -1824,59 +1710,6 @@ def _pole_text(p) -> str:
     return f"{abs(p.f_hz) / 1e9:.5g} GHz, Q {p.q:.4g}"
 
 
-def refuse_until_identified(sim, spec, until_identified, *, until_decay,
-                            snapshot) -> bool:
-    """Raise, with the reason, for every ``run(until_identified=...)`` not covered.
-
-    Returns the flag. The rest of what ``until_identified=True`` refuses is
-    what ``ringdown=`` refuses (:func:`refuse_run_request`,
-    :func:`refuse_run_lane`) and, before the run, what ``run(n_steps=n_steps,
-    ringdown=spec)`` would refuse for the maximum record (:class:`RingdownStop`).
-    """
-    if not isinstance(until_identified, bool):
-        raise TypeError(
-            f"until_identified must be True or False, got {until_identified!r}")
-    if not until_identified:
-        return False
-    if spec is None:
-        raise RfxRefusal(
-            "run(until_identified=True) ends the run once the ring-down "
-            "completion of the wire-port S-parameters is witnessed; it needs "
-            "ringdown=RingdownSpec(...).")
-    if until_decay is not None:
-        raise RfxRefusal(
-            "run(until_identified=True) and until_decay= are two rules for "
-            "where the record ends (the completion's witnesses, the field "
-            "energy); pass one. With until_identified, n_steps= is the longest "
-            "record the run may take.")
-    if snapshot is not None:
-        raise RfxUnsupported(
-            "run(until_identified=True) is not supported with snapshot=: the "
-            "frame axes are laid out from n_steps before the run, and the early "
-            "stop ends the record at a length chosen during it.")
-    for attr, what in (("_dft_planes", "a DFT plane (add_dft_plane_probe)"),
-                       ("_flux_monitors", "a flux monitor (add_flux_monitor)")):
-        if getattr(sim, attr, None):
-            raise RfxUnsupported(
-                f"run(until_identified=True) is not supported with {what}: its "
-                "accumulator is built for the record length n_steps before the "
-                "run (the DFT window and its step count), and the early stop ends "
-                "the record at a length chosen during it. Use run(n_steps=..., "
-                "ringdown=...) with a fixed record.")
-    for attr, what in (("_ntff", "an NTFF box (add_ntff_box)"),
-                       ("_current_moments",
-                        "a current-moment monitor (add_current_moment_monitor)")):
-        if getattr(sim, attr, None):
-            raise RfxUnsupported(
-                f"run(until_identified=True) is not supported with {what}: the "
-                "early stop chooses the record from the wire-port S-parameters "
-                "alone and completes only those, so the far field would come "
-                "from a record cut while the structure still rings. Use "
-                "run(n_steps=..., ringdown=...) with a record long enough for "
-                "the far field.")
-    return True
-
-
 class RingdownStop:
     """``run(..., ringdown=spec, until_identified=True)``: the stop and its result.
 
@@ -1935,16 +1768,18 @@ class RingdownStop:
         evaluated at every check.
         """
         from rfx.measurement.record_end import source_end_step
+        from rfx.ringdown._plane_wave import _require_source_off_rows
         from rfx.sources._sampling import field_time_step
 
+        entries = [pe for pe in self.sim._ports
+                   if (pe.is_soft_source or bool(pe.excite)) and pe.waveform is not None]
         _, samples = source_end_step(
-            [(pe.waveform, 0.) for pe in self.sim._ports
-             if (pe.is_soft_source or bool(pe.excite))
-             and pe.waveform is not None],
+            [(pe.waveform, 0.) for pe in entries],
             self.n_max, field_time_step(self.base.dt, self.sim._precision), tolerance=self.spec.source_off_tol,
             return_detail=True)
         # Scheduling retains n_max for a drive still on at the final sample;
         # the settling witness instead reports no source end in that case.
+        _require_source_off_rows(entries, samples, self.base.caller)
         n_off = max((off for _, _, off in samples), default=0)
         return _first_check_record(n_off, self.spec.window_start, self.chunk)
 
@@ -2091,11 +1926,11 @@ def static_pole_bound(n_window: int, n_channels: int, dt: float, freq_max: float
 
     The pencil's eigenvalue count is its rank, at most ``min(M, C L)`` for the
     stacked ``M x (C L)`` Hankel matrix of ``C`` channels; ``L`` and ``M``
-    follow from the decimation plan and harminv's pencil shape, functions of
-    the window length alone. ``forward(ringdown=...)`` pads to the smaller of
+    follow from the memory-bounded identification plan and pencil shape.
+    ``forward(ringdown=...)`` pads to the smaller of
     this algebraic bound and :data:`TRACED_POLE_BUDGET` for a fixed traced shape.
     """
-    _factors, kept = decimation_plan(int(n_window), float(dt), float(freq_max))
+    _factors, kept = _identification_plan(int(n_window), float(dt), float(freq_max), int(n_channels))
     L = int(_harminv._pencil_columns(int(kept), PENCIL_PARAMETER))
     return max(1, int(min(int(kept) - L, int(n_channels) * L)))
 
@@ -2105,6 +1940,8 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
                      bin_axis: int | None = None,
                      pole_target: float | None = None) -> RingdownWitness:
     """The witness of a completed gradient: two gradients of one objective, compared.
+
+    In probe mode differentiate ``probe_spectra`` and ``probe_spectra_long``.
 
     ``grad`` is the gradient of an objective through
     ``ForwardResult.ringdown.s_params``. ``grad_other`` is the gradient of
@@ -2294,66 +2131,7 @@ def _status_reason(code: int, consistency=None, *, kept_count, pole_budget) -> s
     return f"status {code}"
 
 
-class _ForwardReportContext:
-    """What the lazy report of a ``forward(ringdown=...)`` needs besides arrays."""
-
-    def __init__(self, plan, metas, grid, bins, step=None):
-        self.plan = plan
-        self.metas = tuple(metas)
-        self.grid = grid
-        self.bins = np.asarray(bins, dtype=np.float64)
-        self.step = step            # the solver's own dt (ForwardResult.dt)
-
-    def report(self, res) -> RingdownReport:
-        from dataclasses import replace
-        from types import SimpleNamespace
-
-        plan = self.plan
-        s_plain = np.asarray(res._s_plain)
-        if plan.lane == "uniform":
-            # run()'s container for the uniform lane's single wire port
-            # (rfx/runners/uniform.py): (1, 1, nf) complex64, whatever the
-            # accumulator dtype (complex128 under x64)
-            s_plain = s_plain.reshape(1, 1, -1).astype(np.complex64)
-        result_like = SimpleNamespace(
-            wire_port_sparams=tuple(zip(self.metas, res._accs)), s_params=s_plain,
-            grid=self.grid, freqs=self.bins, dt=self.step)
-        S_host, report, nc = plan._host_report(result_like, np.asarray(res._channels), 0)
-        from rfx.measurement.port_s import observed_port_s
-        pairs = tuple(zip(self.metas, res._accs))
-        S_traced = np.asarray(observed_port_s(res.s_params, pairs)).astype(np.complex128)
-        c_now = np.asarray(res._consistency)
-        status = np.asarray(res._status).ravel()
-        nan_note = ""
-        if not np.all(np.isfinite(S_traced)):
-            nan_note = "the traced completion is NaN: " + "; ".join(
-                f"{w}: {_status_reason(code, c_now, kept_count=count, pole_budget=budget)}"
-                for w, code, count, budget in zip(
-                    ("[window_start T, T]", "[window_start/2 T, T]"), status,
-                    np.asarray(res._pole_counts), np.asarray(res._pole_budgets))
-                if int(code) != 0) if np.any(status != 0) else "the traced completion is NaN"
-        tol = float(plan.spec.witness_tol)
-        rule = ("max |S| difference between the traced completion (the one jax.grad "
-                "differentiates, in the working precision) and the float64 completion "
-                "run(ringdown=...) gives of the same record")
-        if nc is not None:
-            w = RingdownWitness("traced", math.nan, tol, False, rule,
-                                (nan_note + "; " if nan_note else "") + "no float64 "
-                                f"completion to compare: {nc.name} failed on the host",
-                                judged=False)
-        else:
-            S_ref = np.asarray(observed_port_s(S_host, pairs)).astype(np.complex128)
-            d = float(np.max(np.abs(S_traced - S_ref)))
-            w = RingdownWitness("traced", d, tol, d <= tol, rule, nan_note)
-        c = float(c_now)
-        wc = RingdownWitness(
-            "consistency", c, math.nan if CONSISTENCY_BAR is None else CONSISTENCY_BAR,
-            True if CONSISTENCY_BAR is None else c <= CONSISTENCY_BAR,
-            "max over the port channels, inside the traced program, of |tail-free "
-            "DFT of the rebuilt V_port or I - the run's own accumulator| / its peak",
-            "information (not applied)" if CONSISTENCY_BAR is None else "",
-            judged=CONSISTENCY_BAR is not None)
-        return replace(report, witnesses=report.witnesses + (w, wc))
+from rfx.ringdown._forward_context import _ForwardReportContext, report_context
 
 
 
@@ -2402,20 +2180,20 @@ class RingdownForward(RingdownRun):
         return stripped._replace(ringdown=completed)
 
     def _traced(self, result, channels) -> RingdownForwardResult:
+        if self.probe_mode:
+            from rfx.ringdown._probe_channels import traced_probe_completion
+            return traced_probe_completion(self, result, channels)
         import jax
         import jax.numpy as jnp
 
         from rfx.ringdown import _jax as rj
         from rfx.core.dft_utils import half_step_current_phase
 
-        metas = tuple(meta for meta, _accs in (result.wire_port_sparams or ()))
         accs = tuple(tuple(a) for _meta, a in (result.wire_port_sparams or ()))
         bins = (self.bins if self.bins is not None
                 else np.asarray(result.freqs, dtype=np.float64))
-        from rfx.core.jax_utils import is_tracer
-        step = getattr(result, "dt", None)
-        ctx = _ForwardReportContext(self, metas, result.grid, bins,
-                                    None if is_tracer(step) else step)
+        ctx = report_context(self, result, bins)
+        cells = tuple(getattr(result.grid, store) for _axis, store in ctx.traced_axes)
         status_fail = jnp.asarray([rj.STATUS_PRECONDITION, rj.STATUS_PRECONDITION],
                                   dtype=jnp.int32)
         try:
@@ -2434,17 +2212,17 @@ class RingdownForward(RingdownRun):
                                          jnp.asarray(jnp.nan, dtype=_rdt_nan(result)),
                                          jnp.full(2, -1, jnp.int32), jnp.zeros(2, jnp.int32), ctx,
                                          poles=pole_nan, poles_long=pole_nan,
-                                         pole_mask=empty_mask, pole_mask_long=empty_mask)
+                                         pole_mask=empty_mask, pole_mask_long=empty_mask,
+                                         cells=cells)
         pms = [pm._replace(accs=None) for pm in pms]      # no tracer in a host closure
         host_pms = pms
         if self.lane == "graded":
-            from rfx.model.graded_grid import host_nominal_grid
-            nominal = host_nominal_grid(result.grid)
-            if nominal is not result.grid:
+            if ctx.grid is not result.grid:
                 # A traced mesh: the host identification sizes the port's V/I on the
                 # nominal mesh, a different combination of the same recorded samples and
                 # so of the same poles (each column is RMS-normalised); S stays traced.
-                host_pms = [pm._replace(accs=None) for pm in self._read_metas_checked(result, nominal)]
+                host_result = result._replace(wire_port_sparams=tuple(zip(ctx.metas, accs)))
+                host_pms = [pm._replace(accs=None) for pm in self._read_metas_checked(host_result, ctx.grid)]
         acc_dtype = jnp.result_type(accs[0][3])
         used = sorted({j for e_cols, h_cells in layouts for j in e_cols}
                       | {j for e_cols, h_cells in layouts for _h, _l, j in h_cells}
@@ -2538,7 +2316,8 @@ class RingdownForward(RingdownRun):
                                      result.s_params, jnp.stack(status), consistency,
                                      jnp.stack(pole_counts), jnp.asarray(pole_budgets), ctx,
                                      poles=poles[0], poles_long=poles[1],
-                                     pole_mask=masks[0], pole_mask_long=masks[1])
+                                     pole_mask=masks[0], pole_mask_long=masks[1],
+                                     cells=cells)
 
 
 # Lazy compatibility exports avoid a cycle with the moved implementation.
@@ -2552,3 +2331,9 @@ _LAZY_EXPORTS = {
 def __getattr__(name):
     from rfx._moved_names import resolve_moved
     return resolve_moved(__name__, _LAZY_EXPORTS, name)
+
+
+from rfx.ringdown._admission import (
+    refuse_run_request, refuse_run_lane, refuse_forward_request,
+    refuse_forward_lane, refuse_until_identified,
+)

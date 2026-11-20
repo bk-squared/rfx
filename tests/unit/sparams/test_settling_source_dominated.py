@@ -44,14 +44,10 @@ def _records(*columns):
     return jnp.asarray(np.column_stack(columns).astype(np.float32))
 
 
-# A record that never decays (0.0 dB, the worst possible score) and one that
-# rings down hard. Synthetic records keep the SELECTION under test instead of
-# the physics of a particular box.
 FLAT = np.exp(-np.arange(200) / 200.)
 DECAYED = np.exp(-np.arange(200) / 6.0)
 
 
-# --- 1. what counts as "the same cell" -------------------------------------
 
 def test_co_location_is_decided_on_the_grid_node_spine():
     """Not dx-relative arithmetic: the same mapping that PLACES both."""
@@ -89,7 +85,6 @@ def test_no_grid_means_no_flags_rather_than_a_guess():
     assert source_dominated_columns(None, sim._probes, frozenset({(1, 2, 3)})) == frozenset()
 
 
-# --- 2. the selection rule -------------------------------------------------
 
 def test_the_only_record_on_the_source_cell_keeps_its_status_and_gains_the_qualifier():
     """Status and arithmetic unchanged; the number is labelled, not moved."""
@@ -109,9 +104,8 @@ def test_the_only_record_on_the_source_cell_keeps_its_status_and_gains_the_quali
 def test_an_independent_record_takes_the_verdict_off_the_source_record():
     sim = _sim([SOURCE, AWAY])
     result, _ = _run(sim)
-    # Real flags, synthetic records: the source column is the worse score,
-    # so a selection that ignored the flag would report it.
     result = result._replace(time_series=_records(FLAT, DECAYED))
+    assert probe_record_settling_witness(result.time_series[:, :1], dt=1., freqs=[.1], freq_max=.2, source_end_index=0, warn=False)[0] > probe_record_settling_witness(result.time_series[:, 1:], dt=1., freqs=[.1], freq_max=.2, source_end_index=0, warn=False)[0], "The source-column input must have the worse settling score."
     witness = probe_record_settling_witness(
         result.time_series,
         sim._settling_probe_selection(result), dt=1., freqs=[.1], freq_max=.2, source_end_index=0)[1]
@@ -145,7 +139,6 @@ def test_an_independent_only_fixture_is_untouched():
     assert witness["reason"]
 
 
-# --- 3. what the user is told ---------------------------------------------
 
 def test_a_source_dominated_pass_says_so_at_runtime():
     sim = _sim([SOURCE])
@@ -175,14 +168,12 @@ def test_the_preflight_advice_names_the_drive_cell():
     assert "does not count as an independent witness" in spoken[0]
 
 
-# --- 4. metadata ----------------------------------------------------------
 
 def test_the_flag_rides_in_the_numeric_selection_metadata():
     sim = _sim([SOURCE, AWAY])
     result, _ = _run(sim)
     info = sim._settling_probe_selection(result)
     assert tuple(tuple(map(int, item[:3])) for item in info) == ((0, 2, 1), (1, 2, 0))
-    # #1909: each item then carries its probe's cell.
     cells = tuple(tuple(int(v) for v in result.grid.position_to_index(entry.position))
                   for entry in sim._probes)
     assert tuple(tuple(map(int, item[3:])) for item in info) == cells

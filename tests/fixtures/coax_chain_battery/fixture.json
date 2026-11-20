@@ -17,13 +17,13 @@
   "deep_null_db": -20.0
  },
  "rulings": {
-  "deep_null_pi_2026_09_21": "a quantity near zero by construction is not compared in dB from rung to rung; the thru's |S11| is held to the -20 dB bound at every bin, and inside a reflection zero's core the verdict is the zero's frequency",
-  "identity_within_the_traced_path_pi_2026_09_23": "(P2): criterion 1(2) for coax is the identity WITHIN the traced path (the bead in a numpy vs a jnp container, rtol 1e-5 / atol 1e-7). The untraced call (float64 NumPy assembly) and the traced call (float32 jnp, _prefer_jnp) are two functions by design; the contract's identity clause applies where the traced and untraced call are the same function, and their difference on the thru is pinned as a measured envelope",
-  "bead_whole_cells_leader_2026_09_23": "leader 2026-09-23 (L1): the bead is 4 annulus widths = 5.68 mm, a whole number of cells at every rung (16 / 24 / 36); every bead stage was re-run with it",
-  "deep_quantity_by_the_bound_leader_2026_09_23": "leader 2026-09-23 (L2): a ladder quantity below -20 dB on the finest rung or in the closed form is judged by the bound, never by a dB comparison",
-  "settling_by_the_amplitude_substitute_pi_2026_09_24": "(R1): settling is judged by the contract's amplitude substitute as implemented, max |d|S|| <= one tenth of the magnitude gate in amplitude; the pre-declaration's addendum item 3 wrote it as 0.1 dB, which misstated it",
-  "open_judged_all_axis_absorption_leader_2026_09_25": "leader 2026-09-25 (the pre-declaration's addendum of that date, issue 1218): both coax lanes absorb on all three axes, so the lateral PEC can that held the field leaving an unshielded conductor end is gone. The open termination is judged again, like the short and the loads: magnitude within the bar, passivity 1.02, and record-length invariance (12 -> 24 traversals, shift below 0.0259). The open's exclusion of 2026-09-23 (P1) and the loads' closed-can footprint note of 2026-09-24 (R1) lapse with the fix",
-  "column_power_half_not_applied_leader_2026_09_24": "the contract substitute's second half (column power within 1e-3 of unity on a lossless structure) is not applied to the V-I coax lane; the reduced battery's passivity bar (<= 1.02) governs, and every record's column-power span is recorded as a fact"
+  "deep_null": "a quantity near zero by construction is not compared in dB from rung to rung; the thru's |S11| is held to the -20 dB bound at every bin, and inside a reflection zero's core the verdict is the zero's frequency",
+  "identity_within_the_traced_path": "(P2): criterion 1(2) for coax is the identity WITHIN the traced path (the bead in a numpy vs a jnp container, rtol 1e-5 / atol 1e-7). The untraced call (float64 NumPy assembly) and the traced call (float32 jnp, _prefer_jnp) are two functions by design; the contract's identity clause applies where the traced and untraced call are the same function, and their difference on the thru is pinned as a measured envelope",
+  "bead_whole_cells": "the bead is 4 annulus widths = 5.68 mm, a whole number of cells at every rung (16 / 24 / 36); every bead stage was re-run with it",
+  "deep_quantity_by_the_bound": "a ladder quantity below -20 dB on the finest rung or in the closed form is judged by the bound, never by a dB comparison",
+  "settling_by_the_amplitude_substitute": "(R1): settling is judged by the contract's amplitude substitute as implemented, max |d|S|| <= one tenth of the magnitude gate in amplitude; the pre-declaration's addendum item 3 wrote it as 0.1 dB, which misstated it",
+  "open_judged_all_axis_absorption": "The pre-declaration's addendum of 2026-09-25 (issue 1218): both coax lanes absorb on all three axes, so the lateral PEC can that held the field leaving an unshielded conductor end is gone. The open termination is judged again, like the short and the loads: magnitude within the bar, passivity 1.02, and record-length invariance (12 -> 24 traversals, shift below 0.0259). The open's exclusion of 2026-09-23 (P1) and the loads' closed-can footprint note of 2026-09-24 (R1) lapse with the fix",
+  "column_power_half_not_applied": "the contract substitute's second half (column power within 1e-3 of unity on a lossless structure) is not applied to the V-I coax lane; the reduced battery's passivity bar (<= 1.02) governs, and every record's column-power span is recorded as a fact"
  },
  "assembled_utc": "2026-09-30T23:34:20.911875+00:00",
  "assembler_commit": "36f7fd00f72f095fe0e45478609a03b5c9ca4ca3",
@@ -59599,7 +59599,7 @@
     "envelope_max_abs": 0.001041,
     "envelope_basis": "1.5 x the measured max |dS| 0.0006938 (run 369367263527, commit ca6da2b1)",
     "within": true,
-    "ruling": "identity_within_the_traced_path_pi_2026_09_23"
+    "ruling": "identity_within_the_traced_path"
    },
    {
     "tag": "bead_numpy_vs_jnp",
@@ -61123,7 +61123,7 @@
     },
     "judged_as": "identity",
     "within": true,
-    "ruling": "identity_within_the_traced_path_pi_2026_09_23"
+    "ruling": "identity_within_the_traced_path"
    }
   ]
  },

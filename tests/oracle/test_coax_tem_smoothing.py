@@ -8,7 +8,7 @@ from rfx.grid import C0
 
 
 def test_coax_tem_smoothing_accuracy():
-    width, length, dx = 8e-3, 24e-3, .25e-3  # a/dx = 4
+    width, length, dx = 8e-3, 24e-3, .25e-3
     sim = Simulation(freq_max=10e9, domain=(width, width, length),
                      boundary="pec", dx=dx)
     sim.add_material("fill", eps_r=4.)
@@ -27,7 +27,6 @@ def test_coax_tem_smoothing_accuracy():
     result = sim.run(n_steps=int(np.ceil(6e-9 / grid.dt)), subpixel_smoothing=True)
     modes = result.find_resonances(freq_range=(.6 * targets[0], 1.3 * targets[1]))
 
-    # R5: full extracted spectrum, Q and amplitude, then both analytic matches.
     ordered = sorted(modes, key=lambda mode: mode.freq)
     print(f"\n[coax-TEM] short planes (m): {z[[0, -1]].tolist()}, dt={grid.dt:.16g}")
     print(f"[coax-TEM] analytic (Hz): {targets.tolist()}")

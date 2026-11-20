@@ -21,7 +21,8 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              periodic: tuple = (False, False, False),
              stencil_order: int = 2,
              bloch: tuple | None = None, *, high_wall: tuple[bool, bool, bool],
-             magnetic_factors=(None, None, None)) -> FDTDState:
+             magnetic_factors=(None, None, None),
+             h_row_factors=(None, None, None), bloch_operand=None) -> FDTDState:
     """Magnetic field half-step update (Faraday's law).
 
     H^{n+1/2} = H^{n-1/2} - (dt / μ) * curl(E^n)
@@ -37,6 +38,8 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
         Bloch field-transformation.  When set, the fields must be a
         complex dtype (the transformed envelope P); requires stencil_order=2.
     """
+    if bloch_operand is not None:
+        bloch = bloch_operand
     so = stencil_order
     if so not in (2, 4):
         raise ValueError(f"stencil_order must be 2 or 4, got {so}")
@@ -67,6 +70,10 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
         mu = _realized.magnetic(materials, mu, "yee.H", periodic=periodic)
     mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
     ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
+
+    from rfx.boundaries.pmc import magnetic_update_coefficients
+    ch_x, ch_y, ch_z = magnetic_update_coefficients(
+        (ch_x, ch_y, ch_z), h_row_factors)
 
     # curl E components via forward staggered differences (order=2 byte-identical)
     # dEz/dy - dEy/dz
@@ -100,7 +107,7 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
                  periodic: tuple = (False, False, False),
                  stencil_order: int = 2,
                  bloch: tuple | None = None,
-                 inv_d: tuple | None = None, *, boundary=None) -> FDTDState:
+                 inv_d: tuple | None = None, *, boundary=None, frame=None) -> FDTDState:
     """Redo the E update inside one index box with its own Ca/Cb.
 
     ``prev`` is the state BEFORE the grid-wide E update of this timestep. It
@@ -164,7 +171,7 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
         curl_x, curl_y, curl_z = curl_h(
             prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),
             prev.hz.astype(_cdtype), dx, periodic, stencil_order, bloch,
-            boundary=boundary)
+            boundary=boundary, frame=frame)
     else:
         curl_x, curl_y, curl_z = curl_h_nu(
             prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),
@@ -193,7 +200,7 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              periodic: tuple = (False, False, False),
              stencil_order: int = 2,
              bloch: tuple | None = None, *, boundary=None, high_wall: tuple[bool, bool, bool],
-             frame=None, owned=None) -> FDTDState:
+             frame=None, owned=None, bloch_operand=None) -> FDTDState:
     """Electric field full-step update (Ampere's law).
 
     For lossy media with conductivity σ:
@@ -216,6 +223,8 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
         Bloch field-transformation; requires stencil_order=2 and complex
         fields.  The backward differences use the conjugate phase automatically.
     """
+    if bloch_operand is not None:
+        bloch = bloch_operand
     so = stencil_order
     if so not in (2, 4):
         raise ValueError(f"stencil_order must be 2 or 4, got {so}")
@@ -462,11 +471,12 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
     return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
 
 
-@partial(jax.jit, static_argnames=("periodic", "boundary", "high_wall"))
+@partial(jax.jit, static_argnames=("periodic", "bloch", "boundary", "high_wall"))
 def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
                        inv_xx: jnp.ndarray, inv_yy: jnp.ndarray, inv_zz: jnp.ndarray,
                        dt: float, dx: float,
-                       periodic: tuple = (False, False, False), *, boundary=None, high_wall: tuple[bool, bool, bool]) -> FDTDState:
+                       periodic: tuple = (False, False, False), bloch: tuple | None = None,
+                       *, boundary=None, high_wall: tuple[bool, bool, bool], bloch_operand=None) -> FDTDState:
     """Electric field update with per-component **inverse** permittivity.
 
     Stage 2 production form: takes the diagonal of the inverse-eps
@@ -536,7 +546,9 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
         _e_update_coeffs_inv_si, _ca_cb_inv_eps_r_units, inv_zz, sigma_ez, dt)
 
     # curl H (identical to update_e and update_e_aniso).
-    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, boundary=boundary)
+    if bloch_operand is not None:
+        bloch = bloch_operand
+    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, bloch=bloch, boundary=boundary)
 
     ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
     ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)
@@ -551,7 +563,8 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
 def update_e_aniso(state: FDTDState, materials: MaterialArrays,
                    eps_ex: jnp.ndarray, eps_ey: jnp.ndarray, eps_ez: jnp.ndarray,
                    dt: float, dx: float,
-                   periodic: tuple = (False, False, False), *, boundary=None, high_wall: tuple[bool, bool, bool]) -> FDTDState:
+                   periodic: tuple = (False, False, False), bloch: tuple | None = None,
+                   *, boundary=None, high_wall: tuple[bool, bool, bool], bloch_operand=None) -> FDTDState:
     """Electric field update with per-component anisotropic permittivity.
 
     Same as :func:`update_e` but uses separate permittivity arrays for
@@ -599,7 +612,9 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
     ca_ez, cb_ez = e_update_coeffs(eps_ez, sigma_ez, dt)
 
     # curl H (same as update_e)
-    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, boundary=boundary)
+    if bloch_operand is not None:
+        bloch = bloch_operand
+    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, bloch=bloch, boundary=boundary)
 
     ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
     ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)

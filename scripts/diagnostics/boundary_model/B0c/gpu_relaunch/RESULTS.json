@@ -10,7 +10,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "run-gpu",
         "1"
       ],
@@ -326,7 +326,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "run-gpu",
         "0.5"
       ],
@@ -690,7 +690,7 @@
       "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
       "command": [
         "/usr/bin/python",
-        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "<workspace>/.boundary-model/B0c/cavity.py",
         "run-gpu",
         "0.25"
       ],
@@ -1148,5 +1148,5 @@
   "original_changed": [],
   "provider_status": "completed",
   "job_returncode": 0,
-  "conclusion": "leader fills."
+  "conclusion": "Conclusion pending"
 }

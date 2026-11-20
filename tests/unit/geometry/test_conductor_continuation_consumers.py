@@ -42,16 +42,15 @@ def test_nonuniform_thin_conductor_fills_pad_nodes(kind):
 
 
 def test_dual_average_excludes_continued_metal_from_edge_average():
+    """Including the lower PEC cell in the vacuum-only average gives 2.5."""
     from rfx.runners.nonuniform import assemble_materials_nu, assemble_interface_eps_nu
     sim = _sim(nu=True, interface_eps="dual_average")
-    # eps=4 below z=4, vacuum above; PEC occupies the lower incident cells.
     sim.add_material("dielectric", eps_r=4.)
     sim.add(Box((-4., -4., -4.), (12., 12., 4.)), material="dielectric")
     sim.add(Box((0., 2., 2.), (8., 6., 4.4)), material="pec")
     grid = sim._build_nonuniform_grid()
     materials, _, _, pec_mask, *_ = assemble_materials_nu(sim, grid, pec_sheets=[], pec_wires=[])
     eps = assemble_interface_eps_nu(sim, grid, materials, pec_mask=pec_mask, high_wall=unpadded_high_walls(grid))
-    # Only the upper vacuum contributes; including the lower cell gives 2.5.
     assert float(eps[0][0, 6, 6]) == 1.
 
 
@@ -86,6 +85,7 @@ def test_preflight_entry_arrays_include_the_absorber(thin):
 
 
 def test_refused_sibling_does_not_refuse_the_two_bridged_sheets():
+    """The node index is two pad cells + z=7."""
     sim = _sim()
     sim.add(Box((0., 0., 0.), (8., 8., 0.)), material="pec")
     sim.add(Box((0., 3., 3.), (8., 5., 3.)), material="pec")
@@ -99,7 +99,7 @@ def test_refused_sibling_does_not_refuse_the_two_bridged_sheets():
     assert any(f["kind"] == "refused-by-contract" for f in _row(report, 2)["findings"])
     entries = sim._campaign_ctx().entry_realizations()
     assert [e.kind for e in entries] == ["sheet", "sheet", "refused"]
-    assert "plane z=9" in entries[2].error  # node index: two pad cells + z=7
+    assert "plane z=9" in entries[2].error
 
 
 @pytest.mark.parametrize("extra_conductor", (False, True))
@@ -200,11 +200,11 @@ def test_zero_extent_dielectric_still_continues_along_its_normal():
 
 
 def test_shift_probe_uses_realized_fractional_face_trimmed_to_interior():
+    """The 9 x 4 x 2 occupied cells give 355 edges: Ex=9*5*3, Ey=10*4*3, Ez=10*5*2."""
     sim = _sim(fractional=True)
     sim.add(Box((0., 2., 2.), (8.2, 6., 4.)), material="pec")
     ctx = sim._campaign_ctx()
     entry = ctx.interior_pec_entries()[0]
-    # 9 x 4 x 2 occupied cells: Ex=9*5*3, Ey=10*4*3, Ez=10*5*2.
     assert entry.edge_count_shifted(ctx, 0, .05) == 355
 
 
@@ -212,8 +212,6 @@ def test_grading_check_reads_the_domain_face_of_a_continued_sheet():
     sim = _sim(nu=True)
     sim.add(Box((0., 0., 4.), (8., 8., 4.)), material="pec")
     ctx = sim._campaign_ctx()
-    # The transverse domain wall is at index 2; the full sheet runs to 0.
-    # Set the already-built local widths to a literal 2:1 jump at that wall.
     sim._dx_profile = np.ones(8)
     ctx.spacings = (np.asarray(ctx.spacings[0]).copy(), *ctx.spacings[1:])
     ctx.spacings[0][1] = .5
