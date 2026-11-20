@@ -42,7 +42,8 @@ def _guide(*, volume_walls=False):
         sim.add_waveguide_port(
             position, direction=direction, mode=(1, 0), mode_type="TE", freqs=freqs,
             f0=f0, bandwidth=(freqs[-1] - freqs[0]) / f0,
-            waveform="modulated_gaussian", n_modes=1, name=name, **aperture)
+            waveform="modulated_gaussian", n_modes=1, name=name,
+            amplitude=1.0 if name == "left" else 0.0, **aperture)
     return sim, nodes, walls
 
 
