@@ -1,4 +1,6 @@
-"""Public calculator entry checks, independent of the admission row lists."""
+"""Public calculator entry checks, independent of the admission row lists.
+The mixed S-matrix fixture's y length is a solved length because 13 * .0005 is a whole number of cells of dx.
+"""
 
 import jax
 import numpy as np
@@ -24,6 +26,7 @@ PHYSICS_CASES += [(calculator, "scan_angle") for calculator in
 
 
 def declare_physics(sim, feature):
+    """Waveguide registration refuses periodic axes at construction, so the mixed-feature witness must reach the calculator's guard."""
     from dataclasses import replace
     from rfx import Box, DebyePole, drude_pole, lorentz_pole
     if feature in ("kerr", "debye", "lorentz", "drude"):
@@ -50,25 +53,21 @@ def declare_physics(sim, feature):
         return ("_msl_ports", "msl_port")
     assert feature in ("floquet", "scan_angle")
     if feature == "floquet":
-        # Waveguide registration refuses periodic axes at construction;
-        # this mixed-feature witness must reach the calculator's guard.
         sim._boundary_spec = replace(sim._boundary_spec, x="periodic", y="periodic")
     if feature == "scan_angle":
-        # Keep the new witness's explicit cell size commensurate with
-        # the transverse periods that add_floquet_port registers.
         sim._domain = tuple(round(length / sim._dx) * sim._dx for length in sim._domain)
     sim.add_floquet_port(centre[2], freqs=np.array([8e9, 9e9]),
                          scan_theta=30. if feature == "scan_angle" else 0.)
     return ("_floquet_ports", feature if feature == "scan_angle" else "floquet_port")
 
 
-# The 1 mm fixture's solved lengths, 13 x 14 x 13 cells, declared at
-# construction (#1887).
 SOLVED_1MM = (13 * .001, 14 * .001, 13 * .001)
 
 
 def calculator_case(calculator, *, feature=None):
-    """A registered model and one public call, with a four-step request."""
+    """A registered model and one public call, with a four-step request.
+    The coax/MSL witness uses the realized top of the volume ground (2.5 mm) and the trace's lower surface (2.8 mm).
+    """
     if calculator == "waveguide_s_matrix":
         sim = _guide()
         call = lambda: sim.compute_waveguide_s_matrix(n_steps=4, normalize=True)
@@ -77,8 +76,6 @@ def calculator_case(calculator, *, feature=None):
             from dataclasses import replace
             from tests.unit.sparams.test_coax_msl_transition import _build_coax_msl_transition_sim
             sim = _build_coax_msl_transition_sim()
-            # This witness uses the realized top of the volume ground
-            # (2.5 mm) and the trace's lower surface (2.8 mm).
             port = sim._msl_ports[0]
             sim._msl_ports[0] = replace(
                 port, position=(*port.position[:2], .0025), height=.0003)
@@ -99,12 +96,10 @@ def calculator_case(calculator, *, feature=None):
             lambda *args: sim, np.zeros((1, 1, 3), complex),
             np.array([2e9, 3e9, 4e9]), n_iterations=1, verbose=False)
     elif calculator == "mixed_s_matrix":
-        sim = _mixed(False, domain=(.0123, 13 * .0005, .0047))  # solved length; #1887
+        sim = _mixed(False, domain=(.0123, 13 * .0005, .0047))
         call = lambda: sim.compute_mixed_s_matrix(
             n_steps=4, skip_preflight=True, magnitude_channel="wave")
     else:
-        # The scan_angle witness keeps the declared box: declare_physics fits
-        # it to whole cells itself for the Floquet port.
         sim = _sim(ports="lumped" if calculator == "s_matrix_scan" else None,
                    absorber=BoundarySpec(x="periodic", y="periodic", z="pec")
                    if feature == "scan_angle" else None,
@@ -136,8 +131,6 @@ def calculator_case(calculator, *, feature=None):
 ])
 def test_calculator_refuses_unread_setting_before_scan(monkeypatch, calculator, attr, value, words):
     sim, call = calculator_case(calculator)
-    # Uniform Yee fixtures: these settings are unread on the base routes
-    # (except material fit's existing interface-rule refusal).
     if attr == "_dt_pin":
         value = .5 * sim._build_grid().dt
     setattr(sim, attr, value)
@@ -326,8 +319,6 @@ def test_waveguide_refuses_upml_before_scan(monkeypatch):
     monkeypatch.setattr(jax.lax, "scan", forbidden)
     with pytest.raises(NotImplementedError, match="a UPML absorber"):
         sim.compute_waveguide_s_matrix(n_steps=4, normalize=False)
-
-
 
 
 @pytest.mark.parametrize("compute_s_params", [None, True])

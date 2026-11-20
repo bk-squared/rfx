@@ -14,7 +14,7 @@ import numpy as np
 from rfx._declarations import declaration_root
 from rfx.preflight.msl_codes import msl_diagnostic, msl_text, stub_diagnostic, msl_error
 from rfx.geometry.csg import Box, declared_bounds
-from rfx.geometry.port_termination import conductor_entries
+from rfx.geometry.port_termination import conductor_entries, lattice_support_end
 
 
 @dataclass(frozen=True)
@@ -106,8 +106,7 @@ def _intervals(sim, grid, shape, coords, axis, lower, upper, cache):
         indices = []
         for a, values in enumerate(nodes):
             values = np.asarray(values)
-            end = (np.r_[values[1:], values[-1] + values[-1] - values[-2]]
-                   if cell_axes[a] else values)
+            end = lattice_support_end(values, cell_axes[a])
             indices.append(np.arange(len(values)) if a == axis else
                            np.flatnonzero((end >= lower[a]) & (values <= upper[a])))
         if not all(len(i) for i in indices):
@@ -433,10 +432,33 @@ def require_no_resonant_line_stub(sim, freqs=None):
                 )
 
 
+def refuse_traced_line_port_mesh(sim):
+    """Refuse a line port whose declared cell-width profiles are traced."""
+    from rfx._traced_refusal import TracedStructureRefusal
+    from rfx.core.jax_utils import is_tracer
+
+    profiles = (("x", sim._dx_profile), ("y", sim._dy_profile), ("z", sim._dz_profile))
+    traced = [axis for axis, profile in profiles if profile is not None and is_tracer(profile)]
+    if traced:
+        raise TracedStructureRefusal(
+            "MSL and coaxial ports on a traced mesh: the line-port admission "
+            "reads the realized node coordinates on the host, and the cell "
+            f"widths on axis {', '.join(traced)} are traced (dx_profile, "
+            "dy_profile or dz_profile under jax.jit, jax.grad or jax.vmap). "
+            "Keep the cell-width profiles concrete in a model with an MSL or "
+            "coaxial port."
+        )
+
+
 def line_stub_admission(sim, freqs=None):
-    """Store the returned scope in the entry body; never wrap a warning emitter."""
+    """Store the returned scope in the entry body; never wrap a warning emitter.
+
+    A model with an MSL or coaxial port on a traced mesh is refused by name
+    here, before any host read of the mesh.
+    """
     if not (sim._msl_ports or sim._coaxial_ports):
         return None
+    refuse_traced_line_port_mesh(sim)
     band = read_band(sim, freqs)
     if _active_band(sim) is None:
         require_no_resonant_line_stub(sim, band)

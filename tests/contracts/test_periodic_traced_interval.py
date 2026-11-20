@@ -51,19 +51,17 @@ def _sphere(c):
 def _smoothed(mesh, L, kind):
     grid, fn, c = (_uniform if mesh == 'uniform' else _graded)(L)
     make = kind(c)
-    return jax.jit(lambda lo, hi: jnp.stack([jnp.asarray(a) for a in fn(grid, [(make(lo, hi), 4.)])]))
+    return jax.jit(lambda lo, hi: jnp.stack([jnp.asarray(a) for a in fn(grid, [(make(lo, hi), 4.)], dtype=jnp.float32)]))
 
 
 REFUSED = [
-    # [-L, 2L] admitted these with eps off by 0.81 (Ey 1.000 for 1.810), 0.318, and
-    # 2.800 for 3.610 (a 0.13 mm gap at the seam); the rest read correctly.
     ('uniform', 10 * MM, 16.77 * MM, 19.77 * MM),
     ('graded', 10 * MM, -9.77 * MM, -6.77 * MM),
     ('uniform', 10 * MM, 9.9 * MM, 19.77 * MM),
     ('uniform', 10 * MM, 11 * MM, 14 * MM),
     ('uniform', 10 * MM, -9.77 * MM, 0.1 * MM),
-    ('uniform', 10 * MM, 8.6 * MM, 11.6 * MM),         # m = L + 0.1 mm
-    ('uniform', 10 * MM, -1.6 * MM, 1.4 * MM),         # m = -0.1 mm
+    ('uniform', 10 * MM, 8.6 * MM, 11.6 * MM),
+    ('uniform', 10 * MM, -1.6 * MM, 1.4 * MM),
 ]
 
 
@@ -85,13 +83,13 @@ def test_traced_shape_with_its_midpoint_outside_the_period_is_refused(mesh, L, l
 
 
 ADMITTED = [
-    ('graded', 3 * MM, _sphere, 0.3 * MM, 2.7 * MM),   # period under two of the largest cells
+    ('graded', 3 * MM, _sphere, 0.3 * MM, 2.7 * MM),
     ('graded', 3 * MM, _box, 0.1 * MM, 2.9 * MM),
-    ('uniform', 1 * MM, _box, 0.0, 1 * MM),            # a one-cell period
-    ('uniform', 2 * MM, _box, 1.25 * MM, 2.75 * MM),   # midpoint on the high seam
-    ('uniform', 10 * MM, _box, 8.5 * MM, 11.5 * MM),   # midpoint on the high seam
-    ('uniform', 10 * MM, _box, -1.4 * MM, 1.6 * MM),   # m = 0.1 mm
-    ('uniform', 10 * MM, _box, 8.4 * MM, 11.4 * MM),   # m = L - 0.1 mm
+    ('uniform', 1 * MM, _box, 0.0, 1 * MM),
+    ('uniform', 2 * MM, _box, 1.25 * MM, 2.75 * MM),
+    ('uniform', 10 * MM, _box, 8.5 * MM, 11.5 * MM),
+    ('uniform', 10 * MM, _box, -1.4 * MM, 1.6 * MM),
+    ('uniform', 10 * MM, _box, 8.4 * MM, 11.4 * MM),
 ]
 
 

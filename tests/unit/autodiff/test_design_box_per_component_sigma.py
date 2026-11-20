@@ -50,12 +50,11 @@ def _sim(with_probes=False):
     sim.add_port(position=(4e-3, 10e-3, 8e-3), component="ez",
                  impedance=50.0,
                  waveform=GaussianPulse(f0=F0, bandwidth=0.8))
+    PROBE_POSITION_M = (12e-3, 11e-3, 8e-3)
     if with_probes:
-        # Both inside the box, one per in-plane component, and OFF the
-        # y = 10 mm plane the ez port makes a symmetry plane (ey is
-        # identically zero on it, which would make half this test vacuous).
-        sim.add_probe((12e-3, 11e-3, 8e-3), "ex")
-        sim.add_probe((12e-3, 11e-3, 8e-3), "ey")
+        assert all(lo < x < hi for lo, x, hi in zip(BOX_LO, PROBE_POSITION_M, BOX_HI)) and PROBE_POSITION_M[1] != 10e-3, 'Interior probes must avoid the port symmetry plane so the ey comparison is not vacuous'
+        sim.add_probe(PROBE_POSITION_M, "ex")
+        sim.add_probe(PROBE_POSITION_M, "ey")
     return sim
 
 
@@ -75,9 +74,6 @@ def _run(sim, eps, sigma, n_steps=N_STEPS):
                        port_s11_freqs=jnp.asarray([F0], jnp.float32))
 
 
-# ---------------------------------------------------------------------------
-# the lock
-# ---------------------------------------------------------------------------
 
 def _edge_average_of(sim, s_box):
     """#1210's per-component edge average of the cell array ``s_box``.
@@ -171,12 +167,11 @@ def test_the_box_edge_coefficients_of_a_cell_array_equal_its_averages_as_a_tuple
     tup = resolve_design_box(
         DesignBoxSpec(bounds, eps, _edge_average_of(sim, s)), **kw)
     assert one.bounds == tup.bounds
-    box = tuple(slice(0, n) for n in shape)       # box inside the write window
+    box = tuple(slice(0, n) for n in shape)
     for c in range(3):
         for got, want in ((tup.ca[c], one.ca[c]), (tup.cb[c], one.cb[c])):
             assert np.array_equal(np.asarray(got)[box], np.asarray(want)[box]), (
                 f"component {'xyz'[c]}: box-edge coefficients differ")
-    # and the plus-face layer is where they part: Ex's plus y face
     plus_y = (slice(0, shape[0]), shape[1], slice(0, shape[2]))
     assert not np.array_equal(np.asarray(tup.ca[0])[plus_y],
                               np.asarray(one.ca[0])[plus_y]), (
@@ -248,9 +243,6 @@ def test_a_conductivity_component_of_the_wrong_shape_is_refused():
         _run(sim, eps, (s, bad, s))
 
 
-# ---------------------------------------------------------------------------
-# the routing
-# ---------------------------------------------------------------------------
 
 def test_a_conductivity_on_x_alone_suppresses_ex_and_leaves_ey_alone():
     """The component the design conductivity names is the one that is loaded.
@@ -263,14 +255,13 @@ def test_a_conductivity_on_x_alone_suppresses_ex_and_leaves_ey_alone():
     shape = _box_shape(sim)
     eps = jnp.ones(shape, jnp.float32)
     quiet = jnp.zeros(shape, jnp.float32)
-    loud = jnp.full(shape, 1.0e3, jnp.float32)   # sigma*dt/2eps >> 1
+    STRONG_CONDUCTIVITY_S_PER_M = 1.0e3
+    loud = jnp.full(shape, STRONG_CONDUCTIVITY_S_PER_M, jnp.float32)
 
     base = np.asarray(_run(sim, eps, (quiet, quiet, quiet)).time_series)
     x_only = np.asarray(_run(sim, eps, (loud, quiet, quiet)).time_series)
     y_only = np.asarray(_run(sim, eps, (quiet, loud, quiet)).time_series)
 
-    # time_series is (n_steps, n_probe): column 0 is ex, column 1 is ey,
-    # both at the same point inside the box
     assert base.shape[1] == 2
     ex0, ey0 = np.abs(base[:, 0]).max(), np.abs(base[:, 1]).max()
     assert ex0 > 0.0 and ey0 > 0.0, "fixture drives neither in-plane edge"
@@ -278,16 +269,16 @@ def test_a_conductivity_on_x_alone_suppresses_ex_and_leaves_ey_alone():
     ex_x, ey_x = np.abs(x_only[:, 0]).max(), np.abs(x_only[:, 1]).max()
     ex_y, ey_y = np.abs(y_only[:, 0]).max(), np.abs(y_only[:, 1]).max()
 
-    # sigma_x loads ex hard and leaves ey close to where it was
     assert ex_x < 0.05 * ex0, f"ex only fell to {ex_x / ex0:.3f} of itself"
     assert ey_x > 0.5 * ey0, f"ey fell to {ey_x / ey0:.3f} under sigma_x"
-    # and the mirror image
     assert ey_y < 0.05 * ey0, f"ey only fell to {ey_y / ey0:.3f} of itself"
     assert ex_y > 0.5 * ex0, f"ex fell to {ex_y / ex0:.3f} under sigma_y"
 
 
 def test_update_e_box_applies_each_component_its_own_coefficients():
-    """The routing at the kernel, against coefficients written out by hand."""
+    """The routing at the kernel, against coefficients written out by hand.
+    Distinct coefficient pairs make swaps of the component index observable.
+    """
     shape = (4, 4, 4)
     box = (1, 3, 1, 3, 1, 3)
     bs = (2, 2, 2)
@@ -318,7 +309,5 @@ def test_update_e_box_applies_each_component_its_own_coefficients():
         got = getattr(out, field)[sl]
         assert np.allclose(np.asarray(got), np.asarray(want), rtol=1e-6), (
             f"{field} did not use coefficient {c}")
-    # the three coefficient pairs are genuinely different, so a swap moves a
-    # number: without this the loop above would pass on equal coefficients
     assert not np.allclose(np.asarray(ca[0]), np.asarray(ca[1]))
     assert not np.allclose(np.asarray(ca[1]), np.asarray(ca[2]))

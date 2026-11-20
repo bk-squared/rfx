@@ -24,12 +24,10 @@ N_STEPS = 600
 
 
 def _build() -> Simulation:
+    """The PEC volume spans one full 200 um coarse cell on node planes."""
     sim = Simulation(freq_max=40e9, domain=(4e-3, 4e-3, 4e-3), dx=200e-6,
                      boundary="cpml", cpml_layers=8,
                      dz_profile=[200e-6] * 8 + [100e-6] * 8 + [200e-6] * 8)
-    # #931: one full 200 um cell of the coarse block, drawn on nodes. The
-    # old 100 um box was half a cell thick and is refused now (a Box is a
-    # volume); nothing in this file is about the conductor's thickness.
     sim.add(Box((1.5e-3, 1.5e-3, 1.2e-3), (2.5e-3, 2.5e-3, 1.4e-3)),
             material="pec")
     sim.add_source(position=(2e-3, 2e-3, 2.4e-3), component="ez",
@@ -52,7 +50,6 @@ def test_the_declared_scatterer_realizes_the_walls_it_is_drawn_with():
     """
     from tests.unit._wall_planes_m import wall_planes_m
 
-    # dz_profile => the NU lane; assemble on the lane the run uses.
     rz, zs = wall_planes_m(_build(), 2, nonuniform=True)
     assert not rz.sheets, "the block is a VOLUME; nothing here declares a sheet"
     assert [round(z, 9) for z in zs] == [1.2e-3, 1.4e-3], (
@@ -71,7 +68,6 @@ def test_chunked_progress_reports_and_reenters_bit_exactly(capsys):
     assert f"{N_STEPS}/{N_STEPS} steps" in lines[-1]
     assert "(cap)" not in lines[-1], "fixed-N route must not print the cap marker"
 
-    # Chunk RE-ENTRY is exact (one-chunk vs four-chunk: bit-identical).
     r_one = _build().run(n_steps=N_STEPS, report_every=N_STEPS,
                          report_label="one-chunk")
     assert np.array_equal(np.asarray(r_one.time_series), ts_chunk), (

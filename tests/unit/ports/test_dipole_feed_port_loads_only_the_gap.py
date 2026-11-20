@@ -88,8 +88,7 @@ def _assert_realized(sim, n_arm):
 
 # UPML replaces the whole E update with its own coefficients
 # (rfx/boundaries/upml.py::init_upml), so it is a separate lane for the port's
-# load and gets its own row: before the UPML half of #1236 it still pinned the
-# loaded side to 0.088 of its mirror.
+# load and gets its own row.
 @pytest.mark.parametrize("boundary", ["cpml", "upml"])
 def test_the_feed_tip_radial_field_is_the_same_on_the_loaded_and_free_sides(boundary):
     # Exercise the load-owner regression with legacy radius=0 filaments.

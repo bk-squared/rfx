@@ -50,6 +50,7 @@ thru fixture's own recorded H planes:
 
 So the equivalence test below compares COMPLEX S. A magnitude-only
 comparison would pass on the very bug it exists to catch.
+35 um foil is a sheet on the laminate face, declared by a zero-thickness Box.
 """
 from __future__ import annotations
 
@@ -75,21 +76,11 @@ from rfx.sources.msl_port import (
 from tests._line_stub_geometry import trim_resonant_trace
 
 EPS_R, H_SUB, W_TRACE = 3.66, 254e-6, 600e-6
-# ON-LATTICE board (#931 §1.3): h_sub / dx = 3 exactly, so the laminate
-# face is a node line and the foil sheet lands on it. The module ran at
-# dx = 80 um (h_sub/dx = 3.175); that mesh is now used only by the
-# substrate-resolution advisory test, which is ABOUT the off-lattice
-# board and passes it explicitly.
 DX_BISECTING = 80e-6
 L_LINE, PORT_MARGIN, DX, F_MAX = 10e-3, 2e-3, H_SUB / 3.0, 5e9
 L_PROP = L_LINE + 2 * PORT_MARGIN
 L_LAT = W_TRACE + 2 * (2 * H_SUB + 8 * DX)
 LZ = H_SUB + 1.5e-3
-
-
-# ---------------------------------------------------------------------------
-# 1. The direction contract
-# ---------------------------------------------------------------------------
 
 
 def test_supported_directions_resolve_to_three_distinct_axis_roles():
@@ -98,8 +89,6 @@ def test_supported_directions_resolve_to_three_distinct_axis_roles():
     assert msl_axis_roles("-x") == ("x", "y", "z", -1.0)
     assert msl_axis_roles("+y") == ("y", "x", "z", +1.0)
     assert msl_axis_roles("-y") == ("y", "x", "z", -1.0)
-    # The substrate normal is z for EVERY supported direction. That is the
-    # invariant which makes "+z"/"-z" inexpressible.
     for d in MSL_SUPPORTED_DIRECTIONS:
         assert msl_axis_roles(d)[2] == "z"
 
@@ -126,11 +115,6 @@ def test_garbage_directions_raise_the_plain_domain_error(direction):
         msl_axis_roles(direction)
 
 
-# ---------------------------------------------------------------------------
-# 2. Ampere-loop handedness — the silent-failure guard
-# ---------------------------------------------------------------------------
-
-
 def test_ampere_pair_is_the_right_handed_cyclic_pair_not_an_axis_swap():
     """``a_hat x b_hat`` must equal ``p_hat`` for every direction.
 
@@ -153,7 +137,6 @@ def test_ampere_pair_is_the_right_handed_cyclic_pair_not_an_axis_swap():
             f"left-handed pair negates the Ampere-loop current and "
             f"inverts the S-matrix silently."
         )
-    # And specifically: the y-port pair is NOT the naive (x, z) swap.
     assert msl_ampere_pair("+y") == ("z", "x")
     assert msl_ampere_pair("+y") != ("x", "z")
 
@@ -195,25 +178,15 @@ def test_loop_current_negates_on_the_direction_sign_only():
         )
         assert not np.allclose(i_pos, i_neg), "the negation must actually fire"
 
-    # And the negation follows the SIGN, not the axis letter: the two
-    # positive-going directions agree with each other on identical input,
-    # as do the two negative-going ones.
     assert np.allclose(
         np.asarray(msl_loop_current(ha, hb, direction="+x", **kw)),
         np.asarray(msl_loop_current(ha, hb, direction="+y", **kw)),
     )
 
 
-# ---------------------------------------------------------------------------
-# 3. Geometry projection
-# ---------------------------------------------------------------------------
-
-
 def test_physical_point_places_each_role_on_its_own_axis():
     assert msl_physical_point("+x", 1.0, 2.0, 3.0) == (1.0, 2.0, 3.0)
     assert msl_physical_point("-x", 1.0, 2.0, 3.0) == (1.0, 2.0, 3.0)
-    # For a y port the feed coordinate lands in the y slot and the trace
-    # width centre in the x slot; the normal stays z.
     assert msl_physical_point("+y", 1.0, 2.0, 3.0) == (2.0, 1.0, 3.0)
     assert msl_physical_point("-y", 1.0, 2.0, 3.0) == (2.0, 1.0, 3.0)
 
@@ -239,7 +212,6 @@ def test_cross_section_cells_span_width_and_normal_at_the_feed_plane():
     cx = _msl_yz_cells(gx, px)
     cy = _msl_yz_cells(gy, py)
     assert len(cx) == len(cy) > 0
-    # Same cells, with the first two index slots exchanged.
     assert [(j, i, k) for (i, j, k) in cx] == list(cy)
     sx = msl_cross_section_span(gx, px)
     sy = msl_cross_section_span(gy, py)
@@ -264,7 +236,6 @@ def test_probe_ladder_steps_along_the_propagation_axis():
                        lat_c + W_TRACE / 2, 0.0, H_SUB, d_rev, 50.0), **kw)
         assert all(np.diff(fwd) > 0), f"{d_fwd} ladder must increase"
         assert all(np.diff(rev) < 0), f"{d_rev} ladder must decrease"
-    # The y ladder is the x ladder (same 1-D geometry along the feed axis).
     lx = msl_probe_x_coords_n(
         gx, MSLPort(PORT_MARGIN, lat_c - W_TRACE / 2, lat_c + W_TRACE / 2,
                     0.0, H_SUB, "+x", 50.0), **kw)
@@ -288,20 +259,17 @@ def test_graded_mesh_probe_ladder_reads_its_own_axis_profile():
     from rfx.nonuniform import make_nonuniform_grid
     from rfx.api._sparams import _msl_cell_profile
 
-    # make_nonuniform_grid requires the boundary cell to equal ``dx``, so
-    # the refinement sits in the interior.
     dxp = np.concatenate([np.full(20, 5e-4), np.full(40, 2.5e-4),
                           np.full(20, 5e-4)])
     dyp = np.concatenate([np.full(15, 5e-4), np.full(30, 2.5e-4),
                           np.full(15, 5e-4)])
+    assert dxp[0] == dxp[-1] == dyp[0] == dyp[-1] == 5e-4, "boundary cells must equal dx for interior refinement"
     g = make_nonuniform_grid(
         domain_xy=(float(np.sum(dxp)), float(np.sum(dyp))),
         dz_profile=np.full(24, 5e-4), dx=5e-4, cpml_layers=8,
         dx_profile=dxp, dy_profile=dyp,
         pec_faces={"z_lo"}, cpml_axes="xy",
     )
-    # Per-axis profiles keep their own lengths (the NU branch is
-    # authoritative; a scalar fallback would be the defect).
     for ax, n in (("x", g.nx), ("y", g.ny), ("z", g.nz)):
         assert _msl_cell_profile(g, ax, n).shape == (n,)
 
@@ -312,21 +280,13 @@ def test_graded_mesh_probe_ladder_reads_its_own_axis_profile():
     lad_x = np.asarray(msl_probe_x_coords_n(g, mk("+x"), **kw))
     lad_y = np.asarray(msl_probe_x_coords_n(g, mk("+y"), **kw))
 
-    # Both are strictly increasing and in-domain...
     for tag, lad in (("+x", lad_x), ("+y", lad_y)):
         assert np.all(np.diff(lad) > 0), f"{tag} ladder not monotonic: {lad}"
-    # ...and they DIFFER, because the two axes are graded differently.
-    # Equality here would mean the y ladder walked the x profile.
     assert not np.allclose(lad_x, lad_y), (
         f"the y ladder reproduced the x ladder on a mesh graded differently "
         f"on the two axes ({lad_x} vs {lad_y}) -- it is reading dx_arr "
         f"instead of dy_arr"
     )
-
-
-# ---------------------------------------------------------------------------
-# 4. The anisotropic sigma witness
-# ---------------------------------------------------------------------------
 
 
 def _anisotropic_grid(dx, dy, dz, shape):
@@ -348,8 +308,6 @@ class _Mat:
         import jax.numpy as jnp
         self.sigma = jnp.zeros(shape)
         self.eps_r = jnp.ones(shape)
-        # #1210: the edge-owned record of a lumped stamp. This stand-in only
-        # reads sigma back, but the stamping helper writes both.
         self.sigma_lumped = None
         self.eps_r_lumped = None
 
@@ -385,7 +343,6 @@ def test_port_conductance_uses_the_propagation_axis_cell_size():
     base_y = _sigma_sum("+y", 80e-6, 80e-6, 80e-6)
     assert base_x == pytest.approx(base_y, rel=1e-12)
 
-    # Halve the PROPAGATION cell only: sigma must double, both lanes.
     for d in ("+x", "-x", "+y", "-y"):
         got = _sigma_sum(d, 40e-6, 80e-6, 80e-6)
         assert got == pytest.approx(2.0 * base_x, rel=1e-12), (
@@ -393,18 +350,11 @@ def test_port_conductance_uses_the_propagation_axis_cell_size():
             f"{2.0 * base_x}) -- the port conductance is reading the wrong "
             f"axis's cell size."
         )
-    # Halve the WIDTH cell only: sigma must double as well (it is the
-    # parallel-cell count that changes), and NORMAL halving must halve it.
     for d in ("+x", "+y"):
         assert _sigma_sum(d, 80e-6, 40e-6, 80e-6) == pytest.approx(
             2.0 * base_x, rel=1e-12)
         assert _sigma_sum(d, 80e-6, 80e-6, 40e-6) == pytest.approx(
             0.5 * base_x, rel=1e-12)
-
-
-# ---------------------------------------------------------------------------
-# 5. Preflight fires on the correct axis per direction
-# ---------------------------------------------------------------------------
 
 
 def _msl_warnings(sim):
@@ -416,17 +366,16 @@ def _msl_warnings(sim):
 def _board(domain, direction, feed, lat_c, *, trace_len_axis, dx=DX):
     """Thru-line board with one port; ``feed``/``lat_c`` are port-frame.
     ``dx`` defaults to the module DX (80 um); the substrate-cell test passes
-    100 um, where the run grid really has fewer than 4 substrate cells."""
+    100 um, where the run grid really has fewer than 4 substrate cells.
+    ``snap="declared"`` keeps the substrate-resolution witness.
+    """
     sim = Simulation(freq_max=F_MAX, domain=domain, dx=dx, cpml_layers=8,
-                     snap="declared",  # Keep the substrate-resolution witness.
+                     snap="declared",
                      boundary=BoundarySpec(x="cpml", y="cpml",
                                            z=Boundary(lo="pec", hi="cpml")))
     sim.add_material("ro4350b", eps_r=EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (domain[0], domain[1], H_SUB)),
             material="ro4350b")
-    # 35 um foil -> a SHEET on the laminate face (#931 §1.3), declared by
-    # a zero-thickness Box. One cell thick it is a VOLUME: walls at both z
-    # faces and the Ez edge between them shorted.
     if trace_len_axis == "x":
         lo = (0.0, lat_c - W_TRACE / 2, H_SUB)
         hi = (domain[0], lat_c + W_TRACE / 2, H_SUB)
@@ -450,7 +399,7 @@ def test_lateral_clearance_check_fires_on_the_width_axis_for_a_y_port():
     starved while the propagation axis is generous, so a check still
     looking at ``domain[1]`` would stay silent.
     """
-    tight = W_TRACE + 2 * (0.2 * H_SUB)      # far under the 2*h_sub rule
+    tight = W_TRACE + 2 * (0.2 * H_SUB)
     sim = _board((tight, L_PROP, LZ), "+y", PORT_MARGIN, tight / 2.0,
                  trace_len_axis="y")
     msgs = [m for m in _msl_warnings(sim) if "lateral clearance" in m]
@@ -461,16 +410,15 @@ def test_lateral_clearance_check_fires_on_the_width_axis_for_a_y_port():
         f"{joined}"
     )
     assert "domain x-extent" in joined
-    # And it must NOT fire when the width axis is generous, even though
-    # the propagation axis is now the narrow one.
     ok = _board((L_LAT, L_PROP, LZ), "+y", PORT_MARGIN, L_LAT / 2.0,
                 trace_len_axis="y")
     assert not [m for m in _msl_warnings(ok) if "lateral clearance" in m]
 
 
 def test_port_to_cpml_check_fires_on_the_propagation_axis_for_a_y_port():
-    """Check 3 measures along the PROPAGATION axis — y for a y port."""
-    # Feed pressed right up against the y_lo wall; the x extent is fine.
+    """Check 3 measures along the PROPAGATION axis — y for a y port.
+    A ``"-y"`` port is bounded by the y_hi wall.
+    """
     sim = _board((L_LAT, L_PROP, LZ), "+y", 0.2 * H_SUB, L_LAT / 2.0,
                  trace_len_axis="y")
     msgs = [m for m in _msl_warnings(sim) if "distance to nearest" in m]
@@ -478,8 +426,6 @@ def test_port_to_cpml_check_fires_on_the_propagation_axis_for_a_y_port():
     joined = " ".join(msgs)
     assert "y-CPML" in joined, f"must name the y CPML for a +y port: {joined}"
     assert "domain y-extent" in joined
-    # A "-y" port is bounded by the OPPOSITE wall: the same tight feed
-    # coordinate is now comfortably clear.
     ok = _board((L_LAT, L_PROP, LZ), "-y", 0.2 * H_SUB, L_LAT / 2.0,
                 trace_len_axis="y")
     assert not [m for m in _msl_warnings(ok) if "distance to nearest" in m]
@@ -507,7 +453,6 @@ def test_h_sub_alignment_checks_fire_for_every_direction(direction):
     domain[{"x": 0, "y": 1}[prop]] = L_PROP
     domain[{"x": 0, "y": 1}[width]] = L_LAT
 
-    # Explicit off-lattice declaration: both resolution and fraction fire.
     sim80 = _board(tuple(domain), direction, PORT_MARGIN, L_LAT / 2.0,
                    trace_len_axis=prop, dx=DX_BISECTING)
     msgs80 = _msl_warnings(sim80)
@@ -520,13 +465,11 @@ def test_h_sub_alignment_checks_fire_for_every_direction(direction):
     assert "sits 0.175 of a cell above its lower mesh node" in frac80[0], frac80[0]
     assert "3 same-permittivity sample slot(s), extent 240.0µm" in frac80[0], frac80[0]
 
-    # dx = 100 um: the port spans three actual normal intervals too.
     sim100 = _board(tuple(domain), direction, PORT_MARGIN, L_LAT / 2.0,
                     trace_len_axis=prop, dx=100e-6)
     msgs100 = _msl_warnings(sim100)
     cells100 = [m for m in msgs100 if "normal interval(s) between" in m]
     assert cells100, f"substrate-resolution check silent for {direction}: {msgs100}"
-    # Same numbers on every axis -- h_sub does not depend on direction.
     assert "only 3 normal interval(s)" in cells100[0], cells100[0]
     assert "conductor-plane gap=300.0µm" in cells100[0], cells100[0]
 
@@ -541,7 +484,6 @@ def test_probe_span_absorber_check_fires_on_the_propagation_axis():
     sim.add(Box((0.0, 0.0, 0.0), (L_LAT, L_PROP, H_SUB)), material="ro4350b")
     sim.add(Box((L_LAT / 2 - W_TRACE / 2, 0.0, H_SUB),
                 (L_LAT / 2 + W_TRACE / 2, L_PROP, H_SUB)), material="pec")
-    # Ladder deliberately long enough to run off the far y edge.
     sim.add_msl_port(position=(L_LAT / 2, L_PROP - 1e-3, 0.0), width=W_TRACE,
                      height=H_SUB, direction="+y", impedance=50.0,
                      n_probe_offset=20, n_probe_spacing=6)
@@ -550,11 +492,6 @@ def test_probe_span_absorber_check_fires_on_the_propagation_axis():
             if "deepest" in m and "domain" in m]
     assert msgs, "probe-span absorber check did not fire"
     assert "domain y-extent" in " ".join(msgs)
-
-
-# ---------------------------------------------------------------------------
-# 6. The falsifier: rotation equivalence end to end
-# ---------------------------------------------------------------------------
 
 
 def _thru(axis, n_freqs, num_periods):
@@ -572,7 +509,6 @@ def _thru(axis, n_freqs, num_periods):
         thi = (lat_c + W_TRACE / 2, L_PROP, H_SUB)
         p0, p1, d0, d1 = ((lat_c, PORT_MARGIN, 0.0),
                           (lat_c, PORT_MARGIN + L_LINE, 0.0), "+y", "-y")
-    # #1138: trace transverse x/y solved +8.656% off; this tests rotation equivalence.
     sim = Simulation(snap="declared", freq_max=F_MAX, domain=domain, dx=DX, cpml_layers=8,
                      boundary=BoundarySpec(x="cpml", y="cpml",
                                            z=Boundary(lo="pec", hi="cpml")))
@@ -629,38 +565,28 @@ def test_y_directed_thru_reproduces_the_x_directed_thru():
     all three are >= 3 orders below the failure signature they exist to
     catch (the swap measures ``max|dS| = 1.912``). ``test_equivalence_
     harness_can_move`` is the negative control for that claim.
+    Advisory comparison discounts the float32 fit's last-digit Z0 spread (57.61 versus 57.60
+    ohm) and import-time DeprecationWarnings emitted only by whichever lane runs first.
     """
     rx, wx = _thru("x", n_freqs=12, num_periods=12)
     ry, wy = _thru("y", n_freqs=12, num_periods=12)
 
-    # Preflight output is part of the result (repo rule): the two lanes must raise the SAME
-    # advisories once the y lane's axis letters are read through the x<->y mirror that built it.
-    # The y lane's standalone x / y tokens are SWAPPED, not blanked: blanking both lanes to one
-    # placeholder (what this test did until 2026-09-21, one spelling at a time -- "y-CPML",
-    # "y: extent", then "y: drawn" reddened the weekly lane) also hides a real asymmetry, e.g. the
-    # y lane reporting a different dimension as off-size. Also normalised: numeric literals (the
-    # reported Z0 differs in its last printed digit, 57.61 vs 57.60 ohm, from the float32 fit
-    # above) and one-shot import-time DeprecationWarnings, which fire only for whichever lane
-    # runs first in the process. z is the substrate normal on both lanes and is left alone.
     import re
 
-    # a standalone axis letter ("'pec' y: drawn", "y-CPML", "[y]", "y_lo"), not the y of "entr(y/ies)"
     _axis = re.compile(r"(?<![A-Za-z0-9(])([xy])(?![A-Za-z0-9/])")
 
     def _canon(ms, *, mirrored):
+        """Blanking both lanes' axis letters to one placeholder hides a real asymmetry, e.g. the y lane
+        reporting a different dimension as off-size."""
         out = []
         for m in ms:
             if "deprecated" in m.lower():
                 continue
-            # "12 x 8 cells", "80µm x 80µm": a multiplication sign is not an axis, and the swap
-            # below would turn it into a confusing diff. No advisory of this fixture has one;
-            # the day one does, say so instead.
             assert " x " not in m, f"advisory uses ' x ' as a multiplication sign: {m[:120]!r}"
             if mirrored:
                 m = _axis.sub(lambda k: "y" if k.group(1) == "x" else "x", m)
             m = re.sub(r"[-+]?\d[\d.,]*(?:[eE][-+]?\d+)?", "#", m)
             if m.startswith("[run] preflight found"):
-                # Axis swapping reverses emission order inside the joined warning.
                 header, *lines = m.split("\n  - ")
                 m = "\n  - ".join([header, *sorted(lines)])
             out.append(m)
@@ -686,8 +612,6 @@ def test_y_directed_thru_reproduces_the_x_directed_thru():
     print(f"[#661 equivalence] settling_db x={np.asarray(rx.settling_db)} "
           f"y={np.asarray(ry.settling_db)}")
 
-    # Ring-down settling witness: fixed-length open-domain records must
-    # quote end/peak energy before any claims-bearing number.
     for tag, r in (("x", rx), ("y", ry)):
         sd = np.asarray(r.settling_db, dtype=float)
         assert np.all(sd < -40.0), (
@@ -708,15 +632,12 @@ def test_equivalence_harness_can_move():
     if the comparison cannot register a difference. Widen the y lane's
     trace by one mesh cell on each side and confirm the same statistic moves far
     past the 1e-4 bound -- so a PASS above is evidence, not a tautology.
+    Without ``snap="declared"``, the sheet-size preflight refuses the off-mesh trace.
     """
     rx, _ = _thru("x", n_freqs=6, num_periods=8)
 
     lat_c = L_LAT / 2.0
-    # One cell (W_TRACE + DX) realizes the SAME 7-cell sheet as the baseline and only widens
-    # the port aperture; two cells really widen the solved strip (asserted below).
     w_bad = W_TRACE + 2 * DX
-    # Same snap mode as _thru, which it is compared with (#1138): without it
-    # the sheet-size preflight refuses the off-mesh trace and the control never runs.
     sim = Simulation(snap="declared", freq_max=F_MAX, domain=(L_LAT, L_PROP, LZ), dx=DX,
                      cpml_layers=8,
                      boundary=BoundarySpec(x="cpml", y="cpml",

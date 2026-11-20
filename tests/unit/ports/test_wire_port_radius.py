@@ -149,7 +149,7 @@ def test_radius_none_full_field_history_is_bit_identical(lane, monkeypatch):
     current = solve()
     monkeypatch.setattr("rfx.core.yee.component_h_materials",
                         lambda m, periodic=(False, False, False), **_: (m.mu_r,)*3)
-    monkeypatch.setattr("rfx.stepping.yee.component_h_materials",  # update_h reads it here
+    monkeypatch.setattr("rfx.stepping.yee.component_h_materials",
                         lambda m, periodic=(False, False, False), **_: (m.mu_r,)*3)
     update_h.clear_cache()
     legacy = solve()
@@ -283,6 +283,7 @@ def test_radius_material_records_survive_checkpoint(tmp_path):
 
 
 def test_declared_radius_roundtrips_without_changing_legacy_records():
+    """The openEMS point-probe refusal precedes the radius refusal."""
     from rfx.artifacts import build_scene_artifact
     from rfx.interop import design_to_dict, simulation_from_design, UnsupportedDesignFeature
     from rfx.interop.emitters import plan_openems_projection
@@ -298,7 +299,7 @@ def test_declared_radius_roundtrips_without_changing_legacy_records():
     restored = simulation_from_design(doc)
     assert restored._ports[0].radius == RADIUS
     assert design_to_dict(restored) == doc
-    restored._probes.clear()  # openEMS's independent point-probe refusal is earlier.
+    restored._probes.clear()
     with pytest.raises(UnsupportedDesignFeature, match="radius"):
         plan_openems_projection(design_to_dict(restored))
 
@@ -323,9 +324,9 @@ def test_radius_refuses_axial_grading_before_step(monkeypatch):
 
 
 def test_radius_refuses_stamping_in_axial_cpml():
+    """The endpoint is admitted so the radius stamping guard is exercised."""
     from rfx.grid import Grid
     grid = Grid(freq_max=30e9, domain=(.006,)*3, dx=.0005, cpml_layers=4)
-    # Admit the endpoint so the radius stamping guard is exercised.
     port = WirePort((.003, .003, -.0005), (.003, .003, .001), "ez", radius=RADIUS,
                     allow_in_absorber=True)
     with pytest.raises(ValueError, match="outside axial CPML"):

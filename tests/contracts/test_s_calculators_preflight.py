@@ -16,6 +16,7 @@ class CalculatorGridReached(Exception):
 
 
 def _guide(*, snap="strict"):
+    """The declared spacing is 5 mm, which realizes at plane 6 mm on the 3 mm lattice."""
     sim = Simulation(
         freq_max=8e9, domain=(0.06, 0.024, 0.012), dx=0.003, snap=snap,
         boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
@@ -24,19 +25,18 @@ def _guide(*, snap="strict"):
         sim.add_waveguide_port(x, direction=direction, mode=(1, 0),
                               mode_type="TE", freqs=np.array([7e9]),
                               f0=7e9, bandwidth=0.4)
-    # Declared spacing 5 mm, realized plane 6 mm on the 3 mm lattice.
     sim.add(Box((0.021, 0, 0.005), (0.039, 0.024, 0.005)), material="pec")
     return sim
 
 
 def _lumped(*, sheet=False):
+    """The declared spacing is 5.4 mm, which realizes at plane 5 mm on the 1 mm lattice."""
     sim = Simulation(freq_max=10e9, domain=(0.012, 0.012, 0.012),
                      dx=0.001, boundary="pec")
     for x in (0.004, 0.008):
         sim.add_port((x, 0.006, 0.003), "ez", impedance=50,
                      waveform=GaussianPulse(f0=5e9, bandwidth=0.8))
     if sheet:
-        # Declared spacing 5.4 mm, realized plane 5 mm on the 1 mm lattice.
         sim.add(Box((0, 0, 0.0054), (0.012, 0.012, 0.0054)), material="pec")
     return sim
 
@@ -45,8 +45,6 @@ def _intercept_calculator_grid(monkeypatch, calculator):
     original = Simulation._build_grid
 
     def build(self, *args, **kwargs):
-        # Admission and preflight keep their real builds. Intercept only
-        # the direct call in the calculator, so a missing preflight goes red.
         if sys._getframe(1).f_code is inspect.unwrap(calculator).__code__:
             raise CalculatorGridReached
         return original(self, *args, **kwargs)
@@ -64,7 +62,6 @@ def test_waveguide_shared_preflight(monkeypatch, dispatch, skip):
         with pytest.raises(CalculatorGridReached):
             call(n_steps=4, skip_preflight=True)
     else:
-        # Main's sheet_cavity_spacing finding: the drawn cavity must be honored.
         with pytest.raises(ValueError, match="parallel PEC cavity faces.*drawn spacing"):
             call(n_steps=4)
 

@@ -732,6 +732,8 @@ def run_nonuniform_distributed_pec(
         override when there is one, traced when it is -- by
         :func:`material_drive_scales`; ``(dV, 2*sum(beta)/dt)`` on a Debye edge.
     """
+    from rfx.stepping.vector_pad import refuse_if_forced
+    refuse_if_forced("distributed non-uniform")
     # Wrapped slabs carry the globally stamped radius records.
     # The legacy H shard retains its own refusal for unstaged callers.
     if n_devices != sharded_grid.n_devices:

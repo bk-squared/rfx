@@ -58,10 +58,9 @@ def uniform_materials_run(sim):
 @pytest.mark.parametrize("lane", ("forward", "run_s_params", "topology", "mixed_materials_forward",
                                   "lumped_wire_s_matrix_scan", "uniform_materials_run"))
 def test_cpml_domain_admitted_on_every_pass(lane, monkeypatch):
+    """A different S record length forces the public drive scan."""
     import rfx.model.realization_verdict as verdict
 
-    # Observe findings even on routes which return only arrays or an optimizer
-    # history. This wrapper leaves the production judgement and delivery intact.
     findings = []
     judge = verdict.judge_realization
 
@@ -81,8 +80,6 @@ def test_cpml_domain_admitted_on_every_pass(lane, monkeypatch):
                 result = sim.forward(n_steps=2, checkpoint=False)
                 assert result.time_series.shape == (2, 1)
             elif lane == "run_s_params":
-                # A different S record length enters the public drive scan;
-                # the one-port default reads S from the main run's record.
                 result = sim.run(compute_s_params=True, s_param_freqs=[2.5e9],
                                  n_steps=2, s_param_n_steps=3)
                 assert result.s_params.shape == (1, 1, 1)
@@ -109,7 +106,5 @@ def test_cpml_domain_admitted_on_every_pass(lane, monkeypatch):
             else:
                 result = uniform_materials_run(sim)
                 assert result.time_series.shape == (2, 1)
-    # Any RfxRefusal already fails the call; warnings and retained findings
-    # must not silently replace the former domain refusal.
     assert [str(f) for f in findings if "realization domain" in str(f)] == []
     assert [str(w.message) for w in caught if "realization domain" in str(w.message)] == []

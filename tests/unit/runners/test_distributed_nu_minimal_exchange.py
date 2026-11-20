@@ -2,6 +2,7 @@
 
 Run this file with ``-m distributed`` to include the slow topology/AD matrix.
 The script modes emit peak-ULP and bitwise measurements for each JAX version.
+Distributed initialization must precede any backend use in a fresh worker.
 """
 
 from contextlib import contextmanager
@@ -18,7 +19,6 @@ from types import SimpleNamespace
 
 import jax
 
-# Distributed initialization must precede any backend use in a fresh worker.
 if __name__ == "__main__" and sys.argv[1] == "worker" and sys.argv[2] != "reference":
     jax.distributed.initialize(sys.argv[2], 2, int(sys.argv[3]), initialization_timeout=30)
 
@@ -35,8 +35,6 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.materials.lorentz import lorentz_pole
 from rfx.nonuniform import position_to_index
 from rfx.stepping import slab_graded_legacy_loop as runner
-# These are frozen test-local copies, independent of production exchange and
-# sampling helpers. Share #1222's oracle rather than freezing a second version.
 from tests.unit.runners.test_distributed_minimal_exchange import (
     _FIELDS, _full_e, _full_h, _full_sample, _poison,
 )
@@ -54,11 +52,10 @@ def legacy_poles_cpml(monkeypatch):
 
 
 def _model(source_kind="field"):
+    """Rows 4 and 13 share local index 5 on the two ranks of a 2-device split, so a sample kept without its owner mask adds the other rank's live value."""
     dx = np.full(14, 1e-3)
     dx[3:6] *= .8
     dx[6:9] *= 1.2
-    # PEC retains a reflecting face and all seam/material/halo checks;
-    # these tests measure exchange, not the deferred distributed PMC image.
     sim = Simulation(
         freq_max=15e9, domain=(float(dx.sum()), 4e-3, 4e-3), dx=1e-3,
         dx_profile=dx, boundary=BoundarySpec(
@@ -80,9 +77,6 @@ def _model(source_kind="field"):
                            waveform=lambda t: jnp.cos(t * 2e10))
         for component in _FIELDS:
             sim.add_probe(pos, component)
-    # Rows 4 and 13 share local index 5 on the two ranks of a 2-device split: a
-    # sample kept without its owner mask adds the other rank's live value. The
-    # seam probes cannot show that; their aliases fall on rows that stay zero.
     for i in (4, 13):
         pos = (float(edges[i] - edges[grid.pad_x_lo]), 2e-3, 2e-3)
         assert position_to_index(grid, pos)[0] == i
@@ -147,12 +141,11 @@ def _report(kind, **data):
 
 @contextmanager
 def _reference(patch, *, probes=True):
+    """The frozen test-local copies are independent of production exchange and sampling helpers."""
     with patch.context() as p:
         p.setattr(runner, "_exchange_h_ghosts_nu", _full_h)
         p.setattr(runner, "_exchange_e_ghosts_nu", _full_e)
         if probes:
-            # The singleton axis adapts the old replicated per-step psum to
-            # the new post-scan sum, without changing the frozen computation.
             p.setattr(runner, "sample_probes_shmap", lambda *a, **k: _full_sample(*a, **k)[None, :])
         yield
 
@@ -183,8 +176,6 @@ def _install_poison(patch, live=False):
         original = getattr(runner, name)
 
         def exchange(st, mesh, n_devices, original=original, *, ranks=None):
-            # Poison every INTERIOR slot the old exchange wrote and the new
-            # one leaves alone; physical-boundary ghosts were never exchanged.
             return _poison(original(st, mesh, n_devices, ranks=ranks), mesh, n_devices, live=live)
 
         patch.setattr(runner, name, exchange)
@@ -201,6 +192,7 @@ def _poison_case(patch, live=False):
 
 
 def _transforms(sharded):
+    """Local staging's device_put batches onto its leading axis on older JAX, so the batch is divisible by the mesh size on every topology."""
     sim = _model()
     designs = _inputs(sim, sharded)
     f = lambda *a: _forward(sim, a, 3, 1)
@@ -208,8 +200,6 @@ def _transforms(sharded):
     primals = {
         "jvp": jax.jvp(f, designs, tuple(jnp.ones_like(a) for a in designs))[0],
         "vjp": jax.vjp(f, *designs)[0],
-        # Local staging's device_put batches onto its leading axis on older
-        # JAX; use a batch divisible by the mesh size on every topology.
         "vmap": jax.vmap(f)(*(jnp.stack([a * (1 + .01 * i)
                                         for i in range(len(jax.devices()))])
                               for a in designs))[0],
@@ -226,7 +216,9 @@ def _transforms(sharded):
 
 
 def _loop_counts(hlo):
-    """Count operations in each actual while body and its called computations."""
+    """Count operations in each actual while body and its called computations.
+    XLA 0.4.33 lowers scatters to local while loops without communication, so only communicating loops count toward the forward/transpose exchange gate.
+    """
     computations, current = {}, None
     for line in hlo.splitlines():
         match = re.match(r"^(?:ENTRY )?%([\w.-]+).*\{$", line)
@@ -260,9 +252,6 @@ def _loop_counts(hlo):
             dones = sum(f" {op}-done(" in line for line in matches)
             assert starts == dones, (body, op, matches)
             counts[op] = len(matches) - dones
-        # XLA 0.4.33 also lowers scatters to local while loops. They contain
-        # no communication. Require exactly one/two communicating time loops
-        # below, so losing an entire forward/transpose exchange still fails.
         if any(counts.values()):
             result.append(counts)
     assert result, "no communicating time loops"
@@ -294,8 +283,6 @@ def _collectives(grad=False, source_kind="field"):
         materials, mask, occupancy, debye, lorentz, cpml, spacings = invariants
 
         def loss(eps, sigma, occ, db, lr, ranks, e_cell_sizes):
-            # These are the loop inputs reached by the three design gradients;
-            # replicated spacings/CPML coefficients are constants in that AD.
             inv = (materials._replace(eps_r=eps, sigma=sigma), mask, occ,
                    db, lr, cpml, spacings)
             return jnp.sum(entry(c0, inv, warmup, opt, ranks=ranks, e_cell_sizes=e_cell_sizes)[1] ** 2)
@@ -312,7 +299,7 @@ def _collectives(grad=False, source_kind="field"):
 
 
 def _assert_counts(counts, grad=False):
-    # No warmup/remat here: one forward loop and, under grad, its transpose.
+    """Without warmup or rematerialization, the loop count is one forward loop and, under grad, its transpose."""
     assert len(counts) == (2 if grad else 1), counts
     assert all(c == {"collective-permute": 2, "all-reduce": 0, "all-gather": 0, "all-to-all": 0} for c in counts), counts
 
@@ -375,9 +362,9 @@ def _child(mode, *args, devices=2):
     print(run.stdout)
 
 
-# The local-design case differs only in staging, which #1247's fast tests pin.
 @pytest.mark.parametrize("sharded", [pytest.param(False, marks=pytest.mark.slow), True])
 def test_trace_and_design_gradients_match_full_exchange(monkeypatch, sharded):
+    """PEC retains a reflecting face for the exchange checks."""
     _parity(monkeypatch, sharded)
 
 
@@ -459,7 +446,7 @@ def test_empty_trace_shape_and_replication(monkeypatch, emit, empty):
     assert captured[0].shape == (N_STEPS, 0) and captured[0].dtype == jnp.float32
     assert captured[0].sharding.is_fully_replicated
     if not emit:
-        assert trace is None  # Public forward preserves the no-emission API.
+        assert trace is None
         return
     assert trace.shape == (N_STEPS, 0) and trace.dtype == jnp.float32
     assert trace.sharding.is_fully_replicated

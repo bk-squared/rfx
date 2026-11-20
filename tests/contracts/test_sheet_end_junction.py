@@ -5,6 +5,7 @@ and the patch edge it shorts. Build only.
 All expectations below are drawing/node literals in mm. U has 1 mm cells,
 planes 3 and 5; G has 0.2 mm cells from 3 to 3.8 and 1 mm outside.
 Free ends extend by 0.35 times their outside cell; joined ends stay on nodes.
+Case 3 bottom is one cell above ground (4 U / 3.2 G), giving offsets .35 / .07.
 """
 import contextlib
 import io
@@ -18,9 +19,6 @@ from rfx import Box, Simulation
 from rfx.mesh_edges import EDGE_OFFSET, edge_aware_profiles
 
 MM = 1e-3
-# case: wall (lo, hi, free_lo, free_hi), patch x or None, for U and G.
-# Case 3 bottom is one cell above ground (4 U / 3.2 G): offsets .35 / .07.
-# Case 6 patch is one cell ABOVE wall: 6 U / 4.8 G, leaving a true gap.
 EXPECTED = {
     1: ((3, 5, False, False), (3, 3.8, False, False), (5.65, 14.35, True, True)),
     2: ((3, 5, False, False), (3, 3.8, False, False), (8, 14.35, False, True)),
@@ -62,10 +60,9 @@ def _build(shapes, domain, dx, *, snap="strict", **profiles):
 
 
 def _reports(sim):
+    """Lift the public message's display cap so every sheet face can be compared in this contract."""
     with warnings.catch_warnings(), contextlib.redirect_stdout(io.StringIO()), pytest.MonkeyPatch.context() as patch:
         warnings.simplefilter('ignore')
-        # The public message lists only five offenders by default. Lift only
-        # its display cap so every sheet face can be compared in this contract.
         patch.setattr('rfx.preflight.pec_geometry._CAMPAIGN_MAX_OFFENDERS', 100)
         issues = [issue.to_dict() for issue in sim.preflight()]
         fidelity = sim.fidelity_report(print_report=False)
@@ -152,7 +149,6 @@ def test_helper_junction_planes(case):
     nodes = {a: np.r_[0., np.cumsum(profiles[f'd{a}_profile'])] for a in 'xyz'}
     for axis, plane in [('z', .003), ('z', .0046), ('x', .008)]:
         assert min(abs(nodes[axis] - plane)) <= 1e-12
-    # Open patch x-hi=14 mm: final interior node plus .35 outside cell.
     x = nodes['x']
     i = np.searchsorted(x, .014) - 1
     assert abs(x[i] + EDGE_OFFSET * (x[i + 1] - x[i]) - .014) <= 1e-12
@@ -170,6 +166,7 @@ def test_strict_admission(case):
 
 @pytest.mark.parametrize('case', ['wider_wall', 'beside_end'])
 def test_helper_free_top(case):
+    """Partial contact leaves the wall top free, so its edge displaces the coincident patch face from every node."""
     shapes = _drawing(2, 4.6)
     if case == 'wider_wall':
         shapes['wall'] = _box((8, 5, 3), (8, 15, 4.6))
@@ -178,16 +175,14 @@ def test_helper_free_top(case):
     profiles = edge_aware_profiles((.030, .030, .012), .0005,
                                    sheets=list(shapes.values()), axes='xyz')
     z = np.r_[0., np.cumsum(profiles['dz_profile'])]
-    # Drawn wall top 4.6 mm is a free edge: last node + .35 outside cell.
     i = np.searchsorted(z, .0046) - 1
     assert z[i] + EDGE_OFFSET * (z[i + 1] - z[i]) == pytest.approx(.0046, abs=1e-12)
     if case == 'wider_wall':
-        # Partial contact leaves the top free, so its edge displaces the
-        # coincident patch face from every node.
         assert min(abs(z - .0046)) > 1e-12
 
 
 def test_pinned_patch_metric_wall():
+    """The patch x-hi=14 mm face has a 1 mm outside cell."""
     shapes = {
         'ground': _box((4, 4, 3), (16, 16, 3)),
         'wall': _box((8, 6, 3), (8, 14, 5)),
@@ -197,8 +192,6 @@ def test_pinned_patch_metric_wall():
     issues, fidelity, record = _reports(sim)
     entities = {entity.label: entity for entity in record.entities}
     _assert_span(issues, fidelity, entities[labels['wall']], 'z', (3, 5, False, False))
-    # Pinned record axes expose node bounds; solved spans are on its sheet.
-    # x-lo=8 mm meets the wall; x-hi=14 mm has a 1 mm outside cell.
     patch = entities['pinned_sheet[0]'].sheet.solved_spans[0]
     assert (patch.free_lo, patch.free_hi) == (False, True)
     assert (patch.lo, patch.hi) == pytest.approx((.008, .01435), abs=1e-12)

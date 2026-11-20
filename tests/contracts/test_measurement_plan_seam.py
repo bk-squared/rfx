@@ -64,7 +64,7 @@ def run_flags(sim, grid):
         from rfx.sources.tfsf import tfsf_from_declaration
         from rfx.boundaries.tfsf import boundary_flags
         periodic = boundary_flags(tfsf_from_declaration(sim._tfsf, grid, sim._freq_max,
-                                                       n_steps=12)[0], grid)[0]
+                                                       n_steps=12, dtype='float32')[0], grid)[0]
     return resolve_periodic(grid, periodic)
 
 

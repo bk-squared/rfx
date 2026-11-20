@@ -29,7 +29,6 @@ def test_returned_mask_preserves_unresolved_pole(monkeypatch):
                 jnp.zeros((len(freqs), 3), cdt), jnp.int32(2))
 
     def completion(y, dt, freqs, n0, s0, mask, tail_arg, plain=None, **kw):
-        # Keep the stubbed poles connected to the differentiated record.
         return plain, {"s": s0 + 0 * jnp.sum(y)}
 
     monkeypatch.setattr(rj, 'host_poles', host_poles)
@@ -125,7 +124,8 @@ def test_returned_poles_equal_host_and_fail_with_identification(lane, monkeypatc
 
         def capture(*args, **kw):
             model = original(*args, **kw)
-            if args[2] == 0:  # completion callback; exclude lazy report identification
+            COMPLETION_START_INDEX = 0
+            if args[2] == COMPLETION_START_INDEX:
                 models.append(model)
             return model
 
@@ -165,10 +165,10 @@ def test_returned_poles_equal_host_and_fail_with_identification(lane, monkeypatc
 
 def _longer_record_stub(n_steps, *, frequencies=(8e9, 8.02e9),
                         masks=(1, 0), inv_q=.001, status=0):
+    """The earlier-start window is deliberately different because only main is read."""
     plan = SimpleNamespace(n_steps=n_steps, n_start=n_steps // 2,
                            grid=SimpleNamespace(dt=1e-9))
     poles = jnp.asarray([(-inv_q * np.pi + 2j * np.pi) * f for f in frequencies])
-    # The earlier-start window is deliberately different: only main is read.
     long_poles = jnp.asarray([-1e7 + 2j * np.pi * 11e9])
     return rd.RingdownForwardResult(
         None, None, None, jnp.zeros((n_steps, 1)), (), None,
@@ -196,7 +196,6 @@ def test_longer_record_p4_selection_matrix(record, bad, pole_target):
         records = [_longer_record_stub(12), _longer_record_stub(24)]
         masks = {'none': (0, 0), 'multiple': (1, 1), 'unresolved': (2, 0),
                  'failed': (1, 0), 'over_budget': (1, 0)}[bad]
-        # Failed status with otherwise selectable poles pins status-before-selection.
         records[record] = _longer_record_stub(
             (12, 24)[record], masks=masks,
             status={'failed': 1, 'over_budget': 2}.get(bad, 0))
@@ -221,7 +220,9 @@ def test_longer_record_p4_selection_differs():
     with enable_x64():
         records = (_longer_record_stub(12),
                    _longer_record_stub(24, frequencies=(8.12e9,), masks=(1,), inv_q=.002))
-        # 120 MHz separation lies between the 83.33 and 166.7 MHz radii.
+        assert (1 / records[1]._pole_window_s()
+                < abs(float(np.asarray(records[1].poles[0].imag - records[0].poles[0].imag))) / (2 * np.pi)
+                < 1 / records[0]._pole_window_s()), "Pole separation must lie between the two window radii"
         w = rd.gradient_witness(1., 1., against='longer_record',
                                 ringdown=records, pole_target=8.06e9)
     assert w.judged is False and w.ok is False and np.isnan(w.value)
@@ -295,7 +296,6 @@ def test_longer_record_p5_pair_type(bad, pole_target):
     result = _longer_record_stub(12)
     pair = {'single_result': result, 'one': (result,), 'three': (result,) * 3,
             'non_result': (result, object())}[bad]
-    # Pair refusal must precede the deliberately mismatched gradient trees.
     with pytest.raises(TypeError):
         rd.gradient_witness({'a': 1.}, {'b': 1.}, against='longer_record',
                             ringdown=pair, pole_target=pole_target)

@@ -40,15 +40,13 @@ def _scope_override_writes(tree):
         if name in ("_replace", "MaterialArrays") and any(
                 kw.arg in FIELDS and uses(kw.value) for kw in node.keywords):
             hits.append(node.lineno)
-        # A positional constructor names no field; any override in it counts.
         elif name == "MaterialArrays" and any(uses(arg) for arg in node.args):
             hits.append(node.lineno)
     return hits
 
 
 def override_writes(tree):
-    # Each function owns its local aliases. A same-named variable in a
-    # different runner is not a data-flow connection.
+    """Each function owns its local aliases, so a same-named variable in a different runner is not a data-flow connection."""
     scopes = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
     scopes.append(ast.Module(body=[n for n in getattr(tree, "body", [])
                                   if not isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))],

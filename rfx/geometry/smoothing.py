@@ -29,6 +29,7 @@ from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal, RfxUnsupported
 
+from functools import partial
 from typing import NamedTuple
 
 import jax
@@ -145,7 +146,7 @@ def _get_sdf_fn(shape: Shape):
 # Analytic normals per shape (outward-pointing)
 # ---------------------------------------------------------------------------
 
-def _normal_sphere(x, y, z, shape, xp=jnp):
+def _normal_sphere(x, y, z, shape, xp=jnp, *, tie=0.0):
     """Analytic outward normal for a sphere: radial direction."""
     cx, cy, cz = shape.center
     dx = x - cx
@@ -155,90 +156,102 @@ def _normal_sphere(x, y, z, shape, xp=jnp):
     return dx / r, dy / r, dz / r
 
 
-def _normal_box(x, y, z, shape, xp=jnp):
-    """Analytic outward normal for an axis-aligned box.
-
-    At each point the normal is determined by which face is nearest
-    (the axis with the smallest penetration distance).
-    """
+def _normal_box(x, y, z, shape, xp=jnp, *, tie=0.0):
+    """Nearest-face normal, bisecting all face distances within ``tie``."""
     lo = xp.array(shape.corner_lo)
     hi = xp.array(shape.corner_hi)
     center = (lo + hi) / 2.0
     half = (hi - lo) / 2.0
-
-    # Signed distance to each face pair (positive = outside that pair)
-    rx = xp.abs(x - center[0]) - half[0]
-    ry = xp.abs(y - center[1]) - half[1]
-    rz = xp.abs(z - center[2]) - half[2]
-
-    # The nearest face corresponds to the axis with the largest
-    # (least-negative inside, or least-positive outside) component.
-
-    # For interior points: nearest face = axis with *max* signed dist
-    # For exterior points: same logic (largest component dominates SDF)
-
-    # Use soft selection: pick the axis closest to the surface.
-    # For box interior, max_r < 0 and we want the axis where r is
-    # closest to zero (largest / least negative).
-    is_x = (rx >= ry) & (rx >= rz)
-    is_y = (ry > rx) & (ry >= rz)
-    # is_z = everything else
-
-    sign_x = xp.sign(x - center[0])
-    sign_y = xp.sign(y - center[1])
-    sign_z = xp.sign(z - center[2])
-
-    # Default to z-face normal
-    nx = xp.where(is_x, sign_x, 0.0)
-    ny = xp.where(is_y, sign_y, xp.where(is_x, 0.0, 0.0))
-    nz = xp.where(is_x | is_y, 0.0, sign_z)
-
-    # Ensure unit length (should already be 1 for pure axis normals,
-    # but guard against degenerate zero-sign cases)
-    mag = xp.sqrt(nx**2 + ny**2 + nz**2 + 1e-30)
-    return nx / mag, ny / mag, nz / mag
+    delta = (x - center[0], y - center[1], z - center[2])
+    distances = tuple(xp.abs(d) - h for d, h in zip(delta, half))
+    top = xp.maximum(xp.maximum(distances[0], distances[1]), distances[2])
+    normals = tuple(xp.where((r >= top - tie) & (xp.abs(d) > tie), xp.sign(d), 0.0)
+                    for r, d in zip(distances, delta))
+    # Only one opposite pair defines a mirror-symmetric fallback axis.
+    opposite = tuple((r >= top - tie) & (xp.abs(d) <= tie)
+                     for r, d in zip(distances, delta))
+    single = sum(pair.astype(int) for pair in opposite) == 1
+    zero = sum(n * n for n in normals) == 0
+    normals = tuple(xp.where(zero & single & pair, 1.0, n)
+                    for n, pair in zip(normals, opposite))
+    mag = xp.sqrt(sum(n * n for n in normals) + 1e-30)
+    return tuple(n / mag for n in normals)
 
 
-def _normal_cylinder(x, y, z, shape, xp=jnp):
-    """Analytic outward normal for a cylinder.
+def _normal_cylinder(x, y, z, shape, xp=jnp, *, tie=0.0):
+    """Side/cap normal, with their normalized sum at a face-distance tie."""
+    axis = "xyz".index(shape.axis)
+    delta = tuple(p - c for p, c in zip((x, y, z), shape.center))
+    radial = [a for a in range(3) if a != axis]
+    r = xp.sqrt(sum(delta[a] ** 2 for a in radial) + 1e-30)
+    dh = xp.abs(delta[axis]) - shape.height / 2.0
+    dr = r - shape.radius
+    top = xp.maximum(dh, dr)
+    on_cap = dh >= top - tie
+    on_side = dr >= top - tie
+    normals = tuple(
+        xp.where(on_cap & (xp.abs(d) > tie), xp.sign(d), 0.0) if a == axis else
+        xp.where(on_side & (xp.abs(d) > tie), d / r, 0.0)
+        for a, d in enumerate(delta))
+    # Only the cap pair has an axis fallback; the radial axis stays undefined.
+    zero = sum(n * n for n in normals) == 0
+    normals = tuple(xp.where(zero & on_cap & (xp.abs(delta[axis]) <= tie), 1.0, n)
+                    if a == axis else n for a, n in enumerate(normals))
+    mag = xp.sqrt(sum(n * n for n in normals) + 1e-30)
+    return tuple(n / mag for n in normals)
 
-    The radial component dominates on the curved surface; the axial
-    component dominates on the caps.
+
+def _normal_tie(grid, *, max_image=1):
+    """Length tolerance, preferring concrete cells and domain declarations.
+
+    Missing domains use the realized node span, including padding. Traced
+    cells without a nominal profile remain in array arithmetic. Float32
+    epsilon applies on both paths; the cell cap can limit tie agreement.
     """
-    cx, cy, cz = shape.center
-    R = shape.radius
-    H2 = shape.height / 2.0
+    from rfx.core.jax_utils import is_tracer
+    from rfx.model.graded_admission import nominal_cells
 
-    if shape.axis == "z":
-        dx, dy = x - cx, y - cy
-        r = xp.sqrt(dx**2 + dy**2 + 1e-30)
-        dh = xp.abs(z - cz) - H2
-        dr = r - R
-        on_cap = dh > dr
-        nx = xp.where(on_cap, 0.0, dx / r)
-        ny = xp.where(on_cap, 0.0, dy / r)
-        nz = xp.where(on_cap, xp.sign(z - cz), 0.0)
-    elif shape.axis == "y":
-        dx, dz = x - cx, z - cz
-        r = xp.sqrt(dx**2 + dz**2 + 1e-30)
-        dh = xp.abs(y - cy) - H2
-        dr = r - R
-        on_cap = dh > dr
-        nx = xp.where(on_cap, 0.0, dx / r)
-        ny = xp.where(on_cap, xp.sign(y - cy), 0.0)
-        nz = xp.where(on_cap, 0.0, dz / r)
-    else:  # axis == "x"
-        dy, dz = y - cy, z - cz
-        r = xp.sqrt(dy**2 + dz**2 + 1e-30)
-        dh = xp.abs(x - cx) - H2
-        dr = r - R
-        on_cap = dh > dr
-        nx = xp.where(on_cap, xp.sign(x - cx), 0.0)
-        ny = xp.where(on_cap, 0.0, dy / r)
-        nz = xp.where(on_cap, 0.0, dz / r)
+    widths = []
+    for axis in range(3):
+        cells = grid.cells(axis)
+        if is_tracer(cells):
+            nominal = nominal_cells(grid, axis, padded=True)
+            if nominal is not None:
+                cells = nominal
+        widths.append(cells)
+    domain = getattr(grid, "domain", None)
+    xp = np if _host_path(*widths, *(domain or ())) else jnp
+    h_min = xp.min(xp.stack([xp.min(w) for w in widths]))
+    padded = []
+    for axis, (name, cells) in enumerate(zip("xyz", widths)):
+        if domain is None or axis >= len(domain):
+            # Nonperiodic cells end with a duplicate width for the bounding
+            # node. Sum only intervals between the first and last nodes;
+            # periodic axes retain every cell in their complete period.
+            physical = cells if name in getattr(grid, "periodic_axes", "") else cells[:-1]
+            padded.append(xp.sum(physical))
+        else:
+            padded.append(domain[axis]
+                          + int(getattr(grid, f"pad_{name}_lo", 0)) * cells[0]
+                          + int(getattr(grid, f"pad_{name}_hi", 0)) * cells[-1])
+    bound = (1 + max(1, max_image)) * xp.max(xp.stack(padded))
+    return xp.minimum(16 * np.finfo(np.float32).eps * bound, 1e-2 * h_min)
 
-    mag = xp.sqrt(nx**2 + ny**2 + nz**2 + 1e-30)
-    return nx / mag, ny / mag, nz / mag
+
+def _grid_normal_fn(grid, shape):
+    """Bind a tolerance only for shapes whose normals select tied faces."""
+    from rfx._internal._periodic import _sdf_image_ranges
+    from rfx.geometry.csg import Box, Cylinder
+
+    declared = shape
+    while isinstance(declared, _ContinuedSheetShape):
+        declared = declared.declared
+    normal_fn = _get_normal_fn(shape)
+    if not isinstance(declared, (Box, Cylinder)):
+        return normal_fn
+    images = _sdf_image_ranges(grid, shape)
+    max_image = max((abs(k) for axis in images for k in axis), default=1)
+    return partial(normal_fn, tie=_normal_tie(grid, max_image=max_image))
 
 
 def _get_normal_fn(shape: Shape):
@@ -825,9 +838,9 @@ def _continued_sheet_sdf(x, y, z, shape, xp=jnp):
         *_continued_sheet_coords(x, y, z, shape, xp), shape.declared, xp=xp)
 
 
-def _continued_sheet_normal(x, y, z, shape, xp=jnp):
+def _continued_sheet_normal(x, y, z, shape, xp=jnp, *, tie=0.0):
     normals = list(_get_normal_fn(shape.declared)(
-        *_continued_sheet_coords(x, y, z, shape, xp), shape.declared, xp=xp))
+        *_continued_sheet_coords(x, y, z, shape, xp), shape.declared, xp=xp, tie=tie))
     outside = False
     for axis, side, face in shape.extensions:
         coord = (x, y, z)[axis]
@@ -1247,19 +1260,19 @@ def _has_sdf(shape: Shape) -> bool:
     return _get_sdf_fn(shape) is not None and _get_normal_fn(shape) is not None
 
 
-def _to_jax(arrays, *, host: bool, promoted: bool):
+def _to_jax(arrays, *, host: bool, promoted: bool, dtype):
     """Cast host results to the dtype the ``jax.numpy`` path returns.
 
-    The JAX path yields the active default float dtype (float32 at x64=0,
-    float64 at x64=1) whenever SDF arithmetic on the coordinate arrays
-    reached the output (``promoted``), and float32 otherwise (an all-
-    staircase or empty shape list never leaves the float32 accumulators).
-    The host path reproduces that so callers see the same dtypes they did
-    before; this is the ONE cast on the host path.
+    The existing SDF path follows the active default float dtype (float32
+    at x64=0, float64 at x64=1); staircase and empty-shape paths have a
+    float32 floor. Promote that existing choice with the run coefficient
+    dtype. This retains the old float32/mixed behavior while allowing
+    float64 staircase values; this is the ONE cast on the host path.
     """
     if not host:
         return tuple(arrays)
-    dtype = jax.dtypes.canonicalize_dtype(np.float64) if promoted else jnp.float32
+    old_dtype = jax.dtypes.canonicalize_dtype(np.float64) if promoted else jnp.float32
+    dtype = jnp.promote_types(old_dtype, dtype)
     return tuple(jnp.asarray(a, dtype=dtype) for a in arrays)
 
 
@@ -1457,7 +1470,7 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None
                 from rfx._internal._periodic import periodic_sdf
                 s, (n_x, n_y, n_z), image = periodic_sdf(
                     grid, shape, (Xc, Yc, Zc), _get_sdf_fn(shape), xp=xp,
-                    normal_fn=_get_normal_fn(shape), return_image=True)
+                    normal_fn=_grid_normal_fn(grid, shape), return_image=True)
 
                 if sdf_union is None:
                     owner = host_owner(s)
@@ -1530,9 +1543,9 @@ def _uniform_sample_coords(xp, coords, dx):
 
 
 def _smoothed_eps_uniform(xp, grid, coords, shapes, background_eps, masks, *,
-                          nominal_h_max=None):
+                          nominal_h_max=None, dtype):
     """``compute_smoothed_eps`` body on backend ``xp``; returns ``xp`` arrays."""
-    acc_dtype = np.float64 if xp is np else jnp.float32
+    acc_dtype = np.float64 if xp is np else jnp.promote_types(jnp.float32, dtype)
     eps = tuple(xp.full(grid.shape, background_eps, dtype=acc_dtype) for _ in range(3))
     return _kottke_smooth(
         xp, shapes, _uniform_sample_coords(xp, coords, grid.dx), grid.dx, eps, masks,
@@ -1549,6 +1562,7 @@ def compute_smoothed_eps_nonuniform(
     shapes: list[tuple[Shape, float]],
     background_eps: float = 1.0,
     *, nominal_h_max: float | None = None,
+    dtype,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Kottke tensor-averaged ε on a NonUniformGrid (per-component).
 
@@ -1632,12 +1646,12 @@ def compute_smoothed_eps_nonuniform(
         "ez": (node_x[:, None, None], node_y[None, :, None], centre_z[None, None, :]),
     }
 
-    acc_dtype = np.float64 if host else jnp.float32
+    acc_dtype = np.float64 if host else jnp.promote_types(jnp.float32, dtype)
     eps = tuple(xp.full(tuple(nu_grid.shape), background_eps, dtype=acc_dtype)
                 for _ in range(3))
     eps = _kottke_smooth(xp, shapes, sample, extents, eps, masks, grid=nu_grid,
                          nominal_h_max=nominal_h_max)
-    return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes))
+    return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes), dtype=dtype)
 
 
 def compute_smoothed_eps(
@@ -1645,6 +1659,7 @@ def compute_smoothed_eps(
     shapes: list[tuple[Shape, float]],
     background_eps: float = 1.0,
     *, nominal_h_max: float | None = None,
+    dtype,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Compute Kottke tensor-averaged permittivity for each E-field component.
 
@@ -1679,8 +1694,8 @@ def compute_smoothed_eps(
                       *(p for s, _ in shapes for p in _shape_parameters(s)),
                       *masks.values())
     eps = _smoothed_eps_uniform(np if host else jnp, grid, coords, shapes,
-                                background_eps, masks, nominal_h_max=nominal_h_max)
-    return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes))
+                                background_eps, masks, nominal_h_max=nominal_h_max, dtype=dtype)
+    return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes), dtype=dtype)
 
 
 # ---------------------------------------------------------------------------
@@ -1768,6 +1783,7 @@ def compute_inv_eps_tensor_diag(
     pec_shapes: list[Shape] | None = None,
     background_eps: float = 1.0,
     *, nominal_h_max: float | None = None,
+    dtype,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Stage 2 unified subpixel ε⁻¹ tensor: dielectric Kottke + PEC limit.
 
@@ -1776,6 +1792,10 @@ def compute_inv_eps_tensor_diag(
     σ→∞ limit (zero parallel-direction inverse-eps; (1−f)/ε_outside on
     the perpendicular direction). Dielectric shapes route through the
     existing Kottke isotropic Eq. (1) form.
+
+    The dielectric inverse is rounded once to the run coefficient precision
+    on either backend. The host path widens it for the PEC arithmetic, which
+    keeps the float32 image for float32 and mixed runs.
 
     Parameters
     ----------
@@ -1829,24 +1849,18 @@ def compute_inv_eps_tensor_diag(
     # Step 1: dielectric subpixel smoothing (existing Kottke path).
     if dielectric_shapes:
         eps = _smoothed_eps_uniform(xp, grid, coords, dielectric_shapes,
-                                    background_eps, diel_masks, nominal_h_max=nominal_h_max)
+                                    background_eps, diel_masks, nominal_h_max=nominal_h_max, dtype=dtype)
     else:
-        acc_dtype = np.float64 if host else jnp.float32
+        acc_dtype = np.float64 if host else jnp.promote_types(jnp.float32, dtype)
         eps = tuple(xp.full(tuple(grid.shape), background_eps, dtype=acc_dtype)
                     for _ in range(3))
 
-    # The dielectric inverse is a float32 quantity by this function's
-    # contract (downstream ``update_e_aniso_inv`` expects float32, and
-    # ``eps_r`` may arrive as a Python float), so it is rounded here on both
-    # backends and the PEC limit below is folded in on top of that value. The
-    # host path widens the rounded value back to float64 for the PEC
-    # arithmetic: x64=0 is its float32 image.
-    inv = [(1.0 / e).astype(xp.float32) for e in eps]
+    inv = [(1.0 / e).astype(jnp.promote_types(jnp.float32, dtype)) for e in eps]
     if host:
         inv = [a.astype(np.float64) for a in inv]
 
     if not pec_shapes:
-        return _to_jax(inv, host=host, promoted=False)
+        return _to_jax(inv, host=host, promoted=False, dtype=dtype)
 
     # Step 2: apply each PEC shape via Kottke PEC limit, taking the
     # elementwise minimum (union of PEC effects — the most-restrictive
@@ -1867,7 +1881,7 @@ def compute_inv_eps_tensor_diag(
             from rfx._internal._periodic import periodic_sdf
             sdf, (n_x, n_y, n_z) = periodic_sdf(
                 grid, pec_shape, (Xc, Yc, Zc), _get_sdf_fn(pec_shape), xp=xp,
-                normal_fn=_get_normal_fn(pec_shape))
+                normal_fn=_grid_normal_fn(grid, pec_shape))
 
             f = xp.clip(0.5 - sdf / grid.dx, 0.0, 1.0)
             from rfx.model.realization_integrals import capture, host_owner
@@ -1887,7 +1901,7 @@ def compute_inv_eps_tensor_diag(
             inv_c = xp.where(e_inside, 0.0, inv_c)
             inv[i] = xp.minimum(inv[i], inv_c)
 
-    return _to_jax(inv, host=host, promoted=promoted)
+    return _to_jax(inv, host=host, promoted=promoted, dtype=dtype)
 
 
 def kottke_inv_eps_from_occupancy(
@@ -1896,6 +1910,7 @@ def kottke_inv_eps_from_occupancy(
     *,
     aniso_inv_eps_baseline: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray] | None = None,
     background_eps: float = 1.0,
+    dtype=jnp.float32,
     periodic: tuple[bool, bool, bool] = (False, False, False),
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
     """Inverse-permittivity tensor from a continuous-fill PEC occupancy.
@@ -1911,6 +1926,8 @@ def kottke_inv_eps_from_occupancy(
     continuation in between -- it still shifts a resonance (measured -3.6 %
     on a cavity's TM110 with a slab edge at a cell centre). Feed the result
     to ``update_e_aniso_inv``.
+
+    Standalone calls keep the float32 default ``dtype``.
 
     Parameters
     ----------
@@ -1963,7 +1980,8 @@ def kottke_inv_eps_from_occupancy(
     from rfx.boundaries.pec import _volume_occupancy_masks
     from rfx.model.occupancy import clip_occupancy
 
-    f = clip_occupancy(pec_occupancy.astype(jnp.float32))
+    dtype = jnp.promote_types(jnp.float32, dtype)
+    f = clip_occupancy(pec_occupancy.astype(dtype))
     # Sigmoid-floor values (1e-30 ...) are vacuum, and their gradient is
     # pinned zero.
     f = jnp.where(f < 1e-3, jnp.zeros_like(f), f)
@@ -1973,9 +1991,9 @@ def kottke_inv_eps_from_occupancy(
     else:
         bg = 1.0 / jnp.asarray(background_eps, dtype=jnp.float32)
         inv_xx_b = inv_yy_b = inv_zz_b = bg
-    inv_xx = ((1.0 - m_x) * inv_xx_b).astype(jnp.float32)
-    inv_yy = ((1.0 - m_y) * inv_yy_b).astype(jnp.float32)
-    inv_zz = ((1.0 - m_z) * inv_zz_b).astype(jnp.float32)
+    inv_xx = ((1.0 - m_x) * inv_xx_b).astype(dtype)
+    inv_yy = ((1.0 - m_y) * inv_yy_b).astype(dtype)
+    inv_zz = ((1.0 - m_z) * inv_zz_b).astype(dtype)
     return inv_xx, inv_yy, inv_zz
 
 
@@ -2000,10 +2018,11 @@ def refuse_pmc_smoothing(sim, grid):
     nodes = [np.asarray(v) for v in (coords.x, coords.y, coords.z)]
     for face in sorted(faces):
         axis = "xyz".index(face[0])
+        if nodes[axis].size == 1:
+            continue
         hi = face.endswith("hi")
         plane = nodes[axis][-1 if hi else 0]
-        d = (abs(nodes[axis][-1] - nodes[axis][-2]) if hi
-             else abs(nodes[axis][1] - nodes[axis][0]))
+        d = _axis_cells(nodes[axis])[hi]
         face_nodes = list(nodes)
         face_nodes[axis] = np.array([plane])
         xyz = np.meshgrid(*face_nodes, indexing="ij")

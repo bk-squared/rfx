@@ -27,6 +27,7 @@ conjugated S (the other time convention) changes and nothing else sees.
 
 This module holds the arithmetic the three guards share. The rules each family
 applies are in its own lock module.
+The accuracy bar is written here, not read from a fixture, so a fixture cannot move the bar it is judged by.
 """
 from __future__ import annotations
 
@@ -42,8 +43,6 @@ from tests._electrical_length import (ELECTRICAL_LENGTH_FRAC, electrical_length_
 
 REPO = Path(__file__).resolve().parents[1]
 
-# The v2 accuracy bar. Written here, not read from a fixture, so a fixture
-# cannot move the bar it is judged by.
 MAGNITUDE_DB = 2.0
 FREQUENCY_FRAC = 0.01
 DEEP_NULL_DB = -20.0
@@ -53,9 +52,6 @@ SETTLING_DB = -40.0
 
 DB_FLOOR = 1e-300
 
-# A realized-geometry block is cell counts, node indices and positions in
-# metres. A cell is at least 1e-4 of any length in these blocks, so this
-# tolerance only absorbs the last bits of platform arithmetic.
 REALIZED_REL_TOL = 1e-9
 REALIZED_ABS_TOL = 1e-15
 

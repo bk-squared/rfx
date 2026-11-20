@@ -12,6 +12,7 @@ TRANSPOSE_BAR = 1e-5
 
 
 def _record(*, transpose=False, ramp=False):
+    """Result.grid is the executed fine grid, with both endpoint nodes."""
     def xyz(x, y, z):
         return tuple(DX * v for v in ((y, x, z) if transpose else (x, y, z)))
 
@@ -19,9 +20,6 @@ def _record(*, transpose=False, ramp=False):
                      boundary="pec", cpml_layers=0)
     sim.add_refinement((3 * DX, 6 * DX), ratio=2, validation="research")
     if ramp:
-        # Nine cell-wide pieces of the 1..3 ramp cross both SAT faces (z 3 and 6 cells).
-        # Transposing each Box and both observation sites builds the reference
-        # independently through Simulation, without reading SAT coefficients.
         for i in range(9):
             name = f"mu-{i}"
             sim.add_material(name, eps_r=1., mu_r=1. + i / 4.)
@@ -35,7 +33,6 @@ def _record(*, transpose=False, ramp=False):
     sim.add_probe(xyz(3, 2, 3.5), component)
     result = sim.run(n_steps=N_STEPS, compute_s_params=False)
     trace = np.asarray(result.time_series, dtype=np.float64).reshape(N_STEPS)
-    # Result.grid is the executed fine grid, with both endpoint nodes.
     assert result.grid.shape == (19, 19, 7)
     assert np.isfinite(trace).all()
     assert np.max(np.abs(trace)) > 0, "transposition needs a nonzero probe record"
@@ -64,10 +61,7 @@ def _compare(*, ramp):
 
 
 def test_sat_probe_records_are_xy_transposes():
-    # No existing subgrid x/y transposition parity test was found in tests/.
-    # Design B3.7 and this function's spec fix the image bar at 1e-5 of peak.
-    # The public refinement API always uses dual projection (Design A39).
-    # Control first: stop on an asymmetric uniform-mu pair; no fine-grid fallback.
+    """The public refinement API uses dual projection."""
     control = _compare(ramp=False)
     ramp = _compare(ramp=True)
     peak = max(float(np.max(np.abs(control))), float(np.max(np.abs(ramp))))

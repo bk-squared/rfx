@@ -54,7 +54,6 @@ def execute(sim, path, *, steps=1):
 
 
 def expected_masks(shape, faces):
-    # Independent coordinate construction, including all rims.
     indices = np.indices(shape)
     return tuple(np.any(np.stack([
         indices['xyz'.index(face[0])] ==
@@ -64,6 +63,7 @@ def expected_masks(shape, faces):
 
 
 def check_owner(faces):
+    """The excluded z_hi normal-E row is the extra normal ghost row."""
     shape = (7, 5, 3)
     expected = expected_masks(shape, faces)
     actual = pec.wall_edge_masks(shape, faces)
@@ -74,7 +74,7 @@ def check_owner(faces):
         zeroed = np.asarray(state[c]) == 0
         selection = np.ones(shape, bool)
         if c == 2 and 'z_hi' in faces:
-            selection[:, :, -1] = False  # Only the extra normal ghost row.
+            selection[:, :, -1] = False
         np.testing.assert_array_equal(got[selection], zeroed[selection])
 
 
@@ -96,8 +96,8 @@ def test_b2_path_zero_sets(path, record_property):
         jax.block_until_ready(result.time_series)
         jax.effects_barrier()
     values, _, _ = measured_fields(records, grid, 'distributed' if distributed else 'run')
-    # Variant 11 starts with every E entry = 1, H = 0. Exactly one step.
-    fields = values[11, :3]
+    UNIT_E_ZERO_H_VARIANT = 11
+    fields = values[UNIT_E_ZERO_H_VARIANT, :3]
     masks = pec.wall_edge_masks(grid.shape, FACES)
     differences = []
     equal_sets = []
@@ -184,12 +184,13 @@ def test_z_lo_pec_other_faces_cpml_admits_cpml_source(path):
 ] + [('2d_tez', c) for c in ('ex', 'ey', 'hz')])
 @pytest.mark.parametrize('boundary', ('pec', 'cpml'))
 def test_invariant_axis_sources_admitted(mode, component, boundary):
-    """Equivalent invariant-axis kinds are not declared walls; base bits are captured separately."""
+    """Equivalent invariant-axis kinds are not declared walls; base bits are captured separately.
+    The internal H carrier is exercised because add_source accepts only E.
+    """
     sim = Simulation(freq_max=15e9, domain=DOMAIN, dx=DX, mode=mode, boundary=boundary)
     sim.add_source((6 * DX, 7 * DX, 0), component if component.startswith('e') else 'ez',
                    amplitude_kind='field')
     if component.startswith('h'):
-        # add_source accepts only E; exercise the existing internal H carrier.
         sim._ports[0] = replace(sim._ports[0], component=component)
     sim.add_probe((4 * DX, 7 * DX, 0), component)
     sim.add_probe((13 * DX, 9 * DX, 0), component)
@@ -237,8 +238,6 @@ def test_absorber_backing_plane_source_admitted(path):
         cell = position_to_index(grid, position)
     else:
         cell = grid.position_to_index(position)
-    # Declare the graded control at the interior face it formerly clamped to.
-    # The uniform control deliberately drives the backing (falsifier d).
     assert cell[0] == (grid.pad_x_lo if graded else 0)
     sim.add_source(position, 'ez', amplitude_kind='current', allow_in_absorber=True)
     sim.add_probe((4 * DX, 7 * DX, 5 * DX), 'ez')
@@ -346,7 +345,7 @@ def test_geometry_release_does_not_release_wall():
     sim.add(Box((6 * DX, 5 * DX, 3 * DX), (8 * DX, 9 * DX, 7 * DX)), material='pec')
     sim.add_port((6 * DX, 7 * DX, 5 * DX), 'ez', impedance=50)
     root = solve_conductors(sim, sim._build_grid())
-    assert root.pec_edges[2][6, 7, 5]  # Admission has not changed the product.
+    assert root.pec_edges[2][6, 7, 5]
     sim.add_port((0, 7 * DX, 5 * DX), 'ez', impedance=50)
     with pytest.raises(ValueError, match=r'_ports\[1\].*x_lo'):
         solve_conductors(sim, sim._build_grid())

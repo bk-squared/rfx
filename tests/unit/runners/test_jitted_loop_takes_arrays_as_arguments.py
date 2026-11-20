@@ -69,8 +69,6 @@ def _model(kind: str, dispersive: bool = False):
     zdom = {"graded": 8.65e-3, "uniform": 9e-3, "thin": 1e-3, "2d": 1e-3}[kind]
     if kind == "2d":
         kw["mode"] = "2d_tmz"
-    # #1138: the stub sheet is solved -15 % / +7.8 % off its drawing; this test
-    # checks what the compiled loop closes over, not sheet size.
     sim = Simulation(freq_max=12e9, domain=(14e-3, 11e-3, zdom), dx=dx,
                      boundary="cpml", cpml_layers=4, snap="declared", **kw)
     if kind in ("thin", "2d"):
@@ -88,7 +86,6 @@ def _model(kind: str, dispersive: bool = False):
         return sim
     z0, z1 = 2.8e-3, 3.85e-3
     if dispersive:
-        # Debye slab and a Lorentz block: both dispersive E updates
         sim.add_material("sub", eps_r=3.66, sigma=0.004,
                          debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
         sim.add_material("lor", eps_r=2.0, mu_r=1.5,
@@ -98,7 +95,6 @@ def _model(kind: str, dispersive: bool = False):
         sim.add_material("sub", eps_r=3.66, sigma=0.004)
         sim.add_material("mag", eps_r=2.0, mu_r=1.5)
         sim.add(Box((8e-3, 1e-3, 5e-3), (10e-3, 3e-3, 7e-3)), material="mag")
-        # a Leontovich (surface-impedance) sheet and a lumped port
         sim.add_thin_conductor(Box((3e-3, 8e-3, z1), (12e-3, 9e-3, z1)),
                                sigma_bulk=5.8e7, thickness=35e-6,
                                surface_impedance_f0=6e9)
@@ -196,13 +192,11 @@ def _record(sim, graded, run_kwargs):
 
 _NU_DECAY = dict(until_decay=1e-30, decay_min_steps=24, decay_max_steps=24,
                  decay_check_interval=12, skip_preflight=True)
-# long enough that the decay stop forms the energy after the drive (12 checks)
 _NU_ENERGY = dict(until_decay=1e-30, decay_min_steps=250, decay_max_steps=3000,
                   decay_check_interval=250, skip_preflight=True)
 _U_DECAY = dict(until_decay=1e-30, decay_min_steps=6, decay_max_steps=6,
                 decay_check_interval=3)
 
-# (model kind, dispersive, run kwargs)
 _CASES = {
     "uniform-until_decay": ("uniform", False, _U_DECAY),
     "uniform-dispersive-until_decay": ("uniform", True, _U_DECAY),
@@ -217,7 +211,6 @@ _GRADED = {
         n_steps=24, report_every=12, skip_preflight=True)),
     "graded-energy_step": ("graded", False, _NU_ENERGY),
     "graded-dispersive-energy_step": ("graded", True, _NU_ENERGY),
-    # run(until_identified=True) drives the same chunked loop with a stop_fn
     "graded-until_identified": ("ringdown", False, None),
 }
 
@@ -284,7 +277,6 @@ def _record_graded(sim, run_kwargs):
     ts = np.asarray(result.time_series)
     assert ts.shape[0] > 0 and np.isfinite(ts).all()
     rec["steps"] = int(ts.shape[0])
-    # closures are walked after the run, when every cell they read is filled
     rec["jit_captures"] = [c for fn in rec["jits"] for c in _captured_cell_arrays(fn, grid_axes)]
     rec["energy_captures"] = [c for fn in rec["energy"] for c in _captured_cell_arrays(fn, grid_axes)]
     return rec
@@ -324,8 +316,6 @@ def test_graded_chunks_are_the_single_scan(graded_run):
 
 def test_graded_jits_close_over_no_cell_array(graded_run):
     """View (ii): no jit in the graded loop or the energy measure closes over a per-cell array."""
-    # The chunks run the eager scan; a jit around them would compile its operands in as constants
-    # whatever way the step function reaches it, so the energy side step is the only jit allowed here.
     jitted = sorted({getattr(fn, "__name__", repr(fn)) for fn in graded_run["jits"]})
     assert set(jitted) <= {"_stop_side_step"}, f"the graded loop jits {jitted}"
     assert not graded_run["jit_captures"], (

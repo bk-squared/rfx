@@ -40,8 +40,8 @@ def _record(graded=False):
 
 @pytest.mark.parametrize("graded", [False, True])
 def test_physical_surface_geometry_and_currents(graded):
+    """The surface carries the actual timestep, not a timestep inferred from the grid."""
     grid, box, data, surface = _record(graded)
-    # Independent physical nodes and local areas, including zero/asymmetric padding.
     bounds = [(2, 5), (3, 6), (2, 5)]
     for face in range(6):
         axis, side = divmod(face, 2)
@@ -74,7 +74,7 @@ def test_physical_surface_geometry_and_currents(graded):
     np.testing.assert_allclose(surface.positions.T @ vector_area, volume * np.eye(3), atol=volume * 1e-14)
     assert surface.positions.dtype == np.float64
     assert surface.E_t.dtype == np.complex128
-    assert surface.dt != grid.dt  # actual run timestep, not inferred from grid
+    assert surface.dt != grid.dt
     assert surface.step_start == 5
 
 
@@ -152,6 +152,8 @@ def test_invalid_geometry_or_layout_is_refused():
 def test_actual_accumulator_keeps_yee_clock_and_raw_integral_units():
     grid = Grid(3e9, (0.006,) * 3, dx=1e-3, cpml_layers=0)
     f, dt, steps, start = 3e9, 1 / (3e9 * 16), 32, 7
+    assert (f * dt * steps).is_integer(), (
+        'The real harmonic record must contain integer cycles for the T over two phasor integral')
     box = NTFFBox.from_grid(grid, i_lo=2, i_hi=4, j_lo=2, j_hi=4,
                            k_lo=2, k_hi=4, freqs=np.array([f]))
     phasors = np.array([1 + 2j, 3 - 2j, -1 + 0.5j, 0.1 - 0.2j, -0.3 + 0.7j, 0.2 + 0.1j])
@@ -164,8 +166,6 @@ def test_actual_accumulator_keeps_yee_clock_and_raw_integral_units():
                           step=jnp.asarray(step))
         data = accumulate_ntff(data, state, box, dt, jnp.asarray(step))
     surface = export_ntff_surface(data, box, grid, dt=dt, n_steps=steps, step_start=start)
-    # Real harmonic over integer cycles integrates to T/2 * complex phasor.
-    # An extra half-step phase shift, division by T, or factor of two fails.
     scale = steps * dt / 2
     for field, ph in ((surface.E_t, phasors[:3]), (surface.H_t, phasors[3:])):
         expected = ph[None, :] * (1 - np.abs(surface.normals)) * scale
@@ -173,9 +173,8 @@ def test_actual_accumulator_keeps_yee_clock_and_raw_integral_units():
 
 
 def test_subgrid_result_without_global_origin_is_refused():
-    # A subgrid result marks its local fine grid with _shape_override but
-    # supplies no global origin. Exercise that export guard without a solve:
-    # an NTFF request on the reflecting subgridded exterior is now refused.
+    """The export guard is exercised without a solve because an NTFF request on the
+    reflecting subgridded exterior is refused."""
     grid = Grid(5e9, (0.03,) * 3, dx=3e-3, cpml_layers=0)
     grid._shape_override = grid.shape
     box = NTFFBox.from_grid(grid, i_lo=3, i_hi=7, j_lo=3, j_hi=7,

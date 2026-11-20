@@ -98,14 +98,11 @@ def lane_call(row, monkeypatch):
     if row.startswith("subgrid-"):
         sim.add_refinement(((.003, .009),), ratio=2, validation="research")
         if row == "subgrid-run":
-            # Reach the runner's second guard after the dispatch guard is bypassed.
             monkeypatch.setattr(sim, "_dispatch_plan", lambda **kwargs: SimpleNamespace(lane="run_subgridded", n_steps=1))
         return lambda: sim.run(n_steps=1, compute_s_params=False, skip_preflight=True)
     if row == "waveguide-and-multimode":
-        # Both modes share _admit_waveguide_options before mode selection.
         return lambda: sim.compute_waveguide_s_matrix(n_steps=1, skip_preflight=True)
     if row == "lumped-scan-and-eager-port-probe":
-        # The scan driver admits both its scan and eager probe branches.
         from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
         return lambda: compute_lumped_wire_s_matrix_via_scan(sim, np.array([8e9]), n_steps=1)
     if row == "current-moments":

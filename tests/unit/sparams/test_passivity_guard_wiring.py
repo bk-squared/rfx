@@ -12,6 +12,9 @@ from rfx.api._sparams import _warn_if_nonpassive_smatrix
 from rfx.sources.sources import GaussianPulse
 
 
+MSL_PASSIVITY_TOL = 0.10
+
+
 def _result(s_params):
     return SimpleNamespace(
         s_params=np.asarray(s_params, dtype=complex),
@@ -21,13 +24,12 @@ def _result(s_params):
 
 
 def test_per_frequency_amplitude_advisory_reports_worst_bin():
-    # tight tolerance class (the real student-case path is MSL, tol=0.10)
     s = np.array([[[0.2, 1.36, 0.4]]])
     with pytest.warns(UserWarning) as recorded:
         _warn_if_nonpassive_smatrix(
             _result(s),
             extractor="compute_msl_s_matrix",
-            passivity_tol=0.10,
+            passivity_tol=MSL_PASSIVITY_TOL,
         )
     messages = [str(item.message) for item in recorded]
     amplitude = [message for message in messages if "frequency index" in message]
@@ -59,7 +61,7 @@ def test_msl_result_uses_shared_epilogue_and_warns():
         _warn_if_nonpassive_smatrix(
             result,
             extractor="compute_msl_s_matrix",
-            passivity_tol=0.10,  # mirrors the actual compute_msl_s_matrix epilogue
+            passivity_tol=MSL_PASSIVITY_TOL,
         )
 
 

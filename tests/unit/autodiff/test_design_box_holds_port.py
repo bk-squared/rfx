@@ -62,6 +62,7 @@ three-edge wire port and a one-edge lumped port:
   it equals ``eps_override`` + ``sigma_override`` (main went NaN); a
   per-edge conductivity over it, which removed the load on main, is
   refused unless the load's edges are held.
+The port cells rasterize at interior indices plus the CPML pad.
 """
 
 from __future__ import annotations
@@ -84,17 +85,15 @@ from tests.contracts.path_equivalence.comparison import ACCUMULATED_RELATIVE
 F0 = 8e9
 DX = 1e-3
 CPML = 5
-KG = 3                      # ground plane: interior z node index
+GROUND_PLANE_INTERIOR_Z_NODE = 3
+KG = GROUND_PLANE_INTERIOR_Z_NODE
 EPS_SUB = 2.2
 PORT_XY = (8e-3, 8e-3)
 N_STEPS = 200
 FREQS = (6e9, 8e9, 10e9)
 
-#: graded z: 0.5 mm cells through the substrate, then a 1.3 growth into air.
 DZ_GRADED = np.concatenate([np.full(8, 0.5e-3), 0.5e-3 * 1.3 ** np.arange(1, 6)])
 
-#: the port's cells rasterize at interior + CPML pad; the box is 5 x 5 cells
-#: around the feed and spans the port's extent in z.
 PORT_IJ = (13, 13)
 PORT_K0 = KG + CPML
 
@@ -142,11 +141,12 @@ def _port_edges(port):
 
 def _box(port, *, graded=False, x_shift=0.0):
     """Corners (metres) of a 5 x 5 box around the feed over the port's
-    extent in z; ``x_shift`` slides it along x."""
+    extent in z; ``x_shift`` slides it along x.
+    The box corners are a quarter cell inside each z node plane so each resolves to the cell without
+    a tie.
+    """
     dz = DZ_GRADED[0] if graded else DX
     n = 3 if port == "wire" else 1
-    # a quarter cell inside each z node plane, so the corner resolves to
-    # the cell and not to a tie
     lo = (6e-3 + x_shift, 6e-3, KG * dz + 0.25 * dz)
     hi = (10e-3 + x_shift, 10e-3, (KG + n - 1) * dz + 0.25 * dz)
     return lo, hi
@@ -180,12 +180,9 @@ def _background(sim, box, graded, dtype=jnp.float32):
 
 def _forward(sim, box=None, *, eps=None, sigma=None, holds=False,
              n_steps=N_STEPS, graded=False):
+    """The short records are cut while the patch rings, so the S11 values are only compared between two formulations of one board."""
     kw = dict(n_steps=n_steps, checkpoint=False, skip_preflight=True)
     if not graded:
-        # The records are short (200 steps, cut while the patch rings), so
-        # these S11 values are not physics -- |S11| reads 1.01 at 6 GHz on
-        # the wire board. They are only ever compared between two
-        # formulations of one board.
         kw["port_s11_freqs"] = jnp.asarray(FREQS)
     elif any(p.extent is not None for p in sim._ports):
         kw["port_s11_freqs"] = np.linspace(sim._freq_max / 10, sim._freq_max, 50)
@@ -219,9 +216,6 @@ LANES = [pytest.param(False, id="uniform"), pytest.param(True, id="graded")]
 PORTS = ["wire", "lumped"]
 
 
-# ---------------------------------------------------------------------------
-# T1 -- a box holding the port, background inside, is the board without it
-# ---------------------------------------------------------------------------
 
 def _sigma_forms(sim, box, graded):
     """The three ways a background conductivity can be handed to the box."""
@@ -316,9 +310,12 @@ def test_t1_graded_run_equals_the_run_without_the_box_float32(port):
 def test_t1_the_opt_in_changes_nothing_on_a_box_that_holds_no_port(graded):
     """The same box, beside the port, with and without the opt-in: bitwise."""
     sim = _board("wire", graded=graded)
-    box = _box("wire", graded=graded, x_shift=5e-3)   # cells 16..20, port 13
+    box = _box("wire", graded=graded, x_shift=5e-3)
+    assert _box_bounds(sim, box, graded)[:2] == (16, 21) and PORT_IJ[0] == 13, (
+        "The shifted input box must cover x cells 16..20 with the port at 13."
+    )
     eps, _ = _background(sim, box, graded)
-    eps = eps * 1.5                                   # a design, not background
+    eps = eps * 1.5
     a = _forward(_board("wire", graded=graded), box, eps=eps, graded=graded)
     b = _forward(_board("wire", graded=graded), box, eps=eps, holds=True,
                  graded=graded)
@@ -327,9 +324,6 @@ def test_t1_the_opt_in_changes_nothing_on_a_box_that_holds_no_port(graded):
     assert np.array_equal(np.asarray(a.time_series), np.asarray(b.time_series))
 
 
-# ---------------------------------------------------------------------------
-# T2 -- a held edge ignores its design value
-# ---------------------------------------------------------------------------
 
 def _edge_sigma(sim, box, graded, value, edge_local):
     """Per-edge conductivity, zero but ``value`` on the Ez edge at box index
@@ -354,7 +348,7 @@ def test_t2_a_held_edge_ignores_an_extreme_design_conductivity(port, graded):
     b = _box_bounds(sim, box, graded)
     eps, _ = _background(sim, box, graded)
     held = (PORT_IJ[0] - b[0], PORT_IJ[1] - b[2], PORT_K0 - b[4])
-    beside = (held[0] + 1, held[1], held[2])       # the next Ez edge in x
+    beside = (held[0] + 1, held[1], held[2])
 
     def run(value, where):
         return _forward(_board(port, graded=graded), box, eps=eps,
@@ -392,7 +386,10 @@ def test_t2_the_port_cells_other_edges_stay_design_variables(graded):
     """Only the port's own Ez edges are held. The Ex and Ey edges of the
     port's middle cell (in the substrate, off the ground sheet) take their
     design conductivity: 1e5 S/m there moves the run, and the derivative
-    there is not zero."""
+    there is not zero.
+    A transverse edge in the feed's cell carries little of the feed's field: an earlier measurement
+    was 1.0e-4 / 2.1e-5 (uniform Ex / Ey) and 3.6e-6 / 1.0e-6 (graded) of the probe peak.
+    """
     port = "wire"
     sim = _board(port, graded=graded)
     box = _box(port, graded=graded)
@@ -413,10 +410,6 @@ def test_t2_the_port_cells_other_edges_stay_design_variables(graded):
         moved = _peak_rel(r.time_series, base.time_series)
         print(f"[T2 other edges {'graded' if graded else 'uniform'}] 1e5 S/m "
               f"on the port cell's {name} edge moves the probe {moved:.3e}")
-        # A held edge leaves the run bitwise unchanged (T2 above), so the
-        # witness is that this one does not. A transverse edge in the feed's
-        # cell carries little of the feed's field: measured 1.0e-4 / 2.1e-5
-        # (uniform Ex / Ey) and 3.6e-6 / 1.0e-6 (graded) of the probe peak.
         assert not np.array_equal(np.asarray(r.time_series),
                                   np.asarray(base.time_series)), name
         assert moved > 0.0, (name, moved)
@@ -430,13 +423,10 @@ def test_t2_the_port_cells_other_edges_stay_design_variables(graded):
     assert gx != 0.0 and gy != 0.0
 
 
-# ---------------------------------------------------------------------------
-# T3 -- the gradient next to the port
-# ---------------------------------------------------------------------------
 
-#: the Ez edge beside the port, one cell along +x, at the port's first edge
 BESIDE = (PORT_IJ[0] + 1, PORT_IJ[1], PORT_K0)
-SIGMA0 = 5.0            # S/m on that edge -- a lossy design edge
+LOSSY_DESIGN_EDGE_S_PER_M = 5.0
+SIGMA0 = LOSSY_DESIGN_EDGE_S_PER_M
 
 
 def _beside_losses(port, graded, precision, dtype):
@@ -445,11 +435,13 @@ def _beside_losses(port, graded, precision, dtype):
     ``BESIDE`` and leaves the port outside. The same board both ways."""
     sim = _board(port, graded=graded, precision=precision)
     boxes = {"holding": _box(port, graded=graded),
-             # x cells from BESIDE on: the port's edge is outside the window
              "outside": _box(port, graded=graded, x_shift=3e-3)}
     losses = {}
     for name, box in boxes.items():
         b = _box_bounds(sim, box, graded)
+        assert name != "outside" or b[0] == BESIDE[0] > PORT_IJ[0], (
+            "The outside input box must start at BESIDE beyond the port x cell."
+        )
         eps, sig = _background(sim, box, graded, dtype)
         at = (BESIDE[0] - b[0], BESIDE[1] - b[2], BESIDE[2] - b[4])
         assert all(0 <= v for v in at), (name, at)
@@ -467,6 +459,7 @@ def _beside_losses(port, graded, precision, dtype):
 
 @pytest.mark.parametrize("port", PORTS)
 def test_t3_uniform_gradient_beside_the_port_float64(port):
+    """An earlier measurement of the central-difference truncation error was 4.5e-4, 1.1e-4, 2.8e-5 (wire) and 3.7e-6, 9.2e-7, 2.3e-7 (lumped), 4x per halving."""
     with enable_x64():
         holding, outside = _beside_losses(port, False, "float64", jnp.float64)
         p0 = jnp.asarray(SIGMA0, jnp.float64)
@@ -474,10 +467,8 @@ def test_t3_uniform_gradient_beside_the_port_float64(port):
         v_o, g_o = jax.value_and_grad(outside)(p0)
         g_h, g_o = float(g_h), float(g_o)
         assert g_h != 0.0
-        # the same board through two routes
         assert abs(float(v_h) - float(v_o)) <= 1e-12 * abs(float(v_o))
         assert abs(g_h - g_o) <= 1e-10 * abs(g_o), (g_h, g_o)
-        # AD against central differences, error falling as h^2
         errs = []
         for h in (0.1, 0.05, 0.025):
             fd = (float(holding(p0 + h)) - float(holding(p0 - h))) / (2 * h)
@@ -486,8 +477,6 @@ def test_t3_uniform_gradient_beside_the_port_float64(port):
               f"{g_o:.9e} (rel {abs(g_h - g_o) / abs(g_o):.1e}); "
               f"|FD - AD|/|AD| over h = 0.1, 0.05, 0.025 S/m: "
               + ", ".join(f"{e:.3e}" for e in errs))
-        # measured 4.5e-4, 1.1e-4, 2.8e-5 (wire) and 3.7e-6, 9.2e-7, 2.3e-7
-        # (lumped): the central-difference truncation error, 4x per halving
         assert errs[2] <= 1e-4
         for coarse, fine in zip(errs, errs[1:]):
             assert 3.5 < coarse / fine < 4.5, errs
@@ -495,6 +484,7 @@ def test_t3_uniform_gradient_beside_the_port_float64(port):
 
 @pytest.mark.parametrize("port", PORTS)
 def test_t3_graded_gradient_beside_the_port_float32(port):
+    """Below h = 0.25 the float32 record rounding takes over from the earlier measured errors of 0.10, 0.026, 0.0052 (wire) and 1.9e-3, 4.7e-4, 1.2e-4 (lumped)."""
     holding, outside = _beside_losses(port, True, "float32", jnp.float32)
     p0 = jnp.asarray(SIGMA0, jnp.float32)
     v_h, g_h = jax.value_and_grad(holding)(p0)
@@ -510,16 +500,11 @@ def test_t3_graded_gradient_beside_the_port_float32(port):
     print(f"[T3 graded {port}] AD {g_h:.6e}, outside-box route {g_o:.6e} "
           f"(rel {abs(g_h - g_o) / abs(g_o):.1e}); |FD - AD|/|AD| over "
           f"h = 1, 0.5, 0.25 S/m: " + ", ".join(f"{e:.2e}" for e in rel))
-    # measured 0.10, 0.026, 0.0052 (wire) and 1.9e-3, 4.7e-4, 1.2e-4
-    # (lumped); below h = 0.25 the float32 record's rounding takes over
     assert rel[2] <= 1e-2, rel
     for coarse, fine in zip(rel, rel[1:]):
         assert coarse / fine > 2.5, rel
 
 
-# ---------------------------------------------------------------------------
-# the drive on a held edge is built for the held update
-# ---------------------------------------------------------------------------
 
 @contextmanager
 def _captured_drives(graded):
@@ -593,9 +578,6 @@ def test_the_drive_cb_equals_the_held_update_cb_and_the_no_box_cb(
                                                 cb_nobox)
 
 
-# ---------------------------------------------------------------------------
-# which edges were held
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("graded", LANES)
 @pytest.mark.parametrize("port", PORTS)
@@ -616,9 +598,6 @@ def test_the_held_edges_are_the_ports_rasterized_edges(port, graded):
     assert without.design_box_held_edges is None
 
 
-# ---------------------------------------------------------------------------
-# T4 -- the refusals that stay
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("graded", LANES)
 @pytest.mark.parametrize("port", PORTS)
@@ -672,25 +651,9 @@ def test_t4_a_soft_source_on_a_held_port_edge_is_refused():
                     skip_preflight=True)
 
 
-# ---------------------------------------------------------------------------
-# passive loads under a box without the opt-in (as on main)
-# ---------------------------------------------------------------------------
-#
-# A passive termination -- an MSL port with ``excite=False``, or a passive
-# lumped / wire port handed to the low-level ``run`` -- stamps its load into
-# ``materials`` and drives nothing. A permittivity-only box over it is exact:
-# the load's own edge sees the design permittivity just as it would under a
-# whole-grid override, and no drive is built for another Cb. A cell-array
-# design conductivity is the cell's volume material with the load on top (as
-# under ``sigma_override``, where the ports stamp on top of the override);
-# main laid it over the load's cell total and took the load out of it, a
-# negative conductance that went NaN. A per-edge conductivity replaces the
-# load's edge conductivity outright and is refused.
 
 MSL_NX, MSL_NY = 30, 20
 MSL_ZG, MSL_ZP = 2 * DX, 4 * DX
-#: the passive termination's feed plane is x = (NX - 5) mm; the box spans it,
-#: the trace width and the lower substrate cell.
 MSL_BOX = (((MSL_NX - 7) * DX, 7 * DX, 2.25 * DX),
            ((MSL_NX - 4) * DX, 13 * DX, 3.25 * DX))
 MSL_STEPS = 400

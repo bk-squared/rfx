@@ -11,7 +11,6 @@ from rfx.grid import Grid
 
 
 def numpy_clip(tensor, lo, hi):
-    # Independent host oracle; never calls the implementation's clip helpers.
     w, v = np.linalg.eigh(np.asarray(tensor, dtype=np.float64))
     return (v * np.minimum(np.maximum(w, lo), hi)) @ v.T
 
@@ -19,8 +18,8 @@ def numpy_clip(tensor, lo, hi):
 @pytest.mark.parametrize('tied', [True, False], ids=['tie', 'separated'])
 def test_spectral_clip_jvp(tied):
     with jax.enable_x64():
-        # A 45-degree rotation of diag(1.25, 1.25, .5), with an exact tie.
         tensor = np.array([[.875, 0., .375], [0., 1.25, 0.], [.375, 0., .875]])
+        assert tensor[1, 1] == tensor[0, 0] + tensor[0, 2], "the rotated spectral fixture must start with an exact repeated eigenvalue"
         if not tied:
             tensor[1, 1] = .8
         direction = np.array([[.2, .1, -.3], [.1, -.4, .15], [-.3, .15, .5]])
@@ -46,6 +45,7 @@ def test_spectral_clip_jvp(tied):
 
 
 def test_pec_wall_operator_is_symmetric():
+    """Periodic y/z remove unrelated terminal faces."""
     from rfx.core.node_tensor import off_diagonal
     from rfx.core.yee import CurlBoundary
 
@@ -53,17 +53,15 @@ def test_pec_wall_operator_is_symmetric():
         dx = .001
         grid = Grid(domain=(.004, .005, dx), dx=dx, freq_max=10e9,
                     mode='2d_tez', cpml_axes='')
-        # The circle cuts x=0 obliquely. Both normal components are nonzero
-        # at the wall; periodic y/z remove unrelated terminal faces.
         rod = Cylinder((.0004, .0023, dx / 2), .0017, 1., 'z')
+        assert 0 < abs(rod.center[0]) < rod.radius, "the circle must cut the wall obliquely so both normal components are nonzero"
         eps = compute_node_tensor_eps(grid, [(rod, 38.)], field_dtype=jnp.float64)
         boundary = CurlBoundary(pec_faces=frozenset({'x_lo'}), periodic=(False, True, True))
         count = 3 * int(np.prod(grid.shape))
         def apply(vector):
+            """Output PEC projection is the step's wall condition, independent of the input mask being tested."""
             curls = tuple(vector.reshape((3,) + grid.shape))
             cross = off_diagonal(curls, eps.nodes, periodic=boundary.periodic, boundary=boundary)
-            # Output PEC projection is the step's wall condition, independent
-            # of the input mask being tested. x-lo tangential edges are y,z.
             result = jnp.stack(cross)
             return result.at[1:, 0, :, :].set(0.).ravel()
         operator = np.asarray(jax.jit(jax.vmap(apply))(jnp.eye(count))).T

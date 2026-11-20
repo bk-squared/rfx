@@ -52,26 +52,19 @@ def _trace(boundary: str, nonuniform: bool, kind, amplitude: float = 1.0,
     return np.asarray(result.time_series, dtype=float).ravel()
 
 
-# ---------------------------------------------------------------------------
-# Conversion-table unit contract (the ONE conversion site)
-# ---------------------------------------------------------------------------
 
 def test_conversion_table_and_dispatch():
     """Full target/native table + the Python-level needs_scale dispatch."""
-    # no-op rows (bit-identity guarantee): None everywhere, kind == native
     for native in ("raw", "cb", "cb_over_dv"):
         assert needs_scale(None, native) is False
         assert source_amplitude_scale(None, native, cb=123.0, dV=456.0) == 1.0
     assert needs_scale("field", "raw") is False
     assert needs_scale("current", "cb_over_dv") is False
-    # 'cb' realizes NEITHER kind (legacy open-uniform third contract)
     assert needs_scale("field", "cb") and needs_scale("current", "cb")
-    # conversion rows
     assert source_amplitude_scale("field", "cb", cb=4.0, dV=None) == 0.25
     assert source_amplitude_scale("field", "cb_over_dv", cb=2.0, dV=8.0) == 4.0
     assert source_amplitude_scale("current", "raw", cb=2.0, dV=8.0) == 0.25
     assert source_amplitude_scale("current", "cb", cb=None, dV=2.0) == 0.5
-    # validation
     with pytest.raises(ValueError, match="native"):
         needs_scale("field", "bogus")
     with pytest.raises(ValueError, match="amplitude_kind"):
@@ -82,7 +75,9 @@ def test_dispatch_is_python_level_and_tracer_safe():
     """The dossier's ConcretizationTypeError fix: whether to scale is
     decided on the (kind, native) string pair, so a TRACED cb/dV never
     reaches a value comparison. Under jit this raises if anyone
-    reintroduces ``if scale != 1.0``-style gating on the value."""
+    reintroduces ``if scale != 1.0``-style gating on the value.
+    (1/cb) * (cb/dV) = 1/dV = 0.25.
+    """
     @jax.jit
     def convert(cb, dv):
         w = jnp.ones(4, dtype=jnp.float32)
@@ -92,7 +87,6 @@ def test_dispatch_is_python_level_and_tracer_safe():
             w = source_amplitude_scale("current", "raw", cb=cb, dV=dv) * w
         return w
     out = convert(jnp.float32(2.0), jnp.float32(4.0))
-    # (1/cb) * (cb/dV) = 1/dV = 0.25
     np.testing.assert_allclose(np.asarray(out), 0.25, rtol=1e-6)
 
 
@@ -102,9 +96,6 @@ def test_add_source_rejects_unknown_kind():
         sim.add_source(_SRC, "ez", amplitude_kind="volts")
 
 
-# ---------------------------------------------------------------------------
-# (a) Omitted and explicit None declarations agree; native helpers stay legacy
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("boundary,nonuniform", [
     pytest.param("pec", False, id="closed-uniform"),
@@ -129,7 +120,6 @@ def test_make_j_source_kind_none_bitwise_matches_pristine_formula():
     materials = init_materials(grid.shape)
     pulse = GaussianPulse(f0=F0, bandwidth=0.8)
     spec = make_j_source(grid, _SRC, "ez", pulse, 64, materials)
-    # inline pristine formula
     i, j, k = grid.position_to_index(_SRC)
     eps = materials.eps_r[i, j, k] * EPS_0
     sigma = materials.sigma[i, j, k]
@@ -151,9 +141,6 @@ def test_make_source_kind_none_bitwise_matches_pristine_formula():
     assert np.array_equal(np.asarray(spec.waveform), np.asarray(pristine))
 
 
-# ---------------------------------------------------------------------------
-# (b) Declaration None == current on every path
-# ---------------------------------------------------------------------------
 
 def test_closed_uniform_none_equals_current_bitwise():
     t_none = _trace("pec", False, None)
@@ -178,9 +165,6 @@ def test_open_uniform_none_equals_current_bitwise():
     assert np.array_equal(t_none, t_current)
 
 
-# ---------------------------------------------------------------------------
-# (c) The NEW invariant: explicit 'current' makes the two builders EQUAL
-# ---------------------------------------------------------------------------
 
 def test_current_kind_makes_uniform_and_nonuniform_traces_equal():
     """THE observable design win of #571 option 4: under
@@ -216,9 +200,6 @@ def test_field_kind_makes_uniform_and_nonuniform_traces_equal_pec():
     assert resid < 6e-4
 
 
-# ---------------------------------------------------------------------------
-# (d) DeprecationWarning contract
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("boundary,nonuniform", [
     pytest.param("pec", False, id="closed-uniform"),
@@ -231,7 +212,7 @@ def test_kind_none_warns_once_per_sim_naming_the_concrete_meaning(
     with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")
         sim.add_source(_SRC, "ez")
-        sim.add_source(_PRB, "ez")  # second bare call: NO second warning
+        sim.add_source(_PRB, "ez")
     dep = [w for w in rec if issubclass(w.category, DeprecationWarning)
            and "amplitude_kind" in str(w.message)]
     assert len(dep) == 1, (
@@ -241,7 +222,6 @@ def test_kind_none_warns_once_per_sim_naming_the_concrete_meaning(
     assert "means 'current'" in message
     assert "E += Cb*I/dV" in message
     assert "A·m" in message
-    # a NEW Simulation warns again (per-sim, not per-process)
     sim2 = _sim(boundary, nonuniform)
     with pytest.warns(DeprecationWarning, match="amplitude_kind"):
         sim2.add_source(_SRC, "ez")
@@ -255,9 +235,6 @@ def test_explicit_kind_is_warning_free():
         sim.add_source(_PRB, "ez", amplitude_kind="field")
 
 
-# ---------------------------------------------------------------------------
-# (e) AD witness: grad flows through explicit kinds on traced materials
-# ---------------------------------------------------------------------------
 
 def test_grad_flows_through_current_kind_on_traced_materials():
     """forward(eps_override=tracer) with amplitude_kind='current' (and the

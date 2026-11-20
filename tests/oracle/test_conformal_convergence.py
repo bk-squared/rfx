@@ -157,7 +157,6 @@ def _measure_cavity(ppw, conformal):
     return result
 
 
-# Step A, 6000 float32 steps, W1=[1800,6000), W2=[3000,6000).
 _E_PIN = {12: 0.0496, 16: 0.0424, 24: 0.0352}
 _CONFORMAL_XFAIL = pytest.mark.xfail(
     strict=True,
@@ -186,7 +185,6 @@ def test_t0_complement_weights():
     grid, cylinder = _cavity_geometry(16)
     lengths, _ = compute_conformal_fractions(grid, [cylinder], clamp=False, field_dtype=np.float32)
     cx, cy, _ = cylinder.center
-    # Independent end-node radial distances, before complementing and SC.
     for component, length in enumerate(lengths):
         x = np.arange(grid.nx, dtype=float)[:, None, None] * grid.dx
         y = np.arange(grid.ny, dtype=float)[None, :, None] * grid.dx
@@ -205,12 +203,10 @@ def test_t0_complement_weights():
 
 @pytest.mark.parametrize("ppw", _PPW)
 def test_t1_staircase_pin(cavity_measurements, ppw):
+    """The 3e-3 bar is above earlier measured float32 frequency noise."""
     result = cavity_measurements[ppw, False]
     _assert_identified(result)
     assert result["err"] > 0, result
-    # 3e-3 is below a 1% radius shift and above measured float32 frequency noise,
-    # but the staircase wall moves only in whole cells: at 12 ppw a 1% radius
-    # change may not move it.
     assert abs(result["err"] - _E_PIN[ppw]) <= 3e-3, result
 
 
@@ -220,15 +216,13 @@ def test_t1_staircase_refinement(cavity_measurements):
 
 
 @_CONFORMAL_XFAIL
-# At 12 ppw, Courant 0.572, Yee dispersion is -7.7e-3 (axis) to -2.0e-3
-# (diagonal), ~-4.9e-3 angle-averaged: only 1e-4 inside the 5e-3 bar.
-# At 16 and 24 ppw it is -2.7e-3 and -1.2e-3, respectively.
 @pytest.mark.parametrize("ppw", (16, 24))
 def test_t2_conformal_accuracy(cavity_measurements, ppw):
+    """At 12 ppw, Courant 0.572, Yee dispersion is ~-4.9e-3 angle-averaged: only 1e-4 inside the 5e-3 bar."""
     result = cavity_measurements[ppw, True]
     _assert_identified(result)
-    # 5e-3 is the sub-1% oracle bar: a 1% radius error must be red.
-    assert abs(result["err"]) <= 5e-3, result
+    SUB_PERCENT_RADIUS_ERROR_BAR = 5e-3
+    assert abs(result["err"]) <= SUB_PERCENT_RADIUS_ERROR_BAR, result
 
 
 @_CONFORMAL_XFAIL
@@ -247,17 +241,18 @@ class TestConformalConvergence:
 
     @pytest.mark.gpu
     def test_conformal_stability_long_run(self):
-        """Conformal PEC cavity should be stable for many timesteps."""
+        """Conformal PEC cavity should be stable for many timesteps.
+        Placement uses the declared lengths while the grid uses cells_spanning(L, dx) * dx.
+        """
         radius = 0.012
         height = 0.04
         dx = 0.003
-        margin = 6 * dx  # larger margin so source is well outside PEC
+        margin = 6 * dx
         Lx = 2 * radius + 2 * margin
         Ly = Lx
         Lz = height + 2 * margin
         center = (Lx / 2, Ly / 2, Lz / 2)
 
-        # Placement uses the declared lengths; the grid gets main's solved lengths (#1887).
         grid = Grid(freq_max=_tm010_freq(radius) * 3,
                     domain=tuple(cells_spanning(L, dx) * dx for L in (Lx, Ly, Lz)),
                     dx=dx, cpml_layers=0)
@@ -272,9 +267,8 @@ class TestConformalConvergence:
         eps_ex, eps_ey, eps_ez = conformal_eps_correction(
             materials.eps_r, w_ex, w_ey, w_ez)
 
-        # Place source OUTSIDE the cylinder but inside the domain
-        # Source at corner of domain (well outside the cylinder)
         src_pos = (margin, margin, Lz / 2)
+        assert np.hypot(src_pos[0] - center[0], src_pos[1] - center[1]) > radius and all(0 < p < L for p, L in zip(src_pos, (Lx, Ly, Lz))), "The source must be outside the PEC cylinder and inside the domain."
         src_idx = grid.position_to_index(src_pos)
 
         f_target = _tm010_freq(radius)
@@ -299,7 +293,6 @@ class TestConformalConvergence:
         assert len(energies) >= 3, "Should have collected energy samples"
         assert max(energies) > 0, "Should have nonzero energy"
 
-        # Energy should not grow exponentially (bounded in PEC cavity)
         max_energy = max(energies)
         final_energy = energies[-1]
         assert final_energy < max_energy * 5, \
@@ -307,7 +300,9 @@ class TestConformalConvergence:
 
     @pytest.mark.gpu
     def test_api_conformal_convergence(self):
-        """End-to-end API test: conformal should give different results than staircase."""
+        """End-to-end API test: conformal should give different results than staircase.
+        A conformal lumped S-matrix is refused.
+        """
         from rfx.api import Simulation
 
         sim = Simulation(freq_max=5e9, domain=(0.06, 0.06, 0.06), snap="declared")
@@ -315,7 +310,6 @@ class TestConformalConvergence:
         sim.add_port((0.03, 0.03, 0.005), "ez", waveform=GaussianPulse(f0=3e9))
         sim.add_probe((0.03, 0.045, 0.03), "ez")
 
-        # The port only excites the model; a conformal lumped S-matrix is refused (#1299).
         result_conf = sim.run(n_steps=200, conformal_pec=True, compute_s_params=False)
         result_stair = sim.run(n_steps=200)
 

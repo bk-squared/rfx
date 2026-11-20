@@ -45,8 +45,6 @@ from rfx.sources.sources import GaussianPulse
 
 _F0 = 5e9
 _FREQS = np.array([1.0, 2.5, 4.0, 5.5, 7.0, 8.5, 10.0]) * 1e9
-# In-band bins (well-conditioned: near the Gaussian f0=5GHz, bw=0.9 -> ~2.7-7.3GHz).
-# 8.5/10 GHz are the weak-signal tail where single-cell float32 conditioning bites.
 _INBAND = _FREQS <= 7.0e9
 
 

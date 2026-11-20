@@ -87,15 +87,13 @@ def test_channel_3_the_solver_lane_zeroes_exactly_those_edges():
     sim = _sim()
     sim.add_source((0.003, 0.010, 0.010), "ez", waveform=GaussianPulse(f0=5e9),
                    amplitude_kind="field")
-    sim.add_probe((0.005, 0.010, 0.010), "ez")   # outside the body
+    sim.add_probe((0.005, 0.010, 0.010), "ez")
     res = sim.run(n_steps=40, skip_preflight=True)
     _grid, _cells, edges = _cells_and_edges(sim)
     for c, m in zip(("ex", "ey", "ez"), edges):
         f = np.asarray(getattr(res.state, c))
         m = np.asarray(m, bool)
         assert not np.any(f[m]), f"{c}: a realized PEC edge is not zero"
-        # ... and the body is not over-realized: some edge just outside the
-        # body carries field, so "all zero" cannot pass vacuously.
         assert np.any(np.abs(f[~m]) > 0.0), c
 
 
@@ -140,12 +138,9 @@ def test_the_subpixel_channels_are_fenced_out_in_writing():
     sim = _sim()
     grid = sim._build_grid()
     out = sim._assemble_materials(grid)
-    # the shapes are handed on unchanged — a declaration, not a realization
     assert [type(s).__name__ for s in out[4]] == ["Box"]
     assert out[4][0].corner_lo == LO and out[4][0].corner_hi == HI
 
-    # a face half a cell off the node line: binary owns whole cells, the
-    # SDF weight does not.
     off = Box((0.0065, 0.006, 0.008), (0.014, 0.014, 0.012))
     co = coords_from_uniform_grid(grid)
     cells = classify_pec_entry(off, co, cell_centres_from_nodes(co),
@@ -158,4 +153,5 @@ def test_the_subpixel_channels_are_fenced_out_in_writing():
     assert n_frac > 0, (
         "fixture guard: the conformal channel must be fractional somewhere, "
         "otherwise the fence below is vacuous")
-    assert n_frac == 64, n_frac   # 32 Ey + 32 Ez on the mid-cell x face
+    MIDCELL_X_FACE_FRACTIONAL_EDGES = 64
+    assert n_frac == MIDCELL_X_FACE_FRACTIONAL_EDGES, n_frac

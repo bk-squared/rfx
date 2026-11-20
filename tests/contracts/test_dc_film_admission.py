@@ -45,12 +45,11 @@ def model(lane='uniform', radius=10.5, offset=.27, normal=2,
 
 
 def reference(grid, shape):
+    """A DC film mask entry j is cell j, [x_j, x_j+1), sampled at the cell centre x_j + w_j/2 with the last width repeated past the final node."""
     normal = 'xyz'.index(shape.axis)
     nodes = [np.asarray(c, dtype=float) for c in _grid_coords(grid)]
     tangents = [a for a in range(3) if a != normal]
     a, b = tangents
-    # A DC film mask entry j is cell j, [x_j, x_j+1): sample it at the cell
-    # centre x_j + w_j/2, the last width repeated past the final node (#1958 F8).
     centres = []
     for t in (a, b):
         w = np.asarray(grid.cells(t), dtype=float)
@@ -135,9 +134,6 @@ class UnknownArea:
 @pytest.mark.parametrize('lane', ['uniform', 'equal', 'normal', 'inplane'])
 @pytest.mark.parametrize('radius', [2.5, 5.5])
 def test_b4_small_disc_refusal_and_declared_finding(lane, radius):
-    # Canonical placement: area errors -9.7% (r 2.5, 16 cells) and -3.8% (r 5.5, 88 cells)
-    # with cell-centre sampling (#1958 F8; node sampling gave +3.4% / +1.03%).
-    # B2/B3/B5 also exercise fractional, asymmetric transverse placement.
     sim, grid, shape = model(lane, radius, centre=(24, 24))
     _, area, declared = reference(grid, shape)
     expected_refusal = abs(np.sqrt(area/declared)-1) > .01
@@ -211,11 +207,9 @@ def test_b5_radius_trend(lane, centre):
 @pytest.mark.parametrize('lane', ['uniform', 'normal'])
 @pytest.mark.parametrize('parameter,value', [('thickness', T), ('sigma_bulk', SIGMA)])
 def test_parameter_tracers_keep_geometry_checks(lane, parameter, value):
+    """Ex end weights sum to the independent circular footprint's N cells on this uniform in-plane grid."""
     sim, grid, shape = model(lane)
     conductor = sim._thin_conductors[0]
-    # Old reference was sum(cell sigma) from the fold. The independent
-    # circular footprint has N cells; Ex end weights sum to N on this
-    # uniform in-plane grid. One node carries G/d_dual per full weight.
     mask, _, _ = reference(grid, shape)
     k = int(np.flatnonzero(mask.any(axis=(0, 1)))[0])
     widths = np.asarray(grid.cells(2), dtype=float)

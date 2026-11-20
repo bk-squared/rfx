@@ -62,7 +62,6 @@ def test_msl_default_uses_only_its_exact_realized_signal_aperture(direction, nu)
     sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
                      boundary="cpml", cpml_layers=2,
                      **({"dz_profile": np.ones(8)} if nu else {}))
-    # Ground and a neighbouring trace lie one node from the declared aperture.
     ground = Box((0., 0., 3.), (8., 8., 3.))
     strip = (Box((0., 3., 4.), (8., 5., 4.)) if direction[-1] == "x"
              else Box((3., 0., 4.), (5., 8., 4.)))
@@ -107,7 +106,6 @@ def test_termination_references_follow_entries_through_deepcopy_and_removal(thin
     copied._assemble_materials(grid, pec_sheets=sheets, pec_wires=[])
     assert not np.asarray(sheets[0].footprint)[:2].any()
     assert np.asarray(sheets[1].footprint)[:2].sum() == 6
-    # The remaining equal declaration is a different entry and is not held.
     setattr(copied, collection, entries[1:])
     assert held_conductor_entries(copied, grid) == []
 
@@ -139,7 +137,6 @@ def test_exact_aperture_preserves_the_gap_between_parallel_wire_edges():
     on_wire = (2.5, 1., 2.)
     assert lattice_intersects_aperture(wire, nodes, on_wire, on_wire)
     assert not lattice_intersects_aperture(wire, nodes, between, between)
-    # The same node footprint of a sheet fills its in-plane segments.
     sheet = [(mask, (False, False, False))]
     assert lattice_intersects_aperture(sheet, nodes, between, between)
     above = (2.5, 1.5, 2.5)
@@ -166,7 +163,6 @@ def test_reached_face_is_filled(axis, side, kind):
     _, _, _, cells, shapes, _, _ = sim._assemble_materials(
         grid, pec_sheets=sheets, pec_wires=[])
     actual = np.asarray(cells if kind == "volume" else sheets[0].footprint)
-    # Read solved cells/footprints, independent of the continuation helper.
     face = 2 if side == 0 else grid.shape[axis] - 3 - (kind == "volume")
     pad = range(2) if side == 0 else range(grid.shape[axis]-3, grid.shape[axis]-1)
     reference = np.take(actual, face, axis=axis)
@@ -206,7 +202,6 @@ def test_cylinder_axis_continues_and_cross_axis_is_reported(axis, side, cross_si
     assert solved.radius == 1.
     assert [(u.axis, u.side, u.conductor) for u in findings] == [
         (cross_axis, "hi" if cross_side else "lo", True)]
-    # Unsupported thin geometry is reported even without ordinary entries.
     from rfx.geometry.smoothing import smoothed_shape_pairs, warn_unextendable_shapes
     sim.add_thin_conductor(Cylinder((4., 4., 4.), radius=4., height=0., axis="z"),
                            sigma_bulk=5.8e7, thickness=0.01)
@@ -250,7 +245,7 @@ def test_conductor_continues_but_pole_occupancy_stays_declared(nu, sheet, kind):
                      boundary="cpml", cpml_layers=2,
                      **({"dz_profile": np.ones(8)} if nu else {}))
     pole = (DebyePole(delta_eps=1., tau=1e-10) if kind == "debye" else
-            LorentzPole(omega_0=1e8, delta=1e6, kappa=1e14))   # omega_0*dt = 0.19, delta_eps 0.01: below the pole's own step limit
+            LorentzPole(omega_0=1e8, delta=1e6, kappa=1e14))
     sim.add_material("conducting_pole", sigma=1e7, **{kind+"_poles": [pole]})
     declared = Box((0., 2., 4. if sheet else 2.),
                    (8., 6., 4. if sheet else 6.))
@@ -261,12 +256,9 @@ def test_conductor_continues_but_pole_occupancy_stays_declared(nu, sheet, kind):
               if nu else sim._assemble_materials(grid, pec_sheets=sheets, pec_wires=[]))
     mask = np.asarray(result[1 if kind == "debye" else 2][1][0])
     assert not mask[:2].any() and not mask[-3:-1].any()
-    # A zero-thickness sheet owns no primal-cell centres for volume poles.
     assert mask.sum() == (0 if sheet else 128)
     conductor = np.asarray(sheets[0].footprint if sheet else result[3])
     assert conductor[:2].any() and conductor[-3:-1].any()
-    # Assembled as PEC (the mask above), so it leaves the dielectric average
-    # (#1778): no continued copy, and no declared one either.
     pairs, _ = smoothed_shape_pairs(sim, grid)
     assert not pairs
 
@@ -275,10 +267,9 @@ def test_conductor_continues_but_pole_occupancy_stays_declared(nu, sheet, kind):
 @pytest.mark.parametrize("side", (0, 1))
 @pytest.mark.parametrize("kind", ("volume", "sheet", "thin"))
 def test_occupied_layer_reaches_without_a_declared_face(axis, side, kind):
+    """Sheets use their closed rasterizer's node tolerance, not half a cell."""
     sim = _sim()
     lo, hi = [2., 2., 2.], [6., 6., 6.]
-    # The volume occupies the end cell although its bound misses the node.
-    # Sheets use their closed rasterizer's node tolerance, not half a cell.
     inset = .1 if kind == "volume" else 5e-10
     (lo if side == 0 else hi)[axis] = inset if side == 0 else 8.-inset
     if kind != "volume":
@@ -338,12 +329,11 @@ def test_one_traced_mesh_axis_continues_every_reached_absorbing_face():
     ([.5] * 16, .75),
 ])
 def test_traced_conductor_reach_uses_declared_edge_cell(axis, side, nominal, gap):
+    """Concrete x/y grids require matching boundary cells, only z admits the asymmetric pair, and x additionally requires those cells to equal dx."""
     import jax
     from rfx._traced_refusal import TracedStructureRefusal
 
     name = "xyz"[axis]
-    # Concrete x/y grids require matching boundary cells; only z admits
-    # the asymmetric pair. x additionally requires those cells to equal dx.
     if nominal is not None and axis < 2 and nominal[0] != nominal[-1]:
         nominal = [2., .5, .5, 1., 1., .5, .5, 2.]
     dx = nominal[0] if nominal is not None and axis == 0 else 1.
@@ -378,10 +368,10 @@ def test_traced_conductor_reach_uses_declared_edge_cell(axis, side, nominal, gap
 @pytest.mark.parametrize("side", ["lo", "hi"])
 @pytest.mark.parametrize("device_array", [False, True])
 def test_traced_grid_nodes_use_concrete_profile_edges(axis, side, device_array):
+    """Concrete x/y profiles require matching boundary cells; z permits unequal edges."""
     import jax
 
     name = "xyz"[axis]
-    # Concrete x/y profiles require matching boundary cells; z permits unequal edges.
     profile = np.array([2., 2., 1., 1., .5, .5, .5, .5]) if axis == 2 else np.ones(8)
     if device_array:
         profile = jax.numpy.asarray(profile)
@@ -390,9 +380,9 @@ def test_traced_grid_nodes_use_concrete_profile_edges(axis, side, device_array):
     grid = sim._build_nonuniform_grid()
     lo, hi = [3.] * 3, [5.] * 3
     if side == "lo":
-        lo[axis] = 1.5 if axis == 2 else .5  # Inside the declared first cell.
+        lo[axis] = 1.5 if axis == 2 else .5
     else:
-        hi[axis] = 6.5  # Clear of the declared last cell (.5 on z, 1 on x/y).
+        hi[axis] = 6.5
     shape = Box(tuple(lo), tuple(hi))
     field = ("dx_arr", "dy_arr", "dz")[axis]
 

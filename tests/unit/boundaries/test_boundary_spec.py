@@ -16,10 +16,6 @@ from rfx.boundaries.spec import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Boundary — per-face, single-axis
-# ---------------------------------------------------------------------------
-
 class TestBoundary:
     def test_from_string_shorthand_symmetric(self):
         """``Boundary.from_string('cpml')`` matches explicit symmetric."""
@@ -33,7 +29,6 @@ class TestBoundary:
 
     def test_valid_tokens_all_accepted(self):
         for tok in ("cpml", "upml", "pec", "pmc", "periodic"):
-            # same-token symmetric must always be legal
             b = Boundary.from_string(tok)
             assert b.lo == tok and b.hi == tok
 
@@ -56,10 +51,6 @@ class TestBoundary:
         b = Boundary(lo="pec", hi="cpml")
         assert Boundary.from_dict(b.to_dict()) == b
 
-
-# ---------------------------------------------------------------------------
-# BoundarySpec — three axes, six faces total
-# ---------------------------------------------------------------------------
 
 class TestBoundarySpec:
     def test_shorthand_axis_strings(self):
@@ -97,8 +88,6 @@ class TestBoundarySpec:
             BoundarySpec(x="mur", y="cpml", z="cpml")
 
     def test_periodic_mismatch_raises_through_spec(self):
-        # Still rejected at the axis-level Boundary validation even when
-        # routed through the spec.
         with pytest.raises(ValueError, match="periodic must be symmetric"):
             BoundarySpec(
                 x=Boundary(lo="periodic", hi="cpml"),
@@ -116,8 +105,6 @@ class TestBoundarySpec:
 
     def test_periodic_axes_view(self):
         spec = BoundarySpec(x="periodic", y="cpml", z="periodic")
-        # z cannot be 'periodic' while x is — actually both are symmetric
-        # here so this is legitimate. Match behaviour of set_periodic_axes.
         assert spec.periodic_axes() == "xz"
 
     def test_pec_faces_view(self):
@@ -141,13 +128,8 @@ class TestBoundarySpec:
         a = BoundarySpec.uniform("cpml")
         b = BoundarySpec(x="cpml", y="cpml", z="cpml")
         assert a == b
-        # frozen dataclass repr should at least name the class
         assert "BoundarySpec" in repr(a)
 
-
-# ---------------------------------------------------------------------------
-# normalize_boundary — entry-point helper
-# ---------------------------------------------------------------------------
 
 class TestNormalizeBoundary:
     def test_none_returns_default_uniform(self):

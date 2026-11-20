@@ -357,6 +357,11 @@
       "kind": "roll/diff"
     },
     {
+      "file": "rfx/geometry/cell_table/box_overlap.py",
+      "function": "exact_box_overlap",
+      "kind": "roll/diff"
+    },
+    {
       "file": "rfx/geometry/csg.py",
       "function": "Box._axis_masks_on_coords._axis_mask",
       "kind": "roll/diff"

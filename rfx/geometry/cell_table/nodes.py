@@ -34,8 +34,6 @@ def _axis_node_positions(d_arr: np.ndarray, cpml: int) -> np.ndarray:
     """
     d = np.asarray(d_arr, dtype=np.float64)
     if d.size and bool(np.all(d == d[0])):
-        # Uniform-valued axis: closed form, bitwise-equal to the uniform
-        # builder by construction — the lane-equality guarantee.
         return _uniform_axis_nodes(d.size, cpml, float(d[0]))
-    edges = np.insert(np.cumsum(d), 0, 0.0)           # len = n+1
-    return edges[:-1] - edges[cpml]                   # n nodes, origin at cpml
+    edges = np.insert(np.cumsum(d), 0, 0.0)
+    return edges[:-1] - edges[cpml]

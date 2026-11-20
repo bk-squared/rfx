@@ -48,17 +48,12 @@ def test_omitted_axes_do_not_absorb_inside_unpadded_faces(graded, decay):
     transverse absorption (down to ~1e-7 of the standard profile's sigma)
     without depending on profile metadata or allowing an all-zero-field
     false pass.
+    An earlier arm64 CPU measurement rounded the graded-decay programs 1-3 float32 ULP of each family's peak apart near the source, motivating the 9-ULP cross-trace bar.
     """
     grid = _grid(graded)
     reference = _pulse_run(grid, graded, decay, reference=True)
     implicit = _pulse_run(grid, graded, decay)
     assert np.max(np.abs(np.asarray(reference.ez)[1:4, 1:4, grid.nz // 2])) > 0
-    # The control and the z-only run are two compiled programs (z CPML absent
-    # vs present). On the graded decay path an arm64 CPU rounds them 1-3 float32
-    # ULP of each family's peak apart near the source (Linux: equal); absorption
-    # inside an x/y profile moves the field by ~0.7 of the peak
-    # (test_explicit_subset_still_runs). Judge by the cross-trace per-step bar:
-    # 9 ULP of the family peak (rfx CLAUDE.md, cross-trace agreement).
     families = {"e": ("ex", "ey", "ez"), "h": ("hx", "hy", "hz")}
     for names in families.values():
         peak = max(float(np.max(np.abs(np.asarray(getattr(reference, n))))) for n in names)

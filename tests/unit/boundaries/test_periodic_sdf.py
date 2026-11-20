@@ -20,7 +20,7 @@ SHIFT = 8
 
 
 def grid_model(periodic=True, *, snap="strict"):
-    # solved length; #1887
+    """The domain lengths written as (L, 8 * DX, 6 * DX) are whole numbers of cells of DX, so the solved domain equals the declared one."""
     return Simulation(20e9, (L, 8 * DX, 6 * DX), dx=DX, cpml_layers=0, snap=snap,
                       boundary=BoundarySpec(x='periodic' if periodic else 'pec',
                                             y=Boundary(lo='pec', hi='pmc'), z='pec'))
@@ -45,10 +45,10 @@ def option_arrays(sim, option):
     grid = sim._build_grid()
     built = sim._assemble_materials(grid)
     if option == 'subpixel':
-        return compute_smoothed_eps(grid, [(e.shape, 3.7) for e in sim._geometry])
+        return compute_smoothed_eps(grid, [(e.shape, 3.7) for e in sim._geometry], dtype='float32')
     if option == 'conformal':
         return compute_conformal_weights_sdf(grid, built[4])
-    return compute_inv_eps_tensor_diag(grid, pec_shapes=built[4])
+    return compute_inv_eps_tensor_diag(grid, pec_shapes=built[4], dtype='float32')
 
 
 def option_trace(kind, option, shift=0):
@@ -79,16 +79,15 @@ def test_periodic_sdf_option_trace_translates_with_body(kind, option):
     interior = option_trace(kind, option, SHIFT)
     peak = np.max(np.abs(interior))
     assert peak > 0
-    # 300 updates can accumulate roundoff from translated SDF coordinates.
     np.testing.assert_allclose(seam, interior, rtol=0, atol=1e-4 * peak)
 
 
 def traced_smoothing(lo, hi, *, periodic=True):
+    """Unequal face offsets avoid a nearest-normal tie between x and y."""
     sim = grid_model(periodic)
     sim.add_material('dielectric', eps_r=3.7)
-    # Unequal face offsets also avoid a nearest-normal tie between x and y.
     sim.add(Box((lo, .87 * DX, .64 * DX), (hi, 5.23 * DX, 4.17 * DX)), material='dielectric')
-    return compute_smoothed_eps(sim._build_grid(), [(sim._geometry[0].shape, 3.7)])
+    return compute_smoothed_eps(sim._build_grid(), [(sim._geometry[0].shape, 3.7)], dtype='float32')
 
 
 def test_traced_negative_box_sdf_keeps_negative_image_and_gradient():
@@ -98,7 +97,6 @@ def test_traced_negative_box_sdf_keeps_negative_image_and_gradient():
     """
     lo, hi = np.float32(-.3 * L), np.float32(.4 * L)
     traced = jax.jit(traced_smoothing)(lo, hi)
-    # Concrete bounds form an independent image range for the same declaration.
     reference = traced_smoothing(float(lo), float(hi))
     for a, b in zip(traced, reference):
         np.testing.assert_allclose(a, b, rtol=0, atol=32 * np.finfo(np.float32).eps * 3.7)
@@ -151,9 +149,9 @@ def test_periodic_custom_grid_only_shape_names_coordinate_protocol():
 @pytest.mark.parametrize('option', ['subpixel', 'conformal', 'kottke_pec'])
 def test_sdf_transition_band_reaches_across_periodic_face(option):
     def arrays(shift):
+        """The unshifted body ends 0.2dx before L; its half-cell SDF transition crosses L."""
         sim = model()
         sim.add_material('dielectric', eps_r=3.7)
-        # Body ends 0.2dx before L; its half-cell SDF transition crosses L.
         sim.add(Box(((11.2 - shift) * DX, .87 * DX, .64 * DX),
                     ((16.8 - shift) * DX, 5.23 * DX, 4.17 * DX)),
                 material='dielectric' if option == 'subpixel' else 'pec')

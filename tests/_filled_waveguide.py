@@ -8,10 +8,10 @@ C0 = 299792458.0
 
 
 def build(case, cells=45, *, layers=12, shift=False, one_port=False):
+    """The public probe_plane is a reporting-plane shift, not a recorder placement."""
     dx = A/cells
     interface = round(.060/dx)*dx
     step_bins = np.arange(70,80,dtype=float)*1e8
-    # O1 includes O2's exact bins for the filled-side comparator.
     freqs = (np.unique(np.r_[np.linspace(5e9,7.9e9,9),step_bins])
              if case in ('O1','W2','W2_empty','empty_filled_band') else step_bins)
     if case in ('empty_filled_band','W2_empty'):
@@ -26,9 +26,6 @@ def build(case, cells=45, *, layers=12, shift=False, one_port=False):
     sim.add_waveguide_port(.020,direction='+x',name='p1',
                           reference_plane=.050 if shift else (interface-.040 if case=='O2' else .020),**kw)
     if one_port:
-        # The public probe_plane is a reporting-plane shift, not a recorder
-        # placement. W2 instruments the existing modal recorder upstream before
-        # setup/scan; it leaves the injection and reference recorder untouched.
         builder = sim._build_waveguide_port_config
         def upstream_recorder(entry, grid, freqs, n_steps):
             cfg = builder(entry, grid, freqs, n_steps)
@@ -104,9 +101,9 @@ def record_steps(cells):
 
 
 def measure(case,cells=45,*,layers=12,shift=False,n_steps=None):
+    """The closed forms' medium comes from the structure drawn, not the port's own reading."""
     sim,f=build(case,cells,layers=layers,shift=shift,one_port=case.startswith('W2'))
     grid=sim._build_realized_grid()
-    # W2 (test_waveguide_section_medium.py) keeps its own 8000-step record; the bars' record is the oracle's.
     n_steps=(round(8000*cells/45) if case.startswith('W2') else record_steps(cells)) if n_steps is None else n_steps
     realized_b=grid.node_of('z',grid.nz-1)-grid.node_of('z',0)
     realized_a=grid.node_of('y',grid.ny-1)-grid.node_of('y',0)
@@ -134,7 +131,6 @@ def measure(case,cells=45,*,layers=12,shift=False,n_steps=None):
                         warnings=[str(w.message) for w in caught])
         result,cfgs=_resolved_ports(lambda: sim.compute_waveguide_s_matrix(n_steps=n_steps,normalize=False,skip_preflight=True))
     s=np.asarray(result.s_params)
-    # The fill each port sits in, from the structure drawn: the closed forms' medium, not the port's own reading.
     port_eps=dict(p1=EPS if case=='O1' else 1.,p2=EPS if case in ('O1','O2') else 1.)
     b0,bf=(beta(f,1.,grid,discrete=False),beta(f,EPS,grid,discrete=False)) if case=='O2' else (np.ones_like(f),np.ones_like(f))
     expected_r=(b0-bf)/(b0+bf) if case=='O2' else np.zeros_like(f)

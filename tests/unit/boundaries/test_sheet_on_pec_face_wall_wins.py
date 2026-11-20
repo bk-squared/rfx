@@ -27,8 +27,6 @@ def test_sheet_on_pec_face_wall_wins(graded):
     sim = wall_scene(graded)
     result = sim.run(n_steps=160, skip_preflight=True)
     ey = np.asarray(result.state.ey)
-    # Both wall rows, over the entire transverse plane. The adjacent rows
-    # and the two off-centre probes witness that the pulse reached the sheet.
     assert np.max(np.abs(np.asarray(result.time_series)), axis=0).min() > 0
     assert np.any(ey[1, 2:8, 4] != 0) and np.any(ey[-2, 2:8, 4] != 0)
     assert np.all(ey[[0, -1], :, :] == 0.0), 'PEC wall tangential E must be exactly zero where the sheet touches it'

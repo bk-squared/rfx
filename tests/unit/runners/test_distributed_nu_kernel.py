@@ -66,7 +66,7 @@ def test_inv_dx_h_slab_boundary_matches_global():
     lower neighbour and is resolved by the global build."""
     nz = 8
     ny = 8
-    # #564: make_nonuniform_grid appends one bounding-node duplicate cell
+    # make_nonuniform_grid appends one bounding-node duplicate cell
     # per axis, so an n_physical-cell request realizes nx = n_physical + 1
     # nodes. 31 physical cells -> 32 realized nodes, evenly splittable by
     # n_devices=2 below (the manual slab replay assumes an even, unpadded
@@ -135,7 +135,7 @@ def test_update_h_nu_local_matches_global_interior():
     update_h_nu on the unsharded tensor at interior real cells."""
     nz = 8
     ny = 8
-    # #564: make_nonuniform_grid appends one bounding-node duplicate cell
+    # make_nonuniform_grid appends one bounding-node duplicate cell
     # per axis, so an n_physical-cell request realizes nx = n_physical + 1
     # nodes. 15 physical cells -> 16 realized nodes, evenly splittable by
     # n_devices=2 below (the manual 2-device slab replay assumes an even
@@ -365,7 +365,7 @@ def test_build_sharded_nu_grid_inv_dx_seam_continuity():
 def test_build_sharded_nu_grid_pad_trim_for_nondivisible_nx():
     """nx=17 (realized), n_devices=2 — high-x rank gets the pad; metadata
     flags are correct."""
-    # #564: make_nonuniform_grid appends one bounding-node duplicate cell
+    # make_nonuniform_grid appends one bounding-node duplicate cell
     # per axis, so an nx_physical-cell request realizes grid.nx =
     # nx_physical + 1 nodes. This test's whole point is exercising the
     # PAD-TRIM path, which only fires when the realized nx is NOT
@@ -382,7 +382,7 @@ def test_build_sharded_nu_grid_pad_trim_for_nondivisible_nx():
         cpml_layers=0,
         dx_profile=dx_profile,
     )
-    # #564 bounding node: N physical cells realize N+1 nodes.
+    # Bounding node: N physical cells realize N+1 nodes.
     assert grid.nx == nx_physical + 1  # sanity
 
     n_devices = 2
@@ -407,12 +407,12 @@ def test_build_sharded_nu_grid_pad_trim_for_nondivisible_nx():
     # High-x rank index
     assert sg.rank_has_high_x_pad == n_devices - 1  # rank 1
 
-    # #622 fix: the pad region is STRUCTURALLY INERT — both the E
+    # The pad region is STRUCTURALLY INERT — both the E
     # (inv_dx_global) and H (inv_dx_h_global) coefficients are exactly
     # zero at the padded cell, so nothing evolves there regardless of
     # the PEC-mask padding. Pre-fix this cell carried a LIVE 1/dx[-1]
     # coefficient (this assertion used to check for that value) — that
-    # was exactly the #622 bug: it kept the real boundary node's H term
+    # was exactly the bug: it kept the real boundary node's H term
     # live and displaced the hi-x wall by one cell. Asserting the old
     # nonzero value here would re-encode the bug as expected behaviour.
     got_last_inv_h = float(sg.inv_dx_h_global[-1])
@@ -474,7 +474,7 @@ def test_build_sharded_nu_grid_position_to_index_deterministic():
     # nx_physical=16, nx_per_rank=8; cell 10 → rank 1, local 10-8=2 (+ghost=1 → local_i=3)
     target_global_i = 10
     # A quarter cell past node 10, not half: a half cell is a tie between
-    # nodes 10 and 11, which the lookup breaks to the even node (#1295), and
+    # nodes 10 and 11, which the lookup breaks to the even node, and
     # the float32 sum here lands 7e-10 m above it, nearer 11.
     pos_x = (float(np.asarray(grid.dx_arr[:target_global_i]).sum())
               + 0.25 * float(np.asarray(grid.dx_arr)[target_global_i]))
@@ -697,7 +697,7 @@ def test_distributed_pec_only_pad_lane_final_state_matches_single_device():
     sharded_grid = build_sharded_nu_grid(grid, n_devices=n_devices,
                                          exchange_interval=1)
     # Precondition guard: this test exists specifically to exercise the
-    # pad lane (#622). If a future change makes nx_physical=20 realize
+    # pad lane. If a future change makes nx_physical=20 realize
     # an evenly-divisible nx, this fixture stops testing what it claims
     # to and must be updated, not silently pass on the pad_x==0 lane.
     assert sharded_grid.pad_x > 0, (
@@ -706,7 +706,7 @@ def test_distributed_pec_only_pad_lane_final_state_matches_single_device():
     )
 
     # Structural check on _build_sharded_inv_dx_arrays's own output
-    # (#622 fix site 1). This is deliberately NOT redundant with the
+    # (fix site 1). This is deliberately NOT redundant with the
     # full-state parity run below: empirically, reverting fix site (1)
     # alone (while sites 2-4, the PEC/PMC/CPML face appliers, stay
     # fixed) produces NO observable drift in ANY forward or gradient
@@ -826,13 +826,13 @@ def test_distributed_pec_only_seam_no_double_zeroing():
     seam_j = ny // 2
     seam_k = nz // 2
     pec_mask = jnp.zeros((nx, ny, nz), dtype=jnp.bool_)
-    # ONE cell, exactly at the seam. #931: an occupied cell owns every edge
+    # ONE cell, exactly at the seam. An occupied cell owns every edge
     # incident to it (§1.2), so a single cell is a real conductor and the
     # double-zeroing risk this test looks for is present. The fixture used
     # to mark three consecutive cells with the comment "so the tangential
     # mask in apply_pec_mask sees a PEC neighbour (otherwise the thin-sheet
     # rule preserves the field)" — padding whose only purpose was to make
-    # the pre-#931 neighbour rule fire, and which spread the body over the
+    # the earlier neighbour rule fire, and which spread the body over the
     # seam it was supposed to sit on.
     pec_mask = pec_mask.at[seam_i, seam_j, seam_k].set(True)
 
@@ -899,10 +899,10 @@ def test_distributed_pec_mask_override_union_semantics():
     nx, ny, nz = grid.nx, grid.ny, grid.nz
 
     # "Geometry" PEC: a 2-cell block at x = 10..11. Both masks below are
-    # CELL occupancy, i.e. VOLUME declarations (#931 §1.2): the block
+    # CELL occupancy, i.e. VOLUME declarations: the block
     # realizes walls at x = 10 and x = 12 and shorts Ex between them. It
     # was labelled "a thin sheet at x=10" and spelled with two cells so the
-    # pre-#931 neighbour rule would fire on it — a sheet owns no cell and
+    # earlier neighbour rule would fire on it — a sheet owns no cell and
     # cannot be expressed as a cell mask at all, so the label was wrong for
     # the object in both directions. ``pec_mask_override`` is a VOLUME
     # override and stays one (design note §1.8), so the union below is a
@@ -1973,9 +1973,9 @@ def test_distributed_pec_occupancy_seam_no_double_application():
     seam_j = ny // 2
     seam_k = nz // 2
 
-    # ONE soft-PEC cell, exactly at the seam (#931 §1.6: an occupied cell
+    # ONE soft-PEC cell, exactly at the seam (an occupied cell
     # owns its incident edges on its own, so this is visible without the
-    # left/right padding the pre-#931 neighbour product needed).
+    # left/right padding the earlier neighbour product needed).
     occ = jnp.zeros((nx, ny, nz), dtype=jnp.float32)
     occ = occ.at[seam_i, seam_j, seam_k].set(1.0)
 
@@ -2394,7 +2394,7 @@ def test_distributed_emit_time_series_false_skips_probe():
 
 
 # ---------------------------------------------------------------------------
-# Phase 2 absolute-physics validation (Class F) — issue #44 follow-up
+# Phase 2 absolute-physics validation (Class F)
 # ---------------------------------------------------------------------------
 #
 # These two tests are *not* parity tests.  Phases 2A-2F shipped 26 parity

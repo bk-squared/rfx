@@ -49,11 +49,6 @@ def _spans(sim, nonuniform):
 
 REQUESTED = (A, A, NB * DX)
 
-# rfx grids are float32 by design, so coordinates carry ~1e-7 relative
-# representation error (2.7e-9 m on a 22.86 mm span). The tolerances below are
-# set just above that floor and are still 1e-5 of a cell — four orders tighter
-# than the one-cell defect this file pins, and tighter than any physical
-# registration question.
 _ABS_TOL = 1e-8
 
 
@@ -142,7 +137,6 @@ def test_graded_profile_realizes_its_own_sum():
     assert float(x[0]) == pytest.approx(0.0, abs=1e-12)
     assert float(x[-1] - x[0]) == pytest.approx(total, abs=_ABS_TOL)
     assert len(x) == len(prof) + 1
-    # every interior node sits on a cumulative cell edge of the profile
     edges = np.concatenate([[0.0], np.cumsum(prof)])
     assert np.max(np.abs(x - edges)) < _ABS_TOL
 
@@ -173,7 +167,6 @@ def test_extent_and_pad_symmetry_hold_with_cpml_pads():
     coords = coords_from_nonuniform_grid(grid)
     x = np.asarray(coords[0], dtype=float)
 
-    # interior span: first interior node at 0, last interior node on the far face
     assert float(x[grid.pad_x_lo]) == pytest.approx(0.0, abs=1e-12)
     interior_last = grid.nx - grid.pad_x_hi - 1
     assert float(x[interior_last] - x[grid.pad_x_lo]) == pytest.approx(
@@ -181,7 +174,6 @@ def test_extent_and_pad_symmetry_hold_with_cpml_pads():
         f"interior span {float(x[interior_last] - x[grid.pad_x_lo]) * 1e3:.4f} mm "
         f"vs requested {60 * DX * 1e3:.4f} mm")
 
-    # pad symmetry: the absorber occupies the same physical depth on both faces
     lo_depth = float(x[grid.pad_x_lo] - x[0])
     hi_depth = float(x[grid.nx - 1] - x[interior_last])
     assert lo_depth == pytest.approx(hi_depth, abs=_ABS_TOL), (

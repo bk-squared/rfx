@@ -1,4 +1,8 @@
-"""Tests for auto_configure: source auto-selection, memory estimation."""
+"""Tests for auto_configure: source auto-selection, memory estimation.
+
+``ThinConductor`` is the sheet declaration type: a footprint, a normal implied by the
+flat box, and a physical thickness that never enters the mesh.
+"""
 
 import numpy as np
 
@@ -51,48 +55,42 @@ def test_auto_configure_summary_includes_source():
     assert "j_source" in summary
 
 
-# ---------------------------------------------------------------------------
-# Memory estimation and budget
-# ---------------------------------------------------------------------------
-
 def test_auto_configure_memory_estimate():
     """SimConfig.estimated_memory_mb should return a positive value and
     the grid_shape property should reflect CPML padding."""
     config = auto_configure([], freq_range=(1e9, 3e9))
 
-    # grid_shape should be a 3-tuple of positive ints
     shape = config.grid_shape
     assert len(shape) == 3
     assert all(s > 0 for s in shape), f"Invalid grid_shape: {shape}"
 
-    # estimated_memory_mb should be positive
     mem = config.estimated_memory_mb
     assert mem > 0, f"Expected positive memory estimate, got {mem}"
     print(f"\n  Grid shape: {shape}, estimated memory: {mem:.1f} MB")
 
 
 def test_auto_configure_memory_budget_coarsens_dx():
-    """When max_memory_mb is tight, dx should increase to fit budget."""
+    """When max_memory_mb is tight, dx should increase to fit budget.
+
+    The memory estimate is approximate and includes a factor of about 10 for AD
+    overhead, so the bounded estimate may exceed the budget by up to 20 %.
+    """
     from rfx.geometry.csg import Box
-    # Use real geometry so the domain is large enough for coarsening to matter
     geometry = [(Box((0, 0, 0), (0.1, 0.1, 0.05)), "dielectric")]
     materials = {"dielectric": {"eps_r": 4.4, "sigma": 0.0}}
     config_unbounded = auto_configure(geometry, freq_range=(1e9, 3e9),
                                        materials=materials)
-    # Use a very tight budget to force coarsening
-    budget_mb = config_unbounded.estimated_memory_mb * 0.3
+    TIGHT_BUDGET_FRACTION = 0.3
+    budget_mb = config_unbounded.estimated_memory_mb * TIGHT_BUDGET_FRACTION
     config_bounded = auto_configure(
         geometry, freq_range=(1e9, 3e9), materials=materials,
         max_memory_mb=budget_mb,
     )
 
-    # Bounded config should have coarser (larger) dx
     assert config_bounded.dx >= config_unbounded.dx, (
         f"Bounded dx ({config_bounded.dx}) should be >= unbounded ({config_unbounded.dx})"
     )
 
-    # Bounded config should be close to budget (memory estimate is approximate,
-    # allow 20% overshoot since the estimate includes ~10x AD overhead factor)
     assert config_bounded.estimated_memory_mb <= budget_mb * 1.2, (
         f"Bounded memory ({config_bounded.estimated_memory_mb:.1f} MB) exceeds "
         f"budget ({budget_mb:.1f} MB) by more than 20%"
@@ -107,28 +105,23 @@ def test_auto_configure_memory_budget_coarsens_dx():
 
 def test_auto_configure_memory_budget_ignored_with_dx_override():
     """max_memory_mb should be ignored when dx_override is provided."""
+    IMPOSSIBLY_SMALL_BUDGET_MB = 0.001
     config = auto_configure(
         [], freq_range=(1e9, 3e9),
         dx_override=0.005,
-        max_memory_mb=0.001,  # impossibly small
+        max_memory_mb=IMPOSSIBLY_SMALL_BUDGET_MB,
     )
-    # dx should remain at the override value
     assert config.dx == 0.005
 
-
-# ---------------------------------------------------------------------------
-# P2: Smooth grading
-# ---------------------------------------------------------------------------
 
 def test_smooth_grading_noop_when_already_smooth():
     """Smooth grading should not modify cells that are already within ratio."""
     from rfx.auto_config import smooth_grading
     import numpy as np
-    cells = [0.5e-3] * 4 + [1.0e-3] * 4  # ratio 2.0 at transition
+    cells = [0.5e-3] * 4 + [1.0e-3] * 4
+    assert cells[4] / cells[3] > 1.3, "the 0.5 mm to 1.0 mm transition is a cell ratio of 2.0, above max_ratio 1.3"
     result = smooth_grading(cells, max_ratio=1.3)
-    # Result should have more cells (transition inserted)
     assert len(result) >= len(cells)
-    # But all-uniform should pass through unchanged
     uniform = [1.0e-3] * 10
     result_u = smooth_grading(uniform, max_ratio=1.3)
     assert len(result_u) == 10
@@ -139,8 +132,8 @@ def test_smooth_grading_enforces_max_ratio():
     """After smoothing, all adjacent ratios should be <= max_ratio."""
     from rfx.auto_config import smooth_grading
     import numpy as np
-    # Abrupt 5x transition
     cells = [0.2e-3] * 3 + [1.0e-3] * 5
+    assert cells[3] / cells[2] > 1.3, "the 0.2 mm to 1.0 mm transition is an abrupt 5x cell ratio, above max_ratio 1.3"
     result = smooth_grading(cells, max_ratio=1.3)
     ratios = result[1:] / result[:-1]
     max_r = float(np.max(np.maximum(ratios, 1.0 / ratios)))
@@ -167,12 +160,13 @@ def test_smooth_grading_preserves_boundary_values():
     np.testing.assert_allclose(result[-1], 2.0e-3, rtol=1e-10)
 
 
-# ---------------------------------------------------------------------------
-# P1: Auto mesh via Simulation
-# ---------------------------------------------------------------------------
-
 def test_simulation_auto_mesh_sets_dx():
-    """When dx=None and geometry exists, run() should auto-set dx from features."""
+    """When dx=None and geometry exists, run() should auto-set dx from features.
+
+    Auto mesh accounts for the material eps_r, so dx is finer than a simple lambda/20:
+    for FR4 (eps_r = 4.4) at 5 GHz, lambda_min_medium = 60 mm / 2.1 ≈ 28.6 mm and dx ≈
+    28.6 mm / 20 ≈ 1.4 mm (rounded).
+    """
     import warnings
     from rfx import Simulation, Box, GaussianPulse
 
@@ -183,19 +177,14 @@ def test_simulation_auto_mesh_sets_dx():
                     waveform=GaussianPulse(f0=3e9, bandwidth=0.5))
     sim.add_probe((0.025, 0.025, 0.01), "ez")
 
-    # The declaration stays automatic; reads expose the resolved view.
     assert sim.__dict__["_dx"] is None
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         sim.run(n_steps=10)
 
-    # The resolved dx is available after run
     assert sim._dx is not None
     assert sim._dx > 0
-    # Auto mesh accounts for material eps_r: finer than simple lambda/20
-    # For FR4 (eps_r=4.4) at 5 GHz: lambda_min_medium = 60mm/2.1 ≈ 28.6mm
-    # dx ≈ 28.6mm / 20 ≈ 1.4mm (rounded)
     assert 0.1e-3 < sim._dx < 5e-3, f"Auto dx={sim._dx*1e3:.3f}mm seems unreasonable"
 
 
@@ -204,7 +193,8 @@ def test_dz_profile_grading_warning():
     import warnings
     from rfx import Simulation
 
-    dz_profile = [0.1e-3] * 3 + [2.0e-3] * 3  # 20x ratio
+    dz_profile = [0.1e-3] * 3 + [2.0e-3] * 3
+    assert abs(dz_profile[3] / dz_profile[2] - 20.0) < 1e-9, "the 0.1 mm to 2.0 mm step is a 20x cell ratio"
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         Simulation(
@@ -218,27 +208,22 @@ def test_dz_profile_grading_warning():
         assert len(grading_warnings) >= 1, "Expected grading ratio warning"
 
 
-# ---------------------------------------------------------------------------
-# P3: Thirds rule
-# ---------------------------------------------------------------------------
-
 def test_thirds_rule_splits_boundary_cells():
-    """Thirds rule should split cells at material interfaces into 1/3+2/3 pairs."""
+    """Thirds rule should split cells at material interfaces into 1/3+2/3 pairs.
+
+    Boundary index 2 lies between cell 1 and cell 2 of the five uniform cells.
+    """
     from rfx.auto_config import apply_thirds_rule
     import numpy as np
 
-    # 5 uniform cells, boundary at index 2 (between cell 1 and cell 2)
     cells = [1.0e-3] * 5
     result = apply_thirds_rule(cells, [2])
 
-    # Cell[1] should split into [2/3, 1/3] and cell[2] into [1/3, 2/3]
-    # Total cells: 5 - 2 + 4 = 7
     assert len(result) == 7, f"Expected 7 cells, got {len(result)}"
     np.testing.assert_allclose(result[1], 1.0e-3 * 2 / 3, rtol=1e-10)
     np.testing.assert_allclose(result[2], 1.0e-3 / 3, rtol=1e-10)
     np.testing.assert_allclose(result[3], 1.0e-3 / 3, rtol=1e-10)
     np.testing.assert_allclose(result[4], 1.0e-3 * 2 / 3, rtol=1e-10)
-    # Total length preserved
     np.testing.assert_allclose(np.sum(result), np.sum(cells), rtol=1e-10)
 
 
@@ -279,44 +264,24 @@ def test_make_dz_profile_applies_thirds_rule():
     from rfx.auto_config import _make_dz_profile
     import numpy as np
 
-    # Single dielectric layer: z=0 to z=1.6mm in a 10mm domain
     z_features = [(0, 1.6e-3, 4.4)]
     profile = _make_dz_profile(z_features, domain_z=10e-3, dx=2e-3)
 
-    # #763: the declared interface z=1.6mm lies on a realized cell edge and
-    # the realized column equals the declared column.
     edges = np.concatenate([[0.0], np.cumsum(profile)])
     assert np.min(np.abs(edges - 1.6e-3)) <= 1e-12
     assert abs(float(np.sum(profile)) - 10e-3) <= 1e-12
 
-    # Grading discipline in the free (air) run above the block: <= 1.3.
-    # The first air cell after the block edge is the first-contact step
-    # (exempt), so check ratios strictly inside the air run.
     blk_end = int(np.argmin(np.abs(edges - 1.6e-3)))
     air = profile[blk_end:]
     ratios = air[1:] / air[:-1]
     max_r = float(np.max(np.maximum(ratios, 1.0 / ratios)))
     assert max_r <= 1.3 + 0.01, f"Max air-run ratio {max_r:.3f} exceeds 1.3"
 
-    # Profile should have more cells than uniform (thirds + grading)
     n_uniform = max(1, int(round(10e-3 / 2e-3)))
     assert len(profile) > n_uniform, "Profile should be finer than uniform"
 
-    # Smallest cells should be near the substrate (first cells)
     assert profile[0] < 2e-3, "Substrate region should have fine cells"
 
-
-# ---------------------------------------------------------------------------
-# P4: Thin PEC sheet
-#
-# #931: ``ThinConductor`` IS the sheet declaration type (design note §1.3) —
-# a footprint, a normal implied by the flat box, and a physical thickness
-# that never enters the mesh. ``is_pec`` and ``sheet_resistance`` are
-# properties of the DECLARATION and do not move under the contract; what
-# moved is what the assembler does with it (a PEC one becomes a SheetSpec
-# on one node plane and owns no cell, instead of OR-ing a half-open node
-# mask into the primal-cell PEC mask).
-# ---------------------------------------------------------------------------
 
 def test_thin_conductor_pec_detection():
     """ThinConductor with high sigma should be detected as PEC."""
@@ -335,15 +300,19 @@ def test_thin_conductor_pec_detection():
 
 
 def test_thin_conductor_sheet_resistance():
-    """Sheet resistance should be 1/(sigma*t)."""
+    """Sheet resistance should be 1/(sigma*t).
+
+    For 35 µm copper, R_s = 1/(5.8e7 * 35e-6) ≈ 0.49 mΩ/sq.
+    """
     from rfx.materials.thin_conductor import ThinConductor
     from rfx.geometry.csg import Box
 
-    # 35μm copper: R_s = 1/(5.8e7 * 35e-6) ≈ 0.49 mΩ/sq
+    COPPER_SIGMA_S_PER_M = 5.8e7
+    FOIL_THICKNESS_M = 35e-6
     tc = ThinConductor(
-        shape=Box((0, 0, 0), (0.01, 0.01, 35e-6)),
-        sigma_bulk=5.8e7, thickness=35e-6)
-    expected = 1.0 / (5.8e7 * 35e-6)
+        shape=Box((0, 0, 0), (0.01, 0.01, FOIL_THICKNESS_M)),
+        sigma_bulk=COPPER_SIGMA_S_PER_M, thickness=FOIL_THICKNESS_M)
+    expected = 1.0 / (COPPER_SIGMA_S_PER_M * FOIL_THICKNESS_M)
     assert abs(tc.sheet_resistance - expected) / expected < 1e-10
 
 
@@ -363,6 +332,7 @@ def test_thin_pec_is_a_sheet_that_owns_no_cell_and_changes_no_material():
 
     Geometry: dx = 2 mm, substrate ``[0, 0.002)``, trace on the substrate
     top face z = 0.002 = node plane k = 1.
+    The sheet owns no cells, and its -3 % size error blocks run().
     """
     import warnings
     import pytest
@@ -375,7 +345,6 @@ def test_thin_pec_is_a_sheet_that_owns_no_cell_and_changes_no_material():
     sim.add_material("substrate", eps_r=4.4)
     sim.add(Box((0, 0, 0), (0.03, 0.03, 0.002)), material="substrate")
 
-    # Add thin PEC sheet (35μm copper trace) — thinner than dx
     sim.add_thin_conductor(
         Box((0.005, 0.005, 0.002), (0.025, 0.025, 0.002 + 35e-6)),
         sigma_bulk=5.8e7, thickness=35e-6)
@@ -384,8 +353,6 @@ def test_thin_pec_is_a_sheet_that_owns_no_cell_and_changes_no_material():
                     waveform=GaussianPulse(f0=3e9, bandwidth=0.5))
     sim.add_probe((0.015, 0.015, 0.01), "ez")
 
-    # Build-time (no solve): declared plane == realized plane, one sheet,
-    # no cell, no material — read from the shared owner.
     assert_sheet_planes(sim, 2, [0.002], what="35 um copper trace")
     assert_wall_planes(sim, 2, [0.002], what="35 um copper trace")
     rz = realized(sim)
@@ -398,7 +365,6 @@ def test_thin_pec_is_a_sheet_that_owns_no_cell_and_changes_no_material():
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        # #1138: the sheet still owns no cells; its -3% size error blocks run.
         assert sim.preflight().by_code("sheet_effective_size")[0].severity == "error"
         with pytest.raises(ValueError, match="conductor sheet dimension"):
             sim.run(n_steps=10)
@@ -426,13 +392,9 @@ def test_auto_mesh_thin_conductor_only_configures_dx():
     assert sim.__dict__["_dx"] is None and not sim._geometry and sim._thin_conductors
     sim._resolve_mesh()
     assert sim._dx is not None, "thin-conductor-only sim must set dx (Bug 2a)"
-    # Bug 2(b): feature-driven, not the empty-geometry lambda/10 fallback.
     assert sim._dx <= w, f"dx={sim._dx} not resolving the {w*1e3:.1f} mm feature"
     assert sim._dx < 0.02 / 10, "dx must be finer than the empty-geometry fallback"
 
-    # The declared conductor realizes a wall plane, and it is the one drawn.
-    # (A declaration that realizes nothing is a silent no-op — which is what
-    # this spelling was before the contract.)
     assert_sheet_planes(sim, 2, [0.001], what="thin-only auto-mesh sheet")
     assert_wall_planes(sim, 2, [0.001], what="thin-only auto-mesh sheet")
 
@@ -457,21 +419,17 @@ def test_auto_mesh_trigger_fires_thin_only_end_to_end():
         sim.run(n_steps=5, skip_preflight=True)
     assert sim._dx is not None, "run() trigger must auto-configure a thin-only sim"
 
-    # #931: the same zero-thickness declaration must reach the run as ONE
-    # sheet on a real node plane (the pre-contract spelling realized no
-    # node at all — see the sibling test above).
     assert_sheet_planes(sim, 2, [0.001], what="run()-trigger thin-only sheet")
     assert_wall_planes(sim, 2, [0.001], what="run()-trigger thin-only sheet")
 
 
-# ---------------------------------------------------------------------------
-# Waveform-aware source-time window (post-#392 review): the n_steps
-# estimate hardcoded t_source = 6*tau (the cutoff=3 Gaussian envelope).
-# ---------------------------------------------------------------------------
-
 def test_auto_configure_waveform_default_byte_identical():
     """waveform=None (and a cutoff=3 waveform at the internal f_center /
-    bw=0.8) reproduce the historical 6*tau n_steps exactly."""
+    bw=0.8) reproduce the historical 6*tau n_steps exactly.
+
+    The float identity 2.0*(3.0*tau) == 6*tau holds bitwise, and the byte identity rests
+    on it.
+    """
     import math
     from rfx import GaussianPulse
 
@@ -480,13 +438,10 @@ def test_auto_configure_waveform_default_byte_identical():
     explicit_none = auto_configure([], freq_range=(f1, f2), waveform=None)
     assert explicit_none.n_steps == base.n_steps
 
-    # The load-bearing float identity: 2.0*(3.0*tau) == 6*tau bitwise.
     f_center = (f1 + f2) / 2
     tau = 1.0 / (f_center * 0.8 * math.pi)
     assert 2.0 * (3.0 * tau) == 6 * tau
 
-    # A cutoff=3 waveform at the same f_center/bandwidth has t0 = 3*tau
-    # of the SAME tau -> identical n_steps.
     wf3 = GaussianPulse(f0=f_center, bandwidth=0.8)
     same = auto_configure([], freq_range=(f1, f2), waveform=wf3)
     assert same.n_steps == base.n_steps
