@@ -23,7 +23,7 @@ Gates (predeclared in the #383 design doc BEFORE implementation):
 
 No module-level x64 config (workspace rule: x64 flips are process-global
 at collection time); nothing here needs float64.
-The H-field gate uses roughly three times the earlier measured float32 difference because per-element rtol is meaningless for the physically-null hz.
+The implemented probe/dominant-E/dominant-H scale-relative absolute envelopes of 5e-6/2e-6/1e-4, replacing the elementwise allclose target in the module description, allow margins above relative differences of 1.0161e-6/3.27e-7/3.15e-5 measured earlier.
 """
 
 from __future__ import annotations
@@ -56,7 +56,8 @@ _H_ENVELOPE = DOMINANT_H_RELATIVE_ENVELOPE
 
 def _build_nu_case(n_table: int, cpml_layers=4):
     """Tiny graded-dz CPML NU sim: 24x24x32 cells, one pulsed Ez point
-    source, one Ez probe. ``n_table`` sizes the source waveform table."""
+    source, one Ez probe. ``n_table`` sizes the source waveform table.
+    Twelve absorber layers are used because an earlier measurement put the box's field energy within 0.1 % of the open domain at the stop step."""
     dz = np.array([0.4e-3] * 12 + [0.6e-3] * 12)
     grid = make_nonuniform_grid((0.008, 0.008), dz, 0.5e-3, cpml_layers=cpml_layers)
     materials = init_materials((grid.nx, grid.ny, grid.nz))
@@ -69,7 +70,7 @@ def _build_nu_case(n_table: int, cpml_layers=4):
 
 def test_nu_until_decay_fires_with_trace_and_physics_witness(monkeypatch, record_property):
     """Gate B: stop fires, trace proves it, spectrum matches a 3x fixed run.
-    Twelve absorber layers are used because an earlier measurement put the box's field energy within 0.1 % of the open domain at the stop step."""
+    The 1e-2 in-band bar separates the errors measured earlier at the true decay stop (8.26e-4) and 90% truncation (8.70e-4) from the error at 70% truncation (7.97e-2)."""
     decay_by = 1e-4
     check_interval = 50
     min_steps = 100

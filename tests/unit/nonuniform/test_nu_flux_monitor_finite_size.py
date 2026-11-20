@@ -43,6 +43,7 @@ Every tolerance printed in-assertion is ``f(dA, dt, dx/dy/dz, eps, freq)``.
 x64 is scoped per-test via ``jax.enable_x64`` (never a module-level
 ``jax.config.update`` — repo rule; it flips at collection and reds every
 same-process pytest-split shard).
+In an earlier measurement, the cross-mesh difference at 9.4 GHz read 0.0364 with 16 and with 24 absorber layers.
 """
 from __future__ import annotations
 
@@ -298,7 +299,7 @@ def _react_ratio(mon):
 
 
 def test_nu_finite_flux_generality_two_gradings():
-    """In an earlier measurement, the cross-mesh difference at 9.4 GHz read 0.0364 with 16 and with 24 absorber layers."""
+    """With the empirical prefactor 3.0, an earlier measurement with 16 absorber layers gave propagating-bin rel = [0.03637, 0.03126, 0.01884, 0.02354] against bound = [0.03754, 0.05094, 0.07190, 0.09580], leaving a 3 % margin at the tightest bin."""
     UNIFORM_CPML_RUNWAY_CELLS = 8
     d0 = 0.35e-3
     dz_fine = np.array([d0] * UNIFORM_CPML_RUNWAY_CELLS + [0.25e-3] * 10 + [d0] * UNIFORM_CPML_RUNWAY_CELLS, dtype=float)

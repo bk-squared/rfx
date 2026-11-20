@@ -296,7 +296,7 @@ FIN_M = 4.75e-3
 
 
 def _fin_resonance(dy_profile, *, snap="strict"):
-    """The graded lane refuses mode="2d_tmz" and names the one-cell 3-D box between PEC walls."""
+    """The uniform arm keeps its own 2-D update because an earlier measurement put the 3-D box resonance 22 MHz lower (1.90 % against 1.79 % below the reference)."""
     from rfx import Box
     from rfx.api import Simulation
     from rfx.harminv import matrix_pencil
@@ -325,7 +325,8 @@ def test_a_fin_that_does_not_fit_the_grid_is_solved_at_its_drawn_length():
     Both bounds sit between the two measurements, so the test reds if the
     rule stops working AND if the uniform grid stops showing the defect
     (which would mean the rasterizer changed and the offset needs
-    re-measuring)."""
+    re-measuring).
+    The graded lane refuses mode="2d_tmz" and names the one-cell 3-D box between PEC walls."""
     with pytest.raises(ValueError, match="conductor sheet dimension"):
         _fin_resonance(None)
     f_uniform = _fin_resonance(None, snap="declared")
