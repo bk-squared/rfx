@@ -6,6 +6,7 @@ keys snapshot their contents. Traced inputs are retained without concretization.
 """
 from collections.abc import Mapping
 from copy import copy
+from dataclasses import replace
 import math
 
 import jax
@@ -180,19 +181,24 @@ DEVICE_DECLARATIONS = frozenset(
 }
 
 
-def declaration_at_dx(sim, factor=1.0, *, caller, pin_resolved_mesh=False, _base_dx=None):
+def _scaled_port_count(count, factor):
+    return max(1, math.floor(count / factor + .5))
+
+
+def declaration_at_dx(sim, factor=1.0, *, caller, pin_resolved_mesh=False, _base_grid=None):
     """Declare the same model at ``factor`` times its built cell size.
 
     Profiles, mesh-deformation pins, node-index sheets/crops and frozen meshes
     cannot be rescaled: use ``convergence_study`` with a factory declaring each
-    mesh. Cell counts (CPML layers, port offsets, probe spacing, current-moment
-    offsets and TF/SF margins) stay counts; their size in metres scales with
-    the factor. MSL auto memos are carried unchanged. Entries and mesh arrays
+    mesh. At factor != 1, waveguide reported planes are declared metre planes
+    fixed to the factor-one grid, and waveguide and lumped sampling counts scale.
+    CPML layers, TF/SF and current-moment margins, MSL counts and auto memos stay
+    unchanged. Unchanged entries and mesh arrays
     remain shared, while
     declaration containers and run state belong to this new model.
 
     ``pin_resolved_mesh`` fixes the built dx and resolved domain/profiles before
-    geometry is removed from an empty-guide reference. ``_base_dx`` lets a
+    geometry is removed from an empty-guide reference. ``_base_grid`` lets a
     convergence study build the factor-one grid just once, on its own copy.
     """
     try:
@@ -223,6 +229,9 @@ def declaration_at_dx(sim, factor=1.0, *, caller, pin_resolved_mesh=False, _base
             reasons.append("add_dft_plane_probe(region=) fixes a node-index crop")
         if "_frozen_mesh" in sim.__dict__:
             reasons.append("freeze_mesh(): mesh is frozen. Build a new Simulation to remesh")
+        for entry in sim._waveguide_ports:
+            if entry.ref_offset != entry.probe_offset and _scaled_port_count(entry.ref_offset, factor) == _scaled_port_count(entry.probe_offset, factor):
+                reasons.append(f"waveguide port {entry.name!r}: ref_offset={entry.ref_offset} and probe_offset={entry.probe_offset} collapse; use offsets further apart")
         if reasons:
             raise ValueError(
                 f"{caller}: cannot scale dx: {'; '.join(reasons)}. "
@@ -242,7 +251,8 @@ def declaration_at_dx(sim, factor=1.0, *, caller, pin_resolved_mesh=False, _base
         variant.__dict__.pop(name, None)
 
     if factor != 1.0 or pin_resolved_mesh:
-        base_dx = float(variant._build_realized_grid().dx) if _base_dx is None else _base_dx
+        g1 = variant._build_realized_grid() if _base_grid is None else _base_grid
+        base_dx = float(g1.dx)
         if pin_resolved_mesh:
             mesh = variant._resolve_mesh()
             variant.__dict__.pop("_frozen_mesh", None)
@@ -252,6 +262,18 @@ def declaration_at_dx(sim, factor=1.0, *, caller, pin_resolved_mesh=False, _base
                 setattr(variant, name, mesh[name])
         else:
             variant._dx = factor * base_dx
+            from rfx.api._compile import waveguide_count_planes
+            from rfx.sparams._waveguide_planes import reported_from_planes
+            entries = []
+            for entry in sim._waveguide_ports:
+                _, source, reference, probe = waveguide_count_planes(entry, g1)
+                reported = reported_from_planes(entry, {"source": source, "reference": reference, "probe": probe})
+                planes = {name: value for name, value in zip(("reference_plane", "probe_plane"), reported[:2]) if getattr(entry, name) is None}
+                if planes:
+                    planes["calibration_preset"] = None
+                entries.append(replace(entry, **planes, probe_offset=_scaled_port_count(entry.probe_offset, factor), ref_offset=_scaled_port_count(entry.ref_offset, factor)))
+            variant._waveguide_ports = entries
+            variant._ports = [replace(entry, reference_plane_cells=_scaled_port_count(entry.reference_plane_cells, factor)) if entry.reference_plane_cells is not None else entry for entry in sim._ports]
             if sim._dt_pin is not None:
                 variant._dt_pin = factor * sim._dt_pin
     release_declaration_caches(variant)
