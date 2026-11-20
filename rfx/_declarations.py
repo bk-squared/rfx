@@ -63,7 +63,6 @@ DECLARATIONS = (
     ("_msl_auto_probe_lengths", "value"),
 )
 
-# The literal reason "cache" is also the cache inventory for declaration copies.
 NOT_DECLARATIONS = (
     ("_realization_early_outcomes", "derived: early_outcomes feeds the realization table"),
     ("_pf_campaign_ctx", "cache"),
@@ -243,7 +242,6 @@ def declaration_at_dx(sim, factor=1.0, *, caller, pin_resolved_mesh=False, _base
         variant.__dict__.pop(name, None)
 
     if factor != 1.0 or pin_resolved_mesh:
-        # Grid-building findings belong to this model, never the user's model.
         base_dx = float(variant._build_realized_grid().dx) if _base_dx is None else _base_dx
         if pin_resolved_mesh:
             mesh = variant._resolve_mesh()
