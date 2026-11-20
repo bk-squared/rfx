@@ -10,10 +10,9 @@ from rfx import Simulation
 from tests._multi_device_scene import host_devices
 
 
-
 @pytest.fixture(autouse=True)
 def release_models(monkeypatch):
-    # The once-per-process experimental-lane notice is independent of fallback.
+    """The once-per-process experimental-lane notice is independent of fallback."""
     monkeypatch.setattr("rfx.api._execute._DISTRIBUTED_FIRST_CALL_WARNED", True)
     yield
     jax.clear_caches()
@@ -71,9 +70,8 @@ def test_sources_refused_even_above_grading_limit(kind):
     profile = np.array(sim._dz_profile, dtype=float)
     profile[-1] = 6.5 * profile.min()
     sim._dz_profile = profile
-    # The declared z follows the lengthened profile, or the sum rule refuses
-    # the model before the source refusal this test pins.
     sim._domain = (*sim._domain[:2], float(profile.sum()))
+    assert sim._domain[2] == float(profile.sum()), "The declared z must match the profile sum before the source refusal"
     for entry in ("forward", "run"):
         options = dict(devices=host_devices(2))
         if entry == "forward":

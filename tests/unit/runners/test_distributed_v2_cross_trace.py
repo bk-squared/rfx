@@ -43,7 +43,7 @@ def _forward(model):
                          dx=1e-3, boundary=boundary, cpml_layers=layers)
         grid = sim._build_grid()
         width = (grid.shape[0] + len(devices) - 1) // len(devices)
-        for i in (width - 1, width):   # the last real cell of slab 0, the first of slab 1
+        for i in (width - 1, width):
             position = ((i - grid.pad_x_lo) * grid.dx, 2e-3, 2e-3)
             sim.add_source(position, "ez", amplitude_kind="field",
                            waveform=lambda t: amplitude * jnp.cos(t * 2e10))

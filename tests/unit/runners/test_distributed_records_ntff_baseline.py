@@ -15,11 +15,11 @@ from rfx.measurement.farfield import compute_far_field
 @pytest.mark.parametrize("n_devices", [2, 3])
 @pytest.mark.parametrize("boundary", ["cpml", "pec"])
 def test_ntff_exact_one_device_baseline(n_devices, boundary, monkeypatch, tmp_path):
-    """Use actual one-device output; no adapter helper supplies expectations."""
+    """Use actual one-device output; no adapter helper supplies expectations.
+    The PEC witness isolates NTFF accumulator arithmetic from the reflecting-face radiation guard."""
     devices = host_devices(n_devices)
     assert len(devices) == n_devices
     if boundary == "pec":
-        # Match the existing NTFF test's accumulator-only PEC witness.
         monkeypatch.setattr("rfx.boundaries.features.refuse_ntff_reflecting_faces",
                             lambda *args, **kwargs: None)
     sim = _model("cpml" if boundary == "cpml" else "x_hi_padded", n_devices)
