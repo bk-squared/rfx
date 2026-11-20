@@ -93,8 +93,6 @@ def test_registered_coax_signal_extension_excludes_outer_metal():
 
 def test_transverse_gap_cannot_join_an_unrelated_tail():
     sim = make_sim(endpoint=.002)
-    # Narrow the actual strip to one side of the aperture and put an
-    # axially overlapping but disconnected strip on the other side.
     sim._geometry.pop()
     sim.add(Box((.002, .005, .001), (.028, .0055, .001)), material='pec')
     sim.add(Box((.0005, .0065, .001), (.0015, .007, .001)), material='pec')
@@ -151,8 +149,8 @@ def test_realized_port_and_endpoint_coordinates_own_length(nonuniform):
 
     sim = make_sim(endpoint=.0006, thin=True)
     if nonuniform:
-        # Exercise a genuinely graded propagation axis, not only NU dispatch.
         sim._dx_profile = np.r_[.0005, np.full(27, .00025), np.full(27, .00075), .0005]
+        assert np.unique(sim._dx_profile).size > 1, "The propagation axis is genuinely graded."
     port = sim._msl_ports[0]
     sim._msl_ports[0] = replace(port, position=(.0021, *port.position[1:]))
     grid = sim._build_realized_grid()
@@ -218,6 +216,7 @@ def test_invalid_realization_stays_blocking_without_aborting_other_preflight_che
 @pytest.mark.parametrize('nonuniform', [False, True])
 @pytest.mark.parametrize('declared', [2.2, 9.8])
 def test_realized_substrate_owns_frequency_and_decision(nonuniform, declared):
+    """The quarter-wave frequency is 22.6 GHz with the open-end extension, versus 27.7 GHz on the metal length alone."""
     from dataclasses import replace
     import numpy as np
     from rfx.preflight.line_stub import resonant_odd_orders, stub_message
@@ -225,7 +224,6 @@ def test_realized_substrate_owns_frequency_and_decision(nonuniform, declared):
     sim.add_material('actual', eps_r=2.2)
     sim._geometry[0] = replace(sim._geometry[0], material_name='actual')
     sim._msl_ports[0] = replace(sim._msl_ports[0], eps_r_sub=declared)
-    # Registration-time HJ values must not override the realized substrate.
     sim._msl_auto_probe_spacing[sim._msl_ports[0].name] = 7.38
     if nonuniform:
         sim._dx_profile = np.full(56, .0005)
@@ -234,7 +232,6 @@ def test_realized_substrate_owns_frequency_and_decision(nonuniform, declared):
     assert f.substrate_eps_r == 2.2
     assert f.eps_eff == pytest.approx(expected)
     assert f.frequency_hz == pytest.approx(frequency)
-    # 22.6 GHz with the open-end extension (27.7 GHz on the metal length alone).
     assert resonant_odd_orders(f, (4e9, 14e9)) is None
     assert resonant_odd_orders(f, (4e9, 18e9)) is not None
     assert resonant_odd_orders(f, (20e9, 30e9)) is not None
@@ -243,27 +240,24 @@ def test_realized_substrate_owns_frequency_and_decision(nonuniform, declared):
 
 
 def test_substrate_is_sampled_under_stub_with_realized_masks_and_precedence():
+    """With no realized dielectric, the declaration supplies the substrate permittivity."""
     from dataclasses import replace
     sim = make_sim()
     sim._msl_ports[0] = replace(sim._msl_ports[0], eps_r_sub=9.8)
     sim.add_material('stub_only', eps_r=2.2)
     from rfx.errors import RfxRefusal
-    # The original layer contains no centre and must not be inflated.
     sim.add(Box((0, 0, .00051), (.0016, .012, .00065)), material='stub_only')
     with pytest.raises(RfxRefusal, match="Material volume 'stub_only'.*ZERO cells"):
         line_stub_findings(sim)
-    # Keep the precedence check with a layer containing the .75 mm centre.
     sim._geometry[-1] = replace(sim._geometry[-1], shape=Box(
         (0, 0, .00051), (.0016, .012, .00085)))
     f, = line_stub_findings(sim)
     assert f.substrate_eps_r == 2.2
-    # Confirm the independently assembled material at the sampled stub node.
     from rfx.sources.msl_port import _msl_position_to_index
     grid = sim._build_realized_grid()
     materials = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
     index = _msl_position_to_index(grid, (.001, .006, .0005))
     assert float(materials.eps_r[index]) == pytest.approx(f.substrate_eps_r)
-    # With no realized dielectric, use the declaration.
     sim._geometry = [e for e in sim._geometry if e.material_name == 'pec']
     f, = line_stub_findings(sim)
     assert f.substrate_eps_r == 9.8
@@ -277,6 +271,7 @@ def test_the_placement_the_refusal_recommends_is_admitted(thin, port_x):
     The port plane is off the node lines on purpose (nearest node behind it for
     2.13 mm, ahead of it for 2.37 mm): a strip drawn from the declared plane is
     what port preflight rejects, so the remedy must name the node, not the plane.
+    The fixture's 2 mm strip on 0.5 mm cells also trips the unrelated sheet-size check.
     """
     import re
 
@@ -301,13 +296,9 @@ def test_the_placement_the_refusal_recommends_is_admitted(thin, port_x):
     sim = build(printed)
     assert line_stub_findings(sim) == []
     report = sim.preflight()
-    # The fixture's 2 mm strip on 0.5 mm cells also trips the unrelated sheet-size
-    # check; only the port-attachment and stub errors are this test's subject.
     blocking = [str(i) for i in getattr(report, 'errors', [])
                 if 'MSL port' in str(i) or 'stub' in str(i)]
     assert not blocking, blocking
-    # The declared plane itself is the placement that fails, which is why the
-    # message names the node.
     rejected = [str(i) for i in getattr(build(port_x).preflight(), 'errors', [])
                 if 'MSL port' in str(i)]
     assert bool(rejected) == (printed < port_x)
@@ -318,7 +309,7 @@ def test_an_uninspectable_shape_does_not_switch_the_refusal_off():
     from dataclasses import replace
     from rfx.preflight.line_stub import resonant_odd_orders
 
-    class _NoBBox:  # the lattice refuses to place it (cf. the reflector-scan double)
+    class _NoBBox:
         def mask(self, grid):
             raise NotImplementedError
 
@@ -326,7 +317,7 @@ def test_an_uninspectable_shape_does_not_switch_the_refusal_off():
             raise NotImplementedError
 
     def build(extra):
-        sim = make_sim()  # 2 mm open tail behind the port, band 0..40 GHz
+        sim = make_sim()
         if extra:
             sim._geometry.append(replace(sim._geometry[-1], shape=_NoBBox()))
         return sim
@@ -346,7 +337,9 @@ def test_an_uninspectable_shape_does_not_switch_the_refusal_off():
 
 @pytest.mark.parametrize('method', ['run', 'forward', 'compute_msl_s_matrix'])
 def test_uninspectable_shape_is_named_at_the_solve_entry_without_preflight(method):
-    """skip_preflight must not make the skipped shape silent; the caller owns the warning."""
+    """skip_preflight must not make the skipped shape silent; the caller owns the warning.
+    The warning must be emitted even if the uninspectable conductor prevents assembly.
+    """
     import warnings
     from dataclasses import replace
 
@@ -357,7 +350,8 @@ def test_uninspectable_shape_is_named_at_the_solve_entry_without_preflight(metho
         def mask_on_coords(self, x, y, z):
             raise NotImplementedError
 
-    sim = make_sim(endpoint=.002)  # no tail: nothing to refuse, only the skip to report
+    sim = make_sim(endpoint=.002)
+    assert line_stub_findings(sim) == [], "The fixture has no open tail to refuse."
     sim._geometry.append(replace(sim._geometry[-1], shape=_NoBBox()))
     kwargs = {'n_steps': 1}
     if method != 'compute_msl_s_matrix':
@@ -366,7 +360,7 @@ def test_uninspectable_shape_is_named_at_the_solve_entry_without_preflight(metho
         warnings.simplefilter('always')
         try:
             getattr(sim, method)(**kwargs)
-        except Exception:  # the shape cannot be assembled either; admission ran first
+        except Exception:
             pass
     skipped = [w for w in caught
                if getattr(w.message, 'code', '') == 'line_stub_inspection_unavailable']
@@ -376,12 +370,14 @@ def test_uninspectable_shape_is_named_at_the_solve_entry_without_preflight(metho
 
 
 def test_coax_permittivity_is_read_between_pin_and_shield():
-    """A fill that leaves the pin-centre cell uncovered still sets the stub frequency."""
+    """A fill that leaves the pin-centre cell uncovered still sets the stub frequency.
+    No open-end formula is applied to a coax pin.
+    """
     def build(fill):
         sim = Simulation(domain=(.012, .012, .012), dx=.001,
                          freq_max=20e9, boundary='cpml', cpml_layers=2)
         sim.add_material('fill', eps_r=2.1)
-        if fill:  # one side of the pin only; the pin-centre column stays unfilled
+        if fill:
             sim.add(Box((.0065, .004, .001), (.009, .008, .005)), material='fill')
         sim.add(Box((.0055, .0055, .002), (.0065, .0065, .009)), material='pec')
         sim.add_coaxial_port((.006, .006, .004), face='bottom', pin_length=.004)
@@ -390,7 +386,7 @@ def test_coax_permittivity_is_read_between_pin_and_shield():
     f, = line_stub_findings(build(True))
     assert f.overhang_m == pytest.approx(.002)
     assert f.substrate_eps_r == 2.1 and f.eps_eff == 2.1
-    assert f.end_extension_m == 0.  # no open-end formula is applied to a coax pin
+    assert f.end_extension_m == 0.
     assert f.frequency_hz == pytest.approx(299792458/(4*.002*math.sqrt(2.1)), rel=1e-12)
     empty, = line_stub_findings(build(False))
     assert empty.eps_eff == 1.

@@ -3,6 +3,7 @@
 Vacuum boxes use unequal absorbing depths and non-integral cell lengths.
 Both mesh lanes must report the realized thin faces, including a zero-depth
 reflecting edge, without treating a PEC, PMC or periodic face as an absorber.
+The quoted reflection values come from the measurement table rather than the check's constants.
 """
 
 import re
@@ -15,9 +16,7 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 
 
 def _vacuum(*, graded, token="cpml", depths=(4, 16, 0, 8), z="pec"):
-    # A declared periodic axis must be a whole number of cells (#1221 B2
-    # refuses an explicit dx that does not divide its period); the other
-    # axes stay non-integral on purpose.
+    """A declared periodic axis must be a whole number of cells."""
     lz = 0.010 if z in ("pec", "pmc") else 0.009 if z == "periodic" else 0.0091
     return Simulation(
         freq_max=3e9, domain=(0.0123, 0.0107, float(np.sum(np.linspace(0.0007, 0.00132, 9))) if graded else lz), dx=1e-3,
@@ -34,10 +33,10 @@ def _vacuum(*, graded, token="cpml", depths=(4, 16, 0, 8), z="pec"):
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 @pytest.mark.parametrize("token", ["cpml", "upml"])
 def test_asymmetric_realized_depths(graded, token):
+    """The scalar layer budget is deliberately silent so reading it instead of realized pads must fail."""
     sim = _vacuum(graded=graded, token=token)
     grid = sim._build_realized_grid()
     assert (grid.pad_x_lo, grid.pad_x_hi, grid.pad_y_lo, grid.pad_y_hi) == (4, 16, 0, 8)
-    # The scalar is deliberately silent; reading it instead of the pads must fail.
     assert sim._cpml_layers == 16
     report = sim.preflight()
     found = report.by_code("thin_absorber")
@@ -75,14 +74,12 @@ def test_nonabsorbing_faces_are_silent_at_zero_depth(graded, token):
     (5, {4, 6}), (6, {6}), (7, {6, 8}),
 ])
 def test_measured_reflections_are_quoted_without_interpolation(depth, rows):
+    """Earlier direct runs stopped at 20 GHz, leaving no eight-layer measurement at 30 GHz."""
     sim = _vacuum(graded=False, depths=(depth, 16, 8, 16))
     issue, = sim.preflight().by_code("thin_absorber")
-    # These values come from the measurement table, not the check's
-    # constants. Extract the microwave quantities instead of locking prose.
     values = re.findall(
         r"(\d+) layers: (-?\d+) dB at 2 GHz, (-?\d+) dB at 10 GHz, "
         r"(-?\d+ dB|not measured) at 30 GHz, (-?\d+) dB below 1 GHz", issue)
-    # No 8-layer record reaches 30 GHz (the direct runs stop at 20 GHz).
     reference = {4: (-20, -23, -17, -6), 6: (-38, -41, -32, -13),
                  8: (-60, -61, None, -21)}
     got = {int(n): tuple(None if r == "not measured" else int(r.split()[0])
@@ -94,7 +91,8 @@ def test_measured_reflections_are_quoted_without_interpolation(depth, rows):
 
 
 def test_zero_scalar_still_reports_absorbing_declarations():
-    sim = Simulation(freq_max=3e9, domain=(0.013000000000000001, 0.011, 0.01),  # main's solved length
+    """The domain lengths 0.013000000000000001 m, 0.011 m and 0.01 m are whole numbers of cells of dx, so the solved domain equals the declared one."""
+    sim = Simulation(freq_max=3e9, domain=(0.013000000000000001, 0.011, 0.01),
                      dx=1e-3, cpml_layers=0, boundary="cpml")
     issue, = sim.preflight().by_code("thin_absorber")
     assert set(issue.loc.split(", ")) == {f"{ax}_{side}" for ax in "xyz" for side in ("lo", "hi")}
@@ -110,8 +108,6 @@ def test_collapsed_2d_axis_has_no_absorbing_face():
 def test_realized_pads_are_read_even_when_the_declaration_is_thick(monkeypatch):
     sim = _vacuum(graded=False, depths=(16, 16, 16, 16))
     grid = sim._build_realized_grid()
-    # Isolate depth selection on an active absorber axis. Real axis suppression
-    # is covered by the public Floquet and waveguide cases below.
     grid.pad_x_lo = 0
     monkeypatch.setattr(sim, "_build_realized_grid", lambda: grid)
     issue, = sim.preflight().by_code("thin_absorber")
@@ -134,10 +130,9 @@ def _assert_thin_faces(sim, expected):
 
 @pytest.mark.parametrize("thin", [False, True], ids=["default", "thin"])
 def test_floquet_periodic_faces_are_not_absorbers(thin):
+    """The periodic Floquet x/y axes require whole numbers of cells for an explicit dx."""
     boundary = (BoundarySpec(x="periodic", y="periodic",
                              z=Boundary("cpml", "cpml", 4, 16)) if thin else "cpml")
-    # The Floquet axes x/y are periodic: whole numbers of cells (11 and 13,
-    # unequal on purpose), as #1221 B2 requires for an explicit dx.
     sim = Simulation(freq_max=10e9, domain=(0.011, 0.013, 0.0301),
                      dx=1e-3, boundary=boundary)
     sim.add_floquet_port(position=0.005, axis="z", f0=5e9)
@@ -151,7 +146,7 @@ def test_floquet_periodic_faces_are_not_absorbers(thin):
 def test_waveguide_pec_walls_are_not_absorbers(thin):
     boundary = (BoundarySpec(x=Boundary("cpml", "cpml", 4, 16), y="pec", z="pec")
                 if thin else BoundarySpec(x="cpml", y="pec", z="pec"))
-    sim = Simulation(freq_max=12e9, domain=(0.0803, 0.02286, 0.010),  # full PEC guide
+    sim = Simulation(freq_max=12e9, domain=(0.0803, 0.02286, 0.010),
                      dx=1e-3, boundary=boundary)
     sim.add_waveguide_port(x_position=0.024, direction="+x",
                           y_range=(0, 0.02286), z_range=(0, 0.010),
@@ -169,8 +164,7 @@ def test_waveguide_pec_walls_are_not_absorbers(thin):
     ("closed", {"x_lo": 6, "y_lo": 4, "z_lo": 6}),
 ])
 def test_tfsf_names_only_faces_that_absorb_in_the_uniform_run(kind, expected):
-    # The uniform open plane wave solves y and z (Method B: z) periodic and
-    # refuses them declared otherwise: declare them periodic, whole cells.
+    """A uniform open plane wave requires whole-cell periodic transverse axes y/z, or z under Method B."""
     wrapped = {"closed": "", "methodB": "z"}.get(kind, "yz")
     sim = Simulation(
         freq_max=30e9, domain=(0.0483, 0.042 if "y" in wrapped else 0.0427,
@@ -200,8 +194,6 @@ def test_nonuniform_tfsf_does_not_inherit_uniform_periodic_override():
     ("methodB", {"x_lo": 6, "x_hi": 6, "y_lo": 6, "y_hi": 6}),
 ])
 def test_tfsf_shorthand_names_only_faces_that_absorb_in_the_uniform_run(kind, expected):
-    # boundary="cpml" declares no side faces: the uniform run wraps y and z
-    # (Method B: z) and the advisory must not name the replaced faces.
     sim = Simulation(freq_max=30e9, domain=(0.0483, 0.0427, 0.0381), dx=1e-3,
                      cpml_layers=6, boundary="cpml")
     sim.add_tfsf_source(f0=15e9, bandwidth=0.15, margin=3,
@@ -230,7 +222,6 @@ def test_unavailable_grid_does_not_guess_depth(monkeypatch, error):
         raise error("grid unavailable")
 
     monkeypatch.setattr(sim, "_build_realized_grid", unavailable)
-    # Call just this check: other preflight checks own their error handling.
     import warnings
     with warnings.catch_warnings(record=True) as caught:
         sim._validate_cfg_thin_absorber(warnings, sim._dx)
@@ -239,10 +230,9 @@ def test_unavailable_grid_does_not_guess_depth(monkeypatch, error):
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 def test_conductor_overlap_is_referenced_once_without_repeating_its_evidence(graded):
+    """Declared snapping keeps the off-node domain used in the earlier absorber-depth measurement."""
     sim = _vacuum(graded=graded, depths=(6, 16, 8, 16))
-    sim._snap = "declared"  # Keep the off-node domain used to measure absorber depth.
-    # Two conductors reach just the thin x_lo face. Existing per-conductor
-    # findings stay separate; their overlap with the depth warning is named once.
+    sim._snap = "declared"
     for y in (0.003, 0.006):
         sim.add(Box((0, y, 0.003), (0.001, y + 0.001, 0.004)), material="pec")
     report = sim.preflight()

@@ -29,16 +29,14 @@ def _issue(sim, code):
         report = sim.preflight()
     hits = [i for i in report.issues if i.code == code]
     assert len(hits) == 1, f"expected exactly one {code}, got {len(hits)}"
-    # PreflightIssue subclasses str -- the issue IS its message.
     if "Declared PEC wall face(s):" in str(hits[0]):
         assert hits[0].severity == "error"
     return str(hits[0])
 
 
 def _sim(boundary, position, component, **kw):
+    """The amplitude_kind DeprecationWarning and the pec_faces warning are not what this fixture measures."""
     with warnings.catch_warnings():
-        # The amplitude_kind DeprecationWarning and the pec_faces= one are
-        # not what this file measures.
         warnings.simplefilter("ignore")
         sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX,
                          boundary=boundary, **kw)
@@ -46,9 +44,6 @@ def _sim(boundary, position, component, **kw):
     return sim
 
 
-# ---------------------------------------------------------------------------
-# The gap: scalar boundary="pec"
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("face,position,component", [
     ("x_lo", (0.0, CY, CZ), "ez"),
@@ -111,10 +106,6 @@ def test_strict_preflight_raises_on_whole_boundary_pec_face():
             sim.preflight(strict=True)
 
 
-# ---------------------------------------------------------------------------
-# Regression: the per-face BoundarySpec spelling must keep working (the
-# pec_faces= keyword was removed; tests/contracts/test_api_1448.py)
-# ---------------------------------------------------------------------------
 
 def test_per_face_boundary_spec_still_fires():
     """The per-face ``BoundarySpec`` path, unchanged by #1075."""
@@ -140,9 +131,6 @@ def test_two_spellings_of_one_wall_agree():
     assert scalar == spec
 
 
-# ---------------------------------------------------------------------------
-# The message has to be true on BOTH lanes
-# ---------------------------------------------------------------------------
 
 def test_message_states_refusal_and_remedy():
     msg = _issue(_sim("pec", (0.0, CY, CZ), "ez", cpml_layers=0),
@@ -203,7 +191,9 @@ def _graded_magnetic_face_sim(axis, side, on_plane):
 @pytest.mark.parametrize("axis", ["x", "y", "z"])
 @pytest.mark.parametrize("side", ["lo", "hi"])
 def test_source_one_fine_cell_inside_graded_magnetic_face_is_silent(axis, side):
-    """A source 0.25 mm inside a fine face is in the volume, not on the face."""
+    """A source 0.25 mm inside a fine face is in the volume, not on the face.
+    A stale nominal/coarse 1 mm tolerance would report this 0.25 mm offset as on-face.
+    """
     sim = _graded_magnetic_face_sim(axis, side, on_plane=False)
     assert "source_decoupled" not in _codes(sim)
     profile = getattr(sim, f"_d{axis}_profile")
@@ -212,8 +202,6 @@ def test_source_one_fine_cell_inside_graded_magnetic_face_is_silent(axis, side):
     offset = abs(sim._ports[0].position["xyz".index(axis)] - plane)
     assert offset == pytest.approx(face_cell)
     assert face_cell == pytest.approx(.25e-3)
-    # A stale nominal/coarse 1 mm tolerance would report this 0.25 mm
-    # offset as on-face. Silence above pins the actual fine face cell.
 
 
 
