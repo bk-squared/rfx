@@ -45,7 +45,10 @@ F_MAX = 9e9
 
 
 def _build_thru_line():
-    """Two-port cv06b-class MSL thru-line (recovered from the deleted test)."""
+    """Two-port cv06b-class MSL thru-line (recovered from the deleted test).
+    The zero-thickness copper sheet on the substrate top represents 35 um foil.
+    """
+    assert H_SUB / DX == 2, "The laminate face must lie on a node two cells above ground."
     LX = L_LINE + 2 * PORT_MARGIN
     L_STUB_MAX = 14e-3
     LY = W_TRACE + 2 * (2 * H_SUB + 8 * DX) + L_STUB_MAX + 2 * (2 * H_SUB + 8 * DX)
@@ -57,13 +60,6 @@ def _build_thru_line():
     sim.add_material("ro4350b", eps_r=EPS_R)
     sim.add(Box((0, 0, 0), (LX, LY, H_SUB)), material="ro4350b")
     y_trace = (2 * H_SUB + 8 * DX) + W_TRACE / 2
-    # 35 um copper foil: a SHEET, declared by a zero-thickness
-    # Box on the substrate top. H_SUB / DX = 254 / 127 = 2 exactly, so the
-    # laminate face is a node line and the sheet lands on it with no snap.
-    # It was drawn one cell thick before the contract; that made it a
-    # VOLUME, which now realizes walls at BOTH z faces and shorts the Ez
-    # edge between them — a 127 um slab of metal where the board has 35 um
-    # of foil.
     sim.add(
         Box((0, y_trace - W_TRACE / 2, H_SUB),
             (LX, y_trace + W_TRACE / 2, H_SUB)),
@@ -80,12 +76,10 @@ def _build_thru_line():
 def test_plane_primitives_register_and_produce_signal():
     sim = _build_thru_line()
     freqs = jnp.linspace(F_MAX / 10, F_MAX, 4, dtype=jnp.float32)
-    # Drive port 0; register plane probes on port 0 (driven) and port 1.
     p0 = register_msl_plane_probes(sim, port_index=0, freqs=freqs, name_prefix="d")
     p1 = register_msl_plane_probes(sim, port_index=1, freqs=freqs, name_prefix="p")
     fr = sim.forward(num_periods=15.0, skip_preflight=True)
 
-    # V from the 3 Ez planes + closed-loop I from the Hy+Hz planes on the driven port.
     v = jnp.stack([_v_from_plane(fr, p0.ez1_name, p0),
                    _v_from_plane(fr, p0.ez2_name, p0),
                    _v_from_plane(fr, p0.ez3_name, p0)], axis=-1)
@@ -93,10 +87,8 @@ def test_plane_primitives_register_and_produce_signal():
     v_p1 = _v_from_plane(fr, p1.ez1_name, p1)
 
     v_np, i_np, vp1_np = np.asarray(v), np.asarray(i1), np.asarray(v_p1)
-    # Shapes: V is (n_freqs, 3); I and the passive-port V are (n_freqs,).
     assert v_np.shape == (4, 3), v_np.shape
     assert i_np.shape == (4,), i_np.shape
-    # Finite + non-zero (the primitives wired up and recorded signal).
     for name, arr in (("V_driven", v_np), ("I_driven", i_np), ("V_passive", vp1_np)):
         assert np.all(np.isfinite(arr)), f"{name} not finite: {arr}"
         assert float(np.max(np.abs(arr))) > 0.0, f"{name} is all-zero: {arr}"

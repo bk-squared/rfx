@@ -99,6 +99,7 @@ b_dev/a_inc magnitudes for the NU run are printed unconditionally so the
 verdict is traceable.
 
 No module-level jax_enable_x64 (leaks into sibling tests).
+The S-matrix axes are (receive port, drive port, frequency).
 """
 from __future__ import annotations
 
@@ -108,24 +109,17 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-# ---------------------------------------------------------------------------
-# WR-90 geometry constants (matches test_waveguide_nu_sparam.py)
-# ---------------------------------------------------------------------------
-_A_WG = 0.02286   # m  broad wall
-_B_WG = 0.01016   # m  narrow wall
+WR90_BROAD_WALL_M = 0.02286
+_A_WG = WR90_BROAD_WALL_M
+WR90_NARROW_WALL_M = 0.01016
+_B_WG = WR90_NARROW_WALL_M
 _F_MAX = 12e9
 _FREQS = jnp.linspace(8.2e9, 12.4e9, 5)
 
-# Dielectric slab: centered in the guide, spans full y/z cross-section,
-# 4 mm thick along x, eps_r=4.  Produces |S11| ~ 0.05-0.30 in X-band.
 _SLAB_X_LO = 0.045
 _SLAB_X_HI = 0.049
 _SLAB_EPS_R = 4.0
 
-
-# ---------------------------------------------------------------------------
-# Simulation builders
-# ---------------------------------------------------------------------------
 
 def _make_wr90_nu_sim_with_slab():
     """WR-90 NU mesh (graded dx_profile) with a centred dielectric slab."""
@@ -225,9 +219,6 @@ def _make_wr90_uniform_sim_with_slab():
     return sim
 
 
-# ---------------------------------------------------------------------------
-# Module-level result cache: run both sims once; tests share the result.
-# ---------------------------------------------------------------------------
 _cached_nu: object = None
 _cached_uni: object = None
 
@@ -256,11 +247,6 @@ def _get_uni_result():
     return _cached_uni
 
 
-# ---------------------------------------------------------------------------
-# Helper: probe NU injection strength by running one port-drive manually
-# and returning raw b_dev/a_inc arrays before normalization.
-# ---------------------------------------------------------------------------
-
 def _get_nu_raw_waves():
     """Return (a_inc_ref, b_dev_diag) for drive_idx=0 on the NU slab sim.
 
@@ -282,7 +268,6 @@ def _get_nu_raw_waves():
 
     sim, domain_x = _make_wr90_nu_sim_with_slab()
 
-    # Synthesise dz_profile (same as _compute_waveguide_s_matrix_nu does)
     _nz = int(round(float(sim._domain[2]) / float(sim._dx)))
     sim._dz_profile = np.full(max(_nz, 1), float(sim._dx))
 
@@ -311,7 +296,6 @@ def _get_nu_raw_waves():
 
     entries = list(sim._waveguide_ports)
 
-    # Drive port 0 only
     sim._waveguide_ports = [
         _dc_replace(e, amplitude=(e.amplitude if i == 0 else 0.0))
         for i, e in enumerate(entries)
@@ -323,7 +307,6 @@ def _get_nu_raw_waves():
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        # Match the raw-record runs in rfx/sparams/waveguide.py's calculator.
         dev_result = run_nonuniform_path(sim, n_steps=n_steps, waveguide_reference_only=True)
         ref_result = run_nonuniform_path(
             sim, n_steps=n_steps, waveguide_reference_only=True,
@@ -354,10 +337,6 @@ def _get_nu_raw_waves():
     return np.array(a_inc_ref), np.array(b_dev)
 
 
-# ---------------------------------------------------------------------------
-# Test 1: per-frequency S-parameter dump + verdict (R5 mandate)
-# ---------------------------------------------------------------------------
-
 def test_nu_nontrivial_slab_verdict():
     """NU-VALIDATE main verdict test for the dielectric-slab iris case.
 
@@ -375,7 +354,6 @@ def test_nu_nontrivial_slab_verdict():
     s_uni = np.array(res_uni.s_params)
     freqs_ghz = np.array(res_nu.freqs) / 1e9
 
-    # --- R5: raw NU injection magnitudes ---
     a_inc_ref, b_dev = _get_nu_raw_waves()
     a_inc_mag = np.abs(a_inc_ref)
     b_dev_mag = np.abs(b_dev)
@@ -387,7 +365,6 @@ def test_nu_nontrivial_slab_verdict():
     print(f"  b_dev     (|b|): {_b_str}")
     print(f"  mean|a_inc|={a_inc_mag.mean():.3e}  mean|b_dev|={b_dev_mag.mean():.3e}")
 
-    # --- R5: per-freq S table ---
     s11_nu = np.abs(s_nu[0, 0, :])
     s21_nu = np.abs(s_nu[1, 0, :])
     s11_uni = np.abs(s_uni[0, 0, :])
@@ -401,16 +378,10 @@ def test_nu_nontrivial_slab_verdict():
               f"{s11_uni[k]:>10.4f}  {s21_uni[k]:>10.4f}  "
               f"{abs(s21_nu[k]-s21_uni[k]):>8.4f}")
 
-    # --- Passivity ---
     passivity_nu = s11_nu**2 + s21_nu**2
     print(f"\n[NU-VALIDATE] NU passivity (|S11|²+|S21|²): "
           f"{np.array2string(passivity_nu, precision=4)}  max={passivity_nu.max():.4f}")
 
-    # --- Verdict logic (roadmap W1.5 split) ---
-    # These two gates HOLD on main today and must HARD-FAIL on regression.
-    # The previous runtime ``pytest.xfail(...)`` here was always non-strict,
-    # so ANY regression (including in these passing gates) reported as
-    # green-"xfailed" forever.
     assert a_inc_mag.mean() > 1e-25, (
         f"NU injection at noise floor: mean|a_inc|={a_inc_mag.mean():.3e} "
         "<= 1e-25. NU-DRIVE-FIX has REGRESSED for non-trivial devices."
@@ -419,18 +390,7 @@ def test_nu_nontrivial_slab_verdict():
         f"Passivity violation: max(|S11|²+|S21|²)={passivity_nu.max():.4f} > 1.10."
     )
 
-    # NU reflection magnitude + power-conservation/reciprocity (the ROBUST
-    # shared NU-vs-uniform invariants) are now a REAL passing gate in
-    # test_nu_nontrivial_matches_uniform below (flipped from strict-xfail
-    # once the noise-floor symptom was shown to be num_periods=2
-    # undersettling, not a bug). This np=2 normalize=True case stays a
-    # regression witness for the injection-not-noise-floor + passivity gates.
 
-
-# PR-lane gate (v1.8 WP5): deliberately NOT ``slow``-marked so the settled-np
-# power-conservation / reciprocity / passivity(0.02) gate on the graded mesh runs
-# on every PR (fast-suite, ~8 s on the CI runner), not only in the weekly lane.
-# See docs/design_notes/v18_waveguide_s_chain_plan.md, "WP5".
 def test_nu_nontrivial_matches_uniform():
     """SETTLED-np flux gate: the NU non-trivial S-matrix conserves power, is
     reciprocal, and behaves like the uniform path (flipped from strict-xfail
@@ -456,8 +416,9 @@ def test_nu_nontrivial_matches_uniform():
     is the shared invariant; R5). It does NOT exercise graded transverse-dA (the
     x-normal port plane has uniform y,z axes) nor |S21|-split ABSOLUTE accuracy
     (analytic-Airy / GPU lane: test_waveguide_nu_flux.py NOTE, VESSL 369367240154).
+    An earlier diagnosis measured NU band-wide power as 1.000 +/- 0.005 at num_periods >= 32.
     """
-    _NP_SETTLED = 40  # diagnosis: NU |S|^2 band-wide 1.000 +/- 0.005 at np >= 32
+    _NP_SETTLED = 40
 
     nu_sim, _ = _make_wr90_nu_sim_with_slab()
     uni_sim = _make_wr90_uniform_sim_with_slab()
@@ -470,7 +431,7 @@ def test_nu_nontrivial_matches_uniform():
             num_periods=_NP_SETTLED, normalize="flux",
         )
 
-    s_nu = np.array(res_nu.s_params)    # (recv, drive, nf)
+    s_nu = np.array(res_nu.s_params)
     s_uni = np.array(res_uni.s_params)
     freqs_ghz = np.array(res_nu.freqs) / 1e9
 
@@ -482,7 +443,6 @@ def test_nu_nontrivial_matches_uniform():
     power_uni_d0 = np.abs(s_uni[0, 0, :])**2 + s21_uni**2
     recip = np.abs(s21_nu - s12_nu)
 
-    # --- R5: per-frequency dump for both paths (traceable verdict) ---
     print(f"\n[NU-MATCH] settled flux gate (num_periods={_NP_SETTLED}):")
     print(f"  {'f(GHz)':>7} {'|S11n|':>7} {'|S21n|':>7} {'Pcol0':>7} {'Pcol1':>7} "
           f"{'|S21u|':>7} {'|dS21|':>7} {'recip':>9}")
@@ -491,7 +451,6 @@ def test_nu_nontrivial_matches_uniform():
               f"{power_nu_d0[k]:>7.4f} {power_nu_d1[k]:>7.4f} {s21_uni[k]:>7.4f} "
               f"{abs(s21_nu[k]-s21_uni[k]):>7.4f} {recip[k]:>9.2e}")
 
-    # --- (a) power conservation (the headline finding), BOTH drive columns ---
     assert np.all(np.abs(power_nu_d0 - 1.0) < 0.02), (
         f"NU drive-0 power not conserved: |S11|^2+|S21|^2={power_nu_d0} "
         "(expect 1.0 +/- 0.02 at settled np — undersettling or a real defect)"
@@ -499,12 +458,9 @@ def test_nu_nontrivial_matches_uniform():
     assert np.all(np.abs(power_nu_d1 - 1.0) < 0.02), (
         f"NU drive-1 power not conserved: |S22|^2+|S12|^2={power_nu_d1}"
     )
-    # --- (b) reciprocity S21 == S12 ---
     assert recip.max() < 0.01, (
         f"NU reciprocity violated: max|S21-S12|={recip.max():.3e} >= 0.01"
     )
-    # --- (c) real reflection + non-trivial transmission (NOT noise floor — the
-    #         exact regression this test was created to catch) ---
     assert s11_nu.max() > 0.02, (
         f"|S11_nu| max={s11_nu.max():.4f} — slab reflection not registered "
         "(NU back at noise floor?)"
@@ -512,17 +468,10 @@ def test_nu_nontrivial_matches_uniform():
     assert s21_nu.min() > 0.10, (
         f"|S21_nu| min={s21_nu.min():.4f} — transmission at noise floor"
     )
-    # --- (d) uniform path is a sound power-conserving witness on the same slab ---
     assert np.all(np.abs(power_uni_d0 - 1.0) < 0.02), (
         f"uniform witness power not conserved: {power_uni_d0}"
     )
-    # NOTE: pointwise |S21_nu| vs |S21_uni| is intentionally NOT asserted —
-    # see the SCOPE paragraph (different meshes -> different in-band FP split).
 
-
-# ---------------------------------------------------------------------------
-# Test 2: both paths return finite arrays of matching shape
-# ---------------------------------------------------------------------------
 
 def test_nu_nontrivial_shape_and_finite():
     """Basic shape + finite check — decoupled from verdict so it always runs."""
