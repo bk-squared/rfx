@@ -58,9 +58,9 @@ def test_invalid_occupied_values_name_position(field, bad):
 
 
 def _admission_scene(patterns=False, factor=.99):
+    """The Drude z=-1 boundary is kappa*dt**2 + 4*(c*dt)**2*sum(1/d_a**2) = 4*eps_inf."""
     sim = Simulation(freq_max=6e9, domain=(.012,) * 3, dx=.0005, cpml_layers=8)
     grid = sim._build_grid()
-    # Drude z=-1: kappa dt**2 + 4(c dt)**2 sum(1/d_a**2) = 4 eps_inf.
     budget = 299792458.**2 * sum(1 / float(np.min(grid.cells(a)))**2 for a in range(3))
     bound = (4 - 4 * grid.dt**2 * budget) / grid.dt**2
     high, low = (2. * bound, .5 * bound) if patterns else (factor * bound, .8 * bound)
@@ -105,7 +105,9 @@ def test_p5c_per_pattern_corner():
 
 @pytest.mark.parametrize('site', ['adjoint', 'design_box', 'f0_sheet', 'openems'])
 def test_p4_feature_presence_refusals(site):
-    """Existing feature fences catch maps without requiring a map-specific message."""
+    """Existing feature fences catch maps without requiring a map-specific message.
+    The codec refuses pole maps before the emitter's independent presence fence can run.
+    """
     if site == 'f0_sheet':
         from tests.unit.materials.test_sheet_impedance import _cube
         sim = _cube()
@@ -125,8 +127,6 @@ def test_p4_feature_presence_refusals(site):
         else:
             from rfx.interop import design_to_dict
             from rfx.interop.emitters.openems import emit_openems_script
-            # The codec refuses maps first. Inject the declaration into an otherwise
-            # valid document to reach the emitter's independent presence fence.
             sim._materials['map'].lorentz_poles[:] = []
             document = design_to_dict(sim)
             document['materials']['map']['lorentz_poles'] = [pole]

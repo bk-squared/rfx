@@ -18,7 +18,8 @@ def test_kerr_modifies_eps_r():
     shape = (10, 10, 10)
     state = init_state(shape)
     materials = init_materials(shape)
-    state = state._replace(ez=state.ez.at[5, 5, 5].set(1e6))  # strong field
+    STRONG_FIELD_V_PER_METRE = 1e6
+    state = state._replace(ez=state.ez.at[5, 5, 5].set(STRONG_FIELD_V_PER_METRE))
 
     mask = jnp.zeros(shape, dtype=bool).at[4:7, 4:7, 4:7].set(True)
     kerr = KerrMaterial(eps_r_linear=2.0, chi3=1e-18)
@@ -75,15 +76,6 @@ def test_kerr_intensity_dependent():
     assert eps_vals[2] > eps_vals[1], "Even higher field → even higher eps"
 
 
-# ---------------------------------------------------------------------------
-# Reactive Kerr tests (apply_kerr_ade — increment-scaling ε_eff form)
-#
-# apply_kerr_ade now implements the REACTIVE index change ε_eff = ε_r + χ³|E|²
-# (lossless) by scaling the E-UPDATE INCREMENT, not the whole field:
-#   E^{n+1} = E^n + (E_lin - E^n) / (1 + χ³·|E^n|²/ε_r)
-# The earlier form E_lin/(1+factor) was a nonlinear ABSORBER (reduced |E|, zero
-# phase shift).
-# ---------------------------------------------------------------------------
 
 def test_kerr_zero_chi3_unchanged():
     """chi3=0 => increment unscaled => the post-update field is returned unchanged."""
@@ -119,20 +111,18 @@ def test_kerr_reactive_selfconsistent_solve():
     chi3_arr = jnp.full(shape, chi3_val, jnp.float32)
     eps_r_arr = jnp.full(shape, eps_r, jnp.float32)
 
-    # (a) zero increment => the equilibrium field is preserved
     state_eq = init_state(shape)._replace(ex=jnp.full(shape, E0, jnp.float32))
     out_eq = apply_kerr_ade(state_eq, e_prev, chi3_arr, eps_r_arr)
     np.testing.assert_allclose(np.array(out_eq.ex), E0, rtol=1e-5)
 
-    # (b) nonzero increment => the self-consistent constitutive solve (same fixed-point)
     state = init_state(shape)._replace(ex=jnp.full(shape, E_lin, jnp.float32))
     out = apply_kerr_ade(state, e_prev, chi3_arr, eps_r_arr)
-    D_target = eps_r * E_lin + chi3_val * E0 ** 3          # ε_r·E_lin + χ³·|E^n|²·E^n
+    D_target = eps_r * E_lin + chi3_val * E0 ** 3
     E = E_lin
     for _ in range(4):
         E = D_target / (eps_r + chi3_val * E ** 2)
     np.testing.assert_allclose(float(out.ex[3, 3, 3]), E, rtol=1e-3)
-    assert E0 < float(out.ex[3, 3, 3]) < E_lin            # between equilibrium and linear
+    assert E0 < float(out.ex[3, 3, 3]) < E_lin
 
 
 def test_kerr_ade_differentiable():
@@ -158,10 +148,12 @@ def test_kerr_reactive_conserves_energy():
     from rfx.stepping.yee import update_e, update_h
 
     shape = (20, 20, 20)
-    materials = init_materials(shape)          # vacuum, lossless (sigma=0)
+    materials = init_materials(shape)
+    assert np.all(np.asarray(materials.sigma) == 0), 'Reactive Kerr energy fixture must have zero conductivity'
     eps_r_arr = materials.eps_r
     dt, dx = 1e-12, 1e-3
-    chi3_arr = jnp.full(shape, 0.1, jnp.float32)   # moderate: factor ~ 0.1 at |E|~1
+    MODERATE_CHI3 = 0.1
+    chi3_arr = jnp.full(shape, MODERATE_CHI3, jnp.float32)
 
     state = init_state(shape)._replace(ez=jnp.zeros(shape, jnp.float32).at[10, 10, 10].set(1.0))
 
@@ -176,6 +168,5 @@ def test_kerr_reactive_conserves_energy():
 
     energies = np.array(energies)
     peak = np.max(energies)
-    # lossless: the field bounces in the PEC-like box without a systematic energy drain
     assert energies[-1] > 0.5 * peak, (
         f"reactive Kerr must not dissipate energy: final={energies[-1]:.3e}, peak={peak:.3e}")

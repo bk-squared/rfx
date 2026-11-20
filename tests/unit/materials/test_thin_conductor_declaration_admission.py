@@ -45,9 +45,6 @@ def sheet():
      'bounding box (Box corner_lo/corner_hi, or Shape.bounding_box()) — the sheet '
      'NORMAL is read from it, and on a graded mesh that normal decides which dual '
      'spacing normalizes the fold. NoBounds provides neither.'),
-    # Two faults at once: the f0 check comes first, and every check runs
-    # before the record is built (ThinConductor refuses an OrientedBox
-    # with NotImplementedError).
     (NoMask(), {'surface_impedance_f0': 0.0},
      'add_thin_conductor: surface_impedance_f0=0.0 must be a positive frequency '
      'in Hz (band centre for the Leontovich surface resistance).'),
@@ -64,6 +61,7 @@ def sheet():
 ], ids=['R1', 'R2', 'R3', 'R4', 'R5', 'R6_f0_first', 'R7_before_record',
         'R8_f0_before_sigma', 'R9_sigma_before_mask'])
 def test_refusals(shape, kwargs, expected):
+    """Every check runs before the record is built because ThinConductor refuses an OrientedBox with NotImplementedError."""
     sim = simulation()
     with pytest.raises(ValueError) as exc:
         sim.add_thin_conductor(shape, **kwargs)

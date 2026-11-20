@@ -34,10 +34,14 @@ def _total_energy(state, dx):
 
 
 def test_debye_coefficients():
-    """Verify ADE coefficients match hand-computed values for a single pole."""
+    """Verify ADE coefficients match hand-computed values for a single pole.
+    In a homogeneous material, the per-E-component ca/cb/cc/beta values are equal.
+    """
     shape = (5, 5, 5)
-    dt = 1e-12  # 1 ps
-    tau = 10e-12  # 10 ps
+    TIME_STEP_SECONDS = 1e-12
+    dt = TIME_STEP_SECONDS
+    RELAXATION_TIME_SECONDS = 10e-12
+    tau = RELAXATION_TIME_SECONDS
     delta_eps = 3.0
     eps_inf = 2.0
 
@@ -46,21 +50,19 @@ def test_debye_coefficients():
         eps_r=jnp.full(shape, eps_inf, dtype=jnp.float32)
     )
 
+    assert np.all(np.asarray(materials.sigma) == 0), 'The hand Debye denominator assumes zero conductivity'
     poles = [DebyePole(delta_eps=delta_eps, tau=tau)]
     coeffs, dstate = init_debye(poles, materials, dt, high_wall=(False, False, False))
 
-    # Hand-computed coefficients
     alpha_expected = (2 * tau - dt) / (2 * tau + dt)
     beta_expected = EPS_0 * delta_eps * dt / (2 * tau + dt)
-    gamma_expected = EPS_0 * eps_inf + beta_expected  # sigma=0
+    gamma_expected = EPS_0 * eps_inf + beta_expected
     ca_expected = (EPS_0 * eps_inf - beta_expected) / gamma_expected
     cb_expected = dt / gamma_expected
     cc_expected = (1 - alpha_expected) / gamma_expected
 
     assert abs(float(coeffs.alpha[0, 2, 2, 2]) - alpha_expected) < 1e-6, \
         f"alpha: {float(coeffs.alpha[0,2,2,2]):.8f} vs {alpha_expected:.8f}"
-    # ca/cb/cc/beta are per E component; in a homogeneous
-    # material all three carry the same value.
     for c in range(3):
         assert abs(float(coeffs.beta[c][0, 2, 2, 2]) - beta_expected) / beta_expected < 1e-4, \
             "beta mismatch"
@@ -71,7 +73,6 @@ def test_debye_coefficients():
         assert abs(float(coeffs.cc[c][0, 2, 2, 2]) - cc_expected) / cc_expected < 1e-4, \
             "cc mismatch"
 
-    # Polarization state should be zeros
     assert float(jnp.max(jnp.abs(dstate.px))) == 0.0
     assert float(jnp.max(jnp.abs(dstate.py))) == 0.0
     assert float(jnp.max(jnp.abs(dstate.pz))) == 0.0
@@ -91,21 +92,22 @@ def test_debye_medium_slower_propagation():
     """
     nx = 200
     shape = (nx, 6, 6)
-    dx = 0.0005  # 0.5 mm
+    CELL_WIDTH_METRES = 0.0005
+    dx = CELL_WIDTH_METRES
     dt = 0.99 * dx / (C0 * np.sqrt(3))
 
     f0 = 10e9
     tau_pulse = 1.0 / (f0 * 0.5 * np.pi)
     t0_pulse = 3.0 * tau_pulse
     src_x = 20
-    mon_x = 80   # 30 mm downstream
+    mon_x = 80
+    assert np.isclose((mon_x - src_x) * dx, 0.030, rtol=0., atol=1e-12), 'The arrival monitor must be thirty millimetres downstream'
     cy, cz = 3, 3
     n_steps = 600
 
     peak_steps = {}
     for label, debye_poles, eps_inf in [
         ("vacuum", [], 1.0),
-        # Near-lossless dielectric via Debye path (ε_∞=4, tiny Δε)
         ("debye", [DebyePole(delta_eps=0.01, tau=1e-9)], 4.0),
     ]:
         materials = init_materials(shape)
@@ -153,10 +155,8 @@ def test_debye_medium_slower_propagation():
     print(f"  Vacuum peak step: {vac_step}")
     print(f"  Debye  peak step: {deb_step}")
 
-    # Debye medium (ε_∞=4) should arrive later
     assert deb_step > vac_step, \
         f"Debye peak ({deb_step}) should arrive after vacuum ({vac_step})"
-    # Expected ratio ~ √4 = 2
     if vac_step > 0:
         ratio = deb_step / vac_step
         print(f"  Time ratio: {ratio:.2f}x (expected ~{np.sqrt(4.0):.1f}x)")
@@ -168,13 +168,12 @@ def test_debye_energy_bounded():
 
     Initialize cavity mode in Debye medium, run for many steps.
     Energy should decay (Debye is dissipative) or stay bounded.
+    Reduced Debye strength keeps field dynamics reasonable.
     """
     shape = (20, 20, 20)
     dx = 0.002
     dt = 0.99 * dx / (C0 * np.sqrt(3))
 
-    # Debye medium: water-like (ε_∞=4, Δε=76, τ=8ps)
-    # Using reduced values to keep field dynamics reasonable
     eps_inf = 4.0
     materials = init_materials(shape)
     materials = materials._replace(
@@ -184,7 +183,6 @@ def test_debye_energy_bounded():
     poles = [DebyePole(delta_eps=10.0, tau=50e-12)]
     coeffs, dstate = init_debye(poles, materials, dt, high_wall=(False, False, False))
 
-    # Initialize with cavity mode
     Lx = (shape[0] - 1) * dx
     Ly = (shape[1] - 1) * dx
     x = np.arange(shape[0]) * dx
@@ -212,12 +210,9 @@ def test_debye_energy_bounded():
     print("\nDebye energy stability:")
     print(f"  Initial: {initial_energy:.4e}, Max: {max_energy:.4e}, Final: {final_energy:.4e}")
 
-    # Energy should never exceed initial by more than a small margin
-    # (Debye is dissipative, energy should decrease)
     assert max_energy < initial_energy * 1.05, \
         f"Energy grew: max={max_energy:.4e} > 1.05 * initial={initial_energy:.4e}"
 
-    # Debye medium is lossy at high frequencies → energy should decay
     assert final_energy < initial_energy * 0.9, \
         f"Expected Debye loss: final/initial = {final_energy/initial_energy:.4f}"
 
@@ -230,29 +225,22 @@ def test_debye_mask_selective():
 
     materials = init_materials(shape)
 
-    # Apply Debye only in the right half (x >= 10)
     mask = jnp.zeros(shape, dtype=bool)
     mask = mask.at[10:, :, :].set(True)
 
     poles = [DebyePole(delta_eps=5.0, tau=20e-12)]
     coeffs, dstate = init_debye(poles, materials, dt, mask=mask, high_wall=(False, False, False))
 
-    # In vacuum region (x < 10): ca should be standard vacuum coefficient
-    # ca_vac = (eps0 - 0 - 0) / (eps0 + 0 + 0) = 1.0
     ca_vac = float(coeffs.ca[0][5, 5, 5])
-    # In Debye region (x >= 10): ca should be modified
     ca_deb = float(coeffs.ca[0][15, 5, 5])
 
     print("\nDebye mask test:")
     print(f"  Ca(vacuum) = {ca_vac:.6f}")
     print(f"  Ca(Debye)  = {ca_deb:.6f}")
 
-    # Vacuum: beta=0, sigma=0, so ca = (eps0 - 0) / (eps0 + 0) = 1.0
     assert abs(ca_vac - 1.0) < 1e-4, f"Vacuum ca={ca_vac}, expected 1.0"
-    # Debye: ca < 1 (beta > 0 shifts it)
     assert ca_deb < 1.0, f"Debye ca={ca_deb}, expected < 1.0"
 
-    # Alpha should be 0 in vacuum region, nonzero in Debye region
     alpha_vac = float(coeffs.alpha[0, 5, 5, 5])
     alpha_deb = float(coeffs.alpha[0, 15, 5, 5])
     assert alpha_vac == 0.0, f"Vacuum alpha={alpha_vac}, expected 0"
@@ -260,7 +248,9 @@ def test_debye_mask_selective():
 
 
 def test_debye_two_poles():
-    """Two Debye poles should both contribute to dispersion."""
+    """Two Debye poles should both contribute to dispersion.
+    Beta is per E component.
+    """
     shape = (10, 10, 10)
     dt = 1e-12
 
@@ -272,20 +262,16 @@ def test_debye_two_poles():
     ]
     coeffs, dstate = init_debye(poles, materials, dt, high_wall=(False, False, False))
 
-    # Should have 2 poles in alpha/beta arrays
     assert coeffs.alpha.shape[0] == 2
-    assert all(b.shape[0] == 2 for b in coeffs.beta)   # per E component
+    assert all(b.shape[0] == 2 for b in coeffs.beta)
     assert all(c.shape[0] == 2 for c in coeffs.cc)
 
-    # P state should have 2 poles
     assert dstate.px.shape[0] == 2
 
-    # Each pole should have different alpha (different tau)
     a0 = float(coeffs.alpha[0, 5, 5, 5])
     a1 = float(coeffs.alpha[1, 5, 5, 5])
     assert a0 != a1, f"Two poles should have different alpha: {a0} vs {a1}"
 
-    # Expected values
     a0_exp = (2 * 10e-12 - dt) / (2 * 10e-12 + dt)
     a1_exp = (2 * 100e-12 - dt) / (2 * 100e-12 + dt)
     assert abs(a0 - a0_exp) < 1e-6

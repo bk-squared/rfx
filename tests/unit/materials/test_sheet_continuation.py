@@ -1,4 +1,6 @@
-"""Sheets reaching an absorber retain their in-plane metal cross-section."""
+"""Sheets reaching an absorber retain their in-plane metal cross-section.
+Fractional bandwidth 0.8 with tau=20/15 steps makes the 20-step record hold the pulse.
+"""
 
 import warnings
 
@@ -53,7 +55,9 @@ def _arrays(sim, nonuniform):
 @pytest.mark.parametrize("kind", ["pec", "leontovich"])
 @pytest.mark.parametrize("normal", range(3), ids=list("xyz"))
 def test_sheet_arrays_include_the_same_absorber_for_every_shape(nonuniform, kind, normal):
-    """A full plate fills both lateral pads but remains one node thick."""
+    """A full plate fills both lateral pads but remains one node thick.
+    The independent full-plane expectation prevents equality from passing when both shapes stop at the absorber entrance.
+    """
     lo, hi = [0.] * 3, [.008] * 3
     lo[normal] = hi[normal] = .004
     shapes = [Box(tuple(lo), tuple(hi)), PlanarSheet(normal, .004, (0., 0.), (.008, .008))]
@@ -71,8 +75,6 @@ def test_sheet_arrays_include_the_same_absorber_for_every_shape(nonuniform, kind
             index = [slice(None)] * 3
             index[normal] = int(plane[0])
             expected[tuple(index)] = True
-            # Independent full-plane expectation: equality alone could pass
-            # if both shapes accidentally stopped at the absorber entrance.
             np.testing.assert_array_equal(arrays["footprint"], expected)
             assert not any("has no pad continuation" in str(w.message) for w in caught)
             results.append(arrays)
@@ -172,8 +174,9 @@ class _NumpySheet(PlanarSheet):
 
 @pytest.mark.parametrize("kind", ["pec", "leontovich"])
 def test_host_sheet_forward_under_outer_jit_equals_box(kind):
+    """The 1e-4 tolerance separates an earlier eager/JIT relative difference of 3.44e-6 on CI (0 locally) from earlier measured loss changes of 1.7-2.3e-2 for a one-cell sheet change or 4.0 for a missing sheet."""
     import jax.numpy as jnp
-    cell = .002  # This fixture's auto mesh rounds to 2 mm cells.
+    cell = .002
     losses = []
     try:
         for shape in (Box((0., (3 - .35) * cell, 5 * cell),
@@ -183,8 +186,7 @@ def test_host_sheet_forward_under_outer_jit_equals_box(kind):
             sim = Simulation(freq_max=6e9, domain=(.04, .02, .02), boundary="cpml", cpml_layers=4)
             kw = {"surface_impedance_f0": 5e9} if kind == "leontovich" else {}
             sim.add_thin_conductor(shape, sigma_bulk=1e4 if kw else 5.8e7, **kw)
-            # Fractional bandwidth 0.8, tau = 20/15 steps so the 20-step record holds
-            # the pulse (bandwidth=3e9 in Hz drove nothing, issue 1668).
+            assert np.isclose(sim._build_grid().dx, cell, rtol=0., atol=1e-12), 'The sheet fixture requires two-millimetre auto-mesh cells'
             tau = (20 / 15) * float(sim._build_grid().dt)
             sim.add_source((.030, .01, .012), "ez",
                            waveform=GaussianPulse(f0=1.0 / (np.pi * 0.8 * tau), bandwidth=0.8))
@@ -196,11 +198,6 @@ def test_host_sheet_forward_under_outer_jit_equals_box(kind):
 
             eps = jnp.ones(sim._build_grid().shape, dtype=jnp.float32)
             eager, compiled = loss(eps), jax.jit(loss)(eps)
-            # Under jit XLA fuses and reorders the float32 updates, so eager and compiled
-            # need not agree bit for bit: 3.44e-6 relative on the CI runner,
-            # 0 locally. A one-cell change to the sheet moves this loss by
-            # 1.7-2.3e-2 and a missing sheet by 4.0, so 1e-4 hides no geometry change.
-            # The Box == non-Box check below is exact.
             np.testing.assert_allclose(compiled, eager, rtol=1e-4, atol=0.)
             losses.append(np.asarray(compiled))
         assert losses[0] > 0
@@ -224,8 +221,6 @@ def test_continued_sheet_rejects_partial_mapped_arrays():
 def test_continued_curved_sheet_keeps_its_interior_signed_distance():
     from rfx.geometry.smoothing import _get_sdf_fn, _has_sdf, continued_conductor_shape
     sim = _sim(False)
-    # The two first interior rows each cover y=2..6 mm; this disc crosses
-    # x-lo with a resolved strip, unlike the tangent disc above.
     shape = Cylinder((-.0005, .004, .004), radius=.0026, height=0., axis="z")
     sim.add_thin_conductor(shape, sigma_bulk=5.8e7)
     solved = continued_conductor_shape(sim, sim._build_grid(), shape)
@@ -252,7 +247,6 @@ def test_pattern_at_the_face_is_replicated_without_filling_its_slot(nonuniform):
         footprint = arrays["footprint"]
         k = int(np.argmin(abs(coords.z - .004)))
         expected = np.zeros(grid.shape, bool)
-        # Five literal y rows; the central row's slot reaches x_lo only.
         expected[:, grid.pad_y_lo + 2:grid.pad_y_lo + 7, k] = True
         expected[:grid.pad_x_lo + 2, grid.pad_y_lo + 4, k] = False
         np.testing.assert_array_equal(footprint, expected)
@@ -263,6 +257,7 @@ def test_pattern_at_the_face_is_replicated_without_filling_its_slot(nonuniform):
 @pytest.mark.parametrize("nonuniform,legacy_dc", [(False, False), (True, False), (False, True)],
                          ids=["pec-volume-uniform", "pec-volume-nu", "dc-volume-uniform"])
 def test_volumetric_nonbox_conductor_still_stops_and_warns(nonuniform, legacy_dc):
+    """DC admission refuses a Sphere film because its normal/layers are ambiguous."""
     from rfx.geometry.smoothing import continued_conductor_shape
     sim = _sim(nonuniform)
     shape = Sphere(center=(.001, .004, .004), radius=.002)
@@ -273,7 +268,6 @@ def test_volumetric_nonbox_conductor_still_stops_and_warns(nonuniform, legacy_dc
     grid = sim._build_nonuniform_grid() if nonuniform else sim._build_grid()
     try:
         if legacy_dc:
-            # DC admission R1 replaces unchecked uniform volume admission.
             with pytest.raises(ValueError, match="Sphere.*ambiguous normal/layers"):
                 continued_conductor_shape(sim, grid, shape)
             with pytest.raises(ValueError, match="Sphere.*ambiguous normal/layers"):
@@ -284,7 +278,6 @@ def test_volumetric_nonbox_conductor_still_stops_and_warns(nonuniform, legacy_dc
         assert solved is shape
         with pytest.warns(UserWarning, match="Sphere has no pad continuation"):
             _, _, arrays = _arrays(sim, nonuniform)
-        # The outermost x pad is beyond the sphere; no copied metal there.
         occupied = arrays["cells"]
         assert not occupied[0].any()
         assert occupied[grid.pad_x_lo].any()

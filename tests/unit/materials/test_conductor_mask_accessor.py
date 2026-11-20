@@ -64,7 +64,6 @@ def test_naive_spelling_finds_nothing_but_accessor_finds_the_sheet():
     mats, _, _, pec_mask, _, _, _ = sim._assemble_materials(
         grid, sheet_specs=specs)
 
-    # The assembled arrays really are sheet-free.
     assert pec_mask is None
     assert int((np.asarray(mats.sigma) > CONDUCTOR_SIGMA_THRESHOLD).sum()) == 0
     assert len(specs) == 1
@@ -84,7 +83,9 @@ def test_naive_spelling_finds_nothing_but_accessor_finds_the_sheet():
 
 
 def test_accessor_unions_pec_and_sigma_and_sheet():
-    """All three contributions present at once, counted exactly."""
+    """All three contributions present at once, counted exactly.
+    The sheet-only cells make the union assertion bind on the sheet term.
+    """
     sim = _sheet_sim()
     sim.add_material("copper_bulk", eps_r=1.0, sigma=5.8e7)
     sim.add(Box((1e-3, 1e-3, 0.5e-3), (2e-3, 2e-3, 0.75e-3)),
@@ -104,30 +105,25 @@ def test_accessor_unions_pec_and_sigma_and_sheet():
     assert int(pec.sum()) > 0
     assert int(sig.sum()) > 0
     assert int(sheet.sum()) > 0
-    # The sheet contributes cells NO other term has — this is what makes
-    # the assertion below bind on the sheet term.
     assert int((sheet & ~(pec | sig)).sum()) > 0
 
     got = np.asarray(sim.conductor_mask())
     np.testing.assert_array_equal(got, expected)
     assert int(got.sum()) == int(expected.sum())
-    # And the naive spelling misses exactly the sheet-only cells.
     assert int(got.sum()) - int((pec | sig).sum()) == \
         int((sheet & ~(pec | sig)).sum())
 
 
 def test_accessor_uses_the_nonuniform_grid_on_a_graded_mesh():
-    """On a graded-dz sim the accessor rasterizes on the NU grid."""
+    """On a graded-dz sim the accessor rasterizes on the NU grid.
+    The uniform comparator is independent because the profiled simulation refuses a surrogate uniform grid.
+    """
     dz = _graded_dz()
     sim = _sheet_sim(dz_profile=dz)
     nu = sim._build_nonuniform_grid()
-    # Independent uniform comparator: the profiled simulation must refuse a
-    # surrogate uniform grid, and the accessor must retain the declared NU one.
     uni = _sheet_sim()._build_grid()
     assert tuple(nu.shape) != tuple(uni.shape), (
         "fixture is not exercising the NU/uniform shape difference")
-    # The profile really is graded (a uniform-valued profile would take
-    # the NU code path without exercising any NU metric).
     assert float(np.max(dz) / np.min(dz)) > 1.5
 
     got = np.asarray(sim.conductor_mask())
@@ -180,29 +176,9 @@ def test_refplane_call_site_sees_the_sheet():
     assert got is not None, "the sheet-traced board must not read as no-metal"
     got = np.asarray(got)
     assert int(got.sum()) == int(np.asarray(specs[0].mask).sum())
-    # No sheet ctx -> unchanged passthrough (no behaviour change for the
-    # PEC-traced boards this path was written for).
     assert _refplane_conductor_mask(pec_mask, None) is pec_mask
 
 
-# ---------------------------------------------------------------------------
-# #695 through the PUBLIC path.
-#
-# ``test_refplane_call_site_sees_the_sheet`` above calls
-# ``_refplane_conductor_mask`` directly, so it pins the HELPER and not the
-# wiring: reverting ``rfx/api/_execute.py``'s call site to ``pec_mask=pec_mask``
-# left it green while the reported field failure came straight back. The tests
-# below enter through ``Simulation.run(compute_s_params=True)`` and through the
-# per-drive call the production S-matrix driver makes, i.e. through the line
-# that was changed.
-#
-# The board is the committed refplane thru fixture
-# (tests/locks/test_refplane_port_waves.py) with ONE substitution: the PEC signal
-# trace becomes a ``surface_impedance_f0`` sheet at the same z. Everything
-# else — dx, domain, port positions, N — is byte-identical, which is what
-# lets the plane geometry below be compared against that file's hand-derived
-# Phase-0 indices.
-# ---------------------------------------------------------------------------
 
 _RP_DX = 0.5e-3
 _RP_DOMAIN = (0.032, 0.020, 0.010)
@@ -339,16 +315,12 @@ def test_driver_drive_pass_registers_planes_on_the_sheet_trace():
     assert {k: by_key[k].plane_index for k in by_key} == {
         (0, 0): 27, (0, 1): 30, (1, 0): 53, (1, 1): 50}
     for key, spec in by_key.items():
-        # Trace bbox -> Ampere loop, byte-equal to the PEC thru's pins.
         assert (spec.u_lo_leg, spec.u_hi_leg) == (22, 34), key
         assert (spec.v_lo_leg, spec.v_hi_leg) == (1, 3), key
         assert (spec.u_span_lo, spec.u_span_hi) == (23, 35), key
         assert (spec.v_span_lo, spec.v_span_hi) == (2, 4), key
 
 
-# --------------------------------------------------------------------------
-# What conductor_mask() MEANS under the lattice ownership contract
-# --------------------------------------------------------------------------
 
 def test_conductor_mask_is_a_cell_footprint_not_the_realized_edge_set():
     """The two objects, and the exact relation between them.
@@ -383,12 +355,11 @@ def test_conductor_mask_is_a_cell_footprint_not_the_realized_edge_set():
     k_lo = node_index(rz.grid, 2, 1e-3)
     k_hi = node_index(rz.grid, 2, 2e-3)
     occupied = sorted(set(np.nonzero(cells.any(axis=(0, 1)))[0].tolist()))
-    assert occupied == list(range(k_lo, k_hi))          # cells: lo .. hi-1
+    assert occupied == list(range(k_lo, k_hi))
     assert rz.wall_planes(2) == list(range(k_lo, k_hi + 1))
     assert len(rz.wall_planes(2)) == len(occupied) + 1, (
         "a volume's far face is a wall with no conductor cell on it")
 
-    # the sheet half: footprint one index WIDER than the in-plane edge set
     sim_s = Simulation(freq_max=20e9, domain=(4e-3, 4e-3, 4e-3), dx=dx,
                        boundary="pec")
     sim_s.add(Box((1e-3, 1e-3, 2e-3), (3e-3, 3e-3, 2e-3)), material="pec")
