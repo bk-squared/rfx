@@ -17,6 +17,9 @@ from rfx.optimizers import _GCMMA, _MMA, _Request, GCMMAInnerCapWarning, _gcmma_
 from tests.unit.autodiff.test_mma_closed_form import _reference
 
 
+_T1A_NO_CAP_MAX_NEWTON = 5000
+
+
 @pytest.fixture(autouse=True)
 def cpu():
     with jax.default_device(jax.devices('cpu')[0]):
@@ -34,19 +37,17 @@ class RecordingGCMMA(_GCMMA):
 
 
 def conservative(records, width):
+    """The independent approximation uses equations (4.2)-(4.5)."""
     assert records
     for record in records:
         if record.caps:
             continue
         x, g, low, upp, rho = record.x, record.gradient, record.low, record.upp, record.rho
-        # Independent (4.2)-(4.5); never consume the implementation's p/q/r.
         p = (upp - x)**2 * (1.001 * np.maximum(g, 0) + .001 * np.maximum(-g, 0) + rho[:, None] / width)
         q = (x - low)**2 * (.001 * np.maximum(g, 0) + 1.001 * np.maximum(-g, 0) + rho[:, None] / width)
         r = record.values - np.sum(p / (upp - x) + q / (x - low), axis=1)
         approximation = r + np.sum(p / (upp - record.accepted_x) + q / (record.accepted_x - low), axis=1)
         zero = (record.values == 0) & np.all(g == 0, axis=1)
-        # Cancellation in the independent recomputation at a stall is irrelevant:
-        # interpolation gives exactly the already evaluated outer values there.
         if record.stalls:
             approximation = record.values.copy()
         np.testing.assert_allclose(record.approximation, approximation, rtol=1e-12, atol=1e-12)
@@ -54,19 +55,17 @@ def conservative(records, width):
 
 
 def test_t1a():
+    """``e`` is T1's per-row summation error before the first GCMMA evaluation."""
     a, _, b, _, star, e_sum, _, safe, _ = _reference(1000, False)
     a32 = jnp.asarray(a, dtype=jnp.float32)
 
     def fun(x):
         return jnp.stack([jnp.sum((x - a32)**2), jnp.sum(x) - b[0]])
 
-    # T1's own summation error, per row, before the first GCMMA evaluation.
     fstar = math.fsum((star - a)**2)
     at_star = np.asarray(jax.jit(fun)(jnp.asarray(star, dtype=jnp.float32)))
     e = np.r_[abs(float(at_star[0]) - fstar), e_sum]
-    # The unchanged primal-dual solver needs more than its default 500 Newton
-    # steps for the first conservative subproblem; retain the no-cap witness.
-    opt = RecordingGCMMA(1, e=e, max_newton=5000)
+    opt = RecordingGCMMA(1, e=e, max_newton=_T1A_NO_CAP_MAX_NEWTON)
     x, history, visited, solves = _run_optimizer(
         opt, fun, jnp.full(1000, .5, dtype=jnp.float32), (0, 1),
         n_iters=200, m=1, jit=True, keep_iterates=True,
@@ -142,35 +141,24 @@ def test_hand_values(monkeypatch):
     opt = _GCMMA(1, tol=np.zeros(2))
     state = opt.init(jnp.array([.25, 1.5], dtype=jnp.float32), ([0, 0], [.5, 3]))
     state = opt.tell(state, opt.ask(state), 3., np.array([2., -1.]), np.array([1.]), np.zeros((1, 2)))
-    # rho0 = .1/2 * (2*.5 + 1*3) = .2; rho1 = max(0, 1e-6).
     np.testing.assert_allclose(state.rho, [.2, 1e-6], rtol=1e-15)
-    # u-x=x-l=(.25,1.5). p0=(.0625*(2.002+.4), 2.25*(.001+.2/3));
-    # q0=(.0625*(.002+.4), 2.25*(1.001+.2/3)). Row 1 uses only rho/width.
     np.testing.assert_allclose(state.p, [[.150125, .15225], [.000000125, .00000075]], rtol=1e-14)
     np.testing.assert_allclose(state.q, [[.025125, 2.40225], [.000000125, .00000075]], rtol=1e-14)
-    # r0=3-(.17525/.25+2.5545/1.5)=.596; r1=1-2e-6.
     np.testing.assert_allclose(state.r, [.596, .999998], rtol=1e-14)
-    # d=.5*.125^2/(.125*.375*.5) + 0 = 1/3.
     distance = opt._distance(state, np.array([.375, 1.5]))
     assert distance == pytest.approx(1 / 3, rel=1e-15)
-    # Gaps (1/6, -1/3, 4, 0) give delta=(.5,-1,12,0).
     delta = np.array([1 / 6, -1 / 3, 4, 0]) / distance
     np.testing.assert_allclose(delta, [.5, -1, 12, 0], rtol=1e-15)
-    # min(1.1*(.2+.5),2)=.77; negative/zero stay; min(1.1*(1+12),10)=10.
     np.testing.assert_allclose(opt._update_rho(np.array([.2, .3, 1, .4]), delta), [.77, .3, 10, .4], rtol=1e-15)
-    # Only constraint row 1 fails: its model at (.375,1.5) is 1+1e-6/3.
-    # Gap=1/3, delta1=1, hence min(1.1*(1e-6+1),1e-5)=1e-5.
     rejected = opt.tell(state, opt.ask(state), 0., None, np.array([1 + 1e-6 / 3 + 1 / 3]), None)
     np.testing.assert_allclose(rejected.rho, [.2, 1e-5], rtol=1e-14)
     assert rejected.k == 1 and rejected.inner_count == 1 and rejected.trial is not None
     accepted = opt.tell(rejected, opt.ask(rejected), 0., None, np.array([0.]), None)
     following = opt.tell(accepted, opt.ask(accepted), 3., np.array([2., -1.]), np.array([1.]), np.zeros((1, 2)))
-    # Carry-over after rejection: max(.1*(.2,1e-5),1e-6)=(.02,1e-6).
     np.testing.assert_allclose(following.rho, [.02, 1e-6], rtol=1e-14)
     np.testing.assert_allclose(_gcmma_tolerance([1, 0], [0, .002], np.float32), [10 * 2**-23, .02], rtol=0, atol=0)
     with jax.enable_x64():
         np.testing.assert_array_equal(_gcmma_tolerance([1], [0], np.float64), [10 * 2**-52])
-    # A zero value AND zero gradient row is exempt, even with a negative test tolerance.
     zero_opt = _GCMMA(1, tol=np.array([-1., 0.]))
     zs = zero_opt.init(jnp.array([.25, 1.5], dtype=jnp.float32), ([0, 0], [.5, 3]))
     zs = zero_opt.tell(zs, zero_opt.ask(zs), 0., np.zeros(2), np.array([1.]), np.ones((1, 2)))
@@ -188,9 +176,6 @@ def test_zero_row_exemption(monkeypatch, gradient, trial_value, tol, accepted):
     opt = _GCMMA(1, tol=np.array([0., tol]))
     state = opt.init(jnp.array([.25, 1.5], dtype=jnp.float32), ([0, 0], [.5, 3]))
     state = opt.tell(state, opt.ask(state), 1., np.zeros(2), np.array([0.]), np.array([gradient]))
-    # For the zero-gradient row, rho=1e-6 and d=1/3, so f~=1e-6/3 < 1.
-    # For gradient (1,0), rho=.025 and f~=.2585: f~ - 1 < -.1.
-    # Only the zero-gradient row with trial value 0 may bypass a negative tol.
     state = opt.tell(state, opt.ask(state), 1., None, np.array([trial_value]), None)
     assert (state.trial is None) == accepted
     assert len(state.records) == int(accepted)
@@ -202,19 +187,12 @@ def test_rho_carry_over_after_rejection(monkeypatch):
     opt = _GCMMA(1, tol=np.zeros(2))
     state = opt.init(jnp.array([.25, 1.5], dtype=jnp.float32), ([0, 0], [.5, 3]))
     state = opt.tell(state, opt.ask(state), 1., np.zeros(2), np.array([3.]), np.array([[2., -1.]]))
-    # Initial rho=(1e-6, .1/2*(2*.5+1*3))=(1e-6,.2).
-    # Row 1: p=(.150125,.15225), q=(.025125,2.40225), r=.596.
-    # At (.375,1.5), f~=.150125/.125+.025125/.375+2.5545/1.5+.596=3.567.
-    # d=.5*.125^2/(.125*.375*.5)=1/3. A gap 1/6 gives delta=.5;
-    # rho_last=min(1.1*(.2+.5),10*.2)=.77, without hitting the 10*rho cap.
     rejected = opt.tell(state, opt.ask(state), 1., None, np.array([3.733666666666667]), None)
     np.testing.assert_allclose(rejected.rho, [1e-6, .77], rtol=1e-14, atol=0)
     assert rejected.trial is not None
     accepted = opt.tell(rejected, opt.ask(rejected), 0., None, np.array([0.]), None)
     assert accepted.trial is None
     following = opt.tell(accepted, opt.ask(accepted), 1., np.zeros(2), np.array([3.]), np.array([[2., -1.]]))
-    # Carry the LAST rho: max(.1*(1e-6,.77),1e-6)=(1e-6,.077).
-    # The first row is strictly below the floor before max; the second is above.
     np.testing.assert_allclose(following.rho, [1e-6, .077], rtol=1e-14, atol=0)
 
 
@@ -223,11 +201,6 @@ def test_delta_through_tell(monkeypatch):
     opt = _GCMMA(0, tol=np.zeros(1))
     state = opt.init(jnp.array([.25, 1.5], dtype=jnp.float32), ([0, 0], [.5, 3]))
     state = opt.tell(state, opt.ask(state), 3., np.array([2., -1.]), None, None)
-    # rho=.2; p=(.150125,.15225), q=(.025125,2.40225), r=.596.
-    # f~(.375,1.5)=1.201+.067+1.703+.596=3.567.
-    # d=.5*.125^2/(.125*.375*.5)=1/3; gap=1/6, delta=(1/6)/(1/3)=.5.
-    # Therefore rho_new=min(1.1*(.2+.5),2)=.77. Without division it is .403333...;
-    # doubling d instead gives .495. Neither erroneous result hits the cap.
     rejected = opt.tell(state, opt.ask(state), 3.733666666666667, None, None, None)
     np.testing.assert_allclose(rejected.rho, [.77], rtol=1e-14, atol=0)
     assert rejected.trial is not None and rejected.inner_count == 1
@@ -326,7 +299,6 @@ def test_nonfinite_trial(monkeypatch, bad_row):
         if fn is fun:
             def values(x):
                 trial_calls.append(x)
-                # Allow one acceptance, then stop on the second outer trial.
                 v = fun(x)
                 return v if len(trial_calls) == 1 else v.at[bad_row].set(jnp.nan)
             return values
@@ -360,7 +332,6 @@ def test_inner_cap(monkeypatch):
         assert state.inner_caps == k and state.inner_count == 1
         assert state.records[-1].caps == 1 and state.trial is None
     assert len(state.records) == 3
-    # The unmodified default really evaluates twenty rejected trials.
     opt = _GCMMA(0, tol=np.array([-1.]))
     state = opt.init(jnp.array([.5], dtype=jnp.float32), (0, 1))
     state = opt.tell(state, opt.ask(state), 1., np.array([1.]), None, None)
@@ -373,7 +344,7 @@ def test_inner_cap(monkeypatch):
 
 
 def test_stall(monkeypatch):
-    # Different in host float64, identical after rounding to the design dtype.
+    """The solver point differs in host float64 but equals the accepted design in the design dtype."""
     monkeypatch.setattr(optimizers, '_mma_subproblem', fake_solver([.5 + 1e-10]))
     opt = RecordingGCMMA(0, tol=np.zeros(1))
     x, history, visited, solves = _run_optimizer(

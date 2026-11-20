@@ -17,6 +17,9 @@ from rfx.optimize import _run_optimizer
 from rfx.optimizers import _Adam, _GCMMA, _MMA, _Request
 
 
+_FLOAT32_ROUNDING_OFFSET = .0328
+
+
 @pytest.fixture(autouse=True)
 def cpu():
     with jax.default_device(jax.devices("cpu")[0]):
@@ -36,7 +39,6 @@ class ReferenceGCMMA(_GCMMA):
     def tell(self, state, request, value, grad, cons_values, cons_grads):
         updated = super().tell(state, request, value, grad, cons_values, cons_grads)
         if not request.iterate:
-            # Rebuild the approximation without consuming p, q, r or tol.
             x = np.asarray(state.x, dtype=np.float64).ravel()
             point = np.asarray(request.x, dtype=np.float64).ravel()
             g = state.gradient
@@ -52,8 +54,7 @@ class ReferenceGCMMA(_GCMMA):
 
 
 def test_gcmma_matches_independent_map_and_loop():
-    # A positive offset exposes float32 rounding near a quadratic's minimum.
-    fun = lambda x: jnp.float32(.0328) + jnp.sum((x - jnp.float32(.3))**2)
+    fun = lambda x: jnp.float32(_FLOAT32_ROUNDING_OFFSET) + jnp.sum((x - jnp.float32(.3))**2)
     lo, hi = jnp.array([-2.], dtype=jnp.float32), jnp.array([2.], dtype=jnp.float32)
     start = jnp.asarray((np.array([1.]) - np.array([-2.])) / np.array([4.]), dtype=jnp.float32)
 
@@ -96,6 +97,7 @@ def scripted_solver(points, calls=None):
 
 
 def test_counts_and_solves_history_from_independent_asks(monkeypatch):
+    """The repeated ``.4`` solver point equals the accepted design in float32."""
     asks, stalls, rejected, trace, calls = [], [], [], [], []
     original_ask, original_tell = _GCMMA.ask, _GCMMA.tell
 
@@ -117,9 +119,6 @@ def test_counts_and_solves_history_from_independent_asks(monkeypatch):
     with monkeypatch.context() as patch:
         patch.setattr(_GCMMA, "ask", ask)
         patch.setattr(_GCMMA, "tell", tell)
-        # The kink makes f(.1)=1.09 exceed the initial model (.0014667).
-        # Repeat the accepted .4 in float32 for a certain stall; the last
-        # iterate's tell still solves once, but its .3 trial is unevaluated.
         patch.setattr(optimizers, "_mma_subproblem",
                       scripted_solver([.1, .4, .4, .3], calls))
         objective = lambda x: jnp.sum((x - .4)**2 + 100 * jax.nn.relu(.2 - x)**2)
@@ -128,8 +127,6 @@ def test_counts_and_solves_history_from_independent_asks(monkeypatch):
     assert any(rejected), trace
     assert any(stalls), trace
     assert sum(stalls) == sum(rejected) == 1, trace
-    # Completed outer transitions, plus rejection re-solves, plus the solve
-    # after the final iterate's tell. Count calls in the solver wrapper.
     outer_solves = sum(request.iterate for request in asks[:-1])
     assert len(calls) == outer_solves + sum(rejected) + 1 == 4, (calls, trace)
     assert [k for k, _ in calls] == [1, 1, 2, 3], (calls, trace)
@@ -248,9 +245,6 @@ def test_nonfinite_trials_iterates_and_full_runs(monkeypatch):
 
             def ask(self, state):
                 request = original(self, state)
-                # Inject a non-finite request at the loop boundary. Adam has
-                # no native trials; this exercises the result semantics for
-                # the same value-only failure through either public method.
                 if case == "first" or (len(requests) == 1 and case != "full"):
                     trial = case == "trial"
                     request = _Request(jnp.full_like(request.x, jnp.nan),
@@ -280,6 +274,7 @@ def test_nonfinite_trials_iterates_and_full_runs(monkeypatch):
 
 
 def test_tolerance_hand_values_and_decisions(monkeypatch):
+    """The design uses float64 while the objective value uses float32."""
     constructed = []
     post_init = implementation._RecordingGCMMA.__post_init__
 
@@ -293,7 +288,6 @@ def test_tolerance_hand_values_and_decisions(monkeypatch):
     for f in (.0328, .07):
         value = np.float32(f)
         ulp = float(np.spacing(abs(value)))
-        # Deliberately use a float64 design with a float32 objective value.
         with jax.enable_x64():
             rfx.minimize(lambda x: jnp.asarray(value, dtype=jnp.float32), [.5],
                          bounds=[(0, 1)], method="gcmma", n_iters=1, jit=False)

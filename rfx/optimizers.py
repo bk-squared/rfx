@@ -438,7 +438,8 @@ class _GCMMAOuter:
 
 @dataclass(frozen=True)
 class _GCMMAState(_MMAState):
-    # x always remains the accepted design; trial is a separate request.
+    """``x`` is the accepted design and ``trial`` is a separate pending request."""
+
     trial: jnp.ndarray | None = None
     alpha: np.ndarray | None = None
     beta: np.ndarray | None = None
@@ -477,7 +478,6 @@ class _GCMMA(_Optimizer[_GCMMAState]):
     native_box = True
 
     def __post_init__(self):
-        # Reuse coefficient validation only; the outer/inner arithmetic is local.
         _MMA.__post_init__(self)
         if self._inner_cap < 1 or int(self._inner_cap) != self._inner_cap:
             raise ValueError('GCMMA inner cap must be a positive integer')

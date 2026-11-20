@@ -611,7 +611,10 @@ def _comparison_specs(vector):
 
 
 def compare_methods(mesh, output_dir=SCRIPT_DIR):
-    """Report plain-forward costs; diagnostic forwards are outside solves."""
+    """Report plain-forward costs; diagnostic forwards are outside solves.
+
+    ``objective_history`` contains the evaluated iterate objectives bounded by the acceptance test.
+    """
     if len(mesh.bins) != 15:
         raise ValueError("method comparison requires the 15 X-band DFT bins")
     vector = _reflectance_function(mesh)
@@ -627,8 +630,6 @@ def compare_methods(mesh, output_dir=SCRIPT_DIR):
             end = sum(solves <= 120 for solves in result.solves_history)
             if not end:
                 raise RuntimeError("GCMMA has no finite iterate within 120 solves")
-            # Zero full-run counts also prove zero counts in the prefix. If a
-            # cap occurred, replay only the prefix to obtain its own counts.
             if end < len(result.history) and (result.inner_caps or result.subproblem_caps):
                 prefix = minimize(objective, _ladder_start(),
                                   bounds=[(1.0, EPS_SUB)] * N_LAYERS,
@@ -660,9 +661,6 @@ def compare_methods(mesh, output_dir=SCRIPT_DIR):
                    solves_history=result.solves_history[:end], diagnostic_forwards=len(trace))
         if name == "gcmma_mean":
             trials = (np.diff(run["solves_history"]) - 2).tolist()
-            # The rise is read on the loop's own values (the objective each
-            # accepted iterate was evaluated at), the quantity the acceptance
-            # test bounds, not on the separate diagnostic forwards above.
             loop = [float(v) for v in run["objective_history"]]
             rises = [dict(iteration=i + 1, next_iteration=i + 2,
                           rise=loop[i + 1] - loop[i],
