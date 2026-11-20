@@ -1,4 +1,6 @@
-"""Declared Floquet lateral faces; synthetic 15 x 15 x 60 mm vacuum cell."""
+"""Declared Floquet lateral faces; synthetic 15 x 15 x 60 mm vacuum cell.
+The pinned MAIN_* arrays are CPU float32 Ex probe bits measured earlier for both run and forward over 64 steps with dx=1.5 mm, 8 CPML layers, a 10 GHz TE z port at 15 mm and the probe at (7.5, 7.5, 36) mm, including a separate scalar-UPML measurement.
+"""
 import jax
 import numpy as np
 import pytest

@@ -162,6 +162,7 @@ def test_a5b_driven_probe_medium_still_refused():
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_one_driven_receiver_cutoff_notice(entry, capfd):
+    """The dry-run Yee transverse eigenvalue kc = 2 sin(pi h / (2 a)) / h sets the receiver cutoff."""
     sim = scene('U1', amplitudes=(0., 1.))
     freqs = np.linspace(5.5e9, 7.9e9, 7)
     sim._waveguide_ports = [replace(port, freqs=freqs) for port in sim._waveguide_ports]

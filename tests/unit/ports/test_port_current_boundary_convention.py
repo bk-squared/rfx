@@ -182,7 +182,8 @@ def test_two_d_lane_port_current_still_wraps_its_length_one_z_axis(component):
     """``ex`` and ``ey`` both back-read H along z.  With ``nz == 1`` the
     result must be the SELF term (difference 0 along a length-1 axis), which
     is what the wrap gives — not a zero pad, which would leave a spurious
-    ``H_c[0]`` with nothing subtracted."""
+    ``H_c[0]`` with nothing subtracted.
+    Cancellation of the length-one z leg leaves the +Hz difference along y for ex and the -Hz difference along x for ey."""
     grid = Grid(freq_max=1e10, domain=(2 * MM, 2 * MM, 2 * MM), dx=0.2 * MM,
                 cpml_layers=0, cpml_axes="", mode="2d_tmz",
                 pec_faces={"x_lo", "x_hi", "y_lo", "y_hi"})

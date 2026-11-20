@@ -19,6 +19,7 @@ pre-fix main 0.126, post-fix 0.0002; at np=3 the same referee reads
 0.358 vs 0.0000. The 0.03 gate therefore discriminates with ~4x margin
 on the fail side and ~100x on the pass side at np=1 cost (~40 s), well
 above the f32 comparator noise at h=1e-2 (sub-1%).
+The exact h_sub/dx ratio of 3 places the foil sheet on the laminate face.
 """
 import warnings
 
@@ -107,7 +108,7 @@ def test_explicit_and_auto_eps_build_the_same_fixture():
     """With the substrate eps matching, the auto branch must resolve the
     same eps_r_sub the explicit branch is given — the forward results are
     identical (same fixture, same fields). Cheap concrete-run check.
-    The float64->float32 path measured 8.9e-08 on a 0.134 peak (6.7e-07 relative) in an earlier run."""
+    The 1e-6*peak bar allows the explicit float64 3.66 to differ from the directly checked registered float32(3.66), measured earlier as 8.9e-08 on a 0.134 peak (6.7e-07 relative)."""
     import dataclasses
 
     sim_a = _msl_sim_auto_eps()

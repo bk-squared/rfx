@@ -37,7 +37,7 @@ N_STEPS = 300
 
 
 def _dipole(boundary="cpml", *, radius_ratio=0.):
-    """L/19 = 2.5 mm was lambda/43 at the earlier realized resonance."""
+    """L/19 = 2.5 mm is lambda/43 at the realized resonance."""
     dx = L_DIP / N_CELLS
     n_arm = (N_CELLS - 1) // 2
     nz = 2 * N_LAT + N_CELLS

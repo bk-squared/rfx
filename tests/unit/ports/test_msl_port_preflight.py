@@ -31,7 +31,7 @@ def _build_sim(*, dx: float, ly: float, port_x: float = 2e-3,
     """``dz_profile`` (issue #752 / #766 review): when given, the domain's
     z extent is the profile's sum and the run grid is non-uniform -- the
     substrate checks must then read the substrate off THAT grid.
-    Preserve the unresolved substrate."""
+    ``snap="declared"`` lets the warning checks see substrate under-resolution when present."""
     lz = H_SUB + 1.5e-3 if dz_profile is None else float(np.sum(dz_profile))
     kw = {} if dz_profile is None else dict(dz_profile=np.asarray(dz_profile))
     sim = Simulation(
