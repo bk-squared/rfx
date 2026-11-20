@@ -6,8 +6,9 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
-from rfx._traced_inputs import NonDifferentiableEntry
+from rfx._traced_inputs import NonDifferentiableEntry, refuse_mixed_traced_entry
 from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.geometry.curved import CurvedPatch
 from rfx.sources.sources import GaussianPulse
 
 
@@ -42,6 +43,11 @@ CASES = (
     ("iv:traced_mesh:x", 1.1, "dx_profile"),
     ("iv:traced_mesh:y", 1.1, "dy_profile"),
     ("iv:traced_mesh:z", 1.1, "dz_profile"),
+    ("review:thin_conductor_thickness", 35e-6, "thin conductor 1 thickness"),
+    ("review:pinned_sheet_thickness", 35e-6, "pinned sheet 1 thickness"),
+    ("review:lumped_waveform_f0", 2.5e9, "port '1' waveform f0"),
+    ("review:pinned_dt", 1e-13, "dt"),
+    ("review:non_dataclass_shape", 1e-3, "shape 3 (CurvedPatch) center"),
 )
 
 
@@ -71,6 +77,8 @@ def objective(value, case):
             dt=float(0.9 / (299792458.0 * np.sqrt(3.0 / floor**2))),
             dt_min_cell=float(floor),
         )
+    if case == "review:pinned_dt":
+        mesh["dt"] = value
     sim = Simulation(
         freq_max=5e9, domain=(lx, ly, lz), dx=DX, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),
@@ -91,9 +99,25 @@ def objective(value, case):
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, H_SUB)), material="sub")
     pec_x = value if case == "ii:pec_corner_x" else 0.0
     sim.add(Box((pec_x, yc - WIDTH / 2, H_SUB), (lx, yc + WIDTH / 2, H_SUB)), material="pec")
+    if case == "review:thin_conductor_thickness":
+        sim.add_thin_conductor(
+            Box((2e-3, 1e-3, H_SUB), (3e-3, 2e-3, H_SUB)),
+            sigma_bulk=1e4, thickness=value,
+        )
+    if case == "review:pinned_sheet_thickness":
+        sim.add_pinned_sheet(
+            plane_index=3, i_range=(24, 36), j_range=(12, 24), thickness=value,
+        )
+    if case == "review:non_dataclass_shape":
+        sim.add(CurvedPatch(
+            center=(value, yc, H_SUB), length=1e-3, width=WIDTH, radius=2e-3,
+        ), material="pec")
     sim.add_port(
         position=(2e-3, yc, 0.0), component="ez",
         impedance=value if case == "iii:lumped_impedance" else 50.0,
+        waveform=GaussianPulse(
+            f0=value if case == "review:lumped_waveform_f0" else 2.5e9, bandwidth=0.8,
+        ),
     )
     msl = {
         "position": (value if case == "iii:msl_position_x" else 5.5e-3, yc, 0.0),
@@ -137,3 +161,20 @@ def test_mixed_traced_entry_refusal(case, nominal, name, transform):
     assert "microstrip-only" in message
     assert "forward()" in message
     assert "lumped ports" in message
+
+
+def test_concrete_non_dataclass_shape_entry():
+    sim = Simulation(freq_max=5e9, domain=(8e-3, 3e-3, 754e-6), dx=DX)
+    sim.add(CurvedPatch(
+        center=(1e-3, 1.5e-3, H_SUB), length=1e-3, width=WIDTH, radius=2e-3,
+    ), material="pec")
+    refuse_mixed_traced_entry(sim, {})
+
+
+def test_concrete_mesh_shape_missing_table_attributes():
+    trimesh = pytest.importorskip("trimesh")
+    from rfx.geometry.mesh_import import MeshShape
+
+    sim = Simulation(freq_max=5e9, domain=(8e-3, 3e-3, 754e-6), dx=DX)
+    sim.add(MeshShape(trimesh.creation.box(extents=(1e-3, 1e-3, 1e-3))), material="pec")
+    refuse_mixed_traced_entry(sim, {})

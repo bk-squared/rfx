@@ -83,16 +83,24 @@ def refuse_mixed_traced_entry(sim, arguments):
             check(f"material {name!r} {field.name}", getattr(material, field.name))
     for index, entry in enumerate(sim._geometry, 1):
         shape = entry.shape
-        names = (field.name for field in fields(shape)) if is_dataclass(shape) else _value_rows(shape).get(type(shape), {})
+        names = (field.name for field in fields(shape)) if is_dataclass(shape) else (
+            name for name in _value_rows(shape).get(type(shape), {}) if hasattr(shape, name)
+        )
         for name in names:
             check(f"shape {index} ({type(shape).__name__}) {name}", getattr(shape, name))
+    for label, declarations in (("thin conductor", sim._thin_conductors), ("pinned sheet", sim._pinned_sheets)):
+        for index, declaration in enumerate(declarations, 1):
+            for field in fields(declaration):
+                check(f"{label} {index} {field.name}", getattr(declaration, field.name))
     for index, port in enumerate((*sim._ports, *sim._msl_ports), 1):
         label = f"port {getattr(port, 'name', str(index))!r}"
         for field in fields(port):
             value = getattr(port, field.name)
             if field.name == "waveform":
                 for item in walk(value):
-                    names = (part.name for part in fields(item)) if is_dataclass(item) else _value_rows(item).get(type(item), {})
+                    names = (part.name for part in fields(item)) if is_dataclass(item) else (
+                        name for name in _value_rows(item).get(type(item), {}) if hasattr(item, name)
+                    )
                     for name in names:
                         check(f"{label} waveform {name}", getattr(item, name))
             check(f"{label} {field.name}", value)
