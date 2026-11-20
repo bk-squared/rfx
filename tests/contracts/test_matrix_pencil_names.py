@@ -14,7 +14,8 @@ from rfx.harminv import harminv_record_duration, matrix_pencil_record_duration
 _module = rfx.harminv
 
 
-_DT = 1e-11  # 10 ps; 5.12 ns of float64 samples.
+SAMPLE_INTERVAL_SECONDS = 1e-11
+_DT = SAMPLE_INTERVAL_SECONDS
 _BAND = (0.6e9, 1.4e9)
 
 
@@ -28,6 +29,7 @@ def _two_mode_signal():
 
 
 def _legacy_call(old, new_name, *args, prefix="rfx.", **kwargs):
+    """stacklevel=2 identifies the caller."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         result = old(*args, **kwargs)
@@ -37,7 +39,7 @@ def _legacy_call(old, new_name, *args, prefix="rfx.", **kwargs):
         f"rfx.harminv.{old.__name__} is deprecated; use {prefix}{new_name} "
         "(same arguments, same result). It implements the matrix pencil method, not Harminv."
     )
-    assert caught[0].filename == __file__  # stacklevel=2 identifies the caller.
+    assert caught[0].filename == __file__
     target = re.search(r"use (\S+)", str(caught[0].message))[1]
     resolved = rfx
     for part in target.split(".")[1:]:
@@ -47,10 +49,11 @@ def _legacy_call(old, new_name, *args, prefix="rfx.", **kwargs):
 
 
 def _assert_identical_modes(old, new):
+    """Tuple equality alone misses signed zero."""
     assert old == new
     assert new
     assert all(isinstance(mode, rfx.MatrixPencilMode) for mode in old + new)
-    # Check every field's bytes too (tuple equality alone misses signed zero).
+
     assert np.asarray(old, dtype=np.float64).tobytes() == np.asarray(
         new, dtype=np.float64
     ).tobytes()
@@ -84,7 +87,7 @@ def test_matrix_pencil_record_duration_legacy_is_identical(settings):
 @pytest.mark.parametrize("settings", [{}, {"source_decay_time": 32 * _DT,
                                           "max_modes": 8}])
 def test_matrix_pencil_from_probe_legacy_modes_are_bitwise_identical(settings):
-    # Result construction follows tests/contracts/test_settling_witness_per_bin_tail.py:360.
+
     result = rfx.Result(state=None, s_params=None, freqs=None, dt=_DT,
                         time_series=_two_mode_signal()[:, None], freq_range=_BAND)
     args = (result.time_series[:, 0], result.dt, result.freq_range)
@@ -104,8 +107,8 @@ _PAIRS = (("harminv", "matrix_pencil"), ("harminv_from_probe", "matrix_pencil_fr
 def test_legacy_signature_equals_new_and_forwards_every_argument(monkeypatch, old_name, new_name):
     old, new = getattr(_module, old_name), getattr(_module, new_name)
     assert inspect.signature(old) == inspect.signature(new)
-    # Call the old name with a distinct marker per parameter; the new function, replaced by a
-    # recorder, must receive every one unchanged (a dropped keyword would arrive as its default).
+
+
     markers = {name: object() for name in inspect.signature(new).parameters if name != "kwargs"}
     received = {}
 
@@ -126,7 +129,7 @@ def test_matrix_pencil_mode_alias_and_public_exports():
     for name in ("matrix_pencil", "matrix_pencil_from_probe", "MatrixPencilMode"):
         assert name in rfx.__all__
     for name in ("harminv", "harminv_from_probe", "HarminvMode"):
-        assert name not in rfx.__all__  # deprecated: an attribute, not on the star surface
+        assert name not in rfx.__all__
         assert hasattr(rfx.harminv, name)
 
 

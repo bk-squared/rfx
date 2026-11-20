@@ -28,7 +28,7 @@ def _assert_origin(caught, text):
 
 
 def test_stacklevel_counts_from_warn_caller():
-    # This function itself is outside rfx: level 1 must name the warn line.
+    """A function outside rfx uses level 1 to name the warn line."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         line = inspect.currentframe().f_lineno + 1
@@ -38,10 +38,9 @@ def test_stacklevel_counts_from_warn_caller():
     assert warning.lineno == line
 
 
-
 @pytest.mark.parametrize("filename", [os.path.join("myjax", "user_mod.py"), "<ipython-input-1-abc>"])
 def test_user_frame_is_judged_by_module_not_path(filename):
-    # A user folder ending in "jax" and an IPython cell are the user's code.
+
     code = compile("warnings.warn('user code', stacklevel=user_stacklevel())\n", filename, "exec")
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -66,6 +65,7 @@ def test_run_warning_origin(monkeypatch, case, text):
     the warning functions and the run/runner/loop call chain stay intact.
     A one-step cap leaves E from injection and H=0 for both remnant branches.
     """
+    PREPARED_OUTCOME_CHECK_INTERVAL = 1000
     sim = (_sim(boundary="pec", amplitude_kind="field") if case == "report-every"
            else _sim(waveform=jnp.ones_like))
     kwargs = dict(n_steps=1, compute_s_params=False, skip_preflight=True)
@@ -88,7 +88,7 @@ def test_run_warning_origin(monkeypatch, case, text):
         for count, value in enumerate((1e12, 1., .5, .5, .5), 1):
             rule.check(count * 10, lambda: value)
         assert rule.criterion == "float32_floor"
-        rule.interval = 1000  # Preserve the prepared outcome at the one-step boundary.
+        rule.interval = PREPARED_OUTCOME_CHECK_INTERVAL
         monkeypatch.setattr("rfx.stepping.uniform_loop.make_decay_stop",
                             lambda *a, **k: (rule, lambda *a: 0.))
     monkeypatch.setattr("rfx.measurement.decay.dc_census", lambda *a, **k: rows)
@@ -100,6 +100,7 @@ def test_run_warning_origin(monkeypatch, case, text):
 
 @pytest.mark.parametrize("entry", ["run", "forward", "jit-lambda", "jit-partial"])
 def test_preflight_warning_origin(entry):
+    """Keeping the bound method pins the caller frame through the output refusal."""
     sim = Simulation(domain=(.02, .02, .02), dx=.001, freq_max=10e9,
                      boundary="pec", snap="declared")
     sim.add_source((.002, .002, .002), "ez", amplitude_kind="current")
@@ -109,8 +110,8 @@ def test_preflight_warning_origin(entry):
         if entry == "jit-lambda":
             jax.jit(lambda: sim.run(n_steps=1, compute_s_params=False).time_series)()
         elif entry == "jit-partial":
-            # The advisory is emitted while tracing, before the existing Grid
-            # output refusal; keeping the bound method is the frame regression.
+
+
             with pytest.raises(TypeError, match="not a valid JAX type"):
                 jax.jit(functools.partial(sim.run, n_steps=1, compute_s_params=False))()
         else:
@@ -120,7 +121,7 @@ def test_preflight_warning_origin(entry):
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
 def test_nonfinite_result_warning_origin(monkeypatch, entry):
-    # Supply a health finding without depending on numerical divergence.
+
     monkeypatch.setattr("rfx.api._spec._nonfinite_fields", lambda result: [("time_series", 1)])
     sim = _sim()
     with warnings.catch_warnings(record=True) as caught:

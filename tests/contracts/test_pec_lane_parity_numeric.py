@@ -24,6 +24,7 @@ every kind of declared PEC. #1053 gave the shard_map lane
 (``rfx/runners/distributed_v2.py``) a realized-PEC mask stage, so ``volume``
 now has a row there. G3 carries sheet edges on that lane too, so ``sheet``
 and ``thin`` use the same parity and visibility checks.
+The 2e-3 distributed gate carries ~190x headroom over an earlier 1.035e-05 ``volume`` measurement at 2 virtual CPU devices (jax 0.10.2, float32, 200 steps), against an earlier empty-domain lane floor of 1.472e-06.
 """
 
 from __future__ import annotations
@@ -159,16 +160,6 @@ def test_the_vmap_sweep_fast_path_realizes_the_same_conductor():
         assert batched == pytest.approx(single, rel=2e-3), (kind, batched, single)
 
 
-#: The shard_map distributed lane against the uniform lane, relative on the
-#: probe peak. Measured on this fixture at 2 virtual CPU devices (jax 0.10.2, float32, 200 steps): the empty-domain LANE FLOOR is 1.472e-06
-#: and the ``volume`` row is 1.035e-05, so the gate carries ~190x headroom
-#: over the number it gates. It is the same 2e-3 the vmap row above uses, and
-#: for the same reason: these lanes run different kernels and different
-#: float32 fusions over the same declaration, so the contract is "same
-#: conductor", not "same arithmetic". The defect it has to reject is the one
-#: this lane shipped — the body absent altogether, which moves
-#: the peak by 3.3e-01 relative (``volume`` against ``none``, measured on the
-#: uniform lane), 166x the gate.
 V2_LANE_REL_GATE = 2e-3
 
 
@@ -200,8 +191,7 @@ def test_the_shmap_distributed_lane_realizes_the_same_conductor():
         f"the shard_map lane reads {distributed:.8e} where the uniform lane "
         f"reads {single:.8e} for the same declared PEC volume")
 
-    # teeth: the conductor must move THIS lane's own trace, so a lane that
-    # dropped the body could not pass the comparison by arithmetic.
+
     empty = _peak(_build("none"), devices=devs)
     assert distributed != pytest.approx(empty, rel=100 * V2_LANE_REL_GATE), (
         f"the declared volume did not change the shard_map lane's trace: "
@@ -217,14 +207,6 @@ def test_the_shmap_distributed_lane_realizes_the_same_conductor():
             kind, distributed, empty)
 
 
-
-
-
-
-
-
-
-
 def test_the_subgridded_lane_refuses_a_sheet_it_cannot_realize():
     """No silent drop: the SBP-SAT lane applies PEC from cell masks on two
     grids, so a sheet has no carrier there."""
@@ -234,15 +216,11 @@ def test_the_subgridded_lane_refuses_a_sheet_it_cannot_realize():
         sim.add(Box((FOOT_LO[0] - 0.35 * DX, FOOT_LO[1] - 0.35 * DX, Z_PLANE),
                     (FOOT_HI[0] + 0.35 * DX, FOOT_HI[1] + 0.35 * DX, Z_PLANE)), material="pec")
         sim.add_source(position=SRC, component="ez")
-        # Explicitly opt in to exercise the experimental subgrid lane.
+
         sim.add_refinement(z_range=(6e-3, 14e-3), ratio=2, validation="research")
         with pytest.raises(NotImplementedError, match="PEC sheets"):
             sim.run(n_steps=4, skip_preflight=True)
 
-
-# ---------------------------------------------------------------------------
-# the lossy (f0) sheet ctx on the forward lane (§1.7 one spelling, §1.9)
-# ---------------------------------------------------------------------------
 
 F0_DX = 2e-3
 F0_DOM = (12e-3, 12e-3, 12e-3)
@@ -262,13 +240,14 @@ def test_the_forward_lossy_sheet_ctx_knows_about_a_pec_wire():
     from rfx import PolylineWire
 
     def _build_wire():
+        """The f0 sheet size is not the test subject."""
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            # f0 sheet size is not this test's subject (sheet_effective_size)
+
             sim = Simulation(freq_max=15e9, domain=F0_DOM, dx=F0_DX,
                              boundary="pec", snap="declared")
             sim.add(PolylineWire(((4e-3, 6e-3, 6e-3), (8e-3, 6e-3, 6e-3)),
-                                 radius=0.), material="pec")  # legacy PEC filament
+                                 radius=0.), material="pec")
             sim.add_thin_conductor(
                 Box((2e-3, 2e-3, 6e-3), (10e-3, 10e-3, 6e-3)),
                 sigma_bulk=5.8e7, surface_impedance_f0=10e9)
@@ -302,9 +281,10 @@ def test_the_forward_lossy_sheet_ctx_uses_the_runs_periodic_flags():
     from rfx.boundaries.spec import Boundary, BoundarySpec
 
     def _build_periodic():
+        """The f0 sheet size is not the test subject."""
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            # f0 sheet size is not this test's subject (sheet_effective_size)
+
             sim = Simulation(
                 freq_max=15e9, domain=F0_DOM, dx=F0_DX, snap="declared",
                 boundary=BoundarySpec(
@@ -344,7 +324,7 @@ def test_the_forward_lossy_sheet_ctx_uses_the_runs_periodic_flags():
         assert np.array_equal(run_m, fwd_m), (
             f"{comp}: run() loads {int(run_m.sum())} f0 edges, forward() "
             f"{int(fwd_m.sum())} — the ctx was built with different #689 flags")
-    # the seam edge really is in the sheet, so the comparison has teeth
+
     seam = np.asarray(run_ctx.mask_ex, dtype=bool)[-1]
     assert seam.any(), "no seam edge in the loaded set — the pin is vacuous"
 

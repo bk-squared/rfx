@@ -68,7 +68,6 @@ class _Item:
 def _weekly_shards_limit_fraction() -> tuple[int, float, float]:
     text = (REPO_ROOT / ".github" / "workflows" / "validation.yml").read_text(encoding="utf-8")
     block = text[text.index("  slow-tests:"):]
-    # The job ends where the next job key (two-space indent) begins.
     block = block[:re.search(r"\n  [\w-]+:[ \t]*(#.*)?\n", block).start()]
     splits = {int(n) for n in re.findall(r"--splits (\d+)", block)}
     limits = [int(n) for n in re.findall(r"^    timeout-minutes: (\d+)$", block, re.M)]
@@ -106,9 +105,8 @@ def test_the_largest_weekly_shard_fits_its_budget():
 
 
 def test_the_projection_uses_the_largest_group_not_the_mean():
-    # Contiguous chunks: one group can hold far more than the mean.
+    """Under the 153 min budget, 80 min recorded x 1.78 + 10 min is 152.4 min, versus 154.2 min for 81 min recorded."""
     durations = {f"t{i}": s for i, s in enumerate([100.0, 100.0, 100.0, 7000.0, 100.0, 100.0])}
     assert largest_group_seconds(durations, 2) >= 7000.0
-    # 153 min budget: 80 min recorded x 1.78 + 10 min is 152.4 min; 81 min is 154.2 min.
     assert projected_shard_seconds(80 * 60.0) <= 0.85 * 10_800.0
     assert projected_shard_seconds(81 * 60.0) > 0.85 * 10_800.0

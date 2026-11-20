@@ -13,7 +13,6 @@ VACUUM_MESSAGE = (
     "TFSF plane-wave source requires vacuum on and adjacent to the TFSF x "
     "boundaries; non-vacuum material found at x_lo-1"
 )
-# The refusal names the operand the step would apply on the plane.
 PERMITTIVITY_MESSAGE = VACUUM_MESSAGE + ": permittivity (materials.eps_r)"
 DESIGN_BOX_MESSAGE = VACUUM_MESSAGE + ": caller-supplied non-vacuum mask (nonvacuum_masks.0)"
 TRACED_MESSAGE = (
@@ -59,8 +58,7 @@ def test_traced_forward_override_on_x_lo_refused(graded):
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
 
     def energy(eps):
-        # Four pad cells plus margin three: x_lo is node seven.
-        # Keep its neighbours vacuum so the literal must name x_lo.
+        """Four pad cells plus margin three put x_lo at node seven."""
         material = jnp.ones(grid.shape).at[7, :, :].set(eps)
         return jnp.sum(sim.forward(n_steps=8, eps_override=material).time_series ** 2)
 
@@ -84,6 +82,7 @@ def test_interior_dielectric_with_vacuum_planes_admitted(graded, entry):
 
 @pytest.mark.parametrize("crossing", [True, False], ids=["crossing", "interior"])
 def test_graded_design_box_vacuum_planes(crossing):
+    """The plane wave's invariance admission refuses the finite interior box admitted by the vacuum rule."""
     sim = _scene(graded=True)
     x_lo, x_hi = (.001, .029) if crossing else (.013, .017)
     box = ((x_lo, .008, .005), (x_hi, .012, .007))
@@ -96,8 +95,6 @@ def test_graded_design_box_vacuum_planes(crossing):
             sim.forward(n_steps=120, design_box=box, design_eps_override=eps)
         assert str(caught.value) == DESIGN_BOX_MESSAGE
     else:
-        # The vacuum rule admits an interior box; the plane wave's invariance
-        # admission then refuses the finite box, as on the uniform mesh.
         with pytest.raises(ValueError) as caught:
             sim.forward(n_steps=120, design_box=box, design_eps_override=eps)
         assert str(caught.value) == (
@@ -142,18 +139,16 @@ def test_traced_x_cell_sizes_refused():
                       "boundary_conformal", "full_tensor")
 ])
 def test_treated_edges_on_injection_planes(mesh, source, treatment, entry, placement):
+    """The subpixel average at node 8 spans the dual cell [7.5, 8.5]."""
     pec_crossing = source != "closed_box" and treatment in ("kottke_pec", "conformal_pec")
     subpixel_crossing = (placement == "crossing" and mesh == "graded"
                          and treatment == "subpixel")
     if placement == "crossing" and not pec_crossing:
         sim, kwargs = _treated_edge_scene(mesh, source, treatment, entry, placement, False)
         if subpixel_crossing:
-            # The subpixel average at node 8 spans the dual cell [7.5, 8.5].
-            # An x-normal Box face in that window snaps to node 8, so the plain check already refuses it.
             with pytest.raises(ValueError, match=r"requires vacuum.*x_lo"):
                 getattr(sim, entry)(n_steps=2, skip_preflight=True, **kwargs)
         else:
-            # The identical staircase scene must reach stepping with treatment off.
             result = getattr(sim, entry)(n_steps=2, skip_preflight=True, **kwargs)
             assert np.isfinite(np.asarray(result.time_series)).all()
 
@@ -162,8 +157,6 @@ def test_treated_edges_on_injection_planes(mesh, source, treatment, entry, place
         result = getattr(sim, entry)(n_steps=2, skip_preflight=True, **kwargs)
         assert np.isfinite(np.asarray(result.time_series)).all()
     else:
-        # Literal treated labels; closed-box realization converts treatment
-        # arrays to non-vacuum masks before checking the plane.
         label = {
             "subpixel": "anisotropic permittivity" if mesh == "graded" else "tensor permittivity",
             "full_tensor": "node tensor",
@@ -184,6 +177,7 @@ def test_treated_edges_on_injection_planes(mesh, source, treatment, entry, place
 
 
 def _treated_edge_scene(mesh, source, treatment, entry, placement, treated):
+    """Four pad cells and margin four put x_lo at x=0.8 mm (node 8)."""
     inside = placement == "inside"
     wall = treatment == "boundary_conformal" and not inside
     sphere = (mesh == "uniform" and source == "slab"
@@ -202,13 +196,9 @@ def _treated_edge_scene(mesh, source, treatment, entry, placement, treated):
     sim.add_tfsf_source(f0=50e9, bandwidth=.5, margin=4, polarization="ez",
                         direction="+x", **source_options)
     if not wall:
-        # Four pad cells and margin four put x_lo at x=0.8 mm (node 8).
         dielectric = treatment in ("subpixel", "full_tensor")
-        # Open-slab/Method-B PEC has no treated-only crossing: its half-cell skin also puts staircase Ex on the plane.
         x_face = .00087 if dielectric else .00091 if source == "closed_box" else .00067
         if dielectric and (treatment == "full_tensor" or source == "closed_box"):
-            # Face at node 8.65 is realized at node 9 under the nearest-node rule.
-            # The plain plane is vacuum; the treatment reaches x_lo.
             x_face = .00093
         if inside:
             lo, hi = (.00227,) * 3, (.00267,) * 3
@@ -222,7 +212,6 @@ def _treated_edge_scene(mesh, source, treatment, entry, placement, treated):
                 lo, hi = (x_face, .00227, .00227), (.00147, .00267, .00267)
         if dielectric:
             sim.add_material("dielectric", eps_r=4.)
-        # The curved surface comes within half a cell of x_lo while no column-8 cell centre lies inside it.
         shape = Sphere((.00108, .0024, .00245), .0002) if sphere else Box(lo, hi)
         if cylinder:
             shape = Cylinder((.00108, .0024, .0024), .0002, .02, axis="z")
@@ -233,7 +222,5 @@ def _treated_edge_scene(mesh, source, treatment, entry, placement, treated):
     if treatment in ("subpixel", "kottke_pec", "full_tensor"):
         kwargs["subpixel_smoothing"] = True if treatment == "subpixel" else treatment
     elif treatment == "conformal_pec" or inside:
-        # A domain wall cannot move inside TF; its control is an interior
-        # conformal PEC box. Closed box also admits the full-tensor control.
         kwargs["conformal_pec"] = True
     return sim, kwargs

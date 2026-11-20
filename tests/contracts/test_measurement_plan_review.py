@@ -55,6 +55,7 @@ def test_review_metadata_mutations(row, change):
 
 
 def test_uniform_lumped_run_second_scan_availability():
+    """A single lumped port keeps the second-scan driver when S asks for another record length."""
     from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
     with patch('tests.contracts.path_equivalence.builders.DOMAIN',
                tuple(n * DX for n in (11, 8, 7))):
@@ -63,15 +64,15 @@ def test_uniform_lumped_run_second_scan_availability():
     def stop(grid, *args, **kwargs):
         actual.update(kwargs, grid=grid)
         raise SetupCaptured
-    # First prove run(compute_s_params=True) reaches the second-scan driver: a
-    # single lumped port keeps it when S asks for another record length.
+
+
     with patch('rfx.simulation.run', return_value=SimpleNamespace(wire_port_sparams=None)), \
          patch('rfx.probes.sparam_driver.compute_lumped_wire_s_matrix_via_scan', side_effect=SetupCaptured) as driver:
         with pytest.raises(SetupCaptured):
             sim.run(n_steps=12, skip_preflight=True, compute_s_params=True, s_param_freqs=FREQS,
                     s_param_n_steps=24)
     assert driver.call_count == 1
-    # Then capture that driver's actual production-scan setup, including V_ref.
+
     with patch('rfx.simulation.run', stop), pytest.raises(SetupCaptured):
         compute_lumped_wire_s_matrix_via_scan(sim, jnp.asarray(FREQS), n_steps=12)
     plan = measurement_plan(sim, n_steps=12, frequencies=FREQS)
@@ -80,12 +81,13 @@ def test_uniform_lumped_run_second_scan_availability():
 
 @pytest.mark.parametrize('forward', [False, True])
 def test_current_moment_supported_z_graded(forward):
+    """The production current-moment monitor refuses in-plane grading."""
     import numpy as np
     from tests.contracts.path_equivalence.builders import DX
     row = ('_current_moments', 'block_moments')
     lane = 'fwd_nonuniform' if forward else 'run_nonuniform'
     sim = build(row, lane, graded=True)
-    # The production monitor admits z grading, but refuses in-plane grading.
+
     sim._dx_profile = np.full_like(sim._dx_profile, DX)
     sim._dy_profile = np.full_like(sim._dy_profile, DX)
     actual = setup(sim, forward)
@@ -120,7 +122,7 @@ def test_run_calculator_owner_availability(mesh, forward, row, kind):
         actual = setup(sim, forward)
     plan = measurement_plan(sim, n_steps=12, path=lane)
     owner = next(o for o in plan.owners if o.kind == kind)
-    # MSL feed setup has no calculator projector; coax refuses before the scan.
+
     assert not actual.get('dft_planes')
     assert not actual.get('wire_port_sparams')
     assert not actual.get('lumped_port_sparams')

@@ -26,6 +26,7 @@ three of which contradicted each other about the same WR-90 iris and the same
 microstrip trace. The contract's "one realized-edge function, no case-specific
 knobs" clause is unenforceable without a test, and it is the clause most likely
 to rot first, because every new case has a local reason to re-derive.
+A file may name a retired token only to refuse it or to describe its removal.
 """
 
 from __future__ import annotations
@@ -46,7 +47,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 DX = 1e-3
 DOMAIN = (0.02, 0.02, 0.02)
-LO = 0.006          # 6 cells in from the domain origin, clear of the CPML pad
+CPML_CLEAR_SLAB_START_M = 0.006
+LO = CPML_CLEAR_SLAB_START_M
 FOOTPRINT = (0.005, 0.015)
 
 
@@ -84,8 +86,8 @@ def test_a_volume_realizes_both_drawn_faces_at_every_thickness(axis, t):
     sim = _body(axis, t)
     realized = realize(sim)
     z_lo, z_hi = LO, LO + t * DX
-    # The footprint is the body's own cells: a wall is asserted where the body
-    # is, not across the whole plane.
+
+
     assert_walls_at(realized, axis, [z_lo, z_hi], footprint=realized.cells,
                     what=f"t={t} slab")
     got = wall_positions(realized, axis)
@@ -94,11 +96,11 @@ def test_a_volume_realizes_both_drawn_faces_at_every_thickness(axis, t):
     assert got[-1] - got[0] == pytest.approx(t * DX, abs=1e-12), (
         f"realized thickness {1e3 * (got[-1] - got[0]):.4f} mm against a drawn "
         f"{t * DX * 1e3:.4f} mm")
-    # falsifier: nothing one cell outside either drawn face
+
     assert_no_wall_at(realized, axis, [z_lo - DX, z_hi + DX],
                       what=f"t={t} slab")
-    # the interior is shorted: the normal component is PEC everywhere between
-    # the two faces, over the footprint
+
+
     m = np.asarray(realized.edges[axis], dtype=bool)
     occupied = np.asarray(realized.cells, dtype=bool)
     assert bool(m[occupied].all()), (
@@ -124,7 +126,7 @@ def test_a_sheet_realizes_one_plane_and_owns_nothing(axis):
     assert len(wall_planes(realized, axis)) == 1, (
         f"a sheet realized {wall_planes(realized, axis)} planes; it declares one")
     assert_no_wall_at(realized, axis, [LO - DX, LO + DX], what="sheet")
-    # and it writes no material
+
     eps = np.asarray(realized.materials.eps_r)
     assert np.allclose(eps, 1.0), (
         "a sheet wrote permittivity into the mesh; it owns no cell (§1.3)")
@@ -140,12 +142,6 @@ def test_a_sheet_and_a_one_cell_volume_are_distinguishable():
     assert len(wall_planes(volume, 2)) == len(wall_planes(sheet, 2)) + 1
 
 
-# --------------------------------------------------------------------------- #
-# Cross-case guard: no case may re-derive the realization for itself
-# --------------------------------------------------------------------------- #
-
-# Tokens that only ever appear in a case-specific realization derivation. Each
-# is a mechanism the contract deleted, not a coincidence of wording.
 _RETIRED = (
     "two_plane",
     "two_plane_extension_masks",
@@ -156,18 +152,12 @@ _RETIRED = (
     "_two_plane_cell_mask",
 )
 
-# Files that may name a retired token forever, with the reason. Two kinds only:
-# a file that names it in order to REFUSE it, and a file whose subject is the
-# history of its removal.
+
 _ALLOWED = {
     "tests/contracts/test_lattice_ownership_crossval_witness.py":
         "this file — it names the tokens in order to forbid them",
-    # --- prose only: each names the retired flag to say what it USED to do
-    # and why the committed number moves. None imports or re-derives anything;
-    # all read realized_pec_edge_masks / realized_wall_planes.
-    # The RT/Duroid 5880 patch case's script and its two old tests
-    # (the wall-plane test and the mode-identification test) left with the
-    # case, rebuilt as tests/crossval/rt5880_patch/; their rows went with them.
+
+
 }
 
 
