@@ -57,7 +57,7 @@ _H_ENVELOPE = DOMINANT_H_RELATIVE_ENVELOPE
 def _build_nu_case(n_table: int, cpml_layers=4):
     """Tiny graded-dz CPML NU sim: 24x24x32 cells, one pulsed Ez point
     source, one Ez probe. ``n_table`` sizes the source waveform table.
-    Twelve absorber layers are used because an earlier measurement put the box's field energy within 0.1 % of the open domain at the stop step."""
+    Callers that pass twelve absorber layers do so because an earlier measurement put the box's field energy within 0.1 % of the open domain at the stop step."""
     dz = np.array([0.4e-3] * 12 + [0.6e-3] * 12)
     grid = make_nonuniform_grid((0.008, 0.008), dz, 0.5e-3, cpml_layers=cpml_layers)
     materials = init_materials((grid.nx, grid.ny, grid.nz))
