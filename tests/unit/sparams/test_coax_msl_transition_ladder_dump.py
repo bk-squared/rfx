@@ -25,6 +25,7 @@ Cost: three 200-step method calls (two internal drive runs each),
 S (the ring-down witness rightly screams, and the numbers below are
 truncation artifacts) -- irrelevant here, because bit-identity of two runs of
 the same fixture is step-count independent.
+The opt-in ladder self-consistency values cannot be in the byte-identity witness because they only exist on one side of it.
 """
 from __future__ import annotations
 
@@ -58,21 +59,12 @@ from tests.unit.sparams.test_coax_built_impedance import (  # noqa: E402
 
 N_STEPS = 200
 
-# Every numeric field of the result that the S-parameter math produces. The
-# gate is "all of them", enumerated, so a future field cannot silently escape
-# the witness (see test_ladder_dump_witness_covers_every_numeric_field).
 _NUMERIC_FIELDS = (
     "s_params", "freqs", "reference_planes", "z0_ref", "cond_a",
     "cond_a_equilibrated", "recurrence_residual", "fit_residual", "gamma",
     "a_inc", "b_out", "settling_db", "line_impedances",
 )
 
-# Ladder self-consistency witness: OPT-IN PAYLOADS carried by the
-# same ``return_ladder_voltages`` flag as the dump (a Python-loop refit over
-# the very arrays the dump exposes; None on a default call). Report-only
-# diagnostics -- see tests/unit/sparams/test_msl_ladder_standoff.py for what they measure.
-# Their presence/absence is asserted below; their VALUES cannot be in the
-# byte-identity witness because they only exist on one side of it.
 _LADDER_WITNESS_FIELDS = ("ladder_split_gamma_dev", "ladder_split_reflection_decades")
 
 
@@ -205,7 +197,8 @@ def test_ladder_dump_and_flux_opt_ins_compose(_abc):
 
 def test_ladder_dump_schema_matches_the_documented_contract(_abc):
     """Keys, shapes, dtypes and geometry exactly as documented on
-    :class:`~rfx.api._spec.CoaxMSLTransitionResult`."""
+    :class:`~rfx.api._spec.CoaxMSLTransitionResult`.
+    The dump’s z0_ref is the line impedances the assembler formed the waves at."""
     _, on, _ = _abc
     d = on.ladder_voltages
     assert set(d) == {
@@ -216,7 +209,7 @@ def test_ladder_dump_schema_matches_the_documented_contract(_abc):
     n_f = len(on.freqs)
     n_coax = d["coax_ladder_z_m"].shape[0]
     n_msl = d["msl_ladder_x_m"].shape[0]
-    assert (n_coax, n_msl) == (6, 9)          # attempt-3 ladders
+    assert (n_coax, n_msl) == (6, 9)
     assert d["coax_ladder_v"].shape == (2, n_coax, n_f)
     assert d["msl_ladder_v"].shape == (2, n_msl, n_f)
     assert d["coax_ladder_v"].dtype == np.complex128
@@ -227,19 +220,13 @@ def test_ladder_dump_schema_matches_the_documented_contract(_abc):
     assert d["msl_ladder_i"].dtype == np.int64
     assert d["drive_order"] == ("coax", "msl")
 
-    # Ladders strictly increasing (the pencil extractor's own requirement).
     assert np.all(np.diff(d["coax_ladder_z_m"]) > 0)
     assert np.all(np.diff(d["msl_ladder_x_m"]) > 0)
     assert np.all(np.diff(d["coax_ladder_k"]) > 0)
     assert np.all(np.diff(d["msl_ladder_i"]) > 0)
 
-    # Reference planes / impedances agree with the result's own fields, and
-    # both reference planes sit OUTSIDE their ladder (the geometry the
-    # wave-role question turns on): coax ref ABOVE, MSL ref BELOW.
     assert d["ref_coax_m"] == float(on.reference_planes[0])
     assert d["ref_msl_m"] == float(on.reference_planes[1])
-    # The dump's z0_ref is the line impedances the assembler formed the waves
-    # at; the result's z0_ref is the declared S reference.
     assert np.array_equal(d["z0_ref"], np.asarray(on.line_impedances))
     assert d["ref_coax_m"] > d["coax_ladder_z_m"].max()
     assert d["ref_msl_m"] < d["msl_ladder_x_m"].min()
@@ -254,7 +241,8 @@ def test_ladder_dump_round_trips_through_the_assembler(_abc):
     """The load-bearing assertion: re-running the PURE assembler on the dump
     alone reproduces the run's own ``s_params`` (and every other assembler
     output) BIT-for-bit -- proof the dump IS what the assembler consumed, not
-    a parallel re-derivation that could drift."""
+    a parallel re-derivation that could drift.
+    The assembler’s S is at the line impedances."""
     _, on, _ = _abc
     d = on.ladder_voltages
     (s_params, cond_a, cond_a_eq, rec_resid, fit_resid, gamma,
@@ -269,8 +257,6 @@ def test_ladder_dump_round_trips_through_the_assembler(_abc):
         z0_msl=float(d["z0_ref"][1]),
         cond_warn=float(instrument_kwargs(N_STEPS).get("cond_warn", 1.0e3)),
     )
-    # The assembler's S is at the line impedances; the producer then refers
-    # it to the declared z0_ref with this same call.
     s_params = renormalize_power_waves(s_params, on.line_impedances, on.z0_ref)
     for name, got in (
         ("s_params", s_params), ("cond_a", cond_a),

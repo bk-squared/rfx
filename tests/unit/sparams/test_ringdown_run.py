@@ -56,15 +56,10 @@ from rfx.sources.sources import CWSource
 MM = 1.0e-3
 FREQS = np.linspace(8.0e9, 18.0e9, 101)
 PULSE = GaussianPulse(f0=13.0e9, bandwidth=0.8, cutoff=4.5)
-#: 2.86 ns short records (about half a TM110 decay time) and settled long ones.
 N_SHORT = {"uniform": 1500, "graded": 2500}
 N_LONG = {"uniform": 16000, "graded": 30000}
-#: The measured envelope of the short record's completed S11 against the long
-#: record's, with about 4x margin: uniform 2.4e-4 dB / 1.5e-3 deg, graded
-#: 1.2e-3 dB / 6.3e-3 deg (JAX 0.10.2 and 0.4.33 within 4e-6 dB).
 BAR_DB = {"uniform": 1.0e-3, "graded": 5.0e-3}
 BAR_DEG = {"uniform": 1.0e-2, "graded": 3.0e-2}
-#: 0.6-1.4 mm cells on every axis (sums 12, 11, 5 mm; equal end cells).
 DXP = np.array([1.0, 0.8, 0.6, 0.9, 1.2, 1.4, 1.2, 1.1, 1.0, 0.9, 0.9, 1.0]) * MM
 DYP = np.array([1.0, 1.4, 0.8, 0.6, 0.8, 0.9, 1.0, 1.1, 1.2, 1.2, 1.0]) * MM
 DZP = np.array([0.8, 0.6, 1.4, 1.4, 0.8]) * MM
@@ -73,6 +68,8 @@ DZP = np.array([0.8, 0.6, 1.4, 1.4, 0.8]) * MM
 def _box(lane, *, second_port=False, cells=1, freq_max=20.0e9, pulse=PULSE,
          precision="float32", stencil_order=2):
     """The box on one lane; ``cells`` sets the port's length in cells."""
+    assert all(np.isclose(np.sum(profile), length * MM) and np.all((profile >= 0.6 * MM) & (profile <= 1.4 * MM)) and profile[0] == profile[-1] for profile, length in ((DXP, 12), (DYP, 11), (DZP, 5))), (
+        "Graded profiles must span 12, 11, 5 mm with 0.6–1.4 mm cells and equal end cells.")
     kw = ({"dx_profile": DXP, "dy_profile": DYP, "dz_profile": DZP}
           if lane == "graded" else {})
     sim = Simulation(freq_max=freq_max, domain=(12 * MM, 11 * MM, 5 * MM),
@@ -83,8 +80,6 @@ def _box(lane, *, second_port=False, cells=1, freq_max=20.0e9, pulse=PULSE,
                      sigma=2.0 * np.pi * f_ref * 8.854187817e-12 * eps_r / q_d)
     sim.add(Box((0, 0, 0), (12 * MM, 11 * MM, 5 * MM)), material="fill")
     if lane == "graded":
-        # nodes x 3.3 (cells 0.9 | 1.2), y 3.8 (0.6 | 0.8); one cell: the
-        # 0.6 mm z cell between 0.8 and 1.4; three cells: z 0 .. 2.8 mm
         pos, ext = ((3.3 * MM, 3.8 * MM, 0.8 * MM), 0.6 * MM) if cells == 1 \
             else ((3.3 * MM, 3.8 * MM, 0.0), 2.8 * MM)
         pos2, ext2 = (9.2 * MM, 8.2 * MM, 0.8 * MM), 0.6 * MM
@@ -175,10 +170,6 @@ def _long(lane):
     return _LONG[lane]
 
 
-# ---------------------------------------------------------------------------
-# W0 and byte identity
-# ---------------------------------------------------------------------------
-
 @LANES
 def test_w0_holds_and_the_completion_has_the_shape_of_the_run(short_runs):
     lane, plain, completed = short_runs
@@ -245,7 +236,7 @@ def test_every_other_output_is_byte_identical(short_runs):
     differ = [k for k in a if a[k] != b[k]]
     assert not differ, (lane, differ)
     n_arrays = sum(1 for v in a.values() if isinstance(v, tuple))
-    assert n_arrays >= 8, (lane, n_arrays)       # state, series, S, freqs ...
+    assert n_arrays >= 8, (lane, n_arrays)
     assert np.asarray(completed.time_series).shape == (N_SHORT[lane], 1)
 
 
@@ -330,12 +321,9 @@ def test_w0_catches_a_replay_that_is_not_the_run_s(defect, monkeypatch):
     assert w0 > 100 * rd.W0_REL_BAR, w0
 
 
-# ---------------------------------------------------------------------------
-# The resonant fixture: short completed = long, short plain != long
-# ---------------------------------------------------------------------------
-
 @LANES
 def test_a_short_record_completed_is_the_long_record(short_runs):
+    """The short-record magnitude bars allow about four times an earlier measured completion envelope of 2.4e-4 dB on uniform cells and 1.2e-3 dB on graded cells."""
     lane, _plain, short = short_runs
     long = _long(lane)
     ref = long.ringdown.s_params[0, 0]
@@ -353,9 +341,8 @@ def test_a_short_record_completed_is_the_long_record(short_runs):
           f"WE {short.ringdown.report.witness('WE').value:.2e}, "
           f"W2 {short.ringdown.report.witness('W2').value:.2e}")
     assert db_c < BAR_DB[lane] and deg_c < BAR_DEG[lane], (db_c, deg_c)
-    assert db_p > 0.5, (db_p, deg_p)             # the truncation is real
-    assert db_l < 0.05 and deg_l < 0.5, (db_l, deg_l)   # the reference is settled
-    # the TM110 pole, where the box puts it
+    assert db_p > 0.5, (db_p, deg_p)
+    assert db_l < 0.05 and deg_l < 0.5, (db_l, deg_l)
     tm110 = {"uniform": 12.42e9, "graded": 12.40e9}[lane]
     f = np.array([p.f_hz for p in short.ringdown.report.poles])
     q = np.array([p.q for p in short.ringdown.report.poles])
@@ -365,7 +352,9 @@ def test_a_short_record_completed_is_the_long_record(short_runs):
 
 def test_the_driven_column_of_a_two_port_graded_box():
     """Two wire ports, the second passive: W0 holds on both, and the completed
-    S11 and S21 from the short record match the long record's."""
+    S11 and S21 from the short record match the long record's.
+    The undriven S-matrix column is unmeasured.
+    """
     short = _run(_box("graded", second_port=True), N_SHORT["graded"],
                  ringdown=RingdownSpec())
     long = _run(_box("graded", second_port=True), N_LONG["graded"],
@@ -383,7 +372,7 @@ def test_the_driven_column_of_a_two_port_graded_box():
               f"{deg_p:.2f} deg")
         assert db_c < 0.05 and deg_c < 0.5, (j, db_c, deg_c)
         assert db_p > 0.2 and deg_p > 2.0, (j, db_p, deg_p)
-    assert np.isnan(S[:, 1]).all()              # the undriven column is unmeasured
+    assert np.isnan(S[:, 1]).all()
 
 
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
@@ -394,7 +383,7 @@ def test_a_three_cell_port_completes_its_whole_gap_voltage(lane):
     record's completed S11 must match the settled one."""
     short = _run(_box(lane, cells=3), N_SHORT[lane], ringdown=RingdownSpec())
     long = _run(_box(lane, cells=3), N_LONG[lane], ringdown=RingdownSpec())
-    if lane == "graded":                        # the uniform lane hands back no metadata
+    if lane == "graded":
         assert len(long.wire_port_sparams[0][0][13]) == 3
     for r in (short, long):
         assert r.ringdown.report.completed, r.ringdown.report.summary()
@@ -452,7 +441,6 @@ def test_the_error_witness_fails_a_graded_record_cut_at_a_fifth_of_its_decay_tim
     we, w2 = rep.witness("WE"), rep.witness("W2")
     ref = _long("graded").ringdown.s_params.astype(np.complex128)
     actual = float(np.max(np.abs(short.ringdown.s_params.astype(np.complex128) - ref)))
-    # WE by hand from the run's own channels: [T/2, T] against [T/4, T]
     Y, dt, freqs, n, n_start = cap["args"]
     k = cap["kw"]
     kw = {key: k[key] for key in ("freq_max", "guard", "sv_rel", "unit_tol")}
@@ -472,7 +460,7 @@ def test_the_error_witness_fails_a_graded_record_cut_at_a_fifth_of_its_decay_tim
     assert not rep.ok and rep.completed
     assert [w.name for w in rep.witnesses if w.judged and not w.ok] == ["WE"]
     assert "WE" in rep.summary() and "not judged" in rep.summary()
-    assert actual > 1.0e-3                      # the record really is short
+    assert actual > 1.0e-3
     assert 0.5 < we.value / actual < 2.0, (we.value, actual)
 
 
@@ -521,8 +509,9 @@ def test_a_graded_port_on_an_absorbing_floor_is_probed_inside_the_grid():
     """A wire port standing on the z = 0 face of a graded board with CPML below:
     the extra edge below the span would lie in the absorber pad, where the
     graded lane's positions cannot reach; it is not probed, and the run
-    completes with W0 holding."""
-    # z is the profile sum, 8.5 mm, the length the grid solves.
+    completes with W0 holding.
+    The z domain is the profile sum, 8.5 mm, the length the grid solves.
+    """
     sim = Simulation(freq_max=12e9, domain=(24 * MM, 20 * MM, 8.5 * MM), dx=1.0 * MM,
                      boundary="cpml", cpml_layers=6,
                      dz_profile=np.array([0.5, 0.5, 0.5, 1, 1, 1, 1, 1, 1, 1]) * MM)
@@ -626,7 +615,7 @@ def test_the_passivity_witness_fails_a_non_passive_completion(monkeypatch):
     rep = r.ringdown.report
     w = rep.witness("passivity")
     plain = float(np.max(np.abs(np.asarray(r.s_params)[0, 0])))
-    assert plain <= 1.0 + 1e-3, plain              # the plain record is passive
+    assert plain <= 1.0 + 1e-3, plain
     assert not w.ok and w.value == pytest.approx(1.010, rel=1e-6), (w.value, w.bar)
     assert w.value == pytest.approx(
         float(np.max(np.abs(r.ringdown.s_params[0, 0]))), rel=1e-12)
@@ -683,10 +672,6 @@ def test_a_failed_identification_returns_the_run_uncompleted(monkeypatch):
         assert np.array_equal(np.asarray(getattr(plain, f)), np.asarray(getattr(r, f)))
 
 
-# ---------------------------------------------------------------------------
-# Refusals
-# ---------------------------------------------------------------------------
-
 def _open_box():
     return Simulation(freq_max=20.0e9, domain=(12 * MM, 11 * MM, 5 * MM),
                       dx=1.0 * MM, boundary="cpml", cpml_layers=4)
@@ -714,8 +699,7 @@ def _case_msl():
 
 
 def _case_waveguide():
-    # add_waveguide_port refuses a model that already has an add_port port, so
-    # this one has none: the kind of port is what is refused.
+    """The waveguide refusal fixture has no lumped port because add_waveguide_port refuses a model that already has an add_port port."""
     sim = Simulation(freq_max=20.0e9, domain=(30 * MM, 11 * MM, 5 * MM),
                      dx=1.0 * MM, boundary="cpml", cpml_layers=4)
     sim.add_waveguide_port(5 * MM)
@@ -739,7 +723,7 @@ def _case_floquet():
 
 
 def _case_tfsf_cw():
-    # add_tfsf_source refuses a model that already has an add_port port.
+    """The TFSF refusal fixture has no lumped port because add_tfsf_source refuses a model that already has an add_port port."""
     sim = _open_box()
     sim.add_tfsf_source(f0=10e9, waveform="continuous_wave")
     return sim, {}
@@ -796,7 +780,7 @@ def _case_graded_loop_in_the_pad():
 
 
 def _case_stencil_order_4():
-    # the uniform PEC box: (2,4) runs there, and steps at 0.857 of grid.dt
+    """The uniform PEC box with the (2,4) stencil steps at 0.857 of grid.dt."""
     return _box("uniform", stencil_order=4), {}
 
 

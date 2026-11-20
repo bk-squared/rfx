@@ -15,6 +15,7 @@ empty-guide cases, which are two-run identities):
   DUT (pure phase de-embedding). The de-embed PHASE-rotation sign/magnitude
   correctness is gated separately by
   ``tests/unit/sparams/test_waveguide_phase_gate.py::test_deembed_step_sign_rotation_correct``.
+The port's numerical TE10 cutoff is what the far-port advisory uses.
 """
 
 from __future__ import annotations
@@ -32,47 +33,27 @@ BW = max(0.2, min(0.8, (FREQS[-1] - FREQS[0]) / max(F0, 1.0)))
 
 C0 = 299_792_458.0
 DOMAIN = (0.12, 0.04, 0.02)
-# The port's NUMERICAL TE10 cutoff, which is what rfx's far-port advisory uses.
-# The analytic c/2a is 3.747 GHz; the discretized guide cuts off lower, and the
-# 0.27 GHz difference is the whole gap between reading 28 cells as 0.500 or as
-# 0.436 lambda_g. Taken from the advisory's own message for this port.
 FC_TE10_NUMERICAL = 3.476e9
-# dx as rfx derives it when not given explicitly (C0/freq_max/20).
 _DX = C0 / max(float(FREQS[-1]), F0) / 20.0
 _LAMBDA_G_LOW = (C0 / float(FREQS[0])) / np.sqrt(
     1.0 - (FC_TE10_NUMERICAL / float(FREQS[0])) ** 2)
-# DERIVED, not chosen: ceil(0.75 * lambda_g / dx), the pattern case 18
-# established. 0.75 rather than the 0.50 floor because #494 measured that 0.50
-# still leaves roughly half the ripple — reproduced here, see below. Comes out
-# at 42 cells = 78.7 mm = 0.750 lambda_g at the 4.5 GHz band edge.
 CPML_LAYERS = int(np.ceil(0.75 * _LAMBDA_G_LOW / _DX))
 
 
 def _build_twoport_sim(*, kind: str, left_ref=None, right_ref=None):
+    """The domain lengths written as ``n_y * dx`` and ``n_z * dx`` are whole numbers of cells of dx, so their solved lengths equal their declared lengths."""
     dx = 0.75e-3 if kind == "dielectric" else (_DX if kind == "empty" else None)
     n_y, n_z = (54, 27) if kind == "dielectric" else (22, 11)
     sim = Simulation(
         freq_max=max(float(FREQS[-1]), F0),
-        domain=(DOMAIN[0], n_y * dx, n_z * dx) if dx is not None else DOMAIN, dx=dx,  # solved length
+        domain=(DOMAIN[0], n_y * dx, n_z * dx) if dx is not None else DOMAIN, dx=dx,
         boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=CPML_LAYERS,
     )
     if kind == "pec_short":
-        # A metal BLOCK, i.e. a volume: sigma = 1e10 is above
-        # the PEC promotion threshold, so this entry is classified exactly
-        # like material="pec" and realizes tangential walls on both drawn
-        # x faces with the Ex between them shorted. Before the contract
-        # only the near face was a wall, so the reflecting plane sat one
-        # cell upstream; the magnitude-level gates in this file (
-        # reciprocity, sub-unity transmission, reference-plane magnitude
-        # invariance) do not see the difference, the de-embed PHASE gate
-        # in test_waveguide_phase_gate.py does.
         sim.add_material("pec_like", eps_r=1.0, sigma=1e10)
         sim.add(Box((0.05, 0.0, 0.0), (0.055, 0.04, 0.02)), material="pec_like")
     elif kind == "dielectric":
-        # eps_r=4 centred slab: a genuine reflecting DUT (device != reference)
-        # so the normalized S-matrix carries real reflection + sub-unity
-        # transmission — used by the binding reciprocity / ref-plane tests.
         sim.add_material("diel", eps_r=4.0, sigma=0.0)
         sim.add(Box((0.05, 0.0, 0.0), (0.07, 0.04, 0.02)), material="diel")
     elif kind == "empty":
@@ -156,6 +137,7 @@ def test_normalized_twoport_dielectric_binds_reciprocity_and_transmission():
     ``test_normalized_twoport_pec_short_is_strongly_reflective`` for why the mean
     was the wrong statistic. The tighter flux-path gate remains
     ``test_tight_passivity_reflecting_dut`` in the validation battery.
+    The 1.05 maximum-column-power bound leaves margin for the float32 normalized envelope without admitting the 1.2113 an earlier thin absorber produced.
     """
     sim = _build_twoport_sim(kind="dielectric")
     result = sim.compute_waveguide_s_matrix(num_periods=40, normalize=True)
@@ -166,28 +148,20 @@ def test_normalized_twoport_dielectric_binds_reciprocity_and_transmission():
     s12 = np.abs(s[0, 1, :])
     recip = np.abs(s21 - s12) / np.maximum(np.maximum(s21, s12), 1e-12)
 
-    # Non-vacuity witness: device must differ from reference.
     assert float(np.mean(s11)) > 0.20, (
         f"obstacle not reflecting (mean|S11|={np.mean(s11):.3f}<=0.20) — the "
         "gate would collapse to the empty-guide identity"
     )
-    # Physics: obstacle attenuates transmission below unity.
     assert 0.5 < float(np.mean(s21)) < 0.98, (
         f"mean|S21|={np.mean(s21):.3f} outside the reflecting-DUT band "
         "(0.5, 0.98) — an eps_r=4 step must attenuate but still transmit"
     )
-    # Passivity on the MAX. A lossless slab cannot exceed unity column
-    # power at ANY frequency; averaging hides a localized violation, which is
-    # exactly what the old mean-only gate did. Measured 1.0128 at 0.75 lambda_g;
-    # 1.05 leaves margin for the float32 + normalize=True envelope without
-    # re-admitting the 1.2113 the thin absorber produced.
     colpow = np.sum(np.abs(s) ** 2, axis=0)
     assert float(np.max(colpow)) < 1.05, (
         f"max column power {np.max(colpow):.4f} on a LOSSLESS slab — at the "
         f"committed 0.179-lambda_g absorber this read 1.2113 and the extractor "
         f"emitted an unheeded 'S-parameters are UNRELIABLE' warning (#496)"
     )
-    # Physics: Lorentz reciprocity S21==S12 on the projected TE10 subspace.
     assert float(np.mean(recip)) < 1e-3, (
         f"reciprocity error mean={np.mean(recip):.5f} >= 1e-3 — extractor "
         "drive/receive asymmetry regression"
@@ -195,6 +169,7 @@ def test_normalized_twoport_dielectric_binds_reciprocity_and_transmission():
 
 
 def test_normalized_twoport_pec_short_is_strongly_reflective():
+    """The (0.98, 1.005) mean-|S11| band and 1.05 maximum-column-power bound leave margin around the 0.9998 mean |S11| and 1.0208 maximum column power measured earlier with the 0.75-lambda_g absorber."""
     sim = _build_twoport_sim(kind="pec_short")
     result = sim.compute_waveguide_s_matrix(num_periods=40, normalize=True)
     s = np.asarray(result.s_params)
@@ -204,10 +179,6 @@ def test_normalized_twoport_pec_short_is_strongly_reflective():
         1e-12,
     )
 
-    # A lossless PEC short is a TOTAL reflector: |S11| sits AT unity, it does not
-    # sit above it. The old upper bound of 1.05 admitted a measured 1.0252 —
-    # unphysical, and 94% of that excess was the thin far-port absorber.
-    # At 0.75 lambda_g it measures 0.9998, so the band can be the physical one.
     mean_s11 = float(np.mean(np.abs(s[0, 0, :])))
     assert 0.98 < mean_s11 < 1.005, (
         f"mean|S11|={mean_s11:.4f} on a LOSSLESS total reflector. Above unity is "
@@ -215,11 +186,6 @@ def test_normalized_twoport_pec_short_is_strongly_reflective():
         f"and passed only because the band was 1.05 wide (#496)"
     )
     assert float(np.mean(np.abs(s[1, 0, :]))) < 0.10
-    # BOTH statistics. The mean was the only passivity gate here and it averaged
-    # the violation away: at the committed absorber the mean read 1.0172 (passing
-    # this very 1.10, with 8% headroom) while the MAX was 1.5343 — the extractor
-    # flagged that same run 'passivity_violation ... UNRELIABLE' and nothing in
-    # this file saw it. Measured now: mean 0.9998, max 1.0208.
     assert float(np.mean(column_power)) < 1.10
     assert float(np.max(column_power)) < 1.05, (
         f"max column power {np.max(column_power):.4f} — the mean-only gate this "
@@ -244,13 +210,10 @@ def test_normalized_twoport_reference_plane_magnitude_invariant_on_reflecting_du
     s_base = np.asarray(base.s_params)
     s_shift = np.asarray(shifted.s_params)
 
-    # Non-vacuity witness: the DUT reflects, so the diagonal is genuinely
-    # exercised (the empty-guide S11==0 made the old test trivial).
     assert float(np.max(np.abs(s_base[0, 0, :]))) > 0.20, (
         "reference DUT is not reflecting — ref-plane magnitude invariance "
         "would be vacuous on the S11 diagonal"
     )
-    # Binding: pure phase de-embed => |S| unchanged for the whole matrix.
     assert np.allclose(np.abs(s_base), np.abs(s_shift), rtol=1e-3, atol=1e-4), (
         "reference-plane shift changed |S| on a reflecting DUT — the "
         "de-embed is not a pure phase (wrong-magnitude ref-plane bug)"
@@ -260,8 +223,6 @@ def test_normalized_twoport_reference_plane_magnitude_invariant_on_reflecting_du
         2 * rotations[1, 0] - rotations[0, 0] - rotations[1, 1]
     ))) / 2
     assert np.max(np.abs(residual)) < 1e-4
-    # Witness that this is not merely re-checking an all-equal matrix: the
-    # diagonal PHASE *does* rotate under the shift (that is the de-embed).
     diag_phase_shift = float(
         np.max(np.abs(np.angle(s_shift[0, 0, :]) - np.angle(s_base[0, 0, :])))
     )
