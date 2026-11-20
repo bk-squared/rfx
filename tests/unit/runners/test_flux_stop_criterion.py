@@ -6,6 +6,7 @@ The opt-in ``radiated_flux_box=`` criterion stops on the outgoing Poynting flux 
 the static charge (and near-Nyquist grid buzz) does not carry — a *radiation-settling* stop,
 appropriate for radiation / S-parameter measurements. It is opt-in: with ``radiated_flux_box=None``
 the default interior-energy criterion is used, byte-identically.
+The uniform energy-cap witness requires the electrostatic advisory because a trapped resonance or failing absorber could hit the cap for another reason.
 """
 import warnings
 
@@ -43,7 +44,7 @@ def _stop_step(radiated_flux_box):
 def test_flux_stops_while_energy_floors():
     """On a soft-source fixture the energy criterion FLOORS (static charge) while the opt-in
     radiated-flux criterion STOPS — the #388 motivation.
-    The energy-cap witness requires the electrostatic advisory because a trapped resonance or failing absorber could hit the cap for another reason."""
+    The uniform flux/energy bounds of 3000/5900 steps allow headroom around the corresponding stop/cap of 801/6000 steps measured earlier."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         rE = _stop_step(None)
@@ -104,7 +105,8 @@ def _nu_stop(radiated_flux_box, *, explicit_none=False):
 @pytest.mark.slow
 def test_flux_stops_while_energy_floors_nonuniform():
     """The NU (chunked-scan) lane: flux criterion STOPS while the energy criterion FLOORS on a
-    dz_profile fixture — the flux stop is available on the real #388 mesh class, not just uniform."""
+    dz_profile fixture — the flux stop is available on the real #388 mesh class, not just uniform.
+    The nonuniform flux/energy bounds of 2500/4900 steps allow headroom around the corresponding stop/cap of 1000/5000 steps measured earlier."""
     nE = _nu_stop(None).shape[0]
     nF = _nu_stop(_NU_BOX).shape[0]
     assert nE >= 4900, f"NU energy criterion should floor, stopped at {nE}"

@@ -1,5 +1,5 @@
 """Source tables prescribe field increments or the final edge's current update.
-A later port owns the whole Ez edge.
+A load port declared after a colocated current source owns the whole Ez edge.
 """
 from unittest.mock import patch
 import inspect

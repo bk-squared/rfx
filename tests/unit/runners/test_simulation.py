@@ -543,7 +543,9 @@ class _CompiledWgGrid:
 
 
 def test_compiled_runner_waveguide_port_matches_manual_loop():
-    """Compiled runner should preserve waveguide-port source/probe behavior."""
+    """Compiled runner should preserve waveguide-port source/probe behavior.
+    Source injection precedes cpml_e/pec to match the compiled scan-body ordering.
+    """
     import sys
 
     a_wg = 0.04
@@ -556,7 +558,7 @@ def test_compiled_runner_waveguide_port_matches_manual_loop():
     grid = _CompiledWgGrid(length, a_wg, b_wg, dx, nc)
     materials = init_materials(grid.shape)
     freqs = jnp.linspace(5.0e9, 7.0e9, 12)
-    assert np.all((np.asarray(freqs) > C0 / (2 * a_wg)) & (np.asarray(freqs) < C0 / a_wg)), "The non-flux V-I extractor needs a single-mode band away from both cutoffs."
+    assert np.all((np.asarray(freqs) > C0 / (2 * a_wg)) & (np.asarray(freqs) < C0 / a_wg)), "The non-flux V-I extractor needs a single-mode band strictly between the TE10 and TE20 cutoffs."
     n_steps = grid.num_timesteps(num_periods=30)
 
     port = WaveguidePort(
@@ -618,7 +620,7 @@ def test_extract_waveguide_s_matrix_two_port_reciprocity():
     grid = _CompiledWgGrid(length, a_wg, b_wg, dx, nc)
     materials = init_materials(grid.shape)
     freqs = jnp.linspace(5.0e9, 7.0e9, 12)
-    assert np.all((np.asarray(freqs) > C0 / (2 * a_wg)) & (np.asarray(freqs) < C0 / a_wg)), "The non-flux V-I extractor needs a single-mode band away from both cutoffs."
+    assert np.all((np.asarray(freqs) > C0 / (2 * a_wg)) & (np.asarray(freqs) < C0 / a_wg)), "The non-flux V-I extractor needs a single-mode band strictly between the TE10 and TE20 cutoffs."
     n_steps = grid.num_timesteps(num_periods=30)
 
     port0 = WaveguidePort(
@@ -746,7 +748,7 @@ def test_extract_waveguide_s_matrix_mixed_normal_branch_reciprocity():
         v_slice=zslice,
     )
 
-    assert np.all((np.asarray(freqs) > C0 / (2 * left.a)) & (np.asarray(freqs) < C0 / left.a)), "The non-flux V-I extractor needs a single-mode band away from both cutoffs."
+    assert np.all((np.asarray(freqs) > C0 / (2 * left.a)) & (np.asarray(freqs) < C0 / left.a)), "The non-flux V-I extractor needs a single-mode band strictly between the TE10 and TE20 cutoffs."
     cfgs = [
         init_waveguide_port(port, dx, freqs, f0=6e9, ref_offset=3, probe_offset=15, dft_total_steps=n_steps)
         for port in (left, right, top)

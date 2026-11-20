@@ -177,6 +177,7 @@ def _dc_floor_fires(waveform, n_table=DC_FLOOR_TABLE_STEPS) -> list[str]:
     ],
 )
 def test_until_decay_dc_floor_matrix(label, waveform, expect_fire):
+    """An earlier measurement of the bw=0.4 modulated Gaussian gave relative DC 4.0e-4, above the 1e-6 advisory threshold."""
     assert DC_FLOOR_TABLE_STEPS * DEMO_DT >= waveform.t0 + 4.5 * waveform.tau, "The full pulse table must select intrinsic-DC remedies rather than truncation remedies."
     fired = _dc_floor_fires(waveform)
     if expect_fire:

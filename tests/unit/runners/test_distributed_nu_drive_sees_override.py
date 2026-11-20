@@ -265,7 +265,6 @@ def _drive_over_stepper(form):
 
 @pytest.mark.parametrize("form", ["local", "sharded", "vmap"])
 def test_every_edge_is_driven_through_the_steppers_cb_under_an_override(form):
-    """The 1e-6 coefficient bar leaves headroom above an earlier measured relative error of 1.9e-7."""
     rel = _drive_over_stepper(form)
     print(f"[a/{form}] Cb_drive/Cb_step - 1: "
           + ", ".join(f"{' '.join(map(str, key))} {v:+.2e}" for key, v in rel.items()))
@@ -410,7 +409,6 @@ def _lane(lane, form=None, mutated=False, warmup=0, checkpoint=None):
 @pytest.mark.parametrize("form", ["local", "sharded"])
 def test_the_distributed_lane_drives_the_overridden_source_as_the_single_device_lane(
         form, warmup, checkpoint):
-    """The 1e-5 gradient bar leaves headroom above an earlier measured relative error of 6.5e-7."""
     ts_s, g_s = _lane("single", warmup=warmup, checkpoint=checkpoint)
     ts_d, g_d = _lane("dist", form, warmup=warmup, checkpoint=checkpoint)
     ls = _ls_ratio(ts_d, ts_s)

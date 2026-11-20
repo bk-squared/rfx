@@ -136,7 +136,7 @@ def _dft_sim(boundary: str = "cpml", eps_r: float = 4.0,
     pass vacuously without exercising anything (discovered while building
     this file: a plane at x=0.016 gave accumulator magnitudes ~1e-15 with
     no real signal; x=0.010 gives ~1e-12, a genuine non-trivial spectrum).
-    The margin is kept so the numbers quoted throughout this file stay attached to the geometry they were measured on.
+    The 0.021 m y/z bounds lie half a cell past the domain edge to include its nodes under Box's half-open rasterization.
     """
     kwargs = {"cpml_layers": 6} if boundary == "cpml" else {}
     sim = Simulation(
@@ -197,10 +197,12 @@ def _assert_dft_planes_match(vmap_planes: dict, ref_planes: dict, *,
 
 class TestVmapDftPlaneFastPath:
     """Fast-path (vmap-batched) DFT accumulator vs. direct sim.run(),
-    per swept element -- the comparator-class equivalence gate."""
+    per swept element -- the comparator-class equivalence gate.
+    An axis="x" plane has (Ny, Nz) transverse dimensions including CPML padding.
+    """
 
     def test_dft_plane_matches_run_cpml(self):
-        """An axis="x" plane has (Ny, Nz) transverse dimensions including CPML padding."""
+        """An earlier measurement gave exactly 0.0 at every bin, so rtol=1e-6 leaves margin for cross-machine float jitter."""
         eps_values = np.array([2.0, 6.0])
         n_steps = 60
 
