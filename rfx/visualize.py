@@ -22,8 +22,8 @@ import warnings
 import numpy as np
 
 from rfx._plotting import _pyplot
-
-
+_RADIATION_PATTERN_DB_SHIFT = 40
+_RADIATION_PATTERN_MIN_DB = -40
 def plot_field_slice(
     state: FDTDState,
     grid: Grid | NonUniformGrid,
@@ -116,18 +116,12 @@ def plot_geometry_2d_slice(
     Returns
     -------
     matplotlib Figure
-    """
+    On a nonuniform grid, the final array slot supplies a bounding node rather than an additional physical cell."""
     plt = _pyplot()
 
     from rfx.nonuniform import NonUniformGrid
     grid = sim._build_realized_grid()
     nonuniform = isinstance(grid, NonUniformGrid)
-    # a PEC sheet and a sub-cell wire own no cell and write no
-    # eps, so an eps-only cross-section shows a fully copper-clad board as
-    # bare laminate. Collect them, draw the realized conductor footprint on
-    # top, and let it choose the slice (see the index rule below). The
-    # permittivity IMAGE is untouched; on a model with metal the plane it
-    # is taken at can move.
     _geo_sheets: list = []
     _geo_wires: list = []
     assemble = sim._assemble_materials_nu if nonuniform else sim._assemble_materials
@@ -146,18 +140,6 @@ def plot_geometry_2d_slice(
     if axis not in (0, 1, 2):
         raise ValueError(f"axis must be 0, 1, or 2, got {axis!r}")
     if index is None:
-        # Pick the slice that actually contains the structure rather than the
-        # geometric centre: for thin "1D-equivalent" domains (a layered stack
-        # only a cell or two thick along y/z) the centre cell can land on a
-        # padding plane that is pure vacuum.
-        #
-        # Metal counts as structure, and it is looked at FIRST. A board whose
-        # traces are PEC sheets writes no eps at all, so the permittivity
-        # spread is the same on every y plane of a uniform laminate and the
-        # argmax lands on the first one — a plane the patch does not reach.
-        # Where there is a conductor, the plane carrying the most of it is
-        # the cross-section a reader asked for; permittivity variation
-        # decides only when the model has no metal.
         moved_cond = np.moveaxis(cond, axis, 0)
         per_plane_cond = moved_cond.reshape(moved_cond.shape[0], -1).sum(axis=1)
         moved = np.moveaxis(eps, axis, 0)
@@ -181,8 +163,6 @@ def plot_geometry_2d_slice(
 
     fig, ax = plt.subplots(figsize=figsize)
     if nonuniform:
-        # The solver's nodes bound the real cells; the final array slot
-        # supplies the bounding node rather than an extra physical cell.
         coords = _slice_coords(sim, grid)
         keep = [a for a in (0, 1, 2) if a != axis]
         xe = _axis_edges(grid, keep[0], coords[keep[0]]) * 1e3
@@ -240,9 +220,6 @@ def _declared_entries(sim):
     """
     out = list(getattr(sim, "_geometry", []) or [])
     out += list(getattr(sim, "_thin_conductors", []) or [])
-    # add_pinned_sheet() is the THIRD conductor surface: a sheet named by
-    # node index, with no shape and no metres. A viewer that walks only the
-    # first two omits a patch that is in the solve.
     out += list(getattr(sim, "_pinned_sheets", []) or [])
     return out
 
@@ -512,12 +489,6 @@ def plot_rasterized_slice(
     grid = sim._build_realized_grid()
     cond = np.asarray(sim.conductor_mask(grid, sigma_threshold=sigma_threshold),
                       dtype=bool)
-    # Permittivity only — this viewer already reads its conductors from
-    # sim.conductor_mask() above and its realized walls from
-    # _realized_edge_wall_mask() below, both of which collect sheets and
-    # wires. The collectors here are passed and dropped so that
-    # "cells only" is a decision at the call site (rfx/api/_compile.py
-    # refuses an assembly that would silently omit a sheet).
     if isinstance(grid, NonUniformGrid):
         eps = np.asarray(sim._assemble_materials_nu(
             grid, pec_sheets=[], pec_wires=[])[0].eps_r, dtype=float)
@@ -549,15 +520,6 @@ def plot_rasterized_slice(
             from rfx.geometry.rasterize_grid import _local_cell
             k = nearest_node_index(coords[axis], pos,
                                    _local_cell(coords[axis], grid.cells(axis), pos))
-            # Physical radius, not a fixed +/-1 INDEX: on a graded axis the
-            # cell touching k can be a fraction of its neighbour's size (a
-            # 100 um / 250 um grading transition measured 2.5x), so an
-            # index-count window reaches a different PHYSICAL distance
-            # depending on which side of a transition `pos` lands on -- the
-            # same sheet could be found approaching from one side and missed
-            # from the other at the identical distance. Use the WIDER of the
-            # two cells touching k as the search radius in metres so neither
-            # side is shortchanged.
             if n_along > 1:
                 w_lo = (float(coords[axis][k] - coords[axis][k - 1])
                         if k > 0 else None)
@@ -572,9 +534,6 @@ def plot_rasterized_slice(
                 cand = [k]
             index = max(cand, key=lambda c: int(per_plane[c]))
             if index != k:
-                # The search is a convenience for finding a sheet; silently
-                # answering about a DIFFERENT plane turns "is z=0.1 mm clear
-                # of metal?" into a picture of the ground plane.
                 moved_note = (
                     f"asked for {names_of(axis)}={pos * 1e3:.4f} mm: plane "
                     f"{k} ({int(per_plane[k])} cells) -> showing the "
@@ -591,31 +550,16 @@ def plot_rasterized_slice(
     eps2, cond2 = eps[tuple(take)], cond[tuple(take)]
     xe = _axis_edges(grid, keep[0], coords[keep[0]]) * 1e3
     ye = _axis_edges(grid, keep[1], coords[keep[1]]) * 1e3
-    # `xe`/`ye` are N+1 EDGES for N real cells (see _axis_edges); the data
-    # arrays still carry the full grid dimension, one entry longer than
-    # that on each in-plane axis (the fence-post/duplicate node's own
-    # array slot). Trim to match, or pcolormesh either errors on a shape
-    # mismatch or (worse, on the axis this function does NOT slice) silently
-    # draws a nonexistent extra column.
     nx_cells, ny_cells = xe.size - 1, ye.size - 1
     eps2 = eps2[:nx_cells, :ny_cells]
     cond2 = cond2[:nx_cells, :ny_cells]
     wall2 = (wall_mask[tuple(take)][:nx_cells, :ny_cells]
             if wall_mask is not None else None)
 
-    # Captured BEFORE `ax` is reassigned below -- the `if ax is None:
-    # fig.tight_layout()` guard near the end of this function used to test
-    # `ax` itself, which by then had already been overwritten by
-    # `fig, ax = plt.subplots(...)` a few lines down, so it was always
-    # False and tight_layout() never ran at all (not even for a figure
-    # this function created itself).
     own_fig = ax is None
     fig = ax.figure if ax is not None else None
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
-    # A uniform slice has a degenerate range, and matplotlib's `nonsingular`
-    # then invents one: an all-vacuum slice drew a colorbar running 0.900 to
-    # 1.100, i.e. eps_r < 1 on an air plane. Say the single value instead.
     lo_e, hi_e = float(eps2.min()), float(eps2.max())
     uniform = (hi_e - lo_e) <= 1e-9 * max(abs(hi_e), 1.0)
     mesh = ax.pcolormesh(xe, ye, eps2.T, cmap="Blues", shading="flat",
@@ -626,19 +570,9 @@ def plot_rasterized_slice(
     if uniform:
         cbar.set_ticks([lo_e])
         cbar.set_ticklabels([f"{lo_e:.4g} (uniform)"])
-    # alpha < 1: an OPAQUE overlay painted over the very cell whose
-    # permittivity plot_stack_profile's docstring promises is still
-    # readable ("a sheet's own cell keeps the permittivity of whatever
-    # abuts it") defeats that reading on every conductor cell at once.
     ax.pcolormesh(xe, ye, np.where(cond2, 1.0, np.nan).T, shading="flat",
                   cmap=_conductor_cmap(), vmin=0.0, vmax=1.0, alpha=0.55)
 
-    # realized PEC edge outside every conductor cell (a volume's far
-    # face): NOT a conductor cell (conductor_mask() cannot show it, see
-    # the docstring), but its footprint is computable from the same
-    # production function the solve uses (realized_pec_edge_masks) and
-    # drawn here as its own marker, distinct from the conductor and
-    # absorber layers.
     wall_note = ""
     if wall2 is not None and wall2.any():
         ax.pcolormesh(xe, ye, np.where(wall2, 1.0, np.nan).T, shading="flat",
@@ -659,27 +593,15 @@ def plot_rasterized_slice(
     n_skipped = 0
     drawn = 0
     if show_declared:
-        # BOTH registries. add_thin_conductor() bodies live in
-        # sim._thin_conductors, not sim._geometry, so iterating only the
-        # latter drew a board of red cells with no outline AND no skip note —
-        # the honesty mechanism firing for Cylinder/Sphere and never for the
-        # one class a PCB is actually made of.
         for entry in _declared_entries(sim):
             shape = getattr(entry, "shape", entry)
             lo = getattr(shape, "corner_lo", None)
             hi = getattr(shape, "corner_hi", None)
             if lo is None or hi is None:
-                # No analytic box -> its bounds are a BOUNDING BOX, not an
-                # outline. Drawing it would assert a solid rectangle the
-                # model never declared.
                 n_skipped += 1
                 continue
             lo = [float(v) for v in lo]
             hi = [float(v) for v in hi]
-            # Tolerance scaled to the CELL, not an absolute 1e-12 m: node
-            # coordinates are float32 (quantum ~9e-10 m at 9 mm), so an
-            # absolute 1e-12 m dropped a body's outline whenever the slice
-            # sat exactly on its declared face.
             tol = 0.05 * float(np.median(np.diff(coords[axis]))) if coords[axis].size > 1 else 1e-9
             if not (lo[axis] - tol <= float(coords[axis][index]) <= hi[axis] + tol):
                 continue
@@ -690,13 +612,6 @@ def plot_rasterized_slice(
                 fill=False, edgecolor="#d55e00", lw=1.4, ls="--", zorder=5))
             drawn += 1
 
-    # Explicit legend PROXIES rather than relying on per-artist `label=` on
-    # the drawn patches: the conductor and absorber layers are pcolormesh
-    # QuadMesh objects (no per-cell label) and neither was explained in the
-    # figure before, so a reader had only the title's cell count to infer
-    # what red meant. `loc="best"` (vs. a hardcoded "upper right") picks the
-    # corner overlapping the fewest already-plotted patches instead of
-    # sitting on top of whichever board happens to fill that corner.
     if int(cond2.sum()) or drawn or absorber_rects or wall_note:
         from matplotlib.patches import Patch
         handles = []
@@ -716,12 +631,6 @@ def plot_rasterized_slice(
 
     ax.set_xlabel(f"{names[keep[0]]} (mm)")
     ax.set_ylabel(f"{names[keep[1]]} (mm)")
-    # Equal aspect reads physically-faithful proportions on a near-square
-    # slice, but forcing it on an extreme one (a 30 x 0.8 mm board edge-on,
-    # or a 2D-mode slice whose synthetic axis is a couple of cells wide)
-    # shrinks the axes box to a sub-pixel sliver inside a fixed-shape
-    # canvas (measured: 0.48 inch tall in an 8x6 inch figure, legend
-    # covering a third of it). Only force it within a reasonable range.
     x_span = float(xe[-1] - xe[0])
     y_span = float(ye[-1] - ye[0])
     data_ratio = (y_span / x_span) if x_span > 0 else 1.0
@@ -731,14 +640,6 @@ def plot_rasterized_slice(
         ax.set_aspect("auto")
     skip_note = (f"{n_skipped} patterned bod(y/ies): no analytic outline, "
                  "not outlined" if n_skipped else "")
-    # Each honesty note on its OWN line, not concatenated onto the main
-    # title: at the default 10pt title font a single line carrying the
-    # main title PLUS one long note measured ~1300 px wide, and two notes
-    # together ~2340 px -- both well past the 800 px canvas of the default
-    # figsize, so exactly the notes this honesty mechanism exists to
-    # surface were the part that got clipped off-canvas. `get_title()`
-    # still returns the full (now multi-line) string, so substring checks
-    # on any one note are unaffected by where the line breaks fall.
     main_line = (
         f"Rasterized {names[axis]}-slice at index {index} "
         f"({names[axis]} = {float(coords[axis][index]) * 1e3:.4f} mm) — "
@@ -746,12 +647,6 @@ def plot_rasterized_slice(
     note_lines = [n for n in (skip_note, wall_note, moved_note) if n]
     ax.set_title(title or "\n".join([main_line] + note_lines),
                 fontsize=10 if not note_lines else 8)
-    # A caller-supplied `ax` belongs to a figure the caller is composing
-    # (e.g. a 2-panel comparison); `fig.tight_layout()` reflows EVERY axes
-    # in that figure, not just this one -- measured moving a sibling
-    # subplot's bounds on every call. Only reflow a figure this function
-    # created itself -- `own_fig`, captured before `ax` was reassigned
-    # above, not `ax is None` (always False by this point).
     if own_fig:
         fig.tight_layout()
     return fig
@@ -815,12 +710,6 @@ def plot_stack_profile(
     grid = sim._build_realized_grid()
     cond = np.asarray(sim.conductor_mask(grid, sigma_threshold=sigma_threshold),
                       dtype=bool)
-    # Permittivity only — this viewer already reads its conductors from
-    # sim.conductor_mask() above and its realized walls from
-    # _realized_edge_wall_mask() below, both of which collect sheets and
-    # wires. The collectors here are passed and dropped so that
-    # "cells only" is a decision at the call site (rfx/api/_compile.py
-    # refuses an assembly that would silently omit a sheet).
     if isinstance(grid, NonUniformGrid):
         eps = np.asarray(sim._assemble_materials_nu(
             grid, pec_sheets=[], pec_wires=[])[0].eps_r, dtype=float)
@@ -838,14 +727,7 @@ def plot_stack_profile(
         if int(counts.max()) > 0:
             i0, i1 = np.unravel_index(int(np.argmax(counts)), counts.shape)
         else:
-            # No conductor anywhere — a dielectric resonator, a lens, a radome.
-            # argmax on an all-zero array returns 0, i.e. the CPML CORNER, and
-            # the figure comes back blank with no hint that the column was
-            # chosen badly. Fall back to the column with the most permittivity
-            # structure, and say so in the title.
             var = np.moveaxis(eps, axis, -1)
-            # np.ptp(...), not ndarray.ptp(...) — the method was removed in
-            # numpy 2.0 and this repo runs numpy>=2.
             var = np.ptp(var.reshape(var.shape[0], var.shape[1], -1), axis=-1)
             if float(var.max()) <= 0:
                 raise ValueError(
@@ -872,27 +754,18 @@ def plot_stack_profile(
     eps_col = eps[tuple(take)]
     cond_col = cond[tuple(take)]
     edges = _axis_edges(grid, axis, coords[axis]) * 1e3
-    # See plot_rasterized_slice: edges are N+1 for N real cells; the data
-    # column still carries the full grid dimension along this axis.
     n_cells_axis = edges.size - 1
     eps_col = eps_col[:n_cells_axis]
     cond_col = cond_col[:n_cells_axis]
     wall_col = (wall_mask[tuple(take)][:n_cells_axis]
                if wall_mask is not None else None)
 
-    # See plot_rasterized_slice: captured BEFORE `ax` is reassigned below.
     own_fig = ax is None
     fig = ax.figure if ax is not None else None
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
 
-    # realized cells, true sizes
     lo_e, hi_e = edges[:-1], edges[1:]
-    # ABSOLUTE shading, not per-column normalisation. Renormalising made a
-    # column of solid eps_r 9 pixel-identical to a column of vacuum, and the
-    # docstring promises the tint carries permittivity. Anchor 1.0 to white
-    # and cap at 12 so two columns (and two calls) are comparable; the tick
-    # labels carry the exact values regardless.
     eps_hi = 12.0
     for k in range(eps_col.size):
         shade = 0.97 - 0.55 * min(max(float(eps_col[k]) - 1.0, 0.0),
@@ -901,18 +774,11 @@ def plot_stack_profile(
                                    facecolor=str(max(shade, 0.0)),
                                    edgecolor="0.55", lw=0.4))
         if cond_col[k]:
-            # alpha < 1 + hatch, not an opaque fill: at alpha=0.85 solid
-            # red over near-white shading reads as opaque anyway, painting
-            # over the exact cell whose eps this docstring promises stays
-            # readable ("a sheet's own cell keeps the permittivity of
-            # whatever abuts it").
             ax.add_patch(plt.Rectangle((1.15, lo_e[k]), 1.0, hi_e[k] - lo_e[k],
                                        facecolor="#b03000", alpha=0.45,
                                        hatch="////",
                                        edgecolor="#701e00", lw=0.5))
         if wall_col is not None and wall_col[k]:
-            # realized PEC wall (a body's far face): its own marker,
-            # distinct from the conductor hatch -- see plot_rasterized_slice.
             ax.add_patch(plt.Rectangle((1.15, lo_e[k]), 1.0, hi_e[k] - lo_e[k],
                                        facecolor="#5533cc", alpha=0.5,
                                        edgecolor="#3a2488", lw=0.6))
@@ -931,7 +797,6 @@ def plot_stack_profile(
                                    fill=False, hatch="////",
                                    edgecolor="0.35", lw=0.0, zorder=6))
 
-    # declared spans of everything covering this column
     x_at = float(coords[keep[0]][i0])
     y_at = float(coords[keep[1]][i1])
     drawn = 0
@@ -971,11 +836,6 @@ def plot_stack_profile(
         if absorber_spans:
             handles.append(Patch(fill=False, hatch="////", edgecolor="0.35",
                                  label="CPML absorber"))
-        # Inside the axes, not bbox_to_anchor-outside: this function's
-        # figure is never reflowed for an outside-axes legend unless the
-        # caller happens to save with bbox_inches="tight", so an anchored
-        # legend was clipped at the canvas edge (measured). `loc="best"`
-        # fits it within the existing xlim/ylim instead.
         ax.legend(handles=handles, fontsize=6.5, loc="best", framealpha=0.85)
 
     names = "xyz"
@@ -984,9 +844,6 @@ def plot_stack_profile(
     ax.set_xticks([0.5, 1.65])
     ax.set_xticklabels(["declared", "meshed"])
     ax.set_ylabel(f"{names[axis]} (mm)")
-    # See plot_rasterized_slice: notes on their own line(s), not
-    # concatenated onto the main title, so a long note is not the part
-    # that gets clipped off the default-figsize canvas.
     tp_note = ""
     main_line = (
         f"Stack along {names[axis]} at {names[keep[0]]}={x_at * 1e3:.3f} mm, "
@@ -995,9 +852,6 @@ def plot_stack_profile(
     note_lines = [n.strip() for n in (tp_note, auto_note) if n.strip()]
     ax.set_title(title or "\n".join([main_line] + note_lines),
                 fontsize=10 if not note_lines else 8)
-    # See plot_rasterized_slice: only reflow a figure this function
-    # created itself (`own_fig`, captured before `ax` was reassigned
-    # above), never a caller-supplied `ax`'s whole figure.
     if own_fig:
         fig.tight_layout()
     return fig
@@ -1092,14 +946,14 @@ def plot_radiation_pattern(
 
     if db:
         r = 10 * np.log10(np.maximum(power_norm, 1e-10))
-        r = np.maximum(r, -40)  # clip at -40 dB
-        r = r + 40  # shift so -40 dB = 0
+        r = np.maximum(r, _RADIATION_PATTERN_MIN_DB)
+        r = r + _RADIATION_PATTERN_DB_SHIFT
     else:
         r = power_norm
 
     fig, ax = plt.subplots(figsize=(6, 6), subplot_kw={"projection": "polar"})
     ax.plot(theta, r)
-    ax.plot(-theta + 2 * np.pi, r)  # mirror for full pattern
+    ax.plot(-theta + 2 * np.pi, r)
     freq_ghz = ff.freqs[freq_idx] / 1e9
     ax.set_title(title or f"Radiation Pattern ({freq_ghz:.2f} GHz)")
     return fig
@@ -1182,11 +1036,9 @@ def plot_rcs(
 
     if polar:
         fig, ax = plt.subplots(figsize=(6, 6), subplot_kw={"projection": "polar"})
-        # Shift RCS values for polar display (clip and shift)
         rcs_display = np.maximum(rcs_db, np.max(rcs_db) - 40)
         rcs_display = rcs_display - np.min(rcs_display)
         ax.plot(theta, rcs_display, linewidth=1.5)
-        # Mirror for symmetric display
         ax.plot(-theta + 2 * np.pi, rcs_display, linewidth=1.5, alpha=0.5)
         ax.set_title(plot_title)
     else:
@@ -1200,10 +1052,6 @@ def plot_rcs(
 
     return fig
 
-
-# ===========================================================================
-# 3D interactive visualisation (plotly).
-# ===========================================================================
 
 def _plotly():
     try:

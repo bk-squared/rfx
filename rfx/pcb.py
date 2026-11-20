@@ -27,10 +27,6 @@ from typing import Sequence
 
 from rfx.geometry.csg import Box
 
-# A layer whose resolved material carries at least this conductivity is a
-# CONDUCTOR layer, represented by a sheet declaration (see
-# ``Stackup.to_shapes``).  Same threshold as
-# ``Simulation._PEC_SIGMA_THRESHOLD``.
 _PCB_PEC_SIGMA_THRESHOLD = 1e6
 
 
@@ -43,18 +39,8 @@ def _is_conductor_layer(material_name: str) -> bool:
     return float(entry.get("sigma", 0.0)) >= _PCB_PEC_SIGMA_THRESHOLD
 
 
-# ---------------------------------------------------------------------------
-# Material aliases for common PCB dielectrics not in MATERIAL_LIBRARY
-# ---------------------------------------------------------------------------
-
 PCB_MATERIAL_ALIASES: dict[str, str] = {
-    # "prepreg" is typically similar to FR-4 in FDTD terms.  Users who need
-    # precise Dk/Df should register a custom material on the Simulation
-    # object; the alias simply lets the stackup builder pass a valid
-    # library name downstream.
     "prepreg": "fr4",
-    # Natural-name aliases for common RF laminates whose canonical
-    # MATERIAL_LIBRARY keys are spelled differently.
     "ro4003c": "rogers4003c",
     "ro4350b": "rogers4350b",
     "rt5880": "rt_duroid_5880",
@@ -72,10 +58,6 @@ def resolve_pcb_material(material: str) -> str:
     """
     return PCB_MATERIAL_ALIASES.get(material, material)
 
-
-# ---------------------------------------------------------------------------
-# PCBLayer
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class PCBLayer:
@@ -100,10 +82,6 @@ class PCBLayer:
     name: str | None = None
 
 
-# ---------------------------------------------------------------------------
-# Stackup
-# ---------------------------------------------------------------------------
-
 @dataclass
 class Stackup:
     """PCB stackup builder.
@@ -124,8 +102,6 @@ class Stackup:
     def __init__(self, layers: Sequence[PCBLayer]):
         self.layers = list(layers)
 
-    # -- properties ---------------------------------------------------------
-
     @property
     def total_thickness(self) -> float:
         """Sum of all layer thicknesses (metres)."""
@@ -134,8 +110,6 @@ class Stackup:
     @property
     def num_layers(self) -> int:
         return len(self.layers)
-
-    # -- query helpers ------------------------------------------------------
 
     def get_layer_z(self, name: str) -> tuple[float, float]:
         """Return ``(z_lo, z_hi)`` of the named layer.
@@ -155,8 +129,6 @@ class Stackup:
                 return (z_lo, z_hi)
             z = z_hi
         raise KeyError(f"No layer named {name!r} in stackup")
-
-    # -- geometry generation ------------------------------------------------
 
     def to_shapes(
         self,
@@ -238,8 +210,6 @@ class Stackup:
 
         return shapes
 
-    # -- convenience constructors -------------------------------------------
-
     @classmethod
     def standard_2layer(
         cls,
@@ -296,8 +266,6 @@ class Stackup:
             PCBLayer(thickness=prepreg_thickness, material="prepreg", name="prepreg_top"),
             PCBLayer(thickness=copper_thickness, material="copper", name="top"),
         ])
-
-    # -- repr ---------------------------------------------------------------
 
     def __repr__(self) -> str:
         lines = [f"Stackup({self.num_layers} layers, total={self.total_thickness*1e3:.3f} mm)"]

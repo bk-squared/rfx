@@ -48,7 +48,7 @@ class PortDumpMetadata:
     should record the commit, geometry/material/grid/boundary setup, port and
     reference-plane definitions, waveform, time step, frequency grid, raw
     phasor convention, and the production S-matrix being audited.
-    """
+    ``diagonal_frame`` identifies whether the driven diagonal uses stored into-DUT V/I or the driven-terminal voltage convention ``V_fdtd = -V``."""
 
     commit_hash: str
     geometry: Mapping[str, Any] = field(default_factory=dict)
@@ -63,13 +63,6 @@ class PortDumpMetadata:
     raw_phasor_type: str = "V/I"
     phase_convention: str = "exp(-j omega t)"
     current_convention: str = "positive_into_dut"
-    #: Which driven diagonal the recorded ``production_smatrix`` used.
-    #: The default is the standard ``b/a`` for a genuinely consistent
-    #: (V into DUT, I into DUT) pair.  A dump of rfx's own LUMPED port
-    #: passes ``diagonal_frame="driven_terminal"``: it stores ``-V_fdtd``
-    #: as its into-DUT voltage, which is right at a passive receive port
-    #: and inconsistent at the driven one, so its production diagonal is
-    #: ``(V_fdtd - Z0 I)/(V_fdtd + Z0 I)``.
     diagonal_frame: str = "port_branch"
     reference_plane_shift_convention: str = (
         "port coordinate is positive into the DUT; positive offset moves the "
@@ -111,7 +104,7 @@ class PortVIDump:
     Arrays use shape ``(n_driven, n_ports, n_freqs)``.  The replay function
     recomputes ``S[receiver, driven, frequency]`` from these raw phasors and
     never calls the production extractor being audited.
-    """
+    For MSL dumps, the canonical V/I arrays describe probe zero, the wave-split plane."""
 
     metadata: Mapping[str, Any]
     freqs: np.ndarray
@@ -456,11 +449,9 @@ def validate_port_smatrix(
             limit=0.0,
         ))
 
-    # Subsequent physical invariant checks are meaningful only on finite,
-    # non-empty data.
     data_is_checkable = bool(np.all(finite_s) and n_ports > 0 and n_freqs > 0)
     if data_is_checkable and check_passivity:
-        col_power = np.sum(np.abs(s) ** 2, axis=0)  # (n_ports, n_freqs)
+        col_power = np.sum(np.abs(s) ** 2, axis=0)
         max_idx = np.unravel_index(int(np.argmax(col_power)), col_power.shape)
         max_power = float(col_power[max_idx])
         limit = float(passivity_limit + passivity_tol)
@@ -656,13 +647,7 @@ def replay_smatrix_from_vi_dump(
     a = (v + z_view * i) / (2.0 * sqrt_z)
     b = (v - z_view * i) / (2.0 * sqrt_z)
 
-    # Passive-receive channel: the production receive b-wave in
-    # this dump's into-DUT convention.  Selected per role in the loop below.
     b_recv = -(v + z_view * i) / (2.0 * sqrt_z)
-    # Driven-terminal wave pair: the same split on ``V_fdtd = -V``, which is
-    # the pair that satisfies the circuit law at an excited port.  Kept as
-    # its own pair rather than reusing ``a``/``b`` so the reference-plane
-    # shift below applies to each wave in its own role.
     a_drv = (-v + z_view * i) / (2.0 * sqrt_z)
     b_drv = (-v - z_view * i) / (2.0 * sqrt_z)
 
@@ -707,13 +692,8 @@ def replay_smatrix_from_vi_dump(
 
     s = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     for drive_i, driven_port in enumerate(driven):
-        # Role-selected numerator: the reflected-wave channel at
-        # the driven port, the passive-receive channel everywhere else.
         numer = b_recv[drive_i, :, :].copy()
         if frame == "driven_terminal":
-            # Whole-port frame: ONE incident wave for the whole column, the
-            # physical one at the driven port, for the diagonal and the
-            # off-diagonals alike.
             numer[driven_port, :] = b_drv[drive_i, driven_port, :]
             denom = a_drv[drive_i, driven_port, :]
         else:
@@ -839,9 +819,6 @@ def load_port_vi_dump_npz(path: str | Path) -> PortVIDump:
         production = data["production_smatrix"] if "production_smatrix" in data else None
         offsets = data["reference_plane_offsets_m"] if "reference_plane_offsets_m" in data else None
         gamma = data["propagation_constants"] if "propagation_constants" in data else None
-        # Production MSL diagnostics retain N voltage probes as
-        # raw_v[driven, port, probe, frequency].  PortVIDump's canonical V/I
-        # view is the wave-split plane at probe zero.
         if "raw_v" in data:
             if metadata.get("schema") != "rfx.msl_nprobe_dump":
                 raise ValueError("raw_v requires an explicit MSL dump schema")
@@ -881,7 +858,7 @@ def _msl_dump_reference_impedances(metadata, n_ports):
 
 
 def _replay_msl_port_vi_dump(dump):
-    """Independent NumPy replay of the declared MSL wave/assembly contract."""
+    """Independent NumPy replay of the declared MSL wave/assembly contract. In version 5 MSL dumps, V/I phasors refer to probe-zero planes while production S refers to the declared feed planes."""
     metadata = dump.metadata
     version = metadata.get("schema_version")
     if version not in (3, 4, 5):
@@ -917,13 +894,9 @@ def _replay_msl_port_vi_dump(dump):
         a, b = a / np.sqrt(z.real), b / np.sqrt(z.real)
     assembly = metadata.get("production_smatrix_assembly")
     if assembly == "multi_drive_solve":
-        # Stored axes are drive/port/frequency. Solve A.T S.T = B.T.
         s = np.stack([np.linalg.solve(a[:, :, k], b[:, :, k]).T
                       for k in range(n_freqs)], axis=-1)
     elif assembly == "single_ratio_fallback":
-        # The production fallback retains a legacy 1e-30 denominator floor
-        # in its working wave units. Unlike B A^-1, that floor is not
-        # invariant under a common rescaling, so reproduce sqrt(R0) here.
         if expected == "power":
             scales = np.sqrt(refs.real[0]) / np.sqrt(refs.real)
             a = a_voltage * scales[None, :, None]
@@ -932,16 +905,11 @@ def _replay_msl_port_vi_dump(dump):
         for record, driven in enumerate(dump.driven_port_indices):
             with np.errstate(divide="ignore", invalid="ignore"):
                 s[:, driven, :] = b[record] / (a[record, driven] + 1e-30)
-            # Preserve the producer's legacy diagonal floor, which is
-            # applied before power scaling.
             s[driven, driven] = (b_voltage[record, driven]
                                  / (a_voltage[record, driven] + 1e-30))
     else:
         raise ValueError("MSL dump needs an explicit supported production assembly")
     if version == 5:
-        # v5 production S is referred to the declared feed planes: apply the
-        # recorded shift S[i, j] *= D_i D_j, D_p = exp(-1j beta_p L_p), so the
-        # replay compares like with like. V/I stay at the probe-0 planes.
         shift = metadata.get("feed_plane_shift")
         if not shift:
             raise ValueError("v5 MSL dump lacks its feed_plane_shift record")
@@ -962,10 +930,6 @@ def replay_smatrix_from_port_vi_dump(dump: PortVIDump) -> PortSMatrixObservable:
     if dump.metadata.get("schema") == "rfx.msl_nprobe_dump":
         return _replay_msl_port_vi_dump(dump)
     current_convention = str(dump.metadata.get("current_convention", "positive_into_dut"))
-    # ``diagonal_frame`` tells the replay which driven diagonal the dump's
-    # recorded production S-matrix used. A dump with "driven_terminal" metadata
-    # uses that convention; everything else, including dumps without the key,
-    # uses the standard ``b/a`` recorded by those dumps.
     diagonal_frame = str(dump.metadata.get("diagonal_frame", "port_branch"))
     return replay_smatrix_from_vi_dump(
         dump.voltages,
