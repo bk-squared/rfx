@@ -56,7 +56,7 @@ def test_waveguide_section_wall_nodes(row, axis):
             sim, _, _ = _guide(volume_walls=volume_walls)
             sim.forward(n_steps=2, skip_preflight=True)
         return
-    sim, nodes, walls = _guide()
+    sim, nodes, walls = _guide(volume_walls=True)
     source = int(np.argmin(np.abs(nodes[0] - PORT_LEFT_X)))
     along = 3 - axis
     start, stop = walls[along][0] + 2, walls[along][1] - 4
@@ -66,6 +66,8 @@ def test_waveguide_section_wall_nodes(row, axis):
     hi = [source + 2, 0, 0]
     lo[axis] = hi[axis] = wall
     lo[along], hi[along] = start, stop
+    assert all(nodes[a][0] < nodes[a][lo[a]] <= nodes[a][hi[a]] < nodes[a][-1]
+               for a in range(3))
     sim.add_thin_conductor(
         Box(tuple(nodes[a][i] for a, i in enumerate(lo)),
             tuple(nodes[a][i] for a, i in enumerate(hi))),
