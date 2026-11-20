@@ -141,6 +141,7 @@ class _ARMesh:
     """Simulation and all mesh-dependent geometry and frequency samples."""
 
     def __init__(self, sim, dx, cpml_cells):
+        """``eps_override`` includes the CPML pad outside the declared domain."""
         self.sim = sim
         self.dx = dx
         self.cpml_cells = cpml_cells
@@ -148,7 +149,6 @@ class _ARMesh:
         self.nx = grid.shape[0]
         self.dt = float(grid.dt)
         self.n_steps = int(round(N_PERIODS / F0 / self.dt))
-        # eps_override includes the CPML pad outside the declared domain.
         self.edges = [
             cpml_cells + int(round((X_DESIGN_LO + i * LAYER_THK) / dx))
             for i in range(N_LAYERS + 1)
@@ -404,7 +404,6 @@ def main(mesh=None, output_dir=SCRIPT_DIR) -> int:
     def cost_only(layer_eps):
         return cost_with_aux(layer_eps)[0]
 
-    # ---- Adam through the public scalar-parameter interface ---------------
     print("\n[rfx] Adam optimisation through differentiable forward...")
     n_iters = 60
     t0 = time.time()

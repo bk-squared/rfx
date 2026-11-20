@@ -55,6 +55,7 @@ def test_adam_matches_loop(bounded, jit):
 
 
 def test_projected_bounds_convention_and_rounding():
+    """The rounding-case bounds round outward in float32 at the first lower bound and second upper bound."""
     for bounds, x0, target, expected in [
         (((0, 1), (2, 3)), (0.5, 2.5), (1.5, 1.5), (1, 2)),
         (((-1, 0.7), (-1, 0.7)), (0, 0), (2, 2), (0.7, 0.7)),
@@ -62,7 +63,6 @@ def test_projected_bounds_convention_and_rounding():
         seen = []
 
         def fun(x):
-            # Capture primal evaluations as well as the returned history.
             jax.debug.callback(lambda value: seen.append(np.asarray(value)), x)
             return jnp.sum((x - jnp.asarray(target)) ** 2)
 
@@ -82,7 +82,6 @@ def test_projected_bounds_convention_and_rounding():
     np.testing.assert_array_equal(broadcast.x, [0, 1])
     assert broadcast.x.dtype == jnp.float32
 
-    # The first lower bound and second upper bound round outward in float32.
     bounds = ((0.7, 1.3), (-0.9, 0.1))
     pairs = np.asarray(bounds, dtype=np.float64)
     for method in ("adam", "projected_adam", "mma"):
@@ -194,7 +193,6 @@ def test_mma_cap_warning_and_count(monkeypatch, cap):
         kwargs[cap] = 1 if cap == "max_newton" else 0
         with monkeypatch.context() as patch:
             if cap == "max_halvings":
-                # Reject every trial residual norm without changing its values.
                 patch.setattr(np, "einsum", lambda expression, *values, **kw:
                               np.inf if expression == "i,i->" else einsum(expression, *values, **kw))
             result = original(*args, **kwargs)
