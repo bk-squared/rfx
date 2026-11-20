@@ -257,7 +257,6 @@ def test_pattern_at_the_face_is_replicated_without_filling_its_slot(nonuniform):
 @pytest.mark.parametrize("nonuniform,legacy_dc", [(False, False), (True, False), (False, True)],
                          ids=["pec-volume-uniform", "pec-volume-nu", "dc-volume-uniform"])
 def test_volumetric_nonbox_conductor_still_stops_and_warns(nonuniform, legacy_dc):
-    """DC admission refuses a Sphere film because its normal/layers are ambiguous."""
     from rfx.geometry.smoothing import continued_conductor_shape
     sim = _sim(nonuniform)
     shape = Sphere(center=(.001, .004, .004), radius=.002)

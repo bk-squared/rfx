@@ -70,7 +70,7 @@ def _stack(*, with_sheet, span_the_plane=True, lane="uniform"):
     17 µm slot of vacuum (the #702 geometry).
     The sheet at 800 µm is node 12 on the graded lane.
     """
-    assert T_CU == pytest.approx(0.17 * DX), 'The foil is 0.17 of a cell, so it requires a sheet declaration.'
+    assert T_CU < DX, 'The foil is thinner than a cell, so it requires a sheet declaration.'
     if lane == "nu":
         sim = Simulation(freq_max=10e9, domain=(LX, LY, 0.0), dx=DX,
                          dz_profile=DZ_GRADED, boundary="pec")

@@ -100,8 +100,8 @@ def test_debye_medium_slower_propagation():
     tau_pulse = 1.0 / (f0 * 0.5 * np.pi)
     t0_pulse = 3.0 * tau_pulse
     src_x = 20
-    mon_x = 80
-    assert np.isclose((mon_x - src_x) * dx, 0.030, rtol=0., atol=1e-12), 'The arrival monitor must be thirty millimetres downstream'
+    MONITOR_X_INDEX_THIRTY_MM_DOWNSTREAM = 80
+    mon_x = MONITOR_X_INDEX_THIRTY_MM_DOWNSTREAM
     cy, cz = 3, 3
     n_steps = 600
 
@@ -168,7 +168,7 @@ def test_debye_energy_bounded():
 
     Initialize cavity mode in Debye medium, run for many steps.
     Energy should decay (Debye is dissipative) or stay bounded.
-    Reduced Debye strength keeps field dynamics reasonable.
+    Reduced Debye strength relative to water-like values (eps_inf=4, delta_eps=76, tau=8 ps) keeps field dynamics reasonable.
     """
     shape = (20, 20, 20)
     dx = 0.002

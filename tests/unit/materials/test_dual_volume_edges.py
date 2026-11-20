@@ -51,6 +51,7 @@ def reference(values, widths, component, cell, periodic):
 @pytest.mark.parametrize('periodic', [(False,)*3, (True,)*3, (True, False, True)])
 @pytest.mark.parametrize('shape', [(3, 4, 5), (1, 4, 3)])
 def test_volume_sigma_and_poles_against_hand_reference(periodic, shape):
+    """The hand reference uses beta=eps0*delta_eps*dt/(2*tau+dt)*occupancy, with delta_eps=2 and tau=1e-11 s."""
     rng = np.random.default_rng(733)
     g = MetricGrid([np.arange(n, dtype=float) + 1 for n in shape])
     eps = rng.uniform(1, 8, shape).astype(np.float32)

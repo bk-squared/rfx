@@ -61,7 +61,7 @@ def sheet():
 ], ids=['R1', 'R2', 'R3', 'R4', 'R5', 'R6_f0_first', 'R7_before_record',
         'R8_f0_before_sigma', 'R9_sigma_before_mask'])
 def test_refusals(shape, kwargs, expected):
-    """Every check runs before the record is built because ThinConductor refuses an OrientedBox with NotImplementedError."""
+    """The f0 check comes first, before building a ThinConductor record that would refuse an OrientedBox with NotImplementedError."""
     sim = simulation()
     with pytest.raises(ValueError) as exc:
         sim.add_thin_conductor(shape, **kwargs)
