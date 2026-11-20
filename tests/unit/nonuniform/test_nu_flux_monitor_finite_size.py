@@ -43,6 +43,7 @@ Every tolerance printed in-assertion is ``f(dA, dt, dx/dy/dz, eps, freq)``.
 x64 is scoped per-test via ``jax.enable_x64`` (never a module-level
 ``jax.config.update`` — repo rule; it flips at collection and reds every
 same-process pytest-split shard).
+In an earlier measurement, the cross-mesh difference at 9.4 GHz read 0.0364 with 16 and with 24 absorber layers.
 """
 from __future__ import annotations
 
@@ -55,19 +56,14 @@ from rfx import Simulation, flux_spectrum
 from rfx.sources.sources import ModulatedGaussian
 from rfx.model.graded_grid import interior_cells
 
-try:  # jax >= 0.8.0
+try:
     from jax import enable_x64
-except ImportError:  # older jax
+except ImportError:
     from tests._x64_compat import enable_x64
 
 C0 = 2.998e8
 
 
-# --------------------------------------------------------------------------
-# independent (test-side) re-derivation of the intended CELL window and dA,
-# read straight off the realized graded grid — NOT via the runner helper, so
-# it is a genuine oracle for the runner helper.
-# --------------------------------------------------------------------------
 def _interior_edges(d_full, pad_lo, pad_hi):
     return np.insert(np.cumsum(np.asarray(interior_cells(d_full, pad_lo, pad_hi))), 0, 0.0)
 
@@ -82,8 +78,6 @@ def _expected_cell_span(edges, pad_lo, center, size):
     hi_phys = center + size / 2.0
     lo_local = int(np.argmin(np.abs(edges - lo_phys)))
     hi_local = int(np.argmin(np.abs(edges - hi_phys)))
-    # NODE span (lo, hi+1) -> CELL span (lo, hi): the hi_local-lo_local cells
-    # bracketed by the two chosen edge nodes.
     return (lo_local + pad_lo, hi_local + pad_lo), (lo_local, hi_local)
 
 
@@ -118,10 +112,6 @@ def _build_open_graded_sim(dz_profile, *, dy_profile=None, nx=44, dx=0.5e-3,
     return sim, grid, (Lx, Ly, Lz)
 
 
-# --------------------------------------------------------------------------
-# T1 — the guard is gone; a graded finite monitor returns a finite non-zero
-#      spectrum. (Fail-before: origin/main raised NotImplementedError here.)
-# --------------------------------------------------------------------------
 def test_nu_finite_flux_guard_removed_returns_spectrum():
     dz = np.array([0.25e-3] * 8 + [0.5e-3] * 8, dtype=float)
     sim, grid, (Lx, Ly, Lz) = _build_open_graded_sim(dz)
@@ -129,7 +119,6 @@ def test_nu_finite_flux_guard_removed_returns_spectrum():
     sim.add_flux_monitor(axis="x", coordinate=Lx * 0.6, freqs=freqs,
                          size=(Ly * 0.5, Lz * 0.5),
                          center=(Ly * 0.5, Lz * 0.5), name="fin")
-    # Would raise NotImplementedError on origin/main; must run now.
     res = sim.run(n_steps=400, compute_s_params=False)
     mon = res.flux_monitors["fin"]
     spec = np.asarray(flux_spectrum(mon))
@@ -137,15 +126,11 @@ def test_nu_finite_flux_guard_removed_returns_spectrum():
     assert float(np.max(np.abs(spec))) > 0.0, (
         "finite-region NU flux spectrum is identically zero — the DFT never "
         "accumulated (field/monitor mismatch)")
-    # It selected a strict sub-window of the plane (fewer cells than full).
     assert (mon.hi1 - mon.lo1) < grid.ny and (mon.hi2 - mon.lo2) < grid.nz, (
         f"finite window ({mon.lo1}:{mon.hi1}, {mon.lo2}:{mon.hi2}) is not a "
         f"strict sub-region of the ({grid.ny},{grid.nz}) plane")
 
 
-# --------------------------------------------------------------------------
-# T2 — Reintegrate full-plane DFTs with independent clipped endpoint weights.
-# --------------------------------------------------------------------------
 def _restrict_full_to_window(mon_full, mon_sub, grid):
     from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
     coords = coords_from_nonuniform_grid(grid)
@@ -165,6 +150,8 @@ def _restrict_full_to_window(mon_full, mon_sub, grid):
 
 
 def test_nu_finite_flux_bitexact_restriction():
+    """The machine-precision gate's ceiling is generous vs an earlier measured ~1e-15 but far below any real bookkeeping bug."""
+    FULL_PLANE_REINTEGRATION_REL_TOL = 1e-11
     with enable_x64(True):
         dz = np.array([0.3e-3] * 6 + [0.55e-3] * 8, dtype=float)
         sim, grid, (Lx, Ly, Lz) = _build_open_graded_sim(dz)
@@ -178,7 +165,6 @@ def test_nu_finite_flux_bitexact_restriction():
         mon_full = res.flux_monitors["full"]
         mon_fin = res.flux_monitors["fin"]
 
-        # Witness: DFT accumulator well above noise.
         acc = float(np.max(np.abs(np.asarray(mon_full.e2_dft))))
         assert acc > 1e-25, f"flux DFT at noise floor ({acc:.3e}); setup degenerate"
 
@@ -188,19 +174,14 @@ def test_nu_finite_flux_bitexact_restriction():
         reldev = float(np.max(np.abs(fin - ref) / scale))
         print(f"\n[T2 bit-exact] window=({mon_fin.lo1}:{mon_fin.hi1},"
               f"{mon_fin.lo2}:{mon_fin.hi2}) max reldev={reldev:.3e}")
-        # Machine-precision gate; ceiling generous vs measured ~1e-15 but far
-        # below any real bookkeeping bug.
-        assert reldev < 1e-11, (
+        assert reldev < FULL_PLANE_REINTEGRATION_REL_TOL, (
             f"finite NU flux deviates from the full-plane integrand over the "
             f"SAME window by {reldev:.3e} (>1e-11) — a real finite-region "
             "bookkeeping bug, not the expected machine-eps match")
 
 
-# --------------------------------------------------------------------------
-# T3 — ABSOLUTE aperture-cell / cumulative-dA oracle.
-#      Catches a node/cell off-by-one that T2 (self-referential window) cannot.
-# --------------------------------------------------------------------------
 def test_nu_finite_flux_absolute_aperture_and_dA():
+    """The only selected-span spread is float32 cumulative-sum roundoff, ~ n_cells * eps_f32."""
     dz = np.array([0.25e-3] * 8 + [0.5e-3] * 8, dtype=float)
     sim, grid, (Lx, Ly, Lz) = _build_open_graded_sim(dz)
     freqs = jnp.asarray(np.linspace(5e9, 18e9, 4))
@@ -211,11 +192,8 @@ def test_nu_finite_flux_absolute_aperture_and_dA():
     res = sim.run(n_steps=300, compute_s_params=False)
     mon = res.flux_monitors["fin"]
 
-    # Independent expectation from the realized graded edges (axis y=1, z=2).
     dy_full, pad_y_lo, pad_y_hi, _ = _grid_axis(grid, 1)
     dz_full, pad_z_lo, pad_z_hi, _ = _grid_axis(grid, 2)
-    # Geometry uses the exact node spine, not a cumulative sum of
-    # solver-facing float32 spacings. Area arithmetic still uses those stores.
     from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
     coords = coords_from_nonuniform_grid(grid)
     edges_y = np.asarray(coords.y)[pad_y_lo:grid.ny - pad_y_hi]
@@ -223,7 +201,6 @@ def test_nu_finite_flux_absolute_aperture_and_dA():
     (yl, yh), (yll, yhl) = _expected_cell_span(edges_y, pad_y_lo, cy, size_y)
     (zl, zh), (zll, zhl) = _expected_cell_span(edges_z, pad_z_lo, cz, size_z)
 
-    # (a) exact index match.
     assert (mon.lo1, mon.hi1) == (yl, yh), (
         f"y window {mon.lo1}:{mon.hi1} != independently-derived {yl}:{yh}")
     assert (mon.lo2, mon.hi2) == (zl, zh), (
@@ -234,9 +211,6 @@ def test_nu_finite_flux_absolute_aperture_and_dA():
         f"selected cell counts ({mon.hi1-mon.lo1},{mon.hi2-mon.lo2}) != the "
         f"aperture cell counts ({n_y},{n_z}) — a node/cell off-by-one")
 
-    # (c) cumulative dA == sum of the INTENDED cells' local face areas, computed
-    #     independently from the realized grid (NOT from the monitor's own dA).
-    # Integrate each nodal linear interpolant over the reported node bounds.
     dy_cells = np.diff(coords.y[yl:yh+1])
     dz_cells = np.diff(coords.z[zl:zh+1])
     dy_nodes = np.zeros(len(dy_cells)+1)
@@ -246,26 +220,22 @@ def test_nu_finite_flux_absolute_aperture_and_dA():
     dz_nodes[:-1] += dz_cells/2
     dz_nodes[1:] += dz_cells/2
     exp_dA = float(np.sum(np.outer(dy_cells, dz_nodes)))
-    np.testing.assert_allclose(mon.dA2, np.outer(dy_nodes, dz_cells), rtol=1e-4, atol=0.)
+    FLOAT32_FACE_AREA_REL_TOL = 1e-4
+    np.testing.assert_allclose(mon.dA2, np.outer(dy_nodes, dz_cells), rtol=FLOAT32_FACE_AREA_REL_TOL, atol=0.)
     got_dA = float(np.sum(np.asarray(mon.dA)))
     reldA = abs(got_dA - exp_dA) / max(exp_dA, 1e-300)
     print(f"\n[T3 absolute] y {mon.lo1}:{mon.hi1} z {mon.lo2}:{mon.hi2} "
           f"n=({n_y},{n_z}) dA got={got_dA:.6e} exp={exp_dA:.6e} rel={reldA:.2e}")
-    # float32 store of the cell sizes -> ~1e-6 relative; gate derived from that.
-    tol_dA = 1e-4  # >> f32 eps*n_cells, << one coarse-cell area fraction
+    tol_dA = FLOAT32_FACE_AREA_REL_TOL
     assert reldA < tol_dA, (
         f"cumulative dA {got_dA:.6e} != intended {exp_dA:.6e} (rel {reldA:.2e} "
         f">{tol_dA}) — the finite window does not integrate the intended cells")
 
-    # (d) node->cell APPLIED, not skipped: the physical aperture the selected
-    #     z-cells span equals edges[hi_local]-edges[lo_local]; the WRONG (raw
-    #     node-span) choice would append one extra coarse cell and overshoot.
     span_selected = float(edges_z[zhl] - edges_z[zll])
     span_if_offbyone = float(edges_z[min(zhl + 1, len(edges_z) - 1)] - edges_z[zll])
     dA_z_selected = float(np.sum(dz_full[zl:zh]))
-    # Exactly equal in exact arithmetic (the selected cells ARE interior[zll:zhl]);
-    # the only spread is float32 cumulative-sum roundoff, ~ n_cells * eps_f32.
-    tol_span = 1e-4 * span_selected   # >> n*eps_f32 (~1e-6), << one coarse cell (~0.2)
+    FLOAT32_SELECTED_SPAN_REL_TOL = 1e-4
+    tol_span = FLOAT32_SELECTED_SPAN_REL_TOL * span_selected
     assert abs(dA_z_selected - span_selected) < tol_span, (
         f"selected z-cell widths {dA_z_selected:.9e} != physical aperture "
         f"{span_selected:.9e} (tol {tol_span:.2e}) — node->cell (#868) not "
@@ -274,27 +244,6 @@ def test_nu_finite_flux_absolute_aperture_and_dA():
         "graded fixture must make the off-by-one detectable (extra coarse cell "
         "strictly enlarges the aperture); choose a coarser tail")
 
-    # (e) REQUESTED vs SELECTED, PER ENDPOINT — the only check here that reads
-    #     the REQUESTED center/size at all. (a)-(d) all compare against a
-    #     window. The runner resolves each requested endpoint by argmin against
-    #     the cumulative interior edges, and the nearest edge to a point is at
-    #     most half a local cell away, so each endpoint carries its OWN bound:
-    #       |edges[lo_local] - (c - s/2)| <= max(d[lo_local-1], d[lo_local])/2
-    #     and likewise at hi_local. Both the request and the bound come from the
-    #     realized grid — no literal.
-    #     WHY PER ENDPOINT (fix2b, verify nit 2): the previous form compared the
-    #     SUMMED extent against max(d) over the window. A one-cell error at ONE
-    #     endpoint moves the summed extent by exactly one cell, i.e. exactly ONTO
-    #     that tolerance, and passed under `<=`. Split across the two endpoints
-    #     the same error is one WHOLE cell against a HALF-cell bound, so it
-    #     fails. What (e) now catches: a two-cell-or-larger mis-snap of either
-    #     endpoint; a ONE-cell mis-snap only when the request lies on an edge or
-    #     the neighbouring cells differ by < 2x (at a 2:1 transition a request
-    #     0.1-0.49 cell into the last fine cell can still pass the
-    #     max(neighbours)/2 bound - measured on this fixture's z axis); and any
-    #     clamp that moves an endpoint more than half a cell.
-    #     What it still cannot catch: a request landing exactly mid-cell, where
-    #     both neighbouring edges are equidistant and either is a correct argmin.
     for label, d_full_, edges_, pad_lo_, pad_hi_, lo, hi, c_req, s_req in (
             ("y", dy_full, edges_y, pad_y_lo, pad_y_hi, mon.lo1, mon.hi1, cy, size_y),
             ("z", dz_full, edges_z, pad_z_lo, pad_z_hi, mon.lo2, mon.hi2, cz, size_z)):
@@ -302,8 +251,6 @@ def test_nu_finite_flux_absolute_aperture_and_dA():
         n_int = int(len(int_d))
         for end, node, requested in (("lo", lo - pad_lo_, c_req - s_req / 2.0),
                                      ("hi", hi - pad_lo_, c_req + s_req / 2.0)):
-            # half the larger of the (at most two) interior cells that the
-            # chosen edge node separates: the argmin bound at THIS endpoint.
             neigh = ([float(int_d[node - 1])] if node > 0 else []) + \
                     ([float(int_d[node])] if node < n_int else [])
             tol_end = max(neigh) / 2.0
@@ -323,10 +270,6 @@ def test_nu_finite_flux_absolute_aperture_and_dA():
               f"selected_size={selected:.6e} err={abs(selected - s_req):.3e}")
 
 
-# --------------------------------------------------------------------------
-# T4 — GENERALITY: two gradings -> different lo/hi and dA; recovered physical
-#      power agrees within a runtime-DERIVED bound. + ring-down settling.
-# --------------------------------------------------------------------------
 def _settling_db(time_series):
     """End-vs-peak ring-down witness on the AC (time-varying) field only.
 
@@ -356,32 +299,29 @@ def _react_ratio(mon):
 
 
 def test_nu_finite_flux_generality_two_gradings():
-    # SAME physical domain (same Lz, same buffers, same source/monitor
-    # positions); the two runs differ ONLY in how the MIDDLE 2.5 mm is meshed:
-    # 10 cells of 0.25 mm vs 5 cells of 0.50 mm. Uniform buffers (>=8 cells)
-    # against both z-absorber faces keep the CPML runway uniform (the
-    # graded-cell-in-absorber PML-breakdown class the preflight flags). The
-    # graded z axis is TANGENTIAL to the x-normal monitor plane, so a hardcoded
-    # cubic-cell (dz==dx) monitor would misweight it.
+    """With the empirical prefactor 3.0, an earlier measurement with 16 absorber layers gave propagating-bin rel = [0.03637, 0.03126, 0.01884, 0.02354] against bound = [0.03754, 0.05094, 0.07190, 0.09580], leaving a 3 % margin at the tightest bin."""
+    UNIFORM_CPML_RUNWAY_CELLS = 8
     d0 = 0.35e-3
-    dz_fine = np.array([d0] * 8 + [0.25e-3] * 10 + [d0] * 8, dtype=float)
-    dz_coarse = np.array([d0] * 8 + [0.50e-3] * 5 + [d0] * 8, dtype=float)
+    dz_fine = np.array([d0] * UNIFORM_CPML_RUNWAY_CELLS + [0.25e-3] * 10 + [d0] * UNIFORM_CPML_RUNWAY_CELLS, dtype=float)
+    dz_coarse = np.array([d0] * UNIFORM_CPML_RUNWAY_CELLS + [0.50e-3] * 5 + [d0] * UNIFORM_CPML_RUNWAY_CELLS, dtype=float)
     assert abs(float(np.sum(dz_fine)) - float(np.sum(dz_coarse))) < 1e-12, \
         "fixtures must share the SAME domain (only the mesh density differs)"
 
     freqs_np = np.linspace(5e9, 16e9, 6)
     freqs = jnp.asarray(freqs_np)
-    size_z = 2.6e-3   # covers the whole graded middle + a little buffer
+    size_z = 2.6e-3
+    assert size_z > max(
+        float(np.sum(dz_fine[UNIFORM_CPML_RUNWAY_CELLS:-UNIFORM_CPML_RUNWAY_CELLS])),
+        float(np.sum(dz_coarse[UNIFORM_CPML_RUNWAY_CELLS:-UNIFORM_CPML_RUNWAY_CELLS])),
+    ), "aperture must cover the whole graded middle plus buffer"
+    STABLE_CROSS_MESH_ABSORBER_LAYERS = 16
     recovered, windows, dA_arrs, react = [], [], [], []
     settle = []
-    ap_area = []   # independently-computed physical aperture area per run
+    ap_area = []
     Lx = Ly = None
     x_src = x_mon = None
     for tag, dz in [("fine", dz_fine), ("coarse", dz_coarse)]:
-        # Sixteen absorber layers, so the cross-mesh difference is the mesh pair's own: at 9.4 GHz it reads 0.0364 with 16 and
-        # with 24 layers. Eight layers gave 0.0415 with the magnetic CPML profile at the Yee half cell and
-        # 0.0325 before it; the absorber's reflection moved it both ways.
-        sim, grid, (Lx, Ly, Lzr) = _build_open_graded_sim(dz, add_probe=True, cpml_layers=16)
+        sim, grid, (Lx, Ly, Lzr) = _build_open_graded_sim(dz, add_probe=True, cpml_layers=STABLE_CROSS_MESH_ABSORBER_LAYERS)
         size_y = Ly * 0.6
         cy, cz = Ly * 0.5, Lzr * 0.5
         cx = Lx * 0.62
@@ -395,10 +335,6 @@ def test_nu_finite_flux_generality_two_gradings():
         dA_arrs.append(np.asarray(mon.dA))
         react.append(_react_ratio(mon))
         settle.append(_settling_db(res.time_series))
-        # independent physical aperture area from the realized graded edges:
-        # (sum of selected dy)(sum of selected dz), NOT the monitor's own dA.
-        # Clipping the nodal dual widths covers exactly the two real nodes
-        # reported as window ends, independent of the interior grading.
         from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
         nodes = coords_from_nonuniform_grid(grid)
         y_ext = float(nodes.y[mon.hi1] - nodes.y[mon.lo1])
@@ -411,71 +347,32 @@ def test_nu_finite_flux_generality_two_gradings():
           f"dA_sums={dA_sums} settle_dB={[round(s,1) for s in settle]}")
     print(f"  aperture (y_ext,z_ext,area): {ap_area}")
 
-    # (a) the z-cell COUNT tracks the mesh: the finer middle mesh selects MORE
-    #     cells over the SAME physical aperture. (Cell count is grading-DEPENDENT.)
     nz_fine, nz_coarse = ncells[0][1], ncells[1][1]
     assert nz_fine > nz_coarse, (
         f"finer grading did not select more aperture cells ({nz_fine} vs "
         f"{nz_coarse}) — the window is not tracking the realized mesh")
 
-    # (b) the per-cell dA face weights are grading-DEPENDENT (different arrays),
-    #     not a single pinned value.
     assert dA_arrs[0].shape != dA_arrs[1].shape, (
         "per-cell dA arrays have identical shape across two different mesh "
         "densities — the weights are not tracking the realized mesh")
 
-    # (c) THE anti-hardcode killer: dA_sum equals the grading-INVARIANT physical
-    #     aperture area for BOTH gradings (to float32), even though the cell
-    #     counts differ. A cubic-cell (dz==dx) hardcode would instead give
-    #     dA_sum = dx^2 * n_cells, which differs between the two gradings and
-    #     does NOT equal the physical area on the graded axis — so it CANNOT
-    #     pass this pair of checks.
     for (tag, dAs, (yE, zE, area)) in zip(("fine", "coarse"), dA_sums, ap_area):
         rel_area = abs(dAs - area) / max(area, 1e-300)
         assert rel_area < 1e-4, (
             f"[{tag}] dA_sum {dAs:.6e} != physical aperture area {area:.6e} "
             f"(rel {rel_area:.2e}) — the face weights are not the realized dz")
     rel_area_cross = abs(dA_sums[0] - dA_sums[1]) / max(dA_sums[0], 1e-300)
-    # both equal the same physical area to within the sub-cell snapping of the
-    # two meshes (< one coarse cell of z-extent over the full aperture). The two
-    # apertures share the same y window, so the RELATIVE area difference equals
-    # the relative z-extent difference and one coarse cell of z-snap is the
-    # DIMENSIONLESS fraction max(dz_coarse)/z_ext.
     coarse_cell_frac = float(np.max(dz_coarse)) / ap_area[1][1]
     assert rel_area_cross < coarse_cell_frac, (
         f"aperture areas disagree across gradings ({dA_sums}) by more than one "
         f"coarse cell ({coarse_cell_frac:.2e}) — snapping/weighting inconsistent")
 
-    # (d) ring-down settling witness (claims-bearing power): AC field decayed
-    #     well below the source peak (open-CPML domain, DC offset removed).
     for tag, s in zip(("fine", "coarse"), settle):
         assert s < -40.0, (
             f"[{tag}] end-of-run AC envelope {s:.1f} dB of peak (> -40 dB) — "
             "the DFT window closed on an un-settled field; recovered power is "
             "truncation-contaminated (repo ring-down rule)")
 
-    # (e) recovered physical power agrees across gradings within a MEASURED
-    #     ENVELOPE (this is NOT a derivation — do not call it one).
-    #     The cross-mesh difference is a near-field observable: a small REAL
-    #     flux extracted from a large reactive field, so the resolution error is
-    #     amplified by the local reactive/real ratio Q/P (measured above). The
-    #     SHAPE is derived and computed at runtime from the fixture: the
-    #     (k*d_max)^2 Yee dispersion scaling times the measured (1+Q/P)
-    #     amplification — no pinned literal, no fixture-specific number. The
-    #     PREFACTOR 3.0 is NOT derived: Yee phase-velocity error carries 1/12,
-    #     and 3.0 is an empirical O(1) envelope covering the two tangential
-    #     quadrature directions and the face-snapping difference between the
-    #     meshes. It is an envelope that still bites (measured on this
-    #     fixture with 16 absorber layers: propagating-bin rel = [0.03637, 0.03126, 0.01884, 0.02354]
-    #     against bound = [0.03754, 0.05094, 0.07190, 0.09580], 3 % margin at the tightest bin;
-    #     the 2026-09-05 figures, 15 % margin, were taken on the pre-#1012
-    #     eight-layer absorber, whose reflection pulled the 9.4 GHz value 0.004 low),
-    #     so a violation means "worse than this mesh pair has ever measured", NOT
-    #     "worse than theory allows".
-    #     Restrict the comparison to the PROPAGATING bins (monitor >= 0.2*lambda
-    #     downstream, k*L_path >= 2*pi*0.2) — a physical near/far criterion, not a
-    #     hand-picked bin list; the deep-near-field bins carry no meaningful net
-    #     real power to referee.
     p1, p2 = recovered[0], recovered[1]
     scale = np.maximum(np.abs(p1), np.abs(p2)) + 1e-300
     rel = np.abs(p1 - p2) / scale
@@ -483,10 +380,11 @@ def test_nu_finite_flux_generality_two_gradings():
     L_path = abs(x_mon - x_src)
     dmax = float(max(np.max(dz_fine), np.max(dz_coarse)))
     qp = np.maximum(react[0], react[1])
-    # measured envelope (see (e)): derived shape, empirical O(1) prefactor.
-    envelope_prefactor = 3.0
+    EMPIRICAL_TANGENTIAL_QUADRATURE_AND_FACE_SNAP_PREFACTOR = 3.0
+    envelope_prefactor = EMPIRICAL_TANGENTIAL_QUADRATURE_AND_FACE_SNAP_PREFACTOR
     bound = envelope_prefactor * (k * dmax) ** 2 * (1.0 + qp)
-    propagating = (k * L_path) >= (2 * math.pi * 0.2)
+    MIN_PROPAGATING_DISTANCE_WAVELENGTHS = 0.2
+    propagating = (k * L_path) >= (2 * math.pi * MIN_PROPAGATING_DISTANCE_WAVELENGTHS)
     print(f"[T4 power] L_path={L_path*1e3:.2f}mm dmax={dmax*1e3:.2f}mm")
     print(f"  freqGHz={np.round(freqs_np/1e9,1)} rel={rel.round(3)} "
           f"Q/P={qp.round(2)} bound={bound.round(3)} prop={propagating}")
@@ -499,13 +397,6 @@ def test_nu_finite_flux_generality_two_gradings():
         "fixture (the envelope's shape is derived, its prefactor empirical)")
 
 
-# --------------------------------------------------------------------------
-# T5 — CLAMPING is documented and non-silent. The helper does NOT
-#      "never clamp": a window reaching outside the interior snaps to the end
-#      edges and the monitor then integrates the CLAMPED extent. Pin the
-#      documented behaviour and the warning that makes it non-silent, against
-#      an expectation computed here from the realized interior edges.
-# --------------------------------------------------------------------------
 def test_nu_finite_flux_oversize_window_clamps_and_warns():
     import warnings as _warnings
     from rfx.runners.nonuniform import _nu_flux_tangential_bounds
@@ -518,7 +409,6 @@ def test_nu_finite_flux_oversize_window_clamps_and_warns():
     axis_len = float(edges[-1])
     n_int = int(len(interior))
 
-    # (a) size far larger than the axis -> the WHOLE interior, and a warning.
     with _warnings.catch_warnings(record=True) as caught:
         _warnings.simplefilter("always")
         lo, hi = _nu_flux_tangential_bounds(d_full, pad, pad,
@@ -531,11 +421,6 @@ def test_nu_finite_flux_oversize_window_clamps_and_warns():
         "an oversize window clamped SILENTLY — the review2 F7 warning is gone; "
         f"caught={[str(c.message) for c in caught]}")
 
-    # (b) off-edge window: the requested span reaches below the interior, so
-    #     the low face clamps to edge 0 and the delivered extent is the clamped
-    #     intersection [max(c-s/2, 0), min(c+s/2, axis_len)] — computed here
-    #     from the request and the realized axis length, not written out as a
-    #     number (fix2b, verify nit 4: the old form asserted a literal 4.0e-3).
     c_b, s_b = 1.0e-3, 6.0e-3
     with _warnings.catch_warnings(record=True) as caught:
         _warnings.simplefilter("always")
@@ -548,10 +433,6 @@ def test_nu_finite_flux_oversize_window_clamps_and_warns():
     assert any("CLAMPED" in str(c.message) for c in caught), (
         "an off-edge window clamped SILENTLY")
 
-    # (c) an ordinary in-interior request must resolve exactly and NOT warn
-    #     (the warning fires on clamping, not on ordinary snapping). Endpoints
-    #     are taken FROM the realized edge array, so the request is exactly
-    #     representable on this mesh whatever interior_cells returns.
     mid = n_int // 2
     lo_i, hi_i = mid - 4, mid + 4
     c_in = 0.5 * (float(edges[lo_i]) + float(edges[hi_i]))
@@ -567,16 +448,6 @@ def test_nu_finite_flux_oversize_window_clamps_and_warns():
         f"an exactly-representable window raised the clamp warning: "
         f"{[str(c.message) for c in caught]}")
 
-    # (d) SUB-BOUND CLAMP — the case the old size-difference PROXY missed
-    #     (fix2b, verify nit 1: the verifier measured requested [-0.5, 3.5] mm
-    #     on this axis clamping to 3.5 mm with warned=False). The low face is
-    #     requested three quarters of an END CELL below the interior; the high
-    #     face is an exact interior edge. The clamp therefore shortens the
-    #     extent by LESS than one cell, so |realized - size| never exceeds the
-    #     largest cell touching the window and the size-difference test alone
-    #     stays silent. Only the PER-ENDPOINT clamp test (endpoint outside the
-    #     interior by more than half the end cell) can see it. Every quantity
-    #     below is read off the realized interior profile.
     k_hi = n_int // 2 - 2
     lo_req_d = -0.75 * float(interior[0])
     hi_req_d = float(edges[k_hi])
@@ -591,8 +462,6 @@ def test_nu_finite_flux_oversize_window_clamps_and_warns():
     delivered_d = float(np.sum(interior[lo - pad:hi - pad]))
     size_gap = abs(delivered_d - s_d)
     proxy_bound = float(np.max(interior[max(lo - pad - 1, 0):hi - pad + 1]))
-    # fixture guard: this case MUST stay invisible to the size-difference test,
-    # otherwise it is not testing the per-endpoint detector.
     assert size_gap < proxy_bound, (
         f"fixture no longer exercises a SUB-bound clamp: size gap {size_gap:.3e} "
         f"m >= the {proxy_bound:.3e} m size-difference bound, so the old proxy "
@@ -603,9 +472,6 @@ def test_nu_finite_flux_oversize_window_clamps_and_warns():
         f"SILENT — the per-endpoint clamp test is gone and only the size-"
         f"difference proxy is left; caught={[str(c.message) for c in caught]}")
 
-    # (e) a quarter-cell overflow is identifiable from the REQUESTED
-    #     endpoint even when its snapped index would match an interior request.
-    #     Keep the same realized window and make that clamp non-silent.
     lo_req_e = -0.25 * float(interior[0])
     hi_req_e = float(edges[k_hi])
     s_e = hi_req_e - lo_req_e

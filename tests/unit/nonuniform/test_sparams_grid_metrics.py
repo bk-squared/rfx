@@ -17,13 +17,13 @@ from rfx.sparams._common import (
 
 
 def _grid():
-    # x boundary scalar 1 mm, z-low pad cells 2 mm, interior cells 1 mm.
     return make_nonuniform_grid((.020, .020),
                                 np.array([.002] * 4 + [.001] * 12 + [.002] * 4),
                                 .001, cpml_layers=8)
 
 
 def test_absorber_reads_propagation_face_cells():
+    """Half the guide wavelength (15.065 mm) lies between the scalar 8 mm pad depth and the actual 16 mm pad depth."""
     grid = _grid()
     assert grid.boundary_cell("z", "lo") == 2 * grid.dx
     assert local_cell(grid, "z", .012) == grid.dx
@@ -32,11 +32,11 @@ def test_absorber_reads_propagation_face_cells():
         warnings.simplefilter("always")
         _warn_thin_absorber_vs_guide_wavelength(
             grid, [cfg], [10e9], 8, BoundarySpec(x="pec", y="pec", z="cpml"))
-    # Half lambda_g = 15.065 mm. Actual 16 mm pads clear it; scalar 8 mm do not.
     assert not caught
 
 
 def test_absorber_reports_only_thin_face_and_its_layer_count():
+    """The 32 mm high pad clears the 30.6 mm requirement."""
     grid = make_nonuniform_grid((.020, .020),
                                np.array([.002] * 4 + [.001] * 12 + [.004] * 4),
                                .001, cpml_layers=8)
@@ -46,25 +46,23 @@ def test_absorber_reports_only_thin_face_and_its_layer_count():
             grid, [cfg], [5e9], 8, BoundarySpec(x="pec", y="pec", z="cpml"))
     message = str(caught[0].message)
     assert "z-lo 8 cells = 16.0 mm" in message
-    assert "z-hi" not in message  # 32 mm clears the 30.6 mm requirement.
+    assert "z-hi" not in message
     assert "at least 16 (0.75 lambda_g needs 23)" in message
 
 
 @pytest.mark.parametrize("direction", ["+x", "-x", "+y", "-y"])
 @pytest.mark.parametrize("fine_edge", ["both", "lo", "hi"])
 def test_auto_offset_uses_both_strip_edges(direction, fine_edge):
+    """The scalar-width scan mistakes a widening of 0.75 boundary cells for the port's own trace."""
     from tests.unit.sparams.test_msl_probe_offset_interval import (
         DX, H_SUB, W_TRACE, _N_W, _W_C, _nu_sim, _pw_box,
     )
-    # Keep the width span, but split cells around either/both strip edges.
     profile = np.array([cell for i in range(_N_W) for cell in (
         [DX / 2, DX / 2] if 0 < i < _N_W - 1 and (
             fine_edge == "both" or (fine_edge == "lo" and i < _N_W // 2)
             or (fine_edge == "hi" and i >= _N_W // 2)) else [DX])])
     width_axis = "y" if direction[1] == "x" else "x"
     sim = _nu_sim(direction, **{f"d{width_axis}_profile": profile})
-    # A widening of 0.75 boundary cells is a discontinuity at fine
-    # resolution, but the scalar-width scan mistakes it for the own trace.
     width = W_TRACE + .75 * DX
     sim.add(_pw_box(direction, .001, .012466, _W_C - width / 2,
                     _W_C + width / 2, H_SUB, H_SUB), material="pec")
@@ -78,8 +76,8 @@ def test_auto_offset_uses_both_strip_edges(direction, fine_edge):
 
 
 def test_graded_flux_face_uses_nodes_not_scalar_indices():
+    """The z = 12 mm plane is node 8 (four 2 mm cells plus four 1 mm cells), plus padding."""
     grid = _grid()
-    # z=12 mm is node 8 (four 2 mm cells + four 1 mm cells), plus padding.
     entry = SimpleNamespace(axis="z", coordinate=.012, size=(.008, .008),
                             center=(.010, .010), name="graded")
     record = resolve_flux_region(grid, entry, (.020, .020, .028), warn=False)
@@ -90,8 +88,7 @@ def test_graded_flux_face_uses_nodes_not_scalar_indices():
 
 
 def test_junction_distance_direct_helper_uses_nodes():
-    # The public NU waveguide lane rejects port_reference_sims; this is
-    # a direct-helper witness, not a claim that that lane is reachable.
+    """The public non-uniform waveguide lane rejects port_reference_sims."""
     grid = _grid()
     dev = np.zeros(grid.shape)
     ref = dev.copy()
@@ -105,7 +102,7 @@ def test_junction_distance_direct_helper_uses_nodes():
 
 
 def test_junction_cpml_direct_helper_uses_axis_pads():
-    # Also unreachable through public NU port_reference_sims today.
+    """The public non-uniform waveguide lane rejects port_reference_sims."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         _warn_junction_cpml_thickness(
@@ -122,11 +119,10 @@ def test_junction_cpml_direct_helper_reads_realized_face_layers():
 
 
 def test_junction_nearest_difference_is_measured_in_metres():
+    """At z = 8 mm, the right difference is physically nearer at five fine cells / 5 mm than the left difference at four coarse cells / 8 mm."""
     grid = _grid()
     dev = np.zeros(grid.shape)
     ref = dev.copy()
-    # At z=8 mm, the left difference is four coarse cells / 8 mm away;
-    # the right is five fine cells / 5 mm away and is physically nearer.
     ref[:, :, grid.pad_z_lo] = 1
     ref[:, :, grid.pad_z_lo + 9] = 1
     cfg = SimpleNamespace(a=.04, normal_axis="z", probe_x=grid.pad_z_lo + 4)

@@ -42,7 +42,6 @@ def test_requested_port_bins(lumped, monkeypatch):
     assert np.isfinite(result.s_params).all()
     pairs = result.lumped_port_sparams if lumped else result.wire_port_sparams
     assert len(pairs) == 1
-    # Retain all five original numeric witnesses, including unpublished slots.
     for accumulator in captured[-1][0]:
         assert accumulator.shape == (len(request),)
         assert np.isfinite(accumulator).all()
@@ -142,8 +141,6 @@ def test_lumped_known_load_graded(load_ratio, entry, record_property):
     measured = np.asarray(result.s_params).reshape(-1)
     record_property("s11", json.dumps(np.stack([measured.real, measured.imag], axis=-1).tolist()))
     assert abs(magnitude - expected) < 0.01
-    # Retain the original magnitude bar and add D1(ii), on the same requested
-    # 1 GHz bin and snapped Ez planes; local transverse cell size stays dx.
     pure = input_reflection(line, [1e9], load_ratio * line.zc)
     predicted = input_reflection(line, [1e9], load_ratio * line.zc,
                                  element_l=element_inductance(line))
@@ -151,13 +148,10 @@ def test_lumped_known_load_graded(load_ratio, entry, record_property):
 
 
 def test_lumped_uniform_profile_lane_parity(record_property):
+    """The lane-parity lattice has five axial 1 mm cells, 8x8 transverse cells and 20 CPML cells per end (46x9x9 nodes)."""
     request = np.array([1.0, 2.5, 5.0, 7.5, 10.0], dtype=np.float32) * 1e9
     from tests._interior_tem_line import build, assert_solved_ports
 
-    # Lane parity, not a continuum-accuracy solve: five axial 1 mm cells,
-    # 8x8 transverse cells, 20 CPML cells per end (46x9x9 nodes), 100 steps.
-    # Source/load are distinct interior nodes, with the same shunt load and
-    # all five requested frequencies; B3 tightens the complex bar to 1e-6.
     uniform_sim, line = build(dx=1e-3, cells=5, ratio=2.,
                               axial_positions=(1e-3, 3e-3), declared_separation=2e-3)
     graded_sim, graded_line = build(dx=1e-3, cells=5, ratio=2., profile=np.full(5, 1e-3),
@@ -168,7 +162,6 @@ def test_lumped_uniform_profile_lane_parity(record_property):
     assert_solved_ports(graded, graded_line)
     np.testing.assert_array_equal(graded.freqs, request)
     np.testing.assert_array_equal(uniform.freqs, request)
-    # Uniform squeezes a single lumped diagonal to (nf,); graded is a matrix.
     uniform_s11 = np.asarray(uniform.s_params).reshape(1, -1)[0]
     assert np.isfinite(uniform_s11).all() and np.isfinite(graded.s_params).all()
     record_property("interior_cells", "5x8x8; 20 CPML cells at each x end")
@@ -182,15 +175,14 @@ def test_lumped_uniform_profile_lane_parity(record_property):
 
 
 def test_lumped_before_passive_wire_preserves_wire_index():
+    """The ordered port specs and accumulators define the S-matrix's port indices."""
     sim = _sim(lumped=True)
     sim.add_port(position=(5e-3, 4e-3, 3e-3), component="ez", impedance=75,
                  extent=2e-3, excite=False)
     default = sim.run(n_steps=100, skip_preflight=True)
     selected = _forward(sim, port_s11_freqs=np.linspace(1e9, 10e9, 50))
-    # run() drives each port in turn (every column); forward() reads one record.
     assert default.s_params.shape == (2, 2, 50)
     assert selected.s_params.shape == (2, 2, 50)
-    # These ordered specs/accumulators define the matrix's port indices.
     default_spec, default_acc = default.wire_port_sparams[0]
     selected_spec, selected_acc = selected.wire_port_sparams[0]
     assert selected_spec == default_spec
