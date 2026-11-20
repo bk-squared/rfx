@@ -25,9 +25,9 @@ def evaluator(n=900):
 
 
 def losses(res):
-    # Each channel has its own loss; the fixed impedance factor prevents H
-    # from disappearing in float32 and is independent of the fitted spectra.
-    scale = jnp.asarray([1., 377.])
+    """The fixed impedance factor prevents H from disappearing in float32."""
+    H_FIELD_IMPEDANCE_SCALE = 377.
+    scale = jnp.asarray([1., H_FIELD_IMPEDANCE_SCALE])
     return jnp.stack([jnp.sum(jnp.abs(x * scale) ** 2, axis=0)
                       for x in (res.probe_spectra, res.probe_spectra_long)])
 

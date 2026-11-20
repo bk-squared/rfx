@@ -15,7 +15,7 @@ import numpy as np
 from rfx.ringdown import RingdownSpec, gradient_witness
 from tests.unit.autodiff.test_wire_port_on_traced_mesh import BIN, DX, FREQS, _board
 
-N_STEPS = 1500     # the source is off over [T/8, T]: the early-start witness can be formed
+N_STEPS = 1500
 
 
 def _forward(delta):
