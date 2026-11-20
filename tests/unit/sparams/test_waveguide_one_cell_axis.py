@@ -24,6 +24,7 @@ def _guide(height):
 
 
 def test_te10_cutoff_impedance_and_height_witnesses():
+    """The continuum longitudinal limit uses the discrete transverse cutoff."""
     cutoffs, impedances = [], []
     for height in (1, 2, 4):
         sim = _guide(height)
@@ -37,11 +38,9 @@ def test_te10_cutoff_impedance_and_height_witnesses():
             np.testing.assert_allclose(widths.sum(), .022, rtol=1e-6)
             fc = (2 / widths[0]) * np.sin(np.pi / (2 * len(widths))) * C0_LOCAL / (2*np.pi)
             np.testing.assert_allclose(cfg.f_cutoff, fc, rtol=1e-6)
-            # Continuum longitudinal limit, using the discrete transverse cutoff.
             expected = np.sqrt(MU_0/EPS_0) / np.sqrt(1-(fc/np.asarray(FREQS))**2)
             z = _compute_mode_impedance(FREQS, cfg.f_cutoff, 'TE', medium=PortMedium())
             np.testing.assert_allclose(z, expected, rtol=1e-6)
-            # Actual Yee time/longitudinal stencil: replace omega by its sine symbol.
             omega_d = 2*np.sin(np.pi*np.asarray(FREQS)*cfg.dt)/cfg.dt
             expected_yee = MU_0*omega_d / np.sqrt((omega_d/C0_LOCAL)**2-(2*np.pi*fc/C0_LOCAL)**2)
             z_yee = _compute_mode_impedance(FREQS, cfg.f_cutoff, 'TE', dt=cfg.dt, dx=cfg.dx, medium=PortMedium())
@@ -53,9 +52,7 @@ def test_te10_cutoff_impedance_and_height_witnesses():
 
 
 def test_one_cell_twoport_empty_guide():
-    # No reference-run normalization: with normalize='flux' an empty guide's
-    # S11 is the device run minus itself (exactly 0) and cannot see a
-    # reflection. Raw S11 must stay below -40 dB and |S21| near 1.
+    """Reference-run normalization cannot see an empty guide's reflection because S11 is the device run minus itself (exactly 0)."""
     result = _guide(1).compute_waveguide_s_matrix(num_periods=60, normalize=False)
     s = np.asarray(result.s_params)
     assert np.isfinite(s).all()

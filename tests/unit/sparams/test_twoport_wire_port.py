@@ -50,9 +50,10 @@ def _build_line(with_port2_excite: bool = False, with_direction: bool = True):
     20 mm long, with an infinite PEC ground plane (pec_faces={z_lo}).
     Two vertical wire ports at each x end span the substrate
     thickness. Port 1 is excited; port 2 is passive (matched load).
+    The zero-thickness foil Box lands on the laminate face at the node after three dz_sub cells.
     """
     dx = 0.5e-3
-    substrate_thickness = 0.25e-3   # 0.25 mm
+    substrate_thickness = 0.25e-3
     dz_sub = substrate_thickness / 3
     n_air = 6
     dz = np.concatenate([np.full(3, dz_sub), np.full(n_air, dx)])
@@ -60,9 +61,8 @@ def _build_line(with_port2_excite: bool = False, with_direction: bool = True):
 
     dom_x = 20e-3
     dom_y = 6e-3
-    port_margin = 4e-3     # 4 mm > cpml thickness (8 * 0.5mm)
+    port_margin = 4e-3
 
-    # Geometry[1] y solved -30 % off; this test checks direction does not change the s matrix.
     sim = Simulation(snap="declared",
         freq_max=8e9,
         domain=(dom_x, dom_y, 0),
@@ -78,18 +78,12 @@ def _build_line(with_port2_excite: bool = False, with_direction: bool = True):
     line_w = 0.5e-3
     line_y_lo = dom_y / 2 - line_w / 2
     line_y_hi = dom_y / 2 + line_w / 2
-    # 35 um foil: a SHEET, declared by a zero-thickness Box on
-    # the laminate top. The z spine puts three dz_sub cells under
-    # substrate_thickness, so that face is a node line of the graded mesh
-    # and the sheet lands on it. One cell thick it would be a VOLUME:
-    # walls at both faces, Ez shorted between them.
     sim.add(Box((0, line_y_lo, substrate_thickness),
                 (dom_x, line_y_hi, substrate_thickness)),
             material="pec")
 
     pulse = GaussianPulse(f0=4e9, bandwidth=1.0)
 
-    # Port 1 — excited, at x = port_margin
     direction_lo = "-x" if with_direction else None
     sim.add_port(
         position=(port_margin, dom_y / 2, 0.0),
@@ -101,7 +95,6 @@ def _build_line(with_port2_excite: bool = False, with_direction: bool = True):
         terminates=1,
     )
 
-    # Port 2 — passive, at x = dom_x − port_margin
     direction_hi = "+x" if with_direction else None
     sim.add_port(
         position=(dom_x - port_margin, dom_y / 2, 0.0),
@@ -216,6 +209,7 @@ def test_two_port_s_envelope_on_matched_line():
     mesh, and n_live = 4.  The stub-line fixture is still not a
     calibrated oracle, so the gate is the physical PASSIVITY ceiling
     plus an alive floor, not a physics band.
+    The passive-column bars (<1.01 power, >0.5 |S12|, and <=1e-2 relative reciprocity error) allow margin over values measured earlier (power 0.99913-1.00009, |S12| 0.695-0.990, and max|S12-S21| = 1.0e-3 of max|S|).
     """
     sim = _build_line()
     freqs = jnp.linspace(2e9, 6e9, 51)
@@ -226,10 +220,6 @@ def test_two_port_s_envelope_on_matched_line():
     )
     S = np.asarray(result.s_params)
     S11 = S[0, 0, :]; S21 = S[1, 0, :]
-    # Port 2 is passive; graded run() drives each port in turn, so
-    # its column is measured too. Measured: column power
-    # 0.99913-1.00009, |S12| 0.695-0.990 (|S21| 0.696-0.990),
-    # max|S12 - S21| = 1.0e-3 of max|S|.
     assert np.all(np.isfinite(S)), "non-finite entry in the scanned S matrix"
     p_passive = np.abs(S[0, 1]) ** 2 + np.abs(S[1, 1]) ** 2
     assert float(np.max(p_passive)) < 1.0 + 1e-2, "the passive port's column is over unity"
