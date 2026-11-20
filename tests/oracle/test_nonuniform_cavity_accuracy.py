@@ -50,6 +50,7 @@ coarse one. The two-band mesh crosses four fine/coarse transitions instead of
 two and places its fine cells at different phases of the TM111 standing wave; it
 was compared against a closed form only inside a cross-validation case until now
 (the gap issue #810 names). Both arms use the same gate.
+An earlier measured envelope of 0.0252% at the single-band configuration gives a 0.04% gate.
 """
 
 from __future__ import annotations
@@ -96,10 +97,8 @@ def _finest_cell_runs(dz_profile, rel_tol=1e-9):
     return runs
 
 
-#: TM111 error of the single-fine-band arm, in percent, measured on the repro grid
-#: (validation/research/nu_cavity_gates/nu_cavity_gate_scan.py). Both arms
-#: derive their gate from this ONE number by the shared envelope rule.
 _MEASURED_ENVELOPE_PCT = 0.0252
+FINE_BAND_WIDTH_M = 2e-3
 
 
 def _graded_cavity_tm111(dz_profile, a, b, dx, tag):
@@ -112,28 +111,26 @@ def _graded_cavity_tm111(dz_profile, a, b, dx, tag):
 
     Returns a ``_TM111`` record and prints the full extracted spectrum
     (R5: the trace, not a headline).
+    The ez source and probe avoid the nodes of TM110 and TM111.
     """
     from rfx import Simulation, GaussianPulse
     from rfx.grid import C0
 
-    d = float(np.sum(dz_profile))              # actual graded z extent (NOT hardcoded)
+    d = float(np.sum(dz_profile))
 
     def f_mnp(m, n, p):
         return (C0 / 2) * np.sqrt((m / a) ** 2 + (n / b) ** 2 + (p / d) ** 2)
 
-    f_tm110 = f_mnp(1, 1, 0)   # z-INDEPENDENT (p=0) — what stage1's gate uses
-    f_tm111 = f_mnp(1, 1, 1)   # z-DEPENDENT (p=1) — what THIS gate uses
+    f_tm110 = f_mnp(1, 1, 0)
+    f_tm111 = f_mnp(1, 1, 1)
 
     sim = Simulation(
         freq_max=2 * f_tm111,
         domain=(a, b),
-        boundary="pec",          # closed cavity, no CPML (cheap, no absorber phantoms)
+        boundary="pec",
         dx=dx,
         dz_profile=dz_profile,
     )
-    # ez soft source + ez probe couple to TM-family modes (those carrying Ez).
-    # Both at z=d/4 (NOT d/2, a TM111 node): cos(pi/4)=0.707 keeps TM111 visible.
-    # x,y at thirds avoid the sin-nodes of TM110 and TM111.
     sim.add_source((a / 3, b / 3, d / 4), "ez",
                    waveform=GaussianPulse(f0=f_tm111, bandwidth=0.8))
     sim.add_probe((2 * a / 3, 2 * b / 3, d / 4), "ez")
@@ -141,7 +138,6 @@ def _graded_cavity_tm111(dz_profile, a, b, dx, tag):
     result = sim.run(n_steps=8000)
     modes = result.find_resonances(freq_range=(0.6 * f_tm111, 1.5 * f_tm111))
 
-    # --- R5: dump the full extracted spectrum + analytic anchors, not a headline ---
     sim_freqs = sorted(m.freq for m in modes)
     grading_ratio = max(dz_profile) / min(dz_profile)
     print(f"\n[NU-cavity/{tag}] d (graded z) = {d*1e3:.3f} mm, "
@@ -156,10 +152,6 @@ def _graded_cavity_tm111(dz_profile, a, b, dx, tag):
 
     assert modes, "no resonances found in the TM111 band"
 
-    # Mode-ID robustness (separation RATIO, not an absolute window — robust to small
-    # cross-machine frequency shifts): TM111 = the sim mode nearest the analytic
-    # value, and the match must be UNAMBIGUOUS — the 2nd-nearest sim mode must be
-    # several times farther.
     by_dist = sorted(modes, key=lambda m: abs(m.freq - f_tm111))
     mode = by_dist[0]
     f_sim = mode.freq
@@ -196,22 +188,19 @@ def test_nonuniform_z_graded_cavity_tm111_accuracy():
 
     The 2nd-nearest separation gate below also doubles as a spurious-mode guard: a
     Harminv split/ghost line inside the band would shrink the separation and trip it.
+    The mode-ID separation ratio is robust to small cross-machine frequency shifts.
     """
     from rfx.auto_config import smooth_grading
 
-    # Air-filled PEC cavity. a,b chosen as exact integer cell counts at dx=1mm
-    # (a=40 cells, b=35 cells) so there is NO in-plane dimension-snapping bias;
-    # TM111 ~7 GHz is isolated >1.3 GHz from the nearest ez-coupling TM mode
-    # (TM110) — see the geometry design note in the module docstring.
     a, b = 40e-3, 35e-3
     dx = 1e-3
+    assert all(np.isclose(length / dx, round(length / dx), rtol=0, atol=1e-12) for length in (a, b)), (
+        'Cavity sides a and b must be whole dx cells to avoid in-plane dimension-snapping bias.')
 
-    # Genuinely z-GRADED profile: coarse 1mm end bands + a fine 0.25mm middle band
-    # (raw 4:1 ratio), smoothed to <=1.3 per step. x,y stay uniform so the grading
-    # is unambiguously on z (the axis TM111's frequency depends on).
     fine = 0.25e-3
-    n_fine = int(round(2e-3 / fine))           # 2mm-wide fine band
-    n_coarse = int(round(17e-3 / dx))          # ~17mm coarse band each side
+    n_fine = int(round(FINE_BAND_WIDTH_M / fine))
+    SINGLE_BAND_COARSE_WIDTH_M = 17e-3
+    n_coarse = int(round(SINGLE_BAND_COARSE_WIDTH_M / dx))
     dz_raw = [dx] * n_coarse + [fine] * n_fine + [dx] * n_coarse
     dz_profile = list(smooth_grading(dz_raw, max_ratio=1.3))
 
@@ -228,10 +217,6 @@ def test_nonuniform_z_graded_cavity_tm111_accuracy():
         f"{_finest_cell_runs(dz_profile)}"
     )
 
-    # Mode-ID robustness (separation RATIO, not an absolute window — robust to small
-    # cross-machine frequency shifts). Measured: nearest delta ~0.18 GHz,
-    # 2nd-nearest ~0.90 GHz (~5x), so a 3x + 0.5 GHz separation gate has
-    # comfortable margin.
     assert got.d_second > 3 * got.d_near and got.d_second > 0.5e9, (
         f"TM111 mode-ID ambiguous: nearest {f_sim/1e9:.4f} GHz "
         f"(delta {got.d_near/1e9:.3f}), 2nd-nearest delta "
@@ -239,63 +224,10 @@ def test_nonuniform_z_graded_cavity_tm111_accuracy():
         "not unambiguously separated from a neighbouring mode"
     )
 
-    # The ANALYTIC accuracy gate (the gap this test fills): the z-graded NU mesh
-    # reproduces the z-DEPENDENT closed-form TM111 to within the measured tolerance.
-    # DERIVED gate: measured envelope x the repo-wide envelope multiplier,
-    # quantized up by the shared helper, in percent units.
-    # Envelope 0.0252 % at this test's configuration -> 0.04 %.
-    #
-    # It was 4 % until #562 removed the one-cell z-extent defect that dominated
-    # the residual (2.66 % -> 0.025 %, ~106x). A 4 % gate on a 0.025 % residual
-    # is 160x loose — it could not catch the defect class it exists for.
-    #
-    # Measured surrounding sensitivity (single machine; percent error of TM111
-    # vs the closed form):
-    #
-    #     dx = 1.0 mm, grading 4:1  ->  0.0252   <- this test
-    #     dx = 1.0 mm, grading 2:1  ->  0.0164
-    #     dx = 1.0 mm, uniform      ->  0.0011
-    #     dx = 0.5 mm, grading 4:1  ->  0.0032
-    #     dx = 2.0 mm, grading 4:1  ->  1.2567   <- 50x worse; do NOT
-    #                                              re-parameterize to 2 mm
-    #                                              without re-deriving the gate
-    #
-    # Domain-SIZE sensitivity, measured at fixed dx and
-    # fixed 4:1 grading while sweeping cavity size (z, percent error):
-    #
-    #     0.0373 / 0.0306 / 0.0252 / 0.0264 / 0.0213
-    #
-    # The residual tracks f0, so the gate binds the dispersion floor rather than
-    # a fixture artifact — but the worst case is inside the gate ON THE
-    # (unrecorded) size grid; the committed producer's documented
-    # grid (validation/research/nu_cavity_gates/nu_cavity_gate_scan.py)
-    # measures its smallest-cavity point ABOVE this gate (0.0715% vs 0.04%) —
-    # direct evidence that the "do NOT re-parameterize without re-deriving"
-    # warning covers cavity SIZE as well as dx.
-    #
-    # Harminv window sensitivity, same source: over n_steps in {4k, 8k, 12k, 16k}
-    # the error spans 0.0071 pt (xy) / 0.0110 pt (z), and the committed 8000-step
-    # point is each family's MAXIMUM — so the envelope already covers estimator
-    # scatter by construction rather than by luck. z's margin over that scatter
-    # is ~1.35x, which makes z the more fragile of the two gates.
-    #
-    # The envelope is taken at THIS configuration, not over the scan: the test
-    # runs one configuration, so the gate is a regression lock on it and the
-    # neighbours are evidence. Both cavity tests are `slow`-marked and so run
-    # only in the weekly slow lane; the envelope is therefore single-machine.
-    # If another runner reds, re-measure and widen with the new datum recorded
-    # — do not blanket-loosen.
     from tests._gate_policy import gate_from_envelope
     GATE = gate_from_envelope(_MEASURED_ENVELOPE_PCT, quantum=100) / 100.0
 
-    # In-test FALSIFIER, added with the tightening: a gate is worth only what it
-    # rejects. +-0.5 % is 12x the new gate and 8x BELOW the old one, so this
-    # demonstrates discrimination the 4 % gate did not have.
     _FALSIFIER = 0.005
-    # And the gate must reject the REAL historical regression, not only a
-    # synthetic perturbation: the residual this configuration measured while the
-    # extent defect was live was 2.66 %, which the new gate rejects
-    # by 66x. The old gate accepted it.
     assert 0.0266 > GATE, (
         "the derived gate would NOT have caught the #562-era residual "
         f"(2.66 % vs gate {GATE*100:.3f} %) — tightening bought nothing")
@@ -338,23 +270,18 @@ def test_nonuniform_z_two_fine_band_cavity_tm111_accuracy():
     = 0.04 %. That envelope was measured on the SINGLE-band configuration, not
     on this one; this arm reports its own measured error against it and does not
     derive a gate of its own.
+    The 9 mm coarse bands keep the realized extent at 41.75 mm, within 0.4 mm of the single-band cavity's 41.37 mm, so both arms probe the same TM111 (~6.7 GHz) cavity-size regime.
     """
     from rfx.auto_config import smooth_grading
 
     a, b = 40e-3, 35e-3
     dx = 1e-3
 
-    # Two 2mm fine bands, 9mm of coarse cells before, between and after, so the
-    # bands are genuinely separated and neither touches a PEC wall. The raw
-    # extent (31mm) is smaller than the sibling's 36mm because smooth_grading
-    # inserts a transition chain on BOTH sides of each fine band — twice as many
-    # here — and the realized extent lands at 41.75mm, within 0.4mm of the
-    # sibling's 41.37mm so both arms sit at the same TM111 (~6.7 GHz) and the
-    # same cavity-size point of the sibling's recorded size sweep.
     fine = 0.25e-3
-    n_fine = int(round(2e-3 / fine))           # 2mm-wide fine band, each
-    n_end = int(round(9e-3 / dx))              # 9mm coarse band at each wall
-    n_mid = int(round(9e-3 / dx))              # 9mm coarse band BETWEEN the bands
+    n_fine = int(round(FINE_BAND_WIDTH_M / fine))
+    TWO_BAND_COARSE_WIDTH_M = 9e-3
+    n_end = int(round(TWO_BAND_COARSE_WIDTH_M / dx))
+    n_mid = int(round(TWO_BAND_COARSE_WIDTH_M / dx))
     dz_raw = ([dx] * n_end + [fine] * n_fine + [dx] * n_mid
               + [fine] * n_fine + [dx] * n_end)
     dz_profile = list(smooth_grading(dz_raw, max_ratio=1.3))
@@ -368,18 +295,11 @@ def test_nonuniform_z_two_fine_band_cavity_tm111_accuracy():
         "the test would be a vacuous uniform-mesh check"
     )
 
-    # The property that distinguishes this arm from the sibling, asserted on the
-    # REALIZED profile rather than on the raw one: two runs of finest cells, with
-    # coarser cells between them. If smooth_grading ever merged the two bands, or
-    # a future edit dropped one, the runs list changes and this reds — which is
-    # also the (b)-mutation this arm was measured against.
     runs = _finest_cell_runs(dz_profile)
     assert runs == [n_fine, n_fine], (
         f"expected TWO separated fine bands of {n_fine} cells each, got runs "
         f"{runs} — the realized mesh is not small-large-small-large"
     )
-    # ... and the gap between them must be real coarse cells, not one transition
-    # cell: the coarse plateau survives the smoothing.
     sizes = np.asarray(dz_profile)
     finest = sizes.min()
     at_finest = np.flatnonzero(np.abs(sizes - finest) <= 1e-9 * finest)
@@ -397,10 +317,6 @@ def test_nonuniform_z_two_fine_band_cavity_tm111_accuracy():
         "not unambiguously separated from a neighbouring mode"
     )
 
-    # SIBLING GATE, UNCHANGED. Measured on this configuration: 0.0237 %
-    # (f_sim 6.72715 GHz vs closed form 6.72874 GHz, realized d = 41.749 mm),
-    # i.e. inside the sibling's 0.04 % with ~1.7x margin. No envelope of this
-    # arm's own is derived here.
     from tests._gate_policy import gate_from_envelope
     GATE = gate_from_envelope(_MEASURED_ENVELOPE_PCT, quantum=100) / 100.0
 

@@ -36,12 +36,12 @@ from rfx import GaussianPulse, Simulation
 from rfx.harminv import matrix_pencil
 
 C0 = 299792458.0
-L = 24e-3          # cube side, a = b = d
-H = 12e-3          # fill height
+L = 24e-3
+H = 12e-3
 EPSR = 4.0
-M_T, N_T = 1, 0    # transverse mode indices: TE(1,0)-to-z
+M_T, N_T = 1, 0
 
-BOUND = 5e-3       # main reads 1.71e-2 here; this branch 2.94e-4
+BOUND = 5e-3
 
 
 def _residual(freq, kt):
@@ -51,9 +51,9 @@ def _residual(freq, kt):
         ksq = eps * k0 ** 2 - kt ** 2
         if ksq > 0:
             k = np.sqrt(ksq)
-            return k / np.tan(k * length)          # k*cot(k*L)
-        alpha = np.sqrt(-ksq)                       # k = -j*alpha
-        return alpha / np.tanh(alpha * length)      # +alpha*coth(alpha*L)
+            return k / np.tan(k * length)
+        alpha = np.sqrt(-ksq)
+        return alpha / np.tanh(alpha * length)
 
     return branch(EPSR, H) + branch(1.0, L - H)
 
@@ -74,9 +74,6 @@ def _measure(dx, steps, window, debye_block=False):
     f0 = 0.5 * (window[0] + window[1])
     sim = Simulation(freq_max=3 * f0, domain=(L, L, L), dx=dx, boundary="pec")
     if debye_block:
-        # a 1 mm Debye cube of delta_eps 1e-6 in the far corner of the
-        # air half -- electrically nothing, but it puts the whole grid on the
-        # dispersive E update.
         from rfx import Box
         from rfx.materials.debye import DebyePole
         sim.add_material("dbl", eps_r=1.0,

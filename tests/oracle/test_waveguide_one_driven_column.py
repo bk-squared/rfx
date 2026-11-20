@@ -1,4 +1,6 @@
-"""#2449 A1/A3: predeclared U1/G1 step and slab, independent NumPy anchors."""
+"""#2449 A1/A3: predeclared U1/G1 step and slab, independent NumPy anchors.
+G1 uses U1's bulk Yee estimate.
+"""
 
 from functools import lru_cache
 import json
@@ -16,7 +18,6 @@ from rfx.measurement.settling import settling_db_from_port_records
 A, B, LX, H, L = .02286, .01016, .12192, .00127, .02032
 FREQS = np.arange(70, 80, dtype=float) * 1e8
 C = 299792458.
-# PREDECLARE dry-run U1 dt; G1 uses U1's bulk Yee estimate as declared.
 YEE_DT = 2.4213500843043776e-12
 
 
@@ -138,10 +139,8 @@ def test_a1_step_closed_form(mesh, entry, record_time, capfd):
 def test_a3_slab_gradient(mesh, capfd):
     from rfx.preflight.realization import _CampaignStaticsContext
 
-    # PREDECLARE §8: first joint gradient-witness pass, k=10. Ladder jobs:
-    # lr-ports-261113084827-9cc6w (k=0–3), lr-ports-261113085634-vnfvd (k=4–7),
-    # lr-ports-261113090614-t962j (k=8–10).
-    record_time = 5e-9 * 1.25**10
+    GRADIENT_WITNESS_FIRST_PASS_RUNG = 10
+    record_time = 5e-9 * 1.25**GRADIENT_WITNESS_FIRST_PASS_RUNG
     started = time.monotonic()
     sim = scene(mesh, 'SLAB')
     context = _CampaignStaticsContext(sim)
@@ -160,8 +159,6 @@ def test_a3_slab_gradient(mesh, capfd):
                                  skip_preflight=True, checkpoint=False)
             return jnp.abs(result.waveguide_sparams['p2'].s_driven)
 
-        # One scalar material parameter: forward-mode AD evaluates all bins
-        # in one tangent scan without retaining a reverse-mode field history.
         gradient = np.asarray(jax.jacfwd(transmission)(jnp.asarray(0., dtype=base.dtype)))
         gradients.append(gradient)
         with capfd.disabled():

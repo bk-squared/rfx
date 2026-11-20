@@ -155,9 +155,8 @@ WITNESS = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "closure_wit
 SCHEMA = "rfx.waveguide_chain_battery_closure"
 SCHEMA_VERSION = 1
 
-# --- pre-declared placement, in coarse cells (the builder's own integers) ---
-K_MON_IN = 18       # 0.04572 m: between the left probe plane (k=15) and the slab (k=22)
-K_MON_OUT = 30      # 0.07620 m: between the slab (k=26) and the right probe plane (k=33)
+K_MON_IN = 18
+K_MON_OUT = 30
 MON_IN_X_M = K_MON_IN * F.DX_COARSE
 MON_OUT_X_M = K_MON_OUT * F.DX_COARSE
 MON_IN_NAME = "guide_in"
@@ -168,22 +167,12 @@ RUNG_DX_M = F.DX_COARSE
 DUT = "slab"
 REFERENCE_DUT = "thru"
 
-# Plan WP3, "Falsifier": interior-monitor closure and port closure agree
-# within 0.02, the column-power tolerance. Not derived from an envelope and
-# not moved: a larger disagreement means one of the two routes is wrong and is
-# reported as such.
 CLOSURE_ABS_DIFF_GATE = 0.02
 SETTLING_DB_MAX = -40.0
 
-# Non-vacuity: an empty guide would make the closure identity trivially true
-# at both plane pairs (the contract's "never an empty guide"). The slab
-# reflects; the fixture's own gate is max|S11| > 0.20 on the reflecting DUTs.
 NON_VACUITY_MIN_S11 = 0.20
 
 
-# ---------------------------------------------------------------------------
-# the gate's own arithmetic — ONE copy
-# ---------------------------------------------------------------------------
 
 def interior_closure(f_in, f_out, f_ref) -> np.ndarray:
     """Route B per bin: ``[F_dev(in) − F_dev(out)] / F_ref(in)``."""
@@ -203,9 +192,6 @@ def route_disagreement(closure_s, closure_m) -> float:
                                - np.asarray(closure_m, dtype=float))))
 
 
-# ---------------------------------------------------------------------------
-# construction
-# ---------------------------------------------------------------------------
 
 def build_monitor_simulation(dut: str, dx: float = RUNG_DX_M):
     """The WP2 fixture for ``dut`` with the right port dropped and the two
@@ -220,6 +206,9 @@ def build_monitor_simulation(dut: str, dx: float = RUNG_DX_M):
     ``test_monitor_simulation_matches_the_battery_fixture`` proves it on the
     realized grid and the port config rather than asserting it in prose.
     """
+    assert (F.PROBE_LEFT_M < MON_IN_X_M < F.SLAB_X_M[0]
+            and F.SLAB_X_M[1] < MON_OUT_X_M < F.PROBE_RIGHT_M), (
+        'The interior monitor planes must lie between the slab and their respective probe planes.')
     sim = F.build_simulation(dut, dx)
     assert sim._waveguide_ports[0].name == F.PORT_NAMES[0]
     del sim._waveguide_ports[1]
@@ -259,9 +248,6 @@ def _run_monitor_solve(dut: str, dx: float = RUNG_DX_M) -> dict:
         flux = {name: np.asarray(flux_spectrum(res.flux_monitors[name]), dtype=float)
                 for name in (MON_IN_NAME, MON_OUT_NAME)}
         wall = time.time() - t0
-    # Same accumulators, float64 host-side summation (``flux_spectrum``'s own
-    # sanctioned remedy). Diagnostic only — the gate reads the default
-    # path, which is the path the flux lane itself uses.
     flux_f64 = {name: np.asarray(flux_spectrum(res.flux_monitors[name], exact_f64=True),
                                  dtype=float)
                 for name in (MON_IN_NAME, MON_OUT_NAME)}
@@ -298,8 +284,6 @@ def _run_flux_lane(dx: float = RUNG_DX_M) -> dict:
         "warnings": _dedupe_warnings(wl),
         "settling_db": {name: float(settling[i]) for i, name in enumerate(F.PORT_NAMES)},
         "reference_planes_m": [float(x) for x in np.asarray(res.reference_planes)],
-        # One copy of the (port, port, freq) index convention: the battery's
-        # own writer/replay helper, not a hand copy of it here.
         "s_params": G.s_to_json(S),
         "wall_time_s": float(wall),
     }
@@ -342,6 +326,8 @@ def measure_closure_witness(dx: float = RUNG_DX_M) -> dict:
 
     S = G.s_from_json(lane["s_params"])
     s11, s21 = S[0, 0], S[1, 0]
+    assert float(np.max(np.abs(s11))) > NON_VACUITY_MIN_S11, (
+        'An empty guide would make the closure identity trivially true at both plane pairs.')
     closure_s = 1.0 - np.abs(s11) ** 2 - np.abs(s21) ** 2
 
     f_in = np.asarray(device["flux"][MON_IN_NAME], dtype=float)
@@ -410,9 +396,6 @@ def measure_closure_witness(dx: float = RUNG_DX_M) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# REPLAY layer (fast, no FDTD)
-# ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
 def witness() -> dict:
@@ -451,9 +434,6 @@ def test_monitor_simulation_matches_the_battery_fixture():
     assert np.array_equal(np.asarray(cfg1.h_inc_table), np.asarray(cfg2.h_inc_table))
 
 
-# ---------------------------------------------------------------------------
-# LIVE layer (slow: three FDTD solves at the coarse rung)
-# ---------------------------------------------------------------------------
 
 def test_live_closure_routes_agree_within_the_column_power_tolerance(witness):
     """Re-measure both routes and re-assert the gate against physics.
@@ -466,6 +446,7 @@ def test_live_closure_routes_agree_within_the_column_power_tolerance(witness):
     the stepping. If a slower runner pushes it past 30 s, move THIS test to
     the slow lane; the replay layer above keeps the gate in the fast lane at
     zero FDTD cost.
+    The coherence bound is the column-power gate divided by 20, far above the 5e-6 cross-backend |S| envelope the battery measured.
     """
     live = measure_closure_witness()
     s = np.asarray(live["closure_s_per_bin"], dtype=float)
@@ -475,14 +456,6 @@ def test_live_closure_routes_agree_within_the_column_power_tolerance(witness):
     assert measured <= CLOSURE_ABS_DIFF_GATE, (
         f"live interior-vs-port closure disagreement {measured:.6g} > "
         f"{CLOSURE_ABS_DIFF_GATE} at {live['freqs_hz'][worst] / 1e9:.2f} GHz")
-    # And the committed artifact still describes this box's physics. This is a
-    # coherence check, not a reproduction gate: it must fire when the witness
-    # stops describing the run at all, and must not fire on run-to-run float32
-    # noise. The bound is the gate itself divided by 20 (0.02 / 20 = 1e-3): a
-    # drift that large is a twentieth of the disagreement the gate allows, so it
-    # cannot hide a real change, while sitting far above the 5e-6 cross-backend
-    # |S| envelope the battery measured. Tightening it to that envelope would
-    # make this assert a second, undeclared reproduction gate.
     assert live["max_abs_diff"] == pytest.approx(
         witness["max_abs_diff"], abs=1e-3), (live["max_abs_diff"],
                                              witness["max_abs_diff"])
