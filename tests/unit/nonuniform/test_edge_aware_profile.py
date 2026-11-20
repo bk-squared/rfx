@@ -5,6 +5,7 @@ in milliseconds. The physics test runs the 2-D fin the rule was measured on
 (`scripts/diagnostics/pec_sheet_edge_offset.py`): a fin drawn at a length that
 does not fit the grid, solved on the uniform grid and on the edge-aware
 profile, each held against the fine-mesh reference.
+An earlier fine-mesh reference for a 4.75 mm fin in the 20 x 10 mm PEC box, 2-D TMz, was extrapolated at the tip's measured FIRST order to 19.8525 GHz.
 """
 from __future__ import annotations
 
@@ -77,22 +78,17 @@ def test_a_strip_narrower_than_two_edge_cells_is_meshed_not_refused():
         assert frac == pytest.approx(EDGE_OFFSET, abs=1e-6)
 
 
-# --- chains: strips and gaps side by side, no face between them ------------
 
 _CHAIN_CASES = [
     pytest.param((s,) + (g, s) * (n - 1), d, 10.0, 10.0, id=f"strip{s}-gap{g}-dx{d}-x{n}")
     for s in (0.5, 2.0, 16.35) for g in (0.3, 1.15, 5.0)
     for d in (1.0, 2.0, 3.0) for n in (2, 3)
 ] + [
-    # The two-strip coupler that once meshed at 8.6 um and 3,985 cells.
     pytest.param((16.35, 1.15, 16.35), d, 10.0, 10.0, id=f"coupler-dx{d}")
     for d in (1.0, 2.0, 3.0)
 ] + [
-    # The chain r goes below the first exact fit
-    # when another pair's inner stretch cannot be split inside the window.
     pytest.param((0.3717, 0.3924, 0.3717), 3.0, 20.0, 20.0, id="equal-strips-second-fit"),
     pytest.param((0.441, 0.2745, 9.6755), 2.0, 20.0, 20.0, id="unequal-second-fit"),
-    # Domain ends one to two cells from the outer edges.
     pytest.param((2.4806, 3.5003, 0.5475), 0.5, 2.3309, 0.8091, id="ends-near"),
 ]
 
@@ -126,7 +122,7 @@ def test_a_chain_of_strips_and_gaps_never_meshes_below_a_fifth_of_its_narrowest_
     pos = lo_margin + np.concatenate([[0.0], np.cumsum(widths)])
     edges = [SheetEdge(p, +1 if i % 2 == 0 else -1) for i, p in enumerate(pos)]
     hi = pos[-1] + hi_mm * 1e-3
-    f_min = min(widths)                           # drawn, not from the code
+    f_min = min(widths)
     r_floor = min(dx, f_min) / 5.0
     prof = edge_aware_profile(0.0, hi, dx, sheet_edges=edges,
                               max_ratio=max_ratio)
@@ -136,7 +132,6 @@ def test_a_chain_of_strips_and_gaps_never_meshes_below_a_fifth_of_its_narrowest_
         f"{r_floor * 1e6:.2f} um ({cells.size} cells)")
     if tuple(widths_mm) == (16.35, 1.15, 16.35):
         assert cells.size < 200
-    # The node placement still holds on every edge, read on the realized cell.
     for e, end in zip(edges, prof.metal_end_nodes):
         lo, hi_c = _straddling_cell(nodes, e.position)
         frac = ((e.position - lo) if e.metal_side < 0
@@ -179,7 +174,6 @@ def test_nearby_faces_respect_the_drawn_feature_cost_floor(
     edges = [SheetEdge(p * 1e-3, side) for p, side in edges_mm]
     faces = [f * 1e-3 for f in faces_mm]
     hi, dx = hi_mm * 1e-3, dx_mm * 1e-3
-    # Strip/gap widths and edge-to-face/end distances from the drawing.
     features = [b.position - a.position for a, b in zip(edges, edges[1:])]
     features += [abs(e.position - f) for e in edges for f in (0.0, *faces, hi)]
     fixed = sorted({0.0, hi, *faces})
@@ -202,7 +196,6 @@ def test_an_edge_outside_the_axis_is_refused():
                            sheet_edges=[SheetEdge(11e-3, -1)])
 
 
-# --- from the drawing: seams, staggered ends, a face on an edge ------------
 
 _DOM = (40e-3, 40e-3, 10e-3)
 
@@ -227,7 +220,7 @@ def test_a_feed_line_butting_a_wider_patch_keeps_the_patch_edge():
     feed = _sheet(20e-3, 30e-3, 14e-3, 16e-3)
     prof = edge_aware_profiles(_DOM, 1e-3, sheets=[patch, feed], axes="x")
     nodes = np.concatenate([[0.0], np.cumsum(prof["dx_profile"])])
-    lo, hi = _straddling_cell(nodes, 20e-3)      # the patch's edge survives
+    lo, hi = _straddling_cell(nodes, 20e-3)
     assert (20e-3 - lo) / (hi - lo) == pytest.approx(EDGE_OFFSET, abs=1e-6)
 
 
@@ -297,28 +290,19 @@ def test_the_advisory_does_not_count_a_seam_as_a_free_edge():
 
 
 
-# --- physics: the fin the offset was measured on ---------------------------
 
-#: Fine-mesh reference for a 4.75 mm fin in the 20 x 10 mm PEC box, 2-D TMz,
-#: lowest resonance: dx = 0.25 mm 19.9241 GHz, dx = 0.125 mm 19.8883 GHz,
-#: extrapolated at the tip's measured FIRST order 19.8525 GHz
-#: (scripts/diagnostics/pec_sheet_edge_offset.py).
 F_REF_HZ = 19.8525e9
 FIN_M = 4.75e-3
 
 
 def _fin_resonance(dy_profile, *, snap="strict"):
+    """The graded lane refuses mode="2d_tmz" and names the one-cell 3-D box between PEC walls."""
     from rfx import Box
     from rfx.api import Simulation
     from rfx.harminv import matrix_pencil
     a, b, dx = 0.020, 0.010, 1e-3
     kw = {} if dy_profile is None else {"dy_profile": dy_profile}
-    # The graded lane refuses mode="2d_tmz" and names the one-cell 3-D box
-    # between PEC walls, which is what it ran before, bit for bit. The
-    # uniform arm keeps the uniform lane's own 2-D update: the 3-D box there
-    # resonates 22 MHz lower (1.90 % against 1.79 % below the reference).
     mode = "2d_tmz" if dy_profile is None else "3d"
-    # geometry[0] y solved -8.4211 % off; this test checks resonance after strict refusal.
     sim = Simulation(freq_max=30e9, domain=(a, b, dx), boundary="pec", dx=dx,
                      mode=mode, snap=snap, **kw)
     sim.add(Box((a / 2, 0.0, 0.0), (a / 2, FIN_M, dx)), material="pec")
@@ -342,7 +326,6 @@ def test_a_fin_that_does_not_fit_the_grid_is_solved_at_its_drawn_length():
     rule stops working AND if the uniform grid stops showing the defect
     (which would mean the rasterizer changed and the offset needs
     re-measuring)."""
-    # First pin strict refusal, then retain the measured resonance control.
     with pytest.raises(ValueError, match="conductor sheet dimension"):
         _fin_resonance(None)
     f_uniform = _fin_resonance(None, snap="declared")
@@ -355,8 +338,6 @@ def test_a_fin_that_does_not_fit_the_grid_is_solved_at_its_drawn_length():
     assert err_edge < 0.003, f"edge-aware error {100 * err_edge:.3f} %"
 
 
-# Decision record 7: synthetic seed-1695 drawings and old minima transcribed
-# from r5_failure_drawings.txt. These pins precede the partner-choice search.
 @pytest.mark.parametrize("dx, hi, edges, faces, old_min", [
     pytest.param(0.003, 0.03532211431476114, [
         (0.008654214104124333, 1),
@@ -488,8 +469,7 @@ def _without_face_partners(monkeypatch, *args, **kwargs):
 
 
 def test_equal_partner_minimum_keeps_the_old_profile_bitwise(monkeypatch):
-    # First r5_equal_min_nonbitwise.json drawing: row 72, old 108 cells,
-    # partner 97 cells; both minima are 7.663882676742922e-05 m.
+    """In an earlier measurement, the parent and partner minima were both 7.663882676742922e-05 m."""
     edges = [
         SheetEdge(0.001988406310317549, 1),
         SheetEdge(0.004185881805127413, -1),
@@ -514,8 +494,7 @@ def test_equal_partner_minimum_keeps_the_old_profile_bitwise(monkeypatch):
 
 
 def test_rounding_level_partner_win_keeps_the_old_profile_bitwise(monkeypatch):
-    # Seed 1696 row 767: a partner profile beat old's smallest cell by one
-    # rounding step (both 222 cells); a tie within 1e-9*dx keeps old.
+    """A tie within 1e-9*dx keeps the old profile."""
     edges = [SheetEdge(p, s) for p, s in [
         (0.006709112086251946, 1), (0.007629987692076592, -1),
         (0.007890505186735808, 1), (0.009539682778815351, -1),
@@ -535,8 +514,7 @@ def test_rounding_level_partner_win_keeps_the_old_profile_bitwise(monkeypatch):
 
 
 def test_a_partner_candidate_that_does_not_converge_keeps_the_old_profile(monkeypatch):
-    # Faces 0.65 mm and 1.3 mm past an edge: the all-partners band fit does
-    # not converge (RuntimeError); the parent mesh (183 cells) must come back.
+    """The parent mesh (183 cells) must come back because the all-partners band fit does not converge (RuntimeError)."""
     edges = [SheetEdge(p, s) for p, s in [
         (0.0036768344883638324, 1), (0.014861837802453046, -1),
         (0.02110442040643769, 1), (0.027286130767069382, -1),
@@ -559,7 +537,6 @@ def test_review_worst_face_has_at_least_76_339_um_cells():
 
 
 def test_e6_empty_partners_reproduce_the_old_face_shrink(monkeypatch):
-    # pinned_r5.json, test_a_face_inside_an_edge_cell...: old 30 cells.
     old = _without_face_partners(
         monkeypatch, 0.0, 10e-3, 1e-3, faces=[5.2e-3], boundary_cell=1e-3,
         sheet_edges=[SheetEdge(5.0e-3, -1)])
