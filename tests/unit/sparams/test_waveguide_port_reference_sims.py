@@ -25,6 +25,7 @@ Coverage
   the two figures above are prose and are refreshed with the correction. Companion committed evidence lives
   at ``tests/fixtures/waveguide_tjunction_e4/`` /
   ``tests/crossval/test_waveguide_tjunction_e4e5_gates.py``.
+The quoted aperture areas, cutoffs and |S11| blow-up figures are earlier measurements on the 42 mm guide to be re-read on the 40 mm guide rather than translated.
 """
 
 import warnings
@@ -39,10 +40,6 @@ from rfx.geometry.csg import Box
 from tests._realized_geometry import assert_wall_planes, realized
 
 
-# --------------------------------------------------------------------------
-# Tiny two-port builders — used only by the guard tests, which raise before
-# any FDTD, so the run parameters below are never exercised.
-# --------------------------------------------------------------------------
 
 def _tiny_two_port(*, dx=0.004, n_modes=1):
     s = Simulation(
@@ -78,7 +75,8 @@ def test_port_reference_sims_wrong_length_raises():
 
 def test_port_reference_sims_mismatched_grid_raises():
     s = _tiny_two_port(dx=0.004)
-    bad = _tiny_two_port(dx=0.002)  # different dx -> different grid shape
+    bad = _tiny_two_port(dx=0.002)
+    assert s._build_grid().shape != bad._build_grid().shape, "The reference cell size must produce a different grid shape"
     with pytest.raises(ValueError, match="must match the device grid"):
         s.compute_waveguide_s_matrix(
             n_steps=10, normalize="flux",
@@ -107,10 +105,9 @@ def test_port_reference_sims_eps_override_combo_raises():
 
 
 def test_periodic_reference_is_refused_before_conductor_realization(monkeypatch):
+    """Eleven periodic y cells have the same array shape as ten PEC cells plus their terminal node."""
     from rfx.boundaries import pec
     device = _tiny_two_port()
-    # Eleven periodic y cells have the same array shape as ten PEC cells
-    # plus their terminal node. The reference admission checks shape and dx.
     ref = Simulation(freq_max=10e9, domain=(.12, .044, .02), dx=.004,
         boundary={'x': 'cpml', 'y': 'periodic', 'z': 'pec'}, cpml_layers=10)
     ref.add(Box((.04, .04, .004), (.06, .044, .008)), material='pec')
@@ -130,25 +127,6 @@ def test_periodic_reference_is_refused_before_conductor_realization(monkeypatch)
             port_reference_sims=[ref, ref])
 
 
-# --------------------------------------------------------------------------
-# Compact T-junction builders (geometry copied from the SKIPPED
-# test_api.py::test_waveguide_branch_junction_mixed_normals_reciprocal_through_api).
-# The main guide runs horizontally (y in [0.04, 0.08]); the top arm opens at
-# x in [0.04, 0.08], y in [0.08, 0.12].
-#
-# The walls are PEC VOLUMES. Under the ownership contract each
-# block realizes tangential walls on BOTH of its drawn faces, so the guide
-# between the y = 0.04 and y = 0.08 faces is 40.0 mm — the number the
-# declaration states. Before the contract a body's far face was never a
-# wall, the metal ended one node short on each side and the same geometry
-# realized a 42.0 mm guide; the ports' declared ``y_range=(0.04, 0.08)``
-# lands ON the walls for the first time. Anything this file's prose quotes
-# that was measured on the 42 mm guide (aperture areas, cutoffs, the
-# |S11| blow-up figures) is an earlier measurement and is re-read with the
-# fixtures, not translated.
-# ``test_tj_walls_are_realized_where_they_are_drawn`` below is the
-# build-time witness, and it costs no solve.
-# --------------------------------------------------------------------------
 
 def _tj_common(freqs, f0):
     return dict(
@@ -239,16 +217,18 @@ def _tj_pocket_vertical(freqs, f0):
 
 def _tj_refs(freqs, f0):
     return [
-        _tj_pocket_horizontal(freqs, f0),   # left  (+x)
-        _tj_pocket_horizontal(freqs, f0),   # right (-x)
-        _tj_pocket_vertical(freqs, f0),     # top   (-y)
+        _tj_pocket_horizontal(freqs, f0),
+        _tj_pocket_horizontal(freqs, f0),
+        _tj_pocket_vertical(freqs, f0),
     ]
 
 
 def test_port_reference_sims_clearance_advisory_fires(monkeypatch):
     """Probe planes sitting on top of the junction must fire the clearance
     advisory. The band is kept below the TE20 cutoff (fc2 = C0/a = 7.5 GHz for
-    a = 0.04 m) so the advisory is not skipped for an in-band higher mode."""
+    a = 0.04 m) so the advisory is not skipped for an in-band higher mode.
+    Patch ``rfx.sparams.waveguide.extract_waveguide_s_matrix_flux`` because the waveguide function resolves its own module global rather than the ``rfx.api._sparams`` re-export.
+    """
     freqs = jnp.linspace(4.5e9, 6.5e9, 3)
     f0 = 5.5e9
 
@@ -259,10 +239,6 @@ def test_port_reference_sims_clearance_advisory_fires(monkeypatch):
         raise ReachedExtractor
 
     monkeypatch.setattr(
-        # compute_waveguide_s_matrix's body lives in
-        # rfx/sparams/waveguide.py, so this is where the extractor name is
-        # looked up. The re-export in rfx.api._sparams would still accept the
-        # patch and silently not be the binding the lane reads.
         "rfx.sparams.waveguide.extract_waveguide_s_matrix_flux",
         stop_before_solve,
     )
@@ -280,15 +256,15 @@ def test_port_reference_sims_clearance_advisory_fires(monkeypatch):
 def test_identical_port_references_have_no_junction_clearance_advisory(
     monkeypatch, subpixel_smoothing,
 ):
-    """Kottke clearing solver edge masks must not erase advisory geometry."""
+    """Kottke clearing solver edge masks must not erase advisory geometry.
+    Patch ``rfx.sparams.waveguide.extract_waveguide_s_matrix_flux`` because the waveguide function resolves its own module global rather than the ``rfx.api._sparams`` re-export."""
     freqs = jnp.linspace(4.5e9, 6.5e9, 3)
 
     class ReachedExtractor(Exception):
         pass
 
     def stop_before_solve(*args, **kwargs):
-        # Preserve the solver's dispatch: Kottke owns its inverse-eps
-        # tensor and must not acquire an additional staircase PEC mask.
+        """Kottke must not acquire an additional staircase PEC mask because it owns its inverse-eps tensor."""
         assert (kwargs["pec_edge_masks"] is None) == (
             subpixel_smoothing == "kottke_pec"
         )
@@ -297,17 +273,10 @@ def test_identical_port_references_have_no_junction_clearance_advisory(
         raise ReachedExtractor
 
     monkeypatch.setattr(
-        # compute_waveguide_s_matrix's body lives in
-        # rfx/sparams/waveguide.py, so this is where the extractor name is
-        # looked up. The re-export in rfx.api._sparams would still accept the
-        # patch and silently not be the binding the lane reads.
         "rfx.sparams.waveguide.extract_waveguide_s_matrix_flux",
         stop_before_solve,
     )
     device = _tj_ref_horizontal(freqs, 5.5e9)
-    # As a device, the straight guide has only its two horizontal ports.
-    # Its reference-carrier declaration also has a top port inside PEC; setup
-    # now checks section operands before the mocked extractor is reached.
     device._waveguide_ports = device._waveguide_ports[:2]
     references = [_tj_ref_horizontal(freqs, 5.5e9) for _ in range(2)]
     for reference in references:
@@ -389,8 +358,6 @@ def test_port_reference_sims_compact_junction_necessary_not_sufficient():
         .compute_waveguide_s_matrix(num_periods=num_periods, normalize="flux")
         .s_params
     )
-    # The extractor's passivity self-check MUST still fire with references —
-    # the compact-geometry S-matrix is still non-physical (locked).
     with pytest.warns(UserWarning, match="passiv"):
         result = _tj_device(freqs, f0).compute_waveguide_s_matrix(
             num_periods=num_periods, normalize="flux",
@@ -403,12 +370,10 @@ def test_port_reference_sims_compact_junction_necessary_not_sufficient():
     max_vac = float(np.max(np.abs(s_vac)))
     max_ref = float(np.max(np.abs(s_ref)))
 
-    # Direction 1 — the matched reference fixes the reflection diagonal.
-    assert s11_ref < s11_vac            # lower than the vacuum reference
-    assert s11_ref < 1.0                # physical reflection band-mean
-    # Direction 2 — the overall matrix is still non-physical (compact geometry).
-    assert max_ref > 1.05               # non-passive residual remains
-    assert max_ref < max_vac            # but the blow-up is reduced
+    assert s11_ref < s11_vac
+    assert s11_ref < 1.0
+    assert max_ref > 1.05
+    assert max_ref < max_vac
 
 
 def _stub_the_solve(monkeypatch):

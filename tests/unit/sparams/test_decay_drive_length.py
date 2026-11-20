@@ -30,8 +30,6 @@ def _box(mesh):
 
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 def test_decay_drives_match_main_record(mesh, monkeypatch):
-    # Observe actual receiver samples consumed by the driver's settling witness,
-    # not just the requested n_steps. Keep the production driver and witness live.
     driver = sparam_driver.compute_lumped_wire_s_matrix_via_scan
     witness = _tail_witness.port_record_witness
     drive_records = []
@@ -64,7 +62,6 @@ def test_decay_drives_match_main_record(mesh, monkeypatch):
         reference = _box(mesh).run(n_steps=stop_step, **run_kwargs)
     actual, expected = np.asarray(stopped.s_params), np.asarray(reference.s_params)
     peak = float(np.max(np.abs(expected)))
-    # Four float32 epsilons of the peak |S|, across every matrix entry and bin.
     bound = 4 * np.finfo(np.float32).eps * peak
     difference = float(np.max(np.abs(actual - expected)))
     settling_warnings = [str(w.message) for w in caught
@@ -92,7 +89,6 @@ def test_drive_length_override_and_fixed_record(graded, stop_step, override, exp
 
 @pytest.mark.parametrize("graded", [False, True])
 def test_forced_length_run_drives_its_record(graded):
-    # until_decay=0 runs decay_max_steps with no stop record; the drives follow it.
     from rfx.measurement.decay import drive_steps
 
     result = {"decay_stop": None} if graded else SimpleNamespace(decay_stop=None)
