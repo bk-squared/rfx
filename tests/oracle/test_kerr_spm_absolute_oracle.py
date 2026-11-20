@@ -37,7 +37,7 @@ C0 = 299792458.0
 K0 = W / C0
 DX = 0.002
 NUM_PERIODS = 80
-STEADY_FRAC = 0.45          # DFT / envelope over the last 45% (steady window, past ramp+fill)
+STEADY_FRAC = 0.45
 
 
 def _measure(chi3, amp, domx, slab, probes):
@@ -46,6 +46,8 @@ def _measure(chi3, amp, domx, slab, probes):
     drift of the fundamental amplitude between the first and second half of the "steady" window —
     small ⇒ genuinely steady, not a transient) — χ³-only, ε_r=1 matched region."""
     dom = (domx, 0.06, 0.006)
+    assert slab[0] < probes[0] < probes[1] < slab[1], (
+        'The phase-slope probes must remain strictly inside the Kerr slab.')
     grid = Grid(freq_max=10e9, domain=dom, dx=DX, cpml_layers=10)
     dt = grid.dt
     sim = Simulation(freq_max=10e9, domain=dom, dx=DX, boundary="cpml", cpml_layers=10, mode="3d")
@@ -65,8 +67,7 @@ def _measure(chi3, amp, domx, slab, probes):
     T = win.shape[0] * dt
     phas = np.sum(win * (np.exp(-1j * W * tw) * dt)[:, None], axis=0)
     kx = abs(np.polyfit(pidx * DX, np.unwrap(np.angle(phas)), 1)[0])
-    a_local = 2.0 * np.abs(phas) / T                     # per-probe fundamental amplitude
-    # settling witness: the amplitude of the first vs second half of the window must agree
+    a_local = 2.0 * np.abs(phas) / T
     h = win.shape[0] // 2
     amp_h1 = float(np.mean([np.max(np.abs(win[:h, i])) for i in range(win.shape[1])]))
     amp_h2 = float(np.mean([np.max(np.abs(win[h:, i])) for i in range(win.shape[1])]))
@@ -81,18 +82,15 @@ def _ratio(chi3, amp, domx, slab, probes, kx0):
     return dkx_meas, dkx_txt, dkx_meas / dkx_txt, settle
 
 
-# geometry: χ³-only slab spanning most of a CPML-terminated x-domain; probes strictly inside it
 _LONG = dict(domx=0.60, slab=(0.06, 0.54), probes=(0.12, 0.44))
 _SHORT = dict(domx=0.45, slab=(0.06, 0.39), probes=(0.12, 0.33))
 
 
 @pytest.fixture(scope="module")
 def oracle():
-    # χ³=0 baseline is operator-independent (both operators are identity at χ³=0) → shared.
     kx0_L, _, _ = _measure(0.0, 1.0, **_LONG)
     dkx_meas, dkx_txt, r_dbased, settle = _ratio(0.20, 1.0, **_LONG, kx0=kx0_L)
 
-    # falsifier: the earlier increment operator (scale the E-update increment) — must NOT pass.
     shipped = _nl.apply_kerr_ade
 
     def _increment(state, e_prev, chi3_arr, eps_r_arr):
@@ -103,12 +101,11 @@ def oracle():
                               ey=ey_p + (state.ey - ey_p) * f,
                               ez=ez_p + (state.ez - ez_p) * f)
     try:
-        _nl.apply_kerr_ade = _increment                  # picked up by the lazy import in run()
+        _nl.apply_kerr_ade = _increment
         _, _, r_increment, _ = _ratio(0.20, 1.0, **_LONG, kx0=kx0_L)
     finally:
         _nl.apply_kerr_ade = shipped
 
-    # domain-size invariance (mandate: an ADDED gate needs a falsifier + domain-invariance)
     kx0_S, _, _ = _measure(0.0, 1.0, **_SHORT)
     _, _, r_short, _ = _ratio(0.20, 1.0, **_SHORT, kx0=kx0_S)
 

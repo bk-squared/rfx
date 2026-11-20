@@ -48,15 +48,7 @@ def load_curves(line, s, r_ohm, l_h, c_f, *, inductance_factor=1.):
 
 
 def assert_signed_residual(z_meas, z_true, predicted_z):
-    # The bar is the measured one-cell element inductance (0.214*mu0*dx per
-    # element). Old bar: 0.05*|Z| per component. New: predicted SIGNED residual
-    # +/-10% of its magnitude, per component. At 50 um Lcell=13.44601656 pH
-    # per element, wL=0.084484..0.844838 ohm over 1..10 GHz. Add it at BOTH
-    # terminals and invert the same pure shunt network to derive predicted_z;
-    # this accounts for that inverse's amplification, with no fitted tolerance.
-    # Example from that formula, RC-300 at 50 um/10 GHz: old component bar
-    # 15.0211 ohm; new residual center -35.61345+10.63533j ohm, with a
-    # +/-3.71676 ohm budget on each signed component (0.10*|center|).
+    """The residual bar is based on the measured one-cell element inductance (0.214*mu0*dx per element)."""
     measured, predicted = z_meas-z_true, predicted_z-z_true
     limit = MODEL_ALLOWANCE*abs(predicted)
     for name, delta in (("real", (measured-predicted).real),
@@ -88,11 +80,7 @@ def test_series_load_reads_its_closed_form(r_ohm, l_h, c_f, record_property):
 @pytest.mark.slow
 @pytest.mark.parametrize("r_ohm,l_h,c_f", CASES, ids=IDS)
 def test_series_load_three_mesh_trend(r_ohm, l_h, c_f, record_property):
-    # Refined capacitive cells need a roundoff control: RC-300 at 25 um
-    # has a 24.62% signed-residual mismatch in float32, unchanged at 80 vs 40
-    # periods; float64 at the same 40 periods reads 4.43%. Use float64 on
-    # EVERY rung to judge truncation order without changing the circuit,
-    # frequencies, recording time, cell coefficient or any verdict bar.
+    """Float64 controls roundoff on every rung because the RC-300 signed-residual mismatch at 25 um and 40 periods measured earlier was 24.62% in float32 versus 4.43% in float64."""
     record_property("precision", "float64")
     record_property("num_periods", NUM_PERIODS)
     errors = []
