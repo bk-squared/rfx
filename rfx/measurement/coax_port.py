@@ -48,25 +48,24 @@ def coax_records(carry, plan, n_steps=None):
     return from_owners((carry['coax_time_records'],), owners, n_steps)
 
 
-def coax_port_s11(voltages, *, owner, z_tem_ohm, impedance, traced=False):
+def coax_port_s11(voltages, *, owner, z_tem_ohm, impedance):
     """Return declared-impedance S11 and native Gamma from in-scan plane DFTs."""
     from .coax_records import coaxial_line_reflection_from_plane_voltages
     from rfx.sparams._port_reference import renormalize_power_waves
-    xp = jnp if traced else np
     planes = [p.coordinate_m for p in owner.reference_planes if p.name.startswith('probe:')]
     reference = next(p.coordinate_m for p in owner.reference_planes if p.name == 'deembedding')
     planes = np.abs(np.asarray(planes) - reference)
     reference = 0.0
     order = np.argsort(planes)
-    voltage = xp.asarray(voltages)[order]
-    native = xp.stack([coaxial_line_reflection_from_plane_voltages(
+    voltage = jnp.asarray(voltages)[order]
+    native = jnp.stack([coaxial_line_reflection_from_plane_voltages(
         np.asarray(planes)[order], voltage[:, i], reference_plane_m=reference,
-        _prefer_jnp=traced).reflection for i in range(voltage.shape[1])])
+        _prefer_jnp=True).reflection for i in range(voltage.shape[1])])
     s11 = renormalize_power_waves(native[None, None, :], [z_tem_ohm], [impedance])
     return s11, native
 
 
-def port_result(sim, product, result, *, traced=False):
+def port_result(sim, product, result):
     plan = product._prepared_solve.measurement
     owner, = (o for o in plan.owners if o.kind == 'coax')
     if not len(owner.frequencies):
@@ -75,7 +74,7 @@ def port_result(sim, product, result, *, traced=False):
         raise ValueError('coax port has no in-scan voltage accumulators')
     z_tem = product.coax_bore_release.z_tem_ohm
     s11, native = coax_port_s11(result.coax_sparam_accs, owner=owner,
-        z_tem_ohm=z_tem, impedance=sim._coaxial_ports[0].impedance, traced=traced)
+        z_tem_ohm=z_tem, impedance=sim._coaxial_ports[0].impedance)
     return s11, owner.frequencies, {owner.id: dict(native_gamma=native, z_tem_ohm=z_tem)}
 
 

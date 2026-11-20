@@ -831,7 +831,7 @@ def _forward_from_materials(
     freqs_out = getattr(result, "freqs", None)
     if self._coaxial_ports and port_s11_freqs is not None:
         from rfx.measurement.coax_port import port_result
-        s_params_out, freqs_out, coax_metadata = port_result(self, stepping_product, result, traced=True)
+        s_params_out, freqs_out, coax_metadata = port_result(self, stepping_product, result)
     from rfx.measurement.port_s_contract import uniform_record_pairs
     pairs = uniform_record_pairs(result)
     if pairs:

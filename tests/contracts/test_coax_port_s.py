@@ -48,6 +48,9 @@ def test_open_native_and_renormalization(open_results):
 def test_forward_against_run(open_results):
     result, _ = open_results
     actual = scene().forward(n_steps=STEPS, port_s11_freqs=BINS, skip_preflight=True)
+    for output in (result, actual):
+        assert output.s_params.dtype == np.dtype('complex64')
+        assert output.coax_port_metadata['coax_port:0:mode:0']['native_gamma'].dtype == np.dtype('complex64')
     error = np.max(np.abs(np.asarray(actual.s_params) - np.asarray(result.s_params)))
     report('B3 max S difference', error)
     assert error <= 1e-4

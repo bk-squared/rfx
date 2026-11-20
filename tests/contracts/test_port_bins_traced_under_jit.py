@@ -197,7 +197,7 @@ def test_port_bins(kind, path, ringdown):
                       'fwd_uniform: add_coaxial_port() requires CPML on all six faces' if path == 'uniform' else
                       ('fwd_distributed_nu' if path == 'multi-graded' else
                        'fwd_distributed' if path == 'multi-uniform' else 'fwd_nonuniform')
-                      + ': add_coaxial_port() is supported only on run_uniform and fwd_uniform in S1')
+                      + ': add_coaxial_port() is supported only on run_uniform and fwd_uniform')
     elif kind in ('waveguide', 'msl'):
         _same_refusal(eager, actual, ValueError,
                       'forward(port_s11_freqs=...) requires add_port(...)')
