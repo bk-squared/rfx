@@ -54,7 +54,8 @@ def _exchange_rows(state, hooks):
 
 
 def _poison_start(carry, exchanged, rank, count):
-    """Poison and independently read back every eligible row before either curl."""
+    """Poison and independently read back every eligible row before either curl.
+    X-face psi buffers contain absorber depth only, without slab ghosts."""
     carry = dict(carry)
     checks = []
     for family in ('fdtd', 'cpml'):
@@ -64,7 +65,6 @@ def _poison_start(carry, exchanged, rank, count):
         for name, value in zip(carry[family]._fields, carry[family]):
             if value.ndim == 0:
                 continue
-            # X-face psi buffers contain absorber depth only, without slab ghosts.
             if family == 'cpml' and name.split('_')[-1].startswith('x'):
                 assert value.shape[0] < carry['fdtd'].ex.shape[0] - 2
                 continue
@@ -76,7 +76,6 @@ def _poison_start(carry, exchanged, rank, count):
                 eligible.append(interior & ~jnp.asarray(sent))
                 value = value.at[row].set(jnp.where(eligible[-1], jnp.nan, value[row]))
             fields[name] = value
-            # Read the updated carry, independently of the write expression.
         carry[family] = carry[family]._replace(**fields)
         for name in fields:
             for side, row in enumerate((0, -1)):
@@ -95,8 +94,6 @@ def evaluate(boundary, count, poison):
     def instrument(ctx, invariants, *, hooks):
         core = original_step(ctx, invariants, hooks=hooks)
 
-        # The first physical hook is AFTER_H. Wrap the bound callable so the
-        # carry is poisoned before either curl, without a product-side seam.
         def step(carry, step_idx, *args):
             exchanged = _exchange_rows(carry['fdtd'], hooks)
             carry, checks = _poison_start(carry, exchanged, jax.lax.axis_index('x'), count)

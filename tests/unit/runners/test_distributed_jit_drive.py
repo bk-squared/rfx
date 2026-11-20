@@ -30,7 +30,8 @@ def _scene(boundary, port=False):
                        amplitude_kind='current')
     sim.add_material('block', eps_r=4.0)
     sim.add(Box((-1.0, 3e-3, 3e-3), (1.0, 9e-3, 9e-3)), material='block')
-    sim.add_probe((6e-3, 6e-3, 6e-3), 'ez')       # the source edge
+    SOURCE_EDGE_POSITION = (6e-3, 6e-3, 6e-3)
+    sim.add_probe(SOURCE_EDGE_POSITION, 'ez')
     sim.add_probe((13e-3, 5e-3, 7e-3), 'ez')
     sim.add_probe((19e-3, 6e-3, 6e-3), 'hy')
     return sim

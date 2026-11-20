@@ -13,7 +13,6 @@ from rfx.runners import _admission as A
 
 def _scene(entry, source, *, pec=True, dt=None, precision="float32"):
     if entry.startswith("waveguide"):
-        # Simulation/boundary/port setup from the validation battery's _build_sim.
         boundary = {"x": "cpml", "y": "pec", "z": "pec"}
         if source == "B":
             boundary["y"] = Boundary("pec", "pec", conformal=True)
@@ -99,12 +98,9 @@ def test_combination_refused_before_step(monkeypatch, entry, source):
     from rfx.stepping import uniform_loop
 
     monkeypatch.setattr(tensor_operands, "form_tensor_operands", _no_step)
-    # The uniform runner reads run from rfx.simulation, the waveguide S extractors from uniform_loop.
     monkeypatch.setattr(simulation, "run", _no_step)
     monkeypatch.setattr(uniform_loop, "run", _no_step)
     monkeypatch.setattr(nonuniform, "run_nonuniform", _no_step)
-    # The graded lane already rejects conformal_pec before considering smoothing.
-    # All other reachable rows name both inputs; no implementation text is imported.
     match = (r"conformal_pec" if entry == "graded" else
              r"(?s)(?=.*subpixel_smoothing)(?=.*kottke_pec)(?=.*conformal_pec)")
     if entry.startswith("waveguide") and source == "K":
@@ -174,7 +170,7 @@ def test_supported_controls_run(entry, smoothing, source, conformal, pec):
 
 @pytest.mark.parametrize("entry", ["run_3d", "run_2d", "waveguide"])
 def test_conformal_faces_still_refuse_without_interior_pec(entry):
-    # Conformal boundary faces themselves produce PEC shapes/weights.
+    """Conformal boundary faces produce PEC shapes and weights."""
     with pytest.raises(NotImplementedError,
                        match=r"(?s)(?=.*subpixel_smoothing)(?=.*conformal_pec)"):
         _invoke(entry, "B", pec=False)
@@ -207,11 +203,11 @@ def test_waveguide_conformal_keyword_refused_before_admission(monkeypatch, entry
 
 
 def test_cut_cell_floor_admission_paths():
+    """The cut-cell-floor opt-in must refuse even without PEC shapes."""
     from rfx.grid import Grid
     from rfx.interop.emitters.openems import plan_openems_projection
     from rfx.interop import design_to_dict
     ordinary = Grid.courant_dt(.001)
-    # No PEC shapes: the opt-in itself must refuse, never disappear as a no-op.
     for entry in ('run', 'forward', 'graded', 'distributed', 'subgridded', 'kottke'):
         kwargs = dict(freq_max=20e9, domain=(.012,) * 3, dx=.001, boundary='pec')
         if entry != 'run':

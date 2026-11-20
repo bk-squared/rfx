@@ -1,4 +1,5 @@
-"""NTFF surface placement, far field and G5 derived patterns."""
+"""NTFF surface placement, far field and G5 derived patterns.
+The declared domain lengths equal the solved lengths of the graded mesh."""
 import numpy as np
 import pytest
 import jax.numpy as jnp
@@ -10,7 +11,7 @@ from tests._multi_device_scene import host_devices
 from tests.unit.runners._graded_records_scene import pair, measure, record, mutation_result, with_bars
 
 
-DOMAIN = (15e-3, 9e-3, 10e-3)  # main's solved lengths on the graded mesh (round)
+DOMAIN = (15e-3, 9e-3, 10e-3)
 SOURCE = (5.1e-3, 2.7e-3, 4.3e-3)
 PROBE = (10.2e-3, 5.6e-3, 6.7e-3)
 BOX = ((1.7e-3, 1.3e-3, 2.2e-3), (14.1e-3, 7.1e-3, 8.1e-3))
@@ -38,14 +39,14 @@ def ntff_model(boundary, n_devices):
 @pytest.mark.parametrize('boundary', ['pec', 'cpml'])
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_ntff(boundary, n_devices, entry, monkeypatch):
+    """CPML parity allows compile-form rounding of byte-equal operands."""
+    POWER_DB_BASE = 10
+    POWER_DB_SCALE = 10
     sim, grid = ntff_model(boundary, n_devices)
-    # Reflecting-face PEC witness checks the same record/transform arithmetic.
     if boundary == 'pec':
         monkeypatch.setattr('rfx.boundaries.features.refuse_ntff_reflecting_faces', lambda *a, **kw: None)
     sim.add_ntff_box(*BOX, freqs=[3e9, 7e9])
     one, many = pair(sim, n_devices, entry)
-    # The six face sums are the physical records consumed by compute_far_field;
-    # c_* leaves are internal Kahan carry. Keep full-tree PEC equality unchanged.
     names = one.ntff_data._fields if boundary == 'pec' else one.ntff_data._fields[:6]
     values = {name: measure(getattr(many.ntff_data, name), getattr(one.ntff_data, name))
               for name in names}
@@ -56,10 +57,8 @@ def test_ntff(boundary, n_devices, entry, monkeypatch):
     for function in (directivity, radiation_pattern):
         expected, actual = (function(f) for f in ff)
         if boundary == 'cpml':
-            # dB(i) is a power ratio: convert back with 10**(dB/10).
-            expected, actual = (10 ** (a / 10) for a in (expected, actual))
+            expected, actual = (POWER_DB_BASE ** (a / POWER_DB_SCALE) for a in (expected, actual))
         values[function.__name__] = measure(actual, expected)
-    # CPML wrapped step: compile-form rounding, operands byte-equal.
     with_bars(values, 'relative_peak' if boundary == 'cpml' else 'array_equal')
     record('ntff', dict(boundary=boundary, devices=n_devices, entry=entry, shape=grid.shape,
         domain=DOMAIN, source=SOURCE, probe=PROBE, box=BOX,

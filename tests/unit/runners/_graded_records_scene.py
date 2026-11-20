@@ -11,7 +11,6 @@ from tests.unit.runners.test_distributed_graded_run import model as base_model
 def model(boundary, n_devices):
     host_devices(n_devices)
     sim = base_model(boundary)
-    # Both transverse electric components reach each observed plane.
     sim.add_source((8.1e-3, 3.2e-3, 4.3e-3), 'ex', amplitude_kind='field')
     grid = sim._build_nonuniform_grid()
     seam = (grid.shape[0] + n_devices - 1) // n_devices

@@ -3,6 +3,7 @@
 Uses XLA_FLAGS to simulate up to 4 CPU devices for testing (the root
 ``conftest.py`` sets 2 virtual CPU devices, via ``setdefault``, for any
 run that doesn't already set XLA_FLAGS — see its module docstring).
+The domains written with ``299792458.0 / 3e9 / 20.0``, ``299792458.0 / 5e9 / 20.0`` or as ``(0.08, 20 * 1.25e-3, 20 * 1.25e-3)`` span whole numbers of their declared dx, so their solved lengths equal their declared lengths.
 """
 
 import os
@@ -23,38 +24,6 @@ from rfx.runners._distributed_common import (
 )
 from rfx.core.yee import init_state, init_materials
 
-# Historical note: this file carried a module-wide ``pytestmark = pytest.mark.gpu``
-# from creation. Every CPU lane deselects ``gpu`` (pyproject addopts) and
-# a single-GPU pod exposes only 1 CUDA device (the host-device-count
-# sentinel only creates *virtual* devices on the CPU backend), so the
-# marker meant this file's whole 2-/4-device equivalence family ran in NO
-# lane at all — the pad_x displacement went undetected for that reason.
-# The module-level
-# ``os.environ["XLA_FLAGS"] = ...`` line above was ALSO dead in practice
-# even before this fix: pytest always imports conftest.py (which sets 2
-# virtual devices via ``setdefault``, before any test module is
-# imported) ahead of this module, so this file's own unconditional
-# assignment never won the race — changed to ``setdefault`` here to stop
-# implying otherwise; ``_N_DEVICES`` below is 2 in the fast/weekly CPU
-# shards. The marker is removed so this family runs in the same
-# fast-suite/weekly CPU shards as the sibling
-# ``test_distributed_nu_kernel.py`` / ``test_distributed_nu_composition.py``
-# files. Measured (this fix, 2-device conftest default):
-# 33/33 passed, 65-68 s wall, 1.74 GiB peak RSS — comparable to (and
-# below) the NU kernel file's precedent (62-66 s, 1.93 GiB) and well under the ``highmem``
-# marker's 3-24 GB band (pyproject.toml).
-#
-# Multi-device tests remain device-count-ADAPTIVE: they shard across
-# however many JAX devices are available (up to 4, `_N_MULTI`) instead of
-# hardcoding 4, and SKIP when <2 devices are present (`requires_multidevice`).
-# A single-GPU pod has jax.device_count() == 1 (the sentinel
-# does not add virtual devices when a GPU backend is present) — the
-# multi-device classes skip cleanly there rather than failing on a
-# brittle `len(devices) == 4` assert, while staying correct for any
-# >=2-device env (a future multi-GPU pod, or the fast/weekly CPU shards
-# now that the marker is gone). The runner itself is verified correct
-# (multi == single to ~1e-6, and to bit-parity on the pad_x-insensitive
-# Debye/Lorentz fixtures) at 2 and 4 devices.
 _N_DEVICES = jax.device_count()
 _N_MULTI = min(4, _N_DEVICES)
 requires_multidevice = pytest.mark.skipif(
@@ -71,13 +40,13 @@ class TestSplitGather:
     """Test domain splitting and gathering operations."""
 
     def test_split_and_gather_identity(self):
-        """Split then gather should recover original fields (interior)."""
+        """Split then gather should recover original fields (interior).
+        Each slab has five owned x rows plus two ghost rows, giving seven rows."""
         nx, ny, nz = 20, 8, 8
         arr = jnp.arange(nx * ny * nz, dtype=jnp.float32).reshape(nx, ny, nz)
         n_devices = 4
 
         slabs = split_array_x(arr, n_devices, ghost=1)
-        # Each slab should have nx_per + 2*ghost = 5+2 = 7 cells in x
         assert slabs.shape == (4, 7, 8, 8), f"Got shape {slabs.shape}"
 
         recovered = gather_array_x(slabs, ghost=1)
@@ -85,19 +54,16 @@ class TestSplitGather:
         np.testing.assert_allclose(recovered, arr, atol=1e-6)
 
     def test_split_preserves_ghost_content(self):
-        """Ghost cells should contain neighbor data."""
+        """Ghost cells should contain neighbor data.
+        Device 1 owns x rows 3–5 when twelve rows are split across four devices, so its low and high ghosts are rows 2 and 6."""
         nx, ny, nz = 12, 4, 4
         arr = jnp.arange(nx * ny * nz, dtype=jnp.float32).reshape(nx, ny, nz)
         n_devices = 4
 
         slabs = split_array_x(arr, n_devices, ghost=1)
 
-        # Device 1's left ghost should be device 0's last real cell
-        # Device 1 owns x=[3,4,5], ghost_lo=2, ghost_hi=6
-        # slab[1][0] should be arr[2] (the cell just before device 1's region)
         np.testing.assert_allclose(slabs[1, 0, :, :], arr[2, :, :])
 
-        # Device 1's right ghost should be arr[6]
         np.testing.assert_allclose(slabs[1, -1, :, :], arr[6, :, :])
 
     def test_split_boundary_ghost_zero_padded(self):
@@ -108,17 +74,14 @@ class TestSplitGather:
 
         slabs = split_array_x(arr, n_devices, ghost=1)
 
-        # Device 0's left ghost should be zero (physical boundary)
         np.testing.assert_allclose(slabs[0, 0, :, :], 0.0)
 
-        # Device 3's right ghost should be zero (physical boundary)
         np.testing.assert_allclose(slabs[3, -1, :, :], 0.0)
 
     def test_state_split_gather_roundtrip(self):
         """FDTDState split->gather roundtrip preserves fields."""
         shape = (16, 6, 6)
         state = init_state(shape)
-        # Put non-trivial data in fields
         state = state._replace(
             ex=jnp.ones(shape) * 1.0,
             hy=jnp.ones(shape) * 2.0,
@@ -126,8 +89,6 @@ class TestSplitGather:
         )
 
         slabs = _split_state(state, 4, ghost=1)
-        # Gathered field by field: the whole-state gather was the pmap
-        # runner's own helper and went with it.
         np.testing.assert_allclose(
             gather_array_x(slabs.ex, ghost=1), state.ex, atol=1e-6)
         np.testing.assert_allclose(
@@ -142,23 +103,19 @@ class TestDistributedRunner:
 
     def test_distributed_matches_single_pec(self):
         """Distributed 4-device PEC result should match single-device."""
-        # 11 cells on x between PEC walls: the grid holds nx = 12 x nodes (cells + 1,
-        # no pad). The runner splits the nx nodes over the devices and pads
-        # (-nx) % n_devices rows, so 4 devices take 3 rows each, no padding.
         sim = Simulation(
             freq_max=3e9,
             domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )  # solved length
+        )
+        assert sim._build_grid().nx == 3 * 4, '11 x cells plus one endpoint must give 3 rows per slab on 4 devices'
         sim.add_source(position=(0.025, 0.01, 0.01), component="ez")
         sim.add_probe(position=(0.015, 0.01, 0.01), component="ez")
 
         n_steps = 100
 
-        # Single device
         result_single = sim.run(n_steps=n_steps)
 
-        # Multi device (4 virtual CPUs)
         devices = jax.devices()[:_N_MULTI]
         assert len(devices) >= 2, f"need >=2 devices for a multi-device run, got {len(devices)}"
         result_multi = sim.run(n_steps=n_steps, devices=devices)
@@ -176,13 +133,12 @@ class TestDistributedRunner:
 
     def test_distributed_source_at_center(self):
         """Source at domain center should produce non-zero probe signal."""
-        # 7 cells on x between PEC walls: nx = 8 x nodes, so 4 devices take 2 rows
-        # each and the runner adds no padding rows.
         sim = Simulation(
             freq_max=3e9,
             domain=(7 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )  # solved length
+        )
+        assert sim._build_grid().nx == 2 * 4, '7 x cells plus one endpoint must give 2 rows per slab on 4 devices'
         sim.add_source(position=(0.015, 0.01, 0.01), component="ez")
         sim.add_probe(position=(0.015, 0.01, 0.01), component="ez")
 
@@ -194,17 +150,15 @@ class TestDistributedRunner:
 
     def test_distributed_pec_symmetry(self):
         """Symmetric PEC cavity with center source should produce
-        symmetric probe readings at equidistant points."""
-        # 11 cells on x between PEC walls: nx = 12 x nodes, so 4 devices take 3
-        # rows each and the runner adds no padding rows.
+        symmetric probe readings at equidistant points.
+        The 1% symmetry tolerance allows floating-point ordering differences from ghost exchange."""
         sim = Simulation(
             freq_max=3e9,
             domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )  # solved length
-        # Source at center
+        )
+        assert sim._build_grid().nx == 3 * 4, '11 x cells plus one endpoint must give 3 rows per slab on 4 devices'
         sim.add_source(position=(0.025, 0.01, 0.01), component="ez")
-        # Two symmetric probes along x
         sim.add_probe(position=(0.01, 0.01, 0.01), component="ez")
         sim.add_probe(position=(0.04, 0.01, 0.01), component="ez")
 
@@ -215,9 +169,6 @@ class TestDistributedRunner:
         probe_left = ts[:, 0]
         probe_right = ts[:, 1]
 
-        # Due to PEC symmetry, probes at equal distances from center
-        # should see the same signal.  Allow ~1% tolerance for
-        # floating-point ordering differences from ghost exchange.
         rel_diff = np.max(np.abs(probe_left - probe_right)) / (
             np.max(np.abs(probe_left)) + 1e-30
         )
@@ -225,13 +176,12 @@ class TestDistributedRunner:
 
     def test_distributed_2_devices(self):
         """Should also work with 2 devices."""
-        # 11 cells on x between PEC walls: nx = 12 x nodes, so 2 devices take 6
-        # rows each and the runner adds no padding rows.
         sim = Simulation(
             freq_max=3e9,
             domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )  # solved length
+        )
+        assert sim._build_grid().nx == 6 * 2, '11 x cells plus one endpoint must give 6 rows per slab on 2 devices'
         sim.add_source(position=(0.025, 0.01, 0.01), component="ez")
         sim.add_probe(position=(0.025, 0.01, 0.01), component="ez")
 
@@ -250,13 +200,12 @@ class TestDistributedRunner:
 
     def test_distributed_no_probe(self):
         """Distributed run with no probes should not crash."""
-        # 7 cells on x between PEC walls: nx = 8 x nodes, so 4 devices take 2 rows
-        # each and the runner adds no padding rows.
         sim = Simulation(
             freq_max=3e9,
             domain=(7 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )  # solved length
+        )
+        assert sim._build_grid().nx == 2 * 4, '7 x cells plus one endpoint must give 2 rows per slab on 4 devices'
         sim.add_source(position=(0.015, 0.01, 0.01), component="ez")
 
         devices = jax.devices()[:_N_MULTI]
@@ -264,14 +213,13 @@ class TestDistributedRunner:
         assert result.time_series.shape[0] == 20
 
     def test_nx_not_divisible_pads(self):
-        """Non-divisible nx should be padded automatically, not raise."""
-        # 9 cells on x between PEC walls: nx = 10 x nodes, which 4 does not divide;
-        # the runner pads (-10) % 4 = 2 rows to 12 and trims them after the run.
+        """Non-divisible nx should be padded automatically, not raise.
+        Nine x cells plus one endpoint give ten nodes, requiring two padding rows for four devices."""
         sim = Simulation(
             freq_max=3e9,
             domain=(9 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )  # solved length
+        )
         sim.add_source(position=(0.02, 0.01, 0.01), component="ez")
         sim.add_probe(position=(0.02, 0.01, 0.01), component="ez")
 
@@ -280,7 +228,6 @@ class TestDistributedRunner:
         assert nx % 4 != 0, "Expected nx not divisible by 4"
         devices = jax.devices()[:_N_MULTI]
         result = sim.run(n_steps=10, devices=devices)
-        # State should be trimmed back to original nx
         assert result.state.ex.shape[0] == nx
         assert result.time_series.shape == (10, 1)
 
@@ -291,7 +238,6 @@ class TestDistributedCPML:
 
     def test_distributed_cpml_matches_single(self):
         """Distributed CPML should match single-device CPML."""
-        # Lx=0.13 -> nx=48 with cpml_layers=10, divisible by 4
         sim = Simulation(
             freq_max=3e9,
             domain=(0.13, 0.04, 0.04),
@@ -352,16 +298,13 @@ class TestDistributedCPML:
         ts_s = np.array(result_single.time_series).ravel()
         ts_m = np.array(result_multi.time_series).ravel()
 
-        # Both should show absorption: late-time < peak
         peak_s = np.max(np.abs(ts_s[:len(ts_s) // 2]))
         tail_s = np.max(np.abs(ts_s[int(0.8 * len(ts_s)):]))
         peak_m = np.max(np.abs(ts_m[:len(ts_m) // 2]))
         tail_m = np.max(np.abs(ts_m[int(0.8 * len(ts_m)):]))
 
-        # Verify absorption is occurring (tail < peak)
         assert tail_m < peak_m, "No absorption at all in distributed CPML"
 
-        # Distributed and single should have similar absorption ratios
         ratio_s = tail_s / (peak_s + 1e-30)
         ratio_m = tail_m / (peak_m + 1e-30)
         assert abs(ratio_m - ratio_s) < 0.05, (
@@ -371,7 +314,6 @@ class TestDistributedCPML:
 
     def test_distributed_cpml_2_devices(self):
         """CPML should also work with 2 devices."""
-        # nx=48 is also divisible by 2
         sim = Simulation(
             freq_max=3e9,
             domain=(0.13, 0.04, 0.04),
@@ -410,7 +352,6 @@ class TestDistributedCPML:
             component="ez",
             waveform=GaussianPulse(f0=1.5e9, bandwidth=0.8),
         )
-        # Probe away from source
         sim.add_probe(position=(0.09, 0.02, 0.02), component="ez")
 
         n_steps = 150
@@ -461,8 +402,8 @@ class TestDistributedCPML:
             single`` above); harmless here since this test measures
             boundary placement via the multi-vs-single DIFFERENCE, not an
             absolute physical quantity, and is not #386's fix target.
+        The padding precondition uses the executed grid because material-aware resolution can be resolved lazily at run time.
         """
-        # Lx=0.125 -> nx=59 (ODD), pad_x = 2 - (59 % 2) = 1 for n=2 devices.
         Lx = 0.125
         n_devices = 2
         sim = Simulation(
@@ -475,11 +416,6 @@ class TestDistributedCPML:
             component="ez",
             waveform=GaussianPulse(f0=1.5e9, bandwidth=0.8),
         )
-        # Probe near the x-hi physical face (inside the CPML zone) so
-        # it is sensitive to the absorber window's exact placement.
-        # skip_preflight: intentional near-boundary placement — this
-        # is a boundary-mechanism test, not a claims-bearing physics
-        # measurement (preflight would otherwise advise moving inward).
         sim.add_probe(position=(Lx - 0.006, 0.02, 0.02), component="ez")
 
         n_steps = 400
@@ -488,13 +424,6 @@ class TestDistributedCPML:
         devices = jax.devices()[:n_devices]
         result_multi = sim.run(n_steps=n_steps, devices=devices, skip_preflight=True)
 
-        # Precondition guard on the RUNNER'S OWN realized grid (not a
-        # separate pre-run sim._build_grid() call, which can silently
-        # diverge from what the run actually used — e.g. a dielectric
-        # fixture's resolution can depend on material-aware refinement
-        # that resolves lazily, only visible post-run).
-        # The lesson stands: a fixture whose realized dimensions
-        # make the pad path unreachable silently stops testing the thing.
         nx = int(result_single.grid.shape[0])
         pad_x = 0 if nx % n_devices == 0 else n_devices - (nx % n_devices)
         assert pad_x > 0, (
@@ -520,7 +449,7 @@ class TestDistributedLumpedPort:
             freq_max=5e9,
             domain=(27 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )  # solved length
+        )
         sim.add_port(
             position=(0.04, 0.012, 0.012),
             component="ez",
@@ -543,7 +472,7 @@ class TestDistributedLumpedPort:
             freq_max=5e9,
             domain=(27 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )  # solved length
+        )
         sim.add_port(
             position=(0.04, 0.012, 0.012),
             component="ez",
@@ -563,7 +492,7 @@ class TestDistributedLumpedPort:
             freq_max=5e9,
             domain=(27 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
             boundary="pec",
-        )  # solved length
+        )
         sim.add_port(
             position=(0.04, 0.012, 0.012),
             component="ez",
@@ -593,7 +522,7 @@ class TestDistributedDebye:
             freq_max=5e9,
             domain=(0.08, 20 * 1.25e-3, 20 * 1.25e-3), dx=1.25e-3,
             boundary="pec",
-        )  # solved length
+        )
         sim.add_material("lossy", eps_r=4.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
         sim.add(Box(corner_lo=(0.02, 0, 0), corner_hi=(0.06, 0.024, 0.024)), material="lossy")
         sim.add_source(position=(0.04, 0.012, 0.012), component="ez")
@@ -615,7 +544,7 @@ class TestDistributedDebye:
             freq_max=5e9,
             domain=(0.08, 20 * 1.25e-3, 20 * 1.25e-3), dx=1.25e-3,
             boundary="pec",
-        )  # solved length
+        )
         sim.add_material("lossy", eps_r=4.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
         sim.add(Box(corner_lo=(0.02, 0, 0), corner_hi=(0.06, 0.024, 0.024)), material="lossy")
         sim.add_source(position=(0.04, 0.012, 0.012), component="ez")
@@ -634,7 +563,7 @@ class TestDistributedDebye:
             freq_max=5e9,
             domain=(0.08, 20 * 1.25e-3, 20 * 1.25e-3), dx=1.25e-3,
             boundary="pec",
-        )  # solved length
+        )
         sim.add_material("lossy", eps_r=4.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
         sim.add(Box(corner_lo=(0.02, 0, 0), corner_hi=(0.06, 0.024, 0.024)), material="lossy")
         sim.add_source(position=(0.04, 0.012, 0.012), component="ez")
@@ -699,7 +628,6 @@ class TestDistributedSources:
     def _closed_tfsf_probe_parity(self, entry):
         import sys
         sim = self.scene(True)
-        # Cover the incident pulse, including its peak at the central probe.
         steps = 600
         options = {"checkpoint": False} if entry == "forward" else {}
         one = getattr(sim, entry)(n_steps=steps, **options)
@@ -757,7 +685,7 @@ class TestExchangeInterval:
             freq_max=3e9,
             domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0),
             boundary="pec",
-        )  # solved length
+        )
         sim.add_source(position=(0.025, 0.01, 0.01), component="ez")
         sim.add_probe(position=(0.015, 0.01, 0.01), component="ez")
 
@@ -788,7 +716,7 @@ class TestExchangeInterval:
     def _assert_refused(monkeypatch, entry, interval):
         from rfx.runners import distributed_v2
 
-        sim = Simulation(freq_max=3e9, domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0), boundary="pec")  # solved length
+        sim = Simulation(freq_max=3e9, domain=(11 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0), 5 * (299792458.0 / 3e9 / 20.0)), dx=(299792458.0 / 3e9 / 20.0), boundary="pec")
 
         def unexpected_work(*args, **kwargs):
             pytest.fail("exchange_interval must be checked before preflight or grid setup")
@@ -808,7 +736,8 @@ class TestExchangeInterval:
 
     @requires_multidevice
     def test_pec_window_peak_invariant(self, monkeypatch, record_property):
-        """Compare first/last 50-step Ez peaks through the internal PEC scan."""
+        """Compare first/last 50-step Ez peaks through the internal PEC scan.
+        The 1000-step run retains the instability witness because an earlier measurement put the K=2 last-50/first-50 ratio at 0.48, 0.65, 0.89, 53 and 1.0e6 for 200, 300, 500, 1000 and 2000 steps respectively (crossing 3 only near 600 steps)."""
         from rfx.runners import distributed_v2
 
         sim = Simulation(
@@ -816,21 +745,13 @@ class TestExchangeInterval:
             boundary="pec", cpml_layers=0, precision="float32",
         )
         position = (0.012, 0.004, 0.004)
-        # A single initial impulse; no source input in either trailing window.
         sim.add_source(
             position, "ez", waveform=lambda t: jnp.where(t == 0, 1.0, 0.0),
             amplitude_kind="field",
         )
         sim.add_probe(position, "ez")
-        # Bypass only entry validation, retaining the production scan and its
-        # one-cell ghost exchange. Do not route through Simulation.run().
         monkeypatch.setattr(distributed_v2, "validate_exchange_interval", lambda value: None)
         ratios = {}
-        # n_steps=1000 is load-bearing: the K=2 last-50/first-50 ratio is
-        # 0.48 / 0.65 / 0.89 / 53 / 1.0e6 at 200 / 300 / 500 / 1000 / 2000
-        # steps (measurement), so the > 3 bound is crossed
-        # only near 600 steps. Trimming the run for CI time turns this test
-        # red for the wrong reason.
         for interval in (1, 2):
             result = distributed_v2.run_distributed(
                 sim, n_steps=1000, devices=jax.devices()[:2],
