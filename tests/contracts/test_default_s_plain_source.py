@@ -8,8 +8,6 @@ import pytest
 
 from rfx import Simulation
 
-# Verbatim refusal text, not derived from the implementation (one text for run()
-# and forward() since the docs-2.0 freeze PR; first pinned on origin/main f0e3805d9).
 REASON = (
     "Lumped/wire S-matrix requests do not support plain sources / "
     "0-ohm ports (add_source, add_polarized_source or "
@@ -56,7 +54,6 @@ def test_default_fields_equal_explicit_false(graded, wire, distributed):
         warnings.simplefilter("always")
         actual = model(graded, wire).run(**options)
     mixed = [w for w in caught if "S-matrix requests do not support plain sources" in str(w.message)]
-    # A driven graded lumped port requests S by default too.
     assert len(mixed) == 1
     from rfx.errors import ConfigurationWarning
     assert mixed[0].category is ConfigurationWarning

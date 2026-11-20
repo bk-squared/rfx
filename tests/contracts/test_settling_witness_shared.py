@@ -54,7 +54,7 @@ def test_forward_keeps_waveguide_witness_rows(path):
     ('P-waveguide', 'uniform'), ('P-waveguide', 'graded'),
     ('P-waveguide', 'multi-device-uniform'), ('P-lumped', 'multi-device-uniform'),
 ])
-@pytest.mark.parametrize('direction', ('a', 'b'))  # equal S requests
+@pytest.mark.parametrize('direction', ('a', 'b'))
 def test_d5_census_disposition(declaration, path, direction):
     if (declaration, path) == ('P-waveguide', 'multi-device-uniform'):
         check_refusal(declaration, path, direction)
@@ -72,10 +72,8 @@ def test_two_port_drive_witnesses_use_port_record_kind(two_port_s_results, rever
     from copy import deepcopy
     run, forward = (two_port_s_results[entry]['result'] for entry in ('run', 'forward'))
     if reverse_rows:
-        # Probe and port rows may move independently on either entry.
         witness = deepcopy(forward.settling_witness)
         witness['runs'] = type(witness['runs'])(reversed(witness['runs']))
-        # ForwardResult derives its witness; hand the helper a view with the moved rows.
         from types import SimpleNamespace
         forward = SimpleNamespace(sparam_time_records=forward.sparam_time_records,
                                   settling_witness=witness, s_params=forward.s_params)
@@ -102,8 +100,7 @@ def test_two_port_drive_witnesses_follow_run_row_location(two_port_s_results):
 
 
 def test_two_port_drive_witnesses_tell_driven_from_passive():
-    # 600 steps: both drive witnesses are determined and differ, so the
-    # driven entry's equality with forward's port row is not a constant.
+    """The 600-step record determines differing drive witnesses, so the driven entry's equality with forward's port row is not a constant."""
     from copy import deepcopy
     pair = port_s_pair('P-lumped2', 'uniform', n_steps=600)
     run, forward = (pair[entry]['result'] for entry in ('run', 'forward'))
@@ -113,9 +110,6 @@ def test_two_port_drive_witnesses_tell_driven_from_passive():
     driven, passive = row['per_drive']
     assert driven['status'] == passive['status'] == 'pass'
     assert not np.array_equal(driven['error_per_bin'], passive['error_per_bin'])
-    # Each entry judges the S it returns: run's S row (and its top level when
-    # that repeats per_drive) is the worst drive, the passive one here;
-    # forward's S row is its driven record (decision C).
     worst = max((driven, passive), key=lambda drive: drive['db'])
     assert worst is passive
     forward_row = next(r for r in forward.settling_witness['runs'] if r.get('route') == 's_channels')
@@ -149,7 +143,6 @@ def test_other_lumped_s_requests_keep_their_drive_scans(monkeypatch, mode, drive
         sim = base_scene('uniform', source=False).add_port(SOURCE, 'ez', impedance=50., excite=False)
     else:
         sim = BUILDERS['P-lumped2' if mode == 'two_ports' else 'P-lumped']('uniform')
-    # A single lumped port asking S for another record length keeps its drive scan.
     options = {'no_s': {'compute_s_params': False}, 'other_length': {'s_param_n_steps': 200}}
     result = sim.run(n_steps=150, skip_preflight=True, **options.get(mode, {}))
     assert len(calls) == 1 + drives
@@ -158,10 +151,7 @@ def test_other_lumped_s_requests_keep_their_drive_scans(monkeypatch, mode, drive
 
 @pytest.mark.parametrize('n_steps', [150, 900])
 def test_run_and_forward_judge_each_row_alike(n_steps):
-    # Each row's tail starts after the drive plus transit to the records it
-    # judges (probes for the probe row, ports for the port row) on both entries.
-    # 150 steps: the rows stop at different gates if the starts differ;
-    # 900 steps: every row reaches a verdict.
+    """The 150-step record stops rows at different gates if the rows' tail starts differ after drive plus transit to their judged records."""
     run = invoke(BUILDERS['P-lumped']('uniform'), 'run', 'uniform', n_steps)
     forward = invoke(BUILDERS['P-lumped']('uniform'), 'forward', 'uniform', n_steps,
                      dict(port_s11_freqs=np.asarray(run.freqs)))

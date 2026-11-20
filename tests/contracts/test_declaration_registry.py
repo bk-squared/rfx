@@ -49,14 +49,13 @@ def declare(sim, name):
 
 
 def test_declaration_rich_attributes_are_classified():
+    """TF/SF and waveguide port declarations are mutually exclusive."""
     declared = dict(declarations.DECLARATIONS)
     excluded = dict(declarations.NOT_DECLARATIONS)
     assert len(declared) == len(declarations.DECLARATIONS)
     assert not declared.keys() & excluded.keys()
     methods = {name for name in dir(Simulation) if name.startswith(("add_", "set_"))}
     assert methods == CALLS.keys() - {"add"}
-    # TF/SF and port declarations are mutually exclusive. Exercise every call
-    # on its own valid builder, and accumulate all compatible calls as well.
     rich = model()
     attributes = set(vars(rich))
     for name in CALLS:
@@ -111,7 +110,7 @@ def test_key_retains_replaced_entry_across_gc(surface):
     else:
         sim._materials.clear()
     gc.collect()
-    assert reference() is not None  # the key, not an allocator coincidence, owns it
+    assert reference() is not None
     declare(sim, "add" if surface == "_geometry" else "add_material")
     assert declarations.declaration_key(sim) != before
     del before

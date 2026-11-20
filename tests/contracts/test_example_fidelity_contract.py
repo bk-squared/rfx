@@ -183,6 +183,7 @@ and axis LETTER, never by list position: inserting one new Box anywhere in
 a script's geometry does not relabel every entity after it in a failure's
 diff (2026-08-27 review, required change #2 -- verified in this file's own
 ``test_snapshot_keys_survive_entity_insertion``).
+The 12-word minimum prevents a one-line "intended, see the docstring" reason that fits in eleven words.
 """
 from __future__ import annotations
 
@@ -276,11 +277,6 @@ def test_not_auditable_classifications_are_machine_checked(
             f"{relpath} is classified module_level_solve but no top-level "
             "solve call was found in its AST -- reclassify")
     elif entry.kind == "no_solve":
-        # Builds a Simulation (so it is not ``no_simulation``) but never
-        # solves (so ``builder_fused_with_solve`` cannot describe it either):
-        # the analysis scripts construct a Simulation only to read the
-        # lock-test grid's dt. Pinned both ways so the bucket cannot absorb a
-        # script that later gains a solve, or one that stops building at all.
         assert lib.real_simulation_call_count(relpath) > 0, (
             f"{relpath} is classified no_solve but its AST constructs no "
             "Simulation -- reclassify as no_simulation")
@@ -294,10 +290,6 @@ def test_not_auditable_classifications_are_machine_checked(
             f"top-level function both builds and solves (found: {fns}) -- "
             "it may now have a separable builder, reclassify as 'audited'")
     elif entry.kind == "audited":
-        # This test IMPORTS these scripts (load_module execs their top
-        # level), so the "nothing solves at import" precondition is asserted
-        # here per script rather than asserted once in prose: a main guard
-        # and no module-scope solve call.
         assert lib.has_main_guard(relpath), (
             f"{relpath} is classified audited but has no "
             "`if __name__ == \"__main__\":` guard -- this gate imports it, "
@@ -369,18 +361,7 @@ def test_example_matches_snapshot(
         module = lib.load_module(relpath)
         sim = lib.call_builder(relpath, module, builder, variant)
     except lib.MissingOptionalDependency as exc:
-        # Visible SKIP, never green: this repo's exit-code convention
-        # (development_methodology.md 2.7) says a missing reference is a
-        # SKIP that shows, not a pass. The variant stays enumerated in
-        # _FLAT_VARIANTS and pinned in the snapshot, so coverage is
-        # reported as skipped rather than silently lost, and an
-        # UNDECLARED missing module is still a hard error (see
-        # lib.OPTIONAL_DEPENDENCIES). A declared module missing when the
-        # BUILDER runs (cad_mesh_import_demo's trimesh) skips the same way.
         pytest.skip(str(exc))
-    # Round-trip through JSON so tuples (live digest) compare equal to lists
-    # (snapshot, loaded from JSON) -- the digest itself is unchanged either
-    # way, only its Python container types are normalized for comparison.
     import json
     actual = json.loads(json.dumps(lib.digest_variant(sim)))
     expected = snapshot[key]
@@ -439,16 +420,9 @@ def test_every_pinned_advisory_row_is_classified() -> None:
         "and means the two tables were built from different snapshots")
 
 
-# A ``ref`` is a ``|``-separated list of pointers. Each is either a tracker URL
-# or ``<path>:<spec>``, where the spec is a comma-separated list of line numbers
-# and ``start-end`` ranges. Both forms are already in use and both are good
-# evidence; what was NOT checked before is whether the path exists and whether
-# the lines are inside the file, so ``a.py:1`` passed.
 _REF_PATH_RE = re.compile(r"^(?P<path>[^\s:|]+):(?P<spec>[0-9,\-]+)$")
 _REF_CHUNK_RE = re.compile(r"^(?P<start>\d+)(?:-(?P<end>\d+))?$")
 _REF_URL_PREFIX = "https://github.com/bk-squared/rfx/"
-# 12 words is not a style preference: a one-line "intended, see the docstring"
-# is the failure this file exists to prevent, and it fits in eleven.
 _MIN_REASON_WORDS = 12
 
 
@@ -713,7 +687,6 @@ def test_snapshot_numeric_tolerance(field):
 
 
 def test_um_tolerance_uses_only_the_field_name():
-    # An ancestor entity/path mentioning um must not relax eps_r or numbers.
     for field in ("eps_r", "numbers", "not_um_units"):
         with pytest.raises(AssertionError):
             assert_structured_close({"parent_um": {field: [5e-10]}},

@@ -55,8 +55,6 @@ def test_float64_step_coefficients(entry):
              cpml.apply_cpml_h.__code__: ('CPML H', ('ch',))}
 
     def inspect_coefficients(frame, event, arg):
-        # Read the coefficients the actual traced update used, not a second
-        # calculation in the test. Return events retain the update's locals.
         if event == 'return' and frame.f_code in codes:
             half, names = codes[frame.f_code]
             for name in names:

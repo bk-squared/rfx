@@ -11,7 +11,10 @@ import numpy as np
 
 from rfx.farfield import NTFFBox, NTFFData
 from rfx.grid import Grid
+
 from rfx.measurement.farfield import _stacked_face_inputs, compute_far_field_jax
+
+PHASE_ENTRY_BYTES = 16
 
 
 def _fixture(side):
@@ -27,6 +30,7 @@ def _fixture(side):
 
 
 def test_farfield_grad_memory_bound():
+    """The small-memory allowance counts six J/M and four input-component cotangents per face, N/L and their cotangents (2 * 6 components), two E outputs and their cotangents (2 * 2 components), direction unit vectors (3 * 3 real components), angles and frequencies."""
     with jax.default_device(jax.devices("cpu")[0]):
         faces, box, grid = _fixture(16)
         theta = jnp.linspace(0, jnp.pi, 48, dtype=jnp.float32)
@@ -36,19 +40,13 @@ def test_farfield_grad_memory_bound():
         nc = n1 * n2
         cb = faces[0].dtype.itemsize
         rb = theta.dtype.itemsize
-        # Six components of J/M cotangents per face, four input-component
-        # cotangents per face; N/L and their cotangents (2 * 6 components),
-        # two E outputs and their cotangents (2 * 2 components), direction
-        # unit vectors (3 * 3 real components), angles and frequencies.
         small = (len(faces) * nf * nc * (6 + 4) * cb
                  + nf * nd * (2 * 6 + 2 * 2) * cb
                  + nd * 9 * rb + (theta.size + phi.size + nf) * rb)
         one_face = nf * nd * nc * cb
         temp = {}
         for chunks in (1, 16):
-            # The public budget's established rule counts 16 bytes per phase
-            # entry; do not import the implementation's sizing helpers.
-            budget = (theta.size // chunks) * nf * phi.size * nc * 16
+            budget = (theta.size // chunks) * nf * phi.size * nc * PHASE_ENTRY_BYTES
 
             def objective(values):
                 ff = compute_far_field_jax(NTFFData(*values), box, grid, theta, phi,
@@ -65,8 +63,6 @@ def test_farfield_grad_memory_bound():
 
 
 
-# A box of 8 x 12 x 16 cells: the x faces have 12 x 16 cells, the y faces
-# 8 x 16 and the z faces 8 x 12, three distinct face shapes.
 _BOX_CELLS = (8, 12, 16)
 
 
@@ -88,7 +84,8 @@ def _box_fixture():
 
 def test_farfield_grad_memory_bound_non_cubic_box():
     """With faces of unequal size, the face scan pads every face to the
-    largest one; the temp memory is then the largest face's factor."""
+    largest one; the temp memory is then the largest face's factor.
+    The small-memory allowance counts four input-component cotangents per face at its own size, padded J/M and their cotangents (6 + 6 components), positions and weights (3 + 1 real components), N/L and their cotangents (2 * 6 components), two E outputs and their cotangents (2 * 2 components), direction unit vectors (3 * 3 real components), angles and frequencies."""
     with jax.default_device(jax.devices("cpu")[0]):
         faces, box, grid = _box_fixture()
         theta = jnp.linspace(0, jnp.pi, 48, dtype=jnp.float32)
@@ -100,19 +97,13 @@ def test_farfield_grad_memory_bound_non_cubic_box():
         n_faces = len(faces)
         cb = faces[0].dtype.itemsize
         rb = theta.dtype.itemsize
-        # Four input-component cotangents per face at its own size; the
-        # stacked padded scan inputs at the largest size: J and M (six
-        # components) and their cotangents (six), positions (three real)
-        # and weights (one real); N/L and their cotangents (2 * 6
-        # components), two E outputs and their cotangents (2 * 2), direction
-        # unit vectors (3 * 3 real), angles and frequencies.
         small = (sum(nf * nc * 4 * cb for nc in cells)
                  + n_faces * nf * nc_max * (6 + 6) * cb
                  + n_faces * nc_max * (3 + 1) * rb
                  + nf * nd * (2 * 6 + 2 * 2) * cb
                  + nd * 9 * rb + (theta.size + phi.size + nf) * rb)
         largest_face = nf * nd * nc_max * cb
-        budget = theta.size * nf * phi.size * nc_max * 16   # c = 1
+        budget = theta.size * nf * phi.size * nc_max * PHASE_ENTRY_BYTES
 
         def objective(values):
             ff = compute_far_field_jax(NTFFData(*values), box, grid, theta, phi,
@@ -151,13 +142,13 @@ def test_stacked_face_inputs_are_finite_and_padded_with_zero():
 
 
 def test_farfield_transform_compositions():
+    DIRECTION_CHUNK_ROWS = 3
     with jax.default_device(jax.devices("cpu")[0]):
         faces, box, grid = _fixture(3)
-        # Seven rows with a three-row chunk also exercises padding and its
-        # zero cotangent. Frequencies and both angles are traced under jit.
         theta = jnp.linspace(0.1, 3.0, 7, dtype=jnp.float32)
         phi = jnp.linspace(0.2, 6.0, 5, dtype=jnp.float32)
-        budget = 3 * 3 * phi.size * 9 * 16
+        budget = DIRECTION_CHUNK_ROWS * 3 * phi.size * 9 * PHASE_ENTRY_BYTES
+        assert theta.size % DIRECTION_CHUNK_ROWS != 0, "Direction rows must exercise partial-chunk padding"
 
         def fields(scale, frequencies, th, ph):
             data = NTFFData(*(scale * face for face in faces))

@@ -10,8 +10,8 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
-import rfx.boundaries.tfsf  # Register the injection-plane rule before collection.
-import rfx.boundaries.features  # Register the waveguide-section rule as well.
+import rfx.boundaries.tfsf
+import rfx.boundaries.features
 from rfx.errors import RfxRefusal, RfxUnsupported
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole, drude_pole
@@ -31,8 +31,6 @@ VACUUM = (
 THIN = "the port has no model for a thin element in its section"
 MEDIUM = "waveguide sections require one homogeneous, isotropic, lossless, non-dispersive medium"
 
-# The existing TF/SF test pins the EPS and RLC spellings; the other labels are
-# handwritten here. No expected label is obtained from the operand registry.
 TFSF_OBJECTS = {
     OperandKind.EPS: ("eps", r"permittivity \(materials.eps_r\)"),
     OperandKind.SIGMA: ("sigma", r"conductivity \(materials.sigma\)"),
@@ -64,7 +62,6 @@ MEDIUM_MATERIALS = {
     OperandKind.CHI3: dict(chi3=1e3),
 }
 
-# None records admission; a regex records the medium resolver's own refusal.
 MEDIUM_OUTCOMES = {
     OperandKind.EPS: None,
     OperandKind.SIGMA: r"conductivity \(materials\.sigma\)",
@@ -100,7 +97,8 @@ def _tfsf_msl_scene(*, with_port):
 
 
 def _build(rule, kind):
-    """Place at x=6 mm (TF/SF) or within x=75..90 mm (port section)."""
+    """Place at x=6 mm (TF/SF) or within x=75..90 mm (port section).
+    The waveguide aperture includes the probe at x=60 mm and one cell beyond the section ends so EPS/MU component means match too."""
     if rule == TFSF:
         if kind in TFSF_OBJECTS:
             obj, label = TFSF_OBJECTS[kind]
@@ -111,7 +109,6 @@ def _build(rule, kind):
                                    sigma_bulk=1e3, thickness=1e-5)
             return sim, dict(ELEMENTS)["film"]
         if kind == OperandKind.PORT_STAMP:
-            # On this path the MSL stamp is folded into the scalar conductivity.
             return _tfsf_msl_scene(with_port=True), r"conductivity \(materials\.sigma\)"
         if kind == OperandKind.SOURCE_STAMP:
             sim = scene()
@@ -133,8 +130,6 @@ def _build(rule, kind):
             if kind in MEDIUM_MATERIALS:
                 material = "section_medium"
                 sim.add_material(material, **MEDIUM_MATERIALS[kind])
-            # Fill the aperture, including the probe at x=60 mm and one cell
-            # beyond the section ends, so EPS/MU component means match too.
             sim.add(Box((0.057, 0, 0), (0.096, 0.042, 0.021)), material=material)
             return sim, None
         if kind == OperandKind.SOURCE_STAMP:
@@ -163,6 +158,7 @@ def _note(rule, kind):
     for rule in OPERAND_RULES for kind in OperandKind
 ])
 def test_operand_rule_every_kind(rule, kind):
+    """The no-port control is refused by the strip and ground crossing the plane."""
     assert set(UNPLACEABLE) <= {(r, k) for r in OPERAND_RULES for k in OperandKind}
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -181,8 +177,6 @@ def test_operand_rule_every_kind(rule, kind):
                 _run(rule, sim)
             message = str(caught.value)
             if (rule, kind) == (TFSF, OperandKind.PORT_STAMP):
-                # The strip and ground the port needs cross the plane too, so the
-                # no-port control is refused by its metal; the conductivity is the stamp's.
                 with pytest.raises(RfxRefusal, match=r"x_lo-1: PEC edge") as control:
                     execute(_tfsf_msl_scene(with_port=False), "run_uniform")
                 assert "conductivity" not in str(control.value), control.value
