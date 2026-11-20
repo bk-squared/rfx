@@ -1,4 +1,5 @@
-"""O1a declaration, independent commutator and bounded-line contracts."""
+"""O1a declaration, independent commutator and bounded-line contracts.
+The Yee coordinates are independent of the implementation offsets."""
 from dataclasses import replace
 import itertools
 import sys
@@ -20,7 +21,6 @@ DIRECTIONS = ((0, 0), (10, 0), (20, 0), (30, 0), (40, 0), (50, 0),
 TRIPLES = ((1, 0, 0), (17, 3, 0), (11, 4, 0), (26, 15, 0), (31, 26, 0),
            (26, 31, 0), (15, 26, 0), (26, 0, 15), (30, 26, 15), (3, 17, 0))
 COMP = ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')
-# Independent Yee coordinates: do not import the implementation's offsets.
 OFFSETS = np.array(((.5, 0, 0), (0, .5, 0), (0, 0, .5),
                     (0, .5, .5), (.5, 0, .5), (.5, .5, 0)))
 DX, DT, Z0 = .001, 1.9065748695310057e-12, 376.730313668
@@ -52,7 +52,6 @@ def test_appendix_h_incident_record_and_shared_dft(pol, direction, reference_ind
     x = cfg.x_lo if reference_index is None else reference_index
     indices = tuple(int(np.floor(cfg.m[0] * x + cfg.projections[c])) - cfg.origin
                     for c in range(3))
-    # Frozen pre-Appendix-H replay body, including its zero-state construction.
     zero = FDTDState(*(jnp.zeros_like(getattr(state, c)) for c in COMP),
                      jnp.asarray(0, jnp.int32))
     def prior_step(st, n):
@@ -317,7 +316,6 @@ def _probe_scene(theta, phi, pol, cpml_layers):
         sim.add_probe(position, component=component)
     result = sim.run(n_steps=300, skip_preflight=True)
     grid = result.grid
-    # Quote the realized mesh, and verify that the public probes hit our nodes.
     assert grid.shape == (25 + 2 * cpml_layers,) * 3
     assert [grid.position_to_index(p) for p in positions] == points
     cfg, state = plane.init_plane_wave(
@@ -325,7 +323,6 @@ def _probe_scene(theta, phi, pol, cpml_layers):
         cpml_layers=cpml_layers, tfsf_margin=4, f0=10e9, bandwidth=.8,
         theta_deg=theta, phi_deg=phi, polarization=pol, max_component=40,
         n_steps=300, dtype='float32')
-    # Independent Yee coordinates, not the correction table's gathers.
     offset = OFFSETS[COMP.index(component)]
     index = int(np.floor((np.asarray(centre) + offset) @ cfg.m)) - cfg.origin
 
@@ -344,16 +341,13 @@ def _probe_scene(theta, phi, pol, cpml_layers):
 
 
 def _assert_probe_law(trace, reference, line_peak, grid, row, record_property):
+    """The incident-line peak scales early leakage because the line drives the faces before the centre sees the pulse."""
     centre = np.abs(trace[:, 0])
     peak = centre.max()
-    # Design A33: the incident line drives the faces before the centre sees it.
-    # Use its per-step E / Z0*H peak for the rise and accumulated leakage law.
     scale = np.maximum(line_peak, centre)
     cumulative = scale.cumsum()
     active = cumulative >= scale.max()
     sf = np.maximum.accumulate(np.max(np.abs(trace[:, 1:]), axis=1))
-    # The existing 3D/stand-alone-line bar is 9 float32 peak ULP:
-    # tests/unit/sources/test_tfsf_closed_box.py:28-31,143.
     centre_bar = 9 * float(np.spacing(np.float32(peak)))
     early_bar = 9 * np.spacing(scale.astype(np.float32)).astype(np.float64)
     bar = np.where(active, 1.2e-7 * cumulative, early_bar)

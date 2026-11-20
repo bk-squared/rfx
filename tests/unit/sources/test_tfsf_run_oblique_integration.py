@@ -5,6 +5,7 @@ envelope path (field_dtype=complex64 + per-axis roll phase + complex CPML psi
 carry), and run() reconstructs the returned `state` / point probes back to the
 physical real field Re(P·exp(-j k_t·y)). Normal incidence and every non-TFSF run
 stay on the real float32 path (byte-identical). These gates pin that contract.
+The 223-step delay is 2 tau for the Bloch pulse peak at 5 tau, with f0 5 GHz, bandwidth 0.15 and dt 3.81 ps.
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -29,8 +30,6 @@ from rfx.stepping.tfsf_2d import (
 
 _DOMAIN = (0.6, 0.12, 0.006)
 _DX = 0.002
-# The Bloch pulse peaks at 5 tau, 2 tau later than when the oblique step
-# counts below were set: 223 steps = 2 tau at f0 5 GHz, bw 0.15, dt 3.81 ps.
 _BLOCH_DELAY_STEPS = 223
 
 
@@ -85,7 +84,6 @@ def test_run_oblique_matches_handrolled_and_low_leakage():
     assert res.state.ez.dtype == jnp.float32
     ez_run = np.asarray(res.state.ez)
 
-    # Hand-rolled reference (complex loop), config identical to run_uniform's.
     grid = Grid(freq_max=10e9, domain=_DOMAIN, dx=_DX, cpml_layers=10)
     dt, dx = grid.dt, grid.dx
     cfg, aux = init_tfsf(
