@@ -26,11 +26,11 @@ def record_time(capfd):
 
 
 def test_a2_uniform_raw_matrix_column(record_time, capfd):
+    """A non-driven port's declared amplitude cannot enter column 0."""
     sim = scene('U1')
     steps = math.ceil(record_time / float(grid_for(sim, 'U1').dt))
     result = sim.forward(n_steps=steps, skip_preflight=True, checkpoint=False)
     actual = np.stack([result.waveguide_sparams[name].s_driven for name in ('p1', 'p2')])
-    # The calculator zeroes every non-driven port per drive run, so p2's declared amplitude cannot enter column 0.
     expected = np.asarray(scene('U1', amplitudes=(1., 1.)).compute_waveguide_s_matrix(
         n_steps=steps, normalize=False, skip_preflight=True).s_params)[:, 0]
     np.testing.assert_array_equal(np.isnan(actual), np.isnan(expected))
@@ -127,8 +127,17 @@ def test_a5b_undriven_probe_medium(mesh, entry, traced):
     if traced:
         from rfx.preflight.realization import _CampaignStaticsContext
         base = jnp.asarray(_CampaignStaticsContext(sim).realized(strict=True).materials.eps_r)
-        # The dielectric is away from both port sections, including their reference planes.
         mask = base > 1.1
+        assert all(
+            not np.asarray(mask)[index].any()
+            for grid in [_CampaignStaticsContext(sim).grid]
+            for port in sim._waveguide_ports
+            for index in (
+                grid.position_to_index((port.x_position, 0.0, 0.0))[0],
+                grid.position_to_index((port.x_position, 0.0, 0.0))[0]
+                + (1 if port.direction.startswith("+") else -1) * port.ref_offset,
+            )
+        ), "Dielectric must remain outside port sections and their reference planes"
 
     def measured(p):
         override = {'eps_override': base + p * mask} if traced else {}
@@ -156,7 +165,6 @@ def test_one_driven_receiver_cutoff_notice(entry, capfd):
     sim = scene('U1', amplitudes=(0., 1.))
     freqs = np.linspace(5.5e9, 7.9e9, 7)
     sim._waveguide_ports = [replace(port, freqs=freqs) for port in sim._waveguide_ports]
-    # Dry-run Yee transverse eigenvalue: kc = 2 sin(pi h / (2 a)) / h.
     cutoff = 299792458. * np.sin(np.pi * H / (2 * A)) / (np.pi * H)
     below = freqs <= cutoff
     options = {'checkpoint': False} if entry == 'forward' else {}

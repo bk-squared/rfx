@@ -36,14 +36,8 @@ from rfx.sources.sources import GaussianPulse
 _EPS_R = 3.66
 _H_SUB = 254e-6
 _W_TRACE = 600e-6
-# ON-LATTICE board: h_sub / dx = 3 exactly, so the foil sheet
-# below lands on the laminate face. The fixture ran at dx = 80 um
-# (h_sub/dx = 3.175), where the substrate realizes four cells (320 um)
-# and a sheet declared at 254 um snaps down to 240 um, inside the
-# dielectric. The @highmem AD/FD referee gate in this file is measured on
-# the board the fixture describes, so it is re-measured on the new mesh
-# (see RECOMPUTE.md) rather than carried across.
-_DX = 254e-6 / 3
+SUBSTRATE_NORMAL_CELLS = 3
+_DX = 254e-6 / SUBSTRATE_NORMAL_CELLS
 _L_LINE = 6e-3
 _MARGIN = 2e-3
 
@@ -53,7 +47,6 @@ def _msl_sim_auto_eps():
     lx = _L_LINE + 2 * _MARGIN
     ly = _W_TRACE + 2 * (2 * _H_SUB + 8 * _DX)
     lz = _H_SUB + 0.5e-3
-    # geometry[1] y solved +8.656 % off; this test checks explicit and auto eps build the same fixture.
     sim = Simulation(snap="declared",
         freq_max=5e9, domain=(lx, ly, lz), dx=_DX, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml",
@@ -64,33 +57,25 @@ def _msl_sim_auto_eps():
     y_c = ly / 2.0
     sim.add(Box((0.0, y_c - _W_TRACE / 2, _H_SUB),
                 (lx, y_c + _W_TRACE / 2, _H_SUB)), material="pec")
-    # NOTE: no eps_r_sub kwarg — exercises the auto branch.
     sim.add_msl_port(position=(_MARGIN, y_c, 0.0), width=_W_TRACE,
                      height=_H_SUB, direction="+x", impedance=50.0,
                      waveform=GaussianPulse(f0=2.5e9, bandwidth=0.5))
-    # raw observables for the referee objective (forward() records
-    # time_series only for registered point probes)
-    # Probes in the AIR above the trace (z = h_sub + 2*dx). The first
-    # version placed them INSIDE the PEC trace (z=300 um within the
-    # conductor span [254, 334] um) — preflight warned, the harness's
-    # warning suppression hid it, and the muted signal collapsed the
-    # test's discriminating power (it PASSED on
-    # pre-fix main at rel_err 0.126).
     for x in (0.004, 0.005, 0.006):
         sim.add_probe(position=(x, y_c, _H_SUB + 2 * _DX), component="ez")
+    assert all(
+        grid.position_to_index(probe.position)[2]
+        > grid.position_to_index((0.0, 0.0, _H_SUB))[2]
+        for grid in [sim._build_grid()] for probe in sim._probes
+    ), "Air probes above the trace preserve the referee's discriminating power"
     return sim
 
 
-# highmem: measured +8.1 GB RSS high-water delta.
-# No prior slow/slow_physics/gpu marker on this test —
-# highmem is additive only (pyproject addopts filters "not slow and not
-# slow_physics", not highmem), so this test stays in the default fast lane
-# unchanged; highmem only pulls it out of the weekly 4-shard rotation.
 @pytest.mark.highmem
 def test_auto_eps_msl_gradient_matches_fd_mini_referee():
     """f32 mini-referee (np=1, h=1e-2) on the auto-eps_r_sub MSL forward:
     AD within 3% of central FD. Measured: pre-#483 main reads 0.126 (the
-    fixture followed alpha under FD only); post-fix reads 0.0002."""
+    fixture followed alpha under FD only); post-fix reads 0.0002.
+    An earlier run measured +8.1 GB RSS high-water delta."""
     sim = _msl_sim_auto_eps()
     grid = sim._build_grid()
     eps_base = jnp.ones(grid.shape, dtype=jnp.float32)
@@ -121,7 +106,8 @@ def test_auto_eps_msl_gradient_matches_fd_mini_referee():
 def test_explicit_and_auto_eps_build_the_same_fixture():
     """With the substrate eps matching, the auto branch must resolve the
     same eps_r_sub the explicit branch is given — the forward results are
-    identical (same fixture, same fields). Cheap concrete-run check."""
+    identical (same fixture, same fields). Cheap concrete-run check.
+    The float64->float32 path measured 8.9e-08 on a 0.134 peak (6.7e-07 relative) in an earlier run."""
     import dataclasses
 
     sim_a = _msl_sim_auto_eps()
@@ -136,12 +122,6 @@ def test_explicit_and_auto_eps_build_the_same_fixture():
     a = np.asarray(ra.time_series)
     b = np.asarray(rb.time_series)
     assert a.shape == b.shape
-    # The claim is that the auto branch READS THE REGISTERED MATERIAL, so
-    # assert that directly: the value it samples is the float32 the assembly
-    # stores, which is not bit-equal to the float64 literal the explicit arm
-    # passes (float32(3.66) = 3.6600000858306885). Bit-equality of the two
-    # time series pinned that float64->float32 path, not the sampling, and
-    # 8.9e-08 on a 0.134 peak (6.7e-07 relative) is that path, measured.
     _mp = msl_port_from_entry(sim_a._msl_ports[0])
     _span = msl_cross_section_span(sim_a._build_grid(), _mp)
     _cell = msl_cell(sim_a._msl_ports[0].direction, _span["i_feed"],
