@@ -66,7 +66,7 @@ def test_tiny_face_edges_and_rim_sum():
 
 
 def test_solid_face_conductivity_closed_form():
-    """Each sampled edge's open segment is interior to its face, not along a face rim."""
+    """For the solid spanning cells 1,2 and node planes 1..3, the Ey edges at x_lo index [1,1,2] (z=2 between rim planes 1,3) and z_lo index [2,1,1] (x=2 between rim planes 1,3) run y=1..2."""
     sim = model()
     solid = Box((.0015,) * 3, (.0045,) * 3)
     sim.add(solid, material="pec")

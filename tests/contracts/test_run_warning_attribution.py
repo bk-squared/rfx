@@ -100,7 +100,7 @@ def test_run_warning_origin(monkeypatch, case, text):
 
 @pytest.mark.parametrize("entry", ["run", "forward", "jit-lambda", "jit-partial"])
 def test_preflight_warning_origin(entry):
-    """Keeping the bound method pins the caller frame through the output refusal."""
+    """In the jit-partial bound-method case, the advisory is emitted while tracing, before the Grid output refusal."""
     sim = Simulation(domain=(.02, .02, .02), dx=.001, freq_max=10e9,
                      boundary="pec", snap="declared")
     sim.add_source((.002, .002, .002), "ez", amplitude_kind="current")

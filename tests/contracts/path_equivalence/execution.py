@@ -148,6 +148,7 @@ def _tree(a, b, name, kind, report, peak=None, *, paired_impedance=None):
 
 
 def _kernel_materials(capture):
+    """H's common-cell record can substitute for hookless dispersive E because H does not consume the omitted sigma_lumped term."""
     magnetic = [r for r in capture.records if 'mu_h' in r]
     assert magnetic, 'kernel magnetic material record missing'
     owned = sorted((r for r in capture.records if 'owned_start' in r),

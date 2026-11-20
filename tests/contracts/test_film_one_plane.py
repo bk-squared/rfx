@@ -243,6 +243,7 @@ def test_c4_topology_design_film(inside):
 @pytest.mark.parametrize('graded', [False, 'up'])
 @pytest.mark.parametrize('impedance', [0., 50.])
 def test_c6_source_port_coefficient(graded, impedance):
+    """The source scale is Cb/dV for a current moment or Cb*sigma_port/edge_length for a Thevenin port with sigma_port=H/(R*d_dual_x*H)."""
     from rfx.core.yee import e_update_coeffs, cell_component_e_materials
     from rfx.model.source_coefficients import current_source_volume
     sim, widths = model(graded)
@@ -582,6 +583,7 @@ def test_c3_global_sigma_sweep_retains_film():
 
 @pytest.mark.parametrize('normal', range(3))
 def test_c1_rectangular_coverage_and_volume_preservation(normal):
+    """A single occupied incident cell at a transverse end gives half coverage."""
     from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
     from rfx.grid import Grid
     grid = Grid(freq_max=10e9, domain=(.008,) * 3, dx=H, cpml_layers=0)

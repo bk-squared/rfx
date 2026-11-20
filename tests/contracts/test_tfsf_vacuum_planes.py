@@ -1,4 +1,6 @@
-"""The slab TF/SF vacuum rule applies to concrete and traced public entries."""
+"""The slab TF/SF vacuum rule applies to concrete and traced public entries.
+In treated-edge scenes, four pad cells and margin four put x_lo at x=0.8 mm (node 8).
+"""
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -139,7 +141,7 @@ def test_traced_x_cell_sizes_refused():
                       "boundary_conformal", "full_tensor")
 ])
 def test_treated_edges_on_injection_planes(mesh, source, treatment, entry, placement):
-    """The subpixel average at node 8 spans the dual cell [7.5, 8.5]."""
+    """An x-normal Box face in node 8's subpixel dual cell [7.5, 8.5] snaps to node 8, so the plain check already refuses it."""
     pec_crossing = source != "closed_box" and treatment in ("kottke_pec", "conformal_pec")
     subpixel_crossing = (placement == "crossing" and mesh == "graded"
                          and treatment == "subpixel")
@@ -177,7 +179,9 @@ def test_treated_edges_on_injection_planes(mesh, source, treatment, entry, place
 
 
 def _treated_edge_scene(mesh, source, treatment, entry, placement, treated):
-    """Four pad cells and margin four put x_lo at x=0.8 mm (node 8)."""
+    """The Sphere's curved surface comes within half a cell of x_lo while no column-8 cell centre lies inside it."""
+    PEC_FACE_WITH_STAIRCASE_EX_ON_PLANE = .00067
+    TREATED_ONLY_FACE_AT_NEAREST_NODE_9 = .00093
     inside = placement == "inside"
     wall = treatment == "boundary_conformal" and not inside
     sphere = (mesh == "uniform" and source == "slab"
@@ -197,15 +201,15 @@ def _treated_edge_scene(mesh, source, treatment, entry, placement, treated):
                         direction="+x", **source_options)
     if not wall:
         dielectric = treatment in ("subpixel", "full_tensor")
-        x_face = .00087 if dielectric else .00091 if source == "closed_box" else .00067
+        x_face = .00087 if dielectric else .00091 if source == "closed_box" else PEC_FACE_WITH_STAIRCASE_EX_ON_PLANE
         if dielectric and (treatment == "full_tensor" or source == "closed_box"):
-            x_face = .00093
+            x_face = TREATED_ONLY_FACE_AT_NEAREST_NODE_9
         if inside:
             lo, hi = (.00227,) * 3, (.00267,) * 3
         else:
             lo, hi = (x_face, -.002, -.002), (.00147, .007, .007)
             if not dielectric and source != "closed_box":
-                lo, hi = (.00067, -.002, -.002), (.00107, .007, .007)
+                lo, hi = (PEC_FACE_WITH_STAIRCASE_EX_ON_PLANE, -.002, -.002), (.00107, .007, .007)
             if source == "methodB":
                 lo, hi = (x_face, .00227, -.002), (hi[0], .00267, .007)
             elif source == "closed_box":

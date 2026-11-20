@@ -1,4 +1,6 @@
-"""PMC graded solves refuse each requested record instead of returning empties."""
+"""PMC graded solves refuse each requested record instead of returning empties.
+Moments reject PMC because an electric-current monitor cannot see its magnetic surface current.
+"""
 import pytest
 import numpy as np
 
@@ -11,7 +13,7 @@ from tests.unit.runners._graded_records_scene import record, mutation_result
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 @pytest.mark.parametrize('kind', ['planes', 'flux', 'snapshots', 'moments', 'planes_flux'])
 def test_pmc_record_refusal(kind, entry):
-    """Moments reject PMC because an electric-current monitor cannot see its magnetic surface current."""
+    """Public forward has no snapshot keyword."""
     grading = (dict(dz_profile=np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 8), 1e-3])
                if kind == 'moments' else
                dict(dx_profile=np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 13), 1e-3]))
