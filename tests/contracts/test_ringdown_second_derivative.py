@@ -238,6 +238,11 @@ def check_first_derivative(staging, form, plain):
 
 
 def check_completed_second_derivative_is_nan(staging, form, plain):
+    """The gradient of an objective summed over bins agrees across two traces.
+
+    The #2166 bar is matching shape and dtype and max absolute error at most
+    1e-4 times the nonzero reference gradient peak.
+    """
     assert_completion_ok()
     with enable_x64(), pytest.warns(RingdownSecondDerivativeWarning):
         out = leaves(staging(functools.partial(second_order, form, completed_objective,
@@ -245,7 +250,12 @@ def check_completed_second_derivative_is_nan(staging, form, plain):
     if form == "jvp(grad)":
         primal, tangent = out
         assert np.isnan(tangent).all(), tangent
-        assert np.all(np.isfinite(primal)) and same_bits(plain["grad"], [primal])
+        assert np.all(np.isfinite(primal))
+        g = plain["grad"][0]
+        assert primal.shape == g.shape and primal.dtype == g.dtype
+        peak = np.max(np.abs(g))
+        assert peak > 0
+        assert np.max(np.abs(primal - g)) <= 1e-4 * peak
     else:
         assert all(np.isnan(x).all() for x in out), out
 

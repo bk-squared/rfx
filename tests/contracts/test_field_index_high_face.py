@@ -195,11 +195,12 @@ def mirror(a, b, signs, fields, record_property):
 @pytest.mark.parametrize('axis', range(3))
 @pytest.mark.parametrize('row', ('i', 'ii', 'iii'))
 def test_c2_c2b(lane, boundary, axis, row, record_property, request):
-    if (row, axis, boundary, lane) in JAX012_HIGH_FACE_XFAILS and Version(jax.__version__) >= Version("0.12"):
+    if ((row, axis, boundary, lane) in JAX012_HIGH_FACE_XFAILS
+            and Version("0.12") <= Version(jax.__version__) < Version("0.12.1")):
         request.applymarker(pytest.mark.xfail(
             strict=True,
-            reason="#2167 on jax>=0.12 the uniform PMC high-face mirror differs beyond 200 float32 eps "
-                   "(weekly latest-jax 10-30); cause not yet bisected between #2231 and #2213",
+            reason="#2167 on jax>=0.12,<0.12.1 the uniform PMC high-face mirror differs beyond "
+                   "200 float32 eps; these cases pass from jax 0.12.1",
         ))
     # Existing admission is part of this per-path contract.
     refusal = None
