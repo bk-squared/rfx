@@ -49,7 +49,7 @@ def coax_records(carry, plan, n_steps=None):
 
 
 def coax_port_s11(voltages, *, owner, z_tem_ohm, impedance):
-    """Return declared-impedance S11 and native Gamma from in-scan plane DFTs."""
+    """Return S11 and fit metadata, with planes ordered by distance from the reference."""
     from .coax_records import coaxial_line_reflection_from_plane_voltages
     from rfx.sparams._port_reference import renormalize_power_waves
     planes = [p.coordinate_m for p in owner.reference_planes if p.name.startswith('probe:')]
@@ -58,11 +58,15 @@ def coax_port_s11(voltages, *, owner, z_tem_ohm, impedance):
     reference = 0.0
     order = np.argsort(planes)
     voltage = jnp.asarray(voltages)[order]
-    native = jnp.stack([coaxial_line_reflection_from_plane_voltages(
+    fits = [coaxial_line_reflection_from_plane_voltages(
         np.asarray(planes)[order], voltage[:, i], reference_plane_m=reference,
-        _prefer_jnp=True).reflection for i in range(voltage.shape[1])])
+        _prefer_jnp=True) for i in range(voltage.shape[1])]
+    native = jnp.stack([fit.reflection for fit in fits])
     s11 = renormalize_power_waves(native[None, None, :], [z_tem_ohm], [impedance])
-    return s11, native
+    return s11, dict(native_gamma=native, z_tem_ohm=z_tem_ohm,
+        forward_voltage=jnp.stack([fit.forward_amp for fit in fits]),
+        recurrence_residual=jnp.stack([fit.recurrence_residual for fit in fits]),
+        plane_voltages=voltage, plane_positions_m=jnp.asarray(planes[order]))
 
 
 def port_result(sim, product, result):
@@ -73,9 +77,9 @@ def port_result(sim, product, result):
     if result.coax_sparam_accs is None:
         raise ValueError('coax port has no in-scan voltage accumulators')
     z_tem = product.coax_bore_release.z_tem_ohm
-    s11, native = coax_port_s11(result.coax_sparam_accs, owner=owner,
+    s11, metadata = coax_port_s11(result.coax_sparam_accs, owner=owner,
         z_tem_ohm=z_tem, impedance=sim._coaxial_ports[0].impedance)
-    return s11, owner.frequencies, {owner.id: dict(native_gamma=native, z_tem_ohm=z_tem)}
+    return s11, owner.frequencies, {owner.id: metadata}
 
 
 def declared_drive(sim, grid, port):
