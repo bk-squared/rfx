@@ -230,7 +230,7 @@ def test_unavailable_grid_does_not_guess_depth(monkeypatch, error):
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 def test_conductor_overlap_is_referenced_once_without_repeating_its_evidence(graded):
-    """Declared snapping keeps the off-node domain used in the earlier absorber-depth measurement."""
+    """Declared snapping preserves the off-node domain used to measure absorber depth."""
     sim = _vacuum(graded=graded, depths=(6, 16, 8, 16))
     sim._snap = "declared"
     for y in (0.003, 0.006):

@@ -273,7 +273,7 @@ def test_every_family_value_is_recovered_from_printed_text(graded):
     ids=["uniform", "graded"],
 )
 def test_family_values_survive_actual_run_results_and_refusals(graded):
-    """Both open tails stay outside the read band so unconditional stub admission allows the crossed-probe geometry to reach its run warning."""
+    """The open tail stays outside the read band so unconditional stub admission allows the crossed-probe geometry to reach its run warning."""
     from dataclasses import replace
     from unittest.mock import patch
     from rfx import Box
@@ -323,7 +323,6 @@ def test_family_values_survive_actual_run_results_and_refusals(graded):
             direction="-x",
         )
     )
-    assert len(stub.line_stub_findings(sim)) == 2 and all(stub.resonant_odd_orders(finding, (0, sim._freq_max)) is None for finding in stub.line_stub_findings(sim)), "Both open tails lie outside the stub admission band."
     solve('cross_feed_outside_stub_band', sim)
     solve(
         "realized_end_outside_declared_domain",

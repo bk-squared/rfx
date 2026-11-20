@@ -1153,7 +1153,6 @@ def _conductor_at_face_sim(layers, inset_cells=0, dx=DP_DX):
 
 
 def test_conductor_flush_with_a_thin_absorber_is_reported():
-    """The clearance and layer counts are measured points rather than a derived stability bound."""
     found = _thin_abs_findings(_conductor_at_face_sim(layers=6))
     assert found, "the measured growing configuration was not reported"
     msg = str(found[0])

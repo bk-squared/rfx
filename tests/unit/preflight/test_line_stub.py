@@ -150,11 +150,11 @@ def test_realized_port_and_endpoint_coordinates_own_length(nonuniform):
     sim = make_sim(endpoint=.0006, thin=True)
     if nonuniform:
         sim._dx_profile = np.r_[.0005, np.full(27, .00025), np.full(27, .00075), .0005]
-        assert np.unique(sim._dx_profile).size > 1, "The propagation axis is genuinely graded."
     port = sim._msl_ports[0]
     sim._msl_ports[0] = replace(port, position=(.0021, *port.position[1:]))
     grid = sim._build_realized_grid()
     nodes, _ = _msl_grid_geometry(grid)
+    assert not nonuniform or not np.allclose(np.diff(nodes[0]), np.diff(nodes[0])[0]), "The propagation axis is genuinely graded."
     p = _msl_position_to_index(grid, sim._msl_ports[0].position)[0]
     endpoint = next(float(x) for x in nodes[0] if x >= .0006)
     finding, = line_stub_findings(sim, grid)

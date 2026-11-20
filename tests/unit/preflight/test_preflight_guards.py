@@ -436,9 +436,9 @@ def test_pec_volume_partial_in_all_axes_still_warns():
     sim = Simulation(freq_max=10e9, domain=(0.020, 0.020, 0.020), dx=DX,
                      cpml_layers=4)
     sim.add_source((0.010, 0.010, 0.002), "ez")
-    assert np.isclose((0.009 - 0.005) / DX, 4), "The PEC cube occupies four cells on every axis."
     sim.add(Box((0.005, 0.005, 0.005), (0.009, 0.009, 0.009)),
             material="pec")
+    assert np.allclose([(hi - lo) / DX for lo, hi in zip(sim._geometry[0].shape.corner_lo, sim._geometry[0].shape.corner_hi)], (4, 4, 4)), "The PEC cube occupies four cells on every axis."
     issues = _issues(sim)
     assert _has(issues, "PEC volume"), (
         f"true 4-cell PEC volume must still warn; issues: {issues!r}"

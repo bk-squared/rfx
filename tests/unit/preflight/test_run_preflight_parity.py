@@ -29,7 +29,7 @@ def test_run_emits_preflight_warning_by_default():
 
 
 def test_run_skip_preflight_suppresses_it():
-    """The default pulse starts at zero, so the probe 8 cells away still reads exactly 0 after 10 steps."""
+    """The 20-step record avoids the exactly-zero probe reading after 10 steps from a zero-starting pulse eight cells away."""
     sim = _sim_with_probe_in_cpml()
     with warnings.catch_warnings():
         warnings.simplefilter("error")

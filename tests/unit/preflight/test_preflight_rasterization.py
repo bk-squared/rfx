@@ -616,6 +616,8 @@ class TestSheetCavityThickness:
 
 
 class TestOffLatticeCensus:
+    """A sheet's in-plane face is measured at its solved edge, so only the volume case of the nearest-node residual relation holds."""
+
     def test_off_lattice_edge_fires_with_alignment_residual(self):
         """lo face 0.3 mm off-lattice on a 9 mm extent = 3.33%: one
         aggregated advisory carrying the measured alignment residual."""
@@ -1056,8 +1058,17 @@ def _build(dz_profile):
 def test_asymmetric_metal_on_nu_triggers_warning():
     dz = np.concatenate([np.full(12, 1e-3), np.full(6, 0.25e-3),
                          np.full(25, 1e-3)])
-    assert np.allclose(dz[[11, 12, 17, 18]], (1e-3, .25e-3, .25e-3, 1e-3)), "Both metal planes have a fourfold cell-size jump."
     sim = _build(dz)
+    assert all(
+        len(planes) == 2 and all(
+            np.isclose(max(ctx.spacings[2][k - 1:k + 1]) /
+                       min(ctx.spacings[2][k - 1:k + 1]), 4)
+            for k in planes
+        )
+        for ctx in [sim._campaign_ctx()]
+        for planes in [[k for entry in ctx.interior_pec_entries()
+                        for k in entry.wall_planes(2, ctx.periodic, tuple(ctx.grid.shape))]]
+    ), "Both metal planes have a fourfold cell-size jump."
     issues = sim.preflight()
     assert _has(issues, "radiation pattern may be corrupted"), (
         f"expected issue #48 warning, got: {issues!r}"
