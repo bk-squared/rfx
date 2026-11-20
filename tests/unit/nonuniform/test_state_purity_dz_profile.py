@@ -38,8 +38,7 @@ def _same_result(row, actual, expected):
 
 
 def test_entry_order_preserves_graded_records_and_mesh_summary():
-    # Existing run/forward bitwise bar: tests/contracts/test_run_forward_one_pipeline.py:808-809.
-    # The entry-order spec also explicitly requires byte equality.
+    """The entry-order specification requires byte equality."""
     sim = _dx_only_nu_sim()
     before = sim.artifact_report(n_steps=5)["mesh"]
     reference = _dx_only_nu_sim().run(n_steps=5)
@@ -49,8 +48,6 @@ def test_entry_order_preserves_graded_records_and_mesh_summary():
           f"mesh={reference.grid.shape}", file=sys.stderr)
     assert np.isfinite(trace).all() and np.any(trace), "entry-order reference trace must be finite and nonzero"
     _same_result("fresh-forward/fresh-run", fresh_forward, reference)
-    # Two run calls expose runner persistence; forward twice also exposes a
-    # mutation in its grid builder when the first call's returned grid is intact.
     for row, entry in (("first-run", "run"), ("second-run", "run"),
                        ("forward-after-run", "forward"), ("second-forward", "forward")):
         actual = getattr(sim, entry)(n_steps=5)

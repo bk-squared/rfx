@@ -38,10 +38,11 @@ from rfx.nonuniform import (
 )
 from rfx.model.graded_grid import interior_cells
 
-ATOL = 1e-12          # I1 / I3: metres, never widened
-RTOL_RATIO = 1e-9     # I2: absolute slack on the ratio, never widened
+INTERFACE_COLUMN_ATOL_M = 1e-12
+ATOL = INTERFACE_COLUMN_ATOL_M
+ABSOLUTE_RATIO_SLACK = 1e-9
+RTOL_RATIO = ABSOLUTE_RATIO_SLACK
 
-# --- fixtures ---------------------------------------------------------------
 
 PCB_EDGES = [0.0, 0.5e-3, 1.3e-3, 1.4e-3, 2.2e-3, 2.3e-3, 3.1e-3, 4.0e-3]
 PCB_FEATS = [(0.5e-3, 1.3e-3, 4.3), (1.3e-3, 1.4e-3, 4.3),
@@ -110,7 +111,6 @@ def _thirds_pair_indices(cells, block_ranges):
     return ex
 
 
-# --- (a) PCB 5-layer via the public builder ----------------------------------
 
 def test_pcb_stack_builder_invariants_and_seam_rule():
     """F1-F3 on the PCB stack through ``make_band_profile`` (cap 1.4,
@@ -118,31 +118,27 @@ def test_pcb_stack_builder_invariants_and_seam_rule():
     through the old auto-z smoothing had seam ratio 8.000; here every
     seam, protected-to-protected included, is <= 1.4, and the coarser
     protected cores are refined (23 cells of 34.783 um) instead of a
-    ramp being wedged into a 4-cell prepreg."""
+    ramp being wedged into a 4-cell prepreg.
+    The 1.4 seam cap against four 25 um prepreg cells limits core widths to 35 um, requiring ceil(0.8 mm / 35 um) = 23 core cells.
+    """
     prot = [False, True, True, True, True, True, False]
     cells = make_band_profile(PCB_EDGES, [PCB_DX] * 7, max_ratio=1.4,
                               protected=prot, min_cells=4)
     _assert_invariants(cells, PCB_EDGES, 1.4)
     ranges = _block_index_ranges(cells, PCB_EDGES)
     counts = [j - i for i, j in ranges]
-    # arithmetic of the seam rule: prepreg 4 x 25 um; core d <= 1.4 x 25 um
-    # = 35 um -> ceil(0.8 mm / 35 um) = 23 cells of 34.783 um.
     assert counts[1:6] == [23, 4, 23, 4, 23], counts
     for k in (1, 2, 3, 4, 5):
         i, j = ranges[k]
         blk = cells[i:j]
         assert np.allclose(blk, blk[0], rtol=1e-13)
     assert abs(cells[ranges[1][0]] - (1.3e-3 - 0.5e-3) / 23) <= 1e-18
-    # the core|prepreg seam on the actual seam cells: 34.783 / 25 um
     i, j = ranges[1]
     assert cells[j - 1] / cells[j] == pytest.approx((0.8e-3 / 23) / 25e-6, abs=1e-9)
-    # the global maximum is the air ramp's even-spread ratio, under the cap
     assert float(_ratios(cells).max()) == pytest.approx(1.397368339, abs=1e-6)
-    # protected blocks host no ramp cell: the count is exactly ceil(span/d)
     assert len(cells) == 89
 
 
-# --- (a) PCB 5-layer via the auto-z path (R1: I2 outside thirds pairs) ------
 
 def test_pcb_stack_auto_z_seam_rule_under_thirds():
     """F1-F3 on ``_make_dz_profile`` for the PCB stack. The thirds rule is
@@ -167,30 +163,24 @@ def test_pcb_stack_auto_z_seam_rule_under_thirds():
     rr = _ratios(dz)
     keep = np.array([k not in ex for k in range(rr.size)])
     assert float(rr[keep].max()) <= 1.3 + RTOL_RATIO, rr[keep].max()
-    # block-to-block seams on the actual seam cells
     for (i0, j0), (i1, j1) in zip(blocks[:-1], blocks[1:]):
         assert j0 == i1
         a, b = dz[j0 - 1], dz[i1]
         assert max(a / b, b / a) <= 1.3 + RTOL_RATIO
     counts = [j - i for i, j in blocks]
-    assert counts == [27, 6, 27, 6, 27], counts   # 25+2 / 4+2 splits
+    assert counts == [27, 6, 27, 6, 27], counts
     assert len(dz) == 115
     assert float(np.min(dz)) == pytest.approx(0.1e-3 / 4 / 3, rel=1e-12)
-    # prepreg block verbatim from apply_thirds_rule (unrefined); the
-    # thickness is the builder's own float subtraction (1.0000000000000009e-4)
     d = (1.4e-3 - 1.3e-3) / 4
     i, j = blocks[1]
     assert np.array_equal(dz[i:j], np.array([d / 3, d * 2 / 3, d, d, d * 2 / 3, d / 3]))
-    # refined cores: 25 x 32 um with the same split arithmetic
     dc = (1.3e-3 - 0.5e-3) / 25
     i, j = blocks[0]
     assert np.array_equal(
         dz[i:j], np.array([dc / 3, dc * 2 / 3] + [dc] * 23 + [dc * 2 / 3, dc / 3]))
-    # R3: all three cores realize the same count
     assert counts[0] == counts[2] == counts[4]
 
 
-# --- (b) make_z_profile ----------------------------------------------------
 
 def test_make_z_profile_fine_coarse_fine_invariants():
     """F1-F3 on the Defect-2 fixture. Revert-proof: the old loop emitted
@@ -217,11 +207,7 @@ def test_make_z_profile_no_grading_is_uniform_fine():
     _assert_invariants(z, [0.0, 1.0e-3, 3.0e-3], 1.4)
 
 
-# --- (c) locks stay: see test_auto_dz_profile_preserve.py ---------------
-# (demo block bit-identical, dz_min 21.167 um, column 1.754 mm, air-run
-# ratio <= 1.301; generic fixture interfaces + blocks bit-identical).
 
-# --- (d) seeded random-stack fuzz -------------------------------------------
 
 def _fuzz_family(n_stacks: int, seed: int = 20260907):
     """1-8 layers, thicknesses 20 um-3 mm (log-uniform), per-segment
@@ -269,7 +255,6 @@ def test_fuzz_random_stacks_invariants():
     assert n_ok == 400
 
 
-# --- F5: axis round trip ----------------------------------------------------
 
 F5_EDGES = [0.0, 12e-3, 15e-3, 27e-3]
 
@@ -329,7 +314,6 @@ def test_f5_same_profile_as_dz_is_clean():
     assert "nu_grading_ratio_beyond_validated_cap" not in codes
 
 
-# --- engine corners ---------------------------------------------------------
 
 def test_two_adjacent_protected_segments_refine_coarser_side():
     """A seam between two protected segments cannot host a ramp: the
@@ -340,7 +324,7 @@ def test_two_adjacent_protected_segments_refine_coarser_side():
                               protected=[True, True, True], max_ratio=1.4)
     _assert_invariants(cells, edges, 1.4)
     (i0, j0), (i1, j1), (i2, j2) = _block_index_ranges(cells, edges)
-    assert j1 - i1 == 4                       # the fine block is untouched
+    assert j1 - i1 == 4
     assert np.allclose(cells[i1:j1], 25e-6, rtol=1e-12)
     assert np.allclose(cells[i0:j0], cells[i0], rtol=1e-12)
     assert cells[i0] <= 1.4 * 25e-6 * (1 + 1e-12)
@@ -366,9 +350,9 @@ def test_free_segment_ramps_both_directions_around_a_fine_band():
                               protected=[False, True, False], max_ratio=1.4)
     _assert_invariants(cells, edges, 1.4)
     (i0, j0), (i1, j1), (i2, j2) = _block_index_ranges(cells, edges)
-    assert cells[j0 - 1] <= 0.14e-3 * (1 + 1e-12)      # descends into the band
-    assert cells[i2] <= 0.14e-3 * (1 + 1e-12)          # ascends out of it
-    assert float(cells.max()) <= 1e-3 * (1 + 1e-12)     # never above target
+    assert cells[j0 - 1] <= 0.14e-3 * (1 + 1e-12)
+    assert cells[i2] <= 0.14e-3 * (1 + 1e-12)
+    assert float(cells.max()) <= 1e-3 * (1 + 1e-12)
 
 
 def test_boundary_cell_descending_ramp_from_pin():
@@ -449,9 +433,6 @@ def test_public_export():
     assert rfx.make_band_profile is make_band_profile
 
 
-# --- findings (second pass) --------------------------------
-# Each test names the finding it closes and quotes the OLD number where one
-# was measured on the first-pass tree (e65542c8) or on main (d990e18c).
 
 
 def test_pin_visible_when_end_segment_equals_boundary_cell():
@@ -460,24 +441,21 @@ def test_pin_visible_when_end_segment_equals_boundary_cell():
     e65542c8 ``make_band_profile([0, 1, 5] mm, [1, 0.1] mm, boundary_cell
     = 1 mm)`` returned a ratio-10.07 seam and the both-ends form
     ``[0, 1, 5, 6] mm`` ratio 10.0 at both ends, no error. Now the
-    neighbour ramps from the pin when it can, and a contradiction raises."""
-    # Feasible: 8 mm of free span after the hi pin holds two 1 -> 0.1 mm
-    # descents (2 x 2.25 mm at ratio 1.4).
+    neighbour ramps from the pin when it can, and a contradiction raises.
+    Two 1 to 0.1 mm descents at ratio 1.4 require about 4.5 mm of free span.
+    """
     c = make_band_profile([0.0, 1e-3, 9e-3], [1e-3, 1e-4], max_ratio=1.4,
                           boundary_cell=1e-3)
     _assert_invariants(c, [0.0, 1e-3, 9e-3], 1.4, boundary_cell=1e-3)
     c = make_band_profile([0.0, 1e-3, 9e-3, 10e-3], [1e-3, 1e-4, 1e-3],
                           max_ratio=1.4, boundary_cell=1e-3)
     _assert_invariants(c, [0.0, 1e-3, 9e-3, 10e-3], 1.4, boundary_cell=1e-3)
-    # Infeasible: 3 mm of free span cannot hold two such descents.
     with pytest.raises(ValueError, match="cannot hold its ramps"):
         make_band_profile([0.0, 1e-3, 5e-3], [1e-3, 1e-4], max_ratio=1.4,
                           boundary_cell=1e-3)
-    # A protected finer neighbour against the bare pin: no room for a ramp.
     with pytest.raises(ValueError, match="no room for a ramp"):
         make_band_profile([0.0, 1e-3, 5e-3, 6e-3], [1e-3, 1e-4, 1e-3],
                           protected=[False, True, False], boundary_cell=1e-3)
-    # Degenerate but consistent: two pins and nothing else.
     c = make_band_profile([0.0, 1e-3, 2e-3], [1e-3, 1e-3], boundary_cell=1e-3)
     assert c.tolist() == [1e-3, 1e-3]
 
@@ -495,7 +473,6 @@ def test_slivers_are_rejected_not_realized():
     with pytest.raises(ValueError, match="cell ceiling"):
         make_band_profile([0.0, 1e-3, 1e-3 + 1e-9, 2e-3 + 1e-9], [1e-4] * 3,
                           protected=[True] * 3)
-    # A 10 um layer between 1 mm blocks is a legitimate stack (145 cells).
     edges = [0.0, 1e-3, 1e-3 + 1e-5, 2e-3 + 1e-5]
     c = make_band_profile(edges, [1e-4] * 3, protected=[True] * 3)
     _assert_invariants(c, edges, 1.4)
@@ -522,8 +499,6 @@ def test_ratio_floor_and_non_finite_are_rejected():
             make_band_profile([0.0, 1e-3], [1e-4], max_ratio=bad)
     with pytest.raises(ValueError, match="grading"):
         make_z_profile([1e-3], 4e-3, 50e-6, 200e-6, grading=float("nan"))
-    # The floor itself, on a long descent: 1 um pin into 10 mm of 100 um
-    # cells, 8110 cells (0.4 s measured).
     c = make_band_profile([0.0, 10e-3], [1e-4], boundary_cell=1e-6,
                           max_ratio=1.0001)
     _assert_invariants(c, [0.0, 10e-3], 1.0001, boundary_cell=1e-6)
@@ -536,7 +511,9 @@ def test_long_column_seam_on_the_law_keeps_the_declared_vector(n):
     the ramp step count flipped 1.96 -> 1.0 from 2 to 3 steps, and the
     run raised 'cannot hold its ramps' although the declared vector
     (n x 1.96 | 1.4 | 4 x 1.0 | 1.4 | (n+10) x 1.96 mm) fits exactly.
-    The step slack is now 1e-10; every cell matches its declared value."""
+    The step slack is now 1e-10; every cell matches its declared value.
+    The running-sum interface tolerance is relative 1e-12 for the long column beyond the roughly 1 m range of the absolute 1e-12 m tolerance.
+    """
     dc, dr, df = 1.96e-3, 1.4e-3, 1e-3
     z1 = n * dc + dr
     z2 = z1 + 4 * df
@@ -547,8 +524,6 @@ def test_long_column_seam_on_the_law_keeps_the_declared_vector(n):
     assert len(c) == 2 * n + 16
     assert float(np.max(np.abs(c - decl) / decl)) <= 1e-11
     assert float(_ratios(c).max()) <= 1.4 + RTOL_RATIO
-    # I1 by running sum is a RELATIVE 1e-12 at this column length (the
-    # absolute 1e-12 m holds for columns up to about 1 m).
     nodes = _nodes(c)
     assert max(float(np.min(np.abs(nodes - e))) for e in (z1, z2)) <= 1e-12 * z3
 

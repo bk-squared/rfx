@@ -57,6 +57,7 @@ What is checked:
    dispersive builds restored (a) turn every check above red; the Debye build
    alone (b) turns the Debye boards red, the Lorentz build alone the Lorentz
    boards.
+An earlier run with the old order measured 0.789259 for the MSL open-circuit 50/5000 drive-coefficient ratio.
 """
 
 from __future__ import annotations
@@ -85,33 +86,25 @@ Z_LOW, Z_HIGH = 50.0, 5000.0
 
 EPS_0 = 8.8541878128e-12
 
-# Pre-declared bars (module docstring).
 OPEN_FRACTION = 0.5
 BLOCK_FACTOR = 3.0
 LANE_RATIO_RTOL = 1e-2
 LANE_TRACE_RTOL = 1e-4
-# Documented cross-trace bar; no single-machine noise-based threshold.
 LUMPED_TRACE_RTOL = {"debye": 1e-4, "lorentz": 1e-4}
 
-#: The MSL port's open-circuit 50/5000 ratio on the graded board. The laplace
-#: feed puts one conductance on every driven Ez edge and all 14 lie in the
-#: eps_r 3 substrate, so the drive-coefficient ratio Cb(50)/Cb(5000) is one
-#: number, 0.789259, read off the drive build (``cell_component_e_coeffs`` on
-#: the materials ``make_msl_port_sources`` receives). The run with the old
-#: order, main 72d2e674, measured 0.789259.
 MSL_OPEN_RATIO = 0.789259
 
 
 def _add_dispersive(sim, disp):
+    OUT_OF_BAND_RESONANCE_HZ = 20e9
     if disp in ("debye", "both"):
         sim.add_material("debye", eps_r=2.0,
                          debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
         sim.add(Box((1 * DX, 1 * DX, 1 * DX), (3 * DX, 3 * DX, 3 * DX)),
                 material="debye")
     if disp in ("lorentz", "both"):
-        # resonance at 20 GHz, above the 0-10 GHz band of the pulse
         sim.add_material("lorentz", eps_r=2.0, lorentz_poles=[lorentz_pole(
-            delta_eps=1.0, omega_0=2 * np.pi * 20e9, delta=2 * np.pi * 1e9)])
+            delta_eps=1.0, omega_0=2 * np.pi * OUT_OF_BAND_RESONANCE_HZ, delta=2 * np.pi * 1e9)])
         sim.add(Box((13 * DX, 1 * DX, 1 * DX), (15 * DX, 3 * DX, 3 * DX)),
                 material="lorentz")
 
@@ -128,12 +121,10 @@ def _board(port, disp, impedance, mesh):
                      waveform=PULSE)
         sim.add_probe((11 * DX, 8 * DX, 8 * DX), "ez")
     elif port == "wire":
-        # four 0.5 mm Ez edges on the graded board
         sim.add_port((8 * DX, 8 * DX, 7 * DX), "ez", impedance=impedance,
                      extent=2 * DX, waveform=PULSE)
         sim.add_probe((11 * DX, 8 * DX, 8 * DX), "ez")
     elif port == "msl":
-        # a 2 mm trace on a 2 mm, eps_r 3 substrate over a ground plane
         sim.add_material("sub", eps_r=3.0)
         sim.add(Box((0, 0, 3 * DX), (L, L, 5 * DX)), material="sub")
         sim.add(Box((0, 0, 3 * DX), (L, L, 3 * DX)), material="pec")
@@ -212,15 +203,13 @@ def _open_ratio(port):
     waveform scaled by each run's drive coefficient Cb = dt/(eps*(1 + x)),
     x = sigma*dt/(2 eps), so the ratio is (1 + x_5000)/(1 + x_50). The lumped
     and wire ports sit on 0.5 mm Ez edges in vacuum with 1 mm transverse duals:
-    sigma_50 = n * 0.5 mm / (50 ohm * 1 mm * 1 mm), n = 1 and 4."""
+    sigma_50 = n * 0.5 mm / (50 ohm * 1 mm * 1 mm), n = 1 and 4.
+    The Norton drive w/R adds Z_HIGH/Z_LOW=100 to the 50/5000 ratio."""
     if port == "msl":
-        # Own load sigma is proportional to 1/R: measured/predicted factor 100.
         return (Z_HIGH / Z_LOW) * MSL_OPEN_RATIO
     n = {"lumped": 1, "wire": 4}[port]
     dt = float(_board(port, None, Z_LOW, "graded")._build_nonuniform_grid().dt)
     x_low = n * (DX / 2) / (Z_LOW * DX * DX) * dt / (2.0 * EPS_0)
-    # The Norton drive w/R adds Z_HIGH/Z_LOW=100, matching the measured
-    # 50/5000 ratio shift. The open-share assertion and tolerance stay fixed.
     return (Z_HIGH / Z_LOW) * (1.0 + x_low * Z_LOW / Z_HIGH) / (1.0 + x_low)
 
 
@@ -233,9 +222,6 @@ def _within_block_factor(factor):
     return 1.0 / BLOCK_FACTOR <= factor <= BLOCK_FACTOR
 
 
-# --------------------------------------------------------------------------
-# 1. the port absorbs on the graded lane with a dispersive block present
-# --------------------------------------------------------------------------
 
 _SPLIT_CASES = [("lumped", "debye"), ("lumped", "lorentz"),
                 ("lumped", "both"), ("wire", "debye"), ("wire", "lorentz"),
@@ -260,9 +246,6 @@ def test_graded_port_load_reaches_the_dispersive_update(port, disp):
         f"explains (#1260)")
 
 
-# --------------------------------------------------------------------------
-# 2. lane parity on uniform-valued cells
-# --------------------------------------------------------------------------
 
 _LANE_CASES = [("lumped", "debye"), ("lumped", "lorentz"), ("msl", "debye")]
 
@@ -287,14 +270,12 @@ def test_graded_lane_on_uniform_cells_matches_the_uniform_lane(port, disp):
     assert d_trace <= trace_rtol, d_trace
 
 
-# --------------------------------------------------------------------------
-# 3. the defect restored, every call kept
-# --------------------------------------------------------------------------
 
 def test_mutation_both_builds_before_the_stamps_sends_everything_red():
     """(a): both dispersive builds handed the pre-stamp materials. Every
     split case fails its primary bar (and the loose one), every lane case
-    both of its bars."""
+    both of its bars.
+    The loose band excludes the MSL port because an earlier factor of 4.17 measured under the mutation sat within 30 % of the band's edge."""
     both = ("debye", "lorentz")
     shares = {case: _open_share(*case, mutation=both) for case in _SPLIT_CASES}
     factors = {case: _block_effect(*case, mutation=both)
@@ -307,11 +288,6 @@ def test_mutation_both_builds_before_the_stamps_sends_everything_red():
         f"{p}+{d} ratio rel {r:.3e} trace rel {t:.3e}"
         for (p, d), (r, t) in lanes.items()), file=sys.stderr)
     assert all(v >= OPEN_FRACTION for v in shares.values()), shares
-    # The loose band is held to the lumped and wire ports only. The MSL
-    # factor under this mutation (4.17, and 3.83 once #1269 lands) sits
-    # within 30 % of the band's edge, so a mesh or #1260 change could move
-    # it inside without the defect coming back; the primary bar above and
-    # the lane cases below carry the MSL port.
     assert not any(_within_block_factor(f) for (port, _), f in factors.items()
                    if port != "msl"), factors
     assert all(abs(r) > LANE_RATIO_RTOL and t > LANE_TRACE_RTOL
