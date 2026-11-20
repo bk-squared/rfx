@@ -317,7 +317,7 @@ class _MMA(_Optimizer[_MMAState]):
     max_newton: int = 500
     native_box = True
 
-    def __post_init__(self):
+    def __post_init__(self: _MMA | _GCMMA):
         if self.m < 0 or int(self.m) != self.m:
             raise ValueError('MMA m must be a nonnegative integer')
         for name in ('a', 'c', 'd'):
@@ -343,7 +343,7 @@ class _MMA(_Optimizer[_MMAState]):
         rounded = np.clip(rounded, lower, upper)
         return jnp.asarray(rounded.reshape(shape), dtype=dtype)
 
-    def init(self, x0: jnp.ndarray, bounds) -> _MMAState:
+    def init(self: _MMA | _GCMMA, x0: jnp.ndarray, bounds) -> _MMAState:
         if bounds is None:
             raise ValueError('MMA is a box method: bounds are required')
         x = np.asarray(x0, dtype=np.float64).ravel()
