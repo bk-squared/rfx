@@ -32,7 +32,7 @@ for ``0.05 <= w/h <= 20`` and ``eps_r <= ~13`` at low frequency. It
 ignores conductor thickness, dispersion (frequency dependence of
 ``eps_eff``), and surface roughness, so it is a starting-point synthesis
 tool — not a substitute for a full-wave solve. All lengths are in metres.
-"""
+ ``_ETA_0`` is the free-space wave impedance in ohms."""
 
 from __future__ import annotations
 
@@ -40,7 +40,6 @@ from rfx.errors import AccuracyWarning
 import math
 import warnings
 
-# Free-space wave impedance, eta_0 = sqrt(mu_0 / eps_0)  (ohm).
 _ETA_0 = 376.730313668
 
 
@@ -78,7 +77,7 @@ def microstrip_eps_eff(width: float, height: float, eps_r: float) -> float:
     ``(w/h < 1)`` branch adds the ``(1 - w/h)^2`` thin-line correction.
     """
     _validate_geometry(height, eps_r, width=width)
-    u = width / height  # w/h ratio
+    u = width / height
     if u >= 1.0:
         f = (1.0 + 12.0 / u) ** -0.5
     else:
@@ -157,11 +156,6 @@ def microstrip_width(z0: float, height: float, eps_r: float) -> float:
         raise ValueError(f"z0 must be positive (ohm), got {z0!r}")
     _validate_geometry(height, eps_r)
 
-    # Wide-strip trial (w/h > 2): B-based form. Its logarithms are only real
-    # for b > 1 (low-to-moderate z0); for high-impedance lines on high-eps_r
-    # substrates b <= 1 and the wide form does not apply — mark it invalid and
-    # fall through to the narrow branch instead of raising a bare
-    # "math domain error".
     b = _ETA_0 * math.pi / (2.0 * z0 * math.sqrt(eps_r))
     if b > 1.0:
         u_wide = (2.0 / math.pi) * (
@@ -170,22 +164,16 @@ def microstrip_width(z0: float, height: float, eps_r: float) -> float:
             * (math.log(b - 1.0) + 0.39 - 0.61 / eps_r)
         )
     else:
-        u_wide = float("-inf")  # wide form invalid here; use the narrow branch
+        u_wide = float("-inf")
 
-    # Narrow-strip trial (w/h < 2): A-based form.
     a = (
         z0 / 60.0 * math.sqrt((eps_r + 1.0) / 2.0)
         + (eps_r - 1.0) / (eps_r + 1.0) * (0.23 + 0.11 / eps_r)
     )
     u_narrow = 8.0 * math.exp(a) / (math.exp(2.0 * a) - 2.0)
 
-    # Each closed form is valid on one side of w/h = 2: use the wide form when
-    # its own trial comes out >= 2, otherwise the narrow form (Pozar rule).
     u = u_wide if u_wide >= 2.0 else u_narrow
 
-    # The Hammerstad-Jensen fit is only ~1% accurate for 0.05 <= w/h <= 20;
-    # outside that the returned width is an extrapolation — warn rather than
-    # silently hand back a degraded value.
     if not (0.05 <= u <= 20.0):
         warnings.warn(
             f"microstrip_width: resulting w/h={u:.3g} is outside the "
