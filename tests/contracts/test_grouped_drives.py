@@ -15,6 +15,7 @@ from rfx.core.yee import MaterialArrays, init_state
 from rfx.grid import Grid
 from rfx.simulation import SourceSpec, ProbeSpec
 from tests.contracts.path_equivalence.comparison import array_peak, component_peaks, container
+from tests._stated_plan import stated_plan
 
 
 def per_cell(state, drives, wave_t):
@@ -453,6 +454,7 @@ def test_electric_only_paths_refuse_h_sources(lane, component):
             sg = build_sharded_nu_grid(grid, 2)
             mats = MaterialArrays(jnp.ones(grid.shape), jnp.zeros(grid.shape), jnp.ones(grid.shape))
             run_nonuniform_distributed_pec(sg, mats, None, 3, n_devices=2,
+                measurement=stated_plan(sg, [], n_steps=3),
                 sources=[SourceSpec(3, 3, 3, component, jnp.ones(3))])
         else:
             from dataclasses import replace

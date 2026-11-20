@@ -43,6 +43,7 @@ from rfx.runners.distributed_nu import (
     _build_sharded_inv_dx_arrays,
     _update_h_local_nu,
 )
+from tests._stated_plan import stated_plan
 
 
 def _graded_profile(n_physical, dx0, ratio=1.5):
@@ -652,6 +653,7 @@ def test_distributed_pec_only_2device_matches_single_device():
         probes=[prb_spec],
         n_devices=n_devices,
         devices=devices,
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
     ts_dist = jnp.asarray(out["time_series"])[:, 0]
 
@@ -753,6 +755,7 @@ def test_distributed_pec_only_pad_lane_final_state_matches_single_device():
         probes=[prb_spec],
         n_devices=n_devices,
         devices=devices,
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
     dist_state = dist_out["final_state"]
 
@@ -868,6 +871,7 @@ def test_distributed_pec_only_seam_no_double_zeroing():
         probes=[prb_spec],
         n_devices=n_devices,
         devices=devices,
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
     ts_dist = jnp.asarray(out["time_series"])[:, 0]
 
@@ -941,6 +945,7 @@ def test_distributed_pec_mask_override_union_semantics():
         probes=[prb_spec],
         n_devices=n_devices,
         devices=devices,
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
     ts_dist = jnp.asarray(out["time_series"])[:, 0]
 
@@ -998,6 +1003,7 @@ def test_distributed_h_ghost_exchange_recovers_global_field():
         probes=[prb_spec],
         n_devices=n_devices,
         devices=devices,
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps_run),
     )
     ts_dist = jnp.asarray(out["time_series"])[:, 0]
 
@@ -1117,6 +1123,7 @@ def test_distributed_cpml_2device_matches_single_device():
         devices=devices,
         cpml_params=cpml_params,
         cpml_state=cpml_state_sharded,
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
     ts_dist = jnp.asarray(out["time_series"])[:, 0]
 
@@ -1188,6 +1195,7 @@ def test_distributed_cpml_internal_seam_is_noop():
         devices=devices,
         cpml_params=cpml_params,
         cpml_state=cpml_state_sharded,
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
     final_cpml = out["cpml_state_sharded"]
     assert final_cpml is not None, (
@@ -1302,6 +1310,7 @@ def test_distributed_cpml_outer_face_active():
         devices=devices,
         cpml_params=cpml_params,
         cpml_state=cpml_state_sharded,
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
     final_cpml = out["cpml_state_sharded"]
     assert final_cpml is not None
@@ -1426,6 +1435,7 @@ def test_distributed_debye_only_2device_matches_single_device():
         n_devices=n_devices,
         devices=devices,
         debye=(debye_coeffs_sharded, debye_state_sharded),
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
     ts_dist = jnp.asarray(out["time_series"])[:, 0]
 
@@ -1497,6 +1507,7 @@ def test_distributed_lorentz_only_2device_matches_single_device():
         n_devices=n_devices,
         devices=devices,
         lorentz=(lorentz_coeffs_sharded, lorentz_state_sharded),
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
     ts_dist = jnp.asarray(out["time_series"])[:, 0]
 
@@ -1573,6 +1584,7 @@ def test_distributed_mixed_dispersion_2device_matches_single_device():
         devices=devices,
         debye=(debye_coeffs_sharded, debye_state_sharded),
         lorentz=(lorentz_coeffs_sharded, lorentz_state_sharded),
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
     ts_dist = jnp.asarray(out["time_series"])[:, 0]
 
@@ -1762,6 +1774,7 @@ def test_distributed_debye_seam_ade_ordering_isolated():
         n_devices=n_devices,
         devices=devices,
         debye=(debye_coeffs_sharded, debye_state_sharded),
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
     ts_dist = jnp.asarray(out["time_series"])[:, 0]
 
@@ -1836,6 +1849,7 @@ def test_distributed_dispersion_drift_over_time():
         n_devices=n_devices,
         devices=devices,
         debye=(debye_coeffs_sharded, debye_state_sharded),
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
     ts_dist = jnp.asarray(out["time_series"])[:, 0]
 
@@ -1911,6 +1925,7 @@ def test_distributed_pec_occupancy_2device_matches_single_device():
         n_devices=n_devices,
         devices=devices,
         sharded_pec_occupancy=sharded_occ,
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
     ts_dist = jnp.asarray(out["time_series"])[:, 0]
 
@@ -1997,6 +2012,7 @@ def test_distributed_pec_occupancy_seam_no_double_application():
         n_devices=n_devices,
         devices=devices,
         sharded_pec_occupancy=sharded_occ,
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
     ts_dist = jnp.asarray(out["time_series"])[:, 0]
 
@@ -2065,6 +2081,7 @@ def _phase2f_build_run_kwargs(*, n_steps, n_devices, devices, eps_scale=1.0,
             checkpoint_every=checkpoint_every,
             n_warmup=n_warmup,
             emit_time_series=emit_time_series,
+            measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
         )
 
     return run, grid, sharded_grid, src_spec, prb_spec, _materials
@@ -2220,6 +2237,7 @@ def test_distributed_n_warmup_tail_grad_matches_single_device():
             n_devices=n_devices,
             devices=devices,
             n_warmup=n_warmup,
+            measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
         )
         ts = out["time_series"][:, 0]
         return jnp.sum(ts[n_warmup:] ** 2)
@@ -2290,6 +2308,7 @@ def test_distributed_emit_time_series_false_skips_probe():
         n_devices=n_devices,
         devices=devices,
         emit_time_series=False,
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
     assert out["time_series"] is None, (
         f"emit_time_series=False should yield time_series=None, "
@@ -2310,6 +2329,7 @@ def test_distributed_emit_time_series_false_skips_probe():
         n_devices=n_devices,
         devices=devices,
         emit_time_series=True,
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
     # Final-state ex slab (gathered) must agree to Class A tolerance
     # between the two paths (skipping probe sampling must not perturb
@@ -2347,6 +2367,7 @@ def test_distributed_emit_time_series_false_skips_probe():
             n_devices=n_devices,
             devices=devices,
             emit_time_series=False,
+            measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
         )
         # Use the *gathered* final state and slice the rank-0 owned
         # x-range.  The gathered tensor lives on a single device after
@@ -2550,6 +2571,7 @@ def test_distributed_pec_cavity_analytic_resonance():
         probes=[prb_spec],
         n_devices=n_devices,
         devices=devices,
+        measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
     ts = np.asarray(out["time_series"])[:, 0]
 
@@ -2674,6 +2696,7 @@ def test_distributed_pec_cavity_energy_conservation():
             probes=[prb_spec],
             n_devices=n_devices,
             devices=devices,
+            measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
         )
 
     n_settle = 100
