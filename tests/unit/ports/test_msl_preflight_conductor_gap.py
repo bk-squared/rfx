@@ -56,10 +56,9 @@ def _offset_stack(direction, nonuniform, ground_kind, trace_kind):
     domain = _point(direction, 32 * U, 24 * U, float(widths.sum()))
     sim = Simulation(freq_max=5e9, domain=domain, dx=U, cpml_layers=4,
                      boundary="cpml", **({"dz_profile": widths} if nonuniform else {}))
-    # Both conductor kinds meet the same substrate-facing planes. The
-    # lower volume extends DOWN from the ground, never into the source.
     bottom = ground - 2 * U if ground_kind == "volume" else ground
     trace_top = top + U if trace_kind == "volume" else top
+    assert bottom <= ground < top <= trace_top, "conductor volumes must extend away from the substrate gap"
     ground_shape = Box((0., 0., bottom), (domain[0], domain[1], ground))
     if ground_kind == "lossy-sheet":
         sim.add_thin_conductor(ground_shape, sigma_bulk=5.8e7,
@@ -101,7 +100,7 @@ def _no_old_bbox_claims(messages):
 def test_legacy_misaligned_material_extent_is_not_the_conductor_gap(
     direction, dx, material_um, n_material, frac, n_gap,
 ):
-    # Centre sampling counts the cells between the nearest drawn face nodes.
+    """Centre sampling counts the cells between the nearest drawn face nodes."""
     sim = _legacy(dx, direction)
     assembled = sim._msl_assemble_once()
     pe = sim._msl_ports[0]
@@ -147,6 +146,7 @@ def test_snap_suggestions_follow_declared_face_when_material_continues_above_tra
 
 
 def test_translated_declared_faces_use_absolute_nodes_and_do_not_offer_unverified_dx():
+    """Height/n alone cannot align the translated declared faces."""
     sim, _, _ = _offset_stack("+x", False, "sheet", "sheet")
     pe = sim._msl_ports[0]
     pos = (*pe.position[:2], 4.2 * U)
@@ -161,14 +161,14 @@ def test_translated_declared_faces_use_absolute_nodes_and_do_not_offer_unverifie
     assert "0.200 of a cell" in mixed
     assert f"ground z={4.2*U*1e6:.1f}µm" in mixed
     assert f"trace z={7.2*U*1e6:.1f}µm" in mixed
-    assert "set dx =" not in mixed  # height/n alone cannot align this translation
+    assert "set dx =" not in mixed
     assert "fraction alone does not establish material/PEC overlap" in mixed
 
 
 def test_known_nu_geometry_does_not_fall_back_to_scalar_dx_when_material_is_absent():
     sim, ground, top = _offset_stack("+x", True, "sheet", "sheet")
-    sim._geometry.pop(1)  # remove only the dielectric, retaining both conductor planes
-    sim._dx = 3 * U      # base in-plane spacing is not the graded normal spacing
+    sim._geometry.pop(1)
+    sim._dx = 3 * U
     assembled = sim._msl_assemble_once()
     pe = sim._msl_ports[0]
     assert sim._msl_realized_substrate(pe, 2, assembled) is None
@@ -187,6 +187,7 @@ def test_known_nu_geometry_does_not_fall_back_to_scalar_dx_when_material_is_abse
 @pytest.mark.parametrize("direction", ["+x", "-y"])
 @pytest.mark.parametrize("nonuniform", [False, True])
 def test_layered_material_walk_uses_the_ports_lower_tie_ground(ground_node, direction, nonuniform):
+    """Ties select the lower node at both parities."""
     domain = _point(direction, 32 * U, 24 * U, 16 * U)
     sim = Simulation(freq_max=5e9, domain=domain, dx=U, cpml_layers=4,
                      boundary="cpml", **({"dz_profile": np.full(16, U)} if nonuniform else {}))
@@ -198,8 +199,6 @@ def test_layered_material_walk_uses_the_ports_lower_tie_ground(ground_node, dire
     sim.add(Box((0., 0., interface), (domain[0], domain[1], top)), material="second_layer")
     sim.add(Box(_point(direction, 0., 10 * U, top),
                 _point(direction, 32 * U, 14 * U, top)), material="pec")
-    # Ties select the lower node at BOTH parities. Banker's rounding
-    # incorrectly starts the material walk in the second layer at 5.5U.
     declared_ground = (ground_node + .5) * U
     _port(sim, direction, (8 if direction[0] == "+" else 24) * U,
           12 * U, declared_ground, top - declared_ground, 4 * U)
@@ -243,6 +242,7 @@ def test_gap_uses_substrate_facing_planes_and_actual_profile_intervals(
 def test_invalid_attachment_has_no_fabricated_or_automatically_adapted_gap(
     failure, nonuniform, monkeypatch,
 ):
+    """Moving the source to the upper trace wall would put it through the PEC volume."""
     if nonuniform:
         sim, _, _ = _offset_stack("+y", True, "volume", "volume")
         if failure == "missing-trace":
@@ -250,9 +250,6 @@ def test_invalid_attachment_has_no_fabricated_or_automatically_adapted_gap(
     else:
         sim = _legacy(80e-6, trace=failure != "missing-trace")
     if failure == "inside-trace":
-        # The upper trace wall at 320um exists, but moving there would put
-        # the source through the PEC volume. The valid lower wall is 240um;
-        # the diagnostic must not silently replace this declared interval.
         height = sim._msl_ports[0].height + U if nonuniform else 334e-6
         sim._msl_ports[0] = replace(sim._msl_ports[0], height=height)
     if failure == "unavailable-assembly":
@@ -272,8 +269,8 @@ def test_invalid_attachment_has_no_fabricated_or_automatically_adapted_gap(
 def test_existing_gap_difference_threshold_is_preserved_without_z0_prediction(
     relative_shift, expected_warning,
 ):
-    # Both interfaces snap UP to four normal intervals; the declared-face
-    # fractions (~.704/.670) lie outside check 2b, and check 2 is silent.
+    """The declared-face fractions (~.704/.670) lie outside the declared-interface fraction advisory
+    band."""
     dx = 80e-6
     height = 4 * dx / (1 + relative_shift)
     sim = _legacy(dx, height=height)
@@ -314,6 +311,8 @@ def test_all_ports_share_one_assembly_for_material_and_conductor_diagnostics(mon
 
 @pytest.mark.parametrize("nonuniform", [False, True])
 def test_lossy_sheet_ground_is_observed_without_becoming_a_pec_plane(nonuniform):
+    """The observational f0 sheet is never present in the hard PEC masks supplied to the source
+    operator."""
     sim, ground, top = _offset_stack("-y", nonuniform, "lossy-sheet", "sheet")
     assembled = sim._msl_assemble_once()
     realized = assembled[4]
@@ -323,8 +322,6 @@ def test_lossy_sheet_ground_is_observed_without_becoming_a_pec_plane(nonuniform)
     assert gap["n"] == 3
     assert gap["ground"] == pytest.approx(ground, abs=1e-16)
     assert gap["trace"] == pytest.approx(top, abs=1e-16)
-    # Removing only the observational f0 sheet removes the ground; it was
-    # never present in the hard PEC masks supplied to the source operator.
     without_sheet = replace(realized, sheet_impedance=())
     with pytest.raises(ValueError, match="ground"):
         sim._msl_conductor_gap(sim._msl_ports[0], (*assembled[:4], without_sheet))

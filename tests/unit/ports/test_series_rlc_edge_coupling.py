@@ -37,6 +37,8 @@ What is checked here (fast, always on)
 
 The closed-form check of the realized impedance is
 ``tests/oracle/test_series_rlc_load_on_line.py``.
+The gate is 32 float32 epsilons against an earlier measured max ``|series - folded| / max |folded| =
+2.3e-7 ... 3.5e-7`` over 600 steps.
 """
 from __future__ import annotations
 
@@ -48,20 +50,12 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 
 ETA0 = 376.730313668
 
-# ---------------------------------------------------------------------------
-# 1. C -> inf series R + C == the folded resistor on the same edge
-# ---------------------------------------------------------------------------
 
 _LINE_DX = 1e-3
 _LINE_NODES = 20
 _LINE_STEPS = 600
 _LOAD_NODE = _LINE_NODES - 3
 
-#: Float32 storage rounding, accumulated over the run. MEASURED on this
-#: fixture (600 steps, all six components at three probes, R = 0.1 ... 1e4
-#: ohm): max |series - folded| / max |folded| = 2.3e-7 ... 3.5e-7, i.e. about
-#: 3 float32 epsilons. The gate is 32 epsilons. The replaced update misses by
-#: the edge impedance (R - 215 ohm), which moves the fields by tens of percent.
 _F32_REL = 32.0 * float(np.finfo(np.float32).eps)
 
 
@@ -100,9 +94,9 @@ def test_series_r_with_infinite_c_is_the_folded_resistor(r_ohm):
     folded = _line(lambda s, p: s.add_lumped_rlc(
         position=p, component="ez", R=r_ohm, topology="parallel"))
 
-    # Realized, not declared: both elements on the same edge, and the series
-    # one really is the series ADE (two components) while the folded one is a
-    # single-component parallel element.
+    assert (folded._lumped_rlc[0].topology == "parallel"
+            and folded._lumped_rlc[0].R == r_ohm
+            and folded._lumped_rlc[0].L == folded._lumped_rlc[0].C == 0.0), "folded reference must be a single-component parallel resistor"
     for sim in (series, folded):
         grid = sim._build_grid()
         assert tuple(int(v) for v in grid.position_to_index(
@@ -145,15 +139,6 @@ def _assert_on_the_surface(sim):
     assert float(eps[i, 0, 0]) == _EPS_SURFACE and float(eps[i - 1, 0, 0]) == 1.0
 
 
-#: The load edge sits on an eps 1 | 4 surface: its own permittivity is 2.5,
-#: its cell's is 4. A series element that reads D0 from its cell realizes a
-#: different resistance than the folded resistor on the same edge, whose
-#: conductance the Yee update applies with the edge's own coefficient
-#: (measured a series 100 ohm reading 160 ohm there). MEASURED
-#: with the edge D0: 1.8e-7 (100 ohm), 2.9e-7 (50 ohm), 2.5e-7 (folded 200 +
-#: series 100) of the peak; with the single-cell D0 restored: 1.0e-1, 6.5e-2,
-#: 4.0e-2. The stacked row also goes red (4.1e-2 in vacuum, 1.9e-2 on the
-#: surface) when the edge D0 leaves the lumped stamps out.
 _EPS_SURFACE = 4.0
 
 
@@ -195,35 +180,9 @@ def test_series_element_on_an_edge_that_already_carries_a_folded_load():
         f"(bound {_F32_REL:.1e})")
 
 
-# ---------------------------------------------------------------------------
-# 2. The adjacent-to-port box decays
-# ---------------------------------------------------------------------------
-
 _BOX_DX = 1e-3
 _BOX_STEPS = 4800
 
-#: MEASURED with this update (2400 steps, dx = 1 mm): the largest field over
-#: the last 400 steps is 8e-6 ... 3.4e-5 of the run's peak on these rows (the
-#: 87-case sweep over R 0.1-300 ohm x RC/RL/RLC/LC x dx 0.5/1/2 mm at 4800
-#: steps: at most 3.3e-5). Every row here fails with the replaced update:
-#: non-finite or past 1e33 by step 2400 at R = 0.1 and 50 ohm (RC, RL, RLC),
-#: 4.8e24 at R = 150 ohm (RC).
-#:
-#: #1236 moved the record from 2400 to 4800 steps (threshold unchanged). The
-#: 50 ohm port used to be a 50 ohm resistor on the Ex and Ey edges at its node
-#: as well as on its Ez gap; those two spurious loads damped the box (the
-#: port node's radial fields were pinned to 0.034 / 0.013 of its Ez; with the
-#: load on the gap only they reach 0.50 / 0.42). Without them the modes that
-#: barely touch the port's Ez edge ring longer: last-400-step max / peak at
-#: 2400 steps 1.6e-4 ... 1.21e-3 (RL-0.1 and RLC-0.1 over the bar), at 4800
-#: steps 7.7e-6 ... 3.9e-4. RL-0.1 then levels off rather than decaying to
-#: zero: 1.21e-3, 3.70e-4, 2.03e-4, 1.82e-4, 1.60e-4, 1.62e-4 at
-#: 2400/4800/9600/14400/19200/24000 steps, zero-mean (3.7e-8 of peak over
-#: steps 16000-24000) -- a lightly damped oscillation of the 1 nH inductor
-#: with the edge's cell capacitance, which only 0.1 ohm damps now that the
-#: spurious 50 ohm load on the port node's Ex edge (the edge that joins the
-#: port node to the element node) is gone. No growth; 6.2x under
-#: the bar. The replaced update diverges long before 2400.
 _DECAY_FRACTION = 1e-3
 
 _L = 1e-9
@@ -236,6 +195,8 @@ _C = 0.2e-12
     (0.1, _L, _C), (50.0, _L, _C),
 ], ids=["RC-0.1", "RC-50", "RC-150", "RL-0.1", "RL-50", "RLC-0.1", "RLC-50"])
 def test_series_element_next_to_a_port_decays(r_ohm, l_h, c_f):
+    """An earlier measurement of last-400-step max / peak was 1.6e-4 ... 1.21e-3 at 2400 steps (RL-0.1
+    and RLC-0.1 over the bar), against 7.7e-6 ... 3.9e-4 at 4800 steps."""
     dx = _BOX_DX
     port = (2 * dx, 2 * dx, 2 * dx)
     elem = (3 * dx, 2 * dx, 2 * dx)
