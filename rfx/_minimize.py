@@ -285,7 +285,7 @@ def minimize(
         n_iters=n_iters, m=m, jacobian=mode, jit=jit,
         keep_iterates=True, name="minimize",
     )
-    if worst_case:
+    if worst_case and isinstance(opt, _RecordingMMA):
         history = opt.history
     nfev = solves["forward_mode"] // start.size if mode == "fwd" else solves["forward"]
     x_history = jnp.stack([physical(point) for point in visited]) if visited else jnp.empty((0, start.size), dtype=dtype)
