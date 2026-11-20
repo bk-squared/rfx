@@ -74,9 +74,6 @@ from rfx.sources.sources import GaussianPulse
 from tests._wave_convention import plant_ladder_voltages_physical
 
 
-# ===========================================================================
-# formerly tests/unit/sparams/test_coax_two_port_smatrix.py
-# ===========================================================================
 
 BAND = np.array([4.0e9, 6.0e9, 8.0e9, 10.0e9, 12.0e9])
 
@@ -110,10 +107,6 @@ def _sim(**kw):
     return sim
 
 
-# ---------------------------------------------------------------------------
-# FAST: convention wiring via planted analytic V(z), through the real
-# assembly path (no FDTD).
-# ---------------------------------------------------------------------------
 
 def _plant_ab(s_true, gamma_t, n_f):
     """Wave amplitudes at both ports for both drives, terminator ``gamma_t``.
@@ -136,43 +129,13 @@ def _plant_ab(s_true, gamma_t, n_f):
     return a, b
 
 
-# ---------------------------------------------------------------------------
-# The planted fields below are built by the ONE frozen convention helper,
-# ``tests/_wave_convention.py::plant_ladder_voltages_physical``,
-# which plants from GEOMETRY -- where the DUT is relative to the ladder --
-# and never from the extractor's own labels.
-#
-# The retired local helper ``_voltages_from_ab`` did the opposite: it asked
-# the extractor's ``load_below`` rule which exponential branch would be
-# called ``forward_amp`` and planted ``a`` onto whichever branch the
-# assembler's own constant reads as incident, so helper and assembler were a
-# label ROUND-TRIP -- green for whatever constant is chosen, as long as both
-# are chosen together, and structurally unable to notice that the constant is
-# wrong FOR THE GEOMETRY because geometry never entered the planting. That is
-# precisely how the sibling lane
-# ``_assemble_coax_msl_transition_from_voltages`` shipped with both ports'
-# roles exchanged (S = inv(S_true)) behind a green planted test: it copied
-# the helper AND the constant onto a lane whose reference planes sit on the
-# other side of the probes. The two
-# constructions are algebraically identical ON THIS GEOMETRY -- measured
-# max|old - new| = 4.30e-16 / 2.78e-16 (top, per drive) and 5.47e-16 /
-# 7.77e-16 (bot), pure float association, against assertions at atol=1e-9 --
-# and ``test_planted_fields_are_unchanged_by_the_frozen_planting_contract``
-# pins that equivalence rather than asserting it in prose.
-#
-# The DUT (the through line's interior) lies BELOW the top array's own feed
-# plane and ABOVE the bottom array's, so:
-_DUT_SIGN_TOP = -1.0    # DUT at SMALLER z than the top probes
-_DUT_SIGN_BOT = +1.0    # DUT at LARGER  z than the bottom probes
-# ...and on both arrays the reference plane (that port's feed) is therefore
-# on the FAR side of the probes from the DUT, which is what makes
-# ``a = backward_amp`` correct HERE and wrong on the coax<->MSL lane.
-# ---------------------------------------------------------------------------
+_DUT_SIGN_TOP = -1.0
+_DUT_SIGN_BOT = +1.0
 
 _Z_PLANES_TOP_M = np.array([0.10, 0.11, 0.12, 0.13, 0.14, 0.15])
 _Z_PLANES_BOT_M = np.array([0.00, 0.01, 0.02, 0.03, 0.04, 0.05])
-_REF_TOP_M = 0.17     # ABOVE probes_top (port 1, +z end)
-_REF_BOT_M = -0.02    # BELOW probes_bot (port 2, -z end)
+_REF_TOP_M = 0.17
+_REF_BOT_M = -0.02
 
 
 def _plant_two_port_voltages(a, b, *, gamma):
@@ -212,9 +175,8 @@ def test_the_planted_dut_signs_are_the_fixture_geometry():
     pinned by ``test_planted_voltages_recover_known_asymmetric_s_matrix``,
     which plants from this geometry and never from the extractor's labels.
     """
-    assert _REF_TOP_M > _Z_PLANES_TOP_M.max()   # feed above the top ladder
-    assert _REF_BOT_M < _Z_PLANES_BOT_M.min()   # feed below the bottom ladder
-    # DUT side is the OPPOSITE side from each feed on this geometry.
+    assert _REF_TOP_M > _Z_PLANES_TOP_M.max()
+    assert _REF_BOT_M < _Z_PLANES_BOT_M.min()
     assert _DUT_SIGN_TOP == -np.sign(_REF_TOP_M - _Z_PLANES_TOP_M.mean())
     assert _DUT_SIGN_BOT == -np.sign(_REF_BOT_M - _Z_PLANES_BOT_M.mean())
 
@@ -227,6 +189,7 @@ def test_planted_fields_are_unchanged_by_the_frozen_planting_contract():
     was adopted here: the planted FIELD. The retired construction is
     reproduced inline (it exists nowhere else now) and compared to the
     frozen contract on this fixture's own geometry.
+    Earlier measured differences between the retired and frozen planting: 4.30e-16 / 2.78e-16 / 5.47e-16 / 7.77e-16.
     """
     def _retired_label_blind_planting(a, b, *, gamma, z_planes_m, ref_m, load_below):
         """The pre-#822 helper, verbatim in algebra: invert the extractor's
@@ -268,7 +231,6 @@ def test_planted_fields_are_unchanged_by_the_frozen_planting_contract():
             new = plant_ladder_voltages_physical(
                 a_true[idx, drive], b_true[idx, drive], gamma=gamma,
                 planes_m=planes, ref_m=ref, dut_sign=dut_sign)
-            # Measured: 4.30e-16 / 2.78e-16 / 5.47e-16 / 7.77e-16.
             assert np.abs(old - new).max() <= 1e-15, np.abs(old - new).max()
 
 
@@ -289,17 +251,16 @@ def test_planted_voltages_recover_known_asymmetric_s_matrix():
     ``np.full``) so a per-frequency indexing bug in the assembly loop (e.g.
     a transposed or fixed frequency index) would show up as a mismatch
     rather than passing by coincidence.
+    The passivity sanity check (not required by the algebra under test) keeps the fixture physically plausible at every one of the 3 distinct frequency points.
     """
     n_f = 3
     s_true = (
         np.array([0.15 + 0.05j, 0.20 - 0.03j, -0.05 + 0.10j]),
-        np.array([0.75 - 0.20j, 0.60 + 0.30j, 0.55 - 0.40j]),   # S12
-        np.array([0.75 - 0.20j, 0.60 + 0.30j, 0.55 - 0.40j]),   # S21 == S12 (reciprocal)
+        np.array([0.75 - 0.20j, 0.60 + 0.30j, 0.55 - 0.40j]),
+        np.array([0.75 - 0.20j, 0.60 + 0.30j, 0.55 - 0.40j]),
         np.array([-0.10 + 0.08j, 0.05 - 0.12j, 0.15 + 0.02j]),
     )
-    # Passivity sanity check on the planted truth, per frequency (not
-    # required by the algebra under test, but keeps the fixture physically
-    # plausible at every one of the 3 distinct frequency points).
+    assert np.array_equal(s_true[2], s_true[1]), "Planted truth must have S21 == S12 (reciprocal)"
     s_mat_per_freq = [
         np.array([[s_true[0][fi], s_true[1][fi]], [s_true[2][fi], s_true[3][fi]]])
         for fi in range(n_f)
@@ -307,12 +268,15 @@ def test_planted_voltages_recover_known_asymmetric_s_matrix():
     for s_mat_fi in s_mat_per_freq:
         assert np.all(np.linalg.svd(s_mat_fi, compute_uv=False) <= 1.0)
 
-    gamma_t = 0.05  # each feed's own residual self-mismatch (validated envelope 0.02-0.08)
+    FEED_RESIDUAL_SELF_MISMATCH = 0.05
+    gamma_t = FEED_RESIDUAL_SELF_MISMATCH
     a_true, b_true = _plant_ab(s_true, gamma_t, n_f)
 
-    # Lossless synthetic propagation constant, a DIFFERENT beta per
-    # frequency (rad/m) — not the same value broadcast across all 3.
-    gamma = 1j * np.array([40.0, 50.0, 65.0])
+    BETA_FIRST_RAD_PER_M = 40.0
+    BETA_SECOND_RAD_PER_M = 50.0
+    BETA_THIRD_RAD_PER_M = 65.0
+    gamma = 1j * np.array([BETA_FIRST_RAD_PER_M, BETA_SECOND_RAD_PER_M, BETA_THIRD_RAD_PER_M])
+    assert np.all(gamma.real == 0) and np.unique(gamma.imag).size == n_f, "Synthetic propagation must be lossless with a distinct beta at every frequency"
     v_top_by_drive, v_bot_by_drive = _plant_two_port_voltages(
         a_true, b_true, gamma=gamma)
 
@@ -327,10 +291,6 @@ def test_planted_voltages_recover_known_asymmetric_s_matrix():
     assert np.all(np.isfinite(rec_resid)) and np.all(rec_resid < 1e-9)
     assert np.all(np.isfinite(fit_resid)) and np.all(fit_resid < 1e-9)
     assert np.all(cond_a < 3.0)
-    # The matrix-pencil fit itself recovers the planted (per-frequency)
-    # propagation constant exactly on this clean synthetic field (no
-    # reference-plane extrapolation involved) — a sanity check on the
-    # newly-exposed `gamma` return.
     np.testing.assert_allclose(gamma_fit, np.broadcast_to(gamma, gamma_fit.shape), atol=1e-6)
 
 
@@ -360,7 +320,6 @@ def test_swapped_ab_convention_fails_the_same_asymmetric_fixture():
     a_true, b_true = _plant_ab(s_true, 0.05, n_f)
     gamma = 1j * np.array([40.0, 50.0, 65.0])
 
-    # Wrong side at BOTH ports: claim the DUT is where the feed is.
     v_top_by_drive = np.stack([
         plant_ladder_voltages_physical(
             a_true[0, drive], b_true[0, drive], gamma=gamma,
@@ -382,21 +341,9 @@ def test_swapped_ab_convention_fails_the_same_asymmetric_fixture():
     for fi, s_mat_true in enumerate(_s_mat_per_freq(s_true, n_f)):
         s_inv = np.linalg.inv(s_mat_true)
         np.testing.assert_allclose(s_params[:, :, fi], s_inv, atol=1e-9)
-        assert np.abs(s_inv - s_mat_true).max() > 0.5   # the control fires
+        assert np.abs(s_inv - s_mat_true).max() > 0.5
 
 
-# ---------------------------------------------------------------------------
-# FAST: the CALL-SITE drive_idx <-> physical-port wiring (the openEMS referee's own carried-forward item, "the
-# reverse_drive=True call-site wiring for drive='port2' is correct at HEAD
-# but unpinned by a test", closed by tests/test_coax_two_port_referee_
-# header.py::test_extract_two_port_s_synthetic_forward_and_reverse_drive for
-# the REFEREE's own call site). rfx's OWN compute_coaxial_two_port had the
-# analogous gap: no test exercises its FDTD call site's `for drive_idx, spec
-# in enumerate((spec_top, spec_bot))` loop end-to-end -- the two tests above
-# call `_assemble_coaxial_two_port_from_voltages` DIRECTLY with arrays the
-# test itself already indexed correctly, so they cannot see a call-site
-# defect that mislabels which PHYSICAL excitation fills drive_idx 0 vs 1.
-# ---------------------------------------------------------------------------
 
 def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch):
     """Pins compute_coaxial_two_port's own call-site wiring: drive_idx=0 in
@@ -468,6 +415,7 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
     ``port_names``/physical-location contract, would silently scramble --
     which is exactly why this test inspects the intermediate arrays
     directly instead of trusting the final S matrix.
+    Patching the ``rfx.api._sparams`` re-export would leave ``captured`` empty.
     """
     sim = _sim()
     grid = sim._build_grid()
@@ -498,33 +446,21 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
             self.time_series = time_series
             self.dt = dt
 
-    # Two-axis sentinel: real part keys the PHYSICAL DRIVE (1=port1/top,
-    # 2=port2/bottom), imaginary part keys the ARRAY BLOCK POSITION within
-    # result.dft_planes (10=bot-block/first half, 20=top-block/second
-    # half) -- four distinct values total, independently checkable.
     DRIVE_PORT1, DRIVE_PORT2 = 1.0, 2.0
     ARRAY_BOT, ARRAY_TOP = 10.0, 20.0
 
-    # The signature is spelled out rather than swallowing **kwargs, so that a
-    # new argument at the real call site lands here as a TypeError instead of
-    # being silently absorbed. ``pec_edge_masks`` arrived that way: the coax
-    # conductors are realized as shorted E edges now, and the lane passes them
-    # to the runner. The stub takes it and ignores it -- what this test is
-    # about is which physical port each drive excited, and that is read below
-    # from the z-index of the source cells, not from anything here.
     def _fake_run(grid_, materials, n_steps, *, boundary, cpml_axes, sources,
                  mag_sources, probes, dft_planes, return_state,
                  pec_edge_masks=None, record_dft=False):
+        """The explicit runner signature makes a new argument at the real call site raise TypeError instead of being silently absorbed."""
         assert record_dft is True
-        # Identify the PHYSICAL port purely from source z-location -- NOT
-        # from any call-order assumption.
         k0 = float(sources[0].k)
         drive_val = DRIVE_PORT1 if k0 > nz_mid else DRIVE_PORT2
         n_total = len(dft_planes)
-        n_bot_block = n_total // 2  # bot block is the first half (n_bot*2 entries)
+        n_bot_block = n_total // 2
         fake_planes = []
         for i in range(n_total):
-            if i % 2 == 0:  # "ex" slot carries the sentinel; "ey" is unused
+            if i % 2 == 0:
                 array_val = ARRAY_BOT if i < n_bot_block else ARRAY_TOP
                 sentinel = drive_val + array_val * 1j
                 fake_planes.append(_FakeAcc(np.array([sentinel])))
@@ -538,11 +474,6 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
 
     import rfx.simulation as _simulation_mod
     import rfx.sources.coaxial_port as _coax_mod
-    # Phase 2 moved compute_coaxial_two_port verbatim into
-    # rfx/sparams/coax.py, so ``_assemble_coaxial_two_port_from_voltages`` is
-    # looked up as a global of THAT module. Patching the ``rfx.api._sparams``
-    # re-export would still succeed and silently stop biting -- ``captured``
-    # would stay empty and the drive-index check below would never run.
     import rfx.sparams.coax as _coax_lane_mod
 
     monkeypatch.setattr(_simulation_mod, "run", _fake_run)
@@ -556,18 +487,12 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
     v_bot = captured["v_bot_by_drive"]
     v_top = captured["v_top_by_drive"]
     assert v_bot.shape[0] == 2 and v_top.shape[0] == 2
-    # drive_idx=0 must be PHYSICALLY port 1 (top) AND the array-axis
-    # component must match which array is being read (bot vs top block).
     np.testing.assert_allclose(v_bot[0], DRIVE_PORT1 + ARRAY_BOT * 1j)
     np.testing.assert_allclose(v_top[0], DRIVE_PORT1 + ARRAY_TOP * 1j)
-    # drive_idx=1 must be PHYSICALLY port 2 (bottom), same array-axis check.
     np.testing.assert_allclose(v_bot[1], DRIVE_PORT2 + ARRAY_BOT * 1j)
     np.testing.assert_allclose(v_top[1], DRIVE_PORT2 + ARRAY_TOP * 1j)
 
 
-# ---------------------------------------------------------------------------
-# FAST: registration/geometry error paths (raise before any FDTD run).
-# ---------------------------------------------------------------------------
 
 def test_boundary_must_be_cpml():
     sim = _sim(boundary="pec")
@@ -585,10 +510,9 @@ def test_absorbing_on_z_only_is_refused():
 
 
 def test_periodic_axes_rejected():
+    """A periodic lateral axis has no absorber, so the all-six-faces absorber requirement is the refusal that fires first."""
     from rfx.boundaries.spec import BoundarySpec
     sim = _sim(boundary=BoundarySpec(x="periodic", y="cpml", z="cpml"))
-    # A periodic lateral axis has no absorber, so the all-six-faces absorber
-    # requirement (issue 1218) is the refusal that fires first.
     with pytest.raises(ValueError, match="positive CPML thickness on all six faces"):
         sim.compute_coaxial_two_port(n_steps=1, n_freqs=1)
 
@@ -714,21 +638,16 @@ def test_non_top_face_rejected():
         sim.compute_coaxial_two_port(n_steps=1, n_freqs=1)
 
 
-# ---------------------------------------------------------------------------
-# FAST: layout / fit-check math (raise before any FDTD run).
-# ---------------------------------------------------------------------------
 
 def test_domain_too_short_for_two_feed_layout_is_rejected():
-    # freq_max=40 GHz still gives dx~0.375mm; a tiny z domain cannot fit both
-    # ends' fixed (2/1/3-cell) offsets plus their probe arrays.
+    """A tiny z domain cannot fit both ends' fixed (2/1/3-cell) offsets plus their probe arrays."""
     sim = _sim(domain=(0.008, 0.008, 0.006))
     with pytest.raises(ValueError, match="domain too short|probe arrays overlap"):
         sim.compute_coaxial_two_port(n_steps=1, n_freqs=1)
 
 
 def test_overlapping_probe_arrays_are_rejected():
-    # Enough room for the fixed offsets but not for two 12-plane, 4-cell
-    # spaced arrays without touching.
+    """The domain has enough room for the fixed offsets but not for two 12-plane, 4-cell spaced arrays without touching."""
     sim = _sim(domain=(0.008, 0.008, 0.020))
     with pytest.raises(ValueError, match="probe arrays overlap|domain too short"):
         sim.compute_coaxial_two_port(n_steps=1, n_freqs=1)
@@ -738,7 +657,7 @@ def test_default_domain_fits_the_default_layout():
     """Non-firing control: the domain this suite's slow test uses must NOT
     trip either fit-check — i.e. the two rejection tests above are testing
     a real constraint, not a constraint that always fires."""
-    sim = _sim()  # domain=(0.008, 0.008, 0.060), the slow test's own domain
+    sim = _sim()
     grid = sim._build_grid()
     nz = grid.shape[2]
     z_hi_coax_top = nz - int(grid.pad_z_hi) - 2
@@ -772,7 +691,6 @@ def test_default_coax_fixture_realizes_the_declared_mesh_and_absorber_depth():
 
     assert grid.shape == (55, 55, 194)
     assert grid.dx == pytest.approx(3.7474057249999997e-4, rel=1e-12)
-    # ...which is lambda_min / 20 at the declared freq_max, re-derived here.
     assert grid.dx == pytest.approx(299792458.0 / 40.0e9 / 20.0, rel=1e-12)
 
     assert (grid.pad_x_lo, grid.pad_x_hi) == (16, 16)
@@ -783,10 +701,6 @@ def test_default_coax_fixture_realizes_the_declared_mesh_and_absorber_depth():
     assert interior == (22, 22, 161)
 
 
-# ---------------------------------------------------------------------------
-# FAST: passivity-advisory routing (design-note incidental defect 3 — the
-# 1-port result bypasses _finalize_sparam_result; this one must not).
-# ---------------------------------------------------------------------------
 
 def _dummy_result(s_params):
     n_f = s_params.shape[-1]
@@ -816,14 +730,14 @@ def test_passive_result_does_not_warn_non_firing_control():
 
 
 def test_nonpassive_result_warns_and_is_not_silently_dropped():
-    # Column power 0.05^2 + 5.0^2 >> 1: grossly non-passive.
     s_bad = np.array(
         [[0.05 + 0.0j, 5.0 + 0.0j], [5.0 + 0.0j, 0.05 + 0.0j]]
     )[:, :, None]
+    assert np.all(np.sum(np.abs(s_bad) ** 2, axis=0) > 1.0), "Column power must exceed one for the non-passive fixture"
     result = _dummy_result(s_bad)
     with pytest.warns(UserWarning, match="passivity"):
         out = _finalize_sparam_result(result, extractor="compute_coaxial_two_port", strict=False)
-    assert out is result  # advisory only: the (unreliable) result is still returned
+    assert out is result
 
 
 @pytest.mark.source_scan
@@ -836,112 +750,10 @@ def test_compute_coaxial_two_port_routes_through_finalize_sparam_result():
     assert "_finalize_sparam_result(" in src
 
 
-# ---------------------------------------------------------------------------
-# SLOW (real FDTD, own process): the full through-line fixture.
-#
-# The run below is domain=(0.008, 0.008, 0.060), freq_max=40e9 (dx=0.3747mm,
-# matching the validated 1-port dx), n_steps=6000, freqs=BAND — captured
-# via a standalone script (not this test file) run with
-# `PYTHONPATH=<this worktree> python3 <script>` (the shared checkout's
-# editable install otherwise shadows the worktree —
-# feedback_stale_editable_install_shadow). Some gates below are pinned fresh
-# from this measurement with margin (|S21|,|S12| >= 0.70; reciprocity
-# <1%/<1deg); others are INHERITED numbers reused from the 1-port method or
-# the stage-1 table rather than independently derived from this run
-# (cond_a < 3.0; recurrence_residual < 0.02; |S11|,|S22| <= 0.08; settling_db
-# < -40.0; fit_residual < 0.02 borrows the recurrence gate's number by
-# convenience) — see the inline comment on each assertion below for which is
-# which. Full measured table:
-#
-#   f(GHz)  |S11|   |S21|   |S12|   |S22|   |S21|/|S12|  angle(S21)-angle(S12)
-#     4.00  0.0092  0.9600  0.9606  0.0086  0.9994        0.0071 deg
-#     6.00  0.0086  0.9134  0.9137  0.0086  0.9997        0.0131 deg
-#     8.00  0.0054  0.8450  0.8475  0.0060  0.9970        0.0602 deg
-#    10.00  0.0144  0.8259  0.8254  0.0104  1.0006        0.2011 deg
-#    12.00  0.0502  0.7372  0.7377  0.0379  0.9992        0.0666 deg
-#
-# status="passed", annulus_cells=3.789, cond_a in [1.037, 1.106],
-# recurrence_residual max 0.00297 (well under the 1-port's own 0.02 gate),
-# fit_residual max 0.0127, settling_db=[-65.87, -65.59] (well under the
-# project's -40 dB ring-down rule), column power (|S_j1|^2+|S_j2|^2) in
-# [0.546, 0.923] at all 5 bins (comfortably passive), ZERO warnings emitted
-# (no passivity/cond/amplitude advisory fired).
-#
-# The method does not call self.preflight() (same as the 1-port
-# compute_coaxial_line_reflection it mirrors — both build their own
-# low-level fixture via rfx.simulation.run directly, outside the
-# preflight-covered high-level flow); there is no preflight output to quote.
-#
-# All 6 qualitative predictions from docs/design_notes/
-# i489_stage2_two_port_fdtd_predeclaration.md held: |S21|,|S12| near 1;
-# |S11|,|S22| small (within the validated 1-port matched-termination
-# envelope, 0.02-0.08); reciprocity ratio near 1 (magnitude AND phase);
-# cond(A) small (< the stage-1 table's ~3 figure); recurrence residual
-# small; ring-down settled.
-#
-# MECHANISM CHECK (R5, a POST-HOC consistency check run AFTER this |S21|
-# decline was measured — no committed artifact predates it — with a
-# disclosed estimator choice made after seeing the own/other split below;
-# a lossless through line with |S11|<=0.05 cannot have |S21|=0.74 unless
-# the discrete line itself attenuates): the |S21| decline (0.96->0.74,
-# 4-12 GHz) equals what the matrix-pencil-fitted Re(gamma) the extractor
-# already measures predicts over the reported port separation, not merely
-# qualitatively plausible. Per frequency, `|S21_solved| *
-# exp(+Re(gamma_bar) * L12)` (L12 = distance between the two reference
-# planes, from res.reference_planes; gamma_bar = mean of all 4 available
-# fits — both arrays x both drives) landed in [0.979, 0.992] at all 5 band
-# points (measured) — inside the [0.95, 1.05] window this check
-# treats as consistent.
-#
-# WHAT THIS CHECK BINDS AND WHAT IT DOES NOT (do not overclaim it as a
-# blanket "not an extraction/referral defect" — it is not that broad): it
-# is sensitive to SCALE-type deficits — amplitude mis-normalization, mode
-# conversion, a bad wave split — because `gamma` is fit from the field's
-# SHAPE along z, not its absolute scale, so a scale bug in |S21| would not
-# be echoed by a matching shift in the fitted `gamma`. It is structurally
-# BLIND to reference-plane REFERRAL errors: a referral error `delta` at
-# either plane scales the wave amplitude by `exp(+/-gamma*delta)` while
-# `L12` grows by the same `delta`, so the compensation factor absorbs a
-# referral error EXACTLY (independently verified to five decimal places
-# even at +30 cells of injected referral error — a wrong reference plane
-# passes this check unchanged). So: this check is evidence the |S21|
-# deficit is a scale-consistent, shape-explained line attenuation rather
-# than an amplitude/mode-conversion/wave-split bug; it says nothing about
-# whether either reference plane is correctly placed. The
-# under-resolved-annulus recipe (>=4 cells) that this repo already
-# documents for REFLECTION accuracy (compute_coaxial_line_reflection)
-# evidently applies to TRANSMISSION magnitude here too, even though status
-# reports "passed" (annulus_cells only gates under 3.5).
-#
-# IMPORTANT NUANCE, surfaced rather than smoothed over: the 4 individual
-# gamma measurements that go into gamma_bar are NOT mutually consistent —
-# "own drive" fits (that array's own source active: top-array during
-# top-driven, bot-array during bot-driven) measured Re(gamma) roughly
-# 2-8x SMALLER than "other drive" fits (that array receiving the
-# transmitted signal), and this split narrows but persists across the whole
-# band (measured factor ~8x at 4 GHz, ~2.3x at 12 GHz), even though
-# recurrence_residual stays <0.003 for EVERY one of the 4 measurements (the
-# two-wave fit itself is clean at each one). The two "own-drive" fits agree
-# with each other to ~5%; the two "other-drive" fits agree with each other
-# to ~2% — so this is a reproducible, physically-structured split, not
-# noise. Using ONLY the "own-drive" pair (the more consistent proxy for
-# genuine uniform bulk-line loss, since it is less perturbed by the
-# far/receiving feed's own near-field) under-predicts the |S21| decline
-# (compensated ratio drifts to ~0.88 at 12 GHz, below the confirm window);
-# using ONLY the "other-drive" pair over-predicts it (drifts to ~1.09).
-# Averaging all 4 is therefore not an arbitrary smoothing choice — it is
-# the reading consistent with an ADDITIVE mechanism: genuine (small)
-# uniform bulk attenuation from the discrete annulus, PLUS additional
-# loss/scattering concentrated at the RECEIVING feed's own discontinuity
-# (which a receiving array's local matrix-pencil fit partially attributes
-# to "extra decay" because it sits close to a feed now absorbing the full
-# incident power, rather than the weak TFSF-leakage residual it absorbs
-# during its own drive). See gamma's field docstring on
-# CoaxialTwoPortResult and _assemble_coaxial_two_port_from_voltages for the
-# same finding recorded at the API level.
 @pytest.mark.slow_physics
 def test_matched_through_line_transmits_reciprocally(monkeypatch):
-    sim = _sim()  # domain=(0.008, 0.008, 0.060), freq_max=40e9
+    """The fit_residual < 0.02 number is borrowed from the recurrence gate for convenience (same repo, same 2-decimal round number, ~1.6x margin over the earlier measured max 0.0127)."""
+    sim = _sim()
     import rfx.sparams.coax as coax
 
     captures = []
@@ -963,40 +775,25 @@ def test_matched_through_line_transmits_reciprocally(monkeypatch):
     assert res.status == "passed"
     assert res.annulus_cells >= 3.5
     assert np.all(np.isfinite(res.s_params))
-    # cond_a < 3.0: INHERITED from the stage-1 table's own measured "~3"
-    # figure (rfx.sources.coaxial_port.solve_two_port_from_wave_amplitudes
-    # docstring), not pinned fresh from this run (measured max 1.106 here).
-    assert np.all(res.cond_a < 3.0)
-    # recurrence_residual < 0.02: INHERITED verbatim from the 1-port
-    # calibration's own gate (tests/unit/sparams/test_coaxial_line_reflection.py),
-    # not pinned fresh from this run (measured max 0.00297 here).
-    assert np.all(res.recurrence_residual < 0.02)
-    # fit_residual < 0.02: the NUMBER is borrowed from the recurrence gate
-    # above for convenience (same repo, same 2-decimal round number, ~1.6x
-    # margin over the measured max 0.0127) — this is not an independently
-    # pinned-from-measurement gate for fit_residual specifically; the
-    # 1-port method has no fit_residual gate to inherit from.
-    assert np.all(res.fit_residual < 0.02)
-    # settling_db < -40.0: INHERITED, the project's general ring-down
-    # settling rule (docs/guides/simulation_methodology.md), not pinned
-    # from this run (measured [-65.87, -65.59] here).
-    assert np.all(res.settling_db < -40.0)
+    THROUGH_LINE_CONDITION_LIMIT = 3.0
+    assert np.all(res.cond_a < THROUGH_LINE_CONDITION_LIMIT)
+    RECURRENCE_RESIDUAL_LIMIT = 0.02
+    assert np.all(res.recurrence_residual < RECURRENCE_RESIDUAL_LIMIT)
+    FIT_RESIDUAL_LIMIT = 0.02
+    assert np.all(res.fit_residual < FIT_RESIDUAL_LIMIT)
+    SETTLING_LIMIT_DB = -40.0
+    assert np.all(res.settling_db < SETTLING_LIMIT_DB)
 
     S = res.s_params
     s11, s21, s12, s22 = S[0, 0], S[1, 0], S[0, 1], S[1, 1]
-    # |S21|,|S12| >= 0.70: PINNED fresh from this measurement (min measured
-    # 0.7372/0.7377 at 12 GHz, with margin down to 0.70).
-    assert np.all(np.abs(s21) >= 0.70), np.abs(s21)
-    assert np.all(np.abs(s12) >= 0.70), np.abs(s12)
+    TRANSMISSION_MAGNITUDE_FLOOR = 0.70
+    assert np.all(np.abs(s21) >= TRANSMISSION_MAGNITUDE_FLOOR), np.abs(s21)
+    assert np.all(np.abs(s12) >= TRANSMISSION_MAGNITUDE_FLOOR), np.abs(s12)
     assert len(captures) == 1
     native, line_impedances, reference_impedances = captures[0]
-    # The 0.08 bar bounds the port's own reflection, inherited from the
-    # one-port envelope (tests/unit/sparams/test_coaxial_line_reflection.py).
-    # The staircased line is built at 43.575 ohm
-    # versus drawn 48.591 ohm; native reflection <= 1.1e-5, but the
-    # staircased line's mismatch to 50 ohm raises returned |S11| to 0.1363.
-    assert np.all(np.abs(native[0, 0]) <= 0.08), np.abs(native[0, 0])
-    assert np.all(np.abs(native[1, 1]) <= 0.08), np.abs(native[1, 1])
+    NATIVE_REFLECTION_MAGNITUDE_CEILING = 0.08
+    assert np.all(np.abs(native[0, 0]) <= NATIVE_REFLECTION_MAGNITUDE_CEILING), np.abs(native[0, 0])
+    assert np.all(np.abs(native[1, 1]) <= NATIVE_REFLECTION_MAGNITUDE_CEILING), np.abs(native[1, 1])
 
     np.testing.assert_array_equal(line_impedances, res.line_impedances)
     np.testing.assert_array_equal(reference_impedances, [50.0, 50.0])
@@ -1009,9 +806,6 @@ def test_matched_through_line_transmits_reciprocally(monkeypatch):
         line_impedances, drawn_impedance,
     )
 
-    # Kurokawa (1965), doi:10.1109/TMTT.1965.1125964, real references:
-    # S' = A^-1 (S - R)(I - R S)^-1 A. Independent NumPy-only model;
-    # do not use the implementation's renormalisation helper here.
     rho_b = (50.0 - line_impedances) / (50.0 + line_impedances)
     R = np.diag(rho_b)
     A = np.diag(np.sqrt(1.0 - rho_b ** 2))
@@ -1022,38 +816,24 @@ def test_matched_through_line_transmits_reciprocally(monkeypatch):
     ], axis=-1)
     np.testing.assert_allclose(S, model, rtol=0.0, atol=1e-4)
 
-    # Reciprocity: both magnitude and phase (a mirror-symmetric through
-    # line gives no reason to expect a calibration-scale or orientation
-    # defect to hide here).
-    assert np.all(np.abs(np.abs(s21) / np.abs(s12) - 1.0) < 0.01)
+    RECIPROCITY_MAGNITUDE_TOLERANCE = 0.01
+    assert np.all(np.abs(np.abs(s21) / np.abs(s12) - 1.0) < RECIPROCITY_MAGNITUDE_TOLERANCE)
     phase_diff_deg = np.degrees(np.angle(s21) - np.angle(s12))
-    assert np.all(np.abs(phase_diff_deg) < 1.0), phase_diff_deg
+    RECIPROCITY_PHASE_TOLERANCE_DEG = 1.0
+    assert np.all(np.abs(phase_diff_deg) < RECIPROCITY_PHASE_TOLERANCE_DEG), phase_diff_deg
 
-    # Mechanism-anchored consistency gate (R5, post-hoc — see the comment
-    # above): the |S21| decline must equal what the extractor's own
-    # matrix-pencil Re(gamma) fits predict over L12, not merely be asserted
-    # plausible. gamma_bar averages all 4 available fits (both arrays x
-    # both drives) — see the comment above for why averaging all 4, not a
-    # subset, is the physically motivated (disclosed, chosen after seeing
-    # the own/other split) reading, and for what this check does and does
-    # not bind (scale-sensitive, referral-blind).
     L12 = float(res.reference_planes[0] - res.reference_planes[1])
-    gamma_bar = np.mean(res.gamma.real, axis=(0, 1))  # (n_freqs,)
+    gamma_bar = np.mean(res.gamma.real, axis=(0, 1))
     compensated_s21 = np.abs(s21) * np.exp(gamma_bar * L12)
     assert np.all((compensated_s21 >= 0.95) & (compensated_s21 <= 1.05)), (
         compensated_s21, gamma_bar, L12,
     )
 
-    # Passivity, directly (not just via the advisory that already ran above
-    # with zero warnings): column power must stay under 1 for a passive DUT.
     col1 = np.abs(s11) ** 2 + np.abs(s21) ** 2
     col2 = np.abs(s22) ** 2 + np.abs(s12) ** 2
     assert np.all(col1 < 1.0) and np.all(col2 < 1.0)
 
 
-# ===========================================================================
-# formerly tests/unit/sparams/test_coax_two_port_smatrix.py
-# ===========================================================================
 
 _FREQS = np.array([4e9, 6e9, 8e9, 10e9, 12e9])
 
@@ -1073,11 +853,9 @@ def _plant(s_true, gamma_t, n_f):
     s11, s12, s21, s22 = s_true
     a = np.zeros((2, 2, n_f), dtype=np.complex128)
     b = np.zeros((2, 2, n_f), dtype=np.complex128)
-    # drive port 1
     b2 = s21 / (1.0 - s22 * gamma_t)
     a[0, 0], a[1, 0] = 1.0, gamma_t * b2
     b[1, 0], b[0, 0] = b2, s11 + s12 * (gamma_t * b2)
-    # drive port 2
     b1 = s12 / (1.0 - s11 * gamma_t)
     a[1, 1], a[0, 1] = 1.0, gamma_t * b1
     b[0, 1], b[1, 1] = b1, s22 + s21 * (gamma_t * b1)
@@ -1110,7 +888,6 @@ def _asymmetric_reciprocal(z0, n_f):
     """
     one = np.ones(n_f, dtype=np.complex128)
     z1, z2, y = 30.0 + 0j, 12.0 + 0j, 1.0 / (80.0 + 0j)
-    # ABCD of series-shunt-series (reciprocal: AD - BC = 1).
     a = 1.0 + z1 * y
     b = z1 + z2 + z1 * y * z2
     c = y
@@ -1123,9 +900,6 @@ def _asymmetric_reciprocal(z0, n_f):
     return (s11 * one, s12 * one, s21 * one, s22 * one)
 
 
-# ---------------------------------------------------------------------------
-# Ground truth must itself be checked — every test below depends on it
-# ---------------------------------------------------------------------------
 
 def test_asymmetric_fixture_is_what_it_claims():
     """Verify the asymmetric DUT independently, by node analysis.
@@ -1136,14 +910,15 @@ def test_asymmetric_fixture_is_what_it_claims():
     properties are assumed rather than checked is how that happens, so this
     one is derived a second way — plain node analysis of the series-shunt-
     series network — and compared against the ABCD formula it ships with.
+    The EMF behind series Z0 is unit.
     """
     z0 = 48.5914
     z1, z2, y = 30.0, 12.0, 1.0 / 80.0
     s11, s12, s21, s22 = (v[0] for v in _asymmetric_reciprocal(z0, 1))
 
-    zp = 1.0 / (y + 1.0 / (z2 + z0))          # shunt 1/y || (z2 + Z0)
+    zp = 1.0 / (y + 1.0 / (z2 + z0))
     zin = z1 + zp
-    v1 = zin / (z0 + zin)                      # unit EMF behind series Z0
+    v1 = zin / (z0 + zin)
     v2 = (v1 * zp / (z1 + zp)) * z0 / (z2 + z0)
     zin2 = z2 + 1.0 / (y + 1.0 / (z1 + z0))
     np.testing.assert_allclose(s11.real, (zin - z0) / (zin + z0), atol=1e-12)
@@ -1155,9 +930,6 @@ def test_asymmetric_fixture_is_what_it_claims():
     assert abs(s11) ** 2 + abs(s21) ** 2 < 1.0, "fixture must be passive"
 
 
-# ---------------------------------------------------------------------------
-# Why the obvious rule was rejected
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("gamma_t", [0.02, 0.05, 0.08])
 def test_single_ratio_rule_has_a_terminator_floor(gamma_t):
@@ -1186,30 +958,22 @@ def test_two_drive_solve_removes_the_terminator_floor():
         out = solve_two_port_from_wave_amplitudes(a, b)
         np.testing.assert_allclose(np.abs(out.s_params[1, 0]), 1.0, atol=1e-13)
         np.testing.assert_allclose(np.abs(out.s_params[0, 0]), 0.0, atol=1e-13)
-        # Conditioning stays mild across the whole range — this is why no
-        # terminator improvement is a prerequisite for issue #489.
         assert np.all(out.cond_a < 3.0), (gamma_t, out.cond_a)
 
 
 def test_conditioning_grows_slowly_with_terminator_reflection():
-    """Pins the measured cond(A) trend so a regression is visible."""
+    """Pins the measured cond(A) trend so a regression is visible.
+    The closed form is asserted because |Gt|=0.5 gives exactly 3.0 despite this platform's SVD rounding to 2.999999999999999, which a LAPACK/numpy change could flip.
+    """
     n_f = 1
     conds = {}
     for gamma_t in (0.0, 0.08, 0.5):
         a, b = _plant(_through(n_f), gamma_t, n_f)
         conds[gamma_t] = float(solve_two_port_from_wave_amplitudes(a, b).cond_a[0])
-    # Closed form for this planted through line: cond = (1+|Gt|)/(1-|Gt|).
-    # Assert against that, not a hand-picked bound: the |Gt|=0.5 value is
-    # EXACTLY 3.0, and a bare `< 3.0` passed only because this platform's SVD
-    # rounds to 2.999999999999999 — a LAPACK/numpy change could flip it
-    # (cross-machine float flake class, project_ci_slow_suite_fixes).
     for gt, c in conds.items():
         assert c == pytest.approx((1.0 + gt) / (1.0 - gt), rel=1e-9, abs=1e-9)
 
 
-# ---------------------------------------------------------------------------
-# Exact DUT recovery
-# ---------------------------------------------------------------------------
 
 def test_recovers_shunt_resistor_exactly_despite_terminator():
     """A known-mismatch DUT is recovered exactly, terminator and all."""
@@ -1220,15 +984,11 @@ def test_recovers_shunt_resistor_exactly_despite_terminator():
     out = solve_two_port_from_wave_amplitudes(a, b)
     np.testing.assert_allclose(out.s_params[0, 0], s_true[0], atol=1e-12)
     np.testing.assert_allclose(out.s_params[1, 0], s_true[2], atol=1e-12)
-    # Reciprocity is a property of the recovered matrix, not an input.
     np.testing.assert_allclose(
         out.s_params[1, 0], out.s_params[0, 1], atol=1e-12
     )
 
 
-# ---------------------------------------------------------------------------
-# Defect discrimination — a gate that cannot fail a broken input is not a gate
-# ---------------------------------------------------------------------------
 
 def test_swapped_receive_amplitude_one_drive_is_caught():
     """Consuming the wrong amplitude at the receive array, ONE drive only.
@@ -1245,7 +1005,7 @@ def test_swapped_receive_amplitude_one_drive_is_caught():
     a, b = _plant(_through(n_f), 0.08, n_f)
     good = solve_two_port_from_wave_amplitudes(a, b)
     a_bad, b_bad = a.copy(), b.copy()
-    b_bad[1, 0], a_bad[1, 0] = a[1, 0], b[1, 0]   # swap at port 2, drive 1
+    b_bad[1, 0], a_bad[1, 0] = a[1, 0], b[1, 0]
     bad = solve_two_port_from_wave_amplitudes(a_bad, b_bad)
     assert np.all(np.abs(good.s_params[1, 0]) > 0.99)
     assert np.all(np.abs(bad.s_params[1, 0]) < 0.2), np.abs(bad.s_params[1, 0])
@@ -1269,32 +1029,26 @@ def test_both_drive_swap_gap_requires_the_downstream_passivity_handle():
     The independent handle is PASSIVITY, not anything in this module:
     ``S'22 = 1/S22`` explodes for any well-matched passive DUT. Whatever ships
     on top of this solve must route through the repo's passivity self-check.
+    The column-power floor is well below the earlier measured column power of 317 but far above 1, so it stays meaningful if the fixture is retuned.
     """
     n_f = len(_FREQS)
     s_true = _asymmetric_reciprocal(48.5914, n_f)
-    assert not np.isclose(abs(s_true[0][0]), abs(s_true[3][0]))  # truly asymmetric
+    assert not np.isclose(abs(s_true[0][0]), abs(s_true[3][0]))
     a, b = _plant(s_true, 0.05, n_f)
     a_bad, b_bad = a.copy(), b.copy()
     a_bad[1, :], b_bad[1, :] = b[1, :].copy(), a[1, :].copy()
     bad = solve_two_port_from_wave_amplitudes(a_bad, b_bad)
 
-    # 1. reciprocity: blind (this is the finding)
     np.testing.assert_allclose(
         np.abs(bad.s_params[1, 0]), np.abs(bad.s_params[0, 1]), atol=1e-9
     )
-    # 2. conditioning guard: silent — nowhere near the 1e3 default
-    assert np.all(bad.cond_a < 1.0e2), bad.cond_a
-    # 3. the recovered S is nonetheless grossly wrong, and PASSIVITY sees it
+    ILL_CONDITIONING_SILENCE_CEILING = 1.0e2
+    assert np.all(bad.cond_a < ILL_CONDITIONING_SILENCE_CEILING), bad.cond_a
     assert np.all(np.abs(bad.s_params[1, 0]) > 2.0)
     np.testing.assert_allclose(
         np.abs(bad.s_params[1, 1]), 1.0 / np.abs(s_true[3]), rtol=1e-9
     )
     col_power = np.abs(bad.s_params[0, 0]) ** 2 + np.abs(bad.s_params[1, 0]) ** 2
-    # Measured 317 against a passive limit of 1 — the defect is not marginal,
-    # it is two orders of magnitude out. The floor is well below the measured
-    # value but far above 1, so it stays meaningful if the fixture is retuned
-    # while still failing loudly if the defect ever stopped being gross. The
-    # docstring quotes this number; a drift here should force re-reading it.
     assert np.all(col_power > 100.0), col_power
 
 
@@ -1350,29 +1104,25 @@ def test_reciprocity_is_BLIND_to_any_unit_modulus_per_port_factor(diag_factor):
     np.testing.assert_allclose(
         np.abs(bad.s_params[1, 0]), np.abs(bad.s_params[0, 1]), atol=1e-12
     )
-    # ...and it is invisible against the correct result too, not just internally.
     np.testing.assert_allclose(
         np.abs(bad.s_params[1, 0]), np.abs(good.s_params[1, 0]), atol=1e-12
     )
 
 
-# ---------------------------------------------------------------------------
-# Guards
-# ---------------------------------------------------------------------------
 
 def test_ill_conditioned_drives_warn_and_are_reported():
-    """Two nearly identical drives must not silently produce a plausible S."""
+    """Two nearly identical drives must not silently produce a plausible S.
+    The warning must NOT read as "below this threshold is trustworthy" because cond(A) also multiplies the caller's amplitude noise.
+    """
     n_f = 2
     a = np.zeros((2, 2, n_f), dtype=np.complex128)
     b = np.zeros((2, 2, n_f), dtype=np.complex128)
     a[0, 0], a[1, 0] = 1.0, 1.0
-    a[0, 1], a[1, 1] = 1.0, 1.0 + 1e-12    # second drive ~ first
+    a[0, 1], a[1, 1] = 1.0, 1.0 + 1e-12
     b[:, :] = 0.5
     with pytest.warns(UserWarning, match="nearly linearly dependent") as rec:
         out = solve_two_port_from_wave_amplitudes(a, b)
     assert np.all(out.cond_a > 1e3)
-    # The warning must NOT read as "below this threshold is trustworthy" —
-    # cond(A) also multiplies the caller's amplitude noise.
     msg = str(rec[0].message).lower()
     assert "degeneracy only" in msg and "not a reliability certificate" in msg
 
@@ -1386,7 +1136,6 @@ def test_shape_and_finiteness_contract():
         solve_two_port_from_wave_amplitudes(
             np.zeros((3, 2, 3), dtype=complex), np.zeros((3, 2, 3), dtype=complex)
         )
-    # A NaN bin is reported as NaN, never quietly dropped or interpolated.
     a, b = _plant(_through(2), 0.05, 2)
     a[0, 0, 1] = np.nan
     out = solve_two_port_from_wave_amplitudes(a, b)

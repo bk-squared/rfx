@@ -33,7 +33,6 @@ from rfx.api import Simulation
 from rfx.sources.sources import GaussianPulse
 from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
 
-# Small vacuum geometry (mirrors test_sparam_driver_matches_eager.py).
 _DOMAIN = (0.024, 0.012, 0.012)
 _DX = 1e-3
 _FREQ_MAX = 10e9
@@ -52,26 +51,21 @@ def _default_waveform():
     return GaussianPulse(f0=_FREQ_MAX / 2, bandwidth=0.8)
 
 
-# ---------------------------------------------------------------------------
-# Lumped 2-port — passive waveform-less port
-# ---------------------------------------------------------------------------
 
 def test_driver_lumped_passive_port_matches_explicit_default():
     pos0 = (0.008, 0.006, 0.006)
     pos1 = (0.016, 0.006, 0.006)
     wf0 = GaussianPulse(f0=5.5e9, bandwidth=0.8)
 
-    # Port 1 passive, NO waveform (stores waveform=None) — pre-fix this
-    # crashed on drive pass j=1 with jax.vmap(None).
     sim_passive = _sim()
     sim_passive.add_port(position=pos0, component="ez", impedance=50.0,
                          waveform=wf0)
     sim_passive.add_port(position=pos1, component="ez", impedance=50.0,
                          excite=False)
+    assert sim_passive._ports[1].waveform is None, "Passive port must store waveform=None"
     S_passive, _ = compute_lumped_wire_s_matrix_via_scan(
         sim_passive, _FREQS, n_steps=_N_STEPS)
 
-    # Same ports, port 1 with the documented default waveform explicit.
     sim_explicit = _sim()
     sim_explicit.add_port(position=pos0, component="ez", impedance=50.0,
                           waveform=wf0)
@@ -88,9 +82,6 @@ def test_driver_lumped_passive_port_matches_explicit_default():
                 "documented add_port default waveform (identity gate)")
 
 
-# ---------------------------------------------------------------------------
-# Wire 2-port — the exact crash shape (config-loader fixture layout)
-# ---------------------------------------------------------------------------
 
 def test_driver_wire_passive_port_matches_explicit_default():
     pos0 = (0.008, 0.006, 0.0045)

@@ -68,12 +68,12 @@ def test_registered_drives_include_farthest_record_and_skip_passive_ports():
 
 
 def test_waveguide_uses_incident_record_and_farthest_plane():
+    """The incident E table is the table the port applies, not the analytic v_inc_t."""
     from rfx.sources.waveguide_port import settling_db_from_port_records
 
     record = np.exp(-np.arange(100)/20.)
     incident = np.zeros(100)
     incident[:5] = 1.
-    # The incident E table the port applies, not the analytic v_inc_t.
     cfg = SimpleNamespace(
         src_amp=1., e_inc_table=incident, dt=1., freqs=np.array([.1]), source_x_m=0.,
         reference_x_m=0., probe_x_m=2.5*C0,
@@ -110,11 +110,9 @@ def test_tfsf_uses_its_waveform_and_launch_to_box_reach():
     expected_distance = (cfg.x_hi - cfg.source_p) * grid.dx
     assert distance(None) == pytest.approx(expected_distance)
     time = jnp.arange(300, dtype=jnp.float32)*grid.dt
-    # The source-end model must exactly match the line's launched waveform.
     actual = jax.vmap(waveform)(time)
     launched = jax.vmap(lambda t: line_source_value(cfg, t, cfg.src_amp))(time)
     np.testing.assert_array_equal(actual, launched)
-    # Independently check the charge-free DG in NumPy float64.
     t = np.asarray(time, dtype=np.float64)
     c, u = cfg.src_t0 / cfg.src_tau, t / cfg.src_tau
     arg = (t - cfg.src_t0) / cfg.src_tau

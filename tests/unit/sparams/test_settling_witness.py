@@ -16,30 +16,21 @@ from rfx.api._sparams import _SETTLING_WITNESS_DB, _warn_if_ringdown_truncated
 from tests._realized_geometry import assert_sheet_planes, assert_wall_planes
 
 
-# ===========================================================================
-# 1. MSL lane (formerly test_msl_settling_witness.py)
-# ===========================================================================
-
 def _msl_thru(domain_y=0.008, y_c=0.004):
-    # Geometry[2] y solved +11.67 % off; this test checks truncated record fails the witness loudly.
+    """The strip spans the two port nodes (2 and 10 mm) to avoid open stubs whose effective quarter wave (23.8 GHz) is within 1.5x of the 2-18 GHz read."""
+    SUBSTRATE_FACE_METRES = 0.0008
+    MESH_CELL_METRES = 2e-4
+    assert SUBSTRATE_FACE_METRES / MESH_CELL_METRES == 4, "The substrate face must land on node four of the mesh."
     sim = Simulation(snap="declared", freq_max=20e9, domain=(0.012, domain_y, 0.0032),
-                     dx=2e-4, boundary="cpml", cpml_layers=8)
+                     dx=MESH_CELL_METRES, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
-    sim.add(Box((0, 0, 0), (0.012, domain_y, 0.0008)), material="sub")
+    sim.add(Box((0, 0, 0), (0.012, domain_y, SUBSTRATE_FACE_METRES)), material="sub")
     sim.add(Box((0, 0, 0), (0.012, domain_y, 0)), material="pec")
-    # 35 um foil: a SHEET, declared by a zero-thickness Box
-    # on the laminate top. h_sub / dx = 0.8 mm / 0.2 mm = 4, so the substrate face is a
-    # node line and the sheet lands on it exactly. Drawn one cell thick
-    # before the contract, it would now be a VOLUME — walls at BOTH z
-    # faces and the Ez edge between them shorted.
-    # The strip spans the two port nodes (2 and 10 mm). Drawn across the whole
-    # domain it left 2 mm open stubs whose effective quarter wave (23.8 GHz) is within
-    # 1.5x of the 2-18 GHz read.
-    sim.add(Box((0.002, y_c - 0.0006, 0.0008),
-                (0.010, y_c + 0.0006, 0.0008)), material="pec")
-    sim.add_msl_port(position=(0.002, y_c, 0.0), width=0.0012, height=0.0008,
+    sim.add(Box((0.002, y_c - 0.0006, SUBSTRATE_FACE_METRES),
+                (0.010, y_c + 0.0006, SUBSTRATE_FACE_METRES)), material="pec")
+    sim.add_msl_port(position=(0.002, y_c, 0.0), width=0.0012, height=SUBSTRATE_FACE_METRES,
                      direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
-    sim.add_msl_port(position=(0.010, y_c, 0.0), width=0.0012, height=0.0008,
+    sim.add_msl_port(position=(0.010, y_c, 0.0), width=0.0012, height=SUBSTRATE_FACE_METRES,
                      direction="-x", impedance=50.0, eps_r_sub=2.2, name="p2")
     return sim
 
@@ -54,15 +45,13 @@ def test_truncated_record_fails_the_witness_loudly():
 
 
 def test_settled_record_passes_the_witness_silently():
+    """A matched thru must be deeply settled to guard against a witness that measures the wrong window and hovers near the threshold."""
     sim = _msl_thru()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         res = sim.compute_msl_s_matrix(freqs=_MSL_FREQS, num_periods=40.0)
 
     assert res.settling_db is not None
-    # A matched thru rings down fast; the witness must be deeply settled,
-    # not merely under the line (guards against a witness that measures
-    # the wrong window and hovers near the threshold).
     assert np.all(res.settling_db < -60.0), res.settling_db
 
     assert not [w for w in caught if "settling witness" in str(w.message)]
@@ -80,7 +69,6 @@ def test_witness_survives_pre_existing_user_probes():
     res = sim.compute_msl_s_matrix(freqs=_MSL_FREQS, num_periods=40.0)
 
     assert len(sim._probes) == n_before, "user probes must survive untouched"
-    # A settled thru must still read deeply settled through the offset base.
     assert res.settling_db is not None
     assert np.all(res.settling_db < -60.0), res.settling_db
 
@@ -104,29 +92,15 @@ def test_result_field_is_optional_for_backward_compatibility():
     assert legacy.settling_db is None
 
 
-# ===========================================================================
-# 2. Enforcement of the -40 dB bar (formerly
-#    test_settling_witness_enforcement.py)
-# ===========================================================================
-
 _SPARAMS_SRC = pathlib.Path(
     __import__("rfx.api._sparams", fromlist=["_sparams"]).__file__
 )
 _EXECUTE_SRC = pathlib.Path(
     __import__("rfx.api._execute", fromlist=["_execute"]).__file__
 )
-# Block B moved the run() lane's witness out of the mixin.
 _MEASUREMENT_SETTLING_SRC = pathlib.Path(
     __import__("rfx.measurement.settling", fromlist=["settling"]).__file__
 )
-# Phase 2 moves the ``compute_*`` bodies verbatim out of
-# ``rfx/api/_sparams.py`` into per-family modules under ``rfx/sparams/``, one
-# leg per PR. The scan follows the code by globbing that package rather than
-# naming each module as it lands -- exactly the widening the
-# ``_functions_producing_settling_db`` docstring below asks for when a
-# producing module appears; without it a moved lane drops out of the inventory
-# and ``test_the_known_lanes_are_all_covered`` goes red (or, worse, the routing
-# gate passes vacuously for it).
 _SPARAMS_PKG_SRCS = tuple(sorted(
     pathlib.Path(__import__("rfx.sparams", fromlist=["sparams"]).__file__)
     .parent.glob("*.py")
@@ -140,10 +114,6 @@ def _catch(fn):
     return [w for w in caught if "settling witness" in str(w.message)]
 
 
-# ---------------------------------------------------------------------------
-# FAST — the warner's decision logic
-# ---------------------------------------------------------------------------
-
 def test_threshold_constant_is_the_documented_bar():
     """One shared constant, and it is the -40 dB the docstrings quote."""
     assert _SETTLING_WITNESS_DB == -40.0
@@ -154,7 +124,6 @@ def test_violating_witness_warns_and_quotes_the_measured_value():
         np.array([-1.1, -55.0]), ("feed", "load"), n_steps=700))
     assert len(hot) == 1, "one aggregate warning per call, not one per drive"
     msg = str(hot[0].message)
-    # The measured value, the bar, the field to inspect, and the knob.
     assert "-1.1 dB" in msg, msg
     assert "-40" in msg and "settling_db" in msg, msg
     assert "n_steps=700" in msg, msg
@@ -228,10 +197,6 @@ def test_warning_names_the_knob_the_lane_is_actually_driven_by():
         np.array([-1.0]), ("p1",), n_steps=400))[0].message)
     assert "n_steps=400" in by_steps and "Increase n_steps" in by_steps
 
-
-# ---------------------------------------------------------------------------
-# FAST — governance: one warner, wired to every producer
-# ---------------------------------------------------------------------------
 
 def _functions_producing_settling_db():
     """(name, routes_through_warner) for every function that attaches a
@@ -309,10 +274,6 @@ def test_the_known_lanes_are_all_covered():
         "attach_run_settling_witness",
     } <= names, sorted(names)
 
-
-# ---------------------------------------------------------------------------
-# SLOW — end-to-end on the lane that was silent (real FDTD, ~60 s total)
-# ---------------------------------------------------------------------------
 
 _BAND = np.array([4.0e9, 6.0e9, 8.0e9, 10.0e9, 12.0e9])
 
@@ -415,10 +376,6 @@ def test_differentiable_coax_path_leaves_the_witness_nan_and_silent():
     assert not [w for w in caught if "settling witness" in str(w.message)]
 
 
-# ===========================================================================
-# 3. Waveguide lane (formerly test_waveguide_settling_witness.py)
-# ===========================================================================
-
 _WG_FREQS = np.linspace(8.2e9, 12.4e9, 5)
 
 
@@ -441,8 +398,6 @@ def test_settling_populated_and_truncation_warning_fires():
         assert all(settling_verdict(value) != "pass" for value in result.settling_db)
 
 
-
-
 def test_witness_flag_does_not_perturb_s_extractor_level():
     """Direct non-perturbation pair at the extractor level (review round-1
     upgrade over a determinism-only pin): the SAME cfgs list driven with
@@ -454,8 +409,6 @@ def test_witness_flag_does_not_perturb_s_extractor_level():
     from rfx.sources.waveguide_port import (
         WaveguidePort, init_waveguide_port, extract_waveguide_s_matrix,
     )
-    # reuse the committed reciprocity fixture's grid helper directly
-    # (package-form import since the tier-4b move; sibling is in tests/unit/runners)
     import os
     import sys
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -569,7 +522,6 @@ def test_probeless_run_is_absent_not_nan():
     assert settling_verdict(quiet.settling_db) == "absent"
     assert _no_nan_anywhere(quiet.settling_witness)
     assert "add_probe" in quiet.settling_witness["reason"]
-    # a run that asks for no open-domain DFT number is not lectured
     assert not _settling_warnings(caught), [
         str(w.message) for w in _settling_warnings(caught)]
 
@@ -592,7 +544,6 @@ def test_a_missing_witness_can_never_read_as_a_pass():
     assert settling_verdict(float("-inf")) == "absent"
     assert settling_verdict(_SETTLING_WITNESS_DB) == "pass"
     assert settling_verdict(_SETTLING_WITNESS_DB + 1e-9) == "fail"
-    # the shape the campaign driver used
     class _Old:
         pass
     assert settling_verdict(getattr(_Old(), "settling_db", None)) == "absent"
@@ -641,7 +592,7 @@ def test_a_driver_internal_run_does_not_double_fire():
     this live in section 1 and cost minutes; the decision does not."""
     sim = _run_sim(dft=True)
     n = 200
-    record = np.ones((n, 1), dtype=np.float32)  # never rings down -> "fail"
+    record = np.ones((n, 1), dtype=np.float32)
 
     res = Result(state=None, time_series=record, s_params=None, freqs=None)
 
