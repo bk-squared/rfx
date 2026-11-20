@@ -1,4 +1,6 @@
-"""Source tables prescribe field increments or the final edge's current update."""
+"""Source tables prescribe field increments or the final edge's current update.
+A load port declared after a colocated current source owns the whole Ez edge.
+"""
 from unittest.mock import patch
 import inspect
 
@@ -77,6 +79,7 @@ def _sweep_model(case, eps=2.):
 
 
 def _sweep_oracle(case):
+    """No product averaging, source or coefficient helper is a reference."""
     from rfx.vmap_sweep import vmap_material_sweep
     sim = _sweep_model(case)
     grid = sim._build_grid()
@@ -85,12 +88,10 @@ def _sweep_oracle(case):
     i, j, k = grid.position_to_index(sim._ports[0].position)
     left = (i - 1) % grid.shape[0] if case == 'seam' else max(i - 1, 0)
     cells = [(x, y, k) for x in (i, left) for y in (j, max(j - 1, 0))]
-    # Build the update denominator by hand from cell arrays and declared
-    # loads. No product averaging, source or coefficient helper is a reference.
     eps = sum(float(mats.eps_r[cell]) for cell in cells) / 4
     sigma = sum(float(mats.sigma[cell]) for cell in cells) / 4
     if case == 'later_load':
-        sigma += 1 / (50 * grid.dx)  # the later port owns this whole Ez edge
+        sigma += 1 / (50 * grid.dx)
     beta = 0.
     if debye is not None:
         poles, masks = debye
@@ -98,8 +99,6 @@ def _sweep_oracle(case):
             fraction = 1. if mask is None else sum(float(mask[cell]) for cell in cells) / 4
             beta += EPS * pole.delta_eps * dt / (2 * pole.tau + dt) * fraction
     reference = dt / (EPS * eps + beta + sigma * dt / 2) / grid.dx**3
-    # Exercise the raw-record construction on both arms; the public default
-    # warning for a plain source together with a port is checked below.
     original = Simulation.run
     def raw_run(self, **kw):
         return original(self, **dict(kw, compute_s_params=False, skip_preflight=True))
@@ -131,6 +130,7 @@ def test_sweep_later_port_public_refusal():
 
 
 def _subgrid_sample(order, kind='current', driven=False):
+    """The cell-array reference is independent of the product coefficient accessor."""
     import rfx.subgridding.jit_runner as runner
     sim = Simulation(freq_max=8e9, domain=(.008,) * 3, dx=.001,
                      boundary='pec', cpml_layers=0)
@@ -158,8 +158,6 @@ def _subgrid_sample(order, kind='current', driven=False):
         sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
     mats, cfg = saved['mats_f'], saved['config']
     i, j, k, _, samples = saved['opts'].sources_f[0]
-    # Read cell arrays, subtract smeared stamp records and restore the owned
-    # Ez stamp, independently of the product coefficient accessor.
     eps = np.mean([float(mats.eps_r[x, y, k]) for x in (i, i-1) for y in (j, j-1)])
     bulk_sigma = np.asarray(mats.sigma).copy()
     stamps = mats.sigma_lumped or (None,) * 3
@@ -205,7 +203,6 @@ def test_mutation_plain_coefficient_in_sweep_is_detected(monkeypatch):
     from rfx.model import materials
     from rfx.core.yee import cell_component_e_materials, e_update_coeffs
     def plain(mats, cell, component, dt, *args, **kw):
-        # Keep the table-builder call; drop ADE and final realized operands.
         eps, sigma = cell_component_e_materials(mats, cell, component, high_wall=(False, False, False))
         return e_update_coeffs(eps, sigma, dt)[1]
     monkeypatch.setattr(materials, 'e_update_coefficient_at', plain)
@@ -249,6 +246,7 @@ def test_public_forward_field_table_has_zero_override_tangent(monkeypatch, lane)
 @pytest.mark.parametrize('kind', [None, 'field', 'current'])
 @pytest.mark.parametrize('timing', ['pre_step', 'post_step'])
 def test_disjoint_current_uses_vacuum_update(kind, timing, monkeypatch):
+    """The research stepper's public default resolves to current."""
     from rfx.runners import disjoint
     sim = Simulation(freq_max=8e9, domain=(.008,) * 3, dx=.001,
                      boundary='pec', cpml_layers=0)
@@ -264,8 +262,6 @@ def test_disjoint_current_uses_vacuum_update(kind, timing, monkeypatch):
         return original(state, component, index, value)
     monkeypatch.setattr(disjoint, '_add_fine_source', capture)
     result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
-    # The research stepper's material arrays are homogeneous vacuum. Its
-    # source correction is dt/(eps0*dV); the public default resolves to current.
     expected = 1. if kind == 'field' else result.dt / (EPS * .0005**3)
     np.testing.assert_allclose(injected[0], expected, rtol=2e-7)
     if timing == 'post_step':

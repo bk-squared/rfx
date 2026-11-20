@@ -53,6 +53,7 @@ def _curl(fields, forward):
 
 @pytest.mark.parametrize("polarization,direction", list(itertools.product(("ez", "ey"), ("+x", "-x"))))
 def test_six_face_corrections_equal_mask_curl_commutator(polarization, direction):
+    """Physical E(x), H(x+1/2) map to signed projected sublattices."""
     shape = (17, 16, 15)
     dx, dt = 0.001, 1e-12
     cfg, aux = init_tfsf(shape[0], dx, dt, ny=shape[1], nz=shape[2],
@@ -66,7 +67,6 @@ def test_six_face_corrections_equal_mask_curl_commutator(polarization, direction
     mask = np.zeros(shape)
     mask[cfg.x_lo:cfg.x_hi + 1, cfg.y_lo:cfg.y_hi + 1,
          cfg.z_lo:cfg.z_hi + 1] = 1
-    # Physical E(x), H(x+1/2) map to signed projected sublattices.
     ix = cfg.m[0] * np.arange(shape[0]) - cfg.origin
     ih = np.floor(cfg.m[0] * (np.arange(shape[0]) + .5)).astype(int) - cfg.origin
     e = np.zeros((3,) + shape)
@@ -88,7 +88,6 @@ def _sim(*, polarization="ez", direction="+x", closed_box=True, waveform=None):
                      boundary="cpml", cpml_layers=4)
     if waveform is None:
         dt = sim._build_grid().dt
-        # Both quadratures, a finite record and no reliance on Gaussian metadata.
         u = jnp.arange(72, dtype=jnp.float32)
         samples = jnp.sin(jnp.pi * u / 71) ** 2 * (
             0.7 * jnp.cos(0.31 * u) - 0.4 * jnp.sin(0.31 * u))
@@ -120,7 +119,6 @@ def test_closed_vacuum_replays_real_waveform_inside_and_cancels_all_faces(polari
     cfg, aux = _aux(sim)
     bounds = sim.tfsf_box_indices()
     assert bounds == {a: (getattr(cfg, a + "_lo"), getattr(cfg, a + "_hi")) for a in "xyz"}
-    # Two inside nodes, each outside face, and all eight exterior corners.
     centre = tuple((lo + hi) // 2 for lo, hi in bounds.values())
     points = [centre, (cfg.x_lo, cfg.y_lo, cfg.z_lo)]
     for axis, (lo, hi) in enumerate(bounds.values()):
@@ -177,8 +175,6 @@ def test_methodb_auxiliary_keeps_its_original_waveform(angle):
     cfg, aux = init_tfsf_methodB(33, 31, 0.001, 1e-12, nz=3,
                                 cpml_layers=3, tfsf_margin=3, theta_deg=angle,
                                 waveform="modulated_gaussian", dtype='float32')
-    # Method B shares this E kernel, but has no new optional source fields.
-    # From zero fields its Gaussian peak is exactly the source amplitude.
     out = update_tfsf_1d_e(cfg, aux, 0.001, 1e-12, cfg.src_t0)
     expected = np.zeros_like(out.e1d)
     expected[cfg.src_idx] = cfg.src_amp
@@ -272,11 +268,11 @@ def test_direct_runner_calls_cannot_bypass_source_admission(runner):
 @pytest.mark.parametrize("material", ("dielectric", "pec"))
 @pytest.mark.parametrize("axis", (0, 1, 2))
 def test_every_box_face_requires_vacuum(entry, material, axis):
+    """The low total-field node sits at 3 mm from the inner CPML edge."""
     from rfx.geometry.csg import Box
     sim = _sim()
     lo = [0.008, 0.007, 0.006]
     hi = [0.010, 0.009, 0.008]
-    # The low total-field node sits at 3 mm from the inner CPML edge.
     lo[axis], hi[axis] = 0.002, 0.004
     if material == "dielectric":
         sim.add_material("target", eps_r=2.0)
@@ -349,11 +345,10 @@ def test_conformal_pec_operator_cannot_cross_source(on_face):
 @pytest.mark.parametrize("entry", ("run", "forward"))
 @pytest.mark.parametrize("on_face", (False, True))
 def test_port_material_fold_is_checked_after_setup(entry, on_face):
+    """Each sheet is clear of the source shell, so only the load cells between them cross it."""
     from rfx.geometry.csg import Box
     sim = _sim(waveform="differentiated_gaussian")
     z = 0.001 if on_face else 0.005
-    # Each sheet is clear of the source shell; only the load cells between
-    # them cross it. Those conductivities are added during port setup.
     for height in (z, z + 0.004):
         sim.add(Box(((7 - .35) * .001 if height == z else .009, (7 - .35) * .001, height),
                     ((11 + .35) * .001, (9 + .35) * .001, height)), material="pec")
@@ -367,6 +362,7 @@ def test_port_material_fold_is_checked_after_setup(entry, on_face):
 
 
 def test_isolated_target_scatters_into_both_open_transverse_axes():
+    """A source-only box has only rounding leakage, so both transverse directions must carry a target response beyond that algebra floor."""
     from rfx.geometry.csg import Box
     fields = []
     for target in (False, True):
@@ -380,8 +376,6 @@ def test_isolated_target_scatters_into_both_open_transverse_axes():
         fields.append(np.asarray(sim.run(n_steps=160).time_series))
         assert sim.boundary_model().requirements[1].admissible[0].value == "ABSORBER"
         assert cfg.closed_box
-    # A source-only box has only rounding leakage. Both transverse
-    # directions must carry a target response beyond that algebra floor.
     for axis in range(2):
         assert np.max(np.abs(fields[1][:, axis])) > (
             np.max(np.abs(fields[0][:, axis])) + 9 * np.spacing(np.float32(1.0)))
@@ -431,8 +425,6 @@ def test_transform_guard_uses_older_public_jax_exports(monkeypatch, public_api):
     from types import ModuleType
     from rfx.runners._admission import _refuse_transformed_extended_tfsf
 
-    # Keep the real installed trace semantics while presenting each older
-    # public export layout. Actual 0.6 execution is a separate runtime gate.
     try:
         from jax.extend.core import get_opaque_trace_state as get_state
         from jax.extend.core import take_current_trace as take_trace
@@ -466,7 +458,7 @@ def test_transform_guard_uses_older_public_jax_exports(monkeypatch, public_api):
         old_core.get_opaque_trace_state = get_state
         old_core.take_current_trace = take_trace
     else:
-        def clean():  # an untransformed thread's state (take_trace asserts on jax 0.11)
+        def clean():
             from rfx.runners._admission import _eager_trace_state
             return get_state() == _eager_trace_state(get_state)
         old_core.trace_state_clean = clean

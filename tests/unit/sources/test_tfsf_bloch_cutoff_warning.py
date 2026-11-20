@@ -11,9 +11,9 @@ from rfx import Simulation
 @pytest.mark.parametrize("angle,bandwidth,waveform,method,f0", [
     (43.6, 0.3, "modulated_gaussian", "bloch", 2.9e9),
     (43.6, 0.1, "modulated_gaussian", "bloch", 2.9e9),
-    (20.0, 0.3, "modulated_gaussian", "bloch", 2.9e9),   # -41.8 dB: warns
-    (43.6, 0.12, "modulated_gaussian", "bloch", 2.9e9),  # -58.1 dB: warns
-    (43.6, 0.11, "modulated_gaussian", "bloch", 2.9e9),  # -69 dB: silent
+    (20.0, 0.3, "modulated_gaussian", "bloch", 2.9e9),
+    (43.6, 0.12, "modulated_gaussian", "bloch", 2.9e9),
+    (43.6, 0.11, "modulated_gaussian", "bloch", 2.9e9),
     (0.0, 0.3, "modulated_gaussian", "bloch", 2.9e9),
     (0.005, 0.5, "modulated_gaussian", "bloch", 2.9e9),
     (43.6, 0.3, "modulated_gaussian", "methodB", 2.9e9),
@@ -23,8 +23,6 @@ from rfx import Simulation
 def test_bloch_cutoff_warning(angle, bandwidth, waveform, method, f0):
     sim = Simulation(freq_max=5.8e9, domain=(0.285, 0.020, 0.010),
                      dx=0.005, cpml_layers=8)
-    # Both names reach the SAME analytic modulated drive in tfsf_2d.py.
-    # Fourier transform: |S(f)| / |S(f0)| = exp(-[pi*tau*(f-f0)]**2).
     source_f0 = 2.9e9
     cutoff = source_f0 * abs(math.sin(math.radians(angle)))
     tau = 1 / (math.pi * source_f0 * bandwidth)

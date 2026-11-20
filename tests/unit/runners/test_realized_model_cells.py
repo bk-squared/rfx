@@ -51,7 +51,6 @@ def model(lane, row, fill=False):
             y=Boundary(lo="pec", hi="pec"), z=Boundary(lo="pec", hi="pec"))
     sim = Simulation(**kw)
     if sg:
-        # Explicitly opt in to exercise the experimental subgrid lane.
         sim.add_refinement(z_range=(0., 14*MM), ratio=2, validation="research")
     if row in ("eps", "sigma", "mu", "conformal", "sat", "override_drive", "soft_current", "soft_none"):
         mat = {"eps_r": 4.} if row in ("eps", "conformal", "sat", "override_drive", "soft_current", "soft_none") else (
@@ -154,7 +153,7 @@ def material_pairs(dump, row, axis):
             raise RuntimeError(f"incomplete owned rows: {spans}")
     for r in records:
         if axis >= len(r[quantity]):
-            continue  # SAT consumes tangential x/y, not normal z.
+            continue
         distributed = r["site"].startswith("distributed")
         mats = dump.full_materials if distributed else r["materials"]
         if row == "mu":
@@ -191,7 +190,6 @@ def material_pairs(dump, row, axis):
         if r["region"] is not None:
             ref = ref[r["region"]]
         if row == "conformal":
-            # Only the dielectric: the distant PEC weights are intentional.
             got, ref = got[ref != 1.], ref[ref != 1.]
         if distributed:
             if "owned_start" not in r or "owned_count" not in r:
@@ -219,8 +217,6 @@ def drive_pairs(dump, row):
         return
     for r in records:
         grid, pe = r["grid"], r["declaration"]
-        # Main's helper includes add_lumped_eps on the stamped component;
-        # neither the volume mean nor the lumped stamp is reimplemented here.
         materials = r["materials"]
         if row == "override_drive":
             materials = materials._replace(eps_r=override_epsilon(dump.sim, dump.lane))
@@ -251,8 +247,6 @@ def assert_cell(dump, row, axis=0):
             raise RuntimeError("no record at distributed_nu.drive")
     pairs = (material_pairs(dump, row, axis) if row in
              ("eps", "sigma", "mu", "conformal", "sat") else drive_pairs(dump, row))
-    # Materialize first so missing records/operands cannot be swallowed by
-    # a strict xfail on an earlier numerical mismatch.
     pairs = list(pairs)
     if not pairs:
         raise RuntimeError(f"no operands at {dump.lane} {row} axis={axis}")
@@ -320,10 +314,6 @@ def test_dump_is_consumed(lane, row):
             def feed_back(site, quantity, arrays):
                 if quantity != quantity_name or site.startswith("sat"):
                     return arrays
-                # Select the saved grid/slab by its operand values. This
-                # also covers two equal-shaped device slabs without relying
-                # on callback arrival order. An unrecognized operand yields
-                # NaN, so a missing saved slab cannot silently pass.
                 candidates = {}
                 for record in saved.records:
                     if record["site"] == site and quantity in record:
