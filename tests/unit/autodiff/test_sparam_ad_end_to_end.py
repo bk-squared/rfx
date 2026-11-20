@@ -41,29 +41,30 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.csg import Box
 from rfx.simulation import _suggest_checkpoint_segments
 
-# ---------------------------------------------------------------------------
-# Tiny MSL thru-line geometry (CPU-fast for AD diagnosis)
-# ---------------------------------------------------------------------------
-# Deliberately small: 3-cell substrate, minimal line length and lateral extent.
-# Geometry mirrors the validated pattern from test_msl_port_integration.py
-# but drastically reduced to keep per-grad time < 60 s on CPU.
 
-_MSL_EPS_R = 3.66       # RO4350B
-_MSL_H_SUB = 254e-6     # substrate thickness (m)
-_MSL_W_TRACE = 600e-6   # trace width (m)
-_MSL_DX = _MSL_H_SUB / 3  # ground and trace on bounding nodes of three cells
-_MSL_L_LINE = 6e-3      # line length (must be long enough for N-probe placement)
-_MSL_PORT_MARGIN = 2e-3 # port margin — probe coords extend ~2 mm beyond feed
+RO4350B_RELATIVE_PERMITTIVITY = 3.66
+_MSL_EPS_R = RO4350B_RELATIVE_PERMITTIVITY
+SUBSTRATE_THICKNESS_M = 254e-6
+_MSL_H_SUB = SUBSTRATE_THICKNESS_M
+TRACE_WIDTH_M = 600e-6
+_MSL_W_TRACE = TRACE_WIDTH_M
+_MSL_DX = _MSL_H_SUB / 3
+PROBE_LINE_LENGTH_M = 6e-3
+_MSL_L_LINE = PROBE_LINE_LENGTH_M
+PROBE_MARGIN_M = 2e-3
+_MSL_PORT_MARGIN = PROBE_MARGIN_M
 _MSL_F_MAX = 5e9
 
 
 def _build_msl_sim() -> Simulation:
-    """Tiny MSL thru-line sim (2 ports, minimal domain)."""
+    """Tiny MSL thru-line sim (2 ports, minimal domain).
+    The ground and trace lie on the bounding nodes of three substrate cells.
+    """
     lx = _MSL_L_LINE + 2 * _MSL_PORT_MARGIN
     ly = _MSL_W_TRACE + 2 * (2 * _MSL_H_SUB + 8 * _MSL_DX)
-    lz = _MSL_H_SUB + 0.5e-3  # thin air layer above substrate
+    AIR_LAYER_THICKNESS_M = 0.5e-3
+    lz = _MSL_H_SUB + AIR_LAYER_THICKNESS_M
 
-    # thin_conductor[0] y solved +8.656 % off; this test checks msl s matrix ad end to end.
     sim = Simulation(snap="declared",
         freq_max=_MSL_F_MAX,
         domain=(lx, ly, lz),
@@ -81,9 +82,6 @@ def _build_msl_sim() -> Simulation:
     y_centre = ly / 2.0
     trace_y_lo = y_centre - _MSL_W_TRACE / 2.0
     trace_y_hi = y_centre + _MSL_W_TRACE / 2.0
-    # The legacy thickness-bearing sheet declaration landed at 320 um,
-    # while the MSL port declared 254 um. Draw the foil on the declared
-    # laminate face and resolve that interval with three cells.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         sim.add_thin_conductor(
@@ -108,27 +106,29 @@ def _build_msl_sim() -> Simulation:
     return sim
 
 
-# ---------------------------------------------------------------------------
-# Tiny WR-90 2-port waveguide geometry (CPU-fast for AD diagnosis)
-# ---------------------------------------------------------------------------
+WR90_BROAD_WALL_M = 22.86e-3
+_WR90_A = WR90_BROAD_WALL_M
+WR90_NARROW_WALL_M = 10.16e-3
+_WR90_B = WR90_NARROW_WALL_M
+WAVEGUIDE_CELL_SIZE_M = 2e-3
+_WR90_DX = WAVEGUIDE_CELL_SIZE_M
+WAVEGUIDE_DOMAIN_LENGTH_M = 0.05
+_WR90_LX = WAVEGUIDE_DOMAIN_LENGTH_M
 
-_WR90_A = 22.86e-3   # WR-90 broad wall (m)
-_WR90_B = 10.16e-3   # WR-90 narrow wall (m)
-_WR90_DX = 2e-3      # cell size
-_WR90_LX = 0.05      # domain length
 
-
-# WR-90 TE10 cutoff: c/(2a) = 6.56 GHz.  Use freqs above cutoff only so
-# evanescent-mode inf values (|a_drive|→0 below cutoff) do not appear
-# in the sanity gate or the AD objective.
-_WR90_FREQS = jnp.linspace(8e9, 12e9, 8)  # 8 pts above cutoff
+_WR90_FREQS = jnp.linspace(8e9, 12e9, 8)
 
 
 def _build_wg_sim(*, n_ports: int = 2) -> Simulation:
-    """Tiny 2-port WR-90 sim (minimal domain, CPU-fast, above-cutoff freqs)."""
+    """Tiny 2-port WR-90 sim (minimal domain, CPU-fast, above-cutoff freqs).
+    The waveguide domain lengths (_WR90_LX, 0.024, 0.012) are whole numbers of cells of _WR90_DX, so the solved domain equals the declared one.
+    """
+    assert np.all(np.asarray(_WR90_FREQS) > 299792458.0 / (2 * _WR90_A)), (
+        "waveguide fixture frequencies must be above the WR-90 TE10 cutoff"
+    )
     sim = Simulation(
         freq_max=12e9,
-        domain=(_WR90_LX, 0.024, 0.012),  # main's solved length
+        domain=(_WR90_LX, 0.024, 0.012),
         dx=_WR90_DX,
         boundary=BoundarySpec(x="cpml", y="pec", z="pec"),
         cpml_layers=8,
@@ -153,12 +153,6 @@ def _build_wg_sim(*, n_ports: int = 2) -> Simulation:
     return sim
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
-# MSL AD over thousands of steps: the un-checkpointed reverse tape OOMs even a 48 GB A6000. Segmented checkpointing caps the peak to a few GB,
-# so this runs on the CPU CI again. ~4 min on the shard.
 def test_msl_s_matrix_ad_end_to_end():
     """G-AD-WIRE M1: jax.grad flows end-to-end through compute_msl_s_matrix.
 
@@ -173,9 +167,6 @@ def test_msl_s_matrix_ad_end_to_end():
     """
     sim = _build_msl_sim()
     grid = sim._build_realized_grid()
-    # Derive the segmentation from the same realized-grid step budget as
-    # forward(). A mesh edit must not require changing a magic divisor or
-    # padding the DFT record to make checkpointing work.
     num_periods = 3
     n_steps = grid.num_timesteps(num_periods=num_periods)
     checkpoint_segments = _suggest_checkpoint_segments(n_steps)
@@ -197,7 +188,6 @@ def test_msl_s_matrix_ad_end_to_end():
 
     alpha0 = jnp.float32(1.0)
 
-    # Forward S sanity gate
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         fwd_result = sim.compute_msl_s_matrix(
@@ -214,7 +204,6 @@ def test_msl_s_matrix_ad_end_to_end():
     )
     assert s_max > 0.0, "Forward |S| = 0 everywhere — likely a broken forward pass."
 
-    # AD gradient
     loss_val, g = jax.value_and_grad(objective)(alpha0)
 
     assert jnp.isfinite(g), f"AD gradient is not finite: {g}"
@@ -226,14 +215,6 @@ def test_msl_s_matrix_ad_end_to_end():
     g_ad = float(g)
     print(f"\n[G-AD-WIRE MSL] loss={float(loss_val):.6e}  |S|_max={s_max:.4f}")
     print(f"  AD grad = {g_ad:.6e}")
-    # FD cross-check: verified offline:
-    #   AD=-4.137e-02, FD=-4.941e-02 (h=1e-3), rel_err=16.3%, sign agrees.
-    # These are historical values on the old fixture. A short record does
-    # NOT excuse AD/FD mismatch: both differentiate the same finite-record
-    # observable. Field precision and finite-step error must be resolved
-    # before claiming derivative accuracy (the separate converged test).
-    # This always-on case is a tape-connectivity smoke. The settled, fixed-
-    # band MSL AD/FD accuracy comparison lives in test_msl_ad_fd_converged.py.
     assert g_ad < 0, (
         f"MSL AD gradient sign unexpected: {g_ad:.4e}. "
         "This is the observed sign of a fixed finite-record fixture, not a "
@@ -259,11 +240,11 @@ def test_waveguide_s_matrix_ad_end_to_end():
 
     NU path: excluded from eps_override scope (uses run_nonuniform_path,
     a different material-injection channel). Only the uniform lane is tested.
+    Both vacuum modal segments stay fixed when differentiating the mid-guide slab.
     """
     sim = _build_wg_sim()
     grid = sim._build_grid()
     eps_base = jnp.ones(grid.shape, dtype=jnp.float32)
-    # Differentiate a mid-guide slab; both vacuum modal segments stay fixed.
     lo, hi = (grid.index_of("x", x) for x in (.020, .030))
     design = jnp.zeros(grid.shape, dtype=jnp.float32).at[lo:hi].set(1.)
 
@@ -281,7 +262,6 @@ def test_waveguide_s_matrix_ad_end_to_end():
 
     alpha0 = jnp.float32(1.0)
 
-    # Forward S sanity gate
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         fwd_result = sim.compute_waveguide_s_matrix(
@@ -296,7 +276,6 @@ def test_waveguide_s_matrix_ad_end_to_end():
     )
     assert s_max > 0.0, "Forward |S| = 0 everywhere — likely a broken forward pass."
 
-    # AD gradient
     loss_val, g = jax.value_and_grad(objective)(alpha0)
 
     assert jnp.isfinite(g), f"AD gradient is not finite: {g}"
@@ -305,7 +284,6 @@ def test_waveguide_s_matrix_ad_end_to_end():
         "Run jax.make_jaxpr(objective)(alpha0) and grep for eps_r primitive."
     )
 
-    # Finite-difference cross-check at two eps points
     h = 1e-3
     f_plus = float(objective(jnp.float32(alpha0 + h)))
     f_minus = float(objective(jnp.float32(alpha0 - h)))
@@ -326,29 +304,25 @@ def test_waveguide_s_matrix_ad_end_to_end():
     print("[test_waveguide_s_matrix_ad_end_to_end] PASS")
 
 
-# ---------------------------------------------------------------------------
-# Positive control: confirm the FORWARD-only path IS differentiable
-# (mirrors tests/unit/autodiff/test_waveguide_forward.py — here for completeness)
-# ---------------------------------------------------------------------------
-
 def test_forward_eps_override_is_differentiable_msl():
     """Positive control: jax.grad through forward(eps_override=) + probe loss.
 
     This does NOT go through compute_msl_s_matrix — it uses the validated
     forward() path to confirm that the non-S-matrix differentiable path
     still works on the MSL geometry.
+    Gradient may be zero on a trivial geometry, so finite is the minimal bar.
     """
+    PROBE_CONTROL_CELL_SIZE_M = 80e-6
     sim = Simulation(
         freq_max=_MSL_F_MAX,
         domain=(6e-3, 3e-3, 2e-3),
-        dx=80e-6,  # preserve this independent probe-only control's mesh
+        dx=PROBE_CONTROL_CELL_SIZE_M,
         boundary=BoundarySpec(
             x="cpml", y="cpml",
             z=Boundary(lo="pec", hi="cpml"),
         ),
         cpml_layers=4,
     )
-    # Tiny probe-based forward (no MSL port — just tests the diff path exists)
     sim.add_port((3e-3, 1.5e-3, 1e-3), "ez", impedance=50.0)
     sim.add_probe((3e-3, 1.5e-3, 1e-3), "ez")
 
@@ -365,8 +339,6 @@ def test_forward_eps_override_is_differentiable_msl():
 
     g = float(jax.grad(loss)(alpha0))
     assert np.isfinite(g), f"forward() gradient is not finite: {g}"
-    # Gradient may be zero on a trivial geometry but the tape must be intact
-    # (finite is the minimal bar; non-zero is expected for any non-trivial sim)
 
 
 def test_forward_eps_override_is_differentiable_waveguide():
@@ -378,7 +350,6 @@ def test_forward_eps_override_is_differentiable_waveguide():
     forward() refuses two waveguide ports in one record (#2449), and this control needs one.
     """
     sim = _build_wg_sim(n_ports=1)
-    # Add a probe so forward() returns non-trivial time_series
     sim.add_probe(position=(_WR90_LX / 2, _WR90_A / 2, _WR90_B / 2), component="ey")
     grid = sim._build_grid()
     eps_base = jnp.ones(grid.shape, dtype=jnp.float32)

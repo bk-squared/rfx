@@ -17,13 +17,13 @@ from rfx.sweep import SweepResult
 
 
 def test_pareto_mask_handles_mixed_minimize_maximize_objectives():
-    # Columns: |S11| to minimize, bandwidth to maximize, footprint to minimize.
+    """The objective columns are |S11| to minimize, bandwidth to maximize, and footprint to minimize."""
     objectives = np.array([
-        [0.20, 1.0, 10.0],  # dominated by B
-        [0.10, 1.5, 9.0],   # B: non-dominated
-        [0.08, 1.0, 12.0],  # C: trades better S11 for worse area/bandwidth
-        [0.12, 2.0, 11.0],  # D: trades bandwidth for worse S11/area
-        [0.10, 1.5, 9.0],   # duplicate non-dominated point
+        [0.20, 1.0, 10.0],
+        [0.10, 1.5, 9.0],
+        [0.08, 1.0, 12.0],
+        [0.12, 2.0, 11.0],
+        [0.10, 1.5, 9.0],
     ])
 
     mask = pareto_mask(objectives, minimize=(True, False, True))
@@ -51,13 +51,10 @@ def test_pareto_mask_handles_all_maximize_and_tolerance_boundaries():
 
 
 def test_pareto_mask_never_empties_a_nonempty_front_under_tolerance():
-    # Regression: additive-epsilon dominance must remain a strict partial order.
-    # The old relation added the tolerance to BOTH the no-worse and the
-    # strictly-better tests, which is non-transitive and could mark every point
-    # dominated -> an empty front for non-empty input.
+    """Additive-epsilon dominance must remain a strict partial order."""
     cycle = np.array([[1.0, 1.0, 2.0], [0.0, 3.0, 1.0], [2.0, 2.0, 0.0]])
     mask = pareto_mask(cycle, minimize=True, atol=1.0)
-    assert mask.all()  # none of these dominate another under an exact <=
+    assert mask.all()
     assert len(pareto_front(cycle, minimize=True, atol=1.0).points) == 3
 
     rng = np.random.default_rng(1234)
@@ -114,7 +111,6 @@ def test_pareto_front_normalizes_numpy_metadata_for_json():
         "nested": {"flag": True},
     }
     assert json.loads(front.to_json())["points"][0]["metadata"] == metadata
-
 
 
 def test_weighted_scalarization_is_lower_better_and_can_normalize():

@@ -45,10 +45,7 @@ GRAD_SAFE = "grad-safe"
 NOT_TRACEABLE = "not-traceable"
 UNTESTED = "untested"
 
-# name -> (classification, evidence)
-# GRAD_SAFE evidence is "path::test[, path::test...]" and is existence-checked.
 AD_CLASSIFICATION = {
-    # --- Simulation methods -------------------------------------------------
     "Simulation.compute_waveguide_s_matrix": (
         GRAD_SAFE,
         "tests/unit/autodiff/test_sparam_ad_end_to_end.py::test_waveguide_s_matrix_ad_end_to_end, "
@@ -114,7 +111,6 @@ AD_CLASSIFICATION = {
         "test_compute_s_matrix_dispatch.py. Revisit if the dispatcher ever "
         "grows a body that touches arrays.",
     ),
-    # --- top-level exports --------------------------------------------------
     "compute_far_field": (
         NOT_TRACEABLE,
         "numpy NTFF post-processor; the AD path is compute_far_field_jax",
@@ -180,7 +176,6 @@ AD_CLASSIFICATION = {
         UNTESTED,
         "jnp-pure legacy helper, no direct grad smoke test",
     ),
-    # --- rfx.observables ---------------------------------------
     "observables.dft_field": (
         GRAD_SAFE,
         "pure selection/stack of an already-traced DFT-plane accumulator (no "
@@ -231,14 +226,6 @@ def _exported_surface() -> set[str]:
     for n, _ in inspect.getmembers(Simulation, predicate=inspect.isfunction):
         if n.startswith("compute_"):
             names.add(f"Simulation.{n}")
-    # rfx.observables' public factories (dft_field/field_energy/
-    # field_softmax) are a new differentiable-observable surface class, not
-    # compute_*/extract_*-shaped, so the prefix scan above never sees them.
-    # The stale-key half of test_every_sparam_entry_point_is_ad_classified
-    # forbids adding AD_CLASSIFICATION entries that aren't in this surface,
-    # so they are enumerated explicitly here (via the module's own
-    # __all__, not a hand-picked list, so a future addition to
-    # rfx/observables.py trips the "missing" half automatically).
     import rfx.observables as _observables
     for n in _observables.__all__:
         if callable(getattr(_observables, n)):
@@ -309,15 +296,12 @@ def test_coaxial_reflection_extraction_is_traceable():
         )
         return jnp.abs(jnp.asarray(res.reflection))
 
-    # (a) concrete witness preserved: |Γ| = |B/A| = 0.3/0.7
     concrete = float(objective(jnp.asarray(0.7)))
     assert abs(concrete - 0.3 / 0.7) < 1e-3, (
         f"concrete witness drifted: |Gamma|={concrete:.6f}, expected ~{0.3/0.7:.6f}"
     )
-    # (b) grad flows and is finite (was: TracerArrayConversionError)
     g = float(jax.grad(objective)(jnp.asarray(0.7)))
     assert np.isfinite(g), f"gradient is not finite: {g}"
-    # (c) AD gradient matches the closed form d|Γ|/dθ = -0.3/θ²
     closed_form = -0.3 / 0.7 ** 2
     assert abs(g - closed_form) < 1e-4, (
         f"AD grad {g:.8f} != closed form {closed_form:.8f}"
@@ -343,7 +327,6 @@ def _collect_nodeids(paths, marker_filter=None):
     nodeids = set()
     for line in proc.stdout.splitlines():
         line = line.strip()
-        # pytest -q --collect-only emits one nodeid per line: ``path::name``.
         if re.match(r"^\S+\.py::\S+$", line):
             nodeids.add(line)
     return nodeids, proc
@@ -372,6 +355,7 @@ def test_ad_fd_gate_tests_are_collected_and_not_xfail_skip():
     the FD comparison. The gpu lane (e.g. the MSL AD-vs-FD test) is run per the
     release cadence in CLAUDE.md; this gate guarantees the pointer is real and
     expected-to-pass, the lane guarantees it did.
+    Collection exit codes 0 and 5 mean successful collection and no tests collected, respectively.
     """
     manifest = json.loads(MANIFEST_PATH.read_text())
     declared = [
@@ -383,7 +367,6 @@ def test_ad_fd_gate_tests_are_collected_and_not_xfail_skip():
 
     paths = sorted({nodeid.split("::", 1)[0] for _, nodeid in declared})
     all_collected, proc_all = _collect_nodeids(paths)
-    # pytest --collect-only exit codes: 0 = collected, 5 = none collected.
     assert proc_all.returncode in (0, 5), (
         f"pytest --collect-only failed (rc={proc_all.returncode}); "
         f"stderr:\n{proc_all.stderr[-2000:]}"
