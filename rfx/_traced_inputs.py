@@ -15,6 +15,10 @@ class TracedStaticInput(TracedStructureRefusal):
     """A traced input selects static structure or a host run control."""
 
 
+class NonDifferentiableEntry(TracedStructureRefusal):
+    """A traced input cannot enter a calculator without a differentiable route."""
+
+
 _REASONS = {
     "S1": "controls a count, choice or host threshold",
     "S2": "selects cells without a nominal twin",
@@ -60,6 +64,49 @@ def walk(value, depth=4, value_rows=None):
 
 def _has_tracer(value, depth=4, value_rows=None):
     return any(is_tracer(item) for item in walk(value, depth, value_rows))
+
+
+def refuse_mixed_traced_entry(sim, arguments):
+    def check(name, value):
+        if _has_tracer(value):
+            raise NonDifferentiableEntry(
+                f"compute_mixed_s_matrix is not differentiable; {name} is traced. "
+                "Use compute_msl_s_matrix(eps_override=...) for a microstrip-only model, "
+                "or forward() for lumped ports."
+            )
+
+    for name, value in arguments.items():
+        if name != "self":
+            check(name, value)
+    for name, material in sim._materials.items():
+        for field in fields(material):
+            check(f"material {name!r} {field.name}", getattr(material, field.name))
+    for index, entry in enumerate(sim._geometry, 1):
+        shape = entry.shape
+        names = (field.name for field in fields(shape)) if is_dataclass(shape) else (
+            name for name in _value_rows(shape).get(type(shape), {}) if hasattr(shape, name)
+        )
+        for name in names:
+            check(f"shape {index} ({type(shape).__name__}) {name}", getattr(shape, name))
+    for label, declarations in (("thin conductor", sim._thin_conductors), ("pinned sheet", sim._pinned_sheets)):
+        for index, declaration in enumerate(declarations, 1):
+            for field in fields(declaration):
+                check(f"{label} {index} {field.name}", getattr(declaration, field.name))
+    for index, port in enumerate((*sim._ports, *sim._msl_ports), 1):
+        label = f"port {getattr(port, 'name', str(index))!r}"
+        for field in fields(port):
+            value = getattr(port, field.name)
+            if field.name == "waveform":
+                for item in walk(value):
+                    names = (part.name for part in fields(item)) if is_dataclass(item) else (
+                        name for name in _value_rows(item).get(type(item), {}) if hasattr(item, name)
+                    )
+                    for name in names:
+                        check(f"{label} waveform {name}", getattr(item, name))
+            check(f"{label} {field.name}", value)
+    for name in ("dx_profile", "dy_profile", "dz_profile"):
+        check(name, getattr(sim, f"_{name}"))
+    check("dt", sim._dt_pin)
 
 
 def _static_parts(owner, parameter, value):
