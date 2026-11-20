@@ -56,35 +56,20 @@ def test_under_resolution_uses_the_local_cell_not_the_global_minimum():
 
     Before the fix, one fine cell anywhere in the profile silenced the
     check for every body, including bodies that never touch it.
+    The PEC volume is drawn on coarse node planes so its drawn extent is the realized extent.
     """
     d = 250e-6
     prof = np.concatenate([np.full(12, d), np.full(8, 2 * d),
                            np.full(8, d / 2), np.full(12, d)])
     L = float(prof.sum())
-    # the coarse band spans [12*d, 12*d + 8*2d) = [3.0 mm, 7.0 mm)
     sim = Simulation(freq_max=20e9, domain=(L, L, L), dx=d,
                      boundary="cpml", cpml_layers=6,
                      dx_profile=prof, dy_profile=prof)
-    # A PEC volume 3 coarse cells wide, STRICTLY inside the coarse band.
-    # Drawn ON the coarse node planes (3.5 -> 5.0 mm), so the drawn
-    # extent IS the realized extent — walls at 3.5/4.0/4.5/5.0 mm. The old
-    # corners (3.2 -> 4.7 mm) sat mid-cell and left the realized body's
-    # position dependent on where the box fell between two cell centres.
-    #
-    # The lo face is one coarse cell INSIDE the band on purpose. Drawn at
-    # 3.0 mm — the band's own first node — ``_local_cell`` scores the body
-    # against the 250 um cell on the fine side of that boundary instead of
-    # the 500 um cell the body sits in, so the advisory goes quiet and this
-    # test reds for a reason that has nothing to do with #931. Measured:
-    # 3.0 -> 4.5 mm gives 0 under-resolution advisories, 3.5 -> 5.0 mm gives
-    # 2 (x and y), same body, same 3 coarse cells. That tie is the
-    # failure mode reappearing at a band edge and belongs to preflight's
-    # owner; it is recorded in docs/design_notes/931_migration/, not worked
-    # around by moving the assertion.
     lo, hi = 3.5e-3, 5.0e-3
+    assert (12 * d < lo < hi < 12 * d + 8 * 2 * d
+            and np.isclose(hi - lo, 3 * 2 * d, rtol=0, atol=1e-14)), (
+        "The PEC witness must span three coarse cells strictly inside the coarse band because placing its lo face on the band's first node silences the under-resolution advisory.")
     sim.add(Box((lo,) * 3, (hi,) * 3), material="pec")
-    # Build-time (no solve): what preflight is about to score is what the
-    # lattice realizes — walls at BOTH drawn planes on every axis (§1.2).
     for axis in range(3):
         rz, pos = wall_planes_m(sim, axis, nonuniform=True)
         assert not rz.sheets, "this body is a VOLUME"
