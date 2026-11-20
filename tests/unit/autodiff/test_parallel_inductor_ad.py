@@ -17,6 +17,7 @@ return there is the truncated record's residual). With it, |S11|^2 = 0.187
 and d|S11|^2/dL = -2.065e7 per henry, the same at twice the record (measured
 AD in float32 fields against float64 FD: agreement to 6 digits). x64 is
 scoped to the test, never module-level.
+The relative finite-difference step 1e-3 keeps the earlier estimated float64 truncation error near 1e-7 relative, well below the 5% gradient bar.
 """
 from __future__ import annotations
 
@@ -24,9 +25,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-try:  # modern JAX: scoped x64 promoted to top-level
+try:
     from jax import enable_x64 as _enable_x64
-except ImportError:  # older JAX
+except ImportError:
     from tests._x64_compat import enable_x64 as _enable_x64
 
 from rfx import GaussianPulse, Simulation
@@ -40,9 +41,6 @@ L0 = 10e-9
 R0 = 200.0
 FREQ = np.array([5e9])
 N_STEPS = 1200
-#: Relative FD step; the FD side runs float64 fields, so truncation
-#: (h^2/6)|f'''| dominates, near 1e-7 relative -- far below the 5 % bar (the
-#: chain-closure contract's AD/FD bar, as in test_series_rlc_coupled_ad.py).
 H_REL = 1e-3
 BAR = 0.05
 

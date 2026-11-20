@@ -71,15 +71,14 @@ def test_lossless_design(lane):
 
 
 def test_concrete_design_ratio():
+    """Closed-over concrete JAX arrays stay host metadata under an outer jit."""
     forward, eps, dt = design_fixture()
     sigma = jnp.linspace(0.02, 0.2, eps.size).reshape(eps.shape)
-    # The per-cell ratio's own minimum, formed here cell by cell in float64.
     ratios = [float(s) / float(e) for s, e in zip(np.asarray(sigma).ravel(), np.asarray(eps).ravel())]
     expected = STEPS * dt * min(ratios) / EPS_0
     d = record(forward(sigma).diagnostics)
     assert d.values["x_min"] == pytest.approx(expected, rel=1e-6)
     assert d.values["x_definition"].startswith("minimum over the design cells")
-    # Closed-over concrete JAX arrays stay host metadata under an outer jit.
     closed = jax.jit(lambda: conductivity_gradient_record(sigma, None, eps, STEPS, dt))()
     assert record(closed).values["x_min"] == pytest.approx(expected, rel=1e-6)
 
@@ -166,7 +165,6 @@ def test_per_edge_and_override_trigger():
     expected = 10 * 1e-12 * min(np.min(s) for s in sigma) / (EPS_0 * np.max(eps))
     assert d.values["x_min"] == expected
     assert d.values["x_definition"].startswith("lower bound")
-    # Cell arrays of one shape: the minimum of the ratio, not min(sigma) / max(eps).
     cell = record(conductivity_gradient_record(np.array([0.01, 1.]), None, np.array([1., 10.]), 10, 1e-12))
     assert cell.values["x_min"] == pytest.approx(10 * 1e-12 * 0.01 / EPS_0, rel=1e-12)
     assert cell.values["x_min"] > 5 * (10 * 1e-12 * 0.01 / (EPS_0 * 10.))

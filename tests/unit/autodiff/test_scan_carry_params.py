@@ -14,13 +14,12 @@ import pytest
 
 from rfx.api._ad_carry import scan_carry_invars
 
-# One closed-over constant, a carry of two field-like arrays of distinct
-# shapes, and one scanned input: consts, carry and xs are all non-empty.
 CONST = jnp.arange(5.0)
 CARRY_SHAPES = [(4, 3, 2), (3, 2, 4)]
 
 
 def _scan_eqn():
+    assert len(set(CARRY_SHAPES)) == len(CARRY_SHAPES), "scan fixture carry shapes must be distinct"
     def loop(ex, hy, drive):
         def body(carry, x):
             e, h = carry

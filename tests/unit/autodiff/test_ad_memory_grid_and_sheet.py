@@ -42,7 +42,7 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 
 DX = 0.2e-3
 CPML = 8
-DZ = 0.05e-3 * 1.06 ** np.arange(40, dtype=float)   # ratio 1.06, z only
+DZ = 0.05e-3 * 1.06 ** np.arange(40, dtype=float)
 
 
 def _legacy_shape(sim):
@@ -65,12 +65,11 @@ def _acc_shape(sim):
 
 
 def test_accounting_matches_the_nonuniform_grid_the_solve_builds():
+    """The explicit uniform grid is a counterexample because the production uniform builder refuses profiled simulations."""
     sim = Simulation(freq_max=20e9, domain=(0.02, 0.02, float(DZ.sum())),
                      dx=DX, boundary="cpml", cpml_layers=CPML, dz_profile=DZ)
     assert float(DZ.max() / DZ.min()) > 5.0, "fixture dz is not graded"
     nu = tuple(int(v) for v in sim._build_nonuniform_grid().shape)
-    # The production uniform builder now refuses a profiled simulation.
-    # Construct the historical surrogate explicitly for this counterexample.
     from rfx.grid import Grid
     uni = Grid(freq_max=20e9, domain=sim._domain, dx=DX,
                cpml_layers=CPML).shape
@@ -140,6 +139,7 @@ def _sheet_sim():
 
 
 def test_f0_sheet_operator_is_counted():
+    """Seven bytes per cell comprise three one-byte boolean edge masks and one float32 sheet conductivity."""
     plain = Simulation(freq_max=20e9, domain=(0.02, 0.02, float(DZ.sum())),
                        dx=DX, boundary="cpml", cpml_layers=CPML,
                        dz_profile=DZ)
@@ -149,7 +149,6 @@ def test_f0_sheet_operator_is_counted():
     a_plain = plain._ad_memory_static_accounting()
     a_sheet = sheet._ad_memory_static_accounting()
     assert a_plain["sheet_bytes"] == 0
-    # 3 boolean edge masks (1 byte) + sigma_sheet (float32)
     assert a_sheet["sheet_bytes"] == a_sheet["cells"] * 7
     assert a_sheet["forward_bytes"] > a_plain["forward_bytes"]
 
@@ -210,18 +209,6 @@ def test_explain_lists_the_sheet_component():
     assert comps["surface_impedance_sheet_state"].memory_gb > 0.0
 
 
-# ---------------------------------------------------------------------------
-# The grid-build FAILURE branch and its label.
-#
-# ``_ad_memory_static_accounting`` wraps the grid build in ``except
-# Exception`` so a planning helper never raises, and labels the fallback
-# ``grid_source="estimated_from_domain"`` so the artifact does not present
-# the earlier arithmetic as the real grid. Every test above takes the
-# success branch, so mutating that literal to ``"built"`` — collapsing the
-# two labels into one and making the honesty field say nothing — changed no
-# result anywhere. Both tests below fail under that mutation, and they also
-# pin WHAT the fallback computes, not only what it is called.
-# ---------------------------------------------------------------------------
 
 def test_unbuildable_profile_refuses_ad_tape_estimation():
     """A user-reachable trigger: a profile the grid builder rejects.
@@ -255,6 +242,7 @@ def test_fallback_label_and_number_both_differ_from_the_built_grid():
     ``grid_source`` learns something real, and a mutation that makes both
     branches say ``"built"`` hands them a 1.76x over-estimate wearing the
     label of a measured one.
+    The y-count comparison is 21=20+1 nodes without PEC padding versus 37=20+1+2*8 nodes with unconditional padding.
     """
     spec = BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
                         y=Boundary(lo="pec", hi="pec"),
@@ -279,35 +267,14 @@ def test_fallback_label_and_number_both_differ_from_the_built_grid():
     assert (fell_back["nx"], fell_back["ny"],
             fell_back["nz"]) == _legacy_shape(sim)
     assert fell_back["cells"] > built["cells"]
-    # Hand arithmetic (dx=0.2mm, 4mm y extent, cpml_layers=8): the real
-    # grid has ny = 20 + 1 + 0 = 21 (PEC faces take no pad); the earlier
-    # arithmetic adds 2*8 unconditionally for ny = 37. x and z agree, so
-    # the whole over-count is 37/21.
     assert built["ny"] == 21 and fell_back["ny"] == 37
     assert fell_back["nx"] == built["nx"] and fell_back["nz"] == built["nz"]
     ratio = fell_back["cells"] / built["cells"]
     assert abs(ratio - 37 / 21) < 1e-9, (
         f"pinned pre-#696 over-count on PEC y faces drifted: {ratio:.4f}")
-    # The byte totals ride on the cell count, so the honesty label is
-    # carrying a real difference in the number a user sizes a GPU with.
     assert fell_back["forward_bytes"] > built["forward_bytes"]
 
 
-# ---------------------------------------------------------------------------
-# ``auto_configure(max_memory_mb=...)`` — the DECISION half must use the same
-# grid and the same byte rule as the number it reports.
-#
-# ``SimConfig.grid_shape`` (fixed above) is the reporting half. The coarsening
-# loop that PICKS dx had its own hand-written copy of both rules: it counted z
-# as ``ceil(domain_z/dx)`` and its byte formula omitted the NTFF and
-# dispersion terms the property adds. So the loop stopped at a number
-# ``estimated_memory_mb`` never reproduced, and the documented postcondition
-# — "dx is automatically coarsened until estimated_memory_mb <=
-# max_memory_mb" — failed on the non-uniform-z boards this whole issue is
-# about. Fixing only the reporting half made that disagreement WIDER, which
-# is how this test came to exist. Both halves now go through
-# ``_auto_grid_shape`` / ``_auto_memory_mb``.
-# ---------------------------------------------------------------------------
 
 def _fr4_board():
     """A board that forces a non-uniform z: 0.508 mm substrate, 35 um trace.
@@ -348,8 +315,6 @@ def test_auto_configure_budget_holds_on_a_nonuniform_z_board(budget_mb):
         f"auto_configure accepted dx={cfg.dx*1e3:.4f} mm whose own "
         f"SimConfig reports {cfg.estimated_memory_mb:.1f} MB against a "
         f"{budget_mb:.0f} MB budget")
-    # And the z count it was decided from is the profile's, not the
-    # uniform re-derivation's.
     assert cfg.grid_shape[2] == len(cfg.dz_profile) + 1 + 2 * cfg.cpml_layers
     assert cfg.grid_shape[2] != int(math.ceil(cfg.domain[2] / cfg.dx)) \
         + 1 + 2 * cfg.cpml_layers

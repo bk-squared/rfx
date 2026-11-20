@@ -6,6 +6,7 @@ Validates:
 3. S-param loss is 0 for identical inputs, positive for different ones
 4. Recovery of known Debye material from synthetic S-params
 5. Parameter round-trip (log-space <-> physical poles)
+The domain lengths written as 5*(299792458.0/5e9/20.0) are whole cell counts times the solved spacing.
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -37,9 +38,6 @@ from rfx.differentiable_material_fit import (
 pytestmark = pytest.mark.gpu
 
 
-# ---------------------------------------------------------------------------
-# Test 1: init_debye is differentiable
-# ---------------------------------------------------------------------------
 
 def test_init_debye_is_differentiable():
     """jax.grad through init_debye produces non-zero gradients."""
@@ -52,10 +50,9 @@ def test_init_debye_is_differentiable():
     dt = 1e-12
 
     def loss_fn(delta_eps, tau):
+        """The ca and cb tuples order electric components as x, y, z."""
         pole = DebyePole(delta_eps=delta_eps, tau=tau)
         coeffs, _ = init_debye([pole], materials, dt, high_wall=(False, False, False))
-        # Loss = sum of squared ADE coefficients (differentiable scalar)
-        # ca / cb are per-E-component (x, y, z) tuples
         return (sum(jnp.sum(c ** 2) for c in coeffs.ca)
                 + sum(jnp.sum(c ** 2) for c in coeffs.cb))
 
@@ -87,7 +84,6 @@ def test_init_lorentz_is_differentiable():
     )
     dt = 1e-12
 
-    # Test omega_0 and delta via damping/restoring coefficients
     def loss_ab(omega_0, delta):
         kappa = jnp.float32(1e20)
         pole = LorentzPole(omega_0=omega_0, delta=delta, kappa=kappa)
@@ -99,11 +95,10 @@ def test_init_lorentz_is_differentiable():
     d = jnp.float32(2 * jnp.pi * 5e9 * 0.05)
     g_w0, g_d = grad_ab(w0, d)
 
-    # Test kappa via sum(c) which is linear in kappa (avoids underflow)
     def loss_c(kappa):
         pole = LorentzPole(omega_0=w0, delta=d, kappa=kappa)
         coeffs, _ = init_lorentz([pole], materials, dt, high_wall=(False, False, False))
-        return sum(jnp.sum(c) for c in coeffs.c)   # per component
+        return sum(jnp.sum(c) for c in coeffs.c)
 
     g_k = jax.grad(loss_c)(jnp.float32(1e20))
 
@@ -114,23 +109,19 @@ def test_init_lorentz_is_differentiable():
 
     assert jnp.abs(g_w0) > 0, "Gradient w.r.t. omega_0 is zero"
     assert jnp.abs(g_d) > 0, "Gradient w.r.t. delta is zero"
-    # c = EPS_0 * kappa * dt^2 / denom;  dc/dk = EPS_0 * dt^2 / denom ~ 8.85e-36
-    # sum(c) over 512 cells: gradient ~ 512 * 8.85e-36 ~ 4.5e-33
     assert jnp.isfinite(g_k), f"Gradient w.r.t. kappa is not finite: {float(g_k)}"
     assert float(g_k) != 0.0, "Gradient w.r.t. kappa is exactly zero"
 
 
-# ---------------------------------------------------------------------------
-# Test 2: gradient through FDTD
-# ---------------------------------------------------------------------------
 
 def test_gradient_through_fdtd():
     """jax.grad flows from probe-energy loss through FDTD to Debye pole params.
 
     Uses a tiny 8x8x8 grid with a Debye material to verify that
     the gradient of sum(|Ez_probe|^2) w.r.t. (delta_eps, tau) is non-zero.
+    A nonzero pole-parameter gradient witnesses the material dependence of propagation.
     """
-    grid = Grid(freq_max=5e9, domain=(5 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length
+    grid = Grid(freq_max=5e9, domain=(5 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)
     n_steps = 30
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
@@ -165,18 +156,14 @@ def test_gradient_through_fdtd():
 
     assert jnp.isfinite(g_de), f"Gradient w.r.t. delta_eps is not finite: {float(g_de)}"
     assert jnp.isfinite(g_tau), f"Gradient w.r.t. tau is not finite: {float(g_tau)}"
-    # At least one should be non-zero (the material changes propagation)
     assert (jnp.abs(g_de) > 0) | (jnp.abs(g_tau) > 0), \
         "Both gradients are zero -- jax.grad did not flow through FDTD"
 
 
-# ---------------------------------------------------------------------------
-# Test 3: S-param loss function
-# ---------------------------------------------------------------------------
 
 def test_sparam_loss_zero_for_identical():
     """Loss is 0 when S_sim == S_meas."""
-    s = jnp.array([[[0.5 + 0.3j, 0.2 - 0.1j]]])  # (1, 1, 2)
+    s = jnp.array([[[0.5 + 0.3j, 0.2 - 0.1j]]])
     loss = sparam_loss(s, s)
     assert float(loss) < 1e-12, f"Loss should be 0 for identical S-params, got {float(loss)}"
     print(f"\nS-param loss (identical): {float(loss):.2e}")
@@ -205,9 +192,6 @@ def test_sparam_loss_is_differentiable():
     print(f"\nsparam_loss gradient: {float(grad):.6e}")
 
 
-# ---------------------------------------------------------------------------
-# Test 4: Parameter round-trip
-# ---------------------------------------------------------------------------
 
 def test_param_roundtrip_debye():
     """Log-space <-> physical pole conversion round-trips correctly."""
@@ -250,9 +234,6 @@ def test_param_roundtrip_lorentz():
           f"delta={float(lorentz_out[0].delta):.4e}")
 
 
-# ---------------------------------------------------------------------------
-# Test 5: Recovery of known Debye from synthetic data
-# ---------------------------------------------------------------------------
 
 def test_recover_known_debye():
     """Fit a 1-pole Debye material from synthetic S-params. Recover tau within 20%.
@@ -261,7 +242,7 @@ def test_recover_known_debye():
     then use jax.value_and_grad to fit starting from a perturbed initial guess.
     Verify the optimizer moves toward the true parameters.
     """
-    grid = Grid(freq_max=5e9, domain=(5 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)  # main's solved length
+    grid = Grid(freq_max=5e9, domain=(5 * (299792458.0 / 5e9 / 20.0),) * 3, cpml_layers=0)
     n_steps = 50
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
@@ -271,12 +252,10 @@ def test_recover_known_debye():
     sigma = jnp.zeros(grid.shape, dtype=jnp.float32)
     mu_r = jnp.ones(grid.shape, dtype=jnp.float32)
 
-    # True parameters
     true_de = 3.0
     true_tau = 8e-12
     true_eps_inf = 2.0
 
-    # Generate "measured" time series with true parameters
     eps_r = jnp.ones(grid.shape, dtype=jnp.float32) * true_eps_inf
     mats = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
     true_pole = DebyePole(delta_eps=true_de, tau=true_tau)
@@ -290,7 +269,6 @@ def test_recover_known_debye():
     )
     target_ts = jax.lax.stop_gradient(result_true.time_series)
 
-    # Objective: match time series (proxy for S-param matching)
     def objective(log_de, log_tau):
         de = jnp.exp(log_de)
         tau = jnp.exp(log_tau)
@@ -306,14 +284,12 @@ def test_recover_known_debye():
         )
         return jnp.mean((result.time_series - target_ts) ** 2)
 
-    # Start from perturbed guess (2x the true values)
     log_de = jnp.log(jnp.float32(true_de * 2.0))
     log_tau = jnp.log(jnp.float32(true_tau * 2.0))
 
     grad_fn = jax.value_and_grad(objective, argnums=(0, 1))
     loss_init, _ = grad_fn(log_de, log_tau)
 
-    # Run a few Adam steps
     m_de = jnp.float32(0.0)
     v_de = jnp.float32(0.0)
     m_tau = jnp.float32(0.0)
@@ -322,7 +298,6 @@ def test_recover_known_debye():
 
     for it in range(20):
         loss_val, (g_de, g_tau) = grad_fn(log_de, log_tau)
-        # Manual Adam step for scalars
         p_arr = jnp.stack([log_de, log_tau])
         g_arr = jnp.stack([g_de, g_tau])
         m_arr = jnp.stack([m_de, m_tau])
@@ -341,28 +316,17 @@ def test_recover_known_debye():
     print(f"  Recovered: delta_eps={recovered_de:.3f}, tau={recovered_tau:.4e}")
     print(f"  Loss:      {float(loss_init):.6e} -> {loss_final:.6e}")
 
-    # Loss should decrease
     assert loss_final < float(loss_init), \
         f"Loss did not decrease: {loss_final:.6e} >= {float(loss_init):.6e}"
 
-    # Parameters should move toward the truth
-    de_err_init = abs(true_de * 2.0 - true_de) / true_de  # 100% initial error
+    de_err_init = abs(true_de * 2.0 - true_de) / true_de
     de_err_final = abs(recovered_de - true_de) / true_de
     print(f"  delta_eps error: {de_err_init*100:.0f}% -> {de_err_final*100:.0f}%")
 
-    # The error should have decreased (we moved toward the truth)
     assert de_err_final < de_err_init, \
         f"delta_eps error did not decrease: {de_err_final:.2%} >= {de_err_init:.2%}"
 
 
-# ---------------------------------------------------------------------------
-# Recovery through the PUBLIC entry with the magnitude-preserving
-# reference_probe mode (acceptance criterion 1). The measurement-harvest
-# trick: n_iterations=1 with learning_rate=0.0 leaves params untouched, so
-# MaterialFitResult.final_s_params IS the model observation at the given
-# initial_guess — used to generate a self-consistent synthetic
-# "measurement" at the truth parameters through the identical pipeline.
-# ---------------------------------------------------------------------------
 
 def _i580_factory():
     from rfx.api import Simulation
@@ -370,17 +334,15 @@ def _i580_factory():
     from rfx.sources.sources import GaussianPulse as _GP
 
     def factory(eps_inf, debye_poles, lorentz_poles):
-        # dx 1.5 mm: the coarser of the two meshes the xfail reason measured;
-        # whole cells on every axis (16 x 6 x 6)
         sim = Simulation(freq_max=5e9, domain=(0.024, 0.009, 0.009), dx=1.5e-3)
         sim.add_material("dut", eps_r=eps_inf, debye_poles=debye_poles)
         sim.add(Box((0.010, 0.0, 0.0), (0.016, 0.009, 0.009)), material="dut")
         sim.add_port((0.003, 0.0045, 0.0045), "ez",
                      waveform=_GP(f0=3e9, bandwidth=0.5))
-        # probe 0 = response (behind the slab, transmission-sensitive);
-        # probe 1 = reference (incident side, between port and slab)
-        sim.add_probe((0.020, 0.0045, 0.0045), component="ez")
-        sim.add_probe((0.007, 0.0045, 0.0045), component="ez")
+        RESPONSE_PROBE_POSITION_M = (0.020, 0.0045, 0.0045)
+        sim.add_probe(RESPONSE_PROBE_POSITION_M, component="ez")
+        REFERENCE_PROBE_POSITION_M = (0.007, 0.0045, 0.0045)
+        sim.add_probe(REFERENCE_PROBE_POSITION_M, component="ez")
         return sim
 
     return factory
@@ -403,20 +365,22 @@ def test_recover_debye_reference_mode_public_entry():
     """#580 acceptance: a known (eps_inf, lossy Debye pole) is recovered
     through the public differentiable_material_fit entry under
     normalization='reference_probe', and the per_probe_max proxy's
-    structural magnitude blindness is witnessed on the same data."""
+    structural magnitude blindness is witnessed on the same data.
+    The 20% delta_eps and 15% tau tolerances retain about 1.8x and 2.6x margin over the earlier CPU errors of 11% and 5.8%, respectively.
+    """
     from rfx.material_fit import DebyeFitResult
     from rfx.differentiable_material_fit import differentiable_material_fit
 
     factory = _i580_factory()
     freqs = np.linspace(2.0e9, 4.0e9, 5)
-    true_de, true_tau, true_eps_inf = 3.0, 50.0e-12, 2.0  # tau relaxation ~3.2 GHz = IN the 2-4 GHz band (identifiability; 8 ps put it at ~20 GHz, out of band, and tau drifted)
+    true_de, true_tau, true_eps_inf = 3.0, 50.0e-12, 2.0
+    assert freqs[0] < 1.0 / (2.0 * np.pi * true_tau) < freqs[-1], 'The Debye relaxation must lie inside the fit band for tau identifiability'
     truth = DebyeFitResult(
         eps_inf=true_eps_inf,
         poles=[DebyePole(delta_eps=true_de, tau=true_tau)],
         fit_error=0.0,
     )
 
-    # harvest the truth observation through the identical pipeline
     obs = differentiable_material_fit(
         factory, np.zeros((1, 1, 5), complex), freqs, n_debye_poles=1,
         n_iterations=1, learning_rate=0.0, initial_guess=truth,
@@ -424,18 +388,13 @@ def test_recover_debye_reference_mode_public_entry():
     )
     s_meas = obs.final_s_params
     assert s_meas is not None and np.all(np.isfinite(s_meas))
-    # magnitude information present: NOT pinned to a unit peak
     assert abs(float(np.max(np.abs(s_meas))) - 1.0) > 1e-3
 
-    # fit from a perturbed guess (2x both pole parameters)
     guess = DebyeFitResult(
         eps_inf=true_eps_inf,
         poles=[DebyePole(delta_eps=true_de * 2.0, tau=true_tau * 2.0)],
         fit_error=0.0,
     )
-    # 25 iterations stop short of the truth; at 100,
-    # main recovers tau=51.09 ps and #1012 55.41 ps, both within 15%.
-    # The loss at the truth is zero on both; keep the recovery tolerances.
     fit = differentiable_material_fit(
         factory, s_meas, freqs, n_debye_poles=1,
         n_iterations=100, learning_rate=0.05, initial_guess=guess,
@@ -448,21 +407,11 @@ def test_recover_debye_reference_mode_public_entry():
           f"loss {fit.loss_history[0]:.3e}->{fit.loss_history[-1]:.3e}")
 
     assert fit.loss_history[-1] < fit.loss_history[0]
-    # moved toward truth from the 2x start on both parameters
     assert abs(rec_de - true_de) < abs(true_de * 2.0 - true_de)
     assert abs(rec_tau - true_tau) < abs(true_tau * 2.0 - true_tau)
-    # documented recovery tolerance, pinned from the
-    # CPU measurement: de 6.00->3.331 (11% rel err, gate 20%),
-    # tau 1.00e-10->5.29e-11 (5.8% rel err, gate 15%), loss 1.44e-4->8.40e-6
-    # (25 Adam iterations, lr=0.05). Gates carry ~1.8x/2.6x margin over the
-    # measured errors, same envelope-with-margin convention as the repo's
-    # gate_from_envelope policy.
     assert abs(rec_de - true_de) / true_de < 0.20
     assert abs(rec_tau - true_tau) / true_tau < 0.15
 
-    # structural-blindness witness: the legacy proxy's model spectrum is
-    # pinned to a unit peak REGARDLESS of the material, so it cannot carry
-    # the magnitude information the measurement contains
     legacy = differentiable_material_fit(
         factory, s_meas, freqs, n_debye_poles=1,
         n_iterations=1, learning_rate=0.0, initial_guess=truth,

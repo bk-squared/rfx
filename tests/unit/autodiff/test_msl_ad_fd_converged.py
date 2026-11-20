@@ -19,6 +19,7 @@ differentiate the identical reduction. This REPLACES the prior
 rationale and the historical numbers it supersedes.
 
 Geometry mirrors _build_msl_sim() in test_sparam_ad_end_to_end.py exactly.
+Never flip x64 at module level because it is process-global.
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
-from tests._x64_compat import enable_x64  # SCOPED x64 — never flip it at module level
+from tests._x64_compat import enable_x64
 
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
@@ -38,9 +39,6 @@ from rfx.geometry.csg import Box
 from rfx.sources import GaussianPulse
 from tests._msl_ad_objective import msl_band_mean_s21_sq
 
-# ---------------------------------------------------------------------------
-# Geometry — identical to _build_msl_sim() in test_sparam_ad_end_to_end.py
-# ---------------------------------------------------------------------------
 
 _MSL_EPS_R = 3.66
 _MSL_H_SUB = 254e-6
@@ -53,12 +51,13 @@ _MSL_WAVEFORM = GaussianPulse(f0=_MSL_F_MAX, bandwidth=.8)
 
 
 def _build_msl_sim(*, precision="float32") -> Simulation:
-    """Tiny MSL thru-line sim (2 ports, minimal domain)."""
+    """Tiny MSL thru-line sim (2 ports, minimal domain).
+    The port, laminate and PEC trace share the same physical upper plane to avoid an undriven edge between the port source and its own trace.
+    """
     lx = _MSL_L_LINE + 2 * _MSL_PORT_MARGIN
     ly = _MSL_W_TRACE + 2 * (2 * _MSL_H_SUB + 8 * _MSL_DX)
     lz = _MSL_H_SUB + 0.5e-3
 
-    # thin_conductor[0] y solved +8.656 % off; this test checks referee precision reaches the actual field state.
     sim = Simulation(snap="declared",
         freq_max=_MSL_F_MAX,
         domain=(lx, ly, lz),
@@ -78,10 +77,6 @@ def _build_msl_sim(*, precision="float32") -> Simulation:
     y_centre = ly / 2.0
     trace_y_lo = y_centre - _MSL_W_TRACE / 2.0
     trace_y_hi = y_centre + _MSL_W_TRACE / 2.0
-    # The port, laminate and PEC trace share the same physical upper plane.
-    # The old dx=80um / one-cell Box put the trace at 320um while the
-    # port declared 254um. Retaining that compensation leaves
-    # an undriven edge between the port source and its own trace.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         sim.add_thin_conductor(
@@ -117,46 +112,11 @@ def _build_msl_f64_referee() -> Simulation:
     return _build_msl_sim(precision="float64")
 
 
-# ---------------------------------------------------------------------------
-# Converged tight AD-vs-FD test
-# ---------------------------------------------------------------------------
-
-# Number of periods for converged DFT — must be >= 20 per MSL-FD-TIGHT spec.
 _NUM_PERIODS = 20
 _N_FREQS = 8
 _FD_H = 1e-3
-# Retained acceptance limit. The measurements below belong to the legacy
-# fixture/reference; they do not qualify the repaired geometry and drive.
-# Derived via tests._gate_policy.gate_from_envelope (no more
-# hand-picked literals for this gate — see the "GATE REBUILT" docstring
-# section below for the measured envelope and the full derivation):
-#   gate_from_envelope(0.0146, quantum=100) == 0.03
-# 0.0146 is the WORST (largest) rel_err observed across the owner-platform
-# h-sweep (gpu-rtx4090) — not just the single value at
-# this test's own h=1e-3 (0.0026) — a deliberately conservative choice.
-# Nothing about the derivation formula requires the sweep-max; the reason to
-# use it anyway is that h-sensitivity in a central-difference FD reference IS
-# comparator uncertainty (which side of the truncation/evaluation-noise
-# trade-off a given h lands on), not run-to-run measurement noise the 1.5x
-# multiplier alone would cover — so folding the worst observed h into the
-# envelope is folding in a real, disclosed source of uncertainty rather than
-# a decorative tie-breaker. This gives 0.03/0.0026 = 11.5x margin over the
-# rel_err actually read at the gate's own h=1e-3.
 _REL_ERR_THRESHOLD = 0.03
 
-# Minimum resolving power the FD reference must have before its disagreement
-# with AD means anything: |f(+h) - f(-h)| expressed in ULPs of the loss.
-# Necessary, not sufficient: actual field precision and finite-step error
-# must also be checked. The final scalar dtype alone hid a mixed-precision
-# reference. Numerical examples below are historical.
-# The loss is a float, so it can only move in whole ULPs — a difference N ULPs
-# wide is quantised to ~1/N relative resolution no matter how exact the solver
-# is. The shipped float32 comparator ran at N = 4.4 under the OLD objective, i.e. ~23% resolution against the THEN-current 10% gate; under
-# the CURRENT objective the shipped f32 comparator would run at N = 53.8
-# (measured this fixture, gate's h). 1e4 ULP is 0.01% resolution, 300x inside
-# the CURRENT 0.03 gate's bound (recomputed for the threshold; the
-# float64 comparator measures 2.9e10 on this fixture, 2.4e9 was the OLD
-# objective's figure).
 _MIN_FD_ULP_SPAN = 1.0e4
 
 
@@ -188,12 +148,6 @@ def _closest_divisor(n: int, target: int) -> int:
     return best
 
 
-# G-AD-CHECKPOINT: un-skipped. compute_msl_s_matrix now forwards
-# checkpoint_every into forward(), so the reverse-mode AD tape is segmented
-# (scan-of-scan remat) instead of storing the entire num_periods=20 trajectory.
-# Memory scales ~sqrt(n_steps); the OOM (EXIT 137) that forced the prior skip is
-# removed. Marked gpu+slow: still a heavy converged run, owned by the VESSL
-# physics harness, excluded from the default CPU suite.
 @pytest.mark.gpu
 @pytest.mark.slow
 def test_msl_ad_fd_converged_tight():
@@ -421,24 +375,17 @@ def test_msl_ad_fd_converged_tight():
     reading of a 0.85 rel_err on a 4.4-ULP reference is "the instrument is
     broken", not "the gradient is wrong". Harness:
     scripts/msl_ad_fd_f64_referee.py.
+    Padding is rejected because it would shift the DFT accumulator windows.
     """
+    assert _NUM_PERIODS >= 20, "converged DFT requires at least 20 periods"
     t_start = time.perf_counter()
 
     sim = _build_msl_sim()
     grid = sim._build_grid()
     eps_base = jnp.ones(grid.shape, dtype=jnp.float32)
 
-    # G-AD-CHECKPOINT: the uniform forward path uses checkpoint_segments
-    # (checkpoint_every is NU-only). The segment count must DIVIDE
-    # n_steps exactly — padding is rejected because it would shift the DFT
-    # accumulator windows. Pick the divisor nearest sqrt(n_steps) so backward
-    # memory scales ~sqrt(n_steps)*carry instead of n_steps*carry (the OOM cause).
     n_steps = int(grid.num_timesteps(num_periods=_NUM_PERIODS))
     checkpoint_segments = _closest_divisor(n_steps, int(np.sqrt(n_steps)))
-    # compute_msl_s_matrix passes n_steps=None, so forward() re-derives the SAME
-    # grid.num_timesteps(num_periods) value used here; the segment count must
-    # divide it exactly or the segmented scan hard-errors (simulation.py). Assert
-    # the invariant locally so a future Courant/n_steps change fails loudly here.
     assert n_steps % checkpoint_segments == 0, (
         f"checkpoint_segments={checkpoint_segments} does not divide n_steps={n_steps}"
     )
@@ -454,14 +401,10 @@ def test_msl_ad_fd_converged_tight():
                 eps_override=eps_base * alpha,
                 checkpoint_segments=checkpoint_segments,
             )
-        # Band-mean |S21|^2 — a smooth scalar that depends on
-        # eps at every grid cell, and is NOT passivity-pinned the way
-        # sum_ij|S_ij|^2 is (see module docstring / test docstring).
         return msl_band_mean_s21_sq(result.S)
 
     alpha0 = jnp.float32(1.0)
 
-    # --- Forward sanity gate (R5) -------------------------------------------
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         fwd_result = sim.compute_msl_s_matrix(
@@ -494,7 +437,6 @@ def test_msl_ad_fd_converged_tight():
         f"[MSL-FD-TIGHT] Objective record is not settled: {settling} dB"
     )
 
-    # --- AD gradient ---------------------------------------------------------
     t_ad_start = time.perf_counter()
     loss_val, g = jax.value_and_grad(objective)(alpha0)
     t_ad = time.perf_counter() - t_ad_start
@@ -509,19 +451,6 @@ def test_msl_ad_fd_converged_tight():
         "tape may still be broken."
     )
 
-    # --- Central finite-difference, float64 reference -------------------------
-    # The two loss evaluations run with explicit float64 FIELDS under a
-    # SCOPED x64 context. Never flip x64 at
-    # module level: it is process-global, flips at pytest collection, and reds
-    # every same-process pytest-split shard. rfx/probes/probes.py already keys
-    # its DFT accumulator dtype off jax.config.x64_enabled. The context and
-    # eps64 alone only promoted part of the evaluation: the core otherwise
-    # rounded every E/H step back to float32. A float64 final loss does not
-    # resolve that internal evaluation noise.
-    #
-    # `grid` and `checkpoint_segments` are computed OUTSIDE this context and
-    # reused inside it. Assert that field precision did not change the grid
-    # or time step; a precision referee must evaluate the same discrete rig.
     t_fd_start = time.perf_counter()
     with enable_x64():
         sim64 = _build_msl_f64_referee()
@@ -548,19 +477,6 @@ def test_msl_ad_fd_converged_tight():
             )
             return msl_band_mean_s21_sq(r.S)
 
-        # Keep the ARRAYS. float() would widen them to Python floats — always
-        # float64 — and the resolving-power check below would then measure the
-        # ULP of the container instead of the dtype the loss was computed in.
-        # That was a real defect in the first version of this block: fed the
-        # earlier float32 configuration it read 2.4e+09 ULP instead of 4.4 and
-        # sailed through the assert it exists to trip.
-        #
-        # Materialize each forward BEFORE dispatching the next. float() blocks;
-        # .dtype does not. Issuing both first would let two f64 field sets hold
-        # device buffers concurrently under JAX async dispatch — harmless here
-        # (~10^2 MB, forward-only, no AD tape) but a deviation from the strictly
-        # sequential profile the referee measured on the lane, and there is no
-        # reason to pay for it.
         def _f64_loss(alpha):
             arr = objective64(jnp.float64(alpha))
             assert arr.dtype == jnp.float64, (
@@ -587,17 +503,6 @@ def test_msl_ad_fd_converged_tight():
         "objective may be constant w.r.t. alpha at num_periods={_NUM_PERIODS}."
     )
 
-    # --- COMPARATOR VALIDITY (must precede the accuracy gate) ----------------
-    # A reference that cannot resolve the quantity it is judging turns every
-    # verdict into noise. This is the check whose absence made #527 read as a
-    # gradient defect for four investigation rounds: the f32 comparator was
-    # running at 4.4 ULP and the gate reported 0.85 rel_err as if it were
-    # physics. Assert the reference's resolving power BEFORE comparing to AD,
-    # so a comparator failure is reported as a comparator failure.
-    #
-    # The ULP MUST be taken at loss_dtype, not at the Python float the values
-    # were widened into. The loss can only move in whole ULPs OF THE DTYPE IT
-    # WAS COMPUTED IN, so that is the quantity that bounds the resolution.
     fd_ulp_span = _fd_ulp_span(f_plus, f_minus, loss_dtype)
     print(f"[MSL-FD-TIGHT] FD reference resolving power: "
           f"{fd_ulp_span:.3g} ULP of the loss (floor {_MIN_FD_ULP_SPAN:.0e})")
@@ -610,14 +515,7 @@ def test_msl_ad_fd_converged_tight():
         "objective with more dynamic range. See issue #527."
     )
 
-    # --- Accuracy gate -------------------------------------------------------
     rel_err = abs(g_ad - g_fd) / (abs(g_fd) + 1e-30)
-    # The "tighten to 0.05 if it lands there" variable this block used to build
-    # was never read by the assert below — the gate printed "threshold: 0.05"
-    # while enforcing 0.10. Removed rather than wired up: at the measured GPU
-    # rel_err 0.0331 against a 3.4% reference h-spread, enforcing 0.05 would be
-    # 1.5x margin, i.e. a silent tightening of a live gate. Print what is
-    # actually enforced.
     t_total = time.perf_counter() - t_start
     print(f"[MSL-FD-TIGHT] rel_err = {rel_err:.4f} "
           f"(threshold: {_REL_ERR_THRESHOLD:.2f}, enforced below)")
@@ -664,6 +562,7 @@ def test_comparator_floor_rejects_the_f32_reference_that_caused_527():
     NOT current-gate numbers, they are the #527 comparator-floor incident
     this test regression-locks): loss 16.00599, g_ad -4.2425e-03 on CPU;
     16.005951 / -4.236159e-03 on gpu-rtx4090, VESSL 369367250775.
+    Requiring N*T >= 100 buys 100x margin between the reference resolution and the gate.
     """
     loss, g_true = 16.00599, 4.2425e-03
     f_plus, f_minus = loss + _FD_H * g_true, loss - _FD_H * g_true
@@ -683,20 +582,6 @@ def test_comparator_floor_rejects_the_f32_reference_that_caused_527():
         f"({span64:.3g} ULP) — it is set so high the gate can never run."
     )
 
-    # ANCHOR THE FLOOR TO THE GATE, not to the one number it must reject.
-    # A span of N ULP quantises the difference to ~1/N relative resolution, so
-    # judging a threshold T needs 1/N << T. Requiring N*T >= 100 buys 100x
-    # margin. Without this, a floor of 5.0 satisfies every assert above while
-    # giving 20% resolution — inadequate against ANY realistic gate,
-    # including the CURRENT 3% one (measured: the
-    # unanchored version admitted any floor in (4.449, 2.388e5), 4.7 decades,
-    # against the THEN-current 10% gate; those specific historical bounds are
-    # not recomputed for the current objective here, only the "10%" label is).
-    #
-    # This assert is bidirectional: with _MIN_FD_ULP_SPAN fixed at 1e4, it
-    # also lower-bounds any FUTURE tightening of _REL_ERR_THRESHOLD at
-    # 100 / 1e4 = 0.01 — a future editor cannot silently tighten this gate
-    # below 0.01 without first raising the resolving-power floor to match.
     assert _MIN_FD_ULP_SPAN * _REL_ERR_THRESHOLD >= 100.0, (
         f"floor {_MIN_FD_ULP_SPAN:.0e} gives only "
         f"{1.0 / _MIN_FD_ULP_SPAN:.2e} relative resolution against a "
@@ -772,13 +657,13 @@ def test_ad_drive_covers_every_frequency_in_the_objective():
                                   dtype=jnp.float32)*grid.dt)
     frequencies = np.linspace(_MSL_F_MAX/10., _MSL_F_MAX, _N_FREQS)
     transform = np.exp(-2j*np.pi*frequencies[:, None]*times[None, :])
+    LOW_SIGNAL_MEDIAN_FRACTION = .1
     for port in sim._msl_ports:
         spectrum = np.abs(transform @ np.asarray(port.waveform(times)))
-        # The existing low-signal screen is 10% of the band median.
-        assert np.min(spectrum/np.median(spectrum)) > .1
+        assert np.min(spectrum/np.median(spectrum)) > LOW_SIGNAL_MEDIAN_FRACTION
     old = np.abs(transform @ np.asarray(
         GaussianPulse(f0=_MSL_F_MAX/2., bandwidth=.8)(times)))
-    assert old[-1]/np.median(old) < .1
+    assert old[-1]/np.median(old) < LOW_SIGNAL_MEDIAN_FRACTION
 
 
 @pytest.mark.parametrize("referee,expected", [(False, np.float32), (True, np.float64)])

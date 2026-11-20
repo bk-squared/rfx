@@ -48,7 +48,8 @@ def test_gradient_through_lossy():
     grid = _small_grid()
     eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
     sigma = jnp.zeros(grid.shape, dtype=jnp.float32)
-    sigma = sigma.at[8:12, :, :].set(0.1)  # lossy slab
+    LOSSY_SLAB_CONDUCTIVITY = 0.1
+    sigma = sigma.at[8:12, :, :].set(LOSSY_SLAB_CONDUCTIVITY)
 
     val, grad = _run_and_grad(grid, eps_r, sigma=sigma)
     grad_max = float(jnp.max(jnp.abs(grad)))
@@ -66,7 +67,8 @@ def test_gradient_through_mu_r():
     grid = _small_grid()
     eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
     mu_r = jnp.ones(grid.shape, dtype=jnp.float32)
-    mu_r = mu_r.at[8:12, :, :].set(4.0)  # magnetic slab
+    MAGNETIC_SLAB_RELATIVE_PERMEABILITY = 4.0
+    mu_r = mu_r.at[8:12, :, :].set(MAGNETIC_SLAB_RELATIVE_PERMEABILITY)
 
     val, grad = _run_and_grad(grid, eps_r, mu_r=mu_r)
     grad_max = float(jnp.max(jnp.abs(grad)))
@@ -100,14 +102,16 @@ def test_gradient_cw_source():
 
 
 def test_gradient_design_region_only():
-    """Gradient should be non-zero only where eps_r differs from background."""
+    """Gradient should be non-zero only where eps_r differs from background.
+    The design-region and background gradients should be non-zero because the wave passes through everything.
+    """
     grid = _small_grid()
     eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
-    eps_r = eps_r.at[8:12, :, :].set(3.0)  # design region
+    DESIGN_RELATIVE_PERMITTIVITY = 3.0
+    eps_r = eps_r.at[8:12, :, :].set(DESIGN_RELATIVE_PERMITTIVITY)
 
     _, grad = _run_and_grad(grid, eps_r)
 
-    # Gradient in design region should be larger than in background
     design_grad = float(jnp.mean(jnp.abs(grad[8:12, :, :])))
     bg_grad = float(jnp.mean(jnp.abs(grad[:6, :, :])))
 
@@ -115,7 +119,5 @@ def test_gradient_design_region_only():
     print(f"  Design region |grad| mean: {design_grad:.6e}")
     print(f"  Background |grad| mean:    {bg_grad:.6e}")
 
-    # Both should be non-zero (wave passes through everything)
     assert design_grad > 0, "Design region gradient should be non-zero"
-    # Design region gradient should be meaningful
     assert np.isfinite(design_grad), "Design gradient should be finite"
