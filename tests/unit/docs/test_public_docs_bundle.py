@@ -1,6 +1,7 @@
 """Publication-boundary and version-scope contracts; no prose equality gate."""
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -543,6 +544,80 @@ def built_bundle(tmp_path, monkeypatch):
     manifest = bundle.build(root, output, 'https://remilab.ai/rfx', 'development', None)
     monkeypatch.setattr('export_public_docs_to_gitops.get_tracked_files', lambda *args: {manual})
     return root, output, manifest
+
+
+def test_build_uses_pdoc_templates_and_preserves_default_bytes(tmp_path, monkeypatch):
+    import types
+    import check_api_reference
+
+    root = tmp_path / 'source'
+    public = root / 'docs/public'
+    public.mkdir(parents=True)
+    manual = public / 'index.mdx'
+    manual.write_text('---\ntitle: Manual\n---\nManual body.')
+    (public / 'site_map.json').write_text('{"groups": []}')
+    for name in bundle.SUPPORT_FILES:
+        path = root / 'docs/guides' / name
+        path.parent.mkdir(exist_ok=True)
+        path.write_text('{}')
+    monkeypatch.setattr(bundle, 'check_source', lambda *args: 'a' * 40)
+    monkeypatch.setattr(bundle, 'get_tracked_files', lambda *args: {manual})
+    monkeypatch.setattr(bundle, 'toolchain', lambda: {})
+    monkeypatch.setitem(sys.modules, 'pdoc', types.SimpleNamespace(__version__='fixture'))
+    monkeypatch.setattr(bundle, 'api_inventory', lambda *args: {'package_version': 'fixture', 'symbols': []})
+    monkeypatch.setattr(check_api_reference, 'check_html', lambda *args: [])
+    monkeypatch.setattr(check_api_reference, 'build_inventory', lambda: {})
+    commands = []
+
+    def render(command, **kwargs):
+        captured = list(command)
+        target = Path(command[command.index('-o') + 1])
+        captured[captured.index('-o') + 1] = '<output>'
+        commands.append(captured)
+        target.mkdir(parents=True)
+        (target / 'index.html').write_text('<html>Index</html>')
+        (target / 'rfx.html').write_text('<main class="pdoc">API</main>')
+
+    monkeypatch.setattr(bundle.subprocess, 'run', render)
+    default = tmp_path / 'default'
+    explicit = tmp_path / 'explicit'
+    custom = tmp_path / 'custom'
+    templates = tmp_path / 'templates'
+    templates.mkdir()
+    (templates / 'module.html.jinja2').write_text('Custom template.\n')
+    bundle.build(root, default, 'https://remilab.ai/rfx', 'development', None)
+    bundle.build(root, explicit, 'https://remilab.ai/rfx', 'development', None,
+                 pdoc_templates=bundle.GENERATOR_ROOT / 'docs/pdoc_templates')
+    manifest = bundle.build(root, custom, 'https://remilab.ai/rfx', 'development', None,
+                            pdoc_templates=templates)
+    assert commands[0][commands[0].index('-t') + 1] == str(bundle.GENERATOR_ROOT / 'docs/pdoc_templates')
+    assert commands[2][commands[2].index('-t') + 1] == str(templates)
+    assert [arg for i, arg in enumerate(commands[0]) if i != commands[0].index('-t') + 1] == [
+        arg for i, arg in enumerate(commands[2]) if i != commands[2].index('-t') + 1]
+    assert {path.relative_to(default): path.read_bytes() for path in default.rglob('*') if path.is_file()} == {
+        path.relative_to(explicit): path.read_bytes() for path in explicit.rglob('*') if path.is_file()}
+    assert manifest['generator']['template_sha256'] == {
+        'module.html.jinja2': hashlib.sha256(b'Custom template.\n').hexdigest()}
+    linked = tmp_path / 'linked'
+    linked.mkdir()
+    (linked / 'module.html.jinja2').symlink_to(templates / 'module.html.jinja2')
+    empty = tmp_path / 'empty'
+    empty.mkdir()
+    for invalid in (tmp_path / 'missing', linked, empty, templates / 'module.html.jinja2'):
+        with pytest.raises(ValueError, match='--pdoc-templates'):
+            bundle.build(root, tmp_path / 'invalid', 'https://remilab.ai/rfx', 'development', None,
+                         pdoc_templates=invalid)
+        assert len(commands) == 3
+    calls = []
+
+    def fake_build(*args):
+        calls.append(args)
+        return {'pages': [], 'files': {}, 'source_sha': 'a' * 40}
+
+    monkeypatch.setattr(bundle, 'build', fake_build)
+    monkeypatch.setattr(sys, 'argv', ['build_public_docs_bundle.py', '--pdoc-templates', str(templates)])
+    assert bundle.main() == 0
+    assert calls[-1][5] == templates
 
 
 def test_build_indexes_only_allowlisted_agents_and_combines_the_same_pages(built_bundle):
