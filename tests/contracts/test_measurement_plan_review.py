@@ -115,7 +115,7 @@ def test_run_calculator_owner_availability(mesh, forward, row, kind):
     lane = ('fwd_' if forward else 'run_')+('uniform' if mesh == 'uniform' else 'nonuniform')
     sim = build(row, lane, graded=mesh == 'graded')
     if kind == 'coax':
-        with pytest.raises(NotImplementedError, match='is not wired into Simulation'):
+        with pytest.raises(NotImplementedError, match='61 line cells' if mesh == 'uniform' else 'supported only on run_uniform and fwd_uniform'):
             setup(sim, forward)
         actual = {}
     else:

@@ -184,9 +184,9 @@ SUBGRID_SHEETS = refuses(_SHEET_OWNS_NO_CELL, raises="does not realize PEC sheet
 F0 = "surface_impedance_f0) thin conductors are not supported"
 DIST_FWD_PORTS = carries("shared graded load, voltage drive and wrapped in-loop V/I/S; passive ports carry a load only")
 RUN_COAX = refuses("run() refuses add_coaxial_port(); the coax calculators solve it",
-                   raises="add_coaxial_port() is not wired into Simulation.run()")
+                   raises="add_coaxial_port() is supported only on run_uniform and fwd_uniform in S1")
 FWD_COAX = refuses("forward() refuses add_coaxial_port()",
-                   raises="add_coaxial_port() is not wired into Simulation.forward()")
+                   raises="add_coaxial_port() is supported only on run_uniform and fwd_uniform in S1")
 GRADED_REFINEMENT = refuses("refinement on a graded mesh refused (#1282)",
                             raises="asks for subgridding on a non-uniform mesh")
 
@@ -625,12 +625,12 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
 
     )},
     "_coaxial_ports": {"coax_port": lanes(
-        run_uniform=RUN_COAX,
+        run_uniform=carries("S1 coax line model and TEM drive; measurement is S2"),
         run_nonuniform=RUN_COAX,
         run_subgridded=RUN_COAX,
 
         run_distributed=RUN_COAX,
-        fwd_uniform=FWD_COAX,
+        fwd_uniform=carries("S1 coax line model and TEM drive; measurement is S2"),
         fwd_nonuniform=FWD_COAX,
         fwd_distributed_nu=FWD_COAX,
 

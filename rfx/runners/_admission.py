@@ -497,7 +497,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     # One configuration per port is all the single-run assembly takes; the
     # per-mode list is driven only by compute_waveguide_s_matrix().
     ("_waveguide_ports", "n_modes"): frozenset(),
-    ("_coaxial_ports", "coax_port"): frozenset(),
+    ("_coaxial_ports", "coax_port"): frozenset({"run_uniform", "fwd_uniform"}),
     ("_floquet_ports", "floquet_port"): _UNIFORM_YEE,
     ("_floquet_ports", "scan_angle"): frozenset(),
     ("_lumped_rlc", "R"): _NO_SHEETS | {"run_distributed", "fwd_distributed"},
@@ -1165,15 +1165,6 @@ def refuse_slab_tfsf_devices(entry, n_devices, lane="uniform multi-device"):
             f"5 or more are refused. Use devices=jax.devices()[:{SLAB_TFSF_MAX_DEVICES}] or one device")
 
 
-_COAX_ADVICE = {
-    "run": ("for a single add_coaxial_port(), compute_s_matrix(method=...) "
-            "dispatches to either. Use add_port(..., extent=...) for "
-            "probe-feed S-parameters."),
-    "forward": ("both take eps_scale= for jax.grad. Use add_port(..., extent=...) "
-                "for differentiable probe-feed S11 objectives."),
-}
-
-
 def refuse_forward_reference_planes(sim) -> None:
     """Reject the run-only plane declaration before forward lane dispatch."""
     for index, port in enumerate(sim._ports):
@@ -1185,21 +1176,12 @@ def refuse_forward_reference_planes(sim) -> None:
                 "or remove the option for forward()")
 
 
-def refuse_coaxial_port(sim, entry: str) -> None:
-    """The one coaxial-port refusal of ``run()`` and ``forward()``,
-    raised before mesh planning while no time-stepping lane admits the row;
-    ``entry`` selects the advice."""
-    if entry == "forward":
-        refuse_forward_reference_planes(sim)
-        admit_conformal_floor(sim, "fwd_uniform")
-    row = ("_coaxial_ports", "coax_port")
-    if sim._coaxial_ports and not any(row in ADMITS[lane] or row in LANE_GATES.get(lane, {})
-                                      for lane in LANES):
-        raise RfxUnsupported(
-            f"add_coaxial_port() is not wired into Simulation.{entry}(). A "
-            "coaxial port's S-parameters come from "
-            "compute_coaxial_line_reflection(...) (one-port reflection) "
-            "or compute_coaxial_two_port(...) (through line); " + _COAX_ADVICE[entry])
+def admit_forward_entry(sim, args) -> None:
+    """Keep the forward entry checks while admitting the coax model lanes."""
+    refuse_forward_reference_planes(sim)
+    admit_conformal_floor(sim, "fwd_uniform")
+    from rfx.runners.coax_admission import admit_coax_port, entry_lane
+    admit_coax_port(sim, entry_lane(sim, forward=True, distributed=args['distributed']), run_args=args)
 
 
 def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None:
@@ -1208,6 +1190,9 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     the call's static arguments that ``CALL_GATES`` read; ``grid`` is the
     grid the lane built, for its ``LANE_GATES``. A drive whose pulse is not
     resolved by dt is refused first (``refuse_undriven_drives``)."""
+    from rfx.runners.coax_admission import admit_coax_port
+    if lane.startswith(("run_", "fwd_")):
+        admit_coax_port(sim, lane, run_args=run_args, grid=grid)
     if lane in {"run_subgridded", "material_fit"}:
         from rfx.materials.pole_map import refuse_maps
         refuse_maps([p for m in _placed(sim) for p in (m.lorentz_poles or ())], lane)
@@ -1462,11 +1447,8 @@ _S_REQUEST_FAMILIES = (
     ("_floquet_ports", "add_floquet_port(...): Floquet ports are experimental and "
      "have no forward S11 path or claims-bearing run(compute_s_params=True) S-matrix path"),
     ("_tfsf", "add_tfsf_source(...): TFSF is a plane-wave source, not a port"),
-    ("_coaxial_ports", "add_coaxial_port(...) is not wired into run(compute_s_params=True) "
-     "or forward(port_s11_freqs=...); use Simulation.compute_coaxial_line_reflection(...) "
-     "for a one-port reflection or Simulation.compute_coaxial_two_port(...) for a through "
-     "line (for a single add_coaxial_port(), compute_s_matrix(method=...) dispatches to "
-     "either), or add_port(extent=...) for the probe-feed S-parameter path"),
+    ("_coaxial_ports", "add_coaxial_port(...): S1 carries model and TEM drive on uniform "
+     "run() and forward(); measurement and S are S2; use the coax calculators for S"),
 )
 
 

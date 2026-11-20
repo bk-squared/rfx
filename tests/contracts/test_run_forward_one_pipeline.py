@@ -146,6 +146,7 @@ ASSEMBLY_ROWS = (
     ('P-lumped', 'multi-device-uniform'),
     ('P-wire-driven', 'multi-device-uniform'),
     ('P-wire', 'multi-device-uniform'),
+    ('P-coax', 'uniform'),
     ('C-conformal', 'uniform'),
     ('P-conformal', 'uniform'),
     ('C-full-tensor', 'graded'),
@@ -257,6 +258,7 @@ ASSEMBLY_ROWS = (
 )
 
 FIELD_ROWS = (
+    ('P-coax', 'uniform'),
     ('C-conformal', 'uniform'),
     ('P-conformal', 'uniform'),
     ('C-full-tensor', 'graded'),
@@ -393,6 +395,7 @@ FIELD_ROWS = (
 )
 
 ADMISSION_ROWS = (
+    ('P-coax', 'uniform'),
     ('O-cm', 'multi-device-graded'),
     ('O-dft', 'multi-device-graded'),
     ('O-flux', 'multi-device-graded'),
@@ -458,7 +461,6 @@ BOTH_REFUSE_ROWS = tuple((declaration, path)
     ('P-coax', 'graded'),
     ('P-coax', 'multi-device-graded'),
     ('P-coax', 'multi-device-uniform'),
-    ('P-coax', 'uniform'),
     ('P-floquet', 'multi-device-uniform'),
     ('P-lumped2', 'multi-device-uniform'),
     ('P-msl', 'multi-device-graded'),
@@ -707,6 +709,7 @@ ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] in ('B-cpml', 'C-co
     ('C-full-tensor', 'uniform'),
     ('P-wire-driven', 'uniform'),
     ('P-wire-driven', 'multi-device-uniform'),
+    ('P-coax', 'uniform'),
     ('O-dft', 'uniform'), ('O-ntff', 'uniform'), ('O-cm', 'uniform'), ('P-msl', 'uniform'),
     ('B-closed', 'uniform'), ('P-lumped', 'multi-device-uniform'), ('P-lumped2', 'uniform')) or any(
     (d, p, level) == (*row, 'L2') for d, p, level, ident, reason in KNOWN_ROWS))

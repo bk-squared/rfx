@@ -505,6 +505,12 @@ def _ports(sim, ctx, assembled):
     for attr, kind in (("_msl_ports", "msl"), ("_coaxial_ports", "coaxial"),
                        ("_floquet_ports", "floquet")):
         for i, _ in enumerate(getattr(sim, attr, ())):
+            if kind == 'coaxial' and assembled.coax_bore_release is not None:
+                cells = np.logical_or.reduce([e.cells for e in assembled.stamped_entities])
+                indices = np.nonzero(cells)
+                aperture = tuple((int(k.min()), int(k.max()) + 1) for k in indices)
+                rows.append(PortGeometry(f'coaxial_port[{i}]', kind, None, (), aperture))
+                continue
             rows.append(PortGeometry(f"{kind}_port[{i}]", kind, None, (),
                                      error="not represented: family-specific aperture/drive assembly"))
     return tuple(rows)

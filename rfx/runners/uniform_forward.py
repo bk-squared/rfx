@@ -182,6 +182,7 @@ def _forward_from_materials(
 
     from rfx.sources.port_drive import PortSourceQueue
     sources = PortSourceQueue()
+    mag_sources = []
     probes = []
     # ── Effective boundary flags, resolved BEFORE the PEC realization ──
     # the realized PEC edge masks (Mx, My, Mz) are only
@@ -238,6 +239,13 @@ def _forward_from_materials(
         self, grid, materials, pec_mask, pec_sheets, pec_wires, periodic_bool,
         conductors, sheet_impedance,
         operator=conductor_operator(smoothing=subpixel_smoothing, conformal=_conformal))
+    if self._coaxial_ports:
+        from rfx.model.coax_port import assemble_coax_port
+        materials, conductors, pec_occupancy_local = assemble_coax_port(
+            self, grid, materials, conductors, sources, mag_sources, n_steps=n_steps,
+            occupancy=pec_occupancy_local)
+        pec_mask_local = conductors.pec_cells
+        pec_edge_masks_local = conductors.pec_edges
     from rfx.measurement.prepared import attach_measurement
     attach_measurement(self, conductors, n_steps=n_steps, path=lane or 'fwd_uniform',
                        frequencies=port_s11_freqs,
@@ -539,9 +547,9 @@ def _forward_from_materials(
                     "imperative Simulation.run() path "
                     "(`runners/uniform.py::run_uniform_path`) but not "
                     "yet on the differentiable Simulation.forward() "
-                    "path — the J+M Schelkunoff source pair needs a "
-                    "magnetic-source channel that `_forward_from_materials` "
-                    "does not currently expose.  Use mode='laplace' "
+                    "path — the MSL J+M Schelkunoff source pair is not "
+                    "wired into its magnetic-source channel. "
+                    "Use mode='laplace' "
                     "(the default) on the differentiable path."
                 )
             materials = setup_msl_port(grid, mp, materials,
@@ -708,6 +716,8 @@ def _forward_from_materials(
         )
 
     from rfx.stepping import prepared as prepared_step
+    if self._coaxial_ports and materials.components.tensor is None:
+        materials = materials._replace(components=None)
     conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
     stepping_product = conductors
     if self._lumped_rlc:
@@ -730,6 +740,7 @@ def _forward_from_materials(
         debye=debye,
         lorentz=lorentz,
         sources=sources,
+        mag_sources=mag_sources or None,
         probes=probes,
         waveguide_ports=waveguide_ports if waveguide_ports else None,
         ntff=ntff_box,

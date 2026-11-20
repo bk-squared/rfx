@@ -241,6 +241,9 @@ def run_uniform(
         operator=conductor_operator(smoothing=subpixel_smoothing, conformal=conformal_pec))
     from rfx.model.conductors import stepped_conductors
     conductors = stepped_conductors(conductors, conformal_operands=conformal_weights)
+    from rfx.model.coax_port import assemble_coax_port
+    materials, conductors, _ = assemble_coax_port(
+        sim, grid, materials, conductors, sources, mag_sources, n_steps=sizing_n)
     pec_mask = conductors.pec_cells
     pec_edge_masks = conductors.pec_edges
     from rfx.measurement.port_s_contract import passive_record_diagnostic
@@ -702,6 +705,8 @@ def run_uniform(
                         "stop_interval": int(stop_interval)}
 
     from rfx.stepping import prepared as prepared_step
+    if sim._coaxial_ports and materials.components.tensor is None:
+        materials = materials._replace(components=None)
     conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
     stepping_product = conductors
     if sim._lumped_rlc:

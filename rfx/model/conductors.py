@@ -203,6 +203,7 @@ class RealizedConductors(_RealizedPEC):
     _released_port_details: tuple = ()
     _waveguide_port_planes: tuple = ()
     stamped_entities: tuple = ()
+    coax_bore_release: object = None
     stamp_check_findings: tuple = ()
     design_findings: tuple = ()
     realization_table: object = field(default=None, compare=False, repr=False)

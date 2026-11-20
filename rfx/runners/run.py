@@ -11,7 +11,7 @@ from rfx.api._spec import Result, _warn_if_nonfinite_result
 from rfx.model import conductors as _conductors
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.ringdown import RingdownSpec
-from rfx.runners._admission import refuse_coaxial_port, resolve_run_conformal, refuse_tfsf_decay_without_source_off
+from rfx.runners._admission import resolve_run_conformal, refuse_tfsf_decay_without_source_off
 from rfx.runners._exchange_interval import validate_exchange_interval
 from rfx.runners.nonuniform import bind_solve_call
 from rfx.simulation import SnapshotSpec
@@ -74,9 +74,12 @@ def run_after_admission(
         decay_max_steps=decay_max_steps,
     )
 
+    from rfx.runners.coax_admission import admit_coax_port, entry_lane
+    admit_coax_port(self, entry_lane(self, distributed=devices is not None and len(devices) > 1),
+                    run_args={"conformal_pec": conformal_pec, "subpixel_smoothing": subpixel_smoothing})
+
     conformal_pec = resolve_run_conformal(self, conformal_pec, devices, subpixel_smoothing)
 
-    refuse_coaxial_port(self, "run")
     compute_s_params = self._validate_run_sparameter_request(
         compute_s_params=compute_s_params,
         s_param_freqs=s_param_freqs,

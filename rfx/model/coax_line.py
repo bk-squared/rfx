@@ -86,3 +86,86 @@ def build_coax_line(
         )
         built_ends.append(CoaxLineEndResult(spec, end.plane_indices, spec.z_tem_ohm))
     return CoaxLineResult(materials, pec_cells, entities, shell_inner, tuple(built_ends))
+
+
+@dataclass(frozen=True)
+class CoaxPortLayout:
+    """Inclusive conductor cells and realized node indices for one port."""
+
+    z_lo_index: int
+    z_hi_index: int
+    feed_index: int
+    source_index: int
+    plane_indices: tuple[int, ...]
+    reference_index: int
+
+
+def coax_port_layout(grid, port, *, absorber_pads, ntff=None):
+    """Lay out the uniform port behind its declared reference node.
+
+    Pads are the six per-face cell counts in x-lo, x-hi, y-lo, y-hi,
+    z-lo, z-hi order. A bottom line is a node mirror, including its
+    cell ownership, of the corresponding top line.
+    """
+    import numpy as np
+    from rfx.errors import RfxUnsupported
+    ref = int(grid.position_to_index(port.position)[2])
+    dz = float(grid.dx)
+    direction = 1 if port.face == 'top' else -1
+    far = (grid.shape[2] - int(absorber_pads[5]) - 2 if direction == 1
+           else int(absorber_pads[4]) + 1)
+    if ntff is not None:
+        lo, hi = ntff[:2]
+        bound = int(grid.position_to_index(hi if direction == 1 else lo)[2]) - 2 * direction
+        far = min(far, bound) if direction == 1 else max(far, bound)
+        for axis in (0, 1):
+            if not (lo[axis] < port.position[axis] - port.outer_radius
+                    and hi[axis] > port.position[axis] + port.outer_radius):
+                raise RfxUnsupported('add_coaxial_port(): NTFF box must contain the shell')
+        tip = port.position[2] - direction * port.pin_length
+        if not lo[2] <= tip <= hi[2] or not lo[2] <= port.position[2] <= hi[2]:
+            raise RfxUnsupported('add_coaxial_port(): NTFF box must contain the reference and pin')
+    distance = direction * (far - ref)
+    nominal = ref + distance - 3
+    source = int(round(((nominal - grid.pad_z_lo) * dz - dz / 2)
+                       / float(np.asarray(grid.cells(2))[0]))) + grid.pad_z_lo
+    source = ref + direction * (source - ref)
+    planes = tuple(ref + direction * (8 + 4 * k) for k in range(12))
+    if distance < 60 or direction * (source - planes[-1]) < 4:
+        raise RfxUnsupported(
+            'add_coaxial_port(): domain too short; needs at least 61 line cells '
+            '(12 planes, start 8, spacing 4, source clearance 4, feed setback 3)')
+    return CoaxPortLayout(ref if direction == 1 else far - 1,
+                          far if direction == 1 else ref - 1,
+                          far - direction, source, planes, ref)
+
+
+def build_coax_port_line(grid, materials, port, *, absorber_pads, ntff=None,
+                         n_steps, finish_line=None):
+    """Build the single uniform port with the calculator's feed and TEM drive."""
+    from rfx.sources.coaxial_port import coaxial_tem_characteristic_impedance
+    layout = coax_port_layout(grid, port, absorber_pads=absorber_pads, ntff=ntff)
+    end = CoaxLineEnd(layout.feed_index, layout.source_index, layout.plane_indices,
+                      float(coaxial_tem_characteristic_impedance(
+                          port.pin_radius, port.outer_radius)), port)
+    try:
+        line = build_coax_line(grid, materials, center_xy=port.position[:2],
+            pin_radius=port.pin_radius, outer_radius=port.outer_radius,
+            z_lo_index=layout.z_lo_index, z_hi_index=layout.z_hi_index,
+            ends=(end,), n_steps=n_steps, field_scale=1.0e4, finish_line=finish_line)
+    except ValueError as error:
+        if 'absorber' not in str(error):
+            raise
+        from rfx.errors import RfxUnsupported
+        raise RfxUnsupported(f'add_coaxial_port(): {error}') from error
+    if ntff is not None:
+        import numpy as np
+        from rfx.errors import RfxUnsupported
+        indices = np.nonzero(line.pec_cells)
+        for axis, name in enumerate('xyz'):
+            pad = getattr(grid, f'pad_{name}_lo')
+            lo = (indices[axis].min() - pad) * grid.dx
+            hi = (indices[axis].max() + 1 - pad) * grid.dx
+            if lo < ntff[0][axis] or hi > ntff[1][axis]:
+                raise RfxUnsupported('add_coaxial_port(): NTFF box must contain the realized shell')
+    return layout, line
