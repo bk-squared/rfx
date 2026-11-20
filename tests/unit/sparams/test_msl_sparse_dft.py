@@ -236,6 +236,7 @@ def _run_s(axis, lane, monkeypatch, *, crop: bool, seen: list):
     The returned ``loops`` list carries, per ``msl_loop_current`` call, the
     Ampere-loop window the extractor selected and the shape of the plane it
     selected it from — the index-level record the witness below gates on.
+    Complete spy records without chaining spies between solves require the unpatched loop-current original captured at import, both eager and deferred plane-probe import sites patched, and the extractor's loop-current home module patched.
     """
     import warnings
     import rfx.probes.probes as _pp

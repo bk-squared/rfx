@@ -168,6 +168,7 @@ def _thru():
                      direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
     sim.add_msl_port(position=(0.010, 0.004, 0.0), width=0.0012, height=0.0008,
                      direction="-x", impedance=50.0, eps_r_sub=2.2, name="p2")
+    assert (sim._geometry[2].shape.corner_lo[0], sim._geometry[2].shape.corner_hi[0]) == (sim._msl_ports[0].position[0], sim._msl_ports[1].position[0]), "The strip must span the port nodes to exclude 2 mm open stubs near the read band."
     return sim
 
 

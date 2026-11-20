@@ -3,6 +3,7 @@
 Unequal positive analytic references must retain a planted reciprocal passive
 power S. The generic wave solve, spatial/temporal alignment and transverse
 current integral run normally. No FDTD or physical accuracy claim is involved.
+The monkeypatches target rfx.sparams.msl because patching the rfx.api._sparams re-export would silently leave the capture and forced-NaN fallback inactive.
 """
 from __future__ import annotations
 
@@ -66,7 +67,7 @@ def _case(monkeypatch, *, equal=False, incident=INCIDENT):
     names = re.compile(r"_msl_run(?P<drive>\d+)_p(?P<port>\d+)_(?:ez\d+|hy|hz)(?:_left)?")
 
     def record(self, theta):
-        """The closed contour's Hy/Hz contributions are +N*U and -0.25*N*U after orientation."""
+        """For N=5 or 9 width-node faces, the closed contour's Hy/Hz contributions are +N*U and -0.25*N*U after orientation."""
         dtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
         c, s = jnp.cos(theta), 1j * jnp.sin(theta)
         power_s = jnp.stack((jnp.stack((c, s)), jnp.stack((s, c))))[:, :, None]

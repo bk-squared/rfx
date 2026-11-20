@@ -98,6 +98,7 @@ def test_near_field_decay_length_matches_the_substrate_transverse_resonance():
     six far probes are a flat float32 noise floor; the two near-port probes
     carry a decaying excess whose length is the substrate's own transverse
     quarter-wave scale 2h/pi -- a property of the board, not of the fixture.
+    The (r0, d_min_over_h) windows are pinned to the values (11.323, 4.0354) measured earlier.
     """
     d = np.load(_LADDER_NPZ, allow_pickle=False)
     x = d["msl_ladder_x_m"]
