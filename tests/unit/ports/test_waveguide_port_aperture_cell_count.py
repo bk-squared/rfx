@@ -176,7 +176,7 @@ def test_abutting_apertures_on_one_face_share_no_cell():
     say what the field arrays say, so the convention is pinned here rather than
     left to be rediscovered: abutting is ``hi_a == lo_b`` exactly, and the node
     spans it came from would have collided.
-    Each half solves on its own 9 cells, tiling the guide's 18.
+    The midpoint y_mid = A/2 = 11.43 mm is exactly node 9 of the 18-cell guide at dx = 1.27 mm.
     """
     dx = 0.00127
     y_mid = A_WR90 / 2

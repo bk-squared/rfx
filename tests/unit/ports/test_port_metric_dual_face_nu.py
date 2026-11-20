@@ -715,8 +715,9 @@ def test_uniform_lane_rlc_ade_output_does_not_move_under_the_dual_area_fold():
     steps, which are float32 and bit-identical across that move; they are the
     thing that must not change.
     An earlier float64 matrix-exponential witness driven by ``D0*A*amp_n`` held over each step gave
-    step-200 element currents of 6.1279e-07 A for parallel pure L, 6.4365e-04 A for parallel R+L+C,
-    6.3437e-07 A for series R+L and 6.3300e-07 A for series R+L+C.
+    step-200 currents of 6.1279e-07 A for the parallel pure-L inductor, 6.4365e-04 A for the
+    parallel R+L+C inductor, 6.3437e-07 A for the series R+L element and 6.3300e-07 A for the series
+    R+L+C element.
     """
     from rfx.core.yee import FDTDState
     from rfx.lumped import _update_parallel, _update_series, init_rlc_state

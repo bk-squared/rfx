@@ -38,7 +38,7 @@ What is checked here (fast, always on)
 The closed-form check of the realized impedance is
 ``tests/oracle/test_series_rlc_load_on_line.py``.
 The gate is 32 float32 epsilons against an earlier measured max ``|series - folded| / max |folded| =
-2.3e-7 ... 3.5e-7`` over 600 steps.
+2.3e-7 to 3.5e-7`` over 600 steps.
 """
 from __future__ import annotations
 
@@ -195,8 +195,8 @@ _C = 0.2e-12
     (0.1, _L, _C), (50.0, _L, _C),
 ], ids=["RC-0.1", "RC-50", "RC-150", "RL-0.1", "RL-50", "RLC-0.1", "RLC-50"])
 def test_series_element_next_to_a_port_decays(r_ohm, l_h, c_f):
-    """An earlier measurement of last-400-step max / peak was 1.6e-4 ... 1.21e-3 at 2400 steps (RL-0.1
-    and RLC-0.1 over the bar), against 7.7e-6 ... 3.9e-4 at 4800 steps."""
+    """An earlier measurement of last-400-step max / peak was 1.6e-4 to 1.21e-3 at 2400 steps (RL-0.1
+    and RLC-0.1 over the bar), against 7.7e-6 to 3.9e-4 at 4800 steps."""
     dx = _BOX_DX
     port = (2 * dx, 2 * dx, 2 * dx)
     elem = (3 * dx, 2 * dx, 2 * dx)
