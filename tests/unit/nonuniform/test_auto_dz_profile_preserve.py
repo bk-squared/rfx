@@ -26,17 +26,16 @@ import numpy as np
 
 from rfx.auto_config import _make_dz_profile
 
-# Snap tolerance pre-declared in the design note (never widened): 1e-12 m.
 ATOL = 1e-12
 
-# Demo fixture from the graded-z closure note: W = 6*h_sub
-# low-Z MSL board, h_sub = 254 um, eps_r 3.38, dx = W/8, margin 1.5 mm.
 H_SUB = 254e-6
-DX = 6 * H_SUB / 8            # 190.5 um
-PHYS_Z = H_SUB + 1.5e-3       # 1.754 mm declared column
+DX = 6 * H_SUB / 8
+AIR_MARGIN_M = 1.5e-3
+PHYS_Z = H_SUB + AIR_MARGIN_M
 
 
 def _demo_profile() -> np.ndarray:
+    """The demo profile represents the low-Z MSL board with W = 6*h_sub."""
     return np.asarray(
         _make_dz_profile([(0.0, H_SUB, 3.38)], PHYS_Z, DX), dtype=float
     )
@@ -73,7 +72,7 @@ def test_demo_fixture_protected_block_bit_identical():
     splits the top cell into [2/3, 1/3]. Those exact float64 values must
     survive smoothing bit-identically (np.array_equal, no tolerance)."""
     dz = _demo_profile()
-    dz_feat = H_SUB / 4  # 63.5 um, exactly as the builder computes it
+    dz_feat = H_SUB / 4
     expected_block = np.array(
         [dz_feat, dz_feat, dz_feat, dz_feat * 2 / 3, dz_feat / 3]
     )
@@ -82,8 +81,6 @@ def test_demo_fixture_protected_block_bit_identical():
     assert np.array_equal(dz[:j], expected_block), (
         f"protected block not bit-identical: {dz[:j]} vs {expected_block}"
     )
-    # dt anchor: the profile minimum is the block's thirds cell, unchanged
-    # from pre-fix (21.167 um) — the fix does not shrink the timestep here.
     assert float(np.min(dz)) == float(np.min(expected_block))
 
 
@@ -135,8 +132,6 @@ def test_generic_two_layer_blocks_bit_identical():
         thickness = z_hi - z_lo
         n_feat = max(4, int(np.ceil(thickness / 0.3e-3)))
         d = thickness / n_feat
-        # thirds rule splits BOTH edge cells (air below and above):
-        # [1/3, 2/3, interior..., 2/3, 1/3]
         expected = np.array(
             [d / 3, d * 2 / 3] + [d] * (n_feat - 2) + [d * 2 / 3, d / 3]
         )

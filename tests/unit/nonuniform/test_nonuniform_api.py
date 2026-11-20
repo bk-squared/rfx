@@ -11,21 +11,24 @@ from rfx.nonuniform import make_nonuniform_grid, make_current_source
 from rfx.core.yee import MaterialArrays
 from rfx.sources.sources import GaussianPulse, ModulatedGaussian
 
-try:  # jax >= 0.8.0
+try:
     from jax import enable_x64
-except ImportError:  # older jax
+except ImportError:
     from tests._x64_compat import enable_x64
+
+
+WINDOW_AREA_RELATIVE_TOL = 1e-4
 
 
 class TestNonUniformGrid:
     """Test make_nonuniform_grid construction."""
 
     def test_basic_grid(self):
+        """A column of N cells is bounded by N+1 nodes, including the CPML pads."""
         dz_profile = np.array([0.4e-3]*4 + [0.5e-3]*10)
         grid = make_nonuniform_grid((0.05, 0.05), dz_profile, 0.5e-3, 12)
-        assert grid.nx > 24  # domain + 2*cpml
+        assert grid.nx > 24
         assert grid.ny > 24
-        # N cells are bounded by N+1 nodes: profile + 2*cpml pads + 1
         assert grid.nz == len(dz_profile) + 24 + 1
         assert grid.dt > 0
         assert len(grid.inv_dz) == grid.nz
@@ -33,7 +36,6 @@ class TestNonUniformGrid:
     def test_cfl_from_min_dz(self):
         dz_profile = np.array([0.1e-3]*4 + [1e-3]*5)
         grid = make_nonuniform_grid((0.01, 0.01), dz_profile, 1e-3, 8)
-        # dt should be limited by dz_min=0.1mm, not dx=1mm
         from rfx.grid import C0
         dt_fine = 0.99 / (C0 * np.sqrt(1/1e-3**2 + 1/1e-3**2 + 1/0.1e-3**2))
         assert abs(grid.dt - dt_fine) / dt_fine < 0.01
@@ -60,7 +62,9 @@ class TestMakeCurrentSource:
         assert len(src[4]) == 100
 
     def test_dv_normalization(self):
-        """Cb/dV normalization should produce different amplitudes for different dz."""
+        """Cb/dV normalization should produce different amplitudes for different dz.
+        The amplitude-ratio gate brackets the cell-width ratio 0.5/0.2 = 2.5.
+        """
         dx = 0.5e-3
         dz_mixed = np.array([0.2e-3]*4 + [0.5e-3]*5)
         grid = make_nonuniform_grid((0.02, 0.02), dz_mixed, dx, 8)
@@ -73,18 +77,16 @@ class TestMakeCurrentSource:
         )
         pulse = GaussianPulse(f0=2.4e9, bandwidth=0.8)
 
-        # Source in fine-dz region vs coarse-dz region
-        k_fine = 8 + 2   # cpml(8) + 2 → inside 0.2mm zone
-        k_coarse = 8 + 6  # cpml(8) + 6 → inside 0.5mm zone
+        k_fine = 8 + 2
+        k_coarse = 8 + 6
+        assert dz_mixed[k_fine - 8] < dz_mixed[k_coarse - 8], (
+            "Normalization sources must sample distinct fine and coarse cell widths")
         src_fine = make_current_source(grid, (20, 20, k_fine), 'ez', pulse, 50, materials)
         src_coarse = make_current_source(grid, (20, 20, k_coarse), 'ez', pulse, 50, materials)
 
-        # Same grid/dt, but different dz → different dV → different amplitude
         peak_fine = np.max(np.abs(src_fine[4]))
         peak_coarse = np.max(np.abs(src_coarse[4]))
-        # Smaller dz → smaller dV → larger Cb/dV → larger amplitude
         assert peak_fine > peak_coarse
-        # Ratio should roughly match dz ratio (0.5/0.2 = 2.5)
         ratio = peak_fine / peak_coarse
         assert 2.0 < ratio < 3.0
 
@@ -146,8 +148,6 @@ class TestSimulationNonUniform:
         assert np.all(np.isfinite(ts)), "CPML+nonuniform produced NaN/Inf"
         peak = float(np.max(np.abs(ts)))
         assert peak > 0.0, "signal stayed zero — source / probe mismatch"
-        # Late-time amplitude must not exceed the initial pulse — absorbing
-        # boundary should damp energy, never source it.
         assert float(np.max(np.abs(ts[-20:]))) <= 1.05 * peak, (
             f"late-time peak {np.max(np.abs(ts[-20:])):.3e} > 1.05x "
             f"early peak {peak:.3e} — absorber sourcing energy"
@@ -164,9 +164,9 @@ class TestSimulationNonUniform:
         """
         from rfx.measurement.farfield import compute_far_field
 
-        # The profile once solved 4.1 mm under a 10 mm declaration, so
-        # the box top lay outside the solved column; it now spans 10.1 mm.
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 17)
+        assert float(np.sum(dz)) > 0.006, (
+            "The solved column must contain the NTFF box top")
         sim = Simulation(
             freq_max=5e9,
             domain=(0.02, 0.02, float(np.sum(dz))),
@@ -182,7 +182,6 @@ class TestSimulationNonUniform:
         )
         result = sim.run(n_steps=150, compute_s_params=False)
 
-        # (a) both NTFF attributes are populated on NU path
         assert result.ntff_data is not None
         assert result.ntff_box is not None
 
@@ -195,13 +194,11 @@ class TestSimulationNonUniform:
             np.asarray(result.ntff_data.z_hi),
         ]
 
-        # (b) every face accumulator is finite; at least one is non-zero
         assert all(np.all(np.isfinite(f)) for f in face_arrays)
         assert any(np.max(np.abs(f)) > 0 for f in face_arrays), (
             "all 6 NTFF face accumulators stayed zero — scan never wrote"
         )
 
-        # (c) far-field post-processing must run cleanly on NU grid
         theta = np.array([np.pi / 2])
         phi = np.array([0.0, np.pi / 2])
         ff = compute_far_field(
@@ -218,9 +215,9 @@ class TestSimulationNonUniform:
         |DFT| magnitude at 200 steps must exceed the magnitude at 100
         steps. Also asserts the plane is finite and non-zero.
         """
-        # The profile once solved 4.1 mm under a 10 mm declaration, so
-        # the source and plane at 5 mm lay outside it; it now spans 10.1 mm.
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 17)
+        assert float(np.sum(dz)) > 0.005, (
+            "The solved column must contain the DFT source and plane")
 
         def _run(n_steps: int):
             sim = Simulation(
@@ -241,18 +238,15 @@ class TestSimulationNonUniform:
         r100 = _run(100)
         r200 = _run(200)
 
-        # (a) dft_planes is present and non-empty
         assert r200.dft_planes is not None
         assert "mid_xy" in r200.dft_planes
 
         acc200 = np.asarray(r200.dft_planes["mid_xy"].accumulator)
         acc100 = np.asarray(r100.dft_planes["mid_xy"].accumulator)
 
-        # (b) finite and non-zero
         assert np.all(np.isfinite(acc200))
         assert np.max(np.abs(acc200)) > 0.0
 
-        # (c) longer run → larger |accumulator|
         assert np.max(np.abs(acc200)) > np.max(np.abs(acc100))
 
     def test_nonuniform_tfsf_x_incidence_accumulates(self):
@@ -276,13 +270,11 @@ class TestSimulationNonUniform:
             f0=4e9, bandwidth=0.5, amplitude=1.0, margin=3,
             polarization="ez", direction="+x",
         )
-        # Probe inside the total-field region, in vacuum (no scatterer).
         sim.add_probe((0.04, 0.003, 0.0025), "ez")
         r = sim.run(n_steps=200, compute_s_params=False)
         ts = np.asarray(r.time_series[:, 0])
         assert np.all(np.isfinite(ts))
         assert np.max(np.abs(ts)) > 0.0
-        # No late-time exponential blow-up.
         assert np.max(np.abs(ts[-20:])) < 2.0 * np.max(np.abs(ts))
 
     def test_nonuniform_tfsf_oblique_rejected(self):
@@ -317,26 +309,24 @@ class TestSimulationNonUniform:
           (c) NU result agrees with uniform reference (dz_profile = full(nz, dz_mean))
               within 5% (degenerate NU == uniform)
         """
-        a_wg = 0.04          # aperture along x
-        b_wg = 0.02          # aperture along z (the NU axis)
-        length = 0.06        # along y
+        a_wg = 0.04
+        b_wg = 0.02
+        length = 0.06
         dx = 0.002
 
-        # Uniform reference: dz = dx everywhere
         nz_total = int(round(b_wg / dx))
         dz_uniform = np.full(nz_total, float(dx))
 
-        # Degenerate-uniform NU profile (dz = dx everywhere) — used for
-        # a bit-close agreement check against the uniform reference.
         dz_nu = np.full(nz_total, float(dx))
 
-        # f0 above TE10 cutoff (cutoff = c / (2*a))
         from rfx.grid import C0 as _C0
         f_c = _C0 / (2 * a_wg)
         f0 = f_c * 1.6
         freqs = jnp.linspace(f_c * 1.3, f_c * 2.2, 8)
+        assert float(freqs[0]) > f_c, "The S11 frequency band must lie above the TE10 cutoff"
 
         def _build(dz_profile):
+            """The port x_position is a distance along y from the negative-y face."""
             sim = Simulation(
                 freq_max=float(freqs[-1]) * 1.2,
                 domain=(a_wg, length, b_wg),
@@ -346,7 +336,7 @@ class TestSimulationNonUniform:
                 dz_profile=dz_profile,
             )
             sim.add_waveguide_port(
-                x_position=0.005,           # 5 mm into y from the -y face
+                x_position=0.005,
                 direction="+y",
                 x_range=(0.0, a_wg),
                 z_range=(0.0, b_wg),
@@ -367,8 +357,6 @@ class TestSimulationNonUniform:
             res_nu = sim_nu.run(n_steps=n_steps, compute_s_params=False)
             res_ref = sim_ref.run(n_steps=n_steps, compute_s_params=False)
         except ValueError:
-            # Aperture-on-NU edge cases that don't relate to the integral
-            # math should be flagged but not silently passed. Re-raise.
             raise
 
         assert res_nu.waveguide_sparams is not None, "NU path must surface waveguide_sparams"
@@ -381,9 +369,6 @@ class TestSimulationNonUniform:
         assert np.all(s11_nu_mag >= 0.0)
         assert np.all(s11_nu_mag <= 1.05), f"|S11| exceeds 1.05: {s11_nu_mag}"
 
-        # Degenerate NU == uniform (both use dx everywhere).
-        # Compare the spectrum element-wise; allow 5% absolute tolerance
-        # on |S11|.
         s11_ref_mag = np.abs(s11_ref)
         diff = np.abs(s11_nu_mag - s11_ref_mag)
         assert np.max(diff) < 0.05, (
@@ -401,7 +386,7 @@ class TestSimulationNonUniform:
         """
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
         domain = (0.02, 0.02, 0.01)
-        src_pos = (0.01, 0.01, 0.001)  # inside the fine-dz region
+        src_pos = (0.01, 0.01, 0.001)
 
         def _build(with_r: bool):
             sim = Simulation(
@@ -439,7 +424,6 @@ class TestSimulationNonUniform:
         assert np.all(np.isfinite(ts_rlc))
         assert peak_free > 0
         assert peak_rlc > 0
-        # The resistor must damp the on-cell field response.
         assert peak_rlc < peak_free, (
             f"expected R=50Ω to damp the probe peak; "
             f"got peak_rlc={peak_rlc:.3e} vs peak_free={peak_free:.3e}"
@@ -450,18 +434,13 @@ class TestAutoConfigNonUniform:
     """Test auto_configure dz_profile generation."""
 
     def test_thin_substrate_triggers_nonuniform(self):
-        """Substrate thinner than 4*dx should trigger non-uniform z."""
-        # Both foils are drawn with ZERO extent in z, which IS the
-        # sheet declaration (§1.5) — the ground on the substrate floor, the
-        # patch on its top face. That spelling was already what this test
-        # used; before the contract it realized nothing at all (a half-open
-        # ``[lo, hi)`` node window with lo == hi masks no node), and only
-        # ``auto_configure`` reads these entries, so the emptiness never
-        # bit here. Under the contract they are sheets on real node planes.
+        """Substrate thinner than 4*dx should trigger non-uniform z.
+        Zero z extent declares the ground and patch foils as sheets on the substrate faces.
+        """
         geometry = [
             (Box((0, 0, 0), (0.03, 0.03, 0.0016)), "fr4"),
-            (Box((0, 0, 0), (0.03, 0.03, 0)), "pec"),     # ground sheet
-            (Box((0.005, 0.005, 0.0016), (0.025, 0.025, 0.0016)), "pec"),  # patch sheet
+            (Box((0, 0, 0), (0.03, 0.03, 0)), "pec"),
+            (Box((0.005, 0.005, 0.0016), (0.025, 0.025, 0.0016)), "pec"),
         ]
         materials = {
             "fr4": {"eps_r": 4.4, "sigma": 0.025},
@@ -470,11 +449,9 @@ class TestAutoConfigNonUniform:
         config = auto_configure(
             geometry, (1e9, 4e9), materials=materials, accuracy="standard",
         )
-        # dx ~ 3.5mm at standard accuracy, h=1.6mm → 0.45 cells → non-uniform
         if config.dz_profile is not None:
             assert config.uses_nonuniform
             assert len(config.dz_profile) >= 4
-            # Verify thin feature is resolved with at least 4 cells
             dz_min = np.min(config.dz_profile)
             assert dz_min < config.dx
 
@@ -489,10 +466,6 @@ class TestAutoConfigNonUniform:
         auto_configure(
             geometry, (1e9, 4e9), materials=materials, accuracy="standard",
         )
-        # 10mm substrate with dx~3.5mm → ~3 cells, but feature detection
-        # uses z_features which checks z_thick/dx < 4
-        # This is borderline — the test validates the logic path
-        # For truly thick substrates, no non-uniform needed
 
     def test_to_sim_kwargs_includes_dz(self):
         """SimConfig.to_sim_kwargs should include dz_profile when set."""
@@ -587,7 +560,6 @@ class TestNonUniformDispersive:
         sim.add_probe((0.01, 0.01, 0.0025), "ez")
         result = sim.run(n_steps=200)
         ts = np.asarray(result.time_series)
-        # Energy should not diverge: peak field should stay finite
         assert np.all(np.isfinite(ts))
         assert np.max(np.abs(ts)) < 1e10
 
@@ -606,7 +578,6 @@ class TestNonUniformDispersive:
         result = sim.run(n_steps=100)
         ts = np.asarray(result.time_series)
         assert ts.shape == (100, 1)
-        # Source should inject energy — probe should see non-zero signal
         assert np.max(np.abs(ts)) > 0
 
 
@@ -614,7 +585,9 @@ class TestFluxMonitorOnNonUniform:
     """``add_flux_monitor`` is supported on the NU path for full-plane
     monitors (issue #88 flux-extractor prerequisite) and, since the
     cumulative-edge index conversion landed, for finite-region (``size=``)
-    monitors as well."""
+    monitors as well.
+    Each tangential electric component uses primal widths on its own axis and clipped dual widths on the other tangential axis.
+    """
 
     def _make_nu_sim(self):
         dz = np.array([0.4e-3] * 4 + [0.5e-3] * 8, dtype=np.float64)
@@ -668,6 +641,7 @@ class TestFluxMonitorOnNonUniform:
         bookkeeping - index mapping, face-area weights, and a restriction
         identity taken against the full plane on the SAME fields - so the
         advisory does not bear on any of them.
+        The 1e-4 relative area gate allows stored-width roundoff while staying below one 0.25 by 0.5 mm cell's approximately 3.9e-3 fraction of the 8 by 4 mm window.
         """
         from rfx.probes.probes import flux_spectrum
         with enable_x64(True):
@@ -702,10 +676,6 @@ class TestFluxMonitorOnNonUniform:
             n_x = mon_fin.hi1 - mon_fin.lo1
             n_y = mon_fin.hi2 - mon_fin.lo2
 
-            # (a) Ex*Hy is edge-centered in x and nodal in y; Ey*Hx is
-            # edge-centered in y and nodal in x. Nodal control volumes run
-            # between adjacent cell centers, so the two areas differ on a
-            # graded mesh. This is quadrature bookkeeping, not a mode oracle.
             from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
             coords = coords_from_nonuniform_grid(grid)
             dx_arr = np.diff(coords.x[mon_fin.lo1:mon_fin.hi1+1])
@@ -724,9 +694,7 @@ class TestFluxMonitorOnNonUniform:
             print(f"\n[z-normal dA] window=({mon_fin.lo1}:{mon_fin.hi1},"
                   f"{mon_fin.lo2}:{mon_fin.hi2}) cells=({n_x},{n_y}) "
                   f"got={got_dA:.9e} exp={exp_dA:.9e} rel={rel_dA:.2e}")
-            # float32 store of the cell widths -> ~1e-6 relative; the gate sits
-            # far above that and far below one 0.25 mm x 0.5 mm cell area.
-            assert rel_dA < 1e-4, (
+            assert rel_dA < WINDOW_AREA_RELATIVE_TOL, (
                 f"summed dA {got_dA:.9e} != the realized graded window area "
                 f"{exp_dA:.9e} (rel {rel_dA:.2e}) - the z-normal window does "
                 "not weight the cells it selected")
@@ -734,9 +702,6 @@ class TestFluxMonitorOnNonUniform:
                 f"dA shape {np.shape(np.asarray(mon_fin.dA))} != the window "
                 f"shape ({n_x},{n_y}) - the two tangential axes are swapped")
 
-            # (b) the finite window is exactly the full-plane integrand
-            #     restricted to the reported window: it adds a window, not new
-            #     field math. x64-scoped so the gate is machine precision.
             e1 = np.asarray(mon_full.e1_dft)
             e2 = np.asarray(mon_full.e2_dft)
             h1 = np.asarray(mon_full.h1_dft)
@@ -774,8 +739,6 @@ class TestFluxMonitorOnNonUniform:
                 f"over the SAME window by {reldev:.3e} (>1e-11) - a window "
                 "bookkeeping bug, not the expected machine-eps match")
 
-            # (c) the fixture can see an axis swap at all: the two tangential
-            #     cell counts must differ.
             assert n_x != n_y, (
                 f"both tangential axes selected {n_x} cells, so an axis swap "
                 "would pass unnoticed - the fixture must request unequal "
@@ -804,8 +767,6 @@ class TestNTFFOnNonUniform:
             dx=0.5e-3, dz_profile=dz, boundary="cpml",
         )
         sim.add_source((0.01, 0.01, 0.004), "ez")
-        # Interior z spans ~[2mm, 7.6mm] (CPML 4 layers * 0.5mm each
-        # end). Keep NTFF box well inside to silence the advisory.
         sim.add_ntff_box(
             corner_lo=(0.006, 0.006, 0.003),
             corner_hi=(0.014, 0.014, 0.006),

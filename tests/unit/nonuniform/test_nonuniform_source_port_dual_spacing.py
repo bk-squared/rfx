@@ -50,6 +50,7 @@ does not, so the two launch into different local neighbourhoods; that residual
 is a fixture confounder, not a normalization error, and the exact oracles
 above are what bind. Recorded here rather than gated, per the #671 lesson that
 a bare ref-vs-graded ratio is not a matched control.
+The ratio gate allows float32 roundoff from the product of three widths and one divide.
 """
 
 from __future__ import annotations
@@ -73,12 +74,11 @@ from rfx.model.graded_grid import e_node_dual_spacings
 from rfx.measurement.graded_wire import wire_port_current
 
 D = 0.5e-3
-# 0.5 -> 1.0 -> 0.5 mm; index 5 is the 2:1 transition node.
 PROF = np.concatenate([np.full(5, D), np.full(6, 2.0 * D), np.full(5, D)])
 K_STEP = 5
 AXIS_OF = {"ex": 0, "ey": 1, "ez": 2}
-RATIO_GATE = 1e-5        # float32 product of three widths + one divide
-BLIND_GUARD = 0.30       # the wrong form must be at least this far off
+RATIO_GATE = 1e-5
+BLIND_GUARD = 0.30
 
 
 def _dual_np(prof):
@@ -88,9 +88,6 @@ def _dual_np(prof):
     return np.concatenate([p[:1], 0.5 * (p[:-1] + p[1:])])
 
 
-# ---------------------------------------------------------------------------
-# The two spellings of the dual rule must agree, and be exact on a uniform mesh
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("prof", [
     PROF,
@@ -98,28 +95,24 @@ def _dual_np(prof):
     np.concatenate([np.full(3, D), np.full(4, 4.0 * D), np.full(3, D)]),
 ])
 def test_scalar_dual_spacing_matches_the_vector_helper(prof):
+    """The 1e-6 relative agreement gate allows the vector helper's default float32 roundoff."""
     vec = np.asarray(e_node_dual_spacings(prof))
     for k in range(prof.size):
         got = float(e_node_dual_spacing_at(np.asarray(prof, dtype=np.float64), k))
-        # The vector helper goes through jnp (float32 by default), the scalar
-        # one keeps the caller's dtype — agreement is to float32 roundoff.
         assert abs(got - float(vec[k])) <= 1e-6 * abs(got), (k, got, vec[k])
 
 
 def test_dual_equals_primal_bit_exactly_on_a_uniform_profile():
-    """This is what guarantees no uniform-mesh number can move."""
+    """This is what guarantees no uniform-mesh number can move.
+    The bitwise reference uses float32 to match the vector helper's default dtype.
+    """
     prof = np.full(11, D)
-    # Same dtype on both sides: the helper's jnp round-trip is float32 by
-    # default, so compare against the float32 image of the profile.
     assert np.array_equal(np.asarray(e_node_dual_spacings(prof)),
                           prof.astype(np.float32))
     for k in range(prof.size):
         assert float(e_node_dual_spacing_at(prof, k)) == float(prof[k])
 
 
-# ---------------------------------------------------------------------------
-# Site 1 — the source control volume
-# ---------------------------------------------------------------------------
 
 def _grid(prof_x, prof_z):
     return make_nonuniform_grid((8e-3, 8e-3), prof_z, D, cpml_layers=0,
@@ -140,7 +133,7 @@ def _realized_dv(grid, idx, component):
 @pytest.mark.parametrize("component", ["ex", "ey", "ez"])
 def test_source_control_volume_is_the_mixed_primal_dual_volume(component):
     grid = _grid(PROF, PROF)
-    idx = (K_STEP, 5, K_STEP)          # j = 5 sits on the uniform y mesh
+    idx = (K_STEP, 5, K_STEP)
     prim = [np.asarray(grid.dx_arr, dtype=np.float64),
             np.asarray(grid.dy_arr, dtype=np.float64),
             np.asarray(grid.dz, dtype=np.float64)]
@@ -157,8 +150,6 @@ def test_source_control_volume_is_the_mixed_primal_dual_volume(component):
     assert abs(got / expected - 1.0) <= RATIO_GATE, (
         f"{component}: realized dV {got:.6e} vs mixed primal/dual "
         f"{expected:.6e} (ratio {got / expected:.6f})")
-    # Blindness guard: the fixture must still be graded enough that the
-    # all-primal form is clearly excluded.
     assert abs(primal_only / expected - 1.0) > BLIND_GUARD, (
         f"{component}: fixture stopped discriminating — all-primal dV "
         f"{primal_only:.6e} is within {BLIND_GUARD:.0%} of the correct one")
@@ -215,28 +206,18 @@ def test_source_control_volume_stays_on_the_ad_path():
         return (g.dt / EPS_0) / src[4][0]
 
     g = np.asarray(jax.grad(dv)(jnp.asarray(PROF)))
-    # ez at k: dV = dual_x * dual_y * d_z[k], so d(dV)/d(d_z[k]) is the
-    # transverse dual area (x and y are uniform here, spacing D).
     analytic = D * D
     assert np.all(np.isfinite(g))
     assert abs(float(g[K_STEP]) / analytic - 1.0) < 1e-3, (g[K_STEP], analytic)
 
 
-# ---------------------------------------------------------------------------
-# Site 2 — the wire-port Ampere loop
-# ---------------------------------------------------------------------------
 
-# Distinct grading per axis, so a leg weighted by the WRONG axis cannot
-# coincide with the right one.
-# Ratios chosen so EVERY leg's wrong weight (the primal/wrong-axis
-# one) is at least 30% off its correct dual weight — see the blindness guard.
 LOOP_PROFS = [
     np.concatenate([np.full(5, D), np.full(6, 4.0 * D), np.full(5, D)]),
     np.concatenate([np.full(5, D), np.full(6, 2.0 * D), np.full(5, D)]),
     np.concatenate([np.full(5, D), np.full(6, 7.0 * D), np.full(5, D)]),
 ]
 LOOP_IDX = (K_STEP, K_STEP, K_STEP)
-# comp -> (H_c field, its own axis, H_b field, its own axis), (a, b, c) cyclic
 LOOP_CASES = {"ez": ("hy", 0, "hx", 1),
               "ex": ("hz", 1, "hy", 2),
               "ey": ("hx", 2, "hz", 0)}
@@ -309,6 +290,7 @@ def test_wire_port_current_matches_the_cubic_spelling(comp):
     two differ in the multiply order (measured ~1e-8 relative in float32).
     On a uniform mesh the METRICS are identical, which is the claim that
     matters — no uniform-mesh number moves beyond roundoff.
+    The tolerance is scaled to the term magnitude because comparable loop terms may cancel.
     """
     n = 12
     rng = np.random.default_rng(0)
@@ -319,8 +301,6 @@ def test_wire_port_current_matches_the_cubic_spelling(comp):
                                   comp, *idx, D, D, D))
     old = float(_old_loop(flds["hx"], flds["hy"], flds["hz"], comp, *idx,
                           D, D, D))
-    # The loop is a difference of comparable terms, so the tolerance is
-    # scaled to the TERM magnitude, not to the (possibly cancelling) result.
     scale = D * max(float(jnp.max(jnp.abs(flds[k]))) for k in flds)
     assert abs(got - old) <= 1e-5 * scale, (comp, got, old, scale)
 
@@ -331,12 +311,9 @@ def test_wire_port_current_rejects_an_unknown_component():
         wire_port_current(z, z, z, "hz", 2, 2, 2, D, D, D)
 
 
-# ---------------------------------------------------------------------------
-# Preflight advisories
-# ---------------------------------------------------------------------------
 
-GRADED = [0.5e-3] * 8 + [1.5e-3] * 8      # node 8 (z = 4 mm) is the step
-GRADED_DOWN = [1.5e-3] * 8 + [0.5e-3] * 8  # node 8 (z = 12 mm), DOWN step
+GRADED = [0.5e-3] * 8 + [1.5e-3] * 8
+GRADED_DOWN = [1.5e-3] * 8 + [0.5e-3] * 8
 UNIFORM = [0.5e-3] * 16
 DXA = 0.5e-3
 LXY = 24 * DXA
@@ -367,10 +344,8 @@ def test_preflight_advises_on_a_source_on_a_graded_node():
     assert "TRANSVERSE" in fired and "DUAL spacing" in fired, fired
     assert "500µm below" in fired and "1.5mm above" in fired, fired
 
-    # ez: z is the component's OWN axis -> primal, exact, no advisory
     assert "current source at" not in _preflight(GRADED, _src, z=4.0e-3,
                                                  comp="ez")
-    # matched node on the same graded mesh / uniform profile / uniform lane
     assert "current source at" not in _preflight(GRADED, _src, z=2.0e-3,
                                                  comp="ex")
     assert "current source at" not in _preflight(UNIFORM, _src, z=4.0e-3,
@@ -428,9 +403,6 @@ def test_preflight_advises_on_a_wire_port_on_a_graded_node():
                                                 comp="ex")
 
 
-# ---------------------------------------------------------------------------
-# Amplitude witness (diagnostic; see the module docstring for the confounder)
-# ---------------------------------------------------------------------------
 
 W_PROF = np.concatenate([np.full(4, D), np.full(8, 2 * D), np.full(12, D)])
 W_NODES = np.concatenate([[0.0], np.cumsum(W_PROF)])
@@ -472,16 +444,9 @@ def test_graded_step_source_amplitude_witness():
         f"0.867548 (pre-#672 it was 1.301322)")
 
 
-# ---------------------------------------------------------------------------
-# wp_meta slot-order guard
-# ---------------------------------------------------------------------------
 
-# Three DIFFERENT gradings, one per axis, each STRICTLY varying, so at every
-# node the three dual spacings differ from each other AND from the primal
-# width. No permutation of them can be silently self-consistent.
-# The first and last cell must equal the boundary ``dx`` (CPML cells are
-# uniform), so the varying part sits in the interior.
 def _graded(slope):
+    """The first and last cells equal the boundary dx because CPML cells are uniform."""
     return np.concatenate([np.full(5, D),
                            D * (1.0 + slope * np.arange(1.0, 11.0)),
                            np.full(5, D)])
@@ -518,12 +483,11 @@ def test_wire_port_metrics_reach_the_ampere_loop_on_the_right_axes(monkeypatch):
     orig = ports.lumped_wire_owner
 
     def spy(grid, comp, live, **kw):
+        """An Ez Ampere loop has x/y legs."""
         o = orig(grid, comp, live, **kw)
         mi, mj, mk = live[len(live)//2]
         current = next(c for c in o.channels if c.name == 'I')
         weights = {n.component: abs(n.weight) for n in current.nodes}
-        # The Ez loop has x/y legs; pin the z metric through the same setup
-        # metadata independently below rather than inventing a third H leg.
         z = _meta._build_wp_meta([dict(mid_i=mi, mid_j=mj, mid_k=mk,
                                     component=comp, impedance=50., live_cells=live)], grid)[0][12]
         seen.append((comp, mi, mj, mk, weights['hx'], weights['hy'], float(z)))
@@ -559,9 +523,6 @@ def test_wire_port_metrics_reach_the_ampere_loop_on_the_right_axes(monkeypatch):
     want_z = float(_dual_np(pz)[mk])
     primal_z = float(pz[mk])
 
-    # The fixture must actually discriminate: if these ever collapse onto one
-    # another a permutation would slip through and this test would assert
-    # nothing.
     assert len({round(v, 12) for v in (want_x, want_y, want_z, primal_z)}) == 4, (
         f"fixture no longer discriminates: dual_x={want_x} dual_y={want_y} "
         f"dual_z={want_z} primal_z={primal_z} at cell ({mi}, {mj}, {mk})")
@@ -645,15 +606,13 @@ def test_wp_meta_live_cell_slots_carry_primal_widths(monkeypatch):
     pz = np.asarray(grid.dz, dtype=np.float64)
     dual_z = _dual_np(pz)
     for (ci, cj, ck), dp in zip(live_cells, d_par):
-        want = float(pz[ck])          # PRIMAL width at THIS cell
+        want = float(pz[ck])
         wrong_dual = float(dual_z[ck])
         assert abs(float(dp) - want) <= 1e-9 * want, (
             f"slot-14 d_par at cell ({ci},{cj},{ck}) is {float(dp):.6g}, "
             f"expected the primal dz {want:.6g} (dual would be "
             f"{wrong_dual:.6g}) — the V_port metric family moved off #672 "
             f"PRIMAL")
-    # The fixture must discriminate: primal != dual and the two live-cell
-    # primal widths differ (strictly graded interior).
     ks = [c[2] for c in live_cells]
     assert len({round(float(pz[k]), 15) for k in ks}) == len(ks), (
         "fixture no longer discriminates: equal primal dz across the live "
