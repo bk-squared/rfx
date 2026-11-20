@@ -1,5 +1,6 @@
 """A material trace refuses public host geometry and preserves differentiable solves."""
 
+import sys
 import time
 
 import jax
@@ -37,16 +38,42 @@ def test_public_geometry_refuses_and_names_material_trace(capsys):
             "Call realized_geometry() outside the transform on concrete values; "
             "the geometry does not depend on a material value.")
         with capsys.disabled():
-            print(f"public refusal: {message}")
+            print(f"public refusal: {message}", file=sys.stderr)
         return p
 
     assert jax.jacfwd(objective)(0.5) == 1
     with capsys.disabled():
-        print(f"public refusal wall time: {time.perf_counter() - started:.6f}s")
+        print(f"public refusal wall time: {time.perf_counter() - started:.6f}s", file=sys.stderr)
+
+
+def test_two_public_geometry_lookups_refuse_and_name_material_trace(capsys):
+    def objective(p):
+        sim = _scene(p)
+        for lookup in range(2):
+            with pytest.raises(RfxRefusal, match=r"material\['dielectric'\]\.eps_r") as caught:
+                sim.realized_geometry()
+            with capsys.disabled():
+                print(f"public lookup {lookup}: {caught.value}", file=sys.stderr)
+        return p
+
+    assert jax.jacfwd(objective)(0.5) == 1
+
+
+def test_public_geometry_after_preflight_refuses_and_names_material_trace(capsys):
+    def objective(p):
+        sim = _scene(p)
+        sim.preflight()
+        with pytest.raises(RfxRefusal, match=r"material\['dielectric'\]\.eps_r") as caught:
+            sim.realized_geometry()
+        with capsys.disabled():
+            print(f"public lookup after preflight: {caught.value}", file=sys.stderr)
+        return p
+
+    assert jax.jacfwd(objective)(0.5) == 1
 
 
 def test_material_trace_preserves_forward_and_run(capsys):
-    for entry in ("forward", "run"):
+    for entry, preflight in (("forward", False), ("forward", True), ("run", False)):
         started = time.perf_counter()
         observations = []
 
@@ -56,7 +83,7 @@ def test_material_trace_preserves_forward_and_run(capsys):
                 sim.realized_geometry()
             except RfxRefusal:
                 pass
-            result = getattr(sim, entry)(n_steps=16, skip_preflight=True)
+            result = getattr(sim, entry)(n_steps=16, skip_preflight=not preflight)
             record = result.realized_geometry
             assert record is None or isinstance(record, RealizedGeometry)
             observations.append("None" if record is None else "record")
@@ -66,9 +93,10 @@ def test_material_trace_preserves_forward_and_run(capsys):
         assert np.isfinite(derivative)
         assert len(observations) == 1
         with capsys.disabled():
-            print(f"{entry}: trace admitted; Result.realized_geometry={observations[0]}; "
+            print(f"{entry}: preflight={preflight}; trace admitted; "
+              f"Result.realized_geometry={observations[0]}; "
               f"objective derivative={float(derivative)}; "
-              f"wall time={time.perf_counter() - started:.6f}s")
+              f"wall time={time.perf_counter() - started:.6f}s", file=sys.stderr)
 
 
 def test_concrete_entity_masks_equal_concrete_build(capsys):
@@ -83,4 +111,4 @@ def test_concrete_entity_masks_equal_concrete_build(capsys):
     for entity, entry in zip(record.entities, build._geometry, strict=True):
         np.testing.assert_array_equal(entity.mask, observed[id(entry)])
     with capsys.disabled():
-        print(f"concrete masks wall time: {time.perf_counter() - started:.6f}s")
+        print(f"concrete masks wall time: {time.perf_counter() - started:.6f}s", file=sys.stderr)
