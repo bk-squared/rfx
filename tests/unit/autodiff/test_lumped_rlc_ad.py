@@ -104,9 +104,9 @@ def test_dS11_dR_dC_ad_matches_fd():
     against the unchanged 5% gate. With the element at the port cell instead,
     dS11^2/dR is -1.15e-10 — no signal for either side to agree on — which is
     why the fixture moves it one cell out; see the fixture note above.
-    The derived relative step lies inside the earlier measured convergence plateau with either port-current phase correction.
+    For an order-one scaled objective, minimizing the central-difference error (h**2/6)|f'''| + eps|f|/h gives h/x0 approximately (3 eps)**(1/3), with float32 eps because the fields remain float32 under scoped x64.
     """
-    assert _RLC_OFFSET_CELLS == 1, "The RLC element must sit one cell off the driven port cell to affect the external impedance."
+    assert tuple(np.subtract((grid := (fixture := _fixture_sim())._build_grid()).position_to_index(fixture._lumped_rlc[0].position), grid.position_to_index(fixture._ports[0].position))) == (1, 0, 0), "The RLC element must sit one cell off the driven port cell to affect the external impedance."
     with _enable_x64(True):
         R = jnp.asarray(_R0, dtype=jnp.float64)
         C = jnp.asarray(_C0, dtype=jnp.float64)
@@ -183,7 +183,7 @@ def test_forward_no_rlc_byte_identity():
     Load-bearing falsifier: the entire differentiable capability rides on
     forward(); the new self._lumped_rlc branch must be a pure skip when there
     is no RLC element.
-    The magnetic CPML profile is sampled at the Yee half cell.
+    The port in a six-layer CPML box makes this no-element golden sensitive to the magnetic profile's Yee half-cell staggering.
     """
     golden = np.load(os.path.join(_FIXTURE_DIR, "golden_forward_no_rlc_s11.npy"))
     sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=0.02 / 15,

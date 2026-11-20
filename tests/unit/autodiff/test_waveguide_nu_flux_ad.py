@@ -131,7 +131,8 @@ def _s21_mag2(deps):
 
 def test_nu_flux_smatrix_grad_finite_and_fd_consistent():
     """Gates 1+2: traced NU flux extraction yields a finite, FD-consistent
-    grad w.r.t. a substrate-eps scalar."""
+    grad w.r.t. a substrate-eps scalar.
+    The graded-mesh AD-versus-FD gate runs on every pull request so it cannot wait for the slow suite."""
     deps0 = jnp.asarray(0.5, dtype=jnp.float32)
     val, g = jax.value_and_grad(_s21_mag2)(deps0)
     assert np.isfinite(float(val)), f"value is {val}"

@@ -177,6 +177,7 @@ def test_complex_observable_compares_the_whole_complex_sensitivity():
     zero and the imaginary part is not, and it is the imaginary part that moves
     with the record length. Comparing only the real part reports that bin as
     perfectly converged when its sensitivity has moved 5.5 %.
+    The on-pole cosine uses the Hermitian product to give +1 where an unconjugated product gives -1.
     """
     from tests._x64_compat import enable_x64
 
@@ -570,7 +571,7 @@ def test_cavity_gradient_needs_a_longer_record_than_its_value():
 
     local = np.zeros(grid.shape, dtype=np.float32)
     local[nx // 2:, :, :] = 1.0
-    assert np.all(local[nx // 2:, :, :] == 1.0) and np.all(local[:nx // 2, :, :] == 0.0), "The local permittivity leaf must scale only the probe-side half so the two leaves are different parameter directions."
+    assert np.all(local[nx // 2:, :, :] == 1.0) and np.all(local[:nx // 2, :, :] == 0.0) and local[grid.position_to_index(sim._probes[0].position)] == 1.0, "The local permittivity leaf must scale only the probe-side half so the two leaves are different parameter directions."
     local_j = jnp.asarray(local)
 
     freqs = jnp.asarray(c["freqs_hz"])

@@ -230,7 +230,10 @@ GRAD_MODELS = sorted(name for name, m in MODELS.items() if m[4] == N_STEPS)
 def test_jit_of_the_gradient_equals_the_plain_call(name):
     """``jax.jit(jax.value_and_grad(loss))`` with a design input traces and
     agrees with the plain call (the objective and its gradient are sums over
-    the record: 1e-4 of the peak)."""
+    the record: 1e-4 of the peak).
+    The open boards are excluded from the gradient comparison because their subject is the per-step
+    record.
+    """
     sim, graded, observable, design, n_steps = _model(name)
     loss = _loss(sim, graded, observable, design, n_steps)
     eps = jnp.asarray(2.0 + np.random.default_rng(3).random(

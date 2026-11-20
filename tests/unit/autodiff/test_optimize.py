@@ -119,7 +119,6 @@ def test_gradient_check_matches():
     Uses a tiny PEC simulation with a single scalar design parameter
     (uniform eps perturbation) so that the finite-difference loop is
     fast (only 2*N forward evaluations for N parameters).
-    The relative-error bar is 0.5 for the coarse gradient check.
     """
     sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
     sim.add_port((0.005, 0.0075, 0.0075), "ez")

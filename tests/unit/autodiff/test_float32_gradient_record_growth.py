@@ -96,7 +96,7 @@ def _run_arm(boundary, precision):
 
 
 def _errors(arm32, arm64):
-    """Slot n contains E at (n + 1) dt."""
+    """The np.maximum error floor preserves NaN so the finite-value bar cannot hide it."""
     x32, dx32, dt32 = arm32
     x64, dx64, dt64 = arm64
     assert dt32 == dt64
@@ -107,6 +107,7 @@ def _errors(arm32, arm64):
         window_errors = []
         for length in readouts:
             def dft(values):
+                """Slot n contains E at (n + 1) dt."""
                 return np.sum(phase[:, :length] * values[None, :length], axis=1) * dt64
 
             d32, d64 = dft(x32), dft(x64)

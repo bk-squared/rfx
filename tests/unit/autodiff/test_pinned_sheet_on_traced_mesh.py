@@ -315,8 +315,8 @@ def test_a_pinned_sheet_reaches_the_solve_on_the_nonuniform_lane():
     turns conductor geometry into PEC edges, and confirmed against the same
     board with the patch removed: metal that reaches the solve changes what
     the probe sees.
-    The patched and bare boards derive dt, so a dt difference would pass as the patch reaching the
-    solve.
+    The patched and bare boards must build the same cells and derived dt to prevent a dt difference
+    passing as the patch reaching the solve.
     """
     from rfx.runners.nonuniform import assemble_materials_nu
     sim = _build_board(0.5 * DX, probe=(20 * DX, 8 * DX, K_MID * DX), pin_dt=False)
@@ -380,10 +380,8 @@ def test_patch_edge_gradient_matches_a_central_difference(case):
     can be compared, so the traced primal is checked against the concrete
     one first — with a pinned declaration they agree to float32 round-off,
     because the footprint does not depend on the route at all.
-    An earlier measurement with float32 fields and pinned dt, using centred differences at dx/8,
-    dx/16, dx/32, dx/64, gave relative errors A 7.9960e-3 / 2.0170e-3 / 5.4590e-4 / 7.0143e-6, B
-    3.8693e-3 / 9.6618e-4 / 2.2386e-4 / 9.0866e-5, C 8.2931e-3 / 2.0895e-3 / 5.4981e-4 / 3.6687e-5,
-    D 8.5021e-3 / 2.1354e-3 / 5.7214e-4 / 9.3833e-6.
+    The realized-edge guard rules out a bare dielectric whose deforming substrate alone would yield
+    a gradient.
     """
     kw = AD_CASES[case]
     d0 = 0.5 * DX
