@@ -84,7 +84,6 @@ def test_returned_results_have_no_refusal_but_in_band_stub_does(graded, entry):
     stubs = [record for record in result.diagnostics if record.code == 'msl.line_stub_behind_port']
     assert len(stubs) == 1 and stubs[0].severity == 'advisory'
     sim.freq_max = 20e9
-    # The guard accepts an explicit read band independently of the solver API.
     from rfx.preflight.line_stub import require_no_resonant_line_stub
     with pytest.raises(ValueError) as caught:
         require_no_resonant_line_stub(sim, np.array([1e9, 20e9]))

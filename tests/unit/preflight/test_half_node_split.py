@@ -8,6 +8,7 @@ rule now holds on both uniform and non-uniform lanes (#1342).
 On either lane, a port end at float32(3.5 mm) against a sheet at 3.5 mm
 is inside the solver-width band and lands on the sheet's lower node.
 A port end outside the tie but within the pairing window is refused.
+The 19-cell y domain puts 9.5 mm at a half node with odd lower node 9.
 """
 from __future__ import annotations
 
@@ -19,12 +20,13 @@ import pytest
 from rfx import Box, PolylineWire, Simulation
 
 DX = 1e-3
-DOM = (20e-3, 19e-3, 17e-3)      # 19 cells in y: 9.5 mm is a half node, 9 odd
+DOM = (20e-3, 19e-3, 17e-3)
 
 
 def _sim(lane, dom=DOM):
+    """Declared snapping preserves the half-node placement witness."""
     kw = dict(freq_max=10e9, domain=dom, dx=DX, boundary="pec",
-              snap="declared")  # Half-node placement is this test's witness.
+              snap="declared")
     if lane == "nu":
         kw.update(**{f"d{a}_profile": np.full(int(round(d / DX)), DX)
                      for a, d in zip("xyz", dom)})
@@ -111,7 +113,7 @@ def _nodes(sim, lane):
     def lookup(pos):
         return (position_to_index(grid, pos) if lane == "nu"
                 else grid.position_to_index(pos))
-    if wires:                               # dipole: y column of the arms
+    if wires:
         arms = {int(j) for w in wires
                 for j in np.nonzero(np.asarray(w.edges[2]))[1]}
         return lookup(sim._ports[0].position)[1], arms
@@ -158,7 +160,7 @@ def test_a_float32_port_end_straddling_the_half_node_of_a_sheet_lands_on_the_she
     assert 0 < h32 - h <= 2.0 ** -24 * h
     band = 1e-9 * DX + 4 * float(np.finfo(np.float32).eps) * h
     assert h32 - h < band
-    n = int(round(h / DX + 0.5))                 # the node above the tie
+    n = int(round(h / DX + 0.5))
     sim = _sim(lane, dom=(20e-3, 19e-3, (n + 9) * DX))
     sim.add(Box((5e-3, 5e-3, h), (15e-3, 14e-3, h)), material="pec")
     sim.add_port((10e-3, 9e-3, 0.0), component="ez", extent=h32)
@@ -194,8 +196,6 @@ def test_the_same_declared_coordinate_has_no_split_message():
 @pytest.mark.parametrize("lane", ["uniform", "nu"])
 def test_the_message_names_both_features_and_both_nodes(lane):
     from dataclasses import replace
-    # Keep the original dipole/message witness, with the conductor's
-    # coordinate outside the tie but inside the detector's pairing window.
     band = 1e-9 * DX + 4 * float(np.finfo(np.float32).eps) * 3.5e-3
     assert band / 2 < 0.95e-9 <= 1e-6 * DX
     wire_y = 3.5e-3 + 0.95e-9

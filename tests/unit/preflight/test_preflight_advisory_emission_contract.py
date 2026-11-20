@@ -1,4 +1,5 @@
-"""Public result entry points expose their classified preflight advisory."""
+"""Public result entry points expose their classified preflight advisory.
+AUTO means at least one supported lane emits."""
 from __future__ import annotations
 
 import ast
@@ -53,8 +54,7 @@ def _waveguide_model():
 
 
 def _transition_model():
-    # Public construction of tests/_coax_msl_instrument_fixture.py's junction;
-    # four CPML layers deliberately trigger the fixed advisory for this row.
+    """Four CPML layers deliberately trigger the fixed advisory."""
     dx = .0001
     ground, trace, junction, yc = 25*dx, 28*dx, 10*dx, 17*dx
     domain = (.0125, .0034, .0039)
@@ -88,18 +88,15 @@ def _optimize(entry, sim):
 
 
 def _topology(entry, sim):
+    """The public topology entry defaults to 20 periods."""
     sim.add_material("design", eps_r=3.)
     region = TopologyDesignRegion(corner_lo=(.004, .002, .001),
                                   corner_hi=(.005, .004, .003),
                                   material_bg="air", material_fg="design")
-    # This public entry has no n_steps argument; its default is 20 periods.
     return entry(sim, region, lambda result: jnp.sum(result.time_series**2),
                  n_iterations=1, verbose=False, jit=False)
 
 
-# category, public model builder, public call. compute_s_matrix exercises its
-# MSL dispatch: AUTO means at least one supported lane emits, as in A48;
-# the three coax delegates retain their separate diagnostic-only rows.
 EMISSION_CLASSIFICATION = {
     "Simulation.run": (AUTO, _small_model, partial(_call, n_steps=1, compute_s_params=False)),
     "Simulation.forward": (AUTO, _small_model, partial(_call, n_steps=1)),
@@ -116,14 +113,12 @@ EMISSION_CLASSIFICATION = {
     "Simulation.compute_msl_s_matrix": (
         AUTO, _msl_model, partial(_call, n_steps=1, freqs=np.array([.8e9, 1.2e9]),
                                   enforce_passivity=False)),
-    # Returning record lengths: tests/contracts/test_inspection_release.py:122-128.
     "Simulation.compute_coaxial_line_reflection": (
         DIAGNOSTIC_ONLY, _coax, partial(_call, n_steps=600, freqs=np.array([6e9, 8e9, 10e9]),
                                              probe_count=3, probe_start_cells=4, probe_spacing_cells=2)),
     "Simulation.compute_coaxial_two_port": (
         DIAGNOSTIC_ONLY, _coax, partial(_call, n_steps=600, freqs=np.array([6e9, 8e9, 10e9]),
                                              probe_count=3, probe_start_cells=4, probe_spacing_cells=2)),
-    # Gates only its own sheet-size findings (rfx/sparams/coax.py:1282); the general advisory does not reach the user.
     "Simulation.compute_coax_msl_transition": (
         DIAGNOSTIC_ONLY, _transition_model,
         partial(_call, n_steps=200, junction_x=.001, eps_r_sub=3.66,
@@ -150,13 +145,12 @@ def _exported_surface() -> dict:
     pytest.param(name, entry, id=name) for name, entry in _exported_surface().items()
 ])
 def test_public_entry_point_emits_classified_advisory(name, entry):
+    """A fresh, separate public preflight cannot pre-emit or cache the measured model."""
     assert name in EMISSION_CLASSIFICATION, f"Unclassified public entry: {name}"
     assert not (EMISSION_CLASSIFICATION.keys() - _exported_surface().keys()), "Stale emission classification"
     category, builder, call = EMISSION_CLASSIFICATION[name]
     assert category in (AUTO, MANUAL, DIAGNOSTIC_ONLY)
     started = time.perf_counter()
-    # A fresh, separate public preflight proves the advisory is present even
-    # for diagnostic-only rows; it cannot pre-emit/cache the measured model.
     with warnings.catch_warnings(record=True):
         warnings.simplefilter("always")
         control = builder().preflight()
@@ -172,8 +166,6 @@ def test_public_entry_point_emits_classified_advisory(name, entry):
             warnings.simplefilter("always")
             result = call(entry, sim)
         assert result is not None, f"{name}: no public result returned"
-        # A57: the gate summarizes report issues in AccuracyWarning; manual
-        # entries return the report. The control supplies the full issue text.
         if category == MANUAL:
             matches = sum(str(item) == issue for item in result)
             assert matches >= 1, f"{name}: returned report missing control issue: {issue}"
