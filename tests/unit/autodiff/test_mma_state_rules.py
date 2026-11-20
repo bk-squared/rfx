@@ -66,7 +66,6 @@ def test_state_rules(monkeypatch):
     grad = np.array([1, -2, 0], dtype=np.float64)
     cons_values = np.array([-0.25], dtype=np.float64)
     cons_grads = np.array([[0.5, 0, -1]], dtype=np.float64)
-    # These are the leader's hand-checked literals, not a second implementation.
     boxes = (
         dict(low=(0, 0, 0), upp=(1, 1, 1),
              alpha=(0.05, 0.05, 0.05), beta=(0.95, 0.95, 0.95)),
