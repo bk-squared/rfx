@@ -398,7 +398,9 @@ def agent_index(pages: list[dict]) -> list[str]:
     ], ""]
 
 
-def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str | None) -> dict:
+def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str | None,
+          pdoc_templates: Path | None = None) -> dict:
+    """Build with pdoc_templates, defaulting to this generator's docs/pdoc_templates."""
     root = root.resolve()
     sha = check_source(root, source_sha)
     base_url = base_url.rstrip("/")
@@ -451,8 +453,14 @@ def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str
         generated = files / "api/generated"
         # The historical source may predate the inherited-method rendering fix.
         # A renderer changes presentation, not the selected API implementation.
-        templates = GENERATOR_ROOT / "docs/pdoc_templates"
-        check_no_symlinks(templates)
+        templates = pdoc_templates.resolve() if pdoc_templates is not None else GENERATOR_ROOT / "docs/pdoc_templates"
+        try:
+            check_no_symlinks(pdoc_templates if pdoc_templates is not None else templates)
+            check_no_symlinks(templates)
+        except SystemExit as exc:
+            raise ValueError(f"--pdoc-templates: {exc}") from exc
+        if not templates.is_dir() or not any(path.is_file() for path in templates.rglob("*")):
+            raise ValueError("--pdoc-templates must name a directory containing at least one file")
         env = {**os.environ, "PYTHONPATH": str(root), "JAX_PLATFORMS": "cpu", "PYTHONHASHSEED": "0"}
         subprocess.run([sys.executable, "-m", "pdoc", "-t", str(templates),
                         "--no-show-source", "--edit-url", f"rfx={SOURCE_REPOSITORY}/blob/{sha}/rfx/",
@@ -577,12 +585,15 @@ def main() -> int:
     parser.add_argument("--base-url", default="https://remilab.ai/rfx")
     parser.add_argument("--channel", choices=("development", "release"), default="development")
     parser.add_argument("--source-sha")
+    parser.add_argument("--pdoc-templates", type=Path, metavar="DIR",
+                        help="pdoc template directory; default docs/pdoc_templates of this script's repository")
     parser.add_argument("--verify", type=Path, help="validate an existing bundle instead of building")
     args = parser.parse_args()
     if args.verify:
         manifest = validate_bundle(args.verify, args.repo_root.resolve())
     else:
-        manifest = build(args.repo_root, args.output_dir.resolve(), args.base_url, args.channel, args.source_sha)
+        manifest = build(args.repo_root, args.output_dir.resolve(), args.base_url, args.channel, args.source_sha,
+                         args.pdoc_templates)
     print(f"public docs bundle: {len(manifest['pages'])} pages, {len(manifest['files'])} files, source {manifest['source_sha']}")
     return 0
 
