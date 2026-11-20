@@ -40,6 +40,7 @@ OPERANDS = {
         "tfsf", "_feature_tfsf", "sources", "mag_sources", "probes", "dft_planes",
         "flux_monitors", "waveguide_ports", "ntff", "ntff_box", "ntff_data",
         "current_moments", "field_dtype", "stencil_order", "aniso_inv_eps_smooth",
+        "subpixel_smoothing",
         "wire_port_sparams", "lumped_port_sparams", "wire_refplane_sparams",
         "wire_ports", "s_param_freqs", "pec_faces", "pmc_faces", "emit_time_series",
         "rlc_states", "measurement")},

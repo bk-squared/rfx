@@ -22,6 +22,8 @@ from scipy.sparse.linalg import ArpackError, eigsh
 from rfx.model.waveguide_modes import _te_mode_profiles, _tm_mode_profiles
 from rfx.sources.waveguide_port import cutoff_frequency, C0_LOCAL
 
+_TRIVIAL_TE_MODE_MAX_EIGENVALUE = 1e-6
+
 
 class WaveguideMode(NamedTuple):
     """A single waveguide eigenmode on the cross-section grid.
@@ -91,10 +93,8 @@ def _analytical_modes(a: float, b: float, dx: float,
     y_coords = np.linspace(0.5 * dx, a - 0.5 * dx, ny)
     z_coords = np.linspace(0.5 * dx, b - 0.5 * dx, nz)
 
-    # Collect candidate modes with their cutoff frequencies.
     candidates: list[tuple[float, str, int, int]] = []
 
-    # TE modes: (m,n) with m>=0, n>=0, not both zero
     max_m = max(2 * n_modes, 5)
     max_n = max(2 * n_modes, 5)
     for m in range(0, max_m + 1):
@@ -103,13 +103,11 @@ def _analytical_modes(a: float, b: float, dx: float,
                 continue
             fc = cutoff_frequency(a, b, m, n)
             candidates.append((fc, "TE", m, n))
-    # TM modes: m>=1, n>=1
     for m in range(1, max_m + 1):
         for n in range(1, max_n + 1):
             fc = cutoff_frequency(a, b, m, n)
             candidates.append((fc, "TM", m, n))
 
-    # Sort by cutoff frequency
     candidates.sort(key=lambda x: x[0])
 
     modes: list[WaveguideMode] = []
@@ -134,10 +132,6 @@ def _analytical_modes(a: float, b: float, dx: float,
 
     return modes
 
-
-# ---------------------------------------------------------------------------
-# Numerical eigenmode solver for inhomogeneous cross-sections
-# ---------------------------------------------------------------------------
 
 def _build_laplacian_2d_neumann(ny: int, nz: int, dy: float, dz: float,
                                  eps: np.ndarray | None = None,
@@ -176,7 +170,6 @@ def _build_laplacian_2d_neumann(ny: int, nz: int, dy: float, dz: float,
             k = idx(i, j)
             diag_val = 0.0
 
-            # y-direction neighbors (Neumann: ghost = interior value)
             if i > 0:
                 if eps is not None:
                     eps_face = 2.0 / (eps[i, j] + eps[i - 1, j])
@@ -187,7 +180,6 @@ def _build_laplacian_2d_neumann(ny: int, nz: int, dy: float, dz: float,
                 cols.append(idx(i - 1, j))
                 vals.append(-w)
                 diag_val += w
-            # else: Neumann BC — no flux, no off-diag entry, no diag contribution
 
             if i < ny - 1:
                 if eps is not None:
@@ -200,7 +192,6 @@ def _build_laplacian_2d_neumann(ny: int, nz: int, dy: float, dz: float,
                 vals.append(-w)
                 diag_val += w
 
-            # z-direction neighbors
             if j > 0:
                 if eps is not None:
                     eps_face = 2.0 / (eps[i, j] + eps[i, j - 1])
@@ -256,8 +247,6 @@ def _build_laplacian_2d_dirichlet(ny: int, nz: int, dy: float, dz: float,
             k = idx(i, j)
             diag_val = 0.0
 
-            # y-direction: Dirichlet means ghost values = 0
-            # Left neighbor
             if i > 0:
                 if eps is not None:
                     eps_face = 2.0 / (eps[i, j] + eps[i - 1, j])
@@ -269,14 +258,12 @@ def _build_laplacian_2d_dirichlet(ny: int, nz: int, dy: float, dz: float,
                 vals.append(-w)
                 diag_val += w
             else:
-                # Dirichlet: neighbor is zero, contributes to diagonal
                 if eps is not None:
                     eps_face = 1.0 / eps[i, j]
                 else:
                     eps_face = 1.0
                 diag_val += eps_face / (dy * dy)
 
-            # Right neighbor
             if i < ny - 1:
                 if eps is not None:
                     eps_face = 2.0 / (eps[i, j] + eps[i + 1, j])
@@ -294,7 +281,6 @@ def _build_laplacian_2d_dirichlet(ny: int, nz: int, dy: float, dz: float,
                     eps_face = 1.0
                 diag_val += eps_face / (dy * dy)
 
-            # z-direction
             if j > 0:
                 if eps is not None:
                     eps_face = 2.0 / (eps[i, j] + eps[i, j - 1])
@@ -376,18 +362,10 @@ def _scalar_eigenmodes_to_vector(
         psi = eigenvectors[:, idx].reshape(ny, nz)
 
         if mode_type == "TE":
-            # TE: psi = Hz pattern, Neumann BC
-            # Ey ~ -dpsi/dz,  Ez ~ +dpsi/dy
-            # Use central differences
             dpsi_dy = np.zeros_like(psi)
             dpsi_dz = np.zeros_like(psi)
 
-            # A singleton axis has no interior neighbour; its two boundary
-            # derivatives cancel, so retain the zero initialized above.
-            # Interior central differences
             dpsi_dy[1:-1, :] = (psi[2:, :] - psi[:-2, :]) / (2 * dy)
-            # Boundaries: one-sided (Neumann: dpsi/dn = 0 at walls,
-            # but we compute gradient of the eigenfunction itself)
             if ny > 1:
                 dpsi_dy[0, :] = (psi[1, :] - psi[0, :]) / dy
                 dpsi_dy[-1, :] = (psi[-1, :] - psi[-2, :]) / dy
@@ -401,8 +379,6 @@ def _scalar_eigenmodes_to_vector(
             ez = dpsi_dy
 
         else:
-            # TM: psi = Ez pattern, Dirichlet BC
-            # Ey ~ +dpsi/dy,  Ez ~ +dpsi/dz
             dpsi_dy = np.zeros_like(psi)
             dpsi_dz = np.zeros_like(psi)
 
@@ -419,11 +395,9 @@ def _scalar_eigenmodes_to_vector(
             ey = dpsi_dy
             ez = dpsi_dz
 
-        # H for forward +x propagation: hy = -ez, hz = ey
         hy = -ez.copy()
         hz = ey.copy()
 
-        # Normalize: integral(Ey^2 + Ez^2) dA = 1
         power = np.sum(ey**2 + ez**2) * dy * dz
         if power > 1e-30:
             norm = np.sqrt(power)
@@ -453,7 +427,6 @@ def _numerical_modes(a: float, b: float, dx: float,
     dy = a / ny
     dz = b / nz
 
-    # Default: uniform fill
     if eps_cross is None:
         eps = None
         eps_r_eff = 1.0
@@ -475,18 +448,12 @@ def _numerical_modes(a: float, b: float, dx: float,
             )
         mu_r_eff = float(np.mean(mu_arr))
 
-    # Number of eigenmodes to request from each family.
-    # Request more than needed since we merge TE + TM and sort.
     n_request = min(n_modes + 4, ny * nz - 1)
     n_request = max(n_request, 1)
 
     all_modes: list[WaveguideMode] = []
 
-    # --- TE modes (Neumann) ---
     L_te = _build_laplacian_2d_neumann(ny, nz, dy, dz, eps)
-    # eigsh finds smallest eigenvalues of symmetric positive semi-definite matrix.
-    # The zero eigenvalue corresponds to the trivial constant mode (no cutoff).
-    # We request n_request+1 to have room to skip the zero mode.
     n_te_req = min(n_request + 1, ny * nz - 1)
     if n_te_req >= 1:
         try:
@@ -497,8 +464,7 @@ def _numerical_modes(a: float, b: float, dx: float,
                 f"k={n_te_req}: {exc}"
             ) from exc
 
-        # Filter out near-zero eigenvalue (trivial constant mode)
-        valid_mask = te_vals > 1e-6
+        valid_mask = te_vals > _TRIVIAL_TE_MODE_MAX_EIGENVALUE
         te_vals = te_vals[valid_mask]
         te_vecs = te_vecs[:, valid_mask]
 
@@ -511,7 +477,6 @@ def _numerical_modes(a: float, b: float, dx: float,
                 fc = kc * C0_LOCAL / (2 * np.pi)
                 beta = _compute_beta_numpy(freqs, fc, eps_r_eff, mu_r_eff)
 
-                # Try to identify (m, n) from the eigenvalue
                 m_n = _identify_mode_indices(kc_sq, a, b)
 
                 all_modes.append(WaveguideMode(
@@ -525,7 +490,6 @@ def _numerical_modes(a: float, b: float, dx: float,
                     mode_indices=m_n,
                 ))
 
-    # --- TM modes (Dirichlet) ---
     L_tm = _build_laplacian_2d_dirichlet(ny, nz, dy, dz, eps)
     n_tm_req = min(n_request, ny * nz - 1)
     if n_tm_req >= 1:
@@ -563,7 +527,6 @@ def _numerical_modes(a: float, b: float, dx: float,
                     mode_indices=m_n,
                 ))
 
-    # Sort by cutoff frequency and return lowest n_modes
     all_modes.sort(key=lambda m: m.f_cutoff)
     return all_modes[:n_modes]
 
@@ -586,7 +549,6 @@ def _identify_mode_indices(kc_sq: float, a: float, b: float,
             if err < best_err:
                 best_err = err
                 best_mn = (m, n)
-    # Accept match only if relative error < 10%
     if best_err < 0.1:
         return best_mn
     return (0, 0)
@@ -630,8 +592,6 @@ def solve_waveguide_modes(
     freqs = np.asarray(freqs, dtype=np.float64)
 
     if eps_cross is None and mu_cross is None:
-        # Uniform fill — use fast analytical path
         return _analytical_modes(a, b, dx, freqs, n_modes)
     else:
-        # Inhomogeneous — numerical eigenvalue solve
         return _numerical_modes(a, b, dx, freqs, n_modes, eps_cross, mu_cross)

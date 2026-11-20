@@ -39,7 +39,6 @@ def model(boundary, kind, n_devices, *, drop_source=False):
         sim.add_material("pole", eps_r=3., lorentz_poles=[LorentzPole(
             omega_0=2*np.pi*8e9, delta=2*np.pi*1e9, kappa=(2*np.pi*8e9)**2)])
         sim.add(Box((-1., .001, .001), (1., .003, .003)), material="pole")
-        # Only the four user probes enter the checkpointed-gradient objective.
         return sim, grid, seam, ()
     labels = field_probes(sim, graded=True, axes=AXES)
     return sim, grid, seam, labels
@@ -93,6 +92,7 @@ def test_graded_derivatives_match_one_device(boundary, kind, n_devices):
 
 @pytest.mark.parametrize("n_devices", [2, 3])
 def test_lorentz_checkpointed_gradient_matches_one_device(n_devices):
+    """The one-vs-many gradient bar is 1e-4 of peak."""
     devices = host_devices(n_devices)
     sim, grid, _, _ = model("cpml", "lorentz", n_devices)
     eps = jnp.full(grid.shape, 2., dtype=jnp.float32)
@@ -106,8 +106,6 @@ def test_lorentz_checkpointed_gradient_matches_one_device(n_devices):
 
     one = np.asarray(jax.grad(objective)(eps))
     multi = np.asarray(jax.grad(lambda e: objective(e, devices))(eps))
-    # Existing one-vs-many gradient bar: tests/_one_device_parity.py:142-153,
-    # used by test_graded_derivatives_match_one_device above (1e-4 of peak).
     metrics = derivative_metrics(one, multi)
     row = record(dict(model="lorentz", boundary="cpml", devices=n_devices,
                       steps=STEPS, checkpoint=True, checkpoint_every=CHECKPOINT_EVERY,

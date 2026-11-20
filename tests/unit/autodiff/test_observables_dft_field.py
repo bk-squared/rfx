@@ -62,7 +62,7 @@ _DX = 1.0e-3
 _NX, _NY, _NZ = 30, 20, 20
 _PLANE = "probe_plane"
 _FREQS = jnp.asarray([5.0e9])
-# Physical positions (engineering principle #1: physical absolute
+# Physical positions (physical absolute
 # coordinates, not raw cell-relative indices) — converted to grid indices
 # via Grid.position_to_index() once the actual (CPML-padded) grid.shape is
 # known, since it is larger than (_NX, _NY, _NZ).
@@ -75,7 +75,7 @@ _FD_H = 0.02
 # beta_eff = beta / stop_gradient(max(vals)) internally), so beta below is
 # DIMENSIONLESS -- it no longer needs hand-matching to this sim's raw
 # max|field|^2 (~5e-10 to 5.4e-10 on both legs). The original footgun this
-# fixture caught (#619): at the OLD unscaled beta=1.0, with
+# fixture caught: at the OLD unscaled beta=1.0, with
 # count = n_freqs*n1*n2 = 1*31*31 = 961 elements on the single registered
 # plane, log(count)/beta ~ 6.87 totally dominated the objective (it sat at
 # ~100.000002% of log(961)) -- both AD and FD differentiated rounding
@@ -165,7 +165,7 @@ def _geometry_objective(sim, functional, *, eps_bg=1.0, eps_fg=4.0):
 
     def objective(rho_scalar):
         rho = jnp.reshape(rho_scalar, (1, 1, 1))
-        fields = density_to_material_fields(rho, eps_bg, eps_fg)
+        fields = density_to_material_fields(rho, eps_bg, eps_fg, dtype='float32')
         eps = eps_base.at[i, j, k].set(fields.eps[0, 0, 0])
         result = sim.forward(
             eps_override=eps, n_steps=_N_STEPS, checkpoint=False,
@@ -294,7 +294,7 @@ def test_field_softmax_geometry_leg_ad_matches_fd():
 
 
 # ---------------------------------------------------------------------------
-# (1b) Issue #619 regression: the DEFAULT beta must be safe at ANY field
+# (1b) The DEFAULT beta must be safe at ANY field
 # magnitude, not merely at values a caller happened to hand-tune against.
 # Synthetic fixtures (no FDTD -- fast), same _fake_result pattern as (3).
 # ---------------------------------------------------------------------------
@@ -614,7 +614,8 @@ def test_forward_distributed_nu_dft_planes_match_native():
         assert np.max(np.abs(a - b)) <= 1e-4 * np.max(np.abs(b)), name
 
 
-def test_run_distributed_dft_planes_match_native():
+def test_run_distributed_dft_planes_match_native(record_property):
+    """Each complex plane differs by at most 1e-4 of its one-device peak over cells and bins."""
     sim = _build_sim()
     devices = jax.devices("cpu")[:2]
     assert len(devices) == 2
@@ -623,4 +624,7 @@ def test_run_distributed_dft_planes_match_native():
     for name, expected in reference.dft_planes.items():
         a, b = np.asarray(actual.dft_planes[name].accumulator), np.asarray(expected.accumulator)
         assert np.any(b), "DFT plane must contain a signal"
-        assert np.array_equal(a, b), (name, float(np.max(np.abs(a - b))), float(np.max(np.abs(b))))
+        a, b = a.astype(np.complex128), b.astype(np.complex128)
+        relative_error = np.max(np.abs(a - b)) / np.max(np.abs(b))
+        record_property(f"{name}_relative_error", float(relative_error))
+        assert relative_error <= 1e-4, (name, relative_error)

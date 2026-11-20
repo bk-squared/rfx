@@ -52,9 +52,12 @@ def test_a_hole_in_a_high_contrast_host_is_announced():
                   skip_preflight=True, subpixel_smoothing=True) == 1
 
 
+BELOW_CURVED_CONTRAST_THRESHOLD = 9.9
+
+
 @pytest.mark.parametrize("entries", [
-    [(Box((0.006, 0.006, 0.006), (0.014, 0.014, 0.014)), 38.0)],   # grid-aligned: not affected
-    [(Cylinder(**ROD), 9.9)],                                        # just under the threshold
+    [(Box((0.006, 0.006, 0.006), (0.014, 0.014, 0.014)), 38.0)],
+    [(Cylinder(**ROD), BELOW_CURVED_CONTRAST_THRESHOLD)],
 ])
 def test_not_announced_outside_the_class(entries):
     assert _count(_sim(entries), skip_preflight=True, subpixel_smoothing=True) == 0

@@ -15,7 +15,7 @@ from rfx.boundaries.depths import Kind
 from rfx.boundaries.model import realize
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
-# Classes W/R remain separate rows so a leader can explicitly defer either.
+# Classes W/R remain separate rows so either can be explicitly deferred.
 NAMED_EXCEPTIONS = {}
 CASES = ('absorbing', 'mixed', 'pmc', 'periodic', 'asymmetric',
          'plane', 'closed_box', 'W-guide')
@@ -176,7 +176,7 @@ def capture(sim, entry, path, invoke=None):
         raise Captured
 
     def wrapped_factory(*args, **kwargs):
-        # The wrapped multi-device step (#1776, plain CPML since #1402 item 5) rebuilds
+        # The wrapped multi-device step (plain CPML) rebuilds
         # the one-device graded step per slab from the context wrap() closes over.
         # Build that step from that context and read the faces its wall stage applies.
         from rfx.stepping.graded import make_graded_step
@@ -204,7 +204,7 @@ def capture(sim, entry, path, invoke=None):
         # actual pec_faces argument of the CPML step's wall application.
         if fun is not None and fun.__module__ == 'rfx.stepping.slab_graded_legacy_loop' and fun.__name__ == 'run_fn':
             frame = inspect.currentframe().f_back
-            # The step passes the runner's e_wall_faces (#1221 B4). Resolve it inside
+            # The step passes the runner's e_wall_faces. Resolve it inside
             # the unmodified wall factory and stop at its shard-map builder;
             # no state is read and no field operation is traced or executed.
             from rfx.runners.distributed_nu import _apply_pec_face_nu_shmap

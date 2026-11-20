@@ -1,4 +1,6 @@
-"""Binary pinned-sheet layout switch: declared-layout bytes and compile reuse."""
+"""Binary pinned-sheet layout switch: declared-layout bytes and compile reuse.
+The domain lengths written as 11 * .002 and 5 * .002 are whole numbers of cells of dx, so their solved lengths equal their declared lengths.
+"""
 import inspect
 
 import jax
@@ -104,13 +106,12 @@ def _compiles(fn, *args):
 
 @pytest.mark.parametrize('count', [2, 3])
 def test_two_layouts_one_backend_compile(count):
+    """Initialize trace-time declaration primitives independently of test order."""
     sim = board()
     names = ('ones', 'zeros', 'rectangle')[:count]
     pairs = [tuple(jnp.asarray(a) for a in edge_arrays(LAYOUTS[name])) for name in names]
     def forward_wrapper(m):
         return observe(sim, m)
-    # Initialize trace-time declaration primitives independently of test order.
-    # This traces without compiling a solve or calling the measured user jit.
     jax.make_jaxpr(forward_wrapper)(pairs[0])
     fn = jax.jit(forward_wrapper)
     assert fn._cache_size() == 0
@@ -119,7 +120,7 @@ def test_two_layouts_one_backend_compile(count):
     print(f'user jit backend compiles across {count} layouts: {counts}')
     assert counts == [1] + [0] * (count - 1)
     assert sum(counts) == 1
-    assert fn._cache_size() == 1  # The user jit was called, not just lowered/compiled.
+    assert fn._cache_size() == 1
     for (actual, _), name in zip(measured, names):
         expected = jax.jit(lambda: observe(board(LAYOUTS[name])))()
         assert_bytes(actual, expected)
@@ -174,6 +175,7 @@ def test_run_argument_not_reachable():
 
 
 def test_cell_keep_remains_on_released_layout_edges():
+    """Four incident cells each retain 1/2, so an addressed free edge retains 1/16."""
     from rfx.model.occupancy import admit_sheet_layout
     sim = board()
     grid = sim._build_nonuniform_grid()
@@ -184,7 +186,6 @@ def test_cell_keep_remains_on_released_layout_edges():
                                    waveguide_ports=[], dtype=jnp.float32,
                                    sheet_edge_masks=None, periodic=(False,) * 3)
     pads = grid.axis_pads
-    # Four incident cells each retain 1/2: an addressed free edge retains 1/16.
     for axis in (0, 1):
         assert float(result.edge_keep[axis][4+pads[0], 4+pads[1], 4+pads[2]]) == .0625
 
@@ -192,7 +193,6 @@ def test_cell_keep_remains_on_released_layout_edges():
 @pytest.mark.parametrize('compiled', [False, True], ids=['eager', 'jit'])
 def test_same_simulation_then_zero_layout_bytes(compiled):
     sim = board()
-    # Populate diagnostic caches as well as executing the fixed-sheet solve.
     sim.realized_geometry()
     mesh_resolution = sim.__dict__.get('_mesh_resolution')
 
@@ -206,7 +206,6 @@ def test_same_simulation_then_zero_layout_bytes(compiled):
         return observe(board(()))
 
     jax.block_until_ready((jax.jit(fixed) if compiled else fixed)())
-    # A successful solve releases inspection products; mesh selection stays.
     for name in ('_pf_campaign_ctx', '_realized_geometry_record', '_coax_geometry'):
         assert getattr(sim, name) is None
     zeros = tuple(jnp.asarray(a) for a in edge_arrays(()))
@@ -225,13 +224,12 @@ def seam_board(ranges, names):
     sim = board(())
     for ir, name in zip(ranges, names, strict=True):
         sim.add_pinned_sheet(plane_index=4, i_range=ir, j_range=(3, 7), name=name)
-    # An additional probe inside the addressed part of the overlap case.
     sim.add_probe((.0065, .004, float(DZ[:4].sum())), 'ex')
     return sim
 
 
 def sheet_pair_values(ir, value):
-    # Inclusive nodes [i0,i1] x [3,7]: x edges (di,5), y edges (di+1,4).
+    """Inclusive nodes [i0,i1] x [3,7] define x edges (di,5) and y edges (di+1,4)."""
     di = ir[1] - ir[0]
     return (jnp.full((di, 5), value, dtype=jnp.float32),
             jnp.full((di + 1, 4), value, dtype=jnp.float32))
@@ -244,8 +242,7 @@ def seam_observe(sim, layout):
 
 
 def assert_seam_message(call, *, index, name):
-    # Nodes i=5 and i=6 are adjacent. Their cross edges start at i=5,
-    # on each common j node 3..7, plane k=4; CPML adds 2 on every axis.
+    """Adjacent nodes i=5 and i=6 have cross edges starting at i=5, on each common j node 3..7, plane k=4, with 2 CPML cells on every axis."""
     hand_built_seams = {('ex', (5 + 2, j + 2, 4 + 2)) for j in range(3, 8)}
     component, edge = sorted(hand_built_seams)[0]
     with pytest.raises(ValueError) as error:
@@ -262,7 +259,6 @@ def assert_seam_message(call, *, index, name):
 @pytest.mark.parametrize('value', [0., 1.])
 @pytest.mark.parametrize('compiled', [False, True], ids=['eager', 'jit'])
 def test_seam_fixed_addressed_refused(value, compiled):
-    # Original index 1 is addressed; fixed index 0 starts one node after it.
     sim = seam_board(((6, 8), (3, 5)), ('fixed', 'design'))
     pair = sheet_pair_values((3, 5), value)
 
@@ -289,8 +285,7 @@ def test_seam_two_addressed_refused(value, compiled):
 @pytest.mark.parametrize('value', [0., 1.], ids=['zeros', 'ones'])
 @pytest.mark.parametrize('compiled', [False, True], ids=['eager', 'jit'])
 def test_overlap_declared_layout_bytes(value, compiled):
-    # Fixed x edges start at 3,4; addressed x edges at 5,6,7. No cross
-    # edge is missing. The shared i=5 y-edge line remains fixed metal.
+    """The shared i=5 y-edge line remains fixed metal."""
     switched = seam_board(((3, 5), (5, 8)), ('fixed', 'design'))
     declared = (seam_board(((3, 5), (5, 8)), ('fixed', 'design')) if value else
                 seam_board(((3, 5),), ('fixed',)))
@@ -309,7 +304,6 @@ def test_overlap_declared_layout_bytes(value, compiled):
 
 @pytest.mark.parametrize('compiled', [False, True], ids=['eager', 'jit'])
 def test_one_empty_node_between_sheets_accepted(compiled):
-    # i=6 is empty: no axis-adjacent node pair connects i=5 to i=7.
     sim = seam_board(((3, 5), (7, 8)), ('design', 'fixed'))
     pair = sheet_pair_values((3, 5), 1.)
 
@@ -340,14 +334,15 @@ def test_length_one_normal_refused(compiled):
 @pytest.mark.parametrize('excite', [False, True], ids=['passive', 'excited'])
 @pytest.mark.parametrize('compiled', [False, True], ids=['eager', 'jit'])
 def test_port_release_refused(kind, excite, compiled):
+    """The lumped physical Ex centre (4.5,5,plane4) mm maps to padded edge (6,7,6)."""
     sim = board()
     if excite:
-        sim._ports.clear()  # One driven port per record; the addressed port is that drive.
-    # Lumped physical Ex centre (4.5,5,plane4) mm -> padded edge (6,7,6).
-    # Wire starts at node 4 and spans edges 4,5,6 in the sheet plane.
+        sim._ports.clear()
     sim.add_port((.0045 if kind == 'lumped' else .004, .005, float(DZ[:4].sum())),
                  'ex', impedance=50, excite=excite,
                  **({'extent': .003} if kind == 'wire' else {}))
+    assert sum(port.excite for port in sim._ports) == 1 and (not excite or sim._ports[-1].excite), (
+        'The record needs exactly one driven port, with the addressed port driving when excited.')
     def run(m):
         return observe(sim, m)
     with pytest.raises(ValueError, match=rf"sheet 0 \('patch'\).*{kind} port-release stage.*ex\(6, 7, 6\)"):
@@ -357,11 +352,10 @@ def test_port_release_refused(kind, excite, compiled):
 @pytest.mark.parametrize('coverage', ['cover', 'one_node'])
 @pytest.mark.parametrize('compiled', [False, True], ids=['eager', 'jit'])
 def test_finite_impedance_overlap_refused(coverage, compiled):
+    """The one-node overlap shares Ey edges at x=7, starting y=3..6, with first padded edge (9,5,6)."""
     from rfx import Box
     sim = board()
     z = float(DZ[:4].sum())
-    # Cover: nodes 2..9. One-node overlap: f0 nodes x=7..9, y=3..7;
-    # shared Ey edges at x=7, starting y=3..6, first padded (9,5,6).
     lo, hi = (((2 - .35) * .001, (2 - .35) * .001, z), ((9 + .35) * .001, (9 + .35) * .001, z)) if coverage == 'cover' else (
         ((7 - .35) * .001, (3 - .35) * .001, z), ((9 + .35) * .001, (7 + .35) * .001, z))
     sim.add_thin_conductor(Box(lo, hi), sigma_bulk=1e5,
@@ -429,7 +423,6 @@ def test_seam_orientations_refused(axis, high, periodic):
     fixed, addressed = (low, upper) if high else (upper, low)
     sim = oriented_board(2, (fixed, addressed), periodic=periodic)
     pair = range_pair(*addressed, 1.)
-    # Cross edge starts at node 5 on the split axis and 3 on the other.
     edge = (5 if axis == 0 else 3, 3 if axis == 0 else 5, 4)
     pads = (0, 2, 2) if periodic else (2, 2, 2)
     padded = tuple(a+b for a, b in zip(edge, pads))
@@ -448,7 +441,7 @@ def test_periodic_endpoint_disagreement_refused():
 
 
 def test_periodic_traced_endpoint_product():
-    # At x=0==10 the two Ey rows multiply: either row being 1 zeros the edge.
+    """At x=0==10 the two Ey rows multiply, so either row being 1 zeros the edge."""
     from rfx.model.occupancy import admit_sheet_layout
     sim = oriented_board(2, (((0, 10), (3, 7)),), periodic=True)
     grid = sim._build_nonuniform_grid()
@@ -464,11 +457,11 @@ def test_periodic_traced_endpoint_product():
     expected = np.ones(grid.shape, np.float32)
     expected[0, 6, 6] = 0
     assert actual.tobytes() == expected.tobytes()
-    # Also exercise the full forward under jit with the differing traced rows.
     assert all(np.isfinite(np.asarray(v)).all() for v in jax.jit(lambda m: observe(sim, m))((x, y)))
 
 
 def test_traced_cells_layout_bytes_and_seam_refusal():
+    """Even an all-true traced cell mask cannot prove that the seam is covered."""
     pair = edge_arrays(LAYOUTS['ones'])
     sim = board()
     cells = np.zeros(sim._build_nonuniform_grid().shape, bool)
@@ -476,7 +469,6 @@ def test_traced_cells_layout_bytes_and_seam_refusal():
     expected = jax.jit(lambda c: observe(board(), pec_mask_override=c))(cells)
     assert_bytes(actual, expected)
     adjacent = seam_board(((3, 5), (6, 8)), ('fixed', 'design'))
-    # Even an all-true traced cell mask cannot prove that the seam is covered.
     with pytest.raises(ValueError, match=r"sheet 1 \('design'\).*seam edge ex\(7, 5, 6\)"):
         jax.jit(lambda c: adjacent.forward(n_steps=2, skip_preflight=True,
                     pinned_sheet_layout=(None, sheet_pair_values((6, 8), 1.)),
@@ -485,6 +477,7 @@ def test_traced_cells_layout_bytes_and_seam_refusal():
 
 @pytest.mark.parametrize('stage', ['series', 'parallel_inductor', 'current_moments', 'msl_geometry'])
 def test_other_metal_consumers_refused(stage):
+    """The feed x=5 reads trace edge x=4, with width .002 centred at y=5 starting at y=4 on plane 4, so pads (2,2,2) give (6,6,6)."""
     sim = board()
     position = (.0045, .005, float(DZ[:4].sum()))
     if stage in ('series', 'parallel_inductor'):
@@ -499,8 +492,6 @@ def test_other_metal_consumers_refused(stage):
         sim._ports.clear()
         sim.add_msl_port((.005, .005, 0), width=.002, height=float(DZ[:4].sum()),
                          direction='+x', eps_r_sub=1., excite=False)
-        # Feed x=5 reads trace edge x=4; width .002 centred at y=5
-        # starts at y=4, on plane 4. Pads (2,2,2) give (6,6,6).
         message, edge = 'MSL geometry-edge admission', 'ex(6, 6, 6)'
     with pytest.raises(ValueError) as error:
         sim.forward(n_steps=2, skip_preflight=True,
@@ -510,14 +501,52 @@ def test_other_metal_consumers_refused(stage):
     assert edge in str(error.value)
 
 
+@pytest.mark.parametrize('stage,layout_name', [
+    ('r_only', 'ones'),
+    ('parallel_rc', 'ones'),
+    ('parallel_rc', 'zeros'),
+    ('parallel_rc_ey', 'ones'),
+])
+def test_folded_rlc_on_layout_refused(stage, layout_name, monkeypatch):
+    from functools import wraps
+    from rfx.stepping import graded
+
+    make_step = graded.make_graded_step
+    steps = []
+
+    def step_hook(*args, **kwargs):
+        @wraps(make_step(*args, **kwargs))
+        def first_step(*args, **kwargs):
+            steps.append(True)
+            pytest.fail('first step reached')
+        return first_step
+
+    monkeypatch.setattr(graded, 'make_graded_step', step_hook)
+    sim = board()
+    component = 'ey' if stage == 'parallel_rc_ey' else 'ex'
+    x, y = (.005, .0045) if component == 'ey' else (.0045, .005)
+    sim.add_lumped_rlc((x, y, float(DZ[:4].sum())), component, R=50.,
+                       C=0. if stage == 'r_only' else 1e-13, topology='parallel')
+    edge = (7, 6, 6) if component == 'ey' else (6, 7, 6)
+    with pytest.raises(ValueError) as error:
+        sim.forward(n_steps=2, skip_preflight=True,
+                    pinned_sheet_layout=(edge_arrays(LAYOUTS[layout_name]),))
+    assert str(error.value) == (
+        "pinned_sheet_layout sheet 0 ('patch'): lumped_rlc[0], which the switched "
+        "sheet would short (a layout keeps no element edge free), conflicts with "
+        f"addressed edge {component}{edge} on the graded lane; "
+        "move the stage or the layout switch off that edge")
+    assert steps == []
+
+
 @pytest.mark.parametrize('kind', ['lumped', 'wire', 'waveguide', 'microstrip'])
 def test_all_release_record_kinds_refused(kind):
+    """The hand-declared Ex edge is from node (4,5,4), with CPML pads (2,2,2)."""
     from types import SimpleNamespace
     from rfx.model.conductors import refuse_layout_port_releases
     from rfx.model.occupancy import admit_sheet_layout
     sim = board()
     grid = sim._build_nonuniform_grid()
-    # Hand-declared Ex edge from node (4,5,4), with CPML pads (2,2,2).
     edge = (6, 7, 6)
     root = SimpleNamespace(grid=grid, released_port_edges=(('p', 'ex', edge),),
                            _released_port_details=(('p', kind, 'ex', edge, ()),))
@@ -528,9 +557,7 @@ def test_all_release_record_kinds_refused(kind):
 
 @pytest.mark.parametrize('value', [0., 1.])
 def test_tfsf_layout_refused(value):
-    # The drawn sheet under an open plane wave on the graded mesh is refused by
-    # the TF/SF invariance admission (#1816), which reads only the static metal;
-    # the switched sheet must not slip past it at any layout value.
+    """The switched sheet must not slip past the TF/SF invariance admission at any layout value because that admission reads only the static metal."""
     sim = board((FULL,))
     sim._ports.clear()
     sim.add_tfsf_source(f0=3e9, margin=3, direction='+x', polarization='ez')
@@ -545,8 +572,17 @@ def test_other_stages_layout_bytes(stage, value):
     def build(rectangles):
         sim = board(rectangles)
         if stage == 'parallel_rc':
-            sim.add_lumped_rlc((.0045, .005, float(DZ[:4].sum())), 'ex',
+            sim.add_lumped_rlc((.0045, .005, float(DZ[:5].sum())), 'ex',
                                R=50., C=1e-13, topology='parallel')
+            from rfx._internal._grid_metric import field_index
+            from rfx.model.occupancy import layout_edge_indices
+            grid = sim._build_nonuniform_grid()
+            spec = sim._lumped_rlc[0]
+            edge = tuple(field_index(grid, spec.position, spec.component))
+            sheet = board()._pinned_sheets[0]
+            axis, indices = layout_edge_indices(grid, sheet, 0)
+            assert axis == 0
+            assert edge not in set(zip(*(v.ravel().tolist() for v in indices)))
         else:
             sim._ports.clear()
             sim.add_port((.002, .005, float(DZ[:2].sum())), 'ez',
@@ -557,20 +593,18 @@ def test_other_stages_layout_bytes(stage, value):
         return sim
 
     def run(sim, pair=None):
+        """A port record contains only its driven column."""
         result = sim.forward(n_steps=60, skip_preflight=True,
                              pinned_sheet_layout=None if pair is None else (pair,),
                              port_s11_freqs=BINS)
-        # A port record contains only its driven column.
         return result.time_series, result.s_params[:, :1, :]
     assert_bytes(run(build((FULL,)), edge_arrays((FULL,) if value else ())),
                  run(build((FULL,) if value else ())))
 
 
 def test_waveguide_forward_release_refused():
-    # Full PEC-walled aperture: no y/z CPML pads. Feed x=10mm on 2mm
-    # cells is node 5; eight x CPML cells place it at x=13. Ey edges
-    # on the declared yz sheet start at (13,3,1), inside the aperture.
-    sim = Simulation(12e9, (.05, 11 * .002, 5 * .002),  dx=.002, cpml_layers=8,  # solved length; #1887
+    """The feed x=10mm on 2mm cells is node 5, so eight x CPML cells place the declared yz sheet Ey edges at (13,3,1), inside the aperture."""
+    sim = Simulation(12e9, (.05, 11 * .002, 5 * .002),  dx=.002, cpml_layers=8,
                      boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'},
                      dx_profile=np.array([.002]*8 + [.0019, .0021]*4 + [.002]*9))
     sim.add_waveguide_port(x_position=.01, direction='+x',

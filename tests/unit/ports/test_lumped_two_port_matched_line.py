@@ -96,7 +96,6 @@ def test_the_two_lanes_agree_on_every_entry_of_the_same_cells():
 
 @pytest.mark.parametrize("kind", ["lumped", "wire"])
 def test_diagonal_matches_the_predicted_cell_residual(kind, record_property):
-    # S11/S22 retain D1(ii); the three S21 alternatives are reported below.
     _, line = _mesh(kind, MESHES[0])
     pure = two_port(line, FREQS_HZ)
     predicted = two_port(line, FREQS_HZ, element_l=element_inductance(line))
@@ -120,9 +119,6 @@ def test_two_port_three_mesh_trend(kind, record_property):
         record_property(f"residuals_{dx}", json.dumps(residuals(measured, pure, predicted)))
         errors.append(abs(measured - pure).reshape(-1))
         phases.append(abs(np.angle(measured / pure)).reshape(-1))
-    # S21 receiving-port residual model is not established: measured -1.141
-    # deg lies between -1.440 and -0.958 at 100 um, 10 GHz. No coefficient
-    # is fitted; the three predictions are report-only. Its verdict is this trend.
     record_property("complex_order", json.dumps(assert_first_order(MESHES, errors).tolist()))
     record_property("phase_order", json.dumps(assert_first_order(MESHES, phases).tolist()))
     for dx, (measured, pure, predicted) in zip(MESHES, curves):

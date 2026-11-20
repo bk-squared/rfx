@@ -534,17 +534,46 @@ def realized_geometry(sim):
     cached = getattr(sim, '_realized_geometry_record', None)
     if cached is not None and cached[0] == key:
         return cached[1]
-    from rfx.model.conductors import RealizedConductors, preview_port_stages, PreparedSolve
+    from rfx.model.conductors import RealizedConductors, preview_port_stages, PreparedSolve, _traced_product
+    from rfx.model.realization_reference import traced_inputs
     from rfx.model.realization_table import bind_table, realization_table, PreparedRealization
+
+    def refuse_unavailable(conductors, lane):
+        from rfx.errors import RfxRefusal
+        from rfx.model.realization_reference import declaration_traced_inputs
+        inputs = declaration_traced_inputs(sim)
+        advice = "Call realized_geometry() outside the transform on concrete values."
+        if inputs:
+            reason = "traced inputs: " + ", ".join(inputs)
+            if all(name.startswith("material[") or name in (
+                    "eps_override", "sigma_override", "mu_r_override")
+                   for name in inputs):
+                advice = advice[:-1] + "; the geometry does not depend on a material value."
+        elif _traced_product(conductors):
+            reason = "the assembled conductors are traced"
+        else:
+            reason = f"the {lane} lane arrays carry no per-entity collectors"
+            advice = "This lane cannot build a geometry record."
+        raise RfxRefusal(f"realized_geometry() is unavailable: {reason}. {advice}")
+
     stamped = getattr(sim, '_coax_geometry', None)
     if stamped is not None and stamped[0] is ctx:
+        if _traced_product(stamped[1]) and not traced_inputs(sim, stamped[1].grid, stamped[1]):
+            refuse_unavailable(stamped[1], 'coax')
         record = bind_table(sim, stamped[1], lane='coax', compact=False)
+        if record is None:
+            refuse_unavailable(stamped[1], 'coax')
         sim._realized_geometry_record = key, record
         return record
     assembled = PreparedSolve(sim).realized(report_context=ctx)
     if isinstance(assembled, RealizedConductors):
+        assembled = preview_port_stages(sim, assembled)
+        if _traced_product(assembled) and not traced_inputs(sim, assembled.grid, assembled):
+            refuse_unavailable(assembled, ctx.lane)
         record = bind_table(
-            sim, preview_port_stages(sim, assembled), lane=ctx.lane, compact=False)
+            sim, assembled, lane=ctx.lane, compact=False)
+        if record is None:
+            refuse_unavailable(assembled, ctx.lane)
     else:
         record = _build_record(sim, ctx)
         from dataclasses import replace

@@ -45,17 +45,14 @@ DX = 1e-3
 CPML = 5
 DOMAIN = (20e-3, 20e-3, 16e-3)
 
-# Board: a ground sheet on interior node plane 4, an ez wire port from that
-# plane up three cells to the "patch" plane at z = 7 mm.
 GROUND_PLANE = 4
 PORT_XY = (10e-3, 10e-3)
 PORT_Z0 = 4e-3
 PORT_EXTENT = 3e-3
-PATCH_Z = PORT_Z0 + PORT_EXTENT          # the far terminal's plane
-LAST_EDGE_Z = PATCH_Z - DX               # the port's last driven edge
-MID_EDGE_Z = PORT_Z0 + DX                # an edge inside the port
+PATCH_Z = PORT_Z0 + PORT_EXTENT
+LAST_EDGE_Z = PATCH_Z - DX
+MID_EDGE_Z = PORT_Z0 + DX
 
-# In-plane footprint of the design box, four cells each way around the feed.
 BOX_XY_LO = (PORT_XY[0] - 2 * DX, PORT_XY[1] - 2 * DX)
 BOX_XY_HI = (PORT_XY[0] + 2 * DX, PORT_XY[1] + 2 * DX)
 
@@ -142,8 +139,6 @@ def test_a_box_on_a_mid_edge_cell_of_the_port_is_refused():
         _forward(sim, _box(MID_EDGE_Z))
 
 
-# ---- the same rule on another axis, and on a sub-cell extent ----------------
-
 PORT_X0 = 4e-3
 PORT_YZ = (10e-3, 7e-3)
 
@@ -176,7 +171,7 @@ def test_x_extent_port_end_node_plane_is_accepted_and_last_edge_refused():
 
 
 SUBCELL_Z = 8e-3
-SUBCELL_EXTENT = -0.4e-3        # both ends snap to the node at 8 mm
+SUBCELL_EXTENT = -0.4e-3
 
 
 def _sim_subcell_port():

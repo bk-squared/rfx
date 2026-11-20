@@ -21,6 +21,7 @@ def _solve_witness(sim, lane):
 @pytest.mark.parametrize('lane', ['run', 'forward'])
 @pytest.mark.parametrize('soft', [False, True])
 def test_upml_interior_cell_owned_coefficient(lane, soft):
+    """The UPML interior coefficient is cell-owned (eps=4), rather than the four-cell Yee interface mean 2.5."""
     sim = _upml_sim()
     sim.add_material('slab', eps_r=4.)
     sim.add(Box((.004, 0, 0), (.008,) * 3), material='slab')
@@ -32,8 +33,6 @@ def test_upml_interior_cell_owned_coefficient(lane, soft):
     sim.add_probe(pos, 'ez')
     result = _solve_witness(sim, lane)
     dt = sim._build_grid().dt
-    # UPML interior: cell-owned eps=4, sigma_perp=0. This is not the
-    # four-cell Yee interface mean 2.5. J=I/dV or port Norton current.
     sigma, current = (0., 1e9) if soft else (20., 20000.)
     reference = (dt / (4 * EPS0)) / (1 + sigma * dt / (2 * 4 * EPS0)) * current
     np.testing.assert_allclose(np.asarray(result.time_series).reshape(-1)[0],
@@ -57,27 +56,25 @@ def _pad_sim(kind, axis, side):
 @pytest.mark.parametrize('kind', ['port', 'soft_current', 'wire'])
 @pytest.mark.parametrize('axis_side', [(0, -1), (1, 1)])
 def test_upml_pad_current_drive_refused(lane, kind, axis_side):
-    # An Ez edge in the x or y pad: the UPML update carries that pad's
-    # conductivity and the drive's coefficient does not.
+    """An Ez edge in the x or y pad carries UPML conductivity absent from the drive's coefficient."""
     with pytest.raises(ValueError, match='edge .* inside a UPML absorber pad'):
         _solve_witness(_pad_sim(kind, *axis_side), lane)
 
 
 @pytest.mark.parametrize('lane', ['run', 'forward'])
 @pytest.mark.parametrize('kind,axis_side', [
-    ('passive', (0, -1)),       # a load only: nothing is injected
-    ('soft_field', (1, 1)),     # the field increment is prescribed
-    ('port', (2, -1)),          # Ez in the z pad: no perpendicular sigma
+    ('passive', (0, -1)),
+    ('soft_field', (1, 1)),
+    ('port', (2, -1)),
     ('soft_current', (2, -1)),
 ])
 def test_upml_pad_admits_what_has_no_coefficient_error(lane, kind, axis_side):
+    """Ez in the z pad has no perpendicular sigma."""
     _solve_witness(_pad_sim(kind, *axis_side), lane)
 
 
 @pytest.mark.parametrize('component', ['ex', 'ey', 'ez'])
 def test_source_coefficient_is_the_upml_kernels_array(component):
-    # Tie to the array the UPML E update multiplies the curl by, so a change
-    # to that kernel cannot leave the source behind.
     from dataclasses import replace
     from rfx.boundaries.upml import init_upml
     from rfx.core.yee import MaterialArrays

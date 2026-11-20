@@ -9,11 +9,10 @@ from tests.unit.sparams.test_ringdown_oracles import _model
 
 
 def test_sixty_db_weaker_channel_is_reported_and_not_judged():
-    # Proportional records have an exact 60 dB separation at every read bin,
-    # even though the judge normalizes both time-domain peaks to one.
     t = np.arange(200)
     strong = np.exp(-t / 20.) * np.cos(2 * np.pi * .07 * t)
-    records = [('plane0/V', strong), ('plane1/V', 1e-3 * strong)]
+    SIXTY_DB_AMPLITUDE_RATIO = 1e-3
+    records = [('plane0/V', strong), ('plane1/V', SIXTY_DB_AMPLITUDE_RATIO * strong)]
     options = dict(dt=1., freqs=[.07], freq_max=.15,
                    source_end_index=0, return_detail=True)
     _, own = settling_db_from_named_records(records, **options)
@@ -28,10 +27,9 @@ def test_sixty_db_weaker_channel_is_reported_and_not_judged():
 
 
 def test_column_keys_and_labels_survive_the_variation_filter():
+    """The current is a different quantity from either voltage."""
     t = np.arange(200)
     signal = np.exp(-t / 20.) * np.cos(2 * np.pi * .07 * t)
-    # Column 0 is removed by the existing variation filter. The current is
-    # much weaker than either voltage, but is a different quantity.
     samples = np.column_stack([np.zeros(200), signal, 1e-3 * signal, 1e-6 * signal])
     _, detail = settling_db_from_named_records(
         [('port/V_I', samples)], dt=1., freqs=[.07], freq_max=.15,
@@ -59,8 +57,7 @@ def test_same_key_does_not_compare_different_record_lengths():
 
 
 def test_dropped_entry_does_not_change_horizon_or_kept_bin():
-    # The weak channel's resolved decay at .7 sets H for the identified
-    # model, including the other channel's growing pole at the kept .9 bin.
+    """The weak channel’s resolved decay at .7 sets H for the identified model, including the other channel’s growing pole at the kept .9 bin."""
     s = np.array([-.001 + 2j*np.pi*.7, 1e-8 + 2j*np.pi*.9])
     c = np.array([[0., 1e-6], [1e-8, 0.]], complex)
     model = replace(_model(s, c, 100, .1), n_window=100)

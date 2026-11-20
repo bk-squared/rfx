@@ -47,11 +47,10 @@ from tests._gate_policy import gate_from_envelope
 
 C0 = 299_792_458.0
 
-# ---- shared grid / band ----
 DX = 0.5e-3
 FREQ_MAX = 18e9
 F0 = 10e9
-BW = 0.7  # modulated_gaussian fwidth = F0*BW = 7 GHz, covers the 6-14 GHz band
+BW = 0.7
 DOM_X = 120e-3
 DOM_Y = 5e-3
 CENTER_X = DOM_X / 2.0
@@ -61,43 +60,26 @@ Y_CENTER = DOM_Y / 2.0
 D_SLAB = 8e-3
 FREQS_RT = np.linspace(6e9, 14e9, 17)
 
-# ---- dispersion parameters (in-band, modest Re(n)) ----
 DEBYE_EPS_INF = 2.0
 DEBYE_DELTA_EPS = 3.0
-DEBYE_TAU = 1.0 / (2.0 * np.pi * 10e9)  # relaxation frequency at 10 GHz
+DEBYE_RELAXATION_HZ = 10e9
+DEBYE_TAU = 1.0 / (2.0 * np.pi * DEBYE_RELAXATION_HZ)
 
 LOR_EPS_INF = 2.0
 LOR_DELTA_EPS = 1.0
-LOR_W0 = 2.0 * np.pi * 10e9  # resonance at 10 GHz (in-band)
-LOR_DELTA = 0.1 * LOR_W0  # damping; Q = w0/(2*delta) = 5
+LORENTZ_RESONANCE_HZ = 10e9
+LOR_W0 = 2.0 * np.pi * LORENTZ_RESONANCE_HZ
+LORENTZ_DAMPING_RATIO = 0.1
+LOR_DELTA = LORENTZ_DAMPING_RATIO * LOR_W0
 
-# Drude (omega_0 = 0). The plasma frequency sits INSIDE the band, so the pole
-# carries most of eps across it: eps = 0.777 - 1.282j at 6 GHz, 1.838 - 0.345j at
-# 10 GHz, 2.228 - 0.135j at 14 GHz (|eps| 1.50 -> 2.23, tan_d 1.650 -> 0.061).
-# eps' stays positive over 6-14 GHz — its zero crossing,
-# sqrt(omega_p^2/eps_inf - gamma^2)/2pi, is at 4.59 GHz, below the band edge — so
-# the slab is lossy but nowhere a negative-eps total reflector, and it is not
-# opaque (|n| 1.22 at 6 GHz, one-pass amplitude 0.55 through 8 mm).
-#
-# f_p was 6 GHz until 2026-09-21. There the pole moved R(f) so little that
-# replacing the analytic eps(w) with a flat eps_inf = 2.7 slab still passed:
-# the arm could not tell a Drude slab from a dispersionless one. At f_p = 10 GHz
-# that substitution measures mean |dR| = 0.0556 and reds (see the arm's
-# docstring for the four measured numbers).
-#
-# eps_inf is kept below 2.77 so the slab clears the >=20 cells/lambda_eff
-# preflight advisory at FREQ_MAX (33.31/sqrt(eps_inf) cells; 20.3 here) — the
-# Debye and Lorentz arms raise 2 advisories each and this arm raises the same 2.
 DRUDE_EPS_INF = 2.7
-DRUDE_WP = 2.0 * np.pi * 10e9  # plasma frequency (rad/s)
-DRUDE_GAMMA = 2.0 * np.pi * 4e9  # collision rate gamma (rad/s); pole delta = gamma/2
+DRUDE_PLASMA_FREQUENCY_HZ = 10e9
+DRUDE_WP = 2.0 * np.pi * DRUDE_PLASMA_FREQUENCY_HZ
+DRUDE_COLLISION_FREQUENCY_HZ = 4e9
+DRUDE_GAMMA = 2.0 * np.pi * DRUDE_COLLISION_FREQUENCY_HZ
 
-GATE = 0.05  # mean |R_fdtd - R_analytic| over the band
+GATE = 0.05
 
-# The Drude arm's own gate, from its own measurement by the shared envelope rule
-# (tests/_gate_policy.py): mean |dR| measured 0.0060 on CPU 2026-09-21 -> 0.01.
-# Under the inherited 0.05 the arm rejected a dispersionless slab by only 1.1x
-# and could not see a halved collision rate at all; under 0.01 it rejects both.
 _DRUDE_MEASURED_MEAN = 0.0060
 DRUDE_GATE = gate_from_envelope(_DRUDE_MEASURED_MEAN, quantum=100)
 
@@ -109,7 +91,7 @@ def _tmm_slab_R(freqs, eps_complex, d):
     r = (y0 M11 + y0 y_s M12 - M21 - y_s M22) / (y0 M11 + y0 y_s M12
         + M21 + y_s M22), vacuum both sides (y0 = y_s = 1).
     """
-    n = np.sqrt(np.asarray(eps_complex))  # complex principal branch
+    n = np.sqrt(np.asarray(eps_complex))
     R = np.zeros(len(freqs))
     y0 = ys = 1.0
     for i, f in enumerate(freqs):
@@ -125,6 +107,7 @@ def _tmm_slab_R(freqs, eps_complex, d):
 
 
 def _build_sim(kind, with_slab):
+    """TFSF forces y/z periodic, so the material must span the full transverse extent including CPML."""
     sim = Simulation(
         freq_max=FREQ_MAX, domain=(DOM_X, DOM_Y, DX), dx=DX,
         boundary="cpml", cpml_layers=20, mode="2d_tmz",
@@ -139,9 +122,6 @@ def _build_sim(kind, with_slab):
         else:
             sim.add_material("slab", eps_r=LOR_EPS_INF,
                              lorentz_poles=[lorentz_pole(LOR_DELTA_EPS, LOR_W0, LOR_DELTA)])
-        # Cell-centre sampling realizes the drawn node-to-node thickness.
-        # Oversize the transverse corners: TFSF forces y/z periodic,
-        # so the material must span the full transverse extent incl. CPML.
         x_lo = CENTER_X - D_SLAB / 2.0
         x_hi = CENTER_X + D_SLAB / 2.0
         sim.add(Box((x_lo, -1.0, -1.0), (x_hi, 1.0, 1.0)), material="slab")
@@ -177,7 +157,8 @@ def test_the_slab_the_grid_builds_is_the_slab_the_oracle_assumes(kind):
 
 
 def _measure_R(kind):
-    """Two-run reference-subtraction reflectance R(f) for the slab material."""
+    """Two-run reference-subtraction reflectance R(f) for the slab material.
+    Reflection travels in the -x direction."""
     res_ref = _build_sim(kind, with_slab=False).run(
         until_decay=1e-4, decay_monitor_component="ez",
         decay_monitor_position=(TRANS_X, Y_CENTER, 0.0))
@@ -189,9 +170,6 @@ def _measure_R(kind):
     ref_trans_flux = np.asarray(flux_spectrum(res_ref.flux_monitors["trans"]))
     slab_refl = res_slab.flux_monitors["refl"]
 
-    # Field-level DFT subtraction (Poynting flux is bilinear in E,H; subtracting
-    # already-computed fluxes would leave cross terms). Recover the scattered
-    # (reflected) field, then compute its flux.
     scat_refl = slab_refl._replace(
         e1_dft=slab_refl.e1_dft - ref_refl.e1_dft,
         e2_dft=slab_refl.e2_dft - ref_refl.e2_dft,
@@ -199,7 +177,7 @@ def _measure_R(kind):
         h2_dft=slab_refl.h2_dft - ref_refl.h2_dft,
     )
     scat_refl_flux = np.asarray(flux_spectrum(scat_refl))
-    return -scat_refl_flux / ref_trans_flux  # reflection travels -x
+    return -scat_refl_flux / ref_trans_flux
 
 
 def test_eval_lorentz_matches_closed_form():
@@ -233,7 +211,6 @@ def test_drude_pole_matches_closed_form():
     got = eval_lorentz(FREQS_RT, DRUDE_EPS_INF, [pole])
     assert np.max(np.abs(got - closed_form)) < 1e-6
 
-    # Lossy in the e^{+jωt} convention, and nowhere a negative-eps reflector.
     assert np.all(closed_form.imag < 0.0)
     assert np.all(closed_form.real > 0.0)
 
@@ -245,7 +222,6 @@ def test_dispersive_fresnel_debye():
     R_analytic = _tmm_slab_R(FREQS_RT, eps_c, D_SLAB)
     R_fdtd = _measure_R("debye")
 
-    # Oracle sanity (passive slab): analytic reflectance must be physical.
     assert np.all(np.isfinite(R_fdtd)), "R_fdtd has non-finite entries"
     assert np.all(R_analytic <= 1.0 + 1e-9), "oracle R>1 — wrong sqrt branch"
 
@@ -298,9 +274,10 @@ def test_dispersive_fresnel_drude():
     pole = drude_pole(DRUDE_WP, DRUDE_GAMMA)
     eps_c = eval_lorentz(FREQS_RT, DRUDE_EPS_INF, [pole])
     R_analytic = _tmm_slab_R(FREQS_RT, eps_c, D_SLAB)
+    assert C0 / FREQ_MAX / np.sqrt(DRUDE_EPS_INF) / DX >= 20.0, (
+        'DRUDE_EPS_INF must leave at least 20 cells per effective wavelength at FREQ_MAX to clear the slab resolution advisory.')
     R_fdtd = _measure_R("drude")
 
-    # R5: the curve, not the headline.
     print("\n[drude] f (GHz)   : "
           + " ".join(f"{f/1e9:8.3f}" for f in FREQS_RT))
     print("[drude] eps_real  : " + " ".join(f"{v:8.4f}" for v in eps_c.real))

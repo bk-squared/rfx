@@ -24,10 +24,7 @@ def _run(values, *, n_end=10, min_steps=0, consecutive=2):
 
 
 def test_no_stop_before_drive_end_however_low():
-    # n_end = 40: W is read at every boundary (the floor's largest W, 1000 at
-    # 10), but the 1000 and the two 0.01 at 10..30 are not in ref and cannot
-    # stop. From 40 on: ref = 10, then 0.5 < max(1, 1e-9) at 50 and 60 -> two
-    # in a row, stop at 60.
+    """With n_end = 40, ref = 10 from count 40 gives 0.5 < 1 at 50 and 60, so two consecutive boundaries stop at 60."""
     rule, asked = _run([1000, .01, .01, 10, .5, .5], n_end=40)
     assert asked == [10, 20, 30, 40, 50, 60]
     assert rule.wmax == 1000
@@ -37,24 +34,21 @@ def test_no_stop_before_drive_end_however_low():
 
 
 def test_reference_rises_after_drive_end():
-    # ref 10 at 10, 100 at 20; 5 < 0.1*100 at 30 and 40 -> stop at 40. With the
-    # reference frozen at its first value, 5 < 1 would never hold.
+    """With the reference frozen at its first value, 5 < 1 would never hold."""
     rule, _ = _run([10, 100, 5, 5])
     assert rule.stop == 40
     assert [row[2] for row in rule.decay_checks] == [10, 100, 100, 100]
 
 
 def test_one_boundary_dip_recovers():
-    # 1 < 10 at 20 (below = 1), 20 > 10 at 30 resets, 1 at 40 (below = 1),
-    # 20 at 50 resets: never two in a row, no stop.
+    """The 20 at counts 30 and 50 resets each one-boundary dip, preventing two in a row."""
     rule, _ = _run([100, 1, 20, 1, 20])
     assert rule.stop is None
     assert rule.below == 0
 
 
 def test_min_steps_beyond_crossing():
-    # Below at 20, 30, 40, 50 (below = 4 at 50); counts before min_steps = 45
-    # cannot stop, so the first stop is 50, the first boundary >= 45.
+    """Counts before min_steps = 45 cannot stop, so the first stop is 50, the first boundary >= 45."""
     rule, _ = _run([100, 1, 1, 1, 1], min_steps=45)
     assert rule.stop == 50
     assert [row[0] for row in rule.decay_checks] == [50]
@@ -76,11 +70,8 @@ def test_off_boundary_counts_are_not_read():
 def test_refuses_fewer_than_two_with_the_energy_criterion(consecutive):
     with pytest.raises(ValueError, match="decay_energy_consecutive must be >= 2"):
         DecayStop(.1, 0, 10, consecutive, 10)
-    # Not the run's stop rule (forced length, the flux criterion): accepted.
     assert DecayStop(0., 0, 10, consecutive, None, enabled=False).stop is None
 
-
-# --- how the run ended: the until_decay.stop Diagnostic (D3/D4) ----------------
 
 FLOOR_TEXT = ("below about 1e-12 of the drive's peak energy the remaining field is at the "
               "single-precision rounding level of the drive's peak field; the requested "
@@ -99,9 +90,7 @@ def _end(values, *, thr, n_end, steps):
 
 
 def test_threshold_end_diagnostic():
-    # Drive (W 1000) at 10, n_end 20: ref 100 at 20. Below when W < max(0.1 * 100,
-    # 1e-12 * 1000) = 10: 5 at 30 and 40 -> stop at 40 on the threshold (10 >= 1e-9).
-    # reached = 5/100, floor_ratio = 1e-12 * 1000 / 100.
+    """The threshold 0.1 * 100 = 10 exceeds the floor 1e-12 * 1000, so 5 at 30 and 40 stops on the threshold."""
     d, warned = _end([1000, 100, 5, 5, 5], thr=.1, n_end=20, steps=40)
     assert (d.code, d.severity, d.subject) == ("until_decay.stop", "info", "threshold")
     v = d.values
@@ -113,19 +102,13 @@ def test_threshold_end_diagnostic():
 
 
 def test_floor_end_diagnostic_and_one_warning():
-    # Drive W 1e12 at 10, n_end 20, ref = W(20) = 1. Requested 1e-4 asks W < 1e-4;
-    # 0.5 at 30 is under the floor 1e-12 * 1e12 = 1 but fell from 1 (0.5 < 0.95 * 1):
-    # not below. 0.5 at 40 and 50 has stopped falling (>= 0.95 * 0.5): below on the
-    # floor twice -> stop at 50 on the floor. reached 0.5, floor_ratio 1, 0.5e-12 of
-    # the drive's peak energy.
+    """The 0.5 at counts 40 and 50 has stopped falling below the floor 1e-12 * 1e12 = 1, giving two floor boundaries and a stop at 50."""
     d, warned = _end([1e12, 1, .5, .5, .5], thr=1e-4, n_end=20, steps=50)
     assert (d.severity, d.subject, d.values["criterion"]) == (
         "warning", "float32_floor", "float32_floor")
     assert d.values["stop_step"] == 50
     assert d.values["reached"] == pytest.approx(.5, rel=1e-12)
     assert d.values["floor_ratio"] == pytest.approx(1.0, rel=1e-12)
-    # The message: requested threshold, then the levels where W stopped falling, then
-    # the floor text.
     msg = d.message
     assert (msg.index("requested threshold 0.0001") < msg.index("stopped falling at 0.5")
             < msg.index("(5e-13 of the drive's peak energy)") < msg.index(FLOOR_TEXT))
@@ -133,8 +116,7 @@ def test_floor_end_diagnostic_and_one_warning():
 
 
 def test_floor_does_not_stop_a_decay_below_it():
-    # Drive W 1e12, then W falls 30 % per check from 1 (all under the floor 1, all above
-    # the requested 1e-9 * ref): a decaying field, not rounding -> no stop.
+    """W falling 30 % per check below the floor is a decaying field, not rounding."""
     values = [1e12] + [0.7 ** k for k in range(12)]
     rule = DecayStop(1e-9, 0, 10, 2, 20)
     for count, value in enumerate(values, 1):
@@ -143,8 +125,7 @@ def test_floor_does_not_stop_a_decay_below_it():
 
 
 def test_floor_stops_a_flat_level_below_it():
-    # The same drive, then W flat at 0.3 under the floor: stopped falling -> stop at
-    # the second boundary after the first flat one (40: 0.3 against 1 is a fall).
+    """W flat at 0.3 under the floor stops at the second flat boundary."""
     values = [1e12, 1, .3, .3, .3]
     rule = DecayStop(1e-9, 0, 10, 2, 20)
     for count, value in enumerate(values, 1):
@@ -153,9 +134,7 @@ def test_floor_stops_a_flat_level_below_it():
 
 
 def test_cap_end_diagnostic():
-    # n_end 20, ref 10 (W at 20); W stays at 5 > max(1e-3 * 10, 1e-12 * 1000): no
-    # stop. The run reaches its cap (steps 60): reached = 5/10 at the last boundary,
-    # floor_ratio = 1e-12 * 1000 / 10.
+    """W stays at 5 > max(1e-3 * 10, 1e-12 * 1000), so the run reaches its cap."""
     d, warned = _end([1000, 10, 5, 5, 5, 5], thr=1e-3, n_end=20, steps=60)
     assert (d.severity, d.subject, d.values["criterion"]) == ("warning", "cap", "cap")
     assert d.values["stop_step"] == 60
@@ -175,9 +154,7 @@ def test_forced_length_has_no_record():
 
 
 def test_waveguide_port_without_its_applied_table_is_refused():
-    # A port initialised without dt holds a (1,) zero sentinel instead of the
-    # incident table it applies, and emits through the legacy soft-E path: its
-    # drive end cannot be read, so until_decay refuses and names that.
+    """A port initialised without dt holds a (1,) zero sentinel instead of its applied incident table, so its drive end cannot be read."""
     from types import SimpleNamespace
 
     import jax.numpy as jnp
@@ -188,7 +165,6 @@ def test_waveguide_port_without_its_applied_table_is_refused():
     port = SimpleNamespace(src_amp=1.0, e_inc_table=jnp.zeros((1,)))
     with pytest.raises(ValueError, match=r"waveguide port\[0\] was initialised without dt"):
         drive_end(grid, 100, waveguide_ports=(port,))
-    # The applied table, held at its last entry past its end, is read at distance 0.
     table = jnp.concatenate([jnp.ones(30), jnp.zeros(40)])
     assert drive_end(grid, 100, waveguide_ports=(SimpleNamespace(src_amp=1.0, e_inc_table=table),)) == 30
     held = jnp.concatenate([jnp.ones(30), jnp.full(40, .5)])
@@ -196,9 +172,7 @@ def test_waveguide_port_without_its_applied_table_is_refused():
 
 
 def test_threshold_label_when_the_whole_final_run_is_below_the_threshold():
-    # Interval 1, n_end 1: W 1 at 0 (drive), ref 1e-7 at 1. The threshold 1e-6 * 1e-7 =
-    # 1e-13 is under the floor 1e-12 * 1, but 1e-14 and 1e-15 at 2 and 3 are below the
-    # threshold itself: the stop at 3 is on the threshold.
+    """The 1e-14 and 1e-15 at counts 2 and 3 are below the threshold 1e-6 * 1e-7 = 1e-13 itself, so the stop is on the threshold."""
     rule = DecayStop(1e-6, 0, 1, 2, 1)
     for count, w in enumerate([1.0, 1e-7, 1e-14, 1e-15]):
         rule.check(count, lambda w=w: w)
@@ -206,8 +180,7 @@ def test_threshold_label_when_the_whole_final_run_is_below_the_threshold():
 
 
 def test_floor_flatness_is_per_50_steps_not_per_check():
-    # Interval 10: W falling 2 % per check is 9.6 % per 50 steps, still decaying; it
-    # must not stop on the floor (a per-check 0.95 would call it flat).
+    """W falling 2 % per check at interval 10 is 9.6 % per 50 steps, still decaying rather than flat."""
     values = [1e12] + [0.98 ** k for k in range(15)]
     rule = DecayStop(1e-9, 0, 10, 2, 20)
     for count, value in enumerate(values, 1):

@@ -49,11 +49,11 @@ class _GridBuildIntercept(Exception):
 
 
 def _intercept_grid_build(monkeypatch):
+    """Admission must read the realized geometry before the calculator emits its NTFF
+    warning, so the intercept targets the calculator's subsequent build."""
     original = Simulation._build_grid
     admitted = set()
     def _boom(self, **kwargs):
-        # #1512 admission must read the realized geometry before the calculator
-        # emits its NTFF warning; intercept the calculator's subsequent build.
         if self._msl_ports and id(self) not in admitted:
             admitted.add(id(self))
             return original(self, **kwargs)
@@ -62,22 +62,17 @@ def _intercept_grid_build(monkeypatch):
     monkeypatch.setattr(Simulation, "_build_grid", _boom)
 
 
-# --------------------------------------------------------------------------
-# fixtures — the committed MSL thru line and a coarse WR-90 two-port (geometry
-# copied from tests/unit/runners/test_run_progress_reporting and
-# tests/unit/materials/test_sheet_impedance respectively).
-# --------------------------------------------------------------------------
 
 
 def _msl_thru() -> Simulation:
+    """The trace is foil: a sheet on the substrate-top node plane, not a one-cell Box,
+    which the contract realizes as a filled slab with a wall on its underside and its
+    topside."""
     domain_y, y_c = 0.008, 0.004
     sim = Simulation(freq_max=20e9, domain=(0.012, domain_y, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, domain_y, 0.0008)), material="sub")
-    # the trace is foil: a SHEET on the substrate-top node plane (#931 §1.3),
-    # not a one-cell Box (which the contract realizes as a filled slab with a
-    # wall on its underside AND its topside).
     sim.add(Box((0.002, y_c - (3 + .35) * 2e-4, 0.0008),
                 (0.010, y_c + (3 + .35) * 2e-4, 0.0008)), material="pec")
     sim.add_msl_port(position=(0.002, y_c, 0.0), width=0.0012, height=0.0008,
@@ -88,11 +83,13 @@ def _msl_thru() -> Simulation:
 
 
 def _wr90() -> Simulation:
+    """The transverse domain lengths are whole multiples of dx, the lengths the grid
+    solves."""
     sim = Simulation(
         freq_max=8e9, domain=(0.06, 8 * 3e-3, 4 * 3e-3), dx=3e-3,
         boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),
-        cpml_layers=6)  # solved length; #1887
+        cpml_layers=6)
     freqs = jnp.linspace(6e9, 7e9, 3)
     for x, d, name in ((0.009, "+x", "l"), (0.051, "-x", "r")):
         sim.add_waveguide_port(x, direction=d, mode=(1, 0), mode_type="TE",
@@ -139,28 +136,25 @@ def _assert_no_ntff_warning(records) -> None:
     assert dropped == [], f"NTFF-drop warning fired without a box: {dropped}"
 
 
-# --------------------------------------------------------------------------
-# MSL — the path #704 names first
-# --------------------------------------------------------------------------
 
 
 def test_msl_warns_with_ntff_box(monkeypatch):
     sim = _add_box(_msl_thru())
+    assert len(sim._msl_ports) == 2, (
+        'Two MSL ports distinguish per-call from per-port warnings')
     _intercept_grid_build(monkeypatch)
     with pytest.warns(UserWarning, match=_NTFF_MATCH) as rec:
         with pytest.raises(_GridBuildIntercept):
             sim.compute_msl_s_matrix(n_freqs=3)
     hits = [w for w in rec if "add_ntff_box" in str(w.message)]
-    # ONE warning per call, not per port (the fixture has two MSL ports).
     assert len(hits) == 1
     msg = str(hits[0].message)
-    # Basis clauses: registered / dropped / workaround / stale-if.
     assert "compute_msl_s_matrix()" in msg
-    assert "5 frequencies" in msg              # what was registered
-    assert "dropped" in msg                    # what happens to it
-    assert "run()" in msg                      # the workaround
-    assert "STALE-IF" in msg                   # when to delete the warning
-    assert "threading NTFF data out" in msg                       # full threading stays open
+    assert "5 frequencies" in msg
+    assert "dropped" in msg
+    assert "run()" in msg
+    assert "STALE-IF" in msg
+    assert "threading NTFF data out" in msg
 
 
 def test_msl_silent_without_ntff_box(monkeypatch):
@@ -173,9 +167,6 @@ def test_msl_silent_without_ntff_box(monkeypatch):
     _assert_no_ntff_warning(rec)
 
 
-# --------------------------------------------------------------------------
-# waveguide — the audit sibling #704 names (the coaxial one left in #1212)
-# --------------------------------------------------------------------------
 
 
 def test_waveguide_warns_with_ntff_box(monkeypatch):

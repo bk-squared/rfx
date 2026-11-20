@@ -28,15 +28,12 @@ def test_hand_faces():
             expected[normal][base] = effective
             for got, want in zip(actual, expected):
                 np.testing.assert_array_equal(got, want)
-        # At q=.25 the floor bound is .0625; a .1 face remains .1.
         areas[normal][base] = .01
         assert conformal_b_floor(lengths, areas, .25)[normal][base] == .0625
         for got, want in zip(lengths, original):
             np.testing.assert_array_equal(got, want)
 
 
-# Sources of rfx/grid.py and rfx/geometry/conformal_cells.py at main fa8e0eaf5, frozen because
-# CI checks out depth 1 (no history to `git show`).
 BASE = Path(__file__).resolve().parents[2] / "data" / "base_fa8e0eaf5"
 
 def test_default_operands_and_dt_match_main_in_process():
@@ -53,7 +50,7 @@ def test_default_operands_and_dt_match_main_in_process():
         grid, before = Grid(**kwargs), old['grid']['Grid'](**kwargs)
         assert np.float64(grid.dt).tobytes() == np.float64(before.dt).tobytes()
         shapes = [sphere if mode == '3d' else Sphere((.0061, .0058, 0.), .0023)]
-        current = compute_conformal_fractions(grid, shapes)
+        current = compute_conformal_fractions(grid, shapes, field_dtype=np.float32)
         previous = old['geometry/conformal_cells']['compute_conformal_fractions'](before, shapes)
         for arrays, baseline in zip(current, previous):
             for got, want in zip(arrays, baseline):
@@ -84,7 +81,7 @@ def test_uniform_modes_use_realized_pin_and_raw_edges():
                                  compute_s_params=False, skip_preflight=True)
             assert result.dt == q * ordinary
             grid = sim._build_grid()
-            raw = compute_conformal_fractions(grid, [sphere], clamp=False)[0]
+            raw = compute_conformal_fractions(grid, [sphere], clamp=False, field_dtype=np.float32)[0]
             for got, want in zip(captured[0][2], raw):
                 np.testing.assert_array_equal(got, want)
             assert all(np.isfinite(np.asarray(getattr(result.state, c))).all()
@@ -92,6 +89,7 @@ def test_uniform_modes_use_realized_pin_and_raw_edges():
 
 
 def test_closed_box_energy():
+    """The expected conservation bound is independent of the geometry/floor calculation."""
     dx, length = .00075, .03
     sphere = Sphere((.01512, .01493, .01507), .009)
     def run(n):
@@ -106,13 +104,11 @@ def test_closed_box_energy():
                   for c in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')}
         assert all(np.isfinite(a).all() for a in fields.values())
         return sim._build_grid(), fields
-    # The energy weights come from the actual E/H operands; the expected
-    # conservation bound is independent of the geometry/floor calculation.
     energies = []
     for n in (1000, 2000):
         grid, a = run(n)
         _, b = run(n + 1)
-        lengths, areas = compute_conformal_fractions(grid, [sphere], conformal_pec='cut_cell_floor')
+        lengths, areas = compute_conformal_fractions(grid, [sphere], conformal_pec='cut_cell_floor', field_dtype=np.float32)
         eps = [np.where(v > 0, 1. / np.where(v > 0, v, 1.), 0.)
                for v in map(lambda x: np.asarray(x, np.float64), lengths)]
         mu = [np.where((s > 0) & (s < 1), s, 1.)

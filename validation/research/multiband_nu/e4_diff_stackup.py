@@ -334,7 +334,7 @@ def kottke_column() -> dict:
              (Box((0, 0, 16e-3), (A_X, B_Y, 30e-3)), 4.3)]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        _, ey, _ = compute_smoothed_eps_nonuniform(g, boxes, 1.0)
+        _, ey, _ = compute_smoothed_eps_nonuniform(g, boxes, 1.0, dtype='float32')
     col = np.asarray(ey[g.nx // 2, g.ny // 2, :], np.float64)
     dual = _eps_f64(PARAMS0)
     return {"kottke_ey": {str(k): float(col[k]) for k in KOTTKE_COLUMN},

@@ -32,12 +32,12 @@ PRINT_SITES = {
     ("stepping/progress.py", "report"): "explicit output API or user-flagged output",
     ("stepping/progress.py", "note"): "explicit output API or user-flagged output",
     ("topology.py", "topology_optimize"): "explicit output API or user-flagged output",
-    ("preflight/_impl.py", "_preflight_impl"): "preflight report rendering",
+    ("preflight/_impl.py", "_preflight_impl_body"): "preflight report rendering",
     ("api/_preflight.py", "preflight_sparameters"): "preflight report rendering",
     ("stepping/subgrid_loop.py", "run_subgridded_loop"): "subgridding progress line",
 }
 
-CUSTOM_BASES = [("rfx.optimizers", "MMASubproblemCapWarning", AccuracyWarning), ("rfx._host_limits", "MapCountWarning", ConfigurationWarning), ("rfx._runtime_floor", "UntestedJAXWarning", ConfigurationWarning), ("rfx._internal._grid_metric", "Float32WidthResolutionWarning", AccuracyWarning), ("rfx.api._mesh", "AutoMeshWarning", RfxWarning), ("rfx.boundaries.features", "WaveguideBoundaryWarning", RfxWarning), ("rfx.boundaries.tfsf", "UnjudgedTFSFInvarianceWarning", AccuracyWarning), ("rfx.geometry.rasterize_grid", "ExactNodeSpineMissingWarning", AccuracyWarning), ("rfx.geometry.smoothing", "CurvedSmoothingWarning", AccuracyWarning), ("rfx.model.graded_admission", "DeclaredZWarning", RfxWarning), ("rfx.preflight._common", "PreflightWarning", RfxWarning), ("rfx.preflight._common", "PreflightErrorWarning", RfxWarning), ("rfx.probes.probes", "PreDecisionLumpedDiagonalWarning", AccuracyWarning), ("rfx.subgridding._notice", "ExperimentalSubgridWarning", AccuracyWarning)]
+CUSTOM_BASES = [("rfx.optimizers", "MMASubproblemCapWarning", AccuracyWarning), ("rfx._host_limits", "MapCountWarning", ConfigurationWarning), ("rfx._runtime_floor", "UntestedJAXWarning", ConfigurationWarning), ("rfx._internal._grid_metric", "Float32WidthResolutionWarning", AccuracyWarning), ("rfx.api._mesh", "AutoMeshWarning", RfxWarning), ("rfx.boundaries.features", "WaveguideBoundaryWarning", RfxWarning), ("rfx.boundaries.tfsf", "UnjudgedTFSFInvarianceWarning", AccuracyWarning), ("rfx.geometry.rasterize_grid", "ExactNodeSpineMissingWarning", AccuracyWarning), ("rfx.geometry.smoothing", "CurvedSmoothingWarning", AccuracyWarning), ("rfx.model.graded_admission", "DeclaredZWarning", RfxWarning), ("rfx.preflight._common", "PreflightWarning", RfxWarning), ("rfx.preflight._common", "PreflightErrorWarning", RfxWarning), ("rfx.probes.probes", "PreDecisionLumpedDiagonalWarning", AccuracyWarning), ("rfx.subgridding._notice", "ExperimentalSubgridWarning", AccuracyWarning), ("rfx.errors", "RingdownSecondDerivativeWarning", RfxWarning)]
 
 
 def test_public_warning_mros_and_exports():

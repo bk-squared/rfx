@@ -15,12 +15,12 @@ from tests.oracle._drude_plasma_scene import (
 
 
 def test_drude_plasma_resonance():
+    """The reference is built in NumPy, without rfx coefficient helpers."""
     start = time.monotonic()
     nu = 1.063e7
     pulse = waveform()
     sim, grid, n_steps = scene(nu, "float32", 8, pulse)
     dt = float(grid.dt)
-    # references() builds the 0-D map in NumPy, without rfx coefficient helpers.
     ref = references(nu, dt)
     assert ref["r"] == 2**-24
     off = source_end_step([(pulse, 0.)], n_steps, dt, tolerance=1e-6)
@@ -46,9 +46,9 @@ def test_drude_plasma_resonance():
 
 
 def test_lorentz_resonance():
+    """The reference is built in NumPy, without rfx coefficient helpers."""
     start = time.monotonic()
     nu = 1.183e7
-    # lorentz_scene() builds the reference in NumPy, without rfx coefficient helpers.
     sim, grid, n_steps, pulse, ref = lorentz_scene(nu)
     dt = float(grid.dt)
     assert abs(ref["r"]) >= 2**-24

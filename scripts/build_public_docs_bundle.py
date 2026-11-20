@@ -340,6 +340,9 @@ def finish_generated_index(generated: Path, *, has_authored_index: bool, base_ur
         return
     target = html.escape(f"{base_url}/api/generated/rfx.html", quote=True)
     source = html.escape(f"{SOURCE_REPOSITORY}/tree/{source_sha}", quote=True)
+    identity = f'{html.escape(channel.capitalize())} documentation · rfx {html.escape(package_version)}'
+    if channel != "release":
+        identity += f' · <a href="{source}">{html.escape(source_sha)}</a>'
     landing = (
         '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
@@ -347,13 +350,42 @@ def finish_generated_index(generated: Path, *, has_authored_index: bool, base_ur
         f'<link rel="canonical" href="{target}">\n'
         '<title>rfx generated API reference</title></head><body><main>\n'
         '<h1>Generated API reference</h1>\n'
-        f'<p>{html.escape(channel.capitalize())} documentation · '
-        f'rfx {html.escape(package_version)} · '
-        f'<a href="{source}">{html.escape(source_sha)}</a></p>\n'
+        f'<p>{identity}</p>\n'
         f'<p><a href="{target}">Open the complete Python API reference</a>.</p>\n'
         '</main></body></html>\n'
     )
     (generated / "index.html").write_text(landing)
+
+
+def finish_generated_html(text: str, *, channel: str, package_version: str, sha: str,
+                          base_url: str) -> str:
+    """Rewrite index links and pin GitHub docstring links to the source SHA;
+    insert the channel banner; render RST table paragraphs as preformatted HTML.
+
+    Source-code panels are omitted; the pinned GitHub source is authoritative.
+    """
+    text = text.replace('href="index.html"', 'href="index-pdoc.html"')
+    text = text.replace('/index.html"', '/index-pdoc.html"')
+    text = re.sub(r"https://github.com/bk-squared/rfx/(blob|tree)/(main|master)/",
+                  rf"{SOURCE_REPOSITORY}/\1/{sha}/", text)
+    identity = f'<strong>{channel.capitalize()} documentation</strong> · rfx {package_version}'
+    if channel != "release":
+        identity += f' · <a href="{SOURCE_REPOSITORY}/tree/{sha}">{sha[:12]}</a>'
+    banner = (f'<aside aria-label="Documentation version" style="padding:1rem;border:1px solid #bbb;margin-bottom:1rem">'
+              f'{identity}<br>'
+              f'<a href="{base_url}/">Manual</a> · <a href="{base_url}/llms.txt">LLM index</a> · '
+              f'<a href="{base_url}/api/inventory.json">Typed inventory</a></aside>')
+    text = text.replace('<main class="pdoc">', '<main class="pdoc">' + banner, 1)
+
+    def table_paragraph(match: re.Match) -> str:
+        inner = match.group(1)
+        lines = [line.strip() for line in re.sub(r"<[^>]*>", "", inner).splitlines() if line.strip()]
+        border = r"(?:=+( +=+)+|\+(-+\+)+)"
+        if lines and re.fullmatch(border, lines[0]) and re.fullmatch(border, lines[-1]):
+            return f'<pre class="rst-table">{inner}</pre>'
+        return match.group(0)
+
+    return re.sub(r"<p>(.*?)</p>", table_paragraph, text, flags=re.DOTALL)
 
 
 def agent_index(pages: list[dict]) -> list[str]:
@@ -366,7 +398,9 @@ def agent_index(pages: list[dict]) -> list[str]:
     ], ""]
 
 
-def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str | None) -> dict:
+def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str | None,
+          pdoc_templates: Path | None = None) -> dict:
+    """Build with pdoc_templates, defaulting to this generator's docs/pdoc_templates."""
     root = root.resolve()
     sha = check_source(root, source_sha)
     base_url = base_url.rstrip("/")
@@ -419,8 +453,14 @@ def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str
         generated = files / "api/generated"
         # The historical source may predate the inherited-method rendering fix.
         # A renderer changes presentation, not the selected API implementation.
-        templates = GENERATOR_ROOT / "docs/pdoc_templates"
-        check_no_symlinks(templates)
+        templates = pdoc_templates.resolve() if pdoc_templates is not None else GENERATOR_ROOT / "docs/pdoc_templates"
+        try:
+            check_no_symlinks(pdoc_templates if pdoc_templates is not None else templates)
+            check_no_symlinks(templates)
+        except SystemExit as exc:
+            raise ValueError(f"--pdoc-templates: {exc}") from exc
+        if not templates.is_dir() or not any(path.is_file() for path in templates.rglob("*")):
+            raise ValueError("--pdoc-templates must name a directory containing at least one file")
         env = {**os.environ, "PYTHONPATH": str(root), "JAX_PLATFORMS": "cpu", "PYTHONHASHSEED": "0"}
         subprocess.run([sys.executable, "-m", "pdoc", "-t", str(templates),
                         "--no-show-source", "--edit-url", f"rfx={SOURCE_REPOSITORY}/blob/{sha}/rfx/",
@@ -445,17 +485,16 @@ def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str
         for file in generated.rglob("*"):
             if file.suffix in {".html", ".js"}:
                 text = file.read_text()
-                text = text.replace('href="index.html"', 'href="index-pdoc.html"')
-                text = text.replace('/index.html"', '/index-pdoc.html"')
-                text = re.sub(r"https://github.com/bk-squared/rfx/(blob|tree)/(main|master)/",
-                              rf"{SOURCE_REPOSITORY}/\1/{sha}/", text)
                 if file.suffix == ".html":
-                    banner = (f'<aside aria-label="Documentation version" style="padding:1rem;border:1px solid #bbb;margin-bottom:1rem">'
-                              f'<strong>{channel.capitalize()} documentation</strong> · rfx {inventory["package_version"]} · '
-                              f'<a href="{SOURCE_REPOSITORY}/tree/{sha}">{sha[:12]}</a><br>'
-                              f'<a href="{base_url}/">Manual</a> · <a href="{base_url}/llms.txt">LLM index</a> · '
-                              f'<a href="{base_url}/api/inventory.json">Typed inventory</a></aside>')
-                    text = text.replace('<main class="pdoc">', '<main class="pdoc">' + banner, 1)
+                    text = finish_generated_html(
+                        text, channel=channel, package_version=inventory["package_version"],
+                        sha=sha, base_url=base_url,
+                    )
+                else:
+                    text = text.replace('href="index.html"', 'href="index-pdoc.html"')
+                    text = text.replace('/index.html"', '/index-pdoc.html"')
+                    text = re.sub(r"https://github.com/bk-squared/rfx/(blob|tree)/(main|master)/",
+                                  rf"{SOURCE_REPOSITORY}/\1/{sha}/", text)
                 file.write_text(text)
         showcase = []
         catalog_source = public / SHOWCASE_CATALOG
@@ -546,12 +585,15 @@ def main() -> int:
     parser.add_argument("--base-url", default="https://remilab.ai/rfx")
     parser.add_argument("--channel", choices=("development", "release"), default="development")
     parser.add_argument("--source-sha")
+    parser.add_argument("--pdoc-templates", type=Path, metavar="DIR",
+                        help="pdoc template directory; default docs/pdoc_templates of this script's repository")
     parser.add_argument("--verify", type=Path, help="validate an existing bundle instead of building")
     args = parser.parse_args()
     if args.verify:
         manifest = validate_bundle(args.verify, args.repo_root.resolve())
     else:
-        manifest = build(args.repo_root, args.output_dir.resolve(), args.base_url, args.channel, args.source_sha)
+        manifest = build(args.repo_root, args.output_dir.resolve(), args.base_url, args.channel, args.source_sha,
+                         args.pdoc_templates)
     print(f"public docs bundle: {len(manifest['pages'])} pages, {len(manifest['files'])} files, source {manifest['source_sha']}")
     return 0
 

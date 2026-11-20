@@ -28,13 +28,14 @@ KINDS = ['sphere', 'cylinder_x', 'cylinder_y', 'cylinder_z']
 
 
 def test_coax_clearance_uses_centred_disk_on_both_sides_of_ground():
-    """The warning's old 48-cell snapshot pinned displaced PTFE (#1138)."""
+    """The warning's old 48-cell snapshot pinned displaced PTFE (#1138).
+
+    The half-integer disk with radius 4 has 2*(8+8+6+4) cells."""
     from tests.unit.geometry.test_fidelity_topology_findings import (
         CLEAR_R, DX, EPS_COAX, JUNCTION_X, N_GND, N_SUB_LO, N_SUB_HI, Y_C, _junction_sim,
     )
 
     sim = _junction_sim(open_annulus=False)
-    # Draw the substrate on node faces; centre sampling needs no half-cell compensation.
     from dataclasses import replace
     for i, entry in enumerate(sim._geometry):
         if entry.material_name == "sub":
@@ -42,12 +43,10 @@ def test_coax_clearance_uses_centred_disk_on_both_sides_of_ground():
             sim._geometry[i] = replace(entry, shape=Box(
                 (*lo[:2], N_SUB_LO * DX), (*hi[:2], (N_SUB_HI + 1) * DX)))
     grid = sim._build_grid()
-    # This oracle reads material cells only; collect and deliberately drop PEC.
     mats = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
     x = (np.arange(grid.shape[0]) - grid.pad_x_lo + .5) * DX - JUNCTION_X
     y = (np.arange(grid.shape[1]) - grid.pad_y_lo + .5) * DX - Y_C
     expected = x[:, None]**2 + y[None, :]**2 <= CLEAR_R**2
-    # Half-integer disk r=4: 2*(8+8+6+4), derived before updating the snapshot.
     assert int(expected.sum()) == 52
     for k in (grid.pad_z_lo + N_GND - 1, grid.pad_z_lo + N_GND):
         np.testing.assert_array_equal(np.isclose(np.asarray(mats.eps_r)[:, :, k], EPS_COAX),
@@ -99,7 +98,6 @@ def test_uniform_curved_cells_and_each_yee_edge_are_centred(kind, precision):
         eps, sigma = rasterize(grid, [(shape, 4., 32.)])
         np.testing.assert_array_equal(eps, np.where(expected, 4., 1.))
         np.testing.assert_array_equal(sigma, np.where(expected, 32., 0.))
-        # Shape.mask remains its existing node API; only material sampling moves.
         np.testing.assert_array_equal(shape.mask(grid), _inside(shape, nodes))
         mats, debye, lorentz, pec, _, _, chi3 = sim._assemble_materials(grid)
         np.testing.assert_array_equal(mats.eps_r, eps)
@@ -126,7 +124,6 @@ def test_nonuniform_assembly_uses_each_axis_local_cell_centre(kind, graded):
         profiles = [p*(1+.2*np.sin(np.linspace(0, 2*np.pi, len(p)))) for p in profiles]
     grid = make_nonuniform_grid((.03, .03), profiles[2], .001, cpml_layers=4,
                                dx_profile=profiles[0], dy_profile=profiles[1])
-    # The NU spine has four pad cells at either end plus one bounding node.
     axes = []
     for p in profiles:
         widths = np.pad(p, (4, 5), mode='edge')
@@ -222,6 +219,7 @@ def test_named_material_sweep_uses_the_assembled_curved_cells(kind, field, value
 @pytest.mark.parametrize('graded', [False, True])
 @pytest.mark.parametrize('with_pec', [False, True])
 def test_dual_average_uses_supplied_centres_and_excludes_only_pec_cells(kind, graded, with_pec):
+    """The bounding node owns no outgoing cell."""
     from rfx.runners.nonuniform import assemble_interface_eps_nu
 
     profiles = [np.full(n, d) for n, d in ((30, .001), (25, .0012), (40, .00075))]
@@ -235,7 +233,7 @@ def test_dual_average_uses_supplied_centres_and_excludes_only_pec_cells(kind, gr
         nodes = (np.r_[0., np.cumsum(d[:-1])] - 4*p[0] if graded
                  else (np.arange(len(d))-4)*p[0])
         centres = nodes + d/2
-        centres[-1] = centres[-2]  # the bounding node owns no outgoing cell
+        centres[-1] = centres[-2]
         axes.append(centres)
     shape = _shape(kind)
     sim = Simulation(freq_max=3e9, domain=(.03,)*3, dx=.001, cpml_layers=4,
@@ -268,8 +266,6 @@ def test_dual_average_uses_supplied_centres_and_excludes_only_pec_cells(kind, gr
                 weights = (area*live)[index]
                 num += cell_eps[index]*weights
                 den += weights
-        # All-PEC fallback is separately pinned by the existing rule tests;
-        # every live edge here has an independently enumerated owner average.
         expected = np.divide(num, den, out=np.ones_like(num), where=den > 0)
         np.testing.assert_allclose(np.asarray(got[c])[den > 0], expected[den > 0],
                                    rtol=2*np.finfo(np.float32).eps, atol=0)

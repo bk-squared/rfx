@@ -1,4 +1,4 @@
-"""Regenerate B1's two-step field record; Conclusion: leader fills.
+"""Regenerate B1's two-step field record.
 
 Run with OMP/BLAS threads pinned to one and two emulated CPU devices, e.g.
 XLA_FLAGS='--xla_cpu_multi_thread_eigen=false --xla_force_host_platform_device_count=2'
@@ -26,7 +26,7 @@ from tests.contracts.boundary_fields import measure, measured_fields
 ROOT = Path(__file__).resolve().parents[2]
 TARGET = ROOT / "scripts/diagnostics/boundary_model/B1"
 # Stable leading phrases, without counts, face lists, or explanatory advice.
-REFUSAL_PREFIXES = ("PMC magnetic face(s)", "subgrid validation: supported=False", "[run] preflight found", "boundary='upml' does not support", "vmap_sweep: a magnetic (pmc) boundary face is not supported", "run(compute_s_params=True) for lumped/wire add_port(...) does not honor periodic axes", "run(compute_s_params=True) has a single result schema", "periodic axes", "Lumped ports are not supported together with the TFSF", "Floquet ports do not support non-uniform z mesh", "The graded run() lane would solve this Simulation as if")
+REFUSAL_PREFIXES = ("PMC magnetic face(s)", "subgrid validation: supported=False", "[run] preflight found", "boundary='upml' does not support", "vmap_sweep: a magnetic (pmc) boundary face is not supported", "run(compute_s_params=True) for lumped/wire add_port(...) does not honor periodic axes", "run(compute_s_params=True) has a single result schema", "periodic axes", "A TF/SF plane wave is not supported together with a lumped or wire port", "Floquet ports do not support non-uniform z mesh", "The graded run() lane would solve this Simulation as if")
 
 
 def refusal_prefix(message):
@@ -96,7 +96,7 @@ def b0_changes(cells, b0):
 
 
 def render_matrix(baseline, old_markdown):
-    # The leader's final paragraph is opaque text, independent of JSON's field.
+    # The final paragraph is opaque text, independent of JSON's field.
     # Preserve it byte-for-byte, along with the rest of the unregenerated tail.
     intro, rest = old_markdown.split("| Declaration |", 1)
     _, tail = rest.split("## Stopped comparisons", 1)
@@ -123,7 +123,7 @@ def write_baseline(baseline, old_markdown, target):
     (target / "MATRIX.md").write_text(markdown)
 
 
-# #2043: graded PMC high face, impose -> hold.
+# Graded PMC high face, impose -> hold.
 # Route (b) gives the graded PMC high-face ghost row zero inverse H spacing,
 # so the row HOLDS its entry value instead of being forced to zero each step.
 # The plane is unchanged. The uniform lane still imposes zero each step, except
@@ -136,7 +136,7 @@ GRADED_PMC_HIGH_CLASS_CHANGE = dict(before="impose", after="hold", plane="unchan
     precondition="Zero tangential H ghost row, exterior normal E row, and transverse CPML H psi on that row at entry; no in-scan writer may seed them.")
 
 
-# #2043: uniform UPML PMC high face, impose -> hold.
+# Uniform UPML PMC high face, impose -> hold.
 # The PMC factor is folded into db_h only (rfx/boundaries/upml.py, init_upml), so
 # the ghost row updates as da*H_old and HOLDS its entry value. From the only entry
 # (init_state zeros; UPML is one-device only) the fields are bit-identical to main.

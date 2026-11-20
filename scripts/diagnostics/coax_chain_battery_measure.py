@@ -188,7 +188,7 @@ PLANE_SHIFT_CELLS = 4
 # channel are the battery's own. Every reduced value is recorded in the stage
 # JSON beside the estimate that forced it.
 AD_RUNG = 4
-# The two-port AD board. The leader's addendum (2026-09-23) asks for the
+# The two-port AD board uses the
 # committed AD gate's board, 8 x 8 x 12 mm with three probes
 # (tests/unit/autodiff/test_coax_two_port_ad.py::_build_small_two_port_sim).
 # That board cannot carry this battery's DUT: at the AD rung its two probe
@@ -266,7 +266,7 @@ BAR = {
     "identity_rtol": 1e-5,
     "identity_atol": 1e-7,
     "settling_db": -40.0,
-    # PI ruling 2026-09-21: a quantity that is near zero by construction is not
+    # A quantity that is near zero by construction is not
     # compared in dB from rung to rung. The thru's |S11| is held to this upper
     # bound at every bin; the bead's |S11| is compared within the magnitude bar
     # only outside the cores of its reflection zeros, a core being a bin where
@@ -1823,16 +1823,16 @@ def fixture_provenance(p: dict, index: dict | None, stage_file: str) -> dict:
 def record_path_outside_the_repository(ap, value, flag: str = "--artifact-out") -> Path:
     """Where a diagnostic writes its assembled record: a path outside this
     repository, and never a default. Measurement records that no test reads stay
-    out of the code repository (PI, 2026-09-24); they live in rfx-archive under
-    ``rfx/records/<date>-<topic>/``. ``ap.error`` exits on a missing path or one
+    out of the code repository; they live in the record repository under
+    ``<record root>/<date>-<topic>/``. ``ap.error`` exits on a missing path or one
     inside the repository."""
     if not value:
         ap.error(f"{flag} is required: a path outside the repository (measurement "
-                 "records stay out of it, PI 2026-09-24)")
+                 "records stay out of it)")
     out = Path(value).resolve()
     if out == REPO or REPO in out.parents:
         ap.error(f"{flag} must be outside the repository: measurement records stay out "
-                 "of it (PI, 2026-09-24)")
+                 "of it")
     return out
 
 
@@ -1973,51 +1973,51 @@ PROVENANCE_TAGS = {
 
 # The rulings this fixture is judged under, cited where each one applies.
 RULINGS = {
-    "deep_null_pi_2026_09_21": (
-        "PI 2026-09-21: a quantity near zero by construction is not compared in dB "
+    "deep_null": (
+        "A quantity near zero by construction is not compared in dB "
         "from rung to rung; the thru's |S11| is held to the -20 dB bound at every bin, "
         "and inside a reflection zero's core the verdict is the zero's frequency"),
-    "identity_within_the_traced_path_pi_2026_09_23": (
-        "PI 2026-09-23 (P2): criterion 1(2) for coax is the identity WITHIN the traced "
+    "identity_within_the_traced_path": (
+        "P2: criterion 1(2) for coax is the identity WITHIN the traced "
         "path (the bead in a numpy vs a jnp container, rtol 1e-5 / atol 1e-7). The "
         "untraced call (float64 NumPy assembly) and the traced call (float32 jnp, "
         "_prefer_jnp) are two functions by design; the contract's identity clause "
         "applies where the traced and untraced call are the same function, and their "
         "difference on the thru is pinned as a measured envelope"),
-    "bead_whole_cells_leader_2026_09_23": (
-        "leader 2026-09-23 (L1): the bead is 4 annulus widths = 5.68 mm, a whole number "
+    "bead_whole_cells": (
+        "the bead is 4 annulus widths = 5.68 mm, a whole number "
         "of cells at every rung (16 / 24 / 36); every bead stage was re-run with it"),
-    "deep_quantity_by_the_bound_leader_2026_09_23": (
-        "leader 2026-09-23 (L2): a ladder quantity below -20 dB on the finest rung or in "
+    "deep_quantity_by_the_bound": (
+        "a ladder quantity below -20 dB on the finest rung or in "
         "the closed form is judged by the bound, never by a dB comparison"),
-    "settling_by_the_amplitude_substitute_pi_2026_09_24": (
-        "PI 2026-09-24 (R1): settling is judged by the contract's amplitude substitute as "
+    "settling_by_the_amplitude_substitute": (
+        "R1: settling is judged by the contract's amplitude substitute as "
         "implemented, max |d|S|| <= one tenth of the magnitude gate in amplitude; the "
         "pre-declaration's addendum item 3 wrote it as 0.1 dB, which misstated it"),
-    "open_judged_all_axis_absorption_leader_2026_09_25": (
-        "leader 2026-09-25 (the pre-declaration's addendum of that date, issue 1218): both "
+    "open_judged_all_axis_absorption": (
+        "The pre-declaration's addendum of 2026-09-25 (issue 1218): both "
         "coax lanes absorb on all three axes, so the lateral PEC can that held the field "
         "leaving an unshielded conductor end is gone. The open termination is judged again, "
         "like the short and the loads: magnitude within the bar, passivity 1.02, and "
         "record-length invariance (12 -> 24 traversals, shift below 0.0259). The open's "
         "exclusion of 2026-09-23 (P1) and the loads' closed-can footprint note of "
         "2026-09-24 (R1) lapse with the fix"),
-    "column_power_half_not_applied_leader_2026_09_24": (
-        "leader default 2026-09-24 (R2), pending the PI's word: the contract substitute's "
+    "column_power_half_not_applied": (
+        "Pending a decision: the contract substitute's "
         "second half (column power within 1e-3 of unity on a lossless structure) is not "
         "applied to the V-I coax lane; the reduced battery's passivity bar (<= 1.02) "
         "governs, and every record's column-power span is recorded as a fact"),
 }
 
 # Every DUT is judged and no record carries a footprint note: the open's
-# exclusion (P1, PI 2026-09-23) and the loads' closed-can footprint note (R1,
-# PI 2026-09-24) lapsed when both lanes began absorbing on all three axes
+# exclusion (P1) and the loads' closed-can footprint note (R1)
+# lapsed when both lanes began absorbing on all three axes
 # (issue 1218; the pre-declaration's addendum of 2026-09-25). The machinery stays
 # so that a later ruling can name a DUT again.
 FOOTPRINT_DUTS: dict[str, str] = {}
 NOT_JUDGED_DUTS: dict[str, str] = {}
 
-# P2 (PI 2026-09-23). The thru arm of the identity stage compares the untraced
+# P2. The thru arm of the identity stage compares the untraced
 # call (float64 NumPy assembly) with the traced one (float32 jnp): two functions
 # by design, so their difference is a measured envelope, not the contract's
 # identity. Measured max |dS| = 6.938e-4 (run 369367263527, commit ca6da2b1),
@@ -2041,9 +2041,9 @@ def _max_db_vs(g, want: float) -> float:
 
 def _doubling_db_change(Sb, Sd, freqs, lane: str) -> dict:
     """What doubling the record did, per entry and per bin, in dB. A fact beside
-    the amplitude substitute that judges settling (R1, PI 2026-09-24). A bin
+    the amplitude substitute that judges settling (R1). A bin
     where either record is at or below the deep-null level is left out (null):
-    a dB change between two near-zeros says nothing (PI 2026-09-21)."""
+    a dB change between two near-zeros says nothing."""
     level = BAR["deep_null_db"]
     names = ({"s11": (0, 0), "s21": (1, 0), "s12": (0, 1), "s22": (1, 1)}
              if lane == "two_port" else {"s11": None})
@@ -2327,7 +2327,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                         20.0 * np.log10(np.maximum(np.abs(g), 1e-300))
                         - 20.0 * np.log10(max(refr["abs_gamma"], 1e-300))))),
                 }
-            # R2 (leader default 2026-09-24): the column-power span of every
+            # R2: the column-power span of every
             # record, a fact; the passivity bar (<= 1.02) is what is judged.
             entry["column_power_span"] = _column_power_span(
                 _S(res["S"]) if lane == "two_port" else _S(res["S11"]))
@@ -2501,8 +2501,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         # deep-null level on the finest rung or in the closed form) at EVERY bin
         # is read on the bound alone; one that is deep only at some bins (a
         # reflection zero's core) is compared in dB outside them, and inside a
-        # zero's core the verdict is the zero's frequency (PI 2026-09-21, and
-        # the leader's L2 of 2026-09-23).
+        # zero's core the verdict is the zero's frequency.
         inside = []
         names = ("s11", "s21", "s22") if lane == "two_port" else ("s11",)
         for i, k in enumerate(have):
@@ -2645,7 +2644,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 entry["realized_bead"] = {
                     k: arm["realized"].get(k) for k in (
                         "bead_z_cells", "bead_n_cells", "bead_length_realized_m")}
-            # P2 (PI 2026-09-23): the contract's identity clause holds where the
+            # P2: the contract's identity clause holds where the
             # traced and untraced call are the same function. The bead arm is
             # that (both containers take the traced path); the thru arm is the
             # float64 NumPy assembly against the float32 jnp one, two functions
@@ -2659,13 +2658,13 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                         "(run 369367263527, commit ca6da2b1)"),
                     "within": bool(arm["difference"]["max_abs"]
                                    <= THRU_TRACED_VS_UNTRACED_ENVELOPE),
-                    "ruling": "identity_within_the_traced_path_pi_2026_09_23",
+                    "ruling": "identity_within_the_traced_path",
                 })
             else:
                 entry.update({
                     "judged_as": "identity",
                     "within": bool(arm["difference"]["allclose_at_bar"]),
-                    "ruling": "identity_within_the_traced_path_pi_2026_09_23",
+                    "ruling": "identity_within_the_traced_path",
                 })
             arms.append(entry)
         fix["identity"] = {
@@ -2756,12 +2755,11 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
             "rotation_s22_residual_rad": np.abs(
                 np.angle(np.exp(1j * (rot22 + pred)))).astype(float).tolist(),
             "rotation_s21_residual_rad": np.abs(rot21).astype(float).tolist(),
-            # The leader's addendum (2026-09-23, item 2) predicts angle(S21)
+            # The alternative hypothesis predicts angle(S21)
             # rotating by beta*Delta. Translating the DUT with the ports fixed
             # shortens port 1's run to the bead by Delta and lengthens port 2's
             # by the same Delta, so the through path d1 + d_bead + d2 is
-            # conserved and this driver predicts 0. Both residuals are stored;
-            # the leader reads which one the measurement picks.
+            # conserved and this driver predicts 0. Both residuals are stored.
             "rotation_s21_residual_vs_beta_delta_rad": np.abs(np.angle(np.exp(
                 1j * (rot21 - beta * delta)))).astype(float).tolist(),
             "max_rotation_s21_residual_rad": float(np.max(np.abs(rot21))),

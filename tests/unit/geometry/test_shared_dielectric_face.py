@@ -36,9 +36,9 @@ def test_shared_face_operands(path, traced, reverse):
             if path.endswith('nodes'):
                 return compute_node_tensor_eps(grid, pairs).nodes.xi[:3]
             if path == 'kottke_pec':
-                return tuple(1/a for a in compute_inv_eps_tensor_diag(grid, dielectric_shapes=pairs))
-            return (compute_smoothed_eps_nonuniform(grid, pairs) if graded
-                    else compute_smoothed_eps(grid, pairs))
+                return tuple(1/a for a in compute_inv_eps_tensor_diag(grid, dielectric_shapes=pairs, dtype='float32'))
+            return (compute_smoothed_eps_nonuniform(grid, pairs, dtype='float32') if graded
+                    else compute_smoothed_eps(grid, pairs, dtype='float32'))
         coordinate = jnp.float32(face) if traced else np.float64(face)
         # Amendment 3: host SDF arithmetic is float64 (1e-6 relative);
         # traced float32 subtracts box coordinates before dividing by cell
@@ -82,8 +82,8 @@ def test_mask_only_outside_is_clamped_primal_cell(graded, traced):
     def evaluate(enabled):
         shapes = [(MaskOnly(enabled), 10.2),
                   (Box((-.1, -.1, 0.), (.1, .1, .003)), 3.38)]
-        return (compute_smoothed_eps_nonuniform(grid, shapes) if graded
-                else compute_smoothed_eps(grid, shapes))
+        return (compute_smoothed_eps_nonuniform(grid, shapes, dtype='float32') if graded
+                else compute_smoothed_eps(grid, shapes, dtype='float32'))
     result = jax.jit(evaluate)(True) if traced else evaluate(True)
     np.testing.assert_allclose(np.asarray(result[0])[4, 4, 0], (3.38+10.2)/2, rtol=1e-6)
 
@@ -105,7 +105,7 @@ def test_same_permittivity_mask_body_across_sdf_face(path, traced):
         pairs = [(Box((-.1, -.1, -.1), (.1, .1, top)), 4.0), (MaskAbove(), 4.0)]
         if path == 'nodes':
             return tuple(1 / a for a in compute_node_tensor_eps(grid, pairs).nodes.xi[:3])
-        return compute_smoothed_eps(grid, pairs)
+        return compute_smoothed_eps(grid, pairs, dtype='float32')
 
     coordinate = jnp.float32(.0022) if traced else np.float64(.0022)
     # Host-f64 SDF arithmetic and traced-f32 arithmetic, per Amendment 4.
@@ -131,7 +131,7 @@ def test_cell_holding_both_walls_reads_content(traced):
     def evaluate(faces):
         lower = (Box((-.1, -.1, -.1), (.1, .1, faces[0])), 4.0)
         upper = (Box((-.1, -.1, faces[1]), (.1, .1, .1)), 6.0)
-        return tuple(compute_smoothed_eps(grid, pairs)
+        return tuple(compute_smoothed_eps(grid, pairs, dtype='float32')
                      for pairs in ([lower, upper], [lower], [upper]))
 
     faces = (jnp.asarray([.00202, .00247], dtype=jnp.float32) if traced

@@ -24,6 +24,7 @@ def _damped(n, share):
 
 
 def test_pole_plus_drive_over_budget_reads_fail_and_names_the_remedy():
+    """A longer fixed record is the remedy because until_decay does not judge the budget."""
     records = [("port0/v_probe_t", _damped(N, SHARE)[:, None])]
     alone = tail_share_witness(records, DT, 0, [F], freq_max=2 * F)
     both = tail_share_witness(records, DT, 0, [F], freq_max=2 * F,
@@ -40,7 +41,6 @@ def test_pole_plus_drive_over_budget_reads_fail_and_names_the_remedy():
                                     drive_labels=("S-channel",), consequence="S-parameter truncation is suspect")
     text = str(caught[0].message)
     assert 'NOT PASSED' in text and 'known drive beyond the record' in text, text
-    # What to do: a longer fixed record; until_decay does not judge the budget; until_identified once #2030 admits ports.
     assert 'longer fixed record' in text and 'until_decay' in text and 'until_identified' in text and 'per-bin budget' in text, text
 
 
@@ -63,7 +63,9 @@ def _step_port(n, **change):
 
 
 def test_record_check_reads_the_applied_drive_beyond_the_record(monkeypatch):
-    """Wiring (review P2): the port's record check gets the uncut tables, and they are the applied ones."""
+    """Wiring (review P2): the port's record check gets the uncut tables, and they are the applied ones.
+    A config whose timing was changed without rebuilding its tables must read cannot judge, not a drive the port never applied.
+    """
     import rfx.measurement.settling as settling
     from rfx.measurement.record_end import drive_tail_share
     from rfx.model.waveguide_modes import incident_tables_uncut
@@ -79,8 +81,6 @@ def test_record_check_reads_the_applied_drive_beyond_the_record(monkeypatch):
     assert seen['n_record'] == n and len(drives) == 2 and all(len(d) > n for d in drives), seen
     assert drive_tail_share(drives, cfg.dt, n, cfg.freqs)[0] > 1e-2, 'a 2000-step record near cutoff leaves drive'
 
-    # A config whose timing was changed without rebuilding its tables (waveguide.py copies port 0's t0 and tau):
-    # the record check must read cannot judge, not a drive the port never applied (review P2).
     stale = _step_port(n, src_t0=cfg.src_t0*1.01)
     settling.settling_db_from_port_records((stale,))
     assert isinstance(seen['known_drives'], ValueError), seen['known_drives']

@@ -39,9 +39,6 @@ pinned in tests/contracts/test_multidevice_sheets_wires.py.
 """
 
 import os
-# Same convention as the sibling distributed modules: 2 virtual devices so
-# the seam case has a real seam. ``setdefault`` so a caller that already
-# set XLA_FLAGS wins.
 os.environ.setdefault(
     "XLA_FLAGS", "--xla_force_host_platform_device_count=2")
 
@@ -114,9 +111,6 @@ def _distributed_nnz(gmask, n_devices=1):
         lo, hi = d * nx_per, (d + 1) * nx_per
         base = d * nx_local
         slabs[base + GHOST:base + GHOST + nx_per] = gmask[lo:hi]
-        # ghost rows: interior seams carry the neighbour's PEC status; the
-        # two physical-boundary ghosts are the #689 zero pad (False since
-        # #931 — see shard_pec_mask_x_slab).
         slabs[base] = gmask[lo - 1] if d > 0 else False
         slabs[base + nx_local - 1] = gmask[hi] if d < n_devices - 1 else False
     shape = (n_devices * nx_local, NY, NZ)
@@ -173,32 +167,23 @@ def test_lanes_agree_across_a_real_shard_seam():
     for axis, idx in ((2, [0, NZ - 1]), (2, [1, NZ - 2]), (1, [0, NY - 1])):
         g = _plates(axis, idx)
         assert _distributed_nnz(g, n_devices=2) == _oracle_counts(g), (axis, idx)
-    # and the seam itself: an x-spanning slab must classify the same
-    # whether it is cut into 1 or 2 ranks
     xbar = np.zeros((NX, NY, NZ), bool)
-    xbar[:, 2:4, 2:4] = True        # spans x across the seam
+    xbar[:, 2:4, 2:4] = True
     assert (_distributed_nnz(xbar, n_devices=2)
             == _distributed_nnz(xbar, n_devices=1)
             == _single_device_nnz(xbar))
 
 
 def test_a_sheet_is_realized_on_the_single_device_lane():
-    """A sheet owns no cell, so it exists only through ``sheets=``."""
+    """A sheet owns no cell, so it exists only through ``sheets=``.
+    The closed four-node footprint gives three interior edges per row on each in-plane axis."""
     foot = np.zeros((NX, NY, NZ), bool)
     foot[1:5, 1:5, 4] = True
     sheet = SheetSpec(normal_axis=2, plane=4, footprint=jnp.asarray(foot))
     counts = _single_device_nnz(None, sheets=(sheet,))
-    # one plane, in-plane components only, both end nodes in the footprint
     assert counts[2] == 0, "the sheet's NORMAL edge must stay live (#690)"
     assert counts[0] > 0 and counts[1] > 0
-    # the footprint is realized CLOSED: 4x5 Ex edges and 5x4 Ey edges on
-    # the plane (both end nodes of each edge inside the 4x4-node footprint
-    # extended to 5 nodes per in-plane axis is what the closed rectangle
-    # gives; here the footprint is 4 nodes wide, so 3 interior edges per
-    # row on each axis)
     assert counts[0] == 3 * 4 and counts[1] == 4 * 3
-    # ... and a bare cell mask of the same footprint would be a VOLUME
-    # with two faces, i.e. a different object entirely
     vol = np.zeros((NX, NY, NZ), bool)
     vol[1:5, 1:5, 4] = True
     assert _single_device_nnz(vol)[2] > 0, "a volume shorts its normal edge"
@@ -240,7 +225,3 @@ def test_soft_equals_hard_on_the_distributed_lane_including_faces(axis, idx):
     g = _plates(axis, idx)
     occ = g.astype(np.float32)
     assert _distributed_occ_nnz(occ) == _distributed_nnz(g) == _oracle_counts(g)
-
-
-# Graded forward sheet admission and JVP controls are pinned by
-# tests/contracts/test_multidevice_sheets_wires.py.

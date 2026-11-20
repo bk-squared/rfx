@@ -22,6 +22,7 @@ Mutations (run by hand, 2026-10-29): (a) the shift back on the declared line
 beta kept but the shift left in the declared Z0 reference: the value and
 gradient rows fail; (c) the uniformity check removed: the varying-override
 refusal row fails.
+W, H, L denote trace width, substrate thickness, feed-to-probe-0 distance (n_probe_offset=10, dx=U).
 """
 
 from __future__ import annotations
@@ -43,7 +44,7 @@ from tests.unit.autodiff.test_msl_forward_identity import (
     _planted_s,
 )
 
-W, H, L = 4 * U, 2 * U, 10 * U  # trace width, substrate, feed-to-probe-0 (n_probe_offset=10, dx=U)
+W, H, L = 4 * U, 2 * U, 10 * U
 DECLARED = 2.0
 
 
@@ -79,7 +80,6 @@ def test_shift_follows_the_solved_line_not_the_declaration(monkeypatch):
     sim, _ = _build_planted_sim(monkeypatch, 1.0)
     S = np.asarray(_compute(sim, eps_override=_override(sim, 3.0)).S, dtype=np.complex128)
     want, frozen = _expected(3.0), _expected(DECLARED)
-    # The fixture can tell the two lines apart by far more than the tolerance.
     assert np.max(np.abs(want - frozen)) > 1e-3
     np.testing.assert_allclose(S, want, atol=2e-5 * np.max(np.abs(want)))
 
@@ -104,7 +104,11 @@ def test_override_varying_along_the_shifted_length_is_refused_by_port_name(monke
     sim, _ = _build_planted_sim(monkeypatch, 1.0)
     eps = np.asarray(_override(sim, DECLARED)).copy()
     grid = sim._build_grid()
-    i_mid = grid.position_to_index((2 * U + 5 * U, 0, 0))[0]  # between port 1's feed and probe 0
+    i_mid = grid.position_to_index((2 * U + 5 * U, 0, 0))[0]
+    assert (grid.position_to_index((2 * U, 0, 0))[0]
+            < i_mid < grid.position_to_index((2 * U + L, 0, 0))[0]), (
+        "Varied slice must lie between port 1 feed and probe 0"
+    )
     eps[i_mid, :, :][eps[i_mid, :, :] == DECLARED] = 2.6
     with pytest.raises(NotImplementedError, match=r"sees a permittivity from 2 to 2\.6 under its line"):
         _compute(sim, eps_override=jnp.asarray(eps))

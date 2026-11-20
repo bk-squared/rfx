@@ -1,5 +1,4 @@
 """Declared PEC volumes, sheets and wires on one- and two-device meshes."""
-# Simulate 2 devices on CPU. Must be set BEFORE importing JAX.
 import os  # noqa: I001
 
 os.environ.setdefault(
@@ -38,7 +37,7 @@ def _build(kind):
                     material="pec")
         elif kind == "wire":
             sim.add(PolylineWire(((10e-3, 6e-3, 6e-3), (14e-3, 6e-3, 6e-3)),
-                                 radius=0.), material="pec")  # legacy PEC filament
+                                 radius=0.), material="pec")
         sim.add_source(position=(4e-3, 6e-3, 6e-3), component="ez",
                        amplitude_kind="field")
         sim.add_probe(position=(12e-3, 6e-3, 6e-3), component="ez")

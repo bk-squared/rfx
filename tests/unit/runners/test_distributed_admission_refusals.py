@@ -109,11 +109,11 @@ def test_two_device_pole_override_is_judged_eagerly_and_refused_under_outer_jit(
     assert np.all(np.isfinite(eager))
 
     # An eager vmap carries concrete members: each is judged, so one unstable
-    # member refuses the batch with its stable step (#1934).
+    # member refuses the batch with its stable step.
     with pytest.raises(ValueError, match=r"Lorentz/Drude poles \(omega_0=.*unstable at this model's time step"):
         jax.vmap(forward)(jnp.stack([stable, unstable]))
 
-    # #1934: a jit-traced value cannot be judged on two devices, so it is
+    # A jit-traced value cannot be judged on two devices, so it is
     # refused by name whatever its value (it ran unjudged before).
     compiled = jax.jit(forward)
     for eps in (stable, unstable):
@@ -338,18 +338,33 @@ def test_lumped_rlc_pmc_face_is_refused(entry, mesh):
 @pytest.mark.parametrize("entry", ("run", "forward"))
 @pytest.mark.parametrize("overlap", ("domain_face", "conductor_edge"))
 def test_lumped_rlc_pec_overlap_is_refused(entry, overlap):
+    from rfx.errors import RfxRefusal
+
     sim = _build()
     point = (0., .006, .006)
     if overlap == "conductor_edge":
         sim.add(Box((.008, .004, .004), (.010, .008, .008)), material="pec")
         point = (.008, .004, .006)
     sim.add_lumped_rlc(point, "ez", R=50., L=1e-9, C=1e-12, topology="series")
-    with pytest.raises(NotImplementedError, match="on a PEC face or realized PEC edge"):
+    if overlap == "domain_face":
+        message = (
+            "lumped_rlc[0] at (0.0, 0.006, 0.006) (ez), grid index (0, 6, 6): "
+            "its own E edge is PEC, so the declared PEC wall face(s) x_lo short the "
+            "element and it would have no effect. Move it at least one cell inside "
+            "the domain, off the wall.")
+    else:
+        message = (
+            "lumped_rlc[0] at (0.008, 0.004, 0.006) (ez), grid index (8, 4, 6): "
+            "its own E edge is PEC, so the conductor shorts the element and it would "
+            "have no effect. Realized conductor provenance (assembly): geometry[0]. "
+            "Cut a gap in the conductor at the element, or move the element off it.")
+    with pytest.raises(RfxRefusal) as caught:
         kwargs = dict(n_steps=2, devices=_devices(), skip_preflight=True)
         if entry == "run":
             sim.run(**kwargs, compute_s_params=False)
         else:
             sim.forward(**kwargs, distributed=True, checkpoint=False)
+    assert str(caught.value) == message
 
 
 @pytest.mark.parametrize("entry", ENTRIES)
@@ -469,7 +484,7 @@ def test_face_record_refused_before_split(monkeypatch):
     sim = Simulation(freq_max=15e9, domain=(.024, .018, .016), dx=.001, cpml_layers=4)
     sim.add_tfsf_source(f0=7.5e9, closed_box=True)
     grid = sim._build_grid()
-    cfg, line = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=4)
+    cfg, line = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=4, dtype='float32')
     cfg = replace(cfg, face_record=(np.zeros((4, 1)), np.zeros((4, 1))))
     monkeypatch.setattr("rfx.sources.tfsf.tfsf_from_declaration", lambda *a, **k: (cfg, line))
     monkeypatch.setattr(slab_tfsf, "split_tables", lambda *a: pytest.fail("split a replay"))
@@ -501,6 +516,10 @@ def test_graded_passive_port_is_carried(entry):
     one = evaluate(sim, entry, 32)
     multi = evaluate(sim, entry, 32, devices)
     assert len(multi.sparam_time_records) == 2
+    if entry == 'forward':
+        witness = multi.settling_witness
+        assert any(row.get('reader_frame') == 'whole-port'
+                   for row in witness.get('runs', (witness,))), witness
     for a, b in zip(one.sparam_time_records, multi.sparam_time_records):
         np.testing.assert_array_equal(a.samples, b.samples)
 
@@ -581,7 +600,7 @@ def test_realized_oblique_closed_box_refused(angles):
     from rfx.runners._admission import refuse_slab_tfsf
     from rfx.sources.tfsf import tfsf_from_declaration
     sim = _closed_box_scene(polarization="s", **angles)
-    cfg, _ = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=4)
+    cfg, _ = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=4, dtype='float32')
     with pytest.raises(NotImplementedError, match="oblique closed-box TFSF"):
         refuse_slab_tfsf(cfg)
 

@@ -77,7 +77,7 @@ def test_nonabsorbing_faces_are_silent_at_zero_depth(graded, token):
 def test_measured_reflections_are_quoted_without_interpolation(depth, rows):
     sim = _vacuum(graded=False, depths=(depth, 16, 8, 16))
     issue, = sim.preflight().by_code("thin_absorber")
-    # These values come from the leader's measurement table, not the check's
+    # These values come from the measurement table, not the check's
     # constants. Extract the microwave quantities instead of locking prose.
     values = re.findall(
         r"(\d+) layers: (-?\d+) dB at 2 GHz, (-?\d+) dB at 10 GHz, "
@@ -94,7 +94,7 @@ def test_measured_reflections_are_quoted_without_interpolation(depth, rows):
 
 
 def test_zero_scalar_still_reports_absorbing_declarations():
-    sim = Simulation(freq_max=3e9, domain=(0.013000000000000001, 0.011, 0.01),  # main's solved length; #1887
+    sim = Simulation(freq_max=3e9, domain=(0.013000000000000001, 0.011, 0.01),  # main's solved length
                      dx=1e-3, cpml_layers=0, boundary="cpml")
     issue, = sim.preflight().by_code("thin_absorber")
     assert set(issue.loc.split(", ")) == {f"{ax}_{side}" for ax in "xyz" for side in ("lo", "hi")}
@@ -151,7 +151,7 @@ def test_floquet_periodic_faces_are_not_absorbers(thin):
 def test_waveguide_pec_walls_are_not_absorbers(thin):
     boundary = (BoundarySpec(x=Boundary("cpml", "cpml", 4, 16), y="pec", z="pec")
                 if thin else BoundarySpec(x="cpml", y="pec", z="pec"))
-    sim = Simulation(freq_max=12e9, domain=(0.0803, 0.02286, 0.010),  # full PEC guide; #1826 F1b
+    sim = Simulation(freq_max=12e9, domain=(0.0803, 0.02286, 0.010),  # full PEC guide
                      dx=1e-3, boundary=boundary)
     sim.add_waveguide_port(x_position=0.024, direction="+x",
                           y_range=(0, 0.02286), z_range=(0, 0.010),
@@ -170,7 +170,7 @@ def test_waveguide_pec_walls_are_not_absorbers(thin):
 ])
 def test_tfsf_names_only_faces_that_absorb_in_the_uniform_run(kind, expected):
     # The uniform open plane wave solves y and z (Method B: z) periodic and
-    # refuses them declared otherwise (#1945): declare them periodic, whole cells.
+    # refuses them declared otherwise: declare them periodic, whole cells.
     wrapped = {"closed": "", "methodB": "z"}.get(kind, "yz")
     sim = Simulation(
         freq_max=30e9, domain=(0.0483, 0.042 if "y" in wrapped else 0.0427,

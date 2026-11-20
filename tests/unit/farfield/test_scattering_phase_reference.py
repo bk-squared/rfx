@@ -39,14 +39,14 @@ def _reference(grid):
 
 @pytest.mark.parametrize("polarization", ["ey", "ez"])
 def test_incident_phase_matches_actual_3d_e_clock_and_position(polarization):
+    """Probe samples are the post-update E field, not samples at n*dt."""
     grid, vacuum = _rig()
     cfg, state = init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=8,
-                           f0=F0, polarization=polarization, tfsf_margin=3)
+                           f0=F0, polarization=polarization, tfsf_margin=3, dtype='float32')
     indices = [cfg.x_lo + 2, grid.nx // 2, cfg.x_hi - 2]
     probes = [ProbeSpec(i, grid.ny // 2, grid.nz // 2, polarization) for i in indices]
     result = run(grid, vacuum, STEPS, boundary="cpml", tfsf=(cfg, state), probes=probes)
     samples = np.asarray(result.time_series, dtype=np.float64)
-    # Probe samples are the post-update E field, not samples at n*dt.
     times = (np.arange(STEPS) + 1) * float(grid.dt)
     measured = np.exp(-2j * np.pi * FREQS[:, None] * times) @ samples * float(grid.dt)
     assert np.max(np.abs(samples[-20:])) < 1e-3 * np.max(np.abs(samples))
@@ -55,7 +55,6 @@ def test_incident_phase_matches_actual_3d_e_clock_and_position(polarization):
             cfg, state, STEPS, FREQS, grid.dt, reference_index=index,
         )
         np.testing.assert_allclose(replay, measured[:, column], rtol=2e-3, atol=0)
-    # A common DFT step error is large despite identical |E| and RCS.
     assert np.max(np.abs(np.exp(2j * np.pi * FREQS * grid.dt) - 1)) > 0.1
 
 
@@ -70,6 +69,7 @@ def _scatter(grid, materials, **kw):
 
 
 def test_source_delay_cancels_from_complex_response(monkeypatch):
+    """An ideal exp(-jw*delay) would be the wrong comparator for the two actual finite input waveforms."""
     grid, vacuum = _rig()
     i, j, k = (n // 2 for n in grid.shape)
     target = vacuum._replace(eps_r=vacuum.eps_r.at[i-2:i+3, j-1:j+2, k-2:k+3].set(2.5))
@@ -86,14 +86,10 @@ def test_source_delay_cancels_from_complex_response(monkeypatch):
     monkeypatch.setattr(rcs, "init_tfsf", delayed_source)
     delayed = _scatter(grid, target)
     assert isinstance(original, rcs.ScatteringResponse)
-    # The Gaussian starts at 3*tau, not minus infinity. Delaying it changes
-    # the small omitted leading tail, so an ideal exp(-jw*delay) would be
-    # the wrong comparator. DFT the two actual finite input waveforms.
     cfg = source_config[0]
     times = np.arange(STEPS) * float(grid.dt)
     spectra = []
     for t0 in (cfg.src_t0, cfg.src_t0 + delay):
-        # #1839: each finite charge-free DG uses its own cutoff t0/tau.
         c, u = t0 / cfg.src_tau, times / cfg.src_tau
         arg = (times - t0) / cfg.src_tau
         bare = -2.0 * arg * np.exp(-arg**2)
@@ -105,7 +101,7 @@ def test_source_delay_cancels_from_complex_response(monkeypatch):
                                spectra[1] / spectra[0], rtol=2e-3, atol=0)
     for key in ("F_theta", "F_phi"):
         before, after = getattr(original, key), getattr(delayed, key)
-        assert np.max(np.abs(before)) > 1e-5  # the test cannot pass on zero scattering
+        assert np.max(np.abs(before)) > 1e-5
         assert np.max(np.abs(after - before)) / np.max(np.abs(before)) < 2e-3
     sigma = 4 * np.pi * (np.abs(original.F_theta)**2 + np.abs(original.F_phi)**2)
     np.testing.assert_allclose(sigma, original.rcs.rcs_linear, rtol=2e-14, atol=0)
@@ -114,6 +110,7 @@ def test_source_delay_cancels_from_complex_response(monkeypatch):
 
 
 def test_moving_the_reference_along_the_outgoing_ray_has_retarded_phase():
+    """An output reference moved toward +y sees exp(-jk*d) of the old amplitude under exp(+jwt), from the retarded Green function."""
     grid, vacuum = _rig()
     i, j, k = (n // 2 for n in grid.shape)
     target = vacuum._replace(eps_r=vacuum.eps_r.at[i-2:i+3, j-1:j+2, k-2:k+3].set(2.5))
@@ -122,9 +119,6 @@ def test_moving_the_reference_along_the_outgoing_ray_has_retarded_phase():
     distance = 4 * grid.dx
     position[1] += distance
     moved = _scatter(grid, target, phase_reference=tuple(position))
-    # The input is uniform along y. An output reference moved toward +y
-    # sees exp(-jk*d) of the old amplitude under exp(+jwt), from the
-    # retarded Green function. The actual object/source/grid do not move.
     np.testing.assert_array_equal(moved.incident_spectrum, original.incident_spectrum)
     expected = np.cos(2*np.pi*FREQS*distance/C0) - 1j*np.sin(2*np.pi*FREQS*distance/C0)
     np.testing.assert_allclose(moved.F_theta[:,1,1] / original.F_theta[:,1,1],
@@ -151,8 +145,8 @@ def test_float64_vacuum_subtraction_matches_material_precision():
 ])
 def test_incomplete_realized_cpml_refuses_before_solving(monkeypatch, grid_options):
     grid, vacuum = _rig(**grid_options)
-    # These legal grids retain nominal face_layers=8 but omit actual padding.
     assert set(grid.face_layers.values()) == {8}
+    assert any(getattr(grid, "pad_" + face) == 0 for face in grid.face_layers), "The nominally padded grid must omit at least one realized CPML face."
 
     def forbidden(*args, **kwargs):
         raise AssertionError("incomplete CPML reached the solver")
@@ -191,6 +185,6 @@ def test_unsupported_phase_contract_refuses_before_solving(monkeypatch, change, 
 @pytest.mark.parametrize("index", [-1, 0.5, True, 999])
 def test_incident_reference_index_refuses_outside_slab(index):
     grid, _ = _rig()
-    cfg, state = init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=8, f0=F0)
+    cfg, state = init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=8, f0=F0, dtype='float32')
     with pytest.raises(ValueError, match="integer E-node"):
         measure_normal_incident_spectrum(cfg, state, STEPS, FREQS, grid.dt, reference_index=index)

@@ -60,37 +60,34 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 
 
 _C0 = 299_792_458.0
-_L_CAVITY = 0.02              # 20 mm z-axis interior
-_DX = 0.5e-3                  # 0.5 mm cells → 40 interior cells
+_L_CAVITY = 0.02
+_DX = 0.5e-3
 _N_STEPS = 2048
-_F0_ANALYTIC = _C0 / (4.0 * _L_CAVITY)  # quarter-wave for PEC-PMC
+_F0_ANALYTIC = _C0 / (4.0 * _L_CAVITY)
 
 
 def _run_cavity(z_lo_token: str) -> tuple[np.ndarray, np.ndarray, float]:
     """Return (freqs, |E(f)|, dt) for the probe spectrum of a
     z-axis cavity with ``z_hi='pec'`` and ``z_lo=z_lo_token``.
     """
-    # cpml_layers=0 produces a closed grid — the PMC / PEC walls sit
-    # at the grid edge and no CPML is allocated on any axis.
     spec = BoundarySpec(
         x="periodic", y="periodic",
         z=Boundary(lo=z_lo_token, hi="pec"),
     )
+    FIFTH_HARMONIC_FREQ_MAX_HZ = 40e9
     sim = Simulation(
-        freq_max=40e9,                          # covers through f_2 = 5 f_0
+        freq_max=FIFTH_HARMONIC_FREQ_MAX_HZ,
         domain=(0.002, 0.002, _L_CAVITY),
         dx=_DX, boundary=spec, cpml_layers=0,
     )
-    # Source and probe on the z-axis, clear of analytic nodes.
     sim.add_source((0.001, 0.001, 0.3 * _L_CAVITY), "ex")
     sim.add_probe((0.001, 0.001, 0.7 * _L_CAVITY), "ex")
     import warnings as _w
     with _w.catch_warnings():
-        _w.simplefilter("ignore")  # skip preflight advisories on this tiny cavity
+        _w.simplefilter("ignore")
         res = sim.run(n_steps=_N_STEPS)
     ts = np.asarray(res.time_series)[:, 0]
     dt = float(res.dt)
-    # Hann window to reduce sidelobes while the cavity rings.
     window = np.hanning(_N_STEPS)
     spec_mag = np.abs(np.fft.rfft(ts * window))
     freqs = np.fft.rfftfreq(_N_STEPS, dt)
@@ -103,12 +100,11 @@ def _two_strongest_peaks(freqs: np.ndarray, spec: np.ndarray,
     mask = (freqs >= band[0]) & (freqs <= band[1])
     band_freqs = freqs[mask]
     band_spec = spec[mask]
-    # Sort by amplitude descending; pick the top two peaks with >= 2 bins
-    # separation to reject neighbouring-bin spillover.
+    SPILLOVER_REJECTION_BINS = 2
     order = np.argsort(-band_spec)
     chosen = []
     for idx in order:
-        if all(abs(idx - c) >= 2 for c in chosen):
+        if all(abs(idx - c) >= SPILLOVER_REJECTION_BINS for c in chosen):
             chosen.append(int(idx))
         if len(chosen) == 2:
             break
@@ -138,7 +134,6 @@ def test_pec_cavity_fails_pmc_ladder_negative_control():
     """Negative control: a PEC-PEC cavity has half-wave ladder
     f_1/f_0 = 2.0, which MUST fail the PMC quarter-wave check."""
     freqs, spec, _ = _run_cavity("pec")
-    # PEC-PEC f_0 = c/(2L) = 2 · _F0_ANALYTIC (the quarter-wave analytic).
     band = (0.5 * _F0_ANALYTIC, 4.0 * _F0_ANALYTIC)
     f0, f1 = _two_strongest_peaks(freqs, spec, band)
     ratio = f1 / f0
@@ -150,9 +145,6 @@ def test_pec_cavity_fails_pmc_ladder_negative_control():
     )
 
 
-# ---------------------------------------------------------------------------
-# V173-B — full Harminv mode ladder (multi-mode)
-# ---------------------------------------------------------------------------
 
 
 def test_pmc_full_harminv_mode_ladder():
@@ -162,6 +154,7 @@ def test_pmc_full_harminv_mode_ladder():
     portion of the probe trace. Each mode must land within 3% of its
     analytic frequency, and the set of modes must cover the 1:3:5:7
     ladder (not merely 1:3 as the two-peak test pins).
+    A 3% tolerance accommodates numerical dispersion on a 40-cell cavity.
     """
     from rfx.harminv import matrix_pencil as _harminv
 
@@ -169,8 +162,9 @@ def test_pmc_full_harminv_mode_ladder():
         x="periodic", y="periodic",
         z=Boundary(lo="pmc", hi="pec"),
     )
+    SEVENTH_HARMONIC_FREQ_MAX_HZ = 60e9
     sim = Simulation(
-        freq_max=60e9,  # cover up to f_3 = 7 f_0 with headroom
+        freq_max=SEVENTH_HARMONIC_FREQ_MAX_HZ,
         domain=(0.002, 0.002, _L_CAVITY),
         dx=_DX, boundary=spec, cpml_layers=0,
     )
@@ -183,8 +177,6 @@ def test_pmc_full_harminv_mode_ladder():
     ts = np.asarray(res.time_series)[:, 0]
     dt = float(res.dt)
 
-    # Use the ringdown tail (skip the first 25% where the source is still
-    # injecting). Matrix Pencil needs a clean decay to estimate decay rates.
     ringdown = ts[len(ts) // 4 :]
     modes = _harminv(
         ringdown, dt,
@@ -199,8 +191,6 @@ def test_pmc_full_harminv_mode_ladder():
     )
 
     expected = [(2 * n + 1) * _F0_ANALYTIC for n in range(4)]
-    # Match each analytic mode to the nearest Harminv peak. A 3%
-    # tolerance accommodates numerical dispersion on a 40-cell cavity.
     found_freqs = np.asarray([m.freq for m in modes])
     for n, f_analytic in enumerate(expected):
         nearest = float(found_freqs[int(np.argmin(np.abs(found_freqs - f_analytic)))])
@@ -212,9 +202,6 @@ def test_pmc_full_harminv_mode_ladder():
         )
 
 
-# ---------------------------------------------------------------------------
-# V173-C — energy conservation in a closed PMC box
-# ---------------------------------------------------------------------------
 
 
 _EPS_0 = 8.854187817e-12
@@ -264,8 +251,8 @@ def test_closed_pmc_cavity_energy_drift_bounded():
             _w.simplefilter("ignore")
             return sim.run(n_steps=n_steps)
 
-    n_early = 1000     # well after source shut-off; cavity ringing
-    n_late = 2000      # 1000 steps later; energy drift due to dispersion only
+    n_early = 1000
+    n_late = 2000
     res_early = _run_to(n_early)
     res_late = _run_to(n_late)
 

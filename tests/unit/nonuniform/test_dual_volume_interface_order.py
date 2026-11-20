@@ -35,6 +35,7 @@ def cascade(frequencies, faces, end, eps, start=0.):
 
 
 def slab_errors(case, levels):
+    """Modal and DFT arithmetic uses x64 while the solver's declared storage remains float32."""
     omega = 2*np.pi*FREQS
     tau, omega0 = 1/(2*np.pi*9e9), 2*np.pi*15e9
     epsilon = {
@@ -50,8 +51,6 @@ def slab_errors(case, levels):
     denominator = aa+bb/z0+cc*z0+dd
     exact = np.array([(aa+bb/z0-cc*z0-dd)/denominator, 2/denominator])
     errors = []
-    # The prototype enables x64 for modal/DFT arithmetic, while the solver's
-    # declared storage remains float32. Restore the ambient setting on exit.
     with jax.enable_x64(True):
         for level in levels:
             h = .001/2**level

@@ -4,7 +4,7 @@ n_warmup itself, or of how far the design cell sits from the source
 relative to the wavefront's travel time?
 
 Context: the shipped "fixture 1"/"fixture 2" curves in
-docs/agent-memory/rfx-known-issues.md's "#626 RESOLVED" entry, and in
+the recorded findings's "#626 RESOLVED" entry, and in
 tests/unit/autodiff/test_n_warmup.py::test_warmup_truncation_error_grows_with_k and
 scripts/diagnostics/i626_n_warmup_truncation_sweep.py, both use a design
 cell only ~3 cells from the source. At that placement the field (and

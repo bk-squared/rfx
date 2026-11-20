@@ -152,18 +152,6 @@ front of a PEC face that must carry loss for every field orientation, use a PEC 
 Preflight warns when realized conductors bound both sides, or realized PEC owns the sheet's tangential edges away
 from its footprint boundary rows; domain PEC faces contribute only to the two-sided conductor check.
 
-### `add_wall_loss` on a uniform mesh: each lossy high domain face dissipates slightly more power than the surface-impedance model
-
-Tracker: #2615
-
-Each lossy high domain face (x_hi, y_hi, z_hi) dissipates slightly more power than the surface-impedance model, because
-the uniform update also drives the magnetic row half a cell outside that face. Cavity Q comes out low by 2.4e-4 of its
-value with the x pair lossy, 1.8e-4 with the y pair and 1.5e-4 with the z pair (wall conductivity 5.8e5 S/m, one
-hundredth of copper; TE101 near 8 GHz, 1 mm cells), against a graded mesh with the same cells, which does not drive that
-row. Lossless walls are unaffected.
-What to do now: give one axis an explicit profile of equal cells (for example `dy_profile=np.full(ny, dx)`); the run then
-takes the graded path on the same cells, which does not drive that row.
-
 ### Conductors join by drawn extents pair by pair: three cases a gap can still close
 
 Tracker: #1958
@@ -231,24 +219,11 @@ Peak host memory is unchanged on CPU (0.91 to 1.01 times).
 jax 0.11.0 and 0.11.1 run the CPU step at jax 0.10.2's speed (1.00 to 1.01 times, 8 domain-sized copies); jax 0.12.0 is slower (5.6 times at 0.53 M cells, 2.4 times at 3.05 M cells).
 On CPU, every domain-sized copy that jaxlib 0.11.2 adds comes from the absorber (CPML) write-back. That write-back is a chain of partial updates of each field, and from 0.11.2 the compiler recomputes such chains (openxla/xla#50977). This holds in 40 of 43 measured scenes.
 On the GPU the write-back takes another form, and the extra copies do not appear; the cause of the GPU's 1.18 times at 3.05 M cells is not measured.
-An rfx-side change, a compiler barrier after each absorber update on CPU, removed the extra copies. With it, the step on 0.11.2 took 0.98 to 1.00 times jax 0.10.2's time, and the fields stayed bit-identical. It is planned for 2.1, together with lifting the install cap.
+An rfx-side change, a compiler barrier after each absorber update on CPU, removed the extra copies. With it, the step on 0.11.2 took 0.98 to 1.00 times jax 0.10.2's time, and the fields stayed bit-identical. It is not in 2.2; it is planned together with lifting the install cap.
 These step times come from a second CPU node; on it, the unchanged step on 0.11.2 took 1.5 to 1.7 times jax 0.10.2's time, so the size of the slowdown depends on the machine.
 No XLA flag found restores the step: `--xla_cpu_experimental_enable_tiling_propagation=false` leaves it 2.4 to 3.0 times slower, and jaxlib 0.11.2 rejects `--xla_cpu_use_fusion_emitters`.
 Workaround: keep rfx's install range; on Python 3.12 or newer it installs jax 0.11.1.
 jax 0.11 needs Python 3.12; on Python 3.11, rfx installs jax 0.10.
-
-### `precision="float64"` still builds some model coefficients in float32
-
-Tracker: #2613
-
-A float64 run steps float64 fields, but some coefficients are still built in float32. These include the material eps,
-sigma and mu; the Debye, Lorentz and Drude pole edge weights; the CPML profiles; the graded-mesh metrics; the conformal-PEC operands; and
-the TF/SF coefficients. `tests/contracts/test_float64_model_invariant.py` names each array, and its list may only shrink.
-Those that were measured differ from a float64 build by up to about 1e-7 relative (sigma 1.03e-7, pole weights 9.8e-8
-and eps 8.3e-8 on a graded mesh; conformal-PEC operands 5.0e-8 on a uniform mesh); mu, the CPML profiles, the graded
-metrics and the TF/SF coefficients were not measured, and how far a field or S moves was not measured. float32 runs are
-not affected. UPML and an oblique Bloch TF/SF source refuse float64 (see the
-[support matrix](support_matrix.md)'s refused inputs).
 
 ### Subpixel smoothing makes a curved high-contrast dielectric's resonance converge slowly, and can be worse than no smoothing.
 
@@ -279,14 +254,37 @@ Pass `forward(..., skip_preflight=True)` and run `sim.preflight()` once on a con
 Under a trace the curved high-contrast check cannot judge a traced material; it warns (`CurvedSmoothingWarning`) that the check was not judged and names the material.
 Two materials given different tracers are smoothed as two media even when their values are equal; a concrete run merges equal values into one medium.
 
-### A traced pole-map profile that is undefined outside its material gives a NaN gradient.
+### A material with permittivity below 0.98 grows without bound at the default time step, and nothing refuses it.
 
-Tracker: #2650
+Tracker: #2772
 
-A `LorentzPoleMap` (or `drude_pole_map`, `lorentz_pole_map`) callable is evaluated at every cell centre, and only the occupied cells' values are kept.
-Under `jax.grad` the unoccupied cells still pass a zero cotangent through the callable's derivative, so a profile whose value or derivative is not finite there (a square root of a negative number, a division by zero) gives a NaN gradient while the objective is finite.
-A concrete run is not affected.
-Clamp the argument where the profile is undefined, for example `jnp.sqrt(jnp.maximum(u, 0.))`: on the occupied cells the value is unchanged and the gradient is finite.
+A Yee cell of relative permittivity ε (μr 1) is stable only for a time step up to √ε times the vacuum Courant limit,
+because its fastest waves travel at c/√ε, faster than light for ε below 1. In a Debye material the pole terms vanish at
+the grid's Nyquist frequency, so the cell sees ε∞ there. No check refuses a step above a cell's own limit: the default
+step is 0.99 of the vacuum limit, and the pole stability check skips a cell whose step is above that cell's limit
+without its poles. A material with `eps_r` below 0.98 (0.99²), or a Debye material with ε∞ below 0.98 (such as a
+`fit_debye` result before 2.3), therefore grows until the fields are non-finite at the default step when it fills cells that set
+the step (every cell on a uniform mesh); this was measured at 0.5 on the uniform and the graded mesh. Between 0.98 and 1
+the default step stays inside the cell's limit. Nothing refuses the run; it ends with an `AccuracyWarning` about
+non-finite values.
+
+Two material fits reach this entry, measured with a 12.3 × 11.5 × 10.8 mm box of the fitted material on 1 mm cells in
+an open domain (uniform mesh, and a graded mesh with five 0.8 mm cells in x), at the default step:
+- On a table with ε′ 4.4 and tan δ 0.02 constant over 1–40 GHz, `fit_debye` with a free ε∞ returned ε∞ 0.5 before
+  2.3 (it now keeps ε∞ at 1 or above). `run()` admits the 2-pole fit on both meshes; the fields grow by a factor of 1.04 per step and become
+  non-finite at step 2025 (uniform) and 2008 (graded).
+- On a table with heavy loss at low ε′ (ε′ 1.1, tan δ 0.1, constant over 1–40 GHz), `fit_lorentz` returned ε∞ 0.1, its
+  lower bound, with 2 and with 3 resonances before 2.3 (it now keeps ε∞ at 1 or above). `run()` admits both fits on both meshes; the fields grow by a factor of
+  100 to 140 per step and become non-finite at step 22.
+
+In both cases preflight reports only advisories, and the run ends with the `AccuracyWarning` about non-finite values.
+Before building a material from a fit, check `fit.eps_inf`: below 0.98, the material is outside the default step's
+stable range. The 2-pole `fit_debye` result above ran 17143 steps without growth at 0.61 of the vacuum Courant limit
+of the smallest cell, on a graded board with a pinned `dt=`. No step was measured for the `fit_lorentz` result.
+
+Keep `eps_r` and ε∞ at 1 or above. On a graded mesh, a pinned `dt=` below √ε times the vacuum Courant
+limit, with ε the smallest permittivity, is inside the stable range: at 0.6 of the limit a material with ε 0.5 ran
+without growth.
 
 ### `subpixel_smoothing="full_tensor"` keeps the one-plane rule next to a sphere, a cylinder or another non-Box shape, and refuses traced coordinates beside a Box.
 
@@ -296,7 +294,7 @@ The full-tensor build gave each node one plane, the nearest face. At a box edge 
 Fixed for axis-aligned Boxes, also overlapping ones: a node within 1.25 times the reach of its edge supports (1.53 cells on a uniform mesh, from the realized cell sizes on a graded one) of a Box takes, on each support, the exact content of the Boxes that meet it, painted in declared order as the assembled model paints them. On the on-node and the bisector box scenes a face moved by 1e-12 m changes no diagonal value by more than one float32 step. Every node farther from all Boxes keeps the one-plane values bit for bit.
 Next to a non-Box shape the exact and the one-plane triplets are blended over one cell, with the weight rising from 0 at the reach from the shape's bounding box to 1 one cell farther; within the reach the one-plane rule stays, with its jumps where a box face plane ties. Measured on an eps_r 10 box beside an eps_r 10 sphere of radius 1.5 mm whose bounding box sits at the reach, half a cell and one cell beyond it, the sphere moved by 2e-9 m: no diagonal value changes by more than the one-plane build changes it plus 1.7e-6 of the value (uniform and 1.0 / 0.8 mm graded meshes); 26 to 50 nodes are blended; the 20-step loss does not change in float32.
 Within that reach the jump is large. A 12 mm PEC box with εr 10 shapes was measured on 1 mm cells (record kept with the project), uniform and graded in z (1.0 / 0.8 mm). Moving a shape coordinate by 1e-12 m changed the 20-step probe loss by 0.39 % to 39 % at a Cylinder rim on grid nodes, whether the cap was translated or the radius changed, along x, y or z. At a Box edge on a node with a sphere 1 cell away it changed by 10.7 % (uniform) and 24 % (graded); at a Box edge with nodes on its bisector, with those nodes 1.4 mm from the sphere's bounding box, by 7.6 % and 12 %. There the jump is the one-plane face flip at the bisector nodes; the nodes next to it, whose normal comes from the sphere and reaches the Box within one cell, count the Box's content along that normal, and that corrected model responds more to the same flip (measured: main's model with this fix's values at only those nodes gives this fix's losses exactly, on both meshes). The diagonal jumped by up to 6.5×10⁶ float32 steps in 20 to 56 cells. A gradient or a sweep through such a coordinate sees a step. Until one content rule covers every shape, use `subpixel_smoothing=True` near cylinders and spheres (measured for cylinder coordinates and for a Box face beside a sphere; a sphere's own coordinates were not moved). On the same scenes and meshes, `True` was measured continuous: at ±1e-12 m no cell moved by a float32 step and the loss did not change, and from 1e-9 to 1e-6 m its changes grow with the move. Its slope can differ on the two sides of a face that lies on a node (a kink, not a step). Its accuracy against `"full_tensor"` near curved shapes was not measured. A non-Box body thinner than a cell keeps the one-plane rule too: a `Cylinder` disc (εr 4) 0.3 of a cell thick reads a diagonal Ez of 1.951 where the series average is 1.290, on uniform and graded meshes, while `True` reads 1.290 there. `OrientedBox` is not reachable under `"full_tensor"`: it raises `NotImplementedError` by name.
-Where a later Box of one permittivity sits inside an earlier Box of another, the triplets now carry the later Box's value; a diagonal cell whose four end triplets and Yee midpoint are all bulk still takes the diagonal smoother's value, which follows the grouping by permittivity value (inside the later box the diagonal reads 10.2 on edges whose ends are all bulk, and values from 4 to 10.2 on edges near its faces). `subpixel_smoothing=True` and `"kottke_pec"` keep that grouping everywhere.
+Where a later Box of one permittivity sits inside an earlier Box of another, the triplets carry the later Box's value. A later shape whose permittivity repeats an earlier one is painted in declared order with `True`, `"kottke_pec"` and `"full_tensor"` alike: in an εr 4 Box nested in an εr 10.2 Box after another εr 4 shape, every mode reads 4.0 inside the nested Box.
 A traced permittivity with `"full_tensor"` is refused by name in any scene. With a Box in the scene a traced shape coordinate or mesh profile is also refused by name: the scope of the exact content is decided on concrete coordinates and realized cell sizes, and under a trace the build runs in float32 (plain and `jax.jit` losses 9.7×10⁻⁴ apart with a traced sphere radius beside a concrete εr 2 box, 8.8×10⁻³ with a traced permittivity on an εr 4 box). This is a capability change: main admitted a traced Box coordinate, and its build equalled the host build in shared-face scenes and moved a plain-versus-jit loss by up to 9.65×10⁻⁴ elsewhere (a traced sphere radius beside a Box); restoring it with the exact content formed on traced coordinates is #2473. More than eight boxes meeting one edge support are refused by name. Use `subpixel_smoothing=True` or `"kottke_pec"` for a gradient over `eps_r`.
 → [#2473](https://github.com/bk-squared/rfx/issues/2473)
 
@@ -305,13 +303,26 @@ A traced permittivity with `"full_tensor"` is refused by name in any scene. With
 Tracker: #2624
 
 The outside portion of each support now reads the declared content along its normal, including both faces of a thin neighbouring Box, Sphere or Cylinder. Fixed for planar bodies under `subpixel_smoothing=True` (uniform and graded mesh) and `"kottke_pec"`: where a `Box`, or a `Cylinder` cut cap to cap, has both faces inside one cell's averaging length, its fill is its own thickness and the medium outside it is read on both sides (an εr 4 slab 0.3 of a cell thick reads Ez 1.290, the series average, instead of 1.429).
-A thin `Sphere`, a `Cylinder` crossed through its radius, and a run of touching bodies that includes either still use one face for the fill. Their error was not measured; the plan is to measure a sphere and a radius-crossed cylinder smaller than a cell against the same bodies on a mesh where they span many cells.
+A thin `Sphere`, a `Cylinder` crossed through its radius, and a run of touching bodies that includes either still use one face for the fill.
+A dielectric `Sphere` or a `Cylinder` crossed through its radius that spans about two cells or fewer is over-polarized, with or without smoothing. Measured by the TE101 resonance shift (about 10.6 GHz) such a body causes in a 20 × 10 × 20 mm PEC cavity: the shift is proportional to the body's polarizability, and so to the field it scatters. The reference is the shift extrapolated from three finer meshes with smoothing (1, 0.5 and 0.25 mm cells: the sphere spans 2, 4 and 8 cells there, the rod 1, 2 and 4); it lies 3–4 % above the first-order perturbation closed form. Ratios to it, εr 4:
+
+| body | cells across | `subpixel_smoothing=True` | no smoothing |
+|---|---|---:|---:|
+| sphere, radius 1 mm, 2 mm cells | 1 | 2.41 | 2.56 |
+| rod across the field, radius 0.5 mm, 2 mm cells | 0.5 | 3.34 | 6.35 |
+| rod across the field, radius 0.5 mm, 1 mm cells | 1 | 1.55 | 1.60 |
+| sphere, radius 1 mm, 1.5 mm cells (cavity realized as 19.5 × 10.5 × 19.5 mm; its closed form uses those lengths) | 1.33 | 1.58 | 1.15 |
+| sphere, radius 1 mm, 1 mm cells | 2 | 1.30 | 1.25 |
+| rod across the field, radius 0.5 mm, 0.5 mm cells | 2 | 1.10 | 1.13 |
+
+Scattered power goes as the square of the ratio, 20·log10 of it in dB: with smoothing, 7.6 dB high for the sphere one cell across, 10.5 dB for the rod half a cell across, 3.8 dB for the rod one cell across, and 0.9–2.3 dB at two cells; without smoothing 8.2, 16.1, 4.1 and 1.1–1.9 dB. Each row was taken at one position; the ratio is expected to depend on where the body sits on the mesh, which was not swept. With smoothing, put more cells across such a body until the result stops moving (without smoothing the measured curves do not approach the reference monotonically; measured on uniform meshes; a graded mesh that refines around the body adds cells there but was not measured).
+A `Sphere`, or a `Cylinder` crossed through its radius, that is not PEC is refused wherever it is placed when its radius is below half the diagonal of the cell containing its centre: 0.866 of the cell on a uniform mesh, and for a `Cylinder` half the diagonal of that cell's cross-section, 0.707 of the cell. Such a body may contain no primal-cell centre, so before this rule it ran at some positions and was refused as "rasterizes to ZERO cells" at others. A sweep of, or a gradient through, its position could cross from a result to a refusal. The rule is not applied on a 2D grid, for a traced centre or traced cell widths, or for a centre outside the grid; there the empty-cell refusal alone decides. `preflight()` warns ("Small dielectric body:") for an admitted dielectric `Sphere`, or a `Cylinder` across its radius, under three cells across. A PEC `Sphere` or `Cylinder` keeps the earlier rule: below a cell, whether it runs depends on its position. Bodies just above the size threshold are still over-polarized, as in the table above.
 Under `"full_tensor"` a thin non-Box body keeps the one-face rule: a `Cylinder` disc 0.3 of a cell thick (εr 4) reads Ez 1.951 on the diagonal where the series average is 1.290 (51 % high), on uniform and graded meshes.
 Mask-only bodies and continued conductor sheet shapes retain the point rule for the outside medium.
 On a curved face, full-tensor dual-face averages still use a first-order planar model.
-A later group's pass with a crossed normal can jump when its face enters the cell.
+A later group's pass with a crossed normal steps when its face enters the cell; measured and listed under subpixel smoothing in the support matrix.
 Full-tensor spectral bounds include zero-weight portions, whose medium just beyond the face can step; a bound that clips then makes the tensor step too.
-Periodic images ±2 of traced shapes near an end of the admitted interval [−L, 2L] can reach beyond the domain edge and be missed by the existing image range.
+A traced shape on a periodic axis is admitted while its bounds lie inside [−L, 2L], but smoothing evaluates only its images −1, 0 and +1. If the shape is declared a full period outside the domain, with its upper bound less than half a cell below 2L, the smoothing samples at the domain's low face miss its copy across the seam and read the background. On 1 mm cells, 0.23 mm below 2L, Ey reads 1.000 where the body gives 1.810. The low end of the interval is affected only on a graded mesh with an oblique face normal: dx 1 mm, dy = dz 3 mm, 0.23 mm above −L, 0.318 off. A shape declared inside [0, L], or across one seam, is not affected. Declare traced periodic shapes there.
 
 ### A metal face resting on a dielectric between grid nodes makes `subpixel_smoothing=True` and `"kottke_pec"` worse than no smoothing.
 
@@ -351,7 +362,8 @@ This field stays to the end of the record instead of decaying.
 The backscatter then depends on the record length: from 6 to 12 ns it changed by 2.3–2.7 dB at most frequencies and by up to 7.7 dB at a backscatter null.
 The extinction from the optical theorem differs from Mie by 20–51 % across the band; the staircase (`subpixel_smoothing=False`) on the same mesh differs by 13–14 %.
 A late field of 1e-2 to 5e-2 of the peak was also seen at ka 10 and on three meshes.
-`run()` warns "no ring-down settling witness" but does not refuse the run.
+`run()` warns "no ring-down settling witness" and names the outputs read from that record,
+but does not refuse the run.
 Until a fix lands, use the staircase on a closed curved PEC body.
 Conformal PEC was not measured on this sphere, and it cannot be combined with `"kottke_pec"` (next entry).
 
@@ -373,31 +385,34 @@ A closed-form check of the conformal update, the TM010 resonance of a hollow PEC
 
 The v2.1 opt-in `run(conformal_pec="cut_cell_floor")` with an explicit half- or quarter-Courant step reduces the measured sphere offset; the q = 0.5 result remains first order and misses the order >= 1.5 target (see the [support matrix](support_matrix.md#conformal-pec-cut-cell-floor-opt-in-v21)).
 
-### Conformal PEC cut-cell areas and lengths deviate from the drawn surface near Box edges and where the mesh is nearly tangent to a curved body.
+### Conformal PEC cut-cell areas and lengths deviate from the drawn surface where the mesh is nearly tangent to a curved body.
 
 Tracker: #2274
 
 With `conformal_pec=True`, the H update uses the open (PEC-free) area of each cut face. The E update uses the open
 length of each cut edge, after a stability bound that caps it by the areas of the faces around it. Measured against
-the drawn surface on 1 mm cells, before that bound:
-- Within one cell of a Box edge or corner, the open areas are off by up to 0.78 of a face and the open lengths by up
-  to 0.60 of an edge.
-- On curved bodies they are off by up to 0.44 of a face (cylinder side) and 0.63 of an edge (sphere), where a mesh face
-  or edge is nearly tangent to the surface.
+the drawn surface on 1 mm cells, before that bound, curved bodies are off by up to 0.44 of a face (cylinder side) and
+0.63 of an edge (sphere), where a mesh face or edge is nearly tangent to the surface.
 
-Open areas and lengths in cells crossed only by a flat face are exact, and a Box face lying on a mesh plane is realized
-at its drawn plane. Effect on S-parameters, resonance frequencies and RCS: not measured.
+An axis-aligned Box takes its exact overlap with each cut cell, its edges and corners included. A cut cell that
+another PEC body also reaches (a sphere, a cylinder, or such a body continued into the absorber; within one cell
+diagonal of its surface) keeps that body's rule, so a Box edge there is not exact. Open areas and lengths in cells crossed only by a flat face are exact, and a Box face lying on a
+mesh plane is realized at its drawn plane. In a closed PEC cavity, a PEC block whose faces lie off the mesh planes
+resonates as the exact-area computation does on 1, 0.5 and 0.25 mm cells, and an empty cavity with two or three walls
+off the mesh planes puts each wall within 0.01 cell of the closed form. Effect of the curved-body deviation on
+S-parameters, resonance frequencies and RCS: not measured.
 
 A finer mesh shrinks the region affected near an edge. On a sphere at radius 4.3, 8.6 and 17.2 cells it also shrinks
 the share of nearly tangent cells: the faces off by more than 0.1 of a face were 17, 4 and 6, while the cut faces grew
-16x. The largest deviation does not shrink. Judge a body with edges, or a curved body, by a mesh series of at least
-three refinements. Measured 2026-10-31 with the conformal update now on main (open edge lengths and cut-face areas); record kept with the project.
+16x. The largest deviation does not shrink. Judge a curved body by a mesh series of at least three refinements.
+Measured 2026-10-31 with the conformal update now on main (open edge lengths and cut-face areas); the Box overlap
+measured 2026-11-19; records kept with the project.
 
-### `run()` inside a user `jax.jit` does not always reproduce plain `run()`
+### Inside a user `jax.jit`, `run()` refuses a single port's S-parameters on a uniform mesh, `until_decay` and `report_every`, and a multi-device closed-box plane wave is refused
 
-Tracker: #2241
+Tracker: none — accepted limitation (refused at default: tests/contracts/test_user_jit_drive_and_probe.py::test_refused_under_user_jit)
 
-On one device, a fixed-step `run()` inside a user `jax.jit` now gives the same bits as plain `run()` on Linux CPU for a point current source on uniform and graded meshes and for a lumped or wire port on uniform and graded meshes (`tests/contracts/test_user_jit_drive_and_probe.py`). `run(devices=...)` and `forward(distributed=True)` on a uniform mesh with a lumped or wire port now stay within the cross-trace bar of the plain call on Linux CPU (9 float32 ULP of each probe's peak per step, 1e-4 of the peak summed over the record; they differed by up to 432 float32 ULP of a probe's own peak per step over 192 steps before the multi-device setup boundary). One case still differs: `forward()` with a traced `eps_override` and a lumped port (33.5). Under a user `jax.jit`, `run()` refuses its port S-parameters (use `forward(port_s11_freqs=...)` or a plain call) and a multi-device closed-box plane wave (use a plain call); `until_decay` and `report_every` need a plain call. On the graded tutorial board, `run()` under `jax.jit` is bit-identical to plain `run()` on Linux CPU, and on macOS CPU its compiled graded time step can still differ. With a traced `eps_override` and a lumped port, call `forward()` without an enclosing `jax.jit`.
+On one device, a fixed-step `run()` inside a user `jax.jit` stays within the cross-trace bar of plain `run()` on Linux CPU (9 float32 ULP of the probe peak per step, 1e-4 of the peak summed over the record) for a point current source and for a lumped or wire port, on uniform and graded meshes. The same holds for `forward()` with a traced `eps_override` and a point source or a lumped port, and for `run(devices=...)` and `forward(distributed=True)` with a point source or a lumped or wire port, on uniform and graded meshes (`tests/contracts/test_user_jit_drive_and_probe.py`). Four requests are refused under a user `jax.jit`: on a uniform mesh, `run()`'s S-parameters of a single lumped or wire port (use `forward(port_s11_freqs=...)` or a plain `run()`); a closed-box plane wave on several devices; `until_decay`; and `report_every` (`test_host_control_keeps_its_user_jit_behavior`). Call these without an enclosing `jax.jit`.
 
 ### One process with several GPUs: peak memory per GPU stops falling after two GPUs.
 
@@ -419,13 +434,44 @@ On two RTX A6000 GPUs a 236³-cell (13 M) closed PEC box driven by a TF/SF plane
 slower (3.293 to 3.405 ms per step). Field values are unchanged. Two whole-field copies before the PEC wall write take
 most of the difference; removing them recovered only 0.043 ms per step, for a reason not yet measured.
 
+### A small Debye, Lorentz or Drude region makes every time step update the dispersion state on the whole grid.
+
+Tracker: #1825
+
+The polarization state of a dispersive material is held and updated on every cell of the grid, not only where the
+material is. On the graded path a 16³-cell Debye block in a 160³-cell box (padding included) adds 23.1 ms per step,
+69 % of the 33.7 ms bare step; Lorentz and Drude add 5.4 and 6.6 ms. The added time grows with the box, not with the
+block: a Debye block adds 2.1 / 6.4 / 23.1 ms at 72³ / 104³ / 160³ cells (uniform path: 1.7 / 4.1 / 21.0 ms). Field
+values are unchanged. A gradient run also saves this state at each checkpoint: from the array shapes (not measured as
+memory), 12 bytes per grid cell per checkpoint for a one-pole Debye material and 24 for Lorentz or Drude.
+What to do: budget step time and gradient memory for the whole grid as soon as a model has any dispersive region.
+
+### Each lumped RLC element adds its own block to the compiled time step, so compile time grows with the number of elements.
+
+Tracker: #1946
+
+The time per step and the field values do not depend on the number of elements; the compile does. On a 40 x 40 x 49-cell
+box run for 200 steps on CPU, a repeat `run()` on the same `Simulation` took 0.72 / 2.91 / 10.78 s with 0 / 100 / 400
+series R+C loads, and the first `run()` 4.4 / 6.9 / 17.1 s; the growth is linear in the count (log-log slope 0.93 over
+50 to 400 loads). `run()` compiles again on every call.
+What to do: with many elements, call the solve inside one `jax.jit` (for example around `value_and_grad` of the
+objective) so that the compile is paid once.
+
 ### Under a caller's `jax.jit`, a multi-device run holds more whole-domain setup arrays on every device for dispersive materials and graded meshes
 
 Tracker: #2486
 
-Wrapping a multi-device run in `jax.jit` (`run(devices=...)` or `forward(distributed=True)` inside a caller's jit) puts its setup arrays into every device's compiled program as constants of the whole domain, not of the device's slab (#2486). Field values are unchanged; device memory and program size grow. A plain multi-device call, with no enclosing `jax.jit`, holds none. Since the multi-device setup boundary, two cases hold more than before, measured on a 25 x 13 x 13-cell box split over two (three) CPU devices:
-- Debye and Lorentz materials (Drude takes the Lorentz route; not measured): each pole coefficient is one more whole-domain float32 constant. A Debye box on the uniform mesh holds 13 (263,640 bytes at two devices, 290,004 at three) instead of a permittivity and a mask array (25,350 / 27,885 bytes); a Lorentz box, which was refused under a caller's jit before, now runs and holds 11 (223,080 / 245,388 bytes).
-- Graded meshes: each material array is held with its x ghost cells, 20,280 bytes at two devices and 22,308 at three instead of 16,900 (+20 % / +32 %), for permittivity (one array, also with a lumped port) and a lossy thin film (two arrays).
+Wrapping a multi-device run in `jax.jit` (`run(devices=...)` or `forward(distributed=True)` inside a caller's jit) puts some of its setup arrays into every device's compiled program as constants of the whole domain, not of the device's slab (#2486). Field values are unchanged; device memory and program size grow. A plain multi-device call, with no enclosing `jax.jit`, holds none.
+
+Each such array costs every device the same number of bytes:
+
+    bytes per array = n_devices × (⌈nx / n_devices⌉ + 2) × ny × nz × 4
+
+where nx is the cell count along x, the axis the run splits; the 2 counts one ghost row on each side of a device's slab, and each cell holds 4 bytes (float32). This cost does not fall as devices are added. The number of such arrays a model holds, measured on a 25 × 13 × 13-cell box:
+- a material with one Debye pole: 13 arrays; with one Lorentz or Drude pole: 11 (Drude takes the Lorentz route; not measured). Materials with more poles: not measured.
+- a graded mesh: each material array, that is the permittivity (also with a lumped port), or the two arrays of a lossy thin film.
+
+Example, measured: a Debye box of 25 × 13 × 13 cells holds 13 × 20,280 = 263,640 bytes on each of two devices, and 13 × 22,308 = 290,004 bytes on each of three. By the formula, a model of 10⁸ cells with one Debye pole holds about 13 × 0.4 GB ≈ 5.2 GB on every device, whatever the device count.
 What to do: if a model fits only when split over devices, call `run(devices=...)` or `forward(distributed=True)` without an enclosing `jax.jit`.
 
 ### A multi-device run that records snapshots holds more than twice the whole snapshot record on each device while it joins the record
@@ -447,20 +493,23 @@ What to do: record fewer frames (`SnapshotSpec(interval=...)`); the measured pea
 A 2-D slice normal to y or z (`slice_axis=1` or `2` with `slice_index`) lowers the peak with its size; fewer components
 lower it by less than the record shrinks. Or run a snapshot-heavy case on one device.
 
-### A preflight keeps its whole-domain realization arrays until the Simulation is deleted
+### `preflight()` and `realized_geometry()` keep the model's whole-domain inspection arrays until a solve or `clear_inspection_cache()`
 
 Tracker: #1432
 
-`preflight()`, `realized_geometry()` and the automatic preflight of `run()`, `forward()` and the S-matrix calculators
-leave their whole-domain realization arrays on the `Simulation` after the call returns. Measured before the thin-sheet
-change below: about 21 bytes per cell (21.1 B on 81 x 41 x 17 cells, 21.0 B on 161 x 81 x 33), and on a board of about
-1e8 graded cells with many sheets about 31 GiB of host memory and 15.5 GiB of GPU memory held through the solve, so that
-the run did not start on a 64 GiB host. Neither has been measured since. On main after 2.0.0, thin PEC sheets keep only
+`preflight()` and `realized_geometry()` keep the model's assembly context, its realized-geometry record and the coax
+stamp on the `Simulation`, so repeated inspection calls share them. A solve (`run()`, `forward()`, the S-matrix
+calculators, `topology_optimize()`) releases them when it is dispatched; a refused solve keeps them, and
+`Simulation.clear_inspection_cache()` frees them for a model you only inspect
+(`tests/contracts/test_inspection_release.py`). A `realized_geometry()` record you keep still holds the arrays it
+refers to. Measured before the thin-sheet change below, the held arrays took about 21 bytes per cell (21.1 B on
+81 x 41 x 17 cells, 21.0 B on 161 x 81 x 33), and 1.43 GiB of device memory stayed reachable from a kept record's
+`conductors` on a synthetic model of 161 thin sheets on 3.05 M cells; neither has been measured since. On main after 2.0.0, thin PEC sheets keep only
 their plane masks, so the GPU memory these arrays hold no longer grows with the number of sheets (host memory not
 measured): a board of 161 sheets on 3.05 M cells, with `preflight()`, `realized_geometry()` and a second model kept in
 the same process, completes with the GPU pool capped at about 5.6 GiB at a 0.46 GiB peak, where 2.0.0 ran out of
-memory. No public call frees the arrays before `run()`. Deleting the `Simulation` frees them only while no
-`realized_geometry()` record is kept: the record holds the same arrays.
+memory. What to do: call `clear_inspection_cache()` after inspecting a model you will not solve, and drop any
+`realized_geometry()` record before a large solve.
 
 ## Ports and extraction
 
@@ -654,13 +703,47 @@ Until a fix lands, read the |S11| of a well-matched microstrip structure as unce
 
 Tracker: #1373
 
-The field increment a source adds on its edge is the update's coefficient times the drive. A rectangular-waveguide port and a plane-wave source still compute that coefficient apart from the update.
+The field increment a source adds on its edge is the update's coefficient times the drive. A rectangular-waveguide port and a plane-wave source still compute that coefficient apart from the update; so do lumped, wire and MSL port drives on smoothed and conformal edges (next entry).
 
 - A waveguide port beside a conformal PEC wall (`Boundary(..., conformal=True)`): where the wall cuts a driven aperture edge (the wall-to-wall length rounds up to the next whole cell), the port drives that edge with its own coefficient, 1.5 times the field update's on that edge. On a 40 × 20 mm guide (TE10, 5 to 7 GHz) the launched wave, and with it every absolute field and probe amplitude, reads 2.5 % high with 3 mm cells, 1.0 % with 1.2 mm cells and 0.63 % with 0.75 mm cells; the excess is proportional to the cell size, 0.83 % per millimetre of cell. |S11| and |S21| moved by at most 3e-4 at 1.2 and 0.75 mm, because the port measures its incident wave at its own planes. With the walls on mesh nodes nothing changes.
 - A waveguide port with `subpixel_smoothing` is refused when smoothing changes the permittivity in the port section.
 - A plane-wave source (`add_tfsf_source`) refuses a smoothed or conformal edge on its injection planes, on every path (`tests/contracts/test_tfsf_vacuum_planes.py::test_treated_edges_on_injection_planes`).
 
-Not fixed in 2.1.0. Read absolute amplitudes from a port beside a conformal wall as high by these amounts, or put the walls on mesh nodes. Measured 2026-11-03 on the cut-cell conformal model; record kept with the project.
+Not fixed in 2.2.0. Read absolute amplitudes from a port beside a conformal wall as high by these amounts, or put the walls on mesh nodes. Measured 2026-11-03 on the cut-cell conformal model; record kept with the project.
+
+### Surface-impedance sheets and the Kerr term read a different permittivity on their edge than the field update.
+
+Tracker: #1961
+
+The field update divides the curl on each electric-field edge by one permittivity: on a plain edge, the mean of the four
+cells around the edge; on a smoothed edge (`subpixel_smoothing=True` or `"full_tensor"`), the smoothed value; on an edge
+that conformal PEC cuts (`conformal_pec=True` or `Boundary(conformal=True)`), the permittivity divided by the edge's
+conformal weight (its free length, limited by the cut faces around it). The operators below act on the same edge every
+step but form their own quantity from another permittivity, so they drive, load or correct the field as if the edge held
+another material. Each number is |a − b| / |b|, where a is the operator's quantity and b is the same quantity formed
+from the update's permittivity, on one edge of one test scene (an εr 4 sphere or a PEC sphere, 1 mm cells, uniform mesh,
+one device; `run()` and `forward()` give the same value).
+
+- A surface-impedance sheet (`add_thin_conductor(..., surface_impedance_f0=...)`) and the Kerr term
+  (`add_material(..., chi3=...)`) read the permittivity of one cell; no option is needed for this. On an edge with one
+  εr 4 cell and three εr 1 cells around it, both read 4 where the update reads 1.75. The sheet's per-step loss exponent
+  σ·Δt/(ε0·εr) is then 0.44 of the update's (difference 0.56), and the Kerr term reads 2.29 times the update's
+  permittivity (difference 1.29). In a Kerr medium on an edge next to a conformal cut, whose conformal weight a cut face
+  beside it limits to 0.93, the Kerr term reads 4 where the update reads 4.30 (difference 0.069). A sheet with smoothing
+  or conformal PEC, and the Kerr term with smoothing, are refused.
+- A rectangular-waveguide port on a conformal edge has the same fault; the entry above gives its measured effect.
+
+Lumped, wire and MSL port drives and lumped RLC elements (`add_port`, `add_msl_port`, `add_lumped_rlc`) read the
+update's own coefficient on every edge: plain, smoothed and conformally cut. The sheet and the Kerr term read the
+update's permittivity on a plain edge where the four cells around the edge hold one material. The effect of these differences
+on S-parameters, fields and gradients is not measured. Measured 2026-11-15; record kept with the project.
+
+### A waveguide port built without a uniform Grid is unchecked in a caller's own loop.
+
+A configuration built with scalar `dx` or a graded grid warns when the aperture exceeds the declared guide size by more than half the last cell on either transverse axis; the walls remain unchecked when stepped through `inject_waveguide_port` and `update_waveguide_port_probe` in the caller's own loop.
+A whole node plane there drives and reads the row outside the high electric wall; use the cell span `(0, n - 1)`, as `Simulation` builds it.
+
+Tracker: none — accepted limitation (warns at default: tests/unit/ports/test_waveguide_whole_plane_aperture.py::test_initializers_warn_without_uniform_grid)
 
 ### WR-90 S-parameters near cutoff need a record of about 16 000 steps at a/45.
 
@@ -675,6 +758,12 @@ and the settling check fails that record (−39.7 dB against −40 dB). From
 not fall with record length: it is the a/45 mesh. Measured on an empty WR-90 at 7.0–7.9 GHz
 (f/fc 1.07–1.20) on 2026-10-28; record kept with the project.
 Give `n_steps` explicitly when the band starts below 1.2 fc.
+
+### When two modes of a waveguide cross-section share a cutoff (for example TE10 and TE01 on a square guide, or TE20 and TE01 on a guide twice as wide as it is high), `rfx.eigenmode.solve_waveguide_modes` returns that pair in an arbitrary basis chosen by the eigensolver, which can differ between machines.
+
+Tracker: #2725
+
+The waveguide ports' own mode profiles do not have this problem: they take the requested mode within the pair.
 
 ### MSL S-parameters under `eps_override` refuse an override that varies under a port line, and a call under `jax.jit`
 
@@ -702,6 +791,16 @@ power reading near its plane (entry above) probably contributes, because the fee
 ## Ring-down completion and the early stop
 
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).
+
+### A completed forward ring-down value can have a failed lazy report without warning.
+
+Tracker: #1961
+
+A `forward(ringdown=...)` completion whose error witness, passivity or traced
+witness fails returns finite `s_params` and warns nothing; read
+`result.ringdown.report.ok` (the report is `None` while traced) and
+`rfx.ringdown.gradient_witness` before trusting a completed value or its gradient.
+`run(ringdown=...)` warns on the same failures.
 
 ### A pair of modes that no window of the record separates is completed as one mode, and every early-window vs late-window comparison agrees.
 
@@ -732,6 +831,39 @@ features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
 `tests/unit/sparams/test_ringdown_early_stop.py`.
 
+### A long identification window can be refused at stage 2, the original-rate residue fit, above the memory bound.
+
+Tracker: #2874
+
+`run(ringdown=...)` and `forward(ringdown=...)` identify poles in two stages:
+- stage 1, the pencil, runs on the decimated record;
+- stage 2 fits the residues at the original sample rate and needs `1.71 × 16 × 5 × n_win × r` bytes, where `n_win` is the window length in samples and `r` the kept rank.
+
+When that exceeds `rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES` (4 GiB by default), the window is refused by name with `IdentificationMemoryRefused`. The message names the stage, the dimensions, the memory needed and the bound. For example, n_win = 80,000 at r = 600 needs 6.1 GiB. No number is returned for that window.
+
+What to do:
+- raise `rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES` when the device has the memory;
+- or shorten the identification window.
+
+#2874 plans a streamed stage-2 fit, whose memory scales with `r²`.
+
+### A long identification window can exhaust device memory in the traced pole step of `forward(ringdown=...)`, with no refusal.
+
+Tracker: #2874
+
+`forward(ringdown=...)` moves the identified poles by one frozen Gauss-Newton step, so a derivative reaches them (`rfx/ringdown/_jax.py`, `completion` and `_pole_step`). For each identification window the step builds arrays of `M × C × K` complex values, 8 bytes each (complex64; 16 bytes with `jax_enable_x64`): the pole-derivative basis, and its projection, which is the step's Jacobian. It factors that Jacobian by QR once for the value and once more for the derivative, and each factor is about as large again.
+- `M` is the window length in samples;
+- `C` is the number of fitted channels: with ports, the voltage and the current of each port plus the identification probe columns; with probe spectra only, the identification probe columns;
+- `K` is the window's pole budget, the smaller of the pencil's capacity and `rfx.ringdown.TRACED_POLE_BUDGET` (512 by default).
+
+Two windows are identified: the main window `[window_start × T, T]` and the early-start comparison window `[window_start / 2 × T, T]`, which is 1.5 times longer at the default `window_start = 0.5`. For example, a 120,635-step record with 8 channels and K = 512 gives M = 60,317 and 90,476, so each array takes 60,317 × 8 × 512 × 8 B = 1.98 GB and 90,476 × 8 × 512 × 8 B = 2.96 GB. Nothing checks this memory before the step runs: a device without it ends the call with the allocator's `RESOURCE_EXHAUSTED`.
+
+What to do:
+- shorten the identification window: a larger `RingdownSpec.window_start`, or a shorter record;
+- or lower the pole budget by assignment before the call is traced, for example `rfx.ringdown.TRACED_POLE_BUDGET = 256`; a function already compiled by `jax.jit` keeps its old budget until it is traced again. A window that keeps more poles than the budget then returns NaN, and its status reason names the kept count and the budget.
+
+#2874's streamed fit is planned to cover this step too.
+
 ### A plain record shorter than a weakly coupled resonance's decay misreads S near it on any port, and the end-of-run decay check can miss it.
 
 Tracker: #1514
@@ -760,6 +892,35 @@ A weak record still ringing above −71 dB is scored like any other record. The 
 `result.settling_witness["skipped_records"]` with their `tail_ratio`.
 What to do: to judge a component that weak, put a probe of its own at a neighbouring cell, or run in float64.
 
+### The printed ring-down settling level can move by more than 10 dB when the fields change only at rounding level.
+
+Tracker: #1687
+
+`settling_db` is the share that the tail past the end of the record adds to the in-record transform, extrapolated from
+poles fitted to the record after the source ends. A second fit over a check window (the first 90 % of the main
+window, or in a long enough record a window that starts earlier) gives the identification-error indicator
+`settling_witness["error_per_bin"]`; the check window does not enter the printed level. A rounding-level change of
+the record (a code change, or another host's arithmetic) can change which poles the main-window fit returns, and the
+printed level follows. Measured on `examples/tutorials/antenna_farfield_pattern.py` (a point source in a
+60 mm vacuum cube with a CPML, 400 steps, one probe, read at 8 GHz) across one rfx change that moved the probe's field
+by at most 1.1e-5 of its peak (7.5e-3 of the decayed field's peak inside the main window): the fit over the 0.55 ns
+main window returned a slow non-oscillating pole (time constant 5.1 ns) before and not after, so the level moved from
+-66.8 to -80.2 dB (share 4.6e-4 to 9.8e-5), while the check-window fit returned it on both sides (5.1046e-4 against
+5.1053e-4) and the directivity stayed 1.761 dBi. After the change the error indicator read 4.15e-4, 4.2 times the share it qualifies,
+and the status stayed "pass"; the same version read -80.2 dB on one host and -79.7 dB on another. At 800 and 1600
+steps the two versions' shares agree within 15 % and 8 %. At the −40 dB rule (a share of 1e-2), if the main window
+crosses it and the check window does not, the status is "undetermined" with `settling_db` nan, not the opposite
+verdict.
+The same rounding-level choice of poles reaches a gradient taken through the completion. For a weakly coupled
+resonance (a lossy PEC box, eps_r 2.2, Q about 5000, its TM110 resonance at 12.425 GHz seen through a short corner wire
+port), dS11/d ln(eps_r) with the poles identified from the port alone was 2.1 % off on one machine, and up to 6.8 % at
+another source scale, while the gradient check (the same gradient through the completion from [T/4, T] against
+[T/2, T], 1 % per bin) read 0.27 % and passed. With `RingdownSpec(identification_probes=...)` the error was 0.18 to
+0.20 % on every run, and the check read it at 0.94 to 0.99 of its size.
+What to do: do not read a `settling_db` difference between versions or hosts as a change of the field; read
+`settling_witness["error_per_bin"]` beside it, or compare at a longer record. For a gradient at a weakly coupled resonance, pass
+`identification_probes`.
+
 ### With an automatic mesh, `vmap_material_sweep`'s sequential fallback runs every swept value for the first value's step count.
 
 Tracker: #1293
@@ -779,6 +940,18 @@ remainder itself. Measured on the slab tutorial's 2-D vacuum reference (drive en
 run stops at step 25,500, against a fixed 506-step run. An empty 3-D open box stops at step 550 on the float32 floor.
 What to do: on an open plane-wave scene, run a fixed `n_steps` (drive end plus the transit of the domain), or set a
 lower `decay_max_steps`.
+
+### `compute_rcs` judges the incident pulse's transit to its NTFF box, not the scatterer's own ringing after it.
+
+Tracker: #2030
+
+`compute_rcs` checks that its record covers the plane-wave pulse, its launch and the trip of the scattered field to the
+farthest corner of its NTFF box. A shorter record returns `settling_witness["status"] == "undetermined"` with one
+`AccuracyWarning`. After that trip a resonant scatterer can still radiate, and `compute_rcs` does not judge that decay:
+`settling_witness["status"]` is `"absent"` and nothing warns. The witness's reason suggests an identification probe,
+but `compute_rcs` takes no probe, so that advice cannot be followed here.
+What to do: run `compute_rcs` with two record lengths, for example `n_steps` and twice `n_steps`, and use the RCS only
+where the two agree.
 
 ## Absorbing boundaries
 
@@ -805,11 +978,13 @@ extension for 2.0; they stay refusals.
 
 Tracker: none — accepted limitation (refused at default: tests/contracts/test_tfsf_boundary_admission.py::test_finite_box_is_refused)
 
-At normal incidence, on the uniform and the graded mesh alike, dispatch refuses absorbing transverse faces for an open TF/SF plane wave when
+At normal incidence on both meshes, and at oblique Bloch incidence on the uniform mesh, dispatch refuses absorbing transverse faces for an open TF/SF plane wave when
 materials on the grid, conductors or localized field updates vary along that axis,
 including in the pads. The refusal also applies with `skip_preflight=True`.
 For an array, declare its axes periodic; for a finite scatterer use
-`closed_box=True` or `rfx.rcs.compute_rcs`. On the graded mesh, for propagation along x with E along z, the
+`closed_box=True` or `rfx.rcs.compute_rcs`. For an oblique finite scatterer, use
+`add_tfsf_source(closed_box=True, theta_deg=…, phi_deg=…, polarization='s' or 'p')`
+in 3-D with CPML on all six faces. On the graded mesh, for propagation along x with E along z, the
 admitted wall pairs are PMC on y and PEC on z. Each
 transverse axis takes only a matched pair: both faces absorbing, both the wall
 that suits the polarization, or both periodic (`rfx/boundaries/tfsf.py::replacement_axes`).
@@ -820,9 +995,9 @@ structure with those walls is refused. UPML remains unsupported for TF/SF.
 The uniform plane-wave path solves y and z (Method B: z) periodic, including their pads, when no
 boundary or `boundary='cpml'` is given, and reports the affected faces in preflight. Its grid and period do not
 change. On the uniform mesh it refuses absorbing or wall faces declared explicitly on those axes (a `BoundarySpec`,
-`Boundary` or dict), since it would solve them periodic: declare them periodic, omit them, or use the graded mesh. Traced material overrides retain the legacy operator
-with a warning when invariance cannot be judged. At oblique incidence the tilt
-axis keeps its operator and is reported as not judged for invariance.
+`Boundary` or dict), since it would solve them periodic: declare them periodic or omit them. At normal incidence the graded mesh also keeps the declared side faces. Traced material overrides retain the legacy operator
+with a warning when invariance cannot be judged. Open oblique Method B keeps its
+absorbing y faces; its z faces remain periodic.
 The graded mesh keeps its transverse absorbers under a plane wave (no wrap) but
 applies the same rule: a laterally invariant structure runs, and on a graded profile with the uniform mesh's cells
 its probe record equals the uniform mesh's within 2×10⁻⁶ of its peak
@@ -842,6 +1017,8 @@ mesh's cells the probe record equals the uniform mesh's within 2×10⁻⁶ of it
 (`tests/contracts/test_plane_wave_admission_both_meshes.py`). A declaration of the side faces gives one model per
 request, solved as declared or refused: periodic faces run on the uniform mesh only; CPML or the wall pair that suits
 the polarization runs on the graded mesh, and on the uniform mesh only on an axis it does not wrap (Method B's y). One transverse operator for both meshes is planned after 2.0.
+
+An oblique Bloch plane wave (|`angle_deg`| > 0.01°, `method='bloch'`) is refused before stepping with off-diagonal node coupling (`'full_tensor'` smoothing or a directly supplied node tensor), `'kottke_pec'` smoothing with a PEC shape, mask or occupancy, conformal PEC, or a PEC occupancy override with `pec_occupancy_model='kottke'`. The off-diagonal node coupling does not apply the Bloch phase, and these PEC combinations remain unsupported. Use normal incidence, omit the node coupling, turn smoothing or conformal PEC off, or omit `pec_occupancy_override`, as applicable.
 
 ### An oblique Bloch plane wave rings at its cutoff along the source plane, so a value read at f0 depends on the simulation time.
 
@@ -869,29 +1046,6 @@ Tracker: #1373
 Tracker: #2627
 
 Every time step writes the per-step voltage and current records of lumped and wire ports, `sparam_time_records` on the `run()` and `forward()` results, under `jax.lax.stop_gradient`, on the uniform and graded meshes and on one device or several. So `jax.grad` of any quantity built from these records is exactly 0 with respect to every input, with no refusal and no warning, although a driven port's own waveform enters its V and I linearly. For the gradient of a port quantity, differentiate the S-parameters of `forward(port_s11_freqs=...)` (`ForwardResult.s_params`), which are formed from the frequency-domain accumulators, not from these records. That route runs on one device on a uniform or graded mesh, and with `distributed=True` on a graded mesh. Its gradient is refused with `distributed=True` on a uniform mesh, where the plain call runs. The route is refused when the model also has a plain source or a 0-ohm port, when one record has more than one driven port, and for a passive port with `distributed=True` on a uniform mesh. Field probes (`ForwardResult.time_series`) differentiate normally. The per-step DFT plane records, `dft_time_records` on the same results, are written the same way on one device (the multi-device paths refuse them) and carry the same zero gradient; for the gradient of a field quantity on a plane, place field probes at the cells it needs.
-
-### In float32, a reverse-mode gradient with respect to a traced Lorentz or Drude pole strength in SI units underflows.
-
-Tracker: #2561
-
-With a traced pole strength kappa = omega_p² in SI units (rad²/s²), the reverse pass forms the
-cotangent of kappa in float32. On the CPU, once |dJ/dkappa| is below 1.18e-38 the gradient is
-exactly zero, with no warning. In a synthetic reproduction (a 30 x 16 x 16 mm domain at 0.5 mm
-cells, one traced Drude pole) this happened below a source amplitude of 0.108 on a graded mesh and
-0.0153 on the uniform mesh. On a GPU (one RTX 3080 measured) the cotangent is kept as a subnormal
-number: below 1.18e-38 the gradient loses precision, and it reaches zero only near 1.4e-45. For a
-metal-like Drude pole (kappa about 2e32 rad²/s²) the CPU zero would be reached once
-|dJ/dlog kappa| is below about 2e-6, so nearly any objective in raw SI units would return a zero
-gradient (an estimate, not measured). Only kappa was traced; other pole parameters were not
-measured. What to do: declare the strength as `RelativeStrength(reference, value)`, choosing a
-reference near its largest value, so that the differentiated variable is of order 1;
-`drude_pole(omega_p, gamma, density=...)` and
-`lorentz_pole(delta_eps, omega_0, delta, relative=True)` build it; maps use `drude_pole_map(..., density=)` or `lorentz_pole_map(..., relative=True)`. Otherwise divide the objective
-by a constant of its order, such as its value at the starting design given as a Python float,
-or run with `precision="float64"` and JAX x64. An optional warning is off by default: set
-`RFX_POLE_UNDERFLOW_CHECK=1` before the first call (a cached compile keeps the old setting).
-It warns when a nonzero incoming cotangent, replayed in SI units, falls below the smallest
-normal float32 value (1.18e-38).
 
 ### A gradient with respect to conductivity does not settle with simulation time on lossless or nearly lossless design cells
 
@@ -930,29 +1084,6 @@ cannot be formed, compare against a record 1.5–2 times longer.
 The weak-port cavity contract is in
 `tests/unit/sparams/test_ringdown_identification.py` (#1419, fixed by the
 identification-probe option; port-only identification remains the default).
-
-### Plain and `jax.jit` gradients through `forward(ringdown=...)` differed on one short, lossy test box.
-
-Tracker: #2485
-
-`jax.grad` and `jax.jit(jax.grad)` of one objective through
-`forward(ringdown=...)` should agree within 1e-4, the bar for a quantity summed
-over the record. On a closed PEC 600-step test box, lossy, with poles near
-12.4 GHz (1/Q 0.14) and 38.6 GHz (1/Q 0.87), the gradient of `sum |S|^2` with
-respect to one scalar scaling `eps_override` has a relative gap
-|plain − jit| / |plain| of 1.5e-3 in float32, 7.9e-4 in the x64 context with a
-float32 override, and 1.7e-2 in the x64 context with a float64 override. The
-gradients of 1/Q from the traced pole outputs (`RingdownForwardResult.pole`)
-differ by more on that box. On another closed PEC box, with a weak 10 kΩ wire
-port, Q about 3700, 3997 steps and `precision="float64"`, the largest per-cell
-difference over the largest per-cell gradient is 2.7e-11 for the `sum |S|^2`
-gradient and 1.1e-12 for the gradients of the mode's frequency and 1/Q.
-
-The cause is not determined, and it is not known which property of the first
-box matters, so a longer or less lossy record is not known to be safe. What to
-do: treat a plain-to-jit gap above 1e-4 as an unexplained gradient. Agreement
-between the two does not validate a gradient; check it with `gradient_witness`
-or the same gradient from a longer record.
 
 ### A gradient can be wrong by tens of percent on a record whose value is converged.
 

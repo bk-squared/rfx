@@ -52,6 +52,7 @@ Design rules baked in (plan WP2, "Fixture predeclaration"):
 * Nothing from ``rfx/probes/refplane.py`` is imported here or by the
   battery: that module carries a numpy round-trip the waveguide chain must
   not acquire.
+A non-integral b/dx fires the declared-vs-rasterized z-width notice.
 """
 
 from __future__ import annotations
@@ -69,37 +70,12 @@ from rfx.geometry.csg import Box
 
 C0 = 299_792_458.0
 
-# --- guide ------------------------------------------------------------------
-A_M = 0.02286   # WR-90 broad wall (y), metres
-B_M = 0.01016   # WR-90 narrow wall (z), metres
+A_M = 0.02286
+B_M = 0.01016
 
-# --- ladder (plan decision 6) -----------------------------------------------
-# dx = a/N with N in {9, 18, 36}. Stated as the literal cell sizes the plan
-# names — {2.54, 1.27, 0.635} mm — and checked against a/N at import.
 DX_COARSE = 0.00254
 DX_LADDER: tuple[float, ...] = (0.00254, 0.00127, 0.000635)
 N_LADDER: tuple[int, ...] = (9, 18, 36)
-# The finer rungs the VI-envelope sweep adds
-# (``docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md`` §5.1).
-# That section adds 0.0003175 (N=72) and says of the next one, verbatim,
-# "0.00015875 is not added: R5-X is dropped". It is carried here anyway,
-# unused by any emitted case, so the literal value and its integrality assert
-# stay on the record rather than being re-derived by hand if R5-X is ever
-# revived — recomputing it as A_M/144 is the mistake this block exists to stop.
-# They are LITERAL cell sizes, never ``A_M / N``: 0.0003175 = DX_COARSE / 8 and
-# 0.00015875 = DX_COARSE / 16 are exact binary halvings of the coarse cell, so
-# ``|dx*N - A_M| = 3.5e-18``, ``b/dx`` stays integral (32 / 64 cells) and the
-# reference/probe planes land on integer cell counts. Recomputing ``dx = A_M/N``
-# lands one ULP low and moves the N=9 grid from (65,10,5) to (66,10,6) — a whole
-# extra z node, i.e. a different guide.
-#
-# They are a SEPARATE tuple, not an extension of ``DX_LADDER``: the committed
-# chain-battery artifacts record ``dx_ladder_m`` and
-# ``tests/oracle/test_waveguide_chain_battery.py::test_fixture_constants_match_builder``
-# compares that frozen record against ``list(DX_LADDER)``. Growing ``DX_LADDER``
-# in place would redden a committed measurement gate and silently add N=72/144
-# rungs to every ``@pytest.mark.parametrize("dx", F.DX_LADDER)`` in the battery's
-# geometry suite. The sweep reads ``DX_LADDER_SWEEP``; the battery keeps its own.
 DX_LADDER_SWEEP: tuple[float, ...] = DX_LADDER + (0.0003175, 0.00015875)
 N_LADDER_SWEEP: tuple[int, ...] = N_LADDER + (72, 144)
 for _dx, _n in zip(DX_LADDER, N_LADDER):
@@ -108,68 +84,40 @@ for _dx, _n in zip(DX_LADDER, N_LADDER):
 for _dx, _n in zip(DX_LADDER_SWEEP, N_LADDER_SWEEP):
     assert abs(_dx * _n - A_M) < 1e-15, (_dx, _n)
     assert abs(_dx * _n * 4 / 9 - B_M) < 1e-15, (_dx, _n)
-    # b/dx integral at every rung, checked here rather than trusted downstream:
-    # a non-integral b/dx puts the narrow wall between nodes and fires the
-    # declared-vs-rasterized z-width notice (#729 site 2).
     _b_cells = B_M / _dx
     assert abs(_b_cells - round(_b_cells)) < 1e-9, (_dx, _n, _b_cells)
 
-# --- x layout, in coarse cells (integers) -----------------------------------
-# Every position is ``k * DX_COARSE``; the integers are the source of truth
-# and the metre values below are derived from them so a reader can check
-# each one by multiplication.
-_NX_DOMAIN = 48          # 121.92 mm of guide between the two CPML pads
-_K_PORT_LEFT = 5         # left port plane, +x launch
-_K_PORT_RIGHT = 43       # right port plane, -x launch (48 - 5: symmetric)
-_K_REF = 3               # default reference plane, cells inward of each port
-_K_PROBE = 10            # probe plane, cells inward of each port
-_K_PEC_LO, _K_PEC_HI = 23, 25     # PEC-short: 2 coarse cells = 5.08 mm thick
-_K_SLAB_LO, _K_SLAB_HI = 22, 26   # eps_r=4 slab: 4 coarse cells = 10.16 mm
-# Shifted reference planes, one integer pair per named shift pair. Both pairs
-# live here so each artifact can name the one it was measured with; the builder
-# realizes exactly one of them at a time (SHIFT_PAIR_NAME below).
+_NX_DOMAIN = 48
+_K_PORT_LEFT = 5
+_K_PORT_RIGHT = 43
+_K_REF = 3
+_K_PROBE = 10
+_K_PEC_LO, _K_PEC_HI = 23, 25
+_K_SLAB_LO, _K_SLAB_HI = 22, 26
 _K_SHIFT_PAIRS = {
-    # Run 1 (fixture.json). 2*beta*Delta passes through a half turn inside the
-    # band on all three entries, which makes the wrong-sign discriminator
-    # degenerate by arithmetic -- it measured 0.734 deg against a 10 deg floor.
     "half_turn_pair": (12, 35),
-    # Run 2 (fixture_guide_cell_aperture.json). The largest admissible unequal
-    # pair on the coarse lattice: Delta_L = +5.08 mm (2 cells),
-    # Delta_R = -2.54 mm (1 cell); 2*beta*Delta stays clear of 0 and 180 deg
-    # across the band, so the discriminator's binding margin is 64.05 deg.
     "sign_discriminating_pair": (10, 39),
 }
 SHIFT_PAIR_NAME = "sign_discriminating_pair"
 _K_SHIFT_LEFT, _K_SHIFT_RIGHT = _K_SHIFT_PAIRS[SHIFT_PAIR_NAME]
 
-DOMAIN_X_M = _NX_DOMAIN * DX_COARSE            # 0.12192
-PORT_LEFT_X_M = _K_PORT_LEFT * DX_COARSE       # 0.01270
-PORT_RIGHT_X_M = _K_PORT_RIGHT * DX_COARSE     # 0.10922
-D_REF_M = _K_REF * DX_COARSE                   # 0.00762 (3 / 6 / 12 cells)
-D_PROBE_M = _K_PROBE * DX_COARSE               # 0.02540 (10 / 20 / 40 cells)
-PEC_SHORT_X_M = (_K_PEC_LO * DX_COARSE, _K_PEC_HI * DX_COARSE)   # 0.05842..0.06350
-SLAB_X_M = (_K_SLAB_LO * DX_COARSE, _K_SLAB_HI * DX_COARSE)      # 0.05588..0.06604
+DOMAIN_X_M = _NX_DOMAIN * DX_COARSE
+PORT_LEFT_X_M = _K_PORT_LEFT * DX_COARSE
+PORT_RIGHT_X_M = _K_PORT_RIGHT * DX_COARSE
+D_REF_M = _K_REF * DX_COARSE
+D_PROBE_M = _K_PROBE * DX_COARSE
+PEC_SHORT_X_M = (_K_PEC_LO * DX_COARSE, _K_PEC_HI * DX_COARSE)
+SLAB_X_M = (_K_SLAB_LO * DX_COARSE, _K_SLAB_HI * DX_COARSE)
 SLAB_EPS_R = 4.0
-# Default (measured) reference planes = port plane + D_REF inward.
-REF_LEFT_DEFAULT_M = PORT_LEFT_X_M + D_REF_M     # 0.02032
-REF_RIGHT_DEFAULT_M = PORT_RIGHT_X_M - D_REF_M   # 0.10160
-# Probe (sampling) planes = port plane + D_PROBE inward.
-PROBE_LEFT_M = PORT_LEFT_X_M + D_PROBE_M         # 0.03810
-PROBE_RIGHT_M = PORT_RIGHT_X_M - D_PROBE_M       # 0.08382
-# WP2(b) shifted pair — asymmetric on purpose, the same reason the source pair
-# at tests/unit/sparams/test_waveguide_twoport_contract_v1.py:257 is asymmetric:
-# a sign error on one port must not be cancelled by the other. The active pair
-# is sign_discriminating_pair: +5.08 mm on the left, -2.54 mm on the right.
-REF_LEFT_SHIFTED_M = _K_SHIFT_LEFT * DX_COARSE   # 0.02540 (+5.08 mm)
-REF_RIGHT_SHIFTED_M = _K_SHIFT_RIGHT * DX_COARSE  # 0.09906 (-2.54 mm)
+REF_LEFT_DEFAULT_M = PORT_LEFT_X_M + D_REF_M
+REF_RIGHT_DEFAULT_M = PORT_RIGHT_X_M - D_REF_M
+PROBE_LEFT_M = PORT_LEFT_X_M + D_PROBE_M
+PROBE_RIGHT_M = PORT_RIGHT_X_M - D_PROBE_M
+REF_LEFT_SHIFTED_M = _K_SHIFT_LEFT * DX_COARSE
+REF_RIGHT_SHIFTED_M = _K_SHIFT_RIGHT * DX_COARSE
 SHIFT_PAIRS_M = {name: (kl * DX_COARSE, kr * DX_COARSE)
                  for name, (kl, kr) in _K_SHIFT_PAIRS.items()}
 
-# --- band and drive ---------------------------------------------------------
-# 17 bins, 0.2 GHz apart, centre bin (index 8) exactly 10.0 GHz. The top
-# edge stays under 0.90 x fc_TE20 (= 0.90 x 13.115 GHz = 11.80 GHz), the
-# preflight ``port_evanescent`` heuristic, so the fixture runs with that
-# advisory silent; the bottom edge is 1.28 x fc_TE10.
 FREQS = np.linspace(8.4e9, 11.6e9, 17)
 F0_HZ = 10.0e9
 BAND_CENTRE_BIN = 8
@@ -181,27 +129,20 @@ DUTS: tuple[str, ...] = ("thru", "pec_short", "slab")
 LANES: tuple = (False, "flux")
 PORT_NAMES = ("left", "right")
 
-# --- AD design variable θ (WP2(a)) -------------------------------------------
-# θ enters through ``eps_override`` / ``sigma_override`` on the cells of ONE
-# x-window of the guide, evaluated at θ0 (so the AD leg sees exactly the
-# fixture the gates and referees see). Slab: the slab's own cells,
-# eps_r = 4 + θ. PEC-short: a vacuum window of the same thickness ending on
-# the short's front face, eps_r = 1 + θ (or sigma = θ for the loss leg).
-_K_WINDOW_LO, _K_WINDOW_HI = 19, 23   # 0.04826..0.05842, 10.16 mm, ends on the PEC face
+_K_WINDOW_LO, _K_WINDOW_HI = 19, 23
 PEC_SHORT_WINDOW_X_M = (_K_WINDOW_LO * DX_COARSE, _K_WINDOW_HI * DX_COARSE)
-THETA0_EPS = 0.0          # eps legs evaluate at the unperturbed fixture
-THETA0_SIGMA_S_PER_M = 0.05   # loss leg: PEC-short window conductivity, S/m
-FD_STEP_EPS = 0.05        # the step at tests/unit/autodiff/test_waveguide_flux_ad.py:80
+THETA0_EPS = 0.0
+THETA0_SIGMA_S_PER_M = 0.05
+FD_STEP_EPS = 0.05
 FD_STEP_SIGMA_S_PER_M = 0.005
 
 
 def design_region_x_m(dut: str) -> tuple[float, float]:
-    """Absolute x-extent [lo, hi) of the θ window for ``dut``."""
+    """Absolute x-extent [lo, hi) of the θ window for ``dut``.
+    Thru is the build-time vacuum control."""
     if dut == "slab":
         return SLAB_X_M
     if dut in ("pec_short", "thru"):
-        # Thru is the build-time vacuum control, using the short's window.
-        # It has no mandatory AD accuracy leg and no DUT geometry is added.
         return PEC_SHORT_WINDOW_X_M
     raise ValueError(f"no design region is declared for dut={dut!r}")
 
@@ -222,8 +163,6 @@ def cpml_layers_for(dx: float, fc_numerical_hz: float,
 
 
 def _boundary() -> BoundarySpec:
-    # The canonical WR-90 construction in tests/unit/autodiff/test_waveguide_flux_ad.py:
-    # CPML on the port-normal axis, PEC walls on both transverse axes.
     return BoundarySpec(
         x="cpml",
         y=Boundary(lo="pec", hi="pec"),
@@ -235,9 +174,6 @@ def _add_dut(sim: Simulation, dut: str) -> None:
     if dut == "thru":
         return
     if dut == "pec_short":
-        # The construction at tests/unit/sparams/test_waveguide_twoport_contract_v1.py:59-60
-        # (pec_like: eps_r=1.0, sigma=1e10) restated in THIS guide's
-        # coordinates: full cross-section, 5.08 mm thick.
         sim.add_material("pec_like", eps_r=1.0, sigma=1e10)
         sim.add(Box((PEC_SHORT_X_M[0], 0.0, 0.0),
                     (PEC_SHORT_X_M[1], A_M, B_M)), material="pec_like")
@@ -276,6 +212,7 @@ def build_simulation(
     coarse-rung plumbing run of the battery measured
     ``reference_planes = [0.0127, 0.10922]`` under ``(None, None)``, which is
     not the plane the pre-declaration (§2.3) references every oracle to.
+    The shifted reference pair is asymmetric so a sign error on one port must not be cancelled by the other.
     """
     if dut not in DUTS:
         raise ValueError(f"unknown dut {dut!r}; expected one of {DUTS}")
@@ -292,6 +229,7 @@ def build_simulation(
 
 
 def _build(dut, dx, *, cpml_layers, reference_planes, precision):
+    """The top band edge stays under the 0.90 x fc_TE20 preflight heuristic so the fixture runs with the port_evanescent advisory silent."""
     n_cells = int(round(D_REF_M / dx)), int(round(D_PROBE_M / dx))
     ref_offset, probe_offset = n_cells
     assert abs(ref_offset * dx - D_REF_M) < 1e-15
@@ -320,8 +258,6 @@ def _build(dut, dx, *, cpml_layers, reference_planes, precision):
     )
     return sim
 
-
-# --- realized-geometry readers (no run) ------------------------------------
 
 @dataclass(frozen=True)
 class TransverseSpans:
@@ -407,11 +343,8 @@ def realized_dut_wall_planes_m(sim: Simulation) -> list[float]:
     from tests._realized_pec import realize, wall_positions
 
     if not any(e.material_name == "pec_like" for e in sim._geometry):
-        return []                      # thru / slab: no conductor to realize
+        return []
     realized = realize(sim)
-    # ``coords_from_uniform_grid`` already returns DOMAIN coordinates (node 0
-    # of the padded grid sits at ``-pad*dx``), so no pad arithmetic here — the
-    # positions come back in the same metres the DUT was drawn in.
     return [float(p) for p in wall_positions(realized, 0)]
 
 
@@ -444,8 +377,6 @@ def assert_dut_realizes_its_faces(sim: Simulation, dut: str) -> list[float]:
     dx = realized.grid.dx
     assert_walls_at(realized, 0, list(PEC_SHORT_X_M),
                     what="chain-battery PEC short")
-    # Falsifier arm: one cell outside each drawn face must carry NO wall. A
-    # reflector that grew or lost a cell still returns |S11| ~ 1.
     assert_no_wall_at(realized, 0,
                       [PEC_SHORT_X_M[0] - dx, PEC_SHORT_X_M[1] + dx],
                       what="chain-battery PEC short")
@@ -613,7 +544,7 @@ def assert_design_override_keeps_the_short(sim: Simulation, dut: str) -> None:
     from tests._realized_pec import realize
 
     if dut != "pec_short":
-        return          # thru and slab declare no conductor to move
+        return
     before = realize(sim)
     _ = design_override(sim, dut, 0.0, kind="eps")
     _ = design_override(sim, dut, 0.0, kind="sigma")
@@ -628,29 +559,6 @@ def assert_design_override_keeps_the_short(sim: Simulation, dut: str) -> None:
                 "the |S11| 0.076 measurement recorded.")
 
 
-# --- FD probe admissibility (no solve) --------------------------------------
-# Measured 2026-09-07 on VESSL run 369367259196 (the post-#931 re-measure):
-# all six ``ad_vs_fd|pec_short|*|eps|*`` legs came back FAIL with
-# ``g_fd = nan``. The minus arm of the central difference, not the gradient,
-# is what produced the NaN, and the cause is in THIS file rather than in the
-# realization change: the pec_short θ window is vacuum, so θ0 − h = −0.05
-# evaluates the guide at eps_r = 0.95, and dt is picked at 0.99 of the
-# eps_r = 1 Courant limit. 0.99 / sqrt(0.95) = 1.0157 — the FD minus step has
-# always been 1.6 % OUTSIDE the stability limit, on every rung.
-#
-# Why it only surfaces now, measured rather than inferred (coarse rung, x64,
-# θ = −0.05): the coarse rung stays bounded to 8545 steps (max|S| = 1.00254
-# for pec_short, 1.00196 for thru), the mid rung returns NaN for pec_short AND
-# for thru — a DUT with no conductor anywhere. So eps_r < 1 alone is
-# sufficient; the ownership contract did not cause it. What the contract
-# removed is the thing that used to hide it on this DUT: the lane no longer
-# folds the short into a sigma = 1e10 volume, and that lossy block sat one
-# cell from the window and damped the growing mode.
-#
-# All eps stencils are second-order forward at
-# unchanged theta0 and h. Every arm now gets the full-array certificate below.
-# See waveguide_chain_battery_predeclaration.md, dated amendment.
-
 def guide_interior_cells(sim: Simulation) -> tuple[int, int]:
     """Cell counts across the guide interior on (y, z) — ``A_M/dx`` and
     ``B_M/dx``, both integral at every ladder rung by the assertions at the
@@ -663,7 +571,8 @@ def guide_interior_cells(sim: Simulation) -> tuple[int, int]:
 
 def fd_stencil(kind: str, *, theta0: float | None = None,
                h: float | None = None) -> dict:
-    """The declared stencil; theta0 remains the shipped eps fixture."""
+    """The declared stencil; theta0 remains the shipped eps fixture.
+    The pec_short vacuum window at eps_r = 0.95 puts the central-difference minus step outside the stability limit."""
     if kind not in ("eps", "sigma"):
         raise ValueError(f"unknown theta kind: {kind}")
     theta0 = (THETA0_EPS if kind == "eps" else THETA0_SIGMA_S_PER_M) if theta0 is None else float(theta0)

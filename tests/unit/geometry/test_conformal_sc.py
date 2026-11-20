@@ -36,7 +36,7 @@ def test_plane_lengths_and_areas_on_every_component(axis, fraction):
     plane = (2 - pads[axis] + fraction) * grid.widths[axis]
     lo, hi = [-1.] * 3, [1.] * 3
     hi[axis] = plane
-    lengths, areas = compute_conformal_fractions(grid, [Box(tuple(lo), tuple(hi))], clamp=False)
+    lengths, areas = compute_conformal_fractions(grid, [Box(tuple(lo), tuple(hi))], clamp=False, field_dtype=np.float32)
     for component in range(3):
         expected_l = np.empty(grid.shape)
         expected_s = np.empty(grid.shape)
@@ -57,7 +57,7 @@ def test_sphere_faces_against_circle_rectangle_integral(normal):
     center = [.002] * 3
     center[u] = .0024 - .2
     radius = .2
-    _, areas = compute_conformal_fractions(grid, [Sphere(tuple(center), radius)], clamp=False)
+    _, areas = compute_conformal_fractions(grid, [Sphere(tuple(center), radius)], clamp=False, field_dtype=np.float32)
     for n, j in ((1, 1), (2, 2), (3, 3)):
         index = [0] * 3
         index[normal], index[u], index[v] = n, 2, j
@@ -77,7 +77,6 @@ def test_sc_three_cell_incidence():
     areas = [np.ones((3, 3, 3)) for _ in range(3)]
     areas[0][1, 1, 1], areas[1][1, 1, 1], areas[2][1, 1, 1] = .1, .3, 0.
     expected = [a.copy() for a in lengths]
-    # Enumerate each face's four bounding E edges independently.
     for normal in range(3):
         transverse = [a for a in range(3) if a != normal]
         for face in np.ndindex((3, 3, 3)):
@@ -93,12 +92,13 @@ def test_sc_three_cell_incidence():
         np.testing.assert_array_equal(actual, want)
 
 
-def test_union_is_taken_at_nodes_before_edge_roots():
+def test_two_box_union_keeps_a_sub_cell_gap_open():
+    """An x edge from a node inside one Box to a node inside the other crosses the half-cell gap between them; its free length is that gap."""
     grid = RectGrid(widths=(1.,) * 3, pad_x_lo=0, pad_y_lo=0, pad_z_lo=0)
     shapes = [Box((-10.,) * 3, (.25, 10., 10.)),
               Box((.75, -10., -10.), (10.,) * 3)]
-    lengths, _ = compute_conformal_fractions(grid, shapes, clamp=False)
-    assert float(lengths[0][0, 1, 1]) == 0.  # Both union endpoints are metal.
+    lengths, _ = compute_conformal_fractions(grid, shapes, clamp=False, field_dtype=np.float32)
+    assert float(lengths[0][0, 1, 1]) == .5
 
 
 @pytest.mark.parametrize('value', [0., .05, .2, float('nan')])
@@ -115,9 +115,9 @@ def test_mu_faces_and_reference_wall_geometry():
     mats = with_components(init_materials(grid.shape), grid, periodic=(False,) * 3)
     wall = Box((-1.,) * 3, (.0027, 1., 1.))
     obstacle = Sphere((.007,) * 3, .0015)
-    weights, _ = compute_conformal_fractions(grid, [wall, obstacle])
+    weights, _ = compute_conformal_fractions(grid, [wall, obstacle], field_dtype=np.float32)
     eps, inv, reference = form_reference_operands(
-        grid, mats, subpixel_smoothing=False, conformal_weights=weights, boundary_pec_shapes=[wall])
+        grid, mats, dtype=np.float32, subpixel_smoothing=False, conformal_weights=weights, boundary_pec_shapes=[wall])
     assert inv is None
     assert float(reference[0][0][7, 7, 7]) == 1.
     assert float(weights[0][7, 7, 7]) == 0.
@@ -139,7 +139,6 @@ def identity_scene(aligned):
     return sim
 
 
-# Float32 bit patterns captured on main e189d9152 before any production edit.
 MAIN_TRACE_BITS = {'False': [0, 0, 0, 0, 917736138, 935342772, 945896509, 953098004, 958945492, 964726106, 968705154, 973532710, 976963100, 981368214, 984216514, 987733456, 990984609, 993686643, 996988164, 999616566, 1002021373, 1004887813, 1007454164, 1009439202, 1011745991, 1014403569, 1016230226, 1017948513, 1019876438, 1022020126, 1023895993, 1025184621, 1026577102, 1028066713, 1029643647, 1031294878, 1032401681, 1033276277, 1034159787, 1035040215], 'True': [0, 0, 0, 0, 917736138, 935342772, 945896509, 953098004, 958945492, 964726106, 968705154, 973534024, 976964823, 981368506, 984212455, 987715655, 990961361, 993634828, 996887208, 999527620, 1001876469, 1004664621, 1007289198, 1009204636, 1011421774, 1013967205, 1015942847, 1017576345, 1019402313, 1021423460, 1023524669, 1024727061, 1026018185, 1027389997, 1028831568, 1030328463, 1031831258, 1032608419, 1033384112, 1034147067]}
 
 
@@ -190,8 +189,8 @@ def test_collapsed_2d_geometry_repeats_the_node_slice():
     grid = Grid(20e9, (.012, .012, .001), dx=.001, cpml_layers=0, mode='2d_tmz')
     sphere = Sphere((.006, .006, 0.), .0023)
     cylinder = Cylinder((.006, .006, 0.), .0023, 1., axis='z')
-    for actual, expected in zip(compute_conformal_fractions(grid, [sphere]),
-                                 compute_conformal_fractions(grid, [cylinder])):
+    for actual, expected in zip(compute_conformal_fractions(grid, [sphere], field_dtype=np.float32),
+                                 compute_conformal_fractions(grid, [cylinder], field_dtype=np.float32)):
         np.testing.assert_array_equal(actual, expected)
 
 
@@ -224,7 +223,6 @@ def test_waveguide_extractors_receive_e_and_h_operands(monkeypatch, normalize, m
 def test_marching_square_saddles(positive, negative, expected):
     from rfx.geometry.conformal_cells import face_fraction
     corners = [np.array([d]) for d in (positive, negative, positive, negative)]
-    # Two disjoint corner triangles or a rectangle with two triangles removed.
     assert face_fraction(corners, (2., 3.))[0] == pytest.approx(expected)
 
 
@@ -235,7 +233,7 @@ def test_waveguide_reference_conformal_eps_is_the_port_medium():
     grid = Simulation(10e9, (.02, .02, .02), dx=.002, boundary='pec')._build_grid()
     wall = Box((-1., .0125, -1.), (1., 1., 1.))
     eps, _, (lengths, _) = form_reference_operands(
-        grid, init_materials(grid.shape), subpixel_smoothing=False, conformal_weights=(None,),
+        grid, init_materials(grid.shape), dtype=np.float32, subpixel_smoothing=False, conformal_weights=(None,),
         boundary_pec_shapes=[wall], reference_eps=2.5)
     ex, ey = np.asarray(eps[0]), np.asarray(eps[1])
     ly = np.asarray(lengths[1])
@@ -254,17 +252,17 @@ def test_conformal_run_keeps_a_filament_and_refuses_a_body_holding_no_node():
     sim.add_source((.016, .006, .007), 'ez', amplitude_kind='current')
     assert sim.run(n_steps=2, conformal_pec=True, skip_preflight=True).state is not None
     tiny = Simulation(10e9, (.02, .02, .02), dx=.002, boundary='pec')
-    tiny.add(Sphere((.011, .011, .011), .0012), material='pec')  # 0.6 cell, centred in a cell: no node inside
+    tiny.add(Sphere((.011, .011, .011), .0012), material='pec')
     tiny.add_source((.004, .006, .007), 'ez', amplitude_kind='current')
     with pytest.raises(NotImplementedError, match='holds no grid node'):
         tiny.run(n_steps=2, conformal_pec=True, skip_preflight=True)
 
 
 @pytest.mark.parametrize('periodic, box, refused', [
-    ('', ((.004, .004, .006), (.008, .008, .0064)), True),     # 0.4 cell thick, no node inside
-    ('', ((.004, .004, .006), (.008, .008, .007)), False),     # one cell thick, both faces on node planes
-    ('xy', ((.0043, .004, .006), (.008, .008, .006)), True),   # sheet edge 0.3 cell off on a periodic axis
-    ('xy', ((.004, .004, .006), (.008, .008, .006)), False),   # sheet on node planes, periodic
+    ('', ((.004, .004, .006), (.008, .008, .0064)), True),
+    ('', ((.004, .004, .006), (.008, .008, .007)), False),
+    ('xy', ((.0043, .004, .006), (.008, .008, .006)), True),
+    ('xy', ((.004, .004, .006), (.008, .008, .006)), False),
 ])
 def test_a_box_holding_no_node_inside_is_admitted_only_on_node_planes(periodic, box, refused):
     """Node-plane Boxes are carried by cut-cell fractions even with no node strictly inside.
@@ -272,17 +270,15 @@ def test_a_box_holding_no_node_inside_is_admitted_only_on_node_planes(periodic, 
     C4 found run()
     lost such a box: behind/front Ez energy 1.0003. The old all-1 expectation
     ("staircase faces remain") pinned that skip instead of the closed PEC set.
+    E and H span one interval along the component and the other two directions, respectively.
     """
     from rfx.grid import Grid
     grid = Grid(10e9, (.012, .012, .012), dx=.001, cpml_layers=0, periodic_axes=periodic)
     if refused:
         with pytest.raises(NotImplementedError, match='cell off the node lattice'):
-            compute_conformal_fractions(grid, [Box(*box)])
+            compute_conformal_fractions(grid, [Box(*box)], field_dtype=np.float32)
     elif not periodic:
-        lengths, areas = compute_conformal_fractions(grid, [Box(*box)])
-        # Corners / dx give nodes (4, 4, 6) to (8, 8, 7), inclusive.
-        # E spans one interval along its component; H spans the other two.
-        # These six ranges contain 40, 40, 25 edges and 20, 20, 32 faces.
+        lengths, areas = compute_conformal_fractions(grid, [Box(*box)], field_dtype=np.float32)
         edge_ranges = ((slice(4, 8), slice(4, 9), slice(6, 8)),
                        (slice(4, 9), slice(4, 8), slice(6, 8)),
                        (slice(4, 9), slice(4, 9), slice(6, 7)))
@@ -296,5 +292,36 @@ def test_a_box_holding_no_node_inside_is_admitted_only_on_node_planes(periodic, 
                 np.testing.assert_array_equal(actual, expected,
                                               err_msg=f'box1: {label}{"xyz"[component]} closed set')
     else:
-        lengths, areas = compute_conformal_fractions(grid, [Box(*box)])
+        lengths, areas = compute_conformal_fractions(grid, [Box(*box)], field_dtype=np.float32)
         assert all(float(jnp.min(a)) == 1. for a in lengths + areas)
+
+
+@pytest.mark.parametrize('precision,field_dtype,expected_dtype', [
+    ('mixed', jnp.float16, jnp.float32),
+    ('float32', jnp.float32, jnp.float32),
+    ('float64', jnp.float64, jnp.float64),
+])
+@pytest.mark.parametrize('material_dtype', [jnp.float32, jnp.float64])
+def test_conformal_operand_dtype_follows_run(precision, field_dtype, expected_dtype, material_dtype):
+    """User permittivity precision does not select the conformal fraction dtype."""
+    from tests._x64_compat import enable_x64
+    from rfx.model.tensor_operands import form_tensor_operands
+
+    with enable_x64():
+        sim = Simulation(20e9, (.012,) * 3, dx=.001, boundary='pec', precision=precision)
+        sphere = Sphere((.0061, .0058, .0057), .0023)
+        sim.add(sphere, material='pec')
+        grid = sim._build_grid()
+        materials = init_materials(grid.shape)._replace(
+            eps_r=jnp.full(grid.shape, 2.5, dtype=material_dtype))
+        _, _, lengths, _, areas = form_tensor_operands(
+            sim, grid, materials, subpixel_smoothing=False, conformal=True,
+            conformal_min_weight=.1, pec_shapes=[sphere])
+        _, _, reference = form_reference_operands(
+            grid, materials, dtype=field_dtype, subpixel_smoothing=False,
+            conformal_weights=lengths, boundary_pec_shapes=[sphere])
+        for fractions in ((lengths, areas), reference):
+            for components in fractions:
+                assert all(array.dtype == expected_dtype for array in components)
+                assert any(np.any((np.asarray(array) > 0) & (np.asarray(array) < 1))
+                           for array in components)

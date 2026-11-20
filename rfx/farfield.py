@@ -39,7 +39,6 @@ from rfx.measurement.farfield import Grid as Grid
 from rfx.measurement.farfield import integrate_radiated_power as integrate_radiated_power
 
 
-# Lazy compatibility exports keep record definitions free of import cycles.
 _LAZY_EXPORTS = {
     "compute_far_field": "rfx.measurement.farfield",
     "compute_far_field_jax": "rfx.measurement.farfield",

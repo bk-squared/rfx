@@ -27,7 +27,7 @@ def _make_grid(*, cpml_layers=8, face_layers=None, domain=(0.04, 0.04, 0.04)):
 def test_symmetric_bit_identity_ntffbox_from_grid():
     """Symmetric face_layers -> from_grid produces cpml_lo_* == cpml_hi_*
     == cpml_layers on every face. Refactor is a no-op on the common case."""
-    grid = _make_grid(cpml_layers=8)  # face_layers defaults to {f: 8 for f in faces}
+    grid = _make_grid(cpml_layers=8)
     box = NTFFBox.from_grid(
         grid,
         i_lo=10, i_hi=grid.nx - 10,
@@ -82,7 +82,6 @@ def test_ntff_box_outside_cpml_has_no_absorber_overlap():
     Exercises the real ``_validate_cfg_ntff_absorber_overlap`` reached by
     ``sim.preflight()`` (rfx/api/_preflight.py) — the production code that
     guards against an NTFF integration surface sitting in active CPML."""
-    # cpml thickness = 8 * 2 mm = 16 mm; box spans [30, 90] mm on every axis.
     codes = _preflight_codes((0.030, 0.030, 0.030), (0.090, 0.090, 0.090))
     assert "absorber_overlap" not in codes, (
         f"clean interior box wrongly flagged as absorber overlap; codes={codes}"
@@ -106,16 +105,13 @@ def test_ntff_box_inside_cpml_trips_absorber_overlap_lo_and_hi():
     z=118mm) were both still inside the requested domain and used to
     false-fire under the old interior-frame comparison.
     """
-    # lo corner x = -5 mm: 5 mm past the x=0 edge, into the lo-face
-    # absorber (which extends to x=-16mm).
-    codes_lo = _preflight_codes((-0.005, 0.030, 0.030), (0.090, 0.090, 0.090))
+    LOW_ABSORBER_X_M = -0.005
+    codes_lo = _preflight_codes((LOW_ABSORBER_X_M, 0.030, 0.030), (0.090, 0.090, 0.090))
     assert "absorber_overlap" in codes_lo, (
         f"lo-face inside-CPML NTFF box was NOT flagged; codes={codes_lo}"
     )
-    # hi corner z = 125 mm: 5 mm past the z=120mm edge, into the hi-face
-    # absorber (which extends to z=136mm). Verifies the guard is
-    # two-sided, not just lo-face.
-    codes_hi = _preflight_codes((0.030, 0.030, 0.030), (0.090, 0.090, 0.125))
+    HIGH_ABSORBER_Z_M = 0.125
+    codes_hi = _preflight_codes((0.030, 0.030, 0.030), (0.090, 0.090, HIGH_ABSORBER_Z_M))
     assert "absorber_overlap" in codes_hi, (
         f"hi-face inside-CPML NTFF box was NOT flagged; codes={codes_hi}"
     )
@@ -142,15 +138,11 @@ def test_ntffbox_from_grid_places_faces_outside_per_face_active_cpml():
         k_lo=k_lo, k_hi=k_hi,
         freqs=jnp.array([3e9], dtype=jnp.float32),
     )
-    # The box stores the per-face active-CPML thickness verbatim from the
-    # grid; the requested indices must clear it on each z face independently.
     assert k_lo >= box.cpml_lo_z, (
         f"k_lo={k_lo} sits inside active lo-z CPML (={box.cpml_lo_z})"
     )
     assert k_hi <= grid.nz - box.cpml_hi_z, (
         f"k_hi={k_hi} sits inside active hi-z CPML (={box.cpml_hi_z})"
     )
-    # Asymmetry is real: the thin lo face (4) admits a closer box than the
-    # thick hi face (16) — a genuine per-face property, not tautological.
     assert box.cpml_lo_z == 4
     assert box.cpml_hi_z == 16

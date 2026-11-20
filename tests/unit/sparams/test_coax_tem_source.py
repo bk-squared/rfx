@@ -20,26 +20,24 @@ def test_thru_source_does_not_drive_longitudinal_fields(monkeypatch, geometry):
     E/H source tables and the actual shorted edges handed to the runner,
     using the runner's Yee curl operators. Sampling analytic 1/r on cell
     indices fails this invariant at the staircased walls (#1356).
+    A one-step source table holds only the zero at t=0.
     """
     class SourceChecked(Exception):
         pass
 
     def inspect_source(grid, materials, n_steps, **kw):
+        """The pulse starts at zero, so read the first sample above 1e-3 of the table's peak."""
         shape = (grid.nx, grid.ny, 1)
         fields = {c: np.zeros(shape, dtype=np.float32)
                   for c in ("ex", "ey", "hx", "hy")}
+        SOURCE_SAMPLE_PEAK_FRACTION = 1e-3
         for source in kw["sources"] + kw["mag_sources"]:
-            # The pulse starts at zero (issue 1668): read the first sample
-            # above 1e-3 of the table's peak. Each table is the cell's
-            # profile times one waveform, so every E (and every H) table
-            # picks the same step.
             table = np.abs(np.asarray(source.waveform))
-            n_on = int(np.argmax(table > 1e-3 * table.max()))
+            n_on = int(np.argmax(table > SOURCE_SAMPLE_PEAK_FRACTION * table.max()))
             fields[source.component][source.i, source.j, 0] += float(source.waveform[n_on])
         k = kw["sources"][0].k
         masks = [np.asarray(m)[:, :, k:k + 1] for m in kw["pec_edge_masks"]]
         for comp, mask in zip(("ex", "ey"), masks):
-            # The runner clamps these edges after injecting the source.
             fields[comp][mask] = 0.0
         for pair in (("ex", "ey"), ("hx", "hy")):
             scale = max(float(np.max(np.abs(fields[c]))) for c in pair)
@@ -47,12 +45,11 @@ def test_thru_source_does_not_drive_longitudinal_fields(monkeypatch, geometry):
             for c in pair:
                 fields[c] = jnp.asarray(fields[c] / scale)
 
-        # dx=1, dt=mu0 remove dimensions; only transverse cancellation is
-        # tested. The z profile cannot contribute to either longitudinal curl.
+        DIMENSIONLESS_DX = 1.0
         state = init_state(shape)._replace(ex=fields["ex"], ey=fields["ey"])
-        h = update_h(state, init_materials(shape), dt=MU_0, dx=1.0, high_wall=unpadded_high_walls(grid))
+        h = update_h(state, init_materials(shape), dt=MU_0, dx=DIMENSIONLESS_DX, high_wall=unpadded_high_walls(grid))
         _, _, ez_curl = curl_h(fields["hx"], fields["hy"], state.hz,
-                               dx=1.0, periodic=(False, False, False))
+                               dx=DIMENSIONLESS_DX, periodic=(False, False, False))
         hz_error = float(jnp.max(jnp.abs(h.hz)))
         ez_error = float(np.max(np.abs(np.asarray(ez_curl)[~masks[2]])))
         assert hz_error < 2e-6, f"TEM source creates longitudinal H: {hz_error}"
@@ -62,21 +59,19 @@ def test_thru_source_does_not_drive_longitudinal_fields(monkeypatch, geometry):
     sim = _sim()
     port = sim._coaxial_ports[0]
     dx = float(sim._build_grid().dx)
+    NARROW_ANNULUS_RADIAL_CELLS = 2.5
     if geometry == "off_center":
-        # Move the pin/shell centre by a fraction of a cell in each direction.
         sim._coaxial_ports[0] = port._replace(
             position=(port.position[0] + 0.3 * dx,
                       port.position[1] - 0.2 * dx, port.position[2]),
         )
     elif geometry == "narrow_annulus":
-        # A covered but coarsely resolved annulus, 2.5 cells across radially.
-        sim._coaxial_ports[0] = port._replace(outer_radius=port.pin_radius + 2.5 * dx)
+        sim._coaxial_ports[0] = port._replace(outer_radius=port.pin_radius + NARROW_ANNULUS_RADIAL_CELLS * dx)
 
     monkeypatch.setattr("rfx.simulation.run", inspect_source)
-    # Tables long enough to hold the pulse to t0 + 4.5*tau (a one-step table
-    # holds only the zero at t=0). The runner is intercepted; nothing steps.
+    PULSE_END_TAU_MULTIPLIER = 4.5
     wf = sim._coaxial_ports[0].excitation
-    n_steps = int(np.ceil((wf.t0 + 4.5 * wf.tau) / float(sim._build_grid().dt))) + 1
+    n_steps = int(np.ceil((wf.t0 + PULSE_END_TAU_MULTIPLIER * wf.tau) / float(sim._build_grid().dt))) + 1
     with pytest.raises(SourceChecked):
         sim.compute_coaxial_two_port(n_steps=n_steps, freqs=np.array([8e9]))
 
@@ -95,9 +90,8 @@ def test_grid_tem_builder_preserves_periodic_conductor_cells(monkeypatch, axis):
     class ReachedPeriodicMask(Exception):
         pass
     def check(values, **kwargs):
+        """On a periodic transverse axis, the last cell is real and owns both its last-node edge and the wrapped node-zero edge."""
         masks = original(values, **kwargs)
-        # On a periodic transverse axis, the last cell is real and owns
-        # both its last-node edge and the wrapped node-zero edge.
         component = 1 if axis == 'x' else 0
         assert kwargs.get('periodic') == tuple(a == axis for a in 'xyz')
         assert bool(masks[component][tuple(cell)])

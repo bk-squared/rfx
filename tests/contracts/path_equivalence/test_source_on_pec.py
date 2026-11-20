@@ -23,6 +23,8 @@ def waveform(t):
 
 
 def model(path='uniform', kind='volume', *, adjacent=False, component='ez'):
+    """H sources are internal declarations because add_source publicly admits E only."""
+    OFF_NODE_SHEET_X_CELLS = 6.2
     kwargs = {}
     if 'graded' in path:
         for axis, n in zip('xyz', (12, 8, 8)):
@@ -35,15 +37,13 @@ def model(path='uniform', kind='volume', *, adjacent=False, component='ez'):
         low_yz = float(np.cumsum(kwargs['dy_profile'])[2]) if 'graded' in path else 3 * DX
         sim.add(Box((6 * DX, low_yz, low_yz), point(8, 5, 5)), material='pec')
     elif kind == 'sheet':
-        # Off-node declaration: only the realized x=6 plane owns the source.
-        sim.add(Box(point(6.2, 3, 3), point(6.2, 5, 5)), material='pec')
+        sim.add(Box(point(OFF_NODE_SHEET_X_CELLS, 3, 3), point(OFF_NODE_SHEET_X_CELLS, 5, 5)), material='pec')
     elif kind == 'wire':
         wire_lo = float(np.sum(kwargs['dz_profile'][:3])) if 'graded' in path else 3 * DX
         sim.add(PolylineWire(((6 * DX, 4 * DX, wire_lo), point(6, 4, 5)), radius=0),
                 material='pec')
     position = point(5 if adjacent else 6, 4, 4)
     sim.add_source(position, 'ez', waveform=waveform, amplitude_kind='field')
-    # H sources are internal declarations; add_source publicly admits E only.
     sim._ports[0] = replace(sim._ports[0], component=component)
     sim.add_probe(position, component)
     return sim
@@ -62,7 +62,6 @@ def execute(sim, path, *, entry='run', skip=True):
     kwargs = dict(n_steps=3, skip_preflight=skip)
     if 'distributed' in path:
         if len(jax.devices()) < 2:
-            # One accelerator (or one host device): the multi-device rows cannot run here.
             pytest.skip(f'needs two devices on one backend, found {len(jax.devices())}')
         kwargs['devices'] = jax.devices()[:2]
         if entry == 'forward':
@@ -101,16 +100,15 @@ def test_dead_h_source_refused(path, component):
 
 @pytest.mark.parametrize('path', PATHS)
 def test_h_source_with_only_one_pec_loop_edge_passes_admission(path):
-    # The z filament owns one edge of the Hx curl loop, not the other three.
     sim = model(path, 'wire', component='hx')
     nu = 'graded' in path
     grid = sim._build_nonuniform_grid() if nu else sim._build_grid()
+    assert sum(bool(edges[c][6, j, k]) for edges in (realized_conductors(sim, grid, nonuniform=nu).pec_edges,) for c, j, k in ((1, 4, 4), (1, 4, 5), (2, 4, 4), (2, 5, 4))) == 1, "Hx curl loop must contain exactly one PEC edge"
     solve_conductors(sim, grid, nonuniform=nu)
 
 
 def test_h_source_with_only_one_pec_loop_edge_runs():
-    # Only uniform single-device currently carries internal H soft sources
-    # and wires; other lanes retain their existing feature refusals.
+    """Only uniform single-device carries internal H soft sources and wires."""
     result = execute(model('uniform', 'wire', component='hx'), 'uniform')
     assert np.max(np.abs(result.time_series)) > 0
 

@@ -56,7 +56,7 @@ def test_forward_record_user_jit_matches_eager(kind):
 
 
 def fallback_scene(kind):
-    """Uniform scenes from the leader's probe_fallback_user_jit.py."""
+    """Uniform scenes from probe_fallback_user_jit.py."""
     if kind == 'waveguide':
         sim = Simulation(12e9, (.06, .02, .01), dx=.002, cpml_layers=4,
                          boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'})
@@ -111,7 +111,7 @@ def test_fallback_port_s_under_jit_is_refused_by_name():
     # port_s11_freqs before dispatch (probe 5); a waveguide port with a lumped port here.
     sim = fallback_scene('waveguide')
     sim.add_port((.040, .010, .004), 'ez', impedance=50., waveform=GaussianPulse(f0=10e9, bandwidth=.8))
-    with pytest.raises(NotImplementedError, match='waveguide ports use compute_waveguide_s_matrix'):
+    with pytest.raises(NotImplementedError, match=r'add_waveguide_port\(.*\) uses compute_waveguide_s_matrix'):
         jax.jit(lambda: sim.forward(
             n_steps=N_STEPS, distributed=True, devices=jax.devices('cpu')[:2], skip_preflight=True,
             port_s11_freqs=np.array([10e9, 11e9])).s_params)()

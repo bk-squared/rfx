@@ -20,6 +20,8 @@ eager loops are untouched (their removal is Stage 3).
 
 from __future__ import annotations
 
+from rfx.measurement.calculator_drive import calculator_drive
+
 from rfx.errors import RfxUnsupported
 
 from rfx._internal._precision import resolve_field_dtype
@@ -72,7 +74,10 @@ def compute_lumped_wire_s_matrix_via_scan(
     """Full lumped/wire N-port S-matrix via the production scan.
 
     Drives each sparam-eligible lumped/wire port in turn through the
-    production JIT scan, then applies the shared pure decomposers.
+    production JIT scan, then applies the shared pure decomposers. The
+    record-end reader classifies each port record as wire or lumped from its
+    metadata, because the uniform mixed scan can hold lumped specs in the wire
+    list.
 
     Parameters
     ----------
@@ -136,6 +141,11 @@ def compute_lumped_wire_s_matrix_via_scan(
     refuse_wall_loss(sim, "lumped/wire S-matrix scan and eager port probes")
     from rfx.runners._admission import refuse_plain_sources_s_matrix
     refuse_plain_sources_s_matrix(sim, main_record=_main_wire_record)
+    from rfx.runners._admission import refuse_foreign_s_drives, require_isolated_s_drive
+    if _main_wire_record:
+        require_isolated_s_drive(sim)
+    else:
+        refuse_foreign_s_drives(sim)
     conformal_pec = (bool(sim._boundary_spec.conformal_faces())
                      if conformal_pec is None else conformal_pec)
     if devices is not None and conformal_pec and sim._has_pec_to_conform():
@@ -177,7 +187,8 @@ def compute_lumped_wire_s_matrix_via_scan(
     if not graded:
         sim._require_uniform_mesh("compute_lumped_wire_s_matrix_via_scan")
         from rfx.runners._admission import admit
-        admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec})
+        admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec,
+                                               "subpixel_smoothing": subpixel_smoothing})
     if not skip_preflight:
         from rfx._diagnostic_transport import report_diagnostics
         report_diagnostics(sim._auto_preflight(
@@ -300,7 +311,7 @@ def compute_lumped_wire_s_matrix_via_scan(
             from rfx.runners.nonuniform import run_nonuniform_path
             from rfx.sources.sources import GaussianPulse
             drive = copy(sim)
-            drive._ports = [replace(pe, excite=(pe is eligible[j]), waveform=(
+            drive._ports = [replace(pe, excite=calculator_drive(pe is eligible[j], excite=pe.excite), waveform=(
                 pe.waveform if pe.waveform is not None or pe is not eligible[j]
                 else GaussianPulse(f0=sim._freq_max / 2, bandwidth=0.8)))
                 if pe.is_port else pe for pe in sim._ports]
@@ -309,7 +320,8 @@ def compute_lumped_wire_s_matrix_via_scan(
                                          subpixel_smoothing=subpixel_smoothing, _drive_scan=True,
                                          waveguide_reference_only=True)
             columns.append((record_order.index(j), np.asarray(record.s_params)[:, record_order.index(j)]))
-            raw = {"sparam_time_records": record.sparam_time_records or (), "dt": record.dt}
+            raw = {"sparam_time_records": record.sparam_time_records or (), "dt": record.dt,
+                   "wire": record.wire_port_sparams, "lumped": record.lumped_port_sparams}
         elif devices is not None:
             raw = _distributed_lumped_accumulators(sim, grid, eligible, freqs,
                                                   n_steps, devices,
@@ -339,7 +351,7 @@ def compute_lumped_wire_s_matrix_via_scan(
             from copy import copy
             from dataclasses import replace
             driven_sim = copy(sim)
-            driven_sim._ports = [replace(pe, excite=(pe is eligible[j]))
+            driven_sim._ports = [replace(pe, excite=calculator_drive(pe is eligible[j], excite=pe.excite))
                                  if pe.is_port else pe for pe in sim._ports]
             receivers_by_id = {f"port:{i}:mode:0": pe for i, pe in zip(eligible_ids, eligible)}
             plane_counts = {}
@@ -362,9 +374,21 @@ def compute_lumped_wire_s_matrix_via_scan(
                 receivers_by_id[f"{port_id}/plane{plane}"] = replace(pe, position=tuple(position))
             receivers = [receivers_by_id[record.id] for record in raw.get("sparam_time_records", ())]
             end = injection_end(n_steps, grid.dt, records=receivers, grid=grid, sim=driven_sim)
+            from rfx.measurement.record_readers import port_s_reader, realized_port_metadata
+            time_records = raw.get("sparam_time_records", ())
+            pairs = []
+            for family in ('wire', 'lumped'):
+                for meta, _ in raw.get(family) or ():
+                    kind = ('wire' if not hasattr(meta, 'impedance') or hasattr(meta, 'live_cells')
+                            else 'lumped')
+                    pairs.append((kind, meta))
+            reader = (None if raw.get('wire_refplane') else port_s_reader(
+                time_records, realized_port_metadata(time_records, pairs),
+                drive_id=f'port:{eligible_ids[j]}:mode:0',
+                whole_port=True if graded else None))
             settling_runs.append(port_record_witness(
-                raw.get("sparam_time_records", ()), raw.get("dt", grid.dt),
-                end, freqs, freq_max=sim._freq_max))
+                time_records, raw.get("dt", grid.dt),
+                end, freqs, freq_max=sim._freq_max, reader=reader))
         if graded:
             continue
         accs = raw["wire"] if wire_mode else raw["lumped"]
@@ -548,7 +572,8 @@ def _distributed_lumped_accumulators(sim, grid, ports, freqs, n_steps, devices, 
     """S-driver adapter over the same in-loop main-record sampler as run()."""
     from rfx.runners.distributed_v2 import run_distributed
     result = run_distributed(sim, n_steps=n_steps, devices=devices,
-                             _source_port_indices=None if drive is None else (drive,),
+                             _source_port_indices=None if drive is None else tuple(
+                                 i for i in range(len(ports)) if calculator_drive(i == drive)),
                              s_param_freqs=freqs, compute_s_params=True)
     return {"lumped": result.lumped_port_sparams, "wire": result.wire_port_sparams,
             "sparam_time_records": result.sparam_time_records, "dt": result.dt}

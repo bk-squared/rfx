@@ -54,7 +54,6 @@ def test_solve_q_jvp_matches_fd_lossless(theta_deg):
     gamma = jnp.asarray(0.5 + 0.1j, dtype=jnp.complex64)
     v1, v2, v3 = _three_probes_from_amplitudes(alpha, gamma, q_true)
 
-    # Tangent: perturb v1.real
     tangent = jnp.asarray(1.0 + 0.0j, dtype=jnp.complex64)
     fd = _fd_jvp(lambda x: _solve_q(x, v2, v3), v1, tangent, h=1e-3)
     _, ad = jax.jvp(lambda x: _solve_q(x, v2, v3), (v1,), (tangent,))
@@ -88,7 +87,8 @@ def test_solve_q_returns_correct_root():
     """Primal forward returns the root whose phase matches v2/v1."""
     q_true = jnp.exp(-1j * jnp.asarray(0.4)).astype(jnp.complex64)
     alpha = jnp.asarray(1.0, dtype=jnp.complex64)
-    gamma = jnp.asarray(0.0, dtype=jnp.complex64)  # pure forward wave
+    ZERO_BACKWARD_WAVE = 0.0
+    gamma = jnp.asarray(ZERO_BACKWARD_WAVE, dtype=jnp.complex64)
     v1, v2, v3 = _three_probes_from_amplitudes(alpha, gamma, q_true)
     q = _solve_q(v1, v2, v3)
     assert jnp.allclose(q, q_true, atol=1e-5), f"got q={q} expected {q_true}"
@@ -110,14 +110,14 @@ def test_solve_q_jvp_w_r_t_v3():
     )
 
 
-# ---------------------------------------------------------------- issue: G2 NaN
 def _nprobe_cost(g, scale):
     """|S11| from extract_msl_nprobe for a synthetic 2-wave field whose
     backward amplitude is parameterized by the real latent ``g``."""
     from rfx.probes.msl_wave_decomp import extract_msl_nprobe
     delta = 381e-6
     x = jnp.array([0.0, delta, 2.0 * delta], dtype=jnp.float32)
-    beta_true = jnp.asarray(213.0, dtype=jnp.float32)   # ~6 GHz MSL class
+    MSL_CLASS_BETA_RAD_PER_M = 213.0
+    beta_true = jnp.asarray(MSL_CLASS_BETA_RAD_PER_M, dtype=jnp.float32)
     alpha = scale * jnp.asarray(1.0 + 0.2j, dtype=jnp.complex64)
     gamma = scale * g * jnp.asarray(0.3 + 0.1j, dtype=jnp.complex64)
     ph = (beta_true * x).astype(jnp.complex64)

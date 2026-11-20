@@ -13,13 +13,9 @@ import pytest
 from rfx.deembed import deembed_port_extension, deembed_thru, _s_to_t, _t_to_s
 
 
-# Speed of light — must match the module constant
 _C0 = 299_792_458.0
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _make_lossless_line_s(theta: float | np.ndarray) -> np.ndarray:
     """S-matrix of an ideal lossless transmission line with electrical length theta.
@@ -56,9 +52,6 @@ def _cascade_two_port(s_a: np.ndarray, s_b: np.ndarray) -> np.ndarray:
     return s_out
 
 
-# ---------------------------------------------------------------------------
-# Tests: port extension de-embedding
-# ---------------------------------------------------------------------------
 
 class TestDeembedPortExtension:
 
@@ -83,20 +76,20 @@ class TestDeembedPortExtension:
 
         For a quarter-wave extension (round-trip = pi), S11' = -S11.
         """
+        assert _C0 == deembed_port_extension.__globals__["_C0"], (
+            'the wavelength setup must use the de-embedding wave speed'
+        )
         f0 = 3e9
-        lam = _C0 / f0  # wavelength at f0
+        lam = _C0 / f0
         freqs = np.array([f0])
 
-        # Start with a known reflection
-        s = np.array([[[0.5 + 0.3j]]])  # 1-port, 1 freq
+        s = np.array([[[0.5 + 0.3j]]])
 
-        # --- Half-wave: round-trip = 2*pi => no change ---
         L_half = lam / 2.0
         s_de_half = deembed_port_extension(s, freqs, [L_half])
         np.testing.assert_allclose(s_de_half, s, atol=1e-12,
                                    err_msg="Half-wave de-embed should be identity")
 
-        # --- Quarter-wave: round-trip = pi => S11' = S11 * exp(j*pi) = -S11 ---
         L_quarter = lam / 4.0
         s_de_quarter = deembed_port_extension(s, freqs, [L_quarter])
         np.testing.assert_allclose(s_de_quarter, -s, atol=1e-12,
@@ -113,8 +106,6 @@ class TestDeembedPortExtension:
         freqs = np.array([f0])
         s = np.array([[[0.7 - 0.2j]]])
 
-        # Physical length = lam0/4, but eps_eff=4 => electrical length = lam0/2
-        # Round-trip phase = 2*pi => identity
         L = lam0 / 4.0
         s_de = deembed_port_extension(s, freqs, [L], eps_eff=4.0)
         np.testing.assert_allclose(s_de, s, atol=1e-12)
@@ -128,27 +119,25 @@ class TestDeembedPortExtension:
         n_freqs = 30
         freqs = np.linspace(1e9, 6e9, n_freqs)
 
-        # Construct a symmetric two-port with known phase
         rng = np.random.default_rng(42)
         s11 = 0.3 * np.exp(1j * rng.uniform(-np.pi, np.pi, n_freqs))
         s21 = 0.8 * np.exp(1j * rng.uniform(-np.pi, np.pi, n_freqs))
 
         s = np.zeros((2, 2, n_freqs), dtype=np.complex128)
         s[0, 0, :] = s11
-        s[1, 1, :] = s11  # symmetric
+        s[1, 1, :] = s11
         s[0, 1, :] = s21
-        s[1, 0, :] = s21  # reciprocal
+        s[1, 0, :] = s21
 
-        L = 0.01  # 1 cm feed lines on both ports
+        FEED_LINE_LENGTH_M = 0.01
+        L = FEED_LINE_LENGTH_M
         s_de = deembed_port_extension(s, freqs, [L, L])
 
-        # Check symmetry is preserved
         np.testing.assert_allclose(s_de[0, 0], s_de[1, 1], atol=1e-14,
                                    err_msg="S11 != S22 after symmetric de-embed")
         np.testing.assert_allclose(s_de[0, 1], s_de[1, 0], atol=1e-14,
                                    err_msg="S12 != S21 after symmetric de-embed")
 
-        # The magnitudes should be unchanged (phase-only correction)
         np.testing.assert_allclose(np.abs(s_de), np.abs(s), atol=1e-14,
                                    err_msg="Magnitude changed by phase-only de-embed")
 
@@ -171,28 +160,22 @@ class TestDeembedPortExtension:
         freqs = np.linspace(1e9, 10e9, n_freqs)
         beta = 2.0 * np.pi * freqs / _C0
 
-        # Original DUT S-params
         rng = np.random.default_rng(99)
         s_dut = 0.5 * (rng.standard_normal((2, 2, n_freqs))
                         + 1j * rng.standard_normal((2, 2, n_freqs)))
 
-        # Simulate the effect of feed lines (embedding)
-        L = np.array([0.015, 0.020])  # different port lengths
+        L = np.array([0.015, 0.020])
         s_meas = np.empty_like(s_dut)
         for i in range(2):
             for j in range(2):
                 s_meas[i, j, :] = s_dut[i, j, :] * np.exp(-1j * beta * (L[i] + L[j]))
 
-        # De-embed
         s_recovered = deembed_port_extension(s_meas, freqs, L)
 
         np.testing.assert_allclose(s_recovered, s_dut, atol=1e-12,
                                    err_msg="Round-trip embed/de-embed failed")
 
 
-# ---------------------------------------------------------------------------
-# Tests: thru-line de-embedding
-# ---------------------------------------------------------------------------
 
 class TestDeembedThru:
 
@@ -201,12 +184,10 @@ class TestDeembedThru:
         n_freqs = 20
         np.linspace(1e9, 10e9, n_freqs)
 
-        # Ideal thru: S11=S22=0, S12=S21=1
         s_thru = np.zeros((2, 2, n_freqs), dtype=np.complex128)
         s_thru[0, 1, :] = 1.0
         s_thru[1, 0, :] = 1.0
 
-        # Measured = thru (fixture is ideal => no effect)
         s_meas = s_thru.copy()
 
         s_dut = deembed_thru(s_meas, s_thru)
@@ -224,30 +205,26 @@ class TestDeembedThru:
         """
         n_freqs = 30
         freqs = np.linspace(1e9, 6e9, n_freqs)
-        theta_fix = 2.0 * np.pi * freqs * 0.01 / _C0  # 1 cm fixture
+        FIXTURE_LENGTH_M = 0.01
+        theta_fix = 2.0 * np.pi * freqs * FIXTURE_LENGTH_M / _C0
 
-        # Fixture: a lossless transmission line
         s_fixture = _make_lossless_line_s(theta_fix)
 
-        # DUT: a known attenuator (symmetric, reciprocal)
-        atten = 0.7  # |S21| = 0.7
+        DUT_TRANSMISSION_MAGNITUDE = 0.7
+        atten = DUT_TRANSMISSION_MAGNITUDE
         s_dut_true = np.zeros((2, 2, n_freqs), dtype=np.complex128)
         s_dut_true[0, 1, :] = atten
         s_dut_true[1, 0, :] = atten
-        # Small reflection
         s_dut_true[0, 0, :] = 0.1
         s_dut_true[1, 1, :] = 0.1
 
-        # Measured = fixture + DUT + fixture
         s_meas = _cascade_two_port(
             _cascade_two_port(s_fixture, s_dut_true),
             s_fixture,
         )
 
-        # Thru standard = fixture + fixture
         s_thru = _cascade_two_port(s_fixture, s_fixture)
 
-        # De-embed
         s_dut_recovered = deembed_thru(s_meas, s_thru)
 
         np.testing.assert_allclose(s_dut_recovered, s_dut_true, atol=1e-10,
@@ -273,9 +250,6 @@ class TestDeembedThru:
             deembed_thru(s_a, s_b)
 
 
-# ---------------------------------------------------------------------------
-# Tests: S <-> T matrix round-trip
-# ---------------------------------------------------------------------------
 
 class TestSTConversion:
 
@@ -284,8 +258,10 @@ class TestSTConversion:
         rng = np.random.default_rng(7)
         for _ in range(10):
             s = rng.standard_normal((2, 2)) + 1j * rng.standard_normal((2, 2))
-            # Ensure S21 != 0 for invertibility
             s[1, 0] = max(abs(s[1, 0]), 0.1) * np.exp(1j * np.angle(s[1, 0]))
+            assert s[1, 0] != 0, (
+                'the planted S21 must be nonzero for T-matrix invertibility'
+            )
             t = _s_to_t(s)
             s_back = _t_to_s(t)
             np.testing.assert_allclose(s_back, s, atol=1e-12)
@@ -370,9 +346,6 @@ class TestDeembedSeriesImpedance:
         freqs = np.linspace(3e9, 7e9, 9)
         L = 0.35e-9
         s_meas, _ = self._embedded_fixture(freqs, L, L)
-        # Perturb into a slightly non-reciprocal "measurement";
-        # the symmetric cascade must scale S21/S12 identically
-        # (predeclaration section 2: S21d/S12d == S21/S12).
         s_meas[0, 1, :] *= (1.0 + 1e-4)
         s_dut = deembed_series_inductance(s_meas, freqs, [L, L])
         ratio_meas = s_meas[1, 0] / s_meas[0, 1]
@@ -384,7 +357,7 @@ class TestDeembedSeriesImpedance:
                                  deembed_series_inductance)
         freqs = np.linspace(3e9, 7e9, 5)
         s = np.zeros((2, 2, 5), dtype=np.complex128)
-        s[1, 0] = s[0, 1] = 1.0  # invertible thru
+        s[1, 0] = s[0, 1] = 1.0
         with pytest.raises(ValueError):
             deembed_series_impedance(np.zeros((3, 3, 5), dtype=complex),
                                      freqs, np.zeros((2, 5)))
@@ -463,7 +436,10 @@ class TestDeembedLineSegment:
         rng = np.random.default_rng(11)
         s = rng.standard_normal((2, 2, 5)) + 1j * rng.standard_normal(
             (2, 2, 5))
-        s[1, 0] += 1.0  # keep S21 invertible
+        s[1, 0] += 1.0
+        assert np.all(s[1, 0] != 0), (
+            'the zero-length fixture must keep S21 invertible'
+        )
         s_dut = deembed_line_segment(s, freqs, [(80.0, 0.0), (80.0, 0.0)])
         np.testing.assert_allclose(s_dut, s, atol=1e-12)
 
@@ -473,7 +449,8 @@ class TestDeembedLineSegment:
         from rfx.deembed import deembed_line_segment, deembed_series_inductance
         freqs = np.linspace(3e9, 7e9, 9)
         L = 0.35e-9
-        tau = 1.0e-15                       # electrically negligible
+        ELECTRICALLY_NEGLIGIBLE_DELAY_S = 1.0e-15
+        tau = ELECTRICALLY_NEGLIGIBLE_DELAY_S
         seg = (L / tau, tau)
         s_meas, _ = self._embedded_fixture(freqs, seg, seg)
         d_seg = deembed_line_segment(s_meas, freqs, [seg, seg])

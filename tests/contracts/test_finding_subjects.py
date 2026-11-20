@@ -25,6 +25,7 @@ OUTSIDE_GENERAL = {
     'port_index_mirror_known_e_plane_offset': 'S-parameter mirror audit only',
     'port_junction_probe_clearance': 'S-parameter runtime junction audit only',
     'dc_film_traced_pair': 'runtime JAX callback, outside preflight capture',
+    'waveguide_aperture_size_unchecked': 'low-level initializer warning, outside preflight capture',
 }
 
 
@@ -72,14 +73,14 @@ def emitting_sites():
 
 
 def test_code_completeness():
+    """Traced advisory skips add one model code; every existing code keeps its class."""
     sites = emitting_sites()
     found = {code for _, _, code in sites} - OUTSIDE_GENERAL.keys()
     assert found <= CODE_SCOPE.keys(), sorted(found - CODE_SCOPE.keys())
     assert CODE_SCOPE.keys() <= found, sorted(CODE_SCOPE.keys() - found)
-    # Retained outcomes add declared_z; the f0 sheet-backed gap warning and the located pad refusal each add an object code; existing codes keep their class.
-    assert len(CODE_SCOPE) == 102
+    assert len(CODE_SCOPE) == 103
     assert {scope: list(CODE_SCOPE.values()).count(scope) for scope in set(CODE_SCOPE.values())} == {
-        'object': 74, 'place': 2, 'model': 24, 'mixed': 2}
+        'object': 74, 'place': 2, 'model': 25, 'mixed': 2}
 
 
 def check_report(sim, report, *, unavailable_labels=None):
@@ -132,7 +133,6 @@ SCENES = {
     'absorber_probe_proximity': {'absorber_proximity': [('probe[0]',), ('port[0]',)]},
     'dispersive_pole_at_face': {'dispersive_pole_at_absorber_face': [('geometry[0]',)]},
     'geometry_in_cpml': {'geometry_in_absorber': [('geometry[0]',)], 'lossless_q': [('geometry[0]',)]},
-    # S2 snapshot predeclarations: test_preflight_split_snapshot.py:110-113.
     'guards_box_alumina': {'lossless_q': [('geometry[0]',)], 'realization': [('geometry[0]',)]},
     'guards_lossless_q': {'lossless_q': [('geometry[0]',)], 'realization': [('geometry[0]',)]},
     'guards_no_sources': {},
@@ -162,20 +162,17 @@ SCENES = {
         'thin_conductor_leontovich_band_offset': [('thin_conductor[0]', 'port[0]')],
         'sheet_effective_size': [('thin_conductor[0]',)]},
     'sheet_congruence_off_lattice': {
-        # S2 snapshot predeclaration: test_preflight_split_snapshot.py:103.
         'realization': [('thin_conductor[0]',), ('thin_conductor[1]',)],
         'sheet_plane_realized': [('thin_conductor[0]', 'thin_conductor[1]')],
         'congruent_conductor_rasterization_parity': [('thin_conductor[0]', 'thin_conductor[1]')]},
     'conformal_fine_dx': {'port_aperture_snap': [('waveguide_port[0]',), ('waveguide_port[0]',)],
                          'port_freqs_below_cutoff': [('waveguide_port[0]',)]},
-    # S2 snapshot predeclaration: test_preflight_split_snapshot.py:119.
     'waveguide_nu_declared_geometry': {'port_evanescent': [('waveguide_port[0]',), ('waveguide_port[1]',)],
                                       'port_aperture_snap': [('waveguide_port[0]',)]},
     'ntff_absorber_overlap': {'absorber_overlap': [('ntff',)]},
     'floating_port': {'floating_port': [('geometry[0]', 'port[0]')],
                       'lossless_q': [('geometry[0]',)]},
     'off_lattice_edges': {'mesh_resolution': [('geometry[0]',)] * 2,
-                          # S2 snapshot predeclaration: test_preflight_split_snapshot.py:106.
                           'realization': [('geometry[0]',)],
                           'off_lattice_design_edges': [('geometry[0]',)]},
     'refplane_near_field': {'refplane_near_field': [('port[0]', 'port[1]')],
@@ -192,7 +189,6 @@ SCENES = {
         'msl_port_conductor_planes': [('geometry[0]', 'msl_port[0]')],
         'msl_port_geometry': [('msl_port[0]',), ('msl_port[0]',)]},
     'ntff_pec_overlap_full': {
-        # S2 snapshot predeclaration: test_preflight_split_snapshot.py:115.
         'realization': [('geometry[0]',)],
         'ntff_pec_overlap': [('geometry[0]', 'ntff')],
         'port_in_pec': [('geometry[0]', 'port[0]'), ('geometry[0]', 'probe[0]')],
@@ -200,7 +196,6 @@ SCENES = {
         'port_conductor_continues': [('geometry[0]', 'port[0]')]},
     'pec_boundary_open': {'ntff_near_field': [('geometry[0]', 'ntff')]},
     'guards_msl_sheet_probe': {
-        # S2 snapshot predeclaration: test_preflight_split_snapshot.py:112.
         'realization': [('geometry[0]',), ('geometry[1]',)],
         'absorber_proximity': [('port[0]',)], 'body_flush_on_absorber': [('geometry[0]',)],
         'lossless_q': [('geometry[0]',)], 'off_lattice_design_edges': [('geometry[1]',)],
@@ -416,10 +411,14 @@ def test_traced_mesh_path(monkeypatch):
 
     jax.grad(evaluate)(0.)
     assert len(reports) == 1
-    issues = reports[0].by_code('unresolved_pulse')
-    assert issues
-    assert {issue.subjects for issue in issues} == {('port[0]',)}
-    assert all(issue.region is None for issue in issues)
+    for code, scope, subjects in (
+        ('unresolved_pulse', 'object', ('port[0]',)),
+        ('not_judged_traced', 'model', ()),
+    ):
+        issues = reports[0].by_code(code)
+        assert issues, code
+        assert {(issue.scope, issue.subjects, issue.region) for issue in issues} == {
+            (scope, subjects, None)}
     REACHED.update(issue.code for issue in reports[0])
 
 
@@ -534,12 +533,21 @@ def test_rlc_label_rows_are_non_geometric():
     'cavity_faces', 'stack_snapped_patch', 'off_lattice_edges',
 ])
 def test_rlc_rows_preserve_realization_findings(scene_id):
+    from rfx._internal._grid_metric import field_index
+    from rfx.realized_geometry import _assembly
     from tests.locks.test_preflight_split_snapshot import _FIXTURES
     _, build, kwargs, _ = next(row for row in _FIXTURES if row[0] == scene_id)
     sim = build()
     before = [i.to_dict() for i in sim.preflight(**kwargs)]
     rows = sim.realized_geometry().realization_table.rows
-    sim.add_lumped_rlc(tuple(float(v)/2 for v in sim._domain), 'ez', R=50.)
+    position = tuple(float(v)/2 for v in sim._domain)
+    if scene_id == 'off_lattice_edges':
+        # The centre is inside the PEC box; place the element in vacuum beyond its x face.
+        position = (.011, .004, .004)
+    conductors, _, _, _ = _assembly(sim, sim._campaign_ctx())
+    edge = tuple(map(int, field_index(conductors.grid, position, 'ez')))
+    assert conductors.pec_edges is None or not bool(np.asarray(conductors.pec_edges[2])[edge])
+    sim.add_lumped_rlc(position, 'ez', R=50.)
     after = [i.to_dict() for i in sim.preflight(**kwargs)]
     assert after == before
     assert tuple(r for r in sim.realized_geometry().realization_table.rows
