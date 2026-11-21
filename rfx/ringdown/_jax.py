@@ -275,8 +275,10 @@ def _first_order_only_jvp(primals, tangents):
 def _pole_step(Yw, A, w, mask_c):
     """The frozen Gauss-Newton pole step: zero in value, ``Dmat dYw`` in derivative.
 
-    ``Yw (M, C)`` is the complex window, ``A (M*C, K)`` the frozen weighted
-    Jacobian and ``w (C,)`` the frozen channel weights. The value is the
+    ``Yw (r, C)`` is the compressed window ``Q2^H Y``, ``A (r*C, K)``
+    the frozen compressed weighted Jacobian ``Ghat`` and ``w (C,)`` the
+    frozen channel weights. The projection is linear in the window with
+    its poles, factors and column norms frozen. The value is the
     least-squares solution against ``(Yw - Yw) w``, which is zero unless the
     data are not finite. The first derivative is the least-squares solution
     against ``dYw w``; a second derivative is NaN (:func:`_first_order_only`).
