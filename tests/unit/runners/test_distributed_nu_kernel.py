@@ -717,7 +717,9 @@ def test_distributed_pec_only_seam_no_double_zeroing():
     seam_k = nz // 2
     pec_mask = jnp.zeros((nx, ny, nz), dtype=jnp.bool_)
     pec_mask = pec_mask.at[seam_i, seam_j, seam_k].set(True)
-    assert (np.count_nonzero(np.asarray(pec_mask)) == 1 and bool(pec_mask[seam_i, seam_j, seam_k])), (
+    assert (np.count_nonzero(np.asarray(pec_mask)) == 1 and bool(pec_mask[seam_i, seam_j, seam_k])
+            and Slab(grid.nx, n_devices).owner(seam_i) == 1
+            and Slab(grid.nx, n_devices).owner(seam_i - 1) == 0), (
         "The hard PEC mask must contain one occupied cell exactly at the slab seam."
     )
 
@@ -1740,7 +1742,8 @@ def test_distributed_pec_occupancy_2device_matches_single_device():
         component=src_comp, waveform=jnp.asarray(src_wf),
     )
     prb_spec = ProbeSpec(i=14, j=4, k=4, component="ez")
-    assert (prb_spec.i > 13 and Slab(nx, n_devices).owner(prb_spec.i) == 1), (
+    assert (prb_spec.i > int(np.flatnonzero(np.any(np.asarray(occ) != 0, axis=(1, 2)))[-1])
+            and Slab(nx, n_devices).owner(prb_spec.i) == 1), (
         "The rank 1 probe must lie downstream of the soft PEC block so its interaction reaches the time series."
     )
 
@@ -1818,7 +1821,9 @@ def test_distributed_pec_occupancy_seam_no_double_application():
 
     occ = jnp.zeros((nx, ny, nz), dtype=jnp.float32)
     occ = occ.at[seam_i, seam_j, seam_k].set(1.0)
-    assert (np.count_nonzero(np.asarray(occ)) == 1 and float(occ[seam_i, seam_j, seam_k]) == 1.0), (
+    assert (np.count_nonzero(np.asarray(occ)) == 1 and float(occ[seam_i, seam_j, seam_k]) == 1.0
+            and Slab(grid.nx, n_devices).owner(seam_i) == 1
+            and Slab(grid.nx, n_devices).owner(seam_i - 1) == 0), (
         "The soft PEC occupancy must contain one cell exactly at the slab seam."
     )
 

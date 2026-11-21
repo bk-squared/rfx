@@ -2,7 +2,7 @@
 
 Fresh subprocesses isolate live-array accounting and the virtual-device count.
 The reference below deliberately keeps main cca8ee5b's init-then-split order.
-The extra low input row gives the product's low ghost row its neighbour's true value.
+The nx_local + 1 bound in _memory allows the extra low input row that gives the product's low ghost row its neighbour's true value.
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls

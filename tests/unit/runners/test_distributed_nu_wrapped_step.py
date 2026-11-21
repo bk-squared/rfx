@@ -1023,6 +1023,7 @@ _ITEM6_LEGACY_MAX = {
 
 
 def _assert_item6_memory(record):
+    """_ITEM6_LEGACY_MAX was measured earlier on CPU with three visible devices and explicit device selection, with CPML rows using the nopole scene and the legacy path forced."""
     assert not record['whole'], f"whole-domain arrays: {record['whole']}"
     legacy = _ITEM6_LEGACY_MAX[record['boundary'], record['devices'], record['mode']]
     assert max(record['bytes'].values()) <= 2.0 * legacy, record

@@ -52,7 +52,7 @@ column") would have silently bridged it.
     ``test_pole_carrying_column_gets_no_hi_face_static_promotion_*``
     tests; pre-declaration and falsifiers in
     docs/design_notes/issue808_debye_pad_predeclaration.md.
-The divergence assertion is not trustworthy if pole masks reach the CPML pads.
+The ratio assertion in test_pole_extension_stability_lock is not trustworthy if pole masks reach the CPML pads.
 """
 
 from __future__ import annotations
