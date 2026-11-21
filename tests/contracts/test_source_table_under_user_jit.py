@@ -30,8 +30,6 @@ def scene(*, port=False):
         sim.add_port((6e-3, 6e-3, 6e-3), "ez", impedance=50.,
                      waveform=GaussianPulse(f0=5e9, bandwidth=.8))
     else:
-        # nonuniform_patch_demo.py uses add_source(amplitude_kind="current"),
-        # not a positive-impedance lumped port.
         sim.add_source((6e-3, 6e-3, 6e-3), "ez",
                        waveform=GaussianPulse(f0=2.4e9, bandwidth=1.2),
                        amplitude_kind="current")
@@ -52,8 +50,6 @@ def assert_same_bits(actual, expected):
 
 
 def test_a_port_table_under_user_jit():
-    # The tutorial board's GaussianPulse, including its default amplitude
-    # and cutoff; no field solve is needed to expose the 2000-sample defect.
     excitation = GaussianPulse(f0=2.4e9, bandwidth=1.2)
     grid = SimpleNamespace(dt=7.5e-13)
     materials = init_materials((4, 4, 4))
@@ -69,6 +65,7 @@ def test_a_port_table_under_user_jit():
 
 
 def test_b_graded_current_run_under_user_jit():
+    """Identical source tables still permit the standing cross-trace rounding bars for the compiled time step and record sum."""
     sim = scene()
     pulse = sim._ports[0].waveform
     assert (N_STEPS - 1) * sim._build_nonuniform_grid().dt > (pulse.cutoff + 6) * pulse.tau
@@ -82,9 +79,6 @@ def test_b_graded_current_run_under_user_jit():
     assert actual.shape == expected.shape and actual.dtype == expected.dtype
     peak = np.max(np.abs(expected), axis=0)
     assert np.all(peak > 0)
-    # Identical source tables still permit the standing
-    # cross-trace rounding bars for the compiled time step and record sum.
-    # Each probe uses its own peak, including the smaller magnetic trace.
     per_step_error = np.abs(actual - expected)
     assert np.all(per_step_error <= 9 * np.spacing(peak.astype(np.float32)))
     summed_error = np.abs(np.sum(actual, axis=0, dtype=np.float64)
@@ -99,12 +93,10 @@ def test_c_forward_keeps_port_coefficient_gradient():
     grid = sim._build_nonuniform_grid()
 
     def first_drive(eps):
+        """Before sample 1 all fields are zero because GaussianPulse(0) == 0, so the colocated probe's material derivative is the drive's Cb derivative, with no propagation contribution to hide a lost one."""
         trace = sim.forward(
             n_steps=2, eps_override=jnp.full(grid.shape, eps),
             skip_preflight=True, checkpoint=False).time_series
-        # GaussianPulse(0) == 0: before sample 1 all fields are zero, so
-        # this colocated probe's material derivative is the drive's Cb
-        # derivative, with no propagation contribution to hide a lost one.
         return trace[1, 0]
 
     expected, expected_grad = jax.value_and_grad(first_drive)(4.)
@@ -130,7 +122,6 @@ def test_other_concrete_source_samples_under_user_jit(sampler):
             return current_source_samples(grid, waveform, 2000, dtype='float32')
         return field_source_samples(waveform, 2000, grid.dt, dtype='float32')
 
-    # The reference is the original plain evaluation, not the new guard.
     expected = jax.vmap(waveform)(jnp.arange(2000, dtype=jnp.float32) * grid.dt)
     assert_same_bits(table(), expected)
     assert_same_bits(jax.jit(table)(), expected)
@@ -226,7 +217,6 @@ def test_msl_jm_samples_under_user_jit(monkeypatch):
     port = SimpleNamespace(excitation=waveform, direction="+x")
 
     def build():
-        # Mode data and material coefficients are consumed after sampling.
         return make_msl_port_sources_jm(grid, port, None, 2000, None, dtype='float32')
 
     assert_builder_samples_under_user_jit(monkeypatch, build, waveform, 2)

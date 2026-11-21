@@ -19,7 +19,7 @@ from rfx._internal import _realized
 
 C0 = 299_792_458.0
 DZ = np.array([1e-3] * 3 + [0.75e-3] * 6 + [1e-3] * 3)
-SOURCE = (0.0047, 0.0051, 0.0050)   # z = 5.0 mm: graded nodes 4.5 / 5.25 mm
+SOURCE = (0.0047, 0.0051, 0.0050)
 PROBE = (0.0061, 0.0049, 0.0057)
 
 
@@ -71,8 +71,6 @@ def test_record_places_sources_and_probes_where_the_run_does(graded, monkeypatch
         record = sim.realized_geometry()
     run = _kernel_inputs(sim, graded, monkeypatch)
 
-    # Sources: the soft source row plus the wire port's driven edges are
-    # exactly the cells the run injects at.
     (soft,) = [s for s in record.sources if s.kind == "soft_point"]
     assert soft.error is None and len(soft.edges) == 1
     wire = next(p for p in record.ports if p.kind == "wire")
@@ -80,7 +78,6 @@ def test_record_places_sources_and_probes_where_the_run_does(graded, monkeypatch
     assert {(tuple(int(v) for v in c), comp) for c, comp in map(_cell, run["sources"])} == expected
     assert (tuple(soft.edges[0]), "ez") in {_cell(s) for s in run["sources"]}
 
-    # Probes.
     point = next(p for p in record.probes if p.kind == "point")
     (probe,) = run["probes"]
     assert point.index == _cell(probe)[0]
@@ -97,7 +94,6 @@ def test_record_places_sources_and_probes_where_the_run_does(graded, monkeypatch
     box = run["ntff_box" if graded else "ntff"]
     assert ntff_row.index_box == ((box.i_lo, box.i_hi), (box.j_lo, box.j_hi), (box.k_lo, box.k_hi))
 
-    # Time step: the grid object the stepping function receives.
     assert record.dt == float(run["grid"].dt) == float(sim._build_realized_grid().dt)
 
 
@@ -113,7 +109,6 @@ def test_soft_source_index_by_hand(graded):
     z_nodes = np.concatenate([[0.0], np.cumsum(DZ)]) if graded else x_nodes
     hand = tuple(int(np.argmin(np.abs(nodes - p))) + pad
                  for nodes, p, pad in zip((x_nodes, x_nodes, z_nodes), SOURCE, pads))
-    # z = 5.0 mm: nearest graded node 5.25 mm (index 6); uniform node 5 mm.
     assert hand[2] - pads[2] == (6 if graded else 5)
     (soft,) = [s for s in record.sources if s.kind == "soft_point"]
     assert soft.edges == (hand,)

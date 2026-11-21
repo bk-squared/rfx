@@ -19,10 +19,7 @@ from tests._stated_plan import stated_plan
 
 
 def per_cell(state, drives, wave_t):
-    # Test-only old algorithm. Retains the original source order. The wrapped
-    # multi-device step passes each slab's table into shard_map, so its wave ids
-    # are traced there; it then keeps table order, which gives the same sums
-    # because run_case puts every source on its own cell.
+    """Table order gives the same sums because run_case puts every source on its own cell."""
     if any(isinstance(w, jax.core.Tracer) for w in drives.wave_id.values()):
         ordered = [(n, c, n) for c in drives.nodes
                    for n in range(drives.wave_id[c].shape[0])]
@@ -49,7 +46,6 @@ _INJECTOR_MODULES = ('rfx.simulation', 'rfx.stepping.graded')
 def use_per_cell_reference(monkeypatch):
     import importlib
     reference = importlib.import_module('tests.unit.runners._until_decay_reference')
-    # Imports must finish before patching, or new modules retain the stand-ins.
     layout_modules = [importlib.import_module(name) for name in _LAYOUT_MODULES]
     injector_modules = [importlib.import_module(name) for name in _INJECTOR_MODULES]
     def layout(meta, dtype, **_kwargs):
@@ -58,9 +54,6 @@ def use_per_cell_reference(monkeypatch):
         monkeypatch.setattr(module, 'drive_layout', layout)
         if hasattr(module, 'inject_drives'):
             monkeypatch.setattr(module, 'inject_drives', per_cell)
-    # Uniform steps read core.drives.inject_drives and prepare_uniform reads
-    # core.drives.drive_layout at call time, both covered above. Graded steps
-    # retain their module binding below.
     for module in injector_modules:
         monkeypatch.setattr(module, 'inject_drives', per_cell)
 
@@ -137,7 +130,6 @@ def checked_counts(counts):
 
 
 def test_checker_is_live():
-    # Mutation (a): disabling the check must fail this negative control.
     with pytest.raises(AssertionError):
         checked_counts([1, 64])
 
@@ -171,8 +163,6 @@ def test_production_step_scatter_count(lane, monkeypatch):
     def scan(f, init, xs, *args, **kwargs):
         sample = jax.tree.map(lambda x: x[0], xs)
         lowered = jax.jit(f).lower(init, sample)
-        # Compile the actual production step, then inspect its StableHLO,
-        # before CPU's scatter-to-loop expansion removes scatter instructions.
         lowered.compile()
         hlo = lowered.as_text()
         count = full_field_scatters(hlo)
@@ -189,8 +179,6 @@ def test_production_step_scatter_count(lane, monkeypatch):
         monkeypatch.setattr(slab_wrap, 'run_steps', observed_steps)
     for n in (1, 64):
         if lane == 'vmap':
-            # Inspect the actual compiled batched production scan, including
-            # rank-four field operands after batching, not an unbatched proxy.
             with monkeypatch.context() as patch:
                 patch.setattr(jax.lax, 'scan', original)
                 fn, args = vmap_case(n)
@@ -264,7 +252,8 @@ def port_scene(kind, lane):
     options = dict(dx_profile=profile, dy_profile=profile, dz_profile=profile) if lane == 'graded' else {}
     sim = Simulation(freq_max=3e9, domain=(float(profile.sum()),)*3 if lane == 'graded' else (25 * .001,)*3,
                      dx=.001, boundary='pec', cpml_layers=0, snap='declared', **options)
-    wave = GaussianPulse(f0=2e9, bandwidth=1.2, cutoff=2.5)  # >= 2.5 (issue 1668)
+    MINIMUM_PULSE_CUTOFF = 2.5
+    wave = GaussianPulse(f0=2e9, bandwidth=1.2, cutoff=MINIMUM_PULSE_CUTOFF)
     if kind == 'wire':
         sim.add_port(position=(.012, .012, .012), component='ez', extent=.003,
                      impedance=50., waveform=wave)
@@ -296,7 +285,6 @@ def test_port_equivalence(lane, kind, monkeypatch):
         assert got.s_params is not None
         if lane == 'graded':
             assert got.wire_port_sparams is not None
-    # Compare all complex DFT/S leaves exposed by the public result.
     for name in ('s_params', 'dft_planes', 'wire_port_sparams'):
         a, b = getattr(got, name, None), getattr(expected, name, None)
         for x, y in zip(jax.tree.leaves(a), jax.tree.leaves(b)):
@@ -423,9 +411,6 @@ def subgrid_case(n, *, component='ez', coarse=False):
 
 
 def test_distinct_waveforms_match_independent_source_table():
-    # This handwritten oracle never reads nodes, coefficients or wave IDs from
-    # the production Drives. Different cells, components and overlapping cells
-    # bind the assembler's mapping as well as the arithmetic.
     sources = [(2, 3, 4, 'ez'), (4, 3, 2, 'ey'), (2, 3, 4, 'ez'), (5, 4, 3, 'ez')]
     waves = jnp.array([[1., 2., -3.], [5., -7., 11.],
                        [-13., 17., 19.], [23., 29., -31.]])
@@ -443,6 +428,7 @@ def test_distinct_waveforms_match_independent_source_table():
 @pytest.mark.parametrize('lane', ['distributed', 'distributed_graded', 'subgridded', 'subgridded_coarse'])
 @pytest.mark.parametrize('component', ['hx', 'hy', 'hz'])
 def test_electric_only_paths_refuse_h_sources(lane, component):
+    """Public add_source refuses H."""
     with pytest.raises(ValueError, match=rf'{lane.split("_")[0]}.*{component}'):
         if lane.startswith('subgridded'):
             subgrid_case(1, component=component, coarse=lane.endswith('coarse'))
@@ -463,8 +449,6 @@ def test_electric_only_paths_refuse_h_sources(lane, component):
             sim = Simulation(freq_max=1e9, domain=(.012,)*3, dx=.001,
                              boundary='pec', cpml_layers=0)
             sim.add_source(position=(.003,)*3, component='ez')
-            # Public add_source already refuses H. Exercise the runner's
-            # admission of a malformed realized source, before tracing.
             sim._ports[0] = replace(sim._ports[0], component=component)
             run_distributed(sim, n_steps=3, devices=jax.devices()[:2])
 
@@ -500,7 +484,7 @@ def test_field_peak_mutations(site, field):
 
     def wrap(state):
         if site == 'port':
-            return state  # test_port_equivalence compares state directly.
+            return state
         if site == 'subgrid':
             return dict(state_c=state, state_f=state)
         return dict(state=state, time_series=tiny)
@@ -510,7 +494,7 @@ def test_field_peak_mutations(site, field):
         changed = tiny + count * ulp
         candidate = reference._replace(**{field + 'z': changed})
         with pytest.raises(AssertionError):
-            assert_peak(changed, tiny)  # Old component-only call is red.
+            assert_peak(changed, tiny)
         if count == 10:
             with pytest.raises(AssertionError):
                 assert_peak_tree(wrap(candidate), wrap(reference))

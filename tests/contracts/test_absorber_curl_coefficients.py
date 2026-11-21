@@ -58,7 +58,7 @@ def observe(monkeypatch, sim):
         return ca, cb
 
     monkeypatch.setattr(yee, 'e_component_coeffs', plain)
-    import rfx.stepping.yee as stepping_yee  # the moved kernels read it here
+    import rfx.stepping.yee as stepping_yee
     monkeypatch.setattr(stepping_yee, 'e_component_coeffs', plain)
     for module, name in ((debye, 'debye_e_component'), (lorentz, 'lorentz_e_component')):
         original_component = getattr(module, name)
@@ -92,7 +92,6 @@ def observe(monkeypatch, sim):
 
         monkeypatch.setattr(coefficients, 'corrected_coefficient', absorber)
     else:
-        # Observe the unpatched base at the same multiplication operand.
         original_absorber = cpml._ce_from_inv_si
 
         def absorber(*args):
@@ -110,9 +109,7 @@ def observe(monkeypatch, sim):
 
 
 def coefficient_ulp_bar(owner):
-    # ce_today/(1+loss) and the update's one-expression Cb differ by rounding
-    # of two extra operations; measured stand-alone on 200,000 random cells
-    # (eps 1-12, sigma 1e-3-1e3): max 6 ULP, 0.9 % above 2. A restored defect is 1e6 ULP.
+    """An earlier stand-alone measurement on 200,000 random cells (eps 1-12, sigma 1e-3-1e3) found ce_today/(1+loss) and the update's one-expression Cb differed by at most 6 ULP (0.9 % above 2) from rounding two extra operations."""
     return 2 if owner in ('debye', 'mixed') else 8
 
 
@@ -136,7 +133,6 @@ def test_step_uses_owner_curl_coefficient(monkeypatch, owner, lane, record_prope
     for c in range(3):
         eps = edge_mean(mats.eps_r, c, high_wall=unpadded_high_walls(grid))
         sigma = edge_mean(mats.sigma, c, high_wall=unpadded_high_walls(grid))
-        # Written owner formula, independent numpy arithmetic; never a product coefficient helper.
         denominator = eps * EPS_0 + sigma * float(grid.dt) / 2
         if ds is not None:
             mask = ds[1][0] if isinstance(ds[1], (list, tuple)) else ds[1]

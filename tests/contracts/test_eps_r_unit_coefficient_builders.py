@@ -42,8 +42,6 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 
-# (file, function) -> what it builds. Each must call one of ROUTES, and none
-# may read EPS_0 in its own body.
 BUILDERS = {
     ("rfx/core/yee.py", "e_update_coeffs"):
         "Ca/Cb of update_e, update_e_nu, update_e_box, the design box and every "
@@ -91,8 +89,6 @@ _SUBGRID = ("the SBP-SAT coupling takes SI eps, but no traced permittivity "
             "reaches the subgridded lane: forward()/optimize() refuse "
             "add_refinement (#1240) and run() takes no eps_override")
 
-# (file, qualified function) -> why no traced permittivity is divided through
-# EPS_0 here. May only shrink (ALLOWLIST_CEILING).
 NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/core/node_tensor.py", "add_node_increment"):
         "the full-tensor cross increment (#1632) is written in eps_r units: EPS_0 groups with dt as a "
@@ -174,9 +170,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/subgridding/sbp_sat_3d.py", "compute_energy_3d"): _ENERGY,
 }
 
-# The allow-list's length when it was written. Lower it when a row goes; a PR
-# that raises it is adding an EPS_0 reader it says is not a coefficient.
-ALLOWLIST_CEILING = 52  # f0_uses_solved_span reads EPS_0 for eta0 only (S2 regime predicate); _line_damping.
+ALLOWLIST_CEILING = 52
 
 HELPER = "si_value_eps_r_grad"
 SHARED_ROUTES = {
@@ -189,7 +183,6 @@ ROUTES = {HELPER} | {name for _, name in SHARED_ROUTES}
 _EPS_0 = "EPS_0"
 
 
-# --- the AST walk ---------------------------------------------------------
 
 def _module_rel(module: str) -> str:
     return module.replace(".", "/") + ".py"
@@ -203,7 +196,7 @@ class _Module:
         self.rel = rel
         self.tree = ast.parse(text)
         self.defs: dict[str, ast.AST] = {}
-        self.imports: dict[str, tuple[str, str]] = {}   # local -> (rel, name)
+        self.imports: dict[str, tuple[str, str]] = {}
         self.eps_names = {_EPS_0}
         for node in ast.walk(self.tree):
             if isinstance(node, ast.ImportFrom) and node.module:
@@ -345,7 +338,6 @@ def mods():
     return _parse(REPO)
 
 
-# --- the gates -------------------------------------------------------------
 
 
 @pytest.mark.parametrize("row", sorted(BUILDERS), ids=lambda r: f"{r[0]}::{r[1]}")

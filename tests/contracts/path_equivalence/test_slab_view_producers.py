@@ -61,11 +61,9 @@ class Scene(NamedTuple):
 
 def _build(name):
     nx, ny, nz = 18, 6, 5
-    # Equal cells over the first 11, a graded stretch after (the end cell
-    # must equal the boundary dx): the first slab of two or three devices is
-    # all equal cells inside a graded axis.
     dx = np.full(nx, 1e-3)
     dx[11:15] = 1e-3 * np.array([.9, .7, .6, .8])
+    assert dx[-1] == 1e-3 and np.all(dx[:11] == dx[-1]) and np.any(dx != dx[-1]), "The first slab has boundary-width x cells inside a graded axis"
     dz = np.full(nz, 1e-3)
     dz[:2] *= .8
     cpml = name == "cpml"
@@ -120,7 +118,6 @@ class Producer(NamedTuple):
 
 
 def _x_widths(scene):
-    # The global decision: None only if the WHOLE x axis has equal cells.
     return electric_cell_sizes(scene.grid)
 
 
@@ -158,7 +155,6 @@ def _conductors(scene):
         pair = [SheetSpec.from_node_ranges(
             shape, normal_axis=2, plane=plane, in_plane_ranges=ranges)
             for ranges in (((1, seam - 1), (1, 3)), ((seam, nx - 2), (2, 4)))]
-        # At this row neither individual sheet owns Ex; their union joins.
         joined = realized_pec_edge_masks(None, pair, periodic=PERIODIC)[0]
         assert bool(joined[seam - 1, 2, plane])
         assert all(not bool(realized_pec_edge_masks(None, [sp], periodic=PERIODIC)[0][seam - 1, 2, plane])
@@ -184,7 +180,6 @@ class _Mats(NamedTuple):
     edge_keep: object = None
 
 
-# Global cells on both sides of the layouts' seams, plus exterior rows.
 R = jnp.asarray([(1, 0, 2), (5, 0, 2), (6, 0, 2), (7, 0, 2),
                  (8, 0, 2), (9, 0, 2), (10, 0, 2), (11, 0, 2),
                  (12, 0, 2), (13, 0, 2), (14, 0, 2), (16, 0, 2),
@@ -204,9 +199,7 @@ def _cells(scene, view=None):
 
 
 def _component_numbers(components):
-    # Identity fields cells_view/grid_key are excluded. All other fields are
-    # compared, including static periodic/source_upml and pole tuples/dt.
-    # ADE coefficients store (pole, x, y, z): expose x first to the harness.
+    """ADE coefficient arrays store axes (pole, x, y, z)."""
     out = {}
     for field in fields(components):
         if field.name in ("cells_view", "grid_key"):
@@ -224,8 +217,6 @@ def _realized_whole(scene):
 
 
 def _realized_slab(scene, view):
-    # Model the staging owner: judge whole-model reductions before granting
-    # the token; the producer itself may only realize the input slab rows.
     whole = _cells(scene)
     refuse_unstable_cells(whole.materials, whole.lorentz_spec, scene.grid.dt,
                           courant_budget(scene.grid), grid_kind=type(scene.grid).__name__)
@@ -317,9 +308,6 @@ def _assert_drive_columns(scene, n, expected, actual):
         assert np.all(got[:, ~owned] == 0), 'drive non-owned columns are nonzero'
 
 
-# Reference entries: the stencil functions under the realized-materials and
-# occupancy producers. Owners add the producers themselves (realize_components,
-# build_edge_keep with sheets, realized_pec_edge_masks, drive_table, CPML state).
 PRODUCERS = [
     Producer('drive_table', _drive_whole, _drive_slab, ('material_seam', 'poles')),
     Producer("realize_components", _realized_whole, _realized_slab),
@@ -530,18 +518,17 @@ def test_view_validates_global_releases(released):
 
 
 def test_view_refuses_a_one_row_slab_and_gives_an_empty_slab_no_rows():
-    """A one-row slab would wrap in the neighbour rules (length-1 axis = 2-D lane)."""
+    """A one-row slab would wrap in the neighbour rules (length-1 axis = 2-D lane).
+    The ceil layout owns rows 3, 3, 3, 0."""
     grid = SimpleNamespace(nx=3)
     with pytest.raises(ValueError, match="single x row"):
         slab_views(grid, 3)
-    views = slab_views(SimpleNamespace(nx=9), 4)   # ceil layout: owned rows 3, 3, 3, 0
+    views = slab_views(SimpleNamespace(nx=9), 4)
     assert views[-1].x0 == views[-1].x1 and views[-1].hi == views[-1].lo
     assert [v.hi - v.lo for v in views] == [3, 4, 4, 0]
 
 
 def _refusing_scene():
-    # Fine cells/high epsilon in the first slab; low epsilon on coarse cells
-    # in the last. The whole pattern combines their extrema and occupied axes.
     shape = (18, 6, 5)
     widths = (np.r_[np.full(9, .25e-3), np.full(9, 1e-3)],
               np.full(6, 1e-3), np.full(5, 1e-3))
@@ -683,8 +670,6 @@ def test_slab_realization_refuses_x_periodic():
 
 def test_extremes_mutation_halo_count_is_caught(monkeypatch):
     from rfx.stepping.slab_view import SlabView
-    # Return all input rows and expand the matching ownership range: the
-    # numerical reduction succeeds but duplicate halo cells must be caught.
     monkeypatch.setattr(SlabView, "own", lambda self, a, axis=0: a)
     scene = SCENES["poles"]
     whole = pole_set_extremes(_cells(scene).materials, scene.lorentz)
@@ -756,7 +741,6 @@ def _uniform_producer(producer, scene, n, *, missing_extra=False, zero_material=
         view = UniformSlabView(index, scene.grid, globals)
         view = _UniformHarnessView(view, list(zip(originals, inputs)))
         if local_metric:
-            # Deliberate mutation: the first slab has constant x metrics.
             widths = view.rows(np.asarray(_x_widths(scene)[0]))
             uniform = jnp.all(widths == widths[0])
             graded = edge_averaged_materials(inputs[0], inputs[1], PERIODIC,
@@ -814,8 +798,6 @@ def test_drive_column_mutations_are_caught(monkeypatch, mode, mutation):
     from rfx.model.source_coefficients import drive_columns
     producer = next(p for p in PRODUCERS if p.name == 'drive_table')
     if mutation == 'M1':
-        # Without occupancy, step 3 alone must suppress the finite dummy Cb.
-        # Keep both calls unchanged between the control and mutated checks.
         producer = producer._replace(whole=partial(_drive_whole, with_keep=False),
                                      slab=partial(_drive_slab, with_keep=False))
     check = assert_slab_view if mode == 'view' else _assert_uniform
@@ -869,8 +851,7 @@ def test_uniform_metadata_mutation_is_caught():
 
 @pytest.mark.parametrize('negative', (False, True))
 def test_uniform_absent_release_uses_out_of_bounds_sentinel(negative):
-    # The release exists only in slab 0. A -1 sentinel would clear the last
-    # input row of slab 1, which is its real high ghost, rather than dropping.
+    """A -1 sentinel would clear the last input row of slab 1, which is its real high ghost, rather than dropping."""
     scene = SCENES['material_seam']
     release = jnp.asarray([[1, 2, 2]], dtype=jnp.int32)
     occupancy = np.full(scene.grid.shape, .5, dtype=np.float32)
@@ -918,7 +899,6 @@ def _two_rank_drives(n_devices):
         pytest.skip(f'needs {n_devices} host devices')
     layout = Slab(SCENES['material_seam'].grid.nx, n_devices)
     mesh = Mesh(np.asarray(jax.devices('cpu')[:n_devices]), ('x',))
-    # Source 0 on rank 0, source 1 on the last rank.
     meta = [(1, 2, 2, 'ez'), (layout.nx - 2, 2, 2, 'ez')]
     return drive_layout(meta, jnp.float32), layout, mesh
 
@@ -942,6 +922,5 @@ def test_cut_drives_form_is_declared_not_guessed(n_devices):
     drives, layout, mesh = _two_rank_drives(n_devices)
     with pytest.raises(ValueError, match='expected n_devices \\* n_src'):
         cut_drives(drives, layout, mesh, waveforms=jnp.ones((3, 2), jnp.float32), per_rank=True)
-    # The replicated form (the cut-of-whole caller) is selected by the keyword, not the width.
     replicated = cut_drives(drives, layout, mesh, waveforms=jnp.ones((3, n_devices * 2), jnp.float32)[:, :2])
     assert np.asarray(replicated.waves).shape[0] == 3

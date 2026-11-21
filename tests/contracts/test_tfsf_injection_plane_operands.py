@@ -2,6 +2,7 @@
 
 Coordinates reproduce DESIGN F3/placement.py; expected planes come only from
 production source configuration, never from the boundary rule's helpers.
+The exact normal-component tie realizes its lower face at unpadded node 6 on the TF/SF plane.
 """
 import ast
 import inspect
@@ -37,6 +38,7 @@ def mm(*values):
 
 
 def scene(obj=None, *, graded=False, interior=False, kind='slab'):
+    """add_pinned_sheet takes unpadded interior node indices."""
     width = 24 if interior or kind != 'slab' else 13
     boundary = ('cpml' if graded or kind != 'slab' else
                 BoundarySpec(x=Boundary(lo='cpml', hi='cpml'), y='periodic', z='periodic'))
@@ -73,7 +75,6 @@ def scene(obj=None, *, graded=False, interior=False, kind='slab'):
         points = (mm(x, 10, 8), mm(x, 10, 16)) if kind == 'box' else (mm(x, 6, 0), mm(x, 6, 12))
         sim.add(PolylineWire(points, radius=0.), material='pec')
     elif obj == 'pinned_sheet':
-        # This API takes unpadded interior node indices.
         span = (8, 16) if kind == 'box' else (0, 12)
         sim.add_pinned_sheet(plane_index=x,
                              i_range=span, j_range=span, normal_axis=0)
@@ -101,12 +102,12 @@ def execute(sim, lane):
 @pytest.mark.parametrize('lane', LANES)
 @pytest.mark.parametrize('obj', OBJECTS)
 def test_refusal_matrix(obj, lane, monkeypatch):
+    """The x=6 mm declaration plus eight pad cells gives x_lo=14."""
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
         sim = scene(obj, graded=lane.endswith('graded'))
         grid = sim._build_nonuniform_grid() if lane.endswith('graded') else sim._build_grid()
         cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1, dtype='float32')[0]
-        # Independently pinned by placement.py's geometry: x=6mm is x_lo=14.
         assert cfg.x_lo == 14 and cfg.x_hi == 15
         started = []
         original = jax.lax.scan
@@ -155,12 +156,10 @@ def closed_box_controls(request):
             return original(*args, **kwargs)
 
         patch.setattr(jax.lax, 'scan', scan)
-        for obj in INVENTORY:  # INVENTORY already includes pec_volume.
+        for obj in INVENTORY:
             sim = scene(obj, interior=True, kind='box')
             grid = sim._build_grid()
             cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1, dtype='float32')[0]
-            # Volume cells 18,19 (edge endpoints 18..20); sheets/wires/RL
-            # at x=19. All transverse extents are within nodes 16..24.
             lo, hi = grid.interval_to_indices(mm(10, 8, 8), mm(12, 16, 16))
             assert lo == (18, 16, 16) and hi == (20, 24, 24)
             assert (cfg.x_lo, cfg.x_hi) == (14, 26)
@@ -195,7 +194,6 @@ def test_closed_box_distributed_injection_plane(obj, closed_box_controls, monkey
         sim = scene(obj, kind='box')
         grid = sim._build_grid()
         cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1, dtype='float32')[0]
-        # x=6 mm maps to node 14; volumes span cells 13,14.
         assert grid.position_to_index(mm(6, 10, 10))[0] == cfg.x_lo == 14
         assert cfg.x_hi == 26
         started = []
@@ -223,7 +221,6 @@ def test_closed_box_distributed_injection_plane(obj, closed_box_controls, monkey
 @pytest.mark.parametrize('entry', ['run', 'fwd'])
 @pytest.mark.parametrize('obj', ['series_RL', 'R_only'])
 def test_closed_box_rlc_refusal_matches_one_device(entry, obj):
-    # Pin the realized RLC operand on both entries; folded R keeps its refusal.
     messages = []
     for path in ('uniform', 'distributed'):
         with pytest.raises(ValueError, match='non-vacuum material found at') as caught:
@@ -240,7 +237,6 @@ def test_off_plane_controls(obj):
         grid = sim._build_grid()
         cfg = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=1, dtype='float32')[0]
         assert cfg.x_hi - cfg.x_lo >= 6
-        # Objects now occupy x=18,19 (edges through 20), safely inside 14..26.
         assert cfg.x_lo + 2 <= 18 and 20 <= cfg.x_hi - 2
         execute(sim, 'run_uniform')
 
@@ -255,9 +251,7 @@ def test_off_plane_controls(obj):
     ('series_RL', 18.5, False),
 ])
 def test_normal_component_half_cell_admission(entry, kind, x, smoothing):
-    # Scenes: 24 mm, 1 mm cells, 8 pad cells, margin 6. Literal
-    # positions give faces +0.5/+0.6/+1.2/+1.5 cells from x_lo and Ex edges
-    # at x_lo+1/2 and x_hi+1/2; no slicing/placement helper sets these values.
+    """Ex edges occupy x_lo+1/2 and x_hi+1/2."""
     sim = scene(interior=True)
     cfg = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=2, dtype='float32')[0]
     assert (cfg.x_lo, cfg.x_hi) == (14, 26)
@@ -268,7 +262,6 @@ def test_normal_component_half_cell_admission(entry, kind, x, smoothing):
         sim.add_lumped_rlc(mm(x, 6, 6), 'ex', R=10., L=1e-9)
     kwargs = {'compute_s_params': False} if entry == 'run' else {'checkpoint': False}
     if kind == 'dielectric' and x == 6.5:
-        # The exact tie realizes its lower face at node 6, on the TFSF plane.
         with pytest.raises(ValueError, match=r'x_lo: permittivity \(materials.eps_r\)'):
             getattr(sim, entry)(n_steps=2, skip_preflight=True,
                                 subpixel_smoothing=smoothing, **kwargs)
@@ -302,12 +295,10 @@ def test_other_injection_kinds(kind, obj):
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 @pytest.mark.parametrize('kind', ['staircase_eps', 'series_RL_ez', 'thin_pec_sheet'])
 def test_uncorrected_high_e_component_admitted(entry, kind):
+    """With eight pad cells and 1 mm cells, the slab [9,18) mm ends at cell x_hi-1."""
     sim = scene(interior=True)
     cfg = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=2, dtype='float32')[0]
     assert (cfg.x_lo, cfg.x_hi) == (14, 26)
-    # 8 pad cells and 1 mm cells: node x_hi=26 is x=18 mm. The literal
-    # slab [9,18) mm ends with cell 25 (center 17.5 mm), i.e. x_hi-1.
-    # Its tangential E mean, the Ez RL and the sheet reach node x_hi only.
     if kind == 'staircase_eps':
         sim.add_material('dielectric', eps_r=4.)
         sim.add(Box(mm(9, 0, 0), mm(18, 12, 12)), material='dielectric')
@@ -322,10 +313,10 @@ def test_uncorrected_high_e_component_admitted(entry, kind):
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_staircase_slab_filling_high_cell_refused(entry):
+    """The extra cell in [9,19) mm fills cell x_hi=26."""
     sim = scene(interior=True)
     cfg = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=2, dtype='float32')[0]
     assert cfg.x_hi == 26
-    # One extra cell: [9,19) mm fills cell x_hi=26 (center 18.5 mm).
     sim.add_material('dielectric', eps_r=4.)
     sim.add(Box(mm(9, 0, 0), mm(19, 12, 12)), material='dielectric')
     with pytest.raises(ValueError, match=r'x_hi: permittivity \(materials.eps_r\)'):
@@ -338,8 +329,6 @@ def test_setup_parameter_classification_is_complete():
     for setup in (_build_step_setup, _build_nu_scan):
         parameters = set(inspect.signature(setup).parameters)
         assert parameters <= INJECTION_OPERANDS.keys()
-        # Read the call itself, independently of the rule's traversal. Materials
-        # has its own argument; updates/localized also carry non-operands.
         calls = [node for node in ast.walk(ast.parse(inspect.getsource(setup)))
                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                  and node.func.id == 'admit_setup']
@@ -361,15 +350,12 @@ def test_material_leaf_classification_is_complete():
     from rfx.model.materials import ComponentMaterials, ComponentDispersion, KernelComponents
     from rfx.model.tensor_operands import TensorOperands
     from rfx.geometry.node_tensor import NodeTensor
-    # Independent structural enumeration, including optional leaves absent in
-    # an empty scene. New fields fail even when defaulted to None in production.
     nested = {'components': ComponentMaterials, 'tensor': TensorOperands,
               'node_smoothing': NodeTensor, 'debye': ComponentDispersion,
               'lorentz': ComponentDispersion}
     nonspatial = {'periodic', 'grid_key', 'source_upml', 'inv_eps_smooth', 'guard_count', 'poles', 'dt'}
 
     def visit(cls, prefix):
-        # Static dataclass fields are pytree metadata, never an operand array.
         names = cls._fields if hasattr(cls, '_fields') else [
             f.name for f in fields(cls) if not f.metadata.get('static')]
         for name in names:
@@ -379,7 +365,6 @@ def test_material_leaf_classification_is_complete():
             if name in nested:
                 visit(nested[name], path)
             else:
-                # Scalar volume arrays and component / pole tuple entries.
                 for candidate in (path, path + '.0'):
                     try:
                         injection_material_rule(candidate)
@@ -394,6 +379,7 @@ def test_material_leaf_classification_is_complete():
 
 @pytest.mark.parametrize('transform', ['grad', 'jit'])
 def test_oblique_forward_traced_eps_refuses(transform):
+    """JIT wraps a callback's RfxRefusal in the backend runtime exception."""
     sim = Simulation(freq_max=10e9, domain=(0.016,) * 3, dx=0.002,
                      boundary='cpml', cpml_layers=2)
     sim.add_tfsf_source(f0=5e9, polarization='ez', direction='+x',
@@ -407,9 +393,7 @@ def test_oblique_forward_traced_eps_refuses(transform):
         return jnp.sum(jnp.abs(result.time_series))
 
     call = getattr(jax, transform)(objective)
-    # The same traced path admits vacuum: tracing itself is not refused.
     assert np.isfinite(np.asarray(jax.block_until_ready(call(1.0)))).all()
-    # JIT wraps a callback's RfxRefusal in the backend runtime exception.
     expected = RfxRefusal if transform == 'grad' else jax.errors.JaxRuntimeError
     with pytest.raises(expected, match='requires vacuum') as caught:
         jax.block_until_ready(call(1.5))

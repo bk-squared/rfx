@@ -2,6 +2,7 @@
 
 S0 builders are reused unchanged. The oracle captures the arguments the path
 hands to its stepping function, not a second call to the plan's helpers.
+NU waveguide setup adds its own flux witnesses outside the declared owners.
 """
 from dataclasses import FrozenInstanceError, replace
 from types import SimpleNamespace
@@ -69,6 +70,7 @@ def rounding_bound(channel, fields):
 
 
 def judge(plan, actual, row, nu):
+    """The plan records float64 coordinate ratios, which need not be representable in float32 once the normal axis is graded."""
     from tests.contracts.measurement_oracles import flux_samples, jacobian_nodes, judge_metadata
     judge_metadata(plan, actual)
     owners = {o.id: o for o in plan.owners}
@@ -90,7 +92,6 @@ def judge(plan, actual, row, nu):
                 oracle[(cfg.component, *p)] = 1.0
         assert node_map(channel) == oracle
         assert owners[key].frequencies == tuple(np.asarray(cfg.freqs))
-    # NU waveguide setup adds its own flux witnesses; these are not declared owners.
     for i, cfg in enumerate((actual.get('flux_monitors') or ())[:1] if row[0] == '_flux_monitors' else ()):
         key = f'flux_plane:{i}'
         expected.add(key)
@@ -100,8 +101,6 @@ def judge(plan, actual, row, nu):
             area = cfg.dA if c in (0, 3) or cfg.dA2 is None else cfg.dA2
             np.testing.assert_array_equal([n.area for n in channel.nodes],
                                           np.tile(np.broadcast_to(area, shape).ravel(), 1 if c < 2 else 2))
-            # The plan records float64 coordinate ratios, which need not be
-            # representable in float32 once the normal axis is graded.
             with enable_x64():
                 assert node_map(channel) == jacobian_nodes(
                     lambda fields: jnp.sum(flux_samples(nu, cfg, fields)[c]), actual['grid'].shape)
@@ -115,8 +114,6 @@ def judge(plan, actual, row, nu):
         else:
             specs = actual.get('wire_port_sparams') or actual.get('lumped_port_sparams') or ()
             if not specs and row == ('_ports', 'passive_port'):
-                # Passive forward has time records without requesting S.
-                # Keep the same sampler oracle using its actual record metadata.
                 records = actual['port_record_specs']
                 assert len(records) == 1
                 component, live, kind, mid, _ = records[0]
@@ -129,7 +126,6 @@ def judge(plan, actual, row, nu):
             mid = tuple(get('mid_'+a, get(a)) for a in 'ijk')
             comp = get('component')
             axis = 'xyz'.index(comp[1])
-            # Oracle uses the path's realized metadata and its metric API.
             from rfx.model.graded_ports import port_metric_axes
             from rfx.nonuniform import e_node_dual_spacing_at
             widths = ([np.asarray(m[0]) for m in port_metric_axes(actual['grid'])] if nu else
@@ -176,7 +172,6 @@ def judge(plan, actual, row, nu):
                 oracle = (modal_voltage if channel.kind == 'E' else modal_current)(fields, cfg, p, 0.)
                 np.testing.assert_allclose(observe(channel, fields), oracle, rtol=0,
                                            atol=rounding_bound(channel, fields))
-            # Linear sampling Jacobian is an independent exact node/weight oracle.
             import jax
             components = ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')
             zeros = tuple(jnp.zeros(actual['grid'].shape) for _ in components)
@@ -208,7 +203,6 @@ def test_j1_actual_path_setup(row, mesh, forward):
     lane = ('fwd_' if forward else 'run_')+('uniform' if mesh == 'uniform' else 'nonuniform')
     sim = build(row, lane, graded=mesh == 'graded')
     if row[0] == '_current_moments' and mesh == 'graded':
-        # The builder grades z only for this row; grade x as well to pin the in-plane refusal.
         from tests.contracts.path_equivalence.builders import DX
         sim._dx_profile = sim._dx_profile.copy()
         sim._dx_profile[3:5] = (DX*0.9, DX*1.1)
@@ -247,6 +241,7 @@ def test_constant_profile_equal_nodes(row):
 
 
 def test_j1_mutations_reject_weight_and_dropped_owner():
+    """The midpoint can land beyond the two graded cells, so perturb the whole-gap weight there."""
     row = ('_ports', 'wire_port')
     sim = build(row, 'run_nonuniform', graded=True)
     actual = setup(sim)
@@ -254,8 +249,6 @@ def test_j1_mutations_reject_weight_and_dropped_owner():
     owner = next(o for o in plan.owners if o.kind == 'wire')
     v = owner.channels[0]
     boundary = float(actual['grid'].cells(2)[0])
-    # Move the source to a deliberately graded edge; the S0 midpoint can land
-    # beyond the two graded cells, so perturb the whole-gap weight there.
     gap = next(c for c in owner.channels if c.name == 'V_port')
     candidates = [n for n in gap.nodes if n.weight != -boundary]
     assert candidates, 'mutation must hit an unequal cell'
@@ -330,8 +323,6 @@ def test_msl_calculator_setup_and_projector(mesh, direction, *, precision="float
     actual = {}
 
     def stop(**kwargs):
-        # Read the actual calculator setup at its stepping boundary, before
-        # finally restores internal registrations. No plan helper is called.
         frame = sys._getframe(1)
         actual.update(frame.f_locals)
         raise SetupCaptured
@@ -348,7 +339,6 @@ def test_msl_calculator_setup_and_projector(mesh, direction, *, precision="float
                                 for i, c in enumerate(('ex', 'ey', 'ez', 'hx', 'hy', 'hz'))})
     prop = meta['prop_idx']
     for channel in owner.channels[:-1]:
-        # The calculator's resolved plane coordinate is the oracle.
         position = actual['probe_xs'][0][int(channel.name.split(':')[1])]
         index = grid.index_of(prop, position)
         assert all((n.i, n.j, n.k)[prop] == index for n in channel.nodes)
@@ -392,8 +382,8 @@ def test_coax_calculator_planes_and_voltage_weights():
     actual = {}
 
     def stop(grid, *args, **kwargs):
+        """The recorded-run helper sits between the setup spy and the coax driver."""
         import sys
-        # The recorded-run helper sits between this spy and the coax driver.
         actual.update(sys._getframe(2).f_locals)
         actual.update(kwargs)
         actual['grid'] = grid

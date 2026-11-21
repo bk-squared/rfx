@@ -55,8 +55,8 @@ def test_declared_invariant_walls_refuse_the_legacy_wrap(skip):
 
 @pytest.mark.parametrize("skip", [False, True])
 def test_localized_updates_are_not_invariant(skip):
+    """Two series elements use a localized ADE update, not conductivity folding."""
     sim = plane()
-    # Two series elements use a localized ADE update, not conductivity folding.
     sim.add_lumped_rlc((.01, .005, .005), component="ez", R=50., C=1e-12)
     with pytest.raises(ValueError, match=r"y_lo, y_hi: _lumped_rlc"):
         sim.run(n_steps=1, skip_preflight=skip)

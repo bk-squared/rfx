@@ -140,7 +140,6 @@ def test_b2_flux(case):
     plan = plan_for(sim, grid, periodic=flags, dft_window=cfg.window)
     flux_nodes(next(o for o in plan.owners if o.kind == 'flux'), cfg, grid, flags)
     if case in ('2d', 'floquet'):
-        # The AD carry explicitly passes this second formation today.
         carry_flags = sim._periodic_flags()
         assert carry_flags == monitor_periodic_flags(sim, grid)
         assert carry_flags == ((False, False, False) if case == '2d' else (True, True, False))
