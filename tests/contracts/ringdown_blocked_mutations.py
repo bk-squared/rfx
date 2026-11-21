@@ -40,11 +40,11 @@ def pytest_configure(config):
         module = blocked
         source = inspect.getsource(module)
         if mutation == 'projection_dropped':
-            old = '        ds = ringdown_jax._pole_step(q2, ghat, weights, mask)'
+            old = '        ds = pole_step(q2, ghat, weights, mask)'
             new = '''        from rfx.ringdown._jax import _basis
         b, t = _basis(frozen_s, y.shape[0], dt)
         d = (t[:, None] * b * mask[None, :])[:, None, :] * (c0.T * weights[:, None])[None, :, :]
-        ds = ringdown_jax._pole_step(y, d.reshape(-1, s0.size), weights, mask)'''
+        ds = pole_step(y, d.reshape(-1, s0.size), weights, mask)'''
             source = source.replace(old, new)
         elif mutation == 'partial_skipped':
             source = source.replace('(length + size - 1) // size', 'length // size')
@@ -63,7 +63,7 @@ def pytest_configure(config):
         source = source.replace('return ds, ds_dot', 'return ds, 2 * ds_dot')
     else:
         module = planning
-        original = source = inspect.getsource(module)
+        source = inspect.getsource(module)
         if mutation == 'static_stage2_dropped':
             source = source.replace('r=capacity,', 'r=None,')
         elif mutation == 'static_capacity_capped':
@@ -71,7 +71,7 @@ def pytest_configure(config):
                                     'capacity = rd.HARMINV_MAX_MODES or rd.static_pole_bound(')
         else:
             raise ValueError(mutation)
-        assert source != original, ('mutation text not found', mutation)
+    assert source != inspect.getsource(module), ('mutation text not found', mutation)
     exec(compile(source, module.__file__, 'exec'), module.__dict__)
     if module is planning:
         from rfx import ringdown as rd
