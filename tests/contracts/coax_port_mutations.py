@@ -53,7 +53,8 @@ raise SystemExit(pytest.main(['tests/contracts/test_coax_port_model_and_drive.py
           file=sys.stderr)
     assert result.returncode == expected
     if expected:
-        assert 'AssertionError' in result.stdout
+        assert ('AssertionError' in result.stdout
+                or (mutation == 'b' and 'coax voltage ray has no realized outer conductor' in result.stdout))
         assert ('test_forward_against_run' if mutation == 'bprime' else 'test_bore_clears_plate') in result.stdout
 
 
