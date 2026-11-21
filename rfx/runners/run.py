@@ -49,6 +49,8 @@ def run_after_admission(
     ringdown: RingdownSpec | None = None,
     until_identified: bool = False,
 ) -> Result:
+    from rfx.runners._admission import admit_coax_declaration
+    admit_coax_declaration(self, 'run', locals())
     from rfx.model.wall_loss import admit_wall_loss
     admit_wall_loss(self, "run admission", smoothing=subpixel_smoothing, conformal=conformal_pec)
     validate_exchange_interval(exchange_interval)

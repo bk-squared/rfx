@@ -100,11 +100,16 @@ def test_forward_two_drives_order(before_step, waveguide):
 @pytest.mark.parametrize("kind", ["microstrip", "waveguide", "Floquet", "TFSF", "coaxial"])
 def test_scan_inventory_before_step(before_step, kind):
     from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
-    with pytest.raises(RfxUnsupported, match="foreign drives") as caught:
+    message = "S request refuses other excitations" if kind == "coaxial" else "foreign drives"
+    with pytest.raises(RfxUnsupported, match=message) as caught:
         compute_lumped_wire_s_matrix_via_scan(_scene(False, kind), np.array([2.5e9]),
                                              n_steps=1, skip_preflight=True)
-    assert kind in str(caught.value)
-    assert "run(compute_s_params=False)" in str(caught.value)
+    if kind == "coaxial":
+        assert "add_coaxial_port()" in str(caught.value)
+        assert "compute_s_params=False" in str(caught.value)
+    else:
+        assert kind in str(caught.value)
+        assert "run(compute_s_params=False)" in str(caught.value)
 
 
 @pytest.mark.parametrize("entry", ["run", "forward"])

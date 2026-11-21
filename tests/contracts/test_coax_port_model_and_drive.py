@@ -180,6 +180,12 @@ def test_s1_refusals(monkeypatch, entry, gate, pattern):
     elif gate == 'kerr':
         sim.add_material('kerr', eps_r=2., chi3=1e-20)
         sim.add(Box((.005, .005, .010), (.007, .007, .011)), material='kerr')
+    if gate not in ('short', 'lateral', 'front', 'kerr'):
+        def unexpected(*args, **kwargs):
+            pytest.fail('declaration refusal must precede mesh planning')
+        monkeypatch.setattr(sim, '_auto_configure_mesh', unexpected)
+        monkeypatch.setattr(sim, '_build_realized_grid', unexpected)
+        monkeypatch.setattr(sim, '_build_grid', unexpected)
     with pytest.raises((ValueError, NotImplementedError), match=pattern):
         getattr(sim, entry)(n_steps=3, skip_preflight=True, **options)
 

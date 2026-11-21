@@ -58,7 +58,8 @@ def _admitted_dispatch(select):
             from rfx.runners._admission import admit
             overrides = kwargs.get('tfsf_material_overrides', ())
             args = dict(kwargs, **dict(zip(('eps_override', 'sigma_override', 'mu_r_override'), overrides)))
-            admit(self, plan.lane, run_args=args, diagnostics=kwargs.get('diagnostics'))
+            admit(self, plan.lane, run_args={**args, 'subpixel_smoothing': kwargs.get('subpixel_smoothing', False)},
+                  diagnostics=kwargs.get('diagnostics'))
         return plan
     return dispatch
 
@@ -417,6 +418,9 @@ def _declaration_setup_at_trace_time(entry=None, *, run=False):
     @functools.wraps(entry)
     def staged_entry(self, *args, **kwargs):
         admit_traced_inputs("Simulation." + entry.__name__, bound_arguments(self, args, kwargs))
+        if entry.__name__ == 'forward':
+            from rfx.runners._admission import admit_coax_declaration
+            admit_coax_declaration(self, 'forward', bound_arguments(self, args, kwargs))
         self._resolve_field_dtype()
         guard_shape_tangents(self)
         distributed = bool(kwargs.get("distributed", False))

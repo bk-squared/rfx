@@ -957,7 +957,8 @@ def _subgrid_opted_in(sim) -> bool:
 
 def _coax_grid_condition(sim, grid, args):
     from rfx.model.coax_line import coax_port_layout
-    grid = sim._build_grid() if grid is None else grid
+    if grid is None:
+        return True
     pads = tuple(getattr(grid, f'pad_{axis}_{side}') for axis in 'xyz' for side in ('lo', 'hi'))
     try:
         coax_port_layout(grid, sim._coaxial_ports[0], absorber_pads=pads, ntff=sim._ntff)
@@ -1226,6 +1227,38 @@ def refuse_forward_reference_planes(sim) -> None:
                 f"add_port(reference_plane_cells=...) is set on port {index}; "
                 "use run(compute_s_params=True) for reference-plane S, "
                 "or remove the option for forward()")
+
+
+def admit_coax_declaration(sim, entry, args):
+    """Refuse declared coax incompatibilities before any mesh inspection."""
+    if not sim._coaxial_ports:
+        return
+    prefix = 'run' if entry == 'run' else 'fwd'
+    mesh = sim.__dict__.get('_frozen_mesh') or sim._declared_mesh
+    graded = any(mesh[name] is not None for name in ('_dx_profile', '_dy_profile', '_dz_profile'))
+    devices = args.get('devices')
+    distributed = args.get('distributed', False) or (devices is not None and len(devices) > 1)
+    if distributed:
+        suffix = 'distributed_nu' if graded else 'distributed'
+    elif sim._refinement is not None:
+        suffix = 'subgridded'
+    else:
+        suffix = 'nonuniform' if graded else 'uniform'
+    lane = prefix + '_' + suffix
+    row = ('_coaxial_ports', 'coax_port')
+    if lane not in ADMITS or row not in ADMITS[lane]:
+        label = LANE_WORDS.get(lane, lane)
+        raise RfxUnsupported(f'The {label} lane ({lane}): add_coaxial_port() is not carried')
+    if (args.get('port_s11_freqs') is not None if entry == 'forward' else
+            args.get('compute_s_params') is not False or args.get('s_param_freqs') is not None):
+        from rfx.model.coax_admission import refuse_other_s_drives
+        refuse_other_s_drives(sim)
+    conditions = LANE_GATES[lane][row]
+    assert isinstance(conditions, dict)
+    gate = {name: check for name, check in conditions.items() if name != 'grid layout'}
+    failure = _gate_failure(gate, sim, None, args)
+    if failure:
+        raise RfxUnsupported(f'{lane}: {ROW_WORDS[row]} requires {failure}')
 
 
 def admit_forward_entry(sim, args) -> None:
