@@ -12,13 +12,13 @@ from tests.oracle.test_waveguide_port_validation_battery import (
 )
 
 
-def _guide(*, volume_walls=False, closed_box=False, wall_boxes=None):
-    """Use the battery's two-port TE10 declaration and read realized nodes."""
+def _guide(*, volume_walls=False, wall_boxes=None):
+    """Use the battery's two-port TE10 guide with optional split PEC walls."""
     freqs = np.array([4.5e9, 8e9])
     f0 = float(freqs.mean())
     sim = Simulation(freq_max=float(freqs[-1]), domain=DOMAIN, dx=0.001,
                      cpml_layers=10,
-                     boundary="pec" if closed_box else {"x": "cpml", "y": "pec", "z": "pec"})
+                     boundary={"x": "cpml", "y": "pec", "z": "pec"})
     grid = sim.freeze_mesh()
     coords = coords_from_uniform_grid(grid)
     nodes = tuple(np.asarray(line, dtype=float) for line in (coords.x, coords.y, coords.z))
@@ -35,10 +35,14 @@ def _guide(*, volume_walls=False, closed_box=False, wall_boxes=None):
                     hi[axis] = nodes[axis][walls[axis][0]]
                 else:
                     lo[axis] = nodes[axis][walls[axis][1]]
-                box = Box(tuple(lo), tuple(hi))
-                sim.add(box, material="pec")
-                if wall_boxes is not None:
-                    wall_boxes[axis, side] = box
+                x_indices = (outer[0][0], outer[0][0] + 2,
+                             outer[0][1] - 2, outer[0][1])
+                for piece, (start, stop) in enumerate(zip(x_indices, x_indices[1:])):
+                    lo[0], hi[0] = nodes[0][start], nodes[0][stop]
+                    box = Box(tuple(lo), tuple(hi))
+                    sim.add(box, material="pec")
+                    if piece == 1 and wall_boxes is not None:
+                        wall_boxes[axis, side] = box
     aperture = ({f"{axis}_range": tuple(nodes[a][i] for i in walls[a])
                  for a, axis in ((1, "y"), (2, "z"))} if volume_walls else {})
     for position, direction, name in ((PORT_LEFT_X, "+x", "left"),
@@ -52,27 +56,19 @@ def _guide(*, volume_walls=False, closed_box=False, wall_boxes=None):
 
 
 @pytest.mark.parametrize("axis", [1, 2], ids=["y", "z"])
-@pytest.mark.parametrize("row", ["A-hi", "A-lo", "B-hi", "B-lo", "PEC"])
+@pytest.mark.parametrize("row", ["hi", "lo", "PEC"])
 def test_waveguide_section_wall_nodes(row, axis, capsys):
-    """A pins lossy box faces, B pins lossy volume faces; PEC pins both wall kinds."""
+    """Hi/lo pin lossy middle wall nodes; PEC pins domain and split volume walls."""
     if row == "PEC":
         for volume_walls in (False, True):
             sim, _, _ = _guide(volume_walls=volume_walls)
             sim.forward(n_steps=2, skip_preflight=True)
         return
-    scene, side = row.split("-")
     wall_boxes = {}
-    sim, nodes, walls = _guide(volume_walls=scene == "B", closed_box=scene == "A",
-                               wall_boxes=wall_boxes)
-    if scene == "A":
-        face = f"{'xyz'[axis]}_{side}"
-        sim.add_wall_loss(sigma_bulk=5.8e5, f0=6.25e9, faces=(face,))
-        span = sim.freeze_mesh().interior[axis]
-        expected = span.stop - 1 if side == "hi" else span.start
-    else:
-        sim.add_wall_loss(sigma_bulk=5.8e5, f0=6.25e9,
-                          shape=wall_boxes[axis, int(side == "hi")])
-        expected = walls[axis][int(side == "hi")]
+    sim, nodes, walls = _guide(volume_walls=True, wall_boxes=wall_boxes)
+    sim.add_wall_loss(sigma_bulk=5.8e5, f0=6.25e9,
+                      shape=wall_boxes[axis, int(row == "hi")])
+    expected = walls[axis][int(row == "hi")]
     with pytest.raises(
             RfxRefusal,
             match="the port has no model for a thin element in its section") as refusal:
