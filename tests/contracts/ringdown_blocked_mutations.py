@@ -63,14 +63,15 @@ def pytest_configure(config):
         source = source.replace('return ds, ds_dot', 'return ds, 2 * ds_dot')
     else:
         module = planning
-        source = inspect.getsource(module)
+        original = source = inspect.getsource(module)
         if mutation == 'static_stage2_dropped':
             source = source.replace('r=capacity,', 'r=None,')
         elif mutation == 'static_capacity_capped':
-            source = source.replace('capacity = min(Nd - columns, columns * C)',
-                                    'capacity = min(rd.HARMINV_MAX_MODES, Nd - columns, columns * C)')
+            source = source.replace('capacity = rd.static_pole_bound(',
+                                    'capacity = rd.HARMINV_MAX_MODES or rd.static_pole_bound(')
         else:
             raise ValueError(mutation)
+        assert source != original, ('mutation text not found', mutation)
     exec(compile(source, module.__file__, 'exec'), module.__dict__)
     if module is planning:
         from rfx import ringdown as rd
