@@ -73,6 +73,7 @@ def test_s_scan_moves_s_from_staircase():
     """G1-S is not settled; read only conformal-minus-staircase at a fixed record.
 
     This checks the difference at N=512, not the S values themselves.
+    Each floor is one tenth of the corresponding earlier measured conformal-minus-staircase difference.
     """
     from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
 
@@ -83,8 +84,6 @@ def test_s_scan_moves_s_from_staircase():
             s_scan_scene(), freqs, n_steps=512, skip_preflight=True, conformal_pec=conformal)
         np.testing.assert_array_equal(bins, freqs)
         spectra.append(np.asarray(s)[0, 0].copy())
-    # D_k(main)/10.
-    # All seven measured D_k exceed 1e-3; no bin is excluded.
     floor = np.array([2.390819e-4, 4.062380e-4, 3.0621594e-3, 8.380125e-4,
                       8.620271e-4, 3.0284235e-3, 2.90690035e-2])
     difference = np.abs(spectra[0] - spectra[1])
@@ -216,6 +215,7 @@ def test_optimization_refused_at_entry(monkeypatch, route):
 
 
 def test_conformal_pec_mask_override_refused(monkeypatch):
+    """The staircase control deliberately rasterizes the fractional-diameter sphere."""
     mask = jnp.zeros(scene()._build_grid().shape, dtype=bool).at[5:8, 2:6, 2:5].set(True)
 
     def fail(*args, **kwargs):
@@ -225,7 +225,6 @@ def test_conformal_pec_mask_override_refused(monkeypatch):
         guarded.setattr(jax.lax, 'scan', fail)
         with pytest.raises(NotImplementedError, match='pec_mask_override.*conformal.*conformal_pec=False.*PEC shapes'):
             scene().forward(n_steps=STEPS, skip_preflight=True, pec_mask_override=mask)
-    # Staircase control deliberately rasterizes the fractional-diameter sphere.
     result = scene(conformal=False, snap="declared").forward(
         n_steps=STEPS, skip_preflight=True, pec_mask_override=mask)
     assert np.all(np.isfinite(result.time_series))

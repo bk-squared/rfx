@@ -1,4 +1,6 @@
-"""Same-quantity rounding records are named and excluded before identification."""
+"""Same-quantity rounding records are named and excluded before identification.
+An earlier measurement used these records without null records, with weak values measured alone before quantity-aware skipping.
+"""
 import warnings
 from types import SimpleNamespace
 
@@ -13,12 +15,9 @@ from rfx.sparams import _tail_witness as witness
 from tests._x64_compat import enable_x64
 
 
-# Measured on 1cd4a04e8 with these records and no null records. The weak
-# values were measured alone on main, before adding quantity-aware skipping.
 MAIN_DB = {"float32": -69.48420364272383, "float64": -69.48420282431248}
 MAIN_WEAK_DB = {"float32": -69.48420216761977, "float64": -69.48420282431276}
 MAIN_RUN_DB = -57.23354351101009
-# Main 0bdf8ccd9: the weak high-Q port set.
 MAIN_WEAK_PORT_DB = -0.9814364822109212
 OPTIONS = dict(dt=1., freqs=[.07], freq_max=.15, source_end_index=0, return_detail=True)
 
@@ -201,9 +200,8 @@ def test_skipped_names_survive_unavailable_returns(missing):
 
 
 def test_every_record_skipped_is_undetermined(monkeypatch):
+    """The skip list is forced because the largest record is never below its own peak under the strict rule."""
     import rfx.measurement.record_end as record_end
-    # Unreachable with the strict rule (the largest record is never below its
-    # own peak), so the skip list is forced.
     monkeypatch.setattr(record_end, '_rounding_only_records', lambda records, groups: tuple(
         dict(name=name, group=groups[name], peak_ratio=1., threshold=1., reason='forced')
         for name, _ in records))
@@ -217,16 +215,14 @@ def test_every_record_skipped_is_undetermined(monkeypatch):
 
 
 def test_float16_records_are_scored_as_before():
-    # precision='mixed' stores float16 records: 2e4 x eps(float16) is 19.5, a
-    # margin above every peak, so nothing is skipped (main's behaviour).
+    """The float16 margin 2e4 x eps(float16) is 19.5, above every peak ratio, so nothing is skipped."""
     records = [('large', np.ones(20, dtype=np.float16)),
                ('small', np.full(20, 1e-3, dtype=np.float16))]
     assert witness._rounding_only_records(records, dict.fromkeys(dict(records), 'H')) == ()
 
 
 def _weak_high_q_port_records(amp=1e-3):
-    # A driven port that settles, and a second port carrying only weak
-    # transmission (-60 dB) from a high-Q ring still undecayed at the record end.
+    """The default second port carries weak transmission (-60 dB) from a high-Q ring still undecayed at the record end."""
     t = np.arange(800)
     drive = np.exp(-((t-40)/12.)**2)*np.cos(2*np.pi*.07*t) + .2*np.exp(-.03*t)*np.cos(2*np.pi*.07*t)
     far = amp*np.sin(2*np.pi*.07*t)*np.exp(-1e-3*t)*(1-np.exp(-t/50.))
@@ -237,7 +233,9 @@ def _weak_high_q_port_records(amp=1e-3):
 
 
 def test_weak_high_q_port_record_stays_a_failure():
-    """Port V/I records are never skipped: a -60 dB port still ringing fails (#1909 review)."""
+    """Port V/I records are never skipped: a -60 dB port still ringing fails (#1909 review).
+    An earlier measurement supplies the weak high-Q port baseline.
+    """
     records = _weak_high_q_port_records()
     options = dict(dt=1., freqs=[.07], freq_max=.15, source_end_index=120, return_detail=True)
     db, detail = settling_db_from_named_records(records, **options)
@@ -304,7 +302,9 @@ def test_run_and_forward_skip_the_two_hz_rounding_records():
 
 
 def test_lone_null_probe_is_scored_and_the_warning_says_why():
-    """No co-located record: scored as on main, and the warning names the remedy."""
+    """No co-located record: scored as on main, and the warning names the remedy.
+    The rounding-only record's score depends on platform arithmetic, so only its failing verdict at the -40 dB bar is portable.
+    """
     sim = Simulation(freq_max=10e9, domain=(.030, .030, .015), dx=.001,
                      boundary=BoundarySpec(x='cpml', y='cpml', z=Boundary(lo='pec', hi='cpml')),
                      cpml_layers=8, precision='float32')
@@ -320,9 +320,6 @@ def test_lone_null_probe_is_scored_and_the_warning_says_why():
     assert detail['skipped_records'] == []
     assert detail['lone_records'] == ['probe0(hz)', 'probe1(hy)']
     assert detail['worst_record'] == 'probe0(hz)'
-    # The record holds only rounding, so its score depends on the platform's
-    # arithmetic (main: +2.52 dB on macOS, -19.3 dB on the Linux gate). Only
-    # the verdict is portable: it is scored, and it fails the -40 dB bar.
     assert detail['status'] == 'fail'
     assert np.isfinite(detail['per_record_db']['probe0(hz)'])
     assert result.settling_db > -40.0

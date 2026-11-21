@@ -35,6 +35,7 @@ both absorber families:
 
 The rig is crossval 01's guide (eps_r = 12 slab, one lattice constant wide,
 spanning the full x extent so BOTH x faces touch) at a shorter record.
+An earlier measurement of |B/A| under CPML read 0.0509 / 0.0061 / 0.0002 at 20 / 40 / 60 cells, so the 0.03 bar uses forty cells to measure the seam without the absorber being the limit.
 """
 
 from __future__ import annotations
@@ -53,27 +54,13 @@ _REPO = pathlib.Path(__file__).resolve().parents[3]
 
 C0 = 2.998e8
 
-# --- the guide, from crossval 01's Run 1 rig ---------------------------------
 A = 1.0e-6
 EPS_WG = 12.0
 W_WG = 1.0 * A
 DX = A / 10
 
-#: Absorber depth for the round-trip bar. Forty, not twenty, and the reason is
-#: measured on this rig rather than chosen: with the continuation in place
-#: ``|B/A|`` under CPML reads 0.0509 / 0.0061 / 0.0002 at 20 / 40 / 60 cells
-#: (UPML 0.0291 at 20). What remains at 20 is the absorber's OWN residual
-#: reflection for an eps_r = 12 guided mode -- it falls by ~8x per depth
-#: doubling, and it does not move with transverse clearance (sy 8a vs 16a:
-#: 0.0510 vs 0.0509), source position, fit window or record length (2x steps:
-#: 0.0509). A seam facet behaves the opposite way: measured 0.53 / 0.59 /
-#: 0.62 over the same depths, WORSE as the absorber deepens, because the first
-#: pad cell's conductivity falls as N^-3 and loads the facet less. Reading the
-#: 0.03 bar at a depth where the absorber is not the limit is what makes it a
-#: measurement of the seam. The depth trend itself is asserted separately.
 CPML_LAYERS = 40
 
-#: The shallower depth the trend test pairs with ``CPML_LAYERS``.
 SHALLOW_LAYERS = 20
 
 FCEN = 0.15 * C0 / A
@@ -84,14 +71,8 @@ SY = 8.0 * A
 WG_Y = SY / 2
 SRC_X = 3.0 * A
 
-#: Fit window for the two-wave estimator: inside the guide, clear of the
-#: source's near field and of both seams, so what it reads is the travelling
-#: pair and not a source artefact.
 FIT_LO, FIT_HI = 6.0 * A, 13.0 * A
 
-#: 350 a/c0 of record. Long enough that the pulse has crossed the guide, been
-#: absorbed, and any round trip off a seam has come back and been recorded --
-#: the standing wave a facet makes is a steady-state pattern, not a transient.
 RECORD_T = 350.0 * A / C0
 
 
@@ -108,13 +89,11 @@ def _n_steps() -> int:
 
 
 def _build(boundary: str, layers: int = CPML_LAYERS) -> Simulation:
+    """A point probe gives the ring-down settling witness a record to score."""
     sim = Simulation(freq_max=0.25 * C0 / A, domain=(SX, SY, DX), dx=DX,
                      boundary=BoundarySpec.uniform(boundary),
                      cpml_layers=layers, mode="2d_tmz")
     sim.add_material("wg", eps_r=EPS_WG)
-    # Spans the FULL x extent: both x faces sit exactly on the interior/pad
-    # seam. Nothing is declared inside the absorber, so the geometry-in-pad
-    # advisory does not fire and this is the configuration a user writes.
     sim.add(Box((0, WG_Y - W_WG / 2, 0), (SX, WG_Y + W_WG / 2, DX)),
             material="wg")
     for i in range(10):
@@ -123,8 +102,6 @@ def _build(boundary: str, layers: int = CPML_LAYERS) -> Simulation:
                        waveform=GaussianPulse(f0=FCEN,
                                               bandwidth=FWIDTH / FCEN,
                                               amplitude=1.0 / 10))
-    # A point probe so the ring-down settling witness has a record to score;
-    # flux monitors and DFT planes do not feed it.
     sim.add_probe(position=((FIT_LO + FIT_HI) / 2, WG_Y, 0), component="ez")
     return sim
 
@@ -200,8 +177,6 @@ def test_solved_pad_column_carries_the_guide_material(boundary, monkeypatch):
             f"{half_cell} here is a one-cell film between the guide and its "
             "own absorber (the #655 failure mode)")
 
-    # The continuation must not flood the cladding: it continues the declared
-    # shape, it does not change what the shape is.
     jy_clad = int(grid.pad_y_lo) + 1
     _, _, eps_ez = cap["aniso_eps"]
     clad = np.asarray(eps_ez)[:, jy_clad, 0].astype(float)
@@ -253,13 +228,13 @@ def test_boundary_touching_guide_is_stable_and_has_no_round_trip(
     psi correction and the Yee update were integrating different
     permittivities. A permittivity that is right in a simulation that blows up
     is worse than the facet.
+    An earlier measured factor 1e21 equals predicted 1/dV (dx=1e-7 m).
     """
     m = _measure_round_trip(boundary, CPML_LAYERS, monkeypatch)
 
     assert m["n_nonfinite"] == 0, (
         f"{boundary}: {m['n_nonfinite']} non-finite samples in a "
         f"{m['n_steps']}-step record -- the run diverged")
-    # Measured factor 1e21 equals predicted 1/dV (dx=1e-7 m).
     assert m["peak"] < 1e3 * 1e21, (
         f"{boundary}: peak |Ez| {m['peak']:.3e} on a unit-amplitude source; "
         "finite is not the same as bounded")
@@ -433,8 +408,8 @@ def test_a_traced_axis_is_skipped_but_its_concrete_siblings_are_not():
     from rfx.geometry.smoothing import extend_shapes_into_cpml_pad
 
     nx, nz = 41, 21
-    x = np.arange(nx) * DX - 8 * DX          # concrete, 8 pad cells
-    y = np.arange(nx) * DX - 8 * DX          # concrete
+    x = np.arange(nx) * DX - 8 * DX
+    y = np.arange(nx) * DX - 8 * DX
     box = Box((0.0, 0.0, 0.0), ((nx - 17) * DX, (nx - 17) * DX, (nz - 9) * DX))
     pads = ((8, 8), (8, 8), (4, 4))
 
@@ -479,7 +454,6 @@ def test_the_nonuniform_runner_continues_a_boundary_touching_slab():
     sim = Simulation(freq_max=0.25 * C0 / A, domain=(lx, lx, 0.0), dx=DX,
                      dz_profile=dz, boundary="cpml", cpml_layers=6)
     sim.add_material("slab", eps_r=EPS_WG)
-    # Spans the full x extent (both x faces on the seam), inset in y and z.
     slab = Box((0.0, 8 * DX, 8 * DX), (lx, 16 * DX, 12 * DX))
     sim.add(slab, material="slab")
     grid = sim._build_nonuniform_grid()
@@ -492,9 +466,6 @@ def test_the_nonuniform_runner_continues_a_boundary_touching_slab():
     _, _, eps_ez = compute_smoothed_eps_nonuniform(
         grid, pairs, background_eps=1.0, dtype='float32')
     arr = np.asarray(eps_ez)
-    # Index off the REALIZED node lines. z is the graded axis here, so
-    # "10 cells in" is not node 10 — assuming it is was how the first draft of
-    # this test sampled vacuum and blamed the continuation.
     from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
     c = coords_from_nonuniform_grid(grid)
     jy = int(np.argmin(np.abs(np.asarray(c.y, dtype=float) - 12 * DX)))
