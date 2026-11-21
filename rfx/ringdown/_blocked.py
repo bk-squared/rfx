@@ -95,23 +95,6 @@ def _project(y, s, dt, mask, blocks):
 
 
 @jax.custom_jvp
-def _pole_step(y, s0, dt, mask, blocks, ghat, weights):
-    """A zero-valued frozen step; all factor arguments are explicit and frozen."""
-    return jnp.zeros_like(s0)
-
-
-@_pole_step.defjvp
-def _pole_step_jvp(primals, tangents):
-    from rfx.ringdown._jax import _first_order_only, lstsq_masked
-
-    y, s0, dt, mask, blocks, ghat, weights = primals
-    g = _first_order_only(y, weights)
-    _, q2 = _project(tangents[0] * g[None, :], s0, dt, mask, blocks)
-    ds = _pole_step(*primals)
-    return ds, lstsq_masked(ghat, q2.reshape(-1, 1), mask)[:, 0]
-
-
-@jax.custom_jvp
 def _refit(y, s, s0, dt, mask, blocks, c0):
     """Refit at s == s0 in value, without differentiating QR or basis exponentials."""
     return c0
@@ -136,6 +119,8 @@ def fit_window(y, s0, dt, mask, *, constant_poles=False):
     The private byte target is read while tracing; existing jitted functions
     retain their traced block size. No M by K basis survives a scan iteration.
     """
+    from rfx.ringdown import _jax as ringdown_jax
+
     frozen_y, frozen_s = jax.lax.stop_gradient(y), jax.lax.stop_gradient(s0)
     size = _block_size(y.shape[0], 2 * s0.size + y.shape[1], s0.dtype)
     blocks = jax.tree_util.tree_map(jax.lax.stop_gradient, _factor(frozen_y, frozen_s, dt, mask, size))
@@ -144,7 +129,11 @@ def fit_window(y, s0, dt, mask, *, constant_poles=False):
     weights = jax.lax.stop_gradient(1 / jnp.sqrt(jnp.mean(jnp.abs(y)**2, axis=0))).astype(s0.dtype)
     ghat = (r22[:, None, :] * (c0.T * weights[:, None] * nt[None, :])[None, :, :]).reshape(-1, s0.size)
     ghat = jax.lax.stop_gradient(ghat)
-    ds = jnp.zeros_like(s0) if constant_poles else _pole_step(y, frozen_s, dt, mask, blocks, ghat, weights)
+    if constant_poles:
+        ds = jnp.zeros_like(s0)
+    else:
+        _, q2 = _project(y, frozen_s, dt, mask, blocks)
+        ds = ringdown_jax._pole_step(q2, ghat, weights, mask)
     s = s0 + ds
     c = _refit(y, s, frozen_s, dt, mask, blocks, c0)
     return s, c, c0, ds
