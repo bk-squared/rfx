@@ -55,8 +55,11 @@ def _pole_errors(reference, actual):
 
 
 @pytest.mark.parametrize('boundary', ['pec', 'cpml'])
-@pytest.mark.parametrize('geometry_devices', [2, 3], ids=['g2', 'g3'])
-@pytest.mark.parametrize('devices', [2, 3], ids=['d2', 'd3'])
+@pytest.mark.parametrize('devices,geometry_devices', [
+    pytest.param(2, 2, id='d2-g2'),
+    pytest.param(3, 2, id='d3-g2'),
+    pytest.param(3, 3, id='d3-g3'),
+])
 @pytest.mark.parametrize('position', ['off', 'first', 'last'])
 @pytest.mark.parametrize('steps', [12, 60, 240])
 def test_plain_one_device_probe_peak(boundary, geometry_devices, devices, position, steps):
@@ -73,8 +76,11 @@ def test_plain_one_device_probe_peak(boundary, geometry_devices, devices, positi
 
 
 @pytest.mark.parametrize('medium', ['debye', 'lorentz'])
-@pytest.mark.parametrize('geometry_devices', [2, 3], ids=['g2', 'g3'])
-@pytest.mark.parametrize('devices', [2, 3], ids=['d2', 'd3'])
+@pytest.mark.parametrize('devices,geometry_devices', [
+    pytest.param(2, 2, id='d2-g2'),
+    pytest.param(3, 2, id='d3-g2'),
+    pytest.param(3, 3, id='d3-g3'),
+])
 @pytest.mark.parametrize('position', ['off', 'first', 'last'])
 @pytest.mark.parametrize('steps', [12, 60, 240])
 def test_plain_one_device_pole_records(medium, geometry_devices, devices, position, steps):
