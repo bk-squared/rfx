@@ -1058,7 +1058,7 @@ LANE_SELECTORS = frozenset({("_solver", ""), ("_dx_profile", "graded"), ("_dy_pr
 
 def _coax_lane_refusal(lane):
     label = LANE_WORDS.get(lane, lane)
-    return f'The {label} lane ({lane}): {ROW_WORDS[("_coaxial_ports", "coax_port")]} declared by add_coaxial_port() is not carried'
+    return f'The {label} lane ({lane}): {ROW_WORDS[("_coaxial_ports", "coax_port")]} is not carried'
 
 
 def message(lane: str, rows, sim, run_args=None, grid=None) -> str:

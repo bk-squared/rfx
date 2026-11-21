@@ -172,9 +172,9 @@ def test_port_bins(kind, path, ringdown):
 
     if kind == 'coax' and path != 'uniform':
         leading = {
-            'graded': 'The graded forward() lane (fwd_nonuniform): add_coaxial_port() is not carried',
-            'multi-uniform': 'The forward(distributed=True) lane (fwd_distributed): add_coaxial_port() is not carried',
-            'multi-graded': 'The forward(distributed=True) lane (fwd_distributed_nu): add_coaxial_port() is not carried',
+            'graded': 'The graded forward() lane (fwd_nonuniform): a coaxial port (add_coaxial_port) is not carried',
+            'multi-uniform': 'The forward(distributed=True) lane (fwd_distributed): a coaxial port (add_coaxial_port) is not carried',
+            'multi-graded': 'The forward(distributed=True) lane (fwd_distributed_nu): a coaxial port (add_coaxial_port) is not carried',
         }[path]
         _same_refusal(eager, actual, RfxUnsupported, leading)
     elif ringdown and path.startswith('multi-'):
