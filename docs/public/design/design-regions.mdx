@@ -118,9 +118,12 @@ unchanged. A design box that reaches such an element or sheet is refused.
 
 On a graded mesh, `dx_profile`, `dy_profile` and `dz_profile` can be traced:
 stretching the cells changes the physical size of what sits on them while the
-grid topology stays fixed. A metal sheet on such a mesh is declared with
-`sim.add_pinned_sheet(plane_index=, i_range=, j_range=)` so that it stays on
-its nodes as they move. Its indices stay Python ints; a traced index is refused.
+grid topology stays fixed. A drawn PEC sheet with a concrete normal axis
+resolves its plane and footprint on the nominal mesh, then follows those
+nodes as they move. A traced normal axis is refused. Declare a sheet with
+`sim.add_pinned_sheet(plane_index=, i_range=, j_range=)` to choose its nodes
+explicitly, including with a traced normal. Its indices stay Python ints;
+a traced index is refused.
 With a traced mesh axis, a Box or axial Cylinder conductor drawn to an
 absorbing face continues into the absorber as on a concrete mesh, decided on
 `nominal_profiles` for that axis. A run whose mesh changes the outermost

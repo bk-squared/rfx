@@ -1,22 +1,7 @@
-"""A patch edge as a design variable: the conductor is pinned to node lines.
+"""Drawn PEC sheets on a traced mesh follow nominal nodes with a concrete normal.
 
-The length an antenna engineer moves is the distance between the patch's two
-metal edges. Here the edges stay ON node lines and the CELLS between them
-are stretched, so the metal gets longer without any metal inside a cell and
-without anything to snap. What makes that differentiable is the
-DECLARATION: a sheet drawn in metres has to be re-read on whatever node line
-the grid happens to have — which on a traced mesh cannot be read at all, and
-on a concrete deformed mesh names different node lines than it did before —
-while a sheet drawn by NODE INDEX names the same nodes on every mesh and
-lets the cells carry the length.
-
-So there are two semantics and this file pins both. A metric sheet keeps its
-metres and stays REFUSED on a traced mesh. A node-pinned sheet
-(``Simulation.add_pinned_sheet``) keeps its nodes, is accepted on the uniform
-and the non-uniform lane, traced or not, and gives one footprint for every
-deformation — which is what makes ``jax.grad`` of a probe observable with
-respect to the deformation a derivative of the physics rather than of a
-raster decision.
+Pinned sheets also support a traced normal. Their measured patch-edge gradient
+provides the physical anchor for the drawn-versus-pinned bitwise comparisons.
 The patch x and y node lines are interior indices.
 """
 
@@ -29,6 +14,7 @@ import pytest
 
 from rfx import Simulation
 from rfx.boundaries.pec import SheetSpec, realized_pec_edge_masks
+from rfx.core.jax_utils import is_tracer
 from rfx.geometry import Box
 from rfx.materials.thin_conductor import (
     PinnedSheet, pinned_sheet_realized, pinned_sheet_spec)
@@ -118,27 +104,126 @@ def _spec_under_trace(make_grid, profile_fn, delta, sheet=PATCH):
 
 
 
-def test_a_metric_sheet_on_a_traced_mesh_is_still_refused():
-    """A sheet drawn in metres has corners that must be located on the node
-    line; a traced node line has no host position, so it is refused rather
-    than placed somewhere."""
-    def _loss(delta):
-        sim = Simulation(freq_max=40e9,
-                         domain=(N_X * DX, N_Y * DX, N_Z * DX), dx=DX,
-                         dx_profile=_prof_x(delta), cpml_layers=CPML,
-                         boundary="cpml",
-                         nominal_profiles={"x": _prof_x(0.5 * DX)})
-        sim.add_thin_conductor(Box((I_LO * DX, J_LO * DX, Z_PATCH),
-                                   (I_HI * DX, J_HI * DX, Z_PATCH)))
-        sim.add_source((3 * DX, 8 * DX, K_MID * DX), "ez",
-                       amplitude_kind="current")
-        sim.add_probe((20 * DX, 8 * DX, K_MID * DX), "ez")
-        return jnp.sum(sim.forward(n_steps=4, skip_preflight=True)
-                       .time_series ** 2)
+def _nominal_sheet_board(dx_profile, dy_profile=None, *, kind="pinned"):
+    nominal = {"x": _prof_x(0.5 * DX)} if is_tracer(dx_profile) else {}
+    if is_tracer(dy_profile):
+        nominal["y"] = _prof_y(0.5 * DX)
+    sim = _build_board(0., probe=(20 * DX, 8 * DX, K_MID * DX),
+                       dx_profile=lambda _: dx_profile,
+                       dy_profile=None if dy_profile is None else lambda _: dy_profile,
+                       nominal_profiles=nominal)
+    if kind != "pinned":
+        sim._pinned_sheets.clear()
+        for shape in _drawn_shapes(dy_profile is not None):
+            if kind == "box":
+                sim.add(shape, material="pec")
+            else:
+                sim.add_thin_conductor(shape)
+    return sim
 
-    with pytest.raises(ValueError, match="a sheet's plane is a static integer"):
-        jax.grad(_loss)(jnp.float32(0.5 * DX))
 
+def _drawn_shapes(joint):
+    return (Box((2 * DX, 2 * DX, Z_GND),
+                (22 * DX, (14.2 if joint else 14) * DX, Z_GND)),
+            Box((8 * DX, 5 * DX, Z_PATCH),
+                (17.1 * DX, (12.1 if joint else 11) * DX, Z_PATCH)))
+
+
+def _assert_literal_sheet_ranges(specs):
+    for spec, expected in zip(specs, ((10, 6, 26, 6, 18), (16, 12, 20, 9, 15)), strict=True):
+        fp = np.asarray(spec.footprint)
+        xs = np.flatnonzero(fp.any(axis=(1, 2)))
+        ys = np.flatnonzero(fp.any(axis=(0, 2)))
+        assert (spec.plane, int(xs[0]), int(xs[-1]), int(ys[0]), int(ys[-1])) == expected
+
+
+def _assert_nominal_differs_from_fallback(joint):
+    from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid, sheet_spec_from_shape
+    nominal = _grid(dx_profile=_prof_x(0.5 * DX),
+                    dy_profile=_prof_y(0.5 * DX) if joint else None)
+    uniform = _grid()
+    nominal_specs = [sheet_spec_from_shape(shape, coords_from_nonuniform_grid(nominal), grid=nominal)
+                     for shape in _drawn_shapes(joint)]
+    _assert_literal_sheet_ranges(nominal_specs)
+    fallback = sheet_spec_from_shape(_drawn_shapes(joint)[1], coords_from_nonuniform_grid(uniform), grid=uniform)
+    assert np.asarray(nominal_specs[1].footprint).tobytes() != np.asarray(fallback.footprint).tobytes()
+
+
+@pytest.mark.parametrize("kind,joint", [("box", False), ("thin", False), ("thin", True)],
+                         ids=["T1_box_x", "admitted_metric_thin_x", "T2_thin_xy"])
+def test_drawn_sheet_matches_pinned_bitwise(kind, joint):
+    """T1/T2 and the former in-plane refusal: identical masks, primals and tangents."""
+    from rfx.model.conductors import solve_conductors
+    _assert_nominal_differs_from_fallback(joint)
+    captured = {}
+
+    def record(dx, dy, arm):
+        sim = _nominal_sheet_board(dx, dy if joint else None, kind=arm)
+        grid = sim._build_nonuniform_grid()
+        product = solve_conductors(sim, grid, nonuniform=True)
+        captured[arm] = product.sheets
+        series = sim.forward(n_steps=40, skip_preflight=True).time_series
+        return series, *product.pec_edges
+
+    profiles = (jnp.asarray(_prof_x(0.5 * DX), dtype=jnp.float32),
+                jnp.asarray(_prof_y(0.5 * DX), dtype=jnp.float32))
+    directions = (jax.jvp(_prof_x, (jnp.float32(0.5 * DX),), (jnp.float32(1),))[1],
+                  jax.jvp(_prof_y, (jnp.float32(0.5 * DX),), (jnp.float32(1),))[1])
+    drawn, drawn_dot = jax.jvp(lambda x, y: record(x, y, kind), profiles, directions)
+    pinned, pinned_dot = jax.jvp(lambda x, y: record(x, y, "pinned"), profiles, directions)
+    for specs in captured.values():
+        _assert_literal_sheet_ranges(specs)
+    for actual, expected in zip(drawn, pinned, strict=True):
+        assert actual.dtype == expected.dtype
+        assert np.asarray(actual).tobytes() == np.asarray(expected).tobytes()
+    assert drawn_dot[0].dtype == pinned_dot[0].dtype
+    assert np.asarray(drawn_dot[0]).tobytes() == np.asarray(pinned_dot[0]).tobytes()
+    assert np.any(np.asarray(pinned[0]))
+    assert np.any(np.asarray(pinned_dot[0]))
+
+
+def test_T3_traced_sheet_spec_equals_concrete_nominal():
+    from rfx.geometry.rasterize_grid import (
+        cell_sizes_from_nonuniform_grid, coords_from_nonuniform_grid, sheet_spec_from_shape)
+    _assert_nominal_differs_from_fallback(True)
+    captured = []
+
+    def resolve(dx, dy):
+        grid = _nominal_sheet_board(dx, dy)._build_nonuniform_grid()
+        specs = [sheet_spec_from_shape(shape, coords_from_nonuniform_grid(grid),
+                                       cell_sizes_from_nonuniform_grid(grid), grid=grid, name="sheet")
+                 for shape in _drawn_shapes(True)]
+        captured.append(specs)
+        return jnp.sum(dx) + jnp.sum(dy)
+
+    resolve(_prof_x(0.5 * DX), _prof_y(0.5 * DX))
+    jax.jvp(resolve, (jnp.asarray(_prof_x(0.5 * DX), dtype=jnp.float32),
+                      jnp.asarray(_prof_y(0.5 * DX), dtype=jnp.float32)),
+            (jnp.ones(N_X), jnp.ones(N_Y)))
+    for specs in captured:
+        _assert_literal_sheet_ranges(specs)
+    for concrete, traced in zip(*captured, strict=True):
+        assert concrete.normal_axis == traced.normal_axis == 2
+        assert concrete.plane == traced.plane
+        assert np.asarray(concrete.footprint).dtype == np.asarray(traced.footprint).dtype
+        assert np.asarray(concrete.footprint).tobytes() == np.asarray(traced.footprint).tobytes()
+        assert concrete.drawn == traced.drawn
+        for a, b in zip(concrete.end_rows, traced.end_rows, strict=True):
+            np.testing.assert_array_equal(a, b)
+
+
+def test_T4_drawn_sheet_refuses_traced_normal():
+    from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid, sheet_spec_from_shape
+
+    def resolve(dz):
+        grid = _grid(dz_profile=dz, nominal_profiles={"z": _stretch(0.5 * DX, N_Z, 8, 12)})
+        sheet_spec_from_shape(_drawn_shapes(False)[1], coords_from_nonuniform_grid(grid),
+                              grid=grid, name="patch")
+        return jnp.sum(dz)
+
+    with pytest.raises(ValueError, match="sheet 'patch': a sheet's plane is a static integer.*axis z"):
+        jax.jvp(resolve, (jnp.asarray(_stretch(0.5 * DX, N_Z, 8, 12), dtype=jnp.float32),),
+                (jnp.ones(N_Z),))
 
 
 @pytest.mark.parametrize("k", [0.0, 0.25, 0.5, 0.9, 1.0, 1.25, 1.5])
@@ -275,14 +360,14 @@ def test_from_node_ranges_refuses_a_plane_outside_the_grid():
 
 
 def _build_board(delta, *, probe, dx_profile=None, dy_profile=None,
-                 pinned=True, pin_dt=True):
+                 pinned=True, pin_dt=True, nominal_profiles=None):
     """When pin_dt is true, the time step is pinned because a derived dt follows the smallest cell, which changes sides at delta = 0."""
     dt_kw = dict(dt=float(DT_PIN), dt_min_cell=float(D_MIN)) if pin_dt else {}
     sim = Simulation(freq_max=40e9, domain=(N_X * DX, N_Y * DX, N_Z * DX),
                      dx=DX,
                      dx_profile=_prof_x(delta) if dx_profile is None else dx_profile(delta),
                      dy_profile=None if dy_profile is None else dy_profile(delta),
-                     cpml_layers=CPML, boundary="cpml", **dt_kw)
+                     cpml_layers=CPML, boundary="cpml", nominal_profiles=nominal_profiles, **dt_kw)
     sim.add_material("sub", eps_r=3.38)
     sim.add(Box((2 * DX, 2 * DX, Z_GND), (22 * DX, 14 * DX, Z_PATCH)),
             material="sub")
