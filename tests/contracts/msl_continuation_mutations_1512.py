@@ -109,5 +109,15 @@ def main():
         raise AssertionError(f"{name}: expected AssertionError in {witness}, pytest={code}")
 
 
+def pytest_configure(config):
+    """Named-file runner entry: ``pytest <this file> -p tests.contracts.msl_continuation_mutations_1512``."""
+    import pytest
+    argv, sys.argv = sys.argv, [sys.argv[0]]
+    try:
+        main()
+    finally:
+        sys.argv = argv
+    pytest.exit("all MSL continuation mutants failed in their witnesses", returncode=0)
+
 if __name__ == "__main__":
     main()
