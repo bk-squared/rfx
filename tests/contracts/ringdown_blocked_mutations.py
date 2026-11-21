@@ -90,7 +90,8 @@ def main():
         print(output, flush=True)
         assert result.returncode == 1, (mutation, result.returncode, output)
         assert assertion in output, (mutation, assertion, output)
-        assert 'AssertionError' in output or 'Failed: field lane reached' in output, output
+        assert 'E   assert ' in output or 'Failed: field lane reached' in output, output
+        assert f'FAILED {node}' in output, output
         assert 'ERROR collecting' not in output and 'ERROR at setup' not in output, output
 
 
