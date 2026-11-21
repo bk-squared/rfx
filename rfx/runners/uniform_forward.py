@@ -182,7 +182,7 @@ def _forward_from_materials(
 
     from rfx.sources.port_drive import PortSourceQueue
     sources = PortSourceQueue()
-    mag_sources = []
+    mag_sources: list = []
     probes = []
     # ── Effective boundary flags, resolved BEFORE the PEC realization ──
     # the realized PEC edge masks (Mx, My, Mz) are only
@@ -244,6 +244,8 @@ def _forward_from_materials(
         materials, conductors, pec_occupancy_local = assemble_coax_port(
             self, grid, materials, conductors, sources, mag_sources, n_steps=n_steps,
             occupancy=pec_occupancy_local)
+        from rfx.model.coax_admission import refuse_design_box
+        refuse_design_box(design_box, conductors)
         pec_mask_local = conductors.pec_cells
         pec_edge_masks_local = conductors.pec_edges
     from rfx.measurement.prepared import attach_measurement
@@ -716,7 +718,7 @@ def _forward_from_materials(
         )
 
     from rfx.stepping import prepared as prepared_step
-    if self._coaxial_ports and materials.components.tensor is None:
+    if self._coaxial_ports and getattr(materials.components, 'tensor', None) is None:
         materials = materials._replace(components=None)
     conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
     stepping_product = conductors

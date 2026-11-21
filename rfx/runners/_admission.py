@@ -1000,6 +1000,7 @@ LANE_GATES: dict[str, dict[Row, Callable | dict]] = {
         'no subpixel_smoothing': lambda sim, grid, args: not args.get('subpixel_smoothing'),
         'no eps_override': lambda sim, grid, args: args.get('eps_override') is None,
         'no sigma_override': lambda sim, grid, args: args.get('sigma_override') is None,
+        'no mu_r_override': lambda sim, grid, args: args.get('mu_r_override') is None,
         'grid layout': _coax_grid_condition,
     }} for lane in ('run_uniform', 'fwd_uniform')},
     **{lane: {("_precision", ""): lambda sim, grid: sim._precision == "float64"}
@@ -1424,6 +1425,8 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
     require a driven impedance port, regardless of other excitations.
     Passive records remain available as termination diagnostics, without S.
     """
+    from rfx.model.coax_admission import refuse_other_s_drives
+    refuse_other_s_drives(sim)
     ports = [p for p in sim._ports if p.is_port]
     if main_record and ports:
         from rfx.measurement.port_s_contract import record_ports, require_driven_record_s
@@ -1509,6 +1512,8 @@ def _s_request_family_messages(sim):
 def admit_s_request(sim, caller, *, details=()):
     """Refuse missing impedance ports and incompatible S-result families."""
     if sim._coaxial_ports:
+        from rfx.model.coax_admission import refuse_other_s_drives
+        refuse_other_s_drives(sim)
         return sim._coaxial_ports
     port_entries = sim._port_sparameter_entries()
     messages = [*_s_request_family_messages(sim), *details]

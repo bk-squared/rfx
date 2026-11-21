@@ -23,7 +23,7 @@ def rebuild_view(sim, solved, smoothing, conformal=None):
             root.pec_cells, 0, _warn_experimental=False, _prepare_only=True)
     else:
         root = preview_port_stages(reader, root)
-        if reader._coaxial_ports and solved.lane == 'run_uniform':
+        if reader._coaxial_ports and solved.lane in ('run_uniform', 'fwd_uniform'):
             from rfx.model.coax_port import assemble_coax_port
             from rfx.sources.port_drive import PortSourceQueue
             _, root, _ = assemble_coax_port(reader, root.grid, root.materials,

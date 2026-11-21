@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, GaussianPulse, Simulation, RfxUnsupported
+from rfx.errors import RfxRefusal
 from rfx.boundaries.spec import BoundarySpec
 from rfx.ringdown import RingdownSpec
 
@@ -193,11 +194,14 @@ def test_port_bins(kind, path, ringdown):
             assert message in str(actual[1])
             print(f'ConcretizationTypeError: {message}', file=sys.stderr)
     elif kind == 'coax':
-        _same_refusal(eager, actual, RfxUnsupported,
-                      'fwd_uniform: add_coaxial_port() requires CPML on all six faces' if path == 'uniform' else
-                      ('fwd_distributed_nu' if path == 'multi-graded' else
-                       'fwd_distributed' if path == 'multi-uniform' else 'fwd_nonuniform')
-                      + ': add_coaxial_port() is supported only on run_uniform and fwd_uniform')
+        leading = ('fwd_uniform: a coaxial port (add_coaxial_port) requires CPML on all six faces'
+                   if path == 'uniform' else
+                   'The ' + ('forward(distributed=True)' if path.startswith('multi-') else 'graded forward()'))
+        _refusal(eager, RfxUnsupported, leading)
+        if actual[2]:
+            _refusal(actual, RfxRefusal, 'line-port read frequencies must be concrete')
+        else:
+            _same_refusal(eager, actual, RfxUnsupported, leading)
     elif kind in ('waveguide', 'msl'):
         _same_refusal(eager, actual, ValueError,
                       'forward(port_s11_freqs=...) requires add_port(...)')

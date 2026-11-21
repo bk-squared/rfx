@@ -1,7 +1,6 @@
 """Uniform coax port assembly, bore ownership and deferred TEM injection."""
 from dataclasses import dataclass, replace
 
-import jax.numpy as jnp
 import numpy as np
 
 from rfx.errors import RfxUnsupported
@@ -30,11 +29,11 @@ def clear_coax_bore(root, bore, layout, *, edge_bore=None):
     """Clear user cells and already realized edges before the stamp's union."""
     cells = np.zeros(root.grid.shape, bool) if root.pec_cells is None else np.asarray(root.pec_cells)
     edges = root.edges
-    edge_bore = bore if edge_bore is None else edge_bore
+    edge_bore = (bore,) * 3 if edge_bore is None else edge_bore
     cleared = CoaxBoreRelease(np.argwhere(cells & bore),
-        tuple(np.argwhere(np.asarray(e) & edge_bore) for e in edges), np.argwhere(bore), layout)
+        tuple(np.argwhere(np.asarray(e) & mask) for e, mask in zip(edges, edge_bore)), np.argwhere(bore), layout)
     root = replace(root, pec_cells=cells & ~bore,
-                   pec_edges=tuple(np.asarray(e) & ~edge_bore for e in edges),
+                   pec_edges=tuple(np.asarray(e) & ~mask for e, mask in zip(edges, edge_bore)),
                    coax_bore_release=cleared)
     return root
 
@@ -44,21 +43,14 @@ def stamp_coax_pin(grid, port, layout):
     count = int(round(float(port.pin_length) / float(grid.dx)))
     direction = -1 if port.face == 'top' else 1
     tip = layout.reference_index + direction * count
-    if not 0 <= tip < grid.shape[2]:
-        raise RfxUnsupported('add_coaxial_port(): pin_length leaves the domain')
+    low, high = grid.pad_z_lo + 1, grid.shape[2] - 2 - grid.pad_z_hi
+    if not low <= tip <= high:
+        available = (layout.reference_index - low if direction < 0 else high - layout.reference_index) * grid.dx
+        raise RfxUnsupported(f'add_coaxial_port(): pin_length={port.pin_length} puts tip node {tip} within 1 cell of a z absorber; needs pin_length <= {available} m')
     cells = np.zeros(grid.shape, bool)
     lo, hi = sorted((layout.reference_index, tip))
     cells[:, :, lo:hi] = radial_mask(grid, port, port.pin_radius)[:, :, None]
     return cells
-
-
-def _refuse_bore_materials(sim, root, bore):
-    for entry in sim._geometry:
-        material = sim._resolve_material(entry.material_name)
-        if not (material.debye_poles or material.lorentz_poles or material.chi3):
-            continue
-        if np.any(np.asarray(entry.shape.mask(root.grid)) & bore):
-            raise RfxUnsupported('add_coaxial_port(): dispersive or Kerr material inside the bore')
 
 
 def _refuse_front_pec(sim, root, port, layout):
@@ -67,6 +59,10 @@ def _refuse_front_pec(sim, root, port, layout):
     ref = layout.reference_index
     window = slice(None, ref) if port.face == 'top' else slice(ref, None)
     front[:, :, window] = radial_mask(root.grid, port, port.outer_radius)[:, :, None]
+    front_edges = [front.copy() for _ in range(3)]
+    if port.face == 'bottom':
+        for mask in front_edges[:2]:
+            mask[:, :, ref] = False
     allowed_cells = np.zeros(root.grid.shape, bool)
     allowed_edges = [np.zeros(root.grid.shape, bool) for _ in range(3)]
     pin = stamp_coax_pin(root.grid, port, layout)
@@ -80,7 +76,7 @@ def _refuse_front_pec(sim, root, port, layout):
                     allowed_cells |= np.asarray(cells)
                 allowed_edges = [a | e for a, e in zip(allowed_edges, owned)]
     if ((root.pec_cells is not None and np.any(np.asarray(root.pec_cells) & front & ~allowed_cells))
-            or any(np.any(np.asarray(e) & front & ~a) for e, a in zip(root.edges, allowed_edges))):
+            or any(np.any(np.asarray(e) & mask & ~a) for e, mask, a in zip(root.edges, front_edges, allowed_edges))):
         raise RfxUnsupported('add_coaxial_port(): user PEC in front of the reference plane inside the bore; name the pin contact in terminates=')
 
 
@@ -102,9 +98,11 @@ def assemble_coax_port(sim, grid, materials, root, sources, mag_sources, *, n_st
     layout = coax_port_layout(grid, port, absorber_pads=pads, ntff=sim._ntff)
     bore = np.zeros(grid.shape, bool)
     bore[:, :, layout.z_lo_index:layout.z_hi_index + 1] = radial_mask(grid, port, port.outer_radius)[:, :, None]
-    edge_bore = bore.copy()
-    edge_bore[:, :, layout.z_hi_index + 1] = radial_mask(grid, port, port.outer_radius)
-    _refuse_bore_materials(sim, root, bore)
+    edge_bore = [bore.copy() for _ in range(3)]
+    for mask in edge_bore[:2]:
+        mask[:, :, layout.z_hi_index + 1] = radial_mask(grid, port, port.outer_radius)
+    from rfx.model.coax_admission import refuse_bore_materials
+    refuse_bore_materials(sim, root, materials, bore, edge_bore)
     _refuse_front_pec(sim, root, port, layout)
     root = clear_coax_bore(root, bore, layout, edge_bore=edge_bore)
     layout, line = build_coax_port_line(grid, materials, port, absorber_pads=pads,
@@ -124,8 +122,6 @@ def assemble_coax_port(sim, grid, materials, root, sources, mag_sources, *, n_st
     edges = realized_pec_edge_masks(cells, periodic=root.periodic)
     released = np.argwhere(bore | cells)
     root = replace(root, released_cells=np.unique(np.concatenate((root.released_cells, released)), axis=0))
-    if occupancy is not None:
-        occupancy = jnp.where(jnp.asarray(bore | cells), 0., occupancy)
     root = coax_kernel_conductors(sim, grid, line.materials, cells, edges,
         line.conductor_entities, root=root, skip_preflight=True)
     sources.defer(deferred_coax_sources, spec=line.ends[0].source_spec, magnetic_sources=mag_sources)

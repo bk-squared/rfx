@@ -139,7 +139,7 @@ def test_bottom_is_node_mirror(monkeypatch):
     ('precision', 'float32'), ('stencil_order', 'stencil_order=2'), ('mode', "mode='3d'"),
     ('boundary', 'CPML on all six faces'), ('zero_cpml', 'CPML on all six faces'),
     ('periodic', 'periodic'), ('tfsf', 'TF/SF'),
-    ('face', 'face='), ('count', 'exactly one'), ('mixed', 'other S-port'),
+    ('face', 'face='), ('count', 'exactly one'), ('mixed', 'other (S-port|excitations)'),
     ('conformal_pec', 'conformal_pec'), ('subpixel_smoothing', 'subpixel_smoothing'),
     ('short', '61 line cells'), ('lateral', 'absorber'), ('front', 'user PEC in front'),
     ('kerr', 'Kerr material inside the bore'),

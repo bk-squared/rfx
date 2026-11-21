@@ -150,7 +150,7 @@ def test_other_forward_measurements_have_no_replay_tables(kind, graded, monkeypa
 def test_coaxial_spectra_not_reachable_from_forward(graded):
     sim = _scene(graded)
     sim.add_coaxial_port((.008,) * 3)
-    fragment = "supported only on run_uniform and fwd_uniform" if graded else "CPML on all six faces"
+    fragment = "add_coaxial_port.*is not carried" if graded else "CPML on all six faces"
     with pytest.raises(NotImplementedError, match=fragment):
         sim.forward(n_steps=8, skip_preflight=True)
     with pytest.raises(ValueError, match=fragment):

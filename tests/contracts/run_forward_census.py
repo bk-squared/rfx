@@ -199,7 +199,7 @@ def build_p_coax(path):
         return base_scene(path, domain=(.030, .020, .080), source=False).add_coaxial_port(
             (.006, .006, .004), face='top', pin_length=0.)
     # Arguments from tests/contracts/test_line_stub_refusal_1512.py:184.
-    return base_scene(path).add_coaxial_port((.006, .006, .008), face='bottom', pin_length=.004)
+    return base_scene(path, source=False).add_coaxial_port((.006, .006, .008), face='bottom', pin_length=.004)
 
 
 def build_p_msl(path):

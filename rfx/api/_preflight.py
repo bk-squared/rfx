@@ -345,13 +345,15 @@ class _PreflightMixin:
             return compute_s_params
 
         from rfx.runners._admission import admit_s_request
+        from rfx.model.coax_admission import refuse_off_record_steps
+        refuse_off_record_steps(self, s_param_n_steps)
         port_entries = admit_s_request(self, "run(compute_s_params=True)")
 
         if devices is not None and len(devices) > 1:
             from rfx.model.distributed_ports import refuse_unsupported_distributed_features
             refuse_unsupported_distributed_features(
                 self, lane="distributed multi-device run()")
-        if self._refinement is not None:
+        if self._refinement is not None and not self._coaxial_ports:
             if any(pe.waveform is None for pe in port_entries):
                 raise ValueError(
                     "subgrid compute_s_params needs a waveform "
@@ -1048,7 +1050,7 @@ class _PreflightMixin:
             failed.append(
                 "no port family besides add_coaxial_port() (registered: "
                 + ", ".join(others) + ")")
-        faces = sorted({str(port.face) for port in self._coaxial_ports})
+        faces = sorted({str(port.face) for port in getattr(self, "_coaxial_ports", ())})
         if faces != ["top"]:
             failed.append(f"face='top' (registered: {', '.join(faces)})")
         if self._boundary != "cpml" or self._cpml_layers <= 0:

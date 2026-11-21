@@ -111,7 +111,7 @@ def coax_port_layout(grid, port, *, absorber_pads, ntff=None):
     from rfx.errors import RfxUnsupported
     from rfx.model.coax_stamp import SHELL_THICKNESS_M
     dx = float(grid.dx)
-    room = []
+    room: list[tuple[str, float]] = []
     for axis, name in enumerate('xy'):
         low, high = absorber_pads[2 * axis:2 * axis + 2]
         span = (grid.shape[axis] - 1 - low - high) * dx

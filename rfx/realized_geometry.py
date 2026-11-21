@@ -92,6 +92,8 @@ class PortGeometry:
     edges: tuple[tuple[int, int, int], ...]
     aperture: tuple[tuple[int, int], ...] | None = None
     error: str | None = None
+    cleared_bore_cells: tuple = ()
+    cleared_bore_edges: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -508,8 +510,11 @@ def _ports(sim, ctx, assembled):
             if kind == 'coaxial' and assembled.coax_bore_release is not None:
                 cells = np.logical_or.reduce([e.cells for e in assembled.stamped_entities])
                 indices = np.nonzero(cells)
-                aperture = tuple((int(k.min()), int(k.max()) + 1) for k in indices)
-                rows.append(PortGeometry(f'coaxial_port[{i}]', kind, None, (), aperture))
+                coax_aperture = tuple((int(k.min()), int(k.max()) + 1) for k in indices)
+                release = assembled.coax_bore_release
+                rows.append(PortGeometry(f'coaxial_port[{i}]', kind, None, (), coax_aperture,
+                    cleared_bore_cells=tuple(map(tuple, release.cells)),
+                    cleared_bore_edges=tuple(tuple(map(tuple, e)) for e in release.edges)))
                 continue
             rows.append(PortGeometry(f"{kind}_port[{i}]", kind, None, (),
                                      error="not represented: family-specific aperture/drive assembly"))
