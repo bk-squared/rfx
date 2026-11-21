@@ -131,10 +131,10 @@ def test_seam_column_requires_a_trace_conductor(short_trace, end):
 
 
 def test_seam_aperture_names_only_incident_conductors():
-    from rfx.geometry.port_termination import default_msl_terminates
+    from rfx.geometry.port_termination import msl_aperture_conductors
     sim = microstrip_model()
     sim.add(Box((.001, .0015, .002), (.009, .0025, .002)), material='pec')
-    refs = default_msl_terminates(sim, sim._build_grid(), position=(.002, .005, .001),
+    refs = msl_aperture_conductors(sim, sim._build_grid(), position=(.002, .005, .001),
                                   width=.002, height=.001, direction='+x')
     assert len(refs) == 1 and refs[0].entry is sim._geometry[1]
 

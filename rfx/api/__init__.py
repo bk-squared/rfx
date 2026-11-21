@@ -1279,8 +1279,8 @@ class Simulation(
     ) -> "Simulation":
         """Add a microstrip-line (MSL) port spanning the full trace cross-section.
 
-        Unlike :meth:`add_port` with ``extent=...`` (a one-cell-transverse
-        wire port), this port covers the full ``width × height``
+        Lines continue through reached absorbing faces; ``terminates`` accepts
+        only None or an empty list/tuple. This port covers the ``width × height``
         cross-section under the trace and uses 3-probe numerical
         de-embedding to extract β and Z0 empirically downstream of the
         feed plane.
@@ -1468,9 +1468,9 @@ class Simulation(
         self._msl_auto_probe_lengths[name] = (
             float(_near_field_m), float(span_total))
 
-        from rfx.geometry.port_termination import resolve_terminates
-        terminated = (None if terminates is None else resolve_terminates(
-            self, terminates, port=f"add_msl_port at {position}"))
+        from rfx.geometry.port_termination import resolve_msl_terminates
+        terminated = resolve_msl_terminates(
+            self, terminates, port=f"add_msl_port at {position}")
 
         self._msl_ports.append(_MSLPortEntry(
             name=name,

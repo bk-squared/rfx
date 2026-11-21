@@ -55,6 +55,18 @@ def resolve_terminates(sim, value, *, port):
     return tuple(resolved)
 
 
+def resolve_msl_terminates(sim, value, *, port):
+    """Refuse an MSL hold before resolving any conductor; retain null versus empty."""
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)) and len(value) == 0:
+        return ()
+    raise ValueError(
+        f"{port}: terminates= is not accepted for MSL ports: a microstrip line "
+        "continues through every absorbing face it reaches (#1512). "
+        "To end the line at the port, start its strip at the port node.")
+
+
 def registered_ports(sim):
     for collection in ("_ports", "_msl_ports", "_coaxial_ports"):
         for index, port in enumerate(getattr(sim, collection, ())):
@@ -64,27 +76,42 @@ def registered_ports(sim):
 
 
 def _realization_key(sim, grid):
-    """What an MSL default depends on: this grid and this conductor list."""
+    """What aperture incidence depends on: this grid and this conductor list."""
     pads = tuple(int(getattr(grid, f"pad_{a}_{s}", 0)) for a in "xyz" for s in ("lo", "hi"))
     return (id(grid), tuple(int(n) for n in grid.shape), pads,
             tuple(id(entry) for _, entry in conductor_entries(sim)))
 
 
 def port_termination_references(sim, collection, port, grid):
-    """Resolve an MSL default on this realization; retain explicit names."""
-    if collection == "_msl_ports" and port.terminates is None:
-        realization = _realization_key(sim, grid)
-        memo = sim.__dict__.get("_msl_default_memo")
-        if memo is None or memo["realization"] != realization:
-            memo = sim.__dict__["_msl_default_memo"] = {
-                "realization": realization, "ports": {}}
-        if id(port) not in memo["ports"]:
-            memo["ports"][id(port)] = default_msl_terminates(
-                sim, grid, position=port.position, width=port.width,
-                height=port.height, direction=port.direction)
-        return memo["ports"][id(port)]
+    """MSL ports hold nothing; other ports retain explicit registered names."""
+    if collection == "_msl_ports":
+        return ()
     return tuple(ref for ref in port.terminates
                  if any(entry is ref.entry for entry in getattr(sim, ref.collection)))
+
+
+def msl_port_aperture_conductors(sim, grid, port):
+    """Cache aperture incidence on this grid and conductor declaration list."""
+    realization = _realization_key(sim, grid)
+    memo = sim.__dict__.get("_msl_default_memo")
+    if memo is None or memo["realization"] != realization:
+        memo = sim.__dict__["_msl_default_memo"] = {
+            "realization": realization, "ports": {}}
+    if id(port) not in memo["ports"]:
+        memo["ports"][id(port)] = msl_aperture_conductors(
+            sim, grid, position=port.position, width=port.width,
+            height=port.height, direction=port.direction)
+    return memo["ports"][id(port)]
+
+
+def msl_continuation_faces(sim, grid, entry):
+    """Faces behind incident MSL ports override holds named by other ports."""
+    faces = set()
+    for port in sim._msl_ports:
+        if any(ref.entry is entry for ref in msl_port_aperture_conductors(sim, grid, port)):
+            faces.add(("xyz".index(port.direction[-1]),
+                       "lo" if port.direction.startswith("+") else "hi"))
+    return faces
 
 
 def held_conductor_entries(sim, grid):
@@ -135,7 +162,7 @@ def lattice_intersects_aperture(lattice, nodes, lower, upper):
     return False
 
 
-def default_msl_terminates(sim, grid, *, position, width, height, direction):
+def msl_aperture_conductors(sim, grid, *, position, width, height, direction):
     """Name conductors exactly incident to the realized MSL signal aperture."""
     candidates = list(conductor_entries(sim))
     if not candidates:

@@ -856,8 +856,8 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
 
     Box faces and occupied outermost interior layers continue. A non-Box
     sheet must also reach the declared face with the same nonempty
-    cross-section on its last two interior layers. Entries named by a
-    port's ``terminates`` stay declared on every reached face.
+    cross-section on its last two interior layers. Other ports hold named
+    entries except behind an incident MSL port, where the line continues.
     Port-generated structures do not call this function.
     """
     from rfx.core.jax_utils import is_tracer
@@ -885,12 +885,15 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
         return shape
     lattice = _declared_conductor_lattice(sim, grid, shape, coords)
     occupied = _occupied_conductor_faces(lattice, grid)
-    from rfx.geometry.port_termination import conductor_entries, held_conductor_entries
+    from rfx.geometry.port_termination import (
+        conductor_entries, held_conductor_entries, msl_continuation_faces)
     if entry is None:
         entry = next((candidate for _, candidate in conductor_entries(sim)
                       if candidate.shape is shape), None)
     held = (_conductor_reached_faces(sim, grid, shape, lattice, nodes)
             if any(other is entry for other in held_conductor_entries(sim, grid)) else set())
+    if held:
+        held -= msl_continuation_faces(sim, grid, entry)
     pairs, findings = extend_shapes_into_cpml_pad(
         [(shape, 1.0)], nodes, pads,
         declared_domain=sim._unresolved_domain, occupied_faces=occupied,

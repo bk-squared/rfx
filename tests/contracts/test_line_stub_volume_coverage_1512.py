@@ -5,7 +5,7 @@ import pytest
 from rfx.boundaries.pec import realized_pec_edge_masks
 from rfx.preflight.line_stub import line_stub_findings
 from rfx.probes.msl_wave_decomp import realized_trace_planes_on_column
-from rfx.geometry.port_termination import default_msl_terminates
+from rfx.geometry.port_termination import msl_aperture_conductors
 from rfx.sources.msl_port import (
     msl_cross_section_span, msl_port_from_entry, validate_msl_port_geometry,
 )
@@ -51,7 +51,7 @@ def test_volume_has_zero_realized_stub_and_passes_port_preflight(case):
         validate_msl_port_geometry(grid, port, pec_edge_masks=edges, sheet_specs=lossy,
                                   pec_faces=sim._boundary_spec.pec_faces(),
                                   periodic=sim._periodic_flags(), name=pe.name)
-        assert default_msl_terminates(sim, grid, position=pe.position, width=pe.width,
+        assert msl_aperture_conductors(sim, grid, position=pe.position, width=pe.width,
                                       height=pe.height, direction=pe.direction)
         assert realized_trace_planes_on_column(
             edges, 2, (span["i_feed"], span["w_centre"]), span["n_hi"],

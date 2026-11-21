@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from rfx.boundaries.pec import realized_pec_edge_masks
-from rfx.geometry.port_termination import default_msl_terminates
+from rfx.geometry.port_termination import msl_aperture_conductors
 from rfx.preflight.line_stub import line_stub_findings
 from rfx.probes.msl_wave_decomp import realized_trace_planes_on_column
 from rfx.sources.msl_port import msl_cross_section_span, msl_port_from_entry
@@ -73,7 +73,7 @@ def test_converted_fixture_port_coverage(case, _release_case_memory):
     edges = realized_pec_edge_masks(result[3], sheets, wires, periodic=sim._periodic_flags())
     for pe in sim._msl_ports:
         span = msl_cross_section_span(grid, msl_port_from_entry(pe))
-        refs = default_msl_terminates(sim, grid, position=pe.position, width=pe.width,
+        refs = msl_aperture_conductors(sim, grid, position=pe.position, width=pe.width,
                                       height=pe.height, direction=pe.direction)
         feed = sim._geometry[1] if case.startswith("broad-") else sim._thin_conductors[1]
         assert any(ref.entry is feed for ref in refs), "feed not detected"

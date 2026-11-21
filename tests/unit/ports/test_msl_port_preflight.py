@@ -17,7 +17,7 @@ import pytest
 from rfx.api import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.csg import Box
-from tests._line_stub_geometry import trim_resonant_trace
+from rfx.preflight.line_stub import line_stub_findings
 
 
 EPS_R = 3.66
@@ -437,7 +437,7 @@ def _two_port_sim(*, lx: float, msl1_x: float,
                      direction="-x", impedance=50.0, n_probe_offset=msl1_offset,
                      n_probe_spacing=n_probe_spacing, n_probes=n_probes,
                      name="msl_1")
-    trim_resonant_trace(sim, 1)
+    assert line_stub_findings(sim) == [], "Face-reaching MSL traces continue without trimming."
     return sim
 
 

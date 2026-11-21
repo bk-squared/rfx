@@ -2,8 +2,8 @@
 
 > Documentation update (2026-10-03): Records moved by #1294 are kept with the project, outside this repository. Historical paths below refer to those records; reproduction commands that read them need the archived files.
 
-Status: **decided**. Option A of section 5 is adopted; option B is the next task, not a
-rejected one. This note is the rule; the code that implements it lands in later changes and cites it.
+Status: **decided, microstrip superseded 2026-11-21**. The C5 update below adopts
+microstrip continuation at the default sixteen layers; coaxial holds retain option A.
 Every number here is read from a record under `scripts/diagnostics/open_boundary_contract/` (file and
 key given in place) or from a tracked file named in place. Nothing in `rfx/` changes with this note.
 
@@ -74,9 +74,10 @@ where no record exists.
   measured unstable, and then say so where a user can read it.
 - **A line is ended by its port's resistive termination, not by the absorber.** (record: `add_msl_port`
   docstring: "resistive termination + active source" / "passive matched termination only") This makes
-  the line lanes independent of how the absorber behaves at low frequency. **Kept (C5).**
+  the line lanes independent of how the absorber behaves at low frequency. **Historical for MSL;
+  superseded by the dated C5 update below. Coaxial holds remain.**
 - **`alpha = 0.05` S/m.** No record of where the value came from; it is a literal, not a measured
-  default. What it costs is measured in section 5. **Kept for now; option B re-derives it.**
+  default. What it costs is measured in section 5. **Kept; the dated microstrip update changes neither alpha nor its frequency rule.**
 
 ## 4. The contract
 
@@ -93,7 +94,7 @@ geometry touching the face continues along the normal through the absorber befor
 and smoothing. Copying finished material arrays would repeat a smoothed interface cell instead of
 continuing the geometry. This continuation applies on lo and hi faces to material volumes, PEC
 volumes, sheet and wire edges, and thin-conductor sheets. Exceptions are listed by name, each with the measurement that
-justifies it. Today there are two: dispersive poles (#636) and the line segment of C5.
+justifies it. Today there are two: dispersive poles (#636) and the named coaxial/lumped holds of C5.
 *Invariant, to become an always-on contract test over the audited examples:* in every absorber cell
 column the realized model equals the realized model of the adjacent face plane, for every array the
 time stepping receives, on both sides.
@@ -116,14 +117,23 @@ goes from 0.661 at +y against 0.002 at −y to 0.344 against 0.314 (sums over y 
 4 of the normalized profiles in `dumps/n2_pad10_main/leader_profiles.txt` and
 `dumps/n2_pad10_main1012/leader_profiles.txt`). PR #1012 is a precondition of this contract.
 
-**C5 — What the absorber may be asked to end (option A).** A radiating structure, a guide with a
+**C5 — What the absorber may be asked to end.** A radiating structure, a guide with a
 cutoff, and a single reference conductor such as a ground plane are ended by the absorber, under C2.
-**A two-conductor line is ended by its port** (measured on microstrip only, two fixtures of one lane;
-extended to coaxial and mixed lines by the argument of section 5, not by measurement; the census's
-coax-to-microstrip, mixed and coax fixtures were not measured). The segment of a line between a line port's termination
-plane and the absorbing face belongs to the port lane and ends at the absorber's entrance, as it does
-today: a named exception to C2, with its measured cost in section 5. A line that reaches an absorbing
-face with no port termination on it is refused at preflight, with this section as the reason.
+
+Superseded for microstrip on 2026-11-21 by [#1512](https://github.com/bk-squared/rfx/issues/1512),
+with measurements in `rfx/records/20261121-1512-option-b-depth-result/` in rfx-archive.
+An MSL port holds no conductor. A microstrip line continues through each absorbing face whose
+outermost interior layer its realized conductor occupies, at today's default 16 layers, without
+an alpha change or a depth rule. Another port's named hold remains except at the face behind an
+MSL port whose signal aperture the conductor occupies. An interior open tail, or a conductor
+that cannot be continued, still undergoes the resonant line-stub refusal.
+
+The coaxial and mixed-line option-A contract remains: a two-conductor line is ended by its port
+(extended to coaxial and mixed lines by the argument of section 5, not by measurement; the census's
+coax-to-microstrip, mixed and coax fixtures were not measured). The segment between that port's
+termination plane and the absorbing face ends at the absorber's entrance as a named exception
+to C2, subject to the MSL face precedence above. Preflight warns when such a port names no
+termination and its terminal conductor reaches an absorbing face.
 
 ## 5. The evidence behind C2 and C5
 
@@ -205,11 +215,11 @@ A reading consistent with all of it, not measured directly: this term makes the 
 below about `alpha / (2π·eps)`, 0.9 GHz in air as shipped (derived), and a two-conductor line has no
 cutoff, so it delivers exactly that content into the absorber, where it is returned.
 
-**Option A (adopted).** Lines stay port-terminated and `alpha` stays as shipped. Cost, from the first
+**Option A (historical microstrip model, retained for coaxial holds).** Lines stay port-terminated and `alpha` stays as shipped. Cost, from the first
 table: at most 0.11 dB in |S21|, 1.6 dB in |S11| where |S11| is small, 0.002 % in a notch frequency,
-0.3 points in the fitted-`beta` diagnostic. Every committed microstrip result stands.
+0.3 points in the fitted-`beta` diagnostic. These are the measurements before the dated microstrip supersession above.
 
-**Option B (next).** Make the absorber fit to end a line: derive `alpha` from the lowest frequency a run
+**Option B (historical proposal; the dated microstrip supersession above uses unchanged alpha).** Make the absorber fit to end a line: derive `alpha` from the lowest frequency a run
 is asked about, so that `alpha / (2π·eps)` sits well below it, and let lines follow C2 like everything
 else, as openEMS's tutorial does. It moves every absorber-dependent number in the repository, so it
 starts with a sweep (layers × alpha × a radiating case, a guided case with a cutoff, a two-conductor

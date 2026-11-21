@@ -159,6 +159,10 @@ add_msl_port(position, *, width, height, direction="+x", impedance=50.0,
 The port covers the full trace cross-section and fits the line's β and Z0 from
 a short probe array downstream of the feed.
 
+- `terminates`: only `None` or an empty list or tuple. MSL lines continue
+  through reached absorbing faces. To end the strip at a port, start it at
+  the port's grid-node coordinate. Other ports' holds are overridden only on
+  the face behind an MSL port whose signal aperture the conductor occupies.
 - `position = (feed, centre, z_substrate_bottom)`: the coordinate along
   `direction` is the feed plane; the other in-plane coordinate is the trace
   centre.
@@ -385,8 +389,9 @@ print(np.abs(refl.s11))
 - **Port reference plane.** A one-cell lumped or wire port reads V at its node
   and I half a cell toward the line. Lumped and wire ports return identical
   S11.
-- **End lines at their ports, not in the CPML.** CPML terminates a guided
-  line much less well than a plane wave. Let the ports terminate the line.
+- **Microstrip lines continue through reached absorbing faces.** Use the
+  default 16 layers; no depth rule is established. Coaxial and lumped/wire
+  ports can hold named conductors, with precedence behind an incident MSL port.
 - **Coax results from before the three-axis absorber** (`cpml_axes="z"`, now
   refused) came from a line in a closed metal can and do not reproduce.
 - **Graded meshes.** Coaxial ports raise on a graded mesh. Lumped-port

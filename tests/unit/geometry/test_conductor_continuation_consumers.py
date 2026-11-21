@@ -141,7 +141,7 @@ def test_fidelity_audit_keeps_the_named_strip_after_refused_entry_removal(
 
 @pytest.mark.parametrize("port_first", (False, True))
 @pytest.mark.parametrize("explicit_empty", (False, True))
-def test_msl_default_finds_a_strip_added_after_the_port(port_first, explicit_empty):
+def test_msl_continues_a_strip_added_after_the_port(port_first, explicit_empty):
     from types import SimpleNamespace
     sim = _sim()
     def add_port():
@@ -158,13 +158,13 @@ def test_msl_default_finds_a_strip_added_after_the_port(port_first, explicit_emp
     sheets = []
     sim._assemble_materials(sim._build_grid(), pec_sheets=sheets, pec_wires=[])
     assert int(np.asarray(sheets[0].footprint).sum()) == 169
-    assert int(np.asarray(sheets[1].footprint).sum()) == (39 if explicit_empty else 27)
-    assert int(np.asarray(sheets[1].footprint)[:2].sum()) == (6 if explicit_empty else 0)
-    assert int(np.asarray(sheets[1].footprint)[-2:].sum()) == (6 if explicit_empty else 0)
+    assert int(np.asarray(sheets[1].footprint).sum()) == 39
+    assert int(np.asarray(sheets[1].footprint)[:2].sum()) == 6
+    assert int(np.asarray(sheets[1].footprint)[-2:].sum()) == 6
     findings = []
     sim._validate_cfg_port_conductor_continues(
         SimpleNamespace(warn=lambda issue, **kwargs: findings.append(issue)))
-    assert len(findings) == (1 if explicit_empty else 0)
+    assert findings == []
 
 
 def test_smoothed_pec_branch_reports_unsupported_face():

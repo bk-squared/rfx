@@ -2197,12 +2197,12 @@ def test_terminated_conductor_references_survive_the_design_round_trip(thin):
     sheets = []
     rebuilt._assemble_materials(rebuilt._build_grid(), pec_sheets=sheets, pec_wires=[])
     assert np.asarray(sheets[0].footprint)[:, :, 3].all()
-    assert not np.asarray(sheets[1].footprint)[:2].any()
+    assert np.asarray(sheets[1].footprint)[:2].any()
     assert not np.asarray(sheets[1].footprint)[-2:].any()
 
 
 @pytest.mark.parametrize("explicit_empty", (False, True))
-def test_msl_default_remains_lazy_through_design_round_trip(explicit_empty):
+def test_msl_null_and_empty_continue_through_design_round_trip(explicit_empty):
     sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
                      boundary="cpml", cpml_layers=2)
     sim.add_msl_port((4., 4., 1.), width=2., height=3.,
@@ -2214,7 +2214,7 @@ def test_msl_default_remains_lazy_through_design_round_trip(explicit_empty):
     rebuilt.add(Box((0., 3., 4.), (8., 5., 4.)), material="pec")
     sheets = []
     rebuilt._assemble_materials(rebuilt._build_grid(), pec_sheets=sheets, pec_wires=[])
-    assert int(np.asarray(sheets[0].footprint).sum()) == (39 if explicit_empty else 27)
+    assert int(np.asarray(sheets[0].footprint).sum()) == 39
 
 
 def test_design_export_uses_current_entry_positions_for_terminations():

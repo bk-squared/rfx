@@ -40,12 +40,14 @@ impedance or reference plane. They give fields and power, not S-parameters.
 
 ## End a line with its port
 
-A transmission line should end at a port that absorbs it, not in the CPML.
-Name the conductor a port ends with `terminates=` on `add_port`,
-`add_msl_port` or `add_coaxial_port`; a microstrip port ends the strip under
-it by default. The CPML terminates a guided line much less well than a plane
-wave. Preflight names any
-conductor that runs into the absorber unterminated.
+Microstrip lines continue through each absorbing face whose outermost interior
+layer their realized strip occupies, at the default 16 layers. `add_msl_port`
+accepts only `terminates=None` or an empty list or tuple. To end a microstrip
+at a port, start its strip at the port's grid-node coordinate. Interior open
+tails can still be refused when resonant. Coaxial and lumped/wire ports name
+conductors they end with `terminates=`; preflight warns about their unnamed
+continuing conductors. A named hold is overridden at the face behind an MSL
+port whose signal aperture that conductor occupies. There is no depth rule.
 
 ## Non-default configurations
 

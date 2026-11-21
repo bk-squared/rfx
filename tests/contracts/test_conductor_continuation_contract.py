@@ -1,5 +1,5 @@
 """Absorber columns must contain the adjacent solved cross-section.
-HELD_FACES contains entry indices in the committed drawings, not a port-classification algorithm.
+MSL continuations include the former port-held faces in the committed drawings.
 """
 from rfx.boundaries.spec import Boundary, BoundarySpec
 import sys
@@ -47,7 +47,7 @@ def test_absorbing_columns_equal_the_face(path, builder, variant):
             pytest.skip(str(exc))
         try:
             grid, arrays, poles, nodes = assembled_arrays(sim)
-            rows = HELD_FACES.get(path, ())
+            rows = () if sim._msl_ports else HELD_FACES.get(path, ())
             bad, _ = violations(sim, grid, arrays, poles, nodes, held_faces=rows)
             assert not bad, bad
             _assert_empty_sheet_faces(grid, arrays, [(i-1, face) for i, face in rows])
