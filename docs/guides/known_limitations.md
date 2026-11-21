@@ -788,6 +788,31 @@ The stopband minima also move with the feed length: with longer feeds they are 5
 passband `|S21|` moves by at most 0.68 dB. No message reports it (largest singular value of S 1.001). The MSL port's
 power reading near its plane (entry above) probably contributes, because the feed change moves the probes; this is not measured.
 
+### On a lossy line or fill, |S| at the reported reference plane is |S| at the plane where it was measured
+
+Tracker: #2944
+
+A port measures its waves at one plane and moves them to the reported reference plane. The move multiplies them by
+exp(∓jβs) with a real propagation constant β. The attenuation α over the shifted length s is left out.
+
+Where the move happens:
+- the microstrip calculators move S from probe 0 out to the feed plane;
+- the waveguide port moves its waves from the modal record plane to `reference_plane`;
+- the opt-in wire reference planes de-embed with phase only.
+
+On a lossless line nothing is lost. On a lossy substrate, a lossy fill or a conductor with loss, the phase is right and
+the magnitude is that of the measuring plane:
+- a move outward, away from the device (the microstrip feed plane), reports |S11| high by exp(2αs) and |S21| high by
+  exp(α(s₁ + s₂));
+- a move inward reports them low by the same factors.
+
+For example, a microstrip on h = 1.0 mm, εr 4.4, tan δ 0.02 with probe 0 at 5 mm from the feed has α_d ≈ 2.1 Np/m at
+6 GHz. Its feed-plane |S11| reads about 0.18 dB high. This is an estimate from the dielectric-loss formula, not a
+measurement.
+
+Until it is fixed, take the reference plane at the measuring plane, or correct |S| by the line's α yourself. The fix
+moves S with the complex propagation constant α + jβ for every port kind.
+
 ## Ring-down completion and the early stop
 
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).
