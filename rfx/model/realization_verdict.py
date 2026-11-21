@@ -276,14 +276,21 @@ def admit_sheet_sizes(sim, conductors, legacy_findings, conformal):
             retain_sheet_outcome(table, finding)
         return list(legacy_findings)
     from rfx.model.realization_reference import table_wide
-    if table_wide(table.rows):
+    from rfx.core.jax_utils import is_tracer
+    traced_mesh = any(is_tracer(getattr(conductors.grid, name, None))
+                      for name in ("dx_arr", "dy_arr", "dz"))
+    if table_wide(table.rows) and not traced_mesh:
         return []
     from rfx.model.realization_context import context_from_conductors
     from rfx.preflight.pec_geometry import _warn_sheet_effective_size, _warn_sheet_cavity_spacing
     from rfx.geometry.csg import Box
     from rfx.preflight._common import PreflightIssue
+    from rfx.model.graded_grid import host_nominal_grid
+    import jax
     import numpy as np
-    ctx = context_from_conductors(sim, conductors)
+    with jax.ensure_compile_time_eval():
+        grid = host_nominal_grid(conductors.grid) if traced_mesh else conductors.grid
+        ctx = context_from_conductors(sim, conductors, grid=grid)
     ctx.cell_sizes = ctx.spacings
     ctx.nodes = tuple(n[:conductors.grid.shape[a]] for a, n in enumerate(ctx.nodes))
     from rfx.geometry.rasterize_grid import GridCoords
@@ -292,8 +299,9 @@ def admit_sheet_sizes(sim, conductors, legacy_findings, conformal):
     ctx.coords = GridCoords(x, y, z, shape=conductors.grid.shape)
     ctx.sim = copy.copy(sim)
     ctx.sim._conformal_run_call = conformal
-    entries = [e for e in ctx.interior_pec_entries()
-               if e.kind in ("volume", "sheet") and e.lo is not None]
+    with jax.ensure_compile_time_eval():
+        entries = [e for e in ctx.interior_pec_entries()
+                   if e.kind in ("volume", "sheet") and e.lo is not None]
     legacy = []
 
     def collect(warning):
@@ -303,10 +311,12 @@ def admit_sheet_sizes(sim, conductors, legacy_findings, conformal):
         bind_retained_subjects(legacy[-1], table)
 
     collector = SimpleNamespace(warn=collect)
-    _warn_sheet_effective_size(collector, ctx, [e for e in entries if isinstance(e.shape, Box)])
-    pec = conductors.pec_mask
-    _warn_sheet_cavity_spacing(collector, ctx, entries,
-                              np.zeros(conductors.grid.shape, dtype=bool) if pec is None else pec)
+    with jax.ensure_compile_time_eval():
+        _warn_sheet_effective_size(collector, ctx, [e for e in entries if isinstance(e.shape, Box)])
+        if not traced_mesh:
+            pec = conductors.pec_mask
+            _warn_sheet_cavity_spacing(collector, ctx, entries,
+                                      np.zeros(conductors.grid.shape, dtype=bool) if pec is None else pec)
     table.judged.add("legacy sheets")
     table.findings.extend(legacy)
     for finding in legacy:

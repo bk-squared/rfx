@@ -104,8 +104,13 @@ def _spec_under_trace(make_grid, profile_fn, delta, sheet=PATCH):
 
 
 
-def _nominal_sheet_board(dx_profile, dy_profile=None, *, kind="pinned"):
-    nominal = {"x": _prof_x(0.5 * DX)} if is_tracer(dx_profile) else {}
+def _equivalence_prof_x(delta):
+    """Move the low edge enough to distinguish the nominal and fallback nodes."""
+    return _prof_x(delta) + _stretch(-0.8 * DX, N_X, 1, 8) - DX
+
+
+def _nominal_sheet_board(dx_profile, dy_profile=None, *, kind="pinned", nominal_x=None):
+    nominal = {"x": _equivalence_prof_x(0.5 * DX) if nominal_x is None else nominal_x} if is_tracer(dx_profile) else {}
     if is_tracer(dy_profile):
         nominal["y"] = _prof_y(0.5 * DX)
     sim = _build_board(0., probe=(20 * DX, 8 * DX, K_MID * DX),
@@ -123,10 +128,19 @@ def _nominal_sheet_board(dx_profile, dy_profile=None, *, kind="pinned"):
 
 
 def _drawn_shapes(joint):
-    return (Box((2 * DX, 2 * DX, Z_GND),
-                (22 * DX, (14.2 if joint else 14) * DX, Z_GND)),
-            Box((8 * DX, 5 * DX, Z_PATCH),
-                (17.1 * DX, (12.1 if joint else 11) * DX, Z_PATCH)))
+    """Draw the solved free edges 0.35 adjacent nominal cells beyond the nodes."""
+    widths = (_equivalence_prof_x(0.5 * DX), _prof_y(0.5 * DX) if joint else np.full(N_Y, DX))
+    nodes = tuple(np.concatenate(([0.], np.cumsum(w))) for w in widths)
+
+    def sheet(x_range, y_range, z):
+        lo = tuple(nodes[a][i] - .35 * widths[a][i - 1]
+                   for a, (i, _) in enumerate((x_range, y_range)))
+        hi = tuple(nodes[a][j] + .35 * widths[a][j]
+                   for a, (_, j) in enumerate((x_range, y_range)))
+        return Box((*lo, z), (*hi, z))
+
+    return (sheet((2, 22), (2, 14), Z_GND),
+            sheet((8, 16), (5, 11), Z_PATCH))
 
 
 def _assert_literal_sheet_ranges(specs):
@@ -139,7 +153,7 @@ def _assert_literal_sheet_ranges(specs):
 
 def _assert_nominal_differs_from_fallback(joint):
     from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid, sheet_spec_from_shape
-    nominal = _grid(dx_profile=_prof_x(0.5 * DX),
+    nominal = _grid(dx_profile=_equivalence_prof_x(0.5 * DX),
                     dy_profile=_prof_y(0.5 * DX) if joint else None)
     uniform = _grid()
     nominal_specs = [sheet_spec_from_shape(shape, coords_from_nonuniform_grid(nominal), grid=nominal)
@@ -165,7 +179,7 @@ def test_drawn_sheet_matches_pinned_bitwise(kind, joint):
         series = sim.forward(n_steps=40, skip_preflight=True).time_series
         return series, *product.pec_edges
 
-    profiles = (jnp.asarray(_prof_x(0.5 * DX), dtype=jnp.float32),
+    profiles = (jnp.asarray(_equivalence_prof_x(0.5 * DX), dtype=jnp.float32),
                 jnp.asarray(_prof_y(0.5 * DX), dtype=jnp.float32))
     directions = (jax.jvp(_prof_x, (jnp.float32(0.5 * DX),), (jnp.float32(1),))[1],
                   jax.jvp(_prof_y, (jnp.float32(0.5 * DX),), (jnp.float32(1),))[1])
@@ -196,8 +210,8 @@ def test_T3_traced_sheet_spec_equals_concrete_nominal():
         captured.append(specs)
         return jnp.sum(dx) + jnp.sum(dy)
 
-    resolve(_prof_x(0.5 * DX), _prof_y(0.5 * DX))
-    jax.jvp(resolve, (jnp.asarray(_prof_x(0.5 * DX), dtype=jnp.float32),
+    resolve(_equivalence_prof_x(0.5 * DX), _prof_y(0.5 * DX))
+    jax.jvp(resolve, (jnp.asarray(_equivalence_prof_x(0.5 * DX), dtype=jnp.float32),
                       jnp.asarray(_prof_y(0.5 * DX), dtype=jnp.float32)),
             (jnp.ones(N_X), jnp.ones(N_Y)))
     for specs in captured:
@@ -224,6 +238,55 @@ def test_T4_drawn_sheet_refuses_traced_normal():
     with pytest.raises(ValueError, match="sheet 'patch': a sheet's plane is a static integer.*axis z"):
         jax.jvp(resolve, (jnp.asarray(_stretch(0.5 * DX, N_Z, 8, 12), dtype=jnp.float32),),
                 (jnp.ones(N_Z),))
+
+
+@pytest.mark.parametrize("kind", ["box", "thin"])
+def test_T6_traced_sheet_size_refusal_matches_concrete(kind):
+    """The original T1 drawing keeps the concrete rule's +11.67% y refusal."""
+    def run(dx):
+        sim = _nominal_sheet_board(dx, nominal_x=_prof_x(0.5 * DX))
+        sim._pinned_sheets.clear()
+        shapes = (Box((2 * DX, 2 * DX, Z_GND), (22 * DX, 14 * DX, Z_GND)),
+                  Box((8 * DX, 5 * DX, Z_PATCH), (17.1 * DX, 11 * DX, Z_PATCH)))
+        for shape in shapes:
+            if kind == "box":
+                sim.add(shape, material="pec")
+            else:
+                sim.add_thin_conductor(shape)
+        return sim.forward(n_steps=40, skip_preflight=True).time_series
+
+    with pytest.raises(ValueError, match="solved more than 1% off") as concrete:
+        run(_prof_x(0.5 * DX))
+    assert "y: drawn 3mm, nodes cover 3mm, solved as 3.35mm (+11.67%)" in str(concrete.value)
+    with pytest.raises(ValueError, match="solved more than 1% off") as traced:
+        jax.jvp(run, (jnp.asarray(_prof_x(0.5 * DX), dtype=jnp.float32),),
+                (jnp.ones(N_X),))
+    assert str(traced.value) == str(concrete.value)
+
+
+@pytest.mark.parametrize("kind", ["box", "thin"])
+def test_T7_closed_sheet_without_nominal_profiles_refuses_through_forward(kind):
+    """The review's closed domain cannot silently resolve on the fallback line."""
+    def run(dx):
+        sim = Simulation(freq_max=40e9, domain=(N_X * DX, N_Y * DX, N_Z * DX), dx=DX,
+                         dx_profile=dx, cpml_layers=0, boundary="pec",
+                         dt=float(DT_PIN), dt_min_cell=float(D_MIN))
+        sim.add_material("sub", eps_r=3.38)
+        sim.add(Box((2 * DX, 2 * DX, Z_GND), (22 * DX, 14 * DX, Z_PATCH)), material="sub")
+        sim.add_pinned_sheet(plane_index=K_GND, i_range=(2, 22), j_range=(2, 14), name="ground")
+        shape = Box((8 * DX, 5 * DX, Z_PATCH), (17.1 * DX, 11 * DX, Z_PATCH))
+        if kind == "box":
+            sim.add(shape, material="pec")
+        else:
+            sim.add_thin_conductor(shape)
+        sim.add_source((3 * DX, 8 * DX, K_MID * DX), "ez", amplitude_kind="current")
+        sim.add_probe((20 * DX, 8 * DX, K_MID * DX), "ez")
+        return sim.forward(n_steps=40, skip_preflight=True).time_series
+
+    with pytest.raises(ValueError, match=(
+            r"sheet '.+': traced in-plane axis x.*declare nominal_profiles for axis x.*add_pinned_sheet")):
+        jax.jvp(run, (jnp.asarray(_prof_x(0.5 * DX), dtype=jnp.float32),),
+                (jnp.ones(N_X),))
 
 
 @pytest.mark.parametrize("k", [0.0, 0.25, 0.5, 0.9, 1.0, 1.25, 1.5])

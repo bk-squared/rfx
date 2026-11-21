@@ -120,7 +120,9 @@ On a graded mesh, `dx_profile`, `dy_profile` and `dz_profile` can be traced:
 stretching the cells changes the physical size of what sits on them while the
 grid topology stays fixed. A drawn PEC sheet with a concrete normal axis
 resolves its plane and footprint on the nominal mesh, then follows those
-nodes as they move. A traced normal axis is refused. Declare a sheet with
+nodes as they move. Each traced in-plane axis requires `nominal_profiles`.
+Sheet-size admission uses that nominal mesh and the concrete solved-edge rule.
+A traced normal axis is refused. Declare a sheet with
 `sim.add_pinned_sheet(plane_index=, i_range=, j_range=)` to choose its nodes
 explicitly, including with a traced normal. Its indices stay Python ints;
 a traced index is refused.

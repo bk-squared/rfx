@@ -630,7 +630,8 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
 
     On traced coordinates, a concrete normal resolves the sheet on the host
     nominal grid; its footprint then follows those nodes as the mesh moves.
-    A traced normal or traced coordinates without a nominal grid are refused.
+    Traced in-plane axes require declared nominal profiles. A traced normal
+    or traced coordinates without a nominal grid are refused.
     Returns the spec; raises ``ValueError`` on a zero footprint.
     """
     from rfx.boundaries.pec import SheetSpec
@@ -666,6 +667,13 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
                 f"sheet {name!r}: a sheet's plane is a static integer, and "
                 f"normal axis {'xyz'[a]} is a JAX tracer; pin that axis or "
                 "declare the conductor as a volume.")
+        for axis in range(3):
+            if axis != a and is_tracer(coords[axis]) and 'xyz'[axis] not in (
+                    getattr(reference_grid, "nominal_cells", None) or {}):
+                raise RfxRefusal(
+                    f"sheet {name!r}: traced in-plane axis {'xyz'[axis]} needs "
+                    f"nominal_profiles; declare nominal_profiles for axis {'xyz'[axis]} "
+                    "or use add_pinned_sheet.")
         from rfx.model.graded_grid import host_nominal_grid
         with jax.ensure_compile_time_eval():
             nominal = host_nominal_grid(reference_grid)
