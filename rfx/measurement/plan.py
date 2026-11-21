@@ -57,7 +57,7 @@ class NodeArrays:
     i: np.ndarray
     j: np.ndarray
     k: np.ndarray
-    weight: object
+    weight: np.ndarray | jax.Array
     area: np.ndarray | None = None
     _keys: dict = field(default_factory=dict, init=False, compare=False, repr=False)
 
@@ -83,9 +83,9 @@ class NodeArrays:
 
     def __getitem__(self, item):
         if isinstance(item, slice):
-            return NodeArrays(*(getattr(self, name)[item]
-                                for name in ('component', 'i', 'j', 'k', 'weight')),
-                              None if self.area is None else self.area[item])
+            return NodeArrays(component=self.component[item], i=self.i[item],
+                              j=self.j[item], k=self.k[item], weight=self.weight[item],
+                              area=None if self.area is None else self.area[item])
         item = integer_index(item)
         weight = self.weight[item]
         return Node(_COMPONENTS[int(self.component[item])],
@@ -142,20 +142,22 @@ def node_arrays(nodes):
     if isinstance(nodes, NodeArrays):
         return nodes
     weights = tuple(n.weight for n in nodes)
+    i, j, k = (np.asarray([getattr(n, a) for n in nodes], dtype=np.int32) for a in 'ijk')
     return NodeArrays(
-        np.asarray([_COMPONENTS.index(n.component) for n in nodes], dtype=np.int8),
-        *(np.asarray([getattr(n, a) for n in nodes], dtype=np.int32) for a in 'ijk'),
-        jnp.stack(weights) if _traced(weights) else np.asarray(weights, dtype=np.float64),
-        None if all(n.area is None for n in nodes) else np.asarray([n.area for n in nodes], dtype=np.float64))
+        component=np.asarray([_COMPONENTS.index(n.component) for n in nodes], dtype=np.int8),
+        i=i, j=j, k=k,
+        weight=jnp.stack(weights) if _traced(weights) else np.asarray(weights, dtype=np.float64),
+        area=None if all(n.area is None for n in nodes) else np.asarray([n.area for n in nodes], dtype=np.float64))
 
 
 def _join_node_arrays(parts):
     """Concatenate the small number of planes in a channel, column by column."""
     if len(parts) == 1:
         return parts[0]
-    return NodeArrays(*(np.concatenate([getattr(p, name) for p in parts])
-                        for name in ('component', 'i', 'j', 'k', 'weight')),
-                      None if parts[0].area is None else np.concatenate([p.area for p in parts]))
+    component, i, j, k, weight = (np.concatenate([getattr(p, name) for p in parts])
+                                for name in ('component', 'i', 'j', 'k', 'weight'))
+    return NodeArrays(component=component, i=i, j=j, k=k, weight=weight,
+                      area=None if parts[0].area is None else np.concatenate([p.area for p in parts]))
 
 
 @dataclass(frozen=True)
@@ -316,9 +318,11 @@ def _plane_nodes(grid, axis, index, component, region=None, weights=None):
     indices = [None] * 3
     indices[axis] = np.full(len(u), index, dtype=np.int32)
     indices[axes[0]], indices[axes[1]] = u, v
-    return NodeArrays(np.full(len(u), _COMPONENTS.index(component), dtype=np.int8),
-                      *indices, np.ones(len(u)) if weights is None else np.asarray(weights).ravel(),
-                      cells[0][u] * cells[1][v])
+    i, j, k = indices
+    return NodeArrays(component=np.full(len(u), _COMPONENTS.index(component), dtype=np.int8),
+                      i=i, j=j, k=k,
+                      weight=np.ones(len(u)) if weights is None else np.asarray(weights).ravel(),
+                      area=cells[0][u] * cells[1][v])
 
 
 def _pec_edges(sim, grid):

@@ -117,10 +117,12 @@ def ntff_channels(grid, box):
             indices[tangents[0]] = np.repeat(u, repeats)
             indices[tangents[1]] = np.repeat(v, repeats)
             indices[shift_axis] += np.tile([shift for _, (shift, _) in stencil], len(u))
-            nodes = NodeArrays(np.full(len(u)*repeats, _COMPONENTS.index(component), np.int8),
-                               *indices, np.tile([float(normal*transverse)
-                                                  for (_, normal), (_, transverse) in stencil], len(u)),
-                               np.repeat(areas, repeats))
+            i, j, k = indices
+            nodes = NodeArrays(component=np.full(len(u)*repeats, _COMPONENTS.index(component), np.int8),
+                               i=i, j=j, k=k,
+                               weight=np.tile([float(normal*transverse)
+                                               for (_, normal), (_, transverse) in stencil], len(u)),
+                               area=np.repeat(areas, repeats))
             yield Channel(face+':'+component, kind, nodes, e_time_offset=0., h_time_offset=0.)
             del nodes
 
@@ -164,11 +166,12 @@ def current_moment_channels(m, coef):
             h_indices = [np.repeat(a, 4).reshape(count, 4) for a in indices]
             for term, (_, axis) in enumerate(curls[c]):
                 h_indices[axis][:, 2*term+1] -= 1
-            h_indices = tuple(a.ravel() for a in h_indices)
+            hi, hj, hk = (a.ravel() for a in h_indices)
+            i, j, k = indices
             for w in range(m.n_weights):
                 value = weights[w][local]
                 prefix = f'block:{block}:component:{c}:weight:{w}:'
-                electric = NodeArrays(components, *indices, -value*coef)
+                electric = NodeArrays(component=components, i=i, j=j, k=k, weight=-value*coef)
                 yield Channel(prefix+'E', 'H', electric,
                               h_time_offset=float(m.half_step)-.5)
                 yield Channel(prefix+'E_prev', 'H', replace(electric, weight=-electric.weight),
@@ -178,6 +181,7 @@ def current_moment_channels(m, coef):
                 for term, (_, axis) in enumerate(curls[c]):
                     weight = value*inverse[axis][local[axis]]*m.curl_signs[2*c+term]
                     magnetic[:, 2*term], magnetic[:, 2*term+1] = weight, -weight
-                yield Channel(prefix+'H', 'H', NodeArrays(h_components, *h_indices, magnetic.ravel()),
+                yield Channel(prefix+'H', 'H', NodeArrays(component=h_components, i=hi, j=hj, k=hk,
+                                                       weight=magnetic.ravel()),
                               h_time_offset=float(m.half_step)-.5)
                 del magnetic, weight
