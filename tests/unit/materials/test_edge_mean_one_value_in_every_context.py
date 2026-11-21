@@ -85,7 +85,7 @@ def float64_mean(arr, sizes, periodic):
             shape = [1, 1, 1]
             shape[t] = arr.shape[t]
             d = sizes[t].reshape(shape)
-            fraction = (d / (_back(d, t, periodic) + d)).astype(np.float64)   # the fraction the code forms
+            fraction = (d / (_back(d, t, periodic) + d)).astype(np.float64)
             lo = _back(result, t, periodic)
             result = lo + (result - lo) * fraction
         out.append(result)
@@ -190,7 +190,6 @@ def test_gradient_is_the_area_weight():
     grad = np.asarray(jax.grad(lambda v: jnp.sum(
         edge_mean_components(v, periodic, cell_sizes=jsizes, high_wall=(False, False, False))[0]))(jnp.asarray(arr)))
     ones = np.ones(SHAPE, np.float64)
-    # d(sum of means)/d(cell) = total weight the cell gets from the edges that read it.
     weight = np.zeros(SHAPE)
     f = []
     for t in (1, 2):
@@ -201,7 +200,6 @@ def test_gradient_is_the_area_weight():
     for s1 in (0, 1):
         for s2 in (0, 1):
             w = (f[0] if s1 == 0 else 1 - f[0]) * (f[1] if s2 == 0 else 1 - f[1])
-            # weight w at edge (j, k) goes to cell (j - s1, k - s2), replicated at the wall
             src = np.indices(SHAPE)
             j = np.maximum(src[1] - s1, 0)
             k = np.maximum(src[2] - s2, 0)

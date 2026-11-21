@@ -2,8 +2,7 @@
 
 Stateless S3 uses B1 and B2--B4 on CPML and PEC. Stateful S1/S2/S4 use
 B1a/B1b and B2--B4 on CPML at 400/800/1600 steps, and B2--B4 only on PEC.
-Closed-box stateful one-device parity is not judged: design outcome,
-rfx-core-desk option (3).
+Closed-box stateful one-device parity is not judged.
 """
 import json
 import sys

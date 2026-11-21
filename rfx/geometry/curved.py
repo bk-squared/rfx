@@ -44,7 +44,6 @@ class CurvedPatch:
         cx, cy, cz = self.center
         hl = self.length / 2
         hw = self.width / 2
-        # Max arc height: R - sqrt(R^2 - (L/2)^2)
         s = min(hl, self.radius * 0.99)
         z_arc = self.radius - np.sqrt(self.radius**2 - s**2)
         if self.axis == "x":
@@ -95,10 +94,8 @@ class CurvedPatch:
         seg_width = self.length / n_segments
 
         for i in range(n_segments):
-            # Position along curvature axis relative to center
             s = -half_len + (i + 0.5) * seg_width
-            # Arc height: z_offset = R - sqrt(R^2 - s^2)
-            s_clamped = min(abs(s), self.radius * 0.99)  # Prevent sqrt of negative
+            s_clamped = min(abs(s), self.radius * 0.99)
             z_offset = self.radius - np.sqrt(self.radius**2 - s_clamped**2)
 
             if self.axis == "x":

@@ -16,8 +16,8 @@ IDS = ["100x700um-1um", "200x381um-1um", "100x700um-5um"]
 
 
 def _widths(row, dtype):
+    """A final coarse cell satisfies the x/y matching-boundary admission rule."""
     n, coarse, fine = row
-    # A final coarse cell satisfies the x/y matching-boundary admission rule.
     return np.array([coarse] * n + [fine, coarse], dtype=dtype)
 
 
@@ -32,7 +32,6 @@ def _build(axis, widths, pad=0):
 
 
 def _expected(widths):
-    # Derived only from the supplied widths, independently of grid helpers.
     w = [float(v) for v in widths]
     points = [math.fsum(w[:i]) for i in range(1, len(w))]
     ratios = [float(np.finfo(np.float32).eps) / 2 * abs(x) / min(w[i - 1], w[i])

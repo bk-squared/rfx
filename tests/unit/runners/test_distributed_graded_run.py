@@ -2,6 +2,7 @@
 
 Unequal faces, graded cells, off-plane probes, off-grid body dimensions and
 sources/probes on opposite sides of a slab cut exercise the routed physics.
+The 1e-4-of-peak trace bar allows rounding to accumulate over the record, measured earlier on arm64 as 6-8 ULP at 40 steps and about 31 at 300.
 """
 import jax
 import jax.numpy as jnp
@@ -16,12 +17,13 @@ FIELDS = ("ex", "ey", "ez", "hx", "hy", "hz")
 
 
 def model(case):
+    """The y and z domain lengths written as ``8 * 1e-3`` are whole numbers of cells of dx, so their solved lengths equal their declared lengths."""
     absorbing = case.startswith("cpml")
     boundary = (BoundarySpec(x=Boundary(lo="pec", hi="cpml"), y="cpml",
                              z=Boundary(lo="cpml", hi="pec"))
                 if absorbing else "pec")
     sim = Simulation(
-        freq_max=15e9, domain=(15.3e-3, 8 * 1e-3, 8 * 1e-3),  dx=1e-3,  # solved length; #1887
+        freq_max=15e9, domain=(15.3e-3, 8 * 1e-3, 8 * 1e-3),  dx=1e-3,
         dx_profile=np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 13), 1e-3],
         boundary=boundary, cpml_layers=2 if absorbing else 0, snap="declared",
     )
@@ -58,6 +60,7 @@ pytestmark = pytest.mark.distributed
 @pytest.mark.parametrize("case", ["pec", "pec_body", "cpml", "debye", "lorentz", "cpml_pec"])
 @pytest.mark.parametrize("n_devices", [2, 3])
 def test_graded_run_matches_single_device(case, n_devices, record_property):
+    """The final-field bar is 9 float32 peak ULP because earlier measurements found kernel-rounding gaps on 2, 3 and 4 devices even without CPML."""
     devices = jax.devices("cpu")[:n_devices]
     if len(devices) < n_devices:
         pytest.skip(f"needs {n_devices} virtual CPU devices")
@@ -65,15 +68,8 @@ def test_graded_run_matches_single_device(case, n_devices, record_property):
     distributed = model(case).run(n_steps=40, devices=devices, skip_preflight=True)
     want, got = arrays(single), arrays(distributed)
     assert np.max(np.abs(want["time_series"])) > 1e-5
-    # The record names the path that ran: graded slabs, not the uniform-slab runner.
     assert distributed.realized_geometry.lane == "run_distributed_nu"
     assert single.realized_geometry.lane == "run_nonuniform"
-    # Compare H as eta0*H, on the scale of E: H decays while a static E stays,
-    # so a peak of H alone would make the bar depend on the record length.
-    # The remaining gap is the rounding of the distributed graded kernel
-    # against the one-device graded kernel (measured: the same on 2, 3 and 4
-    # devices, interior near the source, and present without CPML), so the final
-    # fields are held to 9 float32 ULP of the peak.
     eta0 = 376.730313668
     scale = {f: (eta0 if f[0] == "h" else 1.0) for f in FIELDS}
     probe_scale = np.array([scale[f] for _ in range(2) for f in FIELDS])
@@ -90,15 +86,10 @@ def test_graded_run_matches_single_device(case, n_devices, record_property):
     record_property("fields_peak_ulps", float(field_ulps))
     print(f"{case}/{n_devices}/fields: {field_ulps:g} peak ULP")
     assert field_ulps <= 9, (case, n_devices, field_ulps)
-    # Traces from two kernels accumulate their rounding over the record (on
-    # arm64: 6-8 ULP at 40 steps, ~31 at 300), so the per-step 9-ULP bar does
-    # not apply; hold them to the two-vs-one-device probe bar, 1e-4 of peak
-    # (tests/unit/runners/test_distributed_cpml_admission.py).
     trace_rel = trace_error / trace_peak
     record_property("time_series_relative", float(trace_rel))
     print(f"{case}/{n_devices}/time_series: {trace_rel:g} of peak")
     assert trace_rel <= 1e-4, (case, n_devices, trace_rel)
-    # Summed observable gets the separate cross-trace accumulation bar.
     squared_sum = sum(np.sum(a.astype(np.float64)**2) for a in got.values())
     reference_sum = sum(np.sum(a.astype(np.float64)**2) for a in want.values())
     sum_error = abs(squared_sum-reference_sum) / reference_sum
@@ -126,7 +117,6 @@ def test_graded_run_empty_probes_and_resolved_steps(two_devices):
     assert int(result.state.step) == expected
 
 
-# Ports are carried since #1402 step 2 (tests/unit/runners/test_distributed_nu_ports.py).
 @pytest.mark.parametrize("feature, message", [
     ("cpml_kappa", "cpml_kappa_max"),
     ("s_params", "compute_s_params"),

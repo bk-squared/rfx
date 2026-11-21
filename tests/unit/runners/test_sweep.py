@@ -8,9 +8,6 @@ from rfx.geometry.csg import Box
 from rfx.sweep import parametric_sweep, SweepResult, plot_sweep
 
 
-# ---------------------------------------------------------------------------
-# Helper: lightweight sim factory
-# ---------------------------------------------------------------------------
 
 def _make_sim(eps_r_value):
     """Create a minimal PEC-cavity simulation with a dielectric fill."""
@@ -22,9 +19,6 @@ def _make_sim(eps_r_value):
     return sim
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
 
 def test_sweep_runs_multiple_sims():
     """parametric_sweep should run one simulation per parameter value."""
@@ -39,7 +33,6 @@ def test_sweep_runs_multiple_sims():
 
     assert isinstance(sr, SweepResult)
     assert len(sr.results) == 3
-    # Each result should have a non-zero time series
     for r in sr.results:
         assert isinstance(r, Result)
         peak = float(np.max(np.abs(np.asarray(r.time_series))))
@@ -61,14 +54,14 @@ def test_sweep_result_has_all_values():
     np.testing.assert_array_equal(sr.param_values, np.array([1.5, 3.0]))
     assert len(sr.results) == len(values)
 
-    # peak_field extractor should return one value per sweep point
     pf = sr.peak_field()
     assert pf.shape == (2,)
     assert np.all(pf > 0)
 
 
 def test_sweep_plot_creates_figure():
-    """plot_sweep should return a matplotlib Figure without error."""
+    """plot_sweep should return a matplotlib Figure without error.
+    The s11_min_db metric requires S parameters."""
     pytest.importorskip("matplotlib")
 
     values = [2.0, 4.0]
@@ -81,15 +74,14 @@ def test_sweep_plot_creates_figure():
     )
 
     import matplotlib
-    matplotlib.use("Agg")  # non-interactive backend
+    NONINTERACTIVE_BACKEND = "Agg"
+    matplotlib.use(NONINTERACTIVE_BACKEND)
     import matplotlib.pyplot as plt
 
-    # Built-in metric: peak_field (s11_min_db needs s_params)
     fig = plot_sweep(sr, metric="peak_field")
     assert fig is not None
-    assert hasattr(fig, "savefig")  # quacks like a Figure
+    assert hasattr(fig, "savefig")
 
-    # Custom callable metric
     fig2 = plot_sweep(sr, metric=lambda r: float(np.max(np.abs(np.asarray(r.time_series)))))
     assert fig2 is not None
 

@@ -10,6 +10,7 @@ Tests:
 There is NO matched-load absorption gate (S11 < -20 dB) here: a lumped port
 terminated in its own impedance in an open (CPML) domain is not exercised in
 this file, so that absorption physics is not asserted.
+The domain lengths written as multiples of _C0 / 5e9 / 20.0, 299792458.0 / 5e9 / 20.0, grid.dx or _C0 / 3e9 / 20.0 are whole numbers of cells of dx, so the solved domains equal the declared ones.
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -40,13 +41,14 @@ _C0 = 299792458.0
 def _pec_cavity_port_s11():
     """One 60-period run of a 50 ohm one-cell lumped port at the centre of a
     closed PEC box, shared by the two cavity tests below. Returns
-    ``(freqs_hz, s11, f_tm110_hz)`` with TM110 from the REALIZED box."""
+    ``(freqs_hz, s11, f_tm110_hz)`` with TM110 from the REALIZED box.
+    The PEC walls lie on node planes 0 and n-1, so the box dimensions for TM110 are (n-1)*dx.
+    """
     a, b, d = 0.05, 0.05, 0.025
-    grid = Grid(freq_max=5e9, domain=(17 * (_C0 / 5e9 / 20.0), 17 * (_C0 / 5e9 / 20.0), 9 * (_C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(17 * (_C0 / 5e9 / 20.0), 17 * (_C0 / 5e9 / 20.0), 9 * (_C0 / 5e9 / 20.0)), cpml_layers=0)
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
 
-    # Lumped port at center
     port_pos = (a / 2, b / 2, d / 2)
     pulse = GaussianPulse(f0=3e9, bandwidth=0.8, amplitude=1.0)
     port = LumpedPort(
@@ -56,10 +58,8 @@ def _pec_cavity_port_s11():
         excitation=pulse,
     )
 
-    # Fold port impedance into materials
     materials = setup_lumped_port(grid, port, materials)
 
-    # Frequency points for S-parameter extraction
     freqs = jnp.linspace(1e9, 5e9, 50)
     dt, dx = grid.dt, grid.dx
     num_steps = grid.num_timesteps(num_periods=60)
@@ -70,29 +70,17 @@ def _pec_cavity_port_s11():
         state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
-        # Both slots, the way the JIT scan uses them: the PRE-injection drive
-        # sample into v_ref, the physical V/I AFTER injection
-        # (scripts/diagnostics/lumped_port_known_load_line.py).  This loop
-        # sampled only before injection while extract_s11 became the DRIVEN
-        # terminal reflection, and the mismatched pair read |S11| up to 1.4468
-        # on this lossless cavity — above unity, which a passive structure
-        # cannot do.
         sprobe = update_lumped_drive_ref_probe(sprobe, state, grid, port, dt)
         state = apply_lumped_port(state, grid, port, t, materials)
         sprobe = update_sparam_probe(sprobe, state, grid, port, dt)
 
     s11 = np.asarray(extract_s11(sprobe, z0=50.0))
-    # Realized, not declared: apply_pec zeroes the tangential E on node planes
-    # 0 and n-1, so the box is (n-1)*dx on a side -- 50.96 x 50.96 mm here,
-    # not the declared 50 x 50 mm. Ez-polarised TM110 (no z variation):
-    # f = c/2 * sqrt(1/a^2 + 1/b^2) = 4.1595 GHz (4.2397 GHz declared).
     a_r = (grid.shape[0] - 1) * dx
     b_r = (grid.shape[1] - 1) * dx
     f_tm110 = _C0 / 2.0 * np.sqrt(1.0 / a_r ** 2 + 1.0 / b_r ** 2)
     return np.asarray(freqs), s11, float(f_tm110)
 
 
-#: Below this, the box has no mode: |S11| = 1 exactly and Zin is reactive.
 _BELOW_MODE = 0.9
 
 
@@ -114,15 +102,13 @@ def test_lumped_port_pec_cavity_s11():
     the box read Re Zin = +15.0 ohm on average below the mode (8.5 ... 26.6):
     a loss the lossless box does not have, which kept |S11| below 1 (max
     0.99961) and also damped the ringing. Split from the band around the
-    mode by PI decision 2026-09-24 (the other half is the wire-port
+    mode (the other half is the wire-port
     completion test below).
     """
     freqs, s11, f_tm110 = _pec_cavity_port_s11()
     s11_mag = np.abs(s11)
     s11_db = 20 * np.log10(np.maximum(s11_mag, 1e-10))
 
-    # The original lower bound: a PEC cavity reflects most of what it is
-    # given (mid-band mean above -3 dB).
     mid_band = (freqs > 1.5e9) & (freqs < 4.5e9)
     assert np.mean(s11_db[mid_band]) > -3.0, \
         f"Mean S11 {np.mean(s11_db[mid_band]):.1f} dB too low for PEC cavity"
@@ -138,9 +124,9 @@ def test_lumped_port_pec_cavity_s11():
 
 def _pec_cavity_simulation(*, wire):
     """The low-level cavity fixture's geometry and drive through the public API."""
-    grid = Grid(freq_max=5e9, domain=(17 * (299792458.0 / 5e9 / 20.0), 17 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), cpml_layers=0)  # solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(17 * (299792458.0 / 5e9 / 20.0), 17 * (299792458.0 / 5e9 / 20.0), 9 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), cpml_layers=0)
     sim = Simulation(
-        freq_max=5e9, domain=(17 * grid.dx, 17 * grid.dx, 9 * grid.dx), boundary="pec",  # solved length; #1887
+        freq_max=5e9, domain=(17 * grid.dx, 17 * grid.dx, 9 * grid.dx), boundary="pec",
         cpml_layers=0, dx=grid.dx,
     )
     sim.add_port(
@@ -195,7 +181,7 @@ def test_lumped_port_pec_cavity_ringdown_refused():
 
 def test_lumped_port_injects_energy():
     """Lumped port should inject energy into the simulation."""
-    grid = Grid(freq_max=3e9, domain=(11 * (_C0 / 3e9 / 20.0), 11 * (_C0 / 3e9 / 20.0), 6 * (_C0 / 3e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=3e9, domain=(11 * (_C0 / 3e9 / 20.0), 11 * (_C0 / 3e9 / 20.0), 6 * (_C0 / 3e9 / 20.0)), cpml_layers=0)
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
 
@@ -208,12 +194,10 @@ def test_lumped_port_injects_energy():
         excitation=pulse,
     )
 
-    # Fold port impedance into materials
     materials = setup_lumped_port(grid, port, materials)
 
     dt, dx = grid.dt, grid.dx
 
-    # Run 100 steps with port excitation
     for n in range(100):
         t = n * dt
         state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
@@ -221,7 +205,6 @@ def test_lumped_port_injects_energy():
         state = apply_pec(state)
         state = apply_lumped_port(state, grid, port, t, materials)
 
-    # Check that fields are non-zero
     total_e = float((state.ex**2 + state.ey**2 + state.ez**2).sum())
     total_h = float((state.hx**2 + state.hy**2 + state.hz**2).sum())
 

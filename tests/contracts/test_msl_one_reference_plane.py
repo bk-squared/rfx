@@ -6,8 +6,7 @@ probe 0 from the recorded V/I and shifts it back to the feed plane:
 ``S_feed[i, j] = D_i S_probe0[i, j] D_j``, ``D_p = exp(-j beta_p L_p)``,
 beta_p the closed form (Hammerstad-Jensen eps_eff(0) with Kirschning-Jansen
 dispersion) on every bin (one resolver, ``rfx.measurement.msl_planes``, for both
-the MSL and the mixed calculator; rfx-archive MSL-PLANE.md, decision records
-5, 7 and 12).
+the MSL and the mixed calculator).
 
 The identity below is checked with every factor formed in THIS file:
 S_probe0 by a NumPy multi-drive solve of the raw probe-0 V/I the calculator
@@ -89,12 +88,14 @@ def _feed_to_probe0(sim, x_feed, sign, n_cells):
     grid = sim._build_realized_grid()
     i_feed = int(grid.position_to_index((x_feed, 0.004, 0.0))[0])
     pad = int(grid.pad_x_lo)
-    x_node = lambda i: (i - pad) * float(grid.dx)   # uniform lattice nodes
+    x_node = lambda i: (i - pad) * float(grid.dx)
     return sign * (x_node(i_feed + sign * n_cells) - x_node(i_feed))
 
 
 def _probe0_from_raw(dump_path):
-    """S at probe 0: power waves of the recorded probe-0 V/I, S = B A^-1."""
+    """S at probe 0: power waves of the recorded probe-0 V/I, S = B A^-1.
+    The power waves a and b have axes [drive, port, frequency].
+    """
     with np.load(dump_path, allow_pickle=True) as raw:
         meta = json.loads(str(raw["metadata_json"]))
         v = np.asarray(raw["raw_v"][:, :, 0, :], dtype=np.complex128)
@@ -103,7 +104,6 @@ def _probe0_from_raw(dump_path):
     r = np.asarray(meta["s_reference_impedances_ohm"], dtype=np.float64)
     a = (v + r[None, :, None] * i) / (2 * np.sqrt(r)[None, :, None])
     b = (v - r[None, :, None] * i) / (2 * np.sqrt(r)[None, :, None])
-    # a, b are [drive, port, f]; b_port = S a_port for every drive.
     s = np.stack([np.linalg.solve(a[:, :, k], b[:, :, k]).T
                   for k in range(v.shape[-1])], axis=-1)
     return s, meta, production
@@ -117,7 +117,9 @@ def _solve(sim, dump):
 
 
 def test_feed_plane_s_is_d_times_probe0_s_times_d(tmp_path):
-    """S_feed = D S_probe0 D, every factor formed here, not by the resolver."""
+    """S_feed = D S_probe0 D, every factor formed here, not by the resolver.
+    The shift is checked on S brought back to the line Z0 because the result's S is referred to the declared 50 ohm.
+    """
     sim = _thru()
     res = _solve(sim, tmp_path / "raw.npz")
     assert res.assembly == "multi_drive_solve"
@@ -129,20 +131,14 @@ def test_feed_plane_s_is_d_times_probe0_s_times_d(tmp_path):
     d = np.exp(-1j * beta[None, :] * lengths[:, None])
     expected = d[:, None, :] * s0 * d[None, :, :]
     scale = float(np.max(np.abs(s0)))
-    # s0 is formed at the line Z0 the dump records; the result's S is referred
-    # to the declared 50 ohm (#2014), so the shift is checked on S brought back.
     s_line = line_s(res, np.asarray(res.S))
-    # The shift must be present and must not be the probe-0 matrix itself.
     assert np.max(np.abs(s_line - s0)) > 1e-2 * scale
     np.testing.assert_allclose(s_line, expected, rtol=0,
                                atol=2e-5 * scale)
-    # The returned fields carry the same numbers (rad/m and m).
     np.testing.assert_allclose(np.asarray(res.shift_beta, dtype=np.float64),
                                np.stack([beta, beta]), rtol=1e-6)
     np.testing.assert_allclose(np.asarray(res.reference_plane_offsets_m),
                                lengths, rtol=0, atol=1e-12)
-    # The dump records the same feed-plane S as the result, at the line Z0;
-    # the producer's own referral to the declared impedance gives res.S.
     assert meta["schema_version"] == 5
     np.testing.assert_array_equal(
         np.asarray(renormalize_power_waves(jnp.asarray(production),
@@ -151,11 +147,9 @@ def test_feed_plane_s_is_d_times_probe0_s_times_d(tmp_path):
 
 
 def _mixed_board(with_feed):
+    """The twins use snap="declared" because preflight otherwise refuses the 600 um sheet on the 84.7 um lattice."""
     from tests.unit.sparams.test_mixed_port_sparam import (
         _add_feed, _add_msl, _base_sim)
-    # snap="declared" on both twins: compute_msl_s_matrix has no
-    # skip_preflight, and run()'s preflight refuses this board's 600 um
-    # sheet on the 84.7 um lattice otherwise (-5.46 % solved width).
     sim, y_c = _base_sim(snap="declared")
     if with_feed:
         _add_feed(sim, y_c, x=2e-3)
@@ -169,6 +163,7 @@ def test_msl_and_mixed_calculators_share_l_and_shift():
 
     ``compute_msl_s_matrix`` refuses a model carrying ``add_port``, so the
     MSL-only twin is the same board without the wire feed.
+    The phase comparison reads entries both results still carry because entries formed from the per-cell lumped/wire wave are refused as NaN.
     """
     freqs = np.linspace(1e9, 4e9, 3)
     with warnings.catch_warnings():
@@ -186,16 +181,8 @@ def test_msl_and_mixed_calculators_share_l_and_shift():
     assert np.asarray(msl.reference_plane_offsets_m)[0] > 0.0
     np.testing.assert_array_equal(np.asarray(mixed.shift_beta)[1],
                                   np.asarray(msl.shift_beta)[0])
-    # The MSL entry itself, against a probe-0 value formed here: the lane's
-    # MSL driven diagonal is the V*I split b/a = (V - Z I)/(V + Z I) of its
-    # own probe-0 record (run 1 drives the MSL port), times D^2 with D from
-    # this file's Hammerstad-Jensen + Kirschning-Jansen and the realized
-    # offset (10 cells of the 84.7 um lattice). A mixed lane that forgets the
-    # shift fails here even if S_wave is shifted.
     from tests.unit.sparams.test_mixed_port_sparam import _EPS_R as er_m
     from tests.unit.sparams.test_mixed_port_sparam import _H_SUB, _W_TRACE, _DX as dx_m
-    # gamma0 is formed at the line Z0; the result's S is referred to the
-    # declared impedance (#2014), so S and S_wave are brought back there.
     s = line_s(mixed, np.asarray(mixed.S if mixed.S_raw is None else mixed.S_raw))
     v0 = np.asarray(diag["v0_msl"])[1, 0]
     i0 = np.asarray(diag["i_msl"])[1, 0]
@@ -208,14 +195,8 @@ def test_msl_and_mixed_calculators_share_l_and_shift():
     expected = np.exp(-2j * beta * length) * gamma0
     np.testing.assert_allclose(s[1, 1], expected, rtol=0,
                                atol=2e-5 * float(np.max(np.abs(gamma0))))
-    # Before the (default) passivity projection, S and S_wave differ only in
-    # the flux-overridden off-diagonal magnitudes, so their phases agree:
-    # both are referred to the same plane. Unshifted S_wave would differ by
-    # beta*L = 0.03-0.12 rad here.
     s = line_s(mixed, np.asarray(mixed.S if mixed.S_raw is None else mixed.S_raw))
     sw = line_s(mixed, np.asarray(mixed.S_wave))
-    # #1659 refuses (NaN) the entries formed from the per-cell lumped/wire
-    # wave; the phase comparison reads the entries both results still carry.
     read = np.isfinite(s) & np.isfinite(sw) & (np.abs(sw) > 0)
     assert read[1, 1].all(), "the MSL diagonal must be carried by both S and S_wave"
     np.testing.assert_allclose(np.angle(s[read] / sw[read]), 0.0, atol=1e-5)
@@ -228,6 +209,7 @@ def test_graded_feed_offset_is_the_realized_cell_sum():
     The board of tests/contracts/test_grouped_drives.py::port_scene('msl',
     'graded'): 1 mm cells with four 1.1 mm cells at indices 6-9, the port
     feed at x = 6 mm, ``n_probe_offset = 3`` -> L = 3.3 mm (3 mm declared).
+    The tolerance accounts for the grid storing float32 widths.
     """
     from tests.contracts.test_grouped_drives import port_scene
     sim = port_scene("msl", "graded")
@@ -238,4 +220,4 @@ def test_graded_feed_offset_is_the_realized_cell_sum():
     profile = np.r_[np.full(6, .001), np.full(4, .0011), np.full(14, .001)]
     expected = float(np.sum(profile[6:9]))
     np.testing.assert_allclose(np.asarray(res.reference_plane_offsets_m),
-                               [expected], rtol=1e-6)   # grid stores float32
+                               [expected], rtol=1e-6)

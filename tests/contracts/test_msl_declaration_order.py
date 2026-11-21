@@ -39,18 +39,13 @@ def _automatic_rows(sim):
 
 
 def test_t1_full_declaration_sets_automatic_probe_planes():
-    # Measured on cd180aa36 before implementation by building _repro in both
-    # orders and reading raw entries and _resolve_msl_probe_entries(_build_grid()).
-    # Structure-first raw: (29, 12); resolved: (29, 6), for BOTH ports.
-    # Ports-first raw: (56, 22); resolved: (56, 2), for BOTH ports.
-    # The absorber budget makes the resolved spacing 6, not the design's 12.
+    """The absorber budget makes the resolved spacing 6."""
     first = _repro("structure-first")
     last = _repro("ports-first")
     explicit = _repro("ports-first", eps_r_sub=3.66)
     assert _counts(first._msl_ports) == [(29, 12), (29, 12)]
     assert _counts(last._msl_ports) == [(56, 22), (56, 22)]
     assert _counts(explicit._msl_ports) == [(29, 12), (29, 12)]
-    # The three bookkeeping rows were printed in the same base measurement.
     first_rows = (
         {"p1": 29, "p2": 29},
         {"p1": 2.8693862252597855, "p2": 2.8693862252597855},
@@ -66,13 +61,10 @@ def test_t1_full_declaration_sets_automatic_probe_planes():
         assert _automatic_rows(sim) == first_rows
         assert _counts(sim._resolve_msl_probe_entries(grid)) == [(29, 6), (29, 6)]
         assert sim._msl_ports == raw
-    # The forward routing guard reads automatic lengths without resolving
-    # entries first, even though it ultimately refuses MSL S11 requests.
     direct = _repro("ports-first")
     with pytest.raises(ValueError, match="MSL ports use compute_msl_s_matrix"):
         direct._validate_forward_sparameter_request()
     assert _automatic_rows(direct) == first_rows
-    # preflight() admits once before any check reads the automatic counts.
     checked = _repro("ports-first")
     real_check = Simulation._check_msl_port_geometry
     seen = []
@@ -95,7 +87,7 @@ def _box_board(*, sideways=0.0, normal=0.0, second_trace=False):
     sim.add(Box((0, 0, .0002), (.003, .003, .0004)), material="sub")
     sim.add(Box((0, 0, .0002), (.003, .003, .0002)), material="pec")
     sim.add(Box((0, .000987, .0004), (.003, .001587, .0004)), material="pec")
-    if second_trace:  # another line on the same plane, not under the port
+    if second_trace:
         sim.add(Box((0, .0021, .0004), (.003, .0025, .0004)), material="pec")
     sim.add_msl_port(position=(.0005, .001287 + sideways, .0002 + normal),
                      width=.0006, height=.0002, direction="+x", name="checked")
@@ -126,9 +118,8 @@ def test_t2_sideways_overhang_names_width_and_preserves_z_mismatch():
 
 
 def test_t3_memory_error_propagates_from_preflight(monkeypatch):
+    """Populate the general assembly validation cache so the injection reaches the MSL check's own assembly call."""
     sim = _box_board()
-    # General assembly validation runs before the MSL check. Populate its
-    # cache so this injection reaches the MSL check's own assembly call.
     sim._campaign_ctx().realized()
 
     def fail(*args, **kwargs):

@@ -49,6 +49,7 @@ of the three names here. With no patch to keep consistent there is no second
 lookup target to collapse, so the facade re-export -- whose object identity
 ``tests/locks/test_preflight_split_snapshot.py`` pins per name -- is left as
 the path, and a pure code-motion leg touches one fewer file.
+``_WAVEGUIDE_UV_AXES`` orders the transverse axes associated with ``WaveguidePort.a`` and ``WaveguidePort.b``.
 """
 
 from __future__ import annotations
@@ -70,7 +71,7 @@ from rfx.core.jax_utils import is_tracer
 from rfx.preflight._common import (
     _absorber_boundary_for_axis,
     _axis_pad_thickness_m,
-    local_cell,
+    local_cell, report_tracer_error, traced_skip,
     PreflightWarning,
     PreflightErrorWarning,
     PreflightConfigError,
@@ -89,10 +90,6 @@ def _waveguide_skipped_note(skipped: list) -> str:
             f"be read: {', '.join(skipped)}.")
 
 
-# ``compute_waveguide_s_matrix``'s own ``num_periods`` default, mirrored here
-# so ``preflight_sparameters(calculator="waveguide")`` audits the record a user
-# gets when they pass nothing. Pinned to the live signature by
-# tests/unit/preflight/test_waveguide_setup_audits.py.
 WAVEGUIDE_DEFAULT_NUM_PERIODS = 20.0
 
 
@@ -266,27 +263,16 @@ def _port_transverse_spans(self, entry, grid, realized=None):
                 grid.axis_pads[axis_idx], getattr(grid, f"pad_{'xyz'[axis_idx]}_hi"),
             )
         except ValueError as exc:
-            # _range_to_slice raises at COMPILE time on an
-            # unrasterizable range; preflight(strict=False) is
-            # contracted to COLLECT findings, never crash, so this
-            # records the failure instead of propagating it.
             rec["error"] = str(exc)
             out[axis_name] = rec
             continue
         rec["aperture"] = float(aperture)
-        # The INDEX math above preserves the uniform x-cell size because
-        # ``_build_waveguide_port_config`` calls ``_range_to_slice`` with
-        # ``grid.dx`` on every axis; mirroring it is the point. The SPAN
-        # those indices cover is this axis' own, which is what the solve
-        # integrates over (``u_widths``/``v_widths``). The builder's cubic
-        # assumption is not fixed here.
         rec["rasterized"] = float((slc[1] - slc[0] - 1) * d_axis)
         rec["guide"] = rec["rasterized"]
         slices[axis_name] = (int(slc[0]), int(slc[1]))
         out[axis_name] = rec
 
     if len(slices) != 2:
-        # One transverse axis did not resolve: no line to scan along.
         return out
 
     normal_idx = "xyz".index(normal)
@@ -295,7 +281,8 @@ def _port_transverse_spans(self, entry, grid, realized=None):
         pos_vec[normal_idx] = entry.x_position
         plane_idx = int(
             grid.position_to_index(tuple(pos_vec))[normal_idx])
-    except (ValueError, TypeError, IndexError, AttributeError):
+    except (ValueError, TypeError, IndexError, AttributeError) as _traced_exc:
+        report_tracer_error(_traced_exc, "_port_transverse_spans")
         plane_idx = None
 
     for axis_name in axes:
@@ -325,17 +312,8 @@ def _port_transverse_spans(self, entry, grid, realized=None):
             shape = realized.edges[0].shape
             if all(0 <= idx[k] < shape[k]
                    for k in (normal_idx, other_idx)):
-                # Realized wall planes on the port's own transverse
-                # line: the node-plane indices along this
-                # axis where a tangential wall exists at column
-                # ``ij`` = the two other indices in axis order.
                 ij = tuple(idx[k] for k in range(3) if k != axis_idx)
                 planes = realized.wall_planes(axis_idx, ij=ij)
-                # Bracket the aperture INCLUSIVELY: on a sub-aperture
-                # port a wall can sit on the aperture's own edge node
-                # (on _tj_device the upper Box's near face IS the
-                # aperture's last node), so an exclusive bracket
-                # would step straight past it.
                 below = [k for k in planes
                          if interior_lo <= k <= min(lo_idx, shape[axis_idx] - 1)]
                 above = [k for k in planes
@@ -354,47 +332,11 @@ def _port_transverse_spans(self, entry, grid, realized=None):
             else:
                 rec["guide"] = float((interior_hi - interior_lo) * d_axis)
             rec["guide_source"] = "domain_faces"
-        # else: guide stays == rasterized aperture, source "aperture".
     return out
 
 
-# (u, v) transverse-axis order for a port of each launch normal. The SAME
-# mapping ``_build_waveguide_port_config`` uses to decide which axis becomes
-# ``WaveguidePort.a`` and which becomes ``.b``; the cutoff clause below has to
-# read it the same way or it would quote ``b``'s cell count against ``a``'s
-# width on a y- or z-normal port. Pinned by the y-normal and z-normal fixtures
-# in tests/unit/ports/test_port_aperture_rasterization.py, which fail on a swap.
 _WAVEGUIDE_UV_AXES = {"x": ("y", "z"), "y": ("x", "z"), "z": ("x", "y")}
 
-# Largest realized aperture, in transverse CELLS, for which this advisory will
-# solve the discrete mode to quote a built ``f_cutoff``.
-#
-# ``mode_profile="discrete"`` goes through
-# ``_galerkin_eigh_separable_laplacian_2d``, a DENSE ``np.linalg.eigh`` of an
-# ``(nu*nv, nu*nv)`` matrix. That is cubic in the cell count, and this advisory
-# fires exactly in the common case where dx does not divide the declared width,
-# so the cost cannot be dismissed as rare. Measured on this pod, a two-port
-# WR-90 ``sim.preflight(strict=False)``, declared 22.86 x 10.16 mm:
-#
-#     dx (mm)   nu x nv   cells   preflight   peak RSS
-#       1.0      23 x 10     230    0.07 s      0.33 GB
-#       0.5      46 x 20     920    0.39 s      0.38 GB
-#       0.25     91 x 41    3731    4.79 s      1.02 GB
-#       0.125   183 x 81   14823  127.21 s     10.73 GB
-#
-# 2000 cells admits the 0.5 mm row and refuses the 0.25 mm one, which puts the
-# worst admitted case around 1.5 s. Above it the row quotes the ANALYTIC cutoff
-# of the realized aperture and says so; the discrete eigenvalue differs from it
-# by O(dx^2), which is 0.08 % on the dx = 1 mm WR-90 case.
-#
-# The ``"analytic"`` profile has no eigensolve -- ``cutoff_frequency`` is closed
-# form and the profile helpers are too -- so the budget does not apply there.
-#
-# The budget is on the MATRIX SIZE, which is what sets both the cubic time and
-# the peak memory of one eigensolve. A multimode port pays that once per mode:
-# measured at the 0.5 mm row above, 0.37 s single-mode and 0.72 s at
-# ``n_modes=3``. That is a linear factor on an admitted case, not the cliff the
-# budget exists to stop, so it does not divide the budget.
 WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET = 2000
 
 
@@ -405,6 +347,7 @@ def resolve_preflight_port_configs(sim, grid, cfgs, *, eps_override=None, sigma_
     from rfx.boundaries.features import resolve_waveguide_section_medium
     from rfx.model.overrides import apply_material_overrides
     from rfx.model.pole_stability import courant_budget
+    from rfx._internal._precision import resolve_field_dtype
     from rfx.boundaries.pec import realized_pec_edge_masks
     from rfx.nonuniform import NonUniformGrid
     call_values = getattr(sim, "_waveguide_call_overrides", (None, None, None))
@@ -423,6 +366,7 @@ def resolve_preflight_port_configs(sim, grid, cfgs, *, eps_override=None, sigma_
                  if pec is not None or pec_sheets or pec_wires else None)
         _, debye, lorentz = sim._init_dispersion(
             materials, grid.dt, ds, ls, budget=courant_budget(grid),
+            field_dtype=resolve_field_dtype(sim._precision) if sim._precision == "float64" else None,
             periodic=sim._periodic_flags(), grid=grid)
         overrides = {}
         for name, value in (("eps_override", eps_override), ("sigma_override", sigma_override), ("mu_r_override", mu_r_override)):
@@ -436,8 +380,6 @@ def resolve_preflight_port_configs(sim, grid, cfgs, *, eps_override=None, sigma_
         if section_only:
             from rfx.boundaries.features import waveguide_segment_cells
             from rfx.model.waveguide_modes import PortMedium
-            # A budget-limited cutoff needs only the section's scalar speed.
-            # Setup owns full material admission; no mode or waveform is built.
             media = []
             for cfg in cfgs:
                 bounds = waveguide_segment_cells(cfg, grid)
@@ -509,9 +451,7 @@ def _preflight_section_medium(sim, entry):
     from rfx.model.waveguide_modes import PortMedium
     if not sim._geometry and not any(
             v is not None for v in getattr(sim, "_waveguide_call_overrides", ())):
-        return PortMedium()  # An undrawn domain with no overrides realizes vacuum.
-    # Resolve the section bounds directly: even an analytic builder would
-    # allocate profiles and waveforms for an aperture declined on cost.
+        return PortMedium()
     grid = sim._build_realized_grid()
     normal = entry.direction[1]
     index = host_index(grid, normal, entry.x_position)
@@ -595,8 +535,6 @@ def _waveguide_port_cutoff_reading(sim, entry, grid, spans):
     if du["rasterized"] is None or dv["rasterized"] is None:
         return None
 
-    # The aperture advisory and evanescent check share the builder's cell
-    # count, so neither can admit an eigensolve the other declines on cost.
     cells = _preflight_aperture_cells(sim, entry, grid)
     cells_total = math.prod(cells.values())
 
@@ -611,26 +549,16 @@ def _waveguide_port_cutoff_reading(sim, entry, grid, spans):
             with _w.catch_warnings():
                 _w.simplefilter("ignore")
                 built = _preflight_entry_config(sim, entry, grid=grid)
-            # ``WaveguidePortConfig`` is a NamedTuple, so it IS a tuple --
-            # test for the field, never for tuple-ness. The multimode builder
-            # returns a LIST of configs sorted by cutoff whose first entry is
-            # the only driven one; that is the mode this advisory speaks for.
             cfg = built if hasattr(built, "f_cutoff") else (
                 built[0] if built else None)
         except (TimeoutError,): raise
-        except Exception as exc:  # noqa: BLE001 - recorded in build_error
+        except Exception as exc:  # noqa: BLE001
             skipped = "error"
             build_error = f"{type(exc).__name__}: {exc}"
 
     n_modes = int(getattr(entry, "n_modes", 1))
     multimode_unbuilt = cfg is None and n_modes > 1
     if multimode_unbuilt:
-        # ``init_multimode_waveguide_port`` IGNORES ``port.mode`` and
-        # enumerates modes by cutoff, so with no config there is no mode to
-        # name and no mode-specific cutoff to quote. The row still has to
-        # give the RIGHT reason -- "over the budget" is not "could not be
-        # read" -- so this returns a reading carrying ``skipped`` and the
-        # cell counts, with the cutoff fields left None.
         return {
             "built_hz": None,
             "skipped": skipped,
@@ -653,16 +581,12 @@ def _waveguide_port_cutoff_reading(sim, entry, grid, spans):
         if mode_indices != (0, 0):
             m, n = int(mode_indices[0]), int(mode_indices[1])
         mode_type = getattr(cfg, "mode_type", mode_type)
-        # Realized over declared: prefer the counts the built config carries.
         cells = {u_ax: int(cfg.u_hi - cfg.u_lo),
                  v_ax: int(cfg.v_hi - cfg.v_lo)}
         cells_total = cells[u_ax] * cells[v_ax]
 
     label = f"{mode_type}{m}{n}"
     if n_modes > 1:
-        # Only the lowest-cutoff config is driven; the others are passive
-        # listeners with their own cutoffs, so the row has to say which one
-        # its number belongs to.
         label = f"driven {label}"
 
     medium = cfg.medium if cfg is not None else _preflight_section_medium(sim, entry)
@@ -708,10 +632,6 @@ def _waveguide_cutoff_clause(reading, axis_name, rec, mode_profile) -> str:
     label = reading["mode_label"]
 
     if label is None:
-        # A multimode port whose config was not built: the builder
-        # enumerates modes by cutoff and IGNORES ``port.mode``, so there is
-        # no mode to name and no mode-specific cutoff to quote. Give the
-        # cell counts and the real reason, and quote no frequency at all.
         why = (f"over the "
                f"{WAVEGUIDE_PREFLIGHT_DISCRETE_CELL_BUDGET}-cell budget "
                f"this check will solve"
@@ -806,18 +726,10 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
 
     for port_index, entry in enumerate(self._waveguide_ports):
         spans = self._port_transverse_spans(entry, grid, realized)
-        # Built once per port, and only when a row is about to fire:
-        # the cutoff is a joint property of BOTH transverse axes, so
-        # the y-row and the z-row of one port quote the same reading.
         reading = None
         for axis_name in sorted(spans):
             rec = spans[axis_name]
             declared = rec["declared"]
-            # Name the cell size the span was actually computed from. On a
-            # cubic grid that IS dx and the text is unchanged, which is why
-            # no pinned row moves; on a grid with dy != dz saying "dx=" next
-            # to a dy-derived span would be the cubic assumption wearing a
-            # label (repo engineering principle 2).
             d_axis = _transverse_cell_size(grid, axis_name)
             d_label = (f"dx={host_cells(grid, 'x')[0] * 1e3:.4f} mm"
                        if d_axis == float(host_cells(grid, "x")[0])
@@ -840,8 +752,6 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
                 )
                 continue
             rasterized = rec["rasterized"]
-            # This existing diagnostic reports every snapped aperture axis,
-            # including moves below the realization verdict's refusal bar.
             if abs(declared - rasterized) <= 1e-12:
                 continue
             from rfx.model.realization_verdict import legacy_table_ready
@@ -865,9 +775,6 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
                 reading = _waveguide_port_cutoff_reading(
                     self, entry, grid, spans)
             if reading is None:
-                # No readable pair of transverse axes: keep the half of
-                # the message that is measurable and say nothing about
-                # the cutoff rather than guessing its source.
                 cutoff_clause = (
                     "the cutoff this port builds could not be read on "
                     "this grid")
@@ -925,10 +832,6 @@ def _emit_waveguide_port_cutoff_findings(
     try:
         grid = self._build_realized_grid()
         if entry.n_modes > 1:
-            # Match the solver's enumeration and tie order; only its first
-            # mode is driven, while the remaining configs listen passively.
-            # Slice-reported spans can differ from both the declared width
-            # and the cell span, and decide which mode wins near a tie.
             _, spans = _preflight_aperture_slices(self, entry, grid)
             a_span, b_span = (spans[axis] for axis in _WAVEGUIDE_UV_AXES[entry.direction[1]])
             freqs = resolve_waveguide_port_freqs(self, entry)
@@ -954,8 +857,6 @@ def _emit_waveguide_port_cutoff_findings(
             fc_excited = float(cfg.f_cutoff)
             cutoff_basis = f"builder {entry.mode_profile} cutoff"
     except ValueError:
-        # Setup owns material/waveform refusal. Continue preflight so the
-        # geometric span check can report its more specific obstruction.
         return
     except RuntimeError as exc:
         _w.warn(f"Waveguide preflight could not build the driven mode ({exc!r}); "
@@ -968,12 +869,6 @@ def _emit_waveguide_port_cutoff_findings(
     def _fc_gd(m, n, _a=a_gd, _b=b_gd):
         return (speed / 2.0) * math.sqrt((m / _a) ** 2 + (n / _b) ** 2)
 
-    # --- LOWER bound: source center / measurement bins
-    # at or below the excited mode's own cutoff. Below fc the launch
-    # is evanescent and near-cutoff content crawls at vanishing group
-    # velocity: the extracted S is junk that GROWS with n_steps (the
-    # in-band incident reference sits in the source spectral tail),
-    # and below-cutoff DFT bins additionally NaN the gradient.
     f_arr = _waveguide_source_freqs(self, entry)
     f_min = float(f_arr.min())
     f0_resolved = self._resolve_waveguide_f0(entry, f_arr)
@@ -1145,12 +1040,6 @@ def _check_waveguide_port_evanescent(self) -> None:
     for entry in self._waveguide_ports:
         spans = self._port_transverse_spans(entry, grid, realized)
         axes = _WAVEGUIDE_UV_AXES[entry.direction[1]]
-        # UNRASTERIZABLE (aperture=None) must not silence the cutoff
-        # checks below: fall back to the DECLARED width, which is always defined. Measured
-        # regression: without this fallback, the committed fixture
-        # tests/interop/test_interop_design_document.py::
-        # _waveguide_with_dispersive_slab LOST its port_evanescent /
-        # port_source_below_cutoff findings entirely.
         ap = [spans[ax]["rasterized"] if spans[ax]["rasterized"] is not None
               else spans[ax]["declared"] for ax in axes]
         gd = [spans[ax]["guide"] if spans[ax]["guide"] is not None
@@ -1159,9 +1048,6 @@ def _check_waveguide_port_evanescent(self) -> None:
         a_gd, b_gd = gd
         if a_ap <= 0 or b_ap <= 0 or a_gd <= 0 or b_gd <= 0:
             continue
-        # Name where each guide dimension came from, so a reader can
-        # tell a wall-measured number from an aperture fallback
-        # without re-deriving it.
         guide_label = " x ".join(
             f"{(spans[ax]['guide'] if spans[ax]['guide'] is not None else spans[ax]['declared']) * 1e3:.4f} mm "
             f"({ax}, {spans[ax]['guide_source'] if spans[ax]['guide'] is not None else 'declared'})"
@@ -1243,7 +1129,7 @@ def _validate_cfg_waveguide_reference_plane(
     if self._waveguide_ports:
         axis_map = {"x": 0, "y": 1, "z": 2}
         for entry in self._waveguide_ports:
-            direction = entry.direction  # e.g., "+x", "-x"
+            direction = entry.direction
             ax_i = axis_map[direction[-1]]
             domain_ext = self._domain[ax_i]
             ct_lo = cpml_thick_lo[ax_i]
@@ -1259,17 +1145,6 @@ def _validate_cfg_waveguide_reference_plane(
                     code="waveguide_reference_plane",
                     source="_validate_cfg_waveguide_reference_plane",
                 )
-            # The exterior-padding frame
-            # (:func:`_absorber_boundary_for_axis`) makes the absorber
-            # boundary exactly `0.0` / `domain_ext` — identical to the
-            # hard bounds check immediately above, which already
-            # raises `PreflightConfigError` for any `effective` this
-            # branch could otherwise catch. So this warning is
-            # provably unreachable on both the uniform and
-            # non-uniform (dz_profile) lanes; kept (routed through the
-            # canonical helper, not deleted) as a documented no-op —
-            # same precedent as the P2.7 anchor above — in case a
-            # future change decouples the hard check from this one.
             lo_b, hi_b = _absorber_boundary_for_axis(domain_ext, ct_lo, ct_hi)
             if (lo_b is not None and effective < lo_b) or (
                 hi_b is not None and effective > hi_b
@@ -1290,29 +1165,6 @@ def _validate_cfg_waveguide_reference_plane(
                     ),
                     stacklevel=3,
                 )
-            # Device overlap warning: check if any geometry entry spans
-            # the port's reference plane.
-            #
-            # The bounds come off ``g.shape`` through the shape
-            # protocol's own ``bounding_box()``, which is how the sibling
-            # geometry reader in this package does it
-            # (``rfx/preflight/absorber.py``'s
-            # ``_validate_cfg_geometry_in_cpml``) and what
-            # ``rfx/preflight/realization.py::_shape_bounds`` falls back to
-            # for a non-``Box``. The caught exceptions are that API's own
-            # two, copied from the same sibling: ``NotImplementedError``
-            # (``rfx.geometry.csg.Shape.bounding_box``'s default, for a
-            # shape that reports no box) and ``TypeError`` (a traced
-            # coordinate -- ``jax.errors.ConcretizationTypeError`` is a
-            # ``TypeError``). ``AttributeError`` is deliberately NOT caught
-            # any more: reading the wrong attribute off the wrapper is the
-            # defect this issue is, and it must fail loudly rather than
-            # read as "this entry has no bounds".
-            #
-            # The corners are min/max'd per axis rather than trusted as
-            # ``(lo, hi)``: ``Box.bounding_box()`` returns the declared
-            # ``(corner_lo, corner_hi)`` unsorted, and
-            # ``_sorted_box_corners`` sorts for exactly that reason.
             if self._geometry:
                 for g in self._geometry:
                     if not hasattr(g.shape, "bounding_box"):
@@ -1321,15 +1173,16 @@ def _validate_cfg_waveguide_reference_plane(
                         c1, c2 = g.shape.bounding_box()
                         lo_c = min(float(c1[ax_i]), float(c2[ax_i]))
                         hi_c = max(float(c1[ax_i]), float(c2[ax_i]))
-                    except (NotImplementedError, TypeError):
+                    except (NotImplementedError, TypeError) as _traced_exc:
+                        report_tracer_error(_traced_exc, "_validate_cfg_waveguide_reference_plane")
                         continue
                     if lo_c <= effective <= hi_c:
                         try:
                             _preflight_entry_config(self, entry)
                         except ValueError:
-                            pass  # A nonuniform section retains the geometry advisory.
+                            pass
                         else:
-                            break  # The realized section is homogeneous, including fill.
+                            break
                         _w.warn(
                             PreflightWarning(
                                 f"waveguide_port reference plane at "
@@ -1349,13 +1202,6 @@ def _validate_cfg_waveguide_reference_plane(
                         break
 
 
-# ------------------------------------------------------------------
-# Waveguide S-parameter setup audits (post-v1.8 plan item 2).
-# docs/design_notes/20260905_post_v18_plan_rasterization_preflight_cst.md
-# sections 2-1 and 2-4. Both speak in INPUT units only — times, lengths,
-# indices and the knob value that changes them — and neither predicts a
-# result-side effect.
-# ------------------------------------------------------------------
 
 def _waveguide_setup_planes(self, _w, freqs, num_periods, n_steps):
     """``(grid, one cfg per waveguide port, n_steps, dt, freq_max)``.
@@ -1381,15 +1227,13 @@ def _waveguide_setup_planes(self, _w, freqs, num_periods, n_steps):
         return None
     nonuniform = any(getattr(self, a, None) is not None
                      for a in ("_dx_profile", "_dy_profile", "_dz_profile"))
-    if any(p is not None and is_tracer(p) for p in
-           (getattr(self, "_dx_profile", None),
-            getattr(self, "_dy_profile", None),
-            getattr(self, "_dz_profile", None))):
+    if any(traced_skip(getattr(self, a, None), "_waveguide_setup_planes")
+           for a in ("_dx_profile", "_dy_profile", "_dz_profile")):
         return None
     try:
         grid = (self._build_nonuniform_grid() if nonuniform
                 else self._build_grid())
-        if is_tracer(grid.dt):
+        if traced_skip(grid.dt, "_waveguide_setup_planes"):
             return None
         dt = float(grid.dt)
         freq_max = float(getattr(grid, "freq_max", None) or self._freq_max)
@@ -1412,7 +1256,7 @@ def _waveguide_setup_planes(self, _w, freqs, num_periods, n_steps):
         cfgs = resolve_preflight_port_configs(self, grid, cfgs)
     except (TimeoutError,):
         raise
-    except Exception as exc:  # noqa: BLE001 - recorded in waveguide_setup_audit_skipped
+    except Exception as exc:  # noqa: BLE001
         _w.warn(PreflightWarning(
             "the waveguide setup audits (record length vs the far-boundary "
             "round trip, the port-index mirror covariance, and the "
@@ -1425,9 +1269,6 @@ def _waveguide_setup_planes(self, _w, freqs, num_periods, n_steps):
             source="_waveguide_setup_planes",
         ), stacklevel=3)
         return None
-    # A multimode port arrives as a list of per-mode configs. The
-    # lowest-cutoff mode is the LEAST demanding one, the same deliberate
-    # lower-bound fence _warn_thin_absorber_vs_guide_wavelength states.
     flat = [min(c, key=lambda m: float(m.f_cutoff)) if isinstance(c, list) else c
             for c in cfgs]
     return grid, flat, int(n_steps), dt, freq_max
@@ -1530,8 +1371,6 @@ def _validate_cfg_layout_from_band_low_edge(
 
     for (label, direction, _axis, _side, _x_p, pad_m, far_path, f_c, speed) in findings:
         if f_c <= 0.0 or f_min <= f_c:
-            # lambda_g is undefined at or below the port's own cutoff;
-            # the record-length check already speaks about that band.
             continue
         ratio = f_min / f_c
         if ratio >= ratio_gate:
@@ -1594,7 +1433,7 @@ def _validate_cfg_record_vs_far_boundary(
             return
         grid, cfgs, n_steps, dt, freq_max = built
     else:
-        if is_tracer(grid.dt):
+        if traced_skip(grid.dt, "_validate_cfg_record_vs_far_boundary"):
             return
         dt = float(grid.dt)
         freq_max = float(getattr(grid, "freq_max", None) or self._freq_max)
@@ -1705,6 +1544,7 @@ def _validate_cfg_port_index_mirror_covariance(
     ``n_axis`` rather than ``n_axis - 1``. That is reported as information
     with the offset divided out; anything left over after dividing it out
     is the setup's own asymmetry and is reported as a warning.
+    ``ref_x`` and ``probe_x`` of a built port config are absolute grid indices, already signed by the port's direction.
     """
     built = None
     if grid is None or cfgs is None:
@@ -1743,10 +1583,6 @@ def _validate_cfg_port_index_mirror_covariance(
         for ip in plus:
             for im in minus:
                 cp, cm = cfgs[ip], cfgs[im]
-                # The runner's OWN plane arithmetic, restated nowhere else:
-                # apply_waveguide_port_e / apply_waveguide_port_h choose the
-                # source planes by direction, and _build_waveguide_port_config
-                # stores ref_x / probe_x already signed by direction.
                 planes = [
                     ("source E plane", "primal", primal_target,
                      int(cp.x_index), int(cm.x_index) + 1, 1),
@@ -1794,10 +1630,6 @@ def _validate_cfg_port_index_mirror_covariance(
                         loc=loc,
                         source="_validate_cfg_port_index_mirror_covariance",
                     ), stacklevel=3)
-                # The reference plane is post-processing (a phase shift),
-                # not a grid index, so it is audited in metres: the two
-                # effective planes of a mirror-symmetric pair sum to the
-                # domain extent.
                 if ip < len(entries) and im < len(entries):
                     ep, em = entries[ip], entries[im]
                     rp = float(ep.reference_plane if ep.reference_plane
@@ -1805,10 +1637,6 @@ def _validate_cfg_port_index_mirror_covariance(
                     rm = float(em.reference_plane if em.reference_plane
                                is not None else em.x_position)
                     domain_ext = float(self._domain[ax_i])
-                    # Half the local rasterization resolution at each
-                    # reference plane; the finer of the pair sets the tolerance.
-                    # A post-processing plane may lie outside the mesh;
-                    # there the adjacent boundary cell supplies the scale.
                     ref_cells = []
                     for coordinate in (rp, rm):
                         try:
@@ -1869,26 +1697,6 @@ def _preflight_waveguide_setup(
     )
 
 
-# ---------------------------------------------------------------------------
-# Pre-move ``__qualname__``, restored explicitly.
-#
-# Each of the twelve functions above was a ``def`` in the ``_PreflightMixin``
-# class body, so its ``__qualname__`` read ``_PreflightMixin.<name>``; a
-# module-level ``def`` gets the bare name instead. ``rfx/api/__init__.py``
-# rewrites exactly ``<mixin>.<name>`` -> ``Simulation.<name>`` at
-# class-composition time and SKIPS any function whose qualname does not match
-# that pattern, so leaving the bare name here would change what a TypeError
-# reports -- a user-visible behaviour change inside a pure code-motion step.
-# ``tests/unit/autodiff/test_design_mask_removed.py
-# ::test_no_public_simulation_method_leaks_a_mixin_class_name`` states the
-# rule but only walks PUBLIC members, and all twelve names here are private,
-# so ``tests/locks/test_preflight_split_snapshot.py`` pins these twelve
-# directly.
-#
-# None of the twelve was a ``@staticmethod``, so unlike leg 2 this module has
-# no decorator the facade has to re-apply and every restored qualname below
-# becomes ``Simulation.<name>`` after composition.
-# ---------------------------------------------------------------------------
 _port_transverse_spans.__qualname__ = "_PreflightMixin._port_transverse_spans"
 _check_waveguide_port_aperture_snap.__qualname__ = (
     "_PreflightMixin._check_waveguide_port_aperture_snap"

@@ -18,6 +18,7 @@ def _sim():
 
 
 def test_profile_forward_returns_timings():
+    """Compile includes trace+JIT, with generous slack in the timing comparison."""
     sim = _sim()
     rep = profile_forward(sim, n_steps=40, warmup_trace=False)
     for k in ("grid_build", "compile", "scan_exec", "total", "n_steps", "cells"):
@@ -25,8 +26,8 @@ def test_profile_forward_returns_timings():
     assert rep["total"] > 0
     assert rep["compile"] > 0
     assert rep["scan_exec"] > 0
-    # Compile includes trace+JIT so it must be >= scan_exec.
-    assert rep["compile"] >= rep["scan_exec"] * 0.5  # generous slack
+    COMPILE_TIMING_SLACK = 0.5
+    assert rep["compile"] >= rep["scan_exec"] * COMPILE_TIMING_SLACK
 
 
 def test_format_report_renders():

@@ -62,7 +62,7 @@ def make_observable(scene):
         cfg, _ = init_tfsf(
             29, .002, grid.dt, ny=29, nz=29, cpml_layers=6, tfsf_margin=4,
             f0=10e9, bandwidth=.5, polarization="ez", direction="+x",
-            closed_box=False, waveform=waveform)
+            closed_box=False, waveform=waveform, dtype='float32')
         # Full transverse extent preserves the slab's lateral invariance.
         # Include x_lo+2 through x_hi-2; every injection-plane cell is vacuum.
         mask = jnp.zeros(grid.shape).at[cfg.x_lo + 2:cfg.x_hi - 1, :, :].set(1)
@@ -89,7 +89,7 @@ def make_observable(scene):
     cfg, state = init_tfsf(
         29, .002, grid.dt, ny=29, nz=29, cpml_layers=6, tfsf_margin=4,
         f0=10e9, bandwidth=.5, polarization="ez", direction="+x",
-        closed_box=closed_box, waveform=waveform, n_steps=N_STEPS)
+        closed_box=closed_box, waveform=waveform, n_steps=N_STEPS, dtype='float32')
     incident = jnp.asarray(measure_normal_incident_spectrum(
         cfg, state, N_STEPS, freqs, grid.dt))
     occupancy = jnp.ones((4, 4, 4), dtype=jnp.float32)

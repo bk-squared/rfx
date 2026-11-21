@@ -32,6 +32,7 @@ def _ulp(a, b):
 
 
 def test_t1_literal_products():
+    """Four incident half-filled cells leave exactly 1/16 on an E edge."""
     literal = np.array([[1.1, -3., .125], [-.7, 2.1, 4.]], np.float32)
     weights = np.array([.3, .7, .13], np.float32)
     meta = [(1, 1, 1, c) for c in ('ez', 'hx', 'ex')]
@@ -39,10 +40,9 @@ def test_t1_literal_products():
     expected[:, 0] = np.multiply(literal[:, 0], weights[0], dtype=np.float32)
     expected[:, 2] = np.multiply(literal[:, 2], weights[2], dtype=np.float32)
     _bits(weight_drive_columns(jnp.asarray(literal), weights, meta), expected)
-    # Four incident half-filled cells leave exactly 1/16 on an E edge.
     expected = np.array([[.0625, -3., .0078125], [-.125, 2., .25]], np.float32)
     samples = [jnp.array(v, jnp.float32) for v in ([1., -2.], [-3., 2.], [.125, 4.])]
-    _bits(drive_table(samples, meta, 2, occupancy=jnp.full((3, 3, 3), .5)), expected)
+    _bits(drive_table(samples, meta, 2, occupancy=jnp.full((3, 3, 3), .5), dtype='float32'), expected)
 
 
 def _scene(kind='field', devices=2, seam=False, debye=False):
@@ -74,6 +74,7 @@ def _forward(sim, eps, devices, steps=12, **kw):
 @pytest.mark.parametrize('seam', [False, True])
 @pytest.mark.parametrize('kind', ['field', 'current'])
 def test_t2_single_device_series(kind, seam, devices):
+    """The wrapped single-device step rounds differently inside shard_map with bit-equal operands, so a field source is judged by the cross-trace bar."""
     if len(jax.devices('cpu')) < devices:
         pytest.skip('requires three forced host devices')
     sim, eps = _scene(kind, devices, seam)
@@ -81,14 +82,13 @@ def test_t2_single_device_series(kind, seam, devices):
     for steps in (1, 12):
         single = _forward(sim, eps, 1, steps)
         slabs = _forward(sim, eps, devices, steps)
-        # Since W1 (lead decision D:f05aa5) the wrapped single-device step rounds differently inside
-        # shard_map with bit-equal operands, so a field source is judged by the cross-trace bar too;
-        # the drive table itself is pinned bit for bit by the one-slab model-identity test.
         assert _ulp(slabs, single) <= 9
 
 
 def test_t2_nonowner_series_are_zero(monkeypatch):
-    """Inspect the actual scan table too: an injection mask can hide bad storage."""
+    """Inspect the actual scan table too: an injection mask can hide bad storage.
+    x=10 mm is inside rank 0's 11 owned rows (21 total x nodes).
+    """
     original = runner.lax.scan
     seen = []
     def scan(fn, init, xs, *args, **kwargs):
@@ -100,7 +100,6 @@ def test_t2_nonowner_series_are_zero(monkeypatch):
     np.asarray(_forward(sim, None, 2))
     jax.effects_barrier()
     assert len(seen) == 1
-    # x=10 mm is inside rank 0's 11 owned rows (21 total x nodes).
     assert seen[0].shape == (12, 2, 1)
     assert np.any(seen[0][:, 0, 0] != 0)
     assert np.all(seen[0][:, 1, 0] == 0)
@@ -134,7 +133,8 @@ def test_t4_warmup_checkpoint(steps):
     checkpointed scan) with byte-identical loop operands, as it does on one
     device (test_nonuniform_segmented.py). 48 and 500 steps are lengths where
     the two records do differ (2 ULP of the peak measured), so the bar is
-    exercised; lead decision L:01b7c7, rfx #1402.
+    exercised; rfx #1402.
+    An earlier longer-row gradient measurement gave 0.7e-7 to 3.3e-7 at 500, 1500 and 2400 steps against the summed-quantity bar of 1e-4 of its peak.
     """
     from tests.contracts.path_equivalence.comparison import compare
     sim, eps = _scene('current')
@@ -151,14 +151,9 @@ def test_t4_warmup_checkpoint(steps):
             kind='accumulated', measurements=measurements)
     g0 = jax.grad(partial(loss, checkpoint=None))(eps)
     g2 = jax.grad(partial(loss, checkpoint=2))(eps)
-    # Same Class A relative-gradient bar as test_distributed_nu_kernel.py's
-    # test_distributed_checkpoint_every_grad_matches_no_segment.
     from tests._distributed_nu_tolerances import assert_class_a_grad
     if steps <= 13:
         assert_class_a_grad(g0, g2, label='slab_drive_checkpoint')
-    # Class A divides each element by its own magnitude; on the longer rows
-    # the gradient is judged as a summed quantity, 1e-4 of its peak
-    # (measured 0.7e-7 to 3.3e-7 at 500, 1500 and 2400 steps).
     compare(g0, g2, record='slab.checkpoint_gradient', kind='accumulated',
             measurements=measurements)
 

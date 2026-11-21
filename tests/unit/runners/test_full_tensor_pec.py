@@ -48,7 +48,6 @@ def test_internal_pec_operator_is_symmetric():
         def apply(vector):
             curls = tuple(vector.reshape((3,) + grid.shape))
             result = off_diagonal(curls, nodes, periodic=periodic)
-            # The step's independently realized output PEC projection.
             return jnp.stack(tuple(jnp.where(edge, 0., value)
                                    for value, edge in zip(result, edges))).ravel()
         operator = np.asarray(jax.jit(jax.vmap(apply))(jnp.eye(count))).T
@@ -60,8 +59,7 @@ def test_internal_pec_operator_is_symmetric():
 
 
 def test_internal_pec_slab_does_not_grow():
-    # Unfixed HEAD e68513da7 exceeds 10x the second tenth at step 15701.
-    # 16000 steps took 6.20 s on the review Mac, including setup/compilation.
+    """An earlier unfixed implementation exceeded 10 times the second tenth at step 15701."""
     result = slab_sim().run(n_steps=16000, skip_preflight=True, subpixel_smoothing='full_tensor')
     amplitude = np.max(np.abs(np.asarray(result.time_series)), axis=1)
     assert np.all(np.isfinite(amplitude))

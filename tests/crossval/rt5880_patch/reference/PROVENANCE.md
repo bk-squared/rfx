@@ -14,12 +14,11 @@ script `validation/crossval/15_patch_antenna_rt5880.py` (removed 2026-09-24),
 frozen in the maker's `RETIRED_CONSTANT_LINES`, except five, each in the
 maker's `DECLARED_CONSTANT_DEPARTURES`:
 
-- the probe (delta 9): the retired script put it 9 mm off centre, and the PI
-  moved it on 2026-09-24 to −8.73125 mm, a lattice node on every rung of the
+- the probe (delta 9): the retired script put it 9 mm off centre, and it
+  moved to −8.73125 mm, a lattice node on every rung of the
   rfx ladder (−11, −22 and −33 cells of h/4, h/8 and h/12);
 - the patch and the ground (delta 10): the retired 40 × 50 mm patch over a
-  56 × 66 mm ground became 39.7 × 49.25 mm over 55.6 × 65.1 mm (PI
-  2026-09-25), every edge just outside a node common to h/4, h/8 and h/12
+  56 × 66 mm ground became 39.7 × 49.25 mm over 55.6 × 65.1 mm, every edge just outside a node common to h/4, h/8 and h/12
   (half-extents 25, 31, 35 and 41 cells of h/4 plus 6.25, 18.75, 18.75 and
   6.25 µm; the patch centre is a node). openEMS's air box did not follow the
   ground: its faces stay at the retired box's x ±88, y ±93 mm.

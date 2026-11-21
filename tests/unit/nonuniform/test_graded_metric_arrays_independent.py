@@ -19,16 +19,16 @@ from tests import _nu_cavity_gates as G
 
 
 def _rfx_arrays(profile):
-    inv_e, inv_h = _profile_to_inv_arrays(_append_bounding_node(profile))
+    inv_e, inv_h = _profile_to_inv_arrays(_append_bounding_node(profile), dtype="float32")
     return np.asarray(inv_e, np.float64), np.asarray(inv_h, np.float64)
 
 
 @pytest.mark.parametrize("name", ["single_band", "multi_band"])
 def test_rfx_metric_arrays_are_dual_edge_for_e_and_local_cell_for_h(name):
+    """rfx stores float32, hence 2e-7 rather than machine precision."""
     profile = G.PROFILES[name]
     want_e, want_h = G.inv_arrays(profile)
     got_e, got_h = _rfx_arrays(profile)
-    # rfx stores float32, hence 2e-7 rather than machine precision.
     np.testing.assert_allclose(got_e, want_e, rtol=2e-7)
     np.testing.assert_allclose(got_h, want_h, rtol=2e-7)
 

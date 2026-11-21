@@ -286,7 +286,7 @@ def _build_multilayer_fresnel(quick: bool) -> CaseResult:
         direction="+x",
         ny=grid.ny,
         nz=grid.nz,
-    )
+    dtype='float32')
     x_lo, x_hi = tfsf_cfg.x_lo, tfsf_cfg.x_hi
     i0 = tfsf_cfg.i0
 

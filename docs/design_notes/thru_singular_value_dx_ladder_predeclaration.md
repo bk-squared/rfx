@@ -211,7 +211,7 @@ Artifacts:
   `tests/unit/sparams/test_thru_singular_value_dx_ladder_replay.py` (fast lane, no FDTD:
   re-derives sv(f) from the stored S matrices and the outcome-table verdict
   from the stored excesses, compares both with `verdict.json`).
-- originals: `claude-workspace/rfx/runs/thru_sv_dx_ladder/20260902T101202Z-08828189/`
+- originals: `<workspace>/rfx/runs/thru_sv_dx_ladder/20260902T101202Z-08828189/`
   on the personal-workspaces NFS mount (`rung_dx_over_{1,2,4}.{json,log,rc}`).
 - job log: `docs/vessl-logs/rfx-thru-sv-dx-ladder_369367257803_completed.log`
   in the primary checkout (gitignored, local only).

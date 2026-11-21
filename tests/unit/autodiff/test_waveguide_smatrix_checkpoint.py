@@ -8,6 +8,7 @@ Validates the checkpoint_segments plumbing added in issue #131:
 
 Grid: tiny WR-90-like 2-port (~57×15×8 cells), num_periods=4 → n_steps≈70,
 K=7 (divides 70). CPU-only, float32.  Kept fast (each test ≪ 30 s).
+The waveguide cell size of 0.003 m keeps the test grid tiny.
 """
 from __future__ import annotations
 
@@ -20,16 +21,11 @@ import pytest
 from tests.contracts.path_equivalence.comparison import ACCUMULATED_RELATIVE
 
 
-# ---------------------------------------------------------------------------
-# Helper: build a minimal 2-port WR-90 sim
-# ---------------------------------------------------------------------------
-
 _FREQS = jnp.linspace(5e9, 6.5e9, 4)
 
-# WR-90: a=22.86 mm, b=10.16 mm. Use coarser dx to keep the grid tiny.
-# domain ~(57×15×8) cells at dx=3 mm, num_periods=4 → ~70 steps.
-_DX = 0.003       # 3 mm
-_DOMAIN = (0.171, 0.045, 0.024)  # ~57 × 15 × 8 cells
+CELL_SIZE_M = 0.003
+_DX = CELL_SIZE_M
+_DOMAIN = (0.171, 0.045, 0.024)
 
 
 def _make_sim():
@@ -107,10 +103,6 @@ def _find_divisor_near_sqrt(n: int) -> int:
     return best
 
 
-# ---------------------------------------------------------------------------
-# 1. Forward equivalence: S(None) == S(K) bit-identically for all 3 modes
-# ---------------------------------------------------------------------------
-
 @pytest.mark.parametrize("normalize", [False, True, "flux"])
 def test_forward_equivalence_checkpoint_vs_none(normalize):
     """S(checkpoint_segments=K) is bit-identical to S(checkpoint_segments=None)."""
@@ -137,18 +129,11 @@ def test_forward_equivalence_checkpoint_vs_none(normalize):
         f"\n[normalize={normalize}] n_steps={n_steps}, K={K}: "
         f"max|S(None)-S(K)| = {max_delta:.3e}"
     )
-    # Bit-identical: both runs go through the same JAX scan with float32,
-    # so result should be exactly 0.  Allow a tiny ULP-level tolerance for
-    # JIT-reorder effects, but strictly < 1e-12.
     assert max_delta == 0.0, (
         f"normalize={normalize}: S(None) vs S(K={K}) not bit-identical; "
         f"max|delta|={max_delta:.3e}. checkpoint threading is wrong."
     )
 
-
-# ---------------------------------------------------------------------------
-# 2. Gradient equivalence: grad wrt eps_override, None vs K, cross-trace bar
-# ---------------------------------------------------------------------------
 
 def test_grad_equivalence_checkpoint_vs_none():
     """jax.grad wrt eps_override: None vs K agree to the cross-trace bar."""
@@ -157,10 +142,9 @@ def test_grad_equivalence_checkpoint_vs_none():
     K = _find_divisor_near_sqrt(n_steps)
     assert n_steps % K == 0, f"K={K} does not divide n_steps={n_steps}"
 
-    # Build the baseline eps_r array shape by peeking at grid
     grid = sim._build_grid()
     base_materials, _, _, _, _, _, _ = sim._assemble_materials(grid)
-    eps_base = jnp.array(base_materials.eps_r)  # concrete float32 array
+    eps_base = jnp.array(base_materials.eps_r)
 
     def objective(eps: jax.Array, *, ckpt: "int | None") -> jax.Array:
         with warnings.catch_warnings():
@@ -175,13 +159,11 @@ def test_grad_equivalence_checkpoint_vs_none():
     grad_none = jax.grad(objective)(eps_base, ckpt=None)
     grad_k = jax.grad(objective)(eps_base, ckpt=K)
 
-    # Both grads must be finite and non-zero
     assert jnp.all(jnp.isfinite(grad_none)), "grad_none contains non-finite values"
     assert jnp.all(jnp.isfinite(grad_k)), f"grad_k (K={K}) contains non-finite values"
     assert jnp.any(grad_none != 0.0), "grad_none is all-zero (no signal through eps_override)"
     assert jnp.any(grad_k != 0.0), f"grad_k (K={K}) is all-zero"
 
-    # Relative deviation
     denom = float(jnp.max(jnp.abs(grad_none))) + 1e-30
     rel_dev = float(jnp.max(jnp.abs(grad_none - grad_k))) / denom
     print(
@@ -195,16 +177,11 @@ def test_grad_equivalence_checkpoint_vs_none():
     )
 
 
-# ---------------------------------------------------------------------------
-# 3. Non-divisor checkpoint_segments raises ValueError
-# ---------------------------------------------------------------------------
-
 def test_nondivisor_checkpoint_raises_value_error():
     """checkpoint_segments that does not divide n_steps raises ValueError."""
     sim = _make_sim()
     n_steps = _get_n_steps(sim, num_periods=4.0)
 
-    # Find a K that does NOT divide n_steps
     bad_K = None
     for k in range(2, n_steps + 2):
         if n_steps % k != 0:
@@ -221,22 +198,18 @@ def test_nondivisor_checkpoint_raises_value_error():
             )
 
 
-# ---------------------------------------------------------------------------
-# 4. NU mesh + checkpoint_segments is now SUPPORTED (issue #73; was a fence)
-# ---------------------------------------------------------------------------
-
 @pytest.mark.slow
 def test_nu_mesh_checkpoint_now_supported():
     """issue #73: checkpoint_segments on a NU mesh now RUNS (previously raised
     NotImplementedError). Forward-identity + AD-gradient gates live in
-    tests/unit/autodiff/test_waveguide_nu_checkpoint.py."""
+    tests/unit/autodiff/test_waveguide_nu_checkpoint.py.
+    The NU path requires normalize=True or 'flux'.
+    """
     from rfx import Simulation
     from rfx.boundaries.spec import BoundarySpec, Boundary
 
-    # Build a NU mesh by providing dx_profile
     n_cells_x = 57
     dx_profile = np.full(n_cells_x, _DX)
-    # Perturb slightly so it registers as non-uniform
     dx_profile[n_cells_x // 2] *= 1.1
 
     sim = Simulation(
@@ -264,7 +237,7 @@ def test_nu_mesh_checkpoint_now_supported():
         warnings.simplefilter("ignore")
         res = sim.compute_waveguide_s_matrix(
             num_periods=4.0,
-            normalize=True,   # NU path requires normalize=True or 'flux'
+            normalize=True,
             checkpoint_segments=7,
         )
     s = np.asarray(res.s_params)

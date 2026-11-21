@@ -3,12 +3,12 @@
 The port-S bar is calibrated per host. The multi-device S differs from one device
 by float32 rounding formed inside the compiled step: it moves with the host and
 the XLA CPU flags, 2 and 3 devices give identical values, and it does not grow
-from 400 to 800 steps (rfx-archive rfx/records/20261019-item5-port-s-bar,
-78108cc99: 0.91-1.87e-6 of the |S| peak, 1.04-1.23x one device's own
+from 400 to 800 steps (78108cc99: 0.91-1.87e-6 of the |S| peak, 1.04-1.23x one device's own
 jit-vs-eager spread on every host). So the bar is that unit, measured here on the
 same scene and host: multi-device <= 2 x the one-device jit-vs-eager spread,
 which itself stays <= 1e-4 (the cross-trace bar for a record-summed quantity).
 A floor of 9 float32 ULP of the peak keeps the bar defined where jit is bit-equal.
+Geometry supplies the permittivity defect because forward refuses eps_override on graded multi-device port runs with Debye live edges.
 """
 from functools import lru_cache
 
@@ -81,7 +81,9 @@ def _seam_column(sim, devices):
 
 @pytest.mark.parametrize('mutation', ['seam_eps_10%', 'skipped_e_exchange', 'tau_0.01%'])
 def test_port_s_bar_catches(mutation, monkeypatch):
-    """Each defect the bar exists for lands above it on this host."""
+    """Each defect the bar exists for lands above it on this host.
+    An earlier port measurement gave S11 relative-peak changes 9.3e-6 for 0.1 relative eps error and 4.9e-5 for 0.5, so errors below about 2 percent sit in the rounding floor.
+    """
     one, bar = _reference()
     if mutation == 'tau_0.01%':
         changed = np.asarray(_s(scene('debye', tau_factor=1.0001, cells=False, port=True)),
@@ -90,13 +92,6 @@ def test_port_s_bar_catches(mutation, monkeypatch):
         sim = scene('debye', cells=False, port=True)
         eps = None
         if mutation == 'seam_eps_10%':
-            # A 10 % permittivity error confined to the first owned x column of
-            # rank 1 (2 devices), across the pole block (36 cells); an owned-cell
-            # coefficient defect at a material face is of order one. S11 at this
-            # port moves by about 1e-4 of its peak per unit relative eps in that
-            # column (Mac: 0.1 -> 9.3e-6, 0.5 -> 4.9e-5), so errors below ~2 % sit
-            # in the rounding floor. Drawn as geometry: forward refuses
-            # eps_override on graded multi-device port runs with Debye live edges.
             from rfx import Box
             from rfx.materials.debye import DebyePole
             grid = sim._build_nonuniform_grid()

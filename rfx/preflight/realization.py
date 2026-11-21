@@ -64,6 +64,8 @@ edge here reds most of the corpus rather than one line of one report.
 
 from __future__ import annotations
 
+from rfx.preflight._not_judged import is_tracer_error, not_judged
+
 from contextlib import contextmanager
 from contextvars import ContextVar
 
@@ -100,7 +102,9 @@ def _shape_bounds(shape):
         blo = np.asarray(blo, dtype=np.float64)
         bhi = np.asarray(bhi, dtype=np.float64)
     except (TypeError, ValueError, AttributeError, IndexError,
-            NotImplementedError):
+            NotImplementedError) as _traced_exc:
+        if is_tracer_error(_traced_exc):
+            not_judged(None, "_validate_cfg_campaign_statics")
         return None
     if blo.shape != (3,) or bhi.shape != (3,):
         return None
@@ -147,8 +151,6 @@ def _realized_edges_np(pec_mask, sheets, wires, periodic, shape):
     from rfx.boundaries.pec import realized_pec_edge_masks
     if pec_mask is None and not sheets and not wires:
         return tuple(np.zeros(tuple(shape), dtype=bool) for _ in range(3))
-    # This reader requires concrete geometry, including under a user's jit.
-    # Keep its shared edge-rule calculation concrete as well as its inputs.
     import jax
     with jax.ensure_compile_time_eval():
         cells = None if pec_mask is None else jnp.asarray(pec_mask)
@@ -173,7 +175,7 @@ class _RealizedPEC:
                          else np.asarray(pec_mask, dtype=bool))
         self.sheets = list(sheets)
         self.wires = list(wires)
-        self.sheet_specs = list(sheet_specs)  # observational f0 geometry, not PEC
+        self.sheet_specs = list(sheet_specs)
         self.periodic = tuple(bool(p) for p in periodic)
         self.edges = _realized_edges_np(
             pec_mask, self.sheets, self.wires, self.periodic, grid.shape)
@@ -188,7 +190,6 @@ class _RealizedPEC:
                                     periodic=self.periodic)
 
     def is_pec_edge(self, component, i, j, k) -> bool:
-        # Delegate PEC-edge ownership to the shared boundary rule.
         from rfx.boundaries.pec import edge_is_pec
         return edge_is_pec(self.edges, component, i, j, k)
 
@@ -225,8 +226,8 @@ class _EntryRealization:
         self.error = error
         self.lo = lo
         self.hi = hi
-        self.declared_mid = declared_mid   # sheet: declared mid-plane coord
-        self.tie_planes = tie_planes       # sheet: (k_lo, k_hi) on an exact tie
+        self.declared_mid = declared_mid
+        self.tie_planes = tie_planes
         self._edges = None
 
     @property
@@ -293,7 +294,9 @@ class _EntryRealization:
                 edges = _realized_edges_np(None, [sp], (), ctx.periodic, shape)
             else:
                 return None
-        except (ValueError, TypeError, IndexError):
+        except (ValueError, TypeError, IndexError) as _traced_exc:
+            if is_tracer_error(_traced_exc):
+                not_judged(None, "_validate_cfg_campaign_statics")
             return None
         return int(sum(int(m.sum()) for m in edges))
 
@@ -303,8 +306,6 @@ class _EntryRealization:
                                     periodic)
 
 
-# Deferral is scoped to one public preflight call. Standalone readers emit
-# directly; a scope exit flushes even when no later realization reader runs.
 _assembly_warning_readers = ContextVar("assembly_warning_readers", default=None)
 
 
@@ -339,6 +340,7 @@ class _CampaignStaticsContext:
     ``rfx.boundaries.pec.realized_pec_edge_masks`` (through
     :meth:`realized` for the whole model and :meth:`entry_realizations`
     per declaration), never from a cell mask or a bounding box.
+    ``coords`` contains the production grid's E-node sample coordinates.
     """
 
     _NARROW_EXCS = (ValueError, TypeError, NotImplementedError, KeyError,
@@ -349,11 +351,11 @@ class _CampaignStaticsContext:
         self.error: str | None = None
         self.lane: str | None = None
         self.grid = None
-        self.coords = None       # production GridCoords (E-node samples)
-        self.centres = None      # production primal-cell centres (§1.1)
-        self.cell_sizes = None   # per-axis per-cell size arrays
-        self.nodes = None        # 3x float64 node-position arrays
-        self.spacings = None     # 3x float64 per-cell spacing arrays
+        self.coords = None
+        self.centres = None
+        self.cell_sizes = None
+        self.nodes = None
+        self.spacings = None
         self.periodic = (False, False, False)
         self._realized = None
         self._entries = None
@@ -366,8 +368,6 @@ class _CampaignStaticsContext:
         profiles = (sim._dx_profile, sim._dy_profile, sim._dz_profile)
         if is_tracer(sim._dx) or any(
                 p is not None and is_tracer(p) for p in profiles):
-            # Same precedent as _validate_cfg_graded_box_rasterization:
-            # a traced mesh has no concrete node positions to check.
             self.error = "traced-mesh"
             return
         from rfx.geometry.rasterize_grid import (
@@ -383,11 +383,6 @@ class _CampaignStaticsContext:
                 self.coords = coords_from_nonuniform_grid(grid)
                 self.centres = centres_from_nonuniform_grid(grid, self.coords)
                 self.cell_sizes = cell_sizes_from_nonuniform_grid(grid)
-                # ONE node line: the classifier's own coordinates (the f64
-                # spine when the grid carries one). Re-deriving nodes from
-                # the float32 cell-size store put preflight's printed
-                # positions ~1e-8 relative off the planes the classifier
-                # resolved — enough to miss an exact half-cell tie.
                 nodes = [np.asarray(c, dtype=np.float64)
                          for c in (self.coords.x, self.coords.y, self.coords.z)]
                 spacings = [np.asarray(d, dtype=np.float64)
@@ -412,13 +407,10 @@ class _CampaignStaticsContext:
             self.periodic = (tuple(bool(p) for p in pf()) if callable(pf)
                              else periodic_flags_from_axes(
                                  getattr(sim, "_periodic_axes", "")))
-        except self._NARROW_EXCS as exc:  # malformed config; preflight
-            self.error = f"{type(exc).__name__}: {exc}"  # must not crash
+        except self._NARROW_EXCS as exc:
+            self.error = f"{type(exc).__name__}: {exc}"
             self._assembly_exception = exc
 
-    # ------------------------------------------------------------------
-    # The realized conductor set (whole model) and per-entry realization
-    # ------------------------------------------------------------------
 
     def realized(self, *, strict=False, defer_warnings=False):
         """:class:`_RealizedPEC` from the PRODUCTION assembly (with the
@@ -482,9 +474,6 @@ class _CampaignStaticsContext:
         (``thin_conductor[i]``) — through the shared classifier."""
         if self._entries is not None:
             return self._entries
-        # Alias ``_local_cell`` to distinguish the rasterizer's ``(nodes, d, pos)``
-        # helper from the mesh family's ``(profile, lo, hi, fallback)`` helper. The
-        # call here uses ``rfx.geometry.rasterize_grid``.
         from rfx.geometry.rasterize_grid import (
             classify_pec_entry, sheet_spec_from_shape,
             _local_cell as _rasterize_local_cell,
@@ -504,12 +493,15 @@ class _CampaignStaticsContext:
                 return lo, hi
             try:
                 blo, bhi = sheet_bounds(shape)
-            except self._NARROW_EXCS:
+            except self._NARROW_EXCS as _traced_exc:
+                if is_tracer_error(_traced_exc):
+                    not_judged(None, "_validate_cfg_campaign_statics")
                 return None, None
             if blo is None or bhi is None:
                 return None, None
             if any(is_tracer(v) for v in jax.tree_util.tree_leaves((blo, bhi))):
-                return None, None  # Assembly owns the traced-shape refusal.
+                not_judged(None, "_validate_cfg_campaign_statics")
+                return None, None
             blo = np.asarray(blo, dtype=np.float64)
             bhi = np.asarray(bhi, dtype=np.float64)
             return np.minimum(blo, bhi), np.maximum(blo, bhi)
@@ -548,19 +540,12 @@ class _CampaignStaticsContext:
                 if id(entry) in products:
                     cells, sheet, wire, solved = products[id(entry)]
                 else:
-                    # Refused-model diagnostics retain per-entity evidence.
                     solved = continued_conductor_shape(
                         sim, self.grid, entry.shape, entry=entry)
                     cells, sheet, wire = classify_pec_entry(
                         solved, self.coords, self.centres, self.cell_sizes,
                         name=entry.material_name, grid=self.grid)
             except self._NARROW_EXCS as exc:
-                # A shape that cannot be rasterized is a FINDING, not a
-                # crash: preflight's job is to report. One unplaceable
-                # conductor used to kill the whole per-entry loop, so every
-                # other entry lost its realization too (measured on the
-                # `_NoBBox` fixture: NotImplementedError out of
-                # classify_pec_entry, no advisory at all).
                 out.append(_EntryRealization(
                     label=label, name=entry.material_name, shape=entry.shape,
                     kind="refused",
@@ -634,8 +619,10 @@ class _CampaignStaticsContext:
                 sheet = sheet_spec_from_shape(
                     solved, self.coords, self.cell_sizes, name=f'thin_conductor[{i}]',
                     lane=self.lane or '', refuse_thick=True, grid=self.grid)
-            except self._NARROW_EXCS:
-                continue  # Assembly owns structural refusals.
+            except self._NARROW_EXCS as _traced_exc:
+                if is_tracer_error(_traced_exc):
+                    not_judged(None, "_validate_cfg_campaign_statics")
+                continue
             out.append(_EntryRealization(
                 label='add_thin_conductor(surface_impedance_f0=...)',
                 subject_label=f'thin_conductor[{i}]',
@@ -711,18 +698,18 @@ class _CampaignStaticsContext:
         return float(self.spacings[axis][j])
 
     def sub_lattice_offsets(self, lo_corner) -> list[float]:
-        """Per-axis fractional offset (in cells) of a corner from the node below."""
+        """Fractional cell offset from the node below, zero on an invariant axis."""
         offs = []
         for a in range(3):
             nodes = self.nodes[a]
+            if len(nodes) == 1:
+                offs.append(0.0)
+                continue
             c = float(lo_corner[a])
             j = int(np.searchsorted(nodes, c + 1e-15)) - 1
             j = min(max(j, 0), len(nodes) - 2)
             d = float(nodes[j + 1] - nodes[j])
             o = ((c - float(nodes[j])) / d) % 1.0
-            # A corner within float rounding of a node is ON the node
-            # (cumsum-built NU nodes carry ~1e-15 m rounding, which the
-            # bare modulo would print as 1.000 cells instead of 0).
             if o > 1.0 - 1e-6 or o < 1e-6:
                 o = 0.0
             offs.append(o)
@@ -765,14 +752,6 @@ def _port_realized_edges(self, grid):
         realized = self._assemble_realized(grid, nonuniform=False)
     except (ValueError, TypeError, NotImplementedError, KeyError,
             AttributeError, IndexError):
-        # Deliberately NOT ``except Exception``: an async
-        # worker timeout must propagate through this advisory. On a
-        # narrow failure the caller falls back to the aperture,
-        # which is always defined. The timeout/cancel exceptions
-        # themselves derive from ``BaseException``, so
-        # this tuple is belt-and-suspenders, not the only guard --
-        # see the longer comment at the other ``_assemble_materials``
-        # call site in this file.
         return None
     if realized.empty:
         return None
@@ -836,35 +815,6 @@ def _campaign_ctx(self):
     return ctx
 
 
-# ---------------------------------------------------------------------------
-# Pre-move ``__qualname__``, restored explicitly.
-#
-# Each of the four functions above was a ``def`` in the ``_PreflightMixin``
-# class body, so its ``__qualname__`` read ``_PreflightMixin.<name>``; a
-# module-level ``def`` gets the bare name instead. ``rfx/api/__init__.py``
-# rewrites exactly ``<mixin>.<name>`` -> ``Simulation.<name>`` at
-# class-composition time and SKIPS any function whose qualname does not match
-# that pattern, so leaving the bare name here would change what a TypeError
-# reports -- a user-visible behaviour change inside a pure code-motion step.
-# ``tests/unit/autodiff/test_design_mask_removed.py
-# ::test_no_public_simulation_method_leaks_a_mixin_class_name`` states the
-# rule but only walks PUBLIC members, and all four names here are private, so
-# ``tests/locks/test_preflight_split_snapshot.py`` pins these four directly.
-#
-# (``_CampaignStaticsContext.entry_realizations`` has no leading underscore
-# and so LOOKS like a public name the rewrite loop would walk. It is not a
-# ``Simulation`` member at all -- it is a method of the context class above,
-# reached as ``sim._campaign_ctx().entry_realizations()``, so neither the
-# rewrite loop nor the public-leak test ever sees it, and its qualname stays
-# ``_CampaignStaticsContext.entry_realizations`` because the class moved with
-# it.)
-#
-# None of the four was a ``@staticmethod`` -- the split's two are
-# ``_congruence_origin_shift`` in ``rfx/preflight/pec_geometry.py`` and
-# ``_validate_tfsf_vacuum_boundary`` in ``rfx/preflight/sources.py`` -- so
-# this module has no decorator the facade has to re-apply and every restored
-# qualname below becomes ``Simulation.<name>`` after composition.
-# ---------------------------------------------------------------------------
 _assemble_realized.__qualname__ = "_PreflightMixin._assemble_realized"
 _port_realized_edges.__qualname__ = "_PreflightMixin._port_realized_edges"
 _port_pec_mask.__qualname__ = "_PreflightMixin._port_pec_mask"
@@ -872,7 +822,6 @@ _campaign_ctx.__qualname__ = "_PreflightMixin._campaign_ctx"
 clear_inspection_cache.__qualname__ = "_PreflightMixin.clear_inspection_cache"
 
 
-# Standalone preflight: report what the production assembly refuses (an error, never a pass).
 def _same_assembly_failure(sim, exc):
     """Recognize a later validator re-raising the same admission failure."""
     original = sim._campaign_ctx()._assembly_exception
@@ -893,21 +842,24 @@ def _same_assembly_failure(sim, exc):
 def _validate_cfg_assembly(self, _w) -> None:
     ctx = self._campaign_ctx()
     if getattr(ctx, "_assembly_lent", False):
-        # Execution has already admitted the product lent by run()/forward().
         return
     if ctx.error == "traced-mesh":
-        return  # The concrete-geometry checks retain their own advisory.
+        return
     if ctx.error is None:
         ctx.realized(defer_warnings=True)
     if ctx._realized is not None and ctx._assembly_exception is None:
         from rfx.model.pad_fill import check_pad_fill
-        from rfx.model.source_admission import refuse_dead_soft_sources
+        from rfx.model.source_admission import conductor_operator, refuse_dead_soft_sources, refuse_shorted_lumped_rlc
         try:
-            # These solve-mode gates read the audit product without assembling
-            # again. Preserve solve order: pad fill precedes source admission.
             root = ctx._realized
             check_pad_fill(self, root.grid, root.geometry_masks)
             refuse_dead_soft_sources(self, root)
+            conformal = getattr(self, '_conformal_run_call', None)
+            if conformal is None:
+                conformal = bool(self._boundary_spec.conformal_faces())
+            operator = getattr(self, '_conductor_operator_call', None)
+            refuse_shorted_lumped_rlc(self, root, operator=(operator or
+                conductor_operator(conformal=conformal)))
         except ctx._NARROW_EXCS as exc:
             ctx._assembly_exception = exc
     exc = ctx._assembly_exception

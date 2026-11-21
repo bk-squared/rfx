@@ -54,8 +54,6 @@ def _simulation(**kwargs):
 def test_graded_run_forward_same_step_count_at_boundary():
     sim = _simulation(dz_profile=np.full(4, 0.003), dt=4e-12)
     assert sim._build_nonuniform_grid().dt == 4e-12
-    # This point-source request's preflight carries no record length or count;
-    # the source scan covers the waveguide preflight conversions.
     sim.preflight()
     run_rows = sim.run(num_periods=20).time_series.shape[0]
     forward_rows = sim.forward(num_periods=20).time_series.shape[0]

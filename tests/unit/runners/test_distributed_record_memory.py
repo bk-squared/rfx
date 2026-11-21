@@ -53,9 +53,8 @@ def test_record_storage(n_devices, monkeypatch, tmp_path):
     original = records.SlabRecords.initial
 
     def observe(self):
+        """The transient compact pre-step E snapshot belongs to the record budget."""
         buffers = original(self)
-        # Measure the actual compact pre-step E snapshot separately from the
-        # scan carry. It is transient, but still belongs to the record budget.
         import inspect
         from rfx.runners._rank import mesh_ranks
         state = inspect.currentframe().f_back.f_locals["carry"]["fdtd"]
@@ -71,7 +70,6 @@ def test_record_storage(n_devices, monkeypatch, tmp_path):
             rows[kind] = dict(per_device_bytes=actual, owner_bytes=shares[kind],
                               largest_owner_bytes=max(shares[kind]))
             assert actual == [max(shares[kind])] * n_devices, ("record owner byte bound", kind, rows[kind])
-        # All global templates and moment weights are host arrays during the scan.
         for layout in self.layouts.values():
             for name in ("templates", "monitor"):
                 for value in jax.tree.leaves(getattr(layout, name, ())):

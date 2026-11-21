@@ -14,11 +14,10 @@ pytestmark = [pytest.mark.distributed, pytest.mark.slow]
 @pytest.mark.parametrize("boundary,lane", [("cpml", "fwd")])
 @pytest.mark.parametrize("kind", ["debye", "lorentz", "mixed"])
 def test_a_dispersive_model_matches_one_device(boundary, lane, kind, monkeypatch):
-    """Debye/Lorentz use law C/bar S for accumulated pole rounding (rfx-archive records/20261017-item5-dispersive).
+    """Debye/Lorentz use law C/bar S for accumulated pole rounding.
 
     The wrapped mixed (Debye+Lorentz) row measured at most 6.04 peak ULP over
-    200/400/800 steps on Mac, leaving 2.96 ULP below the unchanged 9-ULP bar
-    (review B, rfx-archive records/20261017-item5-dispersive).
+    200/400/800 steps on Mac, leaving 2.96 ULP below the unchanged 9-ULP bar.
     """
     if kind in ('debye', 'lorentz'):
         from tests._distributed_dispersive_cpml import snapshot_parity
@@ -28,8 +27,6 @@ def test_a_dispersive_model_matches_one_device(boundary, lane, kind, monkeypatch
                 f"{kind}/{boundary}/{lane}", prefixes=WEEKLY_PREFIXES)
 
 
-# Graded law C + bar S rows (800/1600) live in the box/length-specific
-# test_distributed_dispersive_cpml_*_weekly.py files to bound CPU file time.
 @pytest.mark.parametrize('kind', ['debye', 'lorentz'])
 def test_uniform_dispersive_cpml_box_matches_one_device(kind):
     cross_trace(lambda: _cpml_1302_box(kind, 'fwd'), 'fwd', _devices(2),

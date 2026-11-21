@@ -3,8 +3,7 @@
 A 20 x 14 x 10 mm PEC box at 1 mm cells has its +x wall replaced by a PEC Box from x0 = 18.25 or 18.75 mm. The TE101
 mode's frequency gives the wall position through the discrete Yee relation
 sin^2(w dt/2)/(c dt)^2 = sin^2(pi dx/(2L))/dx^2 + sin^2(pi dz/(2b))/dz^2 (the continuum relation carries the grid's own
-dispersion, +0.13 cell at this mesh). Measured with the cut-cell operands (rfx-archive records/20261029-1651-sc-fix,
-K1): within 0.0078 cell at 18.25 mm and 0.0004 cell at 18.75 mm; the staircase puts these walls at 18 and 19 mm, and the
+dispersion, +0.13 cell at this mesh). Measured with the cut-cell operands: within 0.0078 cell at 18.25 mm and 0.0004 cell at 18.75 mm; the staircase puts these walls at 18 and 19 mm, and the
 previous eps/w model 0.95 and 2.0 cells deep.
 """
 

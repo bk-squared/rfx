@@ -1,4 +1,5 @@
-"""Frozen DESIGN.md E1–E4: declared interior deformation windows."""
+"""Frozen DESIGN.md E1–E4: declared interior deformation windows.
+The two deformation windows flank a centred feed whose own cells 3 and 4 stay at their nominal width."""
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -120,6 +121,7 @@ def _width_scalar(profile):
 @pytest.mark.parametrize("compiled", [False, True], ids=["grad", "jit_grad"])
 @pytest.mark.parametrize("case", ["inside", "outside", "nominal", "two_ulp"])
 def test_e4_fixed_widths(case, compiled):
+    """The pad multiplicities are low = 1 and high = 2 plus the trailing bounding cell."""
     widths = CELLS.astype(np.float32)
     if case == "inside":
         widths[1] += np.float32(1e-3)
@@ -133,7 +135,6 @@ def test_e4_fixed_widths(case, compiled):
     if compiled:
         derivative = jax.jit(derivative)
     if case == "outside":
-        # Compiled callbacks wrap the underlying ValueError in XlaRuntimeError.
         error = jax.errors.JaxRuntimeError if compiled else ValueError
         with pytest.raises(error, match=(
                 r"traced x axis interior cell 0.*realized width.*nominal width"
@@ -141,7 +142,6 @@ def test_e4_fixed_widths(case, compiled):
             derivative(jnp.asarray(widths)).block_until_ready()
     else:
         actual = derivative(jnp.asarray(widths))
-        # Pad multiplicities: low=1; high=2 plus the trailing bounding cell.
         np.testing.assert_array_equal(actual, 2 * widths * np.array([2, 1, 1, 4]))
 
 
@@ -170,8 +170,6 @@ def test_nominal_profile_keeps_lane_refusal(lane):
     jax.grad(objective)(jnp.asarray(CELLS))
 
 
-# Two windows on both sides of a centred feed: the slots (or a patch's two
-# opposite edges) move, the feed's own cells 3 and 4 stay at their nominal width.
 CELLS8 = np.array([1., 1.25, 0.75, 1., 1., 0.75, 1.25, 1.])
 WINDOWS = ((1, 3), (5, 7))
 

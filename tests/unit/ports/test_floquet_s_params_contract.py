@@ -62,12 +62,9 @@ from rfx.measurement.floquet import (
     update_floquet_dft,
 )
 
-ETA0 = float(jnp.sqrt(MU_0 / EPS_0))  # ~377 ohms
+ETA0 = float(jnp.sqrt(MU_0 / EPS_0))
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _drive_unit_cell_accumulators(n_steps: int = 400):
     """Run a tiny periodic-BC unit-cell FDTD and return real accumulators.
@@ -95,11 +92,11 @@ def _drive_unit_cell_accumulators(n_steps: int = 400):
     t0 = 3.0 * tau_g
 
     src_z = grid.nz // 4
-    inc_z = src_z + 3        # incident-side monitor
-    ref_z = src_z + 6        # reflection monitor
-    trans_z = (3 * grid.nz) // 4  # transmission monitor
+    inc_z = src_z + 3
+    ref_z = src_z + 6
+    trans_z = (3 * grid.nz) // 4
 
-    freqs = jnp.linspace(4.0e9, 6.0e9, 5)  # well inside the source band
+    freqs = jnp.linspace(4.0e9, 6.0e9, 5)
     plane_shape = (grid.nx, grid.ny)
     acc_inc = init_floquet_dft(len(freqs), plane_shape)
     acc_ref = init_floquet_dft(len(freqs), plane_shape)
@@ -146,9 +143,6 @@ def _pure_wave_accumulator(n_freqs, plane_shape, forward, backward,
     return acc._replace(e_tang1_dft=e1, h_tang2_dft=h2)
 
 
-# ---------------------------------------------------------------------------
-# (1) First real pytest caller: real-FDTD-driven accumulators
-# ---------------------------------------------------------------------------
 
 def test_compute_floquet_s_params_real_fdtd_runs():
     """Drive a real unit-cell FDTD and call compute_floquet_s_params on it.
@@ -164,7 +158,6 @@ def test_compute_floquet_s_params_real_fdtd_runs():
         _drive_unit_cell_accumulators(n_steps=400)
     )
 
-    # Witness 1: the FDTD itself stayed finite (no NaN blow-up).
     assert not np.any(np.isnan(np.array(state.ex))), "NaN in driven FDTD field"
 
     res = compute_floquet_s_params(
@@ -195,9 +188,6 @@ def test_compute_floquet_s_params_real_fdtd_runs():
           np.abs(s11) ** 2 + np.abs(s21) ** 2)
 
 
-# ---------------------------------------------------------------------------
-# (2) Physical sanity on the function's INTENDED (pre-isolated) input
-# ---------------------------------------------------------------------------
 
 def test_compute_floquet_s_params_passivity_pure_wave():
     """On clean pure-wave accumulators the function recovers Gamma / tau.
@@ -213,8 +203,9 @@ def test_compute_floquet_s_params_passivity_pure_wave():
     freqs = jnp.linspace(8e9, 12e9, n_freqs)
 
     A = 1.0 + 0.25j
-    Gamma = 0.30 + 0.20j      # |Gamma| ~ 0.3606
-    tau = 0.60 - 0.10j        # |tau|   ~ 0.6083  (|G|^2+|t|^2 ~ 0.50 <= 1)
+    Gamma = 0.30 + 0.20j
+    tau = 0.60 - 0.10j
+    assert abs(Gamma) ** 2 + abs(tau) ** 2 <= 1, "Planted coefficients must satisfy the passive-cell input contract"
 
     acc_inc = _pure_wave_accumulator(n_freqs, plane_shape, A, 0.0)
     acc_ref = _pure_wave_accumulator(n_freqs, plane_shape, A, Gamma * A)
@@ -231,7 +222,6 @@ def test_compute_floquet_s_params_passivity_pure_wave():
 
     assert np.all(np.isfinite(s11)) and np.all(np.isfinite(s21))
 
-    # Recovers the planted coefficients (per-freq, since accumulators are flat).
     assert np.allclose(np.abs(s11), abs(Gamma), atol=1e-3), (
         f"|S11| {np.abs(s11)} != |Gamma| {abs(Gamma):.4f}"
     )
@@ -239,11 +229,9 @@ def test_compute_floquet_s_params_passivity_pure_wave():
         f"|S21| {np.abs(s21)} != |tau| {abs(tau):.4f}"
     )
 
-    # Passive-cell physical sanity: |S11|^2 + |S21|^2 <= 1.1.
     power = np.abs(s11) ** 2 + np.abs(s21) ** 2
     assert np.all(power <= 1.1), f"passivity violated on pure-wave input: {power}"
 
-    # And the empty/passive reflection alone is bounded <= ~1.05.
     assert np.all(np.abs(s11) <= 1.05), f"|S11| exceeds 1.05: {np.abs(s11)}"
 
 
@@ -259,7 +247,7 @@ def test_compute_floquet_s_params_empty_reflection_is_small():
     A = 1.0 + 0.0j
 
     acc_inc = _pure_wave_accumulator(n_freqs, plane_shape, A, 0.0)
-    acc_ref = _pure_wave_accumulator(n_freqs, plane_shape, A, 0.0)  # no reflection
+    acc_ref = _pure_wave_accumulator(n_freqs, plane_shape, A, 0.0)
 
     res = compute_floquet_s_params(
         acc_inc, acc_ref, None,
@@ -273,9 +261,6 @@ def test_compute_floquet_s_params_empty_reflection_is_small():
     assert np.all(np.abs(s11) < 1e-4), f"empty-cell |S11| not ~0: {np.abs(s11)}"
 
 
-# ---------------------------------------------------------------------------
-# (3) Autodiff classification — empirical, not assumed
-# ---------------------------------------------------------------------------
 
 def test_compute_floquet_s_params_grad_finite():
     """jax.grad of mean(|S11|) through compute_floquet_s_params is finite.
@@ -293,7 +278,6 @@ def test_compute_floquet_s_params_grad_finite():
     Gamma = 0.30 + 0.20j
 
     def objective(theta):
-        # theta scales the reflected component -> flows into S11.
         e_inc = jnp.full((n_freqs,) + plane_shape, A, dtype=jnp.complex64)
         h_inc = jnp.full((n_freqs,) + plane_shape, A / ETA0, dtype=jnp.complex64)
         ex_ref = A + theta * Gamma * A
@@ -321,7 +305,6 @@ def test_compute_floquet_s_params_grad_finite():
         f"jax.grad through compute_floquet_s_params is non-finite: {grad} "
         "(tape broke — downgrade the AD classification and document why)"
     )
-    # Non-trivial gradient (the reflection genuinely depends on theta).
     assert abs(grad) > 1e-6, f"grad unexpectedly ~0: {grad}"
 
 

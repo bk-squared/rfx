@@ -95,7 +95,8 @@ def z_top(kx, k0, b, g, rs, eta0):
         t = np.tan(kz * d)
         return zc * (Z + 1j * zc * t) / (zc + 1j * Z * t)
 
-    Z = 0.0 + 0.0j                      # bottom PEC short
+    BOTTOM_PEC_SHORT_IMPEDANCE = 0.0 + 0.0j
+    Z = BOTTOM_PEC_SHORT_IMPEDANCE
     Z = through(Z, g)
     Z = 1.0 / (1.0 / Z + 1.0 / rs) if Z != 0 else 0.0j
     Z = through(Z, b)
@@ -113,7 +114,7 @@ def find_modes(f, b, g, rs, eta0, *, n_seed=60, max_modes=3):
     makes that root numerically awkward but it is exact by construction.
     """
     k0 = 2.0 * np.pi * f / C0
-    with np.errstate(all="ignore"):     # Newton walks through poles of tan
+    with np.errstate(all="ignore"):
         return _find_modes_inner(k0, b, g, rs, eta0, n_seed, max_modes)
 
 
@@ -188,14 +189,14 @@ def hy_profile(kx, f, b, g, rs, eta0, z_pts):
     kz, zc = _kz_zc(kx, k0, eta0)
     sheets = (g, g + b)
     prof = np.zeros(len(z_pts), complex)
-    Ex0, Hy0 = 0.0 + 0.0j, 1.0 + 0.0j   # bottom PEC: Ex = 0
+    Ex0, Hy0 = 0.0 + 0.0j, 1.0 + 0.0j
     zb, si = 0.0, 0
     for m, zp in enumerate(np.asarray(z_pts, float)):
         while si < 2 and zp > sheets[si] + 1e-12:
             d = sheets[si] - zb
             Ex = Ex0 * np.cos(kz * d) + 1j * zc * Hy0 * np.sin(kz * d)
             Hy = Hy0 * np.cos(kz * d) + 1j * Ex0 / zc * np.sin(kz * d)
-            Hy = Hy + Ex / rs           # sheet current jump J = Ex/Rs
+            Hy = Hy + Ex / rs
             Ex0, Hy0, zb = Ex, Hy, sheets[si]
             si += 1
         d = zp - zb

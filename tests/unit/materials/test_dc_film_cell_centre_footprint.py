@@ -27,7 +27,7 @@ def _realized(shape, **kwargs):
 
 
 def _centres(record, footprint):
-    # The public record includes the far face of each stored cell.
+    """The public record includes the far face of each stored cell."""
     nodes = [np.asarray(record.nodes[a]) for a in (0, 1)]
     widths = [np.diff(n)[:footprint.shape[a]] for a, n in enumerate(nodes)]
     centres = [n[:footprint.shape[a]] + widths[a] / 2 for a, n in enumerate(nodes)]
@@ -49,10 +49,10 @@ def discs():
 
 @pytest.mark.parametrize('axis', (0, 1), ids=('x', 'y'))
 def test_disc_mirror_indices(discs, axis):
+    """Cell j reflects to N-1-j, where N counts physical domain cells."""
     (record, original), mirrors = discs
     occupied = np.argwhere(original)
     expected = occupied.copy()
-    # Cell j reflects to N - 1 - j, where N counts physical domain cells.
     n_cells = np.count_nonzero(np.asarray(record.nodes[axis]) < DOMAIN[axis])
     expected[:, axis] = n_cells - 1 - expected[:, axis]
     assert set(map(tuple, np.argwhere(mirrors[axis][1]))) == set(map(tuple, expected))
@@ -101,11 +101,10 @@ def test_box_cells(lo, hi):
 @pytest.mark.parametrize('shape_kind', ('disc', 'box'))
 @pytest.mark.parametrize('graded', (False, True))
 def test_periodic_seam_centres(shape_kind, graded):
+    """The public NU lane supports periodic axes with constant profiles."""
     centre = (.00037, .00761, .002)
     shape = (Cylinder(centre, RADIUS, 0., axis='z') if shape_kind == 'disc' else
              Box((-.0023, .004, .002), (.0026, .011, .002)))
-    # The public NU lane supports periodic axes with constant profiles;
-    # grade the other tangent to exercise its per-cell widths as well.
     profiles = {'dy_profile': H * np.r_[1., np.tile([.9, 1.1], 8), 1.]} if graded else {}
     record, footprint = _realized(
         shape, boundary=BoundarySpec(x='periodic', y='pec', z='pec'), **profiles)

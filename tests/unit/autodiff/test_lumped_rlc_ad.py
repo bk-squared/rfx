@@ -25,6 +25,7 @@ These tests are the gate:
    load-bearing falsifier: all inverse-design / TAP examples ride on it.
 4. ``test_forward_with_rlc_is_not_noop`` — a registered RLC element now
    correctly affects ``forward()``; previously it was a SILENT no-op.
+Every domain length written as ``4 * (299792458.0 / 5e9 / 20.0)`` is a whole number of cells of dx, so the solved domain equals the declared one.
 """
 from __future__ import annotations
 
@@ -35,39 +36,15 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-try:  # modern JAX: scoped x64 promoted to top-level (experimental removed v0.8.0)
+try:
     from jax import enable_x64 as _enable_x64
-except ImportError:  # older JAX (< ~0.4.31)
+except ImportError:
     from tests._x64_compat import enable_x64 as _enable_x64
 
 from rfx import GaussianPulse, Simulation
 
 _FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "fixtures")
 
-# Lumped-port + series R+C fixture, the element ONE CELL from the port.  CPML
-# keeps the port V/I well-conditioned (see
-# tests/unit/sparams/test_run_forward_s11_contract.py); the series R+C exercises
-# the ADE carry (capacitor charge updates each step through the traced meta.R /
-# meta.dt_over_C_dx) so the scoped-x64 dtype threading is genuinely tested.
-# Freqs are pinned in-band (source f0=5 GHz, bw=0.9) where the incident wave is
-# strong — below-cutoff / weak-incident bins would NaN the gradient silently.
-#
-# WHY THE ELEMENT IS NOT AT THE PORT CELL (2026-09-21): a driven port reads its
-# S11 from the terminal V/I pair, and the Ampere-loop current I is the current
-# leaving the port cell into the surrounding field.  An element sitting INSIDE
-# that cell is in parallel with the source, not in the external network, so it
-# changes the drive level and not the external impedance.  Measured on this
-# fixture: co-located, R = 50 and R = 500 move |S11| by 1.8e-07 and 2.4e-07 —
-# the float32 floor, R-independent — and dS11^2/dR collapses to -1.15e-10.  One
-# cell away at R = 500 the same quantities are 8.7e-03 and -8.16e-05.  The old
-# co-located fixture could only see the element because the pre-2026-09-21
-# extractor read a pre-injection sample at the driven cell, which carries the
-# drive level; that sample is not the terminal voltage of the circuit
-# (scripts/diagnostics/lumped_port_known_load_line.py).
-#
-# R0 is 500, not 50: a series R+C off the port cell with R = 50 NaNs the run,
-# on this commit and on the commit before it — a pre-existing behaviour of
-# add_lumped_rlc away from a port cell, unrelated to the extractor.
 _POS = (0.0093, 0.0093, 0.0093)
 _F0 = 5e9
 _FREQS = np.array([4.5, 5.0, 5.5]) * 1e9
@@ -76,27 +53,6 @@ _C0 = 0.20e-12
 _N_STEPS = 1600
 _RLC_OFFSET_CELLS = 1
 
-# Central-difference relative step, DERIVED — not tuned to this fixture.
-# The total error of (f(x+h)-f(x-h))/2h is (h^2/6)|f'''| + eps_solve*|f|/h,
-# minimised at h/x0 ~ (3*eps_solve)^(1/3) for an O(1)-scaled objective. The
-# FDTD solve runs its fields in float32 even under scoped x64 (JAX truncates
-# the requested f64 arrays — see the dtype warnings this file emits), so
-# eps_solve is the float32 epsilon and the cube-root rule gives ~7.1e-3.
-#
-# ROOT CAUSE this replaces (item B2 review, 2026-09-05): the previous 1e-4
-# sat deep in the ROUND-OFF-dominated branch. Measured on this fixture, the
-# ABSOLUTE AD-vs-FD discrepancy at h/x0 = 1e-4 is ~5.2e-6 with the port-current
-# phase correction disabled and ~5.4e-6 with it enabled — i.e. a fixed noise
-# floor, unchanged by the primal edit — while |dS11^2/dR| itself moved 6.4x
-# (2.55e-4 -> 3.99e-5). The RELATIVE error therefore crossed the 5% gate
-# (1.98% -> 11.9%) purely because the signal shrank, with no AD/primal
-# inconsistency anywhere. Measured rel error vs step, correction off/on:
-#   h/x0   1e-4      3e-4     1e-3     3e-3     1e-2
-#   off    1.98%     0.79%    0.06%    0.09%    0.003%
-#   on    11.9%      5.29%    0.41%    0.61%    0.016%
-# The derived 7.1e-3 lands inside the converged plateau in BOTH columns, so
-# the 5% gate below now tests AD-vs-FD agreement rather than FD round-off.
-# The gate itself is UNCHANGED at 5%.
 _FD_REL_STEP = float((3.0 * np.finfo(np.float32).eps) ** (1.0 / 3.0))
 
 
@@ -105,6 +61,7 @@ _RLC_POS = (_POS[0] + _RLC_OFFSET_CELLS * _DX, _POS[1], _POS[2])
 
 
 def _fixture_sim():
+    """R0 is 500 because an earlier series R+C run off the port cell with R = 50 NaNed."""
     sim = Simulation(
         freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=_DX,
         boundary="cpml", cpml_layers=6,
@@ -117,7 +74,8 @@ def _fixture_sim():
 
 
 def _bare_port_sim():
-    """The same fixture with no lumped element registered."""
+    """The same fixture with no lumped element registered.
+    CPML and in-band frequencies keep the port's voltage/current objective well-conditioned."""
     sim = Simulation(
         freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=_DX,
         boundary="cpml", cpml_layers=6,
@@ -128,7 +86,8 @@ def _bare_port_sim():
 
 
 def _s11_sq_sum(R, C):
-    """Scalar port objective: sum_f |S11(f)|^2 from forward(port_s11_freqs=...)."""
+    """Scalar port objective: sum_f |S11(f)|^2 from forward(port_s11_freqs=...).
+    Float32 field storage sets the finite-difference round-off floor even under scoped x64."""
     fr = _fixture_sim().forward(
         port_s11_freqs=_FREQS, n_steps=_N_STEPS,
         rlc_values_override={0: {"R": R, "C": C}},
@@ -145,7 +104,9 @@ def test_dS11_dR_dC_ad_matches_fd():
     against the unchanged 5% gate. With the element at the port cell instead,
     dS11^2/dR is -1.15e-10 — no signal for either side to agree on — which is
     why the fixture moves it one cell out; see the fixture note above.
+    For an order-one scaled objective, minimizing the central-difference error (h**2/6)|f'''| + eps|f|/h gives h/x0 approximately (3 eps)**(1/3), with float32 eps because the fields remain float32 under scoped x64.
     """
+    assert tuple(np.subtract((grid := (fixture := _fixture_sim())._build_grid()).position_to_index(fixture._lumped_rlc[0].position), grid.position_to_index(fixture._ports[0].position))) == (1, 0, 0), "The RLC element must sit one cell off the driven port cell to affect the external impedance."
     with _enable_x64(True):
         R = jnp.asarray(_R0, dtype=jnp.float64)
         C = jnp.asarray(_C0, dtype=jnp.float64)
@@ -160,9 +121,6 @@ def test_dS11_dR_dC_ad_matches_fd():
             assert np.isfinite(g), f"grad {name} not finite: {g}"
             assert g != 0.0, f"grad {name} is exactly zero (no path to the DoF)"
 
-        # Central finite differences at the DERIVED step (see _FD_REL_STEP:
-        # the FDTD fields are float32 regardless of the scoped x64, so the FD
-        # round-off floor is set by the float32 epsilon, not by x64).
         hR = _R0 * _FD_REL_STEP
         hC = _C0 * _FD_REL_STEP
         fdR = (float(_s11_sq_sum(R + hR, C)) - float(_s11_sq_sum(R - hR, C))) / (2 * hR)
@@ -202,16 +160,12 @@ def test_run_series_rlc_byte_identity():
     It leaves the tolerance at step 6 (|d| > 1e-5 of the golden's peak),
     passes 1e-3 of the peak at step 25, has 1494 of 1500 samples outside
     and grows to 7.5e3x the golden's peak; the current update reads 0.
+    The 1e-5-of-peak tolerance is about ten times the earlier measured 1.06e-6-of-peak move from float64 drive samples.
     """
-    # #1373: measured factor 2.3958724e7 equals predicted Cb/dV (2.3958726e7).
-    # Regenerated 2026-10-12 (issue 1668): the pulse took bandwidth=f0*0.5 in
-    # Hz, so its only drive was the old pulse's 7.4e-4 jump at t=0 (golden
-    # sha256 d363c4df..., peak 1.774e4 at n=0). Now fractional 0.8 (sha256
-    # f91d06f6..., peak 3.097e7 at n=105); tolerances unchanged.
     golden = np.load(os.path.join(_FIXTURE_DIR, "golden_lumped_rlc_run_series.npy"))
     R, L, C = 50.0, 10e-9, 1e-12
     f0 = 1 / (2 * np.pi * np.sqrt(L * C))
-    sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+    sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
     sim.add_source(position=(0.005, 0.005, 0.005), component="ez",
                    waveform=GaussianPulse(f0=f0, bandwidth=0.8))
     sim.add_lumped_rlc(position=(0.005, 0.005, 0.005), component="ez",
@@ -219,9 +173,6 @@ def test_run_series_rlc_byte_identity():
     sim.add_probe(position=(0.005, 0.005, 0.005), component="ez")
     got = np.asarray(sim.run(n_steps=1500).time_series)
     assert got.shape == golden.shape
-    # atol relative to the golden's peak (issue 1668): with the driven pulse the
-    # former 1e-6 * Cb/dV was 7.7e-7 of the peak, below the 1.06e-6-of-peak move
-    # that float64 drive samples alone make; 1e-5 * peak is ten times that move.
     np.testing.assert_allclose(got, golden, rtol=1e-5,
                                atol=1e-5 * float(np.max(np.abs(golden))))
 
@@ -232,14 +183,8 @@ def test_forward_no_rlc_byte_identity():
     Load-bearing falsifier: the entire differentiable capability rides on
     forward(); the new self._lumped_rlc branch must be a pure skip when there
     is no RLC element.
+    The port in a six-layer CPML box makes this no-element golden sensitive to the magnetic profile's Yee half-cell staggering.
     """
-    # #1012 + 965b2db8 re-pin, CPU float32, regenerate_forward_no_rlc_s11_golden.py:
-    # max|S11 - main's golden| = 1.773586155e-5;
-    # max|S11 - #1012's previous golden| = 5.139599368e-2.
-    # Both changes are in this golden; tolerances unchanged.
-    # WHY: the port sits in a six-layer CPML box, and #1012 samples the magnetic CPML profile at the Yee half cell,
-    # and since 965b2db8 the port loads only its own edge. The test still guards what it
-    # was written for: forward() without an RLC element is a pure skip.
     golden = np.load(os.path.join(_FIXTURE_DIR, "golden_forward_no_rlc_s11.npy"))
     sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=0.02 / 15,
                      boundary="cpml", cpml_layers=6)
@@ -262,8 +207,9 @@ def test_forward_with_rlc_is_not_noop():
     The gate is 1e-3 against a measured 8.68e-3; a silent no-op reads 1.8e-7,
     four orders below it, so noise cannot pass this. The element must sit off
     the port cell to be visible at all — see the fixture note above.
+    The frequency bins sit in-band where the incident wave is strong.
     """
-    freqs = np.array([4.5, 5.0, 5.5]) * 1e9  # in-band, well-conditioned
+    freqs = np.array([4.5, 5.0, 5.5]) * 1e9
     with_rlc = np.abs(np.asarray(
         _fixture_sim().forward(port_s11_freqs=freqs, n_steps=1200).s_params
     ).reshape(-1))
@@ -287,8 +233,9 @@ def test_run_compute_s_params_reflects_rlc():
 
     Same gate and same measured separation as the forward() sibling above
     (8.68e-3 measured, 1e-3 gate, 1.8e-7 no-op floor).
+    The frequency bins sit in-band where the incident wave is strong.
     """
-    freqs = np.array([4.5, 5.0, 5.5]) * 1e9  # in-band, well-conditioned
+    freqs = np.array([4.5, 5.0, 5.5]) * 1e9
     with_rlc = np.abs(np.asarray(
         _fixture_sim().run(n_steps=1200, compute_s_params=True,
                            s_param_freqs=freqs).s_params

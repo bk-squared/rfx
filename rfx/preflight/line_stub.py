@@ -14,7 +14,7 @@ import numpy as np
 from rfx._declarations import declaration_root
 from rfx.preflight.msl_codes import msl_diagnostic, msl_text, stub_diagnostic, msl_error
 from rfx.geometry.csg import Box, declared_bounds
-from rfx.geometry.port_termination import conductor_entries
+from rfx.geometry.port_termination import conductor_entries, lattice_support_end
 
 
 @dataclass(frozen=True)
@@ -59,8 +59,6 @@ def _permittivity(sim, port, point, grid, coords, cache, axis=None):
     result = None
     points = [point]
     if axis is not None:
-        # Coax: the field lives between pin and shield, and the pin-centre cell
-        # is metal. Sample the mid-annulus ring; later samples do not override.
         radius = (port.pin_radius + port.outer_radius) / 2
         points = []
         for a in (a for a in range(3) if a != axis):
@@ -97,8 +95,6 @@ def _intervals(sim, grid, shape, coords, axis, lower, upper, cache):
         try:
             cache[key] = _declared_conductor_lattice(sim, grid, shape, coords)
         except NotImplementedError as exc:
-            # One shape the lattice cannot place must not switch the check off
-            # for the conductors it can: skip this shape and say so.
             cache[key] = []
             cache.setdefault("uninspectable", []).append(SubjectMessage(
                 f"{type(shape).__name__}: {exc}", (cache["owners"][id(shape)],)))
@@ -106,8 +102,7 @@ def _intervals(sim, grid, shape, coords, axis, lower, upper, cache):
         indices = []
         for a, values in enumerate(nodes):
             values = np.asarray(values)
-            end = (np.r_[values[1:], values[-1] + values[-1] - values[-2]]
-                   if cell_axes[a] else values)
+            end = lattice_support_end(values, cell_axes[a])
             indices.append(np.arange(len(values)) if a == axis else
                            np.flatnonzero((end >= lower[a]) & (values <= upper[a])))
         if not all(len(i) for i in indices):
@@ -154,7 +149,7 @@ def line_stub_findings(sim, grid=None, uninspectable=None) -> list[LineStubFindi
         return []
     entries = list(conductor_entries(sim))
     if not entries and not getattr(sim, "_pinned_sheets", ()):
-        return []  # Generated coax metal is not a declared signal tail.
+        return []
     grid = sim._build_realized_grid() if grid is None else grid
     coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
               else coords_from_uniform_grid(grid))
@@ -198,11 +193,8 @@ def line_stub_findings(sim, grid=None, uninspectable=None) -> list[LineStubFindi
             else:
                 letter, sign, _ = _FACE_CONFIG[port.face]
                 axis = "xyz".index(letter)
-                # The pin centre, never the annular outer conductor.
             signal_shapes = conductors
             if collection == "_coaxial_ports":
-                # A solid ground wall through the pin centre is a junction
-                # short, not a continuation of the line's centre conductor.
                 signal_shapes = []
                 for shape in conductors:
                     bounds = declared_bounds(shape)
@@ -218,9 +210,6 @@ def line_stub_findings(sim, grid=None, uninspectable=None) -> list[LineStubFindi
             plane = float(nodes[axis][port_index])
             domain = float(sim._unresolved_domain[axis])
             tol = 32 * np.finfo(float).eps * max(domain, abs(plane), 1e-12)
-            # Sweep separate rays across the signal aperture. Projecting all
-            # its metal onto one axis would join an unrelated neighbouring
-            # strip to this one across a transverse gap.
             rays = [(lower, upper)]
             if collection == "_msl_ports":
                 samples = [float(nodes[width_axis][w]) for w in span["width_nodes"]]
@@ -254,7 +243,7 @@ def line_stub_findings(sim, grid=None, uninspectable=None) -> list[LineStubFindi
                     at_lo, at_hi = abs(end) <= tol, abs(end - domain) <= tol
                     if ((at_lo and not getattr(grid, f"pad_{'xyz'[axis]}_lo", 0))
                             or (at_hi and not getattr(grid, f"pad_{'xyz'[axis]}_hi", 0))):
-                        continue  # A closed/periodic face is not an absorber entrance.
+                        continue
                     if length > tol and -tol <= end <= domain + tol:
                         endpoints.append((length, end, declared_length, owners))
             if endpoints:
@@ -264,8 +253,6 @@ def line_stub_findings(sim, grid=None, uninspectable=None) -> list[LineStubFindi
                     sim, port, point, grid, coords, cache,
                     axis if collection == "_coaxial_ports" else None)
                 eps = substrate_eps
-                # Coax: no microstrip open-end formula applies to a pin tail, so
-                # the extension stays 0. ASSUMPTION, unverified: its end effect is small.
                 extension = 0.0
                 if collection == "_msl_ports":
                     eps = hammerstad_jensen_z0_eps_eff(
@@ -321,8 +308,6 @@ def read_band(sim, freqs=None):
     if current is not None:
         return current
     if freqs is None:
-        # MSL and coax entries have no frequency-set field. Their calculators
-        # own the requested frequencies; run/forward receive theirs explicitly.
         return 0.0, float(sim._freq_max)
     from rfx._diagnostic_transport import diagnostic_refusal
     try:
@@ -339,7 +324,6 @@ def read_band(sim, freqs=None):
 def resonant_odd_orders(finding, band):
     """Inclusive odd-order index interval; no enumeration cap can drop a mode."""
     lo, hi = band[0] / 1.5 / finding.frequency_hz, 1.5 * band[1] / finding.frequency_hz
-    # Expand by roundoff only, so exactly-on-boundary cases remain inclusive.
     tol = 16 * np.finfo(float).eps * max(1., abs(lo), abs(hi))
     first = max(1, math.ceil((lo - tol + 1) / 2))
     last = math.floor((hi + tol + 1) / 2)
@@ -404,7 +388,6 @@ def require_no_resonant_line_stub(sim, freqs=None):
         try:
             findings = line_stub_findings(sim, uninspectable=skipped)
         except NotImplementedError as exc:
-            # Unsupported inspection leaves admission to the owning lane, but not silently.
             findings = []
             skipped.append(SubjectMessage(str(exc), tuple(entry for _, entry in conductor_entries(sim))))
         except ValueError as exc:
@@ -433,10 +416,33 @@ def require_no_resonant_line_stub(sim, freqs=None):
                 )
 
 
+def refuse_traced_line_port_mesh(sim):
+    """Refuse a line port whose declared cell-width profiles are traced."""
+    from rfx._traced_refusal import TracedStructureRefusal
+    from rfx.core.jax_utils import is_tracer
+
+    profiles = (("x", sim._dx_profile), ("y", sim._dy_profile), ("z", sim._dz_profile))
+    traced = [axis for axis, profile in profiles if profile is not None and is_tracer(profile)]
+    if traced:
+        raise TracedStructureRefusal(
+            "MSL and coaxial ports on a traced mesh: the line-port admission "
+            "reads the realized node coordinates on the host, and the cell "
+            f"widths on axis {', '.join(traced)} are traced (dx_profile, "
+            "dy_profile or dz_profile under jax.jit, jax.grad or jax.vmap). "
+            "Keep the cell-width profiles concrete in a model with an MSL or "
+            "coaxial port."
+        )
+
+
 def line_stub_admission(sim, freqs=None):
-    """Store the returned scope in the entry body; never wrap a warning emitter."""
+    """Store the returned scope in the entry body; never wrap a warning emitter.
+
+    A model with an MSL or coaxial port on a traced mesh is refused by name
+    here, before any host read of the mesh.
+    """
     if not (sim._msl_ports or sim._coaxial_ports):
         return None
+    refuse_traced_line_port_mesh(sim)
     band = read_band(sim, freqs)
     if _active_band(sim) is None:
         require_no_resonant_line_stub(sim, band)
@@ -456,8 +462,6 @@ def preflight_line_stubs(sim, warn):
         findings = []
         skipped.append(SubjectMessage(str(exc), tuple(entry for _, entry in conductor_entries(sim))))
     except ValueError as exc:
-        # Preserve the blocking realization error without aborting later checks.
-        # Solve admission still raises it unconditionally, even with preflight off.
         warn.warn(
             PreflightErrorWarning(
                 msl_diagnostic(

@@ -1,7 +1,6 @@
 """Contract tests: MSL probe-abscissa + V/I cell-profile are graded-mesh aware.
 
-Promotes the Gate-0 falsifier
-(docs/research_notes/experiments/msl_nu_gate0/gate0_abscissa.py).
+Promotes the Gate-0 falsifier.
 
 The fix makes ``msl_probe_x_coords{,_n}`` and the transverse V/I cell-profile
 helper read the ``NonUniformGrid`` per-cell arrays (``dx_arr``/``dy_arr``/
@@ -84,11 +83,9 @@ def _port(Lx: float) -> MSLPort:
     )
 
 
-# ---------------------------------------------------------------------------
-# 1. NU mesh: probe coords now RUN (no AttributeError) and are cumsum-correct
-# ---------------------------------------------------------------------------
-
 def test_probe_coords_n_runs_on_nu_and_is_cumsum_correct():
+    """An earlier measurement on the 2x-graded mesh found up to 5.9 mm of departure from the legacy
+    scalar abscissa."""
     prof = _tent(_NX, _DX)
     grid = _nu_grid(prof)
     port = _port(float(np.sum(prof)))
@@ -100,7 +97,6 @@ def test_probe_coords_n_runs_on_nu_and_is_cumsum_correct():
     assert np.all(np.isfinite(xs))
     assert np.all(np.diff(xs) > 0), "+x probes must be physically increasing"
 
-    # Independent cumsum cell-edge reference at the same clamped indices.
     i_feed, _, _ = position_to_index(grid, (port.feed_x, port.y_lo, port.z_lo))
     pad, pad_hi = int(grid.pad_x_lo), int(grid.pad_x_hi)
     interior = np.asarray(grid.dx_arr, float)[pad : grid.nx - pad_hi]
@@ -111,11 +107,9 @@ def test_probe_coords_n_runs_on_nu_and_is_cumsum_correct():
         clamped = max(0, min(i_feed + (5 + n * 3), grid.nx - 1))
         u = clamped - pad
         ref.append(edges[max(0, min(u, len(edges) - 1))])
-        legacy.append(u * float(grid.dx))   # the OLD scalar-grid.dx abscissa
+        legacy.append(u * float(grid.dx))
 
     np.testing.assert_allclose(xs, ref, rtol=0, atol=1e-12)
-    # The fix is real: the cumsum abscissa departs from the legacy scalar one
-    # by mm-scale on this 2x-graded mesh (Gate-0 measured up to 5.9 mm).
     assert np.max(np.abs(xs - np.asarray(legacy))) > 1e-3
 
 
@@ -167,10 +161,6 @@ def test_probe_coords_3_runs_on_nu():
     assert xs[0] < xs[1] < xs[2]
 
 
-# ---------------------------------------------------------------------------
-# 2. Uniform Grid: byte-identical to the legacy scalar formula
-# ---------------------------------------------------------------------------
-
 def test_probe_coords_uniform_byte_identical():
     grid = _uniform_grid()
     port = _port(_DX * _NX)
@@ -188,10 +178,6 @@ def test_probe_coords_uniform_byte_identical():
     x3 = msl_probe_x_coords(grid, port, n_offset_cells=5, n_spacing_cells=3)
     assert x3 == (legacy(i_feed + 5), legacy(i_feed + 8), legacy(i_feed + 11))
 
-
-# ---------------------------------------------------------------------------
-# 3. _msl_cell_profile: NU per-cell arrays vs uniform scalar fill
-# ---------------------------------------------------------------------------
 
 def test_cell_profile_nu_reads_per_cell_arrays():
     prof = _tent(_NX, _DX)
@@ -212,24 +198,17 @@ def test_cell_profile_uniform_byte_identical():
             _msl_cell_profile(grid, axis, n), np.full(n, float(grid.dx)))
 
 
-# ---------------------------------------------------------------------------
-# 3b. _axis_cell_size (SOURCE-side helper): NU per-cell vs uniform scalar
-# ---------------------------------------------------------------------------
-
 def test_axis_cell_size_nu_reads_per_cell():
     """setup_msl_port / make_msl_port_sources weight sigma + the Ez feed by
     _axis_cell_size; on a graded mesh it must return the per-cell size, not the
     scalar boundary grid.dx."""
     prof = _tent(_NX, _DX)
     grid = _nu_grid(prof)
-    # x axis is graded — sizes across interior indices must vary
     sizes = [_axis_cell_size(grid, "x", i) for i in range(grid.pad_x_lo, grid.nx - grid.pad_x_hi)]
     assert np.ptp(sizes) > 1e-9, "graded x: _axis_cell_size must not be constant"
-    # each equals the per-cell dx_arr value
     dx_arr = np.asarray(grid.dx_arr, float)
     for i in range(grid.pad_x_lo, grid.nx - grid.pad_x_hi):
         assert abs(_axis_cell_size(grid, "x", i) - dx_arr[i]) < 1e-12
-    # y / z read their own per-cell arrays (not the x boundary cell)
     assert abs(_axis_cell_size(grid, "y", grid.ny // 2)
                - float(np.asarray(grid.dy_arr, float)[grid.ny // 2])) < 1e-12
     assert abs(_axis_cell_size(grid, "z", grid.nz // 2)
@@ -243,10 +222,6 @@ def test_axis_cell_size_uniform_byte_identical():
     for axis in ("x", "y", "z"):
         assert _axis_cell_size(grid, axis, 5) == float(grid.dx)
 
-
-# ---------------------------------------------------------------------------
-# 4. _msl_position_to_index duck-types over both grid types
-# ---------------------------------------------------------------------------
 
 def test_position_to_index_ducktypes_both_grids():
     prof = _tent(_NX, _DX)

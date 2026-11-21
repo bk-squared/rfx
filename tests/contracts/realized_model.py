@@ -7,6 +7,7 @@ by P0. Distributed E cells use the full-domain single-device helper result,
 sliced to the rank's owned rows. Relative epsilon/mu are dimensionless, sigma is S/m, and drive_scale
 multiplies the declared waveform to produce an E increment in V/m.
 No numerical convention is changed by this table.
+Apply capability alone is not a consumption witness.
 """
 from typing import NamedTuple
 
@@ -26,13 +27,13 @@ ROWS = ("eps", "sigma", "mu", "conformal", "sat", "override_drive",
         "wire_field", "wire_current")
 TABLE = {row: {lane: Cell() for lane in LANES} for row in ROWS}
 
-# This note is source-reading evidence only, not another numerical cell.
+
 NOTES = (("#1373", "H permeability is the own-axis face harmonic mean, weighted "
           "by primal cell lengths on graded meshes; equal cells retain their "
           "bits and wire-contour increments are added after the mean."),)
 
 for row, feature in (("eps", "dielectric"), ("sigma", "lossy"), ("mu", "mu")):
-    # Filled explicitly below where admission refuses a declared material.
+
     for lane in LANES:
         if row == "mu":
             TABLE[row][lane] = Cell("compares", note="length-weighted harmonic face permeability; independent NumPy reference")
@@ -59,8 +60,7 @@ for lane in LANES:
             TABLE[port + "_" + kind][lane] = Cell("not reachable",
                 note="add_port has no amplitude_kind argument")
 
-# Consumption witnesses are separate from comparison / admission kinds.
-# J4 replays and perturbs each listed material quantity at non-SAT sites.
+
 CONSUMPTION = {row: {lane: (
     "J4 replay and perturbation" if row in ("eps", "sigma", "mu") else
     "no consumption witness: SAT apply path not exercised" if row == "sat" else
@@ -75,7 +75,7 @@ for row in ("eps", "sigma"):
                      "the operand the lane's kernel receives equals the shared helper applied to the lane's own cell array")
         TABLE[row][lane] = old._replace(note=(old.note + "; " if old.note else "") + predicate)
 
-# Site-level coverage: apply capability alone is not a consumption witness.
+
 CONSUMPTION_SITES = {"yee.E": "J4: eps_e, sigma_e",
                     "precompute.E": "J4 kernel replay: eps_e, sigma_e",
                     "distributed.E": "J4: eps_e, sigma_e",
@@ -89,7 +89,7 @@ CONSUMPTION_SITES = {"yee.E": "J4: eps_e, sigma_e",
                     **{site + ".sources": "no witness: source tables have no apply path"
        for site in ("uniform", "graded", "distributed", "distributed_nu", "subgrid")}}
 
-# Uniform forward consumes the same material operands as distributed run.
+
 for _row in ROWS:
     TABLE[_row]["fwd_distributed"] = TABLE[_row]["run_distributed"]
     CONSUMPTION[_row]["fwd_distributed"] = CONSUMPTION[_row]["run_distributed"]

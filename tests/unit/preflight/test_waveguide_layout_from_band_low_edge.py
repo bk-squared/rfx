@@ -13,6 +13,7 @@ sibling record-length audits use
 (``tests/unit/preflight/test_waveguide_setup_audits.py``): the analytic
 discrete TE10 cutoff of an ``N``-cell PEC guide, and ``far_path`` / the pad
 recomputed from the fixture constants and the grid's own pad counts.
+The band's lowest bin sits 3 % above this guide's own discrete cutoff, inside the near-cutoff regime measured by an earlier WR-90 validity-envelope sweep.
 """
 
 from __future__ import annotations
@@ -29,8 +30,9 @@ from tests import _waveguide_chain_battery_fixture as F
 
 
 C0 = 299_792_458.0
-RUNG_M = F.DX_LADDER[2]          # a / 36, the fine rung of the battery ladder
-RUNG_N = F.N_LADDER[2]
+FINE_RUNG_INDEX = 2
+RUNG_M = F.DX_LADDER[FINE_RUNG_INDEX]
+RUNG_N = F.N_LADDER[FINE_RUNG_INDEX]
 CODE = "layout_measured_from_band_low_edge"
 
 
@@ -71,9 +73,6 @@ def _number_after(text: str, marker: str) -> float:
     return float(re.search(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", tail).group(0))
 
 
-# A band whose lowest bin sits 3 % above this guide's own discrete cutoff --
-# inside the near-cutoff regime the WR-90 validity-envelope sweep measured, and
-# the regime the note is gated to.
 NEAR_CUTOFF_FREQS = np.linspace(6.75e9, 8.0e9, 9)
 
 
@@ -87,7 +86,7 @@ def test_it_is_silent_at_the_batterys_own_band():
     sim, grid, cfgs, n_steps = _built()
     f_c = _analytic_te10_cutoff_hz(RUNG_N)
     ratio = float(min(F.FREQS)) / f_c
-    assert ratio == pytest.approx(1.28, abs=0.01), ratio      # the regime claim
+    assert ratio == pytest.approx(1.28, abs=0.01), ratio
 
     msgs = _collect(sim, F.FREQS, grid=grid, cfgs=cfgs, n_steps=n_steps)
     assert [getattr(m, "code", None) for m in msgs] == []
@@ -96,11 +95,10 @@ def test_it_is_silent_at_the_batterys_own_band():
 def test_it_fires_near_cutoff_and_every_number_is_a_hand_computation():
     sim, grid, cfgs, n_steps = _built()
 
-    # --- hand computation, from the fixture's declared dimensions ---------
     f_min = float(NEAR_CUTOFF_FREQS.min())
     f_c = _analytic_te10_cutoff_hz(RUNG_N)
     ratio = f_min / f_c
-    assert ratio < 1.06, ratio            # the regime this test is about
+    assert ratio < 1.06, ratio
     lam_g = _lambda_g_m(f_min, f_c)
     pad_m = int(grid.pad_x_hi) * float(grid.dx)
     far_path = (F.DOMAIN_X_M - F.PORT_LEFT_X_M) + pad_m
@@ -108,7 +106,7 @@ def test_it_fires_near_cutoff_and_every_number_is_a_hand_computation():
     msgs = _collect(sim, NEAR_CUTOFF_FREQS,
                     grid=grid, cfgs=cfgs, n_steps=n_steps)
     hits = [m for m in msgs if getattr(m, "code", None) == CODE]
-    assert len(hits) == 2, [getattr(m, "code", None) for m in msgs]  # one per port
+    assert len(hits) == 2, [getattr(m, "code", None) for m in msgs]
     assert all(m.severity == "info" for m in hits)
 
     left = next(m for m in hits if m.loc == "waveguide_port[0]")
@@ -124,12 +122,10 @@ def test_it_fires_near_cutoff_and_every_number_is_a_hand_computation():
         far_path * 1e3, rel=1e-6)
     assert _number_after(text, "in the absorber (pad = ") == pytest.approx(
         pad_m * 1e3, rel=1e-6)
-    # The absorber's own share, printed just before "in the absorber".
     pad_share = float(re.search(
         r"and (-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?) in the absorber",
         text).group(1))
     assert pad_share == pytest.approx(pad_m / lam_g, rel=1e-6)
-    # The measured lesson travels with the numbers, not in a separate doc.
     assert "size the layout from below the band" in text
     assert "T/tau 16 (+16 %)" in text
     assert "+3 %" in text

@@ -20,7 +20,9 @@ from rfx import Simulation, Box, GaussianPulse
 
 
 def _build_pec_cavity_with_dielectric():
-    """5×5×5 mm closed PEC cavity, Ez port at the centre, ε=4 fill."""
+    """5×5×5 mm closed PEC cavity, Ez port at the centre, ε=4 fill.
+    The one-cell 2 mm PEC slab shorts the Ez between z = 0 and z = 2 mm to lift the eps=4 filler's
+    floor to 2 mm."""
     a = 0.020
     sim = Simulation(
         freq_max=10e9,
@@ -29,17 +31,7 @@ def _build_pec_cavity_with_dielectric():
         boundary="pec",
     )
     sim.add_material("filler", eps_r=4.0)
-    # Closed PEC cavity walls via geometry (not just simulation boundary).
-    # The interior shell rasterises into pec_mask — exactly the path
-    # that would silently get dropped without the fix.
-    # A 2 mm PEC slab on the z=0 face: a VOLUME (#931 §1.2), not foil.
-    # It is one cell at dx = 2 mm and it realizes walls at z = 0 and
-    # z = 2 mm with the Ez between them shorted, which is what lifts the
-    # eps=4 filler's floor to 2 mm — the fixture's only physical content.
-    # Declared a sheet it would sit on the z = 0 node plane, where the
-    # boundary spec already puts a PEC face, and do nothing.
     sim.add(Box((0.0, 0.0, 0.0), (a, a, 2e-3)), material="pec")
-    # ε=4 filler everywhere above
     sim.add(Box((0.0, 0.0, 2e-3), (a, a, a)), material="filler")
     sim.add_port(
         position=(a / 2, a / 2, 4e-3),
@@ -58,9 +50,10 @@ def test_extract_s_matrix_uses_pec_mask():
     relative to the no-mask run.  We do NOT assert a deep dip; the
     cavity is small and lossy by edge truncation, so a clear |S11|
     *difference* between the two runs is the cleanest physical check.
+    A magnitude of <0.95 anywhere is far below the >0.97 across the band consistently measured on
+    an earlier no-pec_mask path.
     """
     sim = _build_pec_cavity_with_dielectric()
-    # Use the run() path — that's where extract_s_matrix is invoked.
     freqs = np.linspace(3e9, 10e9, 15)
     res = sim.run(num_periods=40, compute_s_params=True,
                   s_param_freqs=freqs)
@@ -68,10 +61,6 @@ def test_extract_s_matrix_uses_pec_mask():
     assert res.s_params is not None
     s11 = res.s_params[0, 0, :]
     mag = np.abs(np.asarray(s11))
-    # PEC ground inside the lumped-port cavity should suppress |S11|
-    # well below 1 at some frequency.  A magnitude of <0.95 anywhere
-    # is far below what the bugged "no pec_mask" path produces (which
-    # consistently hovers > 0.97 across the band).
     assert mag.min() < 0.95, (
         f"|S11| does not dip below 0.95 anywhere in band — "
         f"pec_mask likely not threaded through "

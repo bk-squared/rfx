@@ -7,7 +7,7 @@ import pytest
 from rfx import Simulation
 
 
-MESSAGE = "Waveguide ports are not supported together with lumped ports or TFSF"
+MESSAGE = "Waveguide ports are not supported together with a lumped or wire port, or a soft source (add_source) or TFSF"
 PATHS = ("uniform-run", "uniform-forward", "graded-run", "graded-forward")
 
 
@@ -72,12 +72,17 @@ def test_mixed_refused_before_fields(monkeypatch, path, companion):
     elif companion != "tfsf":
         sim.add_port((.016, .010, .006), "ez", impedance=50.,
                      **({"extent": .002} if companion == "wire" else {}))
-    with pytest.raises(ValueError) as caught:
+    family_refusal = path.endswith("run") and companion in ("lumped", "wire")
+    with pytest.raises(NotImplementedError if family_refusal else ValueError) as caught:
         if companion == "tfsf":
             _stored_tfsf_call(sim, path)
         else:
             _public_call(sim, path)
-    assert str(caught.value) == MESSAGE
+    if family_refusal:
+        assert "run(compute_s_params=True) has a single result schema" in str(caught.value)
+        assert "add_waveguide_port(...) uses compute_waveguide_s_matrix()" in str(caught.value)
+    else:
+        assert str(caught.value) == MESSAGE
 
 
 @pytest.mark.parametrize("path", PATHS)

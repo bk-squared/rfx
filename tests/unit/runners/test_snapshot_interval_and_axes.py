@@ -132,10 +132,11 @@ def test_frames_are_every_mth_step_of_the_interval_1_run(runs, boundary, n, m):
 @pytest.mark.parametrize("boundary", ["cpml", "pec"])
 def test_every_other_output_is_bit_identical_to_the_run_without_snapshot(
         runs, boundary, n, m):
-    """n=41 is not a multiple of 3 or 10, so the remainder scan runs."""
+    """n=41 is not a multiple of 3 or 10, so the remainder scan runs.
+    An identity over zeros would pass for the wrong reason.
+    """
     ref = _observables(runs[(boundary, n, None)])
     got = _observables(runs[(boundary, n, m)])
-    # Liveness: an identity over zeros would pass for the wrong reason.
     for key in ("time_series", "s_params", "dft[pz]", "flux[fx].e1_dft",
                 "state.ez", "state.hy"):
         assert np.abs(ref[key]).max() > 0.0, f"{key} is identically zero"
@@ -190,7 +191,7 @@ def _box_grid_run(interval, n_steps, *, slice_axis=None, slice_index=None,
 def test_checkpoint_segments_record_the_same_frames():
     ref = _box_grid_run(None, 48)
     every = _box_grid_run(1, 48)
-    seg = _box_grid_run(4, 48, checkpoint_segments=3)   # segments of 16
+    seg = _box_grid_run(4, 48, checkpoint_segments=3)
     for comp in ("ez", "hx"):
         assert np.array_equal(np.asarray(seg.snapshots[comp]),
                               np.asarray(every.snapshots[comp])[3::4])
@@ -249,7 +250,6 @@ def test_slice_index_is_a_padded_lattice_index():
     assert ax_ez.dims == ("frame", "x", "y")
     assert ax_ex.slice_coord == pytest.approx(z_phys, abs=1e-12)
     assert ax_ez.slice_coord == pytest.approx(z_phys + 0.5 * _DX, abs=1e-12)
-    # The helper that needs no run agrees with the run's own axes.
     pre = snapshot_axes(grid, spec, 20)
     for comp in ("ez", "ex"):
         assert pre[comp].slice_coord == res.snapshot_axes[comp].slice_coord

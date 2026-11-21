@@ -23,7 +23,6 @@ def test_courant_stability():
 def test_position_to_index():
     """Position conversion should account for CPML padding."""
     grid = Grid(freq_max=3e9, domain=(0.1, 0.1, 0.1), cpml_layers=10)
-    # Origin should map to (cpml_layers, cpml_layers, cpml_layers)
     idx = grid.position_to_index((0.0, 0.0, 0.0))
     assert idx == (10, 10, 10)
 

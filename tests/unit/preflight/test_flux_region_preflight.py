@@ -17,6 +17,7 @@ U = 2.0**-10
 
 
 def _sim(*, graded=False):
+    """A source on a locally uniform node avoids an unrelated source advisory."""
     profiles = {}
     domain = (20 * U,) * 3
     if graded:
@@ -26,8 +27,6 @@ def _sim(*, graded=False):
         domain = (20.5 * U,) * 3
     sim = Simulation(domain=domain, freq_max=1e9, dx=U,
                      cpml_layers=8, boundary="cpml", **profiles)
-    # Keep the source on a locally uniform node; the flux window alone
-    # exercises the graded cells without an unrelated source advisory.
     sim.add_source((5 * U,) * 3, "ez", amplitude_kind="current")
     return sim
 
@@ -66,10 +65,9 @@ def _nu_runner_monitor(sim, monkeypatch):
 @pytest.mark.parametrize("axis", list("xyz"))
 @pytest.mark.parametrize("graded", [False, True])
 def test_metadata_matches_consumed_windows_without_strict_findings(axis, graded, monkeypatch, capsys):
+    """The independently accumulated graded edges 8, 9.125, 10.375, 11.5 and 12.5 U make the first window span unpadded cells 8:12."""
     sim = _sim(graded=graded)
     if graded:
-        # Independent cumulative geometry: edges 8, 9.125, 10.375, 11.5,
-        # 12.5 U. These endpoints bracket cells 8:12 and 6:14 exactly.
         _add(sim, axis, size=(4.5 * U, 8.5 * U), center=(10.25 * U,) * 2)
         expected_bounds = np.array([[8, 12.5], [6, 14.5]]) * U
         expected_normal = 10.375 * U
@@ -96,7 +94,6 @@ def test_metadata_matches_consumed_windows_without_strict_findings(axis, graded,
         monitor, = build_flux_monitor_cfgs(sim, sim._build_realized_grid(), 1)
     assert record["normal_index"] == monitor.index
     assert record["cell_slices"] == [[monitor.lo1, monitor.hi1], [monitor.lo2, monitor.hi2]]
-    # Verify the physical area independently of the shared region resolver.
     expected_area = np.prod(expected_bounds[:, 1] - expected_bounds[:, 0])
     area = np.broadcast_to(np.asarray(monitor.dA), monitor.e1_dft.shape[1:]).sum()
     assert area == pytest.approx(expected_area, rel=1e-6)
@@ -159,7 +156,6 @@ def test_decimal_boundary_roundoff_is_distinct_from_physical_overflow(overflow, 
 def test_preflight_rejects_invalid_private_entries_without_losing_valid_metadata(overrides, match):
     sim = _sim()
     _add(sim)
-    # Exercise restored/direct entries which bypass public registration guards.
     sim._flux_monitors.append(replace(sim._flux_monitors[0], name="bad", **overrides))
     report = _report(sim)
     issue, = report.by_code("flux_region_invalid")
@@ -226,8 +222,6 @@ def test_preflight_inside_material_trace_keeps_geometry_concrete_and_tape_live()
     expected = _report(sim, strict=True).flux_regions
 
     def material_objective(eps):
-        # forward's eps_override is independent of the static declaration;
-        # this checks its outer jit/grad context, without stepping fields.
         report = _report(sim, strict=True)
         assert report.flux_regions == expected
         return jnp.sum(eps**2)
@@ -242,8 +236,6 @@ def test_traced_geometry_has_no_fabricated_metres(target):
     _add(sim)
 
     def objective(value):
-        # Isolate the new collector: other preflight validators have their own
-        # traced-geometry contracts, unrelated to the finite-window metadata.
         if target == "mesh":
             sim._dx = value
         else:

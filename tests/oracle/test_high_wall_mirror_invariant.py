@@ -47,8 +47,7 @@ Measured on both sides by the same rule, from the two solves only:
 - D(f): DFT of the full probe record at 41 bins, over 3-7 GHz for the Ez
   variants and over [0.6, 1.4] f_est for the control.
 
-Bars (rfx-archive rfx/plans/idm/20261026-high-wall-mirror/DESIGN.md section 3
-and its decision records 1-3):
+Bars:
 
 - anchor (v2 accuracy bar item 4, resonances within 1 %):
   |f_H / f_closed - 1| <= 1e-2 and |f_L / f_closed - 1| <= 1e-2;
@@ -87,14 +86,9 @@ ANCHOR_BAR = 1e-2
 SLAB_CELLS = 4
 SLAB_EPS = 4.0
 
-# Ez mode sin(pi s / L), uniform across the slab: f = c / (2 L sqrt(2.5)).
 F_EZ = C0 / (2.0 * A * np.sqrt(2.5))
-# Control Ey mode sin(pi x / A) sin(pi z / D); it crosses the slab interface with
-# Dy about uniform in y, so the series fill gives eps_eff = 1 / (0.5 / 4 + 0.5) = 1.6.
 F_EY = 0.5 * C0 * np.sqrt(A ** -2 + D ** -2) / np.sqrt(1.6)
 
-# name: (domain, boundary, mirror axis, sin axis, component, f_est,
-#        pencil band, DFT band, freq_max, closed-form anchor)
 VARIANTS = {
     "pmc_y": ((A, B, D), dict(x="pec", y="pmc", z="pec"), 1, 0, "ez", F_EZ,
               (0.5 * F_EZ, 1.5 * C0 / (2.0 * A)), (3e9, 7e9), 12e9, True),
@@ -107,10 +101,8 @@ VARIANTS = {
 }
 VARIANTS["graded_pmc_y"] = VARIANTS["pmc_y"]
 VARIANTS["debye_pmc_y"] = (*VARIANTS["pmc_y"][:9], False)
-# Each half is 4 mm; the sequence is deliberately not palindromic.
 GRADED_Y = H * np.array([0.90, 1.10, 1.05, 0.95, 1.08, 0.92, 1.10, 0.90])
 
-# Case H positions as fractions of (mirror length W, sin length L, D).
 SOURCE_H = (0.30, 0.31, 0.43)
 PROBE_H = (0.20, 0.63, 0.57)
 
@@ -124,7 +116,9 @@ def _nearest_node(x):
 
 
 def _indices(variant, frac, side):
-    """Intended realized (i, j, k) of a point source or probe, mirrored on the lattice."""
+    """Intended realized (i, j, k) of a point source or probe, mirrored on the lattice.
+    Case H positions are fractions of (mirror length W, sin length L, D).
+    """
     domain, _, mirror_ax, sin_ax, comp = VARIANTS[variant][:5]
     pos = [0.0, 0.0, 0.0]
     pos[mirror_ax] = frac[0] * domain[mirror_ax]
@@ -169,6 +163,7 @@ def _solve(variant, side):
     domain, boundary, mirror_ax, _, comp, f_est, _, _, freq_max = VARIANTS[variant][:9]
     profiles = {}
     if variant == "graded_pmc_y":
+        assert np.allclose([GRADED_Y[:4].sum(), GRADED_Y[4:].sum()], 4 * H, rtol=0, atol=1e-15) and not np.array_equal(GRADED_Y, GRADED_Y[::-1]), "Each graded half must be 4 mm and the sequence must not be palindromic."
         profiles = dict(dy_profile=(GRADED_Y if side == "H" else GRADED_Y[::-1]).copy(),
                         dz_profile=np.full(16, H))
     sim = Simulation(freq_max=freq_max, domain=domain, dx=H, boundary=BoundarySpec(**boundary), **profiles)

@@ -61,20 +61,12 @@ import pytest
 from rfx.api._gradient_witness import gradient_record_length_witness
 
 
-# ---------------------------------------------------------------------------
-# A closed-form truncated record: one damped pole, cut at T.
-#
-#   x(t) = exp(-(alpha + i w_r) t),  0 <= t < T
-#   X(w) = (1 - exp(-s T)) / s,      s = alpha + i (w - w_r)
-#
-# The converged (T -> inf) spectrum is 1/s; the whole truncation effect is the
-# exp(-sT) term. Differentiating it with respect to a parameter that moves w_r
-# produces a term proportional to T -- the spin this witness exists to catch.
-# ---------------------------------------------------------------------------
 
-_ALPHA = 1.21e9          # Np/s -> Q = w_r / (2 alpha) ~ 18 at 7 GHz
+POLE_DAMPING_NP_PER_S = 1.21e9
+_ALPHA = POLE_DAMPING_NP_PER_S
 _OMEGA_R0 = 2.0 * math.pi * 7.0e9
-_DT = 3.8e-12            # s, the cavity fixture's own timestep to 2 digits
+CAVITY_TIMESTEP_S = 3.8e-12
+_DT = CAVITY_TIMESTEP_S
 _OMEGAS = 2.0 * math.pi * np.array([5.5e9, 7.0e9])
 
 
@@ -111,7 +103,7 @@ def _analytic_complex_sensitivity(n_steps):
     s = _ALPHA + 1j * (_OMEGAS - _OMEGA_R0)
     e = np.exp(-s * T)
     dX_ds = T * e / s - (1.0 - e) / s ** 2
-    ds_dp = -1j * _OMEGA_R0          # w_r = w_r0 exp(p) -> dw_r/dp = w_r0 at p=0
+    ds_dp = -1j * _OMEGA_R0
     return dX_ds * ds_dp
 
 
@@ -141,7 +133,8 @@ def _expected_rel(g_short, g_long):
 
 
 def test_analytic_truncated_record_reproduces_the_closed_form_change():
-    """The witness's per-bin verdict IS the closed-form truncation spin."""
+    """The witness's per-bin verdict IS the closed-form truncation spin.
+    A zero on-pole power sensitivity is not a measurement that the record is long enough."""
     from tests._x64_compat import enable_x64
 
     n_short, factor = 1000, 2.0
@@ -169,19 +162,9 @@ def test_analytic_truncated_record_reproduces_the_closed_form_change():
     assert not witness.observable_is_scalar
     assert not witness.observable_is_complex
 
-    # What the second bin does and does NOT say. It sits exactly on the pole,
-    # where |X|^2 is STATIONARY in w_r, so d|X|^2/dp is identically zero at
-    # every record length -- both arms below are exact zeros. That is a fact
-    # about this observable, not a measurement that the record is long enough:
-    # the witness has nothing to compare there. The same bin's COMPLEX
-    # sensitivity does move with the record
-    # (test_complex_observable_compares_the_whole_complex_sensitivity), which
-    # is why a zero here must not be read as "this bin is converged".
     assert witness.grad["<root>"][1] == 0.0
     assert witness.grad_long["<root>"][1] == 0.0
 
-    # At this damping the record is long enough for the VALUE and not for the
-    # GRADIENT -- the whole reason this witness is not the settling witness.
     assert witness.worst_value_rel_change == pytest.approx(0.0198, abs=5e-4)
 
 
@@ -194,6 +177,7 @@ def test_complex_observable_compares_the_whole_complex_sensitivity():
     zero and the imaginary part is not, and it is the imaginary part that moves
     with the record length. Comparing only the real part reports that bin as
     perfectly converged when its sensitivity has moved 5.5 %.
+    The on-pole cosine uses the Hermitian product to give +1 where an unconjugated product gives -1.
     """
     from tests._x64_compat import enable_x64
 
@@ -220,25 +204,18 @@ def test_complex_observable_compares_the_whole_complex_sensitivity():
     np.testing.assert_allclose(witness.rel_by_bin, expected, rtol=1e-6, atol=0.0)
     assert witness.rel_by_bin[0] == pytest.approx(0.36879, abs=1e-4)
 
-    # The on-pole bin: real part exactly zero, imaginary part carrying
-    # everything, and a 5.5 % record-length change that only the complex
-    # comparison can see. The |X|^2 objective reports exactly 0 % here.
     assert c_short[1].real == 0.0 and abs(c_short[1].imag) > 0.0
     assert witness.grad["<root>"][1].real == 0.0
     assert witness.rel_by_bin[1] == pytest.approx(0.05541, abs=1e-4)
     assert _expected_rel(
         _analytic_gradient(n_short), _analytic_gradient(n_long))[1] == 0.0
 
-    # The value's relative change uses the complex magnitude, not the real part.
     np.testing.assert_allclose(
         witness.value_rel_change,
         np.abs(x_long - x_short) / np.abs(x_long), rtol=1e-6, atol=0.0)
     assert witness.worst_value_rel_change == pytest.approx(0.01010, abs=1e-4)
     assert np.iscomplexobj(witness.value)
 
-    # The direction cosine is the HERMITIAN product. On the pole the two arms
-    # are the same purely imaginary vector: the plain product would call that
-    # a reversed direction (-1); the Hermitian one says +1.
     hand = np.array([
         float(np.real(np.vdot(np.atleast_1d(c_short[b]), np.atleast_1d(c_long[b])))
               / (abs(c_short[b]) * abs(c_long[b])))
@@ -281,7 +258,7 @@ def test_scalar_observable_and_pytree_params_report_per_leaf():
         assert arr.shape == (1,)
     assert witness.worst_leaf in witness.grad_rel_change
     assert witness.worst_bin == 0
-    assert not witness.passed          # 1000 steps is short for this pole
+    assert not witness.passed
     assert "gradient record-length witness FAIL" in witness.summary()
 
 
@@ -408,17 +385,13 @@ def test_the_report_floor_is_per_bin_and_spans_both_records():
     table = witness.grad_rel_change["<root>"]
     assert table.shape == (3, 2)
 
-    # Bin 0: the floor keeps rounding out of the table, and the verdict is
-    # floor-free and says the vector did not move.
     assert table[0, 1] == pytest.approx(1.0e-6, rel=1e-6)
     assert witness.rel_by_bin[0] == pytest.approx(1.0e-9, rel=1e-6)
 
-    # Bin 1: per-bin floor. A global floor would read 1e-3 here.
     assert table[1, 0] == pytest.approx(0.5, rel=1e-9)
     assert table[1, 1] == pytest.approx(0.5, rel=1e-9)
     assert witness.rel_by_bin[1] == pytest.approx(0.5, rel=1e-6)
 
-    # Bin 2: floor spans both records. From the short arm alone it would read 1.
     assert table[2, 1] == pytest.approx(1.0e-6, rel=1e-6)
     assert witness.rel_by_bin[2] == pytest.approx(1.0, rel=1e-6)
 
@@ -477,10 +450,9 @@ def test_the_verdict_concatenates_every_leaf_not_the_first():
                 + jnp.asarray(np.asarray(a[1], dtype=np.float64)) @ params["b"])
 
     with enable_x64():
-        # Built inside the x64 scope: outside it a float64 request is
-        # silently float32 and the arithmetic below loses 8 digits.
         params = {"a": jnp.zeros((1,), dtype=jnp.float64),
                   "b": jnp.zeros((3,), dtype=jnp.float64)}
+        assert all(value.dtype == jnp.float64 for value in params.values()), "The concatenated-leaf oracle needs float64 parameters to retain eight digits."
         witness = gradient_record_length_witness(
             objective, params, n_short, tol=0.05, factor=2.0)
 
@@ -553,16 +525,10 @@ def test_a_record_length_independent_objective_passes_exactly():
     assert witness.n_steps_long == 1000
 
 
-# ---------------------------------------------------------------------------
-# The FDTD fixture: a PEC box filled with a lossy dielectric, driven by a
-# pulse, with the permittivity as the parameter. A cavity is the cheapest
-# structure that rings, and the permittivity is the cheapest parameter that
-# moves the resonance -- the two ingredients the mechanism needs.
-# ---------------------------------------------------------------------------
 
 _CAVITY = dict(
     a=30e-3, b=20e-3, d=20e-3, dx=2e-3,
-    eps_r=2.0, sigma=0.039,        # tan d ~ 0.05 at 7 GHz -> Q ~ 20
+    eps_r=2.0, sigma=0.039,
     f0=7.0e9, bandwidth=0.9,
     freqs_hz=(5.5e9, 6.5e9, 7.5e9),
     n_short=1600, factor=2.0,
@@ -570,6 +536,7 @@ _CAVITY = dict(
 
 
 def _build_cavity():
+    """The fill loss tangent is about 0.05 at 7 GHz, giving Q about 20."""
     from rfx import Simulation, Box, GaussianPulse
 
     c = _CAVITY
@@ -588,7 +555,8 @@ def _build_cavity():
 
 
 def test_cavity_gradient_needs_a_longer_record_than_its_value():
-    """RED at a record the -40 dB rule passes; GREEN once it is doubled."""
+    """RED at a record the -40 dB rule passes; GREEN once it is doubled.
+    Settling is measured on the concrete run because the host diagnostic reports absence while the record is traced."""
     from rfx.api._sparams import settling_verdict
 
     c = _CAVITY
@@ -597,15 +565,13 @@ def test_cavity_gradient_needs_a_longer_record_than_its_value():
     base_materials, *_ = sim._assemble_materials(grid)
     base_eps = jnp.asarray(base_materials.eps_r)
 
-    # Realized, not declared.
     nx, ny, nz = grid.shape
     assert (nx, ny, nz) == (16, 11, 11), grid.shape
     assert float(base_eps.max()) == pytest.approx(c["eps_r"])
 
-    # ``eps_local`` scales only the half of the box the probe sits in, so the
-    # two leaves are genuinely different directions in parameter space.
     local = np.zeros(grid.shape, dtype=np.float32)
     local[nx // 2:, :, :] = 1.0
+    assert np.all(local[nx // 2:, :, :] == 1.0) and np.all(local[:nx // 2, :, :] == 0.0) and local[grid.position_to_index(sim._probes[0].position)] == 1.0, "The local permittivity leaf must scale only the probe-side half so the two leaves are different parameter directions."
     local_j = jnp.asarray(local)
 
     freqs = jnp.asarray(c["freqs_hz"])
@@ -618,9 +584,6 @@ def test_cavity_gradient_needs_a_longer_record_than_its_value():
         return (base_eps * jnp.exp(params["eps_global"])
                 * jnp.exp(params["eps_local"] * local_j))
 
-    # Ring-down of the unperturbed record at each length, scored by the repo's
-    # own -40 dB witness. Measured on the concrete run: the settling property
-    # is a host diagnostic and reports absence while the record is traced.
     settling = {}
     for n in (n_short, n_long, n_longer):
         result = sim.forward(eps_override=base_eps, n_steps=n,
@@ -649,30 +612,21 @@ def test_cavity_gradient_needs_a_longer_record_than_its_value():
     green = gradient_record_length_witness(
         objective, params, n_long, tol=tol, factor=c["factor"], has_aux=True)
 
-    # The objective returns ln(power), so its own relative change is a change
-    # of a logarithm. What a user reads is the POWER, so that is what gets
-    # compared against the gradient.
     power_rel_change = np.abs(
         np.expm1(np.asarray(red.value_long) - np.asarray(red.value)))
 
-    # The short record passes the settling rule -- that is what makes this a
-    # defect and not a too-short run.
     assert settling_verdict(settling[n_short]) == "pass", settling[n_short]
     assert settling_verdict(settling[n_long]) == "pass", settling[n_long]
     assert red.settling_db == settling[n_short]
     assert red.settling_db_long == settling[n_long]
 
-    # ... and the POWER a user reads is converged to well under half a percent.
     assert power_rel_change.max() == pytest.approx(0.00399, abs=5e-4), (
         power_rel_change)
 
-    # ... while its GRADIENT is not. This assertion is the one mutation (b)
-    # breaks: a verdict read off the value above would call this record good.
     assert not red.passed, red.summary()
     assert red.worst > 0.10, red.summary()
     assert red.worst > 20.0 * power_rel_change.max(), red.summary()
 
-    # Doubling the record closes it.
     assert green.passed, green.summary()
     assert green.worst < 0.5 * tol, green.summary()
 

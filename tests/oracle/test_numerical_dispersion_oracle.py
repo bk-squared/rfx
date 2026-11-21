@@ -12,7 +12,6 @@ Measurement: a +x TFSF plane wave in vacuum; the f0 DFT-phasor phase slope over 
 is -k_x (the discrete wavenumber). Measured (CPU): v_p/c err vs Yee 0.01%/0.04% @ N=15/30; the Yee
 deficit 0.50%/0.12% converges ~1/N². The N=15 case is DISCRIMINATING — a solver with no/wrong
 dispersion would read v_p/c ≈ 1.0, differing from Yee (0.995) by the 0.5% deficit.
-Harness: docs/research_notes/experiments/numerical_dispersion_oracle.py
 """
 import numpy as np
 import jax.numpy as jnp
@@ -23,6 +22,8 @@ from rfx.grid import Grid
 
 C0 = 299792458.0
 F0 = 5e9
+DX_15_CELLS_PER_WAVELENGTH_M = 0.004
+DX_30_CELLS_PER_WAVELENGTH_M = 0.002
 
 
 def _yee_kx(f0, dt, dx):
@@ -57,20 +58,16 @@ def _measure_vp_over_c(dx):
 def test_measured_phase_velocity_matches_yee_dispersion():
     """At N=15 cells/λ the measured v_p matches the analytic Yee value AND is clearly below the
     continuum c — a solver ignoring numerical dispersion would read v_p/c≈1.0 and FAIL this."""
-    vp_meas, vp_yee = _measure_vp_over_c(0.004)   # N=15
-    # (1) the Yee deficit is real at this resolution (not a rounding-noise-sized effect)
+    vp_meas, vp_yee = _measure_vp_over_c(DX_15_CELLS_PER_WAVELENGTH_M)
     assert vp_yee < 1.0 - 3e-3, f"Yee deficit too small to discriminate: vp_yee/c={vp_yee:.5f}"
-    # (2) measured matches Yee tightly (the leapfrog update obeys its own discrete dispersion)
     assert abs(vp_meas - vp_yee) / vp_yee < 3e-3, f"vp_meas/c={vp_meas:.5f} vs Yee {vp_yee:.5f}"
-    # (3) measured tracks the SLOW Yee wave, not the continuum — the discriminating check
     assert vp_meas < 1.0 - 3e-3, f"vp_meas/c={vp_meas:.5f} looks dispersion-free (should be ~{vp_yee:.5f})"
 
 
 def test_numerical_dispersion_converges_with_resolution():
     """The Yee deficit (1 - v_p/c) shrinks as dx halves (~1/N²) and the measurement tracks it."""
-    vp15, yee15 = _measure_vp_over_c(0.004)   # N=15
-    vp30, yee30 = _measure_vp_over_c(0.002)   # N=30
+    vp15, yee15 = _measure_vp_over_c(DX_15_CELLS_PER_WAVELENGTH_M)
+    vp30, yee30 = _measure_vp_over_c(DX_30_CELLS_PER_WAVELENGTH_M)
     assert (1 - yee30) < (1 - yee15), "analytic Yee deficit must shrink with finer dx"
-    # measured deficit also shrinks (allow measurement noise, but the trend must hold)
     assert (1 - vp30) < (1 - vp15) + 1e-3, f"measured deficit did not shrink: {1-vp15:.4f}->{1-vp30:.4f}"
     assert abs(vp30 - yee30) / yee30 < 3e-3, f"N=30 vp_meas/c={vp30:.5f} vs Yee {yee30:.5f}"

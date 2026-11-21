@@ -1,6 +1,8 @@
 """Saved carry and formulation-specific AD tape accounting."""
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 import math
 
 from rfx.api._ad_memory_types import ADMemoryUnavailable
@@ -120,7 +122,7 @@ def carried_closed_box_line_bytes(sim, grid, n_steps, saved):
     from rfx.sources.tfsf_discrete_plane_wave import COMPONENTS
 
     state = jax.eval_shape(lambda: tfsf_from_declaration(
-        sim._tfsf, grid, sim._freq_max, n_steps=n_steps)[1])
+        sim._tfsf, grid, sim._freq_max, n_steps=n_steps, dtype=resolve_coefficient_dtype(sim._precision))[1])
     signatures = Counter((tuple(getattr(state, name).shape), str(getattr(state, name).dtype))
                          for name in COMPONENTS)
     matching = [leaf for leaf in saved if (tuple(leaf["shape"]), leaf["dtype"]) in signatures]
@@ -169,20 +171,11 @@ def face_record_pays(cfg, n_steps, *, checkpoint, checkpoint_segments=None,
     Choose B * line_bytes > record_bytes. The resident record is not
     itself a saved carry.
 
-    Review measurements (theta=30 deg; decimal MB; cells, phi, steps,
-    H/E reads, record MB, one line MB, record/line):
-      43   0  1000    835/835       6.7   4.76    1.4
-      43   0  4000    835/835      26.7  18.73    1.4
-      43  45  1000   2240/2240     17.9   2.41    7.4
-      43  45  4000   2240/2240     71.7   9.46    7.6
-      83   0  1000   7315/7315     58.5   4.91   11.9
-      83   0  4000   7315/7315    234.1  18.87   12.4
-      83  45  1000  12909/12909   103.3   2.49   41.4
-      83  45  4000  12909/12909   413.1   9.55   43.3
-     163   0  1000  32376/32376   259.0   5.20   49.8
-     163   0  4000  32376/32376  1036.0  19.17   54.1
-     163  45  1000  34269/34269   274.2   2.66  102.9
-     163  45  4000  34269/34269  1096.6   9.72  112.8
+    The matched termination makes line_bytes independent of steps:
+      record steps    record bytes                 one line bytes
+      N               4 * N * (H_reads + E_reads)   24 * n_nodes
+      4N              16 * N * (H_reads + E_reads)  24 * n_nodes
+    Thus increasing the record no longer increases each saved line.
 
     A trace-time constant is invisible to memory_analysis: the selected
     record must be built with recorded_scan so the compiled program counts it.
@@ -206,7 +199,7 @@ def face_record_resident_bytes(sim, grid, n_steps, **knobs):
     resident = []
 
     def abstract_cost():
-        cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=n_steps)
+        cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=n_steps, dtype=resolve_coefficient_dtype(sim._precision))
         resident.append(face_record_bytes(cfg, n_steps) if face_record_pays(cfg, n_steps, **knobs) else 0)
         return ()
 

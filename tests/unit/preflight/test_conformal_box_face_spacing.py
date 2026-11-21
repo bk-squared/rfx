@@ -1,7 +1,6 @@
 """A PEC Box face off a node plane is judged at its drawn plane on a conformal run (#1651).
 
-The cut-cell conformal operands place a flat wall at its drawn plane to 1e-2 cell (rfx-archive
-records/20261029-1651-sc-fix, K1: a TE101 box with its +x wall 0.25 cell past a node line). The cavity-spacing preflight
+The cut-cell conformal operands place a flat wall at its drawn plane to 1e-2 cell (a TE101 box with its +x wall 0.25 cell past a node line). The cavity-spacing preflight
 must then not refuse that wall; on a staircase run the face is still solved on the node plane, 1.4 % short, and refused.
 """
 

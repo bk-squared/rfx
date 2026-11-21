@@ -15,29 +15,10 @@ from rfx.api import Simulation
 
 
 def _sim_with_probe_in_cpml():
-    # Probe placed past the domain edge, genuinely inside the (exterior-
-    # padded) CPML => preflight flags absorber_overlap. Issue #500: CPML
-    # pads EXTERIOR to the requested domain (see rfx-known-issues.md
-    # #500 / tests/unit/preflight/test_preflight_absorber.py), so a probe merely
-    # near an edge but still within [0, 0.02] no longer trips this check
-    # (z=0.018 here used to false-fire under the pre-#500 interior-frame
-    # bug this file doesn't otherwise care about — it only needs ANY one
-    # real preflight warning to exercise the run()-parity/consolidation
-    # mechanism this file tests, and absorber_overlap is the original,
-    # still-legitimate, and cheapest trigger to construct).
-    #
-    # Node arithmetic (review finding L7): this domain (0.02m, freq_max=
-    # 10e9, default cpml_layers=16) auto-resolves dx~=1.499mm, giving
-    # nz=47 with pad_z_lo=pad_z_hi=16 -> interior absolute indices 16..30
-    # (last interior node 30 = z~=20.99mm). z=0.021 rounds to node 30
-    # (round(0.021/dx)+16 = 30) -- still the LAST INTERIOR node, so it
-    # only "fired" via _absorber_boundary_for_axis's up-to-one-cell
-    # hi-side conservatism (see that helper's docstring), not because it
-    # was genuinely exterior. z=0.0225 rounds to node 31, the first node
-    # outside the interior slice -- genuinely in the absorber.
     sim = Simulation(domain=(0.02, 0.02, 0.02), freq_max=10e9, boundary="cpml")
     sim.add_source((0.01, 0.01, 0.01), component="ez")
     sim.add_probe((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)
+    assert sim._build_grid().position_to_index(sim._probes[0].position)[2] == sim._build_grid().nz - sim._build_grid().pad_z_hi, "The probe maps to the first exterior CPML node."
     return sim
 
 
@@ -48,13 +29,10 @@ def test_run_emits_preflight_warning_by_default():
 
 
 def test_run_skip_preflight_suppresses_it():
+    """The 20-step record avoids the exactly-zero probe reading after 10 steps from a zero-starting pulse eight cells away."""
     sim = _sim_with_probe_in_cpml()
     with warnings.catch_warnings():
-        warnings.simplefilter("error")  # any preflight UserWarning => failure
-        # A genuine numerical warning unrelated to preflight could still fire;
-        # this config only trips the preflight surface, so silence == success.
-        # 20 steps: the default pulse starts at zero (issue 1668 PR), so the
-        # probe 8 cells away still reads exactly 0 after 10 steps (#336 warning).
+        warnings.simplefilter("error")
         sim.run(n_steps=20, skip_preflight=True)
 
 

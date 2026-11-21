@@ -146,8 +146,7 @@ def test_axes_and_h_index(graded, axis, direction):
 
 @pytest.mark.parametrize("profile", ["analytic", "discrete"])
 def test_profiles_and_multimode(profile):
-    # Several modes reach the fill check only on the uniform waveguide S calculator:
-    # run()/forward() and the graded calculator refuse the mode count first (#2070).
+    """Several modes reach the fill check only on the uniform waveguide S calculator."""
     sim = guide(n_modes=2, mode_profile=profile)
     fill(sim, 0, L)
     sim.add_waveguide_port(.10, direction="-x", f0=9e9, freqs=np.array([8e9, 10e9]),
@@ -159,7 +158,6 @@ def test_profiles_and_multimode(profile):
 def test_traced_override_retains_callback():
     sim = guide()
     grid = sim._build_realized_grid()
-    # jit executes a non-vacuum traced operand, rather than merely inspecting jaxpr.
     def call(eps):
         return execute(sim, "forward", eps_override=eps).time_series
     with pytest.raises(Exception, match="traced override over the segment"):
@@ -278,8 +276,6 @@ def test_two_device_routes(graded, route, record_property, monkeypatch):
     kwargs = dict(devices=devices[:2])
     if route == "forward":
         kwargs["distributed"] = True
-    # Multi-device lanes refuse waveguide ports by name before any step
-    # instead of running the whole domain on one device (#2053).
     monkeypatch.setattr(jax.lax, "scan", _scan_must_not_run)
     with pytest.raises(NotImplementedError,
                        match=r"waveguide ports \(add_waveguide_port\) are not supported on"):
@@ -375,8 +371,6 @@ def _assert_vacuum_main(profile,mode,dtype):
                                   main_beta(freqs,fc,modal_dt,dx))
     np.testing.assert_array_equal(_compute_mode_impedance(freqs,fc,mode,medium=PortMedium(),dt=modal_dt,dx=dx),
                                   main_impedance(freqs,fc,mode,modal_dt,dx))
-    # The source tables changed on purpose for every medium in #2013 (causal admittance, record-independent build);
-    # tests/unit/ports/test_waveguide_incident_tables.py pins them against an independent build.
 
 
 @pytest.mark.parametrize('budget',[0,2000])
@@ -451,7 +445,6 @@ def test_per_component_conductivity_refused():
     materials=MaterialArrays(jnp.ones(grid.shape),(zero,zero,zero.at[cfg.ref_x,2,2].set(.1)),jnp.ones(grid.shape))
     with pytest.raises(ValueError,match='conductivity.*cell'):
         resolve_waveguide_section_medium([cfg],grid,materials,{},())
-
 
 
 @pytest.mark.parametrize('field',['eps_r','mu_r'])
@@ -531,8 +524,7 @@ def test_conformal_geometry_factor_does_not_hide_material_anisotropy(extra_aniso
 
 
 def test_power_wave_entries_below_either_cutoff_are_nan():
-    # Vacuum launch (TE10 cutoff 6.25 GHz) facing an eps_r 2.2 receive port (4.21 GHz): at 5 GHz only the filled port
-    # propagates, its partner's Z is the evanescent sentinel, and S21/S12 have no power meaning.
+    """At 5 GHz only the filled port propagates, leaving S21/S12 without power meaning."""
     sim = Simulation(freq_max=12e9, domain=(L, A, B), dx=DX, boundary={"x": "cpml", "y": "pec", "z": "pec"},
                      cpml_layers=8)
     fill(sim, .06, .22)
@@ -542,11 +534,12 @@ def test_power_wave_entries_below_either_cutoff_are_nan():
     s = np.asarray(execute(sim, "compute_waveguide_s_matrix", normalize=False).s_params)
     assert np.all(np.isnan(s[1, 0, 0])) and np.all(np.isnan(s[0, 1, 0])), "transmission below the vacuum cutoff"
     assert np.all(np.isfinite(s[:, :, 1])), "both ports propagate at 8 GHz"
-    assert np.isfinite(s[0, 0, 0]) and np.isfinite(s[1, 1, 0]), "reflections are not renormalized"
+    assert np.isnan(s[0, 0, 0]), "the vacuum port has no power wave at 5 GHz, including reflection"
+    assert np.isfinite(s[1, 1, 0]), "the filled port's reflection remains defined at 5 GHz"
 
 
 def test_traced_override_at_probe_plane_refused():
-    # The section stays vacuum; only the probe plane sees eps_r 2.2, so a traced S21 split would use the wrong Z.
+    """A traced S21 split with vacuum in the section and eps_r 2.2 only at the probe plane would use the wrong Z."""
     sim = guide()
     grid = sim._build_realized_grid()
     eps = np.ones(grid.shape)
@@ -558,7 +551,7 @@ def test_traced_override_at_probe_plane_refused():
 
 
 def test_vacuum_reference_sim_for_filled_ports_refused():
-    # A vacuum reference guide would give P_inc and a_inc at the wrong modal impedance, scaling |S| without a word.
+    """A vacuum reference guide would give P_inc and a_inc at the wrong modal impedance, scaling |S|."""
     sim=guide();fill(sim,-.1,.22)
     sim.add_waveguide_port(.10,direction='-x',name='receive',f0=9e9,freqs=np.array([8e9,10e9]))
     reference=guide()

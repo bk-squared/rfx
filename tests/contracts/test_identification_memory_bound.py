@@ -1,4 +1,5 @@
-"""Two-stage refusal before allocation, with independent byte estimates."""
+"""Two-stage refusal before allocation, with independent byte estimates.
+Two FIR q=10 passes over the first witness window's 20,000 original samples leave ceil(ceil(20000/10)-20)/10 - 20 = 178 samples in one channel."""
 
 
 
@@ -38,9 +39,6 @@ def detail(value):
     return value
 
 
-# The first witness window has 20,000 original samples. FIR q=10 twice
-# leaves ceil(ceil(20000/10)-20)/10 - 20 = 178 samples, one channel.
-# L=floor(.33*178)=58, M=120, k=58; the centered one-mode signal has rank 2.
 STAGE1 = 1.87 * 16 * (3*120*58 + 120*58 + 2*58*58 + 4*58**2)
 STAGE2 = 1.71 * 16 * 5 * 20000 * 2
 
@@ -49,6 +47,7 @@ STAGE2 = 1.71 * 16 * 5 * 20000 * 2
     (1, 1, STAGE1), (2, (STAGE1 + STAGE2)/2, STAGE2),
 ], ids=['stage1', 'stage2'])
 def test_witness_refuses_before_stage_allocation(monkeypatch, stage, bound, needed):
+    """The centered one-mode signal has rank 2."""
     assert STAGE1 < (STAGE1 + STAGE2)/2 < STAGE2
     pencil = Mock(wraps=rd._pencil)
     fit = Mock(wraps=rd._fit_residues)
@@ -71,6 +70,7 @@ def test_witness_refuses_before_stage_allocation(monkeypatch, stage, bound, need
     (1, 1, STAGE1), (2, (STAGE1 + STAGE2)/2, STAGE2),
 ], ids=['stage1', 'stage2'])
 def test_refusal_carries_dimensions(monkeypatch, stage, bound, needed):
+    """The pencil dimensions are L=floor(.33*178)=58, M=120 and k=58."""
     monkeypatch.setattr(rd, 'IDENTIFY_MEMORY_BOUND_BYTES', bound)
     y = record()
     with pytest.raises(rd.IdentificationMemoryRefused) as caught:
@@ -92,8 +92,7 @@ def test_default_verdict_is_bit_identical_with_check_disabled(monkeypatch):
 
 @pytest.mark.parametrize('stage', [1, 2], ids=['stage1', 'stage2'])
 def test_refusing_rss_is_flat_in_fresh_processes(tmp_path, stage):
-    # Stage 1 would allocate about 194/395/601 MiB, all below 1 GiB.
-    # The 10 MiB envelope is checked before status/text, including in mutations.
+    """Stage 1 would allocate about 194/395/601 MiB, all below 1 GiB."""
     lengths = (2100, 3000, 3700) if stage == 1 else (40000, 50000, 60000)
     if stage == 1:
         for n in lengths:
@@ -185,21 +184,20 @@ def test_forward_callback_does_not_swallow_refusal(monkeypatch):
     def identify_window(window):
         return rd.identify(window, .0001, 0, len(window), freq_max=.5).s
 
-    # JAX wraps exceptions crossing pure_callback; the original text survives.
     with pytest.raises(Exception) as caught:
         jax.block_until_ready(rj.host_poles(identify_window, jnp.asarray(y), 8, .0001, [.4]))
     assert str(direct.value) in str(caught.value)
 
 
 def test_we_refusal_preserves_synthetic_completion(monkeypatch):
-    # Main Nd=178, L=58, M=120, rank=1. WE Nd=278, L=91, M=187.
-    main_pencil = 1.87 * 16 * (3*120*58 + 120*58 + 2*58*58 + 4*58**2)
-    main_fit = 1.71 * 16 * 5 * 20000
-    long_pencil = 1.87 * 16 * (3*187*91 + 187*91 + 2*91*91 + 4*91**2)
-    bound = 3_000_000
+    main_pencil = 1.87 * 16 * (3*104*51 + 104*51 + 2*51*51 + 4*51**2)
+    main_fit = 1.71 * 16 * 5 * 1750
+    long_pencil = 1.87 * 16 * (3*163*80 + 163*80 + 2*80*80 + 4*80**2)
+    smallest_long_pencil = 1.87 * 16 * (3*106*52 + 106*52 + 2*52*52 + 4*52**2)
+    bound = (main_pencil + smallest_long_pencil) / 2
     assert max(main_pencil, main_fit) < bound < long_pencil
-    y, spec = record(), rd.RingdownSpec()
-    w2 = rd.two_window_witness(y, .0001, [.4], 40000, 20000, freq_max=.5)
+    y, spec = record(3500), rd.RingdownSpec()
+    w2 = rd.two_window_witness(y, .0001, [.4], 3500, 1750, freq_max=.5)
     assert w2.model.rank == 1
     expected = w2.spectra.tobytes()
     monkeypatch.setattr(rd, 'IDENTIFY_MEMORY_BOUND_BYTES', bound)
@@ -211,12 +209,12 @@ def test_we_refusal_preserves_synthetic_completion(monkeypatch):
         return original(*args, **kwargs)
 
     monkeypatch.setattr(rd, 'early_start_witness', capture)
-    judge = rd._judge_record(y, .0001, [.4], 40000, 20000, spec,
+    judge = rd._judge_record(y, .0001, [.4], 3500, 1750, spec,
                              ref_hz=.5, observable=lambda value: value)
     assert np.isnan(judge['we']) and not judge['we_ok']
     assert completed == [expected]
     plan = object.__new__(rd.RingdownRun)
-    plan.spec, plan.n_steps, plan.source_ratio_long = spec, 40000, 0.
+    plan.spec, plan.n_steps, plan.source_ratio_long = spec, 3500, 0.
     witnesses = plan._error_witnesses(y, .0001, [.4], .5, lambda value: value,
                                      ringdown_tail.plain_dft(y, .0001, [.4]), w2, {})
     we = witnesses[0]
@@ -232,16 +230,14 @@ def test_we_refusal_keeps_cavity_main_s(monkeypatch, entry):
     from tests.unit.sparams.test_ringdown_run import _box, FREQS
     from rfx.ringdown import _jax as rj
 
-    # At 1200 steps both windows reject FIR q=6 for insufficient capacity:
-    # main: n=600, C=2, L=198, M=402, k=396; WE: n=900, L=297, M=603, k=594.
-    main = 1.87 * 16 * (3*402*198*2 + 402*396 + 2*396*198*2 + 4*396**2)
-    long = 1.87 * 16 * (3*603*297*2 + 603*594 + 2*594*297*2 + 4*594**2)
+    main = 1.87 * 16 * (3*322*158*2 + 322*316 + 2*316*158*2 + 4*316**2)
+    long = 1.87 * 16 * (3*490*240*2 + 490*480 + 2*480*240*2 + 4*480**2)
     bound = (main + long) / 2
     assert 1.71 * 16 * 5 * 600 * 396 < bound
 
     def call():
         sim = _box('uniform')
-        kw = dict(n_steps=1200, skip_preflight=True, ringdown=rd.RingdownSpec())
+        kw = dict(n_steps=6000, skip_preflight=True, ringdown=rd.RingdownSpec())
         return (sim.run(compute_s_params=True, s_param_freqs=FREQS, **kw) if entry == 'run'
                 else sim.forward(port_s11_freqs=FREQS, **kw)).ringdown
 
@@ -261,6 +257,7 @@ def test_we_refusal_keeps_cavity_main_s(monkeypatch, entry):
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_prerun_refuses_before_any_step_with_same_estimate(monkeypatch, entry):
+    """With dt=1.9065748695310057e-12 and bin max 18 GHz overriding the spec's 1 GHz, q=7 gives Nd=ceil(2000/7)-20=266, L=87, M=179 and k=min(179,261)=179."""
     from importlib import import_module
     from tests.unit.sparams.test_ringdown_run import _box, FREQS, MM
 
@@ -282,8 +279,6 @@ def test_prerun_refuses_before_any_step_with_same_estimate(monkeypatch, entry):
     with pytest.raises(rd.IdentificationMemoryRefused) as after:
         rd.identify(np.ones((4000, 3)), float(sim._build_grid().dt), 2000, 4000,
                     freq_max=18e9)
-    # dt=1.9065748695310057e-12, bin max 18 GHz overrides spec's 1 GHz:
-    # q=7, Nd=ceil(2000/7)-20=266, L=87, M=179, k=min(179,261)=179.
     needed = 1.87 * 16 * (3*179*87*3 + 179*179 + 2*179*87*3 + 4*179**2)
     for exc in (before.value, after.value):
         assert (exc.n_win, exc.Nd, exc.C, exc.L, exc.needed_bytes) == (2000, 266, 3, 87, needed)
@@ -366,7 +361,9 @@ def test_run_settling_warning_retains_memory_remedies(monkeypatch):
     messages = [str(w.message) for w in caught if 'ring-down settling witness NOT PASSED' in str(w.message)]
     assert len(messages) == 1
     message = messages[0]
-    assert result.settling_witness['reason'] in message
+    for row in result.settling_witness['runs']:
+        if 'S-parameters' in row.get('reads', ()) and row['status'] != 'pass':
+            assert row['reason'] in message
     assert 'GiB at stage 1' in message and 'GiB bound' in message
     assert 'shorten the identification window, identify on fewer channels, or raise rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES' in message
     assert 'increase n_steps' not in message.lower()

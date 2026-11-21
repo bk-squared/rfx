@@ -40,7 +40,6 @@ from rfx.sources.sources import (
 
 MM = 1e-3
 PEC_FACES = {"x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"}
-# Which (component, back-read axis) pairs each Ampere loop touches.
 LOOP_BACK_READS = {
     "ez": (("hy", 0), ("hx", 1)),
     "ex": (("hz", 1), ("hy", 2)),
@@ -78,9 +77,6 @@ def _wire(grid, component):
                     impedance=50.0, excitation=GaussianPulse(f0=1e10))
 
 
-# ---------------------------------------------------------------------------
-# The defect: a local loop reading the opposite domain face
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("component", ["ex", "ey", "ez"])
 def test_port_current_is_local_at_index_zero(component):
@@ -126,9 +122,6 @@ def test_wire_port_current_is_local_at_index_zero(component):
             f"{component}: perturbing {hname}{tuple(cell)} moved I by {moved}")
 
 
-# ---------------------------------------------------------------------------
-# Independent oracle: the solver's own curl
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("component", ["ex", "ey", "ez"])
 @pytest.mark.parametrize("idx", [(0, 0, 0), (4, 5, 6)])
@@ -158,9 +151,6 @@ def test_port_current_equals_the_update_e_curl_times_dx_squared(component, idx):
     assert got == pytest.approx(oracle, rel=1e-5, abs=1e-12), (component, idx)
 
 
-# ---------------------------------------------------------------------------
-# The two axis kinds where the wrap is LOAD-BEARING (#689)
-# ---------------------------------------------------------------------------
 
 def test_bwd_h_keeps_the_wrap_on_a_length_one_axis():
     """The 2-D lane. ``rfx/simulation.py`` forces ``periodic[2] = True`` when
@@ -192,7 +182,8 @@ def test_two_d_lane_port_current_still_wraps_its_length_one_z_axis(component):
     """``ex`` and ``ey`` both back-read H along z.  With ``nz == 1`` the
     result must be the SELF term (difference 0 along a length-1 axis), which
     is what the wrap gives — not a zero pad, which would leave a spurious
-    ``H_c[0]`` with nothing subtracted."""
+    ``H_c[0]`` with nothing subtracted.
+    Cancellation of the length-one z leg leaves the +Hz difference along y for ex and the -Hz difference along x for ey."""
     grid = Grid(freq_max=1e10, domain=(2 * MM, 2 * MM, 2 * MM), dx=0.2 * MM,
                 cpml_layers=0, cpml_axes="", mode="2d_tmz",
                 pec_faces={"x_lo", "x_hi", "y_lo", "y_hi"})
@@ -202,9 +193,6 @@ def test_two_d_lane_port_current_still_wraps_its_length_one_z_axis(component):
                       impedance=50.0, excitation=GaussianPulse(f0=1e10))
     idx = tuple(grid.position_to_index(port.position))
     got = float(port_current(st, grid, port))
-    # The z leg cancels exactly; only the in-plane leg survives.
-    #   ex: I = +(Hz - Hz[j-1])*dx - (Hy - Hy[k-1])*dx   -> +Hz leg on y
-    #   ey: I = +(Hx - Hx[k-1])*dx - (Hz - Hz[i-1])*dx   -> -Hz leg on x
     hname, axis, sign = {"ex": ("hz", 1, 1.0), "ey": ("hz", 0, -1.0)}[component]
     h = getattr(st, hname)
     back = list(idx)
@@ -214,9 +202,6 @@ def test_two_d_lane_port_current_still_wraps_its_length_one_z_axis(component):
     assert got == pytest.approx(expected, rel=1e-5, abs=1e-12)
 
 
-# ---------------------------------------------------------------------------
-# Reachability witness — do NOT let the commit body overclaim
-# ---------------------------------------------------------------------------
 
 def test_last_index_h_plane_is_dead_on_the_uniform_lane():
     """The cell the old spelling wrapped onto holds 0.0 at every step.
@@ -254,16 +239,16 @@ def test_last_index_h_plane_is_dead_on_the_uniform_lane():
                 second_last = max(
                     second_last, float(jnp.max(jnp.abs(h[tuple(sl)]))))
     assert glob > 1.0, glob
-    assert second_last > 1e-3, second_last   # the interior really is excited
+    assert second_last > 1e-3, second_last
     assert last == 0.0, last
 
 
-# Periodic translation exercises the H sample across y=0 on live port records.
 SEAM_STEPS = 96
 SEAM_FREQS = np.array([10e9, 15e9, 20e9], dtype=np.float32)
 
 
 def _seam_model(lane, shift=0):
+    """Probe coordinates use node registration just as the public port does."""
     from rfx import Simulation
     from rfx.boundaries.spec import BoundarySpec
 
@@ -283,8 +268,6 @@ def _seam_model(lane, shift=0):
     pos = (5 * MM, shift * MM, z)
     sim.add_port(pos, "ez", impedance=50.,
                  waveform=GaussianPulse(f0=15e9, bandwidth=1.))
-    # On periodic rows these are the four loop samples: Hy, Hy-back, Hx, Hx-back.
-    # Probe coordinates use node registration just as the public port does.
     for component, point in (
             ("hy", pos), ("hy", (4 * MM, shift * MM, z)),
             ("hx", pos), ("hx", (5 * MM, ((shift - 1) % 12) * MM, z))):
@@ -300,7 +283,6 @@ def _seam_solve(lane, shift=0, *, devices=None):
     else:
         result = sim.run(n_steps=SEAM_STEPS, compute_s_params=False, devices=devices)
     grid = result.grid
-    # Realized cells, including the three CPML cells at each x/z end.
     assert grid.shape[1] == (13 if lane == "multi_device" else 12), grid.shape
     record = result.sparam_time_records[0]
     current = np.asarray(record["I"])
@@ -338,6 +320,7 @@ def _seam_witness(lane, current, fields):
 
 
 def _two_kernel_current(label, reference, actual, mesh, bar=None):
+    """The two-kernel bar covers accumulated float32 roundoff."""
     assert reference.shape == actual.shape == (SEAM_STEPS,)
     assert np.isfinite(reference).all() and np.isfinite(actual).all()
     peak = float(np.max(np.abs(reference)))
@@ -347,8 +330,6 @@ def _two_kernel_current(label, reference, actual, mesh, bar=None):
     assert peak > 0 and actual_peak > 0, (label, peak, actual_peak)
     difference = float(np.max(np.abs(actual.astype(np.float64) - reference)))
     measured = difference / peak
-    # A18: two kernels use the accumulated float32 roundoff bar from
-    # tests/unit/nonuniform/test_nonuniform_face_depths.py:94.
     bar = SEAM_STEPS * 10 * np.finfo(np.float32).eps if bar is None else bar
     print(f"{label}: measured={measured:.17g} bar={bar:.17g} "
           f"max_difference={difference:.17g} peak={peak:.17g} "
@@ -377,11 +358,11 @@ def test_periodic_seam_port_translation(lane):
 @pytest.mark.distributed
 def test_port_current_matches_across_cpu_devices():
     """A18 amendment: PEC y walls, model B port position, 1 and 2 CPUs."""
+    MULTI_DEVICE_TRACE_RTOL = 9e-6
     from tests._multi_device_scene import host_devices
 
     devices = host_devices(2)
     one, reference, _ = _seam_solve("multi_device", 3, devices=devices[:1])
     two, actual, _ = _seam_solve("multi_device", 3, devices=devices)
     assert one.grid.shape == two.grid.shape
-    # 1 vs n devices, lumped port: TRACE_RTOL in tests/unit/runners/test_distributed_lumped_port_s.py:26,107-110.
-    _two_kernel_current("2 CPU vs 1 CPU current", reference, actual, two.grid.shape, bar=9e-6)
+    _two_kernel_current("2 CPU vs 1 CPU current", reference, actual, two.grid.shape, bar=MULTI_DEVICE_TRACE_RTOL)

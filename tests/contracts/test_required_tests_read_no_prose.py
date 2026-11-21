@@ -1,7 +1,7 @@
 """A test that reads prose is a documentation check, and a required lane runs none.
 
-Required checks compare numbers with a tolerance, never text (PI, 2026-09-24),
-and a documentation mismatch never holds a merge (PI, 2026-09-22). Four of the
+Required checks compare numbers with a tolerance, never text,
+and a documentation mismatch never holds a merge. Four of the
 nine red ``main`` runs of 2026-09-22/24 were a notes table compared with a
 script's output whose last printed digit followed the OpenBLAS kernel (#1262).
 So a test that reads a note, a guide or a README is marked ``docs_consistency``;
@@ -41,12 +41,7 @@ REPO = Path(__file__).resolve().parents[2]
 PR_TESTS = REPO / ".github" / "workflows" / "pr-tests.yml"
 DOCS_WORKFLOW = REPO / ".github" / "workflows" / "docs-consistency.yml"
 
-# --------------------------------------------------------------------------
-# Planted tests, run through the plugin in a separate interpreter
-# --------------------------------------------------------------------------
 
-#: Written into the planted session's root; points the plugin's idea of the
-#: repository's docs/ at the planted one, so nothing here needs a real page.
 _ROOT_CONFTEST = '''
     import os
     import tests._prose_reads as prose_reads
@@ -54,7 +49,6 @@ _ROOT_CONFTEST = '''
 '''
 
 _PLANTED = {
-    # The pre-#1262 shape: a note's text against what a script prints.
     "test_note_equals_tables.py": '''
         from pathlib import Path
         NOTE = Path({note!r})
@@ -97,8 +91,6 @@ _PLANTED = {
         def test_second_user_is_not(note):
             assert note
     ''',
-    # A fixture the test asks for itself is charged to the test, first use
-    # and cached reuse alike.
     "test_dynamic_fixture.py": '''
         import pytest
         from pathlib import Path
@@ -129,7 +121,6 @@ _PLANTED = {
         def test_no_reason():
             assert True
     ''',
-    # An opt-out that covers tests nobody chose is refused.
     "test_module_opt_out.py": '''
         import pytest
         from pathlib import Path
@@ -146,8 +137,6 @@ _PLANTED = {
             def test_under_a_class_opt_out(self):
                 assert True
     ''',
-    # A note read while pytest parametrizes one function counts for that
-    # function only, not for its neighbours in the module.
     "test_generated_params.py": '''
         import pytest
         from pathlib import Path
@@ -177,8 +166,6 @@ _PLANTED = {
     ''',
 }
 
-#: What the plugin must say about each planted test: passed, or failed at
-#: teardown with the message that names the rule it broke.
 _READS = "reads prose"
 _REASON = "needs a non-empty reason"
 _PLACE = "must decorate the one test function"
@@ -331,27 +318,30 @@ def test_the_required_gates_deselect_the_marker_and_the_docs_lane_selects_it() -
     assert "and not docs_consistency'\"" in addopts
 
 
-# --------------------------------------------------------------------------
-# Who opts out, and what is documentation: pinned, so a change shows in the diff
-# --------------------------------------------------------------------------
 
-#: Every required test allowed to read prose, and why. Adding one is a gate
-#: decision; it goes here, in the same change, where a reviewer reads it.
 GATE_OPT_OUTS = {
+    "tests/contracts/test_public_text_has_no_pi_or_agent_traces.py::"
+    "test_named_exceptions_are_not_stale":
+        "checks that public-text scan exceptions still match tracked text; "
+        "scans, never judges the prose",
+    "tests/contracts/test_public_text_has_no_pi_or_agent_traces.py::"
+    "test_public_text_has_no_pi_or_agent_traces":
+        "public text must not carry the maintainer's name, orders or agent traces; "
+        "scans tracked text, never judges the prose",
     "tests/contracts/test_known_limitations_tracker.py::test_every_limitation_has_a_valid_tracker":
         "Every known limitation must have an explicit tracker or accepted reason",
     "tests/contracts/test_known_limitations_citations.py::"
     "test_every_pinned_issue_keeps_its_entry":
         "a known-limitations entry must stay while its defect is open: the one "
-        "page a PR must keep right (PI, 2026-09-22)",
+        "page a PR must keep right",
     "tests/contracts/test_docs_frontmatter.py::test_page_frontmatter_parses":
         "Parses the YAML frontmatter the site build parses; a page that does not parse blocks the merge train "
         "(PR 1704). It checks syntax and the presence of a title, never the prose.",
+    "tests/unit/docs/test_public_docs_code_quotes.py::test_public_docs_code_quotes":
+        "Checks JSX code syntax that lets the site build convert command quotes; "
+        "quoted commands must use markdown code spans or JS string expressions.",
 }
 
-#: Every test function with at least one docs_consistency case. Marking a test
-#: as documentation takes it out of the required lanes, so a new entry here is
-#: something a reviewer should see: a number check must not leave this way.
 DOCS_CONSISTENCY_TESTS = frozenset({
     "tests/contracts/test_pareto_feature.py::test_pareto_page_is_connected",
     "tests/contracts/test_pareto_feature.py::test_pareto_python_blocks_execute",

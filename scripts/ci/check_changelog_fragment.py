@@ -16,8 +16,8 @@ Four rules, all mechanical:
 4. A fragment the PR adds or edits is at most ``MAX_FRAGMENT_LINES`` lines,
    heading included, counted as the assembler inserts it (leading and trailing
    blank lines dropped). It says what changed for a user; measurement,
-   falsifiers and review history go in the PR body and ``bk-squared/rfx-archive``
-   (PI, 2026-09-24: fragments on main that day ran a median of 18 lines and up
+   falsifiers and review history go in the PR body and ``the record repository``
+   (fragments on main on 2026-09-24 ran a median of 18 lines and up
    to 137). Fragments already on main are not re-checked.
 
 Inputs: ``--base``/``--head`` shas (the workflow passes the pull request's
@@ -229,7 +229,7 @@ def check(base: str, head: str, labels: Sequence[str], repo: Path,
                 f"{MAX_FRAGMENT_LINES}, heading included.\n"
                 f"  It says what changed for a user. Measurement, falsifiers and\n"
                 f"  review history go in the PR body, and records in\n"
-                f"  bk-squared/rfx-archive. See {FRAGMENT_DIR}/README.md."
+                f"  the record repository. See {FRAGMENT_DIR}/README.md."
             )
     return failures
 

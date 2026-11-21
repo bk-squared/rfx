@@ -57,18 +57,16 @@ def _validate_cfg_f0_sheet_backed_gap(self, _w):
         return
     ctx = self._campaign_ctx()
     if ctx.error is not None:
-        return  # Includes traced meshes: no concrete footprint or distances.
+        return
     root = ctx.realized()
     if root is None:
-        return  # The assembly check reports the refusal.
+        return
     faces = wall_edge_masks(root.grid.shape, resolve_wall_faces(root.grid, root.periodic)[0])
     edges = tuple(edge | face for edge, face in zip(root.edges, faces, strict=True))
     walls = {}
     for (index, tc), spec in zip(sheets, root.sheet_impedance, strict=True):
         axis = int(spec.normal_axis)
         footprint = np.asarray(spec.mask, dtype=bool)
-        # Reuse the operator's edge rule, including PEC exclusion. Conductance
-        # may be traced: only the concrete geometric masks are inspected here.
         with jax.ensure_compile_time_eval():
             selected = SheetConductors((spec,), root.periodic)
             bare = selected.sheet_context(None)
@@ -77,15 +75,12 @@ def _validate_cfg_f0_sheet_backed_gap(self, _w):
         for a in "xyz":
             coincident = (np.asarray(getattr(bare, f"mask_e{a}")) &
                           ~np.asarray(getattr(live, f"mask_e{a}")))
-            # A rim touching a perpendicular PEC wall has zero tangential E
-            # in the continuum too. Read end rows before PEC removes them.
             boundary_rows = getattr(bare, f"end_e{a}")
             if boundary_rows is not None:
                 coincident &= ~np.asarray(boundary_rows)
             owned += np.count_nonzero(coincident)
         if axis not in walls:
             walls[axis] = _conductor_nodes(root, edges, axis)
-        # PEC-owned starting columns are coincident, not a field gap.
         field = footprint.copy()
         for dimension, name in enumerate("xyz"):
             for start, stop in ((0, getattr(root.grid, f"pad_{name}_lo")),

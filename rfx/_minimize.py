@@ -1,0 +1,375 @@
+"""Few-parameter minimisation through the shared optimiser loop."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass, field
+import warnings
+
+import jax
+import jax.numpy as jnp
+import numpy as np
+
+from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxRefusal
+from rfx.optimize import _run_optimizer
+from rfx.optimizers import _Adam, _GCMMA, _MMA, _ProjectedAdam, _box_in_dtype
+
+
+@dataclass(frozen=True)
+class MinimizeResult:
+    """An evaluated solution and its finite objective and parameter histories.
+
+    ``x``, ``fun`` and both histories cover finite gradient-evaluated iterates.
+    ``nfev`` includes trials and non-finite evaluations, but not ``setup_forwards``.
+    ``solves`` counts forward, reverse and forward-mode passes in the loop.
+    ``scale`` is the initial largest entry for worst-case problems, else None.
+    ``solves_history`` holds cumulative loop solves at each finite iterate.
+    ``subproblem_caps`` counts capped MMA and GCMMA subproblem solves, including
+    inner solves. ``inner_caps`` counts GCMMA inner caps (zero otherwise).
+    ``stopped_nonfinite`` means fewer than the requested iterates were recorded.
+    """
+
+    x: jax.Array
+    fun: float
+    nfev: int
+    history: list[float]
+    x_history: jax.Array
+    solves: dict[str, int]
+    solves_history: list[int]
+    setup_forwards: int
+    method: str
+    jacobian: str
+    subproblem_caps: int
+    inner_caps: int
+    stopped_nonfinite: bool
+    scale: float | None
+
+
+@dataclass(frozen=True)
+class _RecordingMMA(_MMA):
+    scale: float | None = None
+    history: list[float] = field(default_factory=list, compare=False)
+    caps: list[int] = field(default_factory=list, compare=False)
+
+    def tell(self, state, request, value, grad, cons_values, cons_grads):
+        if self.scale is not None:
+            largest = float(np.max(np.asarray(cons_values))) * self.scale
+            self.history.append(largest)
+            if largest <= 0:
+                warnings.warn(
+                    f"minimize: worst_case largest entry <= 0 at iteration {state.k + 1}",
+                    AccuracyWarning, stacklevel=2,
+                )
+        updated = super().tell(state, request, value, grad, cons_values, cons_grads)
+        self.caps.append(updated.caps_hit - state.caps_hit)
+        return updated
+
+
+@dataclass(frozen=True)
+class _RecordingGCMMA(_GCMMA):
+    ask_log: list[bool] = field(default_factory=list, compare=False)
+    caps: list[int] = field(default_factory=list, compare=False)
+    inner_caps_log: list[int] = field(default_factory=list, compare=False)
+
+    def ask(self, state):
+        request = super().ask(state)
+        self.ask_log.append(request.iterate)
+        return request
+
+    def tell(self, state, request, value, grad, cons_values, cons_grads):
+        updated = super().tell(state, request, value, grad, cons_values, cons_grads)
+        self.caps.append(updated.caps_hit - state.caps_hit)
+        self.inner_caps_log.append(updated.inner_caps - state.inner_caps)
+        return updated
+
+
+def _bounds_arrays(bounds, n):
+    try:
+        if hasattr(bounds, "lb") and hasattr(bounds, "ub"):
+            lo, hi = (np.broadcast_to(np.asarray(b, dtype=np.float64), (n,))
+                      for b in (bounds.lb, bounds.ub))
+        else:
+            pairs = np.asarray(bounds, dtype=np.float64)
+            if pairs.shape != (n, 2):
+                raise RfxRefusal("bounds must contain one (min, max) pair per x0 element")
+            lo, hi = pairs[:, 0], pairs[:, 1]
+    except (TypeError, ValueError) as exc:
+        raise RfxRefusal("bounds must contain finite (min, max) pairs matching x0") from exc
+    if not (np.all(np.isfinite(lo)) and np.all(np.isfinite(hi))) or np.any(lo >= hi):
+        raise RfxRefusal("bounds must be finite with min < max")
+    return lo, hi
+
+
+def minimize(
+    fun: Callable[[jax.Array], jax.Array],
+    x0: object,
+    *,
+    bounds: object | None = None,
+    method: str = "adam",
+    worst_case: bool = False,
+    n_iters: int = 50,
+    lr: float | None = None,
+    best_iterate: bool = False,
+    jit: bool = True,
+) -> MinimizeResult:
+    """Minimise a JAX-traceable objective over a few scalar parameters.
+
+    Parameters
+    ----------
+    fun : callable
+        Scalar objective of a one-dimensional x. With worst_case=True, return
+        a nonempty vector of nonnegative quantities, such as power, |S|^2 or
+        reflectance; convert dB to linear power. Its initial maximum must be
+        finite and positive and all initial entries finite and nonnegative.
+    x0 : array-like
+        Finite, nonempty one-dimensional start. Converted to JAX's default
+        float (float32, or float64 within the caller's x64 scope). A float64
+        NumPy or JAX array converted to float32 emits ConfigurationWarning.
+    bounds : sequence of (min, max) pairs or object with lb and ub, optional
+        Finite, strictly ordered inclusive bounds, one pair per parameter.
+        Scalar lb or ub broadcasts. x0 must lie inside the original bounds.
+        Values passed to fun are clipped to the inward-rounded box in x's
+        dtype, preserving the gradient of the parameter map.
+    method : {"adam", "projected_adam", "mma", "gcmma"}
+        Case-insensitive. Adam uses x directly without bounds, or latent u
+        with x = lo + (hi - lo) sigmoid(u). The initial logit is clipped to
+        +/-13.8, placing a boundary start about 1e-6 of the box inside it.
+        Projected Adam, MMA and GCMMA require bounds and use p in [0, 1].
+        MMA and GCMMA use the standard moving-asymptote constants and no
+        learning rate. GCMMA tests conservativeness with a tolerance of 50
+        units in the last place of |f|, in the objective value's dtype.
+        This tolerance is relative to |f|: an objective whose float32 noise
+        stays absolute while f approaches zero is outside what was measured.
+    worst_case : bool
+        MMA only: minimise the largest entry using epigraph rows fun(x)/s,
+        with a0=1, a=1, c=1000, d=1 and s the initial maximum. One setup
+        forward computes both s and the row count.
+        For n parameters and m entries, use forward mode if n < m + 2,
+        otherwise reverse mode. Scalar objectives use value-and-gradient.
+    n_iters : int
+        Positive iterate budget, default 50: points where the gradient is
+        evaluated. There is no convergence test.
+    lr : float, optional
+        Defaults to 0.01 for either Adam method; refused for MMA and GCMMA.
+        A step on u for bounded Adam, in x's units for unbounded Adam, and on p for
+        projected Adam. At the midpoint, a quarter of a latent learning rate
+        gives the same first design step on p.
+    best_iterate : bool
+        Return the finite iterate with the lowest objective instead of the
+        last finite iterate. Trials are excluded, even when accepted.
+    jit : bool
+        Compile the differentiated evaluation once, with the shared loop's
+        fallback for objectives that cannot be compiled. GCMMA also compiles
+        a value-only function; each function can emit ConfigurationWarning.
+
+    Returns
+    -------
+    MinimizeResult
+        x is the evaluated iterate, one update before the point optimize
+        returns. Under jit=True, x and x_history are the evaluated iterates
+        mapped outside the compiled function, and can differ from the points
+        fun received by one unit in the last place; fun is the value at the
+        received point. history holds finite objectives (the unscaled
+        maximum for worst_case); x_history has shape (k, n). x, fun, history,
+        x_history and best_iterate cover iterates only; neither rejected nor
+        accepting GCMMA trials are iterates. nfev counts every evaluation,
+        including trials and a non-finite evaluation, and excludes
+        setup_forwards, which is 1 for worst_case and 0 otherwise. solves counts only loop passes. jacobian
+        is "value_and_grad", "forward" or "reverse". On a non-finite first
+        evaluation, x is the mapped start, fun is nan and both histories are
+        empty. stopped_nonfinite is len(history) < n_iters, including a stop
+        at a non-finite trial. solves_history is a list of cumulative loop
+        solve counts after each finite iterate, excluding setup_forwards.
+        Scalar iterates cost two solves and GCMMA trials one; worst_case MMA
+        iterates cost n in forward mode or m + 2 in reverse mode.
+        subproblem_caps counts every capped MMA or GCMMA subproblem solve,
+        including inner solves. inner_caps counts GCMMA inner caps and is
+        zero for other methods.
+
+    Raises
+    ------
+    RfxRefusal
+        Invalid method, shape, bounds, start, budget, or incompatible options;
+        worst_case initial entries violate the finite nonnegative contract.
+
+    See also: optimize, scipy.optimize.minimize; minimize_s11 and related
+    objective factories construct objectives rather than run this loop.
+
+    Notes
+    -----
+    Method guide. Every number below comes from one run of
+    ``examples/inverse_design/multilayer_ar_coating.py --compare-methods
+    --mesh fine``.
+    - The variables are the three layer permittivities of an anti-reflection
+      coating on an eps = 12 substrate.
+    - R is computed by FDTD, at dx = 0.25 mm with a 20-cell CPML, at the 15
+      DFT bins from 8.2 to 11.8 GHz.
+    - Every run starts from the geometric ladder and uses 120 loop solves. A
+      forward, a reverse and a forward-mode pass each count as one solve.
+      "mma" with worst_case=True also runs one setup forward before the
+      loop, which these counts leave out. A "gcmma" iterate costs a varying
+      number of solves, so "gcmma" is read at its last iterate within the
+      120 solves: iterate 27, at 117 solves.
+    - "Final value" means a run's last evaluated value, and for "gcmma" its
+      value at that iterate.
+    The numbers describe this problem; another objective can behave
+    differently.
+
+    "adam" (default)
+        Adam on the sigmoid latent when bounds are given, so a design
+        approaches a bound only slowly; on x directly without bounds.
+    "projected_adam"
+        Adam on p = (x - lo) / (hi - lo), clipped to the box after every
+        step, with no sigmoid flattening near a bound. On the mean
+        reflectance it ended at the cost of "adam" (ratio 0.9998), with lr
+        0.0375 against 0.15 for "adam".
+    "mma" with worst_case=True
+        The method of moving asymptotes in its minimax form. On the worst-bin
+        reflectance:
+        - it first came within 1 % of its final value after 12 solves and
+          stayed there; from iteration 7 it held that value within 6.2e-7;
+        - "adam" on the q = 32 soft-max of the 15 bins first came within
+          1 % of its own final value after 68 solves, then left that band
+          again;
+        - it ended equal-ripple, with three bins within 2.1e-7 of each other;
+        - it needs no q or learning rate.
+        This is not a claim of a lower worst-bin value than Adam can reach.
+        The 12-solve count uses one forward-mode pass per variable (3 here).
+        With n >= m + 2 variables, the rows use reverse mode, at m + 2 passes
+        per iteration.
+    "mma" on a scalar objective
+        Can cycle on its move limit. Once the asymptotes reach their floor
+        of 0.01 of the box, that limit is 0.9 of it, 0.009 of the box. On
+        the mean reflectance:
+        - over its last 20 iterations it moved every variable by 0.0086-0.0090
+          of the box at each step, alternating between two points;
+        - it ended at 1.27 times the cost of "adam".
+        For an unconstrained scalar cost, use "adam", "projected_adam" or
+        "gcmma".
+    "gcmma"
+        The conservative form of "mma". It evaluates each subproblem
+        solution without a gradient (a trial, one solve) and accepts it only
+        if the subproblem's approximation did not underestimate the value
+        there by more than the tolerance. Otherwise it makes the
+        approximation more conservative and solves the subproblem again. On
+        the mean reflectance:
+        - it ended at the cost of "adam" (ratio 0.9992);
+        - it first came within 1 % of its final value after 35 solves and
+          stayed there; "adam" first did so after 68 solves;
+        - it took 1 to 4 trials per iteration, 2.4 on average;
+        - from one iterate to the next, the value the loop evaluated
+          (history) rose by at most 9.32e-8, within the tolerance there
+          (1.86e-7); no subproblem and no inner loop reached its cap.
+        Each iterate costs two solves plus the trials before it. The f
+        the example prints at each iterate is a separate evaluation outside
+        the compiled loop and can differ from history in the last digits,
+        so a rise read on those printed values can exceed the tolerance.
+    """
+    if not isinstance(method, str) or method.lower() not in ("adam", "projected_adam", "mma", "gcmma"):
+        raise RfxRefusal("method must be adam, projected_adam, mma or gcmma; for SciPy methods use scipy.optimize.minimize")
+    method = method.lower()
+    if worst_case and method != "mma":
+        raise RfxRefusal('worst_case is measured only with method="mma"')
+    if method != "adam" and bounds is None:
+        raise RfxRefusal(f"bounds are required for method={method!r}")
+    if method in ("mma", "gcmma") and lr is not None:
+        raise RfxRefusal(f"lr is not accepted for method={method!r}")
+    if isinstance(n_iters, (bool, np.bool_)) or not isinstance(n_iters, (int, np.integer)) or n_iters < 1:
+        raise RfxRefusal("n_iters must be a positive integer")
+    try:
+        original = np.asarray(x0, dtype=np.float64)
+    except (TypeError, ValueError) as exc:
+        raise RfxRefusal("x0 must be a finite one-dimensional real array") from exc
+    if original.ndim != 1 or original.size == 0 or not np.all(np.isfinite(original)):
+        raise RfxRefusal("x0 must be finite, nonempty and one-dimensional")
+    box = None if bounds is None else _bounds_arrays(bounds, original.size)
+    if box is not None and (np.any(original < box[0]) or np.any(original > box[1])):
+        raise RfxRefusal("x0 must lie inside bounds")
+    dtype = jnp.float64 if jax.config.x64_enabled else jnp.float32
+    if isinstance(x0, (np.ndarray, jax.Array)) and x0.dtype == np.dtype("float64") and dtype == jnp.float32:
+        warnings.warn("minimize: x0 converted from float64 to float32", ConfigurationWarning, stacklevel=2)
+    start = jnp.asarray(x0, dtype=dtype)
+    if not bool(jnp.all(jnp.isfinite(start))):
+        raise RfxRefusal("x0 must remain finite in the default float dtype")
+
+    if box is not None:
+        lo64, hi64 = box
+        try:
+            lower, upper = _box_in_dtype(lo64, hi64, np.dtype(dtype))
+        except ValueError as exc:
+            raise RfxRefusal(f"bounds: {exc}") from exc
+        lo, hi = jnp.asarray(lo64, dtype=dtype), jnp.asarray(hi64, dtype=dtype)
+        if not bool(jnp.all(jnp.isfinite(hi - lo))):
+            raise RfxRefusal("bounds must have finite width in the default float dtype")
+        lower, upper = jnp.asarray(lower), jnp.asarray(upper)
+
+        p0 = (original - lo64) / (hi64 - lo64)
+        if method == "adam":
+            with np.errstate(divide="ignore"):
+                p0 = np.clip(np.log(p0 / (1 - p0)), -13.8, 13.8)
+        start = jnp.asarray(p0, dtype=dtype)
+
+    def physical(point):
+        if box is None:
+            return point
+        p = jax.nn.sigmoid(point) if method == "adam" else point
+        raw = lo + (hi - lo) * p
+        return raw + jax.lax.stop_gradient(jnp.clip(raw, lower, upper) - raw)
+
+    m = 0
+    scale = None
+    if worst_case:
+        values = np.asarray(fun(physical(start)))
+        if values.ndim != 1 or values.size == 0:
+            raise RfxRefusal("fun must return a nonempty vector with worst_case=True, or a scalar otherwise")
+        m = values.size
+        if np.iscomplexobj(values):
+            raise RfxRefusal("worst_case fun must return real values, such as |S|^2, not complex amplitudes")
+        if not np.all(np.isfinite(values)) or np.any(values < 0) or np.max(values) <= 0:
+            raise RfxRefusal("worst_case fun entries at x0 must be finite and nonnegative with a positive maximum")
+        scale = float(np.max(values))
+
+    def objective(point):
+        values = fun(physical(point))
+        if worst_case:
+            return jnp.concatenate((jnp.zeros(1, dtype=values.dtype), values / scale))
+        if jnp.shape(values) != ():
+            raise RfxRefusal("fun must return a nonempty vector with worst_case=True, or a scalar otherwise")
+        return values
+
+    rate = 0.01 if lr is None else lr
+    opt = (_Adam(rate) if method == "adam" else _ProjectedAdam(rate)
+           if method == "projected_adam" else _RecordingGCMMA(m=0, e=0, _ulp_multiple=50)
+           if method == "gcmma" else _RecordingMMA(m=m, a=1.0, scale=scale))
+    mode = "fwd" if m and start.size < m + 2 else "rev"
+    _, history, visited, solves = _run_optimizer(
+        opt, objective, start, (0.0, 1.0) if opt.native_box else None,
+        n_iters=n_iters, m=m, jacobian=mode, jit=jit,
+        keep_iterates=True, name="minimize",
+    )
+    if worst_case and isinstance(opt, _RecordingMMA):
+        history = opt.history
+    nfev = solves["forward_mode"] // start.size if mode == "fwd" else solves["forward"]
+    if isinstance(opt, _RecordingGCMMA):
+        cumulative = 0
+        solves_history = []
+        for iterate in opt.ask_log:
+            cumulative += 2 if iterate else 1
+            if iterate:
+                solves_history.append(cumulative)
+        solves_history = solves_history[:len(history)]
+    else:
+        per_iterate = int(start.size) if mode == "fwd" else m + 2
+        solves_history = [per_iterate * (i + 1) for i in range(len(history))]
+    x_history = jnp.stack([physical(point) for point in visited]) if visited else jnp.empty((0, start.size), dtype=dtype)
+    index = int(np.argmin(history)) if best_iterate and history else -1
+    return MinimizeResult(
+        x=x_history[index] if history else physical(start),
+        fun=history[index] if history else float("nan"), nfev=nfev,
+        history=history, x_history=x_history, solves=solves, solves_history=solves_history,
+        setup_forwards=int(worst_case), method=method,
+        jacobian="value_and_grad" if not m else "forward" if mode == "fwd" else "reverse",
+        subproblem_caps=sum(opt.caps) if isinstance(opt, (_RecordingMMA, _RecordingGCMMA)) else 0,
+        inner_caps=sum(opt.inner_caps_log) if isinstance(opt, _RecordingGCMMA) else 0,
+        stopped_nonfinite=len(history) < n_iters, scale=scale,
+    )

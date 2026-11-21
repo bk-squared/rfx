@@ -28,15 +28,12 @@ from rfx.api import Simulation
 from rfx.geometry.csg import Box
 
 
-# --- Grid 2D mode ---
-
 def test_grid_2d_tmz():
     """2D TMz grid should have nz=1 and √2 Courant factor."""
     g = Grid(freq_max=10e9, domain=(0.03, 0.03, 0.03), mode="2d_tmz")
     assert g.nz == 1
     assert g.is_2d
     assert g.mode == "2d_tmz"
-    # dt should use √2, not √3
     dt_expected = g.dx / (C0 * np.sqrt(2.0)) * 0.99
     assert abs(g.dt - dt_expected) / dt_expected < 1e-10
     print(f"\n2D TMz grid: shape={g.shape}, dx={g.dx:.4e}, dt={g.dt:.4e}")
@@ -58,8 +55,6 @@ def test_grid_3d_default():
     assert abs(g.dt - dt_expected) / dt_expected < 1e-10
 
 
-# --- 2D simulation ---
-
 def test_2d_tmz_simulation():
     """2D TMz simulation should run and produce non-zero Ez field."""
     grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.01), mode="2d_tmz")
@@ -73,7 +68,7 @@ def test_2d_tmz_simulation():
     result = run(grid, materials, n_steps, sources=[src])
     assert isinstance(result, SimResult)
     assert result.state.ez.shape == grid.shape
-    assert result.state.ez.shape[2] == 1  # nz=1
+    assert result.state.ez.shape[2] == 1
 
     ez_max = float(jnp.max(jnp.abs(result.state.ez)))
     assert ez_max > 0.0, "Ez should be non-zero after excitation"
@@ -81,26 +76,26 @@ def test_2d_tmz_simulation():
 
 
 def test_2d_tez_simulation():
-    """2D TEz simulation should run and produce non-zero Hz field."""
+    """2D TEz simulation should run and produce non-zero Hz field.
+
+    TEz mode is excited through Hz, Ex or Ey; the test uses Ex for simplicity.
+    """
     grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.01), mode="2d_tez")
     materials = init_materials(grid.shape)
 
     pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
     center = (0.01, 0.01, 0.0)
     n_steps = 30
-    # TEz mode: excite Hz (or Ex/Ey); use ex for simplicity
     src = make_source(grid, center, "ex", pulse, n_steps)
 
     result = run(grid, materials, n_steps, sources=[src])
     assert isinstance(result, SimResult)
-    assert result.state.ex.shape[2] == 1  # nz=1
+    assert result.state.ex.shape[2] == 1
 
     ex_max = float(jnp.max(jnp.abs(result.state.ex)))
     assert ex_max > 0.0, "Ex should be non-zero after excitation"
     print(f"\n2D TEz: shape={grid.shape}, max|Ex|={ex_max:.4e}")
 
-
-# --- Snapshots ---
 
 def test_snapshot_full_field():
     """interval=1 captures the full field at every timestep; the default
@@ -117,7 +112,6 @@ def test_snapshot_full_field():
 
     assert result.snapshots is not None
     assert "ez" in result.snapshots
-    # Shape: (n_steps, nx, ny, nz)
     assert result.snapshots["ez"].shape[0] == n_steps
     assert result.snapshots["ez"].shape[1:] == grid.shape
 
@@ -148,7 +142,6 @@ def test_snapshot_2d_slice():
     assert result.snapshots is not None
     assert "ez" in result.snapshots
     assert "hx" in result.snapshots
-    # Shape: (n_steps, nx, ny) — z axis removed
     assert result.snapshots["ez"].shape == (n_steps, grid.nx, grid.ny)
     print(f"\nSnapshot slice: ez shape={result.snapshots['ez'].shape}")
 
@@ -167,11 +160,8 @@ def test_snapshot_2d_mode():
     result = run(grid, materials, n_steps, sources=[src], snapshot=snap)
 
     assert result.snapshots is not None
-    # Shape: (n_steps, nx, ny)
     assert result.snapshots["ez"].shape == (n_steps, grid.nx, grid.ny)
 
-
-# --- HDF5 checkpoint ---
 
 def test_hdf5_state_roundtrip():
     """Save and load FDTD state should preserve fields."""
@@ -185,7 +175,6 @@ def test_hdf5_state_roundtrip():
 
     grid = Grid(freq_max=10e9, domain=(0.01, 0.01, 0.01))
     state = init_state(grid.shape)
-    # Put some non-zero data
     state = state._replace(
         ez=jnp.ones(grid.shape, dtype=jnp.float32) * 0.5,
         step=jnp.array(42, dtype=jnp.int32),
@@ -258,8 +247,6 @@ def test_hdf5_materials_roundtrip():
     print("\nHDF5 materials roundtrip OK")
 
 
-# --- High-level API 2D mode ---
-
 def test_api_2d_tmz():
     """High-level API should accept mode='2d_tmz' and run correctly."""
     sim = Simulation(
@@ -278,12 +265,16 @@ def test_api_2d_tmz():
 
 
 def test_api_snapshot():
-    """High-level API should support snapshot parameter."""
+    """High-level API should support snapshot parameter.
+
+    Every domain length here is a whole number of cells of dx, so the solved domain
+    equals the declared one.
+    """
     sim = Simulation(
         freq_max=10e9,
         domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0)), dx=(299792458.0 / 10e9 / 20.0),
         boundary="pec",
-    )  # solved length; #1887
+    )
     sim.add_probe((0.01, 0.01, 0.01), "ez")
 
     snap = SnapshotSpec(components=("ez",), slice_axis=2, slice_index=5)

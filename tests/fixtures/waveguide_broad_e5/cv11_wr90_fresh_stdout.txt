@@ -16,7 +16,7 @@
 [meep-ref] loaded MEEP reference with geometries: ['r3', 'r4']
 [openems-ref] loaded (r4) with geometries: ['empty', 'pec_short', 'slab']
 [palace-ref] loaded (r_h2) with geometries: ['empty', 'pec_short', 'slab']
-/root/workspace/byungkwan-workspace/research/rfx-931-XB-crossval-b/rfx/api/_sparams.py:3119: PreflightWarning: waveguide port index mirror audit, source E plane (x-axis): i(+) = 83, i(-) = 204, sum = 287 on n_axis = 287; the covariant sum for a primal plane is 286. The +1 difference is the KNOWN shipped offset — apply_waveguide_port_e places the '-' port's E correction at x_index + 1 — not an asymmetry in this setup. Reported as information.
+rfx/api/_sparams.py:3119: PreflightWarning: waveguide port index mirror audit, source E plane (x-axis): i(+) = 83, i(-) = 204, sum = 287 on n_axis = 287; the covariant sum for a primal plane is 286. The +1 difference is the KNOWN shipped offset — apply_waveguide_port_e places the '-' port's E correction at x_index + 1 — not an asymmetry in this setup. Reported as information.
   self._preflight_waveguide_setup(
 
 [empty S11] |S|: max_diff=0.0000 mean_diff=0.0000 (gate 0.020)
@@ -78,7 +78,7 @@
   12.40 | 1.0000@  +0.00d | 1.0000@  -0.00d | 1.0000@  -0.00d | 1.0000@  -7.57d |       +0.0000        |     +7.57
 [summary empty S21 vs Palace_r_h2] |S|_diff: max=0.0000 mean=0.0000 | phase: max|d|=175.26d mean|d|=90.45d
 [#931] realized PEC-short walls at [145.0, 146.0, 147.0] mm (506 PEC cells, 0 sheets); reflection plane 145.000 mm == declared 145.000 mm
-/root/workspace/byungkwan-workspace/research/rfx-931-XB-crossval-b/validation/crossval/11_waveguide_port_wr90.py:824: UserWarning: compute_waveguide_s_matrix(normalize=False): S21 and S-parameter phase include Yee numerical dispersion. For S21 accuracy and reciprocity use normalize=True. For |S11| of strong reflectors (PEC short, resonators) normalize=False is more accurate — see the normalize parameter docstring.
+validation/crossval/11_waveguide_port_wr90.py:824: UserWarning: compute_waveguide_s_matrix(normalize=False): S21 and S-parameter phase include Yee numerical dispersion. For S21 accuracy and reciprocity use normalize=True. For |S11| of strong reflectors (PEC short, resonators) normalize=False is more accurate — see the normalize parameter docstring.
   result = sim.compute_waveguide_s_matrix(
 
 [pec-short |S11|] |S|: max_diff=0.0020 mean_diff=0.0010 (gate 0.050)

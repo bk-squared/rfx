@@ -180,7 +180,7 @@ One line section T needs present, for the carriers above:
    ingests its artifact, and re-pin from the artifact.
 4. **`tests/fixtures/waveguide_chain_battery/` (tests-oracle group).** The run
    is DONE — VESSL 369367259196, artifact
-   `/root/workspace/claude-workspace/rfx/runs/issue931-post-chain-battery-20260907T105351Z/fixture.json`,
+   `<workspace>/rfx/runs/issue931-post-chain-battery-20260907T105351Z/fixture.json`,
    full measured-vs-predeclared table in `scripts/vessl_931/T/RECOMPUTE.md`. Three
    things the ingest owner needs from it:
 

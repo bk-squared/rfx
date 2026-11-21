@@ -8,6 +8,9 @@ shunt-network formula, not newly pinned measurement records.
 The one-cell lumped and four-cell wire cross-sections/separations are retained.
 Every DUT is judged at the load plane by the appended lead ruling.
 Raw S11 is reported only; phase is a three-mesh trend, not a one-bin bar.
+
+``pinned_until`` in ``LOCK_PROVENANCE`` is the next date to re-check this formula-based
+lock, not the end of a numerical baseline pin.
 """
 import json
 import sys
@@ -21,9 +24,6 @@ from tests import _electrical_length as EL
 from tests._interior_tem_line import (chain, input_reflection, element_inductance,
                                       assert_first_order, assert_solved_ports)
 
-# No measurement artifact is pinned: all expected values are hand-derived.
-# The gate requires dates even for fixture="none". pinned_until is the next
-# review deadline for this formula-based lock, not a numerical baseline pin.
 LOCK_PROVENANCE = {
     "fixture": "none",
     "generator": "hand-derived shunt network; tests._interior_tem_line.chain",
@@ -35,16 +35,9 @@ LOCK_PROVENANCE = {
 }
 FAMILY = "lumped / wire internal TEM coax"
 DRIVER = "scripts/diagnostics/lumped_wire_chain_battery_measure.py"
-# Tracker 1549 (conductors through the absorber grew) is fixed: the short, open and Zc/2 wire rows pass. The
-# 2*Zc and matched rows no longer diverge and miss their bars by a little at 25 um (2.31 dB against 2 dB at
-# 8.8 GHz; |Gamma_L| 0.102 against 0.1 at 10 GHz), cause undetermined: tracker 1614. They run in the weekly lane.
 WIRE_XFAIL = pytest.mark.xfail(
     strict=True, raises=AssertionError,
     reason="#1614 wire load-plane reflection misses the bar on the 2*Zc and matched loads at 25 um; cause undetermined")
-# The 2 dB magnitude bar is a statement about a converged mesh. For the 2*Zc row the one-cell
-# element inductance leaves 2.03 / 1.06 / 0.55 dB at 100 / 50 / 25 um (first order in dx), so
-# the always-on run of that row uses the 50 um mesh; the 100 um value is part of the slow
-# three-mesh trend, where it is recorded, not judged against the bar.
 ALWAYS_ON_DX = {"res_double": .05e-3}
 MESHES = (.1e-3, .05e-3, .025e-3)
 GAMMA = dict(short=-1., open=1., res_half=-1/3, res_double=1/3, matched=0.)
@@ -143,7 +136,6 @@ def prediction(line, dut, *, dispersive=False):
 
 
 def measured_chain(kind, dut, dx=None):
-    # Normalize omitted, explicit None and explicit default BEFORE caching.
     return _measured_chain(kind, dut, .1e-3 if kind == "lumped" and dx is None else dx)
 
 
@@ -193,17 +185,21 @@ def record_chain(line, dut, live, record_property):
     for kind in ("lumped", "wire") for dut in DUTS
 ])
 def test_chain_load_plane_magnitude(kind, dut, record_property):
+    """The 2 dB magnitude bar is a statement about a converged mesh, and the one-cell
+    element inductance leaves 2.03 / 1.06 / 0.55 dB on the 2*Zc row at 100 / 50 / 25 um
+    (first order in dx), so the always-on run of that row uses the 50 um mesh of
+    ``ALWAYS_ON_DX`` and its 100 um value is recorded in the slow three-mesh trend, not
+    judged against the bar.
+    """
     line, live = measured_chain(kind, dut, dx=ALWAYS_ON_DX.get(dut) if kind == "lumped" else None)
     gamma = record_chain(line, dut, live, record_property)
     assert_load_plane_magnitude(dut, gamma)
-    # The element coefficient is measured only for gap=1. A healthy four-cell
-    # wire must reach XPASS, not remain xfailed on an unmeasured-model assertion.
     if line.gap == 1:
         assert_load_plane_complex(line, dut, gamma)
 
 
 def complex_load_plane_limit(line, dut):
-    """Leader's declared complex identity margin, with the same pure inverse.
+    """Declared complex identity margin, with the same pure inverse.
 
     e_pred(f) = |Gamma_L,pred(f) - Gamma_ideal|, where prediction includes
     0.214*mu0*dx at port and load and is passed through the same pure
@@ -231,8 +227,9 @@ def assert_load_plane_complex(line, dut, gamma):
 
 
 def assert_short_electrical_length(line, live):
-    # Old: 1% on raw-S slopes of reflecting rows. New: unchanged 1% on
-    # q for the short only; removing the junction gives q=-exp(-2j beta d).
+    """The reference is the short's reflection with the junction removed, q = -exp(-2j beta
+    d).
+    """
     reflected = propagation_reflection(live)
     reference = -np.exp(-4j * np.pi * FREQS * line.length / 299792458.)
     mask = EL.transmitting_bins(reflected) & EL.transmitting_bins(reference)
@@ -257,6 +254,9 @@ def test_short_electrical_length(record_property):
 @pytest.mark.slow
 @pytest.mark.parametrize("dut", DUTS)
 def test_chain_load_plane_three_mesh_trend(dut, record_property):
+    """The continuum load-plane phase is constant, so the residuals are compared as norms
+    over the same full band; individual bins may be stationary at zero residual.
+    """
     errors, phase_errors = [], []
     for dx in MESHES:
         line, live = measured_chain("lumped", dut, dx)
@@ -267,12 +267,6 @@ def test_chain_load_plane_three_mesh_trend(dut, record_property):
         if dut == "short":
             bias = assert_short_electrical_length(line, live)[0]
             record_property(f"junction_L0_length_bias_{dx}", bias)
-    # The continuum load-plane phase is constant. Compare residual norms over
-    # the SAME full band: individual bins may be stationary at zero residual.
-    # Old raw-S crossing-frequency (1%) and phase-direction verdicts are
-    # retired by the lead's shunt-circuit ruling: an open has no such feature.
-    # New: the first-order interval derived in assert_first_order, with no
-    # single-bin phase tolerance and no fitted element coefficient.
     if phase_errors:
         record_property("phase_order", float(assert_first_order(MESHES, phase_errors)))
     record_property("complex_order", float(assert_first_order(MESHES, errors)))
@@ -282,7 +276,6 @@ def test_chain_load_plane_three_mesh_trend(dut, record_property):
 @pytest.mark.parametrize("dx", MESHES[1:])
 @pytest.mark.parametrize("dut", DUTS)
 def test_chain_refined_load_plane_magnitude(dut, dx, record_property):
-    # The magnitude bar on the two refined meshes, every row.
     line, live = measured_chain("lumped", dut, dx)
     gamma = record_chain(line, dut, live, record_property)
     assert_load_plane_magnitude(dut, gamma)
@@ -337,24 +330,26 @@ def test_each_check_fires_just_outside_its_bar_and_not_just_inside():
     assert drift.magnitude_findings("S11", freqs, line, line * 10 ** (2.05 / 20))
     assert not drift.magnitude_findings("S11", freqs, line, line * 10 ** (1.95 / 20))
     null = line.copy()
-    null[40:43] = 1e-3                      # -60 dB: a core, compared with nothing
+    CORE_AMPLITUDE_MINUS_60_DB = 1e-3
+    null[40:43] = CORE_AMPLITUDE_MINUS_60_DB
     assert not drift.magnitude_findings("S21", freqs, null, null * [
         10.0 if 40 <= k < 43 else 1.0 for k in range(freqs.size)])
     assert drift.bound_findings("S11", freqs, np.full(freqs.size, 10 ** (-19.9 / 20)))
     assert not drift.bound_findings("S11", freqs, np.full(freqs.size, 10 ** (-20.1 / 20)))
     assert drift.frequency_findings("notch", 3.7e9, 3.7e9 * 1.0105)
     assert not drift.frequency_findings("notch", 3.7e9, 3.7e9 * 0.9905)
-    delay = np.exp(-2j * np.pi * freqs * 0.2e-9)     # a 0.2 ns line: -11 rad over the band
+    LINE_DELAY_S = 0.2e-9
+    delay = np.exp(-2j * np.pi * freqs * LINE_DELAY_S)
     assert drift.phase_direction_findings("S21", freqs, delay, np.conj(delay))
     assert not drift.phase_direction_findings("S21", freqs, delay, 0.5 * delay)
     assert drift.electrical_length_findings(
-        "S21", freqs, delay, np.exp(-2j * np.pi * freqs * 0.2e-9 * 1.0105))
+        "S21", freqs, delay, np.exp(-2j * np.pi * freqs * LINE_DELAY_S * 1.0105))
     assert drift.electrical_length_findings(
-        "S21", freqs, delay, np.exp(-2j * np.pi * freqs * 0.2e-9 * 0.9895))
+        "S21", freqs, delay, np.exp(-2j * np.pi * freqs * LINE_DELAY_S * 0.9895))
     assert not drift.electrical_length_findings(
-        "S21", freqs, delay, 0.5 * np.exp(-2j * np.pi * freqs * 0.2e-9 * 1.0095 + 0.3j))
+        "S21", freqs, delay, 0.5 * np.exp(-2j * np.pi * freqs * LINE_DELAY_S * 1.0095 + 0.3j))
     assert not drift.electrical_length_findings(
-        "S21", freqs, delay, np.exp(-2j * np.pi * freqs * 0.2e-9 * 0.9905))
+        "S21", freqs, delay, np.exp(-2j * np.pi * freqs * LINE_DELAY_S * 0.9905))
     assert drift.verdict_findings({"v": {"ok": True}}, {"v": {"ok": False}}, [("v", "ok")])
     assert drift.verdict_findings({"v": {"ok": False}}, {"v": {"ok": True}}, [("v", "ok")])
     assert not drift.verdict_findings({"v": None}, {"v": {"ok": False}}, [("v", "ok")])
@@ -383,7 +378,8 @@ def test_the_electrical_length_is_the_ratio_of_two_delays():
         1.0 / 1.02 - 1.0, abs=1e-12)
     assert EL.electrical_length_ratio(freqs, line, line, all_bins) == 0.0
     notch = line.copy()
-    notch[60:64] *= 1e-3                                   # -60 dB: no phase to read
+    NOTCH_SCALE_MINUS_60_DB = 1e-3
+    notch[60:64] *= NOTCH_SCALE_MINUS_60_DB
     kept = EL.transmitting_bins(notch)
     assert not kept[60:64].any() and kept[:60].all() and kept[64:].all()
     with pytest.raises(ValueError, match="contiguous"):
@@ -412,8 +408,9 @@ def test_open_curve_has_no_short_electrical_length():
 
 @pytest.mark.parametrize("scale", [1.02, 1.012, 1.008, .988, .992])
 def test_stored_short_length_mutations(scale, record_property):
-    # Reuse the session's 100 um record, with no extra solve. The L=0 junction
-    # removal leaves a measured bias; this records the asymmetric 1% window.
+    """The L=0 junction removal leaves a measured bias in the short's electrical length, so
+    the 1 % window this test records is asymmetric in the declared-length scale.
+    """
     from dataclasses import replace
     line, live = measured_chain("lumped", "short")
     baseline = assert_short_electrical_length(line, live)[0]

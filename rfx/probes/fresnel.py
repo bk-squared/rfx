@@ -36,7 +36,6 @@ from __future__ import annotations
 import jax.numpy as jnp
 import numpy as np
 
-# Speed of light (match rfx.grid.C0)
 _C0 = 299_792_458.0
 
 
@@ -85,12 +84,10 @@ def extract_fresnel_from_planes(
     inc = np.asarray(inc_acc)
     freqs_arr = np.asarray(freqs)
 
-    # Select frequency band
     if freq_range is not None:
         f_lo, f_hi = freq_range
         band_mask = (freqs_arr >= f_lo) & (freqs_arr <= f_hi)
     else:
-        # Auto-select: frequencies where incident has > 1% of peak power
         inc_power_per_freq = np.sum(np.abs(inc) ** 2, axis=tuple(range(1, inc.ndim)))
         threshold = 0.01 * np.max(inc_power_per_freq)
         band_mask = inc_power_per_freq > threshold
@@ -98,35 +95,26 @@ def extract_fresnel_from_planes(
     if not np.any(band_mask):
         return 0.0
 
-    scat_band = scat[band_mask]  # (n_band, ny, nz) or (n_band, n1, n2)
+    scat_band = scat[band_mask]
     inc_band = inc[band_mask]
 
-    # Average over the non-transverse plane axis to reduce noise
     if scat_band.ndim == 3:
         if transverse_axis == 0:
-            # Average over axis 2 (z), keep axis 1 (y)
-            scat_mag = np.mean(np.abs(scat_band), axis=2)  # (n_band, ny)
+            scat_mag = np.mean(np.abs(scat_band), axis=2)
             inc_mag = np.mean(np.abs(inc_band), axis=2)
         else:
-            # Average over axis 1, keep axis 2
-            scat_mag = np.mean(np.abs(scat_band), axis=1)  # (n_band, nz)
+            scat_mag = np.mean(np.abs(scat_band), axis=1)
             inc_mag = np.mean(np.abs(inc_band), axis=1)
     else:
         scat_mag = np.abs(scat_band)
         inc_mag = np.abs(inc_band)
 
-    # Per-cell spectral ratio: |R(cell, f)| = |scat| / |inc|
-    # Average over band frequencies per cell
     ratio_per_freq_cell = scat_mag / np.maximum(inc_mag, 1e-30)
-    R_per_cell = np.mean(ratio_per_freq_cell, axis=0)  # (n_cells,)
+    R_per_cell = np.mean(ratio_per_freq_cell, axis=0)
 
-    # Incident power per cell (for illumination weighting)
-    inc_cell_power = np.sum(inc_mag ** 2, axis=0)  # (n_cells,)
+    inc_cell_power = np.sum(inc_mag ** 2, axis=0)
 
     if method == "best_aligned":
-        # Among the top 50% illuminated cells, find the minimum ratio.
-        # The minimum corresponds to the cell where scattered and incident
-        # phase fronts are most aligned (least truncation mismatch).
         threshold = np.percentile(inc_cell_power, 50)
         bright = inc_cell_power >= threshold
         if np.any(bright):
@@ -134,7 +122,6 @@ def extract_fresnel_from_planes(
         return float(np.min(R_per_cell))
 
     elif method == "bright_min":
-        # Top 25% illuminated cells, minimum ratio
         threshold = np.percentile(inc_cell_power, 75)
         bright = inc_cell_power >= threshold
         if np.any(bright):

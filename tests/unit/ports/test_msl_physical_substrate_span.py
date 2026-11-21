@@ -20,6 +20,7 @@ from rfx.sources.msl_port import (
 
 
 def _board(direction, n_sub, ground_cells, *, trace_cells=0, nonuniform=False):
+    """The wall indices are independent of the port's coordinate conversion."""
     dx = 254e-6 / n_sub
     lo, hi = ground_cells * dx, (ground_cells + n_sub) * dx
     kwargs = {"dz_profile": np.full(24, dx)} if nonuniform else {}
@@ -39,8 +40,6 @@ def _board(direction, n_sub, ground_cells, *, trace_cells=0, nonuniform=False):
     edges = realized_pec_edge_masks(mask, sheets=tuple(sheets), wires=tuple(wires))
     port = MSLPort(feed_x=4*dx, y_lo=8*dx, y_hi=16*dx, z_lo=lo, z_hi=hi,
                    direction=direction, impedance=50., excitation=None)
-    # Every declared coordinate is an integer multiple of the same pitch;
-    # these indices are independent of the port's coordinate conversion.
     centre = ((4, 12, ground_cells) if direction.endswith("x")
               else (12, 4, ground_cells))
     planes = realized_wall_planes(edges, 2, ij=centre[:2])
@@ -55,6 +54,7 @@ def _board(direction, n_sub, ground_cells, *, trace_cells=0, nonuniform=False):
     ("+y", 4, 8), ("-y", 4, 8),
 ])
 def test_laplace_source_uses_wall_span_for_voltage_and_load(direction, n_sub, ground_cells):
+    """Float32 sigma limits arithmetic precision."""
     grid, port, materials, centre, (lower, upper), _ = _board(direction, n_sub, ground_cells)
     profile = compute_msl_mode_profile(grid, port, 3.66)
     assert profile["n_z_sub"] == upper-lower
@@ -63,7 +63,6 @@ def test_laplace_source_uses_wall_span_for_voltage_and_load(direction, n_sub, gr
     width_axis = {"x": 0, "y": 1}[msl_axis_roles(direction)[1]]
     iw = centre[width_axis]-profile["j_grid_lo"]
     ez = np.asarray(profile["ez_profile"])
-    # Use the wall-derived voltage interval, not profile['n_z_sub'].
     voltage = float(np.sum(ez[iw, :upper-lower])*grid.dx)
     assert voltage == pytest.approx(1., rel=1e-12)
     loaded = setup_msl_port(grid, port, materials, mode_profile=profile)
@@ -71,18 +70,17 @@ def test_laplace_source_uses_wall_span_for_voltage_and_load(direction, n_sub, gr
     power = sum(
         sigma[cell] * ez[cell[width_axis]-profile["j_grid_lo"], cell[2]-lower]**2
         * grid.dx**3 for cell in profile["cell_indices"])
-    # Existing physical load identity; float32 sigma limits arithmetic precision.
     assert voltage**2/power == pytest.approx(port.impedance, rel=1e-6)
     assert not np.any(sigma[:, :, :lower])
     assert not np.any(sigma[:, :, upper:])
 
 
 def test_uniform_source_cells_and_span_metadata_distinguish_edges_from_nodes():
+    """Extraction uses n_hi as the trace plane, an exclusive edge bound."""
     grid, port, materials, _, (lower, upper), _ = _board("+x", 4, 8)
     cells = _msl_yz_cells(grid, port)
     assert {c[2] for c in cells} == set(range(lower, upper))
     span = msl_cross_section_span(grid, port)
-    # Extraction uses n_hi as the trace plane, an exclusive edge bound.
     assert (span["n_lo"], span["n_hi"]) == (lower, upper)
     loaded = setup_msl_port(grid, port, materials)
     sigma = np.asarray(loaded.sigma)-np.asarray(materials.sigma)
@@ -178,7 +176,6 @@ def test_run_and_forward_build_the_same_physical_port(direction, monkeypatch):
         raise Captured
 
     monkeypatch.setattr(source_module, "compute_msl_mode_profile", capture)
-    # Stop at the real mode-setup boundary, before any solve or FDTD scan.
     with pytest.raises(Captured):
         sim.run(n_steps=1, compute_s_params=False, skip_preflight=True)
     with pytest.raises(Captured):
