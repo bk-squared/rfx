@@ -1,4 +1,5 @@
-"""Two-stage refusal before allocation, with independent byte estimates."""
+"""Two-stage refusal before allocation, with independent byte estimates.
+Two FIR q=10 passes over the first witness window's 20,000 original samples leave ceil(ceil(20000/10)-20)/10 - 20 = 178 samples in one channel."""
 
 
 
@@ -38,9 +39,6 @@ def detail(value):
     return value
 
 
-# The first witness window has 20,000 original samples. FIR q=10 twice
-# leaves ceil(ceil(20000/10)-20)/10 - 20 = 178 samples, one channel.
-# L=floor(.33*178)=58, M=120, k=58; the centered one-mode signal has rank 2.
 STAGE1 = 1.87 * 16 * (3*120*58 + 120*58 + 2*58*58 + 4*58**2)
 STAGE2 = 1.71 * 16 * 5 * 20000 * 2
 
@@ -49,6 +47,7 @@ STAGE2 = 1.71 * 16 * 5 * 20000 * 2
     (1, 1, STAGE1), (2, (STAGE1 + STAGE2)/2, STAGE2),
 ], ids=['stage1', 'stage2'])
 def test_witness_refuses_before_stage_allocation(monkeypatch, stage, bound, needed):
+    """The centered one-mode signal has rank 2."""
     assert STAGE1 < (STAGE1 + STAGE2)/2 < STAGE2
     pencil = Mock(wraps=rd._pencil)
     fit = Mock(wraps=rd._fit_residues)
@@ -71,6 +70,7 @@ def test_witness_refuses_before_stage_allocation(monkeypatch, stage, bound, need
     (1, 1, STAGE1), (2, (STAGE1 + STAGE2)/2, STAGE2),
 ], ids=['stage1', 'stage2'])
 def test_refusal_carries_dimensions(monkeypatch, stage, bound, needed):
+    """The pencil dimensions are L=floor(.33*178)=58, M=120 and k=58."""
     monkeypatch.setattr(rd, 'IDENTIFY_MEMORY_BOUND_BYTES', bound)
     y = record()
     with pytest.raises(rd.IdentificationMemoryRefused) as caught:
@@ -92,8 +92,7 @@ def test_default_verdict_is_bit_identical_with_check_disabled(monkeypatch):
 
 @pytest.mark.parametrize('stage', [1, 2], ids=['stage1', 'stage2'])
 def test_refusing_rss_is_flat_in_fresh_processes(tmp_path, stage):
-    # Stage 1 would allocate about 194/395/601 MiB, all below 1 GiB.
-    # The 10 MiB envelope is checked before status/text, including in mutations.
+    """Stage 1 would allocate about 194/395/601 MiB, all below 1 GiB."""
     lengths = (2100, 3000, 3700) if stage == 1 else (40000, 50000, 60000)
     if stage == 1:
         for n in lengths:
@@ -185,7 +184,6 @@ def test_forward_callback_does_not_swallow_refusal(monkeypatch):
     def identify_window(window):
         return rd.identify(window, .0001, 0, len(window), freq_max=.5).s
 
-    # JAX wraps exceptions crossing pure_callback; the original text survives.
     with pytest.raises(Exception) as caught:
         jax.block_until_ready(rj.host_poles(identify_window, jnp.asarray(y), 8, .0001, [.4]))
     assert str(direct.value) in str(caught.value)
@@ -259,6 +257,7 @@ def test_we_refusal_keeps_cavity_main_s(monkeypatch, entry):
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_prerun_refuses_before_any_step_with_same_estimate(monkeypatch, entry):
+    """With dt=1.9065748695310057e-12 and bin max 18 GHz overriding the spec's 1 GHz, q=7 gives Nd=ceil(2000/7)-20=266, L=87, M=179 and k=min(179,261)=179."""
     from importlib import import_module
     from tests.unit.sparams.test_ringdown_run import _box, FREQS, MM
 
@@ -280,8 +279,6 @@ def test_prerun_refuses_before_any_step_with_same_estimate(monkeypatch, entry):
     with pytest.raises(rd.IdentificationMemoryRefused) as after:
         rd.identify(np.ones((4000, 3)), float(sim._build_grid().dt), 2000, 4000,
                     freq_max=18e9)
-    # dt=1.9065748695310057e-12, bin max 18 GHz overrides spec's 1 GHz:
-    # q=7, Nd=ceil(2000/7)-20=266, L=87, M=179, k=min(179,261)=179.
     needed = 1.87 * 16 * (3*179*87*3 + 179*179 + 2*179*87*3 + 4*179**2)
     for exc in (before.value, after.value):
         assert (exc.n_win, exc.Nd, exc.C, exc.L, exc.needed_bytes) == (2000, 266, 3, 87, needed)

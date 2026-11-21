@@ -8,6 +8,7 @@ ceil(d / (C0 dt)) from the farthest injecting point to the farthest record
 (0 for the whole-domain reader of until_decay). A waveguide port's end is its
 applied E table held at its last entry, never the analytic v_inc_t. A lane
 that refuses the declaration is a "not reachable" row, its refusal pinned.
+TRACED_N is past the pulse end, so a judgeable record has a concrete end.
 """
 import ast
 import dataclasses
@@ -56,7 +57,6 @@ def _hand_tfsf_geometry(cfg, grid, inside=False):
     if hasattr(cfg, "m"):
         paths = (indices @ cfg.m - cfg.source_p) * grid.dx / np.linalg.norm(cfg.m)
     elif hasattr(cfg, "d_aux"):
-        # Builder idx_E = (i*cos + j*sin)*dx/d_aux + src_idx.
         mapped = ((indices[:, 0]*cfg.cos_theta + indices[:, 1]*cfg.sin_theta)
                   * grid.dx / cfg.d_aux + cfg.src_idx)
         paths = (mapped - cfg.src_idx) * cfg.d_aux
@@ -64,9 +64,6 @@ def _hand_tfsf_geometry(cfg, grid, inside=False):
         sign = 1 if cfg.direction == "+x" else -1
         paths = sign * (cfg.i0_x + indices[:, 0] - cfg.x_lo - cfg.src_x) * cfg.dx_1d / cfg.cos_theta
     else:
-        # Slab line: the source margin continues the end cell beside the box and
-        # the mapped part is the realized x cells, so the path to a corner is the
-        # node distance on the grid plus the margin cells (graded x admitted).
         cells = np.asarray(grid.cells("x"), dtype=float)
         nodes = np.array([grid.node_of("x", int(i)) for i in indices[:, 0]])
         if cfg.direction == "+x":
@@ -93,15 +90,16 @@ def _hand_tfsf_samples(cfg, grid, n):
     return np.asarray(cfg.src_amp * samples)
 
 
-# 40 mm graded x lines; the end cells equal dx (CPML rule). "-graded-wide" is 1 mm cells beside the box and 2 mm across it.
 GRADED_X = {"-graded": (.002, np.array([.002] * 5 + [.001] * 20 + [.002] * 5)),
             "-graded-wide": (.001, np.array([.001] * 10 + [.002] * 10 + [.001] * 10))}
 
 
 def _s2b_tfsf(kind):
+    """The default pulse leaves a near-DC field."""
     from rfx import Simulation
     suffix = next((g for g in ("-graded-wide", "-graded") if kind.endswith(g)), "")
     dx, profile = GRADED_X.get(suffix, (.002, None))
+    assert profile is None or (profile[0] == dx and profile[-1] == dx), "Graded x end cells must equal dx for CPML."
     sim = Simulation(freq_max=10e9, domain=(.040, .024, .024), dx=dx, boundary="cpml",
                      cpml_layers=8, **({"dx_profile": profile} if suffix else {}))
     kind = kind.removesuffix(suffix)
@@ -110,7 +108,6 @@ def _s2b_tfsf(kind):
                "closed-oblique": {"closed_box": True, "theta_deg": 45., "polarization": "s"},
                "bloch": {"angle_deg": 20., "waveform": "modulated_gaussian", "bandwidth": .2},
                "methodB": {"angle_deg": 20., "method": "methodB"}}[kind]
-    # Use modulated Gaussian: the default pulse leaves a near-DC field.
     sim.add_tfsf_source(f0=5e9, **({"bandwidth": .8, "margin": 3,
                                   "waveform": "modulated_gaussian"} | options))
     return sim
@@ -156,11 +153,12 @@ def _analytic_envelope(samples):
 
 
 def _envelope(x, dt, f0, bw, pad=8):
-    """|analytic signal| through a Gaussian window on the pulse band, zero-padded (no wrap)."""
+    """|analytic signal| through a Gaussian window on the pulse band, zero-padded (no wrap).
+    The applied analytic waveform is exp(-j w t)."""
     x = np.asarray(x)
     n = x.shape[0]
     f = np.fft.fftfreq(pad * n, dt)
-    band = (f < 0) if np.iscomplexobj(x) else (f > 0)   # applied analytic waveform is exp(-j w t)
+    band = (f < 0) if np.iscomplexobj(x) else (f > 0)
     g = np.where(band, np.exp(-((np.abs(f) - f0) / (f0 * bw / 2)) ** 2), 0.0)
     return np.abs(np.fft.ifft(2 * g * np.fft.fft(x, pad * n))[:n])
 
@@ -198,6 +196,7 @@ def test_s2b_r1_envelope_estimator_self_check(check, delay, record_property):
 
 @pytest.mark.parametrize("kind", TF_KINDS)
 def test_s2b_r1_vacuum_corner_measurement(kind, record_property):
+    """The computed end must not be early because an earlier graded slab line arrived up to 1.3 steps before its node path with an entry-face floor up to 3.7e-4 lifting the 1e-3 end."""
     from rfx.sources.tfsf import tfsf_from_declaration
     sim = _s2b_tfsf(kind)
     grid = sim._build_realized_grid()
@@ -240,9 +239,6 @@ def test_s2b_r1_vacuum_corner_measurement(kind, record_property):
     print(f"R1 {kind}: {measurements}", file=sys.stderr)
     for row in measurements:
         if "graded" in kind:
-            # Safe side only (design amendments 8 and 9): a graded slab line arrives
-            # up to 1.3 steps before its node path, and an entry-face floor up to
-            # 3.7e-4 lifts the 1e-3 end; the computed end must not be early.
             assert row["measured_peak"] <= row["predicted_peak"] + 1, (kind, row)
             assert row["measured_envelope_end"] <= row["predicted_envelope_end"] + 2, (kind, row)
             continue
@@ -421,6 +417,7 @@ def test_s2b_r4_rcs_ntff_coverage(n, monkeypatch):
 
 @pytest.mark.parametrize("fallback", [False, True, "spectral"])
 def test_s2b_r5_sweep_member_witnesses(fallback):
+    """The spectral fallback record is needed to distinguish sweep-member witnesses."""
     import copy
     from rfx import Box, Simulation
     from rfx.vmap_sweep import vmap_material_sweep
@@ -434,8 +431,6 @@ def test_s2b_r5_sweep_member_witnesses(fallback):
         sim.add_source((.0071, .0149, .0153), "ez", amplitude_kind="current")
         sim.add_dft_plane_probe(axis="x", coordinate=.023, freqs=np.array([5e9]), name="read")
     if fallback == "spectral":
-        # D2's short, bin-free witnesses coincide; retain D2 and add a
-        # spectral fallback record whose member witnesses are distinguishable.
         sim.add_dft_plane_probe(axis="x", coordinate=.023, freqs=np.array([5e9]), name="read")
     sim.add_probe((.0231, .0161, .0139), "ez")
     values = [2., 10.] if fallback else [2., 6.]
@@ -473,11 +468,10 @@ def test_s2b_realized_accumulator_corners_and_forward_jit(kind):
     from rfx.api._spec import ForwardResult
     from rfx.measurement.coverage import accumulator_coverage
 
-    # Unequal node spacings expose both index/physical-coordinate confusion
-    # and half-open crop endpoints; the drive is off after sample 2.
     nodes = [np.array([0., 1., 3., 6., 10.])*C0,
              np.array([0., 2., 5., 9., 14.])*C0,
              np.array([0., 3., 7., 12., 18.])*C0]
+    assert all(np.unique(np.diff(axis)).size > 1 for axis in nodes), "Unequal node spacings expose index/physical-coordinate confusion and half-open crop endpoints."
     grid = SimpleNamespace(shape=(5, 5, 5), dt=1.,
                            node_of=lambda a, i: nodes["xyz".index(a)][i])
     result = ForwardResult(time_series=np.zeros((40, 0)), grid=grid, dt=1.)
@@ -500,7 +494,6 @@ def test_s2b_realized_accumulator_corners_and_forward_jit(kind):
     row, = coverage.rows()
     assert row["end_step"] == 2 + math.ceil(np.linalg.norm(far))
     assert row["verdict"] == "covered"
-    # Forward preserves named rows/reasons as static metadata, not string leaves.
     carried = jax.jit(lambda x: ForwardResult(time_series=x,
         settling_accumulator_end_index=coverage.max_end(), settling_coverage=coverage))(
             jnp.zeros((40, 0)))
@@ -515,6 +508,7 @@ class _Loop(Exception):
 
 
 def _scene(kind, graded):
+    """The builders' waveform never ends."""
     if kind == "coax":
         from rfx import Simulation
         mesh = {"dz_profile": np.full(60, .001)} if graded else {}
@@ -524,9 +518,7 @@ def _scene(kind, graded):
         return sim
     sim = builders.build(ROWS[kind], "run_nonuniform" if graded else "run_uniform", graded=graded)
     if kind == "tfsf" and graded:
-        # A plane wave along x needs uniform x cells; y and z stay graded.
         sim._dx_profile = np.full_like(np.asarray(sim._dx_profile), builders.DX)
-    # A pulse that ends inside the record (the builders' waveform never ends).
     sim._ports = [dataclasses.replace(p, waveform=PULSE) for p in sim._ports]
     sim._msl_ports = [dataclasses.replace(p, waveform=PULSE) for p in sim._msl_ports]
     return sim
@@ -631,6 +623,7 @@ CASES = [(kind, graded) for kind in (*ROWS, "coax") for graded in (False, True)]
 @pytest.mark.parametrize("kind,graded", CASES,
                          ids=[f"{k}-{'graded' if g else 'uniform'}" for k, g in CASES])
 def test_end_is_the_latest_end_of_the_applied_tables(kind, graded, monkeypatch):
+    """The coaxial drivers read every built E and H table with transit to their witness probes."""
     from rfx.measurement.record_end import drive_end, injection_end
 
     if (kind, graded) in NOT_REACHABLE:
@@ -644,8 +637,6 @@ def test_end_is_the_latest_end_of_the_applied_tables(kind, graded, monkeypatch):
     grid = args[0]
     dt = float(grid.dt)
     if kind == "coax":
-        # The coaxial drivers read every built E and H table with transit to
-        # their witness probes; run() and forward() refuse a coaxial port.
         sources, mags, probes = kw["sources"], kw["mag_sources"], kw["probes"]
         assert sources and mags and probes
         ends = []
@@ -660,16 +651,11 @@ def test_end_is_the_latest_end_of_the_applied_tables(kind, graded, monkeypatch):
     whole, probed = _expected(kind, sim, grid, call)
     tfsf = kw.get("tfsf")
     configs = list(kw.get("waveguide_ports") or ())
-    # until_decay's reader: TF/SF incident transit through its realized box.
     assert drive_end(grid, N, sources=kw.get("sources") or (), mag_sources=kw.get("mag_sources") or (),
                      tfsf=tfsf, waveguide_ports=configs) == whole
     if configs:
-        # The record a run returns holds the analytic incident voltage; the
-        # scene is chosen so that it ends elsewhere than the applied E table.
         configs = [cfg._replace(v_inc_t=_analytic_v_inc(cfg, dt)) for cfg in configs]
         assert _off(configs[0].v_inc_t) != _off(configs[0].e_inc_table, edge=True)
-    # The run()/forward() settling reader: the declarations plus the built
-    # waveguide configs, transit to the user probes.
     assert injection_end(N, dt, records=sim._probes, grid=grid, sim=sim,
                          waveguide_ports=configs) == probed
 
@@ -695,9 +681,8 @@ def test_traced_and_still_on_read_one_text_on_every_path():
 
 
 TRACED_DZ = [0.5e-3] * 6 + [0.3e-3] * 5
-# Below the Courant limit of the 0.5 x 0.5 x 0.3 mm cell and fixed, so only the mesh is traced.
 TRACED_DT = 0.9 / (C0 * math.sqrt(2 / 0.5e-3 ** 2 + 1 / 0.3e-3 ** 2))
-TRACED_N = 900   # past the pulse end, so a judgeable record has a concrete end
+TRACED_N = 900
 
 
 def _traced_dz_scene(kind, dz):
@@ -754,7 +739,6 @@ CALLERS = ("rfx/api/_settling.py", "rfx/probes/sparam_driver.py", "rfx/sparams/_
            "rfx/sparams/_mixed_stages.py", "rfx/sparams/coax.py", "rfx/runners/uniform.py",
            "rfx/runners/nonuniform.py", "rfx/measurement/rcs.py", "rfx/measurement/decay.py",
            "rfx/measurement/settling.py", "rfx/ringdown/__init__.py")
-# An off step from a drive table: a threshold relative to the table's peak.
 OFF_STEP = re.compile(r"nonzero\([^\n]*>[^\n]*peak")
 
 
@@ -798,7 +782,6 @@ def test_floquet_end_is_the_same_under_an_outer_jit():
     assert host is not None and seen == [host]
 
 
-# S2a: flux starts at the same applied-drive end as energy.
 S2_BOX = ((.012, .012, .012), (.028, .028, .028))
 
 
@@ -818,16 +801,13 @@ def _s2_scene(graded=False, boundary="cpml"):
 def test_s2_rule_first_eligible_check(kind, min_steps, n_d, monkeypatch):
     from rfx.measurement.decay import DecayStop, FluxStop, finish_decay
 
-    # Realized default pulse; the expected end uses this file's independent sum-free
-    # table inspection, never record_end or a decay constructor/helper.
     with monkeypatch.context() as patch:
         _, kw = _loop_call(patch, _s2_scene(), "source")
     n_end = max(_off(_table(src)) for src in kw["sources"])
     assert n_end == 183
     interval, consecutive = 50, 2
-    # thr=2 makes every positive level below threshold from the first check,
-    # isolating the start gate from the physical ringdown time.
     common = dict(thr=2., min_steps=min_steps, interval=interval, n_end=n_end, n_d=n_d)
+    assert common["thr"] > 1., "A threshold above one isolates the start gate from the physical ringdown time."
     if kind == "energy":
         rule = DecayStop(**common, consecutive=consecutive)
     else:
@@ -938,8 +918,6 @@ def test_s2_direct_constructor_and_still_on_cap(monkeypatch):
     rule = make_field_decay_stop(grid, thr=2., min_steps=50, interval=50,
                                 max_steps=350, sources=sources)
     assert rule.n_end == expected
-    # A shorter cap cuts the pulse while it is still injecting. Peak tracking
-    # remains live, but the rule cannot stop; the diagnostic names the drive.
     capped = make_field_decay_stop(grid, thr=2., min_steps=0, interval=50,
                                   max_steps=100, sources=sources)
     assert capped.n_end is None

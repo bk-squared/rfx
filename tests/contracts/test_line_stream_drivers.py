@@ -10,6 +10,7 @@ comparisons and in-order sums, so the scan driver must equal the loop
 driver bit for bit on the same inputs. Each column below is one sample's
 line: several runs, an empty piece, an abutting pair, equal codes across a
 gap, an empty interval and runs reaching past the support.
+Code 0 is the background.
 """
 import jax
 import jax.numpy as jnp
@@ -18,15 +19,13 @@ import pytest
 
 from rfx.model.line_streams import _merge_stream, _own_stream
 
-# Merge stream: sorted ends per column (low = ends[:-1], high = ends[1:]),
-# one code and value per piece; code 0 is the background.
 MERGE_ENDS = np.array([
-    [-1., -.5, 0., .3125, 1.],        # four runs of alternating codes
-    [-1., -.25, -.25, .375, 1.],      # an empty piece of code 2 inside a run
-    [-1., 0., .5, .5, 1.],            # an abutting pair of one code, then an empty piece
-    [-1., -.375, .25, .5, 1.],        # code 1 on both sides of a background gap
-    [-1., -1., -1., .5, 1.],          # empty pieces first
-    [-1., -.75, .125, .625, 1.],      # one medium throughout
+    [-1., -.5, 0., .3125, 1.],
+    [-1., -.25, -.25, .375, 1.],
+    [-1., 0., .5, .5, 1.],
+    [-1., -.375, .25, .5, 1.],
+    [-1., -1., -1., .5, 1.],
+    [-1., -.75, .125, .625, 1.],
 ], dtype=np.float32).T
 MERGE_CODES = np.array([
     [0, 1, 2, 1],
@@ -44,7 +43,6 @@ MERGE_VALUES = np.array([
     [2., 3., 4., 1.],
     [4., 4., 4., 4.],
 ], dtype=np.float32).T
-# The positive runs (lo, hi, eps) each column must merge to.
 MERGE_RUNS = [
     [(-1., -.5, 1.), (-.5, 0., 4.), (0., .3125, 2.), (.3125, 1., 4.)],
     [(-1., -.25, 1.), (-.25, .375, 4.), (.375, 1., 1.)],
@@ -54,15 +52,13 @@ MERGE_RUNS = [
     [(-1., 1., 4.)],
 ]
 
-# Own-run stream: intervals sorted by lo (an empty interval sorts last at
-# FAR), whether each is planar, support [-HALF, HALF].
 FAR, HALF = 10., .5
 OWN_LINES = [
-    [(-.375, -.25, True), (-.125, 0., True), (.125, .25, True), (FAR, FAR, True)],    # three runs
-    [(-.375, -.125, True), (-.125, .125, True), (FAR, FAR, True), (FAR, FAR, True)],  # abutting pair
-    [(-1., -.25, True), (.25, .375, False), (FAR, FAR, False), (FAR, FAR, True)],     # past the support
-    [(-.25, .125, True), (0., .25, False), (FAR, FAR, True), (FAR, FAR, True)],       # overlap, mixed
-    [(0., .125, True), (FAR, FAR, True), (FAR, FAR, True), (FAR, FAR, True)],         # one interval
+    [(-.375, -.25, True), (-.125, 0., True), (.125, .25, True), (FAR, FAR, True)],
+    [(-.375, -.125, True), (-.125, .125, True), (FAR, FAR, True), (FAR, FAR, True)],
+    [(-1., -.25, True), (.25, .375, False), (FAR, FAR, False), (FAR, FAR, True)],
+    [(-.25, .125, True), (0., .25, False), (FAR, FAR, True), (FAR, FAR, True)],
+    [(0., .125, True), (FAR, FAR, True), (FAR, FAR, True), (FAR, FAR, True)],
 ]
 OWN_THIN = [True, True, False, False, True]
 OWN_INSIDE = [.375, .5, .375, .5, .125]
@@ -74,6 +70,7 @@ def _merge_inputs():
 
 
 def _own_inputs():
+    """An empty interval sorts last at FAR."""
     lo, hi, flat = (np.array([[line[i][k] for line in OWN_LINES] for i in range(4)])
                     for k in range(3))
     half = jnp.full(lo.shape[1:], HALF, dtype=jnp.float32)
@@ -92,6 +89,7 @@ def _assert_bitwise(a, b):
 
 @pytest.mark.parametrize('jit', [False, True], ids=['eager', 'jit'])
 def test_merge_scan_equals_loop_bitwise(jit):
+    """The merge stream emits one run per piece and the open run."""
     inputs = _merge_inputs()
     loop = _merge_stream(jnp, *inputs, scan=False)
 
@@ -100,7 +98,7 @@ def test_merge_scan_equals_loop_bitwise(jit):
 
     _assert_bitwise((jax.jit(scan) if jit else scan)(*inputs), loop)
     lo, hi, eps = (np.asarray(a) for a in loop)
-    assert lo.shape[0] == MERGE_ENDS.shape[0]  # one run per piece and the open run
+    assert lo.shape[0] == MERGE_ENDS.shape[0]
     for column, runs in enumerate(MERGE_RUNS):
         positive = hi[:, column] > lo[:, column]
         found = list(zip(lo[positive, column], hi[positive, column], eps[positive, column]))

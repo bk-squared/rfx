@@ -72,20 +72,16 @@ def arrays(value, path=""):
 
 @pytest.mark.parametrize("lane", LANES)
 def test_device_material_arrays_match_base(lane, monkeypatch):
+    """The graded slab's x extent is ceil(11/2) + three ghosts in (rank, x, y, z) order."""
     from rfx.stepping import prepared
 
-    # cb4cd5c16: uniform/graded take (grid, MaterialArrays, n_steps);
-    # slab takes sharded_materials, graded slab takes it positionally;
-    # subgrid takes coarse/fine.
-    # MaterialArrays and ComponentMaterials below are written out from that
-    # commit, never derived from the current product or an assembly helper.
     shape = (15, 15, 15) if lane == "cpml" else (11, 11, 11)
     if lane in ("distributed_v2_run", "distributed_v2_forward"):
-        shape = (11, 11, 11)  # whole-domain inputs to prepare_uniform
+        shape = (11, 11, 11)
     elif lane == "distributed_v2_tfsf":
-        shape = (15, 15, 15)  # whole-domain CPML inputs to prepare_uniform
+        shape = (15, 15, 15)
     elif lane.startswith("distributed_nu"):
-        shape = (2, 9, 11, 11)  # rank, ceil(11/2) + three ghosts, y, z
+        shape = (2, 9, 11, 11)
     expected = {}
     for prefix, size in [("materials", shape)] + (
         [("fine", (21, 21, 13))] if lane == "subgridded" else []
@@ -244,7 +240,8 @@ def test_device_material_arrays_match_base(lane, monkeypatch):
 
 
 def test_pad_device_array_updates_match_base(monkeypatch):
-    """Also catch throwaway device arrays that never reach the stepping call."""
+    """Also catch throwaway device arrays that never reach the stepping call.
+    The frozen baseline copies three float32 material arrays per axis with one low-pad write and two high writes (boundary + pad)."""
     from jax._src.numpy.array_methods import _IndexUpdateRef
     import rfx.model.materials as assembly
 
@@ -274,6 +271,4 @@ def test_pad_device_array_updates_match_base(monkeypatch):
     sim.add_material("glass", eps_r=2.0)
     sim.add(Box((0.0, 0.002, 0.002), (0.01, 0.006, 0.006)), material="glass")
     sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
-    # Base copies three float32 material arrays: for each axis, one low pad
-    # write and two high writes (boundary + pad). No dispersion in this scene.
     assert writes == [((15, 15, 15), "float32")] * (3 * (1 + 2) * 3)

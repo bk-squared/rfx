@@ -88,10 +88,11 @@ def test_b2_planar_and_box_scope(graded, cylinder):
 
 @pytest.mark.parametrize('normal', [(0.6, 0.8, 0.), (0.48, 0.6, 0.64), (1., 0., 0.)])
 def test_b2c_depth_cdf(normal):
-    # Row x, transverse widths 0.5 and 0.4 mm, midpoint quadrature.
-    a, b = sorted((abs(.0005 * normal[1]) / 2, abs(.0004 * normal[2]) / 2), reverse=True)
+    TRANSVERSE_Y_WIDTH_M = .0005
+    TRANSVERSE_Z_WIDTH_M = .0004
+    a, b = sorted((abs(TRANSVERSE_Y_WIDTH_M * normal[1]) / 2, abs(TRANSVERSE_Z_WIDTH_M * normal[2]) / 2), reverse=True)
     points = (np.arange(2000) + .5) / 2000 - .5
-    depths = .0005 * normal[1] * points[:, None] + .0004 * normal[2] * points[None, :]
+    depths = TRANSVERSE_Y_WIDTH_M * normal[1] * points[:, None] + TRANSVERSE_Z_WIDTH_M * normal[2] * points[None, :]
     for t in (-a-b, -a+b/2, 0., a-b/2, a+b):
         expected = np.count_nonzero(depths < t) / 2000**2
         np.testing.assert_allclose(_depth_cdf(np, np.asarray(t), a, b), expected, atol=1e-5, rtol=0)

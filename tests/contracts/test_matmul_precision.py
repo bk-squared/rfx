@@ -58,7 +58,6 @@ def _unprecise_calls(source: str) -> list[int]:
         f = node.func
         if not isinstance(f, ast.Attribute):
             continue
-        # The last two names: jnp.einsum, lax.conv and jax.lax.conv alike.
         owner = (f.value.id if isinstance(f.value, ast.Name)
                  else f.value.attr if isinstance(f.value, ast.Attribute) else None)
         if (owner, f.attr) in _CONTRACTIONS and not any(
@@ -104,9 +103,6 @@ def test_the_lowered_check_reads_the_precision():
     assert _assert_all_highest(high.as_text(), "HIGHEST matmul") == 1
 
 
-# ---------------------------------------------------------------------------
-# The entry points
-# ---------------------------------------------------------------------------
 
 def _geometry_grid():
     from rfx.grid import Grid
@@ -168,7 +164,8 @@ def test_conformal_weights_sdf():
 
 
 def test_ring_down_completion_inside_forward():
-    """``forward(ringdown=)``: the plain DFT, the tail and the residue solve."""
+    """``forward(ringdown=)``: the plain DFT, the tail and the residue solve.
+    The completed S is lowered because jit drops what the output does not use."""
     from rfx.ringdown import RingdownSpec
     from tests.unit.sparams.test_ringdown_run import FREQS, _box
     sim = _box("uniform")
@@ -177,7 +174,6 @@ def test_ring_down_completion_inside_forward():
     def f(e):
         r = sim.forward(n_steps=300, skip_preflight=True, eps_override=e,
                         port_s11_freqs=FREQS, ringdown=RingdownSpec())
-        # The completed S, not r.s_params: jit drops what the output does not use.
         return r.ringdown.s_params, r.ringdown.s_params_long
 
     text = jax.jit(f).lower(jnp.full(shape, 2.2, jnp.float32)).as_text()
@@ -193,7 +189,7 @@ def test_current_moment_monitor_and_its_far_field():
     sim.add_current_moment_monitor((2e-3, 2e-3, 2e-3), (10e-3, 10e-3, 10e-3),
                                    block_size=4e-3, freqs=np.array([4e9, 5e9]))
     theta, phi = np.array([0.3, 1.2]), np.array([0.4])
-    box = ((7e-3, 5e-3, 5e-3), (8e-3, 7e-3, 7e-3))   # 2 x 3 x 3 cells, inside the slab
+    box = ((7e-3, 5e-3, 5e-3), (8e-3, 7e-3, 7e-3))
 
     def f(eps_r):
         fr = sim.forward(design_box=box, design_eps_override=jnp.ones((2, 3, 3)) * eps_r,
@@ -206,6 +202,7 @@ def test_current_moment_monitor_and_its_far_field():
 
 
 def test_ntff_far_field():
+    """The NTFF box is held fixed because forward()'s own box carries traced frequencies under jit."""
     from rfx import Simulation
     from rfx.measurement.farfield import compute_far_field_jax
     sim = Simulation(freq_max=12e9, domain=(12e-3, 12e-3, 12e-3), dx=1e-3,
@@ -216,9 +213,6 @@ def test_ntff_far_field():
     grid = sim._build_grid()
     theta, phi = jnp.array([0.3, 1.2]), jnp.array([0.0, 0.7])
 
-    # The box comes from a concrete run: forward()'s own box carries traced
-    # frequencies under jit, so the transform is lowered
-    # over the accumulated data with the box held fixed.
     fr = sim.forward(n_steps=10, skip_preflight=True)
 
     def f(data):
@@ -281,16 +275,14 @@ def test_ring_down_completion_gradient():
 
 @pytest.mark.parametrize("shape", [(8, 8), (6, 6, 6)])
 def test_topology_density_filter(shape):
-    """The density filter's convolutions feed the permittivity of a design."""
+    """The density filter's convolutions feed the permittivity of a design.
+    Only the convolution on the density stays in the program because the normalising convolution of a constant is evaluated while staging."""
     from rfx.topology import apply_density_filter
 
     def filt(r):
-        # The filter turns its radius into an int with jnp.ceil: keep that
-        # constant arithmetic concrete so the filter can be staged at all.
+        """The filter turns its radius into an int with jnp.ceil, so constant arithmetic must stay concrete for staging."""
         with jax.ensure_compile_time_eval():
             return apply_density_filter(r, 2.0, dtype='float32')
 
     text = jax.jit(filt).lower(jnp.ones(shape, jnp.float32)).as_text()
-    # The normalising convolution of a constant is evaluated while staging;
-    # the one on the density stays in the program.
     assert _assert_all_highest(text, f"density filter {len(shape)}-D") >= 1

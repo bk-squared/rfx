@@ -72,6 +72,7 @@ repository: its note is ``20260903_cv26_oblique_defect_diagnosis.md`` on the
 unmerged branch ``agent/issue-888-oblique-diagnosis`` (831ea3c). The citable
 copy is #888 comment 5525810073, which carries the measurement and names that
 branch and sha; cited as history, not as something a reader can open here.
+MEASURED when the lane was built: at the fast rig the residual ran 3.2e-07 (0 deg), 5.7e-04 (30 deg), 6.8e-04 (45 deg), 2.0e-03 (60 deg) and 2.4e-01 (70 deg) -- two decades of clear air between the angles the rig resolves and the one it does not.
 """
 
 from __future__ import annotations
@@ -89,36 +90,15 @@ from rfx.stepping.tfsf_2d import update_tfsf_2d
 C0 = 299_792_458.0
 ETA_0 = math.sqrt(4e-7 * math.pi / 8.8541878128e-12)
 DX_M = 1.0e-3
-DT_2D = 0.99 / math.sqrt(2.0) * DX_M / C0    # rfx/grid.py 2-D TMz Courant
+DT_2D = 0.99 / math.sqrt(2.0) * DX_M / C0
 DT_3D = 0.99 / math.sqrt(3.0) * DX_M / C0
 F0_HZ = 10.0e9
-CUTOFF_ARG = math.sqrt(math.log(1000.0))     # cv26's bandwidth_for
+CUTOFF_ARG = math.sqrt(math.log(1000.0))
 
-# A fit whose residual exceeds this has not resolved the field into two modes;
-# its |B/A| is not a measurement. MEASURED when this lane was built, not chosen: at
-# the fast rig the residual ran 3.2e-07 (0 deg), 5.7e-04 (30 deg), 6.8e-04 (45 deg),
-# 2.0e-03 (60 deg) and 2.4e-01 (70 deg) -- two decades of clear air between the
-# angles the rig resolves and the one it does not. The gate still checks every angle
-# it measures against this limit; the per-angle readings themselves are no longer
-# pinned by a test.
 FIT_RESID_LIMIT = 1.0e-2
 
-# Both 2-D rigs here -- and GRAZE_RIG in the test file -- run at DX_M / F0_HZ
-# above, 29.98 cells per free-space wavelength. They differ in grid EXTENT and
-# record LENGTH, never in resolution, so none of them says anything about a
-# coarser or finer mesh (module docstring; asserted, not asserted-in-prose, by
-# test_the_declared_domain_names_the_resolution_it_was_measured_at).
-# measure_aux_echo_1d is the exception: cv04's 3-15 GHz band, ~20-100 cells per
-# wavelength. See its docstring.
-#
-# The fast rig: small grid, short record, 48 sample positions. Separates the
-# shipped absorber (5e-02) from the derived one (3e-06) by three decades in
-# about 7 s per angle.
 FAST_RIG = {"nx": 150, "n_steps": 2500, "n_samp": 48}
-# The full rig, for the angles the fast one cannot resolve.
 FULL_RIG = {"nx": 400, "n_steps": 12000, "n_samp": 96}
-# Cells per free-space wavelength, stated once so the domain claim names the
-# resolution it was measured at rather than only the angle.
 CELLS_PER_WAVELENGTH = C0 / F0_HZ / DX_M
 
 
@@ -155,6 +135,7 @@ def measure_aux_reflection_2d(theta_deg: float, *, nx: int, n_steps: int,
     ``aux_cpml_order``, ``aux_cpml_kappa_max``, ``aux_cpml_r_asymptotic``);
     passing nothing measures the SHIPPED absorber.
     Also returns freqs_hz, ratio, resid, f0_bin_hz, f0_bin, f0_bin_resid, and median.
+    One rectangular FFT of the whole record reads the pulse's position in the window, by up to 50 % at the fast-rig 60 deg and grazing-rig 80 deg rows.
     """
     bw = bandwidth_for(theta_deg) if bw is None else float(bw)
     cfg, st = init_tfsf_2d(nx, 4, DX_M, DT_2D, cpml_layers=20, tfsf_margin=5,
@@ -165,15 +146,12 @@ def measure_aux_reflection_2d(theta_deg: float, *, nx: int, n_steps: int,
                                 n_samp).astype(int))
     ii = jnp.asarray(idx)
     rec = np.empty((n_steps, idx.size), dtype=np.complex64)
-    # The record window starts 3 tau before the pulse peak, not at t = 0: one rectangular FFT of the whole
-    # record reads the pulse's position in the window, by up to 50 % at the fast-rig 60 deg and grazing-rig
-    # 80 deg rows. With t0 = 3 tau the window starts at step 0, as before.
     n0 = int(round((float(cfg.src_t0) - 3.0 * float(cfg.src_tau)) / DT_2D))
     for n in range(n0 + n_steps):
         st = update_tfsf_2d(cfg, st, DX_M, DT_2D, float(n) * DT_2D)
         if n >= n0:
             rec[n - n0] = np.asarray(st.ez_2d[ii, 0])
-    E = np.fft.fft(np.conj(rec), axis=0)          # the oblique lane's convention
+    E = np.fft.fft(np.conj(rec), axis=0)
     f = np.fft.fftfreq(n_steps, d=DT_2D)
     w = np.exp(-((f - F0_HZ) / (F0_HZ * bw)) ** 2)
     band = (f > 0) & (w >= amp_frac)

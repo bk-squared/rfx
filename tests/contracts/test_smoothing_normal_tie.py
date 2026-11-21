@@ -2,6 +2,7 @@
 
 Geometry and effective-tie counts are evaluated independently in float64.
 The closed forms use declared face normals and one-dimensional fill only.
+The graded Ey sample (3, 4.5, 3) mm lies 0.6 mm inside both faces with L=3 mm.
 """
 import resource
 
@@ -151,12 +152,11 @@ def test_effective_ties(scene):
 
 
 def test_bisector_closed_form(scene):
+    """The uniform Ey sample (3, 4.05, 2.4) mm is on both the side and the bottom cap."""
     kind, grid, _, host, _ = scene
     if kind == 'uniform':
-        # Ey (3, 4.05, 2.4) mm is on both the side and the bottom cap.
         point, fill = (3 * MM, 4.05 * MM, 2.4 * MM), .5
     else:
-        # Ey (3, 4.5, 3) mm lies 0.6 mm inside both faces, L=3 mm.
         point, fill = (3 * MM, 4.5 * MM, 3 * MM), .5 + .6 / 3
     faces = np.array([[0., -1., 0.], [0., 0., -1.]])
     normal = faces.sum(axis=0)
@@ -178,13 +178,10 @@ def test_other_callers_host_mirrors(lane):
     if lane == 'kottke_pec':
         values = compute_inv_eps_tensor_diag(grid, pec_shapes=[shape], dtype=jnp.float32)
     elif lane == 'full_tensor':
-        # Nodes and their neighboring triplets exercise the node union caller.
         shape = Cylinder((3 * MM, 6 * MM, 6 * MM), 2.1 * MM, 7.2 * MM, axis='z')
         values = compute_node_tensor_eps(grid, [(shape, 4.)])
         _mirror([np.asarray(v) for v in values.nodes.xi[:3]], grid, shape, lane + '-nodes', nodes=True)
     else:
-        # Continue a Cylinder through x-lo. The declared normal is evaluated
-        # at the face outside the domain, then its x component is removed.
         shape = Cylinder((0., 6.15 * MM, 6 * MM), 2.1 * MM, 7.2 * MM, axis='z')
         grid = Simulation(freq_max=10e9, domain=(6 * MM, 12 * MM, 12 * MM),
                           dx=.3 * MM, cpml_layers=2).freeze_mesh()
@@ -217,8 +214,6 @@ def thin_builds():
 
     @jax.jit
     def build(centers, thicknesses):
-        # One compilation shares the common coordinate and interval algebra
-        # across both builders and shapes. Both centres remain traced inputs.
         results = []
         for i, (mesh, grid) in enumerate(grids.items()):
             builder = compute_smoothed_eps if mesh == 'uniform' else compute_smoothed_eps_nonuniform
@@ -265,8 +260,6 @@ def thin_midplane(request, thin_builds):
     lo, hi = ((shape.corner_lo[2], shape.corner_hi[2]) if kind == 'box'
               else (shape.center[2] - shape.height / 2, shape.center[2] + shape.height / 2))
     assert (lo + hi) / 2 == center == float(np.float32(center))
-    # Independent overlap of the declared body with the centred support,
-    # the same geometric expectation as test_thin_planar_body_fill.py.
     support_lo, support_hi = center - length / 2, center + length / 2
     p = max(0., min(hi, support_hi) - max(lo, support_lo)) / length
     expected = 1 / (p / 4 + 1 - p) if component == 2 else p * 4 + 1 - p
@@ -296,8 +289,6 @@ def test_thin_midplane_traced_matches_plain(thin_midplane):
 
 def test_thin_midplane_mirror_pairs(thin_midplane):
     s = thin_midplane
-    # Compare the whole arrays, and separately require mirrored samples on
-    # the opposite-cap/face tie plane inside the body (not adjacent faces).
     _mirror(s['host'], s['grid'], s['shape'], f"thin-{s['mesh']}-{s['kind']}", require_ties=False)
     y = _lines(s['grid'], s['component'])[0][1]
     h = 2. ** -11
@@ -364,14 +355,11 @@ def test_needle_coordinate_mirrors(needle, axis):
     reflection = np.ones(3)
     reflection[axis] = -1
     parity = reflection[:, None] * reflection[None, :]
-    # Tensor components containing the reflected axis once change sign;
-    # the diagonal entries and all other components remain equal.
     for i, j in pairs:
         np.testing.assert_allclose(np.take(eps, i, axis=axis),
                                    np.take(eps, j, axis=axis) * parity,
                                    rtol=0, atol=1e-7 * np.max(abs(eps)),
                                    err_msg=f'{mesh} tensor mirror axis={axis} nodes={nodes[i], nodes[j]}')
-    # The final diagonal operands occupy component-specific Yee coordinates.
     counts = []
     for component, data in enumerate(result.diagonal):
         data = np.asarray(data)
@@ -396,8 +384,6 @@ def test_two_dimensional_box_away_from_ties(entry, monkeypatch):
     domain = (8 * h, 8 * h)
     box = Box((2.2 * h, 2.4 * h, -4 * h), (5.6 * h, 5.1 * h, 4 * h))
     if entry == 'simulation':
-        # Simulation's realized-geometry report reads three domain entries;
-        # exercise the two-entry domain separately through the public Grid.
         sim = Simulation(freq_max=12e9, domain=(*domain, h), dx=h, mode='2d_tmz',
                          boundary='pec', cpml_layers=0)
         sim.add_material('body', eps_r=4.)
@@ -432,7 +418,6 @@ def test_two_dimensional_box_away_from_ties(entry, monkeypatch):
             tie = (np.sum(tied, axis=0) > 1) | np.any(tied & (abs(delta) <= tau), axis=0)
             sdf = np.sqrt(np.sum(np.maximum(distance, 0) ** 2, axis=0)) + np.minimum(top, 0)
             p = np.clip(.5 - sdf / h, 0., 1.)
-            # Main's nearest-face rule has one unit-axis normal off ties.
             normal_axis = np.argmax(distance, axis=0)
             expected = np.where(normal_axis == component, 1 / (p / 4 + 1 - p), p * 4 + 1 - p)
             mask = ~tie

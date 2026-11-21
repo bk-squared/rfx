@@ -18,7 +18,6 @@ from tests._git_tracked import git_available
 
 REPO = Path(__file__).resolve().parents[2]
 OUTPUT_SUFFIXES = {".log", ".out", ".txt", ".npz", ".json"}
-# Survivors after the B10 scripts cleanup at base 1f88121fc.
 ALLOWED_OUTPUTS = frozenset("""\
 scripts/ci/file_size_baseline.json
 scripts/ci/layer_baseline.json

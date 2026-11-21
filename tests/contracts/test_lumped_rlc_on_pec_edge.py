@@ -115,6 +115,7 @@ def test_conductor_refusal(kind, form, entry, graded, step_hook):
 @pytest.mark.parametrize('entry', ENTRIES)
 @pytest.mark.parametrize('quiet', ['normal', 'off_sheet', 'lossy', 'port_release'])
 def test_quiet_edges(quiet, entry, graded, step_hook):
+    """Declaration presence is insufficient to establish a free realized edge."""
     sim = model('lossy' if quiet == 'lossy' else 'pinned', graded, element=False)
     if quiet == 'normal':
         sim.add_pinned_sheet(normal_axis=2, plane_index=3,
@@ -131,7 +132,6 @@ def test_quiet_edges(quiet, entry, graded, step_hook):
     root = products.realized_conductors(sim, grid, nonuniform=graded)
     edge = tuple(map(int, field_index(grid, position, component)))
     if quiet == 'normal':
-        # Both assertions read production masks: declaration presence is insufficient.
         assert bool(np.asarray(root.pec_edges[0])[6, 6, 6])
         assert not bool(np.asarray(root.pec_edges[2])[edge])
         print(f'Q1 graded={graded}: ex(6,6,6)=True; ez{edge}=False')
@@ -154,7 +154,6 @@ def test_design_metal_keeps_element_edge_free(graded, design_kind, step_hook):
     if design_kind == 'occupancy':
         kw = {'pec_occupancy_override': jnp.ones(grid.shape)}
     else:
-        # A box writes after release and already refuses this overlap.
         refusal = NotImplementedError if graded else RfxRefusal
         with pytest.raises(refusal) as caught:
             sim.forward(n_steps=1, skip_preflight=True,
@@ -261,7 +260,7 @@ def test_rootless_kernel_product(kind, step_hook):
 
 
 def test_coax_union_refuses_before_calculator(step_hook):
-    # Public coax calculators fence all registered RLC; exercise their union owner.
+    """Public coax calculators fence all registered RLC, so the conductor union owner is exercised directly."""
     sim = model('empty')
     root = products.realized_conductors(sim, grid_of(sim))
     edges = tuple(np.zeros(root.grid.shape, bool) for _ in range(3))
@@ -524,13 +523,13 @@ def test_volume_operator_applied_masks(entry, form, mode, location, applied_hook
 @pytest.mark.parametrize('mode', ['conformal', 'kottke'])
 @pytest.mark.parametrize('kind', ['volume', 'pinned', 'wire', 'wall'])
 def test_operator_preflight_defers_only_volumes(mode, kind, step_hook):
+    """Kottke is a call option carried by automatic preflight's stored mode."""
     from rfx.boundaries.spec import Boundary, BoundarySpec
     sim = model(kind)
     if mode == 'conformal':
         sim._boundary_spec = BoundarySpec(x=Boundary(lo='pec', hi='pec', conformal=True), y='pec', z='pec')
         report = sim.preflight()
     else:
-        # Kottke is a call option, carried by automatic preflight's stored mode.
         report = sim._preflight_impl(_conductor_operator='kottke_pec')
     findings = report.by_code('assembly_refusal')
     if kind == 'volume':

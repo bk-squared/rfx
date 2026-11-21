@@ -29,14 +29,12 @@ class BoxWithoutSDF:
 
 
 def fixture(kind, axis=2, pad=0):
-    # Asymmetric profile, with a constant boundary width on both ends.
     profile = np.array([1., 1., .37, .23, .41, .29, .31, .39, 1.]) * 1e-3
     profiles = [np.full(6, 1e-3) for _ in range(3)]
     profiles[axis] = profile
     grid = make_nonuniform_grid((.006, .006), profiles[2], 1e-3,
                                cpml_layers=pad, dx_profile=profiles[0],
                                dy_profile=profiles[1])
-    # Independent oracle: cumulative sum of the INPUT profiles, with padding.
     nodes, centres = [], []
     for p in profiles:
         widths = np.pad(p, (pad, pad + 1), mode='edge')
@@ -77,7 +75,7 @@ def fixture(kind, axis=2, pad=0):
     for lower, upper in boxes:
         selected = np.ones(grid.shape, dtype=bool)
         for a in range(3):
-            if upper[a] == lower[a]:  # Declared sheet: nearest physical node.
+            if upper[a] == lower[a]:
                 selected &= xyz[a] == nodes[a][np.argmin(abs(nodes[a]-lower[a]))]
             else:
                 selected &= (xyz[a] >= lower[a]) & (xyz[a] < upper[a])
@@ -86,8 +84,7 @@ def fixture(kind, axis=2, pad=0):
 
 
 def _via_material_cells(centres):
-    # Independent drawing oracle: the barrel is x=1.02..3.24,
-    # y=.96..3.18, z=.83..3.59 mm. Zero-thickness pads own no cells.
+    """Zero-thickness pads own no cells."""
     lo = np.array([1.02, .96, .83]) * 1e-3
     hi = np.array([3.24, 3.18, 3.59]) * 1e-3
     xyz = np.meshgrid(*centres, indexing='ij')
@@ -102,8 +99,6 @@ def _via_material_cells(centres):
 def test_graded_placement(kind, axis, pad, subpixel_smoothing):
     grid, shape, expected, centres = fixture(kind, axis, pad)
     assert expected.any()
-    # Guard the fixture itself: the declared outer extents must not become
-    # node/half-node witnesses when the asymmetric profile is edited.
     widths = np.array([1., 1., .37, .23, .41, .29, .31, .39, 1.])*1e-3
     nodes = np.r_[0., np.cumsum(widths)]
     ties = np.r_[nodes, (nodes[:-1] + nodes[1:])/2]
@@ -138,7 +133,6 @@ def test_uniform_bit_identity(kind, pad):
     _, shape, _, _ = fixture(kind)
     grid = Simulation(freq_max=20e9, domain=(.006, .006, .006),
                       dx=.001, cpml_layers=pad)._build_grid()
-    # Frozen 292e3903 arithmetic, deliberately independent of the provider.
     old = tuple((np.arange(n, dtype=np.float64)-p)*grid.dx
                 for n, p in zip(grid.shape, grid.axis_pads))
     for actual, baseline in zip(_grid_coords(grid), old):
