@@ -172,7 +172,7 @@ def _fit_residues(Y_win: np.ndarray, s: np.ndarray, dt: float, *,
 
 def _residue_block_size(length, rank, channels):
     """The host QR and its refusal law read the same private byte target."""
-    return min(length, max(1, int(_RESIDUE_BLOCK_TARGET_BYTES) // (16 * (rank + channels))))
+    return min(length, max(rank + channels, int(_RESIDUE_BLOCK_TARGET_BYTES) // (16 * (rank + channels))))
 
 
 def _residue_memory_bytes(length, rank, channels):

@@ -105,8 +105,7 @@ def _check_run_identification_memory(plan):
     C = 2 * len(plan.wire_entries) + len(plan.identification_keys)
     _, Nd = _identification_plan(n_win, float(plan.dt), max(plan.freq_max, peak), C)
     rd._check_identification_memory(n_win, (Nd, C), bound=bound, pencil_parameter=rd.PENCIL_PARAMETER)
-    columns = int(_harminv._pencil_columns(Nd, rd.PENCIL_PARAMETER))
-    capacity = min(Nd - columns, columns * C)
+    capacity = rd.static_pole_bound(n_win, C, float(plan.dt), max(plan.freq_max, peak))
     rd._check_identification_memory(n_win, (Nd, C), r=capacity,
                                     bound=bound, pencil_parameter=rd.PENCIL_PARAMETER)
 
