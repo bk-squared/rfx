@@ -126,6 +126,7 @@ SWEPT_PREFIXES: tuple[str, ...] = (
     "rfx/optimize_objectives.py",
     "rfx/pareto.py",
     "rfx/pcb.py",
+    "rfx/preflight/",
     "rfx/probes/flux_region.py",
     "rfx/probes/fresnel.py",
     "rfx/probes/msl_wave_decomp.py",
