@@ -42,6 +42,7 @@ def test_per_face_wall_sets(tokens):
 
 
 def test_asymmetric_faces_and_absorber_terminal_metres():
+    """The alpha profile stores float32."""
     sim = Simulation(freq_max=20e9, domain=(.024, .020, .016), dx=.001,
                      cpml_layers=8, cpml_kappa_max=2,
                      boundary=BoundarySpec(x=Boundary("pmc", "cpml", hi_thickness=5),
@@ -52,7 +53,6 @@ def test_asymmetric_faces_and_absorber_terminal_metres():
                                                 Kind.PEC, Kind.PERIODIC, Kind.PERIODIC)
     assert tuple(f.layers for f in model.faces) == (0, 5, 0, 0, 0, 0)
     assert tuple(f.conformal for f in model.faces) == (False, False, True, True, False, False)
-    # The alpha profile stores float32; the other scalars come from the signature.
     assert dict(model.absorber_parameters) == {
         "kappa_max": 2, "order": 3, "R_asymptotic": 1e-15,
         "alpha_max": pytest.approx(.05, rel=1e-7, abs=0),

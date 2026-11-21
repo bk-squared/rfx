@@ -128,7 +128,6 @@ def test_h_builder_carries_component_record(path):
             return dc._update_h_local(state, m, grid.dt, grid.dx, (None, None, None), high_wall=unpadded_high_walls(grid))
         if path == "distributed_nu":
             return dc._update_h_local_nu(state, m, grid.dt, *inv, *inv, high_wall=unpadded_high_walls(grid))
-        # The two public lanes share the CPML H builder; exercise both grids.
         g = grid
         if path == "cpml_nonuniform":
             from rfx import Simulation
@@ -191,9 +190,6 @@ def test_h_builder_inventory_reads_the_shared_owner():
     from rfx.sources import tfsf, tfsf_2d, waveguide_port, msl_port, coaxial_port
     from rfx.stepping import tfsf_2d as step_tfsf_2d, tfsf_oblique
     sites = [stepping_yee.update_h, stepping_yee.update_h_nu, yee.precompute_coeffs, dc._update_h_local, dc._update_h_local_nu, cpml.apply_cpml_h, upml.init_upml, sg._z_slab_material_coupling_h_3d, sg._z_slab_material_coupling_e_3d, sbp_sat_1d._update_h_1d, sbp_sat_2d._update_hx_2d, sbp_sat_2d._update_hy_2d, tfsf.update_tfsf_1d_h, step_tfsf.apply_tfsf_h, step_tfsf_2d._update_h_tmz, step_tfsf_2d._update_h_tez, tfsf_2d.apply_tfsf_2d_h, tfsf_oblique.apply_methodB_h, waveguide_port.apply_waveguide_port_h, msl_port.make_msl_port_sources_jm, coaxial_port.build_coaxial_tem_plane_source_specs, disjoint_3d]
-    # Since S1 M2a the raw CPML/UPML entries read μ through the realized-model
-    # owner ``rfx.model.materials.h_components``, which itself calls the shared
-    # builder; either spelling reaches the one H-face rule.
     from rfx.model.materials import h_components, sat_face_mu
     assert "component_h_materials(" in inspect.getsource(h_components)
     assert "h_components(" in inspect.getsource(sat_face_mu)

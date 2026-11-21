@@ -52,6 +52,7 @@ column") would have silently bridged it.
     ``test_pole_carrying_column_gets_no_hi_face_static_promotion_*``
     tests; pre-declaration and falsifiers in
     docs/design_notes/issue808_debye_pad_predeclaration.md.
+The divergence assertion is not trustworthy if pole masks reach the CPML pads.
 """
 
 from __future__ import annotations
@@ -78,7 +79,6 @@ def _build_uniform(*, dispersive: bool):
                           debye_poles=[DebyePole(delta_eps=1.0, tau=1e-10)])
     else:
         sim.add_material("slab", eps_r=4.0)
-    # Domain-face-touching in x AND y — the #627a trigger.
     sim.add(Box((0.0, 0.0, 0.3 * DX), (NA * DX, NB * DX, 2.0 * DX)), material="slab")
     return sim
 
@@ -99,11 +99,13 @@ def _assemble_nu(sim):
 
 
 def test_hi_face_pad_matches_lo_face_for_domain_touching_box_uniform():
-    """(#627a) x-hi pad must carry the slab's eps_r, not vacuum."""
+    """(#627a) x-hi pad must carry the slab's eps_r, not vacuum.
+    The interior cell is well away from the y-edge artifact.
+    """
     sim = _build_uniform(dispersive=False)
     materials, _, plx, phx, ply, plz = _assemble_uniform(sim)
     eps = np.asarray(materials.eps_r)
-    j, k = ply + 1, plz + 1  # interior cell, well away from the y-edge artifact
+    j, k = ply + 1, plz + 1
     x_lo = float(eps[plx - 1, j, k])
     x_hi = float(eps[-phx, j, k])
     assert x_lo == 4.0, x_lo
@@ -232,9 +234,10 @@ def test_genuine_vacuum_buffer_before_cpml_is_not_bridged():
     sim = Simulation(freq_max=2.5 * F0, domain=(NA * DX, NB * DX, NZ * DX),
                       dx=DX, boundary="cpml", cpml_layers=8)
     sim.add_material("slab", eps_r=4.0)
-    # well inside the domain on every axis — at least 5 cells of vacuum
-    # before any CPML pad on x/y, and centred on z
-    sim.add(Box((10 * DX, 10 * DX, 0.3 * DX), (20 * DX, 20 * DX, 2.0 * DX)),
+    VACUUM_BOX_START_CELL = 10
+    VACUUM_BOX_STOP_CELL = 20
+    assert min(VACUUM_BOX_START_CELL, NA - VACUUM_BOX_STOP_CELL, NB - VACUUM_BOX_STOP_CELL) >= 5, "The interior box needs at least five vacuum cells before each transverse CPML pad."
+    sim.add(Box((VACUUM_BOX_START_CELL * DX, VACUUM_BOX_START_CELL * DX, 0.3 * DX), (VACUUM_BOX_STOP_CELL * DX, VACUUM_BOX_STOP_CELL * DX, 2.0 * DX)),
             material="slab")
     grid = sim._build_grid()
     materials, *_ = sim._assemble_materials(grid)
@@ -243,18 +246,13 @@ def test_genuine_vacuum_buffer_before_cpml_is_not_bridged():
     ply, phy = grid.pad_y_lo, grid.pad_y_hi
     plz = grid.pad_z_lo
     k = plz + 1
-    # Sample transverse positions INSIDE the box's own extent (box spans
-    # interior indices 10..19 on both x and y), not the domain midpoint —
-    # a transverse position outside the box is vacuum under every design,
-    # including the rejected unbounded-scan one, so it cannot distinguish
-    # them. plx+15/ply+15 sit inside [10,20) and are the positions an
-    # unbounded backward scan (from the OPPOSITE face's pad) would walk
-    # through and incorrectly find the box's material.
-    assert float(eps[-phx, ply + 15, k]) == 1.0, (
+    VACUUM_PAD_SAMPLE_CELL = 15
+    assert VACUUM_BOX_START_CELL <= VACUUM_PAD_SAMPLE_CELL < VACUUM_BOX_STOP_CELL, "Transverse pad samples must lie inside the box to distinguish an unbounded material scan."
+    assert float(eps[-phx, ply + VACUUM_PAD_SAMPLE_CELL, k]) == 1.0, (
         "x-hi pad picked up material across a genuine multi-cell vacuum "
         "gap — the hi-face fallback must be bounded to the rasterizer's "
         "documented one-column shortfall, not an unbounded scan")
-    assert float(eps[plx + 15, -phy, k]) == 1.0, (
+    assert float(eps[plx + VACUUM_PAD_SAMPLE_CELL, -phy, k]) == 1.0, (
         "y-hi pad picked up material across a genuine multi-cell vacuum gap")
 
 
@@ -277,7 +275,6 @@ def test_corner_pad_refuses_lo_pad_replica_promotion():
                      dx=DX, boundary="cpml", cpml_layers=8)
     sim.add_material("slab", eps_r=4.0,
                      debye_poles=[DebyePole(delta_eps=1.0, tau=1e-10)])
-    # touches y-lo AND z-hi; interior in x
     sim.add(Box((10 * DX, 0.0, 3 * DX), (20 * DX, 8 * DX, nzc * DX)),
             material="slab")
     grid = sim._build_grid()
@@ -287,17 +284,14 @@ def test_corner_pad_refuses_lo_pad_replica_promotion():
     phz = grid.pad_z_hi
     nz = eps.shape[2]
     i = grid.pad_x_lo + 15
-    # the y-lo pad itself KEEPS the statics replica (the pinned lo envelope)
     assert float(eps[i, ply - 1, grid.pad_z_lo + 5]) == 4.0, (
         "y-lo pad lost the statics replica — that is the pinned lo-face "
         "envelope, not part of the #808 gate")
-    # the z-hi fallback must refuse to promote that replica into the corner
     assert float(eps[i, ply - 1, nz - phz]) == 1.0, (
         f"corner pad eps_r={float(eps[i, ply - 1, nz - phz])}: the z-hi "
         f"fallback promoted a lo-pad REPLICA of a pole column — the "
         f"poleish replication through the pad passes is gone and the "
         f"corner realizes the #808 eps_inf-without-pole chimera")
-    # and the z-hi pad above the box's own interior stays background
     assert float(eps[i, ply + 4, nz - phz]) == 1.0
 
 
@@ -353,6 +347,7 @@ def test_pole_extension_stability_lock():
     (b29f9de) -> 0.3979 (this change, x-hi pad eps=1.00 witnessed in the
     same run). Still decaying, as the #808 pre-declaration predicted —
     the gate only removes material from pads.
+    The z-interior fixture gives the resonance real vacuum above and below it to couple through.
     """
     DX = 1e-3
     NA, NB, NZ = 45, 39, 12
@@ -365,21 +360,12 @@ def test_pole_extension_stability_lock():
     sim.add_material("slab", eps_r=4.0,
                       lorentz_poles=[LorentzPole(omega_0=w0, delta=w0 / 120.0,
                                                   kappa=3.0 * w0 ** 2)])
-    # edge-touching in x AND y (the #627a trigger); z is interior (3*DX to
-    # 7*DX inside a 12*DX domain) so the resonance has real vacuum above
-    # and below it to live in -- a thin-in-z fixture (as this author first
-    # tried, and failed to reproduce the divergence with) starves the
-    # resonance of an interior to couple through.
     sim.add(Box((0.0, 0.0, 3 * DX), (NA * DX, NB * DX, 7 * DX)), material="slab")
     sim.add_source((NA * DX / 3, NB * DX / 3, 5.0 * DX), "ez",
                     waveform=GaussianPulse(f0=F0, bandwidth=0.8),
                     amplitude_kind="field")
     sim.add_probe(((NA - 3) * DX, NB * DX / 2, 5.0 * DX), "ez")
 
-    # R5 witness -- what actually landed in the pad for THIS run. A
-    # mislabelled variant (pad contents not matching what the code claims
-    # to do) is exactly what the #636 investigation caught once; printed
-    # here (in the assertion messages) so a future failure shows it too.
     grid = sim._build_grid()
     materials, debye_spec, lorentz_spec, pec_mask, *_ = sim._assemble_materials(grid)
     eps = np.asarray(materials.eps_r)
@@ -395,9 +381,6 @@ def test_pole_extension_stability_lock():
         f"x-hi pad eps={float(eps[-phx, ply + 5, plz + 5]):.2f} "
         f"x-hi pad pole cells={pole_pad_hi} x-lo pad pole cells={pole_pad_lo}")
 
-    # Sanity check first: the shipped code must not extend pole masks at
-    # all. If this fails, the divergence assertion below is
-    # not trustworthy either way -- fix this first.
     assert pole_pad_hi == 0 and pole_pad_lo == 0, (
         f"pole cells reached a CPML pad ({pad_witness}) -- pole-mask "
         f"extension appears to have been reintroduced; see issue #636 "
@@ -412,8 +395,6 @@ def test_pole_extension_stability_lock():
     last, mid = deciles[-1], deciles[3]
     ratio = last / max(mid, 1e-300)
 
-    # Witness printed on pass too (R5): the measured envelope, so a
-    # docstring re-baseline never needs a second instrumented run.
     print(f"\n#636 canary witness: last/mid={ratio:.4f} "
           f"deciles={[f'{d:.3e}' for d in deciles]} ({pad_witness})")
 
@@ -444,6 +425,7 @@ class _PoleExtendedSim(Simulation):
     """
 
     def _assemble_materials(self, grid, **kw):
+        """Without re-running the ungated statics extension, the harness would measure poles over vacuum epsilon instead of statics and poles both extended."""
         import jax.numpy as jnp
         from rfx.core.yee import MaterialArrays
         from rfx.geometry.rasterize_grid import extend_cpml_pad_materials
@@ -451,16 +433,6 @@ class _PoleExtendedSim(Simulation):
         out = super()._assemble_materials(grid, **kw)
         materials, debye_spec, lorentz_spec, *rest = out
 
-        # The shipped assembler now refuses the hi-face statics
-        # promotion for pole-carrying columns, but the factorial row
-        # this harness measures is "statics AND poles both extended" —
-        # without re-running the UNGATED statics extension here, the
-        # variant would drift to the factorial's poles-over-vacuum-eps
-        # row (measured catastrophically divergent to NaN), a different
-        # documented state. Re-extending the finished arrays reproduces
-        # the earlier statics extension value-for-value: the gated cells
-        # are exactly the ones still background, and the ungated rule
-        # promotes them from the same inner columns it always used.
         if kw.get("include_cpml_pad_extension", True):
             _e, _s, _m = extend_cpml_pad_materials(
                 materials.eps_r, materials.sigma, materials.mu_r,
