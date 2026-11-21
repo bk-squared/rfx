@@ -60,7 +60,7 @@ N_PHI = H_PLANE_PHI_SAMPLES_INCLUDING_ENDPOINTS
 
 def run_rfx():
     """Run the committed-resolution rfx RCS simulation. Returns raw pieces.
-    The fixture refuses an rfx import outside the repo tree so a stale installed build cannot silently supply the extraction."""
+    The H-plane scattering angle is phi, with phi=0 forward (+x) and phi=pi backscatter (-x)."""
     import rfx
     _rfx_root = os.path.dirname(os.path.dirname(os.path.abspath(rfx.__file__)))
     if _rfx_root != _REPO_ROOT:

@@ -94,7 +94,7 @@ def _build_patch_sim_nu() -> Simulation:
     One cavity Ez point probe, at the uniform builder's position, feeds the
     record-end witness of the internal compute_msl_s_matrix run; without a
     probe that witness has no data.
-    The declared feed/patch raster locks NU S-parameter extraction despite its y size errors.
+    The rasterized patch locks NU S-parameter extraction with feed/patch y size errors measured earlier at -4.783 %/-1.393 %.
     """
     nz = int(round(DOM_Z / DX))
     sim = Simulation(snap="declared",

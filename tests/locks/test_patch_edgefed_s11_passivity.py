@@ -238,7 +238,7 @@ def _build_patch_sim() -> Simulation:
     witness of the internal compute_msl_s_matrix run; without a probe that
     witness has no data. Its slow ring-down tail is the settling the DFT-based
     S11 extraction depends on, and the test asserts that the probe is present.
-    The declared feed/patch raster locks S11 and passivity despite its y size errors.
+    The rasterized patch locks S11 and passivity with feed/patch y size errors measured earlier at -4.783 %/-1.393 %.
     """
     sim = Simulation(snap="declared",
         freq_max=15e9, domain=(DOM_X, DOM_Y, DOM_Z),

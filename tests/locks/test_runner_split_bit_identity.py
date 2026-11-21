@@ -201,6 +201,7 @@ def _f_uniform_cpml():
 
 
 def _small_pec_dielectric_sim():
+    """The PEC-boundary fixture with a dielectric Box reaches the PEC face applier and the material-aware E update instead of the CPML scan body."""
     sim = Simulation(
         freq_max=10e9, domain=(0.01, 0.01, 0.01), dx=0.5e-3,
         boundary="pec", cpml_layers=0,
@@ -431,10 +432,10 @@ def _f_distributed_nu_pec_mask_seam():
     n_devices = 2
     xbar = np.zeros((_SEAM_NX, _SEAM_NY, _SEAM_NZ), bool)
     xbar[:, 2:4, 2:4] = True
-    assert np.any(xbar[_SEAM_NX // n_devices - 1] & xbar[_SEAM_NX // n_devices]), (
-        "The x bar must span both ranks across the shard seam.")
     gmask = _seam_plates(2, [0, _SEAM_NZ - 1]) | xbar
     hard_slabs, nx_local = _seam_slabs(gmask, n_devices, bool, False)
+    assert np.any(hard_slabs[nx_local - 1, 2:4, 2:4] & hard_slabs[nx_local, 2:4, 2:4]), (
+        "The sharded PEC bar must occupy both ghost rows across the shard seam.")
     from tests.unit.materials.test_occupancy_stage import step_occupancy_on_ones
     mesh = Mesh(np.asarray(jax.devices()[:n_devices]).reshape(n_devices),
                 ("x",))

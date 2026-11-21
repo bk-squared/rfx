@@ -17,6 +17,7 @@ choice is not part of the design.
 :func:`test_every_simulation_attribute_is_classified` is the anti-drift gate: a
 new ``Simulation`` builder field reds it until someone decides whether the
 field is design state or not.
+The equivalence check skips _boundary_scalar_spec because it is read only with a Floquet port or open TF/SF, whose documents rebuild from the scalar.
 """
 
 from __future__ import annotations
