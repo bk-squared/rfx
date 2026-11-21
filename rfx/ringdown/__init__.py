@@ -146,6 +146,12 @@ HARMINV_MAX_MODES = int(_HARMINV_DEFAULTS["max_modes"])
 
 # Default from decision g; users can raise it by assignment.
 IDENTIFY_MEMORY_BOUND_BYTES = 4 * 2**30
+"""Host bound for the decimated pencil and blocked original-rate residue fit.
+
+Fixed-record run and forward check both stages before stepping, with the pencil's
+full reachable rank as the static stage-2 capacity, including growing poles.
+"""
+
 # The largest kept count across the ringdown fixtures is 431, from a seeded-noise
 # record's 900-sample window. Measured cavities keep 38-44 poles on 10,000-70,000
 # step windows. A budget of 512 preserves all these completions without new NaNs

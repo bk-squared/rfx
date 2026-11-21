@@ -15,6 +15,7 @@ from rfx.measurement.matrix_pencil import (
     _pencil as _core_pencil,
     _to_original_rate as _core_to_original_rate,
     _fit_residues,
+    _residue_memory_bytes,
     _decimation_factors,
     DECIMATION_GUARD,
     _FIR_HALF_OUTPUT_SAMPLES,
@@ -79,7 +80,7 @@ def _check_identification_memory(n_win, shape, *, r=None, bound, pencil_paramete
     k = min(M, L * C)
     stage = 1 if r is None else 2
     needed = (_STAGE1_FACTOR * 16 * (3*M*L*C + M*k + 2*k*L*C + 4*k*k)
-              if r is None else _STAGE2_FACTOR * 16 * 5 * n_win * r)
+              if r is None else _residue_memory_bytes(n_win, r, C))
     if needed > bound:
         raise IdentificationMemoryRefused(
             stage, needed, bound,
@@ -87,7 +88,7 @@ def _check_identification_memory(n_win, shape, *, r=None, bound, pencil_paramete
 
 
 def _check_run_identification_memory(plan):
-    """The fixed run's main pencil, before the lane takes any step."""
+    """Bound both host stages of the main window before the first lane step."""
     from rfx import ringdown as rd
 
     bound = rd.IDENTIFY_MEMORY_BOUND_BYTES
@@ -104,6 +105,9 @@ def _check_run_identification_memory(plan):
     C = 2 * len(plan.wire_entries) + len(plan.identification_keys)
     _, Nd = _identification_plan(n_win, float(plan.dt), max(plan.freq_max, peak), C)
     rd._check_identification_memory(n_win, (Nd, C), bound=bound, pencil_parameter=rd.PENCIL_PARAMETER)
+    capacity = rd.static_pole_bound(n_win, C, float(plan.dt), max(plan.freq_max, peak))
+    rd._check_identification_memory(n_win, (Nd, C), r=capacity,
+                                    bound=bound, pencil_parameter=rd.PENCIL_PARAMETER)
 
 
 def _witness_identification(identify_window):
