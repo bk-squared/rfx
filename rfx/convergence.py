@@ -32,10 +32,6 @@ import numpy as np
 from rfx._plotting import _pyplot
 
 
-# ---------------------------------------------------------------------------
-# Richardson extrapolation
-# ---------------------------------------------------------------------------
-
 def richardson_extrapolation(
     values: ArrayLike,
     dx_values: ArrayLike,
@@ -79,30 +75,24 @@ def richardson_extrapolation(
     if len(values) != len(dx_values):
         raise ValueError("values and dx_values must have the same length")
 
-    # Sort by decreasing dx (coarsest first) so indices go coarse->fine
     order_idx = np.argsort(dx_values)[::-1]
     h = dx_values[order_idx]
     f = values[order_idx]
 
     if len(f) >= 3:
-        # Use the three finest (last three in coarse->fine order)
         h1, h2, h3 = h[-3], h[-2], h[-1]
         f1, f2, f3 = f[-3], f[-2], f[-1]
 
-        # Estimate order p from the ratio of successive differences
         diff21 = f2 - f1
         diff32 = f3 - f2
 
         if abs(diff21) < 1e-30 or abs(diff32) < 1e-30:
-            # Metrics are essentially identical — already converged
             return float(f[-1]), expected_order
 
         ratio = diff32 / diff21
         h2 / h1
         h3 / h2
 
-        # Newton iteration to solve for p:
-        # g(p) = (h3^p - h2^p) / (h2^p - h1^p) - ratio = 0
         p = expected_order
         for _ in range(50):
             h1p = h1 ** p
@@ -113,7 +103,6 @@ def richardson_extrapolation(
             if abs(den) < 1e-30:
                 break
             g = num / den - ratio
-            # Numerical derivative
             dp = 1e-6
             h1pd = h1 ** (p + dp)
             h2pd = h2 ** (p + dp)
@@ -131,14 +120,11 @@ def richardson_extrapolation(
                 break
             p = p_new
 
-        # Clamp order to reasonable range
         p = float(np.clip(p, 0.5, 10.0))
 
-        # Extrapolate using two finest points
         r = (h3 / h2) ** p
         extrapolated = float((f3 - r * f2) / (1.0 - r))
     else:
-        # Two-point extrapolation with assumed order
         h1, h2 = h[0], h[1]
         f1, f2 = f[0], f[1]
         p = expected_order
@@ -147,10 +133,6 @@ def richardson_extrapolation(
 
     return extrapolated, float(p)
 
-
-# ---------------------------------------------------------------------------
-# ConvergenceResult
-# ---------------------------------------------------------------------------
 
 @dataclass
 class ConvergenceResult:
@@ -211,7 +193,6 @@ class ConvergenceResult:
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-        # Left: metric vs dx
         ax1.plot(self.dx_values * 1e3, self.metrics, "o-", color="C0",
                  label="Simulated")
         ax1.axhline(self.extrapolated, color="r", ls="--", alpha=0.7,
@@ -222,12 +203,10 @@ class ConvergenceResult:
         ax1.legend()
         ax1.grid(True, alpha=0.3)
 
-        # Right: log-log error
         nonzero = self.errors > 0
         if np.any(nonzero):
             ax2.loglog(self.dx_values[nonzero] * 1e3,
                        self.errors[nonzero] * 100, "s-", color="C1")
-            # Reference slope
             if np.sum(nonzero) >= 2:
                 dx_ref = self.dx_values[nonzero]
                 err_fit = self.errors[nonzero][-1] * (dx_ref / dx_ref[-1]) ** self.order
@@ -262,10 +241,6 @@ class ConvergenceResult:
         print(text)
         return text
 
-
-# ---------------------------------------------------------------------------
-# Main convergence study
-# ---------------------------------------------------------------------------
 
 def convergence_study(
     sim_factory: Callable,
@@ -306,7 +281,6 @@ def convergence_study(
     if len(dx_values) < 2:
         raise ValueError("Need at least 2 dx values for a convergence study")
 
-    # Sort coarse to fine
     sort_idx = np.argsort(dx_values)[::-1]
     dx_values = dx_values[sort_idx]
 
@@ -326,12 +300,10 @@ def convergence_study(
 
     metrics_arr = np.asarray(metrics, dtype=np.float64)
 
-    # Richardson extrapolation
     extrapolated, order = richardson_extrapolation(
         metrics_arr, dx_values, expected_order=expected_order,
     )
 
-    # Relative errors w.r.t. extrapolated value
     if abs(extrapolated) > 0:
         errors = np.abs(metrics_arr - extrapolated) / abs(extrapolated)
     else:
@@ -347,10 +319,6 @@ def convergence_study(
     )
 
 
-# ---------------------------------------------------------------------------
-# Quick convenience wrapper
-# ---------------------------------------------------------------------------
-
 def quick_convergence(
     sim: object,
     *,
@@ -363,8 +331,10 @@ def quick_convergence(
     """Run a convergence study on an existing Simulation with dx scaling.
 
     Carries every declaration of *sim*, scaling its built dx and any dt pin.
-    Cell counts, including CPML layers and port/probe offsets, remain counts;
-    their physical size scales with dx. At factors other than one, resolved
+    At factors other than one, waveguide reported planes are declared metre
+    planes fixed to the base grid, and waveguide and lumped sampling counts scale.
+    CPML layers, TF/SF and current-moment margins, MSL counts and auto memos stay
+    unchanged. At factors other than one, resolved
     profiles (including inferred profiles), nominal profiles, dt_min_cell,
     node-pinned sheets, node-index DFT crops and frozen meshes are refused.
     Use ``convergence_study`` with a factory that builds each rung, or an
@@ -400,18 +370,16 @@ def quick_convergence(
         dx_factors = [2.0, 1.5, 1.0, 0.75]
 
     base = declaration_at_dx(sim, caller="quick_convergence")
-    base_dx = float(base._build_realized_grid().dx)
-    # Admit every requested declaration before any rung runs. Grid-builder
-    # refusals remain at each rung's grid build, as in convergence_study.
+    base_grid = base._build_realized_grid()
+    base_dx = float(base_grid.dx)
     variants = {}
     dx_values = []
     for factor in dx_factors:
-        variant = declaration_at_dx(sim, factor, caller="quick_convergence", _base_dx=base_dx)
+        variant = declaration_at_dx(sim, factor, caller="quick_convergence", _base_grid=base_grid)
         dx = base_dx * float(factor)
         dx_values.append(dx)
         variants[dx] = variant
 
-    # Build the metric callable
     if isinstance(metric, str):
         if metric == "resonance":
             def metric_fn(result):
@@ -434,7 +402,7 @@ def quick_convergence(
     def sim_factory(dx):
         if dx not in variants:
             variants[dx] = declaration_at_dx(
-                sim, dx / base_dx, caller="quick_convergence", _base_dx=base_dx)
+                sim, dx / base_dx, caller="quick_convergence", _base_grid=base_grid)
         return variants[dx]
 
     return convergence_study(

@@ -10,12 +10,12 @@ from tests.unit.runners._graded_records_scene import mutation_result
 @pytest.mark.parametrize('kind', ['planes', 'flux', 'ntff', 'moments'])
 @pytest.mark.parametrize('boundary', ['pec', 'cpml'])
 def test_batched_jacobian_records(kind, boundary, monkeypatch):
+    """The parity bar allows the different programs compiled through jax.vmap/jvp."""
     solve = problem(kind, boundary, monkeypatch)
     alpha = jnp.float32(1.)
     primal, tangent = jax.jvp(lambda a: solve(a, False), (alpha,), (jnp.ones_like(alpha),))
     actual, jacobian = jacobian_fwd(lambda a: solve(a, True), alpha)
     jax.block_until_ready((actual, jacobian))
-    # through jax.vmap/jvp the compiled program differs (cross-trace rule, rfx CLAUDE.md)
     failures = []
     for name, observed, expected in (('primal', actual, primal),
             ('tangent', jax.tree.map(lambda a: a[0], jacobian), tangent)):

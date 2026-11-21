@@ -104,6 +104,36 @@ def traced_inputs(sim, grid, conductors=None):
     return table_traced_inputs(sim, grid) + tuple(n for i in sorted(sheets) for n in sheets[i])
 
 
+def declaration_traced_inputs(sim):
+    """Name traced fields directly from the declarations held by the simulation."""
+    import jax
+    from rfx.core.jax_utils import is_tracer
+
+    def traced(value):
+        return any(is_tracer(leaf) or (
+            is_dataclass(leaf) and any(traced(getattr(leaf, f.name)) for f in fields(leaf)))
+            for leaf in jax.tree.leaves(value))
+
+    def names(prefix, declaration):
+        return tuple(f"{prefix}.{f.name}" for f in fields(declaration)
+                     if traced(getattr(declaration, f.name))) if is_dataclass(declaration) else ()
+
+    result = []
+    for name, material in sim._materials.items():
+        result.extend(names(f"material['{name}']", material))
+    for i, entry in enumerate(sim._geometry):
+        result.extend(names(f"geometry[{i}]", entry.shape))
+    for collection, prefix in ((sim._thin_conductors, "thin_conductor"),
+                               (sim._lumped_rlc, "lumped")):
+        for i, entry in enumerate(collection):
+            result.extend(names(f"{prefix}[{i}]", entry))
+    for name, value in zip(("eps_override", "sigma_override", "mu_r_override"),
+                           getattr(sim, "_waveguide_call_overrides", ())):
+        if traced(value):
+            result.append(name)
+    return tuple(result)
+
+
 def nominal_record(sim, conductors, lane, *, compact):
     """Resolve an explicit nominal mesh through the existing family producers."""
     import copy

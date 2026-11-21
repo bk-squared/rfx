@@ -44,10 +44,12 @@ def test_gradient_through_a_traced_mesh_with_an_e_plane():
     the arithmetic rfx used before the tables, exp(-j 2 pi f (n+1) dt) dt
     with the traced dt. Bar: 1e-4 of the largest gradient entry (cross-trace
     bar for a quantity summed over the record). Until this fix the left side
-    raised ConcretizationTypeError (float(dt) on a tracer)."""
+    raised ConcretizationTypeError (float(dt) on a tracer).
+    Indices i=j=6 select the probe at 3 mm on the 0.5 mm transverse cells.
+    """
     steps = 24
 
-    i = j = 6  # the probe's cell (3 mm at 0.5 mm cells); the value check below confirms it
+    i = j = 6
 
     def through_kernel(dz):
         r = _graded(dz, "ez").forward(n_steps=steps, skip_preflight=True)
@@ -125,13 +127,12 @@ def test_every_kernel_entry_takes_a_traced_dt_and_traced_bins(kind):
         np.testing.assert_allclose(np.asarray(got), table, rtol=2e-5, atol=2e-5 * np.abs(table).max())
 
     def objective(d):
+        """Flux metadata orders axis, index, bins, components, component regions, normal-H zero, normal-H weights and periodic-normal-axis flag."""
         acc = accumulate(jnp.zeros(3, jnp.complex64), 0.7, 5, bins, d, kind)
         ntff = phase(5, bins, d, kind, dtype=jnp.complex64)
         port = port_dft_phase(jnp.int32(5), jnp.asarray(bins), d, kind)
         state = SimpleNamespace(**{c: jnp.ones((3, 3, 3), jnp.float32)
                                    for c in ("ex", "ey", "ez", "hx", "hy", "hz")})
-        # (axis, index, bins, components, one region per component, normal-H zero,
-        #  normal-H weights, periodic normal axis), as flux_metadata builds it.
         meta = ((0, 1, bins, tuple(field_channel(c) for c in ("ey", "ez", "hy", "hz")),
                  ((0, 3, 0, 3),) * 4, False, (.5, .5), False),)
         accs = (tuple(jnp.zeros((3, 3, 3), jnp.complex64) for _ in range(4)),)

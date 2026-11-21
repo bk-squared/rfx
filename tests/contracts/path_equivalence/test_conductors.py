@@ -358,7 +358,7 @@ def test_distributed_releases_dense_products_before_staging(monkeypatch, graded,
         return two_device_test()
     sim = build(('_geometry', 'pec_volume'), 'run_nonuniform' if graded else 'run_uniform',
                 graded=graded)
-    # A diagnostic query before the solve must not pin a second full domain.
+
     sim.realized_geometry()
     roots = []
     original_build = products.realized_conductors
@@ -432,7 +432,7 @@ def test_assembly_warning_keeps_origin_and_is_not_dropped(monkeypatch, scoped):
         warnings.simplefilter('always')
         with assembly_warning_scope() if scoped else nullcontext():
             ctx.entry_realizations()
-            # Deliberately no subsequent ctx.realized() read.
+
         assert len(caught) == 1
         assert str(caught[0].message) == 'assembly witness'
         assert caught[0].filename == __file__
@@ -444,7 +444,9 @@ def test_assembly_warning_keeps_origin_and_is_not_dropped(monkeypatch, scoped):
 @pytest.mark.parametrize('lane', ['uniform', 'graded'])
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_ringdown_preflight_sees_only_declared_probes(monkeypatch, lane, entry):
-    """The channel probes belong to stepping, not declaration preflight."""
+    """The channel probes belong to stepping, not declaration preflight.
+    forward computes port S only on request.
+    """
     import rfx.model.conductors as products
     from rfx.ringdown import RingdownSpec
     from rfx.measurement.identification import read_ringdown_probes
@@ -478,7 +480,7 @@ def test_ringdown_preflight_sees_only_declared_probes(monkeypatch, lane, entry):
     monkeypatch.setattr(sim, '_preflight_impl', declared_preflight)
     monkeypatch.setattr(products, 'at_kernel', at_kernel)
     kwargs = {'compute_s_params': True} if entry == 'run' else {}
-    if entry == 'forward':  # forward computes port S only on request
+    if entry == 'forward':
         kwargs['port_s11_freqs'] = np.linspace(8e9, 18e9, 11)
     result = getattr(sim, entry)(n_steps=600, ringdown=RingdownSpec(), **kwargs)
     assert [event for event, _ in events] == ['assembly', 'preflight', 'kernel']

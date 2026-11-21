@@ -38,13 +38,13 @@ def test_graded_forward_traces_as_a_whole_and_the_jit_gradient_is_the_eager_one(
     sl = (slice(nx // 2 - 1, nx // 2 + 2), slice(ny // 2 - 1, ny // 2 + 2), slice(nz // 2 - 1, nz // 2 + 2))
 
     def loss(e):
-        # 14 steps (12 earlier): the pulse now starts from zero, so the field reaches the eps window a step later.
+        """The 14-step record lets the zero-starting pulse reach the permittivity window."""
         full = jnp.ones(shape, jnp.float32).at[sl].set(e)
         r = sim.forward(eps_override=full, n_steps=14, skip_preflight=True)
         return jnp.sum(r.time_series ** 2)
 
     x = jnp.full((3, 3, 3), 3.0, jnp.float32)
-    jax.make_jaxpr(loss)(x)                       # raised ConcretizationTypeError before the fix
+    jax.make_jaxpr(loss)(x)
     g_eager = np.asarray(jax.grad(loss)(x))
     g_jit = np.asarray(jax.jit(jax.grad(loss))(x))
     assert np.isfinite(g_eager).all() and np.linalg.norm(g_eager) > 0

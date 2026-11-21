@@ -33,9 +33,7 @@ from tests._x64_compat import enable_x64
 
 
 def _sigma_max(S):
-    # Verify the stored matrix, not a singular value rounded back to f32.
-    # A tiny off-diagonal term can make sigma_max > 1 even when that
-    # singular value rounds to exactly 1 in the matrix's storage dtype.
+    """A tiny off-diagonal term can make sigma_max > 1 even when that singular value rounds to exactly 1 in the matrix's storage dtype."""
     S = np.asarray(S, dtype=np.complex128)
     return np.array([
         np.linalg.svd(S[:, :, k], compute_uv=False)[0]
@@ -44,25 +42,23 @@ def _sigma_max(S):
 
 
 def test_passivity_referee_resolves_gain_below_one_float32_ulp():
+    """The symmetric common-mode vector has the analytic gain 1+coupling."""
     coupling = np.float32(1e-8)
     matrix = np.array([[1., coupling], [coupling, 1.]], dtype=np.complex64)[:, :, None]
-    # The symmetric common-mode vector has the analytic gain 1+coupling.
     measured = float(_sigma_max(matrix)[0])
     assert measured > 1.
     assert measured == pytest.approx(1.+float(coupling), rel=0.,
                                      abs=8.*np.finfo(np.float64).eps)
 
 
-# ---------------------------------------------------------------------------
-# Unit level: the projection helper itself.
-# ---------------------------------------------------------------------------
 
 def test_projection_clips_only_the_nonpassive_bins():
     S = np.zeros((2, 2, 3), dtype=complex)
-    S[:, :, 0] = [[0.3, 0.5], [0.5, 0.3]]     # passive
-    S[:, :, 1] = [[0.0, 3.0], [0.2, 0.0]]     # sigma_max ~ 3.007
-    S[:, :, 2] = np.eye(2)                    # exactly at the bound
+    S[:, :, 0] = [[0.3, 0.5], [0.5, 0.3]]
+    S[:, :, 1] = [[0.0, 3.0], [0.2, 0.0]]
+    S[:, :, 2] = np.eye(2)
 
+    assert _sigma_max(S[:, :, [0]])[0] < 1.0 and _sigma_max(S[:, :, [2]])[0] == 1.0, 'The passive input bin must be below one and the identity input bin exactly at one.'
     S_pass, corr = _project_passive(jnp.asarray(S))
     S_pass = np.asarray(S_pass)
     corr = np.asarray(corr)
@@ -70,7 +66,6 @@ def test_projection_clips_only_the_nonpassive_bins():
     assert np.allclose(S_pass[:, :, 0], S[:, :, 0]), "passive bin must be untouched"
     assert corr[0] == 0.0
     assert corr[1] == pytest.approx(np.linalg.svd(S[:, :, 1], compute_uv=False)[0] - 1.0)
-    # Strict bound including the reconstruction round-trip.
     assert np.all(_sigma_max(S_pass) <= 1.0)
 
 
@@ -83,7 +78,8 @@ def test_projection_bound_is_strict_at_float32(n_ports):
     rng = np.random.default_rng(7)
     S = (rng.normal(size=(n_ports, n_ports, 64))
          + 1j * rng.normal(size=(n_ports, n_ports, 64))).astype(np.complex64)
-    S *= 2.0  # comfortably non-passive everywhere
+    S *= 2.0
+    assert np.all(_sigma_max(S) > 1.0), 'The scaled random input must be nonpassive in every frequency bin.'
     S_pass, _ = _project_passive(jnp.asarray(S))
     assert np.all(_sigma_max(np.asarray(S_pass)) <= 1.0)
 
@@ -100,6 +96,7 @@ def test_near_passive_complex_projection_preserves_the_measured_matrix(backend, 
     orthonormal factors define the analytic answer without another SVD.
     Exercise the GPU's lower-precision ambient matmul setting explicitly:
     the physical projection must honor its output dtype's error budget.
+    The clipping radius leaves 64 output ULPs for reconstruction.
     """
     if backend == "gpu" and jax.default_backend() != "gpu":
         pytest.skip("requires an actual GPU")
@@ -125,14 +122,9 @@ def test_near_passive_complex_projection_preserves_the_measured_matrix(backend, 
         assert projected.devices() == correction.devices() == device_raw.devices()
         projected = np.asarray(projected).transpose(2, 0, 1).astype(np.complex128)
         correction = np.asarray(correction)
-    # The existing clipping radius leaves 64 output ULPs for reconstruction.
-    # Spending more than that on multiplication defeats its strict bound.
     assert np.max(np.abs(projected-expected)) <= 64.*eps
-    # Independent power-operator eigensolve, not the production SVD again.
     power = projected.conj().transpose(0, 2, 1) @ projected
     assert np.linalg.eigvalsh(power).max() <= 1.
-    # The constructed sigma_max is 1.001; input rounding is within this
-    # dtype-scaled bound. Do not derive the expected clip from production.
     assert np.max(np.abs(correction-1e-3)) <= 32.*eps
 
 
@@ -163,33 +155,20 @@ def test_projection_preserves_f64_arrays_after_their_creation_context_exits():
         assert _sigma_max(np.asarray(projected)).max() <= 1.
 
 
-# ---------------------------------------------------------------------------
-# End to end on a tiny thru line (~seconds of FDTD). A deliberately truncated
-# record is the worst case: its raw S carries genuine truncation artifacts.
-# ---------------------------------------------------------------------------
 
 def _thru():
-    # Geometry[2] y solved +11.67 % off; this test checks enforced result is strictly passive and loud.
+    """A port voltage needs the conductor at its declared ground plane."""
     sim = Simulation(snap="declared", freq_max=20e9, domain=(0.012, 0.008, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, 0.008, 0.0008)), material="sub")
-    # A port voltage needs the conductor at its declared ground plane.
-    # The CPML domain face is not an implicit PEC electrode.
     sim.add(Box((0., 0., 0.), (0.012, 0.008, 0.)), material="pec")
-    # 35 um foil: a SHEET, declared by a zero-thickness Box
-    # on the laminate top. h_sub / dx = 0.8 mm / 0.2 mm = 4, so the substrate face is a
-    # node line and the sheet lands on it exactly. Drawn one cell thick
-    # before the contract, it would now be a VOLUME — walls at BOTH z
-    # faces and the Ez edge between them shorted.
-    # The strip spans the two port nodes (2 and 10 mm). Drawn across the whole
-    # domain it left 2 mm open stubs whose effective quarter wave (23.8 GHz) is within
-    # 1.5x of the 2-18 GHz read.
     sim.add(Box((0.002, 0.0034, 0.0008), (0.010, 0.0046, 0.0008)), material="pec")
     sim.add_msl_port(position=(0.002, 0.004, 0.0), width=0.0012, height=0.0008,
                      direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
     sim.add_msl_port(position=(0.010, 0.004, 0.0), width=0.0012, height=0.0008,
                      direction="-x", impedance=50.0, eps_r_sub=2.2, name="p2")
+    assert (sim._geometry[2].shape.corner_lo[0], sim._geometry[2].shape.corner_hi[0]) == (sim._msl_ports[0].position[0], sim._msl_ports[1].position[0]), "The strip must span the port nodes to exclude 2 mm open stubs near the read band."
     return sim
 
 
@@ -209,13 +188,11 @@ def test_enforced_result_is_strictly_passive_and_loud():
 
     assert np.all(_sigma_max(res.S) <= 1.0), "the enforced S must satisfy the bound at every frequency"
 
-    # Nothing hidden: raw kept, correction recorded, warning fired.
     assert res.S_raw is not None
     assert res.passivity_correction is not None
     assert float(np.max(np.asarray(res.passivity_correction))) > 0.0
     messages = [str(w.message) for w in caught]
     assert any("projected onto the passive set" in m for m in messages)
-    # The projection must not silence the artifact diagnoses.
     assert any("settling witness" in m for m in messages)
 
 
@@ -234,8 +211,6 @@ def test_the_unprojected_default_returns_the_raw_extraction(kwargs):
         res = _thru().compute_msl_s_matrix(freqs=FREQS, num_periods=2.0,
                                            **kwargs)
     assert res.S_raw is None and res.passivity_correction is None
-    # The truncated raw extraction genuinely violates the bound — that is
-    # exactly what enforce_passivity=True projects away.
     sigma = _sigma_max(res.S)
     assert float(sigma.max()) > 1.0
     assert np.allclose(np.asarray(res.sigma_max_excess),

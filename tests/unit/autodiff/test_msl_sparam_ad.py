@@ -32,16 +32,7 @@ from tests.unit.sparams.test_msl_port_integration import (
     W_TRACE,
 )
 
-# ---------------------------------------------------------------------------
-# Historical S1-base evidence; incomplete for the current H-collocated algorithm.
-# Preserve these binaries. Current structural gates use manufactured data below.
-# ---------------------------------------------------------------------------
 
-# Slow end-to-end golden: a capture of the CURRENT pipeline (re-baselined), regenerable ONLY with a written reason in
-# test_compute_msl_s_matrix_end_to_end_matches_historical_base's docstring
-# (scripts/capture_msl_e2e_golden.py). The original "pre-change S1 capture,
-# must NOT be regenerated" contract this comment used to state was retired
-# by that re-baseline; the docstring is the contract.
 E2E_GOLDEN_PATH = (
     Path(__file__).resolve().parents[2]
     / "fixtures"
@@ -50,6 +41,7 @@ E2E_GOLDEN_PATH = (
 
 
 def _build_thru_line_sim(*, dx=DX, ly=LY) -> Simulation:
+    """The sheet's exact half-cell tie resolves lower, onto the laminate face."""
     sim = Simulation(
         freq_max=F_MAX,
         domain=(LX, ly, LZ),
@@ -67,11 +59,6 @@ def _build_thru_line_sim(*, dx=DX, ly=LY) -> Simulation:
     y_centre = ly / 2.0
     trace_y_lo = y_centre - W_TRACE / 2.0
     trace_y_hi = y_centre + W_TRACE / 2.0
-    # This one-cell foil declaration is a SHEET, not a volume.
-    # On the current dx = H_SUB/3 mesh its midpoint is at 3.5 cells:
-    # the exact half-cell tie resolves LOWER, onto the laminate face (3).
-    # The historical capture uses dx = 80 um: midpoint/dx = 3.675, so
-    # its nearest node is 4 (320 um). These are different replay geometries.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         sim.add_thin_conductor(
@@ -95,25 +82,16 @@ def _build_thru_line_sim(*, dx=DX, ly=LY) -> Simulation:
     return sim
 
 
-# The live coupon keeps the authorized 254 um laminate, 600 um etched
-# trace and 10 mm launch-plane separation. Fixed profiles give a graded Yee
-# grid: a scalar 84.667 um mesh cannot align its width. The 50 um CPML
-# boundary spacing matches every axis. Two 50 um and four 38.5 um cells
-# size the substrate exactly; the air ends in 16 uniform 50 um cells.
-# Fixed physical margins survive refinement; 35 um copper is idealized as
-# a PEC sheet, not a one-cell metal body. Profiles select the supported NU
-# runner, so the old uniform-field replay/AD fixture remains separate.
 E2E_SPACING = (50e-6, 50e-6, 50e-6)
 E2E_DZ_PROFILE = np.repeat(
     np.asarray([100e-6] + [77e-6] * 14 + [100e-6] * 8) / 2, 2)
 E2E_DOMAIN = (14e-3, 3.4e-3, 1.978e-3)
 E2E_PERIODS = 12
-# The implicit f0=F_MAX/2 pulse falls below the API low-signal screen at
-# 4.5/5 GHz. This explicit drive covers the entire declared measurement band.
 E2E_WAVEFORM = GaussianPulse(f0=F_MAX, bandwidth=.8)
 
 
 def _build_aligned_e2e_sim(*, refinement=1) -> Simulation:
+    """The 35 um copper is idealized as a PEC sheet."""
     if refinement not in (1, 2):
         raise ValueError("qualification uses the fixed drawing on 1x or 2x mesh")
     spacing = tuple(d / refinement for d in E2E_SPACING)
@@ -122,7 +100,6 @@ def _build_aligned_e2e_sim(*, refinement=1) -> Simulation:
         for axis, length, step in zip("xyz", E2E_DOMAIN, spacing)
     }
     profiles["dz_profile"] = np.repeat(E2E_DZ_PROFILE / refinement, refinement)
-    # Trace y solved +5.83% (1x), +2.92% (2x); this tests the AD golden pair.
     sim = Simulation(snap="declared",
         freq_max=F_MAX, domain=E2E_DOMAIN, dx=min(spacing),
         cpml_layers=16 * refinement,
@@ -149,9 +126,6 @@ def _build_aligned_e2e_sim(*, refinement=1) -> Simulation:
     return sim
 
 
-# ---------------------------------------------------------------------------
-# Replay helpers
-# ---------------------------------------------------------------------------
 
 def _run_manufactured_assembly(*, use_x64: bool):
     """Complete c64 DFT records -> production assembly -> independent S.
@@ -184,6 +158,7 @@ def _run_manufactured_assembly(*, use_x64: bool):
     seen_h = {}
 
     def fake_run(self, **kwargs):
+        """The planted current is physically stamped at H's time."""
         grid = self._build_grid()
         planes = {}
         for entry in self._dft_planes:
@@ -210,10 +185,6 @@ def _run_manufactured_assembly(*, use_x64: bool):
                     profile = np.broadcast_to(0.25 * y_h[:, None], shape)
                 sign = 1 if port == 0 else -1
                 field = sign * factor * profile / (0.75 * 5 * u)
-                # History (S2 M2): was current * exp(-j pi f dt), an H plane
-                # stamped at E's time for an extractor that applied the half
-                # step. The DFT kernel stamps H itself now; the plant is the
-                # physically stamped current (measured 8.97e-4 in S otherwise).
                 amplitude = current[port, driven]
             accumulator = (jnp.asarray(field, dtype=jnp.complex64)[None, :, :]
                            * jnp.asarray(amplitude, dtype=jnp.complex64)[:, None, None])
@@ -252,9 +223,6 @@ def _run_manufactured_assembly(*, use_x64: bool):
     return actual, expected
 
 
-# ---------------------------------------------------------------------------
-# Test A: manufactured float64 structural equivalence (FAST)
-# ---------------------------------------------------------------------------
 
 def test_replay_float64_equivalence():
     """Keep the historical test name and 1e-5 gate, using complete current data.
@@ -270,9 +238,6 @@ def test_replay_float64_equivalence():
     np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=1e-5)
 
 
-# ---------------------------------------------------------------------------
-# Test B: float32 deployment delta documented and bounded (FAST)
-# ---------------------------------------------------------------------------
 
 def test_float32_deployment_delta_bounded():
     """Keep the 1e-3 precision gate and independently check both outputs.
@@ -290,9 +255,6 @@ def test_float32_deployment_delta_bounded():
     assert delta < 1e-3
 
 
-# ---------------------------------------------------------------------------
-# Test C: AD smoke test (FAST)
-# ---------------------------------------------------------------------------
 
 def _synthetic_v_n(alpha: jnp.ndarray, gamma: jnp.ndarray,
                     n_probes: int = 5) -> list:
@@ -318,18 +280,6 @@ def _fake_run_for_theta(theta: jnp.ndarray, n_probes: int = 5):
         grid = self._build_grid()
         planes = {}
         ones = jnp.ones((1, grid.ny, grid.nz), dtype=jnp.complex64)
-        # Linear z/y ramps for the Hy/Hz planes.
-        # msl_loop_current's closed Ampere loop is
-        #   I = (Hy[bottom] - Hy[top])*dy_sum + (Hz[right] - Hz[left])*dz_sum
-        # A spatially UNIFORM Hy/Hz plane (the old ``ones * amp``) makes the
-        # opposing legs cancel EXACTLY, so I ~ 0 regardless of theta. With
-        # I ~ 0, every a=(V+Z0*I)/2 and b=(V-Z0*I)/2 collapses to a~b~V/2,
-        # so the multi-drive S=B*A^-1 solve returns ~Identity independent of
-        # V (and therefore of theta) -- empirically confirmed: the old
-        # fixture read S ~ [[1,~1e-9],[~1e-9,1]] at every theta in [0.5,0.9].
-        # A non-uniform ramp gives Hy/Hz a genuine difference between the
-        # loop's opposing legs, so I is non-zero and the V,I -> (a,b)
-        # decomposition is no longer degenerate.
         z_ramp = (0.5 + jnp.arange(grid.nz, dtype=jnp.float32) / grid.nz)[None, None, :]
         y_ramp = (0.5 + jnp.arange(grid.ny, dtype=jnp.float32) / grid.ny)[None, :, None]
         for entry in self._dft_planes:
@@ -357,7 +307,7 @@ def _fake_run_for_theta(theta: jnp.ndarray, n_probes: int = 5):
             elif kind == "hy":
                 amp = jnp.asarray(0.018 + 0.004j, dtype=jnp.complex64)
                 field = ones * amp * z_ramp
-            else:  # hz
+            else:
                 amp = jnp.asarray(0.005 + 0.001j, dtype=jnp.complex64)
                 field = ones * amp * y_ramp
 
@@ -484,9 +434,6 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
     """
     freqs = jnp.asarray([1.0e9], dtype=jnp.float32)
 
-    # A strictly-positive floor, not merely isfinite/not-NaN (the defect: those assertions cannot fail on a severed tape, so the old
-    # test passed on a dead grad = 0.0). Derived from the measured
-    # -4.681417e-03 with ~47x headroom below its magnitude.
     _GRAD_FLOOR = 1.0e-4
 
     def objective(theta):
@@ -497,18 +444,6 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
                 n_steps=1,
                 freqs=freqs,
                 num_periods=1.0,
-                # Explicit, mode-independent — do NOT rely on the default. The
-                # default gates passivity projection on
-                # `eps_override is None and not is_tracer(S)` (rfx/api/_sparams.py),
-                # so a traced call (jax.grad) and an eager call (e.g. an FD
-                # cross-check) silently take DIFFERENT branches on this
-                # eps_override=None path and would compare two different
-                # functions (see this test's docstring,
-                # "CROSS-CHECK CORRECTION"). This flag makes objective() return
-                # the identical (raw) reduction either way. It
-                # is also the default — kept explicit anyway, because what this
-                # objective needs is a MODE-INDEPENDENT flag, not whichever
-                # value the default happens to hold.
                 enforce_passivity=False,
             )
             return msl_band_mean_s21_sq(result.S)
@@ -525,9 +460,6 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
     print("[test_compute_msl_s_matrix_ad_smoke_has_finite_gradient] PASS")
 
 
-# ---------------------------------------------------------------------------
-# Test D: physically qualified live coupon and secondary complex drift lock
-# ---------------------------------------------------------------------------
 
 @pytest.mark.slow
 def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
@@ -686,8 +618,6 @@ def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     freqs = jnp.linspace(F_MAX / 10, F_MAX, golden.shape[-1], dtype=jnp.float32)
 
     result = sim.compute_msl_s_matrix(freqs=freqs, num_periods=E2E_PERIODS)
-    # The golden and the qualification oracle are at the probe-0 planes (5 and
-    # 9 mm); read the live S there (see the docstring's PLANE paragraph).
     import dataclasses
     result = dataclasses.replace(
         result, S=probe0_s(result, line_s(result)),
@@ -712,7 +642,6 @@ def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     assert not qualification["failures"], qualification["failures"]
     max_dev = float(np.max(np.abs(s_actual - golden)))
     print(f"[WI-1 MSL] max_abs_dev(aligned live coupon vs committed drift golden) = {max_dev:.3e}")
-    # Unchanged drift tolerance against the qualified repaired-board base.
     np.testing.assert_allclose(s_actual, golden, rtol=5e-3, atol=2e-3)
 
 
@@ -839,6 +768,7 @@ def test_aligned_coupon_drive_covers_the_declared_measurement_band():
 
     This checks excitation before a solve, not the resulting S-matrix. It
     cannot certify output reliability; that remains a live qualification.
+    The .25 spectral bar gives a 2.5x margin over the 10% reliability floor.
     """
     sim = _build_aligned_e2e_sim()
     grid = sim._build_nonuniform_grid()
@@ -848,7 +778,6 @@ def test_aligned_coupon_drive_covers_the_declared_measurement_band():
     for entry in sim._msl_ports:
         assert entry.waveform is E2E_WAVEFORM
         spectrum = np.abs(transform @ np.asarray(entry.waveform(times)))
-        # 2.5x margin over the existing 10% reliability floor.
         assert np.min(spectrum / np.median(spectrum)) > .25
     old = np.abs(transform @ np.asarray(GaussianPulse(f0=F_MAX / 2, bandwidth=.8)(times)))
     np.testing.assert_array_equal(old / np.median(old) < .1,
@@ -858,7 +787,8 @@ def test_aligned_coupon_drive_covers_the_declared_measurement_band():
 def test_qualification_checks_the_float32_rounded_band_endpoint():
     from tests._msl_fixture_qualification import qualify_result
     result = _ideal_qualification_result()
-    result.freqs[8] = 4_500_000_256.  # actual float32 linspace endpoint
+    FLOAT32_BAND_ENDPOINT_HZ = 4_500_000_256.
+    result.freqs[8] = FLOAT32_BAND_ENDPOINT_HZ
     result.S_raw[0, 0, 8] = .3
     report = qualify_result(result)
     assert report["physics_band_indices"] == [5, 6, 7, 8]

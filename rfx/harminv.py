@@ -57,13 +57,13 @@ def matrix_pencil_record_duration(n_samples: int, dt: float, f_max: float, *,
 
 
 class MatrixPencilMode(NamedTuple):
-    """A single resonant mode extracted by the matrix pencil method."""
-    freq: float       # frequency in Hz
-    decay: float      # decay rate (1/s), positive = decaying
-    Q: float          # quality factor
-    amplitude: float  # amplitude magnitude
-    phase: float      # phase in radians
-    error: float      # relative error estimate
+    """A single resonant mode extracted by the matrix pencil method. ``decay`` is in inverse seconds and is positive for a decaying mode."""
+    freq: float
+    decay: float
+    Q: float
+    amplitude: float
+    phase: float
+    error: float
 
 
 def _fit_mode_amplitudes(signal: np.ndarray, poles: np.ndarray,
@@ -190,20 +190,15 @@ def matrix_pencil(
     modes = []
     mode_poles = []
     for lam, s, amp_complex in zip(eigenvalues, poles, amplitudes):
-        # Real records have conjugate poles. Fit both, then report the
-        # positive-frequency coefficient with a deterministic phase.
         if real_signal and s.imag < 0:
             continue
 
-        # z = exp(s * dt) where s = -alpha + j*omega
         freq = abs(s.imag) / (2 * np.pi)
         decay = -s.real
 
-        # Filter by frequency range
         if freq < f_min * 0.9 or freq > f_max * 1.1:
             continue
 
-        # Quality factor
         if abs(decay) > 1e-30 and freq > 0:
             Q = np.pi * freq / abs(decay)
         else:
@@ -215,7 +210,6 @@ def matrix_pencil(
         amplitude = abs(amp_complex)
         phase = np.angle(amp_complex)
 
-        # Error estimate: how well does this mode fit?
         err = 1.0 - min(abs(lam), 1.0 / abs(lam)) if abs(lam) != 0 else 1.0
 
         modes.append(MatrixPencilMode(
@@ -228,8 +222,6 @@ def matrix_pencil(
         ))
         mode_poles.append(s)
 
-    # Real signals already omit negative frequencies. For complex signals,
-    # omit only a negative pole whose positive conjugate is also reported.
     if not real_signal:
         positive_modes = [m for m, s in zip(modes, mode_poles) if s.imag > 0]
         modes = [
@@ -243,7 +235,6 @@ def matrix_pencil(
 
     modes.sort(key=lambda m: m.freq)
 
-    # Sort by amplitude
     modes.sort(key=lambda m: m.amplitude, reverse=True)
     return modes[:max_modes]
 
@@ -292,9 +283,6 @@ def _ring_down_modes(series, dt, f_min, f_max, source_decay_time, **matrix_penci
         candidate = 10_000
         for factor in reversed(factors):
             candidate = (candidate + 2 * _FIR_HALF_OUTPUT_SAMPLES) * factor
-        # At fixed capacity, shortening cannot admit another FIR stage.
-        # The next possible solution is this inverse bound or the last
-        # length with lower capacity (which can admit additional stages).
         low, high = 10_000, n_keep
         required = capacity(n_keep)
         while low + 1 < high:

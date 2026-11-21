@@ -5,6 +5,7 @@ solver/nominal-profile states with no concrete public admission, and the
 internal probe-index bookkeeping. Expected models never use rebuild helpers.
 """
 from dataclasses import dataclass
+from math import floor
 
 import numpy as np
 import pytest
@@ -91,7 +92,7 @@ def cases():
                                classification="REFUSED", public="add_pinned_sheet"),
         "_wall_losses": call(lambda s: s.add_wall_loss(sigma_bulk=5.8e7, f0=5e9, shape=s._geometry[0].shape), wall_base),
         "_ports": call(lambda s: s.add_port((.010, .008, .006), "ez", impedance=50.)),
-        "_waveguide_ports": call(lambda s: s.add_waveguide_port(.010, direction="+x", freqs=np.linspace(7e9, 10e9, 5)), guide),
+        "_waveguide_ports": call(lambda s: s.add_waveguide_port(.010, direction="+x", freqs=np.linspace(7e9, 10e9, 5)), guide, classification="REWRITTEN"),
         "_msl_ports": call(add_msl, msl_base),
         "_coaxial_ports": call(lambda s: s.add_coaxial_port((.004, .004, .015), face="top", pin_length=.005,
                                                           pin_radius=.000635, outer_radius=.002055),
@@ -153,6 +154,7 @@ def test_t1_registry_is_exhaustive():
 def test_t1_declaration_at_both_factors(name):
     case = cases()[name]
     sim = case.build()
+    entries = (tuple(sim._waveguide_ports), tuple(sim._ports))
     expected = declarations.declaration_key(sim)
     assert dict(expected)[name] != dict(declarations.declaration_key(case.control()))[name], name
     same = declarations.declaration_at_dx(sim, caller="contract")
@@ -173,11 +175,14 @@ def test_t1_declaration_at_both_factors(name):
         scaled = declarations.declaration_at_dx(sim, .5, caller="contract")
         if case.classification == "CARRIED":
             assert dict(declarations.declaration_key(scaled))[name] == dict(expected)[name], name
+        elif case.classification == "REWRITTEN":
+            assert dict(declarations.declaration_key(scaled))[name] != dict(expected)[name], name
         else:
             assert scaled._dx == .5 * realized_dx
             if name == "_dt_pin":
                 assert scaled._dt_pin == .5 * sim._dt_pin
     assert declarations.declaration_key(sim) == expected
+    assert all(a is b for old, new in zip(entries, (sim._waveguide_ports, sim._ports)) for a, b in zip(old, new))
 
 
 STATE_RULES = {
@@ -198,6 +203,7 @@ STATE_RULES = {
 def test_t2_state_inventory_and_lifecycle():
     assert set(STATE_RULES) == {name for name, _ in declarations.NOT_DECLARATIONS}
     sim = base()
+    base_grid = sim._build_realized_grid()
     tokens = {name: {} for name, rule in STATE_RULES.items() if rule not in {"frozen", "carried"}}
     sim.__dict__.update(tokens)
     same = declarations.declaration_at_dx(sim, caller="contract")
@@ -208,7 +214,7 @@ def test_t2_state_inventory_and_lifecycle():
             assert same.__dict__[name] is None
         elif rule in {"carried", "input-keyed"}:
             assert same.__dict__[name] is sim.__dict__[name]
-    scaled = declarations.declaration_at_dx(sim, .5, caller="contract", _base_dx=DX)
+    scaled = declarations.declaration_at_dx(sim, .5, caller="contract", _base_grid=base_grid)
     assert "_mesh_resolution" not in scaled.__dict__
     assert all(sim.__dict__[name] is token for name, token in tokens.items())
 
@@ -385,3 +391,111 @@ def test_quick_convergence_builds_only_base_on_private_model(monkeypatch):
     # Strict wall mismatch is deferred until the rung actually builds a grid.
     with pytest.raises(ValueError, match="wall axis"):
         captured["sim_factory"](captured["dx_values"][1])._build_realized_grid()
+
+
+def plane_guide(direction="+x", **kwargs):
+    sim = Simulation(freq_max=10e9, domain=(.06096, .02286, .00762), dx=.00127,
+                     boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=8)
+    sim.add_waveguide_port(.0103 if direction == "+x" else .05066, direction=direction,
+                           freqs=np.array([8e9, 10e9]), probe_offset=10, ref_offset=3, **kwargs)
+    return sim
+
+
+def built_reported(sim):
+    from rfx.sparams._waveguide_planes import resolve_reported_planes
+    entry = sim._waveguide_ports[0]
+    grid = sim._build_realized_grid()
+    cfg = sim._build_waveguide_port_config(entry, grid, entry.freqs, 1)
+    return resolve_reported_planes(entry, cfg, grid=grid)
+
+
+@pytest.mark.parametrize("factor", [2., 1.5, .75, .5])
+@pytest.mark.parametrize("direction", ["+x", "-x"])
+@pytest.mark.parametrize("preset", ["default", "measured", "reference", "both"])
+def test_t6_reported_planes_keep_factor_one_metres(factor, direction, preset):
+    options = {"calibration_preset": "measured"} if preset == "measured" else {}
+    if preset in {"reference", "both"}:
+        options["reference_plane"] = .030
+    if preset == "both":
+        options["probe_plane"] = .040
+    sim = plane_guide(direction, **options)
+    entry = sim._waveguide_ports[0]
+    key = declarations.declaration_key(sim)
+    original = built_reported(sim)
+    literal = {("+x", "default"): (.01016, .02286), ("+x", "measured"): (.01397, .02286),
+               ("-x", "default"): (.05080, .03810), ("-x", "measured"): (.04699, .03810)}
+    expected = literal.get((direction, preset), (.030, .040 if preset == "both" else .02286 if direction == "+x" else .03810))
+    assert original[:2] == pytest.approx(expected, abs=1e-12, rel=0)
+    variant = declarations.declaration_at_dx(sim, factor, caller="contract")
+    actual = built_reported(variant)
+    assert actual[:2] == pytest.approx(original[:2], abs=1e-12, rel=0)
+    assert actual[:2] == pytest.approx(expected, abs=1e-12, rel=0)
+    assert actual.label == "explicit"
+    rewritten = variant._waveguide_ports[0]
+    assert rewritten.calibration_preset is None
+    if preset in {"reference", "both"}:
+        assert rewritten.reference_plane is entry.reference_plane
+    if preset == "both":
+        assert rewritten.probe_plane is entry.probe_plane
+    for pin in (False, True):
+        same = declarations.declaration_at_dx(sim, caller="contract", pin_resolved_mesh=pin)
+        assert declarations.declaration_key(same) == key
+        assert same._waveguide_ports[0] is entry
+    assert declarations.declaration_key(sim) == key
+    assert sim._waveguide_ports[0] is entry
+
+
+@pytest.mark.parametrize("factor,probe,reference", [(f, 10, 3) for f in (2., 1.5, .75, .5)] + [(2., 5, 3), (2., 9, 3)])
+def test_t7_sampling_counts_round_half_up(factor, probe, reference):
+    from dataclasses import replace
+    sim = plane_guide()
+    sim._waveguide_ports[0] = replace(sim._waveguide_ports[0], probe_offset=probe, ref_offset=reference)
+    entry = sim._waveguide_ports[0]
+    key = declarations.declaration_key(sim)
+    variant = declarations.declaration_at_dx(sim, factor, caller="contract")
+    scaled = variant._waveguide_ports[0]
+    assert scaled.probe_offset == max(1, floor(probe / factor + .5))
+    assert scaled.ref_offset == max(1, floor(reference / factor + .5))
+    if factor == 2. and probe in (5, 9):
+        assert scaled.probe_offset == {5: 3, 9: 5}[probe]
+    if factor == 1.5:
+        assert scaled.probe_offset == 7
+    assert declarations.declaration_key(sim) == key
+    assert sim._waveguide_ports[0] is entry
+
+
+def test_t7_collapsed_sampling_planes_refused_before_copy(monkeypatch):
+    from dataclasses import replace
+    sim = plane_guide()
+    sim._waveguide_ports[0] = replace(sim._waveguide_ports[0], probe_offset=4)
+    entry = sim._waveguide_ports[0]
+    copies = []
+    monkeypatch.setattr(declarations, "declaration_variant", lambda *a, **kw: copies.append(a))
+    with pytest.raises(ValueError) as error:
+        declarations.declaration_at_dx(sim, 2., caller="contract")
+    for text in ("contract", entry.name, "ref_offset=3", "probe_offset=4", "convergence_study", "offsets further apart"):
+        assert text in str(error.value)
+    assert not copies
+    assert sim._waveguide_ports[0] is entry
+
+
+@pytest.mark.parametrize("factor,count", [(.75, 16), (1.5, 8), (2., 6)])
+def test_t8_lumped_sampling_counts_scale(factor, count):
+    sim = base(domain=(.080, .016, .012))
+    for x in (.020, .060):
+        sim.add_port((x, .008, .006), "ez", impedance=50., extent=.002,
+                     direction="-x" if x == .020 else "+x", reference_plane_cells=12)
+    entries = tuple(sim._ports)
+    key = declarations.declaration_key(sim)
+    variant = declarations.declaration_at_dx(sim, factor, caller="contract")
+    opted_in = 0
+    for original, scaled in zip(entries, variant._ports):
+        if original.reference_plane_cells is None:
+            assert scaled is original
+        else:
+            opted_in += 1
+            assert scaled.position == original.position
+            assert scaled.reference_plane_cells == count
+    assert opted_in == 2
+    assert declarations.declaration_key(sim) == key
+    assert all(a is b for a, b in zip(entries, sim._ports))

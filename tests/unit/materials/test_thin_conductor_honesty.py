@@ -36,9 +36,6 @@ def _warn_for(**kw):
     return msgs
 
 
-# ---------------------------------------------------------------------------
-# The behaviour being disclosed
-# ---------------------------------------------------------------------------
 
 def test_thickness_does_not_affect_a_metal_sheet():
     """Six orders of magnitude of `thickness` produce the SAME PEC mask.
@@ -61,7 +58,6 @@ def test_thickness_does_not_affect_a_metal_sheet():
         sheets: list = []
         pec_mask = sim._assemble_materials(sim._build_grid(),
                                            pec_sheets=sheets)[3]
-        # A PEC thin conductor is a SheetSpec, never a pec_mask cell
         assert pec_mask is None and len(sheets) == 1
         mask = np.asarray(sheets[0].footprint)
         assert mask.sum() > 0, f"sheet did not rasterise at t={thickness}"
@@ -85,14 +81,17 @@ def test_every_real_metal_is_on_the_pec_side():
     metal to the lossy Leontovich fold, which the second block asserts.
     """
     shape = _sheet()
-    for sigma in (5.8e7, 3.5e7, 4.1e7, 1.4e6):      # Cu, Al, Ag, stainless
-        # kwarg ABSENT (default None) — the legacy routing must hold exactly
+    COPPER_CONDUCTIVITY_S_PER_M = 5.8e7
+    ALUMINIUM_CONDUCTIVITY_S_PER_M = 3.5e7
+    SILVER_CONDUCTIVITY_S_PER_M = 4.1e7
+    STAINLESS_CONDUCTIVITY_S_PER_M = 1.4e6
+    for sigma in (COPPER_CONDUCTIVITY_S_PER_M, ALUMINIUM_CONDUCTIVITY_S_PER_M,
+                  SILVER_CONDUCTIVITY_S_PER_M, STAINLESS_CONDUCTIVITY_S_PER_M):
         assert ThinConductor(shape=shape, sigma_bulk=sigma, thickness=35e-6).is_pec
-        # kwarg set — the same metal becomes a lossy resistive sheet
         assert not ThinConductor(shape=shape, sigma_bulk=sigma,
                                  thickness=35e-6,
                                  surface_impedance_f0=10e9).is_pec
-    for sigma in (9.9e5, 1e5, 1e4):                  # below threshold only
+    for sigma in (9.9e5, 1e5, 1e4):
         assert not ThinConductor(shape=shape, sigma_bulk=sigma, thickness=35e-6).is_pec
 
 
@@ -123,9 +122,6 @@ def test_lossy_path_still_depends_on_thickness():
     assert got[1] == pytest.approx(2.0 * got[0], rel=1e-9)
 
 
-# ---------------------------------------------------------------------------
-# The message about it — fire, clear, and never false
-# ---------------------------------------------------------------------------
 
 def test_warning_fires_for_a_metal():
     msgs = _warn_for(sigma_bulk=5.8e7, thickness=35e-6)
@@ -143,12 +139,13 @@ def test_warning_is_silent_below_the_threshold():
 def test_flag_on_warning_quotes_rs0_and_band_error_formula():
     """Leontovich mode (issue #669) wording pin: the add-time warning must
     quote the computed Rs0 in ohms and the frequency-flat band-error
-    formula |sqrt(f/f0)-1|, and must disclose that Xs is not modeled."""
+    formula |sqrt(f/f0)-1|, and must disclose that Xs is not modeled.
+    Rs0 = sqrt(pi*1e10*mu0/1e4) = 1.987 ohm/sq is printed to four significant figures.
+    """
     msgs = _warn_for(sigma_bulk=1e4, thickness=2e-4,
                      surface_impedance_f0=10e9)
     assert len(msgs) == 1, msgs
     m = msgs[0]
-    # Rs0 = sqrt(pi*1e10*mu0/1e4) = 1.987 ohm/sq, printed to 4 sig figs
     assert "Rs0 = 1.987" in m, m
     assert "|sqrt(f/f0)-1|" in m, m
     assert "Xs = Rs" in m and "NOT modeled" in m, m
@@ -159,7 +156,9 @@ def test_leontovich_preflight_advisories_fire_and_stay_off():
     thick-conductor model is invalid for thin films (and the DC path is
     the right model); (b) f0 more than 20% from the source centre advises
     that Rs is frozen at f0. Both stay OFF for the oracle-style operating
-    point (thickness >= 3*delta, f0 == source centre)."""
+    point (thickness >= 3*delta, f0 == source centre).
+    At 10 GHz and 1e4 S/m the 50.3 µm skin depth places the three-skin-depth advisory boundary at 151 µm.
+    """
     from rfx import GaussianPulse
 
     def _preflight_for(thickness, f0, src_f0):
@@ -174,7 +173,6 @@ def test_leontovich_preflight_advisories_fire_and_stay_off():
                        amplitude_kind="field")
         return list(sim.preflight())
 
-    # operating point: delta(10 GHz, 1e4 S/m) = 50.3 um, 3*delta = 151 um
     quiet = " ".join(_preflight_for(2e-4, 10e9, 10e9))
     assert "thick-conductor" not in quiet
     assert "frozen at f0" not in quiet
@@ -203,12 +201,9 @@ def test_warning_names_the_deciding_quantity_and_states_no_false_inequality():
     msgs = _warn_for(sigma_bulk=sb, thickness=t)
     assert len(msgs) == 1
     m = msgs[0]
-    # the deciding quantity is named with its real value
     assert f"sigma_bulk={sb:.2e}" in m
-    # and the misleading derived quantity is not presented as the test
     assert "sigma_eff" not in m
     assert f"{sigma_eff:.2e}" not in m
-    # the stated relation is the true one
     assert "at or above" in m and sb >= _PEC_SIGMA_THRESHOLD
 
 

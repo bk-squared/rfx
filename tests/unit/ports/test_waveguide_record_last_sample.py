@@ -2,6 +2,7 @@
 
 Completed steps 1 through N fill slots 0 through N-1 at their physical
 stamps. Calls before the first step or after step N leave the record alone.
+The z-domain length written as ``11 * 1e-3`` is a whole number of cells of dx, so the solved length equals the declared one.
 """
 
 import numpy as np
@@ -17,7 +18,7 @@ def _guide():
         boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
                               y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),
-        cpml_layers=8, **kw)  # solved length
+        cpml_layers=8, **kw)
     sim.add_waveguide_port(0.012, direction="+x", mode=(1, 0), mode_type="TE",
                            freqs=np.linspace(8.2e9, 12.4e9, 3), f0=10.3e9,
                            bandwidth=0.5, name="wg1")
@@ -35,7 +36,6 @@ def test_out_of_range_step_leaves_the_record_unchanged():
     grid = result.grid
     state = init_state((grid.nx, grid.ny, grid.nz))._replace(step=n_t + 1)
     out = update_waveguide_port_probe(cfg, state, grid.dt, grid.dx)
-    # The final completed step fills the last slot before out-of-range calls.
     assert np.asarray(cfg.v_ref_t)[-1] != 0
     assert np.asarray(cfg.v_probe_t)[-1] != 0
     for name in ("v_probe_t", "v_ref_t", "i_probe_t", "i_ref_t", "v_inc_t"):
@@ -46,13 +46,15 @@ def test_out_of_range_step_leaves_the_record_unchanged():
 
 def test_a_source_still_on_at_the_end_is_not_read_as_ended():
     """The final slot is a sample: the count includes it, and a reader sees
-    a drive that is still on through the final completed step."""
+    a drive that is still on through the final completed step.
+    The pulse is still rising at step 40.
+    """
     from rfx.measurement.modal import recorded
     from rfx.measurement.record_end import source_end_step
     from rfx.sources.waveguide_port import settling_db_from_port_records
 
     sim = _guide()
-    result = sim.run(n_steps=40)       # the pulse is still rising at step 40
+    result = sim.run(n_steps=40)
     cfg = next(iter(result.waveguide_ports.values()))
     n_t = cfg.v_inc_t.shape[0]
     assert int(cfg.n_steps_recorded) == n_t
@@ -72,8 +74,8 @@ def test_before_first_step_leaves_every_record_and_count_unchanged():
     cfg = next(iter(result.waveguide_ports.values()))
     grid = result.grid
     state = init_state((grid.nx, grid.ny, grid.nz))._replace(step=0)
-    # Nonzero fields make an erroneous last-slot V/I write observable too.
     state = state._replace(ey=state.ey + 1, hz=state.hz + 1)
+    assert np.any(np.asarray(state.ey)) and np.any(np.asarray(state.hz)), "Nonzero fixture fields make an erroneous last-slot write observable"
     names = ('v_probe_t', 'v_ref_t', 'i_probe_t', 'i_ref_t', 'v_inc_t')
     before = {name: np.asarray(getattr(cfg, name)).copy() for name in names}
     count = np.asarray(cfg.n_steps_recorded).copy()
@@ -95,7 +97,7 @@ def test_the_first_completed_step_writes_slot_zero():
     state = init_state((grid.nx, grid.ny, grid.nz))._replace(step=1)
     out = update_waveguide_port_probe(blank, state, grid.dt, grid.dx)
     arg = (float(grid.dt) - float(cfg.src_t0)) / float(cfg.src_tau)
-    expected = float(cfg.src_amp) * (-2.0 * arg) * np.exp(-(arg ** 2))    # the drive at t = 1 dt
+    expected = float(cfg.src_amp) * (-2.0 * arg) * np.exp(-(arg ** 2))
     assert expected != 0
     np.testing.assert_allclose(np.asarray(out.v_inc_t)[0], expected, rtol=1e-5)
     assert int(out.n_steps_recorded) == 1

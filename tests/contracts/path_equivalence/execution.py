@@ -1,4 +1,6 @@
-"""Run S0 declarations and retain every record-level failure and timing."""
+"""Run S0 declarations and retain every record-level failure and timing.
+An all-passive record has no S column to form.
+"""
 import functools
 import sys
 import time
@@ -18,6 +20,7 @@ from .comparison import array_peak, compare, component_peaks, container, exclude
 
 @functools.lru_cache(maxsize=None)
 def solve(row, lane, graded, steps, dt, traced=True, precision=None):
+    """The current-moment monitor refuses a whole-grid traced override."""
     started = time.perf_counter()
     sim = build(row, lane, graded=graded, dt=dt, precision=precision)
     grid = sim._build_realized_grid()
@@ -31,7 +34,6 @@ def solve(row, lane, graded, steps, dt, traced=True, precision=None):
             devices = jax.devices('cpu')
             assert len(devices) == 2, 'S0 requires exactly two CPU devices'
             kwargs.update(distributed=True, devices=devices)
-        # An all-passive record has no S column to form: forward refuses it.
         if row[0] == '_ports' and row[1] in ('lumped_port', 'wire_port'):
             from .builders import FREQS
             kwargs['port_s11_freqs'] = FREQS
@@ -46,8 +48,6 @@ def solve(row, lane, graded, steps, dt, traced=True, precision=None):
             assert len(devices) == 2, 'S0 requires exactly two CPU devices'
             kwargs['devices'] = devices
     objective = gradient = None
-    # Source normalization capture supports only a single declared port.
-    # S0 observes materials and leaves every production source spec unchanged.
     with patch.object(_realized, 'sources', lambda grid, materials, specs, site, **kw: specs):
         with _realized.capture() as capture:
             if forward and traced:
@@ -55,8 +55,6 @@ def solve(row, lane, graded, steps, dt, traced=True, precision=None):
                 mask = eps != 1.0
                 box = None
                 if row[0] == '_current_moments':
-                    # This monitor explicitly supports a bounded material
-                    # design, and refuses a whole-grid traced override.
                     box = (point(4, 2, 2), point(6, 4, 3))
                     index = (lambda p: sim._pos_to_nu_index(grid, p)) if sim._uses_nonuniform_mesh else grid.position_to_index
                     lo, hi = map(index, box)
@@ -97,8 +95,9 @@ def _comparison(a, b, name, kind, report, peak=None):
 
 
 def _tree(a, b, name, kind, report, peak=None, *, paired_impedance=None):
+    """NTFF packs [Et1, Et2, Ht1, Ht2] on each face."""
     if a is None and b is None:
-        return  # Optional fields inside a present record.
+        return
     if a is None or b is None:
         _comparison(a, b, name, kind, report)
         return
@@ -106,8 +105,6 @@ def _tree(a, b, name, kind, report, peak=None, *, paired_impedance=None):
     a, b = container(a), container(b)
     if isinstance(a, dict) and isinstance(b, dict):
         peaks = component_peaks(a, b, paired_impedance=paired_impedance) if kind != 'exact' else {}
-        # NTFF packs [Et1, Et2, Ht1, Ht2] on each face. The six faces
-        # belong to one surface field; residuals never contribute to its peak.
         faces = ('x_lo', 'x_hi', 'y_lo', 'y_hi', 'z_lo', 'z_hi')
         packed = name == 'ntff_data' and all(
             np.ndim(tree[key]) > 0 and np.shape(tree[key])[-1] == 4
@@ -151,8 +148,7 @@ def _tree(a, b, name, kind, report, peak=None, *, paired_impedance=None):
 
 
 def _kernel_materials(capture):
-    # Prefer E's complete material view. Dispersive E has no electric hook;
-    # H records that path's common cell MaterialArrays (eps/sigma included).
+    """H's common-cell record can substitute for hookless dispersive E because H does not consume the omitted sigma_lumped term."""
     magnetic = [r for r in capture.records if 'mu_h' in r]
     assert magnetic, 'kernel magnetic material record missing'
     owned = sorted((r for r in capture.records if 'owned_start' in r),
@@ -182,8 +178,6 @@ def _kernel_materials(capture):
         start, count = int(record[prefix + 'owned_start']), int(record[prefix + 'owned_count'])
         assert start == end and count > 0, 'kernel slab coverage differs'
         end += count
-        # E includes sigma_lumped; H omits it because H does not consume
-        # that term. Use H's common cell view only when E is absent.
         chunks.append((count, record['materials']))
 
     def merge(values):
@@ -230,7 +224,6 @@ def _port_dft(value, name):
 
 
 def _comparison_canary():
-    # Exercise every layer that the matrix relies on, even in expected failures.
     a, b = np.array([1.], dtype=np.float32), np.array([2.], dtype=np.float32)
     try:
         compare(a, b, record='canary', kind='step', measurements=[])
@@ -247,9 +240,6 @@ def _comparison_canary():
 
 
 def _entry_refusal(sim, cell, report):
-    # A selector (e.g. a profile) normally routes away from the lane whose
-    # refusal is under test. Select that explicit lane after the real routing
-    # validation; retain all of its real preparation and admission checks.
     dispatch = sim._dispatch_plan
     scan = jax.lax.scan
 
@@ -307,7 +297,6 @@ def _execute(cell, precision=None):
                 report['refusal_scan_started'] = True
                 raise AssertionError('refusal reached a scan')
 
-            # Exercise the production refusal gate before any time-step scan.
             try:
                 sim = build(cell.row, cell.refused, graded=cell.graded)
             except (ValueError, NotImplementedError) as exc:
@@ -325,18 +314,12 @@ def _execute(cell, precision=None):
                 report['refusal'] = str(exc)
                 if cell.steps:
                     if path_disposition.cell(*cell.row, cell.refused).kind == path_disposition.FALLS_BACK:
-                        # The public API intentionally selects another lane
-                        # for these features. Test this lane's production
-                        # admission gate, not an artificial forced-dispatch
-                        # loop through the public single-device fallback.
                         report['routing_note'] = 'public API falls back to single-device; explicit lane admission refused'
                     else:
                         report['entry_refusal'] = _entry_refusal(sim, cell, report)
                 return report
             raise AssertionError(f'{cell.refused} failed to refuse {cell.row} before stepping')
         row = ('_materials', 'eps') if cell.row in BASE_ROWS else cell.row
-        # The graded pair takes its first lane's computed time step. Other
-        # pairs use the uniform lane's computed time step as declared.
         sim_a = build(row, cell.a, graded=cell.graded, precision=precision)
         dt = float(sim_a._build_realized_grid().dt)
         assert admission.DETECTORS[('_precision', '') if precision else cell.row](sim_a), f'builder did not activate {cell.row}'
@@ -354,8 +337,6 @@ def _execute(cell, precision=None):
         except AssertionError as exc:
             report['failures'].append(f'kernel: {exc}')
         for name in RECORDS:
-            # A record a lane refuses on read is a difference of that record,
-            # not of the whole cell: the other records are still compared.
             values, refused = {}, []
             for side, solved in (('A', a), ('B', b)):
                 try:

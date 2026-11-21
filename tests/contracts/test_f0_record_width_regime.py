@@ -16,7 +16,6 @@ def test_f0_record_width_regime(ratio):
                            sigma_bulk=np.pi * f0 * MU_0 / resistance**2,
                            thickness=35e-6, surface_impedance_f0=f0)
     grid = sim._build_grid()
-    # Expected endpoints come from the grid nodes, independently of report helpers.
     nodes = np.arange(grid.ny, dtype=float) * float(grid.dx)
     offset = 0.35 * float(grid.dx) if ratio < 1 else 0.0
     expected = (nodes[3] - offset, nodes[8] + offset)
@@ -54,7 +53,6 @@ def test_above_threshold_extent_warns_without_refusal(snap, graded, path):
     nodes = np.r_[0., np.cumsum(cells)]
     occupied = nodes[(nodes >= 3.15 * dx) & (nodes <= 8.85 * dx)]
     expected = occupied[-1] - occupied[0]
-    # The node span misses the drawing by >1%; refusal is still forbidden.
     assert abs(expected / ((8.85 - 3.15) * dx) - 1) > .01
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
@@ -76,4 +74,4 @@ def test_above_threshold_extent_warns_without_refusal(snap, graded, path):
     assert findings[0].severity == 'warning'
     assert 'edge not measured' in str(findings[0])
     assert not any(f.severity == 'error' for f in table.findings)
-    assert judge_realization(table, snap) == ()  # Admission/finalization delivers once.
+    assert judge_realization(table, snap) == ()

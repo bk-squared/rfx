@@ -1,4 +1,6 @@
-"""One-plane film contracts; expected conductivities follow G and the grid by hand."""
+"""One-plane film contracts; expected conductivities follow G and the grid by hand.
+At the periodic film junction the incident widths give 1/2 + 1/2 = 1.
+"""
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
 from pathlib import Path
@@ -64,7 +66,6 @@ def test_c1_arrays(graded, plane):
     assert mats.sigma_film[0] is None
     c = realize_components(mats, grid, periodic=(False,) * 3)
     assert_expected(c.sigma_update, c.eps_update, widths, plane)
-    # Cell conductivity remains zero; full wall coverage belongs to the edges.
     dual = (widths[plane - 1] + widths[plane]) / 2
     assert float(c.sigma_update[1][plane, -1, 4]) == pytest.approx(G / dual, rel=2e-7)
     assert float(c.sigma_update[2][plane, 4, -1]) == pytest.approx(G / dual, rel=2e-7)
@@ -147,6 +148,7 @@ def test_c7_mapping_refuses_unclassified_carrier():
 @pytest.mark.parametrize('graded', [False, 'up'])
 @pytest.mark.parametrize('kind', ['pmc', 'invariant', 'design'])
 def test_c4_geometry_refusals(graded, kind):
+    """The write window includes the upper context row, hence the design box reaches the film even though its own last cell is below it."""
     from rfx.boundaries.spec import BoundarySpec
     if kind == 'pmc':
         boundary = BoundarySpec(x='pmc', y='pec', z='pec')
@@ -165,8 +167,6 @@ def test_c4_geometry_refusals(graded, kind):
             sim._assemble_materials(sim._build_realized_grid())
     else:
         sim, widths = model(graded)
-        # The write window includes the upper context row, hence this box
-        # reaches the film even though its own last cell is below it.
         x = float(widths[:9].sum())
         box = ((x - widths[8], .001, .001), (x - widths[8] / 4, .002, .002))
         with pytest.raises(ValueError, match='contains edges of thin conductor 0'):
@@ -243,6 +243,7 @@ def test_c4_topology_design_film(inside):
 @pytest.mark.parametrize('graded', [False, 'up'])
 @pytest.mark.parametrize('impedance', [0., 50.])
 def test_c6_source_port_coefficient(graded, impedance):
+    """The source scale is Cb/dV for a current moment or Cb*sigma_port/edge_length for a Thevenin port with sigma_port=H/(R*d_dual_x*H)."""
     from rfx.core.yee import e_update_coeffs, cell_component_e_materials
     from rfx.model.source_coefficients import current_source_volume
     sim, widths = model(graded)
@@ -259,8 +260,6 @@ def test_c6_source_port_coefficient(graded, impedance):
     eps, sig = (r[name][2][cell] for name in ('eps_e', 'sigma_e'))
     cb = float(e_update_coeffs(eps, sig, grid.dt)[1])
     volume = current_source_volume(grid, cell, 'ez')[0] if graded else H ** 3
-    # A current moment scales by Cb/dV; a Thevenin port by
-    # Cb*sigma_port/edge_length, sigma_port=H/(R*d_dual_x*H).
     dual = (widths[8] + widths[9]) / 2
     expected_scale = cb / volume if impedance == 0 else cb / (impedance * dual * H)
     assert float(sources[-1]['drive_scale'][0]) == pytest.approx(expected_scale, rel=1e-6)
@@ -287,8 +286,6 @@ def test_c6_graded_sigma_gradient():
         sim._thin_conductors[0] = tc
 
 
-# Constructors that intentionally omit an explicit carrier keyword. Counts also
-# catch a new unclassified construction added inside an already reviewed function.
 CONSTRUCTOR_EXCEPTIONS = {
     ('rfx/stepping/slab_update.py', 'cpml_h_materials'): (2, 'H-only local/vacuum means passed to the shared CPML kernel; no conductivity consumed'),
     ('rfx/stepping/slab_graded_legacy_loop.py', 'run_graded_legacy_slab_loop._apply_cpml_h_shmap._h'): (1, 'H-only local means passed to the shared CPML kernel; no conductivity consumed'),
@@ -322,7 +319,6 @@ CONSTRUCTOR_EXCEPTIONS = {
     ('rfx/stepping/subgrid_sat.py', '_make_mats'): (1, 'vacuum reference, with sigma explicitly zero'),
 }
 
-# Every exact cell-sigma read, including typed exclusions, is classified.
 SIGMA_READS = {
     ('rfx/_internal/_realized.py', 'scalar_electric', 'materials'): (1, 'arithmetic into coefficient / observed scalar operands'),
 
@@ -353,7 +349,6 @@ SIGMA_READS = {
     ('rfx/model/pole_stability.py', 'pole_set_extremes', 'materials'): (3, 'refusal only: pole-medium time-step judgement at the cell conductivity extremes; a film on a pole-medium face is not included (not measured; reported to the materials lane)'),
     ('rfx/stepping/slab_graded_legacy_loop.py', 'run_graded_legacy_slab_loop.run_fn', 'invariants[0]'): (1, 'carrier staged or passed alongside volume sigma to the shared edge reader'),
     ('rfx/model/materials.py', '_design_box_edge_coeffs', 'materials'): (1, 'slicing/passing on to window MaterialArrays'),
-    # One new cell-sigma read proves constant Ca with stamps and film.
     ('rfx/model/materials.py', '_design_box_constant_ca', 'materials'): (1, 'constant-Ca proof through component_e_materials, including lumped loads and film'),
     ('rfx/model/materials.py', 'assembled_as_pec', 'mat'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/model/materials.py', 'assemble_cells', 'mat'): (6, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
@@ -442,7 +437,6 @@ def test_c2_carrier_and_cell_read_census():
                 if name == 'cut' or name.endswith('.cut'):
                     kind = node.args[2] if len(node.args) > 2 else next(
                         (k.value for k in node.keywords if k.arg == 'kind'), None)
-                    # Resolve a locally named mapping as well as inline forms.
                     if isinstance(kind, ast.Name):
                         assignments = [n.value for n in ast.walk(tree)
                             if isinstance(n, ast.Assign) and scope(n) == scope(node)
@@ -495,6 +489,7 @@ def test_c1_split_materials_consumed_on_two_devices():
 
 
 def test_c6_two_device_graded_source():
+    """E records include one low ghost."""
     from rfx.core.yee import e_update_coeffs
     sim, widths = model('up')
     grid = sim._build_realized_grid()
@@ -503,7 +498,7 @@ def test_c6_two_device_graded_source():
     source = next(r for r in capture.records if r['site'] == 'distributed_nu.sources')
     edge = next(r for r in capture.records if 'eps_e' in r and 'owned_start' in r
                 and int(r['owned_start']) <= 9 < int(r['owned_start']) + int(r['owned_count']))
-    local_x = 9 - int(edge['owned_start']) + 1  # E records include one low ghost.
+    local_x = 9 - int(edge['owned_start']) + 1
     eps = edge['eps_e'][2][local_x, 4, 4]
     sigma = edge['sigma_e'][2][local_x, 4, 4]
     cb = float(e_update_coeffs(eps, sigma, grid.dt)[1])
@@ -512,7 +507,9 @@ def test_c6_two_device_graded_source():
 
 
 def test_c6_two_device_graded_override_drive_reads_the_film():
-    """With an override the drive coefficient is formed in the program."""
+    """With an override the drive coefficient is formed in the program.
+    The film moves the coefficient by more than the bar.
+    """
     if len(jax.devices()) < 2:
         pytest.skip('requires 2 devices')
     eps0 = 8.8541878128e-12
@@ -525,7 +522,7 @@ def test_c6_two_device_graded_override_drive_reads_the_film():
     dual = (widths[8] + widths[9]) / 2
     loss = (1000. * 1e-5 / dual) * grid.dt / (2 * eps0)
     expected = (grid.dt / eps0) / (1 + loss) / (dual * H * H)
-    assert loss > 0.1  # the film moves the coefficient by more than the bar
+    assert loss > 0.1
     assert float(np.asarray(drive['runtime_scale']).ravel()[0]) == pytest.approx(expected, rel=1e-5)
 
 
@@ -586,6 +583,7 @@ def test_c3_global_sigma_sweep_retains_film():
 
 @pytest.mark.parametrize('normal', range(3))
 def test_c1_rectangular_coverage_and_volume_preservation(normal):
+    """A single occupied incident cell at a transverse end gives half coverage."""
     from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
     from rfx.grid import Grid
     grid = Grid(freq_max=10e9, domain=(.008,) * 3, dx=H, cpml_layers=0)
@@ -601,8 +599,6 @@ def test_c1_rectangular_coverage_and_volume_preservation(normal):
     for component in tangents:
         transverse = next(a for a in tangents if a != component)
         expected = np.zeros(grid.shape, dtype=np.float32)
-        # Four cells along the E edge direction; at the transverse ends,
-        # a single occupied incident cell gives half coverage.
         for along in range(2, 6):
             for across, weight in [(2, .5), (3, 1.), (4, 1.), (5, 1.), (6, .5)]:
                 index = [0, 0, 0]
@@ -613,13 +609,13 @@ def test_c1_rectangular_coverage_and_volume_preservation(normal):
 
 @pytest.mark.parametrize('lane', ['uniform', 'graded', 'periodic'])
 def test_c1_abutting_films_equal_spanning_film(lane):
+    """At the graded junction the incident widths give 1/3 + 2/3 = 1."""
     from rfx.boundaries.spec import BoundarySpec
     widths = np.full(12, H)
     if lane == 'graded':
         widths[5:7] = [.00075, .0015]
     nodes = np.r_[0., np.cumsum(widths)]
     periodic = lane == 'periodic'
-    # The periodic junction is node zero: [8, 12) and [0, 4).
     pieces = [(8, 12), (0, 4)] if periodic else [(2, 6), (6, 10)]
     whole = (8, 16) if periodic else (2, 10)
 
@@ -645,8 +641,6 @@ def test_c1_abutting_films_equal_spanning_film(lane):
         expected_x[x, [2, 10], 4] /= 2
     for x in xnodes:
         expected_y[x, 2:10, 4] = G/H * (.5 if x in (xnodes[0], xnodes[-1]) else 1.)
-    # At the graded junction the incident widths give 1/3 + 2/3 = 1.
-    # At the periodic junction they give 1/2 + 1/2 = 1.
     records = [spanning]
     for order in (pieces, pieces[::-1]):
         _, result = assemble(order)
@@ -741,7 +735,6 @@ def test_c3_sweep_results_retain_film(param):
         sim.add_material('sub', eps_r=value if param == 'sub.eps_r' else 2.2)
         sim.add(Box((.018, 0, 0), (.020, .024, .004)), material='sub')
         if param == 'eps_r':
-            # Fill the background too: global sweeps replace non-vacuum cells.
             sim.add_material('global', eps_r=value)
             sim.add(Box((0, 0, 0), (.024, .024, .004)), material='global')
         if film:
@@ -775,8 +768,6 @@ def test_c4_msl_port_f0_and_film_refused_in_sheet_context(graded, monkeypatch):
     original = msl.validate_msl_port_geometry
 
     def observed(*args, **kwargs):
-        # Both runners already lend the realized materials to this builder;
-        # the standalone SheetConductors fallback is therefore not taken.
         assert kwargs['conductors'].materials.sigma_film is not None
         reached.append(True)
         return original(*args, **kwargs)

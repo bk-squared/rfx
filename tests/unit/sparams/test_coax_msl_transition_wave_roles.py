@@ -103,40 +103,28 @@ from tests._wave_convention import plant_ladder_voltages_physical
 
 C0 = 299_792_458.0
 
-# ---------------------------------------------------------------------------
-# Attempt-3 plane geometry (tests/unit/sparams/test_coax_msl_transition.py, DX = 100 um):
-# coax probes k = 17..27 step 2 -> z = 0.9..1.9 mm, junction k = 33 -> 2.5 mm;
-# MSL probes i = 34..114 step 10 -> x = 2.6..10.6 mm, junction x = 1.0 mm.
-# ---------------------------------------------------------------------------
 _Z_COAX_M = 0.9e-3 + 0.2e-3 * np.arange(6)
 _REF_COAX_M = 2.5e-3
 _X_MSL_M = 2.6e-3 + 1.0e-3 * np.arange(9)
 _REF_MSL_M = 1.0e-3
 _FREQS = np.array([6.0e9, 8.0e9, 10.0e9])
-_EPS_COAX = 2.1          # PTFE (fixture EPS_COAX)
-_EPS_EFF_MSL = 2.8327    # Hammerstad-Jensen eps_eff quoted in the attempt-2 predeclaration
-_ALPHA_COAX = 2.0        # /m, small loss so the planted line is lossy (alpha > 0)
-_ALPHA_MSL = 5.0         # /m
-_Z0_COAX = 45.46         # analytic coax TEM Z0 the method normalises with
-_Z0_MSL = 53.11          # analytic HJ microstrip Zc the method normalises with
-_GAMMA_T = 0.09          # terminator echo on the NON-driven port (F2 estimate)
+_PTFE_RELATIVE_PERMITTIVITY = 2.1
+_EPS_COAX = _PTFE_RELATIVE_PERMITTIVITY
+_EPS_EFF_MSL = 2.8327
+_COAX_ATTENUATION_PER_M = 2.0
+_ALPHA_COAX = _COAX_ATTENUATION_PER_M
+_MSL_ATTENUATION_PER_M = 5.0
+_ALPHA_MSL = _MSL_ATTENUATION_PER_M
+_COAX_TEM_REFERENCE_IMPEDANCE_OHM = 45.46
+_Z0_COAX = _COAX_TEM_REFERENCE_IMPEDANCE_OHM
+_MSL_HJ_REFERENCE_IMPEDANCE_OHM = 53.11
+_Z0_MSL = _MSL_HJ_REFERENCE_IMPEDANCE_OHM
+_NONDRIVEN_TERMINATOR_ECHO = 0.09
+_GAMMA_T = _NONDRIVEN_TERMINATOR_ECHO
 
-# Which side of each ladder the DUT (the coax<->MSL junction) sits on. NOT a
-# free choice: asserted against the realized plane positions above by
-# ``test_the_planted_dut_signs_are_the_fixture_geometry`` -- the coax
-# junction (2.5 mm) is at LARGER z than its probes (0.9-1.9 mm), the MSL
-# junction (1.0 mm) at SMALLER x than its probes (2.6-10.6 mm).
 _DUT_SIGN_COAX = +1.0
 _DUT_SIGN_MSL = -1.0
 
-# The OTHER MSL orientation the calling method supports.
-# ``compute_coax_msl_transition`` accepts a "+x"-facing MSL port -- its
-# ladder monotonicity branch is ``(1 if msl_pe.direction == "+x" else -1)``
-# -- and passes ``ref_msl_m = float(junction_x)`` for either facing. On such
-# a fixture the junction sits at LARGER x than the ladder, so the MSL
-# ``dut_sign`` is +1, the mirror image of the committed one. Geometry below:
-# the same 9 probes at 1 mm pitch and the same 1.6 mm junction standoff,
-# mirrored about the ladder.
 _X_MSL_MIRROR_M = 2.8e-3 + 1.0e-3 * np.arange(9)
 _REF_MSL_MIRROR_M = 12.4e-3
 _DUT_SIGN_MSL_MIRROR = +1.0
@@ -150,6 +138,7 @@ def _msl_geometry(mirror):
 
 
 def _gammas():
+    assert _ALPHA_COAX > 0, 'Positive planted coax attenuation makes the line lossy'
     beta_c = 2.0 * np.pi * _FREQS * np.sqrt(_EPS_COAX) / C0
     beta_m = 2.0 * np.pi * _FREQS * np.sqrt(_EPS_EFF_MSL) / C0
     return _ALPHA_COAX + 1j * beta_c, _ALPHA_MSL + 1j * beta_m
@@ -178,11 +167,11 @@ def _s_true():
     """
     p11 = np.array([0.7, -1.9, 2.4])
     p21 = np.array([-2.2, 0.4, -0.9])
-    p22 = 2.0 * p21 + np.pi - p11        # -1.9584 / -0.4416 / -1.0584 rad
+    p22 = 2.0 * p21 + np.pi - p11
     s11 = np.array([0.50, 0.45, 0.40]) * np.exp(1j * p11)
     s21 = np.array([0.60, 0.55, 0.50]) * np.exp(1j * p21)
     s22 = np.array([0.30, 0.35, 0.20]) * np.exp(1j * p22)
-    return np.array([[s11, s21], [s21, s22]])   # (2, 2, n_f), reciprocal
+    return np.array([[s11, s21], [s21, s22]])
 
 
 def _plant_ab_signal_flow(s, gamma_t):
@@ -278,17 +267,12 @@ def _run_assembler(*, wrong_side=False, mirror_msl=False):
     return s, a, b, s_code, fit_resid, gamma_fit, a_code, b_code
 
 
-# ---------------------------------------------------------------------------
-# Label-independent contracts the W5 reading rests on
-# ---------------------------------------------------------------------------
-
 def test_planted_truth_is_passive_and_the_planting_is_self_consistent():
     """Preconditions: S_true passive; a/b satisfy b = S a for both drives;
     V(ref) = sqrt(z0)(a + b) on the planted ladders (extrapolated)."""
     s, a, b, v_coax, v_msl = _w5_fixture()
     lam = _lambda_min_passivity(s)
     assert np.all(lam > 0.0), lam
-    # Reciprocal, and the magnitudes the design predeclared.
     np.testing.assert_allclose(s[0, 1], s[1, 0], atol=0.0)
     np.testing.assert_allclose(np.abs(s[0, 0]), [0.50, 0.45, 0.40])
     np.testing.assert_allclose(np.abs(s[1, 0]), [0.60, 0.55, 0.50])
@@ -296,7 +280,6 @@ def test_planted_truth_is_passive_and_the_planting_is_self_consistent():
     for fi in range(s.shape[-1]):
         np.testing.assert_allclose(s[:, :, fi] @ a[:, :, fi], b[:, :, fi], atol=1e-14)
     g_c, g_m = _gammas()
-    # Extrapolate the planted two-wave field to the reference plane by hand.
     for drive in range(2):
         v_ref_c = _physical_ladder_voltages(
             a[0, drive], b[0, drive], gamma=g_c, planes_m=[_REF_COAX_M],
@@ -321,7 +304,7 @@ def test_extractor_forward_amp_means_toward_reference_plane(fi):
     g_c, _ = _gammas()
     g = g_c[fi]
     z = _Z_COAX_M
-    v_plus = np.exp(-g * (z - z.mean()))            # +z travelling wave
+    v_plus = np.exp(-g * (z - z.mean()))
     slope = np.angle(v_plus[1:] * np.conj(v_plus[:-1])) / np.diff(z)
     np.testing.assert_allclose(slope, -g.imag, rtol=1e-9)
 
@@ -332,16 +315,12 @@ def test_extractor_forward_amp_means_toward_reference_plane(fi):
     np.testing.assert_allclose(above.gamma, g, rtol=1e-6)
 
 
-# ---------------------------------------------------------------------------
-# W5 -- the H1 gate
-# ---------------------------------------------------------------------------
-
 def test_assembler_wave_roles_follow_the_junction_side_reference_plane():
     """W5: physical-convention planted voltages -> the assembler must return
     S_true, a passive S, and a SMALL incident wave at the non-driven coax
     port (the far-drive case: the backward wave dominates there)."""
     s, a, b, s_code, fit_resid, gamma_fit, a_code, b_code = _run_assembler()
-    assert np.all(fit_resid < 1e-9), fit_resid.max()     # the pencil itself is clean
+    assert np.all(fit_resid < 1e-9), fit_resid.max()
     g_c, g_m = _gammas()
     np.testing.assert_allclose(gamma_fit[0], np.broadcast_to(g_c, gamma_fit[0].shape), rtol=1e-6)
     np.testing.assert_allclose(gamma_fit[1], np.broadcast_to(g_m, gamma_fit[1].shape), rtol=1e-6)
@@ -371,20 +350,15 @@ def test_wrong_side_planting_returns_the_inverse_of_s_true():
     ``test_h1_diagnostic_label_swap_counterfactual_recovers_s_true``, which
     described the pre-#822 assembler (see this module's docstring for the
     disposition of both former mechanism pins).
+    A degenerate S_true with inv(S_true) == S_true would make the inverse assertion vacuous.
     """
     s, a, b, s_code, fit_resid, gamma_fit, a_code, b_code = _run_assembler(
         wrong_side=True)
-    assert np.all(fit_resid < 1e-9), fit_resid.max()   # the pencil is still clean
+    assert np.all(fit_resid < 1e-9), fit_resid.max()
     s_inv = np.stack([np.linalg.inv(s[:, :, fi]) for fi in range(s.shape[-1])], axis=-1)
     np.testing.assert_allclose(s_code, s_inv, atol=1e-9)
-    # ... and it is NOT the truth: the two differ by O(1), so this control
-    # genuinely fires (a degenerate S_true with inv(S_true) == S_true would
-    # make the assertion above vacuous).
     for fi in range(s.shape[-1]):
         assert np.abs(s_inv[:, :, fi] - s[:, :, fi]).max() > 1.0
-    # The exchanged roles are visible in the raw amplitudes too: the
-    # mislabelled 'incident' wave at the non-driven coax port under the MSL
-    # drive is the BIG one (1/gamma_t = 11.1).
     ratio = np.abs(a_code[0, 1]) / np.abs(b_code[0, 1])
     np.testing.assert_allclose(ratio, 1.0 / _GAMMA_T, rtol=1e-9)
 
@@ -422,21 +396,17 @@ def test_assembler_wave_roles_hold_on_a_mirrored_msl_ladder():
     with an unreachable branch; the assembler now states the constant
     plainly (see its Notes).
     """
-    # The mirrored fixture really is the other orientation; the planting
-    # convention takes the DUT side as an input, production takes none.
-    assert _REF_MSL_MIRROR_M > _X_MSL_MIRROR_M.max()     # junction ABOVE the ladder
-    assert _REF_MSL_M < _X_MSL_M.min()                   # committed: BELOW it
+    assert _REF_MSL_MIRROR_M > _X_MSL_MIRROR_M.max()
+    assert _REF_MSL_M < _X_MSL_M.min()
     assert _DUT_SIGN_MSL_MIRROR == np.sign(_REF_MSL_MIRROR_M - _X_MSL_MIRROR_M.mean())
     assert _DUT_SIGN_MSL_MIRROR == -_DUT_SIGN_MSL
 
     s, a, b, s_code, fit_resid, gamma_fit, a_code, b_code = _run_assembler(
         mirror_msl=True)
-    assert np.all(fit_resid < 1e-9), fit_resid.max()     # the pencil is clean
+    assert np.all(fit_resid < 1e-9), fit_resid.max()
     np.testing.assert_allclose(s_code, s, atol=1e-9)
     lam = _lambda_min_passivity(s_code)
     assert np.all(lam >= -1e-12), lam
-    # ... and NOT the inverse: the mirrored ladder is not a degenerate case
-    # in which the two readings coincide.
     s_inv = np.stack([np.linalg.inv(s[:, :, fi]) for fi in range(s.shape[-1])], axis=-1)
     for fi in range(s.shape[-1]):
         assert np.abs(s_inv[:, :, fi] - s[:, :, fi]).max() > 1.0
@@ -452,12 +422,7 @@ def test_the_planted_dut_signs_are_the_fixture_geometry():
     trusting the literals -- the same check
     ``tests/unit/sparams/test_coax_two_port_smatrix.py`` makes for its own two ladders.
     """
-    assert _REF_COAX_M > _Z_COAX_M.max()      # junction above the coax ladder
-    assert _REF_MSL_M < _X_MSL_M.min()        # junction below the MSL ladder
+    assert _REF_COAX_M > _Z_COAX_M.max()
+    assert _REF_MSL_M < _X_MSL_M.min()
     assert _DUT_SIGN_COAX == np.sign(_REF_COAX_M - _Z_COAX_M.mean())
     assert _DUT_SIGN_MSL == np.sign(_REF_MSL_M - _X_MSL_M.mean())
-    # These two literals are inputs to the PLANTING only. Production takes
-    # no side bit: on this lane each reference plane IS the junction, so the
-    # extractor's "toward the reference plane" branch is the incident wave
-    # at both ports (``a = forward_amp``, a constant of the lane), and the
-    # gate above is what pins it.

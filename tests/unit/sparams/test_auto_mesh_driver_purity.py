@@ -2,11 +2,7 @@
 import numpy as np
 import pytest
 
-import rfx.runners.nonuniform  # noqa: F401 - monkeypatch below targets this
-                              # submodule by path, and a string target only
-                              # resolves if it is already imported. Without
-                              # this the test passes or fails on whatever a
-                              # sibling test happened to import first.
+import rfx.runners.nonuniform  # noqa: F401
 from rfx import Box, Simulation
 from rfx.preflight.line_port_coverage import port_node_coordinate
 
@@ -24,6 +20,7 @@ def _board():
 
 @pytest.mark.parametrize("auto_mesh", [False, True])
 def test_waveguide_driver_preserves_declared_mesh_on_solve_failure(monkeypatch, auto_mesh):
+    """Section admission refuses the partial-fill board before the runner only when auto_mesh=True."""
     if auto_mesh:
         sim = _board()
     else:
@@ -44,9 +41,6 @@ def test_waveguide_driver_preserves_declared_mesh_on_solve_failure(monkeypatch, 
         raise _StopBeforeSolve("runner reached")
 
     monkeypatch.setattr("rfx.runners.nonuniform.run_nonuniform_path", stop)
-    # The board is a partial fill: section admission now refuses it before
-    # the runner. Both that failure and the injected solve failure must leave
-    # the declared mesh and cached resolution untouched.
     error=ValueError if auto_mesh else _StopBeforeSolve
     match="section cells.*homogeneous" if auto_mesh else "runner reached"
     with pytest.raises(error, match=match):

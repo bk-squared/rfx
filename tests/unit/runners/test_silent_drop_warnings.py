@@ -4,6 +4,7 @@
 
 The file keeps its old name because other files cite it. It also carries
 the P2.7 preflight checks (PMC/PEC face plus CPML on one axis).
+Without a PEC block, conformal_pec=True is a no-op on every lane and passes.
 """
 
 from __future__ import annotations
@@ -22,7 +23,6 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.simulation import SnapshotSpec
 
 
-# The value each argument takes when it asks for its feature.
 ASKS = {
     "subpixel_smoothing": True,
     "checkpoint": True,
@@ -38,11 +38,10 @@ def _quiet(build):
         return build()
 
 
-# Each lane fixture takes ``pec``: a PEC block for conformal_pec to act on.
-# Without one, conformal_pec=True is a no-op on every lane and passes.
-
 def _nu_sim(pec=False):
-    """Closed (PEC) cavity with a 4-cell graded dz."""
+    """Closed (PEC) cavity with a 4-cell graded dz.
+    A closed boundary has no decay stop.
+    """
     def build():
         sim = Simulation(freq_max=10e9, domain=(2e-3, 2e-3, 4e-3),
                          dx=1e-3, boundary="pec", cpml_layers=0)
@@ -72,7 +71,6 @@ def _subgrid_sim(pec=False):
     def build():
         sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02),
                          dx=1e-3, boundary="pec")
-        # Explicitly opt in to exercise the experimental subgrid lane.
         sim.add_refinement((0.012, 0.02), ratio=2, validation="research")
         if pec:
             sim.add(Box((0.002, 0.002, 0.002), (0.005, 0.005, 0.005)),
@@ -83,8 +81,6 @@ def _subgrid_sim(pec=False):
     return _quiet(build)
 
 
-
-
 def _devices():
     devices = jax.devices("cpu")
     assert len(devices) >= 2, "requires the root conftest's two CPU devices"
@@ -92,7 +88,6 @@ def _devices():
 
 
 LANES = {
-    # lane: (fixture, label in the message, extra run kwargs)
     "non-uniform": (_nu_sim, "non-uniform mesh", {}),
     "distributed": (_distributed_sim, "distributed multi-device", None),
     "subgridded": (_subgrid_sim, "subgridded (SBP-SAT)", {}),
@@ -101,7 +96,7 @@ LANES = {
 
 REFUSED = [
     ("non-uniform", "snapshot"),
-    ("non-uniform", "until_decay"),      # closed boundary: no decay stop
+    ("non-uniform", "until_decay"),
     ("non-uniform", "conformal_pec"),
     *[(lane, kw) for lane in ("distributed", "subgridded")
       for kw in ASKS if (lane, kw) != ("distributed", "snapshot")],
@@ -161,11 +156,6 @@ def test_every_refused_argument_is_named_in_one_error():
         assert f"  {kw}=" in msg, (kw, msg)
 
 
-# --------------------------------------------------------------------
-# S-parameter record length: a lane that reads S from the main run's own
-# port record cannot honour an s_param_n_steps other than that record.
-# --------------------------------------------------------------------
-
 def _wire_sim(nonuniform):
     def build():
         sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, 0.01), dx=1e-3,
@@ -186,19 +176,20 @@ def _wire_sim(nonuniform):
                          ids=["asked", "default"])
 def test_one_record_lanes_refuse_a_different_s_param_n_steps(
         nonuniform, label, compute_s_params):
+    """A lane that reads S from the main run's own port record cannot honour an s_param_n_steps other than that record."""
     sim = _wire_sim(nonuniform)
     with pytest.raises(NotImplementedError,
                        match=_refusal(label, "s_param_n_steps")) as info:
         sim.run(n_steps=20, compute_s_params=compute_s_params,
                 s_param_freqs=np.array([2e9, 3e9]), s_param_n_steps=40,
                 skip_preflight=True)
-    # One wire port reads S from the main record on both lanes, so the
-    # only way out is the record length itself.
     assert "run on a uniform mesh" not in str(info.value)
 
 
 def test_one_record_remedy_runs():
-    """Follow the remedy: drop s_param_n_steps and set n_steps."""
+    """Follow the remedy: drop s_param_n_steps and set n_steps.
+    One wire port reads S from the main record, so the only way out of a conflicting s_param_n_steps is the record length itself.
+    """
     res = _quiet(lambda: _wire_sim(True).run(
         n_steps=40, compute_s_params=True,
         s_param_freqs=np.array([2e9, 3e9]), skip_preflight=True))
@@ -206,12 +197,12 @@ def test_one_record_remedy_runs():
 
 
 def _two_wire_sim(nonuniform):
+    """S from one record needs isolated drives."""
     def build():
         sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, 0.01), dx=1e-3,
                          boundary="pec", cpml_layers=0,
                          **({"dz_profile": np.full(10, 1e-3)}
                             if nonuniform else {}))
-        # one driven port: S from one record needs isolated drives
         for index, x in enumerate((0.006, 0.014)):
             sim.add_port((x, 0.01, 0.002), "ez", impedance=50.0,
                          extent=0.006, excite=index == 0)
@@ -244,11 +235,6 @@ def test_s_param_n_steps_equal_to_the_record_still_runs(nonuniform):
     assert res.s_params is not None and res.s_params.shape[-1] == 2
 
 
-# --------------------------------------------------------------------
-# Debye/Lorentz materials: the dispersive E update reads neither the
-# smoothed tensor nor the Dey-Mittra eps correction.
-# --------------------------------------------------------------------
-
 def _debye_sim(nonuniform, pec_cylinder=False):
     def build():
         sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, 0.02), dx=2e-3,
@@ -276,6 +262,7 @@ def _debye_sim(nonuniform, pec_cylinder=False):
 ], ids=["uniform-subpixel", "uniform-kottke", "uniform-conformal",
         "nonuniform-subpixel"])
 def test_dispersive_lanes_refuse_smoothing_and_conformal(nonuniform, kw, val, pec):
+    """The dispersive E update reads neither the smoothed tensor nor the Dey-Mittra eps correction."""
     sim = _debye_sim(nonuniform, pec_cylinder=pec)
     label = ("non-uniform" if nonuniform else "uniform") + (
         " mesh with Debye/Lorentz materials")
@@ -284,13 +271,15 @@ def test_dispersive_lanes_refuse_smoothing_and_conformal(nonuniform, kw, val, pe
 
 
 def _wr90_sim(debye, conformal=False, dz=None, *, solved_domain=False):
-    """A short WR-90 section, optionally with a Debye slab inside."""
+    """A short WR-90 section, optionally with a Debye slab inside.
+    With solved_domain=True and no dz profile, the solved domain equals the declared domain because its lengths are whole numbers of cells of dx.
+    """
     def build():
         walls = Boundary(lo="pec", hi="pec", conformal=conformal)
         sim = Simulation(freq_max=8e9, domain=(0.06, 0.02286, 0.01016) if not solved_domain else (0.06, 8 * 3e-3, 4 * 3e-3),
                          dx=3e-3, cpml_layers=6,
                          boundary=BoundarySpec(x="cpml", y=walls, z=walls),
-                         **({"dz_profile": dz} if dz is not None else {}), snap="declared")  # solved length
+                         **({"dz_profile": dz} if dz is not None else {}), snap="declared")
         assert_declared_wall_warning(sim)
         if debye:
             sim.add_material("disp", eps_r=2.0, debye_poles=[
@@ -339,14 +328,6 @@ def test_waveguide_s_matrix_still_smooths_without_dispersion():
     assert np.asarray(res.s_params).shape[:2] == (2, 2)
 
 
-# --------------------------------------------------------------------
-# Boundary(conformal=True) off run(): forward() (so optimize()) and the
-# non-uniform waveguide S-matrix have no Dey-Mittra update. Measured before
-# the refusal: flag on vs off gave bit-identical forward() time series
-# (uniform and non-uniform) and a bit-identical non-uniform waveguide S,
-# while run() and the uniform waveguide lane moved.
-# --------------------------------------------------------------------
-
 def _conformal_cavity(conformal, nonuniform=False):
     def build():
         walls = Boundary(lo="pec", hi="pec", conformal=conformal)
@@ -374,7 +355,6 @@ def _optimize(sim, **kw):
 
 
 CONFORMAL_PATHS = {
-    # path: (call, entry, lane label)
     "forward-nonuniform": (
         lambda: _conformal_cavity(True, nonuniform=True).forward(
             n_steps=8, checkpoint=False, skip_preflight=True),
@@ -394,6 +374,7 @@ CONFORMAL_PATHS = {
 
 @pytest.mark.parametrize("path", list(CONFORMAL_PATHS))
 def test_paths_without_dey_mittra_refuse_a_conformal_boundary(path):
+    """Non-uniform forward and waveguide S-matrix paths have no Dey-Mittra update."""
     call, entry, label = CONFORMAL_PATHS[path]
     with pytest.raises(NotImplementedError,
                        match=_refusal(label, "conformal_pec")) as info:
@@ -414,16 +395,10 @@ def test_forward_without_a_conformal_boundary_still_runs(nonuniform):
     assert np.all(np.isfinite(np.asarray(res.time_series)))
 
 
-# --------------------------------------------------------------------
-# What the refusals must NOT catch, and remedies that
-# must lead to a lane that carries the argument.
-# --------------------------------------------------------------------
-
 def _wr90_probe_sim(conformal):
     """Guide with both conformal walls strictly inside their last solved cells."""
     def build():
         walls = Boundary(lo="pec", hi="pec", conformal=conformal)
-        # y/dx=7.62 and z/dx=3.75 retain the old 8-by-4-cell solved guide.
         sim = Simulation(freq_max=8e9, domain=(0.06, 0.02286, 3.75 * 3e-3),
                          dx=3e-3, cpml_layers=6,
                          boundary=BoundarySpec(x="cpml", y=walls, z=walls), snap="declared")
@@ -533,11 +508,12 @@ def _graded_pec_sim(nonuniform=True, pec=False):
     return _quiet(build)
 
 
-# Graded multi-device runs carry snapshot= (rfx/runners/_distributed_records.py).
 @pytest.mark.parametrize("kw", [kw for kw in ASKS if kw != "snapshot"])
 def test_distributed_nu_remedies_lead_to_a_lane_that_runs(kw):
     """devices= on a graded mesh: the remedy for each argument names a lane
-    that carries it, and following it runs."""
+    that carries it, and following it runs.
+    Graded multi-device runs carry snapshots.
+    """
     with pytest.raises(NotImplementedError) as info:
         _graded_pec_sim(pec=True).run(n_steps=4, devices=_devices(),
                                       skip_preflight=True, **{kw: ASKS[kw]})
@@ -629,9 +605,11 @@ def test_fidelity_report_names_the_nu_thin_conductor_refusal():
                          dz_profile=np.array([1e-3] * 4 + [0.5e-3] * 4
                                              + [1e-3] * 4),
                          boundary="pec", cpml_layers=0)
+        LOSSY_SHEET_SIGMA = 1e4
+        assert LOSSY_SHEET_SIGMA < sim._PEC_SIGMA_THRESHOLD, "The lossy sheet must stay below the PEC cut"
         sim.add_thin_conductor(
             Cylinder((0.006, 0.006, 0.006), 0.003, 1e-4, axis="z"),
-            sigma_bulk=1e4, thickness=35e-6)   # lossy: below the PEC cut
+            sigma_bulk=LOSSY_SHEET_SIGMA, thickness=35e-6)
         sim.add_source((0.003, 0.006, 0.003), "ez")
         sim.add_probe((0.009, 0.006, 0.009), "ez")
         return sim
@@ -643,10 +621,6 @@ def test_fidelity_report_names_the_nu_thin_conductor_refusal():
              if f.get("kind") == "refused-by-run"]
     assert len(found) == 1 and "run() would refuse" in found[0]["detail"]
 
-
-# --------------------------------------------------------------------
-# Controls: each argument still runs on a lane that implements it.
-# --------------------------------------------------------------------
 
 def _uniform_sim(boundary="pec"):
     def build():
@@ -679,10 +653,12 @@ def test_uniform_lane_still_runs_each_argument(kw):
 
 def test_uniform_lane_still_runs_a_separate_s_parameter_record():
     """Two lumped ports: the S-matrix is driven in its own runs, so a
-    different s_param_n_steps is honoured there."""
+    different s_param_n_steps is honoured there.
+    The solved domain equals the declared domain because its lengths are whole numbers of cells of dx.
+    """
     def build():
         sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0),
-                         boundary="pec")  # solved length
+                         boundary="pec")
         sim.add_port((0.002, 0.005, 0.005), "ez")
         sim.add_port((0.008, 0.005, 0.005), "ez")
         return sim
@@ -694,29 +670,26 @@ def test_uniform_lane_still_runs_a_separate_s_parameter_record():
 
 
 def test_nu_path_until_decay_runs_on_absorbing_boundary():
-    """#383: until_decay is honoured on a CPML NU sim, with no refusal."""
+    """#383: until_decay is honoured on a CPML NU sim, with no refusal.
+    A higher cutoff lengthens the onset and makes truncation worse.
+    """
     dz = np.full(8, 1e-3)
     sim = _quiet(lambda: Simulation(
         freq_max=10e9, domain=(4e-3, 4e-3, 8e-3), dx=1e-3, dz_profile=dz,
         boundary="cpml", cpml_layers=4))
     sim.add_source((2e-3, 2e-3, 2e-3), "ez")
     sim.add_probe((2e-3, 2e-3, 5e-3), "ez")
+    DECAY_TABLE_STEPS = 200
+    assert DECAY_TABLE_STEPS * sim._build_nonuniform_grid().dt < sim._ports[0].waveform.t0 + 3 * sim._ports[0].waveform.tau, "The planned decay table must end inside the source pulse"
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         sim.run(
             until_decay=1e-3,
             decay_check_interval=20,
             decay_min_steps=20,
-            decay_max_steps=200,
+            decay_max_steps=DECAY_TABLE_STEPS,
         )
     msgs = [str(w.message) for w in caught]
-    # This fixture's planned 200-step table (0.38 ns)
-    # ends inside the default source pulse (completion t0+3*tau ~
-    # 0.48 ns), so its high rel_DC (measured 2.2e-2) is a pure
-    # truncation artifact. The advisory must classify it as
-    # truncation-dominated (longer decay_max_steps / fixed n_steps) —
-    # NOT recommend a higher cutoff, which lengthens the onset and
-    # makes truncation worse.
     dc_msgs = [m for m in msgs if "relative DC" in m]
     assert dc_msgs, "the #388 advisory should fire on this fixture"
     assert "truncation-dominated" in dc_msgs[0], (
@@ -772,10 +745,6 @@ def test_report_every_stays_a_warning(lane):
     assert res is not None
 
 
-# --------------------------------------------------------------------
-# Helper unit tests.
-# --------------------------------------------------------------------
-
 def test_refusal_helper_passes_values_that_ask_for_nothing():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -801,10 +770,6 @@ def test_refusal_helper_warns_only_for_report_every():
             "dummy-path", {"report_every": 5, "checkpoint": True},
             instead="go elsewhere")
 
-
-# --------------------------------------------------------------------
-# P2.7 preflight: PMC/PEC face + CPML on the same axis.
-# --------------------------------------------------------------------
 
 def test_preflight_silent_on_pmc_plus_cpml_uniform_path():
     """Uniform mesh with PMC+CPML composition: after the per-face
@@ -846,7 +811,7 @@ def test_preflight_silent_on_pmc_plus_cpml_nu_path():
         boundary=spec,
         cpml_layers=4,
     )
-    sim._dz_profile = np.full(4, 1e-3)  # force NU path
+    sim._dz_profile = np.full(4, 1e-3)
     sim.add_source((2e-3, 4e-3, 2e-3), "ex")
     sim.add_probe((2e-3, 6e-3, 2e-3), "ex")
     issues = sim.preflight()
@@ -856,7 +821,9 @@ def test_preflight_silent_on_pmc_plus_cpml_nu_path():
 
 
 def test_nu_grid_asymmetric_pmc_allocation():
-    """NonUniformGrid.pad_y_lo must be 0 when y_lo is a PMC face."""
+    """NonUniformGrid.pad_y_lo must be 0 when y_lo is a PMC face.
+    Eight interior cells plus four high pad cells are bounded by 13 nodes because the PMC face has no low pad.
+    """
     from rfx.nonuniform import make_nonuniform_grid
     dz_profile = np.full(8, 1e-3)
     g = make_nonuniform_grid(
@@ -869,11 +836,7 @@ def test_nu_grid_asymmetric_pmc_allocation():
     assert g.pad_y_lo == 0, f"expected pad_y_lo=0, got {g.pad_y_lo}"
     assert g.pad_y_hi == 4
     assert g.pad_x_lo == 4 and g.pad_x_hi == 4
-    # ny = interior + pad_y_hi (no lo padding) = 8 + 4 = 12.
-    # 8 interior cells + 0 lo pad (PMC face) + 4 hi pad = 12 cells,
-    # bounded by 13 nodes.
     assert g.ny == 13, f"expected ny=13, got {g.ny}"
-    # axis_pads property carries the leading (lo) pad per axis.
     assert g.axis_pads == (4, 0, 4)
 
 
@@ -932,14 +895,10 @@ def test_uniform_grid_asymmetric_pmc_allocation():
     assert g.axis_pads == (8, 0, 8), (
         f"axis_pads must carry lo pads as leading offset, got {g.axis_pads}"
     )
-    # position_to_index: user y=0 maps to array index 0 (the PMC wall).
     assert g.position_to_index((0.0, 0.0, 0.0))[1] == 0
-    # Shape: ny = interior + pad_y_hi (no lo padding).
     assert g.shape[1] == int(np.ceil(10e-3 / 1e-3)) + 1 + 8
 
 
-# forward() CALL ARGUMENTS: graded carries. Numerical carry
-# witnesses live in nonuniform/test_nu_forward_port_freqs.py.
 FORWARD_CALL_ARGUMENTS = {
     "port_s11_freqs": {
         "uniform": "carries",
@@ -960,7 +919,6 @@ def test_forward_port_s11_freqs_disposition(lane, disposition, monkeypatch):
                      **({"dz_profile": np.linspace(0.8e-3, 1.2e-3, 8)} if graded else {}))
     sim.add_port(position=(4e-3, 4e-3, 3e-3), component="ez",
                  impedance=50, extent=2e-3)
-    # Refusals must happen at dispatch, before any runner/material helper.
     def no_step(*args, **kwargs):
         pytest.fail("port_s11_freqs refusal reached a forward runner")
 

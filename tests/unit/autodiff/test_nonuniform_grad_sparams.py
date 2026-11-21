@@ -25,15 +25,14 @@ from rfx import Simulation
 from rfx.sources.sources import GaussianPulse
 
 
-# Minimal NU sim with a WirePort spanning a 3-cell "substrate" so the
-# wire_sparams extractor has multi-cell data to accumulate.
 F0 = 5e9
 DX = 2e-3
 NX, NY, NZ = 20, 10, 10
-H_SUB = 3 * DX   # 3 cells — minimum for a meaningful WirePort
+H_SUB = 3 * DX
 
 
 def _build_nu_sim_with_wireport(*, sub_eps: float = 2.5) -> Simulation:
+    """A three-cell substrate gives the WirePort extent multiple cells to accumulate in the nonuniform S-parameter extractor."""
     sim = Simulation(
         freq_max=2 * F0,
         domain=(NX * DX, NY * DX, NZ * DX),
@@ -44,7 +43,6 @@ def _build_nu_sim_with_wireport(*, sub_eps: float = 2.5) -> Simulation:
         boundary="pec",
     )
     sim.add_material("sub", eps_r=sub_eps)
-    # Thin dielectric slab the WirePort will span.
     from rfx import Box
     feed_x, feed_y = NX // 2 * DX, NY // 2 * DX
     sub_z0 = 3 * DX
@@ -52,7 +50,6 @@ def _build_nu_sim_with_wireport(*, sub_eps: float = 2.5) -> Simulation:
         Box((0.0, 0.0, sub_z0), (NX * DX, NY * DX, sub_z0 + H_SUB)),
         material="sub",
     )
-    # WirePort spans the substrate thickness along z.
     sim.add_port(
         (feed_x, feed_y, sub_z0),
         "ez",
@@ -93,7 +90,6 @@ def test_nu_wireport_concrete_path_s_params_still_numpy_compatible():
     sim = _build_nu_sim_with_wireport()
     fr = sim.run(n_steps=30, compute_s_params=True, s_param_freqs=freqs)
     s = fr.s_params
-    # np.asarray accepts jnp and returns a usable ndarray.
     s_np = np.asarray(s)
     assert s_np.shape == (1, 1, len(freqs)), (
         f"unexpected S-matrix shape {s_np.shape}"

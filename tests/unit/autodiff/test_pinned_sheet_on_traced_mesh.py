@@ -17,6 +17,7 @@ and the non-uniform lane, traced or not, and gives one footprint for every
 deformation — which is what makes ``jax.grad`` of a probe observable with
 respect to the deformation a derivative of the physics rather than of a
 raster decision.
+The patch x and y node lines are interior indices.
 """
 
 from __future__ import annotations
@@ -37,15 +38,14 @@ C0 = 299792458.0
 DX = 0.5e-3
 N_X, N_Y, N_Z = 24, 16, 20
 CPML = 4
-I_LO, I_HI = 8, 16          # the patch's two x node lines (interior indices)
-J_LO, J_HI = 5, 11          # the patch's two y node lines
-N_W = 4                     # cells stretched inside / shrunk outside the edge
-# dt is pinned: a derived dt follows the smallest cell, which changes sides at
-# delta = 0. Case C traces both x and y, so both axes use the declared floor.
+I_LO, I_HI = 8, 16
+J_LO, J_HI = 5, 11
+DEFORMATION_CELLS_PER_EDGE = 4
+N_W = DEFORMATION_CELLS_PER_EDGE
 D_MIN = DX * (1 - 0.6 / N_W)
 DT_PIN = 0.9 / (C0 * np.sqrt(2 / D_MIN**2 + 1 / DX**2))
-K_GND, K_PATCH = 6, 12      # ground and patch node planes on z
-K_MID = 9                   # a node plane inside the substrate
+K_GND, K_PATCH = 6, 12
+K_MID = 9
 Z_GND, Z_PATCH = K_GND * DX, K_PATCH * DX
 
 
@@ -117,9 +117,6 @@ def _spec_under_trace(make_grid, profile_fn, delta, sheet=PATCH):
     return captured["spec"]
 
 
-# --------------------------------------------------------------------------
-# 1. the metric semantic: metres stay metres, and a traced mesh still refuses
-# --------------------------------------------------------------------------
 
 def test_a_metric_sheet_on_a_traced_mesh_is_still_refused():
     """A sheet drawn in metres has corners that must be located on the node
@@ -143,9 +140,6 @@ def test_a_metric_sheet_on_a_traced_mesh_is_still_refused():
         jax.grad(_loss)(jnp.float32(0.5 * DX))
 
 
-# --------------------------------------------------------------------------
-# 2. the pinned semantic: one declaration, two routes, every deformation
-# --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("k", [0.0, 0.25, 0.5, 0.9, 1.0, 1.25, 1.5])
 def test_one_declaration_two_routes_identical_footprint(k):
@@ -170,7 +164,6 @@ def test_one_declaration_two_routes_identical_footprint(k):
     assert (int(xs[0]), int(xs[-1])) == (I_LO + CPML, I_HI + CPML)
     assert (int(ys[0]), int(ys[-1])) == (J_LO + CPML, J_HI + CPML)
 
-    # Assert REALIZED, not declared: the length the cells actually add up to.
     realized = pinned_sheet_realized(_grid(dx_profile=_prof_x(delta)), PATCH)
     assert realized["plane_m"] == pytest.approx(Z_PATCH)
     assert realized["x_span_m"] == pytest.approx((I_HI - I_LO) * DX + delta)
@@ -230,9 +223,6 @@ def test_uniform_and_nonuniform_lanes_realize_the_same_pinned_nodes():
                           np.asarray(nu.footprint, dtype=bool))
 
 
-# --------------------------------------------------------------------------
-# 3. what the declaration refuses, and where the pad goes
-# --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("bad", [
     dict(i_range=(I_LO, I_LO), j_range=(J_LO, J_HI)),
@@ -267,8 +257,8 @@ def test_interior_indices_carry_each_axis_own_leading_pad():
     fp = np.asarray(spec.footprint, dtype=bool)
     xs = np.flatnonzero(fp.any(axis=(1, 2)))
     ys = np.flatnonzero(fp.any(axis=(0, 2)))
-    assert (int(xs[0]), int(xs[-1])) == (I_LO, I_HI)                 # pad 0
-    assert (int(ys[0]), int(ys[-1])) == (J_LO + CPML, J_HI + CPML)   # pad 4
+    assert (int(xs[0]), int(xs[-1])) == (I_LO, I_HI)
+    assert (int(ys[0]), int(ys[-1])) == (J_LO + CPML, J_HI + CPML)
     assert int(spec.plane) == K_PATCH + CPML
     realized = pinned_sheet_realized(grid, PATCH)
     assert realized["x_edges_m"] == pytest.approx((I_LO * DX, I_HI * DX))
@@ -283,12 +273,10 @@ def test_from_node_ranges_refuses_a_plane_outside_the_grid():
                                    name="patch")
 
 
-# --------------------------------------------------------------------------
-# 4. the sheet reaches the solve, and the solve differentiates
-# --------------------------------------------------------------------------
 
 def _build_board(delta, *, probe, dx_profile=None, dy_profile=None,
                  pinned=True, pin_dt=True):
+    """When pin_dt is true, the time step is pinned because a derived dt follows the smallest cell, which changes sides at delta = 0."""
     dt_kw = dict(dt=float(DT_PIN), dt_min_cell=float(D_MIN)) if pin_dt else {}
     sim = Simulation(freq_max=40e9, domain=(N_X * DX, N_Y * DX, N_Z * DX),
                      dx=DX,
@@ -309,16 +297,16 @@ def _build_board(delta, *, probe, dx_profile=None, dy_profile=None,
 
 
 def _assert_patch_edges(sheets):
+    """A sheet shorts no normal E."""
     names = sorted(str(s.name) for s in sheets)
     assert names == ["ground", "patch"], names
     patch = next(s for s in sheets if s.name == "patch")
     edges = realized_pec_edge_masks(None, sheets=(patch,))
     n_x = int(np.asarray(edges[0]).sum())
     n_y = int(np.asarray(edges[1]).sum())
-    # 9 x nodes x 7 y nodes on one plane: 8*7 x-edges and 9*6 y-edges.
     assert (n_x, n_y) == ((I_HI - I_LO) * (J_HI - J_LO + 1),
                           (I_HI - I_LO + 1) * (J_HI - J_LO))
-    assert int(np.asarray(edges[2]).sum()) == 0   # a sheet shorts no normal E
+    assert int(np.asarray(edges[2]).sum()) == 0
 
 
 def test_a_pinned_sheet_reaches_the_solve_on_the_nonuniform_lane():
@@ -327,6 +315,8 @@ def test_a_pinned_sheet_reaches_the_solve_on_the_nonuniform_lane():
     turns conductor geometry into PEC edges, and confirmed against the same
     board with the patch removed: metal that reaches the solve changes what
     the probe sees.
+    The patched and bare boards must build the same cells and derived dt to prevent a dt difference
+    passing as the patch reaching the solve.
     """
     from rfx.runners.nonuniform import assemble_materials_nu
     sim = _build_board(0.5 * DX, probe=(20 * DX, 8 * DX, K_MID * DX), pin_dt=False)
@@ -339,8 +329,6 @@ def test_a_pinned_sheet_reaches_the_solve_on_the_nonuniform_lane():
                              n_steps=30, pin_dt=False))
     bare = _build_board(0.5 * DX, probe=(20 * DX, 8 * DX, K_MID * DX),
                         pinned=False, pin_dt=False)
-    # Both boards derive dt, so they must build the same cells and the same dt:
-    # otherwise a dt difference would pass as the patch reaching the solve.
     bare_grid = bare._build_nonuniform_grid()
     for axis in ("dx_arr", "dy_arr", "dz"):
         np.testing.assert_array_equal(np.asarray(getattr(grid, axis)), np.asarray(getattr(bare_grid, axis)))
@@ -374,10 +362,6 @@ def _loss(delta, *, probe, dx_profile=None, dy_profile=None, n_steps=40,
                    .time_series ** 2)
 
 
-#: The four deformations the gradient is checked on. A: the +x edge moves,
-#: probe downstream in the substrate. B: the same, probe on the patch's own
-#: plane just past the +x edge, where the edge field is strongest. C: the +x
-#: and +y edges move together. D: the LOW-side edge moves instead.
 AD_CASES = {
     "A_plus_x_edge": dict(probe=(20 * DX, 8 * DX, K_MID * DX)),
     "B_probe_past_the_edge": dict(probe=(18 * DX, 8 * DX, Z_PATCH)),
@@ -396,11 +380,11 @@ def test_patch_edge_gradient_matches_a_central_difference(case):
     can be compared, so the traced primal is checked against the concrete
     one first — with a pinned declaration they agree to float32 round-off,
     because the footprint does not depend on the route at all.
+    The realized-edge guard rules out a bare dielectric whose deforming substrate alone would yield
+    a gradient.
     """
     kw = AD_CASES[case]
     d0 = 0.5 * DX
-    # The substrate deforms too, so a gradient alone does not prove the METAL
-    # is in this board: without this the test would pass on a bare dielectric.
     board = _build_board(d0, **{k: v for k, v in kw.items() if k != "probe"},
                          probe=kw["probe"])
     patch = pinned_sheet_spec(board._build_nonuniform_grid(),
@@ -420,22 +404,11 @@ def test_patch_edge_gradient_matches_a_central_difference(case):
     grad_fd = (float(_loss(d0 + h, **kw)) - float(_loss(d0 - h, **kw))) / (2 * h)
     rel = abs(grad_ad - grad_fd) / max(abs(grad_fd), 1e-30)
     assert np.isfinite(grad_ad) and grad_ad != 0.0
-    # Float32 fields with pinned dt, centred differences at dx/8, dx/16,
-    # dx/32, dx/64: relative errors measured on each deformation are
-    # A 7.9960e-3 / 2.0170e-3 / 5.4590e-4 / 7.0143e-6,
-    # B 3.8693e-3 / 9.6618e-4 / 2.2386e-4 / 9.0866e-5,
-    # C 8.2931e-3 / 2.0895e-3 / 5.4981e-4 / 3.6687e-5,
-    # D 8.5021e-3 / 2.1354e-3 / 5.7214e-4 / 9.3833e-6.
-    # The coarser rungs fall at roughly second order; the finest falls
-    # further (cause not measured). Every case decreases over the ladder.
     assert rel < 1.5e-2, (
         f"{case}: AD {grad_ad:+.6e} vs central FD {grad_fd:+.6e} — "
         f"relative {rel:.3e}")
 
 
-# --------------------------------------------------------------------------
-# 5. the other consumers of the declaration list
-# --------------------------------------------------------------------------
 
 def _pinned_board():
     sim = Simulation(freq_max=40e9, domain=(N_X * DX, N_Y * DX, N_Z * DX),
@@ -482,7 +455,9 @@ def test_fidelity_report_carries_a_row_per_pinned_sheet():
     """The report's §1.7 cross-check compares the planes it names against the
     planes the assembly built. A pinned board used to name none, so the
     report told the reader to trust neither realization on a model where the
-    two agreed."""
+    two agreed.
+    A sheet owns no cell.
+    """
     sim = _pinned_board()
     sim.add_pinned_sheet(plane_index=K_PATCH, i_range=(I_LO, I_HI),
                          j_range=(J_LO, J_HI), name="patch")
@@ -494,7 +469,7 @@ def test_fidelity_report_carries_a_row_per_pinned_sheet():
     row = rows[0]
     assert row["realized_plane"]["index"] == K_PATCH + CPML
     assert row["realized_plane"]["coordinate"] == pytest.approx(Z_PATCH)
-    assert row["n_cells"] == 0          # a sheet owns no cell
+    assert row["n_cells"] == 0
     spans = {a["axis"]: a["realized_extent_um"] for a in row["axes"]}
     assert spans["x"] == pytest.approx((I_HI - I_LO) * DX * 1e6)
     assert spans["y"] == pytest.approx((J_HI - J_LO) * DX * 1e6)

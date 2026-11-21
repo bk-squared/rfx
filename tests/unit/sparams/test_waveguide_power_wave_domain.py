@@ -170,11 +170,11 @@ def test_traced_cutoff_notice_without_host_callbacks(lane, policy, monkeypatch):
 
 def test_defined_objective_gradient(manufactured, monkeypatch):
     cfgs = manufactured
+    INVALID_DENOMINATOR = 1e-25
 
     def objective(x):
-        # The invalid denominator is tiny enough that its squared reciprocal
-        # overflows in float32 reverse AD unless inputs are guarded first.
-        a = jnp.array([1e-25, 1e-25, 2., 2.]) * x
+        """The invalid denominator's squared reciprocal overflows in float32 reverse AD unless inputs are guarded first."""
+        a = jnp.array([INVALID_DENOMINATOR, INVALID_DENOMINATOR, 2., 2.]) * x
         monkeypatch.setattr(ws, "_s_matrix_port_waves", lambda cfg, **kw: (a, jnp.ones(4)))
         s = ws.extract_waveguide_s_matrix(Record(shape=(5, 4, 4)), "device", cfgs, 4, cpml_axes="x")
         return jnp.real(s[:, :, -1]).sum()

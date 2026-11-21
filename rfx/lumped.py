@@ -85,10 +85,6 @@ from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import EPS_0, si_value_eps_r_grad
 
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-
 @dataclass(frozen=True)
 class LumpedRLCSpec:
     """Lumped RLC element specification.
@@ -118,16 +114,10 @@ class LumpedRLCSpec:
     component: str = "ez"
 
 
-# ---------------------------------------------------------------------------
-# ADE state (used for inductor current and/or capacitor charge tracking)
-# ---------------------------------------------------------------------------
-
 class RLCState(NamedTuple):
-    """ADE auxiliary state for one lumped RLC element."""
-    inductor_current: jnp.ndarray  # amperes: I_L (parallel); the series
-                                   # current I^{n+1} (series with L) or
-                                   # I^{n+1/2} (series without L)
-    capacitor_charge: jnp.ndarray  # Q_C in coulombs
+    """ADE auxiliary state for one lumped RLC element. ``inductor_current`` is in amperes and stores the parallel inductor current, the series current at n+1 with an inductor, or the series current at n+1/2 without an inductor."""
+    inductor_current: jnp.ndarray
+    capacitor_charge: jnp.ndarray
 
 
 def init_rlc_state(dtype=None) -> RLCState:
@@ -194,36 +184,26 @@ def rlc_carry_dtype(metas, field_dtype=jnp.float32):
     return jnp.result_type(*dtypes)
 
 
-# ---------------------------------------------------------------------------
-# Precomputed per-element metadata
-# ---------------------------------------------------------------------------
-
 class RLCCellMeta(NamedTuple):
     """Grid-resolved metadata for one RLC element.
 
     Precomputed once and captured by the scan closure.
-    """
+    ``dual_area`` is the transverse dual-face area through which the element current enters Ampere's law."""
     i: int
     j: int
     k: int
     component: str
     has_inductor: bool
-    has_capacitor: bool     # True when C > 0
-    gamma: float   # dt * d_par / (L * dual_area) — inductor ADE term (0 if L == 0)
-    D0: float      # eps/dt + sigma/2 of the element EDGE's own E update
-                   # (four-cell edge average plus lumped stamps) -- 1/Cb there.
-    dx: float      # PRIMAL cell size along the component axis (the E edge
-                   # the element voltage V = E*d_par is taken over)
-    dt_dx_over_L: float  # dt * dx / L — for I_L update (0 if L == 0)
-    dt_over_C_dx: float  # dt / (C * dx) — for capacitor ADE (0 if C == 0)
-    dual_area: float     # dual_b * dual_c — the area of the dual face the
-                         # element current pierces, i.e. the E node's discrete
-                         # Ampere control-volume cross-section.  The element
-                         # current becomes a current DENSITY through this area,
-                         # never through dx**2 (which assumes a cubic cell).
-    R: float               # resistance in ohms
-    dt: float              # timestep in seconds
-    is_series: bool        # True for series topology
+    has_capacitor: bool
+    gamma: float
+    D0: float
+    dx: float
+    dt_dx_over_L: float
+    dt_over_C_dx: float
+    dual_area: float
+    R: float
+    dt: float
+    is_series: bool
 
 
 def _series_needs_ade(spec: LumpedRLCSpec) -> bool:
@@ -234,12 +214,6 @@ def _series_needs_ade(spec: LumpedRLCSpec) -> bool:
     pure C, or pure L) can be handled by material folding / the
     standard inductor ADE without the full series current tracker.
     """
-    # Count with explicit int() casts, NOT bool ``+``.  For plain-float specs
-    # ``(spec.R > 0)`` is a Python bool and ``bool + bool`` already sums as an
-    # integer, so this is byte-identical on the concrete path.  The int() cast
-    # also makes the intent unambiguous for the traced lane, which always
-    # consults the STATIC (plain-float) spec for topology so ``_series_needs_ade``
-    # never sees a JAX bool array (whose ``+`` has OR semantics and miscounts).
     n_components = int(spec.R > 0) + int(spec.L > 0) + int(spec.C > 0)
     return n_components >= 2
 
@@ -317,10 +291,7 @@ def edge_update_denominator(materials, cell, component, dt,
                                    inv, sigma, dt)
     eps_r, sigma = e_update_material_at(materials, cell, component, periodic, grid=grid)
     if as_float and not (is_tracer(eps_r) or is_tracer(sigma)):
-        # Python floats: host arithmetic, nothing on a tape.
         return _denominator_si(float(eps_r), float(sigma), dt)
-    # these bits; the derivative with EPS_0/dt grouped as one factor,
-    # so the cotangent is not first multiplied by 1/dt ~ 5e11.
     return si_value_eps_r_grad(_denominator_si, _denominator_eps_r,
                                eps_r, sigma, dt)
 
@@ -353,14 +324,7 @@ def _resolve_position_to_index(grid, position):
     return _nu_p2i(grid, position)
 
 
-# One material setup and one metadata builder serve run() and forward().
-# Topology comes from the static plain-float spec. Concrete inputs keep the
-# float64 host arithmetic; traced inputs keep array arithmetic so gradients
-# flow through material arrays and forward(rlc_values_override=...) values.
-
-
 def _rlc_inputs_traced(materials, *overrides):
-    # Any traced material array (or override) selects array arithmetic.
     import jax
     return any(is_tracer(value) for value in
                (*overrides, *jax.tree_util.tree_leaves(materials))
@@ -408,20 +372,14 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials, *,
     idx = field_index(grid, spec.position, spec.component)
     i, j, k = idx
 
-    # Series topology with multiple components: ADE handles R and C
     if spec.topology == "series" and _series_needs_ade(spec):
         return materials
 
-    # Parallel topology, or series with a single component: fold into material
-    # Use axis-aware formula: σ_R = d_parallel / (R · d_perp1 · d_perp2)
     from rfx.sources.sources import (
         port_sigma as _port_sigma,
         port_d_parallel as _d_par,
         port_dual_transverse as _dual_perp,
     )
-    # an R or a C across one edge is a LUMPED stamp, not a cell
-    # volume property -- it is excluded from the edge average and added back
-    # at its own cell (see rfx.core.yee.MaterialArrays).
     from rfx.sources.sources import (
         stamp_lumped_sigma as _stamp_sigma, stamp_lumped_eps as _stamp_eps)
     traced = _rlc_inputs_traced(materials, r_val, c_val)
@@ -501,19 +459,10 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
     L = _resolve_value(spec.L, l_val, traced=traced)
     C = _resolve_value(spec.C, c_val, traced=traced)
 
-    # the edge's own E-update denominator, not the cell's (series
-    # and parallel alike).
     D0 = edge_update_denominator(
         materials, (i, j, k), spec.component, dt, periodic, as_float=not traced, grid=grid)
 
     if has_inductor:
-        # gamma = dt * d_par / (L * dual_area) is the inductor's implicit
-        # self-coupling into the E update: the parallel inductor
-        # (_update_parallel, trapezoidal) adds gamma/4 to D0.
-        # The old spelling dt/(L*d_par) is that with dual_area = d_par**2,
-        # i.e. a CUBIC cell.  It was self-consistent with the equally cubic
-        # I/(dx*dx) below, which is why the pair realized an inductance
-        # L * d_par**2 / dual_area instead of L.
         gamma = dt * d_par / (L * dual_area)
         dt_dx_over_L = dt * d_par / L
     else:
@@ -591,10 +540,6 @@ def refuse_stacked_solved_elements(specs, metas) -> None:
         first[edge] = n
 
 
-# ---------------------------------------------------------------------------
-# Per-timestep ADE update
-# ---------------------------------------------------------------------------
-
 def _parallel_values(e_std, rlc_state: RLCState, meta: RLCCellMeta,
                      e_prev=None):
     """Parallel topology: the inductor, solved WITH the edge field; R and C
@@ -634,14 +579,6 @@ def _parallel_values(e_std, rlc_state: RLCState, meta: RLCCellMeta,
     D0 = meta.D0
     quarter_gamma = 0.25 * meta.gamma
 
-    # Written as e_std minus the element's correction, not as
-    # (D0*e_std - I^n/A - (gamma/4)*E^n)/(D0 + gamma/4): same algebra, but
-    # there the rounded ratio D0/(D0 + gamma/4) multiplies the whole edge
-    # field every step. With a folded C, gamma/4 is ~1e-4 of D0, so in
-    # float32 that ratio is off by an ulp and acts as a constant gain on the
-    # field -- measured on an L||C in a PEC box, +1.1e-3 of the energy per
-    # 100 periods. Here e_std keeps the coefficient 1 (as Ca = 1 in the Yee
-    # update) and rounding only scales the correction current.
     correction = ((i_L / meta.dual_area + quarter_gamma * (e_std + e_prev))
                   / (D0 + quarter_gamma))
     e_new = e_std - correction
@@ -682,20 +619,16 @@ def _series_values(e_std, rlc_state: RLCState, meta: RLCCellMeta, e_prev):
 
     d = meta.dx
     dt = meta.dt
-    # Field change per ampere of element current: Cb / A.
     per_amp = 1.0 / (meta.D0 * meta.dual_area)
-    kappa = d * per_amp            # the edge's own impedance d/(D0*A)
+    kappa = d * per_amp
 
-    # has_inductor / has_capacitor are static Python bools (the traced lane
-    # takes topology from the plain-float spec), so these are trace-time
-    # branches and never divide by a zero coefficient.
     if meta.has_inductor:
-        two_l_over_dt = 2.0 * d / meta.dt_dx_over_L      # dt_dx_over_L = dt*d/L
+        two_l_over_dt = 2.0 * d / meta.dt_dx_over_L
     else:
         two_l_over_dt = 0.0
     if meta.has_capacitor:
-        half_dt_over_c = 0.5 * d * meta.dt_over_C_dx      # dt_over_C_dx = dt/(C*d)
-        v_cap = q_old * (meta.dt_over_C_dx * d / dt)      # Q^n / C
+        half_dt_over_c = 0.5 * d * meta.dt_over_C_dx
+        v_cap = q_old * (meta.dt_over_C_dx * d / dt)
     else:
         half_dt_over_c = 0.0
         v_cap = 0.0

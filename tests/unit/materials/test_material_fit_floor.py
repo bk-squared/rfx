@@ -17,7 +17,6 @@ def test_constant_loss_floor_and_span(eps_real, tan_delta, n_poles, mode):
     measured = np.full(freqs.shape, eps_real - 1j * eps_real * tan_delta)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always", AccuracyWarning)
-        # Exercise the default without specifying tau.
         result = fit_debye(freqs, measured, n_poles,
                            **({} if mode == "free" else {"tau": mode}))
     assert result.eps_inf >= 1.0

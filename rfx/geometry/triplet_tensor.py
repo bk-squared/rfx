@@ -16,18 +16,15 @@ from rfx._internal._precision import HIGHEST
 from rfx._runtime_floor import _version_key
 from rfx.backend import backend_class
 
-SIGNS = tuple(product((0, 1), repeat=3))  # 0 positive, 1 negative
+SIGNS = tuple(product((0, 1), repeat=3))
 PAIRS = ((0, 1), (0, 2), (1, 2))
 MATRIX_BATCH_SIZE = 2**20
 _JAXLIB_VERSION = jaxlib.__version__
+_FIRST_JAXLIB_WITHOUT_CPU_DEADLOCK = "0.11.1"
 
 
 def _serial_pieces():
-    # Stopgap against the jaxlib < 0.11.1 CPU deadlock; remove when
-    # the jax floor reaches 0.11.1. The bound is not proven: 56 independent
-    # _linalg sites stay concurrent in one build.
-    # The runtime floor's parser: a pre-release or unreadable version counts as old.
-    return backend_class().name == "cpu" and _version_key(_JAXLIB_VERSION) < _version_key("0.11.1")
+    return backend_class().name == "cpu" and _version_key(_JAXLIB_VERSION) < _version_key(_FIRST_JAXLIB_WITHOUT_CPU_DEADLOCK)
 
 
 def _linalg(xp, operation, matrix):
@@ -36,7 +33,7 @@ def _linalg(xp, operation, matrix):
     if xp is np:
         return solve(matrix)
     flat = matrix.reshape((-1, 3, 3))
-    if flat.shape[0] > MATRIX_BATCH_SIZE and _serial_pieces():  # one piece: nothing to serialize
+    if flat.shape[0] > MATRIX_BATCH_SIZE and _serial_pieces():
         n, size = flat.shape[0], MATRIX_BATCH_SIZE
         k = -(-n // size)
         pad = k * size - n
@@ -69,6 +66,8 @@ def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None,
 
     The optional plane reuses the union SDF and nearest normal from the node
     builder. Direct callers construct that same plane, never sample the shape.
+
+    Each dual-face area clips the unit square by the local plane in one Sutherland-Hodgman half-plane pass.
     """
     if signed_distance is None:
         from rfx.geometry.node_tensor import _union
@@ -93,7 +92,6 @@ def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None,
                 h = cell_lengths[axis][1 if sign == 1 else 0]
             d1 = s + sign * h * ns[axis]
             crossing = (s < 0) != (d1 < 0)
-            # Double-where keeps parallel and unused intersections finite in AD.
             t = xp.where(crossing, s, 0) / xp.where(crossing, s - d1, 1)
             ls.append(xp.where(crossing, xp.where(s < 0, t, 1 - t),
                                (s < 0).astype(dtype)))
@@ -116,8 +114,6 @@ def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None,
             cross = inside != (dn < 0)
             t = xp.where(cross, d, 0) / xp.where(cross, d - dn, 1)
             intersections = corners + t[..., None] * (following - corners)
-            # One Sutherland-Hodgman half-plane pass: emit each inside corner,
-            # then its outgoing intersection. Compact into at most 5 vertices.
             candidates = xp.stack((xp.broadcast_to(corners, intersections.shape),
                                    intersections), axis=-2).reshape(s.shape + (8, 2))
             valid = xp.stack((inside, cross), axis=-1).reshape(s.shape + (8,))
@@ -131,7 +127,6 @@ def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None,
             terms = polygon[..., 0] * q[..., 1] - polygon[..., 1] * q[..., 0]
             area = xp.abs(xp.sum(xp.where(xp.arange(5) < count[..., None], terms, 0),
                                  axis=-1)) / 2
-            # Coordinates are normalized to the square: its area is exactly 1.
             ars.append(area)
         lengths.append(tuple(ls))
         areas.append(tuple(ars))
@@ -166,7 +161,6 @@ def accurate_tensor(xp, normal, lengths, areas, eps1, eps2):
                             face * (eye + (1 / face - 1) * nn),
                             face * (eye - nn) + nn)
     gamma = lengths[..., :, None] * g1 + (1 - lengths[..., :, None]) * g2
-    # Keep the old multiplication order on single-medium portions.
     if content is None:
         pi = areas[..., :, None] * e1 * g1 + (1 - areas[..., :, None]) * e2 * g2
     else:
@@ -201,7 +195,6 @@ def _spectral_clip_jvp(primals, tangents):
     f = jnp.clip(w, lo[..., None], hi[..., None])
     inside = (w >= lo[..., None]) & (w <= hi[..., None])
     gap = w[..., :, None] - w[..., None, :]
-    # One relative machine epsilon resolves ties at the eigensolve precision.
     tol = jnp.finfo(w.dtype).eps * jnp.max(jnp.abs(w), axis=-1)[..., None, None]
     separated = jnp.abs(gap) > tol
     divided = jnp.where(separated, f[..., :, None] - f[..., None, :], 0) / jnp.where(separated, gap, 1)
@@ -242,8 +235,6 @@ def guarded_tensor(xp, normal, lengths, areas, eps1, eps2, fallback):
         lo, hi = 1 / maximum, 1 / minimum
     w = _linalg(xp, "eigvalsh", tensor)
     clip = ((w[..., 0] < lo) | (w[..., -1] > hi)) & ~bulk_any & ~singular
-    # Double-where: no repeated bulk/in-range eigenvalues enter the eigh
-    # derivative. The mask's eigvalsh is used only for boolean selection.
     dummy = xp.diag(xp.asarray([1., 2., 3.], dtype=tensor.dtype))
     safe_tensor = xp.where(clip[..., None, None], tensor, dummy)
     clipped = (_clip_primal(xp, safe_tensor, lo, hi) if xp is np else

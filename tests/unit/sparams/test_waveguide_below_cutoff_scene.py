@@ -45,7 +45,6 @@ def capture_unmasked(monkeypatch):
 
 
 def unmasked_matrix(waves, channels):
-    # The pre-fix assembly is written explicitly here, with no mask helper.
     columns = []
     for drive in range(channels):
         _, a, _ = waves[drive*(channels+1)]
@@ -84,6 +83,7 @@ def test_e1_issue_scene_cpu(monkeypatch):
 
 
 def test_e2_wr90_cpu(monkeypatch):
+    """A complete defined column with power 2 * 1.3**2 = 3.38 must still exceed this lane's limit of 3."""
     from rfx.sparams import waveguide as calculator
 
     finalized = []
@@ -110,12 +110,9 @@ def test_e2_wr90_cpu(monkeypatch):
     refused = np.zeros(s.shape, dtype=bool)
     refused[:, :, :3] = True
     np.testing.assert_array_equal(options["refused_positions"], refused)
-    # The partial advisory has no returned record. A complete defined column
-    # with power 2 * 1.3**2 = 3.38 must still exceed this lane's limit of 3.
     nonpassive = measured._replace(s_params=measured.s_params.at[:, 0, 3].set(1.3))
     with pytest.raises(ValueError, match="passivity_violation: max column power .*frequency index 3"):
         finalize(nonpassive, **options)
-    # Refusals must not hide a numerical NaN in an otherwise defined entry.
     diverged = measured._replace(s_params=measured.s_params.at[0, 0, 3].set(jnp.nan))
     with pytest.raises(ValueError, match="nonfinite_sparams"):
         finalize(diverged, **options)
@@ -129,8 +126,8 @@ def test_e4_wr90_gradient(monkeypatch):
     waves = capture_unmasked(monkeypatch)
     sim = scene(False)
     grid = sim._build_grid()
-    # A compact material perturbation, away from both admitted port sections.
     window = jnp.zeros(grid.shape).at[grid.index_of("x", .05):grid.index_of("x", .06), :, :].set(1.)
+    assert not np.any(np.asarray(window)[[grid.index_of("x", .01), grid.index_of("x", .09)], :, :]), 'Both port planes must stay outside the material perturbation'
 
     def objective(eps, raw=False):
         waves.clear()

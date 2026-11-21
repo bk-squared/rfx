@@ -16,6 +16,7 @@ from rfx.model.materials import realize_components
 from rfx.stepping import slab_setup as setup
 from rfx.stepping.slab import Slab
 from rfx.stepping.slab_view import stack_and_place, uniform_slab_rows
+from tests._stated_plan import stated_plan
 
 pytestmark = pytest.mark.distributed
 
@@ -80,6 +81,7 @@ def build(s):
         s.inputs, s.grid.dt, s.spec, s.grid, s.layout, s.mesh, s.family))
     kw = {} if pole is None else {s.family: pole}
     return setup.build_setup(s.grid, s.inputs, s.layout, s.mesh, 2, [], [],
+                             measurement=stated_plan(s.grid, [], n_steps=2),
                              occupancy=s.occ, cpml=True, **kw)
 
 

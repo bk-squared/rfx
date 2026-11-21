@@ -3,6 +3,7 @@
 These are prescribed-field checks of the actual load/source/E update, not
 propagating-mode, full-run, or RF-accuracy certificates. The launch shape and
 resistance are fixed while the electric material coefficient is varied.
+Double precision FD avoids using an f32 loss as its own referee.
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -27,6 +28,7 @@ from jax import enable_x64
 @pytest.mark.parametrize("shaped", [False, True], ids=["uniform", "laplace_shape"])
 @pytest.mark.parametrize("x64", [False, True], ids=["float32", "float64"])
 def test_source_load_work_and_material_gradient(direction, shaped, x64):
+    """The port's conductivity sits on the Ez (substrate-normal) edges only."""
     with enable_x64(x64):
         dtype = jnp.float64 if x64 else jnp.float32
         grid = Grid(freq_max=1e8, domain=(6., 6., 6.), dx=1.,
@@ -37,6 +39,7 @@ def test_source_load_work_and_material_gradient(direction, shaped, x64):
                  for w in (2, 3) for z in (2, 3)]
         indices = tuple(np.asarray(cells).T)
         profile_e = np.array([.2, .1, .5, .5]) if shaped else np.full(4, .5)
+        assert not shaped or np.ptp(profile_e) > 0, "Unequal shaped entries distinguish uniform conductivity from profile-squared loading"
         profile = dict(
             ez_profile=profile_e.reshape(2, 2), cell_indices=cells,
             j_grid_lo=2, k_grid_lo=2, n_z_sub=2,
@@ -54,8 +57,6 @@ def test_source_load_work_and_material_gradient(direction, shaped, x64):
             mu_r=jnp.ones(grid.shape, dtype=dtype),
         )
         loaded = setup_msl_port(grid, port, base, mode_profile=profile)
-        # Independent normalization uses the physical volumes, not a source
-        # helper or the loaded array. Unequal profile entries refute sigma~e^2.
         volume = grid.dx**3
         norm = volume * np.sum(profile_e**2)
         expected_sigma = 1 / (resistance * norm)
@@ -64,19 +65,14 @@ def test_source_load_work_and_material_gradient(direction, shaped, x64):
         assert np.count_nonzero(loaded.sigma) == len(cells)
 
         old = init_state(grid.shape, field_dtype=dtype)
-        # A centre-voltage-preserving perturbation orthogonal to the shaped
-        # Ez profile exercises the extra positive loss; the transverse E set
-        # here must NOT be loaded -- the port's conductivity sits on the Ez
-        # (substrate-normal) edges only.
         fringe = np.array([.1, -.2, 0., 0.]) if shaped else np.array([.1, -.1, 0., 0.])
+        assert np.isclose(np.dot(profile_e, fringe), 0.0, atol=1e-15), "Orthogonal fringe preserves centre voltage while exercising extra loss"
         values = np.stack((np.full(4, .3), np.full(4, -.2), profile_e + fringe))
         for name, value in zip(("ex", "ey", "ez"), values):
             old = old._replace(**{name: getattr(old, name).at[indices].set(value)})
 
         def advance(alpha):
             materials = loaded._replace(eps_r=base.eps_r * alpha)
-            # H=0: the electric substep has no curl work, and no PEC/PML is
-            # present. Source coefficients must retain the material tape.
             new = update_e(old, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
             sources = make_msl_port_sources(grid, port, materials, 1,
                                             mode_profile=profile)
@@ -91,25 +87,17 @@ def test_source_load_work_and_material_gradient(direction, shaped, x64):
         new = np.asarray(advance(jnp.asarray(1., dtype=dtype)))
         old_values = np.stack([np.asarray(getattr(old, name))[indices]
                                for name in ("ex", "ey", "ez")]).astype(float)
-        # Midpoint work identity is derived from the field equation, not the
-        # source builder's Cb. The load dissipates on Ez only; Ex and
-        # Ey store and give back nothing here (H = 0, no loss on their edges).
         mid = (old_values + new) / 2
         storage_rate = volume * np.sum(2.25 * EPS_0 * (new**2 - old_values**2)) / (2 * grid.dt)
         loss = volume * expected_sigma * np.sum(mid[2]**2)
-        # New/old force is the stamped sigma: .02 (uniform),
-        # 1/(50*.55)=.0363636... (shaped), exactly the predicted factor.
         source_work = expected_sigma * u * volume * np.dot(profile_e, mid[2])
         scale = max(abs(storage_rate), loss, abs(source_work))
         assert abs(storage_rate + loss - source_work) < 64 * np.finfo(dtype).eps * scale
         voltage = volume * np.dot(profile_e, mid[2]) / norm
         assert loss > voltage**2 / resistance
 
-        # Independent scalar midpoint equation; no JAX/source/update helpers.
-        # Double precision FD avoids using an f32 loss as its own referee.
         force = np.zeros_like(old_values)
         force[2] = expected_sigma * profile_e * u
-        # Conductivity per component row (ex, ey, ez): the load's edges only.
         sigma_rows = np.array([0.0, 0.0, expected_sigma])[:, None]
 
         def reference(alpha):

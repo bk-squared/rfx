@@ -47,8 +47,8 @@ def judge_v_ref(owner, spec, grid):
     injection_body = body
     injection_order = None
     if body.name == 'before_sources':
-        # The extracted lane declares execution order and attaches functions
-        # separately. Follow both mappings; keep the inline-body path below.
+
+
         builder = next(n for n in containing if n.name == 'make_uniform_step')
         mappings = {t.id: n.value for n in ast.walk(builder) if isinstance(n, ast.Assign)
                     for t in n.targets if isinstance(t, ast.Name)
@@ -101,7 +101,7 @@ def judge_monitors(plan, actual):
             assert box is not None
             expected.add('ntff_box:0')
             assert owner.frequencies == tuple(np.asarray(box.freqs))
-            # Zero frequencies remove only phase, leaving the production collocation.
+
             zero_box = box._replace(freqs=jnp.zeros_like(box.freqs))
             initial = init_ntff_data(zero_box)
             for channel in owner.channels:
@@ -116,7 +116,7 @@ def judge_monitors(plan, actual):
                 got = coefficients(channel)
                 assert got.keys() == oracle.keys()
                 np.testing.assert_allclose(list(got.values()), [oracle[k] for k in got], rtol=2e-7, atol=0)
-            # Actual nonzero-frequency accumulator validates both physical stamps.
+
             fields = SimpleNamespace(**{c: jnp.ones(shape) for c in COMPONENTS})
             result = accumulate_ntff(init_ntff_data(box), fields, box, actual['grid'].dt, jnp.int32(3))
             dt = actual['grid'].dt
@@ -154,7 +154,7 @@ def judge_monitors(plan, actual):
             phase = np.exp(-2j*np.pi*np.asarray(m.freqs)*(3+m.half_step)*dt)*dt
             oracle = np.asarray(raw)/phase[:, None, None, None]
             assert np.all(abs(oracle-values) <= bounds+abs(values)*2e-6)
-            # Each production weight source and block membership is checked, too.
+
             for channel in owner.channels[::3]:
                 _, b, _, c, _, w, _ = channel.name.split(':')
                 weights = np.asarray((m.w_ex, m.w_ey, m.w_ez)[int(c)])[int(w)]

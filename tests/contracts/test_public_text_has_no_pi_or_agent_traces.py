@@ -40,22 +40,18 @@ PATTERNS = {
         r"|(?<![\w-])acc-[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*-\d{8}t\d{6}z-[0-9a-f]+(?![\w-])"
     ),
 }
-# Deliberately broader than PATTERNS; Git selects lines, Python judges them.
 CANDIDATE_PATTERN = (
     r"byungkwan|/Users/|PI|professor|rfx|agent-rules|pi-desk|[DL]:|MSL-PLANE"
     r"|ledger|records?[ /]20|docs/agent-memory|research_notes|bk-workspace|remilab-cnu|acc-"
     r"|_pi_20|leader|claude-workspace"
-    r"|[^ -~]"  # All non-ASCII text includes every Hangul range, in any locale.
+    r"|[^ -~]"
 )
-# Byte-oriented Git matching avoids locale overhead; Python judges Unicode.
 GREP_ENV = {**os.environ, "LC_ALL": "C"}
 MATH_PI = re.compile(r"\bPI(?=\s*=)|\b2\s*\*\s*PI\b")
 
 
 def matching_classes(line):
     """Allow mathematical uses without hiding attribution elsewhere on a line."""
-    # Necessary conditions only: the original regexes still decide every hit.
-    # Most selected source lines contain ordinary package names or Unicode text.
     possible = {
         "C2-key": "_pi_20" in line,
         "C2-attribution": "leader" in line.lower(),
@@ -175,7 +171,6 @@ def test_each_private_text_form_is_detected(line, expected):
 def test_git_prefilter_covers_every_class(tmp_path):
     assert {expected for _, expected in PRIVATE_TEXT_CASES} == set(PATTERNS)
     lines = [line for line, _ in PRIVATE_TEXT_CASES]
-    # Include every endpoint of the Hangul ranges, not just a common syllable.
     lines.extend(chr(point) for point in (
         0x1100, 0x11ff, 0x3130, 0x318f, 0xa960, 0xa97f,
         0xac00, 0xd7af, 0xd7b0, 0xd7ff,
@@ -194,7 +189,6 @@ def test_git_prefilter_covers_every_class(tmp_path):
         assert selected == lines, engine
 
 
-# A blank literal exempts a whole file while it still contains matching text.
 NAMED_EXCEPTIONS = (
     ('docs/guides/public_docs_architecture.md', '| `docs/research_notes/` |',
      'States that the private folder is ignored, not a pointer into its content.'),
@@ -218,10 +212,9 @@ NAMED_EXCEPTIONS = (
     reason="checks that public-text scan exceptions still match tracked text; "
     "scans, never judges the prose")
 def test_named_exceptions_are_not_stale():
+    """A KEPT file may lose its matches, so it must only stay tracked."""
     tracked = set(subprocess.check_output(
         ["git", "ls-files", "-z"], cwd=ROOT).decode("utf-8").split("\0"))
-    # A KEPT file is skipped whole and may lose its matches (ci regenerates the
-    # durations; the release PR cleans the changelog), so it must only stay tracked.
     for path, reason in KEPT:
         assert path in tracked, (path, reason)
     for path, category, reason in CLASS_EXEMPTIONS:

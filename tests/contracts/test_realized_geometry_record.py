@@ -1,4 +1,6 @@
-"""Build-only contract for the public realized geometry and all its readers."""
+"""Build-only contract for the public realized geometry and all its readers.
+A sheet ending at 22.86 mm leaves the last edge bare when 22.86 mm realizes as 23 cells.
+"""
 from dataclasses import FrozenInstanceError
 
 import numpy as np
@@ -47,7 +49,6 @@ def _compare(sim, record, report):
         for axis, emitted in zip(entity.axes, row["axes"], strict=True):
             np.testing.assert_array_equal(emitted["realized_um"], np.array(axis.bounds_m)*1e6)
             assert emitted["realized_extent_um"] == axis.extent_m*1e6
-            # The report displays absolute residuals and suppresses float ties.
             expected = [0.0 if abs(v) < 1e-9*axis.cell_size_m else abs(v)*1e6
                         for v in axis.face_residual_m]
             np.testing.assert_array_equal(emitted["face_residual_um"], expected)
@@ -68,12 +69,12 @@ def _compare(sim, record, report):
 
 @pytest.mark.parametrize("nonuniform", [False, True])
 def test_one_record_many_readers(nonuniform):
+    """The off-centre sheet has node x bounds 3..7 mm, with solved bounds 2.65..7.35 mm."""
     sim = _model(nonuniform)
     record = sim.realized_geometry()
     assert sim.realized_geometry() is record
     _compare(sim, record, sim.fidelity_report(print_report=False))
     assert [e.kind for e in record.entities] == ["material", "sheet", "volume", "material"]
-    # The off-centre sheet has node x bounds 3..7 mm, and solved bounds 2.65..7.35 mm.
     sheet = record.entities[1]
     np.testing.assert_allclose(sheet.axes[0].bounds_m, (0.00265, 0.00735), atol=1e-17, rtol=0)
     assert sheet.axes[0].extent_m != 0.004
@@ -86,7 +87,6 @@ def test_one_record_many_readers(nonuniform):
     wrapper = realized(sim)
     assert wrapper.edge_masks is record.edge_masks
     assert wrapper.pec_mask is record.pec_mask
-    # Collection skips both PEC rows between the two materials. Keys, not zip.
     masks = sim._campaign_ctx().realized().geometry_masks
     assert set(masks) == {id(sim._geometry[0]), id(sim._geometry[3])}
     for i in (0, 3):
@@ -113,7 +113,6 @@ def test_comparison_rejects_corrupted_reader(mutation):
     elif mutation == "residual":
         axis["face_residual_um"] = (0.0, 0.0)
     else:
-        # If _compare is disabled, this expected exception disappears: red.
         axis["realized_extent_um"] += 100.0
     with pytest.raises(AssertionError):
         _compare(sim, record, report)
@@ -209,7 +208,6 @@ def test_frozen_unresolved_volume_still_refuses_execution(entry, diagnostic_firs
 
 
 def _terminated_trace(nonuniform):
-    # Prime the record BEFORE registering the MSL ports.
     d = 127e-6
     kw = {"dz_profile": np.full(10, d)} if nonuniform else {}
     sim = Simulation(freq_max=20e9, domain=(60.4*d, 30*d, 10*d), dx=d,
@@ -249,13 +247,13 @@ def _assert_runner_sheet(record, captured, grid):
 @pytest.mark.parametrize("nonuniform", [False, True])
 @pytest.mark.parametrize("poison_context", [False, True])
 def test_run_assembly_witness_after_port_mutation(monkeypatch, nonuniform, poison_context):
+    """The line extends into the absorber pad until the port holds it to its declared extent."""
     import rfx.runners.nonuniform as nu
     sim, before = _terminated_trace(nonuniform)
     before_ctx = sim._pf_campaign_ctx
     after = sim.realized_geometry()
     assert after is not before
     assert sim._pf_campaign_ctx[1] is not before_ctx[1]
-    # The unheld line extends into the pad; the port holds the declaration.
     assert int(before.sheets[0].footprint.sum()) > int(after.sheets[0].footprint.sum())
     assembly_calls = []
     owner, name = (nu, "assemble_materials_nu") if nonuniform else (sim, "_assemble_materials")
@@ -291,6 +289,7 @@ def test_run_assembly_witness_after_port_mutation(monkeypatch, nonuniform, poiso
 
 
 def test_material_collection_order_is_not_declaration_order(monkeypatch):
+    """The independent known boxes contain 3*5*2 and 3*2*2 cells, respectively."""
     sim = _model()
     original = sim._assemble_materials
     def reordered(*args, **kwargs):
@@ -301,7 +300,6 @@ def test_material_collection_order_is_not_declaration_order(monkeypatch):
         return result
     monkeypatch.setattr(sim, "_assemble_materials", reordered)
     record = sim.realized_geometry()
-    # Independent known boxes: 3*5*2 and 3*2*2 cells, separated in z.
     assert record.entities[0].n_cells == 30
     assert record.entities[3].n_cells == 12
     np.testing.assert_allclose(record.entities[0].axes[2].bounds_m, (.002, .004))
@@ -312,7 +310,6 @@ def test_subgrid_record_names_unrepresented_refinement(monkeypatch):
     from rfx import Result
     sim = Simulation(freq_max=10e9, domain=(.012, .012, .012), dx=.001, boundary="pec")
     sim.add(Box((.002, .002, .002), (.004, .004, .004)), material="pec")
-    # Explicitly opt in to exercise the experimental subgrid lane.
     sim.add_refinement(z_range=(.004, .008), ratio=2, validation="research")
     monkeypatch.setattr(sim, "_run_subgridded", lambda *a, **k: Result(None, np.zeros((0, 0)), None, None))
     monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
@@ -441,6 +438,7 @@ def test_lossy_run_record_retains_assembly_continuation(monkeypatch, nonuniform)
 @pytest.mark.parametrize("normal", ["x", "y", "z"])
 @pytest.mark.parametrize("ranged", [False, True])
 def test_graded_waveguide_record_matches_runner_aperture(monkeypatch, normal, ranged):
+    """The half-open CELL slices consumed by the runner have endpoints at the inclusive NODE endpoints recorded for the aperture."""
     import rfx.runners.nonuniform as nu
 
     graded_axis = "y" if normal == "z" else "z"
@@ -454,10 +452,6 @@ def test_graded_waveguide_record_matches_runner_aperture(monkeypatch, normal, ra
                      cpml_layers=2, **{f"d{graded_axis}_profile": profile})
     value_range = (.002, .0072) if ranged else None
     if ranged:
-        # Keep the off-node declaration: its nearest-node aperture needs
-        # conductors at those same realized planes, not at the domain faces.
-        # The sheets run past the declared domain: 22.86 mm realizes as 23
-        # cells, and a sheet ending at 22.86 mm leaves the last edge bare.
         nodes = np.concatenate(([0.], np.cumsum(profile)))
         for value in value_range:
             plane = nodes[np.argmin(abs(nodes - value))]
@@ -479,15 +473,12 @@ def test_graded_waveguide_record_matches_runner_aperture(monkeypatch, normal, ra
     monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
     result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
     cfg, = captured["waveguide_ports"]
-    # The runner consumes half-open CELL slices; their endpoints are the
-    # inclusive NODE endpoints recorded for the aperture.
     transverse = iter(((cfg.u_lo, cfg.u_hi), (cfg.v_lo, cfg.v_hi)))
     expected = tuple((cfg.x_index, cfg.x_index) if axis == normal else next(transverse)
                      for axis in "xyz")
     assert before.ports[0].aperture == expected
     assert result.realized_geometry.ports[0].aperture == expected
     if ranged:
-        # Independent nearest-node witness on the declared float64 spine.
         nodes = np.concatenate(([0.], np.cumsum(profile)))
         endpoints = tuple(int(np.argmin(abs(nodes - value))) for value in value_range)
         assert expected["xyz".index(graded_axis)] == endpoints
@@ -509,7 +500,6 @@ def test_record_skips_only_traced_mesh_coordinates(monkeypatch, axis):
         grid = SimpleNamespace(dx_arr=np.ones(3), dy_arr=np.ones(3), dz=np.ones(3))
         setattr(grid, axis, profile)
         assert records.record_from_assembly(None, grid) is None
-        # A tracer in materials is not permission to swallow record errors.
         setattr(grid, axis, np.ones(3))
         with pytest.raises(ValueError, match="concrete record defect"):
             records.record_from_assembly(None, grid, materials=profile)

@@ -27,6 +27,8 @@ leave ``dual_x == dual_y == dual_z`` at the node, so an axis permutation
 passes.  Every grid below is graded with a DIFFERENT ratio on each axis
 (x 2:1, y 3:1, z 4:1) and every gate is evaluated at a fine->coarse node, a
 coarse->fine node AND a locally uniform node.
+The gates use 8x ``np.finfo(np.float32).eps`` as a margin over an earlier measured worst case of
+``|ratio - 1| = 1.353e-07`` over the nine (component, node) cells.
 """
 
 import numpy as np
@@ -45,7 +47,6 @@ from rfx.sources.sources import port_d_parallel, port_sigma
 MM = 1e-3
 AXIS = {"ex": 0, "ey": 1, "ez": 2}
 
-# Node index -> what the mesh does there, identical on all three axes.
 NODE_KINDS = {3: "fine->coarse", 7: "coarse->fine", 5: "locally-uniform"}
 
 
@@ -55,9 +56,9 @@ def _profile(fine, coarse):
     return np.array([fine] * 3 + [coarse] * 4 + [fine] * 3, dtype=np.float64)
 
 
-DX_PROF = _profile(0.5 * MM, 1.0 * MM)   # ratio 2
-DY_PROF = _profile(0.3 * MM, 0.9 * MM)   # ratio 3
-DZ_PROF = _profile(0.2 * MM, 0.8 * MM)   # ratio 4
+DX_PROF = _profile(0.5 * MM, 1.0 * MM)
+DY_PROF = _profile(0.3 * MM, 0.9 * MM)
+DZ_PROF = _profile(0.2 * MM, 0.8 * MM)
 
 
 def _graded_grid():
@@ -107,10 +108,6 @@ def _node_position(profile, index):
     """
     return float(np.sum(np.asarray(profile)[:index]))
 
-
-# ---------------------------------------------------------------------------
-# Site 1 — add_lumped_rlc on the NU lane (port_sigma / _axis_cell_sizes)
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("component", ["ex", "ey", "ez"])
 @pytest.mark.parametrize("node", sorted(NODE_KINDS))
@@ -172,14 +169,9 @@ def test_port_sigma_matches_the_solver_metric_directly(component, node):
     b, c = [duals[t] for t in range(3) if t != ax]
     d_par = _oracle_primal(grid, idx)[ax]
     assert sigma * b * c / d_par * Z0 == pytest.approx(1.0, rel=2e-6)
-    # d_parallel must be the node's OWN primal cell, not the boundary scalar.
     assert port_d_parallel(grid, idx, component) == pytest.approx(
         d_par, rel=1e-6)
 
-
-# ---------------------------------------------------------------------------
-# Site 3 — the capacitance fold's cubic-cell assumption
-# ---------------------------------------------------------------------------
 
 def _realized_capacitance(grid, eps_r, idx, component):
     ax = AXIS[component]
@@ -252,10 +244,6 @@ def test_traced_rlc_setup_folds_the_same_numbers_as_the_concrete_one():
     assert float(traced.eps_r[idx]) == pytest.approx(
         float(concrete.eps_r[idx]), rel=1e-6)
 
-
-# ---------------------------------------------------------------------------
-# Site 2 — setup_msl_port
-# ---------------------------------------------------------------------------
 
 def _msl_realized_admittance(grid, sigma, span):
     """Total port admittance from the same control volume: cells stacked on
@@ -357,10 +345,6 @@ def test_msl_eigenmode_termination_dissipates_v_squared_over_z0(feed_node):
         f"feed on a {NODE_KINDS[feed_node]} node: P*Z0 = {power * Z0}")
 
 
-# ---------------------------------------------------------------------------
-# Uniform lane must not move
-# ---------------------------------------------------------------------------
-
 def test_uniform_grid_port_metrics_are_byte_identical_to_the_pre_691_form():
     """A uniform ``Grid`` is cubic, so dual == primal and every expression
     above must reduce BIT-FOR-BIT to what the pre-#691 code computed.
@@ -401,19 +385,8 @@ def test_uniform_grid_capacitance_fold_is_byte_identical_to_the_pre_691_form():
         assert np.float32(out.eps_r[idx]) == old_form
 
 
-# ---------------------------------------------------------------------------
-# Site 2b — compute_msl_mode_profile's 1 V normalisation
-#
-# The two gates above hand-build ``mode_profile`` so the metric under test is
-# isolated from the Laplace solve.  That is why they could not see the
-# regression this section closes: the profile's OWN normalisation still
-# divided by a single scalar ``dz`` while #691 made the sigma-sizing integral
-# per-cell, so the two scalar-dz errors stopped cancelling.  Everything below
-# therefore runs the REAL ``compute_msl_mode_profile``.
-# ---------------------------------------------------------------------------
-
-MSL_DX_PROF = np.array([0.2 * MM] * 4 + [0.4 * MM] * 6 + [0.2 * MM] * 4)   # 2:1
-MSL_DY_PROF = np.array([0.15 * MM] * 4 + [0.45 * MM] * 6 + [0.15 * MM] * 4)  # 3:1
+MSL_DX_PROF = np.array([0.2 * MM] * 4 + [0.4 * MM] * 6 + [0.2 * MM] * 4)
+MSL_DY_PROF = np.array([0.15 * MM] * 4 + [0.45 * MM] * 6 + [0.15 * MM] * 4)
 
 
 def _msl_graded_fixture(z_ratio):
@@ -458,6 +431,7 @@ def test_msl_mode_profile_carries_one_volt_through_the_extractors_own_reader(
 
     Measured with the pre-fix scalar-``dz`` spelling on this fixture:
     V = 1.263197 (z_ratio 1), 1.631995 (2), 2.369591 (4).
+    ``k_hi`` is exclusive at the top of the mode profile's own normal span.
     """
     from rfx.api._sparams import msl_modal_voltage
     from rfx.sources.msl_port import compute_msl_mode_profile
@@ -468,10 +442,6 @@ def test_msl_mode_profile_carries_one_volt_through_the_extractors_own_reader(
     j_lo, k_lo, n_z = int(mp["j_grid_lo"]), int(mp["k_grid_lo"]), int(mp["n_z_sub"])
     j_centre = (int(mp["trace_j_lo"]) + int(mp["trace_j_hi"])) // 2
 
-    # Register the profile onto a full (n_freqs, ny, nz) plane the way the
-    # source does, then let the extractor integrate it.  ``k_hi`` is
-    # exclusive: here it is the top of the profile's own span, which is the
-    # span the source injects over.
     ez_plane = np.zeros((1, grid.shape[1], grid.shape[2]), dtype=np.float64)
     ez_plane[0, j_lo:j_lo + ez.shape[0], k_lo:k_lo + ez.shape[1]] = ez
     v = msl_modal_voltage(
@@ -583,36 +553,6 @@ def test_msl_mode_profile_uniform_regression_after_physical_span_correction():
             f"repinning")
 
 
-# ---------------------------------------------------------------------------
-# Site 3 — the lumped RLC ADE itself (build_rlc_meta + _update_parallel /
-# _update_series)
-#
-# 1d3cc9c corrected `port_d_parallel`, which `build_rlc_meta` reads, and so
-# MOVED the realized inductance of `add_lumped_rlc(L=...)` on the NU lane
-# without a gate.  Nothing here covered an NU inductor at all.
-#
-# The element current has to become a current DENSITY through the node's DUAL
-# face, and the inductor's implicit self-coupling `gamma` has to use the same
-# area. The inductor is trapezoidal (it loads the node with
-# I_avg = (I^{n+1} + I^n)/2):
-#
-#     E^{n+1} = e_std - (I^n/dual_area + (gamma/4)*(e_std + E^n)) / (D0 + gamma/4)
-#     I^{n+1} = I^n + (dt*d_par/(2L)) * (E^{n+1} + E^n)
-#     gamma   = dt * d_par / (L * dual_area)
-#
-# The old pair spelled both with `d_par**2`.  That is self-consistent — it is
-# the correct scheme for a CUBIC cell — which is why the error is a clean
-# scale factor: the field sees an inductor of `L * d_par**2 / dual_area`.
-# ---------------------------------------------------------------------------
-
-#: ``e_new`` is read back out of a float32 field array, so any quantity
-#: derived from it carries float32 storage rounding.  MEASURED worst case over
-#: the 9 (component, node) cells below: |ratio - 1| = 1.353e-07, which is
-#: 1.13x ``np.finfo(np.float32).eps``.  The gates use 8x that eps -- a margin
-#: over the storage bound, and still four orders tighter than the SMALLEST
-#: defect being gated (ey at a locally-uniform node read 1.0125, i.e. 1.25 %).
-#: Do not tighten below the float32 bound; do not loosen without recomputing
-#: it.
 _F32_METRIC_REL = 8.0 * float(np.finfo(np.float32).eps)
 
 
@@ -741,7 +681,9 @@ def test_nu_traced_rlc_meta_carries_the_same_fold_as_the_concrete_twin(
         component, node):
     """``run()`` and ``forward()`` share ``build_rlc_meta``; its traced branch
     (materials under jit) must carry the same dual-face fold as the concrete
-    branch, or the differentiable lane would keep the cubic-cell inductance."""
+    branch, or the differentiable lane would keep the cubic-cell inductance.
+    Concrete inputs keep ``run()``'s float64 host arithmetic.
+    """
     from rfx.lumped import build_rlc_meta, setup_rlc_materials
 
     grid, pos, idx = _graded_node(component, node)
@@ -753,8 +695,6 @@ def test_nu_traced_rlc_meta_carries_the_same_fold_as_the_concrete_twin(
         meta = build_rlc_meta(grid, spec, setup_rlc_materials(grid, spec, m))
         return meta.dual_area, meta.gamma, meta.D0
 
-    # Concrete inputs keep run()'s float64 host arithmetic: a
-    # Python float, not a float32 array, on both entries.
     assert type(concrete.D0) is float
     dual_area, gamma, d0 = jax.jit(_traced)(_mats(grid))
     assert float(dual_area) == pytest.approx(float(concrete.dual_area), rel=1e-6)
@@ -774,6 +714,10 @@ def test_uniform_lane_rlc_ade_output_does_not_move_under_the_dual_area_fold():
     not a power of two.  The pins below are the OBSERVABLES after 200 driven
     steps, which are float32 and bit-identical across that move; they are the
     thing that must not change.
+    An earlier float64 matrix-exponential witness driven by ``D0*A*amp_n`` held over each step gave
+    step-200 currents of 6.1279e-07 A for the parallel pure-L inductor, 6.4365e-04 A for the
+    parallel R+L+C inductor, 6.3437e-07 A for the series R+L element and 6.3300e-07 A for the series
+    R+L+C element.
     """
     from rfx.core.yee import FDTDState
     from rfx.lumped import _update_parallel, _update_series, init_rlc_state
@@ -804,43 +748,15 @@ def test_uniform_lane_rlc_ade_output_does_not_move_under_the_dual_area_fold():
         return (float(getattr(state, component)[idx]),
                 float(rlc.inductor_current))
 
-    # The two PARALLEL pins moved (the inductor is trapezoidal and
-    # solved with its edge field). Same witness as the series pins below: the
-    # node capacitance D0*A*dt/d (stamps included) in parallel with L, driven
-    # by D0*A*amp_n held over each step (matrix exponential, float64); at
-    # step 200 the inductor current is 6.1279e-07 A for pure L (old pin
-    # 6.3947e-07, +4.35 %; now 6.2640e-07, +2.22 % -- this harness node
-    # rings at 120 GHz, 0.29 rad per step) and 6.4365e-04 A for R+L+C (old
-    # 6.4156e-04, -0.32 %; now 6.4364e-04, -0.0016 %). The R here enters
-    # only D0 (the harness has no Yee update to apply sigma).
     assert drive("parallel", 0.0, 1e-9, 0.0, "ez") == (
         -0.2504979968070984, 6.264010607992532e-07)
     assert drive("parallel", 50.0, 1e-9, 1e-12, "ez") == (
         67.66089630126953, 0.0006436360999941826)
-    # The two SERIES pins moved (the element is solved together
-    # with its edge field). This harness is one node with no curl, loaded by
-    # the element: a node capacitance D0*A*dt/d driven by the per-step
-    # increments amp_n. The ELEMENT CURRENT is the witness here: with the
-    # increments read as a current D0*A*amp_n held over each step (matrix
-    # exponential, float64), at step 200 the current is 6.3437e-07 A for R+L
-    # (old pin 6.8085e-07, 7.3 % off; now 6.3646e-07, 0.33 %) and
-    # 6.3300e-07 A for R+L+C (old 6.5973e-07, 4.2 %; now 6.3503e-07, 0.32 %).
-    # The node FIELD at one step is not a witness: it is a small residual
-    # whose value depends on how the source increments are modelled inside a
-    # step, so no closed form is claimed for it. The old pins were the
-    # explicit coupling's R - d/(D0*A) = 50 - 215 ohm, a negative resistance.
-    # Re-pinned again when D0 became eps/dt + sigma/2 of the edge (the old
-    # series pin read 1/Cb in float32, 1e-7 apart): E moved 8e-5 relative,
-    # I 3e-7.
     assert drive("series", 50.0, 1e-9, 0.0, "ex") == (
         0.030034542083740234, 6.364606974784692e-07)
     assert drive("series", 50.0, 1e-9, 1e-12, "ey") == (
         0.2854260802268982, 6.350324497361726e-07)
 
-
-# ---------------------------------------------------------------------------
-# Site 4 — a TRACED mesh must fail LOUDLY, and that is a behaviour change
-# ---------------------------------------------------------------------------
 
 def test_a_traced_mesh_raises_instead_of_returning_a_zero_gradient():
     """INTENTIONAL behaviour change, gated so it is not "fixed" back.

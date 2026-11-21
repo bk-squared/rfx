@@ -16,6 +16,7 @@ Helper-level cases build the port config the lane builds
 (``_build_waveguide_port_config_nu``) without time stepping; one end-to-end
 case drives ``compute_waveguide_s_matrix`` on a short run to prove the
 assertion is wired into the lane.
+The transverse domain lengths written as ``15 * _DX_COARSE`` and ``7 * _DX_COARSE`` are whole numbers of cells of dx, so their solved lengths equal their declared lengths.
 """
 from __future__ import annotations
 
@@ -34,7 +35,7 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.runners.nonuniform import _build_waveguide_port_config_nu
 from rfx.sources.waveguide_port import waveguide_plane_positions
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))  # sibling fixture module
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 _A_WG = 0.02286
 _B_WG = 0.01016
@@ -60,7 +61,7 @@ def _wr90_dx_graded_sim(pre_m: float, fine_m: float, post_m: float):
     domain_x = float(np.sum(dx_profile))
     sim = Simulation(
         freq_max=_F_MAX,
-        domain=(domain_x, 15 * _DX_COARSE, 7 * _DX_COARSE),  # solved length
+        domain=(domain_x, 15 * _DX_COARSE, 7 * _DX_COARSE),
         dx=_DX_COARSE,
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),
@@ -97,10 +98,10 @@ def test_span_crossing_transition_cells_raises_positive_port():
         _assert_nu_shift_span_in_one_grading_zone(grid, cfg, desired, "left")
     msg = str(exc.value)
     assert "'left'" in msg and "boundary cell (1.5000 mm)" in msg
-    assert "1.5" in msg and "0.75" in msg, msg  # both zone sizes are named
+    assert "1.5" in msg and "0.75" in msg, msg
     axis, lo, hi, sizes = _nu_shift_span_cells(grid, cfg, desired)
     assert axis == "x" and lo == pytest.approx(0.0075, abs=1e-8) and hi == pytest.approx(0.020, abs=1e-8)
-    assert len({round(float(s), 9) for s in sizes}) >= 3, sizes  # coarse, transition(s), fine
+    assert len({round(float(s), 9) for s in sizes}) >= 3, sizes
 
 
 def test_span_crossing_transition_cells_raises_negative_port():
@@ -138,14 +139,13 @@ def test_span_inside_uniform_fine_block_passes_with_local_size():
     axis, lo, hi, sizes = _assert_nu_shift_span_in_one_grading_zone(grid, cfg, desired, "mid")
     assert sizes.size >= 3
     np.testing.assert_allclose(sizes, _DX_FINE, rtol=1e-9)
-    assert float(cfg.dx) == pytest.approx(_DX_COARSE)  # boundary cell, not the local one
+    assert float(cfg.dx) == pytest.approx(_DX_COARSE)
 
 
 def test_default_reference_plane_is_checked_too():
-    """reference_plane=None still shifts (record plane -> port plane); the span is checked."""
+    """reference_plane=None still shifts (record plane -> port plane); the span is checked.
+    The record plane three cells downstream of a port plane 1.5 mm before grading lands inside the transition cells."""
     sim, _ = _wr90_dx_graded_sim(0.015, 0.040, 0.030)
-    # Port plane 1.5 mm before the grading starts; the record plane (ref_offset=3
-    # cells downstream) lands inside the transition cells.
     _add_port(sim, 0.0135, "+x", None, "edge")
     grid, cfg, desired = _span_check(sim, sim._waveguide_ports[0])
     assert desired == pytest.approx(0.0135, abs=1e-8)
@@ -159,7 +159,7 @@ def test_z_directed_port_reads_the_dz_profile():
     domain_z = float(np.sum(dz_profile))
     sim = Simulation(
         freq_max=_F_MAX,
-        domain=(15 * _DX_COARSE, 7 * _DX_COARSE, domain_z),  # solved length
+        domain=(15 * _DX_COARSE, 7 * _DX_COARSE, domain_z),
         dx=_DX_COARSE,
         boundary=BoundarySpec(
             x=Boundary(lo="pec", hi="pec"),

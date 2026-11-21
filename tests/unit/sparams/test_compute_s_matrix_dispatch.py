@@ -46,12 +46,6 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.sources.sources import GaussianPulse
 
 
-# ---------------------------------------------------------------------------
-# Registration-only builders, one per row of the table. Kept deliberately
-# minimal: nothing here is run, so a builder only has to register the ports
-# that decide the lane.
-# ---------------------------------------------------------------------------
-
 _WG_FREQS = np.linspace(4e9, 6e9, 6)
 _COAX_BAND = jnp.asarray([4.0e9, 6.0e9, 8.0e9, 10.0e9, 12.0e9])
 _MSL_FREQS = jnp.linspace(2e9, 18e9, 16)
@@ -72,20 +66,17 @@ def _waveguide_sim() -> Simulation:
 
 def _msl_sim() -> Simulation:
     """``_thru()`` of ``tests/unit/sparams/test_msl_passivity_enforcement.py``."""
-    # Trace y solved +11.667% off; this tests S-matrix dispatch parity.
     sim = Simulation(snap="declared", freq_max=20e9, domain=(0.012, 0.008, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, 0.008, 0.0008)), material="sub")
     sim.add(Box((0., 0., 0.), (0.012, 0.008, 0.)), material="pec")
-    # The strip spans the two port nodes (2 and 10 mm). Drawn across the whole
-    # domain it left 2 mm open stubs whose effective quarter wave (23.8 GHz) is within
-    # 1.5x of the 2-18 GHz read.
     sim.add(Box((0.002, 0.0034, 0.0008), (0.010, 0.0046, 0.0008)), material="pec")
     sim.add_msl_port(position=(0.002, 0.004, 0.0), width=0.0012, height=0.0008,
                      direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
     sim.add_msl_port(position=(0.010, 0.004, 0.0), width=0.0012, height=0.0008,
                      direction="-x", impedance=50.0, eps_r_sub=2.2, name="p2")
+    assert (sim._geometry[2].shape.corner_lo[0], sim._geometry[2].shape.corner_hi[0]) == (sim._msl_ports[0].position[0], sim._msl_ports[1].position[0]), "The strip must span the port nodes to exclude 2 mm open stubs near the read band."
     return sim
 
 
@@ -193,10 +184,6 @@ def _bare_source_plus_msl_sim() -> Simulation:
     return sim
 
 
-# ---------------------------------------------------------------------------
-# The table: every row that resolves to a lane.
-# ---------------------------------------------------------------------------
-
 @pytest.mark.parametrize("builder,expected", [
     (_waveguide_sim, "compute_waveguide_s_matrix"),
     (_msl_sim, "compute_msl_s_matrix"),
@@ -219,10 +206,6 @@ def test_lumped_only_lane_is_the_run_lane_string_not_a_method():
     assert lane == "run(compute_s_params=True)"
     assert not hasattr(Simulation, lane)
 
-
-# ---------------------------------------------------------------------------
-# The ambiguous row: one coaxial port, two lanes, identical footprints.
-# ---------------------------------------------------------------------------
 
 def test_single_coaxial_port_is_ambiguous_and_is_not_guessed():
     """Both coaxial lanes require EXACTLY ONE ``add_coaxial_port()``.
@@ -286,12 +269,6 @@ def test_removed_coaxial_lane_is_not_selectable():
     assert "removed" in str(exc.value)
     assert "compute_coaxial_line_reflection" in str(exc.value)
 
-
-# ---------------------------------------------------------------------------
-# Error paths. Each asserts the TYPE and that the message names the method
-# (or lane) the caller should actually use -- a diagnostic that only says
-# "unsupported" sends the reader back to grepping the mixins.
-# ---------------------------------------------------------------------------
 
 def test_lumped_only_compute_points_at_the_run_lane():
     with pytest.raises(NotImplementedError) as exc:
@@ -364,10 +341,6 @@ def test_three_coax_is_refused_because_no_lane_accepts_several():
     assert "removed" in str(exc.value)
 
 
-# ---------------------------------------------------------------------------
-# Naming: the qualname rewrite, and whose name a bad keyword reports.
-# ---------------------------------------------------------------------------
-
 def test_dispatcher_methods_report_the_public_class_name():
     """``rfx/api/__init__.py`` rewrites ``_SparamMixin.x`` -> ``Simulation.x``.
 
@@ -418,10 +391,6 @@ def test_lane_is_consumed_and_never_forwarded_to_the_delegate(monkeypatch):
     assert result == "ok"
     assert seen == {"num_periods": 1}
 
-
-# ---------------------------------------------------------------------------
-# Equivalence. Real FDTD, bit identity, no tolerance.
-# ---------------------------------------------------------------------------
 
 def _assert_same_result(via_dispatcher, direct, s_field: str, leg: str):
     """Bit identity on the S array, plus equal freqs and port names.
@@ -534,13 +503,8 @@ def test_coax_msl_transition_lane_matches_the_direct_call():
     _assert_same_result(via, direct, "s_params", "coax_msl_transition")
 
 
-# ---------------------------------------------------------------------------
-# The docstring table is the user-facing copy of the dispatch logic. Keep the
-# two from drifting the way the repo-map copy did (see
-# .claude/rules/rfx-feature-discovery.md).
-# ---------------------------------------------------------------------------
-
 def test_every_selectable_lane_appears_in_the_docstring_table():
+    """The docstring table is the user-facing copy of the dispatch logic."""
     from rfx.sparams import dispatch
 
     doc = Simulation.compute_s_matrix.__doc__

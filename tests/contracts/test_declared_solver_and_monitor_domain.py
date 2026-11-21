@@ -5,12 +5,6 @@ import pytest
 from rfx import Box, Simulation
 
 
-
-
-
-
-
-
 def _slabs():
     return [Box((0, 0, 0), (.03, .03, .0016)),
             Box((0, 0, .17), (.03, .03, .1716))]
@@ -25,7 +19,7 @@ def test_plane_registration_is_independent_of_geometry_order(method, stage, prev
     for slab in slabs[:stage]:
         sim.add(slab, material="fr4")
     if preview:
-        # Auto mesh keeps the declared column as geometry is added.
+
         grid = sim._build_realized_grid()
         cells = grid.cells("z")[grid.pad_z_lo:grid.nz - grid.pad_z_hi - 1]
         if stage:
@@ -39,12 +33,12 @@ def test_plane_registration_is_independent_of_geometry_order(method, stage, prev
     with monkeypatch.context() as m:
         m.setattr(sim, "_resolve_mesh", forbidden_resolution)
         assert getattr(sim, method)(axis="z", coordinate=.15, n_freqs=1) is sim
-        # Resolved expansion must not legalize a coordinate outside the declaration.
+
         with pytest.raises(ValueError, match="outside the z-domain.*0.2"):
             getattr(sim, method)(axis="z", coordinate=.21)
     for slab in slabs[stage:]:
         sim.add(slab, material="fr4")
-    # Adding a second slab changes the cells, not the declared length.
+
     grid = sim._build_realized_grid()
     cells = grid.cells("z")[grid.pad_z_lo:grid.nz - grid.pad_z_hi - 1]
     assert sum(cells) == pytest.approx(.2, rel=1e-9)

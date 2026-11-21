@@ -30,7 +30,6 @@ def _orient(a, b, p):
 
 
 def _owned(a, b, sign, orientation):
-    # d/dy of orient is -dz; if zero, the next symbolic term is +dy.
     dy, dz = (b - a).T
     tie = np.where(dz != 0, -np.sign(dz), np.sign(dy)) * orientation
     return (sign * orientation > 0) | ((sign == 0) & (tie > 0))
@@ -60,7 +59,7 @@ def _crossing_ranks(triangles, points, x):
     crossing onto a sample. Only intervals spanning samples need Fraction
     arithmetic. Storage remains per crossing, never samples times faces.
     """
-    side = "left"  # x < x_cross; M2 changes this to include equality.
+    side = "left"
     a, b, c = triangles.transpose(1, 0, 2)
     flat = (a[:, 0] == b[:, 0]) & (a[:, 0] == c[:, 0])
     ranks = np.searchsorted(x, a[:, 0], side=side)

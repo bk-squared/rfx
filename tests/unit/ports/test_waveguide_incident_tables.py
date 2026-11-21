@@ -7,11 +7,9 @@ from rfx.model import waveguide_modes as wm
 
 
 def parameters(case="step", mode_type="TE"):
-    # Realized step vacuum port (a/45), and ports_and_sparams_101 guide.
     fc, dt, dx, f0, bw = {
         "step": (6555808844.538607, 9.68540033721751e-13, .02286/45, 7.45e9, .6),
         "tutorial": (7487108531.983443, 1.9065748695310057e-12, .001, 8e9, .5),
-        # Step guide, source off cutoff: the TM admittance diverges at f_c.
         "off_cutoff": (6555808844.538607, 9.68540033721751e-13, .02286/45, 10e9, .3),
     }[case]
     return dict(f_c=fc, dt=dt, dx=dx, f0=f0, t0=5/(f0*bw),
@@ -48,12 +46,13 @@ def numpy_reference(p, length=2**23):
 @pytest.mark.parametrize('n',[4096,2**20+1])
 @pytest.mark.parametrize('mode_type',['TE','TM'])
 def test_table_accuracy(n,mode_type):
+    """For the off-cutoff TM source, spectrum at f_c over its peak is estimated (not yet measured) as a
+    Gaussian part ``exp(-(pi*tau*(f0-f_c))^2) = 5e-12`` plus about 8e-7 from the +-t0 truncation
+    (envelope 3.7e-6 there)."""
     p=parameters('step' if mode_type=='TE' else 'off_cutoff',mode_type)
     e,h=wm._incident_tables(**p,dft_total_steps=n,field_dtype=jnp.float32)
     er,hr=numpy_reference(p)
     if mode_type=='TM':
-        # Spectrum at f_c over its peak, estimate (not yet measured): Gaussian part exp(-(pi*tau*(f0-f_c))^2) = 5e-12;
-        # the +-t0 truncation (envelope 3.7e-6 there) adds about 8e-7.
         spectrum=abs(np.fft.rfft(er))
         at_cutoff=spectrum[round(p['f_c']*len(er)*p['dt'])]
         assert at_cutoff<=1e-4*spectrum.max(), 'T2 TM source off cutoff'
@@ -66,7 +65,7 @@ def test_table_accuracy(n,mode_type):
 
 
 def test_tm_source_at_cutoff_refused():
-    # The TM admittance diverges at cutoff, so the H tail falls only as t^(-1/2).
+    """The TM admittance diverges at cutoff, so the H tail falls only as t^(-1/2)."""
     with pytest.raises(ValueError) as refusal:
         wm._incident_tables(**parameters('step','TM'),dft_total_steps=4096,field_dtype=jnp.float32)
     message=str(refusal.value)
@@ -75,7 +74,6 @@ def test_tm_source_at_cutoff_refused():
 
 
 def test_tm_bin_exactly_on_cutoff_refused(monkeypatch):
-    # A bin with b = 0 gives Z_TM = 0; without the guard e/Z makes every table entry NaN.
     real=wm._compute_mode_impedance
     def zero_at_cutoff(freqs,f_cutoff,mode_type,**kw):
         z=real(freqs,f_cutoff,mode_type,**kw)
@@ -117,7 +115,6 @@ def test_direct_run_prefix():
             sim.compute_waveguide_s_matrix(n_steps=steps,normalize=False,skip_preflight=True)
         return captured[0]
     short,long=run(n),run(3*n//2)
-    # An n-step run records n-1 entries; compare exactly the recorded ones.
     m=int(short.n_steps_recorded)
     assert 0<m<=int(long.n_steps_recorded), 'T1 recorded counts'
     for name in series:

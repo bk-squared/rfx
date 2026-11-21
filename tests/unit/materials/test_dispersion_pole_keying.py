@@ -47,9 +47,6 @@ from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz, lorentz_pole
 
 
-# Shared toy geometry: two boxes overlapping on x in [8, 12] mm inside a
-# (20 x 10 x 10) mm PEC domain (imitates
-# test_lorentz_poles_stay_scoped_to_their_material).
 _DOMAIN = (0.02, 0.01, 0.01)
 _FREQ_MAX = 8e9
 _BOX_A = ((0.000, 0.000, 0.000), (0.012, 0.010, 0.010))
@@ -73,6 +70,7 @@ def _debye_overlap_entries_and_ratio(make_pole):
     ``make_pole`` is called once per material so each pole is a
     DISTINCT object; correct value keying gives (1, 1.0), id-keying
     gives (2, 2.0) — the PR #272-branch repro.
+    Ex represents the equal per-component beta/c values in the interior of the union.
     """
     sim = Simulation(freq_max=_FREQ_MAX, domain=_DOMAIN, boundary="pec")
     sim.add_material("mat_a", eps_r=2.0, debye_poles=[make_pole()])
@@ -83,8 +81,6 @@ def _debye_overlap_entries_and_ratio(make_pole):
     grid = sim._build_grid()
     _, debye, _ = sim._build_materials(grid)
     coeffs, _state = debye
-    # beta / c are per E component; the overlap cell's three
-    # components are equal (interior of the union), Ex's stands for them.
     n_entries = int(coeffs.beta[0].shape[0])
 
     ref = Simulation(freq_max=_FREQ_MAX, domain=_DOMAIN, boundary="pec")
@@ -181,7 +177,7 @@ def test_two_poles_listed_in_one_material_apply_once_each():
     sim = Simulation(freq_max=_FREQ_MAX, domain=_DOMAIN, boundary="pec")
     sim.add_material("mat", eps_r=2.0, debye_poles=[first, second])
     sim.add(Box(*_BOX_A), material="mat")
-    sim.add(Box(*_BOX_B), material="mat")            # the same material drawn twice adds nothing
+    sim.add(Box(*_BOX_B), material="mat")
     grid = sim._build_grid()
     _, debye_spec, _, *_ = sim._assemble_materials(grid)
     poles, masks = debye_spec
@@ -200,7 +196,6 @@ def test_non_coercible_pole_fields_warn_and_stay_distinct():
         key = _pole_key(pole)
     assert key == id(pole)
 
-    # A value-equal duplicate gets a DIFFERENT key (documented caveat).
     dup = DebyePole(delta_eps=jnp.ones(3), tau=8e-12)
     with pytest.warns(UserWarning):
         key_dup = _pole_key(dup)
@@ -276,6 +271,7 @@ def test_value_perturbed_poles_stay_distinct():
     cells, list both in one material (see
     ``test_two_poles_listed_in_one_material_apply_once_each``); drawn as two
     overlapping materials, the later one owns the overlap.
+    Pole occupancy follows the half-open window on primal-cell centres.
     """
     tau = 8e-12
     sim = Simulation(freq_max=_FREQ_MAX, domain=_DOMAIN, boundary="pec")
@@ -294,12 +290,6 @@ def test_value_perturbed_poles_stay_distinct():
     assert len(poles) == 2, (
         f"value-distinct poles must stay separate entries, got "
         f"{len(poles)}")
-    # The later material replaces the earlier one on the cells it covers --
-    # one overlap rule for every cell quantity, dispersion included (until
-    # 2026-10 each pole kept its whole box, so the overlap carried both poles
-    # under the later material's permittivity; a block drawn into a
-    # dispersive body kept the body's poles). mat_b is drawn second.
-    # Pole occupancy follows the half-open window on primal-cell centres.
     centres = [(np.arange(n) - pad + 0.5) * grid.dx
                for n, pad in zip(grid.shape, grid.axis_pads)]
     def expected(bounds):
@@ -338,7 +328,7 @@ def test_traced_debye_pole_compiles():
         assert debye_spec is not None
         coeffs, _ = init_debye(debye_spec[0], materials, grid.dt,
                                mask=debye_spec[1], high_wall=unpadded_high_walls(grid))
-        return sum(jnp.sum(b) for b in coeffs.beta)   # per component
+        return sum(jnp.sum(b) for b in coeffs.beta)
 
     g = jax.grad(loss)(jnp.float32(3.0))
     assert np.isfinite(float(g))
@@ -386,7 +376,7 @@ def test_traced_lorentz_pole_compiles():
         assert lorentz_spec is not None
         coeffs, _ = init_lorentz(lorentz_spec[0], materials, grid.dt,
                                  mask=lorentz_spec[1], high_wall=unpadded_high_walls(grid))
-        return sum(jnp.sum(c) for c in coeffs.c)   # per component
+        return sum(jnp.sum(c) for c in coeffs.c)
 
     g = jax.grad(loss)(jnp.float32(np.log((2 * np.pi * 3e9) ** 2)))
     assert np.isfinite(float(g))
@@ -410,7 +400,6 @@ def test_rasterize_geometry_path_value_dedupe_and_traced():
         sim._geometry, sim._resolve_material, coords)
     assert len(debye_spec[0]) == 1, "equal poles must merge (rasterize)"
 
-    # Traced pole through the same rasterizer path.
     def loss(delta_eps):
         t_sim = _build_traced_debye_sim(delta_eps)
         t_grid = t_sim._build_grid()
@@ -419,7 +408,7 @@ def test_rasterize_geometry_path_value_dedupe_and_traced():
             t_sim._geometry, t_sim._resolve_material, t_coords)
         coeffs, _ = init_debye(t_debye_spec[0], materials, t_grid.dt,
                                mask=t_debye_spec[1], high_wall=unpadded_high_walls(grid))
-        return sum(jnp.sum(b) for b in coeffs.beta)   # per component
+        return sum(jnp.sum(b) for b in coeffs.beta)
 
     g = jax.grad(loss)(jnp.float32(3.0))
     assert np.isfinite(float(g))
@@ -439,6 +428,7 @@ def test_import_rfx_preserves_geometry_rasterize_function():
     check pins the import-time case;
     ``test_nonuniform_run_preserves_geometry_rasterize_function`` below covers
     the once-"still armed" post-run case (runners' function-scoped imports).
+    The surrounding environment may rely on the inherited PYTHONPATH to resolve dependencies.
     """
     import os
     import subprocess
@@ -448,8 +438,6 @@ def test_import_rfx_preserves_geometry_rasterize_function():
     import rfx
 
     repo_root = Path(rfx.__file__).resolve().parents[1]
-    # Prepend to (never overwrite) the inherited PYTHONPATH — the
-    # surrounding environment may rely on it to resolve dependencies.
     _inherited = os.environ.get("PYTHONPATH")
     env = dict(os.environ, PYTHONPATH=(
         str(repo_root) + os.pathsep + _inherited if _inherited
@@ -490,7 +478,7 @@ def test_nonuniform_run_preserves_geometry_rasterize_function():
                      dx=0.5e-3, dz_profile=dz, cpml_layers=8)
     sim.add_source((0.01, 0.01, 0.001), "ez")
     sim.add_probe((0.01, 0.01, 0.001), "ez")
-    sim.run(n_steps=10)  # exercises rfx/runners/nonuniform.py's rasterize_grid import
+    sim.run(n_steps=10)
     assert callable(rfx.geometry.rasterize), (
         "a non-uniform run clobbered rfx.geometry.rasterize (the public FUNCTION) — the "
         "rasterize submodule name collision (#393) has regressed"

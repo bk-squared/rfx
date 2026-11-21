@@ -31,7 +31,7 @@ from rfx.materials.lorentz import LorentzPole
 from rfx._plotting import _pyplot
 
 
-
+_DISPLAY_HZ_PER_GHZ = 1e9
 class DebyeFitResult(NamedTuple):
     """Result of a Debye pole fit.
 
@@ -61,10 +61,6 @@ class LorentzFitResult(NamedTuple):
     poles: list
     fit_error: float
 
-
-# ---------------------------------------------------------------------------
-# CSV loading
-# ---------------------------------------------------------------------------
 
 def load_material_csv(
     path: str,
@@ -103,11 +99,10 @@ def load_material_csv(
         Frequencies in Hz.
     eps_complex : ndarray, shape (N,), dtype complex128
         Complex relative permittivity ``eps' - j*eps''``.
-    """
+    Positive input ``eps_imag`` denotes loss."""
     import csv
     import io
 
-    # Support both file paths and string buffers (for testing)
     if hasattr(path, "read"):
         text = path.read()
         if isinstance(text, bytes):
@@ -134,15 +129,10 @@ def load_material_csv(
     else:
         eps_imag = np.array([float(row[eps_imag_col]) for row in rows])
 
-    # Convention: eps = eps' - j*eps'' (positive eps_imag means loss)
     eps_complex = eps_real - 1j * eps_imag
 
     return freqs, eps_complex
 
-
-# ---------------------------------------------------------------------------
-# Debye fitting
-# ---------------------------------------------------------------------------
 
 def _debye_model(freqs: np.ndarray, eps_inf: float,
                  poles: list[tuple[float, float]]) -> np.ndarray:
@@ -247,7 +237,6 @@ def fit_debye(
     freqs = np.asarray(freqs, dtype=np.float64)
     eps_measured = np.asarray(eps_measured, dtype=np.complex128)
 
-    # Normalization for error
     norm = np.sqrt(np.mean(np.abs(eps_measured) ** 2))
     if norm == 0:
         norm = 1.0
@@ -281,21 +270,17 @@ def fit_debye(
         error = float(np.sqrt(np.mean(np.abs(fitted - eps_measured) ** 2)) / norm)
         return DebyeFitResult(ei, poles, error)
 
-    # Initial guesses
     fit_eps_inf = eps_inf is None
     if eps_inf is None:
-        # Use real part at highest frequency as initial guess
         idx_max = np.argmax(freqs)
         eps_inf_init = float(np.real(eps_measured[idx_max]))
     else:
         eps_inf_init = eps_inf
 
-    # Static permittivity estimate
     idx_min = np.argmin(freqs)
     eps_static = float(np.real(eps_measured[idx_min]))
     delta_eps_total = max(eps_static - eps_inf_init, 0.1)
 
-    # Log-spaced tau initial guesses spanning the frequency range
     f_min = max(freqs.min(), 1.0)
     f_max = max(freqs.max(), f_min * 10)
     tau_guesses = np.logspace(
@@ -304,7 +289,6 @@ def fit_debye(
         n_poles,
     )
 
-    # Pack parameters: [eps_inf?, log10(delta_eps_1), log10(tau_1), ...]
     x0 = []
     bounds = []
 
@@ -356,17 +340,12 @@ def fit_debye(
     _warn_fit_bounds(ei_opt, free_eps_inf=fit_eps_inf, flags=flags,
                      suggest_placed=True)
 
-    # Final error
     eps_fitted = _debye_model(freqs, ei_opt, poles_opt)
     fit_err = float(np.sqrt(np.mean(np.abs(eps_fitted - eps_measured) ** 2)) / norm)
 
     return DebyeFitResult(eps_inf=float(ei_opt), poles=debye_poles,
                           fit_error=fit_err)
 
-
-# ---------------------------------------------------------------------------
-# Lorentz fitting
-# ---------------------------------------------------------------------------
 
 def _lorentz_model(freqs: np.ndarray, eps_inf: float,
                    poles: list[tuple[float, float, float]]) -> np.ndarray:
@@ -460,7 +439,6 @@ def fit_lorentz(
     else:
         eps_inf_init = eps_inf
 
-    # Initial guesses: resonances spread across the frequency band
     f_min = max(freqs.min(), 1.0)
     f_max = freqs.max()
     if f_max <= f_min:
@@ -471,7 +449,6 @@ def fit_lorentz(
         np.log10(omega_min), np.log10(omega_max), n_poles
     )
 
-    # Pack: [eps_inf?, log10(delta_eps_1), log10(omega_0_1), log10(gamma_1), ...]
     x0 = []
     bounds = []
 
@@ -480,13 +457,10 @@ def fit_lorentz(
         bounds.append((_EPS_INF_FLOOR, None))
 
     for k in range(n_poles):
-        # Initial delta_eps
         x0.append(np.log10(1.0))
         bounds.append((np.log10(1e-4), np.log10(1e4)))
-        # Initial omega_0
         x0.append(np.log10(omega_guesses[k]))
         bounds.append((np.log10(omega_min), np.log10(omega_max)))
-        # Initial gamma (damping ~ 10% of omega_0)
         x0.append(np.log10(omega_guesses[k] * 0.1))
         bounds.append((np.log10(omega_min * 0.001), np.log10(omega_max * 10)))
 
@@ -540,9 +514,6 @@ def fit_lorentz(
 
     ei_opt, poles_opt = _unpack(best_result.x)
 
-    # Convert to LorentzPole NamedTuples
-    # LorentzPole uses (omega_0, delta, kappa) where delta = gamma/2
-    # and kappa = delta_eps * omega_0^2
     lorentz_poles = [
         LorentzPole(omega_0=w0, delta=gam / 2.0, kappa=de * w0 ** 2)
         for de, w0, gam in poles_opt
@@ -553,17 +524,12 @@ def fit_lorentz(
              for k, (de, _, _) in enumerate(poles_opt) if de / 1e-4 - 1 <= 1e-6]
     _warn_fit_bounds(ei_opt, free_eps_inf=fit_eps_inf, flags=flags)
 
-    # Final error
     eps_fitted = _lorentz_model(freqs, ei_opt, poles_opt)
     fit_err = float(np.sqrt(np.mean(np.abs(eps_fitted - eps_measured) ** 2)) / norm)
 
     return LorentzFitResult(eps_inf=float(ei_opt), poles=lorentz_poles,
                             fit_error=fit_err)
 
-
-# ---------------------------------------------------------------------------
-# Evaluation helpers
-# ---------------------------------------------------------------------------
 
 def eval_debye(freqs: np.ndarray, eps_inf: float,
                poles: list[DebyePole]) -> np.ndarray:
@@ -600,11 +566,6 @@ def eval_lorentz(freqs: np.ndarray, eps_inf: float,
     """
     from rfx.materials.pole_map import refuse_maps
     refuse_maps(poles, "material_fit.eval_lorentz")
-    # Straight from the pole fields: eps = eps_inf + sum kappa / (w0^2 - w^2 + 2j*delta*w).
-    # For w0 > 0 this is the Lorentz form (kappa = delta_eps * w0^2). It used to
-    # go through delta_eps = kappa / w0^2 and set delta_eps = 0 when w0 == 0, so a
-    # Drude pole (``drude_pole``: w0 = 0, kappa = omega_p^2) came back as a
-    # dispersionless eps_inf.
     omega = 2.0 * np.pi * np.asarray(freqs, dtype=float)
     eps = np.full(omega.shape, eps_inf, dtype=complex)
     for p in poles:
@@ -613,10 +574,6 @@ def eval_lorentz(freqs: np.ndarray, eps_inf: float,
         eps = eps + kappa / (p.omega_0 ** 2 - omega ** 2 + 2j * p.delta * omega)
     return eps
 
-
-# ---------------------------------------------------------------------------
-# Plotting
-# ---------------------------------------------------------------------------
 
 def plot_material_fit(
     freqs: np.ndarray,
@@ -651,8 +608,7 @@ def plot_material_fit(
     eps_measured = np.asarray(eps_measured)
     eps_fitted = np.asarray(eps_fitted)
 
-    # Frequency in GHz for display
-    f_ghz = freqs / 1e9
+    f_ghz = freqs / _DISPLAY_HZ_PER_GHZ
 
     if ax is None:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
@@ -661,7 +617,6 @@ def plot_material_fit(
         ax1 = ax
         ax2 = None
 
-    # Real part
     ax1.plot(f_ghz, np.real(eps_measured), "o", ms=4, label="Measured",
              alpha=0.7)
     ax1.plot(f_ghz, np.real(eps_fitted), "-", lw=2, label="Fitted")
@@ -671,7 +626,6 @@ def plot_material_fit(
     ax1.legend()
     ax1.grid(True, alpha=0.3)
 
-    # Imaginary part (if we have a second axes)
     if ax2 is not None:
         ax2.plot(f_ghz, -np.imag(eps_measured), "o", ms=4, label="Measured",
                  alpha=0.7)

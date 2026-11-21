@@ -1,4 +1,6 @@
-"""Occupancy weights sources on each single-device lane."""
+"""Occupancy weights sources on each single-device lane.
+The one-device peak reference was measured on Mac CPU in float32.
+"""
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -11,6 +13,7 @@ WEIGHTS = (1., .5, .25, .0625)
 
 
 def scene(path, w, *, constant=False):
+    """Four incident cells supply the source edge's weight."""
     kwargs = {}
     if 'graded' in path:
         kwargs['dy_profile'] = (np.full(16, .001) if constant else
@@ -19,10 +22,8 @@ def scene(path, w, *, constant=False):
                      boundary='pec', **kwargs)
     grid = sim._build_nonuniform_grid() if 'graded' in path else sim._build_grid()
     sim.add_source((.006, .007, .005), 'ez', amplitude_kind='field')
-    # The third probe is the source edge itself: the record's largest field.
     for position in ((.010, .007, .005), (.014, .009, .006), (.006, .007, .005)):
         sim.add_probe(position, 'ez')
-    # Four incident cells supply the source edge's weight; no rfx weight helper.
     occupancy = np.zeros(grid.shape, dtype=np.float32)
     occupancy[5:7, 6:8, 4:6] = 1. - w**.25
     return sim, jnp.asarray(occupancy)
@@ -57,6 +58,7 @@ def difference(one, two):
 
 @pytest.mark.parametrize('w', WEIGHTS)
 def test_g1_graded_one_vs_two_devices(graded_records, w, record_property):
+    """An earlier x86 w = 1 row measured below 9 ULP of a probe's own peak, too small to serve as the cross-trace unit."""
     baseline = difference(*graded_records[1.])
     actual = difference(*graded_records[w])
     record_property('d(1)', baseline)
@@ -64,18 +66,14 @@ def test_g1_graded_one_vs_two_devices(graded_records, w, record_property):
     for lane, values in zip(('one', 'two'), graded_records[w]):
         record_property(f'peaks_{lane}', np.max(np.abs(values), axis=0).tolist())
     assert baseline < 1e-4
-    # Per-step cross-trace bar: 9 float32 ULP of the record's largest field
-    # (the source edge). One device adds the stored w*s to w*E, two devices
-    # still form w*(E + s) until the slab step takes the same form, so the
-    # driven edge differs by one rounding per step; on x86 the w = 1 row is
-    # below 9 ULP of a probe's own peak and cannot serve as the unit.
     one, two = graded_records[w]
     family_peak = np.float32(np.max(np.abs(one)))
     assert family_peak == np.max(np.abs(one[:, 2]))
     worst = float(np.max(np.abs(one.astype(np.float64) - two)))
     record_property('worst_abs', worst)
     record_property('family_peak', float(family_peak))
-    assert worst <= 9 * float(np.spacing(family_peak))
+    CROSS_TRACE_ULPS = 9
+    assert worst <= CROSS_TRACE_ULPS * float(np.spacing(family_peak))
 
 
 @pytest.mark.parametrize('w', WEIGHTS)
@@ -97,11 +95,6 @@ def test_g1c_probe_peak_ratio(graded_records, w, record_property):
     assert abs(ratio - 1.) <= 1e-3
 
 
-# Main-era one-device peaks.
-# Measured after the default pulse onset fix; Mac CPU, float32.
-# Old values: uniform (0.033985, 0.0086755, 0.0070076, 0.0070738),
-# graded (0.035304, 0.0087263, 0.0070309, 0.0070737),
-# two-device (0.035304, 0.0043632, 0.0017577, 0.00044211).
 MAIN_PEAKS = {
     'uniform': (0.034007, 0.0086868, 0.0070181, 0.0070820),
     'graded': (0.035325, 0.0087397, 0.0070397, 0.0070826),

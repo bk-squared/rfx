@@ -50,8 +50,6 @@ def _box(refine, *, graded=True, validation="production", solver="yee",
     kw = dict(freq_max=10e9, domain=(0.012, 0.012, 0.012), dx=1e-3,
               boundary=boundary, solver=solver)
     if graded:
-        # One cell size, so the mesh is the uniform one; the profile alone
-        # sends the model to the non-uniform lane, as in the issue.
         kw["dx_profile"] = np.full(12, 1e-3)
     sim = Simulation(**kw)
     sim.add_source((0.004, 0.006, 0.006), "ez",
@@ -92,9 +90,6 @@ def _quiet(fn):
         return fn()
 
 
-# ---------------------------------------------------------------------------
-# preflight()
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("validation", ["production", "research", "off"])
 def test_preflight_reports_the_refinement_as_an_error(validation):
@@ -109,9 +104,6 @@ def test_preflight_is_silent_about_it_on_a_uniform_mesh():
     assert "nonuniform_refinement" not in [i.code for i in report]
 
 
-# ---------------------------------------------------------------------------
-# run() and forward(), with and without preflight
-# ---------------------------------------------------------------------------
 
 def test_run_stops_on_the_preflight_error():
     with pytest.raises(ValueError, match="blocking error") as exc:
@@ -173,9 +165,6 @@ def test_distributed_run_names_the_graded_mesh():
                                       skip_preflight=True))
 
 
-# ---------------------------------------------------------------------------
-# A mesh that only auto-meshing made non-uniform
-# ---------------------------------------------------------------------------
 
 def test_auto_meshed_graded_mesh_is_refused():
     sim = _auto_graded(True)
@@ -191,9 +180,6 @@ def test_auto_meshed_graded_mesh_is_refused():
         _quiet(lambda: sim.run(n_steps=N_STEPS, skip_preflight=True))
 
 
-# ---------------------------------------------------------------------------
-# The graded waveguide S-matrix branch, which bypasses _dispatch_plan
-# ---------------------------------------------------------------------------
 
 def test_graded_waveguide_s_matrix_refuses():
     """WR-90 on a graded z mesh (the #811 fixture). compute_waveguide_s_matrix
@@ -219,9 +205,6 @@ def test_graded_waveguide_s_matrix_refuses():
                                                       normalize="flux"))
 
 
-# ---------------------------------------------------------------------------
-# Entry points with no subgridded lane, on a uniform mesh
-# ---------------------------------------------------------------------------
 
 _NO_SUBGRID = "no subgridded lane"
 
@@ -283,7 +266,6 @@ def _lumped_port_box(refine, eps_r=2.0):
                  waveform=GaussianPulse(f0=5e9, bandwidth=0.8))
     sim.add_probe((0.008, 0.006, 0.004), "ez")
     if refine:
-        # The sequential fallback exercises experimental subgridding.
         sim.add_refinement(z_range=(0.0, 0.008), ratio=2, validation="research")
     return sim
 
@@ -386,11 +368,12 @@ def test_direct_run_uniform_refuses():
 
 
 def test_uniform_waveguide_s_matrix_refuses():
+    """The domain lengths are whole numbers of cells of dx, so the solved domain equals the declared one."""
     sim = Simulation(
         freq_max=8e9, domain=(0.06, 8 * 3e-3, 4 * 3e-3), dx=3e-3,
         boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),
-        cpml_layers=8)  # solved length
+        cpml_layers=8)
     for x_position, direction, name in ((0.012, "+x", "wg1"),
                                         (0.048, "-x", "wg2")):
         sim.add_waveguide_port(
@@ -427,9 +410,6 @@ def test_differentiable_material_fit_refuses():
 
 
 
-# ---------------------------------------------------------------------------
-# Control: the uniform mesh still runs the subgrid
-# ---------------------------------------------------------------------------
 
 def test_uniform_mesh_refinement_still_reaches_the_subgridded_lane():
     """The issue's table, uniform row: the refinement changes the probe.

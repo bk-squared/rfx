@@ -40,6 +40,7 @@ def scene():
 
 @pytest.fixture(scope="module")
 def multimode_scene():
+    """An exactly degenerate pair has no unique eigenvector."""
     grid = Grid(freq_max=12e9, domain=(0.12, 0.04, 0.022), dx=0.002,
                 cpml_layers=10, cpml_axes="x")
     assert grid.shape == (81, 21, 12)
@@ -48,7 +49,6 @@ def multimode_scene():
     modes += [(m, n) for m in range(1, 4) for n in range(1, 4)]
     cutoffs = np.sort([299792458.0 / 2 * np.sqrt((m / a)**2 + (n / b)**2)
                        for m, n in modes])
-    # An exactly degenerate pair has no unique eigenvector.
     assert cutoffs[2] - cutoffs[1] > 0.05 * cutoffs[1], (
         "A degenerate second mode makes the stored profile depend on the LAPACK build"
     )
@@ -214,7 +214,6 @@ def test_initializers_refuse_uniform_node_plane(scene, axis, multimode, grid_kin
         "or extractor (an axis made periodic, a PMC face, or an axis withheld "
         "by pec_axes) must be declared on the Grid."
     )
-    # Expected bounds come directly from node counts, independently of validation.
     valid = initializer(_ports(grid)[0], metric, freqs, f0=6e9,
                         dft_total_steps=steps, **kwargs)
     for cfg in valid if multimode else [valid]:
@@ -311,7 +310,6 @@ def test_initializers_without_uniform_grid_defer_to_loop(scene, monkeypatch, axi
     with pytest.raises(ValueError, match=_refusal(grid, axis, "0 (+x)")):
         run(grid, init_materials(grid.shape), 1, cpml_axes="x",
             waveguide_ports=configs, **run_kwargs)
-    # Expected bounds come directly from node counts, independently of validation.
     valid = initializer(_ports(grid)[0], metric, freqs, f0=6e9,
                         dft_total_steps=steps, **kwargs)
     for cfg in valid if multimode else [valid]:
@@ -405,7 +403,6 @@ def test_whole_plane_uses_the_runs_high_wall(scene, monkeypatch, entry, walls):
         kwargs.update(boundary="cpml", periodic=(False, walls == "periodic", False))
     if entry.startswith("extract"):
         module = waveguide_s
-        # Reaching run proves the extractor itself admitted the aperture.
         monkeypatch.setattr(uniform_loop, "run", _accepted_setup)
         args.extend((configs, 1))
     else:

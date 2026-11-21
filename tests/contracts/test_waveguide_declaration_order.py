@@ -34,10 +34,7 @@ def _repro(order):
 
 
 def test_full_declaration_sets_waveguide_admission_and_realized_planes():
-    # Base 0f84f9265: port-first refuses on dx=0.00149896229, source 8,
-    # requested ref/probe 11/26 (no config is created). Structure-first
-    # accepts on dx=0.0003: built config source/ref/probe = 24/27/42.
-    # Expected indices below are measured constants, independent of admission.
+    """The expected indices are earlier measured constants, independent of admission."""
     records = []
     for order in ("port-first", "structure-first"):
         sim = _repro(order)
@@ -108,8 +105,7 @@ def test_plane_refusal_before_any_step(graded, entry, monkeypatch):
 
 @pytest.mark.parametrize("entry", ["graded_runner", "measurement_plan"])
 def test_graded_routes_without_dispatch_admit_planes(entry, monkeypatch):
-    # The graded config builder does not check planes itself; the lane
-    # admission (direct runner) and the measurement plan must.
+    """The direct runner and measurement plan must admit planes because the graded config builder does not check them itself."""
     def no_steps(*args, **kwargs):
         pytest.fail("waveguide refusal reached field stepping")
 

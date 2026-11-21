@@ -14,6 +14,7 @@ including the corner where a PEC shape's mask is empty); only under trace, where
 host bool is impossible, does it fall back to a static Python ``has_pec``
 predicate. These tests lock the capability (outer-jit works) and the eager
 invariant (a PEC shape entirely outside the grid stays a no-op).
+Domain lengths written as N*(299792458.0/6e9/20.0) or N*1.5e-3 are whole cell counts times their respective solved spacings.
 """
 from __future__ import annotations
 
@@ -27,14 +28,13 @@ from tests.contracts.path_equivalence.comparison import compare
 
 
 def _pulse_for_60_steps(sim):
-    # Fractional bandwidth 0.8 with tau = 60/15 steps: the 60-step record holds
-    # the whole pulse (at f0 = 3 GHz the pulse would peak after step 83).
+    """The four-timestep pulse width keeps the excitation within the 60-step record."""
     tau = 4.0 * float(sim._build_grid().dt)
     return GaussianPulse(f0=1.0 / (np.pi * 0.8 * tau), bandwidth=0.8)
 
 
 def _pec_sim():
-    s = Simulation(freq_max=6e9, domain=(17 * (299792458.0 / 6e9 / 20.0), 9 * (299792458.0 / 6e9 / 20.0), 9 * (299792458.0 / 6e9 / 20.0)), dx=(299792458.0 / 6e9 / 20.0), boundary="pec")  # solved length
+    s = Simulation(freq_max=6e9, domain=(17 * (299792458.0 / 6e9 / 20.0), 9 * (299792458.0 / 6e9 / 20.0), 9 * (299792458.0 / 6e9 / 20.0)), dx=(299792458.0 / 6e9 / 20.0), boundary="pec")
     s.add_source((0.02, 0.01, 0.01), "ez",
                  waveform=_pulse_for_60_steps(s))
     s.add_probe((0.012, 0.008, 0.008), "ez")
@@ -59,23 +59,23 @@ def test_forward_wrappable_in_outer_jit():
     loss = _reflected_energy_loss(sim)
 
     eager = float(loss(eps))
-    jitted = float(jax.jit(loss)(eps))  # must not raise
+    jitted = float(jax.jit(loss)(eps))
     assert np.isfinite(jitted)
     compare(jitted, eager, record="pec_box.jit_value_vs_eager", kind="accumulated", measurements=[])
 
 
 def test_grad_wrappable_in_outer_jit():
-    """jax.jit(jax.grad(loss)) must run and match the un-jitted gradient."""
+    """jax.jit(jax.grad(loss)) must run and match the un-jitted gradient.
+    The gradient tolerances allow float32 XLA operation-reordering slack across 60 FDTD steps.
+    """
     sim = _pec_sim()
     shape = sim.run(n_steps=1, skip_preflight=True).grid.shape
     eps = jnp.ones(shape, dtype=jnp.float32) * 1.5
     loss = _reflected_energy_loss(sim)
 
     g_plain = jax.grad(loss)(eps)
-    g_jit = jax.jit(jax.grad(loss))(eps)  # must not raise
+    g_jit = jax.jit(jax.grad(loss))(eps)
     assert np.all(np.isfinite(np.asarray(g_jit)))
-    # float32 gradients through 60 FDTD steps: jit fuses ops differently, so
-    # allow the usual XLA-reordering slack (agreement is to ~6 sig figs).
     assert np.allclose(np.asarray(g_plain), np.asarray(g_jit),
                        rtol=3e-4, atol=1e-6)
 
@@ -86,13 +86,12 @@ def test_real_interior_pec_under_outer_jit_matches_eager():
     actual mask) must still be outer-jit-wrappable and match eager. `_pec_sim`
     has only a PEC *boundary* (separate grid path), which leaves ``pec_mask``
     empty — this exercises the non-trivial fallback branch."""
-    s = Simulation(freq_max=6e9, domain=(27 * 1.5e-3, 14 * 1.5e-3, 14 * 1.5e-3), dx=1.5e-3, boundary="pec")  # solved length
+    s = Simulation(freq_max=6e9, domain=(27 * 1.5e-3, 14 * 1.5e-3, 14 * 1.5e-3), dx=1.5e-3, boundary="pec")
     s.add(Box((12 * 1.5e-3, 4 * 1.5e-3, 4 * 1.5e-3), (16 * 1.5e-3, 9 * 1.5e-3, 9 * 1.5e-3)), material="pec")
     s.add_source((0.008, 0.01, 0.01), "ez",
                  waveform=_pulse_for_60_steps(s))
     s.add_probe((0.012, 0.008, 0.008), "ez")
     shape = s.run(n_steps=1, skip_preflight=True).grid.shape
-    # confirm this sim really populates pec_mask (the branch under test)
     assert s._assemble_materials(s._build_grid())[3] is not None
 
     eps = jnp.ones(shape, dtype=jnp.float32) * 1.5
@@ -119,6 +118,7 @@ def test_a_pec_shape_that_realizes_nothing_is_an_error_not_a_silent_none():
 
     The second half is unchanged: a real interior obstacle returns a
     non-empty mask.
+    A None PEC mask denotes no conductor rather than a declared conductor that vanished.
     """
     import pytest
 
@@ -133,7 +133,5 @@ def test_a_pec_shape_that_realizes_nothing_is_an_error_not_a_silent_none():
     pec_mask_r = s_real._assemble_materials(grid_r)[3]
     assert pec_mask_r is not None and bool(pec_mask_r.any()), \
         "interior PEC obstacle must return a non-empty mask"
-    # ... and a run with NO conductor at all still returns None, so "None"
-    # keeps meaning "no conductor" rather than "a conductor vanished".
     s_none = Simulation(freq_max=6e9, domain=(.042, .021, .021), dx=.0015, boundary="pec")
     assert s_none._assemble_materials(s_none._build_grid())[3] is None
