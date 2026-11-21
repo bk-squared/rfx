@@ -43,7 +43,6 @@ def _scene(kind):
     initial = initial._replace(ez=initial.ez.at[cell].set(.7))
     carry = {'fdtd': initial}
     if kind == 'occupancy':
-        # The step multiplies by the factor the model publishes before the loop.
         ctx = replace(ctx, use_pec_occupancy=True, materials=with_edge_keep(
             ctx.materials, _occupancy(grid.shape), dtype=jnp.float32))
     elif kind == 'sheet':
@@ -61,20 +60,16 @@ def _scene(kind):
 
 
 def _reference(ctx, carry, source, sheet_coeffs):
-    # Today's single-device order. rfx issue 1373 tracks the one order for
-    # all lanes; this independent straight-line test is where it will show.
+    """0.5 is dyadic, so cell occupancy through the in-place 1 - M operator agrees bit for bit with the published array."""
     old = carry['fdtd']
     st = update_h(old, ctx.materials, ctx.dt, ctx.dx, periodic=ctx.periodic, high_wall=(False, False, False))
     st = update_e(st, ctx.materials, ctx.dt, ctx.dx, periodic=ctx.periodic, high_wall=(False, False, False))
     if ctx.use_pec_occupancy:
-        # Independent of the published array: the cell occupancy through the
-        # in-place 1 - M operator (0.5 is dyadic, so the two forms agree bit for bit).
         st = apply_pec_occupancy(st, _occupancy(st.ex.shape), ctx.periodic)
     if ctx.use_sheet_impedance:
         curls = curl_h(st.hx, st.hy, st.hz, ctx.dx, ctx.periodic, 2, None)
         st = apply_sheet_impedance_e(st, (old.ex, old.ey, old.ez), curls,
                                     ctx.sheet_impedance, sheet_coeffs)
-    # Domain PEC faces win where a sheet ends on the wall.
     st = apply_pec_faces(st, ctx.pec_faces_frozen)
     rlc = ()
     if ctx.use_lumped_rlc:
@@ -119,13 +114,13 @@ def test_conductors_and_sources_match_independent_single_device_step(kind):
 
 
 def _phase_scene(kind):
+    """Step inputs are already scaled field increments."""
     from rfx import Simulation
     from rfx.core.yee import CurlBoundary
     from rfx.measurement import measurement_plan
     from rfx.sources.sources import LumpedPort, setup_lumped_port
 
     grid = Grid(freq_max=10e9, domain=(.005, .005, .005), dx=.001, cpml_layers=0)
-    # Five 1 mm cells per axis, including both PEC endpoint nodes.
     assert grid.shape == (6, 6, 6)
     cell, probe = (1, 2, 3), (2, 1, 3)
     position = tuple(i * .001 for i in cell)
@@ -154,20 +149,12 @@ def _phase_scene(kind):
     carry = {'fdtd': initial}
     if kind == 'port':
         carry['sparam_time_records'] = (jnp.zeros((3, 3), dtype=jnp.float32),)
-    # Step inputs are already scaled field increments, as in the existing
-    # conductor rows. A nonzero electric drive also makes the Ez probe live;
-    # the Hz drive is independently visible in the full six-field record.
     electric = jnp.array([[2.], [-1.], [.5]], dtype=jnp.float32)
     magnetic = jnp.array([[.25], [-.125], [.0625]], dtype=jnp.float32)
     return ctx, carry, plan, electric, magnetic
 
 
 def _phase_reference(ctx, initial, electric, magnetic):
-    # This straight-line reference never calls the composer, its hooks, the
-    # projector or the port sampler. Plan tables describe geometry, not order:
-    # uniform_setup.py:917-920; uniform.py:405-406 reads V_ref before injection,
-    # :474 reads physical V/I afterwards. The old spec's pre-injection V/I
-    # is now a distinct V_ref channel (measurement/ports.py:81-84).
     cell, probe = (1, 2, 3), (2, 1, 3)
 
     def step(st, waves):
@@ -181,10 +168,6 @@ def _phase_reference(ctx, initial, electric, magnetic):
         st = apply_pec_faces(st, ctx.pec_faces_frozen)
         v_ref = -st.ez[cell] * .001
         st = inject_drives(st, ctx.drives.electric, electric_t)
-        # Ampere loop for an interior z-directed port: -Hx(y) + Hx(y-1)
-        # + Hy(x) - Hy(x-1), each times the 1 mm dual edge. Accumulate the
-        # four weighted terms in component order, like the float32 record,
-        # without asking the measurement plan for indices or weights.
         terms = jnp.stack((st.hx[cell] * -.001, st.hx[1, 1, 3] * .001,
                            st.hy[cell] * .001, st.hy[0, 2, 3] * -.001))
         current, _ = jax.lax.scan(lambda total, term: (total + term, None),
@@ -320,7 +303,6 @@ def _graded_reference(ctx, carry, source, invariants):
                           grid.inv_dz, boundary=ctx.curl_boundary)
         st = apply_sheet_impedance_e(st, (old.ex, old.ey, old.ez), curls,
                                     invariants['sheet_impedance'], invariants['sheet_coeffs'])
-    # Domain PEC faces win where a sheet ends on the wall.
     st = apply_pec_faces(st, ctx._pec_faces_frozen)
     rlc = ()
     if ctx.use_lumped_rlc:

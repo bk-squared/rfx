@@ -27,7 +27,7 @@ from rfx.sources import GaussianPulse
 
 FREQUENCY = 1e6
 RESISTANCE = 50.
-VOLTAGE_RTOL = 1e-3  # Pre-declared complex voltage-ratio bar.
+VOLTAGE_RTOL = 1e-3
 CASES = ('uniform', 'offgrid', 'equal', 'transverse', 'wire', 'wire_uniform')
 PULSE = GaussianPulse(f0=8e9, bandwidth=.9)
 
@@ -58,15 +58,14 @@ def _geometry(case):
 
 @lru_cache(maxsize=None)
 def response(case, loaded, independent_current=False, mutation=False):
+    """The current-moment source is in A*m."""
     sim, positions, lengths = _geometry(case)
     n = len(positions)
     if independent_current:
-        # Current-moment source is in A*m: I(t)*edge length gives 1 A.
         for pos, length in zip(positions, lengths):
             sim.add_source(pos, 'ez', amplitude_kind='current',
                            waveform=lambda t, d=float(length): PULSE(t) * d)
     else:
-        # Off-grid declaration snaps to (4,5,3) mm on the 1 mm grid.
         declared = (.0043, .0052, .0034) if case == 'offgrid' else positions[0]
         sim.add_port(declared, 'ez', impedance=RESISTANCE,
                      waveform=PULSE, extent=float(sum(lengths)) if n > 1 else None)
@@ -90,8 +89,6 @@ def response(case, loaded, independent_current=False, mutation=False):
         original = port_drive.port_drive_waveform
 
         def old_drive(*args, **kwargs):
-            # Mutate the shared builder, including the graded runner's
-            # imported alias. Uniform lumped/wire callers import it locally.
             kwargs['sigma_port'] = 1.
             return original(*args, **kwargs)
 
@@ -102,8 +99,6 @@ def response(case, loaded, independent_current=False, mutation=False):
             result = sim.run(n_steps=steps, compute_s_params=False, skip_preflight=True)
     else:
         result = sim.run(n_steps=steps, compute_s_params=False, skip_preflight=True)
-    # Independently integrate the solved field on the declared, node-aligned
-    # physical edges. Do not call port voltage/current/S-parameter helpers.
     gap = np.asarray(result.time_series, dtype=np.float64) @ lengths
     t = np.arange(steps)*dt
     phase = np.exp(-2j*np.pi*FREQUENCY*t)
@@ -144,13 +139,14 @@ def test_shared_builder_without_sigma_fails_uniform_voltage_oracle(case):
 
 
 def msl_response(lane, mode, *, mutation=False):
-    """Open two-plate feed; near-DC solved-field ratio after 1.2 ns decay."""
+    """Open two-plate feed; near-DC solved-field ratio after 1.2 ns decay.
+    Drawn from 4 mm, the upper plate left a 2 mm open stub behind the port whose effective quarter wave (23.7 GHz) is within 1.5x of the 0..20 GHz default read.
+    """
     assert lane in ('uniform', 'x_graded', 'y_graded', 'z_graded')
     profiles = {} if lane == 'uniform' else dict(
         dx_profile=np.full(16, .001), dy_profile=np.full(14, .001),
         dz_profile=np.full(14, .001))
     if lane == 'x_graded':
-        # Unequal propagation cells at the feed; y/z cross-section stays uniform.
         profiles['dx_profile'][5:8] = [.0008, .0009, .0013]
     elif lane == 'y_graded':
         profiles['dy_profile'][5:9] = [.0007, .0013, .0006, .0014]
@@ -158,14 +154,14 @@ def msl_response(lane, mode, *, mutation=False):
         profiles['dz_profile'][4:6] = [.0008, .0012]
     sim = Simulation(freq_max=20e9, domain=(.016, .014, .014), dx=.001,
                      cpml_layers=3, boundary='cpml', **profiles)
-    # The upper plate starts at the port's grid node. Drawn from 4 mm it left a
-    # 2 mm open stub behind the port whose effective quarter wave (23.7 GHz) is within
-    # 1.5x of the 0..20 GHz default read. The pinned V/w ratios are unchanged by this.
     from rfx.preflight.line_port_coverage import port_node_coordinate
     sim.add(Box(((4 - .35) * .001, (5 - .35) * .001, .004),
                 ((12 + .35) * .001, (9 + .35) * .001, .004)), material='pec')
     sim.add(Box((port_node_coordinate(sim, (.006, .007, .004)), (5 - .35) * .001, .006),
                 ((12 + .35) * .001, (9 + .35) * .001, .006)), material='pec')
+    assert sim._geometry[-1].shape.corner_lo[0] == port_node_coordinate(sim, (.006, .007, .004)), (
+        "The upper plate must start at the port node to avoid an open stub in the default read."
+    )
     sim.add_msl_port(position=(.006, .007, .004), width=.004, height=.002,
                      direction='+x', impedance=RESISTANCE, waveform=PULSE, mode=mode)
     probe_z = (.004, .0048) if lane == 'z_graded' else (.004, .005)
@@ -189,7 +185,6 @@ def msl_response(lane, mode, *, mutation=False):
         original = port_drive.port_drive_waveform
 
         def old_legacy(*args, **kwargs):
-            # Keep the shared builder; remove the port's load factor.
             kwargs['sigma_port'] = 1.
             return original(*args, **kwargs)
 

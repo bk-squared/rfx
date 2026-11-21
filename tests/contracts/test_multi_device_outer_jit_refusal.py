@@ -51,9 +51,9 @@ def assert_refused(call):
 
 @pytest.mark.parametrize("case", ["forward", "grad", "no_argument", "uniform_run"])
 def test_T1_outer_jit_refused(devices, pretend_gpu, case):
+    """A later tracing error must not hide a regression."""
     eps, forward, objective, run = scene(devices, uniform=case == "uniform_run")
     if case == "uniform_run":
-        # Measured reachable on CPU: a later tracing error must not hide a regression.
         assert_refused(lambda: jax.jit(run)())
     elif case == "no_argument":
         assert_refused(lambda: jax.jit(lambda: forward(eps))())
@@ -84,7 +84,6 @@ def test_T2_staging_sites_run_unjitted(devices, pretend_gpu, staging, gradient):
     """Pole staging and the sharded-design halo make device positions of their own."""
     eps, forward, objective, _ = scene(devices, **{staging: True})
     finite((jax.grad(objective) if gradient else forward)(eps))
-
 
 
 @pytest.mark.parametrize("flags", ["--xla_gpu_enable_command_buffer=",

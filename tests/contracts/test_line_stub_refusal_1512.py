@@ -15,13 +15,11 @@ def line_frequency(length=.006):
 
 
 def line(length=.006, direction='+x'):
-    # A ground plane and snap='declared' make this a line every entry accepts,
-    # so only the stub refusal stands between these tests and a solve.
+    """A ground plane and snap='declared' make the line acceptable to every entry."""
     sim = Simulation(domain=(.024, .004, .004), dx=.0005, snap='declared',
                      freq_max=100e9, boundary='cpml', cpml_layers=2)
     sim.add(Box((0, 0, 0), (.024, .004, 0)), material='pec')
     plane = .010
-    # The device-side segment is deliberately much shorter than the tail.
     lo, hi = ((plane-length, plane+.0002) if direction == '+x'
               else (plane-.0002, plane+length))
     sim.add(Box((lo, .001, .001), (hi, .003, .001)), material='pec')
@@ -60,8 +58,9 @@ def test_fifth_odd_resonance_alone_in_the_window_refuses():
     assert stub.resonant_odd_orders(finding, band) == (5, 5)
     with pytest.raises(ValueError, match='order 5'):
         stub.require_no_resonant_line_stub(sim, band)
-    # A read whose window holds no odd order (between 1 and 3) is admitted.
-    stub.require_no_resonant_line_stub(sim, (1.6*fq, 1.9*fq))
+    EMPTY_WINDOW_HIGH_RATIO = 1.9
+    assert fq < 1.6*fq/1.5 < 1.5*EMPTY_WINDOW_HIGH_RATIO*fq < 3*fq, 'The admitted read window must lie between odd orders one and three.'
+    stub.require_no_resonant_line_stub(sim, (1.6*fq, EMPTY_WINDOW_HIGH_RATIO*fq))
 
 
 def reviewer_line(length):
@@ -80,14 +79,14 @@ def reviewer_line(length):
 
 
 @pytest.mark.parametrize('length,band,old_refuses,new_refuses', [
-    # Solved notch: 29.5 GHz for 0.75 mm, 22.5 GHz for 1.25 mm.
     (.00075, (4e9, 23.5e9), False, False),
     (.00075, (4e9, 39e9), False, True),
     (.00125, (4e9, 23.5e9), False, True),
     (.00125, (4e9, 39e9), True, True),
 ])
 def test_short_stub_decision_counts_the_open_end(length, band, old_refuses, new_refuses):
-    """Build only. Old rule: metal length alone; new rule: plus the open-end extension."""
+    """Build only. Old rule: metal length alone; new rule: plus the open-end extension.
+    An earlier solve put the notch at 29.5 GHz for 0.75 mm, 22.5 GHz for 1.25 mm."""
     eps_eff = (3.66 + 1)/2 + (3.66 - 1)/(2*np.sqrt(1 + 12/2))
     extension = .412*.001*(eps_eff + .3)*(2 + .264)/((eps_eff - .258)*(2 + .8))
 
@@ -117,10 +116,11 @@ def test_short_stub_decision_counts_the_open_end(length, band, old_refuses, new_
     ('compute_coax_msl_transition', 'freqs'),
 ])
 def test_every_entry_refuses_before_assembly(method, frequency_argument, skip):
+    """Direct MSL solves do not accept lumped S11 requests."""
     sim = line()
     kwargs = {frequency_argument: [12e9, 13e9]}
     if method in ('run', 'forward'):
-        kwargs.pop(frequency_argument)  # Direct MSL solves do not accept lumped S11 requests.
+        kwargs.pop(frequency_argument)
         sim._freq_max = 13e9
         kwargs.update(skip_preflight=skip, n_steps=1)
     if method == '_forward_from_materials':
@@ -130,7 +130,6 @@ def test_every_entry_refuses_before_assembly(method, frequency_argument, skip):
         sim.add_coaxial_port((.012, .002, 0), face='bottom')
     if method == 'compute_mixed_s_matrix':
         sim.add_port((.012, .002, .001), 'ez', impedance=50., extent=(0, 0, .001))
-    # Valid declarations must reach stub admission before material assembly.
     with pytest.raises(ValueError, match='start the signal strip at that coordinate'):
         getattr(sim, method)(**kwargs)
 
@@ -194,6 +193,7 @@ def test_public_preflight_reports_far_stub():
 
 
 def test_broad_sweep_converts_only_interval_members():
+    """The ro4003c/low/sub6 and teflon/high/sub6 cases have effective frequencies 14.9 and 27.1 GHz, inside 1.5x of the 2-10 and 10-20 GHz reads."""
     from scripts.diagnostics.run_msl_broad_e5_sweep import (
         build_simulation, case_geometry_params, enumerate_cases,
     )
@@ -202,14 +202,12 @@ def test_broad_sweep_converts_only_interval_members():
         geo = case_geometry_params(case)
         sim = build_simulation(case, geo)
         trace = sim._geometry[1].shape
-        # Independent of rfx: metal length plus the Hammerstad open-end extension.
         e, u, h = geo['eps_eff'], geo['w_m'] / geo['substrate'].h_sub_m, geo['substrate'].h_sub_m
         extension = .412*h*(e + .3)*(u + .264)/((e - .258)*(u + .8))
         fq = 299792458 / (4 * (geo['port_margin'] + extension) * np.sqrt(e))
         band = geo['band']
         expected = any(band.freq_lo_hz/1.5 <= order*fq <= 1.5*band.freq_hi_hz
                        for order in range(1, 400, 2))
-        # The predicate on the realized grid agrees: no kept tail is refused.
         stub.require_no_resonant_line_stub(sim, (band.freq_lo_hz, band.freq_hi_hz))
         assert bool(stub.line_stub_findings(sim)) == (not expected)
         from rfx.geometry.csg import declared_bounds
@@ -219,8 +217,6 @@ def test_broad_sweep_converts_only_interval_members():
         assert upper[0] == geo['domain_x_m'] - margin
         if expected:
             converted.add((case.substrate_key, case.band_key, case.dx_resolution))
-    # The last two entered with the open-end extension (metal length alone: 16.7 and
-    # 30.8 GHz, outside 1.5x of the 2-10 and 10-20 GHz reads; effective: 14.9 and 27.1 GHz).
     assert converted == {('ro4003c', 'high', 'sub4'), ('ro4003c', 'high', 'sub6'),
                          ('ro4003c', 'low', 'sub4'), ('teflon', 'high', 'sub4'),
                          ('ro4003c', 'low', 'sub6'), ('teflon', 'high', 'sub6')}

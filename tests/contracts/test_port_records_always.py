@@ -36,14 +36,12 @@ def test_every_port_records_without_s_request(graded, wire, entry):
     expected = ('V', 'I', 'V_port') if wire else ('V', 'I')
     assert record.channels == expected + ('V_ref',)
     assert 'V_ref' in record.channels
-    # Graded wire forward historically computes default-bin S without an explicit request.
     if not (graded and wire and entry == 'forward'):
         assert result.s_params is None
         assert result.settling_witness['scored_port_record_ids'] == []
         assert result.settling_witness['skipped_port_records'] == [
             {'id': 'port:0:mode:0', 'reason': 'S not read'}]
     if entry == 'run':
-        # Independent completed-field oracle, including the Ampere circulation.
         grid, state = result.grid, result.state
         k = 1 if wire else 0
         width = float(np.asarray(grid.cells(2))[k])
@@ -56,7 +54,6 @@ def test_every_port_records_without_s_request(graded, wire, entry):
 
 
 def test_graded_run_lumped_s_is_returned():
-    # Graded run() forms lumped S as forward() does (tests/contracts/test_graded_lumped_s.py).
     result = model(True).run(n_steps=16, skip_preflight=True, compute_s_params=True,
                              s_param_freqs=np.array([2e9]))
     assert np.asarray(result.s_params).shape == (1, 1, 1)
@@ -84,8 +81,7 @@ def test_until_decay_keeps_unread_records(graded, wire):
 @pytest.mark.parametrize('graded', [False, True])
 @pytest.mark.parametrize('wire', [False, True])
 def test_until_decay_records_are_sized_by_decay_max_steps(graded, wire):
-    # The decay loop runs past n_steps: a record sized by n_steps (8) would
-    # end at step 8 or repeat its last row, not match the fixed 24-step run.
+    """A record sized by n_steps (8) would end at step 8 or repeat its last row, not match the fixed 24-step run."""
     def solve(**kw):
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
@@ -120,8 +116,7 @@ def test_forward_records_cross_grad_and_vmap(graded):
 
 
 def test_uniform_single_lumped_s_scores_the_main_record():
-    # One excited lumped port: S comes from the main record, so the
-    # settling witness scores that record and no separate drive scan exists.
+    """With one excited lumped port, S comes from the main record, so the settling witness scores that record without a separate drive scan."""
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
         result = model().run(n_steps=16, skip_preflight=True, compute_s_params=True,

@@ -1,4 +1,6 @@
-"""The public field and S entries hand the time step exactly one PEC model."""
+"""The public field and S entries hand the time step exactly one PEC model.
+The hand-counted sheet's 16 low-x CPML cells shift physical node 40 to array index 56.
+"""
 import numpy as np
 import pytest
 from pathlib import Path
@@ -11,7 +13,7 @@ def test_one_rule_and_no_volume_staircase(monkeypatch, name):
     rows = capture_setups(monkeypatch)
     scene(name).run(n_steps=4, compute_s_params=False)
     scene(name, ports=2).compute_waveguide_s_matrix(n_steps=4, normalize=False)
-    assert len(rows) == 3  # run(), then one device setup per lane excitation.
+    assert len(rows) == 3
     for setup_index, device in enumerate(rows[1:]):
         assert_same_setup(rows[0], device, label=f'{name}: lane device {setup_index}')
 
@@ -66,7 +68,6 @@ def test_strict_lane_admission_reads_conformal_open_faces(monkeypatch):
 def test_sphere_changes_only_domain_wall_rows(monkeypatch, record_property):
     rows = capture_setups(monkeypatch)
     scene('S').run(n_steps=4, compute_s_params=False)
-    # Captured through run() on b969e2c40, with the same C4 observation wrapper.
     baseline = np.load(Path(__file__).parents[1] / 'data/conformal_node_plane/S-b969e2c40.npz')
     counts = {}
     for key in ('weights', 'areas'):
@@ -83,14 +84,13 @@ def test_sphere_changes_only_domain_wall_rows(monkeypatch, record_property):
 
 @pytest.mark.parametrize('entry', ['run', 'waveguide'])
 def test_conformal_sphere_keeps_only_hand_counted_sheet_edges(monkeypatch, entry):
-    """The sheet/wire branch drops the sphere staircase and retains the sheet."""
+    """The sheet/wire branch drops the sphere staircase and retains the sheet.
+    The yz sheet owns Ex: none, Ey: 4*5=20, Ez: 5*4=20.
+    """
     from rfx import Box
 
     rows = capture_setups(monkeypatch)
     sim = scene('S', ports=1 if entry == 'run' else 2)
-    # dx = 0.00127 m. Corners / dx = (40, 4, 2), (40, 8, 6).
-    # The yz sheet is away from the sphere (x ~55), ports (x=24,88),
-    # and domain walls. Ex: none; Ey: 4*5=20; Ez: 5*4=20.
     sim.add(Box((.05080, .00508, .00254), (.05080, .01016, .00762)), material='pec')
     if entry == 'run':
         sim.run(n_steps=4, compute_s_params=False)
@@ -99,11 +99,9 @@ def test_conformal_sphere_keeps_only_hand_counted_sheet_edges(monkeypatch, entry
     assert len(rows) == (1 if entry == 'run' else 2)
     for setup_index, row in enumerate(rows):
         expected = tuple(np.zeros(row['grid'].shape, dtype=bool) for _ in range(3))
-        # The 16 low-x CPML cells shift physical node 40 to array index 56.
         assert row['grid'].pad_x_lo == 16
         expected[1][56, 4:8, 2:7] = True
         expected[2][56, 4:9, 2:6] = True
-        # No port release intersects these edges; no indices are excluded.
         assert tuple(np.count_nonzero(a) for a in expected) == (0, 20, 20)
         for component, (actual, sheet) in enumerate(zip(row['masks'], expected)):
             np.testing.assert_array_equal(

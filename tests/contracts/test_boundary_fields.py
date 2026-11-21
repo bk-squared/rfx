@@ -16,7 +16,6 @@ def test_distributed_record_layout_selects_full_grid_or_two_slabs(nx):
     fields, _, _ = measured_fields([record], grid, "distributed")
     np.testing.assert_array_equal(fields, full)
     per_slab = (nx + 1) // 2
-    # Distinct ghost/alignment sentinels must never appear in selected fields.
     interior = np.pad(full, ((0, 0), (0, 0), (0, 2 * per_slab - nx), (0, 0), (0, 0)),
                       constant_values=-123)
     slabs = [np.pad(interior[:, :, r * per_slab:(r + 1) * per_slab],
