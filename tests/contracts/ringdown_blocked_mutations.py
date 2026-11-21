@@ -32,7 +32,7 @@ def pytest_configure(config):
 
         main()
         pytest.exit('all blocked-fit mutations failed in their witnesses', returncode=0)
-    from rfx.ringdown import _blocked as blocked
+    from rfx.measurement import ringdown_blocked as blocked
     planning = importlib.import_module('rfx.ringdown._pencil')
     from rfx.measurement import matrix_pencil as pencil
 
