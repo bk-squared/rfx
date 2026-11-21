@@ -20,13 +20,11 @@ class NonDifferentiableEntry(TracedStructureRefusal):
 
 
 _REASONS = {
-    "COAX": "sets static coax line geometry or reference impedance",
     "S1": "controls a count, choice or host threshold",
     "S2": "selects cells without a nominal twin",
     "S3": "selects a node index",
 }
 _REMEDIES = {
-    "COAX": "to vary it, declare and solve one port per concrete value",
     "S1": "to vary it, call once per value",
     "S2": "a position selects cells and has no derivative here; differentiate geometry through a design region or eps_override",
     "S3": "the index selects a node; its gradient is zero by construction",

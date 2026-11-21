@@ -23,6 +23,7 @@ from rfx.boundaries.graded_periodic import admit_graded_periodic
 from rfx.boundaries.spec import BoundarySpec
 from rfx.core.yee import init_materials
 from rfx.errors import RfxError, RfxRefusal, RfxUnsupported
+from rfx._traced_inputs import TracedStaticInput
 from rfx.geometry.rasterize_grid import GridCoords, _static_wire_min_cell, sheet_spec_from_shape
 from rfx.geometry.smoothing import _reaches_pad_face
 from rfx.materials.thin_conductor import PinnedSheet, ThinConductor
@@ -560,5 +561,5 @@ def test_coax_port_refuses_a_traced_static_input(name):
         sim = Simulation(freq_max=10e9, domain=(.012, .012, .040), dx=.0005)
         sim.add_coaxial_port((.006, .006, .002), **{name: value})
         return value
-    with pytest.raises(RfxUnsupported, match=rf"add_coaxial_port.*{name}.*static"):
+    with pytest.raises(TracedStaticInput, match=rf"add_coaxial_port\({name}=\.\.\.\) received a traced value"):
         jax.make_jaxpr(declare)(.001)
