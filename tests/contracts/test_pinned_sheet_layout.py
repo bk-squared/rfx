@@ -536,6 +536,35 @@ def test_other_metal_consumers_refused(stage):
     assert edge in str(error.value)
 
 
+@pytest.mark.parametrize('compiled', [False, True], ids=['eager', 'jit'])
+def test_layout_release_frees_only_the_element_edge(compiled):
+    """Keep every sheet edge metal except the literal Ex element edge (6,7,6)."""
+    from rfx.model.occupancy import admit_sheet_layout
+    sim = board()
+    sim.add_lumped_rlc((.0045, .005, float(DZ[:4].sum())), 'ex', R=50., C=1e-13, topology='parallel')
+    ones = edge_arrays(LAYOUTS['ones'])
+    grid = sim._build_nonuniform_grid()
+    materials = sim._assemble_materials_nu(grid, pec_sheets=[], pec_wires=[])[0]
+
+    def keep(pair):
+        layout = admit_sheet_layout(sim._pinned_sheets, (pair,))
+        return with_graded_edge_keep(materials, None, layout, grid=grid, sources=[],
+                                     waveguide_ports=[], dtype=jnp.float32, sheet_edge_masks=None,
+                                     periodic=(False, False, False),
+                                     element_edges=((0, 'ex', (6, 7, 6)),)).edge_keep
+    actual = (jax.jit(keep) if compiled else keep)(tuple(jnp.asarray(a) for a in ones))
+    expected = [np.ones(grid.shape, np.float32) for _ in range(3)]
+    for i in range(4):
+        for j in range(5):
+            expected[0][i + 5, j + 5, 6] = 0
+    for i in range(5):
+        for j in range(4):
+            expected[1][i + 5, j + 5, 6] = 0
+    expected[0][6, 7, 6] = 1
+    for a, e in zip(actual, expected, strict=True):
+        assert np.asarray(a).tobytes() == e.tobytes()
+
+
 @pytest.mark.parametrize('stage,layout_name', [
     ('r_only', 'ones'), ('parallel_rc', 'ones'), ('parallel_rc', 'zeros'),
     ('parallel_rc_ey', 'ones'), ('series', 'ones'), ('parallel_inductor', 'ones'),
