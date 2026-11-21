@@ -165,9 +165,9 @@ for bit, as the same metal drawn with `add_pinned_sheet`
 (`tests/contracts/test_pinned_sheet_layout.py::test_declared_layout_bytes`), so
 one compile serves a search over layouts. It is a switch, not a sensitivity:
 values between 0 and 1 are refused, and a gradient with respect to it raises
-`TypeError`. Other solver paths refuse it, and so does a port, source, lumped
-element, surface-impedance sheet, microstrip feed or plane wave on a switched
-sheet.
+`TypeError`. Other solver paths refuse it, and so does a port, source,
+surface-impedance sheet, microstrip feed or plane wave on a switched sheet.
+A lumped element on a switched sheet keeps its edge free, with a warning.
 
 ### Gaps between conductors
 
