@@ -52,7 +52,6 @@ def test_annular_resistor_loads_only_ex_and_ey_on_its_node_plane(reader, host_ep
                & ~np.asarray(pec)[:, :, z])
     assert annulus.any()
     assert shell_inner == SMA_OUTER_RADIUS
-    # Closed-form sheet conductivity, independent of the stamp's helpers.
     sigma_load = np.log(2.055e-3 / 0.635e-3) / (
         2 * np.pi * 0.4e-3 * resistance)
     if reader is component_e_materials:
@@ -66,8 +65,6 @@ def test_annular_resistor_loads_only_ex_and_ey_on_its_node_plane(reader, host_ep
         if axis < 2:
             own[:, :, z] = annulus
             np.testing.assert_allclose(actual[own], sigma_load, rtol=1e-6)
-        # Every other conductivity, including both adjacent node planes and
-        # the entire Ez component, is bit-identical to the unstamped line.
         assert actual[~own].tobytes() == original[~own].tobytes()
         for plane in (z - 1, z + 1):
             assert actual[:, :, plane].tobytes() == original[:, :, plane].tobytes()

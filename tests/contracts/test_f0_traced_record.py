@@ -7,13 +7,10 @@ import pytest
 from rfx import Box, Simulation
 
 
-# Computed with traced_sb.py before pinning these reference values.
 @pytest.mark.parametrize("sigma_scale, expected", [
     (1e4, -21554.982421875), (0.25, -3342339.25),
 ], ids=["below", "above"])
 def test_f0_sigma_gradient_keeps_traced_verdict(sigma_scale, expected):
-    # Same geometry, source, probe and scalar as the S2 traced_sb.py.
-    # Like test_forward_traced_dz_with_live_dt, retain the forward record.
     observed = []
 
     def evaluate(sigma_bulk):
@@ -39,7 +36,6 @@ def test_f0_sigma_gradient_keeps_traced_verdict(sigma_scale, expected):
     assert row.axes == () and row.edge_note is None
     assert "thin_conductor[0].sigma_bulk" in row.traced_inputs
     assert "thin_conductor[0].g_sheet" in row.traced_inputs
-    # Only the traced sheet's row is unavailable: the record keeps its entities.
     assert [entity.label for entity in record.entities] == ["thin_conductor[0]"]
     assert record.entities[0].axes == ()
     assert record.realization_table.row("domain").traced_inputs == ()
@@ -48,12 +44,13 @@ def test_f0_sigma_gradient_keeps_traced_verdict(sigma_scale, expected):
 
 
 def test_traced_f0_sheet_leaves_concrete_box_judged(monkeypatch):
-    """Strict: a gradient through one f0 sheet's sigma must not hide a concrete box's miss."""
+    """Strict: a gradient through one f0 sheet's sigma must not hide a concrete box's miss.
+    Box y edges 7.8 and 12.2 mm on 2 mm cells contain nodes at 8, 10, 12 mm.
+    """
     import re
     from rfx import GaussianPulse
     from rfx.model import realization_verdict
     D = 1e-3
-    # Box y edges 7.8 and 12.2 mm on 2 mm cells: the nodes inside are 8, 10, 12 mm.
     drawn, covered = 12.2*D - 7.8*D, 12*D - 8*D
     percent = 100*(covered - drawn)/drawn
     assert drawn == pytest.approx(4.4*D) and percent == pytest.approx(-9.0909, abs=1e-4)
@@ -84,7 +81,6 @@ def test_traced_f0_sheet_leaves_concrete_box_judged(monkeypatch):
     with pytest.raises(ValueError) as refusal:
         jax.grad(loss)(jnp.float32(np.log(5.8e7)))
     message = str(refusal.value)
-    # The box is the model's only geometry entry, so the table names it geometry[0].
     line = next(text for text in message.splitlines() if text.startswith("realization geometry[0]"))
     miss = re.search(r"y extent miss ([-+0-9.e]+) cells \(([-+0-9.e]+) %\)", line)
     assert float(miss.group(2)) == pytest.approx(percent, rel=1e-6)

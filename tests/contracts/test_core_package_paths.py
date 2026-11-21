@@ -13,7 +13,7 @@ CORE_MODULES = ('_realized', '_grid_metric', '_precision', '_periodic', '_unifor
 
 @pytest.mark.parametrize('name', CORE_MODULES)
 def test_old_core_paths_do_not_import(name, monkeypatch):
-    # A shared editable install can otherwise find deleted files in another checkout.
+    """A shared editable install can find deleted files in another checkout."""
     for finder in sys.meta_path:
         owner = sys.modules.get(finder.__module__)
         mapping = getattr(owner, 'MAPPING', None)

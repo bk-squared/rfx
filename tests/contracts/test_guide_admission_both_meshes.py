@@ -18,6 +18,7 @@ The real importer calls restore_legacy_boundary at rfx/interop/_design.py:2010.
 rfx/boundaries/serialization.py:15-16,38-39 leaves graded imports explicit;
 there is no public graded import producing None. Only its unknown-provenance
 row sets _boundary_explicit=None; the uniform None row uses the real import.
+Each expectation is (answer, exception, message without '<lane>: ').
 """
 import gc
 
@@ -30,12 +31,9 @@ from rfx.boundaries.features import admit_waveguide
 from rfx.interop import design_to_dict, simulation_from_design
 
 
-# Each expectation is (answer, exception, message without '<lane>: ').
-# These are literal policy answers, never obtained from the admission function.
-# The final column names the reason for an exception to public guide admission.
 EXPECTED = {
-    # 22.86 x 10.16 mm at 2 mm: both meshes keep the declared transverse
-    # absorbers and refuse the explicitly absorbing full-aperture guide.
+
+
     "wr90-nonwhole-cells": (
         ("refused", RfxRefusal, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
         ("refused", RfxRefusal, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
@@ -103,8 +101,7 @@ EXPECTED = {
     ),
 }
 
-# Public run/forward refuse two ports after guide admission, before stepping.
-# Keep earlier graded boundary refusals; valid PEC guides now refuse on both meshes.
+
 MULTIPORT_REFUSAL = (
     "refused", ValueError,
     "One run() or forward() record supports at most one driven waveguide port; driven ports: {port_names}. Set amplitude 0.0 on all but one, or use compute_waveguide_s_matrix() for the full matrix, with every port's amplitude nonzero.",
@@ -144,6 +141,7 @@ def release_models():
 
 
 def guide(declaration, *, graded):
+    """The public registration fence prevents the combined periodic waveguide model."""
     if declaration == "wr90-nonwhole-cells":
         kwargs = {"dx_profile": np.array([.002]*8 + [.0019, .0021]*4 + [.002]*9)} if graded else {}
         sim = Simulation(12e9, (.05, .02286, .01016), dx=.002,
@@ -174,9 +172,8 @@ def guide(declaration, *, graded):
     sim = Simulation(freq_max=12e9, domain=(.024, .020, .008), dx=.004,
                      cpml_layers=2, **kwargs)
     if declaration == "periodic-admission":
-        # The public registration fence prevents this combined model. For the
-        # admission-only judge, carry port entries made through the public API
-        # onto the separately public-constructed periodic declaration.
+
+
         sim._waveguide_ports = list(guide("pec-walls", graded=graded)._waveguide_ports)
         return sim
     for position, direction, name in ((.004, "+x", "left"), (.020, "-x", "right")):
@@ -218,8 +215,7 @@ def test_guide_admission_both_meshes(declaration, entry, monkeypatch):
                 loops.append(True)
                 pytest.fail("refused guide entered a field time loop")
 
-            # Uniform and graded field drivers use these lax loops. Intercept
-            # loop entry, before either tracing or executing its first step.
+
             with monkeypatch.context() as guard:
                 for loop in ("scan", "fori_loop", "while_loop"):
                     guard.setattr(jax.lax, loop, no_field_loop)
@@ -240,8 +236,8 @@ def test_guide_admission_both_meshes(declaration, entry, monkeypatch):
             if declaration == "transverse-periodic":
                 assert caught.traceback[-1].name == "add_waveguide_port"
             if declaration == "perpendicular-pec-z" and not graded and entry != "admission":
-                # The common single-waveguide-port refusal; the message
-                # itself is pinned by ``answer == expected`` below.
+
+
                 assert caught.traceback[-1].path.name == "_admission.py"
                 assert caught.traceback[-1].name == "require_isolated_s_drive"
             answer = ("refused", type(caught.value), message)
