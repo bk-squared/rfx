@@ -41,8 +41,7 @@ DX = 1e-3
 DOMAIN = (20e-3, 16e-3, 6e-3)
 X_LO, X_HI, Y_LO, Y_HI, Z = 5.7e-3, 13.7e-3, 4.1e-3, 9.6e-3, 3e-3
 
-# Node ON each drawn edge.  Outside the sheet: 0.7 / 0.8 mm cells on x,
-# 0.6 / 0.9 mm on y; inside: 0.5 mm on x, 0.55 mm on y.
+
 ON_NODE_X = np.array([1, 1, 1, 1, 1, 0.7] + [0.5] * 16
                      + [0.8, 0.5, 1, 1, 1, 1, 1]) * 1e-3
 ON_NODE_Y = np.array([1, 1, 1, 0.5, 0.6] + [0.55] * 10
@@ -99,7 +98,9 @@ def _census_rows(issues):
 
 def _assert_census_is_the_fidelity_residual(issues, items):
     """For every sheet in-plane face: the census row (or its absence) is the
-    fidelity report's face residual against the census's own 0.5 % bar."""
+    fidelity report's face residual against the census's own 0.5 % bar.
+    The census prints 4 significant digits.
+    """
     rows = _census_rows(issues)
     for it in items:
         label = str(it["entity"]).split(" ")[0]
@@ -110,7 +111,7 @@ def _assert_census_is_the_fidelity_residual(issues, items):
             worst = max(ax["face_residual_um"])
             if worst / ext > 5e-3:
                 assert (label, a) in rows, (label, a, worst, rows)
-                # the census prints 4 significant digits
+
                 assert rows[(label, a)] == pytest.approx(worst, rel=1e-3), (
                     label, a, rows[(label, a)], worst)
             else:

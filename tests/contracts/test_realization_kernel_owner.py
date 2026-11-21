@@ -21,7 +21,7 @@ def test_compact_record_retains_kernel_owner(lane, monkeypatch):
     if lane == 'fwd_uniform':
         record = sim.forward(n_steps=1, skip_preflight=True).realized_geometry
     else:
-        # Exercise the full-domain ownership transfer without requiring GPUs.
+
         root = conductors.solve_conductors(sim, sim._build_grid())
         transferred, record = conductors.at_kernel(
             sim, root, lane=lane, pec_edges=root.pec_edges)

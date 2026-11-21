@@ -56,7 +56,7 @@ def test_volume_has_zero_realized_stub_and_passes_port_preflight(case):
         assert realized_trace_planes_on_column(
             edges, 2, (span["i_feed"], span["w_centre"]), span["n_hi"],
             periodic=sim._periodic_flags()) != (None, None)
-        # Read the actual longitudinal PEC edges handed to the stepper.
+
         occupied = np.flatnonzero(np.asarray(edges[0])[:, span['w_centre'], span['n_hi']])
         assert occupied[0] == span['i_feed']
     assert line_stub_findings(sim, grid) == []

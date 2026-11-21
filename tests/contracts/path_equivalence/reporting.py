@@ -65,12 +65,10 @@ def group(failure):
 
 
 def fingerprint(failure):
-    # A different measured amplitude of the SAME failed record is still the
-    # same finding. Exceptions retain their entire message, so an unrelated
-    # builder or runtime error cannot be accepted under an existing xfail.
+    """A different measured amplitude of a failed record is still the same finding."""
     if group(failure) == 'execution':
-        # The assembler embeds its caller's absolute filename. Keep the caller,
-        # line and full error, but make the checkout prefix portable to CI.
+
+
         prefix = str(Path(__file__).resolve().parents[3]) + '/'
         return failure.replace(prefix + 'rfx/runners/_admission.py:',
                                'rfx/runners/_admission.py:')
@@ -80,25 +78,25 @@ def fingerprint(failure):
 
 
 def assert_record(report, record, known, witnesses=None):
+    """Existing witnesses were recorded relative to the leaf peak."""
     failures = [f for f in report['failures'] if group(f) in (record, 'execution')]
     unexpected = [f for f in failures if fingerprint(f) not in known]
     if unexpected:
         raise RuntimeError('\n'.join(unexpected))
-    # Each known text is checked on its own: a finding that stopped occurring
-    # must not stay listed behind another finding of the same record.
+
+
     seen = {fingerprint(f) for f in failures}
     gone = [k for k in known if k not in seen]
     if gone:
         raise RuntimeError('known finding no longer occurs; delete it from findings.json:\n' + '\n'.join(gone))
-    # An existing xfail cannot hide m2 changing the SAME failing record.
-    # This checks the finding's measured fingerprint with the original bar;
-    # the cross-path verdict remains a failure, never a widened pass.
+
+
     for measurement in report['measurements']:
         name = measurement['record']
         witness = (witnesses or {}).get(name)
         if witness is not None and measurement['difference'] > measurement['bar']:
-            # Existing witnesses were recorded relative to the leaf peak.
-            # Express that reference in the field units used by today's bar.
+
+
             peak = measurement.get('peak', 0.0)
             scale = measurement.get('leaf_peak', peak) / peak if peak else 1.0
             drift = abs(measurement['relative'] - witness['relative'] * scale)

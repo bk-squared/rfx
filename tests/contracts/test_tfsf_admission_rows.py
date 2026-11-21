@@ -16,9 +16,10 @@ LANES = tuple(dict.fromkeys(lane for a, b, _ in PAIRS for lane in (a, b)))
 @pytest.mark.parametrize("row", ROWS, ids=lambda row: row[1])
 @pytest.mark.parametrize("lane", LANES)
 def test_tfsf_row_matches_real_entry(row, lane):
+    """A closed box on a graded mesh is refused at declaration."""
     refusal = None
     try:
-        # A closed box on a graded mesh is already refused at declaration.
+
         sim = build(row, lane)
         assert admission.DETECTORS[row](sim)
         assert sum(admission.DETECTORS[other](sim) for other in ROWS) == 1
@@ -36,7 +37,7 @@ def test_tfsf_row_matches_real_entry(row, lane):
         jax.block_until_ready(result.time_series)
         assert result.time_series.shape == (1, 2)
     except (NotImplementedError, ValueError) as exc:
-        # Only admission refusals count, never an unrelated builder/solver error.
+
         assert any(text in str(exc) for text in (
             "CustomWaveform and closed_box TFSF require a uniform",
             "open-slab normal-incidence TFSF (periodic y/z is not on slabs)",
