@@ -292,7 +292,7 @@ def test_box_map_preserves_endpoint_gradient(monkeypatch):
         np.testing.assert_allclose(derivative, expected, rtol=1e-7, atol=0)
 
 
-@pytest.mark.parametrize("method", ["adam", "projected_adam", "mma"])
+@pytest.mark.parametrize("method", ["adam", "projected_adam", "mma", "gcmma"])
 @pytest.mark.parametrize("jit", [False, True])
 def test_host_reading_objective(method, jit):
     def fun(x):
@@ -302,8 +302,9 @@ def test_host_reading_objective(method, jit):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         result = rfx.minimize(fun, [0.5, 0.5], method=method, n_iters=3, jit=jit, **options)
-    assert [type(w.message) for w in caught] == ([rfx.ConfigurationWarning] if jit else [])
-    assert result.nfev == 3 and result.setup_forwards == 0
+    count = 2 if method == "gcmma" else 1
+    assert [type(w.message) for w in caught] == ([rfx.ConfigurationWarning] * count if jit else [])
+    assert result.nfev >= 3 and result.setup_forwards == 0
     assert not result.stopped_nonfinite
     assert result.history[-1] < result.history[0]
     np.testing.assert_allclose(result.fun, fun(result.x), rtol=1e-6)

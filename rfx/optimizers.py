@@ -317,7 +317,7 @@ class _MMA(_Optimizer[_MMAState]):
     max_newton: int = 500
     native_box = True
 
-    def __post_init__(self):
+    def __post_init__(self: _MMA | _GCMMA):
         if self.m < 0 or int(self.m) != self.m:
             raise ValueError('MMA m must be a nonnegative integer')
         for name in ('a', 'c', 'd'):
@@ -343,7 +343,7 @@ class _MMA(_Optimizer[_MMAState]):
         rounded = np.clip(rounded, lower, upper)
         return jnp.asarray(rounded.reshape(shape), dtype=dtype)
 
-    def init(self, x0: jnp.ndarray, bounds) -> _MMAState:
+    def init(self: _MMA | _GCMMA, x0: jnp.ndarray, bounds) -> _MMAState:
         if bounds is None:
             raise ValueError('MMA is a box method: bounds are required')
         x = np.asarray(x0, dtype=np.float64).ravel()
@@ -403,3 +403,197 @@ class _MMA(_Optimizer[_MMAState]):
 
     def restart(self, state: _MMAState) -> _MMAState:
         return replace(state, k=0, xold1=None, xold2=None)
+
+
+class GCMMAInnerCapWarning(AccuracyWarning):
+    """A GCMMA trial was accepted at the inner cap without conservativeness."""
+
+
+def _gcmma_tolerance(values, e, dtype, multiple=10):
+    """A multiple of the larger measured row error or value-dtype ULP."""
+    values = np.asarray(values, dtype=dtype)
+    return multiple * np.maximum(np.asarray(e, dtype=np.float64),
+                           np.spacing(np.abs(values)).astype(np.float64))
+
+
+@dataclass(frozen=True)
+class _GCMMAOuter:
+    k: int
+    x: np.ndarray
+    gradient: np.ndarray
+    values: np.ndarray
+    low: np.ndarray
+    upp: np.ndarray
+    alpha: np.ndarray
+    beta: np.ndarray
+    rho: np.ndarray
+    tol: np.ndarray
+    accepted_x: np.ndarray
+    approximation: np.ndarray
+    accepted_values: np.ndarray
+    inner_count: int
+    stalls: int
+    caps: int
+
+
+@dataclass(frozen=True)
+class _GCMMAState(_MMAState):
+    """``x`` is the accepted design and ``trial`` is a separate pending request."""
+
+    trial: jnp.ndarray | None = None
+    alpha: np.ndarray | None = None
+    beta: np.ndarray | None = None
+    gradient: np.ndarray | None = None
+    values: np.ndarray | None = None
+    rho: np.ndarray | None = None
+    tol: np.ndarray | None = None
+    p: np.ndarray | None = None
+    q: np.ndarray | None = None
+    r: np.ndarray | None = None
+    inner_count: int = 0
+    stalls: int = 0
+    inner_caps: int = 0
+    records: tuple[_GCMMAOuter, ...] = ()
+
+
+@dataclass(frozen=True)
+class _GCMMA(_Optimizer[_GCMMAState]):
+    m: int
+    a0: float = 1.0
+    a: object = None
+    c: object = 1000.0
+    d: object = 1.0
+    move: float = 0.5
+    albefa: float = 0.1
+    asyinit: float = 0.5
+    asydecr: float = 0.7
+    asyincr: float = 1.2
+    raa0: float = 1e-5
+    max_halvings: int = 50
+    max_newton: int = 500
+    tol: object = None
+    e: object = None
+    _ulp_multiple: int = 10
+    _inner_cap: int = 20
+    native_box = True
+
+    def __post_init__(self):
+        _MMA.__post_init__(self)
+        if self._inner_cap < 1 or int(self._inner_cap) != self._inner_cap:
+            raise ValueError('GCMMA inner cap must be a positive integer')
+        if self.tol is None and self.e is None:
+            raise ValueError('GCMMA requires tol or measured row errors e')
+        for name in ('tol', 'e'):
+            value = getattr(self, name)
+            if value is not None:
+                arr = np.broadcast_to(np.asarray(value, dtype=np.float64), (self.m + 1,)).copy()
+                if np.any(~np.isfinite(arr)) or (name == 'e' and np.any(arr < 0)):
+                    raise ValueError('GCMMA tolerances must be finite and measured errors nonnegative')
+                arr.setflags(write=False)
+                object.__setattr__(self, name, arr)
+
+    _design_point = staticmethod(_MMA._design_point)
+
+    def init(self, x0, bounds):
+        return _GCMMAState(**vars(_MMA.init(self, x0, bounds)))
+
+    def ask(self, state):
+        if state.trial is not None:
+            return _Request(state.trial, need_grad=False, iterate=False)
+        return _Request(state.x, need_grad=True, iterate=True)
+
+    @staticmethod
+    def _distance(state, point):
+        x = np.asarray(state.x, dtype=np.float64).ravel()
+        return np.sum((state.upp - state.low) * (point - x)**2 /
+                      ((state.upp - point) * (point - state.low) * (state.xmax - state.xmin)))
+
+    @staticmethod
+    def _update_rho(rho, delta):
+        return np.where(delta > 0, np.minimum(1.1 * (rho + delta), 10 * rho), rho)
+
+    def _accept(self, state, point, approximation, values, *, stall=False, cap=False):
+        record = _GCMMAOuter(
+            state.k, np.asarray(state.x, dtype=np.float64).ravel().copy(),
+            state.gradient, state.values, state.low, state.upp, state.alpha,
+            state.beta, state.rho, state.tol,
+            np.asarray(point, dtype=np.float64).ravel().copy(), approximation,
+            values, state.inner_count, int(stall), int(cap),
+        )
+        return replace(state, x=point, trial=None, stalls=state.stalls + int(stall),
+                       inner_caps=state.inner_caps + int(cap), records=(*state.records, record))
+
+    def _solve(self, state):
+        x = np.asarray(state.x, dtype=np.float64).ravel()
+        width = state.xmax - state.xmin
+        positive, negative = np.maximum(state.gradient, 0), np.maximum(-state.gradient, 0)
+        p = (state.upp - x)**2 * (1.001 * positive + 0.001 * negative + state.rho[:, None] / width)
+        q = (x - state.low)**2 * (0.001 * positive + 1.001 * negative + state.rho[:, None] / width)
+        r = state.values - np.sum(p / (state.upp - x) + q / (x - state.low), axis=1)
+        result = _mma_subproblem(state.low, state.upp, state.alpha, state.beta, p, q, r,
+                                 self.a0, self.a, self.c, self.d,
+                                 max_halvings=self.max_halvings, max_newton=self.max_newton,
+                                 outer_iteration=state.k)
+        point = self._design_point(result.x, state.x.dtype, state.x.shape, state.xmin, state.xmax)
+        state = replace(state, p=p, q=q, r=r, y=result.y, z=result.z,
+                        newton_steps_last=result.newton_steps, caps_hit=state.caps_hit + result.caps_hit)
+        if np.array_equal(point, state.x):
+            return self._accept(state, point, state.values.copy(), state.values.copy(), stall=True)
+        return replace(state, trial=point)
+
+    def tell(self, state, request, value, grad, cons_values, cons_grads):
+        if not request.iterate:
+            point = np.asarray(request.x, dtype=np.float64).ravel()
+            values = np.concatenate((np.asarray(value, dtype=np.float64).reshape(1),
+                                     np.empty(0) if cons_values is None else np.asarray(cons_values, dtype=np.float64)))
+            approximation = state.r + np.sum(state.p / (state.upp - point) + state.q / (point - state.low), axis=1)
+            state = replace(state, inner_count=state.inner_count + 1)
+            zero = (state.values == 0) & np.all(state.gradient == 0, axis=1) & (values <= 0)
+            if np.all(zero | (approximation + state.tol >= values)):
+                return self._accept(state, request.x, approximation, values)
+            if state.inner_count >= self._inner_cap:
+                warnings.warn(
+                    f'GCMMA reached inner cap at outer iteration {state.k}; '
+                    'the accepted trial is not conservative',
+                    GCMMAInnerCapWarning, stacklevel=2,
+                )
+                return self._accept(state, request.x, approximation, values, cap=True)
+            delta = (values - approximation) / self._distance(state, point)
+            rho = self._update_rho(state.rho, np.where(zero, 0, delta))
+            return self._solve(replace(state, rho=rho))
+
+        x = np.asarray(request.x, dtype=np.float64).ravel()
+        gradient = np.asarray(grad, dtype=np.float64)
+        f0 = np.asarray(value, dtype=np.float64)
+        if gradient.shape != request.x.shape or f0.shape != ():
+            raise ValueError('GCMMA needs a scalar objective and a gradient shaped like x')
+        if self.m == 0 and cons_values is None and cons_grads is None:
+            cons_values, cons_grads = np.empty(0), np.empty((0, *request.x.shape))
+        f = np.asarray(cons_values, dtype=np.float64)
+        df = np.asarray(cons_grads, dtype=np.float64)
+        if f.shape != (self.m,) or df.shape != (self.m, *request.x.shape):
+            raise ValueError('GCMMA constraint values/gradients must have shapes (m,) and (m, *x.shape)')
+        width = state.xmax - state.xmin
+        k = state.k + 1
+        if k <= 2:
+            low, upp = x - self.asyinit * width, x + self.asyinit * width
+        else:
+            assert state.xold1 is not None and state.xold2 is not None
+            trend = (x - state.xold1) * (state.xold1 - state.xold2)
+            factor = np.where(trend < 0, self.asydecr, np.where(trend > 0, self.asyincr, 1))
+            low = np.clip(x - factor * (state.xold1 - state.low), x - 10 * width, x - 0.01 * width)
+            upp = np.clip(x + factor * (state.upp - state.xold1), x + 0.01 * width, x + 10 * width)
+        alpha = np.maximum.reduce((state.xmin, low + self.albefa * (x - low), x - self.move * width))
+        beta = np.minimum.reduce((state.xmax, upp - self.albefa * (upp - x), x + self.move * width))
+        derivatives = np.concatenate((gradient.reshape(1, -1), df.reshape(self.m, x.size)))
+        rho = (np.maximum(1e-6, 0.1 / x.size * np.sum(np.abs(derivatives) * width, axis=1))
+               if state.rho is None else np.maximum(0.1 * state.rho, 1e-6))
+        values = np.concatenate((f0.reshape(1), f))
+        tol = self.tol if self.tol is not None else _gcmma_tolerance(values, self.e, np.asarray(value).dtype, self._ulp_multiple)
+        return self._solve(replace(state, x=request.x, xold1=x.copy(), xold2=state.xold1,
+                                   low=low, upp=upp, alpha=alpha, beta=beta, k=k,
+                                   gradient=derivatives, values=values, rho=rho, tol=tol,
+                                   inner_count=0, trial=None))
+
+    def restart(self, state):
+        return replace(state, k=0, xold1=None, xold2=None, rho=None, trial=None)

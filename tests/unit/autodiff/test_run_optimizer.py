@@ -121,6 +121,12 @@ def test_projected_adam_broadcasts_bounds():
                                   [[-0.09999999403953552, 0.8999999761581421]] * 2)
 
 
+def test_run_optimizer_refuses_noninteger_iterations():
+    with pytest.raises(TypeError):
+        _run_optimizer(_Adam(0.05), lambda x: jnp.sum(x**2),
+                       jnp.zeros(1, dtype=jnp.float32), None, n_iters=2.5, jit=False)
+
+
 def test_run_optimizer_refuses_bounds_for_adam_before_init(monkeypatch):
     def unexpected_init(*args):
         pytest.fail("init must not run for an unsupported box")
