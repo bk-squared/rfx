@@ -28,7 +28,6 @@ def _sim():
                       dx=0.001, boundary="cpml", cpml_layers=2)
 
 
-# id, expected configuration exception, recorded fallback
 CASES = [
     ("ad_memory", ValueError, True),
     ("run_dc", ValueError, False),
@@ -62,7 +61,7 @@ def _case(name, monkeypatch, fail):
         monkeypatch.setattr(sim, "_build_grid", fail)
         return sim._ad_memory_static_accounting, lambda r: r["grid_source"] == "estimated_from_domain"
     if name == "run_dc":
-        import rfx.runners.run as run_module  # run()'s body after admission
+        import rfx.runners.run as run_module
         monkeypatch.setattr(sim, "_auto_preflight", lambda **kw: NS(diagnostics=()))
         monkeypatch.setattr(sim, "_dispatch_plan", lambda **kw: NS(lane="run_nonuniform", n_steps=1))
         monkeypatch.setattr(sim, "_build_nonuniform_grid", fail)
@@ -97,7 +96,7 @@ def _case(name, monkeypatch, fail):
             call = lambda: msl._check_msl_port_geometry(sim, sim._dx, [0.002]*3, [0.002]*3)
         else:
             call = lambda: msl.preflight_msl_probe_clearance(sim, warnings)
-        return call, lambda r: label  # warning's structured diagnostic is checked below
+        return call, lambda r: label
     if name == "half_node":
         sim._geometry = [NS(shape=Box((0, 0, .005), (.01, .01, .005)), material_name="pec")]
         sim.add_probe((.005, .005, .005), component="ez")
@@ -125,7 +124,6 @@ def _case(name, monkeypatch, fail):
         original_build = sim._build_nonuniform_grid
 
         def advisory_build():
-            # Admission also builds a grid before the guarded advisory.
             if sys._getframe(1).f_code.co_name == "compute_waveguide_s_matrix":
                 return fail()
             return original_build()
@@ -162,7 +160,6 @@ def _case(name, monkeypatch, fail):
         return lambda: settling._cell_of(NS(), (.005, .005, .005), "ez"), lambda r: r is None
     if name == "visualize_bounds":
         import rfx.visualize as visualize
-        # Exercise the geometry policy without the optional plotting package.
         fig = NS(data=[], update_layout=lambda **kw: None)
         monkeypatch.setattr(visualize, "_plotly", lambda: NS(Figure=lambda: fig))
         monkeypatch.setattr(shape, "bounding_box", fail)
@@ -173,8 +170,6 @@ def _case(name, monkeypatch, fail):
 @pytest.mark.parametrize("name,expected,recorded", CASES, ids=[row[0] for row in CASES])
 @pytest.mark.parametrize("failure", ["expected", "unexpected", "signature", "timeout"])
 def test_check_exception_policy(monkeypatch, name, expected, recorded, failure):
-    # "signature" injects plain TypeError for a broken internal call, not
-    # TracerArrayConversionError: supported traced inputs are checked below.
     error = {"expected": expected, "unexpected": RuntimeError, "signature": TypeError, "timeout": TimeoutError}[failure]
     reached = []
 

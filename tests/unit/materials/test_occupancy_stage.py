@@ -21,6 +21,7 @@ from rfx.core.yee import MaterialArrays, init_state
 from rfx.model.occupancy import (
     build_edge_keep, publish_occupancy, publish_slab_occupancy,
 )
+from tests._stated_plan import stated_plan
 
 
 def reference(occupancy, periodic=(False, False, False)):
@@ -257,6 +258,7 @@ def step_occupancy_on_ones(cells, n_devices):
             patch.object(graded, 'apply_pec_faces', lambda st, *a, **k: st):
         result = nu.run_nonuniform_distributed_pec(
             sg, mat, None, 1, n_devices=n_devices,
+            measurement=stated_plan(sg, [], n_steps=1),
             devices=jax.devices('cpu')[:n_devices], sharded_pec_occupancy=slabs)
         jax.block_until_ready(result)
         jax.effects_barrier()
@@ -469,6 +471,7 @@ def slab_drive_scene(source_i, samples=(.137,), *, material_drive=False):
         slabs = None if occupancy is None else cut(occupancy * block, layout, 'pec_occupancy', mesh=mesh)
         return nu.run_nonuniform_distributed_pec(
             sg, mat, None, len(samples), sources=[source], probes=[ProbeSpec(*node, 'ez')],
+            measurement=stated_plan(sg, [ProbeSpec(*node, 'ez')], n_steps=len(samples)),
             n_devices=2, devices=jax.devices('cpu')[:2], sharded_pec_occupancy=slabs,
             material_drive=[1.] if material_drive else None,
             checkpoint_every=checkpoint_every, n_warmup=n_warmup)

@@ -1,4 +1,6 @@
-"""Declared Floquet lateral faces; synthetic 15 x 15 x 60 mm vacuum cell."""
+"""Declared Floquet lateral faces; synthetic 15 x 15 x 60 mm vacuum cell.
+The pinned MAIN_* arrays are CPU float32 Ex probe bits measured earlier for both run and forward over 64 steps with dx=1.5 mm, 8 CPML layers, a 10 GHz TE z port at 15 mm and the probe at (7.5, 7.5, 36) mm, including a separate scalar-UPML measurement.
+"""
 import jax
 import numpy as np
 import pytest
@@ -6,9 +8,6 @@ import pytest
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
-# CPU float32 probe bits measured before edits on main 038bcc8184e5ea91f59a5be4f4d2b0bde7e6fc5a.
-# 64 steps, dx=1.5 mm, 8 CPML layers; f0=10 GHz, TE z port at 15 mm,
-# Ex probe at (7.5, 7.5, 36) mm. Both run and forward gave these bits.
 MAIN_CPML = np.array([
     0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 748890022,
@@ -31,7 +30,6 @@ MAIN_PEC = np.array([
     991805180, 992986721, 994239414, 995558414, 996936950, 998304536, 999038045, 999783704,
 ], dtype=np.uint32)
 
-# Scalar UPML measured separately from the same main commit, run and forward.
 MAIN_UPML = np.array([
     0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 748890022,
@@ -56,8 +54,7 @@ def port(sim, axis="z"):
 
 
 def declared(kind, placement):
-    # Boundary requires symmetric periodic pairs. Use another nonperiodic
-    # token on the companion face so the named low/high face is exercised.
+    """Boundary requires symmetric periodic pairs, so another nonperiodic token on the companion face exercises the named low/high face."""
     companion = "pmc" if kind == "cpml" else "cpml"
     if placement == "x_lo":
         return BoundarySpec(x=Boundary(kind, companion), y="periodic", z="cpml")
@@ -92,8 +89,6 @@ def test_refuses_before_stepping(kind, placement, order, entry, monkeypatch):
     with pytest.raises(ValueError) as error:
         port(sim)
         if order != "boundary_first":
-            # There is no public boundary setter. Replace the current frozen
-            # spec, as internal rebuilds do; leave the descriptor cached.
             sim._boundary_spec = spec
         invoke(sim, entry)
     message = str(error.value)

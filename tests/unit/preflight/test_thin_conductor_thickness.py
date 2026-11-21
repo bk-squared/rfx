@@ -28,6 +28,7 @@ def _sim(thickness, height, *, sigma=5.8e7, f0=None):
 
 
 def test_t1_pec_ten_percent():
+    """The pinned shift is 0.57 + (10 - 8.5) * (0.99 - 0.57) / 9 = 0.64 %."""
     hits = _sim(50e-6, 0.0005).preflight().by_code(CODE)
     assert len(hits) == 1
     hit = hits[0]
@@ -36,7 +37,6 @@ def test_t1_pec_ten_percent():
     assert hit.loc == "thin_conductors[0]"
     text = str(hit)
     assert "t/h = 10 %" in text
-    # 0.57 + (10 - 8.5) * (0.99 - 0.57) / 9 = 0.64.
     assert "+0.64 %" in text
     assert "t = 50µm" in text
     assert "h = 500µm" in text
@@ -105,10 +105,10 @@ def test_t7_exactly_two_percent_is_silent():
 
 
 def test_t8_two_significant_figures_keep_trailing_zero():
+    """The pinned shift is 0.45 + (r - 4.5) * (0.57 - 0.45) / 4 = 0.50 % at thickness-to-height percentage r = 6.1667."""
     hits = _sim(22.5e-6, 0.0005).preflight().by_code(CODE)
     assert len(hits) == 1
     assert "+0.45 %" in str(hits[0])
-    # 0.45 + (r - 4.5) * (0.57 - 0.45) / 4 = 0.50 at r = 6.1667 %.
     hits = _sim(30.8335e-6, 0.0005).preflight().by_code(CODE)
     assert len(hits) == 1
     assert "+0.50 %" in str(hits[0])

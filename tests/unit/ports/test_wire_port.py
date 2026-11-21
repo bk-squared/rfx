@@ -28,14 +28,15 @@ def test_wire_port_distributed_impedance():
     updated = setup_wire_port(grid, port, materials)
     sigma = np.array(updated.sigma)
 
-    # Find modified cells
     modified = np.argwhere(sigma > 0)
     print("\nWire port distributed impedance:")
     print(f"  Modified cells: {len(modified)}")
     print(f"  Max sigma: {sigma.max():.2e}")
 
     assert len(modified) >= 3, f"Wire should span multiple cells, got {len(modified)}"
-    # All modified cells should be along z-axis at the wire position
+    assert np.all(
+        modified[:, :2] == np.asarray(grid.position_to_index(port.start))[:2]
+    ), "A zero-conductivity background confines impedance to the wire's transverse position"
     assert np.all(modified[:, 0] == modified[0, 0]), "All cells same x"
     assert np.all(modified[:, 1] == modified[0, 1]), "All cells same y"
 
@@ -55,14 +56,12 @@ def test_wire_port_excites_vertical_field():
     materials = setup_wire_port(grid, port, materials)
 
     state = init_state(grid.shape)
-    # Run a few steps
     for n in range(20):
         t = n * grid.dt
         state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_wire_port(state, grid, port, t, materials)
 
-    # Check Ez along the wire
     ix = grid.position_to_index((0.01, 0.01, 0.005))[0]
     iy = grid.position_to_index((0.01, 0.01, 0.005))[1]
     ez_along_z = np.array(state.ez[ix, iy, :])
@@ -77,11 +76,9 @@ def test_wire_port_excites_vertical_field():
 
 def test_wire_port_cavity_resonance():
     """Wire port in a PEC cavity should excite a resonance."""
-    # Simple PEC box cavity with wire port — no substrate complexity
     grid = Grid(freq_max=8e9, domain=(0.03, 0.03, 0.01), dx=0.001, cpml_layers=0)
     materials = init_materials(grid.shape)
 
-    # Wire port spanning z: vertical probe in the cavity
     port = WirePort(
         start=(0.01, 0.015, 0.002),
         end=(0.01, 0.015, 0.008),
@@ -106,7 +103,6 @@ def test_wire_port_cavity_resonance():
         state = apply_wire_port(state, grid, port, t, materials)
         ez_trace[n] = float(state.ez[feed_idx])
 
-    # FFT
     spec = np.abs(np.fft.rfft(ez_trace, n=len(ez_trace) * 4))
     freqs = np.fft.rfftfreq(len(ez_trace) * 4, d=grid.dt)
     band = (freqs > 2e9) & (freqs < 8e9)
@@ -132,12 +128,11 @@ def test_wire_port_api_extent():
         component="ez",
         impedance=50.0,
         waveform=GaussianPulse(f0=3e9),
-        extent=0.006,  # span from z=0.002 to z=0.008
+        extent=0.006,
     )
     sim.add_probe((0.01, 0.01, 0.005), "ez")
     result = sim.run(n_steps=200)
 
-    # The probe should record non-zero field
     ts = np.array(result.time_series[:, 0])
     assert np.max(np.abs(ts)) > 1e-10, "Wire port via API should excite fields"
     assert not np.any(np.isnan(ts)), "No NaN in time series"
@@ -176,13 +171,11 @@ def test_wire_port_live_cell_split_and_all_dead_guard():
     )
     from rfx.sources.sources import _wire_port_cells
     cells = _wire_port_cells(grid, port)
-    # The extent is 2 mm on a 1 mm mesh and the driven edges are HALF-OPEN
-    # in edges: 2 mm of extent is 2 Ez edges, k = 2 and 3.
+    assert tuple(c[2] for c in cells) == (2, 3), "A half-open two-cell extent drives Ez edges k=2 and k=3"
     assert len(cells) == 2, cells
 
     from rfx.boundaries.pec import realized_pec_edge_masks
 
-    # None == all-live edge masks, bit-identical (structural predicate)
     legacy = np.asarray(setup_wire_port(grid, port, materials).sigma)
     all_live = np.asarray(setup_wire_port(
         grid, port, materials,
@@ -191,7 +184,6 @@ def test_wire_port_live_cell_split_and_all_dead_guard():
     assert np.array_equal(legacy, all_live), (
         "all-live edge masks must be bit-identical to None")
 
-    # One dead cell: sigma only at live cells, series R over live == Z0
     mask = jnp.zeros(grid.shape, dtype=jnp.bool_)
     top = cells[-1]
     mask = mask.at[top[0], top[1], top[2]].set(True)
@@ -208,7 +200,6 @@ def test_wire_port_live_cell_split_and_all_dead_guard():
     assert abs(r_series - 50.0) < 1e-9, (
         f"series termination over live cells must equal Z0=50, got {r_series}")
 
-    # All cells dead -> loud ValueError
     mask_all = jnp.zeros(grid.shape, dtype=jnp.bool_)
     for c in cells:
         mask_all = mask_all.at[c[0], c[1], c[2]].set(True)

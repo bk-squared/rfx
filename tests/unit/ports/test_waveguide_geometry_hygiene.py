@@ -50,9 +50,6 @@ from tests._realized_geometry import assert_wall_planes, realized
 ADVISORY_KEY = "far-port discipline"
 
 
-# --------------------------------------------------------------------------- #
-# How a PEC obstacle's drawn faces become electric walls
-# --------------------------------------------------------------------------- #
 A_WR90 = 22.86e-3
 B_WR90 = 10.16e-3
 _ZERO = np.array([0.0])
@@ -220,14 +217,6 @@ def test_production_node_coords_equal_the_f64_construction():
             "construction (#802)")
 
 
-# Measured on the production realization path under the lattice ownership
-# contract. Every entry was 1 before it: half-open node sampling
-# retreated the lo fin's interior face by a cell, so a fin drawn to its
-# nominal depth left the opening one cell too WIDE. Centre-sampled cells
-# with walls on both drawn faces put the wall on the plane the fixture
-# drew, so the excess is 0 everywhere and "drawn == realized" is now a
-# property rather than an accident. Kept as a characterization table so a
-# change in the rule is visible here first.
 _NOMINAL_EXCESS = {
     (30, 7.620): 0, (30, 12.192): 0, (30, 18.288): 0,
     (60, 7.620): 0, (60, 12.192): 0, (60, 18.288): 0,
@@ -276,10 +265,7 @@ def test_both_interior_faces_land_on_their_own_drawn_plane(cells, d_mm):
     aperture_cells, free = _fin_pair(fin_c * dx, cells)
 
     assert aperture_cells - d_c == 0
-    # The lo fin owns cells 0..fin_c-1, so its interior WALL is fin_c.
     assert lo_metal[-1] == fin_c - 1
-    # The hi fin owns cells cells-fin_c.., so its interior wall is
-    # cells-fin_c: the mirror image, with no retreat on either side.
     assert hi_metal[0] == cells - fin_c
     centre_offset = 0.5 * (float(free[0]) + float(free[-1])) - cells / 2
     assert centre_offset == pytest.approx(0.0), "no retreat => centred"
@@ -408,19 +394,14 @@ def test_drawn_vs_realized_is_decidable_on_the_FACE_residual():
         lo_wall = int(walls[walls <= cells // 2].max())
         return (hi_face - lo_wall * dx) / dx
 
-    # The gap is realized as drawn in BOTH drawings, so it separates nothing.
     for d_mm in (7.620, 12.192):
         assert gap_residual_cells(30, d_mm, 0.0) == pytest.approx(0.0, abs=1e-9)
         assert gap_residual_cells(30, d_mm, 0.5) == pytest.approx(0.0, abs=1e-9)
-    # The face residual does: on-lattice reads 0, the midpoint recipe 0.5.
     for d_mm in (7.620, 12.192):
         assert face_residual_cells(30, d_mm, 0.0) == pytest.approx(0.0, abs=1e-9)
         assert face_residual_cells(30, d_mm, 0.5) == pytest.approx(0.5, abs=1e-9)
 
 
-# --------------------------------------------------------------------------- #
-# Thin-absorber advisory on the plain two-port path
-# --------------------------------------------------------------------------- #
 _FREQS = np.linspace(4.5e9, 8.0e9, 4)
 _F0 = float(_FREQS.mean())
 
@@ -459,6 +440,7 @@ def test_thin_absorber_advisory_fires_end_to_end_on_the_two_port_path():
     The functional entry points run no ``sim.preflight()``, which is why the
     check lives in the method. A predicate unit test alone would not prove
     it is wired, so this drives the real extraction.
+    The quoted 40.0 mm absorber is 10 cells * 4 mm.
     """
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -467,11 +449,11 @@ def test_thin_absorber_advisory_fires_end_to_end_on_the_two_port_path():
 
     assert len(hits) == 1, [str(w.message) for w in caught]
     msg = hits[0]
-    # Both numbers must be quoted: what you have and what is required.
-    assert "40.0 mm" in msg, msg          # 10 cells * 4 mm
+    assert "40.0 mm" in msg, msg
     assert "against a required" in msg
     assert "lowest measured frequency 4.500 GHz" in msg
-    assert "cpml_layers" in msg           # actionable remedy
+    ACTIONABLE_REMEDY = "cpml_layers"
+    assert ACTIONABLE_REMEDY in msg
 
 
 def test_thin_absorber_advisory_silent_end_to_end_when_absorber_is_thick():
@@ -495,7 +477,8 @@ def test_thin_absorber_advisory_quotes_the_lowest_frequency_not_band_centre():
     hits = _advisories(_two_port(10))
     assert len(hits) == 1
     assert "4.500 GHz" in hits[0]
-    assert "6.250 GHz" not in hits[0]     # band centre
+    BAND_CENTRE_TEXT = "6.250 GHz"
+    assert BAND_CENTRE_TEXT not in hits[0]
 
 
 def test_thin_absorber_advisory_fires_once_per_axis_not_once_per_port():
@@ -529,8 +512,8 @@ def test_thin_absorber_advisory_silent_when_band_starts_below_cutoff():
     already named by the ``port_freqs_below_cutoff`` preflight check;
     piling an absorber advisory on top would be noise. Documented
     consequence: such a band gets no absorber advisory at all.
+    The TE10 cutoff of the 40 mm guide is ~3.4-3.75 GHz.
     """
-    # TE10 cutoff of the 40 mm guide is ~3.4-3.75 GHz; start well below it.
     freqs = np.linspace(1.0e9, 8.0e9, 4)
     assert _advisories(_two_port(10, freqs=freqs), freqs=freqs) == []
 
@@ -555,23 +538,9 @@ def test_thin_absorber_advisory_honours_per_face_thickness_overrides():
     assert "x-hi" not in hits[0], hits[0]
 
 
-# --------------------------------------------------------------------------- #
-# Advisory — coverage added after an independent mutation battery
-#
-# The original fixture exercised the advisory at ONE point in its option space
-# (normalize=False, empty geometry, one x-propagating single-mode port pair,
-# both absorbing faces equally thin), so single-value substitutions at five
-# separate branch points all survived. The worst of them: gating the call site
-# on ``if not self._geometry`` or ``if normalize != "flux"`` left all 40 tests
-# green, and BOTH of those conditions are the actual settings of the WR-90
-# inductive iris case — the setup that motivated issue #494. A one-line
-# regression restoring precisely the blind spot on precisely the
-# motivating setup was invisible.
-# --------------------------------------------------------------------------- #
 def _two_port_with_obstacle(cpml_layers, *, freqs=_FREQS, dx=0.004):
     """A two-port sim that is NOT empty — mirrors a real crossval setup."""
     sim = _two_port(cpml_layers, freqs=freqs, dx=dx)
-    # A PEC obstacle, as every real waveguide device has.
     sim.add_material("pec_like", eps_r=1.0, sigma=1e10)
     sim.add(Box((0.058, 0.0, 0.0), (0.062, 0.012, 0.02)), material="pec_like")
     return sim
@@ -597,6 +566,7 @@ def test_advisory_message_recomputes_every_number_it_quotes():
     only actionable output ("Raise cpml_layers to at least N"): a mutant that
     advised raising it to 1 instead of 13 passed. Each value here is derived
     independently from the port geometry rather than copied from the message.
+    The ripple ladder is a claims-bearing measurement quoted as fact, so it is pinned too.
     """
     sim = _two_port(10)
     grid = sim._build_grid()
@@ -613,7 +583,7 @@ def test_advisory_message_recomputes_every_number_it_quotes():
     assert len(hits) == 1
     msg = hits[0]
 
-    assert f"{10 * dx * 1e3:.1f} mm" in msg              # what you have
+    assert f"{10 * dx * 1e3:.1f} mm" in msg
     assert f"against a required {required * 1e3:.1f} mm" in msg
     assert f"lambda_g = {lambda_g * 1e3:.1f} mm" in msg
     assert f"mode cutoff {fc / 1e9:.3f} GHz" in msg
@@ -621,12 +591,8 @@ def test_advisory_message_recomputes_every_number_it_quotes():
     assert (f"Raise cpml_layers to at least {int(np.ceil(required / dx))} "
             f"(0.75 lambda_g needs "
             f"{int(np.ceil(0.75 * lambda_g / dx))})") in msg
-    # The quoted threshold must be the one actually enforced, not a second
-    # copy of the constant that can drift from it.
     from rfx.api._sparams import _FAR_PORT_LAMBDA_G_FRACTION
     assert f"documented {_FAR_PORT_LAMBDA_G_FRACTION:g} guide-wavelength" in msg
-    # The ripple ladder is a claims-bearing measurement quoted as fact, so
-    # it is pinned too: prose numbers were freely corruptible otherwise.
     from tests._structured_snapshot import message_numbers
     assert all(token in msg for token in ("residual", "|S11|", "ripple", "lambda_g"))
     numbers = message_numbers(msg)
@@ -670,12 +636,8 @@ def test_advisory_dedupes_per_axis_and_still_reports_both_axes():
     `len(hits) == 1` on a same-axis two-port is satisfied both by working
     dedupe and by looking at only the first port. Pairing it with a two-axis
     sim that must yield TWO warnings distinguishes them.
+    The cpml=6 (24.0 mm) absorber is thin against both requirements.
     """
-    # Four ports on two absorbing axes. The y-extent sets the x-normal ports'
-    # cutoff (2.932 GHz) and the x-extent sets the z-normal ports' (1.208 GHz),
-    # so both bands are above cutoff and cpml=6 (24.0 mm) is thin against both
-    # requirements (43.9 mm and 34.6 mm) — i.e. all four ports have something
-    # to report, and correct dedupe collapses them to one per axis.
     dx = 0.004
     sim = Simulation(
         freq_max=float(_FREQS[-1]), domain=(0.12, int(np.ceil(.05 / dx)) * dx, 0.12), dx=dx,
@@ -802,14 +764,6 @@ def test_advisory_is_a_userwarning_so_the_default_filter_shows_it():
     assert hits[0].category is AccuracyWarning, hits[0].category
 
 
-# --------------------------------------------------------------------------- #
-# Characterization — independent oracle for the pinned excess table
-#
-# `_NOMINAL_EXCESS` is a table of measured constants, so a coherent author could
-# mutate the realization rule AND re-pin the table in one commit and stay
-# green. The oracle below is re-derived from the ownership
-# contract's own arithmetic and never calls the rasterizer.
-# --------------------------------------------------------------------------- #
 def _predicted_excess(cells: int, d_phys: float) -> int:
     """Excess in cells, derived from the mechanism rather than measured.
 
@@ -848,6 +802,7 @@ def test_excess_table_is_uniformly_zero_under_the_ownership_contract():
     have nothing left to compensate for. If a value other than 0 ever
     appears here, the realization rule changed: investigate before
     re-pinning — this table caught the #802 class in the first place.
+    The excess table is measured on the production realization path under the lattice ownership contract.
     """
     values = set(_NOMINAL_EXCESS.values())
     assert values == {0}, values
@@ -907,13 +862,9 @@ def test_advisory_also_fires_on_the_port_reference_sims_junction_path():
     hits = [str(w.message) for w in caught if ADVISORY_KEY in str(w.message)]
 
     assert len(hits) == 1, [str(w.message) for w in caught]
-    # It is the band-EDGE check, distinct from the sibling's band-centre one.
     assert "lowest measured frequency 4.500 GHz" in hits[0], hits[0]
 
 
-# --------------------------------------------------------------------------- #
-# The advisory has to reach the NON-UNIFORM lane too
-# --------------------------------------------------------------------------- #
 def _two_port_nu(cpml_layers, *, ratio=2.0, freqs=_FREQS, dx=0.004):
     """The same two-port sim on a transversely graded mesh.
 
@@ -963,11 +914,13 @@ def _nu_advisory_hits(sim):
 
 
 def test_thin_absorber_advisory_fires_on_the_nonuniform_lane():
-    """FIRING on the NU lane — the wiring #576's review found missing."""
+    """FIRING on the NU lane — the wiring #576's review found missing.
+    The quoted 40.0 mm absorber is 10 cells * 4 mm.
+    """
     hits = _nu_advisory_hits(_two_port_nu(10))
     assert len(hits) == 1, hits
     msg = hits[0]
-    assert "40.0 mm" in msg, msg           # 10 cells * 4 mm
+    assert "40.0 mm" in msg, msg
     assert "against a required" in msg
     assert "lowest measured frequency 4.500 GHz" in msg
     assert "cpml_layers" in msg

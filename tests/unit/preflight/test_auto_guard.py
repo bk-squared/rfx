@@ -50,16 +50,14 @@ class TestAutoGuard:
         assert any("empty geometry" in w.lower() for w in config.warnings)
 
     def test_auto_configure_empty_geometry_coarse_dx(self):
-        """Empty geometry should use coarser dx than standard cpw=20 rule."""
+        """Empty geometry should use coarser dx than standard cpw=20 rule.
+        The empty-geometry guard uses lambda_min/10 = 7.5 mm rounded down to 5.0 mm, coarser than the standard lambda_min/20 = 3.75 mm.
+        """
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             config = auto_configure([], freq_range=(1e9, 4e9))
-        # Standard accuracy would use lambda_min/20 = 3.75 mm.
-        # Empty-geometry guard should pick lambda_min/10 = 7.5 mm (rounded
-        # down by _round_dx to 5.0 mm). Either way, must be coarser than
-        # the standard cpw=20 value.
         lambda_min = 299792458.0 / 4e9
-        dx_standard = lambda_min / 20  # ~3.75 mm
+        dx_standard = lambda_min / 20
         assert config.dx > dx_standard, (
             f"dx={config.dx*1e3:.3f} mm should be coarser than "
             f"standard {dx_standard*1e3:.3f} mm for empty geometry"

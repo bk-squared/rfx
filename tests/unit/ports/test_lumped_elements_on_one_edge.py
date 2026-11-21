@@ -45,8 +45,6 @@ def _box(pairs, dz_profile=None):
     return sim
 
 
-#: 4 nH + 1 pF declared at x = 4.0 mm and 4 nH at
-#: x = 4.3 mm; on 1 mm cells both snap to the ez edge of cell (4, 4, 4).
 TWO_INDUCTORS = [((4e-3, 4e-3, 4e-3), "ez", dict(L=L4, C=1e-12, topology="parallel")),
                  ((4.3e-3, 4e-3, 4e-3), "ez", dict(L=L4, topology="parallel"))]
 TWO_SERIES = [((4e-3, 4e-3, 4e-3), "ez", dict(L=L4, C=10e-12, topology="series")),
@@ -66,6 +64,7 @@ def _realized_cells(sim, graded=False):
 
 def _assert_refused(call, sim, graded=False):
     idx = _realized_cells(sim, graded)
+    assert graded or idx == [(4, 4, 4), (4, 4, 4)], "Uniform declarations must snap to the ez edge of cell (4, 4, 4)"
     assert len(set(idx)) == 1, f"fixture: the elements must share one cell, got {idx}"
     with pytest.raises(NotImplementedError) as info:
         call(sim)
