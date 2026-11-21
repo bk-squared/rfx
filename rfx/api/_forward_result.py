@@ -98,7 +98,6 @@ def pack_uniform_forward_result(sim, grid, result, *, diagnostics, s_params, fre
         **package_declared_measurements(
             sim, grid, entry="forward()", flux_monitors=result.flux_monitors or (),
             waveguide_cfgs=result.waveguide_ports or ()),
-        # The scan's own step: stencil_order=4 derates it below grid.dt.
         dt=result.dt,
         current_moment_data=result.current_moment_data,
         current_moment_monitor=current_moment_monitor,

@@ -1,4 +1,6 @@
-"""Saved carry and formulation-specific AD tape accounting."""
+"""Saved carry and formulation-specific AD tape accounting.
+``AD_MEMORY_WORKING_CARRIES`` counts working arrays beyond one saved carry.
+"""
 from __future__ import annotations
 
 from rfx._internal._precision import resolve_coefficient_dtype
@@ -9,12 +11,8 @@ from rfx.api._ad_memory_types import ADMemoryUnavailable
 from rfx.model.design_box import design_box_bounds, design_box_window
 
 
-# Calibrated (GPU, jax 0.10.2): maximum G1 intercept/cell, rounded up to 8 B.
-# Both G1 maxima are the 21^3 rows.
 AD_MEMORY_C0_PER_CELL = {"whole-grid": 320, "box": 192}
 
-# Calibrated on one graded whole-grid scene, GPU, JAX 0.10.2.
-# Working arrays beyond one carry.
 AD_MEMORY_WORKING_CARRIES = 6.5
 
 
@@ -60,8 +58,6 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
         bounds, shape = design_box_bounds(sim._design_box_bounds_from_corners(grid, design_box), grid)
         write_bounds, slices, _, _ = design_box_window(bounds, grid.shape)
         if checkpoint and not segmented:
-            # Preserve the existing unsegmented remat bound, including its
-            # computation window; its mechanism has not been identified.
             window = math.prod(s.stop - s.start for s in slices)
         else:
             window = math.prod(write_bounds[2 * d + 1] - write_bounds[2 * d]
@@ -76,25 +72,15 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
     carry = sum(x["bytes"] for x in saved)
     resident = face_record_resident_bytes(sim, grid, n_steps, checkpoint=checkpoint,
         checkpoint_every=checkpoint_every, checkpoint_segments=checkpoint_segments, n_warmup=n_warmup)
-    # Only the float32 fixed term and tape have been calibrated.
     tape = carry if window is None else (6 if design == "permittivity" else 3) * window * 4
     if window is None and not resident and not (checkpoint and not segmented):
-        # Plain AD saves no per-step residual of the stop_gradient line.
-        # Saved boundaries and per-step remat still retain all six leaves.
         tape -= carried_closed_box_line_bytes(sim, grid, n_steps, saved)
     bounded = window is not None and checkpoint and not segmented
     if bounded:
-        # The rematted box's no-segment mechanism is not identified: bound
-        # it by the carry plus six window arrays, rather than claiming a fit.
         tape = carry + 6 * window * 4
     elif window is not None:
         tape += box_observation_residual_bytes(excluded)
         if not resident:
-            # A stop_gradient incident line has no per-step AD residual,
-            # but its six forward arrays remain resident. Their realized
-            # length grows with n_steps, so omitting them also biases a
-            # compiled-memory slope. Read their bytes, never fit a slope.
-            # A chosen face record already replaces this resident line.
             resident += carried_closed_box_line_bytes(sim, grid, n_steps, saved)
     return dict(saved=saved, excluded_linear=excluded, carry_warnings=carry_warnings,
                 replay_table_bytes=sum(size for _, size in replay_tables),
@@ -137,7 +123,6 @@ def segment_counts(n, warmup, every, segments):
     if isinstance(every, tuple):
         from rfx.stepping.remat import checkpoint_lengths, checkpoint_memory
         lengths = checkpoint_lengths(every)
-        # Levels the clamp turns off are skipped, as the graded runner does.
         memory = checkpoint_memory(active, lengths,
                                    boundary_bytes=0, step_bytes=0, static_bytes=0)
         return memory.held_boundaries, memory.live_steps

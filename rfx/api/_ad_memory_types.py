@@ -23,6 +23,7 @@ class AD_MemoryEstimate(NamedTuple):
     first: one boundary carry plus 6.5 carries of working arrays, calibrated
     on one graded whole-grid scene (GPU, JAX 0.10.2). The same whole-grid
     adjoint workspace is estimated for design boxes; boxes are unmeasured.
+    ``resident_bytes`` includes live device arrays and trace-time constants already held after compilation.
     """
     forward_gb: float
     ad_checkpointed_gb: float
@@ -35,20 +36,9 @@ class AD_MemoryEstimate(NamedTuple):
     checkpoint_segments: int | None = None
     ad_active_steps: int | None = None
     ad_segmented_active_segments: int | None = None
-    #: Which grid the numbers describe: ``"uniform"`` or
-    #: ``"nonuniform"``. The estimate used to be derived from a private
-    #: re-derivation of the shape that matched NEITHER grid wherever
-    #: per-face pads or 2-D mode changed it, and nothing in the artifact
-    #: said which grid it meant — a uniform-lane ``dt`` has already been
-    #: mistaken for the NU one in this repo.
     grid_kind: str | None = None
-    #: ``"built"`` when the shape came from the grid the solve will
-    #: build, ``"estimated_from_domain"`` when the grid build failed and
-    #: the legacy domain arithmetic was used as a fallback.
     grid_source: str | None = None
     grid_shape: tuple[int, int, int] | None = None
-    # Surface-impedance (f0) sheet operator state: three boolean tangential edge
-    # masks plus ``sigma_sheet``. Zero when no f0 sheet is registered.
     sheet_gb: float | None = None
     saved: tuple[dict, ...] = ()
     excluded_linear: tuple[dict, ...] = ()
@@ -65,17 +55,10 @@ class AD_MemoryEstimate(NamedTuple):
     calibration: str = "calibrated (GPU, jax 0.10.2)"
     carry_warnings: tuple[str, ...] = ()
     cotangents: int = 1
-    #: Post-scan replay weights, separate from scan carry and NTFF state.
     replay_table_bytes: int = 0
-    #: Realized measurement kind and its summed retained replay weight bytes.
     replay_table_bytes_by_kind: tuple[tuple[str, int], ...] = ()
-    #: Per-extra-cotangent working arrays, excluding the boundary carry.
     working_bytes: int = 0
-    #: Opt-in compile-only device peak; analytic estimates leave these None.
     compiled_bytes: int | None = None
-    #: Live device memory after compilation, including trace-time constants
-    #: and arrays the process already holds. The run includes those existing
-    #: arrays only if they are still live when it runs.
     resident_bytes: int | None = None
     allocator_rounding_bytes: int | None = None
     allocator_rounding_max_bytes: int | None = None

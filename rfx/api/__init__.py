@@ -62,11 +62,6 @@ from rfx.boundaries.spec import BoundarySpec
 from rfx.boundaries import refresh_boundary_model, require_floquet_lateral_faces
 from rfx.boundaries.model import DEFAULT_BOUNDARY, BoundaryModel
 
-# ---------------------------------------------------------------------------
-# Leaf data structures — moved to rfx/api/_spec.py (Part B Stage 0).
-# `_spec.py` is a leaf module; never import Simulation back into it.
-# Re-exported here so `from rfx.api import <name>` keeps working.
-# ---------------------------------------------------------------------------
 
 from rfx.api._spec import (  # noqa: E402
     MATERIAL_LIBRARY,
@@ -121,30 +116,13 @@ from rfx.api._compiled_memory import (  # noqa: E402
     _normalize_compiled_memory_analysis,
 )
 
-# ---------------------------------------------------------------------------
-# Preflight / validation methods — moved to rfx/api/_preflight.py
-# (Part B Stage 1a). `_preflight.py` is a transitional mixin importing only
-# `_spec` + external rfx.*/stdlib/jax/numpy; never import Simulation into it.
-# ---------------------------------------------------------------------------
 
 from rfx.api._preflight import _PreflightMixin  # noqa: E402
 
-# ---------------------------------------------------------------------------
-# S-parameter extraction methods — moved to rfx/api/_sparams.py
-# (Part B Stage 2). `_sparams.py` is a transitional mixin importing only
-# `_spec` + external rfx.*/stdlib/jax/numpy; never import Simulation into it.
-# ---------------------------------------------------------------------------
 
 from rfx.api._sparams import _SparamMixin  # noqa: E402
 from rfx.api._compile import _CompileMixin  # noqa: E402
 
-# ---------------------------------------------------------------------------
-# Execute methods (forward / run dispatch + per-path runners) — moved to
-# rfx/api/_execute.py (Part B Stage 4, final). `_execute.py` is a transitional
-# mixin importing only `_spec` + external rfx.*/stdlib/jax/numpy; never import
-# Simulation into it. With this stage the God class is fully dissolved into a
-# 5-module package facade (_spec, _compile, _preflight, _sparams, _execute).
-# ---------------------------------------------------------------------------
 
 from rfx.api._execute import _ExecuteMixin  # noqa: E402
 from rfx.api._wall_loss import _WallLossMixin
@@ -158,12 +136,6 @@ from rfx.api._ad_memory import (  # noqa: E402
     AD_COMPILED_MEMORY_CERTIFICATE_EVIDENCE_BOUNDARIES,
 )
 
-# ---------------------------------------------------------------------------
-# Record-length witness for GRADIENTS, the companion to the -40 dB settling
-# witness for VALUES. A free function, not a Simulation method: it takes the
-# caller's differentiable objective and the run length it depends on, and
-# nothing about it needs this class.
-# ---------------------------------------------------------------------------
 
 from rfx.api._gradient_witness import (  # noqa: E402
     GradientRecordLengthWitness,
@@ -175,9 +147,6 @@ _DebyeSpec = tuple[list[DebyePole], list[jnp.ndarray]]
 _LorentzSpec = tuple[list[LorentzPole], list[jnp.ndarray]]
 
 
-# ---------------------------------------------------------------------------
-# Simulation builder
-# ---------------------------------------------------------------------------
 
 class Simulation(
     _WallLossMixin,
@@ -324,9 +293,6 @@ class Simulation(
         self._snap, self._interface_eps, self._pec_occupancy_model = _validate_constructor_choices(
             snap, interface_eps, pec_occupancy_model, dx)
 
-        # T7-B: accept BoundarySpec directly or normalise a legacy scalar
-        # boundary=<str>. A BoundarySpec provided here is authoritative;
-        # removed keywords are rejected above.
         _explicit_spec = isinstance(boundary, (BoundarySpec, dict))
         self._boundary_explicit = boundary is not DEFAULT_BOUNDARY
         _boundary_origin = "declared" if self._boundary_explicit else "default"
@@ -335,13 +301,11 @@ class Simulation(
         if _explicit_spec:
             spec = normalize_boundary(boundary)
         else:
-            # Legacy scalar path — validated below, lifted to BoundarySpec
-            # after scalar boundary fields have been resolved.
             if boundary not in ("pec", "cpml", "upml"):
                 raise ValueError(
                     f"boundary must be 'pec', 'cpml', or 'upml', got {boundary!r}"
                 )
-            spec = None  # deferred; folded in after legacy fields settle
+            spec = None
         if freq_max <= 0:
             raise ValueError(f"freq_max must be positive, got {freq_max}")
         if precision not in ("float32", "mixed", "float64"):
@@ -353,8 +317,6 @@ class Simulation(
         if stencil_order not in (2, 4):
             raise ValueError(f"stencil_order must be 2 or 4, got {stencil_order}")
         from rfx.model import admit_graded_profiles
-        # Caps come from _PreflightMixin (single source of truth; preflight's
-        # _validate_cfg_multiband_grading reads the same two attributes).
         domain, self._nominal_profiles = admit_graded_profiles(
             domain, dx_profile, dy_profile, dz_profile, dt=dt, snap=snap,
             dt_min_cell=dt_min_cell, nominal_profiles=nominal_profiles,
@@ -362,19 +324,14 @@ class Simulation(
             inplane_ratio_cap=self._INPLANE_RATIO_CAP)
 
         if _explicit_spec:
-            # BoundarySpec is authoritative; derive the legacy views so
-            # downstream code that has not migrated continues to work.
             self._pec_faces = spec.pec_faces()
             legacy_boundary = spec.absorber_type
             if legacy_boundary is None:
-                # No absorbing face: pick 'pec' (matches historic all-PEC).
                 legacy_boundary = "pec"
-            boundary = legacy_boundary  # feed the rest of __init__
+            boundary = legacy_boundary
         else:
             self._pec_faces = set()
 
-        # Non-uniform xy profiles require an explicit dx (boundary cell
-        # size) so the CPML profiles have a defined edge spacing.
         if (dx_profile is not None or dy_profile is not None) and dx is None:
             raise ValueError("dx_profile / dy_profile require an explicit dx (boundary cell size)")
 
@@ -388,69 +345,27 @@ class Simulation(
         self._dz_profile = dz_profile
         self._dx_profile = dx_profile
         self._dy_profile = dy_profile
-        # Pinned time step (non-uniform lane only); admitted above.
         self._dt_pin = dt
         self._dt_min_cell = dt_min_cell
         self._precision = precision
         self._solver = solver
-        # (2,4) fourth-order-in-space stencil. 2 = default,
-        # byte-identical. 4 is reachable ONLY on the plain uniform Cartesian
-        # vacuum/dielectric path; the comprehensive API fence
-        # (_check_stencil_order_supported) rejects every unsupported runner.
         self._stencil_order = stencil_order
 
 
-        # Registered items
         self._materials: dict[str, MaterialSpec] = {}
         self._geometry: list[_GeometryEntry] = []
         self._ports: list[_PortEntry] = []
         self._probes: list[_ProbeEntry] = []
         self._thin_conductors: list[ThinConductor] = []
-        # Node-pinned PEC sheets (add_pinned_sheet): declared by node index,
-        # so they are the same conductor on every mesh — including one that
-        # is a JAX tracer, where a metric sheet cannot be resolved at all.
         self._pinned_sheets: list = []
         self._coaxial_ports: list[CoaxialPort] = []
-        self._ntff: tuple | None = None  # (corner_lo, corner_hi, freqs)
-        # (corner_lo, corner_hi, block_size, freqs, order, extra) — the
-        # declaration only; the slab and the block map are realized against
-        # the built grid in ``rfx.current_moments.monitor_for_simulation``.
+        self._ntff: tuple | None = None
         self._current_moments: tuple | None = None
         self._tfsf: _TFSFEntry | None = None
         self._dft_planes: list[_DFTPlaneEntry] = []
-        # ``_dft_plane_regions`` (runtime-only crop metadata for the internal
-        # MSL DFT planes) is deliberately NOT set here: it exists only while
-        # ``compute_msl_s_matrix`` runs and is removed again on exit, so it
-        # never enters the design-IR ledger (rfx/interop/_design.py rule 4).
-        # Public add_dft_plane_probe registrations stay full-plane.
         self._flux_monitors: list[_FluxMonitorEntry] = []
         self._waveguide_ports: list[_WaveguidePortEntry] = []
         self._msl_ports: list[_MSLPortEntry] = []
-        # runtime bookkeeping. Deliberately NOT entry
-        # fields: _MSLPortEntry's and _ProbeEntry's field sets are pinned
-        # by the interop design-IR contract (rfx/interop/_design.py
-        # _PINNED_RECORDS), and neither of these is design state.
-        #   _msl_auto_offset_min: port name -> the upstream-only lower
-        #     edge stored when n_probe_offset was auto-resolved; the interval solve in compute_msl_s_matrix starts from
-        #     it.
-        #   _msl_auto_probe_spacing: port name -> the registration-time
-        #     Hammerstad-Jensen eps_eff estimate, stored when
-        #     n_probe_spacing was auto. The span solve in
-        #     _resolve_msl_auto_offsets widens the auto spacing toward
-        #     span = (N-1)*lambda_g(f_max)/4 where the geometry allows;
-        #     the entry keeps the conservative registration default so
-        #     resolver-skip paths (a ladder crossing a grading ramp) never
-        #     overrun the feed.
-        #   _msl_auto_probe_lengths: port name -> the two LENGTHS the
-        #     automatic probe defaults are counted from at registration,
-        #     (lambda_eff/(4*pi), lambda_eff/8) at f_max, stored for every
-        #     port. On a graded propagation axis _resolve_msl_auto_offsets
-        #     counts them in the runway cell at the port, and preflight asks
-        #     from them what an automatic offset would be.
-        #   _internal_probe_indices: indices into self._probes of
-        #     library-registered diagnostic probes (MSL settling
-        #     witnesses); probe-placement preflight advisories and the
-        #     tail advisory skip them.
         self._msl_auto_offset_min: dict[str, int] = {}
         self._msl_auto_probe_spacing: dict[str, float] = {}
         self._msl_auto_probe_lengths: dict[str, tuple[float, float]] = {}
@@ -460,7 +375,6 @@ class Simulation(
         self._lumped_rlc: list[LumpedRLCSpec] = []
         self._floquet_ports: list[_FloquetPortEntry] = []
 
-        # Canonical BoundarySpec, with scalar boundary compatibility.
         if _explicit_spec:
             self._boundary_spec, self._boundary_scalar_spec = spec, None
             self._periodic_axes = spec.periodic_axes()
@@ -477,13 +391,8 @@ class Simulation(
                               domain=domain),
         )
 
-        # Per-face CPML thickness runs end-to-end
-        # via the padded-profile engine in rfx/boundaries/cpml.py.
-        # Boundary.lo_thickness / .hi_thickness are
-        # consumed by _build_grid → Grid.face_layers → init_cpml.
 
 
-    # ---- refinement (subgridding) ----
 
     def add_refinement(
         self,
@@ -531,6 +440,7 @@ class Simulation(
             public runner. ``"stage2_disjoint_3d"`` records the selected
             centered/two-interface integration lane but remains a research-only
             contract until its public runner wiring and waveform gates pass.
+        Absorber cells pad the outside of the physical ``domain``.
         """
         if self._refinement is not None:
             raise ValueError("Only one refinement region is supported")
@@ -543,26 +453,6 @@ class Simulation(
                 "topology must be one of 'overlap_z_slab' or "
                 "'stage2_disjoint_3d'"
             )
-        # Warn if subgrid overlaps the PML region.
-        # PML operates on the coarse grid only; the fine grid has no PML.
-        # Overlapping causes late-time energy growth (SAT coupling feeds
-        # energy into the PML boundary faster than it can absorb).
-        #
-        # Coordinate frame: the grid builder places the absorber
-        # OUTSIDE the user domain — ``domain`` is entirely physical, the CPML
-        # cells are extra padding beyond it, and ``(idx - axis_pads)*dx``
-        # recovers user coordinates (rfx/grid.py).  In the
-        # builder's frame a z_range meets the absorber only when it reaches
-        # the physical-domain edge of an ABSORBING face: z_lo <= 0 (touching
-        # or entering the z_lo padding) or z_hi >= domain_z. Touching counts —
-        # the SAT interface then sits directly against the CPML interface,
-        # and the authoritative static validator flags the same geometry as
-        # ``subgrid_overlaps_absorber`` (see
-        # test_production_boundary_terminated_rejects_refined_face_touching_cpml,
-        # which pins this warning for the touching case). An interior range does not overlap: a z_range strictly inside
-        # (0, domain_z) is clear of the absorber no matter how close to the
-        # edge, because the absorber cells are padding outside. The subgrid
-        # lane stays EXPERIMENTAL.
         if self._boundary in ("cpml", "upml") and self._cpml_layers > 0:
             import warnings
             z_lo_kind = self._boundary_spec.z.lo if self._boundary_spec else self._boundary
@@ -596,7 +486,6 @@ class Simulation(
 
     from rfx.subgridding.validation import validate_subgrid
 
-    # ---- material registration ----
 
     def add_material(
         self,
@@ -644,7 +533,6 @@ class Simulation(
             f"{list(MATERIAL_LIBRARY.keys())}"
         )
 
-    # ---- geometry ----
 
     def add(self, shape: Shape, *, material: str) -> "Simulation":
         """Add a geometric shape filled with a named material.
@@ -668,7 +556,7 @@ class Simulation(
         assembly; so is any PEC shape that rasterizes to zero cells.
         There is no per-entry realization knob.
         """
-        self._resolve_material(material)  # validate early
+        self._resolve_material(material)
         self._geometry.append(_GeometryEntry(
             shape=shape, material_name=material))
         return self
@@ -690,7 +578,6 @@ class Simulation(
         realization class and materialization only)."""
         return _fidelity_report(self, print_report=print_report)
 
-    # ---- sources (non-port) ----
 
     def add_source(
         self,
@@ -763,10 +650,9 @@ class Simulation(
         if waveform is None:
             waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
 
-        # Store as a source entry (reuse _PortEntry with impedance=None flag)
         self._ports.append(_PortEntry(
             position=position, component=component,
-            impedance=0.0,  # 0 = no port impedance (soft source)
+            impedance=0.0,
             waveform=waveform, extent=None,
             amplitude_kind=resolved_kind, allow_in_absorber=allow_in_absorber,
         ))
@@ -821,20 +707,13 @@ class Simulation(
         else:
             jones = tuple(polarization)
 
-        # Normalize Jones vector
         import numpy as _np
         norm = _np.sqrt(abs(jones[0])**2 + abs(jones[1])**2)
         if norm < 1e-30:
             raise ValueError("Jones vector magnitude is zero")
         jx, jy = jones[0] / norm, jones[1] / norm
 
-        # Complex weights use two separately constructed waveforms. Their
-        # quadrature is not part of the verified public polarization scope.
         if _np.isreal(jx) and _np.isreal(jy):
-            # Real Jones — simple amplitude scaling. Preserve the source waveform's
-            # cutoff through reconstruction: dropping it resets the deposited-DC remedy
-            # (cutoff=4.5) to the default 3.0. The getattr default is GaussianPulse's
-            # 3.0, so cutoff-less waveforms retain their default.
             if abs(float(jx.real)) > 1e-10:
                 from rfx.sources.sources import GaussianPulse as GP
                 wx = GP(f0=waveform.f0, bandwidth=waveform.bandwidth,
@@ -850,20 +729,15 @@ class Simulation(
                 self.add_source(position, "ey", waveform=wy,
                                 amplitude_kind=amplitude_kind)
         else:
-            # Complex Jones — build carrier-modulated components.
             from rfx.sources.sources import ModulatedGaussian as MG
-            # Ex component (reference phase)
             if abs(jx) > 1e-10:
                 wx = MG(f0=waveform.f0, bandwidth=waveform.bandwidth,
                         amplitude=waveform.amplitude * float(abs(jx)))
                 self.add_source(position, "ex", waveform=wx,
                                 amplitude_kind=amplitude_kind)
-            # Ey component (90° phase shift for circular)
             if abs(jy) > 1e-10:
-                # Phase of jy relative to jx
                 import cmath
                 phase = cmath.phase(jy) - cmath.phase(jx) if abs(jx) > 1e-10 else 0
-                # Construct the second carrier from the requested relative phase.
                 from rfx.sources.sources import CustomWaveform
                 import jax.numpy as _jnp
                 tau = 1.0 / (waveform.f0 * waveform.bandwidth * 3.14159)
@@ -878,7 +752,6 @@ class Simulation(
 
         return self
 
-    # ---- coaxial ports ----
 
     def add_coaxial_port(
         self,
@@ -923,7 +796,6 @@ class Simulation(
         ))
         return self
 
-    # ---- thin conductors ----
 
     def add_thin_conductor(
         self,
@@ -1091,7 +963,6 @@ class Simulation(
         self._thin_conductors.append(tc)
         return self
 
-    # ---- ports ----
 
     def add_port(
         self,
@@ -1395,8 +1266,6 @@ class Simulation(
             conservative (largest ``lam_min_eff`` → largest offset).
         """
         from rfx.sources.msl_port import msl_axis_roles as _msl_axis_roles
-        # Raises with the substrate-normal explanation for "+z"/"-z" and a
-        # plain domain error otherwise.
         _msl_axis_roles(direction)
         if width <= 0:
             raise ValueError(f"width must be positive, got {width}")
@@ -1448,23 +1317,9 @@ class Simulation(
             name = f"msl_{len(self._msl_ports)}"
 
         if _offset_is_auto:
-            # Runtime bookkeeping only (NOT an entry field — _MSLPortEntry's
-            # field set is pinned by the interop design-IR contract): the
-            # interval solve in compute_msl_s_matrix re-derives the
-            # effective offset from THIS stored lower edge every call, so
-            # repeated calls do not drift.
             self._msl_auto_offset_min[name] = int(n_probe_offset)
         if _spacing_is_auto:
-            # Same bookkeeping pattern for the auto spacing:
-            # store the registration-time HJ eps_eff so the driver-time
-            # span solve can size λ_g(f_max)/4 per probe step from the
-            # SAME permittivity estimate every call (idempotent, and the
-            # design-IR dump resolves through the same function).
             self._msl_auto_probe_spacing[name] = float(_eps_eff_hj)
-        # The two lengths the automatic defaults were counted from, for every
-        # port: the resolver recounts an automatic offset or spacing in the
-        # runway cell on a graded axis, and preflight asks what leaving an
-        # explicit offset None would give on this port's runway.
         self._msl_auto_probe_lengths[name] = (
             float(_near_field_m), float(span_total))
 
@@ -1534,7 +1389,6 @@ class Simulation(
         if R == 0 and L == 0 and C == 0:
             raise ValueError("At least one of R, L, C must be non-zero")
 
-        # Warn if series topology with single component — falls back to parallel behavior
         if topology == "series":
             n_comp = (R > 0) + (L > 0) + (C > 0)
             if n_comp == 1:
@@ -1806,7 +1660,6 @@ class Simulation(
         """
         return refresh_boundary_model(self, rcs=rcs)
 
-    # ---- Floquet ports ----
 
     def add_floquet_port(
         self,
@@ -1865,9 +1718,6 @@ class Simulation(
             raise ValueError(f"scan_theta must be in [0, 90), got {scan_theta}")
         if n_modes < 1:
             raise ValueError(f"n_modes must be >= 1, got {n_modes}")
-        # Only the specular (0,0) TE mode is implemented in extract_floquet_modes; n_modes>1 and
-        # TM were silently accepted and returned wrong results (higher-order lobes dropped; TM read
-        # the TE field pair + impedance). Fail loud until implemented.
         if n_modes > 1:
             raise NotImplementedError(
                 f"add_floquet_port(n_modes={n_modes}): only the specular (0,0) Floquet mode is "
@@ -1886,8 +1736,6 @@ class Simulation(
                 "Floquet ports are not supported together with TFSF sources"
             )
 
-        # Reject an explicit incompatible declaration at registration. Auto
-        # mesh depends on the completed model and is checked by preflight.
         if self._declared_mesh["_dz_profile"] is not None:
             raise RfxRefusal(
                 "Floquet ports do not support non-uniform z mesh (dz_profile). "
@@ -1917,7 +1765,6 @@ class Simulation(
         ))
         return self
 
-    # ---- probes ----
 
     def add_probe(
         self,
@@ -2056,7 +1903,6 @@ class Simulation(
         ))
         return self
 
-    # ---- NTFF ----
 
     def add_ntff_box(
         self,
@@ -2163,7 +2009,6 @@ class Simulation(
                                   "off_cells": int(off_cells)})
         return self
 
-    # ---- build helpers ----
 
     def freeze_mesh(self) -> Grid | NonUniformGrid:
         """Finalize mesh spacing/profiles and extent, returning the selected grid.
@@ -2261,29 +2106,6 @@ class Simulation(
     auto = classmethod(simulation_auto)
 
 
-# ---------------------------------------------------------------------------
-# Arc-audit follow-up (verification round): every method Simulation
-# inherits from its five mixins keeps that mixin's name in its
-# __qualname__ (Python sets __qualname__ from the class body where a
-# function is DEFINED, not where it ends up bound via inheritance), which
-# leaks into user-facing TypeError messages for an unrecognised keyword
-# argument -- e.g. `TypeError: _ExecuteMixin.forward() got an unexpected
-# keyword argument 'design_mask'` instead of naming the actual public
-# surface, `Simulation.forward()`. This was fixed for forward()
-# specifically via an explicit **_removed_kwargs shim
-# (_reject_removed_forward_kwargs in rfx/api/_execute.py), but the
-# verifier found it is not one-off: ten public Simulation methods leak
-# the same way (e.g. `sim.run(n_stepss=2)` still says `_ExecuteMixin.
-# run() got an unexpected keyword argument`). Rebind __qualname__ on
-# every inherited method here, once, at class composition time, so all
-# of them read `Simulation.<method>` regardless of which mixin module
-# happens to define them. Structural only: does not change behaviour,
-# identity, or MRO -- only the __qualname__ string attribute Python's
-# own error formatting (and tracebacks, repr, etc.) reads from. Each of
-# these mixin classes is used ONLY by Simulation (verified: no other
-# `class ...(_ExecuteMixin` etc. anywhere in rfx/), so mutating the
-# function objects in place cannot affect any other class.
-# ---------------------------------------------------------------------------
 for _mixin in (
     _PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin, _ArtifactsMixin,
     _AdMemoryMixin,
@@ -2297,11 +2119,6 @@ for _mixin in (
 del _mixin, _name, _member
 
 
-# ---------------------------------------------------------------------------
-# Public API surface for the rfx.api package.
-# Data structures are defined in rfx/api/_spec.py and re-exported above;
-# Simulation is defined in this module.
-# ---------------------------------------------------------------------------
 __all__ = [
     "Simulation",
     "MATERIAL_LIBRARY",

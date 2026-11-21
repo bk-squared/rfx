@@ -149,7 +149,7 @@ def _environment_summary() -> dict[str, object]:
     try:
         jax_version_raw = getattr(jax, "__version__")
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in scope_status_reason
+    except Exception as exc:  # noqa: BLE001
         return {
             "status": "incomplete",
             "reason": f"jax.__version__ read failed: {type(exc).__name__}: {exc}",
@@ -177,7 +177,7 @@ def _environment_summary() -> dict[str, object]:
     try:
         backend_platform_raw = jax.default_backend()
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in scope_status_reason
+    except Exception as exc:  # noqa: BLE001
         return {
             "status": "incomplete",
             "reason": f"jax.default_backend() failed: {type(exc).__name__}: {exc}",
@@ -205,7 +205,7 @@ def _environment_summary() -> dict[str, object]:
     try:
         devices = tuple(jax.local_devices())
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in scope_status_reason
+    except Exception as exc:  # noqa: BLE001
         return {
             "status": "incomplete",
             "reason": f"jax.local_devices() failed: {type(exc).__name__}: {exc}",
@@ -231,7 +231,7 @@ def _environment_summary() -> dict[str, object]:
         device_platform_raw = getattr(first, "platform")
         device_kind_raw = getattr(first, "device_kind")
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in scope_status_reason
+    except Exception as exc:  # noqa: BLE001
         return {
             "status": "incomplete",
             "reason": f"JAX device metadata read failed: {type(exc).__name__}: {exc}",
@@ -287,7 +287,7 @@ def _normalize_compiled_memory_analysis(compiled: object) -> CompiledMemoryAnaly
     except AttributeError:
         memory_analysis = None
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in memory_analysis_status_reason
+    except Exception as exc:  # noqa: BLE001
         return CompiledMemoryAnalysis(
             status="analysis_unavailable",
             reason=f"reading memory_analysis attribute raised {type(exc).__name__}: {exc}",
@@ -308,7 +308,7 @@ def _normalize_compiled_memory_analysis(compiled: object) -> CompiledMemoryAnaly
     try:
         analysis = memory_analysis()
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in memory_analysis_status_reason
+    except Exception as exc:  # noqa: BLE001
         return CompiledMemoryAnalysis(
             status="analysis_unavailable",
             reason=f"memory_analysis() raised {type(exc).__name__}: {exc}",
@@ -336,7 +336,7 @@ def _normalize_compiled_memory_analysis(compiled: object) -> CompiledMemoryAnaly
         except AttributeError:
             missing.append(field)
         except (TimeoutError,): raise
-        except Exception as exc:  # noqa: BLE001 - recorded in memory_analysis_status_reason
+        except Exception as exc:  # noqa: BLE001
             return CompiledMemoryAnalysis(
                 status="analysis_incomplete",
                 reason=f"reading {field} raised {type(exc).__name__}: {exc}",
@@ -409,7 +409,7 @@ def _compiled_introspection_scope(compiled: object) -> tuple[object | None, str 
         except AttributeError:
             continue
         except (TimeoutError,): raise
-        except Exception as exc:  # noqa: BLE001 - recorded in scope_status_reason
+        except Exception as exc:  # noqa: BLE001
             return None, (
                 f"compiled object introspection attribute {attr!r} raised "
                 f"{type(exc).__name__}: {exc}"
