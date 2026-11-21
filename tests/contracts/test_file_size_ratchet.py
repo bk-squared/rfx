@@ -205,6 +205,7 @@ def test_baseline_matches_real_tree(capsys, monkeypatch):
 
 
 def test_required_job_and_local_runner_bind_ratchet():
+    """The checked-out merge with the base is what gets counted."""
     workflow = yaml.safe_load((REPO / ".github/workflows/pr-tests.yml").read_text())
     steps = workflow["jobs"]["guards-and-preflight"]["steps"]
     calls = [i for i, s in enumerate(steps)
@@ -217,7 +218,6 @@ def test_required_job_and_local_runner_bind_ratchet():
     assert "pip install" in steps[index + 2]["run"]
     assert not step.get("if") and not step.get("continue-on-error")
     assert step["run"] == "python scripts/ci/check_file_size_ratchet.py"
-    # No HEAD_SHA: the checked-out merge with the base is what gets counted.
     assert step["env"] == {
         "BASE_SHA": "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}",
     }
@@ -377,7 +377,6 @@ def test_moved_entry_inherits_only_its_old_cap(tree, capsys, head, case, expecte
     gate.git(tree, "add", ".")
     if head:
         gate.git(tree, "commit", "-qm", "Moved baseline")
-        # Snapshot checks must ignore subsequent working-tree contents.
         target.write_bytes(b"dirty = 1\n" * 30)
     code, err = run(tree, capsys, "--base", base, "--head", head)
     assert code == expected

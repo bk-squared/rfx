@@ -61,7 +61,6 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 NOTIFY_JOB = "notify"
-#: Each scheduled lane with the notifier, and the one cron it declares.
 LANES = {"validation.yml": "0 6 * * 1"}
 lanes = pytest.mark.parametrize("name", sorted(LANES))
 
@@ -200,6 +199,7 @@ def _slow_shards(job: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_the_durations_regeneration_prices_what_the_slow_shards_run() -> None:
+    """The prices are measured with modules kept together."""
     weekly = _slow_shards(_workflow("validation.yml")["jobs"]["slow-tests"])
     regen = _slow_shards(_workflow("regen-durations.yml")["jobs"]["slow"])
     assert not regen["-k"], "regen-durations slow narrows its selection with -k"
@@ -207,7 +207,6 @@ def test_the_durations_regeneration_prices_what_the_slow_shards_run() -> None:
         assert lane["splits"] == len(lane["groups"]), f"{name}: --splits {lane['splits']} but groups {lane['groups']}"
     for workflow, job in (("validation.yml", "slow-tests"), ("regen-durations.yml", "slow")):
         step = _weekly_test_step(_workflow(workflow)["jobs"][job])
-        # The prices are measured with modules kept together; least_duration would split them.
         assert "--splitting-algorithm" not in step["run"]
     regen_step = _weekly_test_step(_workflow("regen-durations.yml")["jobs"]["slow"])
     assert "--clean-durations" in shlex.split(regen_step["run"])
@@ -229,7 +228,7 @@ def _weekly_test_step(job: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_weekly_uses_sixteen_shards() -> None:
-    # 16, was 8 (runner spread 1.78; tests/contracts/test_weekly_shard_headroom.py).
+    """The sixteen weekly shards allow for the runner spread of 1.78 measured earlier."""
     job = _workflow("validation.yml")["jobs"]["slow-tests"]
     assert job["strategy"]["matrix"]["group"] == list(range(1, 17))
     assert _slow_shards(job)["splits"] == 16
@@ -263,8 +262,7 @@ def test_only_the_latest_jax_dispatch_switch_skips_a_job() -> None:
 
 
 def test_three_device_cases_run_in_their_own_job() -> None:
-    # pytest-split balances only a shard's main step. On run 39748623375 shard 1 carried
-    # these cases after its group and was cut at its limit with no test failed.
+    """The closed-box TF/SF cap needs 4 and 5 host devices."""
     jobs = _workflow("validation.yml")["jobs"]
     assert not [s for s in jobs["slow-tests"]["steps"] if "xla_force_host_platform_device_count" in str(s.get("env"))]
     job = jobs["three-device"]
@@ -277,9 +275,7 @@ def test_three_device_cases_run_in_their_own_job() -> None:
     assert runs
     counts = {"three": 3, "four": 4, "five": 5}
     for step in runs:
-        # A failing file must not skip the later steps.
         assert step["if"] == "${{ !cancelled() }}", step["name"]
-        # Each step names its host-device count; the closed-box TF/SF cap needs 4 and 5.
         n = counts[step["name"].split()[1].removesuffix("-device")]
         assert step["env"] == {"JAX_PLATFORMS": "cpu", "XLA_FLAGS": f"--xla_force_host_platform_device_count={n}"}
     assert sum("three-device" in s["name"] for s in runs) >= 4
@@ -291,12 +287,11 @@ def test_three_device_cases_run_in_their_own_job() -> None:
 
 
 def test_weekly_stores_and_always_uploads_durations() -> None:
+    """An unseeded durations path would price every test the same and undo the shard balance."""
     job = _workflow("validation.yml")["jobs"]["slow-tests"]
     step = _weekly_test_step(job)
     assert "--store-durations" in shlex.split(step["run"])
     assert "--durations-path durations/weekly_${{ matrix.group }}.json" in step["run"]
-    # pytest-split reads prices from the path it stores to: an unseeded path
-    # would price every test the same and undo the shard balance.
     assert "|| true" not in step["run"], "a failing test must turn the weekly shard red"
     seed = "cp .test_durations_weekly durations/weekly_${{ matrix.group }}.json &&"
     assert seed in step["run"]
@@ -339,7 +334,6 @@ def test_weekly_budget_is_always_after_the_tests_and_matches_job_limit() -> None
     assert job["steps"].index(step) == len(job["steps"]) - 2
     assert step["if"] == "always()"
     assert "continue-on-error" not in step and "continue-on-error" not in job
-    # Resolve only the matrix expression so shell argument parsing sees one path.
     args = shlex.split(step["run"].replace("${{ matrix.group }}", "1"))
     assert args == [
         "python", "scripts/ci/weekly_shard_budget.py", "--start", "$SHARD_T0",
@@ -348,7 +342,6 @@ def test_weekly_budget_is_always_after_the_tests_and_matches_job_limit() -> None
         "--log", "durations/weekly_1.log", "--prune",
     ]
     test_step = _weekly_test_step(job)
-    # The log the budget reads is the one conftest writes during the test step.
     assert test_step["env"]["RFX_DURATIONS_LOG"] == "durations/weekly_${{ matrix.group }}.log"
     assert int(args[args.index("--limit-minutes") + 1]) == job["timeout-minutes"]
 
@@ -360,7 +353,6 @@ def _run_weekly_budget(
     measured_path = tmp_path / "measured.json"
     recorded_path.write_text(json.dumps({"known": 10, "not-run": 20}), encoding="utf-8")
     if measured:
-        # As the weekly step leaves it: the recorded file, with what ran overwritten.
         measured_path.write_text(json.dumps({"known": 12, "not-run": 20, "new": 7}), encoding="utf-8")
     return subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts/ci/weekly_shard_budget.py"),
@@ -372,9 +364,9 @@ def _run_weekly_budget(
 
 
 def test_weekly_budget_under_limit(tmp_path: Path) -> None:
+    """The clock keeps running while the subprocess starts, so compare with a tolerance."""
     result = _run_weekly_budget(tmp_path, 7000)
     assert result.returncode == 0, result.stdout + result.stderr
-    # The clock keeps running while the subprocess starts: compare with a tolerance.
     m = re.search(r"shard wall time: ([\d.]+) min of a 180 min limit \(([\d.]+) %\)", result.stdout)
     assert m, result.stdout
     assert abs(float(m.group(1)) - 7000 / 60) < 0.5 and abs(float(m.group(2)) - 7000 / 108) < 0.5
@@ -414,8 +406,7 @@ def test_weekly_budget_prunes_the_upload_to_what_the_shard_measured(tmp_path: Pa
 
 
 def test_weekly_budget_prunes_also_when_the_shard_is_over_budget(tmp_path: Path) -> None:
-    # An over-budget shard still uploads; an unpruned file would carry the old
-    # prices of every other shard's tests into the next merge.
+    """An unpruned file would carry the old prices of every other shard's tests into the next merge."""
     result = _run_weekly_budget(tmp_path, 9300, prune=True)
     assert result.returncode == 1, result.stdout + result.stderr
     assert json.loads((tmp_path / "measured.json").read_text(encoding="utf-8")) == {"known": 12, "new": 7}
@@ -434,7 +425,6 @@ def test_weekly_budget_survives_a_truncated_measured_file(tmp_path: Path) -> Non
 
 
 def _crashed_shard(tmp_path: Path, log_lines: list[str] | None) -> subprocess.CompletedProcess[str]:
-    # pytest aborted: the measured file is still the untouched copy of the recorded one.
     recorded = {"known": 10.0, "not-run": 20.0}
     (tmp_path / "recorded.json").write_text(json.dumps(recorded), encoding="utf-8")
     (tmp_path / "measured.json").write_text(json.dumps(recorded), encoding="utf-8")
@@ -451,8 +441,6 @@ def _crashed_shard(tmp_path: Path, log_lines: list[str] | None) -> subprocess.Co
 
 
 def test_weekly_budget_reads_the_per_test_log_when_pytest_stored_nothing(tmp_path: Path) -> None:
-    # Phases summed per test as pytest-split does; a setup over 600 s is dropped as it
-    # drops it; the line cut by the abort is skipped.
     lines = [json.dumps(["known", "setup", 1.0]), json.dumps(["known", "call", 11.5]),
              json.dumps(["known", "teardown", 0.5]), json.dumps(["new", "setup", 700.0]),
              json.dumps(["new", "call", 52.0]), '["cut", "ca']
@@ -475,9 +463,6 @@ def test_weekly_budget_says_unknown_when_pytest_stored_nothing_and_no_log(tmp_pa
 
 
 def test_durations_log_survives_a_test_that_changes_directory(tmp_path: Path) -> None:
-    # A real pytest session with the plugin, the log path relative as validation.yml
-    # sets it, and a test that changes directory before its call report: the log must
-    # stay at the configure-time path and the session must run every test.
     session = tmp_path / "session"
     session.mkdir()
     (session / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")

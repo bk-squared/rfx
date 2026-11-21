@@ -61,12 +61,12 @@ def test_clear_box_record_matches_concrete_without_continuation_warning():
 
 
 def test_concrete_reaching_box_still_runs_and_continues():
+    """The two x-lo absorber layers at y=3*DX, z=2*DX are inside the Box."""
     from rfx.runners.nonuniform import assemble_materials_nu
 
     sim = _scene(PROFILE, True)
     grid = sim._build_nonuniform_grid()
     pec = np.asarray(assemble_materials_nu(sim, grid, pec_sheets=[], pec_wires=[])[3])
-    # x-lo has two absorber layers; y=3*DX, z=2*DX are inside the Box.
     assert pec[:2, 5, 4].all()
     assert np.isfinite(np.asarray(_record(PROFILE, True))).all()
 
@@ -79,7 +79,7 @@ def test_box_ending_one_tenth_cell_short_on_traced_axis_continues():
 
 @pytest.mark.parametrize("nominal", [False, True], ids=["no_nominal", "nominal_edge"])
 def test_e_three_dx_edge_cell_needs_nominal_at_one_point_two_dx(nominal):
-    # z-lo is 1.2*DX from the face, inside its 3*DX edge cell.
+    """The z-lo bound is 1.2*DX from the face, inside its 3*DX edge cell."""
     from tests.contracts.test_traced_mesh_conductor_matches_concrete import arrays, equal_arrays
     def assemble(dz):
         sim = Simulation(domain=(8*DX, 8*DX, 24*DX), dx=DX, freq_max=20e9, snap="declared",
@@ -98,9 +98,9 @@ def test_e_three_dx_edge_cell_needs_nominal_at_one_point_two_dx(nominal):
 
 
 def test_f_windowed_nominal_profile_allows_clear_box():
+    """Each bound is three DX from its face, beyond the one-DX edge cells."""
     from rfx.geometry.smoothing import continued_conductor_shape
 
-    # Each bound is three DX from its face, beyond the one-DX edge cells.
     box = Box((3*DX, 3*DX, 3*DX), (5*DX, 5*DX, 5*DX))
 
     @jax.jit

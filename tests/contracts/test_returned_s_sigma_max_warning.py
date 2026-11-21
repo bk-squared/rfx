@@ -18,14 +18,14 @@ FREQS = np.array([1e9, 2e9, 3e9])
 
 
 def _matrix(peak):
-    # Rank-one symmetric matrix: its singular values are peak and zero.
-    # Each column power is peak**2 / 2, so column-power checks cannot see it.
+    """Column-power checks cannot see the singular-value excess."""
     s = np.full((2, 2, 3), 1.005 / 2, dtype=complex)
     s[:, :, 1] = peak / 2
     return s
 
 
 def _mixed_exit(monkeypatch, s):
+    """The extraction itself needs only a single step for this exit test."""
     import rfx.sparams.mixed as mixed
     from tests.unit.sparams.test_mixed_port_sparam import _base_sim, _add_feed, _add_msl
 
@@ -35,8 +35,6 @@ def _mixed_exit(monkeypatch, s):
     constructor = mixed.MixedSMatrixResult
 
     def assembled_result(**kwargs):
-        # Supply the synthetic returned S at assembly, before either audit.
-        # The extraction itself needs only a single step for this exit test.
         kwargs["S"] = s
         return constructor(**kwargs)
 
@@ -79,7 +77,6 @@ def test_returned_s_exit_contract(monkeypatch, exit_name, peak, expected_count):
 @pytest.mark.parametrize("exit_name", ["finalize", "mixed", "lumped"])
 @pytest.mark.parametrize("peak, expected_count", [(1.04, 1), (1.005, 0)])
 def test_nan_column_exit_contract(monkeypatch, exit_name, peak, expected_count):
-    # Mixed extraction refuses the entire lumped/wire drive column.
     s = np.zeros((2, 2, 3), dtype=complex)
     s[:, 0, :] = np.nan
     s[1, 1, :] = [1.005, peak, 1.005]
@@ -108,7 +105,6 @@ def test_nan_column_exit_contract(monkeypatch, exit_name, peak, expected_count):
 
 @pytest.mark.parametrize("shape", ["square", "observed", "diagonal"])
 def test_only_fully_finite_columns_contribute(shape):
-    # The large finite entry shares a column with NaN and must be discarded.
     s = np.array([
         [[2.0, np.nan, np.inf], [0.0, 0.0, np.nan]],
         [[np.nan, np.nan, np.inf], [1.04j, 1.005, np.nan]],
@@ -315,7 +311,6 @@ def test_new_returned_s_exits(monkeypatch, exit_name, peak, expected_count):
         assert "1 of 3 frequency bins" in str(notices[0].message)
         assert "sigma_max = 1.02" in str(notices[0].message)
         assert "at 2 GHz" in str(notices[0].message)
-    # Some lanes publish complex64; these exactly represent the input after casting.
     np.testing.assert_array_equal(returned, before.astype(np.asarray(returned).dtype))
     np.testing.assert_array_equal(s, before)
 
@@ -324,7 +319,6 @@ def test_new_returned_s_exits(monkeypatch, exit_name, peak, expected_count):
     name for name in NEW_EXITS if not name.startswith("coax")])
 @pytest.mark.parametrize("peak, expected_count", [(1.04, 1), (1.005, 0)])
 def test_no_finite_column_exits(monkeypatch, exit_name, peak, expected_count):
-    # Every column contains NaN; the final bin has no finite entry at all.
     s = np.array([[[np.nan, np.nan, np.nan], [1.005, peak * 1j, np.nan]],
                   [[0.2, 0.2, np.nan], [np.nan, np.nan, np.nan]]])
     before = s.copy()
@@ -493,7 +487,6 @@ def test_waveguide_forward_gradient_unchanged(monkeypatch, path, n_ports):
     monkeypatch.setattr(waveguide, "_extract_waveguide_sparams", capture)
     monkeypatch.setattr(declared, "warn_if_singular_value_exceeds_one", check)
     if n_ports > 1:
-        # Refusal also precedes S extraction in a traced forward call.
         with pytest.raises(ValueError, match="supports at most one driven waveguide port"):
             jax.grad(loss)(eps)
         assert not extracted

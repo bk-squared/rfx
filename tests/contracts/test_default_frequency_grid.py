@@ -10,7 +10,6 @@ from rfx import Simulation
 @pytest.mark.parametrize("freq_max", [10e9, 3.7e9])
 @pytest.mark.parametrize("n_freqs", [50, 7])
 def test_default_frequency_grid(freq_max, n_freqs):
-    # Minimal construction from tests/unit/farfield/test_ntff_sweep.py.
     sim = Simulation(freq_max=freq_max, domain=(0.01, 0.01, 0.005), dx=0.5e-3,
                      cpml_layers=4)
     lo, hi = (0.002, 0.002, 0.002), (0.008, 0.008, 0.003)
@@ -50,16 +49,16 @@ def test_default_grid_independent_of_outer_compile_form(form):
 
 
 def test_plane_default_bins_remain_concrete_inside_a_trace():
+    """The domain lengths (.016, .009, .011) are whole numbers of cells of dx=.001, so the solved domain equals the declared one."""
     import jax
     from rfx.measurement.setup import build_planes
-    # Main's solved lengths on the uniform mesh (ceil)
     sim = Simulation(freq_max=15e9, domain=(.016, .009, .011), dx=.001, boundary='pec')
     sim.add_dft_plane_probe(axis='y', coordinate=.0031)
     grid = sim._build_grid()
 
     def build():
+        """Concrete bins preserve the fixed-point phase path."""
         bins = build_planes(sim, grid, 4)[0].freqs
-        # Concrete bins preserve the existing fixed-point phase path.
         assert not isinstance(bins, jax.core.Tracer)
         return bins
 
