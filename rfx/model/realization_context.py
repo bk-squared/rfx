@@ -15,18 +15,19 @@ def context_from_conductors(sim, conductors, *, grid=None):
     ctx.spacings, ctx.nodes = _node_arrays(sim, ctx.grid, ctx.lane == 'nonuniform')
     ctx.cell_sizes = ctx.spacings
     x, y, z = (n[:ctx.grid.shape[a]] for a, n in enumerate(ctx.nodes))
-    ctx.coords = GridCoords(x, y, z, shape=ctx.grid.shape)
+    coords = GridCoords(x, y, z, shape=ctx.grid.shape)
+    ctx.coords = coords
 
     def host_products(cells, sheet, wire, shape):
         if grid is not None and grid is not conductors.grid and (cells is not None or wire is not None):
             from rfx.geometry.rasterize_grid import (
                 classify_pec_entry, centres_from_nonuniform_grid, pec_volume_cell_mask)
-            centres = centres_from_nonuniform_grid(grid, ctx.coords)
+            centres = centres_from_nonuniform_grid(grid, coords)
             if cells is not None:
                 cells = pec_volume_cell_mask(shape, centres, ctx.spacings, grid=grid)
             else:
                 cells, sheet, wire = classify_pec_entry(
-                    shape, ctx.coords, centres, ctx.spacings, grid=grid)
+                    shape, coords, centres, ctx.spacings, grid=grid)
         return cells, sheet, wire
 
     products = {key: (cells, sheet, wire, shape)
