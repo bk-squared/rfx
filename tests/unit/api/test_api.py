@@ -311,11 +311,13 @@ def test_waveguide_port_geometry_changes_response():
         dx=0.002,
     )
 
+    PORT_X_M = 0.01
+    LOADED_SLAB_END_X_M = 0.08
     VACUUM_PROBE_OFFSET_CELLS = 40
-    assert 0.01 + VACUUM_PROBE_OFFSET_CELLS * base_kwargs["dx"] > 0.08, "The S21 probe must stay in vacuum beyond the loaded slab."
+    assert PORT_X_M + VACUUM_PROBE_OFFSET_CELLS * base_kwargs["dx"] > LOADED_SLAB_END_X_M, "The S21 probe must stay in vacuum beyond the loaded slab."
     sim_empty = Simulation(**base_kwargs)
     sim_empty.add_waveguide_port(
-        0.01,
+        PORT_X_M,
         mode=(1, 0),
         mode_type="TE",
         freqs=jnp.linspace(4.5e9, 8e9, 12),
@@ -327,9 +329,9 @@ def test_waveguide_port_geometry_changes_response():
 
     sim_loaded = Simulation(**base_kwargs)
     sim_loaded.add_material("diel", eps_r=2.5)
-    sim_loaded.add(Box((0.04, 0.0, 0.0), (0.08, 0.04, 0.02)), material="diel")
+    sim_loaded.add(Box((0.04, 0.0, 0.0), (LOADED_SLAB_END_X_M, 0.04, 0.02)), material="diel")
     sim_loaded.add_waveguide_port(
-        0.01,
+        PORT_X_M,
         mode=(1, 0),
         mode_type="TE",
         freqs=jnp.linspace(4.5e9, 8e9, 12),
@@ -516,7 +518,7 @@ def test_waveguide_same_boundary_overlapping_apertures_reject():
 
 def test_waveguide_two_port_y_normal_s_matrix_through_api():
     """Y-normal end ports should produce a reciprocal two-port guide S-matrix.
-    The raw path retains |S|>1 / reciprocity-error by design."""
+    normalize=True is used because the raw path retains |S|>1 / reciprocity-error by design."""
     sim = Simulation(
         freq_max=10e9,
         domain=(0.04, 0.12, 0.02),
@@ -1202,7 +1204,7 @@ def test_five_line_patch_workflow():
       5. result = sim.run(n_steps=...)
 
     Centre sampling includes the 1.6 mm substrate at dx=3mm.
-    Geometry[0] y is solved -18.97 % off its domain-clipped drawing.
+    The zero-thickness patch Box declares a sheet at z=0.8 mm that realizes at z=0 on the coarse 3 mm mesh, with its offset reported rather than absorbed.
     """
 
     sim = rfx.Simulation(snap="declared",

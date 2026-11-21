@@ -176,7 +176,7 @@ def test_capacitor_owns_one_edge(lane_control, component):
 
 
 def _assert_one_edge(lane, component, tolerance, *, fractional=False):
-    """Without a lumped element in the fractional occupancy fixture, one incident cell has occupancy 0.2: eps=4/(1-0.2)."""
+    """The independent stamp C*d/(epsilon_0*dual_area) reduces to C/(epsilon_0*d) for a cubic 1 mm cell."""
     without = _run_case(lane, fractional=fractional, seeded=True)
     with_c = _run_case(lane, component, fractional=fractional, seeded=True)
     axis = COMPONENTS.index(component)

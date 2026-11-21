@@ -21,7 +21,6 @@ def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False,
          cut_capacitor=False):
     """Binary-exact dx and x walls avoid a nearly-one SDF weight caused by coordinate roundoff."""
     ny = 16 if periodic_y else 16.7
-    assert not periodic_y or ny == int(ny), 'A periodic y axis must hold a whole number of cells'
     sim = Simulation(freq_max=10e9, domain=(13/1024, ny/1024, 19.2/1024),
                      dx=1/1024, boundary=BoundarySpec(
                          x=Boundary(lo="pec", hi="pec", conformal=True),
@@ -45,7 +44,7 @@ def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False,
     original = simulation.run
 
     def capture(grid, materials, n_steps, **kwargs):
-        """Wall-fixed tangential edges have no material degree of freedom even with SDF weights of 1/2 at a grid-aligned wall."""
+        assert not periodic_y or grid.ny == ny, 'A periodic y axis must realize its declared whole-cell count'
         tensor = materials.components.tensor
         inverse = tensor.inv_eps if tensor is not None else None
         seen["inverse"] = None if inverse is None else np.asarray(inverse)
@@ -203,7 +202,7 @@ def test_kottke_stage2_does_not_take_stage1_correction():
 
 
 def test_periodic_dielectric_seam_uses_the_plain_wrap():
-    """Only permittivity is compared because an earlier vacuum comparison found conformal/plain trace differences of 6e-6 to 8e-6 of the probe peak with cause not measured."""
+    """Only permittivity is compared because an earlier vacuum comparison found conformal/plain trace differences with a periodic axis of 6e-6 to 8e-6 of the probe peak with cause not measured."""
     plain, conformal = _run(False, periodic_y=True), _run(True, periodic_y=True)
     free = conformal["weights"] == 1
     seam = free.copy()

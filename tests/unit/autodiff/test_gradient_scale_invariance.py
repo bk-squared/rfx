@@ -216,7 +216,7 @@ def _dispersion_cases(dtype):
 
 def _builder_cases():
     """Shared checks for the supported solver paths.
-    Preserve the random stream for the surviving coefficient fixtures."""
+    Preserve the random stream for the solver-path coefficient fixtures."""
     rng = np.random.default_rng(1357)
     shape = (5, 6, 7)
     mats = _materials(rng, shape)
@@ -263,7 +263,7 @@ def _builder_cases():
 def test_builder_vjp_is_finite_at_any_cotangent_scale(name):
     """The builder's eps VJP at a cotangent past its SI overflow is finite
     and is exactly ``2**100`` times the VJP at ``2**-100`` of it.
-    The lumped D0 stays un-jitted because its SI eps_r*EPS_0/dt overflows under op-by-op jax.grad outside the time loop."""
+    The lumped D0 stays un-jitted to exercise the op-by-op jax.grad overflow of SI eps_r*EPS_0/dt outside the time loop, which under jit is avoided by XLA folding (ct / dt) * EPS_0 into ct * (EPS_0/dt)."""
     fn, eps, big = _builder_cases()[name]
 
     def at(scale):
@@ -347,7 +347,7 @@ def _jvp_cases(dtype):
     """``name -> (fn(eps_r, sigma), eps_r, sigma)``, every array in ``dtype``
     built from one float32 draw, so the float32 and float64 rows see the same
     numbers.
-    Preserve the random stream for the surviving coefficient fixtures."""
+    Preserve the random stream for the float32/float64 JVP fixtures."""
     rng = np.random.default_rng(13570)
 
     def arr(a):
@@ -445,7 +445,6 @@ def si_float64_jvp(monkeypatch):
     def clear():
 
 
-        """No trace made with the helper may serve the SI row."""
         for fn in _JITTED_BUILDERS:
             fn.clear_cache()
 

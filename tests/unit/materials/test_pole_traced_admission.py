@@ -106,9 +106,8 @@ def test_out_of_program_debye_only_under_jit_is_skipped_only_when_passive(delta_
 
 @pytest.mark.parametrize("transform", ["eager", "jvp", "grad", "jit", "vmap", "grad_vmap"])
 def test_out_of_program_admission_judges_concrete_primals_and_refuses_traced(transform):
-    """Outside a program a jit-traced value is refused because it cannot be judged, stable or unstable."""
+    """At dt=1 and budget=0 the undamped Drude condition kappa<=4*eps makes kappa=9 stable at eps=3 and unstable at eps=1."""
     def checked(eps):
-        """At dt=1 and budget=0 the undamped Drude condition kappa<=4*eps makes kappa=9 stable at eps=3 and unstable at eps=1."""
         materials = MaterialArrays(jnp.full((2, 2, 2), eps), jnp.zeros((2, 2, 2)), None)
         refuse_unstable_cells(materials, ([(0., 0., 9.)], None), 1., 0.,
                               grid_kind="Grid", in_program=False)

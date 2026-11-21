@@ -47,6 +47,7 @@ def _bisect_shift(a, target):
 
 @lru_cache(None)
 def _reference(n, two):
+    """The two KKT equations reduce to independent even/odd sums (E+O=b1, E+3O=b2) with multipliers reconstructed from h_even=nu1+nu2 and h_odd=nu1+3nu2."""
     a = np.random.default_rng(0).uniform(-0.5, 1.5, n).astype(np.float32).astype(np.float64)
     w = np.where(np.arange(n) % 2 == 0, 1.0, 3.0)
     b = np.array([0.3 * n, 0.55 * n] if two else [0.3 * n])

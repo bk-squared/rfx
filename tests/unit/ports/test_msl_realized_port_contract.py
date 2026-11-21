@@ -1,6 +1,4 @@
-"""Physical attachment of MSL ports, before source setup can clear metal.
-The coax material invariant is checked before the MSL port stamps because the MSL port legitimately writes at and above the join.
-"""
+"""Physical attachment of MSL ports, before source setup can clear metal."""
 from dataclasses import replace
 
 import numpy as np
@@ -333,6 +331,7 @@ def test_kottke_release_preserves_the_nonincident_fringe_neighbour(monkeypatch):
 
 
 def test_a_narrow_trace_uses_the_registered_center_not_the_rounded_endpoints():
+    """The only realized trace row is node 11."""
     model = _model(trace_width=(10.4, 11.4))
     grid, port, _, _ = _validate(model, y_lo=10.4*DX, y_hi=11.4*DX)
     port = replace(port, y_lo=10.4*DX, y_hi=11.4*DX)
@@ -441,7 +440,6 @@ def test_coax_stub_cannot_overwrite_the_registered_junction_and_substrate(ground
     real_setup = sources.setup_msl_port
 
     def capture_materials(grid_arg, port, materials, **kwargs):
-        """Conductor-scale sigma would damp the conductors' plus-side edges twice."""
         for name in ("eps_r", "sigma"):
             np.testing.assert_array_equal(getattr(materials, name)[:, :, join:],
                                           getattr(registered, name)[:, :, join:])

@@ -391,7 +391,6 @@ class TestTopologyOptimize:
         Uses a small 2D domain with PEC boundary and a simple
         probe-energy objective.  A few iterations should suffice to
         demonstrate that the optimizer makes progress.
-        Loss should decrease (or at least the optimizer tried).
         """
         from rfx.api import Simulation
 
