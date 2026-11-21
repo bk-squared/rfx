@@ -540,8 +540,8 @@ def stamp_coaxial_line(
     """
 
     from rfx.model.coax_admission import refuse_traced_materials
-    refuse_traced_materials(materials)
     _require_coaxial_aperture(grid, (0, 1), center_xy, outer_radius + shell_thickness_m)
+    refuse_traced_materials(materials)
     dz = float(grid.dx)
     z_lo = (int(z_lo_index) - grid.pad_z_lo) * dz
     z_hi = (int(z_hi_index) - grid.pad_z_lo) * dz

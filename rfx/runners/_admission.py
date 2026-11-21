@@ -1056,6 +1056,11 @@ LANE_SELECTORS = frozenset({("_solver", ""), ("_dx_profile", "graded"), ("_dy_pr
                             ("_dt_min_cell", "")})
 
 
+def _coax_lane_refusal(lane):
+    label = LANE_WORDS.get(lane, lane)
+    return f'The {label} lane ({lane}): {ROW_WORDS[("_coaxial_ports", "coax_port")]} declared by add_coaxial_port() is not carried'
+
+
 def message(lane: str, rows, sim, run_args=None, grid=None) -> str:
     """The refusal, derived from the same table: each input the lane does not
     carry, and the lanes that carry every other input of this model."""
@@ -1063,6 +1068,8 @@ def message(lane: str, rows, sim, run_args=None, grid=None) -> str:
         gate = LANE_GATES.get(lane, {}).get(row)
         if isinstance(gate, dict):
             return f"{lane}: {ROW_WORDS[row]} requires {_gate_failure(gate, sim, grid, run_args)}"
+    if lane not in CALCULATORS and ("_coaxial_ports", "coax_port") in rows:
+        return _coax_lane_refusal(lane)
     if lane == "run_subgridded" and ("_refinement", "slab") in rows:
         from rfx.subgridding._notice import SUBGRID_NOTICE
         return SUBGRID_NOTICE
@@ -1132,7 +1139,7 @@ def message(lane: str, rows, sim, run_args=None, grid=None) -> str:
     if ("_waveguide_ports", "n_modes") in rows:
         where += (" run() and forward() drive and record one mode per waveguide port (n_modes=1); "
                   "compute_waveguide_s_matrix() on a uniform mesh measures several modes per port.")
-    return (f"The {LANE_WORDS[lane]} lane ({lane}) would solve this Simulation as if "
+    return (f"The {LANE_WORDS[lane]} lane would solve this Simulation as if "
             f"{'these inputs were' if len(lines) > 1 else 'this input was'} not "
             "declared, so it is refused before the first time step:\n"
             + "\n".join(lines) + "\n" + where
@@ -1247,8 +1254,7 @@ def admit_coax_declaration(sim, entry, args):
     lane = prefix + '_' + suffix
     row = ('_coaxial_ports', 'coax_port')
     if lane not in ADMITS or row not in ADMITS[lane]:
-        label = LANE_WORDS.get(lane, lane)
-        raise RfxUnsupported(f'The {label} lane ({lane}): add_coaxial_port() is not carried')
+        raise RfxUnsupported(_coax_lane_refusal(lane))
     if (args.get('port_s11_freqs') is not None if entry == 'forward' else
             args.get('compute_s_params') is not False or args.get('s_param_freqs') is not None):
         from rfx.model.coax_admission import refuse_other_s_drives
@@ -1458,8 +1464,6 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
     require a driven impedance port, regardless of other excitations.
     Passive records remain available as termination diagnostics, without S.
     """
-    from rfx.model.coax_admission import refuse_other_s_drives
-    refuse_other_s_drives(sim)
     ports = [p for p in sim._ports if p.is_port]
     if main_record and ports:
         from rfx.measurement.port_s_contract import record_ports, require_driven_record_s
