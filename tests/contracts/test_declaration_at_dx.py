@@ -488,8 +488,14 @@ def test_t8_lumped_sampling_counts_scale(factor, count):
     entries = tuple(sim._ports)
     key = declarations.declaration_key(sim)
     variant = declarations.declaration_at_dx(sim, factor, caller="contract")
+    opted_in = 0
     for original, scaled in zip(entries, variant._ports):
-        assert scaled.position == original.position
-        assert scaled.reference_plane_cells == count
+        if original.reference_plane_cells is None:
+            assert scaled is original
+        else:
+            opted_in += 1
+            assert scaled.position == original.position
+            assert scaled.reference_plane_cells == count
+    assert opted_in == 2
     assert declarations.declaration_key(sim) == key
     assert all(a is b for a, b in zip(entries, sim._ports))
