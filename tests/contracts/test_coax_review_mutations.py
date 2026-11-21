@@ -6,6 +6,7 @@ import pytest
 
 
 CASES = {
+    'reference_substrate': ('check_substrate_admitted', "rewrite(admission, 'refuse_bore_materials', ' & bore', ' & (bore | np.logical_or.reduce(edge_bore))')"),
     'other_excitation': ('check_refusal', "admission.refuse_other_s_drives = lambda *args: None"),
     'bore_material': ('check_refusal', "admission.refuse_bore_materials = lambda *args: None"),
     'mu_override': ('check_refusal', "\nfrom rfx.runners._admission import LANE_GATES\nfor lane in ('run_uniform', 'fwd_uniform'):\n    LANE_GATES[lane][('_coaxial_ports', 'coax_port')].pop('no mu_r_override')"),

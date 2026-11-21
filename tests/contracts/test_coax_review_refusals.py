@@ -1,5 +1,6 @@
 """Review regressions: every unsupported input is named before stepping."""
 from dataclasses import replace
+from types import SimpleNamespace
 import re
 
 import jax
@@ -7,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box
+from rfx import Box, DebyePole
 from rfx.errors import RfxUnsupported
 from tests.contracts.test_coax_port_model_and_drive import scene, capture, Captured
 
@@ -46,6 +47,43 @@ def test_other_excitation(monkeypatch, entry, kind):
             **({'port_s11_freqs': np.array([5e9])} if entry == 'forward' else {}))
 
 
+def test_plain_source_message(monkeypatch):
+    sim = scene()
+    sim.add_source((.010, .006, .010))
+    refusal(monkeypatch, sim, 'run', 'compute_s_params=False')
+
+
+def check_substrate_admitted(error):
+    assert isinstance(error, Captured), repr(error)
+
+
+@pytest.mark.parametrize('face', ['top', 'bottom'])
+@pytest.mark.parametrize('kind', ['debye', 'magnetic', 'kerr'])
+@pytest.mark.parametrize('inside', [False, True])
+def test_reference_substrate(monkeypatch, face, kind, inside):
+    sim = scene(face)
+    sim._coaxial_ports[0] = sim._coaxial_ports[0]._replace(pin_length=.001)
+    properties = {'debye': {'debye_poles': [DebyePole(delta_eps=1., tau=8e-12)]},
+                  'magnetic': {'mu_r': 2.}, 'kerr': {'chi3': 1e-20}}[kind]
+    sim.add_material('substrate', eps_r=2., **properties)
+    lo, hi = ((.001, .002) if face == 'top' else (.038, .039))
+    if inside:
+        lo, hi = (.010, .011)
+    sim.add(Box((.003, .003, lo), (.009, .009, hi)), material='substrate')
+    if inside:
+        refusal(monkeypatch, sim, 'run', 'mu_r != 1' if kind == 'magnetic' else 'dispersive or Kerr')
+        return
+    def kernel(*args, **kwargs):
+        raise Captured('reached time stepping')
+    monkeypatch.setattr('rfx.simulation.run', kernel)
+    error = None
+    try:
+        sim.run(n_steps=3, skip_preflight=True)
+    except Exception as caught:
+        error = caught
+    check_substrate_admitted(error)
+
+
 @pytest.mark.parametrize('kind', ['mu', 'sheet_bore', 'sheet_aperture', 'film', 'rlc'])
 def test_bore_material(monkeypatch, kind):
     sim = scene('bottom' if kind == 'sheet_aperture' else 'top')
@@ -62,6 +100,41 @@ def test_bore_material(monkeypatch, kind):
             sigma_bulk=1e4 if kind.startswith('sheet') else 1 / (377 * 35e-6), thickness=35e-6,
             **({'surface_impedance_f0': 9e9} if kind.startswith('sheet') else {}))
     refusal(monkeypatch, sim, 'run', pattern)
+
+
+@pytest.mark.parametrize('kind', ['film', 'sheet', 'rlc'])
+@pytest.mark.parametrize('axis', range(3))
+@pytest.mark.parametrize('mask_axis', range(3))
+def test_edge_material_component(monkeypatch, kind, axis, mask_axis):
+    from rfx._internal._grid_metric import field_index
+    from rfx.model.coax_admission import refuse_bore_materials
+    sim = scene()
+    grid = sim._build_grid()
+    component = ('ex', 'ey', 'ez')[axis]
+    position = (.0075, .006, .010)
+    edge = field_index(grid, position, component)
+    bore = np.zeros(grid.shape, dtype=bool)
+    edge_bore = [bore.copy() for _ in range(3)]
+    edge_bore[mask_axis][edge] = True
+    parts = [None] * 3
+    sheets = []
+    if kind == 'film':
+        parts[axis] = np.zeros(grid.shape)
+        parts[axis][edge] = 1.
+    elif kind == 'sheet':
+        sheets = [(0, component, np.array([edge]))]
+    else:
+        sim.add_lumped_rlc(position, R=50., topology='parallel', component=component)
+    monkeypatch.setattr('rfx.model.design_admission.sheet_edges', lambda *args: sheets)
+    materials = SimpleNamespace(mu_r=np.ones(grid.shape), sigma_film=tuple(parts),
+                                _fields=('mu_r', 'sigma_film'))
+    root = SimpleNamespace(grid=grid)
+    if axis == mask_axis:
+        with pytest.raises(RfxUnsupported, match={'film': 'sigma_film',
+                'sheet': 'surface_impedance_f0', 'rlc': 'lumped RLC'}[kind]):
+            refuse_bore_materials(sim, root, materials, bore, edge_bore)
+    else:
+        refuse_bore_materials(sim, root, materials, bore, edge_bore)
 
 
 def test_mu_override(monkeypatch):
