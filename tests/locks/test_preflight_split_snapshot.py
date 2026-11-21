@@ -1486,6 +1486,16 @@ def test_preflight_report_matches_the_committed_snapshot(
     where that test also drives ``preflight_sparameters``.
     """
     got = _render(fixture_id, build, kwargs, calculator)
+    if fixture_id in {"msl_x_clearance", "msl_y_clearance", "coax_msl_instrument", "coax_junction_short"}:
+        from rfx.preflight.line_stub import line_stub_findings
+        sim = build()
+        findings = line_stub_findings(sim)
+        assert not any(f.collection == "_msl_ports" for f in findings), "Face-reaching MSL traces continue; coax stubs retain their own subject."
+        from rfx.geometry.csg import declared_bounds
+        from rfx.geometry.smoothing import continued_conductor_shape
+        entry = sim._geometry[{"msl_x_clearance": 1, "msl_y_clearance": 1, "coax_msl_instrument": 5, "coax_junction_short": 3}[fixture_id]]
+        bounds = declared_bounds(continued_conductor_shape(sim, sim._build_realized_grid(), entry.shape, entry=entry))
+        assert bounds[0][0] < 0 if sim._msl_ports[0].direction == "+x" else bounds[1][0] > sim._unresolved_domain[0]
     if fixture_id in {"congruence_off_lattice", "congruence_on_lattice"}:
         spacing, = [r for r in json.loads(got)["preflight"]["issues"]
                     if r["code"] == "sheet_cavity_spacing"]
