@@ -1163,7 +1163,7 @@ def _sheet_and_volume_sim():
 
 def _run_entry(sim, entry):
     """Peak |Ex| at (sheet edge, control edge) for one solve entry point.
-    The override carries volume cells only."""
+    optimize()'s eps_override / pec_mask_override carry volume cells only, so a sheet survives only when forward() collects it again."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         if entry == "run":

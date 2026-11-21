@@ -99,7 +99,8 @@ def test_record_places_sources_and_probes_where_the_run_does(graded, monkeypatch
 
 @pytest.mark.parametrize("graded", (False, True), ids=("uniform", "graded"))
 def test_soft_source_index_by_hand(graded):
-    """Nearest node on the declared node line, plus the absorber padding."""
+    """Nearest node on the declared node line, plus the absorber padding.
+    At z = 5.0 mm, the nearest of the graded nodes at 4.5 and 5.25 mm is 5.25 mm (index 6), versus the uniform node at 5 mm (index 5)."""
     sim = _scene(graded)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

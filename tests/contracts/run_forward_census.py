@@ -2,7 +2,7 @@
 
 No differences are classified here. Each entry uses a fresh public declaration.
 Only declarations, seam capture, freezing, and comparison are retained here.
-The attached measurement plan names its entry and availability per entry.
+Importing slab_wrap binds its scan_loop default before capture() patches jax.lax.scan.
 """
 from contextlib import ExitStack
 from dataclasses import dataclass, fields, is_dataclass
