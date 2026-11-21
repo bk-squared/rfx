@@ -228,7 +228,7 @@ def _weekly_test_step(job: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_weekly_uses_sixteen_shards() -> None:
-    """An earlier measurement found runner spread 1.78."""
+    """The sixteen weekly shards allow for the runner spread of 1.78 measured earlier."""
     job = _workflow("validation.yml")["jobs"]["slow-tests"]
     assert job["strategy"]["matrix"]["group"] == list(range(1, 17))
     assert _slow_shards(job)["splits"] == 16

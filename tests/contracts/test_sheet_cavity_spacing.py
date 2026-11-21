@@ -807,7 +807,7 @@ def test_uniform_wall_kinds_match_the_grid_resolver():
 
 @pytest.mark.parametrize("conformal", [False, True])
 def test_conformal_wall_is_not_judged_at_its_node(conformal):
-    """The conformal z lid is a Dey-Mittra half-space at 5.5 mm, so the node is not the wall."""
+    """The 5.5 mm lid above the 2 mm sheet gives a drawn 3.5 mm gap whose nonconformal 4 mm solved gap has error 4/3.5 - 1 = +14.29%."""
     from rfx.boundaries.spec import Boundary, BoundarySpec
     sim = Simulation(10e9, (20 * MM, 18 * MM, 5.5 * MM), dx=MM,
                      boundary=BoundarySpec(x="pec", y="pec",

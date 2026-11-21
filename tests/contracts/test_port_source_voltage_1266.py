@@ -159,9 +159,6 @@ def msl_response(lane, mode, *, mutation=False):
                 ((12 + .35) * .001, (9 + .35) * .001, .004)), material='pec')
     sim.add(Box((port_node_coordinate(sim, (.006, .007, .004)), (5 - .35) * .001, .006),
                 ((12 + .35) * .001, (9 + .35) * .001, .006)), material='pec')
-    assert sim._geometry[-1].shape.corner_lo[0] == port_node_coordinate(sim, (.006, .007, .004)), (
-        "The upper plate must start at the port node to avoid an open stub in the default read."
-    )
     sim.add_msl_port(position=(.006, .007, .004), width=.004, height=.002,
                      direction='+x', impedance=RESISTANCE, waveform=PULSE, mode=mode)
     probe_z = (.004, .0048) if lane == 'z_graded' else (.004, .005)
@@ -169,6 +166,9 @@ def msl_response(lane, mode, *, mutation=False):
     for z in probe_z:
         sim.add_probe((.006, .007, z), 'ez')
     grid = sim._build_grid() if lane == 'uniform' else sim._build_nonuniform_grid()
+    assert grid.index_of("x", sim._geometry[-1].shape.corner_lo[0]) == grid.index_of("x", sim._msl_ports[-1].position[0]), (
+        "The upper plate must start at the port node to avoid an open stub in the default read."
+    )
     if lane == 'x_graded':
         from rfx.nonuniform import position_to_index
         feed = position_to_index(grid, (.006, .007, .004))

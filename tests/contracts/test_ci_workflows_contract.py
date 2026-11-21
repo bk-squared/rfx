@@ -269,7 +269,7 @@ def test_the_weekly_latest_jax_job_runs_python_312_on_jax_011() -> None:
 
     The weekly job installs the newest release of both wheels, with no upper bound, on 3.12, records what it got, runs the
     gradient and contract tests over all of its shards, and the lane's verdict waits for it.
-    Outcomes changed with the runner's CPU.
+    The latest-JAX lane caps XLA at AVX2 because earlier test outcomes varied with the runner's CPU.
     """
     jobs = load(WORKFLOW_DIR / "validation.yml")["jobs"]
     assert "if" not in jobs["latest-jax"]

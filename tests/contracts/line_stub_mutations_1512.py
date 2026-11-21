@@ -5,7 +5,7 @@ import pytest
 from rfx.preflight import line_stub
 
 def main():
-    """A fixed stack level cannot serve entries of different depth."""
+    """The fixed_stacklevel mutation must fail because solve entries have different call-stack depths."""
     source = Path('rfx/preflight/line_stub.py').read_text()
     mutations = {
      'drop_refusal': ('                raise ValueError(stub_message(finding, band))', '                return'),

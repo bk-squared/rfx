@@ -247,7 +247,7 @@ def _assert_runner_sheet(record, captured, grid):
 @pytest.mark.parametrize("nonuniform", [False, True])
 @pytest.mark.parametrize("poison_context", [False, True])
 def test_run_assembly_witness_after_port_mutation(monkeypatch, nonuniform, poison_context):
-    """The unheld line extends into the pad."""
+    """The line extends into the absorber pad until the port holds it to its declared extent."""
     import rfx.runners.nonuniform as nu
     sim, before = _terminated_trace(nonuniform)
     before_ctx = sim._pf_campaign_ctx

@@ -17,6 +17,7 @@ TUTORIALS_DIR = REPO_ROOT / "examples" / "tutorials"
 
 
 def _run_tutorial(name: str) -> str:
+    """A script run by path gets its own directory first on sys.path."""
     path = TUTORIALS_DIR / name
     assert path.exists(), f"missing tutorial: {path}"
 
@@ -27,7 +28,7 @@ def _run_tutorial(name: str) -> str:
     )
 
     assert env["PYTHONPATH"].split(os.pathsep)[0] == str(REPO_ROOT), (
-        "Tutorial subprocesses must import rfx from this checkout."
+        "The child's PYTHONPATH must start with this checkout."
     )
 
     completed = subprocess.run(

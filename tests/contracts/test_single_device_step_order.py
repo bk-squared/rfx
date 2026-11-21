@@ -155,6 +155,7 @@ def _phase_scene(kind):
 
 
 def _phase_reference(ctx, initial, electric, magnetic):
+    """The four Ampere terms accumulate in component order to match the float32 record bit for bit."""
     cell, probe = (1, 2, 3), (2, 1, 3)
 
     def step(st, waves):

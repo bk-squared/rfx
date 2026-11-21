@@ -94,6 +94,7 @@ def test_a_pole_carrying_board_on_the_absorber_is_left_to_the_dispersive_advisor
     ("z-lo", .3 * .0004, False),
 ])
 def test_a_box_face_window_follows_its_node_sampling(face, z_lo, fires):
+    """The True/False expectations reflect board at the inner node for a face 0.7 cell short of z-hi versus vacuum at the face node for a board starting 0.3 cell above z-lo."""
     sim = Simulation(freq_max=3.5e9, domain=(.02, .02, .01), dx=.0004,
                      boundary="cpml", cpml_layers=2)
     sim.add_material("board", eps_r=4.4)

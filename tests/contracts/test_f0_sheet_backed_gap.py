@@ -56,7 +56,7 @@ def test_s1_coincident_box_face_fires():
                      boundary="cpml", cpml_layers=2, snap="declared")
     sim.add(Box((2*MM, 2*MM, 2*MM), (8*MM, 8*MM, 4*MM)), material="pec")
     _sheet(sim, 2, 4*MM, lo=(MM, MM, 4*MM), hi=(9*MM, 9*MM, 4*MM))
-    assert all(sim._thin_conductors[0].shape.corner_lo[a] < sim._geometry[0].shape.corner_lo[a] < sim._geometry[0].shape.corner_hi[a] < sim._thin_conductors[0].shape.corner_hi[a] for a in (0, 1)), 'The Box-face edges must stay inside the sheet, away from its boundary rows.'
+    assert all(sim._thin_conductors[0].shape.corner_lo[a] + MM <= sim._geometry[0].shape.corner_lo[a] < sim._geometry[0].shape.corner_hi[a] <= sim._thin_conductors[0].shape.corner_hi[a] - MM for a in (0, 1)), 'The Box-face edges must stay inside the sheet, away from its boundary rows.'
     hit, = sim.preflight().by_code(CODE)
     assert "case C: 84 PEC-owned tangential edges" in str(hit)
     assert "sheet's loss is absent where PEC owns its edges" in str(hit)

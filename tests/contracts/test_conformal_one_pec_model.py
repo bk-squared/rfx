@@ -1,5 +1,5 @@
 """The public field and S entries hand the time step exactly one PEC model.
-The hand-counted sheet's 16 low-x CPML cells shift physical node 40 to array index 56.
+In the hand-counted sheet test, the grid's 16 low-x CPML cells shift physical node 40 to array index 56.
 """
 import numpy as np
 import pytest
@@ -10,6 +10,7 @@ from tests.contracts.conformal_scenes import assert_same_setup, capture_setups, 
 
 @pytest.mark.parametrize('name', ['S', 'Q', 'P'])
 def test_one_rule_and_no_volume_staircase(monkeypatch, name):
+    """One run() setup plus one device setup per lane excitation gives three setups."""
     rows = capture_setups(monkeypatch)
     scene(name).run(n_steps=4, compute_s_params=False)
     scene(name, ports=2).compute_waveguide_s_matrix(n_steps=4, normalize=False)

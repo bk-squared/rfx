@@ -1,5 +1,5 @@
 """Build-only #1138 contract: solved edges decide acceptance, not node span.
-The joined Box is off its electric walls.
+In test_realized_volume_join_and_vacuum_gap, the joined Box is off its electric walls.
 """
 import warnings
 
