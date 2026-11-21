@@ -648,7 +648,6 @@ def _wire_port_cell_centers(self, pe):
     physical E-edge center per driven cell and the midpoint V/I probe
     at ``cells[len(cells) // 2]``. Returns None when the declaration
     cannot be rasterized (diagnostics must not crash a run).
-    An E edge lies at a node on its transverse axes and halfway between its bounding nodes on its own axis.
     """
     try:
         from rfx.core.jax_utils import is_tracer

@@ -1544,6 +1544,7 @@ def _validate_cfg_port_index_mirror_covariance(
     ``n_axis`` rather than ``n_axis - 1``. That is reported as information
     with the offset divided out; anything left over after dividing it out
     is the setup's own asymmetry and is reported as a warning.
+    ``ref_x`` and ``probe_x`` of a built port config are absolute grid indices, already signed by the port's direction.
     """
     built = None
     if grid is None or cfgs is None:

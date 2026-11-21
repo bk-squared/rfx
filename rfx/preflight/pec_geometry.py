@@ -53,7 +53,6 @@ unmutated gate. The facade re-exports them anyway: 6 names move out and 6
 come back, so the module namespace
 ``tests/locks/test_preflight_split_snapshot.py`` pins by set equality is
 exactly as wide after this leg as before it -- still 55.
-Conformal PEC requires CPML psi coefficients to use the effective permittivity of the Yee electric-field update.
 """
 
 

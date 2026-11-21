@@ -50,10 +50,7 @@ def _gap_distances(footprint, conductors, plane, axis, grid, nodes):
 
 
 def _validate_cfg_f0_sheet_backed_gap(self, _w):
-    """Report a film's missing wall loss using the production realization.
-
-    At a film rim touching a perpendicular PEC wall, the electric field tangential to that wall is zero in the continuum.
-    """
+    """Report a film's missing wall loss using the production realization."""
     sheets = [(i, tc) for i, tc in enumerate(self._thin_conductors)
               if tc.surface_impedance_f0 is not None]
     if not sheets:

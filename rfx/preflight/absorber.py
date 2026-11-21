@@ -66,7 +66,6 @@ not None`` and advises ``boundary='cpml'``/``'upml'``. That is a statement
 about which absorber the domain has, not about how a conductor rasterizes,
 and it reads no ``pec_geometry`` module global -- it holds only
 ``PreflightWarning``. The NTFF condition is its trigger, not its subject.
-``_ABSORBER_REFLECTION_DB`` stores measured CPML reflections in dB at 2, 10 and 30 GHz and below 1 GHz for 1 mm cells with the shipped CFS alpha.
 """
 
 from __future__ import annotations
@@ -891,6 +890,7 @@ def _validate_cfg_body_flush_on_absorber(
     carries the statics without the poles, which
     ``dispersive_pole_at_absorber_face`` reports with that mechanism. Face
     distances and half-cell windows use the realized interior cells.
+    A Box rasterizes half-open on nodes, holding its lo-face node and, at a hi face, the node one cell in, while other shapes sample cell centres.
     """
     if cpml_thickness <= 0 or not self._geometry:
         return
