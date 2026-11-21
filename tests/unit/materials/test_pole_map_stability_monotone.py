@@ -23,13 +23,12 @@ TOLERANCE = 1e-6
 
 
 def _budgets():
+    assert GRADED_X[1] == np.min(GRADED_X) and GRADED_X[0] > GRADED_X[1] and GRADED_X[2] > GRADED_X[1], 'The second graded x cell must be finest with coarser neighbours'
     common = dict(freq_max=6e9, domain=DOMAIN, dx=DX, cpml_layers=8)
     uniform = Simulation(**common)._build_grid()
     graded = Simulation(**common, dx_profile=GRADED_X)._build_nonuniform_grid()
     for name, grid in (("uniform", uniform), ("graded", graded)):
         cells = [np.asarray(grid.cells(axis), dtype=np.float64) for axis in range(3)]
-        # The second graded x cell is finest; its immediate neighbours are coarser.
-        # Uniform y/z make this the finest region's local (including-neighbour) budget.
         minima = [float(np.min(widths)) for widths in cells]
         budget = C0**2 * sum(1 / width**2 for width in minima)
         yield name, float(grid.dt), budget, list(grid.shape), minima
@@ -42,7 +41,6 @@ def test_pole_map_stability_monotone():
     deltas = np.linspace(0, 4e10, 9)
     for lane, dt, budget, shape, minima in _budgets():
         x_max = 4 * dt**2 * budget
-        # At z=-1, the undamped Drude boundary is kappa dt**2 + x_max = 4.
         bound = (4 - x_max) / dt**2
         assert bound > 0
         kappas = factors * bound
