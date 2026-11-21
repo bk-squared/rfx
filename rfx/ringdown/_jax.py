@@ -345,9 +345,9 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
     mask = (mask > 0).astype(rdt)
     mask_c = mask.astype(cdt)
 
-    from rfx.ringdown._blocked import fit_window
+    from rfx.measurement.ringdown_blocked import fit_window
 
-    s, c, c0, ds = fit_window(Yw, s0, dt, mask_c,
+    s, c, c0, ds = fit_window(Yw, s0, dt, mask_c, pole_step=_pole_step,
                               constant_poles=mutation == "poles_constant")
     if mutation == "hold_residues":
         c = jax.lax.stop_gradient(c)

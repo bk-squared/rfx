@@ -113,14 +113,14 @@ def _refit_jvp(primals, tangents):
     return _refit(*primals), dc * mask[:, None]
 
 
-def fit_window(y, s0, dt, mask, *, constant_poles=False):
+def fit_window(y, s0, dt, mask, *, pole_step, constant_poles=False):
     """Return poles, residues, initial residues and the zero pole step for one window.
 
     The private byte target is read while tracing; existing jitted functions
     retain their traced block size. No M by K basis survives a scan iteration.
+    ``pole_step(q2, ghat, weights, mask)`` is the caller's frozen pole step,
+    applied to the compressed window ``Q2^H Y`` and the frozen ``Ghat``.
     """
-    from rfx.ringdown import _jax as ringdown_jax
-
     frozen_y, frozen_s = jax.lax.stop_gradient(y), jax.lax.stop_gradient(s0)
     size = _block_size(y.shape[0], 2 * s0.size + y.shape[1], s0.dtype)
     blocks = jax.tree_util.tree_map(jax.lax.stop_gradient, _factor(frozen_y, frozen_s, dt, mask, size))
@@ -133,7 +133,7 @@ def fit_window(y, s0, dt, mask, *, constant_poles=False):
         ds = jnp.zeros_like(s0)
     else:
         _, q2 = _project(y, frozen_s, dt, mask, blocks)
-        ds = ringdown_jax._pole_step(q2, ghat, weights, mask)
+        ds = pole_step(q2, ghat, weights, mask)
     s = s0 + ds
     c = _refit(y, s, frozen_s, dt, mask, blocks, c0)
     return s, c, c0, ds

@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.ringdown import _blocked as blocked
+from rfx.measurement import ringdown_blocked as blocked
 from rfx.ringdown import _jax as rj
 from rfx.measurement import matrix_pencil as pencil
 from tests._x64_compat import enable_x64
