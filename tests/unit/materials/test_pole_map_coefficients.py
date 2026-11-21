@@ -226,7 +226,7 @@ def test_p2c_touching_damping_and_p8_sampling(graded, monkeypatch):
         ulp = abs(float(got) - float(want)) / abs(float(np.spacing(want)))
         worst_restoring = max(worst_restoring, ulp)
         assert ulp <= 2, (comp, cell, got, want, ulp)
-        # A8b: independent float64 closed form, rounded once to float32.
+
         want_c = np.float32(EPS0 * ke * float(grid.dt)**2 / (1 + de * float(grid.dt)))
         got_c = np.float32(np.asarray(coeffs.c[comp])[(0,) + cell])
         assert np.signbit(got_c) == np.signbit(want_c)

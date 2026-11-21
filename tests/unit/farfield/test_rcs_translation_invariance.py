@@ -19,7 +19,6 @@ from rfx.core.yee import MaterialArrays
 from rfx.geometry.csg import Sphere, rasterize
 from rfx.grid import C0, Grid
 
-# Same rig as tests/fixtures/rcs_sphere_mie/generate_fixture.py.
 F0 = 3e9
 RADIUS = 0.0159
 RESOLUTION = 40
