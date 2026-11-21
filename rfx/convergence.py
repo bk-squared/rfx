@@ -331,8 +331,10 @@ def quick_convergence(
     """Run a convergence study on an existing Simulation with dx scaling.
 
     Carries every declaration of *sim*, scaling its built dx and any dt pin.
-    Cell counts, including CPML layers and port/probe offsets, remain counts;
-    their physical size scales with dx. At factors other than one, resolved
+    At factors other than one, waveguide reported planes are declared metre
+    planes fixed to the base grid, and waveguide and lumped sampling counts scale.
+    CPML layers, TF/SF and current-moment margins, MSL counts and auto memos stay
+    unchanged. At factors other than one, resolved
     profiles (including inferred profiles), nominal profiles, dt_min_cell,
     node-pinned sheets, node-index DFT crops and frozen meshes are refused.
     Use ``convergence_study`` with a factory that builds each rung, or an
@@ -368,11 +370,12 @@ def quick_convergence(
         dx_factors = [2.0, 1.5, 1.0, 0.75]
 
     base = declaration_at_dx(sim, caller="quick_convergence")
-    base_dx = float(base._build_realized_grid().dx)
+    base_grid = base._build_realized_grid()
+    base_dx = float(base_grid.dx)
     variants = {}
     dx_values = []
     for factor in dx_factors:
-        variant = declaration_at_dx(sim, factor, caller="quick_convergence", _base_dx=base_dx)
+        variant = declaration_at_dx(sim, factor, caller="quick_convergence", _base_grid=base_grid)
         dx = base_dx * float(factor)
         dx_values.append(dx)
         variants[dx] = variant
@@ -399,7 +402,7 @@ def quick_convergence(
     def sim_factory(dx):
         if dx not in variants:
             variants[dx] = declaration_at_dx(
-                sim, dx / base_dx, caller="quick_convergence", _base_dx=base_dx)
+                sim, dx / base_dx, caller="quick_convergence", _base_grid=base_grid)
         return variants[dx]
 
     return convergence_study(
