@@ -3,6 +3,7 @@
 Compare each accepted permittivity lane with the ordinary uniform run.
 Read all three permittivities at the capacitor node and the first E update
 from an identical initial H field, before subsequent field propagation.
+The 240-epsilon allowance budgets one float32 epsilon per timestep.
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -49,11 +50,11 @@ def _model(lane, component=None, *, fractional=False, seeded=False):
                      boundary=boundary, **kwargs)
     sim.add_material("diel", eps_r=4.0)
     sim.add(Box((-0.002,) * 3, (0.013,) * 3), material="diel")
-    # Boundary(conformal=True) enters the conformal builder; the capacitor
-    # is away from that wall, with w=1. A second wall at x=5.7 mm gives
-    # fractional weights at the same off-centre capacitor node.
+
+
+    FRACTIONAL_WALL_X_M = 0.0057
     if fractional:
-        sim.add(Box((-0.003,) * 3, (0.0057, 0.014, 0.014)), material="pec")
+        sim.add(Box((-0.003,) * 3, (FRACTIONAL_WALL_X_M, 0.014, 0.014)), material="pec")
     if not seeded:
         sim.add_source((0.003, 0.004, 0.005), "ez", amplitude_kind="field",
                        waveform=GaussianPulse(f0=5e9, bandwidth=0.8))
@@ -142,16 +143,14 @@ def reference_traces():
 
 @pytest.fixture(scope="module", params=ACCEPTED)
 def lane_control(request, reference_traces):
+    """Factor 4 covers earlier measured with-C/no-C ratios of 2.24 on conformal paths and up to 3.34 on forward paths."""
     lane = request.param
     no_c = _run_case(lane)["trace"]
     residual = _relative(no_c, reference_traces[None])
-    # Bound the control too: at most one float32 epsilon per timestep.
+
     assert residual < 240 * np.finfo(np.float32).eps, (lane, residual)
-    # Expected residual is the lane's own float32 difference from the
-    # reference, measured by the no-C control. Factor 4 covers the measured
-    # with-C/no-C ratio 2.24 on conformal paths and up to 3.34 on forward
-    # paths; 240 epsilons allow one per timestep.
-    # No with-C result sets its own acceptance tolerance.
+
+
     tolerance = max(4 * residual, 240 * np.finfo(np.float32).eps)
     print(f"{lane}: no_C_residual={residual:.9g}, tolerance={tolerance:.9g}",
           file=sys.stderr)
@@ -177,19 +176,18 @@ def test_capacitor_owns_one_edge(lane_control, component):
 
 
 def _assert_one_edge(lane, component, tolerance, *, fractional=False):
+    """The independent stamp C*d/(epsilon_0*dual_area) reduces to C/(epsilon_0*d) for a cubic 1 mm cell."""
     without = _run_case(lane, fractional=fractional, seeded=True)
     with_c = _run_case(lane, component, fractional=fractional, seeded=True)
     axis = COMPONENTS.index(component)
     others = [c for c in range(3) if c != axis]
-    # Independent physical stamp: C*d/(epsilon_0*dual_area), cubic 1 mm.
+
     stamp = CAPACITANCE / (EPS_0 * DX)
     expected = np.zeros(3)
     expected[axis] = stamp
     if lane.endswith("occ") and fractional:
-        # Design-region admission (D1): a lumped element's edge is released
-        # like a port's, so the 0.2 occupancy on its cell is cleared when the
-        # element is declared. With it: eps 4 everywhere at the node plus the
-        # stamp on its own edge; without it the occupancy stays (eps 5).
+
+
         released = np.full(3, 4.0)
         released[axis] += stamp
         np.testing.assert_allclose(with_c["eps"], released, rtol=tolerance,
@@ -201,8 +199,8 @@ def _assert_one_edge(lane, component, tolerance, *, fractional=False):
                                atol=tolerance * 4.0)
     a, b = with_c["trace"][0], without["trace"][0]
     assert np.all(np.abs(b) > 0), (lane, b)
-    # Only the first E update is compared: longer traces may change on
-    # transverse components after the capacitor field propagates.
+
+
     np.testing.assert_allclose(a[others], b[others], rtol=tolerance, atol=0)
     assert abs(a[axis] - b[axis]) > 0.5 * abs(b[axis])
     print(f"{lane} {component} fractional={fractional}: eps_delta={delta.tolist()}, "
@@ -216,7 +214,7 @@ def _assert_one_edge(lane, component, tolerance, *, fractional=False):
         else:
             np.testing.assert_array_equal(weights, np.ones(3))
     if lane.endswith("occ") and fractional:
-        # At this node one incident cell has occupancy 0.2: eps=4/(1-0.2).
+
         np.testing.assert_allclose(without["eps"], 5.0, rtol=FLOOR)
 
 

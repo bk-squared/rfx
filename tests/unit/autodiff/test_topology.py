@@ -30,10 +30,6 @@ from rfx.topology import (
 )
 
 
-# ---------------------------------------------------------------------------
-# TopologyDesignRegion
-# ---------------------------------------------------------------------------
-
 class TestTopologyDesignRegion:
     """Tests for TopologyDesignRegion construction and properties."""
 
@@ -55,13 +51,14 @@ class TestTopologyDesignRegion:
         assert region.beta_projection == 4.0
 
     def test_effective_filter_radius_from_min_feature_size(self):
-        """min_feature_size overrides filter_radius."""
+        """min_feature_size overrides filter_radius.
+        The effective radius is 0.004 / 2."""
         region = TopologyDesignRegion(
             corner_lo=(0, 0, 0), corner_hi=(0.01, 0.01, 0.001),
             min_feature_size=0.004,
-            filter_radius=0.001,  # should be overridden
+            filter_radius=0.001,
         )
-        assert region.effective_filter_radius == 0.002  # 0.004 / 2
+        assert region.effective_filter_radius == 0.002
 
     def test_effective_filter_radius_from_filter_radius(self):
         """When min_feature_size is None, filter_radius is used."""
@@ -79,16 +76,12 @@ class TestTopologyDesignRegion:
         assert region.effective_filter_radius is None
 
 
-# ---------------------------------------------------------------------------
-# Density filter
-# ---------------------------------------------------------------------------
-
 class TestDensityFilter:
     """Tests for apply_density_filter."""
 
     def test_density_filter_smooths_2d(self):
         """Filter should smooth a checkerboard pattern toward uniform."""
-        # Create a 20x20 checkerboard
+
         n = 20
         rho = jnp.zeros((n, n), dtype=jnp.float32)
         for i in range(n):
@@ -96,10 +89,10 @@ class TestDensityFilter:
                 if (i + j) % 2 == 0:
                     rho = rho.at[i, j].set(1.0)
 
-        # Apply filter with radius = 3 cells
+
         rho_filtered = apply_density_filter(rho, radius_cells=3.0, dtype='float32')
 
-        # The filtered field should be smoother: less variance
+
         var_before = float(jnp.var(rho))
         var_after = float(jnp.var(rho_filtered))
         assert var_after < var_before, (
@@ -128,7 +121,7 @@ class TestDensityFilter:
         rho = 0.6 * jnp.ones((15, 15), dtype=jnp.float32)
         rho_filtered = apply_density_filter(rho, radius_cells=3.0, dtype='float32')
         diff = float(jnp.max(jnp.abs(rho_filtered - rho)))
-        # Small tolerance for edge effects
+
         assert diff < 0.05, f"Uniform field changed by {diff:.6f}"
 
     def test_density_filter_small_radius_noop(self):
@@ -148,10 +141,6 @@ class TestDensityFilter:
         assert float(jnp.max(jnp.abs(grad))) > 0, "Gradient through filter is zero"
 
 
-# ---------------------------------------------------------------------------
-# Projection
-# ---------------------------------------------------------------------------
-
 class TestProjection:
     """Tests for apply_projection."""
 
@@ -162,9 +151,7 @@ class TestProjection:
         proj_low = apply_projection(rho, beta=1.0)
         proj_high = apply_projection(rho, beta=64.0)
 
-        # At high beta, values near 0 should be closer to 0,
-        # values near 1 should be closer to 1
-        # Measure "binarization" as mean of 4*p*(1-p), which is 0 for binary
+
         binarization_low = float(jnp.mean(4.0 * proj_low * (1.0 - proj_low)))
         binarization_high = float(jnp.mean(4.0 * proj_high * (1.0 - proj_high)))
 
@@ -202,10 +189,6 @@ class TestProjection:
         assert float(jnp.max(jnp.abs(grad))) > 0, "Gradient through projection is zero"
 
 
-# ---------------------------------------------------------------------------
-# density_to_eps
-# ---------------------------------------------------------------------------
-
 class TestDensityToEps:
     """Tests for the full density -> eps pipeline."""
 
@@ -238,7 +221,7 @@ class TestDensityToEps:
     def test_density_to_eps_endpoints(self):
         """rho=0 -> eps_bg, rho=1 -> eps_fg (approximately for beta=1)."""
         eps_bg, eps_fg = 2.0, 10.0
-        # At high beta, endpoints should be close
+
         rho_zero = jnp.zeros((3, 3), dtype=jnp.float32)
         rho_one = jnp.ones((3, 3), dtype=jnp.float32)
 
@@ -254,7 +237,7 @@ class TestDensityToEps:
         rho = 0.5 * jnp.ones((5, 5, 3), dtype=jnp.float32)
         eps, _ = density_to_eps(rho, eps_bg, eps_fg, beta=1.0)
         assert eps.shape == (5, 5, 3)
-        # At rho=0.5, projection(0.5)=0.5, so eps should be midpoint
+
         expected = eps_bg + 0.5 * (eps_fg - eps_bg)
         assert float(jnp.max(jnp.abs(eps - expected))) < 0.01
 
@@ -309,9 +292,8 @@ def test_apply_pec_occupancy_matches_the_binary_volume_rule():
     np.testing.assert_allclose(np.array(hard.ex), np.array(soft.ex))
     np.testing.assert_allclose(np.array(hard.ey), np.array(soft.ey))
     np.testing.assert_allclose(np.array(hard.ez), np.array(soft.ez))
-    # ... and the two REALIZATIONS are different objects, which is what the
-    # old name blurred: the volume shorts its normal edge, a declared sheet
-    # on the same plane leaves it live.
+
+
     from rfx.boundaries.pec import SheetSpec, realized_pec_edge_masks
     fp = jnp.zeros((5, 5, 5), dtype=jnp.bool_).at[2, :, :].set(True)
     sheet = realized_pec_edge_masks(
@@ -334,10 +316,6 @@ def test_apply_pec_occupancy_does_not_realize_a_declared_sheet():
     np.testing.assert_allclose(np.array(out.ez), np.array(state.ez))
 
 
-# ---------------------------------------------------------------------------
-# Gradient flow
-# ---------------------------------------------------------------------------
-
 class TestGradientFlow:
     """Tests that jax.grad flows through the entire density -> eps pipeline."""
 
@@ -348,7 +326,7 @@ class TestGradientFlow:
         def loss_fn(rho):
             eps, _ = density_to_eps(rho, eps_bg, eps_fg,
                                     filter_radius_cells=2.0, beta=4.0)
-            # Minimize total permittivity (drives rho toward 0)
+
             return jnp.sum(eps)
 
         rho = 0.5 * jnp.ones((10, 10), dtype=jnp.float32)
@@ -356,7 +334,7 @@ class TestGradientFlow:
 
         assert jnp.all(jnp.isfinite(grad)), "Gradient is not finite"
         assert float(jnp.max(jnp.abs(grad))) > 0, "Gradient is all zeros"
-        # Gradient should be positive (increasing rho increases eps)
+
         assert float(jnp.mean(grad)) > 0, "Expected positive gradient direction"
         print(f"\n  Gradient stats: mean={float(jnp.mean(grad)):.6e}, "
               f"max={float(jnp.max(grad)):.6e}")
@@ -389,10 +367,6 @@ class TestGradientFlow:
         assert jnp.all(jnp.isfinite(grad)), "Gradient at beta=64 has NaN/Inf"
 
 
-# ---------------------------------------------------------------------------
-# Beta schedule
-# ---------------------------------------------------------------------------
-
 class TestBetaSchedule:
     """Tests for beta schedule lookup."""
 
@@ -407,14 +381,10 @@ class TestBetaSchedule:
         assert _get_beta(100, _DEFAULT_BETA_SCHEDULE) == 64.0
 
 
-# ---------------------------------------------------------------------------
-# Integration: topology_optimize reduces loss
-# ---------------------------------------------------------------------------
-
 class TestTopologyOptimize:
     """Integration test for the full topology optimization loop."""
 
-    @pytest.mark.gpu  # optax is installed only in the GPU suite
+    @pytest.mark.gpu
     def test_topology_optimize_reduces_loss(self):
         """Topology optimization should reduce the objective over iterations.
 
@@ -440,15 +410,16 @@ class TestTopologyOptimize:
             beta_projection=1.0,
         )
 
-        # Objective: maximize probe energy (minimize negative)
+
         def obj(result):
             return -jnp.sum(result.time_series ** 2)
 
+        SHORT_TEST_BETA = 1.0
         result = topology_optimize(
             sim, region, obj,
             n_iterations=5,
             learning_rate=0.05,
-            beta_schedule=[(0, 1.0)],  # constant beta for short test
+            beta_schedule=[(0, SHORT_TEST_BETA)],
             verbose=True,
         )
 
@@ -458,16 +429,16 @@ class TestTopologyOptimize:
         assert result.density.ndim == 3
         assert result.eps_design.ndim == 3
 
-        # Loss should decrease (or at least the optimizer tried)
+
         first_loss = result.history[0]
         last_loss = result.history[-1]
         print(f"\n  Loss: first={first_loss:.6e}, last={last_loss:.6e}")
-        # With 5 iterations we expect some improvement
+
         assert last_loss <= first_loss + abs(first_loss) * 0.1, (
             f"Loss did not decrease: {first_loss:.6e} -> {last_loss:.6e}"
         )
 
-    @pytest.mark.gpu  # optax is installed only in the GPU suite
+    @pytest.mark.gpu
     def test_topology_optimize_with_pec_foreground(self):
         """PEC foreground should optimise through conductor occupancy, not sigma hacks."""
         from rfx.api import Simulation
@@ -518,7 +489,7 @@ class TestTopologyOptimize:
         assert result.eps_design.shape == (5, 5, 1)
         assert result.final_result is None
 
-    @pytest.mark.gpu  # optax is installed only in the GPU suite
+    @pytest.mark.gpu
     def test_topology_optimize_with_cpml(self):
         """Topology optimization should work with CPML boundary.
 
@@ -529,7 +500,7 @@ class TestTopologyOptimize:
         """
         from rfx.api import Simulation
 
-        # Use CPML boundary (the default) — this adds padding cells
+
         sim = Simulation(
             freq_max=5e9,
             domain=(0.015, 0.015, 0.015),
@@ -539,7 +510,7 @@ class TestTopologyOptimize:
         sim.add_port((0.005, 0.0075, 0.0075), "ez")
         sim.add_probe((0.01, 0.0075, 0.0075), "ez")
 
-        # Design region well inside the domain (should not overlap CPML)
+
         region = TopologyDesignRegion(
             corner_lo=(0.006, 0.006, 0.006),
             corner_hi=(0.009, 0.009, 0.009),
@@ -551,7 +522,7 @@ class TestTopologyOptimize:
         def obj(result):
             return -jnp.sum(result.time_series ** 2)
 
-        # Should not raise — the CPML index clamping prevents mismatch
+
         result = topology_optimize(
             sim, region, obj,
             n_iterations=2,
@@ -565,13 +536,13 @@ class TestTopologyOptimize:
         assert result.density.ndim == 3
         assert result.eps_design.ndim == 3
 
-        # Verify the grid uses CPML
+
         grid = sim._build_grid()
         assert grid.pad_x == 8
         assert grid.pad_y == 8
         assert grid.pad_z == 8
 
-        # Verify design region indices are within interior
+
         lo = grid.position_to_index(region.corner_lo)
         hi = grid.position_to_index(region.corner_hi)
         for d in range(3):
@@ -587,11 +558,12 @@ class TestTopologyOptimize:
 
 
 def test_pec_foreground_gradient_is_finite_and_nonzero():
-    """PEC occupancy topology should produce a usable simulator gradient."""
+    """PEC occupancy topology should produce a usable simulator gradient.
+    The domain length is a whole number of cells of dx, so the solved domain equals the declared one."""
     from rfx.api import Simulation
     from rfx.core.yee import MaterialArrays
 
-    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
     sim.add_source((0.005, 0.0075, 0.0075), "ez")
     sim.add_probe((0.01, 0.0075, 0.0075), "ez")
 
