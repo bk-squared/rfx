@@ -45,9 +45,7 @@ from rfx.geometry.csg import Box
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import lorentz_pole
 
-# The fixtures keep the drive conventions; the per-path
-# amplitude_kind deprecation and the distributed lane's opt-in notice
-# are not what this file is about.
+
 pytestmark = [
     pytest.mark.filterwarnings("ignore:add_source\\(\\.\\.\\., amplitude_kind=None\\)"),
     pytest.mark.filterwarnings("ignore:Simulation.forward\\(distributed=True\\) is opt-in"),
@@ -135,18 +133,12 @@ def _assert_finite_and_scale_invariant(grads, exps):
         assert err <= REL_TOL, f"cotangent 2**{k}: {err:.3e} of the peak"
 
 
-
-
-
 def test_issue_1357_fixture_gradient_is_finite():
     """The issue's own objective (cotangent 1) and a 2**-40 copy of it."""
     grads = _gradients(_issue_1357_fixture, (0, -40), n_steps=120)
     _assert_finite_and_scale_invariant(grads, (0, -40))
 
 
-
-# The dispersive rows are split by pole kind to identify each builder: a Debye-only or Lorentz-only model uses that builder's
-# own ca/cb, a model with both uses the mixed update (dt/gamma_total).
 @pytest.mark.parametrize("lane, material", [("uniform", "sigma"), ("upml", "sigma"), ("walls", "sigma"), ("nu", "sigma"), ("distributed_nu", "sigma"), pytest.param("uniform", "debye", marks=pytest.mark.slow), pytest.param("uniform", "lorentz", marks=pytest.mark.slow), pytest.param("uniform", "debye+lorentz", marks=pytest.mark.slow), pytest.param("nu", "debye+lorentz", marks=pytest.mark.slow), pytest.param("distributed_nu", "debye", marks=pytest.mark.slow), pytest.param("distributed_nu", "lorentz", marks=pytest.mark.slow), pytest.param("distributed_nu", "debye+lorentz", marks=pytest.mark.slow)])
 def test_gradient_is_scale_invariant(lane, material, request):
     kw = {}
@@ -157,8 +149,6 @@ def test_gradient_is_scale_invariant(lane, material, request):
     grads = _gradients(lambda: _model(lane, material), exps, n_steps=n_steps, **kw)
     _assert_finite_and_scale_invariant(grads, exps)
 
-
-# --- the named builders one by one: VJP at a cotangent of 1e30 -------------
 
 def _materials(rng, shape):
     return MaterialArrays(
@@ -225,7 +215,8 @@ def _dispersion_cases(dtype):
 
 
 def _builder_cases():
-    """Shared checks for the supported solver paths."""
+    """Shared checks for the supported solver paths.
+    Preserve the random stream for the surviving coefficient fixtures."""
     rng = np.random.default_rng(1357)
     shape = (5, 6, 7)
     mats = _materials(rng, shape)
@@ -233,7 +224,7 @@ def _builder_cases():
     st = init_state(shape)
     st = st._replace(**{c: jnp.asarray(rng.standard_normal(shape), jnp.float32)
                         for c in ("ex", "ey", "ez", "hx", "hy", "hz")})
-    # Preserve the random stream for the surviving coefficient fixtures.
+
     _materials(rng, (12, 12, 1))
     for _ in range(3):
         rng.standard_normal((12, 12))
@@ -260,7 +251,7 @@ def _builder_cases():
             lambda e: rfx.materials.thin_conductor.sheet_update_coeffs(
                 sheet, mats._replace(eps_r=e), dt), mats.eps_r, 1e24),
            "edge_update_denominator": (
-            # This raw-array fixture has no wall face.
+
             lambda e: rfx.lumped.edge_update_denominator(
                 mats._replace(eps_r=e), (2, 3, 3), "ez", dt, grid=SimpleNamespace()), mats.eps_r, 1e30),
            "init_upml": (
@@ -271,16 +262,15 @@ def _builder_cases():
 @pytest.mark.parametrize("name", ["e_update_coeffs", "precompute_coeffs", "update_e_aniso", "update_e_aniso_inv", "sheet_update_coeffs", "edge_update_denominator", "init_upml", *DISPERSION_BUILDERS])
 def test_builder_vjp_is_finite_at_any_cotangent_scale(name):
     """The builder's eps VJP at a cotangent past its SI overflow is finite
-    and is exactly ``2**100`` times the VJP at ``2**-100`` of it."""
+    and is exactly ``2**100`` times the VJP at ``2**-100`` of it.
+    The lumped D0 stays un-jitted because its SI eps_r*EPS_0/dt overflows under op-by-op jax.grad outside the time loop."""
     fn, eps, big = _builder_cases()[name]
 
     def at(scale):
         out, vjp = jax.vjp(fn, eps)
         return vjp(jax.tree.map(lambda o: jnp.full_like(o, scale), out))[0]
 
-    # Jitted, except the lumped D0: its SI ``eps_r*EPS_0/dt`` overflows as an
-    # un-jitted ``jax.grad`` runs it (op by op, outside the time loop), and
-    # under jit XLA folds ``(ct / dt) * EPS_0`` into ``ct * (EPS_0/dt)``.
+
     if name != "edge_update_denominator":
         at = jax.jit(at)
     g_big = np.asarray(at(jnp.float32(big)))
@@ -291,10 +281,6 @@ def test_builder_vjp_is_finite_at_any_cotangent_scale(name):
     assert float(np.max(np.abs(g_small * 2.0 ** 100 - g_big))) <= REL_TOL * peak
 
 
-# --- forward bits: the helper is transparent -----------------------------
-
-# The modules that import the helper by name. The distributed runners import
-# it inside their CPML functions, from rfx.core.yee, at call time.
 _IMPORTERS = (rfx.core.yee, rfx.stepping.yee, rfx.boundaries.cpml, rfx.boundaries.upml,
               rfx.materials.thin_conductor, rfx.lumped,
               rfx.model.dispersive_poles)
@@ -307,7 +293,8 @@ def _si_only(si_fn, eps_r_fn, *args):
 @pytest.mark.parametrize("lane", [*(pytest.param(lane, marks=pytest.mark.slow)
       for lane in ("uniform", "upml", "nu", "distributed_nu"))])
 def test_forward_bits_are_the_si_spelling(lane, monkeypatch, request):
-    """Shared checks for the supported solver paths."""
+    """Shared checks for the supported solver paths.
+    No compiled kernel may carry the helper across the SI comparison."""
     kw = {}
     if lane == "distributed_nu":
         kw = dict(distributed=True, devices=request.getfixturevalue("two_devices"))
@@ -321,7 +308,7 @@ def test_forward_bits_are_the_si_spelling(lane, monkeypatch, request):
     for module in _IMPORTERS:
         assert module.si_value_eps_r_grad is si_value_eps_r_grad
         monkeypatch.setattr(module, "si_value_eps_r_grad", _si_only)
-    jax.clear_caches()  # no compiled kernel may carry the helper across
+    jax.clear_caches()
     ref = run()
     jax.clear_caches()
     assert np.max(np.abs(ref)) > 0.0
@@ -353,15 +340,14 @@ def test_helper_returns_si_bits_and_the_eps_r_derivative():
     assert isinstance(host, float) and host == si(np.float64(2.0), 0.5, dt)
 
 
-# --- the tangent is the SI derivative -------------------------------------
-
 JVP_TOL_ULP = 9.0
 
 
 def _jvp_cases(dtype):
     """``name -> (fn(eps_r, sigma), eps_r, sigma)``, every array in ``dtype``
     built from one float32 draw, so the float32 and float64 rows see the same
-    numbers."""
+    numbers.
+    Preserve the random stream for the surviving coefficient fixtures."""
     rng = np.random.default_rng(13570)
 
     def arr(a):
@@ -382,7 +368,7 @@ def _jvp_cases(dtype):
     dt, dx = 1.9e-12, DX
     shape = (5, 6, 7)
     m, st = mats(shape), fields(shape)
-    # Preserve the random stream for the surviving coefficient fixtures.
+
     mats((12, 12, 1))
     for _ in range(3):
         rng.standard_normal((12, 12))
@@ -428,7 +414,7 @@ def _jvp_cases(dtype):
             lambda e, s: rfx.materials.thin_conductor.sheet_update_coeffs(
                 sheet, m._replace(eps_r=e, sigma=s), dt), m.eps_r, sheet_sigma),
            "edge_update_denominator": (
-            # This raw-array fixture has no wall face.
+
             lambda e, s: rfx.lumped.edge_update_denominator(
                 m._replace(eps_r=e, sigma=s), (2, 3, 3), "ez", dt, grid=SimpleNamespace()),
             m.eps_r, m.sigma),
@@ -446,20 +432,20 @@ def _jvp(name, dtype):
     return [np.asarray(leaf, np.float64) for leaf in jax.tree.leaves(t)]
 
 
-# The builders above that are jax.jit functions themselves.
 _JITTED_BUILDERS = (stepping_yee.update_e_aniso_inv,)
 
 
 @pytest.fixture
 def si_float64_jvp(monkeypatch):
     """``name -> [leaves]``: the builder's JVP through its SI spelling, in
-    float64 (x64 scoped to the call, never the module)."""
+    float64 (x64 scoped to the call, never the module).
+    No trace made with _si_only may outlive the SI row."""
     from tests._x64_compat import enable_x64
 
     def clear():
-        # The jitted builders' traces: none made with the helper may serve
-        # the SI row, and none made with ``_si_only`` may outlive it. (A
-        # process-wide jax.clear_caches() here cost ~30 s over the rows.)
+
+
+        """No trace made with the helper may serve the SI row."""
         for fn in _JITTED_BUILDERS:
             fn.clear_cache()
 
@@ -486,7 +472,7 @@ def test_builder_tangent_is_the_si_derivative(name, si_float64_jvp):
     for i, (g, w) in enumerate(zip(got, want)):
         assert np.all(np.isfinite(g)), f"{name}[{i}]: non-finite tangent"
         peak = float(np.max(np.abs(w)))
-        if peak == 0.0:  # an output eps does not reach (an H coefficient)
+        if peak == 0.0:
             assert not np.any(g), f"{name}[{i}]: tangent where SI has none"
             continue
         ulp = float(np.max(np.abs(g - w))) / (peak * 2.0 ** -23)

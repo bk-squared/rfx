@@ -2,6 +2,7 @@
 
 References below use only the closed-form KKT equations, never rfx helpers.
 Every invocation checks all preconditions before permitting an MMA evaluation.
+Away from a bound at distance >= .05, eps/(2 |d|) <= 1e-6.
 """
 import math
 from functools import lru_cache
@@ -14,12 +15,9 @@ import pytest
 from rfx.optimizers import _MMA, _mma_subproblem
 
 
-# Section 8.1: eps/(2 |d|) <= 1e-6 away from a bound (distance >= .05);
-# at a bound sqrt(eps/2) ~= 2e-4, allowing 5x gives the all-component bar.
 SAFE_ERROR = 1e-5
 ALL_ERROR = 1e-3
 SAFE_DISTANCE = 0.05
-# T1c: about 1000 times float32 evaluation error around f = 1.
 MINIMAX_ERROR = 1e-4
 OUTER_ITERATIONS = 200
 
@@ -49,14 +47,10 @@ def _bisect_shift(a, target):
 
 @lru_cache(None)
 def _reference(n, two):
-    # NumPy's seeded Generator, then exactly the float32 data seen by JAX.
     a = np.random.default_rng(0).uniform(-0.5, 1.5, n).astype(np.float32).astype(np.float64)
     w = np.where(np.arange(n) % 2 == 0, 1.0, 3.0)
     b = np.array([0.3 * n, 0.55 * n] if two else [0.3 * n])
     if two:
-        # The two KKT equations reduce to even/odd sums: E+O=b1,
-        # E+3O=b2. Independent bisections solve those two equations;
-        # h_even=nu1+nu2 and h_odd=nu1+3nu2 reconstruct the multipliers.
         odd_target = (b[1] - b[0]) / 2
         even_target = b[0] - odd_target
         h_even = _bisect_shift(a[::2], even_target)
@@ -110,18 +104,18 @@ def _record(first, checks, iteration):
             first[name] = iteration
 
 
-# n = 1e5 runs about 80-140 s on the cluster CPU lane; the weekly lane runs it, n = 1e3 runs before every merge
 @pytest.mark.parametrize('n', [1000, pytest.param(100000, marks=pytest.mark.slow)])
 @pytest.mark.parametrize('two', [False, True], ids=['T1a', 'T1b'])
 def test_bounded_closed_form(n, two):
+    """At a bound sqrt(eps/2) is about 2e-4, so a 5x allowance gives the all-component bar."""
     a, w, b, nu, star, e_sum, _, safe, _ = _reference(n, two)
     a32, w32 = jnp.asarray(a, dtype=jnp.float32), jnp.asarray(w, dtype=jnp.float32)
     objective = jax.jit(jax.value_and_grad(lambda x: jnp.sum((x - a32)**2)))
     opt = _MMA(m=len(b))
     state = opt.init(jnp.full(n, 0.5, dtype=jnp.float32), (0, 1))
     trace, first, steps = [], {}, []
-    # Measured JAX reduction error, with the 10x allowance fixed by section 8.1.
-    residual_bar = np.maximum(1e-6 * b, 10 * e_sum)
+    REDUCTION_ERROR_ALLOWANCE = 10
+    residual_bar = np.maximum(1e-6 * b, REDUCTION_ERROR_ALLOWANCE * e_sum)
     fstar = math.fsum((star - a)**2)
     for iteration in range(1, OUTER_ITERATIONS + 1):
         req = opt.ask(state)
@@ -153,6 +147,7 @@ def test_bounded_closed_form(n, two):
 
 
 def test_minimax_closed_form():
+    """The minimax bar is about 1000 times float32 evaluation error around f=1."""
     center = np.array([0.3, -0.2, 0.1])
     vertices = center + np.array([[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]]) / np.sqrt(3)
     p32 = jnp.asarray(vertices, dtype=jnp.float32)
@@ -183,7 +178,6 @@ def test_minimax_closed_form():
 
 @pytest.mark.parametrize('n', [1, 2, 7])
 def test_subproblem_relaxed_kkt(n):
-    # Exercise both reductions, including n == m, with an independent witness.
     rng = np.random.default_rng(17)
     m = 2
     low, upp = -np.ones(n), 2 * np.ones(n)

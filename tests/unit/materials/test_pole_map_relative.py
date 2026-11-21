@@ -87,6 +87,7 @@ def test_b6_5_relative_coefficients(graded, monkeypatch):
 
 
 def test_b6_6_stability_si():
+    """Bracketing at the vacuum CFL limit gives the admitted pole bound rather than the unchanged supplied grid.dt on two already-stable arms."""
     from tests.unit.materials.test_pole_map_admission import _admission_scene
     from rfx.model.pole_stability import courant_budget, largest_stable_step, pole_set_extremes
     admitted = []
@@ -104,8 +105,8 @@ def test_b6_6_stability_si():
         record_ = records[0]
         assert all(isinstance(v, (float, np.floating)) for p in record_.poles for v in p)
         budget = courant_budget(grid).local_axes(record_.occupied)
-        # Bracket at the vacuum CFL limit so the result is the admitted pole
-        # bound, not the unchanged supplied grid.dt on two already-stable arms.
+
+
         upper = 1 / np.sqrt(budget)
         step = largest_stable_step(record_.eps_low, record_.sigma_low, record_.poles, upper, budget)
         assert step is not None

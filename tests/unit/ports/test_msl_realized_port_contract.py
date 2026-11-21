@@ -1,4 +1,6 @@
-"""Physical attachment of MSL ports, before source setup can clear metal."""
+"""Physical attachment of MSL ports, before source setup can clear metal.
+The coax material invariant is checked before the MSL port stamps because the MSL port legitimately writes at and above the join.
+"""
 from dataclasses import replace
 
 import numpy as np
@@ -199,7 +201,9 @@ def test_preflight_reports_a_blocking_plane_mismatch():
 
 @pytest.mark.parametrize("trace_kind", ["sphere", "sheet", "sheet_with_sphere_away"])
 def test_run_checks_kottke_surfaces_after_fractional_edges_are_released(trace_kind, monkeypatch):
-    """Exercise actual assembly and runner setup, stopping before any FDTD."""
+    """Exercise actual assembly and runner setup, stopping before any FDTD.
+    The released sphere cap meets the port only at its centre width node.
+    """
     import rfx.simulation as stepping
     from rfx import Sphere
     sim, _ = _model(trace_kind="none" if trace_kind == "sphere" else "pec")
@@ -207,7 +211,6 @@ def test_run_checks_kottke_surfaces_after_fractional_edges_are_released(trace_ki
     if trace_kind != "sheet":
         x = 8. if trace_kind == "sphere" else 18.
         sim.add(Sphere(center=(x*DX, 12*DX, 12*DX), radius=2.1*DX), material="pec")
-    # The staircase surface would certify the sphere at the declared trace.
     _validate((sim, False))
 
     class Captured(Exception):
@@ -219,7 +222,6 @@ def test_run_checks_kottke_surfaces_after_fractional_edges_are_released(trace_ki
 
     monkeypatch.setattr(stepping, "run", capture)
     if trace_kind == "sphere":
-        # The released sphere cap meets the port only at its centre width node.
         with pytest.raises(ValueError, match="past the realized conductor width"):
             sim.run(n_steps=1, subpixel_smoothing="kottke_pec", skip_preflight=True)
     else:
@@ -246,7 +248,6 @@ def test_forward_reserves_every_cell_that_owns_the_source_edge(direction, width_
     diagonal_owner = (edge[0]-1, edge[1]-1, edge[2])
     remote = (2, 2, 2)
     occupancy = jnp.zeros(grid.shape).at[diagonal_owner].set(1.).at[remote].set(.4)
-    # Independent observable: the original density freezes the source Ez.
     assert realized_pec_edge_masks(occupancy > .5)[2][edge]
 
     class Captured(Exception):
@@ -272,7 +273,8 @@ def test_forward_density_reservation_preserves_derivatives_outside_the_port(monk
     import rfx.simulation as stepping
     sim, _ = _model()
     grid = sim._build_grid()
-    diagonal, remote = (7, 7, 8), (2, 2, 2)  # fringe source's diagonal owner
+    FRINGE_SOURCE_DIAGONAL_OWNER = (7, 7, 8)
+    diagonal, remote = FRINGE_SOURCE_DIAGONAL_OWNER, (2, 2, 2)
 
     class Captured(Exception):
         pass
@@ -296,14 +298,12 @@ def test_forward_density_reservation_preserves_derivatives_outside_the_port(monk
 
 
 def test_kottke_release_preserves_the_nonincident_fringe_neighbour(monkeypatch):
+    """Four cells of lateral Laplace padding put the last fringe source at w=18 beyond the trace end at w=14."""
     import jax.numpy as jnp
     import rfx.geometry.smoothing as smoothing
     import rfx.simulation as stepping
     sim, _ = _model(pec_occupancy_model="kottke")
     grid = sim._build_grid()
-    # Four cells of lateral Laplace padding: trace ends at w=14,
-    # last fringe source at w=18. Its positive w=19 neighbour is NOT
-    # among the four incident owners and retains its design occupancy.
     edge, neighbour, remote = (8, 18, 8), (8, 19, 8), (2, 2, 2)
     density = jnp.zeros(grid.shape).at[neighbour].set(1.).at[remote].set(.4)
     original = smoothing.kottke_inv_eps_from_occupancy
@@ -336,8 +336,6 @@ def test_a_narrow_trace_uses_the_registered_center_not_the_rounded_endpoints():
     model = _model(trace_width=(10.4, 11.4))
     grid, port, _, _ = _validate(model, y_lo=10.4*DX, y_hi=11.4*DX)
     port = replace(port, y_lo=10.4*DX, y_hi=11.4*DX)
-    # The only realized trace row is node 11. Averaging rounded endpoints
-    # 10 and 11 chose node 10, outside the conductor, in the old reader.
     assert msl_cross_section_span(grid, port)["w_centre"] == 11
     from rfx.sources.msl_port import compute_msl_mode_profile
     profile = compute_msl_mode_profile(grid, port, 3.)
@@ -359,7 +357,9 @@ def test_a_geometry_addition_invalidates_an_earlier_attachment_check():
 
 @pytest.mark.parametrize("lane", ["mixed", "coax"])
 def test_transition_readers_use_the_same_center_and_bounding_plane(lane, monkeypatch):
-    """Capture the real trace lookup; no field solve or calibration claim."""
+    """Capture the real trace lookup; no field solve or calibration claim.
+    The strip ends at the port node (26 mm) to avoid a 6 mm open stub whose effective quarter wave (7.27 GHz) is within 1.5x of 0..5 GHz.
+    """
     import rfx.probes.msl_wave_decomp as decomposition
 
     sim = Simulation(freq_max=5e9, domain=(32*DX, 32*DX, 48*DX),
@@ -368,8 +368,6 @@ def test_transition_readers_use_the_same_center_and_bounding_plane(lane, monkeyp
     sim.add_material("substrate", eps_r=3.)
     sim.add(Box((0, 0, 16*DX), (32*DX, 32*DX, 20*DX)), material="substrate")
     sim.add(Box((0, 0, 16*DX), (32*DX, 32*DX, 16*DX)), material="pec")
-    # The strip ends at the port node (26 mm); drawn on to 32 mm it left a
-    # 6 mm open stub whose effective quarter wave (7.27 GHz) is within 1.5x of 0..5 GHz.
     sim.add(Box((10*DX, 12.4*DX, 20*DX), (26*DX, 13.4*DX, 20*DX)), material="pec")
     sim.add_msl_port(position=(26*DX, 12.9*DX, 16*DX), width=DX,
                      height=4*DX, direction="-x", eps_r_sub=3.,
@@ -411,7 +409,9 @@ def test_transition_readers_use_the_same_center_and_bounding_plane(lane, monkeyp
 
 @pytest.mark.parametrize("ground", [15., 15.5])
 def test_coax_stub_cannot_overwrite_the_registered_junction_and_substrate(ground, monkeypatch):
-    """Capture material assembly, without asserting transition calibration."""
+    """Capture material assembly, without asserting transition calibration.
+    The outer wall's inner face is 4.5 cells out, so j+5 is the first node inside it.
+    """
     import rfx.simulation
     import rfx.sources.msl_port as sources
     from rfx.sources.coaxial_port import PEC_SIGMA, PTFE_EPS_R
@@ -422,7 +422,6 @@ def test_coax_stub_cannot_overwrite_the_registered_junction_and_substrate(ground
     sim.add_material("substrate", eps_r=3., sigma=.02)
     sim.add(Box((0, 0, ground*DX), (32*DX, 24*DX, top*DX)), material="substrate")
     sim.add(Box((0, 0, ground*DX), (32*DX, 24*DX, ground*DX)), material="pec")
-    # Keep this material-ownership witness free of a resonant back stub.
     sim.add(Box((8*DX, 10*DX, top*DX), (32*DX, 14*DX, top*DX)), material="pec")
     sim.add_coaxial_port(position=(8*DX, 12*DX, ground*DX), face="bottom",
                          pin_radius=DX, outer_radius=4.5*DX, terminates=2)
@@ -430,30 +429,24 @@ def test_coax_stub_cannot_overwrite_the_registered_junction_and_substrate(ground
                      height=4*DX, direction="+x", eps_r_sub=3.)
     grid = sim._build_grid()
     from rfx.preflight.line_stub import line_stub_findings
-    assert line_stub_findings(sim, grid) == []  # pinned port node, no tail.
+    assert line_stub_findings(sim, grid) == []
     registered = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
-    join = grid.pad_z_lo+15  # exact half-cell tie must also select node 15
+    HALF_CELL_TIE_JOIN_NODE = 15
+    join = grid.pad_z_lo+HALF_CELL_TIE_JOIN_NODE
     i, j = grid.pad_x_lo+8, grid.pad_y_lo+12
 
     class Captured(Exception):
         pass
 
-    # The invariant is checked where it means something: at the moment the coax
-    # stub has stamped and the MSL port has NOT yet, because the MSL port
-    # legitimately writes at and above the join. The conductor itself is no
-    # longer in ``materials`` -- the pin and the outer wall are realized as
-    # shorted E edges -- so it is read from the masks the lane hands the runner,
-    # one call later.
     real_setup = sources.setup_msl_port
 
     def capture_materials(grid_arg, port, materials, **kwargs):
+        """Conductor-scale sigma would damp the conductors' plus-side edges twice."""
         for name in ("eps_r", "sigma"):
             np.testing.assert_array_equal(getattr(materials, name)[:, :, join:],
                                           getattr(registered, name)[:, :, join:])
         assert materials.eps_r[i, j+2, join-1] == pytest.approx(PTFE_EPS_R)
         assert materials.sigma[i, j+2, join-1] == 0.
-        # No conductor-scale conductivity anywhere: a stamper that put the
-        # conductors back into sigma would damp their plus-side edges twice.
         assert float(np.asarray(materials.sigma).max()) < 0.5 * PEC_SIGMA
         return real_setup(grid_arg, port, materials, **kwargs)
 
@@ -474,13 +467,8 @@ def test_coax_stub_cannot_overwrite_the_registered_junction_and_substrate(ground
         "the transition lane handed the runner no PEC edge masks, so the coax "
         "conductors are realized by nothing")
     ex, ey, ez = (np.asarray(m) for m in seen_masks[0])
-    # The pin carries the axial current, so its Ez edge must be shorted; the
-    # outer wall likewise. pin_radius = DX and outer_radius = 4.5 DX, so the
-    # wall's inner face is 4.5 cells out and j+5 is the first node inside it.
     assert ez[i, j, join-1], "the pin's axial edge is not shorted"
     assert ez[i, j+5, join-1], "the outer conductor's axial edge is not shorted"
-    # And the PTFE annulus between them is NOT metal, on any component: a mask
-    # that swallowed the dielectric would short the line out.
     for comp, name in ((ex, "ex"), (ey, "ey"), (ez, "ez")):
         assert not comp[i, j+2, join-1], (
             f"the {name} edge in the PTFE annulus is shorted; the stub has "
@@ -488,14 +476,13 @@ def test_coax_stub_cannot_overwrite_the_registered_junction_and_substrate(ground
 
 
 def test_instrument_junction_has_a_connected_post_and_an_open_clearance():
+    """Three real normal edges connect ground level at z=25dx to the trace at z=28dx."""
     from tests._coax_msl_instrument_fixture import build_instrument_junction
     sim = build_instrument_junction()
     grid, _, hard, _ = _validate((sim, False))
     i, j, k = grid.pad_x_lo+10, grid.pad_y_lo+17, grid.pad_z_lo+25
-    # Three real normal edges connect ground level to the trace at z=28dx.
     assert np.asarray(hard[2])[i, j, k:k+3].all()
     assert hard[0][i, j, k+3]
-    # A point between pin and ground hole has NO incident tangential metal.
     for a, b in ((i+3, j), (i, j+3)):
         assert not (hard[0][a, b, k] or hard[0][a-1, b, k]
                     or hard[1][a, b, k] or hard[1][a, b-1, k])

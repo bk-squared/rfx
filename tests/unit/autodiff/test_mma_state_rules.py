@@ -44,13 +44,14 @@ def test_box_in_design_dtype():
 
     with pytest.raises(ValueError, match='rounded box is empty'):
         opt.init(jnp.asarray([0.7], dtype=jnp.float32), (0.7, 0.70000001))
-    # One empty component must reject the entire box.
+
     with pytest.raises(ValueError, match='rounded box is empty'):
         opt.init(jnp.asarray([0.5, 0.7], dtype=jnp.float32),
                  (np.array([0, 0.7]), np.array([1, 0.70000001])))
 
 
 def test_state_rules(monkeypatch):
+    """An earlier solve of the clamped instance's k=3 subproblem needed 514 Newton steps."""
     calls = []
     real_subproblem = optimizers._mma_subproblem
 
@@ -84,7 +85,7 @@ def test_state_rules(monkeypatch):
     clamped = dict(low=(0.49, -9.25, 0), upp=(0.51, 10.75, 1),
                    alpha=(0.491, 0.25, 0.05), beta=(0.509, 1, 0.95))
     for label, opt in (('default', optimizers._MMA(m=1)),
-                       # The clamped instance's k = 3 subproblem needs 514 Newton steps (design 8.4).
+
                        ('clamped', optimizers._MMA(m=1, asydecr=0.01, asyincr=30, max_newton=1000))):
         calls.clear()
         state = opt.init(jnp.asarray(points[0], dtype=jnp.float32), (0, 1))

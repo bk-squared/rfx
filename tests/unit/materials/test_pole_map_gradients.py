@@ -1,4 +1,6 @@
-"""A4: traced-map differentiation, record convergence, and Richardson oracle."""
+"""A4: traced-map differentiation, record convergence, and Richardson oracle.
+An earlier measurement found 1000 steps to be the shortest record keeping all three preconditions and the 1e-6 bar at about two thirds of the memory.
+"""
 import os
 
 import jax
@@ -13,7 +15,6 @@ from tests.unit.materials.test_pole_map_runs import capture_scan, assert_float64
 BINS = np.array([3.5e9, 4.5e9])
 KAPPA = (2 * np.pi * 3e9)**2
 GRADED_X = np.r_[.0005, np.linspace(.00025, .00075, 58), .0005]
-# Shortest record measured to keep all three preconditions and the 1e-6 bar at about two thirds of the memory.
 P9_RECORD_STEPS = 1000
 
 
@@ -225,7 +226,8 @@ def test_constant_delta_map_gradient_memory(declaration):
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 def test_traced_profile_non_finite_outside_support(graded):
     """Sample only inside the Box so an exterior NaN derivative cannot poison the gradient."""
-    x0, R = .006, .003   # the Box spans x .004-.008, inside |x - x0| < R
+    x0, R = .006, .003
+    assert x0 - R < .004 < .008 < x0 + R, 'The Box must lie inside the finite square-root profile support'
 
     def objective(s, clamped):
         def kappa(x, y, z):

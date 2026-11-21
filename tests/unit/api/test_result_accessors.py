@@ -7,6 +7,7 @@ S-parameters / dt are absent, and that the plot wrappers delegate to the
 existing engine (``rfx.visualize`` / ``rfx.smith``) and return matplotlib
 objects.  Uses synthetic, known arrays (no full sim) and the Agg backend
 so the suite is headless-safe.
+A unique, recognisable value in every (m, n, k) slot catches a wrong axis order.
 """
 
 import numpy as np
@@ -23,11 +24,10 @@ except ImportError:
     HAS_MPL = False
 
 
-# A synthetic 2-port S-matrix with a unique, recognisable value in every
-# (m, n, k) slot so a wrong axis order is immediately caught:
-#   s_params[i, j, k] = (i+1) + 1j*(j+1) + 0.01*k
 N_FREQS = 5
-FREQS = np.linspace(1e9, 5e9, N_FREQS)  # Hz
+START_FREQUENCY_HZ = 1e9
+STOP_FREQUENCY_HZ = 5e9
+FREQS = np.linspace(START_FREQUENCY_HZ, STOP_FREQUENCY_HZ, N_FREQS)
 
 
 def _two_port():
@@ -222,23 +222,14 @@ def test_plot_smith_bad_arity_raises():
         r.plot_smith(ports=(1,))
 
 
-# ---------------------------------------------------------------------------
-# Waveform-aware auto Harminv window.
-#
-# ``find_resonances``'s auto ``source_decay_time`` hardcoded the cutoff=3
-# GaussianPulse envelope (2.0*3.0*tau). The refactor to
-# ``2.0*getattr(waveform, 't0', 3.0*tau)`` must be BITWISE-identical on
-# the default path (doubling is exact in binary floating point) and scale
-# with the waveform's own onset when one is provided.
-# ---------------------------------------------------------------------------
-
 def test_auto_harminv_window_default_bitwise_matches_historical():
+    """Doubling is exact in binary floating point."""
     from rfx.harminv import _auto_source_decay_time
     for f1, f2 in [(1e9, 5e9), (0.6e9, 12.3e9), (2.2e9, 2.9e9),
                    (8e9, 12e9)]:
         f_center = (f1 + f2) / 2
         tau = 1.0 / (f_center * 0.8 * np.pi)
-        # main's exact formula, op-for-op:
+
         historical = 2.0 * 3.0 * tau
         assert _auto_source_decay_time((f1, f2)) == historical, (
             f"default auto window drifted from main at fr=({f1}, {f2})")
@@ -259,13 +250,14 @@ def test_two_t0_equals_six_tau_exactly_at_cutoff3():
 
 def test_auto_harminv_window_scales_with_waveform_cutoff():
     """cutoff=4.5 waveform: the window start is 2*t0 = 9*tau of the
-    WAVEFORM's own tau — no longer the hardcoded cutoff=3 envelope."""
+    WAVEFORM's own tau — no longer the hardcoded cutoff=3 envelope.
+    Doubling is exact in binary floating point."""
     from rfx import GaussianPulse
     from rfx.harminv import _auto_source_decay_time
     wf = GaussianPulse(f0=3e9, bandwidth=0.8, cutoff=4.5)
     got = _auto_source_decay_time((1e9, 5e9), wf)
     assert got == 2.0 * wf.t0
-    assert got == 9.0 * wf.tau  # 2*(4.5*tau); doubling is exact
+    assert got == 9.0 * wf.tau
     assert got > _auto_source_decay_time((1e9, 5e9))
 
 

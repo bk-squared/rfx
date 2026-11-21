@@ -19,18 +19,15 @@ from rfx.core.yee import (
 
 def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False,
          cut_capacitor=False):
-    # Binary-exact dx and x walls avoid a nearly-one SDF weight caused by
-    # coordinate roundoff. y/z lengths are not integral numbers of cells.
-    # A periodic axis must hold a whole number of cells (16 along y).
+    """Binary-exact dx and x walls avoid a nearly-one SDF weight caused by coordinate roundoff."""
     ny = 16 if periodic_y else 16.7
+    assert not periodic_y or ny == int(ny), 'A periodic y axis must hold a whole number of cells'
     sim = Simulation(freq_max=10e9, domain=(13/1024, ny/1024, 19.2/1024),
                      dx=1/1024, boundary=BoundarySpec(
                          x=Boundary(lo="pec", hi="pec", conformal=True),
                          y="periodic" if periodic_y else "pec", z="pec"), snap="declared")
     assert_declared_wall_warning(sim)
     sim.add_material("diel", eps_r=4.0, sigma=0.03 if loaded else 0.0)
-    # Periodic: the block starts at the y=0 seam and does not wrap, so a
-    # wrapped and an edge-replicated mean differ on the seam edges.
     ylo, yhi = (0.0, .0042) if periodic_y else (.0032, .0106)
     sim.add(Box((.0041, ylo, .0063), (.0094, yhi, .0148)), material="diel")
     if cut:
@@ -39,7 +36,6 @@ def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False,
         sim.add_lumped_rlc((.007, .006, .010), component="ez", C=1e-13,
                            R=100, topology="parallel")
     if cut_capacitor:
-        # An Ex capacitor crosses the declared x wall at x = .0057.
         sim.add_lumped_rlc((5.5/1024, 8/1024, 10/1024), component="ex",
                            C=1e-13, topology="parallel")
     sim.add_source((.007, .005, .008), "ez", amplitude_kind="field",
@@ -49,6 +45,7 @@ def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False,
     original = simulation.run
 
     def capture(grid, materials, n_steps, **kwargs):
+        """Wall-fixed tangential edges have no material degree of freedom even with SDF weights of 1/2 at a grid-aligned wall."""
         tensor = materials.components.tensor
         inverse = tensor.inv_eps if tensor is not None else None
         seen["inverse"] = None if inverse is None else np.asarray(inverse)
@@ -57,9 +54,6 @@ def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False,
         eps = (tensor.eps if tensor is not None else None) or plain
         state = init_state(grid.shape)._replace(ex=eps[0], ey=eps[1], ez=eps[2])
         faces = resolve_wall_faces(grid, periodic)[0]
-        # Wall-fixed tangential edges have no material degree of freedom.
-        # Their SDF weights are 1/2 even at a grid-aligned wall; apply the
-        # actual wall operator, rather than discarding an arbitrary margin.
         realized = apply_pec_faces(state, faces)
         live = apply_pec_faces(init_state(grid.shape)._replace(
             ex=jnp.ones(grid.shape), ey=jnp.ones(grid.shape),
@@ -91,8 +85,6 @@ def _compare_arrays(actual, reference):
 def _compare_trace(actual, reference):
     peak = np.float32(np.max(np.abs(reference)))
     assert peak > 0
-    # Cross-trace contract: nine float32 ULP of the reference peak, at
-    # EVERY sample, including zero crossings. No relative per-sample bar.
     np.testing.assert_allclose(actual, reference, rtol=0,
                                atol=9 * np.spacing(peak))
 
@@ -135,8 +127,7 @@ def test_cut_dielectric_edges_keep_mean_over_weight(smooth):
 
 
 def test_capacitor_on_a_cut_edge_is_added_after_the_weight_division():
-    # A lumped C is a device on its edge, not volume: the conformal 1/w
-    # scales the volume mean only, and the capacitor is added afterwards.
+    """A lumped capacitor is a device on its edge rather than volume scaled by conformal 1/w."""
     result = _run(True, cut=True, cut_capacitor=True)
     eps, w = result["eps"][0], result["weights"][0]
     f32 = np.float32
@@ -147,7 +138,6 @@ def test_capacitor_on_a_cut_edge_is_added_after_the_weight_division():
     assert np.count_nonzero(on_cut) == 1
     expected = mean / w + stamp
     _compare_arrays(eps[on_cut], expected[on_cut])
-    # The opposite order, (mean + C) / w, is a different number here.
     assert np.all(((mean + stamp) / w)[on_cut] != expected[on_cut])
 
 
@@ -160,7 +150,6 @@ def test_loss_and_edge_owned_lumped_materials_match_plain():
 
 @pytest.mark.parametrize("kind", ["eps", "trace"])
 def test_comparison_rejects_corrupted_observation(kind, aligned):
-    # Mutation guard: deleting either comparison must itself turn red.
     plain, _ = aligned
     if kind == "eps":
         bad = plain["realized"].copy()
@@ -214,10 +203,7 @@ def test_kottke_stage2_does_not_take_stage1_correction():
 
 
 def test_periodic_dielectric_seam_uses_the_plain_wrap():
-    # The block crosses the periodic y seam, so the plain edge mean wraps
-    # there. Only the permittivity is compared: with a periodic axis the
-    # conformal and plain runs already differ in vacuum (6e-6 to 8e-6 of the
-    # probe peak; cause not measured), which is not this defect.
+    """Only permittivity is compared because an earlier vacuum comparison found conformal/plain trace differences of 6e-6 to 8e-6 of the probe peak with cause not measured."""
     plain, conformal = _run(False, periodic_y=True), _run(True, periodic_y=True)
     free = conformal["weights"] == 1
     seam = free.copy()
@@ -228,7 +214,9 @@ def test_periodic_dielectric_seam_uses_the_plain_wrap():
 
 
 def test_occupancy_kottke_lane_starts_from_the_four_cell_mean(monkeypatch):
-    """forward()'s opt-in occupancy-Kottke lane with zero occupancy equals plain forward()."""
+    """forward()'s opt-in occupancy-Kottke lane with zero occupancy equals plain forward().
+    The inverse-permittivity kernel rounds differently from plain forward(), with an earlier measurement of 1.2e-5 of the peak.
+    """
     import jax.numpy as jnp
     from rfx import Box, GaussianPulse, Simulation
 
@@ -249,8 +237,5 @@ def test_occupancy_kottke_lane_starts_from_the_four_cell_mean(monkeypatch):
     zeros = jnp.zeros(sim._build_grid().shape, jnp.float32)
     lane = np.asarray(sim.forward(n_steps=240, skip_preflight=True,
                                   pec_occupancy_override=zeros).time_series)
-    # The lane runs the inverse-permittivity kernel, so it rounds differently
-    # from plain forward(): measured 1.2e-5 of the peak. The per-cell baseline
-    # this replaces read 4.8e-3.
     peak = np.max(np.abs(plain))
     assert np.max(np.abs(lane - plain)) <= 1e-4 * peak
