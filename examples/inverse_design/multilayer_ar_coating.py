@@ -606,11 +606,15 @@ def _comparison_specs(vector):
         ("mma_mean", mean, dict(method="mma", n_iters=60)),
         ("mma_worst", vector, dict(method="mma", worst_case=True, n_iters=40)),
         ("adam_q32", q32, dict(method="adam", lr=0.15, n_iters=60, best_iterate=True)),
+        ("gcmma_mean", mean, dict(method="gcmma", n_iters=60)),
     ]
 
 
 def compare_methods(mesh, output_dir=SCRIPT_DIR):
-    """Report plain-forward costs; diagnostic forwards are outside solves."""
+    """Report plain-forward costs; diagnostic forwards are outside solves.
+
+    ``objective_history`` contains the evaluated iterate objectives bounded by the acceptance test.
+    """
     if len(mesh.bins) != 15:
         raise ValueError("method comparison requires the 15 X-band DFT bins")
     vector = _reflectance_function(mesh)
@@ -620,11 +624,27 @@ def compare_methods(mesh, output_dir=SCRIPT_DIR):
     for name, objective, settings in _comparison_specs(vector):
         result = minimize(objective, _ladder_start(),
                           bounds=[(1.0, EPS_SUB)] * N_LAYERS, **settings)
+        end = len(result.history)
+        cap_replay_solves = 0
+        if name == "gcmma_mean":
+            end = sum(solves <= 120 for solves in result.solves_history)
+            if not end:
+                raise RuntimeError("GCMMA has no finite iterate within 120 solves")
+            if end < len(result.history) and (result.inner_caps or result.subproblem_caps):
+                prefix = minimize(objective, _ladder_start(),
+                                  bounds=[(1.0, EPS_SUB)] * N_LAYERS,
+                                  **(settings | dict(n_iters=end)))
+                if (prefix.solves_history != result.solves_history[:end]
+                        or prefix.history != result.history[:end]
+                        or not np.array_equal(prefix.x_history, result.x_history[:end])):
+                    raise RuntimeError("GCMMA cap replay did not reproduce the prefix")
+                cap_replay_solves = sum(prefix.solves.values())
+                result = prefix
         trace = []
-        passes = N_LAYERS if result.jacobian == "forward" else 2
-        for iteration, x in enumerate(result.x_history, 1):
+        for iteration, (x, solves) in enumerate(
+                zip(result.x_history[:end], result.solves_history[:end]), 1):
             R = np.asarray(vector(x))
-            row = dict(iteration=iteration, solves=passes * iteration,
+            row = dict(iteration=iteration, solves=solves,
                        x=np.asarray(x).tolist(), R=R.tolist(),
                        f=float(np.mean(R)), w=float(np.max(R)))
             trace.append(row)
@@ -637,7 +657,31 @@ def compare_methods(mesh, output_dir=SCRIPT_DIR):
                    setup_forwards=result.setup_forwards, subproblem_caps=result.subproblem_caps,
                    nfev=result.nfev, stopped_nonfinite=result.stopped_nonfinite,
                    jacobian=result.jacobian, scale=result.scale,
-                   objective_history=result.history, diagnostic_forwards=len(trace))
+                   objective_history=result.history[:end],
+                   solves_history=result.solves_history[:end], diagnostic_forwards=len(trace))
+        if name == "gcmma_mean":
+            trials = (np.diff(run["solves_history"]) - 2).tolist()
+            loop = [float(v) for v in run["objective_history"]]
+            rises = [dict(iteration=i + 1, next_iteration=i + 2,
+                          rise=loop[i + 1] - loop[i],
+                          tau_0=50 * float(np.spacing(np.asarray(abs(loop[i]),
+                                                                 dtype=R.dtype))))
+                     for i in range(len(loop) - 1)]
+            run.update(
+                reading_iteration=end, solve_budget=120,
+                stays_within_one_percent=all(
+                    row["f"] <= 1.01 * final["f"]
+                    for row in trace[crossing["iteration"] - 1:]),
+                trials_per_outer=trials,
+                trials_mean=float(np.mean(trials)) if trials else None,
+                trials_max=max(trials, default=None),
+                rises=rises, largest_rise=max(rises, key=lambda row: row["rise"], default=None),
+                every_rise_within_tau=all(row["rise"] <= row["tau_0"] for row in rises),
+                value_dtype=str(R.dtype), inner_caps=result.inner_caps,
+                cap_replay_solves=cap_replay_solves,
+                solves=dict(forward=final["solves"] - end, reverse=end, forward_mode=0),
+                nfev=final["solves"] - end,
+            )
         if final is not None:
             R_tmm = tmm_R(np.asarray(final["x"]), mesh.bins,
                           layer_thk=mesh.cells * mesh.dx)
@@ -660,6 +704,15 @@ def compare_methods(mesh, output_dir=SCRIPT_DIR):
             print(f"  {row['iteration']:02d} solves={row['solves']:3d} "
                   f"f={row['f']:.10g} w={row['w']:.10g}")
         print(f"  first within 1% of final {metric}: " + json.dumps(crossing))
+        if name == "gcmma_mean":
+            print(f"  reading iterate={end} solves={final['solves']} budget=120")
+            print("  stays within 1%: " + json.dumps(run["stays_within_one_percent"]))
+            print("  trials per outer=" + json.dumps(run["trials_per_outer"])
+                  + f" mean={run['trials_mean']} max={run['trials_max']}")
+            print("  largest rise=" + json.dumps(run["largest_rise"])
+                  + " every rise <= tau_0=" + json.dumps(run["every_rise_within_tau"]))
+            print(f"  inner_caps={run['inner_caps']} subproblem_caps={run['subproblem_caps']} "
+                  f"cap_replay_solves={cap_replay_solves}")
         if final is not None:
             print("  final eps=" + json.dumps(final["x"]))
             print("  final R=" + json.dumps(final["R"]))
@@ -668,7 +721,7 @@ def compare_methods(mesh, output_dir=SCRIPT_DIR):
             print("  best_iterate=True " + json.dumps(run["best_iterate"]))
         for step in run.get("last_20_steps", []):
             print("  step " + json.dumps(step))
-        print("  solves=" + json.dumps(result.solves, sort_keys=True)
+        print("  solves=" + json.dumps(run["solves"], sort_keys=True)
               + f" setup_forwards={result.setup_forwards} "
               f"subproblem_caps={result.subproblem_caps} "
               f"stopped_nonfinite={result.stopped_nonfinite}")
