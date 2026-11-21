@@ -20,6 +20,7 @@ six bins at ka = 0.75, 0.80, ..., 1.00 and pins the signed rfx - Mie
 difference in a window per bin. Its docstring describes the window's
 derivation. The stored rfx value is historical, not the lock's reference;
 the independent oracle witnesses stay in ``tests/oracle/test_rcs_mie_fixture.py``.
+The absorber depth is 24 layers because an earlier depth ladder with the second-order NTFF rule measured successive answer changes of 0.221, 0.018, 0.015 and 0.013 dB at 16, 24, 32 and 40 layers.
 """
 
 import json
@@ -30,11 +31,6 @@ import time
 import numpy as np
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-# Pin THIS repo tree ahead of any installed rfx: running the script directly
-# puts only the script dir on sys.path, so a stale editable/site-packages rfx
-# would silently win otherwise (caught during #276 fixture generation: the
-# first run produced the FORWARD-scatter value because the installed rfx
-# still had the pre-fix argmin extraction).
 _REPO_ROOT = os.path.abspath(os.path.join(_SCRIPT_DIR, "..", "..", ".."))
 sys.path.insert(0, _REPO_ROOT)
 sys.path.insert(0, _SCRIPT_DIR)
@@ -45,41 +41,26 @@ from mie_oracle import (  # noqa: E402
     validate_oracle,
 )
 
-# --- Committed configuration (matches the 2026-07-06 falsifier run) -------
-F0 = 3e9                 # Hz
-RADIUS = 0.0159          # m  -> ka ~ 0.9997
-RESOLUTION = 40          # dx = lambda / RESOLUTION
-DOMAIN_SIZE = 0.10       # m, cubic
-# DERIVED 2026-09-13, was 8. #888 fixed the TF/SF auxiliary absorber (4-6 % ->
-# 1e-06 in amplitude), and the monostatic value moved 0.57 dB -- AWAY from Mie
-# (0.063 -> 0.510 dB). The old agreement was a cancellation between the auxiliary
-# echo and this rig's own thin absorber, and the direction of the depth ladder
-# proves it: on the OLD injection the answer walked away from Mie as this
-# absorber deepened (0.097 / 0.191 / 0.231 at 8 / 16 / 24), on the clean one it
-# converges (0.510 / 0.224 / 0.185). (The |rfx - Mie| numbers in this paragraph
-# were read with the first-order NTFF surface rule of the time.)
-#
-# The depth is read off convergence of the ANSWER, not of its distance to Mie
-# (Mie is a continuum reference, so "closer" also rewards mesh error):
-#     cpml     8       16       24       32       40
-#     dBsm  -25.2555 -25.4767 -25.4944 -25.4797 -25.4663
-#     step      --     0.221    0.018    0.015    0.013
-# (re-measured 2026-09-21 with the second-order NTFF rule of #1159, which moved
-# every rung by -0.28 to -0.37 dB; with the first-order rule the ladder read
-# -24.8826 -25.1685 -25.2076 -25.1971 -25.1815, steps 0.286 0.039 0.011 0.016)
-#
-# Cost: the grid grows 58^3 -> 90^3 (the absorber is added outside the domain,
-# the interior is unchanged).
+F0_HZ = 3e9
+F0 = F0_HZ
+SPHERE_RADIUS_M = 0.0159
+RADIUS = SPHERE_RADIUS_M
+RESOLUTION = 40
+CUBIC_DOMAIN_SIZE_M = 0.10
+DOMAIN_SIZE = CUBIC_DOMAIN_SIZE_M
 CPML_LAYERS = 24
 N_STEPS = 700
 BANDWIDTH = 0.5
 POLARIZATION = "ez"
-PEC_SIGMA = 1e7          # S/m, PEC approximation
-N_PHI = 37               # H-plane trace: phi in [0, pi], includes 0 and pi
+PEC_APPROXIMATION_SIGMA_S_PER_M = 1e7
+PEC_SIGMA = PEC_APPROXIMATION_SIGMA_S_PER_M
+H_PLANE_PHI_SAMPLES_INCLUDING_ENDPOINTS = 37
+N_PHI = H_PLANE_PHI_SAMPLES_INCLUDING_ENDPOINTS
 
 
 def run_rfx():
-    """Run the committed-resolution rfx RCS simulation. Returns raw pieces."""
+    """Run the committed-resolution rfx RCS simulation. Returns raw pieces.
+    The fixture refuses an rfx import outside the repo tree so a stale installed build cannot silently supply the extraction."""
     import rfx
     _rfx_root = os.path.dirname(os.path.dirname(os.path.abspath(rfx.__file__)))
     if _rfx_root != _REPO_ROOT:
@@ -109,8 +90,6 @@ def run_rfx():
     mu_r = jnp.ones(grid.shape, dtype=jnp.float32)
     materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
 
-    # H-plane cut in the x-y plane: theta=pi/2, phi in [0, pi].
-    # Scattering angle == phi (phi=0 forward +x, phi=pi backscatter -x).
     theta_obs = np.array([np.pi / 2])
     phi_obs = np.linspace(0.0, np.pi, N_PHI)
 
@@ -127,7 +106,7 @@ def run_rfx():
 
 
 def main():
-    # Oracle self-check FIRST — refuse to write a fixture off a broken oracle.
+    """A regeneration preserves the record_* notes because they explain why the stored numbers moved."""
     witnesses = validate_oracle()
     print("Mie oracle witnesses PASS:", witnesses)
 
@@ -141,8 +120,7 @@ def main():
     mie_back_dbsm = float(10.0 * np.log10(mie_back_over * pi_a2))
     delta_db = abs(mono_dbsm - mie_back_dbsm)
 
-    # H-plane bistatic trace (R5 inspection only — NOT gated)
-    rcs_over = np.asarray(result.rcs_linear[0, 0, :]) / pi_a2  # (n_phi,)
+    rcs_over = np.asarray(result.rcs_linear[0, 0, :]) / pi_a2
     trace = []
     for ph, ro in zip(phi_obs, rcs_over):
         mv = float(bistatic_over_pi_a2(ka, float(ph), "H"))
@@ -225,8 +203,6 @@ def main():
 
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        "fixture.json")
-    # Carry the dated "record_*" notes of earlier generations forward: they say
-    # why the stored numbers moved, and a regeneration must not erase that.
     if os.path.exists(out):
         with open(out) as f:
             fixture.update({k: v for k, v in json.load(f).items()
