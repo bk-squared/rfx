@@ -122,9 +122,8 @@ def test_every_metadata_mismatch_raises_value_error(field):
     elif isinstance(value, (int, float)) and not isinstance(value, bool):
         perturbed = type(value)(value + 1)
     else:
-        # Arrays: scale, do not offset. ``freqs + 1`` is a no-op in float32 at
-        # 1e9 (spacing ~64 Hz there), which would make this test vacuous.
         perturbed = value * 2 + 1
+        assert not np.array_equal(np.asarray(perturbed), np.asarray(value)), "Metadata perturbation must survive float32 rounding to test a real mismatch"
     ref = sample._replace(**{field: perturbed})
 
     with pytest.raises(ValueError, match=rf"FluxMonitor\.{field} differs"):

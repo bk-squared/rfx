@@ -57,6 +57,7 @@ def test_framed_all_face_subsets_equal_default_on_random_state(kind, subset):
 
 @pytest.mark.parametrize("kind", ("pec",))
 def test_t2_face_ownership_and_static_frame(kind):
+    """A non-owner must keep the target row's -0.0 by selection, not add a zero (+0.0)."""
     _live_check()
     op = _operator(kind)
     target = "x_lo" if kind == "pec" else "x_hi"
@@ -64,7 +65,6 @@ def test_t2_face_ownership_and_static_frame(kind):
     for frame, row in ((None, 0 if kind == "pec" else 10),
                        ({"x": (1, 9)}, 1 if kind == "pec" else 8)):
         state = _state()
-        # Other faces start satisfied; their ordinary writes stay enabled.
         if kind == "pec":
             hi = 10 if frame is None else 8
             state = state._replace(
@@ -75,7 +75,6 @@ def test_t2_face_ownership_and_static_frame(kind):
             state = state._replace(
                 hx=state.hx.at[:, -1, :].set(0.).at[:, :, -1].set(0.),
                 hy=state.hy.at[:, :, -1].set(0.), hz=state.hz.at[:, -1, :].set(0.))
-        # A -0.0 on the target row: a non-owner must keep it (select), not add a zero (+0.0).
         state = state._replace(**{c: getattr(state, c).at[row, 1, 1].set(-0.) for c in components})
         call = jax.jit(lambda st, own: op(st, FACES, frame=frame, owned={target: own}))
         _check_bits(call(state, jnp.bool_(False)), state)

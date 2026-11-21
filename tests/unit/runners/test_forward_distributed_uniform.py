@@ -38,8 +38,6 @@ def devices():
 def test_run_forward_bit_identical(lossy):
     expected = scene(lossy).run(n_steps=60, devices=devices(),
                                 compute_s_params=False, skip_preflight=True)
-    # ForwardResult exposes observables only. Observe its actual runner Result
-    # for final fields; expected fields and probes come from the public run.
     original = distributed_v2.run_distributed
     observed = []
 
@@ -138,14 +136,15 @@ def test_refusal_says_what_works_today(keyword, works_today):
 
 @pytest.mark.parametrize("family", ["lumped", "wire"])
 def test_requested_port_fields_match_one_device_forward(family):
+    """Forward reads S from its main record."""
     from tests.contracts.run_forward_census import build_p_lumped, build_p_wire
     from rfx.probes import sparam_driver
     from rfx.optimize_objectives import minimize_s11_at_freq_wave_decomp
 
     def port_scene():
+        """Run's S driver admits an impedance port without a plain source."""
         sim = (build_p_wire if family == "wire" else build_p_lumped)("uniform")
         if family == "wire":
-            # Run's S driver admits an impedance port without a plain source.
             sim._ports = [pe for pe in sim._ports if pe.impedance != 0]
         return sim
 
@@ -159,7 +158,7 @@ def test_requested_port_fields_match_one_device_forward(family):
 
     def capture(*args, **kwargs):
         raw = original(*args, **kwargs)
-        if kwargs.get("_main_options") is None:  # S-driver drive runs only
+        if kwargs.get("_main_options") is None:
             observed.append(raw)
         return raw
 
@@ -171,8 +170,7 @@ def test_requested_port_fields_match_one_device_forward(family):
             patch.object(distributed_v2, "run_distributed", count_steps):
         actual = port_scene().forward(n_steps=150, distributed=True, devices=devices(),
                                      port_s11_freqs=freqs, skip_preflight=True)
-    assert len(observed) == 0  # Forward reads S from its main record.
-    # Only the main time-stepping run is needed.
+    assert len(observed) == 0
     assert len(steps) == 1, steps
 
     def compare_field(name, value, reference):
@@ -194,8 +192,6 @@ def test_requested_port_fields_match_one_device_forward(family):
         compare_field("v_port_dft", driver_accs[3], native_accs[3])
     assert getattr(expected, field) is not None
     assert getattr(actual, field) is not None
-    # The port time records are the main forward run's, as run(devices=) returns
-    # them: within 9 float32 ULP of each channel's peak of the run() records.
     reference = port_scene().run(n_steps=150, devices=devices(), compute_s_params=False,
                                  skip_preflight=True).sparam_time_records
     records = actual.sparam_time_records
@@ -214,7 +210,6 @@ def test_requested_port_fields_match_one_device_forward(family):
     objective = minimize_s11_at_freq_wave_decomp(12e9)
     assert np.isfinite(np.asarray(objective(actual)))
     compare_field("objective", objective(actual), objective(expected))
-    # Refusing raw records must leave the recorded-probe settling report usable.
     assert isinstance(actual.settling_witness, dict)
 
 

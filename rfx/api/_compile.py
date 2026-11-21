@@ -44,6 +44,19 @@ _DebyeSpec = tuple[list[DebyePole], list[jnp.ndarray]]
 _LorentzSpec = tuple[list[LorentzPole], list[jnp.ndarray]]
 
 
+def waveguide_count_planes(entry, grid):
+    """Return the snapped source index and source and sampling planes in metres."""
+    axis_idx = "xyz".index(entry.direction[1])
+    pos_vec = [0.0, 0.0, 0.0]
+    pos_vec[axis_idx] = entry.x_position
+    x_index = grid.position_to_index(tuple(pos_vec))[axis_idx]
+    snapped_source_plane = (x_index - grid.axis_pads[axis_idx]) * grid.dx
+    step_sign = 1 if entry.direction.startswith("+") else -1
+    measured_reference_plane = snapped_source_plane + step_sign * entry.ref_offset * grid.dx
+    measured_probe_plane = snapped_source_plane + step_sign * entry.probe_offset * grid.dx
+    return x_index, snapped_source_plane, measured_reference_plane, measured_probe_plane
+
+
 class _CompileMixin:
     """Compile cluster mixin: spec → Grid / Materials / port-config.
 
@@ -389,13 +402,8 @@ class _CompileMixin:
             freqs = jnp.asarray(freqs, dtype=jnp.float64)
         normal_axis = entry.direction[1]
         axis_idx = {"x": 0, "y": 1, "z": 2}[normal_axis]
-        pos_vec = [0.0, 0.0, 0.0]
-        pos_vec[axis_idx] = entry.x_position
-        x_index = grid.position_to_index(tuple(pos_vec))[axis_idx]
-        snapped_source_plane = (x_index - grid.axis_pads[axis_idx]) * grid.dx
         step_sign = 1 if entry.direction.startswith("+") else -1
-        measured_reference_plane = snapped_source_plane + step_sign * entry.ref_offset * grid.dx
-        measured_probe_plane = snapped_source_plane + step_sign * entry.probe_offset * grid.dx
+        x_index, snapped_source_plane, measured_reference_plane, measured_probe_plane = waveguide_count_planes(entry, grid)
         axis_domain = self._domain[axis_idx]
         if (
             measured_reference_plane < 0.0
@@ -478,6 +486,7 @@ class _CompileMixin:
         synthesised from the scalar ``dx`` when the profile is not set.
         """
         from rfx.runners.nonuniform import build_nonuniform_grid
+        from rfx._internal._precision import resolve_field_dtype
         from rfx.boundaries.depths import resolve_face_depths
         periodic = self._periodic_axes or ""
         if cpml_axes is None:
@@ -494,6 +503,7 @@ class _CompileMixin:
         grid = build_nonuniform_grid(
             self._freq_max, self._domain, self._dx, self._cpml_layers,
             self._dz_profile, periodic_axes=self._periodic_axes or "",
+            dtype=jnp.promote_types(resolve_field_dtype(getattr(self, "_precision", None)) or jnp.float32, jnp.float32),
             dx_profile=self._dx_profile,
             dy_profile=self._dy_profile,
             face_layers=face_layers, pec_faces=pec_faces, pmc_faces=pmc_faces,

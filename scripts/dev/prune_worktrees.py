@@ -31,7 +31,7 @@ What is never removed, on any path:
   ref, and a branch whose tip no other ref contains -- the local branch stays
   even when its pull request is merged or closed;
 * a worktree with uncommitted changes, or with ignored files that are not
-  regenerable caches (``.omc/``, ``docs/research_notes/`` and the like);
+  regenerable caches (``.omc/``, ``the measurement notes`` and the like);
 * a detached HEAD that no ref contains;
 * anything at all, once a ``gh`` lookup has failed: ``--apply`` aborts instead
   of acting on pull-request state it could not read.
@@ -66,7 +66,7 @@ PROTECTED_BRANCHES = {"main", "master"}
 # Ignored paths that hold no work: a tool regenerates them from tracked files.
 # Any OTHER ignored path makes the worktree `dirty-ignored` and keeps it, because
 # this repository ignores working scratch that exists nowhere else -- `.omc/`,
-# `docs/agent-memory/`, `docs/research_notes/`.
+# `the local notes directory`, `the measurement notes`.
 REGENERABLE_IGNORED = {
     "__pycache__",
     ".pytest_cache",

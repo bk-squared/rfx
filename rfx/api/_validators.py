@@ -9,11 +9,20 @@ from numbers import Integral
 
 import numpy as np
 
+from rfx._traced_inputs import admit_traced_inputs
+from rfx._traced_refusal import TracedStructureRefusal
+from rfx.core.jax_utils import is_tracer
+
 
 def _validate_constructor_choices(
-    snap: str, interface_eps: str, pec_occupancy_model: str,
+    snap: str, interface_eps: str, pec_occupancy_model: str, dx: object = None,
 ) -> tuple[str, str, str]:
-    """Validate constructor choices in their established error order."""
+    """Validate constructor choices in their established error order.
+
+    A traced scalar ``dx`` raises ``TracedStructureRefusal`` last: the host
+    turns the cell size into the grid's cell counts, so no path can build a
+    grid from it.
+    """
     from rfx.runners.nonuniform import INTERFACE_EPS_RULES
 
     if snap not in ("strict", "declared"):
@@ -23,6 +32,12 @@ def _validate_constructor_choices(
     pec_occupancy_model = validate_occupancy_model(pec_occupancy_model)
     if interface_eps not in INTERFACE_EPS_RULES:
         raise ValueError(f"interface_eps must be one of {INTERFACE_EPS_RULES}, got {interface_eps!r}")
+    if is_tracer(dx):
+        raise TracedStructureRefusal(
+            "Simulation(dx=...) is traced (under jax.jit, jax.grad or jax.vmap): the cell size "
+            "sets the grid's cell counts on the host. Keep dx concrete; for a differentiable mesh "
+            "trace dx_profile, dy_profile or dz_profile instead and declare its concrete widths at "
+            "the primal point in nominal_profiles so positions on that axis resolve.")
     return snap, interface_eps, pec_occupancy_model
 
 
@@ -126,3 +141,59 @@ def _validate_residual_context(
     except TypeError as exc:
         raise TypeError("residual_context contains unsupported JSON value") from exc
     return merged
+
+
+def _check_add_source(arguments):
+    component = arguments["component"]
+    if component not in ("ex", "ey", "ez"):
+        raise ValueError(f"component must be ex/ey/ez, got {component!r}")
+
+
+def _check_add_lumped_rlc(arguments):
+    component = arguments["component"]
+    if component not in ("ex", "ey", "ez"):
+        raise ValueError(f"component must be ex/ey/ez, got {component!r}")
+
+
+def _check_add_floquet_port(arguments):
+    axis = arguments["axis"]
+    if axis not in ("x", "y", "z"):
+        raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis!r}")
+
+
+def _check_add_probe(arguments):
+    component = arguments["component"]
+    if component not in ("ex", "ey", "ez", "hx", "hy", "hz"):
+        raise ValueError(f"component must be a field name, got {component!r}")
+
+
+def _check_add_flux_monitor(arguments):
+    axis = arguments["axis"]
+    if axis not in ("x", "y", "z"):
+        raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis!r}")
+
+
+def _check_add_current_moment_monitor(arguments):
+    block_size = arguments["block_size"]
+    if not float(block_size) > 0.0:
+        raise ValueError(
+            f"add_current_moment_monitor(block_size={block_size}): the "
+            "block side must be positive.")
+
+
+_DECLARATION_CHECKS = {
+    "Simulation.add_source": _check_add_source,
+    "Simulation.add_lumped_rlc": _check_add_lumped_rlc,
+    "Simulation.add_floquet_port": _check_add_floquet_port,
+    "Simulation.add_probe": _check_add_probe,
+    "Simulation.add_flux_monitor": _check_add_flux_monitor,
+    "Simulation.add_current_moment_monitor": _check_add_current_moment_monitor,
+}
+
+
+def _admit_declaration(owner, arguments):
+    """Refuse traced static inputs, then preserve the opening choice check."""
+    admit_traced_inputs(owner, arguments)
+    check = _DECLARATION_CHECKS.get(owner)
+    if check is not None:
+        check(arguments)

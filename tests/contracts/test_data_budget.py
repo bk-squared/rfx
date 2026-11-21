@@ -34,9 +34,6 @@ sys.modules[_SPEC.name] = budget
 _SPEC.loader.exec_module(budget)
 
 
-# --------------------------------------------------------------------------
-# What a data file is, and what the allowlist covers
-# --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("path", [
@@ -111,17 +108,17 @@ def test_every_frozen_data_home_is_on_the_allowlist() -> None:
      ["fixture.json", "fixture", "coax_chain_battery"]),
     ("tests/fixtures/harminv_decimation/cv02/input-00.npz",
      ["input-00.npz", "input-00", "cv02"]),
-    ("tests/data/v1.json", ["v1.json"]),  # "v1" is too short to name one file
-    ("tests/fixtures/sweep/0.01_16.json", ["0.01_16.json", "sweep"]),  # stem has no letter
+    ("tests/data/v1.json", ["v1.json"]),
+    ("tests/fixtures/sweep/0.01_16.json", ["0.01_16.json", "sweep"]),
     ("tests/fixtures/a/logs.tar.gz", ["logs.tar.gz", "logs"]),
-    # Only data suffixes come off: `split(".")[0]` would leave "rfx", which
-    # every file under rfx/ names.
     ("tests/fixtures/rfx.golden_v2.json", ["rfx.golden_v2.json", "rfx.golden_v2"]),
     ("tests/crossval/msl_notch_filter/reference/openems_tutorial.json",
      ["openems_tutorial.json", "openems_tutorial"]),
 ])
 def test_reference_tokens(path: str, tokens: list) -> None:
-    """A file directly in its home gets no directory token: `fixtures` names everything."""
+    """A file directly in its home gets no directory token: `fixtures` names everything.
+    Only data suffixes come off: split(".")[0] would leave "rfx", which every file under rfx/ names.
+    """
     assert budget.reference_tokens(path) == tokens
 
 
@@ -137,15 +134,12 @@ def test_reference_tokens(path: str, tokens: list) -> None:
     ("data", "data-2", False),
     ("data", "data", True),
     ("data", "", False),
-    ("data", "old_data, then data.", True),  # a later whole occurrence counts
+    ("data", "old_data, then data.", True),
 ])
 def test_is_named_needs_a_whole_name(token: str, text: str, named: bool) -> None:
     assert budget.is_named(token, text) is named
 
 
-# --------------------------------------------------------------------------
-# The rules, against a repository this file builds
-# --------------------------------------------------------------------------
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -288,7 +282,7 @@ def test_the_size_cap_applies_on_the_allowlist_too(repo: Path) -> None:
     ("tests/fixtures/case/fixture.json", {"tests/fixtures/case/fixture.json"}, 5_000_000),
     ("tests/data/x.json", {"tests/data/x.json"}, 5_000_000),
     ("tests/crossval/c/reference/r.json", {"tests/crossval/c/reference/r.json"}, 5_000_000),
-    ("tests/fixtures/case/fixture.json", set(), 1_000_000),     # no reader names it
+    ("tests/fixtures/case/fixture.json", set(), 1_000_000),
     ("validation/crossval/manifest.json", {"validation/crossval/manifest.json"}, 1_000_000),
     ("tests/contracts/boundary_registry.json", {"tests/contracts/boundary_registry.json"}, 1_000_000),
 ])
@@ -369,9 +363,9 @@ def test_a_new_fixture_no_test_names_fails(repo: Path) -> None:
 
 
 @pytest.mark.parametrize("reader", [
-    'PATH = FIX / "sweep" / "point_07.json"\n',   # by file name
-    'CASES = ["point_07"]  # f"{case}.json"\n',   # by name without extension
-    'for p in (FIX / "sweep").glob("*.json"):\n    pass\n',  # by its subdirectory
+    'PATH = FIX / "sweep" / "point_07.json"\n',
+    'CASES = ["point_07"]  # f"{case}.json"\n',
+    'for p in (FIX / "sweep").glob("*.json"):\n    pass\n',
 ])
 def test_a_new_fixture_a_test_names_passes(repo: Path, reader: str) -> None:
     base = _git(repo, "rev-parse", "HEAD")
@@ -440,13 +434,13 @@ def test_only_a_py_file_is_a_reader(repo: Path, reader_path: str, reader: str) -
     ("tests/unit/_helpers.py", True),
     ("tests/__init__.py", True),
     ("rfx/io/tables.py", True),
-    ("tests/unit/helpers.py", False),                       # neither a test nor a _helper
+    ("tests/unit/helpers.py", False),
     ("tests/unit/capture_golden.py", False),
-    ("tests/fixtures/option_b/_index.py", False),           # inside a frozen-data home
+    ("tests/fixtures/option_b/_index.py", False),
     ("tests/fixtures/case/test_case.py", False),
     ("tests/data/_index.py", False),
     ("tests/crossval/c/reference/make_reference.py", False),
-    ("tests/crossval/c/test_c.py", True),                   # beside reference/, not in it
+    ("tests/crossval/c/test_c.py", True),
     ("scripts/diagnostics/_x.py", False),
     ("tests/unit/test_x.pyi", False),
 ])
@@ -455,7 +449,7 @@ def test_is_reader(path: str, reader: bool) -> None:
 
 
 @pytest.mark.parametrize("reader_path,counts", [
-    ("tests/fixtures/sweep/_index.py", False),   # the stacked-relocation route
+    ("tests/fixtures/sweep/_index.py", False),
     ("tests/fixtures/_index.py", False),
     ("tests/unit/helpers.py", False),
     ("tests/unit/_helpers.py", True),
@@ -483,11 +477,11 @@ def test_a_test_of_this_gate_is_not_a_reader(repo: Path) -> None:
     ('ROOT = FIX / "sweep"\n', True),
     ('ROOT = "tests/fixtures/sweep/"\n', True),
     ('ROOT = f"tests/fixtures/sweep/{n}"\n', True),
-    ("# the sweep folder\nROOT = FIX\n", False),               # a comment
-    ('"""Reads the sweep folder."""\nROOT = FIX\n', False),    # a docstring
-    ('ROOT = FIX / "my_sweep_dir"\n', False),                   # part of a longer name
+    ("# the sweep folder\nROOT = FIX\n", False),
+    ('"""Reads the sweep folder."""\nROOT = FIX\n', False),
+    ('ROOT = FIX / "my_sweep_dir"\n', False),
     ('ROOT = FIX / "sweep_v2"\n', False),
-    ("sweep = 1\n", False),                                     # an identifier, not a literal
+    ("sweep = 1\n", False),
 ])
 def test_the_folder_token_must_be_a_path_component_of_a_literal(
     repo: Path, reader: str, named: bool
@@ -571,9 +565,9 @@ def test_a_shrinking_text_file_counts_nothing(repo: Path) -> None:
 
 
 @pytest.mark.parametrize("path,counted", [
-    ("validation/study/blob.qqq", True),     # no data suffix, binary: counted
+    ("validation/study/blob.qqq", True),
     ("validation/study/model.bin", True),
-    ("docs/figures/plot.png", False),        # an image
+    ("docs/figures/plot.png", False),
     ("docs/figures/paper.pdf", False),
 ])
 def test_any_binary_that_is_not_an_image_is_counted(repo: Path, path: str, counted: bool) -> None:
@@ -660,9 +654,6 @@ def test_the_budget_is_measured_from_the_merge_base(repo: Path) -> None:
     assert _check(repo, main_tip, head) == []
 
 
-# --------------------------------------------------------------------------
-# The command line: exit codes, the label, the step summary
-# --------------------------------------------------------------------------
 
 
 def _violating_pr(repo: Path) -> tuple[str, str]:
@@ -685,14 +676,14 @@ def _main(monkeypatch, repo: Path, base: str, head: str, labels: str | None = No
 
 
 def test_a_violation_exits_1_and_says_where_the_data_goes(repo: Path, monkeypatch, capsys) -> None:
+    """The frozen-data homes are named only to say records do not belong there."""
     base, head = _violating_pr(repo)
     assert _main(monkeypatch, repo, base, head) == 1
     err = capsys.readouterr().err
-    assert "bk-squared/rfx-archive" in err
-    assert "rfx/records/<YYYYMMDD>-<topic>/" in err
+    assert "the record repository" in err
+    assert "<record root>/<YYYYMMDD>-<topic>/" in err
     assert "archive commit in the PR" in err
     assert "data-budget-exception" in err
-    # The frozen-data homes are named only to say records do not belong there.
     assert "only frozen data that a test reads" in err
     assert "does not make\n  it one" in err
 
@@ -746,7 +737,7 @@ def test_a_failure_is_written_to_the_step_summary(repo: Path, monkeypatch, tmp_p
     monkeypatch.delenv("GITHUB_EVENT_NAME", raising=False)
     assert budget.main(["--base", base, "--head", head, "--repo", str(repo)]) == 1
     written = summary.read_text(encoding="utf-8")
-    assert "Data budget failed" in written and "bk-squared/rfx-archive" in written
+    assert "Data budget failed" in written and "the record repository" in written
 
 
 def test_a_push_has_nothing_to_measure(repo: Path, monkeypatch, capsys) -> None:

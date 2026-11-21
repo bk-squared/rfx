@@ -19,9 +19,6 @@ from rfx.core.yee import init_state, init_materials, EPS_0
 from rfx.stepping.yee import update_h, update_e, update_e_aniso
 
 
-# -----------------------------------------------------------------------------
-# Common helpers
-# -----------------------------------------------------------------------------
 
 
 def _make_state_with_seeded_field(shape, seed=0):
@@ -42,16 +39,15 @@ def _make_materials_constant(shape, eps_r=1.0, sigma=0.0):
     )
 
 
-# -----------------------------------------------------------------------------
-# Test 1: vacuum equivalence
-# -----------------------------------------------------------------------------
 
 
 def test_update_e_aniso_inv_vacuum_matches_update_e():
     """With inv_eps = (1,1,1) and σ=0 (vacuum), ``update_e_aniso_inv``
     must produce the same field as the scalar ``update_e`` to within
     float32 ULP. Pins the bit-stable bridge: legacy callers that
-    redirect through Stage 2 see no observable change in vacuum."""
+    redirect through Stage 2 see no observable change in vacuum.
+
+    The update_e and update_e_aniso_inv paths differ in arithmetic ordering, so a few ULP of difference is expected and harmless."""
     from rfx.stepping.yee import update_e_aniso_inv
 
     shape = (16, 12, 10)
@@ -67,12 +63,6 @@ def test_update_e_aniso_inv_vacuum_matches_update_e():
     out_legacy = update_e(state0, materials, dt, dx, high_wall=(False, False, False))
     out_inv = update_e_aniso_inv(state0, materials, ones, ones, ones, dt, dx, high_wall=(False, False, False))
 
-    # Tolerance: float32 ULP at the typical Cb · curl scale (~1e-3) is
-    # ~1e-10. The two paths differ in arithmetic ordering — `update_e`
-    # computes ``dt / (eps_r · EPS_0)`` while `update_e_aniso_inv`
-    # computes ``dt · inv_eps0`` where ``inv_eps0 = 1 / EPS_0`` — so a
-    # few ULP of difference is expected and harmless. The 5e-6 rel-tol
-    # is in the same band as test_update_e_aniso_inv_dielectric_*.
     np.testing.assert_allclose(
         np.asarray(out_legacy.ex), np.asarray(out_inv.ex),
         rtol=5e-6, atol=1e-7,
@@ -87,9 +77,6 @@ def test_update_e_aniso_inv_vacuum_matches_update_e():
     )
 
 
-# -----------------------------------------------------------------------------
-# Test 2: dielectric equivalence with update_e_aniso
-# -----------------------------------------------------------------------------
 
 
 def test_update_e_aniso_inv_dielectric_matches_update_e_aniso():
@@ -130,7 +117,6 @@ def test_update_e_aniso_inv_dielectric_matches_update_e_aniso():
         state0, materials, inv_aniso[0], inv_aniso[1], inv_aniso[2], dt, dx,
      high_wall=(False, False, False))
 
-    # Within 5 ULP for float32 ~ 6e-7 relative.
     np.testing.assert_allclose(
         np.asarray(out_legacy.ex), np.asarray(out_inv.ex),
         rtol=5e-6, atol=1e-9,
@@ -145,9 +131,6 @@ def test_update_e_aniso_inv_dielectric_matches_update_e_aniso():
     )
 
 
-# -----------------------------------------------------------------------------
-# Test 3: PEC tangential stays frozen
-# -----------------------------------------------------------------------------
 
 
 def test_update_e_aniso_inv_pec_tangential_frozen():
@@ -163,23 +146,20 @@ def test_update_e_aniso_inv_pec_tangential_frozen():
     dt = dx / (3e8 * np.sqrt(3.0)) * 0.99
 
     state0 = _make_state_with_seeded_field(shape, seed=3)
-    # Ensure non-zero H (so curl(H) is non-trivial when E updates).
     state0 = update_h(state0, _make_materials_constant(shape), dt, dx, high_wall=(False, False, False))
 
-    # Seed Ex with a known non-zero pattern so we can verify it is
-    # preserved (not zeroed by some side-effect).
+    assert any(np.any(np.asarray(field) != 0) for field in (state0.hx, state0.hy, state0.hz)) and np.any(np.diff(np.asarray(state0.hz), axis=1)[:, :, 1:] - np.diff(np.asarray(state0.hy), axis=2)[:, 1:, :]), "the seeded field must produce nonzero H and a nontrivial curl for the electric update"
     rng = np.random.default_rng(11)
     ex_seed = rng.normal(size=shape).astype(np.float32) * 0.05
+    assert np.any(ex_seed != 0), "the Ex seed must be nonzero so freezing cannot be confused with zeroing"
     state0 = state0._replace(ex=jnp.asarray(ex_seed))
 
     materials = _make_materials_constant(shape, eps_r=1.0, sigma=0.0)
     zeros = jnp.zeros(shape, dtype=jnp.float32)
     ones = jnp.ones(shape, dtype=jnp.float32)
 
-    # inv_xx = 0 (PEC tangential), inv_yy = inv_zz = 1 (vacuum).
     out = update_e_aniso_inv(state0, materials, zeros, ones, ones, dt, dx, high_wall=(False, False, False))
 
-    # Ex must remain at its seeded value (Ca=1 · ex_seed + Cb=0 · curl).
     np.testing.assert_allclose(
         np.asarray(out.ex), ex_seed, rtol=0, atol=1e-7,
         err_msg="inv_xx=0 should freeze Ex; got non-trivial change",
@@ -201,13 +181,12 @@ def test_update_e_aniso_inv_pec_tangential_with_sigma_still_frozen():
     state0 = _make_state_with_seeded_field(shape, seed=23)
     state0 = update_h(state0, _make_materials_constant(shape), dt, dx, high_wall=(False, False, False))
 
-    # Seed Ex.
     rng = np.random.default_rng(99)
     ex_seed = rng.normal(size=shape).astype(np.float32) * 0.1
     state0 = state0._replace(ex=jnp.asarray(ex_seed))
 
-    # σ = 100 S/m (lossy substrate); should be irrelevant when inv_xx=0.
-    materials = _make_materials_constant(shape, eps_r=1.0, sigma=100.0)
+    LOSSY_CONDUCTIVITY_S_PER_METRE = 100.0
+    materials = _make_materials_constant(shape, eps_r=1.0, sigma=LOSSY_CONDUCTIVITY_S_PER_METRE)
     zeros = jnp.zeros(shape, dtype=jnp.float32)
     ones = jnp.ones(shape, dtype=jnp.float32)
 
@@ -219,9 +198,6 @@ def test_update_e_aniso_inv_pec_tangential_with_sigma_still_frozen():
     )
 
 
-# -----------------------------------------------------------------------------
-# Test 4: partial PEC (perpendicular component) update is finite & stable
-# -----------------------------------------------------------------------------
 
 
 def test_update_e_aniso_inv_partial_pec_perpendicular_finite():
@@ -251,9 +227,6 @@ def test_update_e_aniso_inv_partial_pec_perpendicular_finite():
     assert np.all(np.isfinite(np.asarray(out.ez)))
 
 
-# -----------------------------------------------------------------------------
-# Test 5: JIT compatibility
-# -----------------------------------------------------------------------------
 
 
 def test_update_e_aniso_inv_jit_compatible():

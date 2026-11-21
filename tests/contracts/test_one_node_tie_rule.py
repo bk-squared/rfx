@@ -12,11 +12,12 @@ from rfx.geometry.rasterize_grid import (
     coords_from_uniform_grid, wire_vertex_nodes,
 )
 
+BINARY_EXACT_COARSE_CELL_SIZE_M = 3 / 1024
+
 
 def model(lane):
     kw = dict(freq_max=10e9, domain=(.02, .02, .02), dx=.001, boundary="pec")
     if lane == "graded":
-        # Truly graded, with the declared witnesses in the 1 mm portion.
         d = np.array([.001] * 12 + [.0009, .0011] * 3 + [.001] * 2)
         kw.update(dx_profile=d, dy_profile=d, dz_profile=d)
     sim = Simulation(snap="declared", **kw)
@@ -38,12 +39,11 @@ KINDS = ["point", "interval", "wire_vertex", "wire_radius", "sheet",
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
 @pytest.mark.parametrize("kind", KINDS)
 def test_declared_half_node_is_lower_and_colocated(kind, lane, monkeypatch):
+    """Decimal 10.5 mm is a few ULP nearer node 11."""
     sim, grid, coords, sizes = model(lane)
     from rfx.nonuniform import position_to_index
     lookup = (lambda p: position_to_index(grid, p)) if lane == "graded" else grid.position_to_index
     nodes = (coords.x, coords.y, coords.z)
-    # Node 10 is a useful argmin witness: decimal 10.5 mm is a few ULP
-    # nearer node 11. Node 3 witnesses Python's old half-to-even rounding.
     if kind == "point":
         assert lookup((.0035, .0035, .0035)) == (3, 3, 3)
         assert tuple(grid.index_of(a, .0035) for a in range(3)) == (3, 3, 3)
@@ -57,7 +57,6 @@ def test_declared_half_node_is_lower_and_colocated(kind, lane, monkeypatch):
         indices, _ = wire_vertex_nodes([(.0105, .0105, .0105)], nodes, sizes)
         assert indices == [(10, 10, 10)]
     elif kind == "wire_radius":
-        # A varying forward cell makes a reverted nearest-node site visible.
         line = np.arange(15) * .001
         d = np.full(15, .001)
         d[10] = .0009
@@ -71,8 +70,6 @@ def test_declared_half_node_is_lower_and_colocated(kind, lane, monkeypatch):
             mask = sheet_footprint_traced(Box((.003, .003, .0105), (.009, .009, .0105)), coords, 2)
         assert set(np.nonzero(np.asarray(mask))[2]) == {10}
     elif kind == "csg_thin_box":
-        # One ULP above this lane's computed midpoint is inside the tie
-        # band, but a reverted argmin chooses the upper node on both lanes.
         mid = np.nextafter(.5 * (coords.z[10] + coords.z[11]), np.inf)
         shape = Box((.003, .003, mid - .0001), (.009, .009, mid + .0001))
         assert (shape.corner_lo[2] + shape.corner_hi[2]) / 2 == mid
@@ -195,7 +192,6 @@ def test_declared_half_node_is_lower_and_colocated(kind, lane, monkeypatch):
     (.003, .0117, .0117, 12, (3, 11), True),
     (.0035, .011, .0035, 3, (4, 11), True),
     (.0033, .011, .0033, 3, (4, 11), True),
-    # declared one float step below the trace start (e.g. through a float sum)
     (.0035, .011, float(np.nextafter(.0035, 0.)), 3, (4, 11), True),
 ], ids=["A", "B", "C", "D", "D2", "D-eps"])
 def test_trace_port_realized_footprint(lane, extent, lo, hi, x, node, footprint, refused):
@@ -243,7 +239,7 @@ def test_subgrid_runner_bound_and_point_sites(monkeypatch):
     """Observe the runner's own setup, before its first fine/coarse step."""
     from rfx.runners.subgridded import _run_subgridded_once
     from rfx.subgridding import jit_runner
-    dx = 3 / 1024  # binary-exact coarse and fine cells (ratio 3)
+    dx = BINARY_EXACT_COARSE_CELL_SIZE_M
     sim = Simulation(freq_max=10e9, domain=(21 * dx, 21 * dx, 20 * dx), dx=dx, boundary="pec")
     grid = sim._build_grid()
     sim._refinement = dict(ratio=3, z_range=(3.5 * dx, 9.5 * dx), xy_margin=3.5 * dx,

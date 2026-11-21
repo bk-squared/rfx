@@ -2,7 +2,7 @@
 import pytest
 from tests._distributed_dispersive_cpml import parity
 
-pytestmark = pytest.mark.distributed
+pytestmark = [pytest.mark.distributed, pytest.mark.slow]
 
 
 def test_law_c_and_bar_s(monkeypatch):

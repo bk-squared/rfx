@@ -24,10 +24,6 @@ from rfx.sources.sources import GaussianPulse
 pytestmark = pytest.mark.gpu
 
 
-# ---------------------------------------------------------------------------
-# Helper: run a PEC cavity simulation with a dielectric sphere and measure
-# the resonance frequency error vs analytical.
-# ---------------------------------------------------------------------------
 
 def _analytical_empty_cavity_tm110(a: float, b: float, d: float) -> float:
     """TM110 resonance of an empty rectangular PEC cavity."""
@@ -46,7 +42,7 @@ def _run_sphere_cavity(
 
     Returns (time_series, dt) so that the caller can apply zero-padded
     FFT for accurate peak finding.
-    """
+    The Gaussian pulse is off-center to excite multiple modes."""
     dx = cavity_size / n_cells
     freq_max = C0 / (dx * 10)
 
@@ -59,33 +55,28 @@ def _run_sphere_cavity(
 
     materials = init_materials(grid.shape)
 
-    # Place sphere at center
     center = (cavity_size / 2.0, cavity_size / 2.0, cavity_size / 2.0)
     sphere = Sphere(center=center, radius=sphere_radius)
 
-    # Build material arrays with sphere
     mask = sphere.mask(grid)
     eps_r = jnp.where(mask, sphere_eps, 1.0)
     materials = MaterialArrays(eps_r=eps_r, sigma=materials.sigma, mu_r=materials.mu_r)
 
-    # Per-component smoothed eps
     aniso_eps = None
     if use_smoothing:
         eps_ex, eps_ey, eps_ez = compute_smoothed_eps(
             grid, [(sphere, sphere_eps)], background_eps=1.0
-        )
+        , dtype='float32')
         aniso_eps = (eps_ex, eps_ey, eps_ez)
 
     state = init_state(grid.shape)
 
-    # Source: Gaussian pulse at off-center to excite multiple modes
     f0 = _analytical_empty_cavity_tm110(cavity_size, cavity_size, cavity_size)
     pulse = GaussianPulse(f0=f0, bandwidth=0.8)
     src_i = grid.nx // 3
     src_j = grid.ny // 3
     src_k = grid.nz // 2
 
-    # Probe
     probe_i = 2 * grid.nx // 3
     probe_j = 2 * grid.ny // 3
     probe_k = grid.nz // 2
@@ -111,7 +102,6 @@ def _run_sphere_cavity(
 
         state = apply_pec(state)
 
-        # Source injection
         src_val = pulse(t)
         ez = state.ez.at[src_i, src_j, src_k].add(src_val)
         state = state._replace(ez=ez)
@@ -154,9 +144,6 @@ def _find_peak_freq(time_series, dt, f_expected, search_bw=0.25, nfft_mult=16):
     return freqs[peak_idx]
 
 
-# ---------------------------------------------------------------------------
-# Test 1: Convergence order
-# ---------------------------------------------------------------------------
 
 class TestConvergenceOrder:
     """Verify subpixel smoothing improves convergence order."""
@@ -172,7 +159,7 @@ class TestConvergenceOrder:
         at specific resolutions where the stepped boundary happens to
         approximate the sphere well.  Subpixel smoothing removes this
         artifact, producing monotonically decreasing errors.
-        """
+        Mean error is used instead of convergence rate because staircase geometries exhibit non-monotonic errors (geometric aliasing), which can produce misleadingly high convergence rates from a two-point ratio."""
         cavity_size = 0.06
         sphere_radius = 0.015
         sphere_eps = 4.0
@@ -184,7 +171,6 @@ class TestConvergenceOrder:
         errors_stair = []
         errors_smooth = []
 
-        # Reference from fine grid with smoothing
         ts_ref, dt_ref = _run_sphere_cavity(
             n_cells=48,
             sphere_eps=sphere_eps,
@@ -213,7 +199,6 @@ class TestConvergenceOrder:
                 print(f"  n={n_cells:3d} smooth={use_smoothing} "
                       f"f_peak={f_peak/1e9:.4f} GHz  err={err:.6f}")
 
-        # Compute convergence rates (for informational printing)
         if errors_smooth[0] > 0 and errors_smooth[-1] > 0:
             rate_smooth = np.log(errors_smooth[0] / errors_smooth[-1]) / \
                           np.log(resolutions[-1] / resolutions[0])
@@ -230,19 +215,11 @@ class TestConvergenceOrder:
         print(f"Mean error:  staircased={np.mean(errors_stair):.6f}, "
               f"smoothed={np.mean(errors_smooth):.6f}")
 
-        # Primary assertion: smoothing should reduce the average error
-        # across resolutions.  We use mean error instead of convergence
-        # rate because staircase geometries exhibit non-monotonic errors
-        # (geometric aliasing), which can produce misleadingly high
-        # convergence rates from a two-point ratio.
         assert np.mean(errors_smooth) < np.mean(errors_stair), \
             (f"Smoothed mean error {np.mean(errors_smooth):.6f} should be less "
              f"than staircased mean error {np.mean(errors_stair):.6f}")
 
 
-# ---------------------------------------------------------------------------
-# Test 2: Error reduction
-# ---------------------------------------------------------------------------
 
 class TestErrorReduction:
     """Verify subpixel smoothing reduces error at same resolution."""
@@ -258,7 +235,6 @@ class TestErrorReduction:
 
         f_empty = _analytical_empty_cavity_tm110(cavity_size, cavity_size, cavity_size)
 
-        # Reference from fine grid
         ts_ref, dt_ref = _run_sphere_cavity(
             n_cells=40,
             sphere_eps=sphere_eps,
@@ -269,7 +245,6 @@ class TestErrorReduction:
         )
         f_ref = _find_peak_freq(ts_ref, dt_ref, f_empty * 0.7)
 
-        # Staircased
         ts_s, dt_s = _run_sphere_cavity(
             n_cells=n_cells,
             sphere_eps=sphere_eps,
@@ -280,7 +255,6 @@ class TestErrorReduction:
         f_stair = _find_peak_freq(ts_s, dt_s, f_ref)
         err_stair = abs(f_stair - f_ref) / f_ref
 
-        # Smoothed
         ts_m, dt_m = _run_sphere_cavity(
             n_cells=n_cells,
             sphere_eps=sphere_eps,
@@ -296,14 +270,10 @@ class TestErrorReduction:
         if err_smooth > 0:
             print(f"Improvement:      {err_stair / err_smooth:.1f}x")
 
-        # Smoothing should reduce the error
         assert err_smooth < err_stair, \
             f"Smoothed error {err_smooth:.6f} should be less than staircased {err_stair:.6f}"
 
 
-# ---------------------------------------------------------------------------
-# Test 3: Backward compatibility
-# ---------------------------------------------------------------------------
 
 class TestBackwardCompatibility:
     """Verify that disabling smoothing gives identical results."""
@@ -313,10 +283,10 @@ class TestBackwardCompatibility:
         uses the original update_e code path — not update_e_aniso.
         We verify this by running the simulation runner with aniso_eps=None
         and comparing against a direct update_e loop.
-        """
+        The domain length written as 14 * (299792458.0 / 5e9 / 20.0) is a whole number of cells of dx, so the solved domain equals the declared one."""
         from rfx.stepping.uniform_loop import _update_e_with_optional_dispersion
 
-        cavity_size = 14 * (299792458.0 / 5e9 / 20.0)  # main's solved length; #1887
+        cavity_size = 14 * (299792458.0 / 5e9 / 20.0)
         freq_max = 5e9
         grid = Grid(freq_max=freq_max, domain=(cavity_size, cavity_size, cavity_size),
                      cpml_layers=0)
@@ -335,7 +305,6 @@ class TestBackwardCompatibility:
         dt = grid.dt
         dx = grid.dx
 
-        # Run with standard update_e directly
         state_std = init_state(grid.shape)
         n_steps = 200
 
@@ -347,8 +316,6 @@ class TestBackwardCompatibility:
             ez = state_std.ez.at[src_i, src_j, src_k].add(pulse(t))
             state_std = state_std._replace(ez=ez)
 
-        # Run with _update_e_with_optional_dispersion(aniso_eps=None)
-        # This is the exact code path used when subpixel_smoothing=False
         state_dispatch = init_state(grid.shape)
 
         for n in range(n_steps):
@@ -361,8 +328,6 @@ class TestBackwardCompatibility:
             ez = state_dispatch.ez.at[src_i, src_j, src_k].add(pulse(t))
             state_dispatch = state_dispatch._replace(ez=ez)
 
-        # These should be BIT-IDENTICAL because aniso_eps=None falls through
-        # to the exact same update_e function
         np.testing.assert_array_equal(
             np.array(state_std.ex), np.array(state_dispatch.ex),
             err_msg="Ex mismatch: aniso_eps=None should use identical code path",

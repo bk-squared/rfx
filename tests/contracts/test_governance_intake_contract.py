@@ -101,11 +101,6 @@ def labeler_globs() -> list[tuple[str, str]]:
     return pairs
 
 
-# --------------------------------------------------------------------------
-# .github/labeler.yml
-# --------------------------------------------------------------------------
-
-
 def test_the_labeler_config_exists_and_is_not_empty() -> None:
     """A glob list that silently became empty makes every test below vacuous."""
     assert LABELER.is_file(), f"missing {LABELER}"
@@ -156,9 +151,6 @@ def test_changelog_fragments_are_not_owned_by_a_lane() -> None:
     assert not owners, f"changelog.d/ is owned by {owners}"
 
 
-#: Files a lane glob must NOT own, and why. A glob wide enough to be convenient
-#: is usually wide enough to be wrong, and the wrongness is invisible: the file
-#: just quietly belongs to a lane whose owner has never heard of it.
 MUST_NOT_MATCH = (
     (
         "lane:coax-mixed-port",
@@ -185,11 +177,6 @@ def test_a_lane_does_not_own_a_file_that_merely_shares_a_word(
 def test_the_lane_plan_label_has_no_paths() -> None:
     """`lane:plan` marks trackers and deferred decisions, which have no code."""
     assert "lane:plan" not in load(LABELER)
-
-
-# --------------------------------------------------------------------------
-# .github/workflows/labeler.yml
-# --------------------------------------------------------------------------
 
 
 def test_the_labeler_workflow_runs_on_pull_request_target_with_write() -> None:
@@ -305,11 +292,6 @@ def test_the_labeler_workflow_keeps_hand_applied_lanes() -> None:
     assert labeler[0]["with"]["configuration-path"] == ".github/labeler.yml"
 
 
-# --------------------------------------------------------------------------
-# .github/ISSUE_TEMPLATE/
-# --------------------------------------------------------------------------
-
-
 def test_blank_issues_are_disabled() -> None:
     """A blank issue is how "will someone DO or DECIDE something" stopped being asked."""
     assert load(FORM_DIR / "config.yml")["blank_issues_enabled"] is False
@@ -391,11 +373,6 @@ def test_the_form_titles_the_problem_rather_than_the_fix(name: str) -> None:
     """The seeded title is a placeholder, so it cannot be submitted as written."""
     title = load(FORM_DIR / name)["title"]
     assert title.startswith("<") and title.endswith(">"), title
-
-
-# --------------------------------------------------------------------------
-# .github/workflows/issue-lane-label.yml and governance-audit.yml
-# --------------------------------------------------------------------------
 
 
 def test_the_issue_lane_workflow_runs_on_open_and_edit_with_issue_write() -> None:

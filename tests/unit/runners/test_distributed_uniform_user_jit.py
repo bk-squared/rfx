@@ -107,6 +107,7 @@ def record_scene(kind, *, graded=False, freqs=None):
 
 
 def record_arrays(result, kind):
+    """Host float64 centres and int64 block keys must cross the jit return boundary without silently narrowing."""
     if kind == 'ntff':
         accumulators = result.ntff_data._asdict()
         metadata = result.ntff_box._asdict()
@@ -121,8 +122,6 @@ def record_arrays(result, kind):
     numeric = {}
     for name, value in metadata.items():
         if isinstance(value, np.ndarray):
-            # Preserve host float64 centres/int64 block keys without enabling x64
-            # or silently narrowing them when they cross the jit return boundary.
             numeric[f'{name}/{value.dtype}/{value.shape}'] = jnp.asarray(
                 np.frombuffer(value.tobytes(), dtype=np.uint8))
         elif value is not None and not isinstance(value, str):
@@ -131,12 +130,11 @@ def record_arrays(result, kind):
 
 
 def assert_record_matches(kind, eager, actual, *, context):
-    """Field accumulators within the summed-quantity bar, metadata bitwise."""
+    """Field accumulators within the summed-quantity bar, metadata bitwise.
+    The flux monitor's E and H accumulators differ by about the wave impedance, so each pair gets its own peak.
+    """
     eager_acc, eager_meta = jax.tree.map(np.asarray, eager)
     actual_acc, actual_meta = jax.tree.map(np.asarray, actual)
-    # One peak per physical quantity: the flux monitor's E and H accumulators
-    # differ by about the wave impedance, so each pair gets its own peak; a
-    # compensation array shares its accumulator's peak.
     group = {name: name[0] if kind == 'flux' else kind for name in eager_acc}
     peaks = {}
     for name, value in eager_acc.items():

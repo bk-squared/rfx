@@ -10,6 +10,8 @@ planes. Index boxes are inclusive ``(lo, hi)`` per axis on the padded grid;
 """
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 import numpy as np
 
 from rfx._internal._grid_metric import field_index
@@ -44,7 +46,7 @@ def _sources(sim, ctx):
             cell = tuple(int(k) for k in field_index(ctx.grid, pe.position, pe.component))
             rows.append(SourceGeometry(f"port[{i}]", "soft_point", pe.component, (cell,)))
         except (TimeoutError,): raise
-        except Exception as exc:  # noqa: BLE001 - recorded in SourceGeometry.error
+        except Exception as exc:  # noqa: BLE001
             rows.append(SourceGeometry(f"port[{i}]", "soft_point", pe.component, error=_error(exc)))
     if sim._tfsf is not None:
         rows.append(_tfsf_row(sim, ctx))
@@ -57,14 +59,14 @@ def _tfsf_row(sim, ctx):
     entry, grid = sim._tfsf, ctx.grid
     try:
         if ctx.lane == "nonuniform":
-            cfg, _ = tfsf_from_declaration(entry, grid, sim._freq_max)
+            cfg, _ = tfsf_from_declaration(entry, grid, sim._freq_max, dtype=resolve_coefficient_dtype(sim._precision))
             planes = tfsf_injection_planes(cfg)
         else:
             planes = sim.tfsf_box_indices()
         box = tuple(planes.get("xyz"[a]) for a in range(3))
         return SourceGeometry("tfsf", "tfsf", entry.polarization, index_box=box)
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in SourceGeometry.error
+    except Exception as exc:  # noqa: BLE001
         return SourceGeometry("tfsf", "tfsf", entry.polarization, error=_error(exc))
 
 
@@ -74,12 +76,12 @@ def _probes(sim, ctx):
     internal = getattr(sim, "_internal_probe_indices", None) or ()
     for i, pe in enumerate(sim._probes):
         if i in internal:
-            continue  # a library witness probe (MSL / mixed extraction), not the user's
+            continue
         try:
             index = tuple(int(k) for k in field_index(grid, pe.position, pe.component))
             rows.append(ProbeGeometry(f"probe[{i}]", "point", (pe.component,), index=index))
         except (TimeoutError,): raise
-        except Exception as exc:  # noqa: BLE001 - recorded in ProbeGeometry.error
+        except Exception as exc:  # noqa: BLE001
             rows.append(ProbeGeometry(f"probe[{i}]", "point", (pe.component,), error=_error(exc)))
     regions = getattr(sim, "_dft_plane_regions", {})
     for pe in sim._dft_planes:
@@ -96,7 +98,7 @@ def _probes(sim, ctx):
                 fixed[t[1]] = (int(region[2]), int(region[3]) - 1)
             rows.append(ProbeGeometry(pe.name, "dft_plane", (pe.component,), index_box=_box(grid, fixed)))
         except (TimeoutError,): raise
-        except Exception as exc:  # noqa: BLE001 - recorded in ProbeGeometry.error
+        except Exception as exc:  # noqa: BLE001
             rows.append(ProbeGeometry(pe.name, "dft_plane", (pe.component,), error=_error(exc)))
     for pe in getattr(sim, "_flux_monitors", ()):
         rows.append(_flux_row(sim, ctx, pe, locate))
@@ -126,7 +128,7 @@ def _flux_row(sim, ctx, pe, locate):
                 fixed[b] = (int(lo), int(hi) - 1)
         return ProbeGeometry(pe.name, "flux", components, index_box=_box(ctx.grid, fixed))
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in ProbeGeometry.error
+    except Exception as exc:  # noqa: BLE001
         return ProbeGeometry(pe.name, "flux", components, error=_error(exc))
 
 
@@ -141,7 +143,7 @@ def _ntff_row(sim, ctx, locate):
         box = tuple((int(lo[a]), int(hi[a])) for a in range(3))
         return ProbeGeometry("ntff", "ntff", components, index_box=box)
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in ProbeGeometry.error
+    except Exception as exc:  # noqa: BLE001
         return ProbeGeometry("ntff", "ntff", components, error=_error(exc))
 
 
@@ -183,7 +185,6 @@ def cells_per_wavelength(sim, sizes, domain, materials, pec_mask):
     try:
         if not any(is_tracer(v) for v in (materials.eps_r, materials.mu_r, pec_mask)):
             region = tuple(slices)
-            # Volume permittivity: a lumped capacitor stamp is not a medium.
             from rfx.model.materials import volume_eps_mu
             product = np.asarray(volume_eps_mu(materials), np.float64)
             product = np.broadcast_to(product, np.shape(materials.eps_r))[region]
@@ -193,7 +194,7 @@ def cells_per_wavelength(sim, sizes, domain, materials, pec_mask):
                 eps_mu = float(product[keep].max())
                 medium = float(C0 / (f * np.sqrt(eps_mu)) / cell)
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in CellsPerWavelength.error
+    except Exception as exc:  # noqa: BLE001
         medium = eps_mu = None
         error = _error(exc)
     return CellsPerWavelength(vacuum, medium, cell, f, eps_mu, error)

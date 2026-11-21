@@ -1,4 +1,6 @@
 """Flux quadrature on realized nodes, including full-plane storage conventions."""
+
+from rfx._internal._precision import resolve_coefficient_dtype
 import numpy as np
 
 from rfx.model.graded_admission import host_cells, refuse_window_cells
@@ -115,7 +117,7 @@ def monitor_periodic_flags(sim, grid):
     from rfx.sources.tfsf import tfsf_from_declaration
     from rfx.boundaries.tfsf import boundary_flags
     entry = sim._tfsf
-    cfg, _ = tfsf_from_declaration(entry, grid, sim._freq_max, bounds_only=True)
+    cfg, _ = tfsf_from_declaration(entry, grid, sim._freq_max, bounds_only=True, dtype=resolve_coefficient_dtype(sim._precision))
     return boundary_flags(cfg, grid)[0]
 
 

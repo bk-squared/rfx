@@ -110,9 +110,7 @@ def test_nu_forward_emit_false_grad_runs():
 
     def loss(alpha):
         eps = eps_base.at[ti, tj, tk].set(alpha)
-        # Use a trivial functional of n_steps so the call participates in AD.
         fr = sim.forward(eps_override=eps, n_steps=40, emit_time_series=False)
-        # Without time series, fold the eps directly so grad is well-defined.
         return jnp.sum(eps ** 2) + 0.0 * jnp.sum(jnp.asarray(fr.time_series) ** 2)
 
     grad = float(jax.grad(loss)(jnp.float32(2.0)))

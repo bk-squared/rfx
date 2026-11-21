@@ -28,9 +28,8 @@ def _guide(kind, graded):
 
 @pytest.mark.parametrize('kind', ['mu', 'debye', 'rlc'])
 def test_empty_reference_scattering_contract(kind):
+    """The internal NU reference is exercised without claiming public RLC support."""
     if kind == 'rlc':
-        # Both public calculators refuse RLC (#1263). Keep that boundary;
-        # exercise the internal NU reference without claiming public support.
         for graded in (False, True):
             with pytest.raises(NotImplementedError, match='lumped RLC'):
                 _guide(kind, graded).compute_waveguide_s_matrix(
@@ -39,8 +38,6 @@ def test_empty_reference_scattering_contract(kind):
             n_steps=None, num_periods=40, normalize=True)
         assert np.max(np.abs(np.asarray(result.s_params)[0,0])) > .01
         return
-    # Same equal-cell mesh. V/I normalization compares the summed modal
-    # quantities directly; no power-ratio square root at a reflection zero.
     values = [np.asarray(_guide(kind, graded).compute_waveguide_s_matrix(
         num_periods=40, normalize=True).s_params)[0,0] for graded in (False,True)]
     peak = np.max(np.abs(values[0]))

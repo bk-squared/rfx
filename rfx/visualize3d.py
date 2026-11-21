@@ -40,21 +40,17 @@ def _pyvista(*, required=False):
     return pv
 
 
-# ---------------------------------------------------------------------------
-# Geometry rendering
-# ---------------------------------------------------------------------------
-
 def _box_faces(p0, p1, color="C0", alpha=0.3):
     """Generate 6 face polygons for a box defined by corners p0, p1."""
     x0, y0, z0 = p0
     x1, y1, z1 = p1
     verts = [
-        [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0)],  # bottom
-        [(x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)],  # top
-        [(x0, y0, z0), (x1, y0, z0), (x1, y0, z1), (x0, y0, z1)],  # front
-        [(x0, y1, z0), (x1, y1, z0), (x1, y1, z1), (x0, y1, z1)],  # back
-        [(x0, y0, z0), (x0, y1, z0), (x0, y1, z1), (x0, y0, z1)],  # left
-        [(x1, y0, z0), (x1, y1, z0), (x1, y1, z1), (x1, y0, z1)],  # right
+        [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0)],
+        [(x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)],
+        [(x0, y0, z0), (x1, y0, z0), (x1, y0, z1), (x0, y0, z1)],
+        [(x0, y1, z0), (x1, y1, z0), (x1, y1, z1), (x0, y1, z1)],
+        [(x0, y0, z0), (x0, y1, z0), (x0, y1, z1), (x0, y0, z1)],
+        [(x1, y0, z0), (x1, y1, z0), (x1, y1, z1), (x1, y0, z1)],
     ]
     return verts
 
@@ -175,7 +171,6 @@ def _plot_geometry_mpl(sim, show_domain, show_ports, title, figsize, scale, scal
         fig.tight_layout()
         return fig
 
-    # --- 2D multi-view fallback (XY, XZ, YZ projections) ---
     fig, axes = plt.subplots(1, 3, figsize=figsize)
     view_labels = [
         ("x", "y", "XY (top)"),
@@ -285,10 +280,6 @@ def _plot_geometry_pyvista(sim, show_domain, show_ports, title, scale, scale_lab
     return pl
 
 
-# ---------------------------------------------------------------------------
-# Field visualization
-# ---------------------------------------------------------------------------
-
 def plot_field_3d(
     state: FDTDState,
     grid: Grid | NonUniformGrid,
@@ -378,7 +369,6 @@ def _plot_field_mpl(field, grid, component, threshold, title, figsize, cmap, sca
         fig.tight_layout()
         return fig
 
-    # --- 2D tri-panel fallback ---
     fig, axes = plt.subplots(1, 3, figsize=figsize)
     slices_2d = [
         (field[:, :, nz // 2], 0, 1, f"z={coords[2][nz // 2]:g}"),
@@ -417,7 +407,6 @@ def _plot_field_pyvista(field, grid, component, threshold, title, cmap, scale, s
     pl = pv.Plotter(off_screen=True)
     vmax = float(np.max(np.abs(field))) or 1.0
 
-    # Volume rendering
     pl.add_volume(
         mesh,
         scalars=component,
@@ -433,10 +422,6 @@ def _plot_field_pyvista(field, grid, component, threshold, title, cmap, scale, s
 
     return pl
 
-
-# ---------------------------------------------------------------------------
-# VTK export
-# ---------------------------------------------------------------------------
 
 def save_field_vtk(
     state: FDTDState,
@@ -481,7 +466,6 @@ def save_field_vtk(
         mesh.save(out_path)
         return out_path
 
-    # Fallback: write legacy VTK manually
     out_path = f"{filename}.vtk"
     with open(out_path, "w") as f:
         f.write("# vtk DataFile Version 3.0\n")
@@ -500,16 +484,11 @@ def save_field_vtk(
             field = np.asarray(getattr(state, comp))
             f.write(f"SCALARS {comp} float 1\n")
             f.write("LOOKUP_TABLE default\n")
-            # VTK rectilinear grid expects Fortran order
             for val in field.ravel(order="F"):
                 f.write(f"{val:.6g}\n")
 
     return out_path
 
-
-# ---------------------------------------------------------------------------
-# Convenience: save geometry + field screenshot
-# ---------------------------------------------------------------------------
 
 def save_screenshot(
     sim,

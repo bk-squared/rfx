@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 from inspect import signature
 
 import jax
+import jax.numpy as jnp
 
 from rfx.boundaries import cpml, upml
 from rfx.boundaries.spec import normalize_boundary
@@ -107,12 +108,13 @@ class Realization:
 
 
 def _read_absorber_parameters():
+    """The alpha_max record uses the public float32 profile."""
     cpml_defaults = signature(cpml._cpml_profile).parameters
     cpml_parameters = {name: cpml_defaults[name].default
                        for name in ("order", "R_asymptotic", "kappa_max")}
     # Alpha is set in the profile body, not in its signature.
     with jax.ensure_compile_time_eval():
-        cpml_parameters["alpha_max"] = float(cpml._cpml_profile(2, 0.0, 1.0).alpha.max())
+        cpml_parameters["alpha_max"] = float(cpml._cpml_profile(2, 0.0, 1.0, dtype=jnp.float32).alpha.max())
     upml_defaults = signature(upml._sigma_profile_1d).parameters
     return {
         "cpml": tuple(sorted(cpml_parameters.items())),
@@ -217,13 +219,14 @@ def realize(model: BoundaryModel, grid) -> Realization:
 
 def collect_requirements(sim, *, rcs: bool = False) -> tuple[Requirement, ...]:
     """Collect TFSF, waveguide, Floquet and optional RCS requirements."""
+    from rfx.sources.tfsf import is_oblique
     requirements = []
     tfsf = sim._tfsf
     if tfsf is not None:
         requirements.append(Requirement("TFSF", ("x_lo", "x_hi"), (Kind.ABSORBER,)))
         electric_axis = tfsf.polarization[-1]
         magnetic_axis = "y" if electric_axis == "z" else "z"
-        oblique = tfsf.angle_deg != 0
+        oblique = is_oblique(tfsf.angle_deg)
         for axis, wall in ((electric_axis, Kind.PEC), (magnetic_axis, Kind.PMC)):
             if getattr(tfsf, "closed_box", False):
                 kinds = (Kind.ABSORBER,)

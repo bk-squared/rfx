@@ -32,6 +32,7 @@ FREQS = jnp.linspace(5e9, 6.5e9, 4)
 
 
 def _wr90_sim():
+    """The domain lengths written as ``0.12``, ``14 * 0.003`` and ``7 * 0.003`` are whole numbers of cells of dx, so the solved domain equals the declared one."""
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 14 * 0.003, 7 * 0.003),
@@ -42,7 +43,7 @@ def _wr90_sim():
             z=Boundary(lo="pec", hi="pec"),
         ),
         cpml_layers=8,
-    )  # solved length; #1887
+    )
     sim.add_waveguide_port(0.010, direction="+x", mode=(1, 0), mode_type="TE",
                            freqs=FREQS, f0=6e9, bandwidth=0.5, name="left")
     sim.add_waveguide_port(0.090, direction="-x", mode=(1, 0), mode_type="TE",
@@ -81,7 +82,6 @@ def _s21_mag2(deps):
     res = sim.compute_waveguide_s_matrix(
         num_periods=NUM_PERIODS, normalize="flux", eps_override=eps,
     )
-    # |S21|^2 at the band-center bin (index 2 of the 4-point grid)
     return jnp.abs(res.s_params[1, 0, 2]) ** 2
 
 

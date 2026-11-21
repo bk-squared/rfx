@@ -69,7 +69,7 @@ STAGE B -- the record this case needs: the tutorial's geometry, three mesh rungs
         ``MeasPlaneShift = MSL_length/3`` is a length and does not move.
 
 An earlier draft shortened the line arms to 10 000 um each side. It was dropped
-(leader decision, 2026-09-22) for a reason that is geometry, not taste: at
+for a reason that is geometry, not taste: at
 10 000 um the tutorial's own ``MeasPlaneShift = MSL_length/3`` is 3.333 mm while
 the x PML_8 is about 3.500 mm deep at the tutorial's resolution, so the port's
 measurement plane falls INSIDE the absorber and upstream of the feed -- that is
@@ -159,13 +159,6 @@ from pathlib import Path
 import numpy as np
 
 
-# ---------------------------------------------------------------------------
-# The shared tutorial gate, loaded by PATH. This script runs as a bare file on
-# the cluster (``python tests/crossval/.../make_openems_reference.py``), where
-# the repository root is not on sys.path and ``tests`` is not an importable
-# package, so a package import would work under pytest and fail on the box that
-# actually produces the record.
-# ---------------------------------------------------------------------------
 _GATE_MODULE_NAME = "_rfx_openems_tutorial_gate"
 
 
@@ -187,8 +180,6 @@ def _load_tutorial_gate():
 
 _gate = _load_tutorial_gate()
 
-# The tutorial's own constants and the Stage A gate: ONE copy, in the shared
-# module. Named here so the code below reads as it did when they were local.
 _C0 = _gate._C0
 A_UNIT = _gate.A_UNIT
 A_MSL_LENGTH_UM = _gate.A_MSL_LENGTH_UM
@@ -219,11 +210,6 @@ _stages_for = _gate.stages_for
 StageFailure = _gate.StageFailure
 _import_openems = _gate._import_openems
 
-# The band this record serves: 2-7 GHz, what the case's own test reads its
-# reference records over. It is the tutorial gate's own band -- this case's
-# Stage B IS the tutorial, so there is nothing to choose -- and one constant, so
-# the number that is gated and the number that is reported cannot come from
-# different bins. It is not a window derived from any run.
 WITNESS_BAND_HZ = _gate.STAGE_A_WITNESS_BAND_HZ
 NOTCH_BAND_GHZ = _gate.STAGE_A_NOTCH_BAND_GHZ
 
@@ -235,13 +221,7 @@ def _energy_summary(freqs_hz, s11, s21) -> dict:
                                 passivity_tol=PASSIVITY_TOL)
 
 
-# ---------------------------------------------------------------------------
-# Stage B -- the tutorial's geometry on three meshes. No geometry delta.
-#
-# Three rungs, two refinements: 1.0, 1/sqrt(2), 0.5. The middle rung exists
-# because a mesh statement needs at least two refinements to have a trend.
-# ---------------------------------------------------------------------------
-B_MSL_LENGTH_UM = A_MSL_LENGTH_UM  # unchanged from the tutorial, by decision
+B_MSL_LENGTH_UM = A_MSL_LENGTH_UM
 B_COARSE_RESOLUTION_FACTOR = 1.0
 B_MID_RESOLUTION_FACTOR = 1.0 / np.sqrt(2.0)
 B_FINE_RESOLUTION_FACTOR = 0.5
@@ -250,7 +230,7 @@ DELTA_LIST = [
     "side of centre, and so does everything the tutorial derives from it -- the x "
     "mesh extent, the substrate's x extent, FeedShift = 10*resolution and "
     "MeasPlaneShift = MSL_length/3. An earlier draft shortened the arms; it was "
-    "dropped (leader decision, 2026-09-22) because at 50000/5 the tutorial's own "
+    "dropped because at 50000/5 the tutorial's own "
     "MeasPlaneShift lands inside the x PML at the tutorial's resolution, which is "
     "no longer the tutorial's port model. The shorter-arm question moves to rfx's "
     "own box.",
@@ -274,9 +254,6 @@ DELTA_LIST = [
     "from Stage A.",
 ]
 
-# The THREE textual substitutions that turn the Stage A builder's body into the
-# Stage B builder's body. --self-check applies them and compares, character for
-# character, and counts each one's occurrences in the Stage A body.
 BUILDER_SUBSTITUTIONS = [
     ("A_MSL_LENGTH_UM", "msl_length_um"),
     ("/ A_UNIT / 50.0", "/ A_UNIT / 50.0 * resolution_factor"),
@@ -286,14 +263,6 @@ BUILDER_SUBSTITUTIONS = [
 BUILDER_SUBSTITUTION_COUNTS = {"A_MSL_LENGTH_UM": 8, "/ A_UNIT / 50.0": 1,
                                "np.linspace(0.0, A_SUBSTRATE_THICKNESS_UM, 5)": 1}
 
-# ---------------------------------------------------------------------------
-# STAGE B: the SAME builder with the mesh rung passed in. Its body is
-# _build_stage_a_notch_tutorial's body with BUILDER_SUBSTITUTIONS applied --
-# checked character for character by --self-check, which also asserts that
-# msl_length_um DEFAULTS to the tutorial's own 50000 um, so the length is a
-# parameter in form only and the geometry cannot drift from the tutorial's
-# without someone passing it a different value on purpose.
-# ---------------------------------------------------------------------------
 def _build_notch_tutorial_at_rung(ContinuousStructure, openEMS, MSLPort, *,
                                   nrts: int | None, end_criteria: float | None,
                                   resolution_factor: float,
@@ -371,9 +340,6 @@ def _build_notch_tutorial_at_rung(ContinuousStructure, openEMS, MSLPort, *,
 
 
 
-# The tutorial's own plan, in the shared module: one copy, read by the dry-run
-# table, by the Stage A record and by this case's own rungs (its Stage B IS the
-# tutorial at a mesh rung).
 _plan = _gate.tutorial_plan
 _print_plan = _gate.print_tutorial_plan
 
@@ -394,9 +360,6 @@ def _coarse_is_stage_a() -> bool:
 
 
 
-# ---------------------------------------------------------------------------
-# --dry-run and --self-check
-# ---------------------------------------------------------------------------
 def _print_delta_list() -> None:
     print("DELTA LIST -- how Stage B differs from the tutorial:")
     for i, line in enumerate(DELTA_LIST, start=1):
@@ -466,6 +429,10 @@ def _dry_run(stage: str, fine_factor: float) -> int:
 
 
 def _self_check(fine_factor: float) -> int:
+    """The port-plane, trace-centre-line and substrate-z-recipe checks read the builder's
+    own source because comparing a plan value with the constant the plan computed it
+    from is a tautology.
+    """
     failures = []
     notes = []
 
@@ -536,10 +503,6 @@ def _self_check(fine_factor: float) -> int:
             derived.splitlines(), b_body.splitlines(),
             "derived-from-stage-A", "stage-B-as-written", lineterm="")))
 
-    # P1-2: these read the BUILDER'S OWN SOURCE. Comparing a plan value with the
-    # constant the plan computed it from is a tautology -- both mutations of the
-    # builder stayed green under the old form. Mutating the builder now reddens
-    # these, because the statement they look for is no longer there.
     print("the builder's own source says where the ports and the board are:")
     check('mesh.AddLine("x", [-A_MSL_LENGTH_UM, A_MSL_LENGTH_UM])' in a_body,
           "the tutorial builder adds +-MSL_length as EXPLICIT x lines, so both "
@@ -567,8 +530,6 @@ def _self_check(fine_factor: float) -> int:
     check(good["passed"],
           "the recorded tutorial reproduction (3.6711 GHz, -53.16 dB) PASSES",
           f"f_ok={good['f_notch_ok']} depth_ok={good['depth_ok']}")
-    # A thru line: |S21| flat at 1.0, so its shallowest-bin "notch" is 0 dB and
-    # lands wherever numerical ripple puts it -- inside the frequency band.
     thru = _stage_a_gate_verdict(F_NOTCH_AN_HZ, -0.02)
     check(not thru["passed"] and thru["f_notch_ok"] and not thru["depth_ok"],
           "a THRU line (flat |S21|, minimum -0.02 dB, inside the frequency band) "
@@ -598,9 +559,6 @@ def _self_check(fine_factor: float) -> int:
           "the notch estimator and the passivity witness read the SAME band")
     check(PASSIVITY_TOL == 0.05, "the passivity tolerance is unchanged at 1.05")
     f_hz = np.linspace(1.0e6, A_F_MAX_HZ, A_N_FREQS)
-    # A planted spectrum: physical in the band, over unity below it -- what a
-    # ratio of two near-floor port voltages looks like. The band witness must
-    # not see the excess; the full-grid number must report it.
     s11_t = np.full(f_hz.shape, 0.30)
     s21_t = np.where(f_hz < WITNESS_BAND_HZ[0], 1.20, 0.90)
     summary = _energy_summary(f_hz, s11_t, s21_t)
@@ -649,9 +607,6 @@ def _self_check(fine_factor: float) -> int:
     print(f"SELF-CHECK {'PASSED' if not failures else 'FAILED: ' + ', '.join(failures)}")
     return 1 if failures else 0
 
-# ---------------------------------------------------------------------------
-# The run -- this case's stage, on the shared runner
-# ---------------------------------------------------------------------------
 def _run_stage(*, label: str, sim_root: str, threads: int,
                msl_length_um: float, resolution_factor: float,
                refined_extremum) -> tuple[dict, dict]:
@@ -768,6 +723,10 @@ def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict,
 
 
 def main(argv=None) -> int:
+    """A dry run or a self-check on an out-of-range factor would print a plan nothing
+    can build, and a record that cannot say which solver build produced it is not a
+    reference.
+    """
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--stage", choices=["A", "B", "both"], default="both")
     p.add_argument("--output", default=None, help="where the JSON record is written")
@@ -782,8 +741,6 @@ def main(argv=None) -> int:
     p.add_argument("--self-check", action="store_true")
     args = p.parse_args(argv)
 
-    # The range check runs on EVERY mode, not only a real run: a dry run or a
-    # self-check on an out-of-range factor would print a plan nothing can build.
     if args.resolution_factor <= 0.0 or args.resolution_factor >= 1.0:
         print(f"ERROR: --resolution-factor must be in (0, 1); got "
               f"{args.resolution_factor}", file=sys.stderr)
@@ -797,8 +754,6 @@ def main(argv=None) -> int:
     if not args.output:
         print("ERROR: --output is required for a real run", file=sys.stderr)
         return 3
-    # P2-7: the image stamps the commit it built openEMS from. A record that
-    # cannot say which solver build produced it is not a reference.
     if not os.environ.get("RFX_OPENEMS_COMMIT"):
         print("ERROR: RFX_OPENEMS_COMMIT is not set. The record must name the "
               "openEMS build it came from; the job file exports it from the image. "
@@ -844,9 +799,6 @@ def main(argv=None) -> int:
         msl_len, factor = factors[name]
         print(f"--- {name} ---", flush=True)
 
-        # DELTA 1 is empty, so stage_b_coarse is Stage A's model on Stage A's
-        # mesh. Solving it again would put two arrays in the record that a
-        # reader could mistake for two measurements. Carry Stage A's and say so.
         if (name == "stage_b_coarse" and _coarse_is_stage_a()
                 and records["stage_a"] is not None):
             record = dict(records["stage_a"])
@@ -871,8 +823,6 @@ def main(argv=None) -> int:
             print(f"SANITY GATE FAILED [{name}]: {exc}", file=sys.stderr)
             records[name] = exc.partial or None
             stage_meta[name] = exc.meta
-            # The gate messages from the copied helpers already open with
-            # "[<stage>]", so the message is carried as it was raised.
             failed = _build_artifact(records, stage_meta, stage_a_gate, stages,
                                      failed_gate=str(exc))
             path = _failed_output_path(Path(args.output))

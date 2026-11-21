@@ -55,7 +55,6 @@ def test_one_cell_volume_planes_reported_are_the_planes_zeroed():
     hits = rep.by_code("pec_box_one_cell")
     assert len(hits) == 1
     assert "walls at 4mm and 5mm" in str(hits[0])
-    # the context's own reading of the entry
     ctx = sim._campaign_ctx()
     (entry,) = [e for e in ctx.entry_realizations() if e.kind == "volume"]
     grid = ctx.grid
@@ -66,11 +65,9 @@ def test_one_cell_volume_planes_reported_are_the_planes_zeroed():
     st = _state(sim)
     i0, i1 = grid.position_to_index((2 * MM, 2 * MM, 0.0))[:2]
     j0 = grid.position_to_index((8 * MM, 8 * MM, 0.0))[0]
-    # tangential E (ex over edges i0..j0-1, ey over i0..j0) on both planes
     for k in planes:
         assert _plane_is_dead(st.ex, k, 2, i0, j0, i1, j0 + 1), k
         assert _plane_is_dead(st.ey, k, 2, i0, j0 + 1, i1, j0), k
-    # ... and the field is not trivially zero one plane above the slab
     assert not _plane_is_dead(st.ex, k4 + 2, 2, i0, j0, i1, j0 + 1)
     assert not _plane_is_dead(st.ex, k4 - 1, 2, i0, j0, i1, j0 + 1)
 
@@ -80,9 +77,10 @@ def test_sheet_plane_reported_is_the_plane_zeroed_and_its_normal_edge_lives():
     preflight's ``sheet_plane_realized`` reports node plane 4 mm (offset
     -0.3 cell), and the solved field has tangential E zero on that plane
     over the footprint, the normal Ez THROUGH the plane non-zero, and the
-    planes on either side live."""
+    planes on either side live.
+    Ez[..., k] spans z_k to z_{k+1} through a sheet plane."""
     sim = _sim()
-    sim._snap = "declared"  # The 4.3 -> 4 mm snap is the measured witness.
+    sim._snap = "declared"
     sim.add(Box((2 * MM, 2 * MM, 4.3 * MM), (8 * MM, 8 * MM, 4.3 * MM)),
             material="pec")
     sim.add_source((5 * MM, 5 * MM, 6 * MM), "ez")
@@ -101,9 +99,7 @@ def test_sheet_plane_reported_is_the_plane_zeroed_and_its_normal_edge_lives():
     j0 = grid.position_to_index((8 * MM, 0.0, 0.0))[0]
     assert _plane_is_dead(st.ex, k, 2, i0, j0, i0, j0 + 1)
     assert _plane_is_dead(st.ey, k, 2, i0, j0 + 1, i0, j0)
-    # normal E through the sheet (Ez[.., k] spans z_k .. z_{k+1}) is LIVE
     assert not _plane_is_dead(st.ez, k, 2, i0, j0 + 1, i0, j0 + 1)
-    # the sheet is ONE plane: its neighbours carry tangential field
     assert not _plane_is_dead(st.ex, k + 1, 2, i0, j0, i0, j0 + 1)
     assert not _plane_is_dead(st.ex, k - 1, 2, i0, j0, i0, j0 + 1)
 
@@ -117,7 +113,7 @@ def test_wire_port_starting_on_a_volume_ground_face_is_galvanic():
     advisory never tells a user to move such a feed off its ground."""
     sim = _sim()
     sim.add(Box((1 * MM, 1 * MM, 1 * MM), (9 * MM, 9 * MM, 3 * MM)),
-            material="pec")                 # ground: top face at z = 3 mm
+            material="pec")
     sim.add_port(position=(5 * MM, 5 * MM, 3 * MM), component="ez",
                  impedance=50.0, extent=3 * MM)
     rep = sim.preflight()
@@ -130,9 +126,9 @@ def test_wire_port_starting_on_a_volume_ground_face_is_galvanic():
     grid = sim._campaign_ctx().grid
     i, j, k3 = grid.position_to_index((5 * MM, 5 * MM, 3 * MM))
     ez = np.asarray(st.ez)
-    assert float(abs(ez[i, j, k3 - 1])) == 0.0      # inside the ground
+    assert float(abs(ez[i, j, k3 - 1])) == 0.0
     assert float(abs(ez[i, j, k3 - 2])) == 0.0
-    assert float(np.abs(ez[i, j, k3:k3 + 3]).max()) > 0.0   # the port's own edges
+    assert float(np.abs(ez[i, j, k3:k3 + 3]).max()) > 0.0
 
 
 def test_wire_port_one_cell_short_of_a_volume_face_draws_the_gap_advisory():
@@ -159,7 +155,7 @@ def test_wire_port_through_a_sheet_ground_keeps_its_normal_edges_live():
     cell), and starting on the plane is galvanic (no gap advisory)."""
     sim = _sim(snap="declared")
     sim.add(Box((1 * MM, 1 * MM, 3 * MM), (9 * MM, 9 * MM, 3 * MM)),
-            material="pec")                 # sheet at z = 3 mm
+            material="pec")
     sim.add_port(position=(5 * MM, 5 * MM, 2 * MM), component="ez",
                  impedance=50.0, extent=3 * MM)
     rep = sim.preflight()
@@ -169,7 +165,8 @@ def test_wire_port_through_a_sheet_ground_keeps_its_normal_edges_live():
 
 def test_wire_port_inside_a_volume_ground_has_dead_cells_named_by_owner():
     """Cells whose Ez edge lies between a volume's faces are dead, and the
-    advisory attributes them through the same realization (owner name)."""
+    advisory attributes them through the same realization (owner name).
+    The 3 mm extent from z = 2 mm has three half-open Ez edges, of which only z = 2 to 3 mm lies between the ground faces."""
     sim = _sim()
     sim.add(Box((1 * MM, 1 * MM, 1 * MM), (9 * MM, 9 * MM, 3 * MM)),
             material="pec")
@@ -178,10 +175,5 @@ def test_wire_port_inside_a_volume_ground_has_dead_cells_named_by_owner():
     rep = sim.preflight()
     (hit,) = rep.by_code("wire_port_dead_extent_cells")
     msg = str(hit)
-    # extent 3 mm from z = 2 mm rasterizes to 3 Ez edges (production
-    # _wire_port_cells, half-open in EDGES since #931 R8 — it gave 4 while
-    # the extent was endpoint-inclusive, the fourth spanning one cell above
-    # the declared end); only the edge lying between the ground's faces
-    # (z = 2 -> 3 mm) is dead.
     assert "1 have their ez edge inside realized PEC ['pec']" in msg
     assert "n_live/n = 2/3" in msg

@@ -109,8 +109,6 @@ def warn_if_nonpassive_lumped_s11(s_params, freqs, *, extractor: str,
     worst = float(np.nanmax(mag)) if np.isfinite(mag).any() else float("nan")
     bad_cols = np.unique(np.where(over | nonfinite)[-1])
     bad_f = [f"{float(f[c]) / 1e9:.3f}" for c in bad_cols[:6] if c < f.size]
-    # Describe the actual trigger accurately: a non-finite bin is its own
-    # failure mode (don't report a misleadingly-small finite max for it).
     if nonfinite.any():
         kind = f"non-finite (and max finite|S11|={worst:.3f})"
     else:

@@ -6,11 +6,7 @@ zero normal flux follows from H interpolated onto the declared PMC plane.
 
 from __future__ import annotations
 
-import os
-
-os.environ.setdefault("XLA_FLAGS", "--xla_force_host_platform_device_count=2")
-
-import jax  # noqa: E402
+import jax
 import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 
@@ -18,9 +14,6 @@ from rfx import Simulation  # noqa: E402
 from rfx.boundaries.spec import Boundary, BoundarySpec  # noqa: E402
 
 
-# ---------------------------------------------------------------------------
-# OQ7 — TFSF + PMC composition
-# ---------------------------------------------------------------------------
 
 
 def test_oq7_tfsf_plus_pmc_rejected_or_documented():
@@ -39,15 +32,14 @@ def test_oq7_tfsf_plus_pmc_rejected_or_documented():
         )
 
 
-# ---------------------------------------------------------------------------
-# OQ8 — NTFF + PMC Poynting-flux on a shared face
-# ---------------------------------------------------------------------------
 
 
 def test_oq8_ntff_over_pmc_face_gives_zero_poynting():
     """Interpolate the odd H pair onto the face before computing Poynting.
 
     H[0] lies inside the domain and may not be used as the wall sample.
+
+    The Hx magnitude must exceed 1e-20 somewhere on the nz // 2 plane so zero face flux cannot pass merely because the cavity was not energised.
     """
     dx = 0.5e-3
     nx, ny, nz = 16, 16, 16
@@ -58,7 +50,6 @@ def test_oq8_ntff_over_pmc_face_gives_zero_poynting():
                               z=Boundary(lo="pmc", hi="cpml")),
         cpml_layers=6,
     )
-    # Interior Ez source so fields actually build up before we probe.
     sim.add_source(((nx // 2) * dx, (ny // 2) * dx, (nz // 2) * dx), "ez")
     sim.add_probe(((nx // 2 + 1) * dx, (ny // 2) * dx, (nz // 2) * dx), "ez")
     res = sim.run(n_steps=30, compute_s_params=False)
@@ -69,10 +60,6 @@ def test_oq8_ntff_over_pmc_face_gives_zero_poynting():
     for field in (st.hx, st.hy):
         face_h = (field + h_neighbor(field, 2, boundary=boundary))[:, :, 0] / 2
         np.testing.assert_array_equal(np.asarray(face_h), 0.)
-    # H_t=0 is at the node plane, not at the first physical half-cell.
-    # Sanity: Hx / Hy must be NON-ZERO just above the PMC face so the
-    # interior propagation still works (otherwise it means we failed to
-    # energise the cavity, not that the algebra is correct).
     max_hx_interior = float(np.max(np.abs(hx[:, :, nz // 2])))
     assert max_hx_interior > 1e-20, (
         f"no H field built up interior — source / energise failed "
@@ -80,9 +67,6 @@ def test_oq8_ntff_over_pmc_face_gives_zero_poynting():
     )
 
 
-# ---------------------------------------------------------------------------
-# OQ9 — distributed_v2 step_fn_cpml handles PEC faces via CPML init, not hook
-# ---------------------------------------------------------------------------
 
 
 def test_oq9_distributed_v2_cpml_path_enforces_pec_face_via_cpml_init():
@@ -93,6 +77,8 @@ def test_oq9_distributed_v2_cpml_path_enforces_pec_face_via_cpml_init():
 
     Smoke: after 30 steps tangential E on the PEC z_lo face reads
     effectively zero (<1e-10) despite interior fields being ~1e-3 scale.
+
+    Interior must be non-trivially energised so the zero on z_lo is a boundary condition, not a "source never turned on" artifact.
     """
     devices = jax.devices()
     if len(devices) < 2:
@@ -105,8 +91,6 @@ def test_oq9_distributed_v2_cpml_path_enforces_pec_face_via_cpml_init():
                               z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=6,
     )
-    # sim._boundary is the scalar legacy view; for mixed cpml+pec this
-    # resolves to "cpml" so the run goes through step_fn_cpml.
     assert sim._boundary == "cpml"
     assert "z_lo" in sim._boundary_spec.pec_faces()
     sim.add_source((nx // 2 * dx, ny // 2 * dx, nz // 2 * dx), "ex")
@@ -117,8 +101,6 @@ def test_oq9_distributed_v2_cpml_path_enforces_pec_face_via_cpml_init():
     max_ex_z_lo = float(np.max(np.abs(ex[:, :, 0])))
     max_ey_z_lo = float(np.max(np.abs(ey[:, :, 0])))
     max_ex_interior = float(np.max(np.abs(ex[:, :, nz // 2])))
-    # PEC on z_lo zeros tangential E (Ex, Ey) at k=0 to machine precision
-    # via the CPML-profile route — even without a scan-body PEC hook.
     assert max_ex_z_lo < 1e-10, (
         f"PEC z_lo failed to zero Ex via CPML init: "
         f"max|Ex[:,:,0]| = {max_ex_z_lo:.3e}"
@@ -127,8 +109,6 @@ def test_oq9_distributed_v2_cpml_path_enforces_pec_face_via_cpml_init():
         f"PEC z_lo failed to zero Ey via CPML init: "
         f"max|Ey[:,:,0]| = {max_ey_z_lo:.3e}"
     )
-    # Sanity: interior must be non-trivially energised so the zero on
-    # z_lo is a boundary condition, not a "source never turned on" artifact.
     assert max_ex_interior > 1e-6, (
         f"interior Ex too small — source may not have energised: "
         f"max|Ex[:,:,nz/2]| = {max_ex_interior:.3e}"

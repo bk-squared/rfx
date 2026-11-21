@@ -5,6 +5,7 @@ variants. The caller retains its declared port and observer containers.
 """
 
 from __future__ import annotations
+from rfx._traced_inputs import admit_traced_inputs, refuse_mixed_traced_entry
 
 from rfx.sparams import _mixed_stages
 
@@ -186,6 +187,8 @@ def compute_mixed_s_matrix(
     -------
     MixedSMatrixResult
     """
+    admit_traced_inputs("Simulation.compute_mixed_s_matrix", locals())
+    refuse_mixed_traced_entry(self, locals())
     resolve_field_dtype(self._precision)
     _diagnostics = ()
     import dataclasses as _dc

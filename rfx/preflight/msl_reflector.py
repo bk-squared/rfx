@@ -117,8 +117,6 @@ def msl_nearest_downstream_reflector(
     if width_cell is None:
         width_cell = dx
     _prop_ax, _width_ax, _n_ax, sign = msl_axis_roles(direction)
-    # Production callers hand over the port's position (and the grid); the
-    # ground reference is its coordinate on the port's normal axis.
     if port_position is not None and ground_plane is None:
         ground_plane = float(port_position[_MSL_AXIS_INDEX[_n_ax]])
         if grid is not None and ground_cell is None:
@@ -139,8 +137,6 @@ def msl_nearest_downstream_reflector(
         from rfx.materials.library import MATERIAL_LIBRARY
         return _NS(sigma=MATERIAL_LIBRARY[name].get("sigma", 0.0))
 
-    # The assembler's own PEC predicate; a caller without a resolver
-    # is resolved against the material library, as the assembler would.
     _resolver = _NS(
         _resolve_material=(resolve_material if resolve_material is not None
                            else _library_material),
@@ -152,15 +148,13 @@ def msl_nearest_downstream_reflector(
                 mat = resolve_material(material_name)
             except (TimeoutError,):
                 raise
-            except Exception:  # noqa: BLE001 - recorded in unevaluated
+            except Exception:  # noqa: BLE001
                 unevaluated.append(
                     SubjectMessage(f"geometry entry with material {material_name!r}: the "
                     f"material could not be resolved, so its conductivity is "
                     f"unknown", (owner,)))
                 return False
             if _is_tracer(getattr(mat, "sigma", None)):
-                # A traced sigma (material-as-design-variable) cannot be
-                # compared host-side.
                 unevaluated.append(
                     SubjectMessage(f"geometry entry with material {material_name!r}: sigma is "
                     f"not a concrete number (traced design variable), so PEC "
@@ -183,14 +177,13 @@ def msl_nearest_downstream_reflector(
             lo, hi = bbox()
         except (TimeoutError,):
             raise
-        except Exception as exc:  # noqa: BLE001 - recorded in unevaluated
+        except Exception as exc:  # noqa: BLE001
             unevaluated.append(
                 SubjectMessage(f"{what} ({type(shape).__name__}): bounding_box() raised "
                 f"{type(exc).__name__}, so it cannot be placed on the line", (owner,)))
             return None, None
         return lo, hi
 
-    # (shape, label_prefix, is_bbox_derived) for every registered conductor.
     candidates: list = []
     for _gi, ge in enumerate(geometry):
         owner = ge
@@ -223,35 +216,26 @@ def msl_nearest_downstream_reflector(
                 SubjectMessage(f"{_what} ({type(shape).__name__}): bounds are not finite, "
                 "ordered three-dimensional coordinates", (owner,)))
             continue
-        # "x" = propagation axis, "y" = trace-width axis.
         box_x_lo, box_x_hi = float(lo[_ip]), float(hi[_ip])
         box_y_lo, box_y_hi = float(lo[_iw]), float(hi[_iw])
         box_y_extent = box_y_hi - box_y_lo
-        # Skip the line being measured (see docstring).
         if (
             abs(box_y_extent - w_trace) <= width_cell
             and box_y_lo - width_cell <= y_feed <= box_y_hi + width_cell
             and box_x_lo - dx <= x_feed <= box_x_hi + dx
         ):
             continue
-        # The port reference, not lateral domain coverage, identifies ground.
-        # Use the upper bound so metal rising into the substrate still counts.
-        # Half a normal-axis cell of slack: a ground whose top sits a rounding
-        # error or a rasterization residual above the reference is still the
-        # ground, not a conductor containing the feed.
         if ground_plane is not None:
             if float(hi[_in]) <= ground_plane + 0.5 * (
                     dx if ground_cell is None else ground_cell):
                 continue
         elif box_y_extent >= 0.8 * domain_y:
             continue
-        # Distance from x_probe to the nearest edge of this box,
-        # measured ALONG the propagation direction.
         if sign > 0:
             if box_x_lo > x_probe:
                 d = box_x_lo - x_probe
             elif box_x_hi < x_probe:
-                continue  # behind the probe
+                continue
             else:
                 d = box_x_lo - x_probe if signed_front_distance else 0.0
         else:

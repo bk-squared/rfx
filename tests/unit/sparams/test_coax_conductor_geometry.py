@@ -19,6 +19,7 @@ from the stamped arrays alone:
    declared 48.59.
 
 Measured, not asserted in prose: `docs/design_notes/coax_conductor_realization.md`.
+One cell-size rung is deliberately below the roughly four-annulus-cell recipe so the properties are checked where a user is warned off.
 """
 from __future__ import annotations
 
@@ -45,15 +46,9 @@ from rfx.sources.coaxial_port import (
 from rfx.sources.sources import GaussianPulse
 
 CENTRE = (0.004, 0.004)
-# Three cell sizes spanning the lane's own recipe (">= about four annulus
-# cells") and one deliberately below it, so the properties are checked where a
-# user is warned off as well as where they are not.
 ANNULUS = SMA_OUTER_RADIUS - SMA_PIN_RADIUS
 CELL_SIZES_M = (ANNULUS / 2.0, ANNULUS / 4.0, ANNULUS / 6.0, ANNULUS / 9.0)
 
-# The staircase error oscillates on coarse meshes and only settles into its
-# trend once the mesh resolves the conductor boundaries, so the order is
-# fitted from this rung up. Measured exponent 0.986, residual 0.006.
 FIT_FROM_CELLS = 9.0
 ORDER_TOL = 0.15
 FIT_RESIDUAL_MAX = 0.05
@@ -140,8 +135,6 @@ def test_the_realized_line_does_not_move_with_the_cell_size():
             f"the wall's inner radius is {shell_inner*1e6:.3f} um at "
             f"dx = {dx*1e6:.2f} um, not the declared "
             f"{SMA_OUTER_RADIUS*1e6:.3f} um")
-        # Centre-sampled cells cannot land exactly on the declared radius; half
-        # a cell is the most the rasterization may cost.
         assert abs(fill_max - SMA_OUTER_RADIUS) <= 0.5 * dx, (
             f"at dx = {dx*1e6:.2f} um the dielectric reaches "
             f"{fill_max*1e6:.2f} um, more than half a cell from the declared "
@@ -227,7 +220,7 @@ def test_a_wall_on_a_lateral_absorbers_face_is_refused():
     materials, _, _ = sim._build_materials(g)
     cx = 0.005
     span_x = (int(g.shape[0]) - 1 - int(g.pad_x_lo) - int(g.pad_x_hi)) * dx
-    room = (span_x - cx) - SMA_OUTER_RADIUS - dx          # the clamp's own arithmetic
+    room = (span_x - cx) - SMA_OUTER_RADIUS - dx
     assert dx <= room < SHELL_THICKNESS_M, (
         "this case has to be one the continuous clamp alone accepts (a wall of at "
         f"least one cell fits: {room / dx:.2f} cells), or it tests the old refusal")
@@ -252,7 +245,7 @@ def test_the_battery_line_keeps_a_whole_cell_from_every_lateral_absorber(dx):
         for comp, m in enumerate(edges):
             hit = np.asarray(m, dtype=bool).any(axis=tuple(t for t in range(3) if t != axis))
             touched |= hit
-            if comp == axis:                  # an edge along the axis also reaches node i + 1
+            if comp == axis:
                 touched[1:] |= hit[:-1]
         nodes = np.nonzero(touched)[0]
         lo_face = int(getattr(grid, f"pad_{name}_lo"))
@@ -312,8 +305,6 @@ def test_the_tem_source_injects_over_the_annulus_the_stamper_actually_built(dx):
         "passing the stamper's own shell_inner_radius changed the source cell "
         "count, so the builder's default disagrees with the stamper")
 
-    # The stale formula is one cell tighter; assert it would have differed, so
-    # this test cannot pass by both sides being wrong in the same way.
     stale = float(port.outer_radius) - min(
         float(grid.dx),
         0.5 * (float(port.outer_radius) - float(port.pin_radius)))
@@ -426,7 +417,6 @@ def test_the_lane_hands_the_runner_pec_edges_and_no_pec_sigma(monkeypatch, lane,
         f"{float(sigma.max()):.3e}); a conductor realized BOTH ways damps its "
         "plus-side edges twice")
 
-    # No shorted edge may sit strictly inside the PTFE annulus.
     grid = seen["grid"]
     r = _radius(grid)
     k = int(grid.shape[2]) // 2

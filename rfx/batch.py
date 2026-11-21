@@ -346,8 +346,6 @@ def _normalize_artifacts(
         elif case_candidate.exists():
             normalized[str(name)] = case_candidate.relative_to(output_root).as_posix()
         else:
-            # Preserve the caller-provided path so resume validation will fail
-            # rather than silently blessing a missing artifact.
             normalized[str(name)] = artifact_path.as_posix()
     return normalized
 

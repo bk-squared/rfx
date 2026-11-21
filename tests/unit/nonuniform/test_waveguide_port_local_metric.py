@@ -88,9 +88,6 @@ def _port(direction, index):
 
 
 
-# ---------------------------------------------------------------------------
-# The gate: what the port actually launched, through the real scan
-# ---------------------------------------------------------------------------
 
 _GATE_FREQS = jnp.linspace(8.2e9, 11.5e9, 3)
 
@@ -115,9 +112,10 @@ _GATE_LY = float(np.sum(_GATE_PROFILE))
 
 
 def _peak_modal_voltage_at_reference(port_y: float) -> float:
-    """Run the real NU scan and return peak |v_ref_t| for one port position."""
+    """Run the real NU scan and return peak |v_ref_t| for one port position.
+    The domain lengths written as ``15 * _DX_COARSE`` and ``7 * _DX_COARSE`` are whole numbers of cells of dx, so those solved lengths equal the declared ones."""
     sim = Simulation(
-        freq_max=12e9, domain=(15 * _DX_COARSE, _GATE_LY, 7 * _DX_COARSE),  dx=_DX_COARSE,  # solved length; #1887
+        freq_max=12e9, domain=(15 * _DX_COARSE, _GATE_LY, 7 * _DX_COARSE),  dx=_DX_COARSE,
         boundary=BoundarySpec(x=Boundary(lo="pec", hi="pec"),
                               y=Boundary(lo="cpml", hi="cpml"),
                               z=Boundary(lo="pec", hi="pec")),
@@ -199,8 +197,6 @@ def test_a_port_inside_the_fine_band_gets_the_fine_cell(direction):
     assert dx_h == pytest.approx(_DX_FINE, rel=1e-9)
     assert dx_e == pytest.approx(_DX_FINE, rel=1e-9)
 
-    # what the old scalar read would have used, and what that did to the
-    # coefficient the port actually injects with
     assert grid.dx == pytest.approx(_DX_COARSE, rel=1e-9)
     assert dx_h / grid.dx == pytest.approx(0.5, rel=1e-9)
     assert dx_e / grid.dx == pytest.approx(0.5, rel=1e-9)
@@ -228,7 +224,6 @@ def test_each_half_reads_the_plane_it_acts_on():
     grid = _graded_grid()
     cells, duals = grid.cells("x"), grid.duals("x")
 
-    # a node where the cell on one side differs from the cell on the other
     edge = next(i for i in range(1, grid.nx - 1) if cells[i] != cells[i - 1])
 
     fwd_h, fwd_e = _waveguide_port_axis_metrics(grid, _port("+x", edge))
@@ -279,7 +274,7 @@ def test_a_port_reads_its_own_propagation_axis():
     extent = {"x": grid.nx, "y": grid.ny, "z": grid.nz}
     for direction, axis in (("+x", "x"), ("+y", "y"), ("-z", "z")):
         n = extent[axis]
-        idx = min(12, n - 2)          # the narrow axes are only a few cells
+        idx = min(12, n - 2)
         dx_h, dx_e = _waveguide_port_axis_metrics(grid, _port(direction, idx))
         cells, duals = grid.cells(axis), grid.duals(axis)
         forward = direction.startswith("+")
@@ -288,8 +283,6 @@ def test_a_port_reads_its_own_propagation_axis():
         assert dx_h == float(cells[max(0, min(h_plane, n - 1))])
         assert dx_e == float(duals[max(0, min(e_plane, n - 1))])
 
-    # x is graded here and y is not, so reading the wrong axis is visible:
-    # inside the band x gives 0.75 mm where y gives the 1.5 mm boundary cell
     x_in_band = _waveguide_port_axis_metrics(grid, _port("+x", 47))
     y_same_index = _waveguide_port_axis_metrics(grid, _port("+y", 47))
     assert x_in_band[0] == pytest.approx(_DX_FINE, rel=1e-9)

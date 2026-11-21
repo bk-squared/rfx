@@ -3,7 +3,7 @@
 the non-uniform lane where it IS implemented (rfx/nonuniform.py)?
 
 This is the committed artifact behind the "fixture 2" curve quoted in
-docs/agent-memory/rfx-known-issues.md's "Added 2026-08-11 -- #626 RESOLVED"
+the recorded findings's "Added 2026-08-11 -- #626 RESOLVED"
 entry and the CHANGELOG.md entry of the same name. Fixture 1 (the smaller,
 faster sweep) is committed directly as a pytest regression test instead --
 see tests/unit/autodiff/test_n_warmup.py::test_warmup_truncation_error_grows_with_k --

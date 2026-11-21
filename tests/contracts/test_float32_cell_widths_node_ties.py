@@ -87,8 +87,8 @@ def test_e4_declared_domain_cell_count(q, width):
 @pytest.mark.parametrize("route", ["volume", "thin"])
 def test_e5_one_cell_box_is_admitted_and_has_one_row(scene, route):
     sim, h, q, _ = scene
-    # Two U in z, so x stays the one thinnest axis at q = 1 (1.524 mm cells).
     shape = Box((13 * U, 13 * U, 2 * U), (13 * U + h, 17 * U, 4 * U))
+    assert shape.corner_hi[0] - shape.corner_lo[0] < min(shape.corner_hi[axis] - shape.corner_lo[axis] for axis in (1, 2)), "The box must have x as its unique thinnest axis"
     if route == "volume":
         sim.add(shape, material="pec")
     else:

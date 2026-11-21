@@ -56,6 +56,7 @@ way and the honest verdict is "unanswerable", which is a skip. This file asks
 whether a link target is PRESENT for someone who clones, and an export is a
 valid witness for exactly that, because it holds the tracked files and nothing
 else. Same missing tool, two different questions, two different right answers.
+A footnote definition's body is prose, not a link target.
 """
 from __future__ import annotations
 
@@ -84,11 +85,7 @@ def _scanned_pages() -> list[Path]:
 
 GUIDES = _scanned_pages()
 
-# Inline ``[text](target)`` and reference-style ``[id]: target``. The second
-# form slipped the first version of this gate entirely.
 _LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
-# ``[^id]:`` is a FOOTNOTE definition, not a link -- its body is prose, and
-# reading the first token of it as a target produced hits like "E[k+1]-E[k]".
 _REF_LINK = re.compile(r"^\[(?!\^)[^\]]+\]:[ \t]*(\S+)", re.MULTILINE)
 _SKIP_SCHEME = ("http://", "https://", "mailto:", "#", "/")
 
@@ -109,9 +106,6 @@ def _looks_like_a_path(target: str) -> bool:
     return "/" in target or bool(Path(target).suffix)
 
 
-#: Sentinel for "look the tracked set up yourself". ``None`` is a real value
-#: here -- it means "no repository, use the filesystem" -- so it cannot double
-#: as the default.
 _LOOK_IT_UP = object()
 
 _CACHE: dict[str, frozenset[str] | None] = {}
@@ -146,11 +140,6 @@ def tracked_or_none(repo: Path = REPO) -> frozenset[str] | None:
         if not (Path(repo) / ".git").exists():
             _CACHE[key] = None
             return _CACHE[key]
-        # One subprocess, not two. ``.git`` has already decided which
-        # question is being asked, so a ``rev-parse`` first would only
-        # confirm what an empty or failed ``ls-files`` says anyway -- and
-        # ``tracked_set`` already swallows a missing binary into an empty
-        # set (review of PR #1135, D).
         tracked = tracked_set(repo)
         if not tracked:
             raise GitCannotAnswerHere(

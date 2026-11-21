@@ -17,8 +17,7 @@ CASES = ('dielectric', 'pec_box', 'pec_sheet_on', 'pec_sheet_off', 'thin_pec',
 
 @pytest.fixture(autouse=True)
 def float32_path_comparison():
-    # Scalar uniform and float32 graded metrics intentionally retain their
-    # original precision. The separate x64 test pins the scalar expression.
+    """Scalar uniform and float32 graded metrics intentionally retain their original precision."""
     with jax.enable_x64(False):
         yield
 
@@ -157,6 +156,7 @@ def test_dc_nonbox_admission_stays_path_specific():
 
 @pytest.mark.parametrize('kind', ('dc', 'f0'))
 def test_unequal_cells_use_normal_dual(kind):
+    """Ex has half coverage on the two y ends and full coverage inside."""
     from rfx.materials.thin_conductor import leontovich_rs
     h = 1/1024
     profile = np.array([h]*4+[2*h]*4)
@@ -175,9 +175,8 @@ def test_unequal_cells_use_normal_dual(kind):
     assert len(occupied) > 0
     assert np.unique(occupied[:, 2]).tolist() == [6]
     conductance = 1234*(h/7) if kind == 'dc' else 1/float(leontovich_rs(5e9, 1234))
-    divisor = (h + 2*h) / 2  # d_dual at the film plane
+    divisor = (h + 2*h) / 2
     if kind == 'dc':
-        # Ex has half coverage on the two y ends, full coverage inside.
         expected = np.zeros(grid.shape)
         expected[4:10, 4:10, 6] = conductance/divisor
         expected[4:10, (4, 9), 6] /= 2
@@ -220,6 +219,7 @@ def dc_overlap_fixture(lane, order=('a', 'b')):
 
 @pytest.mark.parametrize('lane', ('uniform', 'equal', 'graded'))
 def test_dc_overlap_adds_and_is_order_independent(lane):
+    """Half weights apply only transverse to each E edge."""
     from rfx.model.materials import assemble_cells
     records = []
     for order in (('a', 'b'), ('b', 'a')):
@@ -229,8 +229,6 @@ def test_dc_overlap_adds_and_is_order_independent(lane):
         h = 1/1024
         dual = h * ((1.5 + .6)/2 if lane == 'graded' else 1.)
         px, py, pz = grid.axis_pads
-        # Two rectangular footprints, with half weight only transverse to
-        # each E edge. Expected arrays are sums of hand-written rectangles.
         expected_x, expected_y = np.zeros(grid.shape), np.zeros(grid.shape)
         for xlo, xhi, ylo, yhi, sigma in [(2, 8, 2, 7, 1234), (5, 10, 3, 9, 77)]:
             density = sigma*(h/7)/dual
@@ -271,7 +269,6 @@ def test_periodic_dc_cells_cross_seam():
     sim = Simulation(freq_max=15e9, domain=(12*h, 10*h, 8*h), dx=h,
                      boundary=BoundarySpec(x='periodic', y='periodic', z='cpml'),
                      cpml_layers=2)
-    # Normal x wraps to node zero; the in-plane y footprint wraps the seam.
     sim.add_thin_conductor(Box((11.5*h, 8*h, 2*h), (11.7*h, 13*h, 6*h)),
                            sigma_bulk=1234, thickness=h/7, eps_r=1.)
     grid = sim._build_grid()
@@ -300,8 +297,7 @@ def test_dc_permittivity_refused(lane):
 
 
 def test_f0_fold_refuses_multilayer_occupancy(monkeypatch):
-    # Isolate the fold's defensive occupancy gate from the rasterizer's
-    # own geometry checks: a malformed producer must not multiply loss.
+    """The fold's defensive occupancy gate prevents a malformed producer from multiplying loss."""
     import jax.numpy as jnp
     import rfx.model.thin_conductors as fold
     from types import SimpleNamespace

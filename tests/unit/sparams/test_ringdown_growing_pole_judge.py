@@ -31,10 +31,10 @@ def _bound(s, c, n, n_ref, H, denominator):
 
 
 def _finite_tail(s, c, n, n_ref, h, bins=BINS):
-    # Sum the actual samples, in blocks so c5 does not need a huge array.
+    TAIL_SUM_BLOCK_STEPS = 16384
     total = np.zeros(len(bins), dtype=complex)
-    for lo in range(n, n+h, 16384):
-        m = np.arange(lo, min(lo+16384, n+h))
+    for lo in range(n, n+h, TAIL_SUM_BLOCK_STEPS):
+        m = np.arange(lo, min(lo+TAIL_SUM_BLOCK_STEPS, n+h))
         total += np.sum(np.exp((s-2j*np.pi*np.asarray(bins)[:, None])*DT*m
                               - s*DT*n_ref) * c, axis=1) * DT
     return total
@@ -134,7 +134,6 @@ def test_static_exemption_and_inactive_channel():
 
 
 def test_no_growing_pole_passes_even_where_a_channel_dft_is_zero():
-    # run(ringdown=) passes the raw |plain|: a zero there must not refuse a record nothing grows in.
     model = _model([(-.001+2j*np.pi*10e9*DT)/DT], [[1.]])
     denom = np.full((len(BINS), 1), 1e-10)
     denom[3, 0] = 0.
@@ -143,16 +142,14 @@ def test_no_growing_pole_passes_even_where_a_channel_dft_is_zero():
 
 
 def test_any_positive_rate_and_exact_sinusoid_receive_tail_bounds():
-    # A growth of 1e-13 per step is below the in-window rule's sinusoid test but still a
-    # growing pole: on a read bin its tail bound is large, so it is refused.
-    # An exactly zero rate is unresolved too; its on-bin bound has a zero divisor.
+    """On the positive-rate pole's own bin, 1 - lambda*z is ~1e-13, so the product form loses digits there."""
     slow = (1e-13 + 2j*np.pi*10e9*DT) / DT
+    assert 0.0 < np.expm1(slow.real * DT) < UNIT_TOL, "The planted positive growth must lie below the in-window sinusoid threshold."
     exact = (2j*np.pi*10e9*DT) / DT
     denom = np.full((len(BINS), 1), 1e-10)
     slow_judge = rd.judge_growing_poles(_model([slow], [[1e-3]]), 1024, BINS, denom)
     expected = _bound(slow, np.array([1e-3]), 1024, 321, 1024, denom)[:, 0]
     assert slow_judge.status == 'refused'
-    # On its own bin 1 - lambda z is ~1e-13 and the product form above loses digits there.
     off = np.arange(len(BINS)) != 10
     np.testing.assert_allclose(slow_judge.share_per_bin[off], expected[off], rtol=1e-9)
     assert slow_judge.share_per_bin[10] > 1e6
@@ -211,6 +208,7 @@ def test_c3_resolved_growing_window_term_still_undetermined():
 
 
 def test_issue_2158_seed_1_rounding_record_passes():
+    """The kept rounding-pole count depends on the platform's rounding."""
     n = 3514
     rng = np.random.default_rng(1)
     t = np.arange(n)*DT
@@ -224,8 +222,6 @@ def test_issue_2158_seed_1_rounding_record_passes():
     y = y/np.max(np.abs(y), axis=0)+6e-8*rng.normal(size=y.shape)
     y = y.astype(np.float32).astype(np.float64)
     model = rd.identify(y, DT, round(.4*n), n, freq_max=13e9)
-    # How many rounding poles land in the kept band depends on the platform's
-    # rounding (2 on an arm64 Mac); test_c4 pins "counted, yet passes" exactly.
     judge = rd.judge_growing_poles(model, n, BINS, np.abs(ringdown_tail.plain_dft(y, DT, BINS)))
     assert judge.status == 'pass' and judge.ok
     witness = tail_share_witness([('rounding', y)], DT, 0, BINS, freq_max=13e9)

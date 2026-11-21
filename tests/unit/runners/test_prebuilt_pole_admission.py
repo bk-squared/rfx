@@ -95,6 +95,7 @@ def test_prebuilt_occupied_cells_do_not_include_edge_extension():
 
 @pytest.mark.parametrize("n,levels", [(16, 50), (20, None)])
 def test_prebuilt_cost_reduces_per_pole_set(monkeypatch, n, levels):
+    """One pole set needs two conductivity extremes."""
     from rfx.grid import Grid
     import rfx.model.pole_stability as stability
     grid = Grid(freq_max=10e9, domain=(n * 1e-3,) * 3, dx=1e-3, cpml_layers=0)
@@ -110,7 +111,7 @@ def test_prebuilt_cost_reduces_per_pole_set(monkeypatch, n, levels):
         return original(*args, **kwargs)
     monkeypatch.setattr(stability, "largest_growth", measured)
     stability.judge_prebuilt_poles(grid, poles)
-    assert len(calls) == 2  # One pole set, two conductivity extremes.
+    assert len(calls) == 2
 
 
 def test_prebuilt_binary_masks_recover_cell_patterns(monkeypatch):
@@ -155,6 +156,7 @@ def test_prebuilt_binary_masks_recover_cell_patterns(monkeypatch):
 
 @pytest.mark.parametrize("transform", ["jit", "vmap", "jvp", "grad"])
 def test_assembled_admission_mark_requires_original_arrays_through_transforms(transform):
+    """Arrays returned through JAX transforms replace the assembly-time tracers."""
     grid = _box(.25)._build_realized_grid()
     materials = init_materials(grid.shape)
     def coefficients(eps):
@@ -176,7 +178,7 @@ def test_assembled_admission_mark_requires_original_arrays_through_transforms(tr
         assert np.isfinite(jax.grad(loss)(1.))
         return
     jax.block_until_ready(result)
-    assert not pole_sets_judged(result)  # returned arrays replace the assembly-time tracers
+    assert not pole_sets_judged(result)
     assert result._fields == ("ca", "cb", "damping", "restoring", "c", "cc")
 
 
@@ -315,7 +317,7 @@ def test_assembly_mark_is_tied_to_every_array_identity(field):
     coeffs, _ = init_lorentz([drude_pole(.2 / grid.dt, 0.)], init_materials(grid.shape), grid.dt, grid=grid)
     assert pole_sets_judged(coeffs._replace())
     rebuilt = jax.tree.map(lambda a: a, coeffs)
-    assert pole_sets_judged(rebuilt)  # same array leaves are the judged values
+    assert pole_sets_judged(rebuilt)
     assert jax.tree.structure(coeffs) == jax.tree.structure(rebuilt)
     assert pole_sets_judged(LorentzCoeffs(*coeffs))
     copied = jax.tree.map(lambda a: a.copy(), getattr(coeffs, field))
@@ -323,8 +325,6 @@ def test_assembly_mark_is_tied_to_every_array_identity(field):
 
 
 def test_marked_lorentz_coefficients_keep_plain_tree_structure():
-    # The expected node is a plain LorentzCoeffs constructed independently of
-    # marking/assembly helpers, with the original six field positions.
     fields = [jnp.zeros(2) for _ in range(6)]
     expected = jax.tree.structure(LorentzCoeffs(*fields))
     coeffs = LorentzCoeffs(*[jnp.ones(2) for _ in range(6)])
