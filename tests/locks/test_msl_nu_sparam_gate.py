@@ -59,12 +59,6 @@ from rfx.preflight.line_port_coverage import local_port_cell
 from rfx.sources import GaussianPulse
 from rfx.runners.nonuniform import assemble_materials_nu
 
-# Band + floors are IMPORTED, not restated: the retired
-# (9.0, 9.42) band died with #702, and this file's own hand-maintained copy is how it
-# missed the re-pin the uniform gate got. Single source = the uniform gate; its
-# constants were measured on Board S (this file declares the identical geometry, and
-# the uniform-valued dz_profile raster is lane-identical — the
-# contract suite pins mask equality — so the band transfers to the NU build).
 from tests.locks.test_patch_edgefed_s11_passivity import (
     PASSIVE_TOL,
     RES_BAND_GHZ,
@@ -75,22 +69,20 @@ from tests.locks.test_patch_edgefed_s11_passivity import (
     _gate_readings,
 )
 
-# --- identical geometry to tests/locks/test_patch_edgefed_s11_passivity.py ---
 EPS_R = 3.38
 H_SUB = 0.787e-3
 W = 10.129e-3
 L = 8.595e-3
 W_MSL = 1.8e-3
 L_MSL = 8.0e-3
-# port plane; feed covers its node with one local-cell drawing allowance.
-PORT_MARGIN = 5.0e-3
+PORT_PLANE_X_M = 5.0e-3
+PORT_MARGIN = PORT_PLANE_X_M
 DX = 0.197e-3
 DOM_X = 29.747e-3
 DOM_Y = 18.130e-3
 DOM_Z = 12.787e-3
 Y_C = DOM_Y / 2.0
 
-# PASSIVE_TOL / RES_BAND_* imported above.
 
 
 def _build_patch_sim_nu() -> Simulation:
@@ -102,25 +94,15 @@ def _build_patch_sim_nu() -> Simulation:
     One cavity Ez point probe, at the uniform builder's position, feeds the
     record-end witness of the internal compute_msl_s_matrix run; without a
     probe that witness has no data.
+    The rasterized patch locks NU S-parameter extraction with feed/patch y size errors measured earlier at -4.783 %/-1.393 %.
     """
     nz = int(round(DOM_Z / DX))
-    # feed/patch y solved -4.783%/-1.393% off; this locks NU S-parameter extraction.
     sim = Simulation(snap="declared",
         freq_max=15e9, domain=(DOM_X, DOM_Y, DOM_Z),
         dx=DX, cpml_layers=8, boundary="cpml",
         dz_profile=np.full(nz, DX),
     )
     sim.add_material("ro4003c", eps_r=EPS_R, sigma=0.0)
-    # Board S geometry, duplicated verbatim on the NU lane by design (the
-    # single-source fix imports the BAND from the uniform module, not
-    # the builder). Foils are zero-thickness sheets on the two laminate
-    # faces here for the same reason and with the same
-    # consequence as in the uniform twin — including the redraw: the board
-    # used to reserve a vacuum CELL for each foil, which the deleted
-    # re-sample used to hide, and the cavity carried it in series. The z
-    # origin comes from the uniform module so the two lanes cannot drift;
-    # the two must keep realizing the identical raster, which is what the
-    # contract suite pins.
     sim.add_thin_conductor(Box((0, 0, Z_SUB_LO), (DOM_X, DOM_Y, Z_SUB_LO)),
                            sigma_bulk=5.8e7)
     sim.add(Box((0, 0, Z_SUB_LO), (DOM_X, DOM_Y, Z_SUB_HI)),
@@ -177,13 +159,6 @@ def test_the_nu_board_realizes_the_same_foils_and_cavity_as_the_uniform_twin():
         f"the NU cavity carries a cell that is not the laminate: "
         f"{[round(float(v), 3) for v in col]} — the #702 slot geometry.")
 
-    # ... and it is the SAME BOARD the uniform twin realizes.
-    #
-    # Compared in METRES, not in array indices: the two lanes do not agree on
-    # the y array length on this domain (uniform 110, NU 109 — a pre-existing
-    # lane sizing difference), so an elementwise mask compare
-    # is ill-posed. What the band depends on is the realized rectangle and the
-    # realized plane, and those are lane-independent quantities.
     from tests.locks.test_patch_edgefed_s11_passivity import _build_patch_sim
 
     rz_u = realized(_build_patch_sim())
@@ -227,7 +202,8 @@ def _footprint_extent_m(grid, sheet):
 @pytest.mark.slow
 def test_nu_msl_patch_s11_passive_and_edge_fed_match():
     """NU-lane edge-fed patch |S11| is passive AND shows the edge-fed signature,
-    exactly like the validated uniform lane. Gates the full fenced NU MSL build."""
+    exactly like the validated uniform lane. Gates the full fenced NU MSL build.
+    The record is 280 periods long because an earlier uniform N_SUB=2 200-period record measured -36.2 dB, above the -40 dB settling bar."""
     sim = _build_patch_sim_nu()
 
     assert getattr(sim, "_probes", None), (
@@ -235,17 +211,9 @@ def test_nu_msl_patch_s11_passive_and_edge_fed_match():
         "evaluate; the settling assertion would be vacuous (issue #402)"
     )
 
-    # R: never ignore preflight — surface any warning before trusting |S| numbers.
     sim.preflight()
 
     freqs = np.linspace(6e9, 14e9, 81)
-    # record length: this file solved at num_periods=200, but the
-    # imported Board-S band was measured at 280 with the settling witness
-    # SILENT — and 200 measured -36.2 dB (under-settled, above the -40 dB
-    # bar) on the identical geometry (uniform N_SUB=2 ladder: 120 -> -23.8,
-    # 200 -> -36.2, 280 -> settled). Solve at the record length the band was
-    # pinned on; if #332 fires, this test goes RED instead of passing on a
-    # truncated record.
     with warnings.catch_warnings(record=True) as _settling:
         warnings.simplefilter("always")
         res = sim.compute_msl_s_matrix(freqs=jnp.asarray(freqs),
@@ -255,7 +223,6 @@ def test_nu_msl_patch_s11_passive_and_edge_fed_match():
 
 
     fr = np.asarray(res.freqs, dtype=float) / 1e9
-    # Pins are probe-0-plane quantities (see the uniform twin): undo the shift.
     s = np.asarray(probe0_s(res, line_s(res)))[0, 0, :]
     z0 = np.asarray(res.Z0)[0, :]
     zin = z0 * (1.0 + s) / (1.0 - s)
@@ -266,7 +233,6 @@ def test_nu_msl_patch_s11_passive_and_edge_fed_match():
     s11_max = g["max_s11"]
     s11_res_band_min = g["band_min_s11"]
 
-    # --- R5 witnesses: full per-frequency trace, never a bare headline ---
     print(f"\n[NU-MSL-GATE] max|S11| = {s11_max:.4f}  dip @ {f_dip:.3f} GHz "
           f"(|S11|={g['s11_at_dip']:.4f}, the off-resonance MATCH point)")
     print(f"[NU-MSL-GATE] min|S11| over resonance band {RES_BAND_GHZ} GHz = "
@@ -279,13 +245,11 @@ def test_nu_msl_patch_s11_passive_and_edge_fed_match():
         print(f"[NU-MSL-TRACE] {f:7.3f} GHz  |S11|={a:.5f}  "
               f"Re(Zin)={zr:9.2f}  Im(Zin)={zi:9.2f}")
 
-    # --- (1) passivity ---
     assert s11_max <= PASSIVE_TOL, (
         f"non-passive NU patch: max|S11| = {s11_max:.4f} > {PASSIVE_TOL}. "
         "The NU MSL runner does not reproduce the validated passive patch S11."
     )
 
-    # --- (2) edge-fed signature: poorly matched at resonance (dip is NOT there) ---
     assert s11_res_band_min > RES_BAND_S11_MIN, (
         f"min|S11| = {s11_res_band_min:.4f} over the resonance band "
         f"{RES_BAND_GHZ} GHz is unexpectedly LOW (<= {RES_BAND_S11_MIN}). "
@@ -293,8 +257,6 @@ def test_nu_msl_patch_s11_passive_and_edge_fed_match():
         "a deep dip there means the NU lane changed the physics."
     )
 
-    # --- (2b) liveness: the resonance the band names is THERE on the NU lane too.
-    #          Liveness only — discrimination of the retirement is (2c). ---
     assert g["band_crossings_ghz"], (
         f"no Im(Zin)=0 crossing inside the resonance band {RES_BAND_GHZ} GHz on the "
         f"NU lane — the band would be gating a dead spectral region (the #782 "
@@ -302,15 +264,12 @@ def test_nu_msl_patch_s11_passive_and_edge_fed_match():
         f"{[round(c, 4) for c in g['crossings_ghz']]} GHz."
     )
 
-    # --- (2c) the in-band antiresonance is the HIGH-IMPEDANCE kind (the
-    #          discriminating witness; see the uniform gate). ---
     assert g["band_max_re_zin"] > RES_BAND_RE_ZIN_MIN_OHM, (
         f"in-band max Re(Zin) = {g['band_max_re_zin']:.0f} ohm <= "
         f"{RES_BAND_RE_ZIN_MIN_OHM:.0f} on the NU lane — the band's crossing is not "
         "the edge-fed patch antiresonance."
     )
 
-    # --- (3) soft: the |S11| minimum (match point) lies ABOVE the resonance band ---
     assert f_dip > RES_BAND_GHZ[1], (
         f"|S11| dip at {f_dip:.3f} GHz is inside/below the resonance band — "
         "expected the off-resonance match point ABOVE it (mesh-limited argmin; "

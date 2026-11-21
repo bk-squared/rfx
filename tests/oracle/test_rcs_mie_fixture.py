@@ -23,9 +23,10 @@ def _load_mie_oracle():
 
 
 def test_mie_oracle_witnesses():
-    """The oracle must pass its four rfx-independent validation witnesses."""
+    """The oracle must pass its four rfx-independent validation witnesses.
+    The committed bound retains margin over an earlier Rayleigh witness measured at 1.8e-3 relative error.
+    """
     oracle = _load_mie_oracle()
-    witnesses = oracle.validate_oracle()  # raises AssertionError on failure
-    # Rayleigh witness measured at 1.8e-3 rel err; keep the committed bound.
+    witnesses = oracle.validate_oracle()
     assert witnesses["rayleigh_rel_err"] < 0.02
     assert abs(witnesses["go_window_mean"] - 1.0) < 0.1
