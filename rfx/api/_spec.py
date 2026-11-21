@@ -901,7 +901,7 @@ class ForwardResult(NamedTuple):
     Above about 1e-2 means unsettled; small proves nothing: it follows the strongest field
     and says nothing about the adjoint record. None for autodiff, NaN for zero signal.
     Use :func:`rfx.gradient_record_length_witness` to witness an adjoint gradient.
-    ``settling_probe_source_end_index`` is the first post-source user-probe sample index, with ``None`` selecting ``settling_source_end_index``.
+    Each ``wire_port_sparams`` entry's ``accs`` holds the DFT accumulators ``(v, i, v_inc, v_port, v_ref)`` in that order on both meshes.
     """
     time_series: jnp.ndarray
     ntff_data: object = None

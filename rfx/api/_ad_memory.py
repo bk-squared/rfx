@@ -41,6 +41,7 @@ from rfx.api._validators import (
 )
 
 
+_BOOL_BYTES = 1
 _FLOAT32_BYTES = 4
 _COMPLEX64_BYTES = 8
 
@@ -161,7 +162,7 @@ class _AdMemoryMixin:
         from rfx.model.wall_loss import refuse_wall_loss
         refuse_wall_loss(self, "AD memory estimate")
         if has_f0_sheets(getattr(self, "_thin_conductors", ())):
-            sheet_bytes = cells * (3 * 1 + bytes_per_cell)
+            sheet_bytes = cells * (3 * _BOOL_BYTES + bytes_per_cell)
         forward_bytes = field_bytes + material_bytes + cpml_bytes + sheet_bytes
 
         ntff_bytes = 0

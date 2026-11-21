@@ -14,6 +14,8 @@ Usage
 >>> sim.add_probe((0.04, 0.025, 0.001), "ez")
 >>> result = sim.run()
 >>> result.s_params   # (n_ports, n_ports, n_freqs) complex
+
+Each mixin of ``Simulation`` must be used by ``Simulation`` alone, because its methods' ``__qualname__`` is rewritten in place to ``Simulation.<name>``.
 """
 
 from __future__ import annotations
@@ -253,6 +255,8 @@ class Simulation(
         not distributed. Any unsupported combination with
         ``stencil_order=4`` raises ``NotImplementedError``. Order 4 derates
         the timestep by ~0.857x for stability (the (2,4) CFL bound).
+
+    Absorber cells pad the outside of the physical ``domain``.
     """
 
     def __init__(
@@ -440,7 +444,6 @@ class Simulation(
             public runner. ``"stage2_disjoint_3d"`` records the selected
             centered/two-interface integration lane but remains a research-only
             contract until its public runner wiring and waveform gates pass.
-        Absorber cells pad the outside of the physical ``domain``.
         """
         if self._refinement is not None:
             raise ValueError("Only one refinement region is supported")
