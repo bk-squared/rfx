@@ -49,8 +49,6 @@ def _collect_flux_regions(self, report: PreflightReport) -> None:
     if not finite:
         return
 
-    # Resolve the selected/frozen mesh, including inferred NU profiles.
-    # No independent rounding or declaration-only grid choice belongs here.
     try:
         if traced(self._resolve_mesh()):
             raise ValueError("traced mesh has no concrete metre bounds")
