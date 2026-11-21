@@ -362,6 +362,16 @@ def test_example_matches_snapshot(
         sim = lib.call_builder(relpath, module, builder, variant)
     except lib.MissingOptionalDependency as exc:
         pytest.skip(str(exc))
+    from rfx.preflight.line_stub import line_stub_findings
+    if relpath in {
+        "validation/research/multiband_nu/msl_notch_graded.py",
+        "validation/tmtt_paper/msl_stub_notch_tuning.py",
+    }:
+        assert line_stub_findings(sim) == [], "Face-reaching through-lines continue (#1512)."
+    if relpath == "examples/tutorials/ports_and_sparams_101.py" and builder.fn == "build_microstrip_ports":
+        stubs = line_stub_findings(sim)
+        assert len(stubs) == 2, "This interior strip keeps two real open tails."
+        assert all(stub.overhang_m == pytest.approx(.0031625) for stub in stubs)
     import json
     actual = json.loads(json.dumps(lib.digest_variant(sim)))
     expected = snapshot[key]

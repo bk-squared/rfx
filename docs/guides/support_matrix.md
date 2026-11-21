@@ -93,11 +93,11 @@ The earlier substrate-cell recommendation predates the material-interface
 correction and must not be used as a current mesh rule; use the measured ladder
 for the named board rather than extrapolating below its coarsest solved rung.
 
-The absorber measurements in `rfx/records/20261121-1512-option-b-depth-result/`
-(rfx-archive) support MSL continuation at the default 16 layers, with unchanged alpha.
+The absorber measurements (measured; record kept with the project)
+support MSL continuation at the default 16 layers, with unchanged alpha.
 Settling passes on every arm of three boards. On the 20–40 GHz board the difference
-from option A's 0 mm line is +0.025 to +0.073 dB in |S21| at 16 layers
-(`figure_o.json`). Low-band settling was undetermined at 8 and 10 layers on L1 and
+from option A's 0 mm line is +0.025 to +0.073 dB in |S21| at 16 layers.
+Low-band settling was undetermined at 8 and 10 layers on L1 and
 L2, and at 12 layers on L2. Settling over depth is not established: 14 versus 16
 layers still swings. There is no depth rule. The depth comparison was not
 predeclared; it does not close the predeclaration gap or establish a depth bound.

@@ -32,7 +32,7 @@ def line(overhang=.002, *, start=0., graded=False, thin=False, terminates=None,
         sim.add(strip, material="pec")
     sim.add_msl_port((start + overhang, .004, 0), width=.002, height=.001,
                      eps_r_sub=3.66, terminates=terminates, mode="uniform",
-                     n_probe_offset=2, n_probe_spacing=1, n_probes=3)
+                     n_probe_offset=3, n_probe_spacing=2, n_probes=3)
     return sim
 
 

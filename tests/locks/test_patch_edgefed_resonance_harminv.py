@@ -430,9 +430,11 @@ def test_the_board_realizes_three_sheets_and_no_conductor_volume():
     does not have to re-derive which one the solve sees.
     """
     from tests._realized_geometry import node_index, realized
+    from rfx.preflight.line_stub import line_stub_findings
 
     for fed in (False, True):
         sim, patch, _sub = _build(fed)
+        assert line_stub_findings(sim) == [], "The current feed starts at the port node; the historical face-reaching stub is gone."
         rz = realized(sim)
         assert rz.pec_mask is None or not bool(np.asarray(rz.pec_mask).any()), (
             "ground, trace and patch are foils; none of them owns a cell")
@@ -703,10 +705,10 @@ def test_leg_b_edge_feed_pull(arms):
         f"edge-feed pull {pull_pct:+.3f} % is outside the measured signed envelope "
         f"[{lo:+.3f}, {hi:+.3f}] % ({LEG_B_CENTRE_PCT} +- {LEG_B_HALF_PCT} pp, from "
         "measured fed/unfed pairs plus the measured extractor spread). The pull is "
-        "EXPECTED to be negative, about 7.6 % on the 2026-09-27 tree: the fixture's feed "
-        "trace is a 13.18 mm open stub (it ends at the absorber face; the port sheet sits "
-        "5 mm inside) whose reactive load pulls TM010 DOWN — about -2.2 % per mm of stub, "
-        "+0.85 pp per node. Since #1178 the ground plane continues through the absorbers. "
+        "historical expectation was negative, about 7.6 % on the 2026-09-27 tree, "
+        "whose feed reached the absorber face behind the port. Under #1512 such a "
+        "face-reaching trace continues; this fixture instead starts at the port node. "
+        "The historical feed-pull witness remains quarantined pending redesign. "
         "A change here points at the feed model — FEED_LEN / PORT_MARGIN / DOM_X, the MSL "
         "port placement, the feed-trace rasterization — "
         f"not at the sheet-cell assembly Leg A locks. fed {f_fed:.5f} GHz (settling "

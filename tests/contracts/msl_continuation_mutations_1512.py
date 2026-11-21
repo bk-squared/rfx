@@ -54,7 +54,9 @@ ROWS = (
      (AP, 'if collection == "_msl_ports" or port_termination_references(self, collection, port, grid):',
       'if True:')),
     ("fields_no_continuation", "test_run_forward_fields_equal", NO_CONTINUATION),
-    ("fields_msl_hold", "test_run_forward_fields_equal", MSL_HOLD),
+    ("fields_thin_not_continued", "test_run_forward_fields_equal",
+     ("rfx.model.materials", '    conductors = [replace(tc, shape=continued_conductor_shape(\n        sim, grid, tc.shape, entry=tc, unextendable=findings)) for tc in sim._thin_conductors]',
+      '    conductors = list(sim._thin_conductors)')),
 )
 
 
@@ -80,6 +82,15 @@ def main():
     name, witness, (module, before, after) = next(row for row in ROWS if row[0] == sys.argv[1])
     target = import_module(module)
     exec(compile(sources[module].replace(before, after), target.__file__, "exec"), target.__dict__)
+    if module == SM:
+        import rfx.model.materials as materials
+        materials.continued_conductor_shape = target.continued_conductor_shape
+    if module == "rfx.interop._design":
+        import rfx.interop as interop
+        interop.simulation_from_design = target.simulation_from_design
+    if module == AP:
+        from rfx.api._preflight import _PreflightMixin
+        _PreflightMixin._validate_cfg_port_conductor_continues = target._validate_cfg_port_conductor_continues
     import pytest
     class Witness:
         seen = False

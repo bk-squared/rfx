@@ -120,8 +120,10 @@ goes from 0.661 at +y against 0.002 at −y to 0.344 against 0.314 (sums over y 
 **C5 — What the absorber may be asked to end.** A radiating structure, a guide with a
 cutoff, and a single reference conductor such as a ground plane are ended by the absorber, under C2.
 
-Superseded for microstrip on 2026-11-21 by [#1512](https://github.com/bk-squared/rfx/issues/1512),
-with measurements in `rfx/records/20261121-1512-option-b-depth-result/` in rfx-archive.
+Superseded for microstrip lines on 2026-11-21 by [#1512](https://github.com/bk-squared/rfx/issues/1512)
+(measured; record kept with the project): three boards; settling passes on every arm;
++0.025 to +0.073 dB in |S21| against option A's 0 mm line on the 20 to 40 GHz board
+at 16 layers; settling undetermined at 8 to 12 layers on the low band.
 An MSL port holds no conductor. A microstrip line continues through each absorbing face whose
 outermost interior layer its realized conductor occupies, at today's default 16 layers, without
 an alpha change or a depth rule. Another port's named hold remains except at the face behind an

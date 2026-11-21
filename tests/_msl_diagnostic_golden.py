@@ -465,13 +465,13 @@ TEXT_40 = (
 )
 
 TEXT_41 = (
-    'The strip continues 1.95312 mm behind the port and ends there (realized L; declared '
-    '1.95312 mm); with the open-end extension 0.0989573 mm its effective length is 2.05208'
-    ' mm. It is an open stub that shorts the port near 21.7003 GHz (quarter wave); stub '
-    'frequencies 21.7003 GHz (order 1), inside/near the band you read. Read band 0..20 '
-    "GHz; eps_eff=2.83269; port 'checked'. The port's realized grid node is x=1.953125 mm."
-    " Fix: start the signal strip at that coordinate (the port's grid node), so it covers "
-    'the port node and nothing behind it.'
+    'The strip continues 1.83105 mm behind the port and ends there (realized L; declared '
+    '1.83105 mm); with the open-end extension 0.0989573 mm its effective length is 1.93001 mm. '
+    'It is an open stub that shorts the port near 23.0728 GHz (quarter wave); stub frequencies '
+    '23.0728 GHz (order 1), inside/near the band you read. Read band 0..20 GHz; '
+    "eps_eff=2.83269; port 'checked'. The port's realized grid node is x=1.953125 mm. Fix: "
+    "start the signal strip at that coordinate (the port's grid node), so it covers the port "
+    'node and nothing behind it.'
 )
 
 TEXT_42 = (

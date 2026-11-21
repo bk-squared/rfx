@@ -379,8 +379,10 @@ def test_family_values_survive_actual_run_results_and_refusals(graded):
     )
     sim._geometry[-1] = replace(
         sim._geometry[-1],
-        shape=Box((0, 4 * U, 2 * U), (32 * U, 8 * U, 2 * U)),
+        shape=Box((U, 4 * U, 2 * U), (32 * U, 8 * U, 2 * U)),
     )
+    finding, = stub.line_stub_findings(sim)
+    assert finding.overhang_m == 15 * U, "The interior gap keeps this refusal subject real."
     solve('stub_behind_port', sim)
     assert returned > 0 and refused > 0
     from tests.unit.preflight.test_msl_diagnostic_identity import EXPECTED_LEGACY
@@ -442,6 +444,8 @@ def test_review_matrix_numeric_keys_are_all_parsed(graded):
     ids=["uniform", "graded"],
 )
 def test_nonzero_read_band_values_on_a_real_refusal(graded):
+    """The review fixture has an interior gap; its refusal retains the read band."""
+    from tests._msl_diagnostic_cases import U
     from tests._msl_review_cases import additional_cases
     from rfx.preflight.line_stub import require_no_resonant_line_stub
     sim = list(additional_cases(graded))[-1]
@@ -449,6 +453,7 @@ def test_nonzero_read_band_values_on_a_real_refusal(graded):
         require_no_resonant_line_stub(sim, [3e9, 100e9])
     record = caught.value.diagnostics[-1]
     assert record.severity == 'refusal'
+    assert record.values['overhang_m'] == 15 * U
     assert record.values['band_lo_hz'] == 3e9
     for key, value in record.values.items():
         if isinstance(value, (int, float)):

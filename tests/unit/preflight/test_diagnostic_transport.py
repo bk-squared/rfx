@@ -142,6 +142,7 @@ def test_family_error_severity_is_a_run_refusal(graded, case, code):
 
 @pytest.mark.parametrize('graded', [False, True])
 def test_resonant_tail_run_refusal_is_the_structured_stub_finding(graded):
+    """The strip ends one cell inside, so run still transports a real stub refusal."""
     from dataclasses import replace
     from rfx import Box
 
@@ -151,7 +152,7 @@ def test_resonant_tail_run_refusal_is_the_structured_stub_finding(graded):
     )
     sim._geometry[-1] = replace(
         sim._geometry[-1],
-        shape=Box((0, 4 * U, 2 * U), (32 * U, 8 * U, 2 * U)),
+        shape=Box((U, 4 * U, 2 * U), (32 * U, 8 * U, 2 * U)),
     )
     with pytest.raises(ValueError) as caught:
         sim.run(
@@ -162,7 +163,7 @@ def test_resonant_tail_run_refusal_is_the_structured_stub_finding(graded):
     assert len(records) == 1
     assert records[0].code == 'msl.line_stub_behind_port'
     assert records[0].severity == 'refusal'
-    assert records[0].values['overhang_m'] > 0
+    assert records[0].values['overhang_m'] == 15 * U
 
 
 @pytest.mark.parametrize('graded', [False, True])
