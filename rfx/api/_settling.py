@@ -77,10 +77,7 @@ def settling_source_end(self, result, records=None):
         count = 1 if len(shape) == 1 else shape[1]
         records = [p for i, p in enumerate(self._probes[:count]) if i not in internal]
     if self._coaxial_ports and reading_port and grid is not None:
-        from rfx.measurement.coax_port import port_owner
-        owner = port_owner(self, grid, None, ())
-        records = [tuple(grid.node_of(a, v) for a, v in enumerate((n.i, n.j, n.k)))
-                   for channel in owner.channels for n in channel.nodes]
+        records = result.coax_port_metadata['coax_port:0:mode:0']['voltage_node_positions_m']
     return injection_end(
         series.shape[0], dt, records=tuple(records), grid=grid, sim=self,
         waveguide_ports=getattr(result, "waveguide_ports", None),

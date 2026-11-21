@@ -385,7 +385,7 @@ def compute_coaxial_line_reflection(
             [
                 coaxial_line_plane_voltage_jnp(
                     grid, result.dft_planes[pi * 2 + 0].accumulator,
-                    center_xy=center_xy, pin_radius=a, outer_radius=b,
+                    center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=probes_z[pi],
                 )
                 for pi in range(len(probes_z))
             ],
@@ -430,7 +430,7 @@ def compute_coaxial_line_reflection(
         ey = result.dft_planes[pi * 2 + 1].accumulator
         v_by_plane.append(
             coaxial_line_plane_voltage(
-                grid, ex, ey, center_xy=center_xy, pin_radius=a, outer_radius=b,
+                grid, ex, ey, center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=probes_z[pi],
             )
         )
     V = np.stack(v_by_plane, axis=0)          # (n_planes, n_freqs)
@@ -897,7 +897,7 @@ def compute_coaxial_two_port(
                 [
                     coaxial_line_plane_voltage_jnp(
                         grid, result.dft_planes[pi * 2 + 0].accumulator,
-                        center_xy=center_xy, pin_radius=a, outer_radius=b,
+                        center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=probes_bot[pi],
                     )
                     for pi in range(n_bot)
                 ],
@@ -907,7 +907,7 @@ def compute_coaxial_two_port(
                 [
                     coaxial_line_plane_voltage_jnp(
                         grid, result.dft_planes[top_off + pi * 2 + 0].accumulator,
-                        center_xy=center_xy, pin_radius=a, outer_radius=b,
+                        center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=probes_top[pi],
                     )
                     for pi in range(n_top)
                 ],
@@ -925,7 +925,7 @@ def compute_coaxial_two_port(
                     coaxial_line_plane_voltage(
                         grid, result.dft_planes[pi * 2 + 0].accumulator,
                         result.dft_planes[pi * 2 + 1].accumulator,
-                        center_xy=center_xy, pin_radius=a, outer_radius=b,
+                        center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=probes_bot[pi],
                     )
                     for pi in range(n_bot)
                 ],
@@ -936,7 +936,7 @@ def compute_coaxial_two_port(
                     coaxial_line_plane_voltage(
                         grid, result.dft_planes[top_off + pi * 2 + 0].accumulator,
                         result.dft_planes[top_off + pi * 2 + 1].accumulator,
-                        center_xy=center_xy, pin_radius=a, outer_radius=b,
+                        center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=probes_top[pi],
                     )
                     for pi in range(n_top)
                 ],
@@ -952,7 +952,7 @@ def compute_coaxial_two_port(
                 _plane_records = getattr(result, "dft_time_records", None)
                 _channels = [(f"coax/plane{pi}/V", np.asarray(coaxial_line_plane_voltage(
                     grid, _plane_records[2*pi], _plane_records[2*pi+1],
-                    center_xy=center_xy, pin_radius=a, outer_radius=b)))
+                    center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=all_probes_z[pi])))
                     for pi in range(len(all_probes_z))] if _plane_records else []
                 if _channels:
                     _channels.extend((f"probe{i}", ts[:, i]) for i in range(ts.shape[1]))
@@ -1503,7 +1503,7 @@ def compute_coax_msl_transition(
                 coaxial_line_plane_voltage(
                     grid, result.dft_planes[pi * 2 + 0].accumulator,
                     result.dft_planes[pi * 2 + 1].accumulator,
-                    center_xy=center_xy, pin_radius=a, outer_radius=b,
+                    center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=probes_coax[pi],
                 )
             )
         for pi in range(len(xs_sorted)):
@@ -1525,7 +1525,7 @@ def compute_coax_msl_transition(
             if _plane_records:
                 _channels.extend((f"coax/plane{pi}/V", np.asarray(coaxial_line_plane_voltage(
                     grid, _plane_records[2*pi], _plane_records[2*pi+1],
-                    center_xy=center_xy, pin_radius=a, outer_radius=b)))
+                    center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=probes_coax[pi])))
                     for pi in range(len(probes_coax)))
                 _channels.extend((f"msl/plane{pi}/V", np.asarray(msl_modal_voltage(
                     _plane_records[n_coax_planes+pi], j_centre=j_centre_msl,

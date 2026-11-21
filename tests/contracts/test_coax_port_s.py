@@ -60,6 +60,9 @@ def test_wave_metadata(open_results):
     result, _ = open_results
     actual = scene().forward(n_steps=STEPS, port_s11_freqs=BINS, skip_preflight=True)
     metadata = [output.coax_port_metadata['coax_port:0:mode:0'] for output in (result, actual)]
+    nodes = [np.asarray(data['voltage_node_positions_m']) for data in metadata]
+    np.testing.assert_array_equal(*nodes)
+    assert nodes[0].ndim == 2 and nodes[0].shape[1] == 3
     shapes = dict(forward_voltage=(len(BINS),), recurrence_residual=(len(BINS),),
                   plane_voltages=(12, len(BINS)), plane_positions_m=(12,))
     for name, shape in shapes.items():

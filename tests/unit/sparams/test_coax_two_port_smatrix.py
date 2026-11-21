@@ -469,7 +469,7 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
         ts = np.full((10, len(probes)), 1e-6)
         return _FakeResult(fake_planes, ts, grid_.dt)
 
-    def _fake_voltage(grid_, ex_dft, ey_dft, *, center_xy, pin_radius, outer_radius):
+    def _fake_voltage(grid_, ex_dft, ey_dft, *, center_xy, pin_radius, outer_radius, **kwargs):
         return np.asarray(ex_dft, dtype=np.complex128)
 
     import rfx.simulation as _simulation_mod

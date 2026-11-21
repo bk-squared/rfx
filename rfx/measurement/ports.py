@@ -214,7 +214,7 @@ def msl_owner(grid, *, port_id, direction, voltage_indices, span, trace_planes,
 
 
 def coax_owner(grid, *, port_id, plane_indices, center_xy, pin_radius, outer_radius,
-               frequencies, reference_index=None):
+               frequencies, reference_index=None, pec_cell_mask=None):
     """Describe the voltage ladders of the existing coax line calculators.
 
     These calculators fit plane voltages; they do not sample an H current
@@ -225,26 +225,11 @@ def coax_owner(grid, *, port_id, plane_indices, center_xy, pin_radius, outer_rad
     from rfx.model.graded_grid import NonUniformGrid
     if isinstance(grid, NonUniformGrid) or any(not grid.is_constant(a) for a in range(3)):
         raise ValueError('coax calculators require a uniform grid')
-    coords = [np.asarray([grid.node_of(a, i) for i in range(grid.shape[a])]) for a in (0, 1)]
-    u, v = coords
-    cu, cv = center_xy
-    radial = u-cu
-    radial = radial[(radial >= pin_radius) & (radial <= outer_radius)]
-    if radial.size < 2:
-        radial = np.linspace(pin_radius, outer_radius, 33)
-    widths = np.diff(radial)
-    quadrature = np.r_[widths[0]/2, (widths[:-1]+widths[1:])/2, widths[-1]/2]
-    weights = defaultdict(float)
-    for r, length in zip(radial, quadrature):
-        i = int(np.clip(np.searchsorted(u, cu+r)-1, 0, u.size-2))
-        j = int(np.clip(np.searchsorted(v, cv)-1, 0, v.size-2))
-        tu, tv = (cu+r-u[i])/(u[i+1]-u[i]), (cv-v[j])/(v[j+1]-v[j])
-        for di, dj in product((0, 1), repeat=2):
-            weights[i+di, j+dj] += float(length*(tu if di else 1-tu)*(tv if dj else 1-tv))
+    from .coax_voltage import coax_voltage_weights
     channels = tuple(Channel(f'V:{n}', 'E', tuple(Node('ex', i, j, int(p), w)
-                                                 for (i, j), w in sorted(weights.items())),
-                             e_time_offset=0.0, h_time_offset=0.0)
-                     for n, p in enumerate(plane_indices))
+        for i, j, w in coax_voltage_weights(grid, center_xy=center_xy,
+            pec_cell_mask=pec_cell_mask, plane_index=p)),
+        e_time_offset=0.0, h_time_offset=0.0) for n, p in enumerate(plane_indices))
     refs = [ReferencePlane(f'probe:{i}', 2, int(p), float(grid.node_of(2, int(p))))
             for i, p in enumerate(plane_indices)]
     if reference_index is not None:
@@ -252,7 +237,7 @@ def coax_owner(grid, *, port_id, plane_indices, center_xy, pin_radius, outer_rad
                                    float(grid.node_of(2, int(reference_index)))))
     return Owner(f'coax_port:{port_id}:mode:0', 'coax', channels,
                  _phase_values(frequencies), tuple(refs),
-                 mode_profile_reference='positive-x radial ray, bilinear interpolation, trapezoid',
+                 mode_profile_reference='positive-x ray, whole Yee edges between realized conductor faces',
                  known_differences=('coax voltage fit; NU refused; no H-current contour',))
 
 

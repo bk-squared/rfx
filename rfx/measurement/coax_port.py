@@ -15,7 +15,7 @@ def port_owner(sim, grid, conductors, frequencies):
     return coax_owner(grid, port_id=0, plane_indices=layout.plane_indices,
         center_xy=port.position[:2], pin_radius=port.pin_radius,
         outer_radius=port.outer_radius, frequencies=() if frequencies is None else frequencies,
-        reference_index=layout.reference_index)
+        reference_index=layout.reference_index, pec_cell_mask=conductors.pec_cells)
 
 
 def init_coax_records(carry, plan, n_steps):
@@ -79,6 +79,9 @@ def port_result(sim, product, result):
     z_tem = product.coax_bore_release.z_tem_ohm
     s11, metadata = coax_port_s11(result.coax_sparam_accs, owner=owner,
         z_tem_ohm=z_tem, impedance=sim._coaxial_ports[0].impedance)
+    metadata['voltage_node_positions_m'] = tuple(
+        tuple(product.grid.node_of(a, v) for a, v in enumerate((n.i, n.j, n.k)))
+        for channel in owner.channels for n in channel.nodes)
     return s11, owner.frequencies, {owner.id: metadata}
 
 
