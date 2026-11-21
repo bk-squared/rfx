@@ -393,6 +393,8 @@ def optimize(
 ) -> OptimizeResult:
     """Run gradient-based optimization on a design region.
 
+    See also: rfx.minimize for problems with a few scalar parameters.
+
     Refuses simulations with refinement, as the underlying ``forward()``
     path has no subgridded solve.
 
