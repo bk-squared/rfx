@@ -289,6 +289,34 @@ def test_T7_closed_sheet_without_nominal_profiles_refuses_through_forward(kind):
                 (jnp.ones(N_X),))
 
 
+@pytest.mark.parametrize("declared", [False, True], ids=["fallback", "nominal"])
+@pytest.mark.parametrize("traced", [False, True], ids=["concrete", "traced"])
+def test_T8_f0_closed_sheet_is_admitted_on_both_routes(declared, traced):
+    """Run-4's f0 footprint is admitted with and without declared nominal widths."""
+    prof = _prof_x(0.5 * DX)
+    nominal = {"x": prof} if declared and traced else None
+
+    def run(dx):
+        sim = Simulation(freq_max=40e9, domain=(N_X * DX, N_Y * DX, N_Z * DX), dx=DX,
+                         dx_profile=dx, cpml_layers=0, boundary="pec",
+                         nominal_profiles=nominal, dt=float(DT_PIN), dt_min_cell=float(D_MIN))
+        sim.add_material("sub", eps_r=3.38)
+        sim.add(Box((2 * DX, 2 * DX, Z_GND), (22 * DX, 14 * DX, Z_PATCH)), material="sub")
+        sim.add_pinned_sheet(plane_index=K_GND, i_range=(2, 22), j_range=(2, 14), name="ground")
+        sim.add_thin_conductor(Box((7.65 * DX, 4.65 * DX, Z_PATCH),
+                                   (16.80625 * DX, 11.35 * DX, Z_PATCH)),
+                               surface_impedance_f0=10e9)
+        sim.add_source((3 * DX, 8 * DX, K_MID * DX), "ez", amplitude_kind="current")
+        sim.add_probe((20 * DX, 8 * DX, K_MID * DX), "ez")
+        return jnp.sum(sim.forward(n_steps=20, skip_preflight=True).time_series ** 2)
+
+    if traced:
+        jax.jvp(run, (jnp.asarray(prof, dtype=jnp.float32),),
+                (jnp.ones(N_X, dtype=jnp.float32),))
+    else:
+        run(prof)
+
+
 @pytest.mark.parametrize("k", [0.0, 0.25, 0.5, 0.9, 1.0, 1.25, 1.5])
 def test_one_declaration_two_routes_identical_footprint(k):
     """The same pinned declaration realizes the same nodes on the concrete

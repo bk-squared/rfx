@@ -1491,7 +1491,7 @@ def _sheet_solved_spans(ctx, boxes):
     return out
 
 
-def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
+def _warn_sheet_effective_size(_w, ctx, boxes, *, include_impedance_sheets=True) -> None:
     """A PEC or PEC-like f0 sheet is solved about ``EDGE_OFFSET`` of a cell LONGER at each
     in-plane end than the nodes it covers (measured:
     ``scripts/diagnostics/pec_sheet_edge_offset.py``), so the size the solve
@@ -1506,8 +1506,9 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
     from rfx.mesh_edges import EDGE_OFFSET
     # f0 sheets join on the PEC rule's terms: Box drawings only (no analytic
     # face coordinates for other shapes; the 0.35-cell offset was measured on a fin).
-    boxes = list(boxes) + [e for e in ctx.impedance_sheet_entries()
-                           if isinstance(e.shape, Box)]
+    boxes = list(boxes)
+    if include_impedance_sheets:
+        boxes += [e for e in ctx.impedance_sheet_entries() if isinstance(e.shape, Box)]
     rows = []
     for e, a, span in _sheet_solved_spans(ctx, boxes):
         if not (span.free_lo or span.free_hi):

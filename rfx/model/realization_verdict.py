@@ -277,8 +277,11 @@ def admit_sheet_sizes(sim, conductors, legacy_findings, conformal):
         return list(legacy_findings)
     from rfx.model.realization_reference import table_wide
     from rfx.core.jax_utils import is_tracer
-    traced_mesh = any(is_tracer(getattr(conductors.grid, name, None))
-                      for name in ("dx_arr", "dy_arr", "dz"))
+    traced_axes = [axis for axis, name in zip("xyz", ("dx_arr", "dy_arr", "dz"))
+                   if is_tracer(getattr(conductors.grid, name, None))]
+    traced_mesh = bool(traced_axes)
+    judge_impedance_sheets = all(axis in (getattr(conductors.grid, "nominal_cells", None) or {})
+                                 for axis in traced_axes)
     if table_wide(table.rows) and not traced_mesh:
         return []
     from rfx.model.realization_context import context_from_conductors
@@ -312,7 +315,8 @@ def admit_sheet_sizes(sim, conductors, legacy_findings, conformal):
 
     collector = SimpleNamespace(warn=collect)
     with jax.ensure_compile_time_eval():
-        _warn_sheet_effective_size(collector, ctx, [e for e in entries if isinstance(e.shape, Box)])
+        _warn_sheet_effective_size(collector, ctx, [e for e in entries if isinstance(e.shape, Box)],
+                                   include_impedance_sheets=judge_impedance_sheets)
         if not traced_mesh:
             pec = conductors.pec_mask
             _warn_sheet_cavity_spacing(collector, ctx, entries,
