@@ -1,4 +1,4 @@
-### Fixed — a thin element on the far wall of a waveguide port's section is refused like one on the near wall (#PR)
+### Fixed — wall loss on the far wall of a waveguide port's section is refused like wall loss on the near wall (#PR)
 
-- A surface-impedance sheet, thin film, lumped element or port stamp on the hi transverse wall node of a waveguide port's section reached the run when the guide's walls were PEC volumes. The same element on the lo wall was refused. The port has no model for it, so the run treated that wall as plain PEC.
-- Both wall nodes are now judged the same way. PEC edges on either wall stay accepted. A guide whose walls are PEC domain faces was already refused on both walls by the domain-face check.
+- Wall loss (`add_wall_loss`) on a guide wall inside a waveguide port's section was refused on the port's lower transverse wall but reached the run on the upper one. The port's mode assumes a lossless PEC wall there, so that run used a wall the port does not model.
+- Both wall nodes are now judged the same way, for every thin element the section check covers. Plain PEC walls on either side stay accepted.
