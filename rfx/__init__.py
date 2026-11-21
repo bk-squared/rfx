@@ -134,6 +134,8 @@ from rfx.optimize import (
     ProgressiveOptimizeResult,
     progressive_optimize,
 )
+from rfx._minimize import minimize, MinimizeResult
+from rfx.optimizers import MMASubproblemCapWarning
 from rfx.topology import (
     TopologyDesignRegion, TopologyResult,
     topology_optimize, apply_density_filter, apply_projection, density_to_eps,
@@ -311,6 +313,7 @@ __all__ = [
     "antenna_bandwidth", "BandwidthResult", "plot_antenna_summary",
     # optimization / inverse design + objectives
     "DesignRegion", "OptimizeResult", "optimize",
+    "minimize", "MinimizeResult", "MMASubproblemCapWarning",
     "GradientCheckResult", "gradient_check",
     "ProgressiveStage", "ProgressiveOptimizeResult", "progressive_optimize",
     "TopologyDesignRegion", "TopologyResult", "topology_optimize", "density_to_eps",
