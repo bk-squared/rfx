@@ -589,6 +589,12 @@ corrected; use the single-family extractors separately (`compute_msl_s_matrix(..
 the coaxial two-port and line-reflection calculators) for a result you can cite.
 #838 was closed as not planned before 2.0 (decided 2026-09-20); this is a standing limitation.
 
+Part of the excess came from the coax side's plane voltage, which counted the cells next
+to the inner and outer conductors at half weight and so read 0.84 of the line voltage on
+the 0.1 mm test mesh. With the whole-cell voltage, the short test fixture's |S21| falls
+from 3.81 to 3.22 at 6 GHz and its column power from 14.6 to 10.5; the matrix is still
+far from passive, and the rest of the excess is not attributed.
+
 ### The microstrip S-matrix can come back non-passive, and says so.
 
 Tracker: none — accepted limitation (warns at default: tests/unit/autodiff/test_msl_forward_identity.py::test_a_nonpassive_extraction_is_named_bin_by_bin_in_one_warning)
