@@ -218,7 +218,8 @@ def test_nonuniform_assemblers(normalize, manufactured, monkeypatch):
         calls.append(ref)
         cfgs = {name: cfg._replace(v_ref_t=jnp.full(4, .5 if ref else 1.))
                 for name, cfg in zip(("left", "right"), manufactured)}
-        return Record(waveguide_ports=cfgs, waveguide_port_flux=[jnp.full(4, 4. if ref else 1.)]*2)
+        return Record(grid=sim._build_realized_grid(), waveguide_ports=cfgs,
+                      waveguide_port_flux=[jnp.full(4, 4. if ref else 1.)]*2)
 
     monkeypatch.setattr(runner, "run_nonuniform_path", run)
     with warnings.catch_warnings(record=True) as caught:

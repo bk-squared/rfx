@@ -612,9 +612,8 @@ class Result(NamedTuple):
     sparam_time_records: tuple | None = None
     sparam_read_ids: object = None
     dft_time_records: object = None
-    diagnostics: tuple[Diagnostic, ...] = ()
-
     settling_echo_bound: object = None
+    diagnostics: tuple[Diagnostic, ...] = ()
 
     def find_resonances(self, freq_range=None, probe_idx=0,
                          source_decay_time=None, bandpass=None,
@@ -984,13 +983,13 @@ class ForwardResult(NamedTuple):
     #: First post-source sample at the user probes (None: settling_source_end_index).
     settling_probe_source_end_index: object = None
     settling_freq_max: object = None
-    settling_echo_bound: object = None
     sparam_time_records: tuple | None = None
     sparam_read_ids: object = None
     dft_time_records: object = None
     flux_monitors: object = None
     waveguide_ports: object = None
     waveguide_sparams: object = None
+    settling_echo_bound: object = None
     diagnostics: tuple[Diagnostic, ...] = ()
 
 

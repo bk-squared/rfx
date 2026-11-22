@@ -59,6 +59,10 @@ def report_context(plan, result, bins):
                 rebuilt = tuple(_build_wp_meta(ports, grid))
                 metas = _replace_traced_slots(metas, rebuilt, meta_traced)
     plan.grid = grid
+    if grid.dt is not None:
+        from rfx.measurement.record_end import echo_delay_bound_on_grid
+        plan.echo_dt = float(grid.dt)
+        plan.echo_bound = echo_delay_bound_on_grid(grid, plan.echo_bound)
     if is_tracer(plan.dt):
         plan.dt = None
     step = getattr(result, "dt", None)

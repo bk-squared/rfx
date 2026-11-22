@@ -20,7 +20,8 @@ def close_completion(plan, output, report=None, failure=None):
     tau_max = math.nan if bound.get('reason') else float(bound['tau_max'])
     if not bound.get('reason') and window >= ECHO_BOUND_FACTOR * tau_max:
         return output, report, None
-    reason = echo_bound_reason(bound)
+    reason = ('cannot judge: echo delay bound solver step is traced'
+              if plan.echo_dt is None else echo_bound_reason(bound))
     if report is not None:
         value = math.nan if bound.get('reason') else window / tau_max
         witness = RingdownWitness('echo_bound', value, ECHO_BOUND_FACTOR, False, reason)

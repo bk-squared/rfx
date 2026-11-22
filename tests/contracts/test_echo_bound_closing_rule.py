@@ -78,6 +78,48 @@ def test_realized_bound_preserves_a_plan_refusal():
     assert echo_delay_bound_on_grid(None, refused) is refused
 
 
+def test_traced_step_refuses_only_until_a_realized_host_step_is_available():
+    """The window owns a traced-step refusal; a realized context judges it anew."""
+    import copy
+    from types import SimpleNamespace
+
+    import jax
+    import jax.numpy as jnp
+
+    from rfx.ringdown import RingdownForward
+    from rfx.ringdown._echo import close_completion
+    from rfx.ringdown._forward_context import report_context
+
+    sim = Simulation(freq_max=20e9, domain=(.012, .011, .005), dx=.001, boundary='pec')
+    grid = sim._build_realized_grid()
+    realized_bound = echo_delay_bound(grid, sim=sim)
+
+    def complete(step):
+        traced_grid = copy.copy(grid)
+        traced_grid.dt = step
+        plan = RingdownForward(sim, RingdownSpec(), lane='uniform', n_steps=600,
+                               grid=traced_grid, bins=[10e9])
+        assert plan.echo_dt is None and not plan.echo_bound.get('reason')
+        output = jnp.ones(1)
+        refused, _, failure = close_completion(plan, output)
+        assert failure.message == 'cannot judge: echo delay bound solver step is traced'
+        plan.echo_bound = dict(plan.echo_bound, D=1., tau_max=2. / C0)
+        result = SimpleNamespace(grid=grid, dt=grid.dt, wire_port_sparams=())
+        report_context(plan, result, [10e9])
+        assert plan.echo_dt == float(grid.dt)
+        assert plan.echo_bound == realized_bound
+        judged, _, failure = close_completion(plan, output)
+        assert failure is None
+        plan.n_steps, plan.n_start = 2, 1
+        short, _, failure = close_completion(plan, output)
+        assert RULE in failure.message
+        return refused, judged, short
+
+    refused, judged, short = jax.jit(complete)(jnp.float32(grid.dt))
+    assert np.isnan(refused).all() and np.isnan(short).all()
+    np.testing.assert_array_equal(judged, np.ones(1))
+
+
 def test_drude_interior_does_not_raise_the_echo_index():
     """A conductor contributes its background index, excluding its Drude pole."""
     from rfx.materials.lorentz import drude_pole

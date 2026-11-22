@@ -306,7 +306,7 @@ def test_a_realistic_record_jitted_probe_series_stay_within_9_ulp(lane):
 
 
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
-def test_repeat_calls_with_ringdown_do_not_compile(lane):
+def test_repeat_calls_with_ringdown_do_not_compile(lane, capsys):
     """The same with ``forward(ringdown=RingdownSpec())`` (#1254) on the
     ring-down box, both lanes: the host identification is a callback inside
     the compiled program. First call compiles; the next two, at new design
@@ -316,12 +316,19 @@ def test_repeat_calls_with_ringdown_do_not_compile(lane):
 
     sim = _box(lane)
     grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
+    dt = float(grid.dt)
+    required = 2.05 * 2 * np.linalg.norm([.012, .011, .005]) * np.sqrt(2.2) / 299792458.0 / dt
+    upper = 2 * int(np.ceil(required))
+    n_steps = max(600, next(n for n in range(upper - 2, upper + 2)
+                           if n - round(n / 2) >= required))
+    with capsys.disabled():
+        print(f"ringdown_compile_once[{lane}]: n_steps={n_steps}, dt={dt:.17g} s", file=sys.stderr)
     eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
     kw = {"port_s11_freqs": FREQS if lane == "uniform" else
           np.linspace(sim._freq_max / 10, sim._freq_max, 50)}
 
     def loss(p):
-        r = sim.forward(n_steps=600, skip_preflight=True, eps_override=eps * p,
+        r = sim.forward(n_steps=n_steps, skip_preflight=True, eps_override=eps * p,
                         ringdown=RingdownSpec(), **kw)
         return jnp.sum(jnp.abs(r.ringdown.s_params) ** 2)
 

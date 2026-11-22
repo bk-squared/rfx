@@ -85,7 +85,8 @@ def _row(status, reads):
     return dict(status=status, reads=reads, db={'fail': -20., 'pass': -80., 'absent': None}[status],
                 reason='no probe records the fields' if status == 'absent' else '',
                 worst_freq_hz=10e9, share_per_bin=np.array([.1 if status == 'fail' else 0.]),
-                error_per_bin=np.zeros(1), worst_record='probe0(ez)', source_dominated=False)
+                error_per_bin=np.zeros(1), worst_record='probe0(ez)', source_dominated=False,
+                window_starts={800: (400, 200, 800)})
 
 
 @pytest.mark.parametrize('s_status,field_status,spoken', [

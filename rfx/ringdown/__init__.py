@@ -873,8 +873,6 @@ class RingdownRun:
             self.echo_dt = float(grid.dt)
         except (TypeError, ValueError):
             self.echo_dt = None
-            self.echo_bound = {**self.echo_bound,
-                               'reason': 'cannot judge: echo delay bound solver step is traced'}
         self.n_start = int(round(float(spec.window_start) * self.n_steps))
         self.n_split = int(round(float(spec.split) * self.n_steps))
         self.n_long = _long_window_start(self.n_steps, spec.window_start)
