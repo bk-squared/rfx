@@ -68,7 +68,9 @@ def remove_slice(*args, **kwargs):
     materials, cells, entities = original(*args, **kwargs)
     end = kwargs['end']
     entity = next(e for e in entities if e.entity_id.endswith('/{entity_kind}'))
-    z_index = end.feed_index + (-6 if end.port.face == 'top' else 6)
+    z_index = (end.plane_indices[0] + (-2 if end.port.face == 'top' else 2)
+               if {entity_kind!r} == 'shell' else
+               end.feed_index + (-6 if end.port.face == 'top' else 6))
     removed = np.zeros_like(entity.cells, dtype=bool)
     removed[:, :, z_index] = np.asarray(entity.cells)[:, :, z_index]
     materials = materials._replace(
