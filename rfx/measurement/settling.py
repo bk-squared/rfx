@@ -265,6 +265,16 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
             ntff_box=True, dft_planes=True, flux_monitors=True, current_moment_monitor=True))
         if name in outputs_read)
 
+    series = getattr(result, "time_series", None)
+    realized_n_steps = (len(series) if series is not None
+                        else getattr(getattr(result, "state", None), "step", None))
+    if realized_n_steps is None:
+        realized_n_steps = next(
+            (diagnostic.values["stop_step"]
+             for diagnostic in getattr(result, "diagnostics", ())
+             if diagnostic.code == "until_decay.stop"
+             and diagnostic.values.get("stop_step") is not None), n_steps)
+
     operation = "forward() call" if context == "forward" else "run"
     groups = _warning_groups(result, witness, every_output, groups)
     s_untagged = has_s and not any("S-parameters" in g.get("reads", ()) for g in groups)
@@ -294,15 +304,16 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
             warning_witness = {**row, "reason": reason if row.get('echo_bound_refused') or "rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES" in reason else f"share {peak:.9g}"}
             _warn_if_ringdown_truncated(
                 [np.nan if row.get('db') is None else row['db']], (), witnesses=[warning_witness],
-                n_steps=n_steps, num_periods=None if n_steps is not None else num_periods,
+                n_steps=realized_n_steps,
+                num_periods=None if realized_n_steps is not None else num_periods,
                 drive_labels=(f"S-channel {bin_label}, share {peak:.9g}{quantity}",),
                 consequence="S-parameter truncation is suspect",
                 outputs_sentence=sentence)
         elif status == 'fail':
             _warn_if_ringdown_truncated(
                 [row['db']], (), witnesses=[row],
-                n_steps=None if n_steps is None else int(n_steps),
-                num_periods=None if n_steps is not None else num_periods,
+                n_steps=realized_n_steps,
+                num_periods=None if realized_n_steps is not None else num_periods,
                 drive_labels=(
                     f"worst probe record {row.get('worst_record')}"
                     + (_LONE_PROBE_NOTE if row.get('worst_record')

@@ -223,12 +223,12 @@ def test_run_and_forward_read_the_same_rows_and_spectra(face_record):
 
 @lru_cache(maxsize=None)
 def scaled_forward():
-    """``forward`` on the slotted box at 4,000 steps with its realized permittivity scaled."""
+    """``forward`` on the slotted box at 4,730 steps with its realized permittivity scaled."""
     sim, probes, _ = slotted_box()
     eps = jnp.asarray(np.asarray(sim.realized_geometry().materials.eps_r), jnp.float32)
 
     def spectra(scale):
-        return sim.forward(n_steps=4000, ringdown=probe_spec(probes), skip_preflight=True,
+        return sim.forward(n_steps=4730, ringdown=probe_spec(probes), skip_preflight=True,
                            eps_override=eps * scale).ringdown.probe_spectra
     return spectra, sim
 
@@ -246,8 +246,8 @@ def test_a_traced_forward_reads_the_plane_wave_at_the_untraced_level(transform):
     value, (rows, _) = checked(call)
     _, (plain, _) = checked(lambda: spectra(jnp.float32(1.0)))
     assert np.all(np.isfinite(np.asarray(value)))
-    n_end = pulse_end(level(*recorded_maxima(sim, 4000)[:2]))
-    start = window_starts(4000)["admission"]
+    n_end = pulse_end(level(*recorded_maxima(sim, 4730)[:2]))
+    start = window_starts(4730)["admission"]
     traced, untraced = ((start, r[0][1], window_class(start, r[0][1], n_end)) for r in (rows, plain))
     print(f"{transform}: traced row {rows}, untraced row {plain}, bit-equal {rows == plain}",
           file=sys.stderr)
