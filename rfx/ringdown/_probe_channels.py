@@ -223,7 +223,7 @@ def forward_probe_report(ctx, res):
     return replace(report, witnesses=report.witnesses + (traced, consistency))
 
 
-def traced_probe_completion(plan, result, channels):
+def traced_probe_completion(plan, result, channels, index_read=None, index_operands=()):
     """Complete the raw probe columns; failures poison values and derivatives."""
     import jax.numpy as jnp
     from rfx.ringdown import _jax as rj
@@ -277,10 +277,12 @@ def traced_probe_completion(plan, result, channels):
         counts.append(count)
         budgets.append(k_max)
     from rfx.ringdown._echo import forward_closing_factor
-    closing = forward_closing_factor(plan, ctx, dt, cells, dtype=rdt)
+    closing = forward_closing_factor(plan, ctx, dt, cells, dtype=rdt,
+                                     index_read=index_read, index_operands=index_operands)
     out = [value * closing for value in out]
     return rd.RingdownForwardResult(
         None, None, jnp.asarray(bins, dtype=rdt), channels, (), None,
         jnp.stack(status), consistency, jnp.stack(counts), jnp.asarray(budgets), ctx,
         poles=poles[0], poles_long=poles[1], pole_mask=masks[0], pole_mask_long=masks[1],
-        probe_spectra=out[0], probe_spectra_long=out[1], cells=cells)
+        probe_spectra=out[0], probe_spectra_long=out[1], cells=cells,
+        echo_index=result.settling_echo_bound)

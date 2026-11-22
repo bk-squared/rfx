@@ -959,7 +959,7 @@ def compute_coaxial_two_port(
                 settling_db[drive_idx], settling_details[drive_idx] = settling_db_from_named_records(
                     _channels, source_end_index=source_end, scale_groups=_settling_groups.coax_voltage_groups(_channels, witness_probes, n_bot),
                     dt=result.dt, freqs=freqs, freq_max=self._freq_max, return_detail=True,
-                    echo_bound=echo_delay_bound(grid, sim=self, freqs=freqs))
+                    echo_bound=echo_delay_bound(grid, materials=materials, freqs=freqs))
 
 
     if _traced_eps:
@@ -1537,7 +1537,7 @@ def compute_coax_msl_transition(
             settling_db[drive_idx], settling_details[drive_idx] = settling_db_from_named_records(
                 _channels, source_end_index=source_end, scale_groups=_settling_groups.coax_voltage_groups(_channels, witness_probes),
                 dt=result.dt, freqs=freqs_arr, freq_max=self._freq_max, return_detail=True,
-                echo_bound=echo_delay_bound(grid, sim=self, freqs=freqs_arr))
+                echo_bound=echo_delay_bound(grid, materials=materials, freqs=freqs_arr))
 
 
     # Two-drive extraction rationale (moved from the API docstring).

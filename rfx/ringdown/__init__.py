@@ -1742,8 +1742,9 @@ class RingdownStop:
         (:func:`_floor_pole`), the largest such decay time over the checks
         (c) rests on;
     (e) the report's passivity and growing-pole witnesses ok on this record,
+    (f) its identification window contains at least 2.05 longest round trips,
 
-    and ends the run at the first check where all five hold. The result is
+    and ends the run at the first check where all six hold. The result is
     ``RingdownRun(n_steps=T)`` finishing the ``T``-step record -- the code
     ``run(n_steps=T, ringdown=spec)`` runs -- with the stop report in
     ``Result.ringdown.stop``. When the record reaches ``n_max`` without a
@@ -1754,6 +1755,9 @@ class RingdownStop:
     def __init__(self, sim, spec: RingdownSpec, *, lane: str, n_max: int, grid):
         self.sim, self.spec, self.lane, self.grid = sim, spec, lane, grid
         self.base = RingdownRun(sim, spec, lane=lane, n_steps=int(n_max), grid=grid)
+        if self.base.echo_bound.get('reason'):
+            from rfx.errors import RfxRefusal
+            raise RfxRefusal(f"until_identified: {self.base.echo_bound['reason']}; use fixed n_steps")
         self.n_max = int(n_max)
         self.dt = float(grid.dt)
         self.chunk = int(STOP_CHUNK)
@@ -1824,7 +1828,7 @@ class RingdownStop:
         return self._check(steps_done, peek).stop
 
     def _check(self, T: int, peek) -> RingdownStopCheck:
-        """Conditions (a)-(e) at a record of ``T`` steps, recorded on the schedule."""
+        """Conditions (a)-(f) at a record of ``T`` steps, recorded on the schedule."""
         import time
 
         t0 = time.perf_counter()
@@ -1833,6 +1837,11 @@ class RingdownStop:
         def finish(**fields):
             return self.schedule.record(T, T * self.dt, fields,
                                         time.perf_counter() - t0)
+
+        from rfx.measurement.record_end import ECHO_BOUND_FACTOR, echo_bound_reason
+        if ((T - round(float(spec.window_start) * T)) * self.dt
+                < ECHO_BOUND_FACTOR * self.base.echo_bound['tau_max']):
+            return finish(note='(f) not held: ' + echo_bound_reason(self.base.echo_bound))
 
         # (a), as run(n_steps=T, ringdown=spec) evaluates it
         try:
@@ -2171,10 +2180,14 @@ class RingdownForward(RingdownRun):
         n_user = len(probes) or (len(self.sim._ports) if self.lane == "uniform" else 0)
         with ringdown_probes(probes, _ringdown_probe_entries(self.grid, self.probe_keys), "RingdownForward.run"):
             result = call()
+        from rfx.measurement._echo_forward import forward_echo_bound
+        bound, index_read, index_operands = forward_echo_bound(
+            result.grid, self.sim, self.bins)
+        result = result._replace(settling_echo_bound=bound)
         self.sim = None          # the plan outlives the call inside the result
-        return self._finish_forward(result, n_user)
+        return self._finish_forward(result, n_user, index_read, index_operands)
 
-    def _finish_forward(self, result, n_user: int):
+    def _finish_forward(self, result, n_user: int, index_read=None, index_operands=()):
         full = result.time_series
         n_int = len(self.probe_keys)
         if tuple(full.shape) != (self.n_steps, n_user + n_int):
@@ -2184,14 +2197,14 @@ class RingdownForward(RingdownRun):
                 f"{n_int} port-channel probes)")
         channels = full[:, n_user:]
         stripped = _user_geometry(result._replace(time_series=full[:, :n_user]), n_user, n_int)
-        completed = self._traced(result, channels)
+        completed = self._traced(result, channels, index_read, index_operands)
         warn_if_singular_value_exceeds_one(completed.s_params, completed.freqs, extractor="forward(ringdown)")
         return stripped._replace(ringdown=completed)
 
-    def _traced(self, result, channels) -> RingdownForwardResult:
+    def _traced(self, result, channels, index_read=None, index_operands=()) -> RingdownForwardResult:
         if self.probe_mode:
             from rfx.ringdown._probe_channels import traced_probe_completion
-            return traced_probe_completion(self, result, channels)
+            return traced_probe_completion(self, result, channels, index_read, index_operands)
         import jax
         import jax.numpy as jnp
 
@@ -2322,14 +2335,15 @@ class RingdownForward(RingdownRun):
             pole_counts.append(count)
             pole_budgets.append(k_max)
         from rfx.ringdown._echo import forward_closing_factor
-        closing = forward_closing_factor(self, ctx, dt, cells, dtype=rdt)
+        closing = forward_closing_factor(self, ctx, dt, cells, dtype=rdt,
+                                         index_read=index_read, index_operands=index_operands)
         out = [value * closing for value in out]
         return RingdownForwardResult(out[0], out[1], result.freqs, channels, accs,
                                      result.s_params, jnp.stack(status), consistency,
                                      jnp.stack(pole_counts), jnp.asarray(pole_budgets), ctx,
                                      poles=poles[0], poles_long=poles[1],
                                      pole_mask=masks[0], pole_mask_long=masks[1],
-                                     cells=cells)
+                                     cells=cells, echo_index=result.settling_echo_bound)
 
 
 # Lazy compatibility exports avoid a cycle with the moved implementation.

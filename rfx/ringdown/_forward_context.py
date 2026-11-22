@@ -161,6 +161,11 @@ class _ForwardReportContext:
             from rfx.measurement.record_end import echo_delay_bound_on_grid
             plan.echo_bound = echo_delay_bound_on_grid(grid, plan.echo_bound)
             plan.echo_dt = float(grid.dt)
+        if res._echo_index is not None:
+            import copy
+            from rfx.measurement._echo_forward import realized_echo_bound
+            plan = copy.copy(plan)
+            plan.echo_bound = realized_echo_bound(grid, res._echo_index)
         if plan.probe_mode:
             from rfx.ringdown._probe_channels import forward_probe_report
             return forward_probe_report(SimpleNamespace(plan=plan, grid=grid, step=self.step), res)

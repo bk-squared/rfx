@@ -437,7 +437,7 @@ def run_nonuniform_until_decay(
     from rfx.sources._sampling import field_time_step
     measurement_grid = grid._replace(dt=field_time_step(grid.dt, field_dtype))
     energy_stop, energy = make_decay_stop(
-        measurement_grid, materials, thr=decay_by, min_steps=min_steps, interval=check_interval,
+        measurement_grid, materials, dt=measurement_grid.dt, thr=decay_by, min_steps=min_steps, interval=check_interval,
         consecutive=decay_energy_consecutive, n_end=n_end, criterion=not use_flux_stop, echo_bound=echo_bound, debye=debye, lorentz=lorentz,
         rows=True, max_steps=max_steps, sources=sources, tfsf=tfsf, absorbing=bool(absorbing),
         waveguide_ports=waveguide_ports, side_step=(lambda c, xs, inv: _stop_side_step(c, xs, inv)[0],
@@ -445,7 +445,7 @@ def run_nonuniform_until_decay(
     stop_rule = energy_stop
     if use_flux_stop:
         stop_rule = make_field_decay_stop(
-            measurement_grid, materials=materials,
+            measurement_grid, materials=materials, dt=measurement_grid.dt,
             thr=decay_by, min_steps=min_steps, interval=check_interval,
             max_steps=max_steps, consecutive=decay_energy_consecutive,
             env_checks=flux_env_checks, n_end=n_end, sources=sources,

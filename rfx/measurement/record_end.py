@@ -52,6 +52,62 @@ def _echo_bound_unavailable_reason(exc):
     return f"cannot judge: echo delay bound unavailable: {detail}; pass echo_bound="
 
 
+def echo_group_factor(configs):
+    """Only each guide's propagating read bins carry its delayed echo."""
+    g = 1.0
+    for cfg in configs:
+        read = np.asarray(cfg.freqs, dtype=np.float64)
+        cutoff = float(cfg.f_cutoff)
+        propagating = read[read > cutoff]
+        if propagating.size:
+            g = min(g, float(np.sqrt(1 - (cutoff / np.min(propagating))**2)))
+    return g
+
+
+def material_echo_index(specs, bins, *, declared, debye=None, lorentz=None):
+    """Form the declared maximum index in host float64 for every caller."""
+    n_max = 1.0
+    for material in specs:
+        eps = np.asarray(material.eps_r, dtype=np.float64)
+        mu = np.asarray(material.mu_r, dtype=np.float64)
+        dp = getattr(material, 'debye_poles', None) or ()
+        lp = getattr(material, 'lorentz_poles', None) or ()
+        if (dp or lp) and not bins.size:
+            raise ValueError("the dispersive material read band is unavailable")
+        if not declared and (debye is not None or lorentz is not None or dp or lp):
+            raise ValueError("low-level dispersive material declarations are unavailable")
+        if not declared:
+            if not np.all(np.isfinite(eps)) or not np.all(np.isfinite(mu)) or np.any(eps <= 0) or np.any(mu <= 0):
+                raise ValueError("nonfinite or nonpositive material index")
+            n_max = max(n_max, float(np.sqrt(np.max(eps) * np.max(mu))))
+            if not np.isfinite(n_max):
+                raise ValueError("nonfinite material index")
+            continue
+        lp = tuple(p for p in lp if float(p.omega_0) != 0.)
+        for pole in lp:
+            resonance = float(pole.omega_0) / (2 * np.pi)
+            if (float(pole.omega_0) > 0 and float(pole.delta) == 0
+                    and np.min(bins) <= resonance <= np.max(bins)):
+                raise ValueError("an undamped Lorentz resonance lies inside the read band")
+        peaks = [np.sqrt(float(p.omega_0)**2 - 2 * float(p.delta)**2) / (2 * np.pi)
+                 for p in lp if float(p.omega_0)**2 > 2 * float(p.delta)**2]
+        samples = np.r_[0., bins, [f for f in peaks if np.min(bins) <= f <= np.max(bins)]]
+        for frequency in samples:
+            omega = 2 * np.pi * frequency
+            response = eps.astype(np.complex128)
+            for pole in dp:
+                response = response + float(pole.delta_eps) / (1 + 1j * omega * float(pole.tau))
+            for pole in lp:
+                strength = getattr(pole.kappa, 'si', pole.kappa)
+                response = response + np.asarray(strength) / (
+                    float(pole.omega_0)**2 - omega**2 + 2j * float(pole.delta) * omega)
+            values = np.sqrt(np.abs(response * mu))
+            if not np.all(np.isfinite(values)):
+                raise ValueError("nonfinite material index")
+            n_max = max(n_max, float(np.max(values)))
+    return n_max
+
+
 def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_ports=(),
                      debye=None, lorentz=None):
     """Return ``tau_max, D, n_max, g`` from the realized physical domain.
@@ -81,55 +137,12 @@ def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_po
                      else [materials])
         else:
             raise ValueError("material declarations are unavailable")
-        n_max = 1.0
-        for material in specs:
-            eps = np.asarray(material.eps_r, dtype=np.float64)
-            mu = np.asarray(material.mu_r, dtype=np.float64)
-            dp = getattr(material, 'debye_poles', None) or ()
-            lp = getattr(material, 'lorentz_poles', None) or ()
-            if (dp or lp) and not bins.size:
-                raise ValueError("the dispersive material read band is unavailable")
-            if sim is None and (debye is not None or lorentz is not None or dp or lp):
-                raise ValueError("low-level dispersive material declarations are unavailable")
-            if sim is None:
-                if not np.all(np.isfinite(eps)) or not np.all(np.isfinite(mu)) or np.any(eps <= 0) or np.any(mu <= 0):
-                    raise ValueError("nonfinite or nonpositive material index")
-                n_max = max(n_max, float(np.sqrt(np.max(eps) * np.max(mu))))
-                if not np.isfinite(n_max):
-                    raise ValueError("nonfinite material index")
-                continue
-            lp = tuple(p for p in lp if float(p.omega_0) != 0.)
-            for pole in lp:
-                resonance = float(pole.omega_0) / (2 * np.pi)
-                if (float(pole.omega_0) > 0 and float(pole.delta) == 0
-                        and np.min(bins) <= resonance <= np.max(bins)):
-                    raise ValueError("an undamped Lorentz resonance lies inside the read band")
-            peaks = [np.sqrt(float(p.omega_0)**2 - 2 * float(p.delta)**2) / (2 * np.pi)
-                     for p in lp if float(p.omega_0)**2 > 2 * float(p.delta)**2]
-            samples = np.r_[0., bins, [f for f in peaks if np.min(bins) <= f <= np.max(bins)]]
-            for frequency in samples:
-                omega = 2 * np.pi * frequency
-                response = eps.astype(np.complex128)
-                for pole in dp:
-                    response = response + float(pole.delta_eps) / (1 + 1j * omega * float(pole.tau))
-                for pole in lp:
-                    strength = getattr(pole.kappa, 'si', pole.kappa)
-                    response = response + np.asarray(strength) / (
-                        float(pole.omega_0)**2 - omega**2 + 2j * float(pole.delta) * omega)
-                values = np.sqrt(np.abs(response * mu))
-                if not np.all(np.isfinite(values)):
-                    raise ValueError("nonfinite material index")
-                n_max = max(n_max, float(np.max(values)))
-        g = 1.0
-        for cfg in configs or ():
-            read = bins if bins.size else np.asarray(cfg.freqs, dtype=np.float64)
-            cutoff = float(cfg.f_cutoff)
-            if not read.size or np.min(read) <= cutoff:
-                raise ValueError("a waveguide read bin is at or below cutoff")
-            g = min(g, float(np.sqrt(1 - (cutoff / np.min(read))**2)))
+        g = echo_group_factor(configs)
+        n_max = material_echo_index(specs, bins, declared=sim is not None,
+                                    debye=debye, lorentz=lorentz)
         return echo_delay_bound_on_grid(grid, dict(n_max=n_max, g=g))
     except (TypeError, ValueError, AttributeError, OverflowError) as exc:
-        return dict(tau_max=None, D=None, n_max=None, g=None,
+        return dict(tau_max=None, D=None, n_max=None, g=locals().get('g'),
                     reason=_echo_bound_unavailable_reason(exc))
 
 
@@ -196,7 +209,7 @@ def with_echo_bound(db, witness, bound, dt):
                        for name, status in (child.get('status_per_entry') or {}).items()}
             if entries:
                 row['status_per_entry'] = entries
-    if not descendants and bound is not None and (row.get('tail_status', row.get('status')) == 'pass' or
+    if not descendants and bound is not None and (row.get('status') == 'pass' or
                               'pass' in (row.get('status_per_entry') or {}).values()):
         windows = row.get('window_starts') or {}
         unavailable = bound.get('reason') or dt is None or not windows
@@ -212,13 +225,14 @@ def with_echo_bound(db, witness, bound, dt):
         for extra in dict.fromkeys(r for r in reasons if r):
             if extra not in reason:
                 reason = '; '.join(filter(None, (reason, extra)))
-        row.update(status='undetermined', db=float('nan'), reason=reason,
-                   echo_bound_refused=True,
+        row.update(reason=reason, echo_bound_refused=True,
                    echo_bound_reason=next((r for r in reasons if r), row.get('echo_bound_reason')))
+        if row.get('status') == 'pass':
+            row.update(status='undetermined', db=float('nan'))
+            db = float('nan')
         if not descendants and row.get('status_per_entry'):
             row['status_per_entry'] = {name: 'undetermined' if value == 'pass' else value
                                        for name, value in row['status_per_entry'].items()}
-        db = float('nan')
     return db, row
 
 

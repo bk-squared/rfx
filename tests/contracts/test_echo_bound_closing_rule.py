@@ -1,4 +1,4 @@
-"""The shorted TEM line pins the unseen-echo identification limit (#2967)."""
+"""The shorted TEM line pins the unseen-echo identification limit."""
 
 from functools import lru_cache
 import sys

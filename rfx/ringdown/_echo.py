@@ -33,7 +33,8 @@ def close_completion(plan, output, report=None, failure=None, *, grid=None, dt=N
     return None if output is None else output * math.nan, report, failure
 
 
-def forward_closing_factor(plan, context, dt, cells, *, dtype):
+def forward_closing_factor(plan, context, dt, cells, *, dtype, index_read=None,
+                           index_operands=()):
     """Judge realized host widths at the completion's pole-mapping step.
 
     The callback reads the same live widths as the channels. Its decision is
@@ -43,18 +44,24 @@ def forward_closing_factor(plan, context, dt, cells, *, dtype):
     import numpy as np
     from rfx.ringdown._jax import host_closing_factor
 
-    if not cells:
+    if not cells and index_read is None:
         return close_completion(plan, 1., grid=context.grid, dt=dt)[0]
     template, axes = context.grid, context.traced_axes
     exact_of = {'dx_arr': 'dx_arr_f64', 'dy_arr': 'dy_arr_f64', 'dz': 'dz_f64'}
 
-    def judge(*widths):
+    def judge(*operands):
+        import copy
+        widths = operands[:len(cells)]
         fields = {}
         for (_, store), live in zip(axes, widths, strict=True):
             fields[store] = np.asarray(live)
             if exact_of[store] in template._fields:
                 fields[exact_of[store]] = np.asarray(live, dtype=np.float64)
         grid = template._replace(**fields)
-        return np.asarray(close_completion(plan, 1., grid=grid, dt=dt)[0], dtype=dtype)
+        live_plan = copy.copy(plan)
+        if index_read is not None:
+            live_plan.echo_bound = dict(n_max=index_read(*operands[len(cells):]),
+                                        g=plan.echo_bound['g'])
+        return np.asarray(close_completion(live_plan, 1., grid=grid, dt=dt)[0], dtype=dtype)
 
-    return host_closing_factor(judge, dtype, *cells)
+    return host_closing_factor(judge, dtype, *cells, *index_operands)

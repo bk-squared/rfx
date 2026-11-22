@@ -209,7 +209,11 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
     from rfx.measurement.record_end import echo_delay_bound, with_echo_bound
     from rfx.sparams._tail_witness import result_read_bins
     bound = getattr(result, 'settling_echo_bound', None)
-    if bound is None:
+    if forward_result and bound is None:
+        from rfx.measurement._echo_forward import forward_echo_bound
+        bound, _, _ = forward_echo_bound(result.grid, sim, result_read_bins(result),
+                                        getattr(result, 'waveguide_ports', None))
+    elif bound is None:
         bound = echo_delay_bound(result.grid, sim=sim, freqs=result_read_bins(result),
                                  waveguide_ports=getattr(result, 'waveguide_ports', None))
     result = result._replace(settling_echo_bound=bound)
@@ -225,10 +229,13 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
             settling_source_end_index=sim._settling_source_end(
                 result, records=sim._ports if s_read_records(result) else None),
             settling_probe_source_end_index=sim._settling_source_end(result))
-        if is_tracer(result.time_series):
+        if is_tracer(result.time_series) or is_tracer(bound.get('index_words')):
             return result
+        from rfx.measurement._echo_forward import realized_echo_bound
+        bound = realized_echo_bound(result.grid, bound)
     from rfx.measurement import decay_stop_first
-    settling_db, witness = decay_stop_first(result, *sim._run_settling_witness(result))
+    read_result = result._replace(settling_echo_bound=bound) if forward_result else result
+    settling_db, witness = decay_stop_first(result, *sim._run_settling_witness(read_result))
     tail_status = witness["status"]
     settling_db, witness = with_coverage(settling_db, witness, coverage)
     settling_db, witness = with_echo_bound(settling_db, witness, bound,

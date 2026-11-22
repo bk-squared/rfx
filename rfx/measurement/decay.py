@@ -424,7 +424,7 @@ def make_field_decay_stop(grid, *, thr, min_steps, interval, max_steps,
                           consecutive=2, env_checks=4, n_end=AUTO_END,
                           sources=(), mag_sources=(), tfsf=None, waveguide_ports=(), materials=None,
                           echo_bound: Mapping[str, float | str | None] | None = None,
-                          debye=None, lorentz=None):
+                          debye=None, lorentz=None, dt=None):
     """Resolve the applied-drive end for the radiated-flux stop."""
     drives = dict(sources=sources, mag_sources=mag_sources, tfsf=tfsf,
                   waveguide_ports=waveguide_ports)
@@ -435,7 +435,7 @@ def make_field_decay_stop(grid, *, thr, min_steps, interval, max_steps,
     rule = FluxStop(**common, consecutive=consecutive, env_checks=env_checks)
     if thr > 0 and materials is not None:
         rule.echo_bound = _decay_echo_bound(grid, materials, waveguide_ports, echo_bound, debye, lorentz)
-        rule.dt = float(grid.dt)
+        rule.dt = float(grid.dt if dt is None else dt)
     if n_end is None and thr > 0:
         from rfx.measurement.record_end import injection_end
         _, rule.drive_reason, _ = injection_end(
@@ -449,7 +449,7 @@ def make_decay_stop(grid, materials, *, thr, min_steps, interval, consecutive,
                     sources=(), mag_sources=(), tfsf=None, waveguide_ports=(),
                     periodic=(False, False, False),
                     echo_bound: Mapping[str, float | str | None] | None = None,
-                    debye=None, lorentz=None):
+                    debye=None, lorentz=None, dt=None):
     """The rule and its W measurement for one loop.
 
     ``criterion``: the energy criterion is this run's stop rule (no flux
@@ -474,7 +474,7 @@ def make_decay_stop(grid, materials, *, thr, min_steps, interval, consecutive,
     if enabled:
         rule.n_d = known_drive_ready_step(waveguide_ports, interval)
         rule.echo_bound = _decay_echo_bound(grid, materials, waveguide_ports, echo_bound, debye, lorentz)
-        rule.dt = float(grid.dt)
+        rule.dt = float(grid.dt if dt is None else dt)
     measure = (boundary_energy(grid, materials, side_step, dx=dx,
                                absorbing=absorbing, periodic=periodic)
                if n_end is not None else None)
