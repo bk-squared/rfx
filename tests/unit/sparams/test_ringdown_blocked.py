@@ -98,7 +98,7 @@ def _assert_bound(actual, reference, baseline=None):
 @pytest.mark.parametrize('x64', [False, True], ids=['float32', 'x64'])
 @pytest.mark.parametrize('count,size', [(3, 400), (30, 40), (300, 4)])
 def test_blocked_matches_dense(monkeypatch, x64, count, size):
-    """Three actual scan counts, independent float64 value and derivative oracles."""
+    """Three byte targets, independent float64 value and derivative oracles."""
     y, dy, s = _record(1199)
     reference = _dense(y, dy, s)
     with enable_x64() if x64 else nullcontext():
@@ -109,8 +109,8 @@ def test_blocked_matches_dense(monkeypatch, x64, count, size):
         monkeypatch.setattr(blocked, '_BLOCK_TARGET_BYTES', len(y)*width*itemsize)
         baseline = _call(y, dy, s, len(s))
         monkeypatch.setattr(blocked, '_BLOCK_TARGET_BYTES', size*width*itemsize)
-        assert blocked._block_size(len(y), width, jnp.complex128 if x64 else jnp.complex64) == size
-        assert (len(y)+size-1)//size == count
+        plan = blocked._block_plan(len(y), width, jnp.complex128 if x64 else jnp.complex64)
+        assert len(plan) == min(count, len(y) // width)
         actual = _call(y, dy, s, len(s))
     _assert_bound(actual, reference, None if x64 else baseline)
     jax.clear_caches()

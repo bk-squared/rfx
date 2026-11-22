@@ -12,6 +12,8 @@ import sys
 
 
 ROWS = (
+    ('block_floor_removed', 'tests/contracts/test_ringdown_block_plan.py::test_balanced_scan_plan[device]', 'block shorter than width'),
+    ('short_remainder_restored', 'tests/contracts/test_ringdown_block_plan.py::test_balanced_scan_plan[host]', 'short remainder restored'),
     ('projection_dropped', 'tests/unit/sparams/test_ringdown_blocked.py::test_blocked_matches_dense[3-400-x64]', 'spectra_jvp'),
     ('partial_skipped', 'tests/unit/sparams/test_ringdown_blocked.py::test_blocked_matches_dense[3-400-x64]', 'residues'),
     ('padded_tb_rows_dropped', 'tests/unit/sparams/test_ringdown_blocked.py::test_padded_512_is_finite[x64]', 'non-finite value or derivative'),
@@ -36,7 +38,17 @@ def pytest_configure(config):
     planning = importlib.import_module('rfx.ringdown._pencil')
     from rfx.measurement import matrix_pencil as pencil
 
-    if mutation in ('projection_dropped', 'partial_skipped', 'padded_tb_rows_dropped'):
+    if mutation in ('block_floor_removed', 'short_remainder_restored'):
+        module = importlib.import_module('rfx.measurement._block_plan')
+        source = inspect.getsource(module)
+        if mutation == 'block_floor_removed':
+            source = source.replace('min((length + target_rows - 1) // target_rows, max(1, length // width))',
+                                    '(length + target_rows - 1) // target_rows')
+        else:
+            source = source.replace('return tuple(zip(starts[:-1], starts[1:]))',
+                                    'return tuple((start, min(start + max(width, target_rows), length)) '
+                                    'for start in range(0, length, max(width, target_rows)))')
+    elif mutation in ('projection_dropped', 'partial_skipped', 'padded_tb_rows_dropped'):
         module = blocked
         source = inspect.getsource(module)
         if mutation == 'projection_dropped':
@@ -47,14 +59,20 @@ def pytest_configure(config):
         ds = pole_step(y, d.reshape(-1, s0.size), weights, mask)'''
             source = source.replace(old, new)
         elif mutation == 'partial_skipped':
-            source = source.replace('(length + size - 1) // size', 'length // size')
+            source = source.replace('return block_plan(length, width, _BLOCK_TARGET_BYTES, jnp.dtype(dtype).itemsize)',
+                                    'size = min(length, max(1, int(_BLOCK_TARGET_BYTES) // '
+                                    '(jnp.dtype(dtype).itemsize * width)))\n'
+                                    '    return tuple((start, start + size) '
+                                    'for start in range(0, length - length % size, size))')
+            source = source.replace('max(start + size for start, stop in plan) - length',
+                                    '(-length) % size')
         else:
             source = source.replace('initial = initial.at[k:2*k, k:2*k].set(unit)', 'initial = initial')
     elif mutation in ('host_partial_skipped', 'host_end_reference_dropped'):
         module = pencil
         source = inspect.getsource(module)
         if mutation == 'host_partial_skipped':
-            source = source.replace('range(0, length, size)', 'range(0, length - length % size, size)')
+            source = source.replace('for start, stop in plan:', 'for start, stop in plan[:-1]:')
         else:
             source = source.replace('(t - end)[:, None] * s[None, growing]', 't[:, None] * s[None, growing]')
     elif mutation == 'pole_tangent_doubled':
@@ -73,6 +91,8 @@ def pytest_configure(config):
             raise ValueError(mutation)
     assert source != inspect.getsource(module), ('mutation text not found', mutation)
     exec(compile(source, module.__file__, 'exec'), module.__dict__)
+    if module.__name__ == 'rfx.measurement._block_plan':
+        blocked.block_plan = pencil.block_plan = module.block_plan
     if module is planning:
         from rfx import ringdown as rd
         rd._check_run_identification_memory = planning._check_run_identification_memory

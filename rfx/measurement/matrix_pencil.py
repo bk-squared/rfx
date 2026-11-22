@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from rfx.measurement._block_plan import block_plan
+
 
 DECIMATION_GUARD = 8
 _MAX_DECIMATION_STAGE = 13
@@ -142,25 +144,25 @@ def _fit_residues(Y_win: np.ndarray, s: np.ndarray, dt: float, *,
         return np.zeros((0, Y_win.shape[1]), dtype=np.complex128)
     length, channels = Y_win.shape
     rank = s.size
-    size = _residue_block_size(length, rank, channels)
+    plan = _residue_block_plan(length, rank, channels)
     end = (length - 1) * float(dt)
     growing = s.real > 0
 
-    def rows(start):
+    def rows(start, stop):
         """Growing columns retain the original window's end reference."""
-        t = np.arange(start, min(start + size, length), dtype=np.float64) * float(dt)
+        t = np.arange(start, stop, dtype=np.float64) * float(dt)
         exponents = t[:, None] * s[None, :]
         exponents[:, growing] = (t - end)[:, None] * s[None, growing]
         return np.exp(exponents)
 
     sums = np.zeros(rank)
-    for start in range(0, length, size):
-        sums += np.sum(np.abs(rows(start))**2, axis=0)
+    for start, stop in plan:
+        sums += np.sum(np.abs(rows(start, stop))**2, axis=0)
     norms = np.where(sums > 0, np.sqrt(sums), 1.0)
     triangle = np.zeros((rank + channels, rank + channels), dtype=np.complex128)
-    for start in range(0, length, size):
-        block = np.concatenate((rows(start) / norms,
-                                Y_win[start:start + size].astype(np.complex128)), axis=1)
+    for start, stop in plan:
+        block = np.concatenate((rows(start, stop) / norms,
+                                Y_win[start:stop].astype(np.complex128)), axis=1)
         triangle = np.linalg.qr(np.concatenate((triangle, block)), mode="r")
     cutoff = np.finfo(np.float64).eps * max(length, rank)
     coef = np.linalg.lstsq(triangle[:rank, :rank], triangle[:rank, rank:], rcond=cutoff)[0]
@@ -170,14 +172,20 @@ def _fit_residues(Y_win: np.ndarray, s: np.ndarray, dt: float, *,
     return residues
 
 
-def _residue_block_size(length, rank, channels):
-    """The host QR and its refusal law read the same private byte target."""
-    return min(length, max(rank + channels, int(_RESIDUE_BLOCK_TARGET_BYTES) // (16 * (rank + channels))))
+def _residue_block_plan(length, rank, channels):
+    """Balance the byte target's count, capped at length // (rank + channels).
+
+    Every real block has at least rank + channels rows when length permits;
+    sizes differ by at most one. Shorter windows form one block. The host QR
+    and its refusal law read this plan and the same call-time byte target.
+    """
+    return block_plan(length, rank + channels, _RESIDUE_BLOCK_TARGET_BYTES, 16)
 
 
 def _residue_memory_bytes(length, rank, channels):
     """Conservative complex128 live blocks and square QR/SVD workspace."""
-    size = _residue_block_size(length, rank, channels)
+    plan = _residue_block_plan(length, rank, channels)
+    size = max(stop - start for start, stop in plan)
     width = rank + channels
     return 1.71 * 16 * 5 * (size * width + width**2)
 
