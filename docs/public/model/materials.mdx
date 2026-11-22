@@ -183,8 +183,8 @@ so a later shape cannot cut a hole in metal. Draw metal only where metal
 should be.
 
 <figure data-rfx="media">
-  <img src="/rfx/model/assets/materials/structure.png" loading="lazy" alt="Section through the model with a stepped alumina ball, two dielectric layers, PEC plates, a via and an air-filled gap in an alumina block, some of which continue into the absorber." />
-  <figcaption>What the blocks above build together in one model, cut at x = 25 mm on the automatic mesh: the air box opens the alumina block, the metal stays under dielectrics drawn later, and bodies that touch the domain's edge continue into the absorber. The via's 1 mm diameter lands on three cells, 1.2 mm, which <code>sim.preflight()</code> reports as an error.</figcaption>
+  <img src="/rfx/model/assets/materials/structure.png" loading="lazy" alt="Section through the model: an alumina ball with a staircased outline, two dielectric layers, PEC plates, a via, and an alumina block with an air-filled gap. The lower layer, the block, the gap and the via continue into the absorber." />
+  <figcaption>The model that the code blocks above build together, cut at x = 25 mm on the automatic mesh: the air box cuts a gap in the alumina block, conductors are kept where later dielectrics overlap them, and bodies that touch the domain's edge continue into the absorber. The via, drawn 1 mm in diameter, is three cells (1.2 mm) wide, and <code>sim.preflight()</code> reports that mismatch as an error.</figcaption>
 </figure>
 
 ## Freeze the mesh before placing geometry from it
