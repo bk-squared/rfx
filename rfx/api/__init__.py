@@ -1608,14 +1608,8 @@ class Simulation(
                 raise ValueError(f"n_freqs must be positive, got {n_freqs}")
             freqs_arr = None
         else:
-            freqs_arr = jnp.asarray(freqs)
-            if freqs_arr.ndim != 1 or freqs_arr.size == 0:
-                raise ValueError("freqs must be a non-empty 1-D array")
-            freqs_np = np.asarray(freqs_arr, dtype=float)
-            if not np.all(np.isfinite(freqs_np)):
-                raise ValueError("freqs must contain only finite values")
-            if np.any(freqs_np <= 0):
-                raise ValueError("freqs must contain only positive values")
+            from rfx.model import admit_waveguide_freqs
+            freqs_arr = admit_waveguide_freqs(freqs)
 
         if name is None:
             name = f"waveguide_{len(self._waveguide_ports)}"
