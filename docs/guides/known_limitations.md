@@ -861,39 +861,6 @@ features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
 `tests/unit/sparams/test_ringdown_early_stop.py`.
 
-### A long identification window can be refused at stage 2, the original-rate residue fit, above the memory bound.
-
-Tracker: #2874
-
-`run(ringdown=...)` and `forward(ringdown=...)` identify poles in two stages:
-- stage 1, the pencil, runs on the decimated record;
-- stage 2 fits the residues at the original sample rate and needs `1.71 × 16 × 5 × n_win × r` bytes, where `n_win` is the window length in samples and `r` the kept rank.
-
-When that exceeds `rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES` (4 GiB by default), the window is refused by name with `IdentificationMemoryRefused`. The message names the stage, the dimensions, the memory needed and the bound. For example, n_win = 80,000 at r = 600 needs 6.1 GiB. No number is returned for that window.
-
-What to do:
-- raise `rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES` when the device has the memory;
-- or shorten the identification window.
-
-#2874 plans a streamed stage-2 fit, whose memory scales with `r²`.
-
-### A long identification window can exhaust device memory in the traced pole step of `forward(ringdown=...)`, with no refusal.
-
-Tracker: #2874
-
-`forward(ringdown=...)` moves the identified poles by one frozen Gauss-Newton step, so a derivative reaches them (`rfx/ringdown/_jax.py`, `completion` and `_pole_step`). For each identification window the step builds arrays of `M × C × K` complex values, 8 bytes each (complex64; 16 bytes with `jax_enable_x64`): the pole-derivative basis, and its projection, which is the step's Jacobian. It factors that Jacobian by QR once for the value and once more for the derivative, and each factor is about as large again.
-- `M` is the window length in samples;
-- `C` is the number of fitted channels: with ports, the voltage and the current of each port plus the identification probe columns; with probe spectra only, the identification probe columns;
-- `K` is the window's pole budget, the smaller of the pencil's capacity and `rfx.ringdown.TRACED_POLE_BUDGET` (512 by default).
-
-Two windows are identified: the main window `[window_start × T, T]` and the early-start comparison window `[window_start / 2 × T, T]`, which is 1.5 times longer at the default `window_start = 0.5`. For example, a 120,635-step record with 8 channels and K = 512 gives M = 60,317 and 90,476, so each array takes 60,317 × 8 × 512 × 8 B = 1.98 GB and 90,476 × 8 × 512 × 8 B = 2.96 GB. Nothing checks this memory before the step runs: a device without it ends the call with the allocator's `RESOURCE_EXHAUSTED`.
-
-What to do:
-- shorten the identification window: a larger `RingdownSpec.window_start`, or a shorter record;
-- or lower the pole budget by assignment before the call is traced, for example `rfx.ringdown.TRACED_POLE_BUDGET = 256`; a function already compiled by `jax.jit` keeps its old budget until it is traced again. A window that keeps more poles than the budget then returns NaN, and its status reason names the kept count and the budget.
-
-#2874's streamed fit is planned to cover this step too.
-
 ### A plain record shorter than a weakly coupled resonance's decay misreads S near it on any port, and the end-of-run decay check can miss it.
 
 Tracker: #1514

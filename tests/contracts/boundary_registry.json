@@ -417,6 +417,11 @@
       "kind": "roll/diff"
     },
     {
+      "file": "rfx/measurement/_block_plan.py",
+      "function": "block_plan",
+      "kind": "difference"
+    },
+    {
       "file": "rfx/measurement/_radiated_power.py",
       "function": "_phi_weights",
       "kind": "roll/diff"
