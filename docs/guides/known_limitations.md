@@ -619,6 +619,21 @@ Only `compute_coaxial_line_reflection` was measured. The two-port and coax→mic
 calculators have the same open feed end and were not measured. They refuse an extra flux
 monitor that reaches the open side of a feed.
 
+### The record-tail witness can report a record settled while a slow mode above `freq_max` holds the tail.
+
+Tracker: #2977
+→ [#2977](https://github.com/bk-squared/rfx/issues/2977)
+
+The witness identifies poles after decimating each record toward 4 × `freq_max` sampling. When a
+structure keeps a long-lived mode above `freq_max`, as a closed or lightly loaded line or cavity
+can, the anti-alias filter passes a small image of it. Once the in-band ringing has decayed, the
+witness reads that image as an in-band pole and evaluates the mode's tail at the folded frequency.
+In a synthetic reproduction, the witness read a largest share of 1.4e-4 and passed. An
+identification that holds the mode read 1.02e-2, above the 1e-2 bar. The per-channel share also
+grows just above a channel's DFT null, so the largest share is set by the bin nearest some
+channel's null. Until this is fixed, check a settling verdict on such a structure against a run
+with a longer record.
+
 ### The microstrip S-matrix can come back non-passive, and says so.
 
 Tracker: none — accepted limitation (warns at default: tests/unit/autodiff/test_msl_forward_identity.py::test_a_nonpassive_extraction_is_named_bin_by_bin_in_one_warning)
