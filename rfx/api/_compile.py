@@ -63,6 +63,17 @@ class _CompileMixin:
     ``Simulation`` instance (resolved via MRO).
     """
 
+    def __init_subclass__(cls, **kwargs):
+        """Wrap declarations, including inherited and assigned public methods, once."""
+        super().__init_subclass__(**kwargs)
+        from rfx.api._declaration_methods import wrap_declaration
+
+        for name in dir(cls):
+            if name == "add" or name.startswith("add_"):
+                method = getattr(cls, name)
+                if callable(method) and not getattr(method, "_rfx_declaration_setup", False):
+                    setattr(cls, name, wrap_declaration(method))
+
     def _periodic_flags(self) -> tuple[bool, bool, bool]:
         """THE run's per-axis periodic flags — one spelling.
 

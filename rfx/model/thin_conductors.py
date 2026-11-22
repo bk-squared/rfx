@@ -98,8 +98,7 @@ def admit_thin_conductor(
     if surface_impedance_f0 is not None:
         import warnings
         if not (is_tracer(surface_impedance_f0) or is_tracer(sigma_bulk)):
-            with jax.ensure_compile_time_eval():
-                _rs0 = float(tc.r_s_leontovich)
+            _rs0 = float(tc.r_s_leontovich)
             _rs_txt = f"Rs0 = {_rs0:.4g} ohm/sq"
         else:
             _rs_txt = ("Rs0 = sqrt(pi*f0*mu0/sigma_bulk) (traced value "

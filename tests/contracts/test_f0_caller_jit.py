@@ -1,15 +1,22 @@
-"""A concrete f0 warning must preserve the sheet under caller jit."""
+"""Declaration methods preserve eager records and traced designs under caller jit."""
 
+import ast
+import inspect
 import re
+import textwrap
 import sys
 import warnings
 
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from rfx import Box, Cylinder, Simulation, Sphere
-from rfx.errors import AccuracyWarning
+from rfx._declarations import DECLARATIONS
+from rfx.errors import AccuracyWarning, RfxRefusal
+from rfx.runners._admission import ADMITS
+from tests.contracts.path_equivalence.builders import BUILDERS, build
 from tests.unit.autodiff.test_pinned_sheet_on_traced_mesh import (
     D_MIN, DT_PIN, DX, K_MID, N_X, N_Y, N_Z, Z_PATCH, _prof_x,
 )
@@ -99,3 +106,89 @@ def test_eager_sheet_anchor():
     print(f"ANCHOR: max_abs_difference={difference!r}, bar={bar!r}", file=sys.stderr)
     assert np.isfinite(eager).all() and np.isfinite(absent).all()
     assert difference > bar
+
+
+def _declaration_writes(method):
+    """Find direct stores and container mutations independently of method names."""
+    attributes = dict(DECLARATIONS)
+    tree = ast.parse(textwrap.dedent(inspect.getsource(inspect.unwrap(method))))
+
+    def root(node):
+        while isinstance(node, ast.Subscript):
+            node = node.value
+        if (isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+                and node.value.id == "self" and node.attr in attributes):
+            return node.attr
+        return None
+
+    writes = set()
+    mutations = {"append", "extend", "insert", "remove", "pop", "clear", "sort",
+                 "reverse", "update", "setdefault", "popitem", "add", "discard",
+                 "difference_update", "intersection_update", "symmetric_difference_update",
+                 "__setitem__", "__delitem__", "__iadd__", "__imul__", "__ior__"}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Delete)):
+            targets = node.targets if isinstance(node, (ast.Assign, ast.Delete)) else [node.target]
+            for target in targets:
+                for part in ast.walk(target):
+                    attribute = root(part)
+                    if attribute:
+                        writes.add(attribute)
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr in mutations):
+            attribute = root(node.func.value)
+            if attribute:
+                writes.add(attribute)
+    return sorted(writes)
+
+
+def test_declaration_wrapper_census():
+    """Every declaration writer and every public add method carries the marker."""
+    methods = {name: getattr(Simulation, name) for name in dir(Simulation)
+               if not name.startswith("_") and callable(getattr(Simulation, name))}
+    census = {name: writes for name, method in methods.items()
+              if (writes := _declaration_writes(method))}
+    declarations = {name for name in methods if name == "add" or name.startswith("add_")}
+    print(f"CENSUS count={len(census)}: {census!r}", file=sys.stderr)
+    wrapped = sorted(name for name, method in methods.items()
+                     if getattr(method, "_rfx_declaration_setup", False))
+    print(f"WRAPPED count={len(wrapped)}: {wrapped!r}", file=sys.stderr)
+    assert not census.keys() - declarations, "STOP: declaration writer outside add/add_* rule"
+    assert not (census.keys() | declarations) - set(wrapped)
+
+
+@pytest.mark.parametrize("row", tuple(BUILDERS), ids=lambda row: ":".join(row))
+def test_declaration_caller_jit_matrix(row):
+    """Fifteen is the shortest shared record reaching both probes in every row.
+
+    The limiting TF/SF plane wave first reaches probe two at index 14;
+    the closed box reaches it at 13, and the other rows by index 8.
+    """
+    lane = "fwd_uniform" if row in ADMITS["fwd_uniform"] else "fwd_nonuniform"
+
+    def g(amplitude):
+        return amplitude * build(row, lane).forward(n_steps=15).time_series
+
+    try:
+        eager = np.asarray(g(1.0))
+    except (RfxRefusal, ValueError, NotImplementedError) as refusal:
+        print(f"MATRIX {row!r} {lane}: eager={type(refusal).__name__}: {refusal}", file=sys.stderr)
+        with pytest.raises(type(refusal)) as caught:
+            np.asarray(jax.jit(g)(1.0))
+        print(f"MATRIX {row!r} {lane}: jit={type(caught.value).__name__}: {caught.value}", file=sys.stderr)
+        assert type(caught.value) is type(refusal)
+        assert str(caught.value) == str(refusal)
+        return
+    arrivals = [np.flatnonzero(np.asarray(probe) != 0).tolist()[:1] for probe in eager.T]
+    print(f"MATRIX {row!r} {lane}: eager=fields, shape={eager.shape}, arrivals={arrivals!r}", file=sys.stderr)
+    assert all(arrivals), "record must reach both probes"
+    try:
+        compiled = np.asarray(jax.jit(g)(1.0))
+    except Exception as error:
+        print(f"MATRIX {row!r} {lane}: jit={type(error).__name__}: {error}", file=sys.stderr)
+        raise
+    error, bar = float(np.max(np.abs(compiled - eager))), _peak_bar(eager)
+    print(f"MATRIX {row!r} {lane}: jit=fields, max_abs_error={error!r}, bar={bar!r}, "
+          f"peak={np.max(np.abs(eager))!r}", file=sys.stderr)
+    assert np.isfinite(eager).all() and np.isfinite(compiled).all()
+    assert error <= bar
