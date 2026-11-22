@@ -109,7 +109,7 @@ def test_default_guide_band_stops_after_echo_ready(capsys):
     sim.add_waveguide_port(.006, f0=10e9, probe_offset=3, ref_offset=2)
     result = sim.run(until_decay=1e-3)
     diagnostic, = (row for row in result.diagnostics if row.code == 'until_decay.stop')
-    read = np.linspace(2e9, 20e9, 50).astype(np.float32).astype(np.float64)
+    read = np.asarray(jnp.linspace(2e9, 20e9, 50), dtype=np.float64)
     cutoff = C * np.sin(np.pi / (2 * 20)) / (np.pi * .001)
     lowest = min(read[read > cutoff])
     group = np.sqrt(1 - (cutoff / lowest)**2)
