@@ -22,6 +22,8 @@ CASES = {
     'settling_keeps_user_probes': ('check_probe_records', "\nimport rfx.api._settling as settling\nrewrite(settling, 'settling_source_end', 'self._coaxial_ports and reading_port and grid is not None', 'self._coaxial_ports and port_records and grid is not None')\nfrom rfx import Simulation\nSimulation._settling_source_end = settling.settling_source_end"),
     'occupancy_warns': ('check_release', "rewrite(builder, 'assemble_coax_port', '    root = coax_kernel_conductors(', '    if occupancy is not None:\\n        import jax.numpy as jnp\\n        occupancy = jnp.where(jnp.asarray(bore | cells), 0., occupancy)\\n    root = coax_kernel_conductors(')"),
     'plate_at_reference': ('check_plate', "rewrite(builder, '_refuse_front_pec', 'mask[:, :, ref] = False', 'mask[:, :, ref] = front[:, :, ref]')\nrewrite(builder, 'assemble_coax_port', 'for mask in edge_bore[:2]:', 'for mask in edge_bore:')"),
+    'front_whole_column': ('check_enclosed_line', "rewrite(builder, '_refuse_front_pec', \"slice(tip - 1, ref) if port.face == 'top' else slice(ref, tip + 1)\", \"slice(None, ref) if port.face == 'top' else slice(ref, None)\")"),
+    'front_short_of_tip': ('check_refusal', "rewrite(builder, '_refuse_front_pec', \"slice(tip - 1, ref) if port.face == 'top' else slice(ref, tip + 1)\", \"slice(tip, ref) if port.face == 'top' else slice(ref, tip)\")"),
     'bore_report': ('check_report', "\nimport rfx.realized_geometry as unused\nimport importlib\ngeometry = importlib.import_module('rfx.realized_geometry')\nrewrite(geometry, '_ports', 'cleared_bore_cells=tuple(map(tuple, release.cells))', 'cleared_bore_cells=()')"),
     'forward_diagnostic_arrays': ('check_forward_report', "\nimport rfx.model.realization_report as reporter\nrewrite(reporter, 'rebuild_view', \"solved.lane in ('run_uniform', 'fwd_uniform')\", \"solved.lane == 'run_uniform'\")"),
 }
@@ -32,7 +34,9 @@ CASES = {
 def test_review_mutation(case, mode):
     check, defect = CASES[case]
     witness = {'drude_named': 'drude_inside_bore_refused',
-               'dispersive_outside_bore': 'drude_outside_bore_admitted'}.get(case, case)
+               'dispersive_outside_bore': 'drude_outside_bore_admitted',
+               'front_whole_column': 'enclosed_line_admitted',
+               'front_short_of_tip': 'unnamed_tip_contact_refused'}.get(case, case)
     script = '''
 import inspect
 import textwrap

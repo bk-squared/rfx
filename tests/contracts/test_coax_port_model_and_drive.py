@@ -209,7 +209,7 @@ def test_s1_refusals(monkeypatch, entry, gate, pattern):
     elif gate == 'lateral':
         sim._coaxial_ports[0] = sim._coaxial_ports[0]._replace(position=(.0025, .006, .002))
     elif gate == 'front':
-        sim.add(Box((.005, .005, .0005), (.007, .007, .0015)), material='pec')
+        sim.add(Box((.005, .005, .0015), (.007, .007, .002)), material='pec')
     elif gate == 'kerr':
         sim.add_material('kerr', eps_r=2., chi3=1e-20)
         sim.add(Box((.005, .005, .010), (.007, .007, .011)), material='kerr')

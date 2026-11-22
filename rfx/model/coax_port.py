@@ -38,11 +38,14 @@ def clear_coax_bore(root, bore, layout, *, edge_bore=None):
     return root
 
 
+def _pin_tip_node(grid, port, layout):
+    return layout.reference_index + (-1 if port.face == 'top' else 1) * int(round(float(port.pin_length) / float(grid.dx)))
+
+
 def stamp_coax_pin(grid, port, layout):
     """Only the pin continues in front; cell faces terminate at the tip node."""
-    count = int(round(float(port.pin_length) / float(grid.dx)))
     direction = -1 if port.face == 'top' else 1
-    tip = layout.reference_index + direction * count
+    tip = _pin_tip_node(grid, port, layout)
     low, high = grid.pad_z_lo + 1, grid.shape[2] - 2 - grid.pad_z_hi
     if not low <= tip <= high:
         available = (layout.reference_index - low if direction < 0 else high - layout.reference_index) * grid.dx
@@ -54,10 +57,12 @@ def stamp_coax_pin(grid, port, layout):
 
 
 def _refuse_front_pec(sim, root, port, layout):
+    """In front of the reference node the port owns only the pin's span to its tip node; metal there shorts the pin unnamed or covers the aperture, and metal beyond the tip is the device's load."""
     from rfx.boundaries.pec import realized_pec_edge_masks
     front = np.zeros(root.grid.shape, bool)
     ref = layout.reference_index
-    window = slice(None, ref) if port.face == 'top' else slice(ref, None)
+    tip = _pin_tip_node(root.grid, port, layout)
+    window = slice(tip - 1, ref) if port.face == 'top' else slice(ref, tip + 1)
     front[:, :, window] = radial_mask(root.grid, port, port.outer_radius)[:, :, None]
     front_edges = [front.copy() for _ in range(3)]
     if port.face == 'bottom':
@@ -77,7 +82,7 @@ def _refuse_front_pec(sim, root, port, layout):
                 allowed_edges = [a | e for a, e in zip(allowed_edges, owned)]
     if ((root.pec_cells is not None and np.any(np.asarray(root.pec_cells) & front & ~allowed_cells))
             or any(np.any(np.asarray(e) & mask & ~a) for e, mask, a in zip(root.edges, front_edges, allowed_edges))):
-        raise RfxUnsupported('add_coaxial_port(): user PEC in front of the reference plane inside the bore; name the pin contact in terminates=')
+        raise RfxUnsupported(f"add_coaxial_port(): user PEC in front of the reference plane inside the bore, between the reference node {ref} and the pin's tip node {tip}; name the pin contact in terminates=")
 
 
 def deferred_coax_sources(*, spec, magnetic_sources, materials):

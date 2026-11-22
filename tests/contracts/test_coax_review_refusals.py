@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, DebyePole, drude_pole
+from rfx import Box, DebyePole, Simulation, drude_pole
 from rfx.errors import RfxUnsupported
 from tests.contracts.test_coax_port_model_and_drive import scene, capture, Captured
 
@@ -28,6 +28,7 @@ def refusal(monkeypatch, sim, entry, pattern, **options):
     except Exception as caught:
         error = caught
     check_refusal(error, pattern)
+    return error
 
 
 def check_drude_admitted(captured, error, box):
@@ -341,3 +342,81 @@ def test_forward_diagnostic_arrays():
     assert result.realized_geometry.lane == 'fwd_uniform'
     from rfx.model.realization_report import rebuild_view
     check_forward_report(rebuild_view(sim, result.realized_geometry, False))
+
+
+def enclosed_line_scene(*, name_contact=True):
+    from rfx.geometry.port_termination import resolve_terminates
+    sim = Simulation(freq_max=10e9, domain=(.012, .012, .048), dx=.0005,
+                     boundary='cpml', cpml_layers=4, snap='declared')
+    bottom = Box((.003, .003, .0375), (.009, .009, .038))
+    contact = Box((.004, .0055, .040), (.008, .0065, .0405))
+    top = Box((.003, .003, .043), (.009, .009, .0435))
+    walls = (Box((.003, .003, .038), (.0035, .009, .043)),
+             Box((.0085, .003, .038), (.009, .009, .043)),
+             Box((.003, .003, .038), (.009, .0035, .043)),
+             Box((.003, .0085, .038), (.009, .009, .043)))
+    for box in (bottom, contact, top, *walls):
+        sim.add(box, material='pec')
+    sim.add_coaxial_port((.006, .006, .038), face='bottom', pin_length=.002)
+    sim._coaxial_ports[0] = sim._coaxial_ports[0]._replace(
+        terminates=resolve_terminates(sim, (bottom, contact) if name_contact else (bottom,),
+                                     port='enclosed line'))
+    return sim, top
+
+
+def check_enclosed_line(captured, error, sim, top):
+    assert error is None, repr(error)
+    assert captured['sources'] and captured['mag_sources']
+    grid = captured['grid']
+    port = sim._coaxial_ports[0]
+    tip = grid.position_to_index((.006, .006, .040))[2]
+    x = (np.arange(grid.shape[0]) - grid.pad_x_lo) * grid.dx - port.position[0]
+    y = (np.arange(grid.shape[1]) - grid.pad_y_lo) * grid.dx - port.position[1]
+    radial = x[:, None] ** 2 + y[None, :] ** 2 < port.outer_radius ** 2
+    cells = np.asarray(top.mask(grid))
+    beyond = cells[:, :, tip + 1:] & radial[:, :, None]
+    assert beyond.any()
+    assert np.all(np.asarray(captured['pec_edge_masks'][2])[:, :, tip + 1:][beyond])
+    assert np.where(cells)[2].min() >= tip + 4
+
+
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_enclosed_line_admitted(monkeypatch, entry):
+    sim, top = enclosed_line_scene()
+    captured, error = None, None
+    try:
+        captured = capture(monkeypatch, sim, entry)
+    except Exception as caught:
+        error = caught
+    check_enclosed_line(captured, error, sim, top)
+
+
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_span_metal_refused(monkeypatch, entry):
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    from rfx.model.coax_line import coax_port_layout
+    from rfx.model.coax_port import stamp_coax_pin
+    sim, _ = enclosed_line_scene()
+    metal = Box((.0075, .006, .0385), (.008, .0065, .039))
+    sim.add(metal, material='pec')
+    grid = sim._build_grid()
+    port = sim._coaxial_ports[0]
+    pads = tuple(getattr(grid, f'pad_{a}_{s}') for a in 'xyz' for s in ('lo', 'hi'))
+    layout = coax_port_layout(grid, port, absorber_pads=pads)
+    pin_edges = realized_pec_edge_masks(stamp_coax_pin(grid, port, layout))
+    metal_edges = realized_pec_edge_masks(np.asarray(metal.mask(grid)))
+    assert any(np.any(e) for e in metal_edges)
+    assert not any(np.any(a & b) for a, b in zip(pin_edges, metal_edges))
+    ref = layout.reference_index
+    tip = grid.position_to_index((.006, .006, .040))[2]
+    message = (f"add_coaxial_port(): user PEC in front of the reference plane inside the bore, "
+               f"between the reference node {ref} and the pin's tip node {tip}; "
+               "name the pin contact in terminates=")
+    error = refusal(monkeypatch, sim, entry, re.escape(message))
+    print(str(error))
+
+
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_unnamed_tip_contact_refused(monkeypatch, entry):
+    sim, _ = enclosed_line_scene(name_contact=False)
+    refusal(monkeypatch, sim, entry, r"user PEC in front.*between the reference node .*pin's tip node")
