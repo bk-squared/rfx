@@ -1377,9 +1377,7 @@ def rasterize_geometry(
             for pole in mat.lorentz_poles:
                 _accumulate_pole_mask(lorentz_masks_by_pole, pole, pole_mask)
 
-    from rfx.measurement.echo_materials import EchoMaterials
-    materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r,
-                               echo_materials=EchoMaterials.from_entries(geometry_entries, material_resolver))
+    materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
 
     # Thin conductors (P4)
     if thin_conductors and thin_conductor_applier and grid is not None:

@@ -64,9 +64,6 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
     from rfx.model.waveguide_modes import incident_tables_uncut
 
     final_cfgs = tuple(final_cfgs)
-    if echo_bound is None:
-        echo_bound = next((cfg.echo_bound for cfg in final_cfgs
-                           if getattr(cfg, 'echo_bound', None) is not None), None)
     named = [
         (f"port{port_index}/{name}", _recorded(cfg, name))
         for port_index, cfg in enumerate(final_cfgs)
@@ -213,9 +210,6 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
     if bound is None:
         bound = echo_delay_bound(result.grid, sim=sim, freqs=result_read_bins(result),
                                  waveguide_ports=getattr(result, 'waveguide_ports', None))
-    if getattr(result, 'waveguide_ports', None):
-        result = result._replace(waveguide_ports={name: cfg._replace(echo_bound=bound)
-                                                  for name, cfg in result.waveguide_ports.items()})
     if forward_result:
         from rfx.core.jax_utils import is_tracer
         from rfx.sparams._record_selection import s_read_records
@@ -235,11 +229,12 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
     tail_status = witness["status"]
     settling_db, witness = with_coverage(settling_db, witness, coverage)
     settling_db, witness = with_echo_bound(settling_db, witness, bound,
-                                          getattr(result, 'dt', None) or result.grid.dt)
+                                          getattr(result, 'dt', None) or getattr(result.grid, 'dt', None))
     groups = witness.get("groups") if isinstance(witness, dict) else None
     if not forward_result:
+        witness = {key: value for key, value in witness.items() if key != 'groups'}
         result = result._replace(settling_db=settling_db,
-                                 settling_witness=witness)
+                                 settling_witness=witness, settling_echo_bound=bound)
     if getattr(sim, "_internal_probe_indices", None):
         return result
     # The coverage warning stands in for the absent advisory or a passing

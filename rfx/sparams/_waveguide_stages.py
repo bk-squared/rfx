@@ -371,6 +371,9 @@ def _extract_waveguide_multimode(
     np, raw_cfgs, ref_aniso_eps, ref_aniso_inv_eps, ref_conformal, reference_medium, resolve_reported_planes,
     self, waveguide_plane_positions,
 ):
+    from rfx.measurement.record_end import echo_delay_bound
+    echo_bound = echo_delay_bound(grid, sim=self, waveguide_ports=[
+        cfg for raw in raw_cfgs for cfg in (raw if isinstance(raw, list) else [raw])])
     settling_details_mm = []
     # Multi-mode path: each raw_cfg is a list of WaveguidePortConfig
     port_mode_cfgs: list[list] = []
@@ -411,7 +414,7 @@ def _extract_waveguide_multimode(
             aniso_inv_eps=aniso_inv_eps,
             pec_edge_masks=_wg_pec_edge_masks,
             field_dtype=self._resolve_field_dtype(),
-            settling_details=settling_details_mm,
+            settling_details=settling_details_mm, echo_bound=echo_bound,
         )
     elif normalize:
         # Multi-mode modal reference subtraction is not implemented.
@@ -438,7 +441,7 @@ def _extract_waveguide_multimode(
             aniso_inv_eps=aniso_inv_eps,
             pec_edge_masks=_wg_pec_edge_masks,
             field_dtype=self._resolve_field_dtype(),
-            settling_details=settling_details_mm,
+            settling_details=settling_details_mm, echo_bound=echo_bound,
         )
     # Report the ABSOLUTE de-embed target plane (matches the single-mode + coax paths and
     # the WaveguideSMatrixResult schema), NOT the relative shift ref_shifts_mm — that is the

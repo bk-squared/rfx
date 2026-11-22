@@ -81,7 +81,8 @@ def forward_settling_witness(result):
     from rfx.measurement.coverage import AccumulatorCoverage, with_coverage
     from rfx.measurement.record_end import with_echo_bound
     db, witness = with_coverage(db, witness, result.settling_coverage or AccumulatorCoverage())
-    return with_echo_bound(db, witness, result.settling_echo_bound, result.dt)
+    db, witness = with_echo_bound(db, witness, result.settling_echo_bound, result.dt)
+    return db, {key: value for key, value in witness.items() if key != 'groups'}
 
 
 def build_settling_witness(result, *, bins, dt, freq_max, probe_info,
@@ -107,7 +108,7 @@ def build_settling_witness(result, *, bins, dt, freq_max, probe_info,
         rows.append({**detail, 'reads': ('S-parameters',)})
     if getattr(result, 'waveguide_ports', None):
         db, detail = settling_db_from_port_records(
-            (cfg._replace(echo_bound=None) for cfg in result.waveguide_ports.values()), freqs=bins,
+            result.waveguide_ports.values(), freqs=bins,
             freq_max=freq_max, return_detail=True)
         rows.append({**detail, 'reads': ('S-parameters',)})
     probe_db, probe_detail = probe_record_settling_witness(

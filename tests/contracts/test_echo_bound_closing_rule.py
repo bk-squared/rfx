@@ -1,6 +1,7 @@
 """The shorted TEM line pins the unseen-echo identification limit (#2967)."""
 
 from functools import lru_cache
+import sys
 import warnings
 
 import numpy as np
@@ -53,7 +54,7 @@ def test_bound_and_round_trip_are_read_from_realized_cells(capsys):
     assert physical_return == pytest.approx(2.0681e-9, rel=1e-4)
     assert bound['tau_max'] >= physical_return
     with capsys.disabled():
-        print(f"echo bound: {bound}; 2L/c={physical_return * 1e9:.9g} ns", flush=True)
+        print(f"echo bound: {bound}; 2L/c={physical_return * 1e9:.9g} ns", flush=True, file=sys.stderr)
 
 
 @pytest.mark.parametrize('n', [4232, 3200])
@@ -62,21 +63,21 @@ def test_unseen_echo_pass_is_refused(n, capsys):
     result = run_record(n)
     row = result.settling_witness
     with capsys.disabled():
-        print(f"settling n={n}: {row['status']}: {row['reason']}", flush=True)
+        print(f"settling n={n}: {row['status']}: {row['reason']}", flush=True, file=sys.stderr)
     assert row['status'] == 'undetermined', row
     assert RULE in row['reason'] and 'cannot judge: ' in row['reason'], row
     assert np.isnan(result.settling_db) and np.isnan(row['db'])
     assert row['echo_bound']['tau_max'] == pytest.approx(2.2684e-9, rel=1e-4)
     assert row['status_per_entry'] and set(row['status_per_entry'].values()) == {'undetermined'}
     assert all(group['status'] == 'undetermined' and RULE in group['reason']
-               for group in row['groups'])
+               for group in row.get('runs', [row]))
 
 
 def test_record_above_bound_keeps_the_tail_judgement(capsys):
     """At 4900 steps the tail check supplies the verdict, without the closing reason."""
     row = run_record(4900).settling_witness
     with capsys.disabled():
-        print(f"settling n=4900: {row['status']}: {row['reason']}", flush=True)
+        print(f"settling n=4900: {row['status']}: {row['reason']}", flush=True, file=sys.stderr)
     assert row['status'] in {'pass', 'fail', 'undetermined'}
     assert RULE not in row['reason']
     assert not row.get('echo_bound_refused')
@@ -93,7 +94,7 @@ def test_forward_completion_uses_the_same_window_bound(n, capsys):
     report = completion.report
     reason = report.failure or ''
     with capsys.disabled():
-        print(f"completion n={n}: completed={report.completed}: {reason}", flush=True)
+        print(f"completion n={n}: completed={report.completed}: {reason}", flush=True, file=sys.stderr)
     if n == 4232:
         assert not report.completed and 'cannot judge: ' in reason and RULE in reason
         assert np.isnan(np.asarray(completion.s_params)).all()

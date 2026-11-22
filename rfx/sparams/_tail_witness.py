@@ -20,13 +20,16 @@ _pole_contributions = partial(_record_pole_contributions, identification=_IDENTI
 
 def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_groups=None,
                        _record_results=None, known_drives=None, n_record=None,
-                       scale_groups=None, _channel_labels=None, reader=None):
+                       scale_groups=None, _channel_labels=None, reader=None, echo_bound=None):
     """Delegate the record-end rule, retaining the identity reader by default."""
-    return record_end_error(
+    result = record_end_error(
         records, dt, source_end, freqs, identification=_IDENTIFICATION, freq_max=freq_max,
         rounding_groups=rounding_groups, _record_results=_record_results,
         known_drives=known_drives, n_record=n_record, scale_groups=scale_groups,
         _channel_labels=_channel_labels, reader=reader)
+    from rfx.measurement.record_end import with_echo_bound
+    db, detail = with_echo_bound(result.db, result._asdict(), echo_bound, dt)
+    return result._replace(**{key: value for key, value in detail.items() if key in result._fields})
 
 
 def result_read_bins(result):

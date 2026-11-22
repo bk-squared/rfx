@@ -51,8 +51,9 @@ def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_po
     An unavailable host operand returns a reason instead of a numerical bound.
     Pads and the nonperiodic fence-post cell never contribute to D. Declared
     materials include vacuum and every material used by the geometry. For
-    dispersion, the static response and the responses at the read bins enter
-    the maximum. A low-level caller supplies its realized material arrays.
+    dispersion, the static response, band edges and Lorentz peaks enter the
+    maximum. A low-level caller supplies concrete nondispersive arrays or an
+    explicit host bound.
     """
     from rfx.model.graded_admission import host_cells
 
@@ -80,10 +81,10 @@ def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_po
         if sim is not None:
             specs = [sim._resolve_material(name) for name in
                      dict.fromkeys(entry.material_name for entry in sim._geometry)]
+            if not bins.size:
+                bins = np.asarray([0., sim._freq_max], dtype=np.float64)
         elif materials is not None:
-            declarations = getattr(materials, 'echo_materials', None)
-            specs = (declarations.materials() if declarations is not None else
-                     materials if isinstance(materials, (list, tuple)) and not hasattr(materials, 'eps_r')
+            specs = (materials if isinstance(materials, (list, tuple)) and not hasattr(materials, 'eps_r')
                      else [materials])
         else:
             raise ValueError("material declarations are unavailable")
@@ -95,9 +96,18 @@ def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_po
             lp = getattr(material, 'lorentz_poles', None) or ()
             if (dp or lp) and not bins.size:
                 raise ValueError("the dispersive material read band is unavailable")
-            if (debye is not None or lorentz is not None) and not getattr(materials, 'echo_materials', None):
+            if sim is None and (debye is not None or lorentz is not None or dp or lp):
                 raise ValueError("low-level dispersive material declarations are unavailable")
-            samples = np.r_[0., bins]
+            if sim is None:
+                if not np.all(np.isfinite(eps)) or not np.all(np.isfinite(mu)) or np.any(eps <= 0) or np.any(mu <= 0):
+                    raise ValueError("nonfinite or nonpositive material index")
+                n_max = max(n_max, float(np.sqrt(np.max(eps) * np.max(mu))))
+                if not np.isfinite(n_max):
+                    raise ValueError("nonfinite material index")
+                continue
+            peaks = [np.sqrt(float(p.omega_0)**2 - 2 * float(p.delta)**2) / (2 * np.pi)
+                     for p in lp if float(p.omega_0)**2 > 2 * float(p.delta)**2]
+            samples = np.r_[0., bins, [f for f in peaks if np.min(bins) <= f <= np.max(bins)]]
             for frequency in samples:
                 omega = 2 * np.pi * frequency
                 response = eps.astype(np.complex128)
@@ -121,7 +131,7 @@ def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_po
         return dict(tau_max=2 * D * n_max / (299792458.0 * g), D=D, n_max=n_max, g=g)
     except (TypeError, ValueError, AttributeError, OverflowError) as exc:
         return dict(tau_max=None, D=None, n_max=None, g=None,
-                    reason=f"cannot judge: echo delay bound unavailable: {exc}")
+                    reason=f"cannot judge: echo delay bound unavailable: {exc}; pass echo_bound=")
 
 
 def echo_bound_reason(bound):

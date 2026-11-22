@@ -1231,3 +1231,5 @@ tracking, decisions pending, and research narrative are deliberately absent — 
 open work see the
 [issue tracker](https://github.com/bk-squared/rfx/issues), and for what is
 supported at all see the [support matrix](support_matrix.md).
+
+A material array changed at run time (`eps_override`, a traced design variable) above the declared index is not covered by the echo delay bound.

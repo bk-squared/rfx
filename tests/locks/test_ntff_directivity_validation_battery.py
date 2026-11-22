@@ -143,6 +143,7 @@ LOCK_PROVENANCE = {
     "pinned_until": "2027-01-06",
 }
 
+import sys
 import numpy as np
 import pytest
 import jax.numpy as jnp
@@ -634,7 +635,7 @@ def _build_nu_sim(dx: float, nz_cells: int) -> Simulation:
     return sim
 
 
-def test_nonuniform_lane_power_calibration_and_slot(base_rung):
+def test_nonuniform_lane_power_calibration_and_slot():
     """The NU runner must hand the accumulator the same E/H pair as the uniform one.
 
     The non-uniform runner builds its NTFF box inline and calls
@@ -653,10 +654,11 @@ def test_nonuniform_lane_power_calibration_and_slot(base_rung):
 
     Measured on this tree: D = 1.761428040 dBi against the uniform rung's
     1.761429829, ratio 0.500321038 against 0.500320703, settling -78.40 dB.
-    Mutations, same fixture: E stamped at n*dt -> ratio 0.492221, D err
+    Mutations measured at 400 steps, same fixture: E stamped at n*dt -> ratio 0.492221, D err
     0.010 dB; NTFF accumulate moved above the NU E update -> ratio 0.506219,
     D err 0.011 dB. Both cross the gates.
     """
+    base_rung = _run_rung(BASE_DX_M, 515)
     sim = _build_nu_sim(BASE_DX_M, _NU_Z_CELLS)
     res = sim.run(n_steps=515)
     assert type(res.grid).__name__ == "NonUniformGrid", (
@@ -686,7 +688,7 @@ def test_nonuniform_lane_power_calibration_and_slot(base_rung):
     ratio_uniform = base_rung["p_ntff"] / base_rung["p_flux_f64"]
     print(f"\n[ntff-battery NU lane] realized {shape}, D={d_dbi:.9f} dBi, "
           f"ratio={ratio:.9f} (uniform {ratio_uniform:.9f}), "
-          f"settling={settling:.2f} dB")
+          f"settling={settling:.2f} dB", file=sys.stderr)
 
     err_db = abs(d_dbi - D_THEORY_DBI)
     assert err_db < _NU_D_ERR_MAX_DB, (

@@ -847,7 +847,7 @@ def test_s2_run_waits_for_applied_drive(graded, boundary, monkeypatch, record_pr
     monkeypatch.setattr(owner, name, observed)
     flux = boundary == "cpml"
     result = _s2_scene(graded, boundary).run(
-        until_decay=2., decay_min_steps=50, decay_max_steps=350,
+        until_decay=2., decay_min_steps=50, decay_max_steps=800,
         **({"radiated_flux_box": S2_BOX} if flux else {}), skip_preflight=True)
     (diagnostic,) = [d for d in result.diagnostics if d.code == "until_decay.stop"]
     values = diagnostic.values
@@ -856,7 +856,10 @@ def test_s2_run_waits_for_applied_drive(graded, boundary, monkeypatch, record_pr
     assert values["drive_end_step"] == ends[0]
     assert values["criterion"] == "threshold"
     assert values["quantity"] == ("radiated_flux" if flux else "conserved_energy")
-    assert values["stop_step"] == 250
+    tau_max = 2 * np.sqrt(3) * 0.04 / 299792458.0
+    expected = next(count for count in range(250, 801, 50)
+                    if (count - max(183, round(count / 2))) * result.dt >= 2.05 * tau_max)
+    assert values["stop_step"] == expected
     record_property("s2_stop", dict(values))
 
 
@@ -1333,7 +1336,6 @@ def test_s4_b8_realized_transit_window(s4_spg_records):
             reach = max(abs(float(point) - float(cfg.source_x_m)) for other in configs
                         for point in (other.reference_x_m, other.probe_x_m))
             expected = max(expected, off + math.ceil(reach / (C0*dt)))
-        print(f'SP-g n={n}, source_end={expected}, window_starts={witness["window_starts"][n]}')
         assert expected == 2181
         assert witness['window_starts'][n][0] == max(round(n/2), expected)
 

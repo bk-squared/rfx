@@ -1089,7 +1089,8 @@ class RingdownRun:
                                 w0_relative=state.get("w0_relative"),
                                 s_accumulator_roundoff=state.get(
                                     "s_accumulator_roundoff"), **report_extra)
-        return S, report, None
+        from rfx.ringdown._echo import close_completion
+        return close_completion(self, S, report)
 
     def _check_solver_step(self, result, step=None) -> None:
         """The run stepped at the grid's ``dt``, or ``_NotCompleted``.
@@ -1102,12 +1103,6 @@ class RingdownRun:
         """
         from rfx.core.jax_utils import is_tracer
 
-        from rfx.measurement.record_end import ECHO_BOUND_FACTOR, echo_bound_reason
-        if (self.echo_bound.get('reason') or
-                (self.n_steps - self.n_start) * self.echo_dt
-                < ECHO_BOUND_FACTOR * self.echo_bound['tau_max']):
-            raise _NotCompleted('echo_bound', float('nan'), float('nan'),
-                                echo_bound_reason(self.echo_bound))
         step = getattr(result, "dt", None) if step is None else step
         if step is None or is_tracer(step):
             return
@@ -2328,6 +2323,8 @@ class RingdownForward(RingdownRun):
             status.append(st)
             pole_counts.append(count)
             pole_budgets.append(k_max)
+        from rfx.ringdown._echo import close_completion
+        out = [close_completion(self, value)[0] for value in out]
         return RingdownForwardResult(out[0], out[1], result.freqs, channels, accs,
                                      result.s_params, jnp.stack(status), consistency,
                                      jnp.stack(pole_counts), jnp.asarray(pole_budgets), ctx,

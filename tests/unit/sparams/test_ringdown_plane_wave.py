@@ -210,10 +210,10 @@ def test_an_early_window_holding_the_pulse_is_not_formed():
 @pytest.mark.parametrize("face_record", [False, True], ids=["carried line", "face record"])
 def test_run_and_forward_read_the_same_rows_and_spectra(face_record):
     from rfx.api._ad_memory_model import face_record_pays
-    cfg, _, _ = line(slotted_box()[0], 4000, line_steps="forward")
-    assert face_record_pays(cfg, 4000, checkpoint=face_record) is face_record
-    run, run_rows = completed("run", 4000)
-    fwd, fwd_rows = completed("forward", 4000, checkpoint=face_record)
+    cfg, _, _ = line(slotted_box()[0], 4730, line_steps="forward")
+    assert face_record_pays(cfg, 4730, checkpoint=face_record) is face_record
+    run, run_rows = completed("run", 4730)
+    fwd, fwd_rows = completed("forward", 4730, checkpoint=face_record)
     assert fwd_rows == run_rows
     a = np.asarray(fwd.ringdown.probe_spectra)
     b = np.asarray(run.ringdown.probe_spectra)

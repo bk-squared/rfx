@@ -898,7 +898,8 @@ def vmap_material_sweep(
 
         from rfx.measurement.sweep_settling import sweep_member_witnesses
         dbs, witnesses = sweep_member_witnesses(
-            sim, grid, time_series_np, dft_names, run_one_fn.dft_probes, dft_planes_out)
+            sim, grid, time_series_np, dft_names, run_one_fn.dft_probes, dft_planes_out,
+            param_name=param_name, param_values=param_values)
         return VmapSweepResult(
             time_series=time_series_np,
             param_name=param_name,

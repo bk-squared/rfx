@@ -633,6 +633,8 @@ def compute_waveguide_s_matrix(
     # conformal-PEC accuracy; accuracy measurements made with the mismatch
     # require remeasurement.
 
+    from rfx.measurement.record_end import echo_delay_bound
+    echo_bound = echo_delay_bound(grid, sim=self, waveguide_ports=cfgs)
     settling_details = []
     if normalize == "flux":
         from rfx.core.yee import init_materials as _init_vacuum_materials
@@ -660,7 +662,7 @@ def compute_waveguide_s_matrix(
             pec_edge_masks=_wg_pec_edge_masks,
             ref_pec_edge_masks_per_port=ref_pec_edge_masks_per_port,
             checkpoint_segments=checkpoint_segments,
-            return_settling=True, settling_details=settling_details,
+            return_settling=True, settling_details=settling_details, echo_bound=echo_bound,
             sheet_impedance=_wg_sheet_ctx,
             field_dtype=self._resolve_field_dtype(),
         )
@@ -689,7 +691,7 @@ def compute_waveguide_s_matrix(
             ref_aniso_inv_eps=ref_aniso_inv_eps,
             pec_edge_masks=_wg_pec_edge_masks,
             checkpoint_segments=checkpoint_segments,
-            return_settling=True, settling_details=settling_details,
+            return_settling=True, settling_details=settling_details, echo_bound=echo_bound,
             sheet_impedance=_wg_sheet_ctx,
             field_dtype=self._resolve_field_dtype(),
         )
@@ -711,7 +713,7 @@ def compute_waveguide_s_matrix(
             aniso_inv_eps=aniso_inv_eps,
             pec_edge_masks=_wg_pec_edge_masks,
             checkpoint_segments=checkpoint_segments,
-            return_settling=True, settling_details=settling_details,
+            return_settling=True, settling_details=settling_details, echo_bound=echo_bound,
             sheet_impedance=_wg_sheet_ctx,
             field_dtype=self._resolve_field_dtype(),
         )

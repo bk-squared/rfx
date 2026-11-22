@@ -163,6 +163,14 @@ def test_conformal_weights_sdf():
     assert _assert_all_highest(text, "conformal weights SDF") >= 0
 
 
+def _completion_steps(sim):
+    """Smallest half-window record covering the declared dielectric box."""
+    dt = float(sim._build_grid().dt)
+    required = 2.05 * 2 * np.linalg.norm([.012, .011, .005]) * np.sqrt(2.2) / 299792458.0 / dt
+    upper = 2 * int(np.ceil(required))
+    return next(n for n in range(upper - 2, upper + 2) if n - round(n / 2) >= required)
+
+
 def test_ring_down_completion_inside_forward():
     """``forward(ringdown=)``: the plain DFT, the tail and the residue solve.
     The completed S is lowered because jit drops what the output does not use."""
@@ -172,7 +180,7 @@ def test_ring_down_completion_inside_forward():
     shape = tuple(sim._build_grid().shape)
 
     def f(e):
-        r = sim.forward(n_steps=300, skip_preflight=True, eps_override=e,
+        r = sim.forward(n_steps=_completion_steps(sim), skip_preflight=True, eps_override=e,
                         port_s11_freqs=FREQS, ringdown=RingdownSpec())
         return r.ringdown.s_params, r.ringdown.s_params_long
 
@@ -265,7 +273,7 @@ def test_ring_down_completion_gradient():
     shape = tuple(sim._build_grid().shape)
 
     def loss(e):
-        r = sim.forward(n_steps=300, skip_preflight=True, eps_override=e,
+        r = sim.forward(n_steps=_completion_steps(sim), skip_preflight=True, eps_override=e,
                         port_s11_freqs=FREQS, ringdown=RingdownSpec())
         return jnp.sum(jnp.abs(r.ringdown.s_params) ** 2)
 

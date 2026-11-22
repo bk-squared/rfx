@@ -90,7 +90,6 @@ class MaterialArrays(NamedTuple):
     # Edge-owned conductivity of declared films: never contained in sigma,
     # added after the edge mean, never subtracted. None or (x, y, z).
     sigma_film: object = None
-    echo_materials: object = None
 
 
 def component_h_materials(materials, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool], cell_sizes=None):
