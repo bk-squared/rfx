@@ -246,7 +246,9 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
             mid_cell = list(_live_cells[len(_live_cells) // 2])
 
             if pe.radius is not None:
-                from rfx.sources.wire_radius import stamp_wire_radius
+                from rfx.sources.wire_radius import stamp_wire_radius, require_radius_pole_clearance
+                require_radius_pole_clearance(
+                    sim, grid, pe.component, _live_cells, port=f"port[{_port_index}]")
                 materials = stamp_wire_radius(
                     grid, materials, pe.component, pe.radius, _live_cells)
                 materials_drive = stamp_wire_radius(

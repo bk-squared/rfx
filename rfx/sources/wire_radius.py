@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import math
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -72,17 +73,79 @@ def require_radius_support(sim, lane):
         reason = "UPML does not read the wire H-component material record"
     elif sim._refinement is not None:
         reason = "subgridding does not carry the radius stamps"
-    else:
-        for entry in sim._geometry:
-            material = sim._resolve_material(entry.material_name)
-            if material.debye_poles or material.lorentz_poles:
-                reason = "Debye/Lorentz materials with a radius port are not implemented"
-                break
     if reason is not None:
         raise NotImplementedError(
             f"wire-port radius is not implemented for {reason}. "
-            "Use a single-device, nondispersive Yee run()/forward(), or "
+            "Use a supported 3-D Yee run()/forward(), or "
             "resolve the pin geometrically (for example a coax feed or a volume wire).")
+
+
+def require_radius_pole_clearance(sim, grid, component, cells, *, port):
+    """Refuse declared pole cells in the live radius edges' cell support."""
+    entries = [entry for entry in sim._geometry
+               if (sim._resolve_material(entry.material_name).debye_poles
+                   or sim._resolve_material(entry.material_name).lorentz_poles)]
+    if not entries:
+        return
+    from rfx.geometry.smoothing import _shape_parameters
+    from rfx.geometry.rasterize_grid import (
+        _material_cell_mask, coords_from_uniform_grid, coords_from_nonuniform_grid,
+        centres_from_uniform_grid, centres_from_nonuniform_grid,
+        cell_sizes_from_uniform_grid, cell_sizes_from_nonuniform_grid,
+        volume_domain_faces,
+    )
+    from rfx.model.graded_grid import host_nominal_grid
+
+    axis = ("ex", "ey", "ez").index(component)
+    transverse = [a for a in range(3) if a != axis]
+    edges = set(map(tuple, cells))
+    for cell in cells:
+        for a in transverse:
+            for offset in (-1, 1):
+                edge = list(cell)
+                edge[a] += offset
+                edges.add(tuple(edge))
+    support = set()
+    for edge in edges:
+        for u in (-1, 0):
+            for v in (-1, 0):
+                cell = list(edge)
+                cell[transverse[0]] += u
+                cell[transverse[1]] += v
+                support.add(tuple(cell))
+    support = sorted(c for c in support if all(0 <= i < n for i, n in zip(c, grid.shape)))
+    with jax.ensure_compile_time_eval():
+        graded = hasattr(grid, "dx_arr")
+        nominal = host_nominal_grid(grid) if graded else grid
+        coords = (coords_from_nonuniform_grid(nominal) if graded
+                  else coords_from_uniform_grid(nominal))
+        centres = (centres_from_nonuniform_grid(nominal, coords) if graded
+                   else centres_from_uniform_grid(nominal))
+        sizes = (cell_sizes_from_nonuniform_grid(nominal) if graded
+                 else cell_sizes_from_uniform_grid(nominal))
+        for entry in entries:
+            if any(is_tracer(value) for value in _shape_parameters(entry.shape)):
+                raise NotImplementedError(
+                    f"wire-port radius at {port} cannot check traced Debye/Lorentz "
+                    f"geometry {entry.material_name!r}; declare concrete pole geometry")
+            mask = _material_cell_mask(
+                entry.shape, coords, centres, grid=nominal if not graded or nominal.periodic_axes else None,
+                cell_sizes=sizes, domain_faces=volume_domain_faces(nominal),
+                name=entry.material_name, refuse_empty=False)
+            if is_tracer(mask):
+                raise NotImplementedError(
+                    f"wire-port radius at {port} cannot check traced Debye/Lorentz "
+                    f"geometry {entry.material_name!r}; declare concrete pole geometry")
+            declared = np.asarray(mask)
+            hit = next((cell for cell in support if declared[cell]), None)
+            if hit is not None:
+                raise NotImplementedError(
+                    f"wire-port radius at {port}: Debye/Lorentz material "
+                    f"{entry.material_name!r} reaches radius stencil cell {hit}; "
+                    "the electric stamp is ε∞/4, while the storage it represents "
+                    "scales with the medium's ε(ω); per-pole quarter stamps are "
+                    "not implemented. Move the pole geometry outside the stencil "
+                    "or resolve the pin geometrically.")
 
 
 def require_radius_update(materials, *, lane, unsupported=False):

@@ -330,8 +330,8 @@ def _build_step_setup(
     aniso_inv_eps_smooth = tensor.inv_eps_smooth if tensor else False
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(
-        materials, lane="uniform Yee with dispersion/UPML/tensor or design-box updates",
-        unsupported=(debye is not None or lorentz is not None or boundary == "upml"
+        materials, lane="uniform Yee with UPML/tensor or design-box updates",
+        unsupported=(boundary == "upml"
                      or aniso_eps is not None or aniso_inv_eps is not None
                      or stencil_order != 2 or design_box is not None
                      or design_occupancy is not None or kerr_chi3 is not None))
