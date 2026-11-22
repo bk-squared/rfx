@@ -64,7 +64,8 @@ def echo_group_factor(configs):
     return g
 
 
-def material_echo_index(specs, bins, *, declared, debye=None, lorentz=None):
+def material_echo_index(specs, bins, *, declared, debye=None, lorentz=None,
+                        override_maxima=()):
     """Form the declared maximum index in host float64 for every caller."""
     n_max = 1.0
     for material in specs:
@@ -105,6 +106,16 @@ def material_echo_index(specs, bins, *, declared, debye=None, lorentz=None):
             if not np.all(np.isfinite(values)):
                 raise ValueError("nonfinite material index")
             n_max = max(n_max, float(np.max(values)))
+    if override_maxima:
+        eps_max, design_max, mu_max = override_maxima
+        eps_max = max(1., float(eps_max), float(design_max),
+                      *(float(np.max(np.asarray(spec.eps_r, dtype=np.float64))) for spec in specs))
+        mu_max = max(1., float(mu_max),
+                     *(float(np.max(np.asarray(spec.mu_r, dtype=np.float64))) for spec in specs))
+        index = np.sqrt(eps_max * mu_max)
+        if not np.isfinite(index):
+            raise ValueError("nonfinite material override index")
+        n_max = max(n_max, float(index))
     return n_max
 
 
@@ -139,7 +150,8 @@ def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_po
             raise ValueError("material declarations are unavailable")
         g = echo_group_factor(configs)
         n_max = material_echo_index(specs, bins, declared=sim is not None,
-                                    debye=debye, lorentz=lorentz)
+                                    debye=debye, lorentz=lorentz,
+                                    override_maxima=getattr(sim, '_echo_override_maxima', ()))
         return echo_delay_bound_on_grid(grid, dict(n_max=n_max, g=g))
     except (TypeError, ValueError, AttributeError, OverflowError) as exc:
         return dict(tau_max=None, D=None, n_max=None, g=locals().get('g'),

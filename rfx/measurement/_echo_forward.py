@@ -2,6 +2,25 @@
 import numpy as np
 
 
+def echo_override_declaration(sim, arguments):
+    """Retain per-call scalar maxima on a private simulation view."""
+    import copy
+    import jax
+    import jax.numpy as jnp
+
+    names = ('eps_override', 'design_eps_override', 'mu_r_override')
+    if not any(arguments.get(name) is not None for name in names):
+        return sim
+    maxima = tuple(
+        1. if arguments.get(name) is None else
+        (jnp.max(arguments[name]) if isinstance(arguments[name], jax.core.Tracer)
+         else np.max(np.asarray(arguments[name], dtype=np.float64)))
+        for name in names)
+    member = copy.copy(sim)
+    member._echo_override_maxima = maxima
+    return member
+
+
 def declared_index_reader(sim, freqs):
     """Separate live material leaves from a host-only float64 index function."""
     import jax
@@ -15,7 +34,8 @@ def declared_index_reader(sim, freqs):
                      tuple(tuple(p) for p in spec.debye_poles or ()),
                      tuple((p.omega_0, p.delta, getattr(p.kappa, 'si', p.kappa))
                            for p in spec.lorentz_poles or ())))
-    leaves, definition = jax.tree_util.tree_flatten(rows)
+    leaves, definition = jax.tree_util.tree_flatten(
+        (rows, getattr(sim, '_echo_override_maxima', ())))
     dynamic = tuple(isinstance(value, (jax.Array, jax.core.Tracer)) for value in leaves)
     fixed = tuple(None if live else value for value, live in zip(leaves, dynamic))
     operands = tuple(value for value, live in zip(leaves, dynamic) if live)
@@ -25,14 +45,15 @@ def declared_index_reader(sim, freqs):
     def read(*values):
         stream = iter(values)
         specs = []
-        for eps, mu, dp, lp in definition.unflatten(
-                [next(stream) if live else value for value, live in zip(fixed, dynamic)]):
+        materials, maxima = definition.unflatten(
+            [next(stream) if live else value for value, live in zip(fixed, dynamic)])
+        for eps, mu, dp, lp in materials:
             specs.append(SimpleNamespace(
                 eps_r=eps, mu_r=mu,
                 debye_poles=tuple(SimpleNamespace(delta_eps=d, tau=t) for d, t in dp),
                 lorentz_poles=tuple(SimpleNamespace(omega_0=w, delta=d, kappa=k)
                                     for w, d, k in lp)))
-        return material_echo_index(specs, bins, declared=True)
+        return material_echo_index(specs, bins, declared=True, override_maxima=maxima)
 
     return read, operands
 

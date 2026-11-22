@@ -286,6 +286,8 @@ def compute_msl_s_matrix(
         ``cond_a``).
     """
     admit_traced_inputs("Simulation.compute_msl_s_matrix", locals())
+    from rfx.measurement._echo_forward import echo_override_declaration
+    self = echo_override_declaration(self, dict(eps_override=eps_override))
     resolve_field_dtype(self._precision)
     _diagnostics = ()
     from rfx.probes.msl_wave_decomp import extract_msl_nprobe
