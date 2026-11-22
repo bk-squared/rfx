@@ -258,6 +258,40 @@ def test_the_binary_budget_is_200_kB_inclusive(repo: Path) -> None:
     assert len(failures) == 1 and "200,001 bytes (budget 200,000)" in failures[0]
 
 
+@pytest.mark.parametrize("change,size,binary_total,failure", [
+    pytest.param("move", 300_000, 0, None, id="move"),
+    pytest.param("changed", 300_000, 300_000,
+                 "binary data files outside the allowlist", id="changed"),
+    pytest.param("copy", 300_000, 300_000,
+                 "binary data files outside the allowlist", id="copy"),
+    pytest.param("two", 300_000, 300_000,
+                 "binary data files outside the allowlist", id="two"),
+    pytest.param("cap", 1_000_001, 0, "over their size cap", id="cap"),
+])
+def test_only_an_unchanged_binary_move_is_free(
+    repo: Path, change: str, size: int, binary_total: int, failure: str | None,
+) -> None:
+    _binary(repo, "validation/study/a.npz", size)
+    base = _commit(repo, "a binary already on main")
+    source = repo / "validation/study/a.npz"
+    target = repo / "validation/study/b.npz"
+    target.write_bytes(source.read_bytes())
+    if change == "changed":
+        target.write_bytes(b"\1" + target.read_bytes()[1:])
+    if change == "two":
+        (repo / "validation/study/c.npz").write_bytes(source.read_bytes())
+    if change != "copy":
+        source.unlink()
+    head = _commit(repo)
+    findings = budget.evaluate(base, head, repo)
+    failures = budget.failures(findings)
+    assert findings.binary_total == binary_total
+    if failure is None:
+        assert failures == []
+    else:
+        assert len(failures) == 1 and failure in failures[0]
+
+
 def test_allowlisted_data_does_not_spend_the_budget(repo: Path) -> None:
     base = _git(repo, "rev-parse", "HEAD")
     _write(repo, "docs/guides/api_symbol_inventory.json", _lines(3000))
