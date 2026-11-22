@@ -216,7 +216,7 @@ def assemble_cells(
     _check_pad_fill = (check_declared_span and not nonuniform and include_cpml_pad_extension
                        and sim._boundary in ("cpml", "upml")
                        and sim._cpml_layers > 0)
-    from rfx.geometry.smoothing import continued_conductor_shape, warn_unextendable_shapes
+    from rfx.geometry.smoothing import warn_unextendable_shapes
     conductor_findings = []
     from rfx.model.realization_continuation import continued_entry
 
