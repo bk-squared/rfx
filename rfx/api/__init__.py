@@ -1608,7 +1608,7 @@ class Simulation(
                 raise ValueError(f"n_freqs must be positive, got {n_freqs}")
             freqs_arr = None
         else:
-            from rfx.model.waveguide_waveform import admit_waveguide_freqs
+            from rfx.model import admit_waveguide_freqs
             freqs_arr = admit_waveguide_freqs(freqs)
 
         if name is None:
