@@ -110,7 +110,7 @@ def test_default_guide_band_stops_after_echo_ready(capsys):
     result = sim.run(until_decay=1e-3)
     diagnostic, = (row for row in result.diagnostics if row.code == 'until_decay.stop')
     read = np.linspace(2e9, 20e9, 50).astype(np.float32).astype(np.float64)
-    cutoff = C / (.020 * 2)
+    cutoff = C * np.sin(np.pi / (2 * 20)) / (np.pi * .001)
     lowest = min(read[read > cutoff])
     group = np.sqrt(1 - (cutoff / lowest)**2)
     expected_tau = 2 * np.linalg.norm([.024, .020, .016]) / (C * group)
