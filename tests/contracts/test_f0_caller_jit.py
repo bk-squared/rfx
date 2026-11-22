@@ -24,6 +24,35 @@ from tests.unit.autodiff.test_pinned_sheet_on_traced_mesh import (
 
 DELTA0 = 0.5 * DX
 
+ALWAYS_ON_WRITERS = {
+    "add": "concrete_f0",
+    "add_coaxial_port": ("_coaxial_ports", "coax_port"),
+    "add_current_moment_monitor": ("_current_moments", "block_moments"),
+    "add_floquet_port": ("_floquet_ports", "floquet_port"),
+    "add_flux_monitor": ("_flux_monitors", "flux"),
+    "add_lumped_rlc": ("_lumped_rlc", "series_RL"),
+    "add_material": "concrete_f0",
+    "add_msl_port": ("_msl_ports", "msl_port"),
+    "add_ntff_box": ("_ntff", "ntff_box"),
+    "add_pinned_sheet": ("_pinned_sheets", "pec_sheet"),
+    "add_port": ("_ports", "passive_port"),
+    "add_probe": "concrete_f0",
+    "add_refinement": ("_refinement", "slab"),
+    "add_source": "concrete_f0",
+    "add_tfsf_source": ("_tfsf", "plane_wave"),
+    "add_thin_conductor": "concrete_f0",
+    "add_vector_probe": "add_vector_probe",
+    "add_wall_loss": "add_wall_loss",
+    "add_waveguide_port": ("_waveguide_ports", "waveguide_port"),
+}
+ALWAYS_ON_MATRIX_ROWS = {
+    row for row in ALWAYS_ON_WRITERS.values() if isinstance(row, tuple)
+} | {("_waveguide_ports", "n_modes")}
+EXTRA_WRITER_CALLS = {
+    "add_vector_probe": (((.003, .002, .002),), {}),
+    "add_wall_loss": ((), dict(sigma_bulk=5.8e5, f0=8e9, faces=("y_lo", "y_hi"))),
+}
+
 
 def _series(widths, sheet=True):
     sim = Simulation(
@@ -155,9 +184,16 @@ def test_declaration_wrapper_census():
     print(f"WRAPPED count={len(wrapped)}: {wrapped!r}", file=sys.stderr)
     assert not census.keys() - declarations, "STOP: declaration writer outside add/add_* rule"
     assert not (census.keys() | declarations) - set(wrapped)
+    assert not census.keys() - ALWAYS_ON_WRITERS.keys(), "declaration writer needs an always-on row"
+    assert ALWAYS_ON_MATRIX_ROWS <= BUILDERS.keys()
+    assert set(ALWAYS_ON_WRITERS.values()) <= (
+        BUILDERS.keys() | EXTRA_WRITER_CALLS.keys() | {"concrete_f0"})
 
 
-@pytest.mark.parametrize("row", tuple(BUILDERS), ids=lambda row: ":".join(row))
+@pytest.mark.parametrize("row", [
+    pytest.param(row, marks=() if row in ALWAYS_ON_MATRIX_ROWS else pytest.mark.slow)
+    for row in BUILDERS
+], ids=lambda row: ":".join(row))
 def test_declaration_caller_jit_matrix(row):
     """Fifteen is the shortest shared record reaching both probes in every row.
 
@@ -169,6 +205,28 @@ def test_declaration_caller_jit_matrix(row):
     def g(amplitude):
         return amplitude * build(row, lane).forward(n_steps=15).time_series
 
+    _assert_caller_jit(g, row, lane, require_arrivals=True)
+
+
+@pytest.mark.parametrize("method", EXTRA_WRITER_CALLS)
+def test_declaration_caller_jit_extra_writer(method):
+    """Cover writers absent from BUILDERS on its uniform probe scene.
+
+    Vector position: test_series_rlc_edge_coupling.py's boxed series element.
+    Wall parameters: test_wall_loss_copies.py::model's face declaration.
+    """
+    args, kwargs = EXTRA_WRITER_CALLS[method]
+
+    def g(amplitude):
+        sim = build(("_probes", "probe"), "fwd_uniform")
+        getattr(sim, method)(*args, **kwargs)
+        return amplitude * sim.forward(n_steps=15).time_series
+
+    _assert_caller_jit(g, method, "fwd_uniform")
+
+
+def _assert_caller_jit(g, row, lane, *, require_arrivals=False):
+    """Compare finite fields at nine peak ULP or the complete refusal reading."""
     try:
         eager = np.asarray(g(1.0))
     except (RfxRefusal, ValueError, NotImplementedError) as refusal:
@@ -181,7 +239,8 @@ def test_declaration_caller_jit_matrix(row):
         return
     arrivals = [np.flatnonzero(np.asarray(probe) != 0).tolist()[:1] for probe in eager.T]
     print(f"MATRIX {row!r} {lane}: eager=fields, shape={eager.shape}, arrivals={arrivals!r}", file=sys.stderr)
-    assert all(arrivals), "record must reach both probes"
+    if require_arrivals:
+        assert all(arrivals), "record must reach both probes"
     try:
         compiled = np.asarray(jax.jit(g)(1.0))
     except Exception as error:
