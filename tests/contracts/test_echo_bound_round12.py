@@ -100,3 +100,25 @@ def test_library_sweep_member_uses_its_own_declaration(capsys):
     assert row['status'] != 'pass', row
     assert 'cannot judge:' in row['reason'] and RULE in row['reason'], row
     assert not sim._materials
+
+
+def test_unresolved_library_sweep_material_cannot_be_judged(monkeypatch):
+    from rfx.measurement.sweep_settling import sweep_member_witnesses
+
+    sim = line()
+    grid = sim._build_realized_grid()
+    resolve = sim._resolve_material
+
+    def unresolved(name):
+        if name == 'vacuum':
+            raise KeyError('missing library vacuum')
+        return resolve(name)
+
+    monkeypatch.setattr(sim, '_resolve_material', unresolved)
+    dbs, (row,) = sweep_member_witnesses(
+        sim, grid, np.zeros((1, 16, 1)), (), (), {}, param_name='eps_r',
+        param_values=np.array([OVERRIDE_EPS]))
+    assert np.isnan(dbs[0])
+    assert row['status'] == 'undetermined', row
+    assert "cannot judge: sweep material 'vacuum' cannot be resolved" in row['reason'], row
+    assert 'missing library vacuum' in row['reason'], row

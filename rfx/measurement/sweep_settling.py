@@ -29,6 +29,11 @@ def sweep_member_witnesses(sim, grid, series, names, planes, accumulators, *, pa
                         dft_planes=realized or None, grid=grid, dt=grid.dt,
                         settling_echo_bound=unavailable)
         result = attach_run_settling_witness(member, result, n_steps=len(samples))
-        dbs.append(result.settling_db)
-        witnesses.append(result.settling_witness)
+        witness = result.settling_witness
+        if unavailable is not None:
+            witness = dict(witness, status='undetermined', db=float('nan'),
+                           reason=unavailable['reason'], echo_bound_refused=True,
+                           echo_bound_reason=unavailable['reason'])
+        dbs.append(witness['db'])
+        witnesses.append(witness)
     return np.asarray(dbs, dtype=float), tuple(witnesses)
