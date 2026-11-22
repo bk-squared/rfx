@@ -23,7 +23,8 @@ def settling_db_from_named_records(named_records, *, dt=None, freqs=None,
                                    record_noun="port records", return_detail=False,
                                    rounding_groups=None, _warn_stacklevel=2,
                                    known_drives=None, n_record=None,
-                                   scale_groups=None, _channel_labels=None, reader=None):
+                                   scale_groups=None, _channel_labels=None, reader=None,
+                                   echo_bound=None):
     """Adapt the per-bin pole-tail value witness to legacy dB report fields.
 
     ``rounding_groups`` maps record names to co-located same-kind groups
@@ -40,17 +41,19 @@ def settling_db_from_named_records(named_records, *, dt=None, freqs=None,
                                 scale_groups=scale_groups, _channel_labels=_channel_labels,
                                 known_drives=known_drives, n_record=n_record,
                                 _record_results=per_record if return_detail else None, reader=reader)
+    from rfx.measurement.record_end import with_echo_bound
+    db, detail = with_echo_bound(result.db, result._asdict(), echo_bound, dt)
     if not return_detail:
-        return result.db
+        return db
     finite = {name: value for name, value in per_record.items() if np.isfinite(value)}
-    return result.db, {**result._asdict(), "per_record_db": per_record,
+    return db, {**detail, "per_record_db": per_record,
                        "n_witnessed": len(finite),
                        "worst_record": max(finite, key=finite.get) if finite else None,
                        "skipped_records": list(result.skipped_records)}
 
 
 def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
-                                   return_detail: bool = False, reader=None):
+                                   return_detail: bool = False, reader=None, echo_bound=None):
     """Per-bin pole-tail value witness over the four modal records per port.
 
     sensitivities are judged by a separate witness
@@ -61,6 +64,9 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
     from rfx.model.waveguide_modes import incident_tables_uncut
 
     final_cfgs = tuple(final_cfgs)
+    if echo_bound is None:
+        echo_bound = next((cfg.echo_bound for cfg in final_cfgs
+                           if getattr(cfg, 'echo_bound', None) is not None), None)
     named = [
         (f"port{port_index}/{name}", _recorded(cfg, name))
         for port_index, cfg in enumerate(final_cfgs)
@@ -102,7 +108,7 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
         freqs=bins, freq_max=freq_max, record_noun="port records",
         known_drives=known_drives if isinstance(known_drives, ValueError) else (known_drives or None),
         n_record=n_record,
-        return_detail=return_detail, _warn_stacklevel=3, reader=reader)
+        return_detail=return_detail, _warn_stacklevel=3, reader=reader, echo_bound=echo_bound)
 
 
 def warn_postrun_energy_witness(
@@ -201,12 +207,22 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
     if not forward_result and (not hasattr(result, "_replace") or not hasattr(result, "settling_witness")):
         return result
     coverage = accumulator_coverage(result, sim=sim, n_steps=n_steps)
+    from rfx.measurement.record_end import echo_delay_bound, with_echo_bound
+    from rfx.sparams._tail_witness import result_read_bins
+    bound = getattr(result, 'settling_echo_bound', None)
+    if bound is None:
+        bound = echo_delay_bound(result.grid, sim=sim, freqs=result_read_bins(result),
+                                 waveguide_ports=getattr(result, 'waveguide_ports', None))
+    if getattr(result, 'waveguide_ports', None):
+        result = result._replace(waveguide_ports={name: cfg._replace(echo_bound=bound)
+                                                  for name, cfg in result.waveguide_ports.items()})
     if forward_result:
         from rfx.core.jax_utils import is_tracer
         from rfx.sparams._record_selection import s_read_records
         result = result._replace(
             settling_probe_info=sim._settling_probe_selection(result),
             settling_freq_max=sim._freq_max,
+            settling_echo_bound=bound,
             settling_accumulator_end_index=coverage.max_end(),
             settling_coverage=coverage,
             settling_source_end_index=sim._settling_source_end(
@@ -218,8 +234,9 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
     settling_db, witness = decay_stop_first(result, *sim._run_settling_witness(result))
     tail_status = witness["status"]
     settling_db, witness = with_coverage(settling_db, witness, coverage)
+    settling_db, witness = with_echo_bound(settling_db, witness, bound,
+                                          getattr(result, 'dt', None) or result.grid.dt)
     groups = witness.get("groups") if isinstance(witness, dict) else None
-    witness = {k: v for k, v in witness.items() if k != "groups"} if isinstance(witness, dict) else witness
     if not forward_result:
         result = result._replace(settling_db=settling_db,
                                  settling_witness=witness)
@@ -276,7 +293,7 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
             quantity = (f", e_Q {np.max(errors):.9g}, kappa_Q {np.max(kappas):.9g}"
                         if errors.size and kappas.size else "")
             reason = row.get("reason") or ""
-            warning_witness = {**row, "reason": reason if "rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES" in reason else f"share {peak:.9g}"}
+            warning_witness = {**row, "reason": reason if row.get('echo_bound_refused') or "rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES" in reason else f"share {peak:.9g}"}
             _warn_if_ringdown_truncated(
                 [np.nan if row.get('db') is None else row['db']], (), witnesses=[warning_witness],
                 n_steps=n_steps, num_periods=None if n_steps is not None else num_periods,

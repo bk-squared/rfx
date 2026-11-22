@@ -817,6 +817,9 @@ moves S with the complex propagation constant α + jβ for every port kind.
 
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).
 
+The echo-delay bound does not cover a return whose path exceeds the domain diagonal, such as a meander, a slow-wave structure or several bounces.
+The settling verdict reads the S entry's record-end error: a channel's tail share can exceed 1e-2 at a band-edge bin while the S error stays below it (shorted line at 38 ns, 13.49 GHz: 1.07e-2 against 0.0048).
+
 ### A completed forward ring-down value can have a failed lazy report without warning.
 
 Tracker: #1961

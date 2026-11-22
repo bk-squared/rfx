@@ -346,7 +346,7 @@ def compute_lumped_wire_s_matrix_via_scan(
             )
 
         if return_settling:
-            from rfx.measurement.record_end import injection_end
+            from rfx.measurement.record_end import injection_end, echo_delay_bound
             from rfx.sparams._tail_witness import port_record_witness
             from copy import copy
             from dataclasses import replace
@@ -388,7 +388,8 @@ def compute_lumped_wire_s_matrix_via_scan(
                 whole_port=True if graded else None))
             settling_runs.append(port_record_witness(
                 time_records, raw.get("dt", grid.dt),
-                end, freqs, freq_max=sim._freq_max, reader=reader))
+                end, freqs, freq_max=sim._freq_max, reader=reader,
+                echo_bound=echo_delay_bound(grid, sim=driven_sim, freqs=freqs)))
         if graded:
             continue
         accs = raw["wire"] if wire_mode else raw["lumped"]

@@ -562,7 +562,7 @@ def _score_mixed_record(
         )
         if (_ts_np.shape[0] >= 10
                 and _ts_np.shape[1] == _witness_total):
-            from rfx.measurement.record_end import injection_end
+            from rfx.measurement.record_end import injection_end, echo_delay_bound
             from rfx.sources.waveguide_port import settling_db_from_named_records
             _source_end = injection_end(
                 _ts_np.shape[0], raw.get("dt", grid.dt),
@@ -593,7 +593,8 @@ def _score_mixed_record(
             settling_db_runs[run_idx], settling_details[run_idx] = settling_db_from_named_records(
                 _channels, source_end_index=_source_end, dt=raw.get("dt", grid.dt),
                 freqs=freqs_arr, freq_max=self._freq_max, return_detail=True,
-                scale_groups=_groups, _channel_labels=_labels)
+                scale_groups=_groups, _channel_labels=_labels,
+                echo_bound=echo_delay_bound(grid, sim=variant, freqs=freqs_arr))
 
     return settling_db_runs, settling_details
 

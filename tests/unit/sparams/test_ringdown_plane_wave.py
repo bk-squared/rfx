@@ -169,7 +169,7 @@ def own_row(n):
     return float(np.max(r[int(round(0.5 * n)):n]))
 
 
-@pytest.mark.parametrize("n", [4000, 4003])
+@pytest.mark.parametrize("n", [4730, 4733])
 def test_the_plane_wave_row_is_its_face_read_level_over_the_main_window(n):
     result, (rows, _) = completed("run", n)
     report = result.ringdown.report

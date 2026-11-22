@@ -945,7 +945,7 @@ def compute_coaxial_two_port(
 
             ts = np.asarray(result.time_series)
             if ts.ndim == 2 and ts.shape[0] >= 10 and ts.shape[1] == len(witness_probes):
-                from rfx.measurement.record_end import injection_end
+                from rfx.measurement.record_end import injection_end, echo_delay_bound
                 from rfx.sources.waveguide_port import settling_db_from_named_records
                 source_end = injection_end(len(ts), grid.dt, records=witness_probes, grid=grid,
                                            sources=spec.electric_sources, mag_sources=spec.magnetic_sources)
@@ -958,7 +958,8 @@ def compute_coaxial_two_port(
                     _channels.extend((f"probe{i}", ts[:, i]) for i in range(ts.shape[1]))
                 settling_db[drive_idx], settling_details[drive_idx] = settling_db_from_named_records(
                     _channels, source_end_index=source_end, scale_groups=_settling_groups.coax_voltage_groups(_channels, witness_probes, n_bot),
-                    dt=result.dt, freqs=freqs, freq_max=self._freq_max, return_detail=True)
+                    dt=result.dt, freqs=freqs, freq_max=self._freq_max, return_detail=True,
+                    echo_bound=echo_delay_bound(grid, sim=self, freqs=freqs))
 
 
     if _traced_eps:
@@ -1516,7 +1517,7 @@ def compute_coax_msl_transition(
 
         ts = np.asarray(result.time_series)
         if ts.ndim == 2 and ts.shape[0] >= 10 and ts.shape[1] == len(witness_probes):
-            from rfx.measurement.record_end import injection_end
+            from rfx.measurement.record_end import injection_end, echo_delay_bound
             from rfx.sources.waveguide_port import settling_db_from_named_records
             source_end = injection_end(len(ts), grid.dt, records=witness_probes, grid=grid,
                                        sources=sources, mag_sources=mag_sources)
@@ -1535,7 +1536,8 @@ def compute_coax_msl_transition(
                 _channels.extend((f"probe{i}", ts[:, i]) for i in range(ts.shape[1]))
             settling_db[drive_idx], settling_details[drive_idx] = settling_db_from_named_records(
                 _channels, source_end_index=source_end, scale_groups=_settling_groups.coax_voltage_groups(_channels, witness_probes),
-                dt=result.dt, freqs=freqs_arr, freq_max=self._freq_max, return_detail=True)
+                dt=result.dt, freqs=freqs_arr, freq_max=self._freq_max, return_detail=True,
+                echo_bound=echo_delay_bound(grid, sim=self, freqs=freqs_arr))
 
 
     # Two-drive extraction rationale (moved from the API docstring).

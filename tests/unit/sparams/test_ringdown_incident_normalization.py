@@ -27,7 +27,7 @@ from tests._closed_box_plane_wave import EZ_EZ, F0, declare, slotted_box
 from rfx import ringdown as rd
 
 BINS = np.linspace(0.3 * F0, 2.4 * F0, 101)
-N = 4000
+N = 4730
 
 
 def spec(probes, normalization="incident"):

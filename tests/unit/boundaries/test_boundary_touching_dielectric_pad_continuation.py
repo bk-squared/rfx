@@ -185,7 +185,7 @@ def test_solved_pad_column_carries_the_guide_material(boundary, monkeypatch):
         "continuation widened the guide instead of extending it")
 
 
-def _measure_round_trip(boundary, layers, monkeypatch) -> dict:
+def _measure_round_trip(boundary, layers, monkeypatch, n_steps=None) -> dict:
     """One long record: stability, settling witness, and the two-wave fit."""
     cmp_mod = _load("slab_te_dispersion", "tests/_slab_te_dispersion.py")
 
@@ -193,7 +193,7 @@ def _measure_round_trip(boundary, layers, monkeypatch) -> dict:
     sim = _build(boundary, layers)
     sim.add_dft_plane_probe(axis="y", coordinate=WG_Y, component="ez",
                             freqs=freqs, name="guide_axis_ez")
-    n_steps = _n_steps()
+    n_steps = _n_steps() if n_steps is None else n_steps
     assert n_steps >= 5000, f"record is only {n_steps} steps"
     result, _ = _run_capturing_update_eps(sim, n_steps, monkeypatch,
                                           skip_preflight=True)
@@ -230,7 +230,7 @@ def test_boundary_touching_guide_is_stable_and_has_no_round_trip(
     is worse than the facet.
     An earlier measured factor 1e21 equals predicted 1/dV (dx=1e-7 m).
     """
-    m = _measure_round_trip(boundary, CPML_LAYERS, monkeypatch)
+    m = _measure_round_trip(boundary, CPML_LAYERS, monkeypatch, n_steps=7260)
 
     assert m["n_nonfinite"] == 0, (
         f"{boundary}: {m['n_nonfinite']} non-finite samples in a "

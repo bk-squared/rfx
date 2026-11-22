@@ -658,7 +658,7 @@ def test_nonuniform_lane_power_calibration_and_slot(base_rung):
     D err 0.011 dB. Both cross the gates.
     """
     sim = _build_nu_sim(BASE_DX_M, _NU_Z_CELLS)
-    res = sim.run(n_steps=BASE_N_STEPS)
+    res = sim.run(n_steps=515)
     assert type(res.grid).__name__ == "NonUniformGrid", (
         f"fixture did not take the NU lane (grid {type(res.grid).__name__})")
     assert res.ntff_box.collocation == "face_centre", (

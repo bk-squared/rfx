@@ -995,10 +995,13 @@ def _compute_waveguide_s_matrix_nu(
         # truncation corrupts the same S values (same composition as
         # the uniform normalized/flux lanes). NaN under tracing
         # propagates instead of being max()-eaten.
+        from rfx.measurement.record_end import echo_delay_bound
         _sd_dev, _detail_dev = settling_db_from_port_records(
-            [dev_wg[e.name] for e in original_entries], freq_max=self._freq_max, return_detail=True)
+            [dev_wg[e.name] for e in original_entries],
+            echo_bound=echo_delay_bound(dev_result.grid, sim=self, waveguide_ports=dev_wg), freq_max=self._freq_max, return_detail=True)
         _sd_ref, _detail_ref = settling_db_from_port_records(
-            [ref_wg[e.name] for e in original_entries], freq_max=self._freq_max, return_detail=True)
+            [ref_wg[e.name] for e in original_entries],
+            echo_bound=echo_delay_bound(ref_result.grid, sim=ref_variant, waveguide_ports=ref_wg), freq_max=self._freq_max, return_detail=True)
         settling_runs.append(
             float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
             else max(_sd_dev, _sd_ref))

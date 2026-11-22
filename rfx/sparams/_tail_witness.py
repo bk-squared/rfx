@@ -66,7 +66,7 @@ class SettlingChannels(NamedTuple):
                                   scale_groups=scale_groups, _channel_labels=_channel_labels, reader=reader)
 
 
-def port_record_witness(records, dt, source_end, freqs, *, freq_max, reader=None):
+def port_record_witness(records, dt, source_end, freqs, *, freq_max, reader=None, echo_bound=None):
     """Judge recorded S-channel matrices, one matrix per port."""
     from rfx.sparams._settling_groups import port_column_groups
 
@@ -76,7 +76,9 @@ def port_record_witness(records, dt, source_end, freqs, *, freq_max, reader=None
         tuple((record.id, record.samples) for record in records),
         dt, source_end, freqs, freq_max)
     result = channels.witness(scale_groups=groups, _channel_labels=labels, reader=reader)
-    return result.db, {**result._asdict(), 'route': 's_channels',
+    from rfx.measurement.record_end import with_echo_bound
+    db, detail = with_echo_bound(result.db, result._asdict(), echo_bound, dt)
+    return db, {**detail, 'route': 's_channels',
                        'worst_record': None, 'per_record_db': {},
                        'skipped_records': list(result.skipped_records), 'source_dominated': False,
                        'reader_frame': None if reader is None else reader.get('frame'),

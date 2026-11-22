@@ -182,9 +182,13 @@ def finish_probe_run(plan, result, n_user):
     stripped = _user_geometry(result._replace(time_series=full[:, :n_user]), n_user, n_int)
     spectra, report, nc = plan._host_report(result, np.asarray(full), n_user)
     if nc is not None:
+        if nc.name == 'echo_bound':
+            spectra = np.full((len(plan.bins), len(plan._identification_columns())),
+                              np.nan, dtype=np.complex128)
+        value_note = 'NaN' if nc.name == 'echo_bound' else 'None'
         warnings.warn(
             f"ring-down completion not produced -- {nc.name} failed: {nc.message} "
-            "Result.ringdown.probe_spectra is None; every other output of this run is as without ringdown=.",
+            f"Result.ringdown.probe_spectra is {value_note}; every other output of this run is as without ringdown=.",
             AccuracyWarning, stacklevel=user_stacklevel())
     elif not report.ok:
         failed = ", ".join(f"{w.name} {w.value:.3e} (bar {w.bar:.3e})"

@@ -376,7 +376,9 @@ def assemble_cells(
             dispersion_pole_mask=_pole_mask_any,
         )
 
-    materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
+    from rfx.measurement.echo_materials import EchoMaterials
+    materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r,
+                               echo_materials=EchoMaterials.from_sim(sim))
 
     # Apply thin conductors (PEC thin sheets go to ``pec_sheets``,
     # never to pec_mask; f0 sheets to ``sheet_specs``; DC folds to sigma).
@@ -1044,6 +1046,7 @@ def kernel_materials(materials, *, keep_eps=False, electric=True, magnetic=True,
     c = materials.components
     return MaterialArrays(
         materials.eps_r if keep_eps else jnp.zeros((), materials.eps_r.dtype), None, None,
+        echo_materials=materials.echo_materials,
         mu_r_wire=True if materials.mu_r_wire is not None else None,
         edge_keep=materials.edge_keep,
         components=KernelComponents(c.eps_update if electric and epsilon else (),

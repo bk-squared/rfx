@@ -729,6 +729,7 @@ def _run_subgridded_once(
             s_mat = s_mat.at[recv, driven, :].set(s_value)
         s_params = np.asarray(s_mat)
 
+    from rfx.measurement.record_end import echo_delay_bound
     return Result(
         realized_geometry=geometry_record,
         diagnostics=diagnostics,
@@ -739,6 +740,7 @@ def _run_subgridded_once(
         ntff_data=result.ntff_data_f,
         ntff_box=result.ntff_box_f,
         grid=fine_grid,
+        settling_echo_bound=echo_delay_bound(measurement_grid, sim=sim, freqs=freqs),
         dt=dt,
         freq_range=(sim._freq_max / 10, sim._freq_max, "cpml"),
     )

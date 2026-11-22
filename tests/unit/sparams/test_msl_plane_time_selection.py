@@ -5,7 +5,7 @@ import numpy as np
 from tests.unit.sparams.test_msl_internal_probe_advisories import FREQS, _thru
 
 
-N_STEPS = 1200
+N_STEPS = 1580
 USER_PLANE = "user_cross_section"
 
 

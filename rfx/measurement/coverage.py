@@ -101,6 +101,7 @@ def with_coverage(db, witness, coverage):
     witness = {**witness, "coverage": rows}
     failed = next((r for r in rows if r["verdict"] != "covered"), None)
     if failed is not None and witness["status"] in {"pass", "absent"}:
+        witness['tail_status'] = witness['status']
         witness.update(status="undetermined", reason=failed["verdict"])
     return db, witness
 
@@ -115,7 +116,8 @@ def warn_uncovered(witness):
     db = witness.get("db")
     prefix = ("no ring-down settling witness; output is unguarded"
               if db is None or db != db else "record-end settling coverage")
+    extra = f"; {witness['echo_bound_reason']}" if witness.get('echo_bound_refused') else ''
     warnings.warn(f"{prefix}: {failed['name']}: {failed['verdict']} "
-                  f"(record step {failed['n_record']}, end step {failed['end_step']})",
+                  f"(record step {failed['n_record']}, end step {failed['end_step']}){extra}",
                   AccuracyWarning, stacklevel=user_stacklevel())
     return True

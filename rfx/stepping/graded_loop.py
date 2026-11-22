@@ -443,7 +443,8 @@ def run_nonuniform_until_decay(
     stop_rule = energy_stop
     if use_flux_stop:
         stop_rule = make_field_decay_stop(
-            measurement_grid, thr=decay_by, min_steps=min_steps, interval=check_interval,
+            measurement_grid, materials=materials,
+            thr=decay_by, min_steps=min_steps, interval=check_interval,
             max_steps=max_steps, consecutive=decay_energy_consecutive,
             env_checks=flux_env_checks, n_end=n_end, sources=sources,
             tfsf=tfsf, waveguide_ports=waveguide_ports)

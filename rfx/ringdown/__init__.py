@@ -867,6 +867,14 @@ class RingdownRun:
         self.n_steps = int(n_steps)
         self.grid = grid
         self.dt = grid.dt
+        from rfx.measurement.record_end import echo_delay_bound
+        self.echo_bound = echo_delay_bound(grid, sim=sim, freqs=self.bins)
+        try:
+            self.echo_dt = float(grid.dt)
+        except (TypeError, ValueError):
+            self.echo_dt = None
+            self.echo_bound = {**self.echo_bound,
+                               'reason': 'cannot judge: echo delay bound solver step is traced'}
         self.n_start = int(round(float(spec.window_start) * self.n_steps))
         self.n_split = int(round(float(spec.split) * self.n_steps))
         self.n_long = _long_window_start(self.n_steps, spec.window_start)
@@ -1018,12 +1026,15 @@ class RingdownRun:
             n_user, n_int)
         S, report, nc = self._host_report(result, ts_all, n_user)
         if nc is not None:
+            refused_s = (np.full_like(np.asarray(result.s_params), np.nan)
+                         if nc.name == 'echo_bound' else None)
+            value_note = 'NaN' if nc.name == 'echo_bound' else 'None'
             warnings.warn(
                 f"ring-down completion not produced -- {nc.name} failed: "
-                f"{nc.message} Result.ringdown.s_params is None; every other "
+                f"{nc.message} Result.ringdown.s_params is {value_note}; every other "
                 "output of this run is as without ringdown=.", AccuracyWarning, stacklevel=user_stacklevel())
             return stripped._replace(ringdown=RingdownResult(
-                s_params=None, freqs=result.freqs, report=report))
+                s_params=refused_s, freqs=result.freqs, report=report))
         if not report.ok:
             failed = ", ".join(f"{w.name} {w.value:.3e} (bar {w.bar:.3e})"
                                + (f" -- {w.note}" if w.note else "")
@@ -1080,8 +1091,7 @@ class RingdownRun:
                                     "s_accumulator_roundoff"), **report_extra)
         return S, report, None
 
-    @staticmethod
-    def _check_solver_step(result, step=None) -> None:
+    def _check_solver_step(self, result, step=None) -> None:
         """The run stepped at the grid's ``dt``, or ``_NotCompleted``.
 
         The completion (decimation plan, pole mapping ``log(lambda)/(D dt)``,
@@ -1092,6 +1102,12 @@ class RingdownRun:
         """
         from rfx.core.jax_utils import is_tracer
 
+        from rfx.measurement.record_end import ECHO_BOUND_FACTOR, echo_bound_reason
+        if (self.echo_bound.get('reason') or
+                (self.n_steps - self.n_start) * self.echo_dt
+                < ECHO_BOUND_FACTOR * self.echo_bound['tau_max']):
+            raise _NotCompleted('echo_bound', float('nan'), float('nan'),
+                                echo_bound_reason(self.echo_bound))
         step = getattr(result, "dt", None) if step is None else step
         if step is None or is_tracer(step):
             return

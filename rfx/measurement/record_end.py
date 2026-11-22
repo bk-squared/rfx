@@ -40,6 +40,148 @@ TRACED = "cannot judge: traced"
 STILL_ON = "cannot judge: {source} still injecting at the record end"
 _COMPONENT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
 
+ECHO_BOUND_FACTOR = 2.05
+"""Minimum longest round trips inside an identification window."""
+
+
+def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_ports=(),
+                     debye=None, lorentz=None):
+    """Return ``tau_max, D, n_max, g`` from the realized physical domain.
+
+    An unavailable host operand returns a reason instead of a numerical bound.
+    Pads and the nonperiodic fence-post cell never contribute to D. Declared
+    materials include vacuum and every material used by the geometry. For
+    dispersion, the static response and the responses at the read bins enter
+    the maximum. A low-level caller supplies its realized material arrays.
+    """
+    from rfx.model.graded_admission import host_cells
+
+    try:
+        lengths = []
+        for axis in "xyz":
+            if axis == 'z' and getattr(grid, 'is_2d', False):
+                lengths.append(0.)
+                continue
+            cells = np.asarray(host_cells(grid, axis), dtype=np.float64)
+            if axis not in getattr(grid, "periodic_axes", ()):
+                cells = cells[:-1]
+            lo, hi = getattr(grid, f"pad_{axis}_lo"), getattr(grid, f"pad_{axis}_hi")
+            interior = cells[lo:len(cells) - hi]
+            if not interior.size or not np.all(np.isfinite(interior)) or np.any(interior <= 0):
+                raise ValueError(f"unavailable physical {axis} cell widths")
+            lengths.append(float(np.sum(interior)))
+        D = float(np.linalg.norm(lengths))
+        bins = np.asarray(() if freqs is None else freqs, dtype=np.float64).reshape(-1)
+        configs = tuple(waveguide_ports.values() if hasattr(waveguide_ports, 'values')
+                        else waveguide_ports or ())
+        if not bins.size and configs:
+            bins = np.unique(np.concatenate([np.asarray(cfg.freqs, dtype=np.float64)
+                                             for cfg in configs]))
+        if sim is not None:
+            specs = [sim._resolve_material(name) for name in
+                     dict.fromkeys(entry.material_name for entry in sim._geometry)]
+        elif materials is not None:
+            declarations = getattr(materials, 'echo_materials', None)
+            specs = (declarations.materials() if declarations is not None else
+                     materials if isinstance(materials, (list, tuple)) and not hasattr(materials, 'eps_r')
+                     else [materials])
+        else:
+            raise ValueError("material declarations are unavailable")
+        n_max = 1.0
+        for material in specs:
+            eps = np.asarray(material.eps_r, dtype=np.float64)
+            mu = np.asarray(material.mu_r, dtype=np.float64)
+            dp = getattr(material, 'debye_poles', None) or ()
+            lp = getattr(material, 'lorentz_poles', None) or ()
+            if (dp or lp) and not bins.size:
+                raise ValueError("the dispersive material read band is unavailable")
+            if (debye is not None or lorentz is not None) and not getattr(materials, 'echo_materials', None):
+                raise ValueError("low-level dispersive material declarations are unavailable")
+            samples = np.r_[0., bins]
+            for frequency in samples:
+                omega = 2 * np.pi * frequency
+                response = eps.astype(np.complex128)
+                for pole in dp:
+                    response = response + float(pole.delta_eps) / (1 + 1j * omega * float(pole.tau))
+                for pole in lp:
+                    strength = getattr(pole.kappa, 'si', pole.kappa)
+                    response = response + np.asarray(strength) / (
+                        float(pole.omega_0)**2 - omega**2 + 2j * float(pole.delta) * omega)
+                values = np.sqrt(np.abs(response * mu))
+                if not np.all(np.isfinite(values)):
+                    raise ValueError("nonfinite material index")
+                n_max = max(n_max, float(np.max(values)))
+        g = 1.0
+        for cfg in configs or ():
+            read = bins if bins.size else np.asarray(cfg.freqs, dtype=np.float64)
+            cutoff = float(cfg.f_cutoff)
+            if not read.size or np.min(read) <= cutoff:
+                raise ValueError("a waveguide read bin is at or below cutoff")
+            g = min(g, float(np.sqrt(1 - (cutoff / np.min(read))**2)))
+        return dict(tau_max=2 * D * n_max / (299792458.0 * g), D=D, n_max=n_max, g=g)
+    except (TypeError, ValueError, AttributeError, OverflowError) as exc:
+        return dict(tau_max=None, D=None, n_max=None, g=None,
+                    reason=f"cannot judge: echo delay bound unavailable: {exc}")
+
+
+def echo_bound_reason(bound):
+    """Explain a refused identification window using the shared bound."""
+    if bound.get('reason'):
+        return bound['reason']
+    return (f"cannot judge: the record ends less than {ECHO_BOUND_FACTOR:g} longest round trips "
+            f"({ECHO_BOUND_FACTOR:g}·τ_max = {ECHO_BOUND_FACTOR * bound['tau_max'] * 1e9:.6g} ns) "
+            "after the identification window starts; a reflection still on its way, "
+            "or one seen fewer than twice, is not visible in the record")
+
+
+def with_echo_bound(db, witness, bound, dt):
+    """Close every passing row using its own recorded identification windows.
+
+    Coverage may already have demoted a pass; its reason is retained. Synthetic
+    records with no geometry explicitly carry ``echo_bound=None``.
+    """
+    row = {**witness, 'echo_bound': bound}
+    refused = bool(row.get('echo_bound_refused'))
+    reasons = []
+    descendants = False
+    for key in ('runs', 'groups'):
+        if row.get(key):
+            descendants = True
+            children = [with_echo_bound(child.get('db'), child, bound, dt)[1]
+                        for child in row[key]]
+            row[key] = children
+            refused |= any(child.get('echo_bound_refused') for child in children)
+            reasons.extend(child.get('echo_bound_reason') for child in children
+                           if child.get('echo_bound_refused'))
+            entries = {name: status for child in children
+                       for name, status in (child.get('status_per_entry') or {}).items()}
+            if entries:
+                row['status_per_entry'] = entries
+    if not descendants and bound is not None and (row.get('tail_status', row.get('status')) == 'pass' or
+                              'pass' in (row.get('status_per_entry') or {}).values()):
+        windows = row.get('window_starts') or {}
+        unavailable = bound.get('reason') or dt is None or not windows
+        short = unavailable or any((int(n) - starts[0]) * float(dt)
+                                   < ECHO_BOUND_FACTOR * bound['tau_max']
+                                   for n, starts in windows.items())
+        if short:
+            refused = True
+            reasons.append(echo_bound_reason(bound) if not unavailable or bound.get('reason') else
+                           'cannot judge: echo delay bound identification window unavailable')
+    if refused:
+        reason = row.get('reason') or ''
+        for extra in dict.fromkeys(r for r in reasons if r):
+            if extra not in reason:
+                reason = '; '.join(filter(None, (reason, extra)))
+        row.update(status='undetermined', db=float('nan'), reason=reason,
+                   echo_bound_refused=True,
+                   echo_bound_reason=next((r for r in reasons if r), row.get('echo_bound_reason')))
+        if not descendants and row.get('status_per_entry'):
+            row['status_per_entry'] = {name: 'undetermined' if value == 'pass' else value
+                                       for name, value in row['status_per_entry'].items()}
+        db = float('nan')
+    return db, row
+
 
 def drive_tail_share(drives, dt, n_record, freqs) -> np.ndarray:
     """Known drive beyond a record / inside it, per bin, maximized over drives.
@@ -550,6 +692,7 @@ class TailShareWitness(NamedTuple):
     second_tails_per_channel: object = None
     window_starts: object = None
     record_end_error_second_per_entry: object = None
+    echo_bound: object = None
 
 
 def _channel_tail_witness(records, dt, source_end, freqs, *, identification: IdentificationOps, freq_max, rounding_groups=None,

@@ -194,6 +194,7 @@ class WaveguidePortConfig(NamedTuple):
     probe_medium_matches: bool = True
     probe_medium_description: str = ""
     multimode: bool = False
+    echo_bound: object = None
 
 
 def _te_mode_profiles(a: float, b: float, m: int, n: int,
