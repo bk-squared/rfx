@@ -49,8 +49,11 @@ ALWAYS_ON_MATRIX_ROWS = {
     row for row in ALWAYS_ON_WRITERS.values() if isinstance(row, tuple)
 } | {("_waveguide_ports", "n_modes")}
 EXTRA_WRITER_CALLS = {
-    "add_vector_probe": (((.003, .002, .002),), {}),
-    "add_wall_loss": ((), dict(sigma_bulk=5.8e5, f0=8e9, faces=("y_lo", "y_hi"))),
+    "add_vector_probe": (("_probes", "probe"), ((.003, .002, .002),), {}),
+    "add_wall_loss": (
+        ("_waveguide_ports", "waveguide_port"), (),
+        dict(sigma_bulk=5.8e5, f0=8e9, faces=("y_lo", "y_hi")),
+    ),
 }
 
 
@@ -210,15 +213,15 @@ def test_declaration_caller_jit_matrix(row):
 
 @pytest.mark.parametrize("method", EXTRA_WRITER_CALLS)
 def test_declaration_caller_jit_extra_writer(method):
-    """Cover writers absent from BUILDERS on its uniform probe scene.
+    """Cover writers absent from BUILDERS on their uniform scene rows.
 
     Vector position: test_series_rlc_edge_coupling.py's boxed series element.
     Wall parameters: test_wall_loss_copies.py::model's face declaration.
     """
-    args, kwargs = EXTRA_WRITER_CALLS[method]
+    row, args, kwargs = EXTRA_WRITER_CALLS[method]
 
     def g(amplitude):
-        sim = build(("_probes", "probe"), "fwd_uniform")
+        sim = build(row, "fwd_uniform")
         getattr(sim, method)(*args, **kwargs)
         return amplitude * sim.forward(n_steps=15).time_series
 
