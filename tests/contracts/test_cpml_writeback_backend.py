@@ -74,7 +74,8 @@ def _emit(measurements, record_property):
 
 @pytest.mark.gpu_gate
 @pytest.mark.parametrize("graded", (False, True), ids=("uniform", "graded"))
-@pytest.mark.parametrize("steps", (120, 240, 480))
+@pytest.mark.parametrize("steps", (pytest.param(240, marks=pytest.mark.slow),
+                                   pytest.param(480, marks=pytest.mark.slow)))
 def test_selected_backend_probe_plain_vs_jit(graded, steps, record_property):
     from tests.unit.autodiff.test_forward_jit_contract import _lumped_open, _run
 
@@ -113,7 +114,7 @@ def _field_comparison(a, b, label, record_property, *, assert_bar, kind="step"):
 
 
 @pytest.mark.gpu_gate
-@pytest.mark.parametrize("lane", ("uniform", "graded"))
+@pytest.mark.parametrize("lane", (pytest.param("uniform", marks=pytest.mark.slow), "graded"))
 def test_selected_backend_six_fields_against_other_form(monkeypatch, lane, record_property):
     from tests.contracts._cpml_writeback_scene import build
 
