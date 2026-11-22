@@ -24,8 +24,11 @@ CASES = {
     'plate_at_reference': ('check_plate', "rewrite(builder, '_refuse_front_pec', 'mask[:, :, ref] = False', 'mask[:, :, ref] = front[:, :, ref]')\nrewrite(builder, 'assemble_coax_port', 'for mask in edge_bore[:2]:', 'for mask in edge_bore:')"),
     'front_whole_column': ('check_enclosed_line', "rewrite(builder, '_refuse_front_pec', \"slice(tip - 1, ref) if port.face == 'top' else slice(ref, tip + 1)\", \"slice(None, ref) if port.face == 'top' else slice(ref, None)\")"),
     'front_short_of_tip': ('check_refusal', "rewrite(builder, '_refuse_front_pec', \"slice(tip - 1, ref) if port.face == 'top' else slice(ref, tip + 1)\", \"slice(tip, ref) if port.face == 'top' else slice(ref, tip)\")"),
+    'realized_coax_unassembled': ('check_realized_coax', "\nimport importlib\ngeometry = importlib.import_module('rfx.realized_geometry')\nrewrite(geometry, 'realized_geometry', 'assembled = preview_coax_port(sim, assembled, lane)', 'assembled = assembled')"),
+    'realized_coax_refusal_swallowed': ('check_realized_coax_refusal', "\nimport importlib\ngeometry = importlib.import_module('rfx.realized_geometry')\nrewrite(geometry, 'realized_geometry', 'coax_error = str(error)', 'coax_error = \"not represented: family-specific aperture/drive assembly\"')"),
+    'realized_z_tem_declared': ('check_realized_coax', "\nimport importlib\ngeometry = importlib.import_module('rfx.realized_geometry')\nrewrite(geometry, '_ports', 'z_tem_ohm=release.z_tem_ohm', 'z_tem_ohm=port.impedance')"),
     'bore_report': ('check_report', "\nimport rfx.realized_geometry as unused\nimport importlib\ngeometry = importlib.import_module('rfx.realized_geometry')\nrewrite(geometry, '_ports', 'cleared_bore_cells=tuple(map(tuple, release.cells))', 'cleared_bore_cells=()')"),
-    'forward_diagnostic_arrays': ('check_forward_report', "\nimport rfx.model.realization_report as reporter\nrewrite(reporter, 'rebuild_view', \"solved.lane in ('run_uniform', 'fwd_uniform')\", \"solved.lane == 'run_uniform'\")"),
+    'forward_diagnostic_arrays': ('check_forward_report', "\nimport rfx.model.realization_report as reporter\nrewrite(reporter, 'preview_coax_port', \"lane in ('run_uniform', 'fwd_uniform')\", \"lane == 'run_uniform'\")"),
 }
 
 
@@ -33,7 +36,10 @@ CASES = {
 @pytest.mark.parametrize('mode', ['check_off', 'defect_restored'])
 def test_review_mutation(case, mode):
     check, defect = CASES[case]
-    witness = {'drude_named': 'drude_inside_bore_refused',
+    witness = {'realized_coax_refusal_swallowed': 'realized_coax_refusal_before_run',
+               'realized_coax_unassembled': 'realized_coax_before_run',
+               'realized_z_tem_declared': 'realized_coax_before_run',
+               'drude_named': 'drude_inside_bore_refused',
                'dispersive_outside_bore': 'drude_outside_bore_admitted',
                'front_whole_column': 'enclosed_line_admitted',
                'front_short_of_tip': 'unnamed_tip_contact_refused'}.get(case, case)

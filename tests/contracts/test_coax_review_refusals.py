@@ -420,3 +420,55 @@ def test_span_metal_refused(monkeypatch, entry):
 def test_unnamed_tip_contact_refused(monkeypatch, entry):
     sim, _ = enclosed_line_scene(name_contact=False)
     refusal(monkeypatch, sim, entry, r"user PEC in front.*between the reference node .*pin's tip node")
+
+
+def check_realized_coax(before, after, metadata, pin_length):
+    assert before.error is None
+    assert isinstance(before.z_tem_ohm, float)
+    assert np.isfinite(before.z_tem_ohm) and before.z_tem_ohm > 0
+    assert bool(before.pin_cells) == bool(pin_length)
+    assert before == after
+    assert before.z_tem_ohm == metadata['z_tem_ohm']
+
+
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+@pytest.mark.parametrize('pin_length', [0., .0005])
+def test_realized_coax_before_run(entry, pin_length):
+    from dataclasses import fields
+    from rfx.realized_geometry import realized_geometry
+    from rfx.model.realization_report import rebuild_view
+    sim = scene()
+    sim._coaxial_ports[0] = sim._coaxial_ports[0]._replace(pin_length=pin_length)
+    before = realized_geometry(sim).ports[0]
+    assert getattr(sim, '_coax_geometry', None) is None
+    assert realized_geometry(sim).ports[0] == before
+    options = (dict(s_param_freqs=np.array([5e9])) if entry == 'run'
+               else dict(port_s11_freqs=np.array([5e9])))
+    result = getattr(sim, entry)(n_steps=3, skip_preflight=True, **options)
+    after = rebuild_view(sim, result.realized_geometry, False).ports[0]
+    metadata = result.coax_port_metadata['coax_port:0:mode:0']
+    print({f.name: (len(getattr(before, f.name)) if f.name in ('pin_cells', 'cleared_bore_cells')
+           else tuple(map(len, before.cleared_bore_edges)) if f.name == 'cleared_bore_edges'
+           else getattr(before, f.name)) for f in fields(before)})
+    check_realized_coax(before, after, metadata, pin_length)
+
+
+def check_realized_coax_refusal(row, error):
+    assert row.error == str(error)
+    assert row.z_tem_ohm is None
+    assert row.pin_cells == ()
+    assert row == type(row)('coaxial_port[0]', 'coaxial', None, (), error=str(error))
+
+
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_realized_coax_refusal_before_run(monkeypatch, entry):
+    from rfx.realized_geometry import realized_geometry
+    sim, _ = enclosed_line_scene()
+    sim.add(Box((.0075, .006, .0385), (.008, .0065, .039)), material='pec')
+    record = realized_geometry(sim)
+    assert record.conductors is not None
+    assert record.realization_table is not None
+    row = record.ports[0]
+    error = refusal(monkeypatch, sim, entry, r'user PEC in front.*pin.s tip node')
+    print(row)
+    check_realized_coax_refusal(row, error)

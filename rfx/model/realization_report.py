@@ -23,11 +23,7 @@ def rebuild_view(sim, solved, smoothing, conformal=None):
             root.pec_cells, 0, _warn_experimental=False, _prepare_only=True)
     else:
         root = preview_port_stages(reader, root)
-        if reader._coaxial_ports and solved.lane in ('run_uniform', 'fwd_uniform'):
-            from rfx.model.coax_port import assemble_coax_port
-            from rfx.sources.port_drive import PortSourceQueue
-            _, root, _ = assemble_coax_port(reader, root.grid, root.materials,
-                root, PortSourceQueue(), [], n_steps=1)
+        root = preview_coax_port(reader, root, solved.lane)
     _integrals(reader, root, solved.realization_table, smoothing, conformal)
     rebuilt = finish_table(reader, root, lane=solved.lane)
     table = solved.realization_table
@@ -72,3 +68,15 @@ def _integrals(sim, root, table, smoothing, conformal=None):
         form_tensor_operands(sim, root.grid, root.materials,
             subpixel_smoothing=mode, conformal=conformal,
             conformal_min_weight=.1, pec_shapes=shapes)
+
+
+def preview_coax_port(sim, root, lane):
+    """Assemble uniform diagnostic ports without publishing calculator caches."""
+    if sim._coaxial_ports and lane in ('run_uniform', 'fwd_uniform'):
+        import copy
+        from rfx.model.coax_port import assemble_coax_port
+        from rfx.sources.port_drive import PortSourceQueue
+        reader = copy.copy(sim)
+        _, root, _ = assemble_coax_port(reader, root.grid, root.materials,
+            root, PortSourceQueue(), [], n_steps=1)
+    return root
