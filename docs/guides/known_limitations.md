@@ -770,6 +770,19 @@ Tracker: #2725
 
 The waveguide ports' own mode profiles do not have this problem: they take the requested mode within the pair.
 
+### Saved waveguide-port configurations checked in another process can read "cannot judge" for a correct record.
+
+Tracker: #2988
+
+`settling_db_from_port_records` rebuilds each port's incident tables in float64 and requires them to equal the stored
+tables bit for bit. The last bit of that rebuild depends on which SIMD path NumPy takes on the machine. Configurations
+saved on one machine and checked on another (or under another `NPY_DISABLE_CPU_FEATURES` setting) can therefore be
+refused: the settling value is NaN, with status `undetermined` and the reason "… is not the table its configuration
+rebuilds …". On one x86 machine with AVX512, tables built with NumPy's AVX512 path enabled and rebuilt with it disabled
+differed by one float64 unit in the last place at the table's peak, and the check refused them in both directions.
+The check passes in the process that built the record. Run the settling check where the record was built, or on a
+machine with the same NumPy build and CPU features.
+
 ### MSL S-parameters under `eps_override` refuse an override that varies under a port line, and a call under `jax.jit`
 
 Tracker: none — accepted limitation (refused at default: tests/unit/sparams/test_msl_feed_shift_eps_override.py::test_override_varying_along_the_shifted_length_is_refused_by_port_name)
