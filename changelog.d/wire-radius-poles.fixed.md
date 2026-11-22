@@ -1,4 +1,4 @@
-### Fixed — Wire ports with a radius admit pole materials away from the pin (#2968)
+### Fixed — Wire ports with a radius admit pole materials away from the pin (#PR)
 
 - `add_port(..., radius=...)` now runs when Debye, Lorentz or Drude material cells stay outside the port's electric
   stencil, on uniform and graded Yee meshes and the distributed paths that support radius.
