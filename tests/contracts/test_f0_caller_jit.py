@@ -1,6 +1,7 @@
 """A concrete f0 warning must preserve the sheet under caller jit."""
 
 import re
+import sys
 import warnings
 
 import jax
@@ -60,11 +61,11 @@ def test_concrete_caller_jit_series_and_warning():
         warnings.simplefilter("always")
         compiled = np.asarray(jax.jit(g)(1.0))
     error, bar = float(np.max(np.abs(compiled - eager))), _peak_bar(eager)
-    print(f"ROW i: max_abs_error={error!r}, bar={bar!r}, peak={np.max(np.abs(eager))!r}")
+    print(f"ROW i: max_abs_error={error!r}, bar={bar!r}, peak={np.max(np.abs(eager))!r}", file=sys.stderr)
     assert np.isfinite(eager).all() and np.isfinite(compiled).all()
     assert error <= bar
     eager_rs, jit_rs = _rs_text(eager_warnings), _rs_text(jit_warnings)
-    print(f"ROW i warning: eager={eager_rs!r}, jit={jit_rs!r}")
+    print(f"ROW i warning: eager={eager_rs!r}, jit={jit_rs!r}", file=sys.stderr)
     assert len(eager_rs) == 1
     assert jit_rs == eager_rs
 
@@ -84,7 +85,7 @@ def test_traced_widths_caller_jit_loss_and_gradient():
         error = np.abs(actual.astype(np.float64) - expected.astype(np.float64))
         bar = 1e-4 * np.abs(expected.astype(np.float64))
         print(f"ROW ii {name}: eager={expected.tolist()!r}, jit={actual.tolist()!r}, "
-              f"abs_error={error.tolist()!r}, bar={bar.tolist()!r}")
+              f"abs_error={error.tolist()!r}, bar={bar.tolist()!r}", file=sys.stderr)
         assert np.isfinite(expected).all() and np.isfinite(actual).all()
         assert np.all(error <= bar)
 
@@ -95,6 +96,6 @@ def test_eager_sheet_anchor():
     absent = np.asarray(_series(_prof_x(DELTA0), sheet=False))
     difference = float(np.max(np.abs(eager - absent)))
     bar = 100 * _peak_bar(eager)
-    print(f"ANCHOR: max_abs_difference={difference!r}, bar={bar!r}")
+    print(f"ANCHOR: max_abs_difference={difference!r}, bar={bar!r}", file=sys.stderr)
     assert np.isfinite(eager).all() and np.isfinite(absent).all()
     assert difference > bar
