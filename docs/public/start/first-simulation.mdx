@@ -88,7 +88,7 @@ A probe records one field component at one point for every time step.
 
 <figure data-rfx="media">
   <img src="/rfx/start/assets/first-simulation/structure.png" loading="lazy" alt="Cut through the built model at the source height: a dielectric slab between two probes, a point source left of both, and absorber bands on all four sides with the slab running into them" />
-  <figcaption>The model as built on 2 mm cells, cut at z = 20 mm through the source and both probes. The 8 mm slab continues into the absorber, which adds 8 cells (16 mm) outside each face of the domain.</figcaption>
+  <figcaption>The model as built on 2 mm cells, cut at z = 21 mm, where the Ez source and both probes sit on the staggered grid. The 8 mm slab continues into the absorber, which adds 8 cells (16 mm) outside each face of the domain.</figcaption>
 </figure>
 
 ## 5. Preflight
@@ -128,7 +128,7 @@ print("settling:", result.settling_witness["status"])   # "absent" here: nothing
 ```
 
 <figure data-rfx="media">
-  <img src="/rfx/start/assets/first-simulation/probes.png" loading="lazy" alt="Two Ez records over time: a single pulse at probe 0 in MV/m and a smaller pulse of changing sign at probe 1 in kV/m" />
+  <img src="/rfx/start/assets/first-simulation/probes.png" loading="lazy" alt="Two Ez records over time: a single pulse at probe 0 in MV/m and a smaller bipolar pulse at probe 1 in kV/m" />
   <figcaption>Ez at the two probes over the 1000 steps of this run. The axes have different units: MV/m before the slab and kV/m behind it.</figcaption>
 </figure>
 
