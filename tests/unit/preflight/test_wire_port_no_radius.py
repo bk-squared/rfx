@@ -70,6 +70,17 @@ def test_one_mm_wire_port_without_radius_reports_dX_per_halving():
     assert "does not converge" in str(issue)
 
 
+def test_wire_port_warning_distinguishes_lower_bound_from_observed_value():
+    sim = _uniform()
+    sim.add_port((3 * MM, 2.5 * MM, 3 * MM), "ey", extent=1 * MM,
+                 waveform=GaussianPulse(f0=5.8e9, bandwidth=0.8))
+    found = _findings(sim)
+    assert len(found) == 1
+    text = str(found[0])
+    assert "a lower bound" in text
+    assert "not a bound" in text
+
+
 def test_wire_port_with_radius_reports_nothing():
     sim = _uniform()
     sim.add_port((3 * MM, 2.5 * MM, 3 * MM), "ey", extent=1 * MM,
