@@ -57,6 +57,16 @@ print(s1.shape, float(np.max(np.abs(s1 - s2))))
 (1, 1, 50) 0.0
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/run/assets/multi-device/structure.png" loading="lazy" alt="Section through a domain surrounded by absorber: a square slab in the middle, the port to its left and the probe to its right." />
+  <figcaption>The model of <code>build()</code>, cut at y = 24 mm, the node plane of the Ez samples requested at y = 25 mm. The port and the probe are at x = 18 and 44 mm, z = 21 mm, on each side of the slab.</figcaption>
+</figure>
+
+<figure data-rfx="media">
+  <img src="/rfx/run/assets/multi-device/records.png" loading="lazy" alt="Two probe Ez records against time up to 1.14 ns, solid and dashed: one pulse with a few oscillations that dies out by about 0.9 ns, and the two curves lie on top of each other." />
+  <figcaption>The probe's Ez from the one-device run (solid) and from the run that requests two CPU devices (dashed), over 300 steps that end at 1.14 ns. The script printed 2 for the device count and 0.0 for the largest difference relative to the largest |Ez| of the one-device run.</figcaption>
+</figure>
+
 Split over two CPU devices, this run's probe signal and S11 are identical to the
 one-device run. A difference at float32 rounding level on another CPU is not a
 different model.
