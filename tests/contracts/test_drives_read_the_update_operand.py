@@ -536,7 +536,7 @@ def test_graded_conformal_and_kottke_are_refused(entry, branch, name):
 
 _RADIUS_REFUSAL = (
     'wire-port radius material records are not implemented on uniform Yee with '
-    'dispersion/UPML/tensor or design-box updates; resolve the pin geometrically '
+    'UPML/tensor or design-box updates; resolve the pin geometrically '
     '(for example a coax feed or a volume wire).')
 
 
