@@ -616,7 +616,7 @@ def _refuse_zero_cells(shape, name, what: str, *, cell_sizes=None, centres=None,
 
 def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
                           normal_axis=None, name=None, lane: str = "",
-                          refuse_thick: bool = False, grid=None):
+                          refuse_thick: bool = False, grid=None, nominal_grid=None):
     """A :class:`SheetSpec` for a sheet declaration (§1.3).
 
     * plane = the node plane nearest the shape's mid-plane along
@@ -628,8 +628,10 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     * ``refuse_thick`` (``add_thin_conductor``): a shape thicker than one
       local cell along its normal is not a sheet.
 
-    The plane is a static int, so a traced mesh (node coordinates are
-    tracers) cannot declare a PEC sheet — the caller decides what to do.
+    On traced coordinates, a concrete normal resolves the sheet on the host
+    nominal grid; its footprint then follows those nodes as the mesh moves.
+    Traced in-plane axes require declared nominal profiles. A traced normal
+    or traced coordinates without a nominal grid are refused.
     Returns the spec; raises ``ValueError`` on a zero footprint.
     """
     from rfx.boundaries.pec import SheetSpec
@@ -639,7 +641,9 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
         raise NotImplementedError(
             "OrientedBox is a volume; axis-aligned sheet conversion is not implemented")
 
-    if _is_traced_coords(coords):
+    traced = _is_traced_coords(coords)
+    reference_grid = nominal_grid if nominal_grid is not None else grid
+    if traced and reference_grid is None:
         raise RfxRefusal(
             f"sheet {name!r}: a sheet's plane is a static integer, and this "
             "mesh is a JAX tracer (mesh-as-design-variable), so the nearest "
@@ -657,6 +661,24 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     if normal_axis is None:
         normal_axis = min(range(3), key=lambda i: extents[i])
     a = int(normal_axis)
+    if traced:
+        if is_tracer(coords[a]):
+            raise RfxRefusal(
+                f"sheet {name!r}: a sheet's plane is a static integer, and "
+                f"normal axis {'xyz'[a]} is a JAX tracer; pin that axis or "
+                "declare the conductor as a volume.")
+        for axis in range(3):
+            if axis != a and is_tracer(coords[axis]) and 'xyz'[axis] not in (
+                    getattr(reference_grid, "nominal_cells", None) or {}):
+                raise RfxRefusal(
+                    f"sheet {name!r}: traced in-plane axis {'xyz'[axis]} needs "
+                    f"nominal_profiles; declare nominal_profiles for axis {'xyz'[axis]} "
+                    "or use add_pinned_sheet.")
+        from rfx.model.graded_grid import host_nominal_grid
+        with jax.ensure_compile_time_eval():
+            nominal = host_nominal_grid(reference_grid)
+            coords = coords_from_nonuniform_grid(nominal)
+            cell_sizes = cell_sizes_from_nonuniform_grid(nominal)
     node_axes = footprint_sample_coords(
         coords, tuple(t for t in range(3) if t != a), carrier="node")
     if cell_sizes is None:
@@ -854,7 +876,7 @@ def sheet_footprint_traced(shape, coords: GridCoords, normal_axis: int, cell_siz
     """Sheet footprint on a TRACED mesh (mesh-as-design-variable), no plane.
 
     The plane of a sheet is a static integer under the contract, which a
-    traced node line cannot provide, so a PEC sheet is refused there
+    traced normal node line cannot provide, so a PEC sheet is refused there
     (:func:`sheet_spec_from_shape`). The f0 sheet only needs the footprint
     mask; this is the traced twin of the concrete rule — a Box footprint is
     CLOSED on the in-plane axes and one-hot at the nearest node along the
@@ -1076,7 +1098,7 @@ def _static_wire_min_cell(points, node_axes, cell_sizes):
 
 def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
                        cell_sizes=None, *, name=None, grid=None, domain_faces=None,
-                       sub_region=False):
+                       sub_region=False, nominal_grid=None):
     """Classify one PEC geometry entry (``sim.add(shape, material=pec)``).
 
     Returns ``(cell_mask, sheet, wire)`` with exactly one of the three set:
@@ -1125,7 +1147,8 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
                 "one zero-extent axis.")
         if len(zero) == 1:
             return None, sheet_spec_from_shape(
-                shape, coords, cell_sizes, normal_axis=zero[0], name=name, grid=grid), None
+                shape, coords, cell_sizes, normal_axis=zero[0], name=name, grid=grid,
+                nominal_grid=nominal_grid), None
         if not traced:
             subcell = _subcell_axes(lo, hi, node_axes, cell_sizes)
             if subcell:
