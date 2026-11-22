@@ -220,15 +220,15 @@ def test_shared_h_owner_all_axes_and_x64(axis):
 
 @pytest.mark.parametrize("lane", ["uniform", "nonuniform"])
 @pytest.mark.parametrize("kind", ["debye", "lorentz"])
-def test_radius_refuses_dispersive_board_before_step(lane, kind, monkeypatch):
+def test_radius_refuses_dispersive_stencil_before_step(lane, kind, monkeypatch):
     sim = _plates(.5e-3, lane)
     poles = (dict(debye_poles=[DebyePole(delta_eps=1., tau=1e-11)]) if kind == "debye"
              else dict(lorentz_poles=[LorentzPole(omega_0=2*np.pi*20e9,
                                                  delta=1e9, kappa=(2*np.pi*20e9)**2)]))
     sim.add_material("dispersive", eps_r=2., **poles)
-    sim.add(Box((.001, .001, .0005), (.002, .002, .001)), material="dispersive")
+    sim.add(Box((.0035, .0035, .0005), (.004, .004, .001)), material="dispersive")
     monkeypatch.setattr(jax.lax, "scan", lambda *a, **k: pytest.fail("stepped before refusal"))
-    with pytest.raises(NotImplementedError, match="radius"):
+    with pytest.raises(NotImplementedError, match=r"port\[0\].*stencil cell.*ε∞/4"):
         sim.run(n_steps=1, skip_preflight=True)
 
 
