@@ -33,6 +33,8 @@ def line():
     sim.add(Box((0., 0., 0.), (.340, .003, .002)), material='vacuum')
     sim._geometry.insert(0, sim._geometry.pop())
     sim.add_probe(position=(.010, .001, 0), component='ez')
+    sim.add_dft_plane_probe(axis='x', coordinate=.010, component='ez',
+                            n_freqs=7, name='read')
     return sim
 
 
@@ -76,11 +78,15 @@ def test_library_sweep_member_uses_its_own_declaration(capsys):
     result = records(sim, jnp.float32(OVERRIDE_EPS))
     check_window(result.dt)
     series = np.asarray(result.time_series)[None]
+    names = tuple(result.dft_planes)
+    planes = tuple(result.dft_planes.values())
+    accumulators = {name: np.asarray(plane.accumulator)[None]
+                    for name, plane in result.dft_planes.items()}
     _, base_rows = sweep_member_witnesses(
-        sim, result.grid, series, (), (), {}, param_name='eps_r',
+        sim, result.grid, series, names, planes, accumulators, param_name='eps_r',
         param_values=np.array([DECLARED_EPS]))
     _, member_rows = sweep_member_witnesses(
-        sim, result.grid, series, (), (), {}, param_name='eps_r',
+        sim, result.grid, series, names, planes, accumulators, param_name='eps_r',
         param_values=np.array([OVERRIDE_EPS]))
     base, = base_rows
     row, = member_rows
