@@ -52,6 +52,16 @@ print(result.time_series.shape)
 
 {/* rfx-hello-world:end */}
 
+<figure data-rfx="media">
+  <img src="/rfx/guide/assets/first-run/structure.png" loading="lazy" alt="Outline of a square 20 mm domain in the x-z plane, with the source at the middle in x and the probe 4 mm to its right, both just above mid-height." />
+  <figcaption>The model this code builds, cut at y = 10 mm: 10 × 10 × 10 cells of 2 mm inside PEC faces. The source drives Ez at x = 10 mm and the probe records it at x = 14 mm, both at z = 11 mm, half a cell above the requested 10 mm.</figcaption>
+</figure>
+
+<figure data-rfx="media">
+  <img src="/rfx/guide/assets/first-run/record.png" loading="lazy" alt="Ez at the probe against time: one smooth positive pulse that peaks near 0.24 ns at about 1.5×10⁷ in arbitrary units and is back near zero at the end of the record." />
+  <figcaption>The probe's Ez over the 120 steps of this run, which end at 0.458 ns, computed on a single 2 mm mesh.</figcaption>
+</figure>
+
 ## Read the result
 
 The model is a 20 mm vacuum cube with perfectly conducting (PEC) walls and 2 mm
