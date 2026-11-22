@@ -44,6 +44,14 @@ ECHO_BOUND_FACTOR = 2.05
 """Minimum longest round trips inside an identification window."""
 
 
+def _echo_bound_unavailable_reason(exc):
+    """Keep tracer refusals independent of the trace's argument names."""
+    from jax.errors import JAXTypeError
+
+    detail = "traced operands" if isinstance(exc, JAXTypeError) else str(exc)
+    return f"cannot judge: echo delay bound unavailable: {detail}; pass echo_bound="
+
+
 def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_ports=(),
                      debye=None, lorentz=None):
     """Return ``tau_max, D, n_max, g`` from the realized physical domain.
@@ -122,7 +130,7 @@ def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_po
         return echo_delay_bound_on_grid(grid, dict(n_max=n_max, g=g))
     except (TypeError, ValueError, AttributeError, OverflowError) as exc:
         return dict(tau_max=None, D=None, n_max=None, g=None,
-                    reason=f"cannot judge: echo delay bound unavailable: {exc}; pass echo_bound=")
+                    reason=_echo_bound_unavailable_reason(exc))
 
 
 def echo_delay_bound_on_grid(grid, bound):
@@ -152,7 +160,7 @@ def echo_delay_bound_on_grid(grid, bound):
                     D=D, n_max=bound['n_max'], g=bound['g'])
     except (TypeError, ValueError, AttributeError, OverflowError) as exc:
         return dict(tau_max=None, D=None, n_max=bound['n_max'], g=bound['g'],
-                    reason=f"cannot judge: echo delay bound unavailable: {exc}; pass echo_bound=")
+                    reason=_echo_bound_unavailable_reason(exc))
 
 
 def echo_bound_reason(bound):

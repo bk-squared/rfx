@@ -78,6 +78,34 @@ def test_realized_bound_preserves_a_plan_refusal():
     assert echo_delay_bound_on_grid(None, refused) is refused
 
 
+def test_echo_bound_refusal_reason_is_independent_of_trace_argument_names():
+    """Two traces of one model keep material and width refusals identical."""
+    from types import SimpleNamespace
+
+    import jax
+    import jax.numpy as jnp
+
+    sim = Simulation(freq_max=20e9, domain=(.012, .011, .005), dx=.001,
+                     boundary='pec', dx_profile=np.full(12, .001))
+    grid = sim._build_realized_grid()
+    bounds = []
+
+    def model(scale):
+        live = grid._replace(dx_arr=jnp.asarray(grid.dx_arr) * scale, dx_arr_f64=None)
+        material = SimpleNamespace(eps_r=scale, mu_r=1.)
+        bounds.append((echo_delay_bound(grid, materials=material),
+                       echo_delay_bound(live, sim=sim)))
+        return scale
+
+    jax.jit(model)(jnp.float32(1.))
+    jax.jit(lambda value: model(value))(jnp.float32(1.))
+    assert len(bounds) == 2
+    for original, fresh in zip(*bounds):
+        assert original['reason'] == fresh['reason']
+        assert original['reason'] == (
+            "cannot judge: echo delay bound unavailable: traced operands; pass echo_bound=")
+
+
 def test_traced_step_refuses_only_until_a_realized_host_step_is_available():
     """The closing call supplies its host step without changing the stored plan."""
     import copy
