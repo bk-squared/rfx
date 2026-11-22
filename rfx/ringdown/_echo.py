@@ -57,7 +57,7 @@ def forward_closing_factor(plan, context, dt, cells, *, dtype, index_read=None,
             fields[store] = np.asarray(live)
             if exact_of[store] in template._fields:
                 fields[exact_of[store]] = np.asarray(live, dtype=np.float64)
-        grid = template._replace(**fields)
+        grid = template._replace(**fields) if fields else template
         live_plan = copy.copy(plan)
         if index_read is not None:
             live_plan.echo_bound = dict(n_max=index_read(*operands[len(cells):]),
