@@ -314,7 +314,8 @@ def _forward_from_materials(
             # Capture the pre-clearing live-cell mask for the deferred drive.
             materials = setup_wire_port(
                 grid, wp, materials,
-                pec_edge_masks=pec_edge_masks_local)
+                pec_edge_masks=pec_edge_masks_local,
+                radius_sim=self, radius_port=f"port[{_port_index}]")
             if _drive_this_port:
                 sources.defer(make_wire_port_sources,
                     grid, wp, n_steps=n_steps,
