@@ -652,8 +652,8 @@ def test_nonuniform_lane_power_calibration_and_slot():
     0.4953, 21 cells reads 0.5039. On the 20-cell profile, which realizes
     the uniform fixture's own 33 x 33 x 33, the two lanes agree.
 
-    Measured on this tree: D = 1.761428040 dBi against the uniform rung's
-    1.761429829, ratio 0.500321038 against 0.500320703, settling -78.40 dB.
+    Measured on this tree at 515 steps: D = 1.761135618 dBi against the uniform
+    rung's 1.761134975, ratio 0.497860278 against 0.497861110, settling -93.41 dB.
     Mutations measured at 400 steps, same fixture: E stamped at n*dt -> ratio 0.492221, D err
     0.010 dB; NTFF accumulate moved above the NU E update -> ratio 0.506219,
     D err 0.011 dB. Both cross the gates.

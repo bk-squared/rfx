@@ -210,6 +210,7 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
     if bound is None:
         bound = echo_delay_bound(result.grid, sim=sim, freqs=result_read_bins(result),
                                  waveguide_ports=getattr(result, 'waveguide_ports', None))
+    result = result._replace(settling_echo_bound=bound)
     if forward_result:
         from rfx.core.jax_utils import is_tracer
         from rfx.sparams._record_selection import s_read_records

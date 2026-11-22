@@ -109,7 +109,8 @@ def build_settling_witness(result, *, bins, dt, freq_max, probe_info,
     if getattr(result, 'waveguide_ports', None):
         db, detail = settling_db_from_port_records(
             result.waveguide_ports.values(), freqs=bins,
-            freq_max=freq_max, return_detail=True)
+            freq_max=freq_max, return_detail=True,
+            echo_bound=getattr(result, 'settling_echo_bound', None))
         rows.append({**detail, 'reads': ('S-parameters',)})
     probe_db, probe_detail = probe_record_settling_witness(
         getattr(result, 'time_series', None), probe_info, warn=warn,

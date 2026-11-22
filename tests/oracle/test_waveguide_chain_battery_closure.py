@@ -251,7 +251,8 @@ def _run_monitor_solve(dut: str, dx: float = RUNG_DX_M) -> dict:
     flux_f64 = {name: np.asarray(flux_spectrum(res.flux_monitors[name], exact_f64=True),
                                  dtype=float)
                 for name in (MON_IN_NAME, MON_OUT_NAME)}
-    settling = float(settling_db_from_port_records(list(res.waveguide_ports.values())))
+    settling = float(settling_db_from_port_records(
+        list(res.waveguide_ports.values()), echo_bound=res.settling_echo_bound))
     return {
         "dut": dut,
         "dx_m": float(dx),

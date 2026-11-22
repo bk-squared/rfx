@@ -1319,7 +1319,7 @@ def s4_spg_records():
             result = sim.compute_waveguide_s_matrix(num_periods=periods, normalize=False)
             elapsed = time.monotonic() - start
             results[periods] = (result, tuple(captured[-2:]), elapsed)
-            print(f'SP-g P{periods}: {elapsed:.6f} seconds')
+            print(f'SP-g P{periods}: {elapsed:.6f} seconds', file=sys.stderr)
     return results
 
 
@@ -1350,7 +1350,7 @@ def test_s4_spg_s11_lengthening_reduces_error(s4_spg_records):
     assert e99 < e30
     assert long['status_per_entry']['S11'] == 'pass', long
     assert e99 <= 1e-2
-    print(f'SP-g S11 at 8 GHz: P30 e_Q={e30:.12g}, P99 e_Q={e99:.12g}')
+    print(f'SP-g S11 at 8 GHz: P30 e_Q={e30:.12g}, P99 e_Q={e99:.12g}', file=sys.stderr)
 
 
 def test_s4_spg_s22_windows_disagree(s4_spg_records):
