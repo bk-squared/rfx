@@ -40,9 +40,8 @@ def forward_closing_factor(plan, context, dt, cells, *, dtype):
     discrete and has no derivative; multiplying by NaN carries a refusal
     through both the completed value and its derivatives.
     """
-    import jax
     import numpy as np
-    from rfx.ringdown._jax import _callback_keywords
+    from rfx.ringdown._jax import host_closing_factor
 
     if not cells:
         return close_completion(plan, 1., grid=context.grid, dt=dt)[0]
@@ -58,6 +57,4 @@ def forward_closing_factor(plan, context, dt, cells, *, dtype):
         grid = template._replace(**fields)
         return np.asarray(close_completion(plan, 1., grid=grid, dt=dt)[0], dtype=dtype)
 
-    return jax.pure_callback(judge, jax.ShapeDtypeStruct((), dtype),
-                             *(jax.lax.stop_gradient(c) for c in cells),
-                             **_callback_keywords())
+    return host_closing_factor(judge, dtype, *cells)

@@ -98,6 +98,13 @@ def _callback_keywords():
     return {"vectorized": False}
 
 
+def host_closing_factor(host, dtype, *operands):
+    """Return a scalar host judgement with no derivative through its operands."""
+    return jax.pure_callback(host, jax.ShapeDtypeStruct((), dtype),
+                             *(jax.lax.stop_gradient(c) for c in operands),
+                             **_callback_keywords())
+
+
 # ---------------------------------------------------------------------------
 # Poles from the host
 # ---------------------------------------------------------------------------
