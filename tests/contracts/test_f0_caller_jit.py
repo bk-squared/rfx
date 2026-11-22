@@ -27,6 +27,7 @@ DELTA0 = 0.5 * DX
 ALWAYS_ON_WRITERS = {
     "add": "concrete_f0",
     "add_coaxial_port": ("_coaxial_ports", "coax_port"),
+    "add_dft_plane_probe": ("_dft_planes", "dft_plane"),
     "add_current_moment_monitor": ("_current_moments", "block_moments"),
     "add_floquet_port": ("_floquet_ports", "floquet_port"),
     "add_flux_monitor": ("_flux_monitors", "flux"),
@@ -35,6 +36,7 @@ ALWAYS_ON_WRITERS = {
     "add_msl_port": ("_msl_ports", "msl_port"),
     "add_ntff_box": ("_ntff", "ntff_box"),
     "add_pinned_sheet": ("_pinned_sheets", "pec_sheet"),
+    "add_polarized_source": "add_polarized_source",
     "add_port": ("_ports", "passive_port"),
     "add_probe": "concrete_f0",
     "add_refinement": ("_refinement", "slab"),
@@ -54,10 +56,6 @@ EXTRA_WRITER_CALLS = {
         ("_probes", "probe"), ((.003, .002, .002),),
         dict(polarization=(1., 2.), amplitude_kind="current"),
     ),
-}
-SLOW_DELEGATE_ROWS = {
-    "add_dft_plane_probe": ("_dft_planes", "dft_plane"),
-    "add_polarized_source": "add_polarized_source",
 }
 
 
@@ -162,7 +160,7 @@ def _eps_loss(eps):
 
 
 def test_traced_eps_through_declaration():
-    """A traced material value keeps its derivative through the wrapped body."""
+    """A traced material value keeps its derivative through the declaration body."""
     loss = _eps_loss
     eps = jnp.asarray(2.5, dtype=jnp.float32)
     eager_loss, eager_grad = jax.value_and_grad(loss)(eps)
@@ -183,7 +181,7 @@ def test_traced_eps_vmap_through_declaration():
 
 @pytest.mark.slow
 def test_traced_f0_through_declaration():
-    """A traced sheet frequency remains differentiable inside the wrapped body."""
+    """A traced sheet frequency remains differentiable inside the declaration body."""
     def loss(f0):
         return jnp.sum(_series(_prof_x(DELTA0), f0=f0) ** 2)
 
@@ -222,31 +220,6 @@ def test_wall_loss_caller_jit_and_anchor():
     assert difference > 100 * bar
 
 
-def test_subclass_declaration_descriptors_and_signatures():
-    """Static and class descriptors retain binding on the instance and class."""
-    class Subclass(Simulation):
-        @staticmethod
-        def add_helper(value):
-            return value
-
-        @classmethod
-        def add_cfg(cls, value):
-            return cls, value
-
-    sim = Subclass(freq_max=10e9, domain=(.01,) * 3, dx=.001, boundary="pec")
-    for receiver in (sim, Subclass):
-        assert receiver.add_helper(3) == 3
-        assert receiver.add_cfg(3) == (Subclass, 3)
-    assert isinstance(inspect.getattr_static(Subclass, "add_helper"), staticmethod)
-    assert isinstance(inspect.getattr_static(Subclass, "add_cfg"), classmethod)
-    for name in dir(Simulation):
-        if name == "add" or name.startswith("add_"):
-            method = getattr(Simulation, name)
-            assert inspect.signature(method) == inspect.signature(inspect.unwrap(method))
-            assert getattr(Subclass, name) is method
-    print("SUBCLASS: static/class calls preserve binding; all declaration signatures preserved", file=sys.stderr)
-
-
 def _declaration_writes(method):
     """Find direct stores and container mutations independently of method names."""
     attributes = dict(DECLARATIONS)
@@ -281,23 +254,19 @@ def _declaration_writes(method):
     return sorted(writes)
 
 
-def test_declaration_wrapper_census():
-    """Every declaration writer and every public add method carries the marker."""
+def test_declaration_always_on_census():
+    """Every declaration writer and public add method has an always-on jit row."""
     methods = {name: getattr(Simulation, name) for name in dir(Simulation)
                if not name.startswith("_") and callable(getattr(Simulation, name))}
     census = {name: writes for name, method in methods.items()
               if (writes := _declaration_writes(method))}
     declarations = {name for name in methods if name == "add" or name.startswith("add_")}
     print(f"CENSUS count={len(census)}: {census!r}", file=sys.stderr)
-    wrapped = sorted(name for name, method in methods.items()
-                     if getattr(method, "_rfx_declaration_setup", False))
-    print(f"WRAPPED count={len(wrapped)}: {wrapped!r}", file=sys.stderr)
+    required = census.keys() | declarations
+    print(f"ALWAYS-ON count={len(ALWAYS_ON_WRITERS)}: {ALWAYS_ON_WRITERS!r}", file=sys.stderr)
     assert not census.keys() - declarations, "STOP: declaration writer outside add/add_* rule"
-    assert not (census.keys() | declarations) - set(wrapped)
-    assert not census.keys() - ALWAYS_ON_WRITERS.keys(), "declaration writer needs an always-on row"
-    covered = ALWAYS_ON_WRITERS | SLOW_DELEGATE_ROWS
-    assert not set(wrapped) - covered.keys(), "wrapped method needs an always-on or slow row"
-    assert set(SLOW_DELEGATE_ROWS.values()) <= BUILDERS.keys() | EXTRA_WRITER_CALLS.keys()
+    assert not required - ALWAYS_ON_WRITERS.keys(), "public declaration needs an always-on row"
+    assert not ALWAYS_ON_WRITERS.keys() - required, "always-on map contains an unknown declaration"
     assert ALWAYS_ON_MATRIX_ROWS <= BUILDERS.keys()
     assert set(ALWAYS_ON_WRITERS.values()) <= (
         BUILDERS.keys() | EXTRA_WRITER_CALLS.keys() | {"concrete_f0", "add_wall_loss"})
@@ -321,10 +290,7 @@ def test_declaration_caller_jit_matrix(row):
     _assert_caller_jit(g, row, lane, require_arrivals=True)
 
 
-@pytest.mark.parametrize("method", [
-    pytest.param(method, marks=pytest.mark.slow if method in SLOW_DELEGATE_ROWS else ())
-    for method in EXTRA_WRITER_CALLS
-])
+@pytest.mark.parametrize("method", list(EXTRA_WRITER_CALLS))
 def test_declaration_caller_jit_extra_writer(method):
     """Cover declarations absent from BUILDERS on their uniform scene rows.
 

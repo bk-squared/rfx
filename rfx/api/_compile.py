@@ -10,7 +10,6 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
-import inspect
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -63,17 +62,6 @@ class _CompileMixin:
     Mixed into ``Simulation``; all methods stay bound methods on a
     ``Simulation`` instance (resolved via MRO).
     """
-
-    def __init_subclass__(cls, **kwargs):
-        """Wrap declarations, including inherited and assigned public methods, once."""
-        super().__init_subclass__(**kwargs)
-        from rfx.api._declaration_methods import wrap_declaration
-
-        for name in dir(cls):
-            if name == "add" or name.startswith("add_"):
-                method = inspect.getattr_static(cls, name)
-                if inspect.isfunction(method) and not getattr(method, "_rfx_declaration_setup", False):
-                    setattr(cls, name, wrap_declaration(method))
 
     def _periodic_flags(self) -> tuple[bool, bool, bool]:
         """THE run's per-axis periodic flags — one spelling.
