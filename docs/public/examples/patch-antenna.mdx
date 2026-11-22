@@ -26,6 +26,11 @@ the openEMS "Simple Patch Antenna" geometry, including far-field mode
 identification. [Benchmarks](/rfx/guide/benchmarks/) shows how rfx's patch
 cases compare with openEMS.
 
+<figure data-rfx="media">
+  <img src="/rfx/examples/assets/patch-antenna/structure.png" loading="lazy" alt="Top view and x-z cut of the patch antenna example: a small board inside a dashed far-field box, inside the absorber, with the bottom face of the box just below the ground" />
+  <figcaption>The model built by <code>patch_antenna_demo.py</code>: a 32 × 40 mm patch over a 60 × 60 mm ground, with the substrate built 58.6 × 58.6 mm for 60 × 60 mm drawn. The far-field box's bottom face is solved 5.3 mm below the ground.</figcaption>
+</figure>
+
 ## Modelling rules
 
 - **Finite ground, open domain.** Draw the ground plane as a conductor inside an
@@ -86,6 +91,11 @@ with each face about half a wavelength from the radiator where the domain
 allows. The face below the ground plane often cannot be that far; preflight
 tells you, and you should report it with the result. Evaluate the pattern at
 the radiating mode's frequency. See [Far-Field and RCS](/rfx/measure/far-field-and-rcs/).
+
+<figure data-rfx="media">
+  <img src="/rfx/examples/assets/patch-antenna/pattern.png" loading="lazy" alt="Two far-field cuts against angle from broadside, each a single broad lobe with its maximum near 0 degrees" />
+  <figcaption>The example's cuts at 2.4 GHz, the recorded frequency nearest its 2.447 GHz mode, each normalized to its own maximum. This is one 2 mm mesh with a passing ring-down check, and preflight flags the near bottom face of the box: “directivity / pattern likely corrupted”.</figcaption>
+</figure>
 
 ## Design iteration
 

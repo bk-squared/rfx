@@ -86,6 +86,11 @@ sim.add_probe((0.046, 0.02, 0.02), "ez")   # probe 1: behind the slab
 
 A probe records one field component at one point for every time step.
 
+<figure data-rfx="media">
+  <img src="/rfx/start/assets/first-simulation/structure.png" loading="lazy" alt="Cut through the built model at the source height: a dielectric slab between two probes, a point source left of both, and absorber bands on all four sides with the slab running into them" />
+  <figcaption>The model as built on 2 mm cells, cut at z = 20 mm through the source and both probes. The 8 mm slab continues into the absorber, which adds 8 cells (16 mm) outside each face of the domain.</figcaption>
+</figure>
+
 ## 5. Preflight
 
 ```python
@@ -121,6 +126,11 @@ in_band = (freqs > 1e9) & (freqs < 5e9)
 ratio = spectrum[in_band, 1] / spectrum[in_band, 0]
 print("settling:", result.settling_witness["status"])   # "absent" here: nothing to judge
 ```
+
+<figure data-rfx="media">
+  <img src="/rfx/start/assets/first-simulation/probes.png" loading="lazy" alt="Two Ez records over time: a single pulse at probe 0 in MV/m and a smaller pulse of changing sign at probe 1 in kV/m" />
+  <figcaption>Ez at the two probes over the 1000 steps of this run. The axes have different units: MV/m before the slab and kV/m behind it.</figcaption>
+</figure>
 
 - `result.time_series` has one column per probe, in registration order.
 - `result.settling_db` judges whether the record was long enough for the
