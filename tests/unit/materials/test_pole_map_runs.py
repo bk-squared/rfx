@@ -283,7 +283,6 @@ def test_p6_traced_forward(monkeypatch, graded):
     active_by_component = concrete_path.pop('active')
     paths = [concrete_path]
     occupied = np.asarray(mask, bool)
-    # At least one neighbouring occupied pair differs in both strength and damping.
     mixed = occupied[1:] & occupied[:-1] & (np.diff(pole.delta, axis=0) != 0) & (np.diff(pole.kappa, axis=0) != 0)
     assert np.any(mixed)
     def measured(scale):
@@ -360,10 +359,10 @@ def zero_scene(graded, all_zero, scale=1., without=False):
 
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 def test_p2c_prime_fields(monkeypatch, graded):
+    """The zero-strength band is checked only in its interior to exclude the mixed interface edge."""
     all_zero = False
     sim, grid, meta = zero_scene(graded, all_zero)
     base = capture_scan(sim, 400, monkeypatch)
-    # The interior of the zero-strength band excludes its mixed interface edge.
     widths = np.asarray(grid.cells(0), float)
     nodes = np.r_[0., np.cumsum(widths[:-1])]
     nodes -= nodes[8]
@@ -384,7 +383,6 @@ def test_p2c_prime_fields(monkeypatch, graded):
         polarization, probes = measure(scan)
         traces = probes[0] if isinstance(probes, tuple) else probes
         return jnp.sum(traces**2), jnp.max(polarization)
-    # One scalar direction needs no reverse-mode tape of the full domain.
     energy, gradient, traced_p = jax.jit(lambda scale: jax.jvp(
         traced, (scale,), (jnp.ones_like(scale),), has_aux=True))(jnp.float32(1.))
     assert np.isfinite(energy) and np.isfinite(gradient)

@@ -34,9 +34,6 @@ from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole, LorentzPoleMap
 
 
-# ---------------------------------------------------------------------------
-# Named material library — common RF/microwave materials
-# ---------------------------------------------------------------------------
 
 from rfx.materials.library import MATERIAL_LIBRARY
 from rfx.diagnostic_records import Diagnostic
@@ -46,9 +43,6 @@ from rfx.measurement.msl_planes import MSLFeedPlaneFields
 from rfx.api._artifact_serialization import _artifact_to_dict
 
 
-# ---------------------------------------------------------------------------
-# Result container
-# ---------------------------------------------------------------------------
 
 from rfx.api._ad_memory_types import AD_MemoryEstimate
 
@@ -547,6 +541,7 @@ class Result(NamedTuple):
     settling_witness : dict or None
         Status, reason, per-bin tail shares and identification errors, and
         selected-record provenance for the value witness.
+    In ``snapshot_axes`` and ``state``, E samples are at integer steps of ``dt`` and H samples are half a step behind.
     """
     state: object
     time_series: jnp.ndarray
@@ -565,49 +560,12 @@ class Result(NamedTuple):
     freq_range: tuple | None = None
     settling_db: float | None = None
     settling_witness: dict | None = None
-    #: Per-wire-port ``(meta, accs)`` pairs, one per wire port in
-    #: declaration order, where ``accs`` holds the raw DFT accumulators
-    #: ``(v, i, v_inc, v_port)`` in that order. The diagnostic channel
-    #: ``ForwardResult`` already carries: S-parameters are a RATIO and carry
-    #: no level, so a caller asking what fraction of the port's INCIDENT
-    #: power a structure absorbed needs these. ``None`` on lanes that never
-    #: attach them.
-    #:
-    #: Both lanes use this PAIR shape, so ``for meta, accs in
-    #: result.wire_port_sparams`` runs on either, but the entries differ.
-    #: ``meta`` is the wire-port S-param spec object on the uniform lane
-    #: (rfx/simulation.py — ``.freqs``, ``.excite``, ``.impedance``) and the
-    #: runner's static metadata tuple on the graded-mesh one
-    #: (``rfx.nonuniform._build_wp_meta`` — impedance at slot 4, ``excite``
-    #: at slot 7). ``accs`` carries a fifth slot, the pre-injection drive
-    #: reference ``v_ref``, on both lanes; the first four
-    #: are the same channels on both.
     wire_port_sparams: tuple | None = None
-    #: Lumped ``(spec, (V, I, V_ref))`` pairs on both meshes when spectra exist; None otherwise.
     lumped_port_sparams: tuple | None = None
-    #: ``run(..., ringdown=RingdownSpec(...))`` only: a
-    #: :class:`rfx.ringdown.RingdownResult` holding the wire-port S-matrix
-    #: with the record's unrecorded ring-down added in closed form
-    #: (``.s_params``, same shape and bins as ``s_params``) and the report its
-    #: witnesses are in (``.report``). ``None`` on every other run; every
-    #: other field is the same as without ``ringdown=``.
     ringdown: object = None
-    #: Per snapshot component, a :class:`rfx.snapshots.SnapshotAxes`: the
-    #: coordinate in metres of every recorded sample along each kept axis
-    #: (model frame, CPML cells included), the slice plane, and the step
-    #: count and time of each frame -- E at ``steps * dt``, H half a step
-    #: earlier. ``None`` when no snapshot was recorded. For the
-    #: arrays of ``state`` use ``rfx.field_sample_coords(grid, component)``;
-    #: ``state`` holds E at ``state.step * dt`` and H at
-    #: ``(state.step - 1/2) * dt``.
     snapshot_axes: dict | None = None
-    # In-loop block current moments (rfx.current_moments): the accumulator
-    # (n_freqs, n_blocks, 3, n_weights) and the slab/block map it belongs to.
     current_moment_data: object = None
     current_moment_monitor: object = None
-    #: Host-side geometry record for the configuration that produced this run.
-    #: Filled by run_uniform, run_subgridded, run_distributed (uniform), and run_nonuniform; None on other lanes.
-    #: Also None for traced mesh coordinates; other record errors propagate.
     realized_geometry: object = None
     sparam_time_records: tuple | None = None
     sparam_read_ids: object = None
@@ -704,14 +662,6 @@ class Result(NamedTuple):
         _w.warn(msg, AccuracyWarning, stacklevel=2)
         return False
 
-    # ------------------------------------------------------------------
-    # RF-friendly S-parameter accessors
-    #
-    # Convention: port numbers are 1-indexed (RF usage), so ``s(1, 1)``
-    # is S11 = port1->port1.  The underlying ``s_params`` array is
-    # 0-indexed with layout ``(n_ports, n_ports, n_freqs)`` — the
-    # ``m, n`` ports map to ``s_params[m - 1, n - 1, :]``.
-    # ------------------------------------------------------------------
 
     @property
     def freqs_hz(self) -> np.ndarray:
@@ -791,11 +741,6 @@ class Result(NamedTuple):
         mag = np.abs(self.s(m, n))
         return 20.0 * np.log10(np.maximum(mag, 1e-10))
 
-    # ------------------------------------------------------------------
-    # One-call plotting — thin wrappers over the existing engine in
-    # rfx.visualize / rfx.smith. Imports stay lazy so ``import rfx``
-    # remains light and headless-safe.
-    # ------------------------------------------------------------------
 
     def plot_s_params(self, *, db: bool = True, title: str = "S-Parameters"):
         """Plot all S-parameter magnitudes vs frequency.
@@ -956,6 +901,7 @@ class ForwardResult(NamedTuple):
     Above about 1e-2 means unsettled; small proves nothing: it follows the strongest field
     and says nothing about the adjoint record. None for autodiff, NaN for zero signal.
     Use :func:`rfx.gradient_record_length_witness` to witness an adjoint gradient.
+    Each ``wire_port_sparams`` entry's ``accs`` holds the DFT accumulators ``(v, i, v_inc, v_port, v_ref)`` in that order on both meshes.
     """
     time_series: jnp.ndarray
     ntff_data: object = None
@@ -970,7 +916,6 @@ class ForwardResult(NamedTuple):
     dt: object = None
     ringdown: object = None
     design_box_held_edges: object = None
-    #: (pinned-sheet index, user-facing report name): not run on that addressed sheet.
     sheet_reports_skipped: tuple | None = None
     current_moment_data: object = None
     current_moment_monitor: object = None
@@ -979,7 +924,6 @@ class ForwardResult(NamedTuple):
     settling_source_end_index: object = None
     settling_accumulator_end_index: int | None = None
     settling_coverage: object = None
-    #: First post-source sample at the user probes (None: settling_source_end_index).
     settling_probe_source_end_index: object = None
     settling_freq_max: object = None
     sparam_time_records: tuple | None = None
@@ -1027,24 +971,20 @@ class ForwardResult(NamedTuple):
         return forward_settling_witness(self)[1]
 
 
-# ---------------------------------------------------------------------------
-# Material specification
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class MaterialSpec:
-    """Material definition with optional Debye/Lorentz dispersion."""
+    """Material definition with optional Debye/Lorentz dispersion.
+    ``chi3`` is the third-order Kerr susceptibility in square metres per square volt.
+    """
     eps_r: float = 1.0
     sigma: float = 0.0
     mu_r: float = 1.0
     debye_poles: list[DebyePole] | None = None
     lorentz_poles: list[LorentzPole | LorentzPoleMap] | None = None
-    chi3: float = 0.0  # Third-order Kerr susceptibility (m^2/V^2)
+    chi3: float = 0.0
 
 
-# ---------------------------------------------------------------------------
-# Internal bookkeeping types
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class _GeometryEntry:
@@ -1054,38 +994,15 @@ class _GeometryEntry:
 
 @dataclass(frozen=True)
 class _PortEntry(PortKind):
+    """A non-``None`` ``direction`` names the outward normal from the port face into the external world."""
     position: tuple[float, float, float]
     component: str
     impedance: float
     waveform: GaussianPulse
     extent: float | None = None
-    # Port excitation mode:
-    #   excite=True  → resistive termination + source (legacy behaviour)
-    #   excite=False → resistive termination only (matched passive load)
-    # Passive ports are essential for multi-port S-parameter extraction
-    # where only one port drives the DUT at a time.
     excite: bool = True
-    # Port outward-normal direction (port face → external world). Used by
-    # the S-matrix extraction to orient the V/I wave decomposition: at a
-    # port looking in +x, the incoming (into-DUT) wave is the +x-moving
-    # wave, so `a = (V + Z·I)/2`. At a -x port, signs flip. Valid
-    # values: "+x", "-x", "+y", "-y". None → auto-detect from position
-    # at sim-build time.
     direction: str | None = None
-    # Opt-in reference-plane port waves for the wire S-matrix OFF-diagonal
-    # extraction: when set to an integer N, the production
-    # scan registers TWO line V/I reference planes at N and 2N cells
-    # outboard (into the DUT) and the off-diagonal S_ij switch to plane
-    # waves with measured Zc/beta. None (default) = shipped port-cell
-    # behaviour, byte-identical. Diagonal S_jj always stays on the legacy
-    # path either way.
     reference_plane_cells: int | None = None
-    # Soft-source amplitude semantics:
-    # add_source stores 'field' or 'current' (None resolves to 'current').
-    # Only meaningful when impedance == 0.0 (add_source soft sources); port
-    # entries (impedance > 0) keep their own port-normalized waveform
-    # contract and never set this. Defaulted so every non-add_source
-    # _PortEntry construction site is untouched.
     amplitude_kind: str | None = None
     terminates: tuple = ()
 
@@ -1114,15 +1031,16 @@ class _DFTPlaneEntry:
 
 @dataclass(frozen=True)
 class _FluxMonitorEntry:
+    """``size`` and ``center`` describe extent and center along the two axes tangential to the monitor plane."""
     name: str
     axis: str
     coordinate: float
     freqs: jnp.ndarray | None
     n_freqs: int
-    size: tuple[float, float] | None = None    # tangential extent (dim1, dim2)
-    center: tuple[float, float] | None = None  # tangential center (dim1, dim2)
-    dft_window: str = "rect"                    # streaming DFT window
-    dft_window_alpha: float = 0.25              # Tukey shape parameter
+    size: tuple[float, float] | None = None
+    center: tuple[float, float] | None = None
+    dft_window: str = "rect"
+    dft_window_alpha: float = 0.25
 
 
 @dataclass(frozen=True)
@@ -1541,7 +1459,6 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
     assembly: str | None = None
     cond_a: np.ndarray | None = None
     beta_railed: np.ndarray | None = None
-    # Same order as port_names; independent of the frequency-wise signal mask.
     probe_clearance: tuple[MSLProbeClearance, ...] | None = None
     reference_impedances: np.ndarray | None = None
     sigma_max_excess: np.ndarray | None = None
@@ -1624,12 +1541,8 @@ class MixedSMatrixResult(MSLFeedPlaneFields):
     S_raw: np.ndarray | None = None
     passivity_correction: np.ndarray | None = None
     beta_railed: np.ndarray | None = None
-    # Arch-A magnitude channel: off-diagonal magnitudes come
-    # from Poynting flux by default; ``S_wave`` keeps the raw power-wave
-    # matrix for comparison (None when magnitude_channel="wave").
     S_wave: np.ndarray | None = None
     magnitude_channel: str = "wave"
-    # MSL records only, in MSL registration order (as with reliable/beta_railed).
     probe_clearance: tuple[MSLProbeClearance, ...] | None = None
     settling_witness: tuple | None = None
     diagnostics: tuple[Diagnostic, ...] = ()
@@ -1974,9 +1887,6 @@ class CoaxMSLTransitionResult:
     a_inc: np.ndarray
     b_out: np.ndarray
     settling_db: np.ndarray
-    # ladder self-consistency witness (report-only). Defaulted so
-    # the field addition cannot break a positional construction elsewhere;
-    # compute_coax_msl_transition always supplies both.
     ladder_split_gamma_dev: np.ndarray | None = None
     ladder_split_reflection_decades: np.ndarray | None = None
     status: str = "experimental"

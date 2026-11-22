@@ -1102,9 +1102,13 @@ def _layout_stage_error(index, sheet, stage, axis, edge):
 def refuse_layout_port_releases(layout, conductors):
     """Every published port release matters, including passive loads (R12.2)."""
     details = {(component, tuple(edge)): f"{kind} port-release stage ({entity})"
-               for entity, kind, component, edge, _ in conductors._released_port_details}
+               for entity, kind, component, edge, _ in conductors._released_port_details
+               if kind != 'lumped_rlc'}
+    elements = {entity for entity, kind, *_ in conductors._released_port_details
+                if kind == 'lumped_rlc'}
     for entity, component, edge in conductors.released_port_edges:
-        details.setdefault((component, tuple(edge)), f"port-release stage ({entity})")
+        if entity not in elements:
+            details.setdefault((component, tuple(edge)), f"port-release stage ({entity})")
     for index, sheet, axis, indices in _layout_edges(layout, conductors.grid):
         for edge in zip(*(v.ravel().tolist() for v in indices)):
             stage = details.get((f"e{'xyz'[axis]}", edge))
@@ -1142,22 +1146,11 @@ def refuse_layout_metal_consumers(layout, sim, grid):
             "open plane wave on the graded mesh admits no finite scatterer, drawn or switched; "
             "excite the switched layout with a port, or draw each layout and run it on the "
             "uniform mesh (closed_box=True)")
-    from rfx._internal._grid_metric import field_index
     from rfx.sources.msl_port import msl_cross_section_span, msl_port_from_entry
-    rlc_stages = {
-        (spec.component, tuple(field_index(grid, spec.position, spec.component))):
-        ("lumped RLC post-keep solve" if spec.topology == 'series' or spec.L > 0 else
-         f"lumped_rlc[{i}], which the switched sheet would short "
-         "(a layout keeps no element edge free),")
-        for i, spec in enumerate(sim._lumped_rlc)
-    }
     spans = [msl_cross_section_span(grid, msl_port_from_entry(port))
              for port in sim._msl_ports]
     for index, sheet, axis, indices in _layout_edges(layout, grid):
         for edge in zip(*(v.ravel().tolist() for v in indices)):
-            stage = rlc_stages.get((f"e{'xyz'[axis]}", edge))
-            if stage is not None:
-                _layout_stage_error(index, sheet, stage, axis, edge)
             if getattr(sim, '_current_moments', None) is not None:
                 _layout_stage_error(index, sheet, "current-moment metal census", axis, edge)
             for span in spans:

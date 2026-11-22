@@ -10,6 +10,7 @@ Validates that:
 7. S-parameter extraction through the API works
 8. Differentiable mode (checkpoint) works through the API
 9. Validation catches bad inputs
+Every domain length written as N * (299792458.0 / 5e9 / 20.0) is a whole number of cells of dx, so the solved domain equals the declared one.
 """
 from rfx.boundaries.spec import BoundarySpec
 
@@ -33,7 +34,7 @@ from rfx.simulation import make_port_source, make_probe, run as low_level_run
 
 def test_basic_simulation():
     """Minimal simulation: PEC cavity with a source and probe."""
-    sim = Simulation(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length
+    sim = Simulation(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
     sim.add_port((0.015, 0.015, 0.015), "ez")
     sim.add_probe((0.02, 0.02, 0.02), "ez")
 
@@ -186,7 +187,8 @@ def test_tfsf_negative_x_direction_through_api():
 
 
 def test_tfsf_oblique_incidence_through_api():
-    """High-level API should support oblique Ez-polarized TFSF."""
+    """High-level API should support oblique Ez-polarized TFSF.
+    The extra 83 steps supply 2 tau (f0 5 GHz, bw 0.2, dt 7.63 ps) for the Bloch pulse's 5 tau peak."""
     sim = Simulation(
         freq_max=5e9,
         domain=(0.12, 0.12, 0.006),
@@ -200,7 +202,7 @@ def test_tfsf_oblique_incidence_through_api():
     )
     sim.add_probe((0.04, 0.06, 0.003), "ez")
 
-    # + 83 steps = 2 tau (f0 5 GHz, bw 0.2, dt 7.63 ps): the Bloch pulse peaks at 5 tau.
+
     n_steps = 120 + 83
     result = sim.run(n_steps=n_steps, compute_s_params=False)
 
@@ -211,7 +213,7 @@ def test_tfsf_oblique_incidence_through_api():
 
 def test_dft_plane_probe_through_api():
     """High-level API should expose plane DFT monitors."""
-    sim = Simulation(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length
+    sim = Simulation(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
     sim.add_port((0.015, 0.015, 0.015), "ez")
     sim.add_dft_plane_probe(
         axis="x",
@@ -309,28 +311,32 @@ def test_waveguide_port_geometry_changes_response():
         dx=0.002,
     )
 
+    PORT_X_M = 0.01
+    LOADED_SLAB_END_X_M = 0.08
+    VACUUM_PROBE_OFFSET_CELLS = 40
+    assert PORT_X_M + VACUUM_PROBE_OFFSET_CELLS * base_kwargs["dx"] > LOADED_SLAB_END_X_M, "The S21 probe must stay in vacuum beyond the loaded slab."
     sim_empty = Simulation(**base_kwargs)
     sim_empty.add_waveguide_port(
-        0.01,
+        PORT_X_M,
         mode=(1, 0),
         mode_type="TE",
         freqs=jnp.linspace(4.5e9, 8e9, 12),
         f0=6e9,
-        probe_offset=40,  # x=90 mm: vacuum beyond the loaded slab.
+        probe_offset=VACUUM_PROBE_OFFSET_CELLS,
         ref_offset=3,
         name="wg0",
     )
 
     sim_loaded = Simulation(**base_kwargs)
     sim_loaded.add_material("diel", eps_r=2.5)
-    sim_loaded.add(Box((0.04, 0.0, 0.0), (0.08, 0.04, 0.02)), material="diel")
+    sim_loaded.add(Box((0.04, 0.0, 0.0), (LOADED_SLAB_END_X_M, 0.04, 0.02)), material="diel")
     sim_loaded.add_waveguide_port(
-        0.01,
+        PORT_X_M,
         mode=(1, 0),
         mode_type="TE",
         freqs=jnp.linspace(4.5e9, 8e9, 12),
         f0=6e9,
-        probe_offset=40,  # Match the launch medium for S21 decomposition.
+        probe_offset=VACUUM_PROBE_OFFSET_CELLS,
         ref_offset=3,
         name="wg0",
     )
@@ -436,6 +442,7 @@ def test_waveguide_four_port_parallel_guides_through_api():
     extractor's own passivity self-check must fire on this geometry. If a
     reference-run fix lands and the S-matrix becomes passive, this test FAILS —
     upgrade it to real magnitude/passivity gates instead of deleting the wrapper.
+    A full-height volume septum drawn node to node realizes electric walls on both bounding planes.
     """
     sim = Simulation(
         freq_max=10e9,
@@ -444,11 +451,8 @@ def test_waveguide_four_port_parallel_guides_through_api():
         cpml_layers=10,
         dx=0.002,
     )
-    # A full-height septum: a VOLUME, 10 cells across in y and
-    # drawn node to node. It realizes electric walls on BOTH bounding planes
-    # (y = 40 mm and y = 60 mm, 11 planes against the earlier 10), so each
-    # guide either side of it is one cell narrower than before and every
-    # number below was re-measured under that realization.
+
+
     sim.add(Box((0.0, 0.04, 0.0), (0.12, 0.06, 0.02)), material="pec")
     common = dict(
         mode=(1, 0),
@@ -463,8 +467,7 @@ def test_waveguide_four_port_parallel_guides_through_api():
     sim.add_waveguide_port(0.09, y_range=(0.00, 0.04), z_range=(0.00, 0.02), direction="-x", name="right_lo", **common)
     sim.add_waveguide_port(0.09, y_range=(0.06, 0.10), z_range=(0.00, 0.02), direction="-x", name="right_hi", **common)
 
-    # Interior-PEC vacuum-reference limitation: the extractor's passivity
-    # self-check MUST fire here (locked — see docstring).
+
     with pytest.warns(UserWarning, match="passivity"):
         result = sim.compute_waveguide_s_matrix(num_periods=30)
     S = result.s_params
@@ -476,16 +479,17 @@ def test_waveguide_four_port_parallel_guides_through_api():
     cross_lo_to_hi = np.mean(np.abs(S[3, 0, :]))
     cross_hi_to_lo = np.mean(np.abs(S[2, 1, :]))
 
-    # Channel-is-alive (inflated scale — see docstring; NOT calibrated |S|).
+
     assert lo_tx > 0.2
     assert hi_tx > 0.2
-    # Relative isolation (normalization-independent within a driven column).
+
     assert cross_lo_to_hi < lo_tx
     assert cross_hi_to_lo < hi_tx
 
 
 def test_waveguide_same_boundary_overlapping_apertures_reject():
-    """Ports sharing a boundary plane must have disjoint apertures."""
+    """Ports sharing a boundary plane must have disjoint apertures.
+    Conductors on each rim keep the overlapping aperture declaration invalid for its disjoint-aperture reason."""
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.10, 0.02),
@@ -493,8 +497,8 @@ def test_waveguide_same_boundary_overlapping_apertures_reject():
         cpml_layers=10,
         dx=0.002,
     )
-    # Keep the overlapping aperture declaration invalid for its original
-    # reason, with conductors on each rim for the earlier admission check.
+
+
     for y in (0.04, 0.05, 0.09):
         sim.add(Box((0., y, 0.), (0.12, y, 0.02)), material="pec")
     common = dict(
@@ -513,7 +517,8 @@ def test_waveguide_same_boundary_overlapping_apertures_reject():
 
 
 def test_waveguide_two_port_y_normal_s_matrix_through_api():
-    """Y-normal end ports should produce a reciprocal two-port guide S-matrix."""
+    """Y-normal end ports should produce a reciprocal two-port guide S-matrix.
+    normalize=True is used because the raw path retains |S|>1 / reciprocity-error by design."""
     sim = Simulation(
         freq_max=10e9,
         domain=(0.04, 0.12, 0.02),
@@ -532,8 +537,7 @@ def test_waveguide_two_port_y_normal_s_matrix_through_api():
     sim.add_waveguide_port(0.01, direction="+y", name="bottom", **common)
     sim.add_waveguide_port(0.09, direction="-y", name="top", **common)
 
-    # normalize=True — raw path retains |S|>1 / reciprocity-error by
-    # design.
+
     result = sim.compute_waveguide_s_matrix(num_periods=30, normalize=True)
     s_bottom_top = result.s_params[1, 0, :]
     s_top_bottom = result.s_params[0, 1, :]
@@ -1094,7 +1098,7 @@ def test_fluent_api():
 
 def test_checkpoint_through_api():
     """Checkpoint mode works through the high-level API."""
-    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
     sim.add_port((0.005, 0.0075, 0.0075), "ez")
     sim.add_probe((0.01, 0.0075, 0.0075), "ez")
 
@@ -1107,7 +1111,7 @@ def test_checkpoint_through_api():
 
 def test_gradient_through_api():
     """AD gradient flows through the high-level API."""
-    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
     sim.add_probe((0.01, 0.0075, 0.0075), "ez")
 
     grid = sim._build_grid()
@@ -1200,31 +1204,28 @@ def test_five_line_patch_workflow():
       5. result = sim.run(n_steps=...)
 
     Centre sampling includes the 1.6 mm substrate at dx=3mm.
+    The zero-thickness patch Box declares a sheet at z=0.8 mm that realizes at z=0 on the coarse 3 mm mesh, with its offset reported rather than absorbed.
     """
-    # geometry[0] y solved -18.97 % off its domain-clipped drawing; this test checks five line patch workflow.
+
     sim = rfx.Simulation(snap="declared",
         freq_max=4e9, domain=(0.08, 0.06, 0.02),
         boundary="cpml", cpml_layers=8, dx=3e-3,
     )
-    # The patch is a ZERO-thickness Box, which the lattice ownership contract
-    # reads as a sheet declaration (§1.5) — that clause exists so this
-    # documented five-line workflow stays five lines. On this deliberately
-    # coarse CI mesh (dx = 3 mm) the declared plane z = 0.8 mm is below half a
-    # cell above the substrate floor, so the sheet realizes at z = 0; the
-    # contract reports that offset rather than absorbing it.
+
+
     sim.add(
         Box((-19e-3, -14.5e-3, 0.8e-3), (19e-3, 14.5e-3, 0.8e-3)),
         material="pec",
-    )  # patch
+    )
     sim.add(
         Box((-30e-3, -25e-3, 0), (30e-3, 25e-3, 1.6e-3)),
         material="fr4",
-    )  # substrate
+    )
     sim.add_port(position=(5e-3, 0, 0.8e-3), component="ez")
     result = sim.run(n_steps=50)
 
     assert isinstance(result, Result)
-    # The port excites the domain; verify non-zero fields in final state
+
     ez_peak = float(jnp.max(jnp.abs(result.state.ez)))
     assert ez_peak > 0, "Port should excite non-zero Ez field"
 
@@ -1292,6 +1293,6 @@ def test_four_port_septum_realizes_walls_on_both_drawn_faces():
     j_hi = node_index(rz.grid, 1, 0.06)
     assert_wall_planes(sim, 1, expected_planes=range(j_lo, j_hi + 1),
                        what="the septum")
-    # every normal Ey strictly inside the septum is shorted
+
     ey = np.asarray(rz.edge_masks[1])
     assert ey[rz.grid.shape[0] // 2, j_lo:j_hi, rz.grid.shape[2] // 2].all()

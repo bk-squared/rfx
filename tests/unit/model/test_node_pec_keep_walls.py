@@ -39,7 +39,7 @@ def slab_scene(*, plane_wave):
 
 def test_graded_plane_wave_admits_full_tensor(monkeypatch):
     observed = observe_nodes(monkeypatch)
-    # Include public preflight, as well as the step setup's admission checks.
+
     result = slab_scene(plane_wave=True).run(n_steps=40, subpixel_smoothing='full_tensor')
     assert observed
     expected = np.ones(result.grid.shape, dtype=bool)
@@ -57,7 +57,7 @@ def test_graded_wall_edges_stay_inactive_and_zero(monkeypatch):
     assert observed
     shape = result.grid.shape
     wall_edges = np.zeros((3, *shape), dtype=bool)
-    # Independent tangential-edge ownership: component != wall normal.
+
     for normal in range(3):
         for plane in (0, shape[normal] - 1):
             for component in range(3):
@@ -75,6 +75,7 @@ def test_graded_wall_edges_stay_inactive_and_zero(monkeypatch):
 
 
 def test_uniform_conductor_keep_is_exactly_box_edges(monkeypatch):
+    """Along an E edge's own axis use cell centres (2:4), with transverse node coordinates including both faces (2:5)."""
     observed = observe_nodes(monkeypatch)
     sim = Simulation(freq_max=20e9, domain=(.008, .007, .006), dx=.001,
                      boundary='pec', cpml_layers=0)
@@ -87,8 +88,8 @@ def test_uniform_conductor_keep_is_exactly_box_edges(monkeypatch):
     result = sim.run(n_steps=1, skip_preflight=True, subpixel_smoothing='full_tensor')
     assert observed
     expected = np.ones((3, *result.grid.shape), dtype=bool)
-    # The closed box owns cells 2:4. Along an E edge's own axis use
-    # cell centres (2:4); transverse node coordinates include both faces (2:5).
+
+
     for component in range(3):
         cut = [component, slice(2, 5), slice(2, 5), slice(2, 5)]
         cut[component + 1] = slice(2, 4)
@@ -120,6 +121,7 @@ def test_r1_traced_nonzero_plane_coupling_raises():
     curved face on the plane is judged by the TF/SF plane check at run time,
     as a concrete eps is: the same named refusal, never a raw error. Smoothing
     True: full_tensor refuses a traced eps at admission (#2441).
+    JIT wraps a callback's RfxRefusal in the backend runtime exception.
     """
     import jax
     import jax.numpy as jnp
@@ -135,7 +137,7 @@ def test_r1_traced_nonzero_plane_coupling_raises():
         objective(4.)
     with pytest.raises(RfxRefusal, match='requires vacuum'):
         jax.grad(objective)(4.)
-    # JIT wraps a callback's RfxRefusal in the backend runtime exception.
+
     with pytest.raises(jax.errors.JaxRuntimeError, match='requires vacuum'):
         jax.block_until_ready(jax.jit(objective)(jnp.float32(4.)))
 
@@ -165,7 +167,7 @@ def test_masked_couplings_match_numpy_output_edges():
                     for sa in (0, 1):
                         for sb in (0, 1):
                             expected = np.zeros(shape, dtype=np.float32)
-                            # Enumerate output edges, not the helper's shift implementation.
+
                             for edge in np.ndindex(shape):
                                 source = list(edge)
                                 source[output] += sa if direction == 'forward' else sb
@@ -204,6 +206,7 @@ def test_traced_masked_coupling_warns_on_uniformity():
 
 
 def test_r2_curved_face_reaching_y_absorber_refuses():
+    """The plus/plus x-z coefficient reaches the x output edge without a shift."""
     import pytest
     from rfx import Cylinder
     from rfx.errors import RfxRefusal
@@ -222,8 +225,8 @@ def test_r2_curved_face_reaching_y_absorber_refuses():
     for raw in (*nodes.cross, *nodes.cross_reverse):
         raw = np.asarray(raw)
         np.testing.assert_array_equal(raw, np.broadcast_to(raw[:, :, :, :1, :], raw.shape))
-    # The plus/plus x-z coefficient reaches the x output edge without a shift.
-    # NumPy constructs the applied coefficient independently of admission.
+
+
     masked = np.where(np.asarray(nodes.active[0]), np.asarray(nodes.cross[1][0, 0]), 0)
     assert not np.array_equal(masked, np.broadcast_to(masked[:, :1, :], masked.shape))
     with pytest.raises(RfxRefusal, match=(
@@ -273,8 +276,7 @@ def test_r2_uniform_raw_coupling_with_absorber_mask_refuses():
             np.testing.assert_array_equal(
                 value, np.broadcast_to(np.take(value, [0], axis=axis), value.shape))
 
-    # Match compute_node_tensor_eps: floating arrays use field_dtype;
-    # boolean arrays and the guard counter keep their own dtypes.
+
     def cast(values):
         return tuple(jnp.asarray(value, dtype=materials.eps_r.dtype) for value in values)
 
@@ -291,7 +293,7 @@ def test_r2_uniform_raw_coupling_with_absorber_mask_refuses():
         tensor=TensorOperands.of(eps=cast(tuple(np.ones(shape) for _ in range(3))),
                                  node_smoothing=nodes))
     values = {'materials': materials}
-    # Raw leaves and eps are uniform; the applied, masked coefficients are not.
+
     with pytest.raises(RfxRefusal, match=r'update\.materials\.components\.tensor\.node_smoothing\.masked_cross'):
         check_arrays(cfg, grid, values, nonuniform=True)
     for axis in (1, 2):

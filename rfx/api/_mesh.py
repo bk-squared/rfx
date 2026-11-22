@@ -100,9 +100,6 @@ class _MeshMixin:
                 a is b for a, b in zip(inputs, previous)
             ):
                 return resolved
-        # Static geometry must be resolved on the host even when forward is
-        # first called inside jit/grad. A traced geometry cannot define array
-        # shapes; callers designing geometry must supply an explicit mesh.
         try:
             with jax.ensure_compile_time_eval():
                 config = self._auto_configure_mesh()
@@ -146,22 +143,11 @@ class _MeshMixin:
                 "eps_r": spec.eps_r,
                 "sigma": spec.sigma,
             }
-        # Include library materials used by geometry but not explicitly registered
         for entry in self._geometry:
             mname = entry.material_name
             if mname not in materials_dict and mname in MATERIAL_LIBRARY:
                 materials_dict[mname] = MATERIAL_LIBRARY[mname]
 
-        # Thin conductors are PEC/lossy sheets absent from self._geometry.
-        # They add no wavelength constraint, but their
-        # IN-PLANE feature size must feed the feature-based dx. Register each
-        # under a synthetic material so analyze_features() folds its bbox dims
-        # into min_thickness while classifying it by sigma (PEC vs lossy), NOT
-        # as a dielectric: sigma_bulk>=1e6 => has_pec (kept out of max_eps_r),
-        # and a sheet's zero z-extent (< 1e-12, plus the sigma<pec_threshold
-        # guard) keeps it out of z_features (no false non-uniform-z). The
-        # zero z-extent is dropped by the nonzero-dims filter, so min_thickness
-        # resolves to the in-plane extent.
         for i, tc in enumerate(self._thin_conductors):
             tc_mat = f"__thin_conductor_{i}__"
             materials_dict[tc_mat] = {"eps_r": tc.eps_r, "sigma": tc.sigma_bulk}
@@ -175,8 +161,6 @@ class _MeshMixin:
             domain=self._declared_mesh["_domain"],
             dt_override=(self._dt_pin if all(self._declared_mesh[key] is None
                          for key in ("_dx_profile", "_dy_profile", "_dz_profile")) else None),
-            # a sheet's PLANE is a z feature even though its zero
-            # thickness is not — the profile must leave a mesh line there.
             thin_conductors=self._thin_conductors,
         )
 
@@ -191,8 +175,6 @@ class _MeshMixin:
             original = self._declared_mesh["_domain"]
             frozen["_domain"] = retain_declared_domain(
                 tuple(frozen["_domain"]), getattr(original, "declared", original))
-            # An empty automatic model has no planner result yet. Capture the
-            # grid's actual default spacing so adding its first body is safe.
             if frozen["_dx"] is None:
                 frozen["_dx"] = float(grid.dx)
             for name in ("_dx_profile", "_dy_profile", "_dz_profile"):
@@ -201,8 +183,6 @@ class _MeshMixin:
                     profile.setflags(write=False)
                     frozen[name] = profile
             self.__dict__["_frozen_mesh"] = frozen
-        # Build from the owned snapshot so even the returned grid's metadata
-        # cannot retain caller-owned mutable domain/profile containers.
         return self._build_realized_grid()
 
     @property

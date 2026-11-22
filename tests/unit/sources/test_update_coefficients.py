@@ -119,7 +119,8 @@ def test_source_first_e_update(case):
 @pytest.mark.parametrize("kind", ("plain", "debye", "lorentz", "mixed"))
 @pytest.mark.parametrize("later_first", (False, True))
 def test_graded_source_final_stamp(kind, later_first):
-    """Both declaration orders see the same homogeneous ADE edge and load."""
+    """Both declaration orders see the same homogeneous ADE edge and load.
+    The port stamps sigma=1/(50*dx)=20 S/m in the homogeneous eps_inf=2 fixture."""
     from rfx.runners import nonuniform as runner
     from rfx.model.source_coefficients import current_source_volume
 
@@ -160,7 +161,7 @@ def test_graded_source_final_stamp(kind, later_first):
     grid = s._build_nonuniform_grid()
     idx = (4, 4, 4)
     dt = grid.dt
-    # Homogeneous eps_inf=2; port stamps sigma=1/(50*dx)=20 S/m.
+
     beta = (
         EPS * 2 * dt / (2 / (2 * np.pi * 9e9) + dt) if kind in ("debye", "mixed") else 0
     )

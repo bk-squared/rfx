@@ -349,7 +349,7 @@ def layout_edge_indices(grid, sheet, tangent):
 
 def with_graded_edge_keep(materials, occupancy, layout, *, grid, sources,
                           waveguide_ports, dtype, sheet_edge_masks, periodic,
-                          cells=None, sheets=(), wires=()):
+                          cells=None, sheets=(), wires=(), element_edges=()):
     """Fold the layout switch into the cell keep.
 
     Full-period node 0 and node N rows address the same physical edges.
@@ -369,9 +369,42 @@ def with_graded_edge_keep(materials, occupancy, layout, *, grid, sources,
     refuse_layout_drives(edge_sets, sources, waveguide_ports)
     keep = list(materials.edge_keep if materials.edge_keep is not None else
                 (jnp.ones(grid.shape, dtype=dtype),) * 3)
+    edge_sets = release_layout_elements(edge_sets, element_edges)
     for _index, _sheet, _tangent, axis, indices, values in edge_sets:
         keep[axis] = keep[axis].at[indices].multiply(1 - values.astype(keep[axis].dtype))
     return materials._replace(edge_keep=tuple(keep))
+
+
+def release_layout_elements(edge_sets, element_edges):
+    """Remove only element edges from layout metal, without changing conductors."""
+    import warnings
+    import numpy as np
+    from rfx.core.jax_utils import is_tracer
+    from rfx.errors import ConfigurationWarning
+    from rfx._warning_origin import user_stacklevel
+    released, descriptions, occupied = list(edge_sets), [], False
+    for number, component, edge in element_edges:
+        sheets = {}
+        for row, (index, sheet, tangent, axis, indices, values) in enumerate(released):
+            if component != f"e{'xyz'[axis]}":
+                continue
+            hits = np.logical_and.reduce([v == e for v, e in zip(indices, edge)])
+            if not np.any(hits):
+                continue
+            occupied |= is_tracer(values) or bool(np.any(np.asarray(values)[hits] != 0))
+            sheets[index] = sheet.name
+            released[row] = (index, sheet, tangent, axis, indices, jnp.where(hits, 0, values))
+        if sheets:
+            names = ', '.join(f"{i} ({name!r})" for i, name in sorted(sheets.items()))
+            label, verb = ('sheet', 'is') if len(sheets) == 1 else ('sheets', 'are')
+            descriptions.append(f"lumped_rlc[{number}] (lumped_rlc, {component}, edge {edge}): "
+                f"pinned_sheet_layout {label} {names} {verb} kept free on this edge")
+    if occupied:
+        clauses = '; '.join(descriptions)
+        warnings.warn("Port occupancy release: " + clauses
+                      + ". Each driven edge is kept free of design metal.",
+                      ConfigurationWarning, stacklevel=user_stacklevel())
+    return released
 
 
 def refuse_layout_seams(layout, grid, cells, sheets, wires, periodic):

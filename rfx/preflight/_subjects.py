@@ -96,13 +96,10 @@ class _Selection:
         if not self.keys:
             return ()
         record = self.record()
-        # Record order is declaration order, including holes in probe indices.
         table = getattr(record, "realization_table", None)
         rows = table.rows if table is not None else record.entities
         wanted = set(self.keys)
         result = tuple(row.label for row in rows if row.label in wanted)
-        # Keep missing identities visible to the contract without changing the
-        # original finding's code, severity, text or ordering.
         if wanted.difference(result):
             result += ("<unresolved finding subject>",)
         return tuple(dict.fromkeys(result))
@@ -194,8 +191,6 @@ def _finding_view(sim, record):
     if domain.axes:
         return record
     from rfx.model.realization_placements import traced_placement_rows, label_rows
-    # Keep the identity reader's existing declaration order. The public traced
-    # table retains main's geometry/domain/probe rows, without these additions.
     rows = tuple(row for row in table.rows if not row.label.startswith("probe["))
     rows += tuple(traced_placement_rows(sim, domain.status, domain.traced_inputs))
     rows += tuple(label_rows(sim))

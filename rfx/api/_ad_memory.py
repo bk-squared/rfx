@@ -41,6 +41,11 @@ from rfx.api._validators import (
 )
 
 
+_BOOL_BYTES = 1
+_FLOAT32_BYTES = 4
+_COMPLEX64_BYTES = 8
+
+
 AD_MEMORY_FIT_SAFETY_FACTOR = 1.15
 
 
@@ -93,7 +98,6 @@ def _format_memory_with_safety(value: float, safety_factor: float) -> str:
 class _AdMemoryMixin:
     _periodic_flags: Callable[[], tuple[bool, bool, bool]]
 
-    # ---- AD memory estimation ----
 
     def _ad_memory_static_accounting(self) -> dict[str, int]:
         """Return shared static byte accounting for AD memory artifacts.
@@ -131,9 +135,7 @@ class _AdMemoryMixin:
             nx, ny, nz = (int(v) for v in _grid.shape)
         except (TimeoutError,):
             raise
-        except Exception:  # noqa: BLE001 - recorded in grid_source
-            # Keep a number rather than raising out of a planning helper; label the
-            # fallback estimate so the artifact does not present it as the real grid.
+        except Exception:  # noqa: BLE001
             def _nx(extent: float, prof) -> int:
                 if prof is not None:
                     return len(prof) + 1 + 2 * self._cpml_layers
@@ -148,8 +150,7 @@ class _AdMemoryMixin:
                                     two_d=bool(getattr(_grid, "is_2d", False)), graded=is_nonuniform)
         cells = int(math.prod(allocated))
 
-        # Forward working set: 6 field + ~6 material + ~4 CPML psi (~15%)
-        bytes_per_cell = 4  # float32
+        bytes_per_cell = _FLOAT32_BYTES
         field_bytes = cells * 6 * bytes_per_cell
         material_bytes = cells * 6 * bytes_per_cell
         cpml_bytes = (
@@ -157,24 +158,19 @@ class _AdMemoryMixin:
             if self._cpml_layers > 0
             else 0
         )
-        # Surface-impedance (f0) sheet operator: three boolean tangential edge masks
-        # and one float32 sigma_sheet array, all full-grid and resident for the
-        # whole run. Count these separately from the six material arrays above: the
-        # sheet touches neither pec_mask nor materials.sigma.
         sheet_bytes = 0
         from rfx.model.wall_loss import refuse_wall_loss
         refuse_wall_loss(self, "AD memory estimate")
         if has_f0_sheets(getattr(self, "_thin_conductors", ())):
-            sheet_bytes = cells * (3 * 1 + bytes_per_cell)
+            sheet_bytes = cells * (3 * _BOOL_BYTES + bytes_per_cell)
         forward_bytes = field_bytes + material_bytes + cpml_bytes + sheet_bytes
 
-        # NTFF DFT state: 6 faces × n_freqs × face cells × (3 E + 3 H) × complex64.
         ntff_bytes = 0
         if self._ntff is not None:
             _, _, freqs = self._ntff
             n_freqs = int(len(freqs)) if freqs is not None else 10
             face_est = 2 * ((nx * ny) + (ny * nz) + (nx * nz))
-            ntff_bytes = face_est * n_freqs * 6 * 8
+            ntff_bytes = face_est * n_freqs * 6 * _COMPLEX64_BYTES
 
         return {
             "grid": _grid,
@@ -275,7 +271,7 @@ class _AdMemoryMixin:
         ntff_bytes = accounting["ntff_bytes"]
         replay_table_bytes = model["replay_table_bytes"]
         batched_bytes = (cotangents - 1) * (model["working_bytes"] + model["carry_bytes"])
-        ad_ckpt_bytes = 4 * forward_bytes + ntff_bytes + batched_bytes  # legacy heuristic
+        ad_ckpt_bytes = 4 * forward_bytes + ntff_bytes + batched_bytes
         active_steps = n_steps_i - n_warmup_i
         fixed_bytes = model["c0_bytes"] + accounting["sheet_bytes"] + model["resident_bytes"]
         ad_full_bytes = fixed_bytes + active_steps * model["tape_step_bytes"] + ntff_bytes + replay_table_bytes + batched_bytes
@@ -287,7 +283,6 @@ class _AdMemoryMixin:
             ad_seg_bytes = (fixed_bytes + saved
                             + segmented_live_tape_steps * model["tape_step_bytes"] + ntff_bytes + replay_table_bytes + batched_bytes)
 
-        # Device memory detection (best effort). CPU has no device budget.
         memory_limit_unknown = False
         memory_errors = []
         if avail_gb is None:
@@ -313,18 +308,15 @@ class _AdMemoryMixin:
                             avail_gb = limit / 1e9
                             break
                     except (TimeoutError,): raise
-                    except Exception as exc:  # noqa: BLE001 - recorded in warning
+                    except Exception as exc:  # noqa: BLE001
                         memory_errors.append(f"Device memory query failed: {type(exc).__name__}: {exc}")
                         continue
             except (TimeoutError,): raise
-            except Exception as exc:  # noqa: BLE001 - recorded in warning
+            except Exception as exc:  # noqa: BLE001
                 memory_errors.append(f"Device memory query failed: {type(exc).__name__}: {exc}")
                 avail_gb = None
 
         to_gb = 1.0 / 1e9
-        # Pick the most realistic estimate for the warning: segmented if
-        # requested, otherwise full-AD (since the legacy "checkpointed"
-        # number is unreliable — see class docstring).
         primary_bytes = ad_seg_bytes if ad_seg_bytes is not None else ad_full_bytes
         warning = tape_warning(model, checkpoint=checkpoint,
                                segments=segmented_active_segments,
@@ -589,7 +581,6 @@ class _AdMemoryMixin:
                 checkpoint=True, checkpoint_every=every, checkpoint_segments=segments,
                 ad_segmented_active_segments=count, ad_segmented_gb=memory, warning=estimate_warning)
             if self._tfsf is not None and self._tfsf.closed_box:
-                # Each candidate can choose a different representation and carry.
                 estimate = self.estimate_ad_memory(n, available_memory_gb=available,
                     n_warmup=warmup, checkpoint=True, checkpoint_every=every,
                     checkpoint_segments=segments, **options)
@@ -744,9 +735,6 @@ class _AdMemoryMixin:
             "checkpoint_segments": selected_checkpoint_segments,
             "preflight_status": status,
         }
-        # Validate whenever context is supplied (a malformed context must be
-        # rejected early even without residual_fun), but warn if a valid
-        # context is provided without a function, since it is then unused.
         merged_residual_context = (
             _validate_residual_context(
                 residual_context,
@@ -874,8 +862,6 @@ class _AdMemoryMixin:
         if target_fraction_f > 1.0:
             raise ValueError("target_fraction must be in the interval (0, 1]")
 
-        # A certificate inspects an existing executable; validation must not
-        # trace forward or depend on a usable backend before fail-closed scope.
         validate_counts(n_steps_i, n_warmup_i, checkpoint_every_i, checkpoint_segments_i)
         if design not in ("permittivity", "occupancy"):
             raise ValueError("design must be 'permittivity' or 'occupancy'")

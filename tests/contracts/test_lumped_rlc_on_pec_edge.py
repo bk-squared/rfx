@@ -378,7 +378,6 @@ def test_lumped_s_scan_carried_root_refusal(step_hook):
     assert not step_hook
 
 
-@pytest.mark.xfail(strict=True, reason="#2761 a switched pinned_sheet_layout keeps no element edge free; the stopgap refuses the scene instead of keeping the edge free with a warning")
 def test_switched_sheet_keeps_lumped_rlc_edge_free():
     from tests.contracts.test_pinned_sheet_layout import BINS, DZ, FULL, board, edge_arrays
     with_element, without_element = board(), board()

@@ -31,6 +31,7 @@ Import contract, inherited from ``rfx.api._preflight``: this module must
 import ONLY external ``rfx.*`` / stdlib / jax / numpy, never ``rfx.api`` (that
 keeps ``rfx/api/__init__.py`` the sole composition point and the import graph
 acyclic).
+``_H_LOOP`` uses Yee staggering with ``Hx[i,j,k]`` at ``(x_i, y_{j+1/2}, z_{k+1/2})`` and cyclic permutations for ``Hy`` and ``Hz``.
 """
 
 from __future__ import annotations
@@ -180,6 +181,7 @@ def _axis_pad_thickness_m(grid, axis_idx: int, side: str) -> float:
     pad sits OUTSIDE the user domain, so a port's distance to the outer wall
     is its interior distance plus this, and a re-derivation would be one more
     hand copy of allocation logic that already exists.
+    Nonuniform cell-size arrays include a trailing duplicate boundary cell beyond the physical hi-face pad.
     """
     ax = "xyz"[axis_idx]
     n = int(getattr(grid, f"pad_{ax}_{side}", 0) or 0)
@@ -189,9 +191,6 @@ def _axis_pad_thickness_m(grid, axis_idx: int, side: str) -> float:
     if arr is not None and np.ndim(arr) == 1 and (
             not is_tracer(arr) or traced_cell_mask(grid, ax) is not None):
         a = np.asarray(host_cells(grid, ax, store=True), dtype=float)
-        # NonUniformGrid pads its cell-size arrays to the NODE count and
-        # carries one trailing duplicate bounding cell, so the hi-face
-        # pad is the n entries BEFORE that duplicate, not the last n.
         if side == "lo" and a.size >= n:
             return float(a[:n].sum())
         if side == "hi" and a.size >= n + 1:
@@ -210,14 +209,6 @@ def _coord_in_absorber(
     return (lo_b is not None and coord < lo_b) or (hi_b is not None and coord > hi_b)
 
 
-# Proximity-advisory margin for ``_validate_cfg_absorber_placement``. Unlike
-# the calibrated MSL buffer in ``_check_msl_port_geometry``, no dedicated
-# sweep pins a generic probe/source margin. Two cells is a conservative
-# advisory default that still catches the one-cell-interior regression
-# fixtures. Respect ``_internal_probe_indices`` so library witness probes
-# stay exempt. The margin measures distance from
-# ``_absorber_boundary_for_axis``; its membership convention and this
-# proximity margin are independent.
 _ABSORBER_PROXIMITY_CELLS = 2
 
 
@@ -310,7 +301,7 @@ class PreflightWarning(RfxWarning):
         value = self._region
         return value.resolve() if value is not None and hasattr(value, "resolve") else value
 
-    def __str__(self) -> str:  # back-compat: warning prints as its message
+    def __str__(self) -> str:
         return self.message
 
     def to_dict(self) -> dict[str, object]:
@@ -559,9 +550,6 @@ class PreflightReport(list):
         return tuple(getattr(issue, "diagnostic", None) or from_legacy(issue)
                      for issue in self)
 
-    # Class attribute, not a module-level constant: the module namespace of
-    # ``rfx.api._preflight`` is pinned by set equality
-    # (``tests/locks/test_preflight_split_snapshot.py``) and this message belongs to the class anyway.
     _BOOL_TRAP_MESSAGE = (
         "PreflightReport cannot be evaluated as a boolean: it is a list of "
         "issues, so an EMPTY (clean) report is falsy and a report with only "
@@ -685,31 +673,7 @@ class PreflightReport(list):
         return json.dumps(self.to_dict(), **options)
 
 
-# ---------------------------------------------------------------------------
-# the ``port_in_pec`` dead-component rule and its curl-loop
-# table, moved verbatim out of ``rfx/api/_preflight.py`` (they sat between
-# ``_realized_edges_np`` and ``class _RealizedPEC`` there, which is why they
-# land at the foot here -- the realization block follows the report types in
-# the pre-split file).
-#
-# They are in ``_common`` rather than in ``rfx/preflight/ports.py`` for leg 2's
-# reason, measured again: ``_component_is_dead`` has exactly two readers and
-# they straddle this split. ``_validate_cfg_port_inside_pec`` leaves with leg 6
-# for ``ports.py``; ``_RealizedPEC.component_is_dead`` stays in the facade until
-# the realization leg. A leg module may not import from the facade, and a
-# realization leg importing from a port-family peer for a thirty-line helper is
-# the coupling this package exists to avoid.
-#
-# ``_H_LOOP`` comes with it because it has no other reader: an AST scope walk
-# over ``rfx/api/_preflight.py`` finds one load of the name, inside
-# ``_component_is_dead``. Both are re-exported by ``rfx/api/_preflight.py`` so
-# its module namespace stays exactly as wide (55 names, set equality).
-# ---------------------------------------------------------------------------
 _H_LOOP = {
-    # H component -> the four E edges of its curl loop, as (component,
-    # di, dj, dk) offsets from the H index. Hx[i,j,k] sits at
-    # (x_i, y_{j+1/2}, z_{k+1/2}); its loop is Ey[i,j,k], Ey[i,j,k+1],
-    # Ez[i,j,k], Ez[i,j+1,k]; cyclically for Hy, Hz.
     "hx": ((1, 0, 0, 0), (1, 0, 0, 1), (2, 0, 0, 0), (2, 0, 1, 0)),
     "hy": ((2, 0, 0, 0), (2, 1, 0, 0), (0, 0, 0, 0), (0, 0, 0, 1)),
     "hz": ((0, 0, 0, 0), (0, 0, 1, 0), (1, 0, 0, 0), (1, 1, 0, 0)),
@@ -749,23 +713,6 @@ def _component_is_dead(edges, component: str, idx) -> bool:
     return True
 
 
-# ---------------------------------------------------------------------------
-# The grid interface's metric rules, spelled on the DECLARED profiles.
-#
-# Preflight runs before a grid is necessarily built, and several checks here
-# would otherwise pay for a full ``_build_nonuniform_grid()`` just to read one
-# cell. These three helpers answer the same questions
-# ``rfx/_internal/_grid_metric.py``'s interface answers -- ``boundary_cell(axis, side)``,
-# ``cells(axis)[i]`` and ``is_constant(axis)`` -- from the profile a caller
-# declared plus the boundary scalar.
-#
-# They agree with the grid by construction, because the builder derives the
-# grid from exactly these inputs: ``make_nonuniform_grid`` pins a profile's
-# first and last cells as the boundary cells and pads each face with copies of
-# them, so the padded array's ends ARE the profile's ends.
-# ``tests/unit/preflight/test_profile_metric_helpers.py`` pins that agreement
-# against a real ``NonUniformGrid`` rather than asserting it here.
-# ---------------------------------------------------------------------------
 
 def profile_boundary_cell(scalar_dx: float, profile, side: str) -> float:
     """The cell at one FACE of an axis: the grid's ``boundary_cell``.
