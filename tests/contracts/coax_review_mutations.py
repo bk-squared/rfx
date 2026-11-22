@@ -7,6 +7,8 @@ import pytest
 
 
 CASES = {
+    'drude_named': ('check_refusal', "rewrite(admission, 'refuse_bore_materials', \": material '{entry.material_name}' has {words}\", '')"),
+    'dispersive_outside_bore': ('check_drude_admitted', "rewrite(admission, 'refuse_bore_materials', 'np.asarray(entry.shape.mask(root.grid)) & bore', 'np.asarray(entry.shape.mask(root.grid))')"),
     'reference_substrate': ('check_substrate_admitted', "rewrite(admission, 'refuse_bore_materials', ' & bore', ' & (bore | np.logical_or.reduce(edge_bore))')"),
     'other_excitation': ('check_refusal', "admission.refuse_other_s_drives = lambda *args: None"),
     'bore_material': ('check_refusal', "admission.refuse_bore_materials = lambda *args: None"),
@@ -29,6 +31,8 @@ CASES = {
 @pytest.mark.parametrize('mode', ['check_off', 'defect_restored'])
 def test_review_mutation(case, mode):
     check, defect = CASES[case]
+    witness = {'drude_named': 'drude_inside_bore_refused',
+               'dispersive_outside_bore': 'drude_outside_bore_admitted'}.get(case, case)
     script = '''
 import inspect
 import textwrap
@@ -46,13 +50,13 @@ def rewrite(owner, name, old, new):
     setattr(owner, name, scope[name])
 '''
     script += f'contract.{check} = lambda *args: None\n' if mode == 'check_off' else defect + '\n'
-    script += f"raise SystemExit(pytest.main(['tests/contracts/test_coax_review_refusals.py', '-q', '-o', 'addopts=', '--tb=short', '-k', 'test_{case}']))\n"
+    script += f"raise SystemExit(pytest.main(['tests/contracts/test_coax_review_refusals.py', '-q', '-o', 'addopts=', '--tb=short', '-k', 'test_{witness}']))\n"
     result = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True,
                             env=dict(os.environ, PYTEST_ADDOPTS=''))
     expected = 0 if mode == 'check_off' else 1
     print(f'{case} {mode}: exit={result.returncode}\n{result.stdout}\n{result.stderr}', file=sys.stderr)
     assert result.returncode == expected
-    assert ('passed' if expected == 0 else 'FAILED tests/contracts/test_coax_review_refusals.py::test_' + case) in result.stdout
+    assert ('passed' if expected == 0 else 'FAILED tests/contracts/test_coax_review_refusals.py::test_' + witness) in result.stdout
 
 
 @pytest.mark.parametrize('case,module,selection', [

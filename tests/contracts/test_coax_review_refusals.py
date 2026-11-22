@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, DebyePole
+from rfx import Box, DebyePole, drude_pole
 from rfx.errors import RfxUnsupported
 from tests.contracts.test_coax_port_model_and_drive import scene, capture, Captured
 
@@ -28,6 +28,50 @@ def refusal(monkeypatch, sim, entry, pattern, **options):
     except Exception as caught:
         error = caught
     check_refusal(error, pattern)
+
+
+def check_drude_admitted(captured, error, box):
+    """The pole couples only to Yee edges incident on the plasma box's cells."""
+    assert error is None, repr(error)
+    assert captured['lorentz'] is not None
+    coeffs, _ = captured['lorentz']
+    cells = np.asarray(box.mask(captured['grid']))
+    assert cells.any()
+    for axis, component in enumerate(coeffs.c):
+        coupling = np.asarray(component)
+        assert coupling.shape == (1,) + cells.shape
+        assert np.all(coupling[0][cells] > 0)
+        edges = cells.copy()
+        for transverse in range(3):
+            if transverse != axis:
+                edges |= np.roll(edges, 1, axis=transverse)
+        assert np.all(coupling[0][edges] > 0)
+        assert np.all(coupling[0][~edges] == 0)
+
+
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_drude_outside_bore_admitted(monkeypatch, entry):
+    """The box ends at x = y = .003, beyond the bore centred at .006."""
+    sim = scene()
+    sim.add_material('plasma', eps_r=1., lorentz_poles=[drude_pole(2*np.pi*5e9, 1e9)])
+    box = Box((.001, .001, .020), (.003, .003, .022))
+    sim.add(box, material='plasma')
+    port = sim._coaxial_ports[0]
+    assert np.hypot(.006 - .003, .006 - .003) > port.outer_radius
+    captured, error = None, None
+    try:
+        captured = capture(monkeypatch, sim, entry)
+    except Exception as caught:
+        error = caught
+    check_drude_admitted(captured, error, box)
+
+
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_drude_inside_bore_refused(monkeypatch, entry):
+    sim = scene()
+    sim.add_material('plasma', eps_r=1., lorentz_poles=[drude_pole(2*np.pi*5e9, 1e9)])
+    sim.add(Box((.005, .005, .010), (.007, .007, .011)), material='plasma')
+    refusal(monkeypatch, sim, entry, r"material 'plasma' has a Drude pole")
 
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])

@@ -27,13 +27,21 @@ def refuse_traced_materials(materials):
 
 def refuse_bore_materials(sim, root, materials, bore, edge_bore):
     from rfx.core.yee import lumped_components
+    from rfx.core.jax_utils import is_tracer
     from rfx._internal._grid_metric import field_index
     from rfx.model.design_admission import sheet_edges
     refuse_traced_materials(materials)
     for entry in sim._geometry:
         material = sim._resolve_material(entry.material_name)
         if (material.debye_poles or material.lorentz_poles or material.chi3) and np.any(np.asarray(entry.shape.mask(root.grid)) & bore):
-            raise RfxUnsupported('add_coaxial_port(): dispersive or Kerr material inside the bore')
+            drude = [not is_tracer(p.omega_0) and float(p.omega_0) == 0.
+                     for p in material.lorentz_poles or ()]
+            kinds = [(material.debye_poles, 'a Debye pole'),
+                     (any(not value for value in drude), 'a Lorentz pole'),
+                     (any(drude), 'a Drude pole'),
+                     (material.chi3, 'a Kerr χ³ material (chi3 != 0)')]
+            words = ', '.join(word for present, word in kinds if present)
+            raise RfxUnsupported(f"add_coaxial_port(): dispersive or Kerr material inside the bore: material '{entry.material_name}' has {words}")
     magnetic = np.asarray(materials.mu_r)
     hits = (magnetic != 1) & bore
     if np.any(hits):
