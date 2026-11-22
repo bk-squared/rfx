@@ -7,3 +7,4 @@ The whole port must fit inside a declared NTFF box, with room for the line and l
 Other S-port families, periodic axes, TF/SF, conformal PEC, subpixel smoothing and eps/sigma overrides are refused.
 Graded, distributed and subgridded lanes are refused. Port dimensions and impedance are static; PEC occupancy gradients are available.
 An antenna-level result against an independent solver is not yet shown.
+The port's source end is a capped, shielded line end, so nothing leaves the line there and far-field and flux monitors see only the structure.

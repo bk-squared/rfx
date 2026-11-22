@@ -22,6 +22,7 @@ from rfx.measurement.calculator_drive import calculator_drive
 from rfx.sparams import _coax_msl_stages, _coax_oneport_record, _settling_groups
 from rfx.sparams._coax_messages import COAX_MSL_TRANSITION_REFUSAL_HINT
 from rfx.sparams._coax_status import coax_extraction_status
+from rfx.sparams._coax_flux import refuse_open_feed_flux, two_port_feed_layout
 
 from rfx.errors import AccuracyWarning, RfxRefusal
 from rfx.preflight.realization import release_inspection
@@ -489,6 +490,10 @@ def compute_coaxial_two_port(
 ) -> "CoaxialTwoPortResult":
     """Two-drive coaxial 2-port S-parameters — VALIDATED WITH SCOPE.
 
+    Extra flux monitors must stay strictly inward of every open coax feed
+    sheet, including their full tangential extent. The run()/forward() port
+    has a shielded source end; this calculator keeps its open feed ends.
+
     .. note::
         **VALIDATED WITH SCOPE, not EXPERIMENTAL** (
         ``docs/guides/sparameter_support_matrix.md``, the S-parameter
@@ -743,12 +748,9 @@ def compute_coaxial_two_port(
     # i489_stage2_two_port_fdtd_predeclaration.md for the derivation of
     # why each feed sits strictly on the scattered-only side of its own
     # drive's TFSF boundary.
-    z_hi_coax_top = nz - int(grid.pad_z_hi) - 2
-    z_feed_top = z_hi_coax_top - 1
-    z_src_top = z_hi_coax_top - 3
-    z_lo_coax_bot = int(grid.pad_z_lo) + 2
-    z_feed_bot = z_lo_coax_bot + 1
-    z_src_bot = z_lo_coax_bot + 3
+    z_hi_coax_top, z_feed_top, z_src_top, z_lo_coax_bot, z_feed_bot, z_src_bot = two_port_feed_layout(grid)
+    refuse_open_feed_flux(extra_flux_monitors, grid, self._domain, 'compute_coaxial_two_port',
+                         low=z_feed_bot, high=z_feed_top)
 
     probes_top = sorted(
         z_src_top - int(probe_start_cells) - int(probe_spacing_cells) * k
@@ -1043,6 +1045,10 @@ def compute_coax_msl_transition(
     return_ladder_voltages: bool = False,
 ) -> "CoaxMSLTransitionResult":
     """Compute coax-to-microstrip transition S-parameters from separate drives.
+
+    Extra flux monitors must stay strictly inward of every open coax feed
+    sheet, including their full tangential extent. The run()/forward() port
+    has a shielded source end; this calculator keeps its open feed ends.
 
     This method is experimental and is not in the validated set.
     A non-passive S matrix raises ``ValueError`` by default;
@@ -1340,6 +1346,7 @@ def compute_coax_msl_transition(
     a, b = float(port.pin_radius), float(port.outer_radius)
     z_junction_idx, z_stub_lo, z_feed, z_src, z_stub_hi, probes_coax = _coax_msl_stages._prepare_coax_msl_stub_layout(
         grid, msl_cross_section_span, msl_port_base, port, probe_count, probe_spacing_cells, probe_start_cells,
+        extra_flux_monitors=extra_flux_monitors, domain=self._domain,
     )
 
     z_tem = coaxial_tem_characteristic_impedance(a, b)

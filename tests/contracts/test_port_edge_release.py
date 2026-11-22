@@ -291,7 +291,7 @@ def test_c6_coax_refusal(monkeypatch):
     sim.add_coaxial_port((.008,.008,0.),face='bottom',pin_length=.005)
     import rfx.simulation as kernel
     monkeypatch.setattr(kernel,'run',lambda *a,**k:pytest.fail('stepped'))
-    with pytest.raises(NotImplementedError,match=r'add_coaxial_port\(\): domain too short; needs at least 61 line cells'):
+    with pytest.raises(NotImplementedError,match=r'add_coaxial_port\(\): domain too short; needs at least 65 line cells for the shielded source end'):
         sim.forward(pec_occupancy_override=jnp.zeros(sim._build_grid().shape),n_steps=2,skip_preflight=True)
 
 

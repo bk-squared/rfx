@@ -24,6 +24,7 @@ class CoaxLineEnd:
     plane_indices: tuple[int, ...]
     feed_impedance: float
     port: Any
+    shielded: bool = False
 
 
 class CoaxLineEndResult(NamedTuple):
@@ -51,7 +52,11 @@ def build_coax_line(
     stamp_resistor=stamp_coaxial_annular_resistor,
     build_source=build_coaxial_tem_plane_source_specs,
 ):
-    """Stamp a common line, each feed, then each end's TEM source.
+    """Stamp a common line, shield declared ends, then build feeds and sources.
+
+    Shielded ends retain the extremity cell as a PEC cap and leave
+    max(2, ceil(outer_radius / dx)) fill cells between it and the pin.
+    Open ends retain the calculators' original masks and entity inventory.
 
     finish_line(materials, shell_inner_radius, pec_cells) returns materials
     and PEC cells after calculator-owned DUT termination or junction splicing.
@@ -67,6 +72,12 @@ def build_coax_line(
         z_hi_index=z_hi_index, pin_radius=pin_radius, outer_radius=outer_radius,
         realized_entities=entities,
     )
+    for end in ends:
+        if end.shielded:
+            from rfx.model.coax_shield import shield_coax_end
+            materials, pec_cells, entities = shield_coax_end(
+                grid, materials, pec_cells, entities, end=end, center_xy=center_xy,
+                outer_radius=outer_radius, z_lo_index=z_lo_index, z_hi_index=z_hi_index)
     for end in ends:
         materials = stamp_resistor(
             grid, materials, center_xy=center_xy, z_index=end.feed_index,
@@ -105,7 +116,10 @@ def coax_port_layout(grid, port, *, absorber_pads, ntff=None):
 
     Pads are the six per-face cell counts in x-lo, x-hi, y-lo, y-hi,
     z-lo, z-hi order. A bottom line is a node mirror, including its
-    cell ownership, of the corresponding top line.
+    cell ownership, of the corresponding top line. The source end is shielded:
+    its pin end, feed and already-rounded source move inward by g + 1 cells,
+    g = max(2, ceil(outer_radius / dx)). The reference, shell extremity and
+    twelve planes stay fixed; the minimum grows from 61 to 62 + g cells.
     """
     import numpy as np
     from rfx.errors import RfxUnsupported
@@ -158,14 +172,17 @@ def coax_port_layout(grid, port, *, absorber_pads, ntff=None):
     source = int(round(((nominal - grid.pad_z_lo) * dz - dz / 2)
                        / float(np.asarray(grid.cells(2))[0]))) + grid.pad_z_lo
     source = ref + direction * (source - ref)
+    gap = max(2, int(np.ceil(float(port.outer_radius) / dx)))
+    setback = gap + 1
+    source -= direction * setback
     planes = tuple(ref + direction * (8 + 4 * k) for k in range(12))
-    if distance < 60 or direction * (source - planes[-1]) < 4:
+    if distance < 60 + setback or direction * (source - planes[-1]) < 4:
         raise RfxUnsupported(
-            'add_coaxial_port(): domain too short; needs at least 61 line cells '
-            '(12 planes, start 8, spacing 4, source clearance 4, feed setback 3)')
+            f'add_coaxial_port(): domain too short; needs at least {61 + setback} line cells for the shielded source end '
+            f'(12 planes, start 8, spacing 4, source clearance 4, feed setback 3, shield gap {gap})')
     return CoaxPortLayout(ref if direction == 1 else far - 1,
                           far if direction == 1 else ref - 1,
-                          far - direction, source, planes, ref)
+                          far - direction * (1 + setback), source, planes, ref)
 
 
 def build_coax_port_line(grid, materials, port, *, absorber_pads, ntff=None,
@@ -175,7 +192,7 @@ def build_coax_port_line(grid, materials, port, *, absorber_pads, ntff=None,
     layout = coax_port_layout(grid, port, absorber_pads=absorber_pads, ntff=ntff)
     end = CoaxLineEnd(layout.feed_index, layout.source_index, layout.plane_indices,
                       float(coaxial_tem_characteristic_impedance(
-                          port.pin_radius, port.outer_radius)), port)
+                          port.pin_radius, port.outer_radius)), port, shielded=True)
     try:
         line = build_coax_line(grid, materials, center_xy=port.position[:2],
             pin_radius=port.pin_radius, outer_radius=port.outer_radius,

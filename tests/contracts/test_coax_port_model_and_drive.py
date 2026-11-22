@@ -54,7 +54,6 @@ def equal(actual, expected):
 def test_run_against_calculator(monkeypatch):
     expected = capture(monkeypatch, scene(), 'calculator')
     actual = capture(monkeypatch, scene(), 'run')
-    equal(actual, expected)
     grid = actual['grid']
     ref = grid.pad_z_lo + 4
     hi = grid.shape[2] - grid.pad_z_hi - 2
@@ -64,8 +63,40 @@ def test_run_against_calculator(monkeypatch):
     layout = actual_layout(actual, scene())
     assert (layout.reference_index, layout.z_lo_index, layout.z_hi_index,
             layout.feed_index, layout.source_index, layout.plane_indices) == (
-                ref, ref, hi, hi-1, source, tuple(ref+8+4*k for k in range(12)))
-    print(f'S1 B1 model: {layout}', file=sys.stderr)
+                ref, ref, hi, hi-7, source-6, tuple(ref+8+4*k for k in range(12)))
+    port = scene()._coaxial_ports[0]
+    setback = max(2, int(np.ceil(port.outer_radius / float(grid.dx)))) + 1
+    feed = layout.feed_index
+    def compare(name, left, right):
+        left, right = np.asarray(left), np.asarray(right)
+        if not np.array_equal(left, right):
+            different = np.argwhere(left != right)
+            pytest.fail(f'B1 {name}: first mismatch {different[0].tolist()}, count={len(different)}')
+    arrays = [(f'materials.{field}.{i}', a, b)
+              for field in actual['materials']._fields
+              for i, (a, b) in enumerate(zip(
+                  jax.tree_util.tree_leaves(getattr(actual['materials'], field)),
+                  jax.tree_util.tree_leaves(getattr(expected['materials'], field))))]
+    arrays.extend((f'pec_edge_masks.{i}', a, b) for i, (a, b) in enumerate(
+        zip(actual['pec_edge_masks'], expected['pec_edge_masks'])))
+    for name, a, b in arrays:
+        a, b = np.asarray(a), np.asarray(b)
+        if a.ndim == 3 and a.shape == grid.shape:
+            compare(name + '.reference_side', a[:, :, :feed-1], b[:, :, :feed-1])
+            compare(name + '.feed_window', a[:, :, feed-1:feed+2],
+                    b[:, :, feed+setback-1:feed+setback+2])
+        else:
+            compare(name, a, b)
+    for name in ('sources', 'mag_sources'):
+        assert len(actual[name]) == len(expected[name]), name
+        for i, (a, b) in enumerate(zip(actual[name], expected[name])):
+            translated = b._replace(k=b.k-setback)
+            assert jax.tree_util.tree_structure(a) == jax.tree_util.tree_structure(translated), name
+            for leaf, (left, right) in enumerate(zip(jax.tree_util.tree_leaves(a),
+                                                    jax.tree_util.tree_leaves(translated))):
+                compare(f'{name}.{i}.leaf.{leaf}', left, right)
+    print(f'B1 all materials, PEC edges and translated drive leaves: array_equal; setback={setback}')
+    print(f'S1 B1 shielded model: {layout}', file=sys.stderr)
 
 
 def actual_layout(captured, sim):
@@ -105,6 +136,8 @@ def test_bore_clears_plate(monkeypatch, entry):
     pin = next(e for e in root.stamped_entities if e.entity_id.endswith('/pin')).cells
     shell = next(e for e in root.stamped_entities if e.entity_id.endswith('/shell')).cells
     from tests.contracts.test_coax_conductors_known import _edges
+    cap = next(e.cells for e in root.stamped_entities if '/cap/' in e.entity_id)
+    shell = shell | cap
     owned = _edges(pin | shell)
     check_bore(root, captured, region, pin, shell, owned)
     assert set(map(tuple, release.cells)).issubset(set(map(tuple, root.released_cells)))
@@ -141,7 +174,7 @@ def test_bottom_is_node_mirror(monkeypatch):
     ('periodic', 'periodic'), ('tfsf', 'TF/SF'),
     ('face', 'face='), ('count', 'exactly one'), ('mixed', 'other (S-port|excitations)'),
     ('conformal_pec', 'conformal_pec'), ('subpixel_smoothing', 'subpixel_smoothing'),
-    ('short', '61 line cells'), ('lateral', 'absorber'), ('front', 'user PEC in front'),
+    ('short', '67 line cells for the shielded source end'), ('lateral', 'absorber'), ('front', 'user PEC in front'),
     ('kerr', 'Kerr material inside the bore'),
 ])
 def test_s1_refusals(monkeypatch, entry, gate, pattern):

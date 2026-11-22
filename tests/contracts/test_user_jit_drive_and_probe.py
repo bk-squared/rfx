@@ -324,7 +324,7 @@ def test_host_control_keeps_its_user_jit_behavior(options, exception, fragment, 
 REFUSALS = []
 for _entry in ('run', 'forward'):
     REFUSALS.append(('uniform', 'coax', _entry, False, False, NotImplementedError,
-                     'add_coaxial_port(): domain too short; needs at least 61 line cells'))
+                     'add_coaxial_port(): domain too short; needs at least 65 line cells for the shielded source end'))
 REFUSALS.append(('uniform', 'msl-eigenmode', 'forward', False, False, NotImplementedError,
                  "MSL port mode='eigenmode' is supported on the"))
 for _path in ('multi-uniform', 'multi-graded'):

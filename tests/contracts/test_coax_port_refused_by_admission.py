@@ -39,7 +39,7 @@ GATE_CASES = (
     ('face', "face='top' or 'bottom'"), ('mixed', 'other S-port family'),
     ('conformal_pec', 'conformal_pec'), ('subpixel_smoothing', 'subpixel_smoothing'),
     ('eps_override', 'eps_override'), ('sigma_override', 'sigma_override'),
-    ('short', '61 line cells'), ('lateral', 'absorber.*1 cell'),
+    ('short', '67 line cells for the shielded source end'), ('lateral', 'absorber.*1 cell'),
     ('ntff_shell', 'NTFF box.*shell'), ('ntff_pin', 'NTFF box.*reference and pin'),
     ('nonuniform', 'add_coaxial_port'), ('distributed', 'add_coaxial_port'),
     ('distributed_nu', 'add_coaxial_port'), ('subgridded', 'add_coaxial_port'),
