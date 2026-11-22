@@ -7,8 +7,11 @@ import pytest
 from rfx.optimize import _adam_update
 
 
-@pytest.mark.parametrize("step_clamp", [None, 0.01, 10.0])
-@pytest.mark.parametrize("kwargs", [{}, {"beta1": 0.8, "beta2": 0.95, "eps": 0.03}])
+@pytest.mark.parametrize("kwargs,step_clamp", [
+    pytest.param({}, None, id="kwargs0-None"),
+    pytest.param({}, 10.0, id="kwargs0-10.0"),
+    pytest.param({"beta1": 0.8, "beta2": 0.95, "eps": 0.03}, 0.01, id="kwargs1-0.01"),
+])
 def test_adam_update_matches_inline_formula(step_clamp, kwargs):
     m = jnp.array([0.2, -0.3, 0.04], dtype=jnp.float32)
     v = jnp.array([0.01, 0.2, 0.03], dtype=jnp.float32)

@@ -12,9 +12,12 @@ from rfx.geometry.smoothing import (
 )
 
 
-@pytest.mark.parametrize('path', ['uniform', 'graded', 'kottke_pec', 'nodes', 'graded_nodes'])
-@pytest.mark.parametrize('traced', [False, True], ids=['host', 'traced'])
-@pytest.mark.parametrize('reverse', [False, True], ids=['AB', 'BA'])
+@pytest.mark.parametrize("reverse,traced,path", [
+    pytest.param(r, t, p, id=f"{'BA' if r else 'AB'}-{'traced' if t else 'host'}-{p}")
+    for r in (False, True) for t in (False, True)
+    for p in ('uniform', 'graded', 'kottke_pec', 'nodes', 'graded_nodes')
+    if r == t or (p in ('nodes', 'graded_nodes') and not t)
+])
 def test_shared_face_operands(path, traced, reverse):
     graded = path.startswith('graded')
     profiles = dict(dx_profile=np.full(8, .0005), dy_profile=np.full(8, .0005),

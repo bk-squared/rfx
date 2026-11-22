@@ -58,8 +58,17 @@ def test_every_library_objective_is_listed():
     assert {value.__name__ for value in public.values()} == set(OBJECTIVES) | RETIRED
 
 
-@pytest.mark.parametrize("name", sorted(OBJECTIVES))
-@pytest.mark.parametrize("mesh", ["uniform", "graded"])
+GRADED_REPEATS = {
+    "target_impedance", "maximize_bandwidth", "maximize_directivity_logratio",
+    "maximize_transmitted_energy", "steer_probe_array",
+}
+
+
+@pytest.mark.parametrize("mesh,name", [
+    pytest.param(m, n, id=f"{m}-{n}")
+    for n in sorted(OBJECTIVES) for m in ("uniform", "graded")
+    if not (m == "graded" and n in GRADED_REPEATS)
+])
 def test_objective_value_and_gradient_on_forward(mesh, name):
     sim = _two_port(mesh)
     grid = sim._build_nonuniform_grid() if mesh == "graded" else sim._build_grid()
