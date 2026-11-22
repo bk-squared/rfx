@@ -74,9 +74,9 @@ def test_code_completeness():
     found = {code for _, _, code in sites} - OUTSIDE_GENERAL.keys()
     assert found <= CODE_SCOPE.keys(), sorted(found - CODE_SCOPE.keys())
     assert CODE_SCOPE.keys() <= found, sorted(CODE_SCOPE.keys() - found)
-    assert len(CODE_SCOPE) == 103
+    assert len(CODE_SCOPE) == 104
     assert {scope: list(CODE_SCOPE.values()).count(scope) for scope in set(CODE_SCOPE.values())} == {
-        'object': 74, 'place': 2, 'model': 25, 'mixed': 2}
+        'object': 74, 'place': 2, 'model': 26, 'mixed': 2}
 
 
 def check_report(sim, report, *, unavailable_labels=None):
@@ -407,6 +407,51 @@ def test_traced_mesh_path(monkeypatch):
         assert issues, code
         assert {(issue.scope, issue.subjects, issue.region) for issue in issues} == {
             (scope, subjects, None)}
+    REACHED.update(issue.code for issue in reports[0])
+
+
+def test_sheet_size_unjudged_traced_mesh_path(monkeypatch):
+    """A traced solid leaves sheet sizes unjudged in the preflight report."""
+    import jax
+    import jax.numpy as jnp
+    from rfx import Box, Cylinder, Simulation, Sphere
+    from rfx.preflight._subjects import _finding_view
+    reports = []
+    nominal = np.full(24, .0005)
+    nominal[12:16] += .00025 / 4
+    nominal[16:20] -= .00025 / 4
+
+    def evaluate(dx, radius):
+        sim = Simulation(freq_max=40e9, domain=(.012, .008, .010), dx=.0005,
+                         dx_profile=dx, cpml_layers=0, boundary='pec',
+                         nominal_profiles={'x': nominal},
+                         dt=.9 / (299792458. * np.sqrt(2 / .000425**2 + 1 / .0005**2)),
+                         dt_min_cell=.000425)
+        sim.add_source((.0015, .004, .0045), 'ez', amplitude_kind='current')
+        sim.add_probe((.010, .004, .0045), 'ez')
+        sim._snap = 'declared'
+        sim.add(Box((.004, .0025, .006), (.00855, .0055, .006)), material='pec')
+        sim.add(Cylinder((.009, .004, .008), radius, .001), material='pec')
+        sim.add(Sphere((.0025, .004, .008), .0008), material='pec')
+        original = sim._run_preflight_gate
+
+        def gate(report, **kwargs):
+            reports.append(report)
+            return original(report, **kwargs)
+
+        monkeypatch.setattr(sim, '_run_preflight_gate', gate)
+        result = sim.forward(n_steps=4, skip_preflight=False)
+        labels = [row.label for row in _finding_view(
+            sim, result.realized_geometry).realization_table.rows]
+        check_report(sim, reports[-1], unavailable_labels=labels)
+        return result.time_series
+
+    jax.block_until_ready(jax.jit(evaluate)(
+        jnp.asarray(nominal, dtype=jnp.float32), jnp.float32(.0008)))
+    assert len(reports) == 1
+    issues = reports[0].by_code('sheet_size_unjudged')
+    assert len(issues) == 1
+    assert (issues[0].scope, issues[0].subjects, issues[0].region) == ('model', (), None)
     REACHED.update(issue.code for issue in reports[0])
 
 
