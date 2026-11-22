@@ -268,7 +268,7 @@ def _unchanged_moves(base: str, head: str, repo: Path) -> FrozenSet[str]:
     for index in range(0, len(tokens) - 1, 2):
         meta = tokens[index].split()
         path = tokens[index + 1]
-        if meta[4] == "D":
+        if meta[4] == "D" and meta[0] != ":160000":
             deleted[meta[2]] += 1
         elif meta[4] == "A":
             added[path] = meta[3]
