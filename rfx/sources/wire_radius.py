@@ -113,7 +113,7 @@ def require_radius_pole_clearance(sim, grid, component, cells, *, port):
                 cell[transverse[0]] += u
                 cell[transverse[1]] += v
                 support.add(tuple(cell))
-    support = sorted(c for c in support if all(0 <= i < n for i, n in zip(c, grid.shape)))
+    stencil = sorted(c for c in support if all(0 <= i < n for i, n in zip(c, grid.shape)))
     with jax.ensure_compile_time_eval():
         graded = hasattr(grid, "dx_arr")
         nominal = host_nominal_grid(grid) if graded else grid
@@ -137,7 +137,7 @@ def require_radius_pole_clearance(sim, grid, component, cells, *, port):
                     f"wire-port radius at {port} cannot check traced Debye/Lorentz "
                     f"geometry {entry.material_name!r}; declare concrete pole geometry")
             declared = np.asarray(mask)
-            hit = next((cell for cell in support if declared[cell]), None)
+            hit = next((cell for cell in stencil if declared[cell]), None)
             if hit is not None:
                 raise NotImplementedError(
                     f"wire-port radius at {port}: Debye/Lorentz material "
@@ -151,6 +151,9 @@ def require_radius_pole_clearance(sim, grid, component, cells, *, port):
 @jax.tree_util.register_pytree_node_class
 class _RadiusContours(tuple):
     """Carry stamped E-edge indices and declaration clearance with H arrays."""
+
+    edges: tuple
+    cleared: bool
 
     def __new__(cls, parts, edges=(), cleared=False):
         result = super().__new__(cls, parts)
@@ -306,9 +309,9 @@ def stamp_wire_radius(grid, materials, component, radius, cells, *, pole_clearan
             if h_parts[h_axis] is None:
                 h_parts[h_axis] = jnp.zeros_like(materials.mu_r)
             for offset in (-1, 0):
-                h_cell = list(cell)
-                h_cell[t] += offset
-                h_cell = tuple(h_cell)
+                h_index = list(cell)
+                h_index[t] += offset
+                h_cell = tuple(h_index)
                 h_parts[h_axis] = h_parts[h_axis].at[h_cell].add(
                     materials.mu_r[h_cell] * delta)
             for offset in (-1, 1):
