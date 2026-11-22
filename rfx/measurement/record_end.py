@@ -56,23 +56,7 @@ def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_po
     path. A low-level caller supplies concrete nondispersive arrays or an
     explicit host bound.
     """
-    from rfx.model.graded_admission import host_cells
-
     try:
-        lengths = []
-        for axis in "xyz":
-            if axis == 'z' and getattr(grid, 'is_2d', False):
-                lengths.append(0.)
-                continue
-            cells = np.asarray(host_cells(grid, axis), dtype=np.float64)
-            if axis not in getattr(grid, "periodic_axes", ()):
-                cells = cells[:-1]
-            lo, hi = getattr(grid, f"pad_{axis}_lo"), getattr(grid, f"pad_{axis}_hi")
-            interior = cells[lo:len(cells) - hi]
-            if not interior.size or not np.all(np.isfinite(interior)) or np.any(interior <= 0):
-                raise ValueError(f"unavailable physical {axis} cell widths")
-            lengths.append(float(np.sum(interior)))
-        D = float(np.linalg.norm(lengths))
         bins = np.asarray(() if freqs is None else freqs, dtype=np.float64).reshape(-1)
         configs = tuple(waveguide_ports.values() if hasattr(waveguide_ports, 'values')
                         else waveguide_ports or ())
@@ -135,7 +119,38 @@ def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_po
             if not read.size or np.min(read) <= cutoff:
                 raise ValueError("a waveguide read bin is at or below cutoff")
             g = min(g, float(np.sqrt(1 - (cutoff / np.min(read))**2)))
-        return dict(tau_max=2 * D * n_max / (299792458.0 * g), D=D, n_max=n_max, g=g)
+        return echo_delay_bound_on_grid(grid, dict(n_max=n_max, g=g))
+    except (TypeError, ValueError, AttributeError, OverflowError) as exc:
+        return dict(tau_max=None, D=None, n_max=None, g=None,
+                    reason=f"cannot judge: echo delay bound unavailable: {exc}; pass echo_bound=")
+
+
+def echo_delay_bound_on_grid(grid, bound):
+    """Reuse the declared index and group factor with realized host widths.
+
+    Only D and tau_max change. An existing refusal remains unchanged, since
+    realizing mesh widths cannot repair unavailable declaration operands.
+    """
+    from rfx.model.graded_admission import host_cells
+
+    if bound.get('reason'):
+        return bound
+    try:
+        lengths = []
+        for axis in "xyz":
+            if axis == 'z' and getattr(grid, 'is_2d', False):
+                lengths.append(0.)
+                continue
+            cells = np.asarray(host_cells(grid, axis), dtype=np.float64)
+            if axis not in getattr(grid, "periodic_axes", ()):
+                cells = cells[:-1]
+            lo, hi = getattr(grid, f"pad_{axis}_lo"), getattr(grid, f"pad_{axis}_hi")
+            interior = cells[lo:len(cells) - hi]
+            if not interior.size or not np.all(np.isfinite(interior)) or np.any(interior <= 0):
+                raise ValueError(f"unavailable physical {axis} cell widths")
+            lengths.append(float(np.sum(interior)))
+        D = float(np.linalg.norm(lengths))
+        return {**bound, 'tau_max': 2 * D * bound['n_max'] / (299792458.0 * bound['g']), 'D': D}
     except (TypeError, ValueError, AttributeError, OverflowError) as exc:
         return dict(tau_max=None, D=None, n_max=None, g=None,
                     reason=f"cannot judge: echo delay bound unavailable: {exc}; pass echo_bound=")

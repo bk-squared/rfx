@@ -158,8 +158,8 @@ class _ForwardReportContext:
             grid, metas = self._realized(res)
             plan = copy.copy(plan)
             plan.grid = grid
-            from rfx.measurement.record_end import echo_delay_bound
-            plan.echo_bound = echo_delay_bound(grid, sim=plan.sim, freqs=self.bins)
+            from rfx.measurement.record_end import echo_delay_bound_on_grid
+            plan.echo_bound = echo_delay_bound_on_grid(grid, plan.echo_bound)
             plan.echo_dt = float(grid.dt)
         if plan.probe_mode:
             from rfx.ringdown._probe_channels import forward_probe_report

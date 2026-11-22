@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, GaussianPulse, Simulation
-from rfx.measurement.record_end import echo_delay_bound, with_echo_bound
+from rfx.measurement.record_end import echo_delay_bound, echo_delay_bound_on_grid, with_echo_bound
 from rfx.ringdown import RingdownSpec
 
 
@@ -55,6 +55,27 @@ def test_bound_and_round_trip_are_read_from_realized_cells(capsys):
     assert bound['tau_max'] >= physical_return
     with capsys.disabled():
         print(f"echo bound: {bound}; 2L/c={physical_return * 1e9:.9g} ns", flush=True, file=sys.stderr)
+
+
+def test_realized_bound_reuses_declared_index_and_group_factor():
+    """New host widths replace only the extent and delay of a plan's bound."""
+    sim = shorted_line()
+    grid = sim._build_realized_grid()
+    realized = echo_delay_bound(grid, sim=sim)
+    plan_bound = dict(tau_max=2 * .020 * 2. / (C0 * .5), D=.020, n_max=2., g=.5)
+    original = dict(plan_bound)
+    rebound = echo_delay_bound_on_grid(grid, plan_bound)
+    assert rebound['D'] == realized['D']
+    assert rebound['n_max'] == 2. and rebound['g'] == .5
+    assert rebound['tau_max'] == 4 * realized['tau_max']
+    assert plan_bound == original
+
+
+def test_realized_bound_preserves_a_plan_refusal():
+    """A declaration refusal survives even when the realized grid is unavailable."""
+    refused = dict(tau_max=None, D=None, n_max=None, g=None,
+                   reason='cannot judge: a waveguide read bin is at or below cutoff')
+    assert echo_delay_bound_on_grid(None, refused) is refused
 
 
 def test_drude_interior_does_not_raise_the_echo_index():
