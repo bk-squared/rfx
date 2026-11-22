@@ -129,6 +129,11 @@ report = sim.preflight()
 print(report.format())
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/examples/assets/first-patch/structure.png" loading="lazy" alt="Top view of the patch over the board with source, probe and absorber, beside an x-z cut showing thin cells through the substrate and larger cells in the air" />
+  <figcaption>The model as built: the 29.46 × 38.01 mm patch and the 60 × 55 mm ground (both as solved) keep their drawn sizes, while the substrate, drawn 60 × 55 mm, measures 59.3 × 54.3 mm on the grid. The z cells are 0.25 mm through the substrate and grow to 1 mm in the air.</figcaption>
+</figure>
+
 ### Reading what rfx tells you
 
 Each `add_thin_conductor` call warns that the sheet is a **lossless PEC
@@ -170,6 +175,11 @@ short for the patch to ring down, so rfx warns that the ring-down is
 truncated. The settling figure prints `nan`: a run with only probes reads no
 frequency for the check to judge, so its status is `absent` (see
 [Quick Start](/rfx/start/first-simulation/)). Nothing from this run is a result.
+
+<figure data-rfx="media">
+  <img src="/rfx/examples/assets/first-patch/probe.png" loading="lazy" alt="Ez at the probe rising steadily from zero until the record stops at 0.5 ns" />
+  <figcaption>Ez at the probe over the 647 steps of the two-period run. The largest value is at the last step, so this record holds no ring-down.</figcaption>
+</figure>
 
 ## 5. From a model to a result
 
