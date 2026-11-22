@@ -10,6 +10,7 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -70,8 +71,8 @@ class _CompileMixin:
 
         for name in dir(cls):
             if name == "add" or name.startswith("add_"):
-                method = getattr(cls, name)
-                if callable(method) and not getattr(method, "_rfx_declaration_setup", False):
+                method = inspect.getattr_static(cls, name)
+                if inspect.isfunction(method) and not getattr(method, "_rfx_declaration_setup", False):
                     setattr(cls, name, wrap_declaration(method))
 
     def _periodic_flags(self) -> tuple[bool, bool, bool]:

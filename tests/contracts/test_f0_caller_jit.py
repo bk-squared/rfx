@@ -50,14 +50,18 @@ ALWAYS_ON_MATRIX_ROWS = {
 } | {("_waveguide_ports", "n_modes")}
 EXTRA_WRITER_CALLS = {
     "add_vector_probe": (("_probes", "probe"), ((.003, .002, .002),), {}),
-    "add_wall_loss": (
-        ("_waveguide_ports", "waveguide_port"), (),
-        dict(sigma_bulk=5.8e5, f0=8e9, faces=("y_lo", "y_hi")),
+    "add_polarized_source": (
+        ("_probes", "probe"), ((.003, .002, .002),),
+        dict(polarization=(1., 2.), amplitude_kind="current"),
     ),
+}
+SLOW_DELEGATE_ROWS = {
+    "add_dft_plane_probe": ("_dft_planes", "dft_plane"),
+    "add_polarized_source": "add_polarized_source",
 }
 
 
-def _series(widths, sheet=True):
+def _series(widths, sheet=True, f0=10e9):
     sim = Simulation(
         freq_max=40e9, domain=(N_X * DX, N_Y * DX, N_Z * DX),
         dx=DX, dx_profile=widths, cpml_layers=0, boundary="pec",
@@ -71,7 +75,7 @@ def _series(widths, sheet=True):
     if sheet:
         sim.add_thin_conductor(
             Box((8 * DX, 5 * DX, Z_PATCH), (17.1 * DX, 11 * DX, Z_PATCH)),
-            surface_impedance_f0=10e9,
+            surface_impedance_f0=f0,
         )
     sim.add(Cylinder((18 * DX, 8 * DX, 16 * DX), 1.6 * DX, 2 * DX), material="diel")
     sim.add(Sphere((5 * DX, 8 * DX, 16 * DX), 1.6 * DX), material="pec")
@@ -140,6 +144,109 @@ def test_eager_sheet_anchor():
     assert difference > bar
 
 
+def _assert_relative(name, actual, expected):
+    """Sum and derivative bars use only the corresponding eager reading."""
+    actual, expected = np.asarray(actual), np.asarray(expected)
+    error = np.abs(actual.astype(np.float64) - expected.astype(np.float64))
+    bar = 1e-4 * np.abs(expected.astype(np.float64))
+    print(f"{name}: eager={expected.tolist()!r}, jit={actual.tolist()!r}, "
+          f"abs_error={error.tolist()!r}, bar={bar.tolist()!r}", file=sys.stderr)
+    assert np.isfinite(expected).all() and np.isfinite(actual).all()
+    assert np.all(error <= bar)
+
+
+def _eps_loss(eps):
+    sim = build(("_probes", "probe"), "fwd_uniform")
+    sim.add_material("block", eps_r=eps)
+    return jnp.sum(sim.forward(n_steps=15).time_series ** 2)
+
+
+def test_traced_eps_through_declaration():
+    """A traced material value keeps its derivative through the wrapped body."""
+    loss = _eps_loss
+    eps = jnp.asarray(2.5, dtype=jnp.float32)
+    eager_loss, eager_grad = jax.value_and_grad(loss)(eps)
+    jit_loss, jit_grad = jax.jit(jax.value_and_grad(loss))(eps)
+    _assert_relative("TRACED eps loss", jit_loss, eager_loss)
+    _assert_relative("TRACED eps gradient", jit_grad, eager_grad)
+    assert np.asarray(eager_grad) != 0
+
+
+@pytest.mark.slow
+def test_traced_eps_vmap_through_declaration():
+    """Batching the same material scene agrees with two eager calls."""
+    loss = _eps_loss
+    values = jnp.asarray([2., 3.], dtype=jnp.float32)
+    eager_values = np.asarray([loss(2.), loss(3.)])
+    _assert_relative("TRACED eps vmap", jax.vmap(loss)(values), eager_values)
+
+
+@pytest.mark.slow
+def test_traced_f0_through_declaration():
+    """A traced sheet frequency remains differentiable inside the wrapped body."""
+    def loss(f0):
+        return jnp.sum(_series(_prof_x(DELTA0), f0=f0) ** 2)
+
+    f0 = jnp.asarray(10e9, dtype=jnp.float32)
+    eager_loss, eager_grad = jax.value_and_grad(loss)(f0)
+    jit_loss, jit_grad = jax.jit(jax.value_and_grad(loss))(f0)
+    _assert_relative("TRACED f0 loss", jit_loss, eager_loss)
+    _assert_relative("TRACED f0 gradient", jit_grad, eager_grad)
+    assert np.asarray(eager_grad) != 0
+
+
+def test_wall_loss_caller_jit_and_anchor():
+    """All-PEC face loss gives fields and exceeds 100 nine-ULP bars.
+
+    Use the 12 mm box and face parameters from test_wall_loss_copies.py;
+    120 steps accumulate a loss effect above the anchor bar.
+    """
+    def series(wall_loss=True):
+        sim = Simulation(freq_max=10e9, domain=(.012,) * 3, dx=.0015, boundary="pec")
+        sim.add_source((.003, .006, .006), "ez", amplitude_kind="current")
+        sim.add_probe((.009, .006, .006), "ez")
+        if wall_loss:
+            sim.add_wall_loss(sigma_bulk=5.8e4, f0=8e9, faces=("y_lo", "y_hi"))
+        return sim.forward(n_steps=120).time_series
+
+    eager = np.asarray(series())
+    compiled = np.asarray(jax.jit(series)())
+    absent = np.asarray(series(False))
+    error, bar = float(np.max(np.abs(compiled - eager))), _peak_bar(eager)
+    difference = float(np.max(np.abs(eager - absent)))
+    print(f"WALL LOSS: shape={eager.shape!r}, peak={np.max(np.abs(eager))!r}, "
+          f"max_abs_error={error!r}, bar={bar!r}, "
+          f"anchor_difference={difference!r}, anchor_bar={100 * bar!r}", file=sys.stderr)
+    assert np.isfinite(eager).all() and np.isfinite(compiled).all() and np.isfinite(absent).all()
+    assert error <= bar
+    assert difference > 100 * bar
+
+
+def test_subclass_declaration_descriptors_and_signatures():
+    """Static and class descriptors retain binding on the instance and class."""
+    class Subclass(Simulation):
+        @staticmethod
+        def add_helper(value):
+            return value
+
+        @classmethod
+        def add_cfg(cls, value):
+            return cls, value
+
+    sim = Subclass(freq_max=10e9, domain=(.01,) * 3, dx=.001, boundary="pec")
+    for receiver in (sim, Subclass):
+        assert receiver.add_helper(3) == 3
+        assert receiver.add_cfg(3) == (Subclass, 3)
+    assert isinstance(inspect.getattr_static(Subclass, "add_helper"), staticmethod)
+    assert isinstance(inspect.getattr_static(Subclass, "add_cfg"), classmethod)
+    for name in dir(Simulation):
+        if name == "add" or name.startswith("add_"):
+            method = getattr(Simulation, name)
+            assert inspect.signature(method) == inspect.signature(inspect.unwrap(method))
+            assert getattr(Subclass, name) is method
+    print("SUBCLASS: static/class calls preserve binding; all declaration signatures preserved", file=sys.stderr)
+
+
 def _declaration_writes(method):
     """Find direct stores and container mutations independently of method names."""
     attributes = dict(DECLARATIONS)
@@ -188,9 +295,12 @@ def test_declaration_wrapper_census():
     assert not census.keys() - declarations, "STOP: declaration writer outside add/add_* rule"
     assert not (census.keys() | declarations) - set(wrapped)
     assert not census.keys() - ALWAYS_ON_WRITERS.keys(), "declaration writer needs an always-on row"
+    covered = ALWAYS_ON_WRITERS | SLOW_DELEGATE_ROWS
+    assert not set(wrapped) - covered.keys(), "wrapped method needs an always-on or slow row"
+    assert set(SLOW_DELEGATE_ROWS.values()) <= BUILDERS.keys() | EXTRA_WRITER_CALLS.keys()
     assert ALWAYS_ON_MATRIX_ROWS <= BUILDERS.keys()
     assert set(ALWAYS_ON_WRITERS.values()) <= (
-        BUILDERS.keys() | EXTRA_WRITER_CALLS.keys() | {"concrete_f0"})
+        BUILDERS.keys() | EXTRA_WRITER_CALLS.keys() | {"concrete_f0", "add_wall_loss"})
 
 
 @pytest.mark.parametrize("row", [
@@ -211,12 +321,15 @@ def test_declaration_caller_jit_matrix(row):
     _assert_caller_jit(g, row, lane, require_arrivals=True)
 
 
-@pytest.mark.parametrize("method", EXTRA_WRITER_CALLS)
+@pytest.mark.parametrize("method", [
+    pytest.param(method, marks=pytest.mark.slow if method in SLOW_DELEGATE_ROWS else ())
+    for method in EXTRA_WRITER_CALLS
+])
 def test_declaration_caller_jit_extra_writer(method):
-    """Cover writers absent from BUILDERS on their uniform scene rows.
+    """Cover declarations absent from BUILDERS on their uniform scene rows.
 
     Vector position: test_series_rlc_edge_coupling.py's boxed series element.
-    Wall parameters: test_wall_loss_copies.py::model's face declaration.
+    Polarized source: real Jones weights exercise the delegate conversions.
     """
     row, args, kwargs = EXTRA_WRITER_CALLS[method]
 
