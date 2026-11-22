@@ -79,7 +79,7 @@ def test_realized_bound_preserves_a_plan_refusal():
 
 
 def test_traced_step_refuses_only_until_a_realized_host_step_is_available():
-    """The window owns a traced-step refusal; a realized context judges it anew."""
+    """The closing call supplies its host step without changing the stored plan."""
     import copy
     from types import SimpleNamespace
 
@@ -106,18 +106,64 @@ def test_traced_step_refuses_only_until_a_realized_host_step_is_available():
         plan.echo_bound = dict(plan.echo_bound, D=1., tau_max=2. / C0)
         result = SimpleNamespace(grid=grid, dt=grid.dt, wire_port_sparams=())
         report_context(plan, result, [10e9])
-        assert plan.echo_dt == float(grid.dt)
-        assert plan.echo_bound == realized_bound
-        judged, _, failure = close_completion(plan, output)
+        assert plan.echo_dt is None and plan.echo_bound['D'] == 1.
+        judged, _, failure = close_completion(plan, output, grid=grid, dt=float(grid.dt))
         assert failure is None
+        assert echo_delay_bound_on_grid(grid, plan.echo_bound) == realized_bound
         plan.n_steps, plan.n_start = 2, 1
-        short, _, failure = close_completion(plan, output)
+        short, _, failure = close_completion(plan, output, grid=grid, dt=float(grid.dt))
         assert RULE in failure.message
         return refused, judged, short
 
     refused, judged, short = jax.jit(complete)(jnp.float32(grid.dt))
     assert np.isnan(refused).all() and np.isnan(short).all()
     np.testing.assert_array_equal(judged, np.ones(1))
+
+
+def test_traced_profile_closes_at_the_smallest_accepted_record():
+    """Declared box arithmetic pins both sides of the realized-width boundary."""
+    from types import SimpleNamespace
+
+    import jax
+    import jax.numpy as jnp
+
+    from rfx.ringdown import RingdownForward
+    from rfx.ringdown._echo import forward_closing_factor
+    from rfx.ringdown._forward_context import report_context
+
+    box = (.012, .011, .005)
+    sim = Simulation(freq_max=20e9, domain=box, dx=.001, boundary='pec',
+                     dx_profile=np.full(12, .001))
+    sim.add_material('fill', eps_r=4.)
+    sim.add(Box((0., 0., 0.), box), material='fill')
+    grid = sim._build_realized_grid()
+    dt = float(grid.dt)
+    required = 2.05 * 2 * np.sqrt(sum(length**2 for length in box)) * 2. / C0
+    window_steps = int(np.ceil(required / dt))
+    accepted = next(n for n in range(2 * window_steps - 2, 2 * window_steps + 2)
+                    if (n - round(.5 * n)) * dt >= required)
+    assert (accepted - 1 - round(.5 * (accepted - 1))) * dt < required
+
+    def complete(delta):
+        widths = jnp.asarray(grid.dx_arr).at[3].add(delta).at[4].add(-delta)
+        live = grid._replace(dx_arr=widths, dx_arr_f64=None, dt=jnp.asarray(dt))
+        outputs = []
+        for n in (accepted, accepted - 1):
+            plan = RingdownForward(sim, RingdownSpec(), lane='graded', n_steps=n,
+                                   grid=live, bins=[10e9])
+            assert plan.echo_bound['D'] is None and plan.echo_bound.get('reason')
+            assert plan.echo_bound['n_max'] == 2. and plan.echo_bound['g'] == 1.
+            result = SimpleNamespace(grid=live, dt=live.dt, wire_port_sparams=())
+            ctx = report_context(plan, result, [10e9])
+            cells = tuple(getattr(live, store) for _, store in ctx.traced_axes)
+            factor = forward_closing_factor(plan, ctx, dt, cells, dtype=jnp.float32)
+            outputs.append((1. + delta) * factor)
+        return jnp.stack(outputs)
+
+    values, derivatives = jax.jit(lambda d: jax.jvp(
+        complete, (d,), (jnp.float32(1.),)))(jnp.float32(.000125))
+    assert np.isfinite(values[0]) and float(derivatives[0]) == 1.
+    assert np.isnan(values[1]) and np.isnan(derivatives[1])
 
 
 def test_drude_interior_does_not_raise_the_echo_index():

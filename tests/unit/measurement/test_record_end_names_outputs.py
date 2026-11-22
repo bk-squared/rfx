@@ -100,7 +100,9 @@ def test_rows_warn_for_their_own_outputs(s_status, field_status, spoken):
     sim._flux_monitors, sim._current_moments = [object()], object()
     witness = combine_witness_details(_row(s_status, S), _row(field_status, FIELDS))
     sim._run_settling_witness = lambda result: (witness['db'], witness)
-    result = Result(state=None, time_series=None, s_params=np.ones((1, 1, 1)), freqs=SBINS)
+    grid = sim._build_realized_grid()
+    result = Result(state=None, time_series=None, s_params=np.ones((1, 1, 1)), freqs=SBINS,
+                    grid=grid, dt=grid.dt)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
         sim._attach_run_settling_witness(result, n_steps=800)

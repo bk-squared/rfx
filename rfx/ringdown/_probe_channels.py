@@ -172,7 +172,8 @@ def host_probe_report(plan, result, ts_all, n_user):
         return None, rd.RingdownReport(**base, witnesses=tuple(witnesses),
                                       failure=f"{nc.name}: {nc.message}"), nc
     from rfx.ringdown._echo import close_completion
-    return close_completion(plan, spectra, rd.RingdownReport(**base, witnesses=tuple(witnesses), **extra))
+    return close_completion(plan, spectra, rd.RingdownReport(**base, witnesses=tuple(witnesses), **extra),
+                            grid=result.grid, dt=dt)
 
 
 def finish_probe_run(plan, result, n_user):
@@ -275,8 +276,9 @@ def traced_probe_completion(plan, result, channels):
         status.append(st)
         counts.append(count)
         budgets.append(k_max)
-    from rfx.ringdown._echo import close_completion
-    out = [close_completion(plan, value)[0] for value in out]
+    from rfx.ringdown._echo import forward_closing_factor
+    closing = forward_closing_factor(plan, ctx, dt, cells, dtype=rdt)
+    out = [value * closing for value in out]
     return rd.RingdownForwardResult(
         None, None, jnp.asarray(bins, dtype=rdt), channels, (), None,
         jnp.stack(status), consistency, jnp.stack(counts), jnp.asarray(budgets), ctx,

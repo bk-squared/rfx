@@ -128,12 +128,10 @@ def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_po
 def echo_delay_bound_on_grid(grid, bound):
     """Reuse the declared index and group factor with realized host widths.
 
-    Only D and tau_max change. An existing refusal remains unchanged, since
-    realizing mesh widths cannot repair unavailable declaration operands.
+    Only D and tau_max change. Declaration refusals remain unchanged; a
+    width refusal keeps the declared factors so realized widths can repair it.
     """
-    from rfx.model.graded_admission import host_cells
-
-    if bound.get('reason'):
+    if bound.get('reason') and (bound.get('n_max') is None or bound.get('g') is None):
         return bound
     try:
         lengths = []
@@ -141,7 +139,7 @@ def echo_delay_bound_on_grid(grid, bound):
             if axis == 'z' and getattr(grid, 'is_2d', False):
                 lengths.append(0.)
                 continue
-            cells = np.asarray(host_cells(grid, axis), dtype=np.float64)
+            cells = np.asarray(grid.cells(axis), dtype=np.float64)
             if axis not in getattr(grid, "periodic_axes", ()):
                 cells = cells[:-1]
             lo, hi = getattr(grid, f"pad_{axis}_lo"), getattr(grid, f"pad_{axis}_hi")
@@ -150,9 +148,10 @@ def echo_delay_bound_on_grid(grid, bound):
                 raise ValueError(f"unavailable physical {axis} cell widths")
             lengths.append(float(np.sum(interior)))
         D = float(np.linalg.norm(lengths))
-        return {**bound, 'tau_max': 2 * D * bound['n_max'] / (299792458.0 * bound['g']), 'D': D}
+        return dict(tau_max=2 * D * bound['n_max'] / (299792458.0 * bound['g']),
+                    D=D, n_max=bound['n_max'], g=bound['g'])
     except (TypeError, ValueError, AttributeError, OverflowError) as exc:
-        return dict(tau_max=None, D=None, n_max=None, g=None,
+        return dict(tau_max=None, D=None, n_max=bound['n_max'], g=bound['g'],
                     reason=f"cannot judge: echo delay bound unavailable: {exc}; pass echo_bound=")
 
 

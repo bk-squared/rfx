@@ -1088,7 +1088,7 @@ class RingdownRun:
                                 s_accumulator_roundoff=state.get(
                                     "s_accumulator_roundoff"), **report_extra)
         from rfx.ringdown._echo import close_completion
-        return close_completion(self, S, report)
+        return close_completion(self, S, report, grid=result.grid, dt=dt)
 
     def _check_solver_step(self, result, step=None) -> None:
         """The run stepped at the grid's ``dt``, or ``_NotCompleted``.
@@ -2321,8 +2321,9 @@ class RingdownForward(RingdownRun):
             status.append(st)
             pole_counts.append(count)
             pole_budgets.append(k_max)
-        from rfx.ringdown._echo import close_completion
-        out = [close_completion(self, value)[0] for value in out]
+        from rfx.ringdown._echo import forward_closing_factor
+        closing = forward_closing_factor(self, ctx, dt, cells, dtype=rdt)
+        out = [value * closing for value in out]
         return RingdownForwardResult(out[0], out[1], result.freqs, channels, accs,
                                      result.s_params, jnp.stack(status), consistency,
                                      jnp.stack(pole_counts), jnp.asarray(pole_budgets), ctx,
