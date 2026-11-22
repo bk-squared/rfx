@@ -115,7 +115,8 @@ else:
     L = int(.33 * nd)
     M, k = nd - L, L
     pencil = 1.87 * 16 * (3*M*L + M*k + 2*k*L + 4*k*k)
-    residue = 1.71 * 16 * 5 * (min(n_win, 2**20 // (16*3))*3 + 3**2)
+    blocks = min(-(-n_win // (2**20 // (16*3))), n_win // 3)
+    residue = 1.71 * 16 * 5 * (-(-n_win // blocks)*3 + 3**2)
     assert pencil < residue
     rd.IDENTIFY_MEMORY_BOUND_BYTES = (pencil + residue)/2
 before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss

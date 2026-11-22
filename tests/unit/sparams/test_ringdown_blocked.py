@@ -110,9 +110,9 @@ def test_blocked_matches_dense(monkeypatch, x64, count, size):
         baseline = _call(y, dy, s, len(s))
         monkeypatch.setattr(blocked, '_BLOCK_TARGET_BYTES', size*width*itemsize)
         plan = blocked._block_plan(len(y), width, jnp.complex128 if x64 else jnp.complex64)
-        assert len(plan) == min(count, len(y) // width)
         actual = _call(y, dy, s, len(s))
     _assert_bound(actual, reference, None if x64 else baseline)
+    assert len(plan) == min(count, len(y) // width)
     jax.clear_caches()
 
 
