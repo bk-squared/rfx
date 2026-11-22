@@ -49,6 +49,16 @@ flux_x_0 [-1. -1. -1.]
 flux_x_1 [1. 1. 1.]
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/measure/assets/probes-and-fields/structure.png" loading="lazy" alt="Section with a point source, a probe on a DFT plane to its right, and one flux plane on each side, all three planes reaching through the absorber." />
+  <figcaption>The model as built, cut at y = 20 mm: the probe and DFT plane requested at x = 45 mm land at 44 mm, and the flux planes at 12 and 48 mm. All three planes cross the whole grid, absorber included.</figcaption>
+</figure>
+
+<figure data-rfx="media">
+  <img src="/rfx/measure/assets/probes-and-fields/dft-plane.png" loading="lazy" alt="Map of the normalized Ez magnitude on the DFT plane, largest around the probe at the centre and weakest at the corners." />
+  <figcaption>|Ez| on the DFT plane at 3 GHz, inside the absorber, divided by its largest value there. Each square is one stored sample, at that Ez sample's y and z.</figcaption>
+</figure>
+
 The flux plane at x = 12 mm reads negative and the one at x = 48 mm positive:
 flux is positive along +x, so power leaving the source towards −x counts
 negative. The DFT plane covers the whole cross-section of the grid, absorber

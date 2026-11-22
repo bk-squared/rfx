@@ -314,6 +314,16 @@ msl = board.compute_msl_s_matrix(n_freqs=21)
 S_msl = np.asarray(msl.S)                    # (2, 2, 21)
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/measure/assets/s-parameters/structure.png" loading="lazy" alt="Top view and side section of a microstrip line on its substrate between ports p1 and p2, with each port's probe row and the absorber around the board." />
+  <figcaption>The board as built: the line is 6 mm long and solved 1.675 mm wide, on 0.75 mm of substrate over the PEC ground, with absorber on the other five faces. Each port's probes lie 3.75 to 5.75 mm downstream of that port's feed.</figcaption>
+</figure>
+
+<figure data-rfx="media">
+  <img src="/rfx/measure/assets/s-parameters/microstrip-s.png" loading="lazy" alt="Magnitude of S21 stays within 0.04 dB of 0 dB from 1 to 10 GHz and magnitude of S11 rises from about −54 to −34 dB; the three highest frequencies are marked low signal." />
+  <figcaption>|S21| and |S11| returned by this run on its one 0.25 mm mesh, with open circles where <code>msl.reliable</code> is False. The |S21| values above 0 dB are part of what the passivity warning reports.</figcaption>
+</figure>
+
 `num_periods=40` is the default and sets the simulation time; don't shorten it
 without checking `msl.settling_db`.
 

@@ -47,6 +47,16 @@ ff = compute_far_field(result.ntff_data, result.ntff_box, result.grid, theta, ph
 pattern_db = radiation_pattern(ff)   # (n_freqs, n_theta, n_phi), peak = 0 dB
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/measure/assets/far-field-and-rcs/structure.png" loading="lazy" alt="Section through a point source and a probe inside a square far-field box, which lies inside the absorber." />
+  <figcaption>The model as built, cut at y = 100 mm: the box requested from 45 to 155 mm lands at 44 and 156 mm on the grid. The Ez source and probe samples sit at z = 102 mm, half a cell above their nodes.</figcaption>
+</figure>
+
+<figure data-rfx="media">
+  <img src="/rfx/measure/assets/far-field-and-rcs/pattern.png" loading="lazy" alt="Two polar plots of the far field: two lobes with nulls along z in the x-z plane, and a circle in the x-y plane." />
+  <figcaption>The pattern this run returns at 3 GHz in two planes, in dB below its peak, cut off at −20 dB. It comes from one 4 mm mesh.</figcaption>
+</figure>
+
 `compute_far_field` returns a `FarFieldResult` with `E_theta`, `E_phi`,
 `theta`, `phi` and `freqs`. Angles are in radians. The mesh here is coarse
 for speed; see [Limits](#limits) for what a real pattern needs.
