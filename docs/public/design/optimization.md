@@ -63,6 +63,16 @@ print("eps range in the design:",
       float(result.eps_design.min()), float(result.eps_design.max()))
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/design/assets/optimization/structure.png" loading="lazy" alt="Section through an open domain surrounded by an absorber, with a rectangular design region between the source and the probe." />
+  <figcaption>The model cut at y = 14 mm: the region includes the cells at both of its corners, so the declared 20 × 14 × 14 mm become 11 × 8 × 8 cells of 2 mm, which is 22 × 16 × 16 mm. The absorber has six layers on every face, and preflight warns that this is thin.</figcaption>
+</figure>
+
+<figure data-rfx="media">
+  <img src="/rfx/design/assets/optimization/loss.png" loading="lazy" alt="Five markers showing the loss falling from −3.10×10¹¹ with no update to −5.10×10¹¹ after four updates." />
+  <figcaption>The five values of <code>result.loss_history</code> from this run on a single mesh: each is minus the sum of the squared probe samples, for the design after that many updates. The returned <code>eps_design</code> has had a fifth update, and the history does not contain its loss.</figcaption>
+</figure>
+
 `result` is an `OptimizeResult` with `eps_design` (the permittivity in the
 region's cells), `loss_history`, and the final `latent`. Pass `latent` back as
 `init_latent=` to continue a run.
