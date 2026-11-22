@@ -82,6 +82,7 @@ from rfx.model.waveguide_modes import (
     WaveguidePortConfig,
 )
 from rfx.model.waveguide_waveform import (
+    admit_waveguide_freqs,
     waveguide_waveform_error,
 )
 
@@ -132,6 +133,7 @@ __all__ = [
     "traced_cell_mask",
     "uniform_solve_inputs",
     "uniform_source_table",
+    "admit_waveguide_freqs",
     "waveguide_waveform_error",
     "WaveguidePort",
     "WaveguidePortConfig",
