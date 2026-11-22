@@ -595,6 +595,25 @@ the 0.1 mm test mesh. With the whole-cell voltage, the short test fixture's |S21
 from 3.81 to 3.22 at 6 GHz and its column power from 14.6 to 10.5; the matrix is still
 far from passive, and the rest of the excess is not attributed.
 
+### On a radiating device, the coax calculators' S11 includes coupling from their open feed end.
+
+Tracker: #2975
+
+`compute_coaxial_line_reflection`, `compute_coaxial_two_port` and `compute_coax_msl_transition`
+end each coax line just past its matched feed sheet and leave the line open behind it.
+When the device at the far end radiates, as an open line end or an antenna does, the open
+feed end couples to it through the device's surroundings, and S11 includes that coupling.
+
+On a 40 mm open-ended line in a 12 x 12 mm box with 0.5 mm cells, the S11 of
+`compute_coaxial_line_reflection` differs by 1.5e-4 to 2.7e-4 at 4-6 GHz from the
+`run()`/`forward()` coax port, whose feed end is capped. With the device shorted, 89-96 % of
+that difference goes away. The calculator does not accept user geometry, so the shorted case
+was measured on a `run()` model that reproduces the calculator bit for bit.
+
+Only `compute_coaxial_line_reflection` was measured. The two-port and coax→microstrip
+calculators have the same open feed end and were not measured. They refuse an extra flux
+monitor that reaches the open side of a feed.
+
 ### The microstrip S-matrix can come back non-passive, and says so.
 
 Tracker: none — accepted limitation (warns at default: tests/unit/autodiff/test_msl_forward_identity.py::test_a_nonpassive_extraction_is_named_bin_by_bin_in_one_warning)
@@ -1237,4 +1256,4 @@ supported at all see the [support matrix](support_matrix.md).
 
 ### Uniform coax ports remain experimental
 
-Experimental uniform coax ports: same-line calculator equality, run()/forward() equality, bottom-feed, NTFF-leakage and occupancy-gradient checks define the validation scope; the antenna-level result against an independent solver is not yet shown. NTFF leakage and record-length gradient evidence must be checked for the antenna being reported.
+Experimental uniform coax ports: calculator equality on the open line (through a `run()` model of the calculator) and on a shorted line (against the capped port), run()/forward() equality, bottom-feed, NTFF-leakage and occupancy-gradient checks define the validation scope; the antenna-level result against an independent solver is not yet shown. NTFF leakage and record-length gradient evidence must be checked for the antenna being reported.
