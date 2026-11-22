@@ -580,6 +580,7 @@ def extend_shapes_into_cpml_pad(
     occupied_faces=None,
     skip_faces=(),
     conductor=False,
+    continued_faces=None,
 ) -> tuple[list[tuple[Shape, float]], list["UnextendableShape"]]:
     """Continue boundary-touching shapes out through the absorber pads.
 
@@ -608,6 +609,8 @@ def extend_shapes_into_cpml_pad(
     conductor : bool
         Keep a conducting Box's zero-extent normal axis unchanged. Dielectric
         Boxes retain their existing continuation along all reached axes.
+    continued_faces : list or None
+        Append each axis/side when its geometry extension is applied.
 
     Returns
     -------
@@ -676,6 +679,8 @@ def extend_shapes_into_cpml_pad(
                         "keep the volume clear of the domain faces")
                 if isinstance(current, Box):
                     current = _continue_box(current, axis, side, target)
+                    if continued_faces is not None:
+                        continued_faces.append((axis, side))
                 elif isinstance(current, Cylinder):
                     grown = _continue_cylinder(current, axis, side, target)
                     if grown is None:
@@ -685,6 +690,8 @@ def extend_shapes_into_cpml_pad(
                             _concrete_eps(eps_r)))
                     else:
                         current = grown
+                        if continued_faces is not None:
+                            continued_faces.append((axis, side))
                 else:
                     unextendable.append(UnextendableShape(
                         current, axis, side,
@@ -851,7 +858,7 @@ def _continued_sheet_normal(x, y, z, shape, xp=jnp, *, tie=0.0):
     return tuple(xp.where(outside, v / norm, v) for v in normals)
 
 
-def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None):
+def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None, continued_faces=None):
     """Return the conducting geometry solved through absorbing faces (C2/C5).
 
     Box faces and occupied outermost interior layers continue. A non-Box
@@ -859,6 +866,7 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
     cross-section on its last two interior layers. Other ports hold named
     entries except behind an incident MSL port, where the line continues.
     Port-generated structures do not call this function.
+    ``continued_faces`` collects only the axis/side decisions actually applied.
     """
     from rfx.core.jax_utils import is_tracer
     from rfx.geometry.rasterize_grid import (
@@ -874,7 +882,8 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
     if traced_axes:
         from rfx.geometry._traced_conductor import continued_traced_conductor_shape
         return continued_traced_conductor_shape(
-            sim, grid, shape, traced_node_axes=traced_axes, entry=entry, unextendable=unextendable)
+            sim, grid, shape, traced_node_axes=traced_axes, entry=entry, unextendable=unextendable,
+            continued_faces=continued_faces)
     pads = [[getattr(grid, f"pad_{a}_lo"), getattr(grid, f"pad_{a}_hi")]
             for a in "xyz"]
     # A shape without a bounding box has nothing to continue (no face to
@@ -894,10 +903,11 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
             if any(other is entry for other in held_conductor_entries(sim, grid)) else set())
     if held:
         held -= msl_continuation_faces(sim, grid, entry)
+    applied = []
     pairs, findings = extend_shapes_into_cpml_pad(
         [(shape, 1.0)], nodes, pads,
         declared_domain=sim._unresolved_domain, occupied_faces=occupied,
-        skip_faces=held, conductor=True)
+        skip_faces=held, conductor=True, continued_faces=applied)
     solved = pairs[0][0]
     from rfx.geometry.csg import Box
     if (not isinstance(shape, Box)
@@ -951,6 +961,9 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
         findings = [u for u in findings if (u.axis, u.side) in faces - accepted]
         solved = (_ContinuedSheetShape(shape, tuple(indices), tuple(tuple(b) for b in bounds),
                                        tuple(extensions)) if accepted else shape)
+        applied = sorted(accepted)
+    if continued_faces is not None:
+        continued_faces.extend(applied)
     findings = [u._replace(shape=shape, conductor=True) for u in findings]
     if unextendable is None:
         warn_unextendable_shapes(findings)

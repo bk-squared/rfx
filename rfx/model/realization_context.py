@@ -17,7 +17,7 @@ def context_from_conductors(sim, conductors):
     x, y, z = (n[:ctx.grid.shape[a]] for a, n in enumerate(ctx.nodes))
     ctx.coords = GridCoords(x, y, z, shape=ctx.grid.shape)
     products = {key: (cells, sheet, wire, shape)
-                for key, cells, sheet, wire, shape in conductors.assembly_entries}
+                for key, cells, sheet, wire, shape, faces in conductors.assembly_entries}
     for collection, prefix in ((sim._geometry, 'geometry'), (sim._thin_conductors, 'thin_conductor')):
         for i, entry in enumerate(collection):
             label = f'{prefix}[{i}]'

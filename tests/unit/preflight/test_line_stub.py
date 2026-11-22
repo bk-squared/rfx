@@ -248,17 +248,17 @@ def test_substrate_is_sampled_under_stub_with_realized_masks_and_precedence():
     sim._msl_ports[0] = replace(sim._msl_ports[0], eps_r_sub=9.8)
     sim.add_material('stub_only', eps_r=2.2)
     from rfx.errors import RfxRefusal
-    sim.add(Box((0, 0, .00051), (.0016, .012, .00065)), material='stub_only')
+    sim.add(Box((0, 0, .00051), (.0024, .012, .00065)), material='stub_only')
     with pytest.raises(RfxRefusal, match="Material volume 'stub_only'.*ZERO cells"):
         line_stub_findings(sim)
     sim._geometry[-1] = replace(sim._geometry[-1], shape=Box(
-        (0, 0, .00051), (.0016, .012, .00085)))
+        (0, 0, .00051), (.0024, .012, .00085)))
     f, = line_stub_findings(sim)
     assert f.substrate_eps_r == 2.2
     from rfx.sources.msl_port import _msl_position_to_index
     grid = sim._build_realized_grid()
     materials = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
-    index = _msl_position_to_index(grid, (.001, .006, .0005))
+    index = _msl_position_to_index(grid, ((f.endpoint_m + f.port_node_m) / 2, .006, .0005))
     assert float(materials.eps_r[index]) == pytest.approx(f.substrate_eps_r)
     sim._geometry = [e for e in sim._geometry if e.material_name == 'pec']
     f, = line_stub_findings(sim)

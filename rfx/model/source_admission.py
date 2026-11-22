@@ -251,7 +251,7 @@ def _owners(sim, conductors, component, cell):
     offsets = ((("xyz".index(component[1]), 0, 0, 0),)
                if component.startswith('e') else _H_LOOP[component])
     products = [(labels[key], cells, sheet, wire)
-                for key, cells, sheet, wire, _ in conductors.assembly_entries
+                for key, cells, sheet, wire, _, faces in conductors.assembly_entries
                 if key in labels]
     products.extend((sheet.entity_id, None, sheet, None)
                     for sheet in conductors.sheets

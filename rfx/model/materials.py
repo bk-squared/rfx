@@ -218,21 +218,24 @@ def assemble_cells(
                        and sim._cpml_layers > 0)
     from rfx.geometry.smoothing import continued_conductor_shape, warn_unextendable_shapes
     conductor_findings = []
+    from rfx.model.realization_continuation import continued_entry
 
     # NU historically continues all PEC declarations before sampling any entry.
-    geometry = [replace(entry, shape=continued_conductor_shape(
-                    sim, grid, entry.shape, entry=entry, unextendable=conductor_findings))
+    geometry = [continued_entry(sim, grid, entry, conductor_findings)
                 if sim._resolve_material(entry.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD
-                else entry for entry in sim._geometry] if nonuniform else sim._geometry
-    for declared_entry, entry in zip(sim._geometry, geometry, strict=True):
+                else (entry, ()) for entry in sim._geometry] if nonuniform else [(e, ()) for e in sim._geometry]
+    for declared_entry, (entry, continued_faces) in zip(sim._geometry, geometry, strict=True):
         mat = sim._resolve_material(entry.material_name)
         mask = _material_cell_mask(entry.shape, _coords, _centres,
                                    grid=sampling_grid, cell_sizes=_cell_sizes, domain_faces=domain_faces,
                                    name=entry.material_name, refuse_empty=mat.sigma < sim._PEC_SIGMA_THRESHOLD)
 
         if mat.sigma >= sim._PEC_SIGMA_THRESHOLD:
-            solved_shape = entry.shape if nonuniform else continued_conductor_shape(
-                sim, grid, entry.shape, entry=entry, unextendable=conductor_findings)
+            if not nonuniform:
+                solved_entry, continued_faces = continued_entry(sim, grid, entry, conductor_findings)
+                solved_shape = solved_entry.shape
+            else:
+                solved_shape = entry.shape
             # True PEC: volume cells into pec_mask (centre
             # sampled, §1.1); a zero-thickness Box is a sheet; a
             # sub-cell PolylineWire is a filament. eps/sigma stay at
@@ -241,7 +244,7 @@ def assemble_cells(
                 solved_shape, _coords, _centres, _cell_sizes,
                 name=entry.material_name, grid=sampling_grid, domain_faces=domain_faces)
             if assembly_entries is not None:
-                assembly_entries.append((id(declared_entry), cells, sheet, wire, solved_shape))
+                assembly_entries.append((id(declared_entry), cells, sheet, wire, solved_shape, continued_faces))
             if cells is not None:
                 pec_mask = pec_mask | cells
                 has_pec_cells = True
@@ -519,8 +522,9 @@ def _fold_thin_conductors(sim, grid, materials, pec_mask, pec_shapes, pec_sheets
                           sheet_specs, geometry_masks, assembly_entries, findings):
     """Continue declarations and apply the one model fold in declared order."""
     from rfx.model.film_geometry import prepare_film_footprints
-    conductors = [replace(tc, shape=continued_conductor_shape(
-        sim, grid, tc.shape, entry=tc, unextendable=findings)) for tc in sim._thin_conductors]
+    from rfx.model.realization_continuation import continued_entry
+    continued = [continued_entry(sim, grid, tc, findings) for tc in sim._thin_conductors]
+    conductors = [tc for tc, faces in continued]
     films = prepare_film_footprints(conductors, grid)
     for i, (declared, tc) in enumerate(zip(sim._thin_conductors, conductors)):
         from rfx.model.thin_conductors import admit_dc_plane, fold_thin_conductor
@@ -532,7 +536,7 @@ def _fold_thin_conductors(sim, grid, materials, pec_mask, pec_shapes, pec_sheets
             film_geometry=films.get(i), name=getattr(declared, 'name', None) or f'thin_conductor[{i}]')
         if assembly_entries is not None:
             assembly_entries.append((key, None, pec_sheets[-1] if tc.is_pec else None,
-                                     None, tc.shape))
+                                     None, tc.shape, continued[i][1]))
         if tc.is_pec:
             pec_shapes.append(tc.shape)
     return materials, pec_mask

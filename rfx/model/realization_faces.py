@@ -3,6 +3,7 @@ from dataclasses import replace
 
 
 def interior_rows(rows, record):
+    """Compare an assembled continuation at the wall on both sides of the verdict."""
     from rfx.model.realization_table import _axis
 
     result = []
@@ -46,8 +47,9 @@ def interior_rows(rows, record):
                     face = axis.axis + ("-" if side == 0 else "+")
                     clipped.append((face, drawn[side], wall))
                     drawn[side] = wall
+                if axis.axis + ("-lo" if side == 0 else "-hi") in continued:
+                    drawn[side] = wall
                     if domain.padding[side]:
-                        continued.add(axis.axis + ("-lo" if side == 0 else "-hi"))
                         # An absorber continuation has no independently drawn end.
                         realized[side] = wall
                 realized[side] = min(max(realized[side], walls[0]), walls[1])

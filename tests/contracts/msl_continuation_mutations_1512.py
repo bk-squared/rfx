@@ -1,4 +1,4 @@
-"""Twenty opt-in mutants, each in a fresh CPU process with a named assertion witness."""
+"""Twenty-two opt-in mutants, each in a fresh CPU process with a named assertion witness."""
 from importlib import import_module
 import os
 from pathlib import Path
@@ -11,6 +11,7 @@ SM = "rfx.geometry.smoothing"
 LS = "rfx.preflight.line_stub"
 AP = "rfx.preflight.absorber"
 TARGET = "tests/contracts/test_msl_continuation_1512.py"
+REALIZATION_TARGET = "tests/contracts/test_continued_realization_1512.py"
 NO_CONTINUATION = (SM, '    if (getattr(sim, "_boundary", None) not in ("cpml", "upml")\n            or int(getattr(sim, "_cpml_layers", 0)) <= 0):\n        return shape',
                    '    if True:\n        return shape')
 MSL_HOLD = (PT, '    if collection == "_msl_ports":\n        return ()',
@@ -55,8 +56,14 @@ ROWS = (
       'if True:')),
     ("fields_no_continuation", "test_run_forward_fields_equal", NO_CONTINUATION),
     ("fields_thin_not_continued", "test_run_forward_fields_equal",
-     ("rfx.model.materials", '    conductors = [replace(tc, shape=continued_conductor_shape(\n        sim, grid, tc.shape, entry=tc, unextendable=findings)) for tc in sim._thin_conductors]',
+     ("rfx.model.materials", '    conductors = [tc for tc, faces in continued]',
       '    conductors = list(sim._thin_conductors)')),
+    ("realization_drop_continued_face", "test_continued_strip_has_no_realization_advisory",
+     ("rfx.model.realization_faces", '                if axis.axis + ("-lo" if side == 0 else "-hi") in continued:',
+      '                if False:')),
+    ("realization_every_face", "test_shifted_strip_keeps_realization_advisory",
+     ("rfx.model.realization_faces", '                if axis.axis + ("-lo" if side == 0 else "-hi") in continued:',
+      '                if True:')),
 )
 
 
@@ -104,7 +111,8 @@ def main():
                     and item.originalname == witness):
                 self.seen = True
     evidence = Witness()
-    code = pytest.main(["-q", f"{TARGET}::{witness}", "-o", "addopts="], plugins=[evidence])
+    path = REALIZATION_TARGET if name.startswith("realization_") else TARGET
+    code = pytest.main(["-q", f"{path}::{witness}", "-o", "addopts="], plugins=[evidence])
     if code != 1 or not evidence.seen:
         raise AssertionError(f"{name}: expected AssertionError in {witness}, pytest={code}")
 

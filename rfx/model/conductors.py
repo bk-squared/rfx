@@ -730,7 +730,7 @@ def _with_sheet_spans(sim, conductors):
         return conductors
     _, nodes = _node_arrays(sim, grid, conductors.lane == 'nonuniform')
     products = {key: (cells, sheet, wire, shape)
-                for key, cells, sheet, wire, shape in conductors.assembly_entries}
+                for key, cells, sheet, wire, shape, faces in conductors.assembly_entries}
     ctx = object.__new__(_CampaignStaticsContext)
     ctx.grid, ctx.periodic, ctx._entries = grid, conductors.periodic, []
     owners = {}
@@ -789,8 +789,8 @@ def _with_sheet_spans(sim, conductors):
             **{f.name: getattr(sheet, f.name) for f in fields(SheetSpec)},
             entity_id=label, solved_spans=spans.get(label, (None, None, None)))
     return replace(conductors, sheets=tuple(replacements[id(s)] for s in conductors.sheets),
-        assembly_entries=tuple((key, cells, replacements.get(id(sheet), sheet), wire, shape)
-            for key, cells, sheet, wire, shape in conductors.assembly_entries))
+        assembly_entries=tuple((key, cells, replacements.get(id(sheet), sheet), wire, shape, faces)
+            for key, cells, sheet, wire, shape, faces in conductors.assembly_entries))
 
 
 def preview_port_stages(sim, conductors):

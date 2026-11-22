@@ -658,7 +658,7 @@ def _assert_trace_sheet_realized(sim_sim):
     assert int(sheet.normal_axis) == 2
     np.testing.assert_allclose(lines[2][sheet.plane], H_SUB, atol=2e-9, rtol=0)
     footprint = np.argwhere(np.asarray(sheet.footprint))
-    expected = ((0., E2E_DOMAIN[0]), (1.4e-3, 2.0e-3), (H_SUB, H_SUB))
+    expected = ((lines[0][0], lines[0][-1]), (1.4e-3, 2.0e-3), (H_SUB, H_SUB))
     for axis, bounds in enumerate(expected):
         actual = lines[axis][[footprint[:, axis].min(), footprint[:, axis].max()]]
         np.testing.assert_allclose(actual, bounds, atol=2e-9, rtol=0)
