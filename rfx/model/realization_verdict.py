@@ -266,7 +266,7 @@ def admit_sheet_sizes(sim, conductors, legacy_findings, conformal):
     delivered); ``None`` means none were formed, so they are formed here.
     """
     table = conductors.realization_table
-    if "legacy sheets" in table.judged:
+    if "legacy sheets" in table.judged or "sheet sizes unjudged" in table.judged:
         return []
     if legacy_findings is not None:
         table.judged.add("legacy sheets")
@@ -277,6 +277,7 @@ def admit_sheet_sizes(sim, conductors, legacy_findings, conformal):
         return list(legacy_findings)
     from rfx.model.realization_reference import table_wide
     from rfx.core.jax_utils import is_tracer
+    from rfx.geometry.csg import Box
     traced_axes = [axis for axis, name in zip("xyz", ("dx_arr", "dy_arr", "dz"))
                    if is_tracer(getattr(conductors.grid, name, None))]
     traced_mesh = bool(traced_axes)
@@ -284,9 +285,15 @@ def admit_sheet_sizes(sim, conductors, legacy_findings, conformal):
                                  for axis in traced_axes)
     if table_wide(table.rows) and not traced_mesh:
         return []
+    if traced_mesh:
+        pec_sheets = any(sheet is not None for _, _, sheet, _, _ in conductors.assembly_entries)
+        impedance_sheets = judge_impedance_sheets and any(
+            tc.surface_impedance_f0 is not None and isinstance(tc.shape, Box)
+            for tc in sim._thin_conductors)
+        if not (pec_sheets or impedance_sheets):
+            return []
     from rfx.model.realization_context import context_from_conductors
     from rfx.preflight.pec_geometry import _warn_sheet_effective_size, _warn_sheet_cavity_spacing
-    from rfx.geometry.csg import Box
     from rfx.preflight._common import PreflightIssue
     from rfx.model.graded_grid import host_nominal_grid
     import jax
@@ -294,6 +301,17 @@ def admit_sheet_sizes(sim, conductors, legacy_findings, conformal):
     with jax.ensure_compile_time_eval():
         grid = host_nominal_grid(conductors.grid) if traced_mesh else conductors.grid
         ctx = context_from_conductors(sim, conductors, grid=grid)
+    if ctx.omitted_pec_products:
+        sheets = ", ".join(f"{e.label} '{e.name}'" for e in ctx._entries
+                           if e.kind == "sheet" or (judge_impedance_sheets
+                               and e.kind == "lossy" and isinstance(e.shape, Box)))
+        finding = PreflightIssue(
+            f"Sheet sizes were not judged for {sheets}: a traced conductor dimension "
+            "prevents concrete nominal occupancy for " + ", ".join(ctx.omitted_pec_products) + ".",
+            code="sheet_size_unjudged", severity="warning", source="admit_sheet_sizes")
+        table.judged.add("sheet sizes unjudged")
+        table.findings.append(finding)
+        return [finding]
     ctx.cell_sizes = ctx.spacings
     ctx.nodes = tuple(n[:conductors.grid.shape[a]] for a, n in enumerate(ctx.nodes))
     from rfx.geometry.rasterize_grid import GridCoords

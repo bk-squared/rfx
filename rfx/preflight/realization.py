@@ -363,6 +363,7 @@ class _CampaignStaticsContext:
         self.periodic = (False, False, False)
         self._realized = None
         self._entries = None
+        self.omitted_pec_products: list[str] = []
         self.assembly_error: str | None = None
         self._assembly_exception: Exception | None = None
         self._build()

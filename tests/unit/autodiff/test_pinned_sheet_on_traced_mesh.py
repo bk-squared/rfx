@@ -11,6 +11,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+import warnings
 
 from rfx import Simulation
 from rfx.boundaries.pec import SheetSpec, realized_pec_edge_masks
@@ -262,6 +263,62 @@ def test_T6_traced_sheet_size_refusal_matches_concrete(kind):
         jax.jvp(run, (jnp.asarray(_prof_x(0.5 * DX), dtype=jnp.float32),),
                 (jnp.ones(N_X),))
     assert str(traced.value) == str(concrete.value)
+
+
+@pytest.mark.parametrize("traced_radius", [False, True], ids=["concrete_solids", "traced_radius"])
+def test_T9_sheet_with_cylinder_and_sphere_nominal_size_admission(traced_radius):
+    """Judge concrete nominal occupancy and skip sizes when a solid stays traced."""
+    from rfx import Cylinder, Sphere
+    from rfx.model.conductors import solve_conductors
+    from rfx.preflight._common import PreflightWarning
+    findings = []
+    nominal = _prof_x(0.5 * DX)
+
+    def run(dx, radius=1.6 * DX):
+        sim = Simulation(freq_max=40e9, domain=(N_X * DX, N_Y * DX, N_Z * DX),
+                         dx=DX, dx_profile=dx, cpml_layers=0, boundary="pec",
+                         nominal_profiles={"x": nominal} if is_tracer(dx) else {},
+                         dt=float(DT_PIN), dt_min_cell=float(D_MIN))
+        sim.add_source((3 * DX, 8 * DX, K_MID * DX), "ez", amplitude_kind="current")
+        sim.add_probe((20 * DX, 8 * DX, K_MID * DX), "ez")
+        sim._snap = "declared"
+        sim.add(Box((8 * DX, 5 * DX, Z_PATCH),
+                    (17.1 * DX, 11 * DX, Z_PATCH)), material="pec")
+        sim.add(Cylinder((18 * DX, 8 * DX, 16 * DX), radius, 2 * DX), material="pec")
+        sim.add(Sphere((5 * DX, 8 * DX, 16 * DX), 1.6 * DX), material="pec")
+        assert sim._dz_profile is None
+        if traced_radius:
+            return sim.forward(n_steps=4, skip_preflight=True).time_series
+        product = solve_conductors(sim, sim._build_nonuniform_grid(), nonuniform=True)
+        findings.append(tuple((str(f), f.code, f.severity, f.loc)
+                              for f in product.realization_table.findings
+                              if f.code == "sheet_effective_size"))
+        return sim.forward(n_steps=4, skip_preflight=True).time_series
+
+    if traced_radius:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            traced = jax.block_until_ready(jax.jit(run)(
+                jnp.asarray(nominal, dtype=jnp.float32), jnp.float32(1.6 * DX)))
+        assert np.isfinite(np.asarray(traced)).all()
+        skipped = [w for w in caught if getattr(w.message, "code", None) == "sheet_size_unjudged"]
+        assert len(skipped) == 1
+        assert isinstance(skipped[0].message, PreflightWarning)
+        assert "traced conductor dimension" in str(skipped[0].message)
+        assert "geometry[1] (Cylinder)" in str(skipped[0].message)
+        assert "geometry[0] 'pec'" in str(skipped[0].message)
+        assert skipped[0].filename == __file__
+        return
+
+    concrete = run(nominal)
+    traced, tangent = jax.block_until_ready(jax.jvp(
+        run, (jnp.asarray(nominal, dtype=jnp.float32),), (jnp.ones(N_X),)))
+    assert np.isfinite(np.asarray(concrete)).all()
+    assert np.isfinite(np.asarray(traced)).all()
+    assert np.isfinite(np.asarray(tangent)).all()
+    assert len(findings) == 2
+    assert findings[0]
+    assert findings[1] == findings[0]
 
 
 @pytest.mark.parametrize("kind", ["box", "thin"])
