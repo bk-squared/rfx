@@ -62,6 +62,16 @@ for n in (200, 300, 400):
 400 pass -96.1 dB
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/check/assets/simulation-time/structure.png" loading="lazy" alt="Section through a domain surrounded by absorber: a square slab in the middle, the port to its left and the probe to its right." />
+  <figcaption>The model of <code>build()</code>, cut at y = 24 mm, the node plane of the Ez samples requested at y = 25 mm: 30 × 25 × 20 cells of 2 mm, with eight absorber cells on every face. The port and the probe are at x = 18 and 44 mm, z = 21 mm, on each side of the slab.</figcaption>
+</figure>
+
+<figure data-rfx="media">
+  <img src="/rfx/check/assets/simulation-time/s11.png" loading="lazy" alt="S11 magnitudes at eleven frequencies from 2 to 4 GHz, one marker per run at each, for the 300-step and the 400-step runs: all 22 lie at 1.0 on an axis from 0 to 1.1, and the markers of the two runs coincide." />
+  <figcaption>|S11| of the 300- and 400-step runs, whose settling checks each returned pass; the 200-step run, whose check returned undetermined, is not drawn. The two runs give the same eleven values, from 0.99991 to 0.99999.</figcaption>
+</figure>
+
 At 200 steps the source pulse has not ended inside the run, so the check
 cannot be formed and says `undetermined` (its `reason` says the source end is
 unavailable, once for each signal judged). From 300 steps on it passes. Both
