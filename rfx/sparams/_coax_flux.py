@@ -1,6 +1,8 @@
 """Refuse flux windows that can see a calculator's open coax feed end."""
 import numpy as np
 
+from rfx.errors import RfxRefusal
+
 
 def refuse_open_feed_flux(entries, grid, domain, name, *, low, high=None):
     """Judge every axial endpoint, including tangential finite windows."""
@@ -16,7 +18,7 @@ def refuse_open_feed_flux(entries, grid, domain, name, *, low, high=None):
             hi = int(np.ceil((center + extent) / grid.dx)) + grid.pad_z_lo
         side = 'bottom' if lo <= low else 'top' if high is not None and hi >= high else None
         if side is not None:
-            raise ValueError(f'{name}(): extra flux monitor {entry.name!r} reaches the open {side} feed end '
+            raise RfxRefusal(f'{name}(): extra flux monitor {entry.name!r} reaches the open {side} feed end '
                              '(at or beyond its feed sheet); the run()/forward() port has a shielded end')
 
 

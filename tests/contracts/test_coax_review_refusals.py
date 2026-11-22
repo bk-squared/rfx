@@ -212,6 +212,9 @@ def test_settling_keeps_user_probes():
     waveform = GaussianPulse(f0=5e9, bandwidth=.8)
     source = int(round(((grid.shape[2] - grid.pad_z_hi - 5 - grid.pad_z_lo) * grid.dx
                         - grid.dx / 2) / float(np.asarray(grid.cells(2))[0]))) + grid.pad_z_lo
+    port = sim._coaxial_ports[0]
+    s = max(2, int(np.ceil(port.outer_radius / grid.dx))) + 1
+    source += -s if port.face == 'top' else s
     shift = jnp.float32(.5 * dt + .5 * grid.dx * np.sqrt(2.1) / 299792458)
     expected = 0
     for offset, plane in ((0., source + 1), (shift, source)):
