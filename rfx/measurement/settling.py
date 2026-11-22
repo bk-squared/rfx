@@ -1,6 +1,7 @@
 """Settling measurements from named port records."""
 
 from __future__ import annotations
+from collections.abc import Mapping
 from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import AccuracyWarning
@@ -24,7 +25,7 @@ def settling_db_from_named_records(named_records, *, dt=None, freqs=None,
                                    rounding_groups=None, _warn_stacklevel=2,
                                    known_drives=None, n_record=None,
                                    scale_groups=None, _channel_labels=None, reader=None,
-                                   echo_bound=None):
+                                   echo_bound: Mapping[str, float | str | None] | None = None):
     """Adapt the per-bin pole-tail value witness to legacy dB report fields.
 
     ``rounding_groups`` maps record names to co-located same-kind groups
@@ -53,7 +54,8 @@ def settling_db_from_named_records(named_records, *, dt=None, freqs=None,
 
 
 def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
-                                   return_detail: bool = False, reader=None, echo_bound=None):
+                                   return_detail: bool = False, reader=None,
+                                   echo_bound: Mapping[str, float | str | None] | None = None):
     """Per-bin pole-tail value witness over the four modal records per port.
 
     sensitivities are judged by a separate witness

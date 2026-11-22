@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from rfx.model.waveguide_aperture import validate_graded_waveguide_ports
 
 from typing import TYPE_CHECKING
@@ -257,7 +258,7 @@ def run_nonuniform_until_decay(
     cpml_axes: str | None = None,
     decay_by: float = 1e-3,
     n_end: int | None = AUTO_END,
-    echo_bound=None,
+    echo_bound: Mapping[str, float | str | None] | None = None,
     check_interval: int = 50,
     min_steps: int = 100,
     max_steps: int = 50_000,

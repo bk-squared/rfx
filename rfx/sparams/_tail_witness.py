@@ -5,6 +5,7 @@ names imported here stay importable from this module.
 """
 
 import numpy as np
+from collections.abc import Mapping
 from functools import partial
 from typing import NamedTuple
 
@@ -20,7 +21,8 @@ _pole_contributions = partial(_record_pole_contributions, identification=_IDENTI
 
 def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_groups=None,
                        _record_results=None, known_drives=None, n_record=None,
-                       scale_groups=None, _channel_labels=None, reader=None, echo_bound=None):
+                       scale_groups=None, _channel_labels=None, reader=None,
+                       echo_bound: Mapping[str, float | str | None] | None = None):
     """Delegate the record-end rule, retaining the identity reader by default."""
     result = record_end_error(
         records, dt, source_end, freqs, identification=_IDENTIFICATION, freq_max=freq_max,
@@ -69,7 +71,8 @@ class SettlingChannels(NamedTuple):
                                   scale_groups=scale_groups, _channel_labels=_channel_labels, reader=reader)
 
 
-def port_record_witness(records, dt, source_end, freqs, *, freq_max, reader=None, echo_bound=None):
+def port_record_witness(records, dt, source_end, freqs, *, freq_max, reader=None,
+                        echo_bound: Mapping[str, float | str | None] | None = None):
     """Judge recorded S-channel matrices, one matrix per port."""
     from rfx.sparams._settling_groups import port_column_groups
 

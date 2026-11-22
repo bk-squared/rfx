@@ -15,12 +15,14 @@ def close_completion(plan, output, report=None, failure=None):
     if failure is not None:
         return output, report, failure
     bound = plan.echo_bound
-    window = math.nan if plan.echo_dt is None else (plan.n_steps - plan.n_start) * plan.echo_dt
-    if not bound.get('reason') and window >= ECHO_BOUND_FACTOR * bound['tau_max']:
+    window = (math.nan if plan.echo_dt is None else
+              (int(plan.n_steps) - int(plan.n_start)) * float(plan.echo_dt))
+    tau_max = math.nan if bound.get('reason') else float(bound['tau_max'])
+    if not bound.get('reason') and window >= ECHO_BOUND_FACTOR * tau_max:
         return output, report, None
     reason = echo_bound_reason(bound)
     if report is not None:
-        value = math.nan if bound.get('reason') else window / bound['tau_max']
+        value = math.nan if bound.get('reason') else window / tau_max
         witness = RingdownWitness('echo_bound', value, ECHO_BOUND_FACTOR, False, reason)
         report = replace(report, witnesses=report.witnesses + (witness,),
                          failure='echo_bound: ' + reason)

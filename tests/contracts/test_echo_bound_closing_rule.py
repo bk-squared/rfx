@@ -57,6 +57,34 @@ def test_bound_and_round_trip_are_read_from_realized_cells(capsys):
         print(f"echo bound: {bound}; 2L/c={physical_return * 1e9:.9g} ns", flush=True, file=sys.stderr)
 
 
+def test_drude_interior_does_not_raise_the_echo_index():
+    """A conductor contributes its background index, excluding its Drude pole."""
+    from rfx.materials.lorentz import drude_pole
+
+    eps_inf, mu_r = 2.25, 1.44
+    sim = Simulation(freq_max=8e9, domain=(.018, .012, .012), dx=.003, boundary='pec')
+    sim.add_material('conductor', eps_r=eps_inf, mu_r=mu_r,
+                     lorentz_poles=[drude_pole(2 * np.pi * 3e9, 2.300874e8)])
+    sim.add(Box((0., 0., 0.), (.018, .012, .012)), material='conductor')
+    bound = echo_delay_bound(sim._build_realized_grid(), sim=sim)
+    assert not bound.get('reason'), bound
+    assert np.isfinite(bound['tau_max']) and np.isfinite(bound['n_max'])
+    assert bound['n_max'] == np.sqrt(eps_inf * mu_r)
+
+
+def test_undamped_lorentz_resonance_in_the_read_band_refuses_the_bound():
+    """A lossless resonance has no finite index even between the read bins."""
+    from rfx.materials.lorentz import lorentz_pole
+
+    sim = Simulation(freq_max=8e9, domain=(.018, .012, .012), dx=.003, boundary='pec')
+    sim.add_material('resonant', eps_r=2.,
+                     lorentz_poles=[lorentz_pole(1., 2 * np.pi * 3e9, 0.)])
+    sim.add(Box((0., 0., 0.), (.018, .012, .012)), material='resonant')
+    bound = echo_delay_bound(sim._build_realized_grid(), sim=sim, freqs=[2e9, 4e9])
+    assert bound['tau_max'] is None
+    assert 'undamped Lorentz resonance lies inside the read band' in bound['reason']
+
+
 @pytest.mark.parametrize('n', [4232, 3200])
 def test_unseen_echo_pass_is_refused(n, capsys):
     """Both wrong-pass records become undetermined with the closing reason and NaN dB."""

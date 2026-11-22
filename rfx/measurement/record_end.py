@@ -52,7 +52,8 @@ def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_po
     Pads and the nonperiodic fence-post cell never contribute to D. Declared
     materials include vacuum and every material used by the geometry. For
     dispersion, the static response, band edges and Lorentz peaks enter the
-    maximum. A low-level caller supplies concrete nondispersive arrays or an
+    maximum, excluding Drude poles: a conductor's interior is not an echo
+    path. A low-level caller supplies concrete nondispersive arrays or an
     explicit host bound.
     """
     from rfx.model.graded_admission import host_cells
@@ -105,6 +106,12 @@ def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_po
                 if not np.isfinite(n_max):
                     raise ValueError("nonfinite material index")
                 continue
+            lp = tuple(p for p in lp if float(p.omega_0) != 0.)
+            for pole in lp:
+                resonance = float(pole.omega_0) / (2 * np.pi)
+                if (float(pole.omega_0) > 0 and float(pole.delta) == 0
+                        and np.min(bins) <= resonance <= np.max(bins)):
+                    raise ValueError("an undamped Lorentz resonance lies inside the read band")
             peaks = [np.sqrt(float(p.omega_0)**2 - 2 * float(p.delta)**2) / (2 * np.pi)
                      for p in lp if float(p.omega_0)**2 > 2 * float(p.delta)**2]
             samples = np.r_[0., bins, [f for f in peaks if np.min(bins) <= f <= np.max(bins)]]

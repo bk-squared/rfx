@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from rfx.measurement.calculator_drive import calculator_drive
 
 from rfx.model.waveguide_aperture import validate_uniform_waveguide_ports
@@ -571,7 +572,7 @@ def extract_waveguide_s_matrix(
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
     settling_details: list | None = None,
-    echo_bound=None,
+    echo_bound: Mapping[str, float | str | None] | None = None,
     sheet_impedance: object | None = None,
     pec_edge_masks: tuple | None = None,
     field_dtype: DTypeLike | None = None,
@@ -722,7 +723,7 @@ def extract_waveguide_s_matrix_flux(
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
     settling_details: list | None = None,
-    echo_bound=None,
+    echo_bound: Mapping[str, float | str | None] | None = None,
     field_dtype=None,
 ) -> "jnp.ndarray | tuple[jnp.ndarray, np.ndarray]":
     """Hybrid power-flux magnitude + modal phase waveguide S-matrix.
@@ -1060,7 +1061,7 @@ def extract_waveguide_s_params_normalized(
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
     settling_details: list | None = None,
-    echo_bound=None,
+    echo_bound: Mapping[str, float | str | None] | None = None,
     sheet_impedance: object | None = None,
     pec_edge_masks: tuple | None = None,
     field_dtype=None,
@@ -1303,7 +1304,7 @@ def extract_multimode_s_matrix(
     pec_edge_masks: tuple | None = None,
     field_dtype=None,
     settling_details: list | None = None,
-    echo_bound=None,
+    echo_bound: Mapping[str, float | str | None] | None = None,
 ) -> tuple[jnp.ndarray, list[tuple[int, int, str, tuple[int, int]]]]:
     """Assemble a multi-mode waveguide S-matrix.
 
@@ -1485,7 +1486,7 @@ def extract_multimode_s_matrix_flux(
     pec_edge_masks: tuple | None = None,
     field_dtype=None,
     settling_details: list | None = None,
-    echo_bound=None,
+    echo_bound: Mapping[str, float | str | None] | None = None,
 ) -> tuple[jnp.ndarray, list[tuple[int, int, str, tuple[int, int]]]]:
     """Power-flux multi-mode waveguide S-matrix.
 
