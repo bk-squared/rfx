@@ -340,6 +340,7 @@ def _build_nu_scan(
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(
         materials, lane="non-uniform Yee with tensor or design-box updates",
+        debye=debye, lorentz=lorentz,
         unsupported=(aniso_eps is not None or design_box is not None))
     sources = sources or []
     if _realized.ACTIVE is not None:

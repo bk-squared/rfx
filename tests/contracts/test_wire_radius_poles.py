@@ -5,10 +5,17 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+import rfx
 from rfx import Box, DebyePole, GaussianPulse, LorentzPole, Simulation, Sphere
+from rfx.core.yee import init_materials
+from rfx.grid import Grid
+from rfx.materials.debye import init_debye
+from rfx.materials.lorentz import init_lorentz
 from rfx.materials.lorentz import drude_pole
 from rfx.errors import RfxRefusal
 from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+from rfx.sources.sources import WirePort, setup_wire_port
+from rfx.stepping.graded_loop import run_nonuniform
 
 
 D = 1e-3
@@ -119,7 +126,7 @@ def assert_records(expected, actual):
 
 
 @pytest.mark.parametrize("lane", LANES)
-@pytest.mark.parametrize("kind", ["drude", "lorentz"])
+@pytest.mark.parametrize("kind", ["drude", "lorentz", "debye"])
 def test_remote_zero_strength_pole_matches_eps_infinity(lane, kind, monkeypatch):
     graded = "nonuniform" in lane or lane.endswith("_nu")
     expected = solve(scene("plain", graded=graded), lane, monkeypatch)
@@ -141,6 +148,38 @@ def test_pole_one_cell_from_pin_is_refused(lane, kind):
             sim.run(**options, compute_s_params=False)
         else:
             sim.forward(**options, distributed="distributed" in lane, checkpoint=False)
+
+
+@pytest.mark.parametrize("graded", [False, True])
+@pytest.mark.parametrize("kind", ["debye", "drude", "lorentz"])
+@pytest.mark.parametrize("near", [True, False])
+def test_lowlevel_radius_pole_clearance(graded, kind, near):
+    grid = (scene("plain", graded=True)._build_nonuniform_grid() if graded else
+            Grid(freq_max=30e9, domain=(.008,) * 3, dx=D, cpml_layers=0))
+    port = WirePort((.004, .004, .002), (.004, .004, .005), "ez", radius=.0001)
+    materials = setup_wire_port(grid, port, init_materials(grid.shape))
+    assert materials.mu_r_wire is not None
+    materials = jax.tree.map(lambda value: value, materials)
+    mask = jnp.zeros(grid.shape, bool)
+    mask = mask.at[2:6, 2:6, :].set(True) if near else mask.at[6:8, 6:8, :].set(True)
+    if kind == "debye":
+        poles = dict(debye=init_debye(
+            [DebyePole(delta_eps=1., tau=1e-11)], materials, grid.dt, mask=mask, grid=grid))
+    else:
+        pole = (drude_pole(omega_p=2*np.pi*6e9, gamma=1e9) if kind == "drude" else
+                LorentzPole(omega_0=2*np.pi*6e9, delta=1e9, kappa=(2*np.pi*3e9)**2))
+        poles = dict(lorentz=init_lorentz([pole], materials, grid.dt, mask=mask, grid=grid))
+
+    def run():
+        if graded:
+            return run_nonuniform(grid, materials, 2, **poles)
+        return rfx.run(grid, materials, 2, boundary="pec", **poles)
+
+    if near:
+        with pytest.raises(NotImplementedError, match=r"radius.*Debye/Lorentz.*edge.*ε∞/4.*ε\(ω\)"):
+            run()
+    else:
+        run()
 
 
 @pytest.mark.parametrize("component", ["ex", "ey", "ez"])

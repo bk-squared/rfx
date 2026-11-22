@@ -250,9 +250,9 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                 require_radius_pole_clearance(
                     sim, grid, pe.component, _live_cells, port=f"port[{_port_index}]")
                 materials = stamp_wire_radius(
-                    grid, materials, pe.component, pe.radius, _live_cells)
+                    grid, materials, pe.component, pe.radius, _live_cells, pole_clearance=True)
                 materials_drive = stamp_wire_radius(
-                    grid, materials_drive, pe.component, pe.radius, _live_cells)
+                    grid, materials_drive, pe.component, pe.radius, _live_cells, pole_clearance=True)
 
             if pe.excite:
                 for cell_ijk, live in zip(_cells_ijk, live_flags):

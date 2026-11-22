@@ -148,15 +148,58 @@ def require_radius_pole_clearance(sim, grid, component, cells, *, port):
                     "or resolve the pin geometrically.")
 
 
-def require_radius_update(materials, *, lane, unsupported=False):
+@jax.tree_util.register_pytree_node_class
+class _RadiusContours(tuple):
+    """Carry stamped E-edge indices and declaration clearance with H arrays."""
+
+    def __new__(cls, parts, edges=(), cleared=False):
+        result = super().__new__(cls, parts)
+        result.edges = edges
+        result.cleared = cleared
+        return result
+
+    def tree_flatten(self):
+        return tuple(self), (self.edges, self.cleared)
+
+    @classmethod
+    def tree_unflatten(cls, metadata, parts):
+        return cls(parts, *metadata)
+
+
+def require_radius_update(materials, *, lane, unsupported=False, debye=None, lorentz=None):
     """Defense for low-level runners taking already-stamped materials."""
     if getattr(materials, "mu_r_wire", None) is not None and unsupported:
         raise NotImplementedError(
             f"wire-port radius material records are not implemented on {lane}; "
             "resolve the pin geometrically (for example a coax feed or a volume wire).")
+    contours = getattr(materials, "mu_r_wire", None)
+    if contours is None or (debye is None and lorentz is None):
+        return
+    terms = tuple(poles[0].beta if kind == "Debye" else poles[0].c
+                  for kind, poles in (("Debye", debye), ("Lorentz", lorentz))
+                  if poles is not None)
+    if any(is_tracer(value) for value in jax.tree.leaves(terms)):
+        if getattr(contours, "cleared", False):
+            return
+        raise NotImplementedError(
+            "wire-port radius cannot check traced Debye/Lorentz coefficients; "
+            "declare concrete pole geometry through Simulation")
+    edges = getattr(contours, "edges", None)
+    if edges is None:
+        raise NotImplementedError(
+            "wire-port radius with Debye/Lorentz coefficients needs its stamped "
+            "edge indices; rebuild the port with setup_wire_port")
+    for component, cell in edges:
+        if any(np.any(np.asarray(term[component])[(slice(None),) + cell] != 0)
+               for term in terms):
+            raise NotImplementedError(
+                f"wire-port radius: Debye/Lorentz pole reaches stamped "
+                f"{('ex', 'ey', 'ez')[component]} edge {cell}; the electric stamp "
+                "is ε∞/4, while the storage it represents scales with the "
+                "medium's ε(ω); per-pole quarter stamps are not implemented")
 
 
-def stamp_wire_radius(grid, materials, component, radius, cells):
+def stamp_wire_radius(grid, materials, component, radius, cells, *, pole_clearance=False):
     """Stamp live probe edges once, before sources/coefficients are built.
 
     The transverse mesh must be locally square and uniform; spacing along
@@ -177,6 +220,9 @@ def stamp_wire_radius(grid, materials, component, radius, cells):
 
     axis = {"ex": 0, "ey": 1, "ez": 2}[component]
     transverse = [t for t in range(3) if t != axis]
+    contours = materials.mu_r_wire
+    edges = set(getattr(contours, "edges", ()))
+    cleared = pole_clearance and (contours is None or getattr(contours, "cleared", False))
     if hasattr(grid, "dx_arr"):
         from rfx.model.graded_ports import port_metric_axes
         spine = (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)
@@ -237,6 +283,7 @@ def stamp_wire_radius(grid, materials, component, radius, cells):
             tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz"), grid=grid)[0]
            - (0 if own_eps is None else own_eps[c]) for c in cells]
     for cell, eps_c in zip(cells, eps):
+        edges.add((axis, tuple(cell)))
         local = []
         for t in transverse:
             i = cell[t]
@@ -267,5 +314,6 @@ def stamp_wire_radius(grid, materials, component, radius, cells):
             for offset in (-1, 1):
                 e_cell = list(cell)
                 e_cell[t] += offset
+                edges.add((axis, tuple(e_cell)))
                 materials = stamp_lumped_eps(materials, tuple(e_cell), eps_c / 4, component)
-    return materials._replace(mu_r_wire=tuple(h_parts))
+    return materials._replace(mu_r_wire=_RadiusContours(h_parts, tuple(sorted(edges)), cleared))

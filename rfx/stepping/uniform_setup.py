@@ -331,6 +331,7 @@ def _build_step_setup(
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(
         materials, lane="uniform Yee with UPML/tensor or design-box updates",
+        debye=debye, lorentz=lorentz,
         unsupported=(boundary == "upml"
                      or aniso_eps is not None or aniso_inv_eps is not None
                      or stencil_order != 2 or design_box is not None

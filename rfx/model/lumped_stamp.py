@@ -406,7 +406,8 @@ def setup_wire_port(grid, port, materials, pec_edge_masks=None, *, radius_sim=No
                 [c for c, live in zip(cells, live_flags) if live], port=radius_port)
         materials = stamp_wire_radius(
             grid, materials, port.component, port.radius,
-            [c for c, live in zip(cells, live_flags) if live])
+            [c for c, live in zip(cells, live_flags) if live],
+            pole_clearance=radius_sim is not None)
     for cell, live in zip(cells, live_flags):
         if not live:
             continue
