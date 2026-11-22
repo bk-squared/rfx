@@ -28,7 +28,7 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_gro
         known_drives=known_drives, n_record=n_record, scale_groups=scale_groups,
         _channel_labels=_channel_labels, reader=reader)
     from rfx.measurement.record_end import with_echo_bound
-    db, detail = with_echo_bound(result.db, result._asdict(), echo_bound, dt)
+    _, detail = with_echo_bound(result.db, result._asdict(), echo_bound, dt)
     return result._replace(**{key: value for key, value in detail.items() if key in result._fields})
 
 
