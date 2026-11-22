@@ -1,4 +1,5 @@
-"""Default and explicit S requests share admission before any time step."""
+"""Default and explicit S requests share admission before any time step.
+Public registration refuses TFSF beside an impedance port."""
 from dataclasses import replace
 import warnings
 
@@ -16,6 +17,7 @@ KINDS = ("microstrip", "passive_microstrip", "waveguide", "Floquet", "TFSF", "co
 
 
 def _scene(graded, kind, wire=True):
+    """Floquet registration rejects graded z meshes."""
     sim, y = _base_sim(**({"dz_profile": np.full(9, 254e-6 / 3)} if graded else {}))
     if kind == "waveguide":
         sim.add_waveguide_port(.004, name="guide", f0=2.5e9)
@@ -27,12 +29,10 @@ def _scene(graded, kind, wire=True):
     elif kind == "Floquet":
         source = Simulation(freq_max=5e9, domain=(.008, .003, .001), dx=.0001)
         source.add_floquet_port(.0005, name="plane", f0=2.5e9)
-        # Registration rejects graded z meshes; check stored-entry admission too.
         sim._floquet_ports = source._floquet_ports
     elif kind == "TFSF":
         source = Simulation(freq_max=5e9, domain=(.008, .003, .001), dx=.0001)
         source.add_tfsf_source(f0=2.5e9, margin=1)
-        # Public registration already refuses TFSF beside an impedance port.
         sim._tfsf = source._tfsf
     elif kind == "coaxial":
         sim.add_coaxial_port((.002, y, 0.), "bottom")

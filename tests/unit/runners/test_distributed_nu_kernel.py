@@ -20,13 +20,12 @@ against (13 failing tests, PR that closed #622) went undetected for
 that reason. The marker is removed so these run in the same
 fast-suite/weekly CPU shards as the sibling
 ``test_distributed_nu_composition.py`` file, which never carried it.
+An earlier reversal of only the inverse-spacing fix, with the PEC/PMC/CPML face appliers still fixed, produced no observable forward or gradient parity drift in this file, so the pad-lane test needs its direct array assertion.
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
 
 import os
-# Force 2 virtual devices for the sharded tests in sibling file; also
-# harmless here because we don't actually create a mesh in this file.
 os.environ.setdefault(
     "XLA_FLAGS", "--xla_force_host_platform_device_count=2")
 
@@ -50,8 +49,6 @@ def _graded_profile(n_physical, dx0, ratio=1.5):
     """Return a 1-D profile of length n_physical with geometric grading
     of `ratio` on one side, clamping both boundary cells to dx0 so the
     make_nonuniform_grid CPML padding is valid."""
-    # Build non-uniform interior, then force both ends back to dx0 so
-    # the CPML boundary-value invariant holds.
     prof = dx0 * ratio ** np.linspace(0, 1, n_physical)
     prof[0] = dx0
     prof[-1] = dx0
@@ -63,14 +60,11 @@ def test_inv_dx_h_slab_boundary_matches_global():
     arrays at the slab seam. CORE-C2 (2026-05-16): inv_dx_h is the
     H-update array — local cell width 1/dx[k]; inv_dx_g is the E-update
     array — mean 2/(dx[k-1]+dx[k]) — which is the one that straddles the
-    lower neighbour and is resolved by the global build."""
+    lower neighbour and is resolved by the global build.
+    31 physical cells realize 32 nodes, evenly splittable by two devices for the manual unpadded slab replay.
+    """
     nz = 8
     ny = 8
-    # make_nonuniform_grid appends one bounding-node duplicate cell
-    # per axis, so an n_physical-cell request realizes nx = n_physical + 1
-    # nodes. 31 physical cells -> 32 realized nodes, evenly splittable by
-    # n_devices=2 below (the manual slab replay assumes an even, unpadded
-    # split).
     n_physical = 31
     dx0 = 1e-3
     dx_profile = _graded_profile(n_physical, dx0, ratio=1.5)
@@ -82,9 +76,6 @@ def test_inv_dx_h_slab_boundary_matches_global():
     )
 
     n_devices = 2
-    # Fixture precondition: guard the even-split, unpadded premise the
-    # manual 2-device slab replay below depends on (gate-can-bind-artifact
-    # rule — assert what makes the test able to fail correctly).
     assert grid.nx % n_devices == 0, (
         f"grid.nx={grid.nx} must be evenly divisible by n_devices="
         f"{n_devices} for this test's unpadded slab-split premise"
@@ -95,7 +86,6 @@ def test_inv_dx_h_slab_boundary_matches_global():
     nx = inv_dx_g.shape[0]
     nx_per = nx // n_devices
 
-    # Replay the slab split from distributed_v2 (ghost=1)
     ghost = 1
     nx_local = nx_per + 2 * ghost
     slabs = np.zeros((n_devices, nx_local), dtype=np.float32)
@@ -107,22 +97,16 @@ def test_inv_dx_h_slab_boundary_matches_global():
         if d < n_devices - 1:
             slabs[d, -1] = inv_dx_h_g[hi]
 
-    # For device 0: the rightmost real cell (index ghost+nx_per-1 in slab)
-    # equals inv_dx_h_g[nx_per - 1] — a slice of the globally-built array.
     expected = inv_dx_h_g[nx_per - 1]
     got = slabs[0, ghost + nx_per - 1]
     assert np.isclose(got, expected), (
         f"Device 0 seam-cell inv_dx_h = {got}, expected global "
         f"inv_dx_h[{nx_per - 1}] = {expected}"
     )
-    # CORE-C2: inv_dx_h is the H-update array — LOCAL cell width 1/dx[k].
     expected_analytic = 1.0 / dx_padded[nx_per - 1]
     assert np.isclose(got, expected_analytic, atol=1e-6), (
         f"Seam inv_dx_h = {got}, analytic 1/dx = {expected_analytic}"
     )
-    # inv_dx_g is the E-update MEAN 2/(dx[k-1]+dx[k]); its genuine seam
-    # cell is device-1's first real cell (global nx_per), which straddles
-    # device-0's last cell — correct because the array is built globally.
     e_seam = inv_dx_g[nx_per]
     e_analytic = 2.0 / (dx_padded[nx_per - 1] + dx_padded[nx_per])
     assert np.isclose(e_seam, e_analytic, atol=1e-6), (
@@ -132,14 +116,11 @@ def test_inv_dx_h_slab_boundary_matches_global():
 
 def test_update_h_nu_local_matches_global_interior():
     """_update_h_local_nu on device-0 slab should match the global
-    update_h_nu on the unsharded tensor at interior real cells."""
+    update_h_nu on the unsharded tensor at interior real cells.
+    15 physical cells realize 16 nodes, evenly splittable by two devices for the manual slab replay.
+    """
     nz = 8
     ny = 8
-    # make_nonuniform_grid appends one bounding-node duplicate cell
-    # per axis, so an n_physical-cell request realizes nx = n_physical + 1
-    # nodes. 15 physical cells -> 16 realized nodes, evenly splittable by
-    # n_devices=2 below (the manual 2-device slab replay assumes an even
-    # split).
     n_physical = 15
     dx0 = 1e-3
     dx_profile = _graded_profile(n_physical, dx0, ratio=1.2)
@@ -151,8 +132,6 @@ def test_update_h_nu_local_matches_global_interior():
     )
     nx = grid.nx
     n_devices = 2
-    # Fixture precondition: guard the even-split premise the manual slab
-    # replay below depends on.
     assert grid.nx % n_devices == 0, (
         f"grid.nx={grid.nx} must be evenly divisible by n_devices="
         f"{n_devices} for this test's slab-split premise"
@@ -161,10 +140,6 @@ def test_update_h_nu_local_matches_global_interior():
     ghost = 1
     nx_local = nx_per + 2 * ghost
 
-    # Random-ish E fields. Every field/material array is sized from the
-    # REALIZED grid shape (grid.nx/ny/nz) — #564 appends a bounding node
-    # per axis, so grid.ny/grid.nz are ny+1/nz+1, not the bare ny/nz used
-    # above only to build the dz_profile / domain-size request.
     gnx, gny, gnz = grid.nx, grid.ny, grid.nz
     rng = np.random.default_rng(42)
     ex = jnp.asarray(rng.standard_normal((gnx, gny, gnz)), dtype=jnp.float32)
@@ -182,13 +157,11 @@ def test_update_h_nu_local_matches_global_interior():
         mu_r=jnp.ones((gnx, gny, gnz), dtype=jnp.float32),
     )
 
-    # Global H update
     global_h = update_h_nu(
         state, mats, grid.dt,
         grid.inv_dx_h, grid.inv_dy_h, grid.inv_dz_h,
      high_wall=unpadded_high_walls(grid))
 
-    # Device-0 slab (with ghost). Pick slab build identical to runner.
     inv_dx_g, inv_dx_h_g, _ = _build_sharded_inv_dx_arrays(
         grid, n_devices, pad_x=0)
 
@@ -249,27 +222,14 @@ def test_update_h_nu_local_matches_global_interior():
         grid.inv_dy_h, grid.inv_dz_h,
      high_wall=unpadded_high_walls(grid))
 
-    # Compare interior real cells (exclude ghost + the seam cell, which
-    # uses the global mean-spacing; this cell's forward-diff reaches
-    # into the ghost and should match the global reference via our
-    # inv_dx_h_h pad).
-    # Interior real cells in device 0: slab indices [ghost, ghost+nx_per-1).
-    # Last real cell (ghost+nx_per-1) uses inv_dx_h straddling the seam,
-    # matching global inv_dx_h[nx_per-1], so it should match too.
     glob_slice = np.asarray(global_h.hz)[:nx_per]
     slab_slice = np.asarray(slab_h.hz)[ghost:ghost + nx_per]
-    # Exclude last real cell where forward-diff pulls in the ghost ex/ey
-    # which are populated from arr[nx_per] (the global interior cell),
-    # so this must still match.
     np.testing.assert_allclose(
         slab_slice, glob_slice, atol=1e-5,
         err_msg="device-0 H-z slab should match global interior H-z",
     )
 
 
-# ---------------------------------------------------------------------------
-# Phase 2A: build_sharded_nu_grid metadata tests
-# ---------------------------------------------------------------------------
 
 from rfx.runners.distributed_nu import build_sharded_nu_grid, ShardedNUGrid
 
@@ -294,25 +254,20 @@ def test_build_sharded_nu_grid_metadata_shapes():
 
     assert isinstance(sg, ShardedNUGrid)
 
-    # x sizes sum correctly
     assert sg.nx == grid.nx
     assert sg.nx_padded % n_devices == 0
     assert sg.nx_per_rank * n_devices == sg.nx_padded
     assert sg.nx_padded >= sg.nx
     assert sg.pad_x == sg.nx_padded - sg.nx
 
-    # nx_local includes ghosts
     assert sg.nx_local == sg.nx_per_rank + 2 * sg.ghost_width
     assert sg.ghost_width == 1
 
-    # y/z unchanged
     assert sg.ny == grid.ny
     assert sg.nz == grid.nz
 
-    # cpml_layers replicated
     assert sg.cpml_layers == grid.cpml_layers
 
-    # inv spacing array shapes
     assert sg.inv_dx_global.shape == (sg.nx_padded,)
     assert sg.inv_dx_h_global.shape == (sg.nx_padded,)
     assert sg.dx_padded.shape == (sg.nx_padded,)
@@ -321,11 +276,10 @@ def test_build_sharded_nu_grid_metadata_shapes():
     assert sg.inv_dz.shape == (grid.nz,)
     assert sg.inv_dz_h.shape == (grid.nz,)
 
-    # x_starts / x_stops bookkeeping
     assert len(sg.x_starts) == n_devices
     assert len(sg.x_stops) == n_devices
     assert sg.x_starts[0] == 0
-    assert sg.x_stops[-1] == sg.nx  # capped at unpadded nx
+    assert sg.x_stops[-1] == sg.nx
 
 
 def test_build_sharded_nu_grid_inv_dx_seam_continuity():
@@ -342,19 +296,16 @@ def test_build_sharded_nu_grid_inv_dx_seam_continuity():
     ghost = sg.ghost_width
     nx_local = sg.nx_local
 
-    # Build the slabs using the canonical helper
     slabs = split_1d_with_ghost(
         sg.inv_dx_h_global, n_devices, nx_per, nx_local, ghost, pad_value=0.0
     )
 
-    # For device 0: last real cell in slab = global index nx_per - 1
     seam_slab = float(slabs[0, ghost + nx_per - 1])
     seam_global = float(sg.inv_dx_h_global[nx_per - 1])
     assert np.isclose(seam_slab, seam_global, atol=1e-6), (
         f"Seam slab value {seam_slab} != global reference {seam_global}"
     )
 
-    # Cross-check analytically: inv_dx_h is the H-update local 1/dx[k].
     dx_arr = sg.dx_padded
     analytic = float(1.0 / dx_arr[nx_per - 1])
     assert np.isclose(seam_slab, analytic, atol=1e-5), (
@@ -364,13 +315,9 @@ def test_build_sharded_nu_grid_inv_dx_seam_continuity():
 
 def test_build_sharded_nu_grid_pad_trim_for_nondivisible_nx():
     """nx=17 (realized), n_devices=2 — high-x rank gets the pad; metadata
-    flags are correct."""
-    # make_nonuniform_grid appends one bounding-node duplicate cell
-    # per axis, so an nx_physical-cell request realizes grid.nx =
-    # nx_physical + 1 nodes. This test's whole point is exercising the
-    # PAD-TRIM path, which only fires when the realized nx is NOT
-    # divisible by n_devices — request 16 physical cells to realize
-    # nx=17 (odd); with n_devices=2 we need pad_x=1 to reach 18.
+    flags are correct.
+    16 physical cells realize 17 nodes, requiring one pad cell to reach 18 for the two-device split.
+    """
     dx0 = 1e-3
     nx_physical = 16
     ny_physical = 8
@@ -382,15 +329,9 @@ def test_build_sharded_nu_grid_pad_trim_for_nondivisible_nx():
         cpml_layers=0,
         dx_profile=dx_profile,
     )
-    # Bounding node: N physical cells realize N+1 nodes.
-    assert grid.nx == nx_physical + 1  # sanity
+    assert grid.nx == nx_physical + 1
 
     n_devices = 2
-    # Fixture precondition: the pad-trim path only executes when the
-    # realized nx is NOT evenly divisible by n_devices — guard both ends
-    # so a future realized-node-count change can't silently stop
-    # exercising the path this test exists to cover (gate-can-bind-
-    # artifact rule).
     assert grid.nx % n_devices != 0, (
         f"grid.nx={grid.nx} must be non-divisible by n_devices={n_devices} "
         f"for this test to exercise the pad-trim path at all"
@@ -398,23 +339,13 @@ def test_build_sharded_nu_grid_pad_trim_for_nondivisible_nx():
     sg = build_sharded_nu_grid(grid, n_devices=n_devices)
     assert sg.pad_x > 0, "pad-trim path did not execute (pad_x == 0)"
 
-    # Padding arithmetic
     assert sg.pad_x == 1, f"Expected pad_x=1, got {sg.pad_x}"
     assert sg.nx_padded == 18
     assert sg.nx_per_rank == 9
     assert sg.nx_trim == 1
 
-    # High-x rank index
-    assert sg.rank_has_high_x_pad == n_devices - 1  # rank 1
+    assert sg.rank_has_high_x_pad == n_devices - 1
 
-    # The pad region is STRUCTURALLY INERT — both the E
-    # (inv_dx_global) and H (inv_dx_h_global) coefficients are exactly
-    # zero at the padded cell, so nothing evolves there regardless of
-    # the PEC-mask padding. Pre-fix this cell carried a LIVE 1/dx[-1]
-    # coefficient (this assertion used to check for that value) — that
-    # was exactly the bug: it kept the real boundary node's H term
-    # live and displaced the hi-x wall by one cell. Asserting the old
-    # nonzero value here would re-encode the bug as expected behaviour.
     got_last_inv_h = float(sg.inv_dx_h_global[-1])
     got_last_inv_e = float(sg.inv_dx_global[-1])
     assert got_last_inv_h == 0.0, (
@@ -423,13 +354,10 @@ def test_build_sharded_nu_grid_pad_trim_for_nondivisible_nx():
     assert got_last_inv_e == 0.0, (
         f"Padded inv_dx (E) last cell must be inert (0.0), got {got_last_inv_e}"
     )
-    # The REAL boundary node's H term (global index nx-1 — the grid's
-    # own trailing zero, nonuniform.py:219) must stay AT nx-1, not move
-    # to the padded slab end.
     assert float(sg.inv_dx_h_global[sg.nx - 1]) == 0.0, (
         "Real boundary node's H coefficient must be zero at global nx-1"
     )
-    assert float(grid.inv_dx_h[-1]) == 0.0  # sanity: matches grid's own convention
+    assert float(grid.inv_dx_h[-1]) == 0.0
 
 
 def test_build_sharded_nu_grid_replicates_dt():
@@ -438,12 +366,9 @@ def test_build_sharded_nu_grid_replicates_dt():
     n_devices = 4
     sg = build_sharded_nu_grid(grid, n_devices=n_devices)
 
-    # dt must equal the grid's dt exactly (no recomputation)
     assert sg.dt == float(grid.dt), (
         f"ShardedNUGrid dt {sg.dt} != grid.dt {float(grid.dt)}"
     )
-    # dt is a plain Python float (not a JAX array) so it's trivially
-    # identical across all ranks — assert it is not a JAX array
     assert isinstance(sg.dt, float), (
         f"Expected plain float for dt, got {type(sg.dt)}"
     )
@@ -457,7 +382,7 @@ def test_build_sharded_nu_grid_position_to_index_deterministic():
     nx_physical = 16
     ny_physical = 8
     nz_physical = 8
-    dx_profile = np.full(nx_physical, dx0)   # uniform so we can predict the index
+    dx_profile = np.full(nx_physical, dx0)
     dz_profile = np.full(nz_physical, dx0)
     grid = make_nonuniform_grid(
         (nx_physical * dx0, ny_physical * dx0), dz_profile, dx0,
@@ -468,16 +393,10 @@ def test_build_sharded_nu_grid_position_to_index_deterministic():
     n_devices = 2
     sg = build_sharded_nu_grid(grid, n_devices=n_devices)
 
-    # Place a physical position in the middle of the domain
-    # For a uniform profile with cpml=0, index = round(pos / dx0)
-    # Use a position in the second half so it lands on rank 1.
-    # nx_physical=16, nx_per_rank=8; cell 10 → rank 1, local 10-8=2 (+ghost=1 → local_i=3)
     target_global_i = 10
-    # A quarter cell past node 10, not half: a half cell is a tie between
-    # nodes 10 and 11, which the lookup breaks to the even node, and
-    # the float32 sum here lands 7e-10 m above it, nearer 11.
+    NON_TIE_CELL_OFFSET = 0.25
     pos_x = (float(np.asarray(grid.dx_arr[:target_global_i]).sum())
-              + 0.25 * float(np.asarray(grid.dx_arr)[target_global_i]))
+              + NON_TIE_CELL_OFFSET * float(np.asarray(grid.dx_arr)[target_global_i]))
     pos_y = 0.5 * dx0
     pos_z = 0.5 * dx0
     i_global, j_global, k_global = position_to_index(grid, (pos_x, pos_y, pos_z))
@@ -485,9 +404,8 @@ def test_build_sharded_nu_grid_position_to_index_deterministic():
         f"position_to_index returned i={i_global}, expected {target_global_i}"
     )
 
-    # Apply Phase 2A mapping convention
-    expected_rank = target_global_i // sg.nx_per_rank          # 10 // 8 = 1
-    expected_local_i = (target_global_i % sg.nx_per_rank) + sg.ghost_width  # 2 + 1 = 3
+    expected_rank = target_global_i // sg.nx_per_rank
+    expected_local_i = (target_global_i % sg.nx_per_rank) + sg.ghost_width
 
     got_rank = i_global // sg.nx_per_rank
     got_local_i = (i_global % sg.nx_per_rank) + sg.ghost_width
@@ -499,15 +417,11 @@ def test_build_sharded_nu_grid_position_to_index_deterministic():
         f"local_i={got_local_i}, expected {expected_local_i}"
     )
 
-    # Calling the mapping a second time must give the same result (deterministic)
     i2, _, _ = position_to_index(grid, (pos_x, pos_y, pos_z))
     assert i2 // sg.nx_per_rank == got_rank
     assert (i2 % sg.nx_per_rank) + sg.ghost_width == got_local_i
 
 
-# ---------------------------------------------------------------------------
-# Phase 2B: hard-PEC + ghost-exchange sharded NU scan body tests
-# ---------------------------------------------------------------------------
 
 import jax  # noqa: E402
 
@@ -615,9 +529,11 @@ def test_distributed_pec_only_2device_matches_single_device():
     grid = _phase2b_build_test_grid(nx_physical=16, ny=8, nz=8, ratio=1.2)
     materials = _phase2b_make_materials(grid)
 
-    # Source: global x-index 4 (rank 0), probe: global x-index 12 (rank 1)
     src_idx = (4, 4, 4)
     prb_idx = (12, 4, 4)
+    assert (Slab(grid.nx, n_devices).owner(src_idx[0]) == 0 and Slab(grid.nx, n_devices).owner(prb_idx[0]) == 1), (
+        "The source on rank 0 and probe on rank 1 must make the signal cross the slab seam."
+    )
     src_si, src_sj, src_sk, src_comp, src_wf = _phase2b_make_current_source(
         grid, src_idx, "ez", _phase2b_gauss_waveform, n_steps, materials,
     )
@@ -630,7 +546,6 @@ def test_distributed_pec_only_2device_matches_single_device():
         component="ez",
     )
 
-    # Single-device reference
     single_out = run_nonuniform(
         grid=grid,
         materials=materials,
@@ -640,7 +555,6 @@ def test_distributed_pec_only_2device_matches_single_device():
     )
     ts_single = jnp.asarray(single_out["time_series"])[:, 0]
 
-    # 2-device distributed run
     sharded_grid = build_sharded_nu_grid(grid, n_devices=n_devices,
                                          exchange_interval=1)
     sharded_mat = _phase2b_shard_mat(materials, sharded_grid)
@@ -686,6 +600,7 @@ def test_distributed_pec_only_pad_lane_final_state_matches_single_device():
     asserts the ``pad_x > 0`` precondition explicitly (gate-can-bind-
     artifact rule — a future realized-node-count change must not
     silently stop exercising the pad lane here).
+    An earlier hz norm of ~1e-1 versus ~1e5-1e8 for the other five components motivates the combined relative L2 metric, so a near-null component cannot dominate the comparison.
     """
     devices = jax.devices()[:2]
     n_devices = 2
@@ -696,25 +611,11 @@ def test_distributed_pec_only_pad_lane_final_state_matches_single_device():
 
     sharded_grid = build_sharded_nu_grid(grid, n_devices=n_devices,
                                          exchange_interval=1)
-    # Precondition guard: this test exists specifically to exercise the
-    # pad lane. If a future change makes nx_physical=20 realize
-    # an evenly-divisible nx, this fixture stops testing what it claims
-    # to and must be updated, not silently pass on the pad_x==0 lane.
     assert sharded_grid.pad_x > 0, (
         f"fixture no longer exercises the pad lane: grid.nx={grid.nx}, "
         f"pad_x={sharded_grid.pad_x} (expected > 0)"
     )
 
-    # Structural check on _build_sharded_inv_dx_arrays's own output
-    # (fix site 1). This is deliberately NOT redundant with the
-    # full-state parity run below: empirically, reverting fix site (1)
-    # alone (while sites 2-4, the PEC/PMC/CPML face appliers, stay
-    # fixed) produces NO observable drift in ANY forward or gradient
-    # parity test in this file — the PEC face applier re-zeros E at the
-    # real boundary node every step, and the corrupted H coefficient at
-    # that one node never leaks anywhere else for a hard-PEC unmasked
-    # cavity. So a parity-only test cannot be the F4 falsifier for site
-    # 1; this direct array assertion is what makes it one.
     assert float(sharded_grid.inv_dx_h_global[sharded_grid.nx - 1]) == 0.0, (
         "Real boundary node's H coefficient must be zero at global nx-1"
     )
@@ -759,17 +660,6 @@ def test_distributed_pec_only_pad_lane_final_state_matches_single_device():
     )
     dist_state = dist_out["final_state"]
 
-    # Full-field parity, combined relative L2 norm across all 6
-    # gathered components (the whole domain, not one probe location).
-    # An elementwise max-relative-error is the wrong metric here: this
-    # z-polarised-source geometry drives hz to a near-null field
-    # (norm ~1e-1 vs ~1e5-1e8 for the other 5 components), so per-cell
-    # ratios there are floating-point noise divided by floating-point
-    # noise, not signal. A combined L2 norm — the same sum-of-squares
-    # style as ``assert_class_b_parity``'s time-integrated energy
-    # check, generalised from the probe time series to the full
-    # spatial field — weights each component by its physical energy
-    # share, so a genuinely null component cannot dominate the metric.
     for comp in ("ex", "ey", "ez", "hx", "hy", "hz"):
         assert getattr(single_state, comp).shape == getattr(dist_state, comp).shape, (
             f"{comp} shape mismatch: single={getattr(single_state, comp).shape}, "
@@ -811,6 +701,7 @@ def test_distributed_pec_only_seam_no_double_zeroing():
     kept the ``Ey``/``Ez`` that rank 1 zeroed a stage later.  The exchange
     now runs last in the E half-step; re-measured, this row reads 7.8e-08
     (the no-body baseline of the lane is 9.4e-06, float32 rounding).
+    An occupied cell owns every edge incident to it, so a single cell is a real conductor.
     """
     devices = jax.devices()[:2]
     n_devices = 2
@@ -820,21 +711,17 @@ def test_distributed_pec_only_seam_no_double_zeroing():
     materials = _phase2b_make_materials(grid)
     nx, ny, nz = grid.nx, grid.ny, grid.nz
 
-    # Build a PEC mask with a single cell exactly at the slab seam.
     sharded_grid = build_sharded_nu_grid(grid, n_devices=n_devices)
-    seam_i = sharded_grid.nx_per_rank  # global x-index of rank 1's first real cell
+    seam_i = sharded_grid.nx_per_rank
     seam_j = ny // 2
     seam_k = nz // 2
     pec_mask = jnp.zeros((nx, ny, nz), dtype=jnp.bool_)
-    # ONE cell, exactly at the seam. An occupied cell owns every edge
-    # incident to it (§1.2), so a single cell is a real conductor and the
-    # double-zeroing risk this test looks for is present. The fixture used
-    # to mark three consecutive cells with the comment "so the tangential
-    # mask in apply_pec_mask sees a PEC neighbour (otherwise the thin-sheet
-    # rule preserves the field)" — padding whose only purpose was to make
-    # the earlier neighbour rule fire, and which spread the body over the
-    # seam it was supposed to sit on.
     pec_mask = pec_mask.at[seam_i, seam_j, seam_k].set(True)
+    assert (np.count_nonzero(np.asarray(pec_mask)) == 1 and bool(pec_mask[seam_i, seam_j, seam_k])
+            and Slab(grid.nx, n_devices).owner(seam_i) == 1
+            and Slab(grid.nx, n_devices).owner(seam_i - 1) == 0), (
+        "The hard PEC mask must contain one occupied cell exactly at the slab seam."
+    )
 
     src_idx = (4, 4, 4)
     src_si, src_sj, src_sk, src_comp, src_wf = _phase2b_make_current_source(
@@ -844,11 +731,11 @@ def test_distributed_pec_only_seam_no_double_zeroing():
         i=int(src_si), j=int(src_sj), k=int(src_sk),
         component=src_comp, waveform=jnp.asarray(src_wf),
     )
-    # Probe on rank 1, away from the seam, so the seam-mask physics
-    # propagates into the sampled signal.
     prb_spec = ProbeSpec(i=12, j=4, k=4, component="ez")
+    assert (prb_spec.i > seam_i and Slab(grid.nx, n_devices).owner(prb_spec.i) == 1), (
+        "The rank 1 probe must lie away from the seam so seam-mask physics reaches the sampled signal."
+    )
 
-    # Single-device reference (applies the mask once via apply_pec_mask)
     single_out = run_nonuniform(
         grid=grid,
         materials=materials,
@@ -859,7 +746,6 @@ def test_distributed_pec_only_seam_no_double_zeroing():
     )
     ts_single = jnp.asarray(single_out["time_series"])[:, 0]
 
-    # Distributed run with the same PEC mask
     sharded_mat = _phase2b_shard_mat(materials, sharded_grid)
     sharded_mask = shard_pec_mask_x_slab(pec_mask, sharded_grid)
     out = run_nonuniform_distributed_pec(
@@ -875,8 +761,6 @@ def test_distributed_pec_only_seam_no_double_zeroing():
     )
     ts_dist = jnp.asarray(out["time_series"])[:, 0]
 
-    # If the seam cell were double-zeroed, the field profile would
-    # decay differently — Class B forward parity catches that.
     assert_class_b_parity(ts_single, ts_dist,
                           label="phase2b_seam_no_double_zeroing")
 
@@ -889,6 +773,7 @@ def test_distributed_pec_mask_override_union_semantics():
     before passing to the runner.  We replicate that union at the host
     level (mirroring ``Simulation.forward()`` semantics) and verify
     the distributed runner produces the identical probe time-series.
+    Both masks are cell occupancies, so their union declares volumes rather than sheets.
     """
     devices = jax.devices()[:2]
     n_devices = 2
@@ -898,19 +783,9 @@ def test_distributed_pec_mask_override_union_semantics():
     materials = _phase2b_make_materials(grid)
     nx, ny, nz = grid.nx, grid.ny, grid.nz
 
-    # "Geometry" PEC: a 2-cell block at x = 10..11. Both masks below are
-    # CELL occupancy, i.e. VOLUME declarations: the block
-    # realizes walls at x = 10 and x = 12 and shorts Ex between them. It
-    # was labelled "a thin sheet at x=10" and spelled with two cells so the
-    # earlier neighbour rule would fire on it — a sheet owns no cell and
-    # cannot be expressed as a cell mask at all, so the label was wrong for
-    # the object in both directions. ``pec_mask_override`` is a VOLUME
-    # override and stays one (design note §1.8), so the union below is a
-    # union of cell occupancies, which is exactly what it always was.
     geom_mask = jnp.zeros((nx, ny, nz), dtype=jnp.bool_)
     geom_mask = geom_mask.at[10, 2:6, 2:6].set(True)
     geom_mask = geom_mask.at[11, 2:6, 2:6].set(True)
-    # "Override" PEC: another small block at x=5 inside rank 0
     override_mask = jnp.zeros((nx, ny, nz), dtype=jnp.bool_)
     override_mask = override_mask.at[5, 3:5, 3:5].set(True)
     override_mask = override_mask.at[6, 3:5, 3:5].set(True)
@@ -963,6 +838,7 @@ def test_distributed_h_ghost_exchange_recovers_global_field():
     distributed scan body's H update + ghost exchange should produce
     H-field evolution that matches the single-device run_nonuniform
     reference at the probe.
+    The Hy probe makes H ghost exchange the critical step transporting the soft-source signal.
     """
     devices = jax.devices()[:2]
     n_devices = 2
@@ -970,9 +846,6 @@ def test_distributed_h_ghost_exchange_recovers_global_field():
     grid = _phase2b_build_test_grid(nx_physical=16, ny=8, nz=8, ratio=1.0)
     materials = _phase2b_make_materials(grid)
 
-    # Inject a soft source so we have a non-trivial time series to compare;
-    # this still tests the H ghost exchange because the signal must cross
-    # the seam to reach the probe.
     n_steps_run = 40
     src_idx = (3, 4, 4)
     src_si, src_sj, src_sk, src_comp, src_wf = _phase2b_make_current_source(
@@ -982,9 +855,10 @@ def test_distributed_h_ghost_exchange_recovers_global_field():
         i=int(src_si), j=int(src_sj), k=int(src_sk),
         component=src_comp, waveform=jnp.asarray(src_wf),
     )
-    # Probe in rank 1 sampling Hy (so the H ghost exchange is the
-    # critical step transporting the signal)
     prb_spec = ProbeSpec(i=12, j=4, k=4, component="hy")
+    assert (Slab(grid.nx, n_devices).owner(src_spec.i) == 0 and Slab(grid.nx, n_devices).owner(prb_spec.i) == 1), (
+        "The soft-source signal must cross the seam to reach the Hy probe on rank 1."
+    )
 
     single_out = run_nonuniform(
         grid=grid, materials=materials, n_steps=n_steps_run,
@@ -1011,9 +885,6 @@ def test_distributed_h_ghost_exchange_recovers_global_field():
                           label="phase2b_h_ghost_exchange_global_field")
 
 
-# ---------------------------------------------------------------------------
-# Phase 2C: full CPML on x-slabs — V3 plan lines 633-657
-# ---------------------------------------------------------------------------
 
 from rfx.runners.distributed_nu import (  # noqa: E402
     init_cpml_for_sharded_nu,
@@ -1078,10 +949,12 @@ def test_distributed_cpml_2device_matches_single_device():
         nx_physical=16, ny=8, nz=8, dx0=1e-3, cpml_layers=4)
     materials = _phase2b_make_materials(grid)
 
-    # Source / probe in interior; cross the slab seam.
     nx, ny_g, nz_g = grid.nx, grid.ny, grid.nz
     src_idx = (nx // 4, ny_g // 2, nz_g // 2)
     prb_idx = (3 * nx // 4, ny_g // 2, nz_g // 2)
+    assert (Slab(grid.nx, n_devices).owner(src_idx[0]) == 0 and Slab(grid.nx, n_devices).owner(prb_idx[0]) == 1), (
+        "The CPML source and probe must cross the ownership seam."
+    )
     src_si, src_sj, src_sk, src_comp, src_wf = _phase2b_make_current_source(
         grid, src_idx, "ez", _phase2b_gauss_waveform, n_steps, materials,
     )
@@ -1094,14 +967,12 @@ def test_distributed_cpml_2device_matches_single_device():
         component="ez",
     )
 
-    # Single-device reference (uses init_cpml under the hood)
     single_out = run_nonuniform(
         grid=grid, materials=materials, n_steps=n_steps,
         sources=[src_spec], probes=[prb_spec],
     )
     ts_single = jnp.asarray(single_out["time_series"])[:, 0]
 
-    # Distributed run with CPML
     sharded_grid = build_sharded_nu_grid(grid, n_devices=n_devices)
     sharded_mat = _phase2b_shard_mat(materials, sharded_grid)
     cpml_params, cpml_state_stacked = init_cpml_for_sharded_nu(
@@ -1162,7 +1033,6 @@ def test_distributed_cpml_internal_seam_is_noop():
     materials = _phase2b_make_materials(grid)
     nx = grid.nx
 
-    # Source in the centre so the field reaches every rank
     src_idx = (nx // 2, grid.ny // 2, grid.nz // 2)
     src_si, src_sj, src_sk, src_comp, src_wf = _phase2b_make_current_source(
         grid, src_idx, "ez", _phase2b_gauss_waveform, n_steps, materials,
@@ -1204,17 +1074,14 @@ def test_distributed_cpml_internal_seam_is_noop():
 
     n_cpml = sharded_grid.cpml_layers
 
-    # Rank-by-rank inspection of every x-face psi field
     if n_devices >= 3:
-        # Rank 1 is interior — every x-face psi must be exactly zero
         from rfx.boundaries.cpml import CPMLState
         rank1_psi = {}
         for fname in CPML_X_FACE_PSI_FIELDS:
             stacked = _phase2c_unstack_cpml(
                 final_cpml, sharded_grid, n_cpml, fname,
             )
-            rank1_psi[fname] = jnp.asarray(stacked[1])  # rank 1
-        # Build a fake CPMLState-like NamedTuple subset for the helper
+            rank1_psi[fname] = jnp.asarray(stacked[1])
         rank1_state = CPMLState(
             psi_ex_ylo=jnp.zeros(1), psi_ex_yhi=jnp.zeros(1),
             psi_ex_zlo=jnp.zeros(1), psi_ex_zhi=jnp.zeros(1),
@@ -1235,20 +1102,16 @@ def test_distributed_cpml_internal_seam_is_noop():
         )
         assert_class_c_cpml_seam_noop(rank1_state, label="phase2c_seam_noop_rank1")
     else:
-        # 2-device fallback: rank 0 owns x_lo only, so x_hi psi must be 0;
-        # rank 1 owns x_hi only, so x_lo psi must be 0.
         for fname in CPML_X_FACE_PSI_FIELDS:
             stacked = _phase2c_unstack_cpml(
                 final_cpml, sharded_grid, n_cpml, fname,
             )
             if fname.endswith("xlo"):
-                # Rank 1 (not rank 0) must NOT touch x_lo
                 assert np.all(stacked[1] == 0), (
                     f"Phase 2C: rank 1 (interior side) modified x_lo psi "
                     f"field '{fname}' — internal seam treated as boundary."
                 )
             elif fname.endswith("xhi"):
-                # Rank 0 (not rank N-1) must NOT touch x_hi
                 assert np.all(stacked[0] == 0), (
                     f"Phase 2C: rank 0 (interior side) modified x_hi psi "
                     f"field '{fname}' — internal seam treated as boundary."
@@ -1270,14 +1133,14 @@ def test_distributed_cpml_outer_face_active():
     """
     devices = jax.devices()[:2]
     n_devices = 2
-    n_steps = 80  # long enough for the pulse to reach both x-faces
+    STEPS_TO_REACH_BOTH_X_FACES = 80
+    n_steps = STEPS_TO_REACH_BOTH_X_FACES
 
     grid = _phase2c_build_cpml_grid(
         nx_physical=16, ny=8, nz=8, dx0=1e-3, cpml_layers=4)
     materials = _phase2b_make_materials(grid)
     nx = grid.nx
 
-    # Source in the centre (cell ~nx/2)
     src_idx = (nx // 2, grid.ny // 2, grid.nz // 2)
     src_si, src_sj, src_sk, src_comp, src_wf = _phase2b_make_current_source(
         grid, src_idx, "ez", _phase2b_gauss_waveform, n_steps, materials,
@@ -1316,7 +1179,6 @@ def test_distributed_cpml_outer_face_active():
     assert final_cpml is not None
     n_cpml = sharded_grid.cpml_layers
 
-    # Rank 0 must have non-zero x_lo psi after the wave hits the boundary
     rank0_psi_ey_xlo = _phase2c_unstack_cpml(
         final_cpml, sharded_grid, n_cpml, "psi_ey_xlo",
     )[0]
@@ -1325,7 +1187,6 @@ def test_distributed_cpml_outer_face_active():
         "wavefront reaches the x_lo boundary — outer x-face CPML inactive."
     )
 
-    # Rank N-1 must have non-zero x_hi psi
     rankN_psi_ey_xhi = _phase2c_unstack_cpml(
         final_cpml, sharded_grid, n_cpml, "psi_ey_xhi",
     )[n_devices - 1]
@@ -1335,9 +1196,6 @@ def test_distributed_cpml_outer_face_active():
     )
 
 
-# ---------------------------------------------------------------------------
-# Phase 2D: Debye / Lorentz E path on the sharded scan body — V3 plan 659-720
-# ---------------------------------------------------------------------------
 
 from rfx.runners.distributed_nu import (  # noqa: E402
     shard_debye_coeffs_x_slab,
@@ -1361,9 +1219,9 @@ def _phase2d_debye_pole():
 
 
 def _phase2d_lorentz_pole():
-    """Single-pole Lorentz, microwave-band parameters."""
-    # Prebuilt admission refuses the former 30 GHz pole (dt/stable=1.01494).
-    # At 10 GHz dt/stable=0.992724; keep both parity comparisons unchanged.
+    """Single-pole Lorentz, microwave-band parameters.
+    Prebuilt admission refuses the 30 GHz pole (an earlier dt/stable=1.01494), so this helper uses the 10 GHz pole (an earlier dt/stable=0.992724).
+    """
     return lorentz_pole(delta_eps=1.5, omega_0=2.0 * np.pi * 10e9, delta=1e10)
 
 
@@ -1384,13 +1242,14 @@ def test_distributed_debye_only_2device_matches_single_device():
     materials = _phase2b_make_materials(grid)
     nx, ny_g, nz_g = grid.nx, grid.ny, grid.nz
 
-    # Debye mask: central slab spanning the slab seam so the ADE
-    # ordering matters at the seam cell.
     debye_mask = jnp.zeros((nx, ny_g, nz_g), dtype=jnp.bool_)
     seam_i = nx // 2
     debye_mask = debye_mask.at[seam_i - 2:seam_i + 2,
                                ny_g // 4:3 * ny_g // 4,
                                nz_g // 4:3 * nz_g // 4].set(True)
+    assert (bool(np.any(np.asarray(debye_mask)[Slab(nx, n_devices).nx_per_rank - 1])) and bool(np.any(np.asarray(debye_mask)[Slab(nx, n_devices).nx_per_rank]))), (
+        "The dispersive occupancy must straddle the ownership seam so ADE ordering matters there."
+    )
 
     debye = init_debye([_phase2d_debye_pole()], materials, grid.dt,
                        mask=debye_mask, high_wall=unpadded_high_walls(grid))
@@ -1405,7 +1264,6 @@ def test_distributed_debye_only_2device_matches_single_device():
     )
     prb_spec = ProbeSpec(i=12, j=ny_g // 2, k=nz_g // 2, component="ez")
 
-    # Single-device reference
     single_out = run_nonuniform(
         grid=grid, materials=materials, n_steps=n_steps,
         sources=[src_spec], probes=[prb_spec],
@@ -1413,7 +1271,6 @@ def test_distributed_debye_only_2device_matches_single_device():
     )
     ts_single = jnp.asarray(single_out["time_series"])[:, 0]
 
-    # Distributed run with sharded Debye
     sharded_grid = build_sharded_nu_grid(grid, n_devices=n_devices)
     sharded_mat = _phase2b_shard_mat(materials, sharded_grid)
     from jax.sharding import Mesh
@@ -1535,13 +1392,14 @@ def test_distributed_mixed_dispersion_2device_matches_single_device():
     materials = _phase2b_make_materials(grid)
     nx, ny_g, nz_g = grid.nx, grid.ny, grid.nz
 
-    # Use the same mask region for both (mixed dispersion in a slab
-    # spanning the seam — the heaviest stress test for the ADE order).
     mask = jnp.zeros((nx, ny_g, nz_g), dtype=jnp.bool_)
     seam_i = nx // 2
     mask = mask.at[seam_i - 2:seam_i + 2,
                    ny_g // 4:3 * ny_g // 4,
                    nz_g // 4:3 * nz_g // 4].set(True)
+    assert (bool(np.any(np.asarray(mask)[Slab(nx, n_devices).nx_per_rank - 1])) and bool(np.any(np.asarray(mask)[Slab(nx, n_devices).nx_per_rank]))), (
+        "The dispersive occupancy must straddle the ownership seam so ADE ordering matters there."
+    )
 
     debye = init_debye([_phase2d_debye_pole()], materials, grid.dt, mask=mask, high_wall=unpadded_high_walls(grid))
     lorentz = init_lorentz([_phase2d_lorentz_pole()], materials, grid.dt,
@@ -1616,16 +1474,13 @@ def test_distributed_mixed_dispersion_grad_no_corner_nan():
     ``gamma_base = EPS_0`` at ghosts and the mixed cascade produces
     finite no-op updates.  This regression test fails WITHOUT the fix
     (NaN count ~2 * ny * nz) and passes WITH the fix.
+    The eps_inf=2 override avoids the Lorentz instability that both one-device and distributed admission refuse at eps_inf=1.
     """
     from rfx import Simulation, Box
 
     devices = jax.devices()[:2]
     n_steps = 30
 
-    # Minimum-scale repro that keeps CI cost low but still exercises the
-    # mixed-dispersion distributed path.  Transverse extent must satisfy
-    # `nx_per_rank > 2 * cpml_layers` — with 2 ranks and cpml=8, the
-    # post-CPML grid (~40 cells) gives nx_per=20, well above 16.
     nx, ny_g, nz_g = 24, 24, 48
     dx = 1e-3
     sim = Simulation(
@@ -1666,8 +1521,6 @@ def test_distributed_mixed_dispersion_grad_no_corner_nan():
 
     nu_grid = sim._build_nonuniform_grid()
     gnx, gny, gnz = int(nu_grid.nx), int(nu_grid.ny), int(nu_grid.nz)
-    # eps_inf=1 under these Lorentz poles is unstable at this dt; one device and
-    # several both refuse it now (the override is judged), so the test uses 2.
     eps_init = jnp.full((gnx, gny, gnz), 2.0, dtype=jnp.float32)
 
     def _loss(eps):
@@ -1718,6 +1571,7 @@ def test_distributed_debye_seam_ade_ordering_isolated():
     leaked into rank 1's first real cell via the ghost), the
     polarisation at the seam will diverge from single-device — caught
     here by Class B parity (rel_err < 5e-5).
+    The seam Debye cell amplifies an ordering mistake substantially above the Class B 5e-5 threshold.
     """
     devices = jax.devices()[:2]
     n_devices = 2
@@ -1728,10 +1582,8 @@ def test_distributed_debye_seam_ade_ordering_isolated():
     nx, ny_g, nz_g = grid.nx, grid.ny, grid.nz
 
     sharded_grid = build_sharded_nu_grid(grid, n_devices=n_devices)
-    seam_i = sharded_grid.nx_per_rank   # rank 1's first real cell
+    seam_i = sharded_grid.nx_per_rank
 
-    # 1-cell-thick Debye slab AT the slab seam.  Use a thicker
-    # transverse extent so the polarisation update does meaningful work.
     debye_mask = jnp.zeros((nx, ny_g, nz_g), dtype=jnp.bool_)
     debye_mask = debye_mask.at[seam_i, 1:-1, 1:-1].set(True)
 
@@ -1746,10 +1598,11 @@ def test_distributed_debye_seam_ade_ordering_isolated():
         i=int(src_si), j=int(src_sj), k=int(src_sk),
         component=src_comp, waveform=jnp.asarray(src_wf),
     )
-    # Probe sits ON the seam Debye cell so the polarisation feedback
-    # to E is in the sampled signal.
     prb_spec = ProbeSpec(i=int(seam_i), j=ny_g // 2, k=nz_g // 2,
                          component="ez")
+    assert (prb_spec.i == sharded_grid.nx_per_rank and bool(debye_mask[prb_spec.i, prb_spec.j, prb_spec.k])), (
+        "The probe must sample the seam Debye cell so polarisation feedback enters the signal."
+    )
 
     single_out = run_nonuniform(
         grid=grid, materials=materials, n_steps=n_steps,
@@ -1778,10 +1631,6 @@ def test_distributed_debye_seam_ade_ordering_isolated():
     )
     ts_dist = jnp.asarray(out["time_series"])[:, 0]
 
-    # Class D semantic: this test catches an ordering violation that
-    # would not be detectable from final-step parity alone.  Use
-    # Class B (5e-5) — the seam Debye cell amplifies an ordering
-    # mistake substantially above that threshold.
     assert_class_b_parity(
         ts_single, ts_dist,
         label="phase2d_debye_seam_ade_ordering_isolated",
@@ -1796,6 +1645,7 @@ def test_distributed_dispersion_drift_over_time():
     after multiple polarisation update cycles.  Run for 200 steps with
     Debye dispersion in a slab spanning the seam, then verify
     ``rel_err < 5e-4`` at T/4, T/2, 3T/4, and T (Class D drift sweep).
+    The Debye slab is wide enough for ADE feedback to accumulate measurably over 200 steps.
     """
     devices = jax.devices()[:2]
     n_devices = 2
@@ -1808,8 +1658,6 @@ def test_distributed_dispersion_drift_over_time():
     sharded_grid = build_sharded_nu_grid(grid, n_devices=n_devices)
     seam_i = sharded_grid.nx_per_rank
 
-    # Debye slab spanning the seam — wide enough that ADE feedback
-    # accumulates measurably over 200 steps.
     debye_mask = jnp.zeros((nx, ny_g, nz_g), dtype=jnp.bool_)
     debye_mask = debye_mask.at[seam_i - 2:seam_i + 3, 1:-1, 1:-1].set(True)
 
@@ -1853,16 +1701,12 @@ def test_distributed_dispersion_drift_over_time():
     )
     ts_dist = jnp.asarray(out["time_series"])[:, 0]
 
-    # Drift sweep at T/4, T/2, 3T/4, T (rel_err < 5e-4)
     assert_class_d_timeseries_drift(
         ts_single, ts_dist,
         label="phase2d_dispersion_drift_over_time",
     )
 
 
-# ---------------------------------------------------------------------------
-# Phase 2E: soft PEC (pec_occupancy) sharded scan body tests
-# ---------------------------------------------------------------------------
 
 
 @_PHASE2B_REQUIRES_2DEV
@@ -1883,9 +1727,11 @@ def test_distributed_pec_occupancy_2device_matches_single_device():
     materials = _phase2b_make_materials(grid)
     nx, ny, nz = grid.nx, grid.ny, grid.nz
 
-    # Soft-PEC block on rank 1 (global x in [11, 13], y/z 3:5).
     occ = jnp.zeros((nx, ny, nz), dtype=jnp.float32)
     occ = occ.at[11:14, 3:5, 3:5].set(1.0)
+    assert (not np.any(np.asarray(occ)[:Slab(nx, n_devices).nx_per_rank]) and bool(np.any(np.asarray(occ)[Slab(nx, n_devices).nx_per_rank:]))), (
+        "The soft PEC block must occupy rank 1 only."
+    )
 
     src_idx = (4, 4, 4)
     src_si, src_sj, src_sk, src_comp, src_wf = _phase2b_make_current_source(
@@ -1895,11 +1741,12 @@ def test_distributed_pec_occupancy_2device_matches_single_device():
         i=int(src_si), j=int(src_sj), k=int(src_sk),
         component=src_comp, waveform=jnp.asarray(src_wf),
     )
-    # Probe on rank 1, downstream of the soft block, so the soft-PEC
-    # interaction shows up in the time series.
     prb_spec = ProbeSpec(i=14, j=4, k=4, component="ez")
+    assert (prb_spec.i > int(np.flatnonzero(np.any(np.asarray(occ) != 0, axis=(1, 2)))[-1])
+            and Slab(nx, n_devices).owner(prb_spec.i) == 1), (
+        "The rank 1 probe must lie downstream of the soft PEC block so its interaction reaches the time series."
+    )
 
-    # Single-device reference: run_nonuniform with pec_occupancy
     single_out = run_nonuniform(
         grid=grid,
         materials=materials,
@@ -1910,7 +1757,6 @@ def test_distributed_pec_occupancy_2device_matches_single_device():
     )
     ts_single = jnp.asarray(single_out["time_series"])[:, 0]
 
-    # 2-device distributed run with sharded occupancy
     sharded_grid = build_sharded_nu_grid(grid, n_devices=n_devices,
                                          exchange_interval=1)
     sharded_mat = _phase2b_shard_mat(materials, sharded_grid)
@@ -1969,15 +1815,17 @@ def test_distributed_pec_occupancy_seam_no_double_application():
     nx, ny, nz = grid.nx, grid.ny, grid.nz
 
     sharded_grid = build_sharded_nu_grid(grid, n_devices=n_devices)
-    seam_i = sharded_grid.nx_per_rank  # rank 1's first real cell, global x
+    seam_i = sharded_grid.nx_per_rank
     seam_j = ny // 2
     seam_k = nz // 2
 
-    # ONE soft-PEC cell, exactly at the seam (an occupied cell
-    # owns its incident edges on its own, so this is visible without the
-    # left/right padding the earlier neighbour product needed).
     occ = jnp.zeros((nx, ny, nz), dtype=jnp.float32)
     occ = occ.at[seam_i, seam_j, seam_k].set(1.0)
+    assert (np.count_nonzero(np.asarray(occ)) == 1 and float(occ[seam_i, seam_j, seam_k]) == 1.0
+            and Slab(grid.nx, n_devices).owner(seam_i) == 1
+            and Slab(grid.nx, n_devices).owner(seam_i - 1) == 0), (
+        "The soft PEC occupancy must contain one cell exactly at the slab seam."
+    )
 
     src_idx = (4, 4, 4)
     src_si, src_sj, src_sk, src_comp, src_wf = _phase2b_make_current_source(
@@ -1989,7 +1837,6 @@ def test_distributed_pec_occupancy_seam_no_double_application():
     )
     prb_spec = ProbeSpec(i=12, j=4, k=4, component="ez")
 
-    # Single-device reference: applies occupancy exactly once.
     single_out = run_nonuniform(
         grid=grid,
         materials=materials,
@@ -2020,9 +1867,6 @@ def test_distributed_pec_occupancy_seam_no_double_application():
                           label="phase2e_pec_occupancy_seam_no_double_application")
 
 
-# ---------------------------------------------------------------------------
-# Phase 2F: segmented remat + warmup + emit_time_series tests
-# ---------------------------------------------------------------------------
 
 from tests._distributed_nu_tolerances import (  # noqa: E402
     assert_class_a_grad,
@@ -2121,11 +1965,9 @@ def test_distributed_checkpoint_every_value_matches_no_segment():
     assert ts_no.shape == ts_seg.shape, (
         f"shape mismatch: no_seg={ts_no.shape}, seg={ts_seg.shape}"
     )
-    # Class A tolerance on the forward time-series (max rel-err <= 1e-6).
-    # Use a near-zero floor of 1e-30 to avoid div-by-zero on early
-    # samples where the probe is still 0.
+    NEAR_ZERO_PROBE_FLOOR = 1e-30
     rel_err = float(jnp.max(
-        jnp.abs(ts_seg - ts_no) / (jnp.abs(ts_no) + 1e-30)
+        jnp.abs(ts_seg - ts_no) / (jnp.abs(ts_no) + NEAR_ZERO_PROBE_FLOOR)
     ))
     assert rel_err <= 1e-6, (
         f"phase2f_checkpoint_every_forward Class A failed: "
@@ -2162,7 +2004,6 @@ def test_distributed_checkpoint_every_grad_matches_no_segment():
     grad_no = jax.grad(lambda v: loss(v, checkpoint_every=None))(eps0)
     grad_seg = jax.grad(lambda v: loss(v, checkpoint_every=8))(eps0)
 
-    # Use Class A tolerance (1e-6 rel-err) for gradient parity.
     assert_class_a_grad(
         jnp.atleast_1d(grad_no),
         jnp.atleast_1d(grad_seg),
@@ -2220,8 +2061,6 @@ def test_distributed_n_warmup_tail_grad_matches_single_device():
             n_warmup=n_warmup,
         )
         ts = out["time_series"][:, 0]
-        # Sum only the post-warmup tail (which is the only AD-active
-        # region on both paths).
         return jnp.sum(ts[n_warmup:] ** 2)
 
     def loss_dist(eps_val):
@@ -2297,7 +2136,6 @@ def test_distributed_emit_time_series_false_skips_probe():
     materials = _phase2b_make_materials(grid)
     sharded_mat = _phase2b_shard_mat(materials, sharded_grid)
 
-    # ---- Structural part: emit_time_series=False -> time_series None ----
     out = run_nonuniform_distributed_pec(
         sharded_grid=sharded_grid,
         sharded_materials=sharded_mat,
@@ -2314,11 +2152,9 @@ def test_distributed_emit_time_series_false_skips_probe():
         f"emit_time_series=False should yield time_series=None, "
         f"got type={type(out['time_series']).__name__}"
     )
-    # Final state still gathered and returned.
     assert out["final_state"] is not None
     assert hasattr(out["final_state"], "ex")
 
-    # ---- Cross-check: emit=False forward matches emit=True forward ----
     out_with_ts = run_nonuniform_distributed_pec(
         sharded_grid=sharded_grid,
         sharded_materials=sharded_mat,
@@ -2331,9 +2167,6 @@ def test_distributed_emit_time_series_false_skips_probe():
         emit_time_series=True,
         measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
     )
-    # Final-state ex slab (gathered) must agree to Class A tolerance
-    # between the two paths (skipping probe sampling must not perturb
-    # the FDTD update).
     rel = float(jnp.max(
         jnp.abs(out["final_state"].ex - out_with_ts["final_state"].ex)
         / (jnp.abs(out_with_ts["final_state"].ex) + 1e-30)
@@ -2343,13 +2176,6 @@ def test_distributed_emit_time_series_false_skips_probe():
         f"max rel_err={rel:.3e} > 1e-6"
     )
 
-    # ---- Gradient-preservation: differentiate through a non-time-series
-    # objective.  We thread a scalar source-amplitude scaling factor
-    # through ``waveform`` so the AD path stays entirely inside the
-    # scan body's source injection (no shard_map all_gather backward).
-    # The objective is the rank-0 slab's |E|^2 sum on the SHARDED final
-    # state (rank-0 slab is sliced by axis-0 indexing, which composes
-    # well with the sharded backward).
     base_wf = jnp.asarray(src_wf)
 
     def loss(amp):
@@ -2369,22 +2195,15 @@ def test_distributed_emit_time_series_false_skips_probe():
             emit_time_series=False,
             measurement=stated_plan(sharded_grid, [prb_spec], n_steps=n_steps),
         )
-        # Use the *gathered* final state and slice the rank-0 owned
-        # x-range.  The gathered tensor lives on a single device after
-        # the JAX-friendly gather, so backward stays well-defined.
         ex = out_inner["final_state"].ex
-        # Loss is quadratic in amp -> grad must scale linearly with amp.
         return jnp.sum(ex ** 2)
 
     amp0 = jnp.float32(1.0)
     g_emit_false = jax.grad(loss)(amp0)
-    # Gradient must be a finite scalar (no NaN/Inf) — proves the
-    # AD tape was correctly built without the per-step probe outputs.
     assert jnp.isfinite(g_emit_false), (
         f"emit_time_series=False loss grad must be finite, "
         f"got {float(g_emit_false):.3e}"
     )
-    # Quadratic-in-amp: grad at amp=2 must be 2x grad at amp=1.
     g_2 = jax.grad(loss)(jnp.float32(2.0))
     ratio = float(g_2 / g_emit_false) if abs(g_emit_false) > 0 else float("nan")
     assert abs(ratio - 2.0) < 1e-3, (
@@ -2393,26 +2212,6 @@ def test_distributed_emit_time_series_false_skips_probe():
     )
 
 
-# ---------------------------------------------------------------------------
-# Phase 2 absolute-physics validation (Class F)
-# ---------------------------------------------------------------------------
-#
-# These two tests are *not* parity tests.  Phases 2A-2F shipped 26 parity
-# tests (single-device == distributed) which transitively inherit physical
-# correctness from the 730+ existing single-device tests.  The remaining
-# gap that pure parity cannot close:
-#
-#   1. Common-origin numerical bugs — a helper shared by both single-device
-#      and distributed paths could be wrong; both runs would agree, yet
-#      both would be wrong.
-#   2. Slab-boundary-specific physics — the seam-aware ghost exchange and
-#      rank-conditional PEC have no single-device counterpart, so a
-#      construction-specific bug there would not register against a
-#      single-device baseline.
-#
-# The two tests below close that gap by validating the distributed runner
-# against analytic / first-principles references (Class F tolerance, see
-# ``tests/_distributed_nu_tolerances.py``).
 
 from rfx.harminv import matrix_pencil_from_probe  # noqa: E402
 from rfx.core.yee import EPS_0 as _EPS_0_F, MU_0 as _MU_0_F  # noqa: E402
@@ -2502,10 +2301,8 @@ def test_distributed_pec_cavity_analytic_resonance():
     analytic value.  Class F (rtol = 5%) catches such drifts: 5% is
     the standard FDTD-vs-analytic bound at this resolution; a real
     bug typically pushes the error well past 10%.
+    A sinusoid times a Gaussian envelope concentrates the excitation in a ~+/- 1 GHz window around 8.84 GHz, well below the next mode at 10.82 GHz.
     """
-    # Determinism: set numpy + jax PRNG seeds even though this test
-    # does not use randomness directly (the underlying scan body is
-    # deterministic in float32; this is belt-and-braces).
     np.random.seed(0)
 
     devices = jax.devices()[:2]
@@ -2513,29 +2310,14 @@ def test_distributed_pec_cavity_analytic_resonance():
 
     n_cells = 24
     dx0 = 1e-3
-    L = n_cells * dx0  # 24 mm
+    L = n_cells * dx0
 
-    # Analytic lowest-mode resonance (TM_110 / TE_011 / TE_101 degenerate)
     c0 = 1.0 / np.sqrt(_EPS_0_F * _MU_0_F)
     f_analytic = c0 * np.sqrt(2.0) / (2.0 * L)
 
     grid = _phase2_uniform_pec_grid(n_cells, dx0=dx0)
     materials = _phase2b_make_materials(grid)
 
-    # Source: narrowband modulated Gaussian centred on the analytic
-    # frequency.  A short un-modulated Gaussian has too much bandwidth
-    # and excites the TM_111 / TM_210 / TM_211 modes alongside TM_110,
-    # so harminv may pick a higher-amplitude neighbour even after a
-    # bandpass.  A sinusoid * Gaussian envelope concentrates the
-    # excitation in a ~+/- 1 GHz window around 8.84 GHz, well below
-    # the gap to the next-mode (10.82 GHz).
-    #
-    # Source/probe placement uses cavity-symmetry suppression: the
-    # source sits on the x=L/2, y=L/2 cell (which is the slab seam
-    # from rank 0's perspective and rank 1's first real cell), where
-    # TM_2,n,0 / TM_m,2,0 modes (sin(2 pi x/L)) all have a *node*.
-    # The probe lies on rank 0 at an asymmetric position so the
-    # TM_110 ring-down dominates the time series.
     n_steps = 4000
     src_idx = (n_cells // 2, n_cells // 2, 6)
     prb_idx = (n_cells // 3, n_cells // 3, 17)
@@ -2575,17 +2357,13 @@ def test_distributed_pec_cavity_analytic_resonance():
     )
     ts = np.asarray(out["time_series"])[:, 0]
 
-    # Window past the source.  The modulated Gaussian envelope is
-    # centred at t0 = 250 dt with tau = 100 dt, ~vanishing at
-    # t = t0 + 5*tau = 750 dt.  Pass that to harminv so only the
-    # ring-down portion is fitted.
-    source_decay_time = (src_t0 + 5.0 * src_tau)
+    SOURCE_DECAY_TAU_COUNT = 5.0
+    source_decay_time = (src_t0 + SOURCE_DECAY_TAU_COUNT * src_tau)
 
-    # Tight search range centred on f_analytic (the source spectrum is
-    # narrowband, so we also tighten the harminv window to reject any
-    # spurious DC / out-of-band leakage).
-    f_min = 0.85 * f_analytic
-    f_max = 1.15 * f_analytic
+    RESONANCE_MIN_FREQUENCY_RATIO = 0.85
+    RESONANCE_MAX_FREQUENCY_RATIO = 1.15
+    f_min = RESONANCE_MIN_FREQUENCY_RATIO * f_analytic
+    f_max = RESONANCE_MAX_FREQUENCY_RATIO * f_analytic
 
     modes = matrix_pencil_from_probe(
         ts, dt=float(grid.dt),
@@ -2598,7 +2376,6 @@ def test_distributed_pec_cavity_analytic_resonance():
         f"[{f_min/1e9:.2f}, {f_max/1e9:.2f}] GHz."
     )
 
-    # Strongest mode (sorted by amplitude in harminv_from_probe)
     f_extracted = modes[0].freq
     rel_err = abs(f_extracted - f_analytic) / f_analytic
     assert rel_err < RTOL_ANALYTIC_F, (
@@ -2643,6 +2420,7 @@ def test_distributed_pec_cavity_energy_conservation():
     dissipation showed up in a hypothetical buggy single-device path.
     Likewise an *injection* bug (an accidental double-application of
     PEC at the seam) would *grow* the energy and trip the same bound.
+    The Gaussian centred at 20 dt with tau=6 dt is effectively source-off well before t_settle=100 dt.
     """
     np.random.seed(0)
 
@@ -2655,18 +2433,12 @@ def test_distributed_pec_cavity_energy_conservation():
     grid = _phase2_uniform_pec_grid(n_cells, dx0=dx0)
     materials = _phase2b_make_materials(grid)
 
-    # Short current pulse: the Gaussian centred at 20 dt, tau = 6 dt,
-    # is ~exp(-(80/12)^2) ~ 1.5e-20 at t = 100 dt -> effectively
-    # source-off well before t_settle = 100 dt.
     src_t0 = 20.0 * float(grid.dt)
     src_tau = 6.0 * float(grid.dt)
 
     def _gauss_pulse(t):
         return jnp.exp(-((t - src_t0) ** 2) / (2.0 * src_tau ** 2))
 
-    # Single source/probe; probe value is unused for this test (we
-    # only inspect the gathered ``final_state``) but the runner
-    # contract requires a probe list to be non-empty for shape sanity.
     src_idx = (3, 5, 7)
     prb_idx = (5, 7, 11)
 
@@ -2712,10 +2484,8 @@ def test_distributed_pec_cavity_energy_conservation():
         out_late["final_state"], materials, grid,
     )
 
-    # Sanity: there must be non-trivial energy in the cavity to compare
-    # against.  Absolute floor of 1e-30 J guards against an all-zero
-    # final-state slipping through.
-    assert e_settle > 1e-30, (
+    MIN_NONTRIVIAL_ENERGY_J = 1e-30
+    assert e_settle > MIN_NONTRIVIAL_ENERGY_J, (
         f"Class F energy conservation: settle-time total energy is "
         f"~zero ({e_settle:.3e} J).  Either the source did not deposit "
         f"energy or the gathered final_state is corrupt."

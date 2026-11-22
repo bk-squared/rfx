@@ -2,6 +2,7 @@
 The domain lengths written as 11 * .002 and 5 * .002 are whole numbers of cells of dx, so their solved lengths equal their declared lengths.
 """
 import inspect
+import warnings
 
 import jax
 import jax.numpy as jnp
@@ -9,6 +10,7 @@ import numpy as np
 import pytest
 
 from rfx import GaussianPulse, Simulation
+from rfx.errors import ConfigurationWarning
 from rfx.model.occupancy import with_graded_edge_keep
 
 DX = .001
@@ -330,6 +332,44 @@ def test_length_one_normal_refused(compiled):
         (jax.jit(run) if compiled else run)(edge_arrays(LAYOUTS['ones']))
 
 
+@pytest.mark.parametrize('overlap', [False, True], ids=['zero_occupancy', 'overlap'])
+def test_lumped_rlc_layout_combined_release_bytes(overlap):
+    """Amendment: both arrays address local Ex (1,2); occupancy is concrete zero."""
+    sim = board(())
+    for name in (('a', 'b') if overlap else ('patch',)):
+        sim.add_pinned_sheet(plane_index=4, i_range=(3, 7), j_range=(3, 7), name=name)
+    sim.add_lumped_rlc((.0045, .005, float(DZ[:4].sum())), 'ex',
+                       R=50., C=1e-13, topology='parallel')
+    layout = tuple(edge_arrays((FULL,)) for _ in sim._pinned_sheets)
+    hand_zeroed = tuple(tuple(a.copy() for a in pair) for pair in layout)
+    for pair in hand_zeroed:
+        pair[0][1, 2] = 0
+    kwargs = {} if overlap else {'pec_occupancy_override': np.zeros(sim._build_nonuniform_grid().shape, np.float32)}
+
+    def run(arrays):
+        result = sim.forward(n_steps=60, skip_preflight=True, port_s11_freqs=BINS,
+                             pinned_sheet_layout=arrays, **kwargs)
+        return result.time_series, result.s_params
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        expected = run(hand_zeroed)
+    assert not [w for w in caught if isinstance(w.message, ConfigurationWarning)
+                and str(w.message).startswith('Port occupancy release:')]
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        actual = run(layout)
+    releases = [w for w in caught if isinstance(w.message, ConfigurationWarning)
+                and str(w.message).startswith('Port occupancy release:')]
+    assert len(releases) == 1
+    sheets = "sheets 0 ('a'), 1 ('b') are" if overlap else "sheet 0 ('patch') is"
+    assert str(releases[0].message) == (
+        "Port occupancy release: lumped_rlc[0] (lumped_rlc, ex, edge (6, 7, 6)): "
+        f"pinned_sheet_layout {sheets} kept free on this edge. "
+        "Each driven edge is kept free of design metal.")
+    assert_bytes(actual, expected)
+
+
 @pytest.mark.parametrize('kind', ['lumped', 'wire'])
 @pytest.mark.parametrize('excite', [False, True], ids=['passive', 'excited'])
 @pytest.mark.parametrize('compiled', [False, True], ids=['eager', 'jit'])
@@ -475,16 +515,11 @@ def test_traced_cells_layout_bytes_and_seam_refusal():
                     pec_mask_override=c).time_series)(np.ones(cells.shape, bool))
 
 
-@pytest.mark.parametrize('stage', ['series', 'parallel_inductor', 'current_moments', 'msl_geometry'])
+@pytest.mark.parametrize('stage', ['current_moments', 'msl_geometry'])
 def test_other_metal_consumers_refused(stage):
     """The feed x=5 reads trace edge x=4, with width .002 centred at y=5 starting at y=4 on plane 4, so pads (2,2,2) give (6,6,6)."""
     sim = board()
-    position = (.0045, .005, float(DZ[:4].sum()))
-    if stage in ('series', 'parallel_inductor'):
-        sim.add_lumped_rlc(position, 'ex', R=50., L=1e-9,
-                           topology='series' if stage == 'series' else 'parallel')
-        message, edge = 'lumped RLC post-keep solve', 'ex(6, 7, 6)'
-    elif stage == 'current_moments':
+    if stage == 'current_moments':
         sim.add_current_moment_monitor((.001, .001, .001), (.009, .009, .008),
                                        .002, BINS)
         message, edge = 'current-moment metal census', 'ex(5, 5, 6)'
@@ -501,42 +536,69 @@ def test_other_metal_consumers_refused(stage):
     assert edge in str(error.value)
 
 
+@pytest.mark.parametrize('compiled', [False, True], ids=['eager', 'jit'])
+def test_layout_release_frees_only_the_element_edge(compiled):
+    """Keep every sheet edge metal except the literal Ex element edge (6,7,6)."""
+    from rfx.model.occupancy import admit_sheet_layout
+    sim = board()
+    sim.add_lumped_rlc((.0045, .005, float(DZ[:4].sum())), 'ex', R=50., C=1e-13, topology='parallel')
+    ones = edge_arrays(LAYOUTS['ones'])
+    grid = sim._build_nonuniform_grid()
+    materials = sim._assemble_materials_nu(grid, pec_sheets=[], pec_wires=[])[0]
+
+    def keep(pair):
+        layout = admit_sheet_layout(sim._pinned_sheets, (pair,))
+        return with_graded_edge_keep(materials, None, layout, grid=grid, sources=[],
+                                     waveguide_ports=[], dtype=jnp.float32, sheet_edge_masks=None,
+                                     periodic=(False, False, False),
+                                     element_edges=((0, 'ex', (6, 7, 6)),)).edge_keep
+    actual = (jax.jit(keep) if compiled else keep)(tuple(jnp.asarray(a) for a in ones))
+    expected = [np.ones(grid.shape, np.float32) for _ in range(3)]
+    for i in range(4):
+        for j in range(5):
+            expected[0][i + 5, j + 5, 6] = 0
+    for i in range(5):
+        for j in range(4):
+            expected[1][i + 5, j + 5, 6] = 0
+    expected[0][6, 7, 6] = 1
+    for a, e in zip(actual, expected, strict=True):
+        assert np.asarray(a).tobytes() == e.tobytes()
+
+
 @pytest.mark.parametrize('stage,layout_name', [
-    ('r_only', 'ones'),
-    ('parallel_rc', 'ones'),
-    ('parallel_rc', 'zeros'),
-    ('parallel_rc_ey', 'ones'),
+    ('r_only', 'ones'), ('parallel_rc', 'ones'), ('parallel_rc', 'zeros'),
+    ('parallel_rc_ey', 'ones'), ('series', 'ones'), ('parallel_inductor', 'ones'),
 ])
-def test_folded_rlc_on_layout_refused(stage, layout_name, monkeypatch):
-    from functools import wraps
-    from rfx.stepping import graded
-
-    make_step = graded.make_graded_step
-    steps = []
-
-    def step_hook(*args, **kwargs):
-        @wraps(make_step(*args, **kwargs))
-        def first_step(*args, **kwargs):
-            steps.append(True)
-            pytest.fail('first step reached')
-        return first_step
-
-    monkeypatch.setattr(graded, 'make_graded_step', step_hook)
+def test_lumped_rlc_layout_release_bytes(stage, layout_name):
+    """T2/T3/T4: Ex starts at user node (4,5,4), local sheet index (1,2)."""
     sim = board()
     component = 'ey' if stage == 'parallel_rc_ey' else 'ex'
     x, y = (.005, .0045) if component == 'ey' else (.0045, .005)
     sim.add_lumped_rlc((x, y, float(DZ[:4].sum())), component, R=50.,
-                       C=0. if stage == 'r_only' else 1e-13, topology='parallel')
-    edge = (7, 6, 6) if component == 'ey' else (6, 7, 6)
-    with pytest.raises(ValueError) as error:
-        sim.forward(n_steps=2, skip_preflight=True,
-                    pinned_sheet_layout=(edge_arrays(LAYOUTS[layout_name]),))
-    assert str(error.value) == (
-        "pinned_sheet_layout sheet 0 ('patch'): lumped_rlc[0], which the switched "
-        "sheet would short (a layout keeps no element edge free), conflicts with "
-        f"addressed edge {component}{edge} on the graded lane; "
-        "move the stage or the layout switch off that edge")
-    assert steps == []
+                       C=1e-13 if stage in ('parallel_rc', 'parallel_rc_ey') else 0.,
+                       L=1e-9 if stage in ('series', 'parallel_inductor') else 0.,
+                       topology='series' if stage == 'series' else 'parallel')
+    ones = edge_arrays(LAYOUTS[layout_name])
+    hand_zeroed = tuple(a.copy() for a in ones)
+    hand_zeroed[1 if component == 'ey' else 0][(2, 1) if component == 'ey' else (1, 2)] = 0
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        expected = observe(sim, hand_zeroed)
+    assert not [w for w in caught if isinstance(w.message, ConfigurationWarning)
+                and str(w.message).startswith('Port occupancy release:')]
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        actual = observe(sim, ones)
+    releases = [w for w in caught if isinstance(w.message, ConfigurationWarning)
+                and str(w.message).startswith('Port occupancy release:')]
+    assert len(releases) == (0 if layout_name == 'zeros' else 1)
+    if releases:
+        edge = (7, 6, 6) if component == 'ey' else (6, 7, 6)
+        assert str(releases[0].message) == (
+            f"Port occupancy release: lumped_rlc[0] (lumped_rlc, {component}, edge {edge}): "
+            "pinned_sheet_layout sheet 0 ('patch') is kept free on this edge. "
+            "Each driven edge is kept free of design metal.")
+    assert_bytes(actual, expected)
 
 
 @pytest.mark.parametrize('kind', ['lumped', 'wire', 'waveguide', 'microstrip'])

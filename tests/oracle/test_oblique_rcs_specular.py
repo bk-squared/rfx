@@ -60,6 +60,7 @@ equated is pinned in
 ``tests/contracts/test_lattice_ownership_contract.py::test_a_sigma_fill_conductor_is_not_a_pec_body``
 (same sphere, 910 sigma cells vs 912 PEC volume cells, and no realized PEC
 edge on the sigma path). Nothing in this module was re-measured for #931.
+The spacing is approximately lambda/30 at the illumination frequency.
 """
 import numpy as np
 import jax.numpy as jnp
@@ -76,17 +77,20 @@ from rfx.rcs import compute_rcs_jax
 
 F0 = 5e9
 LAM = C0 / F0
-DX = 0.002                 # lambda/30
+DX = 0.002
 CPML = 10
 MARGIN = 10
-PLATE_W = 2.2 * LAM        # width in y
+PLATE_WIDTH_Y_WAVELENGTHS = 2.2
+PLATE_W = PLATE_WIDTH_Y_WAVELENGTHS * LAM
 N_STEPS = 700
 PEC_SIGMA = 1e7
-# grid ~ 76 x 130 x 24 (thin periodic z)
 _DOMAIN = (0.11, 0.218, 0.006)
 PHI = np.linspace(0.0, 2 * np.pi, 361)
-TH_OBS = np.array([np.pi / 2])   # x-y observation plane
-BACK = (np.degrees(PHI) >= 90) & (np.degrees(PHI) <= 270)  # reflection hemisphere
+TH_OBS = np.array([np.pi / 2])
+REFLECTION_MIN_PHI_DEG = 90
+REFLECTION_MAX_PHI_DEG = 270
+BACK = ((np.degrees(PHI) >= REFLECTION_MIN_PHI_DEG)
+        & (np.degrees(PHI) <= REFLECTION_MAX_PHI_DEG))
 
 
 def _plate_materials(grid):
@@ -137,7 +141,6 @@ def _methodB_pattern(theta_deg):
               tfsf=(cfg, st), ntff=box, snapshot=snap)
     e_inc = _incident_spectrum_amplitude(F0, 0.5, np.array([F0]), grid.dt, N_STEPS)
     sig = np.asarray(compute_rcs_jax(res.ntff_data, box, grid, TH_OBS, PHI, e_inc))[0, 0, :]
-    # settling witness: end vs peak field energy in the total-field box interior
     ez = np.asarray(res.snapshots["ez"])
     e = ez[:, cfg.x_lo + 4:cfg.x_hi - 4, cfg.y_lo + 4:cfg.y_hi - 4]
     energy = np.sum(e ** 2, axis=(1, 2))
@@ -162,7 +165,6 @@ def test_oblique_specular_peak_tracks_injection_angle(theta_inc):
         f"specular peak {peak:.0f} deg not tracking predicted {pred:.0f} deg "
         f"(theta_inc={theta_inc}); a wrong injection angle / NTFF moves the peak"
     )
-    # the reflection lobe must dominate the reflection hemisphere over backscatter
     sig = np.asarray(res.rcs_linear[0, 0, :])
     back_bin = int(round((180.0 + theta_inc))) % 360
     spec_bin = int(round(pred)) % 360
@@ -180,7 +182,6 @@ def test_oblique_rcs_normal_reduction_to_backscatter():
     peak0, settling0 = _methodB_pattern(0.0)
     assert abs(peak0 - 180.0) <= 4.0, f"normal-incidence peak {peak0:.0f} != 180 deg"
     assert settling0 < -35.0, f"ring-down not settled: end/peak {settling0:.1f} dB"
-    # and it still tracks at oblique through the identical direct pipeline
     peak40, settling40 = _methodB_pattern(40.0)
     assert abs(peak40 - 140.0) <= 6.0, f"oblique peak {peak40:.0f} != ~140 deg"
     assert settling40 < -35.0, f"oblique ring-down not settled: {settling40:.1f} dB"

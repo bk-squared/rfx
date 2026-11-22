@@ -34,7 +34,6 @@ def test_smoothed_forward_matches_run_and_changes_fields(graded, smoothing):
     actual = np.asarray(sphere_sim(graded).forward(checkpoint=False, **kwargs).time_series)
     plain = np.asarray(sphere_sim(graded).forward(n_steps=40, skip_preflight=True,
                                                  checkpoint=False).time_series)
-    # The contract compares common fields exactly.
     np.testing.assert_array_equal(actual, expected)
     difference = float(np.max(np.abs(actual - plain)))
     print(f"smoothing measurement: graded={graded}, mode={smoothing}, max_abs_diff={difference}")
@@ -43,9 +42,7 @@ def test_smoothed_forward_matches_run_and_changes_fields(graded, smoothing):
 
 @pytest.mark.parametrize("body", ["sphere", "box"])
 def test_kottke_pec_forward_keeps_fenced_pec_edges(body):
-    # A PEC body next to the dielectric: run() keeps partly filled PEC
-    # edges fractional, so forward() must not treat the Kottke tensor as
-    # the smooth occupancy operator. Probes sit outside the metal.
+    """run() keeps partly filled PEC edges fractional, so forward() must not treat the Kottke tensor as the smooth occupancy operator."""
     def build():
         sim = sphere_sim(snap="declared")
         if body == "sphere":

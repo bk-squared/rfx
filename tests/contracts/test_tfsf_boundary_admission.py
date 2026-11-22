@@ -128,8 +128,6 @@ def test_old_s0_finite_box_is_refused():
 
 @pytest.mark.parametrize("skip", [False, True])
 def test_archived_37mm_array_is_refused(skip):
-    # Measured transverse period,
-    # arm A, mesh 0. No archived time stepping is executed here.
     sim = Simulation(freq_max=10e9, domain=(.040, .020, .020), dx=.001,
                      cpml_layers=8, boundary="cpml")
     sim.add_material("cube", eps_r=4, sigma=0)
@@ -149,8 +147,6 @@ def test_finite_scatterer_refuses_every_dispatch_path(skip, path, monkeypatch):
     import jax
     mesh = {"dz_profile": np.full(10, .001)} if path in ("nonuniform", "distributed_nu") else {}
     pass
-    # Both meshes run the same invariance admission: a finite scatterer
-    # under an open plane wave is refused on the graded paths too.
     sim = plane(finite=True, **mesh)
     if path == "subgridded":
         sim.add_refinement(z_range=(0., .004), ratio=2, validation="research")
@@ -161,6 +157,7 @@ def test_finite_scatterer_refuses_every_dispatch_path(skip, path, monkeypatch):
 
 @pytest.mark.parametrize("broadcast", [False, True])
 def test_low_level_explicit_wrap_keeps_caller_declaration(monkeypatch, broadcast):
+    """The H update at the injection planes reads mu averaged with its x neighbour, which must be vacuum too."""
     import jax.numpy as jnp
     import rfx.simulation as kernel
     from rfx.sources.tfsf import init_tfsf
@@ -169,9 +166,6 @@ def test_low_level_explicit_wrap_keeps_caller_declaration(monkeypatch, broadcast
     materials = sim._assemble_materials(grid)[0]
     source = init_tfsf(grid.nx, grid.dx, grid.dt, cpml_layers=2,
                        tfsf_margin=1, f0=5e9, bandwidth=.5, dtype='float32')
-    # The y variation stays inside the total-field region, one cell clear of
-    # the injection planes x_lo-1, x_lo, x_hi, x_hi+1: the H update there
-    # reads mu averaged with its x neighbour, which must be vacuum too.
     inside = slice(source[0].x_lo + 2, source[0].x_hi - 1)
     assert inside.start < inside.stop
     shape = (grid.nx, grid.ny, 1) if broadcast else grid.shape
@@ -204,13 +198,13 @@ def test_transformed_finite_scatterer_is_refused(skip, transform):
 @pytest.mark.parametrize("axis, face", [(1, "y_lo, y_hi"), (2, "z_lo, z_hi")])
 @pytest.mark.parametrize("broadcast", [False, True])
 def test_pole_count_equal_to_grid_extent_does_not_shift_spatial_axes(axis, face, broadcast):
+    """Pole arrays store poles before the x/y/z spatial axes."""
     from rfx.boundaries.tfsf import check_arrays
 
     sim = Simulation(freq_max=10e9, domain=(.01,) * 3, dx=.001, cpml_layers=2)
     sim.add_tfsf_source(f0=5e9, margin=1)
     grid = sim._build_grid()
     assert grid.shape == (15, 15, 15)
-    # Fifteen poles, then x/y/z. Variation in propagation x is admissible.
     shape = (15, 1, 15 if axis == 1 else 1, 15 if axis == 2 else 1) if broadcast else (15,) * 4
     coefficients = np.ones(shape)
     if not broadcast:
@@ -243,8 +237,6 @@ def assert_graded_admitted(sim, skip, distributed, monkeypatch, *, wall_pair=Fal
     original = kernel._build_nu_scan
 
     def stop(grid, *args, **kwargs):
-        # Literals measured on main 4acbd7925; the real factory includes
-        # the low-level admission and NTFF enclosure check, but no step.
         if not wall_pair:
             assert grid.shape == (25, 15, 15)
             assert tuple(getattr(grid, f"pad_{a}_{s}") for a in "xyz" for s in ("lo", "hi")) == (2,) * 6
@@ -263,7 +255,6 @@ def assert_graded_admitted(sim, skip, distributed, monkeypatch, *, wall_pair=Fal
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("distributed", [False, True])
 def test_graded_plane_wave_keeps_absorbers(skip, distributed, monkeypatch):
-    # A laterally invariant slab; a finite one is refused on both meshes (test_finite_scatterer_refuses_every_dispatch_path).
     sim = plane(finite=False, dz_profile=np.full(10, .001))
     if distributed:
         import jax
@@ -294,8 +285,6 @@ def test_oblique_non_tilt_finite_box_refuses(skip, polarization, non_tilt):
 
 
 def test_oblique_method_b_finding_names_only_the_wrapped_axis(monkeypatch):
-    # Open oblique Method B absorbs on y and wraps z: the finding must not
-    # call the y faces periodic (verification recheck R1).
     import rfx.simulation as kernel
     sim = Simulation(freq_max=10e9, domain=(.02, .01, .01), dx=.001, cpml_layers=2)
     sim.add_tfsf_source(f0=5e9, margin=1, angle_deg=20, method="methodB")
@@ -318,7 +307,6 @@ def test_oblique_method_b_finding_names_only_the_wrapped_axis(monkeypatch):
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("polarization,tilt", [("ez", "y"), ("ey", "z")])
 def test_oblique_tilt_finite_box_refuses(skip, polarization, tilt):
-    # Both polarizations judge their tilt-axis material arrays at oblique incidence.
     with pytest.raises(ValueError, match=rf"TF/SF {tilt}_lo, {tilt}_hi: .*periodic.*closed_box=True, theta_deg"):
         oblique_plane(tilt, polarization).run(n_steps=1, skip_preflight=skip)
 
@@ -335,7 +323,7 @@ def oblique_slab(polarization, *, boundary="cpml", angle_deg=20, eps_r=2.5, **me
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("polarization", ["ez", "ey"])
 def test_oblique_invariant_slab_admitted(skip, polarization, monkeypatch):
-    # A field phase is not a material variation.
+    """A field phase is not a material variation."""
     sim = oblique_slab(polarization)
     findings = [issue for issue in sim.preflight(check_ntff=False)
                 if issue.code == "tfsf_transverse_periodic"]
@@ -350,7 +338,6 @@ def test_oblique_invariant_slab_admitted(skip, polarization, monkeypatch):
 
 @pytest.mark.parametrize("skip", [False, True])
 def test_oblique_method_b_finite_tilt_keeps_absorber(skip, monkeypatch):
-    # The finite-y box stays inside the Method B injection planes.
     sim = oblique_plane("y", "ez", method="methodB")
     seen = []
 
@@ -365,7 +352,6 @@ def test_oblique_method_b_finite_tilt_keeps_absorber(skip, monkeypatch):
 
 
 def test_normal_finite_box_message_unchanged():
-    # Literal copied from a run of main before this change, not built by a product helper.
     from rfx.errors import RfxRefusal
     with pytest.raises(RfxRefusal) as caught:
         plane(finite=True).run(n_steps=1, skip_preflight=True)
@@ -377,7 +363,6 @@ def test_normal_finite_box_message_unchanged():
 
 @pytest.mark.parametrize("skip", [False, True])
 def test_oblique_padded_period_bar_refuses(skip):
-    # The declared 16 mm period would have wrapped 49 mm at dx=1 mm.
     sim = Simulation(freq_max=10e9, domain=(.30, .016, .004), dx=.001, boundary="cpml")
     sim.add_material("bar", eps_r=4)
     sim.add(Box((.043, .003, .0), (.053, .009, .004)), material="bar")
@@ -389,7 +374,6 @@ def test_oblique_padded_period_bar_refuses(skip):
 
 @pytest.mark.parametrize("skip", [False, True])
 def test_oblique_explicit_absorbers_name_closed_box_angles(skip):
-    # Source registration refuses the explicit side-face declaration.
     with pytest.raises(ValueError, match="closed_box=True, theta_deg") as caught:
         oblique_slab("ez", boundary={"x": "cpml", "y": "cpml", "z": "cpml"}).run(
             n_steps=1, skip_preflight=skip)
@@ -397,7 +381,6 @@ def test_oblique_explicit_absorbers_name_closed_box_angles(skip):
 
 
 def test_graded_oblique_message_unchanged():
-    # x-profile scene; main's diagnostic calls this a nonuniform z mesh.
     with pytest.raises(ValueError) as caught:
         oblique_plane("y", "ez", dx_profile=np.full(20, .001)).run(
             n_steps=1, skip_preflight=True)

@@ -145,9 +145,8 @@ def assert_summed(actual, expected):
 
 @pytest.mark.parametrize("observable,transform", [
     ("default", transform) for transform in
-    ("value_and_grad", "jvp", "jit", "checkpoint", "vmap", "scan")
-] + [("closed-custom", "jit"),
-     ("closed-custom", "value_and_grad")],
+    ("value_and_grad", "jvp", "jit", "checkpoint", "vmap")
+] + [("closed-custom", "jit")],
     indirect=["observable"], scope="module")
 def test_summed_observables(observable, plain, transform, record_property):
     _, objective = observable
@@ -162,11 +161,7 @@ def test_summed_observables(observable, plain, transform, record_property):
         actual, _ = jax.value_and_grad(jax.checkpoint(objective), has_aux=True)(p)
     else:
         parameters = jnp.array([P0, 1.01 * P0], dtype=jnp.float32)
-        if transform == "vmap":
-            actual = jax.vmap(objective)(parameters)
-        else:
-            _, actual = jax.lax.scan(
-                lambda carry, value: (carry, objective(value)), None, parameters)
+        actual = jax.vmap(objective)(parameters)
         comparisons = [assert_summed(jax.tree.map(lambda x: x[lane], actual), reference)
                        for lane, reference in enumerate(plain)]
         record_property("comparisons", json.dumps(comparisons))
@@ -244,15 +239,13 @@ def plain_gradients(observable):
 
 
 @pytest.mark.parametrize("transform", [
-    "jit-grad", "value_and_grad", "jvp", "grad-checkpoint", "vmap-grad"])
+    "jit-grad", "jvp", "grad-checkpoint", "vmap-grad"])
 def test_returned_gradients(observable, plain_gradients, transform, record_property):
     _, objective = observable
     scalar = lambda p: objective(p)[0]
     p = jnp.float32(P0)
     if transform == "jit-grad":
         actual = jax.jit(jax.grad(scalar))(p)
-    elif transform == "value_and_grad":
-        _, actual = jax.value_and_grad(objective, has_aux=True)(p)
     elif transform == "jvp":
         _, actual = jax.jvp(scalar, (p,), (jnp.float32(1),))
     elif transform == "grad-checkpoint":

@@ -92,8 +92,6 @@ def test_t1_graded_clock_from_captured_model(monkeypatch):
     r = box("graded").run(n_steps=1000, ringdown=spec(), skip_preflight=True)
     model, dt = captured["model"], captured["dt"]
     expected = stamped_sum(r.time_series, dt)
-    # The geometric sum is written here, independent of stamp/tail helpers.
-    # Apply the declared resolved/static classes directly, without helpers.
     for pole, residue in zip(model.s, model.c):
         resolved = abs(pole.real * dt) >= np.log1p(1e-6) / model.D
         static = abs(pole.imag / (2 * np.pi)) < 1 / (1000 * dt) and abs(np.exp(pole.real * dt) - 1) < 1e-6
@@ -109,7 +107,9 @@ def test_t1_graded_clock_from_captured_model(monkeypatch):
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
 @pytest.mark.parametrize("user", [True, False])
 def test_t2_equal_requests_and_per_entry_series(lane, user):
-    """Physical anchor: observing a field adds no load or source to the cavity."""
+    """Physical anchor: observing a field adds no load or source to the cavity.
+    The soft source supplies the default time-series column.
+    """
     r, f = pair(lane, user)
     assert r.ringdown.report.completed and f.ringdown.report.completed
     assert r.ringdown.s_params is None and f.ringdown.s_params is None
@@ -122,7 +122,7 @@ def test_t2_equal_requests_and_per_entry_series(lane, user):
         plain = getattr(box(lane, user=user), entry)(n_steps=SHORTEST[lane], skip_preflight=True)
         assert np.array_equal(np.asarray(plain.time_series), np.asarray(completed.time_series))
     if not user and lane == "uniform":
-        assert f.time_series.shape == (600, 1)  # the soft source's default column
+        assert f.time_series.shape == (600, 1)
     if user:
         assert r.ringdown.report.identification_channels == f.ringdown.report.identification_channels
 
@@ -231,14 +231,15 @@ def test_t3_no_s_admitted_and_uniform_wire_row_not_reached(compute):
 
 
 def test_t3_pec_zero_channel_named():
-    """Physical anchor: tangential E on a PEC wall is zero at every step."""
+    """Physical anchor: tangential E on a PEC wall is zero at every step.
+    An earlier measurement found WE=1.486 for rounding-level Hz, which is not an exact zero.
+    """
     probes = (PROBES[0], ((6.5e-3, 7e-3, 0.0), "ex"))
     with pytest.warns(AccuracyWarning, match="identification probe ex at .*records no field over the window"):
         r = box().run(n_steps=600, ringdown=spec(identification_probes=probes), skip_preflight=True)
     assert not r.ringdown.report.completed and r.ringdown.probe_spectra is None
     assert "identification probe ex" in r.ringdown.report.failure
 
-    # The cluster measured WE=1.486 for rounding-level Hz: it is not an exact zero.
     hz_request = spec(identification_probes=(PROBES[0], (PROBES[1][0], "hz")))
     with pytest.warns(AccuracyWarning, match=r"witness failed -- .*WE .*\(bar "):
         hz = box().run(n_steps=600, ringdown=hz_request, skip_preflight=True).ringdown

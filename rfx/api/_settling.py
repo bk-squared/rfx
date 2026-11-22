@@ -17,8 +17,6 @@ def run_settling_witness(self, result):
     if prior and prior.get("run_records_scored"):
         return result.settling_db, prior
 
-    # run()'s port records repeat its S bins in float32; reading them again
-    # would split each bin of a float64 request in two.
     read = result
     if not isinstance(result, ForwardResult) and hasattr(result, "_replace"):
         read = result._replace(wire_port_sparams=None, lumped_port_sparams=None)

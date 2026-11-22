@@ -554,9 +554,14 @@ square transverse mesh. Refinement therefore changes its series inductance;
 it is not a fixed-radius physical pin. Opt in to `radius=` in metres to use
 the local thin-probe model, within `radius <= 0.20 * dx` and a locally uniform
 square transverse stencil and uniform spacing along the pin. Axial grading
-across the port refuses this model. It is carried by nondispersive 3-D
+across the port refuses this model. It is carried by 3-D
 second-order Yee `run()` and `forward()`, on one device or several; other solvers,
-Debye/Lorentz, tensor/design-box updates and traced mesh metrics refuse it.
+tensor/design-box updates and unsupported traced mesh metrics refuse it.
+Debye, Lorentz and Drude material cells may lie outside its electric stencil.
+They are refused when they reach a live pin edge, one of its four parallel
+neighbours, or a cell supplying those edges' material means: the electric
+stamp is ε∞/4, while the missing dispersive storage scales with ε(ω)
+(`tests/contracts/test_wire_radius_poles.py`).
 Resolve larger wire ports geometrically with a coax feed or a volume wire.
 Each halving of the transverse cell adds `ω·(μ0·ℓ/2π)·ln 2` of series reactance
 to a port of length `ℓ` without `radius=`, about 5 Ω per halving at 5.8 GHz for a

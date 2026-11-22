@@ -13,8 +13,9 @@ from tests.unit.materials.test_pole_map_runs import record
 
 
 def objective_for(graded, relative):
-    # Construct the declared mesh before recording the reverse pass warnings;
-    # its existing adjacent-cell-ratio AccuracyWarning is independent of poles.
+
+
+    """The declared mesh's adjacent-cell-ratio AccuracyWarning is independent of poles."""
     sim, grid = scene(parameters(), graded)
     def objective(params):
         log_kappa, slope = params
@@ -69,7 +70,8 @@ def test_b6_2_si_guard_jit(monkeypatch, graded):
         return value, value
 
     def evaluate():
-        # Retrace after changing the switch: arming is decided at trace time.
+
+        """Arming is decided at trace time."""
         jax.clear_caches()
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter('always')

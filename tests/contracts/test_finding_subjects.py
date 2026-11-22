@@ -11,11 +11,8 @@ from rfx.preflight._scopes import CODE_SCOPE
 
 ROOT = Path(__file__).resolve().parents[2]
 REACHED = set()
-# No platform exclusions: failure seams and a supplied memory budget let the
-# CPU battery exercise the unavailable and memory findings without a GPU.
 UNREACHABLE = {}
 
-# These callers produce S-parameter setup reports, outside general preflight.
 OUTSIDE_GENERAL = {
     'layout_measured_from_band_low_edge': 'S-parameter layout audit only',
     'waveguide_setup_audit_skipped': 'S-parameter setup audit only',
@@ -67,7 +64,6 @@ def emitting_sites():
                 values |= codes(node.args[2])
             for code in values:
                 sites.append((str(path.relative_to(ROOT)), node.lineno, code))
-    # Default for unstructured captured warnings is also a shipped report code.
     sites.append(('rfx/preflight/_impl.py', 0, 'uncoded'))
     return sites
 
@@ -90,7 +86,6 @@ def check_report(sim, report, *, unavailable_labels=None):
         try:
             record = sim.realized_geometry()
         except (ValueError, NotImplementedError):
-            # Only a refused assembly has no record; preflight then uses the identity record.
             if not any(i.severity == 'error' for i in report):
                 raise
             from rfx.model.realization_unavailable import identity_record
@@ -124,8 +119,6 @@ def check_report(sim, report, *, unavailable_labels=None):
     assert [item['subjects'] for item in report.to_dict()['issues']] == [i.subjects for i in report]
 
 
-# Each row states the owners built into the scene, not a transformation of loc,
-# message text, annotation helpers, or stored report output.
 SCENES = {
     'absorber_probe_outside': {'absorber_overlap': [('probe[0]',)],
                                'absorber_point_refused': [('probe[0]',)],
@@ -236,6 +229,7 @@ def test_scene_subjects(scene_id):
 
 
 def test_thin_absorber_region_one_face():
+    """Eight interior x cells followed by four high-face pad cells give the x region (8, 12)."""
     from rfx import Simulation
     from rfx.boundaries.spec import Boundary, BoundarySpec
     d = 1 / 1024
@@ -245,16 +239,15 @@ def test_thin_absorber_region_one_face():
     report = sim.preflight(check_ntff=False)
     check_report(sim, report)
     finding, = report.by_code('thin_absorber')
-    # Eight interior x cells followed by four high-face pad cells; no y/z pads.
     assert finding.region['cells'] == ((8, 12), (0, 6), (0, 4))
     x, y, z = record.nodes
     assert finding.region['bounds_m'] == ((x[8], y[0], z[0]), (x[12], y[6], z[4]))
 
 
 def test_grading_runway_region():
+    """The high runway starts at interior z=8 plus four low-pad cells."""
     from rfx import Simulation
     d = 1 / 1024
-    # Four high-face interior cells total 5*d; the first eight are uniform.
     profile = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1]) * d
     sim = Simulation(10e9, (8*d, 8*d, 13*d), dx=d, cpml_layers=4,
                      boundary='cpml', dz_profile=profile)
@@ -262,7 +255,6 @@ def test_grading_runway_region():
     report = sim.preflight(check_ntff=False)
     check_report(sim, report)
     finding, = report.by_code('nu_grading_reaches_absorber')
-    # Each axis has four low-pad cells. The high runway starts at interior z=8.
     assert finding.region['cells'] == ((4, 12), (4, 12), (12, 16))
     x, y, z = record.nodes
     assert finding.region['bounds_m'] == ((x[4], y[4], z[12]), (x[12], y[12], z[16]))
@@ -273,10 +265,10 @@ def test_pec_gap_pair_subjects_and_region():
     sim = Simulation(10e9, (.02, .02, .02), dx=.001, boundary='pec')
     sim.add(Box((.004, .006, .006), (.008, .012, .012)), material='pec')
     sim.add(Box((.0095, .006, .006), (.013, .012, .012)), material='pec')
+    assert (sim._geometry[1].shape.corner_lo[0] - sim._geometry[0].shape.corner_hi[0]) / sim._dx < 3, "The x gap must stay below the three-cell resolution bar."
     record = sim.realized_geometry()
     report = sim.preflight(check_ntff=False)
     check_report(sim, report)
-    # The 1.5-cell x gap is below the three-cell resolution bar.
     findings = report.by_code('mesh_resolution')
     assert [finding.subjects for finding in findings] == [
         ('geometry[0]',), ('geometry[1]',), ('geometry[0]', 'geometry[1]')]
@@ -302,7 +294,6 @@ def test_unrasterizable_aperture_public_calls_raise(scene, monkeypatch):
         sim._geometry.append(replace(sim._geometry[-1], shape=_NoBBox()))
         error, match = NotImplementedError, None
         code, expected = 'line_stub_inspection_unavailable', [('geometry[3]',)]
-    # Exception types and the aperture fragment are origin/main's public contract.
     for read in (sim.realized_geometry, lambda: sim.fidelity_report(print_report=False)):
         with pytest.raises(error, match=match):
             read()
@@ -318,12 +309,10 @@ def test_unrasterizable_aperture_public_calls_raise(scene, monkeypatch):
     report = sim.preflight()
     assert len(builds) == 1
     for _ in range(2):
-        # A refused public record still names the finding's objects, built once.
         assert [i.subjects for i in report.by_code(code)] == expected
         for issue in report:
             issue.to_dict()
     assert len(builds) == 1
-    # Resolving finding identities must not populate any public geometry reader.
     for read in (sim.realized_geometry, lambda: sim.fidelity_report(print_report=False),
                  lambda: report.realization_table):
         with pytest.raises(error, match=match):
@@ -331,12 +320,11 @@ def test_unrasterizable_aperture_public_calls_raise(scene, monkeypatch):
 
 
 def test_off_lattice_place_region():
+    """Snapped geometry-row bounds cannot exercise a lower face lying strictly inside a grid cell."""
     from rfx import Simulation
     from rfx.preflight._common import PreflightIssue
     from rfx.preflight._subjects import finding_subjects, resolve_findings
     sim = Simulation(10e9, (.02, .02, .02), dx=.001, boundary='pec')
-    # Supply a physical region: geometry-row bounds have already been snapped
-    # and cannot exercise a lower face lying strictly inside a grid cell.
     finding = PreflightIssue('Off-lattice region', **finding_subjects(
         sim, region=((.0042, .0062, .0062), (.0132, .0122, .0122))))
     resolve_findings([finding])
@@ -523,7 +511,6 @@ def test_rlc_label_rows_are_non_geometric():
     assert row.occupancy_count == 0
     assert [r for r in record.rows if r.label != 'lumped_rlc[0]'] == list(original.rows)
     before, after = plain.preflight(), with_rlc.preflight()
-    # Existing locks and every realization finding remain unchanged with rows present.
     assert [i.to_dict() for i in before] == [i.to_dict() for i in after]
 
 
@@ -542,7 +529,6 @@ def test_rlc_rows_preserve_realization_findings(scene_id):
     rows = sim.realized_geometry().realization_table.rows
     position = tuple(float(v)/2 for v in sim._domain)
     if scene_id == 'off_lattice_edges':
-        # The centre is inside the PEC box; place the element in vacuum beyond its x face.
         position = (.011, .004, .004)
     conductors, _, _, _ = _assembly(sim, sim._campaign_ctx())
     edge = tuple(map(int, field_index(conductors.grid, position, 'ez')))
@@ -585,11 +571,10 @@ def assert_target(sim, code, expected, **kwargs):
 
 
 def test_msl_declaration_identity():
+    """The launch-clearance and probe-ladder checks do not measure the substrate or conductor interval."""
     from tests.unit.ports.test_msl_realized_port_contract import _model
     sim, _ = _model(port_top=11.)
     report = assert_target(sim, 'msl_port_conductor_planes', [('geometry[0]', 'msl_port[0]')])
-    # The remaining two checks concern launch clearance and the probe ladder;
-    # neither measures the substrate or conductor interval.
     assert [i.subjects for i in report.by_code('msl_port_geometry')] == [
         ('msl_port[0]',), ('msl_port[0]',)]
 
@@ -717,6 +702,7 @@ def test_dielectric_seam_subjects():
 
 
 def test_thin_conductor_seam_subjects():
+    """The geometry-continuation warning remains uncoded."""
     from rfx import Box, Cylinder, Simulation
     sim = Simulation(10e9, (.03, .02, .02), dx=.001, boundary='cpml', cpml_layers=8)
     sim.add_material('d', eps_r=2.)
@@ -727,7 +713,6 @@ def test_thin_conductor_seam_subjects():
     check_report(sim, report)
     assert [(i.code, i.severity, i.subjects) for i in report.by_code('dielectric_at_absorber_seam')] == [
         ('dielectric_at_absorber_seam', 'warning', ('thin_conductor[0]',))]
-    # The existing geometry-continuation warning remains uncoded on main.
     assert all(i.severity == 'warning' for i in report.by_code('uncoded'))
 
 
@@ -934,7 +919,6 @@ def test_flux_unavailable_subjects(monkeypatch):
     from tests.unit.preflight.test_flux_region_preflight import _sim, _add, U
     sim = _sim(graded=True)
     _add(sim, size=(4*U, 8*U))
-    # The record remains readable while this individual audit is unavailable.
     record = sim.realized_geometry()
 
     def fail(*args, **kwargs):
@@ -951,7 +935,6 @@ def test_probe_index_hole():
     sim.add_probe((-.002, .006, .007), 'ez', allow_in_absorber=True)
     sim._internal_probe_indices = {0}
     report = sim.preflight()
-    # The hidden witness is omitted from both the report check and record.
     findings = [i for i in report.by_code('absorber_overlap') if i.subjects == ('probe[1]',)]
     assert len(findings) == 1
     assert 'probe[0]' not in {row.label for row in sim.realized_geometry().realization_table.rows}
@@ -993,6 +976,7 @@ def test_s2_table_route_subjects(snap, severity):
 
 @pytest.mark.parametrize('snap,severity', [('strict', 'error'), ('declared', 'warning')])
 def test_s2_sheet_replay_subjects(snap, severity):
+    """Report substitution can hide a broken replay carrier."""
     from rfx.model.realization_verdict import replay_legacy_findings
     sim = _s2_subject_scene(snap, sheet=True)
     report = sim.preflight(check_ntff=False, check_resolution=False)
@@ -1001,7 +985,6 @@ def test_s2_sheet_replay_subjects(snap, severity):
     assert (original.scope, original.subjects, original.severity) == (
         'object', ('geometry[0]',), severity)
     assert original.region is not None
-    # Inspect replay itself: report substitution can otherwise hide a broken carrier.
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
         replay_legacy_findings(warnings, sim._campaign_ctx(), 'sheet_effective_size')
@@ -1159,7 +1142,6 @@ def test_coax_stamp_retains_sheet_subjects(monkeypatch):
     finding, = findings['sheet-size']
     assert finding.code == 'sheet_effective_size'
     assert finding.scope == 'object'
-    # The ground tiles adjoining the clearance hole and the narrow trace.
     assert finding.subjects == ('geometry[1]', 'geometry[3]', 'geometry[4]', 'geometry[5]')
 
 

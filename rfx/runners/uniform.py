@@ -320,7 +320,8 @@ def run_uniform(
             # here is the assembled-geometry state BEFORE this port's own
             # clearing below, which is exactly the "live" definition.
             materials = setup_wire_port(grid, wp, materials,
-                                        pec_edge_masks=pec_edge_masks)
+                                        pec_edge_masks=pec_edge_masks,
+                                        radius_sim=sim, radius_port=f"port[{_port_index}]")
             if pe.excite:
                 sources.defer(_simulation.make_wire_port_sources,
                     grid, wp, n_steps=sizing_n,

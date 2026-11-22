@@ -42,8 +42,6 @@ def _resident_bytes(device):
 
 
 def _inexact_leaves(value):
-    # Program outputs only: a NumPy leaf (N3's frequency array in
-    # waveguide_sparams) is a constant with no pullback memory.
     return tuple(leaf for leaf in jax.tree_util.tree_leaves(value)
                  if isinstance(leaf, jax.Array) and jnp.issubdtype(leaf.dtype, jnp.inexact))
 
@@ -83,7 +81,7 @@ def compiled_estimate(sim, n_steps, *, available_memory_gb, checkpoint_every,
     device = _default_device()
     if backend_class(device.platform).name != "gpu":
         raise ADMemoryUnavailable(f"compiled AD memory: backend {device.platform} not measured; requires GPU")
-    _resident_bytes(device)  # Availability refusal precedes allocator admission.
+    _resident_bytes(device)
     if os.environ.get("XLA_PYTHON_CLIENT_PREALLOCATE") != "false":
         raise ADMemoryUnavailable("compiled AD memory: preallocation not measured; XLA_PYTHON_CLIENT_PREALLOCATE=false required")
     if design != "permittivity" or design_box is not None:
@@ -98,8 +96,6 @@ def compiled_estimate(sim, n_steps, *, available_memory_gb, checkpoint_every,
     if n_warmup != 0:
         raise ADMemoryUnavailable("compiled AD memory: n_warmup not measured; requires 0")
     n_steps_i = _require_integral_param("n_steps", n_steps)
-    # The graded loop's own test (stepping/graded_loop.py): an unsegmented scan
-    # runs instead, with or without the per-step checkpoint; not measured.
     if not (active_levels(n_steps_i, checkpoint_every) if isinstance(checkpoint_every, tuple)
             else 0 < checkpoint_every < n_steps_i):
         raise ADMemoryUnavailable("compiled AD memory: checkpoint plan does not segment the run; unsegmented scan not measured")

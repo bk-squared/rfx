@@ -17,6 +17,7 @@ fit_module = importlib.import_module("rfx.differentiable_material_fit")
 
 
 def test_permittivity_floor_can_be_left_and_enforced(monkeypatch):
+    """The recorded first component of each evaluated parameter vector is ln(eps_inf)."""
     calls = []
     freqs = np.array([2e9, 3e9, 4e9])
     measured = np.zeros((1, 1, 3), complex)
@@ -37,11 +38,9 @@ def test_permittivity_floor_can_be_left_and_enforced(monkeypatch):
         eps_inf, _ = fit_module._params_to_debye_poles(p, 1)
         return (eps_inf - target) ** 2, jnp.zeros_like(measured)
 
-    seen = []  # ln(eps_inf) of every parameter vector a step evaluates
+    seen = []
 
     def replace_forward_loss(forward, *, has_aux):
-        # Seam: replace only the loss supplied to jax.value_and_grad;
-        # its differentiation, the parameter map and Adam remain real.
         assert has_aux
         value_and_grad = real_value_and_grad(simulated_loss, has_aux=True)
 

@@ -158,6 +158,7 @@ def test_distributed_subprocess(tmp_path):
     for ringdown in (False, True) for path in PATHS for kind in KINDS
 ])
 def test_port_bins(kind, path, ringdown):
+    """The reduced witness applies if the small-scene pulse cannot turn off before the graded fit window."""
     if path.startswith('multi-'):
         if os.environ.get('RFX_TRACED_BINS_CHILD') != '1':
             pytest.skip('covered by test_distributed_subprocess')
@@ -186,8 +187,6 @@ def test_port_bins(kind, path, ringdown):
     elif ringdown:
         concrete = _evaluate(lambda: _call(sim, path, ringdown, REQUEST), compiled=True)
         if path == 'graded' and eager[1] is not None:
-            # This reduced witness applies if this one small-scene
-            # attempt cannot turn its pulse off before the graded fit window.
             assert type(eager[1]) is ValueError
             assert 'is still on inside the identification window' in str(eager[1])
             _same_refusal(eager, concrete, ValueError, 'forward(ringdown=...):')
@@ -216,7 +215,6 @@ def test_port_bins(kind, path, ringdown):
         assert ('add_waveguide_port(...) uses compute_waveguide_s_matrix()' if kind == 'waveguide'
                 else 'MSL ports use compute_msl_s_matrix()') in str(eager[1])
     elif path == 'multi-graded':
-        # Graded multi-device ports run the one-device step per slab.
         _equal(eager, actual)
         _equal(_evaluate(lambda: _call(sim, 'graded', False, REQUEST)), eager)
     elif path == 'multi-uniform' and actual[2]:

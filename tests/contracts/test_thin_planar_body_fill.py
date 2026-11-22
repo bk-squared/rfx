@@ -8,6 +8,7 @@ the run's own length over L and the outside medium is the declared content
 on both sides. Closed forms are the laminate's over the support, formed here
 from the declared faces and cell edges: normal 1/(sum p_i/eps_i), tangential
 sum p_i*eps_i.
+The graded-z node at 1.0 mm has the centred support (0.5 + 0.6)/2 = 0.55 mm.
 """
 import sys
 
@@ -26,13 +27,10 @@ from tests._cell_table_capture import record_cell_table_capture
 
 MM = 1e-3
 EPS = 4.
-# Uniform: 0.5 mm cells; the slab z 2.05-2.20 mm sits in cell [2.0, 2.5] (k = 4).
-# Graded: dz 0.5, 0.5, 0.6, ... mm; the slab z 1.10-1.28 mm sits in cell [1.0, 1.6] (k = 2).
 SCENES = {
     'uniform': dict(lo=2.05 * MM, hi=2.20 * MM, k=4, cell=.5 * MM, ez_cell=(2.0 * MM, 2.5 * MM),
                     node_support=(1.75 * MM, 2.25 * MM)),
     'graded': dict(lo=1.10 * MM, hi=1.28 * MM, k=2, cell=.6 * MM, ez_cell=(1.0 * MM, 1.6 * MM),
-                   # the node at 1.0 mm has the centred support (0.5 + 0.6)/2 = 0.55 mm
                    node_support=(.725 * MM, 1.275 * MM)),
 }
 DZ_GRADED = np.array([.5, .5, .6, .4, .5, .6, .4, .5]) * MM
@@ -53,7 +51,6 @@ def _build(mesh, grid, pairs):
 def _slab(shape, lo, hi):
     if shape == 'box':
         return Box((-.1, -.1, lo), (.1, .1, hi))
-    # The disc's axis passes through the node at (2 mm, 2 mm); radius 1.5 mm.
     return Cylinder(center=(2 * MM, 2 * MM, (lo + hi) / 2), radius=1.5 * MM,
                     height=hi - lo, axis='z')
 
@@ -157,12 +154,12 @@ def test_slab_straddling_the_periodic_seam_reads_its_own_length():
     np.testing.assert_allclose(values[:2], [_tangential(.3)] * 2, rtol=1e-6)
 
 
-# Where the slab's upper face leaves a support: uniform Ez (cell [2.0, 2.5])
-# at 2.50 mm, uniform Ex/Ey (node 2.0, support [1.75, 2.25]) at 2.25 mm,
-# graded Ez (cell [1.0, 1.6]) at 1.60 mm, graded Ex/Ey (node 1.0, support
-# [0.725, 1.275]) at 1.275 mm.
-SWITCHES = [('uniform', 2.50 * MM), ('uniform', 2.25 * MM),
-            ('graded', 1.60 * MM), ('graded', 1.275 * MM)]
+UNIFORM_EZ_SUPPORT_END_MM = 2.50
+UNIFORM_EXY_SUPPORT_END_MM = 2.25
+GRADED_EZ_SUPPORT_END_MM = 1.60
+GRADED_EXY_SUPPORT_END_MM = 1.275
+SWITCHES = [('uniform', UNIFORM_EZ_SUPPORT_END_MM * MM), ('uniform', UNIFORM_EXY_SUPPORT_END_MM * MM),
+            ('graded', GRADED_EZ_SUPPORT_END_MM * MM), ('graded', GRADED_EXY_SUPPORT_END_MM * MM)]
 
 
 @pytest.mark.parametrize('mesh,switch', SWITCHES, ids=['uniform-ez', 'uniform-exy',

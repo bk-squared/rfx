@@ -35,7 +35,7 @@ def scene(family='plain', scale=1):
                if family == 'lorentz' else {})
     sim.add_material('board', eps_r=4.4, sigma=.015, **pole_kw)
     sim.add_material('insert', eps_r=2.2)
-    corner = 10 * scale  # Neither the two- nor three-device ownership boundary.
+    corner = 10 * scale
     sim.add(Box((xs[3 * scale], ys[2 * scale], 2e-3 * scale),
                 (xs[corner], ys[7 * scale], 8e-3 * scale)), material='board')
     sim.add(Box((xs[corner], ys[7 * scale], 2e-3 * scale),
@@ -45,7 +45,9 @@ def scene(family='plain', scale=1):
     grid = sim._build_nonuniform_grid()
     materials, db, lr, _ = sim._assemble_materials_nu(grid)
     corner = int(np.flatnonzero(np.any(np.asarray(materials.eps_r) == np.float32(4.4), axis=(1, 2)))[-1]) + 1
-    # Exercise every H component and occupancy as well as the dielectric corner.
+    assert all(corner % Slab(grid.shape[0], count).nx_per_rank != 0 for count in (2, 3)), (
+        "The dielectric corner must avoid both two-device and three-device ownership boundaries."
+    )
     mu = np.ones(grid.shape, np.float32)
     mu[4 * scale:9 * scale, 3 * scale:8 * scale, 2 * scale:7 * scale] = 1.3
     materials = materials._replace(mu_r=jnp.asarray(mu))
@@ -101,15 +103,15 @@ def test_host_products_release_input_layout_copies(n, family):
 @pytest.mark.parametrize('n', [2, 3])
 @pytest.mark.parametrize('family', ['plain', 'debye', 'lorentz'])
 def test_every_product_matches_per_slab(n, family, monkeypatch):
+    """The eager reference avoids rounding changes from an outer jit."""
     s = staged_scene(n, family)
     if s.mesh.devices.flat[0].platform != 'cpu':
         pytest.skip('GPU per-slab reference has the corner rounding defect')
     actual = products(s)
     monkeypatch.setattr(setup, '_material_host_device', lambda *args, **kwargs: (None, 'traced inputs'))
-    expected = products(s)  # Eager reference: no outer jit changes its rounding.
+    expected = products(s)
     a_leaves = jax.tree_util.tree_flatten_with_path(actual)[0]
     e_leaves = jax.tree_util.tree_flatten_with_path(expected)[0]
-    # grid_key describes a whole-grid view versus a slab view; array paths agree.
     assert [p for p, _ in a_leaves] == [p for p, _ in e_leaves]
     for (index, a), (_, e) in zip(a_leaves, e_leaves):
         if not hasattr(e, 'shape'):
@@ -123,6 +125,7 @@ def test_every_product_matches_per_slab(n, family, monkeypatch):
 
 @pytest.mark.parametrize('n', [2, 3])
 def test_owned_components_match_one_device(n):
+    """An earlier CPU-host versus GPU realization at the mu_r=1.3 box face differed by one float32 ULP."""
     s = staged_scene(n)
     mu = np.asarray(s.materials.mu_r)
     assert np.all(mu[4:9, 3:8, 2:7] == np.float32(1.3))
@@ -138,7 +141,6 @@ def test_owned_components_match_one_device(n):
                 start = rank * s.layout.nx_local + s.layout.ghost_width
                 a, e = actual[start:start + hi - lo], expected[lo:hi]
                 if name == 'mu_update' and s.mesh.devices.flat[0].platform == 'gpu':
-                    # CPU host vs GPU realization differs by 1 float32 ULP at the mu_r=1.3 box face.
                     assert a.dtype == e.dtype == np.float32
                     np.testing.assert_array_max_ulp(a, e, maxulp=1)
                 else:
@@ -178,7 +180,6 @@ def test_owned_components_take_the_high_wall(n, route, monkeypatch):
     assert unpadded_high_walls(s.grid)[0], 'the scene must have an unpadded high-x wall'
     whole = realize_components(s.materials, s.grid, periodic=(False,) * 3)
     blind = realize_components(s.materials, s.grid, periodic=(False,) * 3, high_wall=(False,) * 3)
-    # Precondition: the wall rule moves the last x row, so dropping it is visible.
     assert any(not np.array_equal(np.asarray(a)[-1], np.asarray(b)[-1])
                for a, b in zip(whole.eps_update, blind.eps_update))
     if route == 'per_slab':
@@ -199,7 +200,6 @@ def test_non_addressable_input_keeps_slab_views(n, monkeypatch):
     target = s.inputs.eps_r
     array_type = type(target)
     addressable = array_type.is_fully_addressable
-    # Real local JAX array, with only this leaf's addressability metadata overridden.
     monkeypatch.setattr(array_type, 'is_fully_addressable', property(
         lambda a: False if a is target else addressable.__get__(a, array_type)))
     calls = []

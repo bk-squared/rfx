@@ -91,7 +91,6 @@ def test_float64_model_invariant(captured_scenes):
         for label in SCENES:
             counts = Counter()
             if label.endswith('tfsf'):
-                # A2d: split once; this scene already contains only one object.
                 for _ in range(2):
                     with pytest.raises(ValueError, match='update.materials.eps_r prevents an invariant periodic replacement'):
                         captured_scenes(label)
@@ -201,7 +200,6 @@ def test_uniform_source_coefficient_values(captured_scenes, source):
     _, component, dt, actual = data['sources'][source]
     assert component.lower() == 'ez'
     eps, sigma = ((1., 0.), (4., .05))[source]
-    # Same declared epsilon_0 as the solver, written without calling helpers.
     eps0 = np.float64(8.8541878128e-12)
     dt = np.float64(dt)
     expected = (dt/eps0)/(np.float64(eps)+np.float64(sigma)*(dt/(2*eps0)))

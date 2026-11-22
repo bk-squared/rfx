@@ -1,4 +1,6 @@
-"""E3 frozen contracts and replay; no FDTD ladder is run by these tests."""
+"""E3 frozen contracts and replay; no FDTD ladder is run by these tests.
+Unequal areas make equal weights wrong for the four y/z cells sharing Ex.
+"""
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
 import json
@@ -73,7 +75,7 @@ def test_columns_and_default_table(arm, scale):
 
 
 def test_four_cell_weights_and_pec():
-    # Ex shares four different y/z cells; unequal areas make equal weights wrong.
+    """PEC owner-cell area is excluded from the constitutive average because the separate PEC edge mask clamps the field."""
     sim = Simulation(freq_max=1e9, domain=(.004, .008, .008), boundary="pec",
                      dx=.002, dy_profile=np.array([.002, .004, .002]),
                      dz_profile=np.array([.003, .005]), interface_eps="dual_average")
@@ -87,10 +89,6 @@ def test_four_cell_weights_and_pec():
         return np.asarray(nu.assemble_interface_eps_nu(sim, grid, mats, pec_mask=pec_mask, high_wall=unpadded_high_walls(grid))[0])
     expected = (2*2*3 + 4*2*5 + 8*4*3 + 16*4*5)/(6*8)
     assert ex()[0,1,1] == np.float32(expected)
-    # Only the large (y1,z1) owner cell is PEC. Exclude its area from the
-    # constitutive average; the separate PEC edge mask clamps the field.
-    # The former value 16 pinned a caller bug: centres were shifted again,
-    # spuriously classifying all four owners as PEC and taking the fallback.
     sim.add(Box((0, .002, .003), (.004, .006, .008)), material="pec")
     live_mean = (2*2*3 + 4*2*5 + 8*4*3)/(2*3 + 2*5 + 4*3)
     assert ex()[0,1,1] == np.float32(live_mean)
@@ -102,7 +100,6 @@ def test_opt_in_reaches_stepper(monkeypatch):
     original = nu.run_nonuniform
     seen = []
     def capture(grid, materials, n_steps, **kwargs):
-        # Independently average the four production cells incident to each edge.
         widths = (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)
         assert kwargs.get("aniso_eps") is None
         for component, actual in enumerate(materials.components.tensor.eps):

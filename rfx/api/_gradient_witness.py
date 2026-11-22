@@ -78,17 +78,14 @@ def conductivity_gradient_record(design_sigma, sigma_override, design_eps, n_ste
     components = sigma if isinstance(sigma, tuple) else (sigma,)
     record_time, definition = (None if dt is None else n_steps * dt), X_PER_CELL
     if record_time is None:
-        # A result that carries no grid (no time step to read): say so, never fail the solve.
         record_time = x_min = "not available (no time step)"
     elif any(is_tracer(component) for component in components) or is_tracer(design_eps):
         x_min = "not evaluated (traced)"
     elif design_eps is None:
         x_min = "not evaluated (no permittivity)"
     elif len(components) == 1 and np.shape(components[0]) == np.shape(design_eps):
-        # Cell conductivity on the permittivity's own cells: the ratio's minimum itself.
         x_min = float(record_time * np.min(np.asarray(components[0]) / np.asarray(design_eps)) / EPS_0)
     else:
-        # Per-edge conductivity has no cell-for-cell permittivity: a lower bound of the ratio.
         definition = X_LOWER_BOUND
         x_min = float(record_time * min(float(np.min(np.asarray(component))) for component in components)
                       / (EPS_0 * float(np.max(np.asarray(design_eps)))))
@@ -304,7 +301,7 @@ class GradientRecordLengthWitness:
             f"{self.worst_value_rel_change * 100:.3f}%{settle}"
         )
 
-    def __str__(self) -> str:  # pragma: no cover - convenience
+    def __str__(self) -> str:  # pragma: no cover
         return self.summary()
 
 
@@ -467,14 +464,6 @@ def gradient_record_length_witness(
     g_short = {k: np.asarray(v, dtype=dtype) for k, v in short.grads.items()}
     g_long = {k: np.asarray(v, dtype=dtype) for k, v in long.grads.items()}
 
-    # ---- THE VERDICT: norm-level, per bin, no floor -----------------------
-    # One number per bin over the whole gradient vector. A per-element ratio
-    # cannot decide this: an element carrying a millionth of the dominant
-    # sensitivity moves by 100 % on its own rounding, and a per-cell
-    # permittivity leaf then reports hundreds of percent while the cells that
-    # actually moved report a few. The norm answers the question an optimizer
-    # asks -- did the gradient VECTOR move -- and the cosine beside it says
-    # whether the direction turned or only the length.
     rel_by_bin = np.zeros(n_bins, dtype=np.float64)
     cosine_by_bin = np.full(n_bins, np.nan, dtype=np.float64)
     leaf_delta_norm = np.zeros((n_bins, len(short.paths)), dtype=np.float64)
@@ -487,10 +476,6 @@ def gradient_record_length_witness(
         if delta == 0.0:
             rel_by_bin[i] = 0.0
         elif norm_l == 0.0:
-            # The long record says the observable does not depend on the
-            # parameter here and the short record says it does. That is not a
-            # small relative change, and dividing by the floor would dress it
-            # up as one.
             rel_by_bin[i] = math.inf
         else:
             rel_by_bin[i] = delta / norm_l
@@ -515,11 +500,6 @@ def gradient_record_length_witness(
         if short.paths:
             worst_leaf = short.paths[int(np.argmax(leaf_delta_norm[worst_bin]))]
 
-    # ---- THE REPORT: per-element table, floored ---------------------------
-    # Floored per bin against the dominant element of that bin, at either
-    # record length, so the table is readable rather than dominated by
-    # rounding on elements that carry no sensitivity. Read it to find WHERE a
-    # failed verdict sits; it decides nothing.
     scale = np.zeros(n_bins, dtype=np.float64)
     for arrs in (g_long, g_short):
         for arr in arrs.values():
