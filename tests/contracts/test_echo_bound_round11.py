@@ -96,7 +96,10 @@ def test_live_width_settling_reads_the_returned_grid(capsys):
         jnp.asarray(widths, dtype=jnp.float32).at[6].multiply(jnp.float32(1.05))),
                                 dtype=np.float64), .011, .005])
     bound = compiled.settling_witness['echo_bound']
-    assert expected_d <= float(bound['D']) <= expected_d * (1 + 80 * np.finfo(np.float32).eps)
+    unit = np.finfo(np.float32).eps / 2
+    gamma = 5 * unit + (12 + 11 + 5 + 2) * unit**2
+    upper = np.nextafter(np.float32(expected_d * (1 + gamma) / (1 - gamma)), np.float32(np.inf))
+    assert expected_d <= float(bound['D']) <= upper
     assert 800 * float(compiled.dt) >= 2.05 * 2 * expected_d * np.sqrt(2.2) / C
     assert compiled.settling_witness['status'] == eager.settling_witness['status']
     assert not bound.get('reason')
