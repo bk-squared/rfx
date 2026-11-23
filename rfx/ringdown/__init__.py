@@ -867,8 +867,7 @@ class RingdownRun:
         self.n_steps = int(n_steps)
         self.grid = grid
         self.dt = grid.dt
-        from rfx.measurement.record_end import echo_delay_bound
-        self.echo_bound = echo_delay_bound(grid, sim=sim, freqs=self.bins)
+        self.echo_bound = None
         try:
             self.echo_dt = float(grid.dt)
         except (TypeError, ValueError):
@@ -1008,6 +1007,7 @@ class RingdownRun:
     # -- after the run -------------------------------------------------------
 
     def _finish(self, result, n_user: int):
+        self.echo_bound = result.settling_echo_bound
         if self.probe_mode:
             from rfx.ringdown._probe_channels import finish_probe_run
             return finish_probe_run(self, result, n_user)
@@ -1755,9 +1755,6 @@ class RingdownStop:
     def __init__(self, sim, spec: RingdownSpec, *, lane: str, n_max: int, grid):
         self.sim, self.spec, self.lane, self.grid = sim, spec, lane, grid
         self.base = RingdownRun(sim, spec, lane=lane, n_steps=int(n_max), grid=grid)
-        if self.base.echo_bound.get('reason'):
-            from rfx.errors import RfxRefusal
-            raise RfxRefusal(f"until_identified: {self.base.echo_bound['reason']}; use fixed n_steps")
         self.n_max = int(n_max)
         self.dt = float(grid.dt)
         self.chunk = int(STOP_CHUNK)
@@ -1838,6 +1835,11 @@ class RingdownStop:
             return self.schedule.record(T, T * self.dt, fields,
                                         time.perf_counter() - t0)
 
+        partial = peek()
+        self.base.echo_bound = partial.settling_echo_bound
+        if not np.isfinite(self.base.echo_bound["tau_max"]):
+            from rfx.errors import RfxRefusal
+            raise RfxRefusal("until_identified: cannot judge: echo delay bound unavailable; use fixed n_steps")
         from rfx.measurement.record_end import ECHO_BOUND_FACTOR, echo_bound_reason
         if ((T - round(float(spec.window_start) * T)) * self.dt
                 < ECHO_BOUND_FACTOR * self.base.echo_bound['tau_max']):
@@ -1855,7 +1857,7 @@ class RingdownStop:
                                f"its peak in [{0.5 * spec.window_start:g} T, T]")
 
         # (b), (d) and (e) on the record so far, rebuilt as that run rebuilds it
-        partial = peek()
+        rr.echo_bound = self.base.echo_bound
         ts_all = np.asarray(partial.time_series)
         try:
             pms, e_cols, h_cols = rr._rebuild_inputs(partial, ts_all, self.n_user)
@@ -2171,11 +2173,6 @@ class RingdownForward(RingdownRun):
 
     caller = "forward"
 
-    def __init__(self, sim, spec: RingdownSpec, **kwargs):
-        super().__init__(sim, spec, **kwargs)
-        from rfx.measurement._echo_forward import forward_echo_bound
-        self._forward_echo = forward_echo_bound(self.grid, sim, self.bins)
-
     def run(self, call):
         """Scope the probes to the lane call, then complete (traced)."""
         from rfx.measurement.identification import ringdown_probes
@@ -2203,11 +2200,9 @@ class RingdownForward(RingdownRun):
         return stripped._replace(ringdown=completed, settling_echo_bound=completed._echo_index)
 
     def _traced(self, result, channels) -> RingdownForwardResult:
-        bound, index_read, index_operands = self.__dict__.pop('_forward_echo')
-        result = result._replace(settling_echo_bound=bound)
         if self.probe_mode:
             from rfx.ringdown._probe_channels import traced_probe_completion
-            return traced_probe_completion(self, result, channels, index_read, index_operands)
+            return traced_probe_completion(self, result, channels)
         import jax
         import jax.numpy as jnp
 
@@ -2338,8 +2333,7 @@ class RingdownForward(RingdownRun):
             pole_counts.append(count)
             pole_budgets.append(k_max)
         from rfx.ringdown._echo import forward_closing_factor
-        closing = forward_closing_factor(self, ctx, dt, cells, dtype=rdt,
-                                         index_read=index_read, index_operands=index_operands)
+        closing = forward_closing_factor(self, dt, result.settling_echo_bound, dtype=rdt)
         out = [value * closing for value in out]
         return RingdownForwardResult(out[0], out[1], result.freqs, channels, accs,
                                      result.s_params, jnp.stack(status), consistency,

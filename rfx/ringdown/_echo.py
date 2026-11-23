@@ -1,21 +1,16 @@
-"""The concrete echo-window invariant at completion outputs."""
+"""The realized echo-window invariant at completion outputs."""
 from dataclasses import replace
 import math
 
 
 def close_completion(plan, output, report=None, failure=None, *, grid=None, dt=None):
-    """Preserve prior refusals; otherwise poison a completion with a short window.
-
-    Reports retain all formed witnesses. Traced outputs use the same concrete
-    condition and multiply by NaN so their derivatives carry the refusal too.
-    """
-    from rfx.measurement.record_end import ECHO_BOUND_FACTOR, echo_bound_reason, echo_delay_bound_on_grid
+    """Preserve prior refusals and judge the bound attached by the runner."""
+    from rfx.measurement.record_end import ECHO_BOUND_FACTOR, echo_bound_reason
     from rfx.ringdown import RingdownWitness, _NotCompleted
 
     if failure is not None:
         return output, report, failure
-    bound = (plan.echo_bound if grid is None else
-             echo_delay_bound_on_grid(grid, plan.echo_bound))
+    bound = plan.echo_bound
     dt = plan.echo_dt if dt is None else dt
     window = (math.nan if dt is None else
               (int(plan.n_steps) - int(plan.n_start)) * float(dt))
@@ -33,35 +28,13 @@ def close_completion(plan, output, report=None, failure=None, *, grid=None, dt=N
     return None if output is None else output * math.nan, report, failure
 
 
-def forward_closing_factor(plan, context, dt, cells, *, dtype, index_read=None,
-                           index_operands=()):
-    """Judge realized host widths at the completion's pole-mapping step.
+def forward_closing_factor(plan, dt, bound, *, dtype):
+    """Judge on device; the stopped bound has no derivative or host callback."""
+    import jax.numpy as jnp
+    from rfx.measurement.record_end import ECHO_BOUND_FACTOR
 
-    The callback reads the same live widths as the channels. Its decision is
-    discrete and has no derivative; multiplying by NaN carries a refusal
-    through both the completed value and its derivatives.
-    """
-    import numpy as np
-    from rfx.ringdown._jax import host_closing_factor
-
-    if not cells and index_read is None:
-        return close_completion(plan, 1., grid=context.grid, dt=dt)[0]
-    template, axes = context.grid, context.traced_axes
-    exact_of = {'dx_arr': 'dx_arr_f64', 'dy_arr': 'dy_arr_f64', 'dz': 'dz_f64'}
-
-    def judge(*operands):
-        import copy
-        widths = operands[:len(cells)]
-        fields = {}
-        for (_, store), live in zip(axes, widths, strict=True):
-            fields[store] = np.asarray(live)
-            if exact_of[store] in template._fields:
-                fields[exact_of[store]] = np.asarray(live, dtype=np.float64)
-        grid = template._replace(**fields) if fields else template
-        live_plan = copy.copy(plan)
-        if index_read is not None:
-            live_plan.echo_bound = dict(n_max=index_read(*operands[len(cells):]),
-                                        g=plan.echo_bound['g'])
-        return np.asarray(close_completion(live_plan, 1., grid=grid, dt=dt)[0], dtype=dtype)
-
-    return host_closing_factor(judge, dtype, *cells, *index_operands)
+    required = jnp.nextafter(jnp.asarray(ECHO_BOUND_FACTOR * bound['tau_max'], dtype),
+                             jnp.asarray(jnp.inf, dtype))
+    window = (int(plan.n_steps) - int(plan.n_start)) * jnp.asarray(dt, dtype)
+    return jnp.where(jnp.isfinite(required) & (window >= required),
+                     jnp.asarray(1., dtype), jnp.asarray(jnp.nan, dtype))
