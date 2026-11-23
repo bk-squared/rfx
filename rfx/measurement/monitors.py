@@ -63,8 +63,6 @@ def monitor_owners(sim, grid, *, conductors=None, periodic=None, overrides=None)
         freqs = sim._current_moments[3]
         declaration = sim
         if _traced(freqs):
-            # Only geometry is frozen here. Frequency-dependent admission belongs
-            # to the run; its phase leaves do not determine the block stencil.
             declaration = copy(sim)
             spec = list(sim._current_moments)
             spec[3] = np.zeros(freqs.shape, dtype=np.float32)

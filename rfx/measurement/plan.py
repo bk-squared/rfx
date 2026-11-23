@@ -226,8 +226,6 @@ class TimeBase:
                      * np.float64(self.dt))
 
 
-#: Sums that are not on the shared DFT kernel (rfx.measurement.dft), and the
-#: one case in which the kernel itself is less accurate.
 KERNEL_KNOWN_DIFFERENCES = (
     'rfx/measurement/floquet.py update_floquet_dft: own sum, H centred on E in space and time; no caller in rfx/',
     'subgridded runner: own lumped V/I sum stamped n dt, without the H half step',
@@ -450,7 +448,6 @@ def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
         regions = flux_regions(cfg)
         channels = []
         for c, component in enumerate(_FLUX_COMPONENTS[axis]):
-            # Weight belongs to the E/H product, not to each linear DFT.
             area = areas[(0, 1, 1, 0)[c]]
             planes = (((index, 1.0),) if c < 2 else
                       ((index, 0.0),) if cfg.normal_h_zero else
@@ -476,7 +473,7 @@ def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
     from .ports import lumped_wire_owner
     for i, entry in enumerate(sim._ports):
         if entry.is_soft_source:
-            continue  # a soft source has no measurement owner
+            continue
         live = (field_index(grid, entry.position, entry.component),)
         if entry.extent is not None:
             end = list(entry.position)

@@ -4,7 +4,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 import numpy as np
-try:  # Public API on current JAX; the 0.4.x GPU image uses the old location.
+try:
     from jax import enable_x64 as _enable_x64
 except ImportError:
     from jax.experimental import enable_x64 as _enable_x64
@@ -24,9 +24,6 @@ def _msl_cell_profile(grid, axis: str, n: int) -> np.ndarray:
         per_cell = {"x": grid.dx_arr, "y": grid.dy_arr, "z": grid.dz}[axis]
         a = np.asarray(per_cell, dtype=float)
         if a.shape != (n,):
-            # The NU branch is authoritative — never silently fall back to a
-            # scalar boundary-dx fill (that is the exact wrong-number bug this
-            # helper exists to fix). A shape mismatch is a wiring error.
             raise ValueError(
                 f"NonUniformGrid {axis} per-cell profile shape {a.shape} "
                 f"!= expected ({n},)."
@@ -151,22 +148,17 @@ def msl_solve_s_from_waves(wave_a, wave_b):
     A = jnp.stack([
         jnp.stack([wave_a[d][j] for d in range(n_ports)], axis=-1)
         for j in range(n_ports)
-    ], axis=-2)                                   # (n_freqs, n_ports, n_ports)
+    ], axis=-2)
     B = jnp.stack([
         jnp.stack([wave_b[d][j] for d in range(n_ports)], axis=-1)
         for j in range(n_ports)
     ], axis=-2)
-    # S = B A⁻¹  <=>  Sᵀ = (Aᵀ)⁻¹ Bᵀ, batched over frequency.
     S_solved = jnp.swapaxes(
         complex_solve(jnp.swapaxes(A, -1, -2), jnp.swapaxes(B, -1, -2)),
         -1, -2,
     )
     cond_a = None
     if not is_tracer(A):
-        # f64 BEFORE the ratio: for a complex64 A the SVD returns float32,
-        # where the 1e-300 floor underflows to 0.0 (NEP-50 weak promotion
-        # keeps float32) and a singular A divides by zero instead of
-        # saturating. Same failure class as the NEP-50 fallback.
         _sv = np.linalg.svd(
             np.asarray(jax.lax.stop_gradient(A)), compute_uv=False
         ).astype(np.float64)
@@ -213,26 +205,15 @@ def _project_passive(S):
     avoids GPU SVD factor errors larger than the reconstruction margin;
     the FDTD fields and differentiable extraction keep their own dtype.
     """
-    # A complex128 array may outlive the caller's scoped x64 context.
-    # Preserve its dtype during both canonicalization and device_put.
     with _enable_x64():
         S = jnp.asarray(S, dtype=jnp.result_type(S, 1.0))
-    s_t = np.asarray(S).transpose(2, 0, 1)  # (n_freqs, n_ports, n_ports)
+    s_t = np.asarray(S).transpose(2, 0, 1)
     real_dtype = s_t.real.dtype
     work_dtype = np.complex128 if np.iscomplexobj(s_t) else np.float64
     finite = np.all(np.isfinite(s_t), axis=(1, 2))
-    # Nonfinite bins must still reach the caller's finiteness audit. One
-    # invalid frequency must not make batched LAPACK abort all other bins.
     s_pass = np.full(s_t.shape, np.nan, dtype=s_t.dtype)
     correction = np.full(s_t.shape[0], np.nan, dtype=real_dtype)
-    # Clip a few ULPs below 1 so the bound still holds after the f32/f64
-    # reconstruction round-trip (a bare min(sig, 1) reconstructs to
-    # sigma_max = 1 + O(eps), which violates the strict bound this exists
-    # to guarantee).
     eps = np.finfo(real_dtype).eps
-    # 64*eps, not 8*eps: the reconstruction error grows with n_ports and a
-    # measured f32 sweep showed 8*eps failing the strict bound from n=8
-    # (1.0000000255) through n=32 (1.0000006584); 64*eps holds through n=32.
     if np.any(finite):
         u, sig, vh = np.linalg.svd(s_t[finite].astype(work_dtype), full_matrices=False)
         correction[finite] = np.maximum(sig[:, 0] - 1.0, 0.0)
@@ -356,7 +337,6 @@ def _assemble_mixed_power_wave_s(
     sq_msl = jnp.sqrt(jnp.asarray(np.asarray(z0_hj_msl, dtype=np.float64)))
 
     def _b_lw_passive(run, i_port):
-        # receive channel, power-wave normalized (probes.py:925/:1014).
         return (v_lw[run, i_port] - z0c_lw[i_port] * i_lw[run, i_port]) / (
             2.0 * sq_lw[i_port]
         )
@@ -368,12 +348,10 @@ def _assemble_mixed_power_wave_s(
 
     for run, (fam, loc) in enumerate(drive_plan):
         if fam == "lw":
-            # The per-cell drive frame invalidates the entire driven column.
             S = S.at[:, loc, :].set(jnp.nan)
             s21_power[:, loc, :] = np.nan
         else:
             col = n_lw + loc
-            # MSL drive wave (stage-S1 V*I split), power-wave normalized.
             a = (v0_msl[run, loc] + z0_hj_msl[loc] * i_msl[run, loc]) / (
                 2.0 * sq_msl[loc]
             )
@@ -443,14 +421,9 @@ def _mixed_flux_magnitude_override(
             if i == col:
                 continue
             if i < n_lw:
-                p_arr = -box_lw[run_idx, i, :]          # inward = -outward
+                p_arr = -box_lw[run_idx, i, :]
             else:
                 p_arr = -msl_away_signs[i - n_lw] * plane_msl[run_idx, i - n_lw, :]
-            # Symmetric with the driven-port tracking above: a negative
-            # ARRIVING power is also a sign/accounting defect, and
-            # clipping it silently yields |S_ij| = 0 — a plausible-looking
-            # number that reads as "no coupling" instead of "broken
-            # measurement".
             neg_power[i, :] |= p_arr < 0.0
             mag = np.sqrt(np.clip(p_arr, 0.0, None) / safe_pinc)
             S_out = S_out.at[i, col, :].set(
@@ -607,22 +580,11 @@ def _assemble_coaxial_two_port_from_voltages(
     z_planes_bot_m = np.asarray(z_planes_bot_m, dtype=np.float64)
     z_planes_top_m = np.asarray(z_planes_top_m, dtype=np.float64)
 
-    # Traced voltages (compute_coaxial_two_port(eps_scale=...))
-    # -> jax.numpy assembly below; concrete -> NumPy.
-    # ``_prefer_jnp`` (set by the eps_scale call site regardless of tracing)
-    # is OR'd in for the same reason coaxial_line_reflection_from_plane_
-    # voltages's own _prefer_jnp exists: a concrete FD probe on the
-    # eps_scale path must hit the identical jnp branch jax.grad sees, not
-    # silently fall back to NumPy just because it happens to run eagerly.
     _traced = _prefer_jnp or is_tracer(v_bot_by_drive) or is_tracer(v_top_by_drive)
     if not _traced:
         v_bot_by_drive = np.asarray(v_bot_by_drive, dtype=np.complex128)
         v_top_by_drive = np.asarray(v_top_by_drive, dtype=np.complex128)
     elif not hasattr(v_bot_by_drive, "shape") or not hasattr(v_top_by_drive, "shape"):
-        # The traced/_prefer_jnp path indexes v_*_by_drive directly (no
-        # np.asarray concretization step) — a plain Python list has no
-        # .shape and would otherwise fail below with an opaque
-        # AttributeError instead of a message naming the actual problem.
         raise ValueError(
             "v_bot_by_drive / v_top_by_drive must be array-like (numpy or "
             "jax.numpy) on the traced/_prefer_jnp path, not a plain Python "
@@ -639,15 +601,6 @@ def _assemble_coaxial_two_port_from_voltages(
     n_f = int(v_bot_by_drive.shape[-1])
 
     if _traced:
-        # --- differentiable path: jnp assembly ---
-        # Same per-(drive, frequency) recurrence-fit loop as the concrete path
-        # below, routed through the extractor's own jnp core
-        # (_coaxial_line_reflection_jnp via _prefer_jnp=True — the SAME
-        # differentiable core the GRAD_SAFE 1-port eps_scale path already
-        # uses) instead of concretizing. n_f/drive are static Python ints, so
-        # this unrolls into a fixed-size jnp graph, mirroring
-        # compute_coaxial_line_reflection's own `for fi in range(n_f):` jnp
-        # branch.
         a_top_rows, b_top_rows = [], []
         a_bot_rows, b_bot_rows = [], []
         rec_top_rows, fit_top_rows, gamma_top_rows = [], [], []
@@ -685,8 +638,6 @@ def _assemble_coaxial_two_port_from_voltages(
             fit_bot_rows.append(jnp.stack(fit_bot_f))
             gamma_bot_rows.append(jnp.stack(gamma_bot_f))
 
-        # Port-array axis 0 = top/port1, 1 = bot/port2 (matches the concrete
-        # path's a_inc[0]=out_top / a_inc[1]=out_bot assignment below).
         a_inc = jnp.stack([jnp.stack(a_top_rows), jnp.stack(a_bot_rows)], axis=0)
         b_out = jnp.stack([jnp.stack(b_top_rows), jnp.stack(b_bot_rows)], axis=0)
         rec_resid = jnp.stack([jnp.stack(rec_top_rows), jnp.stack(rec_bot_rows)], axis=0)
@@ -698,7 +649,6 @@ def _assemble_coaxial_two_port_from_voltages(
         )
         return solve.s_params, solve.cond_a, rec_resid, fit_resid, gamma
 
-    # --- concrete path: NumPy (byte-identical to the pre-AD code) ---
     a_inc = np.zeros((2, 2, n_f), dtype=np.complex128)
     b_out = np.zeros((2, 2, n_f), dtype=np.complex128)
     rec_resid = np.zeros((2, 2, n_f), dtype=np.float64)
@@ -987,16 +937,8 @@ def _assemble_coax_msl_transition_from_voltages(
                 x_msl, v_msl_by_drive[drive_idx, :, fi],
                 reference_plane_m=float(ref_msl_m),
             )
-            # Wave roles: the extractor already resolved which branch
-            # travels TOWARD each reference plane (forward_amp, by its own
-            # load_below test, for either ladder orientation). On THIS lane
-            # both reference planes ARE the junction, so that branch is the
-            # wave incident on the DUT: a = forward_amp, b = backward_amp at
-            # both ports -- a constant of the lane, written as one. See the
-            # Notes section above.
             a_coax, b_coax = out_coax.forward_amp, out_coax.backward_amp
             a_msl, b_msl = out_msl.forward_amp, out_msl.backward_amp
-            # Raw modal-voltage waves (volts, Z0-free) -> power waves.
             a_inc[0, drive_idx, fi] = a_coax / sqrt_z0[0]
             b_out[0, drive_idx, fi] = b_coax / sqrt_z0[0]
             a_inc[1, drive_idx, fi] = a_msl / sqrt_z0[1]
@@ -1010,11 +952,6 @@ def _assemble_coax_msl_transition_from_voltages(
 
     solve = solve_two_port_from_wave_amplitudes(a_inc, b_out, cond_warn=float(cond_warn))
 
-    # Column-equilibrated condition number:
-    # divide each drive's own incident-wave column by its own norm before
-    # taking cond() so a per-drive amplitude-scale mismatch (routine on a
-    # mixed-family lane, see the docstring above) cannot masquerade as
-    # geometric near-parallelism. Does not touch s_params.
     cond_a_equilibrated = np.full(n_f, np.nan, dtype=np.float64)
     for fi in range(n_f):
         col_norms = np.linalg.norm(a_inc[:, :, fi], axis=0)

@@ -92,7 +92,6 @@ def measure_normal_incident_spectrum(
         i_ref += int(reference_index) - int(cfg.x_lo)
 
     def _step(st, step_idx):
-        # Same order and time argument as the run() scan body.
         st = update_tfsf_1d_h(cfg, st, cfg.dx_1d, dt)
         t = step_idx.astype(jnp.float32) * dt
         st = update_tfsf_1d_e(cfg, st, cfg.dx_1d, dt, t)
@@ -151,10 +150,6 @@ def measure_incident_spectrum(
         psi_h_hi=jnp.zeros_like(state.psi_h_hi),
         step=jnp.array(0, dtype=jnp.int32),
     )
-    # Box-centre projection onto the aux line (same mapping as the gather
-    # tables: idx_E = (x*cos + y*sin)*dx/d_aux + src_idx). The plane-wave
-    # magnitude is position-independent, so the exact interior index is not
-    # critical; the centre is the semantically-right target location.
     cx = 0.5 * (cfg.x_lo + cfg.x_hi)
     cy = 0.5 * (cfg.y_lo + cfg.y_hi)
     ref = int(round(((cx * cfg.cos_theta + cy * cfg.sin_theta) * dx)
