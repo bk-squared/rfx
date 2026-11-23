@@ -30,7 +30,8 @@ def quiet():
 
 def line():
     sim = shorted_line()
-    sim.add(Box((0., 0., 0.), (.340, .003, .002)), material='vacuum')
+    sim.add_material('background', eps_r=DECLARED_EPS)
+    sim.add(Box((0., 0., 0.), (.340, .003, .002)), material='background')
     sim._geometry.insert(0, sim._geometry.pop())
     sim.add_probe(position=(.010, .001, 0), component='ez')
     sim.add_dft_plane_probe(axis='x', coordinate=.010, component='ez',
@@ -70,10 +71,15 @@ def test_override_index_closes_plain_and_traced_records(capsys):
         assert 'cannot judge:' in row['reason'] and RULE in row['reason'], row
 
 
-def test_library_sweep_member_reads_its_own_arrays(capsys):
+def test_library_sweep_member_reads_its_own_arrays(capsys, monkeypatch):
     from rfx.vmap_sweep import vmap_material_sweep
     sim = line()
-    result = vmap_material_sweep(sim, 'eps_r', np.array([DECLARED_EPS, OVERRIDE_EPS]), n_steps=N)
+    drive = sim._ports.pop()
+    sim.add_source(drive.position, drive.component, waveform=drive.waveform)
+    def refuse_fallback(*args, **kwargs):
+        raise AssertionError('the member witness must exercise the batched material arrays')
+    monkeypatch.setattr('rfx.vmap_sweep._sequential_fallback', refuse_fallback)
+    result = vmap_material_sweep(sim, 'background.eps_r', np.array([DECLARED_EPS, OVERRIDE_EPS]), n_steps=N)
     base, row = result.settling_witness
     check_window(result.dt[0])
     with capsys.disabled():
