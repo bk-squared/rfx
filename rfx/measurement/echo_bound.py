@@ -30,18 +30,19 @@ def _strength(pole):
 def _response(pole, frequency, lorentz):
     values = (pole.omega_0, pole.delta, _strength(pole)) if lorentz else tuple(pole)
     xp = jnp if _live((values, frequency)) else np
-    omega = 2 * xp.pi * xp.asarray(frequency)
+    dtype = np.float64 if xp is np else jnp.float32
+    omega = 2 * xp.pi * xp.asarray(frequency, dtype=dtype)
     if not lorentz:
-        return xp.asarray(pole.delta_eps) / (1 + 1j * omega * pole.tau)
+        return xp.asarray(pole.delta_eps, dtype=dtype) / (1 + 1j * omega * xp.asarray(pole.tau, dtype=dtype))
     w0, delta, strength = values
-    w0, delta, strength = xp.asarray(w0), xp.asarray(delta), xp.asarray(strength)
+    w0, delta, strength = (xp.asarray(v, dtype=dtype) for v in (w0, delta, strength))
     active = w0 != 0
     denominator = w0**2 - omega**2 + 2j * delta * omega
     return xp.where(active, strength / xp.where(active, denominator, 1.), 0.)
 
 
 def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
-                        smoothing_eps=(), waveguide_ports=(), valid=None):
+                        smoothing_eps=(), waveguide_ports=(), valid=None, design_box=None):
     """Read the largest volume sqrt(abs(eps(f)*mu)) without a callback.
 
     Capacitor records and wire contour corrections do not describe echo paths.
@@ -54,8 +55,9 @@ def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
 
     n_max is stop_gradient and rounded upward by one float32 ULP using
     nextafter(n, +inf). Concrete D and g retain host float64. For traced D,
-    gamma_(m+8), m the total number of physical widths, covers the positive
-    sums, three squares, their sum and square root; D/(1-gamma) is rounded
+    compensated width sums have relative error 2u+(m+2)u**2, u=eps32/2.
+    Five u plus that second-order term covers sums and the 3D norm;
+    D/(1-gamma) is rounded
     upward once. tau_max is stopped and rounded upward by four ULP to cover
     conversion, two products and division. The host requirement therefore
     cannot exceed the returned requirement; its margin is these stated
@@ -66,6 +68,10 @@ def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
 
     eps = jax.lax.stop_gradient(jnp.asarray(permittivity_without_lumped(materials), jnp.float32))
     mu = jax.lax.stop_gradient(jnp.asarray(materials.mu_r, jnp.float32))
+    if design_box is not None:
+        b = design_box.bounds
+        window = tuple(slice(b[2*d], b[2*d+1]) for d in range(3))
+        eps = eps.at[window].set(jax.lax.stop_gradient(design_box.eps_r))
     dp, lp = _poles(debye), _poles(lorentz)
     bins = np.asarray(() if freqs is None else freqs, dtype=np.float64).reshape(-1)
     configs = tuple(waveguide_ports.values() if hasattr(waveguide_ports, 'values')
@@ -79,7 +85,7 @@ def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
     margin = jnp.float32(0.)
     for pole, mask in lp:
         xp = jnp if _live((pole.omega_0, pole.delta, _strength(pole))) else np
-        w0, delta = xp.asarray(pole.omega_0), xp.asarray(pole.delta)
+        w0, delta = (xp.asarray(v, dtype=np.float64 if xp is np else jnp.float32) for v in (pole.omega_0, pole.delta))
         peak = xp.sqrt(xp.maximum(w0**2 - 2 * delta**2, 0.)) / (2 * xp.pi)
         in_band = (peak >= bins.min()) & (peak <= bins.max())
         samples.append(xp.where(in_band, peak, 0.))
@@ -124,10 +130,10 @@ def bound_on_grid(grid, n, configs=()):
         lo, hi = getattr(grid, f'pad_{axis}_lo'), getattr(grid, f'pad_{axis}_hi')
         cells = cells[lo:len(cells) - hi]
         count += len(cells)
-        lengths.append(jnp.sum(cells) if _live(cells) else np.sum(cells, dtype=np.float64))
+        lengths.append(_compensated_sum(cells) if _live(cells) else np.sum(cells, dtype=np.float64))
     if _live(lengths):
-        gamma = (count + 8) * np.finfo(np.float32).eps
-        gamma = gamma / (1 - gamma)
+        unit = np.finfo(np.float32).eps / 2
+        gamma = 5 * unit + (count + 2) * unit**2
         distance = _up(jnp.linalg.norm(jnp.asarray(lengths)) / (1 - gamma))
     else:
         distance = np.asarray(np.linalg.norm(lengths), dtype=np.float64)
@@ -137,7 +143,7 @@ def bound_on_grid(grid, n, configs=()):
 
 
 def runner_echo_bound(sim, grid, materials, *, freqs=None, debye=None, lorentz=None,
-                      smoothing=False, waveguide_ports=(), valid=None):
+                      smoothing=False, waveguide_ports=(), valid=None, design_box=None):
     """Use precisely the smoothing shape reader and physical pole specs."""
     shapes = ()
     if smoothing:
@@ -146,7 +152,7 @@ def runner_echo_bound(sim, grid, materials, *, freqs=None, debye=None, lorentz=N
     if (freqs is None or not len(freqs)) and not waveguide_ports:
         freqs = (0., sim._freq_max)
     return realized_echo_bound(grid, materials, freqs=freqs, debye=debye, lorentz=lorentz,
-                              smoothing_eps=shapes, waveguide_ports=waveguide_ports, valid=valid)
+                              smoothing_eps=shapes, waveguide_ports=waveguide_ports, valid=valid, design_box=design_box)
 
 
 def sharded_echo_bound(sim, grid, materials, sharded_grid, mesh, *, freqs=None,
@@ -192,3 +198,14 @@ def sweep_echo_bounds(grid, materials):
     bound = bound_on_grid(grid, n)
     return tuple(dict(D=bound['D'], g=bound['g'], n_max=bound['n_max'][i],
                       tau_max=bound['tau_max'][i]) for i in range(len(n)))
+
+
+def _compensated_sum(values):
+    """Sum positive widths with the Kahan error bound used by bound_on_grid."""
+    def add(carry, value):
+        total, correction = carry
+        adjusted = value - correction
+        updated = total + adjusted
+        return (updated, (updated - total) - adjusted), None
+    return jax.lax.scan(add, (jnp.float32(0.), jnp.float32(0.)),
+                        jnp.asarray(values, jnp.float32))[0][0]

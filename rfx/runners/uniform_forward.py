@@ -718,6 +718,10 @@ def _forward_from_materials(
     conductors, pec_edge_masks_local, sheet_impedance = _conductors.forward_kernel_inputs(
         self, conductors, lane or "fwd_uniform", pec_edge_masks_local, sheet_impedance,
         realization_options=(subpixel_smoothing, _conformal))
+    from rfx.measurement.echo_bound import runner_echo_bound
+    echo_bound = runner_echo_bound(self, grid, materials, freqs=port_s11_freqs,
+        debye=debye_spec, lorentz=lorentz_spec, smoothing=subpixel_smoothing,
+        waveguide_ports=waveguide_ports, design_box=design_box)
     result = prepared_step.advance(stepping_product, _run,
         grid,
         materials,
@@ -769,10 +773,6 @@ def _forward_from_materials(
     # Multi-drive S-matrix hook (item-5 Stage 1): return the raw all-port
     # (v_dft, i_dft) accumulators for off-line wave decomposition by the
     # production-scan driver, bypassing the diagonal-only extraction below.
-    from rfx.measurement.echo_bound import runner_echo_bound
-    echo_bound = runner_echo_bound(self, grid, materials, freqs=port_s11_freqs,
-        debye=debye_spec, lorentz=lorentz_spec, smoothing=subpixel_smoothing,
-        waveguide_ports=waveguide_ports)
     if _return_raw_port_sparams:
         _raw_freqs = None
         if result.lumped_port_sparams:

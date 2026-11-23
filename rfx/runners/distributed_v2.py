@@ -606,11 +606,13 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         tfsf = prepare(sim, grid, n_steps, layout, mesh)
     prepared_step.stage(stepping_product, grid=grid, materials=materials, pec_edges=pec_edges)
     dispersion = [debye_spec, lorentz_spec]
-    from rfx.measurement.echo_bound import runner_echo_bound
-    echo_materials = jax.tree.map(lambda a: jax.device_put(a, NamedSharding(mesh, P('x')))
-        if getattr(a, 'ndim', 0) == 3 else a, materials._replace(components=None, edge_keep=None))
-    echo_bound = runner_echo_bound(sim, grid, echo_materials, freqs=s_param_freqs,
-                                  debye=debye_spec, lorentz=lorentz_spec)
+    from rfx.measurement.echo_bound import sharded_echo_bound
+    from rfx.model.electric_metrics import stage_forward_materials
+    from types import SimpleNamespace
+    echo_materials = stage_forward_materials(materials, layout, mesh, uniform=True)
+    echo_bound = sharded_echo_bound(sim, grid, echo_materials,
+        SimpleNamespace(step_kind='wrapped', layout=layout), mesh,
+        freqs=s_param_freqs, debye=debye_spec, lorentz=lorentz_spec)
     del echo_materials
     del materials, pec_edges, pec_mask, pec_shapes, debye_spec, lorentz_spec
     records = SlabRecords(sim, grid, nx_per, mesh, jnp.float32, n_steps, snapshot)

@@ -568,7 +568,7 @@ def compute_waveguide_s_matrix(
             _homogeneous_reference_materials, _wg_pec_edge_masks, aniso_eps, aniso_inv_eps, conformal_weights, debye, entries,
             extract_multimode_s_matrix, extract_multimode_s_matrix_flux, grid, lorentz, materials, n_steps, normalize,
             np, raw_cfgs, ref_aniso_eps, ref_aniso_inv_eps, ref_conformal, reference_medium, resolve_reported_planes,
-            self, waveguide_plane_positions,
+            self, waveguide_plane_positions, debye_spec, lorentz_spec, subpixel_smoothing,
         )
         _warn_if_ringdown_truncated(
             settling_db_mm, tuple(port_names_mm), num_periods=float(num_periods),
