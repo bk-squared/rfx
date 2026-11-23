@@ -179,14 +179,6 @@
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both"
   },
   {
-   "code": "line_stub_behind_port",
-   "disposition": "intended",
-   "reason": "The existing graded validation geometry is retained under #1512: its through-line extends from x=0 to 24 mm behind ports at x=2 and 22 mm. Each realized tail is 2.032 mm, with eps_eff=2.869386, an open-end extension of 0.105 mm and quarter-wave frequency 20.6997 GHz on the effective length, outside the refusal interval for the 0..7 GHz band. Both findings are tolerated to preserve the geometry underlying the historical readings; they refer to through-line tails, not the intentional mid-line notch branch.",
-   "ref": "https://github.com/bk-squared/rfx/issues/1512",
-   "rows": 2,
-   "variant": "validation/research/multiband_nu/msl_notch_graded.py::build_graded::A_off"
-  },
-  {
    "code": "lossless_q",
    "disposition": "intended",
    "reason": "The substrate is declared lossless because both frozen records are: the openEMS tutorial and the Palace run solve eps_r 3.66 with no tan_delta, and this arm is compared with them. The arm quotes a notch FREQUENCY and an |S21| magnitude, never a Q, and it carries the case's own ring-down witness (-40 dB) to show the record ended after the lossless stub stopped ringing.",
@@ -329,14 +321,6 @@
    "ref": "validation/tmtt_paper/beam_steering_superstrate.py:1-23,156-176,232-260",
    "rows": 1,
    "variant": "validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default"
-  },
-  {
-   "code": "line_stub_behind_port",
-   "disposition": "intended",
-   "reason": "The tuning validation keeps its existing through-line and historical readings under #1512. Ports at x=1.6 and 31.6 mm leave realized tails of 1.651 and 1.524 mm, with quarter-wave frequencies 25.1897 and 27.1529 GHz at eps_eff=2.869386 on the effective lengths (open-end extension 0.105 mm). These lie outside the refusal interval for 0..9 GHz (and the 6 GHz target). The builder has no notch branch yet; both advisories describe the through-line tails and are deliberately retained without changing geometry.",
-   "ref": "https://github.com/bk-squared/rfx/issues/1512",
-   "rows": 2,
-   "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
   },
   {
    "code": "lossless_q",
@@ -509,7 +493,7 @@
   {
    "code": "line_stub_behind_port",
    "disposition": "intended",
-   "reason": "The tutorial keeps its geometry and mesh under #1512, like the two validation notch builders: its through-line leaves realized tails of 3.1625 mm (declared 3.25 mm) behind both ports. With eps_eff=2.405090 and an open-end extension of 0.3645 mm the effective length is 3.527 mm and its quarter-wave frequency 13.7022 GHz, outside the refusal interval for the 0..6 GHz read. Both findings are advisory; the geometry is deliberately unchanged.",
+   "reason": "The tutorial strip is interior: its declared x endpoints are 12.75 and 31.25 mm on a 44 mm domain, leaving gaps before both absorbing faces. The realized open tails behind the two ports remain 3.1625 mm under #1512; they do not reach an absorbing face and cannot continue into it. Their quarter-wave frequency 13.7022 GHz is outside the refusal interval for the 0..6 GHz read. The snapshot and the explicit stub-count assertion retain this real open-stub subject.",
    "ref": "https://github.com/bk-squared/rfx/issues/1512",
    "rows": 2,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
@@ -681,6 +665,22 @@
    "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:247-269",
    "rows": 2,
    "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
+  },
+  {
+   "code": "msl_port_geometry",
+   "disposition": "intended",
+   "reason": "The graded validation builder retains its declared 600 um trace, 254 um substrate and fixed probe placement. With face-reaching lines continuing under #1512, the former line-stub refusal no longer stops the geometry checks: each port emits two placement advisories. The snapshot pins these four build-time geometry screens on the historical validation board without claiming a solved accuracy bound.",
+   "ref": "validation/research/multiband_nu/msl_notch_graded.py:644-713",
+   "rows": 4,
+   "variant": "validation/research/multiband_nu/msl_notch_graded.py::build_graded::A_off"
+  },
+  {
+   "code": "nu_grading_reaches_absorber",
+   "disposition": "intended",
+   "reason": "The graded validation builder deliberately uses the multiband profiles and sixteen absorber layers. After #1512 removes the through-line stub refusal, two existing grading-transition proximity screens are reached. The snapshot retains both advisories without claiming settling or accuracy.",
+   "ref": "validation/research/multiband_nu/msl_notch_graded.py:644-694",
+   "rows": 2,
+   "variant": "validation/research/multiband_nu/msl_notch_graded.py::build_graded::A_off"
   }
  ]
 }

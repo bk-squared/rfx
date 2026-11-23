@@ -249,8 +249,12 @@ The edge-aware mesh keeps the 2 mm strip at its drawn width; on a uniform
 
 Preflight warns (`port_conductor_continues`) when a port's conductor runs into
 the absorber and no port terminates it. A ground plane should continue; name
-only the line the port ends. Microstrip ports do this automatically for the
-trace under them.
+only the line the lumped/wire or coaxial port ends. MSL ports hold nothing and
+do not raise this warning. Their strips continue through each absorbing face
+whose outermost interior layer they occupy. Another port's named hold is
+overridden only behind an MSL port whose signal aperture the strip occupies.
+`add_msl_port` accepts only `terminates=None` or an empty list or tuple. To end
+a microstrip at the port, start its strip at the port's grid-node coordinate.
 
 ### Lumped circuit elements
 

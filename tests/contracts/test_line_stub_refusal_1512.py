@@ -209,7 +209,10 @@ def test_broad_sweep_converts_only_interval_members():
         expected = any(band.freq_lo_hz/1.5 <= order*fq <= 1.5*band.freq_hi_hz
                        for order in range(1, 400, 2))
         stub.require_no_resonant_line_stub(sim, (band.freq_lo_hz, band.freq_hi_hz))
-        assert bool(stub.line_stub_findings(sim)) == (not expected)
+        assert stub.line_stub_findings(sim) == []
+        if not expected:
+            assert trace.corner_lo[0] == 0.
+            assert trace.corner_hi[0] == geo["domain_x_m"]
         from rfx.geometry.csg import declared_bounds
         lower, upper = declared_bounds(trace)
         margin = geo['port_margin'] if expected else 0.

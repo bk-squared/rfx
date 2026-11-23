@@ -7,6 +7,7 @@ from tests._msl_diagnostic_cases import structure, U
 
 
 def additional_cases(graded):
+    """Keep the final open-stub subject one cell inside the absorbing face."""
     for runway in (7, 14, 20):
         ramp = U * 1.25 ** np.arange(1, 4)
         profile = np.concatenate([np.full(runway, U), ramp, np.full(6, ramp[-1]),
@@ -40,6 +41,6 @@ def additional_cases(graded):
     )
     sim._geometry[-1] = replace(
         sim._geometry[-1],
-        shape=Box((0, 4 * U, 2 * U), (32 * U, 8 * U, 2 * U)),
+        shape=Box((U, 4 * U, 2 * U), (32 * U, 8 * U, 2 * U)),
     )
     yield sim

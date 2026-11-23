@@ -1079,7 +1079,7 @@ def _validate_cfg_port_conductor_continues(self, _w) -> None:
         not_judged(None, "_validate_cfg_port_conductor_continues")
         return
     for collection, index, port in ports:
-        if port_termination_references(self, collection, port, grid):
+        if collection == "_msl_ports" or port_termination_references(self, collection, port, grid):
             continue
         terminals = port_terminal_points(collection, port, grid, nodes)
         contacts = []

@@ -69,7 +69,7 @@ def build_wall_operator(sim, root, film, *, lane):
     sigma = [jnp.zeros(shape) for _ in range(3)]
     masks = list(_empty(shape))
     widths = [e_node_dual_spacings(grid.cells(axis)) for axis in "xyz"]
-    records = {key: (cells, sheet, wire) for key, cells, sheet, wire, _ in root.assembly_entries}
+    records = {key: (cells, sheet, wire) for key, cells, sheet, wire, _, faces in root.assembly_entries}
     for entry in entries:
         conductance = 1 / jnp.sqrt(jnp.pi * entry.f0 * MU_0 / entry.sigma_bulk)
         candidates = []

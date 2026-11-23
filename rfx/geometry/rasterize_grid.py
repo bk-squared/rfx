@@ -1340,7 +1340,7 @@ def rasterize_geometry(
                 sub_region=sub_region)
             if assembly_entries is not None:
                 declared_entry = entry if pole_geometry_entries is None else pole_geometry_entries[entry_index]
-                assembly_entries.append((id(declared_entry), cells, sheet, wire, entry.shape))
+                assembly_entries.append((id(declared_entry), cells, sheet, wire, entry.shape, ()))
             if cells is not None:
                 has_pec_cells = True
                 pec_mask = pec_mask | cells

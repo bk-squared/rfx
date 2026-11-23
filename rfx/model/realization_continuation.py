@@ -53,3 +53,14 @@ def retain_continuation(sim, grid, geometry_masks, eps_r, sigma, mu_r, pole_mask
                         continued.setdefault(int(index), []).append(2*axis+side)
     from rfx.model.realization_integrals import quantities
     quantities(grid, create=True)["continued"] = continued
+
+
+def continued_entry(sim, grid, entry, findings):
+    """Return the assembled declaration and the continuation decisions it applied."""
+    from dataclasses import replace
+    from rfx.geometry.smoothing import continued_conductor_shape
+    faces = []
+    shape = continued_conductor_shape(sim, grid, entry.shape, entry=entry,
+                                     unextendable=findings, continued_faces=faces)
+    ordered = sorted(faces, key=lambda face: (face[0], face[1] == "hi"))
+    return replace(entry, shape=shape), tuple(f"{'xyz'[a]}-{side}" for a, side in ordered)

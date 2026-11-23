@@ -147,7 +147,7 @@ def _check_faces(sim, grid, shape, nominal_occupied, targets):
 
 
 def continued_traced_conductor_shape(sim, grid, shape, *, traced_node_axes,
-                                     entry=None, unextendable=None):
+                                     entry=None, unextendable=None, continued_faces=None):
     """Continue from the concrete nominal decision without traced shape coordinates."""
     from rfx.geometry import smoothing as sm
     from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
@@ -180,7 +180,8 @@ def continued_traced_conductor_shape(sim, grid, shape, *, traced_node_axes,
             "or keep the axis concrete.") from exc
     with jax.ensure_compile_time_eval():
         solved = sm.continued_conductor_shape(
-            sim, nominal, shape, entry=entry, unextendable=unextendable)
+            sim, nominal, shape, entry=entry, unextendable=unextendable,
+            continued_faces=continued_faces)
         coords = coords_from_nonuniform_grid(nominal)
         occupied = sm._occupied_conductor_faces(
             sm._declared_conductor_lattice(sim, nominal, shape, coords), nominal)

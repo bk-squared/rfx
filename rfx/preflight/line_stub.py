@@ -137,8 +137,8 @@ def line_stub_findings(sim, grid=None, uninspectable=None) -> list[LineStubFindi
     direction. Ground/outer conductors do not intersect the signal aperture.
     Port-generated coax launch metal is deliberately excluded: its source gap
     and internal termination belong to the coax solver, not declared geometry.
-    ``terminates=()`` is respected through production conductor continuation;
-    a tail continued into the absorber is not an internal open end.
+    MSL lines continue through reached faces; interior gaps and unsupported
+    continuation keep their open ends and remain subject to this refusal.
     """
     from rfx.geometry.rasterize_grid import (
         coords_from_nonuniform_grid, coords_from_uniform_grid)

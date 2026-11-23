@@ -28,7 +28,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
-from tests._line_stub_geometry import trim_resonant_trace
+from rfx.preflight.line_stub import line_stub_findings
 from rfx.grid import Grid
 from rfx.api._sparams import _resolve_msl_auto_offsets
 
@@ -664,7 +664,7 @@ def _y_runway_board(direction, **port_kw):
     sim.add_msl_port(position=(lx / 2, feed, 0.0), width=2 * _RW_H,
                      height=_RW_H, direction=direction, impedance=50.0,
                      name="p1", **port_kw)
-    trim_resonant_trace(sim, 1)
+    assert line_stub_findings(sim) == [], "Face-reaching MSL traces continue without trimming."
     return sim
 
 

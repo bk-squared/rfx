@@ -65,6 +65,7 @@ def test_config_error_issue_keeps_the_error_prefix():
 @pytest.mark.parametrize('graded', [False, True])
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_returned_results_have_no_refusal_but_in_band_stub_does(graded, entry):
+    """An interior gap keeps a real open stub after face-reaching lines continue."""
     sim = structure(
         graded,
         feed=16 * U,
@@ -72,7 +73,7 @@ def test_returned_results_have_no_refusal_but_in_band_stub_does(graded, entry):
     )
     sim._geometry[-1] = replace(
         sim._geometry[-1],
-        shape=Box((0, 4 * U, 2 * U), (32 * U, 8 * U, 2 * U)),
+        shape=Box((U, 4 * U, 2 * U), (32 * U, 8 * U, 2 * U)),
     )
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
@@ -83,6 +84,7 @@ def test_returned_results_have_no_refusal_but_in_band_stub_does(graded, entry):
     assert all(record.severity != 'refusal' for record in result.diagnostics)
     stubs = [record for record in result.diagnostics if record.code == 'msl.line_stub_behind_port']
     assert len(stubs) == 1 and stubs[0].severity == 'advisory'
+    assert stubs[0].values['overhang_m'] == 15 * U
     sim.freq_max = 20e9
     from rfx.preflight.line_stub import require_no_resonant_line_stub
     with pytest.raises(ValueError) as caught:

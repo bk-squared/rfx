@@ -218,7 +218,7 @@ def captured_cases(graded=False):
     )
     sim._geometry[-1] = replace(
         sim._geometry[-1],
-        shape=Box((0, 4 * U, 2 * U), (32 * U, 8 * U, 2 * U)),
+        shape=Box((U, 4 * U, 2 * U), (32 * U, 8 * U, 2 * U)),
     )
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')

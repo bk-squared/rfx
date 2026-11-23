@@ -266,6 +266,8 @@ def _build_record(sim, ctx, *, compact=False):
     declarations.extend((f"thin_conductor[{i}]", f"thin_conductor[{i}]", e.shape)
                         for i, e in enumerate(sim._thin_conductors))
     entities = []
+    applied_faces = {entry[0]: entry[5] for entry in assembled.assembly_entries}
+    entries = [*sim._geometry, *sim._thin_conductors]
     f0_specs = _f0_specs_by_conductor(sim, assembled, refused_tc)
     for index, (label, name, shape) in enumerate(declarations):
         mask_error = None
@@ -348,13 +350,7 @@ def _build_record(sim, ctx, *, compact=False):
                 from rfx.model.thin_conductors import dc_film_plane
                 normal, node = dc_film_plane(tc.shape, ctx.grid)
                 plane = (normal, int(node), float(nodes[normal][node]))
-        continued = ()
-        if e is not None:
-            solved_bounds = _shape_bounds(e.solved_shape)
-            if bounds is not None and solved_bounds is not None:
-                continued = tuple(f"{'xyz'[a]}-{'hi' if side else 'lo'}"
-                                  for a in range(3) for side in (0, 1)
-                                  if bounds[side][a] != solved_bounds[side][a])
+        continued = applied_faces.get(id(entries[index]), ())
         areas = (None, None)
         tc_index = index - len(sim._geometry)
         if tc_index >= 0:

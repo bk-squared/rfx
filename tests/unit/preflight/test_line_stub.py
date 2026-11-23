@@ -15,18 +15,20 @@ def closed_form(eps_r, width, height, length):
     return eps_eff, extension, 299792458/(4*(length + extension)*math.sqrt(eps_eff))
 
 
-def make_sim(direction='+x', *, endpoint=0., terminates=None, thin=False):
+def make_sim(direction='+x', *, endpoint=None, terminates=None, thin=False):
     sim = Simulation(domain=(.028, .012, .006), dx=.0005,
                      freq_max=40e9, boundary='cpml', cpml_layers=3)
     sim.add_material('board', eps_r=3.66)
     sim.add(Box((0, 0, 0), (.028, .012, .001)), material='board')
     sim.add(Box((0, 0, 0), (.028, .012, 0)), material='pec')
+    feed = .0025 if endpoint is None else .002
+    endpoint = .0005 if endpoint is None else endpoint
     axis = 'xy'.index(direction[-1])
     lo, hi = [0, .005, .001], [.028, .007, .001]
-    position = [.002 if direction[0] == '+' else .026, .006, 0]
+    position = [feed if direction[0] == '+' else .028-feed, .006, 0]
     if axis == 1:
         lo[:2], hi[:2] = [.005, 0], [.007, .012]
-        position = [.006, .002 if direction[0] == '+' else .010, 0]
+        position = [.006, feed if direction[0] == '+' else .012-feed, 0]
     if direction[0] == '+':
         lo[axis] = endpoint
     else:
@@ -72,7 +74,7 @@ def test_detached_tail_and_continuation_are_not_internal_stubs():
     sim = make_sim(endpoint=.002)
     sim.add(Box((0, .005, .001), (.001, .007, .001)), material='pec')
     assert line_stub_findings(sim) == []
-    assert line_stub_findings(make_sim(terminates=())) == []
+    assert line_stub_findings(make_sim(endpoint=0., terminates=())) == []
 
 
 def test_joined_declarations_measure_the_whole_tail():
@@ -183,8 +185,8 @@ def test_eps_eff_and_quarter_wave_have_an_independent_closed_form(width_over_hei
     sim.add(Box((0, 0, 0), (.028, .012, .001)), material='board')
     sim.add(Box((0, 0, 0), (.028, .012, 0)), material='pec')
     width = u * .001
-    sim.add(Box((0, .006-width/2, .001), (.028, .006+width/2, .001)), material='pec')
-    sim.add_msl_port((.002, .006, 0), width=width, height=.001, eps_r_sub=eps_r)
+    sim.add(Box((.0005, .006-width/2, .001), (.028, .006+width/2, .001)), material='pec')
+    sim.add_msl_port((.0025, .006, 0), width=width, height=.001, eps_r_sub=eps_r)
     finding, = line_stub_findings(sim)
     expected = (eps_r + 1)/2 + (eps_r - 1)/(2*math.sqrt(1 + 12/u))
     a = 1 + math.log((u**4 + (u/52)**2)/(u**4 + .432))/49 + math.log(1 + (u/18.1)**3)/18.7
@@ -246,17 +248,17 @@ def test_substrate_is_sampled_under_stub_with_realized_masks_and_precedence():
     sim._msl_ports[0] = replace(sim._msl_ports[0], eps_r_sub=9.8)
     sim.add_material('stub_only', eps_r=2.2)
     from rfx.errors import RfxRefusal
-    sim.add(Box((0, 0, .00051), (.0016, .012, .00065)), material='stub_only')
+    sim.add(Box((0, 0, .00051), (.0024, .012, .00065)), material='stub_only')
     with pytest.raises(RfxRefusal, match="Material volume 'stub_only'.*ZERO cells"):
         line_stub_findings(sim)
     sim._geometry[-1] = replace(sim._geometry[-1], shape=Box(
-        (0, 0, .00051), (.0016, .012, .00085)))
+        (0, 0, .00051), (.0024, .012, .00085)))
     f, = line_stub_findings(sim)
     assert f.substrate_eps_r == 2.2
     from rfx.sources.msl_port import _msl_position_to_index
     grid = sim._build_realized_grid()
     materials = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
-    index = _msl_position_to_index(grid, (.001, .006, .0005))
+    index = _msl_position_to_index(grid, ((f.endpoint_m + f.port_node_m) / 2, .006, .0005))
     assert float(materials.eps_r[index]) == pytest.approx(f.substrate_eps_r)
     sim._geometry = [e for e in sim._geometry if e.material_name == 'pec']
     f, = line_stub_findings(sim)
@@ -290,7 +292,7 @@ def test_the_placement_the_refusal_recommends_is_admitted(thin, port_x):
                          direction='+x', eps_r_sub=3.66)
         return sim
 
-    finding, = line_stub_findings(build(0.))
+    finding, = line_stub_findings(build(.0005))
     printed = float(re.search(r"grid node is x=([0-9.eE+-]+) mm", finding.message).group(1)) * 1e-3
     assert printed != pytest.approx(port_x, abs=1e-5)
     sim = build(printed)

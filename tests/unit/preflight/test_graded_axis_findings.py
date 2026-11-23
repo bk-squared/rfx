@@ -20,7 +20,7 @@ import pytest
 from rfx.api import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.preflight._common import profile_boundary_cell
-from tests._line_stub_geometry import trim_resonant_trace
+from rfx.preflight.line_stub import line_stub_findings
 
 _DX = 1.0e-3
 
@@ -643,7 +643,7 @@ def _notch_like_sim(feed_cells, n_probe_offset, tail=14):
                      width=w, height=h, direction="+x", impedance=50.0,
                      n_probe_offset=n_probe_offset, n_probe_spacing=3,
                      n_probes=5)
-    trim_resonant_trace(sim, 1)
+    assert line_stub_findings(sim) == [], "Face-reaching MSL traces continue without trimming."
     return sim, len(ramp)
 
 
@@ -813,7 +813,7 @@ def _ramp_feed_board(n_probe_offset, stub_gap_m=1.0e-3):
                      direction="+x", impedance=50.0,
                      n_probe_offset=n_probe_offset, n_probe_spacing=3,
                      n_probes=5)
-    trim_resonant_trace(sim, 1)
+    assert line_stub_findings(sim) == [], "Face-reaching MSL traces continue without trimming."
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return sim, sim.preflight()
@@ -957,7 +957,7 @@ def _two_zone_board(direction, n_probe_offset):
                      direction=direction, impedance=50.0,
                      n_probe_offset=n_probe_offset, n_probe_spacing=3,
                      n_probes=5)
-    trim_resonant_trace(sim, 1)
+    assert line_stub_findings(sim) == [], "Face-reaching MSL traces continue without trimming."
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return sim.preflight()
@@ -1254,7 +1254,7 @@ def _auto_offset_board(f_max=20e9, runway_node=20.3, **port_kw):
     feed = x_run + runway_node * _NOTCH_RUNWAY
     sim.add_msl_port(position=(feed, y_c, 0), width=w, height=h,
                      direction="+x", impedance=50.0, **port_kw)
-    trim_resonant_trace(sim, 1)
+    assert line_stub_findings(sim) == [], "Face-reaching MSL traces continue without trimming."
     return sim
 
 

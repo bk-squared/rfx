@@ -485,7 +485,7 @@ class _CampaignStaticsContext:
         out = []
         assembled = self.realized(defer_warnings=True)
         products = {key: (cells, sheet, wire, shape)
-                    for key, cells, sheet, wire, shape in
+                    for key, cells, sheet, wire, shape, faces in
                     getattr(assembled, "assembly_entries", ())}
 
         def _bounds(shape):

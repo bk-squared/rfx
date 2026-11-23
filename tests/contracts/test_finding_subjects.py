@@ -189,7 +189,7 @@ SCENES = {
         'port_conductor_continues': [('geometry[0]', 'port[0]')]},
     'pec_boundary_open': {'ntff_near_field': [('geometry[0]', 'ntff')]},
     'guards_msl_sheet_probe': {
-        'realization': [('geometry[0]',), ('geometry[1]',)],
+        'realization': [('geometry[1]',)],
         'absorber_proximity': [('port[0]',)], 'body_flush_on_absorber': [('geometry[0]',)],
         'lossless_q': [('geometry[0]',)], 'off_lattice_design_edges': [('geometry[1]',)],
         'conductor_in_thin_absorber': [('geometry[1]',), ('geometry[1]',)]},

@@ -47,7 +47,7 @@ def context_from_conductors(sim, conductors, *, grid=None):
         return cells, sheet, wire
 
     products = {key: (cells, sheet, wire, shape)
-                for key, cells, sheet, wire, shape in conductors.assembly_entries}
+                for key, cells, sheet, wire, shape, faces in conductors.assembly_entries}
     for collection, prefix in ((sim._geometry, 'geometry'), (sim._thin_conductors, 'thin_conductor')):
         for i, entry in enumerate(collection):
             label = f'{prefix}[{i}]'

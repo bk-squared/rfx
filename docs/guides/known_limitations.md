@@ -523,25 +523,19 @@ Setting `impedance=` to that value requests the line's own reference; it does no
 A finer mesh changes Z_built non-monotonically: 40.55 / 44.08 / 41.29 ohm at
 0.4 / 0.3 / 0.2 mm on the SMA line (measured; record kept with the project).
 
-### A microstrip strip drawn past an MSL port to the domain edge is an open stub that can short the port.
+### Microstrip continuation and interior open tails
 
 Tracker: #1512
 
-rfx ends a two-conductor line at its port: the piece of strip between the port plane and an
-absorbing face ends at the absorber's entrance, so it is an open-ended stub. Near the frequency
-where that stub is a quarter guided wavelength long, its input shorts the port, the line between
-the ports becomes a low-loss resonator and S is wrong. The bad band moves with the overhang length,
-not with the mesh, the absorber or the simulation time.
-The port refuses the stub, also with `skip_preflight=True`, when an odd quarter-wave resonance of
-its effective length lies within a factor of 1.5 of the band the call reads
-(`rfx/preflight/line_stub.py`); a stub resonating outside that band is only reported by
-preflight, and S is not checked for it. The effective length is the node-to-node
-overhang on the grid plus the open-end extension (Hammerstad's closed form for a microstrip; none is added
-for a coax pin). The message reports the lengths on the grid and the declared lengths, the extension and the
-effective length, and prints the port's grid-node coordinate along its axis.
-Start the signal strip at that coordinate (the port's grid node), so it covers the port node
-and nothing behind it. The absorber pads lie outside
-the declared domain, so drawing the strip "into the absorber" is not possible today.
+An MSL line continues through every absorbing face its realized strip reaches: the conductor
+must occupy the outermost interior layer. MSL ports accept only `terminates=None` or an empty
+list or tuple, with identical realized geometry. A coaxial or lumped/wire hold still applies
+except behind an MSL port whose signal aperture the conductor occupies.
+A strip ending inside the domain with a gap before the face remains an open stub. A shape
+that cannot be continued keeps its declaration with a `ConfigurationWarning` and can also
+remain a stub. An odd quarter-wave resonance within a factor of 1.5 of the band is refused,
+including with `skip_preflight=True`. To end a line at a port, start the strip at the port's
+printed grid-node coordinate. No depth rule is established; the default is 16 layers.
 → [#1512](https://github.com/bk-squared/rfx/issues/1512)
 
 ### The default wire port is a mesh-sized probe.

@@ -374,7 +374,7 @@ def _termination_inputs(sim, references):
 
 
 def _ports_with_termination_indices(sim, ports):
-    """Serialize current positions, preserving a lazy MSL default as null."""
+    """Serialize current positions, preserving MSL null versus explicit empty."""
     for port in ports:
         references = None if port.terminates is None else []
         for ref in port.terminates or ():
@@ -1675,7 +1675,9 @@ def simulation_from_design(document: Any) -> Any:
         values = _load_entry(
             payload, _MSL_PORT_FIELDS, what=f"excitations.msl_ports[{index}]"
         )
-        values["terminates"] = _termination_inputs(sim, values["terminates"])
+        from rfx.geometry.port_termination import resolve_msl_terminates
+        values["terminates"] = resolve_msl_terminates(
+            sim, values["terminates"], port=f"add_msl_port at {values['position']}")
         sim.add_msl_port(values.pop("position"), **values)
 
     for index, payload in enumerate(

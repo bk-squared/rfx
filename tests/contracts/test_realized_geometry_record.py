@@ -207,7 +207,7 @@ def test_frozen_unresolved_volume_still_refuses_execution(entry, diagnostic_firs
         np.testing.assert_array_equal(later.cells(axis), grid.cells(axis))
 
 
-def _terminated_trace(nonuniform):
+def _terminated_trace(nonuniform, *, msl=False):
     d = 127e-6
     kw = {"dz_profile": np.full(10, d)} if nonuniform else {}
     sim = Simulation(freq_max=20e9, domain=(60.4*d, 30*d, 10*d), dx=d,
@@ -215,12 +215,16 @@ def _terminated_trace(nonuniform):
                      boundary="cpml", cpml_layers=8, **kw)
     sim.add_material("sub", eps_r=3.66)
     sim.add(Box((0, 0, 0), (60.4*d, 30*d, 2*d)), material="sub")
-    sim.add(Box((0, 13*d, 2*d), (60.4*d, 17*d, 2*d)), material="pec")
+    strip = Box((0, 13*d, 2*d), (60.4*d, 17*d, 2*d))
+    sim.add(strip, material="pec")
     sim.add(Box((0, 0, 0), (60.4*d, 30*d, 0)), material="pec")
     before = sim.realized_geometry()
-    for x, direction in ((10, "+x"), (50, "-x")):
-        sim.add_msl_port(position=(x*d, 15*d, 0), width=4*d, height=2*d,
-                         direction=direction, impedance=50)
+    if msl:
+        for x, direction in ((10, "+x"), (50, "-x")):
+            sim.add_msl_port(position=(x*d, 15*d, 0), width=4*d, height=2*d,
+                             direction=direction, impedance=50)
+    else:
+        sim.add_port(position=(10*d, 15*d, d), component="ez", terminates=strip)
     return sim, before
 
 
@@ -255,6 +259,9 @@ def test_run_assembly_witness_after_port_mutation(monkeypatch, nonuniform, poiso
     assert after is not before
     assert sim._pf_campaign_ctx[1] is not before_ctx[1]
     assert int(before.sheets[0].footprint.sum()) > int(after.sheets[0].footprint.sum())
+    msl_sim, msl_before = _terminated_trace(nonuniform, msl=True)
+    np.testing.assert_array_equal(msl_before.sheets[0].footprint,
+                                  msl_sim.realized_geometry().sheets[0].footprint)
     assembly_calls = []
     owner, name = (nu, "assemble_materials_nu") if nonuniform else (sim, "_assemble_materials")
     assemble = getattr(owner, name)

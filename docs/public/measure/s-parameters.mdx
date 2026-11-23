@@ -354,9 +354,9 @@ thickness, not the wavelength, usually sets the cell size: a reasonable
 starting point is 4 cells through the substrate (preflight warns below that),
 then refine and check that your answer stops moving.
 
-End lines at their ports, as here, rather than running them into the
-absorber. CPML is a much poorer termination for a two-conductor line than for
-a plane wave.
+To end a microstrip line at its port, start its strip at the port node.
+A microstrip strip that reaches an absorbing face continues through its
+absorber layers; MSL ports hold no conductor (#1512).
 
 #### The `reliable` mask
 
@@ -554,8 +554,8 @@ For plotting S-parameters, fields and time series, see
 - **Passivity warning (largest singular value, |S| or column power above 1)** →
   usually a record that ended too early or a mesh too coarse. The returned S
   is not clipped.
-- **Microstrip line runs into the absorber** → CPML reflects a guided line
-  noticeably; end the line at its port instead.
+- **Microstrip line runs into the absorber** → the strip continues through
+  every absorbing face it reaches. To end it at its port, start at the port node.
 - **Coax refuses the model with a lateral-absorber message** → the line's
   outer wall is within one cell of a side absorber; widen the domain.
 - **`find_resonances` returns nothing, or a mode you did not expect** → lengthen the

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Cylinder, Simulation
-from rfx.geometry.port_termination import held_conductor_entries, port_termination_references
+from rfx.geometry.port_termination import held_conductor_entries, msl_port_aperture_conductors, port_termination_references
 from rfx.geometry.smoothing import continued_conductor_shape
 
 
@@ -27,8 +27,10 @@ def test_explicit_termination_resolves_registered_conductors(kind, selection):
     value = {"identity": strip, "equal": Box(strip.corner_lo, strip.corner_hi),
              "index": 1, "pair": [ground, 1], "thin": strip}[selection]
     if kind == "msl":
-        sim.add_msl_port((4., 4., 1.), width=2., height=3., terminates=value)
-        port = sim._msl_ports[-1]
+        with pytest.raises(ValueError, match="terminates= is not accepted for MSL ports"):
+            sim.add_msl_port((4., 4., 1.), width=2., height=3., terminates=value)
+        assert sim._msl_ports == []
+        return
     elif kind == "coax":
         sim.add_coaxial_port((4., 4., 1.), face="bottom", pin_length=3., terminates=value)
         port = sim._coaxial_ports[-1]
@@ -58,7 +60,7 @@ def test_unknown_termination_is_rejected_at_registration(kind, value):
 
 @pytest.mark.parametrize("direction", ("+x", "-x", "+y", "-y"))
 @pytest.mark.parametrize("nu", (False, True))
-def test_msl_default_uses_only_its_exact_realized_signal_aperture(direction, nu):
+def test_msl_precedence_uses_only_its_exact_realized_signal_aperture(direction, nu):
     sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
                      boundary="cpml", cpml_layers=2,
                      **({"dz_profile": np.ones(8)} if nu else {}))
@@ -73,8 +75,9 @@ def test_msl_default_uses_only_its_exact_realized_signal_aperture(direction, nu)
     grid = sim._build_realized_grid()
     def resolved():
         assert sim._msl_ports[-1].terminates is None
-        return [ref.entry for ref in port_termination_references(
-            sim, "_msl_ports", sim._msl_ports[-1], grid)]
+        assert port_termination_references(sim, "_msl_ports", sim._msl_ports[-1], grid) == ()
+        return [ref.entry for ref in msl_port_aperture_conductors(
+            sim, grid, sim._msl_ports[-1])]
     assert len(resolved()) == 1 and resolved()[0] is sim._geometry[1]
     sim.add_msl_port((4.25, 4.25, 1.), width=2., height=3.5, direction=direction)
     assert len(resolved()) == 1 and resolved()[0] is sim._geometry[1]
