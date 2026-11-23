@@ -1229,7 +1229,7 @@ _ACC_NU = ("        frame.new_cm = None\n"
            "            frame.new_cm = ctx._accumulate_cm(\n"
            "                frame.carry[\"current_moments\"], frame.st, frame.e_prev_slab, ctx.current_moments,\n"
            "                ctx.dt, frame.step_idx)\n")
-_RLC_NU = "        # Lumped RLC ADE update (after E update + boundaries, before sources)"
+_RLC_NU = "        frame.new_rlc_states = None"
 
 
 def _runner_mutations(kind):
