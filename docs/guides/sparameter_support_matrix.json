@@ -536,7 +536,7 @@
       "primitive": "add_coaxial_port(...) + add_msl_port(...) driven by compute_coax_msl_transition(...)",
       "family": "coax_msl_transition",
       "is_port": false,
-      "support_status": "experimental_diagnostic_not_in_validated_set",
+      "support_status": "not supported (deprecated); removed after 2.3",
       "calculation_api": [
         "Simulation.compute_coax_msl_transition(...)"
       ],

@@ -46,7 +46,7 @@ def slab_case(axis, structure):
 
 
 def closed_form(profiles, axis, box, component):
-    # Non-periodic grids store the high boundary node with its own last width.
+    """Non-periodic grids store the high boundary node with its own last width."""
     primal = np.r_[profiles[axis], profiles[axis][-1]]
     nodes = np.r_[0., np.cumsum(profiles[axis])]
     dual = np.r_[primal[0], (primal[:-1] + primal[1:]) / 2]
@@ -101,9 +101,9 @@ def test_cubic_scalar_main_closed_form_bit_identical(axis):
 
 @pytest.mark.parametrize('axis', range(3), ids=list('xyz'))
 def test_full_tensor_node_dual_fill_and_midpoint_fallback(axis):
+    """At nodes every extent is dual, matching the tangential E sample position."""
     profiles, grid, box = slab_case(axis, 'normal_region')
     with enable_x64(True):
-        # One padded transverse slice exercises the diagonal midpoint fallback.
         grid = grid._replace(**{f'pad_{"xyz"[(axis + 1) % 3]}_hi': 1})
         actual = compute_node_tensor_eps(grid, [(box, 4.)], field_dtype=jnp.float64)
         for component in range(3):
@@ -113,7 +113,6 @@ def test_full_tensor_node_dual_fill_and_midpoint_fallback(axis):
             np.testing.assert_allclose(np.asarray(actual[component])[tuple(index)],
                                        np.broadcast_to(expected, grid.shape)[tuple(index)],
                                        rtol=0, atol=1e-12)
-        # At nodes every extent is dual. Tangential E samples share that position.
         tangent = (axis + 1) % 3
         _, fill, _ = closed_form(profiles, axis, box, tangent)
         for component in range(3):
@@ -143,8 +142,6 @@ def test_zero_normal_radius_gradient(node_tensor):
         radius, step = 0.35e-3, 1e-8
         gradient = jax.grad(loss)(radius)
         assert np.isfinite(gradient)
-        # Independent central finite difference of the public host build;
-        # no normal or cell-length implementation helper supplies the oracle.
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter('always', RuntimeWarning)
             host = build(radius)

@@ -3,10 +3,13 @@
 Equal-material unions are partitioned by their minimum signed-distance owner.
 The reduction never evaluates a shape or introduces another sampling rule.
 """
+from typing import Any
+from weakref import ReferenceType
+
 import numpy as np
 
 
-_stores = {}
+_stores: dict[int, tuple[ReferenceType, dict[str, Any]]] = {}
 
 
 def quantities(grid, *, create=False):
@@ -18,19 +21,20 @@ def quantities(grid, *, create=False):
         return found[1]
     if not create:
         return {}
-    store = {}
+    store: dict[str, Any] = {}
     _stores[key] = weakref.ref(owner, lambda ref: _stores.pop(key, None)), store
     return store
 
 
 def begin(sim, grid, *, shapes=(), conformal_shapes=(), smoothing=None, conformal=None):
+    from rfx.geometry.cross_section import section_entries
     store = quantities(grid, create=True)
     if conformal is not None:
         store["conformal"] = conformal
     if smoothing is not None:
         store["smoothing"] = (2 if smoothing == "full_tensor" else 3 if smoothing == "kottke_pec"
                               else int(bool(smoothing)))
-    owners = {id(entry.shape): i for i, entry in enumerate(sim._geometry)}
+    owners = {id(entry.shape): i for i, entry in enumerate(section_entries(sim, grid))}
     store.setdefault("owners", {}).update({id(shape): owners[id(shape)]
         for shape in (*[s for s, _ in shapes], *conformal_shapes) if id(shape) in owners})
 

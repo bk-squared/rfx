@@ -9,7 +9,6 @@ from rfx.api import Simulation
 from rfx.sources.sources import GaussianPulse
 from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
 
-# Small shared geometry (≈0.024 × 0.012 × 0.012, dx = 1 mm, 2–9 GHz).
 _DOMAIN = (0.024, 0.012, 0.012)
 _DX = 1e-3
 _FREQ_MAX = 10e9
@@ -26,9 +25,6 @@ def _driver_sim():
                       boundary="cpml", cpml_layers=_CPML_LAYERS)
 
 
-# ---------------------------------------------------------------------------
-# Mixed lumped + wire set — locked NotImplementedError (#258 behaviour change)
-# ---------------------------------------------------------------------------
 
 def _mixed_lumped_wire_sim():
     """One lumped + one wire port (heterogeneous sparam-eligible set)."""

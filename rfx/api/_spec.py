@@ -1639,9 +1639,7 @@ class CoaxMSLTransitionResult:
     not track the analytic Hammerstad-Jensen propagation constant at all
     (off by a factor of 4-32x, and the two drives' own independent fits of
     the SAME array disagree with each other by 1-2 orders of magnitude —
-    see ``tests/unit/sparams/test_coax_msl_transition.py``'s
-    ``test_coax_msl_transition_first_fixture_diagnostic`` for the locked
-    assertions and
+    see
     ``test_post_review_discriminant_msl_ladder_too_short_for_pencil_fit``
     for the pure-geometry version of the same check). Whether the
     junction's own physical reflection ALSO contributes is genuinely

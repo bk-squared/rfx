@@ -303,7 +303,7 @@ def _dispersive_sim(kind, precision="float32", n=None):
             "m", eps_r=2.0,
             lorentz_poles=[lorentz_pole(2.0, 2 * np.pi * 5e9, 1e9)],
             debye_poles=[DebyePole(delta_eps=1.0, tau=1e-10)])
-    else:  # pragma: no cover - guard against a typo in a parametrize list
+    else:  # pragma: no cover
         raise ValueError(kind)
     sim.add(Box((0.006, 0.0, 0.0), (0.014, 0.010, 0.010)), material="m")
     sim.add_source((0.003, 0.005, 0.005), "ez", amplitude_kind="field")

@@ -229,8 +229,8 @@ def msl_closed_form_beta(width: float, height: float, eps_r: float,
 @dataclass(frozen=True)
 class MSLPlaneShift:
     """Resolved feed-plane shift for the MSL ports of one calculator call."""
-    offsets_m: np.ndarray        # (n_msl,) realized feed-to-probe-0 distance
-    shift_beta: np.ndarray       # (n_msl, n_freqs) rad/m, closed form
+    offsets_m: np.ndarray
+    shift_beta: np.ndarray
 
 
 def msl_feed_to_probe0_distance(grid, port, n_probe_offset: int,
@@ -321,7 +321,6 @@ def apply_feed_plane_shift(S, offsets_m, shift_beta):
     """
     S = jnp.asarray(S)
     if isinstance(shift_beta, jax.Array):
-        # A traced or device beta (the eps_override channel): form D in jnp.
         phase = jnp.asarray(shift_beta) * jnp.asarray(offsets_m)[:, None]
         d = jnp.exp(-1j * phase).astype(S.dtype)
     else:

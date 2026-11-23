@@ -37,15 +37,14 @@ RETIRED = {"minimize_s11_at_freq"}
 
 
 def _two_port(mesh):
+    """The port S request refuses a plain source beside the ports."""
     if mesh == "uniform":
         sim = BUILDERS["P-lumped2"]("uniform")
     else:
         sim = build_p_wire("graded")
-        # The port S request refuses a plain source beside the ports.
         sim._ports = [pe for pe in sim._ports if pe.impedance != 0]
         sim.add_port((.020, .012, .003), "ez", impedance=50., extent=.003, excite=False)
     sim.add_probe(SECOND_PROBE, "ez")
-    # The census far-field box (tests/contracts/run_forward_census.py, build_o_ntff).
     sim.add_ntff_box((.006, .004, .002), (.025, .016, .010), freqs=np.array([10e9]))
     return sim
 
@@ -54,7 +53,6 @@ def test_every_library_objective_is_listed():
     public = {name: value for name, value in vars(objectives).items()
               if inspect.isfunction(value) and value.__module__ == objectives.__name__
               and not name.startswith("_")}
-    # An alias (maximize_directivity_ratio) is covered by the function it names.
     assert {value.__name__ for value in public.values()} == set(OBJECTIVES) | RETIRED
 
 

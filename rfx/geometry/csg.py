@@ -323,6 +323,8 @@ class OrientedBox:
     conformal weights and thin-conductor sheet conversion are unsupported.
     """
 
+    orthogonality_tolerance = 32 * np.finfo(np.float64).eps
+
     center: tuple[float, float, float]
     size: tuple[float, float, float]
     rotation: tuple[tuple[float, float, float], ...] = (
@@ -345,7 +347,7 @@ class OrientedBox:
             raise ValueError("OrientedBox size must be strictly positive; it is a volume, not a sheet")
         rotation = arrays["rotation"]
         if (not np.allclose(rotation.T @ rotation, np.eye(3), rtol=0,
-                            atol=32 * np.finfo(np.float64).eps)
+                            atol=self.orthogonality_tolerance)
                 or np.linalg.det(rotation) <= 0):
             raise ValueError("OrientedBox rotation must be a proper orthogonal 3x3 matrix")
         for name in ("center", "size"):

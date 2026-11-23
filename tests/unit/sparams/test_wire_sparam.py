@@ -1,4 +1,5 @@
-"""Tests for WirePort S-parameter extraction."""
+"""Tests for WirePort S-parameter extraction.
+Physical port V/I is sampled after injection because a pre-injection sample is not the driven port's terminal pair."""
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
 
@@ -79,6 +80,7 @@ def test_wire_s11_pec_cavity():
     window is 6000 steps, the first at which every bin reads at or below
     1, and the ring-down is asserted so a shorter window cannot come back
     silently.
+    The -50 dB ring-down gate leaves 3 dB in hand below an earlier measured -53.3 dB.
     """
     n_steps = 6000
     grid = Grid(freq_max=8e9, domain=(0.03, 0.03, 0.01), dx=0.001, cpml_layers=0)
@@ -103,13 +105,6 @@ def test_wire_s11_pec_cavity():
         state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
-        # update_wire_sparam_probe samples the PHYSICAL V/I after injection
-        # (issue #683); this loop used to call it before, which is the slot
-        # the drive-reference channel uses. With the passive port-branch
-        # algebra the mismatch was invisible; extract_s11 is the DRIVEN
-        # terminal reflection since 2026-09-21
-        # (scripts/diagnostics/lumped_port_known_load_line.py), and a driven
-        # reading on a pre-injection sample is not the port's terminal pair.
         state = apply_wire_port(state, grid, port, t, materials)
         probe = update_wire_sparam_probe(probe, state, grid, port, grid.dt)
         v_t[n] = float(wire_port_voltage(state, grid, port))
@@ -124,11 +119,7 @@ def test_wire_s11_pec_cavity():
     print(f"  |S11| mean:  {s11_mag.mean():.3f}")
     print(f"  port-voltage ring-down (last 200 steps / peak): {ring_down_db:.1f} dB")
 
-    # The window is long enough that the cavity has rung down through the
-    # port; -53.3 dB measured, gated with 3 dB in hand (4000 steps read
-    # -48.1 dB and its resonance bin was still moving).
     assert ring_down_db < -50.0, f"DFT window ended while the cavity still rings: {ring_down_db:.1f} dB"
-    # PEC cavity is lossless — |S11| should be close to 1
     assert np.all(s11_mag < 1.5), f"|S11| should be <= ~1, max={s11_mag.max():.3f}"
     assert not np.any(np.isnan(s11_mag)), "No NaN in S11"
 

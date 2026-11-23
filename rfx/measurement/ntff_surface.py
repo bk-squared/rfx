@@ -171,13 +171,10 @@ def export_ntff_surface(data: NTFFData, box: NTFFBox, grid, *, dt: float,
     """
     if not isinstance(data, NTFFData) or not isinstance(box, NTFFBox):
         raise TypeError("data and box must be NTFFData and NTFFBox")
-    # The subgrid runner marks its fine result Grid with _shape_override.
-    # Its node_of is local; the runner's x/y/z offsets are not carried back.
     if hasattr(grid, "_shape_override"):
         raise ValueError("subgrid NTFF export needs global-origin metadata; use a domain-level uniform or graded grid")
     if not box.face_centre:
         raise ValueError("export requires face_centre accumulation; legacy node layout is not collocated")
-    # The transform and exported positions must refer to the same grid.
     _ntff_face_pads(grid, box)
     bounds = ((box.i_lo, box.i_hi), (box.j_lo, box.j_hi), (box.k_lo, box.k_hi))
     for pair in bounds:

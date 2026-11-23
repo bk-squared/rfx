@@ -68,6 +68,9 @@ from rfx.preflight._not_judged import is_tracer_error, not_judged
 
 from contextlib import contextmanager
 from contextvars import ContextVar
+from typing import cast
+
+from rfx.geometry.rasterize_grid import GridCoords
 
 import jax
 import jax.numpy as jnp
@@ -208,16 +211,18 @@ class _EntryRealization:
     (a filament), ``"lossy"`` (a sigma-fold thin conductor — fenced, not
     PEC realization) or ``"refused"`` (the classifier raised; ``error``
     carries its message). Nothing here is inferred from an extent: the
-    kind is what the shared classifier says.
+    kind is what the shared classifier says. ``shape`` supplies realized
+    bounds; ``shape_name`` identifies the declaration in user messages.
     """
 
     def __init__(self, *, label, name, shape, kind, cells=None, sheet=None,
                  wire=None, error=None, lo=None, hi=None, declared_mid=None,
-                 tie_planes=None, solved_shape=None, subject_label=None):
+                 tie_planes=None, solved_shape=None, subject_label=None, declared_shape=None):
         self.label = label
         self.subject_label = label if subject_label is None else subject_label
         self.name = name
         self.shape = shape
+        self.shape_name = type(shape if declared_shape is None else declared_shape).__name__
         self.solved_shape = shape if solved_shape is None else solved_shape
         self.kind = kind
         self.cells = None if cells is None else np.asarray(cells, dtype=bool)
@@ -306,12 +311,12 @@ class _EntryRealization:
                                     periodic)
 
 
-_assembly_warning_readers = ContextVar("assembly_warning_readers", default=None)
+_assembly_warning_readers: ContextVar[list[_CampaignStaticsContext] | None] = ContextVar("assembly_warning_readers", default=None)
 
 
 @contextmanager
 def assembly_warning_scope():
-    readers = []
+    readers: list[_CampaignStaticsContext] = []
     token = _assembly_warning_readers.set(readers)
     try:
         yield
@@ -345,6 +350,8 @@ class _CampaignStaticsContext:
 
     _NARROW_EXCS = (ValueError, TypeError, NotImplementedError, KeyError,
                     AttributeError, IndexError)
+
+    _interior_entries: list[_EntryRealization]
 
     def __init__(self, sim):
         self.sim = sim
@@ -405,7 +412,7 @@ class _CampaignStaticsContext:
             self.nodes = nodes
             self.spacings = spacings
             pf = getattr(sim, "_periodic_flags", None)
-            self.periodic = (tuple(bool(p) for p in pf()) if callable(pf)
+            self.periodic = (cast(tuple[bool, bool, bool], tuple(bool(p) for p in pf())) if callable(pf)
                              else periodic_flags_from_axes(
                                  getattr(sim, "_periodic_axes", "")))
         except self._NARROW_EXCS as exc:
@@ -433,7 +440,7 @@ class _CampaignStaticsContext:
                     self._assembly_exception = exc
             if emitted:
                 self._assembly_warnings = tuple(emitted)
-                readers.append(self)
+                cast(list[_CampaignStaticsContext], readers).append(self)
         if not defer:
             self._emit_assembly_warnings()
         if strict and self._assembly_exception is not None:
@@ -517,8 +524,8 @@ class _CampaignStaticsContext:
             mid = 0.5 * (float(lo[a]) + float(hi[a]))
             from rfx._internal._periodic import plane_coordinate
             mid = plane_coordinate(self.grid, a, mid)
-            nodes = self.nodes[a]
-            d_local = _rasterize_local_cell(nodes, self.cell_sizes[a], mid)
+            nodes = cast(list[np.ndarray], self.nodes)[a]
+            d_local = _rasterize_local_cell(nodes, cast(tuple[np.ndarray, ...], self.cell_sizes)[a], mid)
             k = int(sheet.plane)
             if k + 1 < len(nodes):
                 d_lo = abs(mid - float(nodes[k]))
@@ -528,7 +535,10 @@ class _CampaignStaticsContext:
                     return mid, (k, k + 1)
             return mid, None
 
+        from rfx.geometry.cross_section import section_entries
+        sections = section_entries(sim, self.grid)
         for i, entry in enumerate(sim._geometry):
+            section = sections[i].shape
             try:
                 mat = sim._resolve_material(entry.material_name)
             except KeyError:
@@ -536,19 +546,19 @@ class _CampaignStaticsContext:
             if mat.sigma < sim._PEC_SIGMA_THRESHOLD:
                 continue
             label = f"geometry[{i}]"
-            lo, hi = _bounds(entry.shape)
+            lo, hi = _bounds(section)
             try:
                 if id(entry) in products:
                     cells, sheet, wire, solved = products[id(entry)]
                 else:
                     solved = continued_conductor_shape(
-                        sim, self.grid, entry.shape, entry=entry)
+                        sim, self.grid, section, entry=entry)
                     cells, sheet, wire = classify_pec_entry(
-                        solved, self.coords, self.centres, self.cell_sizes,
+                        solved, cast(GridCoords, self.coords), cast(GridCoords, self.centres), self.cell_sizes,
                         name=entry.material_name, grid=self.grid)
             except self._NARROW_EXCS as exc:
                 out.append(_EntryRealization(
-                    label=label, name=entry.material_name, shape=entry.shape,
+                    label=label, name=entry.material_name, shape=section, declared_shape=entry.shape,
                     kind="refused",
                     error=(str(exc) if isinstance(exc, ValueError)
                            else f"{type(exc).__name__}: {exc}"),
@@ -556,17 +566,17 @@ class _CampaignStaticsContext:
                 continue
             if cells is not None:
                 out.append(_EntryRealization(
-                    label=label, name=entry.material_name, shape=entry.shape,
+                    label=label, name=entry.material_name, shape=section, declared_shape=entry.shape,
                     kind="volume", cells=cells, lo=lo, hi=hi, solved_shape=solved))
             elif sheet is not None:
                 mid, tie = _tie(sheet, lo, hi)
                 out.append(_EntryRealization(
-                    label=label, name=entry.material_name, shape=entry.shape,
+                    label=label, name=entry.material_name, shape=section, declared_shape=entry.shape,
                     kind="sheet", sheet=sheet, lo=lo, hi=hi, solved_shape=solved,
                     declared_mid=mid, tie_planes=tie))
             else:
                 out.append(_EntryRealization(
-                    label=label, name=entry.material_name, shape=entry.shape,
+                    label=label, name=entry.material_name, shape=section, declared_shape=entry.shape,
                     kind="wire", wire=wire, lo=lo, hi=hi))
         for i, tc in enumerate(getattr(sim, "_thin_conductors", ())):
             label = f"thin_conductor[{i}]"
@@ -584,7 +594,7 @@ class _CampaignStaticsContext:
                     solved = continued_conductor_shape(
                         sim, self.grid, tc.shape, entry=tc)
                     sheet = sheet_spec_from_shape(
-                        solved, self.coords, self.cell_sizes, name=label,
+                        solved, cast(GridCoords, self.coords), self.cell_sizes, name=label,
                         lane=self.lane or "", refuse_thick=True, grid=self.grid)
             except ValueError as exc:
                 out.append(_EntryRealization(
@@ -618,7 +628,7 @@ class _CampaignStaticsContext:
             solved = continued_conductor_shape(self.sim, self.grid, tc.shape, entry=tc)
             try:
                 sheet = sheet_spec_from_shape(
-                    solved, self.coords, self.cell_sizes, name=f'thin_conductor[{i}]',
+                    solved, cast(GridCoords, self.coords), self.cell_sizes, name=f'thin_conductor[{i}]',
                     lane=self.lane or '', refuse_thick=True, grid=self.grid)
             except self._NARROW_EXCS as _traced_exc:
                 if is_tracer_error(_traced_exc):
@@ -669,7 +679,8 @@ class _CampaignStaticsContext:
         if self.lane == "uniform":
             return np.asarray(shape.mask(self.grid))
         return np.asarray(shape.mask_on_coords(
-            self.coords.x, self.coords.y, self.coords.z))
+            cast(GridCoords, self.coords).x, cast(GridCoords, self.coords).y,
+            cast(GridCoords, self.coords).z))
 
     def congruence_entries(self):
         """``(keyed, unkeyed)`` conductor entries for the congruence check.
@@ -693,16 +704,16 @@ class _CampaignStaticsContext:
         return keyed, unkeyed
 
     def local_spacing(self, axis: int, coord: float) -> float:
-        nodes = self.nodes[axis]
+        nodes = cast(list[np.ndarray], self.nodes)[axis]
         j = int(np.searchsorted(nodes, coord)) - 1
-        j = min(max(j, 0), len(self.spacings[axis]) - 1)
-        return float(self.spacings[axis][j])
+        j = min(max(j, 0), len(cast(list[np.ndarray], self.spacings)[axis]) - 1)
+        return float(cast(list[np.ndarray], self.spacings)[axis][j])
 
     def sub_lattice_offsets(self, lo_corner) -> list[float]:
         """Fractional cell offset from the node below, zero on an invariant axis."""
         offs = []
         for a in range(3):
-            nodes = self.nodes[a]
+            nodes = cast(list[np.ndarray], self.nodes)[a]
             if len(nodes) == 1:
                 offs.append(0.0)
                 continue
@@ -863,17 +874,17 @@ def _validate_cfg_assembly(self, _w) -> None:
                 conductor_operator(conformal=conformal)))
         except ctx._NARROW_EXCS as exc:
             ctx._assembly_exception = exc
-    exc = ctx._assembly_exception
-    if exc is None:
+    assembly_exc = ctx._assembly_exception
+    if assembly_exc is None:
         return
-    if isinstance(exc, (ValueError, NotImplementedError)):
+    if isinstance(assembly_exc, (ValueError, NotImplementedError)):
         _w.warn(PreflightWarning(
-            f"The model cannot be assembled: {exc}",
+            f"The model cannot be assembled: {assembly_exc}",
             severity="error", code="assembly_refusal", source="_validate_cfg_assembly",
         ))
     else:
         _w.warn(PreflightWarning(
-            f"The model assembly raised {type(exc).__name__}: {exc}; "
+            f"The model assembly raised {type(assembly_exc).__name__}: {assembly_exc}; "
             "this is a defect, please report it.",
             severity="error", code="assembly_fault", source="_validate_cfg_assembly",
         ))

@@ -7,7 +7,8 @@ Arrays are read-only numpy arrays; this API is not an autodiff interface.
 from __future__ import annotations
 
 from rfx._internal._grid_metric import field_index
-from dataclasses import InitVar, dataclass
+from dataclasses import Field, InitVar, dataclass
+from typing import Any, ClassVar, Protocol, cast
 from rfx.model.realization_transport import GeometryMetadata
 
 import numpy as np
@@ -199,7 +200,7 @@ class RealizedGeometry(GeometryMetadata):
         return realized_wall_planes(self.edge_masks, axis, **kwargs)
 
 
-del RealizedGeometry.realization_table
+delattr(RealizedGeometry, "realization_table")
 
 from rfx.model.realization_transport import register_metadata
 register_metadata(RealizedGeometry)
@@ -210,6 +211,10 @@ def _readonly(value):
     return np.frombuffer(a.tobytes(), dtype=a.dtype).reshape(a.shape)
 
 
+class _DataclassRecord(Protocol):
+    __dataclass_fields__: ClassVar[dict[str, Field[Any]]]
+
+
 def _freeze(value):
     from dataclasses import fields, is_dataclass, replace
     if value is None or isinstance(value, (str, int, float, bool)):
@@ -217,7 +222,8 @@ def _freeze(value):
     if isinstance(value, np.ndarray) or hasattr(value, "__array__"):
         return _readonly(value)
     if is_dataclass(value):
-        return replace(value, **{f.name: _freeze(getattr(value, f.name)) for f in fields(value)})
+        return replace(cast(_DataclassRecord, value),
+                       **{f.name: _freeze(getattr(value, f.name)) for f in fields(value)})
     if isinstance(value, tuple) and hasattr(value, "_fields"):
         return type(value)(*(_freeze(v) for v in value))
     if isinstance(value, (tuple, list)):
@@ -352,13 +358,14 @@ def _build_record(sim, ctx, *, compact=False):
                 from rfx.model.thin_conductors import dc_film_plane
                 normal, node = dc_film_plane(tc.shape, ctx.grid)
                 plane = (normal, int(node), float(nodes[normal][node]))
-        continued = ()
+        continued: tuple[str, ...] = ()
         if e is not None:
+            section_bounds = _shape_bounds(e.shape)
             solved_bounds = _shape_bounds(e.solved_shape)
-            if bounds is not None and solved_bounds is not None:
+            if section_bounds is not None and solved_bounds is not None:
                 continued = tuple(f"{'xyz'[a]}-{'hi' if side else 'lo'}"
                                   for a in range(3) for side in (0, 1)
-                                  if bounds[side][a] != solved_bounds[side][a])
+                                  if section_bounds[side][a] != solved_bounds[side][a])
         areas = (None, None)
         tc_index = index - len(sim._geometry)
         if tc_index >= 0:
@@ -464,14 +471,16 @@ def _ports(sim, ctx, assembled):
     for i, pe in enumerate(sim._ports):
         if not pe.is_port:
             continue
+        cells: tuple[tuple[int, int, int], ...]
         if pe.extent is None:
-            cells = (tuple(int(k) for k in field_index(grid, pe.position, pe.component)),)
+            idx = field_index(grid, pe.position, pe.component)
+            cells = ((int(idx[0]), int(idx[1]), int(idx[2])),)
         else:
             a = 'xyz'.index(pe.component[1])
             end = list(pe.position)
             end[a] += pe.extent
             if ctx.lane == "uniform":
-                cells = tuple(tuple(int(k) for k in cell) for cell in _wire_port_cells(
+                cells = tuple((int(cell[0]), int(cell[1]), int(cell[2])) for cell in _wire_port_cells(
                     grid, WirePort(start=pe.position, end=tuple(end), component=pe.component,
                                    impedance=pe.impedance, allow_in_absorber=pe.allow_in_absorber)))
             else:
@@ -479,7 +488,9 @@ def _ports(sim, ctx, assembled):
                 start_idx, end_idx = interval_indices(grid, pe.position, tuple(end))
                 lo, hi = sorted((start_idx[a], end_idx[a]))
                 first, last = wire_port_edge_span(grid, a, lo, hi, pe.position[a], end[a])
-                cells = tuple(tuple(k if j == a else int(start_idx[j]) for j in range(3))
+                cells = tuple((k if a == 0 else int(start_idx[0]),
+                               k if a == 1 else int(start_idx[1]),
+                               k if a == 2 else int(start_idx[2]))
                               for k in range(first, last + 1))
         if pe.extent is not None:
             from rfx.boundaries.pec import edges_are_pec

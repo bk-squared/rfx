@@ -12,7 +12,6 @@ from rfx.errors import AccuracyWarning, ConfigurationWarning, RfxWarning
 
 PACKAGE = Path(__file__).resolve().parents[2] / "rfx"
 
-# Explicit output APIs, user-flagged output, and the two design exemptions.
 
 CUSTOM_BASES = [("rfx.optimizers", "GCMMAInnerCapWarning", AccuracyWarning), ("rfx.optimizers", "MMASubproblemCapWarning", AccuracyWarning), ("rfx._host_limits", "MapCountWarning", ConfigurationWarning), ("rfx._runtime_floor", "UntestedJAXWarning", ConfigurationWarning), ("rfx._internal._grid_metric", "Float32WidthResolutionWarning", AccuracyWarning), ("rfx.api._mesh", "AutoMeshWarning", RfxWarning), ("rfx.boundaries.features", "WaveguideBoundaryWarning", RfxWarning), ("rfx.boundaries.tfsf", "UnjudgedTFSFInvarianceWarning", AccuracyWarning), ("rfx.geometry.rasterize_grid", "ExactNodeSpineMissingWarning", AccuracyWarning), ("rfx.geometry.smoothing", "CurvedSmoothingWarning", AccuracyWarning), ("rfx.model.graded_admission", "DeclaredZWarning", RfxWarning), ("rfx.preflight._common", "PreflightWarning", RfxWarning), ("rfx.preflight._common", "PreflightErrorWarning", RfxWarning), ("rfx.probes.probes", "PreDecisionLumpedDiagonalWarning", AccuracyWarning), ("rfx.subgridding._notice", "ExperimentalSubgridWarning", AccuracyWarning), ("rfx.errors", "RingdownSecondDerivativeWarning", RfxWarning)]
 
@@ -135,7 +134,6 @@ def test_warn_sites_use_public_categories():
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
                 continue
-            # Also inspect warning-module parameters such as preflight's _w.
             is_warn = (
                 isinstance(node.func, ast.Attribute) and node.func.attr == "warn"
             ) or _resolve(node.func, names, module) == "warnings.warn"

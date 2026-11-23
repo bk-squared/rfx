@@ -17,12 +17,9 @@ def pre_injection_samples(state, port_specs, edge_length, *, table=None):
         for component, _, kind, _, _ in port_specs:
             term = next(t for t in table.components if t.component == component)
             owned = term.channel_ids == offset
-            # One-device tables hold host indices; slab tables are rank-local.
             index = (int(np.argmax(owned)) if isinstance(owned, np.ndarray)
                      else jnp.argmax(owned))
             mid = tuple(a[index] for a in term.indices)
-            # V has exactly one midpoint term. A segment sum would turn its
-            # negative zero into positive zero before the rank reduction.
             value = -getattr(state, component)[mid] * (-term.weights[index])
             refs.append(jnp.where(jnp.any(owned), value, jnp.zeros_like(value)))
             offset += 3 if kind == 'wire' else 2

@@ -84,7 +84,6 @@ def call(fn, make=base, *, classification="CARRIED", public=""):
 
 
 def cases():
-    # One explicit row per declaration; never derive this table from the registry.
     return {
         "_geometry": call(lambda s: s.add(Box((.005, .004, .003), (.010, .008, .006)), material="pec")),
         "_thin_conductors": call(lambda s: s.add_thin_conductor(Box((.005, .004, .006), (.012, .010, .006)))),
@@ -281,7 +280,6 @@ def test_t4_refusal_precedes_study(monkeypatch, name):
     assert not calls
 
 
-# Independent expected reset inventory, including lazy attributes absent on bare.
 RESET_NAMES = {
     "_geometry", "_thin_conductors", "_pinned_sheets", "_wall_losses", "_ports",
     "_waveguide_ports", "_msl_ports", "_coaxial_ports", "_floquet_ports", "_lumped_rlc",
@@ -308,7 +306,7 @@ def test_t5_reference_carries_numerics_and_resets_device(name):
         assert actual[attr] == expected[attr], attr
     for attr in RESET_NAMES:
         assert actual[attr] == defaults[attr], attr
-    assert reference._dx == built_dx  # Pinned to built dx, including wall snaps.
+    assert reference._dx == built_dx
     assert reference._declaration_root is reference
     assert reference._boundary_model is sim._boundary_model
     assert type(reference.__dict__["_domain"]) is tuple
@@ -323,7 +321,7 @@ def test_t5_automatic_wr90_insert_preserves_built_grid():
     mesh = sim._resolve_mesh()
     assert mesh["_dz_profile"] is not None
     device_grid = sim._build_realized_grid()
-    assert float(device_grid.dx) != mesh["_dx"]  # Exercise the pre-snap defect.
+    assert float(device_grid.dx) != mesh["_dx"]
     reference = _empty_waveguide_reference(sim)
     ref_grid = reference._build_realized_grid()
     assert type(ref_grid) is type(device_grid)
@@ -388,7 +386,6 @@ def test_quick_convergence_builds_only_base_on_private_model(monkeypatch):
     assert len(built) == 1 and built[0] is not sim
     assert "_realization_early_outcomes" not in sim.__dict__
     assert "_boundary_default_warned" not in sim.__dict__
-    # Strict wall mismatch is deferred until the rung actually builds a grid.
     with pytest.raises(ValueError, match="wall axis"):
         captured["sim_factory"](captured["dx_values"][1])._build_realized_grid()
 

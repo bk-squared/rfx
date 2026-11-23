@@ -212,7 +212,7 @@ def _field_reassoc_atols(arrays_by_comp, n_steps, grid, materials):
             group_peak, cross = max_h, k_he * max_e
         elif comp in _E_COMPS:
             group_peak, cross = max_e, k_eh * max_h
-        else:  # pragma: no cover - only the six Yee components are compared
+        else:  # pragma: no cover
             group_peak, cross = peak, 0.0
         scales[comp] = max(group_peak, cross)
         atols[comp] = _REASSOC_COHERENCE_C * float(n_steps) * eps * scales[comp]

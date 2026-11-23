@@ -75,8 +75,7 @@ def test_interior_end_refused(no_scan, window):
 
 
 def test_changed_window_total_refused_at_runtime(no_scan):
-    # All cells outside the window still equal nominal: the fixed-cell check
-    # cannot catch this violation. Its 0.1 mm displacement is above D2's bar.
+    """The 0.1 mm displacement exceeds the window-total tolerance."""
     with pytest.raises(ValueError, match="nominal_profiles=.*total changed"):
         jax.jacfwd(lambda d: read(guide(d, total_change=True)))(0.1e-3)
 

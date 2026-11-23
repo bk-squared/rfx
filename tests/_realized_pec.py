@@ -59,7 +59,7 @@ _AXIS_NAME = ("x", "y", "z")
 
 
 @dataclass(frozen=True)
-class RealizedPec:  # noqa: D101 - documented below
+class RealizedPec:  # noqa: D101
     """A crossval-facing view of ``tests._realized_geometry.Realization``.
 
     ``edges`` is the ``(Mx, My, Mz)`` triple: ``True`` where that E component
@@ -127,7 +127,7 @@ def realize(sim, grid=None) -> RealizedPec:
     the run itself would take and reads the run's own periodic flags, so the
     answer is the one the step function will apply.
     """
-    if grid is not None:                       # pragma: no cover - callers pass none
+    if grid is not None:                       # pragma: no cover
         raise TypeError(
             "realize() takes the simulation only; the shared reader builds the "
             "grid the run would build (tests/_realized_geometry.realized)")

@@ -39,7 +39,6 @@ def resolve_identification_probes(probes, grid, pads, add, *, warn_duplicates=Tr
     return tuple(keys)
 
 
-# Temporary route until graded entries leave api/_execute.py; structure plan §11.
 _ringdown_probes: ContextVar[tuple | None] = ContextVar("ringdown_probes", default=None)
 
 
