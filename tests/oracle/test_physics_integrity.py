@@ -194,6 +194,7 @@ def test_energy_decay_lossy():
 # 1C. Field pattern matches analytical mode shape
 # =====================================================================
 
+@pytest.mark.slow_physics
 def test_field_pattern_tm110():
     """Ez pattern in PEC cavity should match sin(πx/a)*sin(πy/b)."""
     a, b, d = 0.05, 0.04, 0.03
