@@ -1,4 +1,6 @@
-"""Comments and documentation name the reason; Git carries tracker history."""
+"""Comments and documentation name the reason; Git carries tracker history.
+A date embedded in a cited document's filename is path data, not prose chronology.
+"""
 
 import ast
 import io
@@ -21,8 +23,6 @@ URL = re.compile(r"https?://[^\s<>`\"']+")
 RFX_TRACKER_URL = re.compile(
     r"https?://github\.com/[^/\s]+/rfx/(?:issues|pull)(?:/|$)", re.IGNORECASE,
 )
-# A date embedded in a cited document's filename is path data, not prose
-# chronology. Pin the entire path and require the exception to remain used.
 KEEP = {}
 
 
@@ -49,7 +49,9 @@ def _documentation_nodes(tree):
 
 
 def _history(source, relative):
-    """Return locations and used Keep entries without importing the package."""
+    """Return locations and used Keep entries without importing the package.
+    Only external citation URLs are masked because they may contain dates or numeric URL fragments.
+    """
     tree = ast.parse(source)
     documentation = {(n.lineno, n.col_offset, n.end_lineno, n.end_col_offset)
                      for n in _documentation_nodes(tree)}
@@ -65,8 +67,6 @@ def _history(source, relative):
             if entry[0] == relative and entry[1] in text:
                 used.add(entry)
                 text = text.replace(entry[1], " " * len(entry[1]))
-        # External citations may contain dates or numeric URL fragments.
-        # Mask only those URLs; rfx tracker links remain subject to HISTORY.
         text = URL.sub(lambda match: match.group() if RFX_TRACKER_URL.match(match.group())
                        else " " * len(match.group()), text)
         for match in HISTORY.finditer(text):

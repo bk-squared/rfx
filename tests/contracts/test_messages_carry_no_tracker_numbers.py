@@ -1,4 +1,5 @@
-"""Runtime messages explain the limitation without tracker numbers or dates."""
+"""Runtime messages explain the limitation without tracker numbers or dates.
+The allowlisted constants are record provenance or documentation, never message text."""
 
 import ast
 import re
@@ -16,8 +17,6 @@ TRACKER_PATTERNS = (
     r"\b20\d\d-\d\d-\d\d\b",
 )
 
-# These constants are record provenance or documentation, never message text.
-# Keep prefixes narrow, and require every exception to still be used.
 ALLOWLIST = (
     ("sparams/_msl_stages.py", "PRE-passivity-projection raw extraction referred to the declared feed planes,",
      "Replay dump production_smatrix_stage metadata, not message text"),

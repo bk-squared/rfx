@@ -23,6 +23,7 @@ def geometry(face, scene='a'):
 
 
 def build(owner='plain', face='x_lo', nu=False, scene='a'):
+    """Pole masks keep declared occupancy, so crossing the physical face alone does not populate the pad."""
     dx=1e-3
     dimensions, source, probe, transverse = geometry(face, scene)
     if scene == 'b':
@@ -45,8 +46,6 @@ def build(owner='plain', face='x_lo', nu=False, scene='a'):
     lo=[0.,0.,0.];hi=[n*dx for n in dimensions]
     slab_cell = 12 if scene == 'b' else 11
     lo[transverse]=slab_cell*dx;hi[transverse]=(slab_cell+1)*dx
-    # Pole masks keep declared occupancy; crossing the physical face alone
-    # does not populate the pad. Extend the slab through the complete pad.
     for normal, side in pads:
         if side == 'lo':
             lo[normal] = -12 * dx
@@ -88,7 +87,6 @@ def probe_loop(sim, n_steps, face, scene='a'):
 
     grid = sim._build_grid()
     mats, ds, ls, *_ = sim._assemble_materials(grid)
-    # Realize the same component operands the public run hands to the step.
     from rfx.model.materials import with_components
     mats = with_components(mats, grid, periodic=(False, False, False), debye_spec=ds, lorentz_spec=ls)
     db = init_debye(*ds[:1], mats, grid.dt, mask=ds[1], high_wall=unpadded_high_walls(grid)) if ds else None
@@ -110,8 +108,6 @@ def probe_loop(sim, n_steps, face, scene='a'):
         carry['lorentz'] = lr[1]
     cell = field_index(grid, tuple(p*1e-3 for p in probe), 'ez')
 
-    # Eager SParamProbe carries a static component name; close it over the
-    # scan while retaining every numerical leaf and the actual probe hooks.
     leaves, tree = jax.tree.flatten(carry)
     dynamic = [i for i, leaf in enumerate(leaves) if isinstance(leaf, (jax.Array, np.ndarray))]
 

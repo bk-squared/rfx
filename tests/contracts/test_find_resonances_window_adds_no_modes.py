@@ -25,8 +25,6 @@ _harminv_module = importlib.import_module("rfx.harminv")
 _DT = 1.9e-12
 _BAND = (6e9, 14e9)
 _ORDINARY = ((9e9, 40, 1, 0.3), (11e9, 200, 0.05, 1.1))
-# Captured once on origin/main 2c32b7cf79b796fae825bfa08fc73d9914e61723,
-# macOS, using find_resonances(source_decay_time=0) on case 3 below.
 _FROZEN = (
     (8999999999.999994, 706858347.0577135, 39.9999999999994,
      0.5000000000000048, 0.30000000000002713, 0.01201452003571557),
@@ -78,15 +76,14 @@ def test_case2_short_window_has_no_in_band_mode(extract):
 
 
 def test_case3_ordinary_record_is_unchanged(extract):
+    """The last bits a different BLAS can move were measured earlier at 4.5e-13."""
     name, call = extract
     series = _record(8000, _DT, _ORDINARY)
     modes = call(series, _DT)
     _assert_modes(modes, [(9e9, 40), (11e9, 200)], 1e-9, 1e-6)
     if name == "find_resonances":
-        # Main's values, to the last bits a different BLAS can move (measured 4.5e-13).
         np.testing.assert_allclose(np.asarray(modes, dtype=np.float64),
                                    np.asarray(_FROZEN, dtype=np.float64), rtol=1e-10, atol=0)
-        # Same process: bit for bit main's direct path, the window minus its mean.
         direct = rfx.matrix_pencil(series - np.mean(series), _DT, *_BAND)
         assert np.asarray(modes, dtype=np.float64).tobytes() == np.asarray(
             direct, dtype=np.float64).tobytes()
@@ -103,7 +100,7 @@ def test_case4_long_record_keeps_both_record_modes():
 @pytest.mark.parametrize("entry, n, options", [
     ("find_resonances", 200_000, {}), ("find_resonances", 60_000, {}),
     ("matrix_pencil_from_probe", 200_000, {}), ("matrix_pencil_from_probe", 60_000, {}),
-    ("matrix_pencil_from_probe", 200_000, {"decimate": False}),  # find_resonances takes no keywords
+    ("matrix_pencil_from_probe", 200_000, {"decimate": False}),
 ])
 def test_truncation_keeps_the_longest_early_window(monkeypatch, entry, n, options):
     """The pencil gets the first n_keep samples, n_keep the largest kept-<=10,000 length."""

@@ -30,6 +30,7 @@ def _live_check():
 
 
 def _setup(monkeypatch, widths, branch='ordinary', probes=((2, 2, 2, 'ez'), (3, 2, 2, 'hy'))):
+    """An earlier 30 GHz pole was above the check's bound (growth 1.34 per step on the smallest cells)."""
     grid = make_nonuniform_grid(
         (.005, .005), np.full(5, .001), .001, cpml_layers=0,
         dx_profile=np.array(widths), dy_profile=np.full(5, .001))
@@ -42,8 +43,6 @@ def _setup(monkeypatch, widths, branch='ordinary', probes=((2, 2, 2, 'ez'), (3, 
         options['debye'] = init_debye([DebyePole(delta_eps=2., tau=5e-12)], materials, grid.dt, high_wall=unpadded_high_walls(grid))
     elif branch == 'lorentz':
         from rfx.materials.lorentz import init_lorentz, lorentz_pole
-        # 20 GHz: the 30 GHz pole was above the check's bound (growth 1.34 per step
-        # on the smallest cells); this test reads invariants only.
         options['lorentz'] = init_lorentz(
             [lorentz_pole(delta_eps=1.5, omega_0=2 * np.pi * 20e9, delta=1e10)], materials, grid.dt, high_wall=unpadded_high_walls(grid))
     elif branch == 'anisotropic':
@@ -94,7 +93,7 @@ def test_probe_record_follows_declaration_order(monkeypatch):
     ctx, setup = _setup(monkeypatch, [.001, .0008, .0012, .001, .001], probes=probes)
     step = graded.make_graded_step(ctx)
     carry = setup.carry_init
-    for n in range(6):   # a few steps, so every probed component is nonzero
+    for n in range(6):
         carry, record = jax.jit(lambda c, n=n: step(c, (jnp.int32(n), setup.src_waveforms[n]),
                                                     setup.invariants))(carry)
     state = carry['fdtd']

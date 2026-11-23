@@ -8,6 +8,7 @@ from rfx import Simulation
 
 @pytest.mark.parametrize("comparison", ["design-window", "graded"])
 def test_occupancy_probe_records_match_public_paths(comparison):
+    """The two-kernel bar applies because the window update and the whole-grid rule are two compiled programs."""
     def scene(graded=False):
         sim = Simulation(freq_max=15e9, domain=(.022, .016, .012), dx=.001,
                          boundary="pec", **({"dy_profile": np.full(16, .001)} if graded else {}))
@@ -34,9 +35,6 @@ def test_occupancy_probe_records_match_public_paths(comparison):
         assert graded.freeze_mesh().shape == grid.shape
         actual = np.asarray(graded.forward(pec_occupancy_override=jnp.asarray(cells), **options).time_series)
     peak = float(np.max(np.abs(expected)))
-    # The window update and the whole-grid rule are two compiled programs (bitwise at kernel level in
-    # float64, tests/unit/autodiff/test_design_box_tape_nu_occupancy.py): the two-kernel bar of
-    # tests/unit/nonuniform/test_nonuniform_face_depths.py:94 applies; graded stays at 9 ULP.
     bar = (60 * 10 * float(np.finfo(np.float32).eps) * peak if comparison == "design-window"
            else 9 * float(np.spacing(np.float32(peak))))
     error = float(np.max(np.abs(actual - expected)))

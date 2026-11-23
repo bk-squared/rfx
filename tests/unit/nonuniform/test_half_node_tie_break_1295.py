@@ -19,6 +19,7 @@ What is pinned here:
   keeps its nearest node;
 * the other sites that resolve through the rule: waveguide aperture ends,
   preflight's model of the placement, the traced run-time check.
+The CPML case puts a pad in front of the interior so the padded index is checked as well.
 """
 from __future__ import annotations
 
@@ -36,9 +37,6 @@ from rfx.runners.nonuniform import pos_to_nu_index
 DX = 1e-3
 AXES = ("x", "y", "z")
 
-# (cells per axis, boundary). 239 cells is the kernel-timing 13M y axis whose
-# half-domain source exposed the split; the CPML case puts a pad in front of
-# the interior so the padded index is checked as well.
 LANE_CASES = {
     "pec_239": ((239, 12, 10), "pec"),
     "pec_odd_even": ((20, 19, 17), "pec"),
@@ -97,7 +95,8 @@ def _nu_nodes(nu, ax, axis, x):
 @pytest.mark.parametrize("case", sorted(LANE_CASES))
 def test_a_point_lands_on_the_node_a_sheet_at_the_same_coordinate_takes(case):
     """Lane B's point lookups against lane B's sheet snap, on the node line
-    the rasterizer uses; and off ties, against the uniform lane."""
+    the rasterizer uses; and off ties, against the uniform lane.
+    The difference from rounding to even only shows where the lower node of a tie is odd."""
     cells, boundary = LANE_CASES[case]
     uniform, nu, domain = _both_lanes(cells, boundary)
     coords = coords_from_nonuniform_grid(nu)
@@ -119,7 +118,6 @@ def test_a_point_lands_on_the_node_a_sheet_at_the_same_coordinate_takes(case):
                 assert uniform.index_of(axis, float(x)) == got[0], (
                     case, axis, float(x))
     print(f"{case}: {counts}", file=sys.stderr)
-    # The rule only shows where the lower node of a tie is odd.
     assert counts["off_tie"] and counts["tie_lower_odd"]
 
 
@@ -227,7 +225,6 @@ def _kernel_timing_box(nonuniform, cells=(20, 19, 17), steps=400):
     sim.add(Box((0.25 * lx + off, 0.25 * ly + off, 0.20 * lz + off),
                 (0.75 * lx + off, 0.75 * ly + off, 0.50 * lz + off)),
             material="block")
-    # Material faces use the same nearest-node rule as the source location.
     record = sim.realized_geometry().entities[0]
     for a, realized_axis in enumerate(record.axes):
         drawn = (sim._geometry[0].shape.corner_lo[a], sim._geometry[0].shape.corner_hi[a])
@@ -283,9 +280,6 @@ def test_a_half_node_source_gives_the_same_trace_on_both_lanes():
     assert gap <= 3e-5
 
 
-# ---------------------------------------------------------------------------
-# The sites that resolve through the same rule besides the three lookups.
-# ---------------------------------------------------------------------------
 
 def _waveguide_cfg(lane, y_range, z_range, cells=(30, 48, 13)):
     import jax.numpy as jnp
@@ -316,15 +310,10 @@ def _up(v):
 
 
 @pytest.mark.parametrize("y_range,z_range,y_on,z_on", [
-    # every end on a half node: the NU aperture takes the lower nodes
     ((2.5e-3, 12.5e-3), (1.5e-3, 6.5e-3), (2e-3, 12e-3), (1e-3, 6e-3)),
-    # one float step above: still a tie, where an argmin takes the upper node
     ((_up(3.5e-3), _up(13.5e-3)), (_up(2.5e-3), _up(7.5e-3)),
      (3e-3, 13e-3), (2e-3, 7e-3)),
-    # above y = 33 mm main's float32 edge search put every half node on the
-    # UPPER node of a 1 mm axis (its cumulative sums drift past the tie)
     ((35.5e-3, 45.5e-3), (1.5e-3, 6.5e-3), (35e-3, 45e-3), (1e-3, 6e-3)),
-    # control: every end on a node
     ((2e-3, 12e-3), (1e-3, 6e-3), (2e-3, 12e-3), (1e-3, 6e-3)),
 ])
 def test_waveguide_aperture_ends_take_the_lower_node_at_a_tie(
@@ -335,15 +324,14 @@ def test_waveguide_aperture_ends_take_the_lower_node_at_a_tie(
     lane's aperture declared on the lower nodes. Compared on the interior
     index (the NU lane pads the transverse faces, the uniform lane does
     not). On main a z_range of (1.5, 6.5) mm gave the NU aperture 5 mm
-    against the uniform lane's 4 mm; here both give 5 cells."""
+    against the uniform lane's 4 mm; here both give 5 cells.
+    The NU spans are read from the float32 store, whose cumulative sums in an earlier measurement drifted 1.7e-6 relative on the aperture above y = 33 mm."""
     cn, gn = _waveguide_cfg("nu", y_range, z_range)
     cu, gu = _waveguide_cfg("uniform", y_on, z_on)
     assert (cn.u_lo - gn.pad_y_lo, cn.u_hi - gn.pad_y_lo) == (
         cu.u_lo - gu.pad_y_lo, cu.u_hi - gu.pad_y_lo)
     assert (cn.v_lo - gn.pad_z_lo, cn.v_hi - gn.pad_z_lo) == (
         cu.v_lo - gu.pad_z_lo, cu.v_hi - gu.pad_z_lo)
-    # The NU spans are still read from the float32 store, whose cumulative
-    # sums drift: 1.7e-6 relative on the aperture above y = 33 mm.
     np.testing.assert_allclose(cn.a, cu.a, rtol=1e-5)
     np.testing.assert_allclose(cn.b, cu.b, rtol=1e-5)
 
@@ -379,7 +367,6 @@ def test_preflight_puts_a_half_node_coordinate_on_the_grids_node(name):
         assert profile_node_at(float(prof[0]), prof, float(x)) == pytest.approx(
             float(grid_nodes[k]), abs=1e-15), (name, float(x), k)
         moved += int(np.argmin(np.abs(nodes - x))) != k
-    # On every profile some half node is one the argmin put on the other node.
     assert moved > 0
 
 
@@ -427,7 +414,7 @@ def _traced_half_nodes_refused(cell, n, profile=None):
         try:
             jax.block_until_ready(jax.jit(f)(profile))
             jax.effects_barrier()
-        except Exception as exc:  # the callback's ValueError, as XLA raises it
+        except Exception as exc:
             assert "on the mesh the run built" in str(exc)
             refused += 1
     return refused
@@ -449,5 +436,5 @@ def test_a_traced_axis_still_refuses_a_node_that_moved():
     move every node line above it by several cells."""
     cell, n = 5e-4, 20
     profile = np.r_[np.full(10, 1.3 * cell), np.full(10, cell)]
-    profile[0] = cell       # the boundary cell stays the nominal one
+    profile[0] = cell
     assert _traced_half_nodes_refused(cell, n, profile) >= 16

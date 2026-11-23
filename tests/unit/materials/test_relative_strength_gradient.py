@@ -2,6 +2,7 @@
 
 Bar fixed before measurement: |rev-fwd| <= 1e-4 |fwd|. The amplitude is
 calibrated from this reduced scene's a=1 SI derivative to 1e-3 * 1.1755e-38.
+The calibration values come from an earlier independent a=1 forward-mode measurement of the scene.
 """
 import time
 import warnings
@@ -15,7 +16,6 @@ from rfx import Box, GaussianPulse, LorentzPole, RelativeStrength, Simulation
 
 KAPPA = float((2 * np.pi * 3e9) ** 2)
 STEPS = 64
-# Filled from the independent a=1 forward-mode measurement of this scene.
 CALIBRATION = {"uniform": -2.3828923545015776e-33, "graded": -1.8987599431685053e-35}
 
 

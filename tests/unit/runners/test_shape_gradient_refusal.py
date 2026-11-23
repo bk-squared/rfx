@@ -51,7 +51,7 @@ def test_a_shape_gradient_refuses_with_preflight():
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
 def test_a_smoothed_shape_gradient_refuses(entry):
-    # The #1849 tangent guard, not the traced pad-reach refusal, answers a gradient.
+    """The tangent guard answers a shape gradient before the traced pad-reach refusal."""
     with pytest.raises(NotImplementedError, match="A gradient with respect to"):
         jax.grad(lambda r: objective(r, entry, smoothing=True))(.0023)
 
@@ -72,14 +72,13 @@ def test_b_jacfwd_shape_refuses():
 @pytest.mark.parametrize("shape", ["sphere", "cylinder"])
 @pytest.mark.parametrize("transform", ["jit", "vmap"])
 def test_c_shape_value_transforms_match_plain(entry, graded, shape, transform):
+    """The tolerance allows jit reassociation of float32 sums, measured in an earlier run at 2.9e-7..4.9e-7 relative on run() and zero on forward()."""
     def loss(dimension):
         return objective(dimension, entry, shape, graded)
 
     if transform == "jit":
         expected = loss(.0023)
         actual = jax.jit(loss)(.0023)
-        # A record summed over steps: jit reassociates float32 sums (measured
-        # 2.9e-7..4.9e-7 relative on run(), 0 on forward()).
         np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=0)
     else:
         dimensions = (.0023, .0027)
@@ -116,9 +115,7 @@ def pec_box_objective(radius, smoothing):
 @pytest.mark.parametrize("smoothing", [True, "full_tensor", "kottke_pec"])
 @pytest.mark.parametrize("transform", ["jit", "vmap"])
 def test_d_smoothed_shape_transform_in_cpml_refuses(entry, graded, smoothing, transform):
-    # Whether a traced shape reaches the absorber has no concrete answer; this
-    # was a raw ConcretizationTypeError. Graded kottke_pec keeps its own
-    # earlier refusal; graded full_tensor is admitted and reaches this one.
+    """Whether a traced shape reaches the absorber has no concrete answer."""
     def loss(radius):
         return objective(radius, entry, graded=graded, smoothing=smoothing)
 
@@ -133,7 +130,7 @@ def test_d_smoothed_shape_transform_in_cpml_refuses(entry, graded, smoothing, tr
 
 @pytest.mark.parametrize("smoothing", [True, "full_tensor"])
 def test_d_smoothed_shape_jit_in_pec_box_matches_plain(smoothing):
+    """The tolerance allows float32 reassociation under jit, measured in an earlier run at 3e-7 / 6e-7 relative."""
     expected = pec_box_objective(.0023, smoothing)
     actual = jax.jit(lambda r: pec_box_objective(r, smoothing))(.0023)
-    # Measured 3e-7 / 6e-7 relative (float32 reassociation under jit).
     np.testing.assert_allclose(actual, expected, rtol=1e-5, atol=0)

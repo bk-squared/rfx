@@ -13,6 +13,7 @@ class PortTimeRecord:
     kind: str
     channels: tuple[str, ...]
     samples: object
+    identity: tuple | None = None
 
     def __post_init__(self):
         if len(self.channels) != self.samples.shape[1]:
@@ -33,12 +34,12 @@ class PortTimeRecord:
         raise TypeError(f'iterate .channels {self.channels}, not sample rows')
 
     def tree_flatten(self):
-        return (self.samples,), (self.id, self.kind, self.channels)
+        return (self.samples,), (self.id, self.kind, self.channels, self.identity)
 
     @classmethod
     def tree_unflatten(cls, metadata, leaves):
         # JAX may unflatten abstract placeholders or add a vmap batch axis.
         obj = object.__new__(cls)
-        for name, value in zip(('id', 'kind', 'channels', 'samples'), (*metadata, leaves[0])):
+        for name, value in zip(('id', 'kind', 'channels', 'identity', 'samples'), (*metadata, leaves[0])):
             object.__setattr__(obj, name, value)
         return obj

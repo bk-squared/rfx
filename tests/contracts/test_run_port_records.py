@@ -41,8 +41,7 @@ def test_main_port_records_match_forward(kind, path):
 
 @pytest.mark.parametrize('kind', ['lumped', 'wire'])
 def test_run_settling_bins_follow_float64_request(kind):
-    # The port records hold the requested bins in float32; settling must still
-    # judge one value per requested bin.
+    """The port records hold the requested bins in float32."""
     sim = base_scene('uniform', source=False)
     sim.add_port(SOURCE, 'ez', impedance=50., **({'extent': .003} if kind == 'wire' else {}))
     bins = np.linspace(2.1e9, 19.7e9, 37)

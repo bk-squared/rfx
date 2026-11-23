@@ -63,11 +63,6 @@ def kinds(rows) -> list[str]:
     return [row.kind for row in rows]
 
 
-# --------------------------------------------------------------------------
-# Reviews: the audit and the gate must agree
-# --------------------------------------------------------------------------
-
-
 def test_an_accepted_review_line_produces_no_row() -> None:
     body = f"Lane: lane:absorber\n{ACCEPTED}\n\nFixes #10\n"
     rows = classify_one(body, {10: issue(10, "", OPEN_MILESTONE)})
@@ -99,11 +94,6 @@ def test_a_review_line_inside_a_code_fence_does_not_count() -> None:
     body = f"Fixes #10\n\n```\n{ACCEPTED}\n```\n"
     rows = classify_one(body, {10: issue(10, "", OPEN_MILESTONE)})
     assert kinds(rows) == ["review"]
-
-
-# --------------------------------------------------------------------------
-# Links and milestones
-# --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -210,11 +200,6 @@ def test_each_linked_issue_gets_its_own_row() -> None:
     assert "#10" in rows[0].detail and "#11" in rows[1].detail
 
 
-# --------------------------------------------------------------------------
-# The data-budget exception
-# --------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize("labels", [
     [{"name": "data-budget-exception"}, {"name": "lane:ci-infra"}],
     ["data-budget-exception"],
@@ -248,11 +233,6 @@ def test_the_pr_listing_asks_github_for_labels() -> None:
     """Without the field no merged PR carries the label and the row never appears."""
     source = Path(audit.__file__).read_text(encoding="utf-8")
     assert "number,title,body,mergedAt,url,labels" in source
-
-
-# --------------------------------------------------------------------------
-# Frozen test data: informational, and the total on main
-# --------------------------------------------------------------------------
 
 
 def _frozen_pr(frozen) -> dict:
@@ -345,11 +325,6 @@ def test_the_audit_workflow_checks_out_full_history() -> None:
     assert "fetch-depth: 0" in workflow
 
 
-# --------------------------------------------------------------------------
-# Intake
-# --------------------------------------------------------------------------
-
-
 def test_an_issue_filed_through_a_form_produces_no_row() -> None:
     rows = audit.classify([], [issue(20, FORM_ISSUE)], {})
     assert rows == []
@@ -359,11 +334,6 @@ def test_an_issue_filed_outside_the_forms_is_reported() -> None:
     rows = audit.classify([], [issue(20, HAND_ISSUE)], {})
     assert kinds(rows) == ["form"]
     assert rows[0].ref == "#20"
-
-
-# --------------------------------------------------------------------------
-# The label, not the heading
-# --------------------------------------------------------------------------
 
 
 def test_a_form_issue_that_never_got_a_lane_label_is_reported() -> None:
@@ -387,7 +357,7 @@ def test_an_unanswered_dropdown_is_caught_by_the_label_check() -> None:
 
 def test_two_conflicting_lane_sections_are_caught_by_the_label_check() -> None:
     body = "### Lane\n\nlane:absorber\n\n### Lane\n\nlane:msl-port\n"
-    assert audit._lane.resolve_lane(body)[0] is None  # the label job does nothing
+    assert audit._lane.resolve_lane(body)[0] is None
     rows = audit.classify([], [issue(22, body, labels=[])], {})
     assert kinds(rows) == ["unlabelled"]
 
@@ -444,11 +414,6 @@ def test_an_issue_whose_dropdown_was_left_blank_is_not_a_FORM_row() -> None:
     body = "### What is wrong\n\nx\n\n### Lane\n\n_No response_\n"
     rows = audit.classify([], [issue(21, body, labels=["lane:absorber"])], {})
     assert rows == []
-
-
-# --------------------------------------------------------------------------
-# Rendering
-# --------------------------------------------------------------------------
 
 
 def _render(rows) -> str:
@@ -527,11 +492,6 @@ def test_the_informational_footer_counts_one_row_in_the_singular() -> None:
     assert "The 1 informational row above" in text
 
 
-# --------------------------------------------------------------------------
-# Fetching: a truncated window is worse than no report
-# --------------------------------------------------------------------------
-
-
 def test_hitting_the_fetch_cap_raises_instead_of_truncating() -> None:
     """A silent cap prints "200 merged PRs" for a window holding 900.
 
@@ -590,11 +550,6 @@ def test_fetch_marks_a_linked_number_that_is_really_a_pull_request(monkeypatch) 
         {int(k): v for k, v in data["issue_index"].items()},
     )
     assert [row.detail for row in rows] == ["closes #10: no milestone"]
-
-
-# --------------------------------------------------------------------------
-# The CLI, replayed from a payload: no network
-# --------------------------------------------------------------------------
 
 
 def _payload(**overrides) -> dict:

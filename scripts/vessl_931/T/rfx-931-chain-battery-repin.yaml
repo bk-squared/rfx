@@ -6,6 +6,8 @@ resources:
   preset: gpu-rtx4090
 image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
 env:
+  RFX_RUNS_WORKSPACE: "FILL_BEFORE_SUBMIT"
+  RFX_WORKSPACE: "FILL_BEFORE_SUBMIT"
   DEBIAN_FRONTEND: noninteractive
   PYTHONUNBUFFERED: "1"
   OMP_NUM_THREADS: "4"
@@ -14,12 +16,14 @@ env:
   JAX_PLATFORMS: "cpu"
   JAX_ENABLE_X64: "0"
   RFX_PREDECLARATION_SHA: "88c24a38"
-  RFX_CHECKOUT: "/root/workspace/byungkwan-workspace/research/rfx-lattice-ownership"
   RFX_SHA: "HEAD"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -eu
+  test "$RFX_WORKSPACE" != "FILL_BEFORE_SUBMIT"
+  test "$RFX_RUNS_WORKSPACE" != "FILL_BEFORE_SUBMIT"
+  export RFX_CHECKOUT="/root/workspace/$RFX_WORKSPACE/research/rfx-lattice-ownership"
   echo "=== rfx #931 post-change: WR-90 chain battery ==="
   date
   PY=python
@@ -30,7 +34,7 @@ run: |-
   test -d "$RFX_CHECKOUT" || { echo "ERROR: checkout missing at $RFX_CHECKOUT"; exit 3; }
   SHA=$(git -C "$RFX_CHECKOUT" rev-parse "$RFX_SHA")
   echo "pinned sha: $SHA"
-  RUNS=/root/workspace/claude-workspace/rfx/runs
+  RUNS=/root/workspace/$RFX_RUNS_WORKSPACE/rfx/runs
   TS=$(date -u +%Y%m%dT%H%M%SZ)
   OUT=$RUNS/issue931-chain-repin-$TS
   mkdir -p "$OUT"

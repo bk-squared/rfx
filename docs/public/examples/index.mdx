@@ -9,15 +9,18 @@ sidebar:
 
 <div data-rfx="cards">
   <section data-rfx="card">
-    <a href="/rfx/examples/teaching/boundary-reflection/"><img src="/rfx/gallery/assets/current-visuals/boundary-reflection.png" loading="lazy" alt="Open versus reflecting boundaries for an electric pulse" /></a>
+    <a href="/rfx/examples/teaching/boundary-reflection/"><img src="/rfx/examples/assets/teaching/boundary-reflection.png" loading="lazy" alt="Open versus reflecting boundaries for an electric pulse" /></a>
     <h3>Follow a field</h3>
     <p>Begin with a pulse, a boundary and a dielectric interface. Actual time-domain snapshots make a useful first experiment.</p>
     <a href="/rfx/examples/teaching/boundary-reflection/">Watch and run →</a>
   </section>
 </div>
 
-New to the API? Start with the [first runnable model](/rfx/guide/first-run/)
-and the [visual manual](/rfx/gallery/visual-manual/).
+New to the API? Start with the [first runnable model](/rfx/guide/first-run/),
+then watch a field in the three teaching examples:
+[open and closed boundaries](/rfx/examples/teaching/boundary-reflection/),
+[a dielectric interface](/rfx/examples/teaching/dielectric-interface/) and
+[a closed cavity](/rfx/examples/teaching/cavity-standing-wave/).
 
 ## Run from a source checkout
 
@@ -55,6 +58,75 @@ The [machine-readable index](https://github.com/bk-squared/rfx/blob/main/example
 | 12 | [`inverse_design/differentiable_s11_design.py`](https://github.com/bk-squared/rfx/blob/main/examples/inverse_design/differentiable_s11_design.py) | `jax.grad` through `compute_waveguide_s_matrix`, checked against central finite differences | CPML; two WR-90 waveguide ports |
 | 13 | [`tutorials/artifact_report_demo.py`](https://github.com/bk-squared/rfx/blob/main/examples/tutorials/artifact_report_demo.py) | exporting a shareable scene, mesh and preflight metadata, a report and a manifest | PEC box; lumped port and probe; no FDTD run |
 
+<div data-rfx="cards">
+  <section data-rfx="card">
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/boundary_spec_demo.py"><img src="/rfx/examples/assets/tutorials/boundary-spec-demo.png" loading="lazy" alt="Side views of four simulation domains named open, ground, cavity and periodic, above the Ez probe record of each over 120 steps." /></a>
+    <h3>boundary_spec_demo.py</h3>
+    <p>Four choices of boundaries: the simulated domain of each, and the probe record of its run.</p>
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/boundary_spec_demo.py">Source on GitHub ↗</a>
+  </section>
+  <section data-rfx="card">
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/slab_rt_flux_monitor.py"><img src="/rfx/examples/assets/tutorials/slab-rt-flux-monitor.png" loading="lazy" alt="The domains of the reference run and of the slab run in the x-y plane, each with a plane-wave source and two flux planes between absorbers; the second contains a slab of εr = 4." /></a>
+    <h3>slab_rt_flux_monitor.py</h3>
+    <p>The reference run and the slab run, with their two flux planes (y scale stretched).</p>
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/slab_rt_flux_monitor.py">Source on GitHub ↗</a>
+  </section>
+  <section data-rfx="card">
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/nonuniform_patch_demo.py"><img src="/rfx/examples/assets/tutorials/nonuniform-patch-demo.png" loading="lazy" alt="Side view of a patch over a ground plane with the z mesh lines crowded around the substrate, above the Ez probe record over 56 ns." /></a>
+    <h3>nonuniform_patch_demo.py</h3>
+    <p>The graded z mesh around the substrate, and the probe record of the run.</p>
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/nonuniform_patch_demo.py">Source on GitHub ↗</a>
+  </section>
+  <section data-rfx="card">
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/materials_and_dispersion.py"><img src="/rfx/examples/assets/tutorials/materials-and-dispersion.png" loading="lazy" alt="Cut through a square sample that contains the source and the probe, above five Ez records labeled FR4, lossless, lossy, Debye and Lorentz." /></a>
+    <h3>materials_and_dispersion.py</h3>
+    <p>The same sample in five runs, each with a different material, and the probe record of each run.</p>
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/materials_and_dispersion.py">Source on GitHub ↗</a>
+  </section>
+  <section data-rfx="card">
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/run_control_and_fields.py"><img src="/rfx/examples/assets/tutorials/run-control-and-fields.png" loading="lazy" alt="Cut through an open domain with a source and a probe, above three Ez records with their ends marked num_periods, n_steps and until_decay." /></a>
+    <h3>run_control_and_fields.py</h3>
+    <p>Probe records of three runs, with the last sample of each marked: 7, 120 and 720 steps under the three stop rules.</p>
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/run_control_and_fields.py">Source on GitHub ↗</a>
+  </section>
+  <section data-rfx="card">
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/ports_and_sparams_101.py"><img src="/rfx/examples/assets/tutorials/ports-and-sparams-101.png" loading="lazy" alt="Cut through a lumped port in an open domain, above plotted points of the S11 magnitude at 4.5, 5.0 and 5.5 GHz without and with a series RC load." /></a>
+    <h3>ports_and_sparams_101.py</h3>
+    <p>A lumped port and its |S11| at three frequencies, alone and with a series RC load (load not drawn).</p>
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/ports_and_sparams_101.py">Source on GitHub ↗</a>
+  </section>
+  <section data-rfx="card">
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/resonance_harminv.py"><img src="/rfx/examples/assets/tutorials/resonance-harminv.png" loading="lazy" alt="Top view of a closed PEC cavity with a source and a probe, above the Ey ring-down with a dashed line at the time where a second, shorter run ends." /></a>
+    <h3>resonance_harminv.py</h3>
+    <p>The closed cavity and the ring-down of a 2400-step run, with the end time of a second, 600-step run marked.</p>
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/resonance_harminv.py">Source on GitHub ↗</a>
+  </section>
+  <section data-rfx="card">
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/antenna_farfield_pattern.py"><img src="/rfx/examples/assets/tutorials/antenna-farfield-pattern.png" loading="lazy" alt="Cut through a point source inside a far-field box, above its E-plane power pattern at 8 GHz against theta from the z axis, highest at 90 degrees and lowest at 0 and 180 degrees." /></a>
+    <h3>antenna_farfield_pattern.py</h3>
+    <p>The far-field box around a point source acting as a short z-directed dipole, and its E-plane cut at 8 GHz.</p>
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/antenna_farfield_pattern.py">Source on GitHub ↗</a>
+  </section>
+  <section data-rfx="card">
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/patch_antenna_demo.py"><img src="/rfx/examples/assets/tutorials/patch-antenna-demo.png" loading="lazy" alt="Side view of a patch and ground plane inside a far-field box, above the x-z and y-z power patterns at 2.4 GHz against theta, both highest near broadside, theta = 0 degrees." /></a>
+    <h3>patch_antenna_demo.py</h3>
+    <p>The patch inside its far-field box, and the two principal cuts at 2.4 GHz.</p>
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/patch_antenna_demo.py">Source on GitHub ↗</a>
+  </section>
+  <section data-rfx="card">
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/rcs_scattering.py"><img src="/rfx/examples/assets/tutorials/rcs-scattering.png" loading="lazy" alt="Two cuts through the center of a conducting sphere built from grid cells, surrounded by vacuum and an absorber." /></a>
+    <h3>rcs_scattering.py</h3>
+    <p>The sphere as discretized on the grid, in two cuts through its center.</p>
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/rcs_scattering.py">Source on GitHub ↗</a>
+  </section>
+  <section data-rfx="card">
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/artifact_report_demo.py"><img src="/rfx/examples/assets/tutorials/artifact-report-demo.png" loading="lazy" alt="Side and top views of a PEC box containing a substrate, a lumped port at one edge of the substrate and a probe beyond the opposite edge of the substrate." /></a>
+    <h3>artifact_report_demo.py</h3>
+    <p>The model that the script exports without running an FDTD simulation.</p>
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/artifact_report_demo.py">Source on GitHub ↗</a>
+  </section>
+</div>
+
 Six of these scripts are run end to end by a test that checks their output:
 `materials_and_dispersion`, `antenna_farfield_pattern`, `ports_and_sparams_101`,
 `run_control_and_fields`, `rcs_scattering` and `resonance_harminv`. Some of these
@@ -77,6 +149,15 @@ the wrong cells, a run cut off before the field rang down.
 | [`inverse_design/field_observable_shielding.py`](https://github.com/bk-squared/rfx/blob/main/examples/inverse_design/field_observable_shielding.py) | pooling two DFT plane probes into one worst-case leakage objective with `field_softmax` | CPML; plane wave; two DFT planes |
 | [`inverse_design/progressive_demo.py`](https://github.com/bk-squared/rfx/blob/main/examples/inverse_design/progressive_demo.py) | `progressive_optimize` running a design over increasing mesh resolutions. A minimal API demo with a trivial optimum | CPML; point source and probe |
 | [`config/microstrip_thru.yaml`](https://github.com/bk-squared/rfx/blob/main/examples/config/microstrip_thru.yaml) | the YAML front end, run with `rfx run`, `rfx plot` and `rfx export-geometry` | CPML; two 50 Ω wire ports; ground and trace as sheets |
+
+<div data-rfx="cards">
+  <section data-rfx="card">
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/cad_mesh_import_demo.py"><img src="/rfx/examples/assets/tutorials/cad-mesh-import-demo.png" loading="lazy" alt="Top view and x-z cut of a rectangular plate imported from STL and a source above the plate, both in vacuum surrounded by an absorber." /></a>
+    <h3>cad_mesh_import_demo.py</h3>
+    <p>The imported STL plate as meshed, with the source above it.</p>
+    <a href="https://github.com/bk-squared/rfx/blob/main/examples/tutorials/cad_mesh_import_demo.py">Source on GitHub ↗</a>
+  </section>
+</div>
 
 ## Validation scripts are not tutorials
 

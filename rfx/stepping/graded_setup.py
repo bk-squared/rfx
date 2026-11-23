@@ -326,22 +326,22 @@ def _build_nu_scan(
     placeholder table; the source waveform arrays themselves define the
     table length when sources are present.
     """
+    from rfx.stepping.vector_pad import refuse_if_forced
+    refuse_if_forced("graded")
     field_dtype = field_dtype if field_dtype is not None else jnp.float32
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     from rfx.model.materials import kernel_materials, with_components
-    from rfx.geometry.node_tensor import SmoothedEps
-    from rfx.model.tensor_operands import TensorOperands
+    from rfx.model.tensor_operands import TensorOperands, step_tensor
     from rfx.geometry.rasterize_grid import unpadded_high_walls
-    tensor = TensorOperands.of(aniso_eps) if isinstance(aniso_eps, SmoothedEps) else None
+    tensor = step_tensor(materials, TensorOperands.of(aniso_eps))
     materials = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
                                 high_wall=unpadded_high_walls(grid), tensor=tensor)
-    if tensor is not None:
-        aniso_eps = tensor.eps
+    aniso_eps = tensor.eps if tensor is not None else None
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(
-        materials, lane="non-uniform Yee with dispersion/tensor or design-box updates",
-        unsupported=(debye is not None or lorentz is not None
-                     or aniso_eps is not None or design_box is not None))
+        materials, lane="non-uniform Yee with tensor or design-box updates",
+        debye=debye, lorentz=lorentz,
+        unsupported=(aniso_eps is not None or design_box is not None))
     sources = sources or []
     if _realized.ACTIVE is not None:
         _realized.sources(grid, materials, sources, "graded.sources")
@@ -422,9 +422,11 @@ def _build_nu_scan(
 
     state = init_state((grid.nx, grid.ny, grid.nz), field_dtype=field_dtype)
     src_meta = [(s[0], s[1], s[2], s[3]) for s in sources]
-    materials = with_graded_edge_keep(materials, pec_occupancy, pinned_sheet_layout, grid=grid, sources=sources, waveguide_ports=waveguide_ports, dtype=state.ex.dtype, sheet_edge_masks=pec_static_edge_masks, periodic=tuple(a in grid.periodic_axes for a in "xyz"), cells=pec_mask, sheets=pec_sheets, wires=pec_wires)
+    element_edges = tuple((i, m.component, (int(m.i), int(m.j), int(m.k)))
+                          for i, m in enumerate(rlc_metas)) if pinned_sheet_layout else ()
+    materials = with_graded_edge_keep(materials, pec_occupancy, pinned_sheet_layout, grid=grid, sources=sources, waveguide_ports=waveguide_ports, dtype=state.ex.dtype, sheet_edge_masks=pec_static_edge_masks, periodic=tuple(a in grid.periodic_axes for a in "xyz"), cells=pec_mask, sheets=pec_sheets, wires=pec_wires, element_edges=element_edges)
     src_waveforms = drive_table([jnp.array(s[4]) for s in sources], src_meta, n_steps,
-        occupancy=pec_occupancy, sheet_edge_masks=pec_static_edge_masks, keep=materials.edge_keep, periodic=tuple(a in grid.periodic_axes for a in "xyz"))
+        occupancy=pec_occupancy, sheet_edge_masks=pec_static_edge_masks, keep=materials.edge_keep, periodic=tuple(a in grid.periodic_axes for a in "xyz"), dtype=field_dtype)
     prb_meta = [(p[0], p[1], p[2], p[3]) for p in probes]
 
 

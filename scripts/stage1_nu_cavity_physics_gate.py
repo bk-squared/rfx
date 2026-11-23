@@ -30,7 +30,7 @@ With #872's finite-support and pencil-capacity correction, the unchanged gate
 measures 0.0227%: close to the p=0 Yee dispersion's 0.0229% continuum offset.
 The older 0.0144% partly cancelled lattice dispersion with estimator bias;
 it is not a tighter physical discretization result. The short record and
-native control are retained under ``docs/research_notes/issue872/``.
+native control are retained under ``the measurement notes``.
 
 Run:
     python scripts/stage1_nu_cavity_physics_gate.py

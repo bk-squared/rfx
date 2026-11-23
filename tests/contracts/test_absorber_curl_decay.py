@@ -11,9 +11,6 @@ OWNERS = ('plain', 'dielectric', 'debye', 'lorentz', 'mixed')
 FACES = tuple(f'{axis}_{side}' for axis in 'xyz' for side in ('lo', 'hi'))
 LANES = ('uniform_run', 'uniform_forward', 'graded_run', 'graded_forward',
          'distributed_run', 'distributed_graded_run', 'distributed_forward', 'probe_loop')
-# Always on: the six-face rows (scene a, uniform run) and one row per coefficient owner that grows on the base
-# tree (scene b, uniform run). Every other path x owner combination is a sweep and runs weekly; the per-path
-# invariant is pinned always-on by the coefficient comparison (test_absorber_curl_coefficients*.py).
 ALWAYS_ON_B_OWNERS = ('plain', 'debye', 'lorentz', 'mixed')
 CASES = [
     pytest.param('a', 'plain', face, lane,

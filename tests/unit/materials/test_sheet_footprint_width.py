@@ -53,7 +53,6 @@ def _build(arm, width, graded, *, wall_to_wall=False, sources=True,
     dom = (NX * DX, ny * DX, NZ * DX)
     kw = {}
     if graded:
-        # Graded along the line only; the cells across the strip are uniform.
         half = [1.25 * DX] * 8 + [DX] * 40
         kw["dz_profile"] = np.array(half + half[::-1])
     sim = Simulation(freq_max=10e9, domain=dom, dx=DX,
@@ -168,24 +167,18 @@ def _f0_sim(*boxes):
 
 
 def test_end_row_marking_cases():
+    """The seam row carries half of each meeting sheet, giving one continuous strip."""
     from rfx.geometry.csg import Cylinder
-    # A patch free on all four sides: Ex on its y edges, Ey on its x edges.
     ctx = _sheet_ctx(_f0_sim(((2, 3, 5), (7, 8, 5))))
     assert _rows(ctx.end_ex, 1) == [3, 8] and _rows(ctx.end_ey, 0) == [2, 7]
-    # Drawn edges between nodes: the last row is inside the metal, full weight.
     ctx = _sheet_ctx(_f0_sim(((0, 2.5, 5), (10, 7.5, 5))))
     assert ctx.end_ex is None and ctx.end_ey is None
-    # Two sheets meeting on node row 5: the seam row is an end row of both,
-    # so it carries half of each and the pair is one continuous strip.
     ctx = _sheet_ctx(_f0_sim(((0, 2, 5), (10, 5, 5)), ((0, 5, 5), (10, 8, 5))))
     assert _rows(ctx.end_ex, 1) == [2, 5, 8]
-    # One sheet's edge inside another sheet: that row stays at full weight.
     ctx = _sheet_ctx(_f0_sim(((0, 2, 5), (10, 8, 5)), ((0, 5, 5), (10, 8, 5))))
     assert _rows(ctx.end_ex, 1) == [2, 8]
-    # Another normal, by rotation: an x-normal strip free in z carries Ey end rows.
     ctx = _sheet_ctx(_f0_sim(((5, 0, 2), (5, 10, 8))))
     assert _rows(ctx.end_ey, 2) == [2, 8] and ctx.end_ez is None
-    # A curved outline has no drawn face along a node row: weight 1 everywhere.
     sim = _f0_sim()
     sim.add_thin_conductor(Cylinder((5 * DX, 5 * DX, 5 * DX), 3 * DX, 0.0, axis="z"),
                            sigma_bulk=1e4, thickness=THICKNESS, surface_impedance_f0=F0)
@@ -204,9 +197,8 @@ def test_f0_record_reports_the_solved_extent(monkeypatch, graded):
     assert rec["y"].node_range == (1, 9) and rec["y"].cell_range is None
     assert rec["y"].extent_m == pytest.approx(8 * DX, rel=1e-9)
     assert rec["y"].bounds_m == pytest.approx((1 * DX, 9 * DX), rel=1e-9)
-    assert rec["x"].extent_m == pytest.approx(NX * DX, rel=1e-9)      # wall to wall
-    assert rec["z"].extent_m == 0.0                                    # one node plane
-    # The record follows what is solved: full-weight end rows are a cell wider.
+    assert rec["x"].extent_m == pytest.approx(NX * DX, rel=1e-9)
+    assert rec["z"].extent_m == 0.0
     monkeypatch.setattr(thin_conductor, "END_ROW_WEIGHT", 1.0)
     assert axes()["y"].extent_m == pytest.approx(9 * DX, rel=1e-9)
 

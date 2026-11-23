@@ -25,7 +25,6 @@ def test_one_bit_pattern_is_rebuilt_with_the_same_bits_and_not_closed_over(value
     assert arrays == []
     assert out.dtype == value.dtype and out.shape == value.shape
     assert out.tobytes() == np.asarray(value).tobytes()
-    # The rebuild function holds no array of the grid's size.
     cells = [c.cell_contents for c in (rebuild.__closure__ or ())]
     assert not any(isinstance(c, (jax.Array, np.ndarray)) and c.size > 1 for c in cells)
 

@@ -6,7 +6,8 @@ of a standing limitation. The per-subject Tracker contract now lives in
 ``test_known_limitations_tracker.py``; ``scripts/ci/check_known_limitations.py``
 checks PR closures and the weekly governance sweep reads live states.
 
-Keep this inventory in sync when the leader removes or rewrites audited entries.
+Keep this inventory in sync when audited entries are removed or rewritten.
+A closed issue or PR recording a fix, measurement or settled decision is allowed to appear without a citation line.
 """
 from __future__ import annotations
 
@@ -20,121 +21,15 @@ PAGE = REPO_ROOT / "docs" / "guides" / "known_limitations.md"
 README = REPO_ROOT / "README.md"
 SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 
-# Legacy arrow citations, not an assertion that these issues are still OPEN.
-# Edit this set when an audited entry is added or removed; the Tracker gate
-# and weekly sweep enforce live tracking separately.
-# #1101 (the port_aperture_snap advisory naming the wrong source for the
-# cutoff) left on 2026-09-19: the message now READS the built
-# ``cfg.f_cutoff`` and names the profile it came from, pinned by
-# tests/unit/ports/test_port_aperture_rasterization.py's two
-# mode_profile fixtures -- the page's own rule for when an entry goes.
-# The taper entry carries NO citation line on purpose. #1100 (the SMOKE half)
-# closed with the commensurate mesh, and #1122 (the paper lane's published
-# figures) closed with a decision to disclose rather than
-# re-mesh or issue an erratum. The limitation is still real and still belongs
-# on this page, but there is no open work behind it, and an arrow line would
-# present a settled decision as a task. Both numbers sit in
-# RESOLVED_REFERENCES below, which is what this file already uses for a closed
-# issue named for provenance.
-# #726 left the cited set on 2026-09-19. The CONTRADICTION it names (the
-# Z0 guard and preflight disagreeing about the same condition) is closed
-# and pinned: one shared text, embedded by both sites plus the auto-offset
-# resolver, with tests that fail if either site drops it or revives a
-# retired claim. What remains on the page is the underlying LIMITATION --
-# an N-probe fit near a reflector cannot be read -- which is inherent to
-# the method, fully disclosed and gateable on probe_clearance /
-# beta_railed. No open work stands behind it, so the entry carries no
-# arrow and 726 sits in RESOLVED_REFERENCES.
-# #1066 (the waveguide S-parameter lane not continuing a dielectric into
-# its absorber pad) left on 2026-09-20: both of that lane's smoothing
-# sites now call smoothed_shape_pairs, the one implementation the
-# runners use, and tests/unit/sparams/test_waveguide_lane_pad_continuation.py
-# pins the pad -- the page's own rule for when an entry goes.
-# #1070 (a dielectric spanning the declared domain solved with vacuum in one
-# absorber pad) left on 2026-09-20 with its whole section, which it was the
-# only entry in. The arithmetic that bought the unfilled cell is gone
-# (rfx.grid.cells_spanning) and the invariant behind it is asserted at
-# assembly (rfx.geometry.rasterize_grid.assert_declared_span_is_filled), so
-# a structure declared out to a padded face can no longer be rasterized more
-# than the documented one node short of it. Pinned by
-# tests/unit/grid/test_cell_count_ulp_snap.py and
-# tests/unit/geometry/test_declared_span_reaches_padded_face.py.
-# #830 left the cited set on 2026-09-21: the fitted microstrip beta sits ~0.9 %
-# above the closed form, closed as a stated accuracy in the support matrix. The
-# offset is still real and unattributed, so the prose stays without the arrow
-# and 830 sits in RESOLVED_REFERENCES.
-# #838 left the cited set on 2026-09-23: closed as not planned before 2.0.
-# The coax-to-microstrip power over-read remains a standing limitation, with
-# its closed issue named for provenance in RESOLVED_REFERENCES.
-# #1381 left the cited set on 2026-09-30: closed as a stated limit (both the
-# completion of an unresolved pair and the early stop it can end). The two ring-down
-# entries stay as standing limitations, with 1381 in RESOLVED_REFERENCES.
-# The traced-mesh conductor entry leaves with nominal-grid continuation,
-# pinned by test_traced_mesh_conductor_matches_concrete.py.
-# #1181 left on 2026-09-23: the truncated-record gradient limitation remains,
-# and the witness in PR #1186 is opt-in. Both closed numbers are provenance
-# in RESOLVED_REFERENCES, not arrows to open work.
-# #820 left on 2026-09-23: tests/unit/farfield/test_rcs_translation_invariance.py
-# now pins the monostatic RCS spread under whole-cell target translations.
-# #1221 (magnetic faces on distributed and ADI lanes, and the Yee half-cell wall)
-# joined on 2026-09-23; OPEN checked with
-# `gh issue view 1221 --repo bk-squared/rfx --json number,state,url,title,updatedAt`.
-# #1260 (a Debye/Lorentz material anywhere puts the whole grid on the
-# cell-owned E update, so every lumped element loads all three edges at its
-# node) and #1257 (a graded mesh with a dispersive material leaves a port
-# unterminated) joined on 2026-09-24 with the dispersive-lane entry of #1236;
-# both OPEN, checked with `gh issue view <N> --json number,state`.
-# Both left on 2026-09-25 with that entry: #1260's fix builds the Debye/Lorentz
-# coefficients per E component from the edge mean, lumped stamps on their own
-# component (tests/unit/materials/test_dispersive_edge_average.py), and #1257
-# was already CLOSED (PR #1283, tests/unit/nonuniform/test_dispersive_port_load_1257.py)
-# -- `gh issue view 1257 --json state` read CLOSED that day. With the entry gone
-# the page no longer names #1236 either.
-# #1373 (ADI refuses a material interface until 2.1) joined on 2026-10-03 with
-# the "Solver lanes" section; OPEN, checked by the session leader that day.
-# 2026-10-11 (2.0 documentation pass): the ADI-interface entry left with its
-# section -- the former material-interface refusal was covered by tests
-# and recorded in the
-# support matrix's Refused inputs table -- and its #1373 arrow moved to the
-# occupancy entry, whose Tracker is the same open issue. #1501 left with the
-# weekly-lane entry: a red scheduled lane is not a defect a user meets (lead
-# decision 2026-10-11); #1501 was still OPEN that day.
-# #1812 (an open oblique method-B plane wave launches a modulated Gaussian whatever
-# pulse is declared) joined on 2026-10-17; OPEN, checked with
-# `gh issue view 1812 --repo bk-squared/rfx --json number,state`.
-# #1812 left with the declared-pulse fix and its always-on contract pins.
-# #2086 (PMC wall on two x86 CPU devices) left when the multi-device uniform
-# step became the one-device step per slab; test_pmc_ghost_coefficient.py pins
-# 1- and 2-device bit identity on x86 with no xfail.
 CITED_ISSUES = frozenset({737, 1373, 1512, 2150, 2473})
 
-# Numbers the prose names for provenance rather than as open work: a CLOSED
-# issue or PR recording a fix, measurement or settled decision. These are
-# allowed to appear without a citation line;
-# a number that is neither cited nor listed here fails the test below, which is
-# what makes the exception a decision rather than a gap.
 RESOLVED_REFERENCES = frozenset({726, 830, 838, 1100, 1122, 1181, 1186, 1255, 1381, 1419,
                                  1524, 1571, 1761})
-# #1221 (boundary campaign) closed 2026-10-17 with its 2.0 parts in main; its three entries are now
-# accepted limitations pinned by their refusal tests, so it left CITED_ISSUES.
-# #1524 was folded into #1373 (2026-10-07); #1571 (conductivity-gradient mechanism)
-# and #1761 (PMC on the multi-device runners) are merged PRs named for provenance.
-# #1563 left with the CPU padded write-back entry on 2026-10-21: the spread is
-# gone since #1621 and pinned by test_padded_writeback_cpu_cross_trace.py.
-# #1419 (weak-port ring-down gradient) is closed by the PR that added the
-# identification-probe option; the entry stays because port-only identification
-# is still the default, and names the issue as provenance.
-# #1100 and #1122 join it together: the taper entry names both to record which
-# half was fixed and what was decided about the other, and both are closed.
 
-# The page's citation form: a line that is an arrow, then a link whose text is
-# `#N` and whose target is that issue.
 CITATION_RE = re.compile(
     r"^→ \[#(\d+)\]\(https://github\.com/bk-squared/rfx/issues/(\d+)\)$",
     re.MULTILINE,
 )
-# Any `#N` anywhere in the prose, to catch an entry that names an issue in a
-# sentence without carrying it into a citation line.
 INLINE_RE = re.compile(r"(?<![\w/])#(\d+)\b")
 
 
@@ -143,14 +38,11 @@ def _page() -> str:
     return PAGE.read_text(encoding="utf-8")
 
 
-# The pinned set is checked in two halves. An entry that disappears while its
-# issue is open hides a defect from users, and the documentation rule
-# keeps that one blocking. A new citation not yet added to the set
-# is bookkeeping, and runs with the other documentation checks.
 @pytest.mark.reads_docs_for_gate(reason=(
     "a known-limitations entry must stay while its defect is open: the one page "
     "a PR must keep right"))
 def test_every_pinned_issue_keeps_its_entry():
+    """An entry that disappears while its issue is open hides a defect from users."""
     cited = {int(text) for text, _ in CITATION_RE.findall(_page())}
     missing = CITED_ISSUES - cited
     assert not missing, (
@@ -163,6 +55,7 @@ def test_every_pinned_issue_keeps_its_entry():
 
 @pytest.mark.docs_consistency
 def test_the_page_cites_no_issue_outside_the_pinned_set():
+    """A new citation not yet added to the set is bookkeeping."""
     cited = {int(text) for text, _ in CITATION_RE.findall(_page())}
     added = cited - CITED_ISSUES
     assert not added, (
@@ -193,8 +86,6 @@ def test_no_entry_names_an_issue_it_does_not_cite():
     """
     page = _page()
     cited = {int(text) for text, _ in CITATION_RE.findall(page)}
-    # Tracker metadata is governed by the per-entry contract, not this legacy
-    # arrow/provenance inventory. New live trackers need not add arrow links.
     tracked = {int(n) for line in page.splitlines() if line.startswith("Tracker: #")
                for n in INLINE_RE.findall(line)}
     prose_only = {int(n) for n in INLINE_RE.findall(page)} - cited - tracked - RESOLVED_REFERENCES

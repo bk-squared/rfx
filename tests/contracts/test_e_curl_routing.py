@@ -12,7 +12,7 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.grid import Grid
 
 from rfx.core import yee
-import rfx.stepping.yee as stepping_yee  # the moved E kernels read curl_h here
+import rfx.stepping.yee as stepping_yee
 from rfx.boundaries import upml
 import rfx.measurement.graded_wire as graded_wire
 from tests.contracts.curl_cases import model
@@ -42,7 +42,9 @@ def _max_relative_error(actual, expected):
 
 @pytest.mark.parametrize("branch", ["plain", "aniso", "inverse", "fast_e", "fast_he", "box", "upml"])
 def test_e_kernels_match_plain_pmc_update(branch):
+    """The kernel-family bar allows arithmetic order differences between adapters."""
     state, mats, boundary = kernel_inputs()
+    assert all(np.all(np.asarray(getattr(state, component)) == 0) for component in ("ex", "ey", "ez")), "Initial E must be zero for the unchanged H half-step"
     dt, dx = 1e-12, 1e-3
     high_wall = (False, False, False)
     if branch == "upml":
@@ -67,17 +69,13 @@ def test_e_kernels_match_plain_pmc_update(branch):
             1/mats.eps_r, 1/mats.eps_r, dt, dx, boundary=boundary, high_wall=high_wall),
         "fast_e": lambda: stepping_yee.update_e_fast(state, coeffs.ca_ex, coeffs.ca_ey,
             coeffs.ca_ez, coeffs.cb_ex, coeffs.cb_ey, coeffs.cb_ez, boundary=boundary),
-        # E is zero initially, so the preceding H half-step leaves H unchanged.
         "fast_he": lambda: yee.update_he_fast(state, coeffs, boundary=boundary),
-        # The grid-wide update above is the first update; redo the entire box.
         "box": lambda: stepping_yee.update_e_box(expected, state, (0, 5, 0, 4, 0, 3),
             ca, cb, dx, boundary=boundary),
     }
     if branch == "upml":
         calls[branch] = lambda: upml.apply_upml_e(state, upml.init_upml(grid, mats), boundary=boundary)
     actual = calls[branch]()
-    # Repository kernel-family bar (arithmetic order differs between adapters):
-    # tests/unit/geometry/test_update_e_aniso_inv.py:69-86; Design A28.
     for component in ("ex", "ey", "ez", "hx", "hy", "hz"):
         got, want = np.asarray(getattr(actual, component)), np.asarray(getattr(expected, component))
         error = _max_relative_error(got, want)
@@ -127,7 +125,6 @@ def test_uniform_port_current_matches_curl_area(component, idx, periodic):
     expected = float(curl["xyz".index(component[1])][idx]) * dx**2
     row = f"uniform/{component}/{idx}/{periodic[0]}"
     _sample_equal(row + "/ampere", _ampere_loop(state, idx, component, dx, periodic, boundary), expected)
-    # Single-device steps and public port_current sample these compiled owners.
     _sample_equal(row + "/projector", project(state, table)[1], expected)
     if idx == (0, 0, 0):
         alternate = yee.curl_h(state.hx, state.hy, state.hz, dx, (False,)*3,
@@ -173,14 +170,13 @@ def _port_model(mesh, feature):
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 @pytest.mark.parametrize("feature", ["lumped", "wire"])
 def test_port_records_match_forward_and_final_ampere_loop(mesh, feature):
+    """The x_lo PMC image is odd for tangential H."""
+    TABLE_LOOP_PEAK_ULPS = 9
     sim = _port_model(mesh, feature)
     grid = sim.freeze_mesh()
     bins = np.array([8e9, 12e9, 16e9], dtype=np.float32)
     run = sim.run(n_steps=200, skip_preflight=True, compute_s_params=True, s_param_freqs=bins)
     forward = sim.forward(n_steps=200, skip_preflight=True, checkpoint=False, port_s11_freqs=bins)
-    # Existing pair bars: tests/contracts/test_port_projector.py:243 (S11),
-    # tests/contracts/test_run_port_records.py:39 (uniform/graded lumped/wire records).
-    # Both compare exactly; keep that bar rather than introducing a looser one.
     assert np.isfinite(np.asarray(run.s_params)).all()
     assert np.isfinite(np.asarray(forward.s_params)).all()
     assert np.max(np.abs(np.asarray(run.s_params))) > 0
@@ -191,29 +187,20 @@ def test_port_records_match_forward_and_final_ampere_loop(mesh, feature):
     for lane, result in (("run", run), ("forward", forward)):
         record, = result.sparam_time_records
         assert np.max(np.abs(np.asarray(record["I"]))) > 0
-        # Ez contour at the port midpoint. These indices are read from the
-        # realized public grid, not from the measurement table being checked.
         position = (0., 3e-3, (3 if feature == "wire" else 2)*1e-3)
         idx = tuple(int(grid.index_of(a, p)) for a, p in enumerate(position))
         i, j, k = idx
         assert i == 0, (grid.shape, idx)
-        # ForwardResult publishes records but no final state. Both records
-        # are checked against the run's final H state.
         hx, hy = np.asarray(run.state.hx), np.asarray(run.state.hy)
-        # The x_lo PMC image is odd for tangential H: form the ghost
-        # explicitly, without consulting a curl helper or measurement owner.
         hy_back = -hy[idx]
         hx_back = 0. if j == 0 else hx[i, j-1, k]
-        # Compute dual edge lengths from realized primal cells, independently.
         widths = [np.asarray(grid.cells(a)) for a in (0, 1)]
         dx, dy = [float(w[p] if p == 0 else (w[p-1] + w[p])*.5)
                   for w, p in zip(widths, (i, j))]
         terms = np.array([hy[idx]*dy, -hy_back*dy, -hx[idx]*dx, hx_back*dx], dtype=np.float32)
         expected = float(np.sum(terms, dtype=np.float32))
         actual = float(record["I"][-1])
-        # Existing table-versus-loop rounding bar:
-        # tests/contracts/test_port_projector.py:94 (9 float32 peak ULP).
-        bar = 9*float(np.spacing(np.float32(abs(expected))))
+        bar = TABLE_LOOP_PEAK_ULPS*float(np.spacing(np.float32(abs(expected))))
         zero_ghost_terms = terms.copy()
         zero_ghost_terms[1] = 0.
         zero_ghost_loop = float(np.sum(zero_ghost_terms, dtype=np.float32))

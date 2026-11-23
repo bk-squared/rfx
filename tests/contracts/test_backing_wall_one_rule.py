@@ -1,4 +1,6 @@
-"""1549: independently declared backing faces and run/forward kernel identity."""
+"""1549: independently declared backing faces and run/forward kernel identity.
+Entry-specific observer lists are not boundary operators.
+"""
 import rfx.stepping.uniform_loop as uniform_loop
 from contextlib import ExitStack
 from dataclasses import fields, is_dataclass
@@ -15,14 +17,11 @@ from rfx.boundaries.depths import Kind
 from rfx.boundaries.model import realize
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
-# Classes W/R remain separate rows so a leader can explicitly defer either.
 NAMED_EXCEPTIONS = {}
 CASES = ('absorbing', 'mixed', 'pmc', 'periodic', 'asymmetric',
          'plane', 'closed_box', 'W-guide')
 PATHS = ('uniform', 'graded', 'distributed-uniform', 'distributed-graded')
 ALL_FACES = frozenset(f'{a}_{s}' for a in 'xyz' for s in ('lo', 'hi'))
-# Entry-specific observer lists are not boundary operators. These are the
-# exclusions from the survey's broad kernel-context capture, by exact name.
 MONITOR_EXCLUSIONS = ('prb_meta', 'dft_meta', 'flux_meta', 'waveguide_meta',
                       'wire_sparam_meta', 'wire_refplane_meta', 'lumped_sparam_meta')
 BOUNDARY_INPUTS = ('periodic', 'pec_axes', 'pec_faces_frozen', 'pmc_faces_frozen',
@@ -64,8 +63,6 @@ def model(case, path='uniform'):
 def expected_faces(sim, grid, case, path):
     record = realize(sim.boundary_model(), grid)
     periodic = {a for a, yes in zip('xyz', sim._periodic_flags()) if yes}
-    # The plane-wave declaration chooses a wrapped transverse pair on the
-    # uniform path; graded paths install no periodic stencil (Addendum 5e).
     if case == 'plane' and not path.endswith('graded'):
         periodic.update('yz')
     return frozenset(f.name for f in record.faces
@@ -109,7 +106,7 @@ def closure_values(fun):
         try:
             values[name] = cell.cell_contents
         except ValueError:
-            pass  # inactive branch's uninitialized cell
+            pass
     return values
 
 
@@ -156,29 +153,21 @@ def capture(sim, entry, path, invoke=None):
 
     def factory(ctx, *args, **kwargs):
         captured.update(grid=ctx.grid, faces=ctx.pec_faces_frozen, backend='uniform')
-        # The conformal weights the step reads ride on the realized material
-        # model's tensor operands (M4b), not on the context itself.
         tensor = ctx.materials.components.tensor
         held = {'conformal_weights': tensor.conformal_weights if tensor else None}
         captured['boundary'] = {name: freeze(held[name] if name in held else getattr(ctx, name))
                                 for name in BOUNDARY_INPUTS}
-        # Capture the shared factory's derived absorber/material boundary
-        # coefficients too; this builds invariants, never advances fields.
         invariants = uniform_loop.core_step_invariants(ctx)
         captured['invariants'] = {k: freeze(v) for k, v in invariants.items() if k != 'ctx'}
         raise Captured
 
     def nu_factory(*args, **kwargs):
         result = nu_original(*args, **kwargs)
-        # The graded step is composed from stages (S3-2 stage B); read the set its wall stage applies.
         wall_stage = closure_values(stage(result.step_fn_inv, 'pec'))
         captured.update(grid=args[0], faces=wall_stage['ctx']._pec_faces_frozen, backend='graded')
         raise Captured
 
     def wrapped_factory(*args, **kwargs):
-        # The wrapped multi-device step (#1776, plain CPML since #1402 item 5) rebuilds
-        # the one-device graded step per slab from the context wrap() closes over.
-        # Build that step from that context and read the faces its wall stage applies.
         from rfx.stepping.graded import make_graded_step
         advance = wrapped_original(*args, **kwargs)
         seen, todo, contexts = set(), [advance], []
@@ -198,15 +187,8 @@ def capture(sim, entry, path, invoke=None):
         raise Captured
 
     def distributed_factory(fun=None, *args, **kwargs):
-        # Both distributed runners build their complete step closure before
-        # handing the driver to jit. Stop at that builder boundary, before
-        # even tracing a field update. The recorded free variable is the
-        # actual pec_faces argument of the CPML step's wall application.
         if fun is not None and fun.__module__ == 'rfx.stepping.slab_graded_legacy_loop' and fun.__name__ == 'run_fn':
             frame = inspect.currentframe().f_back
-            # The step passes the runner's e_wall_faces (#1221 B4). Resolve it inside
-            # the unmodified wall factory and stop at its shard-map builder;
-            # no state is read and no field operation is traced or executed.
             from rfx.runners.distributed_nu import _apply_pec_face_nu_shmap
             from rfx.stepping import slab_walls as walls
             assert 'grid' in captured
@@ -318,18 +300,13 @@ def tube():
 
 
 def test_issue_probe_records_equal():
+    """The cross-trace bar alone does not see the defect: over 600 steps an earlier unbacked forward() differed by 8.3e-07 against a record peak of 1.40 (bar 1.07e-06)."""
     records = [np.asarray(getattr(tube(), entry)(n_steps=600, skip_preflight=True,
                                                checkpoint=False).time_series)
                for entry in ('run', 'forward')]
     assert records[0].dtype == records[1].dtype
-    # run() against forward() is the same physics under another trace: a per-step record may differ by the
-    # cross-trace bar (9 float32 ULP at the record's peak), not more. That bar alone does not see the defect: over
-    # 600 steps the unbacked forward() differed by 8.3e-07 against a record peak of 1.40 (bar 1.07e-06), all of it
-    # on the second probe, which sits on the x_hi conducting plane.
     from tests.contracts.path_equivalence.comparison import compare
     compare(records[0], records[1], record='1549 probes, run vs forward', kind='step', measurements=[])
-    # The witness: tangential E on the conducting plane is exactly zero on every entry (nonzero on the base tree's
-    # forward()). The 7000-step pulse test below is the other witness (post-pulse peak 9.8e5 on the base tree).
     for entry, record in zip(('run', 'forward'), records):
         assert np.count_nonzero(record[:, 1]) == 0, f'{entry}: Ez on the x_hi conducting plane is not zero'
 
@@ -368,6 +345,7 @@ def test_class_R_oblique_calculator():
         theta_inc=20., polarization='ez', theta_obs=np.array([np.pi/2]),
         phi_obs=np.array([np.pi]), freqs=np.array([5e9]), cpml_layers=6, tfsf_margin=6))
     record = realize(sim.boundary_model(), got['grid'])
+    METHOD_B_WRAPPED_AXIS = 'z'
     expected = frozenset(f.name for f in record.faces if f.kind in (Kind.PEC, Kind.ABSORBER)
-                         and f.name[0] != 'z')  # Method B wraps only z.
+                         and f.name[0] != METHOD_B_WRAPPED_AXIS)
     assert got['faces'] == expected

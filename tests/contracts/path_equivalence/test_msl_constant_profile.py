@@ -78,14 +78,15 @@ def _measurement(name, reference, actual, kind):
 
 @pytest.mark.parametrize("mode", ["laplace", "uniform"])
 def test_msl_constant_profile(mode, monkeypatch, capsys):
+    """The uniform and graded host CFL calculations can differ below the float32 stepping precision."""
     uniform, s_uniform, uniform_releases = _solve(mode, False, monkeypatch)
     graded, s_graded, graded_releases = _solve(mode, True, monkeypatch)
     measurements = []
     metrics = []
     for drive, (reference, actual) in enumerate(zip(uniform, graded, strict=True)):
         assert reference.grid.shape == actual.grid.shape
-        # Compare the metrics at the float32 stepping precision; the two
-        # host CFL calculations can differ below that representation.
+
+
         np.testing.assert_array_equal(np.float32(reference.dt), np.float32(actual.dt))
         metrics.append(dict(drive=drive, uniform_dt=float(reference.dt),
                             graded_dt=float(actual.dt), cell_differences=[]))
@@ -93,8 +94,8 @@ def test_msl_constant_profile(mode, monkeypatch, capsys):
             ref_cells, got_cells = reference.grid.cells(axis), actual.grid.cells(axis)
             np.testing.assert_array_equal(ref_cells, got_cells)
             metrics[-1]["cell_differences"].append(float(np.max(np.abs(ref_cells - got_cells))))
-        # Independently enumerate every V-plane and both sides of each H-plane
-        # consumed by the S extraction, for both ports and both driven runs.
+
+
         names = {
             f"_msl_run{drive}_p{port}_{component}"
             for port in range(2)
@@ -105,7 +106,7 @@ def test_msl_constant_profile(mode, monkeypatch, capsys):
             ref, got = reference.dft_time_records[name], actual.dft_time_records[name]
             assert ref.shape[0] == got.shape[0] == STEPS
             measurements.append(_measurement(name, ref, got, "step"))
-        # Include the point witnesses the port path also retains.
+
         for probe in range(reference.time_series.shape[1]):
             measurements.append(_measurement(
                 f"drive{drive}.witness{probe}", reference.time_series[:, probe],
@@ -124,7 +125,7 @@ def test_msl_constant_profile(mode, monkeypatch, capsys):
                                 graded=list(map(len, graded_releases))))))
     failures = [row for row in measurements if not row["passed"]]
     assert not failures, json.dumps(failures, indent=2)
-    # Release metadata controls exclusion of design metal around the feed.
-    # Compare the actual kernel products with the uniform runner's products.
+
+
     assert all(uniform_releases)
     assert graded_releases == uniform_releases

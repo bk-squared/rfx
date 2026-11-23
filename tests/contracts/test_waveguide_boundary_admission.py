@@ -130,9 +130,9 @@ def test_declared_absorber_pads_and_pec_default_walls():
 
 
 def test_kind_readers_keep_zero_pad_electric_backings():
+    """The multi-device run backs every electric face, including the conducting plane behind an absorber."""
     import jax
     import numpy as np
-    from rfx.boundaries.axes import hi_face_is_wall
     from rfx.boundaries.cpml import init_cpml
     from rfx.boundaries.depths import distributed_electric_walls
     from rfx.boundaries.model import electric_faces, magnetic_faces
@@ -140,17 +140,11 @@ def test_kind_readers_keep_zero_pad_electric_backings():
     new = guide({"x": "cpml", "y": "pec", "z": "pec"})
     grids = (old._build_grid(), new._build_grid(), guide()._build_grid())
     coefficients = []
-    for grid, walls, axes in zip(grids, ((False, False, False), (False, True, True),
-                                       (False, True, True)), ("xyz", "x", "x")):
-        # Tracker 1549: the multi-device run backs every electric face, the absorbing x faces included
-        # (the conducting plane behind an absorber), as the single-device run does.
+    for grid, axes in zip(grids, ("xyz", "x", "x")):
         assert distributed_electric_walls(grid) == frozenset(
             ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"))
-        assert tuple(hi_face_is_wall(grid, axis) for axis in "xyz") == walls
         assert grid.cpml_axes == axes
         params = init_cpml(grid)[0]
-        # Addendum 2 keeps legacy profiles on excluded axes; those profiles
-        # are never applied. Compare every profile this guide actually uses.
         coefficients.append(jax.tree_util.tree_leaves((
             params.x_lo, params.x_hi, params.magnetic.x_lo, params.magnetic.x_hi)))
     for actual in coefficients[1:]:
@@ -272,6 +266,7 @@ def test_transformed_explicit_guide_is_refused(skip, transform):
 
 @pytest.mark.parametrize("include_ports", [False, True])
 def test_low_level_run_keeps_simulation_admission(include_ports):
+    """The grid must retain its declaration's refusal after the simulation is deleted."""
     import jax.numpy as jnp
     from rfx import run
     sim = guide("cpml")
@@ -279,7 +274,7 @@ def test_low_level_run_keeps_simulation_admission(include_ports):
     materials = sim._assemble_materials(grid)[0]
     cfg = sim._build_waveguide_port_config(sim._waveguide_ports[0], grid,
                                           jnp.asarray([8e9]), 8)
-    del sim  # the grid must retain its declaration's refusal
+    del sim
     with pytest.raises(ValueError) as caught:
         run(grid, materials, 8, waveguide_ports=[cfg] if include_ports else [])
     assert str(caught.value) == (

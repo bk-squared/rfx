@@ -76,17 +76,15 @@ def test_ad_memory_argument_error_propagates():
 def test_ntff_pec_overlap_rejects():
     """NTFF face crossing a PEC bbox must raise an error."""
     sim = _sane_sim()
-    # PEC waveguide-like wall spanning z = 10..40 mm, large xy extent
     cell = C / 5e9 / 20.0
     sim.add(Box((2 * cell, 2 * cell, 3 * cell), (12 * cell, 12 * cell, 14 * cell)),
                      material="pec")
-    # NTFF z_lo=24mm sits strictly inside the PEC z-range (10..40mm)
+    assert 3 * cell < 0.024 < 14 * cell, 'The 24 mm NTFF face must lie strictly inside the PEC z bounds.'
     sim.add_ntff_box(
         corner_lo=(0.010, 0.010, 0.024),
         corner_hi=(0.030, 0.030, 0.035),
         n_freqs=4,
     )
-    # Either raises on strict=True or shows an ERROR entry in the report
     with pytest.raises(ValueError, match="NTFF face"):
         sim.preflight(strict=True)
 
@@ -97,13 +95,13 @@ def test_ntff_pec_overlap_rejects():
 def test_ntff_near_field_gap_warns():
     """NTFF box 2 cells above a source should warn about λ/4 gap."""
     freq_max = 5e9
-    dx = C / freq_max / 20.0  # 3 mm
+    dx = C / freq_max / 20.0
     sim = Simulation(freq_max=freq_max, domain=(0.04, 0.04, 0.04),
                      boundary="cpml", cpml_layers=8, dx=dx)
     src_z = 0.020
     sim.add_port((0.020, 0.020, src_z), "ez")
     sim.add_probe((0.025, 0.020, src_z), "ez")
-    # NTFF z_lo only 2 cells above the source — well below λ/4
+    assert 2 * dx < C / freq_max / 4, 'The two-cell NTFF gap must be below a quarter wavelength.'
     sim.add_ntff_box(
         corner_lo=(0.010, 0.010, src_z + 2 * dx),
         corner_hi=(0.030, 0.030, src_z + 3 * dx),
@@ -122,7 +120,6 @@ def test_ad_memory_estimate_reasonable():
     """
     freq_max = 3e9
     dx = C / freq_max / 20.0
-    # Use a small physical domain to land at ~40 cells
     extent = 40 * dx
     sim = Simulation(freq_max=freq_max, domain=(extent, extent, extent),
                      boundary="cpml", cpml_layers=6, dx=dx)
@@ -133,7 +130,6 @@ def test_ad_memory_estimate_reasonable():
     assert isinstance(est_small, AD_MemoryEstimate)
     assert est_small.forward_gb > 0
     assert 0 < est_small.ad_checkpointed_gb < 10.0
-    # checkpoint ≪ full when n_steps is large
     est_big = sim.estimate_ad_memory(10000, available_memory_gb=40.0)
     assert est_big.ad_full_gb > 5 * est_big.ad_checkpointed_gb
 
@@ -150,28 +146,23 @@ def test_preflight_passes_on_clean_setup():
     Bumped to 10 GHz / 60 mm cube so λ/2 = 15 mm and a real
     1-cell-margin NTFF box fits clear of CPML and clear of the
     near field on every face.
+    At 10 GHz, every NTFF face is at least 17 mm from the source, beyond the 15 mm half-wavelength.
     """
     freq_max = 10e9
-    dx = C / freq_max / 20.0   # 1.5 mm
-    extent = 0.060             # 60 mm cube; CPML 8·dx = 12 mm, so the
-                                # CPML-free interior is [12, 48] mm.
+    dx = C / freq_max / 20.0
+    extent = 0.060
     sim = Simulation(freq_max=freq_max, domain=(extent, extent, extent),
                      boundary="cpml", cpml_layers=8, dx=dx)
-    # Ground plane well resolved (xy = 24 cells, z = 8 cells PEC volume).
     sim.add(Box((0.012, 0.012, 0.012), (0.048, 0.048, 0.024)),
                      material="pec")
-    # Source 2 cells above GP, clear of CPML on every face.
     sim.add_port((0.030, 0.030, 0.027), "ez")
     sim.add_probe((0.032, 0.030, 0.027), "ez")
-    # NTFF box: λ_min = 30 mm at 10 GHz → λ/2 = 15 mm.  Every face
-    # sits ≥ 17 mm from the source, well above both λ/4 and λ/2.
     sim.add_ntff_box(
         corner_lo=(0.013, 0.013, 0.044),
         corner_hi=(0.047, 0.047, 0.047),
         n_freqs=4,
     )
     issues = sim.preflight(strict=False)
-    # Filter to errors/NTFF/resolution issues that this test guards.
     bad = [s for s in issues
            if s.startswith("ERROR:")
            or "NTFF face" in s
@@ -201,9 +192,6 @@ def test_waveguide_resolution_warns():
     sim.add_port((0.015, 0.020, 0.025), "ez")
     sim.add_probe((0.018, 0.020, 0.025), "ez")
     issues = sim.preflight(strict=False)
-    # P1.5 wording was reworded from "under-resolved" to "Need ≥10 for
-    # phase-accurate propagation"; pin the substantive content
-    # (dielectric + cells/λ_eff threshold) rather than the old wording.
     assert any(
         "dielectric" in s
         and ("cells per λ_eff" in s or "phase-accurate" in s)
@@ -211,9 +199,6 @@ def test_waveguide_resolution_warns():
     ), "Expected a dielectric resolution warning: " + "\n".join(issues)
 
 
-# ---------------------------------------------------------------------------
-# Issue #303: run() advisory tier + honest summary + probe exclusion
-# ---------------------------------------------------------------------------
 
 def _pec_overlap_sim(*, aligned=False):
     """The test_ntff_pec_overlap_rejects config, reused for tier tests."""
@@ -239,14 +224,11 @@ def test_advisory_tier_keeps_gap_warning_drops_pec_error():
     structural error stays an inverse-design (forward/optimize/explicit
     preflight) gate.
     """
-    # PEC-overlap config: full tier errors, advisory tier must not.
     issues_adv = _pec_overlap_sim(aligned=True).preflight(check_ntff="advisory")
     assert not any("PEC" in s and "NTFF face" in s for s in issues_adv), (
         "advisory tier must not run the PEC-overlap error check: "
         + "\n".join(issues_adv))
 
-    # λ/4-gap config (from test_ntff_near_field_gap_warns): advisory tier
-    # must still surface the near-field advisory.
     freq_max = 5e9
     dx = C / freq_max / 20.0
     sim = Simulation(freq_max=freq_max, domain=(0.04, 0.04, 0.04),
@@ -284,14 +266,12 @@ def test_run_auto_preflight_surfaces_ntff_advisories():
     )
     with pytest.warns(UserWarning, match=r"\[run\] preflight found"):
         result = sim.run(n_steps=3)
-    assert result is not None  # non-blocking: the run completed
+    assert result is not None
 
 
 def test_run_does_not_hard_fail_on_ntff_pec_overlap():
     """The PEC-overlap ERROR stays off run()'s tier (historical contract)."""
     sim = _pec_overlap_sim(aligned=True)
-    # Must not raise PreflightConfigError/ValueError from preflight; other
-    # advisories (if any) surface as UserWarning, which we tolerate here.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         result = sim.run(n_steps=3)
@@ -311,7 +291,7 @@ def test_probe_on_ntff_face_is_not_a_culprit():
     sim = Simulation(freq_max=freq_max, domain=domain, boundary="cpml",
                      cpml_layers=8, dx=C / freq_max / 20.0)
     sim.add_port((0.010, 0.060, 0.060), "ez")
-    sim.add_probe((0.045, 0.060, 0.060), "ez")  # exactly on the x_lo face
+    sim.add_probe((0.045, 0.060, 0.060), "ez")
     sim.add_ntff_box(
         corner_lo=(0.045, 0.045, 0.045),
         corner_hi=(0.075, 0.075, 0.075),
@@ -326,6 +306,7 @@ def test_probe_on_ntff_face_is_not_a_culprit():
 def test_zero_issue_summary_line_is_honest(capsys):
     """The all-clear line states which NTFF tier actually ran (#303)."""
     def _clean_sim():
+        """A radius-less wire port draws wire_port_no_radius, preventing a fully clean report."""
         from rfx.sources.sources import GaussianPulse
         sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02),
                          dx=0.02 / 15, boundary="cpml", cpml_layers=8)
@@ -333,8 +314,6 @@ def test_zero_issue_summary_line_is_honest(capsys):
                      impedance=50.0,
                      waveform=GaussianPulse(f0=5e9, bandwidth=0.9),
                      extent=0.004,
-                     # A radius-less wire port draws wire_port_no_radius;
-                     # this fixture pins a fully clean report.
                      radius=0.1e-3)
         return sim
 
@@ -348,9 +327,6 @@ def test_zero_issue_summary_line_is_honest(capsys):
     assert "NTFF checks skipped" in capsys.readouterr().out
 
 
-# ---------------------------------------------------------------------------
-# Issue #314: wire-port MIDPOINT V/I probe cell inside PEC
-# ---------------------------------------------------------------------------
 
 def _microstrip_sim(port_extent_m: float,
                     trace_z_lo_m: float = 1.0e-3,
@@ -406,9 +382,6 @@ def test_wire_midpoint_in_gap_does_not_warn():
         "warning expected: " + "\n".join(hits))
 
 
-# ---------------------------------------------------------------------------
-# Issue #319: non-midpoint wire-port extent cells inside PEC (dead cells)
-# ---------------------------------------------------------------------------
 
 def test_wire_dead_extent_cell_warns_with_live_count():
     """The #313 geometry: extent=1.5mm -> 3 edges (centers 0.25/0.75/1.25

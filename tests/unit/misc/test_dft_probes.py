@@ -2,6 +2,7 @@
 
 Validates that running DFT accumulation matches post-hoc FFT of stored
 time series, ensuring correct frequency-domain field extraction.
+Domain lengths written as ``11 * (299792458.0 / 5e9 / 20.0)`` or ``17 * (299792458.0 / 8e9 / 20.0)`` are whole numbers of cells of dx, so their solved domains equal the declared ones.
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -21,19 +22,19 @@ from rfx.probes.probes import (
 
 
 def test_dft_point_probe_matches_fft():
-    """DFT probe at a point should match post-hoc FFT of stored time series."""
-    grid = Grid(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    """DFT probe at a point should match post-hoc FFT of stored time series.
+    The electric-field DFT time is (step + 1) * dt for zero-based sample steps.
+    """
+    grid = Grid(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)
     materials = init_materials(grid.shape)
     state = init_state(grid.shape)
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
     src_pos = (0.015, 0.015, 0.015)
 
-    # Monitor position (offset from source)
     mon_pos = (0.02, 0.02, 0.02)
     freqs = jnp.linspace(1e9, 5e9, 20)
 
-    # Store time series for post-hoc FFT comparison
     n_steps = grid.num_timesteps(num_periods=15)
     probe = init_dft_probe(grid, mon_pos, "ez", freqs, dft_total_steps=n_steps)
     time_series = []
@@ -52,18 +53,13 @@ def test_dft_point_probe_matches_fft():
     time_series = np.array(time_series)
     dt = grid.dt
 
-    # Post-hoc DFT at same frequencies.
-    # update_dft_probe uses state.step which is already incremented by update_e,
-    # so the DFT time is (step + 1) * dt, not step * dt.
     freqs_np = np.array(freqs)
     t_arr = (np.arange(n_steps) + 1) * dt
     reference_dft = np.zeros(len(freqs_np), dtype=complex)
     for fi, f in enumerate(freqs_np):
         reference_dft[fi] = np.sum(time_series * np.exp(-1j * 2 * np.pi * f * t_arr)) * dt
 
-    # Compare
     probe_result = np.array(probe.accumulator)
-    # Normalize for comparison (both should be nearly identical)
     for fi in range(len(freqs_np)):
         if abs(reference_dft[fi]) > 1e-20:
             ratio = abs(probe_result[fi]) / abs(reference_dft[fi])
@@ -78,7 +74,7 @@ def test_dft_point_probe_matches_fft():
 
 def test_dft_plane_probe_matches_point():
     """DFT plane probe should match point DFT probe at corresponding locations."""
-    grid = Grid(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0), 11 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)
     materials = init_materials(grid.shape)
     state = init_state(grid.shape)
 
@@ -88,17 +84,14 @@ def test_dft_plane_probe_matches_point():
     freqs = jnp.linspace(2e9, 5e9, 10)
     n_steps = grid.num_timesteps(num_periods=12)
 
-    # Plane probe: x-normal plane at x_index
     x_index = grid.nx // 2 + 2
     plane_probe = init_dft_plane_probe(
         axis=0, index=x_index, component="ez",
         freqs=freqs, grid_shape=grid.shape, dft_total_steps=n_steps,
     )
 
-    # Point probe at same x, at (y_mid, z_mid)
     y_mid = grid.ny // 2
     z_mid = grid.nz // 2
-    # Convert grid index to physical position for init_dft_probe
     point_pos = (
         (x_index - grid.cpml_layers) * grid.dx,
         (y_mid - grid.cpml_layers) * grid.dx,
@@ -116,7 +109,6 @@ def test_dft_plane_probe_matches_point():
         plane_probe = update_dft_plane_probe(plane_probe, state, grid.dt)
         point_probe = update_dft_probe(point_probe, state, grid.dt)
 
-    # Extract plane probe value at (y_mid, z_mid) — should match point probe
     plane_at_point = np.array(plane_probe.accumulator[:, y_mid, z_mid])
     point_result = np.array(point_probe.accumulator)
 
@@ -130,18 +122,18 @@ def test_dft_plane_probe_matches_point():
 
 
 def test_dft_plane_probe_spatial_pattern():
-    """DFT plane probe should capture the spatial mode pattern of a PEC cavity."""
-    grid = Grid(freq_max=8e9, domain=(17 * (299792458.0 / 8e9 / 20.0), 17 * (299792458.0 / 8e9 / 20.0), 17 * (299792458.0 / 8e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    """DFT plane probe should capture the spatial mode pattern of a PEC cavity.
+    Only y-boundaries are checked because Ez is tangential to y-faces and normal to z-faces.
+    """
+    grid = Grid(freq_max=8e9, domain=(17 * (299792458.0 / 8e9 / 20.0), 17 * (299792458.0 / 8e9 / 20.0), 17 * (299792458.0 / 8e9 / 20.0)), cpml_layers=0)
     materials = init_materials(grid.shape)
     state = init_state(grid.shape)
 
-    # Off-center source to excite multiple modes
     pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
     src_pos = (0.012, 0.012, 0.012)
 
-    # Monitor at mid-x plane
     x_mid = grid.nx // 2
-    freqs = jnp.array([5e9])  # single frequency
+    freqs = jnp.array([5e9])
     n_steps = grid.num_timesteps(num_periods=20)
     plane_probe = init_dft_plane_probe(
         axis=0, index=x_mid, component="ez",
@@ -158,10 +150,6 @@ def test_dft_plane_probe_spatial_pattern():
 
     field_pattern = np.abs(np.array(plane_probe.accumulator[0, :, :]))
 
-    # On the x-normal plane, Ez is:
-    #   - tangential to y-faces (y=0, y=-1) → PEC zeros Ez there
-    #   - normal to z-faces (z=0, z=-1) → PEC does NOT zero Ez there
-    # So only check y-boundaries.
     y_edge_max = max(
         np.max(field_pattern[0, :]),
         np.max(field_pattern[-1, :]),
@@ -172,7 +160,6 @@ def test_dft_plane_probe_spatial_pattern():
     print(f"  Interior max = {interior_max:.4e}, y-edge max = {y_edge_max:.4e}")
 
     assert interior_max > 1e-15, "Field pattern should be nonzero in interior"
-    # y-edges should be much smaller than interior (PEC enforces Ez=0 at y walls)
     if interior_max > 0:
         assert y_edge_max / interior_max < 0.15, \
             f"PEC y-boundary violated: edge/interior = {y_edge_max/interior_max:.4f}"

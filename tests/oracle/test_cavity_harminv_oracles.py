@@ -6,22 +6,22 @@ C0 = 299792458.0
 class TestWaveguideCutoff:
     """Validate TE10 mode frequency in a WR-90 waveguide section."""
 
-    # WR-90: a=22.86mm, b=10.16mm, TE10 cutoff = C0/(2*a) = 6.557 GHz
     A_WG = 22.86e-3
     B_WG = 10.16e-3
     F_TE10 = C0 / (2 * A_WG)
 
     def test_rfx_waveguide_cutoff(self):
-        """rfx should find TE10 cutoff within 0.5% via cavity mode."""
+        """rfx should find TE10 cutoff within 0.5% via cavity mode.
+        The y domain length written as ``21 * dx`` is a whole number of cells of dx, so its solved length equals the declared one.
+        """
         from rfx import Simulation, GaussianPulse
         from rfx.harminv import matrix_pencil
 
-        L_wg = 40e-3  # waveguide length
-        dx = 0.5e-3  # y domain: 21 cells, solved length; #1887
+        WAVEGUIDE_LENGTH_M = 40e-3
+        L_wg = WAVEGUIDE_LENGTH_M
+        dx = 0.5e-3
         sim = Simulation(freq_max=10e9, domain=(self.A_WG, 21 * dx, L_wg),
                          boundary='pec', dx=dx)
-        # TE10 in a PEC cavity: f_mnp = C0/2 * sqrt((m/a)^2 + (n/b)^2 + (p/L)^2)
-        # For TE101: f = C0/2 * sqrt((1/a)^2 + (1/L)^2)
         f_101 = (C0 / 2) * np.sqrt((1 / self.A_WG) ** 2 + (1 / L_wg) ** 2)
         sim.add_source((self.A_WG / 2, self.B_WG / 3, L_wg / 3), 'ey',
                         waveform=GaussianPulse(f0=f_101, bandwidth=0.8))
@@ -67,8 +67,8 @@ class TestLumpedPortCavity:
                          boundary='pec', dx=dx)
         sim.add_material('dielectric', eps_r=eps_r)
         sim.add(Box((0, 0, 0), (a, b, d)), material='dielectric')
-        # Use high-impedance port (minimal loading) to excite cavity
-        sim.add_port((a / 3, b / 3, d / 2), 'ez', impedance=1e6,
+        MINIMAL_LOADING_IMPEDANCE_OHM = 1e6
+        sim.add_port((a / 3, b / 3, d / 2), 'ez', impedance=MINIMAL_LOADING_IMPEDANCE_OHM,
                      waveform=GaussianPulse(f0=f_110, bandwidth=0.8))
         sim.add_probe((2 * a / 3, 2 * b / 3, d / 2), 'ez')
 

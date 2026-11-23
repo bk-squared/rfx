@@ -207,6 +207,28 @@ def is_sharded(arr, layout, mesh):
     return True
 
 
+def is_forward_sharded_override(arr, sharded_grid, mesh):
+    """Validate an override's global layout without fetching any device data.
+
+    Any other placement (replicated, or split along y/z or another mesh axis)
+    is a local whole-domain array.
+    """
+    sharding = forward_sharding(arr)
+    if sharding is None:
+        return False
+    spec = tuple(sharding.spec) + (None,) * (3 - len(sharding.spec))
+    if spec != ("x", None, None):
+        return False
+    expected = (sharded_grid.nx_padded, sharded_grid.ny, sharded_grid.nz)
+    if (arr.shape != expected
+            or sharding.mesh.devices.shape != mesh.devices.shape
+            or not np.array_equal(sharding.mesh.devices, mesh.devices)):
+        raise ValueError(
+            f"sharded forward override must have shape {expected}, P('x'), "
+            "and the same ordered devices as forward(devices=...).")
+    return True
+
+
 def _halo(arr, layout, mesh, fill):
     """Keep the existing ppermute transpose: ghosts return cotangents to owners."""
     if layout.ghost_width != 1:

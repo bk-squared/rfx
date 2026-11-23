@@ -256,8 +256,7 @@ point (misaligned 80um: beta_railed 0/60 bins, reliable 9/9 in the gate, Z0
 flat over the gate 38.960-39.076 ohm, imag 0.126). On that evidence none of
 the repo's reliability gates flags these numbers.
 
-RE-VERIFICATION CONCLUSION (issue #752, written by the leader session
-2026-09-20; pasted verbatim, wrapped only):
+RE-VERIFICATION CONCLUSION (issue #752):
 --------------------------------------------------------------------------
 Re-verification of #752 on main (2026-09-19/20). Six points re-solved with
 ``run_one``'s committed settings (artifact
@@ -353,7 +352,7 @@ DX_GRID = [
 
 OUT_DIR = REPO / "scripts" / "diagnostics" / "msl_z0_bias_floor_sweep"
 SOURCE_JSON = OUT_DIR / "msl_z0_bias_floor_sweep.json"
-_SOURCE_SHA256 = "f56f6b17691613d8782c1d5ce1241c1cd9bc10ef61715b203ed5cd6d4ab18362"
+_SOURCE_SHA256 = "d6e76cc2aba39b0c8064623ec55ee55017e42b4156637673c7b3a2bbd770d14a"
 
 
 def run_one(label: str, dx: float) -> dict:
@@ -476,6 +475,7 @@ def main(argv=None) -> int:
             "Use --show-archive to inspect that record; new validation needs "
             "matched field/geometry provenance and a separate output location.")
     source_bytes = SOURCE_JSON.read_bytes()
+    # Original bytes are in git at 647262587.
     if hashlib.sha256(source_bytes).hexdigest() != _SOURCE_SHA256:
         parser.error("The frozen source record changed; restore its recorded bytes before inspection.")
     print(json.dumps({

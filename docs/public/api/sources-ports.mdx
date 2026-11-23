@@ -222,7 +222,7 @@ the port axis only (`boundary={"x": "cpml", "y": "pec", "z": "pec"}` for an
 x-directed port); on a uniform mesh `boundary="cpml"` on every face is refused. A
 smaller aperture needs a conductor on every edge: draw PEC walls there, or a bare
 edge is refused on both meshes. Waveguide ports
-need `mode="3d"`, and cannot share a simulation with lumped ports.
+need `mode="3d"`, and cannot share a simulation with a lumped or wire port, or a soft source (`add_source`).
 
 A port measures at `freqs`, or at `n_freqs` points from `freq_max/10` to
 `freq_max` when `freqs` is not given (50 by default), on every path.

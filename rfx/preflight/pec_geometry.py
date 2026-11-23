@@ -58,6 +58,8 @@ exactly as wide after this leg as before it -- still 55.
 
 from __future__ import annotations
 
+from rfx.preflight._not_judged import not_judged
+
 from rfx.model.realization_verdict import legacy_mismatch, legacy_table_ready, replay_legacy_findings
 from rfx.preflight._subjects import finding_subjects
 
@@ -76,57 +78,14 @@ from rfx.preflight._common import (
     PreflightWarning,
 )
 
-# --------------------------------------------------------------------------
-# campaign statics checks — tunables + shared lazy context.
-#
-# Four failure classes a month-long external cross-validation hit, all
-# statically detectable before the first time step (message
-# design per docs/design_notes/preflight_lessons_from_a_long_crossval.md:
-# every finding carries OBSERVED / WHY / COST / REMEDY / STALE-IF plus a
-# COVERAGE clause, and each check aggregates into ONE message per run —
-# the failure mode was 84 advisories with 93% duplication).
-#
-# The gate values are module-level on purpose: the falsification tests
-# monkeypatch them in BOTH directions (loosen -> firing fixture goes
-# silent; tighten -> silent fixture fires) to prove each gate is
-# load-bearing (tests/unit/preflight/test_preflight_rasterization*.py).
-# --------------------------------------------------------------------------
 
-# Check 1 — congruence key quantum (extents equal within 1e-9 m) and the
-# tolerated realized-EDGE-count spread inside one congruence group. Under
-# the lattice ownership contract every conductor is realized as a
-# set of PEC E edges by one function (rfx.boundaries.pec
-# .realized_pec_edge_masks); two congruent members that land at different
-# sub-cell offsets realize different edge sets, and the edge count is the
-# quantity that decides whether the lattice kept the design's symmetry.
-# The tolerance is one edge: a symmetric pair realizes IDENTICAL counts,
-# so any spread at all is an asymmetry, and one edge is the smallest
-# spread a rounding tie on a single face can produce.
 _CONGRUENCE_EXTENT_QUANTUM_M = 1e-9
 _CONGRUENCE_SPREAD_TOL_EDGES = 1
-# Check 3 — advisory threshold on either electrical-thickness measure of a
-# cavity between two adjacent realized wall planes (sheet planes and the
-# faces of volumes alike). Mesh sums run over the cells strictly between
-# the two planes; the physical stack runs between the DECLARED faces, so
-# the difference is exactly the plane snap (declared face vs realized
-# node plane) plus any vacuum the declaration left at a sheet plane
-# (``sheet_slot_vacuum`` names that separately).
 _CAVITY_THICKNESS_TOL = 0.01
-# Check 4 — off-lattice face residual as a fraction of the axis extent.
 _OFF_LATTICE_EDGE_TOL = 5e-3
-# Shared cap on named offenders per aggregated message.
 _CAMPAIGN_MAX_OFFENDERS = 5
 
 
-# Conformal PEC requires the CPML psi coefficient to read the same effective
-# permittivity as the Yee E update. ``conformal_eps_correction`` sets
-# ``aniso_eps`` to ``eps/w`` at wall cells; using staircase
-# ``materials.eps_r`` for psi instead amplifies the field in the pads. In
-# ``tests/unit/geometry/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec``, threading that
-# permittivity changes |S21| at dx 3 / 2 /
-# 1.5 mm from 0.7564 / 0.6974 / NaN to 0.7796 / 0.6974 / 0.7274. These are
-# stability measurements; accuracy verdicts obtained with the coefficient
-# mismatch do not establish the conformal methods' accuracy.
 
 
 def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
@@ -137,8 +96,11 @@ def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
     sheets = []
     for i, tc in enumerate(getattr(self, "_thin_conductors", ())):
         if is_tracer(tc.thickness) or not float(tc.thickness) > 0.0:
+            if is_tracer(tc.thickness):
+                not_judged(None, "_validate_cfg_thin_conductor_thickness")
             continue
         if is_tracer(tc.sigma_bulk) and tc.surface_impedance_f0 is None:
+            not_judged(None, "_validate_cfg_thin_conductor_thickness")
             continue
         if not (tc.is_pec or tc.surface_impedance_f0 is not None):
             continue
@@ -152,12 +114,15 @@ def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
     for entry in self._geometry:
         material = self._resolve_material(entry.material_name)
         if is_tracer(material.eps_r) or not float(material.eps_r) > 1.0:
+            if is_tracer(material.eps_r):
+                not_judged(None, "_validate_cfg_thin_conductor_thickness")
             continue
         if not isinstance(entry.shape, Box):
             nonbox_dielectrics += 1
             continue
         lo, hi = sheet_bounds(entry.shape)
         if any(is_tracer(v) for bounds in (lo, hi) for v in bounds):
+            not_judged(None, "_validate_cfg_thin_conductor_thickness")
             continue
         bounds = _sorted_box_corners(entry.shape)
         dielectrics.append(bounds)
@@ -168,6 +133,7 @@ def _validate_cfg_thin_conductor_thickness(self, _w) -> None:
         if lo is None or hi is None:
             continue
         if any(is_tracer(v) for bounds in (lo, hi) for v in bounds):
+            not_judged(None, "_validate_cfg_thin_conductor_thickness")
             continue
         axis = sheet_normal_axis(lo, hi)
         lo, hi = np.minimum(lo, hi), np.maximum(lo, hi)
@@ -253,6 +219,8 @@ def _validate_cfg_thin_conductor_surface_impedance(self, _w) -> None:
         for entry in getattr(self, family, ()) or ():
             wf = getattr(entry, "waveform", None)
             wf0 = getattr(wf, "f0", None)
+            if is_tracer(wf0):
+                not_judged(None, "_validate_cfg_thin_conductor_surface_impedance")
             if wf0 is not None and not is_tracer(wf0):
                 try:
                     src_f0s.append(float(wf0))
@@ -265,10 +233,13 @@ def _validate_cfg_thin_conductor_surface_impedance(self, _w) -> None:
         sb = tc.sigma_bulk
         t = tc.thickness
         if is_tracer(f0) or is_tracer(sb):
+            not_judged(None, "_validate_cfg_thin_conductor_surface_impedance")
             continue
         f0 = float(f0)
         sb = float(sb)
         delta = math.sqrt(2.0 / (2.0 * math.pi * f0 * _MU0 * sb))
+        if is_tracer(t):
+            not_judged(None, "_validate_cfg_thin_conductor_surface_impedance")
         if not is_tracer(t) and 0.0 < float(t) < 3.0 * delta:
             _w.warn(
                 PreflightWarning(
@@ -349,7 +320,7 @@ def _validate_cfg_campaign_statics(self, _w) -> None:
             for e in self._geometry
         ) or bool(self._thin_conductors)
     except KeyError:
-        return  # unresolved material name; add_box/run raise elsewhere
+        return
     if not has_conductor:
         return
     ctx = self._campaign_ctx()
@@ -378,7 +349,7 @@ def _validate_cfg_campaign_statics(self, _w) -> None:
     realized = ctx.realized()
     if realized is None:
         if any(e.kind == "refused" for e in ctx.entry_realizations()):
-            return  # the refusal above IS the reason; run() raises it
+            return
         _w.warn(PreflightWarning(
             "the sheet-slot and sheet-cavity checks could NOT run (the "
             f"production assembly failed: {ctx.assembly_error}); their "
@@ -390,9 +361,6 @@ def _validate_cfg_campaign_statics(self, _w) -> None:
     self._validate_cfg_sheet_slot_vacuum(_w, ctx)
     self._validate_cfg_sheet_cavity_thickness(_w, ctx)
 
-# ------------------------------------------------------------------
-# what the lattice realized, per PEC declaration
-# ------------------------------------------------------------------
 
 def _validate_cfg_pec_realization(self, _w, ctx) -> None:
     """Design note §3: the per-declaration realization findings.
@@ -434,7 +402,6 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
     entries = ctx.entry_realizations()
     shape = tuple(ctx.grid.shape)
 
-    # --- refusals: ERROR, one per entry -----------------------------
     for e in entries:
         if e.kind != "refused":
             continue
@@ -444,10 +411,6 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
             f"and run()/forward() will raise: {msg} (lattice ownership "
             "contract in docs/design_notes/20260906_plan_realign_lattice_ownership.md; preflight reports it here so the whole "
             "configuration is audited before the raise).")
-        # Three literal constructions on purpose: the emission-site
-        # freeze (test_preflight_advisory_emission_contract) reads
-        # ``code=`` literals off the AST, and a computed slug would
-        # register as an uncoded-at-source site.
         if "thinner than one cell" in msg:
             _w.warn(PreflightWarning(
                 text, **finding_subjects(self, objects=(e,)),
@@ -464,7 +427,6 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
                       code="pec_realization_refused", severity="error",
                 source="_validate_cfg_pec_realization"))
 
-    # --- pec_box_one_cell: WARNING, aggregated ------------------------
     one_cell = []
     for e in ctx.interior_pec_entries():
         if e.kind != "volume":
@@ -472,7 +434,7 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
         thin_axes = []
         for a in range(3):
             if shape[a] == 1:
-                continue        # the 2-D lane's flat axis is not a slab
+                continue
             planes = e.wall_planes(a, ctx.periodic, shape)
             if len(planes) >= 2 and max(planes) - min(planes) == 1:
                 k_lo, k_hi = min(planes), max(planes)
@@ -516,7 +478,6 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
             source="_validate_cfg_pec_realization",
         ))
 
-    # --- sheet_plane_realized: NOTICE per sheet (aggregated), WARNING on a tie
     sheets = [e for e in entries if e.kind == "sheet"]
     if not sheets:
         return
@@ -547,14 +508,6 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
         for _o, e, a, k, realized_z, declared, off_cells
         in rows[:_CAMPAIGN_MAX_OFFENDERS])
     n_off = sum(1 for r in rows if r[0] > 1e-12)
-    # Say something only when there IS something to say. A model whose
-    # sheets all landed on the plane they declared is the expected case,
-    # and preflight(strict=True) escalates EVERY finding including
-    # info-severity (the historical contract at :2999), so an
-    # unconditional "N sheets realized, 0 of them off" line failed every
-    # strict run on a correct board — measured on
-    # docs/public/examples/first-patch.mdx. The realized planes stay
-    # available from fidelity_report(); this finding reports a CONDITION.
     if n_off == 0 and not ties:
         rows = []
     if rows:
@@ -718,7 +671,7 @@ def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
     """
     interior = getattr(ctx.grid, "interior", None)
     if interior is None:
-        return          # non-uniform lane: no interior slices
+        return
     from rfx.boundaries.pec import realized_wall_planes
 
     realized_depths = self._preflight_face_layers()
@@ -726,7 +679,7 @@ def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
     rows = []
     for e in ctx.interior_pec_entries():
         if e.kind != "volume":
-            continue    # a sheet has no face to draw to a wall
+            continue
         edges = e.edges(ctx.periodic, shape)
         for a in range(3):
             if ctx.periodic[a] or shape[a] < 3:
@@ -742,7 +695,7 @@ def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
                 if face - wall != step:
                     continue
                 if realized_depths.get(f"{'xyz'[a]}_{side}", 0):
-                    continue    # absorbing face: no wall
+                    continue
                 rows.append((e, a, side, face, wall))
     if not rows:
         return
@@ -782,9 +735,6 @@ def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
         source="_validate_cfg_pec_face_short_of_domain_wall",
     ))
 
-# ------------------------------------------------------------------
-# campaign checks, on the realized edge set
-# ------------------------------------------------------------------
 
 def _congruence_origin_shift(ctx, members, counts):
     """Predict the best lattice-origin slide for a flagged group.
@@ -1035,8 +985,6 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
     shape = tuple(ctx.grid.shape)
     pec_np = np.asarray(pec_np, dtype=bool)
     wall_faces = _cavity_wall_faces(ctx)
-    # Cut-cell conformal PEC solves a Box face at its drawn plane.
-    # run() passes its resolved flag; a bare preflight() reads the declared walls.
     conformal = getattr(ctx.sim, "_conformal_run_call", None)
     if conformal is None:
         conformal = bool(ctx.sim._boundary_spec.conformal_faces())
@@ -1083,7 +1031,7 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
             covered = np.zeros(foot1.shape, dtype=bool)
             for e2, k2, foot2, g_hi, hi2, kind2 in planes[si + 1:]:
                 if e1 is None and e2 is None:
-                    continue  # The domain itself is not a drawn cavity or a cover.
+                    continue
                 overlap = foot1 & foot2 & ~covered
                 if not overlap.any():
                     continue
@@ -1091,20 +1039,13 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
                 z1 = solved_plane(a, e1, k1, kind1, 0.5 * (lo1 + g_lo))
                 z2 = solved_plane(a, e2, k2, kind2, 0.5 * (g_hi + hi2))
                 solved = z2 - z1
-                # A gap inside the rasterizer's on-lattice band is float dust
-                # (11*dx - 10*dx), not a cavity: faces drawn touching.
                 touching = drawn <= node_tie_tol(g_hi, _rasterize_local_cell(
                     ctx.nodes[a], ctx.cell_sizes[a], g_hi))
                 if touching and solved <= 0:
-                    # Metal merged on one plane: no cavity, and it does not
-                    # stand between e1 and the next sheet.
                     continue
                 covered |= foot1 & foot2
                 if e1 is e2 or kind2 == "PEC Box face upper" or (e2 is None and "_lo" in kind2):
                     continue
-                # A post blocks some columns, not the whole cavity. Same-node
-                # sheets have no intervening cells and must still be judged.
-                # On a periodic axis the cells run k1 .. N-1 and on from 0.
                 cells = (np.arange(k1, k2) if k2 >= k1
                          else np.r_[k1:pec_np.shape[a], 0:k2])
                 blocked = np.any(np.take(pec_np, cells, axis=a), axis=a)
@@ -1118,7 +1059,6 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
                     spacing = (f"drawn spacing {_fmt_len(drawn)}, solved spacing "
                                f"{_fmt_len(solved)} ({rel:+.2%})")
                 elif solved > 0:
-                    # There is no finite relative error for a nonpositive gap.
                     score = math.inf
                     spacing = ("drawn touching/overlapping, solved spacing "
                                f"{_fmt_len(solved)}")
@@ -1188,6 +1128,7 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
     when they lie on nodes, so a node-aligned stack reads flush; a
     sheet has no thickness, so a foil declared with faces reads its
     thickness as cavity — the sheet model's honest, quantified cost.
+    The normal electric edge at node index ``k`` belongs to the cell whose lower corner is node ``k``.
     """
     entries = [e for e in ctx.interior_pec_entries()
                if e.kind in ("volume", "sheet") and e.lo is not None]
@@ -1210,16 +1151,14 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
               else np.zeros(shape, dtype=bool))
     if len(entries) < 2:
         _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np)
-        return  # Electrical thickness still needs two conductor entries.
+        return
 
-    # plane census: (entry, axis, k, footprint2d, declared face coord)
     planes_by_axis: dict[int, list] = {0: [], 1: [], 2: []}
     for e in entries:
         if e.kind == "sheet":
             a = int(e.sheet.normal_axis)
             k = int(e.sheet.plane)
             foot = e.footprint_on_plane(a, k, ctx.periodic, shape)
-            # a sheet's plane is both its lower and its upper face
             planes_by_axis[a].append(
                 (e, k, foot, float(e.lo[a]), float(e.hi[a])))
             continue
@@ -1265,7 +1204,7 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
                     continue
                 covered |= (foot1 & foot2)
                 if e2 is e1:
-                    continue          # a volume's own two faces
+                    continue
                 n_pairs += 1
                 idxs = np.argwhere(overlap)
                 cen = idxs.mean(axis=0)
@@ -1274,10 +1213,6 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
                 col = [0, 0, 0]
                 col[inplane[0]] = int(rep[0])
                 col[inplane[1]] = int(rep[1])
-                # Mesh sums over the cells strictly between the two
-                # realized planes: the normal E edges E_a[k1 .. k2-1],
-                # each on its own cell's eps_r (node k is
-                # the lower corner of cell k).
                 mesh_cap = mesh_phase = 0.0
                 pec_between = False
                 for kk in range(k1, k2):
@@ -1293,9 +1228,6 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
                 if pec_between:
                     n_skipped_pec_between += 1
                     continue
-                # A slot at the lower plane (sheet_slot_vacuum's own
-                # test on this column): the cell above the plane is
-                # vacuum while the cells on both sides carry dielectric.
                 slot = False
                 if e1.kind == "sheet" and k2 - k1 > 1 and k1 - 1 >= 0:
                     col[a] = k1
@@ -1309,8 +1241,6 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
                 g_lo, g_hi = f1_hi, f2_lo
                 if g_hi <= g_lo:
                     continue
-                # in-plane physical point: centre of the two entries'
-                # in-plane bounding-box intersection
                 p = [0.0, 0.0, 0.0]
                 for ia in inplane:
                     lo_ov = max(float(e1.lo[ia]), float(e2.lo[ia]))
@@ -1325,7 +1255,7 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
                         continue
                     blo, bhi = _sorted_box_corners(g.shape)
                     if blo is None:
-                        continue  # non-Box: counted in coverage
+                        continue
                     if not all(blo[ia] <= p[ia] < bhi[ia]
                                for ia in inplane):
                         continue
@@ -1342,7 +1272,7 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
                     ee = 1.0
                     for blo, bhi, be in diel_boxes:
                         if blo[a] <= zm < bhi[a]:
-                            ee = be  # entry order: later wins
+                            ee = be
                     phys_cap += (e_hi - e_lo) / ee
                     phys_phase += (e_hi - e_lo) * math.sqrt(ee)
                 if phys_cap <= 0.0 or phys_phase <= 0.0:
@@ -1426,9 +1356,6 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
 
     _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np)
 
-#: A sheet's electrical size differing from its drawing by more than this is
-#: reported. 1 % is the frequency tolerance the project judges results by; a
-#: resonant dimension moves the resonance by about its own relative error.
 _SHEET_EFFECTIVE_SIZE_TOL = 1e-2
 
 
@@ -1456,7 +1383,9 @@ def _sheet_solved_spans(ctx, boxes):
             from rfx.core.jax_utils import is_tracer
             spec = f0_specs[e.name]
             if is_tracer(spec.g_sheet) or not f0_uses_solved_span(spec):
-                continue  # Traced verdict or no measured resistive free-edge model.
+                if is_tracer(spec.g_sheet):
+                    not_judged(None, "_validate_cfg_campaign_statics")
+                continue
         for a in range(3):
             if a == int(e.sheet.normal_axis):
                 continue
@@ -1475,7 +1404,7 @@ def _sheet_solved_spans(ctx, boxes):
     return out
 
 
-def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
+def _warn_sheet_effective_size(_w, ctx, boxes, *, include_impedance_sheets=True) -> None:
     """A PEC or PEC-like f0 sheet is solved about ``EDGE_OFFSET`` of a cell LONGER at each
     in-plane end than the nodes it covers (measured:
     ``scripts/diagnostics/pec_sheet_edge_offset.py``), so the size the solve
@@ -1488,10 +1417,9 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
         replay_legacy_findings(_w, ctx, "sheet_effective_size")
         return
     from rfx.mesh_edges import EDGE_OFFSET
-    # f0 sheets join on the PEC rule's terms: Box drawings only (no analytic
-    # face coordinates for other shapes; the 0.35-cell offset was measured on a fin).
-    boxes = list(boxes) + [e for e in ctx.impedance_sheet_entries()
-                           if isinstance(e.shape, Box)]
+    boxes = list(boxes)
+    if include_impedance_sheets:
+        boxes += [e for e in ctx.impedance_sheet_entries() if isinstance(e.shape, Box)]
     rows = []
     for e, a, span in _sheet_solved_spans(ctx, boxes):
         if not (span.free_lo or span.free_hi):
@@ -1501,7 +1429,7 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
         if ext <= 0.0:
             continue
         nodes = np.asarray(ctx.nodes[a], dtype=float)
-        if span.i1 == nodes.size:  # unwrapped periodic endpoint N is at L
+        if span.i1 == nodes.size:
             nodes = np.append(nodes, float(ctx.sim._domain[a]))
         covered = float(nodes[span.i1] - nodes[span.i0])
         eff = span.hi - span.lo
@@ -1569,11 +1497,6 @@ def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
     n_axes = 0
     n_normal_axes = 0
     domain = tuple(float(v) for v in getattr(ctx.sim, "_domain", (0.0,) * 3))
-    # A sheet's in-plane face is measured against where it is SOLVED (the
-    # shared solved-edge model, rfx.mesh_edges.solved_sheet_span),
-    # not against its nearest node: a free edge is solved 0.35 of the
-    # outside cell beyond its last node. A registered sheet then reads 0,
-    # an on-node one 0.35 cell, and a right-sized but shifted one its shift.
     solved = {(id(e), a): span
               for e, a, span in _sheet_solved_spans(ctx, boxes)}
     for e in boxes:
@@ -1588,7 +1511,6 @@ def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
             n_axes += 1
             span = solved.get((id(e), a)) if e.kind == "sheet" else None
             if span is not None:
-                # A wall end is compared with the domain face it meets.
                 d_lo = min(max(float(lo[a]), 0.0), float(domain[a]))
                 d_hi = min(max(float(hi[a]), 0.0), float(domain[a]))
                 res = max(abs(span.lo - d_lo), abs(span.hi - d_hi))
@@ -1648,29 +1570,6 @@ def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
     ))
 
 
-# ---------------------------------------------------------------------------
-# Pre-move ``__qualname__``, restored explicitly.
-#
-# Each of the ten functions above was a ``def`` in the ``_PreflightMixin``
-# class body, so its ``__qualname__`` read ``_PreflightMixin.<name>``; a
-# module-level ``def`` gets the bare name instead. ``rfx/api/__init__.py``
-# rewrites exactly ``<mixin>.<name>`` -> ``Simulation.<name>`` at
-# class-composition time and SKIPS any function whose qualname does not match
-# that pattern, so leaving the bare name here would change what a TypeError
-# reports -- a user-visible behaviour change inside a pure code-motion step.
-# ``tests/unit/autodiff/test_design_mask_removed.py`` states the rule but only
-# walks PUBLIC members, and all ten names here are private, so
-# ``tests/locks/test_preflight_split_snapshot.py`` pins them directly.
-#
-# ``_congruence_origin_shift`` is the exception, and it is restored to the
-# SAME value for the opposite reason. It was a ``@staticmethod``, so
-# ``vars(_PreflightMixin)`` held a ``staticmethod`` OBJECT, and that rewrite
-# loop tests ``inspect.isfunction`` -- it has always skipped this one, and
-# ``Simulation._congruence_origin_shift.__qualname__`` has always read
-# ``_PreflightMixin._congruence_origin_shift``. The facade re-wraps it in
-# ``staticmethod(...)``, so the loop keeps skipping it and the pre-move string
-# survives. Measured both ways before and after the move.
-# ---------------------------------------------------------------------------
 _validate_cfg_thin_conductor_thickness.__qualname__ = (
     "_PreflightMixin._validate_cfg_thin_conductor_thickness"
 )

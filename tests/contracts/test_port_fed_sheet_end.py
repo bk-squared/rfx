@@ -74,7 +74,6 @@ def test_c4_one_lumped_node_on_six_node_end_row(x):
 
 
 def test_c4_one_node_wide_end_is_fed():
-    # A sheet sampled at one y node (drawn width smaller than one cell).
     sim = Simulation(freq_max=5e9, domain=(.014, .014, .008), dx=.001, boundary='pec')
     sim.add_thin_conductor(Box((.004, .0059, .004), (.010, .0061, .004)))
     sim.add_port((.004, .006, .003), 'ez', impedance=50.)
@@ -96,12 +95,11 @@ def test_p1_does_not_preview_or_solve_laplace(monkeypatch):
 
 
 def test_c5_graded_fringe_is_not_fed():
+    """Adjacent sheet y nodes 5..5.5 mm lie in the Laplace fringe support beyond the trace's y nodes 3.25..4.75 mm."""
     sim = guide_board(graded=True)
     sim.add_thin_conductor(Box((.0035, .005, .00075), (.007, .0055, .00075)))
     root = realize(sim)
     preview = C.preview_port_stages(sim, root)
-    # Independent physical coordinates: trace y nodes 3.25..4.75 mm;
-    # adjacent sheet y nodes 5..5.5 mm, in the Laplace fringe support.
     from rfx.realized_geometry import _node_arrays
     _, nodes = _node_arrays(sim, root.grid, True)
     fringe = [edge for _, component, edge in preview.released_port_edges

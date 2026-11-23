@@ -64,13 +64,8 @@ REPO = Path(__file__).resolve().parents[1]
 _DOCS = str(REPO / "docs") + os.sep
 _SUFFIXES = (".md", ".mdx", ".rst")
 
-#: What pytest is doing: a test's or a test module's nodeid, a fixture's
-#: ``(baseid, argname)``, a test function being parametrized
-#: ``(parent nodeid, name, "params")``, or None in between.
 _where: object = None
-#: ``_where`` -> prose paths (repository-relative) opened while it was current.
 _reads: dict[object, list[str]] = {}
-#: Prose opened while ``_where`` was None; any entry fails the session.
 _outside: list[str] = []
 _installed = False
 
@@ -79,7 +74,7 @@ def is_prose(path: object) -> bool:
     """A ``.md``/``.mdx``/``.rst`` file under the repository's ``docs/``."""
     try:
         name = os.fsdecode(path)
-    except TypeError:          # a file descriptor
+    except TypeError:
         return False
     return name.endswith(_SUFFIXES) and os.path.abspath(name).startswith(_DOCS)
 
@@ -95,6 +90,7 @@ def _audit(event: str, args: tuple) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    """An audit hook cannot be removed."""
     global _installed
     config.addinivalue_line(
         "markers", f"{MARKER}: documentation checked against code, records or "
@@ -102,7 +98,7 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", f"{GATE_MARKER}(reason): a required test that reads a file "
         "under docs/ because the file is part of a gate; the reason is mandatory")
-    if not _installed:            # an audit hook cannot be removed; add it once
+    if not _installed:
         sys.addaudithook(_audit)
         _installed = True
 
@@ -145,10 +141,7 @@ def pytest_fixture_setup(fixturedef, request):
 
 def _fixture_reads(item) -> list[str]:
     info = getattr(item, "_fixtureinfo", None)
-    # The one this item gets from each static request; the rest are overridden.
     defs = [d[-1] for d in info.name2fixturedefs.values() if d] if info else []
-    # A fixture the test asks for itself (request.getfixturevalue) is not in the
-    # static closure; the item's request records every one it resolved.
     defs += list(getattr(getattr(item, "_request", None), "_fixture_defs", {}).values())
     read = []
     for fixturedef in {id(d): d for d in defs}.values():

@@ -38,7 +38,6 @@ def test_traced_distributed_setup_refuses_before_loop(kind, route):
     if kind in ("wire", "flux"):
         message = "graded multi-device solve.*traced mesh metrics.*concrete mesh"
     elif route in ("jvp", "grad"):
-        # The shape-gradient refusal on main precedes structure admission.
         refusal, message = NotImplementedError, "gradient.*declared shape dimension"
     else:
         message = f"{kind}.*traced.*concrete"

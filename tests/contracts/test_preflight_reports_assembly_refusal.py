@@ -20,6 +20,7 @@ from tests.contracts.test_dc_film_admission import model as dc_model, UnknownAre
 
 
 def _geometry_model(case, graded):
+    """A PEC boundary makes the physical node range explicit."""
     builders = {'pec_box_subcell': _pec_box_subcell_sim,
                 'pec_zero_cells': _pec_zero_cells_sim,
                 'pec_realization_refused': _pec_realization_refused_sim}
@@ -28,8 +29,6 @@ def _geometry_model(case, graded):
         if graded:
             sim._dz_profile = np.full(round(sim._domain[2] / sim._dx), sim._dx)
         return sim
-    # Coordinates from test_lattice_ownership_contract's refused sheet/wire
-    # witnesses, with a PEC boundary so the physical node range is explicit.
     sim = Simulation(10e9, (.02, .02, .02), dx=.001, boundary='pec',
                      **({'dz_profile': np.full(20, .001)} if graded else {}))
     if case == 'outside_plane':
@@ -179,7 +178,6 @@ def test_assembly_finding_defers_only_to_located_refusal(monkeypatch, exc_type, 
         ))
 
     monkeypatch.setattr(sim, '_assemble_realized', fail)
-    # This validator runs after the configuration registry's assembly check.
     monkeypatch.setattr(sim, '_validate_ntff_inverse_design', located)
     report = sim.preflight()
     code = 'assembly_refusal' if exc_type is ValueError else 'assembly_fault'
@@ -191,9 +189,6 @@ def test_assembly_finding_defers_only_to_located_refusal(monkeypatch, exc_type, 
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 @pytest.mark.parametrize('kind', ['wire', 'dc_film'])
 def test_traced_radius_refusal_with_concrete_mesh(kind, graded, capsys):
-    # Existing witnesses: test_pec_filament_radius::test_traced_radius_still_
-    # refuses_with_static_metrics and test_dc_film_admission::test_traced_radius_
-    # refuses_without_raw_tracer_error. The mesh itself remains concrete.
     def check(radius):
         sim = _model('wire_radius' if kind == 'wire' else 'dc_area', graded)
         if kind == 'wire':
@@ -258,8 +253,8 @@ def test_one_assembly_and_lent_product_is_reused(monkeypatch):
 
 
 def _solve_only_model(case, graded, monkeypatch):
+    """The flat cylinder keeps the uniform pad-shortfall refusal active on the grid."""
     if case == 'dead_soft_source':
-        # Reviewer scen7.py: a soft source at the centre of an interior volume.
         sim = Simulation(10e9, (.024,) * 3, dx=.001, boundary='pec',
                          **({'dz_profile': np.full(24, .001)} if graded else {}))
         sim.add(Box((.006,) * 3, (.018,) * 3), material='pec')
@@ -269,8 +264,6 @@ def _solve_only_model(case, graded, monkeypatch):
     if case == 'pad_shortfall':
         from tests.unit.geometry.test_pad_fill_paths import _graded_rig, _rig, _size_by_plain_ceil
         _size_by_plain_ceil(monkeypatch)
-        # A Box now reaches the extra domain-face cell. The flat cylinder
-        # keeps the uniform pad-shortfall refusal active on the same grid.
         return _graded_rig(monkeypatch) if graded else _rig(10, cylinder=True)
     if case in ('periodic_interval', 'outside_point'):
         from tests.unit.boundaries.test_periodic_extents import model
@@ -319,7 +312,6 @@ def test_solve_only_refusal_is_reported(case, graded, monkeypatch, capsys):
         return original(*args, **kwargs)
 
     monkeypatch.setattr(sim, '_assemble_realized', assemble)
-    # A cached audit product must retain the admission refusal on repeat calls.
     for _ in range(2):
         report = sim.preflight()
         hits = [i for i in report.errors if str(refused.value) in str(i)]

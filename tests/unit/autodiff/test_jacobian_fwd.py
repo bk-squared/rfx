@@ -12,7 +12,10 @@ G1-G7 map onto the design contract (`gh issue view 577`):
     G1 FD accuracy (material + geometry legs, many-output tensor leg)
     G2 conjugation guard
     G3 primal-sharing STRUCTURAL witness (load-bearing; deterministic)
-    G4 value identity (bit-identical to a plain sim_fn(params) call)
+    G4 value matches a plain sim_fn(params) call within the cross-trace bar
+       for a summed quantity (1e-4 of the peak; bit identity on x86 CI is
+       not the contract: Apple arm64 rounds the jvp-traced program
+       differently, #1802)
     G5 batch_tangents=True vs False agreement
     G6 fence regressions
     G7 FALSIFIER (severed tape -> Jacobian exactly 0; witnessed red first)
@@ -47,12 +50,10 @@ PRINTS its captured red-then-green transcript (visible under `pytest -s`
 or in CI logs) rather than writing to a fixed path -- no hard-coded
 session/scratch path belongs in a committed public-repo test. Copy the
 printed transcript into the PR body.
+The geometry sweep starts at h=0.02 because an earlier measurement found h=0.01 relative error of 7.4% from float32 rounding-lattice noise, versus 0.5-0.6% at h=0.02/0.04/0.08.
 """
 
 from __future__ import annotations
-
-import platform
-import sys
 
 import jax
 import jax.numpy as jnp
@@ -64,27 +65,25 @@ from rfx import Simulation
 from rfx.observables import dft_field, field_energy, jacobian_fwd
 from rfx.topology import density_to_material_fields
 
-# Bit identity with the plain call holds on CI's x86_64 CPUs but not on Apple
-# arm64 (3 float32 ULP; cause undetermined, #1802). The pinned values stay.
-_ARM64_MAC_BIT_IDENTITY = pytest.mark.xfail(
-    sys.platform == "darwin" and platform.machine() == "arm64", strict=True,
-    reason="#1802 undetermined: Apple arm64 XLA CPU differs from the plain call by 3 float32 ULP")
-
 try:
     from jax import enable_x64
-except ImportError:  # older JAX (< ~0.4.31) -- see tests/_x64_compat.py
+except ImportError:
     from tests._x64_compat import enable_x64
 
 
-# ---------------------------------------------------------------------------
-# Shared fixture -- same geometry family as tests/unit/autodiff/test_observables_dft_field.py
-# (a proven, currently-green fixture), with the geometry-leg design pixel
-# moved OFF the material-leg slab (x=24mm vs slab 12-18mm) so a JOINT
-# {alpha, rho} params pytree can be gated in one jacobian_fwd call without
-# the two legs' design regions overlapping (the #483-class confound the
-# design contract warns about: keep design regions off each other's and the
-# source's cells so FD and AD differentiate the same single channel).
-# ---------------------------------------------------------------------------
+def _assert_within_cross_trace_bar(x, y, what: str) -> None:
+    """Cross-trace bar for a quantity summed over the record: max|x - y| at
+    most 1e-4 of max|y| (rfx governance), compared in float64/complex128."""
+    x = np.asarray(x).astype(np.complex128)
+    y = np.asarray(y).astype(np.complex128)
+    d = float(np.max(np.abs(x - y)))
+    peak = float(np.max(np.abs(y)))
+    rel = d / peak if peak > 0.0 else float("inf")
+    assert d <= 1e-4 * peak, (
+        f"{what}: max|diff| {d:.6e}, peak {peak:.6e}, rel {rel:.3e} "
+        f"exceeds the cross-trace bar 1e-4 of the peak"
+    )
+
 
 _DX = 1.0e-3
 _NX, _NY, _NZ = 30, 20, 20
@@ -93,23 +92,9 @@ _FREQS = jnp.asarray([5.0e9])
 _SRC_POS_M = (8 * _DX, 10 * _DX, 10 * _DX)
 _SLAB_LO_M = (12 * _DX, 0.0, 0.0)
 _SLAB_HI_M = (18 * _DX, _NY * _DX, _NZ * _DX)
-_PIXEL_POS_M = (24 * _DX, 10 * _DX, 10 * _DX)  # OFF the slab (12-18mm)
+_PIXEL_POS_M = (24 * _DX, 10 * _DX, 10 * _DX)
 _N_STEPS = 160
-# Material leg has a strong signal (rel_err 0.007-0.038% across this range).
 _FD_H_VALUES_MATERIAL = (0.01, 0.02, 0.04)
-# Geometry leg is a single-pixel perturbation with a much smaller signal
-# (~1e-11 vs material's ~1e-9): MEASURED h=0.01 rel_err 7.4% is float32
-# rounding-lattice noise on that tiny signal, not a real derivative
-# mismatch -- h=0.02/0.04/0.08 all cluster tightly at 0.5-0.6% (the
-# convergent-derivative signature vs. a coincidental-h false green), so
-# the sweep starts at 0.02 for this leg specifically. This IS the h-drift
-# check the design contract asks for: a real derivative holds steady as h
-# grows past the noise floor, while a rounding-lattice coincidence would
-# not. "float32" here is this gate's storage AND compute dtype (both
-# default float32, unaffected by issue #630's storage-vs-arithmetic fix);
-# it is not a claim that widening field STORAGE alone would raise this
-# floor -- pre-#630 the Yee compute dtype was pinned to float32
-# regardless of storage, so it wouldn't have.
 _FD_H_VALUES_GEOMETRY = (0.02, 0.04, 0.08)
 
 
@@ -140,6 +125,7 @@ def _slab_and_pixel_indices(sim: Simulation):
     hi = grid.position_to_index(_SLAB_HI_M)
     slab = (slice(lo[0], hi[0] + 1), slice(None), slice(None))
     pix = grid.position_to_index(_PIXEL_POS_M)
+    assert (not lo[0] <= pix[0] <= hi[0] and not lo[0] <= grid.position_to_index(_SRC_POS_M)[0] <= hi[0] and pix != grid.position_to_index(_SRC_POS_M)), 'Disjoint material, geometry and source cells isolate the FD and AD channel'
     return grid, eps_base, slab, pix
 
 
@@ -147,7 +133,7 @@ def _make_eps(eps_base, slab, pix, alpha, rho, *, eps_bg=1.0, eps_fg=4.0,
               stop_gradient_tape: bool = False):
     eps = eps_base.at[slab].set(alpha)
     rho_arr = jnp.reshape(rho, (1, 1, 1))
-    fields = density_to_material_fields(rho_arr, eps_bg, eps_fg)
+    fields = density_to_material_fields(rho_arr, eps_bg, eps_fg, dtype='float32')
     eps = eps.at[pix[0], pix[1], pix[2]].set(fields.eps[0, 0, 0])
     if stop_gradient_tape:
         eps = jax.lax.stop_gradient(eps)
@@ -213,20 +199,14 @@ _PARAMS0 = {"alpha": jnp.asarray(_ALPHA0, dtype=jnp.float32),
             "rho": jnp.asarray(_RHO0, dtype=jnp.float32)}
 
 
-# ---------------------------------------------------------------------------
-# G1 -- FD accuracy: material leg, geometry leg (joint pytree, tangents=
-# "identity", n_t=2), and the many-output tensor leg.
-# ---------------------------------------------------------------------------
-
 def test_g1_material_and_geometry_legs_ad_matches_fd():
+    """Identity tangents follow tree_flatten order with sorted dict keys: 'alpha' first, 'rho' second."""
     sim = _build_sim()
     functional = field_energy(_PLANE)
     objective = _joint_objective(sim, functional)
 
     val, jac = jacobian_fwd(objective, _PARAMS0)
     assert float(val) > 0.0, "field_energy did not couple to the source"
-    # tangents='identity' flattens {'alpha','rho'} in tree_flatten order
-    # (dict keys sorted): 'alpha' first, 'rho' second.
     g_ad_alpha = float(jac[0])
     g_ad_rho = float(jac[1])
     assert jac.shape == (2,)
@@ -278,10 +258,6 @@ def test_g1_many_output_tensor_leg_ad_matches_fd():
     assert den > 0.0, "FD tensor Jacobian is exactly zero -- objective did not couple"
 
 
-# ---------------------------------------------------------------------------
-# G2 -- conjugation guard: AD matches the UNCONJUGATED FD, not conj(FD).
-# ---------------------------------------------------------------------------
-
 def test_g2_jacobian_is_unconjugated_dy_dx():
     sim = _build_sim()
     accessor = dft_field(_PLANE)
@@ -306,16 +282,6 @@ def test_g2_jacobian_is_unconjugated_dy_dx():
         "the discriminator that catches a silent conjugation bug did not fire"
     )
 
-
-# ---------------------------------------------------------------------------
-# G3 -- PRIMAL-SHARING STRUCTURAL WITNESS (load-bearing; deterministic).
-#
-# Walks the jaxpr of jax.jit(lambda p: jacobian_fwd(sim_fn, p)) and finds
-# the top-level lax.scan (the FDTD time loop). If the primal sweep is
-# genuinely shared across tangent directions, the scan's carry holds
-# exactly ONE unbatched copy of the field state (byte count INDEPENDENT of
-# n_t) plus n_t batched tangent copies -- not a wall-clock proxy.
-# ---------------------------------------------------------------------------
 
 class _jcore:
     ClosedJaxpr = _ClosedJaxpr
@@ -472,12 +438,7 @@ def test_g3_primal_carry_is_independent_of_n_t():
     )
 
 
-# ---------------------------------------------------------------------------
-# G4 -- value identity: returned value bit-identical to a plain sim_fn(params).
-# ---------------------------------------------------------------------------
-
-@_ARM64_MAC_BIT_IDENTITY
-def test_g4_value_bit_identical_to_plain_call():
+def test_g4_value_matches_plain_call_within_cross_trace_bar():
     sim = _build_sim()
     objective = _joint_objective(sim, field_energy(_PLANE))
 
@@ -485,27 +446,22 @@ def test_g4_value_bit_identical_to_plain_call():
     val_batched, _jac = jacobian_fwd(objective, _PARAMS0, batch_tangents=True)
     val_seq, _jac2 = jacobian_fwd(objective, _PARAMS0, batch_tangents=False)
 
-    assert val_batched == plain, f"batched value {val_batched} != plain {plain}"
-    assert val_seq == plain, f"sequential value {val_seq} != plain {plain}"
+    _assert_within_cross_trace_bar(val_batched, plain, "batched value vs plain call")
+    _assert_within_cross_trace_bar(val_seq, plain, "sequential value vs plain call")
 
 
-@_ARM64_MAC_BIT_IDENTITY
-def test_g4_value_bit_identical_many_output():
+def test_g4_many_output_value_matches_plain_call_within_cross_trace_bar():
     sim = _build_sim()
     objective = _material_only_objective(sim, dft_field(_PLANE))
     alpha0 = jnp.asarray(_ALPHA0, dtype=jnp.float32)
 
     plain = objective(alpha0)
     val, _jac = jacobian_fwd(objective, alpha0)
-    np.testing.assert_array_equal(np.asarray(val), np.asarray(plain))
+    _assert_within_cross_trace_bar(val, plain, "dft_field value vs plain call")
 
-
-# ---------------------------------------------------------------------------
-# G5 -- batch_tangents=True vs False agreement (different XLA programs;
-# float32 reassociation tolerance, not bit-identity).
-# ---------------------------------------------------------------------------
 
 def test_g5_batched_and_sequential_jacobians_agree():
+    """Different XLA programs require float32 reassociation tolerance for batched and sequential agreement."""
     sim = _build_sim()
     objective = _joint_objective(sim, field_energy(_PLANE))
 
@@ -518,6 +474,7 @@ def test_g5_batched_and_sequential_jacobians_agree():
 
 
 def test_g5_batched_and_sequential_agree_many_output():
+    """Different XLA programs require float32 reassociation tolerance for batched and sequential agreement."""
     sim = _build_sim()
     objective = _material_only_objective(sim, dft_field(_PLANE))
     alpha0 = jnp.asarray(_ALPHA0, dtype=jnp.float32)
@@ -529,13 +486,6 @@ def test_g5_batched_and_sequential_agree_many_output():
         np.asarray(jac_batched), np.asarray(jac_seq), rtol=1e-4, atol=1e-12,
     )
 
-
-# ---------------------------------------------------------------------------
-# G6 -- fence regressions. See the module docstring's FENCE TAXONOMY for
-# why G6a is a runtime-raise gate and G6b/G6c are docstring-content gates.
-# (design_mask's former G6b fence was removed with the parameter itself,
-# issue #625 -- see the module docstring's trailing note.)
-# ---------------------------------------------------------------------------
 
 def test_g6a_uniform_distributed_raises_a_different_earlier_check():
     """Uniform distributed forward refuses eps_override before its DFT fence.
@@ -589,7 +539,6 @@ def test_g6a_distributed_nu_dft_plane_jacobian_matches_one_device():
     one_primal, one = (np.asarray(v) for v in jacobian_fwd(objective, alpha))
     multi_primal, multi = (np.asarray(v) for v in jacobian_fwd(
         lambda a: objective(a, distributed=True, devices=host_devices(2)), alpha))
-    # through jax.vmap/jvp the compiled program differs (cross-trace rule, rfx CLAUDE.md)
     assert np.all(np.isfinite(one)) and np.any(one != 0)
     assert np.max(np.abs(multi_primal - one_primal)) <= 1e-4 * np.max(np.abs(one_primal))
     assert np.max(np.abs(multi - one)) <= 1e-4 * np.max(np.abs(one))
@@ -650,16 +599,8 @@ def test_g6c_checkpoint_knobs_are_documented_inert_not_a_raise():
     assert "reverse-mode options" in doc
 
 
-# ---------------------------------------------------------------------------
-# G7 -- FALSIFIER: sever the tape with stop_gradient on eps_override ->
-# Jacobian must go EXACTLY 0, and (witnessed separately, transcript
-# printed for the PR body -- see the module docstring) G1's own assertion
-# form must go RED against the severed objective before this gate is
-# trusted.
-# ---------------------------------------------------------------------------
-
-@_ARM64_MAC_BIT_IDENTITY
 def test_g7_falsifier_severed_tape_reads_exactly_zero():
+    """Values are unaffected by stop_gradient because forward physics is unchanged."""
     sim = _build_sim()
     functional = field_energy(_PLANE)
     severed = _joint_objective(sim, functional, stop_gradient_tape=True)
@@ -668,17 +609,13 @@ def test_g7_falsifier_severed_tape_reads_exactly_zero():
     val_severed, jac_severed = jacobian_fwd(severed, _PARAMS0)
     val_unsevered, jac_unsevered = jacobian_fwd(unsevered, _PARAMS0)
 
-    # Values are unaffected by stop_gradient (forward physics unchanged).
-    assert val_severed == val_unsevered
+    _assert_within_cross_trace_bar(val_severed, val_unsevered, "severed vs unsevered value")
 
     assert jac_severed[0] == 0.0, f"severed material tangent not exactly 0: {jac_severed[0]!r}"
     assert jac_severed[1] == 0.0, f"severed geometry tangent not exactly 0: {jac_severed[1]!r}"
     assert jac_unsevered[0] != 0.0, "unsevered material tangent is exactly 0 -- objective did not couple"
     assert jac_unsevered[1] != 0.0, "unsevered geometry tangent is exactly 0 -- objective did not couple"
 
-    # Witness that G1's own tolerance check would go RED against the
-    # severed objective (AD=0 exactly, FD finite -> the gate the falsifier
-    # is meant to catch really would fire). Capture the transcript.
     h = 0.02
     g_fd_alpha = float(_central_fd_f64(
         lambda a: severed({"alpha": a, "rho": jnp.asarray(_RHO0, dtype=jnp.float32)}),
@@ -700,25 +637,8 @@ def test_g7_falsifier_severed_tape_reads_exactly_zero():
         f"severed geometry tangent (rho) = {float(jac_severed[1])!r} (must be exactly 0.0)\n"
     )
     assert rel >= 1.0, "falsifier did not actually diverge from the FD reference"
-    # Print (not write to a fixed path -- no hard-coded session/scratch path
-    # belongs in a committed public-repo test) so `pytest -s` / CI logs carry
-    # the transcript for a PR body excerpt; the assertions above are the
-    # real gate.
     print(transcript)
 
-
-# ---------------------------------------------------------------------------
-# G8: batch_tangents=False's own out_axes=(None, 0) guard (arc-audit
-# follow-up item 4b). The batched path inherits a fail-loud check for free
-# from jax.vmap(..., out_axes=(None, 0)) -- see the API TRAP note in
-# jacobian_fwd's docstring. The sequential path has no vmap of its own, so
-# without an explicit guard a sim_fn that violates the "primal independent
-# of tangent" invariant would silently return one arbitrary tangent row's
-# primal instead of raising. `leaky`/`leaky_jvp` below is a deliberately
-# broken custom_jvp rule -- jax.jvp does not itself enforce primal purity,
-# so this is the only way to construct a genuine violation: the primal
-# output is defined to depend on the tangent argument.
-# ---------------------------------------------------------------------------
 
 @jax.custom_jvp
 def _leaky(x):
@@ -728,7 +648,7 @@ def _leaky(x):
 @_leaky.defjvp
 def _leaky_jvp(primals, tangents):
     (x,), (t,) = primals, tangents
-    return x + jnp.sum(t), t  # BUG (deliberate): primal leaks the tangent
+    return x + jnp.sum(t), t
 
 
 def _leaky_sim_fn(params):
@@ -749,16 +669,15 @@ def test_g8_sequential_guard_raises_on_tangent_dependent_primal():
     "out_axes" message below IS guard 1 firing, not a fallback to the
     default Python TypeError. See
     test_g8_sequential_guard_catches_cross_call_impurity_guard1_cannot_see
-    below for the complementary case guard 1 structurally cannot detect."""
+    below for the complementary case guard 1 structurally cannot detect.
+    Identity tangents require scalar leaves rather than one flat (3,) leaf.
+    """
     params = jnp.asarray([1.0, 2.0, 3.0], dtype=jnp.float32)
-    tangents = jnp.eye(3, dtype=jnp.float32)  # explicit escape hatch: identity
-    # requires scalar leaves, and params here is one flat (3,) leaf.
+    tangents = jnp.eye(3, dtype=jnp.float32)
 
     with pytest.raises(ValueError, match="out_axes"):
         jacobian_fwd(_leaky_sim_fn, params, tangents=tangents, batch_tangents=False)
 
-    # Confirm the batched path independently raises too (both paths agree
-    # this sim_fn is unsafe -- neither one is the "safe" escape hatch).
     with pytest.raises(ValueError, match="out_axes"):
         jacobian_fwd(_leaky_sim_fn, params, tangents=tangents, batch_tangents=True)
 
@@ -776,10 +695,6 @@ def test_g8_sequential_guard_catches_cross_call_impurity_guard1_cannot_see():
 
     def side_effecting_sim_fn(params):
         call_count["n"] += 1
-        # A real (if contrived) impurity: the primal depends on how many
-        # times this Python function has been called so far, which a
-        # single abstract trace cannot see, but n_t independent eager
-        # jax.jvp calls can.
         return jnp.sum(params ** 2) + float(call_count["n"])
 
     params = jnp.asarray([1.0, 2.0, 3.0], dtype=jnp.float32)
@@ -820,7 +735,6 @@ def test_g8_sequential_guard_trace_time_check_survives_outer_jit():
     with pytest.raises(ValueError, match="out_axes"):
         outer(params)
 
-    # And a well-behaved sim_fn must still compile and run fine under jit.
     @jax.jit
     def outer_ok(p):
         value, jacobian = jacobian_fwd(_pure_sim_fn, p, tangents=tangents, batch_tangents=False)
@@ -829,11 +743,6 @@ def test_g8_sequential_guard_trace_time_check_survives_outer_jit():
     value, jacobian = outer_ok(params)
     assert float(value) == float(jnp.sum(params ** 2))
 
-
-# ---------------------------------------------------------------------------
-# G8 follow-up (arc-audit verification round, items B3/B5 + "guard 1 too
-# strict"): three defects found in the G8 guards themselves.
-# ---------------------------------------------------------------------------
 
 def test_g8_guard2_nan_divergence_not_misdiagnosed_as_tangent_dependence():
     """B3: jnp.array_equal(nan, nan) is False by default (IEEE-754), so a
@@ -845,7 +754,7 @@ def test_g8_guard2_nan_divergence_not_misdiagnosed_as_tangent_dependence():
     just returns the nan silently (measured); the sequential path must
     match that, not raise."""
     def nan_sim_fn(p):
-        return jnp.nan + 0.0 * jnp.sum(p)  # same nan regardless of p or tangent
+        return jnp.nan + 0.0 * jnp.sum(p)
 
     params = jnp.asarray([1.0, 2.0, 3.0], dtype=jnp.float32)
     tangents = jnp.eye(3, dtype=jnp.float32)
@@ -877,7 +786,6 @@ def test_g8_guard2_checks_all_params_leaves_for_tracer_ness():
 
     @jax.jit
     def outer_traced_first(a):
-        # a: jit-traced; b0_concrete: closure-captured, stays concrete.
         value, jacobian = jacobian_fwd(
             sim_fn, (a, b0_concrete), tangents=tangents, batch_tangents=False,
         )
@@ -887,7 +795,6 @@ def test_g8_guard2_checks_all_params_leaves_for_tracer_ness():
 
     @jax.jit
     def outer_concrete_first(b):
-        # a0_concrete: closure-captured, stays concrete; b: jit-traced.
         value, jacobian = jacobian_fwd(
             sim_fn, (a0_concrete, b), tangents=tangents, batch_tangents=False,
         )
@@ -919,10 +826,6 @@ def test_g8_guard1_data_dependent_branch_on_params_not_misdiagnosed():
     params = jnp.asarray([1.0, 2.0, 3.0], dtype=jnp.float32)
     tangents = jnp.eye(3, dtype=jnp.float32)
 
-    # A genuine Python `if` (not jnp.where) is the sharper reproduction
-    # of the reported failure -- jnp.where alone is traceable, but an
-    # `if` on a traced boolean is what raises TracerBoolConversionError
-    # under eval_shape's full abstraction.
     def branchy_sim_fn_python_if(p):
         if jnp.sum(p) > 0:
             return jnp.sum(p ** 2)

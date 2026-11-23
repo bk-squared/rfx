@@ -39,13 +39,10 @@ def MomentRecords(self, buffer):
 
 
 def SlabNTFF(self, buffer):
-    """Place each cell once, preserving compensation; no spatial sum."""
+    """Place each cell once, preserving compensation; no spatial sum.
+    Replicate device buffers for differentiable indexing; accept gathered host arrays."""
     result = list(init_ntff_data(self.box, field_dtype=jnp.float64
                                 if self.dtype == jnp.complex128 else jnp.float32))
-    # Indexing the x-sharded buffer by rank compiles a gather with an
-    # XLA partition-id; replicate it first, which stays
-    # differentiable. The multi-process caller passes an already
-    # gathered host array, which needs neither.
     if isinstance(buffer, (jax.Array, jax.core.Tracer)):
         buffer = place(buffer, NamedSharding(self.mesh, P()))
     for rank, (lo, hi, faces, _, shapes, sizes) in enumerate(self.parts):
@@ -61,8 +58,7 @@ def SlabNTFF(self, buffer):
 
 
 def TimePlaneRecords(self, buffer):
-    # New per-step oracle: place each rank's owned rectangle using NumPy.
-    # This deliberately does not call the production join or host assembler.
+    """Place each rank's owned rectangle using NumPy, independently of production assemblers."""
     import numpy as np
     result = [np.zeros((self.frames,) + t.accumulator.shape[1:], self.dtype)
               for t in self.templates]

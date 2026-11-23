@@ -15,8 +15,7 @@ import numpy as np
 
 
 def solve(v, current, zref, *, convention='voltage'):
-    # Input axes: drive, port, frequency. Rows below are drive, so solving
-    # A.T * S.T = B.T gives the usual receiver-by-drive S after transpose.
+    """Input axes are drive, port, frequency."""
     a = (v + zref[None, :, None] * current) / 2
     b = (v - zref[None, :, None] * current) / 2
     if convention == 'power':
@@ -28,6 +27,7 @@ def solve(v, current, zref, *, convention='voltage'):
 
 
 def audit(path):
+    """Power diagnostics must use the power basis even for legacy voltage S."""
     with np.load(path, allow_pickle=False) as dump:
         meta = json.loads(str(dump['metadata_json']))
         if meta.get('current_spatial_alignment') != 'linear_bracketing_H_to_E_node':
@@ -60,7 +60,6 @@ def audit(path):
                      + weights[None, :, 1, None] * currents['same_index'])
     centered = solve(v, currents['centered'], zref, convention=convention)
     old = solve(v, currents['same_index'], zref, convention=convention)
-    # Power diagnostics must use the power basis even for legacy voltage S.
     power_scale = (np.sqrt(zref)[None, :, None] / np.sqrt(zref)[:, None, None]
                    if convention == 'voltage' else 1)
     centered_power, old_power = centered * power_scale, old * power_scale

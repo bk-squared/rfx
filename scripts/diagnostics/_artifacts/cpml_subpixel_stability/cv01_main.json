@@ -1,9 +1,9 @@
 {
   "label": "main",
   "provenance": {
-    "rfx_file": "/tmp/claude-0/-root-workspace-byungkwan-workspace-research-rfx/44efb5ea-44e2-4413-9da7-9514386aba06/scratchpad/1043A_ref/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "rfx_under_repo_root": true,
-    "driver_root": "/tmp/claude-0/-root-workspace-byungkwan-workspace-research-rfx/44efb5ea-44e2-4413-9da7-9514386aba06/scratchpad/1043A_ref",
+    "driver_root": "/tmp/claude-0/-workspace-research-rfx/44efb5ea-44e2-4413-9da7-9514386aba06/scratchpad/1043A_ref",
     "driver_commit": "",
     "branch": ""
   },

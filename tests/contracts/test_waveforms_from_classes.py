@@ -3,6 +3,7 @@
 Setup and metric: CPML 16, record 1x.
 A13 excludes TFSF, Floquet and waveguide excitations: their
 measured tails still depend on the record length or absorber in this box.
+The fixed bar is the earlier measured corrected floor 8.49e-8, times 1.5 and rounded up at quantum=1e7, so a broken waveform cannot raise its own threshold.
 """
 from __future__ import annotations
 
@@ -14,9 +15,6 @@ import pytest
 
 from rfx import Simulation
 
-# A13 (2026-11-09): the measured
-# corrected floor 8.49e-8, times 1.5 and rounded up at quantum=1e7. A11
-# requires a fixed bar so a broken waveform cannot raise its own threshold.
 R_MAX = 2e-7
 
 
@@ -32,6 +30,7 @@ R_MAX = 2e-7
     ),
 ])
 def test_builtin_source_leaves_no_static_field(row):
+    """The mesh has 16 interior cells plus 16 CPML cells on each side and the end node."""
     f0, dx = 15e9, 0.001
     domain = (0.016, 0.016, 0.016)
     source, probe = (0.008, 0.008, 0.008), (0.009, 0.008, 0.008)
@@ -48,23 +47,21 @@ def test_builtin_source_leaves_no_static_field(row):
         sim.add_probe(probe, component)
 
     grid = sim.freeze_mesh()
-    # 16 interior cells plus 16 CPML cells on each side and the end node.
     assert grid.shape == (49, 49, 49)
     assert grid.position_to_index(source) == (24, 24, 24)
     assert grid.position_to_index(probe) == (25, 24, 24)
-    # Closed forms, independent of the waveform implementation. Circular
-    # Ex uses cutoff=5 and ends later than its inline Ey (cutoff=3).
     tau = 1.0 / (f0 * 0.8 * math.pi)
-    t0 = (5 if row == "polarized_circular" else 3) * tau
+    CIRCULAR_EX_CUTOFF = 5
+    DEFAULT_AND_INLINE_EY_CUTOFF = 3
+    t0 = (CIRCULAR_EX_CUTOFF if row == "polarized_circular" else DEFAULT_AND_INLINE_EY_CUTOFF) * tau
     end = t0 + 6 * tau + 2 * max(domain) / 299792458.0
-    steps = math.ceil(end / grid.dt) + 1  # Last sample is at (steps-1)*dt.
+    steps = math.ceil(end / grid.dt) + 1
     assert steps == (211 if row == "polarized_circular" else 183)
     result = sim.run(n_steps=steps, compute_s_params=False)
     fields = np.asarray(result.time_series)
 
     assert fields.shape == (steps, 3)
     assert np.isfinite(fields).all(), f"{row}: nonfinite field record"
-    # Same Yee probe indices, no interpolation; float64 norm as in the record.
     magnitude = np.linalg.norm(fields.astype(np.float64), axis=1)
     peak = float(magnitude.max())
     late = float(magnitude[math.floor(0.9 * steps):].max())

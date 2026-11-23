@@ -33,10 +33,6 @@ from rfx.sources.waveguide_port import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Shared helpers (same pattern as test_waveguide_port.py)
-# ---------------------------------------------------------------------------
-
 class _WgGrid:
     """Minimal grid object for waveguide simulations."""
 
@@ -83,8 +79,8 @@ def _run_waveguide_sim_overlap(
 
     port = WaveguidePort(
         x_index=port_x,
-        y_slice=(0, grid.ny),
-        z_slice=(0, grid.nz),
+        y_slice=(0, grid.ny - 1),
+        z_slice=(0, grid.nz - 1),
         a=a_actual,
         b=b_actual,
         mode=(1, 0),
@@ -119,10 +115,6 @@ def _run_waveguide_sim_overlap(
 
     return port_cfg, overlap_acc, grid
 
-
-# ---------------------------------------------------------------------------
-# Test 1: Mode normalization constant
-# ---------------------------------------------------------------------------
 
 def test_overlap_mode_normalization():
     """C_mode = ∫(e_mode × h*_mode) · n̂ dA should be real and |C_mode| ≈ 1 for TE10.
@@ -164,15 +156,12 @@ def test_overlap_mode_normalization():
 
         print(f"\n  C_mode ({normal_axis}-normal): {c_mode:.6f}  |C_mode|: {abs_c_mode:.6f}")
 
-        # |C_mode| should be non-zero
         assert abs_c_mode > 0.5, \
             f"|C_mode| should be > 0.5 for {normal_axis}-normal, got {abs_c_mode}"
 
-        # For normalized profiles, |C_mode| ≈ 1.0
         assert abs(abs_c_mode - 1.0) < 0.15, \
             f"|C_mode| should be ~1.0 for normalized TE10, got {abs_c_mode:.4f} ({normal_axis}-normal)"
 
-    # Additionally verify x-normal C_mode is positive (right-handed frame)
     port_x = WaveguidePort(
         x_index=10,
         y_slice=(0, ny_port),
@@ -186,11 +175,6 @@ def test_overlap_mode_normalization():
     assert np.isfinite(c_x), "C_mode should be finite"
 
 
-# ---------------------------------------------------------------------------
-# Test 2: Overlap passivity — verify overlap S-params agree with V/I and
-#          satisfy passivity in the well-resolved mid-band
-# ---------------------------------------------------------------------------
-
 def test_overlap_passivity():
     """Overlap S-params should match V/I and satisfy passivity in mid-band.
 
@@ -199,6 +183,7 @@ def test_overlap_passivity():
     normalization).  We verify:
     1. Overlap S11/S21 match V/I S11/S21 (< 1e-4 relative error)
     2. In the best-resolved mid-band frequencies, |S11|² + |S21|² < 1.10
+    The 1.15 passivity threshold matches the test_passivity_two_port_empty_waveguide gate in test_conservation_laws for consistency.
     """
     a_wg = 0.04
     b_wg = 0.02
@@ -207,8 +192,8 @@ def test_overlap_passivity():
     dx = 0.002
     nc = 10
 
-    # Narrow band well above cutoff where extraction is most accurate
     freqs = jnp.linspace(5.5e9, 7e9, 15)
+    assert np.all(np.asarray(freqs) > cutoff_frequency(a_wg, b_wg, 1, 0)), "The extraction band must lie above the TE10 cutoff."
 
     port_cfg, overlap_acc, grid = _run_waveguide_sim_overlap(
         a_wg, b_wg, length, f0, dx, nc, freqs,
@@ -218,10 +203,8 @@ def test_overlap_passivity():
 
     f_c = cutoff_frequency(port_cfg.a, port_cfg.b, 1, 0)
 
-    # V/I method
     s11_vi, s21_vi = extract_waveguide_sparams(port_cfg)
 
-    # Overlap method
     s11_ov, s21_ov = extract_waveguide_sparams_overlap(overlap_acc, port_cfg)
 
     s11_vi_arr = np.array(s11_vi)
@@ -229,8 +212,6 @@ def test_overlap_passivity():
     s11_ov_arr = np.array(s11_ov)
     s21_ov_arr = np.array(s21_ov)
 
-    # 1. Verify overlap matches V/I (they should be identical or very close
-    # because overlap with impedance correction is mathematically equivalent)
     s21_rel_err = np.max(np.abs(s21_ov_arr - s21_vi_arr)) / np.max(np.abs(s21_vi_arr))
     s11_rel_err = np.max(np.abs(s11_ov_arr - s11_vi_arr)) / max(np.max(np.abs(s11_vi_arr)), 1e-10)
 
@@ -242,13 +223,10 @@ def test_overlap_passivity():
     assert s21_rel_err < 1e-4, \
         f"Overlap S21 differs from V/I by {s21_rel_err:.2e}, expected < 1e-4"
 
-    # 2. Check passivity in best-resolved mid-band
-    # Select frequencies well above cutoff where |S21| is closest to 1
     s21_mag = np.abs(s21_ov_arr)
     s11_mag = np.abs(s11_ov_arr)
     passivity = s11_mag**2 + s21_mag**2
 
-    # Find the best-behaved frequencies (|S21| closest to 1.0)
     s21_deviation = np.abs(s21_mag - 1.0)
     best_mask = s21_deviation < np.median(s21_deviation)
     passivity_best = passivity[best_mask]
@@ -260,19 +238,8 @@ def test_overlap_passivity():
     print(f"  Passivity (all): mean={np.mean(passivity):.4f}, "
           f"max={np.max(passivity):.4f}")
 
-    # Passivity threshold: 1.15 matches test_conservation_laws.py's
-    # test_passivity_two_port_empty_waveguide gate for consistency. The
-    # overlap and V/I paths match to < 1e-4 (assertion 1 above), so this
-    # secondary check is really a sanity bound on single-port extractor
-    # absolute error in mid-band — dominated by mode-projection
-    # (|S11|~0.26 even on empty guide). After the 2026-04-22 CPML retune
-    # (kappa_max 1->5, order 2->3) the observed max moved from ~1.09 to
-    # ~1.11; the mechanism is extractor/CPML interaction on the
-    # single-port path, not a physics regression. Tighten when the
-    # discrete-eigenmode profile (P3) lands.
     assert np.max(passivity_best) < 1.15, \
         f"Passivity violated in best band: max = {np.max(passivity_best):.4f}, expected < 1.15"
 
-    # 3. All values should be finite
     assert np.all(np.isfinite(s11_ov_arr)), "S11 contains non-finite values"
     assert np.all(np.isfinite(s21_ov_arr)), "S21 contains non-finite values"

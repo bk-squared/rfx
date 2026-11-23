@@ -156,8 +156,6 @@ def scan_source(source, path):
         return aliases.get(call_name(node), call_name(node))
 
     neighbours = NEIGHBOURS | {"roll"}
-    # Only wrappers RETURNING a neighbour qualify; a whole update function
-    # containing a neighbour call does not become a neighbour primitive.
     functions = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
     while True:
         added = {fn.name for fn in functions if any(

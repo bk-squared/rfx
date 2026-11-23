@@ -131,7 +131,7 @@ def validate_oracle() -> dict:
         assert b_mm < 0, "inductive iris must have negative shunt susceptance"
         rels.append(abs(abs(b_mm) / marcuvitz_thin_b(A_WR90, d, f) - 1))
     w["marcuvitz_max_rel"] = max(rels)
-    assert w["marcuvitz_max_rel"] < 0.15   # leading-order anchor, ~10% expected
+    assert w["marcuvitz_max_rel"] < 0.15
     s11o, s21o = iris_smatrix(A_WR90, A_WR90 - 1e-9, 2e-3, f)
     w["open_limit_s11"] = abs(s11o)
     assert w["open_limit_s11"] < 1e-6

@@ -13,9 +13,8 @@ class ReportedPlanes(NamedTuple):
     label: str
 
 
-def resolve_reported_planes(entry, cfg, *, grid=None) -> ReportedPlanes:
-    """Resolve reporting targets, leaving the config's sampling planes intact."""
-    planes = waveguide_plane_positions(cfg)
+def reported_from_planes(entry, planes) -> ReportedPlanes:
+    """Resolve reported planes from source and sampling positions in metres."""
     if entry.reference_plane is not None or entry.probe_plane is not None:
         reference = entry.reference_plane if entry.reference_plane is not None else planes["source"]
         probe = entry.probe_plane if entry.probe_plane is not None else planes["probe"]
@@ -24,6 +23,13 @@ def resolve_reported_planes(entry, cfg, *, grid=None) -> ReportedPlanes:
         reference, probe, label = planes["reference"], planes["probe"], "measured"
     else:
         reference, probe, label = planes["source"], planes["probe"], "source_to_probe"
+    return ReportedPlanes(reference, probe, label)
+
+
+def resolve_reported_planes(entry, cfg, *, grid=None) -> ReportedPlanes:
+    """Resolve reporting targets, leaving the config's sampling planes intact."""
+    planes = waveguide_plane_positions(cfg)
+    reference, probe, label = reported_from_planes(entry, planes)
     if isinstance(grid, NonUniformGrid) and reference != planes["reference"]:
         try:
             _assert_nu_shift_span_in_one_grading_zone(grid, cfg, reference, entry.name)

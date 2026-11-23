@@ -89,7 +89,6 @@ def _default(sim, *, devices=None):
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 @pytest.mark.parametrize("wire", [False, True])
 def test_all_passive_drive_scan_forms_every_column(mesh, wire):
-    # Main #1915 drives each declared port, even when all are passive.
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         result = _scene(mesh, wire=wire, illumination="none").run(
@@ -147,7 +146,7 @@ def test_graded_waveguide_illumination_with_passive_wire_refuses():
         with pytest.raises(ValueError) as caught:
             _scene("graded", wire=True, illumination="waveguide", single=True).run(
                 n_steps=64, skip_preflight=True)
-    assert str(caught.value) == "Waveguide ports are not supported together with lumped ports or TFSF"
+    assert str(caught.value) == "Waveguide ports are not supported together with a lumped or wire port, or a soft source (add_source) or TFSF"
 
 
 def test_uniform_waveguide_composition_keeps_its_existing_refusal():
@@ -159,17 +158,16 @@ def test_uniform_waveguide_composition_keeps_its_existing_refusal():
 
 def test_tfsf_port_combination_is_refused_at_declaration():
     sim = _scene(illumination="none")
-    with pytest.raises(ValueError, match="TFSF.*not supported.*lumped ports"):
+    with pytest.raises(ValueError, match="TF/SF.*not supported.*lumped or wire port"):
         sim.add_tfsf_source()
     sim = base_scene(source=False).add_tfsf_source()
-    with pytest.raises(ValueError, match="Lumped ports.*not supported.*TFSF"):
+    with pytest.raises(ValueError, match="TF/SF.*not supported.*lumped or wire port"):
         sim.add_port((.012, .009, .004), "ez", impedance=50., excite=False)
 
 
 def test_tfsf_cannot_admit_a_passive_record():
+    """Public declarations refuse the TF/SF and port composition, so the admission boundary is exercised defensively."""
     from rfx.runners._admission import refuse_plain_sources_s_matrix
-    # Public declarations refuse this composition above. Test the admission
-    # boundary defensively with a real TFSF entry, without solving that model.
     sim = _scene(illumination="none")
     sim._tfsf = base_scene(source=False).add_tfsf_source()._tfsf
     with pytest.raises(ValueError, match=REFUSAL):
@@ -216,7 +214,6 @@ def test_uniform_multi_device_explicit_refuses_before_dispatch(wire, monkeypatch
 
 
 def test_forward_without_s_request_keeps_named_records():
-    # forward() has no implicit port-S request; run() owns the defaults above.
     with warnings.catch_warnings(record=True) as caught:
         result = _scene().forward(n_steps=64, skip_preflight=True)
     assert result.s_params is None and result.lumped_port_sparams is None
@@ -225,15 +222,13 @@ def test_forward_without_s_request_keeps_named_records():
     assert not any("Lumped/wire S needs a driven port" in str(w.message) for w in caught)
 
 
-# The driven column measured on main 4a90398e2 before product/test edits, using
-# test_forward_port_s_matrix::test_driven_column_matches_run's scenes, n_steps=150.
-# Compared by value, not bytes: float32 bytes differ between macOS and the Linux gate.
 MAIN_DRIVEN_COLUMN = json.loads(
     (Path(__file__).with_name("all_passive_main_driven_column.json")).read_text())
 
 
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 def test_driven_and_passive_output_matches_main(mesh):
+    """Float32 bytes differ between macOS and the Linux gate, so the driven column is compared by value."""
     if mesh == "uniform":
         sim = BUILDERS["P-lumped2"](mesh)
         run = sim.run(n_steps=150, skip_preflight=True)
@@ -261,8 +256,6 @@ def test_mixed_uniform_record_selects_the_driven_family():
     assert result.s_params.shape == (1, 1, 3)
     assert result.lumped_port_sparams and result.wire_port_sparams
     assert result.sparam_read_ids.ids == ("port:0:mode:0",)
-    # The value is the driven wire's own reflection, (V_port - Z0 I)/(V_port + Z0 I),
-    # not the passive lumped port's load ratio that main selected here.
     (meta, accs), = result.wire_port_sparams
     v_port, i = np.asarray(accs[3]), np.asarray(accs[1])
     expected = (v_port - meta.impedance * i) / (v_port + meta.impedance * i)

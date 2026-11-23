@@ -64,13 +64,14 @@ def test_pec_cavity_s11_magnitude_near_one():
 
     s11 = np.array(result.s_params[0, 0])
     mag = np.abs(s11)
-    # Lossless PEC cavity: every frequency must be near full reflection.
     assert np.all(mag > 0.85), f"|S11| dropped below 0.85 in band: {mag}"
     assert np.all(mag < 1.10), f"|S11| > 1.10 (unphysical overshoot): {mag}"
 
 
 def test_jit_path_matches_python_loop_extractor():
-    """JIT-integrated path must agree with the canonical extract_s11 path."""
+    """JIT-integrated path must agree with the canonical extract_s11 path.
+    The 0.05 tolerance absorbs ordering and precision differences between scan-body and Python accumulators.
+    """
     from rfx.grid import Grid
     from rfx.core.yee import init_state, init_materials
     from rfx.stepping.yee import update_e, update_h
@@ -104,19 +105,12 @@ def test_jit_path_matches_python_loop_extractor():
         state = update_h(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
-        # The eager loop must use the same two slots the JIT scan uses:
-        # the PRE-injection drive sample into v_ref, the PHYSICAL V/I after
-        # injection (scripts/diagnostics/lumped_port_known_load_line.py).
-        # Sampling only before injection, as this loop did, compares the JIT
-        # path against a different measurement rather than a different
-        # implementation of the same one.
         sprobe = update_lumped_drive_ref_probe(sprobe, state, grid, port, dt)
         state = apply_lumped_port(state, grid, port, t, materials)
         sprobe = update_sparam_probe(sprobe, state, grid, port, dt)
 
     s11_loop = np.array(extract_s11(sprobe, z0=50.0))
 
-    # JIT path through Simulation.forward
     sim = _build_cavity_sim()
     result = sim.forward(
         num_periods=60,
@@ -125,10 +119,6 @@ def test_jit_path_matches_python_loop_extractor():
     )
     s11_jit = np.array(result.s_params[0, 0])
 
-    # Both paths use the same V/I wave-decomposition formula on equivalent
-    # measurement cells; expect close numerical agreement (tolerance set to
-    # absorb ordering/precision differences between scan-body and Python
-    # accumulators).
     diff = np.abs(s11_jit - s11_loop)
     assert np.max(diff) < 0.05, (
         f"JIT vs Python-loop disagree more than 0.05: "
@@ -145,14 +135,15 @@ def test_gradient_flows_through_wave_decomp_objective():
     target = 3.0e9
     obj = minimize_s11_at_freq_wave_decomp(target_freq=target, port_idx=0)
 
-    # Build a baseline eps_override of the right shape.
     grid = sim._build_grid()
     eps_base = jnp.ones(grid.shape, dtype=jnp.float32)
+
+    GRADIENT_FINITE_RECORD_PERIODS = 20
 
     def loss_fn(eps_arr):
         result = sim.forward(
             eps_override=eps_arr,
-            num_periods=20,  # short — gradient finiteness, not accuracy
+            num_periods=GRADIENT_FINITE_RECORD_PERIODS,
             port_s11_freqs=freqs,
             skip_preflight=True,
         )

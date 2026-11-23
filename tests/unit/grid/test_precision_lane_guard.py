@@ -2,6 +2,8 @@
 
 Distributed and subgridded precision refusals keep their existing messages.
 Uniform mixed and float64 CPML coverage remains unchanged.
+Every domain length written as ``N * (c / 5 GHz / 20)`` is a whole number of cells of
+dx, so the solved domain equals the declared one.
 """
 
 from __future__ import annotations
@@ -18,7 +20,7 @@ from rfx import Simulation
 def _nu_sim(*, precision: str) -> Simulation:
     dz = np.full(20, 1.0e-3)
     sim = Simulation(
-        freq_max=5.0e9, domain=(7 * (299792458.0 / 5.0e9 / 20.0), 7 * (299792458.0 / 5.0e9 / 20.0), 0.0), dx=299792458.0 / 5.0e9 / 20.0, dz_profile=dz,  # solved length; #1887
+        freq_max=5.0e9, domain=(7 * (299792458.0 / 5.0e9 / 20.0), 7 * (299792458.0 / 5.0e9 / 20.0), 0.0), dx=299792458.0 / 5.0e9 / 20.0, dz_profile=dz,
         boundary="pec", precision=precision,
     )
     sim.add_source(
@@ -32,7 +34,7 @@ def _uniform_sim(*, precision: str) -> Simulation:
     sim = Simulation(
         freq_max=5.0e9, domain=(7 * (299792458.0 / 5.0e9 / 20.0), 7 * (299792458.0 / 5.0e9 / 20.0), 7 * (299792458.0 / 5.0e9 / 20.0)), dx=(299792458.0 / 5.0e9 / 20.0), boundary="pec",
         precision=precision,
-    )  # solved length; #1887
+    )
     sim.add_source(
         position=(0.01, 0.01, 0.01), component="ez",
         amplitude_kind="current",
@@ -70,17 +72,21 @@ def test_distributed_forward_rejects_nonfloat32_precision():
     """distributed=True is a call-time forward() kwarg invisible to
     preflight (Simulation-construction-time); _dispatch_plan is the only
     place this can be caught, so this is a distinct code path from the
-    non-uniform-mesh test above, not a duplicate."""
-    sim = _nu_sim(precision="float64")  # DP3: distributed forward is NU-only
+    non-uniform-mesh test above, not a duplicate.
+
+    The fixture is the non-uniform model because distributed forward runs only on the
+    non-uniform mesh.
+    """
+    sim = _nu_sim(precision="float64")
     with enable_x64(), pytest.raises(NotImplementedError, match="run_distributed|fwd_distributed_nu"):
         sim.forward(distributed=True, n_steps=5, skip_preflight=True)
 
 
 def test_subgridded_run_rejects_nonfloat32_precision():
+    """The refinement dict is minimal: only the lane-dispatch guard is under test, not
+    subgridding physics, so the other fields need not describe a valid refinement
+    region."""
     sim = _uniform_sim(precision="mixed")
-    # Minimal refinement dict -- only the lane-dispatch guard is under
-    # test here, not subgridding physics, so the other fields don't need
-    # to describe a valid refinement region.
     sim._refinement = {
         "z_range": (0.005, 0.015), "ratio": 2, "xy_margin": 0.0,
         "tau": None, "validation": None, "topology": None,
@@ -102,38 +108,11 @@ def test_uniform_lane_unaffected_by_the_new_guard(precision):
     assert result is not None
 
 
-# ---------------------------------------------------------------------------
-# Issue #644, RESOLVED: precision="mixed" + CPML now works through forward().
-#
-# It was a pre-existing, NOT-#630-caused defect (measured identical via run()
-# on the pre- and post-#630 trees): the CPML psi_* carry followed
-# field_dtype=float16 while the CPML coefficients are hard-pinned float32, so
-# `psi = b*psi + c*curl` promoted to float32 and broke the lax.scan carry
-# contract. #630 made forward() honour precision= for the first time, which
-# newly exposed it there, and #630 shipped a temporary forward() guard raising
-# NotImplementedError rather than leak a raw JAX carry-dtype TypeError.
-#
-# #644 fixed the root cause -- the psi_* arrays are ACCUMULATION state and are
-# now allocated at promote_types(field_dtype, float32), so they never sit
-# below float32 -- and REMOVED that guard. These tests were the guard's
-# regression pins; they are kept (rather than deleted) and inverted to assert
-# SUCCESS, because the two cases they encode are exactly the two that must
-# keep working: a plain scalar boundary="cpml", and a per-face BoundarySpec
-# carrying only ONE cpml face (the guard read self._boundary_spec, so the
-# per-face case is a genuinely distinct path, not a restatement).
-#
-# Caveat worth knowing when reading these: "mixed" + CPML is correct but
-# raises the absorber's residual floor (~-76 dB -> ~-59.5 dB on the fixture
-# in tests/unit/grid/test_mixed_precision.py). See the precision= docstring in
-# rfx/api/__init__.py. These tests pin reachability, not absorber quality --
-# tests/unit/grid/test_mixed_precision.py owns the numeric assertions.
-# ---------------------------------------------------------------------------
-
 def _cpml_sim(*, precision: str) -> Simulation:
     sim = Simulation(
         freq_max=5.0e9, domain=(7 * (299792458.0 / 5.0e9 / 20.0), 7 * (299792458.0 / 5.0e9 / 20.0), 7 * (299792458.0 / 5.0e9 / 20.0)), dx=(299792458.0 / 5.0e9 / 20.0), boundary="cpml",
         precision=precision,
-    )  # solved length; #1887
+    )
     sim.add_source(
         position=(0.01, 0.01, 0.01), component="ez",
         amplitude_kind="current",
@@ -187,7 +166,7 @@ def test_forward_mixed_cpml_per_face_boundary_spec_also_works():
         freq_max=5.0e9, domain=(7 * (299792458.0 / 5.0e9 / 20.0), 7 * (299792458.0 / 5.0e9 / 20.0), 7 * (299792458.0 / 5.0e9 / 20.0)), dx=(299792458.0 / 5.0e9 / 20.0), cpml_layers=4,
         boundary=BoundarySpec(x="pec", y="pec", z=Boundary(lo="cpml", hi="cpml")),
         precision="mixed",
-    )  # solved length; #1887
+    )
     sim.add_source(
         position=(0.01, 0.01, 0.01), component="ez",
         amplitude_kind="current",
@@ -197,16 +176,9 @@ def test_forward_mixed_cpml_per_face_boundary_spec_also_works():
 
 
 def test_forward_float64_cpml_works():
-    # Scoped x64, per this repo's own rule (CLAUDE.md, and see this
-    # package's own precision docstring): never flip jax_enable_x64
-    # process-globally in a test -- it leaks to every test scheduled after
-    # this one in the same pytest-split worker. Use the repo's version-
-    # robust scoped context (jax.experimental.enable_x64 upstream, or the
-    # tests/_x64_compat.py shim on newer JAX that removed it), matching
-    # the idiom in tests/unit/autodiff/test_coax_two_port_ad.py.
     try:
         from jax import enable_x64
-    except ImportError:  # older JAX (< ~0.4.31)
+    except ImportError:
         from tests._x64_compat import enable_x64
 
     sim = _cpml_sim(precision="float64")

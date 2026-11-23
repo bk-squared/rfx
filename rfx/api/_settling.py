@@ -17,8 +17,6 @@ def run_settling_witness(self, result):
     if prior and prior.get("run_records_scored"):
         return result.settling_db, prior
 
-    # run()'s port records repeat its S bins in float32; reading them again
-    # would split each bin of a float64 request in two.
     read = result
     if not isinstance(result, ForwardResult) and hasattr(result, "_replace"):
         read = result._replace(wire_port_sparams=None, lumped_port_sparams=None)
@@ -28,15 +26,24 @@ def run_settling_witness(self, result):
     if prior:
         prior_bins = np.asarray(getattr(result, "freqs", None), dtype=float).reshape(-1)
         if len(prior['share_per_bin']) != bins.size:
-            aligned = {}
-            for key in ('share_per_bin', 'error_per_bin', 'drive_share_per_bin'):
-                if key == 'drive_share_per_bin' and not len(prior.get(key, ())):
+            aligned: dict = {}
+            for key in ('share_per_bin', 'error_per_bin', 'drive_share_per_bin',
+                        'record_end_error_per_bin', 'kappa_per_bin', 'record_end_floor_per_bin'):
+                if key not in ('share_per_bin', 'error_per_bin') and not len(prior.get(key, ())):
                     aligned[key] = ()
                     continue
                 values = np.zeros(bins.size)
                 if len(prior.get(key, ())):
                     np.maximum.at(values, np.searchsorted(bins, prior_bins), prior[key])
                 aligned[key] = values
+            for key in ('record_end_error_per_entry', 'record_end_error_second_per_entry',
+                        'tails_per_channel', 'second_tails_per_channel'):
+                if prior.get(key):
+                    aligned[key] = {}
+                    for name, samples in prior[key].items():
+                        values = np.zeros(bins.size, dtype=np.asarray(samples).dtype)
+                        values[np.searchsorted(bins, prior_bins)] = samples
+                        aligned[key][name] = values
             prior = {**prior, **aligned}
         rows.append(prior)
     db, detail = build_settling_witness(
@@ -68,4 +75,5 @@ def settling_source_end(self, result, records=None):
         records = [p for i, p in enumerate(self._probes[:count]) if i not in internal]
     return injection_end(
         series.shape[0], dt, records=tuple(records), grid=grid, sim=self,
-        waveguide_ports=getattr(result, "waveguide_ports", None))
+        waveguide_ports=getattr(result, "waveguide_ports", None),
+        tfsf_angle_deg=getattr(result, "tfsf_angle_deg", None))

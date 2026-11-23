@@ -1,4 +1,6 @@
-"""Absorber columns must contain the adjacent solved cross-section."""
+"""Absorber columns must contain the adjacent solved cross-section.
+HELD_FACES contains entry indices in the committed drawings, not a port-classification algorithm.
+"""
 from rfx.boundaries.spec import Boundary, BoundarySpec
 import sys
 from pathlib import Path
@@ -7,7 +9,6 @@ import jax
 import numpy as np
 import pytest
 
-# Importable on its own, not only after a sibling module has put tests/ on the path.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import _example_fidelity_lib as lib  # noqa: E402
 from _conductor_continuation_contract import assembled_arrays, violations  # noqa: E402
@@ -17,12 +18,10 @@ CASES = [(path, builder, variant)
          for path, entry in sorted(lib.CLASSIFICATION.items()) if entry.kind == "audited"
          for builder in entry.builders for variant in builder.variants]
 
-# Entry indices in the committed drawings, not a port-classification algorithm.
 HELD_FACES = {
     "validation/crossval/06b_msl_notch_filter_uniform.py": [(1, "x-lo"), (1, "x-hi")],
     "validation/crossval/07_sheen_lpf.py": [(1, "x-lo"), (3, "x-hi")],
     "validation/tmtt_paper/msl_stub_notch_tuning.py": [(1, "x-lo"), (1, "x-hi")],
-    # Graded-mesh twin of the notch filter (#1191): trace entry 1, MSL ports at both ends.
     "validation/research/multiband_nu/msl_notch_graded.py": [(1, "x-lo"), (1, "x-hi")],
 }
 
@@ -45,17 +44,12 @@ def test_absorbing_columns_equal_the_face(path, builder, variant):
             module = lib.load_module(path)
             sim = lib.call_builder(path, module, builder, variant)
         except lib.MissingOptionalDependency as exc:
-            # A visible SKIP, as test_example_fidelity_contract does: CI has
-            # no optax, and an undeclared missing module is still an error.
-            # A declared module missing when the builder runs (trimesh for
-            # cad_mesh_import_demo) skips the same way.
             pytest.skip(str(exc))
         try:
             grid, arrays, poles, nodes = assembled_arrays(sim)
             rows = HELD_FACES.get(path, ())
             bad, _ = violations(sim, grid, arrays, poles, nodes, held_faces=rows)
             assert not bad, bad
-            # These three drawings put the dielectric first, then PEC sheets.
             _assert_empty_sheet_faces(grid, arrays, [(i-1, face) for i, face in rows])
         finally:
             jax.clear_caches()
@@ -73,7 +67,6 @@ def test_reached_conductor_is_a_live_array_witness():
     assert arrays["pec_mask"][:2].any()
     assert arrays["fenced_y"][:2].any()
     assert (arrays["tensor_y"][:2] == 0.).any()
-    # A single removed pad cell is visible without re-running any helper.
     arrays["pec_mask"] = arrays["pec_mask"].copy()
     arrays["pec_mask"][0, 4, 4] = False
     bad, _ = violations(sim, grid, arrays, poles, nodes)
@@ -85,8 +78,6 @@ def test_occupied_patch_ground_continues_on_both_high_faces():
     module = lib.load_module("tests/oracle/test_lossless_open_domain_ringdown_does_not_grow.py")
     sim = module._build(n=2, pad_h=10, cpml=4)
     try:
-        # This oracle calls run() with subpixel_smoothing=False. Its actual
-        # step receives staircase materials and PEC edges, no tensor.
         grid, arrays, poles, nodes = assembled_arrays(sim, include_smoothed=False)
         bad, exceptions = violations(sim, grid, arrays, poles, nodes)
         assert not exceptions
@@ -113,7 +104,6 @@ def test_port_exception_is_only_the_named_entry():
     assert arrays["sheet_0"][2].any()
     assert not arrays["sheet_0"][:2].any()
     assert arrays["pec_mask"][:2].any()
-    # Corrupt the other entry outside the terminal sheet's transverse support.
     arrays["pec_mask"] = arrays["pec_mask"].copy()
     occupied = np.argwhere(arrays["pec_mask"][0])
     j, k = occupied[0]
@@ -148,10 +138,10 @@ def fed_patch(kind="wire"):
 
 @pytest.mark.parametrize("kind", ["wire", "coax", "nu", "thin", "named_patch"])
 def test_fed_patch_ground_fills_all_lateral_absorbers(kind):
+    """The occupied ground cell is z=5h .. 5h+dx in the n=2 drawing."""
     sim = fed_patch(kind)
     try:
         grid, arrays, poles, nodes = assembled_arrays(sim, include_smoothed=False)
-        # Literal cell layer z=5h .. 5h+dx in the unchanged n=2 drawing.
         k = grid.pad_z_lo + 10
         cells = arrays["pec_mask"]
         assert cells[:-1, :-1, k].all()

@@ -192,10 +192,6 @@ def test_an_out_of_grid_index_and_coordinate_are_refused():
         grid.index_of("x", 1e6)
 
 
-# ---------------------------------------------------------------------------
-# Mutations -- the judges must be able to fail
-# ---------------------------------------------------------------------------
-
 def test_mutation_cumsum_instead_of_the_closed_form_breaks_node_identity():
     """(b) Revive the pre-#807 node line with every helper call kept.
 

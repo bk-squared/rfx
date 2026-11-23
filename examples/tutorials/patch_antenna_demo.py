@@ -103,12 +103,13 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   the realized cavity is the declared one and the run asserts it at build
   time.
 - The far field agrees as well.  This configuration prints
-  D = 6.60 dBi at its radiating bin (2.4 GHz) against openEMS 6.83 dBi,
-  -0.23 dB (measured 2026-11-03; it read 6.59 dBi in VESSL 369367270265,
-  before the dielectric Box faces moved to nearest nodes, and 6.60 dBi
-  before #1546; openEMS's value is
-  taken at its 50 ohm |S11| dip, 2.455 GHz, and rfx prints 6.75 dBi at its
-  2.5 GHz bin, so part of the difference is the frequency), inside the 1.0 dB
+  D = 6.69 dBi at its radiating bin (2.4 GHz) against openEMS 6.83 dBi,
+  -0.14 dB (measured 2026-11-15; it read 6.60 dBi before #2618, because the
+  49-sample phi grid below repeats the 0/2pi seam and the radiated-power sum
+  counted that direction twice; 6.59 dBi in VESSL 369367270265, before the
+  dielectric Box faces moved to nearest nodes; and 6.60 dBi before #1546;
+  openEMS's value is taken at its 50 ohm |S11| dip, 2.455 GHz, and rfx prints
+  6.84 dBi at its 2.5 GHz bin, so part of the difference is the frequency), inside the 1.0 dB
   tolerance the former far-field lock carried (it solved a different board and was removed),
   so this too is a measurement rather than a pass.  The pre-#1375 board printed
   6.72 dBi, the pre-contract board 7.39 dBi (against the former openEMS

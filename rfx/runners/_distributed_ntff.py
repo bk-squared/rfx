@@ -105,12 +105,10 @@ class SlabNTFF:
                           for index, (pieces, a) in enumerate(zip(owners, arrays))))
 
     def _assemble_host(self, buffer):
-        """Place each cell once, preserving compensation; no spatial sum."""
+        """Place each cell once, preserving compensation; no spatial sum.
+        Accept the gathered host array from the multi-process caller."""
         result = list(init_ntff_data(self.box, field_dtype=jnp.float64
                                     if self.dtype == jnp.complex128 else jnp.float32))
-        # The multi-process caller passes the gathered host array. On one
-        # process, assemble reduces owner chunks inside rank_shard_map instead
-        # of indexing an x-sharded carry or replicating it first.
         if isinstance(buffer, (jax.Array, jax.core.Tracer)):
             buffer = place(buffer, NamedSharding(self.mesh, P()))
         for rank, (lo, hi, faces, _, shapes, sizes) in enumerate(self.parts):

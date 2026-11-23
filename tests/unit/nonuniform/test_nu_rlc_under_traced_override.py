@@ -53,7 +53,6 @@ VALUE_TOL = 1e-4
 
 def _board(eps_lo, eps_hi, element):
     sim = B._board(eps_lo, eps_hi, port="wire")
-    # an Ez edge inside the 10.2 layer, two cells from the port
     pos = ((B.I_PORT + 2) * B.DX, B.J_PORT * B.DX, B.Z_G + 2 * B.DX)
     if element == "parallel_L":
         sim.add_lumped_rlc(pos, "ez", L=0.5e-9, topology="parallel")
@@ -64,7 +63,7 @@ def _board(eps_lo, eps_hi, element):
 
 def _mask():
     eps0 = np.asarray(B._drawn(B._board(B.EPS_LO, B.EPS_HI)).eps_r)
-    return (eps0 > 0.5 * (B.EPS_LO + B.EPS_HI)).astype(float)  # the 10.2 layer
+    return (eps0 > 0.5 * (B.EPS_LO + B.EPS_HI)).astype(float)
 
 
 def _s11sq(sim, eps_override=None):

@@ -1,8 +1,9 @@
 """#1913: a PEC short must be visible from the reflection measurement plane.
 
-Synthetic 42 x 21 mm guide; 3 mm cells; 40 periods (the leader's sweep),
+Synthetic 42 x 21 mm guide; 3 mm cells; 40 periods,
 only the two band endpoints, 5 and 6.5 GHz; normalize=True.
 The phase oracle is the closed form 180 - 2 beta d at the reported plane.
+At source node 40 of the 20-coarse, 20-fine, 10-coarse-cell profile, the preceding three cells total 4.5 mm.
 """
 import inspect
 import warnings
@@ -71,7 +72,6 @@ def test_visible_short_has_closed_form_reflection(cells, record_property):
         warnings.simplefilter("ignore")
         result = sim.compute_waveguide_s_matrix(num_periods=40, normalize=True)
     s22 = np.asarray(result.s_params)[1, 1]
-    # Default reported reference plane is the declared port, 90 mm.
     assert np.asarray(result.reference_planes)[1] == pytest.approx(0.090)
     beta = np.sqrt((2 * np.pi * FREQS / 299792458.0) ** 2 - (np.pi / A) ** 2)
     expected = np.pi - 2 * beta * (cells * DX)
@@ -139,7 +139,6 @@ def test_face_built_on_reference_plane_refused(hi, refused):
 
 
 def test_object_behind_source_admitted():
-    # Behind the -x port: not between the planes (|S22| 0.0003 / 0.0002 measured).
     sim = _guide()
     sim.add(Box((0.096, 0, 0), (0.099, A, B)), material="pec")
     assert not _findings(sim)
@@ -151,7 +150,6 @@ def test_graded_box_thinner_than_samples_refused():
     from tests._x64_compat import enable_x64
     from rfx.preflight.waveguide_port_span import _validate_cfg_waveguide_port_span
     with enable_x64():
-        # 27 cells to 81 mm, 2.99 mm, four 5 um cells over 84 mm, 2.99 mm, 11 cells.
         profile = np.r_[np.full(27, DX), 2.99e-3, np.full(4, 5e-6), 2.99e-3,
                         np.full(11, DX)]
         sim = Simulation(freq_max=10e9, domain=(0.12, A, B), dx=DX,
@@ -197,10 +195,9 @@ def test_transverse_disjoint_object_admitted():
 
 @pytest.mark.parametrize("axis", ["x", "y", "z"])
 def test_graded_plane_matches_realized_mode_config(axis, record_property):
+    """An earlier float32 mode-builder sum of 85.50005 mm motivates the 1e-6 m tolerance against the float64 rule."""
     from tests._x64_compat import enable_x64
     with enable_x64():
-        # 20 coarse, 20 fine, 10 coarse cells: length 120 mm. At 90 mm the source
-        # is node 40, and the preceding 3 cells total 4.5 mm, not 9 mm.
         from rfx.runners.nonuniform import _build_waveguide_port_config_nu
         from rfx.preflight.waveguide_port_span import _validate_cfg_waveguide_port_span
         profile = np.r_[np.full(20, DX), np.full(20, DX / 2), np.full(10, DX)]
@@ -221,15 +218,11 @@ def test_graded_plane_matches_realized_mode_config(axis, record_property):
         entry = sim._waveguide_ports[0]
         source, reference = entry_planes(entry, grid)
         cfg = _build_waveguide_port_config_nu(sim, entry, grid, FREQS, 4)
-        # The mode builder sums the float32 cell widths (85.50005 mm); the
-        # rule reads the same cells in float64. 1e-6 m is 1/750 of a cell.
         assert source == pytest.approx(0.090, abs=1e-8)
         assert reference == pytest.approx(0.0855, abs=1e-8)
         assert cfg.reference_x_m == pytest.approx(0.0855, abs=1e-6)
         assert reference == pytest.approx(cfg.reference_x_m, abs=1e-6)
         record_property("planes_m", [source, reference, cfg.reference_x_m])
-        # Call the real check directly: unrelated graded material admission is
-        # separate from this plane-position pin.
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
             _validate_cfg_waveguide_port_span(sim, warnings)
@@ -286,8 +279,7 @@ def test_dielectric_step_inside_the_interval_refused():
 ])
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded_transverse"])
 def test_carved_pec_plate_refused(carve, graded):
-    # The centre is vacuum on both sides, but PEC remains elsewhere on the
-    # 84/87 mm faces. Graded transverse cells must sample that remaining PEC.
+    """Graded transverse cells must sample the PEC remaining outside the vacuum centre."""
     profiles = (dict(dy_profile=np.array([0.003, 0.006] * 4 + [0.003, 0.003]),
                      dz_profile=np.array([0.003, 0.006, 0.003, 0.006, 0.003]))
                 if graded else {})
@@ -354,7 +346,6 @@ def test_face_samples_use_realized_transverse_cell_centres(axis, graded):
     lo[transverse], hi[transverse] = [0.005, 0.004], [0.030, 0.016]
     aperture = {transverse[0]: (0.004, 0.035), transverse[1]: (0, B)}
     points = np.array(list(_face_sample_points(sim._build_realized_grid(), lo, hi, aperture)))
-    # Explicit centres from the declared cell widths, clipped to the overlap.
     first = ([6, 10.5, 15, 19.5, 24, 28.5] if graded
              else [7.5, 10.5, 13.5, 16.5, 19.5, 22.5, 25.5, 28.5])
     second = [6, 10.5, 15] if graded else [4.5, 7.5, 10.5, 13.5]
@@ -370,7 +361,6 @@ def test_face_samples_cap_and_include_overlap_centre():
         {1: (0, A), 2: (0, B)})))
     assert len(points) == 64 * 64
     np.testing.assert_allclose(points[0], [0, A / 2, B / 2], atol=1e-12)
-    # The 140 x 70 cell-centre lattice is subsampled across its full extent.
     for a, count in ((1, 140), (2, 70)):
         indices = np.unique(np.rint(points[1:, a] / 0.0003 - 0.5).astype(int))
         assert len(indices) == 64
@@ -458,7 +448,6 @@ def test_axial_cylinder_abutting_bounding_box_refused():
 
 def test_abutting_transverse_cylinders_still_refused():
     from rfx.geometry.csg import Cylinder
-    # Their x bounding faces meet at 85 mm, but their sections vary along x.
     findings = _prism_span_findings([
         Cylinder((0.079, A / 2, B / 2), 0.006, 0.018, axis="y"),
         Cylinder((0.091, A / 2, B / 2), 0.006, 0.018, axis="y")])
@@ -479,8 +468,7 @@ def test_vacuum_box_with_empty_pole_tuples_admitted():
 
 
 def test_pec_post_under_later_dielectric_refused():
-    # A later dielectric box does not clear PEC cells when assembled, so the
-    # post's 85 mm face is a PEC/dielectric interface inside the span.
+    """A later dielectric box does not clear PEC cells when assembled."""
     sim = _guide(snap="declared")
     sim.add_material("fill", eps_r=2.2)
     sim.add(Box((0.050, 0.015, 0), (0.085, 0.027, B)), material="pec")
@@ -491,9 +479,9 @@ def test_pec_post_under_later_dielectric_refused():
 
 
 def test_abutting_boxes_of_two_pec_materials_admitted():
-    # Both resolve above the PEC threshold, so assembly builds one PEC wall.
     sim = _guide()
     sim.add_material("pec_b", eps_r=1.0, sigma=1e10)
+    assert all(sim._resolve_material(name).sigma > sim._PEC_SIGMA_THRESHOLD for name in ("pec", "pec_b")), 'Both abutting materials must resolve above the PEC threshold.'
     sim.add(Box((17 * DX, 0, 0), (28 * DX, 3 * DX, 7 * DX)), material="pec")
     sim.add(Box((28 * DX, 0, 0), (37 * DX, 3 * DX, 7 * DX)), material="pec_b")
     assert not _findings(sim)

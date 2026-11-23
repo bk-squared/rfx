@@ -43,11 +43,8 @@ class TestBoundaryThicknessAttributes:
             Boundary(lo="pmc", hi="cpml", lo_thickness=4)
 
     def test_thickness_on_periodic_face_raises(self):
+        """The periodic-mismatch check fires first if thickness is put on a single face, so the test uses symmetric periodic faces."""
         with pytest.raises(ValueError, match="absorbing faces"):
-            # Periodic must be symmetric anyway, but thickness must also
-            # reject it. The periodic-mismatch check fires first if we
-            # try to put thickness on a single face, so test with
-            # symmetric periodic.
             Boundary(lo="periodic", hi="periodic", lo_thickness=4)
 
     def test_negative_thickness_raises(self):
@@ -85,10 +82,8 @@ class TestSimulationThicknessPhase1Guard:
             freq_max=10e9, domain=(0.01, 0.01, 0.005), dx=0.5e-3,
             cpml_layers=8, boundary=spec,
         )
-        # spec carries the explicit thickness
         assert sim._boundary_spec.x.lo_thickness == 8
         assert sim._boundary_spec.x.hi_thickness == 8
-        # and the runtime scalar (engine authority in Phase 1) is still 8
         assert sim._cpml_layers == 8
 
     def test_asymmetric_per_face_thickness_runs(self):
@@ -129,7 +124,7 @@ class TestSimulationThicknessPhase1Guard:
         grid = sim._build_grid()
         assert grid.face_layers["x_lo"] == 8
         assert grid.face_layers["y_lo"] == 16
-        assert grid.face_layers["z_lo"] == 16  # default scalar
+        assert grid.face_layers["z_lo"] == 16
 
     def test_pec_face_with_cpml_axis_no_thickness_conflict(self):
         """PEC face doesn't carry thickness and must not trigger the guard."""

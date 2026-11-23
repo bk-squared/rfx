@@ -32,6 +32,7 @@ there, and the difference is the question rather than the tooling: that gate
 asks whether a link target is PRESENT for someone who clones, and an export is
 a valid witness for that, holding the tracked files and nothing else. Same
 missing tool, two different questions (review of PR #1135, B).
+A path built in a shell script, a YAML, from a variable or at runtime from individually innocuous pieces is outside the Python literal sweep.
 """
 
 from __future__ import annotations
@@ -139,81 +140,39 @@ def test_the_gate_fires_on_a_repository_that_does_track_them(tmp_path: Path) -> 
     ], "the predicate did not see force-added files -- it cannot protect this repo"
 
 
-# ---------------------------------------------------------------------------
-# The committed sweep.
-#
-# Untracking the directories is half the job. The other half is that no
-# committed code may RESOLVE a path inside them, because such a path exists in
-# one checkout and in no clone -- green here, red for everyone else, and
-# invisible to a local test run because `git rm --cached` leaves the files on
-# disk.
-#
-# The 2026-09-15 pass first looked for those readers with a line grep for
-# "research_notes" next to an open/load/import call. It missed
-# tests/unit/sparams/test_msl_dump_power_replay.py, which splits both of its
-# reads across two lines, and it could not have seen a path assembled segment by
-# segment (`ROOT / "docs" / "research_notes" / name`) at all, because no line
-# contains the joined string. This sweep replaces the grep: it parses each file
-# and looks for the BARE SEGMENT in any string constant that is not a docstring,
-# which catches both forms.
-#
-# It is not exhaustive over the repository. It reads Python only, so a path
-# built in a shell script, a YAML, or from a variable is outside it, and a
-# constant assembled at runtime from pieces that are individually innocuous
-# would slip through. What it does guarantee is that a literal segment cannot
-# appear in committed Python without a reviewer having written down why.
-# ---------------------------------------------------------------------------
-
-# Every tracked .py, with no root filter. An earlier revision listed roots
-# (tests/, validation/, scripts/, examples/, rfx/) and thereby missed the two
-# files that sit outside them: the repo-root conftest.py, whose breakage would
-# red every fresh clone, and docs/design_notes/931_migration/t3_remeasure.py.
-# Both are clean today. A root list has to be extended every time someone adds a
-# top-level directory, and nothing makes that failure visible -- so there is no
-# root list.
 SEGMENTS = ("research_notes", "agent-memory", "agent_memory")
 
-# path -> (how many segment literals it may contain, why each is not a read of a
-# committed artifact). A count, not just a name: allow-listing a whole file
-# forever would let a real reader be added to it unseen. Adding a usage to a
-# file below fails this gate until someone bumps the number and extends the
-# reason.
+
 REVIEWED = {
     "scripts/build_public_docs_bundle.py":
         (3, "three forbidden path segments used only to reject private paths from public bundles; no file reads"),
-    # Assertion / warning text that happens to cite a note. No path resolution.
-    "scripts/capture_msl_replay_fixture.py":
-        (1, "prose inside a retirement message"),
-    "scripts/diagnostics/probe_fed_msl_openems_referee.py":
-        (2, "prose stating that the named log is LOCAL-ONLY"),
+
     "tests/contracts/test_source_carries_no_tracker_history.py":
         (1, "a synthetic citation fed to the contract's own keep rule; "
             "the contract compares it as text and reads no file"),
     "tests/contracts/test_public_text_has_no_pi_or_agent_traces.py":
-        (10, "the ledger synthetic line and its exception path and literal add "
-            "three segment literals to the prior seven; "
-            "the C4 pattern, Git prefilter and synthetic lines name segments as text "
-            "to flag; the exception table names the segment for contracts that "
-            "name it as text; the contract reads no file there"),
+        (16, "the ledger synthetic line and its exception path and literal add "
+            "three segment literals to the prior seven; the C4 guard tokens in "
+            "matching_classes add two more; "
+            "the C4 pattern, Git prefilter, guard tokens and synthetic lines name "
+            "segments as text to flag; the exception table names the segment for "
+            "contracts that name it as text; the contract reads no file there; "
+            "the four named exceptions for rule lines (public_docs_architecture, "
+            "public_docs_maintenance, lint.yml, the AR example) add four segment literals"),
     "tests/contracts/test_guide_citations_resolve.py":
         (4, "sample TEXT fed to that file's own predicate -- the two dead "
             "links it was written to catch, the prose that replaced them, "
             "and the reference-style [id]: and angle-bracket (<path>) forms "
             "of the same link, one per link syntax the gate must not miss; "
             "it resolves none of them and reads no file there (#752)"),
-    "scripts/diagnostics/build_msl_broad_e5_envelope.py":
-        (2, "scope sentence copied into the emitted JSON"),
 
-    # WRITE targets. The script creates the directory and writes into it; it
-    # never expects to find anything there, so a clone losing the path is fine.
+
     "scripts/memory_reduction_planning_artifact.py":
         (1, "argparse default for --output, a write target"),
     "validation/research/subgrid/13_subgrid_material_validation.py":
         (1, "ARTIFACT_PATH write target, built segment by segment, never tracked"),
 
-    # OPTIONAL reads of artifacts that were NEVER tracked, from before this
-    # cleanup. Each already tolerates absence, so untracking changed nothing for
-    # them; they are listed so the next reader does not re-derive that.
+
     "examples/inverse_design/multilayer_ar_coating.py":
         (1, "load_meep_reference returns None when the file is absent"),
     "scripts/diagnostics/build_msl_openems_sparameter_comparison.py":
@@ -268,6 +227,7 @@ def _swept_files(repo: Path) -> list[str]:
     reason="not a git checkout -- the tracked file list is unavailable",
 )
 def test_no_unreviewed_reference_to_a_local_only_doc_directory() -> None:
+    """Allow-listing a whole file forever would let a real reader be added to it unseen."""
     counted = {}
     for rel in _swept_files(REPO):
         hits = segment_literals((REPO / rel).read_text(encoding="utf-8", errors="replace"))

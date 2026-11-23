@@ -101,7 +101,6 @@ def test_existing_leaf_witness_is_checked_in_field_units():
     witness = {key: dict(relative=(.0105 - .01) / .0105, relative_bar=1e-4)}
     with pytest.raises(KnownFinding):
         assert_record(report, 'observers', [key + ': numeric'], witness)
-    # Drift above 1e-4 of E's peak must not hide under the existing xfail.
     b['e2_dft'] += .001
     report = check(a, b, name, 'accumulated')
     with pytest.raises(RuntimeError, match='fingerprint changed'):

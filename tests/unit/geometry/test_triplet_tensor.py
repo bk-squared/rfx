@@ -6,7 +6,7 @@ from rfx.geometry.triplet_tensor import accurate_tensor, guarded_tensor
 
 
 def _inside_face_fraction(center, axis, normal, cut):
-    # Clip a unit dual-face square against n.r <= cut (polygon area).
+    """Clip a unit dual-face square against n.r <= cut (polygon area)."""
     other = [a for a in range(3) if a != axis]
     polygon = [np.array(center, copy=True) for _ in range(4)]
     for point, uv in zip(polygon, ((-.5, -.5), (.5, -.5), (.5, .5), (-.5, .5))):
@@ -26,9 +26,9 @@ def _inside_face_fraction(center, axis, normal, cut):
 
 
 def test_planar_slab_30_degrees_exact_infinite_wavelength():
+    """Tangential E and normal D are continuous."""
     normal = np.array([np.cos(np.pi / 6), np.sin(np.pi / 6), 0.])
     cut, eps1, eps2 = .21, 38., 2.5
-    # Slab -10 < n.r < cut: its other face lies beyond all integration domains.
     tangent = np.array([-normal[1], normal[0], 0.])
     for signs in ((1, 1, 1), (-1, 1, -1), (1, -1, 1)):
         lengths, areas = [], []
@@ -46,8 +46,6 @@ def test_planar_slab_30_degrees_exact_infinite_wavelength():
         lengths, areas = np.array(lengths), np.array(areas)
         acc, singular = accurate_tensor(np, normal, lengths, areas, eps1, eps2)
         assert not singular
-        # Three independent boundary solutions span the map D -> E. Tangential
-        # E and normal D are continuous; E_normal = D_normal / eps in each slab.
         for et, ez, dn in ((1.2, 0., 0.), (0., -.7, 0.), (0., 0., 2.3)):
             e1 = et * tangent + np.array([0., 0., ez]) + dn / eps1 * normal
             e2 = et * tangent + np.array([0., 0., ez]) + dn / eps2 * normal
@@ -83,7 +81,7 @@ def test_nonpositive_triplets_are_clipped_not_replaced_by_fallback():
 
 
 def test_singular_pi_uses_node_fallback():
-    # Synthetic singular Pi, to exercise the guard independently of geometry.
+    """Synthetic singular Pi exercises the guard independently of geometry."""
     fallback = np.eye(3) * .25
     tensor, guard = guarded_tensor(np, np.array([1., 0., 0.]),
                                    np.full(3, .5), np.full(3, .5),
@@ -93,6 +91,7 @@ def test_singular_pi_uses_node_fallback():
 
 
 def test_builder_guard_count_and_traced_triplets(monkeypatch):
+    """Traced float32 vs host float64 differ by rounding on the scale of the peak."""
     import jax
     import jax.numpy as jnp
     from rfx.geometry import Box
@@ -106,16 +105,12 @@ def test_builder_guard_count_and_traced_triplets(monkeypatch):
     grid = Grid(domain=(.003, .003, .003), dx=.001, freq_max=10e9, cpml_axes='')
 
     def build(radius):
-        # A sphere keeps the planar rule on every node, so each forced
-        # fallback on a touched triplet is counted.
+        """A sphere keeps the planar rule on every node, so each forced fallback on a touched triplet is counted."""
         return compute_node_tensor_eps(grid, [(Sphere((.0014, .0016, .0015), radius), 38.)])
 
     concrete = build(.0011)
     traced = jax.jit(build)(jnp.float32(.0011))
     assert int(concrete.nodes.guard_count) == int(traced.nodes.guard_count) == 0
-    # Traced float32 vs host float64 differ by rounding on the scale of the peak.
-    # On x86 CPU, jax 0.10.2: 6 of 4608 small off-diagonal entries (|value| 0.006 to 0.026)
-    # exceed per-entry rtol=1e-5 (atol=1e-7); 3.7e-7 abs among them, 1.07e-6 over all; loss 1.1e-7.
     concrete_triplets = np.asarray(concrete.nodes.triplets, dtype=np.float64)
     traced_triplets = np.asarray(traced.nodes.triplets, dtype=np.float64)
     peak = np.max(np.abs(concrete_triplets))
@@ -132,14 +127,13 @@ def test_builder_guard_count_and_traced_triplets(monkeypatch):
     monkeypatch.setattr(triplet, 'guarded_tensor', force_fallback)
     forced = build(.0011)
     assert int(forced.nodes.guard_count) == sum(counted) > 0
-    # Beside an axis-aligned Box the scope of the exact content is decided on
-    # concrete coordinates: a traced face is refused by name.
     with pytest.raises(RfxUnsupported, match="traced shape coordinate"):
         jax.jit(lambda face: compute_node_tensor_eps(
             grid, [(Box((-.01, -.01, -.01), (face, .01, .01)), 38.)]))(jnp.float32(.0012))
 
 
 def test_rod_operator_equals_literal_eq10_and_is_exactly_symmetric():
+    """The epsilon-form diagonal and float32 coefficient storage round the float64 literal sum."""
     from itertools import product
 
     import jax
@@ -162,8 +156,6 @@ def test_rod_operator_equals_literal_eq10_and_is_exactly_symmetric():
         return jnp.stack([c / e + x for c, e, x in zip(curls, eps, cross)]).ravel()
 
     assembled = np.asarray(jax.jit(jax.vmap(apply))(jnp.eye(3 * size))).T
-    # Independently scatter each local 3x3 tensor onto its three periodic
-    # edges, with weight 1/8; do not use coefficient or mask helpers.
     literal = np.zeros(assembled.shape, dtype=np.float64)
     triplets = np.asarray(eps.nodes.triplets)
     for node in np.ndindex(grid.shape):
@@ -174,8 +166,6 @@ def test_rod_operator_equals_literal_eq10_and_is_exactly_symmetric():
                 edge[axis] = (edge[axis] - (sign < 0)) % grid.shape[axis]
                 ids.append(axis * size + np.ravel_multi_index(tuple(edge), grid.shape))
             literal[np.ix_(ids, ids)] += triplets[(t,) + node].astype(np.float64) / 8
-    # The epsilon-form diagonal and float32 coefficient storage round the
-    # float64 literal sum; equality is checked at float32 roundoff.
     np.testing.assert_allclose(assembled, literal, rtol=np.finfo(np.float32).eps, atol=0)
     np.testing.assert_array_equal(assembled, assembled.T)
     np.testing.assert_array_equal(literal, literal.T)

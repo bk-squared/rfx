@@ -23,6 +23,7 @@ Gates (predeclared in the #383 design doc BEFORE implementation):
 
 No module-level x64 config (workspace rule: x64 flips are process-global
 at collection time); nothing here needs float64.
+The implemented probe/dominant-E/dominant-H scale-relative absolute envelopes of 5e-6/2e-6/1e-4, replacing the elementwise allclose target in the module description, allow margins above relative differences of 1.0161e-6/3.27e-7/3.15e-5 measured earlier.
 """
 
 from __future__ import annotations
@@ -45,34 +46,18 @@ from rfx.nonuniform import (
 )
 from rfx.sources.sources import GaussianPulse
 
-# Gate C envelope. Predeclared target was np.allclose(rtol=1e-6, atol=1e-10)
-# (the uniform AB-identity precedent). Measured red at first run:
-#   probe series  max abs diff 2.000e+01 at scale 1.9682e7 (rel 1.0161e-6)
-#   E components  max abs diff <= 3.27e-7 of the dominant E scale
-#   H components  max abs diff <= 3.15e-5 of the dominant H scale
-#     (hz is a physically-null component here — max|hz| ~ 3.5 vs
-#     |hx|,|hy| ~ 3.7e5 — so its delta is absolute float noise of the
-#     dominant components, not a relative error of its own scale)
-# Root cause (same class as tests/locks/test_run_until_decay_ab_identity.py on
-# the uniform lane): the decay path runs jax.jit-wrapped lax.scan chunks
-# while run_nonuniform calls lax.scan eagerly; XLA fuses/reassociates the
-# float32 Yee arithmetic differently between the two programs. The
-# chunking itself contributes ZERO error: a single full-length chunk
-# (check_interval=N) reproduces the chunked (check_interval=50) deltas
-# BYTE-IDENTICALLY (locked below by
-# test_nu_until_decay_chunking_is_bit_exact). Pinned at the measured
-# envelope with ~3x margin — scale-aware absolute gates, because a fixed
-# atol=1e-10 is meaningless for ~1e7-magnitude fields whose float32
-# noise floor is ~1e0, and per-element rtol is meaningless for the
-# physically-null hz.
-_TS_ENVELOPE = 5e-6     # x max|probe series|
-_E_ENVELOPE = 2e-6      # x dominant E-component scale
-_H_ENVELOPE = 1e-4      # x dominant H-component scale
+PROBE_PEAK_RELATIVE_ENVELOPE = 5e-6
+_TS_ENVELOPE = PROBE_PEAK_RELATIVE_ENVELOPE
+DOMINANT_E_RELATIVE_ENVELOPE = 2e-6
+_E_ENVELOPE = DOMINANT_E_RELATIVE_ENVELOPE
+DOMINANT_H_RELATIVE_ENVELOPE = 1e-4
+_H_ENVELOPE = DOMINANT_H_RELATIVE_ENVELOPE
 
 
 def _build_nu_case(n_table: int, cpml_layers=4):
     """Tiny graded-dz CPML NU sim: 24x24x32 cells, one pulsed Ez point
-    source, one Ez probe. ``n_table`` sizes the source waveform table."""
+    source, one Ez probe. ``n_table`` sizes the source waveform table.
+    Callers that pass twelve absorber layers do so because an earlier measurement put the box's field energy within 0.1 % of the open domain at the stop step."""
     dz = np.array([0.4e-3] * 12 + [0.6e-3] * 12)
     grid = make_nonuniform_grid((0.008, 0.008), dz, 0.5e-3, cpml_layers=cpml_layers)
     materials = init_materials((grid.nx, grid.ny, grid.nz))
@@ -84,18 +69,14 @@ def _build_nu_case(n_table: int, cpml_layers=4):
 
 
 def test_nu_until_decay_fires_with_trace_and_physics_witness(monkeypatch, record_property):
-    """Gate B: stop fires, trace proves it, spectrum matches a 3x fixed run."""
+    """Gate B: stop fires, trace proves it, spectrum matches a 3x fixed run.
+    The 1e-2 in-band bar separates the errors measured earlier at the true decay stop (8.26e-4) and 90% truncation (8.70e-4) from the error at 70% truncation (7.97e-2)."""
     decay_by = 1e-4
     check_interval = 50
     min_steps = 100
     max_steps = 3000
     consec = 2
 
-    # Twelve absorber layers, where the other gates here use four. A four-layer absorber 4 mm from the source holds the
-    # pulse's 1-4 GHz near field for a few hundred steps once its magnetic profile sits at the Yee half cell (#1012): at the
-    # stop step the probe keeps 1.3 % of its peak against 0.014 % in an open domain, and the stop at decay_by = 1e-4 cut that
-    # tail short by 3 %. At twelve layers the box's field energy is within 0.1 % of the open domain at the stop step
-    # (VESSL 369367264499), so this gate measures the stop rule, not the absorber.
     grid, materials, sources, probes = _build_nu_case(max_steps, cpml_layers=12)
     r = run_nonuniform_until_decay(
         grid, materials,
@@ -113,18 +94,11 @@ def test_nu_until_decay_fires_with_trace_and_physics_witness(monkeypatch, record
         f"  step={s:5d}  W={u:.6e}  reference={p:.6e}" for s, u, p in checks
     )
 
-    # Stop fired strictly between the bounds.
     assert min_steps <= steps_taken < max_steps, (
         f"expected min_steps <= steps < max_steps, got {steps_taken}; "
         f"W trace:\n{trace}"
     )
 
-    # Here the requested 1e-4 asks for less than float32 holds: the run ends on the
-    # floor. Checked on the loop's own rows (a separately compiled observer run's fields
-    # differ from the loop's by a rounding unit of the peak field there): every boundary
-    # of the final run is under 1e-12 of the largest W and has stopped falling (>= 0.95
-    # of the previous boundary), and no earlier run of rows qualified. The largest W
-    # (the drive's peak, set before the first row) comes from the stop record.
     stop = dict(r["decay_stop"].values)
     assert stop["criterion"] == "float32_floor", stop
     wmax = stop["floor_ratio"] * checks[-1][2] / 1e-12
@@ -137,14 +111,10 @@ def test_nu_until_decay_fires_with_trace_and_physics_witness(monkeypatch, record
     assert first == len(checks) - 1, f"an earlier run qualified at {checks[first][0]}; W trace:\n{trace}"
     record_property("floor_stop", (steps_taken, stop["reached"], stop["floor_ratio"]))
 
-    # The trace is internally consistent with the loop mechanics: the
-    # stop step is the last check's step.
     assert checks[-1][0] == steps_taken, (
         f"last check step {checks[-1][0]} != steps_taken {steps_taken}"
     )
 
-    # Physics witness: probe spectral peak vs a 3x-longer fixed run on
-    # the SAME grid/materials/sources (zero-padded common DFT grid).
     n_ref = 3 * steps_taken
     grid2, materials2, sources2, probes2 = _build_nu_case(n_ref, cpml_layers=12)
     r_ref = run_nonuniform(
@@ -160,12 +130,6 @@ def test_nu_until_decay_fires_with_trace_and_physics_witness(monkeypatch, record
     k_dec = int(np.argmax(spec_dec))
     ratio = spec_dec[k_ref] / spec_ref[k_ref]
 
-    # NOTE: the probe sits in the deep near field (2 mm from the source,
-    # lambda ~ 30 mm at f0), so the reference spectrum peaks at the DC
-    # bin — argmax stays at k=0 even under heavy truncation, which makes
-    # the two peak-bin assertions below weak frequency gates on this
-    # fixture. They are kept as predeclared; the BINDING frequency-domain
-    # gate is the in-band sweep that follows.
     assert abs(k_dec - k_ref) <= 1, (
         f"peak bin moved by {abs(k_dec - k_ref)} bins (> 1); "
         f"W trace:\n{trace}"
@@ -175,12 +139,6 @@ def test_nu_until_decay_fires_with_trace_and_physics_witness(monkeypatch, record
         f"3x fixed-run reference; W trace:\n{trace}"
     )
 
-    # In-band sweep (reviewer-validated, #383 review): over every
-    # reference bin carrying >= 5% of the nonzero-bin (k >= 1) maximum,
-    # the per-bin amplitude ratio must stay within 1e-2. Measured
-    # discrimination on this 12-layer fixture, #1012: 8.26e-4 at the true decay
-    # stop, 8.70e-4 at 90% truncation (both pass), 7.97e-2 at 70%
-    # truncation (fails).
     band = spec_ref >= 0.05 * float(np.max(spec_ref[1:]))
     inband_err = float(np.max(np.abs(spec_dec[band] / spec_ref[band] - 1.0)))
     assert inband_err <= 1e-2, (
@@ -190,7 +148,8 @@ def test_nu_until_decay_fires_with_trace_and_physics_witness(monkeypatch, record
 
 
 def test_nu_until_decay_forced_n_matches_fixed_run():
-    """Gate C: decay_by=0.0 runs exactly N steps and matches run_nonuniform."""
+    """Gate C: decay_by=0.0 runs exactly N steps and matches run_nonuniform.
+    Energy rows start at max(min_steps, drive end)."""
     n_steps = 200
     grid, materials, sources, probes = _build_nu_case(n_steps)
 
@@ -199,9 +158,9 @@ def test_nu_until_decay_forced_n_matches_fixed_run():
     )
     r_decay = run_nonuniform_until_decay(
         grid, materials,
-        decay_by=0.0,           # U < 0 never true -> forced-N escape
+        decay_by=0.0,
         check_interval=50,
-        min_steps=1,            # every chunk boundary is an eligible check
+        min_steps=1,
         max_steps=n_steps,
         decay_energy_consecutive=2,
         sources=sources, probes=probes,
@@ -213,9 +172,6 @@ def test_nu_until_decay_forced_n_matches_fixed_run():
         f"decay_by=0.0 must run exactly {n_steps} steps, got "
         f"{ts_decay.shape[0]}"
     )
-    # Energy rows start at max(min_steps, drive end). This case's pulse is
-    # still above 1e-6 of its peak at the last of its 200 samples, so the
-    # drive has not ended and no energy is read (rows were 50..200 before v4).
     table = np.abs(np.asarray(sources[0][4], dtype=np.float64))
     assert table[-1] > 1e-6 * table.max()
     assert r_decay["decay_checks"] == []
@@ -287,7 +243,6 @@ def test_nu_until_decay_chunking_is_bit_exact():
 def _public_nu_sim():
     dz = np.array([0.4e-3] * 12 + [0.6e-3] * 12)
     with warnings.catch_warnings():
-        # The 1.5 grading-ratio advisory is deliberate test geometry.
         warnings.simplefilter("ignore")
         sim = Simulation(
             freq_max=20e9,
@@ -358,7 +313,7 @@ def test_nu_gate_b_case_at_1e_3_stops_before_the_cap():
                                    sources=sources, probes=probes)
     stop = dict(r["decay_stop"].values)
     assert stop["criterion"] in ("threshold", "float32_floor"), r["decay_stop"]
-    assert stop["floor_ratio"] > 1e-3, stop  # the premise above: the floor sits above the threshold
+    assert stop["floor_ratio"] > 1e-3, stop
     assert len(r["time_series"]) < 3000
 
 

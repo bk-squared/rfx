@@ -4,15 +4,6 @@
 """
 from __future__ import annotations
 
-# ---------------------------------------------------------------------------
-# `forward()` accepts
-# `**_removed_kwargs` and calls this helper so a removed kwarg gets a
-# `TypeError` naming the actual reason and the one-line migration path
-# instead. Deliberately still a `TypeError` (not some other exception
-# type) -- `tests/unit/autodiff/test_design_mask_removed.py` pins "the kwarg is
-# rejected" via `pytest.raises(TypeError, match="design_mask")`, and this
-# only changes the MESSAGE, not the exception class or that contract.
-# ---------------------------------------------------------------------------
 _REMOVED_FORWARD_KWARGS: dict = {
     "design_mask": (
         "removed entirely, not deprecated: it was measured "

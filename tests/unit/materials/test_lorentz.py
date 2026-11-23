@@ -44,18 +44,22 @@ def _total_energy(state, dx):
 
 
 def test_lorentz_coefficients():
-    """Verify ADE coefficients match hand-computed values."""
+    """Verify ADE coefficients match hand-computed values.
+    The c coefficient is per E component.
+    """
     shape = (5, 5, 5)
     dt = 1e-12
-    omega_0 = 2 * np.pi * 10e9  # 10 GHz resonance
-    delta = 1e9  # damping
-    kappa = 3.0 * omega_0**2  # Δε=3
+    COEFFICIENT_RESONANCE_HZ = 10e9
+    omega_0 = 2 * np.pi * COEFFICIENT_RESONANCE_HZ
+    DAMPING_PER_SECOND = 1e9
+    delta = DAMPING_PER_SECOND
+    DIELECTRIC_STRENGTH = 3.0
+    kappa = DIELECTRIC_STRENGTH * omega_0**2
 
     materials = init_materials(shape)
     poles = [LorentzPole(omega_0=omega_0, delta=delta, kappa=kappa)]
     coeffs, lstate = init_lorentz(poles, materials, dt, high_wall=(False, False, False))
 
-    # Hand-computed
     denom = 1.0 + delta * dt
     a_exp = 2.0 * delta * dt / denom
     b_exp = omega_0**2 * dt**2 / denom
@@ -63,10 +67,9 @@ def test_lorentz_coefficients():
 
     assert abs(float(coeffs.damping[0, 2, 2, 2]) - a_exp) < 1e-6
     assert abs(float(coeffs.restoring[0, 2, 2, 2]) - b_exp) < 1e-6
-    for comp in range(3):   # c is per E component since #1260
+    for comp in range(3):
         assert abs(float(coeffs.c[comp][0, 2, 2, 2]) - c_exp) / abs(c_exp) < 1e-4
 
-    # State should be zeros
     assert float(jnp.max(jnp.abs(lstate.px))) == 0.0
     assert float(jnp.max(jnp.abs(lstate.vx))) == 0.0
 
@@ -105,9 +108,10 @@ def test_lorentz_energy_bounded():
     dx = 0.002
     dt = 0.99 * dx / (C0 * np.sqrt(3))
 
-    # Lorentz medium: resonance at 10 GHz
-    omega_0 = 2 * np.pi * 10e9
-    delta = 5e9  # moderate damping
+    ENERGY_RESONANCE_HZ = 10e9
+    omega_0 = 2 * np.pi * ENERGY_RESONANCE_HZ
+    MODERATE_DAMPING_PER_SECOND = 5e9
+    delta = MODERATE_DAMPING_PER_SECOND
     kappa = 2.0 * omega_0**2
 
     materials = init_materials(shape)
@@ -117,7 +121,6 @@ def test_lorentz_energy_bounded():
     poles = [LorentzPole(omega_0=omega_0, delta=delta, kappa=kappa)]
     coeffs, lstate = init_lorentz(poles, materials, dt, high_wall=(False, False, False))
 
-    # Initialize with cavity mode
     Lx = (shape[0] - 1) * dx
     Ly = (shape[1] - 1) * dx
     x = np.arange(shape[0]) * dx
@@ -145,7 +148,6 @@ def test_lorentz_energy_bounded():
     print("\nLorentz energy stability:")
     print(f"  Initial: {initial_energy:.4e}, Max: {max_energy:.4e}, Final: {final_energy:.4e}")
 
-    # Energy should not blow up
     assert max_energy < initial_energy * 2.0, \
         f"Energy grew: max={max_energy:.4e} > 2× initial={initial_energy:.4e}"
 
@@ -171,7 +173,6 @@ def test_lorentz_simulation_runner():
 
     assert isinstance(result, SimResult)
     assert result.state.ex.shape == grid.shape
-    # Should have run without error
     print(f"\nLorentz simulation runner: {n_steps} steps OK, shape={grid.shape}")
 
 
@@ -212,7 +213,9 @@ def test_mixed_debye_and_lorentz_runner():
 
 
 def test_lorentz_poles_stay_scoped_to_their_material():
-    """Distinct Lorentz poles should only apply inside their own materials."""
+    """Distinct Lorentz poles should only apply inside their own materials.
+    The c coefficient is per E component.
+    """
     pole_a = lorentz_pole(1.0, 2 * np.pi * 3e9, 1e8)
     pole_b = lorentz_pole(2.0, 2 * np.pi * 5e9, 2e8)
 
@@ -231,7 +234,7 @@ def test_lorentz_poles_stay_scoped_to_their_material():
     ia = tuple(np.argwhere(np.array(mask_a))[0])
     ib = tuple(np.argwhere(np.array(mask_b))[0])
 
-    for comp in range(3):   # c is per E component since #1260
+    for comp in range(3):
         c = coeffs.c[comp]
         assert float(c[0][ia]) > 0.0
         assert float(c[1][ia]) == 0.0

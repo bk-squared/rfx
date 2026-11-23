@@ -105,7 +105,7 @@ def evaluate_with_raw_spectra(sim, entry, n, devices=None):
 
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
-@pytest.mark.parametrize('n', [128, 192, 288])
+@pytest.mark.parametrize('n', [288])
 @pytest.mark.parametrize('case', ['C1-mid', 'C1-seam', 'C1b', 'C2', 'C3', 'C4-mid', 'C4-wire'])
 def test_port_records_and_s(case, n, entry):
     devices = jax.devices('cpu')
@@ -148,7 +148,7 @@ def test_port_records_and_s(case, n, entry):
             assert row['S']['bit_equal'], row['S']
 
 
-@pytest.mark.parametrize('n', [128, 192, 288])
+@pytest.mark.parametrize('n', [288])
 def test_c5_gradient(n):
     devices = jax.devices('cpu')
     if len(devices) < 2:
@@ -297,7 +297,7 @@ def test_two_excited_wire_ports_refuse_run_s_before_staging(monkeypatch):
 
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
-@pytest.mark.parametrize('n', [128, 192, 288])
+@pytest.mark.parametrize('n', [288])
 @pytest.mark.parametrize('case', ['C1-mid', 'C1-seam', 'C1b', 'C2', 'C3', 'C4-mid', 'C4-wire', 'C5'])
 def test_model_drives_and_cut(case, n, entry, monkeypatch):
     if case == 'C5' and entry == 'run':

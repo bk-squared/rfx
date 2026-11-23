@@ -21,6 +21,7 @@ class _Stamped(Exception):
     (lane, rung) for lane in ("reflection", "two_port") for rung in (4, 6, 9)
 ] + [("transition", 4)])
 def test_coax_line_fills_its_declared_range(monkeypatch, lane, rung):
+    """The two-port declared line extends one cell below the bottom feed and through the cell one above the top feed (two nodes above it)."""
     import rfx.simulation
 
     stamp = coaxial_port.stamp_coaxial_line
@@ -31,11 +32,10 @@ def test_coax_line_fills_its_declared_range(monkeypatch, lane, rung):
     monkeypatch.setattr(rfx.simulation, "run", must_not_run)
 
     def inspect_stamp(grid, materials, **kw):
+        """Checking the pin and shell's union alone could hide a missing end on one of the conductors."""
+        DUT_REFERENCE_OFFSET_CELLS = 4
         stamped, _, cells = stamp(grid, materials, **kw)
         expected = np.arange(kw["z_lo_index"], kw["z_hi_index"] + 1)
-        # Read the arrays that the caller receives, not the cylinder bounds.
-        # Both pin and shell must span the range independently; checking their
-        # union alone could hide a missing end on one of the conductors.
         x = (np.arange(grid.shape[0]) - grid.pad_x_lo) * float(grid.dx)
         y = (np.arange(grid.shape[1]) - grid.pad_y_lo) * float(grid.dx)
         radius = np.hypot(x[:, None] - kw["center_xy"][0],
@@ -43,19 +43,15 @@ def test_coax_line_fills_its_declared_range(monkeypatch, lane, rung):
         pin = cells & (radius <= kw["pin_radius"])[:, :, None]
         shell = cells & (radius > kw["outer_radius"])[:, :, None]
         fill = np.asarray(stamped.eps_r) != np.asarray(materials.eps_r)
-        # Independent physical layout oracle: do not derive these planes from
-        # the stamper's bounds (a caller can pass a self-consistent wrong range).
         dz = float(grid.dx)
         if lane == "reflection":
-            end_nodes = (4 * dz, None)  # DUT reference plane, default offset.
+            end_nodes = (DUT_REFERENCE_OFFSET_CELLS * dz, None)
         elif lane == "two_port":
             feed_bottom = 3 * dz
             feed_top = (grid.shape[2] - grid.pad_z_hi - 3 - grid.pad_z_lo) * dz
-            # The declared line extends one cell below the bottom feed and
-            # through the cell one above the top feed (two nodes above it).
             end_nodes = (feed_bottom - dz, feed_top + 2 * dz)
         else:
-            end_nodes = (None, GROUND)  # Junction node, below the substrate.
+            end_nodes = (None, GROUND)
         for name, mask in (("pin", pin), ("shell", shell), ("fill", fill)):
             indices = np.flatnonzero(mask.any(axis=(0, 1)))
             np.testing.assert_array_equal(indices, expected, err_msg=f"{lane}: {name}")
@@ -66,7 +62,6 @@ def test_coax_line_fills_its_declared_range(monkeypatch, lane, rung):
                     assert realized == pytest.approx(plane, abs=dz * 1e-6), (
                         f"{lane}: {name} end node {realized} != physical plane {plane}"
                     )
-            # No holes in any occupied axial column, including the endpoints.
             footprint = mask.any(axis=2)
             np.testing.assert_array_equal(mask[:, :, expected],
                                           np.repeat(footprint[:, :, None],

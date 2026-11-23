@@ -15,7 +15,6 @@ def test_vmap_records(kind, boundary, batch, monkeypatch):
     expected = [solve(a, False) for a in alphas]
     actual = jax.vmap(lambda a: solve(a, True))(alphas)
     jax.block_until_ready(actual)
-    # through jax.vmap/jvp the compiled program differs (cross-trace rule, rfx CLAUDE.md)
     failures = []
     for i, reference in enumerate(expected):
         try:

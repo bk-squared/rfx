@@ -22,16 +22,16 @@ from tests.unit.boundaries.graded_periodic_cases import grid as periodic_grid, s
 
 
 def _check_ring(frequencies, realized_dt=None):
+    """Yee dispersion is 0.193% at 24 cells/period."""
     target = 299792458.0 / .024
     errors = []
     for dx, frequency in zip((.001, .0005, .00025), frequencies):
         errors.append(abs(frequency / target - 1))
-        # From the 1-D Yee dispersion relation, with the 3-D Courant dt.
         dt = (.99 * dx / (299792458.0 * np.sqrt(3)) if realized_dt is None
               else realized_dt[len(errors) - 1])
         yee_frequency = np.arcsin(299792458.0 * dt / dx * np.sin(np.pi * dx / .024)) / (np.pi * dt)
         assert frequency == pytest.approx(yee_frequency, rel=2e-5)
-    assert errors[0] < .003  # Yee dispersion is 0.193% at 24 cells/period.
+    assert errors[0] < .003
     assert 3.8 < errors[0] / errors[1] < 4.2
     assert 3.8 < errors[1] / errors[2] < 4.2
 
@@ -93,8 +93,7 @@ def _check_half_node(position_index, axis_index, expected_position, expected_axi
 @pytest.mark.parametrize('dtype', [np.float32, np.float64])
 @pytest.mark.parametrize('axis', [0, 1, 2])
 def test_nonperiodic_half_node_takes_the_lower_node(dtype, axis):
-    # float32(.00075) is above the half-node tie after promotion, but
-    # inside the solver-width band: both lookups take the lower node.
+    """float32(.00075) is above the half-node tie after promotion, but inside the solver-width band: both lookups take the lower node."""
     grid = Grid(60e9, (.009, .006, .0042), dx=.0003, cpml_layers=0)
     position = [0., 0., 0.]
     position[axis] = dtype(.00075)
@@ -151,7 +150,6 @@ def test_periodic_index_wrap_and_full_cell_measure(graded, axis):
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 def test_period_snap_and_explicit_refusal(graded):
-    # lambda/20 requests 1 mm; 10.3 mm is deliberately noncommensurate.
     with pytest.warns(UserWarning, match='snapped'):
         g = periodic_grid(graded, 299792458.0 / .020, (.0103, 8 * .0103 / 11, 6 * .0103 / 11), periodic_axes='x')
     _check_snap(g)
@@ -159,7 +157,6 @@ def test_period_snap_and_explicit_refusal(graded):
         periodic_grid(graded, 20e9, (.0103, .008, .006), dx=.001, periodic_axes='x')
     with pytest.raises(ValueError, match='common.*axis x.*axis y.*nearest common dividing dx=0.0001 m'):
         periodic_grid(graded, 20e9, (.0103, .008, .006), dx=.001, periodic_axes='xy')
-    # Their 0.1 mm common spacing is below the automatic cost bound.
     with pytest.raises(ValueError, match='largest fitting dx=0.0001 m'):
         periodic_grid(graded, 299792458.0 / .020, (.0103, .008, .006), periodic_axes='xy')
     common = periodic_grid(graded, 20e9, (.0103, .008, .006), dx=.0001, periodic_axes='xy')
@@ -191,6 +188,7 @@ def test_seam_probe_and_dft_plane(graded, entry):
 @pytest.mark.parametrize('finite', [False, True])
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 def test_seam_flux_counts_every_periodic_cell(graded, finite):
+    """A 2 V/m, 1 A/m plane carries 2 W/m² through exactly 15 mm²."""
     sim = periodic_sim(graded, 20e9, (.024, .003, .005), dx=.001, cpml_layers=0,
                      boundary=BoundarySpec.uniform('periodic'))
     for x in (0., .024):
@@ -200,8 +198,6 @@ def test_seam_flux_counts_every_periodic_cell(graded, finite):
     from rfx.runners.nonuniform import build_flux_monitor_cfgs_nu
     monitors = (build_flux_monitor_cfgs_nu if graded else build_flux_monitor_cfgs)(sim, grid, 1)
     state = init_state(grid.shape)
-    # A 2 V/m, 1 A/m plane carries 2 W/m² through exactly 15 mm².
-    # Deliberately mark the last cell: losing it is visible in the flux.
     ey = jnp.full(grid.shape, 2.).at[:, -1, -1].set(4.)
     state = state._replace(ey=ey, hz=jnp.ones(grid.shape))
     for monitor in monitors:
@@ -247,6 +243,7 @@ def test_public_auto_resolution_snaps_and_explicit_resolution_refuses(graded, en
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 def test_material_averaging_uses_last_physical_cell_at_the_seam(graded):
+    """Ez at x=0 lies between eps=1 at x=0 and eps=9 at x=L-dx."""
     from rfx.core.yee import component_e_materials
     sim = periodic_sim(graded, 20e9, (.010, .006, .004), dx=.001, cpml_layers=0,
                      boundary=BoundarySpec(x='periodic', y='pec', z='pec'))
@@ -259,7 +256,6 @@ def test_material_averaging_uses_last_physical_cell_at_the_seam(graded):
         eps = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in 'xyz')).components.eps_update
     else:
         eps, _ = component_e_materials(materials, sim._periodic_flags(), high_wall=unpadded_high_walls(grid))
-    # Ez at x=0 lies between eps=1 at x=0 and eps=9 at x=L-dx.
     _check_material(float(eps[2][0, 3, 2]))
 
 
@@ -267,8 +263,6 @@ def test_material_averaging_uses_last_physical_cell_at_the_seam(graded):
 @pytest.mark.parametrize('mode', ['2d_tmz', '2d_tez', '3d'])
 def test_tfsf_induced_wrap_keeps_legacy_box(mode, entry, monkeypatch):
     if mode != '3d':
-        # The old implicit ring included both eight-cell pads and its bounding
-        # node. Declare that 28-cell ring and translate the finite object/probe.
         sim = Simulation(20e9, (.020, .028, .004), dx=.001, cpml_layers=8,
                          mode=mode, boundary={'x': 'cpml', 'y': 'periodic', 'z': 'periodic'})
         component = 'ey' if mode == '2d_tez' else 'ez'
@@ -283,8 +277,6 @@ def test_tfsf_induced_wrap_keeps_legacy_box(mode, entry, monkeypatch):
         legacy = getattr(sim, entry)(n_steps=256, skip_preflight=True).time_series
         np.testing.assert_array_equal(actual, legacy)
         return
-    # The original body touches z_lo, so main extrudes it through that pad.
-    # Declare the padded ring, including the extruded glass below the old face.
     sim = Simulation(20e9, (.020, .028, .021), dx=.001, cpml_layers=8, mode=mode,
                      boundary={'x': 'cpml', 'y': 'periodic', 'z': 'periodic'})
     sim.add_material('glass', eps_r=3.2)
@@ -301,9 +293,7 @@ def test_tfsf_induced_wrap_keeps_legacy_box(mode, entry, monkeypatch):
 
 @pytest.mark.parametrize('judge', ['ring', 'index', 'seam', 'flux', 'broadside', 'snap', 'induced_wrap', 'material', 'half_node'])
 def test_period_judges_reject_corrupted_measurements(judge):
-    # These deliberately wrong observations keep each physical judge live.
-    # Replacing a judge by a no-op must fail this control. The separate
-    # fence-post mutation exercises the real solver with every helper kept.
+    FLUX_WITHOUT_FINAL_CELL_W = 28e-6
     with pytest.raises(AssertionError):
         if judge == 'ring':
             _check_ring([11.970415e9, 12.230779e9, 12.361121e9])
@@ -313,7 +303,7 @@ def test_period_judges_reject_corrupted_measurements(judge):
         elif judge == 'seam':
             _check_seam(np.array([[1., .99]]), np.ones(1), np.ones(1))
         elif judge == 'flux':
-            _check_flux([28e-6])  # final 4 W/m² cell omitted
+            _check_flux([FLUX_WITHOUT_FINAL_CELL_W])
         elif judge == 'broadside':
             _check_broadside([np.ones(4), np.full(4, .99)])
         elif judge == 'snap':

@@ -1,4 +1,6 @@
-"""#1942: refuse circular DG incident tables before stepping."""
+"""#1942: refuse circular DG incident tables before stepping.
+Expected text is quoted from the refusal design, not read from implementation.
+"""
 from dataclasses import fields, replace
 
 import jax
@@ -9,7 +11,6 @@ from rfx import Simulation
 from rfx.api._spec import _WaveguidePortEntry
 from rfx.interop import design_to_dict, simulation_from_design
 
-# Expected text is quoted from DESIGN_refuse.md, not read from implementation.
 DG_REFUSAL = (
     "waveform='differentiated_gaussian' is refused on waveguide ports: its "
     "band-limited incident table is built with a zero-phase filter whose "
@@ -20,17 +21,17 @@ DG_REFUSAL = (
 
 
 def _guide(graded=False, internal=False):
+    """The off-node WR-90 width is this fixture's aperture case."""
     extra = {"dz_profile": np.full(5, .002032)} if graded else {}
     sim = Simulation(
         12e9, (.04, .02286, .01016), dx=.002032, cpml_layers=4,
         boundary={"x": "cpml", "y": "pec", "z": "pec"}, **extra,
-        snap="declared")  # off-node WR-90 width is this fixture's aperture case (#1887)
+        snap="declared")
     for x, direction in ((.008, "+x"), (.030, "-x")):
         sim.add_waveguide_port(x, direction=direction, f0=10e9,
                                freqs=np.array([9e9, 10e9, 11e9]),
                                probe_offset=2, ref_offset=1)
     if internal:
-        # Build precisely the declaration record, omitting its waveform.
         sim._waveguide_ports = [
             _WaveguidePortEntry(**{
                 f.name: getattr(e, f.name) for f in fields(e)
@@ -59,8 +60,6 @@ def _enter(sim, route):
 
 ROUTES = ["run", "run_distributed", "forward", "forward_distributed",
           "compute_waveguide_s_matrix", "compute_s_matrix"]
-# Multi-device lanes refuse every waveguide port before any config is built,
-# so a DG declaration there meets that refusal first (#2053).
 MULTI_DEVICE = {"run_distributed", "forward_distributed"}
 PORT_REFUSAL = r"waveguide ports \(add_waveguide_port\) are not supported on"
 
@@ -82,6 +81,7 @@ def test_declaration_refuses_dg(monkeypatch):
 @pytest.mark.parametrize("graded", [False, True])
 @pytest.mark.parametrize("route", ROUTES)
 def test_internal_dg_refused_before_step(graded, route, monkeypatch):
+    """Multi-device lanes refuse every waveguide port before any config is built, so a DG declaration there meets that refusal first."""
     sim = _guide(graded, internal=True)
     sim._waveguide_ports = [
         replace(e, waveform="differentiated_gaussian")
@@ -130,12 +130,12 @@ def test_default_reaches_modulated_config(graded, internal, route, monkeypatch):
 
 @pytest.mark.parametrize("graded", [False, True])
 def test_preflight_dg_table_refused_without_steps(graded, monkeypatch):
+    """Preflight catches failed advisory builds and reports them as unchecked."""
     sim = _guide(graded)
     sim._waveguide_ports = [replace(e, waveform="differentiated_gaussian")
                             for e in sim._waveguide_ports]
     monkeypatch.setattr(jax.lax, "scan", _no_steps)
     report = sim.preflight()
-    # Preflight catches failed advisory builds and reports them as unchecked.
     if not graded:
         assert any(DG_REFUSAL in str(issue) for issue in report)
     else:
@@ -189,7 +189,7 @@ def test_graded_config_preserves_declared_mode_profile(mode_profile, n_modes, mo
     sim = Simulation(
         12e9, (.04, .02286, .01016), dx=.002032, cpml_layers=4,
         boundary={"x": "cpml", "y": "pec", "z": "pec"},
-        dz_profile=np.array([.0015, .002, .003, .002, .00166]), snap="declared")  # (#1887)
+        dz_profile=np.array([.0015, .002, .003, .002, .00166]), snap="declared")
     freqs = np.array([10e9])
     sim.add_waveguide_port(.008, f0=10e9, freqs=freqs,
                            probe_offset=2, ref_offset=1,
@@ -207,8 +207,6 @@ def test_mixed_calculator_already_refuses_waveguides(waveform, monkeypatch):
     sim = _guide()
     sim._waveguide_ports = [replace(e, waveform=waveform)
                             for e in sim._waveguide_ports]
-    # Existing family guard precedes assembly; declarations are borrowed from
-    # their APIs so this is the same registration shape the calculator reads.
     other = Simulation(12e9, (.04, .02286, .01016), dx=.002032)
     other.add_port((.008, .010, .004), "ez", impedance=50.)
     other.add_msl_port(position=(.008, .010, .004), width=.004,
