@@ -49,8 +49,12 @@ cases compare with openEMS.
 - **Keep the drawn size.** Preflight refuses a patch solved more than 1 % off
   its drawn size. Build the in-plane mesh with `edge_aware_profiles`, as
   [Your First Patch Antenna](/rfx/examples/first-patch/) does, rather than
-  rounding L and W to the grid, because rounding changes the antenna. See
-  [Check the model on the grid](/rfx/check/model-on-grid/).
+  rounding L and W to the grid, because rounding changes the antenna. That
+  mesh puts each sheet's last node 0.35 cell inside its drawn edge, the offset
+  measured where the cell across the sheet equals the cell beside its edge.
+  In `patch_antenna_demo.py` the z cells at the sheets are 0.38 to 0.50 mm and
+  the in-plane cell beside each edge is 2 mm, so its solved patch size has not
+  been measured. See [Check the model on the grid](/rfx/check/model-on-grid/).
 
 ## Resonance
 

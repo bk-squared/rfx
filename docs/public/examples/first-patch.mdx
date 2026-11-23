@@ -143,11 +143,14 @@ Q or efficiency, pass `surface_impedance_f0=f0`. The sheet is then modelled as
 a resistive sheet with copper's surface resistance at `f0`, on the same
 footprint, instead of as PEC.
 
-The in-plane `edge_aware_profiles` mesh registers the ground and patch to
-their solved edges and the feed and probe to grid nodes. This keeps the drawn
-patch dimensions without rounding them to a uniform lattice. Read
-`sim.fidelity_report()` and the preflight findings to check that realization;
-registration does not replace a mesh-convergence study.
+The in-plane `edge_aware_profiles` mesh puts the last node of the ground and
+of the patch 0.35 cell inside each drawn edge, and the feed and probe on grid
+nodes, so the patch is not rounded to a uniform lattice. The 0.35 is the edge
+offset measured where the cell across the sheet equals the cell beside its
+edge. Here the z cells at the sheets are 0.25 to 0.29 mm and the in-plane cell
+beside each edge is 0.95 mm, so the solved size of this patch has not been
+measured. `sim.fidelity_report()` and the preflight findings show the nodes the
+grid built; neither replaces a mesh-convergence study.
 
 This edge-aware in-plane grading raises four `nu_grading_reaches_absorber`
 warnings because the interior cells next to the x/y absorber faces are not

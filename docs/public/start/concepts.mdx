@@ -104,7 +104,7 @@ substrate = Box((0.005, 0.005, 0.004), (0.015, 0.015, 0.005))
 foil = Box((0.005, 0.005, 0.004), (0.015, 0.015, 0.004))   # zero thickness in z
 block = Box((0.007, 0.007, 0.006), (0.009, 0.009, 0.007))
 
-# x and y mesh lines placed so the foil's solved edges fall on its drawn edges.
+# x and y mesh lines placed 0.35 cell inside the foil's drawn edges.
 profiles = edge_aware_profiles((0.02, 0.02, 0.01), 0.5e-3,
                                sheets=[foil], solids=[substrate, block])
 
@@ -134,10 +134,11 @@ A sheet is solved as if it reached about 0.35 of a cell past its last mesh
 node, so on a plain uniform grid this 10 mm foil is solved wider than drawn.
 Preflight reports a sheet solved more than 1 % off its drawing as an error, so
 `run()` and `forward()` stop before the first step. Build the in-plane mesh with
-`rfx.mesh_edges.edge_aware_profiles`, as above, so the solved edges fall on the
-drawn ones; or pass `Simulation(..., snap="declared")` to accept the difference
-as a warning, recorded in `sim.realized_geometry()`. With the graded in-plane
-mesh, preflight also notes that the grading reaches the cells next to an
+`rfx.mesh_edges.edge_aware_profiles`, as above: it puts the sheet's last nodes
+0.35 cell inside its drawn edges, the offset measured where the cell across the
+sheet equals the cell beside its edge (here 0.5 and 0.475 mm). Or pass
+`Simulation(..., snap="declared")` to accept the difference as a warning,
+recorded in `sim.realized_geometry()`. With the graded in-plane mesh, preflight also notes that the grading reaches the cells next to an
 absorbing face, which should stay uniform over as many cells as the face has
 absorber layers.
 

@@ -99,10 +99,11 @@ sim = Simulation(freq_max=10e9, domain=domain, dx=0.5e-3, boundary="cpml",
 sim.add_thin_conductor(trace, sigma_bulk=5.8e7, thickness=35e-6)
 ```
 
-The mesh from `edge_aware_profiles` puts the trace's edges where they solve at
-the drawn 2 mm. On a uniform 0.5 mm mesh the same trace solves 2.35 mm wide,
+The mesh from `edge_aware_profiles` puts the trace's last nodes 0.35 cell
+inside its drawn 2 mm, the offset measured where the cell across the sheet
+equals the cell beside its edge. On a uniform 0.5 mm mesh the same trace solves 2.35 mm wide,
 and `run()` refuses it (`sheet_effective_size`; see
-[Solving sheets at their drawn size](/rfx/model/domain-mesh/#solving-sheets-at-their-drawn-size)).
+[Mesh lines at sheet edges](/rfx/model/domain-mesh/#mesh-lines-at-sheet-edges)).
 
 `sigma_bulk` and `surface_impedance_f0` choose the model:
 
@@ -359,7 +360,10 @@ The solver paths refuse what they do not implement:
 
 - A sheet's free edge is solved 0.35 of a cell beyond its last node. This was
   measured on a thin PEC fin against a fine-mesh reference for both
-  polarizations and two cell sizes (`scripts/diagnostics/pec_sheet_edge_offset.py`);
+  polarizations and two cell sizes, with the cell across the sheet equal to the
+  cell beside its edge (`scripts/diagnostics/pec_sheet_edge_offset.py`); on
+  other cell shapes the offset differs (see
+  [Check the model on the grid](/rfx/check/model-on-grid/#accuracy));
   the size check built on it is pinned in
   `tests/contracts/test_sheet_solved_edge_reports.py`. An end that lies on
   other metal over its whole width, such as a patch edge on a shorting wall,
@@ -373,5 +377,5 @@ The solver paths refuse what they do not implement:
 
 - [Materials](/rfx/model/materials/): dielectrics, loss and draw order.
 - [Check the model on the grid](/rfx/check/model-on-grid/): preflight and the realized geometry.
-- [Domain and mesh](/rfx/model/domain-mesh/#solving-sheets-at-their-drawn-size): a mesh that solves sheets at their drawn size.
+- [Domain and mesh](/rfx/model/domain-mesh/#mesh-lines-at-sheet-edges): mesh lines placed at sheet edges.
 - [Ports](/rfx/model/ports/): wire ports and coaxial conductors.
