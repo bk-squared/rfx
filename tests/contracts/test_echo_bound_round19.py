@@ -222,7 +222,9 @@ def test_one_and_multiple_devices_return_float32_jax_bound_leaves(entry):
     sim.add_probe((.006, .003, .003), 'ez')
 
     def bound(count):
-        options = dict(n_steps=2, devices=devices[:count], skip_preflight=True)
+        options = dict(n_steps=2, skip_preflight=True)
+        if entry == 'run' or count > 1:
+            options['devices'] = devices[:count]
         result = (sim.forward(distributed=count > 1, **options) if entry == 'forward'
                   else sim.run(compute_s_params=False, **options))
         return result.settling_echo_bound
