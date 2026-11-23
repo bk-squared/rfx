@@ -221,7 +221,8 @@ def with_echo_bound(db, witness, bound, dt):
                        for name, status in (child.get('status_per_entry') or {}).items()}
             if entries:
                 row['status_per_entry'] = entries
-    if not descendants and bound is not None and (row.get('status') == 'pass' or
+    tail_status = row.get('tail_status', row.get('status'))
+    if not descendants and bound is not None and (tail_status == 'pass' or
                               'pass' in (row.get('status_per_entry') or {}).values()):
         windows = row.get('window_starts') or {}
         unavailable = bound.get('reason') or dt is None or not windows
@@ -239,7 +240,7 @@ def with_echo_bound(db, witness, bound, dt):
                 reason = '; '.join(filter(None, (reason, extra)))
         row.update(reason=reason, echo_bound_refused=True,
                    echo_bound_reason=next((r for r in reasons if r), row.get('echo_bound_reason')))
-        if row.get('status') == 'pass':
+        if tail_status == 'pass':
             row.update(status='undetermined', db=float('nan'))
             db = float('nan')
         if not descendants and row.get('status_per_entry'):
