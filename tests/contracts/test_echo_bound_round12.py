@@ -85,7 +85,7 @@ def test_library_sweep_member_reads_its_own_arrays(capsys, monkeypatch):
     with capsys.disabled():
         print(f'19 sweep: base={base}; member={row}', file=sys.stderr, flush=True)
     assert base['echo_bound']['n_max'] == BASE_INDEX
-    assert RULE not in base['reason']
+    assert base['status'] == 'pass', base
     assert row['echo_bound']['n_max'] == MEMBER_INDEX, row
     assert row['status'] != 'pass', row
     assert 'cannot judge:' in row['reason'] and RULE in row['reason'], row
