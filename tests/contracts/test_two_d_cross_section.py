@@ -473,3 +473,22 @@ def test_via_keeps_on_node_pad_sheet(monkeypatch, mode):
                 & (y[None, :] >= .010) & (y[None, :] < .020))
     assert np.count_nonzero(expected) == 100
     np.testing.assert_array_equal(np.asarray(product.pec_cells)[:, :, 0], expected)
+
+
+@pytest.mark.parametrize("mode", ["2d_tez", "2d_tmz"])
+def test_via_excludes_off_node_pad_sheets(monkeypatch, mode):
+    from rfx.geometry.via import Via
+    center, radius = (.015, .015), .002
+    shape = Via(center=center, drill_radius=radius,
+                pad_radius=.005, layers=[(-.001, .002)])
+    sim = _scene(shape, mode)
+    sim._geometry.clear()
+    sim.add(shape, material="pec")
+    product = _prepared(monkeypatch, sim)
+    x, y = _coordinates(product.grid, .5)
+    expected = ((x[:, None] >= center[0] - radius)
+                & (x[:, None] < center[0] + radius)
+                & (y[None, :] >= center[1] - radius)
+                & (y[None, :] < center[1] + radius))
+    assert np.count_nonzero(expected) == 16
+    np.testing.assert_array_equal(np.asarray(product.pec_cells)[:, :, 0], expected)
