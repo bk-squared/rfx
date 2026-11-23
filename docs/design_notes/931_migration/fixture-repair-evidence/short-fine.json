@@ -2,7 +2,7 @@
   "arm": "current",
   "fine": true,
   "source_sha": "949e1845b84b26826d4e5309363bea4c2ffa5920",
-  "rfx_import": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/__init__.py",
+  "rfx_import": "rfx/__init__.py",
   "fixture_sha256": "3c1d0a135933f09136ce00e8e234ad8e00304fcafa52fdfbc746ff39da1b040e",
   "grid_shape": [
     141,

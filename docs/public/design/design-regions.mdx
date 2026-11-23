@@ -65,6 +65,11 @@ design cells (3, 3, 3)
 (3, 3, 3) 2.7416552939030225e-07
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/design/assets/design-regions/structure.png" loading="lazy" alt="Top view of a small domain surrounded by absorber: a three-by-three block of design cells in the middle, the source to its left and the probe to its right." />
+  <figcaption>The model, cut at z = 9 mm, the height of the Ez samples that the source drives and the probe reads: the design cells, three on each axis, span x = 10 to 16 mm, y = 8 to 14 mm and z = 6 to 12 mm. The box is declared from (10, 8, 6) to (14, 12, 10) mm, and the source and the probe are at x = 4 and 20 mm.</figcaption>
+</figure>
+
 The two gradients agree to float32 rounding; the exact figure changes between CPUs. Both corners of the box are
 inclusive, so the design array has one entry per realized cell from the cell
 at `BOX_LO` to the cell at `BOX_HI`; compute its shape from the grid as above.
@@ -118,12 +123,18 @@ unchanged. A design box that reaches such an element or sheet is refused.
 
 On a graded mesh, `dx_profile`, `dy_profile` and `dz_profile` can be traced:
 stretching the cells changes the physical size of what sits on them while the
-grid topology stays fixed. A metal sheet on such a mesh is declared with
-`sim.add_pinned_sheet(plane_index=, i_range=, j_range=)` so that it stays on
-its nodes as they move. With a traced mesh axis, a Box or axial Cylinder
-conductor drawn to an absorbing face continues into the absorber as on a
-concrete mesh, decided on `nominal_profiles` for that axis. A run whose mesh
-changes the outermost absorber layer the conductor occupies is refused:
+grid topology stays fixed. A drawn PEC sheet with a concrete normal axis
+resolves its plane and footprint on the nominal mesh, then follows those
+nodes as they move. Each traced in-plane axis requires `nominal_profiles`.
+Sheet-size admission uses that nominal mesh and the concrete solved-edge rule.
+A traced normal axis is refused. Declare a sheet with
+`sim.add_pinned_sheet(plane_index=, i_range=, j_range=)` to choose its nodes
+explicitly, including with a traced normal. Its indices stay Python ints;
+a traced index is refused.
+With a traced mesh axis, a Box or axial Cylinder conductor drawn to an
+absorbing face continues into the absorber as on a concrete mesh, decided on
+`nominal_profiles` for that axis. A run whose mesh changes the outermost
+absorber layer the conductor occupies is refused:
 re-declare `nominal_profiles` at the current design or keep the axis concrete.
 On a traced axis with an absorber, every conductor with a finite extent on that
 axis needs `nominal_profiles` for the axis, even one clear of every face;

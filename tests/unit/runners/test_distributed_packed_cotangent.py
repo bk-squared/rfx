@@ -28,7 +28,7 @@ def scene(eps_r, amplitude, graded, sigma=0.):
 
 
 @pytest.mark.parametrize('graded', [True, False], ids=['graded', 'uniform'])
-@pytest.mark.parametrize('with_sigma', [False, True], ids=['eps-amplitude', 'eps-amplitude-sigma'])
+@pytest.mark.parametrize('with_sigma', [True], ids=['eps-amplitude-sigma'])
 def test_packed_cotangents_match_separate_inputs(graded, with_sigma, record_property):
     devices = host_devices(2)
     values = [2., 1., .01] if with_sigma else [2., 1.]

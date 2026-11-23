@@ -212,6 +212,7 @@ def test_shared_witness_variant_keeps_record_scope_and_drift_check():
 
 
 def test_a_known_finding_that_stopped_occurring_fails_even_beside_another():
+    """A numeric finding is listed by its fingerprint, not by its measured text."""
     from .reporting import KnownFinding, assert_record
     known = ['s_params: shape differs: (2,) vs (1, 1, 2)', 'lumped_port_sparams: record missing on B']
     both = dict(failures=list(known), measurements=[])
@@ -220,8 +221,6 @@ def test_a_known_finding_that_stopped_occurring_fails_even_beside_another():
     one_fixed = dict(failures=known[:1], measurements=[])
     with pytest.raises(RuntimeError, match='no longer occurs.*\\n.*lumped_port_sparams'):
         assert_record(one_fixed, 'port_dft', known)
-    # A numeric finding is listed by its fingerprint, not by its measured text:
-    # the comparison must map the observed failure the same way.
     numeric = dict(failures=['time_series: relative diff 0.25 > 0.0001'], measurements=[])
     with pytest.raises(KnownFinding):
         assert_record(numeric, 'probes', ['time_series: numeric'])

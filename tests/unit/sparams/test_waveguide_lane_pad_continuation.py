@@ -40,8 +40,6 @@ A_WG, B_WG, DX = 22.86e-3, 10.16e-3, 1.27e-3
 LX = 60 * DX
 FREQS = jnp.asarray([8.5e9, 10.0e9, 11.5e9])
 CPML_CELLS = 8
-#: Enough to build and reach the smoothing site; the capture aborts before the
-#: scan, so the value only has to pass the lane's own argument checks.
 N_STEPS = 10
 
 
@@ -64,8 +62,6 @@ def _guide(with_slab: bool, *, slab_reaches_pad: bool = True):
     )
     if with_slab:
         sim.add_material("slab", eps_r=4.0)
-        # Reaching the x-hi FACE is the whole point: that is the port-side
-        # absorber. The no-pad variant stops two cells short of it.
         x_hi = LX if slab_reaches_pad else LX - 2 * DX
         sim.add(Box((LX / 2.0, 0.0, 0.0), (x_hi, A_WG, B_WG)), material="slab")
     for pos, direction, name in ((6 * DX, "+x", "left"),
@@ -111,14 +107,8 @@ def _capture(call, monkeypatch, *, attr: str = "compute_smoothed_eps",
     try:
         call()
     except _StopAfterCapture:
-        # Recorded rather than assumed: if any layer between here and the
-        # entry point swallowed the abort, the call would have gone on to
-        # time-step and this flag would stay False.
         captured["stopped"] = True
     finally:
-        # Two captures run in one test, so the spy must come off before the
-        # next setattr -- otherwise the second spy wraps the first, the first
-        # raises inside it, and the second capture comes back empty.
         monkeypatch.undo()
     return captured
 
@@ -138,6 +128,7 @@ def _first(captured) -> dict:
 
 
 def _lane_capture(sim, monkeypatch) -> dict:
+    """The capture aborts before the scan, so N_STEPS only has to pass the lane's own argument checks."""
     return _first(_capture(
         lambda: sim.compute_waveguide_s_matrix(subpixel_smoothing=True,
                                                n_steps=N_STEPS),
@@ -178,8 +169,6 @@ def test_the_lane_calls_the_runners_one_implementation() -> None:
     from rfx.sparams import waveguide as lane
 
     src = inspect.getsource(lane.compute_waveguide_s_matrix)
-    # The lane and the uniform run form their operands in one module since
-    # M4b PR 1; both smoothing sites live there now.
     assert "form_tensor_operands(" in src
     assert "form_tensor_operands(" in inspect.getsource(uniform.run_uniform)
     builder = inspect.getsource(tensor_operands.form_tensor_operands)
@@ -294,6 +283,8 @@ def test_the_kottke_pec_route_carries_the_dielectric_into_the_pad(
     than the shape list -- ``1/4`` in the pad is the same statement about the
     solver's input that the Stage-1 tests make with ``4.0``, and it does not
     re-test ``smoothed_shape_pairs`` against its own convention.
+    The reference run is vacuum because device minus reference would otherwise cancel the slab
+    instead of the guide.
     """
     sim = _guide(with_slab=True)
     captured = _capture(
@@ -327,8 +318,6 @@ def test_the_kottke_pec_route_carries_the_dielectric_into_the_pad(
         "and 0.25 is the eps_r = 4 slab continued through its own absorber"
     )
 
-    # The reference run is vacuum on purpose; if it ever stopped being so,
-    # device minus reference would cancel the slab instead of the guide.
     ref_xx = reference[0]["out"][0]
     ref_column = ref_xx[ref_xx.shape[0] - pad:, jm, km].astype(float)
     np.testing.assert_allclose(ref_column, 1.0, rtol=0, atol=1e-12)

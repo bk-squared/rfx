@@ -134,7 +134,6 @@ def test_uniform_forward_rejects_n_warmup():
     sim.add_source((0.005, 0.005, 0.001), "ez")
     sim.add_probe((0.005, 0.005, 0.003), "ez")
 
-    # n_warmup=0 (the default / a no-op value) must still run cleanly.
     fr = sim.forward(n_steps=20, n_warmup=0)
     assert np.all(np.isfinite(np.asarray(fr.time_series)))
 
@@ -178,7 +177,7 @@ def test_warmup_truncation_error_grows_with_k():
     pre-loss-window): 6.6%, K=50: 12.1%, K=70: 35.2% -- growing as K
     approaches the loss window, consistent with a second independent
     design-cell placement measured out-of-band (see
-    docs/agent-memory/rfx-known-issues.md, issue #626 part 2, and the
+    issue #626 part 2, and the
     forward()/nonuniform.py docstrings this test backs). The K=0/K=10
     figures are hedged deliberately: an h-sweep of the FD oracle shows
     those two points sit INSIDE the oracle's own noise band (at h=0.05,
@@ -222,22 +221,9 @@ def test_warmup_truncation_error_grows_with_k():
         g_ad = float(jax.grad(lambda a: objective(a, n_warmup=k))(a0))
         rel_errs.append(abs(g_ad - g_fd) / max(abs(g_fd), 1e-30))
 
-    # K=0/K=10 (no or minimal truncation) sit inside the FD oracle's own
-    # noise band at this h (measured via an h-sweep -- see the docstring),
-    # so these are loose ceilings, not a tight/ordered pair.
     assert rel_errs[0] < 0.05, f"K=0 AD vs FD mismatch: {rel_errs[0] * 100:.2f}%"
     assert rel_errs[1] < 0.05, f"K={k_sweep[1]} rel_err unexpectedly large: {rel_errs[1] * 100:.2f}%"
-    # Large K (approaching the loss window) is a substantial, non-noise
-    # bias -- if this ever drops back near the noise floor, the truncation
-    # mechanism itself has silently changed and needs re-investigation,
-    # not a gate loosening.
     assert rel_errs[-1] > 0.15, f"K={k_sweep[-1]} rel_err unexpectedly small: {rel_errs[-1] * 100:.2f}%"
-    # Strict monotonicity from K=30 upward ONLY: below K=30 the true
-    # signal is not resolved above the FD oracle's own noise floor at
-    # this h (measured), so asserting order there would bind a noise-band
-    # coincidence rather than the truncation mechanism -- exactly the
-    # failure mode feedback_gate_can_bind_artifact warns about. From
-    # K=30 up the bias is unambiguous and the growth is decisive.
     k30_idx = k_sweep.index(30)
     trustworthy = rel_errs[k30_idx:]
     for a, b in zip(trustworthy, trustworthy[1:]):

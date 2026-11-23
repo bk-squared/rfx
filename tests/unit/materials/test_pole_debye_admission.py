@@ -17,7 +17,7 @@ from rfx.stepping.uniform_setup import _update_e_with_optional_dispersion
 @pytest.mark.parametrize("wp,de,tau", [(0., 3., 2.), (.25, 3., 2.), (.45, .5, 10.)],
                          ids=["debye", "mixed_stable", "mixed_unstable"])
 def test_debye_matrix_matches_actual_fourier_mode(wp, de, tau):
-    # One x Fourier mode, Ey/Hz only. The real Nyquist mode has x=4(c dt/dx)^2.
+    """Sixty steps resolve the root without overflowing float32 on the intentionally unstable rho=1.38 mode, whose squared norm overflows during a 180-step record."""
     shape, dx = (8, 1, 1), 1e-3
     dt = .99 * dx / C0
     materials = init_materials(shape)
@@ -47,27 +47,22 @@ def test_debye_matrix_matches_actual_fourier_mode(wp, de, tau):
 
     @jax.jit
     def step(carry, unused):
+        """The full dynamic-state norm uses eps0-normalized polarization and impedance-normalized Hz."""
         state, dbs, lrs = carry
         state = update_h(state, materials, dt, dx, periodic, high_wall=(False, False, False))
         state, dbs, lrs = _update_e_with_optional_dispersion(
             state, materials, dt, dx, debye=(db[0], dbs),
             lorentz=None if lr is None else (lr[0], lrs), periodic=periodic, high_wall=(False, False, False))
-        # Full dynamic state norm; P is in eps0 units. Hz is in impedance units.
         values = [state.ey, state.hz * impedance, dbs.py / EPS_0]
         if lrs is not None:
             values += [lrs.py / EPS_0, lrs.vy / EPS_0]
         norm = jnp.sqrt(sum(jnp.sum(jnp.abs(v) ** 2) for v in values))
         return (state, dbs, lrs), norm
 
-    # Excite a single eigenmode of the actual kernel, independently of the
-    # admission matrix (whose rows are never read here).
     actual = np.stack([np.asarray(vector_from_carry(step(carry_from_vector(v), None)[0]))
                        for v in np.eye(size)], axis=1)
     roots, vectors = np.linalg.eig(actual)
     initial = carry_from_vector(vectors[:, np.argmax(abs(roots))])
-    # Sixty steps resolve the root without overflowing float32 on the
-    # intentionally unstable mode (rho=1.38, whose squared norm overflows
-    # during a 180-step record).
     _, norms = jax.lax.scan(step, initial, None, length=60)
     norms = np.asarray(norms)
     measured = float(np.exp(np.polyfit(np.arange(20, 60), np.log(norms[20:]), 1)[0]))
@@ -92,11 +87,10 @@ def test_ten_stable_debye_drude_cases_stay_admitted(factor, debye):
 
 @pytest.mark.parametrize("route", ["uniform", "graded", "graded_override", "compile_budget"])
 def test_unstable_combined_medium_reaches_each_judge(route):
+    """The combined matrix gives rho=1.00082051 even with the large Debye polarization."""
     from tests.unit.materials.test_pole_stability_admission import _box, _default_step
     from rfx.model.pole_stability import courant_budget
     dt = _default_step()
-    # Debye does not rescue this above-limit Drude medium: the combined
-    # matrix gives rho=1.00082051 even with this large polarization.
     sim = _box(.45, eps_inf=4. if route == "graded_override" else 1., graded=route.startswith("graded"))
     dp, lp = [DebyePole(30., .2 * dt)], [drude_pole(.45 / dt, 0.)]
     sim.add_material("m", eps_r=4. if route == "graded_override" else 1., debye_poles=dp, lorentz_poles=lp)

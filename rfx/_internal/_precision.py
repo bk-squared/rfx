@@ -4,8 +4,7 @@ On Ampere-class and newer NVIDIA GPUs, JAX's default precision for a float32
 (and complex64) matrix product is TF32: the operands are rounded to a 10-bit
 mantissa before multiplying, about 1e-3 relative per product. On an RTX 3090
 that moved a completed S-parameter by up to 4e-4, twenty times the float32
-bar of the ring-down tests; with ``HIGHEST`` the same tests agree to 1e-6
-(records ``rfx-archive`` ``rfx/records/20260929-tf32-ab/``).
+bar of the ring-down tests; with ``HIGHEST`` the same tests agree to 1e-6.
 CPUs and older GPUs compute the same thing either way.
 
 Every ``jnp.einsum`` / ``jnp.matmul`` / ``jnp.dot`` / ``lax.conv*`` in rfx passes
@@ -58,3 +57,9 @@ def resolve_field_dtype(precision):
             raise ValueError(FLOAT64_MODE_ERROR)
         return jnp.float64
     return jnp.float16 if precision == "mixed" else None
+
+
+def resolve_coefficient_dtype(precision):
+    """Run coefficient precision, retaining the float32 floor for mixed fields."""
+    import jax.numpy as jnp
+    return jnp.promote_types(resolve_field_dtype(precision) or jnp.float32, jnp.float32)

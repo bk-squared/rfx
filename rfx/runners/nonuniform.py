@@ -1,9 +1,11 @@
 """Non-uniform grid run path extracted from Simulation."""
 
 from __future__ import annotations
+
+from rfx._internal._precision import resolve_coefficient_dtype
 from rfx._warning_origin import user_stacklevel
 
-from rfx.errors import ConfigurationWarning
+from rfx.errors import ConfigurationWarning, RfxRefusal
 from rfx.model.graded_admission import host_cells
 
 from rfx._internal._grid_metric import field_index
@@ -48,7 +50,7 @@ def _validate_interface_eps_nu(sim, *, subpixel_smoothing=False, eps_override=No
         raise ValueError("interface_eps='dual_average' cannot combine with thin conductors or lumped RLC")
     if any(is_tracer(getattr(sim, name, None))
            for name in ("_dx_profile", "_dy_profile", "_dz_profile")):
-        raise ValueError("interface_eps='dual_average' requires concrete profiles, not traced profiles")
+        raise RfxRefusal("interface_eps='dual_average' requires concrete profiles, not traced profiles")
 
 
 def assemble_interface_eps_nu(sim, grid, materials, *, pec_mask, high_wall: tuple[bool, bool, bool]):
@@ -104,6 +106,7 @@ def build_nonuniform_grid(
     cpml_layers: int,
     dz_profile: np.ndarray,
     *,
+    dtype,
     dx_profile: np.ndarray | None = None,
     dy_profile: np.ndarray | None = None,
     pec_faces: set[str] | None = None,
@@ -175,7 +178,7 @@ def build_nonuniform_grid(
         dx, dx_profile, dy_profile, dz_profile))
     with nullcontext() if traced else jax.ensure_compile_time_eval():
         return make_nonuniform_grid(
-            domain_xy, dz_profile, dx, cpml_layers,
+            domain_xy, dz_profile, dx, cpml_layers, dtype=dtype,
             dx_profile=dx_profile, dy_profile=dy_profile,
             pec_faces=pec_faces, pmc_faces=pmc_faces, cpml_axes=cpml_axes,
             face_layers=face_layers, boundary_depths=depths,
@@ -371,18 +374,18 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
 
 
 def _port_drive_source(grid, cell, component, excitation, n_steps, *, materials,
-                      sigma_port, unit_field):
+                      sigma_port, unit_field, dtype):
     """NU tuple source, built from the final realized materials."""
     waveform = port_drive_waveform(
         grid, cell, component, excitation, n_steps, materials,
-        sigma_port=sigma_port, unit_field=unit_field)
+        sigma_port=sigma_port, unit_field=unit_field, dtype=dtype)
     return (*cell, component, waveform)
 
 
 def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
                         n_steps, pec_edge_masks, *, geometry_edge_masks=None,
                         sheet_specs=(), drawn_eps_r=None, conductors=None, source_grid=None):
-    """Set up MSL ports on the non-uniform mesh (Ez static-Laplace feed only).
+    """Set up uniform or static-Laplace Ez feeds on the non-uniform mesh.
 
     Mirrors the uniform MSL block (``rfx/runners/uniform.py``: ``_msl_ports``)
     but with two NU-specific differences:
@@ -442,32 +445,34 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
                 "mode='laplace' (the add_msl_port default) on the "
                 "non-uniform lane."
             )
-        # laplace / uniform: build the static-Laplace Ez mode profile from the
-        # substrate eps_r read concretely under the trace centre.
+        if port_mode not in ("laplace", "uniform"):
+            raise ValueError(f"Unsupported non-uniform MSL port mode: {port_mode!r}")
         from rfx.sources.msl_port import validate_msl_port_geometry
         validate_msl_port_geometry(
             grid, mp, pec_edge_masks=original_edges, conductors=conductors,
             pec_faces=sim._boundary_spec.pec_faces(), name=pe.name,
             periodic=tuple(a in grid.periodic_axes for a in "xyz"))
-        span = msl_cross_section_span(grid, mp)
-        k_mid = (span["n_lo"] + span["n_hi"]) // 2
-        eps_cell = msl_cell(
-            pe.direction, span["i_feed"], span["w_centre"], k_mid
-        )
-        if pe.eps_r_sub is not None:
-            eps_r_sub = float(pe.eps_r_sub)
-        else:
-            _fixture_eps = (materials_drive.eps_r if drawn_eps_r is None
-                            else drawn_eps_r)
-            eps_r_sub = float(np.asarray(_fixture_eps[eps_cell]))
-        mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
+        mode_profile = None
+        if port_mode == "laplace":
+            span = msl_cross_section_span(grid, mp)
+            k_mid = (span["n_lo"] + span["n_hi"]) // 2
+            eps_cell = msl_cell(
+                pe.direction, span["i_feed"], span["w_centre"], k_mid
+            )
+            if pe.eps_r_sub is not None:
+                eps_r_sub = float(pe.eps_r_sub)
+            else:
+                _fixture_eps = (materials_drive.eps_r if drawn_eps_r is None
+                                else drawn_eps_r)
+                eps_r_sub = float(np.asarray(_fixture_eps[eps_cell]))
+            mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
 
         materials = setup_msl_port(grid, mp, materials, mode_profile=mode_profile)
         materials_drive = setup_msl_port(
             grid, mp, materials_drive, mode_profile=mode_profile)
         if pe.excite and pe.waveform is not None:
             sources.defer(make_msl_port_sources,
-                grid if source_grid is None else source_grid, mp, n_steps=n_steps, mode_profile=mode_profile,
+                grid if source_grid is None else source_grid, mp, n_steps=n_steps, mode_profile=mode_profile, dtype=resolve_coefficient_dtype(sim._precision),
             )
         # Only the SUBSTRATE-NORMAL component: the edge the modal
         # source drives.  The three-component form opened a
@@ -475,7 +480,9 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
         conductors = clear_conductor_edges(
             conductors, list(_msl_yz_cells(grid, mp)),
             component=_msl_normal_component(mp),
-            entity_id=f"msl_port[{_msl_port_index}]", port_kind="microstrip", released_edges=mode_profile["cell_indices"])
+            entity_id=f"msl_port[{_msl_port_index}]", port_kind="microstrip",
+            released_edges=(mode_profile["cell_indices"] if mode_profile is not None
+                            else list(_msl_yz_cells(grid, mp))))
         pec_edge_masks = conductors.pec_edges
     return materials, conductors if return_object else pec_edge_masks
 
@@ -602,6 +609,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                  or any(p.is_port and p.extent is not None for p in sim._ports)
                  or graded_lumped_default_s(sim)))
     if scan:
+        from rfx.runners._admission import refuse_foreign_s_drives
+        refuse_foreign_s_drives(sim)
         # The main record keeps its port records at the scan's bins; its S is not formed.
         from rfx.measurement.monitors import default_frequency_grid
         compute_s_params = True
@@ -624,7 +633,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             compute_s_params = False
 
     # every single-device non-uniform solve (run AND forward) enters here
-    from rfx.sources.tfsf import _refuse_extended_tfsf
+    from rfx.sources.tfsf import _refuse_extended_tfsf, is_oblique
     _refuse_extended_tfsf(sim._tfsf, "the non-uniform runner")
     sim._require_mode_the_nonuniform_lane_solves()
     # compute_waveguide_s_matrix's graded branch reaches this lane without
@@ -859,7 +868,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                     aniso_eps = compute_smoothed_eps_nonuniform(
                         grid, shape_eps_pairs, background_eps=1.0,
                         nominal_h_max=smoothing_nominal_h_max(sim, grid),
-                    )
+                    dtype=resolve_coefficient_dtype(sim._precision))
 
     if getattr(sim, "_interface_eps", "sampled") == "dual_average":
         from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -911,11 +920,11 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                    else field_index(grid, pe.position, pe.component))
             sources.defer(make_current_source,
                           source_grid, idx, pe.component, pe.waveform, sizing_n,
-                          amplitude_kind=pe.amplitude_kind)
+                          amplitude_kind=pe.amplitude_kind, dtype=resolve_coefficient_dtype(sim._precision))
         for cell, component, waveform, sigma_port, unit_field in drives_by_port.get(port_index, ()):
             sources.defer(_port_drive_source,
                           source_grid, cell, component, waveform, sizing_n,
-                          sigma_port=sigma_port, unit_field=unit_field)
+                          sigma_port=sigma_port, unit_field=unit_field, dtype=resolve_coefficient_dtype(sim._precision))
 
     from rfx.measurement.identification import read_ringdown_probes
     for pe in (*sim._probes, *read_ringdown_probes(sim._probes, "runners/nonuniform.py")):
@@ -997,8 +1006,10 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
 
     from rfx.model.materials import with_components
     materials = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
-        debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+        debye_spec=debye_spec, lorentz_spec=lorentz_spec, field_dtype=field_dtype)
     materials = field_poles(materials, source_grid, debye_spec, lorentz_spec, field_dtype)
+    from rfx.model.tensor_operands import attach_run_tensor
+    materials = attach_run_tensor(materials, aniso_eps)
     sources = sources.resolve(materials)
 
     # Lumped RLC: build per-element metadata + zero-init ADE states
@@ -1056,7 +1067,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     tfsf_pair = None
     if sim._tfsf is not None:
         entry = sim._tfsf
-        if abs(entry.angle_deg) > 0.01:
+        if is_oblique(entry.angle_deg):
             raise ValueError(
                 "TFSF oblique incidence (angle_deg != 0) is not yet "
                 "supported on nonuniform z mesh — the 2D auxiliary grid "
@@ -1077,7 +1088,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         from rfx.sources.tfsf import tfsf_from_declaration
         tfsf_pair = tfsf_from_declaration(
             entry, grid, sim._freq_max, n_steps=n_steps,
-        )
+        dtype=resolve_coefficient_dtype(sim._precision))
         nonvacuum = []
         if design_box is not None:
             b = design_box.bounds
@@ -1142,7 +1153,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     admit(
         sim,
         lane,
-        run_args={"conformal_pec": conformal_pec, "compute_s_params": compute_s_params},
+        run_args={"conformal_pec": conformal_pec, "compute_s_params": compute_s_params,
+                  "subpixel_smoothing": subpixel_smoothing},
         diagnostics=diagnostics,
     )
 
@@ -1166,7 +1178,6 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         field_dtype=field_dtype,
         design_box=design_box,
         sheet_impedance=sheet_ctx,
-        aniso_eps=aniso_eps,
         pec_mask=pec_mask,
         pec_edge_masks=pec_edge_masks,
         pec_sheets=_pec_sheets,

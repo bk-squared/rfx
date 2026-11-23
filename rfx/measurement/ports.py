@@ -173,7 +173,7 @@ def msl_owner(grid, *, port_id, direction, voltage_indices, span, trace_planes,
     for a in range(3):
         refuse_window_cells(grid, a, slice(None), "waveguide ports MSL owner")
     prop, width = 'xyz'.index(direction[1]), 1 if direction[1] == 'x' else 0
-    cells = [np.asarray(host_cells(grid, a)).astype(np.float32).astype(float) if nonuniform
+    cells = [np.asarray(host_cells(grid, a, store=True), dtype=float) if nonuniform
              else np.asarray(host_cells(grid, a)) for a in range(3)]
     offset = 0.0
     channels = []

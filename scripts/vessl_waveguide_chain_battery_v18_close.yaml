@@ -6,6 +6,7 @@ resources:
   preset: gpu-rtx4090
 image: nvcr.io/nvidia/jax:24.10-py3
 env:
+  RFX_RUNS_WORKSPACE: "FILL_BEFORE_SUBMIT"
   PYTHONUNBUFFERED: "1"
   XLA_PYTHON_CLIENT_PREALLOCATE: "false"
   HDF5_USE_FILE_LOCKING: "FALSE"
@@ -28,6 +29,7 @@ mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -eu
+  test "$RFX_RUNS_WORKSPACE" != "FILL_BEFORE_SUBMIT"
   echo "=== rfx WR-90 chain battery (the one pre-declared measurement) ==="
   date
   if [ "$RFX_EXPECT_SHA" = "FILL_AFTER_PUSH" ]; then
@@ -72,7 +74,7 @@ run: |-
   python -c "from tests import _waveguide_chain_battery_fixture as F; assert F.SHIFT_PAIR_NAME == 'sign_discriminating_pair', F.SHIFT_PAIR_NAME; assert abs(F.REF_LEFT_SHIFTED_M - 0.02540) < 1e-12 and abs(F.REF_RIGHT_SHIFTED_M - 0.09906) < 1e-12, (F.REF_LEFT_SHIFTED_M, F.REF_RIGHT_SHIFTED_M); print('shift pair guard ok |', F.SHIFT_PAIR_NAME, F.REF_LEFT_SHIFTED_M, F.REF_RIGHT_SHIFTED_M)"
 
   SHORT=$(echo "$RFX_EXPECT_SHA" | cut -c1-8)
-  OUT="/root/workspace/claude-workspace/rfx/runs/waveguide_chain_battery/$(date -u +%Y%m%dT%H%M%SZ)-$SHORT"
+  OUT="/root/workspace/$RFX_RUNS_WORKSPACE/rfx/runs/waveguide_chain_battery/$(date -u +%Y%m%dT%H%M%SZ)-$SHORT"
   mkdir -p "$OUT"
   echo "artifacts: $OUT"
   # 2026-09-04: VESSL_RUN_ID was unset in the pod on run 369367258205, the

@@ -3,6 +3,18 @@
 from __future__ import annotations
 
 
+def admit_coax_entry(owner, arguments) -> None:
+    """Refuse a traced static input of a coaxial calculator, then resolve its field dtype.
+
+    ``arguments`` is the calculator's ``locals()`` at entry. Both steps only
+    raise, so the calculator's own warnings keep their caller frame.
+    """
+    from rfx._traced_inputs import admit_traced_inputs
+    from rfx._internal._precision import resolve_field_dtype
+    admit_traced_inputs(owner, arguments)
+    resolve_field_dtype(arguments["self"]._precision)
+
+
 def _require_absorption_on_every_axis(sim, cpml_axes: str | None, lane: str) -> None:
     """Both coax line lanes absorb on x, y and z.
 
@@ -14,8 +26,7 @@ def _require_absorption_on_every_axis(sim, cpml_axes: str | None, lane: str) -> 
     so the open's |S11| rose above 1 and grew with the record (1.018 at 12
     line traversals, 1.046 at 24, at 9 annulus cells). With the lateral pads
     absorbing, the same open reads at most 1.0015 and does not move with the
-    record (both in rfx-archive, rfx/records/20260924-coax-closed-can/
-    open_closed_can_arms.json).
+    record.
     A face without an absorber is a PEC wall and closes the can again, so
     every face needs positive CPML thickness.
     """

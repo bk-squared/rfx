@@ -48,7 +48,8 @@ def test_s_scan_steps_run_operands(monkeypatch):
     operands = []
 
     def captured(grid, materials, *args, **kwargs):
-        values = (materials.components.mu_update, kwargs['aniso_eps'], kwargs['conformal_weights'])
+        tensor = materials.components.tensor
+        values = (materials.components.mu_update, tensor.eps, tensor.conformal_weights)
         operands.append(jax.tree.map(lambda a: np.asarray(a).copy(), values))
         return original(grid, materials, *args, **kwargs)
 
@@ -72,6 +73,7 @@ def test_s_scan_moves_s_from_staircase():
     """G1-S is not settled; read only conformal-minus-staircase at a fixed record.
 
     This checks the difference at N=512, not the S values themselves.
+    Each floor is one tenth of the corresponding earlier measured conformal-minus-staircase difference.
     """
     from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
 
@@ -82,8 +84,6 @@ def test_s_scan_moves_s_from_staircase():
             s_scan_scene(), freqs, n_steps=512, skip_preflight=True, conformal_pec=conformal)
         np.testing.assert_array_equal(bins, freqs)
         spectra.append(np.asarray(s)[0, 0].copy())
-    # D_k(main)/10 from rfx-archive rfx/records/20261112-test-audit-220fixes/gaps/DESIGN.md.
-    # All seven measured D_k exceed 1e-3; no bin is excluded.
     floor = np.array([2.390819e-4, 4.062380e-4, 3.0621594e-3, 8.380125e-4,
                       8.620271e-4, 3.0284235e-3, 2.90690035e-2])
     difference = np.abs(spectra[0] - spectra[1])
@@ -126,7 +126,8 @@ def test_material_gradient_and_fresh_model_fd(monkeypatch):
     assert relative <= 1e-2, f'AD={ad}, FD(h)={fd}, FD(h/2)={half}, relative={relative}'
 
 
-def test_operands_match_run_bytes(monkeypatch):
+@pytest.mark.parametrize('scene_name', ('dielectric-sphere', 'cylinder'))
+def test_operands_match_run_bytes(monkeypatch, scene_name):
     from rfx import simulation
     from rfx.model import conformal_rules
     original = simulation.run
@@ -141,13 +142,19 @@ def test_operands_match_run_bytes(monkeypatch):
 
     def captured(grid, materials, *args, **kwargs):
         assert len(fractions) == len(operands) + 1
-        operands.append((materials.components.mu_update, kwargs['aniso_eps'], kwargs['conformal_weights']))
+        tensor = materials.components.tensor
+        operands.append((materials.components.mu_update, tensor.eps, tensor.conformal_weights))
         return original(grid, materials, *args, **kwargs)
 
     monkeypatch.setattr(conformal_rules, 'conformal_fractions_from_table', formed)
     monkeypatch.setattr(simulation, 'run', captured)
-    ran = scene().run(n_steps=STEPS, skip_preflight=True, compute_s_params=False)
-    forward = scene().forward(n_steps=STEPS, skip_preflight=True)
+    if scene_name == 'dielectric-sphere':
+        build_scene = scene
+    else:
+        from tests.unit.runners.test_silent_drop_warnings import _conformal_cavity
+        build_scene = lambda: _conformal_cavity(True)
+    ran = build_scene().run(n_steps=STEPS, skip_preflight=True, compute_s_params=False)
+    forward = build_scene().forward(n_steps=STEPS, skip_preflight=True)
     assert len(operands) == 2
     assert len(fractions) == 2
     left, right = (jax.tree.leaves((operands[i], fractions[i])) for i in range(2))
@@ -208,6 +215,7 @@ def test_optimization_refused_at_entry(monkeypatch, route):
 
 
 def test_conformal_pec_mask_override_refused(monkeypatch):
+    """The staircase control deliberately rasterizes the fractional-diameter sphere."""
     mask = jnp.zeros(scene()._build_grid().shape, dtype=bool).at[5:8, 2:6, 2:5].set(True)
 
     def fail(*args, **kwargs):
@@ -217,7 +225,6 @@ def test_conformal_pec_mask_override_refused(monkeypatch):
         guarded.setattr(jax.lax, 'scan', fail)
         with pytest.raises(NotImplementedError, match='pec_mask_override.*conformal.*conformal_pec=False.*PEC shapes'):
             scene().forward(n_steps=STEPS, skip_preflight=True, pec_mask_override=mask)
-    # Staircase control deliberately rasterizes the fractional-diameter sphere.
     result = scene(conformal=False, snap="declared").forward(
         n_steps=STEPS, skip_preflight=True, pec_mask_override=mask)
     assert np.all(np.isfinite(result.time_series))

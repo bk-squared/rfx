@@ -37,7 +37,7 @@ def prepare(sim, grid, n_steps, layout, mesh):
         return None, None, ((), ())
     from rfx.sources.tfsf import tfsf_from_declaration
     from rfx.runners._admission import refuse_slab_tfsf
-    cfg, line = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=n_steps)
+    cfg, line = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=n_steps, dtype='float32')
     refuse_slab_tfsf(cfg)
     tables = tuple(split_tables(ts, grid.shape, layout, mesh) for ts in (cfg.tables_h, cfg.tables_e))
     line = jax.device_put(line, NamedSharding(mesh, P()))

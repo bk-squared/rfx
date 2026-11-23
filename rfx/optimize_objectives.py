@@ -40,10 +40,7 @@ import jax.numpy as jnp
 import numpy as np
 
 
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
-
+_S_PARAMETER_REFERENCE_IMPEDANCE_OHMS = 50.0
 def _require_time_series(result, objective_name: str) -> None:
     ts = result.time_series
     if ts.ndim < 2 or ts.shape[-1] == 0:
@@ -80,14 +77,9 @@ def _find_freq_indices(result_freqs: jnp.ndarray, target_freqs: jnp.ndarray) -> 
     (the indices themselves are integer, but the downstream gather is
     stop-gradient safe because we only use them for indexing).
     """
-    # (n_target, n_result) absolute differences
     diffs = jnp.abs(target_freqs[:, None] - result_freqs[None, :])
     return jnp.argmin(diffs, axis=1)
 
-
-# ---------------------------------------------------------------------------
-# Public objective factories
-# ---------------------------------------------------------------------------
 
 def minimize_s11(
     freqs: jnp.ndarray | np.ndarray,
@@ -111,10 +103,10 @@ def minimize_s11(
     callable(Result) -> scalar (JAX-differentiable)
     """
     target_freqs = jnp.asarray(freqs, dtype=jnp.float32)
-    threshold_linear = _db_to_linear(target_db)  # e.g. -10 dB -> 0.1
+    threshold_linear = _db_to_linear(target_db)
 
     def objective(result) -> jnp.ndarray:
-        s_params = result.s_params  # (n_ports, n_ports, n_freqs) complex
+        s_params = result.s_params
         if s_params is None:
             raise ValueError(
                 "minimize_s11 requires result.s_params but got None. "
@@ -122,18 +114,17 @@ def minimize_s11(
                 "port_s11_freqs=... to the forward pass, or use "
                 "minimize_reflected_energy() as a time-domain proxy objective."
             )
-        result_freqs = result.freqs  # (n_freqs,)
+        result_freqs = result.freqs
 
-        s11 = _port_s(s_params, "minimize_s11", 0, 0)  # (n_freqs,) complex
-        mag_sq = jnp.abs(s11) ** 2  # |S11|² linear
+        s11 = _port_s(s_params, "minimize_s11", 0, 0)
+        mag_sq = jnp.abs(s11) ** 2
 
         indices = _find_freq_indices(
             jnp.asarray(result_freqs, dtype=jnp.float32), target_freqs,
         )
-        selected = mag_sq[indices]  # (n_target,)
+        selected = mag_sq[indices]
         mean_mag_sq = jnp.mean(selected)
 
-        # Clamp: if already below target, loss = 0
         return jnp.maximum(mean_mag_sq - threshold_linear, 0.0)
 
     return objective
@@ -159,7 +150,7 @@ def maximize_s21(
     target_freqs = jnp.asarray(freqs, dtype=jnp.float32)
 
     def objective(result) -> jnp.ndarray:
-        s_params = result.s_params  # (n_ports, n_ports, n_freqs) complex
+        s_params = result.s_params
         if s_params is None:
             raise ValueError(
                 "maximize_s21 requires result.s_params but got None. "
@@ -169,7 +160,7 @@ def maximize_s21(
             )
         result_freqs = result.freqs
 
-        s21 = _port_s(s_params, "maximize_s21", 1, 0)  # (n_freqs,) complex
+        s21 = _port_s(s_params, "maximize_s21", 1, 0)
         mag_sq = jnp.abs(s21) ** 2
 
         indices = _find_freq_indices(
@@ -202,7 +193,7 @@ def target_impedance(
     callable(Result) -> scalar (JAX-differentiable)
     """
     freq_arr = jnp.asarray([freq], dtype=jnp.float32)
-    z0 = 50.0  # reference impedance for S-parameter normalization
+    z0 = _S_PARAMETER_REFERENCE_IMPEDANCE_OHMS
 
     def objective(result) -> jnp.ndarray:
         s_params = result.s_params
@@ -215,16 +206,14 @@ def target_impedance(
             )
         result_freqs = result.freqs
 
-        s11 = _port_s(s_params, "target_impedance", 0, 0)  # (n_freqs,) complex
+        s11 = _port_s(s_params, "target_impedance", 0, 0)
 
         idx = _find_freq_indices(
             jnp.asarray(result_freqs, dtype=jnp.float32), freq_arr,
         )
-        s11_at_f = s11[idx[0]]  # scalar complex
+        s11_at_f = s11[idx[0]]
 
-        # Z_in = Z0 * (1 + S11) / (1 - S11), with safety clamp
         denom = 1.0 - s11_at_f
-        # Avoid division by zero: add tiny imaginary part
         denom = jnp.where(jnp.abs(denom) < 1e-12, 1e-12 + 0j, denom)
         z_in = z0 * (1.0 + s11_at_f) / denom
 
@@ -275,19 +264,15 @@ def maximize_bandwidth(
             )
         result_freqs = jnp.asarray(result.freqs, dtype=jnp.float32)
 
-        s11 = _port_s(s_params, "maximize_bandwidth", 0, 0)  # (n_freqs,) complex
+        s11 = _port_s(s_params, "maximize_bandwidth", 0, 0)
         mag_sq = jnp.abs(s11) ** 2
 
-        # Select frequency bins within the target band
         mask = (result_freqs >= f_lo) & (result_freqs <= f_hi)
-        # Convert to dB: 10*log10(|S11|²), with floor to avoid log(0)
         mag_sq_safe = jnp.maximum(mag_sq, 1e-30)
         s11_db = 10.0 * jnp.log10(mag_sq_safe)
 
-        # Hinge loss: penalize bins above threshold
         excess = jnp.maximum(s11_db - s11_threshold, 0.0)
 
-        # Weighted mean over in-band frequencies (out-of-band contribute 0)
         n_in_band = jnp.maximum(jnp.sum(mask), 1.0)
         return jnp.sum(excess * mask) / n_in_band
 
@@ -309,7 +294,7 @@ def maximize_directivity(
     ``U = |E_θ|² + |E_φ|²`` is the radiation intensity and ``P_rad`` is
     the total radiated power integrated over the FULL sphere (the same
     coverage as ``farfield.directivity()`` and ``antenna._total_radiated_power``,
-    retaining this objective's JAX trapezoid endpoint weights — so the
+    with the same φ weights as ``farfield.directivity()`` — so the
     optimized quantity is the true directivity, not an upper-hemisphere proxy
     that would inflate D for antennas with any back radiation). The ratio is
     scale-invariant, so the absolute magnitude of the NTFF spectral integral
@@ -362,10 +347,6 @@ def maximize_directivity(
         )
     theta_arr = np.array([theta_target])
     phi_arr = np.array([phi_target])
-    # Full sphere [0, pi] x [0, 2pi] so P_rad is the TRUE total radiated power
-    # (poles theta=0,pi carry sin(theta)=0 weight, so no singularity). An
-    # upper-hemisphere-only integral undercounts back radiation and inflates the
-    # normalized directivity for free-space radiators.
     theta_sphere = np.linspace(0.0, np.pi, n_theta)
     phi_full = np.linspace(0.0, 2.0 * np.pi, n_phi)
 
@@ -391,18 +372,15 @@ def maximize_directivity(
                 "can be evaluated from NTFF data."
             )
 
-        # U at target — (n_freqs, 1, 1)
         ff_tgt = compute_far_field(ntff_data, ntff_box, grid, theta_arr, phi_arr)
         u_target = (jnp.abs(ff_tgt.E_theta[:, 0, 0]) ** 2
                     + jnp.abs(ff_tgt.E_phi[:, 0, 0]) ** 2)
 
-        # Full-sphere P_rad: ∬ U(θ,φ) sin(θ) dθ dφ — (n_freqs, n_theta, n_phi)
         ff_sphere = compute_far_field(ntff_data, ntff_box, grid, theta_sphere, phi_full)
         u_sphere = (jnp.abs(ff_sphere.E_theta) ** 2 + jnp.abs(ff_sphere.E_phi) ** 2)
         p_rad = integrate_radiated_power(
             u_sphere, theta_sphere, phi_full, jax_trapezoid=True)
 
-        # Full quotient gradient U'/U - P'/P; independent floors avoid log(0).
         log_dir = (jnp.log(jnp.maximum(u_target, eps))
                    - jnp.log(jnp.maximum(p_rad, eps)))
         return -jnp.mean(log_dir)
@@ -410,8 +388,6 @@ def maximize_directivity(
     return objective
 
 
-# Alias for discoverability — `maximize_directivity_ratio` is simply
-# the ratio-based default under an explicit name.
 maximize_directivity_ratio = maximize_directivity
 
 
@@ -436,10 +412,6 @@ def maximize_directivity_logratio(
         n_theta=n_theta, n_phi=n_phi, log_ratio=True, eps=eps,
     )
 
-
-# ---------------------------------------------------------------------------
-# Time-domain proxy objectives (for use with optimize / topology_optimize)
-# ---------------------------------------------------------------------------
 
 def minimize_reflected_energy(
     port_probe_idx: int = 0,
@@ -586,10 +558,6 @@ def maximize_transmitted_energy(
     return objective
 
 
-# ---------------------------------------------------------------------------
-# Near-field probe-array beam steering (no NTFF required)
-# ---------------------------------------------------------------------------
-
 def steer_probe_array(
     target_probe_idx: int,
     suppress_probe_idx: int = 0,
@@ -635,7 +603,6 @@ def steer_probe_array(
         start = int(n * (1.0 - late_fraction))
         target_energy = jnp.sum(ts[start:, target_probe_idx] ** 2)
         suppress_energy = jnp.sum(ts[start:, suppress_probe_idx] ** 2)
-        # Maximize ratio: minimize -(target / (suppress + eps))
         return -(target_energy / (suppress_energy + 1e-12))
 
     return objective

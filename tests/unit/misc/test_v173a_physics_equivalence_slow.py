@@ -27,7 +27,6 @@ def test_v173a_drawing_and_gap_measurements_are_realized():
     sheet = rz.sheets[0]
     assert sheet.plane == node_index(rz.grid, 2, v173a._SUB_T)
     assert rz.wall_planes(2) == [sheet.plane]
-    # Independent arithmetic: every physical face is an integer node index.
     for faces in ((0., .011, .039, .05), (0., .007, .043, .05), (0., .0015, .02)):
         np.testing.assert_allclose(np.array(faces) / v173a._DX,
                                    np.rint(np.array(faces) / v173a._DX), atol=1e-12, rtol=0)
@@ -47,8 +46,7 @@ def test_v173a_drawing_and_gap_measurements_are_realized():
 
 
 def test_probe_spectrum_statistic_exposes_source_amplitude_dependence():
-    # Falsifies the retired S11 interpretation: doubling a field trace raises
-    # this statistic by 6.0206 dB. True linear reflection is scale-invariant.
+    """True linear reflection is scale-invariant."""
     dt = 1e-11
     time = np.arange(2048) * dt
     trace = np.cos(2 * np.pi * 2.1e9 * time) * np.exp(-time / 1e-8)
@@ -86,8 +84,7 @@ def test_v173a_baseline_bit_identity():
     or more) both trees approach 1.975-1.979 GHz. The current tree converges at first
     order to 1.9751 GHz: at this lock's 0.5 mm (3 cells across the laminate) it reads
     1.0 % below that limit, and 0.5 % below it at 0.25 mm. The lock's short record reads
-    the same frequency as the settled record to within 4.2 kHz at every rung. Records:
-    bk-squared/rfx-archive rfx/records/20260927-1292-locked-results/ (R2).
+    the same frequency as the settled record to within 4.2 kHz at every rung.
     """
     baseline = json.loads(BASELINE_PATH.read_text())
     actual, _trace = v173a.run_capture()

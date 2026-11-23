@@ -19,8 +19,6 @@ def test_lossy_lorentz_law_c_and_bar_s(name):
     sim = scene("lorentz", cells=False, sigma=.5)
     sim.add(Box((.009, -1., -1.), (.015, 1., 1.)), material="m")
     grid = sim.freeze_mesh()
-    # As in Scene T, observe every distinct physical E cell. Indexing only
-    # chooses observation sites; the reference is a public one-device solve.
     axes = [np.arange(0., length + 1e-12, 5e-5) for length in (.024, .012, .012)]
     for component in ("ex", "ey", "ez"):
         sites = []
@@ -41,8 +39,6 @@ def test_lossy_lorentz_law_c_and_bar_s(name):
     assert expected.shape[0] == actual.shape[0] == 400
     assert np.any(expected[:, 4:]), "Scene T has no electric signal"
     assert "distributed.one_device_fallback" not in [d.code for d in multi.diagnostics]
-    # Existing pair/bar: test_distributed_dispersive_cpml_lorentz_lossy.py:12,
-    # tests/_distributed_dispersive_cpml.py:60-87: accumulated law C and bar S.
     row = dict(kind=name, devices=2, steps=400, mesh=tuple(one.grid.shape),
                law_bar=1., spectral_bar=1e-6,
                peak=float(np.abs(expected[:, 4:]).max()),

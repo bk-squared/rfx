@@ -1,7 +1,8 @@
 # PEC-sphere exact-Mie monostatic RCS fixture (issue #276)
 
 Committed evidence for the `compute_rcs` monostatic-extraction fix and its
-gate test `tests/oracle/test_rcs_mie_fixture.py`.
+regression lock `tests/locks/test_rcs_sphere_backscatter_window.py`.
+The independent oracle witnesses remain in `tests/oracle/test_rcs_mie_fixture.py`.
 
 ## Files
 
@@ -19,12 +20,25 @@ gate test `tests/oracle/test_rcs_mie_fixture.py`.
 
 ## Claim scope (read before citing numbers)
 
-**Validated claim: MONOSTATIC (backscatter) RCS magnitude only**, for a
-staircased PEC sphere at ka≈1.0, at the committed resolution
-(dx=λ/40, ≈6.4 cells per sphere radius, 24-cell CPML, 90³ grid), against the
-exact Mie series. The gate is |Δ| ≤ 1.0 dB on this single configuration; the
-current measured distance is stored in `fixture.json`. The earlier distance
-quoted here predates the normal-incidence normalization correction.
+**Scope: MONOSTATIC (backscatter) RCS magnitude only**, for a
+staircased PEC sphere represented by a 1e7 S/m conductivity fill, at the
+committed resolution (dx=λ/40, ≈6.4 cells per sphere radius, 24-cell CPML,
+90³ grid). The lock recomputes six bins at ka = 0.75, 0.80, …, 1.00 and
+holds the signed difference Δ = rfx − exact Mie in these windows:
+
+| ka | lower Δ (dB) | upper Δ (dB) |
+|---|---|---|
+| 0.75 | 0.80 | 1.54 |
+| 0.80 | 0.74 | 1.45 |
+| 0.85 | 0.64 | 1.35 |
+| 0.90 | 0.50 | 1.24 |
+| 0.95 | 0.33 | 1.13 |
+| 1.00 | 0.15 | 1.00 |
+
+These windows pin rfx's own mesh-dependent difference from Mie; an exact
+match to Mie fails every bin. Their derivation is documented in the lock.
+The value stored in `fixture.json` is a historical measurement at 3 GHz,
+not the lock's reference value.
 
 **This is NOT a bistatic validation.** The same run that produced this
 fixture (2026-07-06 falsifier, reproduced by `generate_fixture.py`) shows:

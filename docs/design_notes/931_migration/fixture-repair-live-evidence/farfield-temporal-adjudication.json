@@ -6,20 +6,20 @@
         "identity": {
           "run_id": "369367259613",
           "witness": {
-            "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/run_id.txt",
+            "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/run_id.txt",
             "sha256": "d4920df717f2496e162ad281fab156dc9eb1a0a3e3d0383f51fe4404298d9347"
           },
           "commit_witness": {
-            "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/commit.txt",
+            "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/commit.txt",
             "sha256": "720df802df5c57a088c3efdb4c95d0c0398afe62c1f0b1eec675a129f5d1d585"
           }
         },
         "json": {
-          "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/600/farfield-attribution.json",
+          "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/600/farfield-attribution.json",
           "sha256": "13e9f01843cbb09c17d2c260f9e978038a61d778bbbc9aca693f88197d0596b8"
         },
         "npz": {
-          "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/600/farfield-attribution.npz",
+          "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/600/farfield-attribution.npz",
           "sha256": "f869732b637cc88e8bfe00b49ad048ed1cd8d1ad2ca5383565750ae56ca3ead7"
         }
       },
@@ -27,26 +27,26 @@
         "identity": {
           "run_id": "369367259613",
           "witness": {
-            "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/run_id.txt",
+            "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/run_id.txt",
             "sha256": "d4920df717f2496e162ad281fab156dc9eb1a0a3e3d0383f51fe4404298d9347"
           },
           "commit_witness": {
-            "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/commit.txt",
+            "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/commit.txt",
             "sha256": "720df802df5c57a088c3efdb4c95d0c0398afe62c1f0b1eec675a129f5d1d585"
           }
         },
         "json": {
-          "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/1200/farfield-attribution.json",
+          "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/1200/farfield-attribution.json",
           "sha256": "bf7adec6e6e1457aa129cad9b626c2bd37fd39917ad4f8c1484c7bfa251afa54"
         },
         "npz": {
-          "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/1200/farfield-attribution.npz",
+          "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/farfield/1200/farfield-attribution.npz",
           "sha256": "0d23579b92062976aa85e9aed03496f5c004a10f956b62061714ba1af4cdf26c"
         }
       }
     },
     "adjudicator": {
-      "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/scripts/diagnostics/adjudicate_931_farfield_temporal.py",
+      "path": "scripts/diagnostics/adjudicate_931_farfield_temporal.py",
       "sha256": "bc81a6527dfc48f466827e413b4fbae1370782aeb7c79cab574cb64095556088"
     }
   },
@@ -346,7 +346,7 @@
   "qualification_passed": true,
   "qualification_scope": "600 versus 1200 steps at the retained geometry and 30 GHz only; combined complex angular field, not independent polarization or pointwise convergence",
   "figure": {
-    "path": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/docs/design_notes/931_migration/fixture-repair-live-evidence/farfield-temporal-power-angular.png",
+    "path": "docs/design_notes/931_migration/fixture-repair-live-evidence/farfield-temporal-power-angular.png",
     "sha256": "ec4f04d6f99d2ef0ffda3feb933e0575971469d548f25aa98565723fe2296aca"
   }
 }

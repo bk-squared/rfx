@@ -40,12 +40,10 @@ from tests import _waveguide_chain_battery_fixture as F
 
 C0 = 299_792_458.0
 
-# One realistic set of beta ingredients, taken from the chain battery's coarse
-# rung rather than invented: WR-90, dx = a/9, the band the battery measures.
 FREQS = np.asarray(F.FREQS, dtype=float)
 DX_M = F.DX_LADDER[0]
 F_C_HZ = (C0 / (2.0 * F.A_M)) * (math.sin(math.pi / 18) / (math.pi / 18))
-DT_S = 0.99 * DX_M / (C0 * math.sqrt(3.0))     # a plausible Yee step
+DT_S = 0.99 * DX_M / (C0 * math.sqrt(3.0))
 L_M = F.REF_RIGHT_DEFAULT_M - F.REF_LEFT_DEFAULT_M
 
 
@@ -98,7 +96,7 @@ def test_a_planted_half_percent_beta_error_reads_its_predicted_rms():
     predicted = math.degrees(
         math.sqrt(float(np.mean(_wrap(-0.005 * beta * L_M) ** 2))))
     assert rms == pytest.approx(predicted, rel=1e-6)
-    assert predicted > 1.0, predicted        # the planted defect is visible
+    assert predicted > 1.0, predicted
     assert meta["masked_bins"] == 0
 
 
@@ -120,7 +118,7 @@ def test_bins_below_the_phase_mask_floor_are_excluded():
     s21 = np.exp(-1j * beta * L_M)
     weak = np.zeros(FREQS.size, dtype=bool)
     weak[[0, 1, -1]] = True
-    s21[weak] = 0.5 * WAVEGUIDE_PHASE_MAG_FLOOR * np.exp(1j * 2.0)  # junk phase
+    s21[weak] = 0.5 * WAVEGUIDE_PHASE_MAG_FLOOR * np.exp(1j * 2.0)
     s21[~weak] *= np.exp(-1j * 0.005 * beta[~weak] * L_M)
 
     rms, meta = _residual(s21)
@@ -183,7 +181,6 @@ def test_a_real_two_port_run_carries_the_field_and_prints_the_banner(capsys):
     assert meta["n_bins"] == len(F.FREQS)
     assert meta["masked_bins"] == 0
     assert meta["beta_convention"] == WAVEGUIDE_PHASE_BETA_CONVENTION
-    # L is read off the result's own reference planes, not re-derived.
     planes = np.asarray(res.reference_planes, dtype=float)
     assert meta["L_m"] == pytest.approx(abs(planes[1] - planes[0]), rel=1e-12)
     assert meta["L_m"] == pytest.approx(
@@ -197,9 +194,6 @@ def test_a_real_two_port_run_carries_the_field_and_prints_the_banner(capsys):
     assert f"{rms:.4g}" in banner[0]
 
 
-# ---------------------------------------------------------------------------
-# Every normalization lane retains propagation between the declared planes.
-# ---------------------------------------------------------------------------
 
 def _fake_cfgs():
     from types import SimpleNamespace
@@ -226,6 +220,7 @@ def test_normalize_true_reports_the_propagation_residual():
 @pytest.mark.parametrize("normalize", [True, "flux", False])
 def test_all_lanes_keep_the_residual_and_scope_the_banner(
         normalize, capsys):
+    """A device between the reference planes adds its own phase."""
     from rfx.api._sparams import _waveguide_s21_phase_residual
     s21 = np.exp(-1j * _beta() * L_M)
     rms, meta = _waveguide_s21_phase_residual(
@@ -236,8 +231,6 @@ def test_all_lanes_keep_the_residual_and_scope_the_banner(
     banner = [ln for ln in capsys.readouterr().out.splitlines()
               if "S21 phase residual vs -beta*L" in ln]
     assert len(banner) == 1, banner
-    # The claim is scoped in the line itself: a port witness only for an
-    # empty or matched guide; a device between the planes adds its own phase.
     assert "EMPTY or matched guide" in banner[0]
     assert "device between them" in banner[0]
     assert "not a gate" in banner[0]
@@ -262,8 +255,8 @@ def test_a_loaded_two_port_reads_the_device_not_the_port(capsys):
         num_periods=F.NUM_PERIODS)
     r_thru, r_slab = thru.s21_phase_residual_deg_rms, slab.s21_phase_residual_deg_rms
     assert isinstance(r_thru, float) and isinstance(r_slab, float)
-    assert 0.0 < r_thru < 35.0, r_thru                    # the empty guide, as above
-    assert r_slab > 30.0, r_slab                          # the device phase, not the port
+    assert 0.0 < r_thru < 35.0, r_thru
+    assert r_slab > 30.0, r_slab
     assert r_slab > 100.0 * r_thru, (r_slab, r_thru)
     assert slab.s21_phase_residual_meta["n_bins"] == thru.s21_phase_residual_meta["n_bins"]
     banners = [ln for ln in capsys.readouterr().out.splitlines()

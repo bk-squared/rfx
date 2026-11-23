@@ -1,9 +1,12 @@
-"""Comments and documentation name the reason; Git carries tracker history."""
+"""Comments and documentation name the reason; Git carries tracker history.
+A date embedded in a cited document's filename is path data, not prose chronology.
+"""
 
 import ast
 import io
 from pathlib import Path
 import re
+import sys
 import tokenize
 
 import pytest
@@ -20,12 +23,7 @@ URL = re.compile(r"https?://[^\s<>`\"']+")
 RFX_TRACKER_URL = re.compile(
     r"https?://github\.com/[^/\s]+/rfx/(?:issues|pull)(?:/|$)", re.IGNORECASE,
 )
-# A date embedded in a cited document's filename is path data, not prose
-# chronology. Pin the entire path and require the exception to remain used.
-KEEP = {
-    ("stepping/kerr.py", "docs/research_notes/2026-07-23_kerr_quantitative_spm_finding.md"):
-        "Date is part of the cited document's filename",
-}
+KEEP = {}
 
 
 def _documentation_nodes(tree):
@@ -51,7 +49,9 @@ def _documentation_nodes(tree):
 
 
 def _history(source, relative):
-    """Return locations and used Keep entries without importing the package."""
+    """Return locations and used Keep entries without importing the package.
+    Only external citation URLs are masked because they may contain dates or numeric URL fragments.
+    """
     tree = ast.parse(source)
     documentation = {(n.lineno, n.col_offset, n.end_lineno, n.end_col_offset)
                      for n in _documentation_nodes(tree)}
@@ -67,8 +67,6 @@ def _history(source, relative):
             if entry[0] == relative and entry[1] in text:
                 used.add(entry)
                 text = text.replace(entry[1], " " * len(entry[1]))
-        # External citations may contain dates or numeric URL fragments.
-        # Mask only those URLs; rfx tracker links remain subject to HISTORY.
         text = URL.sub(lambda match: match.group() if RFX_TRACKER_URL.match(match.group())
                        else " " * len(match.group()), text)
         for match in HISTORY.finditer(text):
@@ -110,7 +108,7 @@ def test_history_mutations_are_detected(mutation, expected):
     assert _history(mutation, "sample.py")[0] == [expected]
 
 
-def test_documentation_scope_and_keep_rules():
+def test_documentation_scope_and_keep_rules(monkeypatch):
     source = '''"""Paper (1997), version 0.12.0, #abcdef, https://example.org/paper."""
 VALUE = "runtime #123 and 2026-05-08"
 """Attribute history #456."""
@@ -125,7 +123,8 @@ class Sample:
         "sample.py:3: #456", "sample.py:4: #789", "sample.py:6: #321",
         "sample.py:9: #654",
     ]
-    path = next(iter(KEEP))
+    path = ("sample.py", "docs/research_notes/2000-01-02_sample.md")
+    monkeypatch.setattr(sys.modules[__name__], "KEEP", {path: "Synthetic citation"})
     assert _history(f'"""See {path[1]}."""', path[0]) == ([], {path})
     assert _history(f'"""See {path[1]}."""', "elsewhere.py")[0]
 
@@ -138,3 +137,10 @@ class Sample:
 ])
 def test_external_citations_and_compact_document_ids_are_kept(citation):
     assert _history(f'"""See {citation}."""', "sample.py") == ([], set())
+
+
+def test_unused_keep_entry_is_rejected(monkeypatch):
+    path = ("unused_sample.py", "2000-01-02_unused.md")
+    monkeypatch.setattr(sys.modules[__name__], "KEEP", {path: "Synthetic unused citation"})
+    with pytest.raises(AssertionError, match="Stale Keep entries"):
+        test_source_carries_no_tracker_history()

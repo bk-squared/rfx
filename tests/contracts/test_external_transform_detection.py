@@ -74,7 +74,7 @@ def test_run_external_transforms_refuse_extended_tfsf(kind, transform):
         actual = sim.run(n_steps=8, skip_preflight=True)
         expected = _sim(kind).run(n_steps=8, skip_preflight=True)
         assert actual.time_series.shape == expected.time_series.shape == (8, 1)
-        # Same eager program: the specified bar is bitwise, including signed zero.
+
         arrays = [("time_series", actual.time_series, expected.time_series)]
         arrays += [(c, getattr(actual.state, c), getattr(expected.state, c))
                    for c in ("ex", "ey", "ez", "hx", "hy", "hz")]

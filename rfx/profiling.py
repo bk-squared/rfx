@@ -55,18 +55,15 @@ def profile_forward(sim, *, n_steps: int, warmup_trace: bool = True,
     report: dict[str, Any] = {}
     t0 = time.time()
 
-    # 1. Grid build — NU or uniform, whichever this sim uses.
     g0 = time.time()
     sim._build_realized_grid()
     report["grid_build"] = time.time() - g0
 
-    # 2. First forward call — trace + compile + one scan execution.
     c0 = time.time()
     fr = sim.forward(n_steps=n_steps, **forward_kwargs)
     _sync(fr.time_series)
     report["compile"] = time.time() - c0
 
-    # 3. Second forward call — pure scan execution (compile cached).
     s0 = time.time()
     fr2 = sim.forward(n_steps=n_steps, **forward_kwargs)
     _sync(fr2.time_series)
@@ -85,7 +82,7 @@ def profile_forward(sim, *, n_steps: int, warmup_trace: bool = True,
         report["cells"] = int(g.nx * g.ny * g.nz)
     except (TimeoutError,):
         raise
-    except Exception:  # noqa: BLE001 - recorded in cells
+    except Exception:  # noqa: BLE001
         report["cells"] = None
     return report
 

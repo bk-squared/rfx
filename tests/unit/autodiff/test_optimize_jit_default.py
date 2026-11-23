@@ -1,4 +1,7 @@
-"""Default compilation and first-call host-read fallback (issue 1772)."""
+"""Default compilation and first-call host-read fallback (issue 1772).
+Every domain length written as ``6 * (299792458.0 / 5e9 / 20.0)`` is a whole number of cells of dx,
+so the solved domain equals the declared one.
+"""
 
 from __future__ import annotations
 
@@ -40,7 +43,7 @@ def _compiles(fn, *args):
 
 
 def _tiny_sim():
-    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
     sim.add_port((0.005, 0.0075, 0.0075), "ez")
     sim.add_probe((0.011, 0.0075, 0.0075), "ez")
     return sim
@@ -119,8 +122,7 @@ def test_untraceable_warns_once_for_all_starts():
 
 def test_non_host_error_propagates():
     def objective(result):
-        # Eager AD also traces the result. A constant only traces under jit,
-        # so catching Exception and retrying eagerly would wrongly succeed.
+        """A constant only traces under jit, so catching Exception and retrying eagerly would wrongly succeed."""
         if isinstance(jnp.asarray(2.0), jax.core.Tracer):
             raise ValueError("objective failure")
         return _energy(result)
@@ -130,7 +132,7 @@ def test_non_host_error_propagates():
 
 
 def _topology(n_iterations, **kwargs):
-    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
     sim.add_port((0.005, 0.0075, 0.0075), "ez")
     sim.add_probe((0.01, 0.0075, 0.0075), "ez")
     region = TopologyDesignRegion(

@@ -9,6 +9,7 @@ source.
 Positive case: bad setup fires UserWarning citing ``extent=``.
 Negatives: WirePort extent, port in air, coax-style port with
 adjacent PEC pin, strict-mode ValueError.
+The y-domain length written as ``38 * DX`` is a whole number of cells of dx, so the solved y-domain equals the declared one.
 """
 
 from __future__ import annotations
@@ -26,27 +27,20 @@ def _build_patch(*, feed_extent: float | None, add_pec_pin: bool = False):
     Substrate spans 5 dx in z so a mid-substrate port sits genuinely
     inside the dielectric with 2 cells of substrate above and below —
     no PEC cell is adjacent along the z-axis, matching the #71 footgun.
+    The patch is foil, so a zero-thickness Box keeps Ez through it live.
     """
     F0, EPS_R, DX = 10e9, 3.38, 0.4e-3
-    H_SUB = 5 * DX  # 2 mm — ensures port+/-1 cell stays in dielectric
-    # PEC outer walls: keeps the preflight focus on the port-coupling
-    # warning and avoids CPML-proximity noise on a small test domain.
+    H_SUB = 5 * DX
     domain = (0.02, 0.015, 0.02)
     sim = Simulation(
-        freq_max=2 * F0, domain=(domain[0], 38 * DX, domain[2]), dx=DX, snap="declared",  # solved length; #1887
+        freq_max=2 * F0, domain=(domain[0], 38 * DX, domain[2]), dx=DX, snap="declared",
         boundary="pec",
     )
     sim.add_material("sub", eps_r=EPS_R)
-    # Substrate sits interior to the domain so nothing is near the PEC walls.
     sub_z0 = 5e-3
     sim.add(Box((0.005, 0.0, sub_z0),
                 (domain[0] - 0.005, domain[1], sub_z0 + H_SUB)),
             material="sub")
-    # Patch sits at the top of the substrate (>= 2 cells above the
-    # mid-substrate port cell). It is foil, so a SHEET (#931 §1.3): a
-    # zero-thickness Box on the substrate top, realized as one wall plane
-    # with Ez through it live. One cell thick it is a VOLUME, which would
-    # add a second wall a cell higher and short the Ez between them.
     patch_z = sub_z0 + H_SUB
     sim.add(Box(
         (0.005, 0.004, patch_z),
@@ -54,12 +48,6 @@ def _build_patch(*, feed_extent: float | None, add_pec_pin: bool = False):
     ), material="pec")
     feed_pos = (0.010, 0.007, sub_z0 + H_SUB * 0.5)
     if add_pec_pin:
-        # Coax-style pin: a solid probe, i.e. a VOLUME (#931 §1.2). It
-        # gains its far face under the contract — walls at both drawn z
-        # faces and Ez shorted between them — so its realized top plane
-        # sits where it is drawn instead of one cell low. The port's own
-        # Ez cell is above that plane, so the feed is adjacent to the pin,
-        # which is what this fixture is for.
         sim.add(Box(
             (feed_pos[0] - DX / 2, feed_pos[1] - DX / 2, sub_z0),
             (feed_pos[0] + DX / 2, feed_pos[1] + DX / 2, feed_pos[2] - DX / 2),
@@ -79,8 +67,6 @@ def _build_port_in_air():
 
 
 def _capture_preflight(sim) -> list[str]:
-    # preflight() consumes its own inner `catch_warnings` context and
-    # returns the captured strings directly as a list.
     return sim.preflight()
 
 

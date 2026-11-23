@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rfx.measurement.calculator_drive import calculator_drive
+
 import numpy as np
 
 from rfx.errors import AccuracyWarning
@@ -322,7 +324,7 @@ def _prepare_msl_drive(
     # Rebuild the resolved entries with exactly this drive active.
     run_entries = []
     for idx, pe in enumerate(entries):
-        new_excite = (idx == driven) and pe.excite
+        new_excite = calculator_drive(idx == driven, excite=pe.excite)
         if new_excite:
             wf = pe.waveform if pe.waveform is not None else \
                 GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)

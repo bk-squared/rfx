@@ -1,4 +1,5 @@
-"""AST-only layer ratchet: real-source mutations and Git snapshot contracts."""
+"""AST-only layer ratchet: real-source mutations and Git snapshot contracts.
+The unit rules read syntax and miss a scalar formula, a metric choice or a record type."""
 
 import ast
 from copy import deepcopy
@@ -27,8 +28,7 @@ EXECUTE_CLEAN = "_ExecuteMixin._resolve_field_dtype"
 
 @pytest.fixture(scope="module")
 def generated():
-    # --write-baseline generated this artifact. Expectations add fixed names,
-    # never use a second counter run to manufacture the mutation's delta.
+    """Expectations add fixed names, never use a second counter run to manufacture the mutation's delta."""
     return gate.baseline((REPO / gate.BASELINE).read_bytes())
 
 
@@ -90,20 +90,17 @@ def test_uniform_step_body_and_restored_original_baseline_unchanged(tmp_path, ge
     body = body_from("rfx/stepping/uniform.py", "make_uniform_step")
     observed = mutate(tmp_path, SIM, target, body)
     assert_new_hit(generated, SIM, ["S"], target, observed)
-    # Restored original: baseline unchanged. This is an identity check, not
-    # evidence that a call to a make_*_step builder would pass rule S.
     write(tmp_path, SIM, (REPO / SIM).read_text())
     assert gate.count_file(CopiedSources(tmp_path), SIM) == generated["files"][SIM]
 
 
 def test_phase_body_and_bound_call_control(tmp_path, generated):
+    """The phase control binds its defining submodule because phase is not re-exported."""
     target = CLEAN
     for rule in ("M", "G"):
         assert target not in generated["files"][SIM][rule]
     observed = mutate(tmp_path, SIM, target, body_from("rfx/measurement/dft.py", "_traced_unit"))
     assert_new_hit(generated, SIM, ["M", "G"], target, observed)
-    # phase lives in dft.py; it is neither re-exported nor in measurement's
-    # __all__. Bind the real submodule: the call has no M/G hit but DOES hit I.
     name = "rfx.measurement.dft:phase"
     assert name not in generated["files"][SIM]["I"]
     observed = mutate(tmp_path, SIM, target,
@@ -185,18 +182,14 @@ def test_allowlist_mutations(tmp_path, generated, code, red):
 
 
 def test_operator_only_known_miss(tmp_path, generated):
+    """Pure operator arithmetic with no library call is an intentional known miss."""
     target = CLEAN
     for rule in "SMAG":
         assert target not in generated["files"][SIM][rule]
-    # DECLARE.md §5 item 1: pure operator arithmetic with no library call is
-    # an intentional known miss, not evidence that this is orchestration.
     observed = mutate(tmp_path, SIM, target, "value = ce * e + cb * curl")
     assert observed == generated["files"][SIM]
 
 
-# Outside-ratchet fixtures are planted, not borrowed: the 2.0 layer moves empty
-# the real files outside the layer packages, so a test tied to one of them
-# breaks at the move that empties it.
 OUTSIDE_A = "rfx/_layer_check_outside_a.py"
 OUTSIDE_B = "rfx/_layer_check_outside_b.py"
 
@@ -212,7 +205,8 @@ def copied_tree(root, path):
 
 @pytest.fixture
 def planted(tmp_path, generated):
-    """BASE with two outside files, one baselined time-step unit each."""
+    """BASE with two outside files, one baselined time-step unit each.
+    Planted outside-ratchet fixtures survive removal of the real files outside the layer packages."""
     base = deepcopy(generated)
     for path, name in ((OUTSIDE_A, "fixture_scan"), (OUTSIDE_B, "fixture_runner")):
         assert not (REPO / path).exists()
@@ -240,7 +234,6 @@ def test_outside_new_unit_in_existing_file_cannot_net_removal(tmp_path, planted,
         del expected["outside"][other]
     actual = gate.count(CopiedSources(tmp_path))["baseline"]
     assert actual == expected
-    # Even updating the baseline to match the mutated code cannot admit the copy.
     errors = gate.violations(actual, expected, planted)
     assert errors == [f"{path} S: new violation against BASE {name}",
                       f"{path} S: baseline grew against BASE {name}"]
@@ -301,10 +294,7 @@ def test_outside_new_file_with_measurement_hit(tmp_path, generated):
 def test_calibration_from_declaration_and_leader_correction(generated):
     api = generated["files"][API]
     assert "Simulation.add_thin_conductor" not in api["D1"] + api["D2"]
-    # The waveguide port's plane check moved to rfx.measurement.waveguide_planes;
-    # D1 detection itself stays pinned by test_declaration_grid_mutation.
     assert "Simulation.add_waveguide_port" not in api["D1"]
-    # The report moved to rfx.mesh_planner.mesh_intelligence_report; the method only returns its call.
     assert "Simulation.mesh_intelligence_report" not in api["D2"]
     node = target_unit(real_tree(API), "Simulation.mesh_intelligence_report")
     assert len(gate.body_without_docstring(node)) == 1
@@ -324,8 +314,6 @@ def test_calibration_from_declaration_and_leader_correction(generated):
     assert "run_nonuniform" not in all_units
     assert "run_nonuniform" in {name for name, _, _ in gate.units(real_tree("rfx/stepping/graded_loop.py"))}
     assert "run_nonuniform" in gate.public_names(gate.Sources(REPO), "rfx.stepping")
-    # Graded-grid construction (NonUniformGrid, its module-level tables) moved to
-    # rfx/model/ in #1643; nonuniform.py now imports it from the package top, not counted under I.
     assert "NonUniformGrid.node_of" not in all_units
     assert "rfx.model.graded_grid:make_nonuniform_grid" not in nonuniform["I"]
     assert "make_nonuniform_grid" in gate.public_names(gate.Sources(REPO), "rfx.model")
@@ -351,6 +339,8 @@ def synthetic(tmp_path, monkeypatch):
 
 def mock_base(monkeypatch, previous):
     def git(repo, *args):
+        if args == ("ls-tree", "base", "--", gate.PLAN_READ_BASELINE):
+            return b""
         if args == ("ls-tree", "base", "--", gate.BASELINE):
             return b"present"
         assert args == ("show", f"base:{gate.BASELINE}")
@@ -396,7 +386,6 @@ def git_snapshot(repo, *args):
 
 
 def test_initial_adoption_and_head_environment_use_git_sources(synthetic, monkeypatch, capsys):
-    # Throwaway repositories under tmp_path are explicitly allowed by the leader.
     git_snapshot(synthetic, "init", "-q")
     (synthetic / gate.BASELINE).unlink()
     git_snapshot(synthetic, "add", ".")
@@ -408,7 +397,6 @@ def test_initial_adoption_and_head_environment_use_git_sources(synthetic, monkey
     git_snapshot(synthetic, "add", ".")
     git_snapshot(synthetic, "commit", "-qm", "adopt")
     head = git_snapshot(synthetic, "rev-parse", "HEAD")
-    # Source, import target, and baseline all differ on disk: use Git for all.
     write(synthetic, "rfx/model/__init__.py", "def public():\n    pass\n")
     write(synthetic, SIM, "def new():\n    np.zeros(1)\n")
     write(synthetic, gate.BASELINE, "broken working-tree baseline")
@@ -539,9 +527,9 @@ def test_wiring_matches_file_size_gate():
     ("<module>", "from rfx.model.conductors import *", "rfx.model.conductors:*"),
 ])
 def test_review_import_mutations_on_real_source(tmp_path, generated, target, statement, name):
+    """Star imports are only legal at module level."""
     assert name not in generated["files"][SIM]["I"]
     if target == "<module>":
-        # Star imports are only legal at module level.
         write(tmp_path, SIM, (REPO / SIM).read_text() + "\n" + statement + "\n")
         observed = gate.count_file(CopiedSources(tmp_path), SIM)
     else:
@@ -572,7 +560,6 @@ def test_additional_array_updates_on_real_source(tmp_path, generated):
     observed = mutate(tmp_path, SIM, target,
                       "a.at[i].divide(b)\na.at[i].power(b)\na.at[i].apply(f)")
     assert_new_hit(generated, SIM, ["A"], target, observed)
-    # Each new spelling must independently trip A, not only their combination.
     for method in ("divide", "power", "apply"):
         assert "A" in gate.unit_hits(ast.parse(f"a.at[i].{method}(b)"))
 
@@ -635,15 +622,10 @@ _MODULE_PHASE = jnp.exp(1j * angle)
     assert rules["S"] == ["Outer.Inner.method", "conditional", "under_with"]
     assert rules["M"] == ["<module>", "Outer.<body>"]
     assert rules["G"] == ["<module>", "Outer.<body>"]
-    # The nested function belongs to its method, and no method body leaks into
-    # a parent class or the module pseudo-unit.
 
 
 def test_review_pseudo_unit_calibration(generated):
-    # nonuniform.py lost its module-level hit when #1643 moved the grid tables out.
     assert "<module>" not in generated["files"]["rfx/nonuniform.py"]["G"]
-    # waveguide_port.py lost both when its definitions moved to the layer
-    # packages and the file kept only re-exports.
     waveguide = generated["files"]["rfx/sources/waveguide_port.py"]
     assert "<module>" not in waveguide["G"]
     assert "WaveguidePortConfig.<body>" not in waveguide["G"]
@@ -733,7 +715,7 @@ def test_outside_report_blocks_and_count_order(synthetic, capsys):
     gate.report(gate.count(gate.Sources(synthetic)))
     output = capsys.readouterr().out
     five, outside = output.split("\noutside the layer packages — may only fall, not a 2.0 condition "
-                                 "(PI to decide how far 2.0 reaches)\n")
+                                 "(how far 2.0 reaches is not decided)\n")
     assert five.startswith("2.0 condition — five files\n")
     outside, reverse = outside.split("\nreverse imports from layers to callers — may only fall\n")
     assert reverse == "reverse totals: R=0\n"
@@ -756,7 +738,6 @@ def test_report_outside_ag_counts_a_and_g_outside_layers(synthetic, capsys):
     }
     assert "outside_ag" not in result["baseline"]
     assert result["baseline"]["files"]["rfx/simulation.py"]["A"] == ["assembly"]
-    # Remove the gated five-file violation before checking the empty baseline.
     write(synthetic, "rfx/simulation.py", "")
     write(synthetic, gate.BASELINE, json.dumps(empty_baseline()))
     assert gate.main(["--repo", str(synthetic)]) == 0
@@ -822,7 +803,6 @@ def test_outside_pure_rename_with_helper_and_docstrings(synthetic, capsys):
           'def renamed_helper(y):\n    "new helper"\n    return y + 1\n'
           'def new(y):\n    "new doc"\n    return np.exp(1j * renamed_helper(y))\n')
     capsys.readouterr()
-    # A rename still needs baseline regeneration.
     assert gate.check(synthetic, base) == 1
     output = capsys.readouterr()
     assert output.err.splitlines() == [f"{path} M: unlisted violation new",
@@ -984,7 +964,6 @@ def test_nested_local_binding_does_not_allow_module_import_swap(synthetic, capsy
 @pytest.mark.parametrize("declaration", ["global", "nonlocal"])
 def test_scope_declarations_are_never_local_renames(synthetic, capsys, declaration):
     path = "rfx/example.py"
-    # The nonlocal declaration is inside a nested function of the counted unit.
     body = ("    global X\n    X = 3\n" if declaration == "global" else
             "    X = 3\n    def inner():\n        nonlocal X\n        X = 3\n")
     source = f"def old():\n{body}    return np.exp(1j * X)\n"
@@ -1146,7 +1125,6 @@ def test_reverse_base_adoption_and_ratchet(synthetic, monkeypatch, capsys, case)
     def no_renames(*args):
         pytest.fail("reverse imports must not use RenameMatcher")
 
-    # Empty non-reverse groups also call pairs, so exempt those paths.
     monkeypatch.setattr(gate.RenameMatcher, "pairs",
                         lambda self, p, gone, new: no_renames() if p == path else set())
     assert gate.main(["--repo", str(synthetic), "--base", "base"]) == int(case not in {"adoption", "shrink"})
@@ -1162,7 +1140,6 @@ def test_reverse_base_adoption_and_ratchet(synthetic, monkeypatch, capsys, case)
                        f"{path} R: baseline grew against BASE rfx.simulation:new"],
     }
     assert errors == expected[case]
-    # Reverting each rejected source/baseline pair is green against the same BASE.
     if errors:
         write(synthetic, path, "from rfx.simulation import old\n")
         write(synthetic, gate.BASELINE, json.dumps(previous))
@@ -1221,8 +1198,6 @@ def test_reverse_report_order_and_totals(synthetic, capsys):
     ]
 
 
-# A layer import of a name a five file defines itself is layer code living in a five file; the unit rules read
-# syntax and miss a scalar formula, a metric choice or a record type (rfx-core-desk L:e06a77).
 FIVE_DEFINITION = "{path} R: imports {entry}, which the five file defines; move the definition into its layer"
 
 
@@ -1284,7 +1259,7 @@ def test_check_refuses_a_five_file_definition_even_when_the_baseline_lists_it(sy
     write(synthetic, gate.BASELINE, json.dumps(listed))
     assert gate.main(["--repo", str(synthetic)]) == 1
     assert capsys.readouterr().err == FIVE_DEFINITION.format(path=path, entry=entry) + "\n"
-    write(synthetic, "rfx/nonuniform.py", "from rfx.model import helper\n")  # a re-export: rule R only
+    write(synthetic, "rfx/nonuniform.py", "from rfx.model import helper\n")
     assert gate.main(["--repo", str(synthetic)]) == 0
     assert capsys.readouterr().err == ""
 
@@ -1336,12 +1311,11 @@ def test_read_of_a_five_file_definition_through_a_reexport_is_refused(tmp_path, 
     assert gate.five_file_definitions(defined) == [FIVE_DEFINITION.format(path=path, entry=entry)]
 
 
-# Loading a layer module must not run a five file through a module outside the layers: a package top
-# re-exporting a five file, or a helper importing one. Rule R sees only the layer module's own imports (rfx#1818).
 LOAD_CHAIN = "{path} L: loading runs {five} ({chain})"
 
 
 def test_no_layer_module_load_runs_a_five_file():
+    """Rule R sees only the layer module's own imports."""
     assert gate.load_chains(gate.Sources(REPO)) == []
 
 
@@ -1390,3 +1364,30 @@ def test_check_refuses_a_load_chain(synthetic, capsys):
         chain="rfx.stepping.a -> rfx.helper -> rfx.simulation") + "\n"
     write(synthetic, "rfx/helper.py", "def local():\n    from rfx.simulation import run\n")
     assert gate.main(["--repo", str(synthetic)]) == 0
+
+
+@pytest.mark.parametrize("before,after,expected", [
+    ({"multi-device-uniform": ["probe"]}, {"multi-device-uniform": []}, 1),
+    ({"multi-device-graded": ["probe"]}, {"multi-device-graded": ["probe", "lumped_wire_vi"]}, 0),
+    (None, {"multi-device-uniform": ["probe"]}, 0),
+    ({"multi-device-graded": ["probe"]}, None, 1),
+])
+def test_plan_read_baseline_may_only_rise(synthetic, capsys, before, after, expected):
+    git_snapshot(synthetic, "init", "-q")
+    if before is not None:
+        write(synthetic, gate.PLAN_READ_BASELINE, json.dumps(before))
+    git_snapshot(synthetic, "add", ".")
+    git_snapshot(synthetic, "commit", "-qm", "base plan reads")
+    base = git_snapshot(synthetic, "rev-parse", "HEAD")
+    if after is None:
+        (synthetic / gate.PLAN_READ_BASELINE).unlink()
+    else:
+        write(synthetic, gate.PLAN_READ_BASELINE, json.dumps(after))
+    git_snapshot(synthetic, "add", ".")
+    git_snapshot(synthetic, "commit", "-qm", "head plan reads")
+    head = git_snapshot(synthetic, "rev-parse", "HEAD")
+    assert gate.main(["--repo", str(synthetic), "--base", base]) == expected
+    assert ("may only rise" in capsys.readouterr().err) == bool(expected)
+    write(synthetic, gate.PLAN_READ_BASELINE, "unreadable working tree")
+    assert gate.main(["--repo", str(synthetic), "--base", base, "--head", head]) == expected
+    assert ("may only rise" in capsys.readouterr().err) == bool(expected)

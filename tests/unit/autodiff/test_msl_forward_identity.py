@@ -11,7 +11,7 @@ exemption was the defect: the returned ``S`` was one function on the channel a
 user reads and another on the channel a gradient takes, wherever any bin was
 non-passive.
 
-The default is now ``enforce_passivity=False`` (PI, 2026-09-21 — the contract
+The default is now ``enforce_passivity=False`` (the contract
 is ``docs/design_notes/chain_closure_contract.md``), so both channels return
 the raw extraction. These tests pin that identity.
 """
@@ -34,21 +34,6 @@ from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
 from tests.contracts.path_equivalence.comparison import compare
 from tests._printed_numbers import agrees, printed_after
 
-# ---------------------------------------------------------------------------
-# Planted-S fixture. Same manufacturing technique as
-# tests/unit/autodiff/test_msl_sparam_ad.py::_run_manufactured_assembly —
-# plant B = S·A for a well-conditioned drive matrix A, hand the extractor
-# V = A + B and I = (A - B)/Z_ref — with two differences this test needs:
-# the planted S is scaled until it is comfortably NON-passive (so that
-# switching the projection on moves S by an amount no tolerance can absorb),
-# and the same synthetic records are served to BOTH run() and forward(), so
-# the only thing that can differ between the two channels is what
-# compute_msl_s_matrix does with them after assembly.
-#
-# No FDTD runs here. That is deliberate: the identity under test is a property
-# of the post-processing branch, and a fixture whose two channels are fed
-# byte-identical records is the one that isolates it.
-# ---------------------------------------------------------------------------
 
 U = 2.0**-12
 FREQS = np.array([0.8e9, 1.2e9, 1.6e9])
@@ -77,6 +62,7 @@ def _build_planted_sim(monkeypatch, scale: float):
 
         Ignoring ``eps_override`` is the point: with identical records on
         both channels, any difference in the returned S is post-processing.
+        The plant supplies the physically stamped current at (n + 1/2) dt because the extractor applies no half-step correction.
         """
         grid = self._build_grid()
         planes = {}
@@ -92,9 +78,6 @@ def _build_planted_sim(monkeypatch, scale: float):
                 field = np.ones(shape) / (2 * U)
                 amplitude = voltage[port, driven]
             else:
-                # Affine longitudinal variation, so recovering I needs both
-                # bracketing H samples; transverse ramps give the Ampere
-                # contour a nonzero, analytically known value.
                 x_h = (index - grid.pad_x_lo + 0.5) * U
                 target = (12 if port == 0 else 28) * U
                 factor = 1 + (0.5 + 0.25j) * (x_h - target) / U
@@ -106,15 +89,6 @@ def _build_planted_sim(monkeypatch, scale: float):
                     profile = np.broadcast_to(0.25 * y_h[:, None], shape)
                 sign = 1 if port == 0 else -1
                 field = sign * factor * profile / (0.75 * 5 * U)
-                # History (S2 M2): the plant used to stamp this H plane at
-                # E's time, current * exp(-j pi f dt), because the extractor
-                # then applied the half step. The DFT kernel now stamps H at
-                # (n + 1/2) dt itself and the extractor applies nothing, so
-                # the plant supplies the physically stamped current. Left
-                # as it was, the returned S is off by the omega dt / 2 the
-                # extractor no longer removes (1.17e-3 .. 2.34e-3 rad at
-                # these bins, dt = 4.65e-13 s): 1.789e-3 predicted from the
-                # planted V and I, 1.789e-3 measured.
                 amplitude = current[port, driven]
             planes[entry.name] = DFTPlaneProbe(
                 accumulator=(
@@ -191,13 +165,6 @@ def _compute(sim, **kwargs):
             n_steps=1, freqs=FREQS, num_periods=1.0, **kwargs)
 
 
-# ---------------------------------------------------------------------------
-# Criterion 1(2): one function across the channels.
-# ---------------------------------------------------------------------------
-
-# Scaled so the planted S is non-passive at every bin: sigma_max runs
-# 2.0705 / 1.8749 / 1.6853, i.e. an excess of 1.07 / 0.87 / 0.69. That size is
-# what makes the mutation below detectable — see this file's mutation note.
 _NONPASSIVE_SCALE = 3.0
 
 
@@ -228,15 +195,12 @@ def test_eps_override_channel_returns_the_same_s_as_the_plain_call(monkeypatch):
         eps_override=_noop_eps_override(sim),
     )
 
-    # The fixture is only evidence if its raw S is genuinely non-passive:
-    # on a passive one the projection is a no-op and the identity is free.
     assert float(_sigma_max(planted).min()) > 1.05, (
         "the planted S must be non-passive at every bin, or switching the "
         "projection on would move nothing and this test would gate nothing")
 
     np.testing.assert_allclose(np.asarray(override.S), np.asarray(plain.S),
                                rtol=1e-5, atol=1e-7)
-    # Neither channel may quietly keep a projected copy around.
     assert plain.S_raw is None and plain.passivity_correction is None
     assert override.S_raw is None and override.passivity_correction is None
 
@@ -291,7 +255,9 @@ def test_a_passive_extraction_reports_zero_excess_and_says_nothing(monkeypatch):
 
 
 def test_a_nonpassive_extraction_is_named_bin_by_bin_in_one_warning(monkeypatch):
-    """Loud without projecting: count, worst sigma_max, and the opt-in."""
+    """Loud without projecting: count, worst sigma_max, and the opt-in.
+    Match the projection warning's own opening because the nonpassive warning names that projection as the remedy and contains it too.
+    """
     sim, planted = _build_planted_sim(monkeypatch, _NONPASSIVE_SCALE)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
@@ -300,16 +266,12 @@ def test_a_nonpassive_extraction_is_named_bin_by_bin_in_one_warning(monkeypatch)
     assert len(messages) == 1, "one aggregate warning, not one per bin"
     message = messages[0]
     assert "3 of 3 frequency bins" in message
-    # The warning's SVD and this file's numpy one may differ in the last bit,
-    # so the printed value is read back and compared to its third decimal.
+    CROSS_SVD_COMPARISON_DECIMAL_PLACES = 3
     worst = printed_after(message, "worst sigma_max = ")
-    assert len(worst) == 1 and len(worst[0].split(".")[1]) == 3, worst
+    assert len(worst) == 1 and len(worst[0].split(".")[1]) == CROSS_SVD_COMPARISON_DECIMAL_PLACES, worst
     assert agrees(worst[0], float(_sigma_max(_planted_at_declared(planted, result)).max())), worst
     assert "returned exactly as extracted" in message
     assert "enforce_passivity=True" in message
-    # The projection warning is the other branch's; it must not also fire.
-    # Match its own opening, not the phrase "projected onto the passive set"
-    # — this warning names that projection as the remedy and contains it too.
     assert not [m for m in [str(w.message) for w in caught]
                 if m.startswith("S-matrix projected onto the passive set")]
 
@@ -350,21 +312,15 @@ def test_enforce_passivity_true_is_still_skipped_under_eps_override(monkeypatch)
                                rtol=0.0, atol=1e-5)
 
 
-# ---------------------------------------------------------------------------
-# The same identity end to end, through the two REAL runners.
-# ---------------------------------------------------------------------------
-
 def _live_thru() -> Simulation:
-    """The tiny truncated thru of tests/unit/sparams/test_msl_passivity_enforcement."""
-    # #1138: trace y solved +11.667% off; this tests run/forward S-matrix identity.
+    """The tiny truncated thru of tests/unit/sparams/test_msl_passivity_enforcement.
+    The strip spans the two port nodes to avoid 2 mm open stubs.
+    """
     sim = Simulation(snap="declared", freq_max=20e9, domain=(0.012, 0.008, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, 0.008, 0.0008)), material="sub")
     sim.add(Box((0., 0., 0.), (0.012, 0.008, 0.)), material="pec")
-    # #1512: the strip spans the two port nodes (2 and 10 mm). Drawn across the whole
-    # domain it left 2 mm open stubs whose effective quarter wave (23.8 GHz) is within
-    # 1.5x of the 2-18 GHz read.
     sim.add(Box((0.002, 0.0034, 0.0008), (0.010, 0.0046, 0.0008)), material="pec")
     sim.add_msl_port(position=(0.002, 0.004, 0.0), width=0.0012, height=0.0008,
                      direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")

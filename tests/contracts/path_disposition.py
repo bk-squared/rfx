@@ -5,7 +5,7 @@ boundaries, a mesh and observers. Several paths step it in time, and each one
 reads only part of the declaration. An input a path does not read is solved as
 if it had not been declared, and nothing in the result says so: a Kerr block
 comes back linear, a microstrip port launches nothing, a periodic wall is
-solved as a metal one. The PI's rule (2026-09-24) is that a physics input a
+solved as a metal one. A physics input a
 path does not implement is refused before the first step. This table records,
 for every attribute and every path, which of these holds:
 
@@ -32,7 +32,8 @@ not production support; earlier production-envelope refusals remain refused.
 Where the cells are checked
 ---------------------------
 * ``tests/contracts/test_path_disposition.py``: every attribute of a fresh
-  ``Simulation`` has a row, every row has a cell on every column, the lane
+  ``Simulation`` and every registered declaration has a row or a reason in
+  ``PENDING_ROWS``, every row has a cell on every column, the lane
   columns are the lanes ``_dispatch_plan`` returns plus the declared kernel
   routes, and every function in ``rfx/`` that reaches a time-stepping kernel
   or steps fields is registered.
@@ -85,6 +86,16 @@ Not ``Simulation`` paths, because they take a ``Grid``: ``rfx.run``,
 from __future__ import annotations
 
 from typing import NamedTuple
+
+# Lazy declarations whose rows require product changes to lane admission.
+PENDING_ROWS = {
+    "_wall_losses": (
+        "#1961: lazily created declaration; its row needs a detector in rfx/runners/_admission.py"),
+    "_dft_plane_regions": (
+        "#1961: lazily created declaration; its row needs a detector in rfx/runners/_admission.py"),
+    "_time_recorded_dft_planes": (
+        "#1961: lazily created declaration; its row needs a detector in rfx/runners/_admission.py"),
+}
 
 CARRIES = "carries"
 REFUSES = "refuses"
@@ -197,9 +208,9 @@ def admission(what, lane, before):
 
 
 # A 2-D mode on a graded mesh: _dispatch_plan's own check refuses it on every
-# graded lane and names the remedy, a thin 3-D box. Until #1355 a 2d_tmz model
+# graded lane and names the remedy, a thin 3-D box. Earlier a 2d_tmz model
 # one cell thick between PEC walls ran there as that 3-D box, whose record
-# differs from run_uniform's 2-D solve by 0.34 of the probe peak (#1340).
+# differs from run_uniform's 2-D solve by 0.34 of the probe peak.
 GRADED_2D = refuses("a 2-D mode is refused on the graded lanes, naming the thin 3-D box "
                     "(mode='3d') as the remedy (#1340)",
                     raises="Build the 2-D problem as a thin 3-D box")
@@ -759,7 +770,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_nonuniform=carries(),
         run_subgridded=_subgrid("boundary_terminated_requires_pec_no_cpml", "CPML on the other faces: " + GUARDED_LID_NOTE),
 
-        # #1235: the distributed absorber takes every face's profile from init_cpml, so the PEC wall
+        # The distributed absorber takes every face's profile from init_cpml, so the PEC wall
         # carries no absorber backing (test_realized_boundary.py pec-zlo--distributed departures gone).
         run_distributed=carries(),
         fwd_uniform=carries(),
@@ -982,7 +993,7 @@ def executable(attr: str) -> bool:
 
 # Calculator cells are independent of the production admission lists.
 # Each entry below records the assembly/scan inspected for that calculator.
-# Observers retain their existing behaviour (leader decision, RESUME1).
+# Observers retain their existing behaviour.
 CALCULATOR_CELLS = {
     ('_freq_max', ''): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
@@ -1680,8 +1691,17 @@ TABLE["_pec_occupancy_model"]["kottke"]["fwd_distributed"] = refuses(
     "uniform distributed forward refuses the occupancy override", raises="pec_occupancy_override")
 
 
-def cell(attr: str, feature: str, path: str, *, precision=None) -> Cell:
+COAX_MSL_MODE_REFUSAL = refuses(
+    "rfx/sparams/_coax_msl_stages.py: registration refuses every non-Laplace mode "
+    "before assembly (#2619); tests/contracts/test_coax_msl_mode_refusal.py",
+    raises='use mode="laplace" (the default).',
+)
+
+
+def cell(attr: str, feature: str, path: str, *, precision=None, mode=None) -> Cell:
     """The recorded disposition for one input and one execution path."""
+    if (attr, feature, path) == ("_msl_ports", "msl_port", "coax_msl_transition") and mode not in (None, "laplace"):
+        return COAX_MSL_MODE_REFUSAL
     if attr == "_precision" and precision == "float64" and path in ("run_nonuniform", "fwd_nonuniform"):
         return carries("float64 field and accumulation storage on single-device graded Yee")
     row = TABLE[attr][feature]
@@ -1698,7 +1718,7 @@ PLAIN_SOURCE_S_REQUEST = {
 }
 
 
-# #2032 Part A: radius carrier routes, checked by the radius contract.
+# Radius carrier routes, checked by the radius contract.
 WIRE_RADIUS_PATHS = {
     "run_distributed": carries("global stamp, uniform slab realization"),
     "fwd_distributed": carries("admits as run_distributed; same uniform step"),

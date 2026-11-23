@@ -38,7 +38,7 @@
         "-rA",
         "-o",
         "junit_logging=all",
-        "--junitxml=/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-short-closure-policy-20260909T082200Z-db4ee4a1797e-106/junit.xml"
+        "--junitxml=<workspace>/research/rfx-931-fastlane-reds/output/931-fixture-repair-vessl/issue931-short-closure-policy-20260909T082200Z-db4ee4a1797e-106/junit.xml"
       ],
       "returncode": 0
     }

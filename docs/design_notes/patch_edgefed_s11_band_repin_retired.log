@@ -1,4 +1,4 @@
-[REPIN] rfx.__file__ = /root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/wf_b56f9a1c-177-4/scripts/diagnostics/../../rfx/__init__.py
+[REPIN] rfx.__file__ = rfx/__init__.py
 [REPIN] git HEAD     = 4c9f48d1c59dda050b7fde59b06d3e25477d8445
 [REPIN] num_periods  = 280.0, freqs 6-14 GHz x 81
 
@@ -108,5 +108,5 @@
 [retired] min|S11| over candidate band (7.8, 8.6) = 0.9785
 [retired] Im(Zin)=0 crossings = [9.1079, 9.325, 9.6291, 11.3661] GHz (in candidate band: [])
 
-[REPIN] wrote /root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/wf_b56f9a1c-177-4/scripts/diagnostics/../../docs/design_notes/patch_edgefed_s11_band_repin_retired.json
-[REPIN] wrote /root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/wf_b56f9a1c-177-4/scripts/diagnostics/../../docs/design_notes/patch_edgefed_s11_band_repin_results.json
+[REPIN] wrote docs/design_notes/patch_edgefed_s11_band_repin_retired.json
+[REPIN] wrote docs/design_notes/patch_edgefed_s11_band_repin_results.json

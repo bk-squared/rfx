@@ -26,7 +26,7 @@ this read greener, and the working tree is left uncommitted for a human to decid
 
 ## 1. Tree as observed (not as reported)
 
-Verified 2026-09-05 in `/Users/byungkwankim/Documents/rfx-worktrees/gap-oblique`.
+Verified 2026-09-05 in `<workspace>/Documents/rfx-worktrees/gap-oblique`.
 
 ```
 $ git status --short
@@ -43,7 +43,7 @@ Diffstat: 3 files, +473 / −86. **Nothing is committed.** No `rfx/` source file
 modified by this lane; the #888 constants arrive through the rebase.
 
 Environment check (the brief's trap): `rfx.sources.tfsf_2d` resolves to
-`/Users/byungkwankim/Documents/rfx-worktrees/gap-oblique/rfx/sources/tfsf_2d.py` with
+`rfx/sources/tfsf_2d.py` with
 `AUX_N_CPML == 200`. **But see finding B-6: the brief's PYTHONPATH premise is false for
 this lane's entry points and its prescribed check cannot detect the trap it names.**
 
@@ -562,7 +562,7 @@ the other checkout and dies with `AttributeError: module has no attribute 'AUX_N
 **No cv26 run artifact is committed in this repo.** `validation/crossval/_26_oblique_results/`
 does not exist. Every artifact cited above lives in an **uncommitted scratchpad**
 directory under
-`/private/tmp/claude-501/-Users-byungkwankim/50935fff-b722-4069-86b0-f259802f7b01/scratchpad/`
+`<workspace>/scratchpad/`
 (`wf_baseline/rfx.json`, `wf_fals_<name>/rfx__falsifier_<name>.json`,
 `wf_ladder_<tag>/rfx__<tag>.json`, and `aux-echo-arrival/gate_table.json`).
 
@@ -614,7 +614,7 @@ statement that it converged there -- for te_60 / tm_60 at dx it did not.
 **What follows.** A declared record needs a convergence witness of its own: the value at
 the derivation length must agree with the value at an adjacent length within one
 extension quantum (`RECORD_EXTEND_STEPS`), or the key is declared NON-CONVERGED and
-carries its spread. This is a derivation rule, not a window, and it is put to the PI
+carries its spread. This is a derivation rule, not a window, and it is proposed
 with the numbers above rather than applied here.
 
 **Measured settling on the absorber that ships**, from the case itself run FROM the
@@ -815,7 +815,7 @@ B-2): the scope is declared in the pre-declaration (the compact box is the absor
 witness, judged against the lattice WITH the absorber), the verdict rule did not follow.
 The consistent fix is to mark `G3_passivity` and `G3_closure` N/A on the compact arms,
 declared in the artifact, and judge them on G6 / G7 and the tail witness. It changes what
-two arms gate, so it is put to the PI here and not applied.
+two arms gate, so it is proposed here and not applied.
 
 
 ## 10. This lane refutes the pre-declaration's ≤3e-4 lattice-witness prediction (2026-09-14, append-only)
@@ -951,15 +951,15 @@ because the separation is now against a green one, but still **0.39× short of t
 declared bar**. Recorded, not re-declared: F1's margin is the weakest of the four and the
 5° angle offset is the smallest defect in the set.
 
-### 10.4 Where the GL1 finding belongs: the standard, not this case (PI decision 2026-09-14)
+### 10.4 Where the GL1 finding belongs: the standard, not this case
 
-§10.2 records that GL1 breaches on `tm_45` and `tm_60`. The PI decision of 2026-09-14 is
-that GL1 stays **reported and not gated**, and that the finding is recorded as a
+§10.2 records that GL1 breaches on `tm_45` and `tm_60`. GL1 stays
+**reported and not gated**, and the finding is recorded as a
 limitation of `docs/design_notes/20260903_lattice_witness_standard.md`, not of cv26.
 
-The reasoning, in the PI's words: a first-order window that closes like `√R_lat` has no
-validity at a reflection null, so a red there would measure the standard's own envelope
-rather than the solver. cv26 gates on GL2, which passes on all seven primary arms.
+
+
+cv26 gates on GL2, which passes on all seven primary arms.
 
 What the standard's §3 window does not cover, with this lane's numbers:
 

@@ -13,11 +13,8 @@ from rfx.antenna import antenna_gain
 from rfx.measurement.farfield import compute_far_field
 from rfx.geometry import Box
 
-# Per-array peak-relative bar. PEC compensation is compared to its own peak.
-# CPML fields already differ from native on main (trace 9.71e-7); residual
-# bits therefore differ. There we bound compensation error by two float32
-# epsilons of its sum, while reporting its own-peak relative error too.
-BAR = 5e-5
+PER_ARRAY_PEAK_RELATIVE_BAR = 5e-5
+BAR = PER_ARRAY_PEAK_RELATIVE_BAR
 
 
 def _model(case, n_devices=2):
@@ -55,6 +52,7 @@ def _error(actual, expected):
 
 
 def _compare(actual, reference, case):
+    """An earlier CPML trace comparison measured 9.71e-7 relative error, so compensation error is bounded by two float32 epsilons of its sum."""
     errors = {}
     for name in reference.ntff_data._fields:
         errors[name] = _error(getattr(actual.ntff_data, name), getattr(reference.ntff_data, name))
@@ -85,11 +83,10 @@ def _compare(actual, reference, case):
 
 
 def _parity(case, n_devices=2):
+    """Users' PEC far fields are refused."""
     sim = _model(case, n_devices)
     kwargs = dict(n_steps=160, skip_preflight=True)
     with pytest.MonkeyPatch.context() as patch:
-        # The PEC accumulators are compared as a bit-exact parity witness.
-        # Users' PEC far fields are refused, as pinned by tests/contracts/test_ntff_boundary_admission.py.
         if case != "cpml":
             patch.setattr("rfx.boundaries.features.refuse_ntff_reflecting_faces", lambda *args, **kwargs: None)
         reference = sim.run(**kwargs)
@@ -122,7 +119,6 @@ def _ghost_hx_invariant(monkeypatch):
 
     def observe(self, buffer, state, dt, step, *, ranks=None):
         width = state.hx.shape[0] // self.n_devices
-        # All internal right ghosts and their owners, at the real sampler.
         jax.debug.callback(lambda ghost, real: samples.append(
             (np.array(ghost), np.array(real))),
             state.hx[width - 1:-1:width], state.hx[width + 1::width])
@@ -193,7 +189,6 @@ def test_mutations(monkeypatch, mutation):
     if mutation == "skip":
         monkeypatch.setattr(owner.SlabNTFF, "update", lambda self, buffer, *args, **kwargs: buffer)
     elif mutation == "duplicate":
-        # The wrong rank writes the x face; y/z ownership uses clipped ranges.
         import inspect
         import textwrap
         source = textwrap.dedent(inspect.getsource(owner.SlabNTFF.__init__))
@@ -272,10 +267,9 @@ def test_compact_storage_and_unique_placement():
     full = init_ntff_data(box)
     assert actual_bytes == [1478400, 1478400]
     assert sum(a.nbytes for a in full) == 2956800
-    # A different nonzero marker per cell makes transposition, duplication,
-    # omission and compensation loss visible without time-stepping.
     expected = type(full)(*(jnp.arange(a.size, dtype=jnp.float32).reshape(a.shape)
                             + (index + 1) * 100000 for index, a in enumerate(full)))
+    assert all(np.all(np.asarray(a) != 0) for a in expected) and np.unique(np.concatenate([np.asarray(a).ravel() for a in expected])).size == sum(a.size for a in expected), "NTFF cell markers must be distinct and nonzero to expose placement loss"
     packed = []
     for lo, hi, faces, _, _, _ in layout.parts:
         arrays = []

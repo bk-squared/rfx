@@ -5,6 +5,7 @@ its actual power-wave assembly (the existing per-drive ratios, not a newly
 substituted BA^-1 solve). These are sampling/dataflow tests, not RF accuracy
 or reciprocity tests. The supported envelope here is uniform +/-x, wave
 magnitudes, and unprojected S.
+H_GAIN keeps Zref*I comparable to V to avoid a near-unit S11 oracle.
 """
 from __future__ import annotations
 
@@ -19,12 +20,13 @@ import rfx.sparams.mixed as mixed_lane
 from rfx.probes.probes import DFTPlaneProbe
 
 U = 2.0**-12
-H_GAIN = 1 / 256  # Keeps Zref*I comparable to V; avoids a near-unit S11 oracle.
+H_GAIN = 1 / 256
 SLOPE = 0.5 + 0.25j
 FREQS = np.array([0.8e9, 1.2e9, 1.6e9])
 
 
 def _case(direction, strip_pad=.35):
+    """The independent hand coordinate is feed node 2+10 or 38-10."""
     sim = Simulation(freq_max=20e9, domain=(40 * U, 12 * U, 8 * U),
                      dx=U, cpml_layers=2, boundary="cpml")
     sim.add_material("substrate", eps_r=2.0)
@@ -36,7 +38,6 @@ def _case(direction, strip_pad=.35):
                      direction=direction, mode="uniform", eps_r_sub=2.0,
                      n_probe_offset=10, n_probe_spacing=2, n_probes=3)
     sim.add_port(position=(20 * U, 6 * U, U), component="ez", impedance=50.0, terminates=2)
-    # Independent hand coordinate: feed node 2+10 or 38-10.
     return sim, (12 if direction == "+x" else 28) * U
 
 
@@ -45,6 +46,7 @@ def _backend(target, direction, mode, captures):
 
     def fake_forward(self, grid, materials, debye_spec, lorentz_spec,
                      *, port_s11_freqs, **kwargs):
+        """Raw H[i] lives at x_i+U/2 relative to the E-node registration coordinates."""
         del materials, debye_spec, lorentz_spec, kwargs
         freqs = np.asarray(port_s11_freqs)
         n_f = len(freqs)
@@ -56,11 +58,9 @@ def _backend(target, direction, mode, captures):
             assert entry.axis == "x"
             index = grid.position_to_index((entry.coordinate, 0, 0))[0]
             if entry.component == "ez":
-                field = np.ones(yz_shape)  # Production V = sum(Ez*dz) = 2U.
+                field = np.ones(yz_shape)
                 phase = np.ones(n_f, dtype=complex)
             else:
-                # Registration coordinates denote E nodes, but raw H[i]
-                # lives at x_i+U/2. No collocation helper enters this oracle.
                 x_h = (index - grid.pad_x_lo + 0.5) * U
                 samples[entry.component].append(x_h)
                 factor = 1 + (SLOPE * (x_h - target) / U if mode["affine"] else 0)
@@ -70,10 +70,6 @@ def _backend(target, direction, mode, captures):
                     assert entry.component == "hz"
                     profile = np.broadcast_to(0.25 * y_h[:, None] / U, yz_shape)
                 field = sign * H_GAIN * factor * profile
-                # M2 history: mock physical H spectra directly. The old
-                # fixture baked in -omega*dt/2 for the consumer to undo;
-                # removing that extra correction measured .00233972 relative
-                # at the top bin, exactly the predicted half-step rotation.
                 phase = np.ones(n_f, dtype=complex)
             accumulator = (jnp.asarray(field, dtype=jnp.complex64)[None, :, :]
                            * jnp.asarray(phase, dtype=jnp.complex64)[:, None, None])
@@ -83,7 +79,6 @@ def _backend(target, direction, mode, captures):
             )
         msl_driven = self._msl_ports[0].excite
         captures.append((msl_driven, samples))
-        # Nonzero lumped incident/receive waves for both drive columns.
         v_lw = (0.2 if msl_driven else -1.0) * 2 * U * np.ones(n_f)
         i_lw = -v_lw / 50.0
         return {"lumped": [(None, (v_lw, i_lw))], "wire": None,
@@ -96,6 +91,7 @@ def _backend(target, direction, mode, captures):
 def test_mixed_affine_h_matches_constant_reference_and_refutes_single_plane(
     monkeypatch, direction,
 ):
+    """Five width-node segments and one normal segment give the oriented current contributions Hy = 5U and Hz = -0.25*5U."""
     sim, target = _case(direction)
     mode, captures = {"affine": False}, []
     monkeypatch.setattr(Simulation, "_forward_from_materials",
@@ -118,31 +114,21 @@ def test_mixed_affine_h_matches_constant_reference_and_refutes_single_plane(
     reference, ref = extract()
     mode["affine"] = True
     affine, got = extract()
-    # Five width-node segments, one normal segment: Hy contributes 5U,
-    # Hz contributes -0.25*5U, with the direction sign already oriented.
     expected_current = 0.75 * 5 * U * H_GAIN
     np.testing.assert_allclose(ref["i_msl"], expected_current, rtol=2e-6, atol=1e-12)
     np.testing.assert_allclose(got["i_msl"], expected_current, rtol=2e-6, atol=1e-12)
     for key in ("v0_msl", "v_lw", "i_lw"):
         np.testing.assert_array_equal(got[key], ref[key])
     assert np.all(np.abs(ref["i_msl"]) > 0)
-    # The lumped-driven transmission is refused; the MSL-driven receive is retained.
     assert np.isnan(reference.S[:, 0]).all()
     assert np.all(np.abs(reference.S[0, 1]) > 1e-2)
     np.testing.assert_allclose(affine.S, reference.S, rtol=2e-6, atol=2e-7)
 
-    # Explicit falsifier: restore only the old right-H sampling, keeping
-    # real temporal correction, transverse integration and S assembly.
     def right_only(planes, names, weights):
         del weights
         return tuple(jnp.asarray(planes[right].accumulator) for _, right in names)
 
     with monkeypatch.context() as mutation:
-        # #980 Phase 2 moved compute_mixed_s_matrix verbatim into
-        # rfx/sparams/mixed.py, so ``_collocated_msl_h`` is looked up as a
-        # global of THAT module now. Patching the ``rfx.api._sparams``
-        # re-export would still succeed and silently not be the binding the
-        # lane reads -- the falsifier below would then measure nothing.
         mutation.setattr(mixed_lane, "_collocated_msl_h", right_only)
         bypassed, wrong = extract()
     np.testing.assert_allclose(wrong["i_msl"], expected_current * (1 + SLOPE / 2),
@@ -152,13 +138,9 @@ def test_mixed_affine_h_matches_constant_reference_and_refutes_single_plane(
     expected_s11 = (voltage - zi) / (voltage + zi)
     expected_wrong = (voltage - zi * (1 + SLOPE / 2)) / (voltage + zi * (1 + SLOPE / 2))
     assert abs(expected_wrong - expected_s11) > 0.05
-    # The MSL wave split is formed at the line Z0 (#2014: S is then referred
-    # to the declared impedance), so it is checked on S brought back there.
     ref_line, bypassed_line = line_s(reference), line_s(bypassed)
     np.testing.assert_allclose(probe0_s(reference, ref_line)[1, 1], expected_s11, rtol=2e-6, atol=2e-7)
     np.testing.assert_allclose(probe0_s(bypassed, bypassed_line)[1, 1], expected_wrong, rtol=2e-6, atol=2e-7)
-    # The refused lumped diagonal cannot contribute a numeric difference;
-    # this falsifier measures the MSL diagonal derived immediately above.
     assert np.max(np.abs(bypassed_line[1, 1] - ref_line[1, 1])) > 0.05
 
 

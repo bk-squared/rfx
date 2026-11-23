@@ -38,12 +38,6 @@ from rfx.grid import C0
 from rfx.core.yee import FDTDState, EPS_0, MU_0
 
 
-# ---------------------------------------------------------------------------
-# Phase shift computation
-# ---------------------------------------------------------------------------
-
-
-
 def floquet_wave_vector(
     freq: float,
     theta_deg: float,
@@ -76,16 +70,6 @@ def floquet_wave_vector(
     return kx, ky, kz
 
 
-# ---------------------------------------------------------------------------
-# Bloch-periodic field wrapping
-# ---------------------------------------------------------------------------
-
-
-
-# ---------------------------------------------------------------------------
-# Floquet mode DFT accumulation
-# ---------------------------------------------------------------------------
-
 class FloquetDFTAccumulator(NamedTuple):
     """Running DFT accumulators for Floquet mode extraction.
 
@@ -94,13 +78,11 @@ class FloquetDFTAccumulator(NamedTuple):
 
     Fields are stored as complex arrays: (n_freqs, ny, nz) for a
     z-normal port, or similar for other orientations.
-    """
-    # Tangential E-field DFT on the port plane
-    e_tang1_dft: jnp.ndarray  # e.g., Ex for z-normal port
-    e_tang2_dft: jnp.ndarray  # e.g., Ey for z-normal port
-    # Tangential H-field DFT on the port plane
-    h_tang1_dft: jnp.ndarray  # e.g., Hx for z-normal port
-    h_tang2_dft: jnp.ndarray  # e.g., Hy for z-normal port
+    For a z-normal port, ``e_tang1_dft`` and ``e_tang2_dft`` contain Ex and Ey, respectively."""
+    e_tang1_dft: jnp.ndarray
+    e_tang2_dft: jnp.ndarray
+    h_tang1_dft: jnp.ndarray
+    h_tang2_dft: jnp.ndarray
 
 
 def init_floquet_dft(
@@ -125,12 +107,6 @@ def init_floquet_dft(
         h_tang2_dft=zeros,
     )
 
-
-
-
-# ---------------------------------------------------------------------------
-# Floquet mode amplitude extraction
-# ---------------------------------------------------------------------------
 
 def extract_floquet_modes(
     acc: FloquetDFTAccumulator,
@@ -171,7 +147,7 @@ def extract_floquet_modes(
         'S' : (n_modes, n_freqs) complex array of Floquet S-parameters
         'modes' : list of (m, n) mode index tuples
         'freqs' : frequency array
-    """
+    For the specular TE mode traveling in +z, Hy has the sign of Ex and satisfies ``Hy = Ex / eta_te``."""
     if int(n_modes) != 1:
         raise NotImplementedError(
             f"extract_floquet_modes only implements the specular (0,0) mode "
@@ -180,32 +156,23 @@ def extract_floquet_modes(
             f"returning only the (0,0) mode."
         )
 
-    # Spatial averaging for the (0,0) mode = mean over the plane
-    # This is the 2D spatial DFT at (kx=0, ky=0) normalized by area
-    e1_avg = jnp.mean(acc.e_tang1_dft, axis=(1, 2))  # (n_freqs,)
+    e1_avg = jnp.mean(acc.e_tang1_dft, axis=(1, 2))
     h2_avg = jnp.mean(acc.h_tang2_dft, axis=(1, 2))
 
-    # Wave impedance for the specular mode
     theta = math.radians(theta_deg)
-    eta0 = jnp.sqrt(MU_0 / EPS_0)  # ~377 ohms
+    eta0 = jnp.sqrt(MU_0 / EPS_0)
 
-    # TE mode impedance: eta_TE = eta0 / cos(theta)
     cos_theta = max(math.cos(theta), 1e-10)
     eta_te = eta0 / cos_theta
 
-    # For the specular mode, decompose into forward/backward waves
-    # using the E/H ratio. For a +z traveling wave: Hy = Ex / eta
-    # Reflected: Hy = -Ex / eta
-    # Forward amplitude: a = (E + eta*H) / 2
-    # Backward amplitude: b = (E - eta*H) / 2
-    a_te = (e1_avg + eta_te * h2_avg) / 2.0  # forward TE
-    b_te = (e1_avg - eta_te * h2_avg) / 2.0  # backward TE
+    a_te = (e1_avg + eta_te * h2_avg) / 2.0
+    b_te = (e1_avg - eta_te * h2_avg) / 2.0
 
     modes_list = [(0, 0)]
     S_00 = b_te / jnp.where(jnp.abs(a_te) > 1e-30, a_te, 1e-30)
 
     result = {
-        'S': S_00[None, :],  # (1, n_freqs)
+        'S': S_00[None, :],
         'modes': modes_list,
         'freqs': freqs,
         'forward_amplitude': a_te,
@@ -214,10 +181,6 @@ def extract_floquet_modes(
 
     return result
 
-
-# ---------------------------------------------------------------------------
-# FloquetPort configuration
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class FloquetPort:
@@ -258,21 +221,23 @@ class FloquetPort:
     scan_phi: float = 0.0
     polarization: str = "te"
     n_modes: int = 1
-    freqs: object = None  # jnp.ndarray or None
+    freqs: object = None
     n_freqs: int = 50
     f0: float | None = None
     bandwidth: float = 0.5
     amplitude: float = 1.0
 
 
-def floquet_port_source(grid, entry, freq_max, domain, n_steps):
+def floquet_port_source(grid, entry, freq_max, domain, n_steps, *, dtype):
     """The soft source a Floquet port declaration drives: ``(center, SourceSpec)``.
 
     A GaussianPulse at the centre of the port plane, on the first (TE) or
     second (TM) tangential E component. The uniform run() and forward()
     runners inject it; the source-end collector reads its table.
     """
-    from rfx.simulation import make_source
+    from rfx.model.source_coefficients import uniform_source_table
+    from rfx._internal._grid_metric import field_index
+    from rfx._internal._uniform_specs import SourceSpec
     from rfx.sources.sources import GaussianPulse
 
     f0 = entry.f0 if entry.f0 is not None else freq_max / 2
@@ -283,18 +248,11 @@ def floquet_port_source(grid, entry, freq_max, domain, n_steps):
         component = {"z": "ex", "x": "ey", "y": "ex"}[entry.axis]
     else:
         component = {"z": "ey", "x": "ez", "y": "ez"}[entry.axis]
-    return tuple(center), make_source(grid, tuple(center), component, waveform, n_steps)
+    cell = field_index(grid, tuple(center), component)
+    table = uniform_source_table(grid, cell, component, waveform, n_steps, None, dtype=dtype)
+    return tuple(center), SourceSpec(i=cell[0], j=cell[1], k=cell[2],
+                                     component=component, waveform=table)
 
-
-# ---------------------------------------------------------------------------
-# Plane-wave source injection for Floquet excitation
-# ---------------------------------------------------------------------------
-
-
-
-# ---------------------------------------------------------------------------
-# Floquet S-parameter extraction from a completed simulation
-# ---------------------------------------------------------------------------
 
 def compute_floquet_s_params(
     acc_inc: FloquetDFTAccumulator,
@@ -349,14 +307,13 @@ def compute_floquet_s_params(
     -------
     dict with 'S11', 'S21' (if transmission plane exists), 'freqs'.
     """
-    # Extract specular mode amplitudes
     inc_modes = extract_floquet_modes(
         acc_inc, dx, Lx, Ly, freqs, theta_deg, phi_deg)
     ref_modes = extract_floquet_modes(
         acc_ref, dx, Lx, Ly, freqs, theta_deg, phi_deg)
 
     result = {
-        'S11': ref_modes['S'][0, :],  # (n_freqs,) — (0,0) mode reflection
+        'S11': ref_modes['S'][0, :],
         'freqs': freqs,
     }
 
@@ -372,7 +329,6 @@ def compute_floquet_s_params(
     return result
 
 
-# Lazy compatibility exports keep record definitions free of import cycles.
 _LAZY_EXPORTS = {
     "floquet_phase_shift": "rfx.measurement.floquet",
     "inject_floquet_source": "rfx.stepping.floquet",

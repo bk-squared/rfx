@@ -1,4 +1,6 @@
-"""PMC graded solves refuse each requested record instead of returning empties."""
+"""PMC graded solves refuse each requested record instead of returning empties.
+Moments reject PMC because an electric-current monitor cannot see its magnetic surface current.
+"""
 import pytest
 import numpy as np
 
@@ -11,10 +13,10 @@ from tests.unit.runners._graded_records_scene import record, mutation_result
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 @pytest.mark.parametrize('kind', ['planes', 'flux', 'snapshots', 'moments', 'planes_flux'])
 def test_pmc_record_refusal(kind, entry):
+    """Public forward has no snapshot keyword."""
     grading = (dict(dz_profile=np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 8), 1e-3])
                if kind == 'moments' else
                dict(dx_profile=np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 13), 1e-3]))
-    # main's solved lengths on the graded mesh (round): 15.3 -> 15, 8.7 -> 9 mm; #1887
     sim = Simulation(freq_max=15e9, domain=(15e-3, 9e-3, 10.1e-3), dx=1e-3,
         **grading,
         boundary=BoundarySpec(x=Boundary('pec', 'pmc'), y='pec', z='pec'))
@@ -31,8 +33,6 @@ def test_pmc_record_refusal(kind, entry):
     if kind == 'moments':
         sim.add_current_moment_monitor((2e-3, 1e-3, 1e-3), (12e-3, 7e-3, 8e-3),
                                       block_size=2e-3, freqs=[3e9])
-    # Public forward has no snapshot keyword. Moments reject PMC because an
-    # electric-current monitor cannot see its magnetic surface current.
     expected_type = TypeError if (kind, entry) == ('snapshots', 'forward') else NotImplementedError
     words = {'planes': ('DFT planes',), 'flux': ('flux monitors',),
              'snapshots': ('snapshot',), 'moments': ('current-moment',),

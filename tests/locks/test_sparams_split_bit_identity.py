@@ -2,8 +2,8 @@
 
 Issue #980 Phase 2 breaks the 8 647-line ``rfx/api/_sparams.py`` into
 ``rfx/sparams/`` a piece at a time. Every step is PURE CODE MOTION, and
-``docs/agent-memory/development_methodology.md`` §2.2 gates a code-motion
-refactor on BIT IDENTITY -- ``np.array_equal`` on the raw arrays, never a
+the code-motion rule gates a
+refactor on BIT IDENTITY before and after -- ``np.array_equal`` on the raw arrays, never a
 tolerance -- not on "the physics still looks right".
 
 This module is that gate. It drives each public ``compute_*`` S-matrix leg
@@ -119,17 +119,6 @@ _SKIP_REASON = (
 )
 
 
-# ---------------------------------------------------------------------------
-# The re-export surface. Every module-level name bound by rfx/api/_sparams.py
-# at 060cb916, i.e. the pre-split main. Regenerate with:
-#   python -c "import rfx.api._sparams as m; print(sorted(n for n in vars(m) \
-#              if not (n.startswith('__') and n.endswith('__'))))"
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# Fixtures. Copied verbatim from the test modules named in the docstring so
-# this lock is frozen against later edits to those files; the baseline is
-# meaningless if the geometry it was captured on can drift underneath it.
-# ---------------------------------------------------------------------------
 
 _WG_FREQS = np.linspace(4e9, 6e9, 6)
 
@@ -143,16 +132,11 @@ def _waveguide_result(normalize):
     return sim.compute_waveguide_s_matrix(normalize=normalize, num_periods=1)
 
 
-# --- msl: _thru() of tests/unit/sparams/test_msl_passivity_enforcement.py ---
 _MSL_FREQS = jnp.linspace(2e9, 18e9, 16)
 
 
 def _msl_result():
-    # #1138: the 1.2 mm trace is solved as 1.34 mm (+11.67 %); this A/B lock
-    # checks bit identity across a code move, not sheet size.
-    # #1512: the strip spans the port nodes (2 and 10 mm), as _thru() of
-    # test_msl_passivity_enforcement.py; drawn across the domain it left 2 mm
-    # open stubs (quarter wave near 23.8 GHz) that the line-stub preflight refuses.
+    """The 1.2 mm trace is solved as 1.34 mm (+11.67%) by the preflight effective-size rule, so the bit-identity lock keeps the declared geometry on purpose."""
     sim = Simulation(freq_max=20e9, domain=(0.012, 0.008, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8, snap="declared")
     sim.add_material("sub", eps_r=2.2)
@@ -166,7 +150,6 @@ def _msl_result():
     return sim.compute_msl_s_matrix(freqs=_MSL_FREQS, num_periods=2.0)
 
 
-# --- mixed: Layer-1c smoke of tests/unit/sparams/test_mixed_port_sparam.py ---
 _MIXED_EPS_R = 3.66
 _MIXED_H_SUB = 254e-6
 _MIXED_W_TRACE = 600e-6
@@ -196,7 +179,6 @@ def _mixed_result():
     )
 
 
-# --- coax line: geometry of _run() in test_coaxial_line_reflection.py --------
 _COAX_BAND = jnp.asarray([4.0e9, 6.0e9, 8.0e9, 10.0e9, 12.0e9])
 
 
@@ -209,7 +191,6 @@ def _coax_line_result():
         termination="short", n_steps=400, freqs=_COAX_BAND)
 
 
-# --- coax two-port: _coax_two_port_sim() of test_settling_witness.py ---------
 def _coax_two_port_result():
     sim = Simulation(domain=(0.008, 0.008, 0.060), freq_max=40.0e9,
                      boundary="cpml")
@@ -218,7 +199,6 @@ def _coax_two_port_result():
     return sim.compute_coaxial_two_port(n_steps=400, freqs=_COAX_BAND)
 
 
-# --- coax <-> msl transition: tests/_coax_msl_instrument_fixture -------------
 def _coax_msl_result():
     from tests._coax_msl_instrument_fixture import (
         build_instrument_junction, instrument_kwargs,
@@ -228,11 +208,6 @@ def _coax_msl_result():
     return sim.compute_coax_msl_transition(**instrument_kwargs(200))
 
 
-# ---------------------------------------------------------------------------
-# (leg id, builder, numeric fields to pin). The field lists enumerate every
-# numeric field the result dataclass carries, so a field cannot escape the
-# witness by being forgotten here.
-# ---------------------------------------------------------------------------
 _LEGS = (
     ("waveguide", lambda: _waveguide_result(False),
      ("s_params", "freqs", "reference_planes", "settling_db",
@@ -240,13 +215,6 @@ _LEGS = (
     ("waveguide_flux", lambda: _waveguide_result("flux"),
      ("s_params", "freqs", "reference_planes", "settling_db",
       "s21_phase_residual_deg_rms")),
-    # sigma_max_excess joined MSLSMatrixResult when enforce_passivity stopped
-    # being the default (PI, 2026-09-21): a numeric field the dataclass
-    # carries, so the witness has to name it. On this leg's own record the
-    # projection was active only in the float32 noise around a passive
-    # |S21| = 1 thru (raw sigma_max 1.000000003 to 1.000000119), so S_raw and
-    # passivity_correction were set and now are not -- both legs' baselines
-    # predate that and this lock skips without one.
     ("msl", _msl_result,
      ("S", "freqs", "Z0", "beta", "reliable", "settling_db", "S_raw",
       "passivity_correction", "sigma_max_excess", "cond_a",
@@ -314,14 +282,12 @@ def _capturing() -> bool:
 
 @pytest.mark.parametrize("leg,build,fields", _LEGS, ids=[leg for leg, _, _ in _LEGS])
 def test_sparam_leg_is_bit_identical_to_the_pre_split_baseline(leg, build, fields):
+    """A NaN witness slot is a legitimate value and must compare equal to the same NaN slot in the baseline."""
     base = _baseline_dir()
     if base is None:
         pytest.skip(_SKIP_REASON)
 
     with warnings.catch_warnings():
-        # These records are deliberately truncated, and some legs warn by
-        # design. The warnings are not what this gate measures;
-        # the advisory behaviour itself is pinned in tests/unit/sparams.
         warnings.simplefilter("ignore")
         result = build()
     got = _snapshot(result, fields)
@@ -352,10 +318,6 @@ def test_sparam_leg_is_bit_identical_to_the_pre_split_baseline(leg, build, field
         a, b = got[key], ref[key]
         assert a.dtype == b.dtype, f"{leg}.{key}: dtype {a.dtype} != {b.dtype}"
         assert a.shape == b.shape, f"{leg}.{key}: shape {a.shape} != {b.shape}"
-        # np.array_equal, no tolerance: methodology 2.2 gates code motion on
-        # bit identity. equal_nan=True because a NaN witness slot (e.g. the
-        # differentiable coax path's settling_db) is a legitimate value here
-        # and must compare equal to the same NaN slot in the baseline.
         if np.issubdtype(a.dtype, np.floating) or np.issubdtype(a.dtype, np.complexfloating):
             same = np.array_equal(a, b, equal_nan=True)
         else:
@@ -376,9 +338,10 @@ def test_sparam_leg_is_bit_identical_to_the_pre_split_baseline(leg, build, field
 
 
 def _first_mismatch(a: np.ndarray, b: np.ndarray) -> str:
+    """NaN == NaN for the mismatch report."""
     flat_a, flat_b = np.ravel(a), np.ravel(b)
     for i in range(flat_a.size):
         x, y = flat_a[i], flat_b[i]
-        if x != y and not (x != x and y != y):        # NaN == NaN for this report
+        if x != y and not (x != x and y != y):
             return f"index {np.unravel_index(i, a.shape)}: {x!r} != {y!r}"
     return "(none found — arrays differ only in a way this scan cannot see)"

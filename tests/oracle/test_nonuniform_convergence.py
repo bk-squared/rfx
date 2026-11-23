@@ -7,12 +7,6 @@ as dz_substrate is refined. Uses a PEC cavity with thin FR4 slab.
 import numpy as np
 import pytest
 
-# CORE-C2 (2026-05-16): the module was marked `gpu`, which excluded it
-# from the default and `-m slow` gates — so the only non-uniform-mesh
-# physics test never ran in CI. These tests are CPU-runnable; the slow
-# resonance scan keeps a `@pytest.mark.slow` mark, the fast CFL check
-# now runs in the default gate.
-
 
 def test_nonuniform_z_convergence():
     """Non-uniform z-mesh: the measured resonance must converge as the
@@ -24,29 +18,28 @@ def test_nonuniform_z_convergence():
     shrinking amount), not an accuracy check against an analytic
     value. The precise per-stencil guard for the non-uniform Yee
     metric is ``test_review_tier1_validation_battery.py::test_corec2_*``.
+    Smooth grading avoids abrupt cell-size transitions that cause numerical reflections.
     """
     from rfx import Simulation, Box, GaussianPulse
     from rfx.auto_config import smooth_grading
     from rfx.grid import C0
 
     a, b = 50e-3, 40e-3
-    h_sub = 1.6e-3   # FR4 substrate thickness
-    h_air = 20e-3     # air above
+    FR4_SUBSTRATE_THICKNESS_M = 1.6e-3
+    h_sub = FR4_SUBSTRATE_THICKNESS_M
+    AIR_HEIGHT_M = 20e-3
+    h_air = AIR_HEIGHT_M
     eps_r = 4.4
 
-    # Analytical: cavity TM110 with partial dielectric
     f_empty = (C0 / 2) * np.sqrt((1 / a) ** 2 + (1 / b) ** 2)
 
     results = []
     for dz_sub in [0.8e-3, 0.4e-3, 0.2e-3]:
         dx = 2e-3
-        # Build dz profile: fine in substrate, coarse in air
         n_sub = max(2, int(np.ceil(h_sub / dz_sub)))
-        dz_air = dx  # coarse in air
+        dz_air = dx
         n_air = max(2, int(np.ceil(h_air / dz_air)))
         dz_raw = [dz_sub] * n_sub + [dz_air] * n_air
-        # Apply smooth grading to avoid abrupt cell-size transitions
-        # (e.g. 0.2mm→2mm = 10x ratio causes numerical reflections)
         dz_profile = list(smooth_grading(dz_raw, max_ratio=1.3))
 
         sim = Simulation(
@@ -72,10 +65,6 @@ def test_nonuniform_z_convergence():
         results.append((dz_sub, f_sim))
         print(f"  dz_sub={dz_sub*1e3:.1f}mm: f={f_sim/1e9:.4f} GHz")
 
-    # Cauchy convergence (oracle-free): as dz_sub is refined the measured
-    # resonance must approach a limit — each refinement step must move
-    # f_sim by a shrinking amount. A non-convergent stencil (e.g. the
-    # pre-2026-05-16 CORE-C2 spacing bug) fails this.
     freqs_sim = [f for _, f in results]
     assert all(f > 0 for f in freqs_sim), (
         f"resonance not found at every refinement level: {results}"
@@ -96,7 +85,7 @@ def test_nonuniform_cfl_uses_min_dz():
     from rfx.grid import C0
 
     dx = 5e-3
-    dz_raw = [0.2e-3] * 8 + [5e-3] * 4  # min dz = 0.2mm
+    dz_raw = [0.2e-3] * 8 + [5e-3] * 4
     dz_profile = list(smooth_grading(dz_raw, max_ratio=1.3))
 
     sim = Simulation(
@@ -108,7 +97,6 @@ def test_nonuniform_cfl_uses_min_dz():
     )
 
     grid = sim._build_nonuniform_grid()
-    # Non-uniform CFL: dt = CFL / (C0 * sqrt(1/dx² + 1/dy² + 1/min(dz)²))
     min_dz = min(dz_profile)
     dt_expected_max = 0.99 / (C0 * np.sqrt(1/dx**2 + 1/dx**2 + 1/min_dz**2))
 
@@ -117,6 +105,5 @@ def test_nonuniform_cfl_uses_min_dz():
     assert grid.dt <= dt_expected_max * 1.01, (
         f"dt={grid.dt:.2e} exceeds CFL ({dt_expected_max:.2e})"
     )
-    # Also verify dt < dt_uniform (min_dz makes it stricter than dx alone)
     dt_uniform = dx / (C0 * np.sqrt(3))
     assert grid.dt < dt_uniform, "Non-uniform dt should be < uniform dt when min_dz < dx"

@@ -11,7 +11,6 @@ from rfx.boundaries.spec import BoundarySpec
 
 
 def model(dx=.001, *, snap="strict"):
-    # #1138: geometry[0]/thin_conductor[0] solved up to +35 % off; this test checks periodic seam fields.
     return Simulation(20e9, (.010, .006, .004), dx=dx, cpml_layers=0, snap=snap,
                       boundary=BoundarySpec(x='periodic', y='pec', z='pec'))
 
@@ -40,8 +39,7 @@ def _check_loaded_trace(actual, reference):
 @pytest.mark.parametrize('dx', [.001, .0005])
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_wire_ending_at_period_loads_only_last_edges(dx, entry):
-    # Independent public point loads name each edge directly. Their series
-    # impedances sum to 50 ohm; they never resolve an interval endpoint.
+    """The independent public point loads have series impedances summing to 50 ohm."""
     _check_loaded_trace(loaded_trace(dx, entry=entry),
                         loaded_trace(dx, point_loads=True, entry=entry))
 
@@ -97,6 +95,7 @@ def test_positive_subcell_filament_radius_at_period_refuses(jit):
 
 
 def test_microstrip_plane_and_substrate_endpoint_at_period():
+    """Width includes both nodes: 4, 5, 6 mm with 6 mm identified with zero; the 3--4 mm substrate height contains one E edge, not two nodes."""
     from rfx.grid import Grid
     from rfx.sources.msl_port import MSLPort, _msl_yz_cells, msl_h_plane_stencil
     grid = Grid(20e9, (.010, .006, .004), dx=.001, cpml_layers=0,
@@ -104,8 +103,6 @@ def test_microstrip_plane_and_substrate_endpoint_at_period():
     def port(feed):
         return MSLPort(feed_x=feed, y_lo=.004, y_hi=.006, z_lo=.003,
                        z_hi=.004, direction='+x', impedance=50.)
-    # Width includes both nodes: 4, 5, 6 mm with 6 mm identified with zero.
-    # The 3--4 mm substrate height contains one E edge, not two nodes.
     assert _msl_yz_cells(grid, port(.010)) == _msl_yz_cells(grid, port(0.)) == [(0, 4, 3), (0, 5, 3), (0, 0, 3)]
     assert msl_h_plane_stencil(grid, port(.010), .010) == msl_h_plane_stencil(grid, port(0.), 0.)
 
@@ -118,7 +115,6 @@ def test_thin_sheet_at_period_has_zero_plane_edges(kind, snap):
     from rfx.boundaries.pec import realized_pec_edge_masks
     footprints = []
     for x in (0., .010):
-        # f0 sheet size is not this test's subject (sheet_effective_size)
         sim = model(snap="declared" if kind == "surface_impedance" else snap)
         options = {'surface_impedance_f0': 10e9} if kind == 'surface_impedance' else {}
         if kind == 'dc':
@@ -191,6 +187,7 @@ def _check_sheet_extent(actual, expected):
     ('surface_impedance', 'strict'), ('pinned', 'strict'),
 ])
 def test_sheet_tangential_interval_keeps_last_edge_without_wrapping_its_start(start, kind, snap):
+    """Transverse edges lie on endpoint plane L = 0."""
     from rfx.boundaries.pec import realized_pec_edge_masks
     from rfx.materials.thin_conductor import build_sheet_impedance_ctx
     sim = model(snap=snap)
@@ -223,7 +220,7 @@ def test_sheet_tangential_interval_keeps_last_edge_without_wrapping_its_start(st
     i = round(start/.001)
     expected[0][i:10, 1:6, 2] = True
     expected[1][i:10, 1:5, 2] = True
-    expected[1][0, 1:5, 2] = True  # transverse edges on endpoint plane L = 0
+    expected[1][0, 1:5, 2] = True
     _check_sheet_extent(actual, expected)
 
 
@@ -248,6 +245,7 @@ def test_box_ending_at_period_keeps_last_cell():
 
 
 def test_traced_volume_bounds_preserve_sampling_and_refuse_distant_images():
+    """A fill can cross the seam; traced bounds use the fixed [-L,2L] window."""
     import jax
     import jax.numpy as jnp
     from rfx import Sphere
@@ -258,7 +256,6 @@ def test_traced_volume_bounds_preserve_sampling_and_refuse_distant_images():
         return sim._assemble_materials(sim._build_grid())[0].eps_r
     radius = jnp.float32(.0013)
     np.testing.assert_array_equal(jax.jit(material)(radius), material(radius))
-    # A fill can cross the seam; traced bounds use the fixed [-L,2L] window.
     np.testing.assert_array_equal(jax.jit(material)(jnp.float32(.006)),
                                   material(jnp.float32(.006)))
     with pytest.raises(Exception, match="axis 'x'.*bounds.*L=0.01"):
@@ -266,6 +263,7 @@ def test_traced_volume_bounds_preserve_sampling_and_refuse_distant_images():
 
 
 def test_forward_design_box_resolves_before_existing_seam_refusal():
+    """The localized adjoint refuses a periodic-face box because its write window cannot wrap."""
     import jax.numpy as jnp
     sim = model()
     sim.add_source((.007, .002, .002), 'ex', amplitude_kind='field')
@@ -273,8 +271,6 @@ def test_forward_design_box_resolves_before_existing_seam_refusal():
     bounds = ((.009, .001, .001), (.010, .003, .002))
     grid = sim._build_grid()
     assert sim._design_box_bounds_from_corners(grid, bounds) == (9, 10, 1, 4, 1, 3)
-    # The localized adjoint already refuses a periodic-face box because
-    # its write window cannot wrap. It must see the intended final cell.
     with pytest.raises(NotImplementedError, match=r'PERIODIC x face.*cells \[9, 10\)'):
         sim.forward(n_steps=8, design_box=bounds,
                     design_eps_override=jnp.full((1, 3, 2), 4.), skip_preflight=True)

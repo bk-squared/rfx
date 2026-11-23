@@ -29,7 +29,7 @@ ADE is involved in).
 The continuous inversion has one discrete term of its own on the surface: a
 real interface conductance G (:func:`interface_conductance`), which reads
 as Re Z = G |Z|^2 on a reactive load (1.4 % of |Z| at 250 ohm, 8 GHz). Every
-row is judged with G removed (PI decision, #1245); in vacuum G = 0.
+row is judged with G removed (#1245); in vacuum G = 0.
 
 MEASURED over 1-8 GHz with the edge D0, raw -> with G removed: folded
 100 ohm within 0.33 % -> 0.23 %; series 100 ohm + 1 nH within 0.46 % ->
@@ -38,6 +38,7 @@ MEASURED over 1-8 GHz with the edge D0, raw -> with G removed: folded
 With the single-cell D0 restored: the
 parallel 2 nH off by 60 % (21.09 against 13.18 ohm at 1.05 GHz) and the
 series element reading 160 ohm; the vacuum row unchanged.
+Sheet and source planes are in cells from the domain's z = 0.
 """
 from __future__ import annotations
 
@@ -58,13 +59,12 @@ GATE = 520
 N_FFT = 6000
 BAND = (1e9, 8e9)
 EPS2 = 4.0
-#: Sheet and source planes, in cells from the domain's z = 0 (16 CPML cells
-#: sit below it, so the nodes are 236 and 176).
 K_SHEET = 220
 K_SOURCE = 160
 
 
 def _sheet_run(load, eps2):
+    """The wider Box exercises material filling from periodic images."""
     sim = Simulation(
         freq_max=10e9, domain=(DX, DX, LZ), dx=DX, cpml_layers=16,
         boundary=BoundarySpec(x=Boundary(lo="periodic", hi="periodic"),
@@ -72,11 +72,9 @@ def _sheet_run(load, eps2):
                               z=Boundary(lo="cpml", hi="cpml")))
     grid = sim._build_grid()
     nx, ny = int(grid.shape[0]), int(grid.shape[1])
+    assert nx == ny == 1, "Each declared periodic axis must realize one cell."
     z_s, z_src = K_SHEET * DX, K_SOURCE * DX
     if eps2 is not None:
-        # Each declared periodic axis realizes one cell (N=L/dx). Keep the
-        # wider Box to exercise material filling from periodic images;
-        # the whole realized cross-section is asserted below.
         sim.add_material("half_space", eps_r=eps2)
         sim.add(Box((-2 * DX, -2 * DX, z_s), (4 * DX, 4 * DX, LZ)),
                 material="half_space")
@@ -90,7 +88,6 @@ def _sheet_run(load, eps2):
     sim.add_probe((0.0, 0.0, z_s), "ex")
     k_s = int(grid.position_to_index((0.0, 0.0, z_s))[2])
     if load is not None:
-        # Realized, not declared: one element on every x edge of the plane.
         idx = sorted(tuple(int(v) for v in grid.position_to_index(e.position))
                      for e in sim._lumped_rlc)
         assert idx == sorted((i, j, k_s) for i in range(nx) for j in range(ny))
@@ -156,7 +153,7 @@ def _z_load_raw(ts, incident, eps2):
 
 
 def _z_load(ts, incident, eps2):
-    """Z_L with the interface conductance removed (PI decision, #1245): the
+    """Z_L with the interface conductance removed (#1245): the
     extraction every row is judged on. In vacuum G = 0 and this is the raw
     inversion."""
     f, z_raw = _z_load_raw(ts, incident, eps2)
@@ -173,8 +170,6 @@ def test_folded_resistor_on_the_surface_reads_its_value(incident):
     assert err.max() < 0.01, f"folded 100 ohm read {z[np.argmax(err)]:.2f} ohm at {f[np.argmax(err)] / 1e9:.2f} GHz"
 
 
-#: A lumped inductor is lossless: |Re Z_L| and |Im Z_L - w L| within 1 % of
-#: w L on every bin (#1245).
 BAR_L = 0.01
 
 
@@ -217,11 +212,7 @@ def test_parallel_inductor_is_lossless_and_reads_its_reactance(incident, eps2, l
         f"against {x_true[m]:.2f} ohm at {f[m] / 1e9:.2f} GHz ({err[m]:.2%}; bar {BAR_L:.0%})")
 
 
-#: The folded capacitor with the 5 nH row's |Z| at 8 GHz (249.9 ohm against
-#: 251.3 ohm): no inductor code, no ADE, only the edge permittivity.
 C_WITNESS = 0.0796e-12
-#: Re Z_raw = G |Z|^2 per bin, relative to |Z|. MEASURED residual 4.0e-6; the
-#: term it checks is 1.4e-2 of |Z| at 8 GHz.
 IDENTITY_BAR = 1e-4
 
 
@@ -237,6 +228,7 @@ def test_folded_capacitor_witnesses_the_interface_term(incident):
     |Re Z|/|Z| <= 4.0e-6 and |Im Z - X_C|/|X_C| <= 0.31 %. G read back from
     this load, Re(1/Z_raw), is -5.5977e-5 S at 7.95 GHz against the closed
     form's -5.5978e-5 S (2 nH: -5.5978e-5, 5 nH: -5.5979e-5).
+    The folded capacitor has the 5 nH row's |Z| at 8 GHz (249.9 ohm against 251.3 ohm).
     """
     ts, _ = _sheet_run(lambda s, p: s.add_lumped_rlc(
         position=p, component="ex", C=C_WITNESS, topology="parallel"), EPS2)

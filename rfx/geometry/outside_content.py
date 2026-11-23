@@ -8,6 +8,10 @@ exactly with the normal line, the pieces are painted in declaration order
 and merged by medium identity, and a segment of the line (a Yee cell, a
 node cell, a triplet edge or dual face) gets its mean permittivity, mean
 inverse permittivity, the one-medium select and its medium bounds.
+For a Yee sample it also gives the sample's own material on the line: the
+merged runs of its own group's bodies, the fill they leave in the support
+and the gaps between them, so that a planar body with both faces inside the
+support is averaged with its own length and the media on both sides.
 ``rfx.geometry.smoothing`` (Yee samples), ``rfx.geometry.node_tensor``
 (node xi) and ``rfx.geometry.triplet_tensor`` (planar triplets) read it.
 """
@@ -19,12 +23,28 @@ from typing import Any, NamedTuple
 import jax
 import numpy as np
 
+from rfx.model.line_streams import _merge_stream, _own_stream
+
 
 class _LinePieces(NamedTuple):
     lo: Any
     hi: Any
     eps: Any
     face: Any
+    own: Any = None
+
+
+class _OwnRuns(NamedTuple):
+    """The own group's material on a sample's normal support.
+
+    ``thin`` marks samples where one merged run of planar own bodies has
+    both ends strictly inside the support; ``fill`` is the length of all
+    own runs inside the support over its length; ``gaps`` are the support's
+    portions outside every own run, as (start, end) pairs.
+    """
+    thin: Any
+    fill: Any
+    gaps: Any
 
 
 class _SegmentContent(NamedTuple):
@@ -33,6 +53,25 @@ class _SegmentContent(NamedTuple):
     single: Any
     eps_min: Any
     eps_max: Any
+
+
+def _slab_interval(xp, p, n, center, half, low, high, reach):
+    """The interval of p + t*n between two parallel planes of one axis."""
+    moving = n != 0
+    a = xp.where(moving, low - p, 0) / xp.where(moving, n, 1)
+    b = xp.where(moving, high - p, 0) / xp.where(moving, n, 1)
+    inside = xp.abs(p - center) - half <= 0
+    return (xp.where(moving, xp.minimum(a, b), xp.where(inside, -reach, reach)),
+            xp.where(moving, xp.maximum(a, b), xp.where(inside, reach, -reach)))
+
+
+def _axial_interval(xp, shape, points, normal, reach):
+    """A Cylinder's interval between its two end caps, clipped to the window."""
+    a = 'xyz'.index(shape.axis)
+    center, half = shape.center[a], shape.height / 2.0
+    lo, hi = _slab_interval(xp, points[a], normal[a], center, half,
+                            center - half, center + half, reach)
+    return xp.maximum(lo, -reach), xp.minimum(hi, reach)
 
 
 def _line_interval(xp, shape, points, normal, reach):
@@ -46,28 +85,18 @@ def _line_interval(xp, shape, points, normal, reach):
 
     lo, hi = -reach, reach
 
-    def slab(p, n, center, half, low, high):
-        moving = n != 0
-        a = xp.where(moving, low - p, 0) / xp.where(moving, n, 1)
-        b = xp.where(moving, high - p, 0) / xp.where(moving, n, 1)
-        inside = xp.abs(p - center) - half <= 0
-        return (xp.where(moving, xp.minimum(a, b), xp.where(inside, -reach, reach)),
-                xp.where(moving, xp.maximum(a, b), xp.where(inside, reach, -reach)))
-
     if isinstance(shape, Box):
         low, high = xp.array(shape.corner_lo), xp.array(shape.corner_hi)
         center, half = (low + high) / 2.0, (high - low) / 2.0
         for a in range(3):
-            left, right = slab(points[a], normal[a], center[a], half[a], low[a], high[a])
+            left, right = _slab_interval(xp, points[a], normal[a], center[a], half[a],
+                                         low[a], high[a], reach)
             lo, hi = xp.maximum(lo, left), xp.minimum(hi, right)
     else:
         axes = list(range(3))
         if isinstance(shape, Cylinder):
-            a = 'xyz'.index(shape.axis)
-            axes.remove(a)
-            center, half = shape.center[a], shape.height / 2.0
-            lo, hi = slab(points[a], normal[a], center, half, center - half, center + half)
-            lo, hi = xp.maximum(lo, -reach), xp.minimum(hi, reach)
+            axes.remove('xyz'.index(shape.axis))
+            lo, hi = _axial_interval(xp, shape, points, normal, reach)
         delta = [points[a] - shape.center[a] for a in axes]
         ns = [normal[a] for a in axes]
         aa = sum(n * n for n in ns)
@@ -92,12 +121,14 @@ def _line_interval(xp, shape, points, normal, reach):
 
 def _outside_pieces(xp, groups, current, coords, distance, normal, length,
                     background, masks, grid, *, normal_source, normal_image,
-                    best_s, nominal_h_max=None):
+                    best_s, nominal_h_max=None, own_fill=False):
     """Paint and merge the normal line once, in original declaration order.
 
     Shapes are filtered only with concrete declared bounds and widths.
     Medium identities, rather than equal traced values, decide merging.
     The finite window contains every non-bulk Yee/node/triplet support.
+    With ``own_fill`` the result also carries the current group's own runs
+    (:func:`_own_runs`) over the support [-length/2, length/2].
     """
     from itertools import product
     import math
@@ -140,6 +171,7 @@ def _outside_pieces(xp, groups, current, coords, distance, normal, length,
     entries = getattr(groups, 'declared', tuple((s, eps) for eps, group in groups.values() for s in group))
     declaration_groups = getattr(groups, 'declaration_groups', None)
     intervals = []
+    own_lines = []
     face = -distance
     keys: dict = {}
     source_count = 0
@@ -170,6 +202,9 @@ def _outside_pieces(xp, groups, current, coords, distance, normal, length,
             shifted = tuple(p + k * float(grid.domain[a]) if k else p
                             for a, (p, k) in enumerate(zip(coords, image)))
             lo, hi = _line_interval(xp, shape, shifted, normal, reach)
+            if own_fill and source_index >= 0:
+                # The own body's whole interval, the normal source included.
+                own_lines.append((lo, hi, _planar_line(xp, shape, shifted, normal, reach, lo, hi)))
             excluded = normal_source == source_index
             for k, source in zip(image, normal_image):
                 excluded = excluded & (k == source)
@@ -197,24 +232,48 @@ def _outside_pieces(xp, groups, current, coords, distance, normal, length,
             merge_code = xp.where(background == eps, 0, code)
         values = xp.where(inside, eps, values)
         codes = xp.where(inside, merge_code, codes)
-    # Stream through positive pieces. Empty sort slots cannot split a run.
-    start, end, value, code = low[0], low[0], values[0], codes[0]
-    merged_lo, merged_hi, merged_eps = [], [], []
-    for i in range(low.shape[0]):
-        positive = high[i] > low[i]
-        change = positive & (end > start) & (codes[i] != code)
-        merged_lo.append(start)
-        merged_hi.append(xp.where(change, end, start))
-        merged_eps.append(value)
-        new = positive & ((end == start) | change)
-        start = xp.where(new, low[i], start)
-        value = xp.where(new, values[i], value)
-        code = xp.where(new, codes[i], code)
-        end = xp.where(positive, high[i], end)
-    merged_lo.append(start)
-    merged_hi.append(end)
-    merged_eps.append(value)
-    return _LinePieces(xp.stack(merged_lo), xp.stack(merged_hi), xp.stack(merged_eps), face)
+    merged_lo, merged_hi, merged_eps = _merge_stream(xp, low, high, values, codes)
+    own = _own_runs(xp, own_lines, length, reach, broadcast.shape) if own_lines else None
+    return _LinePieces(merged_lo, merged_hi, merged_eps, face, own)
+
+
+def _planar_line(xp, shape, points, normal, reach, lo, hi):
+    """Whether a body's interval on this line lies between parallel planes.
+
+    A Box's does only for a normal with one nonzero component. A Cylinder's
+    does only where both ends are its end caps, not its curved side. A Sphere's never does: a chord is not a
+    laminate, so a thin Sphere keeps the one-face fill.
+    """
+    from rfx.geometry.csg import Box, Cylinder
+    if isinstance(shape, Box):
+        return sum((n != 0).astype(xp.int32) for n in normal) == 1
+    if isinstance(shape, Cylinder):
+        cap_lo, cap_hi = _axial_interval(xp, shape, points, normal, reach)
+        return (lo == cap_lo) & (hi == cap_hi)
+    return False
+
+
+def _own_runs(xp, lines, length, reach, shape):
+    """Merge the own group's intervals into runs over the support.
+
+    Intervals that overlap or abut form one run; an empty interval (lo >= hi)
+    takes no part. A run is planar when every interval in it is planar
+    (:func:`_planar_line`). A sample is thin where some planar run has both
+    ends strictly inside (-length/2, length/2): the one-face fill
+    ``0.5 - sdf/length`` then misses the run's far face. The fill counts every
+    own run inside the support; the gaps are the rest of the support.
+    """
+    half = length / 2
+    far = 2 * reach  # beyond the window, so an empty interval sorts last
+    lo = xp.stack([xp.broadcast_to(a, shape) for a, _, _ in lines])
+    hi = xp.stack([xp.broadcast_to(b, shape) for _, b, _ in lines])
+    flat = xp.stack([xp.broadcast_to(xp.asarray(p), shape) for _, _, p in lines])
+    valid = lo < hi
+    lo, hi = xp.where(valid, lo, far), xp.where(valid, hi, far)
+    order = xp.argsort(lo, axis=0)
+    lo, hi, flat = (xp.take_along_axis(a, order, axis=0) for a in (lo, hi, flat))
+    thin, inside, gaps = _own_stream(xp, lo, hi, flat, half, shape)
+    return _OwnRuns(thin, inside / length, gaps)
 
 
 def _depth_cdf(xp, depth, alpha, beta):
@@ -230,18 +289,24 @@ def _depth_cdf(xp, depth, alpha, beta):
     return xp.where(a > 0, xp.where(both, trapezoid, uniform), (depth > 0).astype(u.dtype))
 
 
-def _segment_content(xp, pieces, face, end, *, start=None, cdf=None):
+def _segment_content(xp, pieces, face, end, *, start=None, cdf=None, gaps=None):
     """Return (<eps>, <1/eps>, single, eps_min, eps_max) on a portion.
 
-    CDF weights integrate a dual face; otherwise depth is uniform. A
-    zero-weight portion takes the right-hand medium at the source face.
-    A single merged piece returns its original operand without a sum.
+    CDF weights integrate a dual face; otherwise depth is uniform. ``gaps``
+    replaces the portion [face, end] by a union of (start, end) portions,
+    weighted by length. A zero-weight portion takes the right-hand medium
+    at the source face. A single merged piece returns its original operand
+    without a sum.
     """
-    start = face if start is None else xp.maximum(face, start)
-    end = xp.maximum(start, end)
-    lo = xp.maximum(pieces.lo, start)
-    hi = xp.maximum(lo, xp.minimum(pieces.hi, end))
-    weight = hi - lo if cdf is None else cdf(hi) - cdf(lo)
+    if gaps is None:
+        start = face if start is None else xp.maximum(face, start)
+        end = xp.maximum(start, end)
+        lo = xp.maximum(pieces.lo, start)
+        hi = xp.maximum(lo, xp.minimum(pieces.hi, end))
+        weight = hi - lo if cdf is None else cdf(hi) - cdf(lo)
+    else:
+        weight = sum(xp.maximum(xp.minimum(pieces.hi, b) - xp.maximum(pieces.lo, a), 0)
+                     for a, b in gaps)
     positive = weight > 0
     total = xp.sum(weight, axis=0)
     right = (pieces.lo <= face) & (pieces.hi > face)

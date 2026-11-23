@@ -14,12 +14,12 @@ def add_planes(sim, grid, seam):
 @pytest.mark.parametrize('boundary', ['pec', 'cpml'])
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_planes(boundary, n_devices, entry):
+    """The CPML wrapped step uses the cross-trace bar because compile-form rounding occurs with byte-equal operands."""
     sim, grid, seam = model(boundary, n_devices)
     add_planes(sim, grid, seam)
     one, many = pair(sim, n_devices, entry)
     values = {key: measure(many.dft_planes[key].accumulator, p.accumulator)
               for key, p in one.dft_planes.items()}
-    # CPML wrapped step: compile-form rounding, operands byte-equal (rfx-archive DESIGN.md 4g amendment 1).
     with_bars(values, 'relative_peak' if boundary == 'cpml' else 'array_equal')
     record('planes', dict(boundary=boundary, devices=n_devices, entry=entry, shape=grid.shape), values)
     assert max(row['peak'] for row in values.values()) > 0

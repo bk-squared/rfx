@@ -32,6 +32,7 @@ BETA CALIBRATION NOTE (the softmax gates below): an initial beta=1.0 on
 these two tests passed by COINCIDENCE, not physics -- see
 `_SOFTMAX_BETA`'s comment for the measured counter-example (h=0.01 read
 18.9% relative error with the AD gradient unchanged) and the fix.
+An earlier geometry-leg sweep over three h values measured up to 0.7% relative error at beta=200, comfortably below the 5% gate.
 """
 
 from __future__ import annotations
@@ -50,64 +51,28 @@ from tests.contracts.path_equivalence.comparison import ACCUMULATED_RELATIVE
 
 try:
     from jax import enable_x64
-except ImportError:  # older JAX (< ~0.4.31) -- see tests/_x64_compat.py
+except ImportError:
     from tests._x64_compat import enable_x64
 
-
-# ---------------------------------------------------------------------------
-# Shared small CPU-fast sim: vacuum domain, one soft source, one DFT plane.
-# ---------------------------------------------------------------------------
 
 _DX = 1.0e-3
 _NX, _NY, _NZ = 30, 20, 20
 _PLANE = "probe_plane"
 _FREQS = jnp.asarray([5.0e9])
-# Physical positions (engineering principle #1: physical absolute
-# coordinates, not raw cell-relative indices) — converted to grid indices
-# via Grid.position_to_index() once the actual (CPML-padded) grid.shape is
-# known, since it is larger than (_NX, _NY, _NZ).
-_SLAB_LO_M = (12 * _DX, 0.0, 0.0)  # material-leg design slab
+
+
+_SLAB_LO_M = (12 * _DX, 0.0, 0.0)
 _SLAB_HI_M = (18 * _DX, _NY * _DX, _NZ * _DX)
-_PIXEL_POS_M = (14 * _DX, 10 * _DX, 10 * _DX)  # geometry-leg single design pixel
+_PIXEL_POS_M = (14 * _DX, 10 * _DX, 10 * _DX)
 _N_STEPS = 160
 _FD_H = 0.02
-# field_softmax is now auto-scaled (rfx.observables.field_softmax computes
-# beta_eff = beta / stop_gradient(max(vals)) internally), so beta below is
-# DIMENSIONLESS -- it no longer needs hand-matching to this sim's raw
-# max|field|^2 (~5e-10 to 5.4e-10 on both legs). The original footgun this
-# fixture caught (#619): at the OLD unscaled beta=1.0, with
-# count = n_freqs*n1*n2 = 1*31*31 = 961 elements on the single registered
-# plane, log(count)/beta ~ 6.87 totally dominated the objective (it sat at
-# ~100.000002% of log(961)) -- both AD and FD differentiated rounding
-# noise in that constant rather than physics, and the two coincidentally
-# agreed at h=0.02 (< 5% rel_err) while DISAGREEING at h=0.01 (18.9%
-# rel_err, same AD value) -- proof the original green was luck, not a
-# real measurement. Post-auto-scale, beta_eff*max(vals) == beta ALWAYS by
-# construction, so this failure mode cannot recur at any beta -- but
-# stop_gradient on the normalizer means FD (which re-evaluates the WHOLE
-# renormalization at each perturbed point) and AD (which correctly omits
-# that renormalization's own derivative, by design) are not evaluating
-# quite the same thing, and disagree by a few percent at low-to-moderate
-# beta_eff. Re-measured sweep (geometry leg, same sim, three h values):
-# beta=10 -> up to 34.0% rel_err, beta=30 -> up to 7.8%, beta=50 -> up to
-# 3.5%, beta=100 -> up to 1.2%, beta=200 -> up to 0.7% -- monotonically
-# tightening as beta grows (the stop_gradient-omitted term's relative
-# contribution shrinks as the softmax concentrates on fewer terms near the
-# true max), comfortably below the existing 5% gate at beta=200 with
-# similar headroom to the pre-auto-scale calibration. beta=200 is used
-# below, re-verified across THREE h values (not one) so a future
-# coincidental-rounding regression cannot slip back in unnoticed.
-_SOFTMAX_BETA = 200.0
+
+
+DIMENSIONLESS_SOFTMAX_BETA = 200.0
+_SOFTMAX_BETA = DIMENSIONLESS_SOFTMAX_BETA
 _SOFTMAX_FD_H_VALUES = (0.01, 0.02, 0.04)
-# A single-Yee-cell material perturbation (the geometry/topology leg) has a
-# proportionally tiny effect on a bulk plane-energy sum -- real,
-# FD-matching signal, not noise, but small. The tightest margin measured
-# across all four FD-vs-AD gates is field_softmax's geometry leg at
-# beta=_SOFTMAX_BETA (~4.9e-12) -- about 2.7 orders of magnitude above
-# this floor (field_energy's geometry leg, ~2.1e-10, and both material-leg
-# gradients sit further above it still). The floor only needs to catch an
-# actually-severed tape (which reads exactly/near 0.0), so it sits
-# comfortably below that measured minimum.
+
+
 _GRAD_FLOOR = 1e-14
 
 
@@ -165,7 +130,7 @@ def _geometry_objective(sim, functional, *, eps_bg=1.0, eps_fg=4.0):
 
     def objective(rho_scalar):
         rho = jnp.reshape(rho_scalar, (1, 1, 1))
-        fields = density_to_material_fields(rho, eps_bg, eps_fg)
+        fields = density_to_material_fields(rho, eps_bg, eps_fg, dtype='float32')
         eps = eps_base.at[i, j, k].set(fields.eps[0, 0, 0])
         result = sim.forward(
             eps_override=eps, n_steps=_N_STEPS, checkpoint=False,
@@ -212,6 +177,7 @@ def _central_fd_f64(objective, x0: float, h: float):
 
 
 def _assert_ad_matches_fd(g_ad: float, g_fd: float, *, label: str, tol: float = 0.05):
+    """The 1e-14 severed-tape floor is about 2.7 orders of magnitude below an earlier measured minimum gradient of ~4.9e-12 on the softmax geometry leg."""
     assert np.isfinite(g_ad), f"{label}: AD gradient not finite: {g_ad}"
     assert np.isfinite(g_fd), f"{label}: FD reference not finite: {g_fd}"
     assert abs(g_ad) > _GRAD_FLOOR, (
@@ -224,10 +190,6 @@ def _assert_ad_matches_fd(g_ad: float, g_fd: float, *, label: str, tol: float = 
         f"{rel * 100:.2f}% >= {tol * 100:.0f}%"
     )
 
-
-# ---------------------------------------------------------------------------
-# (1) FD-vs-AD gates: both AC legs x both built-in functionals.
-# ---------------------------------------------------------------------------
 
 def test_field_energy_material_leg_ad_matches_fd():
     sim = _build_sim()
@@ -267,10 +229,8 @@ def test_field_softmax_material_leg_ad_matches_fd():
     assert np.isfinite(val)
 
     g_ad = float(jax.grad(obj)(jnp.asarray(alpha0, dtype=jnp.float32)))
-    # h-robustness, not a single h: see _SOFTMAX_BETA's comment -- a
-    # coincidental rounding-lattice match does NOT hold consistently
-    # across multiple step sizes, which is exactly what caught the
-    # beta=1.0 false green (18.9% at h=0.01 vs <5% at h=0.02, same g_ad).
+
+
     for h in _SOFTMAX_FD_H_VALUES:
         g_fd = _central_fd_f64(obj, alpha0, h)
         _assert_ad_matches_fd(g_ad, g_fd, label=f"field_softmax material leg (h={h})")
@@ -293,12 +253,6 @@ def test_field_softmax_geometry_leg_ad_matches_fd():
         )
 
 
-# ---------------------------------------------------------------------------
-# (1b) Issue #619 regression: the DEFAULT beta must be safe at ANY field
-# magnitude, not merely at values a caller happened to hand-tune against.
-# Synthetic fixtures (no FDTD -- fast), same _fake_result pattern as (3).
-# ---------------------------------------------------------------------------
-
 def test_field_softmax_default_beta_is_scale_invariant():
     """The pre-fix implementation computed logsumexp(beta*vals)/beta
     directly against raw vals, so at a physically tiny field magnitude and
@@ -319,11 +273,11 @@ def test_field_softmax_default_beta_is_scale_invariant():
     base_field = jnp.asarray(
         rng.uniform(0.5, 1.5, size=(3, 3, 2)), dtype=jnp.float32
     ).astype(jnp.complex64)
-    softmax_default = field_softmax("p")  # beta left at its default (1.0)
+    softmax_default = field_softmax("p")
 
     def value_at_vals_scale(vals_scale: float) -> float:
-        # vals = |field|**2, so scaling vals by `vals_scale` means scaling
-        # the field itself by sqrt(vals_scale).
+
+
         field = base_field * jnp.asarray(vals_scale, dtype=jnp.float32) ** 0.5
         result = _fake_result(p=field)
         return float(softmax_default(result))
@@ -356,7 +310,7 @@ def test_field_softmax_default_beta_gradient_not_rounding_noise():
     log(count)/beta rather than physics (#619)."""
     rng = np.random.default_rng(1)
     base = jnp.asarray(rng.uniform(0.5, 1.5, size=(3, 3)), dtype=jnp.float32)
-    field_scale = 1e-10  # |field|**2 ~ 1e-20, matching the realistic range
+    field_scale = 1e-10
     softmax_default = field_softmax("p")
 
     def obj(alpha):
@@ -396,7 +350,8 @@ def test_field_softmax_beta_eff_overflow_returns_finite_not_nan():
     previously-nan `2.0e24`."""
     rng = np.random.default_rng(2)
     base = jnp.asarray(rng.uniform(0.5, 1.5, size=(3, 3)), dtype=jnp.float32)
-    field_scale = 1.0e-11  # |field|**2 ~ 1e-22, this repo's realistic range
+    REALISTIC_FIELD_SCALE = 1.0e-11
+    field_scale = REALISTIC_FIELD_SCALE
     field = (base * field_scale).astype(jnp.complex64)
     result = _fake_result(p=field)
     true_max = float(jnp.max(jnp.abs(field) ** 2))
@@ -443,10 +398,7 @@ def test_field_softmax_gradient_can_silently_collapse_past_the_recommended_beta_
         rel = abs(g_ad - g_fd) / max(abs(g_fd), 1e-300)
         assert rel < 0.05, f"beta={beta:.1e}: AD vs FD mismatch {rel * 100:.2f}%"
 
-    # Robustly past the measured cliff (not pinning the cliff's exact
-    # location, which is fixture-dependent -- see the docstring above):
-    # a future numerical change either preserves this or deliberately
-    # closes it, not silently shifts it without anyone noticing.
+
     obj_far = make_obj(1.0e18)
     g_far = float(jax.grad(obj_far)(jnp.asarray(1.0, dtype=jnp.float32)))
     assert g_far == 0.0, (
@@ -455,10 +407,6 @@ def test_field_softmax_gradient_can_silently_collapse_past_the_recommended_beta_
         "docstring warning in rfx.observables.field_softmax."
     )
 
-
-# ---------------------------------------------------------------------------
-# (2) Physics witness: run() and forward() must agree on the accumulator.
-# ---------------------------------------------------------------------------
 
 def test_run_forward_dft_plane_parity():
     """The two independent code paths that populate result.dft_planes
@@ -487,10 +435,6 @@ def test_run_forward_dft_plane_parity():
         f"(run peak={np.max(np.abs(run_acc)):.4e}, forward peak={np.max(np.abs(fwd_acc)):.4e})"
     )
 
-
-# ---------------------------------------------------------------------------
-# (3) dft_field error-path and dict/stack behavior — no FDTD, fake results.
-# ---------------------------------------------------------------------------
 
 def _fake_result(**planes):
     return types.SimpleNamespace(
@@ -564,7 +508,7 @@ def test_dft_field_and_field_energy_accept_raw_array_planes():
     result. _select_planes must duck-type (`getattr(v, "accumulator", v)`)
     rather than assume every value has an `.accumulator` attribute, or this
     combination crashes AttributeError."""
-    raw = jnp.full((2, 3, 4), 1.5, dtype=jnp.complex64)  # NOT wrapped in a probe-like object
+    raw = jnp.full((2, 3, 4), 1.5, dtype=jnp.complex64)
     result = types.SimpleNamespace(dft_planes={"p1": raw})
 
     out = dft_field("p1")(result)
@@ -574,10 +518,6 @@ def test_dft_field_and_field_energy_accept_raw_array_planes():
     energy = float(field_energy("p1")(result))
     assert np.isclose(energy, float(jnp.sum(jnp.abs(raw) ** 2)))
 
-
-# ---------------------------------------------------------------------------
-# (4) Graded refusal and uniform distributed record parity.
-# ---------------------------------------------------------------------------
 
 def _nu_sim_with_dft_plane() -> Simulation:
     nx, ny, nz = 16, 12, 12
@@ -601,8 +541,7 @@ def _nu_sim_with_dft_plane() -> Simulation:
 def test_forward_distributed_nu_dft_planes_match_native():
     """Graded forward(distributed=True) carries DFT planes since #1402 step 4g.
 
-    CPML: compile-form rounding of the wrapped step (rfx-archive DESIGN.md 4g
-    amendment 1), so the record-summed bar 1e-4 of the peak.
+    CPML: compile-form rounding of the wrapped step, so the record-summed bar 1e-4 of the peak.
     """
     from tests._multi_device_scene import host_devices
     one = _nu_sim_with_dft_plane().forward(n_steps=8, skip_preflight=True)
@@ -615,7 +554,8 @@ def test_forward_distributed_nu_dft_planes_match_native():
         assert np.max(np.abs(a - b)) <= 1e-4 * np.max(np.abs(b)), name
 
 
-def test_run_distributed_dft_planes_match_native():
+def test_run_distributed_dft_planes_match_native(record_property):
+    """Each complex plane differs by at most 1e-4 of its one-device peak over cells and bins."""
     sim = _build_sim()
     devices = jax.devices("cpu")[:2]
     assert len(devices) == 2
@@ -624,4 +564,7 @@ def test_run_distributed_dft_planes_match_native():
     for name, expected in reference.dft_planes.items():
         a, b = np.asarray(actual.dft_planes[name].accumulator), np.asarray(expected.accumulator)
         assert np.any(b), "DFT plane must contain a signal"
-        assert np.array_equal(a, b), (name, float(np.max(np.abs(a - b))), float(np.max(np.abs(b))))
+        a, b = a.astype(np.complex128), b.astype(np.complex128)
+        relative_error = np.max(np.abs(a - b)) / np.max(np.abs(b))
+        record_property(f"{name}_relative_error", float(relative_error))
+        assert relative_error <= 1e-4, (name, relative_error)

@@ -99,17 +99,14 @@
       ]
     },
     {
-      "label": "Examples and gallery",
+      "label": "Examples",
       "items": [
         "rfx/examples",
         "rfx/examples/teaching/boundary-reflection",
         "rfx/examples/teaching/dielectric-interface",
         "rfx/examples/teaching/cavity-standing-wave",
         "rfx/examples/first-patch",
-        "rfx/examples/patch-antenna",
-        "rfx/gallery",
-        "rfx/gallery/visual-manual",
-        "rfx/gallery/waveguide_wr90"
+        "rfx/examples/patch-antenna"
       ]
     },
     {
@@ -132,7 +129,8 @@
         "rfx/project/changelog",
         "rfx/project/deprecation-policy",
         "rfx/project/contributing",
-        "rfx/project/citation"
+        "rfx/project/citation",
+        "rfx/project/structure"
       ]
     }
   ]

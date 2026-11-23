@@ -1,194 +1,32 @@
-"""Gate test: PEC-sphere monostatic RCS vs exact Mie series (issue #276).
+"""Independent closed-form witnesses for the PEC-sphere Mie oracle.
 
-Recomputes the committed-resolution sphere run live and gates the SHIPPED
-monostatic extraction (``RCSResult.monostatic_rcs``) against the exact Mie
-oracle committed in ``tests/fixtures/rcs_sphere_mie/mie_oracle.py``.
-
-Claim scope (see the fixture README): MONOSTATIC (backscatter) magnitude
-only, at the committed resolution. The bistatic trace in the fixture is
-NON-GATED — the same run shows a spurious forward-oblique lobe (25-55 deg,
-~10 dB high vs Mie) and a ~1.6 dB forward-scatter delta; do not add
-bistatic gates here without root-causing those first.
-
-"PEC" IN THIS MODULE IS A SIGMA FILL, NOT A PEC BODY (#931 §1.8). The metal
-here is painted with ``rasterize(grid, [(shape, eps, PEC_SIGMA)])`` straight
-into ``MaterialArrays.sigma``; it never reaches ``pec_mask``,
-``add_thin_conductor`` or ``realized_pec_edge_masks``, and the lattice
-ownership contract deliberately does not cover it — fields decay inside a
-conductive cell, which is a different operator from zeroing an edge. The
-threshold that separates the two models is
-``Simulation._PEC_SIGMA_THRESHOLD`` (1e6 S/m), applied in
-``rfx/api/_compile.py`` to a MATERIAL on a geometry entry; a raw
-``rasterize`` call never passes through it. That the two are not silently
-equated is pinned in
-``tests/contracts/test_lattice_ownership_contract.py::test_a_sigma_fill_conductor_is_not_a_pec_body``
-(same sphere, 910 sigma cells vs 912 PEC volume cells, and no realized PEC
-edge on the sigma path). Nothing in this module was re-measured for #931,
-and design note §5 says the same for cv16 — with the price of the other
-choice measured: at ka = 0.5 the node-sampled sigma fill occupies 1082
-cells against 1123 for a declared PEC volume of the same sphere, so
-bringing the RCS family under the contract moves a_eff by ~1.2 % and
-needs the fixture and both gate constants regenerated.
-
-Runtime: one 90^3 x 700-step CPU run, ~25 s (58^3 / ~7 s until the 24-cell
-absorber derivation of 2026-09-13 -- see tests/fixtures/rcs_sphere_mie/README.md).
+The live rfx comparison is a per-frequency regression window in
+``tests/locks/test_rcs_sphere_backscatter_window.py``. This module keeps
+only the comparator's Rayleigh, geometric-optics, term-convergence and
+bistatic-to-backscatter witnesses.
 """
 
 import importlib.util
-import json
-import os
+from pathlib import Path
 
-import numpy as np
-import jax.numpy as jnp
 
-from rfx.grid import Grid, C0
-from rfx.geometry.csg import Sphere, rasterize
-from rfx.core.yee import MaterialArrays
-from rfx.measurement.rcs import compute_rcs
-
-FIXTURE_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fixtures", "rcs_sphere_mie",
-)
+FIXTURE_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "rcs_sphere_mie"
 
 
 def _load_mie_oracle():
     spec = importlib.util.spec_from_file_location(
-        "rcs_sphere_mie_oracle", os.path.join(FIXTURE_DIR, "mie_oracle.py"),
+        "rcs_sphere_mie_oracle", FIXTURE_DIR / "mie_oracle.py",
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
 
 
-def _load_fixture():
-    with open(os.path.join(FIXTURE_DIR, "fixture.json")) as f:
-        return json.load(f)
-
-
 def test_mie_oracle_witnesses():
-    """The oracle must pass its four rfx-independent validation witnesses."""
+    """The oracle must pass its four rfx-independent validation witnesses.
+    The committed bound retains margin over an earlier Rayleigh witness measured at 1.8e-3 relative error.
+    """
     oracle = _load_mie_oracle()
-    witnesses = oracle.validate_oracle()  # raises AssertionError on failure
-    # Rayleigh witness measured at 1.8e-3 rel err; keep the committed bound.
+    witnesses = oracle.validate_oracle()
     assert witnesses["rayleigh_rel_err"] < 0.02
     assert abs(witnesses["go_window_mean"] - 1.0) < 0.1
-
-
-def test_monostatic_backscatter_matches_exact_mie():
-    """Live recompute at the committed resolution: |rfx - Mie| <= 1.0 dB.
-
-    Also asserts that the exact-direction monostatic value agrees with the
-    observation-grid sample at (theta=pi/2, phi=pi) — internal consistency
-    witness for the #276 extraction. There is no comparison with the rfx value
-    stored in fixture.json: a stored rfx number says whether a change moved
-    the result, not whether the result is right, and the Mie gate above is
-    the one that judges (removed with #1210, whose conductor-face fix moved
-    that stored number by 0.30 dB while the Mie distance stayed inside 1 dB).
-    """
-    oracle = _load_mie_oracle()
-    fixture = _load_fixture()
-    geo = fixture["geometry"]
-
-    f0 = geo["f0_hz"]
-    radius = geo["radius_m"]
-    lam = C0 / f0
-    dx = lam / geo["resolution_cells_per_lambda"]
-    ka = 2 * np.pi * radius / lam
-    domain = tuple(geo["domain_m"])
-    cpml = geo["cpml_layers"]
-
-    grid = Grid(
-        freq_max=f0 * 1.5, domain=domain, dx=dx, cpml_layers=cpml,
-    )
-    assert tuple(grid.shape) == tuple(geo["grid_shape"]), (
-        "Committed grid metadata drifted from the live Grid construction; "
-        "regenerate the fixture."
-    )
-
-    center = tuple(d / 2 for d in domain)
-    sphere = Sphere(center=center, radius=radius)
-    eps_r, sigma = rasterize(
-        grid, [(sphere, 1.0, geo["pec_sigma_s_per_m"])],
-    )
-    mu_r = jnp.ones(grid.shape, dtype=jnp.float32)
-    materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
-
-    # H-plane observation cut; phi grid contains the exact backscatter
-    # angle (phi=pi) so the grid sample can witness the exact-direction
-    # extraction.
-    theta_obs = np.array([np.pi / 2])
-    phi_obs = np.linspace(0.0, np.pi, 37)
-
-    result = compute_rcs(
-        grid, materials, geo["n_steps"],
-        f0=f0, bandwidth=geo["bandwidth"], theta_inc=0.0,
-        polarization=geo["polarization"],
-        theta_obs=theta_obs, phi_obs=phi_obs, freqs=np.array([f0]),
-        boundary="cpml", cpml_layers=cpml,
-    )
-
-    mono_dbsm = float(result.monostatic_rcs[0])
-
-    # (a) Internal witness: exact-direction evaluation == grid sample at
-    # (theta=pi/2, phi=pi). Same NTFF data, same float64 post-processing.
-    grid_back_dbsm = float(result.rcs_dbsm[0, 0, -1])
-    assert abs(mono_dbsm - grid_back_dbsm) < 1e-6, (
-        f"monostatic_rcs ({mono_dbsm:.6f} dBsm) != observation-grid sample "
-        f"at (pi/2, pi) ({grid_back_dbsm:.6f} dBsm) — the exact-direction "
-        "extraction disagrees with the grid path."
-    )
-
-    # (b) THE gate: shipped monostatic vs exact Mie series.
-    pi_a2 = np.pi * radius ** 2
-    mie_over = float(oracle.backscatter_rcs_over_pi_a2(ka, n_max=20))
-    mie_dbsm = 10.0 * np.log10(mie_over * pi_a2)
-    delta_db = abs(mono_dbsm - mie_dbsm)
-    assert delta_db <= 1.0, (
-        f"Monostatic RCS {mono_dbsm:.2f} dBsm is {delta_db:.2f} dB from the "
-        f"exact Mie value {mie_dbsm:.2f} dBsm (gate 1.0 dB; measured 0.102 dB "
-        "at the 2026-09-21 regeneration with the second-order NTFF rule (#1159), "
-        "0.185 dB before it, on the converged 24-cell absorber. The "
-        "0.06 dB of the 2026-07-06 run was a CANCELLATION between the pre-#888 "
-        "auxiliary echo and an 8-cell absorber -- see generate_fixture.py's "
-        "CPML_LAYERS derivation). "
-        "A regression here means the monostatic extraction or the "
-        "TFSF/NTFF/RCS chain drifted — see tests/fixtures/rcs_sphere_mie/."
-    )
-
-    # R5 breadcrumb for -s runs.
-    print(
-        f"\nMie fixture gate: rfx {mono_dbsm:+.3f} dBsm | Mie "
-        f"{mie_dbsm:+.3f} dBsm | |delta| {delta_db:.3f} dB"
-    )
-
-
-def test_fixture_claim_scope_is_monostatic_only():
-    """The committed fixture must keep its honesty markers.
-
-    The claim scope is monostatic-only; the known bistatic deviations
-    (forward-oblique lobe, forward delta) must stay documented and the
-    bistatic trace must stay labeled non-gated.
-    """
-    fixture = _load_fixture()
-    scope = fixture["claim_scope"]
-    assert "MONOSTATIC" in scope
-    assert "NOT a bistatic validation" in scope
-    assert "bistatic_trace_non_gated" in fixture
-    trace = fixture["bistatic_trace_non_gated"]["trace"]
-    # Trace spans forward (0 deg) to backscatter (180 deg) for inspection.
-    assert trace[0]["scattering_angle_deg"] == 0.0
-    assert trace[-1]["scattering_angle_deg"] == 180.0
-    # The recorded backscatter delta (the gated quantity) is small ...
-    assert trace[-1]["abs_delta_db"] <= 1.0
-    # ... while the documented forward-oblique deviation is real and large;
-    # this assertion guards against silently "cleaning up" the evidence.
-    oblique = [
-        p["abs_delta_db"] for p in trace
-        if 25.0 <= p["scattering_angle_deg"] <= 55.0
-    ]
-    assert max(oblique) > 5.0, (
-        "The committed bistatic trace no longer shows the documented "
-        "forward-oblique deviation (25-55 deg). If the lobe was actually "
-        "fixed, update the fixture README + claim_scope alongside the "
-        "regenerated trace instead of leaving stale honesty text."
-    )

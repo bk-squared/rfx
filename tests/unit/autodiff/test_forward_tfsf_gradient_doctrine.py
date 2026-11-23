@@ -1,8 +1,7 @@
 """Gradient-doctrine contract for differentiable TFSF plane-wave forward.
 
 Hardens the merged differentiable-TFSF forward (PR #415) per the anyscale
-differentiability doctrine (rfx-adv/docs/plans/anyscale-book/07_differentiability.md
-§5 composition contract + §6 verification):
+differentiability doctrine (composition contract and verification):
 
   * FD STEP-SWEEP, not a single h — assert the AD gradient matches the
     finite-difference PLATEAU across h in {2e-2 .. 3e-4} (ch07 §6: "never a
@@ -58,8 +57,7 @@ def test_forward_tfsf_gradient_fd_step_sweep():
     fds = {}
     for h in (2e-2, 1e-2, 3e-3, 1e-3, 3e-4):
         fds[h] = (float(obj_j(e0 + h)) - float(obj_j(e0 - h))) / (2 * h)
-    hs = sorted(fds)  # ascending h
-    # plateau = the adjacent-h pair with the smallest successive change
+    hs = sorted(fds)
     k = min(range(len(hs) - 1), key=lambda i: abs(fds[hs[i]] - fds[hs[i + 1]]))
     fd_plateau = 0.5 * (fds[hs[k]] + fds[hs[k + 1]])
     rel = abs(g_ad - fd_plateau) / max(abs(fd_plateau), 1e-30)
@@ -74,7 +72,7 @@ def test_forward_tfsf_gradient_y_translation_invariance():
     """Invariance witness (anyscale ch07 §6): normal incidence + y-periodic +
     y-uniform scatterer is y-translation-symmetric, so two y-shifted probes read
     the same field and the GRADIENT of their power difference is ~0."""
-    sim = _sim(0.0, extra_probe=(0.0, 0.02, 0.0))  # 2nd probe shifted in y
+    sim = _sim(0.0, extra_probe=(0.0, 0.02, 0.0))
     shp = sim.run(n_steps=1).state.ez.shape
     xi = shp[0] // 2
 
@@ -89,9 +87,7 @@ def test_forward_tfsf_gradient_y_translation_invariance():
     p0, p1 = parts(4.0)
     scale = float(p0 + p1) / 2
     assert scale > 1e-3, "probes recorded no field"
-    # the two y-shifted probes must agree (y-uniform field)
     assert abs(float(p0) - float(p1)) / scale < 1e-3, "y-invariance broken in the forward"
-    # ...and the gradient of the difference must be ~0 (respects y-symmetry)
     g_diff = float(jax.grad(lambda e: (parts(e)[0] - parts(e)[1]))(4.0))
     g_sum = float(jax.grad(lambda e: (parts(e)[0] + parts(e)[1]))(4.0))
     assert np.isfinite(g_diff)

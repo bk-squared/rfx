@@ -48,7 +48,9 @@ def _sim(dx_profile=None, dy_profile=None):
     clean on this fixture). The first attempt at this test used a 9 mm
     domain at 12 GHz, where preflight said the box sits inside lambda/4 and
     the pattern is corrupted — comparing two corrupted patterns measures
-    nothing."""
+    nothing.
+    The solid PEC cube has six 250 um cells per axis on both meshes, with faces on nodes and seven tangential wall planes.
+    """
     kw = {}
     if dx_profile is not None:
         kw["dx_profile"] = dx_profile
@@ -56,10 +58,6 @@ def _sim(dx_profile=None, dy_profile=None):
         kw["dy_profile"] = dy_profile
     sim = Simulation(freq_max=40e9, domain=(22e-3, 22e-3, 22e-3), dx=250e-6,
                      boundary="cpml", cpml_layers=6, **kw)
-    # A buildable 1.5 mm solid PEC cube: six 250 um cells per axis on BOTH
-    # meshes, with faces on nodes and seven tangential wall planes (#931).
-    # The former graded profile halved the cube/source spacing; its relative
-    # power gate mixed NTFF integration with a different radiator stencil.
     sim.add(Box((10.25e-3, 10.25e-3, 10.25e-3),
                 (11.75e-3, 11.75e-3, 11.75e-3)), material="pec")
     sim.add_source(position=(11e-3, 11e-3, 9.5e-3), component="ez",
@@ -71,8 +69,7 @@ def _sim(dx_profile=None, dy_profile=None):
 
 
 def _pattern(res):
-    # The integral is a relative power metric under one source convention,
-    # not a newly calibrated absolute watt measurement.
+    """The integral is a relative power metric under one source convention, not an absolute watt measurement."""
     th = np.radians(np.linspace(0.0, 180.0, 25))
     ph = np.radians(np.linspace(0.0, 350.0, 12))
     ff = compute_far_field_jax(res.ntff_data, res.ntff_box, res.grid, th, ph)
@@ -118,7 +115,7 @@ def test_graded_fixture_preserves_radiator_and_acquisition_lattice():
 @pytest.mark.slow
 def test_uniform_valued_inplane_profile_matches_the_plain_uniform_grid():
     """The profile is the identity here; a difference would be plumbing."""
-    prof = np.full(88, 250e-6)  # 22 mm / 250 um — the identity profile
+    prof = np.full(88, 250e-6)
     u_res = _sim().run(n_steps=400)
     g_res = _sim(dx_profile=prof, dy_profile=prof).run(n_steps=400)
     Uu, Pu = _pattern(u_res)

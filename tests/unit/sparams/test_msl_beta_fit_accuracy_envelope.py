@@ -38,6 +38,7 @@ It is an upper bound: a better estimator passes.
 
 Attribution of the cv20 signed-beta residual (#830) is a separate
 question and is not decided here.
+The swept true beta step is fine enough to resolve the 1.75 % node period.
 """
 from __future__ import annotations
 
@@ -50,26 +51,16 @@ from rfx.core.yee import EPS_0, MU_0
 from rfx.probes.msl_wave_decomp import extract_msl_nprobe
 from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
 
-# The MSL phase-referee board (validation/crossval/20_msl_phase_referee.py, removed in #1232):
-# RO4350B, 600 um trace, 254 um declared substrate.  Only the ANCHOR matters
-# here -- the scan is centred on it -- so this is the anchor production would
-# compute for that port, not a claim about the board.
 EPS_R = 3.66
 W_TRACE_M = 600e-6
 H_DECLARED_M = 254e-6
-F_MID_HZ = 3.7586206896551726e9        # centre of the referee's 3.0-4.5 GHz gate band
+F_MID_HZ = 3.7586206896551726e9
 
-# Probe arrays the envelope lock runs on. The first is the thru fixture's own
-# (5 planes, 11 cells of 50 um); the second is deliberately unlike it.
 LAYOUTS = {
     "thru_5_planes_550um": np.array([4.5e-3 + n * 550e-6 for n in range(5)]),
     "unlike_9_planes_250um": np.array([1.0e-3 + n * 250e-6 for n in range(9)]),
 }
 
-# A wider set for the array-independence witness: 3 to 9 planes, 150 to 550 um
-# spacing, two origins -- a factor of ~15 in the electrical length beta*L the
-# array subtends. The bias under test is a property of the beta SCAN, so it
-# must not move across these.
 SPREAD_ARRAYS = dict(LAYOUTS, **{
     "3_planes_150um_x0_0": np.array([n * 150e-6 for n in range(3)]),
     "3_planes_150um_x0_4p5mm": np.array([4.5e-3 + n * 150e-6 for n in range(3)]),
@@ -79,25 +70,19 @@ SPREAD_ARRAYS = dict(LAYOUTS, **{
     "9_planes_550um_x0_0": np.array([n * 550e-6 for n in range(9)]),
 })
 
-# Swept true beta, as a fraction of the anchor: +-3 % brackets every residual
-# anyone has proposed for this board, at a step fine enough to resolve the
-# 1.75 % node period.
 RATIOS = np.round(np.arange(0.97, 1.03 + 1e-9, 0.001), 6)
 GAMMA_OVER_ALPHA = (0.0, 0.05, 0.2)
 
-# MEASURED after the squared-residual refinement (this file's own sweep):
-#   production layout 0.0162 %, worst of SPREAD_ARRAYS 0.0361 % (3 planes,
-#   150 um).  Before it: 0.1655 %, identical on every array.
 MEASURED_MAX_ABS_BIAS = 1.62e-4
 MEASURED_WORST_ARRAY_BIAS = 3.62e-4
-# What a least-squares fit of an exactly-representable model should deliver.
-# The bound reds if the refinement goes back to the L2 norm (0.1655 %).
 TARGET_ACCURACY = 5e-4
 ACCURACY_ENVELOPE = TARGET_ACCURACY
 
 
 def _anchor(freq_hz: float) -> float:
-    """``beta0`` the way ``rfx/sparams/msl.py`` builds it for this port."""
+    """``beta0`` the way ``rfx/sparams/msl.py`` builds it for this port.
+    The anchor is what production would compute for the port, not a claim about the board.
+    """
     c0 = 1.0 / float(np.sqrt(MU_0 * EPS_0))
     _z0, eps_eff = hammerstad_jensen_z0_eps_eff(W_TRACE_M, H_DECLARED_M, EPS_R)
     return 2.0 * np.pi * float(freq_hz) * float(np.sqrt(eps_eff)) / c0

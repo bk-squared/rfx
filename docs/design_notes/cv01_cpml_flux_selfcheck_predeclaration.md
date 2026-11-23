@@ -117,7 +117,7 @@ varies only where the plane sits.
 
 cv01 pins `cpml_n = 10`, below rfx's own `Simulation(cpml_layers=16)` default —
 and that default is 16 *because* CPML guided-mode reflection was measured here
-(`docs/agent-memory/rfx-known-issues.md`, "CPML guided-mode reflection ~12% at
+("CPML guided-mode reflection ~12% at
 default 8-10 layers": 10 layers → 11.7 %, 20 → 4.2 %, 40 → 1.8 %). So the rig
 runs at the layer count that entry says is the worst of the three.
 
@@ -344,9 +344,9 @@ fraction's magnitude, 8.56, is already **below** the retired threshold of 8.68
 the absorber and changing nothing else recovers it monotonically, and what it
 recovers is the off-guide part — the aperture arms conserve at ≈0.99 at every
 layer count, so the guided channel was never where the deficit lived. This is
-*consistent with* `docs/agent-memory/rfx-known-issues.md:4158` ("CPML
+*consistent with* the recorded "CPML
 guided-mode reflection ~12% at default 8-10 layers ... 10 layers → 11.7 %, 20 →
-4.2 %, 40 → 1.8 %"), the entry that raised rfx's own `cpml_layers` default from
+4.2 %, 40 → 1.8 %", the entry that raised rfx's own `cpml_layers` default from
 8 to 16. A different observable (|b1/a1| on WR-90) and a different structure,
 but the same monotone-in-thickness shape and the same verdict on 10 layers.
 
@@ -408,7 +408,7 @@ absorber needs more depth than a radiating one. The WR-90 slab measurement
 that fixed rfx's phase-alignment constants ran at it
 (`scripts/verify_phase_alignment.py:40`, "Measured on 2026-04-22 WR-90 slab,
 cpml_layers=20 on both sides"), and it is the middle rung of the layer ladder
-in `docs/agent-memory/rfx-known-issues.md:4158` ("20 → 4.2 %").
+("20 → 4.2 %").
 
 **Correction, round-1 review.** The first version of this paragraph, of the
 comment in cv01 and of PR #1027's body said 20 was "what
@@ -418,7 +418,7 @@ the case is `validation/crossval/11_waveguide_port_wr90.py` — and that file
 does not use 20: it derives its depth from the guide wavelength,
 `CPML_LAYERS = int(np.ceil(0.75 * _LAMBDA_G_LOW_M / DX_M))` = **43** (its own
 comment weighs 46 against the 43 shipped; 20 appears nowhere in it). The claim
-came from `rfx-known-issues.md:4158`, whose 2026-04-22 sentence "`examples/
+came from a recorded entry, whose 2026-04-22 sentence "`examples/
 crossval/11_waveguide_port_wr90.py` uses 20 layers" was true when written and
 has since rotted on both halves — the file moved and its depth was re-derived.
 Quoting a memory entry is not the same as checking it, and this one was not
@@ -851,7 +851,7 @@ Reported, not absorbed. cv01's `expected_exit_codes` already admits 1; the CPU
 lane is untouched, because without Meep the case still exits 2 on G1 and G2
 alone; the weekly `crossval-external` lane is where this now shows.
 
-The #831 entry in `rfx-known-issues.md` says of this facet that "cv03's gates
+The recorded #831 entry says of this facet that "cv03's gates
 are green today (exit 2), so a fix moves values, not verdicts". That was scoped
 to cv03, which has no Meep leg of its own to gate. cv01 carries one **inside its
 record**, so G3 does run here, and it flips. The sentence does not carry over.

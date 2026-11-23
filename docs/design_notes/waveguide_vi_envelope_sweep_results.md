@@ -4,9 +4,9 @@ Measured 2026-09-04/05 against `docs/design_notes/waveguide_vi_envelope_sweep_pr
 (revision 2, annotated). Base SHA `b59e1d991dd62868bdf8689a1f642eeb8f7c5b89`; the library
 under measurement is bit-identical to it (rfx/ tree digest `38e914b2…`, checked by the job).
 Runs 369367258390 (70 cases) and follow-ups 258395/402/404/406/407/408/411/419/421/433/
-466/475/476/478/480/511/536 (~50 cases). Every case record, case list and preflight artifact
-is mirrored at `docs/research-archive/rfx/research_notes/vi_envelope_presweep_archive/` in
-the workspace repo; the chronology is `docs/research_notes/20260904_vi_envelope_predeclaration.md`.
+466/475/476/478/480/511/536 (~50 cases).
+
+
 
 **What was asked.** Not to make a red number green: to say where the model holds and where
 it stops, in the parameters that govern it, and to accept a port that fails in some regime

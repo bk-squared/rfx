@@ -45,7 +45,6 @@ def test_eager_wire_mesh_derivative(route):
 
 @pytest.mark.parametrize("jit", [False, True])
 def test_optimize_wire_conductor_mesh(jit):
-    # The nested simulation's mesh is a design variable on the objective tape.
     objective = lambda result: _observable(jnp.sum(result.time_series) * 1e-6)
     kwargs = dict(n_iters=2, n_steps=4, verbose=False, skip_preflight=True, jit=jit)
     region = DesignRegion((.005, .005, .002), (.007, .007, .004))

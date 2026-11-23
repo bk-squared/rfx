@@ -21857,7 +21857,7 @@
     }
    },
    "notch_core": {
-    "rule": "PI 2026-09-21: bins where the FINEST rung's |S21| is at or below the level below; inside it the verdict is the notch frequency, not the depth",
+    "rule": "bins where the FINEST rung's |S21| is at or below the level below; inside it the verdict is the notch frequency, not the depth",
     "level_db": -20.0,
     "defined_by_rung": "notch_25um",
     "n_bins": 5,
@@ -21977,7 +21977,7 @@
     }
    ],
    "notch_depth_db_per_rung": {
-    "rule": "PI 2026-09-21: recorded, not compared -- inside the core the verdict is the frequency",
+    "rule": "recorded, not compared -- inside the core the verdict is the frequency",
     "per_rung": [
      {
       "rung": "notch_100um",
@@ -22107,7 +22107,7 @@
     }
    ],
    "s11_reflection_floor": {
-    "rule": "PI 2026-09-21: no rung-to-rung dB comparison on the thru line's |S11|; it is bounded at every bin of every rung",
+    "rule": "no rung-to-rung dB comparison on the thru line's |S11|; it is bounded at every bin of every rung",
     "bound_db": -20.0,
     "per_rung": [
      {

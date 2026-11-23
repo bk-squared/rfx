@@ -17,7 +17,7 @@ mode added (the lane-A F7/F8 code paths are untouched; the lane-A replay
 test `tests/unit/nonuniform/test_band_builder_chain_model.py` passes on the
 changed file, 15 passed).
 **Import provenance for every number here:** `rfx.__file__` printed as
-`/Users/byungkwankim/Documents/rfx-nu-exp1/rfx/__init__.py` (PYTHONPATH
+`rfx/__init__.py` (PYTHONPATH
 pinned to this tree; the editable install points at the primary checkout).
 Every JSON the instrument writes records `rfx.__file__`, `git_sha`,
 `git_dirty`, `argv` and `started_utc`. The chain-model predictions in
@@ -46,7 +46,7 @@ fine bands of 2 / 4 / 8 / 16 (+32, 64) cells between two cap ramps:
 Lane A's own closing sentence: "All of this is one resolution ... quote
 the law, not the dB." Open decision 4 of that lane asks for a second
 resolution pair / ratio sweep before the row may be quoted as a law. This
-lane is that sweep. PI rule applied: measure the validity domain (the law
+lane is that sweep. Rule applied: measure the validity domain (the law
 AND its range); no claim is locked to one fixture.
 
 Measured here: 3 fine resolutions x 3 ratios x 5 band widths = 45 band
@@ -298,8 +298,8 @@ reason (1e), R_single 0.155.
 Three calls (one per resolution, each well under the 600 s Bash cap;
 `--resume` continues the same JSON), from the worktree:
 
-    cd /Users/byungkwankim/Documents/rfx-nu-exp1 && PYTHONPATH=/Users/byungkwankim/Documents/rfx-nu-exp1 \
-      /Users/byungkwankim/Documents/rfx/.venv/bin/python -m validation.research.multiband_nu.w6_band_builder \
+    cd <workspace>/Documents/rfx-nu-exp1 && PYTHONPATH=<workspace>/Documents/rfx-nu-exp1 \
+      <workspace>/Documents/rfx/.venv/bin/python -m validation.research.multiband_nu.w6_band_builder \
       --sweep --fine-cells-per-lambda 30 --ratio 1.2,1.4,2.0 --widths 2,4,8,16,32 \
       --out validation/research/multiband_nu/results/e1_band_law_sweep.json
     ... --fine-cells-per-lambda 15 ... --resume
@@ -481,7 +481,7 @@ calls as section 4, resolution 30 first.
 
 ### Second attempt — measured (b1cd9e63 / ec008ead; no window above changed)
 
-Provenance: git_sha `ec008ead`, git_dirty True, argv of the finalizing call `--sweep --fine-cells-per-lambda 15,30,60 --ratio 1.2,1.4,2.0 --widths 2,4,8,16,32 --out validation/research/multiband_nu/results/e1_band_law_sweep.json --resume`, rfx_file `/Users/byungkwankim/Documents/rfx-nu-exp1/rfx/__init__.py`; the three measuring calls: N = 30 on `b1cd9e63` (fresh JSON), N = 15 and N = 60 on `b1cd9e63` with `--resume`; the finalizing `--resume` call on `ec008ead` re-ran no arm (all nine cells present) and recomputed the law-(i) records over all cells. Per-cell wallclock 2.8-4.6 s (B run + 6 arms).
+Provenance: git_sha `ec008ead`, git_dirty True, argv of the finalizing call `--sweep --fine-cells-per-lambda 15,30,60 --ratio 1.2,1.4,2.0 --widths 2,4,8,16,32 --out validation/research/multiband_nu/results/e1_band_law_sweep.json --resume`, rfx_file `rfx/__init__.py`; the three measuring calls: N = 30 on `b1cd9e63` (fresh JSON), N = 15 and N = 60 on `b1cd9e63` with `--resume`; the finalizing `--resume` call on `ec008ead` re-ran no arm (all nine cells present) and recomputed the law-(i) records over all cells. Per-cell wallclock 2.8-4.6 s (B run + 6 arms).
 
 ### Table A — per-arm results (54 arms; window `|R_meas - R_model| <= 0.20 R_model + 3e-5`, frozen)
 

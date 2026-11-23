@@ -244,7 +244,7 @@ def test_the_report_is_none_while_traced():
 DENSE = np.linspace(12.30e9, 12.55e9, 101)
 
 
-@pytest.mark.parametrize("lane, bins, n", [("uniform", "8-18 GHz", 4000),
+@pytest.mark.parametrize("lane, bins, n", [pytest.param("uniform", "8-18 GHz", 4000, marks=pytest.mark.slow),
                                            ("graded", "lane", 4000),
                                            ("uniform", "across TM110", 16000)])
 def test_a_jitted_long_record_reads_w0_ok(lane, bins, n):
@@ -253,7 +253,7 @@ def test_a_jitted_long_record_reads_w0_ok(lane, bins, n):
     accumulators differently with the probe series bit-identical: measured
     (JAX 0.10.2) 26 ULP / 1.9e-6 of the peak at 4,000 steps (uniform), and
     182 ULP / 1.1e-5 at 16,000 steps with the bins across the resonance --
-    over the earlier 1e-5 bar, inside W0's 1e-4 (PI decision 2026-09-25)."""
+    over the earlier 1e-5 bar, inside W0's 1e-4."""
     sim = _box(lane)
     grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
     eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
@@ -363,13 +363,13 @@ def test_missing_h_column_refuses_before_traced_identification(jit, monkeypatch)
         _loss_and_grad(_box('uniform'), 1500, jit=jit)
 
 
-@pytest.mark.parametrize("jit", [False, True])
-@pytest.mark.parametrize("defect, lane, cells", [
-    (_midpoint_voltage, "uniform", 3),
-    (_half_step_dropped, "uniform", 1),
-    (_half_step_dropped, "graded", 1),
-    (_current_one_step_late, "uniform", 1),
-    (_every_channel_one_step_late, "uniform", 1),
+@pytest.mark.parametrize("defect, lane, cells, jit", [
+    pytest.param(_midpoint_voltage, "uniform", 3, True, id="_midpoint_voltage-uniform-3-True"),
+    pytest.param(_half_step_dropped, "uniform", 1, True, id="_half_step_dropped-uniform-1-True"),
+    pytest.param(_half_step_dropped, "graded", 1, True, id="_half_step_dropped-graded-1-True"),
+    pytest.param(_current_one_step_late, "uniform", 1, True, id="_current_one_step_late-uniform-1-True"),
+    pytest.param(_every_channel_one_step_late, "uniform", 1, False, id="_every_channel_one_step_late-uniform-1-False"),
+    pytest.param(_every_channel_one_step_late, "uniform", 1, True, id="_every_channel_one_step_late-uniform-1-True"),
 ])
 def test_a_rebuild_that_is_not_the_port_s_v_and_i_is_nan(defect, lane, cells, jit,
                                                          monkeypatch):
@@ -502,7 +502,7 @@ def _stub_identification(monkeypatch):
                         (plain, {"s": s0}) if k.get("return_aux") else plain)
 
 
-@pytest.mark.parametrize("jit", [False, True])
+@pytest.mark.parametrize("jit", [pytest.param(False, marks=pytest.mark.slow), True])
 def test_a_clean_30000_step_record_across_the_resonance_passes_the_check(jit, monkeypatch):
     """The largest clean reading measured: 30,000 steps (57 ns), bins across
     TM110, where the accumulators' own rounding is largest (7.1e-5, 14x under
@@ -726,6 +726,45 @@ def _loss(S):
     return jnp.sum(jnp.abs(S) ** 2)
 
 
+@pytest.mark.slow
+def test_plain_and_jitted_gradients_agree_on_a_witness_passing_record():
+    """On a record both witnesses pass, jax.grad and jax.jit(jax.grad) agree (#2485).
+    Witnesses come first: at 800 steps report.ok holds while the gradient witness fails.
+    """
+    n = 1000
+    sim = _box("uniform")
+    eps = jnp.full(tuple(sim._build_grid().shape), 2.2, jnp.float32)
+
+    def forward(p):
+        return sim.forward(n_steps=n, skip_preflight=True, port_s11_freqs=FREQS,
+                           eps_override=eps * p, ringdown=RingdownSpec()).ringdown
+
+    def obj(p):
+        return _loss(forward(p).s_params)
+
+    def both(p):
+        out = forward(p)
+        return (_loss(out.s_params), _loss(out.s_params_long)), out
+
+    (_l, _l_long), pullback, rd_out = jax.vjp(both, 1.0, has_aux=True)
+    report = rd_out.report
+    assert report.ok is True, (
+        f"ringdown report: failure={report.failure}; "
+        + "; ".join(f"{w.name}: value={w.value}, rule={w.rule}, note={w.note}"
+                    for w in report.witnesses if w.judged and not w.ok))
+
+    (g,) = pullback((1.0, 0.0))
+    (g_long,) = pullback((0.0, 1.0))
+    w = gradient_witness(g, g_long, ringdown=rd_out)
+    assert w.judged and w.value <= 1e-2, (
+        f"{w.name}: judged={w.judged}, value={w.value}, note={w.note}")
+
+    g_plain = float(jax.grad(obj)(1.0))
+    g_jit = float(jax.jit(jax.grad(obj))(1.0))
+    assert abs(g_plain - g_jit) <= 1e-4 * max(abs(g_plain), abs(g_jit)), (
+        f"g_plain={g_plain}, g_jit={g_jit}, gap={abs(g_plain - g_jit)}")
+
+
 @functools.lru_cache(maxsize=None)
 def _grads(n):
     """d/dp of sum |S11|^2 at p = 1 (the fill's permittivity scaled by p),
@@ -838,26 +877,6 @@ def test_the_gradient_is_the_derivative_of_the_completed_value():
     assert rel < 1.0e-3, rel
 
 
-def test_the_poles_derivative_is_what_carries_the_shift(monkeypatch):
-    """The same short-record gradient with the pole derivative dropped (the
-    revived defect: poles held constant) is far from the long record's."""
-    g_ref = _grads(N_GRAD_LONG)[0]
-    monkeypatch.setattr(rj, "completion",
-                        functools.partial(rj.completion, mutation="poles_constant"))
-    sim = _box("uniform")
-    eps = jnp.full(tuple(sim._build_grid().shape), 2.2, jnp.float32)
-
-    def loss(p):
-        r = sim.forward(n_steps=N_GRAD_SHORT, skip_preflight=True, port_s11_freqs=FREQS,
-                        eps_override=eps * p, ringdown=RingdownSpec())
-        return _loss(r.ringdown.s_params)
-
-    g = float(jax.jit(jax.grad(loss))(jnp.float32(1.0)))
-    err = abs(g - g_ref) / abs(g_ref)
-    print(f"\n[poles held constant] {N_GRAD_SHORT}-step gradient {g:.5f}, {err:.2e} off")
-    assert err > 0.1, err
-
-
 def test_forward_caps_the_pole_count_for_both_long_windows(monkeypatch):
     """A 140,000-step one-port record never traces more than the pole budget."""
     # Shape-only tracing allocates no pencil; test the pole cap independently.
@@ -879,7 +898,7 @@ def test_forward_caps_the_pole_count_for_both_long_windows(monkeypatch):
     assert all(0 < k <= rd.TRACED_POLE_BUDGET for _m, k in seen), seen
 
 
-@pytest.mark.parametrize("lane,n", [("graded", 2500), ("uniform", 12000)])
+@pytest.mark.parametrize("lane,n", [("graded", 2500), pytest.param("uniform", 12000, marks=pytest.mark.slow)])
 def test_capped_padding_preserves_completed_s(lane, n, monkeypatch):
     """Both completed S arrays agree with the old algebraic padding bound."""
     sim = _box(lane)

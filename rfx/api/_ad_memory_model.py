@@ -1,5 +1,9 @@
-"""Saved carry and formulation-specific AD tape accounting."""
+"""Saved carry and formulation-specific AD tape accounting.
+``AD_MEMORY_WORKING_CARRIES`` counts working arrays beyond one saved carry.
+"""
 from __future__ import annotations
+
+from rfx._internal._precision import resolve_coefficient_dtype
 
 import math
 
@@ -7,13 +11,8 @@ from rfx.api._ad_memory_types import ADMemoryUnavailable
 from rfx.model.design_box import design_box_bounds, design_box_window
 
 
-# Calibrated (GPU, jax 0.10.2): maximum G1 intercept/cell, rounded up to 8 B.
-# rfx-archive:rfx/records/20261016-ad-memory-tape-terms/
-# G1 acc-admem-g1-20261016t043022z-648d9; both maxima are the 21^3 rows.
 AD_MEMORY_C0_PER_CELL = {"whole-grid": 320, "box": 192}
 
-# Calibrated on one graded whole-grid scene, GPU, JAX 0.10.2.
-# rfx/records/20261027-compiled-gradient-estimate/: working arrays beyond one carry.
 AD_MEMORY_WORKING_CARRIES = 6.5
 
 
@@ -59,8 +58,6 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
         bounds, shape = design_box_bounds(sim._design_box_bounds_from_corners(grid, design_box), grid)
         write_bounds, slices, _, _ = design_box_window(bounds, grid.shape)
         if checkpoint and not segmented:
-            # Preserve the existing unsegmented remat bound, including its
-            # computation window; its mechanism has not been identified.
             window = math.prod(s.stop - s.start for s in slices)
         else:
             window = math.prod(write_bounds[2 * d + 1] - write_bounds[2 * d]
@@ -75,25 +72,15 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
     carry = sum(x["bytes"] for x in saved)
     resident = face_record_resident_bytes(sim, grid, n_steps, checkpoint=checkpoint,
         checkpoint_every=checkpoint_every, checkpoint_segments=checkpoint_segments, n_warmup=n_warmup)
-    # Only the float32 fixed term and tape have been calibrated.
     tape = carry if window is None else (6 if design == "permittivity" else 3) * window * 4
     if window is None and not resident and not (checkpoint and not segmented):
-        # Plain AD saves no per-step residual of the stop_gradient line.
-        # Saved boundaries and per-step remat still retain all six leaves.
         tape -= carried_closed_box_line_bytes(sim, grid, n_steps, saved)
     bounded = window is not None and checkpoint and not segmented
     if bounded:
-        # The rematted box's no-segment mechanism is not identified: bound
-        # it by the carry plus six window arrays, rather than claiming a fit.
         tape = carry + 6 * window * 4
     elif window is not None:
         tape += box_observation_residual_bytes(excluded)
         if not resident:
-            # A stop_gradient incident line has no per-step AD residual,
-            # but its six forward arrays remain resident. Their realized
-            # length grows with n_steps, so omitting them also biases a
-            # compiled-memory slope. Read their bytes, never fit a slope.
-            # A chosen face record already replaces this resident line.
             resident += carried_closed_box_line_bytes(sim, grid, n_steps, saved)
     return dict(saved=saved, excluded_linear=excluded, carry_warnings=carry_warnings,
                 replay_table_bytes=sum(size for _, size in replay_tables),
@@ -121,7 +108,7 @@ def carried_closed_box_line_bytes(sim, grid, n_steps, saved):
     from rfx.sources.tfsf_discrete_plane_wave import COMPONENTS
 
     state = jax.eval_shape(lambda: tfsf_from_declaration(
-        sim._tfsf, grid, sim._freq_max, n_steps=n_steps)[1])
+        sim._tfsf, grid, sim._freq_max, n_steps=n_steps, dtype=resolve_coefficient_dtype(sim._precision))[1])
     signatures = Counter((tuple(getattr(state, name).shape), str(getattr(state, name).dtype))
                          for name in COMPONENTS)
     matching = [leaf for leaf in saved if (tuple(leaf["shape"]), leaf["dtype"]) in signatures]
@@ -136,7 +123,6 @@ def segment_counts(n, warmup, every, segments):
     if isinstance(every, tuple):
         from rfx.stepping.remat import checkpoint_lengths, checkpoint_memory
         lengths = checkpoint_lengths(every)
-        # Levels the clamp turns off are skipped, as the graded runner does.
         memory = checkpoint_memory(active, lengths,
                                    boundary_bytes=0, step_bytes=0, static_bytes=0)
         return memory.held_boundaries, memory.live_steps
@@ -170,20 +156,11 @@ def face_record_pays(cfg, n_steps, *, checkpoint, checkpoint_segments=None,
     Choose B * line_bytes > record_bytes. The resident record is not
     itself a saved carry.
 
-    Review measurements (theta=30 deg; decimal MB; cells, phi, steps,
-    H/E reads, record MB, one line MB, record/line):
-      43   0  1000    835/835       6.7   4.76    1.4
-      43   0  4000    835/835      26.7  18.73    1.4
-      43  45  1000   2240/2240     17.9   2.41    7.4
-      43  45  4000   2240/2240     71.7   9.46    7.6
-      83   0  1000   7315/7315     58.5   4.91   11.9
-      83   0  4000   7315/7315    234.1  18.87   12.4
-      83  45  1000  12909/12909   103.3   2.49   41.4
-      83  45  4000  12909/12909   413.1   9.55   43.3
-     163   0  1000  32376/32376   259.0   5.20   49.8
-     163   0  4000  32376/32376  1036.0  19.17   54.1
-     163  45  1000  34269/34269   274.2   2.66  102.9
-     163  45  4000  34269/34269  1096.6   9.72  112.8
+    The matched termination makes line_bytes independent of steps:
+      record steps    record bytes                 one line bytes
+      N               4 * N * (H_reads + E_reads)   24 * n_nodes
+      4N              16 * N * (H_reads + E_reads)  24 * n_nodes
+    Thus increasing the record no longer increases each saved line.
 
     A trace-time constant is invisible to memory_analysis: the selected
     record must be built with recorded_scan so the compiled program counts it.
@@ -207,7 +184,7 @@ def face_record_resident_bytes(sim, grid, n_steps, **knobs):
     resident = []
 
     def abstract_cost():
-        cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=n_steps)
+        cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=n_steps, dtype=resolve_coefficient_dtype(sim._precision))
         resident.append(face_record_bytes(cfg, n_steps) if face_record_pays(cfg, n_steps, **knobs) else 0)
         return ()
 

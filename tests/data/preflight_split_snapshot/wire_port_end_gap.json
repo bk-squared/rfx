@@ -75,7 +75,12 @@
           8.71,
           0.2,
           0.2,
-          200.0
+          200.0,
+          0.2,
+          0.027,
+          11.0,
+          21.0,
+          0.5
         ],
         "severity": "warning",
         "source": "preflight_wire_port_radius"

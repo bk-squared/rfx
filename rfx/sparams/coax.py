@@ -17,18 +17,20 @@ they do not run at import time.
 
 from __future__ import annotations
 
+from rfx.measurement.calculator_drive import calculator_drive
+
 from rfx.sparams import _coax_msl_stages, _coax_oneport_record, _settling_groups
 from rfx.sparams._coax_messages import COAX_MSL_TRANSITION_REFUSAL_HINT
 from rfx.sparams._coax_status import coax_extraction_status
 
-from rfx.errors import AccuracyWarning
-from rfx._internal._precision import resolve_field_dtype
+from rfx.errors import AccuracyWarning, RfxRefusal
 from rfx.preflight.realization import release_inspection
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.sparams._grid_metrics import _calculator_source_plane
 from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
 from rfx.model.conductors import coax_declared_conductors, coax_kernel_conductors
+from rfx.model.coax_line import CoaxLineEnd, build_coax_line
 
 import jax
 import jax.numpy as jnp
@@ -56,7 +58,7 @@ from rfx.sparams._port_reference import (coax_two_port_line_waves,
     renormalize_power_waves, warn_line_reference_mismatch)
 
 
-from rfx.sparams._coax_admission import _require_absorption_on_every_axis
+from rfx.sparams._coax_admission import _require_absorption_on_every_axis, admit_coax_entry
 from rfx.sparams.coax_geometry import _coax_pec_edge_masks
 
 
@@ -146,7 +148,7 @@ def compute_coaxial_line_reflection(
     path. The AD↔FD gate is ``tests/unit/autodiff/test_coax_end_to_end_ad.py``.
     """
 
-    resolve_field_dtype(self._precision)
+    admit_coax_entry("Simulation.compute_coaxial_line_reflection", locals())
     if self._boundary != "cpml" or self._cpml_layers <= 0:
         raise ValueError(
             "compute_coaxial_line_reflection() requires boundary='cpml' "
@@ -190,7 +192,7 @@ def compute_coaxial_line_reflection(
     if any(declared_mesh[name] is not None for name in (
         "_dx_profile", "_dy_profile", "_dz_profile"
     )):
-        raise ValueError(
+        raise RfxRefusal(
             "compute_coaxial_line_reflection() supports only a uniform Yee "
             "grid; dx_profile, dy_profile, and dz_profile are not supported."
         )
@@ -200,7 +202,7 @@ def compute_coaxial_line_reflection(
             "refinement; remove add_refinement() from this simulation."
         )
     if self._geometry or self._thin_conductors:
-        raise ValueError(
+        raise RfxRefusal(
             "compute_coaxial_line_reflection() constructs the complete line "
             "geometry; registered geometry and thin conductors are not "
             "supported. Use the documented Simulation, port, and method "
@@ -242,7 +244,7 @@ def compute_coaxial_line_reflection(
     if isinstance(probe_count, bool) or not isinstance(
         probe_count, (int, np.integer)
     ):
-        raise ValueError("probe_count must be an integer of at least 3.")
+        raise RfxRefusal("probe_count must be an integer of at least 3.")
     requested_probe_count = int(probe_count)
     if requested_probe_count < 3:
         raise ValueError("probe_count must be at least 3.")
@@ -309,34 +311,40 @@ def compute_coaxial_line_reflection(
     R_dut = float(dut_impedance) if dut_impedance is not None else R_feed
 
     materials, _, _ = self._build_materials(grid)
-    stamp_entities = []
-    materials, shell_inner, pec_cells = stamp_coaxial_line(
-        grid, materials, center_xy=center_xy, z_lo_index=z_dut,
-        z_hi_index=z_hi_coax, pin_radius=a, outer_radius=b, realized_entities=stamp_entities,
-    )
-    materials = stamp_coaxial_annular_resistor(
-        grid, materials, center_xy=center_xy, z_index=z_feed, pin_radius=a,
-        outer_radius=b, target_impedance=R_feed, shell_inner_radius=shell_inner,
-        pec_cell_mask=pec_cells,
-    )
-    if termination == "short":
-        materials, short_cells = stamp_coaxial_short_plane(
-            grid, materials, center_xy=center_xy, z_index=z_dut, outer_radius=b,
-        )
-        pec_cells = pec_cells | short_cells
-    elif termination == "matched":
-        materials = stamp_coaxial_annular_resistor(
-            grid, materials, center_xy=center_xy, z_index=z_dut, pin_radius=a,
-            outer_radius=b, target_impedance=R_dut, shell_inner_radius=shell_inner,
-            pec_cell_mask=pec_cells,
-        )
-    # "open": conductors simply end at z_dut (open circuit) — no extra stamp.
+    def finish_line(materials, shell_inner, pec_cells):
+        """Keep DUT stamps in the calculator before source profile construction."""
+        if termination == "short":
+            materials, short_cells = stamp_coaxial_short_plane(
+                grid, materials, center_xy=center_xy, z_index=z_dut, outer_radius=b,
+            )
+            pec_cells = pec_cells | short_cells
+        elif termination == "matched":
+            materials = stamp_coaxial_annular_resistor(
+                grid, materials, center_xy=center_xy, z_index=z_dut, pin_radius=a,
+                outer_radius=b, target_impedance=R_dut, shell_inner_radius=shell_inner,
+                pec_cell_mask=pec_cells,
+            )
+        if eps_scale is not None:
+            materials = materials._replace(eps_r=materials.eps_r * jnp.asarray(eps_scale))
+        return materials, pec_cells
 
-    # Differentiable design channel: applied AFTER the (numpy) stamps as a
-    # MULTIPLIER so the stamped dielectric (PTFE fill) + PEC (in sigma) are
-    # preserved and only modulated — well-conditioned (vs replacing the fill).
-    if eps_scale is not None:
-        materials = materials._replace(eps_r=materials.eps_r * jnp.asarray(eps_scale))
+    src_port = _CoaxPort(
+        position=(center_xy[0], center_xy[1], (z_src - grid.pad_z_lo) * dz),
+        face="top", pin_length=dz, pin_radius=a, outer_radius=b,
+        impedance=port.impedance,
+        excitation=port.excitation if calculator_drive(True) else None,
+    )
+    line = build_coax_line(
+        grid, materials, center_xy=center_xy, pin_radius=a, outer_radius=b,
+        z_lo_index=z_dut, z_hi_index=z_hi_coax,
+        ends=[CoaxLineEnd(z_feed, _calculator_source_plane(grid, src_port),
+                          tuple(probes_z), R_feed, src_port)],
+        n_steps=n_steps, field_scale=field_scale, finish_line=finish_line,
+        stamp_line=stamp_coaxial_line, stamp_resistor=stamp_coaxial_annular_resistor,
+        build_source=build_coaxial_tem_plane_source_specs,
+    )
+    materials, pec_cells, stamp_entities = line.materials, line.pec_cells, line.conductor_entities
+    spec = line.ends[0].source_spec
 
     if freqs is None:
         freqs = jnp.linspace(
@@ -344,19 +352,6 @@ def compute_coaxial_line_reflection(
         )
     else:
         freqs = jnp.asarray(freqs, dtype=jnp.float32)
-
-    # TEM TFSF source at z_src (internal descriptor places pin_center there).
-    src_port = _CoaxPort(
-        position=(center_xy[0], center_xy[1], (z_src - grid.pad_z_lo) * dz),
-        face="top", pin_length=dz, pin_radius=a, outer_radius=b,
-        impedance=port.impedance, excitation=port.excitation,
-    )
-    spec = build_coaxial_tem_plane_source_specs(
-        grid=grid, port=src_port, n_steps=int(n_steps),
-        plane_axial_index=_calculator_source_plane(grid, src_port), field_scale=float(field_scale),
-        magnetic_ratio=1.0, shell_inner_radius=shell_inner,
-        pec_cell_mask=pec_cells,
-    )
 
     planes = []
     for z in probes_z:
@@ -495,7 +490,7 @@ def compute_coaxial_two_port(
     """Two-drive coaxial 2-port S-parameters — VALIDATED WITH SCOPE.
 
     .. note::
-        Production edits to this lane need the PI's approval. **VALIDATED WITH SCOPE, not EXPERIMENTAL** (
+        **VALIDATED WITH SCOPE, not EXPERIMENTAL** (
         ``docs/guides/sparameter_support_matrix.md``, the S-parameter
         family companion where this row lives). Covered: the two-port
         through-line class on this single coax geometry family, bracketed
@@ -528,8 +523,7 @@ def compute_coaxial_two_port(
     solve_two_port_from_wave_amplitudes` — the two-drive solve that does
     NOT assume the non-driven port sees zero incident wave (unlike the
     naive ``S[j,i] = b_j/a_i`` ratio, which has a hard terminator-
-    reflection floor on a through line; see that function's docstring
-    and ``docs/research_notes/20260729_i489_coax_two_port_design.md``).
+    reflection floor on a through line; see that function's docstring).
 
     Port 1 is the +z end (mirrors the 1-port fixture's own ``face='top'``
     orientation); port 2 is the -z end (mirror image, ``face='bottom'``).
@@ -612,7 +606,7 @@ def compute_coaxial_two_port(
     this sim still raise, because this method builds its own probes.
     """
 
-    resolve_field_dtype(self._precision)
+    admit_coax_entry("Simulation.compute_coaxial_two_port", locals())
     if self._boundary != "cpml" or self._cpml_layers <= 0:
         raise ValueError(
             "compute_coaxial_two_port() requires boundary='cpml' "
@@ -656,7 +650,7 @@ def compute_coaxial_two_port(
     if any(declared_mesh[name] is not None for name in (
         "_dx_profile", "_dy_profile", "_dz_profile"
     )):
-        raise ValueError(
+        raise RfxRefusal(
             "compute_coaxial_two_port() supports only a uniform Yee "
             "grid; dx_profile, dy_profile, and dz_profile are not "
             "supported."
@@ -781,29 +775,31 @@ def compute_coaxial_two_port(
     R_feed = float(feed_impedance) if feed_impedance is not None else float(z_tem)
 
     materials, _, _ = self._build_materials(grid)
-    stamp_entities = []
-    materials, shell_inner, pec_cells = stamp_coaxial_line(
-        grid, materials, center_xy=center_xy, z_lo_index=z_lo_coax_bot,
-        z_hi_index=z_hi_coax_top, pin_radius=a, outer_radius=b, realized_entities=stamp_entities,
+    src_port_top = _CoaxPort(
+        position=(center_xy[0], center_xy[1], (z_src_top - grid.pad_z_lo) * dz),
+        face="top", pin_length=dz, pin_radius=a, outer_radius=b,
+        impedance=port.impedance,
+        excitation=port.excitation if calculator_drive(True) else None,
     )
-    materials = stamp_coaxial_annular_resistor(
-        grid, materials, center_xy=center_xy, z_index=z_feed_top, pin_radius=a,
-        outer_radius=b, target_impedance=R_feed, shell_inner_radius=shell_inner,
-        pec_cell_mask=pec_cells,
+    src_port_bot = _CoaxPort(
+        position=(center_xy[0], center_xy[1], (z_src_bot - grid.pad_z_lo) * dz),
+        face="bottom", pin_length=dz, pin_radius=a, outer_radius=b,
+        impedance=port.impedance,
+        excitation=port.excitation if calculator_drive(True) else None,
     )
-    materials = stamp_coaxial_annular_resistor(
-        grid, materials, center_xy=center_xy, z_index=z_feed_bot, pin_radius=a,
-        outer_radius=b, target_impedance=R_feed, shell_inner_radius=shell_inner,
-        pec_cell_mask=pec_cells,
+    line = build_coax_line(
+        grid, materials, center_xy=center_xy, pin_radius=a, outer_radius=b,
+        z_lo_index=z_lo_coax_bot, z_hi_index=z_hi_coax_top,
+        ends=[CoaxLineEnd(z_feed_top, _calculator_source_plane(grid, src_port_top),
+                          tuple(probes_top), R_feed, src_port_top),
+              CoaxLineEnd(z_feed_bot, _calculator_source_plane(grid, src_port_bot),
+                          tuple(probes_bot), R_feed, src_port_bot)],
+        n_steps=n_steps, field_scale=field_scale,
+        stamp_line=stamp_coaxial_line, stamp_resistor=stamp_coaxial_annular_resistor,
+        build_source=build_coaxial_tem_plane_source_specs,
     )
-
-    # Differentiable design channel: applied AFTER the
-    # (numpy) stamps as a MULTIPLIER, same contract as the 1-port
-    # compute_coaxial_line_reflection's own eps_scale — the stamped
-    # dielectric (PTFE fill) + PEC (in sigma) are preserved and only
-    # modulated. Applied ONCE, before either drive's _run() call below,
-    # so it reaches both (the through line has no DUT break to scope it
-    # to one end).
+    materials, pec_cells, stamp_entities = line.materials, line.pec_cells, line.conductor_entities
+    spec_top, spec_bot = (end.source_spec for end in line.ends)
     if eps_scale is not None:
         materials = materials._replace(eps_r=materials.eps_r * jnp.asarray(eps_scale))
 
@@ -814,32 +810,6 @@ def compute_coaxial_two_port(
     else:
         freqs = jnp.asarray(freqs, dtype=jnp.float32)
     n_f = int(freqs.shape[0])
-
-    # TEM TFSF sources: port 1 (+z end) mirrors the 1-port fixture's own
-    # face='top' source exactly; port 2 (-z end) is the mirror image,
-    # face='bottom'.
-    src_port_top = _CoaxPort(
-        position=(center_xy[0], center_xy[1], (z_src_top - grid.pad_z_lo) * dz),
-        face="top", pin_length=dz, pin_radius=a, outer_radius=b,
-        impedance=port.impedance, excitation=port.excitation,
-    )
-    src_port_bot = _CoaxPort(
-        position=(center_xy[0], center_xy[1], (z_src_bot - grid.pad_z_lo) * dz),
-        face="bottom", pin_length=dz, pin_radius=a, outer_radius=b,
-        impedance=port.impedance, excitation=port.excitation,
-    )
-    spec_top = build_coaxial_tem_plane_source_specs(
-        grid=grid, port=src_port_top, n_steps=int(n_steps),
-        plane_axial_index=_calculator_source_plane(grid, src_port_top),
-        field_scale=float(field_scale), magnetic_ratio=1.0,
-        shell_inner_radius=shell_inner, pec_cell_mask=pec_cells,
-    )
-    spec_bot = build_coaxial_tem_plane_source_specs(
-        grid=grid, port=src_port_bot, n_steps=int(n_steps),
-        plane_axial_index=_calculator_source_plane(grid, src_port_bot),
-        field_scale=float(field_scale), magnetic_ratio=1.0,
-        shell_inner_radius=shell_inner, pec_cell_mask=pec_cells,
-    )
 
     n_bot = len(probes_bot)
     n_top = len(probes_top)
@@ -1178,13 +1148,15 @@ def compute_coax_msl_transition(
     RuntimeError
         If no realized trace conductor is found above the substrate at the
         microstrip feed, or the runner returns no DFT-plane records.
+    RfxUnsupported
+        If the registered MSL port's mode is not ``"laplace"`` (the default).
 
     Limits
     ------
     Requires a float32, three-dimensional uniform Yee mesh with the default
     stencil order, positive CPML on all six faces, and no periodic axes or
     refinement. Register exactly one bottom-face coax port and one microstrip
-    port, no other ports, existing TFSF source, lumped RLC elements, probes,
+    port with ``mode="laplace"``, no other ports, existing TFSF source, lumped RLC elements, probes,
     DFT planes, flux monitors, or NTFF boxes. The registered geometry must
     be nonempty, and the microstrip source interval must meet its realized
     conductors. The coax ``position[2]`` locates the physical ground plane;
@@ -1197,7 +1169,7 @@ def compute_coax_msl_transition(
     matrix-pencil wave fit with built coax / analytic MSL normalization; this is
     not a traceable or validated cross-family extraction.
     """
-    resolve_field_dtype(self._precision)
+    admit_coax_entry("Simulation.compute_coax_msl_transition", locals())
     from rfx.sources.coaxial_port import (
         CoaxialPort as _CoaxPort,
         build_coaxial_tem_plane_source_specs,
@@ -1373,33 +1345,28 @@ def compute_coax_msl_transition(
     z_tem = coaxial_tem_characteristic_impedance(a, b)
     r_feed = float(feed_impedance) if feed_impedance is not None else float(z_tem)
     junction_materials = materials
-    stamp_entities = []
-    materials, shell_inner, coax_pec_cells = stamp_coaxial_line(
-        grid, materials, center_xy=center_xy, z_lo_index=z_stub_lo,
-        z_hi_index=z_stub_hi, pin_radius=a, outer_radius=b, realized_entities=stamp_entities,
-    )
-    materials = stamp_coaxial_annular_resistor(
-        grid, materials, center_xy=center_xy, z_index=z_feed,
-        pin_radius=a, outer_radius=b, target_impedance=r_feed,
-        shell_inner_radius=shell_inner, pec_cell_mask=coax_pec_cells,
-    )
-    # The declared stub ends below the junction node. The caller owns the
-    # junction, post and laminate: preserve the registered arrays at and above
-    # that node, so no DUT conductor/dielectric is cut.
-    from rfx.model.thin_conductors import splice_junction_materials
-    materials = splice_junction_materials(materials, junction_materials, z_junction_idx)
+    def finish_line(materials, shell_inner, pec_cells):
+        """Preserve caller materials at and above the junction node."""
+        from rfx.model.thin_conductors import splice_junction_materials
+        return splice_junction_materials(materials, junction_materials, z_junction_idx), pec_cells
 
     src_port = _CoaxPort(
         position=(center_xy[0], center_xy[1], (z_src - grid.pad_z_lo) * dz),
         face="bottom", pin_length=dz, pin_radius=a, outer_radius=b,
-        impedance=port.impedance, excitation=port.excitation,
+        impedance=port.impedance,
+        excitation=port.excitation if calculator_drive(True) else None,
     )
-    spec_coax = build_coaxial_tem_plane_source_specs(
-        grid=grid, port=src_port, n_steps=int(n_steps),
-        plane_axial_index=_calculator_source_plane(grid, src_port),
-        field_scale=float(field_scale), magnetic_ratio=1.0,
-        shell_inner_radius=shell_inner, pec_cell_mask=coax_pec_cells,
+    line = build_coax_line(
+        grid, materials, center_xy=center_xy, pin_radius=a, outer_radius=b,
+        z_lo_index=z_stub_lo, z_hi_index=z_stub_hi,
+        ends=[CoaxLineEnd(z_feed, _calculator_source_plane(grid, src_port),
+                          tuple(probes_coax), r_feed, src_port)],
+        n_steps=n_steps, field_scale=field_scale, finish_line=finish_line,
+        stamp_line=stamp_coaxial_line, stamp_resistor=stamp_coaxial_annular_resistor,
+        build_source=build_coaxial_tem_plane_source_specs,
     )
+    materials, coax_pec_cells, stamp_entities = line.materials, line.pec_cells, line.conductor_entities
+    spec_coax = line.ends[0].source_spec
     ref_coax_m = (z_junction_idx - grid.pad_z_lo) * dz
     z_planes_coax_m = np.array(
         [(z - grid.pad_z_lo) * dz for z in probes_coax], dtype=np.float64
@@ -1471,13 +1438,13 @@ def compute_coax_msl_transition(
         _coax_pec_edge_masks(coax_pec_cells), stamp_entities, root=declared_conductors,
         skip_preflight=skip_preflight, sheet_findings=sheet_findings)
     for drive_idx in range(2):
-        if drive_idx == 0:
+        if calculator_drive(drive_idx == 0):
             sources = list(spec_coax.electric_sources)
             mag_sources = list(spec_coax.magnetic_sources)
         else:
             sources = make_msl_port_sources(
                 grid, msl_port_driven, materials, int(n_steps),
-                mode_profile=mode_profile,
+                mode_profile=mode_profile, dtype=jnp.float32,
             )
             mag_sources = []
 

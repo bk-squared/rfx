@@ -49,7 +49,7 @@ class ConductorWidthAxis:
 
 
 def f0_uses_solved_span(spec):
-    """D:c1d171: compare the assembled model's Rs = 1/G with 0.01 eta0."""
+    """Compare the assembled model's Rs = 1/G with 0.01 eta0."""
     from rfx.core.yee import MU_0, EPS_0
     return abs(1.0 / float(spec.g_sheet)) <= 1e-2 * np.sqrt(MU_0 / EPS_0)
 
@@ -256,6 +256,8 @@ def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root
     root = replace(root, materials=materials, pec_cells=cells, pec_edges=edges,
         stamped_entities=tuple(entities), provenance=root.provenance + (
             ConductorStage(tuple(e.entity_id for e in entities), 'coax stamp'),))
+    from rfx.model.source_admission import refuse_shorted_lumped_rlc
+    refuse_shorted_lumped_rlc(sim, root)
     release_declaration_caches(sim)
     if not _traced_product(root):
         from rfx.model.coax import stamp_check_findings
@@ -546,10 +548,13 @@ def solve_conductors(sim, grid, *, nonuniform=False, preflight=None, n_devices=1
                      realization_not_evaluated=None):
     """Assemble once for execution and lend the pre-port object to its checks."""
     import jax
-    from rfx.model.source_admission import refuse_dead_soft_sources
+    from rfx.model.source_admission import conductor_operator, refuse_dead_soft_sources, refuse_shorted_lumped_rlc
     with jax.ensure_compile_time_eval():
         root = realized_conductors(sim, grid, nonuniform=nonuniform, mode="solve", n_devices=n_devices)
         refuse_dead_soft_sources(sim, root)
+        smoothing, conformal = realization_options or (False, False)
+        refuse_shorted_lumped_rlc(sim, root, operator=conductor_operator(
+            smoothing=smoothing, conformal=conformal))
     # The prepared owner survives transfer to slabs; the assembly view need not.
     root = replace(root)
     from rfx.model.realization_table import bind_table
@@ -624,8 +629,10 @@ def assembled_materials(root, **collectors):
 
 
 def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
-                      *, periodic, sheet_specs=(), root=None):
+                      *, periodic, sheet_specs=(), root=None, operator="staircase"):
     """Carry explicit solve products forward, retaining material/PEC overrides."""
+    import jax
+    from rfx.model.source_admission import refuse_dead_soft_sources, refuse_shorted_lumped_rlc
     if root is not None and root.mode != "solve":
         raise ValueError("A runner cannot consume audit-mode conductors")
     if (root is not None and _same_grid(root.grid, grid)
@@ -633,11 +640,11 @@ def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
             and tuple(map(id, sheets)) == tuple(map(id, root.sheets))
             and tuple(map(id, wires)) == tuple(map(id, root.wires))
             and tuple(periodic) == root.periodic):
+        with jax.ensure_compile_time_eval():
+            refuse_shorted_lumped_rlc(sim, root, operator=operator)
         return replace(root, materials=materials, sheet_impedance=tuple(sheet_specs),
                        _prepared_owner=root._prepared_owner or root)
     # Internal override/S-parameter entry points already have assembled products.
-    import jax
-    from rfx.model.source_admission import refuse_dead_soft_sources
     with jax.ensure_compile_time_eval():
         obj = realized_conductors(sim, grid, nonuniform=hasattr(grid, 'dx_arr'),
             assembly=(materials, None, None, pec_cells), pec_sheets=sheets,
@@ -645,6 +652,7 @@ def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
             geometry_masks=() if root is None else root.geometry_masks.items(),
             assembly_entries=() if root is None else root.assembly_entries)
         refuse_dead_soft_sources(sim, obj)
+        refuse_shorted_lumped_rlc(sim, obj, operator=operator)
     return (replace(obj, assembly_from_sim=False) if root is None else
             replace(obj, assembly=root.assembly, assembly_from_sim=root.assembly_from_sim,
                     _prepared_solve=root._prepared_solve,
@@ -812,7 +820,7 @@ def preview_port_stages(sim, conductors):
             if label not in done:
                 port = msl_port_from_entry(entry)
                 support = list(_msl_yz_cells(grid, port))
-                if conductors.lane == 'nonuniform' or getattr(entry, "mode", "laplace") != "uniform":
+                if getattr(entry, "mode", "laplace") != "uniform":
                     from rfx.sources.msl_port import compute_msl_mode_profile, msl_cross_section_span, msl_cell
                     span = msl_cross_section_span(grid, port)
                     centre = msl_cell(entry.direction, span["i_feed"], span["w_centre"],
@@ -890,12 +898,12 @@ def uniform_solve_inputs(assembly):
 
 
 def forward_products(sim, grid, materials, cells, sheets, wires, periodic, root,
-                     sheet_operator=None):
+                     sheet_operator=None, *, operator="staircase"):
     """Bind overrides while keeping the original substrate for MSL launches."""
     unbound = root is None
     drawn = None if unbound else root.assembly[0]
     root = kernel_conductors(sim, grid, materials, cells, sheets, wires,
-        periodic=periodic, root=root,
+        periodic=periodic, root=root, operator=operator,
         sheet_specs=() if root is None else root.sheet_impedance)
     return replace(root, sheet_operator=sheet_operator), drawn, root.pec_edges
 
@@ -1094,9 +1102,13 @@ def _layout_stage_error(index, sheet, stage, axis, edge):
 def refuse_layout_port_releases(layout, conductors):
     """Every published port release matters, including passive loads (R12.2)."""
     details = {(component, tuple(edge)): f"{kind} port-release stage ({entity})"
-               for entity, kind, component, edge, _ in conductors._released_port_details}
+               for entity, kind, component, edge, _ in conductors._released_port_details
+               if kind != 'lumped_rlc'}
+    elements = {entity for entity, kind, *_ in conductors._released_port_details
+                if kind == 'lumped_rlc'}
     for entity, component, edge in conductors.released_port_edges:
-        details.setdefault((component, tuple(edge)), f"port-release stage ({entity})")
+        if entity not in elements:
+            details.setdefault((component, tuple(edge)), f"port-release stage ({entity})")
     for index, sheet, axis, indices in _layout_edges(layout, conductors.grid):
         for edge in zip(*(v.ravel().tolist() for v in indices)):
             stage = details.get((f"e{'xyz'[axis]}", edge))
@@ -1134,16 +1146,11 @@ def refuse_layout_metal_consumers(layout, sim, grid):
             "open plane wave on the graded mesh admits no finite scatterer, drawn or switched; "
             "excite the switched layout with a port, or draw each layout and run it on the "
             "uniform mesh (closed_box=True)")
-    from rfx._internal._grid_metric import field_index
     from rfx.sources.msl_port import msl_cross_section_span, msl_port_from_entry
-    solved = {(spec.component, tuple(field_index(grid, spec.position, spec.component)))
-              for spec in sim._lumped_rlc if spec.topology == 'series' or spec.L > 0}
     spans = [msl_cross_section_span(grid, msl_port_from_entry(port))
              for port in sim._msl_ports]
     for index, sheet, axis, indices in _layout_edges(layout, grid):
         for edge in zip(*(v.ravel().tolist() for v in indices)):
-            if (f"e{'xyz'[axis]}", edge) in solved:
-                _layout_stage_error(index, sheet, "lumped RLC post-keep solve", axis, edge)
             if getattr(sim, '_current_moments', None) is not None:
                 _layout_stage_error(index, sheet, "current-moment metal census", axis, edge)
             for span in spans:

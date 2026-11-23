@@ -110,13 +110,16 @@ verification to mean anything.
 
 Marked ``slow``: two full patch FDTD ring-downs (~15 min total on CPU at 4 substrate
 cells). The raster gates are fast and run in the default selection.
+
+Leg A and Leg B are pinned at NUM_PERIODS = 200, and 120-period numbers are not
+comparable to them: with the foils drawn on the laminate faces, at 120 periods the unfed
+ring-down ends at -35.43 dB of peak, short of the -40 dB truncation bar.
 """
 from __future__ import annotations
 
 LOCK_PROVENANCE = {
     "fixture": "none",
-    "generator": ("configuration sweep, bk-squared/rfx-archive "
-                  "rfx/records/20260927-1292-locked-results/scripts/r3_legb_config.py (v2: "
+    "generator": ("configuration sweep (v2: "
                   "board checked before each solve); windows by the midpoint / half-range + "
                   "extractor-spread construction"),
     "commit": "673b7083",
@@ -140,189 +143,36 @@ from rfx.sources import GaussianPulse
 
 C0 = 2.99792458e8
 
-# ---------------------------------------------------------------- geometry --
-# issue-#80 reproduction geometry (matches the MSL-port gate) — UNCHANGED.
 EPS_R = 3.38
 H_SUB = 0.787e-3
 W = 10.129e-3
 L = 8.595e-3
 W_MSL = 1.8e-3
-# #1512: port plane; feed covers its node with one local-cell drawing allowance.
 PORT_MARGIN = 5.0e-3
 FEED_LEN = 8.0e-3
 DOM_X, DOM_Y, DOM_Z = 29.747e-3, 18.130e-3, 12.787e-3
 N_SUB_CELLS = 4
 DX = H_SUB / N_SUB_CELLS
 
-# Board height, SNAPPED TO THE NODE LINE (#931 §1.3 "off-lattice interfaces").
-# The z origin used to be a bare 4 mm, which on this mesh (dx = H_SUB/4 =
-# 196.75 um, node i at (i - cpml_pad)*dx) sits 0.33 of a cell above node 28.
-# Nothing in the board is off-lattice by intent — the laminate is an exact four
-# cells thick — so the 0.33-cell offset was pure registration noise, and under
-# the ownership contract it is not harmless: a foil declared on an off-node
-# interface snaps to the NEAREST node, which need not be the node the
-# dielectric's own half-open sampling starts at, and the cavity then carries a
-# vacuum cell in series (measured below).  Snapping the origin puts both
-# laminate faces exactly on node planes, so the two foils and the four
-# dielectric cells are the same five node planes.  The board moves 65 um in
-# free space; nothing else about it changes.
 Z_GND = round(4e-3 / DX) * DX
 
-# The realized patch raster at this mesh: 43 x 51 cells = 8.46025 x 10.03425 mm on a
-# 787.00 um substrate (design 8.595 x 10.129 mm; the x/y faces sit 47.5/65.5 um
-# off-lattice, which preflight prints as a design-edge advisory). Asserted separately
-# because Leg A's ratio absorbs a raster change — see the module docstring.
 RASTER_CELLS = (43, 51)
 
-# 200, raised from 120 by the #931 redraw (2026-09-07). With the reserved
-# vacuum cell gone the cavity is 787 um of laminate instead of 983.75 um of
-# laminate-plus-vacuum, the patch radiates less, and the isolated arm drains
-# more slowly: at 120 periods the redrawn UNFED ring-down ends at -35.43 dB
-# of peak against this file's -40 dB truncation bar, while the fed arm still
-# clears it at -42.21 dB (VESSL 369367259225). That is the module's own
-# instruction taken literally — "raise NUM_PERIODS before trusting any
-# Harminv frequency" — not a widened bar: the bar is unchanged and the record
-# is longer. Leg A and Leg B are therefore re-pinned at 200 periods, and the
-# 120-period numbers are not comparable to them.
 NUM_PERIODS = 200.0
 SETTLING_BAR_DB = -40.0
 HARMINV_BAND_HZ = (6e9, 14e9)
-RINGDOWN_START_FRAC = 0.30      # skip the drive
-N_PROBE_X = 5                   # probes along x (the parity line for TM010)
-N_PROBE_Y = 5                   # probes along y (the parity line for TM001)
+RINGDOWN_START_FRAC = 0.30
+N_PROBE_X = 5
+N_PROBE_Y = 5
 
-# ------------------------------------------------------------- Leg A window --
-# f_TM010(unfed) / Balanis(realized raster) - 1, in percent. The Balanis value is the
-# lock's anchor and CONTEXT ONLY, as the module docstring says; it is not the reference.
-#
-# RE-DERIVED 2026-09-27 (issue 1292). Root cause of the move: #1213 (an E component on a
-# material interface takes the mean eps and sigma of its four cells). On this fixture the
-# isolated TM010 went 9.15024 -> 8.98854 GHz with #1213 (Leg A -1.932 -> -3.665 %) and to
-# 8.97072 GHz with #1012 (-3.856 %), all CPU.
-#
-# Witness: openEMS, on a whole-cell redraw of this board (patch 8.2635 x 9.8375 mm = the
-# solver patch here at h/4, the same h and eps_r) and its own five-rung ladder,
-# converges to 9.1185 GHz (fit 9.118496, band 9.1163-9.1199; bk-squared/rfx-archive
-# rfx/records/20260927-1292-openems-patch/, commit 512e71c). rfx on the same redraw
-# (rfx/records/20260927-1292-locked-results/, R3):
-#   N = h/dx        4        6        8        10       12       16
-#   current tree    8.970567 9.021659 9.046481 9.061211 9.070981 9.083055 GHz
-#     vs openEMS    -1.62    -1.06    -0.79    -0.63    -0.52    -0.39 %
-#   tree before     9.151977 9.155298 9.153505 9.150994 9.148786 9.144779 GHz
-#   #1213 (cd237692) +0.37   +0.40    +0.38    +0.36    +0.33    +0.29 %
-# The current tree converges at first order (six-rung fit, p = 1.06) to 9.116699 GHz,
-# within 0.02 % of the openEMS limit. The tree before #1213 reads +0.37 % above that
-# limit at N = 4, falling to +0.29 % at N = 16; its own limit is undetermined (a
-# first-order estimate from the two finest rungs gives 9.1328 GHz). At this lock's N = 4
-# the current tree reads 1.6 % below the external value.
-#
-# The window is the lock's own construction (History below): centre = midpoint of the
-# configuration range, half-width = configuration half-range + extractor spread, no
-# safety factor. Re-measured on the current tree (unfed arm, each configuration moved one
-# axis at a time from the base build; every board checked before its solve to realize
-# h = H_SUB in N laminate cells with no buried-sheet advisory):
-#   h/4 base -3.8556 | domain +20/+20/+10 -3.8536 | domain +40/+40/+20 -3.8515 |
-#   source (0.68L, +0.19W) -3.8554 | cpml_layers 12 -3.8514 | h/5 -3.8802 |
-#   h/6 -3.9877 | h/3 -3.6546 | h/3 with domain +20/+20/+10 -3.6518
-#   range -3.987730 (h/6) .. -3.651849 (h/3 +20): midpoint -3.819789, half-range
-#   0.167940; single-probe extractor spread on this fixture's own unfed record 0.013190 %.
-# Each term rounds UP (0.168 + 0.014), with no other slack; centre -3.8198:
-# window [-4.0018, -3.6378] %.
-# The fixture (h/4 base, CPU -3.855632 %) sits 0.146 pp inside the lower edge and
-# 0.218 pp inside the upper edge. The mesh axis spans the range: h/3 reads +0.20 pp and
-# h/6 -0.13 pp from h/4; domain, source and absorber move it by 0.004 pp at most.
-# The trees before #1213 (-1.932 %) and before #1178 (-1.881 %) read outside this
-# window, and so do the owning-cell E rule restored (-2.109 %) and a harmonic-mean
-# permittivity on the E edges (-2.957 %); the tree before #1012 (-3.665 %) reads inside.
-# Threads and the x64 flag were not re-sampled (2026-08-30: bit-identical raw series,
-# < 0.001 pp). Configurations ran on GPU on the tree of 673b7083 (rfx/ as on this
-# branch); the fixture value is CPU.
-#
-# Configuration samples measured before 2026-09-28 at h/3 and h/6 (-5.4795, -5.4771,
-# -5.3949 %) are void: the laminate's top face, drawn on its node plane, came out at
-# 18.000000000000004 / 36.00000000000001 cells in floating point, so the laminate took an
-# extra cell (h realized 1049.33 / 918.17 um) and buried the patch sheet in the
-# dielectric. The configuration script now draws both laminate faces 0.001 cell below
-# their node planes and refuses a board that fails those checks.
-#
-# History (2026-08-30 and the #931 re-pin of 2026-09-07; kept for its reasoning, its
-# numbers superseded above): centre -6.17 %, then -1.886 % after the #931 redraw put
-# both foils on the laminate faces (VESSL 369367259237, 200 periods); half-width 1.125 =
-# 0.935 configuration (h/3..h/6, +0/+20/+40 cells, cpml 8 -> 12, measured on the
-# pre-redraw board) + 0.190 extractor. Discrimination then: pre-#702 (6b1302b3)
-# measured +7.430 % on identical inputs.
-LEG_A_CENTRE_PCT = -3.8198      # midpoint of the configuration range, -3.819789 %
-LEG_A_HALF_PCT = 0.182          # = 0.168 configuration + 0.014 extractor
-#   configuration half-range (-3.987730 .. -3.651849) = 0.167940 -> 0.168;
-#   single-probe extractor spread 0.013190 -> 0.014. Window [-4.0018, -3.6378] %.
+LEG_A_CENTRE_PCT = -3.8198
+LEG_A_HALF_PCT = 0.182
 
-# ------------------------------------------------------------- Leg B window --
-# f_TM010(fed) / f_TM010(unfed) - 1, in percent. The edge-feed loading term.
-#
-# RE-DERIVED 2026-09-27 (issue 1292). The pull left the old window [-7.095, -5.123] %
-# in three steps, each bisected or measured on this fixture (CPU, h/4, 200 periods):
-#   #1178 (e7f7e027)  -7.067 -> -7.216 %  (its first parent 77f7094c reads -7.067 %)
-#   #1213 (76f68f9f)  -7.216 -> -7.492 %
-#   #1012 (f7b3270d)  -7.493 -> -7.635 %
-# Since #1178 (e7f7e027) the ground plane under the stub continues through the absorbers
-# while the feed trace still ends at the −x absorber face; the pull moved −7.067 → −7.216 %,
-# then #1213 −0.276 pp and #1012 −0.142 pp. Realized footprints on this grid (pad 8): ground
-# x 0..168 / y 0..109, against x 8..159 / y 8..100 before #1178; feed trace x 8..74 on both.
-#
-# The window is the lock's own construction, as in its first measurement (History
-# below): centre = midpoint of the configuration range, half-width = configuration
-# half-range + extractor spread, no safety factor. Re-measured on the current tree
-# (fed/unfed pairs, each configuration moved one axis at a time from the base build;
-# every board checked before its solve as for Leg A):
-#   h/4 base -7.6353 | h/4 +40/+40/+20 -7.6366 | h/5 base -6.6899 |
-#   h/3 base -6.1223 | h/3 +20/+20/+10 -6.1232
-#   range -7.636614 (h/4 +40) .. -6.122310 (h/3): midpoint -6.879462, half-range
-#   0.757152; single-probe extractor spread on this fixture's own unfed record 0.013190 %.
-# Each term rounds UP (0.758 + 0.014), with no other slack; centre -6.8795:
-# window [-7.6515, -6.1075] %.
-# The fixture (h/4 base, CPU -7.635336 %) is at the family's lower end: only the +40
-# domain reads below it, by 0.001 pp. It sits 0.016 pp inside the lower edge (0.0013 to
-# the bottom member + 0.0132 extractor spread + 0.0017 rounding) and 1.528 pp inside
-# the upper edge.
-# Resolution: the pre-#1178 value (-7.067 %) is inside this envelope. The lock's
-# resolution, a 1.51 pp configuration spread, is wider than #1178's 0.15 pp move, so it
-# cannot see it; nor #1213's -0.28 pp or #1012's -0.14 pp (-7.216 and -7.493 % before
-# them are inside too). With the valid samples, the owning-cell E rule restored
-# (-7.313 %) and a harmonic-mean permittivity on the E edges (-7.473 %) pass as well, so
-# this window cannot see an interface-rule regression; its spread is dominated by the
-# feed stub's rasterization across meshes (h/3 -6.12, h/4 -7.64, h/5 -6.69 %).
-# Configuration samples measured before 2026-09-28 at h/3 (-6.7554, -6.7567 %) are void,
-# for the laminate defect described under Leg A. Records: bk-squared/rfx-archive
-# rfx/records/20260927-1292-locked-results/ (R3 Leg B).
-#
-# History, the construction's first measurement (2026-08-30, before #931, #1178, #1213
-# and #1012; kept for its reasoning, its numbers superseded above):
-#   h/4 base -6.905, h/4 +40/+40/+20 -6.660, h/5 base -6.011, h/3 base -5.518, h/3
-#   +20/+20/+10 -5.313 -> midpoint -6.109, half-range 0.796, plus a 0.188 % extractor
-#   spread; window [-7.095, -5.123] %. Then the h/3 pairs sat +1.39 pp from h/4 and h/3
-#   was the port configuration with the most preflight advisories.
-#
-#   THIS LEG WAS NOT BUILT TO DISCRIMINATE #702: pre-#702 measured -7.005 %, inside the
-#   2026-08-30 window.
-#   Leg B locks the FEED MODEL, which on this fixture is (measured 2026-08-30)
-#   the reactive load of a 13.18 mm OPEN STUB: the feed trace ends at the absorber face,
-#   the MSL port sheet sits 5 mm inside that end, and the fed 8.16 GHz line is the
-#   stub-loaded TM010 (closed-form oracle 8.196 vs measured 8.177 GHz, +0.23 %). So
-#   FEED_LEN, PORT_MARGIN and DOM_X are part of the locked configuration: one node of
-#   stub length moves this leg by +0.85 pp, and the pull runs about -2.2 %/mm of stub.
-#   With the stub held fixed the pull SHRINKS with inset depth (-6.74 -> -3.63 % at
-#   2.4 mm) — an inset-intrinsic matching term exists but is not what this leg pins.
-#   Since #1178 the ground plane continues through the absorbers (realized ground
-#   x 0..168 / y 0..109, against x 8..159 / y 8..100 before; feed trace x 8..74 on both).
-LEG_B_CENTRE_PCT = -6.8795      # midpoint of the configuration range, -6.879462 %
-LEG_B_HALF_PCT = 0.772          # = 0.758 configuration + 0.014 extractor
-#   configuration half-range (-7.636614 .. -6.122310) = 0.757152 -> 0.758;
-#   single-probe extractor spread measured on this fixture's own unfed record
-#   0.013190 -> 0.014. Both terms round UP. Window [-7.6515, -6.1075] %.
+LEG_B_CENTRE_PCT = -6.8795
+LEG_B_HALF_PCT = 0.772
 
-# --------------------------------------------------------------- Leg C ------
-PATCH_BAND_GHZ = (8.0, 10.5)   # physical patch radiating band (holds >1 mode: see above)
-FEED_BAND_LO_GHZ = 11.0        # feed-line lambda/2 and higher-order / spurious band
+PATCH_BAND_GHZ = (8.0, 10.5)
+FEED_BAND_LO_GHZ = 11.0
 
 _PARITY_LABEL = {
     (1, 0): "TM010",
@@ -332,7 +182,6 @@ _PARITY_LABEL = {
 }
 
 
-# ------------------------------------------------------------------ builder --
 def _build(fed: bool):
     """Build the board; ``fed`` selects the MSL-fed geometry or the isolated patch.
 
@@ -343,15 +192,12 @@ def _build(fed: bool):
     The two arms differ ONLY by the feed trace + MSL port (fed) vs an asymmetric
     interior Ez dipole (unfed). Domain, mesh, stack, patch and probes are identical, so
     Leg B is a clean fed-minus-unfed difference and Leg A never sees the feed.
+
+    The solved patch is 2.255 % (x) and 1.518 % (y) smaller than declared and the solved
+    feed 4.904 % narrower, and the lock pins the resonance of that solved board.
     """
-    # #1138: patch x/y solved -2.255%/-1.518%, feed y -4.904%; this locks resonance.
     sim = Simulation(snap="declared", freq_max=15e9, domain=(DOM_X, DOM_Y, DOM_Z),
                      dx=DX, cpml_layers=8, boundary="cpml")
-    # The stack, in the words the contract reads (#931 §1.3, §6): the laminate
-    # is the only body with a thickness, and each foil is a ZERO-THICKNESS sheet
-    # ON the laminate face it bounds.  Both faces are node planes (Z_GND is
-    # snapped and H_SUB is exactly four cells), so declared and realized are the
-    # same five planes and the cavity is four dielectric cells, nothing else.
     z_sub_lo, z_sub_hi = Z_GND, Z_GND + H_SUB
     x_patch0 = PORT_MARGIN + FEED_LEN
     y_c = DOM_Y / 2.0
@@ -361,38 +207,13 @@ def _build(fed: bool):
     patch = Box((x_patch0, y_c - W / 2, z_sub_hi), (x_patch0 + L, y_c + W / 2, z_sub_hi))
 
     sim.add_material("ro4003c", eps_r=EPS_R, sigma=0.0)
-    # The three metallizations are FOILS, declared as zero-thickness sheets on
-    # the laminate faces (lattice ownership contract #931 §1.3, amendment §6
-    # "a foil sheet goes on the dielectric INTERFACE it bounds").
-    #
-    # They used to be one-cell PEC Boxes drawn in cells RESERVED for them: the
-    # ground in [4.000, 4.197] mm with the laminate starting only at 4.197. That
-    # reserved cell is the #702 geometry. Before this branch, rfx re-sampled the
-    # sheet's own cell material onto its live edge and the cell silently became
-    # dielectric; the contract deletes that re-sample (a sheet owns no cell), so
-    # the cell is what the drawing says it is — vacuum — and the cavity carries
-    # it in series. Measured at build time on the unreDRAWn board, walls at node
-    # 29 and 34 with eps_r = [1.0, 3.38, 3.38, 3.38, 3.38] across the five cells
-    # between them: preflight's #703 cavity check reads sum(d/eps) 429.6 um mesh
-    # vs 232.8 um physical, +84.5 %. That is the whole of the +10.365 % Leg A
-    # excursion the first post-contract run measured (VESSL 369367259172) — the
-    # pre-#702 signature this module's docstring names at +7.430 %.
-    #
-    # The contract's remedy is the drawing, not a re-sample: put each foil on
-    # the laminate face it bounds and let the laminate own every cell of the
-    # cavity. Realized now, and asserted below with no solve:
-    #   walls at nodes 28 and 32, four cells between them, all eps_r = 3.38,
-    #   node-to-node 787.00 um = the declared H_SUB to the micron.
-    # The patch footprint (43 x 51 nodes, 42 x 50 edges) is untouched by this —
-    # only z moved — so RASTER_CELLS still holds and Leg A's ratio still divides
-    # by the Balanis value of the same rectangle.
     sim.add_thin_conductor(Box((0, 0, z_sub_lo), (DOM_X, DOM_Y, z_sub_lo)),
-                           sigma_bulk=5.8e7)                                # ground
+                           sigma_bulk=5.8e7)
     sim.add(substrate, material="ro4003c")
     if fed:
         sim.add_thin_conductor(Box((PORT_MARGIN - local_port_cell(sim, (PORT_MARGIN, y_c, z_sub_lo)), y_c - W_MSL / 2, z_sub_hi),
                                    (x_patch0, y_c + W_MSL / 2, z_sub_hi)),
-                               sigma_bulk=5.8e7)                            # feed trace
+                               sigma_bulk=5.8e7)
     sim.add_thin_conductor(patch, sigma_bulk=5.8e7)
 
     if fed:
@@ -402,24 +223,24 @@ def _build(fed: bool):
             waveform=GaussianPulse(f0=8.5e9, bandwidth=1.6),
         )
     else:
-        # Off-centre interior dipole: excites TM010, TM001 and TM011 alike, so the
-        # parity census sees every mode in band. Moving it to (0.68L, +0.19W) moved
-        # Leg A by 0.003 pp (measured), so this placement carries no verdict.
         sim.add_source(position=(x_patch0 + 0.31 * L, y_c - 0.27 * W, z_mid),
                        component="ez", amplitude_kind="field",
                        waveform=GaussianPulse(f0=8.5e9, bandwidth=1.6))
 
-    # PROBE CROSS inside the patch cavity. The x line sits off the y centre line and the
-    # y line off the x centre line, so neither line is blind to an odd mode.
+    X_LINE_OFFSET_FRACTION_OF_W = 0.13
+    Y_LINE_OFFSET_FRACTION_OF_L = 0.11
+    assert min(X_LINE_OFFSET_FRACTION_OF_W * W, Y_LINE_OFFSET_FRACTION_OF_L * L) >= DX, (
+        "each probe line sits at least one cell off the centre line across it, so neither line is blind to an odd mode")
     x_c = x_patch0 + 0.5 * L
     for t in np.linspace(-0.36, 0.36, N_PROBE_X):
-        sim.add_probe(position=(x_c + t * L, y_c + 0.13 * W, z_mid), component="ez")
+        sim.add_probe(position=(x_c + t * L, y_c + X_LINE_OFFSET_FRACTION_OF_W * W, z_mid),
+                      component="ez")
     for t in np.linspace(-0.36, 0.36, N_PROBE_Y):
-        sim.add_probe(position=(x_c + 0.11 * L, y_c + t * W, z_mid), component="ez")
+        sim.add_probe(position=(x_c + Y_LINE_OFFSET_FRACTION_OF_L * L, y_c + t * W, z_mid),
+                      component="ez")
     return sim, patch, substrate
 
 
-# ------------------------------------------------------------- realized board --
 def _realized_extent(grid, shape) -> tuple[float, float, float]:
     """Per-axis realized (rasterized) extent of one declared shape, in metres.
 
@@ -455,7 +276,6 @@ def _balanis_ghz(l_m: float, w_m: float, h_m: float, eps_r: float = EPS_R) -> fl
     return C0 / (2.0 * (l_m + 2.0 * dl) * math.sqrt(eps_eff)) / 1e9
 
 
-# ---------------------------------------------------------------- extractor --
 def _joint_amplitudes(sigs, poles, dt):
     """Least-squares amplitude of every pole on every probe, fitted JOINTLY.
 
@@ -489,11 +309,6 @@ def _census(sigs, dt):
     rows = []
     for k, m in enumerate(seen):
         a = amps[:, k]
-        # PHASE reference among the probes of THIS mode — not a choice of mode.
-        # Normalising by |ref|**2 makes the reference probe read exactly 1.0, so the
-        # printed profile IS the mode shape at any amplitude (dividing by |ref| left the
-        # unfed arm's traces printing as 0.000 — a dump that shows nothing). It is a
-        # positive rescale, so every sign, and therefore every parity label, is identical.
         ref = a[int(np.argmax(np.abs(a)))]
         prof = np.real(a * np.conjugate(ref)) / max(abs(ref) ** 2, 1e-300)
         prof_x, prof_y = prof[:N_PROBE_X], prof[N_PROBE_X:N_PROBE_X + N_PROBE_Y]
@@ -519,7 +334,7 @@ def _settling_db(ts):
     )
 
 
-TM010_NOISE_FLOOR = 0.01   # of the loudest in-band mode - DETECTION, not rank
+TM010_NOISE_FLOOR = 0.01
 
 
 def _tm010(arm) -> dict:
@@ -550,7 +365,6 @@ def _tm010(arm) -> dict:
     return min(cands, key=lambda r: r["f_ghz"])
 
 
-# ------------------------------------------------------------------- the run --
 def _run_arm(fed: bool) -> dict:
     tag = "FED" if fed else "UNFED"
     sim, patch, substrate = _build(fed)
@@ -563,13 +377,11 @@ def _run_arm(fed: bool) -> dict:
           f"{l_real * 1e3:.5f} x {w_real * 1e3:.5f} mm on a {h_real * 1e6:.2f} um "
           f"substrate -> Balanis TM010 {anchor:.4f} GHz, TM001 {anchor_w:.4f} GHz")
 
-    # R: never ignore preflight — quote every advisory before any number is trusted.
     advisories = [str(a) for a in sim.preflight()]
     print(f"[{tag}] preflight advisories ({len(advisories)}) — quoted verbatim:")
     for a in advisories:
         print(f"  ! {a}")
 
-    # num_periods (n_steps=None) so the framework #332 truncation advisory fires.
     res = sim.run(num_periods=NUM_PERIODS)
     ts = np.asarray(res.time_series)
     assert ts.ndim == 2 and ts.shape[1] == N_PROBE_X + N_PROBE_Y, ts.shape
@@ -607,11 +419,6 @@ def arms(unfed_arm, fed_arm):
     return {"unfed": unfed_arm, "fed": fed_arm}
 
 
-# --------------------------------------------------------------------------
-# Fast gates: the realized board. No FDTD.
-# --------------------------------------------------------------------------
-
-
 def test_the_board_realizes_three_sheets_and_no_conductor_volume():
     """Build-time (no solve): the foils land on one plane each, owning no cell.
 
@@ -630,11 +437,6 @@ def test_the_board_realizes_three_sheets_and_no_conductor_volume():
         assert rz.pec_mask is None or not bool(np.asarray(rz.pec_mask).any()), (
             "ground, trace and patch are foils; none of them owns a cell")
         assert rz.sheet_planes.keys() == {2}, rz.sheet_planes
-        # Ground plane and metallization plane. The fed leg adds the feed
-        # trace on the SAME plane as the patch, so there are three sheets
-        # but still two planes — and the two abutting footprints are
-        # UNIONED before the edge rule, so the join carries no slit
-        # (#931 §1.3).
         planes = sorted(set(p for v in rz.sheet_planes.values() for p in v))
         k_gnd, k_top = node_index(rz.grid, 2, Z_GND), node_index(
             rz.grid, 2, Z_GND + H_SUB)
@@ -735,7 +537,13 @@ def test_realized_raster_agrees_with_the_public_fidelity_report():
     """The mask read used above and the public ``sim.fidelity_report()`` surface must
     report the SAME realized extents. Leg A reads the mask directly so this file can be
     RUN against the pre-#702 tree it is verified to fail on (``rfx.fidelity``, #721,
-    postdates that commit); this gate is what stops the two readings from drifting."""
+    postdates that commit); this gate is what stops the two readings from drifting.
+
+    ``_realized_extent`` counts the nodes a shape rasterizes to (43 * dx for the patch)
+    and is the anchor Leg A was measured with, while ``fidelity_report`` gives a sheet's
+    solved extent, its wall planes (42 * dx) plus EDGE_OFFSET of a cell at each free
+    edge, and a dielectric volume's node count.
+    """
     sim, patch, substrate = _build(fed=True)
     if not hasattr(sim, "fidelity_report"):
         pytest.skip("Simulation.fidelity_report (#721) postdates this tree; the mask "
@@ -755,32 +563,6 @@ def test_realized_raster_agrees_with_the_public_fidelity_report():
             seen["substrate"] = axes
     assert "patch" in seen and "substrate" in seen, (
         f"fidelity_report() did not report the patch and substrate entities: {seen}")
-    # THE ONE-CELL RELATION, stated instead of asserted away (#729/#931).
-    #
-    # ``_realized_extent`` counts the NODES the declared shape rasterizes
-    # to and multiplies by dx, so a 43-node patch reads 43*dx. The
-    # electrical patch is the 42 Ex edges BETWEEN those nodes, 42*dx, and
-    # since #931 ``fidelity_report`` reports that — the realized wall
-    # planes, which is what the solve sees. The two readings therefore
-    # differ by exactly one cell, and always did; before #931 the report
-    # shared the node reading and the disagreement was invisible.
-    #
-    # This module does NOT close that gap, and the choice is deliberate.
-    # Leg A's centre (-6.17 pp) was measured with the node-count anchor;
-    # re-pointing ``_realized_extent`` at the wall planes would raise the
-    # Balanis anchor by about 43/42 and move Leg A's centre to roughly
-    # -8.3 pp with no field re-run at all — a number that must come from a
-    # fresh configuration sweep, not from this arithmetic. #931 §1.8 fences
-    # the inclusive-+1 debt (#729 class) out of the ownership contract, so
-    # it stays fenced here and is written down instead of absorbed.
-    #
-    # Since #1375 the report gives a sheet's in-plane extent where it is
-    # SOLVED: the wall planes plus rfx.mesh_edges.EDGE_OFFSET of the outside
-    # cell at each free edge (both patch ends here; the uniform cell is DX),
-    # the same number preflight's sheet_effective_size prints.
-    #
-    # The gate keeps its teeth: the relation is exact, so either reading
-    # drifting breaks it.
     from rfx.mesh_edges import EDGE_OFFSET
     dx_um = DX * 1e6
     overhang_um = 2 * EDGE_OFFSET * dx_um
@@ -788,14 +570,7 @@ def test_realized_raster_agrees_with_the_public_fidelity_report():
                - (l_real * 1e6 - dx_um + overhang_um)) < 1e-3, seen["patch"]["x"]
     assert abs(seen["patch"]["y"]["realized_extent_um"]
                - (w_real * 1e6 - dx_um + overhang_um)) < 1e-3, seen["patch"]["y"]
-    # The substrate is a DIELECTRIC volume: node-sampled, unchanged by the
-    # ownership contract, and reported as the same cell census.
     assert abs(seen["substrate"]["z"]["realized_extent_um"] - h_real * 1e6) < 1e-3
-
-
-# --------------------------------------------------------------------------
-# Slow gates: the two ring-downs.
-# --------------------------------------------------------------------------
 
 
 FED_WITNESS_XFAIL = pytest.mark.xfail(strict=True, reason=(
@@ -872,7 +647,13 @@ def test_leg_a_isolated_patch_discretization_bias(unfed_arm):
     cause #1213. The trees before #1213 (-1.932 %) and before #1178 (-1.881 %), the
     owning-cell E rule restored (-2.109 %), a harmonic-mean permittivity on the E edges
     (-2.957 %) and the pre-#702 tree (+7.430 %) read outside it; the tree before #1012
-    (-3.665 %) reads inside."""
+    (-3.665 %) reads inside.
+
+    LEG_A_CENTRE_PCT is the midpoint -3.8198 % of the unfed arm's configuration range,
+    -3.987730 % (h/6) to -3.651849 % (h/3 with domain +20/+20/+10), and LEG_A_HALF_PCT
+    adds its half-range 0.167940 to the single-probe extractor spread 0.013190 %, each
+    rounded up.
+    """
     arm = unfed_arm
     f_ghz = _tm010(arm)["f_ghz"]
     bias_pct = 100.0 * (f_ghz / arm["anchor"] - 1.0)

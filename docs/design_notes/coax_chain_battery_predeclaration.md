@@ -2,7 +2,7 @@
 
 Status: written BEFORE the first battery solve. Contract:
 [`chain_closure_contract.md`](chain_closure_contract.md), section "The v2.0 battery for
-lumped/wire, MSL and coax". The verdict numbers are that section's, with the PI's 2026-09-21
+lumped/wire, MSL and coax". The verdict numbers are that section's, with the
 ruling on deep nulls (below); this note fixes the line, the rungs, the DUTs, the referee and what
 each stage records.
 
@@ -47,7 +47,7 @@ Two-port:
 One-port (exists already, re-measured on the same three rungs): PEC short, open, 25 ohm and
 100 ohm resistive loads.
 
-## Deep nulls (PI ruling, 2026-09-21)
+## Deep nulls
 
 A quantity that is by construction near zero is not compared in dB from rung to rung. The thru's
 |S11| is held to an upper bound, -20 dB at every bin of every rung, and recorded as the line's own
@@ -71,7 +71,7 @@ Falsifiers declared now:
 
 - If the bead's reflection-zero frequencies at the claims rung are more than 1 % from the analytic
   values, or |S21| / |S11| outside the cores more than 2 dB from the analytic curve, the family
-  does not close on this battery; the curves are reported and the PI decides.
+  does not close on this battery; the curves are reported and the disposition remains open.
 - If the successive ladder differences do not shrink, no annulus cell count is recommended.
 - If the raw column power exceeds 1.02 on a settled record at the claims rung, the family does not
   close.
@@ -86,7 +86,7 @@ its commit with no fallback and aborts on a dirty tree; a failed stage ships its
 assembler joins the stage records into `tests/fixtures/coax_chain_battery/fixture.json`, which one
 replay test re-derives every assembled number from.
 
-## Addendum (leader, 2026-09-23, before the battery is re-run on the fixed conductors)
+## Addendum (2026-09-23, before the battery is re-run on the fixed conductors)
 
 Written after the conductor realization fix (PR 1169, `02ff8849`) and before any battery solve on
 it. Corrections to the text above, each a fact from the repository, not a change of bar:
@@ -119,11 +119,11 @@ it. Corrections to the text above, each a fact from the repository, not a change
 
 ## Addendum 2 (2026-09-23, after the first re-run on the fixed conductors)
 
-Appended after the first re-run's records were read. Items 8 and 11 are the leader's; items
-9 and 10 are the PI's decisions of 2026-09-23 and are cited in the fixture and the replay test
+Appended after the first re-run's records were read. Items 8 and 11, and items
+9 and 10 are cited in the fixture and the replay test
 where they apply.
 
-8. **The bead is four annulus widths, a whole number of cells at every rung (leader).** The
+8. **The bead is four annulus widths, a whole number of cells at every rung.** The
    declared 6 mm rasterized to 17 / 25 / 38 cells, i.e. 6.035 / 5.917 / 5.996 mm at 4 / 6 / 9
    annulus cells. The reflection zero is fixed by the bead's length, so the 6-cell rung's zero
    sat 1.37 % from the 9-cell one while each rung was within 0.06-0.16 % of the closed form on
@@ -134,13 +134,13 @@ where they apply.
    4 cells), the identity's bead arm, and the two-port AD leg on its 16 mm board (bead 16
    cells, 5.68 mm). Nothing else is re-run; the other records are carried from `ca6da2b1`,
    whose `rfx/` tree is the same git object as the re-run's.
-9. **The battery closes without the open termination (PI, P1).** Every open record stays in
+9. **The battery closes without the open termination (P1).** Every open record stays in
    the fixture as measured, marked `judged: false` with the reason "open end inside the lane's
    closed PEC can (absorbers on z only); its reflection does not settle at 9 annulus cells —
    energy near the outer region's first cutoff grows with record length
-   (open_absorber_diagnostic.json); PI 2026-09-23". The passivity and settling checks skip the
+   (open_absorber_diagnostic.json)". The passivity and settling checks skip the
    open with that reason; nothing else about the open or the other terminations changes.
-10. **Criterion 1(2) is the identity within the traced path (PI, P2).** The bead in a numpy and
+10. **Criterion 1(2) is the identity within the traced path (P2).** The bead in a numpy and
     in a jnp container is held to rtol 1e-5 / atol 1e-7 as declared. The untraced call (float64
     NumPy assembly) and the traced call (float32 jnp) are two functions by design; the
     contract's identity clause applies where the traced and untraced call are the same
@@ -148,23 +148,23 @@ where they apply.
     measured envelope at 1.5x (1.041e-3). This supersedes the falsifier line "If the forward
     identity fails at the contract's tolerance on complex S, criterion 1(2) is open" for the
     thru arm only.
-11. **A deep quantity is judged by the bound on the ladder (leader).** A ladder quantity below
+11. **A deep quantity is judged by the bound on the ladder.** A ladder quantity below
     -20 dB at every bin, on the finest rung or in its closed form (the thru's |S11| and |S22|),
     is judged by the -20 dB bound at every rung, never by a dB comparison. A quantity deep only
     inside a reflection zero's core (the bead's |S11| and |S22|) is compared in dB outside the
-    core; inside it the verdict stays the zero's frequency (PI ruling of 2026-09-21). The
+    core; inside it the verdict stays the zero's frequency. The
     thru's rung verdict therefore reads on |S21| within 2 dB and on the bound.
 
 ## Addendum 3 (2026-09-24, after the review of the re-run)
 
-12. **Settling is judged by the contract's form, not by item 3's "0.1 dB" (PI).** Item 3
+12. **Settling is judged by the contract's form, not by item 3's "0.1 dB".** Item 3
     wrote the record-doubling substitute as "a change above 0.1 dB anywhere in band". That
     misstated the contract, which asks for the shift below one tenth of the magnitude gate:
     `max |d|S|| <= (10^(2/20) - 1) / 10 = 0.0259` in amplitude, which is 0.22 dB at |S| = 1
     and 0.66 dB at |Gamma| = 0.33. The contract's form governs, as the replay test already
-    implements it (PI 2026-09-24). Under it the 25 and 100 ohm loads stay judged at 9
+    implements it. Under it the 25 and 100 ohm loads stay judged at 9
     annulus cells. Their narrowband doubling changes near 6.7-6.9 and 9.7-10.6 GHz are
     recorded in the fixture as the same closed-can footprint as the open's (issue 1218),
     not as a failure.
 
-Addendum (2026-09-25, leader): re-run after both coax lanes absorb on all three axes (issue 1218: the lateral PEC can held the field that leaves an unshielded conductor end). Board, rungs, drives and record lengths are the merged job specifications'. The open termination is judged again, like the short and the loads: magnitude within the bar, passivity 1.02, and record-length invariance (12 → 24 traversals, shift below 0.0259). The loads' closed-can footprint ruling of 2026-09-24 lapses with the fix. Column power on lossless records is recorded; the contract's 1e-3 condition is not applied (PI question open).
+Addendum (2026-09-25): re-run after both coax lanes absorb on all three axes (issue 1218: the lateral PEC can held the field that leaves an unshielded conductor end). Board, rungs, drives and record lengths are the merged job specifications'. The open termination is judged again, like the short and the loads: magnitude within the bar, passivity 1.02, and record-length invariance (12 → 24 traversals, shift below 0.0259). The loads' closed-can footprint ruling of 2026-09-24 lapses with the fix. Column power on lossless records is recorded; the contract's 1e-3 condition is not applied (criterion question open).

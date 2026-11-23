@@ -7,9 +7,6 @@ from rfx.pcb import PCBLayer, Stackup, resolve_pcb_material
 from rfx.geometry.csg import Box
 
 
-# ---------------------------------------------------------------------------
-# PCBLayer basics
-# ---------------------------------------------------------------------------
 
 class TestPCBLayer:
     def test_defaults(self):
@@ -24,9 +21,6 @@ class TestPCBLayer:
         assert layer.name == "core"
 
 
-# ---------------------------------------------------------------------------
-# Material alias resolution
-# ---------------------------------------------------------------------------
 
 class TestMaterialAlias:
     def test_prepreg_alias(self):
@@ -37,9 +31,6 @@ class TestMaterialAlias:
         assert resolve_pcb_material("rogers4003c") == "rogers4003c"
 
 
-# ---------------------------------------------------------------------------
-# Stackup
-# ---------------------------------------------------------------------------
 
 class TestStackup:
     """Core Stackup tests."""
@@ -65,7 +56,6 @@ class TestStackup:
             PCBLayer(thickness=0.035e-3, material="copper", name="top"),
         ])
 
-    # -- total thickness ---------------------------------------------------
 
     def test_stackup_total_thickness(self, simple_stackup):
         expected = 0.035e-3 + 1.6e-3 + 0.035e-3
@@ -75,7 +65,6 @@ class TestStackup:
         expected = 4 * 0.035e-3 + 2 * 0.2e-3 + 1.0e-3
         assert math.isclose(four_layer_stackup.total_thickness, expected, rel_tol=1e-12)
 
-    # -- to_shapes count ---------------------------------------------------
 
     def test_stackup_to_shapes_count(self, simple_stackup):
         shapes = simple_stackup.to_shapes(center_xy=(0, 0), size_xy=(0.02, 0.02))
@@ -85,7 +74,6 @@ class TestStackup:
         shapes = four_layer_stackup.to_shapes()
         assert len(shapes) == 7
 
-    # -- z positions -------------------------------------------------------
 
     def _layer_z_bounds(self, stack):
         z = -stack.total_thickness / 2.0
@@ -199,7 +187,6 @@ class TestStackup:
         assert all(sp.normal_axis == 2 for sp in sheets)
         assert pec_mask is None, "a sheet owns no cell"
 
-    # -- to_shapes geometry details ----------------------------------------
 
     def test_to_shapes_xy_extent(self, simple_stackup):
         cx, cy = 0.005, -0.003
@@ -220,7 +207,6 @@ class TestStackup:
         """Prepreg layers should resolve to 'fr4' in the output."""
         shapes = four_layer_stackup.to_shapes()
         materials = [mat for _, mat in shapes]
-        # Indices 1 and 5 are prepreg layers
         assert materials[1] == "fr4"
         assert materials[5] == "fr4"
 
@@ -229,7 +215,6 @@ class TestStackup:
         for box, _ in shapes:
             assert isinstance(box, Box)
 
-    # -- get_layer_z -------------------------------------------------------
 
     def test_get_layer_z(self, simple_stackup):
         z_lo, z_hi = simple_stackup.get_layer_z("substrate")
@@ -255,14 +240,12 @@ class TestStackup:
             simple_stackup.get_layer_z("nonexistent")
 
 
-# ---------------------------------------------------------------------------
-# Convenience constructors
-# ---------------------------------------------------------------------------
 
 class TestStandard2Layer:
     def test_standard_2layer(self):
         stackup = Stackup.standard_2layer()
-        assert stackup.num_layers == 3  # bottom Cu + substrate + top Cu
+        TWO_COPPER_ONE_SUBSTRATE_LAYERS = 3
+        assert stackup.num_layers == TWO_COPPER_ONE_SUBSTRATE_LAYERS
         expected = 2 * 0.035e-3 + 1.6e-3
         assert math.isclose(stackup.total_thickness, expected, rel_tol=1e-12)
 
@@ -273,7 +256,6 @@ class TestStandard2Layer:
             copper_thickness=0.018e-3,
         )
         assert stackup.num_layers == 3
-        # Verify material assignment
         shapes = stackup.to_shapes()
         materials = [mat for _, mat in shapes]
         assert materials == ["copper", "rogers4003c", "copper"]
@@ -291,7 +273,8 @@ class TestStandard2Layer:
 class TestStandard4Layer:
     def test_standard_4layer(self):
         stackup = Stackup.standard_4layer()
-        assert stackup.num_layers == 7  # 4 Cu + 2 prepreg + 1 core
+        FOUR_COPPER_TWO_PREPREG_ONE_CORE_LAYERS = 7
+        assert stackup.num_layers == FOUR_COPPER_TWO_PREPREG_ONE_CORE_LAYERS
         expected = 4 * 0.035e-3 + 2 * 0.2e-3 + 1.0e-3
         assert math.isclose(stackup.total_thickness, expected, rel_tol=1e-12)
 
@@ -322,9 +305,6 @@ class TestStandard4Layer:
             assert math.isclose(thicknesses[i], thicknesses[n - 1 - i], rel_tol=1e-12)
 
 
-# ---------------------------------------------------------------------------
-# repr
-# ---------------------------------------------------------------------------
 
 class TestRepr:
     def test_repr_contains_info(self):

@@ -15,7 +15,8 @@ from tests.unit.materials.test_sheet_impedance import PlanarSheet
 
 
 def _rounded_guide(nonuniform, nonbox):
-    dx, lx, ly = oracle.DX, .1903, .0023  # x=380.6 and y=4.6 cells, both round up
+    """The domain spans 380.6 cells in x and 4.6 in y, so both axes round up."""
+    dx, lx, ly = oracle.DX, .1903, .0023
     sim = Simulation(freq_max=10e9, domain=(lx, ly, .006), dx=dx,
                      boundary=BoundarySpec(x=Boundary(lo="pec", hi="cpml"), y="pmc", z="pec"),
                      cpml_layers=10,

@@ -275,7 +275,7 @@ public-carrier and crossval gate-logic suites → **41 passed**.
 The authoritative ledger is READ-ONLY from this lane (SPEC-00 §0.3); nothing
 below was written. Three entries reference cv10:
 
-1. `docs/agent-memory/index.md:266` — the **Rule** that a crossval may stand on
+1. The **Rule** that a crossval may stand on
    "a self-invariant that detects architectural regressions (e.g. crossval 10's
    peak-stability invariant locks the v1.7.5 PMC+CPML composition fix)". **This
    is the entry the change affects, and it was false as written**: §7.2 shows
@@ -284,11 +284,11 @@ below was written. Three entries reference cv10:
    this lane the sentence's *conclusion* is true of cv10 as a whole, but its
    *named mechanism* is wrong; the exemplar should read "crossval 10's
    bit-exact PMC-realization and image-doubling gates".
-2. `docs/agent-memory/index.md:247` — row 10, Reference column "self
+2. Row 10, Reference column "self
    (peak-stability invariant)", Status **A**. The status letter stands (and is
    now earned); the Reference column is incomplete — it should also name the
    realization and image-doubling invariants.
-3. `docs/agent-memory/rfx-known-issues.md:~3976` — the resolved "PMC + CPML
+3. The resolved "PMC + CPML
    composition on the same axis" entry lists as one of its two regression locks
    the "free-space PMC+CPML reproducer (peak stable across cpml ∈ {2,4,6,8})".
    For the `84b11aa` half of that fix ("wire `apply_pmc_faces` into the NU scan
@@ -296,7 +296,7 @@ below was written. Three entries reference cv10:
    measurably ineffective; gate 3 is what locks it. The *physics verdict* of
    the entry — the composition bug is fixed — is unchanged and unchallenged.
 
-`docs/agent-memory/accuracy_class_sweep_20260712.md:22` also lists cv10, under
+The accuracy classification also lists cv10, under
 E4 truncation, as "applies(form only; ~0 on within-path relative gate)". That
 remains true: gate 4 compares two legs recorded over the same 800 steps, so
 record truncation is common-mode and cancels between them.

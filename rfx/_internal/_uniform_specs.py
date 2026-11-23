@@ -473,6 +473,8 @@ class _StepContext:
     apply_kerr_ade: Callable | None = None
     update_rlc_elements: Callable | None = None
 
+    pad_plan: Any = None
+
     @property
     def src_meta(self):
         """Read-only aperture view for legacy diagnostics, never a kernel input."""

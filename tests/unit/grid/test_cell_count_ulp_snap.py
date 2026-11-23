@@ -13,6 +13,7 @@ accident. The two sides that matter are named explicitly everywhere:
 what must snap DOWN to the integer, and what must still take the cell.
 
 Nothing here builds a grid; these are statements about one arithmetic rule.
+The rig is RO4003C at h = 0.787 mm, with dx = h/4 and a domain of 38h + 2*(pad*h).
 """
 from __future__ import annotations
 
@@ -26,7 +27,6 @@ from rfx.grid import CELL_COUNT_ULP_BUDGET, cells_spanning
 
 EPS = float(np.finfo(float).eps)
 
-#: The #1070 rig: RO4003C at h = 0.787 mm, dx = h/4, domain 38h + 2*(pad*h).
 H = 0.787e-3
 DX = H / 4.0
 
@@ -38,8 +38,6 @@ def _ratio(n: int, ulps: int) -> float:
         value = math.nextafter(value, math.inf)
     return value
 
-
-# --- the band the rule absorbs, and where it stops -------------------------
 
 @pytest.mark.parametrize("k", [1, 2, 4, 8, 14])
 def test_a_few_ulps_above_an_integer_is_float_dust(k: int) -> None:
@@ -73,8 +71,6 @@ def test_the_node_band_boundary_keeps_a_real_overhang(outside, expected) -> None
     assert cells_spanning(length, 1.0) == expected
 
 
-# --- the defect itself -----------------------------------------------------
-
 def test_the_rig_that_found_this_sizes_to_the_declared_length() -> None:
     """``38*h + 2*(10*h)`` over ``h/4``: 232.00000000000003, one ULP up.
 
@@ -97,8 +93,6 @@ def test_every_rig_in_the_issue_sizes_to_its_declared_length(
     length = axis_terms * H + 2 * (pad * H)
     assert cells_spanning(length, DX) == expected
 
-
-# --- what must NOT be absorbed --------------------------------------------
 
 def test_a_genuine_half_cell_still_takes_the_cell() -> None:
     """``round`` alone would give 232 here, twice over: 0.5 is exactly
@@ -133,13 +127,11 @@ def test_a_large_domain_keeps_dust_but_not_a_real_overhang() -> None:
     """
     dust = _ratio(1000000, 3)
     assert cells_spanning(dust * DX, DX) == 1000000
-    assert round(dust, 9) == 1000000.0        # an absolute round agrees here
+    assert round(dust, 9) == 1000000.0
     real = 1000000.0 * (1 + 1e-9)
     assert cells_spanning(real * DX, DX) == 1000001
-    assert round(real, 9) == 1000000.001      # ... and disagrees here
+    assert round(real, 9) == 1000000.001
 
-
-# --- the small and degenerate end -----------------------------------------
 
 def test_just_below_an_integer_is_unchanged() -> None:
     """The WR-90 taper: 22.86/1.27 comes out just UNDER 18, and ``ceil``
@@ -180,8 +172,6 @@ def test_a_positive_length_below_the_dust_band_still_gets_a_cell(
     """
     assert cells_spanning(ratio * DX, DX) == 1 == int(math.ceil(ratio))
 
-
-# --- cell sizes that are not exactly representable -------------------------
 
 @pytest.mark.parametrize("dx,terms,expected", [
     (1.27e-3, 60, 60),

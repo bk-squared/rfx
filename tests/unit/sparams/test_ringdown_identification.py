@@ -69,7 +69,7 @@ def test_identification_channels_reach_both_pencils_and_preserve_ports(lane, mon
     kw = {"port_s11_freqs": FREQS if lane == "uniform" else
           np.linspace(sim._freq_max / 10, sim._freq_max, 50)}
     forward = sim.forward(n_steps=600, skip_preflight=True, ringdown=spec, **kw)
-    np.asarray(forward.ringdown.s_params)  # wait for host callback
+    np.asarray(forward.ringdown.s_params)
     assert seen and all(y.shape[1] == 3 for y in seen)
     assert tuple(sim._probes) == declared
     report = forward.ringdown.report
@@ -139,7 +139,6 @@ def test_absorber_probe_refuses(lane):
     sim = Simulation(freq_max=20e9, domain=(.012, .011, .005), dx=.001,
                      boundary="cpml", cpml_layers=3, **kw)
     grid = sim._build_nonuniform_grid() if lane == "graded" else sim._build_grid()
-    # The requested node exists in the padded grid, but is not an interior probe.
     pos = tuple(grid.node_of(ax, 1 if ax == 0 else 4) for ax in range(3))
     with pytest.raises(ValueError, match="absorber pad"):
         rd.RingdownRun(sim, rd.RingdownSpec(identification_probes=((pos, "ez"),)),
@@ -173,10 +172,10 @@ def _weak_port_arms(arms):
     3.45 % through float32 rounding of which poles sit at the keep boundary
     (the completion itself is scale-invariant: powers of two are
     bit-identical). At 1200 steps the error is 0.18-0.20 % for six scales
-    and WE tracks it (ratio 0.94-1.0); record: rfx-archive
-    rfx/records/20261003-1458-ringdown-scale/. The short arms run at two
+    and WE tracks it (ratio 0.94-1.0). The short arms run at two
     source scales, one of them not a power of two, so a configuration that
     is again rounding-marginal shows here.
+    The reference is port-only to remain independent of the probe code under test.
     """
     import jax
     import jax.numpy as jnp
@@ -207,8 +206,6 @@ def _weak_port_arms(arms):
         assert np.all(np.asarray(result._pole_counts) <= np.asarray(result._pole_budgets))
         return g, result
 
-    # The reference is port-only (independent of the probe code under test): a
-    # record long enough that the completion has nothing left to recover.
     ref, _ = evaluate(3000, ())
     longer, _ = evaluate(6000, ())
     ref_w = rd.gradient_witness(ref[0], longer[0], against="longer_record", bin_axis=0)
@@ -222,10 +219,7 @@ def _weak_port_arms(arms):
                   f"WE={w.value:.6g}, reference witness={ref_w.value:.6g}", file=sys.stderr)
             assert w.judged
             if probes:
-                # Both, not an implication: a regression that raises the
-                # witness and the error together must fail here.
                 assert w.ok and w.value <= .01 and error <= .01, (amplitude, w.value, error)
-                # The witness reads the actual error (PI 2026-09-25: 0.78-2.6x).
                 assert .5 <= w.value / error <= 2., (amplitude, w.value, error)
             else:
                 assert not w.ok and error > .01, (amplitude, w.value, error)

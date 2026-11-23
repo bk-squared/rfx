@@ -1,4 +1,4 @@
-"""Step-local precision operands; realized geometry retains its storage policy."""
+"""Step-local precision operands; realized metrics use the run coefficient dtype."""
 import jax.numpy as jnp
 import jax
 
@@ -7,7 +7,7 @@ from rfx.materials.lorentz import init_lorentz
 
 
 def field_grid(grid, field_dtype):
-    """Widen graded metrics once, preserving the float32 operator verbatim."""
+    """Match field precision; float64 realized metrics already have this dtype."""
     if jnp.dtype(field_dtype) != jnp.dtype('float64'):
         return grid
     names = ('dt', 'dx', 'dy', 'dx_arr', 'dy_arr', 'dz',
@@ -41,7 +41,7 @@ def field_poles(materials, grid, debye_spec, lorentz_spec, field_dtype):
     from rfx.model.materials import _realize_poles, electric_cell_sizes, unpadded_high_walls
     poles = {name: _realize_poles(spec, materials.components.periodic, kind, grid,
              materials.eps_r.shape, high_wall=unpadded_high_walls(grid),
-             cell_sizes=electric_cell_sizes(grid))
+             cell_sizes=electric_cell_sizes(grid), field_dtype=field_dtype)
              for name, spec, kind in (('debye', debye_spec, 'Debye'),
                                       ('lorentz', lorentz_spec, 'Lorentz'))}
     return materials._replace(components=replace(materials.components, **poles))

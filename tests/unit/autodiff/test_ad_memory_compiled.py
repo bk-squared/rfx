@@ -58,7 +58,6 @@ class Scene:
         return ForwardResult(
             time_series=eps + sigma,
             waveguide_ports={"port": (2 * eps, jnp.asarray(1, dtype=jnp.int32))},
-            # N3 carries its frequencies as a NumPy array here: a constant, not pulled back.
             waveguide_sparams={"S": (eps + 1j * sigma).sum(),
                                "freqs": np.linspace(4.5e9, 8e9, 3, dtype=np.float32)},
             grid={"coordinates": eps}, **self.extra)
@@ -217,30 +216,27 @@ def test_1_analysis_refusal(harness, analysis, message):
 
 
 @pytest.mark.parametrize("temp,rounding,maximum", [
-    # N3: ceil256(t)=517738496; 2 MiB * 2**8 = 536870912; difference=19132416.
     (517_738_488, 19_132_416, 134_217_728),
-    # N1: ceil256(t)=1742162688; R=2147483648; difference=405320960 >=128 MiB.
     (1_742_162_640, 0, 134_217_728),
-    # 62.1 MB: ceil256=62100224; R=67108864; difference=5008640.
     (62_100_000, 5_008_640, 62_100_224),
     (2_097_152, 0, 2_097_152), (1_048_575, 1_048_576, 1_048_576),
     (1, 2_096_896, 256), (0, 2_097_152, 0),
-    # Exactly the 128 MiB split threshold, then one 256-byte step below it.
     (402_653_184, 0, 134_217_728), (402_653_440, 134_217_472, 134_217_728),
 ])
 def test_2_rounding(temp, rounding, maximum):
-    """Hand-built BFC excess predicts part of the differentiated FDTD device-memory peak."""
+    """Hand-built BFC excess predicts part of the differentiated FDTD device-memory peak.
+    The rounding cases pin power-of-two-bin excess over 256-byte-rounded requests on both sides of the 128 MiB split threshold."""
     assert api._allocator_rounding(temp) == (rounding, maximum)
 
 
 @pytest.mark.parametrize("cotangents,plan", [(1, 2), (3, (3, 2))])
 def test_3_composition(harness, cotangents, plan):
-    """E_c + post-compile R_res + rho predicts the differentiated FDTD device-memory peak."""
+    """E_c + post-compile R_res + rho predicts the differentiated FDTD device-memory peak.
+    The compiled-byte pin is the sum 517738488 + 90536 + 90536 = 517919560."""
     sim = harness.sim
     before = sim.estimate_ad_memory(4, compiled=False)
     result = sim.estimate_ad_memory(4, compiled=True, checkpoint_every=plan,
                                     cotangents=cotangents, checkpoint=False, n_warmup=0)
-    # A6000 N3, by hand: 517738488 + 90536 + 90536 = 517919560.
     assert result.compiled_bytes == 517_919_560
     assert result.resident_bytes == 2_853_632
     assert result.allocator_rounding_bytes == 19_132_416
@@ -257,7 +253,7 @@ def test_3_composition(harness, cotangents, plan):
     traced, args = harness.traces[0]
     assert all(isinstance(x, jax.ShapeDtypeStruct) for x in jax.tree.leaves(args))
     assert [x.shape for x in args[:2]] == [(2, 3, 4)] * 2
-    assert len(args[2]) == 3  # Time series, port float array, complex S; no integer, NumPy or grid leaf.
+    assert len(args[2]) == 3
     assert [x.shape for x in args[2]] == (
         [(2, 3, 4), (2, 3, 4), ()] if cotangents == 1
         else [(3, 2, 3, 4), (3, 2, 3, 4), (3,)])
@@ -315,19 +311,17 @@ def test_default_device_honors_context(as_platform):
 
 @pytest.mark.gpu
 def test_n3_gpu_fresh_process():
-    """Predict the device-memory peak of the measured N3 differentiated FDTD run."""
+    """Predict the device-memory peak of the measured N3 differentiated FDTD run.
+    The child uses the parent's selected platform because later-collected modules may have pinned JAX_PLATFORMS."""
     if jax.default_backend() != "gpu":
         pytest.skip("N3 requires GPU memory_stats; never run the FDTD measurement on CPU")
     env = dict(os.environ, XLA_PYTHON_CLIENT_PREALLOCATE="false")
     env.pop("PYTHONPATH", None)
-    # The child chooses its platform as this process did at import: a module collected later
-    # may have pinned JAX_PLATFORMS in os.environ after this process had picked the GPU.
     env.pop("JAX_PLATFORM_NAME", None)
     if jax.config.jax_platforms:
         env["JAX_PLATFORMS"] = jax.config.jax_platforms
     else:
         env.pop("JAX_PLATFORMS", None)
-    # Import only the row builder below in a fresh interpreter; never run pytest recursively.
     code = (
         "import runpy; "
         f"runpy.run_path({str(Path(__file__).resolve())!r})['_n3_gpu_row']()"

@@ -37,7 +37,7 @@ _L = 0.02
 _DX = 0.5e-3
 _N_STEPS = 2048
 _F0_QW = _C0 / (4.0 * _L)
-_TRANS_WIDTH = 0.002  # transverse thickness for the 1-D-ish cavity
+_TRANS_WIDTH = 0.002
 
 
 def _axis_kwargs(axis: str, side: str):
@@ -61,7 +61,7 @@ def _axis_kwargs(axis: str, side: str):
         prb = (0.5 * trans, probe_frac * long_len, 0.5 * trans)
         comp = "ex"
         other1, other2 = "x", "z"
-    else:  # z
+    else:
         domain = (trans, trans, long_len)
         src = (0.5 * trans, 0.5 * trans, source_frac * long_len)
         prb = (0.5 * trans, 0.5 * trans, probe_frac * long_len)

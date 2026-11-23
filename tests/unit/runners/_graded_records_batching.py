@@ -42,15 +42,15 @@ def observe_placement(monkeypatch):
 
 
 def problem(kind, boundary, monkeypatch):
+    """The public radiation guards refuse PEC witnesses whose record surfaces or volumes exclude the reflecting domain walls."""
     observe_placement(monkeypatch)
-    # PEC witnesses compare the record kernels; the public radiation guards
-    # still refuse surfaces/volumes that exclude the reflecting domain walls.
     if boundary == 'pec' and kind == 'ntff':
         monkeypatch.setattr('rfx.boundaries.features.refuse_ntff_reflecting_faces', lambda *a, **kw: None)
     if boundary == 'pec' and kind == 'moments':
         monkeypatch.setattr('rfx.measurement.current_moments.refuse_current_the_monitor_cannot_see', lambda *a, **kw: None)
 
     def build(amplitude):
+        """An Ez-only dipole leaves Hz at cancellation noise even off its source plane."""
         axis = 'z' if kind == 'moments' else 'x'
         count = 6 if axis == 'z' else 13
         sim = Simulation(freq_max=15e9, domain=(15e-3, 8e-3, 8e-3), dx=1e-3,
@@ -59,8 +59,6 @@ def problem(kind, boundary, monkeypatch):
         sim.add_source((5.1e-3, 3.2e-3, 4.3e-3), 'ez', amplitude_kind='field',
             waveform=lambda t: amplitude*jnp.exp(-((t-1.2e-11)/5e-12)**2))
         if kind == 'flux':
-            # Excite both tangential magnetic components; an Ez-only dipole
-            # leaves Hz at cancellation noise even off its source plane.
             sim.add_source((8.1e-3, 2.4e-3, 5.1e-3), 'ex', amplitude_kind='field',
                 waveform=lambda t: jnp.exp(-((t-1.2e-11)/5e-12)**2))
         if kind == 'planes':
@@ -78,8 +76,7 @@ def problem(kind, boundary, monkeypatch):
     eps = jnp.full(sim._build_nonuniform_grid().shape, 1.3, jnp.float32)
 
     def solve(alpha, distributed):
-        # Moments refuse traced whole-grid eps on both lanes. Source amplitude
-        # is a supported differentiable knob and exercises their whole adapter.
+        """Current moments refuse traced whole-grid permittivity on both lanes."""
         model = build(alpha) if kind == 'moments' else sim
         options = {} if kind == 'moments' else dict(eps_override=eps*alpha)
         result = model.forward(n_steps=12, checkpoint=False, skip_preflight=True, **options,
@@ -96,8 +93,8 @@ def problem(kind, boundary, monkeypatch):
 
 
 def compare(actual, expected, *, kind, boundary, transform):
+    """The parity bar allows the different programs compiled through jax.vmap or jax.jvp."""
     values = {name: measure(actual[name], expected[name]) for name in expected}
-    # through jax.vmap/jvp the compiled program differs (cross-trace rule, rfx CLAUDE.md)
     with_bars(values, 'relative_peak')
     record('batching', dict(record=kind, boundary=boundary, transform=transform, devices=2), values)
     assert all(np.isfinite(a).all() for a in jax.tree.leaves((actual, expected))), 'batching finite'
@@ -108,7 +105,6 @@ def compare(actual, expected, *, kind, boundary, transform):
 def mutate(monkeypatch, mutation):
     if mutation == 'raw_placement':
         from rfx.stepping import slab
-        # Undo transformation-aware placement without bypassing the public solve.
         monkeypatch.setattr(slab, '_placement_map', lambda sharding: lambda a: jax.device_put(a, sharding))
     else:
         from rfx.runners._distributed_records import SlabRecords

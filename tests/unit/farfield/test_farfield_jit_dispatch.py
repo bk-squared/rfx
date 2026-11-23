@@ -22,7 +22,6 @@ import numpy as np
 MM = 1e-3
 THETA = np.linspace(0.2, 2.9, 4)
 PHI = np.array([0.0, 1.5])
-#: Far fields are sums over the surface and the record (PI 2026-09-25).
 MAX_REL_SUMMED = 1.0e-4
 
 

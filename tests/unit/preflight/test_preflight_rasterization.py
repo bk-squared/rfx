@@ -39,6 +39,7 @@ Sections, each formerly its own file:
 
 Section 2 is kept verbatim from the absorbed file (the identical ``_has``
 helper is defined once).
+Gate mutations target rfx.preflight.pec_geometry because changing rfx.api._preflight re-exports does not change the checks' globals.
 """
 
 from __future__ import annotations
@@ -48,23 +49,11 @@ import math
 import numpy as np
 import pytest
 
-# The gate constants this file mutates live in rfx/preflight/pec_geometry.py
-# since #980 Phase 3 leg 2, and so do the ten check bodies that read them --
-# so a bare name in a check resolves in THAT module's globals. The
-# rfx.api._preflight re-export still binds all five, but patching it would
-# rebind a name no reader consults, and the four gate-mutation tests below
-# would pass on an unmutated gate: their loosened arm would still see the
-# firing fixture fire, and their tightened arm would still see the silent one
-# stay silent. Verified by falsification -- aimed at the facade after the
-# move, all four fail on their first assert.
 import rfx.preflight.pec_geometry as _pec
 from rfx import Box, Simulation
 from rfx.geometry.csg import Cylinder
 
 
-# ===========================================================================
-# formerly tests/unit/preflight/test_preflight_campaign_statics.py
-# ===========================================================================
 
 MM = 1e-3
 
@@ -80,9 +69,6 @@ REFUSED_CODE = "pec_realization_refused"
 UNAVAILABLE_CODE = "campaign_statics_unavailable"
 
 
-# ---------------------------------------------------------------------------
-# Fixtures (builders, so each test gets a fresh Simulation)
-# ---------------------------------------------------------------------------
 
 def _congruence_sim(off_lattice_mirror: bool, dz_profile=None, *, snap="strict"):
     """Mirror pair of PEC VOLUMES, 3.5 x 3.0 x 1.0 mm, dx = 1 mm.
@@ -113,7 +99,6 @@ def _congruence_sim(off_lattice_mirror: bool, dz_profile=None, *, snap="strict")
         sim.add(Box((6.02 * MM, 1.0 * MM, 2.0 * MM),
                     (9.52 * MM, 4.0 * MM, 3.0 * MM)), material="pec")
     else:
-        # integer-multiple extent (3 mm) mirrored about the half-node 5.5 mm
         sim.add(Box((1.2 * MM, 1.0 * MM, 2.0 * MM),
                     (4.2 * MM, 4.0 * MM, 3.0 * MM)), material="pec")
         sim.add(Box((6.8 * MM, 1.0 * MM, 2.0 * MM),
@@ -197,10 +182,11 @@ def _sheet_congruence_sim(off_lattice_mirror: bool):
 
     ``off_lattice_mirror=False`` (negative control): the same pair
     mirrored about x = 5.0 mm — ON a node — with 3 mm x extents: equal.
+    The 0.4 mm foil mid-plane at 2.4 mm realizes on node 2.
     """
     sim = Simulation(domain=(12 * MM, 6 * MM, 6 * MM), dx=1 * MM,
                      freq_max=10e9, boundary="cpml")
-    z_lo, z_hi = 2.2 * MM, 2.6 * MM      # 0.4 mm foil: mid-plane 2.4 -> node 2
+    z_lo, z_hi = 2.2 * MM, 2.6 * MM
 
     def _add(x0, x1, hx0, hx1):
         sim.add_thin_conductor(
@@ -226,8 +212,8 @@ def _slot_sim(slot: bool, dz_profile=None):
 
     ``slot=False``: the upper dielectric starts at the sheet plane and
     fills the adjacent cell, so the slot finding is silent.
+    The PEC sheet x/y solved extent is +8.75% off, so this dielectric-slot fixture accepts declared dimensions.
     """
-    # #1138: PEC sheet x/y solved +8.75% off; this tests dielectric-slot advice.
     sim = Simulation(snap="declared", domain=(8 * MM, 8 * MM, 6 * MM), dx=0.5 * MM,
                      freq_max=10e9, boundary="cpml", dz_profile=dz_profile)
     sim.add_material("diel_lo", eps_r=3.5)
@@ -238,7 +224,7 @@ def _slot_sim(slot: bool, dz_profile=None):
     sim.add(Box((1 * MM, 1 * MM, z_hi_lo), (7 * MM, 7 * MM, 5.0 * MM)),
             material="diel_hi")
     sim.add(Box((2 * MM, 2 * MM, 3.0 * MM), (6 * MM, 6 * MM, 3.0 * MM)),
-            material="pec")                      # zero thickness = a sheet
+            material="pec")
     return sim
 
 
@@ -259,8 +245,8 @@ def _cavity_sim(faces: bool):
     ``faces=False`` (silent): 2 um foils with mid-planes ON nodes 2.0 and
     4.0 mm; face-to-face 1.998 mm vs plane-to-plane 2.0 mm is +0.1% on
     both measures, inside the 1% advisory threshold.
+    Both foils have x/y solved extents +11.67% off, so this cavity-thickness fixture accepts declared dimensions.
     """
-    # #1138: both foils x/y solved +11.67% off; this tests cavity-thickness advice.
     sim = Simulation(snap="declared",domain=(10 * MM, 10 * MM, 8 * MM), dx=1 * MM,
                      freq_max=10e9, boundary="cpml")
     sim.add_material("core", eps_r=4.0)
@@ -353,9 +339,6 @@ def _by_code(rep, code):
     return rep.by_code(code)
 
 
-# ---------------------------------------------------------------------------
-# Check 1 — congruent-conductor realization parity
-# ---------------------------------------------------------------------------
 
 class TestCongruenceParity:
     def test_off_lattice_mirror_pair_fires_once_with_basis(self):
@@ -368,10 +351,9 @@ class TestCongruenceParity:
         coverage clause and the falsifier.
         """
         rep = _congruence_sim(True).preflight()
-        # Strict now also refuses this off-node Box-Box cavity.
         assert rep.by_code("sheet_cavity_spacing")[0].severity == "error"
         hits = rep.by_code(CONGRUENCE_CODE)
-        assert len(hits) == 1  # aggregated: one message per class per run
+        assert len(hits) == 1
         msg = str(hits[0])
         assert "64 PEC edges" in msg and "82 PEC edges" in msg
         assert "spread 18" in msg
@@ -379,15 +361,15 @@ class TestCongruenceParity:
         assert "slide the lattice origin" in msg
         assert "spread drops to 0 edge(s)" in msg
         assert "COVERAGE:" in msg and "STALE IF:" in msg
-        assert "no bounding box" in msg  # skip clause stated, not silent
+        assert "no bounding box" in msg
 
     def test_on_lattice_mirror_pair_is_silent(self):
         """Negative control: mirror plane on the half-node lattice.
 
         Observed: counts equal, no advisory.
+        Equal edge counts do not make the off-node cavity spacing exact.
         """
         rep = _congruence_sim(False).preflight()
-        # Equal edge counts do not make the off-node cavity spacing exact.
         assert rep.by_code("sheet_cavity_spacing")[0].severity == "error"
         assert rep.by_code(CONGRUENCE_CODE) == []
 
@@ -401,7 +383,6 @@ class TestCongruenceParity:
         """
         dz = np.array([1.2, 0.8, 1.0, 1.0, 0.8, 1.2]) * MM
         rep = _congruence_sim(True, dz_profile=dz).preflight()
-        # Strict now also refuses this off-node Box-Box cavity.
         assert rep.by_code("sheet_cavity_spacing")[0].severity == "error"
         hits = rep.by_code(CONGRUENCE_CODE)
         assert len(hits) == 1
@@ -417,7 +398,6 @@ class TestCongruenceParity:
         - tightened (tol 1 -> -1): silent fixture (spread 0) emitted 1
           advisory -> the comparison is live in both directions.
         """
-        # Both parity controls retain their independent strict spacing refusal.
         for off in (True, False):
             assert _congruence_sim(off).preflight().by_code("sheet_cavity_spacing")[0].severity == "error"
         monkeypatch.setattr(_pec, "_CONGRUENCE_SPREAD_TOL_EDGES", 100)
@@ -439,7 +419,6 @@ class TestCongruenceParity:
                 ((x0 + 3.5) * MM, 4.0 * MM, 4.6 * MM),
                 ((x0 + 1.0) * MM, 2.0 * MM, 4.2 * MM),
                 ((x0 + 2.0) * MM, 3.0 * MM, 4.6 * MM)), material="pec")
-        # Unbounded entries do not exempt the two bounded Boxes from strict.
         assert sim.preflight().by_code("sheet_cavity_spacing")[0].severity == "error"
         hits = sim.preflight().by_code(CONGRUENCE_CODE)
         assert len(hits) == 1
@@ -466,12 +445,12 @@ class TestCongruenceParity:
             CONGRUENCE_CODE)
         assert len(hits) == 1
         msg = str(hits[0])
-        assert "_PatternedSheet" in msg          # keyed by shape class
-        assert "(sheet)" in msg                   # ... and realization kind
+        assert "_PatternedSheet" in msg
+        assert "(sheet)" in msg
         assert "13 PEC edges" in msg and "8 PEC edges" in msg
         assert "spread 5" in msg
-        assert "INFERRED: 2 member(s)" in msg    # honesty clause present
-        assert "not analytic Boxes" in msg       # no origin-shift guess
+        assert "INFERRED: 2 member(s)" in msg
+        assert "not analytic Boxes" in msg
         assert "COVERAGE:" in msg and "STALE IF:" in msg
 
     def test_patterned_sheet_on_lattice_mirror_pair_is_silent(self):
@@ -502,9 +481,6 @@ class TestCongruenceParity:
             CONGRUENCE_CODE)) == 1
 
 
-# ---------------------------------------------------------------------------
-# Check 2 — sheet-slot vacuum (replaces the #702 live-edge resample guard)
-# ---------------------------------------------------------------------------
 
 class TestSheetSlotVacuum:
     def test_slotted_stack_fires_and_names_the_remedy(self):
@@ -518,7 +494,7 @@ class TestSheetSlotVacuum:
         assert len(hits) == 1
         msg = str(hits[0])
         assert msg.startswith("ERROR-GRADE")
-        assert hits[0].severity == "warning"     # error-grade, not a refusal
+        assert hits[0].severity == "warning"
         assert "z = 3mm" in msg
         assert "eps_r 3.5" in msg and "eps_r 2.5" in msg
         assert "extend the dielectric boxes to the sheet plane" in msg
@@ -551,9 +527,6 @@ class TestSheetSlotVacuum:
         assert sim.preflight().by_code(SLOT_CODE) == []
 
 
-# ---------------------------------------------------------------------------
-# Check 3 — conductor-bounded cavity electrical-thickness report
-# ---------------------------------------------------------------------------
 
 class TestSheetCavityThickness:
     def test_foils_declared_with_faces_fire_with_both_measures(self):
@@ -604,15 +577,15 @@ class TestSheetCavityThickness:
         never contains a volume's far face, and mis-paired the cavity."""
         rep = _stack_sim(5.0).preflight()
         assert rep.by_code(CAVITY_CODE) == []
-        # ... and the ground IS a one-cell slab, said so by its own finding
         assert len(rep.by_code(ONE_CELL_CODE)) == 1
 
     def test_snapped_sheet_plane_is_the_whole_difference(self):
         """Patch declared at 5.3 mm snaps to node 5: the mesh cavity is
         2 mm against a declared 2.3 mm, -13.0% on both measures, and the
         message attributes it to the printed snap (-300 um) — the
-        difference IS the snap, nothing else."""
-        # This row measures the electrical advisory; accept the off-node spacing.
+        difference IS the snap, nothing else.
+        This row measures the electrical advisory, so it accepts the off-node spacing.
+        """
         sim = _stack_sim(5.3)
         sim._snap = "declared"
         hits = sim.preflight().by_code(CAVITY_CODE)
@@ -636,17 +609,15 @@ class TestSheetCavityThickness:
         assert "sum(d/eps) mesh 350µm vs physical 250µm (+40.0%)" in msg
         assert "snap -100µm" in msg
         assert "OWN cell" not in msg
-        # Drawn faces 0.9/1.9 mm; tied midplanes realize at 0.8/1.9 mm.
         spacing, = rep.by_code("sheet_cavity_spacing")
         assert spacing.severity == "error"
         assert "drawn spacing 1mm, solved spacing 1.1mm (+10.00%)" in str(spacing)
 
 
-# ---------------------------------------------------------------------------
-# Check 4 — off-lattice design-edge census
-# ---------------------------------------------------------------------------
 
 class TestOffLatticeCensus:
+    """A sheet's in-plane face is measured at its solved edge, so only the volume case of the nearest-node residual relation holds."""
+
     def test_off_lattice_edge_fires_with_alignment_residual(self):
         """lo face 0.3 mm off-lattice on a 9 mm extent = 3.33%: one
         aggregated advisory carrying the measured alignment residual."""
@@ -659,15 +630,13 @@ class TestOffLatticeCensus:
         assert "frequency sensitivity depends on the mode" in msg
         assert "COVERAGE:" in msg and "STALE IF:" in msg
 
-    # A sheet's in-plane face is measured at its SOLVED edge since #1375
-    # (see test_sheet_in_plane_faces_are_measured_at_the_solved_edge), not
-    # at its nearest node, so only the volume case of this relation holds.
     @pytest.mark.parametrize("kind,lo,hi,z_hi,realized_mm,residual_mm", [
         ("volume", 1.3, 6.7, 4.0, 6.0, 0.3),
     ])
     def test_nearest_node_residual_is_not_an_extent_error_bound(
         self, kind, lo, hi, z_hi, realized_mm, residual_mm,
     ):
+        """Ey lies on x nodes, so its occupied columns bound the physical span."""
         from rfx.boundaries.pec import realized_pec_edge_masks
         from rfx.geometry.rasterize_grid import coords_from_uniform_grid
 
@@ -684,7 +653,6 @@ class TestOffLatticeCensus:
         edges = realized_pec_edge_masks(assembled[3], sheets=tuple(sheets),
                                        wires=tuple(wires), periodic=sim._periodic_flags())
         nodes = np.asarray(coords_from_uniform_grid(grid).x)
-        # Ey lies on x nodes, so its occupied columns bound the physical span.
         columns = np.flatnonzero(np.asarray(edges[1]).any(axis=(1, 2)))
         actual = float(nodes[columns[-1]] - nodes[columns[0]])
         residual = max(float(np.min(abs(nodes - face * MM))) for face in (lo, hi))
@@ -730,7 +698,7 @@ class TestOffLatticeCensus:
         hits = sim.preflight().by_code(OFF_LATTICE_CODE)
         assert len(hits) == 1
         msg = str(hits[0])
-        assert msg.count("geometry[") == 5  # capped at the worst 5
+        assert msg.count("geometry[") == 5
 
     def test_sheet_in_plane_faces_are_measured_at_the_solved_edge(self):
         """A sheet's in-plane rim is a real design edge, solved 0.35 cell
@@ -750,9 +718,6 @@ class TestOffLatticeCensus:
         assert "1 sheet normal axis/axes reported by sheet_plane_realized" in msg
 
 
-# ---------------------------------------------------------------------------
-# #931 §3 — per-declaration realization findings
-# ---------------------------------------------------------------------------
 
 class TestRealizationFindings:
     def test_one_cell_volume_warns_with_both_walls(self):
@@ -773,8 +738,9 @@ class TestRealizationFindings:
     def test_sheet_plane_notice_prints_declared_realized_and_offset(self):
         """Per sheet: declared mid-plane, realized node plane, offset; a
         NOTICE (info severity) so it never blocks and never counts as a
-        warning. A sheet declared at 6.3 mm realizes on 6 mm: -0.300 cell."""
-        # #1138: foils x/y solved +11.67% off; this tests informational plane notices.
+        warning. A sheet declared at 6.3 mm realizes on 6 mm: -0.300 cell.
+        The foils have x/y solved extents +11.67% off, so this informational-plane-notice fixture accepts declared dimensions.
+        """
         sim = Simulation(snap="declared",domain=(10 * MM, 10 * MM, 8 * MM), dx=1 * MM,
                          freq_max=10e9, boundary="cpml")
         sim.add(Box((2 * MM, 2 * MM, 5.0 * MM), (8 * MM, 8 * MM, 5.0 * MM)),
@@ -790,7 +756,6 @@ class TestRealizationFindings:
         assert "declared mid-plane 6.3mm, realized node plane" in msg
         assert "(offset -0.300 cell = 300µm)" in msg
         assert "declared mid-plane 5mm" in msg and "(offset +0.000 cell" in msg
-        # The plane notice and opted-in sheet dimensions do not block.
         assert rep.ok
         assert all(h.severity == "warning" for h in rep.by_code("sheet_effective_size"))
 
@@ -806,7 +771,6 @@ class TestRealizationFindings:
         assert "equidistant from node planes" in msg
         assert "realized on the LOWER one" in msg
         assert "declared mid-plane 850µm" in msg
-        # Drawn faces 0.9/1.9 mm; tied midplanes realize at 0.8/1.9 mm.
         spacing, = rep.by_code("sheet_cavity_spacing")
         assert spacing.severity == "error"
         assert "drawn spacing 1mm, solved spacing 1.1mm (+10.00%)" in str(spacing)
@@ -815,7 +779,9 @@ class TestRealizationFindings:
         """§1.5: a 0.4 mm PEC Box on a 1 mm cell is refused. Preflight
         reports it as pec_box_subcell (error severity, report.ok False)
         with the physical thickness and the local cell, and run() raises
-        the same refusal."""
+        the same refusal.
+        The checks that need the assembly stay silent because the refusal is the reason.
+        """
         sim = Simulation(domain=(10 * MM, 10 * MM, 8 * MM), dx=1 * MM,
                          freq_max=10e9, boundary="cpml")
         sim.add(Box((2 * MM, 2 * MM, 2.0 * MM), (8 * MM, 8 * MM, 2.4 * MM)),
@@ -829,8 +795,6 @@ class TestRealizationFindings:
         msg = str(hits[0])
         assert "0.0004 m against a local cell of 0.001 m" in msg
         assert "declare a sheet" in msg
-        # the checks that need the assembly stay silent rather than
-        # announcing 'unavailable' — the refusal IS the reason
         assert rep.by_code(UNAVAILABLE_CODE) == []
         with pytest.raises(ValueError, match="thinner than one cell"):
             sim.run(n_steps=2)
@@ -860,9 +824,6 @@ class TestRealizationFindings:
         assert "a line or a point is not a conductor" in str(hits[0])
 
 
-# ---------------------------------------------------------------------------
-# Wiring: the checks reach run()'s chain and respect skip semantics
-# ---------------------------------------------------------------------------
 
 class TestWiring:
     def test_checks_run_inside_validate_simulation_config(self):
@@ -884,8 +845,9 @@ class TestWiring:
 
     def test_advisory_findings_do_not_block(self):
         """The campaign checks and the one-cell/slot findings are
-        warning-severity and do not block declared sheet models."""
-        # Warning-path test: declared accepts this off-node Box-Box spacing.
+        warning-severity and do not block declared sheet models.
+        This warning-path test accepts the off-node Box-Box spacing through declared dimensions.
+        """
         rep = _congruence_sim(True, snap="declared").preflight()
         hits = rep.by_code(CONGRUENCE_CODE)
         assert hits and all(h.severity == "warning" for h in hits)
@@ -915,9 +877,6 @@ class TestWiring:
         assert sum(1 for e in c2.entry_realizations() if e.kind == "sheet") == 2
 
 
-# ===========================================================================
-# formerly tests/unit/preflight/test_preflight_rasterization.py
-# ===========================================================================
 
 def _issues(sim):
     return sim.preflight()
@@ -944,12 +903,11 @@ def _graded_sim(z_lo: float, z_hi: float) -> Simulation:
 
 
 def test_shifted_box_warns_with_actual_and_implied_counts():
+    """The centre window contains only z = 1.5 mm, so one cell remains below ceil(0.5 * 6.0)."""
     sim = _graded_sim(0.6e-3, 2.1e-3)
 
     issues = _issues(sim)
 
-    # The centre window contains only z = 1.5 mm: realized faces 1..2 mm.
-    # One cell remains below ceil(0.5 * 6.0), so the advisory still fires.
     assert _has(issues, "rasterizes to 1 z cells (implied 6.0)"), issues
     assert _has(issues, "smooth_grading transition cells may have shifted"), issues
 
@@ -975,12 +933,7 @@ def test_uniform_dz_simulation_skips_check():
     assert not _has(_issues(sim), "smooth_grading transition cells may have shifted")
 
 
-# --------------------------------------------------------------------------- #
-# The validator MODELS the rasterizer, so it has to agree with it (#562 F2).
-# --------------------------------------------------------------------------- #
 _AGREEMENT_CASES = [
-    # (z_lo_mm, z_hi_mm): the first span covers three cell centres across
-    # the grading transition and realizes faces at 4.0 and 5.5 mm.
     (4.50, 5.50),
     (5.00, 6.00),
     (5.00, 7.00),
@@ -995,12 +948,12 @@ def _real_rasterized_z_count(sim) -> int:
     import numpy as _np
     from rfx.geometry.rasterize_grid import (rasterize_geometry,
                                              coords_from_nonuniform_grid)
+    assert len(sim._geometry) == 1 and sim._resolve_material(sim._geometry[0].material_name).eps_r > 1.0 + 1e-6, "The substrate is the only non-background material in this fixture."
     grid = sim._build_nonuniform_grid()
     coords = coords_from_nonuniform_grid(grid)
     out = rasterize_geometry(sim._geometry, sim._resolve_material, coords,
                              pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD)
     eps = _np.asarray(getattr(out[0], "eps_r", out[0]))
-    # the substrate is the only non-background material in these fixtures
     return int(_np.count_nonzero((eps > 1.0 + 1e-6).max(axis=(0, 1))))
 
 
@@ -1038,6 +991,7 @@ def test_validator_count_matches_the_real_rasterizer(z_lo_mm, z_hi_mm):
 
     Both the warning and silent cases are checked against the assembled
     material, so a copied placement model cannot drift unnoticed.
+    The first span's three cell centres across the grading transition put its realized faces at 4.0 and 5.5 mm.
     """
     dz = np.array([1.0e-3] * 5 + [0.25e-3] * 8 + [1.0e-3] * 5)
     sim = Simulation(freq_max=30e9, domain=(4e-3, 4e-3, float(np.sum(dz))),
@@ -1050,17 +1004,8 @@ def test_validator_count_matches_the_real_rasterizer(z_lo_mm, z_hi_mm):
     real = _real_rasterized_z_count(sim)
     predicted, implied = _validator_counts(sim)
 
-    # Both directions, because the SILENT one is the F2 failure mode. The
-    # first version of this test only asserted when the advisory fired, so
-    # four of six cases skipped the assertion entirely — and "validator quiet
-    # where it should warn" is exactly what F2 was (#568 item 1).
     implied_local = _implied_cells(dz, z_lo_mm * 1e-3, z_hi_mm * 1e-3)
     under_resolved = real < math.ceil(0.5 * implied_local)
-    # The validator ALSO requires `actual <= 4`. That cutoff is its policy, not
-    # this test's contract (#569 review, finding 4): hard-coding it here would
-    # red this test the day the advisory is widened. So assert the two directions
-    # the resolution condition settles, and stay silent about the band where the
-    # cutoff alone decides.
     should_warn = under_resolved and real <= 4
     if should_warn:
         assert predicted is not None, (
@@ -1071,7 +1016,6 @@ def test_validator_count_matches_the_real_rasterizer(z_lo_mm, z_hi_mm):
         assert predicted == real, (
             f"validator predicts {predicted} z cells, rasterizer realizes "
             f"{real} for z-span [{z_lo_mm}, {z_hi_mm}) mm")
-        # cross-check this test's own `implied` formula against the validator's
         assert implied == pytest.approx(implied_local, abs=0.05)
     elif not under_resolved:
         assert predicted is None, (
@@ -1079,15 +1023,11 @@ def test_validator_count_matches_the_real_rasterizer(z_lo_mm, z_hi_mm):
             f"realized count {real} is not under-resolved against "
             f"{implied_local:.1f} implied")
 
-    # Three realized cells against four implied no longer warrant a warning.
     if (z_lo_mm, z_hi_mm) == (4.50, 5.50):
         assert real == 3, real
         assert predicted is None, predicted
 
 
-# ===========================================================================
-# formerly tests/unit/preflight/test_preflight_thin_metal_nu.py
-# ===========================================================================
 
 def _build(dz_profile):
     """FR4 patch on a graded z mesh, foils declared as SHEETS (#931).
@@ -1116,12 +1056,19 @@ def _build(dz_profile):
 
 
 def test_asymmetric_metal_on_nu_triggers_warning():
-    # Raw profile with sharp 1mm → 0.25mm → 1mm transitions. The ground
-    # plane (z = 12 mm) has a 1 mm cell below and a 0.25 mm cell above,
-    # the patch plane (13.5 mm) the reverse — both 4x asymmetric.
     dz = np.concatenate([np.full(12, 1e-3), np.full(6, 0.25e-3),
                          np.full(25, 1e-3)])
     sim = _build(dz)
+    assert all(
+        len(planes) == 2 and all(
+            np.isclose(max(ctx.spacings[2][k - 1:k + 1]) /
+                       min(ctx.spacings[2][k - 1:k + 1]), 4)
+            for k in planes
+        )
+        for ctx in [sim._campaign_ctx()]
+        for planes in [[k for entry in ctx.interior_pec_entries()
+                        for k in entry.wall_planes(2, ctx.periodic, tuple(ctx.grid.shape))]]
+    ), "Both metal planes have a fourfold cell-size jump."
     issues = sim.preflight()
     assert _has(issues, "radiation pattern may be corrupted"), (
         f"expected issue #48 warning, got: {issues!r}"
@@ -1131,7 +1078,6 @@ def test_asymmetric_metal_on_nu_triggers_warning():
 
 
 def test_symmetric_metal_on_nu_is_silent():
-    # All-uniform 0.25mm z profile. Metal planes have symmetric neighbours.
     dz = np.full(60, 0.25e-3)
     sim = _build(dz)
     issues = sim.preflight()
@@ -1144,7 +1090,9 @@ def test_symmetric_metal_on_nu_is_silent():
 @pytest.mark.parametrize('axis', [0, 1])
 @pytest.mark.parametrize('lo_mm', [0, 9])
 def test_periodic_sheet_end_reports_the_unwrapped_node_span(axis, lo_mm):
-    """The L node closes an interval at N; its stored node is still zero."""
+    """The L node closes an interval at N; its stored node is still zero.
+    For the 9--13 mm node span, the end at L is a free edge like its mirror at 9 mm, so both get the 0.35-cell correction.
+    """
     from rfx.boundaries.spec import BoundarySpec
 
     domain = [.013, .007, .006]
@@ -1162,10 +1110,6 @@ def test_periodic_sheet_end_reports_the_unwrapped_node_span(axis, lo_mm):
     issues = [i.to_dict() for i in sim.preflight()]
     body = sim.fidelity_report(print_report=False)[1]
     span = body['axes'][axis]
-    # The node span is 9--13 mm. On a periodic axis the node at L is node 0
-    # and nothing joins it from beyond, so the end at L is a free edge like
-    # its mirror at 9 mm: both get the 0.35-cell correction (#1432 Part B;
-    # before, the guards ignored the wrap and reported the L end 0.35 cell short).
     expected_lo_um, expected_hi_um = (8650, 13350) if lo_mm else (0, 13000)
     np.testing.assert_allclose(span['realized_um'], [expected_lo_um, expected_hi_um],
                                rtol=0, atol=1e-9)
@@ -1176,8 +1120,6 @@ def test_periodic_sheet_end_reports_the_unwrapped_node_span(axis, lo_mm):
         assert (f"(sheet) {'xyz'[axis]}: extent 4mm, worst face residual "
                 "350µm (8.75% of the extent)") in messages
     after = sim._assemble_realized(grid, nonuniform=False).edges
-    # Independently enumerate the tangential edges, including the stored
-    # node 0 used by the transverse component at the closing endpoint.
     ex, ey, ez = [np.zeros((13, 8, 7), dtype=bool) for _ in range(3)]
     ex[lo_mm:13, 2:6, 3] = True
     ey[([0, *range(lo_mm, 13)] if lo_mm else list(range(13))), 2:5, 3] = True

@@ -121,8 +121,7 @@ def scan_with_progress(
         if stop_fn is not None and n_steps - done - this == 1:
             # never a one-step last chunk: XLA inlines a loop that runs once,
             # and the inlined step can move the last bit of a field against
-            # the single scan (rfx-known-issues, "A one-step scan compiles
-            # differently"); the stopped record must be the single scan's.
+            # the single scan; the stopped record must be the single scan's.
             this += 1
         lo, hi = done, done + this
         xs_chunk = jax.tree_util.tree_map(lambda a: a[lo:hi], xs)

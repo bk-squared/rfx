@@ -89,34 +89,7 @@ def _warn_msl_beta_scan_railed(
     )
 
 
-_SETTLING_WITNESS_DB = -40.0
-
-
-def settling_verdict(settling_db) -> str:
-    """The ONE -40 dB ring-down comparison in this codebase.
-
-    Returns ``"pass"``, ``"fail"`` or ``"absent"``. ``"absent"`` covers
-    ``None`` and every non-finite value (NaN, +/-inf) -- the states that mean
-    "no witness was established", which a bare ``> -40`` comparison silently
-    turns into a pass. That is not hypothetical: a campaign driver read a
-    missing witness as ``np.nan`` through ``getattr(result, "settling_db",
-    np.nan)``, compared it to the bar, and a completed 3-hour two-arm
-    experiment came back INCONCLUSIVE for an instrument reason.
-
-    Every caller that needs the decision calls this instead of writing the
-    comparison again -- including the aggregate warner below and the
-    ``run()`` post-run advisories in ``rfx/api/_execute.py``. A value exactly
-    at the bar passes (the bar is the inclusive limit, unchanged).
-    """
-    if settling_db is None:
-        return "absent"
-    try:
-        value = float(settling_db)
-    except (TypeError, ValueError):
-        return "absent"
-    if not np.isfinite(value):
-        return "absent"
-    return "fail" if value > _SETTLING_WITNESS_DB else "pass"
+from rfx.measurement.record_end import settling_verdict, _SETTLING_WITNESS_DB
 
 
 def _validate_extra_flux_monitor_entries(entries, domain, fn_name):
@@ -1058,6 +1031,7 @@ def _finalize_sparam_result(
     strict: bool,
     passivity_tol: float = 0.10,
     check_reciprocity: bool = False,
+    refused_positions=None,
 ):
     """Shared two-run-S-param epilogue: run the passivity/finiteness guard on a
     freshly-assembled S-matrix result, then return it unchanged.
@@ -1077,6 +1051,9 @@ def _finalize_sparam_result(
     ``passivity_tol`` defaults to the tight 0.10 bound (matching the coax call
     site). The waveguide path passes a ``normalize``-aware tolerance.
 
+    ``refused_positions`` exempts only intentionally undefined entries from
+    the finiteness check; complete defined columns still get power checks.
+
     ``check_reciprocity`` is opt-in per family and WARN-ONLY: it emits the
     advisory built by :func:`_reciprocity_advisory_message` and never raises,
     never changes the result. Only the waveguide extractor turns it on, because
@@ -1089,6 +1066,7 @@ def _finalize_sparam_result(
         strict=strict,
         passivity_tol=passivity_tol,
         check_reciprocity=check_reciprocity,
+        refused_positions=refused_positions,
     )
     from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
     s = getattr(result, "s_params", None)

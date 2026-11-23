@@ -8,7 +8,8 @@ length scale δ (the 45° signature α=β), unlike low loss where β ≫ α. Thi
 
 Method: TFSF plane wave into a thick conductor slab (σ/ωε0=20, δ≈10 cells); DFT the field at probes
 INSIDE the conductor; fit ln|E(z)| slope ⇒ δ_amp and ∠E(z) slope ⇒ δ_phase. Measured (CPU): δ_amp
-err 3.3%, δ_phase err 0.4%, δ_amp/δ_phase=1.04. Harness: docs/research_notes/experiments/skin_depth_oracle.py
+err 3.3%, δ_phase err 0.4%, δ_amp/δ_phase=1.04.
+The _ZD probe depths are in units of δ.
 """
 import numpy as np
 import pytest
@@ -22,7 +23,7 @@ F0 = 5e9
 W = 2 * np.pi * F0
 DX = 0.3e-3
 X_ENTRY = 0.020
-_ZD = np.arange(0.5, 3.6, 0.35)          # probe depths in units of δ
+_ZD = np.arange(0.5, 3.6, 0.35)
 
 
 def _measure_delta(sigma_over_we0):
@@ -51,7 +52,8 @@ def _measure_delta(sigma_over_we0):
 
 @pytest.fixture(scope="module")
 def good_conductor():
-    d_amp, d_phase, delta = _measure_delta(20.0)   # σ/ωε0 = 20 (good conductor)
+    GOOD_CONDUCTOR_SIGMA_OVER_OMEGA_EPS0 = 20.0
+    d_amp, d_phase, delta = _measure_delta(GOOD_CONDUCTOR_SIGMA_OVER_OMEGA_EPS0)
     return {"amp": d_amp, "phase": d_phase, "analytic": delta}
 
 
@@ -79,8 +81,8 @@ def test_skin_depth_45deg_signature_vs_lowloss_control(good_conductor):
     g = good_conductor
     assert abs(g["amp"] / g["phase"] - 1.0) < 0.12, (
         f"good conductor should give δ_amp≈δ_phase, got ratio {g['amp']/g['phase']:.3f}")
-    # low-loss control (σ/ωε0=0.3): β ≫ α ⇒ δ_amp/δ_phase far from 1 — proves the gate is not trivial
-    a, p, _ = _measure_delta(0.3)
+    LOW_LOSS_SIGMA_OVER_OMEGA_EPS0 = 0.3
+    a, p, _ = _measure_delta(LOW_LOSS_SIGMA_OVER_OMEGA_EPS0)
     assert a / p > 2.0, (
         f"low-loss control should have δ_amp≫δ_phase (β≫α), got ratio {a/p:.3f} — "
         "the 45° signature gate would be non-discriminating")

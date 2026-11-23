@@ -32,10 +32,6 @@ import numpy as np
 from rfx._plotting import _pyplot
 
 
-# ---------------------------------------------------------------------------
-# Richardson extrapolation
-# ---------------------------------------------------------------------------
-
 def richardson_extrapolation(
     values: ArrayLike,
     dx_values: ArrayLike,
@@ -79,30 +75,24 @@ def richardson_extrapolation(
     if len(values) != len(dx_values):
         raise ValueError("values and dx_values must have the same length")
 
-    # Sort by decreasing dx (coarsest first) so indices go coarse->fine
     order_idx = np.argsort(dx_values)[::-1]
     h = dx_values[order_idx]
     f = values[order_idx]
 
     if len(f) >= 3:
-        # Use the three finest (last three in coarse->fine order)
         h1, h2, h3 = h[-3], h[-2], h[-1]
         f1, f2, f3 = f[-3], f[-2], f[-1]
 
-        # Estimate order p from the ratio of successive differences
         diff21 = f2 - f1
         diff32 = f3 - f2
 
         if abs(diff21) < 1e-30 or abs(diff32) < 1e-30:
-            # Metrics are essentially identical — already converged
             return float(f[-1]), expected_order
 
         ratio = diff32 / diff21
         h2 / h1
         h3 / h2
 
-        # Newton iteration to solve for p:
-        # g(p) = (h3^p - h2^p) / (h2^p - h1^p) - ratio = 0
         p = expected_order
         for _ in range(50):
             h1p = h1 ** p
@@ -113,7 +103,6 @@ def richardson_extrapolation(
             if abs(den) < 1e-30:
                 break
             g = num / den - ratio
-            # Numerical derivative
             dp = 1e-6
             h1pd = h1 ** (p + dp)
             h2pd = h2 ** (p + dp)
@@ -131,14 +120,11 @@ def richardson_extrapolation(
                 break
             p = p_new
 
-        # Clamp order to reasonable range
         p = float(np.clip(p, 0.5, 10.0))
 
-        # Extrapolate using two finest points
         r = (h3 / h2) ** p
         extrapolated = float((f3 - r * f2) / (1.0 - r))
     else:
-        # Two-point extrapolation with assumed order
         h1, h2 = h[0], h[1]
         f1, f2 = f[0], f[1]
         p = expected_order
@@ -147,10 +133,6 @@ def richardson_extrapolation(
 
     return extrapolated, float(p)
 
-
-# ---------------------------------------------------------------------------
-# ConvergenceResult
-# ---------------------------------------------------------------------------
 
 @dataclass
 class ConvergenceResult:
@@ -211,7 +193,6 @@ class ConvergenceResult:
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-        # Left: metric vs dx
         ax1.plot(self.dx_values * 1e3, self.metrics, "o-", color="C0",
                  label="Simulated")
         ax1.axhline(self.extrapolated, color="r", ls="--", alpha=0.7,
@@ -222,12 +203,10 @@ class ConvergenceResult:
         ax1.legend()
         ax1.grid(True, alpha=0.3)
 
-        # Right: log-log error
         nonzero = self.errors > 0
         if np.any(nonzero):
             ax2.loglog(self.dx_values[nonzero] * 1e3,
                        self.errors[nonzero] * 100, "s-", color="C1")
-            # Reference slope
             if np.sum(nonzero) >= 2:
                 dx_ref = self.dx_values[nonzero]
                 err_fit = self.errors[nonzero][-1] * (dx_ref / dx_ref[-1]) ** self.order
@@ -262,10 +241,6 @@ class ConvergenceResult:
         print(text)
         return text
 
-
-# ---------------------------------------------------------------------------
-# Main convergence study
-# ---------------------------------------------------------------------------
 
 def convergence_study(
     sim_factory: Callable,
@@ -306,7 +281,6 @@ def convergence_study(
     if len(dx_values) < 2:
         raise ValueError("Need at least 2 dx values for a convergence study")
 
-    # Sort coarse to fine
     sort_idx = np.argsort(dx_values)[::-1]
     dx_values = dx_values[sort_idx]
 
@@ -326,12 +300,10 @@ def convergence_study(
 
     metrics_arr = np.asarray(metrics, dtype=np.float64)
 
-    # Richardson extrapolation
     extrapolated, order = richardson_extrapolation(
         metrics_arr, dx_values, expected_order=expected_order,
     )
 
-    # Relative errors w.r.t. extrapolated value
     if abs(extrapolated) > 0:
         errors = np.abs(metrics_arr - extrapolated) / abs(extrapolated)
     else:
@@ -347,10 +319,6 @@ def convergence_study(
     )
 
 
-# ---------------------------------------------------------------------------
-# Quick convenience wrapper
-# ---------------------------------------------------------------------------
-
 def quick_convergence(
     sim: object,
     *,
@@ -362,15 +330,21 @@ def quick_convergence(
 ) -> ConvergenceResult:
     """Run a convergence study on an existing Simulation with dx scaling.
 
-    Creates copies of *sim* at different cell sizes by scaling the base dx
-    and re-running.  This is a convenience wrapper around
-    ``convergence_study`` for quick checks.
+    Carries every declaration of *sim*, scaling its built dx and any dt pin.
+    At factors other than one, waveguide reported planes are declared metre
+    planes fixed to the base grid, and waveguide and lumped sampling counts scale.
+    CPML layers, TF/SF and current-moment margins, MSL counts and auto memos stay
+    unchanged. At factors other than one, resolved
+    profiles (including inferred profiles), nominal profiles, dt_min_cell,
+    node-pinned sheets, node-index DFT crops and frozen meshes are refused.
+    Use ``convergence_study`` with a factory that builds each rung, or an
+    explicit uniform dx without mesh pins/profiles and metric conductors.
 
     Parameters
     ----------
     sim : rfx.api.Simulation
-        A fully configured simulation.  Its ``_dx`` (or auto-computed dx)
-        is used as the reference cell size scaled by each factor.
+        A fully configured simulation. Its realized grid's dx is the reference
+        cell size scaled by each factor.
     metric : str or callable
         ``"resonance"`` extracts the first resonance frequency.
         ``"peak_field"`` extracts the peak probe amplitude.
@@ -389,39 +363,23 @@ def quick_convergence(
     -------
     ConvergenceResult
     """
-    # A node-pinned conductor is declared by node INDEX, so its physical
-    # size is whatever the cells between those nodes add up to. Halving dx
-    # therefore halves the patch instead of resolving it: every rung of the
-    # sweep is a different antenna, and the "convergence" measured is the
-    # structure shrinking. Refused rather than run, for the same reason the
-    # PMC note inside sim_factory records — this factory clones what `sim`
-    # declared, and a declaration whose metres depend on dx cannot be cloned
-    # across a dx sweep without the caller re-declaring it.
+    from rfx._declarations import declaration_at_dx
+
     resolve_field_dtype(sim._precision)
-    if getattr(sim, "_pinned_sheets", None):
-        raise ValueError(
-            f"quick_convergence: this simulation carries "
-            f"{len(sim._pinned_sheets)} node-pinned sheet(s) "
-            "(add_pinned_sheet). Their size is set by NODE INDEX, so it "
-            "scales with dx: at dx/2 the conductor is half as long, and the "
-            "sweep would compare different structures rather than one "
-            "structure at several resolutions. Declare the conductor in "
-            "metres with add_thin_conductor for a convergence study, or "
-            "build one Simulation per dx with the node ranges recomputed "
-            "for that mesh.")
     if dx_factors is None:
         dx_factors = [2.0, 1.5, 1.0, 0.75]
 
-    # Resolve the base dx from the simulation
-    base_dx = getattr(sim, "_dx", None)
-    if base_dx is None:
-        # Auto-compute the default dx the same way Simulation would
-        C0 = 299792458.0
-        lam_min = C0 / sim._freq_max
-        base_dx = lam_min / 20.0  # standard Yee rule of thumb
-    dx_values = [base_dx * f for f in dx_factors]
+    base = declaration_at_dx(sim, caller="quick_convergence")
+    base_grid = base._build_realized_grid()
+    base_dx = float(base_grid.dx)
+    variants = {}
+    dx_values = []
+    for factor in dx_factors:
+        variant = declaration_at_dx(sim, factor, caller="quick_convergence", _base_grid=base_grid)
+        dx = base_dx * float(factor)
+        dx_values.append(dx)
+        variants[dx] = variant
 
-    # Build the metric callable
     if isinstance(metric, str):
         if metric == "resonance":
             def metric_fn(result):
@@ -441,49 +399,11 @@ def quick_convergence(
     else:
         metric_fn = metric
 
-    # Build a sim_factory that clones the configuration with a new dx
     def sim_factory(dx):
-        from rfx.api import Simulation
-        from rfx.boundaries.serialization import constructor_boundary
-        new_sim = Simulation(
-            freq_max=sim._freq_max,
-            snap=sim._snap,
-            domain=sim._domain,
-            # grep sweep: clone the normalized BoundarySpec, not
-            # the collapsed `_boundary` string. `_boundary` is
-            # `spec.absorber_type or "pec"`, so every per-face detail — PEC /
-            # PMC / periodic faces and per-face thickness — was dropped and
-            # each refinement step silently ran a UNIFORM absorber on all six
-            # faces. `_boundary_spec` is the legacy scalar's normalized form
-            # too (`_build_spec_from_legacy`), so scalar-constructed
-            # simulations clone exactly as before.
-            #
-            # B3b centers the magnetic image on the realized E-node face.
-            # No half-cell compensation of the declared extent is needed;
-            # ordinary mesh quantization still applies at each resolution.
-            boundary=constructor_boundary(sim),
-            cpml_layers=sim._cpml_layers,
-            dx=dx,
-            mode=sim._mode,
-            dz_profile=sim._dz_profile,
-            precision=sim._precision,
-        )
-        # Copy registered items
-        new_sim._materials = dict(sim._materials)
-        new_sim._geometry = list(sim._geometry)
-        new_sim._ports = list(sim._ports)
-        new_sim._probes = list(sim._probes)
-        new_sim._thin_conductors = list(sim._thin_conductors)
-        new_sim._wall_losses = list(getattr(sim, "_wall_losses", ()))
-        new_sim._ntff = sim._ntff
-        new_sim._tfsf = sim._tfsf
-        new_sim._dft_planes = list(sim._dft_planes)
-        new_sim._waveguide_ports = list(sim._waveguide_ports)
-        new_sim._periodic_axes = sim._periodic_axes
-        new_sim._refinement = sim._refinement
-        new_sim._lumped_rlc = list(sim._lumped_rlc)
-        new_sim._floquet_ports = list(sim._floquet_ports)
-        return new_sim
+        if dx not in variants:
+            variants[dx] = declaration_at_dx(
+                sim, dx / base_dx, caller="quick_convergence", _base_grid=base_grid)
+        return variants[dx]
 
     return convergence_study(
         sim_factory=sim_factory,

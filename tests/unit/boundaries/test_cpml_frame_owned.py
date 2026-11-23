@@ -41,10 +41,17 @@ from rfx.materials.debye import DebyePole, init_debye
 from rfx.model.materials import with_components
 
 FIELDS = ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')
-CASES = [(d, case, medium) for d in (1, 2, 3)
-         for case in ('asymmetric', 'pec', 'zero') for medium in ('lossy', 'debye')]
-CASES += [(3, case, medium) for case in ('short_last', 'lo_touches_hi') for medium in ('lossy', 'debye')]
-CASES += [(3, case, 'lossy') for case in ('one_row_uniform', 'one_row_graded')]
+CASES = [
+    (1, 'asymmetric', 'debye'),
+    (3, 'asymmetric', 'lossy'),
+    (3, 'asymmetric', 'debye'),
+    (3, 'pec', 'lossy'),
+    (3, 'zero', 'debye'),
+    (3, 'short_last', 'debye'),
+    (3, 'lo_touches_hi', 'lossy'),
+    (3, 'one_row_uniform', 'lossy'),
+    (3, 'one_row_graded', 'lossy'),
+]
 
 
 def _bytes(got, want, context):

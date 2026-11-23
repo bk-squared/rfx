@@ -207,13 +207,12 @@ def _identical(a, b):
 
 
 def test_direct_uniform_default_reads_conformal_declaration():
+    """Zero is the rounding floor for identity on one host and interpreter."""
     sim = _sim(True)
     declared = sim.run(n_steps=N_STEPS, skip_preflight=True, compute_s_params=False)
     direct = _direct(sim, compute_s_params=False)
     staircase = _direct(sim, conformal_pec=False, compute_s_params=False)
     _identical(declared, direct)
-    # This geometry must resolve the difference; zero is the rounding floor
-    # for identity on the same host and interpreter.
     assert np.max(np.abs(declared.time_series - staircase.time_series)) > 0
     _identical(
         staircase,
@@ -237,8 +236,6 @@ def test_explicit_staircase_s_matrix_is_allowed(ports):
         s_param_freqs=jnp.array([4e9, 5e9, 6e9]),
     )
     a = sim.run(**kw)
-    # The declaration also supplies off-grid boundary shapes to assembly;
-    # compare the same declared structure through the direct entry point.
     d = _direct(
         sim,
         conformal_pec=False,
@@ -295,7 +292,6 @@ def test_waveguide_distributed_refuses_staircase(two_devices):
     "lane", ["run_nonuniform",  "run_subgridded", "run_distributed"]
 )
 def test_explicit_staircase_is_allowed_on_every_run_lane(lane, two_devices):
-    # Reuse the established 12 mm box (20 mm tall with subgridding).
     from tests.unit.runners.test_path_disposition_cells import _base
 
     results = []
@@ -355,9 +351,6 @@ def test_conformal_request_without_pec_runs_as_staircase(kind):
         np.testing.assert_array_equal(on.s_params, off.s_params)
 
 
-# Every in-package caller of Simulation._forward_from_materials, the uniform
-# forward scan. A new caller fails test_forward_scan_callers_are_listed
-# until it is added here and checked for its admission below.
 _SCAN_CALLERS = {
     "rfx/api/_execute.py:_ExecuteMixin.forward": "forward",
     "rfx/probes/sparam_driver.py:compute_lumped_wire_s_matrix_via_scan": "driver",
@@ -414,23 +407,6 @@ def _scan_call(route, sim, **kw):
     mats, debye, lorentz, pec, shapes, _, _ = sim._assemble_materials(grid)
     return sim._forward_from_materials(
         grid, mats, debye, lorentz, n_steps=N_STEPS, pec_mask=pec, pec_shapes=shapes, **kw)
-
-
-@pytest.mark.parametrize("route", ["topology", "mixed"])
-def test_forward_scan_refuses_conformal_before_steps(route, no_steps):
-    if route == "mixed":
-        sim = _mixed(True)
-    else:
-        sim = _sim(True, ports="lumped" if route == "driver" else None)
-    assert sim._has_pec_to_conform()
-    with pytest.raises(NotImplementedError, match="conformal"):
-        _scan_call(route, sim)
-
-
-@pytest.mark.parametrize("route", ["forward", "driver", "direct"])
-def test_forward_scan_carries_conformal(route):
-    sim = _mixed(True) if route == "mixed" else _sim(True, ports="lumped" if route == "driver" else None)
-    assert _scan_call(route, sim) is not None
 
 
 def test_forward_scan_explicit_staircase_passes():

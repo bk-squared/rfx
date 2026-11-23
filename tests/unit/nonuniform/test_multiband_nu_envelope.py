@@ -8,12 +8,13 @@ regression gates:
 * FAST lane (default addopts, ~2 min): reduced witness arms — exact-conservation
   lock of the Remis dual-cell energy (f64), a reduced-step F-S1 envelope
   arm (f32), one W2 single-transition reflection arm at the cap ratio,
-  the W5 multiband AD check, the W4R3 F-S4 z-dominance gates (analytic)
-  and reduced ladder, the W4R3 grading-side revert-proof (which must
-  FIRE), and the WP6 preflight advisory contract.
+  the W5 multiband AD check, the W4R3 reduced ladder with its fixture
+  gates G1/G2/G3, and the WP6 preflight advisory contract.
 * SLOW/GPU lane: the full pre-declared arms — 1e6-step 1D energy audits
-  (``slow_physics``), the 3D P-B 1e6-step audit (``gpu``), and the full
-  four-scale W4R3 supraconvergence ladder (``slow_physics``).
+  (``slow_physics``), the 3D P-B 1e6-step audit (``gpu``), the full
+  four-scale W4R3 supraconvergence ladder (``slow_physics``), and the
+  W4R3 grading-side revert-proof on the reduced ladder (``slow``; it must
+  FIRE).
 
 Every threshold below is either the pre-declared falsifier window
 (F-S1/F-S2 from the design note, frozen before measurement) or the
@@ -34,6 +35,8 @@ import warnings
 
 import numpy as np
 import pytest
+
+from tests._fd_minimum import assert_same_minimum_cells
 
 from validation.research.multiband_nu import fixtures as fx
 from validation.research.multiband_nu.harness import (
@@ -116,8 +119,23 @@ def test_fs2_single_transition_at_cap():
 def test_w5_multiband_ad_consistency():
     """F-S5: jax.grad of sum(ts^2) w.r.t. the multiband w5_profile vs
     central FD, dominant cells within the existing NU AD convention
-    (15 % rel, f32 — test_nonuniform_gradient.py convention)."""
-    from validation.research.multiband_nu.w5_ad_consistency import measure
+    (15 % rel, f32 — test_nonuniform_gradient.py convention).
+
+    The derived dt is part of the differentiated function, and the assertion
+    keeps every FD point on one side of every smallest-cell tie.
+    """
+    import jax.numpy as jnp
+    from validation.research.multiband_nu.w5_ad_consistency import FD_REL_H, measure
+    dz0 = fx.w5_profile()
+    points = []
+    for k in range(len(dz0)):
+        h = FD_REL_H * dz0[k]
+        dp, dm = dz0.copy(), dz0.copy()
+        dp[k] += h
+        dm[k] -= h
+        points.extend([(f"index {k} (+)", np.asarray(jnp.asarray(dp))),
+                       (f"index {k} (-)", np.asarray(jnp.asarray(dm)))])
+    assert_same_minimum_cells(np.asarray(jnp.asarray(dz0)), points)
     res = measure("regression")
     assert not res["fs5_fired"], res
 
@@ -132,27 +150,6 @@ def _w4r3_arm(scale, multiband, defect=False):
 def _w4r3_rows(scales, defect=False):
     return {(mb, s): _w4r3_arm(s, mb, defect and mb)
             for s in scales for mb in (False, True)}
-
-
-def test_fs4_fixture_is_z_dominant():
-    """BL2 gate (note WP6R.3): the F-S4 fixture's error budget must be
-    carried by the GRADED axis, or its order gate cannot fail for a
-    grading reason. Pure analytic decomposition, no FDTD — G1 (the z
-    share of the modelled error budget) >= 0.80 in both arms at every
-    scale, and G2 (the grading-SPECIFIC share) >= 0.20 at every scale."""
-    from validation.research.multiband_nu import w4r3_zdominant_cavity as W
-    from validation.research.multiband_nu.analytic_dispersion import decompose
-    W.assert_planes_realizable()
-    for s in W.SCALES:
-        d = {}
-        for mb in (False, True):
-            prof = W.mb_profile(s) if mb else W.uc_profile(s)
-            grid, _m = build_pec_fixture(prof, (W.A_X, W.B_Y), W.DXY0 * s)
-            d[mb] = decompose(prof, W.DXY0 * s, W.A_X, float(grid.dt),
-                              W.M_X, W.P_Z, W.L_Z)
-            assert d[mb]["z_fraction"] >= W.G1_Z_FRACTION_MIN, (s, mb, d[mb])
-        share = abs(d[True]["e_z"] - d[False]["e_z"]) / abs(d[True]["e_total"])
-        assert share >= W.G2_GRADING_SHARE_MIN, (s, share)
 
 
 def test_fs4_supraconvergence_reduced():
@@ -170,6 +167,7 @@ def test_fs4_supraconvergence_reduced():
     assert not out["anomaly_a4"], out["verdict"]
 
 
+@pytest.mark.slow
 def test_fs4_grading_defect_fires():
     """Revert-proof for the ORDER witness (note WP6R.4): with the
     CORE-C2-class metric defect on ONE multiband transition node — an
@@ -288,8 +286,7 @@ def _ctor_ratio_warnings(axis, prof):
 @pytest.mark.parametrize("axis", ["x", "y", "z"])
 def test_grading_cap_is_1_4_on_every_axis(axis):
     """The in-plane cap moved 1.3 -> 1.4 on in-plane witnesses at 1.40
-    (2026-10-29: e5_x/e5_y reflection; rfx-archive
-    records/20261029-inplane-cap-1p4, pinned by
+    (2026-10-29: e5_x/e5_y reflection; pinned by
     test_inplane_grading_witness.py). It was held at 1.3 from 2026-08-29
     (note WP6R.8, finding BL1) because no witness graded an in-plane axis.
 

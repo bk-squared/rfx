@@ -117,7 +117,7 @@ def coords_from_nonuniform_grid(grid) -> GridCoords:
             cum = jnp.concatenate([jnp.zeros((1,), dtype=d_j.dtype),
                                    jnp.cumsum(d_j)])
             nodes = cum[:-1] - cum[pad_lo]
-            return nodes.astype(jnp.float32)
+            return nodes.astype(jnp.promote_types(d_j.dtype, jnp.float32))
         # Concrete path: HOST float64, no f32 cast (a cast re-quantizes node positions and
         # can place the NU lane one plane away from the uniform lane at node-aligned
         # faces).
@@ -307,8 +307,13 @@ def centres_from_nonuniform_grid(grid, coords: GridCoords | None = None) -> Grid
 
 def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *,
                         grid=None, cell_sizes=None, domain_faces=None, name=None,
-                        refuse_empty=True):
-    """Sample a material volume and refuse a declaration owning no cells."""
+                        refuse_empty=True, size_rule=True):
+    """Sample a material volume and refuse a declaration owning no cells.
+
+    With ``refuse_empty`` and ``size_rule`` a Sphere or Cylinder too small to
+    hold a primal-cell centre at every position is refused first, by its size
+    (:mod:`rfx.geometry.curved_body_size`); the empty-mask test stays behind it.
+    """
     if cell_sizes is None:
         cell_sizes = (cell_sizes_from_nonuniform_grid(grid) if hasattr(grid, 'dx_arr')
                       else cell_sizes_from_uniform_grid(grid) if grid is not None
@@ -319,6 +324,9 @@ def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *,
                                  cell_sizes=cell_sizes, domain_faces=domain_faces)
     if refuse_empty:
         from rfx.geometry.curved import CurvedPatch
+        from rfx.geometry.curved_body_size import refuse_small_body
+        if size_rule:
+            refuse_small_body(shape, centres, cell_sizes, name)
         empty = (True if isinstance(shape, CurvedPatch) else
                  _volume_is_empty(shape, centres, mask, cell_sizes,
                                   grid=grid, domain_faces=domain_faces))
@@ -333,13 +341,22 @@ def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *,
             _refuse_zero_cells(shape, name, "Material volume",
                                cell_sizes=diagnostic_sizes, centres=diagnostic_centres)
         elif empty is None:
+            # The host check never reads the shape: its fields may be tracers of
+            # the enclosing trace. The bounds a trace can form (Box, Sphere,
+            # Cylinder) go in as operands; other shapes report them unavailable.
+            corners = ()
+            if isinstance(shape, (Box, Sphere, Cylinder)):
+                lo, hi = shape.bounding_box()
+                corners = (*lo, *hi)
+
             def check(value, *axes):
                 if not np.any(value):
-                    _refuse_zero_cells(shape, name, "Material volume",
-                                       cell_sizes=axes[:3], centres=axes[3:])
+                    bounds = (axes[6:9], axes[9:12]) if corners else UNAVAILABLE
+                    _refuse_zero_cells(shape, name, "Material volume", cell_sizes=axes[:3],
+                                       centres=axes[3:6], bounds=bounds)
             from rfx._traced_check import traced_check
             traced_check("material volume", "nonempty cells", check,
-                         mask, *cell_sizes, *centres[:3])
+                         mask, *cell_sizes, *centres[:3], *corners)
     return mask
 
 
@@ -558,9 +575,21 @@ def _volume_is_empty(shape, centres: GridCoords, mask, cell_sizes, *, grid=None,
     return not bool(np.any(np.asarray(mask, dtype=bool)))
 
 
-def _refuse_zero_cells(shape, name, what: str, *, cell_sizes=None, centres=None):
+UNAVAILABLE = object()
+"""``bounds`` value for a material volume whose bounds the caller cannot form."""
+
+
+def _refuse_zero_cells(shape, name, what: str, *, cell_sizes=None, centres=None, bounds=None):
+    """Refuse a declaration owning no cells.
+
+    ``bounds`` = (corner_lo, corner_hi) from the caller, or :data:`UNAVAILABLE`;
+    with None a material volume reads ``shape.bounding_box()``.
+    """
     if what == "Material volume":
-        bounds = shape.bounding_box() if hasattr(shape, 'bounding_box') else None
+        if bounds is UNAVAILABLE:
+            bounds = None
+        elif bounds is None:
+            bounds = shape.bounding_box() if hasattr(shape, 'bounding_box') else None
         thickness = (tuple(float(b - a) for a, b in zip(*bounds))
                      if bounds is not None else "unavailable")
         local = "unavailable"
@@ -587,7 +616,7 @@ def _refuse_zero_cells(shape, name, what: str, *, cell_sizes=None, centres=None)
 
 def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
                           normal_axis=None, name=None, lane: str = "",
-                          refuse_thick: bool = False, grid=None):
+                          refuse_thick: bool = False, grid=None, nominal_grid=None):
     """A :class:`SheetSpec` for a sheet declaration (§1.3).
 
     * plane = the node plane nearest the shape's mid-plane along
@@ -599,8 +628,10 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     * ``refuse_thick`` (``add_thin_conductor``): a shape thicker than one
       local cell along its normal is not a sheet.
 
-    The plane is a static int, so a traced mesh (node coordinates are
-    tracers) cannot declare a PEC sheet — the caller decides what to do.
+    On traced coordinates, a concrete normal resolves the sheet on the host
+    nominal grid; its footprint then follows those nodes as the mesh moves.
+    Traced in-plane axes require declared nominal profiles. A traced normal
+    or traced coordinates without a nominal grid are refused.
     Returns the spec; raises ``ValueError`` on a zero footprint.
     """
     from rfx.boundaries.pec import SheetSpec
@@ -610,8 +641,10 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
         raise NotImplementedError(
             "OrientedBox is a volume; axis-aligned sheet conversion is not implemented")
 
-    if _is_traced_coords(coords):
-        raise ValueError(
+    traced = _is_traced_coords(coords)
+    reference_grid = nominal_grid if nominal_grid is not None else grid
+    if traced and reference_grid is None:
+        raise RfxRefusal(
             f"sheet {name!r}: a sheet's plane is a static integer, and this "
             "mesh is a JAX tracer (mesh-as-design-variable), so the nearest "
             "node plane cannot be resolved. Pin the mesh, or declare the "
@@ -628,6 +661,24 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     if normal_axis is None:
         normal_axis = min(range(3), key=lambda i: extents[i])
     a = int(normal_axis)
+    if traced:
+        if is_tracer(coords[a]):
+            raise RfxRefusal(
+                f"sheet {name!r}: a sheet's plane is a static integer, and "
+                f"normal axis {'xyz'[a]} is a JAX tracer; pin that axis or "
+                "declare the conductor as a volume.")
+        for axis in range(3):
+            if axis != a and is_tracer(coords[axis]) and 'xyz'[axis] not in (
+                    getattr(reference_grid, "nominal_cells", None) or {}):
+                raise RfxRefusal(
+                    f"sheet {name!r}: traced in-plane axis {'xyz'[axis]} needs "
+                    f"nominal_profiles; declare nominal_profiles for axis {'xyz'[axis]} "
+                    "or use add_pinned_sheet.")
+        from rfx.model.graded_grid import host_nominal_grid
+        with jax.ensure_compile_time_eval():
+            nominal = host_nominal_grid(reference_grid)
+            coords = coords_from_nonuniform_grid(nominal)
+            cell_sizes = cell_sizes_from_nonuniform_grid(nominal)
     node_axes = footprint_sample_coords(
         coords, tuple(t for t in range(3) if t != a), carrier="node")
     if cell_sizes is None:
@@ -825,7 +876,7 @@ def sheet_footprint_traced(shape, coords: GridCoords, normal_axis: int, cell_siz
     """Sheet footprint on a TRACED mesh (mesh-as-design-variable), no plane.
 
     The plane of a sheet is a static integer under the contract, which a
-    traced node line cannot provide, so a PEC sheet is refused there
+    traced normal node line cannot provide, so a PEC sheet is refused there
     (:func:`sheet_spec_from_shape`). The f0 sheet only needs the footprint
     mask; this is the traced twin of the concrete rule — a Box footprint is
     CLOSED on the in-plane axes and one-hot at the nearest node along the
@@ -1047,7 +1098,7 @@ def _static_wire_min_cell(points, node_axes, cell_sizes):
 
 def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
                        cell_sizes=None, *, name=None, grid=None, domain_faces=None,
-                       sub_region=False):
+                       sub_region=False, nominal_grid=None):
     """Classify one PEC geometry entry (``sim.add(shape, material=pec)``).
 
     Returns ``(cell_mask, sheet, wire)`` with exactly one of the three set:
@@ -1096,7 +1147,8 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
                 "one zero-extent axis.")
         if len(zero) == 1:
             return None, sheet_spec_from_shape(
-                shape, coords, cell_sizes, normal_axis=zero[0], name=name, grid=grid), None
+                shape, coords, cell_sizes, normal_axis=zero[0], name=name, grid=grid,
+                nominal_grid=nominal_grid), None
         if not traced:
             subcell = _subcell_axes(lo, hi, node_axes, cell_sizes)
             if subcell:
@@ -1149,6 +1201,17 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
         from rfx.materials.thin_conductor import sheet_bounds
         bb_lo, bb_hi = sheet_bounds(shape)
         if bb_lo is not None and bb_hi is not None:
+            # Resolved-volume checks on a concrete mesh require concrete bounds.
+            if any(is_tracer(value) for value in jax.tree_util.tree_leaves((bb_lo, bb_hi))):
+                kind = type(shape).__name__
+                fields = " and ".join(
+                    field for field in ("radius", "height", "center")
+                    if any(is_tracer(value) for value in
+                           jax.tree_util.tree_leaves(getattr(shape, field, None)))
+                ) or "dimension"
+                raise TracedShapeDimensionError(
+                    f"A PEC {kind} with a traced {fields} cannot check its resolved "
+                    f"volume. Use a concrete {fields} outside jit/vmap.")
             subcell = _subcell_axes(bb_lo, bb_hi, node_axes, cell_sizes)
             if subcell:
                 _refuse_subcell(subcell, shape, name)

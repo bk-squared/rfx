@@ -10,8 +10,7 @@ decomposition.
 Scope of this CPU test: assert the flux branch RUNS on the NU path and
 that at a SETTLED num_periods it produces a passive, physical S-matrix
 (passivity ≤ 1.10, real reflection registered). Absolute-accuracy /
-broad-E5-envelope validation against analytic Airy is a GPU task
-(docs/research_notes/20260529_flux_nu_wiring_design.md).
+broad-E5-envelope validation against analytic Airy is a GPU task.
 
 Caveat (documented, not asserted): at transition num_periods the flux
 extractor — like any DFT-based extractor — is not yet settled and can
@@ -19,6 +18,8 @@ overshoot passivity. The flux advantage over normalize=True is that the
 SETTLED result preserves passivity (~1.0 vs ~1.18) and tracks the uniform
 |S21|; it does NOT make the band-edge denominator fully immune (P_inc is
 still source-spectrum weighted).
+The domain lengths written as ``15 * dx_coarse`` and ``7 * dx_coarse`` are whole numbers of cells of
+dx, so their solved lengths equal the declared ones.
 """
 from __future__ import annotations
 
@@ -57,7 +58,7 @@ def _make_wr90_nu_sim_with_slab():
 
     sim = Simulation(
         freq_max=_F_MAX,
-        domain=(domain_x, 15 * dx_coarse, 7 * dx_coarse),  # solved length; #1887
+        domain=(domain_x, 15 * dx_coarse, 7 * dx_coarse),
         dx=dx_coarse,
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),
@@ -124,14 +125,3 @@ def test_nu_flux_settled_is_passive_and_reflects():
     assert s11.max() > 0.02, (
         f"flux |S11| max {s11.max():.4f} — slab reflection not registered"
     )
-
-    # NOTE on accuracy: this CPU sanity geometry (CPML=8, short domain,
-    # in-band Fabry-Perot) is the normalize=True blow-up witness, NOT an
-    # accuracy fixture — its |S11| vs analytic Airy sits at ~0.2 here
-    # purely from the coarse CPML + small domain, not a flux defect. The
-    # broad-E5 ACCURACY of the flux path is proven by the properly-sized
-    # GPU envelope (CPML=24, 200mm domain, settled): WR-90 NU flux
-    # 16/16 cases ≤ 0.0156 vs analytic Airy, eps_r {2,4}, grading 1.0-3.0
-    # (VESSL run 369367240154; artifact registered under
-    # rectangular_waveguide_port). See
-    # docs/research_notes/20260529_flux_nu_wiring_design.md.

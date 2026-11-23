@@ -16,9 +16,7 @@ def _pulse(t):
 
 
 def _probe_energy(scale):
-    # Concrete x profiles require their end cells to equal scalar dx.
-    # Under AD keep dx nominal and deform both traced end cells together.
-    # Explicit y/z profiles and pinned dt hold all other metrics fixed.
+    """Concrete x profiles require their end cells to equal scalar dx."""
     traced = isinstance(scale, jax.core.Tracer)
     if traced:
         profile = jnp.full(8, H).at[0].set(H * scale).at[-1].set(H * scale)

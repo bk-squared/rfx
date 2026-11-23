@@ -1,6 +1,6 @@
 # Pre-declaration: a path admits only the inputs it declares it carries (2026-09-27)
 
-Status: pre-declaration. Decided by the NU leader; the change of method was approved by the PI on 2026-09-27. This note is committed as the first commit of its PR, before any code, and the judges below are frozen from that commit.
+Status: pre-declaration. This note is committed as the first commit of its PR, before any code, and the judges below are frozen from that commit.
 
 ## 1. What a user got, and why it kept happening
 
@@ -15,7 +15,7 @@ Each path reads only part of the declaration. An input a path does not read is s
 - a Floquet port on a graded mesh launches nothing (#1312);
 - the subgridded lane solves magnetic x walls as electric walls, after passing production validation (#1311).
 
-This lane has 24 such issues: #1221, #1257 and #1266, and 21 more that the path survey (#1338) and the reviews filed in the three days before this note (#1285–#1342). Fourteen share one cause (#1285, #1286, #1290, #1299, #1300, #1305, #1308–#1313, #1339, #1340): admission is a denylist. Each path lists what it refuses, and anything not listed passes through. Every new input therefore opens a silent drop on every path that was written before it, until someone finds it. This note reverses that. A path declares what it carries, and it refuses everything else before the first step. That is the PI's rule of 2026-09-24 ("a physics input a path does not implement is refused"), enforced by construction instead of case by case.
+This lane has 24 such issues: #1221, #1257 and #1266, and 21 more that the path survey (#1338) and the reviews filed in the three days before this note (#1285–#1342). Fourteen share one cause (#1285, #1286, #1290, #1299, #1300, #1305, #1308–#1313, #1339, #1340): admission is a denylist. Each path lists what it refuses, and anything not listed passes through. Every new input therefore opens a silent drop on every path that was written before it, until someone finds it. This note reverses that. A path declares what it carries, and it refuses everything else before the first step. This refusal is enforced by construction instead of case by case.
 
 ## 2. Decisions
 

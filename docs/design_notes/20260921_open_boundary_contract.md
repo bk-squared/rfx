@@ -1,8 +1,8 @@
 # The open-boundary contract: what touches an absorbing face, and what the absorber may end
 
-> Documentation update (2026-10-03): Records moved by #1294 are in internal record 20260924-moved-from-rfx. Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
+> Documentation update (2026-10-03): Records moved by #1294 are kept with the project, outside this repository. Historical paths below refer to those records; reproduction commands that read them need the archived files.
 
-Status: **decided** (PI, 2026-09-21). Option A of section 5 is adopted; option B is the next task, not a
+Status: **decided**. Option A of section 5 is adopted; option B is the next task, not a
 rejected one. This note is the rule; the code that implements it lands in later changes and cites it.
 Every number here is read from a record under `scripts/diagnostics/open_boundary_contract/` (file and
 key given in place) or from a tracked file named in place. Nothing in `rfx/` changes with this note.

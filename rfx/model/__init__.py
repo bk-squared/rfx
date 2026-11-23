@@ -1,7 +1,7 @@
 """The realized model (S1): one declaration + one grid -> one object every path reads.
 
 ``conductors`` holds the PEC edges, sheets, lossy-sheet operators and wires; materials and the
-realized-model object follow (plan: rfx-archive rfx/plans/20261004-s1-realized-model/).
+realized-model object follow.
 """
 
 # The conductor layer's interface to the five large callers (2.0 layer rule): the
@@ -82,6 +82,7 @@ from rfx.model.waveguide_modes import (
     WaveguidePortConfig,
 )
 from rfx.model.waveguide_waveform import (
+    admit_waveguide_freqs,
     waveguide_waveform_error,
 )
 
@@ -132,6 +133,7 @@ __all__ = [
     "traced_cell_mask",
     "uniform_solve_inputs",
     "uniform_source_table",
+    "admit_waveguide_freqs",
     "waveguide_waveform_error",
     "WaveguidePort",
     "WaveguidePortConfig",

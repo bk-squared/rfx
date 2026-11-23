@@ -124,7 +124,6 @@ def _site_case(site):
         target = b[0]
         t = (jnp.arange(length, dtype=freqs.dtype) + 1) * dt
         carrier = jnp.exp(2j * jnp.pi * t[:, None] * freqs)
-        # Independent primitive/basis, with the same evaluation order as the site.
         def primitive(k):
             env = jnp.where((k >= 0) & (k < length - 1),
                             jnp.sin(jnp.pi * (k + 1) / length)**4, 0.)
@@ -216,8 +215,6 @@ def test_block_solve_batched_matrix_vector_rhs_matches_native():
 
 @pytest.mark.parametrize("lower", [False, True])
 def test_mps_triangular_solve_reads_only_its_triangle(monkeypatch, lower):
-    # The native op ignores the other triangle; a full matrix must give the
-    # same answer and a zero gradient there.
     rng = np.random.default_rng(1830)
     full = jnp.asarray(rng.normal(size=(4, 4)) + 1j * rng.normal(size=(4, 4)) + 5 * np.eye(4),
                        dtype=jnp.complex64)

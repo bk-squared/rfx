@@ -31,6 +31,21 @@ Injection and wavelets
 Inject the monitor's E component at its exact Yee array index, after the
 design update and before the ordinary source/monitor stage. A point is a
 single selected pixel of an E DFT plane; a plane injects each of its pixels.
+H-plane and NTFF objectives use the same settled-spectrum overlap. H samples
+supply magnetic increments at AFTER_H, with the reciprocal minus sign and
+Db=dt/mu on their own Yee edges. Since the wavelet solve uses the E stamp,
+the H target is multiplied by exp(-i omega dt/2) before the solve. The
+wavelet basis itself retains integer step indices.
+
+NTFF targets are the linear transpose of one unit-phase accumulator increment
+on each cropped face slab and its collocation halo. Compensation cotangents
+are zero by cancellation in the Kahan update. NTFF-only calls take their bins
+from the box; all registered monitors must share those bins. The second scan
+switches off NTFF accumulation and drops its carry, alongside plane carries.
+In float32, a hand-written intensity/power quotient gives a NaN gradient on
+every gradient path when radiated power is below about 5e-20 at rfx's field
+scale, while `maximize_directivity`'s log ratio stays finite.
+
 Interior uniform dual volumes are V=dx^3: reciprocal density sources use
 b/V and the overlap uses V, so these factors cancel. CPML and boundary
 monitor pixels are excluded from admission. The half-step current spectrum
@@ -52,6 +67,7 @@ edges × components × bins, plus monitor bins and ordinary field carries.
 
 
 """
+from rfx.errors import RfxUnsupported
 from rfx.measurement.wavelet import _wavelet_basis, _wavelet_coefficients
 
 
@@ -93,10 +109,9 @@ def admit_forward_adjoint(sim, *, distributed, ringdown, design_box, design_eps,
     elif design_box is None or design_eps is None:
         reason = "calls without design_box and design_eps_override"
     if reason is not None:
-        raise NotImplementedError(f"gradient='adjoint' does not support {reason}")
+        raise RfxUnsupported(f"gradient='adjoint' does not support {reason}")
 
 
-# Lazy compatibility exports avoid a cycle with the moved implementation.
 _LAZY_EXPORTS = {
     "_plane_slice": "rfx.stepping.adjoint_scan",
     "design_adjoint_scan": "rfx.stepping.adjoint_scan",

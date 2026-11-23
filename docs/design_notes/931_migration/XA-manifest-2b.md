@@ -113,7 +113,7 @@ change and not a claim the case makes:
 | settling | −21.6 dB | −20.4 dB (both under the −40 dB bar) |
 
 The agreement with openEMS got worse and the agreement with the closed form got
-better. That is the direction `rfx-known-issues.md`'s 2026-08-28 A/B verdict
+better. That is the direction the recorded 2026-08-28 A/B verdict
 gives for a cavity that became exact, and the `claim_scope` text applied at
 `5ce20cd7` already says the pre-#931 openEMS figure is not a baseline this case
 preserves. Both arms remain under-settled, so none of these frequencies is

@@ -342,6 +342,11 @@
       "count": 6
     },
     {
+      "file": "rfx/differentiable_material_fit.py",
+      "function": "differentiable_material_fit",
+      "kind": "boundary"
+    },
+    {
       "file": "rfx/fidelity.py",
       "function": "_max_run_length",
       "kind": "roll/diff"
@@ -349,6 +354,11 @@
     {
       "file": "rfx/geometry/cell_table/body.py",
       "function": "face_fraction.polygon",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/geometry/cell_table/box_overlap.py",
+      "function": "exact_box_overlap",
       "kind": "roll/diff"
     },
     {
@@ -404,6 +414,36 @@
     {
       "file": "rfx/geometry/triplet_tensor.py",
       "function": "fractions",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/measurement/_block_plan.py",
+      "function": "block_plan",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/measurement/_radiated_power.py",
+      "function": "_phi_weights",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/measurement/_radiated_power.py",
+      "function": "integrate_radiated_power",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/measurement/coax_records.py",
+      "function": "_validate_monotone_axis",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/measurement/coax_records.py",
+      "function": "coaxial_line_reflection_from_plane_voltages",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/measurement/coax_records.py",
+      "function": "coaxial_tem_reference_plane_vi",
       "kind": "roll/diff"
     },
     {
@@ -597,21 +637,6 @@
       "file": "rfx/runners/distributed_v2.py",
       "function": "_init_cpml_sharded",
       "kind": "boundary"
-    },
-    {
-      "file": "rfx/sources/coaxial_port.py",
-      "function": "_validate_monotone_axis",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/sources/coaxial_port.py",
-      "function": "coaxial_line_reflection_from_plane_voltages",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/sources/coaxial_port.py",
-      "function": "coaxial_tem_reference_plane_vi",
-      "kind": "roll/diff"
     },
     {
       "file": "rfx/stepping/absorber.py",

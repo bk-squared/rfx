@@ -15,9 +15,8 @@ from rfx.ntff_sweep import ntff_sweep
 
 
 def _small_sim(freqs):
-    # #1941: the profile once solved 4.1 mm under a 10 mm declaration, so
-    # the box top lay outside the solved column; it now spans 10.1 mm.
     dz = np.array([0.4e-3] * 4 + [0.5e-3] * 17, dtype=np.float64)
+    assert np.isclose(np.sum(dz), 10.1e-3, rtol=0, atol=1e-14) and np.sum(dz) > 0.006, "The solved column must span 10.1 mm and extend above the NTFF box top at 6 mm."
     sim = Simulation(
         freq_max=5e9, domain=(0.02, 0.02, float(np.sum(dz))),
         dx=0.5e-3, dz_profile=dz, boundary="cpml",
@@ -41,7 +40,7 @@ def test_batched_equals_full():
     ref_res = sim_ref.run(n_steps=120, compute_s_params=False)
     ref_data = ref_res.ntff_data
 
-    sim_batch = _small_sim(np.array([full_freqs[0]]))  # seed with one
+    sim_batch = _small_sim(np.array([full_freqs[0]]))
     batched, freqs_out = ntff_sweep(
         sim_batch, full_freqs, batch_size=2,
         run_kwargs=dict(n_steps=120, compute_s_params=False),
@@ -76,7 +75,6 @@ def test_restores_freqs_on_success():
 def test_restores_freqs_on_exception():
     original = np.array([2.4e9, 3.0e9])
     sim = _small_sim(original)
-    # Force failure by passing an invalid run kwarg.
     with pytest.raises(TypeError):
         ntff_sweep(sim, [2.0e9], batch_size=1,
                    run_kwargs=dict(not_a_real_kwarg=True))

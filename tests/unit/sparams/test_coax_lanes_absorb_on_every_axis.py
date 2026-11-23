@@ -7,8 +7,7 @@ were vacuum backed by the PEC grid faces, a closed metal can around the line,
 and the can held that field between the shell and its walls. The open end
 coupled it back, so the open's |S11| rose above 1 and grew with the record:
 1.018 at 12 line traversals and 1.046 at 24 at 9 annulus cells, and 1.0015 at
-both with the lateral pads absorbing (issue 1218; the records are in rfx-archive,
-``rfx/records/20260924-coax-closed-can/open_closed_can_arms.json``).
+both with the lateral pads absorbing (issue 1218).
 
 ``compute_coaxial_line_reflection`` and ``compute_coaxial_two_port`` now hand
 the runner ``cpml_axes="xyz"``, refuse any other value, and refuse a board with
@@ -28,7 +27,8 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.sources.sources import GaussianPulse
 
 LANES = ("compute_coaxial_line_reflection", "compute_coaxial_two_port")
-DX = (2.055e-3 - 0.635e-3) / 4.0          # four annulus cells
+ANNULUS_CELL_COUNT = 4.0
+DX = (2.055e-3 - 0.635e-3) / ANNULUS_CELL_COUNT
 
 
 class _ReachedTheRunner(Exception):
@@ -77,8 +77,6 @@ def _runner_arguments(monkeypatch, sim: Simulation, lane: str, **kw) -> dict:
 def test_the_runner_absorbs_on_every_axis(monkeypatch, lane):
     seen = _runner_arguments(monkeypatch, _sim(lane), lane)
     assert seen["boundary"] == "cpml"
-    # The runner absorbs on the axes it resolves from the grid (#1494), so
-    # judge the effective axes, not the literal argument.
     from rfx.boundaries.axes import resolve_cpml_axes
     effective = resolve_cpml_axes(seen["grid"], seen["cpml_axes"])
     assert effective == "xyz", (

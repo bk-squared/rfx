@@ -8,6 +8,7 @@ The PEC-short gate is the same physics criterion used by
 ``test_pec_short_s11_with_kottke_pec_path`` but exercises the flux
 extraction path (``normalize="flux"``) rather than the modal normalize=False
 path with kottke_pec subpixel smoothing.
+Every domain length written as ``(0.12, 14 * 0.003, 7 * 0.003)`` is a whole number of cells of dx, so the solved domains equal the declared ones.
 """
 
 from __future__ import annotations
@@ -44,18 +45,17 @@ def _wr90_pec_short_sim():
             z=Boundary(lo="pec", hi="pec"),
         ),
         cpml_layers=10,
-    )  # solved length; #1887
+    )
     sim.add(Box((0.084, 0, 0), (0.087, 0.042, 0.021)), material="pec")
     freqs = jnp.linspace(5e9, 6.5e9, 6)
     sim.add_waveguide_port(
         0.010, direction="+x", mode=(1, 0), mode_type="TE",
         freqs=freqs, f0=6e9, bandwidth=0.5, name="left",
     )
-    # #1913: the right port stands 4 cells behind the short's far face (87 mm),
-    # so its 3-cell reflection plane (90 mm) is in front of the short; at 90 mm
-    # it read the far side of the short. |S11| is bit-identical either way.
+    RIGHT_PORT_POSITION_M = 0.099
+    assert RIGHT_PORT_POSITION_M - 3 * 0.003 > 0.087, 'The right-port reflection plane must be in front of the short for minus-x incidence.'
     sim.add_waveguide_port(
-        0.099, direction="-x", mode=(1, 0), mode_type="TE",
+        RIGHT_PORT_POSITION_M, direction="-x", mode=(1, 0), mode_type="TE",
         freqs=freqs, f0=6e9, bandwidth=0.5, name="right",
     )
     return sim
@@ -73,7 +73,7 @@ def test_normalize_flux_smoke():
             z=Boundary(lo="pec", hi="pec"),
         ),
         cpml_layers=8,
-    )  # solved length; #1887
+    )
     freqs = jnp.linspace(5e9, 6.5e9, 4)
     sim.add_waveguide_port(
         0.010, direction="+x", mode=(1, 0), mode_type="TE",

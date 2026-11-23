@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rfx.model.waveguide_aperture import validate_uniform_waveguide_ports
+
 from typing import TYPE_CHECKING
 from rfx._host_limits import check_map_count
 
@@ -78,6 +80,7 @@ def run(
     aniso_eps: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
     aniso_inv_eps_smooth: bool = False,
+    subpixel_smoothing: object = False,
     pec_mask: object | None = None,
     pec_sheets: object = (),
     pec_wires: object = (),
@@ -120,6 +123,9 @@ def run(
     pec_axes : axes string or None
         Axes on which to enforce PEC after each update. If None, uses
         all non-periodic axes.
+        A non-periodic face left out of ``pec_axes`` and without a CPML pad
+        ends as a magnetic wall half a cell outside its outermost node, the
+        same as a declared PMC face.
     periodic : (bool, bool, bool) or None
         Per-axis periodic boundary flags. If None, defaults to
         ``(False, False, False)`` in 3D and ``(False, False, True)``
@@ -257,9 +263,11 @@ def run(
     dft_planes = dft_planes or []
     flux_monitors = flux_monitors or []
     waveguide_ports = waveguide_ports or []
+    validate_uniform_waveguide_ports(grid, waveguide_ports, pec_axes, periodic)
     wire_port_sparams = wire_port_sparams or []
     lumped_port_sparams = lumped_port_sparams or []
     wire_refplane_sparams = wire_refplane_sparams or []
+    lumped_rlc_admission = getattr(lumped_rlc, 'admission', None)
     lumped_rlc = lumped_rlc or []
     mag_sources = mag_sources or []
 
@@ -288,6 +296,7 @@ def run(
         aniso_eps=aniso_eps,
         aniso_inv_eps=aniso_inv_eps,
         aniso_inv_eps_smooth=aniso_inv_eps_smooth,
+        subpixel_smoothing=subpixel_smoothing,
         pec_mask=pec_mask,
         pec_sheets=pec_sheets,
         pec_wires=pec_wires,
@@ -324,10 +333,17 @@ def run(
     use_waveguide_ports = len(waveguide_ports) > 0
 
     # The GPU H+E fast lane measured slower for closed boxes; use the
-    # standard lane (rfx-archive rfx/records/20261026-fast-lane-sweep/).
+    # standard lane.
     _ctx = _setup.ctx_kwargs
     use_fast_he = False
     _fast_coeffs = None
+
+    from rfx.stepping import vector_pad
+    plan = vector_pad.uniform_plan(grid, _setup.periodic, unsupported=vector_pad.uniform_unsupported(
+        _ctx, stencil_order=stencil_order, field_dtype=carry_init["fdtd"].ex.dtype))
+    _pad = plan if plan.active else None
+    if _pad is not None:
+        carry_init = vector_pad.pad_carry(carry_init, _pad)
 
     # ---- run()-specific: snapshot setup ----
     # ``interval`` is honoured. interval == 1 returns a frame every step
@@ -338,7 +354,7 @@ def run(
     if use_snapshot:
         snap_interval = validate_snapshot_spec(snapshot)
         snap_components = tuple(snapshot.components)
-        _take_snapshot = snapshot_extractor(snapshot)
+        _take_snapshot = vector_pad.physical_reader(snapshot_extractor(snapshot), _pad)
     else:
         snap_interval = 1
         snap_components = ()
@@ -353,13 +369,13 @@ def run(
         occupancy=pec_occupancy, periodic=periodic,
         sheet_edge_masks=_ctx["pec_static_edge_masks"],
         design=design_occupancy, shape=grid.shape,
-        keep=_ctx["materials"].edge_keep)
+        keep=_ctx["materials"].edge_keep, dtype=field_dtype or jnp.float32)
 
     # ---- magnetic source (H-field) waveform matrix ----
     if mag_sources:
         mag_src_waveforms = jnp.stack([s.waveform for s in mag_sources], axis=-1)
     else:
-        mag_src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
+        mag_src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.promote_types(field_dtype or jnp.float32, jnp.float32))
 
     # ---- scan body (shared kernel; W6.1 kernel + W6.2 setup) ----
     _step_ctx = _StepContext(
@@ -378,10 +394,14 @@ def run(
         monitor_component="ez",
         mon_idx=None,
         snapshot_extractor=_take_snapshot if snap_in_body else None,
+        pad_plan=_pad,
     )
     # An attached plan supplies the probe and port tables (direct callers keep theirs).
-    _core_step = (make_core_step(_step_ctx) if measurement is None else make_core_step(
-        _step_ctx, measurement=measurement, dtype=carry_init["fdtd"].ex.dtype))
+    admission_kwargs = ({} if lumped_rlc_admission is None else
+                        {"lumped_rlc_admission": lumped_rlc_admission})
+    _core_step = (make_core_step(_step_ctx, **admission_kwargs) if measurement is None else make_core_step(
+        _step_ctx, measurement=measurement, dtype=carry_init["fdtd"].ex.dtype,
+        **admission_kwargs))
 
     def step_fn(carry, xs):
         _step_idx, src_vals, mag_src_vals = xs
@@ -630,6 +650,9 @@ def run(
             lambda a: a.reshape(a.shape[0] * a.shape[1], *a.shape[2:]),
             seg_outputs)
 
+    if _pad is not None:
+        final_carry = vector_pad.unpad_carry(final_carry, _pad)
+
     if use_snapshot:
         time_series = outputs[0]
         # outputs[1] is a list of arrays, each (n_steps // interval, ...)
@@ -758,6 +781,7 @@ def run_until_decay(
     aniso_eps: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
     aniso_inv_eps_smooth: bool = False,
+    subpixel_smoothing: object = False,
     pec_mask: object | None = None,
     pec_sheets: object = (),
     pec_wires: object = (),
@@ -829,6 +853,12 @@ def run_until_decay(
     monitor_position : tuple or None
         Legacy monitor position (x, y, z); does not affect the stop.
         Non-default values warn of deprecation.
+    pec_axes : axes string or None
+        Axes on which to enforce PEC after each update. If None, uses
+        all non-periodic axes.
+        A non-periodic face left out of ``pec_axes`` and without a CPML pad
+        ends as a magnetic wall half a cell outside its outermost node, the
+        same as a declared PMC face.
     checkpoint_segments : int or None
         **Not supported** (a host-driven early stop); a non-None value
         raises ``NotImplementedError``.
@@ -907,8 +937,10 @@ def run_until_decay(
     dft_planes = dft_planes or []
     flux_monitors = flux_monitors or []
     waveguide_ports = waveguide_ports or []
+    validate_uniform_waveguide_ports(grid, waveguide_ports, pec_axes, periodic)
     wire_port_sparams = wire_port_sparams or []
     lumped_port_sparams = lumped_port_sparams or []
+    lumped_rlc_admission = getattr(lumped_rlc, 'admission', None)
     lumped_rlc = lumped_rlc or []
     mag_sources = mag_sources or []
 
@@ -934,6 +966,7 @@ def run_until_decay(
         aniso_eps=aniso_eps,
         aniso_inv_eps=aniso_inv_eps,
         aniso_inv_eps_smooth=aniso_inv_eps_smooth,
+        subpixel_smoothing=subpixel_smoothing,
         pec_mask=pec_mask,
         pec_sheets=pec_sheets,
         pec_wires=pec_wires,
@@ -952,6 +985,12 @@ def run_until_decay(
     carry = _setup.carry_init
     init_plane_records(carry, dft_planes, record_dft, max_steps)
     init_uniform_records(carry, max_steps, wire_port_sparams, lumped_port_sparams, (), field_dtype, port_record_specs)
+    from rfx.stepping import vector_pad
+    plan = vector_pad.uniform_plan(grid, _setup.periodic, unsupported=vector_pad.uniform_unsupported(
+        _setup.ctx_kwargs, stencil_order=stencil_order, field_dtype=carry["fdtd"].ex.dtype))
+    _pad = plan if plan.active else None
+    if _pad is not None:
+        carry = vector_pad.pad_carry(carry, _pad)
     dx = _setup.dx
     waveguide_meta = _setup.waveguide_meta
     wire_sparam_meta = _setup.wire_sparam_meta
@@ -973,7 +1012,7 @@ def run_until_decay(
     # ---- precompute source waveforms up to max_steps ----
     src_waveforms = drive_table([s.waveform for s in sources], _setup.src_meta, max_steps,
         occupancy=pec_occupancy, periodic=_setup.periodic, pad=True,
-        sheet_edge_masks=_setup.ctx_kwargs["pec_static_edge_masks"], keep=_setup.ctx_kwargs["materials"].edge_keep)
+        sheet_edge_masks=_setup.ctx_kwargs["pec_static_edge_masks"], keep=_setup.ctx_kwargs["materials"].edge_keep, dtype=field_dtype or jnp.float32)
 
     if mag_sources:
         mag_src_waveforms = jnp.stack(
@@ -981,7 +1020,7 @@ def run_until_decay(
              else jnp.pad(s.waveform, (0, max_steps - s.waveform.shape[0]))
              for s in mag_sources], axis=-1)
     else:
-        mag_src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
+        mag_src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.promote_types(field_dtype or jnp.float32, jnp.float32))
 
     # ---- shared kernel (W6.1 + W6.2 setup) ----
     # run_until_decay does NOT build the GPU fast-HE coeffs and uses the
@@ -1005,14 +1044,18 @@ def run_until_decay(
         monitor_component=monitor_component,
         mon_idx=mon_idx,
         snapshot_extractor=None,
+        pad_plan=_pad,
     )
     # The per-cell arrays are an argument of the jitted step, not constants
     # compiled into it (split_loop_invariants).
     from rfx.core.jax_utils import split_loop_invariants
+    admission_kwargs = ({} if lumped_rlc_admission is None else
+                        {"lumped_rlc_admission": lumped_rlc_admission})
     _inv_args, _inv_rebuild = split_loop_invariants(
-        core_step_invariants(_step_ctx) if measurement is None else
-        core_step_invariants(_step_ctx, measurement=measurement, dtype=carry["fdtd"].ex.dtype),
-        tuple(grid.shape))
+        core_step_invariants(_step_ctx, **admission_kwargs) if measurement is None else
+        core_step_invariants(_step_ctx, measurement=measurement, dtype=carry["fdtd"].ex.dtype,
+                             **admission_kwargs),
+        tuple(grid.shape if _pad is None else _pad.padded))
 
     @jax.jit
     def _single_step(carry_in, step_idx, src_vals, mag_src_vals, inv_args):
@@ -1027,7 +1070,7 @@ def run_until_decay(
     # carries a bounded frame buffer, not a full field history.
     if snapshot is not None:
         snap_interval = validate_snapshot_spec(snapshot)
-        _take_snapshot = snapshot_extractor(snapshot)
+        _take_snapshot = vector_pad.physical_reader(snapshot_extractor(snapshot), _pad)
         snap_shapes = jax.eval_shape(_take_snapshot, carry["fdtd"])
         snap_chunks = []
 
@@ -1183,7 +1226,8 @@ def run_until_decay(
 
         if use_flux_stop:
             stopped = stop_rule.check(
-                actual_steps, lambda: radiated_power(carry["fdtd"], _bl, grid.shape))
+                actual_steps, lambda: vector_pad.physical_reader(
+                    lambda st: radiated_power(st, _bl, grid.shape), _pad)(carry["fdtd"]))
         else:
             stopped = stop_rule.check(actual_steps, lambda: energy(carry, actual_steps))
         if stopped is not None:
@@ -1196,6 +1240,9 @@ def run_until_decay(
         # report_every steps and never show where it actually stopped.
         jax.block_until_ready(carry["fdtd"])
         _reporter.report(actual_steps)
+
+    if _pad is not None:
+        carry = vector_pad.unpad_carry(carry, _pad)
 
     # What ended the run (one Diagnostic; the static-remnant advisory on an energy cap).
     decay_stop = finish_decay(

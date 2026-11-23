@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 
 def _admit_waveguide_options(
     RfxUnsupported, conformal_pec, port_reference_sims, resolve_field_dtype, self, subpixel_smoothing,
@@ -37,7 +39,7 @@ def _validate_waveguide_ports(
 ):
     if self._ports or self._tfsf:
         raise ValueError(
-            "compute_waveguide_s_matrix() is not supported together with lumped ports or TFSF"
+            "compute_waveguide_s_matrix() is not supported together with a lumped or wire port, or a soft source (add_source) or TFSF"
         )
     if self._periodic_axes:
         raise ValueError(
@@ -390,7 +392,7 @@ def _extract_waveguide_multimode(
     mm_pec_axes = None
     if normalize == "flux":
         from rfx.core.yee import init_materials as _init_vacuum_materials
-        ref_materials = _homogeneous_reference_materials(grid.shape, reference_medium)
+        ref_materials = _homogeneous_reference_materials(grid.shape, reference_medium, dtype=resolve_coefficient_dtype(self._precision))
         s_params, mode_map = extract_multimode_s_matrix_flux(
             grid,
             materials,

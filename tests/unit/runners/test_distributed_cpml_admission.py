@@ -3,6 +3,7 @@
 Compare probe electric fields to one device at 1e-4 of each probe's peak
 (-80 dB), allowing float32 update reassociation. Unsupported periodic faces
 and absorbers that cross device seams must be refused before stepping.
+The unequal-x-depths fixture has an eight-row low absorber and a five-row high slab.
 """
 
 import jax
@@ -23,6 +24,7 @@ def _devices(count):
 
 
 def _box(lane, *, x_cells=25, x="cpml", y="cpml", z=None, plate=False, layers=8, periodic=None, legacy_pec=False):
+    """On a PEC high face a tangential source is shorted and refused."""
     dx = 1e-3
     z_cells = 5 if plate else 24
     boundaries = dict(x=x, y=y, z=z or (Boundary(lo="pec", hi="pec") if plate else "cpml"))
@@ -40,8 +42,6 @@ def _box(lane, *, x_cells=25, x="cpml", y="cpml", z=None, plate=False, layers=8,
         freq_max=15e9, domain=(x_cells * dx, 24 * dx, z_cells * dx),
         dx=dx, cpml_layers=layers, boundary="pec" if legacy_pec else BoundarySpec(**boundaries), **profiles,
     )
-    # Never on the x_hi node plane: on a PEC high face a tangential source is shorted and refused
-    # (a one-cell box has only the two face planes, so its source sits on the low one).
     sim.add_source((min(max(1, min(6, x_cells - 2)), x_cells - 1) * dx, 9 * dx, (2 if plate else 10) * dx), "ez")
     for pos in ((max(1, min(3, x_cells - 3)), 9, 2 if plate else 10),
                 (min(12, x_cells - 1), 15, 3 if plate else 10)):
@@ -89,6 +89,7 @@ def test_absorber_must_fit_owned_slab(lane, count, x_cells, x_wall, face, width,
     ("wall_on_short_last_slab", 2), ("unequal_x_depths", 4),
 ])
 def test_admitted_faces_match_one_device(lane, case, count, record_property):
+    """The short-last-slab fixture has eight rows, then seven and one alignment row."""
     devices = _devices(count)
     kw = {}
     if case == "plate":
@@ -104,11 +105,11 @@ def test_admitted_faces_match_one_device(lane, case, count, record_property):
         result = _run(_box(lane, **kw), lane, devices)
         many = np.asarray(result.time_series)
     if case == "exact_depth":
-        assert result.grid.nx == 8 * count  # exactly eight owned rows per slab
+        assert result.grid.nx == 8 * count
     elif case == "wall_on_short_last_slab":
-        assert result.grid.nx == 15  # eight rows, then seven and one alignment row
+        assert result.grid.nx == 15
     elif case == "unequal_x_depths":
-        assert result.grid.nx == 29  # eight-row low absorber, five-row high slab
+        assert result.grid.nx == 29
     record_property("realized_nx", int(result.grid.nx))
     peak = np.abs(one).max(axis=0)
     assert np.all(peak > 0) and np.isfinite(many).all()
@@ -129,9 +130,10 @@ def test_admitted_faces_match_one_device(lane, case, count, record_property):
     pytest.param(8, 41, "pec", True, 0, 6, id="all_pec_empty_8"),
     pytest.param(8, 41, "pec", "legacy", 0, 6, id="legacy_pec_empty_8"),
     pytest.param(8, 12, "pmc", False, 0, 3, id="last_slab_all_padding_8"),
-    pytest.param(2, 2, "pmc", True, 1, 1, id="all_walls_pmc_one_row_2"),  # no absorber: CI's 2 devices reach the wall-only check
+    pytest.param(2, 2, "pmc", True, 1, 1, id="all_walls_pmc_one_row_2"),
 ])
 def test_wall_must_fit_owned_slab(lane, count, x_cells, hi, all_walls, width, pad):
+    """With no absorber, two devices reach the wall-only check."""
     devices = _devices(count)
     sim = _box(lane, x_cells=x_cells, x=Boundary(lo="pec", hi=hi), legacy_pec=all_walls == "legacy",
                **({"y": "pec", "z": "pec"} if all_walls else {}))

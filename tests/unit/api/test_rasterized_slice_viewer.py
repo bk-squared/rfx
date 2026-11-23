@@ -18,7 +18,7 @@ from rfx.visualize import (_axis_edges, plot_rasterized_slice,
                            plot_stack_profile)
 
 DX = 100e-6
-H_SUB = 400e-6           # 4 cells
+H_SUB = 400e-6
 DOM = (3e-3, 3e-3, 2e-3)
 
 
@@ -139,7 +139,6 @@ def test_edges_are_cell_lower_edges_not_node_midpoints():
     nodes = np.asarray(coords_from_nonuniform_grid(grid).z, dtype=float)
     dz = np.asarray(grid.dz, dtype=float)
 
-    # the premise this test rests on
     assert np.allclose(np.diff(nodes), dz[:nodes.size - 1], rtol=1e-5), (
         "the grid no longer places node[k] at the lower edge of cell k; the "
         "edge construction below must be revisited, not just re-pinned")
@@ -154,26 +153,16 @@ def test_edges_are_cell_lower_edges_not_node_midpoints():
 
 
 def test_uniform_lane_edges_match_the_scalar_cell_size():
+    """A midpoint construction has the correct size and spacing but a dx/2 origin offset that those checks cannot see."""
     sim = _board()
     grid = sim._build_grid()
     from rfx.geometry.rasterize_grid import coords_from_uniform_grid
     nodes = np.asarray(coords_from_uniform_grid(grid).x, dtype=float)
     e = _axis_edges(grid, 0, nodes)
-    # Grid.nx already carries the "+1 fence-post correction" (rfx/grid.py
-    # :151, "N cells need N+1 nodes so that PEC walls at index 0 and index
-    # N span exactly N*dx") baked directly into the grid dimension --
-    # `nodes` (built from `nx`) IS the N+1-edge array pcolormesh wants.
-    # Appending one more `dx` here (this function's PREVIOUS behaviour)
-    # drew the axis one full cell past the grid's real extent (measured,
-    # 3 mm domain + 4 CPML at dx=100 um: -400..3500 um drawn against
-    # true walls at -400..3400 um).
     assert e.size == nodes.size, (
         f"got {e.size} edges for {nodes.size} nodes -- the uniform Grid's "
         "own fence-post +1 already supplies the N+1th edge")
     assert np.allclose(np.diff(e), float(grid.dx), rtol=1e-5)
-    # Pin the ORIGIN too: a midpoint construction (edges at node +/- dx/2)
-    # has the same size and the same constant spacing as the correct one,
-    # differing only by a dx/2 offset that the two checks above cannot see.
     assert np.isclose(e[0], nodes[0]), (
         f"the first edge {e[0]:g} must be the first node {nodes[0]:g} "
         "itself, not the node's midpoint")
@@ -218,9 +207,6 @@ def test_last_real_cells_extent_and_data_are_not_lost_past_the_fence_post():
         "-- overshoot means the axis was extended past the fence-post node")
 
     eps = np.asarray(sim._assemble_materials(grid)[0].eps_r, dtype=float)
-    # The fence-post/last array index (grid.nx - 1) is the degenerate slot;
-    # the last REAL cell is one short of that. A domain-filling box must
-    # still show eps=9 there in the DRAWN data, not just in the raw array.
     last_real = eps[grid.nx - 2, grid.ny - 2, 5]
     assert np.isclose(last_real, 9.0), (
         f"fixture sanity: last real cell should carry eps=9, got {last_real}")
@@ -285,7 +271,7 @@ def test_viewer_runs_on_a_graded_z_simulation():
     """
     nz = int(round(DOM[2] / DX))
     prof = np.full(nz, DX)
-    prof[nz // 2:] = DX * 1.5          # grade the upper half
+    prof[nz // 2:] = DX * 1.5
     sim = _board(dz_profile=prof)
 
     grid_nu = sim._build_nonuniform_grid()
@@ -329,7 +315,6 @@ def test_orientation_is_not_transposed_on_a_rectangular_domain():
         "-- a `keep` axis reversal would transpose these ranges")
 
 
-# --- regressions for the defects an adversarial review found ---------------
 
 def test_thin_conductor_bodies_are_outlined_not_silently_omitted():
     """add_thin_conductor() bodies live in a DIFFERENT registry.
@@ -360,20 +345,14 @@ def test_a_patterned_body_is_counted_as_skipped_not_silently_undrawn():
                      boundary="cpml")
     sim.add_material("sub", eps_r=4.0, sigma=0.0)
     sim.add(Box((0, 0, 0), (DOM[0], DOM[1], H_SUB)), material="sub")
-    # One cell ABOVE the substrate's top plane: under #931 centre sampling
-    # the cylinder occupies the cell whose centre it contains, and the
-    # auto-picked plane must not coincide with the substrate Box's own
-    # (closed) outline plane, or the dashed rectangle below is the
-    # substrate's, not a bounding-box lie.
     sim.add(Cylinder(center=(1.5e-3, 1.5e-3, H_SUB + 0.15e-3), radius=0.5e-3,
                      height=0.1e-3, axis="z"), material="pec")
+    assert sim._build_realized_grid().node_of(2, int(np.argmax(np.asarray(sim.conductor_mask()).sum(axis=(0, 1))))) > H_SUB, "The selected cylinder plane must be above the substrate outline plane."
     fig = plot_rasterized_slice(sim, axis=2)
     t = fig.axes[0].get_title()
     assert "patterned" in t and "1" in t.split("patterned")[0], (
         f"expected a '1 patterned bod(y/ies)' skip note; got title {t!r}")
     ax = fig.axes[0]
-    # No dashed declared-outline rectangle for the cylinder -- it has no
-    # corner_lo/corner_hi, so drawing one would be a bounding-box lie.
     dashed = [p for p in ax.patches if p.get_linestyle() not in
              (None, "solid", "-")]
     assert not dashed, (
@@ -442,7 +421,6 @@ def test_stack_profile_falls_back_to_the_column_with_eps_structure_not_the_cpml_
     sim = Simulation(freq_max=20e9, domain=DOM, dx=DX, cpml_layers=4,
                      boundary="cpml")
     sim.add_material("die", eps_r=9.0, sigma=0.0)
-    # An off-center resonator, well away from the (0, 0) CPML corner.
     sim.add(Box((1.0e-3, 1.0e-3, 0.4e-3), (2.0e-3, 2.0e-3, 0.8e-3)),
            material="die")
     fig = plot_stack_profile(sim)
@@ -487,7 +465,6 @@ def test_add_refinement_warns_because_the_drawn_grid_is_coarse_only():
         plot_stack_profile(sim)
 
 
-# --- regressions for the SECOND adversarial review pass (#11-24) -----------
 
 def test_far_face_wall_is_drawn_on_its_own_plane():
     """conductor_mask() is a CELL footprint; under the lattice ownership
@@ -509,16 +486,14 @@ def test_far_face_wall_is_drawn_on_its_own_plane():
             material="pec")
     from matplotlib.collections import QuadMesh
 
-    # The body's own plane (index 8): conductor cells present, plus the
-    # closed rim of the wall operator (the hi rows of the footprint).
-    fig_body = plot_rasterized_slice(sim, axis=2, index=8)
+    BODY_PLANE_INDEX = 8
+    fig_body = plot_rasterized_slice(sim, axis=2, index=BODY_PLANE_INDEX)
     t_body = fig_body.axes[0].get_title()
     assert int(t_body.split("—")[1].split()[0]) == 400, "fixture sanity"
     assert "realized PEC wall" in t_body
 
-    # The far face (index 9): marker present, title says so, even though
-    # there are 0 conductor cells there.
-    fig_wall = plot_rasterized_slice(sim, axis=2, index=9)
+    FAR_WALL_PLANE_INDEX = 9
+    fig_wall = plot_rasterized_slice(sim, axis=2, index=FAR_WALL_PLANE_INDEX)
     ax_wall = fig_wall.axes[0]
     t_wall = ax_wall.get_title()
     assert int(t_wall.split("—")[1].split()[0]) == 0
@@ -533,8 +508,8 @@ def test_far_face_wall_is_drawn_on_its_own_plane():
     assert leg is not None and any(
         "realized PEC wall" in t.get_text() for t in leg.get_texts())
 
-    # Two planes further (index 11): neither a marker nor a note.
-    fig_off = plot_rasterized_slice(sim, axis=2, index=11)
+    OFF_WALL_PLANE_INDEX = 11
+    fig_off = plot_rasterized_slice(sim, axis=2, index=OFF_WALL_PLANE_INDEX)
     ax_off = fig_off.axes[0]
     assert "realized PEC wall" not in ax_off.get_title()
     off_meshes = [c for c in ax_off.collections if isinstance(c, QuadMesh)]
@@ -581,13 +556,10 @@ def test_absorber_pad_edges_match_the_true_pad_node_coordinates():
     from rfx.geometry.rasterize_grid import (coords_from_uniform_grid,
                                              coords_from_nonuniform_grid)
 
-    # --- uniform lane: plot_rasterized_slice, both in-plane axes ---
     sim = _board()
     grid = sim._build_grid()
     xn = np.asarray(coords_from_uniform_grid(grid).x, dtype=float)
     yn = np.asarray(coords_from_uniform_grid(grid).y, dtype=float)
-    # four named boundaries per axis: far edge, lo-pad/interior seam,
-    # interior/hi-pad seam, far edge -- NOT reused across the two rects.
     x_lo_edge, x_lo_seam = xn[0], xn[grid.pad_x_lo]
     x_hi_seam, x_hi_edge = xn[grid.nx - 1 - grid.pad_x_hi], xn[-1]
     y_lo_edge, y_lo_seam = yn[0], yn[grid.pad_y_lo]
@@ -616,7 +588,6 @@ def test_absorber_pad_edges_match_the_true_pad_node_coordinates():
         "y-hi pad rect missing/misplaced -- would be dropped by a "
         "hardcoded hi=0 mutation on this axis")
 
-    # --- non-uniform lane: plot_stack_profile, the stack axis itself ---
     nz = 20
     prof = np.full(nz, 100e-6)
     prof[10:] = 150e-6

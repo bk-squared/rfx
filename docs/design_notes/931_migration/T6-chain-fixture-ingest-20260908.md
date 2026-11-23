@@ -1,12 +1,12 @@
 # T6 chain fixture ingest — 2026-09-08
 
-Ingest of the PI-adjudicated artifact, on `feat/931-chain-ingest` based on
+Ingest of the artifact, on `feat/931-chain-ingest` based on
 `b4ae761e`, following [T6's prescription](T6-waveguide-chain-battery.md).
 No measurement producer, operator, gate or historical fixture is edited.
 
 ## Source and consumers
 
-- Source: `/root/workspace/claude-workspace/rfx/runs/issue931-chain-repin-20260908T073139Z/fixture.json`.
+- Source: `<workspace>/rfx/runs/issue931-chain-repin-20260908T073139Z/fixture.json`.
 - Run: **369367259427**, supplied by the adjacent `run_id.txt`.
 - Producer commit: `6df7ccaf20d572e0c58c194c12bc63467d4ef360`.
 - Predeclaration: `docs/design_notes/waveguide_chain_battery_predeclaration.md`,
@@ -39,7 +39,7 @@ against the unchanged 0.05 gate. These are stored-artifact checks, not new solve
 
 ## Open item: unexplained slab coarse/flux drift
 
-The PI did not pre-declare or explain this row. The new-minus-old complex
+This row was not pre-declared or explained. The new-minus-old complex
 S-matrix maximum is **1.0422476162860573e-5**, at **S11, 8.4 GHz**. It is
 2.08 times the **5e-6 envelope**, though 9.59 times below the **1e-4 gate**.
 Its cause remains open. Neither a passing live test nor the changed PEC operator
@@ -126,4 +126,4 @@ also counted in the first invocation. Historical schema-2/3 replay assertions
 remain intact. No fixture, live envelope, gate or xfail was changed. The old
 artifact is byte-identical to `b4ae761e`, and the new artifact matches its source.
 
-R3: memory=none-after-grep (no docs/agent-memory entries in this worktree; consistent with T6 and the amended predeclaration) | R2-attempts=0 | falsifier=source-copy and old-fixture byte checks, unchanged 1e-4 live gate, and stored-verdict replay all passed; GPU live falsifier not run
+R3: memory=none-after-grep (consistent with T6 and the amended predeclaration) | R2-attempts=0 | falsifier=source-copy and old-fixture byte checks, unchanged 1e-4 live gate, and stored-verdict replay all passed; GPU live falsifier not run

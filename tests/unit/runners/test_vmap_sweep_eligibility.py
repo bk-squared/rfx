@@ -66,8 +66,6 @@ def test_upml_takes_sequential_fallback_and_matches_run():
     assert isinstance(result, VmapSweepResult)
     assert result.time_series.shape[0] == len(eps_values)
 
-    # The sequential fallback runs the canonical loop, so each swept entry
-    # must match a direct sim.run() with that eps_r value.
     for idx, eps_val in enumerate(eps_values):
         sim_single = _base_sim(boundary="upml", eps_r=float(eps_val))
         single_ts = np.asarray(sim_single.run(n_steps=n_steps).time_series)
