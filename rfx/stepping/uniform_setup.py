@@ -309,7 +309,7 @@ def _build_step_setup(
     from rfx.model.pole_stability import judge_prebuilt_poles
     from rfx.materials.lorentz import pole_sets_judged
     if lorentz is not None and not pole_sets_judged(lorentz[0]):
-        judge_prebuilt_poles(grid, lorentz, debye, periodic=periodic)
+        judge_prebuilt_poles(grid, lorentz, debye, periodic=periodic, mu_r=materials.mu_r)
 
     # ---- boundary configuration ----
     from rfx.model.materials import with_components
@@ -750,6 +750,11 @@ def _build_step_setup(
                 ("lumped RLC element", [(m.i, m.j, m.k) for m in rlc_meta]),
             ),
         )
+
+    from rfx.model.pole_stability import refuse_subluminal_cells
+    refuse_subluminal_cells(materials, grid, dt, periodic=periodic,
+        design_box=design_box, stencil_order=stencil_order,
+        conservative='conformal' if getattr(grid, '_courant_conformal_floor', False) else None)
 
     # ---- design occupancy: fence, then build its 1 - M once ----
     design_occupancy_keep = None

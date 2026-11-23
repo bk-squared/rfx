@@ -40,6 +40,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from tests._fake_local_devices import fake_local_devices
+
 from rfx import (
     ADMemoryActionHint,
     ADMemoryComponent,
@@ -687,7 +689,7 @@ def test_ad_memory_compiled_certificate_fails_closed_without_devices(monkeypatch
     def fail_local_devices():
         raise RuntimeError("no devices")
 
-    monkeypatch.setattr(compiled_memory.jax, "local_devices", fail_local_devices)
+    monkeypatch.setattr(compiled_memory.jax, "local_devices", fake_local_devices(fail_local_devices))
     report = _uniform_sim().ad_memory_compiled_certificate(
         _FakeCompiled(),
         **_certificate_kwargs(),
@@ -753,7 +755,7 @@ def test_ad_memory_compiled_certificate_fails_closed_on_invalid_device_metadata(
 ):
     import rfx.api._compiled_memory as compiled_memory
 
-    monkeypatch.setattr(compiled_memory.jax, "local_devices", lambda: (device,))
+    monkeypatch.setattr(compiled_memory.jax, "local_devices", fake_local_devices(lambda: (device,)))
     report = _uniform_sim().ad_memory_compiled_certificate(
         _FakeCompiled(),
         **_certificate_kwargs(),

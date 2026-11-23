@@ -94,6 +94,10 @@ def run_graded_legacy_slab_loop(
     use_lorentz,
 ):
     check_map_count()
+    from rfx.stepping.slab import Slab
+    from rfx.stepping.slab_setup import refuse_slab_cells
+    refuse_slab_cells(sharded_materials, sharded_grid.global_grid,
+                      Slab.from_grid(sharded_grid), mesh, dt)
     def _update_h_shmap(st, mat, spacings, *, ranks):
         (inv_dx_sharded, inv_dy_rep, inv_dz_rep,
          inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep) = spacings[:6]

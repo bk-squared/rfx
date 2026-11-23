@@ -882,3 +882,8 @@ field. Results: record kept with the project; shortened arms of the energy, sing
   configuration.
 
 Uniform single-device Bloch plane waves support incidence-angle gradients and angle batches through `forward(tfsf_angle_override=)` (degrees, fixed carrier f0); normal incidence, Method B, closed boxes and graded meshes refuse this override.
+
+| Path | Cell time-step restriction |
+|---|---|
+| Subgridded | ε·μr < 1 is refused conservatively where it is below the fine-grid threshold (0.9801 at the default step), including coarse cells; the refusal says “conservative on this path” for coarse cells. |
+| Conformal `cut_cell_floor` | ε·μr < 1 is refused, conservatively; the refusal says “conservative on this path”. |
