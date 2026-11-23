@@ -45,8 +45,8 @@ def test_cpml_grazing_incidence():
     nc = grid.cpml_layers
     dt, dx = grid.dt, grid.dx
 
-    src = (nc + 2, grid.ny // 2, grid.nz // 2)
-    assert src[0] - nc == 2, "grazing source must be two cells from the CPML interior edge"
+    GRAZING_SOURCE_OFFSET_CELLS = 2
+    src = (nc + GRAZING_SOURCE_OFFSET_CELLS, grid.ny // 2, grid.nz // 2)
     pulse = GaussianPulse(f0=3e9, bandwidth=0.8, amplitude=10.0)
 
     def em_energy(s):

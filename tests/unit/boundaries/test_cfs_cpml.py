@@ -115,7 +115,6 @@ def test_cfs_cpml_evanescent_absorption():
     a = 0.06
     f_cutoff = C0 / (2 * a)
     f0 = 0.5 * f_cutoff
-    assert f0 < f_cutoff, 'TE10 excitation must be below cutoff'
 
     freq_max = 5e9
     cpml_n = 12

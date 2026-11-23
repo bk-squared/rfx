@@ -505,7 +505,7 @@ def test_body_outside_a_refinement_region_is_not_a_zero_cell_body(material):
     sim.add(Box((3 * DX, 3 * DX, 9 * DX), (8 * DX, 8 * DX, 11 * DX)),
             material='outside' if material == 'dielectric' else 'pec')
     lines = np.arange(10) * DX / 2 + DX / 4 + 3 * DX
-    assert lines[-1] < 9 * DX, "refinement centres must stay below the body at z = 9 mm"
+    assert lines[-1] < sim._geometry[0].shape.corner_lo[2], "refinement centres must stay below the body's lower z corner"
     centres = GridCoords(lines, lines, lines, (10,) * 3)
     mats, *_rest = rasterize_geometry(sim._geometry, sim._resolve_material, centres,
                                       centres=centres, cell_sizes=(np.full(10, DX / 2),) * 3,
@@ -597,7 +597,7 @@ def test_two_d_collapsed_axis_holds_the_slab_whatever_its_drawn_height(z):
 
 @pytest.mark.parametrize('top', [5.2, 5.4], ids=['sliver-below-fine-centre', 'sliver-holding-fine-centre'])
 def test_body_crossing_a_refinement_boundary_is_held_by_the_coarse_grid(top):
-    """A coarse-grid substrate may reach into a refinement region without holding a fine-cell centre."""
+    """For the fine region starting at z = 5 mm, the first fine centre at 5.25 mm distinguishes a 5.2 mm substrate top without a fine centre from a 5.4 mm top holding one."""
     sim = Simulation(10e9, (12 * DX,) * 3, dx=DX, cpml_layers=0, boundary='pec')
     sim.add_material('sub', eps_r=4.)
     sim.add(Box((0, 0, 0), (12 * DX, 12 * DX, top * DX)), material='sub')

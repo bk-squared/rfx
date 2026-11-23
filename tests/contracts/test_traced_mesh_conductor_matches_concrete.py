@@ -275,7 +275,7 @@ def test_lattice_wrapper_keeps_refusal():
 
 @pytest.mark.parametrize("jit", [False, True], ids=["eager", "jit"])
 def test_holed_impedance_sheet_refused(jit):
-    """Public f0 admission fails before sheet continuation under JIT."""
+    """Public f0 admission currently fails before sheet continuation under JIT."""
     from tests.unit.materials.test_sheet_impedance import PlanarSheet
 
     profile = np.array([1., 1., 1., .4, 1.6, 1., 1., 1.])
