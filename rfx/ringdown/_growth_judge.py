@@ -73,8 +73,6 @@ def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
     infinity marks an inactive channel. ``horizon_denominator`` defaults to
     that denominator; supply the unmasked values to preserve the model's
     decay horizon when excluding individual entries from the tail bound.
-
-    Negative infinity in ``log_values`` denotes an exact zero residue or an inactive channel.
     """
     from rfx.measurement.ringdown_tail import _pole_tails
     from rfx.ringdown import _static_pole

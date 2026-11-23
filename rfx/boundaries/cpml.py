@@ -156,7 +156,7 @@ def _cpml_profile(
         finite conductivities representable even when the implied reflection
         target is below the floating-point range.
 
-    Scaling the peak conductivity by ``kappa_max`` follows the Gedney CFS-CPML recommendation.
+    Index 0 is the outer boundary of a low face, where sigma is largest, and a high face uses the profile reversed.
     """
 
     traced = is_tracer(dt) or is_tracer(dx) or is_tracer(sigma_max)

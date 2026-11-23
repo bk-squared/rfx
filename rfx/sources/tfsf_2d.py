@@ -154,7 +154,7 @@ def init_tfsf_2d(
         Number of cells in z (3D grid).  Required for ey oblique
         (TEz mode).  Ignored for ez polarization.
 
-    Positive incidence angles tilt the injected energy flow toward the positive transverse axis.
+    A positive incidence angle tilts the injected energy flow toward the positive transverse axis for ``direction="+x"`` and toward the negative one for ``"-x"``.
     """
     from rfx.sources.tfsf import pulse_timing, resolve_waveform
     resolve_waveform(waveform, theta_deg, "bloch")
@@ -420,6 +420,8 @@ def apply_tfsf_2d_e(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
       E_inc[x_hi+1, :, k] += coeff * H_aux[x_hi+0.5, k]
 
     Signs are fixed (-coeff at x_lo, +coeff at x_hi+1) for both modes.
+
+    Both correction signs are multiplied by ``curl_sign``, which is -1 for the ``ey`` (TEz) polarization.
     """
     coeff = dt / (EPS_0 * dx)
     i0 = cfg.i0_x

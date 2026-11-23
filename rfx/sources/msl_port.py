@@ -987,8 +987,6 @@ def make_msl_port_sources_jm(
     eigenmode_data : MSLEigenmodeData
         Solved quasi-TEM eigenmode from
         :func:`~rfx.sources.msl_eigenmode.compute_msl_eigenmode_profile`.
-
-    Magnetic source waveforms are sampled at times ``(n + 0.5) * dt``.
     """
     if port.excitation is None:
         return [], []

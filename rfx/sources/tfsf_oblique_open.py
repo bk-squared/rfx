@@ -70,7 +70,7 @@ class MethodBConfig(NamedTuple):
     Each gather triple is (base int32, w0 and w1 in the coefficient dtype);
     base is clipped to [0, n_aux-2] so base+1 is always in range.
 
-    Gather names ending in ``e`` read electric nodes for magnetic corrections, while names ending in ``h`` read magnetic half-nodes for electric corrections.
+    Gather fields named ``<face>_e_<part>`` read electric nodes for magnetic corrections, while fields named ``<face>_h_<part>`` read magnetic half-nodes for electric corrections.
     """
     x_lo: int
     x_hi: int
@@ -185,8 +185,6 @@ def init_tfsf_methodB(
     spectrum, including the angle-dependent launch response.
 
     Auxiliary absorber profiles take the run dtype with a float32 floor.
-
-    Auxiliary magnetic absorber profiles are sampled half a cell from electric nodes.
     """
     from rfx.sources.tfsf import pulse_timing
     if waveform not in ("differentiated_gaussian", "modulated_gaussian"):

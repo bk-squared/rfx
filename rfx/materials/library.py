@@ -10,7 +10,7 @@ _RO4350B_DESIGN_DK = 3.48
 _RO4350B_LOSS_TANGENT_AT_10_GHZ = 0.0037
 _RT_DUROID_5880_DK = 2.20
 _RT_DUROID_5880_LOSS_TANGENT_AT_10_GHZ = 0.0009
-_ROGERS_LOSS_REFERENCE_HZ = 10e9
+_LOSS_TANGENT_REFERENCE_HZ_10_GHZ = 10e9
 
 
 MATERIAL_LIBRARY: dict[str, dict] = {
@@ -18,8 +18,8 @@ MATERIAL_LIBRARY: dict[str, dict] = {
     "air":         {"eps_r": 1.0006, "sigma": 0.0},
     "fr4":         {"eps_r": 4.4, "sigma": 0.025},
     "rogers4003c": {"eps_r": _RO4003C_PROCESS_DK, "sigma": 0.0027 * 2 * np.pi * 5e9 * _RO4003C_PROCESS_DK * EPS_0},
-    "rogers4350b": {"eps_r": _RO4350B_DESIGN_DK, "sigma": _RO4350B_LOSS_TANGENT_AT_10_GHZ * 2 * np.pi * _ROGERS_LOSS_REFERENCE_HZ * _RO4350B_DESIGN_DK * EPS_0},
-    "rt_duroid_5880": {"eps_r": _RT_DUROID_5880_DK, "sigma": _RT_DUROID_5880_LOSS_TANGENT_AT_10_GHZ * 2 * np.pi * _ROGERS_LOSS_REFERENCE_HZ * _RT_DUROID_5880_DK * EPS_0},
+    "rogers4350b": {"eps_r": _RO4350B_DESIGN_DK, "sigma": _RO4350B_LOSS_TANGENT_AT_10_GHZ * 2 * np.pi * _LOSS_TANGENT_REFERENCE_HZ_10_GHZ * _RO4350B_DESIGN_DK * EPS_0},
+    "rt_duroid_5880": {"eps_r": _RT_DUROID_5880_DK, "sigma": _RT_DUROID_5880_LOSS_TANGENT_AT_10_GHZ * 2 * np.pi * _LOSS_TANGENT_REFERENCE_HZ_10_GHZ * _RT_DUROID_5880_DK * EPS_0},
     "alumina":     {"eps_r": 9.8, "sigma": 0.0},
     "silicon":     {"eps_r": 11.9, "sigma": 0.01},
     "ptfe":        {"eps_r": 2.1, "sigma": 0.0},
