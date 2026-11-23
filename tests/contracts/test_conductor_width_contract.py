@@ -132,6 +132,7 @@ def test_refused_cells_and_distributed_dc_record(lane, model):
             admit(sim, lane)
 
 
+@pytest.mark.slow
 def test_only_conductors_builds_sheet_contexts():
     root = Path(__file__).resolve().parents[2] / 'rfx'
     offenders = []

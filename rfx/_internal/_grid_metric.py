@@ -144,6 +144,8 @@ it. Recorded, not changed (0a moves no consumer):
   ``sources.msl_port._axis_dual_size``) rather than through the float64 spine
   ``cells`` returns. On a graded fixture the two disagree at a few nodes in
   the last float32 bits; see the test module for the measured figure.
+
+``NODE_TIE_REL`` is the fraction of the local cell size within which node-distance differences count as ties.
 """
 
 from __future__ import annotations
@@ -151,24 +153,12 @@ from __future__ import annotations
 from rfx.errors import AccuracyWarning
 import numpy as np
 
-#: Canonical axis order. Index into this for the integer spelling.
 AXES = ("x", "y", "z")
 
-#: How close the realized interior cells must sum to the declared profile
-#: (metres). ``make_band_profile`` already guarantees its own edges to 1e-12 m
-#: by float64 accumulation, so the grid re-check is held to the same figure.
 DECLARED_SPAN_TOL_M = 1e-12
 
-#: A span overlapping a cell by no more than this fraction of the axis's
-#: smallest cell does not cross it. A plane declared on a node lands a few
-#: 1e-18 m to either side of the cumulative sum a mesher or the grid's
-#: coordinate spine gives for that node, and without the slack it drags in
-#: the cell on the far side.
 NODE_TOUCH_REL = 1e-3
 
-#: Two cells are one size when they agree to this relative tolerance. A
-#: profile built as ``np.diff`` of node coordinates carries 1e-14-relative
-#: noise between cells that are meant to be equal.
 SAME_CELL_RTOL = 1e-9
 
 
@@ -202,10 +192,6 @@ def axis_name(axis) -> str:
     return AXES[normalize_axis(axis)]
 
 
-#: Two node distances within this fraction of the local cell are a TIE. The
-#: sheet snap (``rfx.geometry.rasterize_grid._nearest_plane``) and the point
-#: lookups read the same constant through :func:`nearest_node_index`. Box
-#: volume faces and closed sheet footprints use the same on-lattice band.
 NODE_TIE_REL = 1e-9
 SOLVER_WIDTH_EPS = 4 * float(np.finfo(np.float32).eps)
 

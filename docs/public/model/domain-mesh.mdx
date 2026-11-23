@@ -147,16 +147,23 @@ cells must equal the scalar `dx`, so every absorber face sees the same cell.
 The same uniform-runway rule applies next to each absorbing face. Keep fine
 bands away from absorbing faces, or close those faces with PEC.
 
-### Solving sheets at their drawn size
+### Mesh lines at sheet edges
 
 A PEC sheet's in-plane edge is solved about 0.35 of a cell beyond its last
-grid node, so a patch or trace comes out slightly larger than drawn.
+grid node where the cell normal to the sheet is as long as the in-plane cell
+beside its edge, so
+a patch or trace comes out slightly larger than drawn.
 A PEC sheet whose free-edge size is solved more than 1 % off its drawing
 is refused by `run()`, `forward()` and `compute_mixed_s_matrix()`.
 Preflight reports this as a `sheet_effective_size` error.
 
-Build profiles with `edge_aware_profiles` to place sheet edges where they solve
-at their drawn size. Use `axes="xyz"` and pass the returned `dz_profile` too
+Build profiles with `edge_aware_profiles` to put each sheet's last node 0.35
+cell inside its drawn edge. Where the cell normal to the sheet is as long as
+the in-plane cell beside its edge, the sheet is then solved at its drawn size;
+at other ratios the offset differs and the solved size has not been measured
+(see [the accuracy notes](/rfx/check/model-on-grid/#accuracy)). In the board
+example above, the z cells at the ground are 0.27 to 0.34 mm and the in-plane
+cell beside its edges is 0.94 mm, so its solved size has not been measured. Use `axes="xyz"` and pass the returned `dz_profile` too
 for vertical sheets; the horizontal ground above only needs x/y registration
 and keeps its layered z profile. Alternatively, `Simulation(snap="declared")`
 accepts the difference as a warning and records the choice on

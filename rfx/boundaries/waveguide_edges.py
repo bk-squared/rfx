@@ -76,8 +76,6 @@ def _check_edges(sim, grid, masks, lane):
     from rfx.model.graded_grid import position_to_index
     from rfx.runners.nonuniform import _range_to_slice_nu
 
-    # Uniform grids retain the face record; graded grids thread its canonical
-    # declaration separately from their allocated pads, as their setup does.
     faces = {face.name: face for face in grid_face_depths(grid, spec=sim._boundary_spec)}
     nodes = {axis: np.asarray(_axis_node_positions(
         host_cells(grid, axis), getattr(grid, f"pad_{axis}_lo"))) for axis in "xyz"}
@@ -105,7 +103,6 @@ def _check_edges(sim, grid, masks, lane):
             cut = [slice(None)] * 3
             cut[normal] = source
             cut[tangent] = slice(spans[tangent][0], spans[tangent][1] - 1)
-            # The remaining two dimensions retain their original order.
             mask = masks.get("xyz"[tangent])
             conductor = np.zeros(grid.shape[a], dtype=bool)
             if mask is not None:
