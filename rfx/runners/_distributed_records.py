@@ -7,6 +7,7 @@ assembly retains the host-array placement after process_allgather.
 
 from rfx.errors import RfxUnsupported
 from functools import partial
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -414,7 +415,8 @@ class SlabRecords:
         from rfx.measurement.setup import build_planes
         from rfx.measurement.flux_weights import build_flux_monitor_cfgs
         from rfx.current_moments import monitor_for_simulation
-        self.layouts, self.sim, self.grid = {}, sim, grid
+        self.layouts: dict[str, Any] = {}
+        self.sim, self.grid = sim, grid
         self.ntff_box = None
         if sim._ntff is not None:
             from rfx.farfield import make_ntff_box
