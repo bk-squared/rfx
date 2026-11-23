@@ -1,4 +1,6 @@
-"""A concrete PEC sheet remains geometry under an outer graded run trace."""
+"""A concrete PEC sheet remains geometry under an outer graded run trace.
+Trace first so a preceding eager call cannot supply cached geometry.
+"""
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -26,12 +28,12 @@ def assert_trace_records(actual, expected):
 @pytest.mark.parametrize('shape', (
     Box(((3 - .35) * .001, (3 - .35) * .001, .003),
         ((9 + .35) * .001, (7 + .35) * .001, .003)),
-    # Both in-plane solved spans are 4.7 mm, including the free-edge offset.
     Cylinder((.006, .005, .003),
              radius=(SHEET_X_NODES[8] - SHEET_X_NODES[4]) / 2 + .35 * SHEET_X_PROFILE[8],
              height=0., axis='z'),
 ), ids=('box', 'disc'))
 def test_graded_sheet_run_under_user_jit(shape):
+    """Both in-plane solved spans of the disc are 4.7 mm, including the free-edge offset."""
     profile = SHEET_X_PROFILE
     sim = Simulation(freq_max=10e9, domain=(.012, .010, .010), dx=.001,
                      dx_profile=profile, boundary='pec',
@@ -44,7 +46,6 @@ def test_graded_sheet_run_under_user_jit(shape):
     def run():
         return sim.run(n_steps=24, skip_preflight=True).time_series
 
-    # Trace first so a preceding eager call cannot supply cached geometry.
     compiled = jax.jit(run)()
     assert_trace_records(compiled, run())
 
@@ -61,7 +62,6 @@ def test_zero_edge_plane_check_under_user_jit(geometry):
     coords = coords_from_uniform_grid(sim._build_grid())
 
     def check(displacement):
-        # Rasterize inside the user trace, before any eager geometry cache.
         hi = 1.1 if geometry == 'zero-edge' else 2.1
         sheet = sheet_spec_from_shape(Box((.9, .9, 2.), (hi, hi, 2.)), coords)
         assert isinstance(sheet.footprint, SheetFootprint)
@@ -70,8 +70,6 @@ def test_zero_edge_plane_check_under_user_jit(geometry):
             sheets = [SheetSpec(2, 2, jnp.asarray(np.asarray(sheet.footprint))
                                 & (displacement > 0))]
         elif geometry == 'traced-join':
-            # Concrete footprints can still have a traced physical join.
-            # Neither singleton owns an edge; the join decides their union.
             sheets = []
             for x in (1, 2):
                 footprint = np.zeros(coords.shape, dtype=bool)
@@ -98,14 +96,13 @@ def test_wire_measurement_live_cells_under_user_jit(geometry):
     frequencies = np.array([1e6])
 
     def live_cells(displacement):
+        """The translated volume shorts part of the port at displacement=0."""
         sim = Simulation(**config)
         if geometry == 'traced-volume':
-            # The translated volume shorts part of the port at displacement=0.
             sphere = Sphere((3. + displacement, 3., 2.), radius=1.5)
 
             class TranslatedVolume:
-                # Custom shapes need not expose a static bounding box, which
-                # the built-in Sphere admission requires before edge assembly.
+                """Custom shapes need not expose a static bounding box, which the built-in Sphere admission requires before edge assembly."""
                 def mask(self, grid):
                     return sphere.mask(grid)
 
@@ -114,7 +111,6 @@ def test_wire_measurement_live_cells_under_user_jit(geometry):
 
             sim.add(TranslatedVolume(), material='pec')
         else:
-            # A concrete vertical sheet also shorts part of this ez extent.
             sim.add_thin_conductor(Box((3., 2., 1.), (3., 4., 3.)))
         sim.add_port((3., 3., 1.), 'ez', extent=4., impedance=50.)
         plan = build_measurement_plan(sim, grid, n_steps=2, frequencies=frequencies)
@@ -127,7 +123,6 @@ def test_wire_measurement_live_cells_under_user_jit(geometry):
                 'so they cannot be counted.*Make that geometry concrete or remove the port')):
             jax.jit(live_cells)(0.)
     else:
-        # Trace before any eager assembly, and keep the concrete live edges exact.
         compiled = int(jax.jit(live_cells)(0.))
         assert compiled == live_cells(0.)
         assert 0 < compiled < 4

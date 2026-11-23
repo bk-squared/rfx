@@ -18,6 +18,7 @@ def test_shared_edge_ports_match_one_device():
 
 
 def _compare_shared_ports():
+    """The parity comparison requires two devices because a one-device fallback would invalidate the witness."""
     import jax
     import jax.numpy as jnp
     import numpy as np
@@ -38,7 +39,6 @@ def _compare_shared_ports():
         kw = dict(n_steps=12, skip_preflight=True, compute_s_params=False)
         reference = sim.run(**kw)
         actual = sim.run(devices=devices, **kw)
-        # The comparison means nothing if devices= fell back to one device.
         assert len(actual.state.ez.devices()) == 2, actual.state.ez.devices()
         pairs = [(reference.time_series, actual.time_series)]
         pairs += [(getattr(reference.state, c), getattr(actual.state, c))
@@ -53,8 +53,6 @@ def _compare_shared_ports():
         print(f"wire={wire} first_E={actual.time_series[0, 0]} "
               f"max_relative_peak_error={max(errors):.9g}")
 
-    # A current source declared BEFORE the port that loads its edge must see
-    # that load on two devices as it does on one (first E sample, H = 0).
     firsts = {}
     for source_first in (True, False):
         sim = Simulation(freq_max=8e9, domain=(.008, .008, .008), dx=.001,

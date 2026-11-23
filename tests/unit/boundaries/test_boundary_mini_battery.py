@@ -132,50 +132,48 @@ def nearest(data, target, window):
 @pytest.mark.parametrize("entry", ["run", "forward"])
 @pytest.mark.parametrize("dx", [.001, .0005])
 def test_electric_cube(entry, dx):
+    """0.5% allows second-order Yee dispersion at dx=1 mm (24 cells)."""
     expected = C0 / (.024 * np.sqrt(2))
     measured = nearest(resonance("electric", entry, dx), expected, (7e9, 11e9))
-    # 0.5% allows second-order Yee dispersion at dx=1 mm (24 cells).
     compare_quantity(measured, expected, .005 * expected, "TM110 frequency / Hz")
 
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
 @pytest.mark.parametrize("dx", [.001, .0005, .00025])
 def test_magnetic_cavity_01(entry, dx):
+    """The 0.1% frequency bound excludes free termination."""
     expected = C0 / (.020 * 2)
     measured = nearest(resonance("magnetic", entry, dx), expected, (6.8e9, 8.2e9))
-    # B3b predeclared 0.1% frequency bound; excludes free termination.
     compare_quantity(measured, expected, .001 * expected, "f01 / Hz")
 
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
 @pytest.mark.parametrize("dx", [.001, .0005, .00025])
 def test_magnetic_cavity_separation(entry, dx):
+    """The half-cell wall fails the 0.3% separation bound."""
     target = C0 / 2 * np.sqrt(1 / .024**2 + 1 / .020**2)
     frequency = nearest(resonance("magnetic", entry, dx), target, (9e9, 10.7e9))
     separation = 1 / np.sqrt((2 * frequency / C0)**2 - 1 / .020**2)
     record(f"separation-{entry}-{dx}", dict(frequency_Hz=frequency, derived_separation_m=float(separation),
                                            formula="1/sqrt((2*f/c)^2-(1/0.020)^2)"))
-    # B3b predeclared 0.3% separation bound; the half-cell wall fails.
     compare_quantity(separation, .024, .003 * .024, "derived wall separation / m")
 
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
 @pytest.mark.parametrize("dx", [.001, .0005])
 def test_periodic_ring(entry, dx):
+    """1% allows second-order dispersion, below the extra-node 2--4% shift."""
     expected = C0 / .024
     measured = nearest(resonance("ring", entry, dx), expected, (8e9, 16e9))
-    # 1% allows second-order dispersion, below the extra-node 2--4% shift.
     compare_quantity(measured, expected, .01 * expected, "ring frequency / Hz")
 
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
 @pytest.mark.parametrize("dx", [.001, .0005])
 def test_cpml_box_energy(entry, dx):
+    """Cutoff=4.5 is the source API's option for reducing deposited DC."""
     sim = Simulation(freq_max=20e9, domain=(.012, .010, .008), dx=dx,
                      boundary="cpml", cpml_layers=8)
-    # B1 measurement amendment: cutoff=3 yielded -24.98 dB at dx=1 mm.
-    # cutoff=4.5 is the source API's option for reducing deposited DC;
-    # the -40 dB threshold and run duration stay as predeclared.
     pulse = GaussianPulse(f0=10e9, bandwidth=.8, cutoff=4.5)
     sim.add_source((.006, .005, .004), "ez", waveform=pulse, amplitude_kind="field")
     sim.add_probe((.008, .006, .004), "ez")
@@ -194,8 +192,8 @@ def test_cpml_box_energy(entry, dx):
     level = float(10 * np.log10(max(float(energy[-1]), np.finfo(float).tiny) / peak))
     record(f"cpml-cutoff4p5-{entry}-{dx}", dict(end_over_post_source_peak_dB=level,
                                      final_J=float(energy[-1]), post_source_peak_J=peak, steps=steps))
-    # -40 dB = at most 1e-4 of post-source energy, the repository ringdown witness.
-    if not np.isfinite(level) or level >= -40:
+    MAX_POST_SOURCE_ENERGY_DB = -40
+    if not np.isfinite(level) or level >= MAX_POST_SOURCE_ENERGY_DB:
         raise BoundaryDeparture(f"CPML end/post-source-peak energy {level} dB; required < -40 dB")
 
 
@@ -206,6 +204,7 @@ def test_cpml_box_energy(entry, dx):
 ])
 @pytest.mark.parametrize("dx", [.001, .0005])
 def test_material_face_against_full_symmetric_domain(entry, material, dx):
+    """For identical mirrored lattice and excitation, 1% permits accumulated float32 error."""
     traces = []
     for full in (False, True):
         length = .024 if full else .012
@@ -226,7 +225,6 @@ def test_material_face_against_full_symmetric_domain(entry, material, dx):
     record(f"{material}-face-{entry}-{dx}", dict(relative_trace_l2=relative,
                                                 half_peak_V_per_m=float(np.max(abs(traces[0]))),
                                                 full_peak_V_per_m=float(np.max(abs(traces[1])))))
-    # Identical mirrored lattice and excitation; 1% permits accumulated float32 error.
     compare_quantity(relative, 0, .01, "relative face trace L2")
 
 
@@ -240,5 +238,4 @@ def test_magnetic_cavity_second_order_separation(entry):
         errors.append(abs(separation - .024))
     ratios = np.asarray(errors[:-1]) / errors[1:]
     record(f"magnetic-convergence-{entry}", dict(errors_m=errors, ratios=ratios.tolist()))
-    # The declared second-order limit is four, rather than the old first-order two.
     np.testing.assert_allclose(ratios, 4., rtol=.1)

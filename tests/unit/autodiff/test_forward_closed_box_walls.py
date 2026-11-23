@@ -44,8 +44,6 @@ def test_forward_and_run_agree_on_a_closed_pec_box_and_hit_the_analytic_tm110():
     r_run = sim.run(n_steps=STEPS, compute_s_params=False, skip_preflight=True)
     ts_fwd = np.asarray(r_fwd.time_series)[:, 0]
     ts_run = np.asarray(r_run.time_series)[:, 0]
-    # The two entry points normalise the source differently, so the samples
-    # are not compared; the cavity's resonance is (harminv resolves < 0.05 %).
     f_fwd = _strongest_mode(ts_fwd, float(r_fwd.grid.dt))
     f_run = _strongest_mode(ts_run, float(r_run.grid.dt))
     f_analytic = C0 / 2 * np.sqrt(2) / L

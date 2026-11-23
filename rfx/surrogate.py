@@ -28,10 +28,6 @@ from pathlib import Path
 import numpy as np
 
 
-# ---------------------------------------------------------------------------
-# Training data export
-# ---------------------------------------------------------------------------
-
 def export_training_data(
     sweep_result: SweepResult | VmapSweepResult,
     *,
@@ -81,9 +77,7 @@ def export_training_data(
         "param_name": np.array(sweep_result.param_name),
     }
 
-    # Detect SweepResult vs VmapSweepResult
     if hasattr(sweep_result, "results"):
-        # SweepResult — extract per-result time series
         ts_list = []
         s_params_list = []
         freqs = None
@@ -105,7 +99,6 @@ def export_training_data(
             save_dict["freqs"] = freqs
 
     elif hasattr(sweep_result, "time_series"):
-        # VmapSweepResult — time_series already batched
         save_dict["outputs"] = np.asarray(sweep_result.time_series)
     else:
         raise ValueError(
@@ -115,10 +108,6 @@ def export_training_data(
     np.savez(str(output_path), **save_dict)
     return output_path
 
-
-# ---------------------------------------------------------------------------
-# Geometry SDF export
-# ---------------------------------------------------------------------------
 
 def _sheet_footprint_on_samples(shape, x, y, z, *, name):
     """A declared SHEET's footprint on the SDF sample lattice.
@@ -222,22 +211,15 @@ def export_geometry_sdf(
     ny = max(int(np.ceil(domain[1] / resolution)), 1)
     nz = max(int(np.ceil(domain[2] / resolution)), 1)
 
-    # Build a temporary grid at the SDF resolution to evaluate masks.
-    # We construct coordinate arrays manually to avoid coupling to Grid's
-    # CPML padding logic — the SDF should cover the physical domain only.
     x = np.linspace(0, domain[0], nx)
     y = np.linspace(0, domain[1], ny)
     z = np.linspace(0, domain[2], nz)
 
-    # Evaluate geometry occupancy at each grid point
     occupied = np.zeros((nx, ny, nz), dtype=bool)
 
     from rfx.model.materials import assembled_as_pec
     for gi, entry in enumerate(sim._geometry):
         shape = entry.shape
-        # A PEC Box with exactly one zero-extent axis IS a sheet
-        # declaration (§1.5), so it is realized as a sheet here too rather
-        # than relying on its plane coinciding with a sample point.
         lo_b = getattr(shape, "corner_lo", None)
         hi_b = getattr(shape, "corner_hi", None)
         if lo_b is not None and hi_b is not None and assembled_as_pec(sim, entry):
@@ -247,8 +229,6 @@ def export_geometry_sdf(
                 occupied |= _sheet_footprint_on_samples(
                     shape, x, y, z, name=f"geometry[{gi}] 'pec'")
                 continue
-        # Use each shape's own node sampling, including half-open faces
-        # and thin-volume snapping, rather than a separate analytic rule.
         try:
             mask = np.asarray(shape.mask_on_coords(x, y, z), dtype=bool)
             if mask.shape != occupied.shape:
@@ -268,28 +248,19 @@ def export_geometry_sdf(
             )
         occupied |= mask
 
-    # Sheets declared through add_thin_conductor are NOT in sim._geometry,
-    # so the loop above never saw them: a sheet ground plane, patch or
-    # trace was silently absent from the exported geometry. One sample
-    # layer on the sheet's own plane (see the docstring).
     for ti, tc in enumerate(getattr(sim, "_thin_conductors", ()) or ()):
         occupied |= _sheet_footprint_on_samples(
             tc.shape, x, y, z, name=f"thin_conductor[{ti}]")
 
-    # linspace includes both domain endpoints, so its pitch differs from
-    # the requested resolution. Singleton axes retain the requested pitch.
     sampling = tuple(length / (n - 1) if n > 1 else resolution
                      for length, n in zip(domain, (nx, ny, nz)))
 
-    # Convert binary mask to approximate SDF via distance transform.
     try:
         from scipy.ndimage import distance_transform_edt
         dist_outside = distance_transform_edt(~occupied, sampling=sampling)
         dist_inside = distance_transform_edt(occupied, sampling=sampling)
         sdf = dist_outside - dist_inside
     except ImportError:
-        # Fallback without scipy: return +1/-1 indicator scaled by
-        # the smallest sample spacing (no true distance).
         spacing = min(sampling)
         sdf = np.where(occupied, -spacing, spacing).astype(np.float64)
 

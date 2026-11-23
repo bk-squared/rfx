@@ -43,7 +43,6 @@ LANES = (
     "lane:plan",
 )
 
-# The three sample bodies the workflow actually meets.
 FORM_BODY = """### What is wrong
 
 `|S21| = 1.043` on a passive thru at 10 GHz; realized aperture 14 cells, declared 16.
@@ -79,9 +78,6 @@ _No response_
 """
 
 
-# --------------------------------------------------------------------------
-# lane_from_body
-# --------------------------------------------------------------------------
 
 
 def test_a_form_body_yields_the_dropdown_value() -> None:
@@ -141,12 +137,7 @@ def test_an_empty_body_is_not_an_error() -> None:
     assert mod.lane_from_body("") is None
 
 
-# --------------------------------------------------------------------------
-# Two `### Lane` sections: the form cannot produce one, so nothing is applied
-# --------------------------------------------------------------------------
 
-#: The attack the first draft had: the heading pasted into an earlier free-text
-#: answer, where it comes BEFORE the dropdown's own section.
 PASTED_BODY = """### What is wrong
 
 Broken. Also:
@@ -219,9 +210,6 @@ def test_the_cli_is_green_on_a_conflicting_body(tmp_path: Path) -> None:
     ]
 
 
-# --------------------------------------------------------------------------
-# has_lane_section: what the weekly audit asks
-# --------------------------------------------------------------------------
 
 
 def test_a_form_body_has_a_lane_section() -> None:
@@ -238,9 +226,6 @@ def test_an_unanswered_dropdown_still_counts_as_a_form() -> None:
     assert mod.lane_from_body(UNANSWERED_BODY) is None
 
 
-# --------------------------------------------------------------------------
-# plan: add one, remove the rest
-# --------------------------------------------------------------------------
 
 
 def test_the_plan_has_no_way_to_express_a_failure() -> None:
@@ -308,9 +293,6 @@ def test_a_lane_the_dropdown_cannot_produce_is_noted_not_failed_on() -> None:
     assert "governance audit" in result.notes[0]
 
 
-# --------------------------------------------------------------------------
-# parse_labels
-# --------------------------------------------------------------------------
 
 
 def test_labels_come_from_json_so_a_comma_survives() -> None:
@@ -329,9 +311,6 @@ def test_a_non_array_payload_is_rejected() -> None:
         mod.parse_labels('{"name": "lane:plan"}')
 
 
-# --------------------------------------------------------------------------
-# The CLI, which is what the workflow runs
-# --------------------------------------------------------------------------
 
 
 def _run(env: dict, extra: list | None = None) -> subprocess.CompletedProcess:

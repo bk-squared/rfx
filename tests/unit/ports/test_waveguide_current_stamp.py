@@ -32,6 +32,7 @@ def _close(got, want):
 
 
 def test_the_wave_split_stamps_the_recorded_current_as_h(monkeypatch):
+    SINGLE_SIDED_SCALE = 2
     rng = np.random.default_rng(11)
     voltage, current = (rng.normal(size=N).astype(np.float32) for _ in range(2))
     seen = {}
@@ -42,11 +43,12 @@ def test_the_wave_split_stamps_the_recorded_current_as_h(monkeypatch):
         cfg, jnp.asarray(voltage), jnp.asarray(current))
     freqs32 = np.asarray(cfg.freqs, dtype=np.float64)
     assert np.allclose(freqs32, FREQS, rtol=1e-6)
-    _close(seen["v"], 2 * _host(voltage, 1.0))   # single-sided spectrum: 2 x
-    _close(seen["i"], 2 * _host(current, 0.5))
+    _close(seen["v"], SINGLE_SIDED_SCALE * _host(voltage, 1.0))
+    _close(seen["i"], SINGLE_SIDED_SCALE * _host(current, 0.5))
 
 
 def test_the_overlap_sums_stamp_the_h_channel_as_h(monkeypatch):
+    """The state after step n carries step == n + 1."""
     rng = np.random.default_rng(12)
     p1, p2 = rng.normal(size=N), rng.normal(size=N)
     monkeypatch.setattr(
@@ -56,7 +58,7 @@ def test_the_overlap_sums_stamp_the_h_channel_as_h(monkeypatch):
     cfg = SimpleNamespace(freqs=jnp.asarray(FREQS, jnp.float32), ref_x=1, probe_x=2)
     zero = jnp.zeros(len(FREQS), jnp.complex64)
     acc = waveguide_port.OverlapDFTAccumulators(zero, zero, zero, zero)
-    for step in range(1, N + 1):  # the state after step n carries step == n + 1
+    for step in range(1, N + 1):
         acc = waveguide_port.update_overlap_dft(acc, cfg, SimpleNamespace(step=step), DT, 1e-3)
     _close(acc.p1_ref_dft, _host(p1, 1.0))
     _close(acc.p2_ref_dft, _host(p2, 0.5))

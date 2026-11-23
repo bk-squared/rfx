@@ -28,11 +28,11 @@ def _cells(shape):
 
 
 def _stamp(m, field, axis, cell, value):
+    """Wire contours live only in their H record, not in cell permeability."""
     stamp = jnp.zeros_like(getattr(m, field)).at[cell].set(value)
     record = [None] * 3
     record[axis] = stamp
     name = {"eps_r": "eps_r_lumped", "sigma": "sigma_lumped", "mu_r": "mu_r_wire"}[field]
-    # Wire contours live only in their H record, not in cell permeability.
     return m._replace(**{field: getattr(m, field) if field == "mu_r" else
                          getattr(m, field) + stamp, name: tuple(record)})
 

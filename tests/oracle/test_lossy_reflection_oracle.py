@@ -40,7 +40,6 @@ PLATEAU = (0.05, 0.13)
 C0 = 299792458.0
 EPS_R = 4.0
 _W = 2.0 * np.pi * F0
-# σ/(ωε0) = 0 (control), 2, 4 — strong enough to move |Γ| well outside the Yee envelope
 SIGMA_FACTORS = (0.0, 2.0, 4.0)
 SIGMAS = tuple(fac * _W * EPS_0 for fac in SIGMA_FACTORS)
 
@@ -50,7 +49,7 @@ def _eps_c(sigma):
 
 
 def _gamma_analytic(sigma):
-    n = np.sqrt(_eps_c(sigma))            # principal sqrt ⇒ Im(n) < 0
+    n = np.sqrt(_eps_c(sigma))
     return (1.0 - n) / (1.0 + n)
 
 
@@ -61,10 +60,10 @@ def _build():
     xprobes = np.arange(PLATEAU[0], PLATEAU[1], DX)
     probe_idx = np.array([grid.position_to_index((float(xp), 0.06, 0.003))[0] for xp in xprobes])
     probe_distances = (xi - probe_idx).astype(np.float64) * DX
-    # time-gate: stop before the FASTEST (εr=2-equivalent) back-face echo reaches the plateau
     n_fast = np.sqrt(2.0)
     t_back = (2 * (X_IFACE - PLATEAU[1]) / C0) + (2 * (X_SLAB_END - X_IFACE) / (C0 / n_fast))
     ns = int(0.9 * t_back / grid.dt)
+    assert ns * grid.dt < t_back, "The record must stop before the fastest back-face echo reaches the plateau."
     sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary="cpml", cpml_layers=10, mode="3d")
     sim.add_tfsf_source(f0=F0, bandwidth=0.5, polarization="ez", direction="+x",
                         waveform="modulated_gaussian")
@@ -124,7 +123,7 @@ def test_lossy_reflection_phase_shift_vs_analytic(lossy_run):
     the σ-dependent phase shift of Γ matches the complex-ε Fresnel prediction."""
     g0 = lossy_run["gamma"][SIGMAS[0]]
     ph0_meas, ph0_ana = np.degrees(np.angle(g0)), np.degrees(np.angle(_gamma_analytic(SIGMAS[0])))
-    offset = ((ph0_meas - ph0_ana + 180) % 360) - 180   # reference-plane constant (~10.6°)
+    offset = ((ph0_meas - ph0_ana + 180) % 360) - 180
     for sigma in SIGMAS[1:]:
         g = lossy_run["gamma"][sigma]
         ph_cal = np.degrees(np.angle(g)) - offset

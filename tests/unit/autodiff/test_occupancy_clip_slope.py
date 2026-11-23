@@ -75,14 +75,12 @@ def binary_derivatives(request):
 
 @pytest.mark.parametrize("cell", CELLS, ids=["occupied", "empty"])
 def test_t2_binary_ad_matches_one_sided_fd(binary_derivatives, cell):
+    """The 5e-2 tolerance covers the earlier measured float32 one-sided FD/AD scatter of 0.964–1.015 while separating the factor-0.5 slope defect."""
     mesh, readings = binary_derivatives
     ad, fd = readings[cell]
     assert np.isfinite(ad) and np.isfinite(fd) and fd != 0.0, (mesh, cell, ad, fd)
     ratio = ad / fd
     print(f"T2 mesh={mesh} cell={cell} AD={ad:.12g} FD={fd:.12g} AD/FD={ratio:.12g}")
-    # 5e-2 is the comparator's own noise: the float32
-    # second-order one-sided FD scatters 0.964-1.015 of AD over 8 readings (#1926 body), measured before the bar; the defect
-    # it guards is a factor 0.5, ten times outside. The exact check is the helper slope test.
     assert abs(ratio - 1.0) <= 5e-2, (
         f"mesh={mesh} cell={cell} AD={ad:.12g} FD={fd:.12g} AD/FD={ratio:.12g}")
 
@@ -94,10 +92,8 @@ def test_t3_forward_bits_unchanged(mesh, fractional, monkeypatch):
     if fractional:
         cells = cells.at[11, 8, 6].set(0.4)
     actual = np.asarray(_forward(sim, cells))
-    # All external sites import locally from this namespace on each call.
     monkeypatch.setattr(occupancy, "clip_occupancy",
                         lambda x: jnp.clip(x, 0.0, 1.0))
-    # _edge_factors is also traced through a cached jit for a slab view.
     jax.clear_caches()
     expected = np.asarray(_forward(sim, cells))
     np.testing.assert_array_equal(actual.view(np.uint32), expected.view(np.uint32))
@@ -131,11 +127,11 @@ def design_box_derivatives():
 
 @pytest.mark.parametrize("cell", CELLS, ids=["occupied", "empty"])
 def test_t4_design_box_binary_ad_matches_one_sided_fd(design_box_derivatives, cell):
+    """The 5e-2 tolerance covers the earlier measured float32 one-sided FD/AD scatter of 0.964–1.015 while separating the factor-0.5 slope defect."""
     ad, fd = design_box_derivatives[cell]
     assert np.isfinite(ad) and np.isfinite(fd) and fd != 0.0, (cell, ad, fd)
     ratio = ad / fd
     print(f"T4 cell={cell} AD={ad:.12g} FD={fd:.12g} AD/FD={ratio:.12g}")
-    # Same second-order one-sided FD and 5e-2 bar; see T2's reason comment.
     assert abs(ratio - 1.0) <= 5e-2, (
         f"cell={cell} AD={ad:.12g} FD={fd:.12g} AD/FD={ratio:.12g}")
 
@@ -143,6 +139,7 @@ def test_t4_design_box_binary_ad_matches_one_sided_fd(design_box_derivatives, ce
 @pytest.mark.parametrize("fill, step", [(1.0, -1e-2), (0.0, 1e-2)],
                          ids=["occupied", "empty"])
 def test_t5_apply_pec_occupancy_binary_ad_matches_one_sided_fd(fill, step):
+    """Three empty incident cells leave Ex_out=1-fill for unit incident Ex, pinning the derivative to -1 at either occupancy bound."""
     shape, cell = (5, 5, 5), (2, 2, 2)
     state = init_state(shape)._replace(ex=jnp.ones(shape, jnp.float32))
     cells = jnp.zeros(shape, jnp.float32).at[cell].set(fill)
@@ -153,13 +150,12 @@ def test_t5_apply_pec_occupancy_binary_ad_matches_one_sided_fd(fill, step):
     ad = float(jax.grad(loss)(cells)[cell])
     fd = (float(loss(cells.at[cell].add(step))) - float(loss(cells))) / step
     print(f"T5 fill={fill:g} AD={ad:.12g} FD={fd:.12g} AD/FD={ad / fd:.12g}")
-    # The other three incident cells are empty and Ex starts at 1:
-    # Ex_out = 1 - fill, so its derivative is exactly -1 at either bound.
     assert ad == -1.0
     np.testing.assert_allclose(ad, fd, rtol=1e-5, atol=0.0)
 
 
 def test_t6_kottke_occupied_ad_matches_one_sided_fd():
+    """The downward step from unit fill stays above the 1e-3 floor in the isolated-cell relation inv_xx=(1-fill)/4."""
     grid = _scene("uniform")._build_grid()
     cells, cell, step = _binary(), CELLS[0], -1e-2
 
@@ -171,6 +167,4 @@ def test_t6_kottke_occupied_ad_matches_one_sided_fd():
     ad = float(jax.grad(loss)(cells)[cell])
     fd = (float(loss(cells.at[cell].add(step))) - float(loss(cells))) / step
     print(f"T6 fill=1 AD={ad:.12g} FD={fd:.12g} AD/FD={ad / fd:.12g}")
-    # An isolated occupied cell gives inv_xx = (1 - fill) / 4.
-    # Step down from 1; the floor below 1e-3 is outside this interval.
     np.testing.assert_allclose(ad, fd, rtol=1e-5, atol=0.0)

@@ -13,6 +13,7 @@ This module locks the estimator's core contract against a SYNTHETIC
 sum-of-decaying-exponentials with KNOWN frequencies, so a regression in the
 Matrix-Pencil core (or a float32 precision surprise) is caught directly, not
 only via an expensive FDTD run. CPU, fast.
+Each synthetic tone is (frequency in Hz, amplitude, Q, phase).
 """
 
 from __future__ import annotations
@@ -22,24 +23,23 @@ import pytest
 
 from rfx.harminv import MatrixPencilMode, matrix_pencil
 
-# A synthetic ring-down that mirrors the issue-80 spectrum shape: a dominant
-# patch-mode tone with a couple of weaker neighbours, all decaying. The 9.30 GHz
-# tone is given the largest amplitude so it must come out as the dominant mode.
-_DT = 1.0e-12  # 1 ps -> fs = 1 THz, Nyquist 500 GHz >> 12 GHz
-_N = 4000      # 4 ns record
+SAMPLE_INTERVAL_S = 1.0e-12
+_DT = SAMPLE_INTERVAL_S
+RECORD_SAMPLES_4_NS = 4000
+_N = RECORD_SAMPLES_4_NS
 _TONES = (
-    # (freq_hz, amplitude, Q, phase)
     (8.80e9, 0.50, 35.0, 0.3),
-    (9.30e9, 1.00, 44.0, 0.0),  # dominant
+    (9.30e9, 1.00, 44.0, 0.0),
     (11.90e9, 0.60, 18.0, 1.1),
 )
 
 
 def _synthetic_ringdown(dtype=np.float64) -> np.ndarray:
+    """Decay has units of 1/s, from Q = pi f / decay."""
     t = np.arange(_N) * _DT
     sig = np.zeros(_N, dtype=np.float64)
     for f, a, q, phi in _TONES:
-        decay = np.pi * f / q  # 1/s, from Q = pi f / decay
+        decay = np.pi * f / q
         sig += a * np.exp(-decay * t) * np.cos(2 * np.pi * f * t + phi)
     return sig.astype(dtype)
 
@@ -51,11 +51,12 @@ def _freqs_ghz(modes: list[MatrixPencilMode]) -> list[float]:
 def test_harminv_recovers_known_synthetic_frequencies():
     """Matrix Pencil recovers all three planted tones to <0.5% on a clean signal."""
     modes = matrix_pencil(_synthetic_ringdown(), _DT, 7.0e9, 14.0e9)
+    FREQUENCY_TOLERANCE_GHZ = 0.05
     got = _freqs_ghz(modes)
     for f_true_hz, _, _, _ in _TONES:
         f_true = f_true_hz / 1e9
         nearest = min(got, key=lambda g: abs(g - f_true))
-        assert abs(nearest - f_true) < 0.05, (  # < 50 MHz (~0.5%)
+        assert abs(nearest - f_true) < FREQUENCY_TOLERANCE_GHZ, (
             f"planted {f_true:.3f} GHz not recovered; got {got}"
         )
 
@@ -70,9 +71,9 @@ def test_harminv_dominant_is_largest_amplitude_tone():
     this locks the estimator contract itself, and that 9.30 is dominant by
     ENERGY, not by proximity to an expected value.
     """
+    assert _TONES[1][1] > max(_TONES[0][1], _TONES[2][1]), "The planted 9.30 GHz tone must have the largest amplitude to be the dominant mode"
     modes = matrix_pencil(_synthetic_ringdown(), _DT, 7.0e9, 14.0e9)
     assert modes, "no modes recovered"
-    # API contract: sorted by amplitude, strongest first.
     amps = [m.amplitude for m in modes]
     assert amps == sorted(amps, reverse=True), "modes not amplitude-sorted"
     assert abs(modes[0].freq / 1e9 - 9.30) < 0.05, (
@@ -116,7 +117,6 @@ def test_harminv_recovers_q_within_band():
     """Recovered Q of the dominant tone is in the right ballpark (planted Q=44)."""
     modes = matrix_pencil(_synthetic_ringdown(), _DT, 7.0e9, 14.0e9)
     dom = modes[0]
-    # Matrix Pencil on a clean 3-tone signal recovers Q to a few %.
     assert 0.7 * 44.0 < dom.Q < 1.3 * 44.0, f"dominant Q={dom.Q:.1f} far from planted 44"
 
 
@@ -124,6 +124,7 @@ def test_harminv_modest_noise_does_not_move_dominant():
     """At a realistic SNR the dominant frequency is unchanged (seeded, deterministic)."""
     rng = np.random.default_rng(20260617)
     sig = _synthetic_ringdown()
-    noise = rng.standard_normal(_N) * 0.01 * np.max(np.abs(sig))  # ~40 dB SNR
+    PEAK_RELATIVE_NOISE_RATIO = 0.01
+    noise = rng.standard_normal(_N) * PEAK_RELATIVE_NOISE_RATIO * np.max(np.abs(sig))
     dom = matrix_pencil(sig + noise, _DT, 7.0e9, 14.0e9)[0].freq / 1e9
     assert abs(dom - 9.30) < 0.05, f"noise moved dominant to {dom:.3f} GHz"

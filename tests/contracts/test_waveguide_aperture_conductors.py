@@ -30,9 +30,8 @@ def one_bare_edge(graded, boundary="cpml"):
 @pytest.mark.parametrize("graded", [False, True])
 @pytest.mark.parametrize("multiple_devices", [False, True])
 def test_f3_one_bare_absorbing_edge_refuses_before_solve(graded, multiple_devices):
+    """No multi-device lane steps a waveguide port, so that refusal comes first on every entry, before the aperture is judged."""
     if multiple_devices:
-        # No multi-device lane steps a waveguide port, so that refusal comes
-        # first on every entry, before the aperture is judged.
         with pytest.raises(NotImplementedError, match="waveguide ports .* not supported on"):
             one_bare_edge(graded).run(n_steps=2, skip_preflight=True,
                                       devices=[jax.devices()[0]] * 2)
@@ -103,7 +102,6 @@ def _edge_refusal(sim, **kwargs):
 
 
 def test_conformal_walls_bound_the_aperture():
-    # The realized conformal weights close both snapped rims, at dispatch and in the runner.
     admit_waveguide(conformal_guide())
     message = _edge_refusal(conformal_guide(conformal=False))
     assert "y_hi node plane 23 mm, nearest conductor distance 2 mm" in message
@@ -116,7 +114,6 @@ def test_mutation_conformal_weights_ignored_refuses():
 
 
 def test_mutation_conformal_wall_two_cells_out_refuses():
-    # Production weights from the same half-spaces, the y wall moved 2 cells out.
     from rfx.geometry.conformal import clamp_conformal_weights, compute_conformal_weights_sdf
     sim = conformal_guide()
     big = 10.
@@ -130,7 +127,7 @@ def test_mutation_conformal_wall_two_cells_out_refuses():
 
 
 def test_runner_judges_the_weights_it_formed():
-    # conformal_pec=False runs the binary walls, whose rims are bare.
+    """conformal_pec=False runs the binary walls, whose rims are bare."""
     with pytest.raises(ValueError, match="run_uniform: Waveguide port 'conformal-rim' has bare"):
         conformal_guide().run(n_steps=2, skip_preflight=True, conformal_pec=False)
 
@@ -145,10 +142,7 @@ def test_rule4_support_refusal_row():
 
 @pytest.mark.parametrize("absorbing", ["lo", "hi"])
 def test_omitted_range_spans_the_domain_with_unequal_pads(absorbing):
-    # z_range omitted, z faces PEC on one side and CPML on the other: the
-    # guide must span the 16 mm domain height, neither reaching into the
-    # absorber pad nor stopping one pad short of the PEC face. A drawn wall
-    # closes the rim on the absorbing side; y is a partial, walled aperture.
+    """A drawn wall closes the rim on the absorbing side."""
     from rfx.boundaries.spec import Boundary, BoundarySpec
     faces = {"lo": "pec", "hi": "pec", absorbing: "cpml"}
     sim = Simulation(30e9, (.032, .020, .016), dx=.002, cpml_layers=4,

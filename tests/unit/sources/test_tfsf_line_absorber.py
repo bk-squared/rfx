@@ -15,7 +15,7 @@ def test_cubic_loss_at_component_positions(angles):
     dx, dt = .001, 1.9065748695310057e-12
     cfg, _ = plane.init_plane_wave(41, dx, dt, ny=41, nz=41, cpml_layers=8,
                                   polarization="s", theta_deg=angles[0], phi_deg=angles[1],
-                                  n_steps=1000)
+                                  n_steps=1000, dtype=jnp.float32)
     norm = math.sqrt(sum(v * v for v in cfg.m))
     length = 64 * math.ceil(norm)
     sigma_max = 16 * math.log(10) / (math.sqrt(MU_0 / EPS_0) * length * dx / norm)
@@ -46,7 +46,7 @@ def test_cubic_loss_at_component_positions(angles):
 def test_zero_loss_factors_and_full_line_update(angles):
     cfg, state = plane.init_plane_wave(41, .001, 1.9065748695310057e-12,
         ny=41, nz=41, cpml_layers=8, polarization="s", theta_deg=angles[0],
-        phi_deg=angles[1], n_steps=1000, _zero_absorber=True)
+        phi_deg=angles[1], n_steps=1000, _zero_absorber=True, dtype=jnp.float32)
     for array in cfg.line_damping:
         expected = np.ones(cfg.n_nodes, np.float32)
         np.testing.assert_array_equal(np.asarray(array).view(np.uint32), expected.view(np.uint32))
@@ -68,7 +68,6 @@ def test_zero_loss_factors_and_full_line_update(angles):
                 half = cfg.m[derivative] / 2
                 plus = np.arange(cfg.n_nodes) + int(offset + half)
                 minus = np.arange(cfg.n_nodes) + int(offset - half)
-                # Explicit zero extension, including negative indices.
                 def read(indices):
                     return jnp.where((indices >= 0) & (indices < cfg.n_nodes),
                                      state[source][np.clip(indices, 0, cfg.n_nodes - 1)], 0.)

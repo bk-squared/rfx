@@ -1,4 +1,6 @@
-"""Radius stamps use nominal widths outside declared deformation windows."""
+"""Radius stamps use nominal widths outside declared deformation windows.
+The pin is admitted when both moving windows stay clear of its stencil and one-cell margin.
+"""
 
 import jax
 import jax.numpy as jnp
@@ -55,15 +57,13 @@ def _stamp_ports(grid, component):
 
 @pytest.mark.parametrize("component", ["ex", "ey", "ez"])
 def test_bit_identity_with_untraced_nominal_stamp(component):
-    # ex/ey exercise two wires with x/y traced (axial + transverse);
-    # ez additionally makes both traced axes transverse to each wire.
+    """Pin indices still use nominal nodes when widths before the pins move."""
     expected = _stamp_ports(_grid({}, {}), component)
 
     def stamp(profile):
         grid = _grid({"x": profile, "y": profile}, {"x": (1, 3), "y": (1, 3)})
         return _stamp_ports(grid, component)
 
-    # Move the widths BEFORE the pins; pin indices still use nominal nodes.
     moved = jnp.asarray(NOMINAL).at[1].add(.0001).at[2].add(-.0001)
     actual = jax.jit(stamp)(moved)
     for field in ("mu_r_wire", "eps_r_lumped", "eps_r"):
@@ -82,14 +82,13 @@ def test_cpml_padded_nominal_widths_bit_identity():
     nominal[9:13] = 1.2 * D
 
     def stamp(profile, *, traced):
+        """Omitting padding reads interior 9..12 (1.2 mm), which is not square with y."""
         grid = make_nonuniform_grid(
             (.016, .016), np.full(16, D), D, cpml_layers=4,
             cpml_axes="x", dx_profile=profile,
             nominal_profiles={"x": NominalProfile(nominal, (1, 3))} if traced else None)
         assert grid.pad_x_lo == grid.pad_x_hi == 4
         i = 7 + grid.pad_x_lo
-        # Padded stencil 9..12 maps to interior 5..8 (1 mm); omitting
-        # padding reads interior 9..12 (1.2 mm), which is not square with y.
         np.testing.assert_array_equal(
             nominal[i - 2 - grid.pad_x_lo:i + 2 - grid.pad_x_lo], np.full(4, D))
         assert np.all(nominal[i - 2:i + 2] != D)
@@ -112,7 +111,6 @@ def test_cpml_padded_nominal_widths_bit_identity():
 @pytest.mark.parametrize("offset", [-2, -1, 0, 1, 2, 3])
 def test_transverse_stencil_and_margin(axis, offset):
     component = "ez" if axis != "z" else "ex"
-    # i-2..i+1 is read, i-3 and i+2 are the guard cells.
     index = CELL[0] + offset - 1
     _check_window(axis, component, (index, index + 1), refuses=True)
 
@@ -146,7 +144,6 @@ def test_cpml_padded_traced_window(window, refuses):
             nominal_profiles={"x": NominalProfile(NOMINAL, window)})
         assert grid.pad_x_lo == grid.pad_x_hi == 4
         cell = (7 + grid.pad_x_lo, 7, 7)
-        # Compute the padded range directly from the declaration and grid pad.
         last_moving_cell = window[1] - 1 + grid.pad_x_lo
         margin_cell = cell[0] - 3
         assert last_moving_cell == margin_cell - (0 if refuses else 1)
@@ -219,9 +216,6 @@ def test_forward_width_gradient_is_finite():
     assert np.isfinite(float(derivative))
 
 
-# Two moving windows, one on each side of the pin (#1750). The radius stamp
-# reads the union of the windows: the pin is admitted when both stay clear of
-# its stencil and one-cell margin, and refused when either one reaches them.
 CLEAR = ((1, 4), (10, 13))
 
 
@@ -234,7 +228,6 @@ def test_two_windows_clear_of_pin_bit_identity(component):
         assert grid.traced_cells == {"x": CLEAR}
         return _stamp_ports(grid, component)
 
-    # Move cells in both windows; each window keeps its own width sum.
     moved = (jnp.asarray(NOMINAL).at[1].add(.0001).at[2].add(-.0001)
              .at[11].add(.0001).at[12].add(-.0001))
     actual = jax.jit(stamp)(moved)
@@ -247,8 +240,6 @@ def test_two_windows_clear_of_pin_bit_identity(component):
             assert np.asarray(a).tobytes() == np.asarray(b).tobytes(), field
 
 
-# Pin cell 7 on x. Across the wire (ez) the stamp reads cells 5..8 with
-# margin cells 4 and 9; along it (ex) it reads cell 7 with margin cells 6 and 8.
 @pytest.mark.parametrize("component, windows, refuses", [
     ("ez", CLEAR, False),
     ("ez", ((1, 5), (10, 13)), True),

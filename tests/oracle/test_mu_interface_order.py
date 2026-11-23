@@ -14,9 +14,7 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 
 
 def _reference(freqs):
-    # exp(+i omega t); beta=sqrt(k0**2*eps*mu-(pi/a)**2), Z~mu/beta.
-    # M_i=[[cos(beta*l), i*Z*sin(beta*l)], [i*sin(beta*l)/Z, cos(beta*l)]].
-    # S11=(A+B/Z0-C*Z0-D)/(A+B/Z0+C*Z0+D); S21=2/denominator.
+    """The reference uses the exp(+i omega t) convention."""
     k0 = 2 * np.pi * freqs / 299792458.
     beta0 = np.sqrt(k0**2 - (np.pi / .024)**2)
     z0 = 1 / beta0

@@ -44,6 +44,7 @@ BEFORE, on the same fixtures, from
 back with every helper call left in place — is quoted in that script and in
 ``docs/design_notes/coax_conductor_realization.md``. The two sets of
 before-numbers are NOT interchangeable and each is labelled with its board.
+A lossless PTFE line between matched ports must not lose more than 0.22 dB.
 """
 from __future__ import annotations
 
@@ -68,12 +69,8 @@ C0 = 299792458.0
 RECORD = (pathlib.Path(__file__).resolve().parents[1] / "fixtures"
           / "coax_conductor_realization" / "long_board_ladder.json")
 
-BETA_FRAC = 0.01          # the v2 bar's 1 % on a frequency-like quantity
-COLUMN_POWER_MAX = 1.02   # the pre-declared passivity gate: an UPPER bound
-# A loss bound, not a mirror of the line above. A lossless PTFE line between
-# matched ports must not lose more than 0.22 dB; the v2 magnitude bar is 2 dB,
-# which on this quantity catches nothing, and a mirrored 0.98 would be a
-# tolerance nobody declared. What the line actually loses is printed per rung.
+BETA_FRAC = 0.01
+COLUMN_POWER_MAX = 1.02
 COLUMN_POWER_MIN = 0.95
 Z0_FRAC = 0.01
 GATE_RUNG = 3.789288121451007
@@ -118,9 +115,6 @@ def _declared_z() -> float:
         SMA_PIN_RADIUS, SMA_OUTER_RADIUS, float(PTFE_EPS_R))
 
 
-# ---------------------------------------------------------------------------
-# Resistor calibration against the declared annulus.
-# ---------------------------------------------------------------------------
 
 
 def test_the_resistor_calibration_agrees_with_the_declared_annulus():
@@ -179,15 +173,13 @@ def test_the_resistor_calibration_agrees_with_the_declared_annulus():
             f"declared radii, {frac*100:.2f} %. Ladder: {trend}")
 
 
-# ---------------------------------------------------------------------------
-# One live solve, so the weekly lane exercises the solver and not the fixture.
-# ---------------------------------------------------------------------------
 
 LIVE_DOMAIN = (0.008, 0.008, 0.060)
 LIVE_PROBES = dict(probe_count=12, probe_start_cells=8, probe_spacing_cells=4)
 LIVE_FREQS = np.linspace(4.0e9, 12.0e9, 81)
-LIVE_RUNG = GATE_RUNG          # the cheapest rung on the long board
-LIVE_STEPS = 5000              # 12 one-way traversals at this cell size
+LIVE_RUNG = GATE_RUNG
+TWELVE_TRAVERSAL_RECORD_STEPS = 5000
+LIVE_STEPS = TWELVE_TRAVERSAL_RECORD_STEPS
 
 
 @pytest.mark.slow_physics
@@ -233,9 +225,6 @@ def test_the_live_thru_reproduces_the_record_s_cheapest_rung():
         "the analytic one")
 
     col = np.sum(np.abs(S) ** 2, axis=0)
-    # The same two bounds the replay uses, and for the same reasons: 1.02 above
-    # is the pre-declared passivity gate, 0.95 below is a loss bound saying a
-    # lossless line loses under 0.22 dB. Not a mirrored pair.
     assert float(col.max()) <= COLUMN_POWER_MAX, (
         f"live: the power sum reaches {float(col.max()):.5f}, above "
         f"{COLUMN_POWER_MAX}: a passive line cannot return more than it was given")

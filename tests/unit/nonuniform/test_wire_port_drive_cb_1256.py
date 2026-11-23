@@ -65,24 +65,24 @@ EPS_0 = 8.8541878128e-12
 
 DX = 0.5e-3
 NX, NY, NZ = 24, 20, 16
-K_G, K_P = 5, 8                     # ground and patch node planes on z
-N_SUB = K_P - K_G                   # 3 substrate cells = 1.5 mm
+GROUND_Z_NODE = 5
+PATCH_Z_NODE = 8
+K_G, K_P = GROUND_Z_NODE, PATCH_Z_NODE
+N_SUB = K_P - K_G
 Z_G, Z_P = K_G * DX, K_P * DX
 EPS_R = 3.38
 Z0 = 50.0
 I_PORT, J_PORT = 9, 10
 PROBE = (20 * DX, J_PORT * DX, 0.5 * (Z_G + Z_P))
-T_RECORD = 2.5e-9                   # record length, held in ns across steps
-F_BIN = 4e9                         # below the patch resonance
-DT_RATIO = 0.772                    # the issue's 0.59613 / 0.77228 ps
+T_RECORD = 2.5e-9
+BELOW_PATCH_RESONANCE_HZ = 4e9
+F_BIN = BELOW_PATCH_RESONANCE_HZ
+DT_RATIO = 0.772
 
-#: Closed form of the port's own conductance on this board: n * d_par /
-#: (Z0 * d_perp1 * d_perp2), all three 0.5 mm.
 SIGMA_PORT = N_SUB * DX / (Z0 * DX * DX)
 
-# Pre-declared gates.
-# Summed Fourier quantity: documented cross-trace bar.
-LANE_PARITY_RTOL = 1e-4
+SUMMED_FOURIER_PARITY_RTOL = 1e-4
+LANE_PARITY_RTOL = SUMMED_FOURIER_PARITY_RTOL
 DT_FIELD_RTOL = 1e-2
 DT_S11_RTOL = 1e-3
 
@@ -93,15 +93,13 @@ def _drive_factor(dt):
     return 1.0 + SIGMA_PORT * dt / (2.0 * EPS_R * EPS_0)
 
 
-#: The port edge a lumped capacitor is put across: the wire port's middle
-#: Ez edge, and the single-cell lumped port's own edge.
 RLC_POS = (I_PORT * DX, J_PORT * DX, Z_G + DX)
 
 
 def _board(*, graded, dt=None, port="wire", cap=None):
+    """A lumped capacitor is put across the wire port's middle Ez edge or the single-cell lumped port's own edge."""
     kw = {}
     if graded:
-        # A uniform-VALUED profile: the graded lane on the same cells.
         kw["dz_profile"] = np.full(NZ, DX)
         if dt is not None:
             kw.update(dt=float(dt), dt_min_cell=DX)
@@ -120,12 +118,10 @@ def _board(*, graded, dt=None, port="wire", cap=None):
                      component="ez", impedance=Z0, extent=Z_P - Z_G,
                      excite=True, waveform=pulse)
     elif port == "lumped":
-        # One Ez edge in the middle of the substrate, no extent.
         sim.add_port(position=(I_PORT * DX, J_PORT * DX, Z_G + DX),
                      component="ez", impedance=Z0, excite=True,
                      waveform=pulse)
     elif port == "msl":
-        # A 2 mm trace on the laminate face, fed from the -x end.
         sim.add_pinned_sheet(plane_index=K_P, i_range=(2, NX - 2),
                              j_range=(8, 12), name="trace")
         sim.add_msl_port(position=(4 * DX, 10 * DX, Z_G), width=4 * DX,
@@ -229,7 +225,7 @@ def _solve(lane, dt_scale=1.0, mutated=False):
         else:
             r = run_nonuniform_path(sim, n_steps=n, compute_s_params=True,
                                     s_param_freqs=freqs)
-    dt = float(r.dt)                        # realized, not declared
+    dt = float(r.dt)
     field = _dft_at_bin(r.time_series, dt)
     s11 = complex(np.asarray(r.s_params).reshape(-1)[0])
     return dt, field, s11
@@ -249,9 +245,6 @@ def _dt_ratios(mutated):
     return e2 / e1, s2 / s1, dt1, dt2
 
 
-# --------------------------------------------------------------------------
-# 1. lane parity
-# --------------------------------------------------------------------------
 
 def test_graded_and_uniform_lanes_give_the_same_field_per_unit_drive():
     ratio, dt = _lane_ratio(mutated=False)
@@ -263,9 +256,6 @@ def test_graded_and_uniform_lanes_give_the_same_field_per_unit_drive():
         f"{_drive_factor(dt):.4f}")
 
 
-# --------------------------------------------------------------------------
-# 2. dt invariance, S11 as the control
-# --------------------------------------------------------------------------
 
 def test_field_per_unit_drive_does_not_depend_on_the_time_step():
     e_ratio, s_ratio, dt1, dt2 = _dt_ratios(mutated=False)
@@ -279,9 +269,6 @@ def test_field_per_unit_drive_does_not_depend_on_the_time_step():
         f"{_drive_factor(dt2) / _drive_factor(dt1):.4f}")
 
 
-# --------------------------------------------------------------------------
-# 3. the defect restored, helper calls kept
-# --------------------------------------------------------------------------
 
 def test_mutation_the_drive_without_the_ports_load_sends_both_red():
     """Both checks above go red, by the closed-form factor: the lane ratio
@@ -300,13 +287,9 @@ def test_mutation_the_drive_without_the_ports_load_sends_both_red():
     assert abs(e_ratio - 1.0) > DT_FIELD_RTOL
     assert abs(lane / want_lane - 1.0) < 1e-4, (lane, want_lane)
     assert abs(e_ratio / want_dt - 1.0) < DT_FIELD_RTOL, (e_ratio, want_dt)
-    # and the S-parameter hides it, which is how it went unseen
     assert abs(s_ratio - 1.0) <= DT_S11_RTOL
 
 
-# --------------------------------------------------------------------------
-# 4. build time, every port kind: drive Cb == stepper Cb on the driven edge
-# --------------------------------------------------------------------------
 
 class _Built(Exception):
     pass
@@ -357,9 +340,6 @@ def _drive_and_stepper_materials(sim, *, strip=None):
     return handed, stepped["materials"], stepped["dt"]
 
 
-#: port kind -> (board port, capacitor across the port edge, what mutation
-#: (b) strips from the drive). 1 pF is large enough that a drive without the
-#: fold is off by an order of magnitude.
 _BUILD_CASES = {
     "wire": ("wire", None, "sigma"),
     "lumped": ("lumped", None, "sigma"),
@@ -370,13 +350,13 @@ _BUILD_CASES = {
 
 
 def _worst_cb_mismatch(case, *, mutated=False):
+    """The 1 pF capacitor is large enough that a drive without the capacitor fold is off by an order of magnitude."""
     port, cap, strip = _BUILD_CASES[case]
     handed, stepper, dt = _drive_and_stepper_materials(
         _board(graded=True, port=port, cap=cap),
         strip=strip if mutated else None)
     assert handed, f"no drive was built for the {case} port"
     if cap is not None:
-        # realized, not declared: the capacitor sits on a driven edge
         lumped = np.asarray(_lumped_total(stepper.eps_r_lumped))
         on = {tuple(int(v) for v in c) for c in np.argwhere(lumped != 0)}
         driven = {tuple(int(v) for v in cell) for cell, _, _ in handed}
@@ -409,9 +389,6 @@ def test_the_build_check_sees_a_drive_without_the_load(case):
     assert worst > 1e-2
 
 
-# --------------------------------------------------------------------------
-# 5. end to end: a capacitor across the port edge
-# --------------------------------------------------------------------------
 
 CAP_E2E = 0.3e-12
 F_RLC = (2e9, 4e9)

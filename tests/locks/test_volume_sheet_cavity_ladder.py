@@ -61,6 +61,9 @@ rather than read back.
 
 Runtime ~6 s per leg on an idle CPU (measured 93 s / 102 s on a loaded
 shared pod).
+
+``MEASURED_VOLUME_GHZ`` and ``MEASURED_SHEET_GHZ`` are re-derived by running this
+module, never by editing them toward a failing leg.
 """
 
 LOCK_PROVENANCE = {
@@ -84,12 +87,8 @@ DX = 0.2e-3
 GAP_CELLS = 16
 LAT_CELLS = 32
 
-#: The two slab cells, fixed (not read back off the raster — see the module
-#: docstring's note on centre sampling).
 K1, K2 = 3, 20
 
-#: Measured dominant modes, GHz. Re-derive by running this module, never by
-#: editing toward a failing leg.
 MEASURED_VOLUME_GHZ = 52.3341
 MEASURED_SHEET_GHZ = 49.8924
 
@@ -108,8 +107,6 @@ def _build(kind: str) -> Simulation:
         sim.add(Box((0, 0, _Z1_LO), (_LAT, _LAT, _Z1_HI)), material="pec")
         sim.add(Box((0, 0, _Z2_LO), (_LAT, _LAT, _Z2_HI)), material="pec")
     elif kind == "sheet":
-        # Zero-extent Box = "a sheet on this plane" (§1.3). The lo face of
-        # each slab, so the two legs' metal starts at the same coordinate.
         sim.add_thin_conductor(Box((0, 0, _Z1_LO), (_LAT, _LAT, _Z1_LO)),
                                sigma_bulk=5.8e7)
         sim.add_thin_conductor(Box((0, 0, _Z2_LO), (_LAT, _LAT, _Z2_LO)),
@@ -124,8 +121,11 @@ def _build(kind: str) -> Simulation:
 
 
 def _pred_ghz(sim, plate_cells: int) -> float:
+    """The lateral tangential-E walls are the node planes 0 and n-1, so the lateral length
+    is (n - 1) * DX.
+    """
     grid = sim._build_grid()
-    lxy = (grid.shape[0] - 1) * DX      # tangential-E walls at planes 0 and n-1
+    lxy = (grid.shape[0] - 1) * DX
     lz = plate_cells * DX
     return C0 / 2 * np.sqrt((1 / lxy) ** 2 + (1 / lz) ** 2) / 1e9
 
@@ -139,8 +139,6 @@ def _dominant_ghz(sim) -> float:
     assert cand, "harminv found no mode above Q=100 in [35, 60] GHz"
     return cand[0].freq / 1e9
 
-
-# --------------------------------------------------------------- build-time --
 
 def test_volume_slabs_realize_walls_on_both_drawn_faces():
     """No solve: the two 1-cell Boxes are volumes with four walls (§1.2)."""
@@ -175,13 +173,11 @@ def test_the_two_declarations_differ_by_exactly_one_plate_cell():
     v = assert_wall_planes(_build("volume"), 2,
                            expected_planes=[K1, K1 + 1, K2, K2 + 1])
     s = assert_wall_planes(_build("sheet"), 2, expected_planes=[K1, K2])
-    gap_volume = v[2] - v[1]        # k2 - (k1+1)
-    gap_sheet = s[1] - s[0]         # k2 - k1
+    gap_volume = v[2] - v[1]
+    gap_sheet = s[1] - s[0]
     assert gap_sheet - gap_volume == 1, (gap_volume, gap_sheet)
     assert gap_volume == GAP_CELLS
 
-
-# ------------------------------------------------------------------ physics --
 
 def test_volume_leg_sits_on_the_two_wall_ladder():
     """A 1-cell PEC Box is a filled slab: plate spacing (k2-k1-1)*dx."""

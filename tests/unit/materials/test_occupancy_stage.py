@@ -8,6 +8,7 @@ slab. ``reference`` is the float64 product, the independent value. Against
 the steps' own in-loop formers (``1 - M``, whose rounding depends on where
 they are compiled) the bar is one float32 ULP of 1.0. Ghost values are not
 part of the slab contract.
+The published product and in-loop 1-M forms differ by at most half a float32 ULP of 1.0 per stage.
 """
 from unittest.mock import patch
 
@@ -21,6 +22,7 @@ from rfx.core.yee import MaterialArrays, init_state
 from rfx.model.occupancy import (
     build_edge_keep, publish_occupancy, publish_slab_occupancy,
 )
+from tests._stated_plan import stated_plan
 
 
 def reference(occupancy, periodic=(False, False, False)):
@@ -44,7 +46,7 @@ def reference(occupancy, periodic=(False, False, False)):
     return result
 
 
-ULP1 = float(np.spacing(np.float32(1.0)))       # 1.19e-7; the two forms differ by at most half of it per stage
+ULP1 = float(np.spacing(np.float32(1.0)))
 
 
 def reference32(occupancy, periodic=(False, False, False), sheets=None):
@@ -80,7 +82,7 @@ def cells_for(value, shape=(13, 9, 7)):
         return np.random.default_rng(202).uniform(0, .85, shape).astype(np.float32)
     cells = np.zeros(shape, np.float32)
     cells[5:7, 3:6, 2:4] = value
-    cells[0, 1:4, 0:2] = value          # on two walls
+    cells[0, 1:4, 0:2] = value
     return cells
 
 
@@ -169,11 +171,11 @@ def test_occupancy_records_preserve_lanes_seams_and_covered_edges(comparison, sh
 
     periodic = comparison == 'periodic-translation'
     def scene(graded=False, shift=0, with_sheet=sheet):
+        """The sheet spans y so a periodic translation leaves it unchanged."""
         boundary = BoundarySpec(x='pec', y='periodic', z='pec') if periodic else 'pec'
         sim = Simulation(freq_max=15e9, domain=(.008, .006, .004), dx=.001,
                          boundary=boundary, **({'dy_profile': np.full(6, .001)} if graded else {}))
         if with_sheet:
-            # The sheet spans y, so a periodic translation leaves it unchanged.
             sim.add(Box((.004, -1., .00065), (.004, 1., .00335)), material='pec')
         y = (0 if periodic else 2) + shift
         sim.add_source((.003, (y % 6) * .001, .001), 'ez', amplitude_kind='field')
@@ -197,7 +199,6 @@ def test_occupancy_records_preserve_lanes_seams_and_covered_edges(comparison, sh
     if comparison == 'covered-edge':
         actual = expected[:, 0]
         error, bar = float(np.max(np.abs(actual))), 0.
-        # The uncovered twin proves the zero probe can receive a field in three steps.
         released = cells.copy()
         released[4, 2, 1] = 0.
         control = float(np.max(np.abs(record(scene(with_sheet=False), released)[:, 0])))
@@ -221,6 +222,7 @@ def step_occupancy_on_ones(cells, n_devices):
 
     Observe at source injection, directly after the occupancy multiply.
     No occupancy arithmetic is implemented by this fixture.
+    PEC wall faces are left out so the observation sees only E=1 times the published keep factors.
     """
     import rfx.runners.distributed_nu as nu
     from rfx.nonuniform import make_nonuniform_grid
@@ -236,10 +238,6 @@ def step_occupancy_on_ones(cells, n_devices):
     slabs = cut(jnp.asarray(cells), layout, 'pec_occupancy', mesh=mesh)
     mat = MaterialArrays(*(cut(v, layout, kind, mesh=mesh)
                            for v, kind in zip(material(shape)[:3], ('eps_r', 'sigma', 'mu_r'))))
-    # Since W1 the multi-device PEC graded run steps the single-device graded step per slab
-    # (rfx.stepping.graded inside rank_shard_map): observe THAT step's E update and source
-    # injection. Each slab reports its own rows with its mesh position; they are stacked in
-    # rank order into the legacy (n_devices * nx_local) layout the assertions index.
     import rfx.stepping.graded as graded
     observed = {}
     update = graded.update_e_nu
@@ -251,12 +249,11 @@ def step_occupancy_on_ones(cells, n_devices):
         jax.debug.callback(lambda r, *v: observed.setdefault(int(r), FDTDState(*map(np.asarray, v))),
                            jax.lax.axis_index('x'), *st)
         return inject(st, *args, **kwargs)
-    # The graded step applies the PEC wall faces before the occupancy multiply; leave them out
-    # here so the observation sees only E = 1 times the published keep factors.
     with patch.object(graded, 'update_e_nu', ones), patch.object(graded, 'inject_drives', record), \
             patch.object(graded, 'apply_pec_faces', lambda st, *a, **k: st):
         result = nu.run_nonuniform_distributed_pec(
             sg, mat, None, 1, n_devices=n_devices,
+            measurement=stated_plan(sg, [], n_steps=1),
             devices=jax.devices('cpu')[:n_devices], sharded_pec_occupancy=slabs)
         jax.block_until_ready(result)
         jax.effects_barrier()
@@ -267,6 +264,7 @@ def step_occupancy_on_ones(cells, n_devices):
 
 @pytest.mark.parametrize('n_devices', [2, 3])
 def test_slab_owned_rows_match_operator_and_reference(n_devices):
+    """A derivative of a product is a sum of products, so gradient equality is to rounding rather than bitwise."""
     if len(jax.devices('cpu')) < n_devices:
         pytest.skip('requires three virtual CPU devices configured before import')
     from rfx.stepping.slab import Slab, cut
@@ -286,15 +284,11 @@ def test_slab_owned_rows_match_operator_and_reference(n_devices):
         for rank, (lo, hi) in enumerate(layout.owned):
             owned = slice(rank * layout.nx_local + 1, rank * layout.nx_local + 1 + hi - lo)
             got = np.asarray(keep)[owned]
-            # per slab == whole domain == NumPy float32, bit for bit
             assert np.array_equal(got, whole[c][lo:hi])
             assert np.array_equal(got, exact[c][lo:hi])
-            # Consumption check, not a value pin: the slab step multiplies the published array.
             np.testing.assert_array_equal(got, np.asarray(component)[owned])
             np.testing.assert_allclose(np.asarray(component)[owned], ref[lo:hi], rtol=0, atol=2.4e-7)
 
-    # Gradient through the cut and the per-slab builder against the whole domain
-    # (a derivative of a product is a sum of products: equal to rounding, not bitwise).
     def slab_total(v):
         keep = publish_slab_occupancy(material(slabs.shape), cut(v, layout, 'pec_occupancy', mesh=mesh), mesh).edge_keep
         total = 0.
@@ -398,7 +392,6 @@ def test_design_window_equals_the_whole_domain_product_bit_for_bit():
         for mode in (f, jax.jit(f)):
             for actual, exact in zip(mode(x), reference32(merged)):
                 assert np.array_equal(np.asarray(actual), exact), bounds
-        # and within one ULP of 1.0 of what the step's window rewrite gives today
         one = jnp.ones(shape); st = init_state(shape)._replace(ex=one, ey=one, ez=one)
         write, keep = pec_occupancy_box_keep(bounds, x, shape=shape, dtype=jnp.float32, pec_occupancy=background)
         today = apply_pec_occupancy_box(apply_pec_occupancy(st, background), st, write, keep)
@@ -469,6 +462,7 @@ def slab_drive_scene(source_i, samples=(.137,), *, material_drive=False):
         slabs = None if occupancy is None else cut(occupancy * block, layout, 'pec_occupancy', mesh=mesh)
         return nu.run_nonuniform_distributed_pec(
             sg, mat, None, len(samples), sources=[source], probes=[ProbeSpec(*node, 'ez')],
+            measurement=stated_plan(sg, [ProbeSpec(*node, 'ez')], n_steps=len(samples)),
             n_devices=2, devices=jax.devices('cpu')[:2], sharded_pec_occupancy=slabs,
             material_drive=[1.] if material_drive else None,
             checkpoint_every=checkpoint_every, n_warmup=n_warmup)
@@ -486,7 +480,6 @@ def test_slab_drive_weight_is_last_float32_product(source_i, material_drive):
     for occupancy in (.2, .5):
         slabs = cut(occupancy * block, layout, 'pec_occupancy', mesh=mesh)
         keep = publish_slab_occupancy(mat, slabs, mesh).edge_keep[2]
-        # T1 pins the factor's value; this check pins its use on the drive.
         row = layout.owner(source_i) * layout.nx_local + layout.local_index(source_i)
         w = np.asarray(keep)[row, node[1], node[2]]
         actual = np.asarray(run(occupancy)['final_state'].ez)[node]

@@ -1,0 +1,429 @@
+"""Check the content of Python comments on added working-tree lines.
+
+Under rfx/, tests/, examples/ and scripts/ an added comment may only be a tool
+directive: noqa, flake8: noqa, type: ignore, pragma: no cover|branch, fmt:,
+isort:, ruff:, mypy:, pyright: or pylint:, several of them chained with ``#``,
+plus a shebang on line 1 and a PEP 263 coding line on line 1 or 2. Anything else,
+including text after a directive, is refused there. Every other Python path is
+checked against the narrow rules: no date, issue number, predeclaration, move
+note, run id or quoted Korean text.
+
+Every tracked Python file that an entry of SWEPT_PREFIXES matches is also read
+whole on every run, whatever the base, so that a file moved unchanged into a
+swept package cannot bring prose comments with it. An entry is a
+repository-relative package path ending with ``/`` or one file ending with
+``.py``, under one of the four directories, and it must match a tracked file.
+``--swept`` replaces the entries for one run; ``--swept`` with no value runs
+with none.
+"""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tokenize
+from typing import Iterator, NamedTuple
+
+
+RULES = (
+    ("date", re.compile(
+        r"\b(?:19|20)\d\d[-/.](?:0[1-9]|1[0-2])[-/.](?:0[1-9]|[12]\d|3[01])\b"
+        r"|\b20\d\d(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\b"
+    ), "a dated record, or git history"),
+    ("issue number", re.compile(r"(?<!&)#\d{3,}\b|(?i:\bPR) ?#\d+|/issues/\d+|/pull/\d+"),
+     "the PR body or the issue; a strict-xfail reason (a string) may carry it"),
+    ("predeclaration", re.compile(r"predeclar", re.I), "the predeclaration file"),
+    ("move note", re.compile(r"\bmoved from\b", re.I), "git history (git log --follow)"),
+    ("run id", re.compile(r"(?<![\d.])\d{10,}(?!\d)(?!\.\d)"), "the measurement record"),
+    ("quoted Korean", re.compile(
+        r"[\"'“”‘’「」『』][^\"'“”‘’「」『』]*[\uac00-\ud7a3\u1100-\u11ff\u3130-\u318f]"
+        r"[^\"'“”‘’「」『』]*[\"'“”‘’「」『』]"
+    ), "a named test or assertion states the rule; the rationale goes to the record"),
+)
+GUIDANCE = "a comment says what the code does, not where it came from"
+HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+FULL_BAN_PREFIXES = ("rfx/", "tests/", "examples/", "scripts/")
+FULL_BAN_DESTINATION = (
+    "a name, an assertion, a test, the docstring, or a dated record; under rfx/, tests/, examples/ and scripts/"
+    " a comment may only be a tool directive (noqa, type:, pragma:, fmt:, isort:, ruff:, mypy:, pyright:, pylint:)"
+)
+_CODE = r"[A-Z]+[0-9]+"
+_CODES = rf"{_CODE}(?:[,\s]+{_CODE})*"
+_NAME = r"[A-Za-z][\w-]*"
+_BRACKET = rf"\[\s*{_NAME}(?:\s*,\s*{_NAME})*\s*\]"
+_NOQA = r"(?i:noqa)"
+_QUOTED_NAMES = rf'"\s*{_NAME}(?:\s*,\s*{_NAME})*\s*"'
+_MYPY_OPTION = rf"{_NAME}(?:\s*=\s*(?:{_QUOTED_NAMES}|[\w,-]+))?"
+_PYRIGHT_SETTING = rf"{_NAME}\s*=\s*(?:true|false|none|error|warning|information)"
+DIRECTIVES = (
+    rf"{_NOQA}(?:\s*:\s*{_CODES})?",
+    rf"flake8\s*:\s*{_NOQA}",
+    rf"type\s*:\s*ignore(?:{_BRACKET})?",
+    r"pragma\s*:\s*no\s+(?:cover|branch)",
+    r"fmt\s*:\s*(?:off|on|skip)",
+    r"isort\s*:\s*(?:skip_file|skip|off|on|split)",
+    rf"ruff\s*:\s*{_NOQA}(?:\s*:\s*{_CODES})?",
+    r"ruff\s*:\s*isort\s*:\s*skip_file",
+    rf"mypy\s*:\s*{_MYPY_OPTION}(?:\s*,\s*{_MYPY_OPTION})*",
+    rf"pyright\s*:\s*(?:basic|standard|strict|ignore(?:{_BRACKET})?"
+    rf"|{_PYRIGHT_SETTING}(?:\s*,\s*{_PYRIGHT_SETTING})*)",
+    rf"pylint\s*:\s*(?:skip-file|(?:disable-next|disable|enable)\s*=\s*{_NAME}(?:\s*,\s*{_NAME})*)",
+)
+_DIRECTIVE = "(?:" + "|".join(DIRECTIVES) + ")"
+DIRECTIVE_TOKEN = re.compile(rf"#\s*{_DIRECTIVE}(?:\s+#\s*{_DIRECTIVE})*\s*")
+CODING_LINE = re.compile(r"^[ \t\f]*#.*?coding[:=][ \t]*[-\w.]+")
+SWEPT_PREFIXES: tuple[str, ...] = (
+    "rfx/_declarations.py",
+    "rfx/_gradient_witness_registry.py",
+    "rfx/_host_limits.py",
+    "rfx/_runtime_floor.py",
+    "rfx/ad_diagnostics.py",
+    "rfx/adjoint.py",
+    "rfx/animation.py",
+    "rfx/antenna.py",
+    "rfx/api/__init__.py",
+    "rfx/api/_ad_carry.py",
+    "rfx/api/_ad_memory.py",
+    "rfx/api/_ad_memory_compiled.py",
+    "rfx/api/_ad_memory_model.py",
+    "rfx/api/_ad_memory_types.py",
+    "rfx/api/_artifact_serialization.py",
+    "rfx/api/_artifacts.py",
+    "rfx/api/_compile.py",
+    "rfx/api/_compiled_memory.py",
+    "rfx/api/_forward_result.py",
+    "rfx/api/_gradient_witness.py",
+    "rfx/api/_mesh.py",
+    "rfx/api/_port_kind.py",
+    "rfx/api/_preflight.py",
+    "rfx/api/_refplane_checks.py",
+    "rfx/api/_removed_kwargs.py",
+    "rfx/api/_result_health.py",
+    "rfx/api/_settling.py",
+    "rfx/api/_source_semantics.py",
+    "rfx/api/_sparams.py",
+    "rfx/api/_spec.py",
+    "rfx/api/_validators.py",
+    "rfx/api/_wall_loss.py",
+    "rfx/api/_waveguide_result.py",
+    "rfx/artifacts.py",
+    "rfx/auto_config.py",
+    "rfx/batch.py",
+    "rfx/checkpoint.py",
+    "rfx/cli.py",
+    "rfx/convergence.py",
+    "rfx/deembed.py",
+    "rfx/diagnostic_records.py",
+    "rfx/diagnostics.py",
+    "rfx/differentiable_material_fit.py",
+    "rfx/eigenmode.py",
+    "rfx/farfield.py",
+    "rfx/fidelity.py",
+    "rfx/floquet.py",
+    "rfx/geometry/_mesh_scanline.py",
+    "rfx/geometry/_pole_keying.py",
+    "rfx/geometry/_traced_conductor.py",
+    "rfx/geometry/box_content.py",
+    "rfx/geometry/cell_table/body.py",
+    "rfx/geometry/cell_table/nodes.py",
+    "rfx/geometry/conformal.py",
+    "rfx/geometry/csg.py",
+    "rfx/geometry/curved.py",
+    "rfx/geometry/mesh_import.py",
+    "rfx/geometry/port_termination.py",
+    "rfx/geometry/triplet_tensor.py",
+    "rfx/geometry/via.py",
+    "rfx/grid.py",
+    "rfx/harminv.py",
+    "rfx/io.py",
+    "rfx/lumped.py",
+    "rfx/material_fit.py",
+    "rfx/mesh_edges.py",
+    "rfx/mesh_planner.py",
+    "rfx/microstrip.py",
+    "rfx/ntff_sweep.py",
+    "rfx/observables.py",
+    "rfx/optimize_objectives.py",
+    "rfx/pareto.py",
+    "rfx/pcb.py",
+    "rfx/preflight/",
+    "rfx/probes/flux_region.py",
+    "rfx/probes/fresnel.py",
+    "rfx/probes/msl_wave_decomp.py",
+    "rfx/probes/refplane.py",
+    "rfx/probes/settling.py",
+    "rfx/profiling.py",
+    "rfx/rcs.py",
+    "rfx/realized_geometry.py",
+    "rfx/realized_placement.py",
+    "rfx/smith.py",
+    "rfx/snapshots.py",
+    "rfx/sparams/_coax_messages.py",
+    "rfx/sparams/_coax_msl_stages.py",
+    "rfx/sparams/_coax_oneport_record.py",
+    "rfx/sparams/_common.py",
+    "rfx/sparams/_grid_metrics.py",
+    "rfx/sparams/_mixed_checks.py",
+    "rfx/sparams/_port_reference.py",
+    "rfx/sparams/dispatch.py",
+    "rfx/sparams/passivity_warning.py",
+    "rfx/subgridding/_notice.py",
+    "rfx/subgridding/disjoint_3d.py",
+    "rfx/subgridding/sbp_sat_1d.py",
+    "rfx/subgridding/sbp_sat_2d.py",
+    "rfx/subgridding/sbp_sat_3d.py",
+    "rfx/subgridding/validation.py",
+    "rfx/surrogate.py",
+    "rfx/sweep.py",
+    "rfx/topology.py",
+    "rfx/validation.py",
+    "rfx/visualize.py",
+    "rfx/visualize3d.py",
+)
+SWEPT_DESTINATION = "a name, an assertion, a test, the docstring, or a dated record"
+
+
+class Refusal(NamedTuple):
+    """One refused comment token, keyed by its path, line and column."""
+
+    path: str
+    line: int
+    column: int
+    text: str
+
+
+class CheckError(Exception):
+    """The check could not inspect the requested changes."""
+
+
+def git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(
+        ["git", "-c", "core.quotePath=false", *args], cwd=root,
+        capture_output=True, text=True, encoding="utf-8", errors="surrogateescape",
+    )
+    if check and result.returncode:
+        raise CheckError(
+            f"git {' '.join(args)} failed (exit {result.returncode}): "
+            f"{result.stderr.strip() or result.stdout.strip()}"
+        )
+    return result
+
+
+def ensure_commit(root: Path, revision: str) -> str:
+    result = git(root, "rev-parse", "--verify", f"{revision}^{{commit}}", check=False)
+    if result.returncode:
+        git(root, "fetch", "--no-tags", "--depth=1", "origin", revision)
+        result = git(root, "rev-parse", "--verify", f"{revision}^{{commit}}")
+    return result.stdout.strip()
+
+
+def resolve_base(root: Path, explicit: str | None) -> str:
+    if explicit:
+        revision = ensure_commit(root, explicit)
+        return git(root, "merge-base", revision, "HEAD").stdout.strip()
+    header = git(root, "cat-file", "-p", "HEAD").stdout.split("\n\n", 1)[0]
+    parents = [line.split()[1] for line in header.splitlines() if line.startswith("parent ")]
+    if os.environ.get("GITHUB_EVENT_NAME") in {"pull_request", "pull_request_target", "merge_group"}:
+        if not parents:
+            raise CheckError("HEAD has no parent and no base could be resolved")
+        return ensure_commit(root, parents[0])
+    origin = git(root, "rev-parse", "--verify", "origin/main^{commit}", check=False)
+    if origin.returncode == 0:
+        base = git(root, "merge-base", "origin/main", "HEAD").stdout.strip()
+        if base != git(root, "rev-parse", "HEAD").stdout.strip():
+            return base
+    if parents:
+        return ensure_commit(root, parents[0])
+    raise CheckError("HEAD has no parent and no base could be resolved")
+
+
+def added_lines(root: Path, base: str) -> dict[str, set[int]]:
+    patch = git(
+        root, "diff", "--no-color", "--unified=0", "-M", "--diff-filter=AMR",
+        base, "--", "*.py",
+    ).stdout
+    changed: dict[str, set[int]] = {}
+    path = None
+    line_number = None
+    for line in patch.splitlines():
+        if line.startswith("diff --git "):
+            path = None
+            line_number = None
+        elif line.startswith("+++ ") and line_number is None:
+            name = line[4:]
+            if name.startswith('"'):
+                name = ast.literal_eval(name)
+            else:
+                name = name.removesuffix("\t")
+            path = name.removeprefix("b/")
+            changed.setdefault(path, set())
+        elif match := HUNK.match(line):
+            line_number = int(match.group(1))
+        elif line_number is not None and path is not None:
+            if line.startswith("+"):
+                changed.setdefault(path, set()).add(line_number)
+                line_number += 1
+            elif line.startswith(" "):
+                line_number += 1
+    return changed
+
+
+def in_full_ban(path: str) -> bool:
+    """Whether a repository-relative path, in exact case, lies where a comment may only be a tool directive."""
+    return path.startswith(FULL_BAN_PREFIXES)
+
+
+def is_directive(token: tokenize.TokenInfo) -> bool:
+    """Whether a whole comment token is tool directives and nothing else.
+
+    A shebang counts at column 0 of line 1. A PEP 263 coding declaration counts
+    on line 1 or 2 when the comment is the whole physical line and Python's own
+    search hits it. Otherwise the token must be ``#`` and one or more
+    directives, each later one after whitespace and another ``#``, with only
+    whitespace after the last; a quoted mypy value is a comma-separated list of
+    names.
+    """
+    line, column = token.start
+    if line == 1 and column == 0 and token.string.startswith("#!"):
+        return True
+    whole_line = not token.line[:column].strip(" \t\f")
+    if line <= 2 and whole_line and CODING_LINE.search(token.string):
+        return True
+    return DIRECTIVE_TOKEN.fullmatch(token.string) is not None
+
+
+def narrow_refusal(path: str, line: int, token: str) -> str | None:
+    """The diagnostic of the first narrow rule the comment token matches, or None."""
+    for rule, pattern, destination in RULES:
+        if pattern.search(token):
+            return f"{path}:{line}: {rule}: {token}  -> {destination}; {GUIDANCE}"
+    return None
+
+
+def comment_tokens(root: Path, path: str) -> Iterator[tokenize.TokenInfo]:
+    """Every COMMENT token of a working-tree file, or CheckError when it cannot be tokenized."""
+    try:
+        with (root / path).open("rb") as source:
+            for token in tokenize.tokenize(source.readline):
+                if token.type == tokenize.ERRORTOKEN and not token.string.isspace():
+                    raise CheckError(f"{path}: cannot tokenize {token.string!r} at line {token.start[0]}")
+                if token.type == tokenize.COMMENT:
+                    yield token
+    except (OSError, SyntaxError, tokenize.TokenError, UnicodeError) as exc:
+        raise CheckError(f"{path}: cannot tokenize: {exc}") from exc
+
+
+def check_comments(root: Path, changed: dict[str, set[int]]) -> list[Refusal]:
+    """Refusals for comment tokens on added lines: the full ban under the four directories, the narrow rules elsewhere."""
+    refused = []
+    for path, lines in changed.items():
+        full_ban = in_full_ban(path)
+        for token in comment_tokens(root, path):
+            line, column = token.start
+            if line not in lines:
+                continue
+            if full_ban:
+                if not is_directive(token):
+                    text = (
+                        narrow_refusal(path, line, token.string)
+                        or f"{path}:{line}: comment: {token.string}  -> {FULL_BAN_DESTINATION}"
+                    )
+                    refused.append(Refusal(path, line, column, text))
+            elif diagnostic := narrow_refusal(path, line, token.string):
+                refused.append(Refusal(path, line, column, diagnostic))
+    return refused
+
+
+def malformed_entry(entry: str) -> str | None:
+    """Why a swept entry is not a well-formed repository-relative path, or None when it is."""
+    if ".." in entry:
+        return f"{entry}: swept entry must not contain .."
+    if not entry.startswith(FULL_BAN_PREFIXES):
+        return f"{entry}: swept entry must lie under rfx/, tests/, examples/ or scripts/"
+    if not entry.endswith(("/", ".py")):
+        return f"{entry}: swept entry must end with / (a package) or .py (one file)"
+    return None
+
+
+def check_swept(
+    root: Path, entries: tuple[str, ...], reported: set[tuple[str, int, int]],
+) -> tuple[list[str], list[Refusal], int]:
+    """Entry refusals, comment refusals and the number of files read for the swept entries.
+
+    Each tracked ``*.py`` file present in the working tree and matched by a
+    well-formed entry (``path.startswith(entry)``) is read whole; a file matched
+    by several entries is read once and named by the first. A malformed entry is
+    refused and not applied. A token already refused by the added-line check,
+    keyed by path, line and column, is not reported again.
+    """
+    if not entries:
+        return [], [], 0
+    tracked = [
+        path for path in git(root, "ls-files", "-z").stdout.split("\0")
+        if path.endswith(".py") and (root / path).is_file()
+    ]
+    entry_refusals = []
+    owner: dict[str, str] = {}
+    for entry in entries:
+        reason = malformed_entry(entry)
+        if reason is None:
+            matched = [path for path in tracked if path.startswith(entry)]
+            if not matched:
+                reason = f"{entry}: swept entry matches no file; name the file's new path or remove the entry"
+            for path in matched:
+                owner.setdefault(path, entry)
+        if reason is not None:
+            entry_refusals.append(reason)
+    refused = []
+    for path in sorted(owner):
+        for token in comment_tokens(root, path):
+            line, column = token.start
+            if (path, line, column) in reported or is_directive(token):
+                continue
+            refused.append(Refusal(path, line, column, (
+                f"{path}:{line}: swept: {token.string}  -> {SWEPT_DESTINATION}; "
+                f"{owner[path]} is swept, so every comment in it may only be a tool directive"
+            )))
+    return entry_refusals, refused, len(owner)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--base", default=os.environ.get("BASE_SHA"))
+    parser.add_argument("--swept", nargs="*", metavar="ENTRY",
+                        help="swept entries for this run in place of SWEPT_PREFIXES")
+    args = parser.parse_args(argv)
+    entries = SWEPT_PREFIXES if args.swept is None else tuple(args.swept)
+    try:
+        root = Path(git(Path.cwd(), "rev-parse", "--show-toplevel").stdout.strip())
+        base = resolve_base(root, args.base)
+        changed = added_lines(root, base)
+        refused = check_comments(root, changed)
+        entry_refusals, swept, files = check_swept(
+            root, entries, {(refusal.path, refusal.line, refusal.column) for refusal in refused})
+        short = git(root, "rev-parse", "--short", base).stdout.strip()
+    except (CheckError, OSError) as exc:
+        print(f"comment content: {exc}", file=sys.stderr)
+        return 2
+    for refusal in refused:
+        print(refusal.text)
+    for diagnostic in entry_refusals:
+        print(diagnostic)
+    for refusal in swept:
+        print(refusal.text)
+    print(
+        f"comment content: {len(refused)} refused on {sum(map(len, changed.values()))}"
+        f" added lines (base {short})"
+    )
+    if entries:
+        print(f"swept: {len(entry_refusals) + len(swept)} refused in {files} files ({len(entries)} entries)")
+    return 1 if refused or entry_refusals or swept else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

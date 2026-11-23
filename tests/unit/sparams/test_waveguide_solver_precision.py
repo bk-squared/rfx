@@ -78,8 +78,6 @@ def test_float64_waveguide_pole_weights(monkeypatch):
     assert captured
 
 
-
-
 @pytest.mark.parametrize("precision,x64", [("float64", False), ("mixed", False), ("mixed", True)])
 def test_nonuniform_precision_still_refused_before_fields(monkeypatch, precision, x64):
     monkeypatch.setattr(nonuniform_core, "init_state", _forbid_field_initialization)
@@ -90,8 +88,6 @@ def test_nonuniform_precision_still_refused_before_fields(monkeypatch, precision
         message = "Build and run the Simulation" if error is ValueError else "precision other than 'float32'"
         with pytest.raises(error, match=message):
             sim.compute_waveguide_s_matrix(n_steps=4, normalize=True)
-
-
 
 
 @pytest.mark.parametrize(
@@ -111,13 +107,12 @@ def test_nonuniform_precision_still_refused_before_fields(monkeypatch, precision
 )
 def test_core_field_dtype(monkeypatch, normalize, n_modes, expected_runs,
                           precision, expected_dtype):
+    """With x64 on, even explicit float32 frequencies keep extraction precision independent of the core field-storage dtype."""
     initialized = []
     initialize = uniform_setup.init_state
     run = uniform_loop.run
     make_step = uniform_loop.make_core_step
     extract_waves = _wg_move_waveguide_s._s_matrix_port_waves
-    # With x64 on, even explicit float32 frequencies keep extraction at
-    # least as wide as main, independently of the core field-storage dtype.
     expected_record = np.dtype(np.float64)
     expected_complex = np.dtype(np.complex128)
 

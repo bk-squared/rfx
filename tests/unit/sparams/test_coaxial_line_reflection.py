@@ -49,9 +49,6 @@ from rfx.sources.coaxial_port import (
 )
 
 
-# ===========================================================================
-# formerly tests/unit/sparams/test_coaxial_line_reflection.py
-# ===========================================================================
 
 BAND = jnp.asarray([4.0e9, 6.0e9, 8.0e9, 10.0e9, 12.0e9])
 
@@ -70,9 +67,7 @@ def test_short_reflects_minus_one_full_band():
     assert res.status == "passed"
     assert res.annulus_cells >= 3.5
     mag = np.abs(res.s11)
-    # lossless short: |Gamma| = 1 across the band (validated 1.00-1.03)
     assert np.all(np.abs(mag - 1.0) < 0.05), mag
-    # phase near +-180 deg (Gamma = -1): cos(angle) strongly negative
     assert np.all(np.cos(np.angle(res.s11)) < -0.85), np.degrees(np.angle(res.s11))
     assert np.all(res.recurrence_residual < 0.02), res.recurrence_residual
 
@@ -91,9 +86,7 @@ def test_matched_reflects_near_zero_and_recovers_z0():
     res = _run("matched")
     assert res.status == "passed"
     mag = np.abs(res.s11)
-    # matched load -> |Gamma| small (validated 0.02-0.05)
     assert np.all(mag < 0.08), mag
-    # inferred numerical Z0 matches analytic Z_TEM within 15%
     z0_an = coaxial_tem_characteristic_impedance(SMA_PIN_RADIUS, SMA_OUTER_RADIUS)
     z0_num = np.real(res.z0_numerical_ohm)
     assert np.all(np.abs(z0_num - z0_an) / z0_an < 0.15), (z0_num, z0_an)
@@ -101,27 +94,21 @@ def test_matched_reflects_near_zero_and_recovers_z0():
 
 @pytest.mark.slow_physics
 def test_resistive_load_reflection_magnitude():
-    # known mismatch R=25 ohm on the 48.6 ohm SMA line:
-    # |Gamma| = |(25 - 48.6)/(25 + 48.6)| = 0.321 (exact analytic, non-trivial).
+    DUT_RESISTANCE_OHM = 25.0
     sim = Simulation(domain=(0.008, 0.008, 0.040), freq_max=40.0e9, boundary="cpml")
     sim.add_coaxial_port((0.004, 0.004, 0.020), face="top", pin_length=5.0e-3,
                          waveform=GaussianPulse(f0=8.0e9, bandwidth=1.2))
     res = sim.compute_coaxial_line_reflection(
-        termination="matched", dut_impedance=25.0, n_steps=5000, freqs=BAND)
+        termination="matched", dut_impedance=DUT_RESISTANCE_OHM, n_steps=5000, freqs=BAND)
     assert res.status == "passed"
     z0 = coaxial_tem_characteristic_impedance(SMA_PIN_RADIUS, SMA_OUTER_RADIUS)
-    g_an = abs((25.0 - z0) / (25.0 + z0))
+    g_an = abs((DUT_RESISTANCE_OHM - z0) / (DUT_RESISTANCE_OHM + z0))
     assert np.all(np.abs(np.abs(res.s11) - g_an) < 0.05), (np.abs(res.s11), g_an)
 
 
 @pytest.mark.slow_physics
 def test_under_resolved_annulus_is_flagged():
-    # freq_max=20 GHz -> dx~0.75 mm -> ~1.9-cell annulus (below the >=4 recipe).
-    # At this dx the z domain fits 9 of the default 12 probe planes. Until
-    # af167a9 the extractor silently dropped the surplus planes, so this test
-    # always measured on 9; the fail-loud layout check now requires the count
-    # to be requested explicitly. The observable under test (the under_resolved
-    # flag) is independent of the probe count.
+    """At the 20 GHz mesh size the z domain fits 9 of the default 12 probe planes."""
     res = _run("short", freq_max=20.0e9, n_steps=1500, probe_count=9)
     assert res.annulus_cells < 3.5
     assert res.status == "under_resolved"
@@ -268,6 +255,7 @@ def test_absorbing_on_fewer_than_three_axes_is_rejected_before_coaxial_line_run(
 
 
 def test_periodic_axis_is_rejected_before_coaxial_line_run():
+    """A periodic lateral axis has no absorber, so the all-six-faces absorber requirement is the refusal that fires first."""
     sim = Simulation(
         domain=(0.008, 0.008, 0.040),
         freq_max=40.0e9,
@@ -276,8 +264,6 @@ def test_periodic_axis_is_rejected_before_coaxial_line_run():
     )
     sim.add_coaxial_port((0.004, 0.004, 0.020), face="top")
 
-    # A periodic lateral axis has no absorber, so the all-six-faces absorber
-    # requirement (issue 1218) is the refusal that fires first.
     with pytest.raises(ValueError, match="positive CPML thickness on all six faces"):
         sim.compute_coaxial_line_reflection(n_steps=1, n_freqs=1)
 
@@ -316,6 +302,7 @@ def test_nonabsorbing_z_face_is_rejected_before_coaxial_line_run(z_boundary):
     ids=("x_pec", "x_pmc", "y_pec"),
 )
 def test_mixed_transverse_boundary_is_rejected_before_coaxial_line_run(boundary):
+    """A lateral face without an absorber is a PEC or PMC wall behind the line."""
     sim = Simulation(
         domain=(0.008, 0.008, 0.040),
         freq_max=40.0e9,
@@ -325,8 +312,6 @@ def test_mixed_transverse_boundary_is_rejected_before_coaxial_line_run(boundary)
     )
     sim.add_coaxial_port((0.004, 0.004, 0.020), face="top")
 
-    # A lateral face without an absorber is a PEC or PMC wall behind the line:
-    # the closed can of issue 1218 on that side.
     with pytest.raises(ValueError, match="positive CPML thickness on all six faces"):
         sim.compute_coaxial_line_reflection(n_steps=1, n_freqs=1)
 
@@ -461,15 +446,13 @@ def test_probe_count_must_be_an_integer_before_coaxial_line_run(probe_count):
         )
 
 
-# ===========================================================================
-# formerly tests/unit/sparams/test_coaxial_line_reflection.py
-# ===========================================================================
 
 def _synth(beta, gamma_load, *, ref_m, planes, A=1.0, alpha=0.0):
     """V(z)=A e^{+γz}+B e^{-γz} with γ=α+jβ, tuned so Γ(ref_m)=gamma_load
-    when the load is BELOW the probe span."""
+    when the load is BELOW the probe span.
+    The incident wave toward negative z is ``A e^{+γz}``.
+    """
     g = alpha + 1j * beta
-    # incident (toward -z) = A e^{+γz}; Γ = (B e^{-γ ref})/(A e^{+γ ref})
     B = gamma_load * A * np.exp(+2.0 * g * ref_m)
     z = np.asarray(planes, float)
     V = A * np.exp(+g * z) + B * np.exp(-g * z)
@@ -478,14 +461,18 @@ def _synth(beta, gamma_load, *, ref_m, planes, A=1.0, alpha=0.0):
 
 @pytest.mark.parametrize("gamma_load", [-1.0 + 0j, 1.0 + 0j, 0.3 + 0.4j, -0.2 - 0.5j, 0.0 + 0j])
 def test_recovers_known_reflection_lossless(gamma_load):
-    beta = 180.0  # rad/m
+    LOSSLESS_BETA_RAD_PER_M = 180.0
+    beta = LOSSLESS_BETA_RAD_PER_M
     ref = 0.000
-    planes = ref + np.array([6, 10, 14, 18, 22, 26]) * 0.75e-3  # equally spaced, above load
+    planes = ref + np.array([6, 10, 14, 18, 22, 26]) * 0.75e-3
+    assert np.all(planes > ref) and np.allclose(np.diff(planes), np.diff(planes)[0]), (
+        'lossless probe planes must be equally spaced above the load'
+    )
     z, V = _synth(beta, gamma_load, ref_m=ref, planes=planes)
     out = extract(z, V, reference_plane_m=ref)
     assert out.reflection == pytest.approx(gamma_load, abs=1e-6)
     assert np.imag(out.gamma) == pytest.approx(beta, rel=1e-6)
-    assert abs(np.real(out.gamma)) < 1e-6          # lossless => alpha ~ 0
+    assert abs(np.real(out.gamma)) < 1e-6
     assert out.recurrence_residual < 1e-9
     assert out.fit_residual < 1e-9
 
@@ -507,8 +494,7 @@ def test_load_above_probes_branch():
     beta, gamma_load = 200.0, 0.6 + 0.0j
     g = 1j * beta
     ref = 0.030
-    planes = np.array([6, 10, 14, 18, 22]) * 0.75e-3  # below ref
-    # incident toward +z = B e^{-γz}; Γ = (A e^{+γ ref})/(B e^{-γ ref})
+    planes = np.array([6, 10, 14, 18, 22]) * 0.75e-3
     B = 1.0
     A = gamma_load * B * np.exp(-2.0 * g * ref)
     z = planes
@@ -534,20 +520,14 @@ def test_lossless_reflection_magnitude_is_unity_for_reactive_load():
 def test_input_validation():
     z = np.array([1.0, 2.0, 3.0]) * 1e-3
     V = np.array([1 + 0j, 0.5 + 0j, 0.2 + 0j])
-    # too few planes
     with pytest.raises(ValueError):
         extract(z[:2], V[:2], reference_plane_m=0.0)
-    # unequal spacing
     with pytest.raises(ValueError):
         extract(np.array([1.0, 2.0, 4.0]) * 1e-3, V, reference_plane_m=0.0)
-    # all-zero voltages (concrete path keeps the informative raise)
     with pytest.raises(ValueError):
         extract(z, np.zeros(3, complex), reference_plane_m=0.0)
 
 
-# --- AD-traceability (coax AD-traceable extractor) --------------------------
-# Traced voltages dispatch to a jax.numpy core; concrete voltages keep the
-# byte-identical NumPy path. These gate the differentiable path.
 
 def test_reflection_extractor_grad_matches_closed_form_and_fd():
     """On a planted two-wave profile V = θ·e^{+jβz} + 0.3·e^{-jβz} the load
@@ -578,7 +558,7 @@ def test_reflection_grad_finite_at_reactive_null():
     z = np.linspace(0.002, 0.013, 12)
 
     def obj(theta):
-        # B on the unit circle, A=θ  ->  |Γ| = 1/θ  (=1 at θ=1)
+        """With B on the unit circle and A=θ, |Γ| = 1/θ (=1 at θ=1)."""
         V = theta * jnp.exp(1j * 150.0 * jnp.asarray(z)) + np.exp(
             1j * np.radians(120.0)
         ) * jnp.exp(-1j * 150.0 * jnp.asarray(z))

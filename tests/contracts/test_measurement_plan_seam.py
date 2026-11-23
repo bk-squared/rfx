@@ -64,7 +64,7 @@ def run_flags(sim, grid):
         from rfx.sources.tfsf import tfsf_from_declaration
         from rfx.boundaries.tfsf import boundary_flags
         periodic = boundary_flags(tfsf_from_declaration(sim._tfsf, grid, sim._freq_max,
-                                                       n_steps=12)[0], grid)[0]
+                                                       n_steps=12, dtype='float32')[0], grid)[0]
     return resolve_periodic(grid, periodic)
 
 
@@ -140,7 +140,6 @@ def test_b2_flux(case):
     plan = plan_for(sim, grid, periodic=flags, dft_window=cfg.window)
     flux_nodes(next(o for o in plan.owners if o.kind == 'flux'), cfg, grid, flags)
     if case in ('2d', 'floquet'):
-        # The AD carry explicitly passes this second formation today.
         carry_flags = sim._periodic_flags()
         assert carry_flags == monitor_periodic_flags(sim, grid)
         assert carry_flags == ((False, False, False) if case == '2d' else (True, True, False))
@@ -362,8 +361,9 @@ def test_b2_uniform_slab_ports():
     mesh = jax.sharding.Mesh(np.asarray(jax.devices()[:2]), ('x',))
     layout = SimpleNamespace(n_devices=mesh.size, nx_per_rank=(grid.nx+mesh.size-1)//mesh.size, ghost_width=1)
     boundary = SimpleNamespace(pmc_faces=sim._boundary_spec.pmc_faces(), periodic=run_flags(sim, grid))
-    slab = UniformSlabPorts(grid, sim._ports, specs, boundary, layout, mesh, 12, jnp.float32, FREQS)
     plan = plan_for(sim, grid, path='run_distributed')
+    slab = UniformSlabPorts(grid, sim._ports, specs, boundary, layout, mesh, 12, jnp.float32, FREQS,
+                            measurement=plan)
     owner = next(o for o in plan.owners if o.kind == 'wire')
     for channel, expected in zip(owner.channels, slab.owners[0].channels):
         nodes(channel, [(n.component, n.i, n.j, n.k, n.weight, n.area) for n in expected.nodes])

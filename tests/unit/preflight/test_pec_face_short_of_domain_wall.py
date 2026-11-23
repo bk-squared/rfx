@@ -30,11 +30,11 @@ from rfx.preflight._common import PreflightWarning
 
 MM = 1e-3
 DX = 1 * MM
-A_WG = 22.86 * MM          # WR-90 broad wall, declared
-B_WG = 10.16 * MM          # WR-90 narrow wall, declared
-B_DOMAIN = 10.75 * MM      # domain lid inside the 10..11 mm solved cell
-A_REALIZED = float(np.ceil(A_WG / DX)) * DX     # 23 mm
-B_REALIZED = float(np.ceil(B_WG / DX)) * DX     # 11 mm
+A_WG = 22.86 * MM
+B_WG = 10.16 * MM
+B_DOMAIN = 10.75 * MM
+A_REALIZED = float(np.ceil(A_WG / DX)) * DX
+B_REALIZED = float(np.ceil(B_WG / DX)) * DX
 CODE = "pec_face_short_of_domain_wall"
 
 
@@ -42,7 +42,7 @@ def _sim(guide_y: float, guide_z: float) -> Simulation:
     """A nominal WR-90 plug below a separately declared PEC domain lid."""
     sim = Simulation(
         freq_max=12.4e9, domain=(20 * MM, A_WG, B_DOMAIN), dx=DX,
-        snap="declared",  # The drawn plug's open wall slot is intentional.
+        snap="declared",
         boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
                               y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),
@@ -65,11 +65,8 @@ def test_plug_drawn_to_the_declared_cross_section_fires():
     hits = rep.by_code(CODE)
     assert len(hits) == 1, [str(h) for h in rep]
     text = str(hits[0])
-    # exactly ONE face is short — the narrow axis; the broad axis rounded
-    # up onto its wall and must not be reported.
     assert "1 PEC volume face(s)" in text, text
     assert "z_hi face" in text and "y_hi" not in text, text
-    # both positions quoted in physical units, plus the gap
     assert "10mm" in text and "11mm" in text, text
     assert "ONE-CELL gap of 1mm" in text, text
     assert "REMEDY" in text and "REALIZED wall plane" in text, text
@@ -110,7 +107,6 @@ def test_ordinary_models_stay_silent():
     body deliberately parked one cell off a PEC wall DOES fire — that is a
     slot, and the message says so rather than guessing at intent.
     """
-    # (a) patch antenna in a CPML box: every face absorbs, no wall exists
     cpml = Simulation(freq_max=10e9, domain=(30 * MM, 30 * MM, 12 * MM),
                       dx=0.5 * MM, boundary="cpml", cpml_layers=8)
     cpml.add_material("sub", eps_r=2.2)
@@ -119,14 +115,12 @@ def test_ordinary_models_stay_silent():
              material="pec")
     assert cpml.preflight().by_code(CODE) == []
 
-    # (b) a post well inside a PEC cavity: nowhere near a wall
     post = Simulation(freq_max=10e9, domain=(20 * MM, 20 * MM, 20 * MM),
                       dx=1 * MM, boundary="pec")
     post.add(Box((8 * MM, 8 * MM, 5 * MM), (12 * MM, 12 * MM, 15 * MM)),
              material="pec")
     assert post.preflight().by_code(CODE) == []
 
-    # (c) a slab drawn wall to wall: reaching IS the correct drawing
     walls = BoundarySpec(x=Boundary(lo="pec", hi="pec"),
                          y=Boundary(lo="pec", hi="pec"),
                          z=Boundary(lo="cpml", hi="cpml"))
@@ -136,7 +130,6 @@ def test_ordinary_models_stay_silent():
                  material="pec")
     assert reaching.preflight().by_code(CODE) == []
 
-    # (d) the same slab parked one cell off both x walls: two faces short
     short = Simulation(freq_max=10e9, domain=(20 * MM, 20 * MM, 20 * MM),
                        dx=1 * MM, boundary=walls, cpml_layers=8)
     short.add(Box((1 * MM, 0, 8 * MM), (19 * MM, 20 * MM, 10 * MM)),

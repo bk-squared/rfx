@@ -45,7 +45,6 @@ def cross_trace(factory, lane, devices, label, *, prefixes):
             if lane == 'run':
                 out = sim.run(n_steps=n, skip_preflight=True, devices=dev)
                 values = {f: np.asarray(getattr(out.state, f)) for f in FIELDS}
-                # Retain the CPML outer tangential-E plane witness.
                 for c, f in enumerate(FIELDS[:3]):
                     for axis in range(3):
                         if axis != c:

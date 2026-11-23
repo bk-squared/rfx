@@ -74,12 +74,13 @@ def test_registration_refuses(boundary, method_b, faces):
 @pytest.mark.parametrize("entry", ["run", "run_skip", "forward", "forward_skip",
                                    "preflight", "descriptor", "serialization"])
 def test_deferred_mesh_refuses_before_stepping(boundary, method_b, faces, entry, monkeypatch):
+    """Registration must not resolve an automatic mesh."""
     def stepped(*args, **kwargs):
         pytest.fail("stepping reached with an explicit nonperiodic TF/SF side face")
 
     monkeypatch.setattr("rfx.stepping.uniform.make_uniform_step", stepped)
     sim = source(scene(boundary, dx=None), method_b)
-    assert sim._tfsf is not None  # Registration must not resolve an automatic mesh.
+    assert sim._tfsf is not None
     with pytest.raises(ValueError) as error:
         invoke(sim, entry)
     assert_conflicts(str(error.value), faces, method_b)
@@ -87,18 +88,17 @@ def test_deferred_mesh_refuses_before_stepping(boundary, method_b, faces, entry,
 
 @pytest.mark.parametrize("entry", ["run_skip", "forward_skip", "preflight", "descriptor", "serialization"])
 def test_refresh_reads_current_declaration(entry):
+    """No public boundary setter exists; internal rebuilds replace the frozen spec."""
     sim = source(scene())
-    # No public boundary setter exists. Internal rebuilds replace the frozen
-    # spec; refresh must check that current declaration rather than its cache.
     sim._boundary_spec = BoundarySpec(x="cpml", y="pmc", z="pec")
     with pytest.raises(ValueError, match="y_lo='pmc'.*z_hi='pec'"):
         invoke(sim, entry)
 
 
 def trace(boundary, method_b=False, graded=False, entry="run"):
+    """The probe first becomes nonzero at index 28 on Method B (charge-free onset)."""
     sim = source(scene(boundary, graded=graded), method_b)
     sim.add_probe((.017, .005, .006), "ez")
-    # The probe first becomes nonzero at index 28 on Method B (charge-free onset).
     steps = 32 if method_b else 24
     result = getattr(sim, entry)(n_steps=steps, skip_preflight=True)
     values = np.asarray(result.time_series)

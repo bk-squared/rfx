@@ -91,7 +91,6 @@ def test_float64_model_invariant(captured_scenes):
         for label in SCENES:
             counts = Counter()
             if label.endswith('tfsf'):
-                # A2d: split once; this scene already contains only one object.
                 for _ in range(2):
                     with pytest.raises(ValueError, match='update.materials.eps_r prevents an invariant periodic replacement'):
                         captured_scenes(label)
@@ -201,8 +200,58 @@ def test_uniform_source_coefficient_values(captured_scenes, source):
     _, component, dt, actual = data['sources'][source]
     assert component.lower() == 'ez'
     eps, sigma = ((1., 0.), (4., .05))[source]
-    # Same declared epsilon_0 as the solver, written without calling helpers.
     eps0 = np.float64(8.8541878128e-12)
     dt = np.float64(dt)
     expected = (dt/eps0)/(np.float64(eps)+np.float64(sigma)*(dt/(2*eps0)))
     assert_spacings(actual, expected, 12)
+
+
+@pytest.mark.parametrize('label', ['G-x', 'G-yz'])
+@pytest.mark.parametrize('axis', range(3), ids=list('xyz'))
+def test_graded_width_values(captured_scenes, label, axis):
+    _, data = captured_scenes(label)
+    grid = data['grid']
+    actual = np.asarray((grid.dx_arr, grid.dy_arr, grid.dz)[axis])
+    assert actual.dtype == np.dtype('float64')
+    np.testing.assert_array_equal(actual, np.asarray(grid.cells(axis), dtype=np.float64))
+
+
+@pytest.mark.parametrize('label', ['G-x', 'G-yz'])
+@pytest.mark.parametrize('axis', range(3), ids=list('xyz'))
+@pytest.mark.parametrize('kind', [0, 1], ids=['E', 'H'])
+def test_graded_metric_values(captured_scenes, label, axis, kind):
+    from tests.contracts.float64_grid_reference import inverse_reference, assert_spacings
+    _, data = captured_scenes(label)
+    grid = data['grid']
+    actual = getattr(grid, 'inv_d'+'xyz'[axis]+('_h' if kind else ''))
+    assert_spacings(actual, inverse_reference(grid.cells(axis))[kind], 2)
+
+
+@pytest.mark.parametrize('label', ['G-x', 'G-yz'])
+def test_graded_mu_values(captured_scenes, label):
+    from tests.contracts.float64_value_reference import assert_spacings
+    _, data = captured_scenes(label)
+    mu = np.asarray(data['materials'].mu_r, dtype=np.float64)
+    for axis, actual in enumerate(data['materials'].components.mu):
+        index = np.maximum(np.arange(mu.shape[axis])-1, 0)
+        lo = np.take(mu, index, axis=axis)
+        shape = [1, 1, 1]
+        shape[axis] = mu.shape[axis]
+        widths = np.asarray(data['grid'].cells(axis), dtype=np.float64)
+        hi_d, lo_d = widths.reshape(shape), widths[index].reshape(shape)
+        expected = 1/((lo_d/(lo_d+hi_d))/lo+(hi_d/(lo_d+hi_d))/mu)
+        assert_spacings(actual, expected, 11)
+        np.testing.assert_array_equal(np.asarray(actual)[lo == mu], mu[lo == mu])
+
+
+@pytest.mark.parametrize('label', ['U-mat', 'G-x', 'G-yz'])
+@pytest.mark.parametrize('face', [a+s for a in 'xyz' for s in ('_lo', '_hi')])
+@pytest.mark.parametrize('magnetic', [False, True], ids=['E', 'H'])
+@pytest.mark.parametrize('quantity', ['sigma', 'kappa', 'alpha', 'b', 'c'])
+def test_concrete_cpml_values(captured_scenes, label, face, magnetic, quantity):
+    from tests.contracts.float64_grid_reference import check_profile
+    _, data = captured_scenes(label)
+    grid = data['cpml_grid']
+    profiles = data['cpml'].magnetic if magnetic else data['cpml']
+    check_profile(getattr(profiles, face), quantity, dt=grid.dt, width=.5e-3,
+                  n=8, high=face.endswith('hi'), magnetic=magnetic)

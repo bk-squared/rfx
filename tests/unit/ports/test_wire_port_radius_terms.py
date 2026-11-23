@@ -46,9 +46,9 @@ def _assert_same_tree(actual, expected):
 
 
 def test_lattice_radius_adds_only_four_contour_storage_terms(capsys):
+    """The uniform scene declaration supplies the oracle, independently of stamping."""
     bare = _scene(None)
     declared = _scene(LATTICE_RADIUS * D)
-    # The uniform scene declaration supplies the oracle, independently of stamping.
     eps_c = declared._materials[declared._geometry[0].material_name].eps_r
     with capsys.disabled():
         for issue in bare.preflight():

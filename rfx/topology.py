@@ -32,6 +32,8 @@ Key concepts
   0 or 1 (binary), controlled by sharpness parameter beta.
 - **Beta continuation**: Gradually increasing beta during optimization
   starts with a smooth (convex-ish) landscape and ends with near-binary.
+
+Standalone calls of the public helpers keep float32; run callers pass dtype.
 """
 
 from __future__ import annotations
@@ -57,10 +59,6 @@ from rfx.optimize import _value_and_grad_with_fallback
 from rfx.optimizers import _Adam
 from rfx.preflight.realization import release_inspection
 
-
-# ---------------------------------------------------------------------------
-# TopologyDesignRegion
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class TopologyDesignRegion:
@@ -104,11 +102,6 @@ class TopologyDesignRegion:
         return self.filter_radius
 
 
-# ---------------------------------------------------------------------------
-# Filtering and projection (all differentiable)
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class TopologyMaterialFields:
     """Material fields produced by the density pipeline."""
@@ -116,7 +109,7 @@ class TopologyMaterialFields:
     sigma: jnp.ndarray
     pec_occupancy: jnp.ndarray | None = None
 
-def apply_density_filter(rho: jnp.ndarray, radius_cells: float) -> jnp.ndarray:
+def apply_density_filter(rho: jnp.ndarray, radius_cells: float, *, dtype=jnp.float32) -> jnp.ndarray:
     """Cone-shaped density filter for minimum feature size control.
 
     Convolves the density field with a normalized cone kernel:
@@ -143,30 +136,23 @@ def apply_density_filter(rho: jnp.ndarray, radius_cells: float) -> jnp.ndarray:
     ndim = rho.ndim
     r_int = int(jnp.ceil(radius_cells))
 
-    # Build cone kernel for 2D or 3D.
-    # We use an *unnormalized* kernel and divide by the local weight sum
-    # to handle boundaries correctly (standard topology-optimization trick:
-    # cells near edges see fewer kernel neighbours, so the raw convolution
-    # would dip below the true average).
     if ndim == 2:
-        ax = jnp.arange(-r_int, r_int + 1, dtype=jnp.float32)
+        ax = jnp.arange(-r_int, r_int + 1, dtype=jnp.promote_types(dtype, jnp.float32))
         xx, yy = jnp.meshgrid(ax, ax, indexing="ij")
         dist = jnp.sqrt(xx ** 2 + yy ** 2)
         kernel = jnp.maximum(0.0, 1.0 - dist / radius_cells)
-        # Do NOT normalize kernel here — we normalise per-cell below
-        rho_4d = rho[None, None, :, :]  # (1, 1, nx, ny)
-        kernel_4d = kernel[None, None, :, :]  # (1, 1, kx, ky)
+        rho_4d = rho[None, None, :, :]
+        kernel_4d = kernel[None, None, :, :]
         numerator = jax.lax.conv(rho_4d, kernel_4d,
                                  window_strides=(1, 1),
                                  padding="SAME", precision=HIGHEST)
-        # Local weight sum: convolve ones with the same kernel
         ones_4d = jnp.ones_like(rho_4d)
         denominator = jax.lax.conv(ones_4d, kernel_4d,
                                    window_strides=(1, 1),
                                    padding="SAME", precision=HIGHEST)
         return (numerator / denominator)[0, 0]
     elif ndim == 3:
-        ax = jnp.arange(-r_int, r_int + 1, dtype=jnp.float32)
+        ax = jnp.arange(-r_int, r_int + 1, dtype=jnp.promote_types(dtype, jnp.float32))
         xx, yy, zz = jnp.meshgrid(ax, ax, ax, indexing="ij")
         dist = jnp.sqrt(xx ** 2 + yy ** 2 + zz ** 2)
         kernel = jnp.maximum(0.0, 1.0 - dist / radius_cells)
@@ -232,6 +218,7 @@ def density_to_material_fields(
     *,
     pec_bg: bool = False,
     pec_fg: bool = False,
+    dtype=jnp.float32,
 ) -> TopologyMaterialFields:
     """Convert density to differentiable material fields.
 
@@ -239,10 +226,12 @@ def density_to_material_fields(
     When one side of the interpolation is PEC, it instead keeps the
     non-conducting material properties and emits a relaxed conductor
     occupancy field for the solver-level PEC operator.
+
+    Outside a run the public default ``dtype`` stays float32.
     """
     rho_f = rho
     if filter_radius_cells is not None and filter_radius_cells >= 0.5:
-        rho_f = apply_density_filter(rho, filter_radius_cells)
+        rho_f = apply_density_filter(rho, filter_radius_cells, dtype=dtype)
     rho_p = apply_projection(rho_f, beta)
 
     if pec_bg and pec_fg:
@@ -274,7 +263,10 @@ def density_to_eps(
     sigma_bg: float = 0.0,
     sigma_fg: float = 0.0,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Backward-compatible density -> (eps, sigma) helper."""
+    """Backward-compatible density -> (eps, sigma) helper.
+
+    This public convenience helper has no run and keeps float32 filtering.
+    """
     fields = density_to_material_fields(
         rho,
         eps_bg,
@@ -283,13 +275,10 @@ def density_to_eps(
         beta=beta,
         sigma_bg=sigma_bg,
         sigma_fg=sigma_fg,
+        dtype='float32',
     )
     return fields.eps, fields.sigma
 
-
-# ---------------------------------------------------------------------------
-# TopologyResult
-# ---------------------------------------------------------------------------
 
 @dataclass
 class TopologyResult:
@@ -324,10 +313,6 @@ class TopologyResult:
         return self.history
 
 
-# ---------------------------------------------------------------------------
-# Default beta schedule
-# ---------------------------------------------------------------------------
-
 _DEFAULT_BETA_SCHEDULE: list[tuple[int, float]] = [
     (0, 1.0),
     (30, 4.0),
@@ -348,10 +333,6 @@ def _get_beta(iteration: int, schedule: list[tuple[int, float]]) -> float:
             beta = b
     return beta
 
-
-# ---------------------------------------------------------------------------
-# Main optimizer
-# ---------------------------------------------------------------------------
 
 def topology_optimize(
     sim: Simulation,
@@ -405,30 +386,22 @@ def topology_optimize(
     -------
     TopologyResult
         Contains final density, permittivity, loss history, and beta history.
-    """
-    resolve_field_dtype(sim._precision)
+    The reported binarization is zero for binary density and one for uniformly half-filled density."""
+    dtype = jnp.promote_types(resolve_field_dtype(sim._precision) or jnp.float32, jnp.float32)
     sim._require_uniform_mesh("topology_optimize")
     sim._auto_preflight(skip=skip_preflight, context="topology_optimize")
-    # Refuse unsupported surface-impedance sheets at entry.
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     from rfx.model.wall_loss import refuse_wall_loss
     refuse_wall_loss(sim, "topology-optimization")
     _refuse_f0(sim._thin_conductors, "topology-optimization")
     from rfx.runners._admission import admit
     admit(sim, "topology_optimize")
-    # Refuse refinement before constructing the optimization forward.
     sim._require_no_refinement_without_a_subgrid("topology_optimize()")
 
-    # Build grid and compute design region indices
     grid = sim._build_grid()
     from rfx._internal._periodic import interval_indices
     lo_idx, hi_idx = map(list, interval_indices(grid, design_region.corner_lo, design_region.corner_hi))
 
-    # Clamp indices to the interior region (exclude CPML padding).
-    # Without this, a design region at the domain edge can overlap
-    # with CPML cells, causing shape mismatches and incorrect gradients.
-    # Per-face pads: a PMC/PEC/periodic face has pad=0 on its
-    # side, so the design can touch that reflector.
     pads_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)
     pads_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)
     dims = (grid.nx, grid.ny, grid.nz)
@@ -446,9 +419,6 @@ def topology_optimize(
             f"region does not lie entirely within the CPML boundary."
         )
 
-    # The design arrays reach the solve whole-grid and traced, so the
-    # current-moment monitor's guard checks the cells they can change: the
-    # design region's bounds. Run the guard here, before tracing the forward.
     design_region_cells = SimpleNamespace(bounds=(
         lo_idx[0], hi_idx[0] + 1, lo_idx[1], hi_idx[1] + 1,
         lo_idx[2], hi_idx[2] + 1))
@@ -462,9 +432,6 @@ def topology_optimize(
     if beta_schedule is None:
         beta_schedule = _DEFAULT_BETA_SCHEDULE
 
-    # Resolve material permittivities and conductivities.
-    # _resolve_material checks user-registered materials (sim._materials)
-    # first, then falls back to MATERIAL_LIBRARY.
     try:
         mat_bg = sim._resolve_material(design_region.material_bg)
     except KeyError as exc:
@@ -481,7 +448,6 @@ def topology_optimize(
     bg_is_pec = sigma_bg >= pec_threshold
     fg_is_pec = sigma_fg >= pec_threshold
 
-    # Compute filter radius in cells
     filt_r = design_region.effective_filter_radius
     filter_radius_cells = None
     if filt_r is not None:
@@ -493,13 +459,9 @@ def topology_optimize(
         grid, pec_sheets=_topo_pec_sheets, pec_wires=_topo_pec_wires)
     base_mu_r = base_materials.mu_r
 
-    # Initialize density
     if init_density is None:
-        init_density = 0.5 * jnp.ones(design_shape, dtype=jnp.float32)
+        init_density = 0.5 * jnp.ones(design_shape, dtype=dtype)
 
-    # We optimize in logit space for unconstrained optimization,
-    # then map back via sigmoid to keep density in [0, 1].
-    # logit(0.5) = 0
     init_logit = jnp.log(init_density / (1.0 - init_density + 1e-8) + 1e-8)
 
     opt = _Adam(learning_rate)
@@ -524,6 +486,7 @@ def topology_optimize(
             sigma_fg=sigma_fg,
             pec_bg=bg_is_pec,
             pec_fg=fg_is_pec,
+            dtype=dtype,
         )
 
         si, sj, sk = lo_idx
@@ -532,14 +495,13 @@ def topology_optimize(
         from rfx.core.yee import MaterialArrays
         from rfx.model.occupancy import occupancy_from_design
         window = (slice(si, ei + 1), slice(sj, ej + 1), slice(sk, ek + 1))
-        # Retain the existing fresh-container boundary (including absent records).
         cells = MaterialArrays(eps_r=base_materials.eps_r, sigma=base_materials.sigma,
                                mu_r=base_mu_r, sigma_film=base_materials.sigma_film)
         materials = apply_material_overrides(
             cells, eps_override=fields.eps.astype(base_materials.eps_r.dtype),
             sigma_override=fields.sigma.astype(base_materials.sigma.dtype),
             window=(slice(None),) * 3, box_local=window)._replace(mu_r=base_mu_r)
-        pec_occupancy = occupancy_from_design(grid.shape, window, fields.pec_occupancy)
+        pec_occupancy = occupancy_from_design(grid.shape, window, fields.pec_occupancy, dtype=dtype)
 
         result = sim._forward_from_materials(
             grid,
@@ -552,8 +514,6 @@ def topology_optimize(
             pec_sheets=tuple(_topo_pec_sheets),
             pec_wires=tuple(_topo_pec_wires),
             pec_occupancy=pec_occupancy,
-            # The design arrays are whole-grid and traced; the monitor's
-            # guard checks the region they can change instead.
             monitor_overrides={"design_region": design_region_cells},
         )
         import inspect
@@ -563,7 +523,7 @@ def topology_optimize(
         return objective(result)
 
     grad_fn = _value_and_grad_with_fallback(forward, jit, "topology_optimize")
-    last_good = logit  # last design with a confirmed-finite forward+gradient
+    last_good = logit
     for it in range(n_iterations):
         beta = _get_beta(it, beta_schedule)
         if beta_history and beta != beta_history[-1]:
@@ -572,13 +532,8 @@ def topology_optimize(
 
         req = opt.ask(state)
         logit = req.x
-        loss, grad = grad_fn(req.x, jnp.asarray(beta, dtype=jnp.float32))
+        loss, grad = grad_fn(req.x, jnp.asarray(beta, dtype=dtype))
 
-        # NaN/Inf gradient guard (see optimize() for rationale): a non-finite
-        # gradient would silently poison ``logit`` via the Adam update and
-        # every later iteration. Stop fast with a cause hint and RESTORE the
-        # last design whose forward was finite (the current ``logit`` is the
-        # one that just diverged).
         if not (bool(jnp.isfinite(loss)) and bool(jnp.all(jnp.isfinite(grad)))):
             import warnings as _w
             _w.warn(
@@ -592,7 +547,7 @@ def topology_optimize(
             logit = last_good
             break
 
-        last_good = logit  # this design produced a finite forward+gradient
+        last_good = logit
         loss_val = float(loss)
         history.append(loss_val)
 
@@ -602,14 +557,12 @@ def topology_optimize(
         if verbose and (it % 10 == 0 or it == n_iterations - 1):
             rho_raw = jax.nn.sigmoid(logit)
             rho_proj = apply_projection(rho_raw, beta)
-            # Binarization: 0 = fully binary, 1 = maximally intermediate
             binarization = float(jnp.mean(4.0 * rho_proj * (1.0 - rho_proj)))
             print(
                 f"  iter {it:4d}  loss = {loss_val:.6e}  "
                 f"beta = {beta:.1f}  binarization = {binarization:.3f}"
             )
 
-    # Final density and eps
     final_rho = jax.nn.sigmoid(logit)
     final_fields = density_to_material_fields(
         final_rho,
@@ -621,20 +574,17 @@ def topology_optimize(
         sigma_fg=sigma_fg,
         pec_bg=bg_is_pec,
         pec_fg=fg_is_pec,
+        dtype=dtype,
     )
     final_eps = final_fields.eps
 
-    # Compute projected density for reporting
     rho_filtered = final_rho
     if filter_radius_cells is not None and filter_radius_cells >= 0.5:
-        rho_filtered = apply_density_filter(final_rho, filter_radius_cells)
+        rho_filtered = apply_density_filter(final_rho, filter_radius_cells, dtype=dtype)
     rho_projected = apply_projection(
         rho_filtered, _get_beta(n_iterations - 1, beta_schedule),
     )
 
-    # The optimization solves through _forward_from_materials, which never reaches
-    # _dispatch_plan, so it releases the inspection products its preflight cached, as the
-    # calculators that bypass dispatch do.
     release_inspection(sim)
     return TopologyResult(
         density=final_rho,

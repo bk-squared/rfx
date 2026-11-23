@@ -13,7 +13,10 @@ from tests.unit.runners.test_distributed_edge_averaged_materials import _debye_b
 
 def test_traced_override_drive_is_trace_invariant_in_a_debye_medium():
     sim = _debye_box('cpml', 'fwd', 'debye')
-    sim.add_probe(_mm(4, 6, 6), 'ez')  # the source edge
+    SOURCE_EDGE_X_MM = 4
+    SOURCE_EDGE_Y_MM = 6
+    SOURCE_EDGE_Z_MM = 6
+    sim.add_probe(_mm(SOURCE_EDGE_X_MM, SOURCE_EDGE_Y_MM, SOURCE_EDGE_Z_MM), 'ez')
     eps = jnp.asarray(sim._assemble_materials_nu(sim._build_nonuniform_grid())[0].eps_r)
 
     def series(e):

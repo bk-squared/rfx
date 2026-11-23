@@ -30,11 +30,7 @@ def _whole_array(state, params, psi, grid, materials, faces, magnetic, walls=())
     for target in range(3):
         material = materials.eps_r
         if magnetic:
-            # Uniform Yee H faces use the harmonic mean with the backward
-            # cell on the component axis; the outer cell is edge-replicated.
             mu = materials.mu_r
-            # A high face with no absorber layers is a wall: the mean reads
-            # the last inside cell there, not the stored cell beyond it.
             for axis, pad in enumerate(grid.face_pads[1::2]):
                 if pad == 0 and mu.shape[axis] > 1:
                     last = [slice(None)] * 3
@@ -81,8 +77,6 @@ def _whole_array(state, params, psi, grid, materials, faces, magnetic, walls=())
                 coefficient = coefficients[target][sl]
                 signed = (-sign if magnetic else sign) * coefficient
                 field = fields[component].at[sl].add(signed * updated)
-                # The x branch multiplies the coefficient first; the y/z
-                # branches form kappa*curl before coefficient multiplication.
                 correction = (signed * (1 / k - 1) * curl if axis == 0
                               else signed * ((1 / k - 1) * curl))
                 fields[component] = field.at[sl].add(correction)
@@ -111,7 +105,6 @@ def _scene(wall="z_hi", varying_mu=False):
     psi = psi._replace(**{k: jnp.asarray(rng.normal(size=v.shape), jnp.float32)
                          for k, v in zip(psi._fields, psi)})
     materials = init_materials(grid.shape)
-    # Eps, and optionally mu, vary along all three axes, including absorbers.
     eps = jnp.asarray(rng.uniform(1, 4, grid.shape), jnp.float32)
     mu = (jnp.asarray(rng.uniform(1, 3, grid.shape), jnp.float32)
           if varying_mu else materials.mu_r)

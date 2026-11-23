@@ -13,10 +13,6 @@ from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 
-# ---------------------------------------------------------------------------
-# Explicit BoundarySpec path
-# ---------------------------------------------------------------------------
-
 class TestExplicitBoundarySpec:
     def test_boundary_spec_passed_directly(self):
         spec = BoundarySpec(x="cpml", y="periodic",
@@ -26,7 +22,6 @@ class TestExplicitBoundarySpec:
             boundary=spec,
         )
         assert sim._boundary_spec == spec
-        # Derived legacy views stay in sync.
         assert sim._periodic_axes == "y"
         assert "z_lo" in sim._pec_faces
 
@@ -47,10 +42,6 @@ class TestExplicitBoundarySpec:
                 boundary=spec,
             )
 
-
-# ---------------------------------------------------------------------------
-# Legacy scalar path
-# ---------------------------------------------------------------------------
 
 class TestLegacyScalarPath:
     def test_scalar_cpml_round_trip(self):

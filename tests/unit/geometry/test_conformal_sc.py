@@ -77,7 +77,6 @@ def test_sc_three_cell_incidence():
     areas = [np.ones((3, 3, 3)) for _ in range(3)]
     areas[0][1, 1, 1], areas[1][1, 1, 1], areas[2][1, 1, 1] = .1, .3, 0.
     expected = [a.copy() for a in lengths]
-    # Enumerate each face's four bounding E edges independently.
     for normal in range(3):
         transverse = [a for a in range(3) if a != normal]
         for face in np.ndindex((3, 3, 3)):
@@ -93,12 +92,13 @@ def test_sc_three_cell_incidence():
         np.testing.assert_array_equal(actual, want)
 
 
-def test_union_is_taken_at_nodes_before_edge_roots():
+def test_two_box_union_keeps_a_sub_cell_gap_open():
+    """An x edge from a node inside one Box to a node inside the other crosses the half-cell gap between them; its free length is that gap."""
     grid = RectGrid(widths=(1.,) * 3, pad_x_lo=0, pad_y_lo=0, pad_z_lo=0)
     shapes = [Box((-10.,) * 3, (.25, 10., 10.)),
               Box((.75, -10., -10.), (10.,) * 3)]
     lengths, _ = compute_conformal_fractions(grid, shapes, clamp=False, field_dtype=np.float32)
-    assert float(lengths[0][0, 1, 1]) == 0.  # Both union endpoints are metal.
+    assert float(lengths[0][0, 1, 1]) == .5
 
 
 @pytest.mark.parametrize('value', [0., .05, .2, float('nan')])
@@ -139,7 +139,6 @@ def identity_scene(aligned):
     return sim
 
 
-# Float32 bit patterns captured on main e189d9152 before any production edit.
 MAIN_TRACE_BITS = {'False': [0, 0, 0, 0, 917736138, 935342772, 945896509, 953098004, 958945492, 964726106, 968705154, 973532710, 976963100, 981368214, 984216514, 987733456, 990984609, 993686643, 996988164, 999616566, 1002021373, 1004887813, 1007454164, 1009439202, 1011745991, 1014403569, 1016230226, 1017948513, 1019876438, 1022020126, 1023895993, 1025184621, 1026577102, 1028066713, 1029643647, 1031294878, 1032401681, 1033276277, 1034159787, 1035040215], 'True': [0, 0, 0, 0, 917736138, 935342772, 945896509, 953098004, 958945492, 964726106, 968705154, 973534024, 976964823, 981368506, 984212455, 987715655, 990961361, 993634828, 996887208, 999527620, 1001876469, 1004664621, 1007289198, 1009204636, 1011421774, 1013967205, 1015942847, 1017576345, 1019402313, 1021423460, 1023524669, 1024727061, 1026018185, 1027389997, 1028831568, 1030328463, 1031831258, 1032608419, 1033384112, 1034147067]}
 
 
@@ -224,7 +223,6 @@ def test_waveguide_extractors_receive_e_and_h_operands(monkeypatch, normalize, m
 def test_marching_square_saddles(positive, negative, expected):
     from rfx.geometry.conformal_cells import face_fraction
     corners = [np.array([d]) for d in (positive, negative, positive, negative)]
-    # Two disjoint corner triangles or a rectangle with two triangles removed.
     assert face_fraction(corners, (2., 3.))[0] == pytest.approx(expected)
 
 
@@ -254,17 +252,17 @@ def test_conformal_run_keeps_a_filament_and_refuses_a_body_holding_no_node():
     sim.add_source((.016, .006, .007), 'ez', amplitude_kind='current')
     assert sim.run(n_steps=2, conformal_pec=True, skip_preflight=True).state is not None
     tiny = Simulation(10e9, (.02, .02, .02), dx=.002, boundary='pec')
-    tiny.add(Sphere((.011, .011, .011), .0012), material='pec')  # 0.6 cell, centred in a cell: no node inside
+    tiny.add(Sphere((.011, .011, .011), .0012), material='pec')
     tiny.add_source((.004, .006, .007), 'ez', amplitude_kind='current')
     with pytest.raises(NotImplementedError, match='holds no grid node'):
         tiny.run(n_steps=2, conformal_pec=True, skip_preflight=True)
 
 
 @pytest.mark.parametrize('periodic, box, refused', [
-    ('', ((.004, .004, .006), (.008, .008, .0064)), True),     # 0.4 cell thick, no node inside
-    ('', ((.004, .004, .006), (.008, .008, .007)), False),     # one cell thick, both faces on node planes
-    ('xy', ((.0043, .004, .006), (.008, .008, .006)), True),   # sheet edge 0.3 cell off on a periodic axis
-    ('xy', ((.004, .004, .006), (.008, .008, .006)), False),   # sheet on node planes, periodic
+    ('', ((.004, .004, .006), (.008, .008, .0064)), True),
+    ('', ((.004, .004, .006), (.008, .008, .007)), False),
+    ('xy', ((.0043, .004, .006), (.008, .008, .006)), True),
+    ('xy', ((.004, .004, .006), (.008, .008, .006)), False),
 ])
 def test_a_box_holding_no_node_inside_is_admitted_only_on_node_planes(periodic, box, refused):
     """Node-plane Boxes are carried by cut-cell fractions even with no node strictly inside.
@@ -272,6 +270,7 @@ def test_a_box_holding_no_node_inside_is_admitted_only_on_node_planes(periodic, 
     C4 found run()
     lost such a box: behind/front Ez energy 1.0003. The old all-1 expectation
     ("staircase faces remain") pinned that skip instead of the closed PEC set.
+    E and H span one interval along the component and the other two directions, respectively.
     """
     from rfx.grid import Grid
     grid = Grid(10e9, (.012, .012, .012), dx=.001, cpml_layers=0, periodic_axes=periodic)
@@ -280,9 +279,6 @@ def test_a_box_holding_no_node_inside_is_admitted_only_on_node_planes(periodic, 
             compute_conformal_fractions(grid, [Box(*box)], field_dtype=np.float32)
     elif not periodic:
         lengths, areas = compute_conformal_fractions(grid, [Box(*box)], field_dtype=np.float32)
-        # Corners / dx give nodes (4, 4, 6) to (8, 8, 7), inclusive.
-        # E spans one interval along its component; H spans the other two.
-        # These six ranges contain 40, 40, 25 edges and 20, 20, 32 faces.
         edge_ranges = ((slice(4, 8), slice(4, 9), slice(6, 8)),
                        (slice(4, 9), slice(4, 8), slice(6, 8)),
                        (slice(4, 9), slice(4, 9), slice(6, 7)))

@@ -48,6 +48,7 @@ Why the graded-mesh tape is measured on the step loop and not through
 (``rfx/boundaries/cpml.py::_get_axis_cell_sizes``), so the lane cannot be
 traced by ``jax.make_jaxpr`` — which is what ``saved_residuals`` needs. The
 loop below runs the lane's own kernels in the lane's own order.
+The waveguide-fence domain lengths written as ``DOMAIN[0]`` and ``DOMAIN[1]`` are whole numbers of cells of DX, so their solved lengths equal their declared lengths.
 """
 
 from __future__ import annotations
@@ -81,22 +82,15 @@ CPML = 5
 DOMAIN = (24e-3, 20e-3, 16e-3)
 N_STEPS = 80
 
-# Graded z mesh: eight uniform cells, then a 1.06 ramp — a thin-substrate
-# profile, the case #1183 exists for.
 DZ_PROFILE = np.concatenate([
     np.full(8, 1.6e-3), 1.6e-3 * 1.06 ** np.arange(1, 5, dtype=float)])
 
-# Both corners on a cell centre, so the realized box does not depend on how
-# round() breaks a tie (same discipline as test_design_box_tape.py).
 NU_BOX_LO = (10e-3, 8e-3, 4e-3)
 NU_BOX_HI = (14e-3, 12e-3, 7e-3)
 BOX_LO = (10e-3, 8e-3, 6e-3)
 BOX_HI = (14e-3, 12e-3, 10e-3)
 
 
-# ---------------------------------------------------------------------------
-# Part A — the graded mesh
-# ---------------------------------------------------------------------------
 
 def _nu_sim(domain=DOMAIN, **kwargs):
     sim = Simulation(freq_max=2 * F0, domain=(domain[0], domain[1], float(np.sum(DZ_PROFILE))), dx=DX, boundary="cpml",
@@ -181,15 +175,6 @@ def _nu_step_loop(box=(8, 12, 8, 12, 6, 10), n_steps=120, nxy=8e-3,
                 eps_r=ones.astype(jnp.result_type(eps_design))
                 .at[sl].set(eps_design))
             if split:
-                # #1210: the box's coefficients come from the product's own
-                # builder, not a hand-written e_update_coeffs on the box
-                # alone. A Yee E component on the box's minus face is shared
-                # with a background cell, so its coefficient is the mean of
-                # the two -- and the design material reaches one cell past
-                # the box on the plus side, which is why the redo writes a
-                # window instead of the declared box. Building it here by
-                # hand was a second spelling of the material-to-edge rule,
-                # and it is the spelling #1210 corrected.
                 box_w, ca, cb = _design_box_edge_coeffs(
                     box, eps_design, jnp.zeros_like(eps_design), m, dt, shape, grid=grid)
 
@@ -403,11 +388,11 @@ def test_nu_fence_waveguide_port():
     """A modal port writes its own field over a whole plane.
 
     Addendum 5f: transverse PEC lets the design-box fence remain the subject.
+    The waveguide port refuses to share a run with a point source.
     """
-    sim = Simulation(freq_max=2 * F0, domain=(DOMAIN[0], DOMAIN[1], float(DZ_PROFILE.sum())), dx=DX,  # solved length; #1887
+    sim = Simulation(freq_max=2 * F0, domain=(DOMAIN[0], DOMAIN[1], float(DZ_PROFILE.sum())), dx=DX,
                      boundary={"x": "cpml", "y": "pec", "z": "pec"},
                      cpml_layers=CPML, dz_profile=DZ_PROFILE)
-    # No point source: a waveguide port refuses to share a run with one.
     sim.add_waveguide_port(6e-3, mode=(1, 0), f0=F0,
                            probe_offset=2, ref_offset=1)
     sim.add_probe((20e-3, 10e-3, 6e-3), "ez")
@@ -497,9 +482,6 @@ def test_nu_fence_until_decay():
                                      eps_r=jnp.ones((3, 3, 3), jnp.float32)))
 
 
-# ---------------------------------------------------------------------------
-# Part B — the traced PEC occupancy
-# ---------------------------------------------------------------------------
 
 def _sim(domain=DOMAIN, boundary="cpml", **kwargs):
     sim = Simulation(freq_max=2 * F0, domain=domain, dx=DX,

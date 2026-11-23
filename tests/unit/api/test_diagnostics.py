@@ -14,9 +14,6 @@ import numpy as np
 from rfx import diagnostics
 
 
-# ---------------------------------------------------------------------------
-# rfx-diagnose
-# ---------------------------------------------------------------------------
 
 def test_diagnose_passes_in_this_environment(capsys):
     """In a working install (rfx importable, jax + core deps present, smoke
@@ -59,8 +56,6 @@ def test_diagnose_critical_failure_returns_nonzero_without_traceback(
     def _boom(*_args, **_kwargs):
         raise RuntimeError("forced smoke failure")
 
-    # Make the FDTD smoke run fail at the Simulation.run() call. The check is
-    # wrapped in try/except, so this must surface as a FAIL line, not a raise.
     import rfx.api as rfx_api
 
     monkeypatch.setattr(rfx_api.Simulation, "run", _boom)
@@ -92,16 +87,11 @@ def test_diagnose_missing_core_dep_fails_without_aborting(monkeypatch, capsys):
 
     assert rc != 0
     assert "[FAIL]" in out and "h5py" in out
-    # fault isolation: a check after the core-dep stage still ran.
     assert "FDTD smoke run" in out
 
 
-# ---------------------------------------------------------------------------
-# hello-world example
-# ---------------------------------------------------------------------------
 
 def _example_path() -> Path:
-    # tests/ -> repo root -> examples/quickstart/hello_world.py
     return (
         Path(__file__).resolve().parents[3]
         / "examples"

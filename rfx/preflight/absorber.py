@@ -70,6 +70,9 @@ and it reads no ``pec_geometry`` module global -- it holds only
 
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
+from rfx.preflight._not_judged import is_tracer_error, not_judged
+
 from rfx.preflight._subjects import finding_subjects, absorber_region
 
 import math
@@ -132,7 +135,6 @@ def _validate_cfg_lossless_resonator_in_absorber(self, _w) -> None:
         if resolved is None:
             continue
         eps_r, sigma, has_poles = resolved
-        # Dielectric (not vacuum/air, not a conductor/PEC).
         if not (eps_r > 1.05 and sigma < 1.0):
             continue
         if sigma <= 0.0 and not has_poles:
@@ -246,7 +248,9 @@ def _validate_cfg_dispersive_pole_at_absorber_face(
             continue
         try:
             c1, c2 = entry.shape.bounding_box()
-        except (NotImplementedError, TypeError):
+        except (NotImplementedError, TypeError) as _traced_exc:
+            if is_tracer_error(_traced_exc):
+                not_judged(None, "_validate_cfg_dispersive_pole_at_absorber_face")
             continue
         faces = []
         hi_exact = hi_over = False
@@ -256,11 +260,6 @@ def _validate_cfg_dispersive_pole_at_absorber_face(
                 faces.append(f"{'xyz'[ax]}-lo")
             if cpml_thick_hi[ax] > 0 and c2[ax] >= d - 0.5 * dx:
                 faces.append(f"{'xyz'[ax]}-hi")
-                # Overdraw discriminates the realized hi-face state
-                #: drawn PAST the face the shape
-                # rasterizes its own cells into the absorber, so the
-                # "pad stays background" wording is false there — the
-                # message branches on this flag below.
                 if c2[ax] > d:
                     hi_over = True
                 else:
@@ -274,11 +273,6 @@ def _validate_cfg_dispersive_pole_at_absorber_face(
         return
     worst = hits[0]
     any_risk = any(h[4] for h in hits)
-    # Each hi-face branch states the REALIZED state truthfully: a shape
-    # ending AT the face loses its boundary node ([lo, hi) drop) and the
-    # gate keeps the pad background; a shape drawn PAST the face
-    # rasterizes its own cells into the absorber, so the pad carries the
-    # statics — with pole cells only up to the overdraw depth.
     any_hi_over = any(h[6] for h in hits)
     any_hi_exact = any(h[5] for h in hits)
     hi_clauses = []
@@ -365,9 +359,6 @@ def _validate_cfg_compute_cpml_thickness(
     """
     _pmc_faces_set = set(self._boundary_spec.pmc_faces())
     _realized_depths = self._preflight_face_layers()
-    # ``cpml_thickness`` is the BUDGET thickness (cpml_layers * dx, or 0
-    # on a non-absorbing boundary); per-cell thickness is that divided
-    # by the budget layer count.
     _per_layer = (cpml_thickness / self._cpml_layers
                   if self._cpml_layers else 0.0)
 
@@ -380,16 +371,6 @@ def _validate_cfg_compute_cpml_thickness(
             return 0.0
         _prof = _axis_profiles[ax_idx]
         if _prof is not None and not is_tracer(_prof):
-            # The absorber on a face is copies of THAT face's boundary cell
-            # -- ``_pad_profile`` fills each pad with the profile's own end
-            # -- so its thickness is that cell times the face's own layer
-            # count. This summed the LEADING profile entries for both sides,
-            # which are interior cells and are the wrong face's on hi; on a
-            # profile whose ends differ by 5x it over-reported the fine face
-            # 5x, and that number is read as a calibrated clearance buffer
-            # by the MSL and waveguide advisories (G17). The same expression
-            # as ``_validate_cfg_nonuniform_limitations``, which now reads
-            # its z thickness from this function rather than repeating it.
             return n_face * profile_boundary_cell(self._dx, _prof, side)
         return n_face * _per_layer
 
@@ -446,9 +427,6 @@ def _validate_cfg_absorber_budget_vs_grid(self, _w, dx: float) -> None:
         pad_lo = realized_depths[f"{ax_name}_lo"]
         pad_hi = realized_depths[f"{ax_name}_hi"]
         if pad_lo <= 0 and pad_hi <= 0:
-            # no allocation on either face of this
-            # axis (PEC/PMC-closed or periodic-closed) -- nothing to
-            # budget. See docstring for the allocation>0 precedent.
             continue
         n_cells = int(math.ceil(extent_m / dx)) + 1 + pad_lo + pad_hi
         if n_budget <= n_cells:
@@ -507,8 +485,6 @@ def _pec_walls_closing_a_guide(self) -> set[str]:
             plane = tuple(a for a in range(3) if a != n)
             closed, count = np.ones(shape[n], dtype=bool), 0
             for c, p in (plane, plane[::-1]):
-                # E_c edges between the walls along c, on the nodes strictly
-                # inside the walls along p (the walls zero the rest).
                 sl = [slice(None)] * 3
                 sl[c], sl[p] = slice(0, shape[c] - 1), slice(1, shape[p] - 1)
                 tangential = np.asarray(edges[c][tuple(sl)], dtype=bool)
@@ -680,11 +656,6 @@ def _validate_cfg_absorber_placement(
     carry CPML fringe/reflection error even though they are not
     literally inside the absorbing medium.
     """
-    # The proximity band is measured INWARD from where the absorber begins,
-    # so the cells it occupies are the profile's own end cells on that face,
-    # not the boundary scalar. On a profile whose ends differ the band was
-    # the wrong width on at least one face, and the quoted length named a
-    # cell that is nowhere near the face it describes (G17).
     _axis_profiles = (self._dx_profile, self._dy_profile, self._dz_profile)
 
     def _near_absorber_band(coord, domain_extent, ct_lo, ct_hi, ax_i):
@@ -704,9 +675,6 @@ def _validate_cfg_absorber_placement(
         bounds_cache = {}
 
         def _point_refusal(pe, label):
-            # The campaign keeps the production grid when only point admission
-            # fails; with no grid (traced mesh, failed grid build) the solve-time
-            # admission or the assembly finding covers it. Never infer it from bands.
             if grid is None:
                 return
             options = dict(allow_in_absorber=getattr(pe, "allow_in_absorber", False),
@@ -726,13 +694,6 @@ def _validate_cfg_absorber_placement(
 
         for _pi, pe in enumerate(self._probes):
             if _pi in _internal:
-                # Library-registered diagnostic probes (e.g. the MSL
-                # settling-witness probes): the library
-                # placed them deliberately and must not warn about
-                # itself — that self-noise buried the genuine MSL
-                # port-clearance advisories. User probes are
-                # unaffected (precedent: passive DFT probes are
-                # excluded from the geometry-extent check).
                 continue
             _point_refusal(pe, f"Probe[{_pi}]")
             pos = pe.position
@@ -758,23 +719,6 @@ def _validate_cfg_absorber_placement(
                 _near, _band = _near_absorber_band(
                     coord, domain_extent, ct_lo, ct_hi, ax_i)
                 if _near:
-                    # nit 1: worded off the domain edge, not
-                    # off "where the absorber begins" — the edge is
-                    # exactly what _coord_near_absorber measures from
-                    # (_absorber_boundary_for_axis's lo_b/hi_b), so this
-                    # framing is unconditionally true. The prior wording
-                    # ("within N cells of the {label} absorber") could
-                    # overstate proximity to the absorbing MEDIUM itself,
-                    # which (hi side only) can start up to one cell
-                    # further out than the boundary this margin is
-                    # measured from (see _absorber_boundary_for_axis's
-                    # docstring, and nit 3 below). Review follow-up:
-                    # "just past which" (not "where") the absorber is
-                    # active, because _coord_in_absorber's own
-                    # membership predicate is a STRICT less-than
-                    # (coord < lo_b) -- the boundary coordinate itself
-                    # reads as interior, so the absorber is active
-                    # strictly beyond it, not exactly at it.
                     _w.warn(
                         PreflightWarning(
                             f"Probe at {pos} is within "
@@ -817,9 +761,6 @@ def _validate_cfg_absorber_placement(
                 _near, _band = _near_absorber_band(
                     coord, domain_extent, ct_lo, ct_hi, ax_i)
                 if _near:
-                    # nit 1 — see the matching probe-loop
-                    # comment above; same unconditionally-true
-                    # domain-edge framing.
                     _w.warn(
                         PreflightWarning(
                             f"Source/port at {pos} is within "
@@ -863,18 +804,7 @@ def _validate_cfg_geometry_in_cpml(
     entry count, the worst offender and its overshoot distance, instead of
     one message per geometry entry that named neither.
     """
-    # Every absorbing kind pads exterior to the domain; the per-face depths
-    # above are the realized ones (0 on PEC/PMC/periodic faces).
     if cpml_thickness > 0:
-        # collect every crossing first, warn ONCE per axis.
-        # Per-entry warnings carrying only material name and axis repeat identical
-        # messages on CAD imports. Include overshoot distance to distinguish a one-cell
-        # rounding artefact from an 11mm coordinate-origin error. The
-        # crossed boundary and the offending bbox face are printed for the
-        # same reason; ``_GeometryEntry`` carries no id/name field (only
-        # ``shape`` + ``material_name``, verified), so the entry is
-        # identified by its index and shape type, and the full per-entry
-        # index list rides in the structured finding's ``loc``.
         per_axis: dict[int, list[tuple]] = {}
         for idx, entry in enumerate(self._geometry):
             if hasattr(entry.shape, "bounding_box"):
@@ -897,8 +827,6 @@ def _validate_cfg_geometry_in_cpml(
                         )
                         if over_lo is None and over_hi is None:
                             continue
-                        # A bbox can cross both faces (a shape wider than
-                        # the domain); report the deeper crossing.
                         if over_hi is not None and (over_lo is None or over_hi >= over_lo):
                             over, side, coord, bound = over_hi, "hi", c2[ax], hi_b
                         else:
@@ -907,9 +835,9 @@ def _validate_cfg_geometry_in_cpml(
                             over, idx, entry.material_name,
                             type(entry.shape).__name__, side, coord, bound,
                         ))
-                        # Record every crossed axis so findings do not
-                        # depend on axis order.
-                except (NotImplementedError, TypeError):
+                except (NotImplementedError, TypeError) as _traced_exc:
+                    if is_tracer_error(_traced_exc):
+                        not_judged(None, "_validate_cfg_geometry_in_cpml")
                     pass
 
         for ax in sorted(per_axis):
@@ -934,8 +862,6 @@ def _validate_cfg_geometry_in_cpml(
                 f" {absorber_label} modifies field updates — geometry "
                 f"inside the absorber is physically meaningless."
             )
-            # Per-entry detail lives here rather than in N warning lines:
-            # every crossing entry's index, crossed face and overshoot.
             _w.warn(
                 PreflightWarning(
                     msg,
@@ -964,6 +890,7 @@ def _validate_cfg_body_flush_on_absorber(
     carries the statics without the poles, which
     ``dispersive_pole_at_absorber_face`` reports with that mechanism. Face
     distances and half-cell windows use the realized interior cells.
+    A Box rasterizes half-open on nodes, holding its lo-face node and, at a hi face, the node one cell in, while other shapes sample cell centres.
     """
     if cpml_thickness <= 0 or not self._geometry:
         return
@@ -972,6 +899,7 @@ def _validate_cfg_body_flush_on_absorber(
     for ax, axis in enumerate("xyz"):
         cells = grid.cells(axis)
         if is_tracer(cells):
+            not_judged(None, "_validate_cfg_body_flush_on_absorber")
             continue
         start = getattr(grid, f"pad_{axis}_lo")
         stop = grid.shape[ax] - getattr(grid, f"pad_{axis}_hi") - 1
@@ -989,6 +917,7 @@ def _validate_cfg_body_flush_on_absorber(
         mat = self._resolve_material(entry.material_name)
         values = (mat.eps_r, mat.sigma, mat.mu_r)
         if any(is_tracer(v) for v in values):
+            not_judged(None, "_validate_cfg_body_flush_on_absorber")
             continue
         if (values[1] >= 1e6 or values == (1.0, 0.0, 1.0)
                 or mat.debye_poles or mat.lorentz_poles):
@@ -998,6 +927,7 @@ def _validate_cfg_body_flush_on_absorber(
         except (AttributeError, NotImplementedError):
             continue
         if any(is_tracer(v) for v in (*lo, *hi)):
+            not_judged(None, "_validate_cfg_body_flush_on_absorber")
             continue
         extents = [abs(float(hi[a]) - float(lo[a])) for a in range(3)]
         box = isinstance(entry.shape, Box)
@@ -1006,10 +936,6 @@ def _validate_cfg_body_flush_on_absorber(
                 continue
             coord = min(lo[ax], hi[ax]) if side == "lo" else max(lo[ax], hi[ax])
             offset = float(coord) - bound
-            # A Box rasterizes half-open on nodes (csg.Box): it holds the lo face node
-            # when it starts at the face, and at a hi face the node one cell in, which
-            # the promotion continues. Other shapes sample cell centres.
-            # Farther out than half a cell is P1.9's crossing.
             tie = NODE_TIE_REL * width
             if (abs(offset) <= width / 2 if not box else
                     -width / 2 <= offset <= tie if side == "lo" else
@@ -1076,6 +1002,7 @@ def _validate_cfg_dielectric_at_absorber_seam(self, _w) -> None:
     profiles = (self._dx_profile, self._dy_profile, self._dz_profile)
     if is_tracer(self._dx) or any(
             p is not None and is_tracer(p) for p in profiles):
+        not_judged(None, "_validate_cfg_dielectric_at_absorber_seam")
         return
 
     try:
@@ -1083,9 +1010,6 @@ def _validate_cfg_dielectric_at_absorber_seam(self, _w) -> None:
                 if any(p is not None for p in profiles)
                 else self._build_grid())
     except (ValueError, IndexError):
-        # Preflight never turns a configuration problem into a crash here:
-        # whatever makes the grid unbuildable has its own check, and this
-        # advisory has nothing to say without realized pads.
         return
 
     from rfx.geometry.smoothing import smoothed_shape_pairs
@@ -1096,12 +1020,6 @@ def _validate_cfg_dielectric_at_absorber_seam(self, _w) -> None:
     if not unextendable:
         return
 
-    # The entry index and material name ride ON the finding. They used to be
-    # recovered here by ``id(u.shape)`` against ``self._geometry``, which
-    # misses exactly the cases worth naming: the continuation rewrites the
-    # shape as it walks the axes, so a cylinder continued along x and
-    # unextendable on y reports the CONTINUED object and the lookup fell
-    # through to ``Material '?' (geometry entry #-1, ...)``.
     for u in unextendable:
         idx, mat_name = u.entry_index, u.material_name
         axis_name = "xyz"[u.axis]
@@ -1152,10 +1070,13 @@ def _validate_cfg_port_conductor_continues(self, _w) -> None:
         grid = self._build_realized_grid()
         coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
                   else coords_from_uniform_grid(grid))
-    except (ValueError, TypeError, IndexError, NotImplementedError):
+    except (ValueError, TypeError, IndexError, NotImplementedError) as _traced_exc:
+        if is_tracer_error(_traced_exc):
+            not_judged(None, "_validate_cfg_port_conductor_continues")
         return
     nodes = (coords.x, coords.y, coords.z)
     if any(is_tracer(line) for line in nodes):
+        not_judged(None, "_validate_cfg_port_conductor_continues")
         return
     for collection, index, port in ports:
         if port_termination_references(self, collection, port, grid):
@@ -1166,7 +1087,9 @@ def _validate_cfg_port_conductor_continues(self, _w) -> None:
         for ref, entry in conductor_entries(self):
             try:
                 lattice = _declared_conductor_lattice(self, grid, entry.shape, coords)
-            except (ValueError, TypeError, IndexError, NotImplementedError):
+            except (ValueError, TypeError, IndexError, NotImplementedError) as _traced_exc:
+                if is_tracer_error(_traced_exc):
+                    not_judged(None, "_validate_cfg_port_conductor_continues")
                 continue
             if not any(lattice_intersects_aperture(lattice, nodes, point, point)
                        for point in terminals):
@@ -1214,26 +1137,6 @@ def _validate_cfg_pec_boundary_open_structure(self, _w) -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# Pre-move ``__qualname__``, restored explicitly.
-#
-# Each of the eleven functions above was a ``def`` in the ``_PreflightMixin``
-# class body, so its ``__qualname__`` read ``_PreflightMixin.<name>``; a
-# module-level ``def`` gets the bare name instead. ``rfx/api/__init__.py``
-# rewrites exactly ``<mixin>.<name>`` -> ``Simulation.<name>`` at
-# class-composition time and SKIPS any function whose qualname does not match
-# that pattern, so leaving the bare name here would change what a TypeError
-# reports -- a user-visible behaviour change inside a pure code-motion step.
-# ``tests/unit/autodiff/test_design_mask_removed.py
-# ::test_no_public_simulation_method_leaks_a_mixin_class_name`` states the
-# rule but only walks PUBLIC members, and all eleven names here are private,
-# so ``tests/locks/test_preflight_split_snapshot.py`` pins these eleven
-# directly.
-#
-# None of the eleven was a ``@staticmethod``, so like leg 3 this module has
-# no decorator the facade has to re-apply and every restored qualname below
-# becomes ``Simulation.<name>`` after composition.
-# ---------------------------------------------------------------------------
 _validate_cfg_lossless_resonator_in_absorber.__qualname__ = (
     "_PreflightMixin._validate_cfg_lossless_resonator_in_absorber"
 )
@@ -1265,27 +1168,14 @@ _validate_cfg_geometry_in_cpml.__qualname__ = (
 _validate_cfg_pec_boundary_open_structure.__qualname__ = (
     "_PreflightMixin._validate_cfg_pec_boundary_open_structure"
 )
-# Twelfth body, added here rather than moved: it was never in
-# the class, so its qualname is set for the same reason -- the composition-time
-# rewrite in rfx/api/__init__.py only promotes ``_PreflightMixin.<name>``.
 _validate_cfg_dielectric_at_absorber_seam.__qualname__ = (
     "_PreflightMixin._validate_cfg_dielectric_at_absorber_seam"
 )
-# Added beside P1.9, never in the class: same reason as the body above.
 _validate_cfg_body_flush_on_absorber.__qualname__ = (
     "_PreflightMixin._validate_cfg_body_flush_on_absorber"
 )
 
 
-#: Two measured points, and they are MEASUREMENTS, not a derived bound.
-#: At n = 3 (dx = h/3) on the isolated-patch rig with a +10h laterally padded
-#: domain: 6 absorber layers with the ground flush against the face GREW
-#: (settling 0.00 dB, +8.5e-4 per step); 8 and 12 layers at the same dx and the
-#: same geometry SETTLED (-44.2 / -46.0 dB); and 6 layers with every conductor
-#: pulled 2 cells clear of the pads SETTLED (-42.8 dB). At n = 2, 4 layers grew
-#: and 8 and 16 settled. Nobody has derived a stability boundary -- the
-#: mechanism is not established -- so these are the edges of the measured
-#: region and the advisory says so in its own text.
 _THIN_ABSORBER_LAYER_FLOOR = 6
 _THIN_ABSORBER_CLEARANCE_CELLS = 2
 
@@ -1403,6 +1293,8 @@ def _conductor_in_thin_absorber_findings(self, dx) -> list[tuple]:
     if self._boundary not in ("cpml", "upml") or not self._geometry:
         return []
     if dx is None or dx <= 0 or is_tracer(dx) or is_tracer(self._dx):
+        if is_tracer(dx) or is_tracer(self._dx):
+            not_judged(None, "_validate_cfg_conductor_in_thin_absorber")
         return []
     if any(getattr(self, name, None) is not None
            for name in ("_dx_profile", "_dy_profile", "_dz_profile")):
@@ -1411,8 +1303,6 @@ def _conductor_in_thin_absorber_findings(self, dx) -> list[tuple]:
     try:
         realized_depths = self._preflight_face_layers()
     except ValueError:
-        # Whatever makes the boundary spec unreadable has its own check; this
-        # advisory has nothing to say without per-face layer counts.
         return []
 
     from rfx.model.materials import assembled_as_pec
@@ -1444,10 +1334,6 @@ def _conductor_in_thin_absorber_findings(self, dx) -> list[tuple]:
     return findings
 
 
-# Thirteenth body, added here rather than moved: like the twelfth it was
-# never in the class, so its qualname is set for the same reason -- the
-# composition-time rewrite in rfx/api/__init__.py only promotes
-# ``_PreflightMixin.<name>``.
 _validate_cfg_conductor_in_thin_absorber.__qualname__ = (
     "_PreflightMixin._validate_cfg_conductor_in_thin_absorber"
 )
@@ -1457,9 +1343,6 @@ _validate_cfg_port_conductor_continues.__qualname__ = (
 )
 
 
-# CPML reference measurements at 1 mm cells with the shipped CFS alpha
-#: 2, 10, 30 GHz and below 1 GHz, respectively, in dB.
-# None: not measured (the 8-layer records stop at 20 GHz).
 _ABSORBER_REFLECTION_DB = {
     4: (-20, -23, -17, -6),
     6: (-38, -41, -32, -13),
@@ -1486,14 +1369,14 @@ def _validate_cfg_thin_absorber(self, _w, dx) -> None:
     ) or any(
         is_tracer(profile) for profile in (self._dx_profile, self._dy_profile, self._dz_profile)
     ):
+        if absorbing and (is_tracer(self._dx) or any(is_tracer(v) for v in self._domain) or any(is_tracer(p) for p in (self._dx_profile, self._dy_profile, self._dz_profile))):
+            not_judged(None, "_validate_cfg_thin_absorber")
         return
 
     try:
         grid = self._build_realized_grid()
         periodic = self._periodic_flags()
         if self._uses_nonuniform_mesh:
-            # The NU runner builds all non-periodic axes. It has neither
-            # uniform waveguide axis selection nor the TF/SF override.
             cpml_axes = "".join(ax for ax in "xyz" if ax not in (self._periodic_axes or ""))
         else:
             cpml_axes = grid.cpml_axes
@@ -1501,16 +1384,14 @@ def _validate_cfg_thin_absorber(self, _w, dx) -> None:
                 from rfx.sources.tfsf import tfsf_from_declaration
                 from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
                 entry = self._tfsf
-                cfg, _ = tfsf_from_declaration(entry, grid, self._freq_max, bounds_only=True)
+                cfg, _ = tfsf_from_declaration(entry, grid, self._freq_max, bounds_only=True, dtype=resolve_coefficient_dtype(self._precision))
                 periodic, _ = tfsf_boundary_flags(cfg, grid)
-    except (ValueError, TypeError, AttributeError, KeyError, IndexError, NotImplementedError):
-        # An unavailable grid has no realized depth to report. Keep the
-        # existing configuration diagnostics; do not guess from declarations.
+    except (ValueError, TypeError, AttributeError, KeyError, IndexError, NotImplementedError) as _traced_exc:
+        if is_tracer_error(_traced_exc):
+            not_judged(None, "_validate_cfg_thin_absorber")
         return
     absorbing = {face: token for face, token in absorbing.items()
                  if face[0] in cpml_axes and not periodic["xyz".index(face[0])]}
-    # Report pads only on faces that absorb in this lane. A suppressed
-    # waveguide axis is a guide wall, not an absorber with missing layers.
     thin = {face: int(getattr(grid, f"pad_{face}"))
             for face in absorbing if int(getattr(grid, f"pad_{face}")) < 8}
     if not thin:

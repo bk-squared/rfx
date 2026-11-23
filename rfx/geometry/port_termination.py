@@ -73,10 +73,6 @@ def _realization_key(sim, grid):
 def port_termination_references(sim, collection, port, grid):
     """Resolve an MSL default on this realization; retain explicit names."""
     if collection == "_msl_ports" and port.terminates is None:
-        # Memoised per realization: the helper that asks is called once per
-        # conductor, and resolving the default rasterizes every conductor, so
-        # without this an assembly with an MSL port was quadratic in the
-        # conductor count (measured: 8.3 s at 20 conductors).
         realization = _realization_key(sim, grid)
         memo = sim.__dict__.get("_msl_default_memo")
         if memo is None or memo["realization"] != realization:
@@ -100,11 +96,15 @@ def held_conductor_entries(sim, grid):
     return entries
 
 
+def lattice_support_end(line, cell_axis):
+    """Upper support at each node. A singleton has no forward cell extent."""
+    if not cell_axis or line.size == 1:
+        return line
+    return np.r_[line[1:], line[-1] + line[-1] - line[-2]]
+
+
 def lattice_intersects_aperture(lattice, nodes, lower, upper):
     """Occupied lattice support intersects the closed aperture, without cell slack."""
-    # A footprint includes the segments between adjacent occupied nodes.
-    # Requiring BOTH endpoints preserves gaps and a sheet's zero-thickness
-    # normal plane; it does not grow a node by a contact-search radius.
     support = list(lattice)
     footprints = [(mask, axes) for mask, axes in lattice if not any(axes)]
     for axis in range(3):
@@ -123,10 +123,11 @@ def lattice_intersects_aperture(lattice, nodes, lower, upper):
         indices = []
         for axis, values in enumerate(nodes):
             line = np.asarray(values)
-            high = (np.r_[line[1:], line[-1] + line[-1]-line[-2]]
-                    if cell_axes[axis] else line)
-            # Roundoff only, in the node array's precision; no geometric slack.
-            eps = 8*np.finfo(line.dtype).eps*max(np.max(np.abs(line)), np.min(np.diff(line)))
+            high = lattice_support_end(line, cell_axes[axis])
+            scale = np.max(np.abs(line))
+            if line.size > 1:
+                scale = max(scale, np.min(np.diff(line)))
+            eps = 8 * np.finfo(line.dtype).eps * scale
             indices.append(np.flatnonzero((high >= lower[axis]-eps)
                                           & (line <= upper[axis]+eps)))
         if all(len(i) for i in indices) and mask[np.ix_(*indices)].any():
@@ -162,8 +163,6 @@ def default_msl_terminates(sim, grid, *, position, width, height, direction):
     upper[transverse] = float(nodes[transverse][span["width_nodes"][-1]])
     apertures = [(lower, upper)]
     if span["width_axis"] in getattr(grid, "periodic_axes", ""):
-        # The seam width may be (4, 5, 0), not the bounding interval 0..5.
-        # Check each unique signal node against the conductor footprint.
         apertures = []
         for w in span["width_nodes"]:
             point = lower.copy()
@@ -174,8 +173,6 @@ def default_msl_terminates(sim, grid, *, position, width, height, direction):
         try:
             lattice = _declared_conductor_lattice(sim, grid, entry.shape, coords)
         except (ValueError, TypeError, IndexError, NotImplementedError):
-            # A refused entry has no realized footprint; its own preflight
-            # reports the refusal against that entry.
             continue
         if any(lattice_intersects_aperture(lattice, nodes, lo, hi)
                for lo, hi in apertures):
@@ -184,7 +181,17 @@ def default_msl_terminates(sim, grid, *, position, width, height, direction):
 
 
 def port_terminal_points(collection, port, grid, nodes):
-    """The two physical terminal points, for diagnostics only."""
+    """The two physical terminal points, for diagnostics only.
+
+    Each point takes the node coordinate on every axis with a single node.
+    Coordinates on other axes retain their values and types.
+    """
+    return tuple(tuple(nodes[a][0] if len(nodes[a]) == 1 else value
+                       for a, value in enumerate(point))
+                 for point in _port_terminal_points(collection, port, grid, nodes))
+
+
+def _port_terminal_points(collection, port, grid, nodes):
     if collection == "_msl_ports":
         return tuple(port.position), (*port.position[:2], port.position[2] + port.height)
     if hasattr(grid, "dx_arr"):

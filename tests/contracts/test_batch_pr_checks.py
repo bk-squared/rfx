@@ -1,4 +1,6 @@
-"""Exercise batch checks through the CLI, real temp git history, and fake gh."""
+"""Exercise batch checks through the CLI, real temp git history, and fake gh.
+merge-tree --merge-base needs git 2.40.
+"""
 
 from __future__ import annotations
 
@@ -19,8 +21,8 @@ pytestmark = pytest.mark.tooling
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/ci/check_batch.py"
 GOOD_BODY = "Physics: none — CI process\nLane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
-# Homebrew git on the development Mac is 2.39; Apple git supports merge-tree's
-# explicit merge base. Child checkers resolve the same binary through PATH.
+
+
 GIT = "/usr/bin/git" if sys.platform == "darwin" else shutil.which("git")
 
 
@@ -30,9 +32,6 @@ def _git_version(git):
     return (int(match[1]), int(match[2])) if match else (0, 0)
 
 
-# merge-tree --merge-base needs git 2.40. The VESSL gate image has 2.34, so the
-# module skips there; on GitHub Actions (ubuntu-latest ships a newer git) an old
-# git is a failure, never a skip, so the required lane always runs these tests.
 if GIT is None or _git_version(GIT) < (2, 40):
     if os.environ.get("GITHUB_ACTIONS") == "true":
         raise RuntimeError(f"batch checks need git >= 2.40 on CI; found {GIT and _git_version(GIT)}")
@@ -42,6 +41,7 @@ if GIT is None or _git_version(GIT) < (2, 40):
 class Batch:
     def __init__(self, root: Path, member_changes=None, batch_changes=None, order=(11, 22),
                  initial_files=None, main_changes=None):
+        """The batch's lane labels must never substitute for a member's."""
         self.origin = root / "origin"
         self.repo = root / "checkout"
         self.origin.mkdir()
@@ -56,7 +56,7 @@ class Batch:
             "GIT_TERMINAL_PROMPT": "0",
             "GITHUB_REPOSITORY": "bk-squared/rfx",
             "LANE_LABELS": "lane:ci-infra\nlane:research\nlane:new-test",
-            # These belong to the batch and must never substitute for a member's.
+
             "PR_LABELS_JSON": '["lane:research", "release"]',
             "ISSUE_LANES_JSON": '["lane:research"]',
         }
@@ -185,7 +185,8 @@ def assert_rejected(result, message):
 
 
 def test_two_members_and_faithful_batch_pass(batch):
-    # The batch itself has neither Lane nor Review lines.
+
+    assert all(not line.startswith(("Lane:", "Review:")) for line in batch.body.splitlines()), 'batch body omits member provenance fields'
     for command in ("body", "fragments"):
         result = batch.run(command)
         assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
@@ -291,7 +292,7 @@ def test_renamed_topic_member_is_faithful(tmp_path):
     batch = topic_batch(tmp_path)
     index = Path(batch.git(batch.repo, "rev-parse", "--absolute-git-dir")) / "index"
     index_before = index.read_bytes()
-    # An unrelated checkout edit must survive use of the temporary index.
+
     (batch.repo / "rfx/first.py").write_text("uncommitted = True\n")
     for command in ("body", "fragments"):
         result = batch.run(command)
@@ -334,7 +335,7 @@ def test_topic_missing_from_merge_tree_is_a_validation_error(tmp_path, monkeypat
     import check_batch
 
     batch = topic_batch(tmp_path)
-    # The base tree predates the member's added topic fragment.
+
     with pytest.raises(ValueError, match=f"topic fragment missing from merge tree: {TOPIC_PATH}"):
         check_batch.transform_topic_tree(
             batch.repo, batch.base, batch.base, batch.shas[11], 11,

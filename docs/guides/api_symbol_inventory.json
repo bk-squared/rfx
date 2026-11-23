@@ -139,6 +139,9 @@
     "MATERIAL_LIBRARY": {
       "kind": "object"
     },
+    "MMASubproblemCapWarning": {
+      "kind": "class"
+    },
     "MSLProbeClearance": {
       "kind": "class"
     },
@@ -158,6 +161,9 @@
       "kind": "class"
     },
     "MeshShape": {
+      "kind": "class"
+    },
+    "MinimizeResult": {
       "kind": "class"
     },
     "MixedSMatrixResult": {
@@ -364,7 +370,8 @@
       "kind": "function",
       "params": [
         "rho",
-        "radius_cells"
+        "radius_cells",
+        "dtype"
       ]
     },
     "apply_projection": {
@@ -1336,7 +1343,8 @@
         "waveform_fn",
         "n_steps",
         "materials",
-        "amplitude_kind"
+        "amplitude_kind",
+        "dtype"
       ]
     },
     "make_nonuniform_grid": {
@@ -1346,6 +1354,7 @@
         "dz_profile",
         "dx",
         "cpml_layers",
+        "dtype",
         "dx_profile",
         "dy_profile",
         "pec_faces",
@@ -1478,6 +1487,20 @@
         "z0",
         "height",
         "eps_r"
+      ]
+    },
+    "minimize": {
+      "kind": "function",
+      "params": [
+        "fun",
+        "x0",
+        "bounds",
+        "method",
+        "worst_case",
+        "n_iters",
+        "lr",
+        "best_iterate",
+        "jit"
       ]
     },
     "minimize_reflected_energy": {
@@ -2769,6 +2792,7 @@
       "print_report"
     ],
     "forward": [
+      "tfsf_angle_override",
       "eps_override",
       "sigma_override",
       "mu_r_override",

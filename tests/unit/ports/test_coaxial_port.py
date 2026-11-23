@@ -78,6 +78,7 @@ def test_add_coaxial_port_preserves_explicit_parameters_and_waveform():
 
 
 def test_coaxial_tem_analytic_helpers_match_closed_form_identities():
+    """Standard PTFE-filled SMA dimensions are close to a 50-ohm line."""
     z0 = coaxial_tem_characteristic_impedance(
         SMA_PIN_RADIUS,
         SMA_OUTER_RADIUS,
@@ -91,7 +92,6 @@ def test_coaxial_tem_analytic_helpers_match_closed_form_identities():
     l_per_m = coaxial_tem_inductance_per_m(SMA_PIN_RADIUS, SMA_OUTER_RADIUS)
 
     assert z0 == pytest.approx((l_per_m / c_per_m) ** 0.5)
-    # Standard PTFE-filled SMA dimensions are close to a 50-ohm line.
     assert z0 == pytest.approx(48.6, rel=0.03)
 
 

@@ -17,6 +17,7 @@ the replacement named. This file pins three things:
 3. every other list operation the legacy ``list[str]`` call sites rely on
    still works, and the report API (``.ok`` / ``.errors`` / ``.issues`` /
    ``.format()`` / ``.to_dict()``) is unchanged.
+A drifted fixture built inside each test must fail as a test rather than as a collection error.
 """
 import json
 
@@ -57,8 +58,6 @@ def _error_report():
     ])
 
 
-# Built inside each test, not at collection: a drifted fixture must fail as a
-# test, not as a collection error.
 REPORT_BUILDERS = {
     "empty": PreflightReport,
     "clean-from-sim": _clean_report,
@@ -68,7 +67,6 @@ REPORT_BUILDERS = {
 ALL_SHAPES = list(REPORT_BUILDERS)
 
 
-# --------------------------------------------------------------- (a) it raises
 
 @pytest.mark.parametrize("shape", ALL_SHAPES)
 def test_bool_raises_for_every_report_severity_mix(shape):
@@ -120,11 +118,9 @@ def test_message_names_the_replacements():
     for needle in ("report.ok", "report.errors", "report.raise_for_failure()",
                    "len(report)", "report.issues"):
         assert needle in text, f"{needle!r} missing from:\n{text}"
-    # It must also explain WHY, or the reader just swaps one guess for another.
     assert "EMPTY" in text and "advisories" in text
 
 
-# ------------------------------------------- (b) the real-simulation call shape
 
 def test_the_inverted_gate_on_a_real_simulation_raises():
     """``if not sim.preflight(): raise ...`` — the exact reported defect.
@@ -156,7 +152,6 @@ def test_the_supported_gates_still_work_on_a_real_simulation():
     assert report.raise_for_failure() is report
 
 
-# --------------------------------------------------- (c) list behaviour intact
 
 @pytest.mark.parametrize("shape", ALL_SHAPES)
 def test_list_and_report_api_survive(shape):
@@ -164,14 +159,14 @@ def test_list_and_report_api_survive(shape):
     report = REPORT_BUILDERS[shape]()
     items = list(report)
     assert len(report) == len(items)
-    assert [i for i in report] == items            # iteration
+    assert [i for i in report] == items
     assert report.issues == items
     if items:
-        assert report[0] is items[0]               # indexing
+        assert report[0] is items[0]
         assert report[-1] is items[-1]
-        assert report[:1] == items[:1]             # slicing
-        assert items[0] in report                  # membership
-    assert isinstance("\n".join(report), str)      # the legacy list[str] op
+        assert report[:1] == items[:1]
+        assert items[0] in report
+    assert isinstance("\n".join(report), str)
     assert report.errors == [i for i in report if i.severity == "error"]
     assert report.warnings == [i for i in report if i.severity not in ("error", "info")]
     assert report.infos == [i for i in report if i.severity == "info"]
@@ -182,10 +177,11 @@ def test_list_and_report_api_survive(shape):
 def test_iteration_helpers_over_items_are_unaffected():
     """``any``/``all`` consume the ITEMS (strings), never the report itself."""
     report = _error_report()
+    assert all(isinstance(item, str) and len(item) > 0 for item in report), "Every issue is a non-empty string."
     assert any("PEC" in i for i in report)
     assert all(isinstance(i, str) for i in report)
-    assert any(report)                    # every issue is a non-empty string
-    assert bool(report.errors)            # a plain list of items is still a list
+    assert any(report)
+    assert bool(report.errors)
     assert not bool(PreflightReport().errors)
     assert sorted(report.by_code("port_in_pec")) == ["port overlaps PEC"]
 
@@ -199,7 +195,6 @@ def test_mutation_and_copy_do_not_trip_the_guard():
     assert list(reversed(report))[0] == "mesh is 12 cells per wavelength"
 
 
-# ------------------------------------------------------------- (d) equality
 
 def test_equality_against_reports_and_plain_lists_still_works():
     """``==`` never consults ``__bool__``, so comparisons are unaffected."""
@@ -211,7 +206,7 @@ def test_equality_against_reports_and_plain_lists_still_works():
     assert a != _error_report()
     assert PreflightReport() == []
     assert PreflightReport() == PreflightReport()
-    assert not (a == _error_report())      # `not (x == y)` is fine: bool of a bool
+    assert not (a == _error_report())
 
 
 def test_equality_result_is_usable_in_a_condition():
@@ -224,7 +219,6 @@ def test_equality_result_is_usable_in_a_condition():
     assert gated
 
 
-# ------------------------------------------------ (e) serialization / format
 
 def test_to_dict_and_format_on_an_empty_report():
     report = PreflightReport()

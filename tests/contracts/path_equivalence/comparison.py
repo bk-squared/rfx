@@ -1,4 +1,6 @@
-"""The S0 cross-trace bars, including exact prerequisites."""
+"""The S0 cross-trace bars, including exact prerequisites.
+Configuration and geometric weights are exact prerequisites, not amplitudes.
+"""
 from dataclasses import fields, is_dataclass
 from math import isfinite, sqrt
 from numbers import Real
@@ -13,12 +15,9 @@ STEP_ULPS = 9
 ACCUMULATED_RELATIVE = 1e-4
 
 
-# Far-field transforms consume the six running sums, never these Kahan carries
-# (rfx/farfield.py:127). Exclude by name, not by magnitude or a c_* wildcard.
 NTFF_KAHAN_RESIDUALS = frozenset((
     'c_x_lo', 'c_x_hi', 'c_y_lo', 'c_y_hi', 'c_z_lo', 'c_z_hi',
 ))
-# Configuration and geometric weights are exact prerequisites, not amplitudes.
 OBSERVER_METADATA = frozenset((
     'freqs', 'component', 'axis', 'index', 'total_steps', 'window',
     'window_alpha', 'region', 'lo1', 'hi1', 'lo2', 'hi2', 'dA', 'dA2', 'normal_h_zero', 'normal_h_weights',
@@ -35,6 +34,7 @@ def container(value):
 
 
 def excluded(name, key):
+    """Kahan carries are excluded because far-field transforms consume the six running sums."""
     return name == 'ntff_data' and key in NTFF_KAHAN_RESIDUALS
 
 
@@ -98,7 +98,7 @@ def component_peaks(a, b, *, paired_impedance=None):
     is unchanged. No scene impedance is assumed by default.
     """
     if paired_impedance is not None:
-        paired_field_peaks(0., 0., paired_impedance)  # Validate even without fields.
+        paired_field_peaks(0., 0., paired_impedance)
     peaks = {}
     for group in COMPONENT_GROUPS:
         keys = set(group) & (a.keys() | b.keys())

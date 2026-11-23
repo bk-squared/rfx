@@ -4,6 +4,7 @@ Validates that:
 1. AD gradients flow through TFSF plane-wave source
 2. AD gradients flow through DFT plane probe accumulation
 3. Oblique TFSF (angle_deg != 0) produces correct Fresnel reflection
+The DFT-plane gradient test uses 200 steps to allow several periods at f0=3 GHz to accumulate for a non-tiny objective whose DFT values scale as O(dt).
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -35,10 +36,6 @@ from rfx.probes.probes import init_dft_plane_probe, update_dft_plane_probe
 from rfx.probes.fresnel import extract_fresnel_from_planes, fresnel_r_te
 
 
-# =========================================================================
-# Test 1: AD gradient flows through TFSF scan body
-# =========================================================================
-
 def test_gradient_through_tfsf():
     """AD gradient w.r.t. eps_r flows through the TFSF code path.
 
@@ -55,7 +52,7 @@ def test_gradient_through_tfsf():
         cpml_layers=grid.cpml_layers,
         tfsf_margin=3,
         f0=4e9, bandwidth=0.5, amplitude=1.0,
-    )
+    dtype='float32')
     periodic = (False, True, True)
 
     probe = ProbeSpec(
@@ -83,7 +80,6 @@ def test_gradient_through_tfsf():
         return jnp.sum(result.time_series ** 2)
 
     eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
-    # Place a small dielectric block in the total-field region
     eps_r = eps_r.at[tfsf_cfg.x_lo + 8:tfsf_cfg.x_lo + 12, :, :].set(2.0)
 
     val = float(objective(eps_r))
@@ -98,13 +94,12 @@ def test_gradient_through_tfsf():
 
     assert grad_max > 1e-15, "Gradient is zero through TFSF path"
 
-    # Verify gradient at a vacuum cell via finite difference
-    # Use a cell in vacuum (not inside dielectric block) to avoid
-    # float32 cancellation issues with large eps_r perturbation.
-    ci = tfsf_cfg.x_lo + 5  # vacuum cell before dielectric block
+    ci = tfsf_cfg.x_lo + 5
     cj = grid.ny // 2
     ck = grid.nz // 2
-    h = 1e-2  # large step needed for float32 FD stability
+    assert float(eps_r[ci, cj, ck]) == 1.0, 'A vacuum FD cell avoids float32 cancellation with a large permittivity perturbation'
+    FLOAT32_STABLE_FD_STEP = 1e-2
+    h = FLOAT32_STABLE_FD_STEP
     eps_p = eps_r.at[ci, cj, ck].add(h)
     eps_m = eps_r.at[ci, cj, ck].add(-h)
     fd = (float(objective(eps_p)) - float(objective(eps_m))) / (2 * h)
@@ -116,20 +111,13 @@ def test_gradient_through_tfsf():
         assert rel_err < 0.05, f"TFSF gradient FD mismatch: rel_err={rel_err:.4f}"
 
 
-# =========================================================================
-# Test 2: AD gradient flows through DFT plane accumulation
-# =========================================================================
-
 def test_gradient_through_dft_plane():
     """AD gradient flows through the DFT plane probe accumulation path.
 
     Objective: maximize |DFT(Ez)| at a specific frequency on a plane.
     The gradient w.r.t. eps_r should be non-zero and match FD.
+    The 50% relative-error bar allows for limited float32 FD precision at objective and gradient scales near 1e-24 from O(dt) DFT accumulation.
     """
-    # Use CPML boundaries and a larger domain so the pulse has room
-    # to propagate without wrapping.  n_steps=200 ensures several
-    # periods at f0=3 GHz accumulate in the DFT, giving a non-tiny
-    # objective (DFT values scale as O(dt)).
     grid = Grid(freq_max=5e9, domain=(0.06, 0.03, 0.03), cpml_layers=8)
     n_steps = 200
 
@@ -157,7 +145,6 @@ def test_gradient_through_dft_plane():
             dft_planes=[plane_probe],
             checkpoint=True,
         )
-        # Sum of |DFT|^2 over the plane
         acc = result.dft_planes[0].accumulator
         return jnp.sum(jnp.abs(acc) ** 2)
 
@@ -172,10 +159,8 @@ def test_gradient_through_dft_plane():
     print(f"  Objective: {val:.6e}")
     print(f"  |grad|_max: {grad_max:.6e}")
 
-    # Use relative check: gradient should be significant relative to objective
     assert grad_max > val * 1e-10, "Gradient is negligible through DFT plane path"
 
-    # FD check at a cell between source and DFT plane
     ci = grid.nx // 3
     cj = grid.ny // 2
     ck = grid.nz // 2
@@ -188,19 +173,8 @@ def test_gradient_through_dft_plane():
     if abs(fd) > 1e-30:
         rel_err = abs(ad - fd) / max(abs(fd), abs(ad))
         print(f"  FD check at ({ci},{cj},{ck}): AD={ad:.6e}, FD={fd:.6e}, err={rel_err:.4e}")
-        # Relaxed tolerance: DFT accumulator values scale as O(dt) ≈ 5e-12,
-        # so the objective and gradients are extremely small (~1e-24).
-        # Float32 FD at this scale has limited precision (this test runs
-        # fully float32, no enable_x64() scoping -- both field storage and
-        # Yee compute dtype are float32, unaffected by issue #630's
-        # storage-vs-arithmetic distinction). We verify same sign + same
-        # order of magnitude (< 50% relative error).
         assert rel_err < 0.50, f"DFT plane gradient FD mismatch: rel_err={rel_err:.4f}"
 
-
-# =========================================================================
-# Test 3: Oblique TFSF produces correct Fresnel TE reflection
-# =========================================================================
 
 def _run_oblique_fresnel(theta_deg, eps_r_val, bw=0.15):
     """Run the #404 Phase-B transformed (complex Bloch) oblique-TFSF path against a
@@ -228,7 +202,7 @@ def _run_oblique_fresnel(theta_deg, eps_r_val, bw=0.15):
     f0 = 5e9
     cfg, aux0 = init_tfsf(grid.nx, dx, dt, cpml_layers=grid.cpml_layers,
                           tfsf_margin=5, f0=f0, bandwidth=bw, amplitude=1.0,
-                          polarization="ez", angle_deg=theta_deg, ny=grid.ny)
+                          polarization="ez", angle_deg=theta_deg, ny=grid.ny, dtype='float32')
     assert is_tfsf_2d(cfg)
     bloch = bloch_phase_tuple(cfg, dx)
     x_iface = grid.nx // 4
@@ -310,10 +284,6 @@ def test_oblique_tfsf_fresnel():
     assert err < 0.12, (f"oblique |R|={R:.3f} vs analytic {R_at_injected:.3f} "
                         f"(injected {inj_angle:.1f} deg) err {err*100:.1f}% > 12%")
 
-
-# =========================================================================
-# Test 4: Oblique Fresnel accuracy at a second angle (45 deg)
-# =========================================================================
 
 @pytest.mark.slow
 def test_oblique_tfsf_fresnel_45deg():

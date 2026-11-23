@@ -48,11 +48,6 @@ import numpy as np
 
 from rfx.nonuniform import make_band_profile
 
-#: Distance from the last PEC node to the electrical edge of a PEC sheet, in
-#: cells. MEASURED on this solver against a reference extrapolated at its
-#: measured (first) order -- ``derived`` block of
-#: ``scripts/diagnostics/pec_sheet_edge_offset/pec_sheet_edge_offset.json``:
-#: 0.345 ... 0.354 over two polarizations and two cell sizes. openEMS uses 1/3.
 EDGE_OFFSET = 0.35
 
 
@@ -69,12 +64,10 @@ class SheetEdge(NamedTuple):
 
 
 class EdgeAwareProfile(NamedTuple):
+    """``metal_end_nodes`` gives the terminal sheet nodes required by the edge-offset convention."""
     cells: np.ndarray
-    #: node coordinates, ``lo`` first
     nodes: np.ndarray
-    #: per SheetEdge: the node the sheet must END on (draw the sheet to it)
     metal_end_nodes: tuple
-    #: per SheetEdge: the edge cell actually used (may be below ``dx``)
     edge_cells: tuple
 
 
@@ -168,9 +161,6 @@ def _chain_r(chain, edges, cap, max_ratio, face_pairs=()):
 
 
 def _face_pairs(edges, fixed, res, edge_offset, partner_edges):
-    # Only the nearest face on either side can partner an edge. A face
-    # inside the protected cell at the cap joins the exact-fit constraints;
-    # merely capping r would leave a sliver when a chain chooses a smaller r.
     face_pairs = {}
     for i, edge in enumerate(edges):
         if i not in partner_edges:
@@ -191,15 +181,6 @@ def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
     """Lines for the given edge-cell sizes, then the cells between them."""
     res = list(res)
     face_pairs = _face_pairs(edges, fixed, res, edge_offset, partner_edges)
-    # Strips (metal between two edges) and gaps (air between two metals) with
-    # no face in between form CHAINS of consecutive edges. Every edge of a
-    # chain gets ONE edge-cell size r, an exact fit D = (n + k) r of one of
-    # its pairs, and every other pair's stretch S = D - k r between its two
-    # outer lines is a whole number of equal cells no larger than the cap.
-    # Without this a stretch of 1.1 cells becomes two cells of 0.55 and the
-    # ratio cap drags every neighbour down with it; pairing each strip and
-    # gap on its own let a shared edge keep the LAST pair's r and left a
-    # micrometre sliver between two lines that should coincide.
     paired = {}
     face_inner = []
     chains = _chains(_chain_pairs(edges, fixed, edge_offset))
@@ -222,9 +203,6 @@ def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
             if c > 0.0:
                 line = edges[i].position + np.sign(face - edges[i].position) * k * r
                 face_inner.append((min(line, face), max(line, face), c))
-    # Shrink an edge cell until it clears its neighbours: other edge cells
-    # and faces. Twelve steps of 0.8 take it to ~0.07 of its start; below
-    # that the drawing, not the mesh, is the problem.
     for _ in range(12):
         spans = [_edge_lines(e, r, edge_offset)[0] for e, r in zip(edges, res)]
         clash = [False] * len(edges)
@@ -270,7 +248,7 @@ def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
             sizes.append(b - a)
             prot.append(True)
         elif inner:
-            sizes.append(inner[0])        # the pair's whole inner cells
+            sizes.append(inner[0])
             prot.append(True)
         else:
             sizes.append(dx)
@@ -338,15 +316,6 @@ def edge_aware_profile(
                 f"sheet edge at {e.position:g} m is outside ({lo:g}, {hi:g})")
     fixed = sorted({lo, hi, *(float(f) for f in faces)})
 
-    # The ratio cap may make ``make_band_profile`` refine an edge cell (a
-    # protected block next to smaller cells is split, e.g. a full-size edge
-    # cell next to a stretch that only divides into 0.77-size cells). The
-    # node then sits ``edge_offset`` of the WRONG cell from the edge, so the
-    # realized edge-cell size is fed back until the cell that straddles each
-    # edge is the one the lines were computed for. Starting from a slightly
-    # smaller edge cell often avoids the split altogether, so a few starting
-    # sizes are tried and the profile with the LARGEST smallest cell wins:
-    # the time step follows the smallest cell.
     def _profile(partner_edges):
         best = None
         last_error = None
@@ -373,8 +342,6 @@ def edge_aware_profile(
                 last_error = exc
                 continue
             except RuntimeError as exc:
-                # A partner candidate whose band fit does not converge is infeasible;
-                # without partners the error propagates as it did before.
                 if not partner_edges:
                     raise
                 last_error = ValueError(str(exc))
@@ -423,7 +390,6 @@ def edge_aware_profile(
                 best_p = candidate
         if not changed:
             break
-    # Equal minima (within the settle tolerance) retain the old profile, even if a partner uses fewer cells.
     if best_p is not None and (isinstance(old, ValueError)
                                or best_p[0][0] > old[0][0] + 1e-9 * dx):
         return best_p[1]
@@ -523,7 +489,7 @@ def edge_aware_profiles(
         for sh in solids:
             lo, hi = _box_corners(sh)
             axis_faces += [lo[k], hi[k]]
-        ends = []          # (position, metal_side, plane key, transverse span, plane coordinate)
+        ends = []
         for sh in sheets:
             lo, hi = _box_corners(sh)
             thin = [i for i in range(3) if abs(hi[i] - lo[i]) <= tol]
@@ -542,8 +508,6 @@ def edge_aware_profiles(
                     ends.append((pos, side, plane, (lo[t], hi[t]), lo[n]))
         axis_edges = {}
         for pos, side, plane, (t0, t1), c in ends:
-            # An end that butts against another sheet in the same plane, over
-            # its whole width, is interior metal (a seam), not a free edge.
             seam = any(
                 abs(p2 - pos) <= tol and s2 == -side and pl2 == plane
                 and u0 <= t0 + tol and u1 >= t1 - tol
@@ -577,9 +541,6 @@ def edge_aware_profiles(
                     f"sheet edge, so the nearest node is {edge_offset:.2f} of "
                     "the edge cell inside the metal. Move the plane off the "
                     "edge if it has to sit on a node.", ConfigurationWarning, stacklevel=2)
-        # A solid's face on a sheet edge (a slab cut flush with its foil)
-        # yields to the edge rule, as the docstring says; only a DECLARED
-        # plane warns, because the caller asked for a node there.
         axis_faces = [f for f in axis_faces + declared
                       if tol < f < hi_dom - tol and round(f / tol) not in edge_pos]
         prof = edge_aware_profile(
@@ -591,16 +552,12 @@ def edge_aware_profiles(
 
 
 class SolvedSheetSpan(NamedTuple):
-    """Where a PEC sheet's in-plane ends are SOLVED along one axis."""
+    """Where a PEC sheet's in-plane ends are SOLVED along one axis. At a free edge, ``lo`` and ``hi`` lie ``edge_offset`` of the adjacent outside cell beyond the terminal sheet node, in metres."""
 
-    #: first and last unwrapped footprint node index (period endpoint may be N)
     i0: int
     i1: int
-    #: solved end coordinates (m): the end node, moved ``edge_offset`` of the
-    #: adjacent OUTSIDE cell outward at a free edge
     lo: float
     hi: float
-    #: whether each end is a free edge (not on the domain wall, not a seam)
     free_lo: bool
     free_hi: bool
 
@@ -681,8 +638,6 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
     tol = 1e-9 * max(float(domain_hi), 1e-12)
     if (periodic and abs(float(declared_hi) - float(domain_hi)) <= tol
             and float(declared_lo) >= -tol and idx[0] == 0):
-        # Lift the closing node out of the stored [0, N) footprint. For a
-        # full-period sheet it represents both ends of the directed span.
         idx = np.append(idx[1:] if float(declared_lo) > tol else idx, fp.shape[axis])
         nodes = np.append(nodes, float(domain_hi))
     i0, i1 = int(idx[0]), int(idx[-1])

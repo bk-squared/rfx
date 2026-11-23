@@ -1,4 +1,6 @@
 """Build requested diagnostic arrays from current declarations, never a snapshot."""
+
+from rfx._internal._precision import resolve_coefficient_dtype
 from dataclasses import replace
 
 
@@ -58,7 +60,7 @@ def _integrals(sim, root, table, smoothing, conformal=None):
             full_tensor_eps(sim, root.grid, root.materials, pairs)
         else:
             compute_smoothed_eps_nonuniform(
-                root.grid, pairs, nominal_h_max=smoothing_nominal_h_max(sim, root.grid))
+                root.grid, pairs, nominal_h_max=smoothing_nominal_h_max(sim, root.grid), dtype=resolve_coefficient_dtype(sim._precision))
     else:
         from rfx.model.tensor_operands import form_tensor_operands
         shapes = root.assembly[4]

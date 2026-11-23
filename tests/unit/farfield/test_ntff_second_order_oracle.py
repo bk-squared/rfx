@@ -65,28 +65,12 @@ OMEGA = 2.0 * np.pi * FREQ
 STEPS_PER_PERIOD = 16
 
 
-# ---------------------------------------------------------------------------
-# Closed-form fields of a set of point dipoles (self-contained)
-# ---------------------------------------------------------------------------
-#
-# Time convention exp(+j*omega*t), so a wave leaving the source carries
-# exp(-j*k*R). For an electric current moment p (A*m) and a magnetic current
-# moment m (V*m) at the same point, with u = R/|R|, P = u u^T, X = [u]_cross:
-#
-#     E = Ge . p + Bx . m           H = -Bx . p + (Ge/eta^2) . m
-#     Ge = A_R P + A_T (P - I)      Bx = B X
-#     A_R = eta/(2 pi R^2) (1 + 1/(jkR)) exp(-jkR)
-#     A_T = j eta k/(4 pi R) (1 + 1/(jkR) - 1/(kR)^2) exp(-jkR)
-#     B   = j k/(4 pi R) (1 + 1/(jkR)) exp(-jkR)
-#
-# The magnetic-dipole entries follow by duality (E -> H, H -> -E,
-# eta -> 1/eta). Far from the sources only the 1/R pieces survive, which is
-# the closed-form far field written out in _dipole_far_field below — the
-# point-source case of the same radiation integral rfx/farfield.py evaluates.
 
 
 def _dipole_fields(r_obs, r_src, moments_e, moments_m, k=K0, eta=ETA_0):
-    """Exact E and H at ``r_obs`` (n, 3) of the dipoles at ``r_src`` (m, 3)."""
+    """Exact E and H at ``r_obs`` (n, 3) of the dipoles at ``r_src`` (m, 3).
+    For time convention exp(+j*omega*t), the electric current moment p has units A*m and the magnetic current moment m has units V*m.
+    """
     r_obs = np.asarray(r_obs, dtype=np.float64).reshape(-1, 3)
     r_src = np.asarray(r_src, dtype=np.float64).reshape(-1, 3)
     d = r_obs[:, None, :] - r_src[None, :, :]
@@ -122,7 +106,9 @@ def _dipole_fields(r_obs, r_src, moments_e, moments_m, k=K0, eta=ETA_0):
 
 
 def _dipole_far_field(theta, phi, r_src, moments_e, moments_m, k=K0, eta=ETA_0):
-    """Exact far field, shaped and phased exactly like ``compute_far_field``."""
+    """Exact far field, shaped and phased exactly like ``compute_far_field``.
+    The magnetic-dipole entries follow by duality (E -> H, H -> -E, eta -> 1/eta).
+    """
     theta = np.asarray(theta, dtype=np.float64)
     phi = np.asarray(phi, dtype=np.float64)
     TH, PH = np.meshgrid(theta, phi, indexing="ij")
@@ -147,9 +133,6 @@ def _dipole_far_field(theta, phi, r_src, moments_e, moments_m, k=K0, eta=ETA_0):
     return E_theta.reshape(TH.shape), E_phi.reshape(TH.shape)
 
 
-# ---------------------------------------------------------------------------
-# Grid stubs: only what the transform reads off a grid
-# ---------------------------------------------------------------------------
 
 class _UniformGrid:
     """Cubic cells, no CPML padding, so node ``i`` sits at ``i*dx``."""
@@ -180,9 +163,6 @@ def _nodes(widths):
     return np.concatenate([[0.0], np.cumsum(np.asarray(widths, dtype=np.float64))])
 
 
-# ---------------------------------------------------------------------------
-# The oracle itself
-# ---------------------------------------------------------------------------
 
 def _dipole_set(centre):
     """Three electric and one magnetic dipole, well inside the box."""
@@ -267,7 +247,9 @@ def _accumulate_oracle(box, phasors, *, dt, n_steps,
 
 def _accumulated_case(dx_w, dy_w, dz_w, grid, *, collocation="face_centre",
                       margin=3, e_time_offset=1.0):
-    """Box, accumulated DFT and DFT scale for one mesh of the dipole oracle."""
+    """Box, accumulated DFT and DFT scale for one mesh of the dipole oracle.
+    A running DFT of a real single-tone field over an integer number of periods returns (total time / 2) times the phasor, exactly.
+    """
     nx, ny, nz = len(dx_w), len(dy_w), len(dz_w)
     i_lo, i_hi = margin, nx - margin
     j_lo, j_hi = margin, ny - margin
@@ -290,8 +272,6 @@ def _accumulated_case(dx_w, dy_w, dz_w, grid, *, collocation="face_centre",
     n_steps = STEPS_PER_PERIOD
     data = _accumulate_oracle(box, phasors, dt=dt, n_steps=n_steps,
                               e_time_offset=e_time_offset)
-    # A running DFT of a real single-tone field over an integer number of
-    # periods returns (total time / 2) times the phasor, exactly.
     return box, data, 0.5 * n_steps * dt, (r_src, me, mm)
 
 
@@ -329,9 +309,6 @@ def _uniform_case(cells_per_lambda, box_lambda=0.7, margin=3, **kw):
     return _relative_error(widths, widths, widths, grid, margin=margin, **kw)
 
 
-# ---------------------------------------------------------------------------
-# T1 — end-to-end second order through the production functions
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("cells_per_lambda", [10, 20, 40])
 def test_second_order_oracle_error_bound(cells_per_lambda):
@@ -354,9 +331,6 @@ def test_second_order_oracle_convergence_rate():
         f"NTFF far field off by {errs[1]:.3e} at lambda/20 (bound 5.0e-3)")
 
 
-# ---------------------------------------------------------------------------
-# The box stays a valid JAX pytree
-# ---------------------------------------------------------------------------
 
 def test_box_is_a_valid_jax_pytree():
     """Every field of NTFFBox is a pytree LEAF, so none of them may be a str.
@@ -380,21 +354,15 @@ def test_box_is_a_valid_jax_pytree():
     leaves = jax.tree_util.tree_leaves(box)
     assert leaves, "box has no leaves"
     for leaf in leaves:
-        # Raises TypeError for anything JAX cannot make an array of.
         jnp.asarray(leaf)
 
-    # A jit call taking the box as an argument must trace and return.
     assert float(jax.jit(lambda bx: bx.freqs.sum())(box)) == pytest.approx(3e9)
 
-    # tree_map must round-trip it with the layout preserved.
     doubled = jax.tree_util.tree_map(lambda x: x, box)
     assert doubled.collocation == "face_centre"
     assert doubled.i_lo == box.i_lo and doubled.w_x_lo == box.w_x_lo
 
 
-# ---------------------------------------------------------------------------
-# The differentiable transform must agree with the numpy one
-# ---------------------------------------------------------------------------
 
 def _numpy_jax_parity(dx_w, dy_w, dz_w, grid):
     """Relative L2 between compute_far_field and compute_far_field_jax."""
@@ -439,9 +407,6 @@ def test_jax_transform_matches_numpy_on_a_graded_box():
     assert err < 1.0e-5, f"numpy/JAX far fields disagree by {err:.3e}"
 
 
-# ---------------------------------------------------------------------------
-# T2 — the same on a graded mesh (dx_arr / dy_arr / dz path)
-# ---------------------------------------------------------------------------
 
 def _graded_widths(n, total, end_ratio=3.0):
     """Smoothly stretching cells spanning ``total``, widest/narrowest = 3.
@@ -492,9 +457,6 @@ def test_graded_axis_improves_with_refinement(axis):
         f"{fine:.3e}")
 
 
-# ---------------------------------------------------------------------------
-# The accumulator must land exactly on the face-cell centre
-# ---------------------------------------------------------------------------
 
 def _linear_coeffs(seed):
     """Distinct (a, bx, by, bz) per field component, none of them zero."""
@@ -523,10 +485,10 @@ def test_accumulator_lands_on_the_face_cell_centre_exactly():
     any helper in ``rfx/farfield.py``.
     """
     n = 10
-    # A different grading on each axis, so crossing two of them shows.
     wx = _graded_widths(n, n * 2.0e-3, end_ratio=2.0)
     wy = _graded_widths(n, n * 2.0e-3, end_ratio=3.0)
     wz = _graded_widths(n, n * 2.0e-3, end_ratio=4.0)
+    assert not np.array_equal(wx, wy) and not np.array_equal(wx, wz) and not np.array_equal(wy, wz), "Different axis gradings expose crossed cell widths."
     grid = _GradedGrid(wx, wy, wz)
 
     xn, yn, zn = _nodes(wx)[:n], _nodes(wy)[:n], _nodes(wz)[:n]
@@ -534,9 +496,9 @@ def test_accumulator_lands_on_the_face_cell_centre_exactly():
     yc = 0.5 * (_nodes(wy)[:-1] + _nodes(wy)[1:])
     zc = 0.5 * (_nodes(wz)[:-1] + _nodes(wz)[1:])
 
-    # Asymmetric face indices, so a swapped lo/hi weight cannot cancel.
     box = NTFFBox(i_lo=2, i_hi=n - 3, j_lo=3, j_hi=n - 2, k_lo=2, k_hi=n - 2,
                   freqs=jnp.asarray([0.0], dtype=jnp.float32))
+    assert box.i_lo != n - box.i_hi and box.j_lo != n - box.j_hi and np.all(np.asarray(box.freqs) == 0), "Asymmetric face indices expose swapped weights; zero frequency makes both phase factors equal dt."
     box = with_face_centre_collocation(box, grid)
 
     comps = ("ex", "ey", "ez", "hx", "hy", "hz")
@@ -563,8 +525,6 @@ def test_accumulator_lands_on_the_face_cell_centre_exactly():
         data = accumulate_ntff(data, state, box, dt,
                                jnp.asarray(0, dtype=jnp.int32))
 
-        # At zero frequency both phase factors are exactly dt, so the
-        # accumulator holds dt times the collocated sample.
         faces = {
             "x_lo": (data.x_lo, ("ey", "ez", "hy", "hz"),
                      (xn[box.i_lo], yc[box.j_lo:box.j_hi], zc[box.k_lo:box.k_hi]), 0),
@@ -598,9 +558,6 @@ def test_accumulator_lands_on_the_face_cell_centre_exactly():
                     f"the field at the face-cell centre (max rel dev {err:.3e})")
 
 
-# ---------------------------------------------------------------------------
-# T4 — old dumps are read with the geometry they were accumulated with
-# ---------------------------------------------------------------------------
 
 def test_node_collocation_reproduces_legacy_far_field():
     """A box left at ``collocation="node"`` integrates exactly as before.
@@ -632,9 +589,6 @@ def test_node_collocation_reproduces_legacy_far_field():
     phi = np.linspace(0.0, 2.0 * np.pi, 8, endpoint=False)
     ff = compute_far_field(data, box, grid, theta, phi)
 
-    # Reference: the legacy rule written out here — every stored component
-    # read at its own lattice index, every sample priced at the cell's
-    # lower-corner node, weighted by dx*dy.
     ref_th, ref_ph = _legacy_transform(data, box, widths, theta, phi)
     assert np.allclose(np.asarray(ff.E_theta[0]), ref_th, rtol=1e-12, atol=0.0)
     assert np.allclose(np.asarray(ff.E_phi[0]), ref_ph, rtol=1e-12, atol=0.0)
@@ -698,9 +652,6 @@ def _legacy_transform(data, box, widths, theta, phi):
     return E_th.reshape(TH.shape), E_ph.reshape(TH.shape)
 
 
-# ---------------------------------------------------------------------------
-# A2 — a box with no room for the half-cell averages is refused loudly
-# ---------------------------------------------------------------------------
 
 def test_box_touching_the_array_boundary_is_refused():
     """Reading half a cell outside the box needs a cell of margin."""
@@ -768,9 +719,6 @@ def test_normal_weight_does_not_wrap_at_index_zero():
     assert _normal_weight(widths, 3) == pytest.approx(9.0 / 10.0)
 
 
-# ---------------------------------------------------------------------------
-# The half-cell interpolation must land exactly on the face
-# ---------------------------------------------------------------------------
 
 def test_normal_interpolation_lands_on_the_face_plane():
     """The two H weights of a face must reconstruct the face's own position.
@@ -785,10 +733,9 @@ def test_normal_interpolation_lands_on_the_face_plane():
     dz_widths = np.array([1.0, 1.0, 2.0, 3.0, 3.0, 3.0]) * 1.0e-3
     dx_widths = np.full(6, 1.0e-3)
     grid = _GradedGrid(dx_widths, dx_widths, dz_widths)
-    # Both z faces straddle a change of cell width: node 2 between 1.0 and
-    # 2.0 mm, node 3 between 2.0 and 3.0 mm.
     box = NTFFBox(i_lo=1, i_hi=5, j_lo=1, j_hi=5, k_lo=2, k_hi=3,
                   freqs=jnp.asarray([FREQ], dtype=jnp.float32))
+    assert all(dz_widths[idx - 1] != dz_widths[idx] for idx in (box.k_lo, box.k_hi)), "Both z faces must straddle unequal cell widths."
     box = with_face_centre_collocation(box, grid)
 
     zn = _nodes(dz_widths)
@@ -798,7 +745,6 @@ def test_normal_interpolation_lands_on_the_face_plane():
         assert np.isclose(mixed, zn[idx], rtol=0, atol=1e-15), (
             f"z face at node {idx}: weights put the H sample at {mixed:.6e} m, "
             f"not on the face at {zn[idx]:.6e} m")
-    # The graded axis needs real weights; the uniform ones must stay at 1/2.
     assert box.w_z_lo != 0.5 and box.w_z_hi != 0.5
     assert box.w_x_lo == 0.5 and box.w_y_hi == 0.5
 
@@ -885,9 +831,6 @@ def test_subgridded_ntff_request_is_refused_by_its_reflecting_exterior(monkeypat
     )
 
 
-# ---------------------------------------------------------------------------
-# The area element of a face is the product of the two widths that span it
-# ---------------------------------------------------------------------------
 
 def test_scalar_face_area_elements_span_their_own_face():
     """A y face is spanned by x and z, so its cell area cannot contain dy.
@@ -907,9 +850,6 @@ def test_scalar_face_area_elements_span_their_own_face():
     assert np.isclose(areas[2], dx * dy, rtol=1e-12)
 
 
-# ---------------------------------------------------------------------------
-# T5 — the scan carry still closes under every supported dtype
-# ---------------------------------------------------------------------------
 
 def _scan_once(field_dtype, accum_dtype, complex_fields=False):
     n = 12

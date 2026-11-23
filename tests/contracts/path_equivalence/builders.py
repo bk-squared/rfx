@@ -1,4 +1,6 @@
-"""Explicit minimal declarations on one asymmetric CPML dielectric box."""
+"""Explicit minimal declarations on one asymmetric CPML dielectric box.
+The nominal_profiles refusal row sets the attribute after construction because the constructor refuses nominal_profiles on a concrete axis.
+"""
 import numpy as np
 import jax.numpy as jnp
 
@@ -39,15 +41,13 @@ def _add(method, *args, **kwargs):
 
 
 def _planes(sim):
-    # An E plane and an H plane: the two are stamped half a step apart, so a
-    # path that stamps its H plane as E must not pass on the E plane alone.
+    """The E plane and H plane are stamped half a step apart, so an H plane stamped as E must not pass on the E plane alone."""
     sim.add_dft_plane_probe(axis='x', coordinate=4*DX, freqs=FREQS)
     sim.add_dft_plane_probe(axis='x', coordinate=4*DX, freqs=FREQS, component='hy')
 
 
 def _microstrip(sim):
-    # Minimal physical prerequisites of an MSL declaration: both longitudinal
-    # conductor surfaces exist at its declared ground and trace heights.
+    """An MSL declaration requires both longitudinal conductor surfaces at its declared ground and trace heights."""
     sim.add(Box(point(1 - .35, 1 - .35, 1), point(9 + .35, 6 + .35, 1)), material='pec')
     y_hi = (3.9 + .35 * 1.1) if sim._dy_profile is not None and sim._dy_profile[3] != DX else (4 + .35)
     sim.add(Box(point(1 - .35, 2 - .35, 2), point(9 + .35, y_hi, 2)), material='pec')
@@ -75,16 +75,17 @@ def _wire(sim):
     sim.add(PolylineWire((point(5, 3, 1), point(5, 3, top)), radius=0), material='pec')
 
 
-# A row is deliberately explicit: extending admission cannot inherit a no-op.
+ABOVE_CUTOFF_LOW_HZ = 30e9
+ABOVE_CUTOFF_HIGH_HZ = 50e9
+VACUUM_SECTION_SCATTERER_X_LO_CELLS = 6.2
+MONITOR_INTERIOR_Z_LO_CELLS = 1.7
+
 BUILDERS = {
     ('_freq_max', ''): ({}, _nothing),
     ('_domain', ''): ({}, _nothing),
     ('_dx', ''): ({}, _nothing),
     ('_dt_pin', ''): ({}, _nothing),
     ('_dt_min_cell', ''): ({'dt_min_cell': DX}, _nothing),
-    # nominal_profiles= needs a traced profile, which no lane of this concrete
-    # matrix has; only its refusal cells run, so the attribute is set after
-    # construction (the constructor refuses it on a concrete axis).
     ('_nominal_profiles', ''): ({}, lambda sim: setattr(sim, '_nominal_profiles', {'x': np.full(4, DX)})),
     ('_precision', ''): ({'precision': 'mixed'}, _nothing),
     ('_float64', ''): ({'precision': 'float64'}, _nothing),
@@ -101,8 +102,6 @@ BUILDERS = {
     ('_geometry', 'pec_volume'): ({}, lambda sim: _metal(sim, volume=True)),
     ('_geometry', 'pec_sheet'): ({}, _metal),
     ('_geometry', 'pec_wire'): ({}, _wire),
-    # The graded profile has nodes at 3 and 3.9 DX (not 4): DC film edges sit on
-    # nodes every lane shares, so the realized footprint equals the drawn one.
     ('_thin_conductors', 'lossy_sheet'): _add('add_thin_conductor', Box(point(5, 2, 1), point(5, 5, 5)), sigma_bulk=1e3, thickness=DX/10),
     ('_thin_conductors', 'pec_sheet'): ({}, lambda sim: _metal(sim, thin=True)),
     ('_thin_conductors', 'surface_impedance'): ({}, lambda sim: _metal(sim, thin=True, f0=True)),
@@ -114,9 +113,7 @@ BUILDERS = {
     ('_ports', 'wire_port'): _add('add_port', point(5, 3, 2), 'ez', impedance=50., extent=2*DX, waveform=waveform),
     ('_msl_ports', 'msl_port'): ({}, _microstrip),
     ('_waveguide_ports', 'waveguide_port'): _add('add_waveguide_port', 3*DX, direction='+x', mode=(1, 0), mode_type='TE', freqs=FREQS, f0=5e9, bandwidth=0.5, probe_offset=2, ref_offset=1),
-    # Two modes need bins above both cutoffs of this 8 x 7 cell aperture (TE10 19.2 GHz, TE01 21.9 GHz); the
-    # mode search ends at twice the highest bin. Same bins as test_multimode_waveguide_owners.
-    ('_waveguide_ports', 'n_modes'): _add('add_waveguide_port', 3*DX, direction='+x', mode=(1, 0), mode_type='TE', freqs=np.array([30e9, 50e9], dtype=np.float32), f0=40e9, bandwidth=0.5, probe_offset=2, ref_offset=1, n_modes=2),
+    ('_waveguide_ports', 'n_modes'): _add('add_waveguide_port', 3*DX, direction='+x', mode=(1, 0), mode_type='TE', freqs=np.array([ABOVE_CUTOFF_LOW_HZ, ABOVE_CUTOFF_HIGH_HZ], dtype=np.float32), f0=40e9, bandwidth=0.5, probe_offset=2, ref_offset=1, n_modes=2),
     ('_coaxial_ports', 'coax_port'): _add('add_coaxial_port', point(5, 3, 0), face='bottom', pin_length=3*DX),
     ('_floquet_ports', 'floquet_port'): _add('add_floquet_port', 3*DX, axis='z', f0=5e9),
     ('_floquet_ports', 'scan_angle'): _add('add_floquet_port', 3*DX, axis='z', f0=5e9, scan_theta=30.),
@@ -153,23 +150,19 @@ BASE_ROWS = {('_freq_max', ''), ('_domain', ''), ('_dx', ''), ('_materials', 'ep
 
 
 def build(row, lane, *, graded=False, dt=None, precision=None):
+    """The plane wave takes the boundary shorthand because uniform refuses explicit non-periodic side faces."""
     ctor, add = BUILDERS[row]
     kwargs = dict(freq_max=15e9, domain=DOMAIN, dx=DX, boundary=boundary(), cpml_layers=2)
     kwargs.update(ctor)
     if precision is not None:
         kwargs["precision"] = precision
     if row[0] == '_waveguide_ports':
-        # Modal aperture dimensions are declarations, not inferred rounded
-        # box lengths. Put both transverse walls exactly on grid nodes.
         kwargs['domain'] = point(10.3, 8, 7)
     if row == ('_tfsf', 'closed_box'):
         kwargs['domain'] = point(14, 12, 12)
     if row == ('_tfsf', 'plane_wave'):
-        # One request on both meshes: uniform refuses explicit non-periodic
-        # side faces (#1945), so the plane wave takes the shorthand.
         kwargs['boundary'] = 'cpml'
     nu = lane in ('run_nonuniform', 'run_distributed_nu', 'fwd_nonuniform', 'fwd_distributed_nu') or graded
-    # Off-node absorbers remain intentional; reflecting axes use whole cells.
     from rfx.boundaries.spec import normalize_boundary
     spec = normalize_boundary(kwargs['boundary'])
     kwargs['domain'] = tuple(
@@ -179,7 +172,6 @@ def build(row, lane, *, graded=False, dt=None, precision=None):
     if nu or row[0] in ('_dx_profile', '_dy_profile', '_dz_profile'):
         for axis, length in zip('xyz', kwargs['domain']):
             profile = np.full(int(np.ceil(length / DX)), DX)
-            # The block rule needs equal in-plane cells (rfx/current_moments.py), so this row grades z only.
             if graded and (row[0] != '_current_moments' or axis == 'z'):
                 profile[3:5] = (DX*0.9, DX*1.1)
             kwargs[f'd{axis}_profile'] = profile
@@ -191,8 +183,6 @@ def build(row, lane, *, graded=False, dt=None, precision=None):
         kwargs['domain'] = point(11, 8, 6.4)
         kwargs['boundary'] = BoundarySpec(x='periodic', y='periodic', z=Boundary(lo='pec', hi='cpml'))
     if row[0] == '_waveguide_ports':
-        # State the guide walls explicitly: uniform otherwise supplies its
-        # own transverse PEC layout, while NU keeps the declared absorbers.
         kwargs['boundary'] = BoundarySpec(
             x=Boundary(lo='cpml', hi='cpml', lo_thickness=1, hi_thickness=2),
             y='pec', z='pec')
@@ -202,23 +192,15 @@ def build(row, lane, *, graded=False, dt=None, precision=None):
     sim = Simulation(**kwargs)
     sim.add_material('block', eps_r=2.5)
     if row == ('_tfsf', 'closed_box'):
-        # Keep every scatterer face strictly inside the total-field box.
         sim.add(Box(point(4, 4, 4), point(7, 7, 7)), material='block')
     elif row == ('_tfsf', 'plane_wave'):
-        # Addendum 5b: same x slab and eps, invariant through transverse pads.
         sim.add(Box(point(3.2, -100, -100), point(6.4, 100, 100)), material='block')
     elif row[0] == '_waveguide_ports':
-        # Beyond the port's reference plane: its section must be vacuum (rfx#1994).
-        sim.add(Box(point(6.2, 2.1, 1.3), point(8.2, 4.3, 3.2)), material='block')
+        sim.add(Box(point(VACUUM_SECTION_SCATTERER_X_LO_CELLS, 2.1, 1.3), point(8.2, 4.3, 3.2)), material='block')
     elif row[0] == '_current_moments':
-        # The block's z faces must stay inside the monitor's interior (from node 2):
-        # a lower face drawn at 1.3 cells rounds to node 1 under the nearest-node rule.
-        sim.add(Box(point(3.2, 2.1, 1.7), point(6.4, 4.3, 3.2)), material='block')
+        sim.add(Box(point(3.2, 2.1, MONITOR_INTERIOR_Z_LO_CELLS), point(6.4, 4.3, 3.2)), material='block')
     else:
         sim.add(Box(point(3.2, 2.1, 1.3), point(6.4, 4.3, 3.2)), material='block')
-    # add_source is a zero-impedance _PortEntry internally. Driven port,
-    # waveguide and TFSF declarations provide their own excitation and must
-    # not also carry that entry (their public APIs reject the combination).
     own_drive = row in (('_ports', 'lumped_port'), ('_ports', 'wire_port'),
                        ('_boundary_spec', 'conformal_s_matrix')) or row[0] in (
         '_tfsf', '_waveguide_ports', '_msl_ports', '_floquet_ports', '_coaxial_ports')

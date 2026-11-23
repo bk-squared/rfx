@@ -1,4 +1,4 @@
-"""Step-local precision operands; realized geometry retains its storage policy."""
+"""Step-local precision operands; realized metrics use the run coefficient dtype."""
 import jax.numpy as jnp
 import jax
 
@@ -7,7 +7,7 @@ from rfx.materials.lorentz import init_lorentz
 
 
 def field_grid(grid, field_dtype):
-    """Widen graded metrics once, preserving the float32 operator verbatim."""
+    """Match field precision; float64 realized metrics already have this dtype."""
     if jnp.dtype(field_dtype) != jnp.dtype('float64'):
         return grid
     names = ('dt', 'dx', 'dy', 'dx_arr', 'dy_arr', 'dz',

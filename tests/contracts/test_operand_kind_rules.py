@@ -2,7 +2,6 @@
 import numpy as np
 import pytest
 
-# Import each rule owner so its table is registered even in an isolated run.
 from rfx.model.operands import OperandKind, OperandRecord, operands_at
 
 

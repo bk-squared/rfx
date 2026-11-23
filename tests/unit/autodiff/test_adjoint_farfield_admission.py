@@ -27,6 +27,7 @@ def test_ntff_only_bad_bins(bins):
 
 
 def test_ntff_halo_and_identical_plane_bins():
+    """Node layout has no backward halo."""
     from rfx.measurement.plan import field_channel
     ctx = context(NTFFBox(4, 14, 4, 14, 4, 14, np.array([.1, .2]), face_centre=True))
     np.testing.assert_array_equal(monitor_frequencies(ctx), [.1, .2])
@@ -34,7 +35,7 @@ def test_ntff_halo_and_identical_plane_bins():
     with pytest.raises(NotImplementedError, match="interior monitor"):
         monitor_frequencies(ctx)
     ctx.ntff = ctx.ntff._replace(face_centre=False)
-    monitor_frequencies(ctx)  # node layout has no backward halo
+    monitor_frequencies(ctx)
     ctx.dft_meta = ((field_channel("hy"), 0, 10, np.array([.1]), (4, 8, 4, 8)),)
     with pytest.raises(NotImplementedError, match="identical monitor"):
         monitor_frequencies(ctx)
@@ -46,7 +47,6 @@ def test_ntff_halo_and_identical_plane_bins():
 def test_compensation_objective_zero_and_adjoint_carry(record_property):
     from unittest.mock import patch
     seen = []
-    # Inspect the production second scan without changing its carry or sources.
     from rfx.stepping import uniform_setup
     original = uniform_setup.make_core_step
     def make(ctx, *args, **kwargs):

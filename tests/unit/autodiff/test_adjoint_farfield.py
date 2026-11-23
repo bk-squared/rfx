@@ -31,8 +31,6 @@ CASES = [("h", "face_centre"), ("ntff", "face_centre"), ("ntff", "node")]
 
 @contextmanager
 def collocation_mode(mode):
-    # The public registration has no collocation switch. Change the measurement
-    # box factory, identically for both forward modes, before plan assembly.
     import rfx.farfield as farfield
     original = farfield.make_ntff_box
     def make(*args, **kwargs):
@@ -68,8 +66,6 @@ def loss_function(sim, kind, mode, objective="quotient"):
             return jnp.sum(weights * jnp.abs(spectrum)**2)
         if directivity_objective is not None:
             return directivity_objective(result)
-        # Three polar samples, two bins; a discrete sphere quadrature defines
-        # radiated power. This objective depends on both E and H NTFF channels.
         theta = jnp.array([np.pi/6, np.pi/2, 5*np.pi/6])
         phi = jnp.arange(8) * (2*np.pi/8)
         ff = compute_far_field_jax(result.ntff_data, result.ntff_box,
@@ -106,16 +102,14 @@ def settled_reference(loss, eps, record_property):
 @pytest.mark.parametrize("lossy", [False, True])
 @pytest.mark.parametrize("precision", ["float64", "float32"])
 def test_g1_g2_g3_g4(kind, collocation, lossy, precision, record_property):
+    """Host materialization before leaving the float64 scope preserves the settled comparator precision for float32 cases."""
     start = time.monotonic()
-    # Amendment 3 changes only float32 NTFF, including its float64 comparator.
     objective = ("maximize_directivity" if precision == "float32" and kind == "ntff"
                  else "quotient")
     record_property("objective", objective)
     record_property("gate", "G3" if precision == "float32" else "G1" if kind == "h" else "G2")
     with enable_x64() if precision == "float64" else nullcontext():
         with collocation_mode(collocation):
-            # Amendment 2: both dtypes use the same settled float64 comparator.
-            # Materialize on the host before leaving x64 so G3 keeps its precision.
             with enable_x64():
                 reference_sim, reference_eps = scene(kind, "float64", lossy)
                 reference_loss = loss_function(reference_sim, kind, "autodiff", objective)
@@ -124,7 +118,6 @@ def test_g1_g2_g3_g4(kind, collocation, lossy, precision, record_property):
             record_property("reference_precision", str(reference.dtype))
             sim, eps = scene(kind, precision, lossy)
             adjoint_loss = loss_function(sim, kind, "adjoint", objective)
-            # Explicit user jit is covered for both H-plane and NTFF-only calls.
             actual = jax.jit(jax.grad(adjoint_loss), static_argnums=1)(eps, steps)
             error = errors(actual, reference)[0]
             record_property("gradient_error", error)
@@ -134,7 +127,6 @@ def test_g1_g2_g3_g4(kind, collocation, lossy, precision, record_property):
             record_property("witness_worst", witness.worst)
             assert witness.passed, "G4 record-length witness"
     record_property("seconds", time.monotonic() - start)
-    # These parameterized traces have different static boxes, records and dtypes.
     jax.clear_caches()
     gc.collect()
 
@@ -174,9 +166,9 @@ def test_local_transpose_and_magnetic_sources(record_property):
                         np.testing.assert_allclose(part(actual[c][f]), ref, rtol=1e-13, atol=1e-13)
         freqs = jnp.array([.063, .078])
         target = jnp.array([1+2j, -2+.3j])[:, None, None]
-        # Non-unit, different component permeabilities exercise Db's edge choice.
         ctx = SimpleNamespace(dt=1., materials=SimpleNamespace(
             components=SimpleNamespace(mu_update=(2., 3., 5.))))
+        assert len(set(ctx.materials.components.mu_update)) == 3 and all(mu != 1. for mu in ctx.materials.components.mu_update), 'Distinct nonunit permeabilities must distinguish the magnetic edge coefficient'
         slot = (1, slice(1, 2), slice(1, 2))
         hook = magnetic_wavelet_hook(ctx, [("hy", slot, target)], freqs, 128, jnp.float64)
         def sample(n):
@@ -190,8 +182,6 @@ def test_local_transpose_and_magnetic_sources(record_property):
         actual = jnp.exp(-2j*jnp.pi*freqs[:, None]*(n+1)) @ wave
         expected = -target[:, 0, 0] * jnp.exp(-1j*jnp.pi*freqs) / (3*MU_0)
         np.testing.assert_allclose(actual, expected, rtol=1e-11, atol=1e-6)
-        # Trace the public VJP as well: an NTFF-only jit must not need a plane
-        # to obtain concrete bins, and the second scan must close its carry.
         for kind in ("h", "ntff"):
             sim, eps = scene(kind, "float64", False)
             loss = loss_function(sim, kind, "adjoint")

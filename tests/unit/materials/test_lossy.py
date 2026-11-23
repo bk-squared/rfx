@@ -5,6 +5,7 @@ The update_e() Yee update already handles conductivity via Ca/Cb coefficients:
     Cb = (dt/ε) / (1 + σ·dt/(2ε))
 
 These tests validate that the σ path produces correct energy dissipation.
+An earlier lossy-cavity run measured both lossy cases at the approximately 9e-4 round-off floor by step 100, so the conductivity ordering uses step 30.
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -28,11 +29,14 @@ def _total_energy(state, dx):
 
 
 def test_lossy_cavity_energy_decay():
-    """Energy in a lossy PEC cavity decays monotonically after source turns off."""
-    grid = Grid(freq_max=5e9, domain=(17 * (299792458.0 / 5e9 / 20.0), 17 * (299792458.0 / 5e9 / 20.0), 17 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    """Energy in a lossy PEC cavity decays monotonically after source turns off.
+    The domain length is a whole number of cells of dx, so the solved domain equals the declared one.
+    """
+    grid = Grid(freq_max=5e9, domain=(17 * (299792458.0 / 5e9 / 20.0), 17 * (299792458.0 / 5e9 / 20.0), 17 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)
     materials = init_materials(grid.shape)
 
-    sigma = 0.1  # S/m — moderate loss
+    MODERATE_CONDUCTIVITY_S_PER_M = 0.1
+    sigma = MODERATE_CONDUCTIVITY_S_PER_M
     mask = jnp.ones(grid.shape, dtype=bool)
     materials = set_material(materials, mask, sigma=sigma)
 
@@ -40,8 +44,8 @@ def test_lossy_cavity_energy_decay():
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
     center = (0.025, 0.025, 0.025)
 
-    # Source shutoff step: pulse is negligible after 6·t0
-    shutoff_step = int(6 * pulse.t0 / grid.dt)
+    NEGLIGIBLE_PULSE_T0_MULTIPLE = 6
+    shutoff_step = int(NEGLIGIBLE_PULSE_T0_MULTIPLE * pulse.t0 / grid.dt)
     n_steps = grid.num_timesteps(num_periods=30)
 
     energies = []
@@ -67,7 +71,6 @@ def test_lossy_cavity_energy_decay():
 
     assert ratio < 0.1, f"Lossy cavity didn't decay enough: ratio={ratio:.4f}"
 
-    # Energy should be mostly decreasing after peak
     diffs = np.diff(decay)
     n_increasing = np.sum(diffs > decay[0] * 1e-4)
     assert n_increasing < len(diffs) * 0.1, \
@@ -79,6 +82,7 @@ def test_higher_sigma_faster_decay():
 
     Initialize with a TM110-like pattern to avoid soft-source ambiguity.
     Track energy ratio (final/initial) for each σ.
+    An earlier lossless run measured a 0.89 energy trough at step 500 from the half-step E/H sampling ripple, so the conservation bound uses a tail average.
     """
     from rfx.grid import C0
 
@@ -88,24 +92,12 @@ def test_higher_sigma_faster_decay():
     Lx = (shape[0] - 1) * dx
     Ly = (shape[1] - 1) * dx
 
-    # TM110-like initial field: Ez = sin(πx/Lx) sin(πy/Ly)
     x = np.arange(shape[0]) * dx
     y = np.arange(shape[1]) * dx
     ez_init = np.sin(np.pi * x[:, None, None] / Lx) * \
               np.sin(np.pi * y[None, :, None] / Ly) * \
               np.ones((1, 1, shape[2]))
 
-    # Two measurements are needed from one run because the test checks two
-    # different things that peak at different times:
-    #   * EARLY snapshot (step 30) for the σ-ordering — by ~step 100 BOTH lossy
-    #     cases have decayed to the ~9e-4 round-off floor and become equal, so a
-    #     late snapshot cannot tell σ=0.1 from σ=0.5 (this latent bug was masked
-    #     before: the lossless assert below short-circuited the run at step 500).
-    #   * TAIL average (last full period) for the lossless conservation — the
-    #     same-time ½εE²+½μH² energy oscillates at 2ω (leapfrog samples E and H a
-    #     half-step apart), so a single end-of-loop snapshot lands on the ~±6%
-    #     trough (0.89 at step 500) even though the envelope is flat (energy IS
-    #     conserved). Averaging the tail recovers the conserved quantity.
     _EARLY_STEP = 30
     early_ratios = []
     tail_ratios = []
@@ -139,11 +131,6 @@ def test_higher_sigma_faster_decay():
     for s, e, t in zip([0.0, 0.1, 0.5], early_ratios, tail_ratios):
         print(f"  σ={s:.2f} S/m: early(step{_EARLY_STEP})={e:.6f}  tail-avg={t:.6f}")
 
-    # Window-validity guard: _EARLY_STEP must sample while the σ-ordering is still
-    # resolvable. tail_ratios[2] is σ=0.5 fully decayed → the round-off floor. If a
-    # future dt/dx/σ change shifts the decay so the early snapshot lands after the
-    # lossy cases reach that floor, σ=0.1 and σ=0.5 become equal and the ordering
-    # asserts below go degenerate — fail LOUDLY here with a fix hint instead.
     _floor = tail_ratios[2]
     assert early_ratios[2] > 5 * _floor, (
         f"_EARLY_STEP={_EARLY_STEP} samples after σ=0.5 hit the round-off floor "
@@ -151,10 +138,8 @@ def test_higher_sigma_faster_decay():
         f"longer resolvable — lower _EARLY_STEP into the pre-floor window."
     )
 
-    # Lossless: energy conserved (tail-averaged to remove the 2ω leapfrog ripple).
     assert tail_ratios[0] > 0.9, \
         f"Lossless energy not conserved: tail-avg ratio={tail_ratios[0]:.4f}"
-    # Higher σ → faster decay, measured early while the cases are still resolvable.
     assert early_ratios[1] < early_ratios[0] * 0.5, \
         f"σ=0.1 early ratio {early_ratios[1]:.4f} not < 50% of lossless {early_ratios[0]:.4f}"
     assert early_ratios[2] < early_ratios[1] * 0.5, \
@@ -166,19 +151,15 @@ def test_set_material_region():
     shape = (10, 10, 10)
     materials = init_materials(shape)
 
-    # Create a mask for a sub-region
     mask = jnp.zeros(shape, dtype=bool)
     mask = mask.at[3:7, 3:7, 3:7].set(True)
 
     materials = set_material(materials, mask, eps_r=4.0, sigma=0.5)
 
-    # Inside mask: eps_r=4.0, sigma=0.5
     assert float(materials.eps_r[5, 5, 5]) == 4.0
     assert float(materials.sigma[5, 5, 5]) == 0.5
 
-    # Outside mask: eps_r=1.0, sigma=0.0
     assert float(materials.eps_r[0, 0, 0]) == 1.0
     assert float(materials.sigma[0, 0, 0]) == 0.0
 
-    # mu_r unchanged
     assert float(materials.mu_r[5, 5, 5]) == 1.0

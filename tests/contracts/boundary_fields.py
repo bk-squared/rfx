@@ -33,6 +33,7 @@ def field_nodes(tree):
 
 
 def seed_fields(state, variant, hold_faces=()):
+    """Held entries zero only the exterior normal E and tangential H ghosts."""
     shape = component(state, 0).shape
     xyz = np.indices(shape, dtype=np.float32)
     pattern = 1 + .01 * xyz[0] + .013 * xyz[1] + .017 * xyz[2]
@@ -59,8 +60,6 @@ def seed_fields(state, variant, hold_faces=()):
                         value[tuple(index)] += scale
         if variant == 11:
             value = np.full(shape, 1 if ci < 3 else 0, np.float32)
-        # Hold entry: zero exterior normal E and tangential H ghosts only.
-        # Tangential E and normal H on the physical plane retain their seed.
         for face in hold_faces:
             axis = "xyz".index(face[0])
             if not (ci == axis or (ci >= 3 and ci % 3 != axis)):
@@ -75,6 +74,7 @@ def seed_fields(state, variant, hold_faces=()):
 
 def seed_carry(carry, variant, physical_shape=None, hold_faces=()):
     def seed(value):
+        """Transverse CPML memory shares the held storage row."""
         if is_fields(value):
             shape = component(value, 0).shape
             if physical_shape is not None and shape != physical_shape:
@@ -93,8 +93,6 @@ def seed_carry(carry, variant, physical_shape=None, hold_faces=()):
             arrays = []
             for name, v in value._asdict().items():
                 array = jnp.full_like(v, 0 if variant in (8, 9, 10, 11) else .01)
-                # Transverse CPML memory shares the held storage row. Keep
-                # its interior seed, but do not inject auxiliary energy there.
                 for face in hold_faces:
                     if name[-3] != face[0] and array.size:
                         index = [slice(None)] * 3
@@ -110,7 +108,7 @@ def seed_carry(carry, variant, physical_shape=None, hold_faces=()):
 @contextmanager
 def observe_scans(records, physical_shape=None, hold_faces=()):
     """Seed scan carries; observe numeric fields independently of wall names."""
-    from rfx.runners import _distributed_nu_wrapped  # Bind its loop before patching.
+    from rfx.runners import _distributed_nu_wrapped
     from rfx.stepping import slab_wrap
     original = jax.lax.scan
     run_steps = slab_wrap.run_steps
@@ -130,7 +128,6 @@ def observe_scans(records, physical_shape=None, hold_faces=()):
             except NameError:
                 rank = jnp.array(-1)
             auxiliary = [v for v in jax.tree_util.tree_leaves(result, is_leaf=is_aux) if is_aux(v)]
-            # Batched field tuples have ndim=4, unlike the unbatched predicate.
             leaves, structure = jax.tree_util.tree_flatten(initial, is_leaf=is_fields)
             result_leaves = structure.flatten_up_to(result)
             for before, state in zip(leaves, result_leaves):

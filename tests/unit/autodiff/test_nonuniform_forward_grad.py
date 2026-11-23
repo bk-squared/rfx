@@ -49,7 +49,6 @@ def test_forward_nonuniform_smoke():
     ts = np.asarray(fr.time_series)
     assert ts.shape[0] == 100
     assert np.all(np.isfinite(ts)), "NU forward produced NaN/Inf"
-    # Sanity: source excites something within 100 steps.
     assert float(np.max(np.abs(ts))) > 0.0
 
 
@@ -59,14 +58,18 @@ def test_forward_nonuniform_grad_eps_matches_fd():
     We scale ``eps_override`` by a scalar ``alpha`` and differentiate a
     squared-L2 probe loss w.r.t. ``alpha``. This reduces the grad check
     to a 1-D comparison that's robust to step-size / noise.
+    The 5% tolerance covers the 0.4%–2.2% cross-machine relative-error spread measured earlier with the float32 FD reference, which made a 2% bar flaky.
     """
     sim = _build_sim()
     g = sim._build_nonuniform_grid()
     eps_base = jnp.ones(g.shape, dtype=jnp.float32)
 
-    # Target cell for the eps perturbation — well away from CPML and
-    # source/probe cells.
     ti, tj, tk = g.nx // 2 + 2, g.ny // 2 + 2, g.nz // 2
+    assert (
+        all(g.cpml_layers < index < size - g.cpml_layers
+            for index, size in zip((ti, tj, tk), g.shape))
+        and (ti, tj) != (g.nx // 2, g.ny // 2)
+    ), "eps perturbation cell must avoid CPML and the source/probe column"
     n_steps = 60
 
     def loss(alpha):
@@ -83,20 +86,11 @@ def test_forward_nonuniform_grad_eps_matches_fd():
     grad_fd = (lp - lm) / (2.0 * h)
 
     rel_err = abs(grad_ad - grad_fd) / max(abs(grad_fd), 1e-12)
-    # Tolerance is 5% (the house AD-vs-FD standard, cf. MSL / waveguide-flux
-    # gradient tests), not tighter: the FD reference is a centred difference of
-    # two ~1e10-scale float32 losses, i.e. a small-difference-of-large-numbers
-    # with machine-dependent cancellation. The SAME (correct) AD gradient has
-    # been observed at 0.4%–2.2% rel-err across machines while grad_ad itself is
-    # stable to all printed digits; the 2% threshold was cross-machine-flaky.
-    # This gate validates gradient correctness (AD≈FD), not FD float32 noise.
     assert rel_err < 0.05, (
         f"AD grad {grad_ad:.4e} vs FD grad {grad_fd:.4e} — "
         f"rel_err {rel_err:.4%} above 5% threshold"
     )
 
-
-# --- Known gaps (not yet plumbed into the NU forward path) ---------------
 
 def test_forward_nonuniform_pec_occupancy_accepted():
     """``pec_occupancy_override`` now flows through the NU scan body.
@@ -106,24 +100,19 @@ def test_forward_nonuniform_pec_occupancy_accepted():
     each E update (mirrors the uniform path). A zero-occupancy field is
     bit-identical to the no-occupancy baseline; a full-occupancy field
     inside a shielded inner box damps the probe trace to zero.
+    Bit-identity is not guaranteed across separate JIT compilations for occ=0.0 and the no-occupancy baseline.
     """
     sim = _build_sim()
     g = sim._build_nonuniform_grid()
 
-    # Baseline: no occupancy field at all.
     fr_base = sim.forward(n_steps=50)
     ts_base = np.asarray(fr_base.time_series)
 
-    # Zero occupancy must produce a bit-identical result to the baseline.
     occ_zero = jnp.zeros(g.shape, dtype=jnp.float32)
     fr_zero = sim.forward(pec_occupancy_override=occ_zero, n_steps=50)
     ts_zero = np.asarray(fr_zero.time_series)
-    # Different XLA graphs for occ=0.0 vs no-occupancy baseline;
-    # bit-identity not guaranteed across separate JIT compilations.
     compare(ts_base, ts_zero, record="graded.zero_occupancy_probe", kind="step", measurements=[])
 
-    # Full-occupancy shell around the probe must shrink the probe trace
-    # (soft-PEC zeros tangential E just like hard PEC for 1.0 occupancy).
     occ_shield = jnp.ones(g.shape, dtype=jnp.float32)
     fr_shield = sim.forward(pec_occupancy_override=occ_shield, n_steps=50)
     ts_shield = np.asarray(fr_shield.time_series)
@@ -163,7 +152,6 @@ def test_forward_nonuniform_pec_occupancy_interpolates_hard_pec():
     sim = _build_sim()
     g = sim._build_nonuniform_grid()
 
-    # One-cell shell between the source and the probe.
     shell = np.zeros(g.shape, dtype=np.float32)
     ti, tj, tk = g.nx // 2, g.ny // 2, g.nz // 2 + 1
     shell[ti - 1:ti + 2, tj - 1:tj + 2, tk - 1] = 1.0
@@ -180,7 +168,6 @@ def test_forward_nonuniform_pec_occupancy_interpolates_hard_pec():
             f"{energies}"
         )
 
-    # occ = 1 must match hard-PEC via pec_mask_override, bit-for-bit.
     fr_hard = sim.forward(pec_mask_override=jnp.asarray(shell.astype(bool)),
                           n_steps=80, skip_preflight=True)
     fr_occ1 = sim.forward(pec_occupancy_override=jnp.asarray(shell, dtype=jnp.float32),
@@ -192,10 +179,6 @@ def test_forward_nonuniform_pec_occupancy_interpolates_hard_pec():
         f"{float(np.max(np.abs(ts_h - ts_o))):.4e}"
     )
 
-
-# ---------------------------------------------------------------------------
-# Sentinel tests — pin known limitations so XPASS trips CI when fixed
-# ---------------------------------------------------------------------------
 
 def test_sim_forward_grad_wrt_dz_profile_through_init():
     """jax.grad through Simulation.__init__ w.r.t. dz_profile flows end-to-end.
@@ -211,7 +194,6 @@ def test_sim_forward_grad_wrt_dz_profile_through_init():
     dz = jnp.asarray(
         [0.5e-3] * 5 + [0.4e-3] * 4, dtype=jnp.float32
     )
-    # Concrete domain_z — user's responsibility when dz_profile is traced.
     domain_z = float(jnp.sum(dz))
 
     def _loss(dz_profile):

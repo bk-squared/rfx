@@ -60,6 +60,9 @@ Lane: gpu and slow, the gpu step of the weekly A6000 lane
 A6000 for the notch (run 369367264070); 75 s for the notch and 68 s for the
 thru on an RTX 3080 (run 369367264556). The notch's solve takes 34 min on four
 VESSL CPU cores (run 369367264068), which keeps both off the CPU lanes.
+
+The trace's y extent and the stub's x extent are solved 11.667 % larger than drawn,
+so this lock pins the stored S-parameters, not those sizes.
 """
 LOCK_PROVENANCE = {
     "fixture": "tests/fixtures/msl_chain_battery/fixture.json",
@@ -106,7 +109,11 @@ def _solve_live(fixture, driver, key: str, dut: str):
 
     Refuses before any step when the record names another commit than this
     guard, or when the realized trace, stub, substrate, ports or drive differ
-    from the record's."""
+    from the record's.
+
+    ``_solve_live`` returns the live S at the probe-0 planes and the line Z0 the record
+    was taken at, not at the feed planes and the declared impedance=.
+    """
     entry = fixture["solves"][key]
     assert entry["provenance"]["commit"].startswith(LOCK_PROVENANCE["commit"]), (
         f"{key} was measured at {entry['provenance']['commit']}, but this guard's "
@@ -114,11 +121,6 @@ def _solve_live(fixture, driver, key: str, dut: str):
         "again and the guard was not moved to the new records")
     dx = RUNG_UM * 1e-6
 
-    # Before any step: the board the driver builds today is the recorded board —
-    # the same trace rows (and, on the notch, stub columns and open end), the
-    # same substrate cells under the strip, the same port feed and probe planes,
-    # the same drive.
-    # #1138: trace y/stub x solved +11.667% off; this locks stored S-parameters.
     sim = driver.build_sim(dx, dut, drive=entry["drive"], snap="declared")
     live_geometry = driver.assert_realized(sim, dx, dut)
     moved = drift.realized_differences(entry["realized"], live_geometry)
@@ -130,9 +132,6 @@ def _solve_live(fixture, driver, key: str, dut: str):
     freqs = np.asarray(entry["freqs_hz"], dtype=float)
     np.testing.assert_allclose(np.asarray(result.freqs, dtype=float), freqs,
                                rtol=1e-6, atol=0.0)
-    # The record is at the probe-0 planes; compare there (see the module
-    # docstring): the live S with the feed-plane shift undone, back at the line
-    # Z0 the record was taken at (#2014: S is now at the declared impedance=).
     return entry, result, freqs, drift.complex_array(entry["S"]), np.asarray(probe0_s(result, line_s(result)))
 
 

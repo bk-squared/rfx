@@ -29,6 +29,8 @@ asymmetric per-face thickness asserted only shape + finiteness, and
 ``cpml_layers=4`` to reach the CPML compute at all. So this file also adds
 the missing physics: an absorbing per-face configuration whose interior
 energy is measured against an all-PEC control.
+
+Domain lengths written as 7 * _DOMAIN_DX, 21 * _DOMAIN_DX, or 14 * (299792458.0 / 10e9 / 20.0) are whole numbers of cells of dx, so those solved lengths equal the declared lengths.
 """
 
 from __future__ import annotations
@@ -48,11 +50,10 @@ from rfx.boundaries.cpml import (
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.core.yee import init_state
 
-# The reported fixture: 20 mm cube, 5 GHz, five PEC faces + one CPML face.
 _FREQ = 5.0e9
 _CUBE = (0.02, 0.02, 0.02)
 _DOMAIN_DX = 299792458.0 / _FREQ / 20.0
-_SOLVED_CUBE = (7 * _DOMAIN_DX,) * 3  # solved length; #1887
+_SOLVED_CUBE = (7 * _DOMAIN_DX,) * 3
 _CENTRE = (0.01, 0.01, 0.008)
 _PROBE = (0.007, 0.007, 0.006)
 
@@ -110,16 +111,11 @@ def _interior_energy(result, grid) -> float:
     )
 
 
-# --------------------------------------------------------------------------
-# 1. The crash, and the threshold it sits at.
-# --------------------------------------------------------------------------
 
 def test_budget_over_a_pec_axis_extent_runs_instead_of_broadcasting():
     """Family 1: the reported fixture. Budget > the PEC axes' extent."""
     sim = _cube_sim(16)
     grid = sim._build_grid()
-    # Confirm the fixture really is in the failing regime, derived from the
-    # grid rather than assumed from the report's numbers.
     assert sim._cpml_layers > min(grid.shape)
 
     result = sim.run(n_steps=60, skip_preflight=True)
@@ -169,9 +165,6 @@ def test_budget_at_the_axis_extent_still_works():
     assert np.max(np.abs(trace)) > 0.0
 
 
-# --------------------------------------------------------------------------
-# 2. The clamp is exact: saturation in the budget.
-# --------------------------------------------------------------------------
 
 def test_result_saturates_once_the_budget_covers_the_narrowest_axis():
     """Fixing the absorber and raising ONLY the budget must stop mattering.
@@ -244,9 +237,6 @@ def test_the_clamp_saturates_at_the_active_absorber_not_the_axis_extent():
         "and keep a single no-op layer (depth 0 would make the hi-face "
         "slice arr[-0:] the whole axis)"
     )
-    # ...and a UNIFORM absorber is untouched: every face allocates the full
-    # budget, so the depths stay the budget and every currently-compiled
-    # program — every committed digest — is the same program as before.
     uni = Simulation(freq_max=_FREQ, domain=_CUBE, cpml_layers=4,
                      boundary="cpml")
     uni_grid = uni._build_grid()
@@ -277,7 +267,6 @@ def test_a_grid_that_does_not_state_its_face_pads_keeps_the_full_buffer():
         "an axis whose per-face pads are not stated must not be clamped: "
         "nothing there is KNOWN to be no-op padding"
     )
-    # a grid that states one face still gets the clamp on that axis
     class _OneFaceStated(_WholeAxisPadGrid):
         pad_x_hi = 4
 
@@ -296,8 +285,10 @@ def test_an_axis_outside_cpml_axes_keeps_its_pre_876_applied_depth():
     axes the grid did not declare. The runner defaults to the grid's axes,
     so these unused profiles no longer absorb inside the x/y physical domain.
     This is a runner contract change, not a change to init_cpml's allocation.
+
+    Psi is stored in field axis order.
     """
-    grid = Grid(freq_max=10e9, domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 0.02),  # main's solved length; #1887
+    grid = Grid(freq_max=10e9, domain=(14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 0.02),
                 cpml_axes="z", cpml_layers=8)
     assert grid.cpml_axes == "z"
     assert (grid.pad_x_lo, grid.pad_x_hi) == (0, 0)
@@ -309,38 +300,23 @@ def test_an_axis_outside_cpml_axes_keeps_its_pre_876_applied_depth():
     with pytest.raises(ValueError, match="cpml_axes='xyz'.*cpml_axes='z'"):
         run(grid, init_materials(grid.shape), 1, boundary="cpml", cpml_axes="xyz")
 
-    # 1. the pre-#876 depth: min(cpml_layers, extent), NOT max(pad_lo, pad_hi)
     assert _axis_buffer_depths(grid, 8) == (8, 8, 8)
 
     params, state = init_cpml(grid)
 
-    # 2. the buffers the apply_cpml_e/h face slices are cut from
     assert state.psi_ey_xlo.shape[0] == 8
     assert state.psi_ez_xhi.shape[0] == 8
-    # psi is now stored in field axis order.
     assert state.psi_ex_ylo.shape[1] == 8
     assert state.psi_ez_yhi.shape[1] == 8
 
-    # 3. and the profile on those faces really absorbs — this is what makes
-    #    the depth matter at all. A no-op layer is exactly (b=1, c=0); the
-    #    innermost layer of a CPML profile has sigma=0 by construction, so a
-    #    full-budget profile carries 7 active layers out of the 8 allocated
-    #    — seven times what the one-sided clamp left standing.
     for face in ("x_lo", "x_hi", "y_lo", "y_hi"):
         prof = getattr(params, face)
         b = np.asarray(prof.b).ravel()
         c = np.asarray(prof.c).ravel()
         assert b.size == 8 and c.size == 8
         assert np.count_nonzero(b != 1.0) == 8, f"{face} b is no-op padding"
-        # the innermost layer has sigma=0 by construction, so its c is -0.0;
-        # the other 7 drive a real recursive convolution.
         assert np.count_nonzero(c != 0.0) == 7, f"{face} c is no-op padding"
 
-    # The guard is not a blanket disable: an axis that IS in cpml_axes but
-    # allocates nothing because both its faces are PEC still clamps to the
-    # single no-op layer — and there "pad 0" really does mean "no absorber",
-    # because ``init_cpml`` gives a PEC face ``_cpml_noop_profile``. That is
-    # the #876 behaviour this file exists for.
     pec_closed = _cube_sim(16, hi_thickness=4)._build_grid()
     assert pec_closed.cpml_axes == "xyz"
     assert {"x_lo", "x_hi", "y_lo", "y_hi"} <= set(pec_closed.pec_faces)
@@ -419,19 +395,14 @@ def test_thinning_the_active_absorber_is_a_different_answer():
     hi_only = _split_pad_sim(budget, 0, 4)
     split = _split_pad_sim(budget, 2, 2)
 
-    # the premise: one shape, one budget, one total padding
     assert hi_only._build_grid().shape == split._build_grid().shape
     assert (hi_only._build_grid().pad_z_lo + hi_only._build_grid().pad_z_hi
             == split._build_grid().pad_z_lo + split._build_grid().pad_z_hi
             == 4)
 
-    # 1. the ACTIVE depth is a real degree of freedom at that fixed shape
     assert _axis_buffer_depths(hi_only._build_grid(), budget) == (1, 1, 4)
     assert _axis_buffer_depths(split._build_grid(), budget) == (1, 1, 2)
 
-    # 2. and it reaches the emitted program — the psi buffers the face
-    #    slices are cut from. THIS is the assertion that dies if the clamp
-    #    stops tracking the absorber.
     shapes_hi_only, _ = _cpml_program(hi_only)
     shapes_split, _ = _cpml_program(split)
     assert shapes_hi_only != shapes_split, (
@@ -439,16 +410,11 @@ def test_thinning_the_active_absorber_is_a_different_answer():
         "saturation test above cannot tell two absorbers apart"
     )
 
-    # 3. and to the fields, which is now a comparison of equal-length
-    #    arrays rather than of two differently shaped runs
     d_hi_only = _field_digest(hi_only.run(n_steps=120, skip_preflight=True))
     d_split = _field_digest(split.run(n_steps=120, skip_preflight=True))
     assert d_hi_only != d_split
 
 
-# --------------------------------------------------------------------------
-# 3. Physics: a clamped per-face absorber still absorbs.
-# --------------------------------------------------------------------------
 
 _PIPE_FREQ = 20e9
 _PIPE_DX = 2.5e-3
@@ -482,6 +448,8 @@ def test_clamped_per_face_absorber_actually_absorbs():
     face differs. The PEC control is lossless, so its interior energy must
     NOT decay; the CPML termination must take the guided energy out. The
     bound below is two orders of magnitude inside the measured separation.
+
+    Measured on this fixture: e_open/e_closed ~ 1e-4 at 1200 steps (7.6e-2 at 200 steps, falling monotonically).
     """
     open_sim = _pipe_sim("cpml", 16)
     open_grid = open_sim._build_grid()
@@ -498,22 +466,15 @@ def test_clamped_per_face_absorber_actually_absorbs():
         closed_sim.run(n_steps=1200, skip_preflight=True), closed_grid)
 
     assert np.isfinite(e_open) and np.isfinite(e_closed)
-    # Measured on this fixture: e_open/e_closed ~ 1e-4 at 1200 steps
-    # (7.6e-2 at 200 steps, falling monotonically). Anything above 1e-2
-    # means the termination stopped absorbing.
     assert e_open / e_closed < 1e-2, (
         f"open-ended pipe retained {e_open:.4e} vs closed {e_closed:.4e}"
     )
-    # The lossless control must not have quietly decayed instead.
     e_closed_early = _interior_energy(
         _pipe_sim("pec", 16).run(n_steps=300, skip_preflight=True),
         closed_grid)
     assert e_closed > 0.1 * e_closed_early
 
 
-# --------------------------------------------------------------------------
-# 4. Preflight: the advisory, and the per-face thickness it rests on.
-# --------------------------------------------------------------------------
 
 def _advisories(sim) -> list[str]:
     return [m for m in sim.preflight()]
@@ -585,7 +546,6 @@ def test_absorber_budget_advisory_silent_on_a_pec_closed_axis():
     )
     sim.add_source((0.01, 0.01, 0.01), "ez", amplitude_kind="field")
     grid = sim._build_grid()
-    # Confirm we are in the would-be-false-positive regime for y/z.
     assert sim._cpml_layers > grid.shape[1]
     assert sim._cpml_layers > grid.shape[2]
     hits = [m for m in _advisories(sim) if "exceeds the" in m]
@@ -619,7 +579,7 @@ def test_preflight_thickness_follows_the_allocated_per_face_layers():
     """
     budget, thickness = 16, 2
     sim = Simulation(
-        freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  cpml_layers=budget,  # solved length; #1887
+        freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  cpml_layers=budget,
         boundary=BoundarySpec(
             x="pec", y="pec",
             z=Boundary(lo="pec", hi="cpml", hi_thickness=thickness)),
@@ -634,7 +594,7 @@ def test_preflight_thickness_is_the_budget_without_an_override():
     """Sibling of the test above: no override, no change from before."""
     budget = 16
     sim = Simulation(
-        freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  cpml_layers=budget,  # solved length; #1887
+        freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  cpml_layers=budget,
         boundary=BoundarySpec(x="pec", y="pec",
                               z=Boundary(lo="pec", hi="cpml")),
     )
@@ -647,7 +607,7 @@ def test_preflight_thickness_is_the_budget_without_an_override():
 def test_preflight_thickness_is_zero_on_every_reflector_face():
     """PEC / PMC / periodic faces allocate nothing, on either side."""
     sim = Simulation(
-        freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  cpml_layers=8,  # solved length; #1887
+        freq_max=_FREQ, domain=(21 * _DOMAIN_DX,) * 3, dx=_DOMAIN_DX,  cpml_layers=8,
         boundary=BoundarySpec(x="pmc", y="pec",
                               z=Boundary(lo="pec", hi="cpml")),
     )
@@ -695,9 +655,6 @@ def test_thin_nu_z_absorber_advisory_still_fires_when_z_absorbs(boundary):
     assert _nu_thin_z_hits(boundary)
 
 
-# --------------------------------------------------------------------------
-# 5. The guard that keeps the clamp honest.
-# --------------------------------------------------------------------------
 
 class _StubGrid:
     """Minimal duck-typed grid carrying only the per-face pads."""
@@ -727,9 +684,6 @@ def test_absorber_exactly_filling_its_axis_is_accepted():
     _assert_absorber_fits(_StubGrid(z_lo=4, z_hi=6), (8, 8, 10))
 
 
-# --------------------------------------------------------------------------
-# 6. Clones must not collapse the per-face layout (found by the grep sweep).
-# --------------------------------------------------------------------------
 
 def test_quick_convergence_clone_keeps_the_per_face_layout():
     """``quick_convergence`` rebuilds the Simulation at each dx.
@@ -743,9 +697,6 @@ def test_quick_convergence_clone_keeps_the_per_face_layout():
     sim = _cube_sim(4)
 
     factory = None
-    # quick_convergence builds its factory internally; reach it by monkey-
-    # patching convergence_study to capture the factory instead of running
-    # the (expensive) sweep.
     import rfx.convergence as conv
     original = conv.convergence_study
     try:

@@ -25,9 +25,9 @@ def evaluator(n=900):
 
 
 def losses(res):
-    # Each channel has its own loss; the fixed impedance factor prevents H
-    # from disappearing in float32 and is independent of the fitted spectra.
-    scale = jnp.asarray([1., 377.])
+    """The fixed impedance factor prevents H from disappearing in float32."""
+    H_FIELD_IMPEDANCE_SCALE = 377.
+    scale = jnp.asarray([1., H_FIELD_IMPEDANCE_SCALE])
     return jnp.stack([jnp.sum(jnp.abs(x * scale) ** 2, axis=0)
                       for x in (res.probe_spectra, res.probe_spectra_long)])
 
@@ -129,10 +129,9 @@ def test_t6_plain_jit_vmap():
     assert np.all(channel_error(compiled.probe_spectra, np.asarray(plain[0].probe_spectra)) <= 1e-4)
     for i in range(2):
         assert np.all(channel_error(batched.probe_spectra[i], np.asarray(plain[i].probe_spectra)) <= 1e-4)
-    # Existing leaf positions are retained; the probe children are last.
     children, ctx = compiled.tree_flatten()
     assert children[0] is None and children[1] is None
-    assert children[-2] is compiled.probe_spectra and children[-1] is compiled.probe_spectra_long
+    assert children[14] is compiled.probe_spectra and children[15] is compiled.probe_spectra_long
     rebuilt = rd.RingdownForwardResult.tree_unflatten(ctx, children)
     assert np.array_equal(np.asarray(rebuilt.probe_spectra), np.asarray(compiled.probe_spectra))
 
@@ -141,6 +140,7 @@ def test_t3_traced_source_off_message():
     """Physical anchor: raw field amplitude is linear in the source, unlike normalized port S."""
     from rfx._traced_refusal import TracedStructureRefusal
     from types import SimpleNamespace
+    from rfx.ringdown._plane_wave import _require_source_off_rows
     entry = SimpleNamespace(is_soft_source=True, position=(.002, .002, .001), component="ez")
     with pytest.raises(TracedStructureRefusal, match="completed probe spectrum is linear in the drive: scale it outside the call"):
-        rd._require_source_off_rows([entry], [None], "forward", probe_mode=True)
+        _require_source_off_rows([entry], [None], "forward", probe_mode=True)

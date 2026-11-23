@@ -19,7 +19,7 @@ from rfx._internal import _realized
 
 C0 = 299_792_458.0
 DZ = np.array([1e-3] * 3 + [0.75e-3] * 6 + [1e-3] * 3)
-SOURCE = (0.0047, 0.0051, 0.0050)   # z = 5.0 mm: graded nodes 4.5 / 5.25 mm
+SOURCE = (0.0047, 0.0051, 0.0050)
 PROBE = (0.0061, 0.0049, 0.0057)
 
 
@@ -71,8 +71,6 @@ def test_record_places_sources_and_probes_where_the_run_does(graded, monkeypatch
         record = sim.realized_geometry()
     run = _kernel_inputs(sim, graded, monkeypatch)
 
-    # Sources: the soft source row plus the wire port's driven edges are
-    # exactly the cells the run injects at.
     (soft,) = [s for s in record.sources if s.kind == "soft_point"]
     assert soft.error is None and len(soft.edges) == 1
     wire = next(p for p in record.ports if p.kind == "wire")
@@ -80,7 +78,6 @@ def test_record_places_sources_and_probes_where_the_run_does(graded, monkeypatch
     assert {(tuple(int(v) for v in c), comp) for c, comp in map(_cell, run["sources"])} == expected
     assert (tuple(soft.edges[0]), "ez") in {_cell(s) for s in run["sources"]}
 
-    # Probes.
     point = next(p for p in record.probes if p.kind == "point")
     (probe,) = run["probes"]
     assert point.index == _cell(probe)[0]
@@ -97,13 +94,13 @@ def test_record_places_sources_and_probes_where_the_run_does(graded, monkeypatch
     box = run["ntff_box" if graded else "ntff"]
     assert ntff_row.index_box == ((box.i_lo, box.i_hi), (box.j_lo, box.j_hi), (box.k_lo, box.k_hi))
 
-    # Time step: the grid object the stepping function receives.
     assert record.dt == float(run["grid"].dt) == float(sim._build_realized_grid().dt)
 
 
 @pytest.mark.parametrize("graded", (False, True), ids=("uniform", "graded"))
 def test_soft_source_index_by_hand(graded):
-    """Nearest node on the declared node line, plus the absorber padding."""
+    """Nearest node on the declared node line, plus the absorber padding.
+    At z = 5.0 mm, the nearest of the graded nodes at 4.5 and 5.25 mm is 5.25 mm (index 6), versus the uniform node at 5 mm (index 5)."""
     sim = _scene(graded)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -113,7 +110,6 @@ def test_soft_source_index_by_hand(graded):
     z_nodes = np.concatenate([[0.0], np.cumsum(DZ)]) if graded else x_nodes
     hand = tuple(int(np.argmin(np.abs(nodes - p))) + pad
                  for nodes, p, pad in zip((x_nodes, x_nodes, z_nodes), SOURCE, pads))
-    # z = 5.0 mm: nearest graded node 5.25 mm (index 6); uniform node 5 mm.
     assert hand[2] - pads[2] == (6 if graded else 5)
     (soft,) = [s for s in record.sources if s.kind == "soft_point"]
     assert soft.edges == (hand,)
@@ -202,7 +198,6 @@ def test_library_probes_are_not_listed_as_the_users():
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 def test_tfsf_box_is_the_one_the_run_injects(graded, monkeypatch):
-    # TFSF refuses soft sources and lumped ports, so it gets its own scene.
     from rfx.sources.tfsf import tfsf_injection_planes
     kw = dict(dz_profile=DZ) if graded else {}
     sim = Simulation(freq_max=10e9, domain=(0.016, 0.012, 0.0 if graded else 0.012),

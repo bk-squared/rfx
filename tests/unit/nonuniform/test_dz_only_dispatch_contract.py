@@ -39,11 +39,6 @@ from rfx.boundaries.spec import BoundarySpec, Boundary
 
 _REPO = Path(__file__).resolve().parents[3]
 
-# Genuinely graded z meshes (adjacent ratios <= 1.4). Both sum EXACTLY to
-# the WR-90 narrow wall b = 10.16 mm; their minimum cells differ, so their
-# dt differ (~1.34x; dt follows the 3D CFL root-sum — 1.55x is the min-CELL
-# ratio, not the dt ratio) — bit-identical S across them means dz never reached
-# the solve.
 _DZ_WR90_A = np.concatenate([
     np.full(10, 0.40e-3), np.full(3, 0.52e-3),
     np.full(2, 0.70e-3), np.full(4, 0.80e-3),
@@ -56,31 +51,14 @@ _A_WG = 0.02286
 _B_WG = 0.01016
 
 
-# ---------------------------------------------------------------------------
-# The contract. Keys must enumerate every public compute_* entry point on
-# Simulation; values state what a dz-ONLY graded mesh must do there.
-#   "nu-lane"   — dispatches to that family's non-uniform lane
-#   "raises"    — refuses loudly, naming the profile restriction
-#   "delegates" — has no mesh behaviour of its own; forwards to one of the
-#                 rows above, which then does its own thing. Only
-#                 compute_s_matrix, the #980 Phase 1 lane dispatcher, is in
-#                 this class. It is NOT a third mesh behaviour and must not
-#                 become a place to park a method whose dz-only answer nobody
-#                 worked out: a row here is only honest if the method reads no
-#                 profile, builds no grid, and adds no fence of its own, which
-#                 test_compute_s_matrix_dz_only_is_exactly_the_delegates_answer
-#                 checks in BOTH directions (an nu-lane delegate still reaches
-#                 the NU lane; a raising delegate still raises, with its own
-#                 message).
-# ---------------------------------------------------------------------------
 DZ_ONLY_CONTRACT = {
-    "compute_waveguide_s_matrix": "nu-lane",   # THE #811 fix
-    "compute_msl_s_matrix": "nu-lane",         # dz-aware since the NU MSL lane
+    "compute_waveguide_s_matrix": "nu-lane",
+    "compute_msl_s_matrix": "nu-lane",
     "compute_mixed_s_matrix": "raises",
     "compute_coaxial_line_reflection": "raises",
     "compute_coaxial_two_port": "raises",
     "compute_coax_msl_transition": "raises",
-    "compute_s_matrix": "delegates",           # #980 Phase 1 lane dispatcher
+    "compute_s_matrix": "delegates",
 }
 
 
@@ -98,9 +76,6 @@ def test_every_compute_entry_point_has_a_dz_only_contract_row():
     assert not stale, f"contract rows for entry points that no longer exist: {stale}"
 
 
-# ---------------------------------------------------------------------------
-# Waveguide: the fixed dispatch.
-# ---------------------------------------------------------------------------
 
 def _dz_only_wg(dz_profile: np.ndarray) -> Simulation:
     sim = Simulation(
@@ -128,7 +103,8 @@ def test_waveguide_dz_only_dispatches_to_the_nonuniform_lane(monkeypatch):
     """Sentinel witness, no FDTD: a dz-only sim must ENTER the NU lane.
 
     Pre-#811 this test fails with the sentinel never raised: the call
-    completed on the uniform lane and returned uniform-mesh numbers."""
+    completed on the uniform lane and returned uniform-mesh numbers.
+    The thin absorber relative to the guide wavelength on the small fixture causes the far-port advisory before the NU-lane sentinel."""
     def boom(self, **kw):
         raise RuntimeError("NU-LANE-ENTERED")
 
@@ -136,9 +112,6 @@ def test_waveguide_dz_only_dispatches_to_the_nonuniform_lane(monkeypatch):
     sim = _dz_only_wg(_DZ_WR90_A)
     with pytest.raises(RuntimeError, match="NU-LANE-ENTERED"):
         with pytest.warns(Warning):
-            # the NU lane's far-port absorber advisory fires first (thin
-            # absorber vs lambda_g on this deliberately small fixture) —
-            # asserted so the witness does not silently swallow it
             sim.compute_waveguide_s_matrix(n_steps=1, normalize="flux")
 
 
@@ -151,9 +124,6 @@ def test_waveguide_dz_only_default_normalize_fails_loud():
         sim.compute_waveguide_s_matrix(n_steps=1)
 
 
-# ---------------------------------------------------------------------------
-# Siblings: already dz-aware — locked against regression.
-# ---------------------------------------------------------------------------
 
 def test_msl_dz_only_reaches_the_nu_lane():
     """A dz-only graded mesh must get PAST the MSL NU fence (laplace feed).
@@ -219,6 +189,7 @@ def test_a_sheet_declared_msl_trace_is_found_by_the_detector():
 
 
 def test_mixed_dz_only_raises():
+    """The MSL trace is foil, so its sheet declaration is a zero-extent axis on the substrate-top node plane."""
     _DX = 0.25e-3
     _H_SUB = 0.5e-3
     _W_TRACE = 0.74e-3
@@ -232,11 +203,6 @@ def test_mixed_dz_only_raises():
     sim.add_material("sub", eps_r=4.3)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
     y_c = ly / 2.0
-    # #931: the MSL trace is a FOIL, so it is a sheet on the substrate-top
-    # node plane — a zero-extent axis IS the sheet declaration (§1.5). Drawn
-    # one cell thick it would be a VOLUME: walls at z = H_SUB and
-    # z = H_SUB + dx with Ez shorted between, a 0.25 mm solid bar where the
-    # board carries copper foil.
     sim.add(Box((0.0, y_c - (1 + .35) * _DX, _H_SUB),
                 (lx, y_c + (1 + .35) * _DX, _H_SUB)), material="pec")
     sim.add_msl_port(position=(5.5e-3, y_c, 0.0), width=_W_TRACE,
@@ -310,9 +276,6 @@ def test_coax_msl_transition_dz_only_raises():
         sim.compute_coax_msl_transition(junction_x=0.005, n_steps=1)
 
 
-# ---------------------------------------------------------------------------
-# run()/forward() lane selection (was already dz-aware — locked).
-# ---------------------------------------------------------------------------
 
 def test_run_and_forward_dz_only_pick_nonuniform_lanes():
     sim = Simulation(freq_max=12.4e9, domain=(0.02, 0.01, _B_WG), dx=1e-3,
@@ -325,19 +288,10 @@ def test_run_and_forward_dz_only_pick_nonuniform_lanes():
 
 _DISPATCH_FILES = (
     "rfx/api/_sparams.py",
-    # #980 Phase 2 moves the compute_* bodies -- including the #811 dx/dy/dz
-    # profile predicates this scan exists for -- verbatim into per-family
-    # modules under rfx/sparams/; the scan follows the code by globbing the
-    # package so the class stays covered there instead of passing vacuously.
     *sorted(str(p.relative_to(_REPO)) for p in (_REPO / "rfx/sparams").glob("*.py")),
-    # The calculators' shared helpers live in these two measurement modules.
     "rfx/measurement/sparam_assembly.py",
     "rfx/measurement/sparam_advisories.py",
     "rfx/api/_preflight.py",
-    # #980 Phase 3 does the same to rfx/api/_preflight.py, a leg at a time,
-    # into rfx/preflight/. Globbed NOW, while the package holds only leaf
-    # helpers, so no later leg has to remember to widen this scan -- the
-    # sparams rows above were added after the fact.
     *sorted(str(p.relative_to(_REPO)) for p in (_REPO / "rfx/preflight").glob("*.py")),
     "rfx/api/_execute.py",
     "rfx/api/_compile.py",
@@ -348,6 +302,7 @@ _DISPATCH_FILES = (
 
 @pytest.mark.source_scan
 def test_no_transverse_only_dispatch_predicate_remains():
+    """Package-wide scanning prevents vacuous coverage when a calculator or preflight predicate lives outside the API facade."""
     offenders = []
     for rel in _DISPATCH_FILES:
         src = (_REPO / rel).read_text(encoding="utf-8")
@@ -366,16 +321,16 @@ def test_no_transverse_only_dispatch_predicate_remains():
     )
 
 
-# ---------------------------------------------------------------------------
-# Physics falsifier (FDTD; slow lane): two genuinely different graded z
-# meshes must change the answer. Never replace these with uniform-valued
-# profiles — primal==dual grids hide exactly the defect this exists to
-# catch.
-# ---------------------------------------------------------------------------
 
 def test_two_different_z_meshes_change_the_answer():
     import warnings
 
+    assert (all(np.isclose(np.sum(dz), _B_WG, rtol=0, atol=1e-14)
+                and np.ptp(dz) > 0
+                and np.max(np.maximum(dz[1:] / dz[:-1], dz[:-1] / dz[1:])) <= 1.4
+                for dz in (_DZ_WR90_A, _DZ_WR90_C))
+            and np.min(_DZ_WR90_A) != np.min(_DZ_WR90_C)), (
+        'The WR-90 witness needs equal wall spans, distinct minima and genuinely graded cells so uniform primal/dual coincidence cannot mask a discarded z profile.')
     results = {}
     for label, dz in (("A", _DZ_WR90_A), ("C", _DZ_WR90_C)):
         sim = _dz_only_wg(dz)
@@ -386,7 +341,6 @@ def test_two_different_z_meshes_change_the_answer():
         results[label] = np.asarray(res.s_params)
 
     sa, sc = results["A"], results["C"]
-    # R5-style dump: the full per-bin trace, not a bare verdict.
     print("\n[dz-dispatch] per-bin |S| for two graded z meshes:")
     for label, s in results.items():
         print(f"  mesh {label}: |S11|={np.abs(s[0, 0, :])} "
@@ -408,7 +362,6 @@ def test_dz_only_short_run_fires_the_settling_witness():
         "NU lane returned settling_db=None — the #827 witness gap is back")
     sdb = np.asarray(res.settling_db, dtype=float)
     assert sdb.shape == (2,)
-    # R5: quote the witness values, not just that the warning fired.
     print(f"\n[dz-settling] settling_db per drive = {sdb} dB")
     assert np.isnan(sdb).all(), sdb
     assert len(res.settling_witness) == 2
