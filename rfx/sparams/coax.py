@@ -1050,7 +1050,9 @@ def compute_coax_msl_transition(
     sheet, including their full tangential extent. The run()/forward() port
     has a shielded source end; this calculator keeps its open feed ends.
 
-    This method is experimental and is not in the validated set.
+    The coax-to-microstrip transition is not supported in rfx. This method
+    is deprecated and will be removed after rfx 2.3. Each call emits a
+    ``DeprecationWarning``; its experimental result and refusals are unchanged.
     A non-passive S matrix raises ``ValueError`` by default;
     ``strict_passivity=False`` returns it with a ``UserWarning``.
     Register the substrate, trace, ground plane, clearance hole, and
@@ -1175,6 +1177,14 @@ def compute_coax_msl_transition(
     matrix-pencil wave fit with built coax / analytic MSL normalization; this is
     not a traceable or validated cross-family extraction.
     """
+    import warnings
+
+    warnings.warn(
+        "compute_coax_msl_transition is not supported and will be removed after rfx 2.3: "
+        "the coax-to-microstrip transition matrix it returns is not passive on the measured boards.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     admit_coax_entry("Simulation.compute_coax_msl_transition", locals())
     from rfx.sources.coaxial_port import (
         CoaxialPort as _CoaxPort,

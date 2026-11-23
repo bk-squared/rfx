@@ -71,7 +71,7 @@ _LADDER_WITNESS_FIELDS = ("ladder_split_gamma_dev", "ladder_split_reflection_dec
 def _ladder_dump_scratch_flux_entries():
     """Two flux planes built the documented scratch-``Simulation`` way.
 
-    Geometry copied from ``_attempt2_scratch_flux_entries`` (attempt 3 shares
+    Geometry copied from the attempt-2 scratch monitors (attempt 3 shares
     attempt 2's domain exactly); this local copy exists only so this file
     never has to edit the fixture module.
     """

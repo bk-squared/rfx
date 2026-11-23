@@ -114,7 +114,6 @@ from tests._wave_convention import plant_ladder_voltages_physical
 
 
 
-
 def _plant_ab_power_wave(s_true, gamma_t, n_f):
     """Power-wave a/b at both ports for both drives, terminator ``gamma_t``.
 
@@ -138,7 +137,6 @@ def _plant_ab_power_wave(s_true, gamma_t, n_f):
     a[1, 1], a[0, 1] = 1.0, gamma_t * b1
     b[0, 1], b[1, 1] = b1, s22 + s21 * (gamma_t * b1)
     return a, b
-
 
 
 
@@ -693,117 +691,6 @@ def test_pinned_measured_gate_provenance():
     assert gate_from_envelope(0.9928, quantum=100) == PINNED_MEASURED_GATE
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        '#1479 (this fixture no longer builds or no longer matches the current code; it is redrawn with the v2.1 coax-MSL transition work): ' + ("STALE BY MEASUREMENT after the #822 wave-role fix (372a5fad): this test pins "
-        "numbers extracted with the inverted a/b labels, so the assembler now returns "
-        "the corrected S and the pinned values no longer describe it. Measured on this "
-        "branch: `pytest -m slow_physics tests/unit/sparams/test_coax_msl_transition.py` -> 2 failed, "
-        "1 passed in 1324 s, these two failing and test_extra_flux_monitors_do_not_perturb_s "
-        "(a relative bit-identity witness, label-independent) passing. NOT disabled and NOT "
-        "loosened: strict=True means re-baselining these numbers in the record-half PR, "
-        "after a corrected settled run exists, turns this into an XPASS error that forces "
-        "the marker off. Do not re-baseline from a truncated run.")
-    ),
-)
-@pytest.mark.slow_physics
-def test_coax_msl_transition_first_fixture_diagnostic():
-    """The one committed #489-leg-4 fixture -- DIAGNOSTIC honesty level.
-
-    See ``PREDECLARATION`` above and the module-level comment immediately
-    preceding this test for the full R2/R3 accounting, INCLUDING THE
-    POST-REVIEW ATTRIBUTION CORRECTION (issue #581 review B2/B3): the
-    degeneracy this test locks in is NOT attributed to "near-degenerate
-    two-drive amplification from junction reflection" (the original,
-    refuted claim) -- it is better explained by the MSL probe ladder being
-    far too short (0.34%-3.37% of a guided wavelength) for the matrix-pencil
-    wave split to resolve, an instrument-scoping limit of THIS fixture's
-    probe geometry, not a claim about the junction's own physics. This test
-    asserts exactly what was (re-)measured: self-consistency (finite,
-    settled) passes; the reciprocity/passivity/degeneracy findings are
-    LOCKED as a reproducibility witness, not papered over; the corrected
-    discriminants (column-equilibrated cond_a, fitted gamma vs analytic
-    beta) are asserted too, not just claimed in prose. Runtime ~110s (two
-    FDTD drives on a (67, 51, 56)-cell grid, 8000 steps each).
-    The earlier measurement at N_STEPS=8000 was -43.9 / -63.6 dB against the -40 dB ring-down rule.
-    """
-    assert PREDECLARATION["status"] == "RUN"
-
-    sim = _build_coax_msl_transition_sim()
-    result = sim.compute_coax_msl_transition(
-        junction_x=JUNCTION_X, eps_r_sub=EPS_SUB, n_steps=N_STEPS,
-        n_freqs=3, probe_count=6, probe_start_cells=4, probe_spacing_cells=2,
-        skip_preflight=True, strict_passivity=True,
-    )
-
-    assert result.s_params.shape == (2, 2, 3)
-    assert np.all(np.isfinite(result.s_params))
-    assert result.port_names == ("coax", "msl")
-    assert result.a_inc.shape == (2, 2, 3) and result.b_out.shape == (2, 2, 3)
-
-    assert np.all(np.asarray(result.settling_db) < -40.0), (
-        f"settling_db {result.settling_db} did not clear -40 dB; the "
-        "8000-step record may need lengthening."
-    )
-
-    max_abs_s = float(np.max(np.abs(result.s_params)))
-    gate = min(PINNED_MEASURED_GATE, 1.10)
-    assert max_abs_s <= gate, (
-        f"max|S| {max_abs_s:.4f} exceeds the pinned gate {gate:.4f} -- a "
-        "NEW amplitude excursion beyond what was measured when this test "
-        "was written; re-run the falsifier diagnostic (recurrence_"
-        "residual / fit_residual / cond_a_equilibrated) before trusting "
-        "the change."
-    )
-
-    assert np.all(np.asarray(result.cond_a) > 1.0e3), (
-        f"cond_a {result.cond_a} dropped below the scale-mismatch floor "
-        "this fixture measured -- re-evaluate the attribution."
-    )
-    assert np.all(np.asarray(result.cond_a_equilibrated) < 1.5), (
-        f"cond_a_equilibrated {result.cond_a_equilibrated} rose above the "
-        "near-unity floor this fixture measured -- the two drives may have "
-        "become genuinely geometrically near-degenerate, which would "
-        "revive (not refute) the original junction-reflection attribution; "
-        "re-derive the finding before trusting either story."
-    )
-
-    freqs = np.asarray(result.freqs)
-    ladder_span_m = MSL_PROBE_SPACING_CELLS * (MSL_PROBE_COUNT - 1) * DX
-    beta_analytic, ladder_frac = _msl_guided_beta_and_ladder_fraction(
-        freqs, ladder_span_m=ladder_span_m,
-    )
-    im_gamma_coax_driven = np.abs(result.gamma[1, 0, :].imag)
-    im_gamma_msl_owndrive = np.abs(result.gamma[1, 1, :].imag)
-    ratio_coax_driven = im_gamma_coax_driven / beta_analytic
-    assert np.all(ratio_coax_driven > 3.0), (
-        f"fitted Im(gamma) (coax-driven) / analytic beta = "
-        f"{ratio_coax_driven} dropped near 1 -- the MSL matrix-pencil fit "
-        "may have started tracking the true guided mode; re-derive the "
-        "instrument-scoping attribution before trusting it."
-    )
-    cross_drive_ratio = np.maximum(
-        im_gamma_coax_driven / np.maximum(im_gamma_msl_owndrive, 1e-30),
-        im_gamma_msl_owndrive / np.maximum(im_gamma_coax_driven, 1e-30),
-    )
-    assert np.any(cross_drive_ratio > 10.0), (
-        f"coax-driven vs msl-own-drive Im(gamma) ratios {cross_drive_ratio} "
-        "no longer disagree by >10x anywhere -- the two independent fits "
-        "may have converged, which would weaken the instrument-scoping "
-        "finding; re-derive it."
-    )
-
-    pair, worst_dev = _mixed_reciprocity_deviation(result.s_params)
-    assert worst_dev > 0.5, (
-        f"reciprocity deviation dropped to {worst_dev:.3f} between ports "
-        f"{pair} -- the pre-declared falsifier no longer fires. Either "
-        "the fixture's physics changed (re-derive the finding) or the "
-        "assembler changed (re-run Part 1's planted-voltage tests, which "
-        "independently pin the correct answer)."
-    )
-
-
 
 PREDECLARATION_ATTEMPT2 = {
     "leg": "issue #489 leg 4, attempt 2 -- resolve attempt 1's MSL-ladder instrument-scoping limit",
@@ -1249,7 +1136,6 @@ FREQ_MAX_2 = 16.0e9
 PROBE_START_2 = 4
 PROBE_SPACING_2 = 10
 PROBE_COUNT_2 = 9
-N_STEPS_2 = 45000
 
 
 def _build_coax_msl_transition_sim_attempt2():
@@ -1333,8 +1219,6 @@ Y_C_2W = LY_2W / 2.0
 JUNCTION_X_2W = 3.0e-3
 FEED_X_2W = FEED_X_2 + (JUNCTION_X_2W - JUNCTION_X)
 LX_2W = LX_2 + (JUNCTION_X_2W - JUNCTION_X)
-WIDE_X_OFFSET_CELLS = int(round((JUNCTION_X_2W - JUNCTION_X) / DX))
-WIDE_Y_OFFSET_CELLS = int(round((Y_C_2W - Y_C) / DX))
 _TRACE_Y_LO_OFFSET_NODES = -3
 _TRACE_Y_HI_OFFSET_NODES = 2
 _TRACE_X_START_OFFSET_NODES = 0
@@ -1413,192 +1297,6 @@ def _attempt2_wide_kwargs(n_steps):
     kw["junction_x"] = JUNCTION_X_2W
     return kw
 
-
-def _junction_window_slices(grid, x_offset_cells, y_offset_cells):
-    """Padded-array slices for JUNCTION_WINDOW_ATTEMPT2 on ``grid``, shifted
-    by the given domain-node offsets (0, 0 for attempt 2 itself).
-    The (0, 40)/(0, 34) window covers the clearance disk of radius 0.4 mm, the coax outer radius of 0.6 mm and the first MSL probe plane."""
-    x0, x1 = JUNCTION_WINDOW_ATTEMPT2["x"]
-    y0, y1 = JUNCTION_WINDOW_ATTEMPT2["y"]
-    px, py = int(grid.pad_x_lo), int(grid.pad_y_lo)
-    return (
-        slice(px + x_offset_cells + x0, px + x_offset_cells + x1),
-        slice(py + y_offset_cells + y0, py + y_offset_cells + y1),
-        slice(None),
-    )
-
-
-_WIDE_TRACE_COMPENSATION_BLOCKER = (
-    "#931 R6: the wide fixture declares its trace by the "
-    "_TRACE_Y_LO_OFFSET_NODES = -3 / _TRACE_Y_HI_OFFSET_NODES = +2 node "
-    "compensation, which the lattice ownership contract deletes (module "
-    "docstring, third bullet: 'a hard-coded compensation for the old rule "
-    "dropping a footprint's hi row -- exactly the class of local repair this "
-    "branch deletes'). Attempt 2 draws the same trace by its PHYSICAL width, "
-    "Y_C +/- W_TRACE/2. The two agreed while the old rule sampled nodes "
-    "half-open; on exact node coordinates they do not. Measured, build only, "
-    "after the (+20, +17) node offset is removed: attempt 2's trace realizes "
-    "y node rows 14..20 (cells 14..19) and the wide fixture's realizes "
-    "13..19 (cells 13..18) -- ONE ROW LOW. Both realize 7 closed node rows "
-    "and the same 600 um width; they are simply not the same rows, so the "
-    "byte-identity this test exists to assert cannot hold. 62 cells differ, "
-    "all at z node 28 and all on the trace's two edge rows; the materials "
-    "differ at exactly 2 eps_r cells, both at r = CLEAR_R, which the "
-    "knife-radius rule below already allows. The fix is to draw the wide "
-    "trace by its physical width like attempt 2 does -- a fixture change "
-    "that moves what a Step-B run measures, so it belongs with R6's "
-    "post-contract attempt predeclaration and its GPU run, not here. Every "
-    "assertion and number below is UNCHANGED; the marker is strict, so the "
-    "redraw landing fails the run immediately."
-)
-
-
-@pytest.mark.xfail(reason='#1479 (this fixture no longer builds or no longer matches the current code; it is redrawn with the v2.1 coax-MSL transition work): ' + (_WIDE_TRACE_COMPENSATION_BLOCKER), strict=True)
-def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
-    """Structural (build-only, no FDTD, ~seconds): the Step-B wide fixture
-    assembles, and every material array (eps_r, sigma, mu_r) AND the PEC
-    mask inside JUNCTION_WINDOW_ATTEMPT2 are np.array_equal to attempt 2's
-    after the (+WIDE_X_OFFSET_CELLS, +WIDE_Y_OFFSET_CELLS) node offset.
-    Also stamps the method's own coax stub (stamp_coaxial_line +
-    stamp_coaxial_annular_resistor at compute_coax_msl_transition's own z
-    indices) on both assembled grids. THAT part is NOT byte-identical and
-    this test does not pretend it is: the stub's radial rasterization puts
-    PIN_R (= 2 dx) and OUTER_R (= 6 dx) exactly on node radii, and the
-    float rounding of (x - cx)^2 + (y - cy)^2 resolves differently at
-    (3.0, 3.4) mm than at (1.0, 1.7) mm -- measured 2026-08-30: 26 cells
-    differ, one PEC-shell node column at r = +6 dx (y) over the whole stub
-    height and one annular-resistor cell at r = -2 dx (x). The assertion
-    on the stub is therefore the structural statement that every
-    differing cell sits ON a knife-edge radius (PIN_R, OUTER_R or the
-    shell's inner radius) -- i.e. the difference is float rounding of an
-    exactly-on-node radius, not a geometry error -- and the count is
-    reported in the failure message. Whether a one-column shell asymmetry
-    in the coax stub is acceptable for Step B is not decided here; the method's stamping is
-    production code and is not touched.
-
-    Fail-before-fix evidence (recorded in the KNIFE-EDGE NOTE above): with
-    the naive Box(y = Y_C_2W -/+ W_TRACE/2, x from JUNCTION_X_2W) trace the
-    pec_mask differs at 59 cells in this window (trace edge rows and the
-    junction x-column), so this assertion discriminates.
-    n_diff_total is deliberately not pinned: 0 would be an improvement, not a bug.
-    """
-    from rfx.sources.coaxial_port import (
-        coaxial_tem_characteristic_impedance,
-        stamp_coaxial_annular_resistor,
-        stamp_coaxial_line,
-    )
-
-    sim2 = _build_coax_msl_transition_sim_attempt2()
-    simw = _build_coax_msl_transition_sim_attempt2_wide()
-
-    p2, pw = sim2._coaxial_ports[0], simw._coaxial_ports[0]
-    assert p2.pin_radius == pw.pin_radius == PIN_R
-    assert p2.outer_radius == pw.outer_radius == OUTER_R
-    assert p2.face == pw.face == "bottom"
-    assert p2.position[2] == pw.position[2] == N_GND * DX
-    assert pw.position[0] == JUNCTION_X_2W and pw.position[1] == Y_C_2W
-    m2, mw = sim2._msl_ports[0], simw._msl_ports[0]
-    assert m2.width == mw.width == W_TRACE
-    assert m2.height == mw.height == H_SUB
-    assert m2.eps_r_sub == mw.eps_r_sub == EPS_SUB
-    assert m2.direction == mw.direction == "-x"
-    assert m2.position[2] == mw.position[2] == N_SUB_LO * DX
-    assert np.isclose(mw.position[0] - JUNCTION_X_2W, m2.position[0] - JUNCTION_X)
-    assert np.isclose(LX_2W - FEED_X_2W, LX_2 - FEED_X_2)
-
-    g2 = sim2._build_grid()
-    gw = simw._build_grid()
-    assert (g2.pad_x_lo, g2.pad_y_lo, g2.pad_z_lo) == (gw.pad_x_lo, gw.pad_y_lo, gw.pad_z_lo)
-    assert (g2.nx, g2.ny, g2.nz) == (142, 51, 56)
-    assert (gw.nx, gw.ny, gw.nz) == (142 + WIDE_X_OFFSET_CELLS, 51 + 2 * WIDE_Y_OFFSET_CELLS, 56)
-    assert WIDE_X_OFFSET_CELLS == 20 and WIDE_Y_OFFSET_CELLS == 17
-
-    out2 = sim2._assemble_materials(g2)
-    outw = simw._assemble_materials(gw)
-    mats2, pec2 = out2[0], out2[3]
-    matsw, pecw = outw[0], outw[3]
-    s2 = _junction_window_slices(g2, 0, 0)
-    sw = _junction_window_slices(gw, WIDE_X_OFFSET_CELLS, WIDE_Y_OFFSET_CELLS)
-
-    _cyl_knife_radii = np.array([PIN_R, CLEAR_R]) / DX
-    _jx = int(round(JUNCTION_X / DX))
-    _yc = int(round(Y_C / DX))
-    for name in ("eps_r", "sigma", "mu_r"):
-        a = np.asarray(getattr(mats2, name))[s2]
-        b = np.asarray(getattr(matsw, name))[sw]
-        assert a.dtype == b.dtype and a.shape == b.shape
-        diff = np.argwhere(a != b)
-        for (ix, iy, _iz) in diff:
-            gx = s2[0].start + ix - int(g2.pad_x_lo)
-            gy = s2[1].start + iy - int(g2.pad_y_lo)
-            r_nodes = float(np.hypot(gx - _jx, gy - _yc))
-            assert np.min(np.abs(_cyl_knife_radii - r_nodes)) < 1e-6, (
-                f"{name}: junction-window cell (x,y,z)=({ix},{iy},{_iz}) "
-                f"differs at r={r_nodes:.4f} dx -- NOT a knife-edge "
-                "radius; the wide fixture is geometrically different"
-            )
-    assert pec2 is not None and pecw is not None
-    _, node2 = _realized_node_pec(sim2)
-    _, nodew = _realized_node_pec(simw)
-    a = node2[s2]
-    b = nodew[sw]
-    for (ix, iy, _iz) in np.argwhere(a != b):
-        gx = s2[0].start + ix - int(g2.pad_x_lo)
-        gy = s2[1].start + iy - int(g2.pad_y_lo)
-        r_nodes = float(np.hypot(gx - _jx, gy - _yc))
-        assert np.min(np.abs(_cyl_knife_radii - r_nodes)) < 1e-6, (
-            f"pec_mask: junction-window cell (x,y,z)=({ix},{iy},{_iz}) "
-            f"differs at r={r_nodes:.4f} dx -- NOT a knife-edge radius"
-        )
-    pz = int(g2.pad_z_lo)
-    yc_node = int(round(Y_C / DX))
-    trace_rows = np.nonzero(a[30, :, pz + N_TRACE])[0]
-    assert trace_rows.tolist() == list(
-        range(yc_node + _TRACE_Y_LO_OFFSET_NODES,
-              yc_node + _TRACE_Y_HI_OFFSET_NODES + 1)
-    )
-    jx_node = int(round(JUNCTION_X / DX))
-    assert np.nonzero(a[jx_node, :, pz + N_TRACE])[0].tolist() == trace_rows.tolist()
-
-    def _stub(sim, grid, mats):
-        """Without the conductor mask the resistor would paint over the pin and the wall."""
-        port = sim._coaxial_ports[0]
-        z_j = int(grid.position_to_index(port.position)[2])
-        z_lo = int(grid.pad_z_lo) + 2
-        z_feed = z_lo + 1
-        z_hi = z_j - 1
-        cxy = (float(port.position[0]), float(port.position[1]))
-        stamped, shell_inner, coax_cells = stamp_coaxial_line(
-            grid, mats, center_xy=cxy, z_lo_index=z_lo, z_hi_index=z_hi,
-            pin_radius=PIN_R, outer_radius=OUTER_R,
-        )
-        stamped = stamp_coaxial_annular_resistor(
-            grid, stamped, center_xy=cxy, z_index=z_feed,
-            pin_radius=PIN_R, outer_radius=OUTER_R,
-            target_impedance=float(coaxial_tem_characteristic_impedance(PIN_R, OUTER_R)),
-            shell_inner_radius=shell_inner, pec_cell_mask=coax_cells,
-        )
-        return stamped, float(shell_inner)
-
-    st2, shell_inner2 = _stub(sim2, g2, mats2)
-    stw, shell_innerw = _stub(simw, gw, matsw)
-    assert shell_inner2 == shell_innerw
-    knife_radii = np.array([PIN_R, OUTER_R, shell_inner2]) / DX
-    jx_node, yc_node = int(round(JUNCTION_X / DX)), int(round(Y_C / DX))
-    n_diff_total = 0
-    for name in ("eps_r", "sigma", "mu_r"):
-        a = np.asarray(getattr(st2, name))[s2]
-        b = np.asarray(getattr(stw, name))[sw]
-        diff = np.argwhere(a != b)
-        n_diff_total += len(diff)
-        for (ix, iy, _iz) in diff:
-            r_nodes = float(np.hypot(ix - jx_node, iy - yc_node))
-            assert np.min(np.abs(knife_radii - r_nodes)) < 1e-6, (
-                f"{name} after coax-stub stamping differs at window cell "
-                f"(x,y,z)=({ix},{iy},{_iz}), r={r_nodes:.4f} dx -- NOT a "
-                "knife-edge radius; the wide stub is geometrically different"
-            )
-    del n_diff_total
 
 
 def test_attempt2_wide_kwargs_differ_from_attempt2_only_in_junction_x():
@@ -1829,191 +1527,6 @@ def test_589_a0_indexes_dense_band_baseline_by_freqs_hz_all(tmp_path):
     assert a0["tier"].startswith("reproduced"), a0["tier"]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        '#1479 (this fixture no longer builds or no longer matches the current code; it is redrawn with the v2.1 coax-MSL transition work): ' + ("STALE BY MEASUREMENT after the #822 wave-role fix (372a5fad): this test pins "
-        "numbers extracted with the inverted a/b labels, so the assembler now returns "
-        "the corrected S and the pinned values no longer describe it. Measured on this "
-        "branch: `pytest -m slow_physics tests/unit/sparams/test_coax_msl_transition.py` -> 2 failed, "
-        "1 passed in 1324 s, these two failing and test_extra_flux_monitors_do_not_perturb_s "
-        "(a relative bit-identity witness, label-independent) passing. NOT disabled and NOT "
-        "loosened: strict=True means re-baselining these numbers in the record-half PR, "
-        "after a corrected settled run exists, turns this into an XPASS error that forces "
-        "the marker off. Do not re-baseline from a truncated run.")
-    ),
-)
-@pytest.mark.slow_physics
-def test_coax_msl_transition_attempt2_instrument_verification():
-    """Attempt 2: INSTRUMENT test, not a claims test (issue #585 review
-    restructure). Same junction, longer MSL ladder + wider x-CPML
-    clearance. Formerly named test_coax_msl_transition_attempt2_
-    lengthened_ladder -- renamed because that name and its old body
-    asserted claims-bearing physics numbers (reciprocity, |S22|) that a
-    second review round showed were UNMEASURED at this settling, not
-    passing. See ``PREDECLARATION_ATTEMPT2`` above for the full
-    predeclaration.
-
-    RESOLVED, VESSL 369367252283 (2026-08-06): ``SETTLED_RUN_RECORD``
-    (status ``RUN``) now carries a fully settled read (both drives clear
-    -40 dB) of THIS SAME fixture at ``n_steps=135000`` -- gamma-vs-beta is
-    CONFIRMED (a third in-band checkpoint); the earlier passivity-guard
-    trip is ATTRIBUTED to truncation (settled max|S|=0.9933, guard clean);
-    reciprocity is now MEASURED at 91.4% worst deviation (not attributed
-    to any of this lane's three retracted explanations); and the
-    column-power open question is SHARPENED (mostly missing at 6/8 GHz,
-    only ~20% missing at 10 GHz), with a named discriminating check
-    (closed-box PEC-wall variant) as the next step. See
-    ``SETTLED_RUN_RECORD["measured"]["verdict"]`` for the full accounting.
-    THIS test's own numbers below are the 20000-/45000-step checkpoints
-    that predate settling -- kept exactly as measured, as the historical
-    record the settled run's own invariance argument rests on.
-
-    Runtime ~20 min (two FDTD drives on a (142, 51, 56)-cell grid, 45000
-    steps each).
-
-    WHAT THIS TEST ASSERTS, AND WHY (issue #585 review restructure item
-    (b)): only quantities that PASS the run-length invariance test
-    (stable between the 20000- and 45000-step checkpoints) are asserted
-    as pass/fail claims. Quantities that FAIL it are recorded (both
-    checkpoints disclosed, issue #585 review finding M2) but NOT gated --
-    asserting a tight bound on a value known to still be moving would
-    itself be the "surface-metric gate binding an artifact" class this
-    repo's own R5 rule exists to prevent.
-
-    CONFIRMED, PROVISIONAL pending a settled run:
-    * gamma-vs-beta ratio (coax-driven fit): stable at both checkpoints
-      (20000: 1.085/0.826/0.976; 45000: 1.128/0.854/1.071), fully inside
-      the predeclared [0.8, 1.3] band both times -- asserted as a real
-      pass below.
-    * cond_a_equilibrated: stable near 1 at both checkpoints -- confirms
-      the two drives are NOT geometrically near-degenerate (this reading
-      survives; see the RETRACTED amplitude-gap note below for what does
-      NOT survive).
-
-    UNMEASURED AT THIS SETTLING -- recorded, not gated (both checkpoints
-    disclosed per review finding M2):
-    * reciprocity worst deviation: 20000 steps 0.824 -> 45000 steps
-      0.938 -- moved AWAY from any acceptance, not toward one.
-    * |S22|: 20000 steps 0.451 -> 45000 steps 1.104 (2.4x) -- still
-      growing, not settled.
-    * max|S|: 20000 steps 0.9933 -> 45000 steps 1.1038 -- crosses the
-      passivity-guard hard limit (1.10) BETWEEN checkpoints. The guard
-      fires on the 45000-step run (verified below): "column power 1.218
-      exceeds limit 1.1... UNRELIABLE... do not interpret as physics."
-      strict_passivity semantics are exercised via that same shared
-      guard function directly on this run's own result (equivalent to
-      passing strict_passivity=True to the call itself, without a second
-      ~20-minute FDTD run for a check that needs no FDTD).
-
-    THE OPEN QUESTION (issue #585 review finding B5, replaces the
-    RETRACTED amplitude-gap story below): column power on the MSL-driven
-    column, Sum|S_ij|^2 over i for driven port msl. Scaling-INVARIANT
-    (unlike drive amplitude -- see below), so this is real evidence, not
-    a normalization artifact: 20000 steps [0.0018, 0.0199, 0.204], 45000
-    steps [0.0104, 0.0119, 1.218] -- mostly far below 1 (power missing
-    from a nominally lossless structure) with one bin above 1 at the
-    less-settled checkpoint (impossible for a passive structure --
-    itself evidence of non-convergence). Where does the MSL column's
-    power go? Not answered by this attempt; recorded as the productive
-    question a settled run should target.
-
-    RETRACTED (issue #585 review finding B1 -- do not repeat, third
-    retracted attribution on this lane): a prior revision of this test
-    attributed the reciprocity miss to a ~1.8e7-3.3e7x coax/MSL drive-
-    amplitude gap, with a locked ``amplitude_ratio > 1.0e6`` assertion.
-    This is mathematically impossible: per-drive (column) rescaling of
-    the two-drive solve leaves S EXACTLY invariant (A'=A@D, B'=B@D =>
-    B'@inv(A')=B@A^-1=S for any invertible diagonal D -- verified at
-    this attempt's own gap value, |S'-S| ~ 3e-16). The "amplitude_ratio"
-    quantity is also, separately, raw ``cond_a`` under a new name
-    (matches to 8 significant figures) -- the exact quantity this file's
-    own docstrings already say not to read as a degeneracy witness on
-    this lane. See ``PREDECLARATION_ATTEMPT2["retracted_amplitude_gap_
-    attribution"]`` for the full record. The assertion is DELETED, not
-    just unused.
-    The missing-power finding in the MSL-driven column is regression-locked so a future change that quietly fixes it gets investigated.
-    """
-    assert PREDECLARATION_ATTEMPT2["status"] == "RUN"
-
-    sim = _build_coax_msl_transition_sim_attempt2()
-    result = sim.compute_coax_msl_transition(
-        junction_x=JUNCTION_X, eps_r_sub=EPS_SUB, n_steps=N_STEPS_2,
-        freqs=FREQS_2,
-        probe_count=6, probe_start_cells=4, probe_spacing_cells=2,
-        msl_probe_count=PROBE_COUNT_2, msl_probe_start_cells=PROBE_START_2,
-        msl_probe_spacing_cells=PROBE_SPACING_2,
-        skip_preflight=True, strict_passivity=False,
-    )
-
-    assert result.s_params.shape == (2, 2, 3)
-    assert np.all(np.isfinite(result.s_params))
-    assert result.port_names == ("coax", "msl")
-
-
-    assert np.all(np.asarray(result.settling_db) < -15.0), (
-        f"settling_db {result.settling_db} did not improve past the "
-        "-15 dB floor (between the 20000-step checkpoint's -12.3/-10.7 "
-        "dB and this run's own measured -19.7/-17.9 dB) -- a settling "
-        "regression (unrelated code change) or a construction change; "
-        "this is a monotonic-improvement floor, not a claim of adequate "
-        "settling (neither checkpoint clears the -40 dB rule)."
-    )
-
-    assert np.all(np.asarray(result.cond_a_equilibrated) < 1.5), (
-        f"cond_a_equilibrated {result.cond_a_equilibrated} rose above the "
-        "near-unity floor stable at both checkpoints -- the two drives "
-        "may have become genuinely geometrically near-degenerate; "
-        "re-derive the attribution."
-    )
-
-    from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
-    from rfx.core.yee import EPS_0, MU_0
-    c0 = 1.0 / np.sqrt(MU_0 * EPS_0)
-    _, eps_eff_hj = hammerstad_jensen_z0_eps_eff(W_TRACE, H_SUB, EPS_SUB)
-    beta_analytic = 2.0 * np.pi * np.asarray(result.freqs) * np.sqrt(eps_eff_hj) / c0
-    im_gamma_coax_driven = np.abs(result.gamma[1, 0, :].imag)
-    gamma_ratio = im_gamma_coax_driven / beta_analytic
-    gamma_ok = bool(np.all((gamma_ratio >= 0.8) & (gamma_ratio <= 1.3)))
-    assert gamma_ok, (
-        f"gamma_ratio {gamma_ratio} left the predeclared [0.8, 1.3] "
-        "confirmation band, stable at both checkpoints until now -- the "
-        "ladder-length fix's own headline result (the MSL matrix-pencil "
-        "fit tracking the guided-wave beta) may no longer hold; "
-        "re-derive the extraction-class verdict."
-    )
-    np.testing.assert_allclose(
-        gamma_ratio,
-        PREDECLARATION_ATTEMPT2["measured"]["gamma_ratio_coax_driven_by_checkpoint"][1],
-        atol=0.05,
-    )
-
-
-    S = result.s_params
-    col_msl_driven_power = np.abs(S[0, 1, :]) ** 2 + np.abs(S[1, 1, :]) ** 2
-    _m_col = np.asarray(
-        PREDECLARATION_ATTEMPT2["measured"]["column_power_msl_driven_by_checkpoint"][1]
-    )
-    np.testing.assert_allclose(col_msl_driven_power, _m_col, atol=0.01)
-    assert col_msl_driven_power[0] < 0.5 and col_msl_driven_power[1] < 0.5, (
-        f"MSL-driven column power at the two lower bins {col_msl_driven_power[:2]} "
-        "rose above the 0.5 floor measured on this attempt -- the "
-        "'power going missing' open question may have resolved (or the "
-        "extraction changed); re-derive the finding before assuming a fix."
-    )
-
-    pair, worst_dev = _mixed_reciprocity_deviation(result.s_params)
-    s22_abs = np.abs(result.s_params[1, 1, :])
-    max_abs_s = float(np.max(np.abs(result.s_params)))
-    assert np.isfinite(worst_dev) and np.all(np.isfinite(s22_abs)) and np.isfinite(max_abs_s)
-
-    from rfx.api._sparams import _warn_if_nonpassive_smatrix
-    with pytest.raises(ValueError, match="UNRELIABLE"):
-        _warn_if_nonpassive_smatrix(
-            result, extractor="compute_coax_msl_transition", strict=True,
-        )
-
-
 
 def _attempt2_kwargs(n_steps):
     return dict(
@@ -2025,22 +1538,6 @@ def _attempt2_kwargs(n_steps):
         skip_preflight=True, strict_passivity=False,
     )
 
-
-def _attempt2_scratch_flux_entries():
-    """Flux entries built the documented way: a scratch Simulation sharing
-    the attempt-2 domain, handing over its ._flux_monitors list."""
-    from rfx.api import Simulation as _Sim
-    scratch = _Sim(freq_max=FREQ_MAX_2, domain=(LX_2, LY, LZ_2), dx=DX,
-                   boundary="cpml")
-    scratch.add_flux_monitor(
-        axis="x", coordinate=2.2e-3, freqs=FREQS_2,
-        size=(1.2e-3, 0.7e-3), center=(Y_C, 2.8e-3), name="xplane_aperture",
-    )
-    scratch.add_flux_monitor(
-        axis="z", coordinate=3.0e-3, freqs=FREQS_2,
-        size=(1.3e-3, 1.2e-3), center=(2.15e-3, Y_C), name="ztop_patch",
-    )
-    return scratch._flux_monitors
 
 
 def test_extra_flux_monitors_registered_guard_unchanged():
@@ -2079,70 +1576,6 @@ def test_extra_flux_monitors_entry_validation():
             **_attempt2_kwargs(1), extra_flux_monitors=dup._flux_monitors,
         )
 
-
-@pytest.mark.xfail(
-    strict=True,
-    raises=ValueError,
-    reason=(
-        '#1479 (this fixture no longer builds or no longer matches the current code; it is redrawn with the v2.1 coax-MSL transition work): ' + ("The attempt-2 board cannot be BUILT since PR #981 added validate_msl_port_geometry: "
-        "its MSL port declares the ground at z = 2.6 mm, and on that column the realized "
-        "conductor planes are at 2.4, 2.5, 2.8 and 2.9 mm, so the port's reference has no metal "
-        "under it and the builder refuses (rfx/sources/msl_port.py, reached from "
-        "compute_coax_msl_transition). Measured on main df08175c, 2026-09-21: this test "
-        "dies in 3.5 s with that ValueError, before a single time step; it has been the red "
-        "in shard 3 of the weekly lane since then (#1022). The QUESTION this test asks -- "
-        "opt-in flux monitors must not move S by one bit -- is still wanted, so it is not "
-        "removed. Repairing the board is coax-MSL lane work, deferred past v2.0. raises=ValueError alone is broad -- this function also raises ValueError for "
-        "bad monitor entries -- so the body below checks the MESSAGE and turns any other "
-        "ValueError into an AssertionError, which this marker does not absorb. strict=True turns "
-        "the day the board builds again into an XPASS error that forces this marker off.")
-    ),
-)
-@pytest.mark.slow_physics
-def test_extra_flux_monitors_do_not_perturb_s():
-    """The #589 non-perturbation witness: S bit-identical with and without
-    the opt-in monitors, on the attempt-2 fixture itself.
-
-    Bit-identity (not allclose) is deliberate: the monitors add read-only
-    DFT accumulation to the scan carry, and any drift here would mean the
-    instrument perturbs the thing it measures. Measured before commit on
-    CPU (2026-08-07): identical, and off/off repeatability also identical.
-    If a future backend/XLA version reorders the fused field math under the
-    added carry, this test reds -- that is a REAL finding about the witness
-    (re-measure and re-declare on #589 before trusting adjudication runs),
-    not a tolerance to loosen silently.
-    Bit-identity is step-count independent.
-    """
-    n_steps = 1000
-    try:
-        r_off = _build_coax_msl_transition_sim_attempt2().compute_coax_msl_transition(
-            **_attempt2_kwargs(n_steps))
-    except ValueError as exc:
-        assert "no longitudinal conductor edge meets it" in str(exc), exc
-        raise
-    try:
-        r_on = _build_coax_msl_transition_sim_attempt2().compute_coax_msl_transition(
-            **_attempt2_kwargs(n_steps),
-            extra_flux_monitors=_attempt2_scratch_flux_entries(),
-        )
-    except ValueError as exc:
-        raise AssertionError(f"extra_flux_monitors was rejected: {exc}") from exc
-
-    assert r_off.flux_monitors is None
-    assert np.array_equal(np.asarray(r_off.s_params), np.asarray(r_on.s_params)), (
-        "extra_flux_monitors perturbed the S output -- the #589 "
-        "non-perturbation witness failed; do not run the adjudication "
-        "until this is re-declared."
-    )
-    assert np.array_equal(np.asarray(r_off.settling_db),
-                          np.asarray(r_on.settling_db))
-
-    assert set(r_on.flux_monitors) == {"coax", "msl"}
-    for drive_key, spectra in r_on.flux_monitors.items():
-        assert set(spectra) == {"xplane_aperture", "ztop_patch"}
-        for name, arr in spectra.items():
-            assert arr.shape == (len(FREQS_2),), (drive_key, name, arr.shape)
-            assert np.all(np.isfinite(arr)), (drive_key, name, arr)
 
 
 def test_flux_spectrum_exact_f64_matches_default_on_healthy_magnitudes():
@@ -2328,10 +1761,6 @@ PREDECLARATION_ATTEMPT3 = {
         "the attempt-2 baseline by design (the baseline is the short)."
     ),
     "realization_contract_tests": [
-        "test_attempt3_ground_clearance_annulus_is_open",
-        "test_attempt3_method_stamp_leaves_junction_open",
-        "test_attempt3_junction_is_attempt2_plus_hole_only",
-        "test_attempt3_hole_matches_integer_disk_and_contains_ptfe_disk",
         "test_attempt2_junction_is_shorted_by_registered_ground",
         "test_junction_pin_axis_is_pec_continuous_stub_to_trace[attempt2|attempt3]",
         "test_junction_coax_shell_contacts_ground[attempt2|attempt3]",
@@ -2485,6 +1914,7 @@ def test_realized_node_pec_reader_agrees_with_the_single_owner():
                 f"{bool(node_pec[i, j, kj])}, owner {want}")
 
 
+
 def _assemble_junction(sim):
     """(grid, materials, pec, i0, j0, k_junction) -- what compute_coax_msl_
     transition sees BEFORE its own coax-stub stamp."""
@@ -2632,126 +2062,6 @@ def _assert_hole_matches_integer_disk(sim):
     assert int((ptfe_w & ~disk_w).sum()) == 0
     assert 0 < int(ptfe_w.sum()) <= HOLE_CELLS_3
 
-
-_ATTEMPT3_CARVE_BLOCKER = (
-    "#931 R6: attempt 3's clearance hole is a COMPENSATION for the rule the "
-    "lattice ownership contract deletes, and the contract closes it. The "
-    "ground plane is tiled by 20 half-cell PEC Boxes whose inner faces are "
-    "placed half a cell outside the hole so the disk is left uncovered IN "
-    "CELLS. Under §1.2 a volume Box now realizes tangential walls at BOTH "
-    "faces of every axis, so each tiling Box's inner x/y faces are realized "
-    "as walls ON the hole's rim -- and the launch closes again. Measured, "
-    "build only, on the realized node planes: the junction node's clearance "
-    "annulus is 25/36 in-plane PEC (the contract's answer) where the cell "
-    "mask read 0/36 (the pre-#931 answer); the 9x9 window has 11 open nodes, "
-    "not 38; the post-stamp open fraction is 0.3056, not 1.0; and the "
-    "attempt3-vs-attempt2 node-plane xor is 11 nodes on EACH of the ground's "
-    "two realized wall planes (24 and 25), 22 in total, where the cell xor "
-    "is 37 on one plane. Attempt 2 is unaffected and still reads 36/36 -- "
-    "the short it is committed as. The fix is to REDRAW the open launch "
-    "under the contract, which needs its own attempt predeclaration and its "
-    "own GPU run (R6 in tests/unit/sparams/_results_931/RECOMPUTE.md); "
-    "PREDECLARATION_ATTEMPT3 and SETTLED_RUN_RECORD are frozen and are not "
-    "edited here. Every assertion and number below is UNCHANGED and reads "
-    "the realization channel; the marker is strict, so the redraw landing "
-    "fails the run immediately."
-)
-
-
-@pytest.mark.xfail(reason='#1479 (this fixture no longer builds or no longer matches the current code; it is redrawn with the v2.1 coax-MSL transition work): ' + (_ATTEMPT3_CARVE_BLOCKER), strict=True)
-def test_attempt3_ground_clearance_annulus_is_open():
-    """At the junction node every cell with PIN_R < r <= CLEAR_R (36 cells,
-    all azimuths) has pec_mask False. Attempt 2 measured 36/36 PEC (FAILS
-    -- see test_attempt2_junction_is_shorted_by_registered_ground); attempt
-    3: 0/36."""
-    _assert_clearance_annulus_open(_build_coax_msl_transition_sim_attempt3())
-
-
-@pytest.mark.xfail(reason='#1479 (this fixture no longer builds or no longer matches the current code; it is redrawn with the v2.1 coax-MSL transition work): ' + (_ATTEMPT3_CARVE_BLOCKER), strict=True)
-def test_attempt3_method_stamp_leaves_junction_open():
-    """After the method's own stamp_coaxial_line (+ annular resistor) at its
-    own z_stub_lo/z_stub_hi = z_junction_idx - 1: the node BELOW the
-    junction carries the coax dielectric in the annulus (fraction 1.0) and
-    the junction node's annulus is OPEN (~pec_mask & sigma < PEC_SIGMA/2)
-    with fraction 1.0. Attempt 2 measured 0.0 at the junction node (FAILS);
-    attempt 3: 1.0."""
-    _assert_method_stamp_leaves_junction_open(_build_coax_msl_transition_sim_attempt3())
-
-
-@pytest.mark.xfail(reason='#1479 (this fixture no longer builds or no longer matches the current code; it is redrawn with the v2.1 coax-MSL transition work): ' + (_ATTEMPT3_CARVE_BLOCKER), strict=True)
-def test_attempt3_junction_is_attempt2_plus_hole_only():
-    """Byte-level: sigma and mu_r np.array_equal to attempt 2; pec_mask ^
-    pec_mask_attempt2 is EXACTLY the 38 cells at the junction node equal
-    to the integer disk minus the pin footprint; eps_r differs from
-    attempt 2 at EXACTLY those same 38 cells and nowhere else, and there
-    attempt 3 carries what the hole exposes (the PTFE volume sample where
-    the realized PTFE disk covers the cell, vacuum at the one lattice-hole
-    cell outside it) while attempt 2 carries the sheet's resampled
-    own-cell value (RASTERIZER NOTE above: the resample point 25.5 dx is
-    the substrate's lower face, so 3.66). Ports/materials/domain identical
-    (mirrors test_attempt2_junction_geometry_is_byte_identical_to_
-    attempt1). Fails trivially on attempt 2 vs itself (xor 0 cells).
-
-    Pre-#834 the eps_r arrays were np.array_equal: the float32 resample
-    point fell below the substrate face and the sheet cells read the PTFE
-    (2.1) the hole cells also read. That equality was a knife-edge
-    coincidence, not a property of the hole."""
-    sim2 = _build_coax_msl_transition_sim_attempt2()
-    sim3 = _build_coax_msl_transition_sim_attempt3()
-    g2, m2, pec2, i2, j2, k2 = _assemble_junction_realized(sim2)
-    g3, m3, pec3, i3, j3, k3 = _assemble_junction_realized(sim3)
-    assert g2.shape == g3.shape and (i2, j2, k2) == (i3, j3, k3)
-    assert np.array_equal(np.asarray(m2.sigma), np.asarray(m3.sigma))
-    assert np.array_equal(np.asarray(m2.mu_r), np.asarray(m3.mu_r))
-
-    xor = pec2 ^ pec3
-    assert int(xor.sum()) == HOLE_XOR_CELLS_3, int(xor.sum())
-
-    eps2, eps3 = np.asarray(m2.eps_r), np.asarray(m3.eps_r)
-    eps_diff = eps2 != eps3
-    assert np.array_equal(eps_diff, xor), (
-        "eps_r differs outside the hole cells: "
-        f"{np.argwhere(eps_diff & ~xor).tolist()[:8]}; "
-        f"hole cells with equal eps_r: {np.argwhere(xor & ~eps_diff).tolist()[:8]}")
-    ptfe3 = np.asarray(sim3._geometry[N_GROUND_BOXES_3].shape.mask(g3), bool)
-    assert sim3._geometry[N_GROUND_BOXES_3].material_name == "ptfe"
-    np.testing.assert_allclose(eps3[xor & ptfe3], EPS_COAX, rtol=1e-6)
-    np.testing.assert_array_equal(eps3[xor & ~ptfe3], 1.0)
-    assert int((xor & ~ptfe3).sum()) == 1, int((xor & ~ptfe3).sum())
-    np.testing.assert_allclose(eps2[xor], EPS_SUB, rtol=1e-6)
-    z_hit = np.where(xor.any(axis=(0, 1)))[0]
-    assert z_hit.tolist() == [k3], (z_hit - g3.pad_z_lo).tolist()
-    assert not np.any(pec3 & ~pec2)
-    open_w, disk_w, pin_w, _ = _node25_hole_window(sim3)
-    R = CLEAR_R_CELLS
-    xor_w = xor[:, :, k3][i3 - R:i3 + R + 1, j3 - R:j3 + R + 1]
-    assert np.array_equal(xor_w, disk_w & ~pin_w)
-    assert int(xor[:, :, k3].sum()) == int(xor_w.sum())
-
-    p2, p3 = sim2._coaxial_ports[0], sim3._coaxial_ports[0]
-    for f in ("pin_radius", "outer_radius", "face", "impedance"):
-        assert getattr(p2, f) == getattr(p3, f), f
-    assert tuple(p2.position) == tuple(p3.position)
-    q2, q3 = sim2._msl_ports[0], sim3._msl_ports[0]
-    for f in ("width", "height", "eps_r_sub", "direction", "impedance"):
-        assert getattr(q2, f) == getattr(q3, f), f
-    assert tuple(q2.position) == tuple(q3.position)
-    assert sim2._materials.keys() == sim3._materials.keys() == {"sub", "ptfe"}
-    for name in ("sub", "ptfe"):
-        assert sim2._materials[name].eps_r == sim3._materials[name].eps_r
-    mats2 = [e.material_name for e in sim2._geometry]
-    mats3 = [e.material_name for e in sim3._geometry]
-    assert mats2 == ["pec", "ptfe", "sub", "pec", "pec"]
-    assert mats3 == ["pec"] * N_GROUND_BOXES_3 + ["ptfe", "sub", "pec", "pec"]
-
-
-@pytest.mark.xfail(reason='#1479 (this fixture no longer builds or no longer matches the current code; it is redrawn with the v2.1 coax-MSL transition work): ' + (_ATTEMPT3_CARVE_BLOCKER), strict=True)
-def test_attempt3_hole_matches_integer_disk_and_contains_ptfe_disk():
-    """~pec_mask at the junction node in the 9x9 window == {di^2+dj^2 <= 16}
-    minus the pin's realized footprint (49 - 11 = 38 cells), and the PTFE
-    Cylinder's realized node-25 mask is a subset of that disk. Attempt 2:
-    the window has 0 open cells (FAILS)."""
-    _assert_hole_matches_integer_disk(_build_coax_msl_transition_sim_attempt3())
 
 
 def test_attempt2_junction_is_shorted_by_registered_ground():
@@ -2926,7 +2236,7 @@ def _attempt3_scratch_flux_entries():
     """Flux entries for the attempt-3 W4 box, built the documented way: a
     scratch Simulation sharing the attempt-3 domain, handing over its
     ``._flux_monitors`` list (same pattern as
-    ``_attempt2_scratch_flux_entries``; attempt 3 shares attempt 2's domain
+    the attempt-2 scratch monitors; attempt 3 shares attempt 2's domain
     and dx, only the ground-plane entity differs).
 
     Report-only instrument: these monitors are passed through
