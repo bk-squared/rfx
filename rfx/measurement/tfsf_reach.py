@@ -16,19 +16,14 @@ def tfsf_corner_paths(cfg, grid, *, inset=0):
     corners = np.asarray([[grid.node_of(a, int(i)) for a, i in zip("xyz", c)]
                           for c in indices])
     if hasattr(cfg, "source_p"):
-        # Per-node window delays reference source_p on every sublattice.
         paths = (indices @ np.asarray(cfg.m) - cfg.source_p) * cfg.dx_1d / np.linalg.norm(cfg.m)
     elif hasattr(cfg, "d_aux"):
-        # init_tfsf_methodB maps the projection of padded node 0 to src_idx.
         origin = np.asarray([grid.node_of(a, 0) for a in "xy"])
         paths = (corners[:, :2] - origin) @ np.asarray([cfg.cos_theta, cfg.sin_theta])
     elif hasattr(cfg, "i0_x"):
-        # The Bloch source applies the envelope along the entire src_x plane.
         paths = (cfg.direction_sign * (cfg.i0_x + indices[:, 0] - cfg.x_lo - cfg.src_x)
                  * cfg.dx_1d / cfg.cos_theta)
     else:
-        # The line runs on the realized x cells (a graded x axis is admitted
-        # for the normal slab), so sum its widths from the source node.
         line = cfg.i0 + indices[:, 0] - cfg.x_lo
         n = int(max(line.max(), cfg.src_idx)) + 1
         widths = np.broadcast_to(np.asarray(cfg.primal_widths, dtype=float), (n,)) \

@@ -5,6 +5,7 @@ from rfx.probes.probes import _ampere_loop
 
 
 def accumulate_lumped_sparam_dft(*, carry, dt, dx_f, ex_f_new, ey_f_new, ez_f_new, lumped_sparam_freqs_arr, lumped_sparam_meta, st_f, step_idx):
+    """The electric-field sample can precede or follow source injection according to the runner's ``inject_sources_before_e_coupling`` flag."""
     phase = jnp.exp(
         -1j
         * 2.0
@@ -12,35 +13,10 @@ def accumulate_lumped_sparam_dft(*, carry, dt, dx_f, ex_f_new, ey_f_new, ez_f_ne
         * lumped_sparam_freqs_arr
         * (step_idx.astype(jnp.float32) * dt)
     )
-    # NOTE: the Yee half-step current phase correction
-    # `rfx.core.dft_utils.half_step_current_phase` is NOT applied on
-    # this LUMPED lane, and this lane alone keeps the pre-decision
-    # sampling and diagonal conventions. Its derivation needs
-    # E = E^{n+1} at the sample. The uniform lumped lane now has
-    # that (post-injection, measured by
-    # scripts/diagnostics/lumped_port_known_load_line.py, which also
-    # moved the diagonal to the driven terminal reflection). On THIS
-    # runner the slot is not fixed — whether this block runs pre- or
-    # post-injection depends on the runtime
-    # ``inject_sources_before_e_coupling`` flag (see the fine-grid
-    # source injection below) — so no single dt/2 offset is
-    # derivable here at all, and the same argument blocks the slot
-    # move. rfx/runners/subgridded.py warns the caller that this
-    # diagnostic S-matrix is on the old convention.
     v_dft = carry["lumped_sparam_v"]
     i_dft = carry["lumped_sparam_i"]
 
     def _sample_lumped_vi(i, j, k, comp):
-        # Use the shared Ampere loop. A raw `h[i-1]` at index 0 on a
-        # back-read axis would integrate H from the OPPOSITE face of
-        # the fine domain — a cell the local loop does not enclose.
-        #
-        # `periodic` is hard-coded False on all three axes because
-        # this runner has no periodic lane: `periodic` does not
-        # appear anywhere in this module, and the subgrid E/H updates
-        # it drives are built without one. The other guard
-        # `_bwd_h` keeps — a length-1 (2-D) axis — is driven off
-        # `h.shape[axis]`, not off these flags, so it still applies.
         _e_new = {"ex": ex_f_new, "ey": ey_f_new, "ez": ez_f_new}
         if comp not in _e_new:
             raise ValueError(f"Unknown lumped S-parameter component: {comp!r}")

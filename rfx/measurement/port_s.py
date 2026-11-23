@@ -8,8 +8,6 @@ def main_record_port_s(sim, result, *, compute_s_params, s_param_freqs, off_reco
     import numpy as np
     from rfx.sparams._record_selection import read_ids
 
-    # Match the source lists built by the uniform runner: zero-impedance
-    # declarations are soft sources, and extent distinguishes wire ports.
     lumped_ports = [pe for pe in sim._ports if pe.is_port and pe.extent is None]
     wire_ports = [pe for pe in sim._ports if pe.is_port and pe.extent is not None]
     _single_lumped_main_record = (
@@ -41,8 +39,6 @@ def main_record_port_s(sim, result, *, compute_s_params, s_param_freqs, off_reco
         freqs = np.asarray(s_param_freqs if s_param_freqs is not None
                            else pairs[0][0].freqs)
     elif _single_wire_fastpath:
-        # The main record supplies the complete one-wire matrix. Multiple
-        # wire ports need the driver to measure the off-diagonal columns.
         s_params = np.asarray(port_s_from_record(
             [channels for _, channels in pairs], [meta for meta, _ in pairs],
             wire_mode=True))
@@ -77,7 +73,6 @@ def port_s_from_record(channels, metas, *, wire_mode):
         raise NotImplementedError(
             "Port S extraction requires at most one driven port per record.")
     if wire_mode and not graded and n_wp == 1 and genuinely_excited:
-        # run()'s one-wire main-record path uses this unnormalized wave pair.
         return driven_port_reflection(
             channels[0][3], channels[0][1], specs[0].impedance)[None, None, :]
     from rfx.measurement.port_s_contract import require_driven_record_s
@@ -124,19 +119,14 @@ def assemble_graded_ports_result(wire_sparams, wp_meta, records, request):
     from rfx.sparams._record_selection import SReadPorts
     context = request.context
     result = {}
-    # Raw port spectra are termination diagnostics even without a driven column.
-    # Admission resolves default requests to S=None before stepping; the low-level
-    # extractor itself refuses an all-passive record if called directly.
     if context.use_wire_ports and wire_sparams is not None:
         freqs = context.sp_freqs
         result['s_param_freqs'] = freqs if isinstance(freqs, jax.core.Tracer) else np.array(freqs)
         result['wire_sparams_raw'] = wire_sparams
         result['wire_sparams_meta'] = tuple(wp_meta)
         from rfx.measurement.port_records import pack_port_records
-        # Ringdown's synthetic completion has only wire metadata and no owners.
         kinds = (tuple(request.port_owners[i].kind for i in request.port_acc_indices)
                  if request.port_acc_indices else tuple(p['kind'] for p in context.wire_ports))
-        # A run() whose S comes from the drive scan keeps the records, not record S.
         result['s_params'] = (port_s_from_record(
             wire_sparams, wp_meta, wire_mode=any(kind == 'wire' for kind in kinds))
             if any(meta[7] for meta in wp_meta)

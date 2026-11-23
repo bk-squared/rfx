@@ -21,17 +21,13 @@ def radiated_power(state, bounds, shape) -> float:
     il, ih, jl, jh, kl, kh = bounds
     jj, kk = slice(jl, jh), slice(kl, kh)
     ii = slice(il, ih)
-    # Normal planes wrap; the tangential cell slices keep endpoint N.
     il, ih = il % shape[0], ih % shape[0]
     jl, jh = jl % shape[1], jh % shape[1]
     kl, kh = kl % shape[2], kh % shape[2]
-    # +x/-x faces: S_x = Ey·Hz - Ez·Hy
     p = jnp.sum(ey[ih, jj, kk] * hz[ih, jj, kk] - ez[ih, jj, kk] * hy[ih, jj, kk])
     p -= jnp.sum(ey[il, jj, kk] * hz[il, jj, kk] - ez[il, jj, kk] * hy[il, jj, kk])
-    # +y/-y faces: S_y = Ez·Hx - Ex·Hz
     p += jnp.sum(ez[ii, jh, kk] * hx[ii, jh, kk] - ex[ii, jh, kk] * hz[ii, jh, kk])
     p -= jnp.sum(ez[ii, jl, kk] * hx[ii, jl, kk] - ex[ii, jl, kk] * hz[ii, jl, kk])
-    # +z/-z faces: S_z = Ex·Hy - Ey·Hx
     p += jnp.sum(ex[ii, jj, kh] * hy[ii, jj, kh] - ey[ii, jj, kh] * hx[ii, jj, kh])
     p -= jnp.sum(ex[ii, jj, kl] * hy[ii, jj, kl] - ey[ii, jj, kl] * hx[ii, jj, kl])
     return float(p)

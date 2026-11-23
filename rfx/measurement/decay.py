@@ -21,6 +21,8 @@ program contains any of it.
 * ``finish_decay``: what ended the run, as one ``until_decay.stop`` Diagnostic.
 * The DC advisories: ``warn_dc_floor`` before the run (``run()``) and
   ``static_remnant_advisory`` after a capped run (both loops, via ``finish_decay``).
+
+A physical mode whose energy is below ``KAPPA`` of the drive's peak and decays more slowly than 5 % per 50 steps is stopped as rounding.
 """
 
 from __future__ import annotations
@@ -39,26 +41,15 @@ import numpy as np
 from rfx.core.yee import EPS_0, MU_0
 from rfx.measurement.record_end import drive_end
 
-AUTO_END = object()   # the loop resolves the drive end from its own tables
-MU0_OVER_EPS0 = MU_0 / EPS_0   # a vacuum constant (Z0 squared); no permittivity divides by it
+AUTO_END = object()
+MU0_OVER_EPS0 = MU_0 / EPS_0
 
-#: The float32 floor of the decay stop. About ten float32 units in the last
-#: place below the peak field; a drive leaves a rounding residue near 1e-13 of
-#: its peak energy (measured 7.5e-14 on the graded until_decay case), so a
-#: threshold relative to a small after-drive reference can ask for less than
-#: single precision holds. A boundary also counts as below on the floor when its
-#: W is under KAPPA times the largest W at any boundary so far (drive included)
-#: and has stopped falling: W_c >= FLOOR_FLAT ** (I / FLOOR_SPAN) * W_(c-I), i.e. less
-#: than 5 % decay per 50 steps whatever the check interval I. Risk: a mode whose
-#: energy is below 1e-12 of the drive's peak and decays more slowly than 5 % per
-#: 50 steps would be stopped as rounding.
 KAPPA = 1e-12
 FLOOR_FLAT = 0.95
 FLOOR_SPAN = 50
 FLOOR_TEXT = ("below about 1e-12 of the drive's peak energy the remaining field is at the "
               "single-precision rounding level of the drive's peak field; the requested "
               "threshold was not met")
-#: Relative DC (|sum s dt| / sum |s| dt) above which a soft drive is named.
 DC_ADVISE = 1e-6
 REMEDIES = (
     "GaussianPulse deposits no charge (it starts at zero and its time integral is "
@@ -103,7 +94,6 @@ def known_drive_ready_step(waveguide_ports, interval):
     for table, dt in drives:
         total = plain_dft(table, dt, bins)
         prefix = np.zeros(len(bins), dtype=np.complex128)
-        # Bound temporary memory independently of K (at least one interval).
         block = max(1, 4096 // interval)
         for k in range(0, len(checks), block):
             ends = checks[k:k + block]
@@ -170,7 +160,6 @@ def _wide(x):
 
 
 def _dot(a, b):
-    # Real fields: the product itself. Complex (Bloch) envelopes: Re(a* b).
     return a * b if not jnp.iscomplexobj(a) else jnp.real(jnp.conj(a) * b)
 
 
@@ -266,7 +255,6 @@ def boundary_energy(grid, materials, side_step, *, dx=None, absorbing=True,
     def measure(carry, count):
         return float(stepped_energy(carry, xs_of(count), extra, arrays))
 
-    # For inspection (tests): the lowered fused program at one boundary.
     measure.lower = lambda carry, count: stepped_energy.lower(carry, xs_of(count), extra, arrays)
     return measure
 
@@ -299,11 +287,11 @@ class DecayStop:
     ref: float = 0.0
     wmax: float = 0.0
     below: int = 0
-    below_thr: int = 0   # consecutive boundaries with W < thr * ref
-    w_prev: float | None = None   # W at the previous boundary read
+    below_thr: int = 0
+    w_prev: float | None = None
     stop: int | None = None
     criterion: str | None = None
-    last: tuple | None = None   # (count, W, ref, wmax) at the last boundary >= n_end
+    last: tuple | None = None
     decay_checks: list = field(default_factory=list)
     n_d: int = 0
 
@@ -435,7 +423,7 @@ def make_decay_stop(grid, materials, *, thr, min_steps, interval, consecutive,
         except ValueError:
             if enabled:
                 raise
-            n_end = None   # rows only: a forced-length run is never refused
+            n_end = None
     rule = DecayStop(thr, min_steps, interval, consecutive, n_end, enabled)
     if enabled:
         rule.n_d = known_drive_ready_step(waveguide_ports, interval)
@@ -445,7 +433,6 @@ def make_decay_stop(grid, materials, *, thr, min_steps, interval, consecutive,
     return rule, measure
 
 
-# --- how the run ended ---------------------------------------------------------
 
 def _stop_record(rule, steps, *, fired, flux):
     """(quantity, criterion, reached, floor_ratio) of one run end."""
@@ -570,7 +557,6 @@ def decay_stop_first(result, settling_db, witness):
     return settling_db, witness
 
 
-# --- DC advisories ---------------------------------------------------------------
 
 def _relative_dc(samples, dt):
     """(|sum s dt| / sum |s| dt, sum s dt), or None for an empty/nonfinite drive."""
@@ -607,7 +593,7 @@ def dc_census(sim, *, dt, n_table):
     from rfx.api._port_kind import is_soft_source
 
     if is_tracer(dt):
-        return []   # traced dt: advisory host math is impossible here
+        return []
     dt = float(dt)
     if not dt > 0.0 or n_table <= 0:
         return []
@@ -624,7 +610,7 @@ def dc_census(sim, *, dt, n_table):
             s = np.asarray(jax.vmap(wf)(jnp.asarray(t)), dtype=np.float64)
         except (TimeoutError,):
             raise
-        except Exception as exc:  # noqa: BLE001 - recorded in DCNotEvaluated.error
+        except Exception as exc:  # noqa: BLE001
             rows.append(DCNotEvaluated(label, type(wf).__name__, f"{type(exc).__name__}: {exc}"))
             continue
         dc = _relative_dc(s, dt) if s.shape == t.shape else None
@@ -640,7 +626,6 @@ def dc_census(sim, *, dt, n_table):
                 t0 = float(wf.t0)
             except (AttributeError, TypeError, ValueError):
                 t0 = 3.0 * tau
-            # The differentiated Gaussian is below 1.4e-8 of its amplitude there.
             t_done = t0 + 4.5 * tau
         rows.append((label, type(wf).__name__, dc[0], dc[1], t_done))
     return rows
@@ -767,7 +752,6 @@ def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) 
         weighted_h2 = (mu_h[0] * state.hx[sl] ** 2 + mu_h[1] * state.hy[sl] ** 2
                        + mu_h[2] * state.hz[sl] ** 2)
         same = (mu_h[0] == mu_h[1]) & (mu_h[0] == mu_h[2])
-        # Retain the homogeneous diagnostic's operation order and bits.
         weighted_h2 = jnp.where(same, mu_h[0] * h2, weighted_h2)
     else:
         weighted_h2 = sum(mu_h[a] * getattr(state, "h" + "xyz"[a])[sl] ** 2 for a in h_axes)
@@ -786,7 +770,6 @@ def static_remnant_advisory(state, materials, grid, soft_drives=(), lossy=None) 
             named.append(f"{row[0]}: {row[1]}, relative DC {row[2]:.2e}")
     if not named:
         lossy = array_lossy(materials) if lossy is None else lossy
-        # A conductor relaxes within a step (eps/sigma < dt): not a lossy medium here.
         media = [f"{name} (eps_r {eps:g}, sigma {sig:g} S/m): eps/sigma = {EPS_0 * eps / sig:.3g} s = "
                  f"{EPS_0 * eps / sig / float(grid.dt):.0f} steps" for name, eps, sig in lossy
                  if EPS_0 * eps / sig >= float(grid.dt)]
