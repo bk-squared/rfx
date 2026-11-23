@@ -44,7 +44,11 @@ def test_bound_and_round_trip_are_read_from_realized_cells(capsys):
         cells = np.asarray(grid.cells(axis), dtype=np.float64)
         lo, hi = getattr(grid, f"pad_{axis}_lo"), getattr(grid, f"pad_{axis}_hi")
         lengths.append(np.sum(cells[lo:len(cells) - hi - 1]))
-    assert bound['D'] == pytest.approx(np.linalg.norm(lengths), rel=1e-12)
+    distance = np.linalg.norm(lengths)
+    rounded = np.float32(distance)
+    expected_distance = (np.nextafter(rounded, np.float32(np.inf))
+                         if rounded < distance else rounded)
+    assert bound['D'] == expected_distance
     assert bound['n_max'] == np.nextafter(np.float32(1.), np.float32(np.inf)) and bound['g'] == 1.
     assert bound['tau_max'] == pytest.approx(2.2684e-9, rel=1e-4)
     port_index = grid.index_of('x', .010)

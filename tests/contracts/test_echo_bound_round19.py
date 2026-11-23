@@ -208,3 +208,74 @@ def test_sharded_max_reads_the_high_index_shard(path):
               if path == 'distributed_forward' else
               sim.run(n_steps=2, devices=devices, skip_preflight=True))
     assert result.settling_echo_bound['n_max'] == np.nextafter(np.float32(3.), np.float32(np.inf))
+
+
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_one_and_multiple_devices_return_float32_jax_bound_leaves(entry):
+    """One declaration carries the same four device leaves eagerly and staged."""
+    devices = jax.devices('cpu')[:2]
+    assert len(devices) == 2
+    sim = Simulation(freq_max=15e9, domain=(.015, .007, .007), dx=.001,
+                     boundary='pec')
+    sim.add_material('dielectric', eps_r=4.)
+    sim.add(Box((0., 0., 0.), (.015, .007, .007)), material='dielectric')
+    sim.add_probe((.006, .003, .003), 'ez')
+
+    def bound(count):
+        options = dict(n_steps=2, devices=devices[:count], skip_preflight=True)
+        result = (sim.forward(distributed=count > 1, **options) if entry == 'forward'
+                  else sim.run(compute_s_params=False, **options))
+        return result.settling_echo_bound
+
+    reference = bound(1)
+    for actual in (reference, bound(2), jax.jit(lambda: bound(1))(),
+                   jax.jit(lambda: bound(2))()):
+        assert set(actual) == {'D', 'g', 'n_max', 'tau_max'}
+        for key, value in actual.items():
+            assert isinstance(value, jax.Array), (key, type(value))
+            assert value.shape == () and value.dtype == np.float32, (key, value)
+            assert np.asarray(value).tobytes() == np.asarray(reference[key]).tobytes(), key
+
+
+@pytest.mark.parametrize('medium', ['vacuum', 'debye', 'lorentz'])
+@pytest.mark.parametrize('band', [(5e9, 6e9, 7e9), (7e9, 8e9, 9e9)])
+def test_dispersive_forward_reads_traced_port_bins(medium, band):
+    """Device bins retain the eager index within the declared rounding margin."""
+    from rfx import DebyePole, LorentzPole
+
+    sim = Simulation(freq_max=20e9, domain=(.008,) * 3, dx=.001, boundary='pec')
+    w0 = 2 * np.pi * 8e9
+    delta = .15 * w0
+    strength = .4 * w0**2
+    poles = ({'debye_poles': [DebyePole(delta_eps=1., tau=1e-11)]} if medium == 'debye'
+             else {'lorentz_poles': [LorentzPole(w0, delta, strength)]})
+    if medium != 'vacuum':
+        sim.add_material('dispersive', eps_r=4., **poles)
+        sim.add(Box((0., 0., 0.), (.008,) * 3), material='dispersive')
+    sim.add_port((.004, .004, .003), 'ez', impedance=50.)
+    bins = np.asarray(band, np.float32)
+
+    def bound(read_bins):
+        return sim.forward(n_steps=2, port_s11_freqs=read_bins,
+                           skip_preflight=True).settling_echo_bound
+
+    eager = bound(bins)
+    actual = jax.jit(bound)(jnp.asarray(bins))
+    samples = [0., *np.asarray(bins, np.float64)]
+    peak = np.sqrt(w0**2 - 2 * delta**2) / (2 * np.pi)
+    if medium == 'lorentz' and min(bins) <= peak <= max(bins):
+        samples.append(peak)
+    omega = 2 * np.pi * np.asarray(samples)
+    response = (4. + 1. / (1 + 1j * omega * 1e-11) if medium == 'debye' else
+                4. + strength / (w0**2 - omega**2 + 2j * delta * omega)
+                if medium == 'lorentz' else np.ones(len(samples)))
+    expected = max(1., float(np.max(np.sqrt(np.abs(response)))))
+    assert abs(float(eager['n_max']) - expected) <= 2 * np.spacing(np.float32(expected))
+    eps32 = np.finfo(np.float32).eps
+    response_margin = eps32 * (1 + (1 + w0 / delta if medium == 'lorentz' else 0))
+    margin = (1 + response_margin) * (1 + eps32)**2 - 1
+    if medium == 'vacuum':
+        np.testing.assert_array_equal(actual['n_max'], eager['n_max'])
+    else:
+        assert float(eager['n_max']) <= float(actual['n_max']) <= float(eager['n_max']) * (1 + margin), (
+            medium, band, actual['n_max'], eager['n_max'], margin)

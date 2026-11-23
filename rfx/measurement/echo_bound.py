@@ -15,6 +15,17 @@ def _up(value, steps=1):
     return value
 
 
+def _outward_leaf(value, *, lower=False):
+    if _live(value):
+        return jax.lax.stop_gradient(jnp.asarray(value, jnp.float32))
+    exact = np.asarray(value, np.float64)
+    rounded = np.asarray(exact, np.float32)
+    inward = rounded > exact if lower else rounded < exact
+    direction = np.float32(-np.inf if lower else np.inf)
+    rounded = np.where(inward, np.nextafter(rounded, direction), rounded)
+    return jax.lax.stop_gradient(jnp.asarray(rounded, jnp.float32))
+
+
 def _poles(spec):
     if spec is None:
         return ()
@@ -49,15 +60,22 @@ def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
     Smoothing includes every dielectric shape's eps, never an occupied inverse.
     Concrete susceptibilities are evaluated in host float64, one frequency at
     a time; traced poles use float32 with relative margin eps32*(1+w0/(2*delta))
-    per Lorentz pole. Each map cell is sampled at its own in-band peak too.
+    per Lorentz pole. Traced read bins use device float32 samples and band
+    tests, with eps32 for the Debye/background response plus
+    eps32*(1+w0/delta) per Lorentz pole. Multiplication by this margin and
+    the final upward ULP each add at most eps32 relative error.
+    Without dispersion traced bins do not enter n_max.
+    Each map cell is sampled at its own in-band peak too.
     An undamped in-band resonance raises concretely. Traced zero Lorentz
     damping becomes infinity even outside the band, where its error margin
     is unbounded, so the device window judgement cannot pass.
 
     n_max is stop_gradient and rounded upward by one float32 ULP using
     nextafter(n, +inf). The device window is rounded downward by one float32
-    ULP using nextafter(window, -inf). Concrete D and g retain host float64.
-    For traced D,
+    ULP using nextafter(window, -inf). Concrete D and g retain host float64
+    inside the delay calculation. All four returned leaves are stopped
+    float32 JAX arrays: D is cast toward +inf and g toward -inf, retaining
+    exactly representable values. For traced D,
     compensated width sums have relative error 2u+(m+2)u**2, u=eps32/2.
     Five u plus that second-order term covers sums and the 3D norm;
     D/(1-gamma) is rounded
@@ -67,8 +85,6 @@ def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
     errors plus the one-ULP n_max increment.
     """
     from rfx.core.yee import permittivity_without_lumped
-    from rfx.measurement.record_end import echo_group_factor
-
     eps = jax.lax.stop_gradient(jnp.asarray(permittivity_without_lumped(materials), jnp.float32))
     mu = jax.lax.stop_gradient(jnp.asarray(materials.mu_r, jnp.float32))
     if design_box is not None:
@@ -76,18 +92,21 @@ def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
         window = tuple(slice(b[2*d], b[2*d+1]) for d in range(3))
         eps = eps.at[window].set(jax.lax.stop_gradient(design_box.eps_r))
     dp, lp = _poles(debye), _poles(lorentz)
-    bins = np.asarray(() if freqs is None else freqs, dtype=np.float64).reshape(-1)
     configs = tuple(waveguide_ports.values() if hasattr(waveguide_ports, 'values')
                     else waveguide_ports or ())
+    traced_bins = bool(dp or lp) and _live(freqs)
+    xp = jnp if traced_bins else np
+    bins = xp.asarray(() if freqs is None or not (dp or lp) else freqs,
+                      dtype=jnp.float32 if traced_bins else np.float64).reshape(-1)
     if not bins.size and configs:
         bins = np.unique(np.concatenate([np.asarray(cfg.freqs, np.float64) for cfg in configs]))
     if (dp or lp) and not bins.size:
         raise ValueError('the dispersive material read band is unavailable')
     samples = [0., *bins]
     invalid = jnp.asarray(False)
-    margin = jnp.float32(0.)
+    margin = jnp.float32(np.finfo(np.float32).eps if traced_bins else 0.)
     for pole, mask in lp:
-        xp = jnp if _live((pole.omega_0, pole.delta, _strength(pole))) else np
+        xp = jnp if traced_bins or _live((pole.omega_0, pole.delta, _strength(pole))) else np
         w0, delta = (xp.asarray(v, dtype=np.float64 if xp is np else jnp.float32) for v in (pole.omega_0, pole.delta))
         peak = xp.sqrt(xp.maximum(w0**2 - 2 * delta**2, 0.)) / (2 * xp.pi)
         in_band = (peak >= bins.min()) & (peak <= bins.max())
@@ -103,7 +122,8 @@ def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
         invalid = invalid | jnp.any(bad)
         if xp is jnp:
             margin = margin + np.finfo(np.float32).eps * jnp.max(
-                jnp.where(w0 > 0, 1 + w0 / jnp.where(delta > 0, 2 * delta, jnp.inf), 0.))
+                jnp.where(w0 > 0, 1 + w0 / jnp.where(
+                    delta > 0, delta if traced_bins else 2 * delta, jnp.inf), 0.))
     n = jnp.float32(1.)
     for frequency in samples:
         response = eps.astype(jnp.complex64)
@@ -145,7 +165,8 @@ def bound_on_grid(grid, n, configs=(), *, group=None):
     if group is None:
         group = np.asarray(echo_group_factor(configs), dtype=np.float64)
     tau = _up(2 * distance * n / (299792458.0 * group), 4)
-    return dict(D=distance, g=group, n_max=n, tau_max=tau)
+    return dict(D=_outward_leaf(distance), g=_outward_leaf(group, lower=True),
+                n_max=jax.lax.stop_gradient(jnp.asarray(n, jnp.float32)), tau_max=tau)
 
 
 def runner_echo_bound(sim, grid, materials, *, freqs=None, debye=None, lorentz=None,
