@@ -317,7 +317,7 @@ def test_repeat_calls_with_ringdown_do_not_compile(lane, capsys):
     sim = _box(lane)
     grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
     dt = float(grid.dt)
-    required = 2.05 * 2 * np.linalg.norm([.012, .011, .005]) * np.sqrt(2.2) / 299792458.0 / dt
+    required = 2.05 * 2 * np.linalg.norm([.012, .011, .005]) * np.sqrt(2.2 * 1.002) / 299792458.0 / dt
     upper = 2 * int(np.ceil(required))
     n_steps = max(600, next(n for n in range(upper - 2, upper + 2)
                            if n - round(n / 2) >= required))
