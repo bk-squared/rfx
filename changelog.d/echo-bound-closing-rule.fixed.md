@@ -6,3 +6,5 @@ When coverage and this limit both refuse a record, the coverage warning starts w
 `run(until_identified=True)` waits for the same window: on a lumped port driving a parallel-plate line shorted 310 mm away, the stop moves from 1,000 to 9,500 steps, and the window then holds at least 2.05 round trips.
 A fail stays a fail; only a pass becomes "cannot judge".
 Material overrides (`eps_override`, `mu_r_override`, `design_eps_override`) and `vmap_material_sweep` members raise the limit's index, under `jax.jit` too; a member whose material cannot be resolved is "cannot judge".
+Concrete material declarations and overrides form their echo index on the host without a callback; with static cell widths, `forward()` retains the same realized bound as `run()` across JAX transformations.
+Traced materials and overrides require host callbacks for the echo index. A GPU process without a CPU device is refused at trace time with the fix `JAX_PLATFORMS=cuda,cpu`.
