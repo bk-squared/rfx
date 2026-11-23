@@ -1,4 +1,5 @@
 """Identify duplicates after positions resolve to component-owned cells."""
+import sys
 import warnings
 
 import numpy as np
@@ -31,7 +32,7 @@ def test_duplicate_identification_probe_indices_warn_once(lane, planner):
 
 
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
-def test_duplicate_warning_once_per_early_stop_run(lane, monkeypatch):
+def test_duplicate_warning_once_per_early_stop_run(lane, monkeypatch, capsys):
     sim = Simulation(freq_max=10e9, domain=(.008, .008, .008), dx=.001,
                      boundary="pec",
                      **({"dz_profile": np.full(8, .001)} if lane == "graded" else {}))
@@ -39,7 +40,15 @@ def test_duplicate_warning_once_per_early_stop_run(lane, monkeypatch):
                  waveform=lambda t: 0. * t)
     probe = ((.003, .003, .003), "ez")
     spec = RingdownSpec(identification_probes=(probe, probe))
+    grid = sim._build_realized_grid()
+    dt = float(grid.dt)
+    distance = np.sqrt(3) * .008
+    tau = 2 * distance / 299792458.
+    ready = 1
+    while (ready - round(ready / 2)) * dt < 2.05 * tau:
+        ready += 1
     plans = []
+    first_checks = []
     original = RingdownRun.__init__
 
     def counted(self, *args, **kwargs):
@@ -47,20 +56,28 @@ def test_duplicate_warning_once_per_early_stop_run(lane, monkeypatch):
         original(self, *args, **kwargs)
 
     def stop_after_check(self, count, peek):
+        if not self.schedule.due(count):
+            return False
+        first_checks.append(self.first_check)
         self._check(count, peek)
         return True
 
     monkeypatch.setattr(RingdownRun, "__init__", counted)
-    monkeypatch.setattr(rd, "STOP_CHUNK", 8)
+    monkeypatch.setattr(rd, "STOP_CHUNK", ready)
     monkeypatch.setattr(rd.RingdownStop, "after_chunk", stop_after_check)
-    for _ in range(2):
+    for run in range(2):
         plans.clear()
         with warnings.catch_warnings(record=True) as records:
             warnings.simplefilter("always")
-            result = sim.run(n_steps=40, ringdown=spec, until_identified=True,
+            result = sim.run(n_steps=2 * ready, ringdown=spec, until_identified=True,
                              skip_preflight=True)
+        stopped = first_checks[-1]
+        with capsys.disabled():
+            print(f'12u.1 {lane} run={run + 1}: dt={dt:.17g}; tau={tau:.17g}; '
+                  f'T_ready={ready}; first_check={stopped}; plans={plans}; '
+                  f'record_length={len(result.time_series)}', file=sys.stderr, flush=True)
         duplicates = [r for r in records if "Duplicate ring-down" in str(r.message)]
         assert len(duplicates) == 1
         assert duplicates[0].filename == __file__
-        assert plans == [40, 8, 8]
-        assert len(result.time_series) == 8
+        assert plans == [2 * ready, stopped, stopped]
+        assert len(result.time_series) == stopped
