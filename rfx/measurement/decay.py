@@ -21,6 +21,8 @@ program contains any of it.
 * ``finish_decay``: what ended the run, as one ``until_decay.stop`` Diagnostic.
 * The DC advisories: ``warn_dc_floor`` before the run (``run()``) and
   ``static_remnant_advisory`` after a capped run (both loops, via ``finish_decay``).
+
+A physical mode whose energy is below ``KAPPA`` of the drive's peak and decays more slowly than 5 % per 50 steps is stopped as rounding.
 """
 
 from __future__ import annotations

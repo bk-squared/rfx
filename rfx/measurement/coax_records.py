@@ -593,6 +593,8 @@ def coaxial_line_reflection_from_plane_voltages(
     by
     ``tests/unit/autodiff/test_ad_surface_contract.py::test_coaxial_reflection_extraction_is_traceable``
     and ``tests/unit/sparams/test_coaxial_line_reflection.py``.
+
+    The propagation constant is taken with a positive imaginary part, which assumes a passive line, so a wave growing along the line is reported with the sign of its attenuation constant reversed.
     """
 
     z = np.asarray(plane_positions_m, dtype=np.float64)
