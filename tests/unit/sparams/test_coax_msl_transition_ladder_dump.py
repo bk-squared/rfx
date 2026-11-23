@@ -10,8 +10,8 @@ The whole value of that instrument depends on it being an instrument: it must
 not move a single bit of the S-parameter output, and the arrays it hands back
 must be the arrays the assembler itself consumed (not a re-derivation that
 could drift). Both are asserted on a separate aligned instrumentation fixture, with the
-same discipline as
-``tests/unit/sparams/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s``.
+same discipline as the retired non-perturbation test of
+``tests/unit/sparams/test_coax_msl_transition.py``.
 
 Bit-identity (``np.array_equal``), not ``allclose``, is deliberate and is NOT
 a tolerance to loosen: the option only takes ``.copy()`` of arrays that are
