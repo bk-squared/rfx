@@ -248,7 +248,6 @@ def _observers(scene):
                     name=f"{entry.name}_ladder{q}",
                 )
     points.append(("far_port_centre", points[-1][1]))
-    # For y propagation, the seam cuts the trace width; sample at mid-line y.
     _, port, span, _ = next(_ports(scene, grid))
     mid_prop = grid.index_of(span["prop_axis"], 0.006)
     mid = list(
