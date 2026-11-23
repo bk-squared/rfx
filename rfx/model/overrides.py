@@ -88,7 +88,8 @@ def apply_material_overrides(materials, *, eps_override=None,
         # A distributed forward override (shard_distributed_override) holds
         # the grid's x rows first and padding rows after; judge real cells only.
         nx = grid.shape[0]
-        judged = out._replace(eps_r=out.eps_r[:nx], sigma=out.sigma[:nx])
+        judged = out._replace(eps_r=out.eps_r[:nx], sigma=out.sigma[:nx],
+                             mu_r=None if out.mu_r is None else out.mu_r[:nx])
         refuse_unstable_cells(judged, lorentz_spec, grid.dt, courant_budget(grid),
                               grid_kind=type(grid).__name__, debye_spec=debye[0] if debye else None,
                               in_program=in_program)
