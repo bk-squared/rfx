@@ -92,10 +92,7 @@ def echo_delay_bound_on_grid(grid, bound):
     from rfx.measurement.echo_bound import bound_on_grid
     if bound.get('reason'):
         return bound
-    from types import SimpleNamespace
-    configs = (() if bound['g'] == 1 else
-               (SimpleNamespace(freqs=np.array([1.]), f_cutoff=np.sqrt(1 - bound['g']**2)),))
-    return bound_on_grid(grid, bound['n_max'], configs)
+    return bound_on_grid(grid, bound['n_max'], group=bound['g'])
 
 
 def echo_bound_reason(bound):

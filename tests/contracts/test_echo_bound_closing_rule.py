@@ -131,7 +131,11 @@ def test_traced_profile_has_a_conservative_requirement():
     result = jax.jit(bound)(jnp.float32(.000125))
     required = 2.05 * 2 * np.linalg.norm([.012, .011, .005]) * 2 / C0
     actual = 2.05 * float(result['tau_max'])
-    assert required <= actual <= required * (1 + 80 * np.finfo(np.float32).eps)
+    unit = np.finfo(np.float32).eps / 2
+    count = 12 + 11 + 5
+    gamma = 5 * unit + (count + 2) * unit**2
+    margin = (1 + 2 * unit)**6 / (1 - gamma) - 1
+    assert required <= actual <= required * (1 + margin)
 
 
 def test_drude_interior_does_not_raise_the_echo_index():

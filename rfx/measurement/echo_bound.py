@@ -50,8 +50,9 @@ def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
     Concrete susceptibilities are evaluated in host float64, one frequency at
     a time; traced poles use float32 with relative margin eps32*(1+w0/(2*delta))
     per Lorentz pole. Each map cell is sampled at its own in-band peak too.
-    An undamped in-band resonance raises concretely and becomes infinity under
-    a trace, so the device window judgement cannot pass.
+    An undamped in-band resonance raises concretely. Traced zero Lorentz
+    damping becomes infinity even outside the band, where its error margin
+    is unbounded, so the device window judgement cannot pass.
 
     n_max is stop_gradient and rounded upward by one float32 ULP using
     nextafter(n, +inf). Concrete D and g retain host float64. For traced D,
@@ -91,6 +92,8 @@ def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
         samples.append(xp.where(in_band, peak, 0.))
         resonance = w0 / (2 * xp.pi)
         bad = (w0 > 0) & (delta == 0) & (resonance >= bins.min()) & (resonance <= bins.max())
+        if xp is jnp:
+            bad = bad | ((w0 > 0) & (delta == 0))
         if mask is not None:
             bad = bad & mask
         if not _live(bad) and np.any(bad):
@@ -98,7 +101,7 @@ def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
         invalid = invalid | jnp.any(bad)
         if xp is jnp:
             margin = margin + np.finfo(np.float32).eps * jnp.max(
-                jnp.where(w0 > 0, 1 + w0 / jnp.where(delta > 0, 2 * delta, 1.), 0.))
+                jnp.where(w0 > 0, 1 + w0 / jnp.where(delta > 0, 2 * delta, jnp.inf), 0.))
     n = jnp.float32(1.)
     for frequency in samples:
         response = eps.astype(jnp.complex64)
@@ -116,7 +119,7 @@ def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
     return bound_on_grid(grid, n, configs)
 
 
-def bound_on_grid(grid, n, configs=()):
+def bound_on_grid(grid, n, configs=(), *, group=None):
     """Geometry and time margin shared with the batched material reduction."""
     from rfx.measurement.record_end import echo_group_factor
     lengths, count = [], 0
@@ -137,7 +140,8 @@ def bound_on_grid(grid, n, configs=()):
         distance = _up(jnp.linalg.norm(jnp.asarray(lengths)) / (1 - gamma))
     else:
         distance = np.asarray(np.linalg.norm(lengths), dtype=np.float64)
-    group = np.asarray(echo_group_factor(configs), dtype=np.float64)
+    if group is None:
+        group = np.asarray(echo_group_factor(configs), dtype=np.float64)
     tau = _up(2 * distance * n / (299792458.0 * group), 4)
     return dict(D=distance, g=group, n_max=n, tau_max=tau)
 

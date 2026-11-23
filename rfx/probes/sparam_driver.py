@@ -321,7 +321,8 @@ def compute_lumped_wire_s_matrix_via_scan(
                                          waveguide_reference_only=True)
             columns.append((record_order.index(j), np.asarray(record.s_params)[:, record_order.index(j)]))
             raw = {"sparam_time_records": record.sparam_time_records or (), "dt": record.dt,
-                   "wire": record.wire_port_sparams, "lumped": record.lumped_port_sparams}
+                   "wire": record.wire_port_sparams, "lumped": record.lumped_port_sparams,
+                   "settling_echo_bound": record.settling_echo_bound}
         elif devices is not None:
             raw = _distributed_lumped_accumulators(sim, grid, eligible, freqs,
                                                   n_steps, devices,
