@@ -48,8 +48,9 @@ def test_census_equal_values_and_conservative_requirement(name, capsys):
     pair = equal_request_pair(name, 'uniform', 'b', n_steps=1, entry_options=options)
     admitted = [entry for entry in ('run', 'forward') if pair[entry]['outcome'] == 'admitted']
     if len(admitted) != 2:
+        refused = {entry: record for entry, record in pair.items() if entry not in admitted}
         with capsys.disabled():
-            print(f'19 census {name}: refuses {pair}', file=sys.stderr)
+            print(f'19 census {name}: refuses {refused}', file=sys.stderr)
     if not admitted:
         return
     expected, old_host = declared_index(name)
