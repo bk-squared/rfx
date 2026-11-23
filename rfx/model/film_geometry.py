@@ -67,7 +67,6 @@ def diagnostic_film_footprints(sim, grid):
     try:
         return conductors, prepare_film_footprints(conductors, grid)
     except DCFilmAdmissionError:
-        # A structural refusal in one declaration must not hide the others.
         return conductors, {}
 
 

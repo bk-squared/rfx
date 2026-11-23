@@ -18,19 +18,6 @@ def is_tracer(x: object) -> bool:
     return isinstance(x, jax.core.Tracer)
 
 
-# ---------------------------------------------------------------------------
-# The set-up / time-stepping boundary under an outer trace
-# ---------------------------------------------------------------------------
-#
-# Rule: set-up that reads only the declaration is always concrete, and the
-# time stepping is always recorded. Under ``jax.jit`` (or make_jaxpr,
-# eval_shape) JAX records every operation, including the ones that read only
-# the model, so a host read of a realized PEC mask or of an NTFF frequency
-# list fails. ``declaration_setup()`` evaluates everything that does not read
-# a traced input while it traces (``jax.ensure_compile_time_eval``);
-# ``recorded_scan`` is the way back out for the time-stepping loop, so the
-# solve is compiled into the caller's program instead of run while it traces,
-# over operands the compiler cannot read, as in a plain call.
 
 
 class _Region:
@@ -46,7 +33,6 @@ class _Region:
         self.anchor = anchor
 
 
-#: The ``declaration_setup()`` in progress, or None.
 _REGION = contextvars.ContextVar("rfx_declaration_setup", default=None)
 
 
@@ -83,7 +69,7 @@ def compile_time_switch():
     try:
         jax.make_jaxpr(probe)()
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in warning message
+    except Exception as exc:  # noqa: BLE001
         warnings.warn(f"compile_time_switch probe failed: {type(exc).__name__}: {exc}",
                       RuntimeWarning, stacklevel=2)
         return None
@@ -102,8 +88,6 @@ def declaration_setup():
     """
     anchor = None
     if compile_time_switch() is None:
-        # Fallback: an operand of the outer trace, made before the region,
-        # that lifts recorded_scan's concrete operands into the outer trace.
         anchor = jnp.ones((), jnp.float32)
     token = _REGION.set(_Region(anchor))
     try:
@@ -202,19 +186,11 @@ def split_loop_invariants(tree, grid_shape):
     arrays: list = []
 
     def split(value):
-        # Returns a rebuild function, or None when nothing below is lifted
-        # (the object is then kept as it is, never reconstructed). A rebuild
-        # function holds the objects it keeps, never a lifted array.
         if _is_cell_array(value, grid_shape):
             if not _all_equal(value):
                 k = len(arrays)
                 arrays.append(value)
                 return lambda a: a[k]
-            # One bit pattern everywhere: the program gets the same constant
-            # as a broadcast of that value, formed where the step is traced,
-            # so no array of the grid's size is closed over. A jitted step
-            # that closes over one and is called inside a scan stays in JAX's
-            # caches with it after the run.
             one = _one_bit_pattern(value)
             if one is not None:
                 import jax.numpy as jnp
@@ -251,9 +227,6 @@ def split_loop_invariants(tree, grid_shape):
     return arrays, rebuild
 
 
-# Complex linear solves. The jax-mps plugin (Apple-silicon GPUs) has no
-# complex triangular-solve kernel, so complex solves go through the real
-# 2n x 2n block form there; every other backend runs the native op unchanged.
 def _is_complex(*arrays):
     return any(jnp.iscomplexobj(a) for a in arrays)
 
@@ -296,12 +269,10 @@ def complex_inv(a):
 def complex_solve_triangular(r, b, *, lower):
     """The real block form is general, even when the complex input is triangular."""
     if backend_class().name == "mps" and _is_complex(r, b):
-        # The native op reads only one triangle; so must the block form.
         return _block_solve(jnp.tril(r) if lower else jnp.triu(r), b)
     return jax.scipy.linalg.solve_triangular(r, b, lower=lower)
 
 
-# Moved to the stepping layer; the old import path resolves lazily (a module-level import would be circular).
 _LAZY_EXPORTS = {
     "recorded_scan": "rfx.stepping.scan",
     "_scan_with_opaque_operands": "rfx.stepping.scan",

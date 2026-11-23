@@ -15,7 +15,6 @@ from rfx.preflight._realization_subjects import (
 def _mark_port_built(table):
     """Keep execution and diagnostic rows explicit about their port owner."""
     from dataclasses import replace
-    # Soft point sources share port labels but do not build conductors.
     port_labels = {row.label for row in table.rows
                    if row.label.startswith(("port[", "coaxial_port["))
                    and row.family != "soft_point"}
@@ -66,7 +65,6 @@ def judge_realization(table, snap):
                         if r.status.startswith("not evaluated: traced") or r.traced_inputs))))
             continue
         if row.status == "not judged: edge not measured":
-            # Node span is not a measured edge.
             table.judged.add(row.label)
             findings.append(PreflightIssue(
                 f"realization {row.label} ({row.family}): not judged: edge not measured; "
@@ -94,8 +92,6 @@ def judge_realization(table, snap):
             continue
         axes = tuple(a for a in row.axes if a.declared_span_m is not None
                      and a.axis in getattr(table, "active_axes", "xyz"))
-        # Point placement is judged only by interior admission; retain its shift
-        # in the table without treating node rounding as an extent-object warning.
         centroid = any(a.declared_span_m > 0 for a in axes) and any(
             a.centroid_shift_cells is not None and
             abs(a.centroid_shift_cells) > .25 for a in axes)
@@ -131,7 +127,7 @@ def judge_realization(table, snap):
                 for a in axes if a.miss_percent is not None)
         if ((row.model == "solved sheet edges" and row.shape_name == "Box") or
                 row.model == "cell-centre footprint; node plane"):
-            mismatch = False  # Existing film admission already judged its size.
+            mismatch = False
         if not mismatch and not centroid:
             continue
         detail = "; ".join(
@@ -251,8 +247,6 @@ def admit_table(sim, conductors, *, options=None, finished=False, legacy_finding
                 table.deferred.add(row.label)
     else:
         table.deferred.clear()
-    # Every lane's table passes here at least once (finish_table), whether or
-    # not skip_preflight ran: the sheet-size rows are admitted on the first pass.
     legacy = admit_sheet_sizes(sim, conductors, legacy_findings, conformal)
     findings = tuple(legacy) + judge_realization(table, sim._snap)
     if deliver:

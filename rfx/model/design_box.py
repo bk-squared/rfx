@@ -90,7 +90,7 @@ class DesignBoxCoeffs(NamedTuple):
 
 
 def resolve_design_box(
-    spec: "DesignBoxSpec",  # noqa: F821 -- declaration stays in simulation; no import cycle
+    spec: "DesignBoxSpec",  # noqa: F821
     *,
     grid,
     materials,
@@ -159,19 +159,8 @@ def resolve_design_box(
 
     bounds, box_shape = design_box_bounds(spec.bounds, grid)
     i0, i1, j0, j1, k0, k1 = bounds
-    # the design material reaches one cell past the box on the plus
-    # side of every axis, and the redo WRITES there. Every fence below is
-    # therefore held against the write window, not the declared box — a
-    # source, a sheet edge or an absorber cell in that layer is the same
-    # collision the declared box was already fenced against.
     _write_bounds, _, _, _ = design_box_window(bounds, tuple(grid.shape))
     w_i0, w_i1, w_j0, w_j1, w_k0, w_k1 = _write_bounds
-    # the window is built with the non-periodic convention -- it clips
-    # at the grid face where the grid-wide update would WRAP. That is only a
-    # difference for a box that touches a periodic face, and there it is a
-    # silent one, so it is refused rather than approximated. The occupancy
-    # box's sibling (``pec_occupancy_box_keep``) refuses periodic axes for the
-    # same reason.
     for _axis, _name in enumerate("xyz"):
         if not periodic[_axis]:
             continue
@@ -187,41 +176,13 @@ def resolve_design_box(
                 f"the box off the {_name} faces, or use eps_override (the "
                 f"whole-grid traced permittivity), which wraps correctly.")
 
-    # The absorber. apply_cpml_e's psi correction is written at the [:n] /
-    # [-n:] face slabs, and its coefficient is dt/(eps_r*EPS_0) from
-    # ``materials`` -- the one array this design stops tracing. A box inside
-    # an ABSORBING slab would therefore be absorbed with the BACKGROUND
-    # permittivity while it is updated with the design one.
-    #
-    # Per FACE, not per axis. The kernel's window width
-    # (``_axis_buffer_depths``) is the axis MAXIMUM of the two pads, floored
-    # at 1, and it is applied to both faces -- but a face whose profile is
-    # the all-no-op one (b=1, c=0, kappa=1) adds exactly zero however wide
-    # that window is: psi stays at its zero init and the kappa term is
-    # (1/1 - 1). A face gets that profile exactly when its allocated pad is
-    # 0, i.e. PEC / PMC / periodic (``Grid._face_pad``), and an absorbing
-    # face's own pad IS its active layer count (the invariant stated in
-    # ``_axis_buffer_depths``'s docstring). Reading the axis maximum instead
-    # refused the ordinary patch on a ground plane: x_lo PEC + x_hi CPML at
-    # cpml_layers=5 gives axis depths (5, 1, 1), so a box sitting on the PEC
-    # wall was rejected for entering a 5-layer absorber that face does not
-    # have, and the y/z floor of 1 rejected any box touching a PEC face.
-    #
-    # A per-face pad is that proxy only on an axis the GRID says it absorbs
-    # on. ``init_cpml`` builds a real profile on every axis ``cpml_axes`` of
-    # the RUN names, and a grid built with a narrower ``cpml_axes`` allocates
-    # no pad on the others -- so "pad 0" there means "no padding cells", not
-    # "no absorber" (the trap ``_axis_buffer_depths`` documents, measured at
-    # a 49 % energy change). On such an axis, and on a duck-typed grid with
-    # no per-face pads, fall back to the axis window: nothing is known to be
-    # a no-op there.
     if use_cpml or use_upml:
         from rfx.boundaries.cpml import _axis_buffer_depths
         depths = _axis_buffer_depths(grid, grid.cpml_layers)
         grid_axes = getattr(grid, "cpml_axes", cpml_axes)
         for axis, name in enumerate("xyz"):
             if name not in cpml_axes:
-                continue  # no correction is written on this axis at all
+                continue
             if name in grid_axes and hasattr(grid, f"pad_{name}_lo"):
                 pad_lo = int(getattr(grid, f"pad_{name}_lo"))
                 pad_hi = int(getattr(grid, f"pad_{name}_hi"))
@@ -246,9 +207,6 @@ def resolve_design_box(
         i, j, k = (int(v) for v in cell[:3])
         return (w_i0 <= i < w_i1) and (w_j0 <= j < w_j1) and (w_k0 <= k < w_k1)
 
-    # Held edges: a port's own edges, kept on the coefficients ``materials``
-    # gives them (DesignBoxSpec.held_edges). Each must be an E edge in the
-    # window -- one outside it holds nothing, and is a caller error.
     held = set()
     for edge in (getattr(spec, "held_edges", ()) or ()):
         edge = tuple(int(v) for v in edge)
@@ -268,11 +226,6 @@ def resolve_design_box(
         axis = _axis_of.get(str(cell[3]).lower())
         return axis is not None and (axis, *(int(v) for v in cell[:3])) in held
 
-    # A source or port cell reads the material AT SETUP to turn a current
-    # into a field increment (``_source_cell_cb``) or to fold an impedance
-    # into sigma. Those reads see the background array, so a design cell
-    # under one of them would drive with the wrong permittivity -- unless its
-    # edge is held, and then the update there reads the background too.
     for kind, cells in cell_metas:
         hits = [tuple(int(v) for v in c[:3]) for c in cells
                 if _in_box(c) and not _on_held_edge(kind, c)]
@@ -300,16 +253,6 @@ def resolve_design_box(
 
     sl = (slice(i0, i1), slice(j0, j1), slice(k0, k1))
 
-    # A per-edge design conductivity laid over a lumped load (a port's
-    # termination, an RLC element's R) that is not on a held edge. The tuple
-    # REPLACES the edge's conductivity at the box indices, load
-    # included, so the load would silently vanish. A cell design value keeps
-    # it -- the lay-in in ``_design_box_edge_coeffs`` puts the stamp back on
-    # top of the cell's volume material -- so only this form is refused. A
-    # passive termination that registers no accumulator leaves no cell in
-    # ``cell_metas``, so the stamps are read from ``materials`` itself, and
-    # only when they are concrete (a traced R or a traced mesh keeps the cell
-    # checks above).
     if isinstance(spec.sigma, (tuple, list)):
         import numpy as np
         from rfx.core.jax_utils import is_tracer
@@ -350,7 +293,6 @@ def resolve_design_box(
                     f"overwrite the design update. Move the box off the "
                     f"sheet, or use eps_override.")
 
-    # Imported here: rfx.model.materials imports rfx.nonuniform, which imports rfx.model.
     from rfx.model.materials import _design_box_edge_coeffs
     eps_r = jnp.asarray(spec.eps_r)
     if tuple(eps_r.shape) != box_shape:
@@ -359,9 +301,6 @@ def resolve_design_box(
             f"design box {bounds} realizes {box_shape} cells.")
     sigma = materials.sigma[sl] if spec.sigma is None else spec.sigma
     if isinstance(sigma, (tuple, list)):
-        # Per-component conductivity: one (Ca, Cb) pair per E component, in
-        # x, y, z order. The permittivity stays shared — a design SHEET is
-        # one material whose current is anisotropic, not three materials.
         if len(sigma) != 3:
             raise ValueError(
                 f"a per-component design conductivity is a 3-tuple "
@@ -373,9 +312,6 @@ def resolve_design_box(
                     f"design conductivity sigma_{name} has shape "
                     f"{tuple(jnp.shape(s))} but the design box {bounds} "
                     f"realizes {box_shape} cells.")
-        # The tuple is already per E edge and is taken as-is; the
-        # shared permittivity is still a cell quantity and is edge-averaged
-        # over the window. See _design_box_edge_coeffs.
         write_bounds, ca, cb = _design_box_edge_coeffs(
             bounds, eps_r, tuple(jnp.asarray(s) for s in sigma), materials,
             dt, tuple(grid.shape), held_edges=held, grid=grid)
@@ -385,12 +321,6 @@ def resolve_design_box(
         raise ValueError(
             f"design conductivity has shape {tuple(jnp.shape(sigma))} but "
             f"the design box {bounds} realizes {box_shape} cells.")
-    # per-component coefficients over the write window, the design
-    # values laid into a copy of the background so the box-edge cells average
-    # with the constant background exactly as the grid-wide update would.
-    # ``sigma=None`` hands the window its own conductivity: the slice read
-    # above is the cell TOTAL, a held port's load included, and laying it
-    # back as a design (volume) value would count that load twice.
     write_bounds, ca, cb = _design_box_edge_coeffs(
         bounds, eps_r, None if spec.sigma is None else sigma, materials, dt,
         tuple(grid.shape), held_edges=held, grid=grid)
