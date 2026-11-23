@@ -12,7 +12,6 @@ def plane_sample(state, component, axis, index, region=None):
     slices[axis] = index
     slices[axes[0]], slices[axes[1]] = slice(lo1, hi1), slice(lo2, hi2)
     if hi1 > field.shape[axes[0]] or hi2 > field.shape[axes[1]]:
-        # A finite periodic window can include the closing node of the period.
         import jax.numpy as jnp
         value = jnp.take(field, index, axis=axis)
         value = jnp.take(value, jnp.arange(lo1, hi1) % field.shape[axes[0]], axis=0)

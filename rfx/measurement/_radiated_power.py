@@ -2,9 +2,6 @@
 
 import numpy as np
 
-# Largest polar angle (rad) either pole may leave uncovered beyond the end
-# sample's own cell. A cap of 0.02 rad is (1 - cos 0.02)/2 = 1.0e-4 of the
-# sphere, 0.0009 dB for an isotropic pattern.
 POLE_TOLERANCE_RAD = 0.02
 
 
@@ -22,7 +19,6 @@ def _coverage_error():
 
 
 def _coverage_tol(*angles):
-    # Permit rounding at the coverage boundaries only.
     dtype = np.result_type(*(a.dtype for a in angles), np.float32)
     return 8 * np.finfo(dtype).eps * np.pi
 
@@ -43,9 +39,6 @@ def _phi_weights(phi):
     phi = np.asarray(phi)
     if phi.ndim != 1 or phi.size < 1:
         raise _coverage_error()
-    # Angle grids built in float32 are often carried in float64 (a float32
-    # 2*pi is 1.7e-7 past 2*pi), so the phi checks never use less than the
-    # float32 rounding tolerance.
     tol = max(_coverage_tol(phi), 8 * np.finfo(np.float32).eps * np.pi)
     phi = phi.astype(np.float64)
     if not np.all(np.isfinite(phi)):
@@ -90,7 +83,6 @@ def integrate_radiated_power(intensity, theta, phi, *, jax_trapezoid=False):
     theta_ok = (
         theta.ndim == 1 and theta.size >= 2 and np.all(np.isfinite(theta))
         and np.all(np.diff(theta) > 0)
-        # Over-coverage beyond the poles: unchanged half-step limit.
         and theta[0] >= -(theta[1] - theta[0]) / 2 - tol
         and theta[-1] - np.pi <= (theta[-1] - theta[-2]) / 2 + tol
     )
@@ -117,8 +109,6 @@ def integrate_radiated_power(intensity, theta, phi, *, jax_trapezoid=False):
 
     dth = np.gradient(theta)
     if phi.size > 1 and np.issubdtype(phi.dtype, np.floating):
-        # phi's own dtype, as np.gradient(phi) had it; one sample keeps the
-        # historical float64 2*pi.
         dph = dph.astype(phi.dtype)
     integrand = intensity * np.sin(theta)[None, :, None]
     return np.sum(integrand * dth[None, :, None] * dph[None, None, :],

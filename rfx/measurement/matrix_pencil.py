@@ -43,9 +43,6 @@ def _decimation_plan(n_samples: int, dt: float, f_max: float,
             columns = _pencil_columns(kept, pencil_parameter)
             if (kept < _MIN_PENCIL_SAMPLES
                     or min(columns, kept - columns) < capacity):
-                # Default p=.33/K=50 needs 155 retained samples. A rejected
-                # stage (q<=13) therefore leaves at most 2262 inputs to the
-                # core. Other requested pencil shapes/ranks change that bound.
                 break
             factors.append(factor)
             n_samples = kept
@@ -99,8 +96,8 @@ def _pencil(Yd: np.ndarray, sv_rel: float, unit_tol: float, *,
     b0, b1 = [], []
     for ch in range(C):
         y = Yd[:, ch].astype(np.complex128) / rms[ch]
-        b0.append(sliding_window_view(y, L)[:M])        # [i, j] = y[i + j]
-        b1.append(sliding_window_view(y[1:], L)[:M])    # [i, j] = y[i + j + 1]
+        b0.append(sliding_window_view(y, L)[:M])
+        b1.append(sliding_window_view(y[1:], L)[:M])
     Y0 = np.concatenate(b0, axis=1)
     Y1 = np.concatenate(b1, axis=1)
     U, sv, Vh = np.linalg.svd(Y0, full_matrices=False)

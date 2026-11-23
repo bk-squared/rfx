@@ -31,8 +31,7 @@ def _lstsq_alpha_gamma(
     x_c = x.astype(jnp.complex64)
     col_fwd = jnp.exp(-1j * beta * x_c)
     col_bwd = jnp.exp(+1j * beta * x_c)
-    a_mat = jnp.stack([col_fwd, col_bwd], axis=-1)        # (N, 2)
-    # SVD-based least squares; rcond=None uses the JAX default cutoff.
+    a_mat = jnp.stack([col_fwd, col_bwd], axis=-1)
     sol, _, _, _ = jnp.linalg.lstsq(a_mat, v, rcond=None)
     alpha = sol[0]
     gamma = sol[1]

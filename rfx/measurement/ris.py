@@ -29,33 +29,26 @@ def _extract_reflection(
     s11 : (n_freqs,) complex array
     freqs : (n_freqs,) float array
     """
-    # If the result has S-parameters from ports (rare for Floquet-only),
-    # use them.
     if result.s_params is not None and result.freqs is not None:
         s11 = np.asarray(result.s_params)[0, 0, :]
         freqs = np.asarray(result.freqs)
-        # Filter to freq_range
         mask = (freqs >= freq_range[0]) & (freqs <= freq_range[1])
         if np.sum(mask) >= 2:
             return s11[mask], freqs[mask]
 
-    # Fallback: FFT of probe time series
     ts = np.asarray(result.time_series).ravel()
     if result.dt is not None:
         dt = result.dt
     else:
-        # Estimate dt from the simulation parameters
-        dt = 1.0 / (freq_range[1] * 40)  # rough estimate
+        dt = 1.0 / (freq_range[1] * 40)
 
     n = len(ts)
     freqs_fft = np.fft.rfftfreq(n, d=dt)
     spectrum = np.fft.rfft(ts)
 
-    # Interpolate to desired frequency points
     target_freqs = np.linspace(freq_range[0], freq_range[1], n_freqs)
     s11 = np.interp(target_freqs, freqs_fft, spectrum, left=0, right=0)
 
-    # Normalize by peak
     peak = np.max(np.abs(s11))
     if peak > 0:
         s11 = s11 / peak

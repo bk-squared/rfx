@@ -39,11 +39,7 @@ def write_waveguide_record(cfg: WaveguidePortConfig, values, step, dt: float) ->
     arg = (t - cfg.src_t0) / cfg.src_tau
     v_inc = cfg.src_amp * (-2.0 * arg) * jnp.exp(-(arg ** 2))
 
-    # Each completed step contributes one sample at its physical stamp.
-    # Completed steps 1 through N occupy slots 0 through N-1.
     n_t = cfg.v_probe_t.shape[0]
-    # A call before the first step (completed_step == 0) has no slot: index n_t is
-    # dropped, where -1 would have written the last slot.
     step = jnp.where((completed_step >= 1) & (completed_step <= n_t),
                      jnp.asarray(completed_step, dtype=jnp.int32)-1, n_t)
     return cfg._replace(
@@ -58,7 +54,6 @@ def write_waveguide_record(cfg: WaveguidePortConfig, values, step, dt: float) ->
             jnp.asarray(i_ref, cfg.i_ref_t.dtype), mode='drop'),
         v_inc_t=cfg.v_inc_t.at[step].set(
             jnp.asarray(v_inc, cfg.v_inc_t.dtype), mode='drop'),
-        # Count every completed step, up to the allocated record length.
         n_steps_recorded=jnp.maximum(cfg.n_steps_recorded, jnp.minimum(
             jnp.asarray(completed_step, dtype=jnp.int32), n_t)),
     )

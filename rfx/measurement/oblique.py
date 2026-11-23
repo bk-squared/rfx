@@ -31,7 +31,7 @@ def reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
 
     new_ts = sim_result.time_series
     if new_ts is not None and _jnp.iscomplexobj(new_ts):
-        if probes:  # time_series is (n_steps, n_probes) in probe order
+        if probes:
             idxs = _jnp.array([(p.j if taxis == 1 else p.k) for p in probes])
             ph = _jnp.exp(-1j * k_t * idxs * d_t)
             new_ts = _jnp.real(new_ts * ph[None, :])

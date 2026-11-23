@@ -51,10 +51,6 @@ def _plane_h_field_at_dual(
                 "h_offset currently supports only 0.0 or 0.5 per axis, "
                 f"got {h_offset!r}"
             )
-        # Symmetric centered co-location average (matches the stored-profile
-        # _shift_profile_to_dual stencil in lockstep). Edge-clamped, NOT
-        # wrapped: simulated tangential H is nonzero at PEC walls, so a
-        # wraparound would leak. See _shift_profile_to_dual docstring.
         n = out.shape[axis]
         plus = jnp.concatenate(
             [jnp.take(out, jnp.array([0]), axis=axis),
@@ -135,9 +131,7 @@ def overlap_modal_amplitude(
     )
 
     dA = _aperture_dA(cfg)
-    # P1 = ∫ (E_sim × H_mode) · n̂ dA
     p1 = jnp.sum((e_u_sim * cfg.hz_profile - e_v_sim * cfg.hy_profile) * dA)
-    # P2 = ∫ (E_mode × H_sim) · n̂ dA
     p2 = jnp.sum((cfg.ey_profile * h_v_sim - cfg.ez_profile * h_u_sim) * dA)
 
     c_mode = mode_self_overlap(cfg, dx)
@@ -163,16 +157,15 @@ class OverlapDFTAccumulators(NamedTuple):
     removed the windowed/gated path that previously lived on
     ``WaveguidePortConfig``).
     """
-    p1_ref_dft: jnp.ndarray     # (n_freqs,) complex — ∫(E_sim × h_mode)·n̂ dA at ref
-    p2_ref_dft: jnp.ndarray     # (n_freqs,) complex — ∫(e_mode × H_sim)·n̂ dA at ref
-    p1_probe_dft: jnp.ndarray   # (n_freqs,) complex — ∫(E_sim × h_mode)·n̂ dA at probe
-    p2_probe_dft: jnp.ndarray   # (n_freqs,) complex — ∫(e_mode × H_sim)·n̂ dA at probe
+    p1_ref_dft: jnp.ndarray
+    p2_ref_dft: jnp.ndarray
+    p1_probe_dft: jnp.ndarray
+    p2_probe_dft: jnp.ndarray
 
 
 def init_overlap_dft(freqs: jnp.ndarray) -> OverlapDFTAccumulators:
     """Initialize zero-valued overlap DFT accumulators."""
     nf = len(freqs)
-    # Canonical complex dtype — see init_waveguide_port for rationale.
     zeros_c = jnp.zeros(nf, dtype=jnp.array(0j).dtype)
     return OverlapDFTAccumulators(
         p1_ref_dft=zeros_c,
@@ -202,11 +195,6 @@ def _overlap_cross_products(
         getattr(state, cfg.h_v_component), cfg, x_idx, cfg.h_offset,
     )
 
-    # Preserve the production V/I-equivalent DFT path even when the stored H
-    # template is sampled on a transverse dual mesh (`h_offset != 0`).  In the
-    # unshifted case these are exactly the Lorentz cross-products because
-    # h_mode = n̂×e_mode; with dual-mesh H they remain the modal voltage/current
-    # quantities consumed by `_overlap_to_waves`.
     p1 = jnp.sum((e_u_sim * cfg.ey_profile + e_v_sim * cfg.ez_profile) * dA)
     p2 = jnp.sum((h_u_sim * cfg.hy_profile + h_v_sim * cfg.hz_profile) * dA)
 
@@ -229,12 +217,6 @@ def update_overlap_dft(
     p1_ref, p2_ref = _overlap_cross_products(state, cfg, cfg.ref_x, dx)
     p1_probe, p2_probe = _overlap_cross_products(state, cfg, cfg.probe_x, dx)
 
-    # Rect-window streaming DFT (constant unit weight). The Phase 2
-    # cleanup deleted the windowed/gated path on the V/I
-    # extractor; the overlap path historically shared the same gating
-    # knobs but those fields were also removed from
-    # ``WaveguidePortConfig``. The S-param result is unchanged for runs
-    # that previously used ``dft_window='rect'`` and no early gate.
     from rfx.measurement.dft import phase as dft_phase
     phase = dft_phase(state.step-1, cfg.freqs, dt, 'E')
     h_phase = dft_phase(state.step-1, cfg.freqs, dt, 'H')
@@ -311,7 +293,6 @@ def extract_waveguide_sparams_overlap(
     p2_ref = acc.p2_ref_dft
     p2_probe = acc.p2_probe_dft
 
-    # Convert cross-product DFTs to global forward/backward waves
     fwd_ref, bwd_ref = _overlap_to_waves(
         acc.p1_ref_dft, p2_ref, z_mode, c_stored
     )
@@ -319,7 +300,6 @@ def extract_waveguide_sparams_overlap(
         acc.p1_probe_dft, p2_probe, z_mode, c_stored
     )
 
-    # Port-local wave mapping
     if cfg.direction.startswith("+"):
         a_inc_ref, a_out_ref = fwd_ref, bwd_ref
         a_inc_probe = fwd_probe
@@ -327,7 +307,6 @@ def extract_waveguide_sparams_overlap(
         a_inc_ref, a_out_ref = bwd_ref, fwd_ref
         a_inc_probe = bwd_probe
 
-    # Apply reference-plane shifts (global-frame shift; sign handled in _shift_modal_waves)
     step_sign = 1 if cfg.direction.startswith("+") else -1
     a_inc_ref, a_out_ref = _shift_modal_waves(a_inc_ref, a_out_ref, beta, ref_shift, step_sign)
     a_inc_probe, _ = _shift_modal_waves(
