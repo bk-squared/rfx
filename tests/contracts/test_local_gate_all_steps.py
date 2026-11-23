@@ -13,8 +13,15 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 FAKE_PYTHON = r'''#!/bin/bash
+if [ "${0##*/}" = gh ]; then
+  printf '%s\n' "$*" >> "$GH_CALLS"
+  exit 1
+fi
 case "$*" in
   "- "*) exec "$REAL_PYTHON" "$@" ;;
+  *check_known_limitations.py*)
+    if [ "${RUN_KNOWN_LIMITATIONS:-}" = 1 ]; then exec "$REAL_PYTHON" "$@"; fi
+    exit 0 ;;
   *check_changelog_fragment.py*) printf '%s\n' "$PR_LABELS_JSON" > "$LOG_DIR/changelog-labels"; exit "${FAIL_CHANGELOG:-0}" ;;
   *check_data_budget.py*) printf '%s\n' "$PR_LABELS_JSON" > "$LOG_DIR/data-budget-labels"; exit 0 ;;
   *check_file_size_ratchet.py*) exit "${FAIL_RATCHET:-0}" ;;
@@ -29,13 +36,18 @@ esac
 '''
 
 
-def run_gate(tmp_path, *, body=None, labels=None, **fail):
+def run_gate(tmp_path, *, body=None, labels=None, known_limitations_page=None, **fail):
     """Empty arrays under set -u must still work with /bin/bash 3.2 on macOS."""
     ci = tmp_path / "repo" / "scripts" / "ci"
     ci.mkdir(parents=True)
     shutil.copy(ROOT / "scripts/ci/local.sh", ci / "local.sh")
     (ci / "lint.sh").write_text('exit "${FAIL_RUFF:-0}"\n')
     (ci / "docs_hygiene.sh").write_text("exit 0\n")
+    if known_limitations_page is not None:
+        shutil.copy(ROOT / "scripts/ci/check_known_limitations.py", ci)
+        page = ci.parents[1] / "docs/guides/known_limitations.md"
+        page.parent.mkdir(parents=True)
+        page.write_text(known_limitations_page, encoding="utf-8")
     python = tmp_path / "python"
     python.write_text(FAKE_PYTHON)
     python.chmod(0o755)
@@ -45,6 +57,7 @@ def run_gate(tmp_path, *, body=None, labels=None, **fail):
            if not k.startswith(("FAIL_", "RFX_GATE_")) and k != "PR_LABELS_JSON"}
     env.update(PYTHON=str(python), REAL_PYTHON=sys.executable, LOG_DIR=str(logs),
                **{f"FAIL_{k.upper()}": "1" for k in fail})
+    env["RUN_KNOWN_LIMITATIONS"] = "1" if known_limitations_page is not None else "0"
     if labels is not None:
         env["PR_LABELS_JSON"] = labels
     args = []
@@ -55,6 +68,32 @@ def run_gate(tmp_path, *, body=None, labels=None, **fail):
     result = subprocess.run(["/bin/bash", str(ci / "local.sh"), *args], env=env, cwd=tmp_path,
                             capture_output=True, text=True, timeout=60)
     return result, logs
+
+
+def test_wrapped_known_limitations_status_fails_docs_hygiene_offline(tmp_path, monkeypatch):
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    gh = bindir / "gh"
+    gh.write_text(FAKE_PYTHON)
+    gh.chmod(0o755)
+    calls = tmp_path / "gh-calls"
+    monkeypatch.setenv("PATH", str(bindir) + os.pathsep + os.environ["PATH"])
+    monkeypatch.setenv("GH_CALLS", str(calls))
+    monkeypatch.setenv("CLOSING_ISSUES", "inherited")
+    monkeypatch.delenv("OPEN_ISSUES", raising=False)
+    result, logs = run_gate(tmp_path, known_limitations_page=(
+        "## Legacy mode\n"
+        "Tracker: none — accepted limitation (refused at default: "
+        "tests/synthetic.py::test_refuses)\n\n"
+        "The legacy mode is\n"
+        "**not supported (deprecated); removed after 2.3**. Use the current mode.\n"
+    ))
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "FAILED: docs-hygiene (the remaining steps still run)" in result.stdout
+    assert "expected exactly one Tracker line" in result.stdout
+    assert "=== [8/10] api-reference ===" in result.stdout
+    assert (logs / "contracts-args").exists()
+    assert not calls.exists()
 
 
 def test_every_failing_stage1_step_is_reported_and_selected_tests_do_not_run(tmp_path):
