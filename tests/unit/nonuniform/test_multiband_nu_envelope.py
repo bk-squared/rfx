@@ -46,9 +46,6 @@ from validation.research.multiband_nu.remis_energy import (
 from validation.research.multiband_nu.w1_energy_drift import evaluate_fs1
 
 
-# ---------------------------------------------------------------------------
-# fast lane
-# ---------------------------------------------------------------------------
 
 def _reduced_pa(r: float, variant: str = "abrupt") -> np.ndarray:
     return fx.pa_profile(r, variant, n_fine=12, n_coarse=9)
@@ -76,8 +73,6 @@ def test_remis_energy_witness_validity_f64():
                PYTHONPATH=str(root))
     import tempfile
     with tempfile.TemporaryDirectory() as td:
-        # the script writes its JSON to a relative path; run it in a
-        # scratch cwd so the committed evidence file is not rewritten
         (Path(td) / "validation/research/multiband_nu/results").mkdir(
             parents=True)
         subprocess.run(
@@ -309,7 +304,7 @@ def test_grading_cap_is_1_4_on_every_axis(axis):
         f"d{axis}_profile at ratio {r} is above the 1.4 cap and must draw "
         f"the preflight advisory; got {codes}")
     msgs = _ctor_ratio_warnings(axis, beyond)
-    assert msgs and "(> 1.4, " in msgs[0], msgs  # the cap, not the printed ratio 1.450
+    assert msgs and "(> 1.4, " in msgs[0], msgs
     if axis != "z":
         assert "in-plane" in msgs[0], msgs
 
@@ -322,9 +317,6 @@ def test_inplane_and_z_caps_are_separate_constants():
     assert _PM._INPLANE_RATIO_CAP == 1.4
 
 
-# ---------------------------------------------------------------------------
-# slow / gpu lane — the full pre-declared arms
-# ---------------------------------------------------------------------------
 
 @pytest.mark.slow_physics
 @pytest.mark.parametrize("r,variant", [(1.4, "abrupt"), (1.4, "smooth"),

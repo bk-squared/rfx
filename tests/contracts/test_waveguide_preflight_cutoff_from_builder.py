@@ -89,7 +89,6 @@ def test_cutoff_from_builder(graded, a, b, mode_type, mode, n_modes):
     findings = _findings(above)
     assert "port_source_below_cutoff" not in findings
     assert "port_freqs_below_cutoff" not in findings
-    # The margin must exclude the driven mode in the same axis order.
     margin = findings["port_evanescent"]
     assert _quoted(margin, f"fc_{driven_type}{m}{n}") == f"{expected / 1e9:.3f}"
     next_cutoff = min(
@@ -103,8 +102,7 @@ def test_cutoff_from_builder(graded, a, b, mode_type, mode, n_modes):
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 def test_multimode_near_tie_uses_builder_spans(graded):
-    # The uniform no-range builder reports the domain, even when its cells
-    # are shorter. The graded explicit range instead reports snapped edges.
+    """Cutoff spans follow the domain for a uniform no-range aperture and snapped edges for an explicit graded aperture."""
     profile = np.array([.0005] + [.00045] * 20 + [.000515] * 20
                        + [.0007, .0009, .0009, .0007, .0005, .0005])
     a_span = float(sum(profile[:41])) if graded else .0202
@@ -187,7 +185,6 @@ def test_discrete_cutoff_budget(graded, dx, over_budget, monkeypatch):
     assert "port_source_below_cutoff" not in findings
     assert "port_freqs_below_cutoff" not in findings
     if over_budget:
-        # The section-medium read must also avoid both builders.
         sim._waveguide_call_overrides = (np.asarray(4.0), None, np.asarray(1.0))
         sim._waveguide_ports[0] = replace(
             sim._waveguide_ports[0], n_modes=1, freqs=np.asarray([1e9, 2e9]), f0=1.5e9)

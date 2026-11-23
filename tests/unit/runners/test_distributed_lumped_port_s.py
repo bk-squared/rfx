@@ -1,4 +1,5 @@
-"""Owning-cell recordings feed the production lumped S-matrix decomposer."""
+"""Owning-cell recordings feed the production lumped S-matrix decomposer.
+The absolute S tolerance leaves margin for float32 reduction rounding."""
 
 import os
 from dataclasses import replace
@@ -19,20 +20,17 @@ from rfx.sources.sources import GaussianPulse
 
 pytestmark = pytest.mark.distributed
 FREQS = np.array([1, 2.5, 5, 7.5, 10]) * 1e9
-# Summed quantities must agree within 1e-4 of the peak across all traces
-# (cross-trace rule, not a per-bin relative tolerance near zeros). The
-# tighter absolute S bar below leaves margin for float32 reduction rounding.
 S_ATOL = 9e-6
 TRACE_RTOL = 9e-6
 
 
 def _plate_line(impedance=40.):
-    """One-cell gap, w/h=10 PEC plates extending through the x-high CPML."""
+    """One-cell gap, w/h=10 PEC plates extending through the x-high CPML.
+    The default 40 ohm impedance is the nearby one-device sweep choice for eta0*h/w = 37.673 ohm."""
     sim = Simulation(freq_max=10e9, domain=(24e-3, 16e-3, 6e-3),
                      dx=1e-3, boundary="cpml", cpml_layers=4)
     for lo, hi in ((1e-3, 2e-3), (3e-3, 4e-3)):
         sim.add(Box((3e-3, 3e-3, lo), (30e-3, 13e-3, hi)), material="pec")
-    # eta0*h/w = 37.673 ohm; 40 ohm is the nearby one-device sweep choice.
     sim.add_port((4e-3, 8e-3, 2e-3), "ez", impedance=impedance,
                  waveform=GaussianPulse(f0=5e9, bandwidth=1.6))
     sim.add_probe(sim._ports[0].position, "ez")
@@ -65,6 +63,7 @@ def _model(seam=True, ports=2, component="ez", channel=False, n_devices=2, bound
 
 def _parity(*, seam=True, ports=2, mode="explicit", channel=False,
             component="ez", n_devices=2, case=None, n_steps=256):
+    """The all-nonmagnetic channel radiates transversely as well as along x, so its S11 gate is -1 dB."""
     started = time.monotonic()
     sim = _model(seam, ports, component, channel, n_devices)
     freqs = FREQS
@@ -76,11 +75,10 @@ def _parity(*, seam=True, ports=2, mode="explicit", channel=False,
         sim.add_material("block", eps_r=4., **extra)
         sim.add(Box((4e-3, 2e-3, 2e-3), (10e-3, 4e-3, 4e-3)), material="block")
     elif case == "pec":
-        # Keep the body strictly between the ports, away from both port edges.
         sim._ports[1] = replace(sim._ports[1], position=(4e-3, 3e-3, 3e-3))
         sim.add(Box((6e-3, 2e-3, 2e-3), (7e-3, 4e-3, 4e-3)), material="pec")
+        assert sim._ports[1].position[0] < sim._geometry[-1].shape.corner_lo[0] < sim._geometry[-1].shape.corner_hi[0] < sim._ports[0].position[0], 'PEC body must lie strictly between the port edges'
     elif case == "cpml_box":
-        # Unequal drive impedances in a CPML box, without an extra source.
         sim._ports[0] = replace(sim._ports[0], impedance=75.)
     kwargs = {"n_steps": n_steps, "skip_preflight": True}
     if mode == "explicit":
@@ -91,7 +89,6 @@ def _parity(*, seam=True, ports=2, mode="explicit", channel=False,
         kwargs.update(s_param_freqs=FREQS)
     elif mode == "steps":
         kwargs.update(s_param_n_steps=max(320, n_steps))
-    # time_series comes from the one-device MAIN run; S has its own drive scans.
     reference = sim.run(**kwargs)
     actual = sim.run(devices=jax.devices("cpu")[:n_devices], **kwargs)
     assert actual.s_params is not None
@@ -118,8 +115,6 @@ def _parity(*, seam=True, ports=2, mode="explicit", channel=False,
               f"parity_runtime_s={time.monotonic() - started:.3f}")
         assert minimum <= -10
     if channel:
-        # The all-nonmagnetic replacement radiates transversely as well as
-        # along x; it is not the former PMC TEM matched-line fixture.
         assert minimum <= -1
         assert np.max(np.abs(reference.s_params[1, 0])) > 0.1
     return actual
@@ -196,8 +191,6 @@ def test_more_devices(n_devices):
 @pytest.mark.parametrize("explicit", [False, True])
 @pytest.mark.parametrize("channel", [False, True])
 def test_pmc_matched_line_refused(explicit, channel):
-    # Admission has its own magnetic-face witness; the through-line fixture
-    # now intentionally uses absorbing x ends and no magnetic side walls.
     sim = _model(channel=channel, magnetic=True,
                  boundary=BoundarySpec(x="cpml", y="pmc", z="pec"))
     with pytest.raises(NotImplementedError, match=r"Lumped-port S-parameters with magnetic \(PMC\) face\(s\).*y_lo.*not supported with devices="):
@@ -243,7 +236,6 @@ def test_pec_plain_source_refused(case, distributed):
 
 
 def test_long_record():
-    # Small domain keeps this 2048-step record in the fast suite.
     _parity(n_steps=2048)
 
 

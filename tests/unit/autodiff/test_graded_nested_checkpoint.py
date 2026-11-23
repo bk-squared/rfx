@@ -1,4 +1,5 @@
-"""Graded CPML levels, main's AD-memory terms, and BASE 1d5712706 traces."""
+"""Graded CPML levels, main's AD-memory terms, and BASE 1d5712706 traces.
+Sources are frozen because CI checks out depth 1 with no history to git show."""
 
 import json
 import sys
@@ -15,8 +16,6 @@ from rfx.geometry.csg import Box
 from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
 from rfx.stepping.remat import checkpoint_memory
 
-# Sources of rfx/stepping/{graded_loop,remat}.py at BASE 1d5712706, frozen because
-# CI checks out depth 1 (no history to `git show`).
 BASE = Path(__file__).resolve().parents[2] / "data" / "base_1d5712706"
 
 
@@ -135,6 +134,7 @@ def test_nested_conductivity_gradient_matches_forward_finite_difference(box, rec
 
 def test_planner_selected_estimate_fits_target_with_two_cotangents(box):
     """The selected two-cotangent estimate fits the safety-adjusted target."""
+    TARGET_MARGIN_FACTOR = 1.01
     sim, _, _ = box
     reference = sim.estimate_ad_memory(97, checkpoint_every=(24, 5), cotangents=2)
     tiny = sim.plan_ad_memory(97, 1e-9, max_levels=2, cotangents=2)
@@ -146,10 +146,8 @@ def test_planner_selected_estimate_fits_target_with_two_cotangents(box):
     assert "forward passes" in tiny.recommendation
     assert tiny.segmented_fits is False, "a 1e-9 GB budget must not be reported as fitting"
 
-    # Both policy factors come from the public plan; the target retains the
-    # specified 1% margin above the independent (24, 5) estimate.
     safety = tiny.fit_safety_factor
-    budget = reference.ad_segmented_gb * safety * 1.01 / tiny.target_fraction
+    budget = reference.ad_segmented_gb * safety * TARGET_MARGIN_FACTOR / tiny.target_fraction
     plan = sim.plan_ad_memory(97, budget, max_levels=2, cotangents=2)
     target = plan.target_fraction * budget
     selected = plan.selected_estimate.ad_segmented_gb * safety
@@ -192,7 +190,8 @@ def test_clamped_outer_level_keeps_inner_levels(box, design_box):
 
 
 def test_clamped_checkpoint_preserves_compiled_memory_and_gradient(box):
-    """A clamped outer level keeps the inner level's memory savings and gradient."""
+    """A clamped outer level keeps the inner level's memory savings and gradient.
+    The clamped outer and inner-only controls compile the same program, so the spec requires byte-equal gradients."""
     sim, eps, sigma = box
     executables, temp = {}, {}
     for chunk in ((120, 5), (5,), 24, None):
@@ -217,10 +216,6 @@ def test_clamped_checkpoint_preserves_compiled_memory_and_gradient(box):
     started = time.perf_counter()
     clamped = jax.block_until_ready(executables[(120, 5)](eps, sigma))
     inner = jax.block_until_ready(executables[(5,)](eps, sigma))
-    # Byte equality is already used for checkpoint values at
-    # tests/unit/autodiff/test_graded_nested_checkpoint.py:67.
-    # These two controls compile the same program, so the spec also requires
-    # byte-equal gradients (rather than the different-program 1e-6 bar at :73).
     for name, actual, expected in zip(("eps", "sigma"), clamped, inner):
         actual, expected = np.asarray(actual), np.asarray(expected)
         peak = float(np.max(np.abs(expected)))
