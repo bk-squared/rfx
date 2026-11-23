@@ -43,8 +43,12 @@ def declared_index_reader(sim, freqs):
                            for p in spec.lorentz_poles or ())))
     leaves, definition = jax.tree_util.tree_flatten(
         (rows, getattr(sim, '_echo_override_maxima', ())))
-    dynamic = tuple(isinstance(value, (jax.Array, jax.core.Tracer)) for value in leaves)
-    fixed = tuple(None if live else value for value, live in zip(leaves, dynamic))
+    dynamic = tuple(isinstance(value, jax.core.Tracer) for value in leaves)
+    fixed = tuple(
+        None if live else
+        (_override_maximum(value) if not value.is_fully_addressable else np.asarray(value))
+        if isinstance(value, jax.Array) else value
+        for value, live in zip(leaves, dynamic))
     operands = tuple(value for value, live in zip(leaves, dynamic) if live)
     bins = np.asarray([0., sim._freq_max] if freqs is None or not len(freqs) else freqs,
                       dtype=np.float64)
@@ -66,9 +70,10 @@ def declared_index_reader(sim, freqs):
 
 
 def forward_echo_bound(grid, sim, freqs, waveguide_ports=()):
-    """Carry an exact float64 index as two uint32 children in every context."""
+    """Realize fixed declarations on the host; transport only live indices."""
     import jax.numpy as jnp
-    from rfx.measurement.record_end import echo_group_factor
+    from rfx._traced_check import require_host_callbacks
+    from rfx.measurement.record_end import echo_delay_bound_on_grid, echo_group_factor
     from rfx.ringdown._jax import host_echo_index
 
     configs = tuple(waveguide_ports.values() if hasattr(waveguide_ports, 'values')
@@ -77,9 +82,17 @@ def forward_echo_bound(grid, sim, freqs, waveguide_ports=()):
     if (bins is None or not len(bins)) and configs:
         bins = np.unique(np.concatenate([np.asarray(cfg.freqs) for cfg in configs]))
     read, operands = declared_index_reader(sim, bins)
-    words = (host_echo_index(read, *operands) if operands else
-             jnp.asarray(np.asarray(read(), dtype=np.float64).reshape(1).view(np.uint32)))
-    return dict(index_words=words, g=echo_group_factor(configs)), read, operands
+    g = echo_group_factor(configs)
+    if operands:
+        require_host_callbacks('forward', 'echo delay bound')
+        words = host_echo_index(read, *operands)
+    else:
+        index = read()
+        bound = echo_delay_bound_on_grid(grid, dict(n_max=index, g=g))
+        if not bound.get('reason'):
+            return bound, None, ()
+        words = jnp.asarray(np.asarray(index, dtype=np.float64).reshape(1).view(np.uint32))
+    return dict(index_words=words, g=g), read, operands
 
 
 def realized_echo_bound(grid, bound):
