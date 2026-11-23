@@ -11,10 +11,6 @@ from typing import Any
 
 import numpy as np
 
-# ---------------------------------------------------------------------------
-# Streamlit is imported lazily so the module can be imported without it
-# (e.g. for testing or programmatic use).
-# ---------------------------------------------------------------------------
 
 _st = None
 
@@ -34,14 +30,11 @@ def _require_st():
     return _st
 
 
-# ---------------------------------------------------------------------------
-# Data containers for collecting UI state
-# ---------------------------------------------------------------------------
 
 @dataclass
 class GeometryEntry:
     """One user-defined geometry item."""
-    shape_type: str  # "Box", "Sphere", "Cylinder"
+    shape_type: str
     material: str
     params: dict[str, Any] = field(default_factory=dict)
 
@@ -63,9 +56,6 @@ class ProbeEntry:
     component: str
 
 
-# ---------------------------------------------------------------------------
-# Geometry builder panel
-# ---------------------------------------------------------------------------
 
 def geometry_panel(materials: list[str]) -> list[GeometryEntry]:
     """Render the geometry builder and return the list of entries.
@@ -141,7 +131,6 @@ def geometry_panel(materials: list[str]) -> list[GeometryEntry]:
         st.session_state["geometries"].append(entry)
         st.success(f"Added {shape_type} ({mat})")
 
-    # Display current geometry list
     geos: list[GeometryEntry] = st.session_state["geometries"]
     if geos:
         st.markdown("---")
@@ -159,9 +148,6 @@ def geometry_panel(materials: list[str]) -> list[GeometryEntry]:
     return geos
 
 
-# ---------------------------------------------------------------------------
-# Source / port panel
-# ---------------------------------------------------------------------------
 
 def source_panel() -> tuple[list[PortEntry], list[ProbeEntry]]:
     """Render source and probe configuration widgets.
@@ -175,7 +161,6 @@ def source_panel() -> tuple[list[PortEntry], list[ProbeEntry]]:
     if "probes" not in st.session_state:
         st.session_state["probes"] = []
 
-    # --- Ports ---
     st.subheader("Ports")
     st.caption("Add a lumped excitation port")
     c1, c2, c3 = st.columns(3)
@@ -209,7 +194,6 @@ def source_panel() -> tuple[list[PortEntry], list[ProbeEntry]]:
                 st.session_state["ports"].pop(i)
                 st.rerun()
 
-    # --- Probes ---
     st.markdown("---")
     st.subheader("Field Probes")
     st.caption("Add a field probe to record time-domain data")
@@ -242,9 +226,6 @@ def source_panel() -> tuple[list[PortEntry], list[ProbeEntry]]:
     return ports, probes
 
 
-# ---------------------------------------------------------------------------
-# Results display helpers
-# ---------------------------------------------------------------------------
 
 def display_s_params(s_params: np.ndarray, freqs: np.ndarray) -> None:
     """Plot S-parameter magnitude (dB) using Streamlit's built-in chart."""
@@ -253,7 +234,6 @@ def display_s_params(s_params: np.ndarray, freqs: np.ndarray) -> None:
     n_ports = s_params.shape[0]
     freqs_ghz = freqs / 1e9
 
-    # Try matplotlib first (better quality)
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -273,7 +253,6 @@ def display_s_params(s_params: np.ndarray, freqs: np.ndarray) -> None:
         st.pyplot(fig)
         plt.close(fig)
     except ImportError:
-        # Fallback: line chart via Streamlit
         import pandas as pd
         data = {"Frequency (GHz)": freqs_ghz}
         for i in range(n_ports):
@@ -311,7 +290,6 @@ def display_field_slice(state, grid, component: str = "ez", axis: str = "z") -> 
         import matplotlib.pyplot as plt
         plt.close(fig)
     except ImportError:
-        # Fallback: raw array via st.image
         field = np.asarray(getattr(state, component))
         axis_idx = {"x": 0, "y": 1, "z": 2}[axis]
         idx = field.shape[axis_idx] // 2

@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from rfx.geometry.csg import Box
 
-# Shapes the YAML schema knows how to build. Kept as a name->builder map so
-# the unsupported-shape error can enumerate what *is* available.
 _SUPPORTED_SHAPES = ("box",)
 
 
