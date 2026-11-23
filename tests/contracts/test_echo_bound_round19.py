@@ -139,6 +139,8 @@ def test_traced_zero_damping_cannot_judge(resonance):
     from rfx.materials.lorentz import LorentzPole
     from rfx.measurement.echo_bound import realized_echo_bound
     from rfx.measurement.record_end import with_echo_bound
+    from rfx.ringdown._echo import forward_closing_factor
+    from types import SimpleNamespace
     grid = shorted_line()._build_realized_grid()
     materials = init_materials(grid.shape)
     w0 = 2 * np.pi * resonance
@@ -152,9 +154,13 @@ def test_traced_zero_damping_cannot_judge(resonance):
     witness = dict(status='pass', db=-100., reason='',
                    window_starts={10**12: (5 * 10**11, 75 * 10**10)})
     db, detail = with_echo_bound(-100., witness, result, float(grid.dt))
+    assert np.isnan(db) and detail['status'] == 'undetermined', detail
     assert np.isinf(result['n_max']) and np.isinf(result['tau_max'])
-    assert np.isnan(db) and detail['status'] == 'undetermined'
     assert detail['reason'].startswith('cannot judge:')
+    plan = SimpleNamespace(n_steps=10**12, n_start=5 * 10**11)
+    factor = jax.jit(lambda delta: forward_closing_factor(
+        plan, grid.dt, bound(delta), dtype=jnp.float32))(jnp.float32(0.))
+    assert np.isnan(factor)
     damped = jax.jit(bound)(jnp.float32(.15 * w0))
     assert np.isfinite(damped['n_max']) and np.isfinite(damped['tau_max'])
 
