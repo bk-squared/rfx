@@ -58,8 +58,7 @@ def SlabNTFF(self, buffer):
 
 
 def TimePlaneRecords(self, buffer):
-    # New per-step oracle: place each rank's owned rectangle using NumPy.
-    # This deliberately does not call the production join or host assembler.
+    """Place each rank's owned rectangle using NumPy, independently of production assemblers."""
     import numpy as np
     result = [np.zeros((self.frames,) + t.accumulator.shape[1:], self.dtype)
               for t in self.templates]
