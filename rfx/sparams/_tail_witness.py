@@ -73,7 +73,11 @@ class SettlingChannels(NamedTuple):
 
 def port_record_witness(records, dt, source_end, freqs, *, freq_max, reader=None,
                         echo_bound: Mapping[str, float | str | None] | None = None):
-    """Judge recorded S-channel matrices, one matrix per port."""
+    """Judge recorded S-channel matrices, one matrix per port.
+
+    Drive witnesses are host reports: their bound retains scalar values,
+    including the exact float32 values returned by the realized reduction.
+    """
     from rfx.sparams._settling_groups import port_column_groups
 
     records = tuple(records)
@@ -83,6 +87,9 @@ def port_record_witness(records, dt, source_end, freqs, *, freq_max, reader=None
         dt, source_end, freqs, freq_max)
     result = channels.witness(scale_groups=groups, _channel_labels=labels, reader=reader)
     from rfx.measurement.record_end import with_echo_bound
+    if echo_bound is not None:
+        echo_bound = {key: value.item() if hasattr(value, 'item') else value
+                      for key, value in echo_bound.items()}
     db, detail = with_echo_bound(result.db, result._asdict(), echo_bound, dt)
     return db, {**detail, 'route': 's_channels',
                        'worst_record': None, 'per_record_db': {},
