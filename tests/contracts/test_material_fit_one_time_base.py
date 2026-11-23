@@ -1,5 +1,6 @@
 """The material fit replays E and H records on the measurement time base."""
 
+import sys
 import time
 
 import jax
@@ -72,14 +73,15 @@ def fitted_record():
         planted = differentiable_material_fit(factory, expected, freqs, **kwargs)
         jax.effects_barrier()
     wall_time = time.perf_counter() - started
-    print(f"fixture: 6 cells per side, 128 steps, E=ez H=hy; wall={wall_time:.6f}s")
-    print(f"callback calls={len(captured)}; dt={captured[0][1]:.17g}s")
+    print(f"fixture: 6 cells per side, 128 steps, E=ez H=hy; wall={wall_time:.6f}s", file=sys.stderr)
+    print(f"callback calls={len(captured)}; dt={captured[0][1]:.17g}s", file=sys.stderr)
     return first, planted, expected, freqs, captured
 
 
 def test_a_same_record_two_spectra(fitted_record):
     first, _, expected, freqs, captured = fitted_record
     assert len(captured) == 4
+    assert not np.array_equal(captured[0][0], captured[1][0])
     for i in range(2):
         peak = np.max(np.abs(expected[i, i]))
         assert np.all(np.abs(expected[i, i]) >= 0.1 * peak)
@@ -100,6 +102,6 @@ def test_b_planted_target_phase(fitted_record):
         slope = np.linalg.lstsq(
             np.column_stack((stamp, np.ones_like(stamp))), residual, rcond=None,
         )[0][0]
-        print(f"probe {i}: residual={residual.tolist()}, slope={slope:.9g}")
+        print(f"probe {i}: residual={residual.tolist()}, slope={slope:.9g}", file=sys.stderr)
         assert np.all(np.abs(residual) < 1e-3)
         assert abs(slope) < 1e-2
