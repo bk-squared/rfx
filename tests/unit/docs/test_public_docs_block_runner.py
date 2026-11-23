@@ -46,12 +46,13 @@ def make_tree(root: Path, pages: dict[str, str]) -> None:
 
 
 def run_job(root: Path, out: Path, *extra: str) -> subprocess.CompletedProcess[str]:
+    STRICT_PAGE_OUTPUT_UTF8 = "1"
     return subprocess.run(
         [sys.executable, str(SCRIPT), "--repo-root", str(root), "--output-dir", str(out), *extra],
         capture_output=True,
         text=True,
         check=False,
-        env={**os.environ, "PYTHONUTF8": "1"},  # the runner decodes page output strictly
+        env={**os.environ, "PYTHONUTF8": STRICT_PAGE_OUTPUT_UTF8},
     )
 
 
@@ -123,7 +124,7 @@ def test_only_restricts_the_job(tmp_path):
 
 
 def test_pages_sort_by_relative_path_as_a_string(tmp_path):
-    # '-' sorts before '/' in the relative path; comparing Path parts gives the reverse.
+    """Relative-path string ordering puts '-' before '/'."""
     make_tree(
         tmp_path,
         {

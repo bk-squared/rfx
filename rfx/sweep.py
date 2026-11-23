@@ -33,11 +33,6 @@ from rfx.pareto import ParetoFront, pareto_front as build_pareto_front
 from rfx._plotting import _pyplot
 
 
-# ---------------------------------------------------------------------------
-# Shared metric kernels (used by SweepResult here and VmapSweepResult in
-# rfx/vmap_sweep.py — keep ONE definition of each sweep metric)
-# ---------------------------------------------------------------------------
-
 def peak_abs_field(time_series, axis=None):
     """Peak |field| of a probe time series.
 
@@ -47,10 +42,6 @@ def peak_abs_field(time_series, axis=None):
     a = np.abs(np.asarray(time_series))
     return np.max(a) if axis is None else np.max(a, axis=axis)
 
-
-# ---------------------------------------------------------------------------
-# Result container
-# ---------------------------------------------------------------------------
 
 @dataclass
 class SweepResult:
@@ -69,8 +60,6 @@ class SweepResult:
     results: list
     param_name: str
     param_values: np.ndarray
-
-    # -- convenience extractors ------------------------------------------------
 
     def s11_min_db(self) -> np.ndarray:
         """Return the minimum S11 (dB) for each sweep point.
@@ -159,10 +148,6 @@ class SweepResult:
         )
 
 
-# ---------------------------------------------------------------------------
-# Main sweep function
-# ---------------------------------------------------------------------------
-
 def parametric_sweep(
     sim_factory: Callable,
     param_name: str,
@@ -194,7 +179,7 @@ def parametric_sweep(
     -------
     SweepResult
         Container with ``.results``, ``.param_values``, and ``.param_name``.
-    """
+    Sweep simulations must be structurally identical for the first simulation's preflight to cover every iteration."""
     param_values = np.asarray(param_values).ravel()
     if len(param_values) == 0:
         raise ValueError("param_values must not be empty")
@@ -205,10 +190,6 @@ def parametric_sweep(
     if until_decay is not None:
         kw["until_decay"] = until_decay
 
-    # Preflight only the FIRST sim (sweeps re-run a structurally-identical
-    # setup, so per-iteration preflight just floods the loop with repeated
-    # warnings + [PREFLIGHT] prints). A user-supplied skip_preflight in
-    # run_kwargs is honored as-is.
     _sp_explicit = "skip_preflight" in kw
     results = []
     for _i, val in enumerate(param_values):
@@ -223,10 +204,6 @@ def parametric_sweep(
         param_values=param_values,
     )
 
-
-# ---------------------------------------------------------------------------
-# Visualization
-# ---------------------------------------------------------------------------
 
 _BUILTIN_METRICS = {
     "s11_min_db": ("s11_min_db", "Min S11 (dB)"),

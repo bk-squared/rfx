@@ -7,7 +7,7 @@ import json
 import re
 from pathlib import Path
 
-PRIMARY_ROUTE_PREFIXES = ("rfx/showcase", "rfx/guide", "rfx/gallery", "rfx/examples", "rfx/api",
+PRIMARY_ROUTE_PREFIXES = ("rfx/showcase", "rfx/guide", "rfx/examples", "rfx/api",
                           "rfx/validation", "rfx/start", "rfx/model", "rfx/check", "rfx/run",
                           "rfx/measure", "rfx/design", "rfx/support", "rfx/project")
 LEGACY_GUIDE_QUARANTINE = {

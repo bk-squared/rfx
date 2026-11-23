@@ -90,10 +90,10 @@ def test_smoothing_allows_material_extended_through_face(graded):
 def test_crossing_flux_face_has_half_dual_area(cells):
     from rfx.probes.probes import init_flux_monitor, flux_spectrum
     def plane(half):
+        """Even Ez,Hx on a y-normal plane are zero at the two far PEC ends."""
         n = cells + 1 if half else 2*cells + 1
         mon = init_flux_monitor(1, 1, jnp.array([1e9]), (n, 3, 4), 1./cells, .25,
                                 pmc_faces=frozenset({"x_lo"}) if half else frozenset())
-        # Even Ez,Hx on a y-normal plane; zero at the two far PEC ends.
         x = np.arange(cells+1) if half else np.abs(np.arange(-cells, cells+1))
         profile = jnp.asarray((1-x/cells)[:, None] * np.ones((1, 4)))[None]
         return mon._replace(e1_dft=profile.astype(complex), h2_dft=profile.astype(complex))

@@ -42,6 +42,7 @@ primitive.
 The runner is ~6 s for all five cases, so this stays in the default lane.
 The standalone script, with the ``main`` column, is
 ``scripts/diagnostics/lattice_ownership_witness/cavity_witness.py``.
+The 0.15 % gate is a few times the earlier measured empty-box numerical dispersion of -0.050 %, so a one-cell placement error cannot hide inside it.
 """
 from __future__ import annotations
 
@@ -54,9 +55,6 @@ C0 = 299792458.0
 DX = 2e-3
 AX, AY, AZ = 40e-3, 20e-3, 30e-3
 
-# Numerical dispersion on this mesh, measured on the empty box: -0.050 %.
-# The gate is a few times that, tight enough that a one-cell placement error
-# (about 5 % here, 60x the gate) cannot hide inside it.
 MAX_ABS_ERR_PCT = 0.15
 
 
@@ -81,7 +79,6 @@ def _peak_freq(build) -> float:
     return float(freqs[band][np.argmax(spectrum[band])])
 
 
-# label -> (builder, the cavity height the DRAWN geometry implies)
 CASES = {
     "empty_box": (lambda s: None, AZ),
     "volume_slab_floor_4mm": (

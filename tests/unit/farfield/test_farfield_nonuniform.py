@@ -35,38 +35,33 @@ from rfx import Simulation
 from rfx.measurement.farfield import compute_far_field
 from rfx.farfield import directivity
 
-#: Ring-down rule (#885): the record must have decayed this far before a
-#: rect-window DFT of it means anything.
 SETTLING_MAX_DB = -40.0
 N_STEPS = 600
 
 
 def _nu_dipole_directivity(dz_profile):
-    # The 6-layer CPML (9 mm) is padded OUTSIDE the declared 30 mm x/y extent
-    # (realized 33 cells per x/y axis), so the 10-20 mm NTFF box — realized
-    # 10.5-19.5 mm — sits seven cells from the absorber and three from the
-    # source.
-    # z is the profile sum (27 or 29 mm), the length the grid solves (#1941).
+    """The off-drive probe measures the field decaying rather than the source switching
+    off; without it the run reports no settling_db at all."""
     sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, float(np.sum(dz_profile))), dx=1.5e-3,
                      dz_profile=dz_profile, boundary="cpml", cpml_layers=6)
     sim.add_source((0.015, 0.015, 0.015), "ez")
     sim.add_probe((0.015, 0.015, 0.015), "ez")
-    # An independent ring-down witness: a probe OFF the drive cell, so the
-    # record measures the field decaying rather than the source switching
-    # off (#1090). Without it the run reports no settling_db at all.
     sim.add_probe((0.021, 0.015, 0.015), "ez")
+    assert abs(sim._probes[-1].position[0] - sim._ports[0].position[0]) > 0.0015, (
+        'The settling witness must be off the drive cell to measure field decay')
     sim.add_ntff_box(corner_lo=(0.010, 0.010, 0.010),
                      corner_hi=(0.020, 0.020, 0.020), freqs=[3e9])
-    res = sim.run(n_steps=N_STEPS)             # preflight runs (must NOT block)
+    res = sim.run(n_steps=N_STEPS)
     assert res.ntff_data is not None, "NU runner did not accumulate NTFF data"
     settling = getattr(res, "settling_db", None)
     assert settling is not None and settling < SETTLING_MAX_DB, (
         f"NU run not settled: settling_db={settling} (rule {SETTLING_MAX_DB} "
         f"dB); a rect-window DFT of a cut transient is not a far-field result")
-    theta = np.linspace(0.01, np.pi - 0.01, 73)   # full sphere, avoid poles
+    POLAR_GAP_RAD = 0.01
+    theta = np.linspace(POLAR_GAP_RAD, np.pi - POLAR_GAP_RAD, 73)
     phi = np.linspace(0.0, 2.0 * np.pi, 72)
     ff = compute_far_field(res.ntff_data, res.ntff_box, res.grid, theta, phi)
-    return float(directivity(ff)[0])              # full-sphere directivity, dBi
+    return float(directivity(ff)[0])
 
 
 @pytest.mark.parametrize("dz_profile,label", [
@@ -74,6 +69,7 @@ def _nu_dipole_directivity(dz_profile):
     (np.concatenate([np.full(8, 1.0e-3), np.full(14, 1.5e-3)]), "graded-z"),
 ])
 def test_nu_ntff_dipole_directivity(dz_profile, label):
+    """Full-sphere directivity is in dBi."""
     D = _nu_dipole_directivity(dz_profile)
     assert 1.76 - 0.3 < D < 1.76 + 0.3, \
         f"NU+NTFF {label} dipole D={D:.3f} dBi outside 1.76 +/- 0.3 dBi"

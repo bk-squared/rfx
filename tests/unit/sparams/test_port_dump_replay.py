@@ -20,6 +20,7 @@ from rfx import (
 
 
 def _synthetic_two_port_dump():
+    """The replay's receive channel for the arriving wave at a passive receive port is b_recv = -(V + Z0*I) / (2*sqrt(Z0))."""
     freqs = np.array([1.0e9, 2.0e9, 3.0e9])
     z0 = np.array([50.0, 75.0])
     s = np.zeros((2, 2, freqs.size), dtype=np.complex128)
@@ -38,12 +39,6 @@ def _synthetic_two_port_dump():
     sqrt_z = np.sqrt(z0).reshape(1, 2, 1)
     voltages = sqrt_z * (a + b)
     currents = (a - b) / sqrt_z
-    # Role-selected dump convention (issue #308): production dumps register
-    # the arriving wave at a PASSIVE receive port with the opposite voltage
-    # sign relative to the textbook split (the port-cell field sense in
-    # V = -E*dx), so the replay's receive channel is b_recv = -(V + Z0*I) /
-    # (2*sqrt(Z0)).  Encode that here: flip the voltage sign on off-diagonal
-    # (receive) entries; currents already match ((a - b)/sqrt(Z0) with a=0).
     for driven in range(2):
         voltages[driven, 1 - driven, :] *= -1.0
     return freqs, z0, s, voltages, currents

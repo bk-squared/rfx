@@ -18,11 +18,12 @@ TF_POSITION = (.009, .006, .005)
 
 @pytest.fixture(scope="module", params=KINDS)
 def plane_wave(request):
-    # Cache returned public records only, so each entry starts a fresh solve.
+
     return request.param, {}
 
 
 def _record(kind, entry, layers, records):
+    """A spurious transverse absorber diffracts at the edge before reaching the interior."""
     key = entry, layers
     if key not in records:
         sim = Simulation(freq_max=30e9, domain=(.0243, .0187, .0141),
@@ -33,8 +34,8 @@ def _record(kind, entry, layers, records):
             method="methodB" if kind == "methodB" else "bloch",
             closed_box=kind == "closed",
         )
-        # Keep an interior transverse sample and an edge sample: a spurious
-        # transverse absorber diffracts at the edge before reaching the interior.
+
+
         for position in SF_POSITIONS:
             sim.add_probe(position, "ez")
         sim.add_probe(TF_POSITION, "ez")
@@ -42,8 +43,8 @@ def _record(kind, entry, layers, records):
         sf = tuple(tuple(int(grid.index_of(a, p)) for a, p in enumerate(position))
                    for position in SF_POSITIONS)
         tf = tuple(int(grid.index_of(a, p)) for a, p in enumerate(TF_POSITION))
-        # The low injection plane is pad + margin. The scattered probe lies
-        # between it and the absorber. All probes avoid every symmetry plane.
+
+
         lo = tuple(layers + 3 for _ in range(3))
         hi = tuple(n - layers - 4 for n in grid.shape)
         assert all(grid.pad_x_lo <= idx[0] < lo[0] for idx in sf)
@@ -66,8 +67,8 @@ def _record(kind, entry, layers, records):
 @pytest.mark.parametrize("entry", ("run", "forward"))
 def test_vacuum_scattered_field_leakage_and_lane_parity(plane_wave, entry):
     kind, records = plane_wave
-    # The depth-doubled public model keeps the source, probes and 240-step
-    # record fixed. Both absorbers must satisfy the same absolute leakage bar.
+
+
     for layers in (4, 8):
         row = f"{kind}/{entry}/cpml{layers}"
         record = _record(kind, entry, layers, records)
@@ -91,9 +92,7 @@ def test_vacuum_scattered_field_leakage_and_lane_parity(plane_wave, entry):
             f"{row}: scattered/total={leakage:.12g} > {LEAKAGE_BAR}; "
             f"scattered={scattered:.12g}, total={peak:.12g}, steps={STEPS}")
         if entry == "forward":
-            # Existing pair: test_run_forward_one_pipeline.py:525 (PW-A,
-            # PW-B, PW-oblique, PW-closed), run_forward_census.py:786-789.
-            # It requires equal bytes, stronger than the default 9 peak ULP.
-            # Bloch also uses bytes at unit/autodiff/test_tfsf_forward_measurement.py:91.
+
+
             assert record.dtype == reference.dtype and record.tobytes() == reference.tobytes(), (
                 f"{row}: run/forward records differ by {ulps:.12g} peak ULP; bar=0")

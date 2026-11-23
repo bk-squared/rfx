@@ -48,9 +48,11 @@ def _profile(edges, h=H, r=RATIO):
 
 
 def _lowest_eigenvalue(widths):
-    """Smallest eigenvalue of -d2/dx2 on the graded nodes, PEC (zero) at both ends."""
+    """Smallest eigenvalue of -d2/dx2 on the graded nodes, PEC (zero) at both ends.
+    The dual-spacing array indexes interior nodes 1 through N-1.
+    """
     d = np.asarray(widths, float)
-    dual = 0.5 * (d[:-1] + d[1:])                      # interior nodes 1..N-1
+    dual = 0.5 * (d[:-1] + d[1:])
     diag = (1 / d[:-1] + 1 / d[1:]) / dual
     off = -(1 / d[1:-1]) / np.sqrt(dual[:-1] * dual[1:])
     m = np.diag(diag) + np.diag(off, 1) + np.diag(off, -1)

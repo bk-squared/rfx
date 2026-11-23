@@ -39,7 +39,9 @@ def _build_sim():
 
 
 def test_optimize_passes_port_s11_freqs_to_forward():
-    """One optimisation step must succeed when wave-decomp objective is used."""
+    """One optimisation step must succeed when wave-decomp objective is used.
+    The closed PEC cavity motivates a loose near-unit reflected-power bound.
+    """
     sim = _build_sim()
     region = DesignRegion(
         corner_lo=(0.015, 0.015, 0.005),
@@ -62,5 +64,4 @@ def test_optimize_passes_port_s11_freqs_to_forward():
     assert len(res.loss_history) == 1
     loss = float(res.loss_history[0])
     assert np.isfinite(loss), f"loss not finite: {loss}"
-    # PEC cavity → |S11| ~ 1, so |S11|^2 should land in [0.5, 1.5] range.
     assert 0.3 <= loss <= 1.5, f"unexpected |S11|^2 loss: {loss}"

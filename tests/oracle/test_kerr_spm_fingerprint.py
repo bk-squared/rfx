@@ -52,7 +52,8 @@ def _measure(chi3, amp):
 
 @pytest.fixture(scope="module")
 def spm():
-    kx0, _ = _measure(0.0, 1.0)                         # linear reference
+    LINEAR_REFERENCE_CHI3 = 0.0
+    kx0, _ = _measure(LINEAR_REFERENCE_CHI3, 1.0)
     pts = {}
     for chi3, amp in [(0.05, 1.0), (0.10, 1.0), (0.10, 1.4)]:
         kx, A = _measure(chi3, amp)

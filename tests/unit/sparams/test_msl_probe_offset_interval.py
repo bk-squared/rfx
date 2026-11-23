@@ -19,6 +19,8 @@ the pinned expectations (kept independent of the implementation):
   offset_max = int((9.966 − 1.676)/0.2) − 8 = 41 − 8 = 33
   midpoint   = (20 + 33)//2 = 26  (inside the measured-clean window;
                the old default 20 sat at the contaminated near edge)
+An earlier 500-trial Monte-Carlo at 1% probe noise with N=5 measured median beta error 5.5% at a
+0.10 lambda_g span versus 0.81% at 0.30 lambda_g.
 """
 import warnings
 
@@ -30,13 +32,6 @@ from tests._line_stub_geometry import trim_resonant_trace
 from rfx.grid import Grid
 from rfx.api._sparams import _resolve_msl_auto_offsets
 
-# ON-LATTICE board (#931 §1.3): h_sub / dx = 4 exactly. The Sheen-1990
-# LPF leg ran at dx = 200 um (h_sub/dx = 3.97); the foils below are
-# sheets now, and a sheet belongs ON the laminate face, not near it.
-# Every number this file pins (offset_min 20, spacing 2, offset_max 33,
-# midpoint 26) is an interval in CELLS derived from declared coordinates,
-# so it moves with dx only through the clearance rule, which is checked
-# against the grid it is computed on.
 DX = 0.000794 / 4
 DOMAIN = (0.020, 0.02632, 0.0038)
 Y_C = 0.01316
@@ -46,16 +41,15 @@ H_SUB = 0.000794
 
 def _sim_with_feed_and_patch(patch_x0=0.012466, patch_x1=0.015006,
                              **port_kw):
-    # #1138: geometry[2] x solved -2.447 % (default) / -4.262 % (short feed), y -3.753 % off the domain-clipped drawing; this test checks driver applies the solve end to end.
+    """A sheet belongs ON the laminate face, not near it."""
+    assert H_SUB / DX == 4, 'The sheet fixture needs the laminate face on the grid'
     sim = Simulation(snap="declared", freq_max=20e9, domain=DOMAIN, dx=DX,
                      boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (DOMAIN[0], DOMAIN[1], H_SUB)), material="sub")
     sim.add(Box((0, 0, 0), (DOMAIN[0], DOMAIN[1], 0)), material="pec")
-    # the port's own feed trace (contains the feed plane -> excluded)
     sim.add(Box((0.001, Y_C - W_TRACE / 2, H_SUB),
                 (patch_x0, Y_C + W_TRACE / 2, H_SUB)), material="pec")
-    # the patch = downstream reflector (wide, but < 80 % of domain y)
     sim.add(Box((patch_x0, 0.003, H_SUB),
                 (patch_x1, 0.02332, H_SUB)), material="pec")
     sim.add_msl_port(position=(0.0025, Y_C, 0.0), width=W_TRACE, height=H_SUB,
@@ -74,13 +68,12 @@ def test_auto_offset_moves_to_interval_midpoint_with_reflector():
     docstring), not the contaminated lower edge 20."""
     sim = _sim_with_feed_and_patch()
     (pe,) = sim._msl_ports
-    assert pe.n_probe_offset == 20  # stored lower edge (pre-#469 default)
+    assert pe.n_probe_offset == 20
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         (resolved,) = _resolve_msl_auto_offsets(sim, list(sim._msl_ports),
                                                 _grid())
     assert resolved.n_probe_offset == 26
-    # the stored entry and the auto bookkeeping are untouched (idempotency)
     assert sim._msl_ports[0].n_probe_offset == 20
     (again,) = _resolve_msl_auto_offsets(sim, list(sim._msl_ports), _grid())
     assert again.n_probe_offset == 26
@@ -157,35 +150,11 @@ def test_driver_applies_the_solve_end_to_end():
         sim.compute_msl_s_matrix(freqs=np.array([5e9, 10e9]), n_steps=1)
 
 
-
-
-# ---------------------------------------------------------------------------
-# Issue #686 — the bail-out is about the PROPAGATION axis, not "any axis".
-#
-# The pre-#686 gate was ``getattr(grid, "dz", None) is not None``: it fired on
-# every NonUniformGrid. Its stated reason ("cell-counted intervals are
-# ill-defined under graded dx") is a statement about the axis the probes march
-# along, and a dz_profile does not grade dx. For an x-propagating port the
-# interval is well defined on a z-graded mesh and the solve simply never ran.
-#
-# EVERY test below runs over all four supported directions. The first cut of
-# these tests used '+x' throughout — including both halves of the
-# anti-permutation test — and an implementation that ignored the port's axis
-# entirely (``(dx_arr, dy_arr, dz)[axis]`` -> ``[0]``, i.e. "always read dx")
-# passed the whole file unchanged while re-instating the exact #686 defect for
-# '+y'/'-y' ports. A direction-blind axis gate cannot be gated by
-# direction-blind fixtures.
-# ---------------------------------------------------------------------------
-
-#: The board is defined in the port's own (propagation, width) frame and
-#: mapped onto (x, y) per direction, so all four directions get the SAME
-#: geometry in the frame that matters and therefore the same hand arithmetic
-#: as the uniform case above: stored edge 20, solved midpoint 26.
-_L_P = DOMAIN[0]          # 0.020 m along the propagation axis
-_L_W = DOMAIN[1]          # 0.02632 m across it
-_W_C = Y_C                # trace centre on the width axis
-_N_P = int(round(_L_P / DX))    # 100 interior cells along propagation
-_N_W = int(round(_L_W / DX))    # 132 interior cells across
+_L_P = DOMAIN[0]
+_L_W = DOMAIN[1]
+_W_C = Y_C
+_N_P = int(round(_L_P / DX))
+_N_W = int(round(_L_W / DX))
 
 _ALL_DIRECTIONS = ("+x", "-x", "+y", "-y")
 
@@ -220,11 +189,9 @@ def _nu_sim(direction="+x", **profiles):
                      boundary="cpml", cpml_layers=8, **profiles)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (dom[0], dom[1], H_SUB)), material="sub")
-    # the port's own feed trace (contains the feed plane -> excluded)
     sim.add(_pw_box(direction, 0.001, 0.012466,
                     _W_C - W_TRACE / 2, _W_C + W_TRACE / 2,
                     H_SUB, H_SUB), material="pec")
-    # the patch = downstream reflector
     sim.add(_pw_box(direction, 0.012466, 0.015006, 0.003, 0.02332,
                     H_SUB, H_SUB), material="pec")
     px, py = _pw(direction, 0.0025, _W_C)
@@ -309,14 +276,6 @@ def test_graded_width_axis_does_not_block_the_solve(direction):
     assert not _skips(caught)
 
 
-#: What a graded propagation axis resolves to on the ``_profiles`` board
-#: (#810). The graded profile has 101 cells, 25.0 mm (25 of DX, 50 of 1.5 DX,
-#: 26 of DX), while ``_pw`` mirrors a '-' port about the 20 mm board length,
-#: so a '+' feed (2.5 mm) sits in the leading DX zone and a '-' feed
-#: (17.5 mm) inside the 1.5 DX zone. '+': the 20-cell offset counted in DX
-#: runs past that zone's end at 4.96 mm, so the stored count stays. '-':
-#: counted in the zone's own 297.75 um cells, 5 h_sub = 3.97 mm is 13 cells
-#: and the 13 + 4 x 2 cell ladder stays in the zone.
 _GRADED_PROP_OFFSET = {"+x": 20, "+y": 20, "-x": 13, "-y": 13}
 
 
@@ -324,7 +283,8 @@ _GRADED_PROP_OFFSET = {"+x": 20, "+y": 20, "-x": 13, "-y": 13}
 def test_graded_propagation_axis_bails_out_and_says_so(direction):
     """Graded propagation axis: no #469 interval solve, and a WARNING. The
     automatic offset is the fringing length counted in the runway cell
-    where the ladder stays in one zone, else the stored count."""
+    where the ladder stays in one zone, else the stored count.
+    Counted in the zone's own 297.75 um cells, 5 h_sub = 3.97 mm is 13 cells."""
     sim = _nu_sim(direction, **_profiles(direction, prop_ratio=1.5))
     off, caught = _resolved(sim)
     assert off == _GRADED_PROP_OFFSET[direction]
@@ -390,29 +350,6 @@ def test_traced_profile_is_reported_as_unevaluable(direction):
     assert f"the {direction[1]}-axis cell sizes are a traced" in skipped[0]
 
 
-# ---------------------------------------------------------------------------
-# Issue #681: auto probe-SPACING widening (span solve)
-# ---------------------------------------------------------------------------
-#
-# A ~0.1 lambda_g probe span leaves the N-probe beta fit noise-fragile
-# (measured, 500-trial Monte-Carlo at 1% probe noise, N=5: median beta
-# error 5.5% at a 0.10 lambda_g span vs 0.81% at 0.30 lambda_g). For
-# AUTO-spacing ports _resolve_msl_auto_offsets widens the spacing toward
-# lambda_g(f_max)/4 per probe step, capped by half the reflector interval
-# (the other half stays with the #469 midpoint rule) and by the absorber
-# clearance. Hand arithmetic for the open-thru geometry below (dx=200um,
-# eps_eff_HJ(w=2.413mm, h=0.794mm, eps_r=2.2) = 1.8697):
-#   lambda_g(20 GHz) = c/(20e9*sqrt(1.8697)) = 10.96 mm
-#   target spacing   = round(10.96/4/0.2) = 14 cells
-#   feed at 2.5 mm, '+x', domain 20 mm -> dist_edge = 17.5 mm
-#   clear = 1.676 mm (lambda_g/4 at f_max, eps-proxy 5), cpml = 8 cells
-#   span budget = int((17.5-1.676)/0.2) - 8 - 20 = 51 cells
-#   spacing = min(14, 51//4) = 12, span = 48 cells = 9.6 mm = 0.88 lambda_g
-#   (the Sheen REFLECTOR geometry stays byte-identical: budget
-#    21//2 = 10 cells -> spacing max(2, 10//4) = 2 = the registration
-#    default, offset midpoint 26 -- covered by the #469 tests above.)
-
-
 def _open_thru_sim():
     sim = Simulation(freq_max=20e9, domain=DOMAIN, dx=DX,
                      boundary="cpml", cpml_layers=8)
@@ -425,25 +362,25 @@ def _open_thru_sim():
 
 def test_auto_spacing_widens_on_open_thru():
     """No reflector, long feed: spacing widens 2 -> 12 cells (hand
-    arithmetic above); the deepest probe stays clear of the absorber."""
+    arithmetic above); the deepest probe stays clear of the absorber.
+    The open-thru span budget int((17.5 - 1.676)/0.1985) - 8 - 20 = 51 cells caps the
+    quarter-wavelength target at spacing = min(14, 51//4) = 12 cells."""
     sim = _open_thru_sim()
     sim.add_msl_port(position=(0.0025, Y_C, 0.0), width=W_TRACE,
                      height=H_SUB, direction="+x", impedance=50.0,
                      eps_r_sub=2.2, name="p1")
     (pe,) = sim._msl_ports
-    assert pe.n_probe_spacing == 2      # conservative registration default
+    assert pe.n_probe_spacing == 2
     assert sim._msl_auto_probe_spacing["p1"] == pytest.approx(1.8697, abs=1e-3)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         (r,) = _resolve_msl_auto_offsets(sim, list(sim._msl_ports), _grid())
-    assert r.n_probe_offset == 20       # no reflector: offset untouched
+    assert r.n_probe_offset == 20
     assert r.n_probe_spacing == 12
     deepest = r.n_probe_offset + (r.n_probes - 1) * r.n_probe_spacing
     n_cells = int(DOMAIN[0] / DX)
     clear_cells = int(0.001676 / DX)
     assert deepest <= n_cells - 8 - clear_cells
-    # span in guide wavelengths at f_max: >= 0.3 (the measured-adequate
-    # regime), <= 1.0 + rounding (the (N-1)/4 anti-alias ceiling)
     lam_g = 2.998e8 / (20e9 * np.sqrt(1.8697))
     span = (r.n_probes - 1) * r.n_probe_spacing * DX
     assert 0.3 * lam_g <= span <= 1.05 * lam_g
@@ -460,7 +397,6 @@ def test_auto_spacing_is_idempotent_including_on_resolved_entries():
     assert (r.n_probe_offset, r.n_probe_spacing) \
         == (r2.n_probe_offset, r2.n_probe_spacing) \
         == (r3.n_probe_offset, r3.n_probe_spacing) == (20, 12)
-    # stored entry untouched
     assert sim._msl_ports[0].n_probe_spacing == 2
 
 
@@ -498,28 +434,6 @@ def test_graded_propagation_axis_keeps_registration_spacing():
         )
     assert r.n_probe_spacing == sim._msl_ports[0].n_probe_spacing
 
-
-# ---------------------------------------------------------------------------
-# Issue #810: on a graded propagation axis the automatic offset and spacing
-# are LENGTHS counted in the runway's own cells.
-#
-# A 254 um RO4350-like board (eps_r 3.66) whose feed runway is refined to
-# 127 um under a 254 um boundary cell. add_msl_port counts the automatic
-# lengths in the 254 um scalar; on the runway that count realizes half of
-# each length. Hand arithmetic (lambda_eff = c / f_max / sqrt(3.66)):
-#
-#   f_max    5 h_sub    lambda_eff/(4 pi)   lambda_eff/32 (one step, N=5)
-#   20 GHz   1.270 mm   0.624 mm            0.245 mm
-#   5.5 GHz  1.270 mm   2.267 mm            0.890 mm
-#
-#   stored (254 um): 20 GHz offset 5, spacing 2;   5.5 GHz offset 9, spacing 4
-#   runway (127 um): 20 GHz offset 10, spacing 2;  5.5 GHz offset 18, spacing 7
-#
-# so before #810 probe 0 sat 5 x 127 = 635 um (20 GHz) and 9 x 127 =
-# 1.143 mm (5.5 GHz) from the source, inside the 1.270 mm fringing length,
-# and at 5.5 GHz the ladder spanned 16 x 127 = 2.03 mm of the 3.56 mm
-# lambda_eff/8.
-# ---------------------------------------------------------------------------
 
 _RW_FINE = 127e-6
 _RW_H = 254e-6
@@ -604,7 +518,7 @@ def _realized_ladder(grid, entry):
     return float(source), [float(c) for c in ladder]
 
 
-_RW_CASES = [  # (f_max, stored offset/spacing, runway offset/spacing)
+_RW_CASES = [
     (20e9, (5, 2), (10, 2)),
     (5.5e9, (9, 4), (18, 7)),
 ]
@@ -637,11 +551,9 @@ def test_auto_ladder_is_counted_in_the_runway_cell(direction, f_max,
     assert abs(span - lam_eff / 8) <= _RW_FINE, (
         f"ladder spans {span * 1e3:.3f} mm against lambda_eff/8 = "
         f"{lam_eff / 8 * 1e3:.3f} mm")
-    # every probe on the runway, so the counts name those lengths
     steps = np.diff([source] + ladder)
     assert np.allclose(np.abs(steps[1:]), r.n_probe_spacing * _RW_FINE,
                        rtol=1e-9, atol=0)
-    # the #469/#681 solves still do not run on a graded axis, and it says so
     (msg,) = skips
     assert f"propagation axis {direction[1]} is GRADED" in msg
     assert "counted in this port's own runway cell" in msg
@@ -752,7 +664,7 @@ def _y_runway_board(direction, **port_kw):
     sim.add_msl_port(position=(lx / 2, feed, 0.0), width=2 * _RW_H,
                      height=_RW_H, direction=direction, impedance=50.0,
                      name="p1", **port_kw)
-    trim_resonant_trace(sim, 1)  # #1512: only the resonant runway endpoints.
+    trim_resonant_trace(sim, 1)
     return sim
 
 
@@ -778,21 +690,18 @@ def test_a_uniform_runway_finer_than_dx_counts_in_its_own_cell(direction):
     254 um: 5 cells = 635 um, half the fringing length. The lower edge is now
     recounted in the axis's own cell, 10 cells, and the driver, the
     S-parameter routing check and preflight check 5 give that one number
-    (#1278 review F1)."""
+    (#1278 review F1).
+    Counted from the stored 5, the absorber budget would give 18 and put the deepest probe 0.41 mm
+    past the absorber clearance."""
     sim = _y_runway_board(direction)
-    assert sim._msl_ports[0].n_probe_offset == 5          # counted in dx
+    assert sim._msl_ports[0].n_probe_offset == 5
     r, grid, _ = _resolve_on_its_grid(sim)
     assert r.n_probe_offset == 10
-    # The #681 absorber budget counts from the recounted offset and binds
-    # here: 17 cells per step. Counted from the stored 5 it would give 18
-    # and put the deepest probe 0.41 mm past the absorber clearance.
     assert r.n_probe_spacing == 17
     source, ladder = _realized_ladder(grid, r)
     assert abs(ladder[0] - source) == pytest.approx(5 * _RW_H, rel=1e-9)
-    # the automatic port: neither preflight site calls it short
     assert "source fringing transient" not in _routing_message(sim)
     assert not _own_feed_findings(sim)
-    # an explicit 7: both sites say None gives those 10 cells
     sim7 = _y_runway_board(direction, n_probe_offset=7)
     none_txt = ("leave it None: the automatic offset counts 5·h_sub = "
                 "1.27mm in this runway's 127µm cells, at least 10 cells")

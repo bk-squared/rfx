@@ -53,8 +53,6 @@ def _run(sim, lane, steps):
 
 
 def _assert_depths(grid, expected):
-    # Inspect padding and node coordinates from the grid returned by the solve;
-    # do not derive the expected depths from the production resolver.
     actual = {f: int(getattr(grid, f'pad_{f}')) for f in FACES}
     assert actual == expected, f'requested {expected}; realized {actual}'
     for a in 'xyz':
@@ -79,8 +77,7 @@ def test_realized_face_depths(case, lane, record_property):
     pytest.param('nu_distributed', 2, marks=pytest.mark.distributed),
 ))
 def test_uniform_spacing_fields_match(lane, scale, record_property):
-    # Doubling the absorber explicitly covers depth sensitivity; this pins
-    # cross-path parity, not a depth-independent absolute field value.
+    """Repeated float32 curl/CPML additions on different compiled kernels allow about ten unit roundoffs per step over the 240-step record."""
     uniform, _ = _build('y4_8', 'uniform', scale)
     nu, _ = _build('y4_8', lane, scale)
     ref = np.asarray(_run(uniform, 'uniform', 240).time_series)
@@ -88,9 +85,6 @@ def test_uniform_spacing_fields_match(lane, scale, record_property):
     assert np.isfinite(got).all() and np.max(abs(ref)) > 1e-4
     residual = float(np.max(abs(got-ref)) / np.max(abs(ref)))
     record_property('relative_field_residual', residual)
-    # Repeated float32 curl/CPML additions on different compiled kernels:
-    # allow about ten unit roundoffs per step over this 240-step record.
-    # No waveform fitting, amplitude rescaling, or time shifting is allowed.
     assert residual < 240 * 10 * np.finfo(np.float32).eps, residual
 
 
@@ -104,11 +98,11 @@ def test_plane_wave_reflection_matches_uniform(depths, face, axis, record_proper
     nu = plane_wave_reflection(*args, face_layers=depths, axis=axis, nonuniform=True)
     record_property('uniform_R_dB', uniform.tolist())
     record_property('nu_R_dB', nu.tolist())
-    # Compare linear reflection amplitudes: 32 float32 unit roundoffs of
-    # incident amplitude cover the two reference subtractions at weak R.
-    # The relative term covers propagation roundoff on resolved returns.
+    WEAK_REFLECTION_REFERENCE_SUBTRACTION_ULPS = 32
+    RESOLVED_RETURN_PROPAGATION_RTOL = 1e-3
     np.testing.assert_allclose(10**(nu/20), 10**(uniform/20),
-                               rtol=1e-3, atol=32*np.finfo(np.float32).eps)
+                               rtol=RESOLVED_RETURN_PROPAGATION_RTOL,
+                               atol=WEAK_REFLECTION_REFERENCE_SUBTRACTION_ULPS*np.finfo(np.float32).eps)
 
 
 @pytest.mark.parametrize('depth', (-1, 2.5, 9))
@@ -119,9 +113,7 @@ def test_unrepresentable_depth_names_face_and_budget(depth):
 
 
 def test_traced_mesh_keeps_static_face_depths():
-    # Move one interior cell only; the boundary spacings and pad depths are
-    # fixed. The derivative of the high wall position is exactly one metre
-    # per metre of that cell's width, independent of the asymmetric pads.
+    """The derivative of the high wall position is exactly one metre per metre of the interior cell's width, independent of the asymmetric pads."""
     def high_wall(width):
         dz = jnp.full(11, .001).at[4].set(width)
         grid = make_nonuniform_grid((.013, .017), dz, .001,
@@ -136,9 +128,7 @@ def test_traced_mesh_keeps_static_face_depths():
 @pytest.mark.distributed
 @pytest.mark.parametrize('axis', ('x', 'y', 'z'))
 def test_thin_faces_fit_below_the_scalar_budget(axis, record_property):
-    # One/two active layers around a 2 mm interior give just six nodes,
-    # fewer than the budget of eight; the budget must not widen the box or
-    # dictate the shape of every face's distributed correction window.
+    """One/two active layers around a 2 mm interior give just six nodes, fewer than the budget of eight."""
     domain = [.025, .024, .024]
     source, probe = [.007, .009, .010], [.011, .006, .013]
     index = 'xyz'.index(axis)

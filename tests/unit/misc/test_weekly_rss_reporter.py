@@ -157,9 +157,9 @@ def test_reporter_flags_nodeid_when_rss_high_water_crosses_threshold():
     fake_item.nodeid = "tests/test_fake.py::test_thing"
 
     gen = reporter.pytest_runtest_protocol(fake_item, nextitem=None)
-    next(gen)  # run up to the yield (records start_kb)
+    next(gen)
     try:
-        next(gen)  # resume after yield (records end_kb, may report)
+        next(gen)
     except StopIteration:
         pass
 
@@ -168,10 +168,6 @@ def test_reporter_flags_nodeid_when_rss_high_water_crosses_threshold():
     assert nodeid == "tests/test_fake.py::test_thing"
     assert delta_mb >= 0.0
     assert peak_mb > 0.0
-
-
-# ---------------------------------------------------------------------------
-# issue #545 step 3: the live sampler (background thread).
 
 
 @pytest.mark.skipif(
@@ -221,17 +217,15 @@ def test_read_proc_vmhwm_mb_agrees_with_independent_ru_maxrss_band():
 
 def test_live_sampler_line_format_with_nodeid(monkeypatch, capfd):
     """Synthetic reading (no real allocation): a delta past the threshold
-    prints the documented "[rss-live] VmHWM N MB during <nodeid>" line."""
+    prints the documented "[rss-live] VmHWM N MB during <nodeid>" line.
+    capfd is needed because the line goes to file descriptor 2, which capsys does not see.
+    """
     monkeypatch.setattr(conftest, "_read_proc_vmhwm_mb", lambda: 1500.0)
     sampler = conftest._RSSLiveSampler(threshold_mb=500.0)
     sampler.current_nodeid = "tests/test_fake.py::test_thing"
 
     sampler._sample_once()
 
-    # Asserted on this sampler's own line. The session's real sampler, which
-    # the fast-suite lane runs, reads the same patched function and may add its
-    # own line (it names this test's nodeid, not the fake one). capfd, because
-    # the line goes to file descriptor 2, which capsys does not see.
     captured = capfd.readouterr()
     assert "[rss-live]" not in captured.out
     assert captured.err.splitlines().count(
@@ -240,7 +234,9 @@ def test_live_sampler_line_format_with_nodeid(monkeypatch, capfd):
 
 def test_live_sampler_line_format_without_nodeid(monkeypatch, capfd):
     """When no nodeid is cheaply known yet, the 'during ...' suffix is
-    omitted entirely rather than printed as 'during None'."""
+    omitted entirely rather than printed as 'during None'.
+    The session's real sampler always names a nodeid, so the bare line belongs to the test's sampler.
+    """
     monkeypatch.setattr(conftest, "_read_proc_vmhwm_mb", lambda: 1500.0)
     sampler = conftest._RSSLiveSampler(threshold_mb=500.0)
     assert sampler.current_nodeid is None
@@ -249,7 +245,6 @@ def test_live_sampler_line_format_without_nodeid(monkeypatch, capfd):
 
     captured = capfd.readouterr()
     assert "[rss-live]" not in captured.out
-    # The session's real sampler always names a nodeid, so the bare line is ours.
     assert captured.err.splitlines().count("[rss-live] VmHWM 1500 MB") == 1
 
 
@@ -257,9 +252,9 @@ def test_live_sampler_skips_below_threshold_and_when_unavailable(monkeypatch, ca
     """No line at all when the delta is below threshold, or when the VmHWM
     reading is unavailable (None)."""
     sampler = conftest._RSSLiveSampler(threshold_mb=500.0)
-    sampler.current_nodeid = "tests/test_fake.py::test_thing"   # marks our lines
+    sampler.current_nodeid = "tests/test_fake.py::test_thing"
 
-    monkeypatch.setattr(conftest, "_read_proc_vmhwm_mb", lambda: 100.0)  # +100 MB < 500 MB
+    monkeypatch.setattr(conftest, "_read_proc_vmhwm_mb", lambda: 100.0)
     sampler._sample_once()
     captured = capfd.readouterr()
     assert "test_fake.py" not in captured.out + captured.err
@@ -273,7 +268,7 @@ def test_live_sampler_skips_below_threshold_and_when_unavailable(monkeypatch, ca
 def test_live_sampler_thread_starts_is_daemon_and_stops_cleanly(monkeypatch):
     """The thread this sampler owns is a real daemon thread (never blocks
     process exit) that actually runs on its own clock and stops on demand."""
-    readings = iter([100.0, 100.0, 100.0, 700.0])  # +600 MB on the 4th sample
+    readings = iter([100.0, 100.0, 100.0, 700.0])
     monkeypatch.setattr(conftest, "_read_proc_vmhwm_mb", lambda: next(readings, 700.0))
     sampler = conftest._RSSLiveSampler(threshold_mb=500.0, interval_s=0.02)
     sampler.current_nodeid = "tests/test_fake.py::test_thing"
@@ -313,27 +308,18 @@ def test_reporter_updates_live_sampler_current_nodeid_during_test():
     """The reporter's own hookwrapper feeds the live sampler its "cheaply
     knowable" current nodeid before the test body runs, so a mid-test kill
     still has a nodeid to attribute the next live-sampler line to."""
-    reporter = conftest._RSSHighWaterReporter(threshold_mb=1e9)  # never fires the post-test print
+    POST_TEST_THRESHOLD_MB = 1e9
+    reporter = conftest._RSSHighWaterReporter(threshold_mb=POST_TEST_THRESHOLD_MB)
     fake_item = MagicMock()
     fake_item.nodeid = "tests/test_fake.py::test_other_thing"
 
     gen = reporter.pytest_runtest_protocol(fake_item, nextitem=None)
-    next(gen)  # run up to the yield
+    next(gen)
     assert reporter.live_sampler.current_nodeid == "tests/test_fake.py::test_other_thing"
     try:
         next(gen)
     except StopIteration:
         pass
-
-
-# ---------------------------------------------------------------------------
-# THE property (PR #592 review, CRITICAL): does an [rss-live] line actually
-# survive a real SIGKILL, observed from OUTSIDE pytest's own capture layer?
-# The tests above bind the sampler's output STRING via capfd; none of them
-# prove DELIVERY through pytest's real stderr capture machinery. Only a
-# subprocess pytest run, killed for real and inspected via subprocess.run's
-# own stderr pipe (a wholly separate capture layer from pytest's internal
-# one), proves that.
 
 
 def test_rss_live_sampler_helper_allocates_and_self_sigkills():
@@ -352,23 +338,26 @@ def test_rss_live_sampler_helper_allocates_and_self_sigkills():
     observe the jump and print at least one line, then SIGKILLs its own
     process -- reproducing the OOM-style hard kill mid-test that issue #545
     is about, without needing an actual multi-GB allocation.
+    Every page is touched so it is actually resident, not just reserved.
     """
     if os.environ.get("RFX_TEST_SIGKILL_HELPER") != "1":
         pytest.skip("subprocess-only helper; set RFX_TEST_SIGKILL_HELPER=1 to run it")
-    buf = bytearray(60 * 1024 * 1024)  # 60 MB
+    buf = bytearray(60 * 1024 * 1024)
     for i in range(0, len(buf), 4096):
-        buf[i] = 1  # touch every page so it's actually resident, not just reserved
-    time.sleep(3.0)  # >= one full real _RSSLiveSampler interval_s (2.0s default), with margin
+        buf[i] = 1
+    time.sleep(3.0)
     os.kill(os.getpid(), signal.SIGKILL)
 
 
 def _run_sigkill_helper_subprocess(extra_pytest_args):
+    """An ambient -s would leak into the child and invert the without--s regression pin."""
     root = Path(__file__).resolve().parents[3]
     env = dict(os.environ)
-    env.pop("PYTEST_ADDOPTS", None)  # an ambient -s here would leak into the child and invert the without--s regression pin
+    env.pop("PYTEST_ADDOPTS", None)
     env["RFX_TEST_SIGKILL_HELPER"] = "1"
     env["RFX_WEEKLY_RSS"] = "1"
-    env["RFX_WEEKLY_RSS_THRESHOLD_MB"] = "10"  # low so the 60 MB helper alloc trips it
+    HELPER_RSS_THRESHOLD_MB = "10"
+    env["RFX_WEEKLY_RSS_THRESHOLD_MB"] = HELPER_RSS_THRESHOLD_MB
     return subprocess.run(
         [
             sys.executable, "-m", "pytest", *extra_pytest_args, "-v",

@@ -69,9 +69,6 @@ REMEASURE = (f"`PYTHONPATH=. python {DRIVER} --stage solve --dut <dut> --rung <4
 
 RUNG = 4
 DUTS = ("thru", "bead")
-# The records this guard reads, by the commit each was measured at: both at
-# one commit since the re-measure of 2026-09-30, after the coax lanes began to
-# absorb on all three axes (issue 1218).
 RECORD_COMMITS = {"thru": LOCK_PROVENANCE["commit"], "bead": LOCK_PROVENANCE["commit"]}
 
 
@@ -88,6 +85,11 @@ def driver():
 @pytest.mark.slow_physics
 @pytest.mark.parametrize("dut", DUTS)
 def test_the_coarsest_mesh_still_solves_to_its_stored_s(fixture, driver, dut):
+    """The stored S is at the line's analytic TEM impedance (48.59 ohm) and the solved S at
+    the declared impedance= (50 ohm), so the live S is read back at the line before
+    comparing; at 50 ohm the 1.4 ohm reference step alone moves the bead's |S11| zero
+    from 9.091 to 8.987 GHz.
+    """
     key = f"{dut}_rung{RUNG}"
     entry = fixture["solves"][key]
     assert entry["provenance"]["commit"].startswith(RECORD_COMMITS[dut]), (
@@ -95,9 +97,6 @@ def test_the_coarsest_mesh_still_solves_to_its_stored_s(fixture, driver, dut):
         f"{RECORD_COMMITS[dut]}: the battery was measured again and the guard was "
         "not moved to the new records")
 
-    # Before any step: the line the driver builds today is the recorded line —
-    # the same annulus in cells, pin and shell cells, wall thickness, feed,
-    # probe and bead planes — and the record is as many steps long.
     sim = driver.build_sim(RUNG, dut, drive=entry["drive"])
     live_geometry = driver.assert_realized(sim, RUNG, dut)
     moved = drift.realized_differences(entry["realized"], live_geometry)
@@ -114,10 +113,6 @@ def test_the_coarsest_mesh_still_solves_to_its_stored_s(fixture, driver, dut):
         entry["cross_check"],
         driver.cross_check_result_against_layout(live_geometry, result, "two_port"),
         "cross_check")
-    # The record's S is at the line's analytic TEM impedance (48.59 ohm); since #2014
-    # the result is referred to the declared impedance= (50 ohm), so read it back at
-    # the line before comparing. At 50 ohm the 1.4 ohm reference step alone moves the
-    # bead's |S11| zero 9.091 -> 8.987 GHz.
     live = np.asarray(line_s(result))
     freqs = np.asarray(entry["freqs_hz"], dtype=float)
     np.testing.assert_allclose(np.asarray(result.freqs, dtype=float), freqs,

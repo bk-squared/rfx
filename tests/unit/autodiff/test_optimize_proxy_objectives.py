@@ -7,6 +7,7 @@ Validates:
 4. Integration: optimize() with time-domain proxy reduces loss.
 
 Covers GitHub issue #3: optimize() does not compute s_params.
+Every domain length written as N * (299792458.0 / 10e9 / 20.0) is a whole number of cells of dx, so the solved domain equals the declared one.
 """
 
 from typing import NamedTuple
@@ -28,10 +29,6 @@ from rfx.optimize_objectives import (
 pytestmark = pytest.mark.gpu
 
 
-# ---------------------------------------------------------------------------
-# Lightweight mock Result
-# ---------------------------------------------------------------------------
-
 class _MockResult(NamedTuple):
     """Minimal stand-in for rfx.api.Result."""
     state: object
@@ -44,11 +41,8 @@ class _MockResult(NamedTuple):
 
 def _make_mock_result_no_sparams(n_steps: int = 200, n_probes: int = 2):
     """Build a mock Result with time_series but s_params=None."""
-    # Simulate a decaying pulse at probe 0 (port) and a delayed pulse at probe 1 (output)
     t = jnp.arange(n_steps, dtype=jnp.float32)
-    # Port probe: gaussian pulse early + small reflection late
     port_ts = jnp.exp(-((t - 30) / 10) ** 2) + 0.3 * jnp.exp(-((t - 120) / 15) ** 2)
-    # Output probe: delayed transmitted pulse
     out_ts = 0.7 * jnp.exp(-((t - 80) / 12) ** 2)
     ts = jnp.stack([port_ts, out_ts], axis=1)
     return _MockResult(
@@ -72,10 +66,6 @@ def _make_mock_result_with_sparams(n_freqs: int = 20):
         freqs=freqs,
     )
 
-
-# ---------------------------------------------------------------------------
-# Tests: S-param objectives guard when s_params is None
-# ---------------------------------------------------------------------------
 
 class TestSParamGuards:
     """S-param objectives must raise ValueError when s_params is None."""
@@ -115,7 +105,6 @@ class TestSParamGuards:
         result = _make_mock_result_with_sparams()
         target_freqs = jnp.linspace(2e9, 8e9, 5)
 
-        # These should not raise
         loss_s11 = minimize_s11(target_freqs)(result)
         assert jnp.isfinite(loss_s11)
 
@@ -128,10 +117,6 @@ class TestSParamGuards:
         loss_bw = maximize_bandwidth(f_center=5e9, f_bw=4e9)(result)
         assert jnp.isfinite(loss_bw)
 
-
-# ---------------------------------------------------------------------------
-# Tests: Time-domain proxy objectives
-# ---------------------------------------------------------------------------
 
 class TestMinimizeReflectedEnergy:
     """Tests for minimize_reflected_energy proxy objective."""
@@ -150,7 +135,6 @@ class TestMinimizeReflectedEnergy:
         """Less reflected energy should yield a lower loss value."""
         t = jnp.arange(200, dtype=jnp.float32)
 
-        # High reflection scenario
         port_high = jnp.exp(-((t - 30) / 10) ** 2) + 0.8 * jnp.exp(-((t - 140) / 15) ** 2)
         result_high = _MockResult(
             state=None,
@@ -159,7 +143,6 @@ class TestMinimizeReflectedEnergy:
             freqs=None,
         )
 
-        # Low reflection scenario
         port_low = jnp.exp(-((t - 30) / 10) ** 2) + 0.1 * jnp.exp(-((t - 140) / 15) ** 2)
         result_low = _MockResult(
             state=None,
@@ -199,15 +182,15 @@ class TestMinimizeReflectedEnergy:
         print(f"\n  minimize_reflected_energy grad = {float(g):.6e}")
 
     def test_custom_late_fraction(self):
-        """late_fraction parameter changes the split point."""
+        """late_fraction parameter changes the split point.
+        The check only requires evaluation without a crash because different split points are not strictly guaranteed to give different losses.
+        """
         result = _make_mock_result_no_sparams(n_steps=200, n_probes=2)
         obj_50 = minimize_reflected_energy(port_probe_idx=0, late_fraction=0.5)
         obj_30 = minimize_reflected_energy(port_probe_idx=0, late_fraction=0.3)
         loss_50 = float(obj_50(result))
         loss_30 = float(obj_30(result))
-        # Different split points should generally give different losses
-        # (not strictly guaranteed but highly likely with our mock data)
-        assert loss_50 != loss_30 or True  # Just check it doesn't crash
+        assert loss_50 != loss_30 or True
 
 
 class TestMaximizeTransmittedEnergy:
@@ -227,7 +210,6 @@ class TestMaximizeTransmittedEnergy:
         """More transmitted energy should yield a more negative (lower) loss."""
         t = jnp.arange(200, dtype=jnp.float32)
 
-        # High transmission
         out_high = 0.9 * jnp.exp(-((t - 80) / 12) ** 2)
         result_high = _MockResult(
             state=None,
@@ -236,7 +218,6 @@ class TestMaximizeTransmittedEnergy:
             freqs=None,
         )
 
-        # Low transmission
         out_low = 0.2 * jnp.exp(-((t - 80) / 12) ** 2)
         result_low = _MockResult(
             state=None,
@@ -258,10 +239,8 @@ class TestMaximizeTransmittedEnergy:
     def test_default_last_probe(self):
         """Default output_probe_idx=-1 should use the last probe column."""
         result = _make_mock_result_no_sparams(n_probes=3)
-        obj = maximize_transmitted_energy()  # default -1
+        obj = maximize_transmitted_energy()
         obj(result)
-        # Should not crash; the mock has 2 probes but we asked for 3,
-        # so we need a 3-probe mock
         t = jnp.arange(200, dtype=jnp.float32)
         ts = jnp.stack([
             jnp.exp(-((t - 30) / 10) ** 2),
@@ -269,7 +248,7 @@ class TestMaximizeTransmittedEnergy:
             0.3 * jnp.exp(-((t - 90) / 12) ** 2),
         ], axis=1)
         result3 = _MockResult(state=None, time_series=ts, s_params=None, freqs=None)
-        obj_last = maximize_transmitted_energy()  # idx=-1 = last column
+        obj_last = maximize_transmitted_energy()
         obj_explicit = maximize_transmitted_energy(output_probe_idx=2)
         assert float(obj_last(result3)) == float(obj_explicit(result3))
 
@@ -295,15 +274,13 @@ class TestMaximizeTransmittedEnergy:
         print(f"\n  maximize_transmitted_energy grad = {float(g):.6e}")
 
 
-# ---------------------------------------------------------------------------
-# Integration: optimize() with time-domain proxy
-# ---------------------------------------------------------------------------
-
 class TestOptimizeWithProxy:
     """Integration test: optimize() with time-domain proxy objectives."""
 
     def test_optimize_with_reflected_energy_proxy(self):
-        """Optimization with minimize_reflected_energy should reduce loss."""
+        """Optimization with minimize_reflected_energy should reduce loss.
+        Convergence in 10 iters on a small domain is not guaranteed, so the test only checks finite losses.
+        """
         from rfx.api import Simulation
         from rfx.optimize import DesignRegion, optimize
         from rfx.sources.sources import GaussianPulse
@@ -312,13 +289,12 @@ class TestOptimizeWithProxy:
             freq_max=10e9,
             domain=(41 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0), 14 * (299792458.0 / 10e9 / 20.0)), dx=(299792458.0 / 10e9 / 20.0),
             boundary="pec",
-        )  # solved length; #1887
+        )
         sim.add_port(
             (0.01, 0.01, 0.01), "ez",
             impedance=50.0,
             waveform=GaussianPulse(f0=5e9, bandwidth=0.5),
         )
-        # Probe at port location to measure reflection
         sim.add_probe((0.01, 0.01, 0.01), "ez")
 
         region = DesignRegion(
@@ -340,12 +316,9 @@ class TestOptimizeWithProxy:
         assert not any(np.isnan(l) for l in result.loss_history), \
             f"NaN in loss history: {result.loss_history}"
 
-        # Gradient signal should exist (loss should change)
         initial = result.loss_history[0]
         final = result.loss_history[-1]
         print(f"\n  [Proxy S11] initial={initial:.6e}, final={final:.6e}")
-        # We only check it doesn't crash and produces finite losses;
-        # convergence in 10 iters on a small domain is not guaranteed
         assert all(np.isfinite(l) for l in result.loss_history)
 
     def test_optimize_with_transmitted_energy_proxy(self):
@@ -358,7 +331,7 @@ class TestOptimizeWithProxy:
             freq_max=10e9,
             domain=(27 * (299792458.0 / 10e9 / 20.0), 7 * (299792458.0 / 10e9 / 20.0), 7 * (299792458.0 / 10e9 / 20.0)), dx=(299792458.0 / 10e9 / 20.0),
             boundary="pec",
-        )  # solved length; #1887
+        )
         sim.add_port(
             (0.008, 0.005, 0.005), "ez",
             impedance=50.0,

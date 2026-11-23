@@ -127,12 +127,12 @@ def test_float64_incident_replay_times(kind):
         if kind == 'methodB':
             cfg, state = init_tfsf_methodB(24, 24, DX, dt, nz=24,
                                            cpml_layers=2, tfsf_margin=3, f0=5e9,
-                                           bandwidth=.8, theta_deg=20.)
+                                           bandwidth=.8, theta_deg=20., dtype='float64')
             measure_incident_spectrum(cfg, state, 12, [5e9], DX)
         else:
             cfg, state = init_tfsf(nx=24, ny=24, nz=24, dx=DX, dt=dt,
                                   cpml_layers=2, tfsf_margin=3, f0=5e9,
-                                  bandwidth=.8, closed_box=kind == 'closed', n_steps=12)
+                                  bandwidth=.8, closed_box=kind == 'closed', n_steps=12, dtype='float64')
             measure_normal_incident_spectrum(cfg, state, 12, [5e9], float(dt))
         assert 'TFSF' in observed
 
@@ -171,7 +171,7 @@ def test_uniform_eigenmode_time_grid():
             em = SimpleNamespace(j_grid_lo=0, k_grid_lo=0, n_y_grid=1, n_z_grid=1, cell_indices=[])
             port = SimpleNamespace(excitation=lambda t: jnp.cos(t * 2e10), direction='+x')
             sys.setprofile(inspect)
-            make_msl_port_sources_jm(grid, port, n_steps=12, materials=None, eigenmode_data=em)
+            make_msl_port_sources_jm(grid, port, n_steps=12, materials=None, eigenmode_data=em, dtype='float64')
             assert observed == {'times_e', 'times_h'}
     finally:
         sys.setprofile(previous)

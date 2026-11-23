@@ -54,7 +54,7 @@ check() {
             if [ "$PUBLIC" = 1 ]; then
                 echo '이 파일은 GitHub에 올리지 않고 연구실 NFS에 둡니다.'
             else
-                echo '이 파일은 GitHub에 올리지 않고 NFS에 둡니다 (규칙: remilab-cnu/paper docs/DATA_MANAGEMENT.md 2절).'
+                echo '이 파일은 GitHub에 올리지 않고 NFS에 둡니다.'
             fi
         fi
         bad=1

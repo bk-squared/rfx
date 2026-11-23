@@ -87,7 +87,7 @@ The fresh #752 study uses newly measured, node-aligned zero-thickness foil
 boards with the dielectric top and validated port top on the same plane.
 It retains both the repository formula and a separate full HJ1980 reference.
 Its frozen protocol — geometry, pulse coverage, the original 0.4% hypothesis
-and the rejection screens — was written under `docs/research_notes/issue752/`,
+and the rejection screens — was written in a private folder,
 which `docs/.gitignore` excludes from the repository. A clean clone does not
 have it, so this page no longer links it: a citation nobody can follow is not
 evidence. What IS tracked, and what a reader should go to instead, is

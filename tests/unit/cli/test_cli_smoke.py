@@ -11,7 +11,6 @@ import jax
 import numpy as np
 import pytest
 
-from rfx import diagnostics
 from rfx.cli import main
 
 
@@ -79,13 +78,6 @@ def test_run_writes_probe_on_cpu(tiny_config, tmp_path):
     assert probe.shape == (4, 1)
     assert np.isfinite(probe).all()
     assert np.any(probe != 0)
-
-
-def test_diagnostics_exits_successfully(capsys):
-    # Diagnostics has no flags: argv is ignored, so exercise its real default.
-    with jax.default_device(jax.devices("cpu")[0]):
-        assert diagnostics.main([]) == 0
-    assert "Summary: All critical checks passed." in capsys.readouterr().out
 
 
 @pytest.mark.source_scan

@@ -12,7 +12,6 @@ REPO = Path(__file__).resolve().parents[2]
 @pytest.mark.source_scan
 def test_sparams_no_api_facade_import():
     violations = []
-    # The calculators' shared helpers live in two measurement modules; the scan follows them.
     helpers = [REPO / "rfx" / "measurement" / name for name in ("sparam_assembly.py", "sparam_advisories.py")]
     for path in [*sorted((REPO / "rfx" / "sparams").glob("*.py")), *helpers]:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

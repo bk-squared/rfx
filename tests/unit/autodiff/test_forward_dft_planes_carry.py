@@ -39,7 +39,9 @@ def _build_thin_box_sim(*, dx: float = 0.5e-3, lx: float = 0.020):
 
 def test_forward_result_carries_dft_planes_when_registered():
     """Registering an `add_dft_plane_probe` should populate
-    `ForwardResult.dft_planes` after `forward()`."""
+    `ForwardResult.dft_planes` after `forward()`.
+    The accumulator shape is (n_freqs, *plane_shape).
+    """
     sim = _build_thin_box_sim()
     sim.add_dft_plane_probe(
         axis="z", coordinate=0.0005, component="ez",
@@ -51,13 +53,10 @@ def test_forward_result_carries_dft_planes_when_registered():
         "forward() with an add_dft_plane_probe must populate "
         "ForwardResult.dft_planes"
     )
-    # Name-keyed dict mirrors runners/uniform.py / Result.dft_planes.
     assert "ez_mid" in fr.dft_planes
     plane = fr.dft_planes["ez_mid"]
     assert plane.accumulator is not None
     arr = np.asarray(plane.accumulator)
-    # accumulator shape: (n_freqs, *plane_shape) — non-zero after a
-    # forward run with a real source.
     assert arr.shape[0] == 2, (
         f"expected 2 freqs in plane accumulator, got shape {arr.shape}"
     )
@@ -77,7 +76,9 @@ def test_forward_result_dft_planes_is_none_when_no_probe():
 
 
 def test_forward_result_dft_planes_multiple_planes():
-    """Multiple plane probes should all be carried, in registration order."""
+    """Multiple plane probes should all be carried, in registration order.
+    The accumulator shape is (n_freqs, *plane_shape).
+    """
     sim = _build_thin_box_sim()
     f = jnp.asarray([6e9], dtype=jnp.float32)
     sim.add_dft_plane_probe(axis="z", coordinate=0.0005, component="ez",
@@ -91,6 +92,5 @@ def test_forward_result_dft_planes_multiple_planes():
     )
     for nm in ("ez_mid", "ez_top"):
         assert fr.dft_planes[nm].accumulator is not None
-        # Accumulator shape (n_freqs, *plane_shape) and non-trivial
         arr = np.asarray(fr.dft_planes[nm].accumulator)
         assert arr.ndim == 3 and arr.shape[0] == 1

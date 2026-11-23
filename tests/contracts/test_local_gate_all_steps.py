@@ -12,7 +12,6 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# Stands in for $PYTHON: each check fails when its FAIL_* variable is set.
 FAKE_PYTHON = r'''#!/bin/bash
 case "$*" in
   "- "*) exec "$REAL_PYTHON" "$@" ;;
@@ -31,6 +30,7 @@ esac
 
 
 def run_gate(tmp_path, *, body=None, labels=None, **fail):
+    """Empty arrays under set -u must still work with /bin/bash 3.2 on macOS."""
     ci = tmp_path / "repo" / "scripts" / "ci"
     ci.mkdir(parents=True)
     shutil.copy(ROOT / "scripts/ci/local.sh", ci / "local.sh")
@@ -52,7 +52,6 @@ def run_gate(tmp_path, *, body=None, labels=None, **fail):
         body_path = tmp_path / "body.md"
         body_path.write_text(body, encoding="utf-8")
         args.append(str(body_path))
-    # /bin/bash is 3.2 on macOS: empty arrays under set -u must still work.
     result = subprocess.run(["/bin/bash", str(ci / "local.sh"), *args], env=env, cwd=tmp_path,
                             capture_output=True, text=True, timeout=60)
     return result, logs

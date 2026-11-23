@@ -41,6 +41,11 @@ def objective(eps_r, n_steps=200):
     return jnp.sum(out.time_series ** 2)
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/guide/assets/gradient-behavior/structure.png" loading="lazy" alt="Section in which one medium of εr = 4 fills the domain and the absorber around it; a square conductive region lies in the middle, with one cell inside it outlined as the checked cell." />
+  <figcaption>The model as solved, cut at y = 25 mm through the checked cell: because <code>eps_override</code> sets εr = 4 in every cell, absorber included, the slab differs from its surroundings only by σ = 0.01 S/m. The slab, declared from y = 19 to 31 mm, is built from 18 to 30 mm, and preflight warns that the six-layer absorber is thin.</figcaption>
+</figure>
+
 ### 1. Autodiff against finite differences
 
 Compare the autodiff gradient with a central difference at a few cells:

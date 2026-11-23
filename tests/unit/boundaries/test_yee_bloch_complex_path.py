@@ -50,7 +50,6 @@ def test_real_path_unaffected_by_new_signature(periodic, order):
     for _ in range(6):
         st_a = update_h(st_a, mat, DT, DX, periodic=periodic, stencil_order=order, high_wall=(False, False, False))
         st_a = update_e(st_a, mat, DT, DX, periodic=periodic, stencil_order=order, high_wall=(False, False, False))
-        # explicit bloch=None must be identical to omitting it
         st_b = update_h(st_b, mat, DT, DX, periodic=periodic, stencil_order=order,
                         bloch=None, high_wall=(False, False, False))
         st_b = update_e(st_b, mat, DT, DX, periodic=periodic, stencil_order=order,
@@ -63,7 +62,10 @@ def test_real_path_unaffected_by_new_signature(periodic, order):
 @pytest.mark.parametrize("periodic", [(False, True, True), (True, True, True)])
 def test_complex_zero_bloch_reduces_to_real(periodic):
     """Complex fields with a unit Bloch phase (k=0) reproduce the real path in
-    their real part (the complex path is a strict superset at zero wavenumber)."""
+    their real part (the complex path is a strict superset at zero wavenumber).
+
+    Complex64 real-channel arithmetic fuses/rounds differently from float32 (FMA/op-ordering), so the numerical reduction drifts ~1e-5 rel over 6 steps.
+    """
     mat = _materials()
     st_r = _state(jnp.float32)
     st_c = _state(jnp.complex64)
@@ -76,10 +78,6 @@ def test_complex_zero_bloch_reduces_to_real(periodic):
     for f in ("ex", "ey", "ez", "hx", "hy", "hz"):
         r = np.asarray(getattr(st_r, f))
         c = np.asarray(getattr(st_c, f))
-        # ~1e-4 (not bit-level): complex64 real-channel arithmetic fuses/rounds
-        # differently from float32 (FMA/op-ordering), so the numerical reduction
-        # drifts ~1e-5 rel over 6 steps. The BYTE-identity gate is the real-path
-        # test above; this checks the complex path REDUCES to the real physics.
         scale = max(float(np.max(np.abs(r))), 1.0)
         assert np.allclose(r, c.real, rtol=2e-4, atol=1e-4 * scale), f
         assert np.max(np.abs(c.imag)) < 1e-4 * scale, f"{f}: unit bloch leaked into imag"
@@ -102,7 +100,10 @@ def _kernel_prop_angle(theta_deg, ny=16, nx=600):
     CPML-FREE, soft-source, measured in a clean interior window ahead of the
     source before any x-boundary reflection — the trustworthy injection-angle
     witness for #404 (the in-rfx CPML-terminated path contaminates steep angles
-    via imperfect absorption; see the Phase-B session findings)."""
+    via imperfect absorption; see the Phase-B session findings).
+
+    Snell k_y conservation gives an envelope P uniform in y.
+    """
     from rfx.core.yee import init_state, init_materials
     shape = (nx, ny, 1)
     mat = init_materials(shape)
@@ -131,7 +132,6 @@ def _kernel_prop_angle(theta_deg, ny=16, nx=600):
             hy = np.asarray(st.hy[xl:xh, :, 0]) * yph[None, :]
             Sx += float(np.sum(-ez.real * hy.real))
             Sy += float(np.sum(ez.real * hx.real))
-    # y-uniformity witness (Snell k_y conservation ⇒ envelope P uniform in y)
     ezw = np.abs(np.asarray(st.ez[xl:xh, :, 0]))
     ystd = float(ezw.std(axis=1).mean() / max(ezw.mean(), 1e-30))
     return np.degrees(np.arctan2(Sy, Sx)), ystd

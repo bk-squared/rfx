@@ -39,6 +39,7 @@ with ``mu_axis(i)`` the i-th eigenvalue of that axis's 1-D primal operator
 (``mu(0) = 0``). The case's own gate test checked this separation against a
 dense 3-D assembly of the same operators on a small graded box; that test left
 with the case.
+The uniform-fine profile is the cost control at the graded arms' finest cell.
 """
 
 from __future__ import annotations
@@ -49,17 +50,12 @@ import numpy as np
 
 C0 = 299792458.0
 
-# ---------------------------------------------------------------------------
-# cv14's cavity, verbatim (that case was removed 2026-09-21)
-# ---------------------------------------------------------------------------
-A_X, B_Y, D_Z = 0.050, 0.030, 0.040          # metres (x, y, z)
+CAVITY_DIMENSIONS_M = (0.050, 0.030, 0.040)
+A_X, B_Y, D_Z = CAVITY_DIMENSIONS_M
 CHANNELS = ("ex", "ey", "ez")
 
-# Gated band: every closed-form mode of the cavity below 8.5 GHz -- cv14's
-# seven target modes exactly; the next mode (TE211, 8.658 GHz) is outside.
 BAND_HZ = (4.0e9, 8.5e9)
 
-# Transition chain 0.5 -> 0.7 -> 0.8 -> 1.0 mm: ratios 1.4, 1.143, 1.25.
 CHAIN_MM = (0.7, 0.8)
 
 
@@ -75,24 +71,17 @@ def _profile(parts) -> np.ndarray:
     return p
 
 
-UP = [(CHAIN_MM[1], 1), (CHAIN_MM[0], 1)]      # coarse -> fine  (0.8, 0.7)
-DOWN = [(CHAIN_MM[0], 1), (CHAIN_MM[1], 1)]    # fine -> coarse  (0.7, 0.8)
+UP = [(CHAIN_MM[1], 1), (CHAIN_MM[0], 1)]
+DOWN = [(CHAIN_MM[0], 1), (CHAIN_MM[1], 1)]
 
 PROFILES: dict[str, np.ndarray] = {
-    # (a) cv14's mesh (the control): 40 x 1.0 mm
     "uniform": _profile([(1.0, 40)]),
-    # (b) single fine band, off-centre: coarse 8 | 0.8 0.7 | fine 10 | 0.7 0.8 | coarse 24
     "single_band": _profile([(1.0, 8)] + UP + [(0.5, 10)] + DOWN + [(1.0, 24)]),
-    # (c) small-large-small-large: fine 6 | chain | coarse 10 | chain | fine 9 | chain | coarse 18
     "multi_band": _profile([(0.5, 6)] + DOWN + [(1.0, 10)] + UP + [(0.5, 9)] + DOWN + [(1.0, 18)]),
-    # (d) uniform-FINE at the graded arms' finest cell (cost control, #810)
     "uniform_fine": _profile([(0.5, 80)]),
 }
 
 
-# ---------------------------------------------------------------------------
-# Pozar spectrum and mode identification
-# ---------------------------------------------------------------------------
 
 
 def pozar_freq(m: int, n: int, l: int, a: float = A_X, b: float = B_Y, d: float = D_Z) -> float:
@@ -157,6 +146,7 @@ def identify_modes(lines: list[dict], modes: list[dict], band_hz=BAND_HZ,
     clustered across channels within ``CLUSTER_REL``; each cluster falls in at
     most one Voronoi window. Returns per-mode measured frequency (amplitude-
     weighted cluster mean), the cluster count in the band, and the orphans.
+    CLUSTER_REL is below (142.7 MHz / 7.0 GHz) / 4 = 0.51 %, a quarter of the closest declared mode pair's relative separation.
     """
     floor = AMP_FLOOR_REL if amp_floor_rel is None else amp_floor_rel
     keep = []
@@ -193,19 +183,10 @@ def identify_modes(lines: list[dict], modes: list[dict], band_hz=BAND_HZ,
             "ambiguous": [(n, r) for n, r in ambiguous], "n_declared": len(modes)}
 
 
-# rfx/harminv.py: sv_threshold = 1e-3 (rank floor) -- a line below 1e-3 of the
-# channel's strongest is below the estimator's own model order; the dedup
-# merges lines within 1 % (its ``< 0.01`` relative test), so cross-channel
-# clustering uses a quarter of the closest declared pair instead.
 AMP_FLOOR_REL = 1e-3
-CLUSTER_REL = 0.005     # < (142.7 MHz / 7.0 GHz) / 4 = 0.51 %
+CLUSTER_REL = 0.005
 
 
-# ---------------------------------------------------------------------------
-# The exact Yee lattice on a tensor grid (rfx/stepping/yee.py update_h_nu /
-# update_e_nu; metrics from rfx/nonuniform.py _profile_to_inv_arrays and the
-# #562 bounding node _append_bounding_node)
-# ---------------------------------------------------------------------------
 
 
 def padded_profile(profile) -> np.ndarray:
@@ -232,8 +213,8 @@ def swapped_inv_arrays(profile) -> tuple[np.ndarray, np.ndarray]:
     d = padded_profile(profile)
     inv_local = 1.0 / d
     inv_mean = np.concatenate([inv_local[:1], 2.0 / (d[:-1] + d[1:])])
-    inv_h_bad = np.concatenate([inv_mean[:-1], [0.0]])      # H gets the mean spacing
-    inv_e_bad = inv_local.copy()                             # E gets the local width
+    inv_h_bad = np.concatenate([inv_mean[:-1], [0.0]])
+    inv_e_bad = inv_local.copy()
     return inv_e_bad, inv_h_bad
 
 
@@ -302,17 +283,10 @@ def lattice_freq(mnl: tuple[int, int, int], dz_profile, dxy: float, dt: float | 
             "dev_time": f_lf / f_sp - 1.0}
 
 
-# Committed anchors for the estimator floor: tests/oracle/test_nonuniform_cavity_accuracy.py
-# (a = 40, b = 35 mm; TM111; dx = 1 mm; the docstring table) --
-#   uniform z (40 x 1 mm)                -> 0.0011 % measured
-#   4:1 graded z (0.25 mm band, smoothed 1.3) -> 0.0252 % measured (_MEASURED_ENVELOPE_PCT)
-# The lattice model is evaluated on those exact grids (anchor_residuals) and
-# the estimator floor is 1.5 x the worst |measured - lattice|, rounded up at
-# 1e-6 (tests/_gate_policy.py rule, quantum 1e6).
 ANCHOR_A, ANCHOR_B = 40e-3, 35e-3
 ANCHOR_UNIFORM_PCT = 0.0011
 ANCHOR_GRADED_PCT = 0.0252
-ANCHOR_QUOTE_RESOLUTION = 0.5e-6        # both data are quoted to 1e-4 % = 1e-6
+ANCHOR_QUOTE_RESOLUTION = 0.5e-6
 
 
 def _smooth_grading_1p3(cells, max_ratio: float = 1.3) -> np.ndarray:
@@ -356,14 +330,12 @@ def anchor_residuals(graded_profile=None) -> dict:
     return out
 
 
-# The envelope rule has ONE definition (tests/_gate_policy.py, #528). This module
-# used to carry its own copy of the multiplier and the rounding, pinned equal by
-# a cv24 gate test that left with the case; it imports the shared one now.
 from tests._gate_policy import gate_from_envelope  # noqa: E402
 
 
 def estimator_floor() -> float:
-    """W_est: the lattice-vs-measurement floor from the committed anchors."""
+    """W_est: the lattice-vs-measurement floor from the committed anchors.
+    ANCHOR_QUOTE_RESOLUTION is half of 1e-4 % = 1e-6, the precision to which both anchor data are quoted."""
     res = anchor_residuals()
     worst = max(max(v["residual"], ANCHOR_QUOTE_RESOLUTION) for v in res.values())
     return gate_from_envelope(worst, quantum=1e6)

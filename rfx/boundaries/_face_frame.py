@@ -1,22 +1,45 @@
-"""Static physical rows and per-face ownership for x-slab wall writes."""
+"""Static physical rows and per-face ownership for wall writes.
 
+The x-slab frame bounds a distributed shard's physical rows; a
+:class:`HighPadFrame` bounds the physical rows of an array allocated with a
+high pad on any axis (``rfx.stepping.vector_pad``).
+"""
+
+import jax
 import jax.numpy as jnp
 
 
+class HighPadFrame(dict):
+    """``{axis: (0, n_phys)}`` of an array allocated with cells beyond ``n_phys``.
+
+    The cells past ``n_phys`` are padding, not domain: the wall is at row
+    ``n_phys - 1`` and an absorber face keeps its allocated depth there.
+    """
+
+    high_pad = True
+
+
+jax.tree_util.register_pytree_node(
+    HighPadFrame, lambda f: ((), tuple(sorted(f.items()))), lambda rows, _: HighPadFrame(rows))
+
+
 def needs_face_frame(shape, faces, frame, owned):
-    """Validate an axis-name mapping and retain the original default path."""
+    """Whether any axis's physical rows differ from the array, or a face is not owned.
+
+    Only a :class:`HighPadFrame` may bound y or z; a slab frame bounds x alone.
+    """
     if frame is not None:
-        for axis, letter in enumerate("xyz"):
-            bounds = frame.get(letter, (0, shape[axis]))
-            if letter != "x" and tuple(bounds) != (0, shape[axis]):
-                raise ValueError("Only x may have a non-default face frame")
-        if tuple(frame.get("x", (0, shape[0]))) != (0, shape[0]):
+        bounded = [letter for axis, letter in enumerate("xyz")
+                   if tuple(frame.get(letter, (0, shape[axis]))) != (0, shape[axis])]
+        if not getattr(frame, "high_pad", False) and set(bounded) - {"x"}:
+            raise ValueError("Only x may have a non-default face frame")
+        if bounded:
             return True
     return owned is not None and any(owned.get(face, True) is not True for face in faces)
 
 
-def apply_framed_faces(state, faces, frame, owned):
-    """Select only the named electric face's row."""
+def apply_framed_faces(state, faces, frame, owned, normal_ghost_faces=()):
+    """Select only the named electric face's row (and each high normal ghost row)."""
     prefix = "e"
     fields = {prefix + c: getattr(state, prefix + c) for c in "xyz"}
     for axis, letter in enumerate("xyz"):
@@ -41,4 +64,13 @@ def apply_framed_faces(state, faces, frame, owned):
                     old = fields[key][edge]
                     new = jnp.where(owner, jnp.zeros_like(old), old)
                 fields[key] = fields[key].at[edge].set(new)
+    for face in (normal_ghost_faces if getattr(frame, "high_pad", False) else ()):
+        letter, side = face.split("_")
+        if side != "hi":
+            continue
+        axis = "xyz".index(letter)
+        hi = state.ex.shape[axis] if frame is None else frame.get(letter, (0, state.ex.shape[axis]))[1]
+        edge = [slice(None)] * 3
+        edge[axis] = hi - 1
+        fields[prefix + letter] = fields[prefix + letter].at[tuple(edge)].set(0.0)
     return state._replace(**fields)

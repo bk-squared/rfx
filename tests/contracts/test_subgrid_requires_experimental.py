@@ -36,7 +36,7 @@ def test_sequential_material_sweep_refused_before_runner(monkeypatch):
     from rfx.vmap_sweep import vmap_material_sweep
     from tests.unit.nonuniform.test_refinement_refused_on_graded_mesh import _lumped_port_box
     sim = _lumped_port_box(True)
-    sim._refinement.pop("validation")  # exercise the default for restored declarations too
+    sim._refinement.pop("validation")
     def entered(*args, **kwargs):
         pytest.fail("subgridded runner entered")
     monkeypatch.setattr(subgridded, "run_subgridded_path", entered)
@@ -75,7 +75,7 @@ def test_opt_in_runs_with_one_warning(mode, monkeypatch):
     assert 'validation="research"' not in str(notices[0].message)
     assert notices[0].filename == __file__
     assert result.time_series.shape[0] == 2
-    assert closures == [True]  # #1465: same closure as the former production default
+    assert closures == [True]
 
 
 @pytest.mark.parametrize("mode", ["production", "research", "off"])

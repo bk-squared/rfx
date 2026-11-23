@@ -35,7 +35,7 @@ same `pec_mask` array the solver's Yee update masks against
 ======================================================================
 R1 memory citations
 ======================================================================
-  - `rfx-known-issues.md` "#318 RESOLVED" entry: dead cells are excluded
+  - `the recorded findings` "#318 RESOLVED" entry: dead cells are excluded
     from the port's sigma distribution/drive/normalization by design --
     this script does not question THAT mechanism, only which cells the
     ADVISORY (vs the assembler) classifies as dead on this one fixture.
@@ -54,7 +54,7 @@ R1 memory citations
 R3 pre-commit self-audit
 ======================================================================
   1. Contradicted by known memory? No -- see R1; this SHARPENS the #318/
-     #319 dead-cell-accounting class (docs/agent-memory/rfx-known-issues.md
+     #319 dead-cell-accounting class (the recorded findings
      "#318 RESOLVED" entry), it does not contradict it.
   2. R2 trip? No new FDTD run, no new mechanism-hypothesis attempt -- one
      geometry-only instrumented comparison, pre-declared above, first

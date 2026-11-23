@@ -6,6 +6,7 @@ resources:
   preset: gpu-rtx4090
 image: nvcr.io/nvidia/jax:24.10-py3
 env:
+  RFX_WORKSPACE: "FILL_BEFORE_SUBMIT"
   PYTHONUNBUFFERED: "1"
   XLA_PYTHON_CLIENT_PREALLOCATE: "false"
   HDF5_USE_FILE_LOCKING: "FALSE"
@@ -14,7 +15,8 @@ mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
   set -euo pipefail
-  primary=/root/workspace/byungkwan-workspace/research/rfx
+  test "$RFX_WORKSPACE" != "FILL_BEFORE_SUBMIT"
+  primary=/root/workspace/$RFX_WORKSPACE/research/rfx
   cd "$primary"
   git config --global --add safe.directory "$primary" || true
   echo "=== rfx GPU suite (W2.4 maintained harness) ==="
@@ -24,7 +26,7 @@ run: |-
   # 2026-09-15 (run 369367261080): the primary checkout sat 6 commits behind
   # main after the #1038 runner merges, so a "post-merge" GPU run silently
   # tested pre-merge code. The tree is exported with `git archive` into a
-  # scratch dir, so the PI's checkout is not touched (no checkout, no worktree
+  # scratch dir, so the primary checkout is not touched (no checkout, no worktree
   # metadata, no detached HEAD). Override with RFX_GPU_SUITE_REF=<sha|branch>.
   git fetch -q origin
   ref="${RFX_GPU_SUITE_REF:-origin/main}"
@@ -37,7 +39,7 @@ run: |-
   rm -rf "$src" && mkdir -p "$src"
   git archive --format=tar "$sha" | tar -xf - -C "$src"
   echo "=== install runtime dependencies (exported tree, no editable install) ==="
-  # Python 3.11 + JAX 0.10.2 in a uv venv (PI 2026-09-25); see scripts/vessl_validation_lane_a6000.yaml.
+  # Python 3.11 + JAX 0.10.2 in a uv venv; see scripts/vessl_validation_lane_a6000.yaml.
   # Everything below runs "$PY", never the image's python 3.10 (JAX 0.4.33, #1252).
   python -m pip install -q "uv==0.12.19"
   uv venv -q --python 3.11.16 /tmp/venv-py311

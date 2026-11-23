@@ -80,11 +80,9 @@ import numpy as np
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz
 from rfx.optimize import _adam_update
+from rfx.errors import RfxRefusal
+from rfx.material_fit import _EPS_INF_FLOOR, _warn_fit_bounds
 
-
-# ---------------------------------------------------------------------------
-# Result container
-# ---------------------------------------------------------------------------
 
 @dataclass
 class MaterialFitResult:
@@ -117,10 +115,6 @@ class MaterialFitResult:
     converged: bool = False
 
 
-# ---------------------------------------------------------------------------
-# Log-space parameterization
-# ---------------------------------------------------------------------------
-
 def _poles_to_params(
     eps_inf: float,
     debye_poles: list[DebyePole],
@@ -131,6 +125,8 @@ def _poles_to_params(
     Layout: [log(eps_inf), log(de_1), log(tau_1), ...,
              log(de_L1), log(omega0_L1), log(delta_L1), ...]
     """
+    from rfx.materials.pole_map import refuse_maps
+    refuse_maps(lorentz_poles, "differentiable_material_fit")
     params = [jnp.log(jnp.array(max(eps_inf, 1e-12)))]
     for pole in debye_poles:
         params.append(jnp.log(jnp.array(max(pole.delta_eps, 1e-12))))
@@ -140,7 +136,6 @@ def _poles_to_params(
         from rfx.errors import RfxUnsupported
         if isinstance(lorentz_pole.kappa, RelativeStrength):
             raise RfxUnsupported("differentiable_material_fit does not optimize RelativeStrength; supply SI pole strengths")
-        # Recover delta_eps from kappa = delta_eps * omega_0^2
         omega_0 = max(lorentz_pole.omega_0, 1e-6)
         delta_eps = lorentz_pole.kappa / (omega_0 ** 2) if omega_0 > 0 else 1.0
         params.append(jnp.log(jnp.array(max(delta_eps, 1e-12))))
@@ -191,10 +186,6 @@ def _params_to_lorentz_poles(
     return poles
 
 
-# ---------------------------------------------------------------------------
-# S-parameter loss
-# ---------------------------------------------------------------------------
-
 def sparam_loss(
     s_sim: jnp.ndarray,
     s_meas: jnp.ndarray,
@@ -224,16 +215,11 @@ def sparam_loss(
     phase_sim = jnp.angle(s_sim)
     phase_meas = jnp.angle(s_meas)
     phase_diff = phase_sim - phase_meas
-    # Wrap to [-pi, pi] to avoid 2*pi discontinuities
     phase_diff = jnp.arctan2(jnp.sin(phase_diff), jnp.cos(phase_diff))
     phase_loss = jnp.mean(phase_diff ** 2)
 
     return weight_mag * mag_loss + weight_phase * phase_loss
 
-
-# ---------------------------------------------------------------------------
-# Default initial guess from frequency band
-# ---------------------------------------------------------------------------
 
 def _default_debye_guess(
     freqs: np.ndarray,
@@ -266,15 +252,11 @@ def _default_lorentz_guess(
     )
     poles = []
     for w0 in omega_guesses:
-        delta = float(w0 * 0.05)  # Q ~ 10
-        kappa = 1.0 * w0 ** 2  # delta_eps = 1.0
+        delta = float(w0 * 0.05)
+        kappa = 1.0 * w0 ** 2
         poles.append(LorentzPole(omega_0=float(w0), delta=delta, kappa=kappa))
     return poles
 
-
-# ---------------------------------------------------------------------------
-# Compatibility wrapper for callers of the former local Adam helper
-# ---------------------------------------------------------------------------
 
 def _adam_step(
     params: jnp.ndarray,
@@ -291,10 +273,6 @@ def _adam_step(
     update, m, v = _adam_update(m, v, grad, step, lr, beta1, beta2, eps)
     return params - update, m, v
 
-
-# ---------------------------------------------------------------------------
-# Main fitting function
-# ---------------------------------------------------------------------------
 
 def _normalize_probe_spectra(
     s_raw: "jnp.ndarray",
@@ -332,8 +310,6 @@ def _normalize_probe_spectra(
         return s_sim
     if normalization == "reference_probe":
         ref = s_raw[reference_probe]
-        # complex per-frequency division; floor |ref| to avoid 0/0 at band
-        # edges where the reference has no energy
         ref_safe = jnp.where(jnp.abs(ref) > 1e-30, ref,
                              jnp.asarray(1e-30, dtype=ref.dtype))
         for i in range(min(n_ports, n_probes)):
@@ -349,7 +325,6 @@ def _require_supported_fixture(sim) -> None:
     """Admit each factory declaration, including its traced rebuild."""
     from rfx.runners._admission import admit
     admit(sim, "material_fit")
-    # The scan already forces z periodic in 2D, even without an override.
     if any(axis != "z" or sim._mode == "3d" for axis in sim._periodic_axes):
         raise NotImplementedError(
             "differentiable_material_fit() does not support periodic axes "
@@ -429,7 +404,8 @@ def differentiable_material_fit(
         Adam learning rate.
     initial_guess : DebyeFitResult, LorentzFitResult, or None
         Initial pole parameters from ``fit_debye`` / ``fit_lorentz``.
-        If None, a frequency-band-based default is used.
+        If None, a frequency-band-based default is used. Initial eps_inf below
+        1 is refused; Adam updates project eps_inf to at least 1.
     weight_mag, weight_phase : float
         Weights for magnitude and phase in the S-parameter loss.
     checkpoint : bool
@@ -466,9 +442,6 @@ def differentiable_material_fit(
     freqs = np.asarray(freqs, dtype=np.float64)
     s_measured = np.asarray(s_measured)
 
-    # ------------------------------------------------------------------
-    # Build initial guess
-    # ------------------------------------------------------------------
     if initial_guess is not None:
         from rfx.material_fit import DebyeFitResult, LorentzFitResult
 
@@ -488,7 +461,12 @@ def differentiable_material_fit(
         eps_inf_init, debye_init = _default_debye_guess(freqs, n_debye_poles)
         lorentz_init = _default_lorentz_guess(freqs, n_lorentz_poles)
 
-    # Pad if needed
+    if eps_inf_init < _EPS_INF_FLOOR:
+        raise RfxRefusal(
+            f"initial eps_inf={eps_inf_init:g} is below {_EPS_INF_FLOOR:g}; "
+            "fit_debye and fit_lorentz return eps_inf >= 1 when fitted freely; "
+            "older results or fits with a fixed eps_inf below 1 are not accepted")
+
     while len(debye_init) < n_debye_poles:
         debye_init.append(DebyePole(delta_eps=1.0, tau=1e-11))
     while len(lorentz_init) < n_lorentz_poles:
@@ -497,10 +475,6 @@ def differentiable_material_fit(
             LorentzPole(omega_0=omega0, delta=omega0 * 0.05, kappa=omega0 ** 2)
         )
 
-    # ------------------------------------------------------------------
-    # Static setup: build grid and non-DUT materials ONCE
-    # ------------------------------------------------------------------
-    # Call sim_factory with initial values to get the Simulation object
     dummy_sim = sim_factory(
         eps_inf_init,
         debye_init[:n_debye_poles],
@@ -514,19 +488,15 @@ def differentiable_material_fit(
 
     def forward(p, *, _fixture=None, _validate_only=False):
         """log-space params -> FDTD -> S-params -> loss scalar."""
-        # Unpack traced pole parameters
         eps_inf, debye_poles = _params_to_debye_poles(p, n_debye_poles)
         lorentz_offset = 1 + 2 * n_debye_poles
         lorentz_poles = _params_to_lorentz_poles(p, n_lorentz_poles, lorentz_offset)
 
-        # Rebuild Simulation with traced poles (Python construction is not traced,
-        # but the pole VALUES inside DebyePole/LorentzPole are JAX tracers)
         sim = (_fixture if _fixture is not None
                else sim_factory(eps_inf, debye_poles, lorentz_poles))
 
-        resolve_field_dtype(sim._precision)
+        field_dtype = resolve_field_dtype(sim._precision) or jnp.float32
 
-        # Assemble materials (geometry masks are static, but eps_inf flows through)
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
         from rfx.model.wall_loss import refuse_wall_loss
         refuse_wall_loss(sim, "differentiable material fit")
@@ -542,7 +512,6 @@ def differentiable_material_fit(
             grid, pec_sheets=_fit_pec_sheets, pec_wires=_fit_pec_wires)
         _require_ports_clear_of_pec(sim, grid, pec_mask, _fit_pec_sheets, _fit_pec_wires)
 
-        # Setup ports (fold port impedance into materials)
         loaded_ports = []
         for pe in sim._ports:
             lp = LumpedPort(
@@ -557,9 +526,8 @@ def differentiable_material_fit(
         from rfx.model.materials import with_components
         periodic = resolve_periodic(grid, None)
         materials = with_components(materials, grid, periodic=periodic,
-            debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+            debye_spec=debye_spec, lorentz_spec=lorentz_spec, field_dtype=field_dtype)
 
-        # Initialize dispersion with traced poles
         debye = None
         if debye_spec is not None:
             debye_poles_spec, debye_masks = debye_spec
@@ -570,7 +538,6 @@ def differentiable_material_fit(
             lorentz_poles_spec, lorentz_masks = lorentz_spec
             lorentz = init_lorentz(lorentz_poles_spec, materials, dt, mask=lorentz_masks, periodic=periodic)
 
-        # Build sources and probes
         sources = []
         for lp in loaded_ports:
             sources.append(make_port_source(grid, lp, materials, n_steps))
@@ -579,7 +546,6 @@ def differentiable_material_fit(
         for pe in sim._probes:
             probes.append(make_probe(grid, pe.position, pe.component))
 
-        # Run FDTD
         boundary = "pec"
         if hasattr(sim, '_boundary'):
             boundary = sim._boundary
@@ -597,15 +563,10 @@ def differentiable_material_fit(
             pec_wires=tuple(_fit_pec_wires),
         )
 
-        # Extract S-params from time series via DFT
-        # Use probe time series and compute S-params from voltage/current DFTs
-        ts = result.time_series  # (n_steps, n_probes)
+        ts = result.time_series
 
-        # S_raw ~ DFT of probe signals, shape (n_probes, n_freqs) complex
         s_raw = probe_spectrum(ts, freqs, dt)
 
-        # Probe spectra -> diagonal S-proxy under the selected mode
-        # (the pure helper carries the unit-tested arithmetic)
         n_ports = s_meas_jnp.shape[0]
         s_sim = _normalize_probe_spectra(
             s_raw, n_ports, s_meas_jnp.shape,
@@ -618,14 +579,11 @@ def differentiable_material_fit(
         )
         return loss, s_sim
 
-    # Validate the initial declaration through the same preparation as each
-    # traced rebuild, without rebuilding the factory or starting assembly.
     forward(params, _fixture=dummy_sim, _validate_only=True)
     grid = dummy_sim._build_grid()
     dt = grid.dt
     n_steps = grid.num_timesteps(num_periods=20.0)
 
-    # ---- normalization-mode validation, fail-loud up front --
     if normalization not in ("per_probe_max", "reference_probe"):
         raise ValueError(
             f"normalization must be 'per_probe_max' or 'reference_probe', "
@@ -664,9 +622,6 @@ def differentiable_material_fit(
             )
         reference_probe = _ref_pos
 
-    # ------------------------------------------------------------------
-    # Optimization loop (Adam)
-    # ------------------------------------------------------------------
     grad_fn = jax.value_and_grad(forward, has_aux=True)
 
     m = jnp.zeros_like(params)
@@ -682,20 +637,18 @@ def differentiable_material_fit(
 
         step, m, v = _adam_update(m, v, grad, it, learning_rate)
         params = params - step
+        params = params.at[0].set(jnp.maximum(params[0], np.log(_EPS_INF_FLOOR)))
 
         if verbose and (it % 10 == 0 or it == n_iterations - 1):
             print(f"  iter {it:4d}  loss = {loss_val:.6e}  "
                   f"|grad| = {float(jnp.max(jnp.abs(grad))):.3e}")
 
-    # ------------------------------------------------------------------
-    # Extract final poles
-    # ------------------------------------------------------------------
     final_eps_inf, final_debye = _params_to_debye_poles(params, n_debye_poles)
     lorentz_offset = 1 + 2 * n_debye_poles
     final_lorentz = _params_to_lorentz_poles(params, n_lorentz_poles, lorentz_offset)
 
-    # Convert from JAX scalars to Python floats
     eps_inf_out = float(final_eps_inf)
+    _warn_fit_bounds(eps_inf_out)
     debye_out = [
         DebyePole(delta_eps=float(p.delta_eps), tau=float(p.tau))
         for p in final_debye
@@ -705,7 +658,6 @@ def differentiable_material_fit(
         for p in final_lorentz
     ]
 
-    # Check convergence
     converged = False
     if len(loss_history) >= 5:
         recent = loss_history[-5:]

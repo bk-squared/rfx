@@ -9,10 +9,11 @@ from rfx.probes.probes import _metric_ampere_loop
 
 @pytest.mark.parametrize('component,axes', [('ex', (1, 2)), ('ey', (2, 0)), ('ez', (0, 1))])
 def test_ampere_contour_uses_both_transverse_duals(component, axes):
-    # Independent linear H fields make each backward difference exactly one.
+
     indices = np.indices((4, 4, 4))
     state = SimpleNamespace(hx=indices[2]+indices[1],
                             hy=indices[0]+indices[2], hz=indices[1]+indices[0])
+    assert all(np.all(np.diff(getattr(state, c), axis=a) == 1) for c, a in (("hx", 1), ("hx", 2), ("hy", 0), ("hy", 2), ("hz", 0), ("hz", 1))), 'linear magnetic fields have unit backward differences'
     lengths = (2., 3., 5.)
     grid = SimpleNamespace(duals=lambda axis: np.full(4, lengths[axis]))
     got = _metric_ampere_loop(state, (2, 2, 2), component, grid, (False,)*3)
@@ -36,10 +37,11 @@ def test_wire_port_lengths_are_the_realized_cells_of_a_graded_grid():
     port = wire_port_from_entry(sim._ports[0])
     shape = tuple(grid.shape)
     indices = np.indices(shape).astype(np.float32)
-    # Unit backward differences in H, and a distinct E value per z cell.
+
     state = SimpleNamespace(hx=indices[2]+indices[1], hy=indices[0]+indices[2],
                             hz=indices[1]+indices[0],
                             ez=1.0 + indices[2], ex=indices[0]*0, ey=indices[0]*0)
+    assert all(np.all(np.diff(getattr(state, c), axis=a) == 1) for c, a in (("hx", 1), ("hx", 2), ("hy", 0), ("hy", 2), ("hz", 0), ("hz", 1))) and np.unique(state.ez[0, 0, :]).size == shape[2], 'magnetic differences are unit and electric samples differ along z'
     dual_x, dual_y = (DXP[3] + DXP[4]) / 2, (DYP[3] + DYP[4]) / 2
     np.testing.assert_allclose(float(wire_port_current(state, grid, port)),
                                dual_y - dual_x, rtol=1e-5)

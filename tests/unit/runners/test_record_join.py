@@ -23,6 +23,7 @@ def arrays(kind, value):
 @pytest.mark.parametrize('padded', [False, True])
 @pytest.mark.parametrize('kind', KINDS)
 def test_same_buffer_bits(kind, padded, n):
+    """Require n=2 moment nonzero bits; moment sum zero signs are unspecified."""
     layout = layout_for(kind, n, nx=18 + int(padded))
     buffer = filled(layout)
     expected = arrays(kind, frozen(layout, buffer))
@@ -32,7 +33,6 @@ def test_same_buffer_bits(kind, padded, n):
         a, b = np.asarray(a), np.asarray(b)
         assert a.shape == b.shape and a.dtype == b.dtype
         if kind == 'moments':
-            # Sum zero signs are not specified; the n=2 nonzero bits are.
             a, b = a.copy(), b.copy()
             for value in (a, b):
                 value.real[value.real == 0] = 0.

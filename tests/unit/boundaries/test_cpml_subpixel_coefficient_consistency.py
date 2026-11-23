@@ -42,15 +42,6 @@ A = 1.0e-6
 DX = A / 10
 
 
-# ---------------------------------------------------------------------------
-# The Stage-B assembly fix, as a test-local helper.
-#
-# #1043's landing continues the declared geometry into the absorber pad on the
-# SMOOTHED array, not just on ``materials``. That is Stage B and does not live
-# under ``rfx/`` yet; these tests install it here so the stability question it
-# raises is gated before it lands. Replace this helper with the production call
-# when Stage B does land -- do not delete the tests with it.
-# ---------------------------------------------------------------------------
 
 def _install_pad_replication(monkeypatch):
     """Replicate the smoothed permittivity into every absorber pad."""
@@ -89,9 +80,6 @@ def _guide_sim(boundary: str, sx=8.0 * A, sy=8.0 * A, cpml_layers=10):
     return sim
 
 
-# ---------------------------------------------------------------------------
-# (a) the physics gate: a boundary-touching dielectric must stay finite
-# ---------------------------------------------------------------------------
 
 @pytest.mark.slow
 @pytest.mark.parametrize("boundary", ["cpml", "upml"])
@@ -128,9 +116,6 @@ def test_boundary_touching_dielectric_in_pad_stays_finite(monkeypatch,
         f"is still ringing, so no DFT-derived number off this run is readable.")
 
 
-# ---------------------------------------------------------------------------
-# (b) the mechanism gate: the one-cell amplification factor
-# ---------------------------------------------------------------------------
 
 def amplification_rho(n_layers, dx, dt, eps_a, eps_b, n=24, absorber=True):
     """Spectral radius of the 1-D leapfrog + psi update over ``n`` cells.
@@ -152,7 +137,7 @@ def amplification_rho(n_layers, dx, dt, eps_a, eps_b, n=24, absorber=True):
     b = np.ones(n)
     c = np.zeros(n)
     if absorber:
-        p = _cpml_profile(n_layers, dt, dx)
+        p = _cpml_profile(n_layers, dt, dx, dtype="float32")
         b[:n_layers] = np.asarray(p.b, dtype=float)
         c[:n_layers] = np.asarray(p.c, dtype=float)
     ea = np.full(n, float(eps_a))
@@ -194,13 +179,12 @@ def test_amplification_is_bounded_only_when_the_two_epsilons_agree():
     an eigenvalue rather than as a symptom. The comparator is checked first:
     a lossless vacuum slice must sit exactly on the unit circle, which is what
     caught a sign error in an earlier version of this matrix.
+
+    6.5 against 1.0 is the measured failing cell -- a Kottke interface value carried into the pad beside a staircase array that reads vacuum at the same cell.
     """
     dt = 0.5 * DX / C0
     tol = 1e-6
 
-    # Comparator first -- a model that cannot reproduce the trivial case
-    # cannot be read on the interesting one. Both trivial cases: a plain
-    # lossless slice, and the same slice with a consistent absorber.
     rho_bare = amplification_rho(10, DX, dt, 1.0, 1.0, absorber=False)
     assert abs(rho_bare - 1.0) <= tol, (
         f"the amplification model is wrong: a lossless slice with NO absorber "
@@ -210,22 +194,12 @@ def test_amplification_is_bounded_only_when_the_two_epsilons_agree():
         f"the amplification model is wrong: a lossless vacuum CPML slice gives "
         f"rho={rho_vac}, and it must be 1")
 
-    # Consistent: marginal, at every absolute permittivity. This is what
-    # falsifies a "high eps in the graded region breaks the CFL bound"
-    # reading -- eps 1 through 80 are all exactly marginal.
     for eps in (1.0, 2.0, 6.5, 12.0, 80.0):
         rho = amplification_rho(10, DX, dt, eps, eps)
         assert rho <= 1.0 + tol, f"consistent eps={eps} gives rho={rho} > 1"
 
-    # eps_b ABOVE eps_a: under-damped absorber, still not amplifying. This is
-    # the pre-#1043 state of a boundary-touching guide (aniso_eps = 1 in the
-    # pad, materials.eps_r = 12 there) and it is why that case was wrong but
-    # stable.
     assert amplification_rho(10, DX, dt, 1.0, 12.0) <= 1.0 + tol
 
-    # eps_b BELOW eps_a: amplifying. 6.5 against 1.0 is the measured failing
-    # cell -- a Kottke interface value carried into the pad beside a staircase
-    # array that reads vacuum at the same cell.
     rho_defect = amplification_rho(10, DX, dt, 6.5, 1.0)
     assert rho_defect > 1.0 + tol, (
         f"expected an amplifying update at eps_a=6.5 / eps_b=1.0, got "
@@ -235,9 +209,6 @@ def test_amplification_is_bounded_only_when_the_two_epsilons_agree():
         f"this was measured. Re-derive before relaxing.")
 
 
-# ---------------------------------------------------------------------------
-# (c) the regression pin: threading an equal permittivity changes nothing
-# ---------------------------------------------------------------------------
 
 def _seeded_cpml_call(inv_eps_r_update, eps_r_value=4.0):
     """Run one ``apply_cpml_e`` on a seeded psi state and return the E fields.
@@ -284,11 +255,6 @@ def test_threading_an_equal_permittivity_is_bit_identical():
     """
     eps_r = 4.0
     base = _seeded_cpml_call(None, eps_r)
-    # Hand it a float64 numpy array -- what ``compute_smoothed_eps`` returns
-    # under JAX_ENABLE_X64. ``apply_cpml_e`` must bring it back to the
-    # material dtype before the coefficient is formed; under x64-off JAX
-    # truncates anyway, so this assertion holds in both environments and the
-    # x64 lane is where it actually bites.
     sim = Simulation(freq_max=0.25 * C0 / A, domain=(3.0 * A, 3.0 * A, DX),
                      dx=DX, boundary="cpml", cpml_layers=6, mode="2d_tmz")
     shape = sim._build_grid().shape
@@ -305,11 +271,8 @@ def test_threading_an_equal_permittivity_is_bit_identical():
 
 
 @pytest.mark.parametrize("subpixel,dispersive,expect_threaded", [
-    (False, False, True),    # #1210: the plain E update is per-component too
-    (True, False, True),     # Stage 1 -> 1/aniso_eps
-    # dispersion wins the E update, so it wins here too (with subpixel on,
-    # a dispersive run is refused since 2.0: the tensor would be dropped);
-    # since #1260 its eps_inf is the same per-component edge mean
+    (False, False, True),
+    (True, False, True),
     (False, True, True),
 ])
 def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
@@ -349,6 +312,8 @@ def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
     the measurement lives in
     `scripts/diagnostics/cpml_subpixel_stability/cv01_control.py`, removed
     with cv01 on 2026-09-21 and kept at commit 66ed61c2.)
+
+    A handful of steps leaves "no field energy was recorded" on the record, which makes a passing spy test look like it measured nothing.
     """
     import rfx.boundaries.cpml as _cpml
     from rfx.materials.lorentz import LorentzPole
@@ -361,7 +326,6 @@ def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
     realize = material_model.realize_components
     expected_eps = []
     def observe_cells(cells, grid, *, periodic, **kw):
-        # The scan now carries only consumed operands, not assembly cells.
         raw = cells.materials if isinstance(cells, material_model.ComponentCells) else cells
         expected_eps.append(component_e_materials(raw, periodic, high_wall=unpadded_high_walls(grid))[0])
         return realize(cells, grid, periodic=periodic, **kw)
@@ -371,7 +335,6 @@ def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
         inv = kw.get("inv_eps_r_update")
         seen.append(inv)
         if dispersive and inv is not None and kw.get("materials") is not None:
-            # inside the scan these are tracers: compare in JAX, report at run time
             import jax
             import jax.numpy as jnp
             eps_c = expected_eps[-1]
@@ -391,9 +354,6 @@ def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
                                                     kappa=w0 ** 2)])
         sim.add(rfx.Box((2.0 * A, sy / 2 - 0.2 * A, 0),
                         (4.0 * A, sy / 2 + 0.2 * A, DX)), material="disp")
-    # Long enough for the pulse to actually couple; a handful of steps leaves
-    # "no field energy was recorded" (#336) on the record, which makes a
-    # passing spy test look like it measured nothing.
     sim.run(n_steps=120, subpixel_smoothing=subpixel, skip_preflight=True)
 
     assert seen, "apply_cpml_e was never called -- the spy missed the call site"
@@ -417,6 +377,8 @@ def test_threading_a_different_permittivity_changes_the_coefficient():
 
     Without this, a parameter that was silently ignored would pass the
     bit-identity pin and nothing else here would notice.
+
+    The ratio is restricted to cells well clear of float32 cancellation: the increment is ce * b * psi_seed, and psi_seed is standard-normal, so a handful of cells land near zero where a ratio is meaningless.
     """
     import jax.numpy as jnp
 
@@ -431,10 +393,6 @@ def test_threading_a_different_permittivity_changes_the_coefficient():
     assert max(deltas) > 0.0, (
         "inv_eps_r_update had no effect at all -- the psi coefficient is not "
         f"reading it (per-component max |delta| = {deltas})")
-    # And it must be the RATIO of the two permittivities, cell for cell.
-    # Restricted to cells well clear of float32 cancellation: the increment is
-    # ce * b * psi_seed, and psi_seed is standard-normal, so a handful of
-    # cells land near zero where a ratio is meaningless.
     for a, b in zip(base, other):
         scale = np.max(np.abs(a))
         nz = np.abs(a) > 1e-4 * scale

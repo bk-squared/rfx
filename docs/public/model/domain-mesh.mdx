@@ -119,6 +119,11 @@ report = sim.preflight()
 print(report.format())
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/model/assets/domain-mesh/structure.png" loading="lazy" alt="Section through a wide substrate on a ground plane inside absorber, with horizontal z mesh lines that crowd together at the substrate and spread out in the air." />
+  <figcaption>The model this code builds, cut at y = 40 mm, with its z node lines: six cells fill the substrate from z = 20 to 21.6 mm, and the cells grow in the air on both sides. The figure shows the ground between its declared edges, 80 mm apart, and its last nodes lie 0.35 cell inside each edge.</figcaption>
+</figure>
+
 `domain[2] = 0` tells rfx to use `sum(dz_profile)` as the height. A positive
 value is kept as given and is not checked against the profile, so pass
 `float(np.sum(dz_profile))` if you set it yourself.

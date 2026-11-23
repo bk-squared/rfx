@@ -10,8 +10,8 @@ from rfx.harminv import matrix_pencil
 def test_matrix_pencil_keeps_close_modes(case):
     dt = 0.4e-9
     t = np.arange(1536) * dt
-    # 1/T = 1.63 MHz < 0.2 * 9 MHz spacing; both tones have Q=1000.
     frequencies = [1e9] if case.startswith("c_") else [1e9, 1.009e9]
+    assert len(frequencies) == 1 or 1 / (t[-1] - t[0]) < 0.2 * min(np.diff(frequencies)), "Q=1000 tones need record resolution below one fifth of their spacing"
     if case == "b_complex":
         signal = sum(np.exp((-np.pi * f / 1000 + 2j * np.pi * f) * t)
                      for f in frequencies)
@@ -28,8 +28,6 @@ def test_matrix_pencil_keeps_close_modes(case):
 
 
 def test_complex_input_drops_only_the_conjugate_image():
-    # A real damped cosine (a +f/-f conjugate pair) plus one complex tone at
-    # +1.03 GHz: the -1 GHz image is dropped, both physical poles stay.
     dt = 0.4e-9
     t = np.arange(1536) * dt
     alpha = np.pi * 1e9 / 1000

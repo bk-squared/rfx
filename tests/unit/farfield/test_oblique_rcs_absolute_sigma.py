@@ -66,7 +66,6 @@ def _po_sigma(phi_obs, theta_i_deg, W, h, lam):
     """PO / uniform-aperture bistatic sigma(phi) at theta_obs=pi/2 for a PEC
     plate in the y-z plane (normal-x lit face), ez polarization. Numeric
     aperture integral; the closed form below is its independent check."""
-    # numpy 2.0 removed ``np.trapz``; same shim as rfx/sources/coaxial_port.py.
     trapezoid = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
     k = 2 * np.pi / lam
     t = np.radians(theta_i_deg)
@@ -109,10 +108,6 @@ def _gate_grid_and_plate():
     return grid, mats, n_w
 
 
-# ---------------------------------------------------------------------------
-# Oracle self-check (comparator-first: PO must reproduce its closed form
-# before it referees any rfx number)
-# ---------------------------------------------------------------------------
 
 def test_po_oracle_matches_closed_form():
     """The numeric aperture integral must reproduce
@@ -127,9 +122,6 @@ def test_po_oracle_matches_closed_form():
         assert abs(10 * np.log10(num / closed)) < 0.1, (t_i, num, closed)
 
 
-# ---------------------------------------------------------------------------
-# F7 fast: the measured normalization captures what the analytic one cannot
-# ---------------------------------------------------------------------------
 
 def test_measured_incident_spectrum_captures_mismatch_and_launch():
     """The measured field includes the auxiliary line's angle-dependent launch response.
@@ -146,7 +138,7 @@ def test_measured_incident_spectrum_captures_mismatch_and_launch():
         cfg, st = init_tfsf_methodB(nx, ny, DX, dt, nz=nz, cpml_layers=CPML,
                                     tfsf_margin=MARGIN, f0=F0,
                                     polarization="ez", direction="+x",
-                                    theta_deg=theta)
+                                    theta_deg=theta, dtype='float32')
         S_meas = measure_incident_spectrum(cfg, st, N_STEPS, freqs, DX)
         times = np.arange(N_STEPS) * dt
         arg = (times - cfg.src_t0) / cfg.src_tau
@@ -160,9 +152,6 @@ def test_measured_incident_spectrum_captures_mismatch_and_launch():
     assert launch_db[40.0] < launch_db[20.0], launch_db
 
 
-# ---------------------------------------------------------------------------
-# F5: vacuum-boundary guard — fire / clear pairs on both lanes
-# ---------------------------------------------------------------------------
 
 def _small_oblique_setup(strip_iy):
     grid = Grid(freq_max=F0 * 3, domain=(0.06, 0.08, 0.006), dx=DX,
@@ -170,7 +159,8 @@ def _small_oblique_setup(strip_iy):
     nx, ny, nz = grid.shape
     eps = jnp.ones(grid.shape, dtype=jnp.float32)
     sig = jnp.zeros(grid.shape, dtype=jnp.float32)
-    off = 6 + 6  # cpml + margin -> box y_lo/x_lo
+    TFSF_MARGIN_CELLS = 6
+    off = 6 + TFSF_MARGIN_CELLS
     if strip_iy is not None:
         sig = sig.at[off + 3:nx - off - 3, strip_iy, :].set(PEC_SIGMA)
     mats = MaterialArrays(eps_r=eps, sigma=sig,
@@ -182,7 +172,8 @@ def test_compute_rcs_vacuum_guard_fires_on_y_plane():
     """A PEC strip lying exactly on the TFSF y_lo plane must fail loud in
     compute_rcs (issue #471 F5: it previously passed silently — compute_rcs
     ran no vacuum check and the preflight validator checked x planes only)."""
-    grid, mats, off = _small_oblique_setup(strip_iy=12)  # iy == y_lo plane
+    grid, mats, off = _small_oblique_setup(strip_iy=12)
+    assert np.any(np.asarray(mats.sigma)[:, off, :] > 0), "The PEC strip must intersect the TFSF y_lo plane."
     with pytest.raises(ValueError, match="y_lo"):
         compute_rcs(grid, mats, n_steps=8, f0=F0, bandwidth=0.5,
                     theta_inc=20.0, polarization="ez", theta_obs=TH_OBS,
@@ -193,7 +184,8 @@ def test_compute_rcs_vacuum_guard_fires_on_y_plane():
 def test_compute_rcs_vacuum_guard_clears_interior_target():
     """Control: the same strip moved to the box interior passes the guard
     (compute_rcs completes a short run without the validator firing)."""
-    grid, mats, off = _small_oblique_setup(strip_iy=20)  # interior
+    grid, mats, off = _small_oblique_setup(strip_iy=20)
+    assert np.any(np.asarray(mats.sigma)[:, off + 1:-off, :] > 0) and not np.any(np.asarray(mats.sigma)[:, (off, grid.ny - off), :] > 0), "The control strip must be inside the TFSF y planes."
     res = compute_rcs(grid, mats, n_steps=8, f0=F0, bandwidth=0.5,
                       theta_inc=20.0, polarization="ez", theta_obs=TH_OBS,
                       phi_obs=np.array([np.pi]), freqs=np.array([F0]),
@@ -208,7 +200,7 @@ def test_validator_covers_x_planes_too():
     nx, ny, nz = grid.shape
     cfg, _ = init_tfsf_methodB(nx, ny, DX, grid.dt, nz=nz, cpml_layers=6,
                                tfsf_margin=6, f0=F0, polarization="ez",
-                               direction="+x", theta_deg=20.0)
+                               direction="+x", theta_deg=20.0, dtype='float32')
     sig = mats.sigma.at[cfg.x_lo, 20:24, :].set(PEC_SIGMA)
     bad = MaterialArrays(eps_r=mats.eps_r, sigma=sig, mu_r=mats.mu_r)
     with pytest.raises(ValueError, match="x_lo"):
@@ -219,7 +211,9 @@ def test_simulation_lane_vacuum_guard_fires_on_y_plane():
     """Simulation API lane (the runner-level validator): a dielectric box
     crossing the Method-B y_lo TFSF plane must raise. This is the exact
     verified silent failure of issue #471 F5. skip_preflight targets the
-    runner-level validator, which runs regardless."""
+    runner-level validator, which runs regardless.
+    Simulation Box coordinates are relative to the physical domain origin, excluding CPML pads.
+    """
     from rfx.api import Simulation
 
     sim = Simulation(freq_max=10e9, domain=(0.08, 0.10, 0.006), dx=DX,
@@ -227,9 +221,6 @@ def test_simulation_lane_vacuum_guard_fires_on_y_plane():
     sim.add_tfsf_source(f0=F0, polarization="ez", direction="+x",
                         angle_deg=20.0, method="methodB", margin=3)
     sim.add_material("diel", eps_r=4.0)
-    # Simulation Box coords are relative to the PHYSICAL domain origin (CPML
-    # pads excluded), so the y_lo plane (padded index cpml+margin) sits at
-    # physical y = margin * dx.
     y_plane = 3 * DX
     sim.add(Box((0.036, y_plane - DX, 0.0), (0.05, y_plane + DX, 0.006)),
             material="diel")
@@ -237,9 +228,6 @@ def test_simulation_lane_vacuum_guard_fires_on_y_plane():
         sim.run(n_steps=2, skip_preflight=True)
 
 
-# ---------------------------------------------------------------------------
-# F8: the non-uniform-grid oblique fence, tested on the ez path
-# ---------------------------------------------------------------------------
 
 def test_oblique_nu_grid_fence_fails_loud_on_ez():
     """compute_rcs(theta_inc != 0) on a NonUniformGrid must raise the
@@ -257,9 +245,6 @@ def test_oblique_nu_grid_fence_fails_loud_on_ez():
                     phi_obs=np.array([np.pi]), freqs=np.array([F0]))
 
 
-# ---------------------------------------------------------------------------
-# F7: absolute-sigma gates (the aperture-height check remains slow)
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("theta_inc", [20.0, 40.0])
 def test_absolute_sigma_matches_po_at_gate_grid(theta_inc):
@@ -297,7 +282,7 @@ def test_sigma_scales_as_aperture_height_squared():
         cfg, st = init_tfsf_methodB(nx, ny, DX, dt, nz=nz, cpml_layers=CPML,
                                     tfsf_margin=MARGIN, f0=F0,
                                     polarization="ez", direction="+x",
-                                    theta_deg=20.0)
+                                    theta_deg=20.0, dtype='float32')
         kz = nz // 2
         box = NTFFBox.from_grid(
             grid, i_lo=cfg.x_lo - 3, i_hi=cfg.x_hi + 3,

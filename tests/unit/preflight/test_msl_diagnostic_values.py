@@ -1,4 +1,6 @@
-"""Read displayed observations independently, including display precision and SI units."""
+"""Read displayed observations independently, including display precision and SI units.
+Patterns are transcribed from the user-visible sentences rather than from catalog keys, rendering helpers, raw geometry inputs or the calculations that produced them.
+"""
 import math
 import re
 
@@ -10,8 +12,6 @@ from tests._msl_diagnostic_cases import captured_cases, cases
 N = r'([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)'
 L = N + r'\s*(µm|um|mm|nm|m)'
 SCALE = {'m': 1., 'mm': 1e-3, 'µm': 1e-6, 'um': 1e-6, 'nm': 1e-9}
-# Patterns are transcribed from the user-visible sentences, not catalog keys,
-# rendering helpers, raw geometry inputs, or the calculations that produced them.
 LENGTHS = {
     'trace_width_m': 'trace W=' + L,
     'substrate_height_m': r'(?:h_sub=|declared height=)' + L,
@@ -145,8 +145,6 @@ SCALARS.update({
 LENGTHS['feed_reflector_gap_m'] = r'the reflector ' + L + ' from the feed'
 
 
-# Additional observations found by the reviewer's independent setup matrix.
-# No unknown numeric key is ignored: printed() raises for any new key.
 LENGTHS.update({
     'five_heights_m': r'five substrate thicknesses, ' + L,
     'automatic_height_m': r'5·h_sub = ' + L,
@@ -182,7 +180,6 @@ def precision(token, scale):
 def printed(key, text):
     if key.startswith('port_') and key.split('_', 2)[1].isdigit():
         _, index, field = key.split('_', 2)
-        # Each indexed port owns one semicolon-separated per-port description.
         details = text.split('Per port: ', 1)[1]
         sections = re.split(r"; (?=['\"])", details)
         return printed(field, sections[int(index)])
@@ -276,6 +273,7 @@ def test_every_family_value_is_recovered_from_printed_text(graded):
     ids=["uniform", "graded"],
 )
 def test_family_values_survive_actual_run_results_and_refusals(graded):
+    """The open tail stays outside the read band so unconditional stub admission allows the crossed-probe geometry to reach its run warning."""
     from dataclasses import replace
     from unittest.mock import patch
     from rfx import Box
@@ -312,8 +310,6 @@ def test_family_values_survive_actual_run_results_and_refusals(graded):
     for name, sim in cases(graded):
         solve(name, sim)
 
-    # Keep both open tails outside the read band, so unconditional stub
-    # admission allows the crossed-probe geometry to reach its run warning.
     sim = structure(
         graded,
         offset=10,
@@ -328,8 +324,6 @@ def test_family_values_survive_actual_run_results_and_refusals(graded):
         )
     )
     solve('cross_feed_outside_stub_band', sim)
-    # The graded ladder clamps to realized end nodes. A declared end a
-    # quarter-cell before the last node makes that node lie in the absorber.
     solve(
         "realized_end_outside_declared_domain",
         structure(
@@ -354,8 +348,6 @@ def test_family_values_survive_actual_run_results_and_refusals(graded):
         return_value=unavailable,
     ):
         solve("incomplete_scan", sim)
-        # These two calculator-report checks are not called by run(). Exercise
-        # their public entry on each grid rather than claim solver reach.
         inspect(
             "calculator_unavailable",
             sim.preflight_sparameters(
@@ -391,7 +383,6 @@ def test_family_values_survive_actual_run_results_and_refusals(graded):
     )
     solve('stub_behind_port', sim)
     assert returned > 0 and refused > 0
-    # Literal identities are independently declared in the path contract.
     from tests.unit.preflight.test_msl_diagnostic_identity import EXPECTED_LEGACY
     assert checked == set(EXPECTED_LEGACY)
 

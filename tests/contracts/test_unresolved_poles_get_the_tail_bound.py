@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from rfx import ringdown as rd
+import rfx.sparams._tail_witness as tail_witness
 from rfx.sparams._tail_witness import tail_share_witness
 
 DT, N, D = 1.2e-12, 15252, 15
@@ -76,7 +77,6 @@ def test_literal_verdict(label, rates, frequencies, residues, decimation, expect
 
 
 def test_t3_reviewers_identified_probe():
-    # The reviewer's saved test_real_identify construction, including RNG seed.
     n = np.arange(N)
     y = (np.exp(-5e-7*n)*np.cos(2*np.pi*10e9*n*DT)
          + 0.5*np.exp(-2e-4*n)*np.cos(2*np.pi*9e9*n*DT)
@@ -84,7 +84,6 @@ def test_t3_reviewers_identified_probe():
     rng = np.random.default_rng(0)
     y = (y + 1e-9*rng.standard_normal(N))[:, None]
     model = rd.identify(y, DT, N//2, N, freq_max=13e9)
-    # Direct finite sum of the supplied noisy series, independent of plain_dft.
     denominator = np.abs(DT*np.exp(-2j*np.pi*BINS[:, None]*DT*n) @ y)
     result = rd.judge_growing_poles(model, N, BINS, denominator)
     assert model.D == 16
@@ -113,6 +112,9 @@ def fit_exact(monkeypatch, model, series, *, normalize=False):
 
     monkeypatch.setattr(rd, 'identify', identify)
 
+    monkeypatch.setattr(tail_witness, '_IDENTIFICATION',
+                        replace(tail_witness._IDENTIFICATION, identify=identify))
+
 
 def test_t6_resolved_decay_keeps_settling_tail_rule(monkeypatch):
     model, series, denominator = case([-1e-5], [10e9], [1e-3])
@@ -126,6 +128,7 @@ def test_t6_resolved_decay_keeps_settling_tail_rule(monkeypatch):
 
 @pytest.mark.parametrize('rate', [-7.4e-11, 7.4e-11])
 def test_m3_completion_omits_unresolved_tail(monkeypatch, rate):
+    """The traced forward completion retains both signs in its residue fit while masking only their infinite-sum tails."""
     model, series, _ = case([rate], [10.05e9], [1e-6])
     fit_exact(monkeypatch, model, series)
     expected = window_sum(model.s, model.c, 0, N, REF) + infinite_tail(model.s[:1], model.c[:1], REF)
@@ -136,8 +139,6 @@ def test_m3_completion_omits_unresolved_tail(monkeypatch, rate):
     np.testing.assert_allclose(result.spectra, expected, rtol=1e-10)
     np.testing.assert_allclose(result.spectra_short, expected, rtol=1e-10)
 
-    # The traced forward completion retains both signs in its residue fit,
-    # while masking only their infinite-sum tails. Use real conjugate pairs.
     import jax.numpy as jnp
     from rfx.ringdown import _jax as rj
     from rfx.measurement.ringdown_resolution import completion_poles

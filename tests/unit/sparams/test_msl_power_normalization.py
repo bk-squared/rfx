@@ -3,6 +3,7 @@
 Unequal positive analytic references must retain a planted reciprocal passive
 power S. The generic wave solve, spatial/temporal alignment and transverse
 current integral run normally. No FDTD or physical accuracy claim is involved.
+The monkeypatches target rfx.sparams.msl because patching the rfx.api._sparams re-export would silently leave the capture and forced-NaN fallback inactive.
 """
 from __future__ import annotations
 
@@ -19,12 +20,6 @@ import pytest
 from jax import enable_x64
 
 from rfx import Box, Simulation
-# #980 Phase 2 moved compute_msl_s_matrix verbatim into rfx/sparams/msl.py, so
-# ``msl_solve_s_from_waves`` is looked up as a global of THAT module. The two
-# monkeypatches below patch where the lane reads; patching the
-# ``rfx.api._sparams`` re-export would still succeed and silently stop biting
-# (the capture list would stay empty, the forced-NaN fallback would never
-# trigger).
 import rfx.sparams.msl as sparams
 from rfx.probes.probes import DFTPlaneProbe
 from rfx.sparams._port_reference import renormalize_power_waves
@@ -45,9 +40,8 @@ def _oracle(theta):
 
 
 def _references(widths):
-    # Independent u>1 thin-strip formula for h=2U, eps_r=2. No production
-    # reference or normalization helper is used to create the field oracle.
     u = np.asarray(widths) / (2 * U)
+    assert np.all(u > 1), 'The thin-strip reference input must have width / (2 * U) > 1.'
     eps_eff = 1.5 + 0.5 / np.sqrt(1 + 12 / u)
     return 120 * np.pi / (np.sqrt(eps_eff) * (u + 1.393 + 0.667 * np.log(u + 1.444)))
 
@@ -73,6 +67,7 @@ def _case(monkeypatch, *, equal=False, incident=INCIDENT):
     names = re.compile(r"_msl_run(?P<drive>\d+)_p(?P<port>\d+)_(?:ez\d+|hy|hz)(?:_left)?")
 
     def record(self, theta):
+        """For N=5 or 9 width-node faces, the closed contour's Hy/Hz contributions are +N*U and -0.25*N*U after orientation."""
         dtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
         c, s = jnp.cos(theta), 1j * jnp.sin(theta)
         power_s = jnp.stack((jnp.stack((c, s)), jnp.stack((s, c))))[:, :, None]
@@ -104,15 +99,9 @@ def _case(monkeypatch, *, equal=False, incident=INCIDENT):
                     assert entry.component == "hz"
                     y_h = np.arange(w0, w1) - grid.pad_y_lo + 0.5
                     profile = np.broadcast_to(0.25 * y_h[:, None], shape)
-                # The closed contour has 5 or 9 width-node faces. Its
-                # Hy/Hz contributions are +N*U and -0.25*N*U after orientation.
                 n_width = (5, 5 if equal else 9)[port]
                 sign = 1 if port == 0 else -1
                 field = sign * factor * profile / (0.75 * n_width * U)
-                # History (S2 M2): was current * exp(-j pi f dt), an H plane
-                # stamped at E's time for an extractor that applied the half
-                # step. The DFT kernel stamps H itself; the plant is the
-                # physically stamped current.
                 amplitude = current[port, drive]
             planes[entry.name] = DFTPlaneProbe(
                 accumulator=jnp.asarray(field, dtype=dtype)[None, :, :] * amplitude[:, None, None],
@@ -153,15 +142,14 @@ def _compute(sim, **kwargs):
 def test_passive_reciprocal_power_s_survives_raw_and_default_projection(
     monkeypatch, tmp_path, equal, route,
 ):
+    """Four backend calls cover both ports driven on each complete extraction."""
+    assert np.all(RHO < 1), 'The planted power-wave singular values RHO must be below one.'
     sim, grid, references, calls = _case(monkeypatch, equal=equal)
     expected = _oracle(THETA)
-    # This plant is demonstrably passive in the standard power inner product.
     for k, rho in enumerate(RHO):
         np.testing.assert_allclose(expected[:, :, k].conj().T @ expected[:, :, k],
                                    rho**2 * np.eye(2), atol=1e-14)
     if not equal:
-        # The retired voltage-wave S breaks reciprocity and looks active
-        # for these same passive waves; a later SVD clip cannot repair it.
         voltage_s = np.sqrt(references)[:, None, None] * expected / np.sqrt(references)[None, :, None]
         assert np.max(abs(voltage_s[0, 1] - voltage_s[1, 0])) > 0.1
         assert max(np.linalg.eigvalsh(voltage_s[:, :, k].conj().T @ voltage_s[:, :, k]).max()
@@ -178,12 +166,9 @@ def test_passive_reciprocal_power_s_survives_raw_and_default_projection(
     dump = tmp_path / "raw.npz"
     raw = _compute(sim, enforce_passivity=False, raw_3probe_dump_path=str(dump), **route_kwargs)
     default = _compute(sim, **route_kwargs)
-    assert calls == [route] * 4  # Both ports driven on each complete extraction.
+    assert calls == [route] * 4
     for result in (raw, default):
         assert result.assembly == "multi_drive_solve" and np.max(result.cond_a) < 3
-        # #2014: S is referenced to the declared 50 ohm; the waves are formed
-        # at the line Z0, so the wave split is checked on S brought back there.
-        # Under an override the line Z0 is formed from it in float32 (#2199).
         np.testing.assert_allclose(result.line_impedances, references,
                                    rtol=1e-12 if route == "run" else 1e-6)
         np.testing.assert_allclose(result.reference_impedances, [50.0, 50.0], rtol=1e-12)
@@ -194,8 +179,6 @@ def test_passive_reciprocal_power_s_survives_raw_and_default_projection(
     replay = replay_smatrix_from_port_vi_dump(load_port_vi_dump_npz(dump))
     np.testing.assert_allclose(probe0_s(raw, replay.s_params), expected, rtol=5e-6, atol=1e-6)
     if equal:
-        # Equal references retain the existing voltage-wave scale exactly;
-        # an unnecessary absolute rescaling could move conditioning/roundoff.
         with np.load(dump) as saved:
             v, i = jnp.asarray(saved["raw_v"][:, :, 0]), jnp.asarray(saved["raw_i1"])
         np.testing.assert_array_equal(waves[0][0], 0.5 * (v + float(references[0]) * i))
@@ -216,8 +199,6 @@ def test_reference_metadata_is_neither_fitted_z0_nor_the_50_ohm_load(monkeypatch
     monkeypatch.setattr(decomp, "extract_msl_nprobe", diagnostic_fit)
     dump = tmp_path / "metadata.npz"
     result = _compute(sim, raw_3probe_dump_path=str(dump))
-    # Only the fitted diagnostic changed; physical V/I and the HJ reference
-    # stayed fixed. This fails if production S ever reads the fitted Z0.
     assert not np.array_equal(result.Z0, baseline.Z0)
     np.testing.assert_array_equal(result.beta, baseline.beta)
     np.testing.assert_array_equal(result.S, baseline.S)
@@ -231,8 +212,6 @@ def test_reference_metadata_is_neither_fitted_z0_nor_the_50_ohm_load(monkeypatch
         assert meta["current_convention"] == "native_msl_loop_current"
         np.testing.assert_allclose(meta["s_reference_impedances_ohm"], references, rtol=1e-12)
         assert [p["impedance_ohm"] for p in meta["port_definitions"]] == [50, 50]
-        # The dump keeps the line-Z0 matrix (#2014); referred to the declared
-        # 50 ohm by the producer's own step it is the returned S.
         np.testing.assert_array_equal(
             renormalize_power_waves(jnp.asarray(saved["production_smatrix"]),
                                     result.line_impedances, result.reference_impedances),
@@ -253,9 +232,8 @@ def test_forward_power_objective_preserves_nonzero_material_tape_gradient(monkey
         sim, grid, references, calls = _case(monkeypatch)
 
         def objective(theta):
+            """Under an override the line Z0 is formed in its own precision, so float32 rounding does not mean a different line."""
             result = _compute(sim, eps_override=_knob(grid, theta))
-            # Under an override the line Z0 is formed from it in its own
-            # precision (#2199): float32 rounding, not a different line.
             np.testing.assert_allclose(result.line_impedances, references,
                                        rtol=1e-12 if x64 else 1e-6)
             np.testing.assert_allclose(result.reference_impedances, [50.0, 50.0], rtol=1e-12)
@@ -308,7 +286,6 @@ def test_v5_dump_replays_to_the_feed_plane_s(monkeypatch, tmp_path):
     replay = replay_smatrix_from_port_vi_dump(loaded)
     s_line = line_s(result, np.asarray(result.S))
     np.testing.assert_allclose(replay.s_params, s_line, rtol=5e-6, atol=1e-6)
-    # It is not the probe-0 matrix: the recorded shift was applied.
     assert np.max(np.abs(replay.s_params - probe0_s(result, s_line))) > 1e-3
     stripped = dict(loaded.metadata)
     stripped.pop("feed_plane_shift")

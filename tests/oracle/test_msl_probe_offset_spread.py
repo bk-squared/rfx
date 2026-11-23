@@ -5,6 +5,7 @@ invariance check follows test_msl_thru_line_passive_gate's top-level API.
 Both ports are driven by compute_msl_s_matrix; default extraction and probe
 spacing are retained. S11 and S21 have a 1e-2 spread bar; S22 and S12 are
 reported witnesses. Known probe-position limitations are strict xfails (#2393).
+LINES entries are (eps_r, substrate height, strip width, length, air, f_max, record, cells/h).
 """
 from __future__ import annotations
 
@@ -22,7 +23,6 @@ from rfx.preflight.line_port_coverage import port_node_coordinate
 
 pytestmark = [pytest.mark.gpu, pytest.mark.slow]
 
-# eps_r, substrate height, strip width, length, air, f_max, record, cells/h.
 LINES = {
     "L1": (2.2, .8e-3, 2.43e-3, .060, .010, 12e9, 30e-9, 4),
     "L2": (3.66, .254e-3, .6e-3, .030, .004, 40e9, 10e-9, 3),
@@ -93,7 +93,6 @@ def measure_offset(line, m, *, record_fraction=1.0):
 
 
 def _json_safe(value):
-    # Preserve non-finite witness meanings without emitting non-standard JSON.
     if isinstance(value, float) and not np.isfinite(value):
         return str(value)
     if isinstance(value, dict):
@@ -147,8 +146,8 @@ def line_report():
     reports = {}
 
     def get_report(line):
+        """The L1 and L2 witnesses need 5.39 GiB at stage 2."""
         if line not in reports:
-            # The L1 and L2 witnesses need 5.39 GiB at stage 2.
             with pytest.MonkeyPatch.context() as mp:
                 mp.setattr("rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES", 8 * 2**30)
                 reports[line] = _measure_line(line)

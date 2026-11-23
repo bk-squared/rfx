@@ -56,21 +56,25 @@ def _build_cavity():
 
 
 def test_helpers():
-    assert _nearest_divisor(800, 28) == 25  # divisors near 28: 25 (diff 3), 32 (diff 4) → 25 wins
+    """The nearest divisors to 28 are 25 (distance 3) and 32 (distance 4), so 25 wins."""
+    assert _nearest_divisor(800, 28) == 25
     assert _nearest_divisor(3000, 55) == 50
     assert _nearest_divisor(100, 10) == 10
-    # Pure prime n: only 1 and n divide it.
-    assert _nearest_divisor(13, 3) == 1
-    # Suggest is roughly √n.
+    PRIME_STEPS = 13
+    assert _nearest_divisor(PRIME_STEPS, 3) == 1
     assert 20 <= _suggest_checkpoint_segments(800) <= 40
     assert 40 <= _suggest_checkpoint_segments(3000) <= 80
 
 
 def test_segmented_forward_matches_unsegmented():
     """Time series + s_params with checkpoint_segments=K should match
-    the unsegmented run on the same n_steps, to float32 tolerance."""
+    the unsegmented run on the same n_steps, to float32 tolerance.
+    The 1e-5 absolute tolerance allows potential XLA reassociation when reshaping float32 steps into
+    segments.
+    """
     sim = _build_cavity()
-    n_steps = 200  # small enough for a CPU pytest run
+    CPU_SMOKE_STEPS = 200
+    n_steps = CPU_SMOKE_STEPS
     K = 10
     assert n_steps % K == 0
     freqs = jnp.linspace(2e9, 4e9, 5, dtype=jnp.float32)
@@ -83,10 +87,7 @@ def test_segmented_forward_matches_unsegmented():
         checkpoint_segments=K,
     )
 
-    # Time series shape should be (n_steps, n_probes).
     assert res_legacy.time_series.shape == res_segmented.time_series.shape
-    # Float32 bit-exactness is too strict; use 1e-5 atol for the
-    # potential reassociation by XLA when reshaping into segments.
     np.testing.assert_allclose(
         np.asarray(res_segmented.time_series),
         np.asarray(res_legacy.time_series),
@@ -130,7 +131,6 @@ def test_segmented_gradient_matches_unsegmented():
     g_legacy = np.asarray(jax.grad(loss_legacy)(eps_base))
     g_segmented = np.asarray(jax.grad(loss_segmented)(eps_base))
     assert np.all(np.isfinite(g_segmented)), "segmented grad has NaN/Inf"
-    # Allow a slightly looser tolerance on gradients than on outputs.
     np.testing.assert_allclose(
         g_segmented, g_legacy,
         atol=5e-5, rtol=1e-3,

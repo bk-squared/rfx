@@ -31,12 +31,10 @@ def _empty_materials(grid: Grid) -> MaterialArrays:
     )
 
 
-# ---------------------------------------------------------------------------
-# Test 1: cross-section coverage
-# ---------------------------------------------------------------------------
 
 
 def test_msl_yz_cells_covers_full_cross_section():
+    """Ez[k] occupies the edge from node k to k+1."""
     grid = Grid(freq_max=10e9, domain=(5e-3, 3e-3, 1e-3),
                 dx=1e-4, cpml_layers=0)
     port = MSLPort(
@@ -50,14 +48,12 @@ def test_msl_yz_cells_covers_full_cross_section():
     cells = _msl_yz_cells(grid, port)
     assert len(cells) > 0
 
-    # Constant feed-plane i.
     i_set = {c[0] for c in cells}
     assert len(i_set) == 1
     i_feed = next(iter(i_set))
     expected_i, _, _ = grid.position_to_index((1e-3, 1e-3, 0.0))
     assert i_feed == expected_i
 
-    # j range matches the y endpoints (inclusive).
     j_set = sorted({c[1] for c in cells})
     j_lo_expected = grid.position_to_index((1e-3, 1e-3, 0.0))[1]
     j_hi_expected = grid.position_to_index((1e-3, 2e-3, 0.0))[1]
@@ -65,37 +61,27 @@ def test_msl_yz_cells_covers_full_cross_section():
     assert j_set[-1] == j_hi_expected
     assert j_set == list(range(j_set[0], j_set[-1] + 1))
 
-    # Ez[k] occupies the edge from node k to k+1. The upper bounding
-    # plane is excluded: including its index would add an edge above it.
     k_set = sorted({c[2] for c in cells})
     k_lo_expected = grid.position_to_index((1e-3, 1e-3, 0.0))[2]
     k_hi_expected = grid.position_to_index((1e-3, 1e-3, 2.54e-4))[2]
     assert k_set[0] == k_lo_expected
     assert k_set[-1] == k_hi_expected - 1
-    # Total cell count = N_y * N_z.
     assert len(cells) == len(j_set) * len(k_set)
 
 
-# ---------------------------------------------------------------------------
-# Test 2: total resistance distribution
-# ---------------------------------------------------------------------------
 
 
 def test_setup_msl_port_total_resistance():
     dx = dy = 1e-4
     dz = 5e-5
-    # Build a uniform grid; we override dz via a profile so we can test
-    # axis-aware sigma computation.
+    assert dz != dx, "Unequal dz and dx exercise axis-aware sigma computation"
     grid = Grid(freq_max=10e9, domain=(2e-3, 2e-3, 5e-4),
                 dx=dx, cpml_layers=0)
-    # Inject a synthetic dz_profile so the formula uses dz != dx.
     grid.dz_profile = np.full(grid.nz, dz, dtype=float)
     grid.dy_profile = np.full(grid.ny, dy, dtype=float)
     grid.dx_profile = np.full(grid.nx, dx, dtype=float)
 
     Z0 = 50.0
-    # Width = 0.3 mm → 3 y-cells (with rounding).
-    # Height = 0.2 mm → 4 z-cells (with rounding from dz=5e-5).
     width = 3 * dy
     height = 4 * dz
     port = MSLPort(
@@ -119,16 +105,12 @@ def test_setup_msl_port_total_resistance():
     for (i, j, k) in cells:
         assert sigma_arr[i, j, k] == pytest.approx(expected_sigma, rel=1e-6)
 
-    # Cells outside the cross-section remain zero.
     total_zero = sigma_arr.size - len(cells)
     nonzero_count = int(np.count_nonzero(sigma_arr))
     assert nonzero_count == len(cells)
     assert total_zero > 0
 
 
-# ---------------------------------------------------------------------------
-# Test 4b: closed Ampere-loop current (issue #80 stage S1)
-# ---------------------------------------------------------------------------
 
 
 def test_msl_loop_current_closed_ampere_bookkeeping():
@@ -146,17 +128,17 @@ def test_msl_loop_current_closed_ampere_bookkeeping():
     dy = np.full(ny, 2.0)
     dz = np.full(nz, 5.0)
 
-    j_lo, j_hi = 4, 7          # trace width: 4 cells -> Sigma dy = 8.0
-    k_lo, k_hi = 5, 6          # trace height: 2 cells -> Sigma dz = 10.0
+    j_lo, j_hi = 4, 7
+    k_lo, k_hi = 5, 6
 
-    hy[:, j_lo:j_hi + 1, k_lo - 1] = 1.0    # bottom leg
-    hy[:, j_lo:j_hi + 1, k_hi] = 0.5        # top leg
-    hz[:, j_hi, k_lo:k_hi + 1] = 2.0        # right leg
-    hz[:, j_lo - 1, k_lo:k_hi + 1] = 3.0    # left leg
+    hy[:, j_lo:j_hi + 1, k_lo - 1] = 1.0
+    hy[:, j_lo:j_hi + 1, k_hi] = 0.5
+    hz[:, j_hi, k_lo:k_hi + 1] = 2.0
+    hz[:, j_lo - 1, k_lo:k_hi + 1] = 3.0
 
     width, height = 4 * 2.0, 2 * 5.0
     expect_raw = 1.0 * width - 0.5 * width + 2.0 * height - 3.0 * height
-    assert expect_raw == 8.0 - 4.0 + 20.0 - 30.0  # == -6.0
+    assert expect_raw == 8.0 - 4.0 + 20.0 - 30.0
 
     i_minus = msl_loop_current(
         hy, hz, j_lo=j_lo, j_hi=j_hi, k_trace_lo=k_lo, k_trace_hi=k_hi,
@@ -184,9 +166,6 @@ def test_msl_loop_current_rejects_edge_trace():
         )
 
 
-# ---------------------------------------------------------------------------
-# Test 5: probe positions are downstream of feed
-# ---------------------------------------------------------------------------
 
 
 def test_msl_probe_positions_are_downstream():
@@ -216,12 +195,10 @@ def test_msl_probe_positions_are_downstream():
     assert x3n < x2n
 
 
-# ---------------------------------------------------------------------------
-# Test 6: add_msl_port API surface
-# ---------------------------------------------------------------------------
 
 
 def test_add_msl_port_api():
+    """The substrate normal is welded to z by the position/height contract."""
     sim = Simulation(freq_max=10e9, domain=(5e-3, 3e-3, 1e-3))
     out = sim.add_msl_port(
         position=(1e-3, 1.5e-3, 0.0),
@@ -239,49 +216,34 @@ def test_add_msl_port_api():
     assert entry.height == 2.54e-4
     assert entry.name == "msl_0"
 
-    # In-plane directions are all accepted (issue #661): the board lies in
-    # the xy-plane, so the feed may run along either in-board axis. This
-    # assertion used to read ``pytest.raises(ValueError)`` for "+y" — that
-    # was the limitation #661 removes, not a physics bound.
     for _d in ("-x", "+y", "-y"):
         sim_d = Simulation(freq_max=10e9, domain=(5e-3, 3e-3, 1e-3))
         sim_d.add_msl_port(position=(2e-3, 1.5e-3, 0.0), width=1e-3,
                            height=2.54e-4, direction=_d)
         assert sim_d._msl_ports[0].direction == _d
 
-    # Out-of-plane directions are REJECTED, and the error must say why:
-    # the substrate normal is welded to z by the position/height contract.
     for _d in ("+z", "-z"):
         with pytest.raises(ValueError, match="substrate normal"):
             sim.add_msl_port(position=(2e-3, 1.5e-3, 0.0), width=1e-3,
                              height=2.54e-4, direction=_d)
-    # Garbage directions still raise the plain domain error.
     for _d in ("x", "+w", "", None):
         with pytest.raises(ValueError):
             sim.add_msl_port(position=(2e-3, 1.5e-3, 0.0), width=1e-3,
                              height=2.54e-4, direction=_d)
-    # mode='eigenmode' stays x-only.
     with pytest.raises(NotImplementedError, match="eigenmode"):
         sim.add_msl_port(position=(2e-3, 1.5e-3, 0.0), width=1e-3,
                          height=2.54e-4, direction="+y", mode="eigenmode")
-    # Invalid width.
     with pytest.raises(ValueError):
         sim.add_msl_port(position=(2e-3, 1.5e-3, 0.0),
                          width=-1e-3, height=2.54e-4)
-    # Invalid height.
     with pytest.raises(ValueError):
         sim.add_msl_port(position=(2e-3, 1.5e-3, 0.0),
                          width=1e-3, height=0.0)
-    # Invalid impedance.
     with pytest.raises(ValueError):
         sim.add_msl_port(position=(2e-3, 1.5e-3, 0.0),
                          width=1e-3, height=2.54e-4, impedance=0.0)
-    # n_probe_offset too small.
     with pytest.raises(ValueError):
         sim.add_msl_port(position=(2e-3, 1.5e-3, 0.0),
                          width=1e-3, height=2.54e-4, n_probe_offset=2)
 
 
-# ---------------------------------------------------------------------------
-# UT3: Schelkunoff J+M cancellation in vacuum — spec §5.3
-# ---------------------------------------------------------------------------

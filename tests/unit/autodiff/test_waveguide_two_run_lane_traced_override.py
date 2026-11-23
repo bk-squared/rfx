@@ -55,7 +55,8 @@ _DISPATCH = "compute_waveguide_s_matrix"
 
 
 def _wr90_sim():
-    """Tiny 2-port WR-90 (40x13x7 cells), same fixture as the flux-lane AD test."""
+    """Tiny 2-port WR-90 (40x13x7 cells), same fixture as the flux-lane AD test.
+    The domain lengths written as ``0.12``, ``14 * 0.003`` and ``7 * 0.003`` are whole numbers of cells of dx, so the solved domain equals the declared one."""
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 14 * 0.003, 7 * 0.003),
@@ -66,7 +67,7 @@ def _wr90_sim():
             z=Boundary(lo="pec", hi="pec"),
         ),
         cpml_layers=8,
-    )  # solved length; #1887
+    )
     freqs = jnp.linspace(5e9, 6.5e9, 4)
     sim.add_waveguide_port(0.010, direction="+x", mode=(1, 0), mode_type="TE",
                            freqs=freqs, f0=6e9, bandwidth=0.5, name="left")
@@ -76,10 +77,10 @@ def _wr90_sim():
 
 
 def _override_base(sim, override_kw: str):
+    """Conductivity belongs to the device region, not the vacuum port model."""
     grid = sim._build_grid()
     base = jnp.ones(grid.shape, dtype=jnp.float32)
     if override_kw == "sigma_override":
-        # Conductivity belongs to the device region, not the vacuum port model.
         lo, hi = (grid.index_of("x", x) for x in (.03, .06))
         base = jnp.zeros_like(base).at[lo:hi].set(1e-3)
     return base
@@ -156,10 +157,10 @@ def test_two_run_lane_traced_override_fails_fast_at_dispatch(override_kw):
 
 def test_two_run_lane_concrete_eps_override_still_runs_forward():
     """The guard is tracer-scoped: a concrete eps_override on normalize=True
-    still produces a finite S-matrix (forward use of the override channel)."""
+    still produces a finite S-matrix (forward use of the override channel).
+    The concrete permittivity load stays in the device region so vacuum modal segments stay unchanged."""
     sim = _wr90_sim()
     grid = sim._build_grid()
-    # Load only the device region; vacuum modal segments stay unchanged.
     lo, hi = (grid.index_of("x", x) for x in (.03, .06))
     eps = _override_base(sim, "eps_override").at[lo:hi].set(1.5)
     with warnings.catch_warnings():

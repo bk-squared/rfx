@@ -1,4 +1,6 @@
 """Owners of the material column and conductor faces inspected by an MSL check."""
+
+from rfx.preflight._not_judged import is_tracer_error, not_judged
 import numpy as np
 
 
@@ -110,13 +112,10 @@ def _msl_realized_substrate(self, pe, inr, assembled=None):
             idx = list(_nu_p2i(grid, pos))
         else:
             idx = list(grid.position_to_index(pos))
-        # Keep propagation/width lookup unchanged, but use the source's
-        # lower-tie normal plane. Generic uniform banker's rounding
-        # can start a half-cell-offset ground in the next dielectric layer.
         from rfx.sources.msl_port import _msl_normal_bounds, msl_port_from_entry
         idx[inr] = _msl_normal_bounds(grid, msl_port_from_entry(pe))[0]
         eps = np.asarray(mats.eps_r, dtype=float)
-        k0 = int(idx[inr])  # the port's own ground plane, NOT pads[inr]
+        k0 = int(idx[inr])
         ground_cells = 0
         if realized.pec_mask is not None:
             sl = [int(idx[0]), int(idx[1]), int(idx[2])]
@@ -138,7 +137,9 @@ def _msl_realized_substrate(self, pe, inr, assembled=None):
         h_real = float(np.sum(ax_sizes[:n]))
         try:
             face = self._msl_declared_face_geometry(pe, grid)
-        except (ValueError, TypeError, NotImplementedError):
+        except (ValueError, TypeError, NotImplementedError) as _traced_exc:
+            if is_tracer_error(_traced_exc):
+                not_judged(None, "_check_msl_port_geometry")
             face = {}
         return dict(n=int(n), h_real=h_real, frac=face.get("frac"),
                     declared_n_above=face.get("declared_n_above"),

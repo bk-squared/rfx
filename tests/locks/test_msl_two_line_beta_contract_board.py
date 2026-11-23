@@ -81,9 +81,10 @@ def _feed_nodes(sim):
 
 
 def _probe0_s21(res):
-    # beta from the S21 phase ratio of two lines is a line property and
-    # assumes the line reference: S is brought back from the declared 50 ohm
-    # to line_impedances (#2014) before the phase is read.
+    """Beta from the S21 phase ratio of two lines is a line property and assumes the line
+    reference, so S is brought back from the declared 50 ohm to ``line_impedances``
+    before the phase is read.
+    """
     beta = np.asarray(res.shift_beta, dtype=np.float64)
     offsets = np.asarray(res.reference_plane_offsets_m, dtype=np.float64)
     u = np.exp(1j * beta * offsets[:, None])
@@ -96,8 +97,6 @@ def test_closed_form_beta_matches_the_two_line_beta_on_the_coarse_board():
 
     short, long_ = _board(0), _board(_DELTA_CELLS)
     fs, fl = _feed_nodes(short), _feed_nodes(long_)
-    # Realized length difference, and the same port-to-strip-end geometry:
-    # the strip runs feed node to feed node on both, 2 mm from each x face.
     d_l = (fl[1] - fl[0]) - (fs[1] - fs[0])
     np.testing.assert_allclose(d_l, _DELTA_CELLS * _DX, rtol=1e-9)
     np.testing.assert_allclose([fs[0], fl[0]], [0.002, 0.002], rtol=1e-9)

@@ -80,9 +80,6 @@ def test_far_face_of_a_last_cell_body_is_owned_by_the_domain_bc():
     interior = _nnz(realized_pec_edge_masks(_plates([8])))
     assert interior == [40, 40, 25], interior
     assert _nnz(realized_pec_edge_masks(_plates([7]))) == interior
-    # same body on the last cell: its far face is plane 10, outside the
-    # array. The domain BC owns that plane; the rule must NOT wrap it onto
-    # plane 0, where there is no metal.
     on_face = realized_pec_edge_masks(_plates([9]))
     assert _nnz(on_face) == [20, 20, 25], _nnz(on_face)
     assert int(jnp.sum(on_face[0][:, :, 0])) == 0
@@ -96,10 +93,6 @@ def test_periodic_axis_keeps_the_wrap_so_the_far_face_lands_on_plane_zero():
     assert _nnz(per) == [40, 40, 25], _nnz(per)
     assert int(jnp.sum(per[0][:, :, 0])) == 20
     assert int(jnp.sum(per[1][:, :, 0])) == 20
-    # A body straddling the seam does NOT discriminate under the volume
-    # rule — each of its two cells already puts a wall on its own near
-    # plane, so wrap and pad give the same set. Measured, so the oracle
-    # above is not credited to the wrong fixture.
     m = np.zeros((8, 8, 8), bool)
     m[[7, 0], 3:5, 3:5] = True
     m = jnp.asarray(m)
@@ -130,7 +123,7 @@ def test_length_one_axis_is_load_bearing_for_a_sheet_normal():
     got = _nnz(realized_pec_edge_masks(None, sheets=[sheet]))
     assert got == [12, 12, 16], got
     cells = np.zeros((10, 10, 1), bool)
-    cells[3:6, 3:6, 0] = True           # the 3x3 cells those nodes bound
+    cells[3:6, 3:6, 0] = True
     assert _nnz(realized_pec_edge_masks(jnp.asarray(cells))) == got
 
 
@@ -147,14 +140,13 @@ def test_apply_pec_mask_forwards_the_periodic_flags():
     st = st._replace(ex=jnp.ones(shape), ey=jnp.ones(shape),
                      ez=jnp.ones(shape))
     pm = np.zeros(shape, bool)
-    pm[5, 1:5, 1:5] = True          # one cell thick along x, on face n-1
+    pm[5, 1:5, 1:5] = True
     pm = jnp.asarray(pm)
     ey_non = np.asarray(apply_pec_mask(st, pm).ey) == 0.0
     ey_per = np.asarray(apply_pec_mask(st, pm, (True, False, False)).ey) == 0.0
     assert int(ey_non.sum()) == 20 and ey_non[5].sum() == 20, int(ey_non.sum())
     assert int(ey_per.sum()) == 40, int(ey_per.sum())
     assert ey_per[0].sum() == 20 and ey_per[5].sum() == 20
-    # the normal component is shorted inside the cell under both flags
     for per in [(False, False, False), (True, False, False)]:
         ex = np.asarray(apply_pec_mask(st, pm, per).ex) == 0.0
         assert int(ex.sum()) == 25 and ex[5].sum() == 25
@@ -187,8 +179,8 @@ def _tmz_sim():
     sim.add(Box((0.008, 0.008, 0.0), (0.012, 0.012, 0.001)), material="pec")
     sim.add_source((0.004, 0.010, 0), "ez", waveform=GaussianPulse(f0=15e9),
                    amplitude_kind="field")
-    sim.add_probe((0.010, 0.010, 0), "ez")   # INSIDE the PEC block
-    sim.add_probe((0.004, 0.004, 0), "ez")   # outside control
+    sim.add_probe((0.010, 0.010, 0), "ez")
+    sim.add_probe((0.004, 0.004, 0), "ez")
     return sim
 
 

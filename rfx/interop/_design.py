@@ -109,7 +109,7 @@ from rfx.sources.tfsf_discrete_plane_wave import document_fields
 
 import dataclasses
 import json
-from typing import Any, Callable, NamedTuple
+from typing import Any, NamedTuple
 
 import jax
 import jax.numpy as jnp
@@ -129,6 +129,15 @@ from rfx.api._spec import (
 )
 from rfx.boundaries.spec import BoundarySpec
 from rfx.core.jax_utils import is_tracer
+from rfx.interop._design_codec import (
+    _ARRAY, _ARRAY_CONTAINERS, _F, _INT, _NUM, _STR,
+    _array_from_dict, _array_to_dict, _dump_entry, _integer, _integer_vector,
+    _load_entry, _opt, _refuse, _require_exact_keys, live_field_names,
+)
+from rfx.interop._design_dft_planes import (
+    _DFT_PLANE_DOCUMENT_FIELDS, _DFT_PLANE_FIELDS,
+    _dump_dft_planes, _load_dft_plane, _normalize_dft_planes,
+)
 from rfx.interop._errors import UnsupportedDesignFeature
 from rfx.interop._materials import (
     material_to_dict,
@@ -153,49 +162,6 @@ __all__ = [
 DESIGN_SCHEMA_VERSION = "rfx-design-ir/v2"
 
 
-# ---------------------------------------------------------------------------
-# Scalar coercions
-# ---------------------------------------------------------------------------
-
-def _refuse(message: str) -> "UnsupportedDesignFeature":
-    return UnsupportedDesignFeature(message)
-
-
-# ``check_number`` / ``check_text`` / ``check_vector`` come from
-# ``rfx/interop/_validate.py`` — the shared leaf the shape and material codecs
-# also sit on. They refuse JAX tracers, ``bool`` (an int in Python, so
-# ``float(True)`` would silently record 1.0), ``str``/``bytes`` (a quoted
-# numeric in a hand-written document), one-shot iterators (consumed by the act
-# of exporting, so a second export would emit an empty sequence with no error)
-# and non-finite floats. The two coercions below are the ones the leaf does not
-# provide; they build on it rather than re-deriving its rules.
-
-
-def _integer(value: Any, *, what: str) -> int:
-    """Require an exact integer.
-
-    Not a wrapper around ``check_number``: cell counts, mode indices and
-    ``n_freqs`` must not silently accept 3.5 or come back as a float, and the
-    document distinguishes JSON integers from JSON numbers.
-    """
-    if isinstance(value, bool):
-        raise _refuse(f"{what} must be an integer, got a bool ({value!r})")
-    if is_tracer(value):
-        raise _refuse(f"{what} is a JAX tracer; expected a concrete integer")
-    if isinstance(value, (str, bytes)):
-        raise _refuse(
-            f"{what} is the string {value!r}, not an integer; int() would have "
-            f"accepted it silently"
-        )
-    try:
-        out = int(value)
-    except (TypeError, ValueError) as exc:
-        raise _refuse(f"{what} must be an integer, got {value!r}") from exc
-    if out != value:
-        raise _refuse(f"{what} must be an exact integer, got {value!r}")
-    return out
-
-
 def _flag(value: Any, *, what: str) -> bool:
     """Require an actual bool.
 
@@ -205,106 +171,6 @@ def _flag(value: Any, *, what: str) -> bool:
     if not isinstance(value, bool):
         raise _refuse(f"{what} must be a bool, got {type(value).__name__}")
     return value
-
-
-def _integer_vector(value: Any, n: int, *, what: str) -> tuple[int, ...]:
-    if isinstance(value, (str, bytes)) or not hasattr(value, "__len__"):
-        raise _refuse(f"{what} must be a sequence of {n} integers, got {value!r}")
-    if len(value) != n:
-        raise _refuse(
-            f"{what} must have exactly {n} components, got {len(value)}: {value!r}"
-        )
-    return tuple(_integer(v, what=f"{what}[{i}]") for i, v in enumerate(value))
-
-
-# ---------------------------------------------------------------------------
-# Array codec — full values, dtype and namespace preserved
-# ---------------------------------------------------------------------------
-#
-# Mesh profiles and frequency lists reach the builder as Python lists, numpy
-# arrays or jax arrays, and the container matters: ``Simulation.__init__``
-# synthesises ``domain`` from ``float(np.sum(profile))``, so a float32 profile
-# reloaded as float64 shifts the domain extent in the last ULPs and breaks the
-# bit-identity gates the repo relies on.  The dtype and the array namespace are
-# therefore part of the record.
-
-_ARRAY_CONTAINERS = ("list", "tuple", "numpy", "jax")
-
-
-def _array_to_dict(value: Any, *, what: str) -> dict[str, Any]:
-    """Record a 1-D numeric array value-by-value with its container identity."""
-    if is_tracer(value):
-        raise _refuse(
-            f"{what} is a JAX tracer (differentiable-mesh / traced path). A "
-            f"tracer has no concrete values, so exporting it would record a "
-            f"placeholder rather than a mesh. Export the design outside "
-            f"jit/grad with concrete profile values."
-        )
-    if isinstance(value, np.ndarray):
-        container = "numpy"
-    elif isinstance(value, jax.Array):
-        container = "jax"
-    elif isinstance(value, list):
-        container = "list"
-    elif isinstance(value, tuple):
-        container = "tuple"
-    else:
-        raise _refuse(
-            f"{what} is a {type(value).__name__}; the design document records "
-            f"lists, tuples, numpy arrays and jax arrays only"
-        )
-
-    payload: dict[str, Any] = {"container": container}
-    if container in ("numpy", "jax"):
-        if value.ndim != 1:
-            raise _refuse(
-                f"{what} must be 1-D, got shape {tuple(value.shape)}"
-            )
-        payload["dtype"] = str(value.dtype)
-    payload["values"] = [
-        check_number(v, what=f"{what}[{i}]") for i, v in enumerate(np.asarray(value).tolist())
-    ]
-    return payload
-
-
-def _array_from_dict(payload: Any, *, what: str) -> Any:
-    if not isinstance(payload, dict):
-        raise _refuse(f"{what} must be a mapping, got {type(payload).__name__}")
-    container = payload.get("container")
-    if container not in _ARRAY_CONTAINERS:
-        raise _refuse(
-            f"{what}.container must be one of {_ARRAY_CONTAINERS}, got "
-            f"{container!r}"
-        )
-    expected = {"container", "values"} | ({"dtype"} if container in ("numpy", "jax") else set())
-    _require_exact_keys(payload, expected, what=what)
-
-    raw = payload["values"]
-    if not isinstance(raw, list):
-        raise _refuse(f"{what}.values must be a list, got {type(raw).__name__}")
-    values = [check_number(v, what=f"{what}.values[{i}]") for i, v in enumerate(raw)]
-
-    if container == "list":
-        return values
-    if container == "tuple":
-        return tuple(values)
-
-    dtype = check_text(payload["dtype"], what=f"{what}.dtype")
-    try:
-        arr = np.asarray(values, dtype=np.dtype(dtype))
-    except TypeError as exc:
-        raise _refuse(f"{what}.dtype {dtype!r} is not a numpy dtype") from exc
-    if container == "numpy":
-        return arr
-    out = jnp.asarray(arr)
-    if str(out.dtype) != dtype:
-        raise _refuse(
-            f"{what} was exported as a jax array of dtype {dtype!r} but this "
-            f"process rebuilds it as {str(out.dtype)!r} — the JAX x64 setting "
-            f"differs from the exporting process. Rebuilding would change the "
-            f"numbers, so the import is refused (see JAX_ENABLE_X64)."
-        )
-    return out
 
 
 # ---------------------------------------------------------------------------
@@ -403,17 +269,6 @@ def _waveform_from_dict(payload: Any, *, what: str) -> Any:
 # Closed-world key checking
 # ---------------------------------------------------------------------------
 
-def _require_exact_keys(payload: dict, expected: set[str], *, what: str) -> None:
-    present = set(payload)
-    unknown = present - expected
-    missing = expected - present
-    if unknown or missing:
-        raise _refuse(
-            f"{what} key mismatch: missing={sorted(missing)}, "
-            f"unknown={sorted(unknown)}"
-        )
-
-
 def _section(payload: Any, key: str, *, what: str) -> dict:
     value = payload[key]
     if not isinstance(value, dict):
@@ -438,30 +293,11 @@ def _entry_list(payload: Any, key: str, *, what: str) -> list:
 # the live class declares exactly these fields, so a field added upstream reds
 # the interop contract test instead of vanishing from exported designs.
 
-class _F(NamedTuple):
-    dump: Callable[[Any, str], Any]
-    load: Callable[[Any, str], Any]
-
-
-def _opt(field: _F) -> _F:
-    return _F(
-        dump=lambda v, w: None if v is None else field.dump(v, w),
-        load=lambda v, w: None if v is None else field.load(v, w),
-    )
-
-
-_NUM = _F(dump=lambda v, w: check_number(v, what=w), load=lambda v, w: check_number(v, what=w))
-_INT = _F(dump=lambda v, w: _integer(v, what=w), load=lambda v, w: _integer(v, what=w))
-_STR = _F(dump=lambda v, w: check_text(v, what=w), load=lambda v, w: check_text(v, what=w))
 _BOOL = _F(dump=lambda v, w: _flag(v, what=w), load=lambda v, w: _flag(v, what=w))
 _SHAPE = _F(dump=lambda v, w: shape_to_dict(v), load=lambda v, w: shape_from_dict(v))
 _WAVEFORM = _F(
     dump=lambda v, w: _waveform_to_dict(v, what=w),
     load=lambda v, w: _waveform_from_dict(v, what=w),
-)
-_ARRAY = _F(
-    dump=lambda v, w: _array_to_dict(v, what=w),
-    load=lambda v, w: _array_from_dict(v, what=w),
 )
 
 
@@ -614,15 +450,6 @@ _COAXIAL_PORT_FIELDS: dict[str, _F] = {
 
 _TFSF_FIELDS = document_fields(_NUM, _INT, _STR, _BOOL, _opt)
 
-_DFT_PLANE_FIELDS: dict[str, _F] = {
-    "name": _STR,
-    "axis": _STR,
-    "coordinate": _NUM,
-    "component": _STR,
-    "freqs": _opt(_ARRAY),
-    "n_freqs": _INT,
-}
-
 _FLUX_MONITOR_FIELDS: dict[str, _F] = {
     "name": _STR,
     "axis": _STR,
@@ -746,56 +573,6 @@ _PINNED_RECORDS: tuple[tuple[type, dict[str, _F]], ...] = (
 )
 
 
-def live_field_names(cls: type) -> tuple[str, ...]:
-    """Declared field names of a dataclass or NamedTuple record class.
-
-    Used by the interop contract test to pin the registries above against the
-    live builder record classes.
-    """
-    if dataclasses.is_dataclass(cls):
-        return tuple(f.name for f in dataclasses.fields(cls))
-    fields = getattr(cls, "_fields", None)
-    if fields is not None:
-        return tuple(fields)
-    raise TypeError(f"{cls.__name__} is neither a dataclass nor a NamedTuple")
-
-
-def _dump_entry(
-    entry: Any, fields: dict[str, _F], cls: type, *, what: str
-) -> dict[str, Any]:
-    if type(entry) is not cls:
-        raise _refuse(
-            f"{what} is a {type(entry).__name__}, expected {cls.__name__}; the "
-            f"design document does not infer fields of unknown record types"
-        )
-    live = set(live_field_names(cls))
-    unrecorded = live - set(fields)
-    if unrecorded:
-        raise _refuse(
-            f"{cls.__name__} carries fields the design document does not "
-            f"record: {sorted(unrecorded)}. Update rfx/interop/_design.py "
-            f"rather than exporting a partial entry"
-        )
-    return {
-        name: field.dump(getattr(entry, name), f"{what}.{name}")
-        for name, field in fields.items()
-    }
-
-
-def _load_entry(
-    payload: Any, fields: dict[str, _F], *, what: str, defaults=None
-) -> dict[str, Any]:
-    if not isinstance(payload, dict):
-        raise _refuse(f"{what} must be a mapping, got {type(payload).__name__}")
-    if defaults:
-        payload = {**defaults, **payload}
-    _require_exact_keys(payload, set(fields), what=what)
-    return {
-        name: field.load(payload[name], f"{what}.{name}")
-        for name, field in fields.items()
-    }
-
-
 def _dump_list(
     entries: Any, fields: dict[str, _F], cls: type, *, what: str
 ) -> list[dict[str, Any]]:
@@ -890,14 +667,14 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_internal_probe_indices",
 )
 
-from rfx.interop._design_state import EXCLUDED_SIMULATION_ATTRS
+from rfx.interop._design_state import EXCLUDED_SIMULATION_ATTRS, EXPORTED_LAZY_SIMULATION_ATTRS
 
 
 #: Constructor state accepted only with traced widths; export refuses that input.
 TRACED_ONLY_SIMULATION_ATTRS: tuple[str, ...] = ("_nominal_profiles",)
 
 # Lazy declarations have an explicit disposition alongside constructor state.
-REFUSED_SIMULATION_ATTRS = {"_wall_losses": "refused"}
+REFUSED_SIMULATION_ATTRS = {"_wall_losses": "refused", "_time_recorded_dft_planes": "refused"}
 
 
 def _msl_ports_with_resolved_offsets(sim: Any) -> list[Any]:
@@ -1387,6 +1164,8 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
     """
     if getattr(sim, "_wall_losses", ()):
         raise UnsupportedDesignFeature("add_wall_loss is not carried by the design document")
+    if getattr(sim, "_time_recorded_dft_planes", None):
+        raise UnsupportedDesignFeature("a time-recorded DFT plane selection is driver state the design document does not carry")
     soft_sources, lumped_ports = _dump_ports(sim)
 
     ntff = None
@@ -1549,9 +1328,7 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
             "probes": _dump_list(
                 sim._probes, _PROBE_FIELDS, _ProbeEntry, what="_probes"
             ),
-            "dft_planes": _dump_list(
-                sim._dft_planes, _DFT_PLANE_FIELDS, _DFTPlaneEntry, what="_dft_planes"
-            ),
+            "dft_planes": _dump_dft_planes(sim),
             "flux_monitors": _dump_list(
                 sim._flux_monitors,
                 _FLUX_MONITOR_FIELDS,
@@ -1950,9 +1727,7 @@ def simulation_from_design(document: Any) -> Any:
     for index, payload in enumerate(
         _entry_list(observables, "dft_planes", what="observables")
     ):
-        values = _load_entry(
-            payload, _DFT_PLANE_FIELDS, what=f"observables.dft_planes[{index}]"
-        )
+        values = _load_dft_plane(payload, what=f"observables.dft_planes[{index}]")
         sim.add_dft_plane_probe(**values)
 
     for index, payload in enumerate(
@@ -2007,6 +1782,7 @@ def _assert_round_trip(sim: Any, document: dict) -> None:
                 {"allow_in_absorber": False, **entry}
                 for entry in document[section][family]
             ]
+    _normalize_dft_planes(document)
     # Older documents use defaults for optional solver keys they do not carry.
     document = {**document, "solver": {**_OPTIONAL_SOLVER_DEFAULTS, **document["solver"]}}
     if document["solver"]["solver"] == "yee" and "adi_cfl_factor" in document["solver"]:

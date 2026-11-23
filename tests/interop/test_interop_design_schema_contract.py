@@ -38,8 +38,6 @@ from rfx.materials.debye import DebyePole
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# The design fixtures live in the sibling test module; reuse them rather than
-# maintaining a second, thinner set that would silently stop covering families.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_interop_design_document import DESIGN_BUILDERS  # noqa: E402
 SCHEMA_PATH = _REPO_ROOT / "docs/design_notes/schemas/rfx-design-ir-v2.schema.json"
@@ -52,7 +50,8 @@ def schema() -> dict:
 
 @pytest.fixture(scope="module")
 def documents() -> list[dict]:
-    """A few progressively richer designs, exported."""
+    """A few progressively richer designs, exported.
+    The smoothed profile is a harder serialisation case (uneven values, not three flat blocks)."""
     docs = []
 
     plain = Simulation(freq_max=10e9, domain=(0.02, 0.012, 0.004), dx=2e-4,
@@ -65,9 +64,6 @@ def documents() -> list[dict]:
     plain.add_probe(position=(0.010, 0.006, 0.0016), component="ez")
     docs.append(design_to_dict(plain))
 
-    # smooth_grading is what rfx itself recommends for an abrupt profile, and it
-    # inserts transition cells — so the profile is also a harder serialisation
-    # case (uneven values, not three flat blocks).
     from rfx import smooth_grading
     dz = np.asarray(smooth_grading(
         np.concatenate([np.full(20, 2e-4), np.full(30, 5e-5), np.full(20, 2e-4)])))
@@ -214,7 +210,7 @@ def test_json_output_rejects_non_standard_float_tokens(documents):
                   corner_hi=(0.02, 0.012, 0.0015)), material="pec")
     text = design_to_json(plain)
     assert "NaN" not in text and "Infinity" not in text
-    json.loads(text)  # strict parse
+    json.loads(text)
 
 
 def test_material_payload_shape_is_pinned(schema):

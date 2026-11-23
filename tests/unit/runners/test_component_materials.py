@@ -41,7 +41,6 @@ def test_realized_volume_stamps_poles_and_metric(periodic, graded):
     d = DebyePole(1.2, 2e-11)
     lorentz_pole = LorentzPole(2e10, 1e9, 3e20)
     specs = model.ComponentCells(cells, ([d], [a > 20]), ([lorentz_pole], [a < 30]))
-    # The raw-array branch has no grid and no wall face.
     result = model.realize_components(specs, grid, periodic=periodic, high_wall=unpadded_high_walls(grid))
     e_widths = model.electric_cell_sizes(grid)
     assert_tree_equal((result.eps_update, result.sigma_update),
@@ -79,7 +78,7 @@ def test_main_kernels_and_ade_read_stored_operands(monkeypatch):
     monkeypatch.setattr(model, "realize_components", forbidden)
     monkeypatch.setattr(yee, "component_e_materials", forbidden)
     monkeypatch.setattr(yee, "component_h_materials", forbidden)
-    import rfx.stepping.yee as stepping_yee  # the moved kernels read them here
+    import rfx.stepping.yee as stepping_yee
     monkeypatch.setattr(stepping_yee, "component_e_materials", forbidden)
     monkeypatch.setattr(stepping_yee, "component_h_materials", forbidden)
     jax.clear_caches()
@@ -210,10 +209,11 @@ def test_realization_reuse_checks_periodic_and_grid():
 
 
 def test_step_materials_have_no_cell_or_pole_arrays():
+    """The scalar eps_r is a CPML dtype token rather than cell permittivity."""
     cells = yee.init_materials((4, 3, 5))
     materials = model.with_components(cells, None, periodic=(False,) * 3, high_wall=(False, False, False))
     slim = model.kernel_materials(materials)
-    assert slim.eps_r.shape == ()  # dtype token for CPML, not the cell epsilon
+    assert slim.eps_r.shape == ()
     assert slim.sigma is slim.mu_r is None
     assert slim.components._fields == ("eps_update", "sigma_update", "mu_update", "tensor")
     assert slim.components.tensor is None
@@ -276,7 +276,7 @@ def test_cached_pole_coefficients_reject_stale_parameters(family, mismatch):
     materials = model.with_components(cells, grid, periodic=(False,) * 3,
                                      **{family + "_spec": ([pole], None)})
     init = init_debye if family == "debye" else init_lorentz
-    init([type(pole)(*pole)], materials, grid.dt)  # equal scalar parameters are reusable
+    init([type(pole)(*pole)], materials, grid.dt)
     if mismatch == "pole":
         pole = pole._replace(**{pole._fields[0]: pole[0] * 2})
     with pytest.raises(ValueError, match="realized ADE coefficients"):

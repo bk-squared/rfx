@@ -34,7 +34,7 @@ def _run(sim, component):
 
 def test_tez_with_a_profile_is_refused_at_run_not_at_construction():
     sim = Simulation(freq_max=30e9, domain=(A, B, DX), dx=DX, boundary="pec",
-                     mode="2d_tez", dy_profile=DY)      # constructs
+                     mode="2d_tez", dy_profile=DY)
     with pytest.raises(ValueError, match="solves 3-D only"):
         _run(sim, "ey")
 
@@ -91,14 +91,12 @@ def test_the_way_out_named_in_the_message_carries_tez_fields():
     those planes over the magnetic declaration, one cell read exactly 0.0,
     and this test pinned that short as "one cell holds nothing"."""
     def solve(cells):
+        """Excite every node, including both magnetic face nodes, for a TEz invariant field rather than a source localized in z."""
         sim = Simulation(
             freq_max=30e9, domain=(A, B, cells * DX), dx=DX, mode="3d",
             boundary=BoundarySpec(x="pec", y="pec",
                                   z=Boundary(lo="pmc", hi="pmc")),
             dy_profile=DY)
-        # The imaged thin box has a full width cells*DX. A source on only
-        # one face is localized in z; excite every node for a TEz invariant
-        # field, including both magnetic face nodes.
         for k in range(cells + 1):
             sim.add_source((0.0063, 0.0031, k * DX), component="ey",
                            amplitude_kind="field")

@@ -99,7 +99,6 @@ def test_record_ids_follow_simulation_port_numbers(graded, entry, reads_s):
     if entry == 'forward' and reads_s:
         with pytest.raises(ValueError, match='needs a driven port.*lumped_port_sparams'):
             sim.forward(n_steps=16, skip_preflight=True, **kwargs)
-        # Record identities do not require S from the all-passive scene.
         kwargs = {}
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')

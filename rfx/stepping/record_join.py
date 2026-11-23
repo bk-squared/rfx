@@ -93,7 +93,6 @@ The chunk axes have identical extents on every owner (x is not chunked).
         branches.append(write)
 
     def join(local, *, rank):
-        # Flatten inside the compiled program so snapshot carries need no eager copy.
         local = local.reshape((1, -1))
         def body(index, result):
             starts = tuple((index // prod(counts[a + 1:]) % counts[a]) * c

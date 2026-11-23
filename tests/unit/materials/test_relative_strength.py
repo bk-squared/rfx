@@ -1,4 +1,5 @@
-"""Declaration, non-field readers, and coefficient-path admission."""
+"""Declaration, non-field readers, and coefficient-path admission.
+The eps_inf=1 limit of about 0.28 lies between omega_p dt=0.2 and 0.45."""
 import json
 import sys
 import warnings
@@ -36,14 +37,13 @@ def _stability_sim(kappa, graded):
     return sim
 
 
-# omega_p dt = 0.45 is above the eps_inf = 1 limit (about 0.28), 0.2 below (test_pole_stability_admission).
-# The unstable "rs" row puts the size in the reference (value 1e-6), so a reader of value alone sees a stable pole.
-# The stable "rs" row (value 1e6) is a control: its value alone, read as kappa, is also below the limit.
+MISLEADING_STRENGTH_VALUE = 1e-6
+STABLE_CONTROL_STRENGTH_VALUE = 1e6
 STABILITY_CASES = {
     ("unstable", "si"): (0.45, None, True),
-    ("unstable", "rs"): (0.45, 1e-6, True),
+    ("unstable", "rs"): (0.45, MISLEADING_STRENGTH_VALUE, True),
     ("stable", "si"): (0.2, None, False),
-    ("stable", "rs"): (0.2, 1e6, False),
+    ("stable", "rs"): (0.2, STABLE_CONTROL_STRENGTH_VALUE, False),
 }
 
 
@@ -58,6 +58,7 @@ def _stability_declare(wdt, value, traced=None):
 @pytest.mark.parametrize("route", ["run", "jit_grad"])
 @pytest.mark.parametrize("case", list(STABILITY_CASES), ids=lambda c: "-".join(c))
 def test_stability_reads_si(case, route, lane):
+    """The in-program route surfaces the ValueError through XLA."""
     wdt, value, expect_refusal = STABILITY_CASES[case]
     graded = lane == "graded"
     try:
@@ -78,7 +79,7 @@ def test_stability_reads_si(case, route, lane):
                 ts = np.asarray(jax.block_until_ready(jax.jit(jax.grad(loss))(jnp.float32(primal))))
                 jax.effects_barrier()
         outcome = f"ran finite={bool(np.all(np.isfinite(ts)))}"
-    except Exception as exc:  # The in-program route surfaces the ValueError through XLA.
+    except Exception as exc:
         outcome = f"refused {type(exc).__name__}: {UNSTABLE in str(exc)}"
         if UNSTABLE not in str(exc):
             outcome += " msg=" + str(exc)[:300]
@@ -190,13 +191,15 @@ def test_distributed_relative_strength_uses_core(lane, entry, monkeypatch):
     calls = []
     original = lorentz.pole_update_coeffs
     def counted(w, d, k, *args, **kwargs):
-        if not (w == 1. and d == 1. and k == 1.):  # Vacuum halo coefficients.
+        VACUUM_HALO_COEFFICIENT = 1.
+        if not (w == VACUUM_HALO_COEFFICIENT and d == VACUUM_HALO_COEFFICIENT and k == VACUUM_HALO_COEFFICIENT):
             caller = sys._getframe(1).f_globals["__name__"]
             calls.append((caller, isinstance(k, RelativeStrength)))
             if relative and caller != "rfx.model.pole_stability" and not isinstance(k, RelativeStrength):
                 print(f"Unexpected field SI call: caller={caller} w={w!r} d={d!r} k={k!r} args={args!r} kwargs={kwargs!r}")
         return original(w, d, k, *args, **kwargs)
     monkeypatch.setattr(lorentz, "pole_update_coeffs", counted)
+    monkeypatch.setattr("rfx.model.dispersive_poles.pole_update_coeffs", counted)
     results = []
     for relative in (True, False):
         options = {"dx_profile": np.r_[.002, np.linspace(.0018, .0022, 14), .002]} if lane == "graded" else {}
