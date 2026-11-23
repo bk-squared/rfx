@@ -204,6 +204,9 @@ def review_result(pr: dict) -> tuple[str, str]:
         previous = entry.get("previous_filename", path)
         if not all(isinstance(name, str) and name for name in (path, previous)):
             return "missing", f"{detail}: diff not read"
+        if previous != path and (path.endswith(".py") or previous.endswith(".py")):
+            first = first or path
+            continue
         for name in (previous, path):
             if name.startswith("rfx/") and not name.endswith(".py"):
                 first = first or name
