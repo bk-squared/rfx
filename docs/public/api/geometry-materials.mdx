@@ -31,7 +31,7 @@ domain = (0.04, 0.03, 0.02)
 board = Box((0.005, 0.005, 0.004), (0.035, 0.025, 0.0056))
 ground = Box((0.005, 0.005, 0.004), (0.035, 0.025, 0.004))
 patch = Box((0.012, 0.010, 0.0056), (0.028, 0.020, 0.0056))
-# A mesh that keeps the sheets at their drawn size and the board faces on nodes.
+# Last sheet nodes 0.35 cell inside the drawn edges; board faces on nodes.
 sim = Simulation(freq_max=5e9, domain=domain, dx=1e-3, boundary="cpml",
                  **edge_aware_profiles(domain, 1e-3, sheets=[ground, patch],
                                        solids=[board], axes="xyz"))

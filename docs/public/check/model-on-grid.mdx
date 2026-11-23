@@ -71,8 +71,8 @@ The message of that error reads, in part:
 
 A metal sheet's free edge is solved about 0.35 of a cell beyond its last mesh
 node, so on this grid the patch is solved 3.5 % wider than drawn. `run()` and
-`forward()` would stop here with the same message. The fix is a mesh whose
-nodes put the solved edges on the drawn ones:
+`forward()` would stop here with the same message. The fix is a mesh whose last nodes lie 0.35 cell inside the drawn edges, so
+that the predicted solved edges fall on the drawn ones:
 
 ```python
 profiles = edge_aware_profiles(domain, 0.5e-3, sheets=[patch], solids=[substrate])
@@ -102,6 +102,10 @@ thin_conductor[0] ... PEC sheet on node plane z = 5000.00 um
   y: declared [5000.0, 15200.0] um -> realized [5000.0, 15200.0] um | ... extent 10200.0 -> 10200.0 um
 ```
 
+The realized span is the one predicted with the 0.35-cell offset. Here the z
+cell at the patch is 0.5 mm and the in-plane cells beside its edges are 0.483
+and 0.470 mm, ratios of 1.04 and 1.06 at which the offset has not been measured.
+
 The same spans in code:
 
 ```python
@@ -127,7 +131,7 @@ Preflight's findings that compare the drawing with the grid:
 
 | Finding | What it means | What to do |
 |---|---|---|
-| a sheet solved more than 1 % off its drawn size (`sheet_effective_size`, error) | The sheet's free edges are solved about 0.35 of a cell past its last node. An edge fed over its whole width by a port is solved where it is drawn. | Build the in-plane mesh with `edge_aware_profiles`, or pass `snap="declared"`. |
+| a sheet solved more than 1 % off its drawn size (`sheet_effective_size`, error) | The sheet's free edges are solved about 0.35 of a cell past its last node (measured where the cell normal to the sheet is as long as the in-plane cell beside its edge). An edge fed over its whole width by a port is solved where it is drawn. | Build the in-plane mesh with `edge_aware_profiles`, or pass `snap="declared"`. |
 | a cavity between adjacent parallel PEC faces solved more than 1 % off its drawn spacing (`sheet_cavity_spacing`, error) | Two sheets, a sheet and a PEC `Box` face, two PEC `Box` faces, or one of these and the domain's PEC floor or lid sit on node planes whose spacing differs from the drawing, and a cavity resonance follows that spacing. A non-Box volume and an absorbing, magnetic or conformal domain face are not checked. | Put both faces on mesh nodes: a `dx` that divides the heights and the domain extent, or `edge_aware_profiles(..., sheets=[...], solids=[...], axes="xyz")` with the PEC Boxes in `solids`. Or pass `snap="declared"`. |
 | a conductor face off the grid (`off_lattice_design_edges`, warning) | A metal face sits more than 0.5 % of its extent away from the nearest node. | Choose `dx` commensurate with the shape, or place a node on the face with a graded profile. |
 | a PEC shape thinner than one cell but not zero (error) | It is neither a sheet nor a resolved volume. | Declare a sheet, or resolve the thickness. See [Conductors](/rfx/model/conductors/). |
@@ -166,11 +170,18 @@ read, and the [support page](/rfx/support/) lists them.
 This page makes no accuracy statement of its own. The 0.35-cell edge offset
 that preflight uses to predict a sheet's solved size was measured on a thin PEC
 fin against a fine-mesh reference, for both polarizations and two cell sizes
-(`scripts/diagnostics/pec_sheet_edge_offset.py`); the size check built on it is
-pinned in `tests/contracts/test_sheet_solved_edge_reports.py`.
+(`scripts/diagnostics/pec_sheet_edge_offset.py`), with the cell normal to the
+sheet as long as the in-plane cell beside its edge. The offset changes with the
+ratio of those two cells (normal over in-plane): for a free sheet it reads 0.27
+cell at 1/2 and 0.60 at 2; for a strip three cells above a ground plane it
+reads 0.37, 0.31 and 0.31 at 1, 1/2 and 1/4. Preflight, `fidelity_report()` and
+`edge_aware_profiles` use 0.35 at every ratio, so at other ratios a passing
+size check does not measure the solved size; `edge_aware_profiles(...,
+edge_offset=)` takes another value. The size check is pinned in
+`tests/contracts/test_sheet_solved_edge_reports.py`.
 
 ## See also
 
-- [Domain and mesh](/rfx/model/domain-mesh/#solving-sheets-at-their-drawn-size): building `edge_aware_profiles`.
+- [Domain and mesh](/rfx/model/domain-mesh/#mesh-lines-at-sheet-edges): building `edge_aware_profiles`.
 - [Conductors](/rfx/model/conductors/) and [Materials](/rfx/model/materials/): the placement rules.
 - [Simulation API](/rfx/api/simulation/): `preflight`, `fidelity_report`, `realized_geometry`.
