@@ -11,9 +11,7 @@ KINDS = ('planes', 'flux', 'ntff', 'moments', 'snapshots')
 
 
 def layout_for(kind, n=2, *, size=1, nx=17, single_frequency=False):
-    # Same CPML/source construction as test_distributed_record_planes.model;
-    # enough transverse cells to measure the second-axis chunk split directly.
-    # Four CPML cells and the endpoint node are included in the requested nx.
+    """Return a layout with four CPML cells and the endpoint node included in nx."""
     sim = Simulation(freq_max=15e9, domain=((nx - 5)*1e-3, 12e-3, 80e-3), dx=1e-3,
                      boundary='cpml', cpml_layers=2, precision='float32')
     sim.add_source((5e-3, 5e-3, 4e-3), 'ez', amplitude_kind='field')
