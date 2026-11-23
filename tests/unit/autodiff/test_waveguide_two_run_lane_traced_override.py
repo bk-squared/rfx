@@ -105,7 +105,7 @@ def _grad_through_two_run_lane(override_kw: str):
 
     try:
         jax.grad(objective)(jnp.float32(1.0))
-    except Exception as exc:  # noqa: BLE001 — the exception IS the measurement
+    except Exception as exc:  # noqa: BLE001
         return exc
     return None
 

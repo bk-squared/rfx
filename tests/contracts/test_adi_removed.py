@@ -70,7 +70,7 @@ def test_old_adi_document_refuses():
 
 
 def test_removed_module_cannot_import(monkeypatch):
-    # Editable installs may otherwise fall back to a different checkout.
+    """Import isolation prevents editable installs from falling back to a different checkout."""
     monkeypatch.setattr(sys, "meta_path", [finder for finder in sys.meta_path
                                          if not finder.__module__.startswith("__editable__")])
     with pytest.raises(ModuleNotFoundError):

@@ -67,7 +67,6 @@ def test_kottke_pec_volume_warning(entry, smoothing, body, transform):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         jax.block_until_ready(call(1.0))
-        # The once-per-object state is shared across the public entries too.
         other = "forward" if entry == "run" else "run"
         getattr(sim, other)(n_steps=2, skip_preflight=True, subpixel_smoothing=smoothing)
     assert not [w for w in caught if "not recommended for metal" in str(w.message)]
@@ -119,9 +118,9 @@ def test_waveguide_kottke_pec_volume_warning(monkeypatch, smoothing):
     (Cylinder(center=(.005, .004, .004), radius=.001, height=.002), "Cylinder"),
 ])
 def test_kottke_pec_curved_volume_warning(entry, shape, kind):
+    """A preceding planar PEC object must not consume the curved object's warning."""
     sim = Simulation(freq_max=20e9, domain=(.008,) * 3, dx=.001,
                      boundary="pec", cpml_layers=0)
-    # A planar PEC volume declared first: the curved body still names the warning.
     sim.add(Box((.006, .005, .005), (.007, .007, .007)), material="pec")
     sim.add(shape, material="pec")
     sim.add_source((.002, .002, .002), "ez", amplitude_kind="field")

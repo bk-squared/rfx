@@ -16,7 +16,6 @@ from rfx import GaussianPulse, Simulation, SnapshotSpec
 from rfx._internal._grid_metric import field_index
 
 
-# PR and weekly jobs pin two/three devices through their host configuration.
 DEVICES = min(3, len(jax.devices('cpu')))
 assert DEVICES >= 2, 'set XLA_FLAGS for at least two host devices before starting Python'
 E_COMPONENTS = ("ex", "ey", "ez")
@@ -76,8 +75,6 @@ def realized_slab(expected, label, enabled):
     seen = []
 
     def check(metas, layout, mesh, dtype):
-        # This exact layout is also passed to SlabRLC / slab_wrap.local_context.
-        # Read product ownership, including its mask, rather than repeating its cut.
         for meta, (key, cell, expected_owner, expected_local) in zip(metas, expected, strict=True):
             assert (meta.i, meta.j, meta.k) == cell, ('B3', key, meta, cell)
             owned = []

@@ -11,7 +11,6 @@ import pytest
 
 
 REPO = Path(__file__).resolve().parents[2]
-# Literal contract: do not derive expectations from production redirect tables.
 MOVED = [
     ('rfx.materials', 'MaterialArrays', 'rfx.core.yee',
      'rfx.materials.MaterialArrays moved to rfx.core.yee.MaterialArrays; import it from there. The old path will be removed in rfx 3.0.'),
@@ -145,9 +144,9 @@ def test_moved_name_redirect(old, name, target, message):
 
 @pytest.mark.parametrize("old,name,target", OWNED)
 def test_package_owned_lazy_export(old, name, target):
+    """The lazy-export witness must remain independent of earlier imports populating the package cache."""
     module = import_module(old)
     expected = getattr(import_module(target), name)
-    # Exercise the lazy resolver even if another import already populated it.
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         assert module.__getattr__(name) is expected

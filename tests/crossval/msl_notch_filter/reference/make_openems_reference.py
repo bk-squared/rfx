@@ -586,7 +586,7 @@ def _self_check(fine_factor: float) -> int:
         check(abs(r["refined_f"] - 3.6) < 0.05,
               "refined_extremum loads by path and finds a planted minimum",
               f"{r['refined_f']:.4f} GHz")
-    except Exception as exc:  # pragma: no cover - environment problem, reported
+    except Exception as exc:  # pragma: no cover
         check(False, "refined_extremum loads by path", repr(exc))
 
     print()

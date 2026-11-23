@@ -79,8 +79,6 @@ def capture(sim, entry, variant='', edit=None):
 
     def build_monitor(*args, **kwargs):
         value = monitor(*args, **kwargs)
-        # Retain each call's actual conductor and material override arguments.
-        # The stepper argument identifies the runner's call independently.
         seen['monitors'].append((value, kwargs))
         return value
 

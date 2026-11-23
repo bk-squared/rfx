@@ -174,7 +174,6 @@ def _closed_form_test_t1a_loop(a32, x0):
     opt = _MMA(m=len(b))
     state = opt.init(x0, (0, 1))
     history = []
-    # The unused two-constraint branch is omitted from the T1a reference.
     for iteration in range(1, 200 + 1):
         req = opt.ask(state)
         assert req.need_grad and req.iterate and req.x.dtype == jnp.float32
@@ -227,13 +226,13 @@ class _RecordingOptimizer:
 
 
 def test_nan_constraint_restores_last_finite_iterate():
+    """The failed evaluation still consumes its transformation's solves."""
     evaluations = 0
 
     def fun(x):
         nonlocal evaluations
         evaluations += 1
         constraint = jnp.asarray(jnp.nan if evaluations >= 3 else 0, dtype=x.dtype)
-        # The NaN is constant: both derivative rows remain finite.
         return jnp.stack([jnp.sum(x**2), constraint])
 
     opt, it_count = _RecordingOptimizer(), [0]
@@ -247,7 +246,6 @@ def test_nan_constraint_restores_last_finite_iterate():
     np.testing.assert_array_equal(x, np.array([1.5], dtype=np.float32))
     assert history == [0.25, 2.25] and it_count == [2]
     np.testing.assert_array_equal(visited, [[0.5], [1.5]])
-    # The failed evaluation still consumed its transformation's solves.
     assert counts == {"forward": 3, "reverse": 6, "forward_mode": 0}
 
 
