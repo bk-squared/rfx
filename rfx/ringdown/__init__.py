@@ -2189,8 +2189,6 @@ class RingdownForward(RingdownRun):
         return self._finish_forward(result, n_user)
 
     def _finish_forward(self, result, n_user: int):
-        bound, index_read, index_operands = self.__dict__.pop('_forward_echo')
-        result = result._replace(settling_echo_bound=bound)
         full = result.time_series
         n_int = len(self.probe_keys)
         if tuple(full.shape) != (self.n_steps, n_user + n_int):
@@ -2200,11 +2198,13 @@ class RingdownForward(RingdownRun):
                 f"{n_int} port-channel probes)")
         channels = full[:, n_user:]
         stripped = _user_geometry(result._replace(time_series=full[:, :n_user]), n_user, n_int)
-        completed = self._traced(result, channels, index_read, index_operands)
+        completed = self._traced(result, channels)
         warn_if_singular_value_exceeds_one(completed.s_params, completed.freqs, extractor="forward(ringdown)")
-        return stripped._replace(ringdown=completed)
+        return stripped._replace(ringdown=completed, settling_echo_bound=completed._echo_index)
 
-    def _traced(self, result, channels, index_read=None, index_operands=()) -> RingdownForwardResult:
+    def _traced(self, result, channels) -> RingdownForwardResult:
+        bound, index_read, index_operands = self.__dict__.pop('_forward_echo')
+        result = result._replace(settling_echo_bound=bound)
         if self.probe_mode:
             from rfx.ringdown._probe_channels import traced_probe_completion
             return traced_probe_completion(self, result, channels, index_read, index_operands)
