@@ -2,19 +2,26 @@
 import numpy as np
 
 
-def echo_override_declaration(sim, arguments):
-    """Retain per-call scalar maxima on a private simulation view."""
-    import copy
+def _override_maximum(value):
+    """Keep tracers live and reduce concrete global arrays before host reads."""
     import jax
     import jax.numpy as jnp
 
+    if isinstance(value, jax.core.Tracer):
+        return jnp.max(value)
+    if isinstance(value, jax.Array) and not value.is_fully_addressable:
+        return float(jnp.max(value))
+    return np.max(np.asarray(value, dtype=np.float64))
+
+
+def echo_override_declaration(sim, arguments):
+    """Retain per-call scalar maxima on a private simulation view."""
+    import copy
     names = ('eps_override', 'design_eps_override', 'mu_r_override')
     if not any(arguments.get(name) is not None for name in names):
         return sim
     maxima = tuple(
-        1. if arguments.get(name) is None else
-        (jnp.max(arguments[name]) if isinstance(arguments[name], (jax.Array, jax.core.Tracer))
-         else np.max(np.asarray(arguments[name], dtype=np.float64)))
+        1. if arguments.get(name) is None else _override_maximum(arguments[name])
         for name in names)
     member = copy.copy(sim)
     member._echo_override_maxima = maxima
