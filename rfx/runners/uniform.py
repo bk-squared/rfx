@@ -720,7 +720,7 @@ def run_uniform(
     if until_decay is not None:
         # The energy stop reads W only after every drive built above has ended.
         from rfx.measurement.decay import advisory_inputs
-        from rfx.measurement.record_end import drive_end, echo_delay_bound
+        from rfx.measurement.record_end import drive_end
         n_end = (drive_end(grid, decay_max_steps, sources=sources, mag_sources=mag_sources,
                            tfsf=tfsf, waveguide_ports=waveguide_ports)
                  if until_decay > 0 else None)

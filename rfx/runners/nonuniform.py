@@ -1234,7 +1234,6 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                            settling_echo_bound=echo_bound)
             return stop_fn(steps_done, partial)
 
-        from rfx.measurement.record_end import echo_delay_bound
         r = prepared_step.advance(stepping_product, run_nonuniform_until_decay,
             grid, materials,
             decay_by=0.0,
@@ -1251,7 +1250,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     elif until_decay is not None:
         # The energy stop reads W only after every drive built above has ended.
         from rfx.measurement.decay import advisory_inputs
-        from rfx.measurement.record_end import drive_end, echo_delay_bound
+        from rfx.measurement.record_end import drive_end
         n_end = (drive_end(source_grid, decay_max_steps, sources=sources, tfsf=tfsf_pair,
                            waveguide_ports=waveguide_port_cfgs)
                  if until_decay > 0 else None)
