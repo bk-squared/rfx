@@ -43,7 +43,7 @@ def declared_index_reader(sim, freqs):
                            for p in spec.lorentz_poles or ())))
     leaves, definition = jax.tree_util.tree_flatten(
         (rows, getattr(sim, '_echo_override_maxima', ())))
-    dynamic = tuple(isinstance(value, jax.core.Tracer) for value in leaves)
+    dynamic = tuple(isinstance(value, (jax.Array, jax.core.Tracer)) for value in leaves)
     fixed = tuple(
         None if live else
         (_override_maximum(value) if not value.is_fully_addressable else np.asarray(value))
