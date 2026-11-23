@@ -37,7 +37,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from test_coax_msl_transition import (  # noqa: E402  (sibling fixture module)
+from test_coax_msl_transition import (  # noqa: E402
     DX,
     FREQS_2,
     FREQ_MAX_2,

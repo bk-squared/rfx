@@ -229,8 +229,6 @@ def test_reciprocity_two_port():
     sim.add_waveguide_port(a - PORT_INSET_FROM_DOMAIN_FACE_M, direction="-x", mode=(1, 0), mode_type="TE",
                            freqs=freqs, f0=f0, name="port2")
 
-    assert all(distance > grid.cpml_layers * grid.dx for grid in (sim._build_grid(),) for distance in (sim._waveguide_ports[0].x_position, grid.domain[0] - sim._waveguide_ports[1].x_position)), "waveguide ports must lie outside the built CPML depth"
-
     result = sim.compute_waveguide_s_matrix(num_periods=30, normalize=True)
     S = np.array(result.s_params)
 

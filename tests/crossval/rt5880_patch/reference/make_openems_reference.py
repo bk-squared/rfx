@@ -801,7 +801,7 @@ def _build_patch_board_at_rung(ContinuousStructure, openEMS, *,
     patch_res = 1.2 * resolution_factor          # dense lines across patch, x rung
 
     # air box: generous (openEMS is cheap) -> trustworthy far-field reference
-    air = 60.0  # noqa: F841  (the retired box's air; its faces are held, delta 10)
+    air = 60.0  # noqa: F841
     mesh.AddLine('x', list(B_BOX_FACES_MM['x']))  # the retired box, delta 10
     mesh.AddLine('y', list(B_BOX_FACES_MM['y']))  # the retired box, delta 10
     mesh.AddLine('z', [-40.0, 90.0])
@@ -1301,7 +1301,7 @@ def _realize(build) -> dict:
     smooth, source = _smoothing()
     injected = []
     try:
-        import openEMS.physical_constants  # noqa: F401  (the real one, in the image)
+        import openEMS.physical_constants  # noqa: F401
     except Exception:
         pkg = types.ModuleType("openEMS")
         pc = types.ModuleType("openEMS.physical_constants")
