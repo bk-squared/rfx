@@ -260,6 +260,9 @@ def execute_from_materials(
     from rfx.model.electric_metrics import stage_forward_materials
     sharded_grid = sharded_grid.select_step(debye_spec, lorentz_spec, self._boundary_spec, ports=bool(port_specs))
     sharded_materials = stage_forward_materials(materials, sharded_grid.layout, mesh, uniform=sharded_grid.step_kind == 'wrapped')
+    from rfx.measurement.echo_bound import sharded_echo_bound
+    echo_bound = sharded_echo_bound(self, grid, sharded_materials, sharded_grid, mesh,
+        freqs=s_param_freqs, debye=debye_spec, lorentz=lorentz_spec)
     del materials
 
     sharded_pec_mask = _conductors.stage_distributed_edges(
@@ -341,6 +344,7 @@ def execute_from_materials(
         grid,
         dict(
             result,
+            settling_echo_bound=echo_bound,
             diagnostics=diagnostics,
         ),
         geometry_record,
@@ -359,6 +363,7 @@ def forward_from_materials(
     warn_if_singular_value_exceeds_one(
         result.get('s_params'), result.get('s_param_freqs'), extractor="forward(distributed graded)")
     return pack_nu_forward_result(
+        settling_echo_bound=result['settling_echo_bound'],
         realized_geometry=geometry_record,
         diagnostics=result.get('diagnostics', diagnostics),
         time_series=result.get('time_series'), grid=grid, dt=grid.dt,

@@ -141,3 +141,37 @@ def runner_echo_bound(sim, grid, materials, *, freqs=None, debye=None, lorentz=N
         freqs = (0., sim._freq_max)
     return realized_echo_bound(grid, materials, freqs=freqs, debye=debye, lorentz=lorentz,
                               smoothing_eps=shapes, waveguide_ports=waveguide_ports, valid=valid)
+
+
+def sharded_echo_bound(sim, grid, materials, sharded_grid, mesh, *, freqs=None,
+                       debye=None, lorentz=None):
+    """Reduce the staged volume arrays collectively, excluding alignment rows."""
+    from dataclasses import replace
+    from rfx.stepping.slab import cut
+    from rfx.stepping.slab_view import uniform_slab_rows, stack_and_place
+    wrapped = sharded_grid.step_kind == 'wrapped'
+    layout = sharded_grid.layout
+
+    def stage(value, kind):
+        if wrapped:
+            return stack_and_place(value, uniform_slab_rows(layout), mesh, outside=0.)
+        return cut(value, layout, kind, mesh=mesh)
+
+    def spec(source):
+        rows = []
+        masks = []
+        for pole, mask in _poles(source):
+            fields = {}
+            for name in ('delta', 'kappa'):
+                value = getattr(pole, name, None)
+                if getattr(value, 'ndim', 0) == 3:
+                    fields[name] = stage(value, 'lumped')
+            if fields:
+                pole = pole._replace(**fields) if hasattr(pole, '_replace') else replace(pole, **fields)
+            rows.append(pole)
+            masks.append(None if mask is None else stage(mask, 'pole_mask'))
+        return (rows, masks) if rows else None
+
+    valid = stage(np.ones(grid.shape, dtype=bool), 'pole_mask').astype(bool)
+    return runner_echo_bound(sim, grid, materials, freqs=freqs,
+        debye=spec(debye), lorentz=spec(lorentz), valid=valid)

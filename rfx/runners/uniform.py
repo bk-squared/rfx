@@ -680,6 +680,10 @@ def run_uniform(
                        conformal_pec=conformal_pec, subpixel_smoothing=subpixel_smoothing)
     # the early stop reads the record so far through the scan's
     # chunk hook, with the bins the single-wire fast path below reports.
+    from rfx.measurement.echo_bound import runner_echo_bound
+    echo_bound = runner_echo_bound(sim, grid, materials, freqs=s_param_freqs,
+        debye=debye_spec, lorentz=lorentz_spec, smoothing=subpixel_smoothing,
+        waveguide_ports=waveguide_ports)
     _stop_kwargs = {}
     if stop_fn is not None:
         if until_decay is not None:
@@ -695,7 +699,7 @@ def run_uniform(
                 bins = (np.array(s_param_freqs) if s_param_freqs is not None
                         else np.array(wps[0][0].freqs) if wps else None)
                 return _NS(time_series=p.time_series, wire_port_sparams=wps,
-                           grid=p.grid, dt=p.dt, freqs=bins)
+                           grid=p.grid, dt=p.dt, freqs=bins, settling_echo_bound=echo_bound)
             return stop_fn(steps_done, partial)
 
         _stop_kwargs = {"stop_fn": _stop_with_bins,
@@ -723,7 +727,7 @@ def run_uniform(
         sim_result = prepared_step.advance(stepping_product, _simulation.run_until_decay,
             grid, materials,
             decay_by=until_decay,
-            echo_bound=echo_delay_bound(grid, sim=sim, freqs=s_param_freqs, waveguide_ports=waveguide_ports),
+            echo_bound=echo_bound,
             n_end=n_end,
             advisory=advisory_inputs(sim, dt=grid.dt, n_table=decay_max_steps),
             check_interval=decay_check_interval,
@@ -893,6 +897,7 @@ def run_uniform(
     # until_decay: one record of what ended the run (rfx.measurement.decay.finish_decay).
     _stop = getattr(sim_result, "decay_stop", None)
     return Result(
+        settling_echo_bound=echo_bound,
         diagnostics=tuple(diagnostics) + ((_stop,) if _stop is not None else ()),
         realized_geometry=geometry_record,
         state=sim_result.state,

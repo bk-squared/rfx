@@ -844,10 +844,15 @@ def _forward_from_materials(
         )
 
     from rfx.sparams._record_selection import finish_forward
+    from rfx.measurement.echo_bound import runner_echo_bound
+    echo_bound = runner_echo_bound(self, grid, materials, freqs=port_s11_freqs,
+        debye=debye_spec, lorentz=lorentz_spec, smoothing=subpixel_smoothing,
+        waveguide_ports=waveguide_ports)
     return result_with_diagnostics(finish_forward(pack_uniform_forward_result(
         self, grid, result, diagnostics=diagnostics, s_params=s_params_out,
         freqs=freqs_out, current_moment_monitor=current_moments_fwd,
         realized_geometry=stepping_product._realization_record,
+        settling_echo_bound=echo_bound,
     )._replace(tfsf_angle_deg=tfsf_angle_override)), conductors.design_findings)
 
 

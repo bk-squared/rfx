@@ -729,7 +729,11 @@ def _run_subgridded_once(
             s_mat = s_mat.at[recv, driven, :].set(s_value)
         s_params = np.asarray(s_mat)
 
-    from rfx.measurement.record_end import echo_delay_bound
+    from rfx.measurement.echo_bound import runner_echo_bound
+    coarse_bound = runner_echo_bound(sim, measurement_grid, base_materials_coarse, freqs=freqs)
+    fine_bound = runner_echo_bound(sim, measurement_grid, mats_f, freqs=freqs,
+                                  debye=debye_f, lorentz=lorentz_f)
+    echo_bound = {key: jnp.maximum(coarse_bound[key], fine_bound[key]) for key in coarse_bound}
     return Result(
         realized_geometry=geometry_record,
         diagnostics=diagnostics,
@@ -740,7 +744,7 @@ def _run_subgridded_once(
         ntff_data=result.ntff_data_f,
         ntff_box=result.ntff_box_f,
         grid=fine_grid,
-        settling_echo_bound=echo_delay_bound(measurement_grid, sim=sim, freqs=freqs),
+        settling_echo_bound=echo_bound,
         dt=dt,
         freq_range=(sim._freq_max / 10, sim._freq_max, "cpml"),
     )
