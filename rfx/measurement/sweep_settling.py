@@ -31,9 +31,13 @@ def sweep_member_witnesses(sim, grid, series, names, planes, accumulators, *, pa
         result = attach_run_settling_witness(member, result, n_steps=len(samples))
         witness = result.settling_witness
         if unavailable is not None:
-            witness = dict(witness, status='undetermined', db=float('nan'),
-                           reason=unavailable['reason'], echo_bound_refused=True,
+            reason = witness.get('reason') or ''
+            if unavailable['reason'] not in reason:
+                reason = '; '.join(filter(None, (reason, unavailable['reason'])))
+            witness = dict(witness, reason=reason, echo_bound_refused=True,
                            echo_bound_reason=unavailable['reason'])
+            if witness.get('tail_status', witness['status']) == 'pass':
+                witness.update(status='undetermined', db=float('nan'))
         dbs.append(witness['db'])
         witnesses.append(witness)
     return np.asarray(dbs, dtype=float), tuple(witnesses)
