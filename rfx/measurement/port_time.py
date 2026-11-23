@@ -38,7 +38,6 @@ class PortTimeRecord:
 
     @classmethod
     def tree_unflatten(cls, metadata, leaves):
-        # JAX may unflatten abstract placeholders or add a vmap batch axis.
         obj = object.__new__(cls)
         for name, value in zip(('id', 'kind', 'channels', 'identity', 'samples'), (*metadata, leaves[0])):
             object.__setattr__(obj, name, value)
