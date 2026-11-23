@@ -1,69 +1,94 @@
-"""Coax ports refuse from one admission line before mesh planning; no physical anchor (a refusal)."""
-
-from pathlib import Path
-import traceback
-from unittest.mock import Mock
-
-import jax
-import numpy as np
+"""Uniform model and spectral lanes are admitted; other lanes name their refusal."""
 import pytest
+import numpy as np
 
 from rfx import Simulation
-
-ADVICE = {
-    "run": ("for a single add_coaxial_port(), compute_s_matrix(method=...) "
-            "dispatches to either. Use add_port(..., extent=...) for probe-feed S-parameters."),
-    "forward": ("both take eps_scale= for jax.grad. Use add_port(..., extent=...) "
-                "for differentiable probe-feed S11 objectives."),
-}
+from rfx.runners._admission import admit
+from tests.contracts.test_coax_port_model_and_drive import scene, capture
 
 
-def _model(mesh, *, coax):
-    profiles = ({"dx_profile": np.r_[1e-3, np.linspace(.85e-3, 1.15e-3, 10), 1e-3]}
-                if mesh == "graded" else {})
-    sim = Simulation(freq_max=10e9, domain=(.012, .012, .012),
-                     dx=.001, boundary="pec", **profiles)
-    sim.add_probe((.008, .006, .006), "ez")
-    if coax:
-        sim.add_coaxial_port((.006, .006, 0.), face="bottom", pin_length=.003)
-    return sim
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_uniform_reaches_runner(monkeypatch, entry):
+    model = capture(monkeypatch, scene(), entry)
+    assert model['sources'] and model['mag_sources']
 
 
-def _refusal(monkeypatch, mesh, entry):
-    sim = _model(mesh, coax=True)
-    def planned(*args, **kwargs):
-        pytest.fail("coax refusal reached mesh planning")
-    monkeypatch.setattr(sim, "_auto_configure_mesh", planned)
-    monkeypatch.setattr(sim, "_build_realized_grid", planned)
-    scan = Mock(side_effect=AssertionError("coax refusal reached jax.lax.scan"))
-    monkeypatch.setattr(jax.lax, "scan", scan)
-    with pytest.raises(NotImplementedError) as exc:
-        getattr(sim, entry)(n_steps=1, skip_preflight=True)
-    scan.assert_not_called()
-    return exc.value, traceback.extract_tb(exc.value.__traceback__)[-1]
-
-
-@pytest.mark.parametrize("mesh", ("uniform", "graded"))
-@pytest.mark.parametrize("entry", ("run", "forward"))
-def test_coax_refused_by_admission_before_mesh_planning(monkeypatch, mesh, entry):
-    error, frame = _refusal(monkeypatch, mesh, entry)
-    assert Path(frame.filename).parts[-3:] == ("rfx", "runners", "_admission.py")
-    assert str(error) == (
-        f"add_coaxial_port() is not wired into Simulation.{entry}(). A coaxial port's "
-        "S-parameters come from compute_coaxial_line_reflection(...) (one-port reflection) "
-        "or compute_coaxial_two_port(...) (through line); " + ADVICE[entry])
-
-
-@pytest.mark.parametrize("mesh", ("uniform", "graded"))
-def test_run_and_forward_raise_from_one_line(monkeypatch, mesh):
-    frames = [_refusal(monkeypatch, mesh, entry)[1] for entry in ("run", "forward")]
-    assert len({(frame.filename, frame.lineno) for frame in frames}) == 1
-
-
-@pytest.mark.parametrize("mesh", ("uniform", "graded"))
-@pytest.mark.parametrize("entry", ("run", "forward"))
+@pytest.mark.parametrize('mesh', ['uniform', 'graded'])
+@pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_without_coax_runs_one_step(mesh, entry):
-    sim = _model(mesh, coax=False)
+    profiles = {'dx_profile': np.full(12, .001)} if mesh == 'graded' else {}
+    sim = Simulation(freq_max=10e9, domain=(.012, .012, .012), dx=.001,
+                     boundary='pec', **profiles)
+    sim.add_probe((.008, .006, .006), 'ez')
     result = getattr(sim, entry)(n_steps=1, skip_preflight=True)
     assert result.time_series.shape == (1, 1)
     assert np.isfinite(np.asarray(result.time_series)).all()
+
+
+@pytest.mark.parametrize('caller', ['run()', 'forward()'])
+def test_uniform_s_request_admitted(caller):
+    from rfx.runners._admission import admit_s_request
+    admit_s_request(scene(), caller)
+
+
+GATE_CASES = (
+    ('precision', 'float32'), ('stencil_order', 'stencil_order=2'), ('mode', "mode='3d'"),
+    ('periodic', 'periodic'), ('boundary', 'CPML on all six faces'), ('zero_cpml', 'CPML on all six faces'),
+    ('partial_cpml', 'CPML on all six faces'), ('partial_zero_cpml', 'CPML on all six faces'),
+    ('tfsf', 'TF/SF'), ('count', 'exactly one coax'),
+    ('face', "face='top' or 'bottom'"), ('mixed', 'other S-port family'),
+    ('conformal_pec', 'conformal_pec'), ('subpixel_smoothing', 'subpixel_smoothing'),
+    ('eps_override', 'eps_override'), ('sigma_override', 'sigma_override'),
+    ('short', '67 line cells for the shielded source end'), ('lateral', 'absorber.*1 cell'),
+    ('ntff_shell', 'NTFF box.*shell'), ('ntff_pin', 'NTFF box.*reference and pin'),
+    ('nonuniform', 'add_coaxial_port'), ('distributed', 'add_coaxial_port'),
+    ('distributed_nu', 'add_coaxial_port'), ('subgridded', 'add_coaxial_port'),
+)
+
+
+def check_refusal(sim, lane, options, pattern):
+    with pytest.raises(NotImplementedError, match=pattern) as caught:
+        admit(sim, lane, run_args=options, grid=sim._build_grid())
+    assert lane in str(caught.value)
+    assert 'add_coaxial_port' in str(caught.value)
+
+
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+@pytest.mark.parametrize('gate,pattern', GATE_CASES)
+def test_admission_conditions(entry, gate, pattern):
+    sim = scene()
+    options = {}
+    lane = ('run' if entry == 'run' else 'fwd') + '_uniform'
+    if gate in ('nonuniform', 'distributed', 'distributed_nu', 'subgridded'):
+        if gate == 'subgridded' and entry == 'forward':
+            pytest.skip('forward() has no subgridded lane')
+        lane = ('run' if entry == 'run' else 'fwd') + '_' + gate
+    elif gate in ('precision', 'stencil_order', 'mode', 'periodic', 'boundary', 'zero_cpml'):
+        attribute, value = {'precision': ('_precision', 'float64'), 'stencil_order': ('_stencil_order', 4),
+            'mode': ('_mode', '2d_tmz'), 'periodic': ('_periodic_axes', 'x'),
+            'boundary': ('_boundary', 'pec'), 'zero_cpml': ('_cpml_layers', 0)}[gate]
+        setattr(sim, attribute, value)
+    elif gate == 'partial_cpml':
+        from rfx.boundaries.spec import BoundarySpec
+        sim._boundary_spec = BoundarySpec(x='pec', y='cpml', z='cpml')
+    elif gate == 'partial_zero_cpml':
+        from rfx.boundaries.spec import Boundary, BoundarySpec
+        sim._boundary_spec = BoundarySpec(x=Boundary('cpml', 'cpml', lo_thickness=0),
+                                         y='cpml', z='cpml')
+    elif gate == 'tfsf':
+        sim.add_tfsf_source()
+    elif gate == 'count':
+        sim.add_coaxial_port((.006, .006, .002))
+    elif gate == 'mixed':
+        sim.add_port((.008, .006, .004), 'ez')
+    elif gate in ('conformal_pec', 'subpixel_smoothing', 'eps_override', 'sigma_override'):
+        options[gate] = True
+    elif gate in ('face', 'short', 'lateral'):
+        fields = {'face': {'face': 'left'}, 'short': {'position': (.006, .006, .025)},
+                  'lateral': {'position': (.0025, .006, .002)}}[gate]
+        sim._coaxial_ports[0] = sim._coaxial_ports[0]._replace(**fields)
+    elif gate == 'ntff_shell':
+        sim._ntff = ((.004, .001, .001), (.011, .011, .039))
+    elif gate == 'ntff_pin':
+        sim._ntff = ((.001, .001, .003), (.011, .011, .039))
+    check_refusal(sim, lane, options, pattern)

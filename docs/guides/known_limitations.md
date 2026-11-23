@@ -450,25 +450,7 @@ where nx is the cell count along x, the axis the run splits; the 2 counts one gh
 
 Example, measured: a Debye box of 25 × 13 × 13 cells holds 13 × 20,280 = 263,640 bytes on each of two devices, and 13 × 22,308 = 290,004 bytes on each of three. By the formula, a model of 10⁸ cells with one Debye pole holds about 13 × 0.4 GB ≈ 5.2 GB on every device, whatever the device count.
 What to do: if a model fits only when split over devices, call `run(devices=...)` or `forward(distributed=True)` without an enclosing `jax.jit`.
-
-### A multi-device run that records snapshots holds more than twice the whole snapshot record on each device while it joins the record
-
-Tracker: #2608
-
-`run(devices=..., snapshot=SnapshotSpec(...))` joins the devices' snapshot histories into one record at the end of the
-run. While it does so, each device holds more than twice the whole snapshot record, and after the run every device
-keeps a full copy of the record. The same run on one device peaks at 1.0 to 1.05 times the record. So the largest
-snapshot record that fits is smaller on two devices than on one.
-Measured on two CPU host devices, all six components of a uniform 48³-cell box (CPML cells included) recorded for 100,
-200 and 400 steps: 2.75 to 2.76 times the record on each device at all three lengths, growing by 6.96 MiB per recorded
-step. Host memory rose by a further 1.0 times the record during the join, so these figures are lower bounds (record
-kept with the project). GPUs, graded meshes, more than two devices, fewer components and slices were not measured.
-From the code: the join needs at least twice the record on each device for any device count, so more devices do not
-raise the limit; the multiple is larger when fewer components are recorded; and a slice normal to x (`slice_axis=0`) is
-held whole on every device during the run, so its join grows with the device count.
-What to do: record fewer frames (`SnapshotSpec(interval=...)`); the measured peak grew in proportion to the frame count.
-A 2-D slice normal to y or z (`slice_axis=1` or `2` with `slice_index`) lowers the peak with its size; fewer components
-lower it by less than the record shrinks. Or run a snapshot-heavy case on one device.
+Or set the environment variable `JAX_USE_SIMPLIFIED_JAXPR_CONSTANTS=1` before Python imports jax. Then the twelve measured caller-jit cases (uniform and graded boxes with a dielectric, a Debye or Lorentz pole, a lumped port or a thin wire, on two and three devices) compile with no constant as large as one device's slab. Setting it from Python after jax is imported has no effect. The variable is process-wide: it changes how every jax program in the process takes in the arrays its functions close over. What each device then holds as program inputs was not measured.
 
 ### `preflight()` and `realized_geometry()` keep the model's whole-domain inspection arrays until a solve or `clear_inspection_cache()`
 
@@ -499,6 +481,18 @@ The cause is the staircased line, not the port; `line_impedances` reports the bu
 Setting `impedance=` to that value requests the line's own reference; it does not correct the built geometry.
 A finer mesh changes Z_built non-monotonically: 40.55 / 44.08 / 41.29 ohm at
 0.4 / 0.3 / 0.2 mm on the SMA line (measured; record kept with the project).
+
+### A coax-fed patch's S11 does not yet converge over three uniform meshes.
+
+Tracker: #1958
+
+A synthetic coax-fed patch (a 15 x 12 mm patch on a 1.5 mm substrate over a finite ground plate, fed by an SMA-size
+coax through a hole in the plate, `add_coaxial_port()` on uniform `run()`) was solved at 0.30, 0.25 and 0.1875 mm.
+The 50-ohm S11 minimum moves +27.2 MHz from 0.30 to 0.25 mm and +44.8 MHz from 0.25 to 0.1875 mm: the finer pair
+moves more. |S11| at 9.90 GHz reads -4.84 / -3.80 / -2.27 dB. The cause is not established. The port's own checks
+on the same meshes pass (a shorted line reads |Gamma| within 2.4e-5 of 1 and radiates nothing; doubling the line
+moves |S11| by at most 0.091 dB). What to do: solve a coax-fed antenna on at least three meshes and state the trend;
+do not read its resonance from one mesh.
 
 ### A microstrip strip drawn past an MSL port to the domain edge is an open stub that can short the port.
 
@@ -570,6 +564,46 @@ calculators are not pursued further before 2.0, so the excess will not be attrib
 corrected; use the single-family extractors separately (`compute_msl_s_matrix(...)`,
 the coaxial two-port and line-reflection calculators) for a result you can cite.
 #838 was closed as not planned before 2.0 (decided 2026-09-20); this is a standing limitation.
+
+Part of the excess came from the coax side's plane voltage, which counted the cells next
+to the inner and outer conductors at half weight and so read 0.84 of the line voltage on
+the 0.1 mm test mesh. With the whole-cell voltage, the short test fixture's |S21| falls
+from 3.81 to 3.22 at 6 GHz and its column power from 14.6 to 10.5; the matrix is still
+far from passive, and the rest of the excess is not attributed.
+
+### On a radiating device, the coax calculators' S11 includes coupling from their open feed end.
+
+Tracker: #2975
+
+`compute_coaxial_line_reflection`, `compute_coaxial_two_port` and `compute_coax_msl_transition`
+end each coax line just past its matched feed sheet and leave the line open behind it.
+When the device at the far end radiates, as an open line end or an antenna does, the open
+feed end couples to it through the device's surroundings, and S11 includes that coupling.
+
+On a 40 mm open-ended line in a 12 x 12 mm box with 0.5 mm cells, the S11 of
+`compute_coaxial_line_reflection` differs by 1.5e-4 to 2.7e-4 at 4-6 GHz from the
+`run()`/`forward()` coax port, whose feed end is capped. With the device shorted, 89-96 % of
+that difference goes away. The calculator does not accept user geometry, so the shorted case
+was measured on a `run()` model that reproduces the calculator bit for bit.
+
+Only `compute_coaxial_line_reflection` was measured. The two-port and coax→microstrip
+calculators have the same open feed end and were not measured. They refuse an extra flux
+monitor that reaches the open side of a feed.
+
+### The record-tail witness can report a record settled while a slow mode above `freq_max` holds the tail.
+
+Tracker: #2977
+→ [#2977](https://github.com/bk-squared/rfx/issues/2977)
+
+The witness identifies poles after decimating each record toward 4 × `freq_max` sampling. When a
+structure keeps a long-lived mode above `freq_max`, as a closed or lightly loaded line or cavity
+can, the anti-alias filter passes a small image of it. Once the in-band ringing has decayed, the
+witness reads that image as an in-band pole and evaluates the mode's tail at the folded frequency.
+In a synthetic reproduction, the witness read a largest share of 1.4e-4 and passed. An
+identification that holds the mode read 1.02e-2, above the 1e-2 bar. The per-channel share also
+grows just above a channel's DFT null, so the largest share is set by the bin nearest some
+channel's null. Until this is fixed, check a settling verdict on such a structure against a run
+with a longer record.
 
 ### The microstrip S-matrix can come back non-passive, and says so.
 
@@ -1196,3 +1230,7 @@ tracking, decisions pending, and research narrative are deliberately absent — 
 open work see the
 [issue tracker](https://github.com/bk-squared/rfx/issues), and for what is
 supported at all see the [support matrix](support_matrix.md).
+
+### Uniform coax ports remain experimental
+
+Experimental uniform coax ports: calculator equality on the open line (through a `run()` model of the calculator) and on a shorted line (against the capped port), run()/forward() equality, bottom-feed, NTFF-leakage and occupancy-gradient checks define the validation scope; the antenna-level result against an independent solver is not yet shown. NTFF leakage and record-length gradient evidence must be checked for the antenna being reported.

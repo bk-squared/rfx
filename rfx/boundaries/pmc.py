@@ -91,7 +91,6 @@ def high_face_row_factors(shape, periodic):
     for axis, size in enumerate(shape):
         factor = None
         if size > 1 and not periodic[axis]:
-            # Values 0 and 1 are exact in either dtype; every use casts.
             factor = np.ones(size, dtype=np.float64)
             factor[-1] = 0.
         factors.append(factor)
@@ -140,7 +139,6 @@ def apply_pmc_faces(state, faces: set[str]) -> object:
     tests._absorber_witness and test_cpml_localization still use this legacy
     boundary with their manually assembled, non-image kernels.
     """
-    # Legacy half-cell enforcement for kernels not yet using the shared image.
     hx, hy, hz = state.hx, state.hy, state.hz
 
     if "x_lo" in faces:

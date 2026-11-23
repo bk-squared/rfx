@@ -69,7 +69,7 @@ def pack_nu_forward_result(
 
 
 def pack_uniform_forward_result(sim, grid, result, *, diagnostics, s_params, freqs,
-                                current_moment_monitor, realized_geometry=None):
+                                current_moment_monitor, realized_geometry=None, coax_port_metadata=None):
     """Assemble the uniform forward lane's ``ForwardResult`` from its scan result.
 
     Plane probes and DFT time records are keyed by the names they were
@@ -84,6 +84,7 @@ def pack_uniform_forward_result(sim, grid, result, *, diagnostics, s_params, fre
         realized_geometry=realized_geometry,
         diagnostics=diagnostics,
         time_series=result.time_series,
+        coax_port_metadata=coax_port_metadata,
         ntff_data=result.ntff_data,
         ntff_box=result.ntff_box,
         grid=result.grid,

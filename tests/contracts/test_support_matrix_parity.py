@@ -179,6 +179,7 @@ LANE_STATUS_ANCHORS_MD: dict[str, tuple[str, ...]] = {
         "The calculation remains",
     ),
     "add_coaxial_port(...)": (
+        "Uniform `run()` and `forward()` coax ports are",
         "Use `compute_coaxial_line_reflection(...)` for the documented TEM-line result.",
         "every DUT it can currently gate against",
     ),
@@ -195,6 +196,7 @@ LANE_STATUS_ANCHORS_MD: dict[str, tuple[str, ...]] = {
 
 LANE_STATUS_ANCHORS_JSON: dict[str, tuple[str, ...]] = {
     "add_coaxial_port(...)": (
+        "Uniform run() and forward() coax ports are",
         "compute_coaxial_line_reflection(...) is not a general multi-port coaxial network solver",
         "compute_coaxial_two_port(...) drives each end of one through line",
     ),
@@ -218,6 +220,7 @@ API_SUMMARY_ROW_ANCHORS: dict[str, tuple[str, ...]] = {
         "`add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)`",
     ),
     "add_coaxial_port(...)": (
+        "`add_coaxial_port(...)` | `run(...)` / `forward(...)`",
         "`add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)`",
         "`add_coaxial_port(...)` | `compute_coaxial_two_port(...)`",
     ),

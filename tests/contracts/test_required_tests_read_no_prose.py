@@ -396,6 +396,7 @@ DOCS_CONSISTENCY_TESTS = frozenset({
     "tests/contracts/test_support_table.py::test_deleted_refusal_row",
     "tests/contracts/test_support_table.py::test_dropped_calculator",
     "tests/contracts/test_support_table.py::test_duplicate_and_unknown_row_keys",
+    "tests/contracts/test_support_table.py::test_experimental_support_keeps_its_disposition",
     "tests/contracts/test_support_table.py::test_invalid_calculators",
     "tests/contracts/test_support_table.py::test_invalid_path_cells",
     "tests/contracts/test_support_table.py::test_invalid_pins",

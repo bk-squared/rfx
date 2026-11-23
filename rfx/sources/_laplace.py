@@ -57,10 +57,7 @@ def _solve_laplace_2d(
                     A[p, p] = 1.0
                     b[p] = fixed_val[j, k]
                     continue
-                # 5-point ε-weighted Laplacian. Off-diagonal coeffs use
-                # harmonic-mean ε at the face (continuous flux).
                 diag = 0.0
-                # +y neighbour
                 if j + 1 < n_y:
                     eps_face = 2.0 * eps_yz[j, k] * eps_yz[j + 1, k] / (
                         eps_yz[j, k] + eps_yz[j + 1, k] + 1e-30
@@ -68,7 +65,6 @@ def _solve_laplace_2d(
                     coef = eps_face / (dy * dy)
                     A[p, _idx(j + 1, k)] = coef
                     diag -= coef
-                # -y neighbour
                 if j - 1 >= 0:
                     eps_face = 2.0 * eps_yz[j, k] * eps_yz[j - 1, k] / (
                         eps_yz[j, k] + eps_yz[j - 1, k] + 1e-30
@@ -76,7 +72,6 @@ def _solve_laplace_2d(
                     coef = eps_face / (dy * dy)
                     A[p, _idx(j - 1, k)] = coef
                     diag -= coef
-                # +z neighbour
                 if k + 1 < n_z:
                     eps_face = 2.0 * eps_yz[j, k] * eps_yz[j, k + 1] / (
                         eps_yz[j, k] + eps_yz[j, k + 1] + 1e-30
@@ -84,7 +79,6 @@ def _solve_laplace_2d(
                     coef = eps_face / (dz * dz)
                     A[p, _idx(j, k + 1)] = coef
                     diag -= coef
-                # -z neighbour
                 if k - 1 >= 0:
                     eps_face = 2.0 * eps_yz[j, k] * eps_yz[j, k - 1] / (
                         eps_yz[j, k] + eps_yz[j, k - 1] + 1e-30
@@ -97,7 +91,6 @@ def _solve_laplace_2d(
         phi = spsolve(csr_matrix(A), b)
         return phi.reshape(n_y, n_z)
 
-    # Fallback: Jacobi/Gauss-Seidel iteration.
     phi = np.zeros((n_y, n_z), dtype=np.float64)
     phi[trace_mask] = 1.0
     for _ in range(20000):

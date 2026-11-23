@@ -60,7 +60,8 @@ def settling_source_end(self, result, records=None):
     series = getattr(result, "time_series", None)
     shape = getattr(series, "shape", ())
     port_records = s_read_records(result)
-    if port_records and (records is not None or not shape):
+    reading_port = bool(port_records) and (records is not None or not shape)
+    if reading_port:
         series = port_records[0].samples
         shape = series.shape
     if not shape:
@@ -73,6 +74,8 @@ def settling_source_end(self, result, records=None):
         internal = getattr(self, "_internal_probe_indices", ()) or ()
         count = 1 if len(shape) == 1 else shape[1]
         records = [p for i, p in enumerate(self._probes[:count]) if i not in internal]
+    if self._coaxial_ports and reading_port and grid is not None:
+        records = result.coax_port_metadata['coax_port:0:mode:0']['voltage_node_positions_m']
     return injection_end(
         series.shape[0], dt, records=tuple(records), grid=grid, sim=self,
         waveguide_ports=getattr(result, "waveguide_ports", None),

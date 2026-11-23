@@ -46,6 +46,8 @@ class UPMLCoeffs(NamedTuple):
     curl component separately so the coefficients work on both uniform
     and non-uniform grids.  On a uniform grid the ``inv_*`` fields are
     scalars and the computation is bit-identical to the pre-split path.
+
+    ``inv_dx``, ``inv_dy`` and ``inv_dz`` refer to electric integer-node positions, while their ``_h`` counterparts refer to magnetic half-integer positions.
     """
     ca_ex: jnp.ndarray
     ca_ey: jnp.ndarray
@@ -59,12 +61,12 @@ class UPMLCoeffs(NamedTuple):
     db_hx: jnp.ndarray
     db_hy: jnp.ndarray
     db_hz: jnp.ndarray
-    inv_dx: jnp.ndarray    # E-position 1/dx (scalar or (nx,1,1))
-    inv_dy: jnp.ndarray    # E-position 1/dy (scalar or (1,ny,1))
-    inv_dz: jnp.ndarray    # E-position 1/dz (scalar or (1,1,nz))
-    inv_dx_h: jnp.ndarray  # H-position 2/(dx[i]+dx[i+1])
-    inv_dy_h: jnp.ndarray  # H-position
-    inv_dz_h: jnp.ndarray  # H-position
+    inv_dx: jnp.ndarray
+    inv_dy: jnp.ndarray
+    inv_dz: jnp.ndarray
+    inv_dx_h: jnp.ndarray
+    inv_dy_h: jnp.ndarray
+    inv_dz_h: jnp.ndarray
 
 
 def _sigma_profile_1d(
@@ -84,7 +86,6 @@ def _sigma_profile_1d(
     eta = np.sqrt(MU_0 / EPS_0)
     d = n_layers * dx
     sigma_max = -np.log(R_asymptotic) * (order + 1) / (2.0 * eta * d)
-    # NO n/2 scaling — textbook formula directly
 
     u_E = np.clip((n_layers - 0.5 - np.arange(n_layers)) / n_layers, 0, 1)
     sigma_E = sigma_max * u_E ** order
@@ -102,7 +103,6 @@ def _axis_sigma_E_H(grid, axis: str) -> tuple[jnp.ndarray, jnp.ndarray]:
         z = jnp.zeros(grid.shape, dtype=jnp.float32)
         return z, z
 
-    # UPML runs on the uniform lane only (graded refuses it), where lo == hi.
     dx_x, _, dx_y, _, dz_lo, dz_hi = _get_axis_cell_sizes(grid)
     pec_faces = getattr(grid, "pec_faces", None) or set()
     pmc_faces = getattr(grid, "pmc_faces", None) or set()
@@ -235,20 +235,10 @@ def init_upml(
     components = with_components(materials, grid,
         periodic=resolve_periodic(grid, periodic)).components
     mu_abs = tuple(m * jnp.float32(MU_0) for m in components.mu_update)
-    # a lumped element (a port's load, an RLC R or C) loads its own E
-    # edge only. This lane's E coefficients stay CELL-owned for the volume --
-    # four-cell edge averaging here would change every inhomogeneous UPML result --
-    # so each component takes the cell total minus the stamps that belong to
-    # the other two components, the rule the distributed slab update uses.
-    # With no lumped record the three entries ARE materials.eps_r / .sigma.
     eps_r_c, sigma_c = components.upml_eps, components.upml_sigma
     sigma_mat_c = tuple(s_.astype(jnp.float32) for s_ in sigma_c)
     dt = jnp.float32(grid.dt)
 
-    # Per-axis inverse cell-size broadcasts.  On NonUniformGrid these are
-    # arrays we reshape into (nx,1,1) / (1,ny,1) / (1,1,nz); on the
-    # uniform Grid they collapse to a single scalar 1/dx that broadcasts
-    # identically — the uniform path stays bit-for-bit.
     _fallback_inv = jnp.float32(1.0) / jnp.float32(grid.dx)
 
     def _inv_broadcast(arr_attr: str, axis: int):
@@ -259,31 +249,23 @@ def init_upml(
         shape[axis] = -1
         return jnp.asarray(arr, dtype=jnp.float32).reshape(tuple(shape))
 
-    # E-position (integer-index) inverse spacings — consumed by E update.
     inv_dx = _inv_broadcast("inv_dx", 0)
     inv_dy = _inv_broadcast("inv_dy", 1)
     inv_dz = _inv_broadcast("inv_dz", 2)
-    # H-position (half-integer) inverse spacings — consumed by H update.
     inv_dx_h = _inv_broadcast("inv_dx_h", 0)
     inv_dy_h = _inv_broadcast("inv_dy_h", 1)
     inv_dz_h = _inv_broadcast("inv_dz_h", 2)
 
-    # Each component's relative permittivity; _upml_e_coeffs_si multiplies
-    # it by eps_0 as this function used to here.
     if aniso_eps is not None:
         eps_ex, eps_ey, eps_ez = (e_.astype(jnp.float32) for e_ in aniso_eps)
     else:
         eps_ex, eps_ey, eps_ez = eps_r_c
 
-    # Perpendicular σ: E_x gets damping from y,z PML (using E-position σ)
     sigma_perp_ex = sEy + sEz
     sigma_perp_ey = sEx + sEz
     sigma_perp_ez = sEx + sEy
 
     def _e_coeffs(sigma_perp, eps_r, sigma_mat):
-        # the SI spelling's bits (:func:`_upml_e_coeffs_si`), the
-        # eps_r-unit derivative. ``dt / eps_abs`` handed the cotangent a
-        # factor (eps_r*EPS_0)**-2 ~ 1.3e22 and overflowed float32.
         return si_value_eps_r_grad(_upml_e_coeffs_si, _upml_e_coeffs_eps_r,
                                    sigma_perp, eps_r, sigma_mat, dt)
 
@@ -291,7 +273,6 @@ def init_upml(
     ca_ey, cb_ey = _e_coeffs(sigma_perp_ey, eps_ey, sigma_mat_c[1])
     ca_ez, cb_ez = _e_coeffs(sigma_perp_ez, eps_ez, sigma_mat_c[2])
 
-    # H perpendicular: use H-position σ
     sigma_perp_hx = sHy + sHz
     sigma_perp_hy = sHx + sHz
     sigma_perp_hz = sHx + sHy

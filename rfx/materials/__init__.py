@@ -36,7 +36,6 @@ def set_material(materials: _MaterialArrays, mask, *,
     return materials
 
 
-# Compatibility imports warn and resolve to the owning module on every access.
 _LAZY_EXPORTS = {
     "MaterialArrays": "rfx.core.yee",
     "init_materials": "rfx.core.yee",

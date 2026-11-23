@@ -53,64 +53,14 @@ from rfx.boundaries.cpml import CPMLParams, _cpml_profile
 from rfx.core.yee import EPS_0, MU_0, MaterialArrays, component_h_materials
 
 
-# ---------------------------------------------------------------------------
-# Auxiliary-grid absorber
-# ---------------------------------------------------------------------------
-# The aux grid's own absorber sets the injected incident field for EVERY
-# consumer of the oblique Bloch path, and R/T normalise by a probe of that same
-# field, so a reflection off it cancels in vacuum and enters the measurement
-# only once the record outlives the echo's flight time.  It shipped at 30 cells
-# with sigma_max = 0.8 (m+1)/(eta dx) * kappa_max -- the 0.8 (m+1)/(eta dx)
-# optimum multiplied by kappa_max = 7, i.e. 70x the reflection-minimising sigma
-# for that depth -- and reflected |B/A| = 4.2e-02 at normal incidence.  It is
-# now derived the way the 3-D absorber is (``_cpml_profile``: sigma_max from a
-# target reflection), at a depth that reaches that target.
-#
-# Measured by tests/unit/sources/test_tfsf_aux_absorber_reflection.py, which
-# gates |B/A| over the declared angle band -- the reflection gate whose absence
-# is why a 6 % absorber shipped.
-# Both constants are READ OFF measured (depth, target, angle) grids in
-# docs/design_notes/20260904_aux_absorber_depth_derivation.md, sections 3 and 12.
-#
-# The depth (200) comes from section 3: depth is the lever, the reflection falls
-# with it faster than any single power, and 200 is where the 0-70 deg readings
-# reach the instrument's own floor.
-#
-# The target (1e-28, sigma_max = 1.711 S/m) comes from section 12, and it
-# CORRECTS the first derivation, which took 70 deg as "the worst declared angle"
-# because that is cv26's primary-rig gate cap. cv26's three grazing arms are
-# declared at 82 deg, and there the 1e-14 absorber reflected 2.8e-02 -- a factor
-# of 1.9 over the 30-cell layer it replaced, not the 230 it achieved at 70. At
-# grazing incidence the wave barely penetrates the layer and the absorption per
-# unit depth scales with cos(theta); the remedy is MORE loss per unit depth, and
-# that is sigma. kappa (real stretching) was measured inert from 1 to 12 with
-# sigma held -- it buys electrical length, which only evanescent content needs.
-# sigma_max = 1.711 is the 82-deg optimum; more reflects off its own gradient.
-#
-# Note sigma_max is still GENTLER than the 2.45 a 30-cell layer at R = 1e-6 would
-# carry, and 43x gentler than the 74.3 that shipped: long and gentle still beats
-# short and steep.
-#
-# Measured |B/A| (mean / max over the gated band) at this setting:
-#   0 deg  2.29e-06 / 6.84e-06      45 deg  4.37e-06 / 1.76e-05
-#   60 deg 8.35e-06 / 5.13e-05      70 deg  2.92e-05 / 1.22e-04
-#   82 deg 5.76e-04 / 1.23e-03  <- ABOVE LEAK_BAR (1e-3). Not tunable away at
-#                                  this depth: the validity domain is declared in
-#                                  the note (section 12.5) and gated in
-#                                  tests/unit/sources/test_tfsf_aux_absorber_reflection.py.
-#                                  cv26's grazing arms sit outside it and MODEL
-#                                  the residual echo instead of gating it out.
-AUX_N_CPML = 200            # was 30
-AUX_CPML_ORDER = 3          # rfx/boundaries/cpml.py _cpml_profile default
-AUX_CPML_KAPPA_MAX = 1.0    # no stretching: the aux grid carries one propagating mode
+AUX_N_CPML = 200
+AUX_CPML_ORDER = 3
+AUX_CPML_KAPPA_MAX = 1.0
 AUX_CPML_R_ASYMPTOTIC = 1e-28
 AUX_N_MARGIN_X = 25
-AUX_SRC_OFFSET = 3          # source sits AUX_SRC_OFFSET cells inside the absorber's inner edge
+AUX_SRC_OFFSET = 3
 
 
-# ---------------------------------------------------------------------------
-# Data structures
-# ---------------------------------------------------------------------------
 
 class TFSF2DState(NamedTuple):
     """2D auxiliary grid state for oblique TFSF.
@@ -119,34 +69,36 @@ class TFSF2DState(NamedTuple):
       TMz: ez_2d=Ez, hx_2d=Hx, hy_2d=Hy  (xy-plane)
       TEz: ez_2d=Ey, hx_2d=Hx, hy_2d=Hz  (xz-plane)
     """
-    ez_2d: jnp.ndarray   # (n2x, n2t) — E out-of-plane
-    hx_2d: jnp.ndarray   # (n2x, n2t) — H transverse component 1
-    hy_2d: jnp.ndarray   # (n2x, n2t) — H longitudinal / component 2
-    # CFS-CPML psi arrays (x-direction only, 4 total)
-    psi_ez_xlo: jnp.ndarray  # (n_cpml, n2t)
-    psi_ez_xhi: jnp.ndarray  # (n_cpml, n2t)
-    psi_hy_xlo: jnp.ndarray  # (n_cpml, n2t)
-    psi_hy_xhi: jnp.ndarray  # (n_cpml, n2t)
+    ez_2d: jnp.ndarray
+    hx_2d: jnp.ndarray
+    hy_2d: jnp.ndarray
+    psi_ez_xlo: jnp.ndarray
+    psi_ez_xhi: jnp.ndarray
+    psi_hy_xlo: jnp.ndarray
+    psi_hy_xhi: jnp.ndarray
     step: jnp.ndarray
 
 
 class TFSF2DConfig(NamedTuple):
-    """Configuration for 2D auxiliary grid TFSF."""
+    """Configuration for 2D auxiliary grid TFSF.
+
+    ``n2y`` counts the periodic transverse dimension along y for TMz and along z for TEz.
+    """
     x_lo: int
     x_hi: int
     n2x: int
-    n2y: int          # periodic transverse dim (ny for TMz, nz for TEz)
-    i0_x: int         # 2D x-index mapping to 3D x_lo
-    i0_y: int         # always 0 (periodic transverse, no padding)
+    n2y: int
+    i0_x: int
+    i0_y: int
     src_x: int
     src_amp: float
     src_t0: float
     src_tau: float
-    src_fcen: float   # carrier frequency f0 for the analytic modulated-Gaussian source
+    src_fcen: float
     theta: float
     cos_theta: float
     sin_theta: float
-    k_transverse: float  # signed transverse wavenumber k_y = k0·sinθ (Bloch/field-transform)
+    k_transverse: float
     electric_component: str
     magnetic_component: str
     curl_sign: float
@@ -160,14 +112,11 @@ class TFSF2DConfig(NamedTuple):
     grid_pad: int
     angle_deg: float
     dx_1d: float
-    mode: str         # "TMz" or "TEz"
+    mode: str
     magnetic_lo: CPMLParams
     magnetic_hi: CPMLParams
 
 
-# ---------------------------------------------------------------------------
-# Initialization
-# ---------------------------------------------------------------------------
 
 def init_tfsf_2d(
     nx: int,
@@ -204,6 +153,8 @@ def init_tfsf_2d(
     nz : int | None
         Number of cells in z (3D grid).  Required for ey oblique
         (TEz mode).  Ignored for ez polarization.
+
+    A positive incidence angle tilts the injected energy flow toward the positive transverse axis for ``direction="+x"`` and toward the negative one for ``"-x"``.
     """
     from rfx.sources.tfsf import pulse_timing, resolve_waveform
     resolve_waveform(waveform, theta_deg, "bloch")
@@ -216,14 +167,12 @@ def init_tfsf_2d(
     if abs(theta_deg) >= 90.0:
         raise ValueError(f"|angle_deg| must be < 90, got {theta_deg}")
 
-    # Determine mode
     if polarization == "ez":
         mode = "TMz"
     else:
         mode = "TEz"
 
 
-    # TFSF box boundaries in x
     offset = cpml_layers + tfsf_margin
     x_lo = offset
     x_hi = nx - offset - 1
@@ -234,8 +183,6 @@ def init_tfsf_2d(
             f"nx={nx}, cpml_layers={cpml_layers}, tfsf_margin={tfsf_margin}"
         )
 
-    # ---- 2D grid sizing ----
-    # Periodic transverse dimension: y for TMz, z for TEz
     if mode == "TMz":
         n2y = ny
     else:
@@ -243,31 +190,22 @@ def init_tfsf_2d(
             raise ValueError(
                 "nz is required for ey oblique TFSF (TEz mode)"
             )
-        n2y = nz  # periodic axis is z for TEz
+        n2y = nz
 
-    # x-direction: TFSF span + margins + CPML on both ends
     n_cpml_2d = AUX_N_CPML if aux_n_cpml is None else int(aux_n_cpml)
     n_tfsf_x = x_hi - x_lo + 2
     n_margin_x = AUX_N_MARGIN_X
 
     n2x = n_cpml_2d + n_margin_x + n_tfsf_x + n_margin_x + n_cpml_2d
 
-    # i0_x: 2D x-index that maps to 3D x_lo
     i0_x = n_cpml_2d + n_margin_x
-    # This oblique auxiliary wrap is unchanged by
-    # boundary-model predeclaration Addendum 5 (the parent pads are included).
-    i0_y = 0  # periodic transverse, no padding
+    i0_y = 0
 
-    # Source position
     if direction == "+x":
         src_x = n_cpml_2d + AUX_SRC_OFFSET
     else:
         src_x = n2x - n_cpml_2d - AUX_SRC_OFFSET - 1
 
-    # CFS-CPML profile (x-direction only).  sigma_max is DERIVED from a target
-    # reflection through the same law the 3-D absorber uses
-    # (rfx/boundaries/cpml.py::_cpml_profile), never from a standalone
-    # heuristic -- see AUX_CPML_* above.
     profile_options: dict[str, Any] = dict(
         order=AUX_CPML_ORDER if aux_cpml_order is None else int(aux_cpml_order),
         kappa_max=AUX_CPML_KAPPA_MAX if aux_cpml_kappa_max is None else float(aux_cpml_kappa_max),
@@ -281,7 +219,6 @@ def init_tfsf_2d(
         n_cpml_2d, dt, dx, dtype=jnp.float32, sample_offset=-0.5, **profile_options)
     b_prof, c_prof, kappa_prof = prof.b, prof.c, prof.kappa
 
-    # Source waveform
     tau, t0 = pulse_timing(waveform, f0, bandwidth)
 
     if polarization == "ez":
@@ -297,10 +234,6 @@ def init_tfsf_2d(
 
     direction_sign = 1.0 if direction == "+x" else -1.0
 
-    # Signed transverse wavenumber for the Bloch field-transformation.
-    # k_y = k0·sinθ at the carrier f0; the sign is chosen so that a positive
-    # angle_deg tilts the injected energy flow toward +transverse (matching the
-    # legacy time-delay convention). Verified against poynting_angle.py.
     theta, cos_theta, sin_theta, k_transverse = oblique_angle_fields(
         float(theta_deg), f0, direction_sign, np)
 
@@ -335,9 +268,6 @@ def init_tfsf_2d(
         magnetic_hi=magnetic_hi,
     )
 
-    # Aux-grid fields are COMPLEX (Bloch field-transformation). The
-    # complexity is contained here; apply_tfsf_2d_e/h re-apply exp(-j k_y y)
-    # and take the real part before touching the (real) 3D grid.
     state = TFSF2DState(
         ez_2d=jnp.zeros((n2x, n2y), dtype=jnp.complex64),
         hx_2d=jnp.zeros((n2x, n2y), dtype=jnp.complex64),
@@ -352,40 +282,21 @@ def init_tfsf_2d(
     return config, state
 
 
-# ---------------------------------------------------------------------------
-# CPML helper (shared by both modes)
-# ---------------------------------------------------------------------------
 
 
 
 
 
-# ---------------------------------------------------------------------------
-# 2D Yee update — TMz mode (Ez, Hx, Hy) — periodic y, CPML x
-# ---------------------------------------------------------------------------
 
 
 
 
 
-# ---------------------------------------------------------------------------
-# 2D Yee update — TEz mode (Ey, Hx, Hz) — periodic z, CPML x
-#
-# State field mapping: ez_2d -> Ey, hx_2d -> Hx, hy_2d -> Hz
-#
-# Maxwell for TEz (xz-plane, Ey out-of-plane):
-#   dHx/dt =  (1/mu0) * dEy/dz
-#   dHz/dt = -(1/mu0) * dEy/dx
-#   dEy/dt =  (1/eps0) * (dHx/dz - dHz/dx)
-# ---------------------------------------------------------------------------
 
 
 
 
 
-# ---------------------------------------------------------------------------
-# Mode-dispatching update entry points
-# ---------------------------------------------------------------------------
 
 _AUX_CARRY_FIELDS = ("ez_2d", "hx_2d", "hy_2d",
                      "psi_ez_xlo", "psi_ez_xhi", "psi_hy_xlo", "psi_hy_xhi")
@@ -456,9 +367,6 @@ def update_tfsf_2d_e(cfg: TFSF2DConfig, st: TFSF2DState,
 
 
 
-# ---------------------------------------------------------------------------
-# Sample incident fields from 2D grid
-# ---------------------------------------------------------------------------
 
 def _sample_e_at_x(cfg: TFSF2DConfig, st: TFSF2DState,
                     ix_2d: int, n_trans: int) -> jnp.ndarray:
@@ -475,7 +383,6 @@ def _sample_h2_at_x(cfg: TFSF2DConfig, st: TFSF2DState,
     return st.hy_2d[ix_2d, :n_trans]
 
 
-# Keep old names as aliases for backward compatibility
 _sample_ez_at_x = _sample_e_at_x
 _sample_hy_at_x = _sample_h2_at_x
 
@@ -499,9 +406,6 @@ def _face_incident(sample_vals, cfg: TFSF2DConfig, n_trans: int, dx: float,
     return jnp.real(sample_vals * _transverse_phase(cfg, n_trans, dx))
 
 
-# ---------------------------------------------------------------------------
-# 3D TFSF corrections using 2D auxiliary grid
-# ---------------------------------------------------------------------------
 
 def apply_tfsf_2d_e(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
                      dx: float, dt: float):
@@ -516,39 +420,29 @@ def apply_tfsf_2d_e(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
       E_inc[x_hi+1, :, k] += coeff * H_aux[x_hi+0.5, k]
 
     Signs are fixed (-coeff at x_lo, +coeff at x_hi+1) for both modes.
+
+    Both correction signs are multiplied by ``curl_sign``, which is -1 for the ``ey`` (TEz) polarization.
     """
     coeff = dt / (EPS_0 * dx)
     i0 = cfg.i0_x
     e_ref = getattr(state, cfg.electric_component)
     ny_3d = e_ref.shape[1]
     nz_3d = e_ref.shape[2]
-    # Complex 3D field ⇒ transformed (Bloch-envelope) frame — inject P directly.
     transformed = bool(jnp.iscomplexobj(e_ref))
 
     if cfg.mode == "TEz":
-        # TEz: 2D grid transverse axis is z, broadcast along y
         h_inc_lo = _face_incident(_sample_h2_at_x(cfg, tfsf_st, i0 - 1, nz_3d), cfg, nz_3d, dx, transformed)
         h_inc_hi = _face_incident(_sample_h2_at_x(cfg, tfsf_st, i0 + (cfg.x_hi - cfg.x_lo), nz_3d), cfg, nz_3d, dx, transformed)
 
         h_lo_3d = jnp.broadcast_to(h_inc_lo[None, :], (ny_3d, nz_3d))
         h_hi_3d = jnp.broadcast_to(h_inc_hi[None, :], (ny_3d, nz_3d))
     else:
-        # TMz: 2D grid transverse axis is y, broadcast along z
         h_inc_lo = _face_incident(_sample_h2_at_x(cfg, tfsf_st, i0 - 1, ny_3d), cfg, ny_3d, dx, transformed)
         h_inc_hi = _face_incident(_sample_h2_at_x(cfg, tfsf_st, i0 + (cfg.x_hi - cfg.x_lo), ny_3d), cfg, ny_3d, dx, transformed)
 
         h_lo_3d = jnp.broadcast_to(h_inc_lo[:, None], (ny_3d, nz_3d))
         h_hi_3d = jnp.broadcast_to(h_inc_hi[:, None], (ny_3d, nz_3d))
 
-    # For TMz (Ez/Hy, curl_sign=+1): Ampere has +dHy/dx, so correction
-    # sign is (-coeff, +coeff).  For TEz (Ey/Hz, curl_sign=-1): Ampere
-    # has -dHz/dx, so correction sign is (+coeff, -coeff).  Using
-    # curl_sign unifies both: (-curl_sign*coeff, +curl_sign*coeff).
-    # Narrow the correction to the 3D field's own dtype. ``coeff`` is a
-    # numpy float64 scalar, so under x64 the product is complex128/float64 and
-    # the scatter-add into a complex64/float32 field emits JAX's
-    # "cannot safely cast" FutureWarning (a future hard error). No-op with x64
-    # off, where the product is already the field dtype.
     e_field = e_ref
     e_field = e_field.at[cfg.x_lo, :, :].add(
         (-cfg.curl_sign * coeff * h_lo_3d).astype(e_ref.dtype))
@@ -574,25 +468,21 @@ def apply_tfsf_2d_h(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
     h_ref = getattr(state, cfg.magnetic_component)
     ny_3d = h_ref.shape[1]
     nz_3d = h_ref.shape[2]
-    # Complex 3D field ⇒ transformed (Bloch-envelope) frame — inject P directly.
     transformed = bool(jnp.iscomplexobj(h_ref))
 
     if cfg.mode == "TEz":
-        # TEz: 2D grid transverse axis is z, broadcast along y
         e_inc_lo = _face_incident(_sample_e_at_x(cfg, tfsf_st, i0, nz_3d), cfg, nz_3d, dx, transformed)
         e_inc_hi = _face_incident(_sample_e_at_x(cfg, tfsf_st, i0 + (cfg.x_hi + 1 - cfg.x_lo), nz_3d), cfg, nz_3d, dx, transformed)
 
         e_lo_3d = jnp.broadcast_to(e_inc_lo[None, :], (ny_3d, nz_3d))
         e_hi_3d = jnp.broadcast_to(e_inc_hi[None, :], (ny_3d, nz_3d))
     else:
-        # TMz: 2D grid transverse axis is y, broadcast along z
         e_inc_lo = _face_incident(_sample_e_at_x(cfg, tfsf_st, i0, ny_3d), cfg, ny_3d, dx, transformed)
         e_inc_hi = _face_incident(_sample_e_at_x(cfg, tfsf_st, i0 + (cfg.x_hi + 1 - cfg.x_lo), ny_3d), cfg, ny_3d, dx, transformed)
 
         e_lo_3d = jnp.broadcast_to(e_inc_lo[:, None], (ny_3d, nz_3d))
         e_hi_3d = jnp.broadcast_to(e_inc_hi[:, None], (ny_3d, nz_3d))
 
-    # Narrow to the 3D field dtype — see the note in apply_tfsf_2d_e.
     h_field = h_ref
     h_field = h_field.at[cfg.x_lo - 1, :, :].add(
         (-cfg.curl_sign * coeff * e_lo_3d).astype(h_ref.dtype))
@@ -602,7 +492,6 @@ def apply_tfsf_2d_h(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
     return state._replace(**{cfg.magnetic_component: h_field})
 
 
-# Lazy compatibility exports keep record definitions free of import cycles.
 _LAZY_EXPORTS = {
     "bloch_phase_tuple": "rfx.stepping.tfsf_2d",
 }

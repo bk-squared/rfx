@@ -392,6 +392,7 @@ SIGMA_READS = {
     ('rfx/runners/distributed_v2.py', '_shard_materials', 'materials'): (1, 'slicing/passing on: device_put into MaterialArrays'),
     ('rfx/model/design_box.py', 'resolve_design_box', 'materials'): (1, 'slicing/passing on: default box sigma from assembled cells'),
     ('rfx/model/design_box.py', 'resolve_design_box', 'spec'): (4, 'DesignBox specification from _design_box_spec, not assembled materials'),
+    ('rfx/model/coax_shield.py', 'shield_coax_end', 'materials'): (1, 'arithmetic/write preparation: host copy of cell sigma, zeroed in the pin-less gap'),
     ('rfx/model/coax_stamp.py', 'stamp_coaxial_annular_resistor', 'materials'): (1, 'arithmetic/write preparation: host copy of cell sigma'),
     ('rfx/model/coax_stamp.py', 'stamp_coaxial_line', 'materials'): (1, 'arithmetic/write preparation: host copy of cell sigma'),
     ('rfx/subgridding/validation.py', 'validate_subgrid_setup', 'materials'): (3, 'arithmetic: material plane deltas and interface-clearance test'),

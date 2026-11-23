@@ -82,7 +82,7 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
     wire = []
     for pe in sim._ports:
         if pe.is_soft_source:
-            continue            # a soft source: checked for being off, below
+            continue
         if pe.extent is None:
             raise RfxUnsupported(
                 f"{caller}(ringdown=...) completes wire-port S-parameters only; the "

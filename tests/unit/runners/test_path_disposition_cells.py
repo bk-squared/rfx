@@ -165,6 +165,17 @@ def _interface_eps(lane, on, ref=False):
     return _block(sim, lo=(5.5, 3, 3), hi=(7.5, 9, 9), eps_r=4.0)
 
 
+def _coax(lane, on, ref=False):
+    if lane not in ('run_uniform', 'fwd_uniform'):
+        return _plus(lambda s, _: s.add_coaxial_port(
+            mm(6, 6, 0), face='bottom', pin_length=3e-3)).build(lane, on, ref)
+    sim = _simulation(lane, (12, 12, 80), ref=ref, boundary='cpml')
+    sim.add_probe(mm(7, 6, 70), 'ex')
+    if on:
+        sim.add_coaxial_port(mm(6, 6, 4), face='top', pin_length=0., waveform=WAVEFORM)
+    return sim
+
+
 def _board(lane, on, ref=False):
     """Shared checks for the supported solver paths."""
     subgrid = lane == "run_subgridded" and not ref
@@ -336,8 +347,7 @@ FEATURES: dict[tuple[str, str], Feature] = {
     ("_msl_ports", "msl_port"): Feature(_board),
     ("_waveguide_ports", "waveguide_port"): Feature(_guide),
     ("_waveguide_ports", "n_modes"): Feature(lambda lane, on, ref=False: _guide(lane, on, ref, n_modes=2)),
-    ("_coaxial_ports", "coax_port"): _plus(lambda s, _: s.add_coaxial_port(
-        mm(6, 6, 0), face="bottom", pin_length=3e-3)),
+    ("_coaxial_ports", "coax_port"): Feature(_coax),
     ("_floquet_ports", "floquet_port"): Feature(_floquet_cell(0.0)),
     ("_floquet_ports", "scan_angle"): Feature(_floquet_cell(30.0)),
     ("_lumped_rlc", "R"): _plus(lambda s, _: s.add_lumped_rlc(mm(6, 6, 6), "ez", R=10.0)),

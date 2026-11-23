@@ -79,8 +79,6 @@ def grid_face_depths(grid, *, spec=None, pec_faces=None, pmc_faces=None, budget=
             and (pec_faces is None or set(pec_faces) == set(getattr(grid, "pec_faces", ()) or ()))
             and (pmc_faces is None or set(pmc_faces) == set(getattr(grid, "pmc_faces", ()) or ()))):
         return records
-    # A runner disabling CPML via all-wall overrides still has the grid's
-    # allocation budget; validate its declarations against that allocation.
     allocation = getattr(grid, "cpml_layers", 0)
     return resolve_face_depths(
         spec, budget=allocation if budget is None or budget == 0 else budget,
