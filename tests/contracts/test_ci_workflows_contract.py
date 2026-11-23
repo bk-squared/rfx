@@ -801,6 +801,7 @@ def test_local_sh_runs_the_real_entry_points() -> None:
     for entry_point in (
         "scripts/ci/lint.sh",
         "scripts/ci/docs_hygiene.sh",
+        "scripts/ci/check_known_limitations.py",
         "scripts/ci/check_changelog_fragment.py",
         "scripts/ci/check_data_budget.py",
         "scripts/ci/check_pr_body.py --file",
