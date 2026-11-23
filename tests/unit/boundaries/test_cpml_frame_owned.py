@@ -155,13 +155,13 @@ def _scene(case, medium):
 
 @pytest.mark.parametrize('devices,case,medium', CASES)
 def test_frame_owned_matches_global(devices, case, medium, monkeypatch, record_property):
+    """The last frame's backward operand must retain the exchanged predecessor outside the frame."""
     grid, params, initial_psi, base, inc, mats, ek = _scene(case, medium)
     per = (grid.nx + devices-1)//devices
     pad = devices*per-grid.nx
     frame = {"x": (1, 1+per-pad)}
     if case.startswith('one_row_'):
-        # R12: the last frame owns one row; its backward operand must retain
-        # the exchanged predecessor outside that frame. Global is the oracle.
+        assert frame["x"][1] - frame["x"][0] == 1, 'last CPML frame must own exactly one row'
         with jax.disable_jit():
             expected = cpml.slab_neighbor(base.hz, 0, 1, False, False, frame=None)
             actual = cpml.slab_neighbor(_cut(base.hz, devices-1, per), 0, 1,
@@ -169,9 +169,6 @@ def test_frame_owned_matches_global(devices, case, medium, monkeypatch, record_p
         _bytes(actual, expected, (case, 'R12 last-rank x_hi operand'))
     max_ulp = {}
     finite_counts = {}
-    # Instrument raw psi and every pre-selection corrected slab. The oracle
-    # is evaluated before installing these observers. No reference arithmetic
-    # is reconstructed by the observers or placement/exchange helpers.
     for compiled in (False, True):
         with jax.disable_jit(not compiled):
             reference = base

@@ -31,8 +31,7 @@ RUN_REFUSAL = (
 
 @pytest.fixture(scope="module")
 def scenes():
-    # Parametrizing a scene together with a transform may recreate fixtures.
-    # Keep the same scene object and its plain reference across those rows.
+    """Transform rows keep the same scene object and its plain reference to avoid recreating fixtures."""
     return functools.lru_cache(maxsize=3)(make_observable)
 
 
@@ -42,19 +41,19 @@ def observable(request, scenes):
 
 
 def make_observable(scene):
+    """The fixed custom pulse distinguishes transformed execution from a silent built-in-waveform fallback."""
+    CUSTOM_DELAY_TAU = 3.5
+    CUSTOM_WIDTH_TAU = 1.1
     closed_box = scene != "slab-custom"
     sim = Simulation(freq_max=11e9, domain=(.032,) * 3, dx=.002,
                      boundary="cpml", cpml_layers=6)
     grid = sim._build_grid()
     waveform = "differentiated_gaussian"
     if scene != "default":
-        # A pulse that differs from the built-in one (delay 3.5 tau, width
-        # 1.1 tau), so a transform that silently ran the built-in pulse instead
-        # would change every custom row. Fixed in p.
         tau = 1 / (np.pi * 10e9 * .5)
         waveform = CustomWaveform(
-            lambda t: -2 * ((t - 3.5 * tau) / (1.1 * tau))
-            * jnp.exp(-((t - 3.5 * tau) / (1.1 * tau)) ** 2))
+            lambda t: -2 * ((t - CUSTOM_DELAY_TAU * tau) / (CUSTOM_WIDTH_TAU * tau))
+            * jnp.exp(-((t - CUSTOM_DELAY_TAU * tau) / (CUSTOM_WIDTH_TAU * tau)) ** 2))
     sim.add_tfsf_source(f0=10e9, bandwidth=.5, polarization="ez",
                         direction="+x", margin=4, closed_box=closed_box,
                         waveform=waveform)
@@ -63,9 +62,8 @@ def make_observable(scene):
             29, .002, grid.dt, ny=29, nz=29, cpml_layers=6, tfsf_margin=4,
             f0=10e9, bandwidth=.5, polarization="ez", direction="+x",
             closed_box=False, waveform=waveform, dtype='float32')
-        # Full transverse extent preserves the slab's lateral invariance.
-        # Include x_lo+2 through x_hi-2; every injection-plane cell is vacuum.
         mask = jnp.zeros(grid.shape).at[cfg.x_lo + 2:cfg.x_hi - 1, :, :].set(1)
+        assert np.all(np.asarray(mask)[cfg.x_lo + 2:cfg.x_hi - 1]) and not np.asarray(mask)[[cfg.x_lo, cfg.x_hi]].any(), "laterally invariant slab must leave x injection planes in vacuum"
         probe_x = (cfg.x_lo - 2 - 6) * .002
         sim.add_probe((probe_x, .016, .016), "ez")
 
@@ -80,9 +78,6 @@ def make_observable(scene):
     freqs = np.array([9e9, 10e9, 11e9])
     sim.add_ntff_box((.004,) * 3, (.028,) * 3, freqs=freqs)
     assert grid.shape == (29, 29, 29)
-    # Hand-written padded indices: CPML ends at 6/23, TF at 10/18,
-    # NTFF at 8/20, and the four design cells are 12..15 on every axis.
-    # These objects construct the observable; none supplies an expected value.
     box = NTFFBox(8, 20, 8, 20, 8, 20, jnp.asarray(freqs),
                   cpml_lo_x=6, cpml_hi_x=6, cpml_lo_y=6, cpml_hi_y=6,
                   cpml_lo_z=6, cpml_hi_z=6, face_centre=True)
@@ -267,7 +262,6 @@ def test_traced_shell_requires_vacuum(observable, transform, record_property):
     sim, _ = observable
 
     def objective(p):
-        # Whole-grid override: exactly one cell on x_lo, inside y/z faces.
         eps = jnp.ones((29, 29, 29)).at[10, 14, 14].set(p)
         result = sim.forward(n_steps=2, eps_override=eps, skip_preflight=True)
         return jnp.sum(result.ntff_data.x_lo.real)

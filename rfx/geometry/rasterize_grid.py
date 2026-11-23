@@ -361,8 +361,10 @@ def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *,
 
 
 def _span_collapsed_axes(box, centres, cell_sizes):
-    """A 2D grid's collapsed axis holds one cell and the fields do not vary along it:
-    a material Box spans that cell whatever its drawn extent there."""
+    """Span singleton sampling axes for standalone and three-dimensional callers.
+
+    Realized two-dimensional volumes already span their invariant axis.
+    """
     lo, hi = list(box.corner_lo), list(box.corner_hi)
     for a in range(3):
         c = centres[a]
@@ -592,7 +594,7 @@ def _refuse_zero_cells(shape, name, what: str, *, cell_sizes=None, centres=None,
             bounds = shape.bounding_box() if hasattr(shape, 'bounding_box') else None
         thickness = (tuple(float(b - a) for a, b in zip(*bounds))
                      if bounds is not None else "unavailable")
-        local = "unavailable"
+        local: str | tuple[float, ...] = "unavailable"
         if (bounds is not None and cell_sizes is not None and centres is not None
                 and not any(is_tracer(v) for v in (*cell_sizes, *centres[:3]))):
             local = tuple(float(np.asarray(d)[np.argmin(abs(np.asarray(c) - (a + b) / 2))])
@@ -725,10 +727,10 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
                            axis_samplers=tuple(
                                (lambda line, t=t: axis_sample(t, line)) for t in range(3)))
     else:
-        sample = [np.asarray(n, dtype=np.float64) for n in node_axes]
-        sample[a] = np.asarray([requested_mid], dtype=np.float64)
+        sample_coords = [np.asarray(n, dtype=np.float64) for n in node_axes]
+        sample_coords[a] = np.asarray([requested_mid], dtype=np.float64)
         cross = np.asarray(periodic_mask(
-            grid, shape, sample, axes=tuple(t for t in range(3) if t != a),
+            grid, shape, sample_coords, axes=tuple(t for t in range(3) if t != a),
             closed_footprint=True), dtype=bool)
         fp = np.zeros(shape_3, dtype=bool)
         idx = [slice(None)] * 3
@@ -1175,17 +1177,18 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
                 from jax import ensure_compile_time_eval
                 with ensure_compile_time_eval():
                     raw = wire_path_edge_masks(nodes, extended)
-                edges = []
+                folded_edges = []
                 for mask in raw:
                     mask = np.asarray(mask).copy()
                     for a in range(3):
                         if 'xyz'[a] in grid.periodic_axes:
-                            first, last = [slice(None)] * 3, [slice(None)] * 3
-                            first[a], last[a] = 0, -1
-                            mask[tuple(first)] |= mask[tuple(last)]
+                            first_index: list[slice | int] = [slice(None)] * 3
+                            last_index: list[slice | int] = [slice(None)] * 3
+                            first_index[a], last_index[a] = 0, -1
+                            mask[tuple(first_index)] |= mask[tuple(last_index)]
                             mask = np.take(mask, range(coords.shape[a]), axis=a)
-                    edges.append(jnp.asarray(mask))
-                edges = tuple(edges)
+                    folded_edges.append(jnp.asarray(mask))
+                edges = tuple(folded_edges)
             else:
                 edges = wire_path_edge_masks(nodes, coords.shape)
             return None, None, WireSpec(edges=edges, name=name)
@@ -1426,7 +1429,7 @@ def rasterize_geometry(
 def periodic_flags_from_axes(periodic_axes) -> tuple[bool, bool, bool]:
     """``"xy"`` -> ``(True, True, False)``; ``None``/``""`` -> all False."""
     s = periodic_axes or ""
-    return tuple(ax in s for ax in "xyz")
+    return ("x" in s, "y" in s, "z" in s)
 
 
 class PadFillShortfall(RfxRefusal):

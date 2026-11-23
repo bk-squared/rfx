@@ -442,9 +442,9 @@ Getting an accurate result:
 
 - **Sources give no S-parameters.** `add_source`, polarized sources and TFSF
   have no impedance. Use a port and its calculator.
-- **One port family per calculation.** Mixed lumped + microstrip and
-  coax-to-microstrip calculators exist but are experimental; measure each line
-  with its own calculator instead.
+- **One port family per calculation.** Mixed lumped + microstrip is experimental.
+  The coax-to-microstrip calculator is not supported (deprecated); removed after 2.3.
+  Measure each line with its own calculator instead.
 - **Circular polarization** from `add_polarized_source` is unverified.
 - **Lumped/wire ports** need about 60 cells per wavelength for S11 within
   about 0.5 dB. `forward(port_s11_freqs=...)` works on either mesh; over

@@ -1,10 +1,10 @@
 name: governance-audit
 
 # The weekly look at the intake rules no single PR can be checked against:
-# how often the review exception is claimed, which issues were filed outside the
-# forms, and which merged work sat outside every open milestone.
+# reviews and bounded review exceptions, missing issue lane labels, data-budget
+# exceptions, and informational campaign and frozen-data observations.
 #
-# NOT a required check, and not a gate. The report exits 1 whenever it has rows
+# NOT a required check, and not a gate. The report exits 1 on failing rows
 # so the scheduled run shows up RED in the Actions list and somebody opens it;
 # a green weekly summary nobody opens reports nothing. Making this required
 # would block every merge on a report about last week.

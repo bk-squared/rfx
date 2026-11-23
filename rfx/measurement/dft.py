@@ -25,7 +25,7 @@ import numpy as np
 
 from .plan import Channel, TimeBase
 
-_BLOCK = 256  # steps per matrix product in the stored-record replay
+_BLOCK = 256
 
 
 def dft_window_weight(step: int, total_steps: int, window: str, alpha: float) -> jnp.ndarray:
@@ -92,7 +92,7 @@ def _offset(kind, time_shift):
 
 def _fixed(turns):
     """Turns modulo one as 64-bit fixed point: (high, low) uint32 words."""
-    scaled = np.mod(np.asarray(turns, np.float64), 1.0) * 2.0 ** 32  # exact: a power of two
+    scaled = np.mod(np.asarray(turns, np.float64), 1.0) * 2.0 ** 32
     high = np.floor(scaled)
     low = np.floor((scaled - high) * 2.0 ** 32)
     return np.stack([np.mod(high, 2.0 ** 32), low]).astype(np.uint32)
@@ -100,8 +100,6 @@ def _fixed(turns):
 
 def _words(freqs, dt, offset):
     """Host constants of one channel: per-step turns and stamp offset, (4, nf) uint32."""
-    # The offset multiplies the whole product: reducing f dt modulo one
-    # first would drop offset * floor(f dt) turns (half a turn for H).
     turns = freqs * dt
     return np.concatenate([_fixed(turns), _fixed(turns * offset)])
 
@@ -118,8 +116,6 @@ def _unit(step, words, dtype):
     """exp(-j 2 pi (step * turns + offset)), the phase in 64-bit fixed point."""
     n = jnp.asarray(step, dtype=jnp.int32)[..., None]
     step_high, step_low, offset_high, offset_low = (jnp.asarray(w, jnp.uint32) for w in words)
-    # Negative steps (low-level callers sampling the initial state):
-    # n * turns = -(m * turns + turns) with m = -(n + 1) >= 0.
     negative = n < 0
     m = jnp.where(negative, -(n + 1), n).astype(jnp.uint32)
     low = m * step_low
@@ -134,8 +130,6 @@ def _unit(step, words, dtype):
     if real == jnp.float64:
         angle = (2.0 * np.pi) * (total.astype(real) * 2.0 ** -32 + total_low.astype(real) * 2.0 ** -64)
         return (jnp.cos(angle) - 1j * jnp.sin(angle)).astype(dtype)
-    # float32: the quarter turn from the top two bits, the remainder in
-    # [0, pi/2) so its cosine and sine keep full relative precision.
     quarter = total >> 30
     angle = (total & jnp.uint32(0x3FFFFFFF)).astype(real) * real.type(np.pi / 2 * 2.0 ** -30)
     c, s = jnp.cos(angle), jnp.sin(angle)
@@ -251,7 +245,6 @@ def half_step_current_phase(freqs: jnp.ndarray, dt: float) -> jnp.ndarray:
     return jnp.exp(1j * jnp.pi * jnp.asarray(freqs) * dt)
 
 
-# Preserve the postponed annotations of its original core.dft_utils module.
 half_step_current_phase.__annotations__ = {
     "freqs": "jnp.ndarray", "dt": "float", "return": "jnp.ndarray",
 }

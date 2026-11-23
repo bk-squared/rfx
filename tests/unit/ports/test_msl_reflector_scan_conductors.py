@@ -150,10 +150,10 @@ class _NoBBox:
     from the ownership classifier.
     """
 
-    def mask(self, grid):                     # pragma: no cover - unused
+    def mask(self, grid):                     # pragma: no cover
         raise NotImplementedError
 
-    def mask_on_coords(self, x, y, z):        # pragma: no cover - unused
+    def mask_on_coords(self, x, y, z):        # pragma: no cover
         raise NotImplementedError
 
 

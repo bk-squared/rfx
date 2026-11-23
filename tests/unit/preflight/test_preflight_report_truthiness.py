@@ -214,7 +214,7 @@ def test_equality_result_is_usable_in_a_condition():
     report = PreflightReport()
     if report == []:
         gated = True
-    else:                                   # pragma: no cover - guard
+    else:                                   # pragma: no cover
         gated = False
     assert gated
 

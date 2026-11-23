@@ -10,7 +10,6 @@ import numpy as np
 
 
 _SETTLING_RECORD_NAMES = ("v_probe_t", "v_ref_t", "i_probe_t", "i_ref_t")
-# only co-located records tell a field null's rounding from signal.
 _LONE_PROBE_NOTE = (
     " (no other component of its field (E or H) is recorded at its cell: a probe on a field null "
     "holds only rounding and cannot be judged alone; record the co-located "
@@ -74,8 +73,6 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
     source_end = None
     axes = {getattr(cfg, "normal_axis", "x") for cfg in final_cfgs}
     if final_cfgs and timing_available and len(axes) == 1:
-        # The applied incident E table with the one source-end rule, plus
-        # free-space travel to every scored plane.
         axis = "xyz".index(axes.pop())
         planes = []
         for other in final_cfgs:
@@ -88,7 +85,7 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
     try:
         known_drives = [table for cfg in final_cfgs for table in incident_tables_uncut(cfg)
                         if len(table) > n_record]
-    except ValueError as exc:   # the witness reads "cannot judge" with this reason
+    except ValueError as exc:
         known_drives = exc
     bins = freqs if freqs is not None else (
         getattr(final_cfgs[0], "freqs", None) if final_cfgs else None)
@@ -125,14 +122,6 @@ def warn_postrun_energy_witness(
     if is_tracer(time_series):
         return
     series = None if time_series is None else np.asarray(time_series)
-    # exclude library-internal witness probes (the MSL
-    # settling witnesses) — their record is judged by the MSL driver's
-    # own settling_db witness, so the advisories here speak for USER probes
-    # only and the two differently-defined witnesses never double-fire
-    # on the same columns. With only internal probes present this
-    # behaves as if no probe series was recorded.
-    # Time-series columns are in probe registration order (the same
-    # convention the MSL driver's witness slice relies on).
     _internal = getattr(sim, "_internal_probe_indices", None)
     if series is not None and series.ndim == 2 and _internal:
         _keep = [i for i in range(series.shape[1]) if i not in _internal]
@@ -225,8 +214,6 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
                                  settling_witness=witness)
     if getattr(sim, "_internal_probe_indices", None):
         return result
-    # The coverage warning stands in for the absent advisory or a passing
-    # record; a tail check that failed keeps its own warning below.
     if tail_status in {"pass", "absent"} and warn_uncovered(witness):
         return result
 
@@ -371,6 +358,6 @@ def tfsf_source_drive(cfg, grid):
     is_traced = getattr(grid, "is_traced", None)
     if is_traced is not None and any(is_traced(axis) for axis in "xyz"):
         from rfx.measurement.record_end import TRACED
-        return None, ("traced", TRACED)   # the box corners sit on traced nodes
+        return None, ("traced", TRACED)
     from rfx.measurement.tfsf_reach import tfsf_reach
     return waveform, tfsf_reach(cfg, grid)

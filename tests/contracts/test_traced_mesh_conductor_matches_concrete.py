@@ -275,6 +275,7 @@ def test_lattice_wrapper_keeps_refusal():
 
 @pytest.mark.parametrize("jit", [False, True], ids=["eager", "jit"])
 def test_holed_impedance_sheet_refused(jit):
+    """Public f0 admission currently fails before sheet continuation under JIT."""
     from tests.unit.materials.test_sheet_impedance import PlanarSheet
 
     profile = np.array([1., 1., 1., .4, 1.6, 1., 1., 1.])
@@ -298,7 +299,6 @@ def test_holed_impedance_sheet_refused(jit):
         with pytest.raises(TracedStructureRefusal, match="PlanarSheet.*x-hi.*axis concrete"):
             jax.block_until_ready(call(jnp.asarray(profile, dtype=jnp.float32)))
     except jax.errors.ConcretizationTypeError as exc:
-        # Public f0 admission currently fails before continuation under JIT.
         if not jit:
             raise
         assert "float" in str(exc)
@@ -306,6 +306,7 @@ def test_holed_impedance_sheet_refused(jit):
 
 @pytest.mark.parametrize("inset", [False, True], ids=["both_x_faces", "inset_1p1"])
 def test_impedance_box_sheet_matches_concrete_and_checks_drift(inset):
+    """The signed 0.65 mm displacement changes outermost-row coverage at the impedance sheet's high-x end."""
     def scene(d):
         with patch.object(board, "CPML", 4):
             sim = board._board(d * 0, snap="declared")
@@ -329,9 +330,6 @@ def test_impedance_box_sheet_matches_concrete_and_checks_drift(inset):
 
     actual, _ = jax.jvp(go, (jnp.float32(0),), (jnp.float32(1),))
     equal_arrays(actual, go(0.))
-    # Round-2 review: shrinking by 0.65 mm moves the inset end into the
-    # outermost node row. Expanding by the same amount uncovers that row
-    # for the sheet drawn to both faces.
     delta = .00065 if inset else -.00065
     with pytest.raises(TracedStructureRefusal, match="outermost layer at x-hi.*axis concrete"):
         jax.jvp(go, (jnp.float32(delta),), (jnp.float32(1),))

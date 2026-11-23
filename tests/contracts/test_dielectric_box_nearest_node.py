@@ -8,6 +8,7 @@ subgrid forward refuses refinement; subgrid run refuses Lorentz poles;
 graded/distributed runs refuse Kerr material; a periodic axis refuses a varying
 profile (the graded periodic fixtures grade the other two axes). The subgrid fine lane has no
 public fine realized record, so its actual rasterizer output is inspected.
+The collapsed-axis slab has sixteen material cells from four x cells times four y cells.
 """
 import jax
 import jax.numpy as jnp
@@ -47,7 +48,6 @@ def _scene(offset, graded=False, periodic=False, rich=False, smoothing=False, ke
     sim.add_material('box', **props)
     shape = Box((lo,) * 3, (hi,) * 3)
     sim.add(shape, material='box')
-    # Nearest node of the DRAWING, with no implementation helper.
     nodes = (np.arange(13) * DX if periodic else nodes, nodes, nodes)
     indices = tuple(tuple(int(np.flatnonzero(np.isclose(abs(axis_nodes - face),
                                               np.min(abs(axis_nodes - face)), rtol=0, atol=1e-15))[0]) for face in (lo, hi))
@@ -244,6 +244,7 @@ def test_csg_box_leaves(offset, operation):
 
 @pytest.mark.parametrize('traced', [False, True])
 def test_box_composites_use_volume_leaves(traced):
+    """Zero-thickness staircase leaves contribute no material volume."""
     from rfx.geometry.curved import CurvedPatch
     from rfx.geometry.via import Via
     sim, _, _, _, _ = _scene(.3)
@@ -266,7 +267,6 @@ def test_box_composites_use_volume_leaves(traced):
     np.testing.assert_array_equal(sample(via), expected)
     patch = CurvedPatch(center=(.0053, .0053, .0033), length=.004,
                         width=.004, radius=.01)
-    # Staircase leaves have zero z thickness: they own no volume cell.
     from rfx.errors import RfxRefusal
     with pytest.raises(RfxRefusal, match='ZERO cells'):
         sample(patch)
@@ -300,11 +300,11 @@ def test_periodic_image_uses_centre_window(offset, graded):
     coords = coords_from_nonuniform_grid(grid) if graded else coords_from_uniform_grid(grid)
     widths = cell_sizes_from_nonuniform_grid(grid) if graded else cell_sizes_from_uniform_grid(grid)
     centres = cell_centres_from_nodes(coords, widths)
-    # The x interval crosses the seam; the drawing is extended by one period.
     xnodes, ynodes, _ = nodes
     period = xnodes[-1]
     lo = xnodes[10] + offset * (xnodes[11] - xnodes[10])
     hi = period + xnodes[2] + offset * (xnodes[3] - xnodes[2])
+    assert lo < period < hi, "periodic drawing must cross the x seam"
     shape = Box((lo, .0033, .0033), (hi, .0083, .0083))
     extended = np.r_[xnodes[:-1], period + xnodes]
     first, last = (int(np.flatnonzero(np.isclose(abs(extended - face),
@@ -385,6 +385,7 @@ def test_line_stub_uses_same_material_mask(offset, graded, periodic):
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 @pytest.mark.parametrize('pec', [False, True], ids=['dielectric', 'pec-volume'])
 def test_box_on_declared_domain_face_fills_last_cell(graded, pec):
+    """The solved PEC body continues through the absorber past the domain face."""
     from rfx.geometry.rasterize_grid import pec_volume_cell_mask
     from rfx.model.materials import assemble_cells
     domain = (60.4 * DX, 6 * DX, 6 * DX)
@@ -396,20 +397,17 @@ def test_box_on_declared_domain_face_fills_last_cell(graded, pec):
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     built = assemble_cells(sim, grid, include_cpml_pad_extension=False)
     if pec:
-        # Inspect the declared volume before conductor continuation into CPML.
         centres = centres_from_nonuniform_grid(grid) if graded else centres_from_uniform_grid(grid)
         sizes = cell_sizes_from_nonuniform_grid(grid) if graded else cell_sizes_from_uniform_grid(grid)
         mask = np.asarray(pec_volume_cell_mask(box, centres, sizes, grid=grid))
     else:
         mask = np.asarray(built[0].eps_r) == 4.
-    # The drawing ends on the domain face: ceil(60.4) is the bounding node.
     last_node = int(np.ceil(domain[0] / DX))
     pad = 2
     assert mask[pad + last_node - 1, pad + 2, pad + 2]
     assert not mask[pad + last_node, pad + 2, pad + 2]
     entity = sim.realized_geometry().entities[0]
     if pec:
-        # The solved PEC body continues through the absorber past this face.
         assert entity.axes[0].bounds_m[1] >= last_node * DX
     else:
         assert entity.axes[0].node_range == (pad, pad + last_node)
@@ -426,16 +424,17 @@ ZERO_LANES = ['uniform-run', 'uniform-forward', 'graded-run', 'graded-forward',
 @pytest.mark.parametrize('lane', ZERO_LANES)
 @pytest.mark.parametrize('thickness', [0., .1], ids=['zero-thickness', 'no-centre'])
 def test_zero_cell_material_is_refused(monkeypatch, lane, thickness):
+    """Traced coordinates report a runtime callback refusal through XLA."""
     from rfx.errors import RfxRefusal
     import rfx.model.materials as assembly
     graded = lane.startswith(('graded', 'distributed_nu')) or lane == 'dual-average'
     sim, *_ = _scene(.3, graded=graded, periodic='periodic' in lane,
                      rich=True, kerr=False, poles=lane != 'subgrid-coarse',
                      **({'interface_eps': 'dual_average'} if lane == 'dual-average' else {}))
-    # No centre lies in this drawing on either the coarse or half-size grid.
     from dataclasses import replace
     sim._geometry[0] = replace(sim._geometry[0], shape=Box(
         (2 * DX, 2 * DX, 3.1 * DX), (6 * DX, 6 * DX, (3.1 + thickness) * DX)))
+    assert all(not np.any((centres >= sim._geometry[0].shape.corner_lo[2]) & (centres <= sim._geometry[0].shape.corner_hi[2])) for centres in (np.arange(12) * DX + DX / 2, np.arange(24) * DX / 2 + DX / 4)), "zero-cell drawing must contain no coarse or half-size z centre"
     sim.add_source((DX,) * 3, 'ez', amplitude_kind='current')
     sim.add_probe((2 * DX,) * 3, 'ez')
     if lane == 'subgrid-coarse':
@@ -447,7 +446,6 @@ def test_zero_cell_material_is_refused(monkeypatch, lane, thickness):
         raise _Built('empty material was admitted')
 
     monkeypatch.setattr(assembly, 'assemble_cells', stop_after_build)
-    # Traced coordinates report a runtime callback refusal through XLA.
     error = Exception if lane == 'traced' else RfxRefusal
     with pytest.raises(error, match='ZERO cells') as caught:
         if lane == 'subgrid-fine':
@@ -500,14 +498,14 @@ def test_zero_cell_material_is_refused(monkeypatch, lane, thickness):
 
 @pytest.mark.parametrize('material', ['dielectric', 'pec'])
 def test_body_outside_a_refinement_region_is_not_a_zero_cell_body(material):
-    # A refinement region samples only its own cells: a body drawn wholly outside
-    # it owns none there, and the coarse grid carries it.
+    """A refinement region may omit a body held wholly by the coarse grid."""
     from rfx.geometry.rasterize_grid import rasterize_geometry
     sim = Simulation(10e9, (12 * DX,) * 3, dx=DX, cpml_layers=0, boundary='pec')
     sim.add_material('outside', eps_r=4.)
     sim.add(Box((3 * DX, 3 * DX, 9 * DX), (8 * DX, 8 * DX, 11 * DX)),
             material='outside' if material == 'dielectric' else 'pec')
-    lines = np.arange(10) * DX / 2 + DX / 4 + 3 * DX   # fine centres, z 3..8 mm
+    lines = np.arange(10) * DX / 2 + DX / 4 + 3 * DX
+    assert lines[-1] < sim._geometry[0].shape.corner_lo[2], "refinement centres must stay below the body's lower z corner"
     centres = GridCoords(lines, lines, lines, (10,) * 3)
     mats, *_rest = rasterize_geometry(sim._geometry, sim._resolve_material, centres,
                                       centres=centres, cell_sizes=(np.full(10, DX / 2),) * 3,
@@ -517,8 +515,6 @@ def test_body_outside_a_refinement_region_is_not_a_zero_cell_body(material):
 
 @pytest.mark.parametrize('material', ['dielectric', 'pec'])
 def test_body_outside_the_whole_grid_is_still_refused(material):
-    # Only a refinement region's own sampling may skip a body it does not reach;
-    # on the full grid a body with no cell (e.g. drawn in mm as metres) refuses.
     sim = Simulation(10e9, (12 * DX,) * 3, dx=DX, cpml_layers=0, boundary='pec')
     sim.add_material('outside', eps_r=4.)
     sim.add(Box((3., 3., 3.), (6., 6., 6.)), material='outside' if material == 'dielectric' else 'pec')
@@ -590,22 +586,18 @@ def test_one_cell_axis_domain_clause_does_not_inflate_material(graded):
 
 @pytest.mark.parametrize('z', [(0., 0.), (0., DX / 2), (-DX, DX)], ids=['zero', 'sub-cell', 'across'])
 def test_two_d_collapsed_axis_holds_the_slab_whatever_its_drawn_height(z):
-    # The 2D model does not vary along its one-cell axis, so no drawn height there
-    # can leave the slab without cells; refining that axis is not a remedy.
+    """A two-dimensional material slab spans its collapsed axis regardless of drawn height."""
     from rfx.model.materials import assemble_cells
     sim = Simulation(10e9, (8 * DX, 8 * DX, DX), dx=DX, cpml_layers=0, boundary='pec', mode='2d_tmz')
     sim.add_material('d', eps_r=4.)
     sim.add(Box((2 * DX, 2 * DX, z[0]), (6 * DX, 6 * DX, z[1])), material='d')
     eps = np.asarray(assemble_cells(sim, sim._build_grid())[0].eps_r)
-    assert eps.shape[2] == 1 and int((eps == 4.).sum()) == 16   # x, y nodes 2..6: 4 x 4 cells
+    assert eps.shape[2] == 1 and int((eps == 4.).sum()) == 16
 
 
 @pytest.mark.parametrize('top', [5.2, 5.4], ids=['sliver-below-fine-centre', 'sliver-holding-fine-centre'])
 def test_body_crossing_a_refinement_boundary_is_held_by_the_coarse_grid(top):
-    # The fine region starts at z = 5 mm (first fine centre 5.25 mm). A substrate held
-    # by the coarse grid reaches a fraction of a fine cell into the
-    # refinement region: the fine grid holds only that sliver (none below a fine centre),
-    # which is not a zero-cell body.
+    """For the fine region starting at z = 5 mm, the first fine centre at 5.25 mm distinguishes a 5.2 mm substrate top without a fine centre from a 5.4 mm top holding one."""
     sim = Simulation(10e9, (12 * DX,) * 3, dx=DX, cpml_layers=0, boundary='pec')
     sim.add_material('sub', eps_r=4.)
     sim.add(Box((0, 0, 0), (12 * DX, 12 * DX, top * DX)), material='sub')
@@ -629,7 +621,6 @@ def test_mixed_csg_matches_standalone_material_cells(offset, graded, periodic, o
     sim, box, expected_box, _, nodes = _scene(offset, graded, periodic)
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     sphere = Sphere(((6.1 + offset) * DX,) * 3, 2.6 * DX)
-    # Drawing-derived centres; no production coordinate or mask helper in the oracle.
     axes = []
     for a, line in enumerate(nodes):
         widths = np.diff(line)

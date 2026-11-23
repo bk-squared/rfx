@@ -8,6 +8,8 @@ def check_pad_fill(sim, grid, geometry_masks, *, record=None, conductors=None):
     from rfx.preflight._not_judged import not_judged
     if sim._boundary not in ("cpml", "upml") or sim._cpml_layers <= 0:
         return
+    from rfx.geometry.cross_section import section_entries
+    sections = section_entries(sim, grid)
     masks = dict(geometry_masks)
     for i, entry in enumerate(sim._geometry):
         mask = masks.get(id(entry))
@@ -16,7 +18,7 @@ def check_pad_fill(sim, grid, geometry_masks, *, record=None, conductors=None):
         if mask is not None and not is_tracer(mask):
             before = len(record) if record is not None else 0
             assert_declared_span_is_filled(
-                entry.material_name, entry.shape, mask, grid,
+                entry.material_name, sections[i].shape, mask, grid,
                 sim._unresolved_domain, record=record)
             for row in (() if record is None else record[before:]):
                 row["subject"] = f"geometry[{i}]"

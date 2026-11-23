@@ -1,4 +1,6 @@
-"""G3: owned conductor edges, visible fields, and sheet-contact wire S11."""
+"""G3: owned conductor edges, visible fields, and sheet-contact wire S11.
+The per-probe table records earlier measured maximum trace differences normalized by the single-device peak.
+"""
 import warnings
 
 import jax
@@ -16,16 +18,12 @@ from rfx.runners._rank import mesh_ranks
 from rfx.sources.sources import _wire_port_live_cells, wire_port_from_entry
 
 GATE = 1e-3
-# PEC walls: multi and single device differ only by float32 rounding, which a
-# lossless box carries forward; one rounding per step bounds it at
-# n_steps * eps(float32) of the peak. Measured 0 on arm64 and up to 2e-6 on
-# x86-64 (same code, 180 steps), so bit-equality is not a portable bar.
 def _rounding_bar(n_steps):
+    """The lossless PEC parity bar allows one float32 rounding per time step."""
     return n_steps*float(np.finfo(np.float32).eps)
 
 STEPS = 300
 KINDS = ('sheet_x_seam', 'sheet_z_cross', 'sheet_z_edge', 'wire_x_cross', 'wire_z_seam')
-# Measured float32 max_t |multi-single| / max_t |single|, per probe.
 MEASURED = {
     ('sheet_x_seam', False, 'pec'): {'conductor': (0, 0)},
     ('sheet_z_cross', False, 'pec'): {'conductor': (0, 0)},
@@ -64,9 +62,9 @@ def _build(kind, graded, boundary, conductor=True, count=2):
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     per = (grid.shape[0] + count - 1)//count
     seam = grid.node_of(0, per)
-    # A 3-slab crossing sheet spans the whole middle slab.
     left, right = (seam-.005, seam+.005) if count == 2 else (
         grid.node_of(0, per-2), grid.node_of(0, 2*per+2))
+    assert count != 3 or left <= grid.node_of(0, per) < grid.node_of(0, 2*per) <= right, "three-slab crossing sheet must cover the middle slab"
     shapes = {
         'sheet_z_high_padded': Box((.020, .003, .006), (grid.node_of(0, grid.shape[0]-1), .011, .006)),
         'sheet_x_seam': Box((seam, .003, .002), (seam, .011, .010)),
@@ -129,7 +127,6 @@ def _owned_masks(monkeypatch, kind, graded, boundary, count=2):
     ones = jax.device_put(jnp.ones(shape, dtype=jnp.float32), NamedSharding(mesh, P('x')))
     state = init_state(shape)._replace(ex=ones, ey=ones, ez=ones)
     masked = apply_pec_mask_shmap(state, tuple(staged), mesh, count, local, ranks=mesh_ranks(mesh))
-    # Independent ownership: physical node positions, high side at equality.
     nodes = np.array([grid.node_of(0, i) for i in range(grid.shape[0])])
     seams = np.array([grid.node_of(0, r*per) for r in range(1, count)])
     owners = np.searchsorted(seams, nodes, side='right')
@@ -183,6 +180,7 @@ def _traces(kind, graded, boundary, conductor=True, distributed=False, count=2):
 
 
 def _field_parity(kind, graded, boundary, count=2):
+    """The absorber-only control pins the numerical background allowed by the conductor parity bar."""
     _reference(kind, graded, boundary, count)
     single, dt = _traces(kind, graded, boundary, count=count)
     multi, multi_dt = _traces(kind, graded, boundary, distributed=True, count=count)
@@ -201,7 +199,6 @@ def _field_parity(kind, graded, boundary, count=2):
                                               distributed=True, count=count)
         assert empty_multi_dt == empty_dt
         empty_rel = np.max(np.abs(empty_multi-empty), axis=0)/np.max(np.abs(empty), axis=0)
-        # The absorber alone accounts for a difference of this size (MEASURED).
         assert np.all(empty_rel <= GATE), empty_rel
     assert np.max(visibility) > 100*GATE, visibility
 
@@ -220,20 +217,20 @@ def test_b2_three_slabs(graded):
 
 
 def _port_model():
+    """The sheet-contact witness requires part of the first Ez port's line to be dead."""
     from tests.unit.runners.test_distributed_wire_ports import _model
     sim = _model('ez')
-    # The first Ez port lands on this x-normal sheet; part of its line is dead.
     sim.add(Box((.005, .006, .004), (.005, .010, .005)), material='pec')
     sim._snap = 'declared'
     return sim
 
 
 def test_b3_sheet_contact_wire_port(monkeypatch):
+    """Every main-run and S-driver resolution belongs to the live-cell sampler contract."""
     from tests.unit.runners.test_distributed_wire_ports import FREQS
     expected_sim = _port_model()
     grid = expected_sim._build_grid()
     root = C.solve_conductors(expected_sim, grid)
-    # Count expected live edges directly from the independent single-device object.
     expected_counts = []
     for pe in expected_sim._ports:
         start = grid.position_to_index(pe.position)
@@ -257,8 +254,6 @@ def test_b3_sheet_contact_wire_port(monkeypatch):
     monkeypatch.setattr(port_sources, '_wire_port_live_cells', capture_live)
     monkeypatch.setattr(lumped_stamp, '_wire_port_live_cells', capture_live)
     multi = _port_model().run(devices=_devices(), **kwargs)
-    # The slab port sampler reads the live cells resolved inside run_distributed
-    # (#2175): every resolution, main run and S-driver drives, is one reader.
     by_position = {tuple(pe.position): n for pe, n in zip(expected_sim._ports, expected_counts)}
     assert reader_counts
     for position, live_count in reader_counts:
@@ -267,7 +262,6 @@ def test_b3_sheet_contact_wire_port(monkeypatch):
     assert np.all(delta <= 1e-3), delta
 
 
-# Decision records 2-3: primal and block JVP agree to accumulated float32 rounding.
 def _graded_forward_sheet(amplitude, distributed):
     sim = Simulation(freq_max=15e9, domain=(.015, .011, .009), dx=.001,
                      boundary='pec', cpml_layers=0,
@@ -326,10 +320,10 @@ def _lumped_model(kind, boundary):
 @pytest.mark.parametrize('kind', ['volume', 'sheet', 'wire'])
 @pytest.mark.parametrize('boundary', ['pec', 'cpml'])
 def test_lumped_port_on_conductor(monkeypatch, kind, boundary):
+    """Main-run and S-matrix drive scans must release the same driven edge."""
     single_sim = _lumped_model(kind, boundary)
     grid = single_sim._build_grid()
     root = C.solve_conductors(single_sim, grid)
-    # Locate the driven edge from physical nodes, independently of the stage.
     index = tuple(int(np.flatnonzero(np.isclose(
         [grid.node_of(a, i) for i in range(grid.shape[a])], position,
         rtol=0, atol=1e-12))[0]) for a, position in enumerate((.016, .007, .005)))
@@ -355,7 +349,6 @@ def test_lumped_port_on_conductor(monkeypatch, kind, boundary):
     assert multi_sim._build_grid().dt == grid.dt
     multi = multi_sim.run(devices=_devices(), **kwargs)
     assert len(staged) >= 3 and len(staged) % 3 == 0
-    # Main run and S-matrix drive scans must both release exactly this edge.
     for offset in range(0, len(staged), 3):
         for component, reference in enumerate(expected):
             slabs = staged[offset+component].reshape(2, -1, *grid.shape[1:])

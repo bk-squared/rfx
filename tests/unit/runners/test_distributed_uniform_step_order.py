@@ -129,7 +129,6 @@ def _seam_model(boundary, devices):
         assert make_probe(grid, position, 'ez').i == i
         sim.add_probe(position, 'ez')
     sim.add_port(positions[1], 'ez', impedance=50.)
-    # Keep the existing U4 plane/flux bins and flux window, at the U1 y row.
     sim.add_dft_plane_probe(axis='y', coordinate=.008, component='ez',
                             freqs=[3e9, 7e9], name='seam_y')
     sim.add_flux_monitor(axis='y', coordinate=.008, freqs=[3e9, 7e9],

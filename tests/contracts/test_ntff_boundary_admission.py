@@ -1,4 +1,6 @@
-"""NTFF exterior admission: literal outcomes at public execution entries."""
+"""NTFF exterior admission: literal outcomes at public execution entries.
+Periodic admission is outside the exterior-wall rule.
+"""
 import gc
 
 import jax
@@ -34,18 +36,12 @@ CLOSED_GRADED = (
 )
 
 
-# Literal expected table: no expected outcomes are derived from production.
-# Existing UPML refusal: rfx/runners/_admission.py (_reject_upml_on_nonuniform).
-# Existing graded closed-box refusal: at declaration, add_tfsf_source ->
-# rfx/sources/tfsf_discrete_plane_wave.py validate_declaration (same text as
-# the run-time refusal in rfx/api/_dispatch.py, which it now precedes).
-# Periodic axes are carried by both single-device Yee lanes (#1221).
 EXPECTED_TABLE = (
     ("uniform", "cpml", "admitted", None),
     ("uniform", "upml", "admitted", None),
     ("uniform", "pmc", "refused", EXTERIOR.format(faces="y_lo is pmc")),
     ("uniform", "pec", "refused", EXTERIOR.format(faces="y_lo is pec")),
-    ("uniform", "periodic", "admitted", None),  # not decided by this rule
+    ("uniform", "periodic", "admitted", None),
     ("uniform", "zero", "refused", EXTERIOR.format(faces="y_lo is zero-depth absorber")),
     ("uniform", "closed", "admitted", None),
     ("graded", "cpml", "admitted", None),
@@ -99,6 +95,7 @@ def forbid_field_loops(monkeypatch):
     if not (row[2] == "admitted" and entry == "run_skip")
 ])
 def test_ntff_boundary_table(mesh, case, outcome, message, entry, monkeypatch):
+    """Graded closed-box refusal belongs to declaration, before any execution entry."""
     method = "run" if entry == "run_skip" else entry
     kwargs = {"n_steps": 1}
     if entry == "run_skip":
@@ -114,8 +111,6 @@ def test_ntff_boundary_table(mesh, case, outcome, message, entry, monkeypatch):
         expected = message
     else:
         expected = f"{method} dispatch: {message}"
-    # The scene is built inside the check: a graded closed box is refused when
-    # it is declared, before any entry runs.
     with pytest.raises(NotImplementedError if case in ("closed", "periodic") else ValueError) as caught:
         getattr(scene(mesh, case), method)(**kwargs)
     assert str(caught.value) == expected

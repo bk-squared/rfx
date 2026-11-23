@@ -86,42 +86,39 @@ def update_floquet_dft(
         Timestep.
     step : int
         Current timestep index.
+
+    The y-normal tangential order ``(x, z)`` is left-handed.
     """
     if port_index < 1:
         raise RfxRefusal(
             f"Floquet port_index must be at least 1 to centre H on E; got {port_index}."
         )
     t = step * dt
-    # DFT kernel: exp(-j * 2*pi*f*t) for each frequency
-    phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t)  # (n_freqs,)
+    phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t)
     h_phase = phase * jnp.exp(1j * 2.0 * jnp.pi * freqs * dt / 2.0)
 
-    # Extract tangential field plane based on normal axis
-    if axis == 2:  # z-normal
+    if axis == 2:
         sl = (slice(None), slice(None), port_index)
         below = (slice(None), slice(None), port_index - 1)
-        e1 = state.ex[sl]  # (nx, ny)
+        e1 = state.ex[sl]
         e2 = state.ey[sl]
         h1 = (state.hx[below] + state.hx[sl]) / 2.0
         h2 = (state.hy[below] + state.hy[sl]) / 2.0
-    elif axis == 0:  # x-normal
+    elif axis == 0:
         sl = (port_index, slice(None), slice(None))
         below = (port_index - 1, slice(None), slice(None))
-        e1 = state.ey[sl]  # (ny, nz)
+        e1 = state.ey[sl]
         e2 = state.ez[sl]
         h1 = (state.hy[below] + state.hy[sl]) / 2.0
         h2 = (state.hz[below] + state.hz[sl]) / 2.0
-    else:  # y-normal
+    else:
         sl = (slice(None), port_index, slice(None))
         below = (slice(None), port_index - 1, slice(None))
-        e1 = state.ex[sl]  # (nx, nz)
+        e1 = state.ex[sl]
         e2 = state.ez[sl]
-        # The tangential order (x, z) is left-handed, so negate both H components.
         h1 = -(state.hx[below] + state.hx[sl]) / 2.0
         h2 = -(state.hz[below] + state.hz[sl]) / 2.0
 
-    # Accumulate: outer product of phase vector with field plane
-    # phase: (n_freqs,), field: (nu, nv) -> (n_freqs, nu, nv)
     e1_contrib = phase[:, None, None] * e1[None, :, :]
     e2_contrib = phase[:, None, None] * e2[None, :, :]
     h1_contrib = h_phase[:, None, None] * h1[None, :, :]

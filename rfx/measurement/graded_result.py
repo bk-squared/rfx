@@ -36,19 +36,15 @@ def assemble_graded_result(setup: _NUScanSetup, final: dict, time_series, n_reco
         "dt": dt,
     }
 
-    # Surface final RLC ADE states (per element).
     if use_lumped_rlc:
         result["rlc_states"] = tuple(final["rlc_states"])
 
-    # Repack DFT plane probes with their final accumulators.
     if use_dft_planes:
         result["dft_planes"] = tuple(
             probe._replace(accumulator=acc)
             for probe, acc in zip(dft_planes, final["dft_planes"])
         )
 
-    # Repack flux monitors with their final E/H DFT accumulators so the
-    # caller can call flux_spectrum() on them (same schema as uniform).
     if use_flux_monitors:
         result["flux_monitors"] = tuple(
             mon._replace(e1_dft=e1, e2_dft=e2, h1_dft=h1, h2_dft=h2)
@@ -57,19 +53,13 @@ def assemble_graded_result(setup: _NUScanSetup, final: dict, time_series, n_reco
             )
         )
 
-    # Surface final NTFF DFT accumulators
     if use_ntff:
         result["ntff_data"] = final["ntff"]
 
-    # Surface the in-loop block current moments and the slab they belong to.
-    # getattr: run(ringdown=) assembles S through here with a stand-in setup
-    # (rfx.ringdown._assemble) that carries no monitor.
     if getattr(setup, "use_current_moments", False):
         result["current_moment_data"] = final["current_moments"]
         result["current_moment_monitor"] = setup.current_moments
 
-    # Surface final waveguide-port configs (with recorded modal V/I
-    # time series; spectra are extracted post-scan via rect-DFT).
     if use_waveguide_ports:
         result["waveguide_ports"] = tuple(
             cfg_meta._replace(

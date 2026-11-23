@@ -10,8 +10,8 @@ name: issue-lane-label
 #
 # An issue with no `### Lane` section was filed outside the forms (a transferred
 # issue, or one created through the API). The script prints nothing and this job
-# does nothing; `.github/workflows/governance-audit.yml` is what reports it
-# weekly, so an old issue is not spammed with a failure every time it is edited.
+# does nothing; `.github/workflows/governance-audit.yml` reports missing lane
+# labels weekly, regardless of whether the body has a Lane section.
 #
 # The parser is scripts/ci/issue_lane_label.py and it never sees a shell: an
 # issue body is author-controlled text.

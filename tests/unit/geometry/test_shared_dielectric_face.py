@@ -1,4 +1,5 @@
-"""Bulk media on both sides of a shared face, without time stepping."""
+"""Bulk media on both sides of a shared face, without time stepping.
+The host SDF arithmetic is float64 even though its output is cast to float32."""
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -19,6 +20,7 @@ from rfx.geometry.smoothing import (
     if r == t or (p in ('nodes', 'graded_nodes') and not t)
 ])
 def test_shared_face_operands(path, traced, reverse):
+    """The 2e-5 traced-float32 bound covers an earlier observed 7.5e-6 relative error from subtracting the +/-0.1 m box corners."""
     graded = path.startswith('graded')
     profiles = dict(dx_profile=np.full(8, .0005), dy_profile=np.full(8, .0005),
                     dz_profile=np.r_[np.full(4, .0004), np.full(4, .0006)]) if graded else {}
@@ -27,8 +29,6 @@ def test_shared_face_operands(path, traced, reverse):
     grid = sim.freeze_mesh()
     nodes = np.asarray(sim.realized_geometry().nodes[2])
     widths = np.r_[np.diff(nodes), np.diff(nodes)[-1]]
-    # Different E components sample different z positions. Include half fill
-    # and samples on either side of the shared face.
     faces = [nodes[4], nodes[4]+widths[4]/2, nodes[4]-.1*widths[4]]
     for face in faces:
         def evaluate(z):
@@ -43,15 +43,7 @@ def test_shared_face_operands(path, traced, reverse):
             return (compute_smoothed_eps_nonuniform(grid, pairs, dtype='float32') if graded
                     else compute_smoothed_eps(grid, pairs, dtype='float32'))
         coordinate = jnp.float32(face) if traced else np.float64(face)
-        # Amendment 3: host SDF arithmetic is float64 (1e-6 relative);
-        # traced float32 subtracts box coordinates before dividing by cell
-        # length. Amendment 4 corrects |x|/L to ~100 for the +/-0.1 m
-        # corners: one rounding gives ~6e-6 in fill, consistent with the
-        # observed 7.5e-6 relative error. The 2e-5 bound is unchanged.
-        # Returned arrays alone do not identify the
-        # arithmetic dtype: the host path also casts its output to float32.
         rtol = 2e-5 if coordinate.dtype == np.dtype('float32') else 1e-6
-        # A traced Box coordinate is refused by the full-tensor node builder (#2441); restoring it is #2473.
         if traced and path in {'nodes', 'graded_nodes'}:
             with pytest.raises(RfxUnsupported, match="traced shape coordinate"):
                 jax.jit(evaluate)(coordinate)
@@ -72,6 +64,7 @@ def test_shared_face_operands(path, traced, reverse):
 @pytest.mark.parametrize('graded', [False, True])
 @pytest.mark.parametrize('traced', [False, True])
 def test_mask_only_outside_is_clamped_primal_cell(graded, traced):
+    """The low boundary cell owns points clamped from below the grid."""
     profiles = dict(dz_profile=np.r_[np.full(4, .0004), np.full(4, .0006)]) if graded else {}
     sim = Simulation(domain=(.004, .004, .004), dx=.0005, freq_max=12e9,
                      boundary='pec', cpml_layers=0, **profiles)
@@ -80,7 +73,6 @@ def test_mask_only_outside_is_clamped_primal_cell(graded, traced):
         def __init__(self, enabled):
             self.enabled = enabled
         def mask(self, grid):
-            # The low boundary cell owns points clamped from below the grid.
             return jnp.broadcast_to((jnp.arange(grid.shape[2]) == 0)[None, None, :], grid.shape) & self.enabled
     def evaluate(enabled):
         shapes = [(MaskOnly(enabled), 10.2),
@@ -94,7 +86,8 @@ def test_mask_only_outside_is_clamped_primal_cell(graded, traced):
 @pytest.mark.parametrize('path', ['uniform', 'nodes'])
 @pytest.mark.parametrize('traced', [False, True], ids=['host', 'traced'])
 def test_same_permittivity_mask_body_across_sdf_face(path, traced):
-    """Review finding 1: the SDF surface lies inside a homogeneous eps=4 body."""
+    """Review finding 1: the SDF surface lies inside a homogeneous eps=4 body.
+    Tolerance follows host-float64 or traced-float32 SDF arithmetic."""
     sim = Simulation(domain=(.004, .004, .004), dx=.0005, freq_max=12e9,
                      boundary='pec', cpml_layers=0)
     grid = sim.freeze_mesh()
@@ -111,9 +104,7 @@ def test_same_permittivity_mask_body_across_sdf_face(path, traced):
         return compute_smoothed_eps(grid, pairs, dtype='float32')
 
     coordinate = jnp.float32(.0022) if traced else np.float64(.0022)
-    # Host-f64 SDF arithmetic and traced-f32 arithmetic, per Amendment 4.
     rtol = 2e-5 if coordinate.dtype == np.dtype('float32') else 1e-6
-    # A traced Box coordinate is refused by the full-tensor node builder (#2441); restoring it is #2473.
     if traced and path in {'nodes', 'graded_nodes'}:
         with pytest.raises(RfxUnsupported, match="traced shape coordinate"):
             jax.jit(evaluate)(coordinate)
@@ -125,7 +116,8 @@ def test_same_permittivity_mask_body_across_sdf_face(path, traced):
 
 @pytest.mark.parametrize('traced', [False, True], ids=['host', 'traced'])
 def test_cell_holding_both_walls_reads_content(traced):
-    """A cell holding both walls reads its content; other cells keep one wall."""
+    """A cell holding both walls reads its content; other cells keep one wall.
+    Tolerance follows the SDF arithmetic dtype (1e-6 for host float64, 2e-5 for traced float32) rather than the returned array dtype."""
     sim = Simulation(domain=(.004, .004, .004), dx=.0005, freq_max=12e9,
                      boundary='pec', cpml_layers=0)
     grid = sim.freeze_mesh()
@@ -139,8 +131,6 @@ def test_cell_holding_both_walls_reads_content(traced):
 
     faces = (jnp.asarray([.00202, .00247], dtype=jnp.float32) if traced
              else np.asarray([.00202, .00247], dtype=np.float64))
-    # As above, tolerance follows the SDF arithmetic dtype, not the returned
-    # array dtype: host float64 uses 1e-6; traced float32 uses 2e-5.
     rtol = 2e-5 if faces.dtype == np.dtype('float32') else 1e-6
     combined, lower, upper = jax.jit(evaluate)(faces) if traced else evaluate(faces)
     lo, hi = np.asarray(faces)

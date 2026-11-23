@@ -1190,7 +1190,7 @@ def _run_entry(sim, entry):
                     n_iters=1, n_steps=60, verbose=False, skip_preflight=True)
                 peaks.append(float(out.loss_history[0]))
             return tuple(peaks)
-        else:  # pragma: no cover - guarded by the parametrization
+        else:  # pragma: no cover
             raise AssertionError(entry)
     return (float(np.max(np.abs(ts[:, 0]))), float(np.max(np.abs(ts[:, 1]))))
 
