@@ -165,6 +165,25 @@ def test_traced_zero_damping_cannot_judge(resonance):
     assert np.isfinite(damped['n_max']) and np.isfinite(damped['tau_max'])
 
 
+def test_exact_window_requirement_cannot_pass_after_device_rounding():
+    """Rounding the solver step and product upward cannot admit the exact edge."""
+    from types import SimpleNamespace
+    from rfx.ringdown._echo import forward_closing_factor
+
+    plan = SimpleNamespace(n_steps=6, n_start=3)
+    dt = np.float64(1.) + np.float64(2.)**-24 + np.float64(2.)**-48
+    exact_window = np.float64(plan.n_steps - plan.n_start) * dt
+    tau_max = exact_window / np.float64(2.05)
+    exact_required = np.float64(2.05) * tau_max
+    assert exact_window == exact_required
+    rounded_required = np.nextafter(np.float32(exact_required), np.float32(np.inf))
+    rounded_window = np.float32(plan.n_steps - plan.n_start) * np.float32(dt)
+    assert rounded_window >= rounded_required
+    factor = jax.jit(lambda: forward_closing_factor(
+        plan, dt, dict(tau_max=tau_max), dtype=jnp.float32))()
+    assert np.isnan(factor), (exact_window, exact_required, rounded_window, factor)
+
+
 @pytest.mark.parametrize('eps', [1., 2.2, 4., 9.1])
 def test_rounding_is_one_float32_ulp(eps):
     from rfx.core.yee import init_materials

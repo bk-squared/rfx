@@ -35,6 +35,7 @@ def forward_closing_factor(plan, dt, bound, *, dtype):
 
     required = jnp.nextafter(jnp.asarray(ECHO_BOUND_FACTOR * bound['tau_max'], dtype),
                              jnp.asarray(jnp.inf, dtype))
-    window = (int(plan.n_steps) - int(plan.n_start)) * jnp.asarray(dt, dtype)
+    window = float(int(plan.n_steps) - int(plan.n_start)) * jnp.asarray(dt, dtype)
+    window = jnp.nextafter(window, jnp.asarray(-jnp.inf, dtype))
     return jnp.where(jnp.isfinite(required) & (window >= required),
                      jnp.asarray(1., dtype), jnp.asarray(jnp.nan, dtype))

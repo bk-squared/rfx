@@ -55,7 +55,9 @@ def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
     is unbounded, so the device window judgement cannot pass.
 
     n_max is stop_gradient and rounded upward by one float32 ULP using
-    nextafter(n, +inf). Concrete D and g retain host float64. For traced D,
+    nextafter(n, +inf). The device window is rounded downward by one float32
+    ULP using nextafter(window, -inf). Concrete D and g retain host float64.
+    For traced D,
     compensated width sums have relative error 2u+(m+2)u**2, u=eps32/2.
     Five u plus that second-order term covers sums and the 3D norm;
     D/(1-gamma) is rounded
