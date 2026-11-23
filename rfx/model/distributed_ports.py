@@ -1,4 +1,6 @@
 """Global graded port assembly before slab staging."""
+from typing import Any
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -62,7 +64,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
         ports = assemble_graded_ports(sim, grid, materials, materials, conductors,
             pec_edge_masks=conductors.pec_edges, sizing_n=n_steps,
             lane='fwd_nonuniform' if lane == 'fwd_distributed_nu' else 'run_nonuniform',
-            s_param_freqs=s_param_freqs)
+            s_param_freqs=s_param_freqs, msl=lane == "run_distributed_nu")
     materials, conductors = ports.materials, ports.conductors
     drives = {}
     for index, drive in ports.drives:
@@ -84,7 +86,8 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                         raise NotImplementedError('Graded multi-device port overrides on Debye/Lorentz live edges are not measured by the step2-graded-port-s design (D3b).')
     # The same region-bypassing run route needs concrete drive samples and scales.
     with jax.ensure_compile_time_eval():
-        queue, material_drive = PortSourceQueue(), []
+        queue = PortSourceQueue()
+        material_drive: list[tuple[Any, Any] | tuple[Any, Any, Any, Any] | None] = []
         for index, pe in enumerate(sim._ports):
             if pe.is_soft_source:
                 cell = _grid_metric.field_index(grid, pe.position, pe.component)
@@ -108,7 +111,11 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                     queue.defer(_port_drive_source, grid, cell, component, waveform, n_steps,
                         sigma_port=sigma_port, unit_field=unit_field, dtype='float32')
                     material_drive.append(None)
-        if ports_present and not overridden:
+        for cell, component, waveform, sigma_port, unit_field in drives.get(len(sim._ports), ()):
+            queue.defer(_port_drive_source, grid, cell, component, waveform, n_steps,
+                        sigma_port=sigma_port, unit_field=unit_field, dtype='float32')
+            material_drive.append(None)
+        if (ports_present or sim._msl_ports) and not overridden:
             from rfx.model.materials import with_components
             final_drive_model = with_components(materials, grid, periodic=(False,) * 3,
                 debye_spec=debye_spec, lorentz_spec=lorentz_spec, field_dtype=field_dtype)
