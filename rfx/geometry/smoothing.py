@@ -1054,11 +1054,12 @@ def smoothed_shape_pairs(sim, grid):
     nothing reaches a padded face.
     """
     from rfx.model.materials import assembled_as_pec
+    from rfx.geometry.cross_section import section_entries
 
     if (getattr(sim, "_boundary", None) not in ("cpml", "upml")
             or int(getattr(sim, "_cpml_layers", 0)) <= 0):
         pairs = [(entry.shape, sim._resolve_material(entry.material_name).eps_r)
-                 for entry in sim._geometry if not assembled_as_pec(sim, entry)]
+                 for entry in section_entries(sim, grid) if not assembled_as_pec(sim, entry)]
         return pairs, []
 
     if hasattr(grid, "dx_arr"):
@@ -1085,7 +1086,7 @@ def smoothed_shape_pairs(sim, grid):
     # is rebuilt position for position rather than partitioned and rejoined.
     out = []
     unextendable = []
-    for idx, entry in enumerate(sim._geometry):
+    for idx, entry in enumerate(section_entries(sim, grid)):
         shape = entry.shape
         mat = sim._resolve_material(entry.material_name)
         has_poles = (getattr(mat, "debye_poles", None)

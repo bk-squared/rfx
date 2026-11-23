@@ -24,13 +24,14 @@ def quantities(grid, *, create=False):
 
 
 def begin(sim, grid, *, shapes=(), conformal_shapes=(), smoothing=None, conformal=None):
+    from rfx.geometry.cross_section import section_entries
     store = quantities(grid, create=True)
     if conformal is not None:
         store["conformal"] = conformal
     if smoothing is not None:
         store["smoothing"] = (2 if smoothing == "full_tensor" else 3 if smoothing == "kottke_pec"
                               else int(bool(smoothing)))
-    owners = {id(entry.shape): i for i, entry in enumerate(sim._geometry)}
+    owners = {id(entry.shape): i for i, entry in enumerate(section_entries(sim, grid))}
     store.setdefault("owners", {}).update({id(shape): owners[id(shape)]
         for shape in (*[s for s, _ in shapes], *conformal_shapes) if id(shape) in owners})
 

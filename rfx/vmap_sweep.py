@@ -377,7 +377,8 @@ def _build_batched_materials(
         coords = coords_from_uniform_grid(grid)
         centres = centres_from_uniform_grid(grid)
         from rfx.model.materials import assembled_as_pec
-        for entry in sim._geometry:
+        from rfx.geometry.cross_section import section_entries
+        for entry in section_entries(sim, grid):
             if entry.material_name == mat_name:
                 mask = mask | _material_cell_mask(entry.shape, coords, centres, grid=grid, name=entry.material_name,
                                                   size_rule=not assembled_as_pec(sim, entry))

@@ -200,7 +200,8 @@ def build(row, lane, *, graded=False, dt=None, precision=None):
     elif row[0] == '_current_moments':
         sim.add(Box(point(3.2, 2.1, MONITOR_INTERIOR_Z_LO_CELLS), point(6.4, 4.3, 3.2)), material='block')
     else:
-        sim.add(Box(point(3.2, 2.1, 1.3), point(6.4, 4.3, 3.2)), material='block')
+        sim.add(Box(point(3.2, 2.1, 0. if sim._mode.startswith('2d') else 1.3),
+                    point(6.4, 4.3, 3.2)), material='block')
     own_drive = row in (('_ports', 'lumped_port'), ('_ports', 'wire_port'),
                        ('_boundary_spec', 'conformal_s_matrix')) or row[0] in (
         '_tfsf', '_waveguide_ports', '_msl_ports', '_floquet_ports', '_coaxial_ports')

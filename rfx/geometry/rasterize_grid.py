@@ -361,8 +361,10 @@ def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *,
 
 
 def _span_collapsed_axes(box, centres, cell_sizes):
-    """A 2D grid's collapsed axis holds one cell and the fields do not vary along it:
-    a material Box spans that cell whatever its drawn extent there."""
+    """Span singleton sampling axes for standalone and three-dimensional callers.
+
+    Realized two-dimensional volumes already span their invariant axis.
+    """
     lo, hi = list(box.corner_lo), list(box.corner_hi)
     for a in range(3):
         c = centres[a]

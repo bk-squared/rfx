@@ -151,11 +151,6 @@ def build_cell_table(grid, pec_shapes, *, include_trailing_node=False):
         if isinstance(sheet, Box) and min(h - lo for lo, h in zip(sheet.corner_lo, sheet.corner_hi)) <= 0:
             _refuse_off_lattice_box(sheet, lattice, widths, grid.domain, 'this zero-thickness sheet')
             continue
-        if isinstance(sheet, Box) and getattr(grid, 'is_2d', False) and any(
-                abs(z - lines[2][0]) <= tol for z in (sheet.corner_lo[2], sheet.corner_hi[2])):
-            raise RfxUnsupported(
-                'conformal PEC: this Box has a z face on the 2-D slice; the slice must cross '
-                'its interior (https://github.com/bk-squared/rfx/issues/1373)')
         if fn is None:
             raise NotImplementedError(
                 f'conformal PEC requires a node signed distance for {type(shape).__name__}')
@@ -167,9 +162,7 @@ def build_cell_table(grid, pec_shapes, *, include_trailing_node=False):
             else:
                 raise NotImplementedError(
                     f'conformal PEC: the {type(shape).__name__} holds no grid node, so the cut-cell '
-                    'operands would drop it; refine the mesh or use the staircase'
-                    + ('; on the 2-D lane the z = 0 slice must cross its interior, not a face'
-                       if getattr(grid, 'is_2d', False) else ''))
+                    'operands would drop it; refine the mesh or use the staircase')
         carried.append((shape, fn))
         owner = np.where(shape_sdf < sdf, index, owner)
         sdf = np.minimum(sdf, shape_sdf)

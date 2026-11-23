@@ -137,11 +137,13 @@ def realization_table(prepared) -> RealizationTable:
                     declared_bounds = None
         if entity.kind == "material":
             from rfx.model.realization_integrals import quantities
-            sampler = quantities(getattr(record, "_quantity_grid", prepared.conductors.grid))
+            quantity_grid = getattr(record, "_quantity_grid", prepared.conductors.grid)
+            sampler = quantities(quantity_grid)
             model = "material sampler"
             if entity.label.startswith("geometry["):
-                declared_shape = sim._geometry[int(entity.label[9:-1])].shape
-                model = sampler.get("material_sampling", {}).get(id(declared_shape), model)
+                from rfx.geometry.cross_section import section_entries
+                sampled = section_entries(sim, quantity_grid)[int(entity.label[9:-1])].shape
+                model = sampler.get("material_sampling", {}).get(id(sampled), model)
         elif entity.kind == "wire":
             model = "lattice edge envelope"
         elif entity.kind == "lossy" and realized is None:
