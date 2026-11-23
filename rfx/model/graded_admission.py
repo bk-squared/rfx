@@ -5,6 +5,7 @@ grid exists: the domain extents a cell-size profile implies, the pinned time
 step and its declared smallest cell, and the concrete nominal profile of a
 traced axis. ``Simulation.__init__`` calls :func:`admit_graded_profiles` and
 keeps what it returns; the messages are the ones the constructor raised.
+``DECLARED_Z_RTOL`` is the allowed relative discrepancy between a concrete z profile and a positive declared z extent.
 """
 from __future__ import annotations
 
@@ -20,7 +21,6 @@ from rfx._traced_refusal import TracedStructureRefusal
 from rfx.core.jax_utils import is_tracer
 
 _AXES = ("x", "y", "z")
-#: The nominal profile describes the declared domain to this relative figure.
 NOMINAL_SUM_RTOL = 1e-9
 
 
@@ -53,7 +53,6 @@ class DeclaredZWarning(RfxWarning):
     """The caller explicitly keeps a declared z different from the solved length."""
 
 
-#: A concrete z profile may miss a positive declared z by this fraction.
 DECLARED_Z_RTOL = 0.01
 
 
@@ -95,11 +94,6 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
     """
     declared_domain = getattr(domain, "declared", domain)
     early_outcome = None
-    # Synthesize domain extents from axis profiles before validation.
-    # dx_profile / dy_profile set x / y; dz_profile sets z.
-    # Tracer-valued profiles require the caller to supply a concrete
-    # domain extent for that axis since the profile sum cannot be
-    # host-coerced during tracing.
     if dx_profile is not None:
         if is_tracer(dx_profile):
             if len(domain) < 1 or domain[0] <= 0:
@@ -167,33 +161,6 @@ def warn_abrupt_grading(dx_profile, dy_profile, dz_profile,
     ``dx_profile`` and ``dy_profile``. The warning points at the line that built
     the ``Simulation`` (it is raised through ``admit_graded_profiles``).
     """
-    # P2: Warn on abrupt grading in a user-supplied profile. This ran
-    # for dz only, so an in-plane profile with a 2:1 or 4:1 jump was
-    # accepted in silence — the axes differ in which physics
-    # they carry, not in whether an abrupt ratio reflects.
-    # Tracer profiles skip the warning — adjacent ratios can't be
-    # computed host-side during tracing.
-    # Threshold, PER AXIS. dz: 1.3 -> 1.4 (SPEC-01 WP6).
-    # PROVENANCE for that move: 1.3 was `smooth_grading`'s own per-step
-    # default with no measurement behind it, so ratios in (1.3, 1.4]
-    # warned without evidence that they cost anything. The multi-band
-    # witness battery (validation/research/multiband_nu/,
-    # pre-declaration note
-    # docs/design_notes/20260829_spec01_multiband_predeclaration.md)
-    # measures the r = 1.4 transition directly: reflection inside the
-    # exact discrete chain-model window (-54 dB class at 30
-    # cells/wavelength; the class scales as (dz/lambda)^2), round-trip
-    # amplitude asymmetry under the 3e-4 floor, 1e6-step energy bounded
-    # at the float-accumulation class, and 2nd-order supraconvergence
-    # preserved on a fixture whose graded axis carries ~90 % of the
-    # error budget.
-    # The dx/dy cap of 1.4 is supported by in-plane witnesses at 1.40:
-    # transition reflection on x and y (e5_x/e5_y), and on a cavity graded
-    # in plane, second-order resonances and 1e6-step energy
-    # (see the caps in api/_preflight.py).
-    # Beyond the cap this warning still fires, and preflight adds the
-    # richer advisory nu_grading_ratio_beyond_validated_cap with the
-    # accuracy class on both sides.
     for _axis_name, _profile, _cap, _scope in (
             ("dz_profile", dz_profile, multiband_ratio_cap,
              "the validated multi-band grading cap"),

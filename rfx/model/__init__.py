@@ -4,11 +4,6 @@
 realized-model object follow.
 """
 
-# The conductor layer's interface to the five large callers (2.0 layer rule): the
-# assembly and stage entry points they call. Preflight reporting, run-record timing and
-# solve binding are not model assembly and live outside it: auto_preflight in
-# rfx.preflight._impl, early_run_record in rfx.realized_geometry, bind_solve_call in
-# rfx.runners.nonuniform.
 from rfx.model.conductors import (
     distributed_kernel_inputs,
     distributed_solve_inputs,

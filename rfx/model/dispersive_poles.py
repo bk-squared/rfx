@@ -43,9 +43,9 @@ class DebyeCoeffs(NamedTuple):
     """
     ca: tuple
     cb: tuple
-    cc: tuple            # 3 x (n_poles, nx, ny, nz)
-    alpha: jnp.ndarray   # (n_poles, nx, ny, nz)
-    beta: tuple          # 3 x (n_poles, nx, ny, nz)
+    cc: tuple
+    alpha: jnp.ndarray
+    beta: tuple
 
 
 def per_component(field, name="coefficient"):
@@ -69,7 +69,6 @@ def pole_edge_fractions(mask, periodic=(False, False, False), *, high_wall: tupl
     pole: ``edge_mean_components`` of the pole's cell mask. ``None``
     (the pole everywhere) stays ``None``."""
     from rfx.model.materials import pole_component_weights
-    # This public helper outside a run keeps float32 fractions.
     return pole_component_weights(mask, periodic, high_wall=high_wall, field_dtype=jnp.float32)
 
 
@@ -84,14 +83,13 @@ class DebyeState(NamedTuple):
     Each pole has 3 polarization components (px, py, pz).
     Stored as (n_poles, nx, ny, nz) for each component.
     """
-    px: jnp.ndarray  # (n_poles, nx, ny, nz)
+    px: jnp.ndarray
     py: jnp.ndarray
     pz: jnp.ndarray
 
 
 def debye_pole_coeffs(poles, dt, shape, fractions_by_pole):
     """Material-independent Debye ADE terms from per-pole edge fractions."""
-    # Per-pole coefficients
     alpha_list = []
     beta_lists = ([], [], [])
     for pole, fractions in zip(poles, fractions_by_pole):
@@ -106,18 +104,12 @@ def debye_pole_coeffs(poles, dt, shape, fractions_by_pole):
                 beta_lists[c].append(
                     jnp.where(fractions[c] > 0, b * fractions[c], 0.0))
         else:
-            # No dtype pin — see the matching note in
-            # ``rfx.materials.lorentz.init_lorentz``: ``a``/``b``
-            # are numpy scalars (``dt`` is ``grid.dt``, an np.float64), so
-            # this matches the masked branch above instead of capping the
-            # ADE coefficients at float32 under ``precision="float64"``.
-            # With x64 off JAX clamps to float32: default lane unchanged.
             alpha_list.append(jnp.full(shape, a))
             b_arr = jnp.full(shape, b)
             for c in range(3):
                 beta_lists[c].append(b_arr)
 
-    alpha = jnp.stack(alpha_list)  # (n_poles, nx, ny, nz)
+    alpha = jnp.stack(alpha_list)
     beta = tuple(jnp.stack(bl) for bl in beta_lists)
 
     return alpha, beta
@@ -135,15 +127,11 @@ def _debye_e_coeffs_si(e_materials, dt, alpha, beta):
     for c in range(3):
         eps_inf = eps_c[c] * EPS_0
         sigma = sig_c[c]
-        # Sum of beta across poles
         beta_sum = jnp.sum(beta[c], axis=0)
-        # Modified update coefficients
         gamma = eps_inf + beta_sum + sigma * dt / 2.0
-        # Guard against zero (vacuum cells with no Debye)
         safe_gamma = jnp.maximum(gamma, EPS_0 * 1e-10)
         ca.append((eps_inf - beta_sum - sigma * dt / 2.0) / safe_gamma)
         cb.append(dt / safe_gamma)
-        # Cc for each pole: (1 - alpha_p) / gamma
         cc.append(jnp.stack([(1.0 - alpha[p]) / safe_gamma
                              for p in range(n_poles)]))
 
@@ -159,15 +147,11 @@ def _debye_e_coeffs_eps_r(e_materials, dt, alpha, beta):
     for c in range(3):
         eps_inf = eps_c[c]
         sigma = sig_c[c]
-        # Sum of beta across poles
         beta_sum = jnp.sum(beta[c], axis=0) / EPS_0
-        # Modified update coefficients
         gamma = eps_inf + beta_sum + sigma * (dt / (2.0 * EPS_0))
-        # Guard against zero (vacuum cells with no Debye)
         safe_gamma = jnp.maximum(gamma, 1e-10)
         ca.append((eps_inf - beta_sum - sigma * (dt / (2.0 * EPS_0))) / safe_gamma)
         cb.append((dt / EPS_0) / safe_gamma)
-        # Cc for each pole: (1 - alpha_p) / gamma
         cc.append(jnp.stack([((1.0 - alpha[p]) / EPS_0) / safe_gamma
                              for p in range(n_poles)]))
 
@@ -251,7 +235,6 @@ def init_debye(
                   debye_pole_coeffs(poles, dt, shape, realized.weights))
     coeffs = debye_e_coeffs((eps_c, sig_c), dt, alpha, beta)
 
-    # Zero-initialized polarization state
     p_zeros = jnp.zeros((n_poles,) + shape, dtype=ade_state_dtype(field_dtype))
     state = DebyeState(px=p_zeros, py=p_zeros.copy(), pz=p_zeros.copy())
 

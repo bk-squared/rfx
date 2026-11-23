@@ -120,7 +120,7 @@ def source_table(samples, kind=None, *, native="raw", coefficient=None, volume=1
     in the waveform product also makes eager and jit agree with traced Cb.
     """
     from rfx.api._source_semantics import needs_scale
-    needs_scale(kind, native)  # validate Python-level dispatch, never a tracer
+    needs_scale(kind, native)
     if kind == "field" or (kind is None and native == "raw"):
         return samples
     cb = coefficient() if callable(coefficient) else coefficient
@@ -194,8 +194,6 @@ def current_source_cb(eps_r_c, sigma_c, dt):
     and the distributed graded forward, which builds it inside its jitted
     program from the slabs its E update receives, both call it.
     """
-    # In eps_r units the reverse pass avoids squaring eps ~ 1e-11,
-    # which overflowed float32 cotangents into NaN gradients.
     eps_r = jnp.asarray(eps_r_c)
     sigma = jnp.asarray(sigma_c)
     return (dt / EPS_0) / (eps_r + sigma * (dt / (2.0 * EPS_0)))
@@ -204,24 +202,10 @@ def current_source_cb(eps_r_c, sigma_c, dt):
 def current_source_volume(grid, position_ijk, component):
     """``(dV, grid_traced)``: the control volume of the E node a current
     source at ``position_ijk`` injects into, and whether the profile is
-    traced (then ``dV`` is a jnp scalar, else a Python float)."""
+    traced (then ``dV`` is a jnp scalar, else a Python float).An electric component's control volume uses the primal width along its component axis and dual spacings along the transverse axes.
+    """
     i, j, k = position_ijk
 
-    # Control volume of the E node this source injects into.
-    # An E_a component is an EDGE along its own axis a and sits ON a node on
-    # the two transverse axes, so its control volume is MIXED:
-    #   axis == a  -> primal per-cell width d[idx]
-    #   axis != a  -> dual spacing (d[idx-1]+d[idx])/2, which is exactly the
-    #                 metric the NU E update divides curl H by (CORE-C2,
-    #                 ``_profile_to_inv_arrays``); the Ex update, for
-    #                 instance, uses inv_dy and inv_dz and never inv_dx.
-    # Using the primal width on all three axes is right only where
-    # both neighbour pairs are equal. On a 2:1 grading step it mis-normalizes
-    # the injected current moment by the local cell ratio on each graded
-    # TRANSVERSE axis (measured: dV too large by 1.333 with one graded
-    # transverse axis, 1.778 with two).
-    # Stay in jnp when the profile is traced so a mesh-as-design variable
-    # propagates the gradient into the waveform normalisation.
     _axis_of = {"ex": 0, "ey": 1, "ez": 2}
     if component not in _axis_of:
         raise ValueError(
@@ -273,8 +257,6 @@ def make_current_source(grid: NonUniformGrid, position_ijk: Sequence[int], compo
     """
     i, j, k = position_ijk
 
-    # Read the edge's own eps and sigma, averaged over its four cells,
-    # with the same differentiable drive formula on every trace.
     from rfx.model import e_update_coefficient_at
     if str(component).lower() not in ("ex", "ey", "ez"):
         raise ValueError(
@@ -430,9 +412,6 @@ def resolve_run_sources(queue, materials, sim, grid):
     if upml:
         from rfx.sources.sources import _wire_port_cells, wire_port_from_entry
         from rfx.sources.msl_port import _msl_yz_cells, msl_port_from_entry
-        # Only a current drive multiplies the update coefficient. A source
-        # that prescribes the field increment and a port that is a load only
-        # inject nothing through it and are admitted anywhere.
         for n, port in enumerate(sim._ports):
             cells = (_wire_port_cells(grid, wire_port_from_entry(port))
                      if port.extent is not None else

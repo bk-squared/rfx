@@ -1,6 +1,7 @@
 """Coaxial line stamping into material arrays and TEM plane-source specs.
 
 The CoaxialPort declaration and V/I measurement stay in rfx.sources.coaxial_port.
+The SMA radii and outer-conductor wall thickness are measured in metres.
 """
 
 from __future__ import annotations
@@ -23,34 +24,22 @@ if TYPE_CHECKING:
 
 
 
-# ---------------------------------------------------------------------------
-# SMA standard constants
-# ---------------------------------------------------------------------------
 
-SMA_PIN_RADIUS   = 0.635e-3   # m — center pin radius (1.27 mm OD)
-SMA_OUTER_RADIUS = 2.055e-3   # m — outer conductor radius (4.11 mm OD)
-PTFE_EPS_R       = 2.1        # PTFE relative permittivity
-# Outer-conductor wall thickness, in METRES. Fixed in metres and not in cells
-# on purpose: a thickness of one cell makes the line's own cross-section move
-# with the mesh, so a dx ladder refines the GEOMETRY as well as the mesh and the
-# rungs do not realize one guide. 1 mm rasterizes to at least one cell at every
-# cell size this lane supports and leaves clearance to the absorber on the 8 mm
-# lateral domain every coax fixture here uses.
+SMA_PIN_RADIUS   = 0.635e-3
+SMA_OUTER_RADIUS = 2.055e-3
+PTFE_EPS_R       = 2.1
 SHELL_THICKNESS_M = 1.0e-3
-PEC_SIGMA        = 1e10       # S/m — effective PEC conductivity
+PEC_SIGMA        = 1e10
 
 
-# ---------------------------------------------------------------------------
-# Face → (pin axis, pin direction sign, E-field component)
-# ---------------------------------------------------------------------------
 
 _FACE_CONFIG: dict[str, tuple[str, float, str]] = {
-    "top":    ("z", -1.0, "ez"),   # pin goes -Z into cavity
-    "bottom": ("z", +1.0, "ez"),   # pin goes +Z into cavity
-    "front":  ("y", -1.0, "ey"),   # pin goes -Y into cavity
-    "back":   ("y", +1.0, "ey"),   # pin goes +Y into cavity
-    "left":   ("x", +1.0, "ex"),   # pin goes +X into cavity
-    "right":  ("x", -1.0, "ex"),   # pin goes -X into cavity
+    "top":    ("z", -1.0, "ez"),
+    "bottom": ("z", +1.0, "ez"),
+    "front":  ("y", -1.0, "ey"),
+    "back":   ("y", +1.0, "ey"),
+    "left":   ("x", +1.0, "ex"),
+    "right":  ("x", -1.0, "ex"),
 }
 
 
@@ -90,7 +79,6 @@ def _coaxial_port_geometry(grid: Grid, port: CoaxialPort):
 
     axis_idx = {"x": 0, "y": 1, "z": 2}[axis]
 
-    # Pin center is offset by half pin_length in the protrusion direction
     half = port.pin_length / 2.0
     offsets = [0.0, 0.0, 0.0]
     offsets[axis_idx] = direction * half
@@ -114,24 +102,6 @@ def _coaxial_port_geometry(grid: Grid, port: CoaxialPort):
     return axis, direction, component, pin_center, pin_tip, gap_index
 
 
-# ---------------------------------------------------------------------------
-# Distributed TEM plane-source builder (M67 prototype → public)
-# ---------------------------------------------------------------------------
-#
-# These helpers build the per-cell ``SourceSpec`` / ``MagneticSourceSpec`` lists
-# for a transverse E/M coaxial plane source.  The coax line lanes
-# (``compute_coaxial_line_reflection`` and the lanes built like it) drive their
-# FDTD runs with them.  The helpers are intentionally low-level: a higher-level method is
-# responsible for plane index, DFT probe setup, V/I extraction, and S-matrix
-# bookkeeping.
-#
-# Reference plane convention:
-#   The plane source is injected on a single transverse cross-section of the
-#   coaxial port at axial position ``z = pin_center[axis]``.  The same plane
-#   is the V/I extraction reference plane.  Callers can shift the reference
-#   plane downstream by passing ``reference_plane_axial_index_offset`` to
-#   ``build_coaxial_tem_plane_source_specs``; the V/I extractor must use the
-#   matching offset for the calibration to remain self-consistent.
 
 
 class CoaxialPlaneSourceSpec(NamedTuple):
@@ -166,6 +136,7 @@ def _coaxial_tem_edge_profile(grid, port, e_plane_idx, shell_inner_radius,
     Production callers supply the stamper's conductor cells. Standalone
     callers realize the same cylinders on one cross-section. All of this is
     geometry-only, including when the enclosing material solve is traced.
+    The TEM profile assumes a homogeneous dielectric fill.
     """
     from rfx.boundaries.pec import realized_pec_edge_masks
     from rfx.geometry.rasterize_grid import coords_from_uniform_grid
@@ -185,14 +156,10 @@ def _coaxial_tem_edge_profile(grid, port, e_plane_idx, shell_inner_radius,
             if cells.shape != grid.shape:
                 raise ValueError("coax TEM conductor mask must match the grid shape")
             edge_plane = int(e_plane_idx)
-        # Match the runner: realize all four incident cells in 3-D before
-        # selecting Ex/Ey at the E source plane (including the previous z cell).
         mx, my, _ = (np.asarray(m)[:, :, edge_plane] for m in
                      realized_pec_edge_masks(cells, periodic=tuple(
                          a in getattr(grid, 'periodic_axes', '') for a in 'xyz')))
 
-    # Mark both endpoints of every shorted transverse edge, using the
-    # repository's realized masks rather than a second conductor rule.
     metal = mx | my
     metal[1:, :] |= mx[:-1, :]
     metal[:, 1:] |= my[:, :-1]
@@ -222,8 +189,6 @@ def _coaxial_tem_edge_profile(grid, port, e_plane_idx, shell_inner_radius,
     if not ground_nodes.any():
         raise ValueError("coax TEM cross-section has no separate outer conductor")
 
-    # Homogeneous fill: its constant epsilon cancels from Laplace. In
-    # particular, eps_scale is a material design variable, not this profile.
     dx = float(grid.dx)
     phi = _solve_laplace_2d(np.ones((nx, ny)), pin_nodes, ground_nodes, dx, dx)
     phi[pin_nodes] = 1.0
@@ -335,8 +300,6 @@ def build_coaxial_tem_plane_source_specs(
         extractor.
     """
 
-    # Lazy imports so the source helpers stay JIT-friendly for callers that
-    # import this module without a full simulation pipeline.
     from rfx._internal._uniform_specs import MagneticSourceSpec, SourceSpec
     from rfx.grid import C0 as _C0
     import jax
@@ -351,7 +314,6 @@ def build_coaxial_tem_plane_source_specs(
             "default z-axis coaxial port (face='top'/'bottom')."
         )
 
-    # Forward direction: +1 for face='bottom' (pin goes +z), -1 for face='top'.
     forward_sign = float(direction)
 
     plane_index = (int(grid.position_to_index(pin_center)[2])
@@ -359,36 +321,23 @@ def build_coaxial_tem_plane_source_specs(
         reference_plane_axial_index_offset
     )
 
-    # TFSF plane indices and signs mirror waveguide_port.py:1303-1308 / 1374-1386.
-    if forward_sign > 0:  # +z forward, mirrors waveguide "+x" pattern.
+    if forward_sign > 0:
         h_plane_idx = plane_index - 1
         e_plane_idx = plane_index
         h_sign = -1.0
         e_sign = -1.0
-    else:  # -z forward, mirrors waveguide "-x" pattern.
+    else:
         h_plane_idx = plane_index
         e_plane_idx = plane_index + 1
         h_sign = +1.0
         e_sign = -1.0
 
-    # Local (intrinsic) impedance of the dielectric fill: η = sqrt(μ/ε).
-    # In a coax TEM mode the LOCAL field ratio is E_r/H_φ = η, while
-    # V/I = Z_TEM = η · log(b/a)/(2π) is the LINE impedance. The TFSF
-    # injection works on local fields, so h_inc must carry the 1/η
-    # factor — using 1/Z_TEM here would over-inject E by the geometry
-    # factor 2π/log(b/a) (Z_med/Z_TEM ratio).
     z_med = float(np.sqrt(MU_0 / (float(eps_r) * EPS_0)))
 
-    # Yee-staggered time delay: h_inc samples the wave at the upstream H
-    # half-cell at Yee-H time (n+1/2)·dt. Forward TEM phase velocity in
-    # the dielectric is v = c / sqrt(εr); the half-cell propagation delay
-    # plus the leapfrog half-step is the same for both directions because
-    # "upstream" is always one half-cell against the wave's motion.
     dz = float(grid.dx)
     dt_step = float(grid.dt)
     delta_t = 0.5 * dt_step + 0.5 * dz * float(np.sqrt(eps_r)) / float(_C0)
 
-    # E and H source amplitude tables.
     from rfx.sources._sampling import concrete_waveform_eval
     with concrete_waveform_eval(port.excitation, dt_step, delta_t):
         times_e = jnp.arange(int(n_steps), dtype=jnp.float32) * jnp.float32(dt_step)
@@ -397,26 +346,16 @@ def build_coaxial_tem_plane_source_specs(
         h_samples = jax.vmap(port.excitation)(times_h)
     h_inc_table = h_samples / jnp.float32(z_med)
 
-    # TFSF coefficients (mirror waveguide_port.py:1297, 1338, with ε
-    # replaced by εr·ε₀ for the dielectric fill — the source plane sits
-    # inside PTFE, so the E update at this cell uses the dielectric cb
-    # coefficient. ``waveguide_port.py`` uses bare ``EPS_0`` because
-    # waveguides are vacuum-filled by convention; coax in PTFE needs the
-    # εr correction so the per-step E-injection matches the physical
-    # ``cb = dt/(εr·ε₀·dz)`` of the FDTD update.
     from rfx.core.yee import MaterialArrays, component_h_materials
     mu_abs = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
     coeff_h = jnp.float32(dt_step / (mu_abs * dz))
     coeff_e = jnp.float32(dt_step / (float(eps_r) * EPS_0 * dz))
 
-    # The declared inner wall is only needed for standalone mask realization;
-    # production callers provide the stamper's actual conductor cells.
     if shell_inner_radius is None:
         shell_inner_radius = float(port.outer_radius)
     shell_inner_radius = float(shell_inner_radius)
     _require_coaxial_aperture(grid, (0, 1), port.position[:2], shell_inner_radius)
 
-    # Time-series amplitude scales (cell-independent factors lifted out).
     h_factor = jnp.float32(h_sign) * coeff_h * jnp.float32(field_scale) * e_inc_table
     e_factor = (
         jnp.float32(-e_sign)
@@ -441,9 +380,6 @@ def build_coaxial_tem_plane_source_specs(
                 continue
             source_cell_count += 1
 
-            # H-side correction: Hx += h_sign * coeff_h * Ey,
-            #                    Hy -= h_sign * coeff_h * Ex.
-            # The dual H edges have exactly these transverse locations.
             if ey_value != 0.0:
                 magnetic_sources.append(
                     MagneticSourceSpec(
@@ -459,8 +395,6 @@ def build_coaxial_tem_plane_source_specs(
                     )
                 )
 
-            # E-side correction from H = z_hat cross E / eta. The local
-            # 1/eta, propagation signs and Yee timing remain in e_factor.
             if ex_value != 0.0:
                 electric_sources.append(
                     SourceSpec(
@@ -544,9 +478,6 @@ def stamp_coaxial_line(
     z_lo = (int(z_lo_index) - grid.pad_z_lo) * dz
     z_hi = (int(z_hi_index) - grid.pad_z_lo) * dz
     zc = 0.5 * (z_lo + z_hi)
-    # Cylinder.mask samples node coordinates with a closed axial predicate.
-    # Put each end half a cell beyond the requested endpoint sample: exactly
-    # z_lo_index .. z_hi_index, without a floating-point tie on either end.
     height = (z_hi - z_lo) + dz
     center = (float(center_xy[0]), float(center_xy[1]), zc)
 
@@ -558,18 +489,6 @@ def stamp_coaxial_line(
             f"shell_thickness_m must be positive and finite, got {shell_thickness_m}"
         )
 
-    # The wall is realized as shorted E edges, so it needs no depth to be a
-    # conductor -- one cell is as perfect as a hundred. What its thickness must
-    # not do is reach an absorber: PEC inside a CPML pad is unstable and the
-    # field diverges to NaN. Neither preflight check can catch that here,
-    # because both iterate the REGISTERED geometry and this wall is stamped,
-    # never registered. So the thickness is clamped against the room the board
-    # actually has, and refused outright when there is not a cell of it.
-    #
-    # Only faces that HAVE a pad constrain the wall; a PEC or periodic face has
-    # no absorber to run into. Physical coordinates put node i of an axis at
-    # ``(i - pad_lo) * dx``, so the pad's inner edge is 0 on the low side and
-    # ``(n - 1 - pad_lo - pad_hi) * dx`` on the high side.
     cx, cy = float(center_xy[0]), float(center_xy[1])
     nx, ny = int(grid.shape[0]), int(grid.shape[1])
     pad_x_lo, pad_x_hi = int(grid.pad_x_lo), int(grid.pad_x_hi)
@@ -587,7 +506,7 @@ def stamp_coaxial_line(
         room.append(("y-hi", pad_y_hi, span_y - cy))
     if room:
         pad_name, pad_cells, clearance = min(room, key=lambda t: t[2])
-        allowed = clearance - b - dz          # keep one cell clear of the pad
+        allowed = clearance - b - dz
         if allowed < dz:
             raise ValueError(
                 f"the coaxial line at ({cx * 1e3:.4g}, {cy * 1e3:.4g}) mm with "
@@ -618,13 +537,6 @@ def stamp_coaxial_line(
             "The mesh is too coarse for this line; refine it or widen the wall."
         )
 
-    # The clamp above keeps a cell of clearance in continuous arithmetic. The
-    # conductor is realized as shorted edges, and a cell i shorts edges on
-    # nodes i AND i + 1, so on the high side of an axis the realized wall
-    # reaches one node past its last cell and the clamp's cell of clearance
-    # can realize as none: a conductor on an absorber's inner face. The coax
-    # lanes absorb on x and y, so the realized clearance is
-    # checked, in whole cells, against every padded lateral face.
     conductor = np.asarray(shell | pin_mask)
     for axis, name, n_axis, pad_lo_, pad_hi_ in (
         (0, "x", nx, pad_x_lo, pad_x_hi), (1, "y", ny, pad_y_lo, pad_y_hi),
@@ -649,9 +561,6 @@ def stamp_coaxial_line(
 
     eps = np.array(materials.eps_r)
     sig = np.array(materials.sigma)
-    # Only the dielectric is written into the material arrays. The conductors
-    # are returned as a mask and realized as PEC edges by the caller, so nothing
-    # here sets a conductivity.
     dielectric = shell_inner_mask & ~pin_mask
     eps = np.where(dielectric, float(eps_r), eps)
     sig = np.where(dielectric, 0.0, sig)

@@ -1,0 +1,6 @@
+### Changed — 34 modules of `rfx.core`, `rfx.model` and the top-level package have no code comments; some of their conventions are now docstring sentences (#PR)
+
+- `rfx.core`, 29 `rfx.model` modules, `rfx.simulation` and `rfx.nonuniform` have no comments left other than tool
+  directives. Some conventions the code cannot show now stand as one docstring sentence on the function, class or
+  module they belong to, at most one each, where `help()` on that object shows them. The other comments were removed.
+- No check, message or computation changes.

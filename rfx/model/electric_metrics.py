@@ -134,8 +134,6 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
                 eps_c, sigma_c = e_update_material_at(view, cell, component,
                     high_wall=(False, *grid.high_wall[1:]), cell_sizes=widths)
             owner = device == dev_id
-            # A non-owner read someone else's cells; keep its masked branch
-            # finite so the cotangent through the mask stays zero, not NaN.
             cb = current_source_cb(jnp.where(owner, eps_c, 1.0),
                                    jnp.where(owner, sigma_c + pole, 0.0), dt)
             out.append(jnp.where(owner, cb, 0.0))
@@ -277,16 +275,10 @@ def slab_e_component_materials(materials, nx_per, nx, rank=None, *, high_wall: t
 
     eps, sigma = per_row(eps_edge, eps_cell), per_row(sig_edge, sig_cell)
     if _realized.ACTIVE is not None:
-        # Both coefficient paths consume these operands, including the
-        # checkpointed shard_map. Record global ownership for the
-        # full-grid reference.
         site = ("distributed_nu.E" if _realized.ACTIVE.lane == "fwd_distributed_nu"
                 else "distributed.E")
         def cells(arr):
             return slab_wall_view(arr, nx_per, nx, rank, high_wall=(False,) * 3)
-        # The record holds the stored cells with their lumped and film
-        # records, as the one-device site records them; ``view`` is the
-        # volume-only temporary of the mean.
         recorded = MaterialArrays(
             eps_r=cells(materials.eps_r), sigma=cells(stored_sigma), mu_r=materials.mu_r,
             sigma_film=map_lumped(materials.sigma_film, cells),

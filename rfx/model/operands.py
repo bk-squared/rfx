@@ -2,6 +2,7 @@
 
 Enumeration and selection preserve traced values; each caller owns its
 per-kind policy and any comparison against the recorded vacuum value.
+``OPERANDS`` entries contain the vacuum value or adapter, user-facing label, and operand kinds in that order.
 """
 from collections.abc import Mapping
 from dataclasses import dataclass, fields, is_dataclass
@@ -30,8 +31,6 @@ class OperandKind(enum.Enum):
     SOURCE_STAMP = enum.auto()
 
 
-# (vacuum value / adapter, user-facing label, kinds). None marks
-# configuration or observation; the leaves adapter is a container only.
 OPERANDS = {
     **{name: (None, "configuration/source/observation",
               frozenset({OperandKind.SOURCE_STAMP}) if name in ("sources", "mag_sources")
@@ -85,7 +84,6 @@ OPERANDS = {
         ("mu_update", 1, "component permeability", (OperandKind.MU,)),
         ("upml_eps", 1, "component permittivity", (OperandKind.EPS,)),
         ("upml_sigma", 0, "component conductivity", (OperandKind.SIGMA,)))},
-    # Realized Lorentz tuples store (damping, restoring, c); exterior D/R are one.
     **{f"materials.components.lorentz.coefficients.{index}":
        (1, "Drude/Lorentz pole medium", frozenset({OperandKind.LORENTZ, OperandKind.DRUDE}))
        for index in (0, 1)},
@@ -117,11 +115,6 @@ def material_rule(name):
     raise ValueError(f"Unclassified TFSF material operand: {name}")
 
 
-# Values are (E/H family, component axis). These indices never name a pole, tensor entry,
-# triplet or spatial axis. Builders: model/materials.py::realize_components,
-# model/tensor_operands.py, geometry/node_tensor.py, model/node_pec.py,
-# boundaries/pec.py, model/occupancy.py, sources/{sources,wire_radius}.py,
-# model/thin_conductors.py, materials/thin_conductor.py and lumped.py.
 COMPONENTS = {
     **{f"{family}.{c}": ("E", axis) for c, axis in enumerate("xyz") for family in (
         "pec_edge_masks", "aniso_eps", "aniso_inv_eps", "conformal_weights",
@@ -239,7 +232,6 @@ def realized_operands(grid, materials, updates, localized) -> tuple[OperandRecor
             continue
         vacuum, label, kinds = material_rule(name)
         if vacuum == "symmetric_identity":
-            # Symmetric tensor order: xx, yy, zz, xy, xz, yz.
             vacuum = int(int(name.rsplit(".", 1)[1]) < 3)
         if vacuum is not None:
             records.append(_record(name, kinds, array, vacuum, label))
@@ -258,8 +250,6 @@ def realized_operands(grid, materials, updates, localized) -> tuple[OperandRecor
             continue
         if vacuum == "poles":
             coeffs = value[0]
-            # Setups receive ADE coefficients, whose masked recurrence terms
-            # carry the realized pole reach (not the initial, zero P state).
             names = ("alpha", "beta") if name == "debye" else ("damping", "restoring", "c")
             value = {key: (jax.tree.map(lambda leaf: leaf - 1, getattr(coeffs, key)) if key in ("damping", "restoring")
                            else getattr(coeffs, key)) for key in names}

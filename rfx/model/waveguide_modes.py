@@ -95,11 +95,13 @@ class WaveguidePort(NamedTuple):
 
 
 class WaveguidePortConfig(NamedTuple):
-    """Compiled waveguide port config for time-stepping."""
-    # Port geometry
-    x_index: int       # Source injection plane
-    ref_x: int         # Reference probe (near source, downstream)
-    probe_x: int       # Measurement probe (further downstream)
+    """Compiled waveguide port config for time-stepping.
+
+    Incident magnetic samples are half a time step later and half a cell upstream of incident electric samples.
+    """
+    x_index: int
+    ref_x: int
+    probe_x: int
     y_lo: int
     y_hi: int
     z_lo: int
@@ -114,13 +116,11 @@ class WaveguidePortConfig(NamedTuple):
     h_u_component: str
     h_v_component: str
 
-    # Normalized mode profiles on the aperture (ny_port, nz_port)
     ey_profile: jnp.ndarray
     ez_profile: jnp.ndarray
     hy_profile: jnp.ndarray
     hz_profile: jnp.ndarray
 
-    # Waveguide parameters
     mode_type: str
     direction: str
     f_cutoff: float
@@ -128,10 +128,6 @@ class WaveguidePortConfig(NamedTuple):
     b: float
     dx: float
     dt: float
-    # Per-axis transverse cell widths covering the port aperture.
-    # Shape (nu_port,) and (nv_port,) respectively. For uniform Yee grids
-    # both arrays are constant ``dx``; on a NonUniformGrid these are the
-    # slice of ``dx_arr`` / ``dy_arr`` / ``dz`` covering the aperture.
     u_widths: jnp.ndarray
     v_widths: jnp.ndarray
     source_x_m: float
@@ -139,51 +135,24 @@ class WaveguidePortConfig(NamedTuple):
     probe_x_m: float
     dft_total_steps: int
 
-    # Source waveform parameters. ``waveform`` selects the pulse shape:
-    # ``"differentiated_gaussian"`` is refused (circular precursor);
-    # ``"modulated_gaussian"`` (Meep-style, src = cos(2π·f₀·(t-t₀))·exp(-arg²)).
-    # ``src_fcen`` is only used by the modulated-Gaussian dispatch.
     src_amp: float
     src_t0: float
     src_tau: float
     src_fcen: float
     waveform: str
 
-    freqs: jnp.ndarray         # (n_freqs,) float
+    freqs: jnp.ndarray
 
-    # Per-step time-series (OpenEMS-style raw record).
-    # Modal V and I are real-valued per step (real Yee fields × real mode
-    # profiles × cell areas). Record precision follows fields/frequencies.
-    # OpenEMS writes the same on disk as two floats per row.
-    # Allocated to length ``dft_total_steps``; ``n_steps_recorded`` tracks
-    # how many slots were filled by ``update_waveguide_port_probe``.
-    # The S-parameter spectra are computed POST-SCAN by
-    # ``_extract_global_waves_from_time_series`` via a rectangular
-    # full-record DFT on these arrays — no in-scan DFT accumulators
-    # are kept.
-    v_probe_t: jnp.ndarray     # (n_steps,) float32 — modal V at probe plane
-    v_ref_t: jnp.ndarray       # (n_steps,) float32 — modal V at ref plane
-    i_probe_t: jnp.ndarray     # (n_steps,) float32 — modal I at probe plane
-    i_ref_t: jnp.ndarray       # (n_steps,) float32 — modal I at ref plane
-    v_inc_t: jnp.ndarray       # (n_steps,) float32 — source amplitude record
-    n_steps_recorded: jnp.ndarray  # scalar int32 — fill count
+    v_probe_t: jnp.ndarray
+    v_ref_t: jnp.ndarray
+    i_probe_t: jnp.ndarray
+    i_ref_t: jnp.ndarray
+    v_inc_t: jnp.ndarray
+    n_steps_recorded: jnp.ndarray
 
-    # Precomputed TFSF-style injection waveforms, built independently of
-    # record length with the causal admittance, including below cutoff.
-    # e_inc_table[n] is the E-amplitude scalar at (x_src, n·dt);
-    # h_inc_table[n] is the companion H-amplitude scalar at (x_src − 0.5·dx,
-    # (n+0.5)·dt). Used by ``apply_waveguide_port_h`` and
-    # ``apply_waveguide_port_e`` to inject a unidirectional mode wave.
-    e_inc_table: jnp.ndarray   # (n_steps,) float
-    h_inc_table: jnp.ndarray   # (n_steps,) float
+    e_inc_table: jnp.ndarray
+    h_inc_table: jnp.ndarray
 
-    # Per-cell aperture area for modal V/I integration. Shape (nu, nv).
-    # Equals u_widths × v_widths for interior ports, but cells touching a
-    # PEC +face boundary at the array edge are weighted 0 to exclude
-    # ghost cells whose centre lies inside the conductor (where Ez is
-    # not zeroed by apply_pec_faces — Ez is "normal" by convention).
-    # Sentinel `(0, 0)` triggers a fallback in `_aperture_dA` for low-
-    # level callers that bypass `init_waveguide_port`.
     aperture_dA: jnp.ndarray = jnp.zeros((0, 0), dtype=jnp.float32)
     h_offset: tuple[float, float] = (0.0, 0.0)
     mode_indices: tuple[int, int] = (0, 0)
@@ -216,16 +185,13 @@ def _te_mode_profiles(a: float, b: float, m: int, n: int,
 
     The (mπ/a) and (nπ/b) derivative weights are essential for correct
     relative amplitudes in higher-order modes (e.g., TE11 with a != b).
+    The magnetic template uses the sign for propagation along +x.
     """
     Y, Z = np.meshgrid(y_coords, z_coords, indexing='ij')
 
     ey = -(n * np.pi / b) * np.cos(m * np.pi * Y / a) * np.sin(n * np.pi * Z / b) if n > 0 else np.zeros_like(Y)
     ez = (m * np.pi / a) * np.sin(m * np.pi * Y / a) * np.cos(n * np.pi * Z / b) if m > 0 else np.zeros_like(Y)
 
-    # H for forward +x propagation is the rotated E template
-    # (hy = -ez, hz = ey).  When requested, evaluate H on the Yee dual
-    # mesh rather than reusing the E-grid samples; modal_current samples
-    # the simulated H field with the same offset.
     if h_offset != (0.0, 0.0):
         if u_widths is None or v_widths is None:
             raise ValueError("h_offset requires u_widths and v_widths")
@@ -248,7 +214,6 @@ def _te_mode_profiles(a: float, b: float, m: int, n: int,
         hy = -ez.copy()
         hz = ey.copy()
 
-    # Normalize: integral(Ey² + Ez²) dA = 1
     if aperture_dA is not None:
         dA = np.asarray(aperture_dA, dtype=np.float64)
         power = float(np.sum((ey**2 + ez**2) * dA))
@@ -369,6 +334,7 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
 
     Returns `(ey, ez, hy, hz, kc_num)` matching `_te_mode_profiles`'s
     shape, amplitude-normalized so that `∫(ey²+ez²) dA = 1`.
+    The profiles use positive x-directed Poynting flux as the forward convention.
     """
     nu = len(u_widths)
     nv = len(v_widths)
@@ -376,15 +342,8 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
     Kv, mv = _galerkin_stiffness_mass_1d(v_widths, bc="neumann")
 
     dA = _aperture_area(u_widths, v_widths, aperture_dA)
-    # Keep the physical Yee eigenfunctions/cutoffs on the full cell-centred
-    # operator, then normalize and orthogonalize the stored profiles under the
-    # extractor aperture. A reduced zero-dA subspace imposes an unintended
-    # Dirichlet-like wall at the dropped row/column and breaks source matching.
     evals, evecs = _galerkin_eigh_separable_laplacian_2d(Ku, mu, Kv, mv)
 
-    # Pick eigenvector by overlap with analytic Hx = cos(mπy/a)·cos(nπz/b).
-    # Rank picking fails when discrete kc² ordering swaps nearly-degenerate
-    # analytic modes (e.g. TE30 ↔ TE21 on WR-90).
     u_c = np.cumsum(u_widths) - 0.5 * np.asarray(u_widths)
     v_c = np.cumsum(v_widths) - 0.5 * np.asarray(v_widths)
     hx_ana = (np.cos(m * np.pi * u_c / a)[:, None]
@@ -411,20 +370,14 @@ def _discrete_te_mode_profiles(a: float, b: float, m: int, n: int,
             raise RfxRefusal(f"Requested TE{m}{n} on {nu} x {nv} cells: {exc}") from exc
         hx = vector.reshape(nu, nv)
 
-    # Align sign (eigh returns arbitrary sign).
     if float(np.sum(hx * hx_ana * dA)) < 0.0:
         hx = -hx
 
     dHxdu = _cell_centred_gradient(hx, u_widths, axis=0, bc="neumann")
     dHxdv = _cell_centred_gradient(hx, v_widths, axis=1, bc="neumann")
 
-    # Match _te_mode_profiles sign convention for Hx = cos(mπy/a)·cos(nπz/b):
-    #   Analytic ey = -(nπ/b) cos(mπy/a) sin(nπz/b).
-    #   Since ∂Hx/∂v = -(nπ/b) cos(mπy/a) sin(nπz/b), we have ey = +∂Hx/∂v.
-    #   Analytic ez = +(mπ/a) sin(mπy/a) cos(nπz/b) = -∂Hx/∂u.
     ey = dHxdv
     ez = -dHxdu
-    # For forward +x propagation and Poynting x̂·P = Ey·Hz − Ez·Hy > 0:
     hy = -_shift_profile_to_dual(ez, h_offset)
     hz = _shift_profile_to_dual(ey, h_offset)
 
@@ -500,7 +453,6 @@ def _discrete_tm_mode_profiles(a: float, b: float, m: int, n: int,
     dA = _aperture_area(u_widths, v_widths, aperture_dA)
     evals, evecs = _galerkin_eigh_separable_laplacian_2d(Ku, mu, Kv, mv)
 
-    # Overlap-pick eigenvector against analytic Ex = sin(mπy/a)·sin(nπz/b).
     u_c = np.cumsum(u_widths) - 0.5 * np.asarray(u_widths)
     v_c = np.cumsum(v_widths) - 0.5 * np.asarray(v_widths)
     ex_ana = (np.sin(m * np.pi * u_c / a)[:, None]
@@ -533,8 +485,6 @@ def _discrete_tm_mode_profiles(a: float, b: float, m: int, n: int,
     dExdu = _cell_centred_gradient(ex, u_widths, axis=0, bc="dirichlet")
     dExdv = _cell_centred_gradient(ex, v_widths, axis=1, bc="dirichlet")
 
-    # Analytic convention: ey = (mπ/a)·cos(mπy/a)·sin(nπz/b) = ∂Ex/∂u
-    #                     ez = (nπ/b)·sin(mπy/a)·cos(nπz/b) = ∂Ex/∂v
     ey = dExdu
     ez = dExdv
     hy = -_shift_profile_to_dual(ez, h_offset)
@@ -618,6 +568,7 @@ def init_waveguide_port(
     grid : Grid or None
         Validate the aperture against a uniform Grid's declared electric,
         magnetic and periodic boundaries.
+    For y-normal ports, the transverse coordinates follow physical ``(x, z)`` order.
     """
     from rfx.grid import Grid
 
@@ -676,9 +627,6 @@ def init_waveguide_port(
     nu_port = u_hi - u_lo
     nv_port = v_hi - v_lo
 
-    # --- Per-axis cell widths covering the transverse aperture ---
-    # The mapping (u,v) → (x,y,z) depends on normal_axis and is the same
-    # one used by `_plane_indexer`.
     if grid_obj is not None:
         dx_arr_np = host_cells(grid_obj, "x", store=True)
         dy_arr_np = host_cells(grid_obj, "y", store=True)
@@ -689,7 +637,7 @@ def init_waveguide_port(
         elif normal_axis == "y":
             u_widths_np = dx_arr_np[u_lo:u_hi]
             v_widths_np = dz_arr_np[v_lo:v_hi]
-        else:  # z-normal
+        else:
             u_widths_np = dx_arr_np[u_lo:u_hi]
             v_widths_np = dy_arr_np[u_lo:u_hi] if False else dy_arr_np[v_lo:v_hi]
     else:
@@ -716,8 +664,6 @@ def init_waveguide_port(
                 code="waveguide_aperture_size_unchecked", source="init_waveguide_port",
             ), stacklevel=2)
 
-    # Cell-centre coordinates (cumulative-sum midpoints). For uniform
-    # widths this collapses to the original `np.linspace(0.5*dx, ...)`.
     u_coords = np.cumsum(u_widths_np) - 0.5 * u_widths_np
     v_coords = np.cumsum(v_widths_np) - 0.5 * v_widths_np
 
@@ -741,8 +687,6 @@ def init_waveguide_port(
                 aperture_dA=aperture_dA_np,
                 h_offset=h_offset,
             )
-        # Use the discrete eigenvalue's kc for f_c so h_inc_table's
-        # β(ω) = √(k² − kc_num²) matches the Yee-grid mode exactly.
         f_c = kc_num * port_light_speed(medium) / (2.0 * np.pi)
     else:
         if port.mode_type == "TE":
@@ -766,13 +710,6 @@ def init_waveguide_port(
             waveguide_waveform_error(waveform)
         )
     if waveform == "modulated_gaussian":
-        # Meep gaussian_src_time convention: width = 1/fwidth,
-        # peak_time = cutoff = 5·width. In rfx's exp(-(tt/τ)²) form this
-        # is τ = √2·width = √2/fwidth (so exp(-tt²/τ²) matches Meep's
-        # exp(-tt²/(2·width²))), and t0 = 5·width = 5/fwidth. Using the
-        # π·fwidth convention would make the pulse π× narrower in time
-        # (π× broader in spectrum) — the spectrum then straddles the
-        # TE-mode cutoff and drives excess directional leakage.
         fwidth = f0 * bandwidth
         width = 1.0 / fwidth
         tau = np.sqrt(2.0) * width
@@ -785,9 +722,6 @@ def init_waveguide_port(
     ref_x = port.x_index + step_sign * ref_offset
     probe_x = port.x_index + step_sign * probe_offset
     source_x_m = float(port.x_position) if port.x_position is not None else float(port.x_index * dx)
-    # For NU grids, integrate the actual per-cell spacing along the port-normal
-    # axis from the source plane to the reference / probe planes. For the
-    # uniform path this reduces to offset * dx bit-identically.
     if grid_obj is not None:
         if normal_axis == "x":
             d_axis = host_cells(grid_obj, "x", store=True)
@@ -815,9 +749,6 @@ def init_waveguide_port(
         y_lo, y_hi = u_lo, u_hi
         z_lo, z_hi = v_lo, v_hi
     elif normal_axis == "y":
-        # The tangential plane is indexed in physical (x, z) order, which is
-        # left-handed with respect to +y.  Flip the stored H profiles so the
-        # modal-current inner product still measures +y-directed power.
         ey = ey.copy()
         ez = ez.copy()
         hy = -hy
@@ -832,14 +763,7 @@ def init_waveguide_port(
         y_lo, y_hi = 0, 0
         z_lo, z_hi = 0, 0
 
-    # Time-series carry. Shape must be static at trace time. When the
-    # caller did not supply ``dft_total_steps`` (legacy low-level path),
-    # use length 1 so the carry has a valid shape; ``update_*_probe``
-    # then writes only into slot 0 which is harmless for those callers
-    # who never use the post-scan extractor.
     n_t = max(int(dft_total_steps), 1)
-    # Match cfg.freqs precision so the post-scan rect-DFT (which builds a
-    # complex phase from cfg.freqs) has consistent real-side dtype.
     real_dtype = jnp.zeros((), dtype=freqs.dtype).dtype if hasattr(freqs, 'dtype') else jnp.float32
     zeros_t = jnp.zeros((n_t,), dtype=real_dtype)
 
@@ -903,7 +827,10 @@ def init_waveguide_port(
 
 def _incident_table_build(*, length, f_c, medium, dt, dx, t0, tau,
                           f0, waveform, mode_profile, mode_type):
-    """One periodic host build, including its negative-time (discarded) half."""
+    """One periodic host build, including its negative-time (discarded) half.
+
+    The phase convention is ``exp(j(omega*t - beta*x))`` with magnetic samples half a cell upstream and half a time step later.
+    """
     tt = np.arange(length, dtype=np.float64) * float(dt) - t0
     arg = tt / tau
     if waveform == "modulated_gaussian":
@@ -914,20 +841,16 @@ def _incident_table_build(*, length, f_c, medium, dt, dx, t0, tau,
     e_spec = np.fft.rfft(e_raw)
     freqs = np.fft.rfftfreq(length, d=float(dt))
     if waveform != "modulated_gaussian":
-        # Unreachable for waveguide ports since the refusal.
         ratio = np.clip((freqs - f_c) / (0.2 * f_c), 0.0, 1.0)
         e_spec *= 0.5 * (1.0 - np.cos(np.pi * ratio))
     kw = dict(dt=dt if mode_profile == "discrete" else 0.0, dx=dx, _table=True)
     beta = _compute_beta(freqs, f_c, medium=medium, **kw)
     impedance = _compute_mode_impedance(freqs, f_c, mode_type, medium=medium, **kw)
     if np.any(impedance == 0):
-        # A TM bin exactly on cutoff has infinite admittance; e/Z would turn the whole table into NaN.
         raise ValueError(
             f"waveguide incident table: a bin of the length-{length} build falls exactly on the "
             f"{mode_type} cutoff (f0={f0}, f_c={f_c}), where the admittance is infinite; "
             "move f0 so the source spectrum at f_c is below about 1e-3 of its peak")
-    # exp(j(omega*t - beta*x)): H is upstream by dx/2 and later by dt/2.
-    # The evanescent continuation is essential to a causal response at cutoff.
     phase = np.exp(0.5j * beta * float(dx) + 1j * np.pi * freqs * float(dt))
     h_spec = e_spec / impedance * phase
     h_spec[0] = 0.0
@@ -939,7 +862,6 @@ def _incident_tables(*, f_c, medium, dt, dx, dft_total_steps, t0, tau,
     """Build a causal pulse independently of the requested recorder length."""
     n = int(dft_total_steps)
     if n <= 1 or dt <= 0.0:
-        # Size-1 sentinel selects the legacy source when tables are unavailable.
         return (jnp.zeros((1,), dtype=field_dtype),
                 jnp.zeros((1,), dtype=field_dtype))
     e, h = _converged_incident_tables(
@@ -1080,7 +1002,6 @@ def _compute_mode_impedance(freqs, f_cutoff, mode_type, *, medium,
     beta = _compute_beta(freqs, f_cutoff, medium=medium, dt=dt, dx=dx, _table=_table)
     mu, eps = MU_0 * medium.mu_r, EPS_0 * medium.eps_r
     if _table:
-        # Continue the same impedance through cutoff, preserving complex beta.
         if dt > 0.0 and dx > 0.0:
             w = 2.0 / dt * np.sin(omega * dt * 0.5)
             b = 2.0 / dx * np.sin(beta * dx * 0.5)
@@ -1094,7 +1015,6 @@ def _compute_mode_impedance(freqs, f_cutoff, mode_type, *, medium,
             raise ValueError(f"mode_type must be 'TE' or 'TM', got {mode_type!r}")
         z = np.full(beta.shape, complex(np.inf), dtype=np.complex128)
         np.divide(numerator, denominator, out=z, where=denominator != 0)
-        # Y(0) = 0: do not inject the truncated pulse's residual DC.
         return np.where(omega == 0, complex(np.inf), z)
     safe_beta = xp.where(xp.abs(beta) > 1e-30, beta, 1e-30 * xp.ones_like(beta))
     safe_omega = xp.where(xp.abs(omega) > 1e-30, omega, 1e-30 * xp.ones_like(omega))
@@ -1146,7 +1066,6 @@ def solve_rectangular_modes(
     """
     candidates: list[dict] = []
 
-    # Search range: at least 2*n_modes for each index to be safe
     max_idx = max(2 * n_modes, 6)
     for m in range(0, max_idx + 1):
         for n in range(0, max_idx + 1):
@@ -1233,8 +1152,7 @@ def init_multimode_waveguide_port(
         )
         return [cfg]
 
-    # Enumerate modes analytically
-    freq_max = float(jnp.max(freqs)) * 2.0  # generous upper bound
+    freq_max = float(jnp.max(freqs)) * 2.0
     mode_list = solve_rectangular_modes(port.a, port.b, freq_max, n_modes)
     if len(mode_list) == 0:
         raise ValueError(
@@ -1247,16 +1165,13 @@ def init_multimode_waveguide_port(
         m, n = mode_info["m"], mode_info["n"]
         mode_type = mode_info["mode_type"]
 
-        # Create a port variant for this mode
         mode_port = port._replace(
             mode=(m, n),
             mode_type=mode_type,
         )
 
-        # Only the first (dominant) mode is actively driven
         mode_amplitude = amplitude if mode_idx == 0 else 0.0
 
-        # All modes share one aperture; report its size only on the first mode.
         from rfx.preflight._common import PreflightWarning
 
         with warnings.catch_warnings():

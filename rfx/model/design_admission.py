@@ -39,7 +39,6 @@ def sheet_edges(conductors, sim, sheet_operator=None):
 def publish_declarations(conductors, sim, design, sheet_operator=None, *, occupancy=None):
     from rfx.model.conductors import publish_port_release
     for index, spec in enumerate(sim._lumped_rlc):
-        # Both metadata builders use this exact field-index resolver.
         edge = field_index(conductors.grid, spec.position, spec.component)
         conductors = publish_port_release(conductors, (edge,), component=spec.component,
             entity_id=f'lumped_rlc[{index}]', kind='lumped_rlc')

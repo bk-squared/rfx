@@ -45,7 +45,6 @@ def apply_material_overrides(materials, *, eps_override=None,
 
         eps_box = jnp.asarray(eps_override)
         eps = jnp.asarray(materials.eps_r)[window]
-        # Promote the background, never quantize a traced design value.
         eps = eps.astype(jnp.promote_types(eps.dtype, eps_box.dtype))
         eps = eps.at[box_local].set(cell_value(
             eps_box, getattr(materials, "eps_r_lumped", None)))
@@ -85,8 +84,6 @@ def apply_material_overrides(materials, *, eps_override=None,
     if judge is not None:
         from rfx.model.pole_stability import courant_budget, refuse_unstable_cells
         lorentz_spec, grid, *debye = judge
-        # A distributed forward override (shard_distributed_override) holds
-        # the grid's x rows first and padding rows after; judge real cells only.
         nx = grid.shape[0]
         judged = out._replace(eps_r=out.eps_r[:nx], sigma=out.sigma[:nx],
                              mu_r=None if out.mu_r is None else out.mu_r[:nx])
