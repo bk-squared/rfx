@@ -381,7 +381,7 @@ def _wire_port_live_cells(grid, port, pec_edge_masks=None):
     return cells, live_flags, n_live
 
 
-def setup_wire_port(grid, port, materials, pec_edge_masks=None):
+def setup_wire_port(grid, port, materials, pec_edge_masks=None, *, radius_sim=None, radius_port=None):
     """Distribute port impedance across the LIVE wire cells.
 
     For n_live live cells in series with total impedance Z0:
@@ -399,10 +399,15 @@ def setup_wire_port(grid, port, materials, pec_edge_masks=None):
     port._drive_stamps.clear()
 
     if port.radius is not None:
-        from rfx.sources.wire_radius import stamp_wire_radius
+        from rfx.sources.wire_radius import stamp_wire_radius, require_radius_pole_clearance
+        if radius_sim is not None:
+            require_radius_pole_clearance(
+                radius_sim, grid, port.component,
+                [c for c, live in zip(cells, live_flags) if live], port=radius_port)
         materials = stamp_wire_radius(
             grid, materials, port.component, port.radius,
-            [c for c, live in zip(cells, live_flags) if live])
+            [c for c, live in zip(cells, live_flags) if live],
+            pole_clearance=radius_sim is not None)
     for cell, live in zip(cells, live_flags):
         if not live:
             continue

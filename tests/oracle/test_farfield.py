@@ -5,6 +5,7 @@ Validates that:
 2. Hertzian dipole (Ez source) produces sin(theta) radiation pattern
 3. Directivity of a short dipole is approximately 1.76 dBi
 4. Far-field E_phi is near zero in the E-plane (phi=0)
+Every domain length written as ``7 * (299792458.0 / 5e9 / 20.0)`` is a whole number of cells of dx, so the solved domain equals the declared one.
 """
 
 import numpy as np
@@ -26,6 +27,8 @@ from rfx.measurement.farfield import (
 from rfx.optimize_objectives import maximize_directivity
 
 
+POLE_OFFSET_RADIANS = 0.01
+
 def _run_dipole_ntff(boundary="cpml"):
     """Run a z-oriented dipole with NTFF box and return far-field result."""
     grid = Grid(freq_max=5e9, domain=(0.03, 0.03, 0.03),
@@ -38,7 +41,6 @@ def _run_dipole_ntff(boundary="cpml"):
     src = make_source(grid, center, "ez", pulse, n_steps)
     prb = make_probe(grid, center, "ez")
 
-    # NTFF box: ~5 cells inside CPML on each side
     margin = 0.004
     ntff = make_ntff_box(
         grid,
@@ -54,7 +56,7 @@ def _run_dipole_ntff(boundary="cpml"):
         ntff=ntff,
     )
 
-    theta = np.linspace(0.01, np.pi - 0.01, 37)  # avoid poles
+    theta = np.linspace(POLE_OFFSET_RADIANS, np.pi - POLE_OFFSET_RADIANS, 37)
     phi = np.array([0.0, np.pi / 2])
 
     ff = compute_far_field(result.ntff_data, ntff, grid, theta, phi)
@@ -63,7 +65,7 @@ def _run_dipole_ntff(boundary="cpml"):
 
 def test_ntff_accumulation_runs():
     """NTFF accumulation completes without error."""
-    grid = Grid(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)
     materials = init_materials(grid.shape)
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
     src = make_source(grid, (0.01, 0.01, 0.01), "ez", pulse, 30)
@@ -75,7 +77,6 @@ def test_ntff_accumulation_runs():
     result = run(grid, materials, 30, sources=[src], ntff=ntff)
 
     assert result.ntff_data is not None
-    # DFT should have accumulated non-zero values
     x_lo_mag = float(jnp.max(jnp.abs(result.ntff_data.x_lo)))
     assert x_lo_mag > 0, "NTFF DFT should accumulate non-zero fields"
     assert result.ntff_box == ntff
@@ -84,7 +85,7 @@ def test_ntff_accumulation_runs():
 
 def test_maximize_directivity_works_with_low_level_simresult():
     """Far-field objective should work on the low-level SimResult contract."""
-    grid = Grid(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)
     materials = init_materials(grid.shape)
     pulse = GaussianPulse(f0=3e9, bandwidth=0.5)
     src = make_source(grid, (0.01, 0.01, 0.01), "ez", pulse, 30)
@@ -102,9 +103,6 @@ def test_maximize_directivity_works_with_low_level_simresult():
 
     assert loss.shape == ()
     assert jnp.isfinite(loss)
-    # Default is the log-ratio objective: loss = -(log U - log P) = log(4pi/D),
-    # positive for a low-directivity source (D < 4pi) — not the old ratio-mode
-    # negative value. Guard that the default IS the log-ratio path.
     assert float(loss) == float(
         maximize_directivity(theta_target=np.pi / 2, phi_target=0.0,
                              log_ratio=True)(result))
@@ -119,23 +117,18 @@ def test_dipole_sin_theta_pattern():
     """
     ff, _ = _run_dipole_ntff()
 
-    # E-plane: phi=0, frequency index 0
-    E_th = np.abs(ff.E_theta[0, :, 0])  # (n_theta,)
+    E_th = np.abs(ff.E_theta[0, :, 0])
     theta = ff.theta
 
-    # Normalize
     peak = np.max(E_th)
     assert peak > 0, "Far-field should be non-zero"
     E_norm = E_th / peak
 
-    # Peak should be near theta = pi/2
     peak_idx = np.argmax(E_norm)
     peak_theta = theta[peak_idx]
     assert abs(peak_theta - np.pi / 2) < np.pi / 6, \
         f"Pattern peak at {np.degrees(peak_theta):.0f}° (expected ~90°)"
 
-    # Values near poles should be much smaller than peak
-    # theta < 20° or theta > 160°
     near_pole = (theta < np.radians(20)) | (theta > np.radians(160))
     if np.any(near_pole):
         pole_max = np.max(E_norm[near_pole])
@@ -169,25 +162,24 @@ def test_dipole_directivity():
     artefact, not physics: E_theta is phi-flat to ~1% and peaks exactly at 90).
     We therefore re-integrate the *same* NTFF data on a proper full-2*pi sphere,
     which recovers the physical directivity (measured ~1.84 dBi, theory 1.76).
+    The +/-0.75 tolerance absorbs the coarse 3 mm / f0=3 GHz grid bias.
     """
     _, result = _run_dipole_ntff()
 
-    # Full-sphere sampling so the P_rad integral is unbiased.
-    theta = np.linspace(0.01, np.pi - 0.01, 37)
+    theta = np.linspace(POLE_OFFSET_RADIANS, np.pi - POLE_OFFSET_RADIANS, 37)
     phi = np.linspace(0.0, 2 * np.pi, 24, endpoint=False)
     ff = compute_far_field(result.ntff_data, result.ntff_box, result.grid,
                            theta, phi)
     D_val = float(directivity(ff)[0])
 
     print(f"\nShort-dipole directivity: {D_val:.3f} dBi (theory 1.76 dBi)")
-    # Theory 1.76 dBi; +/-0.75 absorbs the coarse 3 mm / f0=3 GHz grid bias.
     assert abs(D_val - 1.76) < 0.75, \
         f"Short-dipole directivity {D_val:.3f} dBi outside 1.76 +/- 0.75 dBi"
 
 
 def test_ntff_without_ntff_returns_none():
     """SimResult.ntff_data is None when no NTFF box is used."""
-    grid = Grid(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), cpml_layers=0)
     materials = init_materials(grid.shape)
     result = run(grid, materials, 10)
     assert result.ntff_data is None
@@ -211,23 +203,6 @@ def _run_halfwave_ntff(f0=3e9, freq_max=5e9, n_arm=7, n_steps=800,
     center = (domain[0] / 2, domain[1] / 2, domain[2] / 2)
     ic, jc, kc = grid.position_to_index(center)
 
-    # PEC wire, declared as a WIRE (lattice ownership contract #931 §1.4):
-    # a filament is a 1-D path of E edges, not a set of cells. Arms of
-    # n_arm edges above and below a one-cell feed gap at kc, so the Ez edge
-    # AT the source is live and the two arms are galvanically separate.
-    #
-    # This used to be a cell mask of the same column handed to
-    # ``pec_mask=``, and the docstring already called the object a
-    # filament. That worked only because the pre-#931 rule zeroed E_a on a
-    # masked cell whose NEIGHBOUR ALONG a was masked: on a 1x1-cell column
-    # it happened to reduce to exactly these 2*n_arm Ez edges and nothing
-    # else. Under the volume rule the same cells are a body — every edge
-    # incident to an occupied cell — so the column would realize as a
-    # four-node-wide tube with Ex and Ey walls, which is not a thin-wire
-    # dipole. Verified before the change: the WireSpec below and the old
-    # rule applied to the old mask give byte-identical (Mx, My, Mz) on this
-    # grid (Ez 14 edges, Ex/Ey empty), so the measured directivity is the
-    # same measurement, not a re-tuned one.
     wire = WireSpec(
         edges=tuple(
             a | b for a, b in zip(
@@ -240,10 +215,14 @@ def _run_halfwave_ntff(f0=3e9, freq_max=5e9, n_arm=7, n_steps=800,
         name="halfwave_dipole",
     )
 
+    assert (not np.asarray(wire.edges[0]).any()
+            and not np.asarray(wire.edges[1]).any()
+            and np.count_nonzero(np.asarray(wire.edges[2])) == 2 * n_arm
+            and not bool(np.asarray(wire.edges[2])[ic, jc, kc])), (
+        'The PEC filament arms must leave the source Ez edge live and galvanically separate.')
     pulse = GaussianPulse(f0=f0, bandwidth=0.6)
     src = make_source(grid, center, "ez", pulse, n_steps)
 
-    # NTFF box: enclose the wire while staying a few cells inside the 8-cell CPML.
     cpml_m = 8 * dx
     xy_m = cpml_m + 2 * dx
     z_m = cpml_m + 3 * dx
@@ -254,10 +233,15 @@ def _run_halfwave_ntff(f0=3e9, freq_max=5e9, n_arm=7, n_steps=800,
         freqs=jnp.array([f0]),
     )
 
+    assert (grid.pad_x_lo < ntff.i_lo < ic < ntff.i_hi < grid.shape[0] - grid.pad_x_hi - 1
+            and grid.pad_y_lo < ntff.j_lo < jc < ntff.j_hi < grid.shape[1] - grid.pad_y_hi - 1
+            and grid.pad_z_lo < ntff.k_lo < kc - n_arm
+            and kc + n_arm + 1 < ntff.k_hi < grid.shape[2] - grid.pad_z_hi - 1), (
+        'The NTFF box must enclose the wire while staying inside the CPML boundaries.')
     result = run(grid, materials, n_steps, boundary="cpml",
                  sources=[src], ntff=ntff, pec_wires=[wire])
 
-    theta = np.linspace(0.01, np.pi - 0.01, 73)
+    theta = np.linspace(POLE_OFFSET_RADIANS, np.pi - POLE_OFFSET_RADIANS, 73)
     phi = np.linspace(0.0, 2 * np.pi, 24, endpoint=False)
     ff = compute_far_field(result.ntff_data, ntff, grid, theta, phi)
     return ff, result
@@ -276,8 +260,7 @@ def test_halfwave_dipole_directivity():
     ff, _ = _run_halfwave_ntff()
     D_val = float(directivity(ff)[0])
 
-    # Pattern-shape witness (R5): a half-wave dipole peaks broadside (theta=90).
-    E_th = np.abs(ff.E_theta[0]).mean(axis=1)  # phi-averaged
+    E_th = np.abs(ff.E_theta[0]).mean(axis=1)
     peak_theta = ff.theta[int(np.argmax(E_th))]
     assert abs(peak_theta - np.pi / 2) < np.radians(10), \
         f"Half-wave pattern peak at {np.degrees(peak_theta):.0f} (expected ~90)"

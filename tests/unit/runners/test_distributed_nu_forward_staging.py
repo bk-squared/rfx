@@ -2,6 +2,7 @@
 
 Fresh subprocesses isolate live-array accounting and the virtual-device count.
 The reference below deliberately keeps main cca8ee5b's init-then-split order.
+The nx_local + 1 bound in _memory allows the extra low input row that gives the product's low ghost row its neighbour's true value.
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -37,6 +38,7 @@ from rfx.stepping import slab_update, slab_graded_legacy_loop
 from rfx.runners._distributed_common import _split_materials
 from rfx.runners._distributed_common import shard_stacked
 from rfx.simulation import ProbeSpec, SourceSpec
+from tests._stated_plan import stated_plan
 
 pytestmark = pytest.mark.distributed
 ROOT = Path(__file__).resolve().parents[3]
@@ -47,7 +49,7 @@ def _select_legacy_poles_cpml(patch):
     select = slab_wrap.select_step
 
     def legacy(**flags):
-        # rfx #1402 item 5 routes poles + CPML to wrapped; these pins inspect legacy internals.
+        """The pole and CPML pins inspect legacy internals."""
         if flags.get("cpml") and (flags.get("debye") or flags.get("lorentz")):
             return "legacy"
         return select(**flags)
@@ -56,8 +58,7 @@ def _select_legacy_poles_cpml(patch):
 
 
 def _model(case="mixed", large=False):
-    # CPML plus the endpoint adds five cells on each axis: the memory gate's
-    # actual grid is (45, 29, 29), including uneven two-device x padding.
+    """CPML plus the endpoint adds five cells on each axis, so the memory gate's actual grid is (45, 29, 29)."""
     nx, ny, nz = (40, 24, 24) if large else (12, 7, 7)
     dz = np.full(nz, 1e-3)
     dz[:nz // 3] *= .8
@@ -82,8 +83,6 @@ def _model(case="mixed", large=False):
                  Box((5 * 1e-3, 3 * 1e-3, float(pec_z[4])),
                      (7 * 1e-3, 4 * 1e-3, float(pec_z[5]))))
     sim.add(conductor, material="pec")
-    # Off the PEC block, close enough for nonzero traces/gradients in 8 steps;
-    # the source and probe straddle the two-device seam in this 17-cell grid.
     sim.add_source((.45 * nx * 1e-3, .7 * ny * 1e-3, .5 * dz.sum()),
                    "ez", amplitude_kind="field")
     sim.add_probe((.6 * nx * 1e-3, .7 * ny * 1e-3, .5 * dz.sum()), "ez")
@@ -147,6 +146,7 @@ def _legacy_forward(self, *, eps_override=None, sigma_override=None,
               for pe in self._probes]
     result = nu.run_nonuniform_distributed_pec(
         sg, placed, pec, n_steps, sources=sources, probes=probes,
+        measurement=stated_plan(sg, probes, n_steps=n_steps),
         n_devices=len(devices), exchange_interval=1, debye=db, lorentz=lr,
         devices=devices, cpml_params=cpml_params, cpml_state=cpml,
         sharded_pec_occupancy=occupancy, checkpoint_every=checkpoint_every,
@@ -201,6 +201,7 @@ def _cross_trace(a, b, label, summed=False):
 
 
 def _bit_case(case, checkpoint, warmup, transform):
+    """The oracle must consume its eagerly formed E coefficients because the current runner otherwise rebuilds them from the shared means."""
     sim = _model(case)
     eps, kwargs = _inputs(sim, case)
     kwargs.update(checkpoint_every=checkpoint, n_warmup=warmup)
@@ -235,8 +236,6 @@ def _bit_case(case, checkpoint, warmup, transform):
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(sim, "_forward_distributed_nonuniform_from_materials",
                       MethodType(_legacy_forward, sim))
-        # The oracle must consume its eagerly formed E coefficients; the
-        # current runner otherwise rebuilds them from the shared means too.
         patch.setattr(slab_graded_legacy_loop, "slab_dispersion_coeffs", lambda coeffs, *args, **kwargs: coeffs)
         expected = evaluate()
     for i, (a, b) in enumerate(zip(actual, expected)):
@@ -309,11 +308,10 @@ def _per_shard():
     captures = []
 
     def capture(*args, **kw):
+        """The masks are compared on the destination sharding used on entry to the compiled loop."""
         bound = inspect.signature(runner).bind(*args, **kw).arguments
         mesh = Mesh(np.array(jax.devices("cpu")), ("x",))
         shd = NamedSharding(mesh, P("x"))
-        # The old runner received masks before placement; compare on the
-        # same destination sharding it uses on entry to its compiled loop.
         selected = {name: bound[name] for name in (
             "sharded_materials", "sharded_pec_mask", "sharded_pec_occupancy",
             "debye", "lorentz", "cpml_state")}
@@ -332,10 +330,6 @@ def _per_shard():
     dt = sim._build_nonuniform_grid().dt
     for kind in ("debye", "lorentz"):
         captures[0][kind] = _completed_slabs(captures[0][kind], captures[0]["sharded_materials"], sg, dt, mesh)
-    # The legacy runner takes sharded cells and derives edges per slab. G1
-    # takes final edge components converted once globally. Keep the cell
-    # oracle; the edge comparison below uses the same global conversion as G1,
-    # so the independent witness is test_trace_and_eps_gradient_bits.
     from rfx.boundaries.pec import realized_pec_edge_masks
     grid = sim._build_nonuniform_grid()
     cells = sim._assemble_materials_nu(grid)[3]
@@ -360,6 +354,7 @@ def _per_shard():
 
 
 def _memory(mode, mutation="none", legacy=False):
+    """The 30% bound covers small replicated profiles/scalars and transient shard views, excluding the caller-owned eps buffer."""
     sim = _model(large=True)
     grid = sim._build_nonuniform_grid()
     cells = int(np.prod(grid.shape))
@@ -375,7 +370,6 @@ def _memory(mode, mutation="none", legacy=False):
 
     def profile(frame, event, arg):
         if event == "call" and frame.f_code is init_state.__code__:
-            # A whole padded domain of zeros used to set device 0's setup peak.
             extents["state"].append(int(frame.f_locals["shape"][0]))
         elif event == "call" and frame.f_code in codes:
             if "fractions_by_pole" in frame.f_locals:
@@ -384,7 +378,7 @@ def _memory(mode, mutation="none", legacy=False):
             arrays = (frame.f_locals["materials"], frame.f_locals["mask"])
             for arr in jax.tree.leaves(arrays):
                 if isinstance(arr, jax.core.Tracer):
-                    extent = arr.shape[-3]  # shard_map traces local inputs
+                    extent = arr.shape[-3]
                 else:
                     extent = max(s.data.shape[-3] for s in arr.addressable_shards)
                 extents[codes[frame.f_code]].append(extent)
@@ -397,8 +391,6 @@ def _memory(mode, mutation="none", legacy=False):
             for arr in jax.live_arrays():
                 for shard in arr.addressable_shards:
                     per_device[str(shard.device)] += shard.data.nbytes
-                    # Any whole-domain buffer on a device, single-device or
-                    # replicated (review: a replicated copy passed the old check).
                     if shard.data.size >= cells:
                         whole.append({"device": str(shard.device),
                                       "shape": arr.shape, "dtype": str(arr.dtype),
@@ -411,7 +403,6 @@ def _memory(mode, mutation="none", legacy=False):
 
     def mutate_stage(mat, dt, spec, sg, mesh, kind, **kw):
         if mutation == "whole_init" and kind == "debye":
-            # Reintroduce the old whole-domain initialization, process-locally.
             materials, db, _, _ = sim._assemble_materials_nu(grid)
             retained.append(init_debye(db[0], materials, dt, mask=db[1], high_wall=unpadded_high_walls(grid)))
         if mutation == "retain" and kind == "debye":
@@ -444,18 +435,17 @@ def _memory(mode, mutation="none", legacy=False):
         return
     for kind, seen in extents.items():
         assert seen or kind == "state", f"{kind} initialization was not observed"
-        # one extra low input row: the product's low ghost row is the neighbour's true value (rfx #1402)
         assert all(e <= nx_local + 1 for e in seen), f"whole-domain {kind} initialization: {seen} > {nx_local + 1}"
     unexpected = [a for a in record["whole"] if not a["caller"]]
     assert not unexpected, f"whole-domain setup arrays: {unexpected}"
     sizes = list(record["bytes"].values())
-    # The user's A1 bound: 30% covers small replicated profiles/scalars and
-    # transient shard views; exclude the one caller-owned eps buffer.
     assert sizes[0] - eps.nbytes <= 1.3 * min(sizes), record
 
 
 def _multipole_shards():
-    """Different pole masks expose a rank/pole transpose hidden by one pole."""
+    """Different pole masks expose a rank/pole transpose hidden by one pole.
+    The 36-array bar per device counts per-E-component coefficient tuples.
+    """
     grid = _model()._build_nonuniform_grid()
     devices = jax.devices("cpu")
     sg = nu.build_sharded_nu_grid(grid, len(devices))
@@ -484,7 +474,6 @@ def _multipole_shards():
         expected = split_c(coeffs, sg, mesh), split_s(state, sg, mesh)
         actual = _completed_slabs(actual, placed, sg, grid.dt, mesh)
         checked += _check_slabs(actual, expected, sg)
-    # 36 arrays per device: per-E-component coefficient tuples since #1260 (20 before).
     assert checked == 36 * len(devices)
     print("RESULT " + json.dumps({"multipole_shard_arrays": checked,
                                   "version": jax.__version__}))
@@ -521,7 +510,6 @@ def _mutation_cc():
 def _child(mode, *args, devices=2, expected_error=None):
     env = {**os.environ, "JAX_PLATFORMS": "cpu",
            "XLA_FLAGS": f"--xla_force_host_platform_device_count={devices}"}
-    # Retain a requested JAX overlay while removing paths to other RFX clones.
     pythonpath = [p for p in env.get("PYTHONPATH", "").split(os.pathsep)
                   if p and not (Path(p) / "rfx").is_dir()]
     env["PYTHONPATH"] = os.pathsep.join([*pythonpath, str(ROOT)])
@@ -549,9 +537,6 @@ def test_every_staged_shard_matches_legacy(devices):
     _child("shards", devices=devices)
 
 
-# Each case is a fresh process (~6-30 s). The fast lane keeps the memory gate, the
-# legacy shard equality, one bit case and the transforms the CI build is judged
-# on; the full matrix and the mutations run with the slow suite.
 _slow = pytest.mark.slow
 
 

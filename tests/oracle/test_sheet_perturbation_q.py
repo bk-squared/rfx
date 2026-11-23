@@ -141,9 +141,6 @@ def _measured():
     r = sim_f0.run(n_steps=N_STEPS, skip_preflight=True)
     ts = np.asarray(r.time_series)[:, 0]
     f_mode, fw_f0, df = _fwhm_and_peak(ts, dt)
-    # The Q is the ring-down pole's, not the Hann width's (#1626, docstring).
-    # The record also holds the lossless TM_mn0 tones of the 12 mm box; the
-    # mode is taken nearest f_mode only when it is unambiguous.
     modes = r.find_resonances(freq_range=(20e9, 27e9),
                               waveform=GaussianPulse(f0=29e9, bandwidth=0.6))
     by_dist = sorted(modes, key=lambda mode: abs(mode.freq - f_mode))
@@ -171,12 +168,6 @@ def _measured():
     dA = DX * DX
     P = 0.0
     for sp in specs:
-        # The sheet's realized plane is a property of the spec (#931
-        # §1.3), not something to re-derive from its mask. This used to
-        # take the LOWEST populated z index of the mask, which is the same
-        # answer only as long as a sheet occupies exactly one layer — a
-        # second hand-rolled realization reader of the kind the
-        # single-owner rule exists to remove.
         m = np.asarray(sp.mask)
         k = int(sp.plane)
         foot = m[:, :, k]
@@ -193,27 +184,10 @@ def _measured():
 @pytest.mark.slow_physics
 def test_g2_loss_is_real():
     out = _measured()
-    # R5: the whole measurement before any assertion reads one number of it.
-    # Without this the two pins below reported a bare frequency, and a mode
-    # that MOVED could not be told from an extractor that picked a different
-    # peak (the sibling A/B module was in exactly that position under #931).
     print("[G2/LOSS-IS-REAL] " + "  ".join(
         f"{k}={v:.6g}" for k, v in sorted(out.items())))
-    # measured 2026-08-19: fw_f0/fw_pec = 6.98; the f0 FWHM must stay far
-    # above the identically processed PEC (window-limited) width
     assert out["fw_f0"] / out["fw_pec"] > 2.0, out
-    # Regression pins on the measured envelope (loose: mode tracking).
-    #
-    # Re-pinned 2026-09-07 for #931 (VESSL 369367259231, reproducing
-    # 369367259167 to 4 significant figures): 24.753 -> 25.399 GHz. The patch
-    # is declared as a zero-thickness sheet whose in-plane faces sit ON node
-    # lines, and the contract samples a sheet footprint CLOSED, so the patch
-    # realizes the length it draws instead of one cell less. The mode tracks
-    # the fixture; the WIDTH of this pin (+-0.3 GHz) and the FWHM and Q
-    # assertions around it are unchanged.
     assert abs(out["f_mode"] - 25.399e9) < 0.3e9, out["f_mode"]
-    # The Hann width reading, about 1.9x the Q (#1626): a regression pin on
-    # the processed envelope only, not a Q.
     assert abs(out["q_f0_hann"] / 26.5 - 1.0) < 0.25, out["q_f0_hann"]
 
 

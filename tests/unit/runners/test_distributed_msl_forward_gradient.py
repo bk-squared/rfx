@@ -44,8 +44,6 @@ def test_s_gradient_and_longer_record(name, n, length):
         assert [port['feed']['x_indices'] for port in realized['ports']] == [[18], [58]]
         assert [port['feed']['x_owners'] for port in realized['ports']] == [[0], [n - 1]]
     base, masks = parameter_blocks(sim, name)
-    # Independent public call: pins assembly extraction and the removal of
-    # per-step witness selection bitwise, before any derivative comparison.
     public = np.asarray(sim.compute_msl_s_matrix(eps_override=base, n_steps=length, freqs=FREQS).S)
     one_s = np.asarray(forward_s(sim, base, length))
     np.testing.assert_array_equal(one_s, public, strict=True)

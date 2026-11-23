@@ -28,8 +28,6 @@ from tests._x64_compat import enable_x64
 DXS = (787e-6, 25.4e-6 / 3, 1e-3)
 SPELLINGS = ("m*dx", "lo+N*dx", "repeated-addition", "(dom-g)/2")
 FIRST = 3
-# Unequal cells both inside and outside the sampled span, and a noninteger
-# total in units of dx. Graded faces are prefixes of these primal widths.
 FACTORS = np.array([
     1.0, .9, 1.1, .95, 1.2, 1.0, .85, 1.1, .9, 1.2, 1.05, .8,
     1.0, 1.15, .95, 1.2, 1.05, .85, 1.07, 1.0,
@@ -48,7 +46,6 @@ def _faces(dx, count, spelling, graded):
     widths, edges, domain = _declaration(dx, graded)
     stop = FIRST + count
     if spelling == "m*dx":
-        # On a graded axis, m is the prefix sum in units of dx.
         factors = FACTORS if graded else np.ones(20)
         lo = float(np.sum(factors[:FIRST])) * dx
         hi = float(np.sum(factors[:stop])) * dx
@@ -125,6 +122,7 @@ def test_material_box_and_cell_centres_keep_first_index_and_count(
 
 
 def test_arithmetic_matrix_contains_low_and_high_faces_above_their_nodes():
+    """A matrix containing only identical or downward-rounded faces is silent."""
     above = [0, 0]
     off_node = [0, 0]
     for graded in (False, True):
@@ -137,8 +135,6 @@ def test_arithmetic_matrix_contains_low_and_high_faces_above_their_nodes():
                         node = coords.z[grid.pad_z_lo + index]
                         above[side] += int(face - node >= np.spacing(node))
                         off_node[int(graded)] += int(abs(face - node) >= np.spacing(node))
-    # Both faces must exercise the direction the old exact window misses;
-    # a matrix containing only identical or downward-rounded faces is silent.
     assert all(above), above
     assert all(off_node), off_node
 
@@ -228,8 +224,9 @@ def test_both_samplers_accept_traced_coordinates():
 
 
 def test_periodic_material_image_keeps_node_aligned_faces():
+    """The domain length is a whole number of cells of dx, so the solved domain equals the declared one."""
     dx = DXS[0]
-    length = 17 * dx  # domain uses solved cell counts; #1887
+    length = 17 * dx
     sim = Simulation(
         10e9, (length, 8 * dx, 6 * dx), dx=dx, cpml_layers=0,
         boundary=BoundarySpec(x="periodic", y=Boundary("pec", "pmc"), z="pec"))

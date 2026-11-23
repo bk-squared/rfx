@@ -29,8 +29,6 @@ from rfx.geometry.smoothing import kottke_inv_eps_from_occupancy
 
 
 def _grid(nx=8, ny=8, nz=8, dx=1e-4):
-    # Build a Grid with cpml_layers=0 so the resolved shape matches
-    # exactly (nx, ny, nz).  Domain dimensions are nx*dx etc.
     return Grid(
         freq_max=1e9,
         domain=(nx * dx, ny * dx, nz * dx),
@@ -121,13 +119,11 @@ def test_half_fill_step_is_between_the_two_binary_answers():
     j = ny // 2 - 1
     for comp in (inv_xx, inv_yy, inv_zz):
         a = np.asarray(comp)
-        assert np.allclose(a[:, ny // 2 + 1:, :], 0.0)            # interior metal
-        assert np.allclose(a[:, :j, :], 1.0)                        # air beyond the step, first plane included
+        assert np.allclose(a[:, ny // 2 + 1:, :], 0.0)
+        assert np.allclose(a[:, :j, :], 1.0)
         v = a[2:nx - 2, j, 2:nz - 2]
         assert np.all(v > 0.0) and np.all(v < 1.0), (float(v.min()), float(v.max()))
-    # Ey edges of the half cell: four incident cells all 0.5 -> 1 - 0.5**4
     assert np.allclose(np.asarray(inv_yy)[2:nx - 2, j, 2:nz - 2], 0.5 ** 4, atol=1e-6)
-    # Ex edges on the plane between the half cell and the full cell: metal
     assert np.allclose(np.asarray(inv_xx)[2:nx - 2, ny // 2, 2:nz - 2], 0.0)
 
 
@@ -140,24 +136,16 @@ def test_baseline_min_preserves_dielectric_outside():
     occ = np.zeros(grid.shape, dtype=np.float32)
     occ[:, ny // 2:, :] = 1.0
     occ_jax = jnp.asarray(occ)
-    # Baseline: dielectric ε=4 everywhere → inv = 0.25
+    DIELECTRIC_INV_EPS = 0.25
     baseline = (
-        jnp.full(grid.shape, 0.25, dtype=jnp.float32),
-        jnp.full(grid.shape, 0.25, dtype=jnp.float32),
-        jnp.full(grid.shape, 0.25, dtype=jnp.float32),
+        jnp.full(grid.shape, DIELECTRIC_INV_EPS, dtype=jnp.float32),
+        jnp.full(grid.shape, DIELECTRIC_INV_EPS, dtype=jnp.float32),
+        jnp.full(grid.shape, DIELECTRIC_INV_EPS, dtype=jnp.float32),
     )
     inv_xx, _, _ = kottke_inv_eps_from_occupancy(
         grid, occ_jax, aniso_inv_eps_baseline=baseline,
     )
-    # Vacuum side (occ=0): baseline is preserved (PEC contribution = 0.25 at occ=0,
-    # min(0.25, 0.25) = 0.25).  Start at j=1: j=0 is the PERIODIC-WRAP edge — the
-    # 60939e0 neighbor-max PEC dilation wraps (jnp.roll), so j=0's −ŷ neighbor is the
-    # PEC cell j=ny-1, dilating j=0 to PEC (inv→0).  That wrap never fires in production
-    # (microstrip PEC is interior, far from the domain edges); it is a test-setup
-    # artifact of filling PEC to the grid boundary.  Same stale-test cause as
-    # test_half_fill_y_normal.
-    assert jnp.allclose(inv_xx[:, 1:ny // 2 - 2, :], 0.25, atol=1e-3)
-    # PEC side (occ=1): all components 0
+    assert jnp.allclose(inv_xx[:, 1:ny // 2 - 2, :], DIELECTRIC_INV_EPS, atol=1e-3)
     assert jnp.allclose(inv_xx[:, ny // 2 + 1:, :], 0.0, atol=1e-3)
 
 
@@ -174,7 +162,3 @@ def test_ad_traceable_no_nan():
     occ0 = jnp.full(nx * ny * nz, 0.5, dtype=jnp.float32)
     g = jax.grad(cost)(occ0)
     assert jnp.all(jnp.isfinite(g)), "AD produced NaN/Inf"
-    # At occ=0.5 uniformly the gradient is non-zero only at boundary
-    # cells; interior cells (where ∇occ ≈ 0) get zero contribution
-    # from the normal but the f-only term (1−f)/ε still gives a
-    # gradient.  Just check finiteness here.

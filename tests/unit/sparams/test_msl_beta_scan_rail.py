@@ -77,6 +77,7 @@ def test_out_of_window_beta_is_pinned_and_flagged():
 
     On b29f9de this test fails at the ``res["beta_railed"]`` access —
     the key does not exist, which is exactly the silence being fixed.
+    The true beta is about 11 grid steps beyond the scan rail.
     """
     v, x, i1, beta0, _ = _issue_681_fixture(eps_true=6.30)
     res = extract_msl_nprobe(v, x, i1, beta0, z0_hj=50.0)
@@ -86,14 +87,10 @@ def test_out_of_window_beta_is_pinned_and_flagged():
     step = 2.0 * _BETA_SCAN_FRAC * b0 / (_BETA_SCAN_NODES - 1)
     b_fit = float(np.real(np.asarray(res["beta"]))[0])
 
-    # The pinned return (the bug's symptom, kept as documentation): the
-    # fitted β sits within ~two grid steps of the scan rail, nowhere
-    # near the true β (which is ~11 steps beyond the rail).
     assert rail_hi - b_fit < 2.5 * step, (
         f"fixture no longer pins: β={b_fit:.2f}, rail={rail_hi:.2f}"
     )
 
-    # The fix: the pin is no longer silent.
     railed = np.asarray(res["beta_railed"], dtype=bool)
     assert railed.shape == (1,)
     assert bool(railed[0]), "out-of-window β must set beta_railed"
@@ -101,7 +98,6 @@ def test_out_of_window_beta_is_pinned_and_flagged():
 
 def test_in_window_beta_is_not_flagged():
     """In-window β (the healthy class every pre-#681 test exercises)."""
-    # ε_true = 1.06² · ε_hj → β_true = 1.06·β₀, well inside ±35%.
     v, x, i1, beta0, beta_true = _issue_681_fixture(
         eps_true=2.66 * 1.06**2
     )
@@ -115,7 +111,7 @@ def test_rail_flag_is_traceable_and_batch_shaped():
     """The flag is JAX-traceable (jit) and per-bin over a frequency batch."""
     v_out, x, i1, beta0, _ = _issue_681_fixture(eps_true=6.30)
     v_in, _, _, _, _ = _issue_681_fixture(eps_true=2.66 * 1.06**2)
-    v = jnp.concatenate([v_out, v_in], axis=0)          # (2, N)
+    v = jnp.concatenate([v_out, v_in], axis=0)
     i1_b = jnp.concatenate([i1, i1])
     beta0_b = jnp.concatenate([beta0, beta0])
 

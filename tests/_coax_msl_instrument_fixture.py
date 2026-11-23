@@ -26,8 +26,6 @@ def build_instrument_junction(*, mode="laplace"):
                      cpml_layers=8, boundary="cpml")
     sim.add_material("sub", eps_r=3.66)
     sim.add(Box((0, 0, GROUND), (DOMAIN[0], DOMAIN[1], TRACE)), material="sub")
-    # Four closed sheet footprints, with an explicit square clearance hole.
-    # No volume-face padding or dielectric-over-PEC carving is involved.
     xl, xh = JUNCTION_X-CLEARANCE, JUNCTION_X+CLEARANCE
     yl, yh = Y_C-CLEARANCE, Y_C+CLEARANCE
     for x0, x1, y0, y1 in ((0, xl, 0, DOMAIN[1]), (xh, DOMAIN[0], 0, DOMAIN[1]),

@@ -45,6 +45,7 @@ UPML. A healthy 12-layer UPML drains the interior to about -17 dB; a loss-disabl
 That ~17 dB separation is the "old blind / new catches" proof that the gate is not
 vacuous — a UPML regression that stopped absorbing would land near the dead number
 and fail.
+Every domain length written as ``7 * (C0 / freq_max / 20.0)`` is a whole number of cells of dx, so the solved domain equals the declared one.
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -58,14 +59,12 @@ from rfx.boundaries.upml import init_upml, apply_upml_e, apply_upml_h
 from rfx.boundaries.pec import apply_pec
 from rfx.sources.sources import GaussianPulse
 
-# Free-space permittivity/permeability for the energy integral (SI).
-_EPS_0 = 8.854187817e-12
-_MU_0 = 1.2566370614e-6
+VACUUM_PERMITTIVITY_F_PER_M = 8.854187817e-12
+_EPS_0 = VACUUM_PERMITTIVITY_F_PER_M
+VACUUM_PERMEABILITY_H_PER_M = 1.2566370614e-6
+_MU_0 = VACUUM_PERMEABILITY_H_PER_M
 
 
-# --------------------------------------------------------------------------- #
-# Oracle 1 helper: reflection vs a CLEAN, window-sized free-space reference.
-# --------------------------------------------------------------------------- #
 def _upml_reflection_db_vs_clean_reference(f0, freq_max, n_layers, n_steps,
                                            upml_domain=0.06):
     """UPML boundary reflection as peak deviation from a CLEAN free-space run.
@@ -82,12 +81,11 @@ def _upml_reflection_db_vs_clean_reference(f0, freq_max, n_layers, n_steps,
     """
     pulse = GaussianPulse(f0=f0, bandwidth=0.5)
 
-    # dt is fixed by freq_max; probe it to size the reference domain.
-    dt_probe = Grid(freq_max=freq_max, domain=(7 * (C0 / freq_max / 20.0), 7 * (C0 / freq_max / 20.0), 7 * (C0 / freq_max / 20.0)),  # main's solved length; #1887
+    dt_probe = Grid(freq_max=freq_max, domain=(7 * (C0 / freq_max / 20.0), 7 * (C0 / freq_max / 20.0), 7 * (C0 / freq_max / 20.0)),
                     cpml_layers=0).dt
-    ref_extent = 1.15 * n_steps * dt_probe * C0  # echo step ~1.15*n_steps
+    REFERENCE_ECHO_WINDOW_FACTOR = 1.15
+    ref_extent = REFERENCE_ECHO_WINDOW_FACTOR * n_steps * dt_probe * C0
 
-    # --- clean free-space reference (PEC walls too far to echo in-window) ---
     grid_ref = Grid(freq_max=freq_max, domain=(ref_extent,) * 3, cpml_layers=0)
     state = init_state(grid_ref.shape)
     materials = init_materials(grid_ref.shape)
@@ -103,7 +101,6 @@ def _upml_reflection_db_vs_clean_reference(f0, freq_max, n_layers, n_steps,
         state = state._replace(ez=ez)
         ts_ref[n] = float(state.ez[probe])
 
-    # --- small UPML domain (waves hit the UPML boundary) ---
     grid_u = Grid(freq_max=freq_max, domain=(upml_domain,) * 3,
                   cpml_layers=n_layers)
     state = init_state(grid_u.shape)
@@ -125,9 +122,6 @@ def _upml_reflection_db_vs_clean_reference(f0, freq_max, n_layers, n_steps,
     return 20 * np.log10(peak_diff / max(peak_ref, 1e-30))
 
 
-# --------------------------------------------------------------------------- #
-# Oracle 2 helper: INTERIOR (non-PML) energy decay after source-off.
-# --------------------------------------------------------------------------- #
 def _upml_interior_energy_decay_db(n_layers, *, boundary="upml", f0=2e9,
                                    freq_max=3e9, domain=0.12, n_src=None,
                                    n_relax=600):
@@ -141,6 +135,7 @@ def _upml_interior_energy_decay_db(n_layers, *, boundary="upml", f0=2e9,
     decays. A reflecting boundary (``boundary='pec'``, or a sigma=0 "dead" UPML
     via monkeypatch) traps the energy in the interior, so it does not decay.
     Returns ``10*log10(E_interior_final / E_interior_after_source)`` in dB.
+    For the PEC control, a 2-cell margin keeps the two boundaries integrating a comparable interior volume.
     """
     pulse = GaussianPulse(f0=f0, bandwidth=0.5)
     grid = Grid(freq_max=freq_max, domain=(domain,) * 3, cpml_layers=n_layers)
@@ -152,8 +147,6 @@ def _upml_interior_energy_decay_db(n_layers, *, boundary="upml", f0=2e9,
     if n_src is None:
         n_src = int(np.ceil((pulse.t0 + 4.5 * pulse.tau) / dt)) + 1
 
-    # Interior = the non-PML core. For the PEC control keep a 2-cell margin so
-    # the two boundaries integrate a comparable interior volume.
     lo = n_layers if boundary == "upml" else 2
     hi = grid.nx - lo
     sl = (slice(lo, hi),) * 3
@@ -186,9 +179,6 @@ def _upml_interior_energy_decay_db(n_layers, *, boundary="upml", f0=2e9,
     return 10 * np.log10(e_final / max(e_after, 1e-30))
 
 
-# --------------------------------------------------------------------------- #
-# Oracle 1: reflection-floor REGRESSION LOCK.
-# --------------------------------------------------------------------------- #
 def test_upml_reflection_floor_regression():
     """UPML front-interface reflection stays at/below its measured envelope.
 
@@ -212,9 +202,6 @@ def test_upml_reflection_floor_regression():
     )
 
 
-# --------------------------------------------------------------------------- #
-# Oracle 2: interior energy-decay absorber gate + its non-vacuity falsifier.
-# --------------------------------------------------------------------------- #
 def test_upml_interior_energy_decay():
     """A healthy UPML drains interior energy after the source stops.
 
@@ -245,11 +232,8 @@ def test_upml_energy_decay_gate_discriminates_dead_absorber(monkeypatch):
     """
     healthy_db = _upml_interior_energy_decay_db(n_layers=12)
 
-    # PEC box: a fully reflecting boundary — the limiting "absorber does nothing".
     pec_db = _upml_interior_energy_decay_db(n_layers=12, boundary="pec")
 
-    # Dead UPML: keep the full UPML update path but zero the graded sigma so the
-    # boundary is lossless (a coefficient/profile regression that stops absorbing).
     def _zero_sigma(n, dt, dx, order=2, R_asymptotic=1e-15):
         z = np.zeros(n, dtype=np.float64)
         return z, z

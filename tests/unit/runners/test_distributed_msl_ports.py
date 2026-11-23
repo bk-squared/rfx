@@ -34,8 +34,6 @@ def observed_scene(name, lane, mode, n, *, excite_all=False):
     if name == "T1L":
         assert realized["lumped_ports"][0]["x_owners"] == [1]
 
-    # Observer indices come from the declaration and grid coordinates, not the
-    # realization implementation or its source/profile/reduction helpers.
     axis = "y" if name == "Y1" else "x"
     width_axis = "x" if axis == "y" else "y"
     centre = .0039 if axis == "y" else .004
@@ -71,7 +69,8 @@ def observed_scene(name, lane, mode, n, *, excite_all=False):
 
 
 def vi(result, geometry, port):
-    """Literal centre-column voltage and four-leg right-handed Ampere contour."""
+    """Literal centre-column voltage and four-leg right-handed Ampere contour.
+    Y propagation uses the cyclic transverse pair (z, x)."""
     axis, wc, lo, hi, zlo, zhi, dz, dw = geometry
     ez = np.asarray(result.dft_planes[f"{port}_ez"].accumulator)
     hw = np.asarray(result.dft_planes[f"{port}_{'hx' if axis == 'y' else 'hy'}"].accumulator)
@@ -81,7 +80,7 @@ def vi(result, geometry, port):
                * dw[lo:hi + 1]).sum(axis=1)
     current += (hz[:, hi, zhi] - hz[:, lo - 1, zhi]) * dz[zhi]
     if axis == "y":
-        current = -current  # cyclic transverse pair (z,x), not reflected (x,z)
+        current = -current
     if port == "p1":
         current = -current
     return voltage, current
@@ -90,7 +89,8 @@ def vi(result, geometry, port):
 @pytest.fixture(scope="module", params=[2, pytest.param(3, marks=pytest.mark.slow)],
                 ids=lambda n: f"n{n}")
 def device_count(request):
-    devices = host_devices(request.param)  # before ANY reference solve
+    """Require the requested host devices before any reference solve."""
+    devices = host_devices(request.param)
     return request.param, devices
 
 
@@ -107,7 +107,7 @@ def reference(request, device_count):
     references = {}
 
     def reference_at(length):
-        # Only a selected length and the mandatory 2100-step scale are solved.
+        """Solve only requested lengths, including the mandatory 2100-step scale."""
         if length not in references:
             references[length] = sim.run(n_steps=length, compute_s_params=False,
                                          skip_preflight=True)

@@ -322,7 +322,6 @@ def test_forward_unsupported_lanes_retain_preflight_records():
     for distributed in (False, True):
         sim = structure()
         if distributed:
-            # Multi-device forward supports uniform ports but still refuses eigenmode.
             sim._msl_ports.clear()
             sim.add_msl_port(
                 (4 * U, 6 * U, 0),

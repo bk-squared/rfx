@@ -18,8 +18,8 @@ def _sim(graded):
 
 def test_smoothed_seam_matches_uniform():
     block = Box((.0095, .002, .003), (.012, .005, .006))
-    uniform = compute_smoothed_eps(_sim(False)._build_grid(), [(block, 4.)])
-    graded = compute_smoothed_eps_nonuniform(_sim(True)._build_nonuniform_grid(), [(block, 4.)])
+    uniform = compute_smoothed_eps(_sim(False)._build_grid(), [(block, 4.)], dtype='float32')
+    graded = compute_smoothed_eps_nonuniform(_sim(True)._build_nonuniform_grid(), [(block, 4.)], dtype='float32')
     for actual, expected in zip(graded, uniform, strict=True):
         np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-6)
     for eps in (uniform, graded):
@@ -76,7 +76,6 @@ def test_periodic_profile_must_span_declared_period(entry):
               boundary=BoundarySpec(x="pec", y="pec", z="periodic"))
     with pytest.raises(ValueError, match=r"Declared domain z = 0.012 m differs"):
         Simulation(**kw, dz_profile=np.full(10, .001))
-    # Kept with snap="declared", the period check still refuses at the run (#1941).
     with pytest.warns(DeclaredZWarning):
         sim = Simulation(**kw, dz_profile=np.full(10, .001), snap="declared")
     with pytest.raises(ValueError, match=r"declared period 0.012 m.*realized period 0.01 m"):

@@ -126,7 +126,6 @@ def test_build_runtime_report_with_result_like_object():
     assert result["s_params"]["shape"] == [1, 1, 3]
     assert result["freqs"]["count"] == 3
     assert result["snapshots"]["ez"]["shape"] == [2, 3, 4]
-    # Large result arrays are summarized by metadata, not serialized as values.
     assert "[[0.0, 1.0]" not in json.dumps(result)
 
 

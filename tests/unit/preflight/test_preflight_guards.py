@@ -43,6 +43,7 @@ This file replaces three entries of the ``guards-and-preflight`` PR lane
 Every assertion, tolerance, fixture value and parametrisation of the
 absorbed files is kept verbatim (the identical ``_issues`` / ``_has`` /
 ``_codes`` helpers are defined once).
+The domain lengths written as 23*dx_coarse, 10*dx_coarse, 11*1e-3 and 14 * (299792458.0 / 10e9 / 20.0) are whole numbers of cells, so their solved lengths equal their declared lengths.
 """
 
 from __future__ import annotations
@@ -62,9 +63,6 @@ from rfx.api._preflight import (
 )
 
 
-# ===========================================================================
-# formerly tests/unit/preflight/test_preflight_guards.py
-# ===========================================================================
 
 def _issues(sim):
     return sim.preflight()
@@ -107,8 +105,6 @@ def test_zero_thickness_pec_box_is_a_sheet_and_draws_no_thickness_advice():
 
     issues = _issues(sim)
     assert not issues.by_code("mesh_resolution"), issues
-    # An exactly on-node sheet has no offset to report. Its realization
-    # must survive even though the conditional advisory stays silent.
     assert not issues.by_code("sheet_plane_realized"), issues
     rz = realized(sim)
     assert rz.sheet_planes == {2: [node_index(rz.grid, 2, 0.005)]}
@@ -151,7 +147,7 @@ def test_fine_dielectric_is_silent():
     sim = Simulation(freq_max=2.4e9, domain=(0.08, 0.08, 0.04), dx=1e-3,
                      cpml_layers=4)
     sim.add_material("fr4", eps_r=4.3)
-    # 60x60x1.5mm substrate at dx=1mm: λ_eff/dx ≈ 60mm/1mm = 60 → silent.
+    assert np.isclose(299792458.0 / (sim._freq_max * np.sqrt(sim._resolve_material("fr4").eps_r) * sim._dx), 60, rtol=.01), "The substrate has approximately 60 cells per effective wavelength."
     sim.add(Box((0.010, 0.010, 0.012),
                 (0.070, 0.070, 0.0135)), material="fr4")
     sim.add_source((0.04, 0.04, 0.013), "ez")
@@ -183,7 +179,6 @@ def test_dielectric_near_old_threshold_now_warns():
     The pre-2026-04-24 threshold of 10 cells/λ_eff was borrowed from
     subpixel-smoothed codes and is too loose for raw Yee. Raised to 15.
     """
-    # εr=2, f_max=17.5 GHz, dx=1mm → λ_eff=12.1mm → 12.1 cells/λ_eff.
     sim = Simulation(freq_max=17.5e9, domain=(0.04, 0.02, 0.02), dx=1e-3,
                      cpml_layers=4)
     sim.add_material("eps2", eps_r=2.0)
@@ -221,7 +216,7 @@ def _build_wr90_slab_nu_sim(dx_fine):
     dx_profile = smooth_grading(raw, max_ratio=1.3)
 
     sim = Simulation(
-        freq_max=12e9, domain=(float(_np.sum(dx_profile)), 23 * dx_coarse, 10 * dx_coarse),  # solved length; #1887
+        freq_max=12e9, domain=(float(_np.sum(dx_profile)), 23 * dx_coarse, 10 * dx_coarse),
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),
             y=Boundary(lo="pec", hi="pec"),
@@ -271,9 +266,9 @@ def test_compute_waveguide_s_matrix_dispatches_nu_when_normalized():
     """
     sim = _build_wr90_slab_nu_sim(dx_fine=0.5e-3)
     res = sim.compute_waveguide_s_matrix(num_periods=2, normalize=True)
-    assert res.s_params.shape[0] == 2  # two ports
+    assert res.s_params.shape[0] == 2
     assert res.s_params.shape[1] == 2
-    assert res.s_params.shape[2] == 5  # five freqs
+    assert res.s_params.shape[2] == 5
 
 
 def test_dielectric_sparam_active_raises_threshold_to_20():
@@ -286,11 +281,9 @@ def test_dielectric_sparam_active_raises_threshold_to_20():
     preflight tightens to 20 cells/λ_eff when any port or flux
     monitor is present.
     """
-    # εr=2, f_max=12 GHz, dx=1mm → λ_eff=17.7mm → 17.7 cells/λ_eff.
     common = dict(freq_max=12e9, domain=(0.05, 0.02286, 11 * 1e-3),
-                  dx=1e-3, cpml_layers=4)  # solved length; #1887
+                  dx=1e-3, cpml_layers=4)
 
-    # Case A: same resolution, NO S-param — should be silent (17.7 > 15).
     sim_a = Simulation(**common)
     sim_a.add_material("eps2", eps_r=2.0)
     sim_a.add(Box((0.020, 0.0, 0.0), (0.030, 0.02286, 0.01016)),
@@ -302,7 +295,6 @@ def test_dielectric_sparam_active_raises_threshold_to_20():
         f"issues: {issues_a!r}"
     )
 
-    # Case B: same resolution + waveguide port — should WARN (17.7 < 20).
     sim_b = Simulation(**common)
     sim_b.add_material("eps2", eps_r=2.0)
     sim_b.add(Box((0.020, 0.0, 0.0), (0.030, 0.02286, 0.01016)),
@@ -317,7 +309,6 @@ def test_dielectric_sparam_active_raises_threshold_to_20():
         f"raised to 20 when S-param extraction is active); "
         f"issues: {issues_b!r}"
     )
-    # Make sure the stronger hint is present.
     assert any("S-parameter extraction" in i for i in issues_b), (
         f"S-param-specific suffix missing; issues: {issues_b!r}"
     )
@@ -408,28 +399,17 @@ def test_wg_port_evanescent_warns_above_threshold():
         freqs=jnp.linspace(5e9, 7.0e9, 4), f0=6e9, bandwidth=0.5,
     )
     issues = _issues(sim)
-    # Issue #738 review: `_has(issues, "contamination")` (a prose
-    # substring match) is the same fragile-substring failure mode this
-    # issue exists to catch — `_has(issues, "evanescent")` silently could
-    # not match "Evanescent {label} contamination" (case-sensitive E vs
-    # e). Assert on the structured code instead.
     assert any(getattr(i, "code", None) == "port_evanescent" for i in issues), (
         f"7.0 GHz > 0.90×fc_next must trigger a port_evanescent finding; "
         f"issues: {issues!r}"
     )
 
 
-# ===========================================================================
-# formerly tests/unit/preflight/test_preflight_guards.py
-# ===========================================================================
 
 def _codes(sim):
     return {getattr(i, "code", None) for i in sim.preflight()}
 
 
-# ---------------------------------------------------------------------------
-# FP1 — thin-sheet PEC strip should not trigger PEC-volume warning
-# ---------------------------------------------------------------------------
 def test_thin_pec_strip_with_4_cell_y_silent_on_volume_warning():
     """Strip-shape PEC with z = 1 cell is a one-cell slab (realized as
     drawn); the 4-cells-along-y signal must not fire the partial-volume
@@ -439,7 +419,7 @@ def test_thin_pec_strip_with_4_cell_y_silent_on_volume_warning():
     sim = Simulation(freq_max=10e9, domain=(LX, LY, LZ), dx=DX,
                      cpml_layers=4)
     sim.add_source((LX/2, LY/2, 0.0005), "ez")
-    # 30mm × 2mm × 0.5mm = 60 × 4 × 1 cells (y-axis is the FP zone)
+    assert np.allclose(np.array((LX, 0.0035 - 0.0015, 0.0015 - 0.001)) / DX, (60, 4, 1)), "The strip occupies 60 by 4 by 1 cells."
     sim.add(Box((0.0, 0.0015, 0.001), (LX, 0.0035, 0.0015)),
             material="pec")
     issues = _issues(sim)
@@ -456,18 +436,15 @@ def test_pec_volume_partial_in_all_axes_still_warns():
     sim = Simulation(freq_max=10e9, domain=(0.020, 0.020, 0.020), dx=DX,
                      cpml_layers=4)
     sim.add_source((0.010, 0.010, 0.002), "ez")
-    # 4mm × 4mm × 4mm = 4 × 4 × 4 cells: every axis in [3, 5).
     sim.add(Box((0.005, 0.005, 0.005), (0.009, 0.009, 0.009)),
             material="pec")
+    assert np.allclose([(hi - lo) / DX for lo, hi in zip(sim._geometry[0].shape.corner_lo, sim._geometry[0].shape.corner_hi)], (4, 4, 4)), "The PEC cube occupies four cells on every axis."
     issues = _issues(sim)
     assert _has(issues, "PEC volume"), (
         f"true 4-cell PEC volume must still warn; issues: {issues!r}"
     )
 
 
-# ---------------------------------------------------------------------------
-# FP3 — explicit full-domain Box edge is not a CPML-extension footgun
-# ---------------------------------------------------------------------------
 def test_full_domain_dielectric_silent_on_cpml_extension():
     """Box((0, 0, 0), (LX, LY, ...)) is the canonical MSL substrate
     pattern — must not trigger the issue #61 CPML-extension warning."""
@@ -502,11 +479,10 @@ def test_inset_box_leaking_into_cpml_still_warns():
     sim = Simulation(freq_max=10e9, domain=(LX, LY, LZ), dx=DX,
                      cpml_layers=4)
     sim.add_material("fr4", eps_r=4.3)
-    # CPML thickness = 4 x 0.5mm = 2mm. Box inset 0.5mm in x (no leak
-    # there) but c1[2]=-0.0003 is genuinely in the exterior z_lo absorber.
     sim.add(Box((0.0005, 0, -0.0003), (LX - 0.0005, LY, 0.0002)),
             material="fr4")
     sim.add_source((LX/2, LY/2, 0.0002), "ez")
+    assert np.isclose(sim._cpml_layers * DX, 2e-3) and sim._geometry[0].shape.corner_lo[0] > 0 and -2e-3 < sim._geometry[0].shape.corner_lo[2] < 0, "The inset box crosses into the exterior z-low absorber with 2 mm of CPML."
     issues = _issues(sim)
     assert _has(issues, "extends into CPML"), (
         f"Box straddling the z=0 edge and leaking into CPML must still warn; "
@@ -514,9 +490,6 @@ def test_inset_box_leaking_into_cpml_still_warns():
     )
 
 
-# ---------------------------------------------------------------------------
-# FP4 — port/probe liveness is read from the REALIZED edge set (#931/#929)
-# ---------------------------------------------------------------------------
 def _msl_sim_with_probe(component: str, trace: str = "sheet",
                         probe_on_plane: bool = False) -> Simulation:
     """Tiny MSL geometry with one diagnostic probe half a cell above the
@@ -545,8 +518,6 @@ def _msl_sim_with_probe(component: str, trace: str = "sheet",
         material="pec",
     )
     sim.add_source((0.5e-3, y_trace, 0.5 * H_SUB), "ez")
-    # Probe half a cell above the substrate top (beside a sheet trace,
-    # inside a one-cell volume trace), or ON the trace plane itself.
     z_probe = H_SUB if probe_on_plane else H_SUB + 0.5 * DX
     sim.add_probe((LX / 2, y_trace, z_probe), component)
     return sim
@@ -611,10 +582,9 @@ def test_hy_probe_inside_thick_pec_volume_still_warns():
     sim = Simulation(freq_max=10e9, domain=(LX, LY, LZ), dx=DX,
                      cpml_layers=4)
     sim.add_source((0.002, 0.002, 0.002), "ez")
-    # 5 × 5 × 5 mm = 5 × 5 × 5 cells PEC volume.
     sim.add(Box((0.005, 0.005, 0.005), (0.010, 0.010, 0.010)),
             material="pec")
-    sim.add_probe((0.0075, 0.0075, 0.0075), "hy")  # cell centre, deep
+    sim.add_probe((0.0075, 0.0075, 0.0075), "hy")
     issues = _issues(sim)
     assert _in_pec(issues), (
         f"Hy probe in thick PEC volume must warn; "
@@ -659,23 +629,19 @@ def test_pec_empty_cavity_with_source_stays_silent():
     )
 
 
-# ===========================================================================
-# formerly tests/unit/preflight/test_preflight_guards.py
-# ===========================================================================
 
-# ---------------------------------------------------------------- (a) records
 def test_preflight_returns_back_compatible_structured_issues():
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
+    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)
+    assert sim._build_grid().position_to_index(sim._ports[0].position)[2] == sim._build_grid().nz - sim._build_grid().pad_z_hi, "The source maps to the first exterior CPML node."
     sim.add_probe((0.01, 0.01, 0.022), component="ez", allow_in_absorber=True)
     report = sim.preflight()
     assert len(report), "expected a preflight finding for a source/probe in CPML"
     for issue in report:
         assert isinstance(issue, PreflightIssue)
-        assert isinstance(issue, str)          # back-compat: still a string
+        assert isinstance(issue, str)
         assert issue.severity in ("warning", "error", "info")
         assert isinstance(issue.code, str) and issue.code
-    # Back-compat operations the old list[str] supported still work.
     assert isinstance("\n".join(report), str)
 
 
@@ -689,20 +655,15 @@ def test_preflight_report_is_a_list_with_canonical_api():
     idiom (.issues/.errors/.warnings/.infos/.ok/.format()/.to_dict()/
     .to_json())."""
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
+    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)
+    assert sim._build_grid().position_to_index(sim._ports[0].position)[2] == sim._build_grid().nz - sim._build_grid().pad_z_hi, "The source maps to the first exterior CPML node."
     sim.add_probe((0.01, 0.01, 0.022), component="ez", allow_in_absorber=True)
     report = sim.preflight()
     assert isinstance(report, PreflightReport) and isinstance(report, list)
-    # list[str] ops the 65 legacy call sites rely on
     assert isinstance("\n".join(report), str)
-    # bool(report) is NOT in this list: it raises by design (#980, see
-    # tests/unit/preflight/test_preflight_report_truthiness.py).
     assert len(report) == len(list(report)) and len(report) > 0
-    # canonical report API
     assert report.issues == list(report)
     assert report.ok == (not report.errors)
-    # errors + warnings + infos partition the report; .warnings excludes the
-    # info tier (see PreflightIssue's docstring), so all three are needed.
     assert (set(report.warnings) | set(report.errors)
             | set(report.infos)) == set(report)
     assert not (set(report.warnings) & set(report.infos))
@@ -719,7 +680,8 @@ def test_codes_set_at_check_site():
     emitting check.
     """
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
+    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)
+    assert sim._build_grid().position_to_index(sim._ports[0].position)[2] == sim._build_grid().nz - sim._build_grid().pad_z_hi, "The source maps to the first exterior CPML node."
     sim.add_probe((0.01, 0.01, 0.022), component="ez", allow_in_absorber=True)
     report = sim.preflight()
     absorber = report.by_code("absorber_overlap")
@@ -742,22 +704,6 @@ def test_error_severity_mapping_end_to_end():
     assert any("forced known-bad" in i for i in errs)
 
 
-# --------------------------------------------------------- (b) conformal guard
-# The three behavioural tests for ``_validate_cfg_conformal_fine_dx`` stood
-# here and were DELETED 2026-09-15 (#1043 / PR #1047) with the check itself.
-# The check warned that conformal PEC at dx <= 2 mm is "a KNOWN NaN"; the NaN
-# was the CPML psi coefficient reading a different permittivity than the Yee
-# half of the same timestep, and it no longer happens, so the advisory had
-# become a false positive. Its own comment named
-# ``tests/unit/geometry/test_subpixel_pec.py::test_mesh_convergence_s21_with_conformal_pec``
-# (xfail strict=True) as the tripwire that would say so, and that test now
-# passes as a real convergence gate on the same three rungs.
-#
-# The replacement coverage is NOT another guard test: it is that convergence
-# gate plus
-# ``test_pec_short_conformal_stays_bounded_over_a_long_record``, which
-# measures the thing the guard was warning about instead of asserting the
-# warning's text.
 
 
 def test_conformal_fine_dx_guard_is_gone():
@@ -783,7 +729,6 @@ def test_conformal_fine_dx_guard_is_gone():
     )
 
 
-# --------------------------------------------------- (c) lossless-resonator
 def _box_sim(material):
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
     sim.add(Box((0.005,) * 3, (0.015,) * 3), material=material)
@@ -800,38 +745,38 @@ def _lossless_warnings(sim):
 
 
 def test_lossless_dielectric_in_cpml_warns():
-    # alumina: eps_r 9.8, sigma 0 (built-in, resolved via MATERIAL_LIBRARY).
-    assert len(_lossless_warnings(_box_sim("alumina"))) == 1
+    LOSSLESS_MATERIAL_NAME = "alumina"
+    assert _box_sim(LOSSLESS_MATERIAL_NAME)._resolve_material(LOSSLESS_MATERIAL_NAME).eps_r == 9.8 and _box_sim(LOSSLESS_MATERIAL_NAME)._resolve_material(LOSSLESS_MATERIAL_NAME).sigma == 0, "The alumina fixture has relative permittivity 9.8 and zero conductivity."
+    assert len(_lossless_warnings(_box_sim(LOSSLESS_MATERIAL_NAME))) == 1
 
 
 def test_lossy_dielectric_silent():
-    # fr4: sigma 0.025 => not the artificial-Q trap, no false positive.
-    assert len(_lossless_warnings(_box_sim("fr4"))) == 0
+    LOSSY_MATERIAL_NAME = "fr4"
+    assert _box_sim(LOSSY_MATERIAL_NAME)._resolve_material(LOSSY_MATERIAL_NAME).sigma == 0.025, "The FR4 fixture has conductivity 0.025 S/m."
+    assert len(_lossless_warnings(_box_sim(LOSSY_MATERIAL_NAME))) == 0
 
 
-# ------------------------------------------------ (d) Phase A meta-coverage
 def _bad_sim_probe_in_cpml():
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
+    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)
+    assert sim._build_grid().position_to_index(sim._ports[0].position)[2] == sim._build_grid().nz - sim._build_grid().pad_z_hi, "The source maps to the first exterior CPML node."
     sim.add_probe((0.01, 0.01, 0.022), component="ez", allow_in_absorber=True)
     return sim
 
 
 def _bad_sim_no_sources():
-    # no_sources advisory
-    return Simulation(domain=(14 * (299792458.0 / 10e9 / 20.0),) * 3, freq_max=10e9, dx=299792458.0 / 10e9 / 20.0, boundary="pec")  # solved length; #1887
+    return Simulation(domain=(14 * (299792458.0 / 10e9 / 20.0),) * 3, freq_max=10e9, dx=299792458.0 / 10e9 / 20.0, boundary="pec")
 
 
 def _bad_sim_lossless_q():
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add(Box((0.005,) * 3, (0.015,) * 3), material="alumina")  # lossless_q
+    sim.add(Box((0.005,) * 3, (0.015,) * 3), material="alumina")
     sim.add_source((0.01, 0.01, 0.01), component="ez")
     sim.add_probe((0.01, 0.01, 0.012), component="ez")
     return sim
 
 
 def _bad_sim_under_resolved_dielectric():
-    # mesh_resolution: a fat high-eps slab under-resolved at coarse dx.
     sim = Simulation(domain=(0.04, 0.04, 0.04), freq_max=20e9, dx=2e-3,
                      boundary="pec")
     sim.add_material("hi", eps_r=12.0)
@@ -842,7 +787,6 @@ def _bad_sim_under_resolved_dielectric():
 
 
 def _bad_sim_upml_refinement():
-    # upml_refinement: structurally-impossible config (error severity).
     from rfx import GaussianPulse
     sim = Simulation(freq_max=6e9, domain=(0.04, 0.04, 0.02),
                      boundary="upml", cpml_layers=6, dx=0.002)
@@ -911,18 +855,16 @@ def test_to_dict_and_to_json_roundtrip_carry_code_and_severity():
     assert back["issues"][0]["severity"] == report[0].severity
 
 
-# ------------------------------------------------ Phase C-full: aggregate strict
 def test_strict_aggregates_all_issues_in_one_raise():
     """strict=True escalates EVERY finding in ONE ValueError (aggregate-then-
     raise), not fail-on-first — preserving the historical 'strict escalates any
     issue' contract while reporting all problems at once."""
     sim = Simulation(domain=(0.02,) * 3, freq_max=10e9, boundary="cpml")
-    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)  # exterior CPML: nz=47, pad=16/16 -> interior idx 16..30 (last interior z~=20.99mm); 0.0225 rounds to idx 31, first exterior node (#500 L7)
-    sim.add_probe((0.01, 0.01, 0.022), component="ez", allow_in_absorber=True)     # in exterior CPML (#500)
-    # strict=False shows >= 2 findings...
+    sim.add_source((0.01, 0.01, 0.0225), component="ez", allow_in_absorber=True)
+    sim.add_probe((0.01, 0.01, 0.022), component="ez", allow_in_absorber=True)
+    assert all(sim._build_grid().position_to_index(entry.position)[2] == sim._build_grid().nz - sim._build_grid().pad_z_hi for entry in (*sim._ports, *sim._probes)), "The source and probe map to the first exterior CPML node."
     report = sim.preflight()
     assert len(report) >= 2, f"need a multi-issue config; got {list(report)}"
-    # ...and strict raises ONCE listing all of them.
     with pytest.raises(ValueError) as exc:
         sim.preflight(strict=True)
     text = str(exc.value)
@@ -932,12 +874,11 @@ def test_strict_aggregates_all_issues_in_one_raise():
 def test_raise_for_failure_is_errors_only_gate():
     """report.raise_for_failure() is the SOFTER pre-launch gate: it raises only
     on error-severity, letting advisory warnings through (unlike strict=True)."""
-    report = _bad_sim_probe_in_cpml().preflight()   # warnings only, no errors
-    assert len(report) and report.ok     # ok == no error-severity issues
-    report.raise_for_failure()           # must NOT raise on warning-only report
+    report = _bad_sim_probe_in_cpml().preflight()
+    assert len(report) and report.ok
+    report.raise_for_failure()
 
 
-# ------------------------------------------------ Phase D: validator crash is loud
 def test_validator_crash_propagates_not_swallowed():
     """A validator raising a NON-ValueError is a bug, not a finding — it must
     propagate (loud), not degrade to a soft advisory that hides it."""
@@ -947,16 +888,12 @@ def test_validator_crash_propagates_not_swallowed():
 
     def _boom():
         raise RuntimeError("validator bug")
-    # Target a validator run() actually invokes (run() uses check_ntff=False, so
-    # the NTFF inverse-design check is NOT on its path).
     sim._validate_simulation_config = _boom
 
-    # Via the auto-preflight path (run) the bug must surface, not be swallowed.
     with pytest.raises(RuntimeError, match="validator bug"):
         sim.run(n_steps=5)
 
 
-# ----------------------------------------- run() error-severity + NTFF surface
 def test_run_uses_ntff_advisory_tier_but_forward_gets_the_error():
     """run() must NOT hard-fail on the NTFF PEC-overlap error, while
     forward()/optimize (the inverse-design entry points) still do.
@@ -971,8 +908,6 @@ def test_run_uses_ntff_advisory_tier_but_forward_gets_the_error():
         s.add_source((0.01, 0.01, 0.01), component="ez")
         s.add_probe((0.01, 0.01, 0.012), component="ez")
 
-        # Stand in for an NTFF-box-crosses-PEC error-severity finding that
-        # honors the error-tier switch like the real validator.
         def _fake_ntff(*, include_pec_overlap_error: bool = True):
             if include_pec_overlap_error:
                 raise ValueError("NTFF box face crosses PEC")
@@ -980,9 +915,7 @@ def test_run_uses_ntff_advisory_tier_but_forward_gets_the_error():
         s._validate_ntff_inverse_design = _fake_ntff
         return s
 
-    # run(): advisory tier -> validator invoked WITHOUT the error tier
     _sim().run(n_steps=5)
-    # forward(): full tier -> error-severity -> re-raised
     with pytest.raises(ValueError, match="NTFF box face crosses PEC"):
         _sim().forward(n_steps=5)
 
@@ -998,14 +931,12 @@ def test_run_hard_fails_on_error_severity_and_skip_bypasses():
     )
     with pytest.raises(ValueError, match="structurally impossible config"):
         sim.run(n_steps=5)
-    # escape hatch: skip_preflight bypasses the preflight (and its re-raise)
     import warnings as _w
     with _w.catch_warnings():
-        _w.simplefilter("error")  # no preflight warning/raise should fire
+        _w.simplefilter("error")
         sim.run(n_steps=5, skip_preflight=True)
 
 
-# ------------------------------------------------- issue #166: 2D z + units
 def test_absorber_overlap_no_false_positive_on_2d_collapsed_z():
     """2D modes collapse z to a single cell with NO absorber (Grid strips z
     from cpml_axes and sets pad_z=0). Every 2D source/probe necessarily sits
@@ -1013,8 +944,6 @@ def test_absorber_overlap_no_false_positive_on_2d_collapsed_z():
     emitted one absorber_overlap line per line-source point)."""
     sim = Simulation(domain=(16e-6, 9e-6, 1e-7), freq_max=7.5e13, dx=1e-7,
                      boundary="upml", cpml_layers=20, mode="2d_tmz")
-    # mid-domain in x and y — only the collapsed z coordinate (0) is "near"
-    # the phantom z absorber the old mirror logic assumed.
     sim.add_source((8e-6, 4.5e-6, 0), component="ez")
     sim.add_probe((9e-6, 4.5e-6, 0), component="ez")
     report = sim.preflight()
@@ -1033,7 +962,7 @@ def test_absorber_overlap_still_fires_on_2d_xy():
     """
     sim = Simulation(domain=(16e-6, 9e-6, 1e-7), freq_max=7.5e13, dx=1e-7,
                      boundary="upml", cpml_layers=20, mode="2d_tmz")
-    sim.add_source((-5e-7, 4.5e-6, 0), component="ez")   # genuinely in x_lo absorber
+    sim.add_source((-5e-7, 4.5e-6, 0), component="ez")
     report = sim.preflight()
     overlap = report.by_code("absorber_overlap")
     assert overlap, "expected absorber_overlap for a source in the x_lo absorber"
@@ -1075,23 +1004,7 @@ def test_mesh_warning_uses_adaptive_units_at_optical_scale():
     assert not any("0.000mm" in m for m in mesh), mesh
 
 
-# ===========================================================================
-# formerly tests/unit/preflight/test_preflight_guards.py
-# ===========================================================================
 
-# 2026-09-23 (#1163): this section held the ``tfsf_lumped_rlc_unstable``
-# advisory's guard (it warns on TFSF + lumped RLC) and two no-false-positive
-# checks for it. The advisory is deleted: the divergence it described was the
-# series RLC element's own edge coupling (it realized R - d/(D0*A), a negative
-# resistance below ~215 ohm), not the TFSF source, and #1163 fixes that
-# coupling. What replaces the guard is the behaviour it guarded, on its OWN
-# fixture: the pairing it called unstable must now decay.
-#
-# MEASURED (1200 steps): max over the last 400 steps / peak = 2.0e-4 (series
-# 50 ohm + 0.2 pF), 2.4e-4 (series 50 ohm + 1 nH + 0.2 pF), 4.9e-4 (parallel
-# 50 ohm || 0.2 pF, which never diverged -- the old advisory warned on it too).
-# With the replaced series update, same fixture and step count: R+C is
-# non-finite from step 246, R+L+C reaches 3.7e10 by step 1200.
 _TFSF_RLC_STEPS = 1200
 _TFSF_RLC_DECAY = 1e-3
 
@@ -1100,8 +1013,7 @@ _TFSF_RLC_DECAY = 1e-3
     (0.0, "series"), (1e-9, "series"), (0.0, "parallel"),
 ], ids=["series-RC", "series-RLC", "parallel-RC"])
 def test_tfsf_plane_wave_on_a_lumped_rlc_decays(l_h, topology):
-    # Declare the legacy transverse period, including its eight-cell pads and
-    # bounding node; translated coordinates retain the same sampled nodes.
+    """An earlier 1200-step measurement gave last-400-step/peak ratios of 2.0e-4 for series RC, 2.4e-4 for series RLC and 4.9e-4 for parallel RC, below the 1e-3 decay bar."""
     sim = Simulation(freq_max=16e9, domain=(0.02, 0.037, 0.037), dx=0.02 / 20,
                      boundary={"x": "cpml", "y": "periodic", "z": "periodic"},
                      cpml_layers=8, mode="3d")

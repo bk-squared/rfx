@@ -69,12 +69,9 @@ def test_forward_fields(name, lane, mode, n, length, override):
 @pytest.mark.slow
 @pytest.mark.parametrize('n', [2, 3])
 def test_microstrip_vmap(n):
-    # The graded lumped/current-source lane carries vmap (records_vmap and
-    # nu_drive_sees_override); microstrip has the same carried row.
     devices = host_devices(n)
     sim = scene_for('T1A', 'graded', 'laplace', n)
     base, masks = parameter_blocks(sim, 'T1A')
-    # Match the lumped-port override row's supported batch/device layout.
     ps = jnp.linspace(0., .5, n)[:, None] * jnp.array([0., 0., 1., 1.], jnp.float32)
     def solve(p, options):
         return sim.forward(eps_override=eps_of(base, masks, p), n_steps=1050, **options).time_series

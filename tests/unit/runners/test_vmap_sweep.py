@@ -10,9 +10,6 @@ from rfx.vmap_sweep import vmap_material_sweep, VmapSweepResult
 pytestmark = [pytest.mark.gpu, pytest.mark.gpu_gate]
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _make_dielectric_sim(eps_r: float = 4.0, amplitude_kind=None):
     """Create a simple PEC-bounded sim with a dielectric slab and probe."""
@@ -75,9 +72,6 @@ def _make_cpml_sim(eps_r: float = 4.0, thin_conductor: bool = False,
     return sim
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
 
 class TestVmapSweepBasic:
     """Basic functionality tests."""
@@ -97,7 +91,6 @@ class TestVmapSweepBasic:
         assert len(result.param_values) == 4
         npt.assert_array_equal(result.param_values, eps_values)
 
-        # Each eps_r should produce a distinct time series
         for i in range(len(eps_values)):
             for j in range(i + 1, len(eps_values)):
                 diff = np.max(np.abs(
@@ -114,12 +107,10 @@ class TestVmapSweepBasic:
         eps_values = np.array([2.0, 6.0])
         n_steps = 40
 
-        # Vmap path
         vmap_result = vmap_material_sweep(
             sim, "substrate.eps_r", eps_values, n_steps=n_steps,
         )
 
-        # Sequential path: run each simulation individually
         for idx, eps_val in enumerate(eps_values):
             sim_single = _make_dielectric_sim(eps_r=float(eps_val))
             single_result = sim_single.run(n_steps=n_steps)
@@ -144,10 +135,8 @@ class TestVmapSweepBasic:
         )
 
         assert result.time_series.shape == (12, n_steps, 1)
-        # Verify monotonic change: higher eps_r -> slower wave -> different peak
         peaks = result.peak_field()
         assert peaks.shape == (12,)
-        # All peaks should be positive (source is active)
         assert np.all(peaks > 0)
 
 
@@ -164,7 +153,8 @@ class TestVmapSweepParams:
         assert result.param_name == "eps_r"
 
     def test_sigma_sweep(self):
-        """Sweep conductivity."""
+        """Sweep conductivity.
+        The decreasing peak-field trend allows tolerance for the very first steps."""
         sim = Simulation(
             freq_max=5e9,
             domain=(0.02, 0.02, 0.02),
@@ -183,10 +173,7 @@ class TestVmapSweepParams:
         )
 
         assert result.time_series.shape == (3, 40, 1)
-        # Higher sigma -> more loss -> lower peak field
         peaks = result.peak_field()
-        # The trend should be decreasing (more loss = smaller peak)
-        # Allow some tolerance for the very first steps
         assert peaks[0] > peaks[2] or np.isclose(peaks[0], peaks[2], rtol=0.5)
 
     def test_invalid_param_name(self):
@@ -216,7 +203,6 @@ class TestVmapSweepCPML:
         )
 
         assert result.time_series.shape == (2, n_steps, 1)
-        # Results should differ
         diff = np.max(np.abs(
             result.time_series[0] - result.time_series[1]
         ))

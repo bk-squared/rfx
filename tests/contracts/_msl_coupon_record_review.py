@@ -3,6 +3,7 @@
 Read-only with respect to fixtures: this emits an acceptance report, never
 updates a golden. The original 604 physical verdict is extracted from its
 preserved log; no missing diagnostics are synthesized for that record.
+The raw V/I dump always retains the pre-projection S.
 """
 from __future__ import annotations
 
@@ -22,6 +23,7 @@ def load_arrays(path):
 
 
 def review(base_root, qualification_root):
+    """Allow only float64 coordinate accumulation noise in the actual sampled reference planes."""
     environment = json.loads((base_root / 'environment.json').read_text())
     baseline = load_arrays(base_root / 'coupon/call-0-result.npz')
     baseline_hash = hashlib.sha256((base_root / 'coupon/call-0-result.npz').read_bytes()).hexdigest()
@@ -54,11 +56,8 @@ def review(base_root, qualification_root):
     fine = cases['refinement'][1]
     repeat_delta = abs(repeat['S'] - baseline['S'])
     repeat_limit = .002 + .005 * abs(baseline['S'])
-    # These are the existing capture tolerances, not measured new bounds.
     if not np.all(repeat_delta <= repeat_limit):
         failures.append('same-mesh confirmation exceeds rtol=.005 / atol=.002')
-    # The dump always retains the pre-projection S. Do not substitute the
-    # displayed S when a result omits its optional S_raw attribute.
     with np.load(base_root / 'coupon/call-0-raw-vi.npz') as dump:
         base_raw = dump['production_smatrix']
         base_metadata = json.loads(str(dump['metadata_json']))
@@ -67,8 +66,6 @@ def review(base_root, qualification_root):
         fine_metadata = json.loads(str(dump['metadata_json']))
     base_planes = [s['voltage_coordinate'] for s in base_metadata['current_plane_stencils']]
     fine_planes = [s['voltage_coordinate'] for s in fine_metadata['current_plane_stencils']]
-    # Refinement must retain the actual sampled reference planes, not just
-    # the declared drawing. Allow only float64 coordinate accumulation noise.
     np.testing.assert_allclose(fine_planes, base_planes, rtol=1e-12, atol=0)
     if 'S_raw' in baseline:
         np.testing.assert_array_equal(base_raw, baseline['S_raw'])

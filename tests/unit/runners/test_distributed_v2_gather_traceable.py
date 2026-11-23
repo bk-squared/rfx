@@ -48,7 +48,6 @@ def test_distributed_v2_gather_pattern_is_differentiable():
     grad = jax.grad(loss)(x)
     assert grad.shape == x.shape
     assert np.all(np.isfinite(np.asarray(grad)))
-    # A non-trivial gradient — the gather actually couples input to output.
     assert float(jnp.max(jnp.abs(grad))) > 0.0
 
 
@@ -66,7 +65,7 @@ def test_old_np_array_host_pull_breaks_tracing():
     x = jnp.ones((_N_DEVICES * _NX_LOCAL, _NY, _NZ))
 
     def bad_gather(sharded_arr):
-        arr = np.array(sharded_arr)  # the removed pre-fix line
+        arr = np.array(sharded_arr)
         return jnp.sum(jnp.asarray(arr) ** 2)
 
     with pytest.raises(jax.errors.TracerArrayConversionError):

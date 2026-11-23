@@ -10,8 +10,6 @@ def node_distance(grid, axis, first, second):
         return abs(second - first) * float(grid.boundary_cell(axis, "lo"))
     if traced_cell_mask(grid, axis) is None:
         return abs(float(grid.node_of(axis, second)) - float(grid.node_of(axis, first)))
-    # Traced deformation window: nodes from the host nominal widths, whose
-    # total admission holds fixed outside the window.
     from rfx.geometry.rasterize_grid import _axis_node_positions
     ax, _n, pad_lo, _pad_hi = grid._axis_layout(axis)
     nodes = _axis_node_positions(host_cells(grid, ax), pad_lo)
@@ -47,10 +45,12 @@ def _calculator_source_plane(grid, port):
     This is an internal one-cell descriptor, not a declared coordinate.
     Preserve its float64 half-to-even arithmetic independently of the
     declared-coordinate tie rule.
+
+    The returned index assumes a uniform z axis, which the coax calculators require.
     """
     direction = 1 if port.face == "bottom" else -1
     centre = port.position[2] + direction * port.pin_length / 2.0
-    dz = float(grid.cells(2)[0])   # uniform z only (coax calculators refuse a graded mesh)
+    dz = float(grid.cells(2)[0])
     return int(round(centre / dz)) + grid.pad_z_lo
 
 

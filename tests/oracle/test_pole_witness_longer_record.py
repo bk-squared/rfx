@@ -1,4 +1,5 @@
-"""P1-P3: the same pole's gradient from the 12 ns and 24 ns sheet-Rs records."""
+"""P1-P3: the same pole's gradient from the 12 ns and 24 ns sheet-Rs records.
+The longer-record witnesses are slow-marked because an earlier measurement took 7.8x and 6.6x the wall time of the sheet-Rs pole derivative oracle."""
 import json
 import time
 
@@ -12,16 +13,12 @@ from tests._x64_compat import enable_x64
 from tests.oracle._sheet_rs_pole_scene import BINS, RS0, SIGMA, scene
 
 
-# Design amendment 1 item 7: mark P1-P3 slow if wall time exceeds 3x the same-run oracle.
-# Measured: 7.8x and 6.6x of tests/oracle/test_sheet_rs_pole_derivative.py.
 pytestmark = pytest.mark.slow
 
 
 @pytest.fixture(scope='module')
 def longer_record_poles():
-    # Share exactly one forward and one vmapped pullback per record across P1-P3.
-    # Form each pole objective's cotangent separately: putting failed selectors
-    # in one vector objective would mix their NaNs into the selected pole's VJP.
+    """Form each pole objective's cotangent separately to avoid mixing failed selectors' NaNs into the selected pole's VJP."""
     with enable_x64():
         start = time.monotonic()
         records, gradients, walls = [], [], []
@@ -68,7 +65,6 @@ def test_p1_longer_record_selected(longer_record_poles):
         assert w.judged is True and w.ok is True
         assert np.float64(w.value).tobytes() == np.float64(baseline.value).tobytes()
         assert w.value <= w.bar == 1e-2
-        # Independently formatted from the design's measured start values.
         selected = f'f={7.996492e9:.6g} Hz, 1/Q={3.8458e-4:.4g}'
         assert w.note == (f'selected at pole_target={8e9:.6g} Hz: '
                           f"grad's record ({12:.4g} ns): {selected}; "

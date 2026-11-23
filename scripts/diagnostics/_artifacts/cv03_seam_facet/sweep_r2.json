@@ -10,17 +10,17 @@
     "case_sha": "3a807f24f31fd314ccd978b89511d0a9346e51ec",
     "python": "3.10.12",
     "argv": [
-      "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a125c1f0daf970e55/scripts/diagnostics/cv03_seam_facet/seam_facet.py",
+      "scripts/diagnostics/cv03_seam_facet/seam_facet.py",
       "--stage",
       "sweep",
       "--output",
-      "/tmp/claude-0/-root-workspace-byungkwan-workspace-research-rfx/44efb5ea-44e2-4413-9da7-9514386aba06/scratchpad/fin_cv03_sweep.json"
+      "/tmp/claude-0/-workspace-research-rfx/44efb5ea-44e2-4413-9da7-9514386aba06/scratchpad/fin_cv03_sweep.json"
     ]
   },
   "rfx_provenance_check": {
-    "rfx_file": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a125c1f0daf970e55/rfx/__init__.py",
+    "rfx_file": "rfx/__init__.py",
     "under_repo_root": true,
-    "repo_root": "/root/workspace/byungkwan-workspace/research/rfx/.claude/worktrees/agent-a125c1f0daf970e55",
+    "repo_root": "<workspace>/research/rfx/.claude/worktrees/agent-a125c1f0daf970e55",
     "rfx_version": "1.8.0"
   },
   "stages": {

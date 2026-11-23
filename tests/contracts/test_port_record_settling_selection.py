@@ -78,9 +78,9 @@ def _lumped_then_wire(graded):
 
 
 @pytest.mark.parametrize('graded, freqs, read_kinds', [
-    (False, np.array([2e9, 4e9]), {'lumped'}),   # uniform forward forms S from the lumped accumulators only
-    (True, np.array([2e9, 4e9]), {'lumped', 'wire'}),  # graded forward with bins: S from both kinds
-    (True, None, set()),                         # graded forward without bins: no S, both ports only record
+    (False, np.array([2e9, 4e9]), {'lumped'}),
+    (True, np.array([2e9, 4e9]), {'lumped', 'wire'}),
+    (True, None, set()),
 ], ids=['uniform-lumped-S', 'graded-both-S', 'graded-no-S-records-only'])
 def test_real_forward_scores_exactly_the_records_behind_its_s(monkeypatch, graded, freqs, read_kinds):
     import warnings

@@ -27,10 +27,9 @@ class _FakeSimulation:
 
 
 def _write_metric_artifact(case_dir: Path, params, result):
+    """An output-root-relative artifact path lets resume validation work across processes."""
     path = case_dir / "metrics.json"
     path.write_text(json.dumps({"value": float(result.value)}))
-    # Return a case-local path.  The manifest runner should normalize this to
-    # an output-root-relative path so resume validation works across processes.
     return {"metrics": "metrics.json"}
 
 

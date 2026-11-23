@@ -4,6 +4,7 @@ Validates:
 1. Effective conductivity computation
 2. Selective application via shape mask
 3. Integration with Simulation API
+The local cell width at a fine-region centre is 0.5 mm, so a 1.2 mm extent box there spans multiple fine cells.
 """
 
 import numpy as np
@@ -21,11 +22,11 @@ def test_thin_conductor_sigma_eff():
 
     For PEC-level conductors (σ_eff >= 1e6), the code routes to pec_mask
     instead of setting sigma. Test both cases.
+    A PEC thin conductor owns no cell, so the sheet never touches pec_mask.
     """
     grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.002))
     dx = grid.dx
 
-    # Case 1: Lossy conductor (σ_eff below PEC threshold)
     sigma_bulk_lossy = 1e4
     thickness = 35e-6
     expected_sigma_eff = sigma_bulk_lossy * (thickness / dx)
@@ -34,7 +35,6 @@ def test_thin_conductor_sigma_eff():
     tc_lossy = ThinConductor(shape=shape_box, sigma_bulk=sigma_bulk_lossy, thickness=thickness)
 
     materials = init_materials(grid.shape)
-    # lossy film area is not this test's subject (dc_film_area)
     materials, pec_mask = apply_thin_conductor(grid, tc_lossy, materials, snap="declared")
 
     mask = shape_box.mask(grid)
@@ -45,8 +45,8 @@ def test_thin_conductor_sigma_eff():
         assert abs(sigma_val - expected_sigma_eff) / max(expected_sigma_eff, 1e-30) < 0.01, \
             f"Lossy: σ_eff={sigma_val:.4e}, expected={expected_sigma_eff:.4e}"
 
-    # Case 2: PEC conductor (copper → σ_eff > 1e6 → pec_mask)
-    sigma_bulk_pec = 5.8e7  # copper
+    COPPER_CONDUCTIVITY_S_PER_M = 5.8e7
+    sigma_bulk_pec = COPPER_CONDUCTIVITY_S_PER_M
     tc_pec = ThinConductor(shape=shape_box, sigma_bulk=sigma_bulk_pec, thickness=thickness)
     assert tc_pec.is_pec, "Copper 35µm should be PEC"
 
@@ -54,15 +54,12 @@ def test_thin_conductor_sigma_eff():
     sheets: list = []
     materials2, pec_mask2 = apply_thin_conductor(grid, tc_pec, materials2,
                                                  sheets=sheets)
-    # #931: a PEC thin conductor is a SHEET (one node plane, closed
-    # footprint, no cell) — it never touches pec_mask.
     assert pec_mask2 is None
     assert len(sheets) == 1 and sheets[0].normal_axis == 2
     if len(inside_idx) > 0:
         i, j, k = inside_idx[len(inside_idx) // 2]
         assert bool(sheets[0].footprint[i, j, sheets[0].plane])
 
-    # Outside should be unaffected
     outside_idx = np.argwhere(~np.array(mask))
     if len(outside_idx) > 0:
         i, j, k = outside_idx[0]
@@ -70,10 +67,11 @@ def test_thin_conductor_sigma_eff():
 
 
 def test_thin_conductor_preserves_outside():
-    """Thin conductor should not modify material outside its shape."""
+    """Thin conductor should not modify material outside its shape.
+    A film has no volume, so every cell retains its background permittivity.
+    """
     grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.002))
 
-    # Pre-fill with some background
     materials = init_materials(grid.shape)
     materials = materials._replace(
         eps_r=jnp.full(grid.shape, 4.4, dtype=jnp.float32),
@@ -81,17 +79,13 @@ def test_thin_conductor_preserves_outside():
     )
 
     shape_box = Box((0.005, 0.005, 0.0), (0.01, 0.01, 0.001))
-    # A lossy conductor (below PEC threshold) writes the film record, not pec_mask.
     tc = ThinConductor(shape=shape_box, sigma_bulk=1e4, thickness=35e-6, eps_r=1.0)
-    # lossy film area is not this test's subject (dc_film_area)
     materials, _ = apply_thin_conductor(grid, tc, materials, snap="declared")
 
     mask = shape_box.mask(grid)
 
-    # A film has no volume: every cell retains its background permittivity.
     np.testing.assert_array_equal(materials.eps_r, np.float32(4.4))
 
-    # Outside: eps_r should still be 4.4, sigma should still be 0.025
     outside_idx = np.argwhere(~np.array(mask))
     if len(outside_idx) > 0:
         i, j, k = outside_idx[len(outside_idx) // 2]
@@ -104,6 +98,7 @@ def test_thin_conductor_api_integration(dx):
     """ThinConductor works through the Simulation API.
 
     Copper (5.8e7 S/m, 35um) is a sheet on the selected grid.
+    A copper sheet owns no cell, so it is absent from pec_mask.
     """
     from rfx.api import Simulation
 
@@ -116,7 +111,6 @@ def test_thin_conductor_api_integration(dx):
         thickness=35e-6,
     )
 
-    # Should build without error
     grid = sim._build_realized_grid()
     pec_sheets: list = []
     assemble = (sim._assemble_materials_nu if sim._uses_nonuniform_mesh
@@ -126,10 +120,6 @@ def test_thin_conductor_api_integration(dx):
     index = (lambda pos: sim._pos_to_nu_index(grid, pos)) if sim._uses_nonuniform_mesh \
         else grid.position_to_index
 
-    # #931 §1.3: a copper thin conductor is a SHEET. It owns no cell, so it
-    # is absent from pec_mask by construction and is realized on ONE node
-    # plane. (The previous "should be in pec_mask" assertion sat behind a
-    # guard on a zero-thickness node mask, which is empty — it never ran.)
     assert pec_mask is None or not bool(np.asarray(pec_mask).any())
     assert len(pec_sheets) == 1
     spec = pec_sheets[0]
@@ -161,6 +151,7 @@ def test_thin_conductor_nonuniform_reflects_like_a_declared_sheet():
     ``sim.add`` (§1.5) must be bit-identical. The one-cell Box is kept as
     the third leg and asserted DIFFERENT, so the test states the
     distinction instead of hiding it.
+    The realized edge sets are pinned because a small mismatch can hide behind a resonance that happens not to move.
     """
     from rfx.api import Simulation
     from rfx.sources.sources import GaussianPulse
@@ -201,22 +192,15 @@ def test_thin_conductor_nonuniform_reflects_like_a_declared_sheet():
     thin_e = late_energy("thin")
     box_e = late_energy("box")
     assert sheet_e > 0.0
-    # §1.5: the two spellings of the SAME sheet are one realization.
     assert thin_e == sheet_e, (
         f"a PEC thin conductor and a zero-thickness PEC Box on the same "
         f"plane must be one realization (sheet={sheet_e:.6e}, "
         f"thin={thin_e:.6e})")
-    # #369, the lock this test exists for: the sheet is NOT silently dropped.
     assert abs(thin_e - vacuum_e) / vacuum_e > 0.1, (
         f"#369 regression: the PEC thin sheet rings like an empty domain on "
         f"the NU path (vacuum={vacuum_e:.3e}, thin={thin_e:.3e})")
-    # §1.2: the one-cell Box is a DIFFERENT object and must read differently.
     assert box_e != thin_e
 
-    # R5: don't trust the aggregate energy alone — assert the realized EDGE
-    # sets themselves, which a small mismatch cannot hide behind a resonance
-    # that happens not to move. A sheet owns no cell (§1.3), so the
-    # comparison is on (Mx, My, Mz), not on pec_mask.
     from rfx.boundaries.pec import realized_pec_edge_masks
     from rfx.runners.nonuniform import (build_nonuniform_grid,
                                         assemble_materials_nu)
@@ -238,7 +222,7 @@ def test_thin_conductor_nonuniform_reflects_like_a_declared_sheet():
                 sigma_bulk=5.8e7, thickness=35e-6)
         grid = build_nonuniform_grid(
             sim._freq_max, sim._domain, sim._dx, sim._cpml_layers,
-            sim._dz_profile, dx_profile=sim._dx_profile,
+            sim._dz_profile, dtype="float32", dx_profile=sim._dx_profile,
             dy_profile=sim._dy_profile,
             pec_faces=(sim._boundary_spec.pec_faces()
                        if sim._boundary_spec is not None else None),
@@ -257,7 +241,6 @@ def test_thin_conductor_nonuniform_reflects_like_a_declared_sheet():
     pm_sheet, sheets_add, edges_add = nu_realized("sheet_via_add")
     pm_thin, sheets_thin, edges_thin = nu_realized("thin")
     pm_box, sheets_box, edges_box = nu_realized("box")
-    # a sheet owns no cell, on either spelling
     assert not sheets_box and len(sheets_add) == len(sheets_thin) == 1
     assert pm_sheet is None or not bool(np.any(np.asarray(pm_sheet)))
     assert pm_thin is None or not bool(np.any(np.asarray(pm_thin)))
@@ -266,8 +249,6 @@ def test_thin_conductor_nonuniform_reflects_like_a_declared_sheet():
     for c in range(3):
         np.testing.assert_array_equal(np.asarray(edges_add[c]),
                                       np.asarray(edges_thin[c]))
-    # the one-cell Box shorts its interior normal edge; the sheet leaves it
-    # live — the distinction that used to be invisible
     k = sheets_thin[0].plane
     assert not bool(np.any(np.asarray(edges_thin[2])[:, :, k]))
     assert bool(np.any(np.asarray(edges_box[2])[:, :, k]))
@@ -289,7 +270,6 @@ def test_thin_conductor_lossy_nonuniform_runs_no_skip_warn():
     dz = [dx] * N
     sim = Simulation(freq_max=10e9, domain=(L, L, 0), dx=dx, dz_profile=dz,
                      boundary="cpml", cpml_layers=6)
-    # sigma_eff below the PEC threshold → lossy branch.
     sim.add_thin_conductor(Box((9 * dx, 9 * dx, 15.5 * dx),
                                (15 * dx, 15 * dx, 15.5 * dx)),
                            sigma_bulk=1.0e3, thickness=35e-6)
@@ -318,6 +298,7 @@ def test_thin_conductor_graded_matches_matching_thickness_box_not_onecell():
     and nodes are where tangential Ex/Ey actually sit, so the #371 closure this
     file records is STRENGTHENED by the correction — the minimized quantity is
     now the distance to the plane the conductor is really realized on.
+    A sub-cell PEC volume is refused with a remedy naming add_thin_conductor.
     """
     import numpy as np
     from rfx.api import Simulation
@@ -327,7 +308,7 @@ def test_thin_conductor_graded_matches_matching_thickness_box_not_onecell():
     from rfx.geometry.csg import Box
 
     dx = 0.5e-3
-    dz = [0.5e-3] * 8 + [1.5e-3] * 8          # genuinely graded: fine then coarse
+    dz = [0.5e-3] * 8 + [1.5e-3] * 8
     L = 24 * dx
     px = (L / 2 - 6 * dx, L / 2 + 6 * dx)
     py = (L / 2 - 4 * dx, L / 2 + 4 * dx)
@@ -336,7 +317,7 @@ def test_thin_conductor_graded_matches_matching_thickness_box_not_onecell():
 
     def nu_grid(sim):
         return build_nonuniform_grid(
-            sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile,
+            sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile, dtype="float32",
             dx_profile=sim._dx_profile, dy_profile=sim._dy_profile,
             pec_faces=(sim._boundary_spec.pec_faces() if sim._boundary_spec else None),
             pmc_faces=(sim._boundary_spec.pmc_faces() if sim._boundary_spec else None),
@@ -348,7 +329,6 @@ def test_thin_conductor_graded_matches_matching_thickness_box_not_onecell():
         add_fn(sim)
         return sim
 
-    # The sheet: one SheetSpec on the node plane nearest z_req (#931 §1.3).
     sim = nu_sim(lambda s: s.add_thin_conductor(
         Box((px[0], py[0], z_req), (px[1], py[1], z_req)),
         sigma_bulk=5.8e7, thickness=t))
@@ -363,18 +343,12 @@ def test_thin_conductor_graded_matches_matching_thickness_box_not_onecell():
         f"#371/#931: thin sheet must land on the NEAREST-NODE plane {nearest} "
         f"(realized {float(zc[nearest])*1e3:.3f}mm); got {sheets[0].plane}")
 
-    # A 35 um PEC Box via add() is a sub-cell VOLUME: refused, naming the
-    # sheet declaration (#931 §1.5) — the old "matching-thickness box" is
-    # not an equivalent object any more.
     sim_box = nu_sim(lambda s: s.add(
         Box((px[0], py[0], z_req - t / 2), (px[1], py[1], z_req + t / 2)),
         material="pec"))
     with pytest.raises(ValueError, match="add_thin_conductor"):
         assemble_materials_nu(sim_box, nu_grid(sim_box))
 
-    # A one-cell VOLUME box (4.0 -> 5.5 mm, one 1.5 mm cell) realizes walls
-    # on BOTH of its drawn planes: cells at the plane 4.0 mm, walls at 4.0
-    # and 5.5 mm.
     from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
     sim_1 = nu_sim(lambda s: s.add(
         Box((px[0], py[0], 4.0e-3), (px[1], py[1], 5.5e-3)), material="pec"))
@@ -392,6 +366,7 @@ def test_lossy_thin_conductor_nonuniform_uses_local_dz():
     uniform grid.dx — so the sheet resistance R_s = 1/(sigma_bulk*t) is
     preserved on a graded mesh. Before this, lossy sheets warned and were
     silently skipped on the NU path.
+    The interior tangential edge has coverage one rather than a half-covered end.
     """
     import warnings
     from rfx.api import Simulation
@@ -399,10 +374,10 @@ def test_lossy_thin_conductor_nonuniform_uses_local_dz():
                                         assemble_materials_nu)
 
     dx = 0.5e-3
-    dz = [0.5e-3] * 8 + [1.5e-3] * 8       # graded: coarse region has dz=3*dx
+    dz = [0.5e-3] * 8 + [1.5e-3] * 8
     L = 24 * dx
-    zc = 8.0e-3                            # deep in the coarse (1.5mm) region
-    sigma_bulk, t = 1.0e3, 35e-6          # lossy: sigma_eff << PEC threshold
+    zc = 8.0e-3
+    sigma_bulk, t = 1.0e3, 35e-6
 
     sim = Simulation(freq_max=10e9, domain=(L, L, 0), dx=dx, dz_profile=dz,
                      boundary="cpml", cpml_layers=6)
@@ -412,7 +387,7 @@ def test_lossy_thin_conductor_nonuniform_uses_local_dz():
                                sigma_bulk=sigma_bulk, thickness=t)
         grid = build_nonuniform_grid(
             sim._freq_max, sim._domain, sim._dx, sim._cpml_layers,
-            sim._dz_profile, dx_profile=sim._dx_profile,
+            sim._dz_profile, dtype="float32", dx_profile=sim._dx_profile,
             dy_profile=sim._dy_profile,
             pec_faces=(sim._boundary_spec.pec_faces()
                        if sim._boundary_spec is not None else None),
@@ -430,10 +405,8 @@ def test_lossy_thin_conductor_nonuniform_uses_local_dz():
     k = int(nz[0][2])
     dz_local = float((np.asarray(grid.dz)[k - 1] + np.asarray(grid.dz)[k]) / 2)
     assert abs(dz_local - 1.5e-3) < 1e-9, "sheet must land in the coarse region"
-    # Use an interior tangential edge (coverage one), not a half-covered end.
     sigma_cell = float(sigma[tuple((nz.min(axis=0) + nz.max(axis=0)) // 2)])
 
-    # Uses LOCAL dz (1.5mm), NOT the uniform grid.dx (0.5mm, which would be 3x).
     sigma_local = sigma_bulk * t / dz_local
     sigma_uniform_bug = sigma_bulk * t / dx
     assert abs(sigma_cell - sigma_local) / sigma_local < 1e-4, \
@@ -441,7 +414,6 @@ def test_lossy_thin_conductor_nonuniform_uses_local_dz():
     assert abs(sigma_cell - sigma_uniform_bug) / sigma_uniform_bug > 0.5, \
         "sigma_eff must NOT use the uniform grid.dx (the pre-fix bug)"
 
-    # Sheet resistance preserved: R_s = 1/(sigma_eff * dz_local) = 1/(sigma_bulk*t).
     R_s = 1.0 / (sigma_cell * dz_local)
     R_s_true = 1.0 / (sigma_bulk * t)
     assert abs(R_s - R_s_true) / R_s_true < 1e-3, \
@@ -454,6 +426,7 @@ def test_lossy_thin_conductor_nonuniform_ad_gate():
     sheet thickness (thickness avoids the is_pec Python-bool routing on
     sigma_bulk) and check the gradient is finite, non-zero, and matches the
     closed form d/dt Σσ = n_cells · sigma_bulk / dz_local.
+    One Ex component has 12*(0.5+11+0.5)=144 total footprint weight on the node plane.
     """
     import jax
     import jax.numpy as jnp
@@ -465,7 +438,7 @@ def test_lossy_thin_conductor_nonuniform_ad_gate():
     dx = 0.5e-3
     dz = [0.5e-3] * 8 + [1.5e-3] * 8
     L = 24 * dx
-    zc = 8.0e-3                      # coarse region, dz_local = 1.5mm
+    zc = 8.0e-3
     sigma_bulk, t0 = 1.0e3, 35e-6
 
     sim = Simulation(freq_max=10e9, domain=(L, L, 0), dx=dx, dz_profile=dz,
@@ -474,7 +447,7 @@ def test_lossy_thin_conductor_nonuniform_ad_gate():
                            sigma_bulk=sigma_bulk, thickness=t0)
     shape = sim._thin_conductors[0].shape
     grid = build_nonuniform_grid(
-        sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile,
+        sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile, dtype="float32",
         dx_profile=sim._dx_profile, dy_profile=sim._dy_profile,
         pec_faces=(sim._boundary_spec.pec_faces()
                    if sim._boundary_spec is not None else None),
@@ -483,12 +456,7 @@ def test_lossy_thin_conductor_nonuniform_ad_gate():
         cpml_axes="".join(a for a in "xyz"
                           if a not in (sim._periodic_axes or "")))
 
-    # Closed form computed from the CONCRETE state first (before grad mutates
-    # the conductor): Σσ = n_cells · sigma_bulk · t / dz_local
-    # ⇒ dΣσ/dt = n_cells · sigma_bulk / dz_local.
     sigma0 = np.asarray(assemble_materials_nu(sim, grid)[0].sigma_film[0])
-    # Old expectation counted 12*12 cell samples. One Ex component has
-    # 12*(.5+11+.5)=144 total footprint weight on the node plane.
     n_cells = 12 * 12
     k = int(np.argwhere(sigma0 > 0)[0][2])
     dz_local = float((np.asarray(grid.dz)[k - 1] + np.asarray(grid.dz)[k]) / 2)
@@ -500,7 +468,6 @@ def test_lossy_thin_conductor_nonuniform_ad_gate():
         return jnp.sum(assemble_materials_nu(sim, grid)[0].sigma_film[0])
 
     g = float(jax.grad(loss)(t0))
-    # restore the concrete conductor so the mutated (traced) one does not leak.
     sim._thin_conductors[0] = ThinConductor(
         shape=shape, sigma_bulk=sigma_bulk, thickness=t0)
 
@@ -516,55 +483,44 @@ def test_is_thin_classification_uses_local_cell_width():
     spacing. Bit-identical on a uniform axis; on a graded axis it no longer
     over-counts the cell size at a fine/coarse transition (which collapsed a
     >1-fine-cell shape onto a single argmin cell).
+    Exact host float64 coordinates use the production half-open [lo, hi) convention.
     """
     import jax.numpy as jnp
     from rfx.geometry.csg import Box
 
-    # Coordinates are host float64, matching the exact node spine production
-    # lanes supply since the #802/#807 fix. The old jnp.asarray route stored
-    # centres in float32 (x64=0), where 7.5e-3 is one ulp BELOW the real face
-    # value — the former ==2 result relied on the face rounding the same way
-    # (an exact-tie accident, the very defect class #802 removed). With exact
-    # coordinates the half-open [lo, hi) convention gives 2 by arithmetic.
     zero = np.zeros(1)
 
     def n_cells(coords, lo, hi):
         m = np.asarray(Box((0, 0, lo), (0, 0, hi)).mask_on_coords(zero, zero, coords))
         return int(m.sum())
 
-    # --- Uniform axis: unchanged (thin <= 1 cell, volume otherwise) ---
-    xu = np.arange(20) * 1e-3 + 0.5e-3   # 1mm cells, centres at k+0.5 (float64)
-    assert n_cells(xu, 5e-3, 5.2e-3) == 1              # sub-cell sheet → 1
-    assert n_cells(xu, 5e-3, 7.5e-3) == 2              # 2.5mm span → volume, 2 centres
+    UNIFORM_CELL_WIDTH_M = 1e-3
+    xu = np.arange(20) * UNIFORM_CELL_WIDTH_M + 0.5e-3
+    assert n_cells(xu, 5e-3, 5.2e-3) == 1
+    assert n_cells(xu, 5e-3, 7.5e-3) == 2
 
-    # --- Graded axis: fine 0.5mm (cells 0-7) then coarse 1.5mm (cells 8-15) ---
     dz = np.array([0.5e-3] * 8 + [1.5e-3] * 8)
     edges = np.concatenate([[0.0], np.cumsum(dz)])
-    zc = 0.5 * (edges[:-1] + edges[1:])   # host float64, production route
+    zc = 0.5 * (edges[:-1] + edges[1:])
     zc_np = np.asarray(zc)
 
-    # A genuine sub-cell sheet still resolves to exactly one cell (the nearest).
-    z0 = 2.75e-3                                       # a fine-region centre
+    FINE_CELL_CENTER_M = 2.75e-3
+    z0 = FINE_CELL_CENTER_M
     assert n_cells(zc, z0, z0) == 1
     k = int(np.argmin(np.abs(zc_np - z0)))
     m = np.asarray(Box((0, 0, z0), (0, 0, z0)).mask_on_coords(zero, zero, zc))
-    assert int(np.argwhere(m)[0][2]) == k             # z-index lands on nearest cell
+    assert int(np.argwhere(m)[0][2]) == k
 
-    # The local cell width at a fine-region centre is the fine size (0.5mm), so a
-    # 1.2mm-extent box there spans multiple fine cells (volume), not one.
     assert n_cells(zc, 2.0e-3, 3.2e-3) >= 2
 
 
-# ---------------------------------------------------------------------------
-# Leontovich surface-impedance mode (issue #669)
-# ---------------------------------------------------------------------------
 
 def _nu_graded_grid(sim):
     """Build the graded NU grid the #373 fixtures use (dz 0.5mm x8 + 1.5mm x8)."""
     from rfx.runners.nonuniform import build_nonuniform_grid
     return build_nonuniform_grid(
         sim._freq_max, sim._domain, sim._dx, sim._cpml_layers,
-        sim._dz_profile, dx_profile=sim._dx_profile,
+        sim._dz_profile, dtype="float32", dx_profile=sim._dx_profile,
         dy_profile=sim._dy_profile,
         pec_faces=(sim._boundary_spec.pec_faces()
                    if sim._boundary_spec is not None else None),
@@ -633,6 +589,7 @@ def test_leontovich_dc_limit_equivalence_o1b():
     into the arrays, so the identity under test (realized sheet
     conductance == DC sheet conductance when 1/(sigma_dc*t) == Rs0) is
     asserted on ``spec.sigma_sheet`` instead of ``materials.sigma``.
+    The 1e-9 algebra gate uses x64 formulas because the assembled material arrays are float32.
     """
     from tests._x64_compat import enable_x64
     from rfx.core.yee import init_materials
@@ -643,9 +600,8 @@ def test_leontovich_dc_limit_equivalence_o1b():
     with enable_x64():
         rs0 = float(leontovich_rs(jnp.float64(f0), jnp.float64(sigma_bulk)))
         t = 35e-6
-        sigma_dc = 1.0 / (rs0 * t)         # 1/(sigma_dc*t) == Rs0 exactly
+        sigma_dc = 1.0 / (rs0 * t)
 
-        # -- uniform lane --
         grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.002))
         shape = Box((0.005, 0.005, 0.001), (0.015, 0.015, 0.001))
         got = {}
@@ -656,35 +612,21 @@ def test_leontovich_dc_limit_equivalence_o1b():
                                  thickness=t, surface_impedance_f0=f0)),
         ):
             specs = []
-            # f0 sheet size is not this test's subject (sheet_effective_size)
             mats, _ = apply_thin_conductor(grid, tc,
                                            init_materials(grid.shape), None,
                                            sheet_specs=specs, snap="declared")
             if name == "dc":
                 arr_dc = float(jnp.max(mats.sigma_film[0]))
-                # rtol 1e-9 is the ALGEBRA gate; the DC fold's array write
-                # goes through the float32 material arrays, so the pure-x64
-                # DC algebra is the comparand and the array is pinned to it
-                # at float32 resolution (same split as the NU block below).
                 got[name] = sigma_dc * t / grid.dx
                 assert arr_dc > 0
                 assert abs(arr_dc - got[name]) / got[name] < 1e-6
             else:
-                # #677: f0 emits a spec and leaves the arrays sheet-free
                 assert float(jnp.max(mats.sigma)) == 0.0
                 assert len(specs) == 1
                 got[name] = float(jnp.max(specs[0].sigma_sheet))
         assert got["dc"] > 0
         assert abs(got["f0"] - got["dc"]) / got["dc"] < 1e-9, got
 
-        # -- non-uniform lane (graded dz, coarse-region sheet) --
-        # The NU assembly's arrays are float32 by design (PROMOTE never
-        # PIN governs the solver, not the assembler), so the rtol 1e-9
-        # equivalence — a pure-algebra gate — is asserted on the two fold
-        # FORMULAS evaluated in x64 with the REAL local d_norm taken from
-        # the NU grid; the assembled f32 array is then pinned to that
-        # algebra at float32 resolution. Comparing two f32 arrays at 1e-9
-        # would be impossible arithmetic, not a stronger gate.
         got_nu = {}
         for name, kw in (
             ("dc", dict(sigma_bulk=sigma_dc, thickness=t)),
@@ -699,7 +641,6 @@ def test_leontovich_dc_limit_equivalence_o1b():
             if name == "dc":
                 sig = np.asarray(mats_nu.sigma_film[0])
             else:
-                # #677: sheet-free arrays + one emitted spec
                 assert float(np.asarray(mats_nu.sigma).max()) == 0.0
                 assert len(specs) == 1
                 sig = np.asarray(specs[0].sigma_sheet)
@@ -707,9 +648,9 @@ def test_leontovich_dc_limit_equivalence_o1b():
             assert len(nz) > 0
             dz_local = float(np.asarray(grid_nu.dz)[int(nz[0][2])])
             got_nu[name] = (float(sig.max()), dz_local)
-        assert got_nu["dc"][1] == got_nu["f0"][1]          # same sheet layer
+        assert got_nu["dc"][1] == got_nu["f0"][1]
         dz_local = got_nu["dc"][1]
-        alg_dc = sigma_dc * t / dz_local                    # x64 algebra
+        alg_dc = sigma_dc * t / dz_local
         alg_f0 = 1.0 / (rs0 * dz_local)
         assert abs(alg_f0 - alg_dc) / alg_dc < 1e-9, (alg_dc, alg_f0)
         assert abs(got_nu["dc"][0] - alg_dc) / alg_dc < 1e-6
@@ -742,7 +683,6 @@ def test_leontovich_algebraic_realization_o2():
     f0, sigma_bulk = 10e9, 1e4
     rs0 = float(leontovich_rs(f0, sigma_bulk))
 
-    # uniform (primal == dual by construction)
     grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.002))
     shape = Box((0.005, 0.005, 0.001), (0.015, 0.015, 0.001))
     tc = ThinConductor(shape=shape, sigma_bulk=sigma_bulk, thickness=35e-6,
@@ -750,8 +690,6 @@ def test_leontovich_algebraic_realization_o2():
     specs = []
     mats, _ = apply_thin_conductor(grid, tc, init_materials(grid.shape), None,
                                    sheet_specs=specs)
-    # #677: arrays stay sheet-free; the realized per-node sheet conductivity
-    # lives on the emitted spec.
     assert float(np.asarray(mats.sigma).max()) == 0.0
     assert len(specs) == 1
     sig = np.asarray(specs[0].sigma_sheet)
@@ -759,22 +697,19 @@ def test_leontovich_algebraic_realization_o2():
     assert cells.size > 0
     np.testing.assert_allclose(cells * rs0 * grid.dx, 1.0, rtol=1e-6)
 
-    # graded NU (dz = [0.5mm]*8 + [1.5mm]*8): matched node, then transition
     for zc, expect_split in ((8.0e-3, False), (4.0e-3, True)):
         sim = _nu_graded_sim(zc=zc, sigma_bulk=sigma_bulk, thickness=35e-6,
                              surface_impedance_f0=f0)
         grid_nu = _nu_graded_grid(sim)
         specs = []
         mats_nu = assemble_materials_nu(sim, grid_nu, sheet_specs=specs)[0]
-        assert float(np.asarray(mats_nu.sigma).max()) == 0.0  # sheet-free
+        assert float(np.asarray(mats_nu.sigma).max()) == 0.0
         assert len(specs) == 1
         sig = np.asarray(specs[0].sigma_sheet)
         nz = np.argwhere(sig > 0)
         assert len(nz) > 0
         primal = np.asarray(grid_nu.dz)
         dual = np.asarray(e_node_dual_spacings(grid_nu.dz))
-        # the dual spacing must be the reciprocal of the metric the E update
-        # actually uses — pinned so the two cannot drift apart
         np.testing.assert_allclose(
             dual * np.asarray(grid_nu.inv_dz), 1.0, rtol=1e-6)
         ks = sorted({int(i[2]) for i in nz})
@@ -803,7 +738,6 @@ def test_leontovich_routing_no_pec_cells_both_lanes():
     from rfx.api import Simulation
     from rfx.runners.nonuniform import assemble_materials_nu
 
-    # uniform lane
     sim = Simulation(freq_max=10e9, domain=(6e-3, 6e-3, 3e-3), dx=1e-3)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -814,14 +748,10 @@ def test_leontovich_routing_no_pec_cells_both_lanes():
     mats, _, _, pec_mask, *_ = sim._assemble_materials(
         sim._build_grid(), sheet_specs=specs_u)
     assert pec_mask is None or int(np.asarray(pec_mask).sum()) == 0
-    # #677: metal-with-f0 flows down the SHEET route (spec emitted, arrays
-    # sheet-free), never the PEC route — sigma_sheet can legally exceed the
-    # 1e6 routing threshold (spec-level predicate only).
     assert float(np.asarray(mats.sigma).max()) == 0.0
     assert len(specs_u) == 1
     assert (np.asarray(specs_u[0].sigma_sheet) > 0).sum() > 0
 
-    # NU lane
     sim_nu = _nu_graded_sim(sigma_bulk=5.8e7, surface_impedance_f0=10e9)
     grid_nu = _nu_graded_grid(sim_nu)
     specs_nu = []
@@ -850,15 +780,11 @@ def test_leontovich_ad_gates_o5():
     def sig_sum(f0, sb):
         tc = ThinConductor(shape=shape, sigma_bulk=sb, thickness=35e-6,
                            surface_impedance_f0=f0)
-        # is_pec-order pin: evaluating the routing predicate on a TRACED
-        # sigma_bulk must not raise while f0 is set.
         assert tc.is_pec is False
         specs = []
         mats, _ = apply_thin_conductor(grid, tc,
                                        init_materials(grid.shape), None,
                                        sheet_specs=specs)
-        # #677: gradients flow through the emitted spec's sigma_sheet (the
-        # realized sheet quantity); the arrays are sheet-free by design.
         return jnp.sum(specs[0].sigma_sheet)
 
     with enable_x64():
@@ -904,9 +830,6 @@ def test_leontovich_add_time_validation():
     with pytest.raises(ValueError, match="bounding box"):
         sim.add_thin_conductor(_NoBounds(), surface_impedance_f0=1e9)
 
-    # NU lane defensive mirror: bypass add_thin_conductor entirely. A sphere
-    # is a legal shape CLASS now, so it clears the add-time checks and is
-    # refused where the grid can see it is not a sheet.
     sim_nu = _nu_graded_sim(sigma_bulk=1e4, thickness=35e-6)
     sim_nu._thin_conductors[0] = ThinConductor(
         shape=Sphere((6e-3, 6e-3, 8e-3), 1e-3), sigma_bulk=1e4,

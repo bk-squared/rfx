@@ -73,7 +73,6 @@ def test_preflight_skips_periodic_axis_cpml_warning():
 
     sim = _build_absorber_sim()
     sim.add_material("slab", eps_r=4.0)
-    # Slab fills the whole periodic x/y extents but sits in the middle of z.
     sim.add(Box((0.0, 0.0, 0.008), (0.01, 0.01, 0.012)), material="slab")
     sim.add_source((0.005, 0.005, 0.005), "ez")
     sim.add_probe((0.005, 0.005, 0.015), "ez")
@@ -106,8 +105,6 @@ def test_preflight_still_warns_on_non_periodic_z_axis():
 
     sim = _build_absorber_sim()
     sim.add_material("slab", eps_r=4.0)
-    # Slab straddles z=0: c1[2]=-0.0003 is genuinely in the exterior z_lo
-    # absorber, c2[2]=0.0002 is interior.
     sim.add(Box((0.0, 0.0, -0.0003), (0.01, 0.01, 0.0002)), material="slab")
 
     issues = sim.preflight(strict=False)

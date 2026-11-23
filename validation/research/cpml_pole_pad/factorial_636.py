@@ -77,9 +77,9 @@ def patch_alpha(alpha_max):
 
     orig = patch_alpha._orig
 
-    def patched(n_layers, dt, dx, order=3, kappa_max=1.0, R_asymptotic=1e-15):
+    def patched(n_layers, dt, dx, order=3, kappa_max=1.0, R_asymptotic=1e-15, *, dtype):
         p = orig(n_layers, dt, dx, order=order, kappa_max=kappa_max,
-                 R_asymptotic=R_asymptotic)
+                 R_asymptotic=R_asymptotic, dtype=dtype)
         # Rebuild alpha/b/c with the requested alpha_max, float64, same
         # formulas as the shipped function.
         import jax.numpy as jnp

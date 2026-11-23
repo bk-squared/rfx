@@ -105,7 +105,6 @@ class Via:
 
         shapes: list[tuple[Box, str]] = []
 
-        # --- vertical conductor through all layers ---
         half_drill = self.drill_radius
         shapes.append((
             Box(
@@ -115,7 +114,6 @@ class Via:
             self.material,
         ))
 
-        # --- pads at each unique layer boundary ---
         boundary_zs: set[float] = set()
         for z_bot, z_top in self.layers:
             boundary_zs.add(z_bot)

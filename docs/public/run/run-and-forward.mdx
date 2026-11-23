@@ -59,6 +59,16 @@ print(f"{float(value):.4g} {float(grad):.4g}")
 0.2705 -0.01126
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/run/assets/run-and-forward/structure.png" loading="lazy" alt="Section through a domain surrounded by absorber: a square slab in the middle, the port to its left and the probe to its right." />
+  <figcaption>The model this code builds, cut at y = 24 mm, the node plane of the Ez samples requested at y = 25 mm. The port and the probe are at x = 18 and 44 mm, z = 21 mm, on each side of the slab.</figcaption>
+</figure>
+
+<figure data-rfx="media">
+  <img src="/rfx/run/assets/run-and-forward/records.png" loading="lazy" alt="Two probe Ez records against time up to 1.14 ns, solid and dashed: one pulse with a few oscillations that dies out by about 0.9 ns, and the two curves lie on top of each other." />
+  <figcaption>The probe's Ez from <code>ran</code> (solid) and <code>fwd</code> (dashed) over the 300 steps, which end at 1.14 ns. The script printed 0.0 for their largest difference relative to the largest |Ez| of <code>ran</code>.</figcaption>
+</figure>
+
 On this model the two probe records are identical. The gradient comes from
 automatic differentiation through all 300 steps; before you use one, check it
 against a longer run ([Checking a gradient](/rfx/check/gradients/)).
@@ -78,6 +88,13 @@ Both run preflight by default. `skip_preflight=True` skips advisories only;
 realization refusals still apply. Both also refuse inputs their solver path
 does not implement whether or not advisories run
 ([Refused inputs](/rfx/check/refusals/)).
+
+Explicit `run(compute_s_params=True)` and `forward(port_s11_freqs=...)`
+requests require an impedance `add_port`. A soft source, including one beside
+a closed TF/SF box, does not provide a port response. Both calls refuse missing
+impedance ports and mixtures with MSL, waveguide, Floquet, TF/SF or coaxial
+families through the same admission rules; use each family's documented
+calculator where available. Forward also reports MSL near-field probe details.
 
 Where the two calls still differ:
 

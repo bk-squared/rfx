@@ -107,9 +107,7 @@ def test_debye_edge_carries_the_four_cell_mean_of_every_parameter(c):
     beta = np.asarray(coeffs.beta[c])[0]
     for node in INTERIOR:
         eps, sig, frac = _edge_means(mats, mask, c, node)
-        # the pole's delta_eps on this edge, read off beta
         assert beta[node] / b_full == pytest.approx(frac, abs=1e-6), node
-        # gamma = eps0*eps_inf + beta + sigma*dt/2, from cb and from ca
         gamma = DT / cb[node]
         g_expect = EPS_0 * eps + b_full * frac + sig * DT / 2
         assert gamma == pytest.approx(g_expect, rel=2e-6), node
@@ -130,7 +128,6 @@ def test_lorentz_edge_carries_the_four_cell_mean_of_every_parameter(c):
         assert cvals[node] / c_full == pytest.approx(frac, abs=1e-6), node
         assert DT / cb[node] == pytest.approx(EPS_0 * eps + sig * DT / 2,
                                               rel=2e-6), node
-        # the recurrence coefficients follow the pole on every edge it reaches
         if frac > 0:
             assert float(coeffs.damping[0][node]) == pytest.approx(
                 2.0 * DELTA * DT / (1 + DELTA * DT), rel=1e-6)
@@ -203,7 +200,6 @@ def test_a_lumped_stamp_loads_only_its_own_edge_on_the_dispersive_lane(
         else:
             diff = np.argwhere(a != b)
             assert [tuple(d) for d in diff] == [node], diff
-            # the stamp enters sigma on its own edge: gamma grows by 20*dt/2
             assert DT / a[node] - DT / b[node] == pytest.approx(
                 20.0 * DT / 2, rel=1e-4)
 
@@ -239,8 +235,6 @@ def test_homogeneous_regions_keep_the_one_per_cell_bits():
                            mask=jnp.asarray(mask), high_wall=(False, False, False))
     ca0, cb0, cc0 = (np.asarray(v) for v in
                      _legacy_debye(mats.eps_r, mats.sigma, jnp.asarray(mask), DT))
-    # x in 1..4: inside the pole block; x in 7..11: outside; x = 5, 6 are the
-    # interface edges (x = 6 reads cells 5 and 6 for Ey and Ez).
     for sl in (slice(0, 5), slice(7, 12)):
         for c in range(3):
             np.testing.assert_array_equal(np.asarray(coeffs.ca[c])[sl], ca0[sl])
@@ -280,23 +274,17 @@ def test_the_distributed_mixed_update_is_the_single_device_one():
                                                  lorentz=(lco, lst), high_wall=(False, False, False))
     for comp in ("ex", "ey", "ez"):
         x, y = np.asarray(getattr(a, comp)), np.asarray(getattr(b, comp))
-        # away from the low faces, where the slab body's curl pads the same
         np.testing.assert_allclose(x[1:, 1:, 1:], y[1:, 1:, 1:], rtol=1e-5,
                                    atol=1e-6 * float(np.max(np.abs(y))),
                                    err_msg=comp)
 
 
-# ---------------------------------------------------------------------------
-# 6. one mesh of the half-filled cube against the complex-eps transverse
-#    resonance (the full two-mesh measurement is in the PR; this is the
-#    always-on bound)
-# ---------------------------------------------------------------------------
 
 C0 = 299792458.0
 L, H = 24e-3, 12e-3
 KT = np.pi / L
-F_STATIC = 5.217729982e9              # the static eps 4 root (#1213's oracle)
-BOUND = 5e-3                          # cell-owned reads 1.7e-2, edge mean 3.4e-4
+F_STATIC = 5.217729982e9
+BOUND = 5e-3
 
 
 def _complex_root(epsfun, f=5.2e9):
@@ -332,10 +320,10 @@ FILLINGS = {
 
 @pytest.mark.parametrize("kind", sorted(FILLINGS))
 def test_the_half_filled_cube_with_a_dispersive_filling_reads_its_analytic_mode(kind):
+    """An earlier measurement gave relative errors 1.7e-2 for cell-owned values and 3.4e-4 for the edge mean, motivating the 5e-3 bound."""
     from rfx import Box, GaussianPulse, Simulation
     from rfx.harminv import matrix_pencil
 
-    # the reference, validated against its own limit first
     assert _complex_root(lambda w: 4.0 + 0 * w).real == pytest.approx(
         F_STATIC, rel=1e-9)
     epsfun, material = FILLINGS[kind]
@@ -349,7 +337,7 @@ def test_the_half_filled_cube_with_a_dispersive_filling_reads_its_analytic_mode(
     sim.add_source((L * 0.23, L * 0.31, L * 0.41), "ex", amplitude_kind="field",
                    waveform=GaussianPulse(f0=f0, bandwidth=1.0))
     dx = 1e-3
-    for x in (L / 2 - dx / 2, L / 2 + dx / 2):   # the x-mirror pair (TE only)
+    for x in (L / 2 - dx / 2, L / 2 + dx / 2):
         sim.add_probe((x, L * 0.64, L * 0.29), "ex")
     steps = 6000
     r = sim.run(n_steps=steps, skip_preflight=True)
@@ -394,7 +382,6 @@ def test_a_dispersive_block_across_a_periodic_seam_is_translation_invariant(kind
         for first, count, mat in ((4, 5, "m"), (12, 2, "d")):
             for t in range(count):
                 i = (first + shift + t) % n
-                # Each drawn node-to-node Box owns one primal-cell centre.
                 sim.add(Box((i * dx, -1, -1), ((i + 1) * dx, 1, 1)),
                         material=mat)
         sim.add_source((((1 + shift) % n) * dx, 1.5e-3, 2.5e-3), "ez",
@@ -404,7 +391,7 @@ def test_a_dispersive_block_across_a_periodic_seam_is_translation_invariant(kind
         return np.asarray(sim.run(n_steps=n_steps, skip_preflight=True).time_series)[:, 0]
 
     ref = trace(0)
-    moved = trace(17)          # the dispersive block now straddles the seam
+    moved = trace(17)
     assert np.max(np.abs(ref)) > 0
     assert np.max(np.abs(moved - ref)) <= 1e-3 * np.max(np.abs(ref)), (
         f"{kind}: moving the model across the periodic seam changed the trace by "

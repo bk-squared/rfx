@@ -1,7 +1,4 @@
 """PMC high ghosts are held by coefficients, with identical CPU field records."""
-import os
-
-os.environ.setdefault('XLA_FLAGS', '--xla_force_host_platform_device_count=2')
 
 import jax
 import numpy as np

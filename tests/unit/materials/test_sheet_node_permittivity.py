@@ -10,7 +10,8 @@ import numpy as np
 import pytest
 import jax.numpy as jnp
 
-D_STACK = 31.43e-6    # stack cell
+STACK_CELL_WIDTH_M = 31.43e-6
+D_STACK = STACK_CELL_WIDTH_M
 
 
 def test_f0_sheet_coefficients_are_in_the_resistive_limit():
@@ -31,7 +32,7 @@ def test_f0_sheet_coefficients_are_in_the_resistive_limit():
     from rfx.materials.thin_conductor import sheet_update_coeffs
 
     c0, mu0, eps0 = 299792458.0, 4e-7 * np.pi, 8.8541878128e-12
-    dt = 0.99 * D_STACK / (c0 * np.sqrt(3.0))          # 5.992e-14 s
+    dt = 0.99 * D_STACK / (c0 * np.sqrt(3.0))
     sigma_cu, f0 = 5.8e7, 28e9
     skin = np.sqrt(1.0 / (np.pi * f0 * mu0 * sigma_cu))
     sigma_sheet = 1.0 / ((1.0 / (sigma_cu * skin)) * D_STACK)
@@ -43,8 +44,8 @@ def test_f0_sheet_coefficients_are_in_the_resistive_limit():
         a, b = sheet_update_coeffs(jnp.asarray(ss), mats, dt)
         return float(a), float(b)
 
-    a1, b1 = coeffs(1.0, sigma_sheet)       # vacuum at the sheet node
-    a2, b2 = coeffs(3.38, sigma_sheet)      # dielectric at the sheet node
+    a1, b1 = coeffs(1.0, sigma_sheet)
+    a2, b2 = coeffs(3.38, sigma_sheet)
     assert (a1, b1) == (a2, b2), (
         f"copper at {f0/1e9:.0f} GHz: eps_r 1.0 -> (A={a1:.6e}, B={b1:.6e}) "
         f"but eps_r 3.38 -> (A={a2:.6e}, B={b2:.6e})")
@@ -54,7 +55,6 @@ def test_f0_sheet_coefficients_are_in_the_resistive_limit():
     for eps_r in (1.0, 3.38):
         assert sigma_sheet * dt / (eps0 * eps_r) > 1e3, "not in the limit"
 
-    # the converse, so the limit is what carries the claim
     a_lo, b_lo = coeffs(1.0, 1e3)
     a_hi, b_hi = coeffs(3.38, 1e3)
     assert a_lo != a_hi and b_lo != b_hi, (

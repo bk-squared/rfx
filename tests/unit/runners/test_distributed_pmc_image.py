@@ -48,10 +48,10 @@ def build(scene):
 
 
 def test_framed_neighbors_match_global_physical_rows():
+    """Two four-row slabs have one alignment row and one exchanged ghost each side."""
     h = jnp.asarray(np.random.default_rng(42).normal(size=(7, 4, 3)), dtype=jnp.float32)
     boundary = CurlBoundary(pmc_faces=frozenset(('x_lo', 'x_hi')))
     want = h_neighbor(h, 0, boundary=boundary)
-    # Two four-row slabs, one alignment row, and one exchanged ghost each side.
     slabs = (jnp.pad(h[:5], ((1, 0), (0, 0), (0, 0))),
              jnp.pad(h[3:], ((0, 2), (0, 0), (0, 0))))
     for rank, slab in enumerate(slabs):

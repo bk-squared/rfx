@@ -87,7 +87,7 @@ def test_beyond_reference_admitted(element, label):
 def test_lumped_port_refused_regardless_of_section(graded, entry, inside):
     sim = _guide("lumped_port", inside=inside, graded=graded)
     with pytest.raises(ValueError, match=(
-            "^Waveguide ports are not supported together with lumped ports or TFSF$")):
+            r"^Waveguide ports are not supported together with a lumped or wire port, or a soft source \(add_source\) or TFSF$")):
         _execute(sim, entry)
 
 

@@ -1,4 +1,5 @@
-"""O1a declaration, independent commutator and bounded-line contracts."""
+"""O1a declaration, independent commutator and bounded-line contracts.
+The Yee coordinates are independent of the implementation offsets."""
 from dataclasses import replace
 import itertools
 import sys
@@ -20,7 +21,6 @@ DIRECTIONS = ((0, 0), (10, 0), (20, 0), (30, 0), (40, 0), (50, 0),
 TRIPLES = ((1, 0, 0), (17, 3, 0), (11, 4, 0), (26, 15, 0), (31, 26, 0),
            (26, 31, 0), (15, 26, 0), (26, 0, 15), (30, 26, 15), (3, 17, 0))
 COMP = ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')
-# Independent Yee coordinates: do not import the implementation's offsets.
 OFFSETS = np.array(((.5, 0, 0), (0, .5, 0), (0, 0, .5),
                     (0, .5, .5), (.5, 0, .5), (.5, .5, 0)))
 DX, DT, Z0 = .001, 1.9065748695310057e-12, 376.730313668
@@ -38,7 +38,7 @@ def scene(theta=0, phi=0, pol='s', direction='+x', *, cpml_layers=8):
 def line(theta=0, phi=0, pol='s', n_steps=300, **kwargs):
     return plane.init_plane_wave(41, DX, DT, ny=41, nz=41, cpml_layers=8,
         tfsf_margin=4, f0=10e9, bandwidth=.8, theta_deg=theta, phi_deg=phi,
-        polarization=pol, max_component=40, n_steps=n_steps, **kwargs)
+        polarization=pol, max_component=40, n_steps=n_steps, **kwargs, dtype='float32')
 
 
 @pytest.mark.parametrize('pol', ('ey', 'ez'))
@@ -52,7 +52,6 @@ def test_appendix_h_incident_record_and_shared_dft(pol, direction, reference_ind
     x = cfg.x_lo if reference_index is None else reference_index
     indices = tuple(int(np.floor(cfg.m[0] * x + cfg.projections[c])) - cfg.origin
                     for c in range(3))
-    # Frozen pre-Appendix-H replay body, including its zero-state construction.
     zero = FDTDState(*(jnp.zeros_like(getattr(state, c)) for c in COMP),
                      jnp.asarray(0, jnp.int32))
     def prior_step(st, n):
@@ -100,14 +99,17 @@ def test_d3_requires_record_bound(bound):
 
 
 @pytest.mark.parametrize('angles', DIRECTIONS)
-def test_d3_domain_of_dependence(angles):
+def test_d3_clean_margin(angles):
     cfg, _ = line(*angles)
     reads = np.concatenate([t.source_index for t in cfg.tables_e + cfg.tables_h]
                            + [np.array(cfg.source_nodes)]
                            + [w.nodes for w in cfg.source_windows])
-    padding = cfg.n_steps * max(map(abs, cfg.m)) + 2
-    assert reads.min() >= padding
-    assert cfg.n_nodes - 1 - reads.max() >= padding
+    g = 2 * max(map(abs, cfg.m)) + 2
+    length = 64 * int(np.ceil(np.sqrt(sum(v * v for v in cfg.m))))
+    assert cfg.absorber_nodes == length
+    assert reads.min() - length >= g
+    assert cfg.n_nodes - length - 1 - reads.max() >= g
+    assert cfg.n_nodes == reads.max() - reads.min() + 1 + 2 * (g + length)
 
 
 def dense_curl(fields, forward):
@@ -213,7 +215,7 @@ def test_d4_shell_and_stencil_vacuum(axis, side, offset):
 
 
 def resized_line(cfg, state, factor):
-    """Keep launch/tables fixed in physical p; change only the end distance."""
+    """Restore the historical padded lossless line for the origin-only check."""
     reads = np.concatenate([t.source_index + cfg.origin for t in cfg.tables_e + cfg.tables_h]
                            + [np.array(cfg.source_nodes) + cfg.origin]
                            + [w.nodes + cfg.origin for w in cfg.source_windows])
@@ -223,7 +225,7 @@ def resized_line(cfg, state, factor):
     shift = cfg.origin - origin
     def tables(old):
         return tuple(t._replace(source_index=t.source_index + np.int32(shift)) for t in old)
-    resized = replace(cfg, origin=origin, n_nodes=count,
+    resized = replace(cfg, origin=origin, n_nodes=count, absorber_nodes=0,
         source_nodes=tuple(n + shift for n in cfg.source_nodes),
         source_windows=tuple(w._replace(nodes=w.nodes + np.int32(shift)) for w in cfg.source_windows),
         tables_e=tables(cfg.tables_e), tables_h=tables(cfg.tables_h))
@@ -245,6 +247,7 @@ def center_record(cfg, state, n_steps):
 @pytest.mark.parametrize('pol', ('s', 'p'))
 def test_d3b_bound_vs_twice_bound(angles, pol):
     cfg, state = line(*angles, pol)
+    cfg, state = resized_line(cfg, state, 1)
     twice, zero = resized_line(cfg, state, 2)
     np.testing.assert_array_equal(center_record(cfg, state, 300).view(np.uint32),
                                   center_record(twice, zero, 300).view(np.uint32))
@@ -313,15 +316,13 @@ def _probe_scene(theta, phi, pol, cpml_layers):
         sim.add_probe(position, component=component)
     result = sim.run(n_steps=300, skip_preflight=True)
     grid = result.grid
-    # Quote the realized mesh, and verify that the public probes hit our nodes.
     assert grid.shape == (25 + 2 * cpml_layers,) * 3
     assert [grid.position_to_index(p) for p in positions] == points
     cfg, state = plane.init_plane_wave(
         grid.nx, float(grid.cells('x')[0]), grid.dt, ny=grid.ny, nz=grid.nz,
         cpml_layers=cpml_layers, tfsf_margin=4, f0=10e9, bandwidth=.8,
         theta_deg=theta, phi_deg=phi, polarization=pol, max_component=40,
-        n_steps=300)
-    # Independent Yee coordinates, not the correction table's gathers.
+        n_steps=300, dtype='float32')
     offset = OFFSETS[COMP.index(component)]
     index = int(np.floor((np.asarray(centre) + offset) @ cfg.m)) - cfg.origin
 
@@ -340,16 +341,13 @@ def _probe_scene(theta, phi, pol, cpml_layers):
 
 
 def _assert_probe_law(trace, reference, line_peak, grid, row, record_property):
+    """The incident-line peak scales early leakage because the line drives the faces before the centre sees the pulse."""
     centre = np.abs(trace[:, 0])
     peak = centre.max()
-    # Design A33: the incident line drives the faces before the centre sees it.
-    # Use its per-step E / Z0*H peak for the rise and accumulated leakage law.
     scale = np.maximum(line_peak, centre)
     cumulative = scale.cumsum()
     active = cumulative >= scale.max()
     sf = np.maximum.accumulate(np.max(np.abs(trace[:, 1:]), axis=1))
-    # The existing 3D/stand-alone-line bar is 9 float32 peak ULP:
-    # tests/unit/sources/test_tfsf_closed_box.py:28-31,143.
     centre_bar = 9 * float(np.spacing(np.float32(peak)))
     early_bar = 9 * np.spacing(scale.astype(np.float32)).astype(np.float64)
     bar = np.where(active, 1.2e-7 * cumulative, early_bar)
@@ -514,7 +512,7 @@ def test_v14_max_component_pair(pol, record_property):
     for cap in (40, 100):
         cfg, state = plane.init_plane_wave(41, DX, DT, ny=41, nz=41, cpml_layers=8,
             tfsf_margin=4, f0=10e9, bandwidth=.8, theta_deg=30, phi_deg=0,
-            polarization=pol, max_component=cap, n_steps=300)
+            polarization=pol, max_component=cap, n_steps=300, dtype='float32')
         spectra.append(co_spectrum(cfg, state)[0])
     ratio = np.abs(spectra[1]) / np.abs(spectra[0])
     record_property('ratio_100_over_40', ratio.tolist())

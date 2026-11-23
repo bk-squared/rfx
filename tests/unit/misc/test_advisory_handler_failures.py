@@ -50,7 +50,6 @@ def test_advisory_exception_boundaries():
     with pytest.raises(TypeError):
         warn_if_nonpassive_lumped_s11(np.array([2.]), np.ones((1, 2)), extractor="test")
 
-    # Malformed concrete metadata must not turn a non-finite S into a clean result.
     result = SimpleNamespace(time_series=None, s_params=np.full((1, 1, 1), np.nan),
                              grid=SimpleNamespace(dx_arr=np.ones(1)),
                              wire_port_sparams=(((), ()),))
@@ -60,12 +59,10 @@ def test_advisory_exception_boundaries():
     def traced(x):
         _warn_if_flux_subnormal_flush(None, x)
         warn_if_nonpassive_lumped_s11(x, x, extractor="test")
-        # Concrete S with traced frequencies also skips host materialization.
         warn_if_nonpassive_lumped_s11(np.ones(1), x, extractor="test")
         for s in (x, np.ones((1, 1, 1))):
             _warn_if_nonpassive_smatrix(SimpleNamespace(s_params=s, freqs=x), extractor="test")
         assert _nonfinite_fields(SimpleNamespace(time_series=x, s_params=None)) == []
-        # A nested tracer reaches numpy's __array__ conversion, unlike a direct tracer.
         assert _nonfinite_fields(SimpleNamespace(time_series=[x], s_params=None)) == []
         return jnp.sum(x)
 
@@ -90,7 +87,6 @@ def test_advisory_exception_boundaries():
     assert any("DC not evaluated: RuntimeError: user waveform failed" in str(w.message)
                for w in caught)
     assert any("relative DC 1.00e+00" in str(w.message) for w in caught)
-    # MSL ports use the same census, even without an impedance field.
     sim = SimpleNamespace(_ports=[], _msl_ports=[port])
     assert dc_census(sim, dt=1., n_table=4) == rows[:1]
     for signal in (TimeoutError, KeyboardInterrupt, SystemExit):
@@ -100,7 +96,6 @@ def test_advisory_exception_boundaries():
         with pytest.raises(signal, match="cancel census"):
             dc_census(sim, dt=1., n_table=4)
 
-    # A failed drive must also remain visible in the post-run census consumer.
     from rfx.core.yee import init_materials, init_state
     from rfx.grid import Grid
     from rfx.measurement.decay import static_remnant_advisory

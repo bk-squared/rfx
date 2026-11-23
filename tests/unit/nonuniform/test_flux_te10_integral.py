@@ -1,4 +1,5 @@
-"""Graded power quadrature against an analytic mode integral, not its weights."""
+"""Graded power quadrature against an analytic mode integral, not its weights.
+The Ez*Hy product is nodal in y and edge-centered in z."""
 import numpy as np
 
 from rfx import Simulation, GaussianPulse
@@ -9,6 +10,7 @@ from tests.unit.boundaries.test_pmc_mirror_judges import record
 
 
 def test_graded_te10_flux_matches_fitted_mode_integral():
+    """The 1% gate separates the earlier measured dual-width error below 0.3% from the primal-width error above 3%."""
     width = .020
     dy = np.r_[1., np.linspace(.57, 1.83, 15), 1.] * .001
     sim = Simulation(freq_max=15e9, domain=(.060, width, .004), dx=.001,
@@ -22,11 +24,10 @@ def test_graded_te10_flux_matches_fitted_mode_integral():
     mon = result.flux_monitors['power']
     grid = sim._build_realized_grid()
     y = np.asarray(coords_from_nonuniform_grid(grid).y)
-    # Ez*Hy is nodal in y, edge-centered in z. Sum over z at the
-    # physical uniform height; the PEC high ghost contributes zero.
     product = -np.real(np.asarray(mon.e2_dft, dtype=np.complex128)
                        * np.conj(np.asarray(mon.h1_dft, dtype=np.complex128)))
-    profile = product.sum(axis=2) * .001
+    Z_EDGE_SPACING_M = .001
+    profile = product.sum(axis=2) * Z_EDGE_SPACING_M
     shape = np.sin(np.pi*y/width)**2
     inside = (y > 0) & (y < width)
     coefficient = (profile[:, inside] @ shape[inside]) / np.sum(shape[inside]**2)
@@ -41,6 +42,4 @@ def test_graded_te10_flux_matches_fitted_mode_integral():
            primal_ratio=(old/exact).tolist(), after_before=(actual/old).tolist()))
     assert np.all(exact > 0), 'propagating TE10 must carry positive x power'
     assert np.all(fit_residual < .02), fit_residual
-    # Predeclared from the independent review: <0.3% with dual widths,
-    # >3% with primal widths; 1% separates them without pinning a formula.
     np.testing.assert_allclose(ratio, 1., rtol=.01, atol=0.)

@@ -98,8 +98,6 @@ def test_forward_and_vmap_override_values_and_derivatives(lane, field, batched):
                                grad, rtol=3e-7, atol=1e-8)
 
 
-# Main's realized radius-model values at its contour and capacitor edges.
-# The assertion is bit-exact, not an edge-mean-only reference for this model.
 _WIRE_MAIN = {'eps_override': {'eps_update': [[1.84375, 1.90625, 1.875, 1.875, 1.90625],
                                  [1.90625, 1.875, 1.84375, 1.84375, 1.875],
                                  [24.931930541992188, 2.9921875, 2.9609375, 2.9609375, 2.9921875]],
@@ -206,6 +204,7 @@ def test_wire_radius_background_dependence_matches_main(keyword, field):
 @pytest.mark.parametrize("keyword,operand", [("eps_override", "eps_update"),
                                             ("sigma_override", "sigma_update")])
 def test_waveguide_direct_override_writer_uses_cell_stage(keyword, operand):
+    """The launch sections must remain homogeneous and lossless."""
     from rfx.boundaries.spec import BoundarySpec
     sim = Simulation(freq_max=10e9, domain=(.06, .03, .018), dx=.003,
                      boundary=BoundarySpec(x="cpml", y="pec", z="pec"), cpml_layers=3)
@@ -214,8 +213,6 @@ def test_waveguide_direct_override_writer_uses_cell_stage(keyword, operand):
     grid = sim._build_grid()
     values = (np.indices(grid.shape).sum(axis=0) % 3 + 8).astype(np.float32) / 4
     point = tuple(grid.position_to_index((.03, .015, .009)))
-    # Exercise the writer in the device interior; launch sections must remain
-    # homogeneous and lossless. The sampled edge and its stencil stay inside.
     window = np.zeros(grid.shape, dtype=bool)
     window[point[0]-1:point[0]+2, :, :] = True
     original = materials.with_components
@@ -256,8 +253,7 @@ def _distributed_reference():
                     return run_pec(*args, **kw)
                 raise _Captured(("legacy",) + args[:2])
             def stop_realize(*args, **kw):
-                # The wrapped step's cell stage: realized components per slab,
-                # rank r holding rows r * nx_local + j for global x r * nx_per_rank + j - 1.
+                """Rank r holds row r*nx_local+j at global x=r*nx_per_rank+j-1 in the wrapped step's cell stage."""
                 raise _Captured(("wrapped", args[2], realize(*args, **kw)[0].components))
             with patch.object(nu, "run_nonuniform_distributed_pec", stop), \
                     patch.object(slab_setup, "realize_materials", stop_realize):
@@ -268,8 +264,6 @@ def _distributed_reference():
                     route, layout, staged = caught.value
                 else:
                     raise AssertionError("slab consumer was not reached")
-            # The graded PEC model runs the wrapped step (select_step); a fall
-            # back to the legacy step would leave the production stage unread.
             assert route == "wrapped", route
             rank = point[0] // layout.nx_per_rank
             at = (rank * layout.nx_local + point[0] - rank * layout.nx_per_rank + 1,) + point[1:]

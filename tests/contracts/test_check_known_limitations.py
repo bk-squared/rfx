@@ -89,7 +89,9 @@ def workflow():
     ('elsewhere', 'rfx', 0), ('bk-squared', 'other', 0), ('bk-squared', 'rfx', 1),
 ])
 def test_workflow_filters_closing_references_to_this_repository(tmp_path, owner, name, expected):
-    """Run the actual workflow shell and its jq expression, with a fake gh read."""
+    """Run the actual workflow shell and its jq expression, with a fake gh read.
+    PyYAML's YAML 1.1 loader spells GitHub's 'on' key as True.
+    """
     job = workflow()['jobs']['pr-body-contract']
     step = next(s for s in job['steps'] if s['name'] == 'Known limitations closed by this PR')
     assert step['if'] == "github.event_name != 'merge_group'"
@@ -101,7 +103,6 @@ def test_workflow_filters_closing_references_to_this_repository(tmp_path, owner,
     assert sum('closingIssuesReferences' in s.get('run', '') for s in job['steps']) == 1
     assert not step.get('continue-on-error', False)
     assert not job.get('if')
-    # PyYAML's YAML 1.1 loader spells GitHub's 'on' key as True.
     assert 'edited' in workflow()[True]['pull_request']['types']
     bindir = tmp_path / 'bin'
     bindir.mkdir()
@@ -124,7 +125,6 @@ if '--jq' in args:
 print(json.dumps(payload))
 ''')
     gh.chmod(0o755)
-    # The workflow's python command executes the real script against a tiny page.
     wrapper = bindir / 'python'
     wrapper.write_text('#!/bin/sh\nexec "$KL_PYTHON" "$KL_SCRIPT" --path "$KL_PAGE"\n')
     wrapper.chmod(0o755)
@@ -140,7 +140,6 @@ print(json.dumps(payload))
     read = subprocess.run(['bash', '-e', '-c', reader['run']], env=env,
                           capture_output=True, text=True)
     assert read.returncode == 0, read.stdout + read.stderr
-    # Apply the real reader's GITHUB_ENV output as Actions does between steps.
     lines = iter(Path(env['GITHUB_ENV']).read_text().splitlines())
     for line in lines:
         key, delimiter = line.split('<<', 1)
@@ -163,7 +162,7 @@ def test_merge_group_skips_and_body_edits_do_not_restart_physics():
     assert 'PR-level' in skip['run']
     heavy_path = ROOT / '.github/workflows/pr-tests.yml'
     heavy = yaml.safe_load(heavy_path.read_text())
-    assert heavy[True]['pull_request'] is None  # origin/main's default trigger list
+    assert heavy[True]['pull_request'] is None
     assert 'scripts/ci/check_known_limitations.py' not in heavy_path.read_text()
     assert 'edited' in workflow()[True]['pull_request']['types']
     weekly = yaml.safe_load((ROOT / '.github/workflows/governance-audit.yml').read_text())
@@ -211,4 +210,4 @@ def test_state_lookup_failure_is_not_a_green_sweep(tmp_path):
 def test_pending_new_issue_fails_cli(tmp_path):
     result = run_check(tmp_path, '## A\nTracker: TODO-NEW-ISSUE (silent gradient error)\n')
     assert result.returncode == 1
-    assert 'leader must open a tracker' in result.stdout
+    assert 'a maintainer must open a tracker' in result.stdout

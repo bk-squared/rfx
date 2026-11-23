@@ -10,6 +10,7 @@ sqrt(LC)) and Q = (1/R)*sqrt(L/C) oracle lives in
 3. Parallel RLC topology runs without error
 4. Validation catches bad inputs
 5. RLC does not break existing non-RLC simulations (no regression)
+Every domain length written as ``4 * (299792458.0 / 5e9 / 20.0)``, ``7 * (299792458.0 / 5e9 / 20.0)`` or ``domain_cells * (299792458.0 / 5e9 / 20.0)`` is a whole number of cells of dx, so the solved domain equals the declared one.
 """
 
 import numpy as np
@@ -17,6 +18,9 @@ import pytest
 
 from rfx import Simulation, GaussianPulse
 from rfx.lumped import init_rlc_state
+
+INDUCTANCE_H = 10e-9
+CAPACITANCE_F = 1e-12
 
 
 class TestLumpedRLCValidation:
@@ -56,7 +60,7 @@ class TestPureResistor:
 
     def test_pure_resistor_runs(self):
         """A pure resistor RLC element should run without error."""
-        sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+        sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
         sim.add_source((0.005, 0.005, 0.005), "ez",
                         waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8))
         sim.add_lumped_rlc((0.005, 0.005, 0.005), component="ez",
@@ -68,26 +72,23 @@ class TestPureResistor:
 
     def test_resistor_damps_field(self):
         """A resistor should damp the field compared to free space."""
-        # Run without RLC
-        sim_ref = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+        sim_ref = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
         sim_ref.add_source((0.005, 0.005, 0.005), "ez",
                             waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8))
         sim_ref.add_probe((0.007, 0.007, 0.005), "ez")
         result_ref = sim_ref.run(n_steps=300, compute_s_params=False)
 
-        # Run with large resistor at probe location
-        sim_rlc = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+        sim_rlc = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
         sim_rlc.add_source((0.005, 0.005, 0.005), "ez",
                             waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8))
+        STRONG_DAMPING_RESISTANCE_OHM = 1.0
         sim_rlc.add_lumped_rlc((0.007, 0.007, 0.005), component="ez",
-                                R=1.0)  # Low resistance = high current = strong damping
+                                R=STRONG_DAMPING_RESISTANCE_OHM)
         sim_rlc.add_probe((0.007, 0.007, 0.005), "ez")
         result_rlc = sim_rlc.run(n_steps=300, compute_s_params=False)
 
-        # The RLC element should modify the field (different energy path)
         ts_ref = np.array(result_ref.time_series).ravel()
         ts_rlc = np.array(result_rlc.time_series).ravel()
-        # They should NOT be identical (the RLC changes the field)
         assert not np.allclose(ts_ref, ts_rlc, atol=1e-10), \
             "RLC element should visibly affect the field"
 
@@ -97,11 +98,11 @@ class TestPureCapacitor:
 
     def test_pure_capacitor_runs(self):
         """Pure C element should run without error."""
-        sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+        sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
         sim.add_source((0.005, 0.005, 0.005), "ez",
                         waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8))
         sim.add_lumped_rlc((0.005, 0.005, 0.005), component="ez",
-                            C=1e-12)
+                            C=CAPACITANCE_F)
         sim.add_probe((0.005, 0.005, 0.005), "ez")
         result = sim.run(n_steps=200, compute_s_params=False)
         assert result is not None
@@ -113,11 +114,11 @@ class TestPureInductor:
 
     def test_pure_inductor_runs(self):
         """Pure L element should run without error."""
-        sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+        sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
         sim.add_source((0.005, 0.005, 0.005), "ez",
                         waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8))
         sim.add_lumped_rlc((0.005, 0.005, 0.005), component="ez",
-                            L=10e-9)
+                            L=INDUCTANCE_H)
         sim.add_probe((0.005, 0.005, 0.005), "ez")
         result = sim.run(n_steps=200, compute_s_params=False)
         assert result is not None
@@ -134,17 +135,16 @@ class TestSeriesRLCResonance:
         feature (loading effect) at the element cell.  We verify this
         by comparing the spectrum with and without the LC element.
         """
-        L = 10e-9      # 10 nH
-        C = 1e-12      # 1 pF
-        f0_lc = 1.0 / (2.0 * np.pi * np.sqrt(L * C))  # ~1.59 GHz
+        L = INDUCTANCE_H
+        C = CAPACITANCE_F
+        f0_lc = 1.0 / (2.0 * np.pi * np.sqrt(L * C))
 
         freq_max = 5e9
         domain_size = 0.02
-        domain_cells = 7  # solved length; #1887
+        domain_cells = 7
         center = (domain_size / 2, domain_size / 2, domain_size / 2)
         n_steps = 2000
 
-        # Reference: no RLC
         sim_ref = Simulation(freq_max=freq_max,
                               domain=(domain_cells * (299792458.0 / 5e9 / 20.0),) * 3, dx=299792458.0 / 5e9 / 20.0,
                               boundary="pec")
@@ -153,14 +153,14 @@ class TestSeriesRLCResonance:
         sim_ref.add_probe(center, "ez")
         result_ref = sim_ref.run(n_steps=n_steps, compute_s_params=False)
 
-        # With LC element (low R for strong effect)
+        STRONG_LOADING_RESISTANCE_OHM = 10.0
         sim_lc = Simulation(freq_max=freq_max,
                              domain=(domain_cells * (299792458.0 / 5e9 / 20.0),) * 3, dx=299792458.0 / 5e9 / 20.0,
                              boundary="pec")
         sim_lc.add_source(center, "ez",
                            waveform=GaussianPulse(f0=f0_lc, bandwidth=0.8))
         sim_lc.add_lumped_rlc(center, component="ez",
-                               R=10.0, L=L, C=C, topology="series")
+                               R=STRONG_LOADING_RESISTANCE_OHM, L=L, C=C, topology="series")
         sim_lc.add_probe(center, "ez")
         result_lc = sim_lc.run(n_steps=n_steps, compute_s_params=False)
 
@@ -168,20 +168,16 @@ class TestSeriesRLCResonance:
         ts_lc = np.array(result_lc.time_series).ravel()
         dt = result_ref.dt
 
-        # The LC element must change the time series
         assert not np.allclose(ts_ref, ts_lc, atol=1e-10), \
             "LC element should modify the time series"
 
-        # Compare spectra around f0_lc
         freqs = np.fft.rfftfreq(len(ts_ref), dt)
         spec_ref = np.abs(np.fft.rfft(ts_ref))
         spec_lc = np.abs(np.fft.rfft(ts_lc))
 
-        # The LC element should change the spectrum near f0_lc
         mask = (freqs > f0_lc * 0.3) & (freqs < f0_lc * 3.0)
         if np.any(mask):
             ratio = spec_lc[mask] / np.maximum(spec_ref[mask], 1e-30)
-            # Spectrum should differ by at least 10% somewhere near f0_lc
             max_change = np.max(np.abs(ratio - 1.0))
             assert max_change > 0.1, (
                 f"LC element should change spectrum near f0={f0_lc:.2e} Hz "
@@ -197,11 +193,10 @@ class TestSeriesRLCResonance:
         """
         freq_max = 5e9
         domain_size = 0.01
-        domain_cells = 4  # solved length; #1887
+        domain_cells = 4
         center = (domain_size / 2, domain_size / 2, domain_size / 2)
         n_steps = 500
 
-        # Reference without capacitor
         sim_ref = Simulation(freq_max=freq_max,
                               domain=(domain_cells * (299792458.0 / 5e9 / 20.0),) * 3, dx=299792458.0 / 5e9 / 20.0,
                               boundary="pec")
@@ -210,20 +205,18 @@ class TestSeriesRLCResonance:
         sim_ref.add_probe(center, "ez")
         result_ref = sim_ref.run(n_steps=n_steps, compute_s_params=False)
 
-        # With capacitor
         sim_cap = Simulation(freq_max=freq_max,
                               domain=(domain_cells * (299792458.0 / 5e9 / 20.0),) * 3, dx=299792458.0 / 5e9 / 20.0,
                               boundary="pec")
         sim_cap.add_source(center, "ez",
                             waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8))
-        sim_cap.add_lumped_rlc(center, component="ez", C=1e-12)
+        sim_cap.add_lumped_rlc(center, component="ez", C=CAPACITANCE_F)
         sim_cap.add_probe(center, "ez")
         result_cap = sim_cap.run(n_steps=n_steps, compute_s_params=False)
 
         ts_ref = np.array(result_ref.time_series).ravel()
         ts_cap = np.array(result_cap.time_series).ravel()
 
-        # The signals should differ significantly
         rel_diff = np.max(np.abs(ts_ref - ts_cap)) / max(
             np.max(np.abs(ts_ref)), np.max(np.abs(ts_cap)), 1e-30)
         assert rel_diff > 0.1, (
@@ -237,11 +230,11 @@ class TestParallelRLC:
 
     def test_parallel_rlc_runs(self):
         """Parallel RLC element should run without error."""
-        sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+        sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
         sim.add_source((0.005, 0.005, 0.005), "ez",
                         waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8))
         sim.add_lumped_rlc((0.005, 0.005, 0.005), component="ez",
-                            R=50.0, L=10e-9, C=1e-12, topology="parallel")
+                            R=50.0, L=INDUCTANCE_H, C=CAPACITANCE_F, topology="parallel")
         sim.add_probe((0.005, 0.005, 0.005), "ez")
         result = sim.run(n_steps=200, compute_s_params=False)
         assert result is not None
@@ -255,13 +248,14 @@ class TestParallelRLC:
         in test_series_rlc_current.py; a parallel-current oracle is not yet
         added.
         """
-        R = 200.0      # Higher R for parallel (high impedance at resonance)
-        L = 10e-9      # 10 nH
-        C = 1e-12      # 1 pF
+        HIGH_PARALLEL_RESONANCE_RESISTANCE_OHM = 200.0
+        R = HIGH_PARALLEL_RESONANCE_RESISTANCE_OHM
+        L = INDUCTANCE_H
+        C = CAPACITANCE_F
         f0_analytical = 1.0 / (2.0 * np.pi * np.sqrt(L * C))
 
         domain_size = 0.02
-        domain_cells = 7  # solved length; #1887
+        domain_cells = 7
         sim = Simulation(freq_max=5e9, domain=(domain_cells * (299792458.0 / 5e9 / 20.0),) * 3, dx=299792458.0 / 5e9 / 20.0,
                           boundary="pec")
         center = (domain_size / 2, domain_size / 2, domain_size / 2)
@@ -274,7 +268,6 @@ class TestParallelRLC:
 
         ts = np.array(result.time_series).ravel()
 
-        # Just verify signal is non-trivial (spectrum analysis is topology-dependent)
         peak = np.max(np.abs(ts))
         assert peak > 0, "Parallel RLC should produce non-zero field"
 
@@ -284,13 +277,13 @@ class TestMultipleRLCElements:
 
     def test_two_rlc_elements(self):
         """Two RLC elements at different positions should both work."""
-        sim = Simulation(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+        sim = Simulation(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
         sim.add_source((0.01, 0.01, 0.01), "ez",
                         waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8))
         sim.add_lumped_rlc((0.005, 0.005, 0.005), component="ez",
-                            R=50.0, C=1e-12, topology="series")
+                            R=50.0, C=CAPACITANCE_F, topology="series")
         sim.add_lumped_rlc((0.015, 0.015, 0.015), component="ez",
-                            L=10e-9, topology="series")
+                            L=INDUCTANCE_H, topology="series")
         sim.add_probe((0.01, 0.01, 0.01), "ez")
         result = sim.run(n_steps=200, compute_s_params=False)
         assert result is not None
@@ -302,10 +295,10 @@ class TestRLCWithOtherComponents:
 
     def test_rlc_with_port(self):
         """RLC element combined with a lumped port should work."""
-        sim = Simulation(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+        sim = Simulation(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
         sim.add_port((0.01, 0.01, 0.01), "ez", impedance=50.0)
         sim.add_lumped_rlc((0.015, 0.015, 0.01), component="ez",
-                            R=100.0, C=1e-12, topology="series")
+                            R=100.0, C=CAPACITANCE_F, topology="series")
         sim.add_probe((0.015, 0.015, 0.01), "ez")
         result = sim.run(n_steps=200, compute_s_params=False)
         assert result is not None
@@ -315,7 +308,7 @@ class TestExComponent:
     """RLC element on Ex component."""
 
     def test_ex_component(self):
-        sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+        sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
         sim.add_source((0.005, 0.005, 0.005), "ex",
                         waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8))
         sim.add_lumped_rlc((0.005, 0.005, 0.005), component="ex", R=50.0)
@@ -324,7 +317,7 @@ class TestExComponent:
         assert result is not None
 
     def test_ey_component(self):
-        sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+        sim = Simulation(freq_max=5e9, domain=(4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0), 4 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
         sim.add_source((0.005, 0.005, 0.005), "ey",
                         waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8))
         sim.add_lumped_rlc((0.005, 0.005, 0.005), component="ey", R=50.0)

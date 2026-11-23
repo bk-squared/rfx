@@ -245,18 +245,6 @@ def test_estimator_refuses_invalid_lengths(box, lengths):
         box[0].estimate_ad_memory(97, checkpoint_every=lengths)
 
 
-@pytest.mark.parametrize("length", [8, 16])
-def test_report_cpu_tape_and_compiled_memory(box, length, record_property):
-    sim, eps, sigma = box
-    estimate = sim.estimate_ad_memory(97, checkpoint_every=length)
-    compiled = jax.jit(jax.grad(lambda e, s: jnp.sum(outputs(sim, e, s, length)[1]),
-                               argnums=(0, 1))).lower(eps, sigma).compile()
-    row = dict(length=length, tape_step_bytes=estimate.tape_step_bytes,
-               temp_bytes=compiled.memory_analysis().temp_size_in_bytes)
-    record_property("memory_report", json.dumps(row))
-    print(json.dumps(row))
-
-
 def test_slab_wrap_refuses_tuple():
     from rfx.stepping.slab_wrap import validate_scan_controls
     with pytest.raises(NotImplementedError, match="slab_wrap.*checkpoint_every"):

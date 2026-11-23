@@ -67,6 +67,7 @@ def _weight_ownership(layout, monitor):
 
 
 def test_moment_weights_not_cut_mutation(tmp_path):
+    """The ownership invariant is checked before stepping, where incompatible array shapes would hide the duplicated volume the mutation is meant to expose."""
     from jax.sharding import Mesh
     from rfx.runners._distributed_records import MomentRecords
     sim, grid, seam = model("cpml", 3)
@@ -76,9 +77,6 @@ def test_moment_weights_not_cut_mutation(tmp_path):
     layout = MomentRecords(Mesh(np.array(host_devices(3)), ("x",)),
                            native.current_moment_monitor, seam, native.state.ex.dtype)
     ratios = _weight_ownership(layout, native.current_moment_monitor)
-    # Remove the cuts on the actual monitor weights. The ownership invariant
-    # is checked before stepping, where incompatible array shapes would hide
-    # the duplicated volume this mutation is meant to expose.
     layout.parts = [part._replace(**{name: getattr(native.current_moment_monitor, name)
                                      for name in ("w_ex", "w_ey", "w_ez")}) for part in layout.parts]
     with pytest.raises(AssertionError, match="moment weight ownership") as failure:

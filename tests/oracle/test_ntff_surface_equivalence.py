@@ -18,7 +18,8 @@ def _equivalence_records():
     m = ETA_0 * np.array([[0.1j, 0.2, 0.1], [0.2, -0.1j, 0.3]])
     exterior = np.array([[0.135, 0.041, 0.026], [0.075, 0.16, 0.075], [0.04, 0.07, 0.21]])
     interior = np.array([[0.035, 0.04, 0.03]])
-    scale = 7e-10  # synthetic raw DFT integral scale, not a CW phasor
+    RAW_DFT_INTEGRAL_SCALE = 7e-10
+    scale = RAW_DFT_INTEGRAL_SCALE
     records = []
     for n in (3, 6, 12):
         dx = 0.06 / n
@@ -65,7 +66,6 @@ def _equivalence_records():
 
 def test_closed_surface_reproduces_exterior_and_extinguishes_interior():
     records = _equivalence_records()
-    # Two refinements of a fixed physical box, checked at every frequency.
     for name in ("exterior_error", "interior_residual"):
         error = np.array([r[name] for r in records]).reshape(3, 5)
         assert np.all(error[1:] < error[:-1] / 3), (name, error)

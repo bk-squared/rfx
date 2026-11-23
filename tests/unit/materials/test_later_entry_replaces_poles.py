@@ -20,7 +20,6 @@ BODY, HOLE = ((.006, 0, 0), (.018, .012, .012)), ((.010, 0, 0), (.014, .012, .01
 
 
 def _sim(kind, poles, graded=False):
-    # ``graded`` declares the same 1 mm cells as a profile, which routes to the graded-mesh assembler.
     kwargs = {"dx_profile": np.full(24, 1e-3)} if graded else {}
     sim = Simulation(freq_max=10e9, domain=(.024, .012, .012), dx=.001, boundary="pec", **kwargs)
     sim.add_material("body", eps_r=2.0, **poles)
@@ -48,9 +47,10 @@ def _assembled(sim, graded=False):
 @pytest.mark.parametrize("poles,index", [({"lorentz_poles": [LORENTZ]}, 2), ({"debye_poles": [DEBYE]}, 1)],
                          ids=["lorentz", "debye"])
 def test_a_block_drawn_into_a_dispersive_body_removes_its_poles_there(poles, index):
+    """The hole occupies x-cell indices 10..13 on the 1 mm grid."""
     drawn, declared = _assembled(_sim("drawn", poles)), _assembled(_sim("declared", poles))
     mask_drawn, mask_declared = (np.asarray(r[index][1][0]) for r in (drawn, declared))
-    hole = slice(10, 14)                         # x cells 10..13 mm, written by hand
+    hole = slice(10, 14)
     assert not mask_drawn[hole].any()
     assert mask_drawn[6:10, :12, :12].all() and mask_drawn[14:18, :12, :12].all()
     assert np.array_equal(mask_drawn, mask_declared)
@@ -62,8 +62,6 @@ def test_a_block_drawn_into_a_dispersive_body_removes_its_poles_there(poles, ind
                                    {"lorentz_poles": [drude_pole(2 * np.pi * 20e9, 2 * np.pi * 2e9)]},
                                    {"debye_poles": [DEBYE]}], ids=["lorentz", "drude", "debye"])
 def test_a_drawn_hole_is_solved_like_the_declared_one(poles, graded):
-    # Probes: inside the hole and behind the body. With the body's poles left in the hole the two
-    # runs differed by 48 % to 98 % of the peak (Lorentz, Drude, Debye; uniform and graded mesh).
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         a, b = (np.asarray(_sim(k, poles, graded).run(n_steps=600, compute_s_params=False,
@@ -96,15 +94,14 @@ def test_the_same_material_drawn_twice_keeps_its_pole_once():
 
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
-@pytest.mark.parametrize("metal", [((.006, .002, .006), (.018, .010, .006)),      # a sheet: no thickness
-                                   ((.010, .003, .003), (.014, .008, .009))],     # a block
+@pytest.mark.parametrize("metal", [((.006, .002, .006), (.018, .010, .006)),
+                                   ((.010, .003, .003), (.014, .008, .009))],
                          ids=["sheet", "block"])
 def test_metal_drawn_into_a_dispersive_body_leaves_its_poles(metal, graded):
-    # PEC writes no permittivity into the cells, so it removes no poles either: a ground plane or
-    # a patch on a dispersive substrate must not strip the dispersion from the cells beside it.
+    """PEC writes no permittivity into the cells, so it removes no poles either."""
     def masks(with_metal):
         sim = _sim("drawn", {"debye_poles": [DEBYE], "lorentz_poles": [LORENTZ]}, graded)
-        sim._geometry = sim._geometry[:1]                    # the body alone
+        sim._geometry = sim._geometry[:1]
         if with_metal:
             sim.add(Box(*metal), material="pec")
         result = _assembled(sim, graded)
@@ -128,15 +125,14 @@ def _chi3_sim(kind):
 
 
 def test_a_block_drawn_into_a_kerr_body_removes_its_nonlinearity_there():
+    """The hole occupies x-cell indices 10..13 on the 1 mm grid."""
     drawn, declared = (np.asarray(_assembled(_chi3_sim(k))[6]) for k in ("drawn", "declared"))
-    assert not drawn[10:14].any()                # the hole, x cells 10..13 mm
+    assert not drawn[10:14].any()
     assert (drawn[6:10, :12, :12] == np.float32(1e-10)).all()
     assert np.array_equal(drawn, declared)
 
 
 def test_the_shared_rasterizer_follows_the_same_rule():
-    # ``rasterize_geometry`` (fine-grid and interface-permittivity sampling) keeps the declaration
-    # rule of the cell assembler: poles and the Kerr coefficient leave the cells a later entry writes.
     from rfx.geometry.rasterize_grid import coords_from_uniform_grid, rasterize_geometry
     sim = Simulation(freq_max=10e9, domain=(.024, .012, .012), dx=.001, boundary="pec")
     sim.add_material("body", eps_r=2.0, chi3=1e-10, debye_poles=[DEBYE], lorentz_poles=[LORENTZ])
@@ -155,7 +151,7 @@ def test_the_shared_rasterizer_follows_the_same_rule():
 def test_metal_drawn_into_a_kerr_body_leaves_its_nonlinearity(metal):
     def chi3(with_metal):
         sim = _chi3_sim("drawn")
-        sim._geometry = sim._geometry[:1]                    # the body alone
+        sim._geometry = sim._geometry[:1]
         if with_metal:
             sim.add(Box(*metal), material="pec")
         return np.asarray(_assembled(sim)[6])

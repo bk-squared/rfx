@@ -657,7 +657,7 @@ def run_target(n_steps, outdir, c1_data, floor_eff=FLOOR):
             "Per the #589 pre-declaration: the follow-up is a Gwarek V-I "
             "MSL-side extraction check per the repo's port-class fallback "
             "discipline — flux numbers never become S numbers. NOTE "
-            "(PI decision 2026-08-07): the lane hard-stops after this "
+            "the lane hard-stops after this "
             "verdict is reported; the Gwarek follow-up is NOT auto-started."
         )
         print("[target] predeclared consequence:", out["predeclared_consequence"])

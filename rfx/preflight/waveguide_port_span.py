@@ -5,6 +5,8 @@ Probe planes and post-processing reference_plane shifts are not this interval.
 """
 from __future__ import annotations
 
+from rfx.preflight._not_judged import is_tracer_error, not_judged
+
 import numpy as np
 
 from rfx.model.waveguide_planes import entry_planes
@@ -13,12 +15,17 @@ from rfx.preflight._subjects import finding_subjects
 from rfx.preflight._common import PreflightErrorWarning
 
 
+_INTERFACE_SAMPLE_OFFSET_M = 1e-5
+
+
 def _bounds(shape):
     try:
         c1, c2 = shape.bounding_box()
         corners = np.asarray((c1, c2), dtype=float)
         return corners.min(axis=0), corners.max(axis=0)
-    except (NotImplementedError, TypeError):
+    except (NotImplementedError, TypeError) as _traced_exc:
+        if is_tracer_error(_traced_exc):
+            not_judged(None, "_validate_cfg_waveguide_port_span")
         return None
 
 
@@ -86,7 +93,6 @@ def _face_sample_points(grid, lo, hi, aperture):
         return
     transverse = list(aperture)
     samples = np.stack(np.meshgrid(*axes, indexing="ij"), axis=-1).reshape(-1, 2)
-    # Reserve the centre's slot at the cap by replacing its nearest sample.
     distances = np.sum((samples - centre[transverse]) ** 2, axis=1)
     omit = int(np.argmin(distances)) if len(samples) == 64 * 64 else None
     for i, sample in enumerate(samples):
@@ -106,10 +112,6 @@ def _built(grid, axis, x):
         if grid.is_traced(name):
             from rfx.geometry.rasterize_grid import _axis_node_positions
             from rfx.model.graded_grid import _nearest_on_line
-            # This lookup only decides membership in the source-reference
-            # interval. Admission keeps that interval outside the window;
-            # a face inside the window has the same membership on nominal
-            # and realized nodes.
             index = _nearest_on_line(_axis_node_positions(cells, pad), cells, x)
         else:
             index = grid.index_of(name, x)
@@ -146,8 +148,6 @@ def _validate_cfg_waveguide_port_span(self, _w):
             self._geometry or self._thin_conductors or self._pinned_sheets):
         return
     grid = self._build_realized_grid()
-    # The mode builder places the plane from float32 cell widths, about 5e-8 m
-    # from this float64 sum on a graded axis; a face that close is on the plane.
     tol = 1e-6
     for p, entry in enumerate(self._waveguide_ports):
         axis = "xyz".index(entry.direction[1])
@@ -163,11 +163,6 @@ def _validate_cfg_waveguide_port_span(self, _w):
             if not all(hi[a] > limits[0] + tol and lo[a] < limits[1] - tol
                        for a, limits in aperture.items()):
                 continue
-            # Open at the source plane, closed at the reference plane: a short
-            # whose face lies on the reference plane reads |S22| 0.50, so a face
-            # there is an obstacle too. A PEC face is built
-            # on its nearest node (drawn at 80.5 mm, built at 81 mm), so test
-            # both; a face outside the domain cannot be built on the plane.
             def inside(face):
                 return start + tol < face < end - tol or abs(face - reference) <= tol
 
@@ -175,17 +170,12 @@ def _validate_cfg_waveguide_port_span(self, _w):
                      if inside(face) or (0.0 <= face <= self._domain[axis]
                                          and inside(_built(grid, axis, face)))]
             if volume and faces:
-                # A face counts only where the medium changes across it: two
-                # abutting boxes of one material, or a vacuum box, are a
-                # uniform guide. Sample the realised transverse
-                # cell centres and overlap centre, 10 um (or half the box) either side.
                 points = tuple(_face_sample_points(grid, lo, hi, aperture))
 
-                # A box thinner than 20 um has both 10 um samples outside it.
-                step = min(1e-5, 0.5 * (hi[axis] - lo[axis]))
+                step = min(_INTERFACE_SAMPLE_OFFSET_M, 0.5 * (hi[axis] - lo[axis]))
 
                 def changes(face):
-                    if hi[axis] - lo[axis] <= tol:  # a sheet: always a reflector
+                    if hi[axis] - lo[axis] <= tol:
                         return True
                     for point in points:
                         before, after = point.copy(), point.copy()

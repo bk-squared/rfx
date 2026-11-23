@@ -142,7 +142,7 @@ def test_forward_s11_rejects_non_port_source_only_request():
     sim = Simulation(freq_max=5e9, domain=(0.01, 0.01, 0.01), dx=1e-3, boundary="pec")
     sim.add_source((0.005, 0.005, 0.005), "ez")
 
-    with pytest.raises(ValueError, match="add_source.*not an impedance port"):
+    with pytest.raises(ValueError, match="add_source.*not impedance ports"):
         sim.forward(n_steps=1, port_s11_freqs=np.array([1.0e9]), skip_preflight=True)
 
 
@@ -165,7 +165,7 @@ def test_preflight_sparameters_routes_forward_specialized_families():
 
     issues = sim.preflight_sparameters(calculator="forward")
 
-    assert any("waveguide ports use compute_waveguide_s_matrix" in issue for issue in issues)
+    assert any("add_waveguide_port(...) uses compute_waveguide_s_matrix" in issue for issue in issues)
 
 
 def test_preflight_sparameters_rejects_unknown_calculator():
@@ -215,8 +215,9 @@ def test_compute_msl_s_matrix_nu_eigenmode_still_fenced():
 def test_msl_nu_fence_message_parity_sparams_vs_preflight():
     """Contract-test governance: the eigenmode-fence message must be byte-identical
     between compute_msl_s_matrix (_sparams) and preflight_sparameters (_preflight),
-    so preflight never green-lights a config the method rejects (or vice versa)."""
-    # _sparams raises; _preflight collects the same error into a PreflightReport.
+    so preflight never green-lights a config the method rejects (or vice versa).
+    The preflight report prefixes the message with "NotImplementedError: ".
+    """
     sim_a = _nu_msl_sim(mode="eigenmode")
     try:
         sim_a.compute_msl_s_matrix(n_steps=1)
@@ -232,19 +233,12 @@ def test_msl_nu_fence_message_parity_sparams_vs_preflight():
         f"_preflight must surface the eigenmode fence exactly once; "
         f"got {[str(i) for i in report.issues]}"
     )
-    # The _sparams message must appear VERBATIM in the _preflight issue (the
-    # report prefixes it with 'NotImplementedError: '): no fence-message drift.
     assert msg_sparams in fence_issues[0], (
         "fence message drift: _sparams vs _preflight must stay byte-identical.\n"
         f"  _sparams:        {msg_sparams!r}\n  _preflight issue: {fence_issues[0]!r}"
     )
 
 
-# Which single profile makes the sim non-uniform. dz joined the waveguide
-# dispatch in the #811 fix, so the fence/parity contracts below bind on it
-# too. The dz profile is genuinely graded (a uniform-valued profile only
-# tests plumbing, never NU metrics); it sums exactly to the 0.010 m z
-# extent with adjacent ratios <= 1.4.
 _NU_WG_PROFILES = {
     "dy": {"dy_profile": np.full(23, 1e-3)},
     "dz": {"dz_profile": np.concatenate([
@@ -254,6 +248,7 @@ _NU_WG_PROFILES = {
 
 def _nu_waveguide_sim(n_modes: int = 1, profile_axis: str = "dy") -> "Simulation":
     """Addendum 5f: transverse PEC leaves the NU calculator fences reachable."""
+    assert profile_axis != "dz" or (np.ptp(_NU_WG_PROFILES["dz"]["dz_profile"]) > 0 and np.isclose(np.sum(_NU_WG_PROFILES["dz"]["dz_profile"]), 0.010, rtol=0, atol=1e-15) and np.max(np.maximum(_NU_WG_PROFILES["dz"]["dz_profile"][1:] / _NU_WG_PROFILES["dz"]["dz_profile"][:-1], _NU_WG_PROFILES["dz"]["dz_profile"][:-1] / _NU_WG_PROFILES["dz"]["dz_profile"][1:])) <= 1.4), "The graded z profile must span 0.010 m with adjacent ratios at most 1.4 to exercise nonuniform metrics."
     sim = Simulation(
         freq_max=12e9,
         domain=(0.10, 0.023, 0.010),

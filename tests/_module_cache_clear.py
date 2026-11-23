@@ -29,8 +29,6 @@ def enabled() -> bool:
 class _ClearAtModuleEnd:
     @pytest.hookimpl(hookwrapper=True, trylast=True)
     def pytest_runtest_protocol(self, item, nextitem):
-        # After the protocol the item's teardown has run, and when the next
-        # item is in another module (or there is none) so has the module's.
         yield
         if nextitem is None or nextitem.path != item.path:
             import jax

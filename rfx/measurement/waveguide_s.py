@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from rfx.measurement.calculator_drive import calculator_drive
+
+from rfx.model.waveguide_aperture import validate_uniform_waveguide_ports
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -400,6 +404,30 @@ def extract_waveguide_sparams(
         them directly; otherwise the recorded time-series on ``cfg`` is
         used.
     """
+    return _extract_waveguide_sparams(
+        cfg,
+        ref_shift=ref_shift,
+        probe_shift=probe_shift,
+        v_ref_dft=v_ref_dft,
+        i_ref_dft=i_ref_dft,
+        v_probe_dft=v_probe_dft,
+        i_probe_dft=i_probe_dft,
+        warn_cutoff=True,
+    )
+
+
+def _extract_waveguide_sparams(
+    cfg: WaveguidePortConfig,
+    *,
+    ref_shift: float = 0.0,
+    probe_shift: float = 0.0,
+    v_ref_dft: jnp.ndarray | None = None,
+    i_ref_dft: jnp.ndarray | None = None,
+    v_probe_dft: jnp.ndarray | None = None,
+    i_probe_dft: jnp.ndarray | None = None,
+    warn_cutoff: bool = True,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Extract S entries, optionally suppressing an already emitted cutoff notice."""
     require_probe_medium(cfg)
     beta = _compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx, medium=cfg.medium)
     step_sign = 1 if cfg.direction.startswith("+") else -1
@@ -420,7 +448,8 @@ def extract_waveguide_sparams(
     a_ref, b_ref = _shift_modal_waves(a_ref, b_ref, beta, ref_shift, step_sign)
     a_probe, b_probe = _shift_modal_waves(a_probe, b_probe, beta, probe_shift, step_sign)
     safe_ref = jnp.where(jnp.abs(a_ref) > 0, a_ref, jnp.ones_like(a_ref))
-    warn_power_waves([cfg])
+    if warn_cutoff:
+        warn_power_waves([cfg])
     s11 = power_wave_ratio(b_ref, safe_ref, cfg, cfg)
     s21 = power_wave_ratio(a_probe, safe_ref, cfg, cfg)
     return s11, s21
@@ -493,6 +522,35 @@ def _s_matrix_port_waves(cfg, *, ref_shift):
     return tuple(wave.astype(complex_dtype) for wave in waves)
 
 
+def extract_waveguide_s_column(configs, drive_idx, ref_shifts):
+    """Raw power-wave column (receiving port, frequency), on the JAX tape."""
+    a_drive, _b_drive = _s_matrix_port_waves(
+        configs[drive_idx],
+        ref_shift=ref_shifts[drive_idx],
+    )
+    safe_a = jnp.where(jnp.abs(a_drive) > 0, a_drive, jnp.ones_like(a_drive))
+    col_slices: list[jnp.ndarray] = []
+    for recv_idx, cfg in enumerate(configs):
+        _a_recv, b_recv = _s_matrix_port_waves(
+            cfg,
+            ref_shift=ref_shifts[recv_idx],
+        )
+        # G-AD-WIRE: keep on JAX tape — no np.array() concretisation.
+        drive_cfg = configs[drive_idx]
+        defined = power_wave_pair(cfg, drive_cfg)
+        ratio = finite_wave_ratio(b_recv, safe_a, defined)
+        if cfg.medium != drive_cfg.medium:
+            zi = _compute_mode_impedance(cfg.freqs, cfg.f_cutoff, cfg.mode_type,
+                                         medium=cfg.medium, dt=cfg.dt, dx=cfg.dx)
+            zj = _compute_mode_impedance(drive_cfg.freqs, drive_cfg.f_cutoff, drive_cfg.mode_type,
+                                         medium=drive_cfg.medium, dt=drive_cfg.dt, dx=drive_cfg.dx)
+            ratio = ratio * jnp.sqrt(finite_wave_ratio(zj, zi, defined) +
+                                     jnp.where(defined, 0, 1))
+        col_slices.append(mask_power_wave(ratio, defined))
+    # Stack recv slices into column (n_ports, n_freqs).
+    return jnp.stack(col_slices, axis=0)
+
+
 def extract_waveguide_s_matrix(
     grid: Grid,
     materials: MaterialArrays,
@@ -544,6 +602,7 @@ def extract_waveguide_s_matrix(
         :meth:`Simulation.compute_waveguide_s_matrix` for full semantics.
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+    validate_uniform_waveguide_ports(grid, port_cfgs, pec_axes, periodic)
     if len(port_cfgs) < 2:
         raise ValueError(
             "extract_waveguide_s_matrix requires at least two waveguide ports"
@@ -571,7 +630,7 @@ def extract_waveguide_s_matrix(
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
         zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
-            src_amp=cfg.src_amp if drive_enabled else 0.0,
+            src_amp=calculator_drive(drive_enabled, amplitude=cfg.src_amp),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -610,9 +669,10 @@ def extract_waveguide_s_matrix(
         if len(final_cfgs) != n_ports:
             raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
         if return_settling:
+            from rfx.measurement.record_readers import waveguide_s_reader
             value, detail = settling_db_from_port_records(
                 final_cfgs, freq_max=getattr(grid, "freq_max", None),
-                return_detail=True)
+                return_detail=True, reader=waveguide_s_reader(final_cfgs, drive_idx))
             settling_runs.append(value)
             if settling_details is not None:
                 settling_details.append(detail)
@@ -621,31 +681,7 @@ def extract_waveguide_s_matrix(
         # post-scan rect-DFT extractor below uses the correct Δt even when the
         # cfgs were built via init_waveguide_port without dt=.
 
-        a_drive, b_drive = _s_matrix_port_waves(
-            final_cfgs[drive_idx],
-            ref_shift=ref_shifts[drive_idx],
-        )
-        safe_a = jnp.where(jnp.abs(a_drive) > 0, a_drive, jnp.ones_like(a_drive))
-        col_slices: list[jnp.ndarray] = []
-        for recv_idx, cfg in enumerate(final_cfgs):
-            _a_recv, b_recv = _s_matrix_port_waves(
-                cfg,
-                ref_shift=ref_shifts[recv_idx],
-            )
-            # G-AD-WIRE: keep on JAX tape — no np.array() concretisation.
-            drive_cfg = final_cfgs[drive_idx]
-            defined = power_wave_pair(cfg, drive_cfg)
-            ratio = finite_wave_ratio(b_recv, safe_a, defined)
-            if cfg.medium != drive_cfg.medium:
-                zi = _compute_mode_impedance(cfg.freqs, cfg.f_cutoff, cfg.mode_type,
-                                             medium=cfg.medium, dt=cfg.dt, dx=cfg.dx)
-                zj = _compute_mode_impedance(drive_cfg.freqs, drive_cfg.f_cutoff, drive_cfg.mode_type,
-                                             medium=drive_cfg.medium, dt=drive_cfg.dt, dx=drive_cfg.dx)
-                ratio = ratio * jnp.sqrt(finite_wave_ratio(zj, zi, defined) +
-                                         jnp.where(defined, 0, 1))
-            col_slices.append(mask_power_wave(ratio, defined))
-        # Stack recv slices into column (n_ports, n_freqs).
-        s_cols.append(jnp.stack(col_slices, axis=0))
+        s_cols.append(extract_waveguide_s_column(final_cfgs, drive_idx, ref_shifts))
 
     # Assemble full S-matrix: stack drive columns along axis=1 →
     # (n_ports, n_ports, n_freqs).
@@ -755,6 +791,7 @@ def extract_waveguide_s_matrix_flux(
     function for argument documentation.
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+    validate_uniform_waveguide_ports(grid, port_cfgs, pec_axes, periodic)
     if len(port_cfgs) < 2:
         raise ValueError(
             "extract_waveguide_s_matrix_flux requires at least two waveguide ports"
@@ -784,7 +821,7 @@ def extract_waveguide_s_matrix_flux(
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
         zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
-            src_amp=cfg.src_amp if drive_enabled else 0.0,
+            src_amp=calculator_drive(drive_enabled, amplitude=cfg.src_amp),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -1098,6 +1135,7 @@ def extract_waveguide_s_params_normalized(
         Normalized S-matrix of shape (n_ports, n_ports, n_freqs), complex.
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+    validate_uniform_waveguide_ports(grid, port_cfgs, pec_axes, periodic)
     if len(port_cfgs) < 2:
         raise ValueError(
             "extract_waveguide_s_params_normalized requires at least two waveguide ports"
@@ -1119,7 +1157,7 @@ def extract_waveguide_s_params_normalized(
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
         zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
-            src_amp=cfg.src_amp if drive_enabled else 0.0,
+            src_amp=calculator_drive(drive_enabled, amplitude=cfg.src_amp),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -1294,6 +1332,9 @@ def extract_multimode_s_matrix(
         Ordering of rows/columns in the S-matrix.
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+    validate_uniform_waveguide_ports(
+        grid, [cfg for modes in port_mode_cfgs for cfg in modes], pec_axes, periodic,
+    )
     from rfx.stepping.uniform_loop import run as run_simulation
 
     # Flatten to a linear list, keeping track of (port_idx, mode_within_port)
@@ -1328,7 +1369,7 @@ def extract_multimode_s_matrix(
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
         zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
-            src_amp=cfg.src_amp if drive_enabled else 0.0,
+            src_amp=calculator_drive(drive_enabled, amplitude=cfg.src_amp),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -1344,7 +1385,7 @@ def extract_multimode_s_matrix(
             for idx, cfg in enumerate(flat_cfgs)
         ]
         # Set the driven mode amplitude to the original first-mode amplitude
-        orig_amp = flat_cfgs[0].src_amp if flat_cfgs[0].src_amp != 0.0 else 1.0
+        orig_amp = calculator_drive(True, amplitude=flat_cfgs[0].src_amp)
         driven_cfgs[drive_flat_idx] = driven_cfgs[drive_flat_idx]._replace(
             src_amp=orig_amp,
         )
@@ -1366,8 +1407,10 @@ def extract_multimode_s_matrix(
         )
         final_cfgs = result.waveguide_ports or ()
         if settling_details is not None:
+            from rfx.measurement.record_readers import waveguide_s_reader
             _, detail = settling_db_from_port_records(
-                final_cfgs, freq_max=getattr(grid, 'freq_max', None), return_detail=True)
+                final_cfgs, freq_max=getattr(grid, 'freq_max', None), return_detail=True,
+                reader=waveguide_s_reader(final_cfgs, drive_flat_idx))
             settling_details.append(detail)
         if len(final_cfgs) != n_total:
             raise RuntimeError(
@@ -1475,6 +1518,9 @@ def extract_multimode_s_matrix_flux(
     mode_map : list of (port_idx, mode_idx, mode_type, (m, n))
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+    validate_uniform_waveguide_ports(
+        grid, [cfg for modes in port_mode_cfgs for cfg in modes], pec_axes, periodic,
+    )
     from rfx.stepping.uniform_loop import run as run_simulation
 
     flat_cfgs: list[WaveguidePortConfig] = []
@@ -1512,7 +1558,7 @@ def extract_multimode_s_matrix_flux(
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
         zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
-            src_amp=cfg.src_amp if drive_enabled else 0.0,
+            src_amp=calculator_drive(drive_enabled, amplitude=cfg.src_amp),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -1527,7 +1573,7 @@ def extract_multimode_s_matrix_flux(
         pec_axes=pec_axes,
         periodic=periodic,
     )
-    orig_amp = flat_cfgs[0].src_amp if flat_cfgs[0].src_amp != 0.0 else 1.0
+    orig_amp = calculator_drive(True, amplitude=flat_cfgs[0].src_amp)
 
     for drive_flat_idx in range(n_total):
         # --- Reference run (empty guide, channel drive_flat_idx driven) ---

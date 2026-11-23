@@ -5,6 +5,8 @@ from typing import Any, cast
 import jax
 import numpy as np
 
+from rfx.errors import RfxRefusal
+
 
 @jax.tree_util.register_pytree_node_class
 @dataclass(frozen=True, eq=False)
@@ -17,9 +19,10 @@ class RelativeStrength:
     order one: the cotangent's margin shrinks in proportion to its distance
     from one. Field coefficients multiply the concrete SI factors first.
 
-    For traced SI declarations the optional float32 underflow warning uses
-    ``RFX_POLE_UNDERFLOW_CHECK=1``; set it before the first call; a cached
-    compile keeps the old setting. The check is off by default.
+    For traced SI declarations the float32 underflow warning is on by default
+    where the backend can make host callbacks.
+    ``RFX_POLE_UNDERFLOW_CHECK=0`` turns it off; set it before the first call;
+    a cached compile keeps the old setting.
     """
 
     reference: float
@@ -28,7 +31,7 @@ class RelativeStrength:
     def __post_init__(self):
         if (not isinstance(self.reference, (float, np.floating))
                 or not np.isfinite(self.reference) or self.reference <= 0):
-            raise ValueError("RelativeStrength reference must be a positive finite Python/numpy float")
+            raise RfxRefusal("RelativeStrength reference must be a positive finite Python/numpy float")
 
     @property
     def si(self):

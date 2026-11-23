@@ -80,7 +80,6 @@ def parameter_blocks(sim, name):
         xs = np.flatnonzero(mask.any(axis=(1, 2))).tolist()
         assert xs == expected[k], (name, k, xs, expected[k])
         ys = range(25, 31) if name.startswith('T') else ([18] if k == 3 else range(28, 48))
-        # J0g's full cell lists, independently fixed by the physical boxes.
         expected_cells = list(product(expected[k], ys, range(8, 12)))
         np.testing.assert_array_equal(np.argwhere(mask), expected_cells)
         masks.append(mask.astype(np.float32))

@@ -34,6 +34,11 @@ sim.add_ntff_box(corner_lo=(0.012, 0.012, 0.012),
 result = sim.run(n_steps=800, compute_s_params=True)
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/measure/assets/plots-and-export/structure.png" loading="lazy" alt="Top view of two ports side by side and a probe offset from them in the +y direction, inside a dashed far-field box, inside absorber." />
+  <figcaption>The shared model, cut at z = 30.75 mm, where the Ez samples of the ports and the probe sit: the ports requested at x = 28 and 32 mm are built at 28.5 and 31.5 mm. The far-field box spans 12 to 48 mm on each axis, and preflight warns that the six-layer absorber is thin.</figcaption>
+</figure>
+
 ## Plots
 
 ### S-parameters and Smith chart
@@ -115,6 +120,11 @@ print(axes.times_s[:3])                           # seconds, one per frame
 assert k == snap_run.grid.position_to_index((0.020, 0.020, 0.010))[2]
 x_m, y_m = axes.coords["x"], axes.coords["y"]     # sample positions (m)
 ```
+
+<figure data-rfx="media">
+  <img src="/rfx/measure/assets/plots-and-export/snapshot.png" loading="lazy" alt="Ez map on a dark background, where dark means zero: one bright positive cell at the centre and a few faint positive cells around it." />
+  <figcaption><code>frames[14]</code> of this run, which is Ez after step 150 (0.286 ns) in the plane z = 10.5 mm. The colour scale is linear and symmetric about zero, with limits set by the largest |Ez| in this frame.</figcaption>
+</figure>
 
 Use `axes.times_s` and `axes.coords` for your plot axes rather than working
 them out yourself:

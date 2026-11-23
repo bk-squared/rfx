@@ -136,6 +136,11 @@ rel_err = abs(ad_grad[idx] - fd_grad) / max(abs(fd_grad), 1e-30)
 print(f"loss = {float(loss_fn(params)):.3e}, AD/FD relative error = {float(rel_err):.2e}")
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/design/assets/gradients/structure.png" loading="lazy" alt="Section through a PEC box filled with a medium of εr = 4. A conductive block lies between the source and the probe, and one cell inside the block is outlined as the perturbed cell." />
+  <figcaption>The model as solved, cut at y = 14 mm: <code>eps_override</code> replaces the permittivity of every cell, so the whole box has εr = 4, and the declared slab keeps only its σ = 0.01 S/m, in the hatched cells. The outlined cell, <code>idx = (10, 7, 5)</code>, is the one the finite difference perturbs.</figcaption>
+</figure>
+
 On this model the two agree to about 5 parts in a thousand. The loss is in
 arbitrary units here (a raw probe signal), so only the relative error matters.
 

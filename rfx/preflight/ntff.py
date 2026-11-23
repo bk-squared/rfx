@@ -25,6 +25,8 @@ imported from ``rfx.preflight._common``.
 
 from __future__ import annotations
 
+from rfx.preflight._not_judged import is_tracer_error, not_judged
+
 from rfx.preflight._subjects import finding_subjects
 
 import jax.numpy as jnp
@@ -63,7 +65,6 @@ def _validate_ntff_inverse_design(
         return
 
     corner_lo, corner_hi, freqs = self._ntff
-    # face = (axis, sign, coord, tangential bbox: [(lo_a, hi_a), (lo_b, hi_b)])
     faces = []
     for axis in range(3):
         other = [a for a in range(3) if a != axis]
@@ -72,23 +73,13 @@ def _validate_ntff_inverse_design(
         faces.append(("lo", axis, corner_lo[axis], tang))
         faces.append(("hi", axis, corner_hi[axis], tang))
 
-    # CHECK 2: PEC intersection, CLOSED on the REALIZED wall planes.
-    # A PEC volume drawn z_a -> z_b realizes walls at
-    # BOTH planes, so an NTFF face lying exactly ON a wall plane sits
-    # on a conductor surface (tangential E zeroed there) and is an
-    # overlap; a sheet (thin conductor or zero-thickness Box) is one
-    # plane and is in the census too. Bounds along the normal axis are
-    # the entry's own realized wall planes in physical units, read
-    # through the shared context; the tangential overlap uses the
-    # declared bounds. A traced mesh has no concrete planes, so that
-    # lane keeps the declared-bounds test (closed).
     try:
         has_pec_geom = any(
             self._resolve_material(e.material_name).sigma
             >= self._PEC_SIGMA_THRESHOLD
             for e in self._geometry)
     except KeyError:
-        has_pec_geom = False   # unresolved material: add()/run() raise
+        has_pec_geom = False
     realized_entries = []
     if include_pec_overlap_error and (
             has_pec_geom or getattr(self, "_thin_conductors", None)):
@@ -124,7 +115,6 @@ def _validate_ntff_inverse_design(
             tol = node_tie_tol(coord, d_loc)
             if not (w_lo - tol <= coord <= w_hi + tol):
                 continue
-            # Tangential overlap along the other two axes (declared)
             other = [a for a in range(3) if a != axis]
             overlap = True
             for idx, (tlo, thi) in zip(other, tang):
@@ -146,13 +136,6 @@ def _validate_ntff_inverse_design(
                     source="_validate_ntff_inverse_design",
                 )
 
-    # CHECK 3: λ/2 (Huygens) and λ/4 (reactive-near-field) gaps to any
-    # geometry/source (probes excluded). The λ/2 Huygens-equivalence rule
-    # was documented but only the λ/4 strong
-    # tier was enforced; a face at λ/30 above a ground-plane PEC silently
-    # ran and produced corrupted directivity. The two-tier check below
-    # warns mildly in [λ/4, λ/2) (results may degrade) and strongly in
-    # < λ/4 (directivity / pattern likely corrupted).
     arr = None if freqs is None else jnp.asarray(freqs)
     if freqs is None or is_tracer(arr) or arr.size == 0:
         f_max = float(self._freq_max)
@@ -162,22 +145,24 @@ def _validate_ntff_inverse_design(
     gap_thresh = lam_min / 4.0
     huygens_thresh = lam_min / 2.0
 
-    # Collect candidate bboxes and point positions
     bboxes: list[tuple[str, tuple, tuple, object]] = []
     for entry in self._geometry:
         try:
             c1, c2 = entry.shape.bounding_box()
             bboxes.append((entry.material_name, c1, c2, entry))
-        except (NotImplementedError, TypeError, AttributeError):
+        except (NotImplementedError, TypeError, AttributeError) as _traced_exc:
+            if is_tracer_error(_traced_exc):
+                not_judged(None, "_validate_ntff_inverse_design")
             continue
-    # PEC thin conductors are sheets — conductors in the census.
     from rfx.materials.thin_conductor import sheet_bounds as _sheet_bounds
     for _ti, tc in enumerate(getattr(self, "_thin_conductors", ())):
         if not getattr(tc, "is_pec", False):
             continue
         try:
             c1, c2 = _sheet_bounds(tc.shape)
-        except (NotImplementedError, TypeError, AttributeError):
+        except (NotImplementedError, TypeError, AttributeError) as _traced_exc:
+            if is_tracer_error(_traced_exc):
+                not_judged(None, "_validate_ntff_inverse_design")
             continue
         if c1 is None or c2 is None:
             continue
@@ -185,17 +170,12 @@ def _validate_ntff_inverse_design(
     points: list[tuple[str, tuple, object]] = []
     for pe in self._ports:
         points.append(("port/source", tuple(pe.position), pe))
-    # Probes intentionally excluded: a DFT probe is a
-    # passive observer and does not radiate or scatter.
 
     for side, axis, coord, tang in faces:
         other = [a for a in range(3) if a != axis]
         min_gap = float("inf")
         culprit = None
-        # bbox distances
         for name, c1, c2, owner in bboxes:
-            # tangential overlap check — only meaningful gap if the face
-            # is "above" the feature in the normal direction
             overlap = True
             for idx, (tlo, thi) in zip(other, tang):
                 if c2[idx] <= tlo or c1[idx] >= thi:
@@ -208,14 +188,12 @@ def _validate_ntff_inverse_design(
             elif coord >= c2[axis]:
                 d = coord - c2[axis]
             else:
-                d = 0.0  # already handled by CHECK 2 for PEC; skip
+                d = 0.0
                 continue
             if d < min_gap:
                 min_gap, culprit = d, f"geometry '{name}'"
                 culprit_object = owner
-        # points
         for name, pos, owner in points:
-            # require tangential in-box for relevance
             in_tang = all(
                 tang[i][0] <= pos[other[i]] <= tang[i][1] for i in range(2)
             )
@@ -256,9 +234,6 @@ def _validate_ntff_inverse_design(
                 stacklevel=3,
             )
 
-    # CHECK 4: electrically small ground plane under a
-    # radiator. Advisory in BOTH tiers — it is pattern physics, not an
-    # inverse-design structural gate.
     self._validate_ntff_small_ground_plane(f_max, lam_min)
 
 def _validate_ntff_small_ground_plane(
@@ -302,10 +277,7 @@ def _validate_ntff_small_ground_plane(
     if not ports:
         return
 
-    best = None  # (lateral_area, L_small, L_big, c1, c2)
-    # a ground plane is canonically a SHEET declaration
-    # (add_thin_conductor / zero-thickness Box), so PEC thin
-    # conductors are in the census beside PEC geometry entries.
+    best = None
     from rfx.materials.thin_conductor import sheet_bounds as _sheet_bounds
     from rfx.model.materials import assembled_as_pec
     candidates = []
@@ -314,7 +286,9 @@ def _validate_ntff_small_ground_plane(
             continue
         try:
             c1, c2 = entry.shape.bounding_box()
-        except (NotImplementedError, TypeError, AttributeError):
+        except (NotImplementedError, TypeError, AttributeError) as _traced_exc:
+            if is_tracer_error(_traced_exc):
+                not_judged(None, "_validate_ntff_inverse_design")
             continue
         candidates.append((c1, c2, entry))
     for tc in getattr(self, "_thin_conductors", ()):
@@ -322,7 +296,9 @@ def _validate_ntff_small_ground_plane(
             continue
         try:
             c1, c2 = _sheet_bounds(tc.shape)
-        except (NotImplementedError, TypeError, AttributeError):
+        except (NotImplementedError, TypeError, AttributeError) as _traced_exc:
+            if is_tracer_error(_traced_exc):
+                not_judged(None, "_validate_ntff_inverse_design")
             continue
         if c1 is None or c2 is None:
             continue
@@ -333,12 +309,8 @@ def _validate_ntff_small_ground_plane(
         lat = [a for a in range(3) if a != thin]
         l_small = min(ext[lat[0]], ext[lat[1]])
         l_big = max(ext[lat[0]], ext[lat[1]])
-        # sheet-like: electrically thin, or thin relative to its own
-        # footprint (covers coarse-meshed few-cell-thick ground planes)
         if ext[thin] > max(lam / 20.0, l_small / 10.0):
             continue
-        # electrically non-negligible in BOTH lateral dims — wires,
-        # narrow straps and tiny pads are not ground planes
         if l_small < lam / 8.0:
             continue
         backed = False
@@ -360,7 +332,7 @@ def _validate_ntff_small_ground_plane(
         return
     _, l_small, l_big, c1, c2 = best
     if l_small >= lam:
-        return  # ground plane >= ~1λ both ways: clean-pattern regime
+        return
 
     _w.warn(
         PreflightWarning(
@@ -424,32 +396,8 @@ def _validate_cfg_ntff_absorber_overlap(
                 )
                 break
 
-    # P1.5: non-uniform + NTFF is SUPPORTED. The NU runner accumulates the NTFF box and
-    # compute_far_field handles graded-z per-cell dS + z-edges; a graded-z
-    # dipole directivity benchmarks within ~0.05 dB of theory
-    # (tests/unit/farfield/test_farfield_nonuniform.py). No guard needed.
 
 
-# ---------------------------------------------------------------------------
-# Pre-move ``__qualname__``, restored explicitly.
-#
-# Each of the three functions above was a ``def`` in the ``_PreflightMixin``
-# class body, so its ``__qualname__`` read ``_PreflightMixin.<name>``; a
-# module-level ``def`` gets the bare name instead. ``rfx/api/__init__.py``
-# rewrites exactly ``<mixin>.<name>`` -> ``Simulation.<name>`` at
-# class-composition time and SKIPS any function whose qualname does not match
-# that pattern, so leaving the bare name here would change what a TypeError
-# reports -- a user-visible behaviour change inside a pure code-motion step.
-# ``tests/unit/autodiff/test_design_mask_removed.py
-# ::test_no_public_simulation_method_leaks_a_mixin_class_name`` states the
-# rule but only walks PUBLIC members, and all three names here are private, so
-# ``tests/locks/test_preflight_split_snapshot.py`` pins these three directly.
-#
-# None of the three was a ``@staticmethod`` -- the one leg 6 moved is in
-# ``rfx/preflight/sources.py`` -- so this module has no decorator the facade
-# has to re-apply and every restored qualname below becomes
-# ``Simulation.<name>`` after composition.
-# ---------------------------------------------------------------------------
 _validate_ntff_inverse_design.__qualname__ = (
     "_PreflightMixin._validate_ntff_inverse_design"
 )

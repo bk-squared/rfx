@@ -17,7 +17,6 @@ from tests._cell_table_scenes import SCENES, cell_table_scene
 
 
 def _graded(profiles, pad=0, periodic='', domain=None):
-    # The public constructor pattern of test_rasterization_coordinate_exactness._nu_grid.
     return make_nonuniform_grid(
         tuple(float(np.sum(p)) for p in profiles[:2]), profiles[2], float(profiles[0][0]),
         cpml_layers=pad, dx_profile=profiles[0], dy_profile=profiles[1],
@@ -56,8 +55,8 @@ def test_equal_cells_bitwise(scene, pad, include_trailing_node):
 
 def _geometric_profiles():
     body = .0001 * 1.3 ** np.arange(18)
-    # Equal boundary widths satisfy the public x/y constructor; the body grows by 1.3.
     profile = np.r_[np.full(3, body[-1]), body, np.full(8, body[-1])]
+    assert profile[0] == profile[-1], "equal profile boundary widths are required by the public x and y grid constructors"
     return [profile * scale for scale in (1., 1.125, .875)]
 
 
@@ -80,8 +79,6 @@ def test_unequal_cells_closed_form(record_property):
             overlap = np.maximum(0., np.minimum(end[axis], box.corner_hi[axis])
                                  - np.maximum(start[axis], box.corner_lo[axis]))
             expected = 1. - overlap / width[axis]
-            # Keep the entire owner one local cell away from every other Box face.
-            # The crossing width also ensures this plane is the nearest SDF face.
             for kind, normal in [('edge', axis), *[('face', a) for a in range(3) if a != axis]]:
                 mask = crossing.copy()
                 for other in range(3):
@@ -148,7 +145,6 @@ def test_traced_axis_refused_before_geometry(monkeypatch, axis, signal, empty):
     monkeypatch.setattr(body, '_axis_node_positions', fail)
     concrete = _graded([np.full(12, .001) for _ in range(3)])
     def form(profile):
-        # Trace only the selected store; constructing inside the trace traces all stores.
         grid = concrete._replace(**{('dx_arr', 'dy_arr', 'dz')[axis]: profile,
                                     ('dx_arr_f64', 'dy_arr_f64', 'dz_f64')[axis]: None})
         if signal == 'cells':
@@ -172,7 +168,7 @@ def test_wrapper_keeps_uniform_refusal(monkeypatch, axis):
         pytest.fail('wrapper called table before refusing unequal cells')
     monkeypatch.setattr(conformal_cells, 'build_cell_table', fail)
     with pytest.raises(NotImplementedError) as caught:
-        compute_conformal_fractions(grid, [Sphere((.006,) * 3, .002)])
+        compute_conformal_fractions(grid, [Sphere((.006,) * 3, .002)], field_dtype=np.float32)
     assert type(caught.value) is NotImplementedError
     assert str(caught.value) == 'conformal PEC SC clamp requires uniform cells'
 
@@ -262,12 +258,13 @@ def test_graded_sheet_refusal_without_declared_domain():
 
 def test_empty_wrapper_still_returns_open_owners():
     grid = _graded(_geometric_profiles())
-    for arrays in compute_conformal_fractions(grid, [], clamp=False):
+    for arrays in compute_conformal_fractions(grid, [], clamp=False, field_dtype=np.float32):
         assert all(np.all(a == 1.) and a.shape == grid.shape for a in arrays)
 
 
 @pytest.mark.parametrize('include_trailing_node', [False, True])
 def test_periodic_graded_halos_mirror_real_owners(include_trailing_node):
+    """The high owner uses the trailing node as its far endpoint."""
     profiles = [np.full(12, .001), np.full(12, .001),
                 .001 * np.array([1., 2., 3., 2., 1.5, 2.5])]
     grid = _graded(profiles, periodic='z')
@@ -275,7 +272,6 @@ def test_periodic_graded_halos_mirror_real_owners(include_trailing_node):
                              include_trailing_node=include_trailing_node)
     for field in ('lengths', 'areas', 'edge_part_counts', 'face_part_counts'):
         for axis, values in enumerate(getattr(table, field)):
-            # The high owner uses the trailing node as its far endpoint.
             for halo, physical in ((0, grid.nz), (grid.nz + 1, 1)):
                 assert np.array_equal(values[:, :, halo], values[:, :, physical]), (field, axis, halo)
     assert any(np.any((values[:, :, 1] > 0.) & (values[:, :, 1] < 1.))
@@ -297,7 +293,6 @@ def _node_lines(grid):
 
 
 def _owner_points(lines, kind, axis):
-    # Corners and centre of each owner from its start node on lines[:-1] and the next node.
     start = np.meshgrid(*(n[:-1] for n in lines), indexing='ij', sparse=True)
     end = np.meshgrid(*(n[1:] for n in lines), indexing='ij', sparse=True)
     u, v = [a for a in range(3) if a != axis]
@@ -317,7 +312,6 @@ def _in_box(point, lo, hi, strict=False):
 
 @pytest.mark.parametrize('include_trailing_node', [False, True])
 def test_graded_box_faces_on_node_planes(include_trailing_node):
-    # Every Box face lies on a node plane between unequal cells.
     grid = _graded(_geometric_profiles())
     lines = _node_lines(grid)
     lo, hi = tuple(n[5] for n in lines), tuple(n[19] for n in lines)
@@ -357,8 +351,6 @@ def test_graded_box_faces_on_node_planes(include_trailing_node):
 @pytest.mark.parametrize('thin', range(3))
 @pytest.mark.parametrize('include_trailing_node', [False, True])
 def test_graded_one_cell_box_without_node_is_carried(thin, include_trailing_node):
-    # One cell thick between node planes of unequal cells: no node lies strictly inside,
-    # so admission takes the node-less Box branch and the in-surface union carries it.
     grid = _graded(_geometric_profiles())
     lines = _node_lines(grid)
     lo, hi = [n[5] for n in lines], [n[19] for n in lines]
@@ -386,8 +378,7 @@ def test_graded_one_cell_box_without_node_is_carried(thin, include_trailing_node
 
 @pytest.mark.parametrize('include_trailing_node', [False, True])
 def test_periodic_graded_seam_face_reads_midpoints(include_trailing_node):
-    # The Box's low z face is node 0, the seam, and its high face the last node: the last
-    # cell (2.5 mm, wider than the first, 1 mm) is an open gap between two Box images.
+    """Table z owners start at nodes -1 through nz, unwrapped; the Box repeats with the period."""
     profiles = [*_geometric_profiles()[:2], .001 * np.array([1., 2., 3., 2., 1.5, 2.5])]
     grid = _graded(profiles, periodic='z')
     lines = _node_lines(grid)
@@ -399,7 +390,6 @@ def test_periodic_graded_seam_face_reads_midpoints(include_trailing_node):
         for axis, values in enumerate(getattr(table, field)):
             for halo, physical in ((0, nz), (nz + 1, 1)):
                 assert np.array_equal(values[:, :, halo], values[:, :, physical]), (field, axis, halo)
-    # Table z owners start at nodes -1 .. nz, unwrapped; the Box repeats with the period.
     lines[2] = np.r_[lines[2][-1] - period, lines[2], lines[2][0] + period, lines[2][1] + period]
     images = [(lo[:2] + (lo[2] + k * period,), hi[:2] + (hi[2] + k * period,)) for k in (-1, 0, 1)]
 
@@ -424,5 +414,4 @@ def test_periodic_graded_seam_face_reads_midpoints(include_trailing_node):
             assert np.array_equal(values[in_surface], expected[in_surface]), (kind, axis)
             for value in read:
                 read[value] += int(np.count_nonzero(expected[in_surface] == value))
-    # Owners in a Box face read metal; owners spanning the gap read open.
     assert read[0.] and read[1.], read

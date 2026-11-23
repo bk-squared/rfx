@@ -35,9 +35,9 @@ def _with_note(paths):
 
 
 def test_the_glob_finds_the_lanes() -> None:
+    """The fixture count is five uniform magnitude + five uniform phase + the graded-dy lane."""
     assert FIXTURES, "no waveguide fixtures found -- the glob is broken"
     noted = {p.name for p in _with_note(FIXTURES)}
-    # five uniform magnitude + five uniform phase + the graded-dy lane
     assert len(noted) == 11, sorted(noted)
     assert "waveguide_wr90_nu_flux_broad_e5_envelope.json" in noted
 

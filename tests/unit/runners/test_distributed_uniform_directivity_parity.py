@@ -43,7 +43,6 @@ def test_uniform_farfield_matches_one_device(entry, n_devices):
             assert_multi_device(sim, result)
         return result
 
-    # Check the open-box assumption on both public entries and both device counts.
     for selected in (None, devices):
         with pytest.raises(ValueError, match="NTFF|ntff") as refused:
             evaluate(model("pec"), selected)

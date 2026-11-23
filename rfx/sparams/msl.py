@@ -5,6 +5,7 @@ variants. The caller retains its declared port and observer containers.
 """
 
 from __future__ import annotations
+from rfx._traced_inputs import admit_traced_inputs
 
 from rfx.sparams import _msl_stages
 
@@ -67,7 +68,7 @@ def _assemble_msl_plane_records(records, *, entries, freqs_arr, grid, msl_ports,
                                 trace_k_per_port, raw_3probe_dump_path=None):
     """Assemble the calculator's unchanged S and diagnostics from drive planes.
 
-    Each record is (variant, electric names, magnetic names, plane mapping).
+    Integrate per-port V/I from (variant, electric names, magnetic names, planes) records.
     No time stepping or per-step witness is performed here.
     """
     from rfx.probes.msl_wave_decomp import extract_msl_nprobe
@@ -78,33 +79,22 @@ def _assemble_msl_plane_records(records, *, entries, freqs_arr, grid, msl_ports,
     S = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
     Z0_per_run = jnp.zeros((n_ports, n_freqs_used), dtype=_complex_dtype)
     beta_first = jnp.zeros(n_freqs_used, dtype=_complex_dtype)
-    # N-probe extractor: store all N voltage
-    # probe phasors. n_probes may differ per port — store the
-    # max width and zero-pad shorter ports.
     n_probes_max = max(n_probes_per_port)
     raw_v = jnp.zeros(
         (n_ports, n_ports, n_probes_max, n_freqs_used), dtype=_complex_dtype
     )
     raw_i1 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
-    # Optional evidence preserves both measured sides, so the old
-    # same-index current and the corrected one can be compared from
-    # ONE field record rather than another FDTD run.
     raw_i1_left = jnp.zeros_like(raw_i1) if raw_3probe_dump_path is not None else None
     raw_i1_same_index = jnp.zeros_like(raw_i1) if raw_3probe_dump_path is not None else None
     raw_z0 = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
     raw_q = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
-    # β-scan rail flags per (driven, port) fit.
     raw_beta_railed = jnp.zeros(
         (n_ports, n_ports, n_freqs_used), dtype=bool
     )
-    # Wave amplitudes per (driven, port) for the multi-drive solve.
-    # Python lists of jnp arrays, not a stacked array,
-    # so eps_override tracers stay on the AD tape.
     wave_a: list[list] = [[None] * n_ports for _ in range(n_ports)]
     wave_b: list[list] = [[None] * n_ports for _ in range(n_ports)]
 
     for driven, (variant, ez_probe_names, h_probe_names, planes) in enumerate(records):
-        # Helper: integrate V and I per port from the recorded planes.
         v_per_port: list[list[np.ndarray]] = []
         i_first_per_port: list[np.ndarray] = []
         for p_idx, meta in enumerate(port_idx_meta):
@@ -119,13 +109,6 @@ def _assemble_msl_plane_records(records, *, entries, freqs_arr, grid, msl_ports,
                 raw_q, raw_v, raw_z0, v_per_port, z0_hj_per_port,
             )
             if p_idx == driven:
-                # V·I single-plane wave split at probe 0: a=(V+Z0*I)/2, b=(V-Z0*I)/2, S11=b/a —
-                # the OpenEMS-style telegrapher de-embedding. With a
-                # real positive Z0 and a passive structure this is
-                # bounded |S11|<=1, unlike the Fix-C alpha/gamma
-                # spatial fit that blew up to |S11|>1 on a strong
-                # reflector. Z0 is analytic Hammerstad-Jensen; I is
-                # the closed Ampere loop.
                 v0_d = v_per_port[driven][0]
                 z0hj_d = z0_hj_per_port[driven]
                 a_fwd_d = 0.5 * (v0_d + z0hj_d * i_f)
@@ -136,21 +119,6 @@ def _assemble_msl_plane_records(records, *, entries, freqs_arr, grid, msl_ports,
                 if driven == 0:
                     beta_first = jnp.asarray(res_p["beta"], dtype=_complex_dtype)
 
-        # Off-diagonal S21: S[j,i] = b_j / a_i.
-        # The wave received from the structure at a passive port is
-        # its BACKWARD wave b=(V-Z0*I)/2, not the forward wave a it
-        # would launch. For a transmitted wave arriving at a port
-        # whose forward reference faces the other way, a~0 and b~V;
-        # using a gave the non-physical |S21|~0.08, b gives ~1.
-        #
-        # RETAINED as the fallback only. This single-ratio rule is
-        # exact only when a_j = 0 at every passive port, and it is
-        # not: |a_passive/a_driven| = 0.243-0.248 at the shipped
-        # R = 50 ohm (0.19-0.93 across terminations), measured in VESSL 369367257265, so
-        # the far port's echo is reported as the structure's own
-        # reflection. The wave
-        # amplitudes recorded below feed the multi-drive solve that
-        # replaces this after the drive loop.
         for j in range(n_ports):
             if j == driven:
                 continue
@@ -160,11 +128,6 @@ def _assemble_msl_plane_records(records, *, entries, freqs_arr, grid, msl_ports,
             ) * power_scales[j]
             S = S.at[j, driven, :].set(jnp.asarray(b_out_p, dtype=_complex_dtype) / (jnp.asarray(alpha_d, dtype=_complex_dtype) + 1e-30))
 
-        # Record the FULL (a, b) pair at every port for this drive.
-        # ``a`` at a passive port is what the
-        # single-ratio rule above assumes away. Relative sqrt(R0/Rj)
-        # row scales give power waves up to one shared sqrt(R0),
-        # which cancels from both S and cond(A).
         for j in range(n_ports):
             v0_j = v_per_port[j][0]
             z0_j = z0_hj_per_port[j]
@@ -174,21 +137,6 @@ def _assemble_msl_plane_records(records, *, entries, freqs_arr, grid, msl_ports,
             wave_b[driven][j] = jnp.asarray(
                 0.5 * (v0_j - z0_j * i_j) * power_scales[j], dtype=_complex_dtype)
 
-    # ---- Multi-drive S solve -----------------------
-    # Every port was driven, so the full wave system is recorded:
-    #     A[j, d] = a_j during drive d      B[j, d] = b_j during d
-    #     b = S a   for every drive   =>    S = B · A⁻¹
-    # The single-ratio rule above (S[j,d] = b_j/a_d) is the d-th
-    # column of this only when a_j = 0 at every passive port. It is
-    # not: the far port reflects, and the exact algebra
-    # b_1/a_1 = S11 + S12·(a_2/a_1) holds to machine precision, so
-    # the echo was reported as the structure's own reflection. That
-    # also makes |S11|²+|S21|² = 1 + |S11|² — the same power counted
-    # twice — which violates passivity.
-    # Same algebra as the coax lane's
-    # solve_two_port_from_wave_amplitudes, generalised to n
-    # ports. cond(A) bounds DEGENERACY only; it is not a
-    # reliability score.
     msl_assembly: str | None = None
     msl_cond_a = None
     if all(wave_a[d][j] is not None
@@ -226,13 +174,6 @@ def _assemble_msl_plane_records(records, *, entries, freqs_arr, grid, msl_ports,
                 )
         if not _bad:
             S = S_solved.astype(_complex_dtype)
-        # Persist WHICH rule produced S. A transient
-        # warning is not enough: under enforce_passivity=True the
-        # projection clips away the fallback's own symptom (column
-        # power > 1), so a fallback result can look healthy in every
-        # number a caller reads.
-        # None while tracing — _bad cannot be evaluated on a tracer,
-        # so the solve result is taken as-is and no claim is made.
         msl_assembly = (
             None if cond_a is None
             else ("single_ratio_fallback" if _bad
@@ -244,9 +185,6 @@ def _assemble_msl_plane_records(records, *, entries, freqs_arr, grid, msl_ports,
         from rfx.stepping.slab import forward_sharding, place
         sharding = forward_sharding(S)
         if sharding is not None:
-            # Reference-plane epsilon also depends directly on the design.
-            # An explicit transfer returns its cotangent to that input's
-            # placement before it joins the field-solve cotangent.
             line_eps_per_port = [place(eps, sharding) for eps in line_eps_per_port]
 
     S, msl_planes, s_line_refs = _msl_stages._shift_msl_reference_planes(
@@ -492,6 +430,7 @@ def compute_msl_s_matrix(
         cannot run on a tracer, so the solve result is taken as-is — see
         ``cond_a``).
     """
+    admit_traced_inputs("Simulation.compute_msl_s_matrix", locals())
     if devices is not None:
         for name, value, reason in (
             ("eps_override", eps_override, "a gradient through compute_msl_s_matrix with devices has no parity bar"),

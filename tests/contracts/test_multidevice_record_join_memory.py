@@ -32,7 +32,6 @@ def buffers(arrays=None):
 def test_join_memory(kind, size, single, monkeypatch, tmp_path):
     layout = layout_for(kind, size=size, single_frequency=single)
     gc.collect()
-    # Retain baseline allocations so a freed address cannot hide a new buffer.
     baseline_arrays = tuple(jax.live_arrays())
     baseline = buffers(baseline_arrays)
     carry = layout.initial()
@@ -65,7 +64,6 @@ def test_join_memory(kind, size, single, monkeypatch, tmp_path):
                                  row_bytes=row_bytes.get((shape, dtype, chunk)), temporary=stats.temp_size_in_bytes))
             result = compiled(ranks, buffer)
             jax.block_until_ready(result)
-            # Keep the compiled call's argument alive while sampling its result.
             current = sample()
             for rank, total in enumerate(current):
                 post_call_peaks[rank] = max(post_call_peaks[rank], total)

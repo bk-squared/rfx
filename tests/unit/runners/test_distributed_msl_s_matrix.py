@@ -181,8 +181,6 @@ def test_mutation_bars(mutation, scene, monkeypatch):
                 return original(sim, **kwargs)
             patch.setattr(Simulation, 'run', changed)
         else:
-            # Exchange port-labelled wave records before the solve, and their
-            # reference-plane metadata before shifting. This yields P S P^T.
             solve = msl.msl_solve_s_from_waves
             shift = _msl_stages._shift_msl_reference_planes
             patch.setattr(msl, 'msl_solve_s_from_waves',
@@ -196,7 +194,6 @@ def test_mutation_bars(mutation, scene, monkeypatch):
             patch.setattr(_msl_stages, '_shift_msl_reference_planes', relabel)
 
     if mutation == 'M9' and scene == 'T1':
-        # B2-a only: symmetric scenes cannot identify exchanged port labels.
         original = compare_records
         with monkeypatch.context() as patch:
             patch.setattr(__import__(__name__, fromlist=['compare_records']), 'compare_records',

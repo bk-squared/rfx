@@ -24,7 +24,6 @@ def sheet_fixture(normal, placement, lane, present):
     kwargs = {} if lane == 'uniform' else {f'd{"xyz"[normal]}_profile': profile}
     sim = Simulation(freq_max=10e9, domain=tuple(domain), dx=H,
                      boundary='pec', snap='declared', **kwargs)
-    # Vacuum control: the DC fold replaces its occupied cell layer.
     lo, hi = [3 * H] * 3, [9 * H] * 3
     lo[normal] = hi[normal] = plane
     if present:
@@ -61,8 +60,6 @@ def measured_ratios(monkeypatch, normal, placement, lane):
         tangents = [axis for axis in range(3) if axis != normal]
         lines.append([np.asarray(components.sigma_update[axis])[tuple(index)]
                       for axis in tangents])
-    # Independent NumPy dual widths, from the primal cell array. No material
-    # or dual-spacing product helper enters the conductance reference.
     widths = np.asarray(grid.cells(normal), dtype=float)
     dual = np.r_[widths[0], (widths[:-1] + widths[1:]) / 2]
     delta = np.asarray(lines[1], dtype=float) - np.asarray(lines[0], dtype=float)
@@ -85,6 +82,7 @@ def test_dc_conductance_at_both_tangential_edges(monkeypatch, normal, lane, plac
 
 
 def test_dc_fold_thickness_gradient_uses_occupied_primal_width():
+    """Ex coverage sums to 6*(.5+5+.5)=36 on one plane."""
     import jax
     from dataclasses import replace
     from rfx.model.materials import assemble_cells
@@ -97,8 +95,5 @@ def test_dc_fold_thickness_gradient_uses_occupied_primal_width():
         return jnp.sum(assemble_cells(sim, grid)[0].sigma_film[0])
 
     got = float(jax.grad(cell_sum)(THICKNESS))
-    # Old cell expectation: 36 * SIGMA / (1.1 * H).
-    # Ex coverage sums to 6*(.5+5+.5)=36 on one plane;
-    # d_dual=(.9H+1.1H)/2=H, so d(sum sigma_film_x)/dt=36*SIGMA/H.
     expected = 36 * SIGMA / ((.9 * H + 1.1 * H) / 2)
     np.testing.assert_allclose(got, expected, rtol=2e-7)

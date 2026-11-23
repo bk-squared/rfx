@@ -20,7 +20,6 @@ from rfx.geometry.csg import Box
 from tests._line_stub_geometry import trim_resonant_trace
 
 
-# Common geometry constants (RO4350B-class)
 EPS_R = 3.66
 H_SUB = 254e-6
 W_TRACE = 600e-6
@@ -31,12 +30,13 @@ def _build_sim(*, dx: float, ly: float, port_x: float = 2e-3,
                dz_profile=None) -> Simulation:
     """``dz_profile`` (issue #752 / #766 review): when given, the domain's
     z extent is the profile's sum and the run grid is non-uniform -- the
-    substrate checks must then read the substrate off THAT grid."""
+    substrate checks must then read the substrate off THAT grid.
+    ``snap="declared"`` lets the warning checks see substrate under-resolution when present."""
     lz = H_SUB + 1.5e-3 if dz_profile is None else float(np.sum(dz_profile))
     kw = {} if dz_profile is None else dict(dz_profile=np.asarray(dz_profile))
     sim = Simulation(
         freq_max=5e9, domain=(LX, ly, lz), dx=dx,
-        cpml_layers=8, snap="declared",  # Preserve the unresolved substrate.
+        cpml_layers=8, snap="declared",
         boundary=BoundarySpec(
             x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml"),
         ),
@@ -45,11 +45,6 @@ def _build_sim(*, dx: float, ly: float, port_x: float = 2e-3,
     sim.add_material("ro4350b", eps_r=EPS_R)
     sim.add(Box((0, 0, 0), (LX, ly, H_SUB)), material="ro4350b")
     y_c = ly / 2.0
-    # 35 um foil -> a SHEET on the laminate face (#931 §1.3). The meshes
-    # in this file are DELIBERATELY off-lattice: the substrate-resolution
-    # and mixed-cell advisories are what it tests, and a sheet declared at
-    # H_SUB on a bisecting mesh lands on the nearest node, which is the
-    # offset those advisories exist to report.
     sim.add(
         Box((0, y_c - W_TRACE / 2, H_SUB),
             (LX, y_c + W_TRACE / 2, H_SUB)),
@@ -147,11 +142,11 @@ def test_substrate_walk_starts_at_the_ports_own_ground_plane():
     eps_r 3.66 substrate above it. Now the walk begins at pe.position's
     substrate-normal coordinate: dx=80um realizes the 254um substrate as 3
     cells = 240um above the 800um ground, and the mixed-cell message must
-    say exactly that -- not 10 cells and not 800um."""
+    say exactly that -- not 10 cells and not 800um.
+    Under strict, run() would refuse the unresolved substrate cavity."""
     dx = 80e-6
-    z_gnd = 10 * dx                       # 800um: ground plane above the floor
+    z_gnd = 10 * dx
     ly = W_TRACE + 8 * H_SUB
-    # The substrate is unresolved on purpose; under strict, run() would refuse this cavity (#1800).
     sim = Simulation(
         freq_max=5e9, domain=(LX, ly, z_gnd + H_SUB + 1.5e-3), dx=dx,
         cpml_layers=8, snap="declared",
@@ -192,9 +187,8 @@ def test_port_close_to_cpml_warning():
 
 
 def test_well_setup_msl_port_zero_warnings():
-    # dx = h_sub / 6 → exactly 6 substrate cells, no mixed-cell at the
-    # trace boundary (frac == 0).
-    sim = _build_sim(dx=H_SUB / 6, ly=W_TRACE + 8 * H_SUB, port_x=2e-3)
+    SUBSTRATE_CELL_COUNT = 6
+    sim = _build_sim(dx=H_SUB / SUBSTRATE_CELL_COUNT, ly=W_TRACE + 8 * H_SUB, port_x=2e-3)
     msgs = _msl_warnings(sim)
     assert len(msgs) == 0, f"expected zero MSL warnings, got: {msgs}"
 
@@ -212,20 +206,16 @@ def test_mixed_cell_warning_fires_at_dx_80():
     assert "snap" in mixed[0].lower() or "Snap" in mixed[0] or "h_sub/" in mixed[0]
 
 
-# ---------------------------------------------------------------------------
-# #752: historical Z0 claims are retired. Current messages describe a
-# validated conductor gap and a separate material-column extent. Refinement
-# and alignment recommendations do not establish a Z0 accuracy percentage.
-# ---------------------------------------------------------------------------
 def test_substrate_resolution_warning_names_alignment_requirement():
-    """Geometry recommendations must not imply a solver accuracy bound."""
+    """Geometry recommendations must not imply a solver accuracy bound.
+    The 63.5µm recommendation is h_sub/4, not a rounded 64um grid recommendation."""
     msgs = _msl_warnings(_build_sim(dx=100e-6, ly=W_TRACE + 8 * H_SUB))
     sub = _normal_interval_warnings(msgs)
     assert len(sub) == 1, sub
     hit = sub[0]
     assert "at least 4 normal intervals" in hit
     assert "aligned declared substrate interface" in hit
-    assert "63.5µm" in hit  # h_sub/4, not a rounded64um grid recommendation
+    assert "63.5µm" in hit
     assert "gap=300.0µm over 3 normal interval(s)" in hit
     assert "3 same-permittivity sample slot(s), extent 300.0µm" in hit
     assert "historical float32-coordinate" in hit
@@ -311,14 +301,11 @@ def test_strict_mode_raises_on_bad_geometry():
         sim.preflight(strict=True)
 
 
-# ---------------------------------------------------------------------------
-# Reflector clearance check (Y2 finding 2026-05-06): the 3-probe Z₀
-# extractor in compute_msl_s_matrix sits in a standing-wave region when
-# a strong reflector (open λ/4 stub etc.) is too close to the V₃ probe.
-# ---------------------------------------------------------------------------
 def _build_sim_with_stub(*, dx: float, l_line_mm: float, l_stub_mm: float = 8.637,
                          freq_max: float = 9e9) -> Simulation:
-    """Two-MSL-port through-line + open PEC stub branched at LX/2."""
+    """Two-MSL-port through-line + open PEC stub branched at LX/2.
+    The Z₀ extractor sits in a standing-wave region when a strong reflector is too close to the
+    probe."""
     L_LINE = l_line_mm * 1e-3
     L_STUB = l_stub_mm * 1e-3
     PORT_MARGIN = 1e-3
@@ -338,11 +325,6 @@ def _build_sim_with_stub(*, dx: float, l_line_mm: float, l_stub_mm: float = 8.63
     y_trace = (2 * H_SUB + 8 * dx) + W_TRACE / 2
     trace_y_lo = y_trace - W_TRACE / 2
     trace_y_hi = y_trace + W_TRACE / 2
-    # Through-trace and branch stub: both foil, both SHEETS on the same
-    # laminate face (#931 §1.3). Declared on ONE plane their footprints are
-    # UNIONED before the edge rule is applied, so the T is galvanically
-    # continuous -- per-sheet application would leave the shared edge live,
-    # a slit. Asserted in test_open_stub_is_galvanically_joined_to_the_trace.
     sim.add(Box((0, trace_y_lo, H_SUB), (LX, trace_y_hi, H_SUB)),
             material="pec")
     stub_xc = LX / 2
@@ -428,25 +410,6 @@ def test_reflector_clearance_silent_without_reflector():
     )
 
 
-# ---------------------------------------------------------------------------
-# Issue #510: checks 1/3 above measure clearance at x_feed only, so a probe
-# SPAN could leave x_feed clear while the deepest probe (x_deep) lands
-# inside/near the absorber (4a, new below) or past a second port's own feed
-# plane (4b, new below) — check 4's reflector scan only sees PEC Box
-# geometry, not the absorber or a source discontinuity. Reproduction
-# geometry is the committed #488 diagnostic dump the issue cites: dx=80um,
-# domain_x=11.36mm (= 142 cells), CPML 8 layers, msl_0 at x=2.40mm '+x',
-# msl_1 at x=6.40mm '-x', n_probe_offset=31, n_probe_spacing=12, n_probes=5.
-# On that geometry msl_0's probes land at 4.88/5.84/6.80/7.76/8.72mm and
-# msl_1's at 3.92/2.96/2.00/1.04/0.08mm (issue body) -- msl_1's deepest
-# probe (0.08mm) is within the 2-cell/0.16mm proximity margin of the x=0
-# domain edge (NOT literally "inside the CPML" under the #500/#542
-# exterior-padding frame this fix routes through -- the issue's own
-# "x < 0.64mm" framing used the pre-#500 interior intuition), and both
-# ports' probe spans cross the OTHER port's feed plane (msl_0's span
-# [2.40, 8.72]mm contains msl_1's 6.40mm feed; msl_1's span [0.08, 6.40]mm
-# contains msl_0's 2.40mm feed).
-# ---------------------------------------------------------------------------
 def _two_port_sim(*, lx: float, msl1_x: float,
                   msl0_offset: int = 31, msl1_offset: int = 31,
                   n_probe_spacing: int = 12, n_probes: int = 5) -> Simulation:
@@ -491,15 +454,27 @@ def _crossing_msgs(msgs: list[str]) -> list[str]:
 
 def test_issue510_reproduction_fires_both_new_warnings():
     """The exact #488-dump geometry from the issue body: both new checks
-    must fire, naming the specific ports/probes involved."""
+    must fire, naming the specific ports/probes involved.
+    Only msl_1's deepest probe (x=0.08mm) is within the proximity margin of the x=0 edge."""
     sim = _two_port_sim(lx=11.36e-3, msl1_x=6.40e-3)
+    assert all(
+        np.allclose(
+            [grid.node_of("x", grid.position_to_index(port.position)[0]
+                          + (1 if port.direction == "+x" else -1)
+                          * (port.n_probe_offset + k * port.n_probe_spacing))
+             for k in range(port.n_probes)],
+            expected, rtol=0.0, atol=1e-12,
+        )
+        for grid in [sim._build_grid()]
+        for port, expected in zip(sim._msl_ports, (
+            (4.88e-3, 5.84e-3, 6.80e-3, 7.76e-3, 8.72e-3),
+            (3.92e-3, 2.96e-3, 2.00e-3, 1.04e-3, 0.08e-3),
+        ))
+    ), "The probe ladders must reach the absorber margin and cross the opposite feed planes"
     msgs = _msl_warnings(sim)
 
     absorber = _absorber_span_msgs(msgs)
     assert absorber, f"expected an absorber-span advisory; got: {msgs}"
-    # Only msl_1's deepest probe (x=0.08mm) is within the proximity
-    # margin of the x=0 edge; msl_0's (x=8.72mm) is 2.64mm from the x-hi
-    # edge, far outside the 0.16mm margin.
     assert any("msl_1" in m for m in absorber), absorber
     assert not any("msl_0" in m for m in absorber), absorber
     assert any("probe 4" in m and "0.08mm" in m for m in absorber), absorber
@@ -549,39 +524,6 @@ def test_issue510_feed_crossing_falsifier_separated_ports_silences_it():
     )
 
 
-# ---------------------------------------------------------------------------
-# Issue #510 review round (PR #551 adversarial review, 3 BLOCKING findings):
-#
-# BLOCKING 1: the advertised compliant n_probe_offset interval's upper
-# endpoint was computed by ALGEBRAIC INVERSION of the two absorber
-# predicates (float division then int() truncation). Float64 arithmetic put
-# the endpoint on the wrong side of an FP knife edge whenever the true
-# boundary landed within about one ULP of an exact dx multiple -- reviewer's
-# brute-force sweep found ~12k (dx, spacing, feed, domain) combinations
-# where the ADVERTISED endpoint itself still tripped the very warning it
-# claimed to clear. Fixed by msl_absorber_compliant_offset_max: walk
-# candidate offsets DOWN from a deliberately generous starting guess and
-# test the REAL predicate (via the extractor's own msl_probe_x_coords_n) at
-# each one, so the result is verified compliant by construction.
-#
-# BLOCKING 2: x_deep was a continuous-coordinate extrapolation
-# (x_feed + offset*dx), but the extractor places probes by GRID INDEX with
-# rounding and clamping (rfx.sources.msl_port._msl_x_for_index /
-# msl_probe_x_coords_n). Consequences: (a) up to dx/2 model error for a
-# feed that is not itself grid-aligned -- the same order as the 2-cell
-# absorber-proximity decision margin; (b) when the offset+spacing ladder
-# runs past the grid, several probes CLAMP onto the same cell, and the
-# pre-fix overlap message named a coordinate the real extractor never
-# visits. Fixed by routing x_deep through the same msl_probe_x_coords_n
-# call the extractor uses, and adding a distinct degenerate-ladder
-# advisory when probes collapse.
-#
-# BLOCKING 3: the 4b lumped/wire else-branch label was untested and, when
-# exercised, read "...port at x=6.40mm (component='ez')'s feed plane at
-# x=6.40mm" -- the coordinate stated twice, and a possessive glued onto a
-# parenthetical. Reworded to state the crossing coordinate exactly once
-# with no possessive.
-# ---------------------------------------------------------------------------
 def _degenerate_ladder_msgs(msgs: list[str]) -> list[str]:
     return [m for m in msgs if "runs past the grid and CLAMPS" in m]
 
@@ -691,14 +633,14 @@ def test_issue510_absorber_span_names_real_snapped_coordinate_off_grid_feed():
     ``x_feed + offset*dx`` (which never snaps the feed at all). Confirm the
     emitted message names the coordinate msl_probe_x_coords_n actually
     returns, not the continuous extrapolation."""
+    HALF_CELL_OFFSET_M = 40e-6
     from rfx.sources.msl_port import MSLPort, msl_probe_x_coords_n
 
-    off_grid_x = 6.40e-3 + 40e-6  # half a cell off-grid at dx=80um
+    off_grid_x = 6.40e-3 + HALF_CELL_OFFSET_M
     sim = _two_port_sim(lx=11.36e-3, msl1_x=off_grid_x)
     msgs = _absorber_span_msgs(_msl_warnings(sim))
     assert msgs, f"expected the advisory to still fire; got: {_msl_warnings(sim)}"
 
-    # Ground truth: the SAME production call the check itself makes.
     grid = sim._build_grid()
     y_c = (W_TRACE + 8 * H_SUB) / 2.0
     port = MSLPort(feed_x=off_grid_x, y_lo=y_c - W_TRACE / 2, y_hi=y_c + W_TRACE / 2,
@@ -779,23 +721,6 @@ def test_issue510_feed_crossing_names_lumped_port_cleanly():
     )
 
 
-# ---------------------------------------------------------------------------
-# Issue #752 / PR #766 pre-merge review, blockers B1 and B2.
-#
-# B1: check 2b's snap suggestions were derived from ``int(h_sub / dx)`` on
-#     the SCALAR dx while its ``frac`` came from the run grid. Any run whose
-#     base dx exceeds h_sub made that zero and ``h_sub / n_below`` raised
-#     ZeroDivisionError out of preflight -- i.e. out of run() and
-#     compute_msl_s_matrix(), aborting the user's solve. The non-uniform
-#     half was introduced by #766; the uniform half predates it.
-#
-# B2: check 2 gates on the realized CELL COUNT and 2b on the interface's
-#     position WITHIN its cell. Neither proxy covers h_sub/dx in
-#     (3.00, 3.10) or (3.40, 3.50), where the substrate realizes 4 cells
-#     (2 silent) with frac outside [0.10, 0.40] (2b silent) on a board
-#     14-33% thicker than declared. Check 2c gates on the physical quantity
-#     -- realized-vs-declared thickness -- and closes it.
-# ---------------------------------------------------------------------------
 def test_mixed_cell_snap_survives_a_base_dx_coarser_than_the_substrate_nu():
     """B1, the NEW half: dz_profile of 80µm cells (so the realized
     centre-sampled substrate is 3 cells = 240µm and frac = 0.175, inside the danger zone)
@@ -807,7 +732,7 @@ def test_mixed_cell_snap_survives_a_base_dx_coarser_than_the_substrate_nu():
     comes from, so the mesh-profile remedy is quoted (not a dx snap)."""
     sim = _build_sim(dx=300e-6, ly=W_TRACE + 8 * H_SUB,
                      dz_profile=np.full(22, 80e-6))
-    msgs = _msl_warnings(sim)          # must not raise ZeroDivisionError
+    msgs = _msl_warnings(sim)
     mixed = [m for m in msgs if "danger zone" in m]
     assert len(mixed) == 1, msgs
     assert "3 same-permittivity sample slot(s), extent 240.0µm" in mixed[0], mixed[0]
@@ -822,7 +747,7 @@ def test_mixed_cell_snap_degrades_when_the_substrate_is_one_cell_uniform():
     coarser aligned mesh than one cell, so the advisory must degrade to a
     correct message that says so rather than raise."""
     sim = _build_sim(dx=1e-3, ly=W_TRACE + 8 * H_SUB)
-    msgs = _msl_warnings(sim)          # must not raise ZeroDivisionError
+    msgs = _msl_warnings(sim)
     mixed = [m for m in msgs if "danger zone" in m]
     assert len(mixed) == 1, msgs
     assert "set dx = 254.0µm (= h_sub/1)" in mixed[0], mixed[0]
@@ -858,6 +783,7 @@ def test_gap_advisory_preserves_its_historical_heuristic_value():
     This calculation explains the retained heuristic value. It is not a
     physical error guarantee for a current port or a bbox-thickness metric.
     The runtime warning makes that distinction explicit.
+    The derivation rests on h being the only variable in the anchor row.
     """
     import json
     from pathlib import Path
@@ -875,7 +801,6 @@ def test_gap_advisory_preserves_its_historical_heuristic_value():
          / "msl_z0_bias_floor_sweep_realized_anchor.json").read_text("utf-8")
     )
     row = next(r for r in anchor["rows"] if r["label"] == "misaligned 60um")
-    # h is the only variable in this row -- the property the derivation rests on.
     assert row["w_trace_realized_um"] == row["w_trace_declared_um"]
     dh = (row["h_sub_realized_um"] / row["h_sub_declared_um"]) - 1.0
     dz0 = (row["z0_hj_realized_board_ohm"]
@@ -883,8 +808,6 @@ def test_gap_advisory_preserves_its_historical_heuristic_value():
     assert dz0 / dh == pytest.approx(SENS, abs=5e-4)
     assert TOL == pytest.approx(BUDGET / SENS, abs=5e-4)
     assert BUDGET == 0.05, "preserve the historical dimensionless budget input"
-    # This historical analytic reference lies near its 5% contour; it
-    # is not a bound on the current solver or arbitrary microstrip geometry.
     z0_dec, _ = hj(W_TRACE, H_SUB, EPS_R)
     z0_tol, _ = hj(W_TRACE, H_SUB * (1.0 + TOL), EPS_R)
     assert 0.045 <= (z0_tol - z0_dec) / z0_dec <= 0.055
@@ -943,7 +866,7 @@ def test_open_stub_is_galvanically_joined_to_the_trace():
     ey = _np.asarray(rz.edge_masks[1], dtype=bool)[:, :, plane]
     cols = _np.flatnonzero(fp[:, :, plane].sum(axis=1) > 4)
     assert cols.size, "no column carries both the trace and the stub"
-    i = int(cols[cols.size // 2])          # a column through the stub
+    i = int(cols[cols.size // 2])
     rows = _np.flatnonzero(fp[i, :, plane])
     span = ey[i, rows[0]:rows[-1]]
     assert span.all(), (
