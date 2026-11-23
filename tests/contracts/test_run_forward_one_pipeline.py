@@ -960,12 +960,13 @@ def test_msl_s_equal_requests(path):
     np.testing.assert_array_equal(run.reliable, forward.reliable)
 
 
-def test_msl_s_has_no_multi_device_entry():
+def test_msl_s_multi_device_entry_matches_one_device():
+    """Multi-device results match one device in tests/unit/runners/test_distributed_msl_s_matrix.py."""
     from rfx import Simulation
 
-    # The two multi-device paths are not reachable through compute_msl_s_matrix.
     params = inspect.signature(Simulation.compute_msl_s_matrix).parameters
-    assert 'devices' not in params and all(
+    assert params['devices'].kind == inspect.Parameter.KEYWORD_ONLY
+    assert all(
         p.kind != inspect.Parameter.VAR_KEYWORD for p in params.values())
 
 
