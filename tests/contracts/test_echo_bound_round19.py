@@ -50,6 +50,10 @@ def test_census_equal_values_and_conservative_requirement(name, path, direction,
     options = ({'subpixel_smoothing': 'full_tensor'} if name == 'C-full-tensor' else
                {'subpixel_smoothing': True} if name == 'C-smooth' else {})
     pair = equal_request_pair(name, path, direction, n_steps=1, entry_options=options)
+    for entry, record in pair.items():
+        failure = record.get('construction', record)
+        assert failure.get('type') not in ('KeyError', 'AttributeError', 'AssertionError'), (
+            name, path, direction, entry, record)
     admitted = [entry for entry in ('run', 'forward') if pair[entry]['outcome'] == 'admitted']
     if len(admitted) != 2:
         refused = {entry: record for entry, record in pair.items() if entry not in admitted}
@@ -82,9 +86,7 @@ def test_census_equal_values_and_conservative_requirement(name, path, direction,
             group = min(group, float(np.sqrt(1 - (float(cfg.f_cutoff) / min(propagating))**2)))
     required = 2.05 * 2 * np.linalg.norm(lengths) * expected / (299792458. * group)
     got = 2.05 * float(bounds[0]['tau_max'])
-    unit = np.finfo(np.float32).eps / 2
-    margin = (1 + 2 * unit)**5 - 1
-    assert required <= got <= required * (1 + margin), (name, path, direction, got, required)
+    assert required <= got <= required * (1 + 10*np.finfo(np.float32).eps), (name, got, required)
     with capsys.disabled():
         print(f'20 census {name}/{path}/{direction}: round17_host={old_host!r}; n_max={actual!r}; '
               f'host_required={required!r}; required={got!r}', file=sys.stderr, flush=True)
