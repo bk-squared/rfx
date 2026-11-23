@@ -473,6 +473,7 @@ where nx is the cell count along x, the axis the run splits; the 2 counts one gh
 
 Example, measured: a Debye box of 25 × 13 × 13 cells holds 13 × 20,280 = 263,640 bytes on each of two devices, and 13 × 22,308 = 290,004 bytes on each of three. By the formula, a model of 10⁸ cells with one Debye pole holds about 13 × 0.4 GB ≈ 5.2 GB on every device, whatever the device count.
 What to do: if a model fits only when split over devices, call `run(devices=...)` or `forward(distributed=True)` without an enclosing `jax.jit`.
+Or set the environment variable `JAX_USE_SIMPLIFIED_JAXPR_CONSTANTS=1` before Python imports jax. Then the twelve measured caller-jit cases (uniform and graded boxes with a dielectric, a Debye or Lorentz pole, a lumped port or a thin wire, on two and three devices) compile with no constant as large as one device's slab. Setting it from Python after jax is imported has no effect. The variable is process-wide: it changes how every jax program in the process takes in the arrays its functions close over. What each device then holds as program inputs was not measured.
 
 ### A multi-device run that records snapshots holds more than twice the whole snapshot record on each device while it joins the record
 
