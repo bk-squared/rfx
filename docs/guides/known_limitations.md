@@ -475,25 +475,6 @@ Example, measured: a Debye box of 25 × 13 × 13 cells holds 13 × 20,280 = 263,
 What to do: if a model fits only when split over devices, call `run(devices=...)` or `forward(distributed=True)` without an enclosing `jax.jit`.
 Or set the environment variable `JAX_USE_SIMPLIFIED_JAXPR_CONSTANTS=1` before Python imports jax. Then the twelve measured caller-jit cases (uniform and graded boxes with a dielectric, a Debye or Lorentz pole, a lumped port or a thin wire, on two and three devices) compile with no constant as large as one device's slab. Setting it from Python after jax is imported has no effect. The variable is process-wide: it changes how every jax program in the process takes in the arrays its functions close over. What each device then holds as program inputs was not measured.
 
-### A multi-device run that records snapshots holds more than twice the whole snapshot record on each device while it joins the record
-
-Tracker: #2608
-
-`run(devices=..., snapshot=SnapshotSpec(...))` joins the devices' snapshot histories into one record at the end of the
-run. While it does so, each device holds more than twice the whole snapshot record, and after the run every device
-keeps a full copy of the record. The same run on one device peaks at 1.0 to 1.05 times the record. So the largest
-snapshot record that fits is smaller on two devices than on one.
-Measured on two CPU host devices, all six components of a uniform 48³-cell box (CPML cells included) recorded for 100,
-200 and 400 steps: 2.75 to 2.76 times the record on each device at all three lengths, growing by 6.96 MiB per recorded
-step. Host memory rose by a further 1.0 times the record during the join, so these figures are lower bounds (record
-kept with the project). GPUs, graded meshes, more than two devices, fewer components and slices were not measured.
-From the code: the join needs at least twice the record on each device for any device count, so more devices do not
-raise the limit; the multiple is larger when fewer components are recorded; and a slice normal to x (`slice_axis=0`) is
-held whole on every device during the run, so its join grows with the device count.
-What to do: record fewer frames (`SnapshotSpec(interval=...)`); the measured peak grew in proportion to the frame count.
-A 2-D slice normal to y or z (`slice_axis=1` or `2` with `slice_index`) lowers the peak with its size; fewer components
-lower it by less than the record shrinks. Or run a snapshot-heavy case on one device.
-
 ### `preflight()` and `realized_geometry()` keep the model's whole-domain inspection arrays until a solve or `clear_inspection_cache()`
 
 Tracker: #1432
