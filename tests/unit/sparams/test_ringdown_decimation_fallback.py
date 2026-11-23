@@ -88,7 +88,7 @@ def test_b4_identify_preflight_and_static_bound_share_plan(monkeypatch):
     check_memory = rd._check_identification_memory
 
     def capture(n_win, shape, **kwargs):
-        checked.append((n_win, shape))
+        checked.append((n_win, shape, kwargs.get('r')))
         return check_memory(n_win, shape, **kwargs)
 
     monkeypatch.setattr(rd, "_check_identification_memory", capture)
@@ -98,7 +98,8 @@ def test_b4_identify_preflight_and_static_bound_share_plan(monkeypatch):
         identification_keys=(), lane="uniform", probe_mode=False,
     )
     _check_run_identification_memory(plan)
-    assert checked == [(1400, (kept, 72))]
+    assert checked == [(1400, (kept, 72), None),
+                       (1400, (kept, 72), rd.static_pole_bound(1400, 72, 20e-12, 600e6))]
     columns = max(4, min(int(kept * 0.33), kept - 2))
     assert rd.static_pole_bound(1400, 72, 20e-12, 600e6) == min(kept - columns, 72 * columns)
 

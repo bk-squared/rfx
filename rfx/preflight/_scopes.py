@@ -78,6 +78,7 @@ CODE_SCOPE = {
     'sheet_cavity_spacing': 'object',
     'sheet_effective_size': 'object',
     'sheet_plane_realized': 'object',
+    'sheet_size_unjudged': 'model',
     'sheet_slot_vacuum': 'object',
     'source_decoupled': 'object',
     'source_on_graded_node': 'object',

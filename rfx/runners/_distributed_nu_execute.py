@@ -258,7 +258,7 @@ def execute_from_materials(
     if _realized.ACTIVE is not None:
         _realized.sources(grid, materials, sources, "distributed_nu.sources")
     from rfx.model.electric_metrics import stage_forward_materials
-    sharded_grid = sharded_grid.select_step(debye_spec, lorentz_spec, self._boundary_spec, ports=bool(port_specs))
+    sharded_grid = sharded_grid.select_step(debye_spec, lorentz_spec, self._boundary_spec, ports=bool(port_specs or self._msl_ports))
     sharded_materials = stage_forward_materials(materials, sharded_grid.layout, mesh, uniform=sharded_grid.step_kind == 'wrapped')
     from rfx.measurement.echo_bound import sharded_echo_bound
     echo_bound = sharded_echo_bound(self, grid, sharded_materials, sharded_grid, mesh,
@@ -267,7 +267,7 @@ def execute_from_materials(
 
     sharded_pec_mask = _conductors.stage_distributed_edges(
         pec_edges, sharded_grid, mesh, multiprocess,
-        inputs=None if port_specs else (pec_mask, _dnu_pec_sheets, _dnu_pec_wires))
+        inputs=None if port_specs or self._msl_ports else (pec_mask, _dnu_pec_sheets, _dnu_pec_wires))
     del pec_mask, pec_edges
     sharded_pec_occupancy = _conductors.stage_distributed_occupancy(pec_occupancy_override, sharded_grid, mesh)
     del pec_occupancy_override
@@ -331,7 +331,7 @@ def execute_from_materials(
         gather_final_state=gather_final_state,
         pmc_faces=frozenset(self._boundary_spec.pmc_faces()),
         material_drive=tuple(material_drive),
-        port_plan=port_plan, rlc_metas=rlc_metas,
+        port_plan=port_plan, msl_ports=bool(self._msl_ports), rlc_metas=rlc_metas,
         slab_records=records,
         prepare_only=port_plan is not None,
     )

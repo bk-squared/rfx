@@ -33,8 +33,8 @@ reaches a shell):
     ``scripts/ci/check_pr_body.py`` so a local run still works.
 
 An issue with no ``### Lane`` section was filed outside the forms. That is not
-an error here -- the weekly governance audit is what reports it -- so this
-prints nothing and exits 0, and the workflow step does nothing.
+an error here: this prints nothing and exits 0, and the workflow step does
+nothing. The weekly governance audit reports missing lane labels.
 
 Neither is a body with MORE THAN ONE ``### Lane`` section. A body is text an
 author controls, and pasting the heading into an earlier answer would otherwise

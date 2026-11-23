@@ -3677,3 +3677,15 @@ def test_cross_family_transition_defaults_to_refusing_single_family_lanes_do_not
             f"{name} is a single-family lane and was not part of the #838 "
             f"decision, but its strict_passivity default is {default!r}"
         )
+
+
+@pytest.mark.parametrize('axis,coordinate,size,center', [
+    ('z', .0003, None, None), ('x', .001, (.001, .0002), (.0017, .0004)),
+])
+def test_extra_flux_monitor_refuses_open_feed_end(axis, coordinate, size, center):
+    from tests._coax_msl_instrument_fixture import build_instrument_junction, instrument_kwargs
+    sim = build_instrument_junction()
+    scratch = build_instrument_junction()
+    scratch.add_flux_monitor(axis=axis, coordinate=coordinate, size=size, center=center, name='open-end')
+    with pytest.raises(ValueError, match=r'open bottom feed end.*run\(\)/forward\(\) port has a shielded end'):
+        sim.compute_coax_msl_transition(**instrument_kwargs(1), extra_flux_monitors=scratch._flux_monitors)

@@ -189,7 +189,11 @@ def build_p_wire_refplane(path):
 
 
 def build_p_coax(path):
-    return base_scene(path).add_coaxial_port((.006, .006, .008), face='bottom', pin_length=.004)
+    """Uniform entries carry the coax line; graded and distributed entries refuse it."""
+    if path == 'uniform':
+        return base_scene(path, domain=(.030, .020, .080), source=False).add_coaxial_port(
+            (.006, .006, .004), face='top', pin_length=0.)
+    return base_scene(path, source=False).add_coaxial_port((.006, .006, .008), face='bottom', pin_length=.004)
 
 
 def build_p_msl(path):
@@ -781,7 +785,7 @@ def equal_request_pair(declaration, path, direction, *, level=None, n_steps=150,
                {**options, 'compute_s_params': False})
     if direction == 'a' and run['outcome'] != 'not_called':
         sim = BUILDERS[declaration](path)
-        if any(port.impedance != 0 for port in sim._ports):
+        if sim._coaxial_ports or any(port.impedance != 0 for port in sim._ports):
             returned = run if level is None else run_l2(BUILDERS[declaration], 'run', path,
                                                          n_steps=1, entry_options=options)
             bins = returned['result'].freqs if returned['outcome'] == 'admitted' else None

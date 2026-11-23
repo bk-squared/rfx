@@ -288,8 +288,8 @@ def injection_end(n_steps, dt, *, records=None, grid=None, sim=None,
       waveforms sampled as the runners sample them (a port without one gets
       the default pulse), each Floquet port's table from its runner's builder,
       the TF/SF built from the declaration. A declared waveguide port needs
-      its built config in ``waveguide_ports``; a coaxial port is not built on
-      this path (run() and forward() refuse it).
+      its built config in ``waveguide_ports``; coaxial ports use their realized
+      TEM source plane and declared pulse.
 
     Returns the step, or None when it cannot be judged. ``return_detail``
     returns ``(step, reason, rows)``, a row ``(name, kind, value)`` per drive,
@@ -467,10 +467,13 @@ def _declared_drives(sim, n_steps, grid, have_configs, drives, refuse, tfsf_angl
                 from rfx.sources.tfsf_2d import with_angle
                 cfg = with_angle(cfg, tfsf_angle_deg)
             drives.append(("TF/SF source", *tfsf_source_drive(cfg, grid)))
-    for index, _ in enumerate(getattr(sim, "_coaxial_ports", ()) or ()):
-        refuse(f"coaxial port[{index}]", "unavailable",
-               f"cannot judge: coaxial port[{index}] is not built on this path "
-               "(its tables are read by the coaxial drivers)")
+    for index, port in enumerate(getattr(sim, "_coaxial_ports", ()) or ()):
+        from .coax_port import declared_drive
+        if grid is None:
+            refuse(f"coaxial port[{index}]", "unavailable", "coax drive needs its realized grid")
+        else:
+            for kind, (waveform, point) in zip(("E", "H"), declared_drive(sim, grid, port)):
+                drives.append((f"coaxial port[{index}] {kind}", waveform, _points_reach([np.asarray(point)])))
 
 
 def _record_points(records, grid):

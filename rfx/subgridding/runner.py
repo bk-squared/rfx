@@ -75,6 +75,9 @@ def run_subgridded(
     mats_c = with_components(mats_c, grid_c, periodic=periodic, high_wall=high_wall_c)
     mats_f = with_components(mats_f, None, periodic=(False,) * 3, high_wall=high_wall_f)
 
+    from rfx.model.pole_stability import refuse_subgrid_cells
+    refuse_subgrid_cells(mats_c, mats_f, grid_c, subgrid_config, dt)
+
     # Override coarse grid dt to match the subgrid global timestep
     # (fine grid CFL is more restrictive than coarse grid CFL)
     grid_c.dt = dt

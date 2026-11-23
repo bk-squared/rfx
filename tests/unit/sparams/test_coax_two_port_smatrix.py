@@ -469,7 +469,7 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
         ts = np.full((10, len(probes)), 1e-6)
         return _FakeResult(fake_planes, ts, grid_.dt)
 
-    def _fake_voltage(grid_, ex_dft, ey_dft, *, center_xy, pin_radius, outer_radius):
+    def _fake_voltage(grid_, ex_dft, ey_dft, *, center_xy, pin_radius, outer_radius, **kwargs):
         return np.asarray(ex_dft, dtype=np.complex128)
 
     import rfx.simulation as _simulation_mod
@@ -1141,3 +1141,15 @@ def test_shape_and_finiteness_contract():
     out = solve_two_port_from_wave_amplitudes(a, b)
     assert np.all(np.isfinite(out.s_params[:, :, 0]))
     assert np.all(np.isnan(out.s_params[:, :, 1]))
+
+
+@pytest.mark.parametrize('axis,coordinate,size,center', [
+    ('z', .0006, None, None), ('z', .0594, None, None),
+    ('x', .004, (.004, .002), (.004, .001)),
+])
+def test_extra_flux_monitor_refuses_open_feed_end(axis, coordinate, size, center):
+    sim = _sim()
+    scratch = _sim()
+    scratch.add_flux_monitor(axis=axis, coordinate=coordinate, size=size, center=center, name='open-end')
+    with pytest.raises(ValueError, match=r'open (bottom|top) feed end.*run\(\)/forward\(\) port has a shielded end'):
+        sim.compute_coaxial_two_port(n_steps=1, freqs=BAND, extra_flux_monitors=scratch._flux_monitors)

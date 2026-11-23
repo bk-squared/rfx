@@ -279,12 +279,12 @@ def test_round_trip_falls_with_absorber_depth(monkeypatch):
 
 
 def test_continuation_is_an_identity_for_an_interior_dielectric():
-    """A shape clear of every pad comes back as the SAME object.
+    """An interior cross-section comes back as the same object.
 
-    This is the bit-identity guarantee stated as a unit rather than inferred
-    from a field hash: the smoothing is handed the identical list, so it
-    cannot produce a different array.
+    Section realization precedes pad continuation. The continuation preserves
+    that section's identity when it is clear of every in-plane pad.
     """
+    from rfx.geometry.cross_section import section_entries
     from rfx.geometry.smoothing import smoothed_shape_pairs
 
     sim = Simulation(freq_max=0.25 * C0 / A, domain=(SX, SY, DX), dx=DX,
@@ -294,9 +294,10 @@ def test_continuation_is_an_identity_for_an_interior_dielectric():
     interior = Box((4 * A, WG_Y - W_WG / 2, 0), (12 * A, WG_Y + W_WG / 2, DX))
     sim.add(interior, material="wg")
     grid = sim._build_grid()
+    section = section_entries(sim, grid)[0].shape
     pairs, unextendable = smoothed_shape_pairs(sim, grid)
     assert unextendable == []
-    assert pairs[0][0] is interior, (
+    assert pairs[0][0] is section, (
         "an interior dielectric was rewritten by the pad continuation")
 
 
@@ -316,6 +317,7 @@ def test_a_face_drawn_inside_the_boundary_is_not_moved_to_it(gap_cells):
     one is sub-cell, so no tolerance makes them agree everywhere. Pinned here
     so the disagreement is a recorded choice rather than a discovery.
     """
+    from rfx.geometry.cross_section import section_entries
     from rfx.geometry.smoothing import smoothed_shape_pairs
 
     sim = Simulation(freq_max=0.25 * C0 / A, domain=(SX, SY, DX), dx=DX,
@@ -326,8 +328,9 @@ def test_a_face_drawn_inside_the_boundary_is_not_moved_to_it(gap_cells):
                 (SX - gap_cells * DX, WG_Y + W_WG / 2, DX))
     sim.add(inset, material="wg")
     grid = sim._build_grid()
+    section = section_entries(sim, grid)[0].shape
     pairs, _ = smoothed_shape_pairs(sim, grid)
-    assert pairs[0][0] is inset, (
+    assert pairs[0][0] is section, (
         f"a face {gap_cells} cells inside the boundary was moved to it")
 
 
@@ -337,13 +340,15 @@ def test_a_face_on_the_boundary_survives_the_float_route():
     be decided by which one rounds last. This is the knife-edge the Box
     docstring names; the rule carries 1e-6 cells of slack for it and no more.
     """
+    from rfx.geometry.cross_section import section_entries
     from rfx.geometry.smoothing import smoothed_shape_pairs
 
     sim = _build("cpml")
     grid = sim._build_grid()
+    section = section_entries(sim, grid)[0].shape
     pairs, _ = smoothed_shape_pairs(sim, grid)
     box = pairs[0][0]
-    assert box is not sim._geometry[0].shape, (
+    assert box is not section, (
         "the boundary-touching guide was not continued — the reach test lost "
         "to a float route")
     assert box.corner_lo[0] < 0.0 and box.corner_hi[0] > SX
@@ -351,6 +356,7 @@ def test_a_face_on_the_boundary_survives_the_float_route():
 
 def test_continuation_is_an_identity_without_absorbing_pads():
     """PEC walls have no pad to continue into, so nothing is rewritten."""
+    from rfx.geometry.cross_section import section_entries
     from rfx.geometry.smoothing import smoothed_shape_pairs
 
     sim = Simulation(freq_max=0.25 * C0 / A, domain=(SX, SY, DX), dx=DX,
@@ -359,9 +365,10 @@ def test_continuation_is_an_identity_without_absorbing_pads():
     touching = Box((0, WG_Y - W_WG / 2, 0), (SX, WG_Y + W_WG / 2, DX))
     sim.add(touching, material="wg")
     grid = sim._build_grid()
+    section = section_entries(sim, grid)[0].shape
     pairs, unextendable = smoothed_shape_pairs(sim, grid)
     assert unextendable == []
-    assert pairs[0][0] is touching
+    assert pairs[0][0] is section
 
 
 def test_dispersive_material_is_not_continued_into_the_pad():
@@ -375,6 +382,7 @@ def test_dispersive_material_is_not_continued_into_the_pad():
     declared model. The smoothed lane inherits both rules rather than
     inventing a third answer.
     """
+    from rfx.geometry.cross_section import section_entries
     from rfx.geometry.smoothing import smoothed_shape_pairs
 
     sim = Simulation(freq_max=0.25 * C0 / A, domain=(SX, SY, DX), dx=DX,
@@ -388,8 +396,9 @@ def test_dispersive_material_is_not_continued_into_the_pad():
     touching = Box((0, WG_Y - W_WG / 2, 0), (SX, WG_Y + W_WG / 2, DX))
     sim.add(touching, material="lossy")
     grid = sim._build_grid()
+    section = section_entries(sim, grid)[0].shape
     pairs, _ = smoothed_shape_pairs(sim, grid)
-    assert pairs[0][0] is touching, (
+    assert pairs[0][0] is section, (
         "a Lorentz-pole material was continued into the absorber pad; "
         "see #627b in extend_cpml_pad_materials' docstring")
 
@@ -445,6 +454,7 @@ def test_the_nonuniform_runner_continues_a_boundary_touching_slab():
     builder, and until this test the only NU coverage was a geometry that
     reaches nothing — which passes whether the mirror is wired up or not.
     """
+    from rfx.geometry.cross_section import section_entries
     from rfx.geometry.smoothing import (
         compute_smoothed_eps_nonuniform, smoothed_shape_pairs,
     )
@@ -458,9 +468,10 @@ def test_the_nonuniform_runner_continues_a_boundary_touching_slab():
     sim.add(slab, material="slab")
     grid = sim._build_nonuniform_grid()
 
+    section = section_entries(sim, grid)[0].shape
     pairs, unextendable = smoothed_shape_pairs(sim, grid)
     assert unextendable == []
-    assert pairs[0][0] is not slab, "the NU lane did not continue the slab"
+    assert pairs[0][0] is not section, "the NU lane did not continue the slab"
     assert pairs[0][0].corner_lo[0] < 0.0 and pairs[0][0].corner_hi[0] > lx
 
     _, _, eps_ez = compute_smoothed_eps_nonuniform(

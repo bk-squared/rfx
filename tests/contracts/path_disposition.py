@@ -183,10 +183,8 @@ _SHEET_OWNS_NO_CELL = "a sheet or wire owns no cell, and this lane applies PEC f
 SUBGRID_SHEETS = refuses(_SHEET_OWNS_NO_CELL, raises="does not realize PEC sheets or wires")
 F0 = "surface_impedance_f0) thin conductors are not supported"
 DIST_FWD_PORTS = carries("shared graded load, voltage drive and wrapped in-loop V/I/S; passive ports carry a load only")
-RUN_COAX = refuses("run() refuses add_coaxial_port(); the coax calculators solve it",
-                   raises="add_coaxial_port() is not wired into Simulation.run()")
-FWD_COAX = refuses("forward() refuses add_coaxial_port()",
-                   raises="add_coaxial_port() is not wired into Simulation.forward()")
+RUN_COAX = refuses("coax ports require a uniform single-device run()", raises="a coaxial port (add_coaxial_port)")
+FWD_COAX = refuses("coax ports require a uniform single-device forward()", raises="a coaxial port (add_coaxial_port)")
 GRADED_REFINEMENT = refuses("refinement on a graded mesh refused (#1282)",
                             raises="asks for subgridding on a non-uniform mesh")
 
@@ -595,10 +593,10 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_subgridded=admission("a microstrip port (add_msl_port)", RUN_SG,
                                  "it was dropped although production validation passes (#1311)"),
 
-        run_distributed=refuses("MSL ports refused (#1241)", raises="add_msl_port() port(s)"),
+        run_distributed=carries("whole-grid laplace/uniform stamp, owning-slab drive; eigenmode refused"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=refuses("MSL ports refused by the shared multi-device check (#1241, #2076)", raises="add_msl_port() port(s)"),
+        fwd_distributed_nu=refuses("microstrip forward has no gradient parity bar", raises="add_msl_port() port(s)"),
 
     )},
     "_waveguide_ports": {"waveguide_port": lanes(
@@ -625,12 +623,12 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
 
     )},
     "_coaxial_ports": {"coax_port": lanes(
-        run_uniform=RUN_COAX,
+        run_uniform=carries("coax line model, TEM drive and voltage-spectrum S11"),
         run_nonuniform=RUN_COAX,
         run_subgridded=RUN_COAX,
 
         run_distributed=RUN_COAX,
-        fwd_uniform=FWD_COAX,
+        fwd_uniform=carries("coax line model, TEM drive and voltage-spectrum S11"),
         fwd_nonuniform=FWD_COAX,
         fwd_distributed_nu=FWD_COAX,
 
@@ -1652,6 +1650,11 @@ for (_attr, _feature), _cells in CALCULATOR_CELLS.items():
     TABLE[_attr][_feature].update(_cells)
 
 LANE_GATES.update({
+    (lane, ("_coaxial_ports", "coax_port")): "uniform single-device coax conditions and grid layout"
+    for lane in ("run_uniform", "fwd_uniform")
+})
+
+LANE_GATES.update({
     ("run_nonuniform", ("_precision", "")): "float64 carries; mixed refuses with the existing message",
     ("fwd_nonuniform", ("_precision", "")): "float64 carries; mixed refuses with the existing message",
     ("waveguide_s_matrix", ("_dt_pin", "")): "graded builder reads dt",
@@ -1686,6 +1689,8 @@ for _features in TABLE.values():
     for _cells in _features.values():
         if "run_distributed" in _cells:
             _cells["fwd_distributed"] = _cells["run_distributed"]
+TABLE["_msl_ports"]["msl_port"]["fwd_distributed"] = refuses(
+    "microstrip forward has no gradient parity bar", raises="add_msl_port() port(s)")
 TABLE["_coaxial_ports"]["coax_port"]["fwd_distributed"] = FWD_COAX
 TABLE["_pec_occupancy_model"]["kottke"]["fwd_distributed"] = refuses(
     "uniform distributed forward refuses the occupancy override", raises="pec_occupancy_override")

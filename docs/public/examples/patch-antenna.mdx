@@ -26,6 +26,11 @@ the openEMS "Simple Patch Antenna" geometry, including far-field mode
 identification. [Benchmarks](/rfx/guide/benchmarks/) shows how rfx's patch
 cases compare with openEMS.
 
+<figure data-rfx="media">
+  <img src="/rfx/examples/assets/patch-antenna/structure.png" loading="lazy" alt="Top view and x-z cut of the patch antenna example: a small board inside a dashed far-field box, inside the absorber, with the bottom face of the box just below the ground" />
+  <figcaption>The model built by <code>patch_antenna_demo.py</code>: a patch drawn 32 × 40 mm over a ground drawn 60 × 60 mm, on a substrate that is drawn 60 × 60 mm and measures 58.6 × 58.6 mm on the grid, because its faces go to the nearest nodes, which the mesh places for the ground's edges. The bottom face of the far-field box lies 5.3 mm below the ground.</figcaption>
+</figure>
+
 ## Modelling rules
 
 - **Finite ground, open domain.** Draw the ground plane as a conductor inside an
@@ -41,11 +46,20 @@ cases compare with openEMS.
   `smooth_grading`, derive every z coordinate from the final profile: smoothing
   inserts transition cells that move the fine band. See
   [Non-Uniform Mesh](/rfx/model/domain-mesh/).
-- **Keep the drawn size.** Preflight refuses a patch solved more than 1 % off
-  its drawn size. Build the in-plane mesh with `edge_aware_profiles`, as
+- **Keep the drawn size.** Preflight predicts each sheet's solved size from a
+  0.35-cell edge offset and refuses a patch predicted more than 1 % off its
+  drawn size. Build the in-plane mesh with `edge_aware_profiles`, as
   [Your First Patch Antenna](/rfx/examples/first-patch/) does, rather than
-  rounding L and W to the grid, because rounding changes the antenna. See
-  [Check the model on the grid](/rfx/check/model-on-grid/).
+  rounding L and W to the grid, because rounding changes the antenna. That mesh puts each sheet's last node 0.35 cell inside its drawn edge. The
+  offset was measured where the cell normal to the sheet is as long as the
+  in-plane cell beside its edge.
+  In `patch_antenna_demo.py` the z cells at the sheets are 0.38 to 0.50 mm and
+  the in-plane cells are 1.86 to 2 mm, ratios of 0.19 to 0.27. At those ratios
+  the offset was
+  measured only for a free sheet in vacuum; on the substrate face, where these
+  sheets lie, it has not been measured, so the solved patch size,
+  and with it the resonance this page reports, carries an error this page does
+  not know. See [Check the model on the grid](/rfx/check/model-on-grid/).
 
 ## Resonance
 
@@ -87,6 +101,11 @@ allows. The face below the ground plane often cannot be that far; preflight
 tells you, and you should report it with the result. Evaluate the pattern at
 the radiating mode's frequency. See [Far-Field and RCS](/rfx/measure/far-field-and-rcs/).
 
+<figure data-rfx="media">
+  <img src="/rfx/examples/assets/patch-antenna/pattern.png" loading="lazy" alt="Two far-field cuts against angle from broadside, each a single broad lobe with its maximum near 0 degrees" />
+  <figcaption>Far-field cuts from the example at 2.4 GHz, the far-field box frequency closest to the 2.447 GHz resonance, each normalized to its own maximum. The run used a single mesh (2 mm nominal) and passed its ring-down check; preflight warns that the bottom face of the box is too close to the antenna: “directivity / pattern likely corrupted”.</figcaption>
+</figure>
+
 ## Design iteration
 
 - **A few dimensions** (length, width, inset depth): sweep them with
@@ -101,9 +120,9 @@ the radiating mode's frequency. See [Far-Field and RCS](/rfx/measure/far-field-a
 
 - **A short run, or a clean preflight, is not a result.** Resonance, S11, Q and
   pattern all need a run that has rung down and a mesh study.
-- **Coarse meshes shift the resonance, in either direction.** An under-resolved
-  substrate tends to read high and a staircased patch edge low, so the error on
-  a coarse mesh is not a fixed bias. Refine both and report the spread.
+- **Coarse meshes shift the resonance, in either direction.** The direction is
+  not known in advance, so the error on a coarse mesh is not a fixed bias.
+  Refine the substrate and the in-plane mesh and report the spread.
 - **Soft-source runs give no S11.** Use a port for return loss.
 - **The wrong mode is easy to pick.** Confirm the radiating mode from the far
   field.

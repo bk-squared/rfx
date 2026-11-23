@@ -254,37 +254,14 @@ Pass `forward(..., skip_preflight=True)` and run `sim.preflight()` once on a con
 Under a trace the curved high-contrast check cannot judge a traced material; it warns (`CurvedSmoothingWarning`) that the check was not judged and names the material.
 Two materials given different tracers are smoothed as two media even when their values are equal; a concrete run merges equal values into one medium.
 
-### A material with permittivity below 0.98 grows without bound at the default time step, and nothing refuses it.
+### A traced pole-map profile that is undefined outside its material gives a NaN gradient.
 
-Tracker: #2772
+Tracker: #2650
 
-A Yee cell of relative permittivity ε (μr 1) is stable only for a time step up to √ε times the vacuum Courant limit,
-because its fastest waves travel at c/√ε, faster than light for ε below 1. In a Debye material the pole terms vanish at
-the grid's Nyquist frequency, so the cell sees ε∞ there. No check refuses a step above a cell's own limit: the default
-step is 0.99 of the vacuum limit, and the pole stability check skips a cell whose step is above that cell's limit
-without its poles. A material with `eps_r` below 0.98 (0.99²), or a Debye material with ε∞ below 0.98 (such as a
-`fit_debye` result before 2.3), therefore grows until the fields are non-finite at the default step when it fills cells that set
-the step (every cell on a uniform mesh); this was measured at 0.5 on the uniform and the graded mesh. Between 0.98 and 1
-the default step stays inside the cell's limit. Nothing refuses the run; it ends with an `AccuracyWarning` about
-non-finite values.
-
-Two material fits reach this entry, measured with a 12.3 × 11.5 × 10.8 mm box of the fitted material on 1 mm cells in
-an open domain (uniform mesh, and a graded mesh with five 0.8 mm cells in x), at the default step:
-- On a table with ε′ 4.4 and tan δ 0.02 constant over 1–40 GHz, `fit_debye` with a free ε∞ returned ε∞ 0.5 before
-  2.3 (it now keeps ε∞ at 1 or above). `run()` admits the 2-pole fit on both meshes; the fields grow by a factor of 1.04 per step and become
-  non-finite at step 2025 (uniform) and 2008 (graded).
-- On a table with heavy loss at low ε′ (ε′ 1.1, tan δ 0.1, constant over 1–40 GHz), `fit_lorentz` returned ε∞ 0.1, its
-  lower bound, with 2 and with 3 resonances before 2.3 (it now keeps ε∞ at 1 or above). `run()` admits both fits on both meshes; the fields grow by a factor of
-  100 to 140 per step and become non-finite at step 22.
-
-In both cases preflight reports only advisories, and the run ends with the `AccuracyWarning` about non-finite values.
-Before building a material from a fit, check `fit.eps_inf`: below 0.98, the material is outside the default step's
-stable range. The 2-pole `fit_debye` result above ran 17143 steps without growth at 0.61 of the vacuum Courant limit
-of the smallest cell, on a graded board with a pinned `dt=`. No step was measured for the `fit_lorentz` result.
-
-Keep `eps_r` and ε∞ at 1 or above. On a graded mesh, a pinned `dt=` below √ε times the vacuum Courant
-limit, with ε the smallest permittivity, is inside the stable range: at 0.6 of the limit a material with ε 0.5 ran
-without growth.
+A `LorentzPoleMap` (or `drude_pole_map`, `lorentz_pole_map`) callable is evaluated at every cell centre, and only the occupied cells' values are kept.
+Under `jax.grad` the unoccupied cells still pass a zero cotangent through the callable's derivative, so a profile whose value or derivative is not finite there (a square root of a negative number, a division by zero) gives a NaN gradient while the objective is finite.
+A concrete run is not affected.
+Clamp the argument where the profile is undefined, for example `jnp.sqrt(jnp.maximum(u, 0.))`: on the occupied cells the value is unchanged and the gradient is finite.
 
 ### `subpixel_smoothing="full_tensor"` keeps the one-plane rule next to a sphere, a cylinder or another non-Box shape, and refuses traced coordinates beside a Box.
 
@@ -473,25 +450,7 @@ where nx is the cell count along x, the axis the run splits; the 2 counts one gh
 
 Example, measured: a Debye box of 25 × 13 × 13 cells holds 13 × 20,280 = 263,640 bytes on each of two devices, and 13 × 22,308 = 290,004 bytes on each of three. By the formula, a model of 10⁸ cells with one Debye pole holds about 13 × 0.4 GB ≈ 5.2 GB on every device, whatever the device count.
 What to do: if a model fits only when split over devices, call `run(devices=...)` or `forward(distributed=True)` without an enclosing `jax.jit`.
-
-### A multi-device run that records snapshots holds more than twice the whole snapshot record on each device while it joins the record
-
-Tracker: #2608
-
-`run(devices=..., snapshot=SnapshotSpec(...))` joins the devices' snapshot histories into one record at the end of the
-run. While it does so, each device holds more than twice the whole snapshot record, and after the run every device
-keeps a full copy of the record. The same run on one device peaks at 1.0 to 1.05 times the record. So the largest
-snapshot record that fits is smaller on two devices than on one.
-Measured on two CPU host devices, all six components of a uniform 48³-cell box (CPML cells included) recorded for 100,
-200 and 400 steps: 2.75 to 2.76 times the record on each device at all three lengths, growing by 6.96 MiB per recorded
-step. Host memory rose by a further 1.0 times the record during the join, so these figures are lower bounds (record
-kept with the project). GPUs, graded meshes, more than two devices, fewer components and slices were not measured.
-From the code: the join needs at least twice the record on each device for any device count, so more devices do not
-raise the limit; the multiple is larger when fewer components are recorded; and a slice normal to x (`slice_axis=0`) is
-held whole on every device during the run, so its join grows with the device count.
-What to do: record fewer frames (`SnapshotSpec(interval=...)`); the measured peak grew in proportion to the frame count.
-A 2-D slice normal to y or z (`slice_axis=1` or `2` with `slice_index`) lowers the peak with its size; fewer components
-lower it by less than the record shrinks. Or run a snapshot-heavy case on one device.
+Or set the environment variable `JAX_USE_SIMPLIFIED_JAXPR_CONSTANTS=1` before Python imports jax. Then the twelve measured caller-jit cases (uniform and graded boxes with a dielectric, a Debye or Lorentz pole, a lumped port or a thin wire, on two and three devices) compile with no constant as large as one device's slab. Setting it from Python after jax is imported has no effect. The variable is process-wide: it changes how every jax program in the process takes in the arrays its functions close over. What each device then holds as program inputs was not measured.
 
 ### `preflight()` and `realized_geometry()` keep the model's whole-domain inspection arrays until a solve or `clear_inspection_cache()`
 
@@ -522,6 +481,18 @@ The cause is the staircased line, not the port; `line_impedances` reports the bu
 Setting `impedance=` to that value requests the line's own reference; it does not correct the built geometry.
 A finer mesh changes Z_built non-monotonically: 40.55 / 44.08 / 41.29 ohm at
 0.4 / 0.3 / 0.2 mm on the SMA line (measured; record kept with the project).
+
+### A coax-fed patch's S11 does not yet converge over three uniform meshes.
+
+Tracker: #1958
+
+A synthetic coax-fed patch (a 15 x 12 mm patch on a 1.5 mm substrate over a finite ground plate, fed by an SMA-size
+coax through a hole in the plate, `add_coaxial_port()` on uniform `run()`) was solved at 0.30, 0.25 and 0.1875 mm.
+The 50-ohm S11 minimum moves +27.2 MHz from 0.30 to 0.25 mm and +44.8 MHz from 0.25 to 0.1875 mm: the finer pair
+moves more. |S11| at 9.90 GHz reads -4.84 / -3.80 / -2.27 dB. The cause is not established. The port's own checks
+on the same meshes pass (a shorted line reads |Gamma| within 2.4e-5 of 1 and radiates nothing; doubling the line
+moves |S11| by at most 0.091 dB). What to do: solve a coax-fed antenna on at least three meshes and state the trend;
+do not read its resonance from one mesh.
 
 ### A microstrip strip drawn past an MSL port to the domain edge is an open stub that can short the port.
 
@@ -554,9 +525,14 @@ square transverse mesh. Refinement therefore changes its series inductance;
 it is not a fixed-radius physical pin. Opt in to `radius=` in metres to use
 the local thin-probe model, within `radius <= 0.20 * dx` and a locally uniform
 square transverse stencil and uniform spacing along the pin. Axial grading
-across the port refuses this model. It is carried by nondispersive 3-D
+across the port refuses this model. It is carried by 3-D
 second-order Yee `run()` and `forward()`, on one device or several; other solvers,
-Debye/Lorentz, tensor/design-box updates and traced mesh metrics refuse it.
+tensor/design-box updates and unsupported traced mesh metrics refuse it.
+Debye, Lorentz and Drude material cells may lie outside its electric stencil.
+They are refused when they reach a live pin edge, one of its four parallel
+neighbours, or a cell supplying those edges' material means: the electric
+stamp is ε∞/4, while the missing dispersive storage scales with ε(ω)
+(`tests/contracts/test_wire_radius_poles.py`).
 Resolve larger wire ports geometrically with a coax feed or a volume wire.
 Each halving of the transverse cell adds `ω·(μ0·ℓ/2π)·ln 2` of series reactance
 to a port of length `ℓ` without `radius=`, about 5 Ω per halving at 5.8 GHz for a
@@ -588,6 +564,46 @@ calculators are not pursued further before 2.0, so the excess will not be attrib
 corrected; use the single-family extractors separately (`compute_msl_s_matrix(...)`,
 the coaxial two-port and line-reflection calculators) for a result you can cite.
 #838 was closed as not planned before 2.0 (decided 2026-09-20); this is a standing limitation.
+
+Part of the excess came from the coax side's plane voltage, which counted the cells next
+to the inner and outer conductors at half weight and so read 0.84 of the line voltage on
+the 0.1 mm test mesh. With the whole-cell voltage, the short test fixture's |S21| falls
+from 3.81 to 3.22 at 6 GHz and its column power from 14.6 to 10.5; the matrix is still
+far from passive, and the rest of the excess is not attributed.
+
+### On a radiating device, the coax calculators' S11 includes coupling from their open feed end.
+
+Tracker: #2975
+
+`compute_coaxial_line_reflection`, `compute_coaxial_two_port` and `compute_coax_msl_transition`
+end each coax line just past its matched feed sheet and leave the line open behind it.
+When the device at the far end radiates, as an open line end or an antenna does, the open
+feed end couples to it through the device's surroundings, and S11 includes that coupling.
+
+On a 40 mm open-ended line in a 12 x 12 mm box with 0.5 mm cells, the S11 of
+`compute_coaxial_line_reflection` differs by 1.5e-4 to 2.7e-4 at 4-6 GHz from the
+`run()`/`forward()` coax port, whose feed end is capped. With the device shorted, 89-96 % of
+that difference goes away. The calculator does not accept user geometry, so the shorted case
+was measured on a `run()` model that reproduces the calculator bit for bit.
+
+Only `compute_coaxial_line_reflection` was measured. The two-port and coax→microstrip
+calculators have the same open feed end and were not measured. They refuse an extra flux
+monitor that reaches the open side of a feed.
+
+### The record-tail witness can report a record settled while a slow mode above `freq_max` holds the tail.
+
+Tracker: #2977
+→ [#2977](https://github.com/bk-squared/rfx/issues/2977)
+
+The witness identifies poles after decimating each record toward 4 × `freq_max` sampling. When a
+structure keeps a long-lived mode above `freq_max`, as a closed or lightly loaded line or cavity
+can, the anti-alias filter passes a small image of it. Once the in-band ringing has decayed, the
+witness reads that image as an in-band pole and evaluates the mode's tail at the folded frequency.
+In a synthetic reproduction, the witness read a largest share of 1.4e-4 and passed. An
+identification that holds the mode read 1.02e-2, above the 1e-2 bar. The per-channel share also
+grows just above a channel's DFT null, so the largest share is set by the bin nearest some
+channel's null. Until this is fixed, check a settling verdict on such a structure against a run
+with a longer record.
 
 ### The microstrip S-matrix can come back non-passive, and says so.
 
@@ -765,6 +781,19 @@ Tracker: #2725
 
 The waveguide ports' own mode profiles do not have this problem: they take the requested mode within the pair.
 
+### Saved waveguide-port configurations checked in another process can read "cannot judge" for a correct record.
+
+Tracker: #2988
+
+`settling_db_from_port_records` rebuilds each port's incident tables in float64 and requires them to equal the stored
+tables bit for bit. The last bit of that rebuild depends on which SIMD path NumPy takes on the machine. Configurations
+saved on one machine and checked on another (or under another `NPY_DISABLE_CPU_FEATURES` setting) can therefore be
+refused: the settling value is NaN, with status `undetermined` and the reason "… is not the table its configuration
+rebuilds …". On one x86 machine with AVX512, tables built with NumPy's AVX512 path enabled and rebuilt with it disabled
+differed by one float64 unit in the last place at the table's peak, and the check refused them in both directions.
+The check passes in the process that built the record. Run the settling check where the record was built, or on a
+machine with the same NumPy build and CPU features.
+
 ### MSL S-parameters under `eps_override` refuse an override that varies under a port line, and a call under `jax.jit`
 
 Tracker: none — accepted limitation (refused at default: tests/unit/sparams/test_msl_feed_shift_eps_override.py::test_override_varying_along_the_shifted_length_is_refused_by_port_name)
@@ -858,39 +887,6 @@ Stronger or single weak modes do hold the stop. What to do: where weak high-Q
 features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
 `tests/unit/sparams/test_ringdown_early_stop.py`.
-
-### A long identification window can be refused at stage 2, the original-rate residue fit, above the memory bound.
-
-Tracker: #2874
-
-`run(ringdown=...)` and `forward(ringdown=...)` identify poles in two stages:
-- stage 1, the pencil, runs on the decimated record;
-- stage 2 fits the residues at the original sample rate and needs `1.71 × 16 × 5 × n_win × r` bytes, where `n_win` is the window length in samples and `r` the kept rank.
-
-When that exceeds `rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES` (4 GiB by default), the window is refused by name with `IdentificationMemoryRefused`. The message names the stage, the dimensions, the memory needed and the bound. For example, n_win = 80,000 at r = 600 needs 6.1 GiB. No number is returned for that window.
-
-What to do:
-- raise `rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES` when the device has the memory;
-- or shorten the identification window.
-
-#2874 plans a streamed stage-2 fit, whose memory scales with `r²`.
-
-### A long identification window can exhaust device memory in the traced pole step of `forward(ringdown=...)`, with no refusal.
-
-Tracker: #2874
-
-`forward(ringdown=...)` moves the identified poles by one frozen Gauss-Newton step, so a derivative reaches them (`rfx/ringdown/_jax.py`, `completion` and `_pole_step`). For each identification window the step builds arrays of `M × C × K` complex values, 8 bytes each (complex64; 16 bytes with `jax_enable_x64`): the pole-derivative basis, and its projection, which is the step's Jacobian. It factors that Jacobian by QR once for the value and once more for the derivative, and each factor is about as large again.
-- `M` is the window length in samples;
-- `C` is the number of fitted channels: with ports, the voltage and the current of each port plus the identification probe columns; with probe spectra only, the identification probe columns;
-- `K` is the window's pole budget, the smaller of the pencil's capacity and `rfx.ringdown.TRACED_POLE_BUDGET` (512 by default).
-
-Two windows are identified: the main window `[window_start × T, T]` and the early-start comparison window `[window_start / 2 × T, T]`, which is 1.5 times longer at the default `window_start = 0.5`. For example, a 120,635-step record with 8 channels and K = 512 gives M = 60,317 and 90,476, so each array takes 60,317 × 8 × 512 × 8 B = 1.98 GB and 90,476 × 8 × 512 × 8 B = 2.96 GB. Nothing checks this memory before the step runs: a device without it ends the call with the allocator's `RESOURCE_EXHAUSTED`.
-
-What to do:
-- shorten the identification window: a larger `RingdownSpec.window_start`, or a shorter record;
-- or lower the pole budget by assignment before the call is traced, for example `rfx.ringdown.TRACED_POLE_BUDGET = 256`; a function already compiled by `jax.jit` keeps its old budget until it is traced again. A window that keeps more poles than the budget then returns NaN, and its status reason names the kept count and the budget.
-
-#2874's streamed fit is planned to cover this step too.
 
 ### A plain record shorter than a weakly coupled resonance's decay misreads S near it on any port, and the end-of-run decay check can miss it.
 
@@ -1221,6 +1217,12 @@ its simulation time predates the current decay check. It is re-measured after
 (decided 2026-10-04, recorded on
 [#1471](https://github.com/bk-squared/rfx/issues/1471)).
 
+### Traced material values on several devices, a backend without host callbacks or a GPU process without a CPU backend (`JAX_PLATFORMS=cuda`) bypass the cell time-step limit.
+
+Tracker: #2755
+
+A `jax.jit`-traced ε or μr on several devices, or on a backend without host callbacks (including MPS on Apple silicon), or in a GPU process without a CPU backend (`JAX_PLATFORMS=cuda`), is not judged against the cell time-step limit. Below ε·μr = 0.98, such a run goes non-finite with no named refusal ([#2755](https://github.com/bk-squared/rfx/issues/2755)). Concrete values and eager `jax.grad` / `jax.jvp` primals and `jax.vmap` members are still judged on the host.
+
 ---
 
 ## What this page is not
@@ -1233,3 +1235,6 @@ open work see the
 supported at all see the [support matrix](support_matrix.md).
 
 A material array changed at run time (`eps_override`, a traced design variable) above the declared index is not covered by the echo delay bound.
+### Uniform coax ports remain experimental
+
+Experimental uniform coax ports: calculator equality on the open line (through a `run()` model of the calculator) and on a shorted line (against the capped port), run()/forward() equality, bottom-feed, NTFF-leakage and occupancy-gradient checks define the validation scope; the antenna-level result against an independent solver is not yet shown. NTFF leakage and record-length gradient evidence must be checked for the antenna being reported.

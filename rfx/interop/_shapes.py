@@ -143,9 +143,6 @@ _CODECS: dict[str, _ShapeCodec] = {
         "points": _vec_seq(3, what="polyline_wire.points", container=tuple),
         "radius": _flt(what="polyline_wire.radius"),
     }),
-    # ``Via`` carries its own ``material`` in addition to the ``material=``
-    # handed to ``Simulation.add()``.  Both are recorded; resolving the two is
-    # the caller's decision, not something this codec may silently pick.
     "via": _ShapeCodec(Via, {
         "center": _vec(2, what="via.center"),
         "drill_radius": _flt(what="via.drill_radius"),
@@ -216,8 +213,6 @@ def constructor_parameter_names(cls: type) -> tuple[str, ...]:
     )
     if not dataclasses.is_dataclass(cls):
         return signature_names
-    # Union both views, preserving signature order, so an InitVar shows up and a
-    # non-init field does not masquerade as a constructor parameter.
     init_fields = tuple(f.name for f in dataclasses.fields(cls) if f.init)
     extra = tuple(n for n in init_fields if n not in signature_names)
     return signature_names + extra
@@ -248,11 +243,11 @@ def _instance_state_names(shape: Any) -> tuple[str, ...]:
     """
     if dataclasses.is_dataclass(shape):
         names: tuple[str, ...] = tuple(f.name for f in dataclasses.fields(shape))
-    elif hasattr(shape, "_fields"):  # NamedTuple
+    elif hasattr(shape, "_fields"):
         names = tuple(shape._fields)
     elif hasattr(shape, "__dict__"):
         names = tuple(vars(shape))
-    else:  # __slots__ without __dict__
+    else:
         names = tuple(
             slot
             for klass in type(shape).__mro__
@@ -342,11 +337,6 @@ def shape_from_dict(payload: dict[str, Any]) -> Any:
     except UnsupportedDesignFeature:
         raise
     except (ValueError, TypeError) as exc:
-        # The primitive's own invariants (e.g. Via requires pad_radius >=
-        # drill_radius, rfx/geometry/via.py:49) would otherwise escape as a bare
-        # ValueError naming neither the kind nor the document. Note
-        # UnsupportedDesignFeature IS a ValueError, so a caller writing
-        # `except UnsupportedDesignFeature` would have missed those.
         raise UnsupportedDesignFeature(
             f"{kind} payload violates the primitive's own invariants: {exc}"
         ) from exc

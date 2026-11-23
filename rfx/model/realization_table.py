@@ -108,7 +108,7 @@ def _axis(axis, declared, realized, cell):
     return RealizationAxis(
         axis, declared, realized, drawn, span, cell,
         None if miss is None else miss / cell,
-        None if not drawn else 100 * miss / drawn,
+        None if not drawn or miss is None else 100 * miss / drawn,
         None if declared is None else (sum(realized) - sum(declared)) / (2 * cell))
 
 
@@ -127,8 +127,18 @@ def realization_table(prepared) -> RealizationTable:
         declared_bounds = entity.declared_bounds_m
         for prefix, entries in (("geometry[", sim._geometry), ("thin_conductor[", sim._thin_conductors)):
             if entity.label.startswith(prefix):
-                declaration = entries[int(entity.label[len(prefix):-1])].shape
+                index = int(entity.label[len(prefix):-1])
+                declaration = entries[index].shape
                 shape = type(declaration).__name__
+                if prefix == "geometry[" and getattr(prepared.conductors.grid, "is_2d", False):
+                    from rfx.geometry.cross_section import section_entries
+                    from rfx.preflight.realization import _shape_bounds
+                    section = section_entries(sim, prepared.conductors.grid)[index].shape
+                    section_bounds = _shape_bounds(section)
+                    if section_bounds is not None:
+                        axes = tuple(_axis(a.axis, (section_bounds[0][i], section_bounds[1][i]),
+                                           a.bounds_m, a.cell_size_m) if i < 2 else a
+                                     for i, a in enumerate(axes))
                 # Preserve the reporter's analytic-bounds availability contract.
                 try:
                     declared_bounds = tuple(tuple(float(v) for v in side)
@@ -137,11 +147,13 @@ def realization_table(prepared) -> RealizationTable:
                     declared_bounds = None
         if entity.kind == "material":
             from rfx.model.realization_integrals import quantities
-            sampler = quantities(getattr(record, "_quantity_grid", prepared.conductors.grid))
+            quantity_grid = getattr(record, "_quantity_grid", prepared.conductors.grid)
+            sampler = quantities(quantity_grid)
             model = "material sampler"
             if entity.label.startswith("geometry["):
-                declared_shape = sim._geometry[int(entity.label[9:-1])].shape
-                model = sampler.get("material_sampling", {}).get(id(declared_shape), model)
+                from rfx.geometry.cross_section import section_entries
+                sampled = section_entries(sim, quantity_grid)[int(entity.label[9:-1])].shape
+                model = sampler.get("material_sampling", {}).get(id(sampled), model)
         elif entity.kind == "wire":
             model = "lattice edge envelope"
         elif entity.kind == "lossy" and realized is None:

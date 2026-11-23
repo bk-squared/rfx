@@ -54,6 +54,11 @@ def make_case(dx: float) -> Simulation:
     return sim
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/check/assets/mesh-convergence/structure.png" loading="lazy" alt="Section through a closed box: a rectangular insert in the middle, the source to its left and the probe to its right, both below the insert." />
+  <figcaption>The 2 mm case of <code>make_case</code>, cut at y = 32 mm: a box of 40 × 32 × 20 cells whose six faces the code declares PEC. The insert fills x = 32 to 48 mm and z = 16 to 24 mm; the source drives and the probe reads the Ez samples at x = 24 and 56 mm, z = 9 mm, half a cell above the requested 8 mm.</figcaption>
+</figure>
+
 For geometry that can't be aligned at every size, run
 `make_case(dx).fidelity_report()` at each size to see where the faces landed,
 and include that snapping in what you report.

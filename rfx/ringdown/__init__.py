@@ -87,6 +87,8 @@ can supply, since a pair no window separates is completed as one mode while
 every window agrees -- and the completion reads passive with no growing pole.
 The result is what ``run(n_steps=T, ringdown=...)`` returns, with the stop
 report in ``Result.ringdown.stop``.
+
+The stopping floor uses amplitude decay times ``tau = Q / (pi * f) = 1 / alpha``.
 """
 
 from __future__ import annotations
@@ -132,11 +134,8 @@ from rfx.measurement.ringdown_model import RingdownModel, RingdownPole, _as_2d, 
 from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
 from rfx.measurement.ringdown_resolution import _static_pole, _zero_frequency
 
-# Import the module explicitly for its matrix-pencil planning helpers.
 _harminv = import_module("rfx.harminv")
 
-# harminv's own defaults, read from its signature rather than re-typed, so the
-# decimation plan and pencil shape here follow the estimator they came from.
 _HARMINV_DEFAULTS = {
     k: v.default for k, v in inspect.signature(_harminv.matrix_pencil).parameters.items()
     if v.default is not inspect.Parameter.empty
@@ -144,13 +143,13 @@ _HARMINV_DEFAULTS = {
 PENCIL_PARAMETER = float(_HARMINV_DEFAULTS["pencil_parameter"])
 HARMINV_MAX_MODES = int(_HARMINV_DEFAULTS["max_modes"])
 
-# Default from decision g; users can raise it by assignment.
 IDENTIFY_MEMORY_BOUND_BYTES = 4 * 2**30
-# The largest kept count across the ringdown fixtures is 431, from a seeded-noise
-# record's 900-sample window. Measured cavities keep 38-44 poles on 10,000-70,000
-# step windows. A budget of 512 preserves all these completions without new NaNs
-# and bounds the traced fit storage by O(M * 512) for M window samples. Larger
-# identifications return NaN with STATUS_OVER_BUDGET and a count/budget reason.
+"""Host bound for the decimated pencil and blocked original-rate residue fit.
+
+Fixed-record run and forward check both stages before stepping, with the pencil's
+full reachable rank as the static stage-2 capacity, including growing poles.
+"""
+
 TRACED_POLE_BUDGET = 512
 
 __all__ = [
@@ -182,9 +181,6 @@ __all__ = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Public records
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class RingdownSpec:
@@ -355,7 +351,6 @@ class RingdownReport:
     slowest_decay_over_window: float | None = None
     discarded_growth_max: float | None = None
     discarded_growth_f_hz: float | None = None
-    # Information only: no W0-style witness, and no TM-mode classification.
     identification_channels: tuple = ()
     identification_amplitude_shares: tuple = ()
     probe_normalization: str | None = None
@@ -423,9 +418,6 @@ class RingdownResult(NamedTuple):
     probe_spectra: np.ndarray | None = None
 
 
-# ---------------------------------------------------------------------------
-# DFTs
-# ---------------------------------------------------------------------------
 
 
 from rfx.measurement.ringdown_tail import _given_spectra
@@ -444,9 +436,6 @@ def complete_spectra(series, dt, freqs, model: RingdownModel, n_record: int, *, 
     return out[:, 0] if one_d else out
 
 
-# ---------------------------------------------------------------------------
-# Identification
-# ---------------------------------------------------------------------------
 
 def identify(series, dt, n_start, n_stop, *, freq_max, guard=0.9,
              sv_rel=1.0e-6, unit_tol=1.0e-6) -> RingdownModel:
@@ -601,13 +590,7 @@ def early_start_witness(series, dt, freqs, n_record, window_start, *, freq_max,
     return EarlyStartWitness(value, spectra_long, model_long, n_long)
 
 
-# ---------------------------------------------------------------------------
-# Simulation.run(..., ringdown=...) integration
-# ---------------------------------------------------------------------------
 
-#: Ampere-loop legs of a port component: (H component, axis it is differenced
-#: along). The same pairs ``rfx.probes.probes._ampere_loop`` (uniform lane)
-#: and ``rfx.nonuniform.wire_port_current`` (graded lane) read.
 _LOOP_LEGS = {
     "ez": (("hy", 0), ("hx", 1)),
     "ex": (("hz", 1), ("hy", 2)),
@@ -739,8 +722,8 @@ def _rebuild_channels(lane: str, pms, e_cols, h_cols) -> np.ndarray:
     """
     cols = []
     for p, pm in enumerate(pms):
-        e64 = np.asarray(e_cols[p]).astype(np.float64).T                  # (n_live, n)
-        h64 = {k: np.moveaxis(np.asarray(v).astype(np.float64), 0, -1)   # (2, 2, 2, n)
+        e64 = np.asarray(e_cols[p]).astype(np.float64).T
+        h64 = {k: np.moveaxis(np.asarray(v).astype(np.float64), 0, -1)
                for k, v in h_cols[p].items()}
         _v, v_port, i_val = _port_vi(lane, pm, None, e64,
                                      h64["hx"], h64["hy"], h64["hz"])
@@ -789,43 +772,8 @@ def _ulps(rebuilt, rfx_values) -> float:
     return d / float(np.spacing(np.asarray(peak, dtype=real)))
 
 
-#: W0's bar: the rebuilt accumulators and the lane's S assembly on the run's
-#: own accumulators may differ from the run by at most this fraction of each
-#: array's peak, ``max |rebuilt - run| / max |run|``. The consistency policy:
-#: per-step quantities (fields, probe
-#: samples) keep the cross-trace rule of at most 9 ULP at the peak; quantities
-#: summed over the record (the port DFT accumulators, the S built from them)
-#: pass at 1e-4 of the peak, because a program compiled differently (a user's
-#: ``jax.jit`` around ``forward()``) rounds the same sum differently with the
-#: probe series bit-identical: 5-26 ULP on 600-4000 steps, 6.1e-6 of the peak
-#: at 4,000 steps and 1.36e-5 at 30,000 with bins across the resonance. The
-#: ULP counts stay in the report.
 W0_REL_BAR = 1.0e-4
-#: W1's bar, absolute on S: the S the completion's channels give without a
-#: tail -- the float64 DFT of the float64 rebuild of the port's V and I --
-#: against the S the same DFT gives of the float32 per-step V and I that the
-#: W0 replay accumulated (W0 ties those to the run's accumulators). Neither
-#: side carries a float32 accumulation, so the difference is the two V/I
-#: constructions alone: 1.7e-7 .. 6.0e-7 on clean runs of 1,500-60,000 steps,
-#: 0.89 when the completion is fed the midpoint cell's voltage of a 3-cell port.
 W1_BAR = 1.0e-4
-#: forward()'s in-program consistency bar, at the channel level: the tail-free
-#: DFTs of the traced V_port and I against the run's own accumulators, max
-#: |difference| / the array's peak over the port channels -- W0's quantity,
-#: inside the program (RingdownForward._traced). Above it the traced
-#: completion is NaN in value and gradient. An S-level reading divided float32 rounding by the incident wave
-#: and NaN'd correct records where the drive is weak (bandwidth 0.42 pulse,
-#: the 18 GHz bin driven at 3.6e-4 of the peak: 1.0e-3 on S); at the channel
-#: level that record reads 3-4e-6. Measured on the ring-down box: clean
-#: 2.2e-6 .. 7.9e-5 at 1.5k-30k steps (both lanes, eager and jit, bins across
-#: TM110 the largest), 9.1e-5 on the lossless box (loaded Q 12,128) at 30k;
-#: defects 0.044-0.96 (the wrong H loop 0.71-0.96, the midpoint voltage of a
-#: 3-cell port 0.54-0.67, the half-step phase dropped 0.044-0.074, the current
-#: one step late 0.088-0.15, every channel one step late 0.088-0.15). Limit:
-#: before M2, the run built 2 pi f float32(step) dt in float32,
-#: so on a very long ringing record they drift from the float64 DFT of the
-#: probes -- the lossless box reads 2.3e-4 at 60k steps, 5.5e-4 at 120k, 8.5e-4
-#: at 180k and 1.1e-3 at 240k (jitted), where the check NaNs a correct record.
 CONSISTENCY_BAR = 1.0e-3
 
 
@@ -849,7 +797,6 @@ class RingdownRun:
     the reason is in ``Result.ringdown.report`` with a warning.
     """
 
-    #: The entry point named in refusal messages.
     caller = "run"
     probe_mode = False
 
@@ -888,7 +835,6 @@ class RingdownRun:
         self.probe_keys = self._plan_probes(warn_identification=warn_identification)
         self.incident_spectra = import_module("rfx.ringdown._incident_norm").incident_normalization(self)
 
-    # -- before the run ------------------------------------------------------
 
     def _check_sources_off(self) -> tuple:
         """Every source's waveform over the window, as a fraction of its peak.
@@ -939,7 +885,6 @@ class RingdownRun:
 
         def add(comp, idx, *, wire=True):
             key = (comp, tuple(int(v) for v in idx))
-            # Drop only a wire node that is an outside component entry; any other mis-resolution stays for the round-trip check.
             if key not in seen and (not wire or tuple(map(int, resolve(p := _node_position(self.grid, key[1])))) != key[1] or field_index(self.grid, p, comp) == key[1]):
                 seen.add(key)
                 keys.append(key)
@@ -990,7 +935,6 @@ class RingdownRun:
         columns = [n_user + j for j in self._identification_columns()]
         return np.concatenate((Y, np.asarray(ts_all[:, columns], dtype=np.float64)), axis=1)
 
-    # -- the run -------------------------------------------------------------
 
     def run(self, call):
         """Scope the probes to the lane call, then complete."""
@@ -1004,7 +948,6 @@ class RingdownRun:
             result = call(**kwargs)
         return self._finish(result, n_user)
 
-    # -- after the run -------------------------------------------------------
 
     def _finish(self, result, n_user: int):
         self.echo_bound = result.settling_echo_bound
@@ -1192,7 +1135,7 @@ class RingdownRun:
             state["long_rank"] = we.model_long.rank
             state["long_n_kept"] = int(we.model_long.s.size)
         except (TimeoutError,): raise
-        except Exception as exc:  # noqa: BLE001 - recorded in RingdownWitness.note
+        except Exception as exc:  # noqa: BLE001
             we_value, we_note = math.nan, (f"the identification on [{0.5 * ws:g} T, T] failed: {exc}; "
                        "a WE that cannot be read fails")
         return [
@@ -1207,12 +1150,9 @@ class RingdownRun:
         from rfx.stepping.ringdown_emulation import _emulate_accumulators
         pms, e_cols, h_cols = self._rebuild_inputs(result, ts_all, n_user)
 
-        # ---- W0: the rebuilt series, accumulated the run's way, are the run's
         ulps, rel = {}, {}
-        # the grid's own dt object: under x64 a numpy float64 and a Python
-        # float promote the run's float32 step index differently
         dt_run = result.grid.dt
-        replayed = []                    # per port: the replay's float32 (v_port, i)
+        replayed = []
         for p, pm in enumerate(pms):
             emu, per_step = _emulate_accumulators(self.lane, pm, e_cols[p],
                                                   h_cols[p], dt_run)
@@ -1246,23 +1186,16 @@ class RingdownRun:
                 "not the ones the run accumulated.")
         witnesses.append(RingdownWitness("W0", w0, W0_REL_BAR, True, w0_rule, w0_note))
 
-        # ---- the rebuilt record, float64 ------------------------------------
         Y = _rebuild_channels(self.lane, pms, e_cols, h_cols)
         Y = self._append_identification(Y, ts_all, n_user)
         f_bins, to_s = _s_observable(self.lane, pms, freqs32, dt)
 
-        # ---- W1: the channels fed to the completion are the ones W0 checked --
-        # float64 DFT of the float64 rebuild vs float64 DFT of the float32
-        # per-step series the W0 replay accumulated; no float32 accumulation
-        # on either side
         plain = plain_dft(Y, dt, f_bins)
         Y32 = np.stack([np.asarray(c, dtype=np.float64)
                         for per_step in replayed for c in per_step], axis=1)
         S_plain = to_s.measured(plain).astype(np.complex128)
         w1 = float(np.max(np.abs(S_plain - to_s.measured(plain_dft(Y32, dt, f_bins))
                                  .astype(np.complex128))))
-        # information, not a check: the run's own complex64 accumulator
-        # round-off in Result.s_params, which grows with the record
         roundoff = float(np.max(np.abs(S_plain - measured_s(pms, S_run).astype(np.complex128))))
         state["s_accumulator_roundoff"] = roundoff
         w1_rule = ("max |S of the float64 DFT of the float64 rebuild of the port "
@@ -1276,7 +1209,6 @@ class RingdownRun:
                 "tied to the run: they are not the port's voltage and current.")
         witnesses.append(RingdownWitness("W1", w1, W1_BAR, True, w1_rule))
 
-        # ---- identification and completion ----------------------------------
         spec = self.spec
         try:
             w2 = two_window_witness(
@@ -1362,35 +1294,11 @@ class RingdownRun:
         return S, extra
 
 
-# ---------------------------------------------------------------------------
-# Simulation.run(..., ringdown=..., until_identified=True)
-# ---------------------------------------------------------------------------
 
-#: The early stop's floor: no stop before the record
-#: is at least this many amplitude decay times ``tau = Q / (pi f) = 1 / alpha``
-#: of the slowest identified mode. The in-record witnesses cannot see a pair of
-#: modes that no window of the record separates: two modes 0.03 % apart
-#: recorded for 7 % of their decay time are identified as one blended pole by
-#: every window, so WE agrees with the completion while it is 8.8 % of the
-#: peak off; the same pair is resolved at 19 % (R-i). E4's cavity
-#: completed within its bars at 1 / 0.5 / 0.2 decay times for loaded Q
-#: 181 / 533 / 1199. Which poles are the "identified modes" is
-#: :func:`_floor_pole`'s rule (lead's choice).
 STOP_FLOOR_DECAY_TIMES = 0.5
-#: Geometric check schedule (lead's choice): after a check at ``T`` steps the
-#: next one is at the first chunk boundary at or past ``STOP_GROWTH * T``, so
-#: the checks' identification cost stays a bounded share of the run.
 STOP_GROWTH = 1.25
-#: Chunk length of the stepping loop, in steps (lead's choice). Measured on the
-#: ring-down boxes (JAX 0.10.2, CPU): 21.7 us / 13.4 us per step in chunks of
-#: 250 against 18.0 / 11.8 in one scan (uniform / graded lane), 23.2 / 12.0 in
-#: chunks of 1000; the probe series and S bit-identical to the single scan at
-#: every chunk length.
 STOP_CHUNK = 250
-#: Checks in a row at which the sources are off over [T/4, T] and WE is within
-#: its bar, the check that stops included (lead's choice).
 STOP_CONSECUTIVE = 2
-#: Which poles set the floor, for the report.
 FLOOR_POLE_RULE = (
     "the slowest pole whose own unrecorded tail, at the requested bins and "
     "through the S observable, moves the completed S by at least witness_tol "
@@ -1568,7 +1476,7 @@ def _judge_record(Y, dt: float, f_bins, n_record: int, n_start: int,
         we = early_start_witness(Y, dt, f_bins, n_record, spec.window_start,
                                  observable=observable, plain=plain, spectra=spectra, **kw).value
     except (TimeoutError,): raise
-    except Exception as exc:  # noqa: BLE001 - recorded in note
+    except Exception as exc:  # noqa: BLE001
         we, note = math.nan, (f"the identification on "
                               f"[{0.5 * spec.window_start:g} T, T] failed: {exc}")
     record_s = n_record * dt
@@ -1787,13 +1695,10 @@ class RingdownStop:
             [(pe.waveform, 0.) for pe in entries],
             self.n_max, field_time_step(self.base.dt, self.sim._precision), tolerance=self.spec.source_off_tol,
             return_detail=True)
-        # Scheduling retains n_max for a drive still on at the final sample;
-        # the settling witness instead reports no source end in that case.
         _require_source_off_rows(entries, samples, self.base.caller)
         n_off = max((off for _, _, off in samples), default=0)
         return _first_check_record(n_off, self.spec.window_start, self.chunk)
 
-    # -- the run -------------------------------------------------------------
 
     def run(self, call):
         """Scope the probes to the lane call with the stop, then complete."""
@@ -1835,17 +1740,6 @@ class RingdownStop:
             return self.schedule.record(T, T * self.dt, fields,
                                         time.perf_counter() - t0)
 
-        partial = peek()
-        self.base.echo_bound = partial.settling_echo_bound
-        if not np.isfinite(self.base.echo_bound["tau_max"]):
-            from rfx.errors import RfxRefusal
-            raise RfxRefusal("until_identified: cannot judge: echo delay bound unavailable; use fixed n_steps")
-        from rfx.measurement.record_end import ECHO_BOUND_FACTOR, echo_bound_reason
-        if ((T - round(float(spec.window_start) * T)) * self.dt
-                < ECHO_BOUND_FACTOR * self.base.echo_bound['tau_max']):
-            return finish(note='(f) not held: ' + echo_bound_reason(self.base.echo_bound))
-
-        # (a), as run(n_steps=T, ringdown=spec) evaluates it
         try:
             rr = RingdownRun(self.sim, spec, lane=self.lane, n_steps=T, grid=self.grid, warn_identification=False)
         except ValueError as exc:
@@ -1856,7 +1750,16 @@ class RingdownStop:
                           note=f"(a) not held: a source reaches {ratio_long:.3e} of "
                                f"its peak in [{0.5 * spec.window_start:g} T, T]")
 
-        # (b), (d) and (e) on the record so far, rebuilt as that run rebuilds it
+        partial = peek()
+        self.base.echo_bound = partial.settling_echo_bound
+        if not np.isfinite(self.base.echo_bound["tau_max"]):
+            from rfx.errors import RfxRefusal
+            raise RfxRefusal("until_identified: cannot judge: echo delay bound unavailable; use fixed n_steps")
+        from rfx.measurement.record_end import ECHO_BOUND_FACTOR, echo_bound_reason
+        if ((T - round(float(spec.window_start) * T)) * self.dt
+                < ECHO_BOUND_FACTOR * self.base.echo_bound['tau_max']):
+            return finish(note='(f) not held: ' + echo_bound_reason(self.base.echo_bound))
+
         rr.echo_bound = self.base.echo_bound
         ts_all = np.asarray(partial.time_series)
         try:
@@ -1937,9 +1840,6 @@ class RingdownStop:
             consecutive=STOP_CONSECUTIVE, checks=tuple(checks), reason=reason)
 
 
-# ---------------------------------------------------------------------------
-# Simulation.forward(..., ringdown=...) integration
-# ---------------------------------------------------------------------------
 
 def static_pole_bound(n_window: int, n_channels: int, dt: float, freq_max: float) -> int:
     """The most poles :func:`identify` can keep on a window of ``n_window`` samples.
@@ -2182,7 +2082,7 @@ class RingdownForward(RingdownRun):
         n_user = len(probes) or (len(self.sim._ports) if self.lane == "uniform" else 0)
         with ringdown_probes(probes, _ringdown_probe_entries(self.grid, self.probe_keys), "RingdownForward.run"):
             result = call()
-        self.sim = None          # the plan outlives the call inside the result
+        self.sim = None
         return self._finish_forward(result, n_user)
 
     def _finish_forward(self, result, n_user: int):
@@ -2222,8 +2122,6 @@ class RingdownForward(RingdownRun):
             layouts = self._layouts_checked(
                 pms, {key: j for j, key in enumerate(self.probe_keys)})
         except _NotCompleted:
-            # NaN built from the run's own S, so the gradient of anything made
-            # from it is NaN too, not a silent 0.0
             nan = result.s_params * jnp.nan
             pole_nan = jnp.reshape(jnp.sum(result.s_params) * jnp.nan, (1,)).astype(rj.working_dtypes()[1])
             empty_mask = jnp.zeros(1, jnp.int32)
@@ -2234,13 +2132,10 @@ class RingdownForward(RingdownRun):
                                          poles=pole_nan, poles_long=pole_nan,
                                          pole_mask=empty_mask, pole_mask_long=empty_mask,
                                          cells=cells)
-        pms = [pm._replace(accs=None) for pm in pms]      # no tracer in a host closure
+        pms = [pm._replace(accs=None) for pm in pms]
         host_pms = pms
         if self.lane == "graded":
             if ctx.grid is not result.grid:
-                # A traced mesh: the host identification sizes the port's V/I on the
-                # nominal mesh, a different combination of the same recorded samples and
-                # so of the same poles (each column is RMS-normalised); S stays traced.
                 host_result = result._replace(wire_port_sparams=tuple(zip(ctx.metas, accs)))
                 host_pms = [pm._replace(accs=None) for pm in self._read_metas_checked(host_result, ctx.grid)]
         acc_dtype = jnp.result_type(accs[0][3])
@@ -2258,7 +2153,6 @@ class RingdownForward(RingdownRun):
         rdt, cdt = rj.working_dtypes()
         n = self.n_steps
 
-        # the port voltage and current, traced, from the same probe columns
         cols = []
         for pm, (e_idx, h_cells) in zip(pms, local):
             e = jnp.stack([raw[:, j] for j in e_idx], axis=0).astype(rdt)
@@ -2288,19 +2182,9 @@ class RingdownForward(RingdownRun):
             ii = [(spectra[:, 2 * p + 1] * half).astype(acc_dtype) for p in range(len(pms))]
             return _assemble_core(lane, pms, vp, ii, pms[0].freqs, dt)
 
-        # In-program consistency, at the channel level: the tail-free DFTs of
-        # the traced V_port and I (the current with its half-step phase, the
-        # accumulator convention) against the run's own accumulators, per
-        # array relative to that array's peak -- W0's quantity, inside the
-        # program, where a jitted objective would otherwise use a rebuild that
-        # is not the port's V and I unseen. (An S-level reading divides by the
-        # incident wave and amplified float32 rounding where the drive is weak.)
         from rfx.measurement.ringdown_tail_jax import plain_dft
         plain = plain_dft(Y, dt, f_bins)
         from rfx.measurement.dft import phase
-        # The analytic completion is slot-relative. Compare its actual V/I
-        # conversion (including `half` above) on the physical E clock.
-        # Checking a separate replay would miss a broken completion mapping.
         stamp = phase(0, f_bins, dt, 'E', dtype=cdt) / dt
         worst = []
         for p in range(len(pms)):
@@ -2325,7 +2209,6 @@ class RingdownForward(RingdownRun):
                                          tail_arg, plain=plain, return_aux=True)
             S = to_s(spectra)
             st = jnp.where(consistent, st, rj.STATUS_INCONSISTENT)
-            # a failure reaches the value AND the gradient
             out.append(S * jnp.where(st == rj.STATUS_OK, 1.0, jnp.nan).astype(S.real.dtype))
             poles.append(aux["s"] * jnp.where(st == rj.STATUS_OK, 1., jnp.nan))
             masks.append(mask)
@@ -2343,7 +2226,6 @@ class RingdownForward(RingdownRun):
                                      cells=cells, echo_index=result.settling_echo_bound)
 
 
-# Lazy compatibility exports avoid a cycle with the moved implementation.
 _LAZY_EXPORTS = {
     "_emulate_accumulators": "rfx.stepping.ringdown_emulation",
     "plain_dft": "rfx.measurement.ringdown_tail",

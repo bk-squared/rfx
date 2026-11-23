@@ -119,6 +119,11 @@ report = sim.preflight()
 print(report.format())
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/model/assets/domain-mesh/structure.png" loading="lazy" alt="Section through a wide substrate on a ground plane inside absorber, with horizontal z mesh lines that crowd together at the substrate and spread out in the air." />
+  <figcaption>The model this code builds, cut at y = 40 mm, with its z node lines: six cells fill the substrate from z = 20 to 21.6 mm, and the cells grow in the air on both sides. The figure shows the ground between its declared edges, 80 mm apart, and its last nodes lie 0.35 cell inside each edge.</figcaption>
+</figure>
+
 `domain[2] = 0` tells rfx to use `sum(dz_profile)` as the height. A positive
 value is kept as given and is not checked against the profile, so pass
 `float(np.sum(dz_profile))` if you set it yourself.
@@ -142,16 +147,24 @@ cells must equal the scalar `dx`, so every absorber face sees the same cell.
 The same uniform-runway rule applies next to each absorbing face. Keep fine
 bands away from absorbing faces, or close those faces with PEC.
 
-### Solving sheets at their drawn size
+### Mesh lines at sheet edges
 
-A PEC sheet's in-plane edge is solved about 0.35 of a cell beyond its last
-grid node, so a patch or trace comes out slightly larger than drawn.
-A PEC sheet whose free-edge size is solved more than 1 % off its drawing
-is refused by `run()`, `forward()` and `compute_mixed_s_matrix()`.
-Preflight reports this as a `sheet_effective_size` error.
+A PEC sheet's in-plane free edge is solved about 0.35 of a cell beyond its
+last grid node where the cell normal to the sheet is as long as the in-plane
+cell beside its edge, so a patch or trace comes out slightly larger than drawn.
+Preflight uses this 0.35 to predict each sheet's solved size, and `run()`,
+`forward()` and `compute_mixed_s_matrix()` refuse a sheet whose predicted size
+is more than 1 % off its drawing. Preflight reports this as a
+`sheet_effective_size` error.
 
-Build profiles with `edge_aware_profiles` to place sheet edges where they solve
-at their drawn size. Use `axes="xyz"` and pass the returned `dz_profile` too
+Build profiles with `edge_aware_profiles` to put each sheet's last node 0.35
+cell inside its drawn edge. Where the cell normal to the sheet is as long as
+the in-plane cell beside its edge, a free sheet in vacuum is then solved at its
+drawn size. At other ratios the offset differs; the ratios and media at which it was
+measured are listed in [the accuracy notes](/rfx/check/model-on-grid/#accuracy). In
+the board example above, the z cells at the ground are 0.27 to 0.34 mm and the
+in-plane cell beside its edges is 0.94 mm; the ground lies on the substrate's
+bottom face, so its solved size has not been measured. Use `axes="xyz"` and pass the returned `dz_profile` too
 for vertical sheets; the horizontal ground above only needs x/y registration
 and keeps its layered z profile. Alternatively, `Simulation(snap="declared")`
 accepts the difference as a warning and records the choice on
@@ -181,6 +194,13 @@ patch_sim = Simulation(freq_max=6e9, domain=(LX, LY, LZ), dx=1e-3,
 patch_sim.add(board, material="fr4")
 patch_sim.add_thin_conductor(patch)
 ```
+
+Here the z cells below and above the patch are 0.80 and 0.95 mm and the
+in-plane cell beside its edges is 0.96 to 0.98 mm, ratios of 0.82 to 0.99.
+Interpolated between the ratios measured for a free sheet in vacuum (1/2 and
+1), with the same cell on both sides, the patch would be 18.97 to 19.02 mm by
+13.36 to 13.41 mm in vacuum. The patch lies on the board's top face and has a different cell on each
+side; there the offset has not been measured.
 
 Draw the geometry at its true size; do not shift it to compensate.
 

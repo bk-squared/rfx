@@ -29,7 +29,7 @@ def finish_forward(result):
     """Publish the ids selected by uniform forward's accumulator branch."""
     from rfx.measurement.port_s_contract import uniform_record_pairs
     pairs = uniform_record_pairs(result)
-    kind = 'wire' if pairs is result.wire_port_sparams else 'lumped'
+    kind = 'coax' if result.coax_port_metadata else 'wire' if pairs is result.wire_port_sparams else 'lumped'
     selected = read_ids(result.sparam_time_records, kind) if result.s_params is not None else SReadPorts()
     return result._replace(sparam_read_ids=selected)
 
@@ -41,8 +41,6 @@ def s_read_records(result):
         return ()
     records = tuple(r for r in getattr(result, 'sparam_time_records', None) or () if r.id in ids.ids)
     if hasattr(getattr(result, 'grid', None), 'dx_arr'):
-        # Graded S still reads only the physical channels. Its new reference
-        # is retained for record parity, not as another settling-fit input.
         from dataclasses import replace
         records = tuple(replace(r, channels=r.channels[:-1], samples=r.samples[..., :-1])
                         if r.channels[-1:] == ('V_ref',) else r for r in records)
@@ -73,7 +71,6 @@ def forward_settling_witness(result):
     db, witness = build_settling_witness(
         result, bins=bins, dt=result.dt, freq_max=freq_max,
         probe_info=result.settling_probe_info,
-        # Transit is to the records judged: probes for the probe row, ports for the port row.
         source_end=(result.settling_probe_source_end_index
                     if result.settling_probe_source_end_index is not None
                     else result.settling_source_end_index),
@@ -100,7 +97,12 @@ def build_settling_witness(result, *, bins, dt, freq_max, probe_info,
     rows = [{**row, 'reads': ('S-parameters',)} for row in prior_rows]
     db = rows[0]['db'] if rows else None
     records = s_read_records(result)
-    if records:
+    coax = tuple(r for r in records if r.kind == 'coax')
+    if coax:
+        from rfx.measurement.coax_port import record_witness
+        db, detail = record_witness(coax, dt, port_source_end, bins, freq_max)
+        rows.append({**detail, 'reads': ('S-parameters',)})
+    if records and not coax:
         from rfx.measurement.record_readers import result_port_s_reader
         db, detail = port_record_witness(
             records, dt, port_source_end, bins, freq_max=freq_max,

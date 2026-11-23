@@ -62,8 +62,9 @@ def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=
         if feature in ("lorentz", "mixed"):
             material["lorentz_poles"] = [lorentz_pole(delta_eps=.6, omega_0=8e10, delta=2e9)]
         sim.add_material("block", **material)
-        sim.add(Box((4.3e-3, 2.2e-3, 1.4e-3), (8.6e-3, 6.9e-3, 5.3e-3)), material="block")
-    if feature == "conformal":
+        sim.add(Box((4.3e-3, 2.2e-3, 0. if mode != "3d" else 1.4e-3),
+                    (8.6e-3, 6.9e-3, 5.3e-3)), material="block")
+    if feature == "conformal" and mode == "3d":
         sim.add(Sphere(center=(6.2e-3, 4.1e-3, 3.3e-3), radius=1.3e-3), material="pec")
     if feature in ("lumped", "wire"):
         kw = {"extent": 2e-3} if feature == "wire" else {}
@@ -72,7 +73,8 @@ def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=
     elif feature == "msl":
         sim.add_material("substrate", eps_r=3.66)
         sim.add(Box((0, 0, 0), (24.3e-3, 12.7e-3, 1e-3)), material="substrate")
-        sim.add(Box((1e-3, 5e-3, 1e-3), (float(np.cumsum(kwargs["dx_profile"])[-2]) if mesh == "graded" else 23e-3, 7e-3, 2e-3)), material="pec")
+        if mode == "3d":
+            sim.add(Box((1e-3, 5e-3, 1e-3), (float(np.cumsum(kwargs["dx_profile"])[-2]) if mesh == "graded" else 23e-3, 7e-3, 2e-3)), material="pec")
         sim.add_msl_port(position=(2e-3, 6e-3, 0), width=2e-3, height=1e-3,
                          direction="+x", impedance=50.0, waveform=pulse)
     elif feature == "waveguide":

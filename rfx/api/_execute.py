@@ -31,7 +31,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.runners._admission import admit_traced_run, refuse_coaxial_port, refuse_forward_smoothing, refuse_conformal_occupancy_overrides
+from rfx.runners._admission import admit_traced_run, admit_forward_entry, refuse_forward_smoothing, refuse_conformal_occupancy_overrides
 from rfx.runners._exchange_interval import validate_exchange_interval
 from rfx.runners.nonuniform import bind_solve_call
 
@@ -1460,7 +1460,7 @@ class _ExecuteMixin:
                 "Either set distributed=True or omit devices."
             )
 
-        refuse_coaxial_port(self, "forward")
+        admit_forward_entry(self, _call_args)
         if port_s11_freqs is not None or (ringdown is not None and ringdown.probe_freqs is None):
             self._validate_forward_sparameter_request()
         _line_stub_scope = _line_stub_admit(self, port_s11_freqs)

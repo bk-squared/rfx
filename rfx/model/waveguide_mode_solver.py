@@ -40,10 +40,6 @@ def _second_diff_1d(widths: np.ndarray, *, bc: str) -> np.ndarray:
             D[j, j - 1] += coeff
             D[j, j] -= coeff
         elif bc == "dirichlet":
-            # Ghost cell beyond the wall reflects with opposite sign; the
-            # wall lives at the outer face (u = 0). Face-spacing to the
-            # mirrored ghost is w[0], and ghost value = -cell[0]:
-            #   flux = (cell[0] - ghost) / w[0] = 2·cell[0] / w[0]
             coeff = 2.0 / (w[0] * w[0])
             D[j, j] -= coeff
         if j < n - 1:
@@ -86,7 +82,6 @@ def _galerkin_stiffness_mass_1d(
             K[j, j] += c
             K[j, j - 1] -= c
         elif bc == "dirichlet":
-            # Wall at the outer face; ghost = -cell[0], face spacing w[0].
             K[j, j] += 2.0 / w[0]
         if j < n - 1:
             d_right = 0.5 * (w[j] + w[j + 1])
@@ -115,13 +110,13 @@ def _galerkin_eigh_separable_laplacian_2d(
     in the ORIGINAL φ basis (unit-mass-normalized), ascending eigenvalue.
     """
     Mv = np.diag(mv); Mu = np.diag(mu)
-    big = np.kron(Ku, Mv) + np.kron(Mu, Kv)        # (nu*nv, nu*nv) symmetric
-    m_diag = np.kron(mu, mv)                         # diagonal of (Mu⊗Mv)
+    big = np.kron(Ku, Mv) + np.kron(Mu, Kv)
+    m_diag = np.kron(mu, mv)
     s = 1.0 / np.sqrt(m_diag)
-    A = (s[:, None] * big) * s[None, :]             # S A S, symmetric
-    A = 0.5 * (A + A.T)                              # clean tiny asymmetry
+    A = (s[:, None] * big) * s[None, :]
+    A = 0.5 * (A + A.T)
     evals, psi = np.linalg.eigh(A)
-    evecs = psi * s[:, None]                         # φ = S ψ
+    evecs = psi * s[:, None]
     return evals, evecs
 
 
@@ -140,24 +135,18 @@ def _cell_centred_gradient(field: np.ndarray, widths: np.ndarray,
     w = np.asarray(widths, dtype=np.float64)
     field64 = np.asarray(field, dtype=np.float64)
     if n == 1:
-        # There is no interior face. The two wall derivatives average to
-        # zero: both vanish for Neumann, and +/-2*field/w cancel for Dirichlet.
         return np.zeros_like(field64)
     field_swap = np.moveaxis(field64, axis, 0)
     face = np.zeros_like(field_swap)
-    face_spacing = 0.5 * (w[:-1] + w[1:])  # (n-1,)
+    face_spacing = 0.5 * (w[:-1] + w[1:])
     face[1:n, ...] = (field_swap[1:n, ...] - field_swap[:n - 1, ...]) \
         / face_spacing.reshape((-1,) + (1,) * (field_swap.ndim - 1))
-    # Boundary faces (j = 0 and j = n) lie on the PEC walls.
     if bc == "dirichlet":
-        # Ghost = -cell[0], face derivative = (cell[0] - (-cell[0])) / w[0]
-        #                                    = 2·cell[0] / w[0]
         face0 = 2.0 * field_swap[0, ...] / w[0]
         face_n = -2.0 * field_swap[-1, ...] / w[-1]
-    else:  # neumann
+    else:
         face0 = np.zeros_like(field_swap[0, ...])
         face_n = np.zeros_like(field_swap[-1, ...])
-    # Cell-centre gradient = half-width-weighted mean of two face values.
     grad_swap = np.zeros_like(field_swap)
     grad_swap[0, ...] = 0.5 * (face0 + face[1, ...])
     grad_swap[-1, ...] = 0.5 * (face[-1, ...] + face_n)
@@ -259,7 +248,6 @@ def _shift_profile_to_dual(
                 "h_offset currently supports only 0.0 or 0.5 per axis, "
                 f"got {h_offset!r}"
             )
-        # Edge-clamped neighbours (no wraparound at the aperture walls).
         plus = np.concatenate(
             [np.take(out, [0], axis=axis), np.take(out, range(out.shape[axis] - 1), axis=axis)],
             axis=axis,

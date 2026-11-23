@@ -99,10 +99,20 @@ sim = Simulation(freq_max=10e9, domain=domain, dx=0.5e-3, boundary="cpml",
 sim.add_thin_conductor(trace, sigma_bulk=5.8e7, thickness=35e-6)
 ```
 
-The mesh from `edge_aware_profiles` puts the trace's edges where they solve at
-the drawn 2 mm. On a uniform 0.5 mm mesh the same trace solves 2.35 mm wide,
-and `run()` refuses it (`sheet_effective_size`; see
-[Solving sheets at their drawn size](/rfx/model/domain-mesh/#solving-sheets-at-their-drawn-size)).
+The mesh from `edge_aware_profiles` puts the trace's last nodes 0.35 cell
+inside the edges of its drawn 2 mm width and 30 mm length. The 0.35 was
+measured where the cell normal to the sheet is as long as the in-plane cell
+beside its edge, with the same cell on both sides of the sheet. Here the z
+cells below and above the trace are 0.343 and 0.414 mm and the in-plane cell
+beside each side edge is 0.426 mm, ratios of 0.81 and 0.97; beside each end
+it is 0.494 mm, ratios of 0.69 and 0.84. Interpolated between the
+ratios measured for a free sheet in vacuum (1/2 and 1, in
+[Check the model on the grid](/rfx/check/model-on-grid/#accuracy)), with the
+same cell on both sides, the trace would be 1.983 to 2.005 mm wide and 29.96
+to 29.99 mm long in vacuum. With a different cell on each side, as here, the
+offset has not been measured. On a uniform 0.5 mm mesh
+preflight predicts 2.35 mm, and `run()` refuses the trace (`sheet_effective_size`; see
+[Mesh lines at sheet edges](/rfx/model/domain-mesh/#mesh-lines-at-sheet-edges)).
 
 `sigma_bulk` and `surface_impedance_f0` choose the model:
 
@@ -249,6 +259,11 @@ board.add_thin_conductor(Box((XY_LO, XY_LO, Z_GND), (XY_HI, XY_HI, Z_GND)))
 board.fidelity_report()
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/model/assets/conductors/board.png" loading="lazy" alt="Section through a board inside absorber: a thin foil on the bottom face of a laminate layer, reaching very slightly past the laminate at both ends." />
+  <figcaption>The board this code builds, cut at y = 19.97 mm: the laminate fills z = 3.935 to 4.722 mm, and the foil lies on the node plane at the laminate's bottom face. The foil's last nodes are on the laminate's end faces, and the figure extends it 0.35 cell (0.069 mm) beyond them, because preflight takes a sheet's free edge to lie that far past its last node; on a dielectric face, as here, that offset has not been measured.</figcaption>
+</figure>
+
 The report has no findings. The z rows read:
 
 ```text
@@ -352,9 +367,13 @@ The solver paths refuse what they do not implement:
 
 ## Accuracy
 
-- A sheet's free edge is solved 0.35 of a cell beyond its last node. This was
-  measured on a thin PEC fin against a fine-mesh reference for both
-  polarizations and two cell sizes (`scripts/diagnostics/pec_sheet_edge_offset.py`);
+- Preflight takes a sheet's free edge to lie 0.35 of a cell beyond its last
+  node. The 0.35 was measured on a thin PEC fin against a fine-mesh reference
+  for both polarizations and two cell sizes, with the cell normal to the sheet
+  as long as the in-plane cell beside its edge
+  (`scripts/diagnostics/pec_sheet_edge_offset.py`); at other ratios the offset
+  differs, and the cases measured are listed in
+  [Check the model on the grid](/rfx/check/model-on-grid/#accuracy);
   the size check built on it is pinned in
   `tests/contracts/test_sheet_solved_edge_reports.py`. An end that lies on
   other metal over its whole width, such as a patch edge on a shorting wall,
@@ -368,5 +387,5 @@ The solver paths refuse what they do not implement:
 
 - [Materials](/rfx/model/materials/): dielectrics, loss and draw order.
 - [Check the model on the grid](/rfx/check/model-on-grid/): preflight and the realized geometry.
-- [Domain and mesh](/rfx/model/domain-mesh/#solving-sheets-at-their-drawn-size): a mesh that solves sheets at their drawn size.
+- [Domain and mesh](/rfx/model/domain-mesh/#mesh-lines-at-sheet-edges): mesh lines placed at sheet edges.
 - [Ports](/rfx/model/ports/): wire ports and coaxial conductors.

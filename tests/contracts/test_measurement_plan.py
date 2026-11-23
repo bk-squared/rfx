@@ -396,7 +396,7 @@ def test_coax_calculator_planes_and_voltage_weights():
     indices = tuple(p.index for p in actual['dft_planes'][::2])
     owner = coax_owner(grid, port_id=0, plane_indices=indices, center_xy=actual['center_xy'],
                        pin_radius=actual['a'], outer_radius=actual['b'], frequencies=FREQS,
-                       reference_index=actual['z_dut'])
+                       reference_index=actual['z_dut'], pec_cell_mask=actual['line'].pec_cells)
     plan = build_measurement_plan(sim, grid, n_steps=12, calculator_owners=(owner,))
     assert plan.owners == (owner,)
     from tests.contracts.measurement_oracles import judge_metadata
@@ -406,7 +406,7 @@ def test_coax_calculator_planes_and_voltage_weights():
         fields = SimpleNamespace(ex=np.random.default_rng(83).normal(size=grid.shape))
         oracle = coaxial_line_plane_voltage(grid, fields.ex[:, :, index], fields.ex[:, :, index],
                                             center_xy=actual['center_xy'], pin_radius=actual['a'],
-                                            outer_radius=actual['b'])
+                                            outer_radius=actual['b'], pec_cell_mask=actual['line'].pec_cells, plane_index=index)
         np.testing.assert_allclose(observe(channel, fields), oracle, rtol=2e-14, atol=1e-17)
     assert owner.reference_planes[-1].coordinate_m == (actual['z_dut']-grid.pad_z_lo)*grid.dx
 

@@ -20,13 +20,13 @@ from rfx.errors import RfxRefusal
 from rfx._internal._grid_metric import nearest_uniform_index
 from rfx.boundaries.depths import resolve_face_depths
 
-import math  # noqa: F401  (used by moved method bodies)
+import math  # noqa: F401
 
 import jax.numpy as jnp
-import numpy as np  # noqa: F401  (used by moved method bodies)
+import numpy as np  # noqa: F401
 
 from rfx.core.jax_utils import is_tracer
-from rfx.grid import Grid, C0, _periodic_resolution  # noqa: F401  (used by moved method bodies)
+from rfx.grid import Grid, C0, _periodic_resolution  # noqa: F401
 from rfx.core.yee import MaterialArrays  # noqa: F401
 from rfx.materials.debye import DebyePole, init_debye
 from rfx.materials.lorentz import LorentzPole, init_lorentz
@@ -39,7 +39,6 @@ from rfx.sources.waveguide_port import WaveguidePort, init_waveguide_port, init_
 from rfx.model.waveguide_modes import _node_span_to_cell_span
 from rfx.api._spec import _WaveguidePortEntry  # noqa: F401
 
-# Type aliases mirrored from rfx/api/__init__.py (used in moved signatures).
 _DebyeSpec = tuple[list[DebyePole], list[jnp.ndarray]]
 _LorentzSpec = tuple[list[LorentzPole], list[jnp.ndarray]]
 
@@ -76,7 +75,7 @@ class _CompileMixin:
         if self._periodic_axes:
             return tuple(axis in self._periodic_axes for axis in "xyz")
         if getattr(self, "_floquet_ports", None):
-            return (True, True, False)   # default x-y periodic for Floquet
+            return (True, True, False)
         return (False, False, False)
 
     from rfx.boundaries.features import build_grid as _build_grid
@@ -91,7 +90,6 @@ class _CompileMixin:
             self._boundary_spec, budget=self._cpml_layers, mode=self._mode,
         )}
 
-    # Threshold above which sigma is treated as PEC (use mask instead).
     _PEC_SIGMA_THRESHOLD = 1e6
 
     def _has_pec_to_conform(self) -> bool:
@@ -190,11 +188,6 @@ class _CompileMixin:
 
         return materials, debye, lorentz
 
-    # Default sigma floor for "this cell is a conductor". Two
-    # decades below the PEC promotion threshold so ordinary lossy
-    # dielectrics (sigma ~ 1e-3 - 1e0 S/m) stay out while a real
-    # conductor -- including a DC-fold thin-conductor sheet, whose
-    # sigma_eff = sigma_bulk*t/dx is thousands of S/m -- lands in.
     CONDUCTOR_SIGMA_THRESHOLD = _CONDUCTOR_SIGMA_THRESHOLD
 
     def conductor_mask(
@@ -265,10 +258,6 @@ class _CompileMixin:
             materials, _, _, pec_mask, _, _, _ = self._assemble_materials(
                 grid, sheet_specs=sheet_specs, pec_sheets=pec_sheets,
                 pec_wires=pec_wires)
-        # A sub-cell PolylineWire owns no cell either, so a
-        # footprint built from cells + sheet planes alone reports a
-        # wire-fed model as metal-free exactly where the wire runs. Its
-        # path NODES are the cell-shaped answer for a 1-D region.
         from rfx.boundaries.pec import wire_node_footprint
         wire_nodes = wire_node_footprint(pec_wires)
         return conductor_footprint(
@@ -498,8 +487,6 @@ class _CompileMixin:
             budget=self._cpml_layers, absorbing_axes=cpml_axes,
             pec_faces=pec_faces, pmc_faces=pmc_faces,
             periodic_axes=periodic, face_layers=face_layers)
-        # dz=None is synthesised locally inside build_nonuniform_grid()
-        # (pure — sim state is never mutated by a grid build).
         grid = build_nonuniform_grid(
             self._freq_max, self._domain, self._dx, self._cpml_layers,
             self._dz_profile, periodic_axes=self._periodic_axes or "",
@@ -539,8 +526,6 @@ class _CompileMixin:
         return pos_to_nu_index(grid, pos)
 
 
-#: The modules that implement assembly.  Frames in these files are the
-#: guard's own plumbing, never the caller it has to name.
 _ASSEMBLER_MODULES = ("rfx/api/_compile.py", "rfx/runners/nonuniform.py",
                       "rfx/model/materials.py")
 

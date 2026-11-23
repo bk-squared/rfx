@@ -645,8 +645,8 @@ def test_end_is_the_latest_end_of_the_applied_tables(kind, graded, monkeypatch):
             ends.append(_off(_table(src)) + _transit(reach, dt))
         assert injection_end(N, dt, records=probes, grid=grid, sources=sources,
                              mag_sources=mags) == max(ends)
-        with pytest.raises(NotImplementedError, match="not wired into Simulation.run"):
-            _loop_call(monkeypatch, _scene(kind, graded), "run")
+        _, uniform = _loop_call(monkeypatch, _scene(kind, graded), "run")
+        assert uniform["sources"] and uniform["mag_sources"]
         return
     whole, probed = _expected(kind, sim, grid, call)
     tfsf = kw.get("tfsf")

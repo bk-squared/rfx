@@ -24,7 +24,6 @@ def loss_terms(e_materials, dt, *, inverse=False):
 
 def material_loss_operands(materials, *, eps=None, inv=None):
     """Keep the E operands until the step forms its loss coefficient."""
-    # The step's realized per-component operands (the model layer formed them).
     e, sigma = materials.components.eps_update, materials.components.sigma_update
     if inv is not None:
         return inv, sigma, True
@@ -55,6 +54,4 @@ def corrected_coefficient(today, loss=None, curl=None):
         return curl
     if loss is None:
         return today
-    # Inverse subpixel tensors may be wider than the material dtype. Keep
-    # the historical absorber precision, including an exact x / 1 at zero loss.
     return (today / (1.0 + loss)).astype(jnp.asarray(today).dtype)
