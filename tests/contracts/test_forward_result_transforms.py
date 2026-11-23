@@ -175,13 +175,13 @@ def _leaves(result, expected, *, tangent=False, abstract=False):
 
 def _arrays(result, *, children_only=True):
     children = {id(leaf) for leaf in jax.tree_util.tree_leaves(result)}
-    for name in ('time_series', 's_params', 'waveguide_sparams'):
+    for name in ('time_series', 's_params', 'waveguide_sparams', 'settling_echo_bound'):
         value = getattr(result, name, None)
         if value is not None:
             for path, leaf in jax.tree_util.tree_flatten_with_path(value)[0]:
                 if (isinstance(leaf, (jax.Array, np.ndarray)) and
                         (not children_only or id(leaf) in children)):
-                    yield name + jax.tree_util.keystr(path), leaf, name == 'time_series'
+                    yield name + jax.tree_util.keystr(path), leaf, name in ('time_series', 'settling_echo_bound')
     for port, record in (result.waveguide_ports or {}).items():
         for name in ('v_probe_t', 'v_ref_t', 'i_probe_t', 'i_ref_t'):
             value = getattr(record, name)
@@ -211,7 +211,8 @@ def _compare(actual, expected, label, *, arrays_only=False):
             continue
         peak = float(np.max(np.abs(want)))
         difference = float(np.max(np.abs(got - want)))
-        bar = 9 * float(np.spacing(np.float32(peak))) if temporal else 1e-4 * peak
+        bar = (0. if name == "settling_echo_bound['n_max']" else
+               9 * float(np.spacing(np.float32(peak))) if temporal else 1e-4 * peak)
         ratio = difference / bar if bar else (0. if difference == 0 else float('inf'))
         ratios[name] = dict(difference=difference, peak=peak, bar=bar, ratio=ratio)
     print('COMPARE', label, json.dumps(ratios, sort_keys=True))
