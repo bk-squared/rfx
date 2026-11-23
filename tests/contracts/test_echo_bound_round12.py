@@ -102,12 +102,14 @@ def test_library_sweep_member_uses_its_own_declaration(capsys):
     assert not sim._materials
 
 
-def test_unresolved_library_sweep_material_cannot_be_judged(monkeypatch):
+def test_unresolved_library_sweep_material_cannot_be_judged(monkeypatch, capsys):
     from rfx.measurement.sweep_settling import sweep_member_witnesses
+    from tests.contracts.test_echo_bound_round11 import box
 
-    sim = line()
-    result = records(sim, jnp.float32(DECLARED_EPS))
-    check_window(result.dt)
+    sim = box(2.2)
+    sim.add_dft_plane_probe(axis='x', coordinate=.008, component='ez',
+                            freqs=np.linspace(10e9, 16e9, 7), name='read')
+    result = sim.forward(n_steps=1600, skip_preflight=True)
     series = np.asarray(result.time_series)[None]
     names = tuple(result.dft_planes)
     planes = tuple(result.dft_planes.values())
@@ -115,20 +117,27 @@ def test_unresolved_library_sweep_material_cannot_be_judged(monkeypatch):
                     for name, plane in result.dft_planes.items()}
     _, (base,) = sweep_member_witnesses(
         sim, result.grid, series, names, planes, accumulators, param_name='eps_r',
-        param_values=np.array([DECLARED_EPS]))
+        param_values=np.array([2.2]))
+    with capsys.disabled():
+        print(f'12w.1 resolved: status={base["status"]}; db={base["db"]}; '
+              f'reason={base["reason"]}', file=sys.stderr, flush=True)
     assert base['status'] == 'pass', base
     resolve = sim._resolve_material
 
     def unresolved(name):
-        if name == 'vacuum':
-            raise KeyError('missing library vacuum')
+        if name == 'fill':
+            raise KeyError('missing library fill')
         return resolve(name)
 
     monkeypatch.setattr(sim, '_resolve_material', unresolved)
     dbs, (row,) = sweep_member_witnesses(
         sim, result.grid, series, names, planes, accumulators, param_name='eps_r',
-        param_values=np.array([DECLARED_EPS]))
+        param_values=np.array([2.2]))
+    with capsys.disabled():
+        print(f'12w.1 unresolved: status={row["status"]}; db={row["db"]}; '
+              f'reason={row["reason"]}', file=sys.stderr, flush=True)
     assert np.isnan(dbs[0])
+    assert np.isnan(row['db']), row
     assert row['status'] == 'undetermined', row
-    assert "cannot judge: sweep material 'vacuum' cannot be resolved" in row['reason'], row
-    assert 'missing library vacuum' in row['reason'], row
+    assert "cannot judge: sweep material 'fill' cannot be resolved" in row['reason'], row
+    assert 'missing library fill' in row['reason'], row
