@@ -405,6 +405,20 @@ def test_msl_s_scan_refused():
             sim, [10e9], n_steps=2, devices=_devices(), skip_preflight=True)
 
 
+def test_msl_passive_port_s_scan_refused():
+    from dataclasses import replace
+
+    from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+
+    sim = build_scene("T1").sim
+    sim._msl_ports = [replace(port, excite=False) for port in sim._msl_ports]
+    sim.add_port((.008, .004, .0004), "ez", impedance=50.)
+    with pytest.raises(NotImplementedError, match="does not drive or terminate microstrip"):
+        compute_lumped_wire_s_matrix_via_scan(
+            sim, [10e9], n_steps=2, devices=_devices(), skip_preflight=True)
+
+
 def test_msl_graded_pmc_refused():
     from tests.unit.runners._msl_multidevice_scene import build_scene
 

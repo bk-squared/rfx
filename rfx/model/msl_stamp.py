@@ -4,6 +4,8 @@ from typing import NamedTuple
 
 import numpy as np
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 
 class MSLRealization(NamedTuple):
     materials: object
@@ -73,5 +75,6 @@ def realize_msl_ports(sim, grid, materials, conductors, *, eps_source,
                           for cell, (sigma, field) in port._drive_stamps.items())
             if sources is not None:
                 sources.defer(make_msl_port_sources, grid, port,
-                              n_steps=n_steps, mode_profile=profile)
+                              n_steps=n_steps, mode_profile=profile,
+                              dtype=resolve_coefficient_dtype(sim._precision))
     return MSLRealization(materials, stamp_drive_materials, conductors, drives)
