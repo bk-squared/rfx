@@ -21,7 +21,7 @@ PAGE = REPO_ROOT / "docs" / "guides" / "known_limitations.md"
 README = REPO_ROOT / "README.md"
 SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 
-CITED_ISSUES = frozenset({737, 1373, 1512, 2150, 2473})
+CITED_ISSUES = frozenset({737, 1373, 1512, 2150, 2473, 2977})
 
 RESOLVED_REFERENCES = frozenset({726, 830, 838, 1100, 1122, 1181, 1186, 1255, 1381, 1419,
                                  1524, 1571, 1761})

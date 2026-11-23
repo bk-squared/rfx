@@ -131,6 +131,7 @@ def _validate_coax_msl_registration(
 
 def _prepare_coax_msl_stub_layout(
     grid, msl_cross_section_span, msl_port_base, port, probe_count, probe_spacing_cells, probe_start_cells,
+    *, extra_flux_monitors=None, domain=None,
 ):
     from rfx.geometry.rasterize_grid import (
         _local_cell, _nearest_plane, coords_from_uniform_grid,
@@ -149,6 +150,8 @@ def _prepare_coax_msl_stub_layout(
             "to the same physical ground layer.")
     z_stub_lo = int(grid.pad_z_lo) + 2
     z_feed = z_stub_lo + 1
+    from rfx.sparams._coax_flux import refuse_open_feed_flux
+    refuse_open_feed_flux(extra_flux_monitors, grid, domain, 'compute_coax_msl_transition', low=z_feed)
     z_src = z_stub_lo + 3
     z_stub_hi = z_junction_idx - 1
     if z_stub_hi <= z_src:

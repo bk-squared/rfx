@@ -517,6 +517,10 @@ def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
     from .ports import waveguide_owners
     owners.extend(waveguide_owners(sim, grid, n_steps, nu))
     supplied = {owner.id: owner for owner in calculator_owners}
+    if sim._coaxial_ports and path in ('run_uniform', 'fwd_uniform') and conductors is not None:
+        from .coax_port import port_owner
+        owner = port_owner(sim, grid, conductors, frequencies)
+        supplied.setdefault(owner.id, owner)
     for attr, kind in (('_msl_ports', 'msl'), ('_coaxial_ports', 'coax')):
         for i, _ in enumerate(getattr(sim, attr)):
             key = f'{kind}_port:{i}:mode:0'

@@ -21,6 +21,7 @@ from rfx.runners import run_uniform
 
 
 ADMIT_CALLS = {
+    ("rfx/api/_dispatch.py", "dispatch"): ("passes", 1),
     ("rfx/probes/sparam_driver.py", "compute_lumped_wire_s_matrix_via_scan"): ("passes", 1),
     ("rfx/runners/_admission.py", "admit_run_s_matrix"): ("passes", 1),
     ("rfx/runners/uniform.py", "run_uniform"): ("passes", 1),

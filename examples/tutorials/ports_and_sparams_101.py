@@ -252,7 +252,15 @@ def build_waveguide_ports() -> Simulation:
 
 
 def build_coaxial_port() -> Simulation:
-    """Build one SMA-sized coaxial probe entering through the top face."""
+    """Build a coax declaration for the line calculators.
+
+    Experimental uniform single-device run()/forward() also build the feed line
+    and read S11 at position, using the built impedance renormalized to impedance.
+    They require sufficient line length behind the reference plane, one coax port,
+    top or bottom feed, float32 second-order 3-D Yee, CPML on every face and no
+    other S-port family, periodic axes, TF/SF, conformal PEC, subpixel smoothing
+    or material overrides. A declared NTFF box must contain the whole port.
+    """
     sim = Simulation(
         freq_max=10.0e9,
         domain=(0.008, 0.008, 0.060),
@@ -346,10 +354,6 @@ def main() -> None:
     )
 
     coaxial = build_coaxial_port()
-    # Simulation.run() does not accept add_coaxial_port().  Because this model
-    # deliberately ends after construction, general preflight should report
-    # that there is no generic run source.  The coaxial-family check should
-    # still pass: both coaxial lanes accept this setup (CPML, one top-face port).
     coaxial_report = coaxial.preflight()
     coaxial_route = coaxial.preflight_sparameters(calculator="coaxial")
     expected_build_only_advisory = bool(coaxial_report.by_code("no_sources"))
