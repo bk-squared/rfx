@@ -304,6 +304,21 @@ def setup(case, out, dx, precision, smoke, **kwargs):
     return model
 
 
+def observe_field_dtypes(model, e, n, precision):
+    """Observe the realized NTFF dtype with one eager solve in requested precision."""
+    e = np.asarray(e, dtype=np.float64 if precision == "float64" else np.float32)
+    result = model.response_fn(n).run(e)
+    observed = str(result.ntff_data.x_lo.dtype) if result.ntff_data is not None else None
+    return [{"requested": precision, "observed": observed}]
+
+
+def require_field_dtypes(seen, precision):
+    """Refuse float64 FD evidence without realized double precision fields."""
+    if precision == "float64" and (not seen or any(
+            row["observed"] not in ("float64", "complex128") for row in seen)):
+        raise RuntimeError(f"float64 FD refused: observed field dtypes {seen}")
+
+
 def fd(case, model, e, n, out, precision):
     import jax
     import jax.numpy as jnp
@@ -875,26 +890,11 @@ def main(case, argv=None):
         dc.save_json(args.out / "timing_summary.json", summary)
         details.update(summary)
     elif args.stage == "fd":
-        # Observe all actual solver field dtypes, not just design-array dtype.
-        import rfx.simulation as simulation
-        original, seen = simulation.run, []
-        def observed(*a, **kw):
-            result = original(*a, **kw)
-            state = getattr(result, "state", None)
-            ntff = getattr(result, "ntff_data", None)
-            actual = str(state.ex.dtype) if state is not None else (str(ntff.x_lo.dtype) if ntff is not None else None)
-            seen.append({"requested": str(kw.get("field_dtype")), "observed": actual})
-            return result
-        simulation.run = observed
-        try:
-            details = fd(case, model, e, n, args.out, args.precision)
-        finally:
-            simulation.run = original
+        seen = observe_field_dtypes(model, e, n, args.precision)
+        details = fd(case, model, e, n, args.out, args.precision)
         details["field_dtypes"] = seen
         dc.save_json(args.out / f"fd_{args.precision}.json", details)
-        if args.precision == "float64" and (not seen or any(
-                row["observed"] not in ("float64", "complex128") for row in seen)):
-            raise RuntimeError(f"float64 FD refused: observed field dtypes {seen}")
+        require_field_dtypes(seen, args.precision)
     elif args.stage == "rlw":
         details = rlw(case, model, e, n, args.out, "reported" if args.reported else "start")
     elif args.stage == "baselines":
