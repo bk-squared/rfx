@@ -130,9 +130,15 @@ def realization_table(prepared) -> RealizationTable:
                 index = int(entity.label[len(prefix):-1])
                 declaration = entries[index].shape
                 shape = type(declaration).__name__
-                if prefix == "geometry[":
+                if prefix == "geometry[" and getattr(prepared.conductors.grid, "is_2d", False):
                     from rfx.geometry.cross_section import section_entries
-                    declaration = section_entries(sim, prepared.conductors.grid)[index].shape
+                    from rfx.preflight.realization import _shape_bounds
+                    section = section_entries(sim, prepared.conductors.grid)[index].shape
+                    section_bounds = _shape_bounds(section)
+                    if section_bounds is not None:
+                        axes = tuple(_axis(a.axis, (section_bounds[0][i], section_bounds[1][i]),
+                                           a.bounds_m, a.cell_size_m) if i < 2 else a
+                                     for i, a in enumerate(axes))
                 # Preserve the reporter's analytic-bounds availability contract.
                 try:
                     declared_bounds = tuple(tuple(float(v) for v in side)

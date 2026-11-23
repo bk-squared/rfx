@@ -383,6 +383,7 @@ def test_section_cache_miss_recomputes():
 @pytest.mark.parametrize("kind", ["sphere", "cylinder_x", "cylinder_y"])
 @pytest.mark.parametrize("material", ["body", "pec"])
 def test_extent_verdict_uses_section(monkeypatch, kind, material):
+    """Declaration identity stays three-dimensional; size verdicts use the section."""
     center = (.015, .015, .003)
     shape = (Sphere(center, .005) if kind == "sphere" else
              Cylinder(center, .005, .010, kind[-1]))
@@ -395,8 +396,13 @@ def test_extent_verdict_uses_section(monkeypatch, kind, material):
     half = [radius, radius]
     if kind != "sphere":
         half["xy".index(kind[-1])] = .010 / 2
-    np.testing.assert_allclose(np.asarray(row.declared_bounds_m)[:, :2],
-                               [np.asarray(center[:2]) - half, np.asarray(center[:2]) + half])
+    np.testing.assert_allclose(row.declared_bounds_m,
+                               [np.asarray(center) - .005, np.asarray(center) + .005])
+    np.testing.assert_allclose([a.declared_bounds_m for a in row.record_axes],
+                               np.asarray(row.declared_bounds_m).T)
+    np.testing.assert_allclose([a.declared_bounds_m for a in row.axes[:2]],
+                               np.array([np.asarray(center[:2]) - half,
+                                         np.asarray(center[:2]) + half]).T)
     np.testing.assert_allclose([a.declared_span_m for a in row.axes[:2]], 2 * np.array(half))
 
 

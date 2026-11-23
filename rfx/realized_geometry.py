@@ -271,9 +271,8 @@ def _build_record(sim, ctx, *, compact=False):
     conductors = {e.label: e for e in ctx.entry_realizations()}
     interior = {e.label: e for e in ctx.interior_pec_entries()}
     sheet_neighbors = [*interior.values(), *ctx.impedance_sheet_entries()]
-    from rfx.geometry.cross_section import section_entries
     declarations = [(f"geometry[{i}]", e.material_name, e.shape)
-                    for i, e in enumerate(section_entries(sim, ctx.grid))]
+                    for i, e in enumerate(sim._geometry)]
     declarations.extend((f"thin_conductor[{i}]", f"thin_conductor[{i}]", e.shape)
                         for i, e in enumerate(sim._thin_conductors))
     entities = []
@@ -361,11 +360,12 @@ def _build_record(sim, ctx, *, compact=False):
                 plane = (normal, int(node), float(nodes[normal][node]))
         continued: tuple[str, ...] = ()
         if e is not None:
+            section_bounds = _shape_bounds(e.shape)
             solved_bounds = _shape_bounds(e.solved_shape)
-            if bounds is not None and solved_bounds is not None:
+            if section_bounds is not None and solved_bounds is not None:
                 continued = tuple(f"{'xyz'[a]}-{'hi' if side else 'lo'}"
                                   for a in range(3) for side in (0, 1)
-                                  if bounds[side][a] != solved_bounds[side][a])
+                                  if section_bounds[side][a] != solved_bounds[side][a])
         areas = (None, None)
         tc_index = index - len(sim._geometry)
         if tc_index >= 0:
