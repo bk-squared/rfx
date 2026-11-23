@@ -1,6 +1,6 @@
 """Whole-grid microstrip realization, before any slab owns an update."""
 
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -32,7 +32,7 @@ def realize_msl_ports(sim, grid, materials, conductors, *, eps_source,
         msl_port_from_entry, setup_msl_port, validate_msl_port_geometry,
     )
 
-    drives = []
+    drives: list[tuple[Any, str, Any, Any, Any]] = []
     for index, entry in enumerate(sim._msl_ports):
         port = msl_port_from_entry(entry)
         validate_msl_port_geometry(

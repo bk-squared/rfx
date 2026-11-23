@@ -497,7 +497,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     # One configuration per port is all the single-run assembly takes; the
     # per-mode list is driven only by compute_waveguide_s_matrix().
     ("_waveguide_ports", "n_modes"): frozenset(),
-    ("_coaxial_ports", "coax_port"): frozenset(),
+    ("_coaxial_ports", "coax_port"): frozenset({"run_uniform", "fwd_uniform"}),
     ("_floquet_ports", "floquet_port"): _UNIFORM_YEE,
     ("_floquet_ports", "scan_angle"): frozenset(),
     ("_lumped_rlc", "R"): _NO_SHEETS | {"run_distributed", "fwd_distributed"},
@@ -956,7 +956,55 @@ def _subgrid_opted_in(sim) -> bool:
     ref = sim._refinement
     return ref is not None and ref.get("validation", "production") in {"research", "off"}
 
-LANE_GATES: dict[str, dict[Row, Callable]] = {
+def _coax_grid_condition(sim, grid, args):
+    from rfx.model.coax_line import coax_port_layout
+    if grid is None:
+        return True
+    pads = tuple(getattr(grid, f'pad_{axis}_{side}') for axis in 'xyz' for side in ('lo', 'hi'))
+    try:
+        coax_port_layout(grid, sim._coaxial_ports[0], absorber_pads=pads, ntff=sim._ntff)
+    except RfxUnsupported as error:
+        return str(error)
+    return True
+
+
+def _gate_failure(gate, sim, grid, args):
+    """Return the first named condition a row fails, or an empty string."""
+    if not isinstance(gate, dict):
+        return '' if gate(sim, grid) else 'lane condition'
+    for condition, check in gate.items():
+        result = check(sim, grid, args or {})
+        if isinstance(result, str):
+            return result
+        if not result:
+            return condition
+    return ''
+
+
+LANE_GATES: dict[str, dict[Row, Callable | dict]] = {
+    **{lane: {('_coaxial_ports', 'coax_port'): {
+        "precision='float32'": lambda sim, grid, args: sim._precision == 'float32',
+        'stencil_order=2': lambda sim, grid, args: sim._stencil_order == 2,
+        "mode='3d'": lambda sim, grid, args: sim._mode == '3d',
+        'no periodic axis': lambda sim, grid, args: not sim._periodic_axes,
+        'CPML on all six faces': lambda sim, grid, args: (
+            sim._boundary == 'cpml' and sim._cpml_layers > 0 and all(
+                getattr(sim._boundary_spec, a).lo == getattr(sim._boundary_spec, a).hi == 'cpml'
+                and getattr(sim._boundary_spec, a).resolved_lo_thickness(sim._cpml_layers) > 0
+                and getattr(sim._boundary_spec, a).resolved_hi_thickness(sim._cpml_layers) > 0
+                for a in 'xyz')),
+        'no TF/SF': lambda sim, grid, args: sim._tfsf is None,
+        'exactly one coax port': lambda sim, grid, args: len(sim._coaxial_ports) == 1,
+        "face='top' or 'bottom'": lambda sim, grid, args: all(p.face in ('top', 'bottom') for p in sim._coaxial_ports),
+        'no other S-port family': lambda sim, grid, args: not (
+            sim._msl_ports or sim._waveguide_ports or sim._floquet_ports or any(p.impedance > 0 for p in sim._ports)),
+        'no conformal_pec': lambda sim, grid, args: not (args.get('conformal_pec') or sim._boundary_spec.conformal_faces()),
+        'no subpixel_smoothing': lambda sim, grid, args: not args.get('subpixel_smoothing'),
+        'no eps_override': lambda sim, grid, args: args.get('eps_override') is None,
+        'no sigma_override': lambda sim, grid, args: args.get('sigma_override') is None,
+        'no mu_r_override': lambda sim, grid, args: args.get('mu_r_override') is None,
+        'grid layout': _coax_grid_condition,
+    }} for lane in ('run_uniform', 'fwd_uniform')},
     **{lane: {("_precision", ""): lambda sim, grid: sim._precision == "float64"}
        for lane in ("run_nonuniform", "fwd_nonuniform")},
     "run_subgridded": {
@@ -989,14 +1037,15 @@ def refused(sim, lane: str, run_args=None, grid=None) -> list[Row]:
                 and not sim._uses_nonuniform_mesh
                 and (run_args or {}).get("conformal_pec") == FLOOR_VALUE):
             continue
-        if row in admits:
-            continue
         gate = gates.get(row)
         if gate is not None:
-            if gate not in decided:
-                decided[gate] = gate(sim, grid)
-            if decided[gate]:
+            key = id(gate)
+            if key not in decided:
+                decided[key] = not _gate_failure(gate, sim, grid, run_args)
+            if decided[key]:
                 continue
+        elif row in admits:
+            continue
         out.append(row)
     return out
 
@@ -1008,9 +1057,20 @@ LANE_SELECTORS = frozenset({("_solver", ""), ("_dx_profile", "graded"), ("_dy_pr
                             ("_dt_min_cell", "")})
 
 
-def message(lane: str, rows, sim, run_args=None) -> str:
+def _coax_lane_refusal(lane):
+    label = LANE_WORDS.get(lane, lane)
+    return f'The {label} lane ({lane}): {ROW_WORDS[("_coaxial_ports", "coax_port")]} is not carried; add_coaxial_port() runs on the uniform single-device run() and forward() lanes'
+
+
+def message(lane: str, rows, sim, run_args=None, grid=None) -> str:
     """The refusal, derived from the same table: each input the lane does not
     carry, and the lanes that carry every other input of this model."""
+    for row in rows:
+        gate = LANE_GATES.get(lane, {}).get(row)
+        if isinstance(gate, dict):
+            return f"{lane}: {ROW_WORDS[row]} requires {_gate_failure(gate, sim, grid, run_args)}"
+    if lane not in CALCULATORS and ("_coaxial_ports", "coax_port") in rows:
+        return _coax_lane_refusal(lane)
     if lane == "run_subgridded" and ("_refinement", "slab") in rows:
         from rfx.subgridding._notice import SUBGRID_NOTICE
         return SUBGRID_NOTICE
@@ -1166,15 +1226,6 @@ def refuse_slab_tfsf_devices(entry, n_devices, lane="uniform multi-device"):
             f"5 or more are refused. Use devices=jax.devices()[:{SLAB_TFSF_MAX_DEVICES}] or one device")
 
 
-_COAX_ADVICE = {
-    "run": ("for a single add_coaxial_port(), compute_s_matrix(method=...) "
-            "dispatches to either. Use add_port(..., extent=...) for "
-            "probe-feed S-parameters."),
-    "forward": ("both take eps_scale= for jax.grad. Use add_port(..., extent=...) "
-                "for differentiable probe-feed S11 objectives."),
-}
-
-
 def refuse_forward_reference_planes(sim) -> None:
     """Reject the run-only plane declaration before forward lane dispatch."""
     for index, port in enumerate(sim._ports):
@@ -1186,21 +1237,41 @@ def refuse_forward_reference_planes(sim) -> None:
                 "or remove the option for forward()")
 
 
-def refuse_coaxial_port(sim, entry: str) -> None:
-    """The one coaxial-port refusal of ``run()`` and ``forward()``,
-    raised before mesh planning while no time-stepping lane admits the row;
-    ``entry`` selects the advice."""
-    if entry == "forward":
-        refuse_forward_reference_planes(sim)
-        admit_conformal_floor(sim, "fwd_uniform")
-    row = ("_coaxial_ports", "coax_port")
-    if sim._coaxial_ports and not any(row in ADMITS[lane] or row in LANE_GATES.get(lane, {})
-                                      for lane in LANES):
-        raise RfxUnsupported(
-            f"add_coaxial_port() is not wired into Simulation.{entry}(). A "
-            "coaxial port's S-parameters come from "
-            "compute_coaxial_line_reflection(...) (one-port reflection) "
-            "or compute_coaxial_two_port(...) (through line); " + _COAX_ADVICE[entry])
+def admit_coax_declaration(sim, entry, args):
+    """Refuse declared coax incompatibilities before any mesh inspection."""
+    if not sim._coaxial_ports:
+        return
+    prefix = 'run' if entry == 'run' else 'fwd'
+    mesh = sim.__dict__.get('_frozen_mesh') or sim._declared_mesh
+    graded = any(mesh[name] is not None for name in ('_dx_profile', '_dy_profile', '_dz_profile'))
+    devices = args.get('devices')
+    distributed = args.get('distributed', False) or (devices is not None and len(devices) > 1)
+    if distributed:
+        suffix = 'distributed_nu' if graded else 'distributed'
+    elif sim._refinement is not None:
+        suffix = 'subgridded'
+    else:
+        suffix = 'nonuniform' if graded else 'uniform'
+    lane = prefix + '_' + suffix
+    row = ('_coaxial_ports', 'coax_port')
+    if lane not in ADMITS or row not in ADMITS[lane]:
+        raise RfxUnsupported(_coax_lane_refusal(lane))
+    if (args.get('port_s11_freqs') is not None if entry == 'forward' else
+            args.get('compute_s_params') is not False or args.get('s_param_freqs') is not None):
+        from rfx.model.coax_admission import refuse_other_s_drives
+        refuse_other_s_drives(sim)
+    conditions = LANE_GATES[lane][row]
+    assert isinstance(conditions, dict)
+    gate = {name: check for name, check in conditions.items() if name != 'grid layout'}
+    failure = _gate_failure(gate, sim, None, args)
+    if failure:
+        raise RfxUnsupported(f'{lane}: {ROW_WORDS[row]} requires {failure}')
+
+
+def admit_forward_entry(sim, args) -> None:
+    """Keep the forward entry checks while admitting the coax model lanes."""
+    refuse_forward_reference_planes(sim)
+    admit_conformal_floor(sim, "fwd_uniform")
 
 
 def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None:
@@ -1248,8 +1319,8 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     if rows:
         if diagnostics is not None:
             from rfx._diagnostic_transport import diagnostic_refusal
-            raise diagnostic_refusal(RfxUnsupported(message(lane, rows, sim, run_args)), diagnostics)
-        raise NotImplementedError(message(lane, rows, sim, run_args))
+            raise diagnostic_refusal(RfxUnsupported(message(lane, rows, sim, run_args, grid)), diagnostics)
+        raise NotImplementedError(message(lane, rows, sim, run_args, grid))
     from rfx.boundaries.model import refresh_boundary_model
     refresh_boundary_model(sim)
     from rfx.boundaries.features import admit_ntff, admit_waveguide
@@ -1282,6 +1353,8 @@ def _warn_implicit_s(message):
 
 def default_run_forms_s(sim, *, devices=None):
     """Whether the default lumped/wire request forms S on this declaration."""
+    if sim._coaxial_ports:
+        return not sim._uses_nonuniform_mesh and sim._refinement is None and (devices is None or len(devices) == 1)
     ports = [p for p in sim._ports if p.is_port]
     if (not ports or sim._refinement is not None
             or any(p.is_soft_source for p in sim._ports)):
@@ -1455,6 +1528,8 @@ def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=
 
 
 _S_REQUEST_FAMILIES = (
+    ("_coaxial_ports", "add_coaxial_port(...): S11 on uniform single-device run() and forward(); "
+     "the coaxial line calculators remain available"),
     ("_msl_ports", "add_msl_port(...): MSL ports use compute_msl_s_matrix(); "
      "run(compute_s_params=True) does not include MSL ports in Result.s_params"),
     ("_waveguide_ports", "add_waveguide_port(...) uses compute_waveguide_s_matrix() "
@@ -1463,11 +1538,6 @@ _S_REQUEST_FAMILIES = (
     ("_floquet_ports", "add_floquet_port(...): Floquet ports are experimental and "
      "have no forward S11 path or claims-bearing run(compute_s_params=True) S-matrix path"),
     ("_tfsf", "add_tfsf_source(...): TFSF is a plane-wave source, not a port"),
-    ("_coaxial_ports", "add_coaxial_port(...) is not wired into run(compute_s_params=True) "
-     "or forward(port_s11_freqs=...); use Simulation.compute_coaxial_line_reflection(...) "
-     "for a one-port reflection or Simulation.compute_coaxial_two_port(...) for a through "
-     "line (for a single add_coaxial_port(), compute_s_matrix(method=...) dispatches to "
-     "either), or add_port(extent=...) for the probe-feed S-parameter path"),
 )
 
 
@@ -1479,6 +1549,10 @@ def _s_request_family_messages(sim):
 
 def admit_s_request(sim, caller, *, details=()):
     """Refuse missing impedance ports and incompatible S-result families."""
+    if sim._coaxial_ports:
+        from rfx.model.coax_admission import refuse_other_s_drives
+        refuse_other_s_drives(sim)
+        return sim._coaxial_ports
     port_entries = sim._port_sparameter_entries()
     messages = [*_s_request_family_messages(sim), *details]
     if not port_entries:

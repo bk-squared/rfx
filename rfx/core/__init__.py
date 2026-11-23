@@ -5,7 +5,6 @@ from rfx.core.yee import (
 )
 
 
-# Moved to the stepping layer; the old import path resolves lazily (a module-level import would be circular).
 _LAZY_EXPORTS = {
     "update_e": "rfx.stepping.yee",
     "update_h": "rfx.stepping.yee",

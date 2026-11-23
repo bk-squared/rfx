@@ -14,6 +14,7 @@ import jax.numpy as jnp
 import pytest
 
 from rfx import Simulation
+from tests._fake_local_devices import fake_local_devices
 
 
 def _ntff_warnings(freqs):
@@ -312,8 +313,9 @@ def _recorded_probe(case, monkeypatch, error):
     if case in {"memory_outer", "memory_inner"}:
         from tests.unit.autodiff.test_estimate_ad_memory import _uniform_sim
         sim = _uniform_sim()
-        monkeypatch.setattr(jax, "local_devices", fail if case == "memory_outer" else lambda: [
-            SimpleNamespace(platform="mps", memory_stats=fail)])
+        monkeypatch.setattr(jax, "local_devices", fake_local_devices(
+            fail if case == "memory_outer" else lambda: [
+                SimpleNamespace(platform="mps", memory_stats=fail)]))
         return lambda: sim.estimate_ad_memory(4).warning
     raise AssertionError(case)
 

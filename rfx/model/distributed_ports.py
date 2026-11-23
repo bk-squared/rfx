@@ -88,7 +88,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
     # The same region-bypassing run route needs concrete drive samples and scales.
     with jax.ensure_compile_time_eval():
         queue = PortSourceQueue()
-        material_drive: list[tuple[Any, Any] | tuple[None, float, Any, Any] | None] = []
+        material_drive: list[tuple[Any, Any] | tuple[Any, Any, Any, Any] | None] = []
         for index, pe in enumerate(sim._ports):
             if pe.is_soft_source:
                 cell = _grid_metric.field_index(grid, pe.position, pe.component)

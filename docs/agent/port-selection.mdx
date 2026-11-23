@@ -25,13 +25,19 @@ For evidence status and normative envelopes, the [S-parameter section of the sup
 
 1. **Rectangular waveguide** → `add_waveguide_port` + `compute_waveguide_s_matrix`. Needs two or more ports for a full S-matrix.
 2. **Microstrip / MSL guided line** → `add_msl_port` + `compute_msl_s_matrix`. Use the default `mode="laplace"` feed (works on uniform and non-uniform meshes; the non-uniform lane is internally gated, externally unvalidated). `mode="eigenmode"` is unsupported (fenced).
-3. **Coaxial** → `add_coaxial_port` + `compute_coaxial_line_reflection`. This is the one-port claims surface; for a through line use `compute_coaxial_two_port`.
+3. **Coaxial** → `add_coaxial_port` in experimental uniform single-device `run()` / `forward()` for a device feed. The line-reflection and two-port calculators remain available for their documented line families.
 4. **Lumped component or discrete terminal** → `add_lumped_rlc` or `add_port`. Keep results within the lumped-port interpretation; this is not a waveguide or coaxial S-matrix path.
 5. **Free-space incident field** → `add_tfsf_source`. No port calibration applies.
 6. **Periodic structure requiring modal excitation** → `add_floquet_port` only within the E2/E3 analytic-slab envelope. No promoted S-matrix API.
 7. **Antenna or radiation observable** → `add_source` or `add_polarized_source` plus `add_ntff_box`.
 
 ## Coaxial Compute Path Caveat
+
+`add_coaxial_port(...)` builds a coax line, matched feed, TEM drive and voltage planes in experimental uniform single-device `run()` and `forward()`. `position` is the reference plane; `face="top"` or `"bottom"` selects the feed side and `pin_length` extends the pin toward the device. `run(compute_s_params=True, s_param_freqs=...)` and `forward(port_s11_freqs=...)` read S11 at that plane using the built line impedance, then renormalize it to `impedance`. The radii, `pin_length` and `impedance` are static declarations; PEC occupancy elsewhere can be differentiated. The coaxial calculators remain available with their own line layouts and limits.
+
+Uniform mesh, one device, one coax port and no other S-port family; face top or bottom, float32, three-dimensional second-order Yee, CPML on all six faces, no periodic axis or TF/SF. The shell needs at least one whole cell from every lateral absorber, enough axial room for the line, and an NTFF box, when declared, containing the whole port. No conformal PEC, subpixel smoothing, eps_override or sigma_override.
+
+Experimental uniform coax ports: same-line calculator equality, run()/forward() equality, bottom-feed, NTFF-leakage and occupancy-gradient checks define the validation scope; the antenna-level result against an independent solver is not yet shown.
 
 `compute_coaxial_line_reflection` is the coaxial transmission-line reflection path and is `broad_e5_passed`: broad-E5 physics (analytic Γ envelope) + independent Meep broad-E4 short/open, both with committed evidence (`tests/fixtures/coax_broad_e5/`, `tests/fixtures/coax_broad_e4/`), plus an end-to-end differentiable path (`grad(S11)` w.r.t. the dielectric via `eps_scale`; composition AD-vs-FD gate `tests/unit/autodiff/test_coax_end_to_end_ad.py`). The clean-checkout auditor returns `coaxial_port` PASSED. The [support matrix](../guides/support_matrix.md#s-parameters) coaxial rows document the current lanes.
 

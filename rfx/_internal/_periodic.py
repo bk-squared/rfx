@@ -106,8 +106,9 @@ def _fill_image_range(grid, shape, axis, *, closed_footprint=False, padding=0.):
                 raise ValueError(
                     f"periodic axis {'xyz'[axis]!r}: a zero-thickness Box is a "
                     f"plane and needs a concrete coordinate; bounds [{a}, {b}] m, L={length} m")
-            dtype = np.result_type(a.dtype, b.dtype)
-            tol = 8 * np.finfo(dtype).eps * length if np.issubdtype(dtype, np.inexact) else 0.
+            dtypes = [np.asarray(x).dtype for x in (a, b)]
+            eps = max((float(np.finfo(d).eps) for d in dtypes if np.issubdtype(d, np.inexact)), default=0.)
+            tol = 8 * eps * length
             if not np.isfinite(a + b) or a < -length - tol or b > 2 * length + tol:
                 raise ValueError(
                     f"periodic axis {'xyz'[axis]!r}: fill bounds [{a}, {b}] m "

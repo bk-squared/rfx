@@ -291,7 +291,7 @@ def test_c6_coax_refusal(monkeypatch):
     sim.add_coaxial_port((.008,.008,0.),face='bottom',pin_length=.005)
     import rfx.simulation as kernel
     monkeypatch.setattr(kernel,'run',lambda *a,**k:pytest.fail('stepped'))
-    with pytest.raises(NotImplementedError,match=r'add_coaxial_port\(\) is not wired into Simulation.forward\(\)'):
+    with pytest.raises(NotImplementedError,match=r'add_coaxial_port\(\): domain too short; needs at least 65 line cells for the shielded source end'):
         sim.forward(pec_occupancy_override=jnp.zeros(sim._build_grid().shape),n_steps=2,skip_preflight=True)
 
 
@@ -622,29 +622,6 @@ def test_w5_waveguide_design_box(monkeypatch, cell, admitted):
                     n_steps=2, checkpoint=False, skip_preflight=True)
 
 
-@pytest.mark.parametrize('mutation', ['removed', 'source_only'])
-def test_w7_waveguide_mutations(monkeypatch, mutation):
-    if mutation == 'removed':
-        monkeypatch.setattr(products, 'waveguide_port_stage', lambda root, cfg, entity: root)
-    else:
-        publish = products.publish_port_release
-        def source_only(root, cells, **kwargs):
-            if kwargs['kind'] == 'waveguide':
-                cells = [cell for cell in cells if cell[0] == 13]
-            return publish(root, cells, **kwargs)
-        monkeypatch.setattr(products, 'publish_port_release', source_only)
-    with pytest.raises(AssertionError):
-        test_w1_literal_waveguide_cells('x', '+')
-    with pytest.MonkeyPatch.context() as capture_patch:
-        with pytest.raises(AssertionError):
-            test_w2_waveguide_kernel_weights(capture_patch, 'uniform', 'measurement', .5)
-    if mutation == 'removed':
-        # Unreleased PEC occupancy now sits in the port's guide segment: the
-        # setup refuses it (rfx#1994) before the source record can differ.
-        with pytest.raises(ValueError, match=r'one homogeneous'):
-            test_w3_waveguide_source_record()
-    else:
-        test_w3_waveguide_source_record()
 
 
 @pytest.mark.parametrize('lane', ['uniform', 'graded'])

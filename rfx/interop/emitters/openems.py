@@ -122,6 +122,8 @@ docs/design_notes/geometry_setup_interop.md):
         no half-cell compensation is needed.
 
 Status: **provisional**.
+
+``PEC_SIGMA_THRESHOLD`` is the PEC-mask conductivity threshold in siemens per metre.
 """
 
 from __future__ import annotations
@@ -141,26 +143,14 @@ __all__ = [
     "plan_openems_projection",
 ]
 
-#: Emitter contract version.  Bump when the generated script's structure or the
-#: supported fence changes in a way a reader of an old artifact would notice.
 OPENEMS_EMITTER_VERSION = "rfx-openems-emitter/v1"
 
-#: ``SetDeltaUnit`` value used by every openEMS script in this repository, and
-#: therefore by the emitter: geometry coordinates are millimetres (D9).
 UNIT_M = 1.0e-3
 
-#: rfx treats a material with ``sigma >= 1e6`` S/m as a PEC mask rather than a
-#: lossy dielectric (``rfx/api/_compile.py``: ``_PEC_SIGMA_THRESHOLD``, applied
-#: in the geometry assembly loop).  The openEMS counterpart of that branch is
-#: ``AddMetal``, not ``AddMaterial(kappa=...)``.
 PEC_SIGMA_THRESHOLD = 1.0e6
 
-#: Absorbing boundary tokens on the rfx side.
 _ABSORBING = ("cpml", "upml")
 
-#: Tolerance for "this coordinate is already a mesh line", relative to ``dx``.
-#: Snapped coordinates are ``nearest_uniform_index(pos/dx) * dx``, so the residual is float
-#: noise (~1e-16 relative); anything larger means a genuine off-grid feature.
 _LINE_TOL_REL = 1.0e-9
 
 _AXES = ("x", "y", "z")
@@ -168,9 +158,6 @@ _COMPONENT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
 _SUPPORTED_SHAPE_KINDS = ("box", "cylinder")
 
 
-# ---------------------------------------------------------------------------
-# Plan — the reviewable intermediate
-# ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class _MaterialPlan:
@@ -196,7 +183,7 @@ class _GeometryPlan:
 @dataclass(frozen=True)
 class _PortPlan:
     number: int
-    family: str  # "lumped" | "wire" | "msl"
+    family: str
     label: str
     impedance: float
     start_mm: tuple[float, float, float]
@@ -204,7 +191,7 @@ class _PortPlan:
     excite: bool
     priority: int
     exc_dir: int
-    prop_dir: int | None = None  # msl only
+    prop_dir: int | None = None
     f0_hz: float | None = None
     fc_hz: float | None = None
 
@@ -242,9 +229,6 @@ class OpenEMSPlan:
         return tuple(len(self.mesh_lines_mm[ax]) for ax in _AXES)  # type: ignore[return-value]
 
 
-# ---------------------------------------------------------------------------
-# Document accessors (fail loudly rather than defaulting)
-# ---------------------------------------------------------------------------
 
 def _require_mapping(value: Any, what: str) -> dict:
     if not isinstance(value, dict):
@@ -294,9 +278,6 @@ def _ident(prefix: str, name: str, used: set[str]) -> str:
     return candidate
 
 
-# ---------------------------------------------------------------------------
-# Mesh (D1, D2, D5, D9)
-# ---------------------------------------------------------------------------
 
 def _face_plan(
     boundary_spec: dict, cpml_layers: int, periodic_axes: str
@@ -352,11 +333,6 @@ def _face_plan(
                         "dropping to PEC would close an open domain",
                     )
                 if axis in periodic_axes:
-                    # Grid._face_pad zeroes the pad when the axis is not a CPML
-                    # axis, and _build_grid strips periodic axes from
-                    # cpml_axes.  A design in that state is already refused
-                    # above by the periodic token, so reaching here means the
-                    # legacy periodic_axes view disagrees with the spec.
                     raise _refuse(
                         f"absorbing face {face} on periodic axis {axis!r}",
                         "boundary.legacy.periodic_axes marks this axis periodic "
@@ -364,12 +340,8 @@ def _face_plan(
                         "strips CPML from periodic axes, so the two views "
                         "describe different absorbers",
                     )
-                # D3: parameterised from the design, not the scripts' PML_8.
-                # D4: MUR is never emitted.
                 strings[face] = f"PML_{layers}"
                 if token == "upml":
-                    # openEMS has one absorber. Collapsing rfx's two onto it is
-                    # a translation the reader must be told about, not a detail.
                     upml_faces.append(face)
             else:
                 raise _refuse(f"boundary token {token!r} on face {face}", "unknown token")
@@ -424,9 +396,6 @@ def _pin(
     return merged, True
 
 
-# ---------------------------------------------------------------------------
-# Materials
-# ---------------------------------------------------------------------------
 
 def _plan_materials(document: dict) -> dict[str, _MaterialPlan]:
     registered = _require_mapping(_get(document, "materials", "document"), "materials")
@@ -455,9 +424,6 @@ def _plan_materials(document: dict) -> dict[str, _MaterialPlan]:
         debye = _get(payload, "debye_poles", f"materials.{name}")
         lorentz = _get(payload, "lorentz_poles", f"materials.{name}")
 
-        # rfx's own assembly loop branches on this threshold and, for a PEC
-        # material, ignores eps_r / mu_r / chi3 / poles entirely — so those
-        # fields are checked only on the dielectric branch.
         is_metal = sigma >= PEC_SIGMA_THRESHOLD
         if not is_metal:
             if debye:
@@ -500,9 +466,6 @@ def _plan_materials(document: dict) -> dict[str, _MaterialPlan]:
     return plans
 
 
-# ---------------------------------------------------------------------------
-# Geometry (D6, D16)
-# ---------------------------------------------------------------------------
 
 def _plan_geometry(
     document: dict, materials: dict[str, _MaterialPlan]
@@ -566,9 +529,6 @@ def _plan_geometry(
         priority = (metal_base + index) if material.is_metal else (1 + index)
 
         if kind == "box":
-            # D16: thickness verbatim from the rfx Box. A zero-thickness rfx
-            # Box stays a zero-thickness openEMS sheet; the emitter does not
-            # promote it to a one-cell slab or vice versa.
             start = _mm3(_get(params, "corner_lo", f"geometry[{index}].shape.params"))
             stop = _mm3(_get(params, "corner_hi", f"geometry[{index}].shape.params"))
             plans.append(
@@ -584,8 +544,6 @@ def _plan_geometry(
             )
             continue
 
-        # Cylinder: rfx records the *centre* plus a height, openEMS wants the
-        # two axis endpoints and a separate radius.
         centre = list(_get(params, "center", f"geometry[{index}].shape.params"))
         radius = float(_get(params, "radius", f"geometry[{index}].shape.params"))
         height = float(_get(params, "height", f"geometry[{index}].shape.params"))
@@ -617,9 +575,6 @@ def _plan_geometry(
     return tuple(plans), port_priority, metal_base
 
 
-# ---------------------------------------------------------------------------
-# Excitations
-# ---------------------------------------------------------------------------
 
 def _gauss_from_waveform(payload: Any, what: str) -> tuple[float, float, list[str]]:
     """``GaussianPulse`` → ``SetGaussExcite(f0, fc)`` with ``fc = bandwidth*f0``."""
@@ -788,8 +743,6 @@ def _plan_ports(
         from rfx._internal._grid_metric import nearest_uniform_index
         cells = nearest_uniform_index(value_m / dx_m)
         snapped = cells * dx_m
-        # Grid.position_to_index uses nearest_uniform_index(pos/dx); reporting the shift makes
-        # the rasterisation visible rather than silent.
         if abs(snapped - value_m) > _LINE_TOL_REL * dx_m:
             snap_shifts.append(
                 f"{label}: {value_m!r} m → {snapped!r} m "
@@ -832,9 +785,6 @@ def _plan_ports(
         start = [snap(float(v), f"{what}.position[{i}]") for i, v in enumerate(position)]
         stop = list(start)
         if extent is None:
-            # D7: rfx's single-cell lumped port; openEMS spans one cell and
-            # averages over it. The repo's own wire envelope measures the size
-            # of this convention gap at ~0.20 in |S|.
             stop[axis_index] = start[axis_index] + dx_m
             family = "lumped"
         else:
@@ -862,9 +812,6 @@ def _plan_ports(
             notes.extend(wf_notes)
 
         if rfx_direction is not None:
-            # NOT a refusal: the port's geometry is fully determined without
-            # it. But it is not carried either, and a silent drop is exactly
-            # what this emitter must not do.
             direction_drops.append(f"{what}.direction={rfx_direction!r}")
 
         number = len(plans) + 1
@@ -917,32 +864,6 @@ def _plan_ports(
                 "seed for the port; openEMS MSLPort launches its own line mode "
                 "and has no equivalent knob, so the launched profiles differ."
             )
-        # D7 — the span, and its SENSE. Two separate facts:
-        #
-        # (a) MSLPort occupies a SPAN along the propagation axis, and
-        #     msl_port_w_cells has no rfx counterpart at all (rfx uses a feed
-        #     plane plus downstream probes). It is an emitter parameter, and it
-        #     is itemised in the generated header as an accepted assumption.
-        #
-        # (b) The span extends ALONG rfx's direction=, with NO negation. rfx's
-        #     two port builders disagree with each other here, so this is
-        #     resolved per builder from the implementation, not by analogy:
-        #       * add_port():     direction= is the OUTWARD normal
-        #                         (api/__init__.py:1116-1117), confirmed by
-        #                         refplane.py:196-198 / outboard_sign = -1 for
-        #                         '+'. A wire port DOES need the negation.
-        #       * add_msl_port(): direction= is 'the direction the launched
-        #                         wave propagates away from the feed plane'
-        #                         (msl_port.py:50-51), confirmed twice in the
-        #                         implementation — probes go to
-        #                         i_feed + sign*offset with sign=+1 for '+x',
-        #                         i.e. downstream into the line (:865, :894),
-        #                         and the TFSF auxiliary H plane sits BEHIND
-        #                         the feed at i-1 for '+x', the pattern that
-        #                         launches a +x wave (:733).
-        #     Negating here would launch both ports away from the shared trace
-        #     and give a plausible-looking S21 with the wrong reference sense.
-        #     test_msl_span_extends_along_the_rfx_propagation_direction pins it.
         sign = 1.0 if direction == "+x" else -1.0
         span_m = msl_port_w_cells * dx_m
         x_feed = snap(float(position[0]), f"{what}.position[0]")
@@ -985,9 +906,6 @@ def _plan_ports(
                 family="msl",
                 label=f"msl_port_{number}_{name}",
                 impedance=impedance,
-                # start at the trace plane, stop at ground: exc_dir=2 (Ez) then
-                # points from trace down to ground, matching the repo's MSL
-                # referee exactly.
                 start_mm=(_mm(x_feed), _mm(y_lo), _mm(z_hi)),
                 stop_mm=(_mm(x_end), _mm(y_hi), _mm(z_lo)),
                 excite=excite,
@@ -1068,9 +986,6 @@ def _plan_ports(
     return tuple(plans), notes, required_lines
 
 
-# ---------------------------------------------------------------------------
-# Run control (D12) and frequencies
-# ---------------------------------------------------------------------------
 
 def _courant_dt(dx_m: float) -> float:
     """rfx's ``Grid.courant_dt`` for 3D — a pure function of ``dx``."""
@@ -1087,9 +1002,6 @@ def _default_freqs(ports: Sequence[_PortPlan]) -> tuple[float, ...]:
     return tuple(lo + (hi - lo) * i / (n - 1) for i in range(n))
 
 
-# ---------------------------------------------------------------------------
-# Planner
-# ---------------------------------------------------------------------------
 
 def plan_openems_projection(
     document: dict,
@@ -1246,7 +1158,7 @@ def plan_openems_projection(
             "translation. The far-field would then be computed on a different "
             "surface than the design specifies",
         )
-    if observables.get("current_moments") is not None:   # optional key
+    if observables.get("current_moments") is not None:
         raise _refuse(
             "add_current_moment_monitor(...)",
             "openEMS has no counterpart: the monitor reduces rfx's own Yee-edge "
@@ -1265,7 +1177,6 @@ def plan_openems_projection(
         msl_port_w_cells=msl_port_w_cells,
     )
 
-    # --- mesh lines (D1, D2) ------------------------------------------------
     from rfx.boundaries.depths import resolve_face_depths
     from rfx.grid import domain_cells
     n_cells = domain_cells(extent, dx_m, resolve_face_depths(
@@ -1373,7 +1284,6 @@ def plan_openems_projection(
         )
     notes.extend(port_notes)
 
-    # --- frequencies (not design state) ------------------------------------
     if freqs_hz is None:
         chosen = _default_freqs(ports)
         notes.append(
@@ -1394,7 +1304,6 @@ def plan_openems_projection(
                 "openEMS's port DFT needs finite positive frequencies",
             )
 
-    # --- run control (D12) --------------------------------------------------
     absorbing = any(s.startswith("PML_") for s in strings.values())
     dt_rfx = _courant_dt(dx_m)
     freq_max = float(_get(domain, "freq_max", "domain"))
@@ -1495,9 +1404,6 @@ def plan_openems_projection(
     )
 
 
-# ---------------------------------------------------------------------------
-# Renderer
-# ---------------------------------------------------------------------------
 
 def _floats(values: Sequence[float]) -> str:
     return ", ".join(repr(float(v)) for v in values)

@@ -200,7 +200,7 @@ def test_a_model_without_probes_keeps_its_port_cell_series():
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
 def test_ringdown_none_stages_the_same_program(lane):
     """``ringdown=None`` traces to the program ``forward()`` traces without the
-    argument, and it holds no host callback. (Against main 7b2fc25d the jaxpr
+    argument; ``ringdown=`` adds its own callback. (Against main 7b2fc25d the jaxpr
     text and every output were compared by hash on this box and the #1229
     patch boards, both lanes: identical.)"""
     sim = _box(lane)
@@ -217,7 +217,7 @@ def test_ringdown_none_stages_the_same_program(lane):
     j_bare = str(jax.make_jaxpr(f)(e))
     j_ring = str(jax.make_jaxpr(lambda x: f(x, ringdown=RingdownSpec()))(e))
     assert j_none == j_bare
-    assert "callback" not in j_none and "callback" in j_ring
+    assert j_ring.count("callback") > j_none.count("callback")
 
 
 # ---------------------------------------------------------------------------

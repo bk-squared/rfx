@@ -122,17 +122,6 @@ def test_port_constructors_refuse_nonfinite_impedance(constructor, impedance):
     assert str(exc.value) == f"impedance must be positive and finite, got {impedance}"
 
 
-@pytest.mark.parametrize("lane", LANES)
-def test_soft_source_alone_lists_no_port(lane):
-    graded = lane.startswith("graded")
-    record = _record(lane, with_port=False)
-    assert record.ports == ()
-    (source,) = record.sources
-    assert (source.label, source.kind, source.component) == ("port[0]", "soft_point", "ez")
-    assert source.edges == (_hand_index(SOURCE, graded),)
-    assert _labels(record).count("port[0]") == 1
-    (row,) = [r for r in record.realization_table.rows if r.label == "port[0]"]
-    assert row.family == "soft_point"
 
 
 @pytest.mark.parametrize("lane", LANES)

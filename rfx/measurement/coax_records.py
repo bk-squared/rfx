@@ -491,90 +491,32 @@ class CoaxialLineReflection(NamedTuple):
 
 
 def coaxial_line_plane_voltage(
-    grid: Grid,
-    ex_dft,
-    ey_dft,
-    *,
-    center_xy: tuple[float, float],
-    pin_radius: float = SMA_PIN_RADIUS,
-    outer_radius: float = SMA_OUTER_RADIUS,
-    eps_r: float = PTFE_EPS_R,
+    grid: Grid, ex_dft, ey_dft, *, center_xy: tuple[float, float],
+    pin_radius: float = SMA_PIN_RADIUS, outer_radius: float = SMA_OUTER_RADIUS,
+    eps_r: float = PTFE_EPS_R, pec_cell_mask=None, plane_index=None,
 ):
-    """Modal TEM voltage ``V = ∫ E_r dr`` at a z-plane from Ex/Ey DFT planes.
-
-    Reuses the radial line-integral of
-    :func:`coaxial_tem_reference_plane_vi_from_cartesian_plane`; only the voltage
-    is returned (the line method does not need the azimuthal current). Leading
-    axes of ``ex_dft``/``ey_dft`` (for example frequency) are preserved.
-    """
-
+    """Sum whole Ex edges between realized conductor faces, preserving leading axes."""
+    from .coax_voltage import coax_voltage_weights
     _require_coaxial_aperture(grid, (0, 1), center_xy, outer_radius)
-    u = (np.arange(grid.nx, dtype=np.float64) - grid.pad_x_lo) * grid.dx
-    v = (np.arange(grid.ny, dtype=np.float64) - grid.pad_y_lo) * grid.dx
-    ex = np.asarray(ex_dft, dtype=np.complex128)
-    ey = np.asarray(ey_dft, dtype=np.complex128)
-    res = coaxial_tem_reference_plane_vi_from_cartesian_plane(
-        u, v, ex, ey, ex, ey,  # H args unused for the voltage line-integral
-        center_u_m=float(center_xy[0]),
-        center_v_m=float(center_xy[1]),
-        inner_radius=float(pin_radius),
-        outer_radius=float(outer_radius),
-        eps_r=float(eps_r),
-    )
-    return np.asarray(res.vi.voltage, dtype=np.complex128)
+    weights = coax_voltage_weights(grid, center_xy=center_xy,
+                                   pec_cell_mask=pec_cell_mask, plane_index=plane_index)
+    i, j, length = map(np.asarray, zip(*weights))
+    return np.sum(np.asarray(ex_dft, dtype=np.complex128)[..., i, j] * length, axis=-1)
 
 
 def coaxial_line_plane_voltage_jnp(
-    grid: Grid,
-    ex_dft,
-    *,
-    center_xy: tuple[float, float],
-    pin_radius: float = SMA_PIN_RADIUS,
-    outer_radius: float = SMA_OUTER_RADIUS,
+    grid: Grid, ex_dft, *, center_xy: tuple[float, float],
+    pin_radius: float = SMA_PIN_RADIUS, outer_radius: float = SMA_OUTER_RADIUS,
+    pec_cell_mask=None, plane_index=None,
 ):
-    """Differentiable ``jax.numpy`` modal TEM voltage ``V = ∫ E_r dr`` at a z-plane.
-
-    jnp-native counterpart of :func:`coaxial_line_plane_voltage` for the AD path
-    (``compute_coaxial_line_reflection(eps_scale=...)``). The radial sample
-    geometry and the bilinear-interpolation weights are STATIC (grid coordinates,
-    concrete NumPy); only ``ex_dft`` (the DFT E-field plane) carries the tape.
-    Byte-close to the numpy path (difference is float reassociation in the
-    trapezoid only, ~1e-10). Voltage-only: the coax line-reflection method does
-    not use the azimuthal current, so ``ey_dft``/the H-loop are not needed here.
-
-    On the ``+u`` radial ray ``e_radial == e_u == ex``. ``ex_dft`` may carry
-    leading axes (e.g. frequency); they are preserved and the integral is over
-    the trailing radial axis.
-    """
+    """Differentiable whole-edge voltage with the same concrete geometry as NumPy."""
+    from .coax_voltage import coax_voltage_weights
     _require_coaxial_aperture(grid, (0, 1), center_xy, outer_radius)
-    u = (np.arange(grid.nx, dtype=np.float64) - grid.pad_x_lo) * grid.dx
-    v = (np.arange(grid.ny, dtype=np.float64) - grid.pad_y_lo) * grid.dx
-    cu, cv = float(center_xy[0]), float(center_xy[1])
-    radial = u - cu
-    sel = (radial >= float(pin_radius)) & (radial <= float(outer_radius))
-    radial_positions = radial[sel]
-    if radial_positions.size < 2:
-        radial_positions = np.linspace(float(pin_radius), float(outer_radius), 33)
-    su = cu + radial_positions
-    sv = np.full_like(su, cv)
-    # Concrete bilinear indices + weights (mirrors _interp_bilinear_plane); only
-    # the gathered field values below are traced.
-    iu = np.clip(np.searchsorted(u, su) - 1, 0, u.size - 2)
-    iv = np.clip(np.searchsorted(v, sv) - 1, 0, v.size - 2)
-    tu = jnp.asarray((su - u[iu]) / (u[iu + 1] - u[iu]))
-    tv = jnp.asarray((sv - v[iv]) / (v[iv + 1] - v[iv]))
+    weights = coax_voltage_weights(grid, center_xy=center_xy,
+                                   pec_cell_mask=pec_cell_mask, plane_index=plane_index)
+    i, j, length = map(np.asarray, zip(*weights))
     ex = jnp.asarray(ex_dft)
-    f00 = ex[..., iu, iv]
-    f10 = ex[..., iu + 1, iv]
-    f01 = ex[..., iu, iv + 1]
-    f11 = ex[..., iu + 1, iv + 1]
-    e_radial = (
-        f00 * (1 - tu) * (1 - tv)
-        + f10 * tu * (1 - tv)
-        + f01 * (1 - tu) * tv
-        + f11 * tu * tv
-    )
-    return jnp.trapezoid(e_radial, jnp.asarray(radial_positions), axis=-1)
+    return jnp.sum(ex[..., i, j] * jnp.asarray(length, dtype=ex.real.dtype), axis=-1)
 
 
 def _coaxial_line_reflection_jnp(

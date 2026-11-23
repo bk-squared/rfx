@@ -567,6 +567,7 @@ class Result(NamedTuple):
     current_moment_data: object = None
     current_moment_monitor: object = None
     realized_geometry: object = None
+    coax_port_metadata: object = None
     sparam_time_records: tuple | None = None
     sparam_read_ids: object = None
     dft_time_records: object = None
@@ -926,6 +927,7 @@ class ForwardResult(NamedTuple):
     settling_coverage: object = None
     settling_probe_source_end_index: object = None
     settling_freq_max: object = None
+    coax_port_metadata: object = None
     sparam_time_records: tuple | None = None
     sparam_read_ids: object = None
     dft_time_records: object = None

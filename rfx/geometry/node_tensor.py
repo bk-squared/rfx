@@ -202,7 +202,7 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
             xp, grid, supported, nodes, ns, eps, outside, matrices(xp, xi),
             signed_distance=signed_distance, cell_lengths=lengths, outside_pieces=pieces)
         triplets = xp.where(touched[..., None, None], current, triplets)
-        if scope is not None:  # exact triplets (w = 1) replace the planar ones
+        if scope is not None:
             touched = touched & ~scope.replaced
         guard_count = guard_count + xp.sum(guards & touched, dtype=xp.int32)
         bulk = xp.where(f > 0, ~interface, bulk)
@@ -221,9 +221,6 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
                 sl = [slice(None)] * 3
                 sl[axis] = slice(0, count) if side == 'lo' else slice(-count, None)
                 pad[tuple(sl)] = True
-    # Attempt-2 decision 1: all eight incident triplets must be exactly
-    # isotropic bulk tensors. A node-volume mask can delete only one side of
-    # an Eq. 10 coupling and therefore break assembled symmetry.
     triplet_bulk = xp.all(triplets == triplets[..., :1, :1] * xp.eye(3), axis=(-2, -1))
     bulk_ends = tuple(tuple(xp.all(xp.stack([
         triplet_bulk[t] for t, signs in enumerate(SIGNS) if signs[a] == s]), axis=0)

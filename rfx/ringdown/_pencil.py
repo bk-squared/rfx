@@ -22,10 +22,8 @@ from rfx.measurement.matrix_pencil import (
     _MIN_PENCIL_SAMPLES,
 )
 
-# Import the module rather than rfx's re-exported harminv function.
 _harminv = import_module("rfx.harminv")
 
-# Mac per-stage peaks / formula, maxima 1.780 and 1.626, plus 5 %.
 _STAGE1_FACTOR = 1.87
 _STAGE2_FACTOR = 1.71
 
@@ -98,7 +96,6 @@ def _check_run_identification_memory(plan):
         from rfx.ringdown._probe_channels import probe_reference
         peak = probe_reference(plan)
     else:
-        # Default and graded-lane result bins are the accumulator's float32 bins.
         peak = (float(np.float32(plan.sim._freq_max)) if bins is None else
                 float(np.max(np.asarray(bins, dtype=np.float32 if plan.lane == "graded" else np.float64))))
     n_win = plan.n_steps - plan.n_start
@@ -201,8 +198,6 @@ def _on_nearest_bin(s, f_bins, record_s: float) -> np.ndarray:
         return s
     f = s.imag / (2.0 * np.pi)
     j = np.argmin(np.abs(fb[None, :] - f[:, None]), axis=1)
-    # a pole the record cannot tell from DC stays where it is: moved onto a
-    # low bin, a slowly relaxing static field would weigh like a mode there
     near = ((np.abs(fb[j] - f) <= 1.0 / float(record_s))
             & (np.abs(f) >= 1.0 / float(record_s)))
     return np.where(near, s.real + 1j * 2.0 * np.pi * fb[j], s)

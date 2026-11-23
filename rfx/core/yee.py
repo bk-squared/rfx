@@ -2,6 +2,7 @@
 
 All functions are jax.jit-compatible and operate on explicit state arrays.
 No hidden mutable state.
+``EPS_0`` is vacuum permittivity in farads per metre and ``MU_0`` is vacuum permeability in henries per metre.
 """
 
 from __future__ import annotations
@@ -19,15 +20,12 @@ import numpy as np
 class FDTDState(NamedTuple):
     """Complete FDTD simulation state at one timestep."""
 
-    # Electric field components (Nx, Ny, Nz)
     ex: jnp.ndarray
     ey: jnp.ndarray
     ez: jnp.ndarray
-    # Magnetic field components (Nx, Ny, Nz)
     hx: jnp.ndarray
     hy: jnp.ndarray
     hz: jnp.ndarray
-    # Timestep counter
     step: jnp.ndarray
 
 
@@ -68,27 +66,17 @@ class MaterialArrays(NamedTuple):
     UPML) take :func:`cell_owned_component_materials`: the cell total minus
     the other components' stamps. The dispersive Debye/Lorentz coefficients
     take :func:`component_e_materials` per component like the plain update.
+    ``sigma`` is measured in siemens per metre.
     """
 
-    # Relative permittivity (Nx, Ny, Nz) — used in E update
     eps_r: jnp.ndarray
-    # Conductivity S/m (Nx, Ny, Nz) — used in E update (lossy)
     sigma: jnp.ndarray
-    # Relative permeability (Nx, Ny, Nz) — used in H update
     mu_r: jnp.ndarray
-    # The edge-owned part of ``sigma`` / ``eps_r`` (lumped stamps): None, or
-    # a 3-tuple (x, y, z) of per-component arrays / None
     sigma_lumped: object = None
     eps_r_lumped: object = None
-    # H-component-owned permeability increments (port and PEC filament contours).
-    # None means no contour increment beyond the volume face mean.
     mu_r_wire: object = None
-    # Set only after final cell/stamp assembly on migrated single-device paths.
     components: object = None
-    # Realized relaxed-conductor factors; lane steps remain independently pinned.
     edge_keep: object = None
-    # Edge-owned conductivity of declared films: never contained in sigma,
-    # added after the edge mean, never subtracted. None or (x, y, z).
     sigma_film: object = None
 
 
@@ -109,8 +97,6 @@ def component_h_materials(materials, periodic=(False, False, False), *, high_wal
 
     @exact_equal.defjvp
     def exact_equal_jvp(primals, tangents):
-        # Equality changes only rounding, not the material law's derivative:
-        # independent equal-valued neighbours still both influence the face.
         return exact_equal(*primals), tangents[2]
 
     if jnp.ndim(mu) == 0:
@@ -125,7 +111,6 @@ def component_h_materials(materials, periodic=(False, False, False), *, high_wal
                 mean = 2 / (1 / lo + 1 / mu)
             else:
                 widths = jnp.asarray(cell_sizes[axis])
-                # Cell metrics omit the terminal node; material arrays include it.
                 if widths.shape[0] == mu.shape[axis] - 1:
                     widths = jnp.concatenate((widths, widths[-1:]))
                 shape = [1, 1, 1]
@@ -332,12 +317,8 @@ def init_materials(shape: tuple[int, int, int]) -> MaterialArrays:
     )
 
 
-# Physical constants — post-2019 SI / CODATA. EPS_0 and MU_0 form a
-# mutually consistent pair: 1/sqrt(MU_0 * EPS_0) == c (299792458 m/s),
-# so the FDTD's effective speed of light is exact. Changing one without
-# the other breaks that consistency (see the TE10-cutoff gate).
-EPS_0 = 8.8541878128e-12  # F/m — post-2019 SI / CODATA value
-MU_0 = 1.25663706212e-6  # H/m — post-2019 SI / CODATA value
+EPS_0 = 8.8541878128e-12
+MU_0 = 1.25663706212e-6
 
 
 def _shift_fwd(arr, axis):
@@ -360,15 +341,6 @@ def _shift_bwd(arr, axis):
     return padded[tuple(slices)]
 
 
-# --- (2,4) fourth-order-in-space staggered stencil (Fang 1996 / standard) ---
-# A 4th-order option for the smooth-bulk lever (analytic gate-1: ~2.52x fewer
-# cells/wavelength than (2,2) for the same dispersion error; gate-2 spike:
-# this advantage is a SMOOTH-PROPAGATION property and does NOT extend to PEC /
-# geometric features, which staircase at 2nd order regardless).
-# The two coefficients on the near (1/2-cell) and far (3/2-cell) staggered
-# differences. At a non-periodic boundary the wider stencil reaches outside the
-# domain, so the first/last TWO gaps revert to 2nd order (the 2-cell PEC/edge
-# ribbon — a 1-cell ribbon leaves the i=N-2 fwd / i=1 bwd gap malformed).
 _C4_NEAR = 9.0 / 8.0
 _C4_FAR = -1.0 / 24.0
 
@@ -408,7 +380,6 @@ def _diff_fwd_o(arr, axis, periodic, order, bloch=None):
                 nxt = nxt * bloch[axis]
             return nxt - arr
         return _shift_fwd(arr, axis) - arr
-    # order == 4:  c1*(f[i+1]-f[i]) + c2*(f[i+2]-f[i-1])
     if periodic[axis]:
         near = jnp.roll(arr, -1, axis) - arr
         far = jnp.roll(arr, -2, axis) - jnp.roll(arr, 1, axis)
@@ -437,7 +408,6 @@ def _diff_bwd_o(arr, axis, periodic, order, bloch=None, *, boundary=None, frame=
             back = back * bloch[axis].conjugate()
         return arr - back
 
-    # order == 4:  c1*(f[i]-f[i-1]) + c2*(f[i+1]-f[i-2])
     if periodic[axis]:
         near = arr - back
         far = jnp.roll(arr, -1, axis) - jnp.roll(arr, 2, axis)
@@ -645,8 +615,6 @@ def _edge_mean_four(values):
     return ((values[0] + values[1]) + (values[2] + values[3])) * 0.25
 
 
-# Leading significant bits kept per part, (difference, fraction), by dtype:
-# every part product then fits the significand and is exact.
 _EXACT_PARTS = {"float32": ((12,), (12,), "uint32", 32, 24),
                 "float64": ((26,), (18, 18), "uint64", 64, 53)}
 
@@ -684,7 +652,6 @@ def _edge_mean_pair(lo, hi, fraction):
     """
     spec = _EXACT_PARTS.get(str(getattr(hi, "dtype", "")))
     if spec is None or not hasattr(fraction, "dtype") or fraction.dtype != hi.dtype:
-        # A Python 0.5 (an ungraded axis) is a power of two: already exact.
         return lo + (hi - lo) * fraction
     d_bits, f_bits, word, width, digits = spec
     xp = np if all(isinstance(v, (np.ndarray, np.generic)) for v in (lo, hi, fraction)) else jnp
@@ -786,7 +753,6 @@ def component_e_materials(materials, periodic=(False, False, False), *, high_wal
         sig_v = sig_v - sig_l
     eps_c, sig_c = edge_averaged_materials(
         eps_v, sig_v, periodic, high_wall=high_wall, **({} if cell_sizes is None else dict(cell_sizes=cell_sizes)))
-    # Each stamp back on its OWN component.
     eps_c = add_lumped_eps(eps_c, getattr(materials, "eps_r_lumped", None))
     sig_c = tuple(s if part is None else s + part
                   for s, part in zip(sig_c, sig_parts))
@@ -827,7 +793,6 @@ def cell_component_e_materials(materials, cell, component,
     def back(idx, ax):
         if idx > 0:
             return idx - 1
-        # index 0: wrap on a periodic or length-1 axis, replicate otherwise.
         return shape[ax] - 1 if (periodic[ax] or shape[ax] == 1) else 0
 
     idxs = []
@@ -845,8 +810,6 @@ def cell_component_e_materials(materials, cell, component,
     sig_parts = lumped_components(getattr(materials, "sigma_lumped", None))
 
     def lumped_at(parts, idx):
-        # ``lumped_total(parts)[idx]`` without a grid-sized sum: the parts are
-        # added in the same x, y, z order, so the float is the same.
         total = None
         for part in parts:
             if part is not None:
@@ -854,9 +817,6 @@ def cell_component_e_materials(materials, cell, component,
         return total
 
     def mean4(arr, parts):
-        # The same arithmetic as the grid-wide rule: subtract every
-        # component's stamps from each incident cell, average, add back only
-        # this component's own stamp.
         v = [arr[i] for i in idxs]
         if any(part is not None for part in parts):
             v = [a - lumped_at(parts, i) for a, i in zip(v, idxs)]
@@ -873,7 +833,6 @@ def cell_component_e_materials(materials, cell, component,
             lo = _edge_mean_pair(v[3], v[1], fractions[0])
             m = _edge_mean_pair(lo, hi, fractions[1])
         else:
-            # the grid-wide order: (cell + back t1) + (back t2 + both)
             m = _edge_mean_four((v[0], v[2], v[1], v[3]))
         own = parts[axis]
         return m if own is None else m + own[cell]
@@ -954,9 +913,6 @@ def si_value_eps_r_grad(si_fn, eps_r_fn, *args):
     if not dyn:
         return si_fn(*args)
 
-    # The closures below outlive this call (JAX caches a custom_jvp function
-    # with what it closes over), so they must not hold the argument arrays:
-    # the array slots are filled from the call's own operands each time.
     fixed = [None if isinstance(leaf, jax.Array) else leaf for leaf in leaves]
 
     def _args(values):
@@ -1036,9 +992,6 @@ def e_update_coeffs(eps_r, sigma, dt):
                                eps_r, sigma, dt)
 
 
-# ---------------------------------------------------------------------------
-# Non-uniform mesh updates
-# ---------------------------------------------------------------------------
 
 def _nu_e_metric_kwargs(materials, inverse_duals, cell_sizes):
     """Raw NU cells require primal metrics, including an explicit constant axis.
@@ -1055,9 +1008,6 @@ def _nu_e_metric_kwargs(materials, inverse_duals, cell_sizes):
         "cell_sizes; unequal or traced dual metrics cannot select the E-edge material rule")
 
 
-# ---------------------------------------------------------------------------
-# Pre-computed update coefficients for high-throughput scan loops
-# ---------------------------------------------------------------------------
 
 class UpdateCoeffs(NamedTuple):
     """Pre-computed FDTD update coefficients.
@@ -1067,14 +1017,12 @@ class UpdateCoeffs(NamedTuple):
     remove the need for separate ``apply_pec()`` calls.
 
     Use :func:`precompute_coeffs` to build.
+    The electric curl coefficients include the inverse cell size.
     """
-    # H coefficient: one grid array, or (Hx, Hy, Hz) arrays with wire stamps.
     ch: object
-    # E-field decay coefficient  — per-component (Nx, Ny, Nz)
     ca_ex: jnp.ndarray
     ca_ey: jnp.ndarray
     ca_ez: jnp.ndarray
-    # E-field curl coefficient (includes 1/dx)  — per-component (Nx, Ny, Nz)
     cb_ex: jnp.ndarray
     cb_ey: jnp.ndarray
     cb_ez: jnp.ndarray
@@ -1117,17 +1065,12 @@ def precompute_coeffs(
           else component_h_materials(materials, periodic, high_wall=high_wall))
     if _realized.ACTIVE is not None:
         mu = _realized.magnetic(materials, mu, "precompute.H", periodic=periodic)
-    # Preserve the historical scalar-array bake, including its f32 numerator.
     ch = tuple(jnp.float32(dt / (MU_0 * dx)) / m for m in mu)
     if materials.mu_r_wire is not None:
         ch = tuple((dt / (MU_0 * dx)) / m for m in mu)
     elif _realized.ACTIVE is not None:
-        # Replay each component with the no-record float32 bake.
         ch = tuple(jnp.float32(dt / (MU_0 * dx)) / m for m in mu)
 
-    # per-component eps/sigma, the mean over the four cells incident
-    # to each component's edge. The arithmetic below is unchanged, so a
-    # homogeneous grid bakes the same bits it baked before.
     _eps_c, _sig_c = ((materials.components.eps_update, materials.components.sigma_update) if materials.components is not None
                       else component_e_materials(materials, periodic, high_wall=high_wall))
     if _realized.ACTIVE is not None:
@@ -1146,7 +1089,6 @@ def precompute_coeffs(
         return ca, cb / dx
 
     def _bake(eps_r_c, sigma_c):
-        # these bits, the eps_r-unit derivative.
         return si_value_eps_r_grad(_bake_si, _bake_eps_r,
                                    eps_r_c, sigma_c, dt, dx)
 
@@ -1154,9 +1096,6 @@ def precompute_coeffs(
     (ca_ey, cb_ey) = _bake(_eps_c[1], _sig_c[1])
     (ca_ez, cb_ez) = _bake(_eps_c[2], _sig_c[2])
 
-    # Bake the electric walls into the coefficients by zeroing Ca and Cb
-    # of the tangential E components on each wall face -- the same planes
-    # ``apply_pec_faces`` zeroes.
     faces = set(pec_faces)
     for a in pec_axes:
         faces.update({f"{a}_lo", f"{a}_hi"})
@@ -1207,13 +1146,8 @@ def update_he_fast(state: FDTDState, coeffs: UpdateCoeffs, *, boundary=None) -> 
     PEC baked into the coefficients.  This is the fastest path for the
     common case of non-periodic boundaries with uniform mesh.
     """
-    # Compute dtype: max(state dtype, float32) -- byte-identical for float32
-    # storage, upcast for float16, promoted for float64. This is
-    # the GPU-only fast lane (rfx/simulation.py's update_he_fast dispatch);
-    # the uniform CPU lane routes through update_h/update_e above instead.
     _fdtype = state.ex.dtype
     _cdtype = jnp.promote_types(_fdtype, jnp.float32)
-    # --- H update (upcast to _cdtype for arithmetic) ---
     ex = state.ex.astype(_cdtype)
     ey = state.ey.astype(_cdtype)
     ez = state.ez.astype(_cdtype)
@@ -1222,8 +1156,6 @@ def update_he_fast(state: FDTDState, coeffs: UpdateCoeffs, *, boundary=None) -> 
     hx = (state.hx.astype(_cdtype) - cx * ((_shift_fwd(ez, 1) - ez) - (_shift_fwd(ey, 2) - ey))).astype(_fdtype)
     hy = (state.hy.astype(_cdtype) - cy * ((_shift_fwd(ex, 2) - ex) - (_shift_fwd(ez, 0) - ez))).astype(_fdtype)
     hz = (state.hz.astype(_cdtype) - cz * ((_shift_fwd(ey, 0) - ey) - (_shift_fwd(ex, 1) - ex))).astype(_fdtype)
-    # --- E update (with PEC baked into coefficients) ---
-    # Upcast newly computed H fields back to _cdtype for curl computation
     hx_f = hx.astype(_cdtype)
     hy_f = hy.astype(_cdtype)
     hz_f = hz.astype(_cdtype)
@@ -1264,7 +1196,6 @@ def _ca_cb_inv_eps_r_units(inv, sigma, dt):
     return _ca_cb_eps_r_units(inv, sigma, dt, inverse=True)
 
 
-# Moved to the stepping layer; the old import path resolves lazily (a module-level import would be circular).
 _LAZY_EXPORTS = {
     "update_e": "rfx.stepping.yee",
     "update_e_aniso": "rfx.stepping.yee",

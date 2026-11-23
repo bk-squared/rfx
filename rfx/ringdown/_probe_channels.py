@@ -74,7 +74,7 @@ def _error_witnesses(plan, Y, dt, ref_hz, plain, w2, state):
         state.update(long_rank=we.model_long.rank, long_n_kept=int(we.model_long.s.size))
     except TimeoutError:
         raise
-    except Exception as exc:  # noqa: BLE001 - recorded in RingdownWitness.note
+    except Exception as exc:  # noqa: BLE001
         value, note = math.nan, f"the identification on the early window failed: {exc}; a WE that cannot be read fails"
     return [rd.RingdownWitness("WE", value, tol, value <= tol, rule, note),
             rd.RingdownWitness("W2", w2_value, tol, w2_value <= tol, rule,

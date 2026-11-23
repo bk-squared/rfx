@@ -18,9 +18,6 @@ class UnsupportedDesignFeature(RfxRefusal):
 __all__ = ["UnsupportedDesignFeature"]
 
 
-# ---------------------------------------------------------------------------
-# Refusal
-# ---------------------------------------------------------------------------
 
 def _refuse(construct: str, reason: str) -> UnsupportedDesignFeature:
     """Refusal naming the construct first, then why it cannot be projected.

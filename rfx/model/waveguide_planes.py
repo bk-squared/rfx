@@ -31,7 +31,6 @@ def entry_planes(entry, grid):
     from rfx.model.waveguide_mesh import host_index
     index = host_index(grid, axis, entry.x_position)
     if hasattr(grid, "dx_arr"):
-        # Match the NU builder's interior-edge cumulative sum exactly.
         pad = getattr(grid, f"pad_{axis}_lo")
         cells = np.asarray(host_cells(grid, axis))
         source = float(np.insert(np.cumsum(cells[pad:]), 0, 0.0)[index - pad])

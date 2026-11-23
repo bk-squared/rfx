@@ -74,7 +74,7 @@ A closed box or an oblique wave on a graded x is refused. Far-field and RCS use 
 | `add_port(...)` | lumped (one cell) or wire (`extent=`) | `run(compute_s_params=True)`, or `forward(port_s11_freqs=...)` for S11 gradients |
 | `add_msl_port(...)` | microstrip line | `compute_msl_s_matrix()` |
 | `add_waveguide_port(...)` | rectangular waveguide | `compute_waveguide_s_matrix()` |
-| `add_coaxial_port(...)` | coaxial line | `compute_coaxial_line_reflection()` (one-port), `compute_coaxial_two_port()` |
+| `add_coaxial_port(...)` | coaxial line | experimental uniform `run()` / `forward()`; `compute_coaxial_line_reflection()` (one-port), `compute_coaxial_two_port()` |
 
 ### Lumped and wire ports
 
@@ -196,9 +196,16 @@ print(msl.s_matrix_lane())                # compute_msl_s_matrix
 
 The strip runs from port to port: a strip that continued behind a port would be
 an open stub, and the calculator refuses one that shorts the port near the
-band. The edge-aware in-plane mesh keeps the 600 µm strip at its drawn width
-(on a uniform 100 µm mesh it solves 670 µm wide and is refused). A cell of
-100 µm puts 3 cells across the 300 µm substrate, which is coarse for speed:
+band. Preflight takes a free sheet edge to lie 0.35 in-plane cell beyond the
+sheet's last node, so the edge-aware in-plane mesh puts the 600 µm strip's last
+nodes 0.35 cell inside its drawn edges. The 0.35 was measured where the cell
+normal to the sheet is as long as the in-plane cell beside its edge. Here the
+z cell is 100 µm and the in-plane cell beside each side edge 90 µm, a ratio of
+1.11. For a free sheet in vacuum the offset at that ratio was measured as 0.37
+to 0.38 cell (E perpendicular and parallel to the edge), so in vacuum this
+strip would be 604 to 605 µm wide. On the substrate's top face, where the
+strip lies, the offset has not been measured. On a uniform 100 µm mesh
+preflight predicts 670 µm, and `run()` refuses the strip. A cell of 100 µm puts 3 cells across the 300 µm substrate, which is coarse for speed:
 preflight warns below 4. For microstrip, the substrate thickness
 sets the cell size, not the wavelength.
 
@@ -246,6 +253,12 @@ The [Waveguide Ports guide](/rfx/guide/waveguide-ports/) covers calibration
 planes and `normalize`.
 
 ### Coaxial ports
+
+`add_coaxial_port(...)` builds a coax line, matched feed, TEM drive and voltage planes in experimental uniform single-device `run()` and `forward()`. `position` is the reference plane; `face="top"` or `"bottom"` selects the feed side and `pin_length` extends the pin toward the device. `run(compute_s_params=True, s_param_freqs=...)` and `forward(port_s11_freqs=...)` read S11 at that plane using the built line impedance, then renormalize it to `impedance`. The radii, `pin_length` and `impedance` are static declarations; PEC occupancy elsewhere can be differentiated. The coaxial calculators remain available with their own line layouts and limits.
+
+Uniform mesh, one device, one coax port and no other S-port family; face top or bottom, float32, three-dimensional second-order Yee, CPML on all six faces, no periodic axis or TF/SF. The shell needs at least one whole cell from every lateral absorber, enough axial room for the line, and an NTFF box, when declared, containing the whole port. No conformal PEC, subpixel smoothing, eps_override or sigma_override.
+
+Experimental uniform coax ports: same-line calculator equality, run()/forward() equality, bottom-feed, NTFF-leakage and occupancy-gradient checks define the validation scope; the antenna-level result against an independent solver is not yet shown.
 
 ```text
 add_coaxial_port(position, face="top", *, pin_length=0.005,
