@@ -5,7 +5,6 @@ from dataclasses import fields, is_dataclass
 from weakref import WeakKeyDictionary, ref
 
 
-# Host metadata follows simulation lifetime without becoming solve arguments.
 _kernel_views = WeakKeyDictionary()
 
 
@@ -156,7 +155,6 @@ def nominal_record(sim, conductors, lane, *, compact):
     reference._nominal_profiles = None
     if is_tracer(getattr(reference, "_dt_pin", None)):
         return None
-    # The nominal declaration is a reference point, not another live solve.
     with warnings.catch_warnings(), jax.ensure_compile_time_eval():
         warnings.simplefilter("ignore")
         grid = reference._build_nonuniform_grid()

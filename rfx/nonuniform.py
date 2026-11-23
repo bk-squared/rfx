@@ -20,11 +20,11 @@ from __future__ import annotations
 
 from rfx.measurement import assemble_graded_result as _assemble_nu_result
 
-from rfx.model.graded_grid import (  # noqa: F401 -- moved; re-exported
+from rfx.model.graded_grid import (  # noqa: F401
     C0,
     NonUniformGrid,
 )
-from rfx.model import (  # noqa: F401 -- moved; re-exported
+from rfx.model import (  # noqa: F401
     e_node_dual_spacing_at,
     make_band_profile,
     make_current_source,

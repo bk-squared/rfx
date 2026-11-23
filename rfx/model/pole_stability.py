@@ -101,7 +101,7 @@ class CourantBudget(float):
         total = 0.0
         for occupied, sizes in zip(occupied_per_axis, self.cells):
             occupied = np.asarray(_concrete(occupied), dtype=bool)
-            if sizes.size == occupied.size - 1:      # cell metrics omit the terminal node
+            if sizes.size == occupied.size - 1:
                 sizes = np.append(sizes, sizes[-1])
             if sizes.size != occupied.size or not occupied.any():
                 return float(self)
@@ -142,7 +142,7 @@ def courant_budget(grid):
     """The grid's :class:`CourantBudget` (two axes on a 2-D grid)."""
     axes = (0, 1) if getattr(grid, "is_2d", False) else (0, 1, 2)
     if not callable(getattr(grid, "cells", None)):
-        return None   # a stand-in without per-axis cells (unit rigs of the layer functions) is not judged
+        return None
     cells = tuple(_concrete(grid.cells(a)) for a in axes)
     if any(_is_abstract(c) for c in cells):
         return _ArrayBudget(cells)
@@ -349,15 +349,12 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
                                        for name in ("eps_r", "sigma")})
         masks = [None if m is None else view.own((jnp if abstract_masks else np).broadcast_to(m, input_shape)) for m in masks]
     shape = materials.eps_r.shape
-    # One integer code per cell, accumulated pole by pole (no cells x poles array).
     wide = len(poles) > 62
     codes = np.zeros(int(np.prod(shape)), dtype=object if wide else np.int64)
     for bit, m in enumerate(masks if not abstract_masks else ()):
         present = np.ones(shape, dtype=bool) if m is None else np.broadcast_to(np.asarray(m, dtype=bool), shape)
         codes = codes + (present.reshape(-1).astype(object if wide else np.int64) * (1 << bit))
     if abstract_masks:
-        # The static spec fixes pole identities; only membership is dynamic.
-        # Enumerate possible sets, reducing empty ones to count=0 at runtime.
         unique_codes = range(1, 1 << len(poles))
         inverse, counts = None, [None] * len(unique_codes)
     else:
@@ -367,10 +364,8 @@ def pole_set_extremes(materials, lorentz_spec, *, view=None, debye_spec=None):
     mu = 1. if mu is None else mu
     values = [materials.eps_r, materials.sigma, mu] + jax.tree.leaves([v for p in poles for v in p])
     traced = abstract_masks or any(is_tracer(v) for v in values)
-    # A global array spread over processes cannot be read on the host.
     spread = not traced and any(not getattr(v, "is_fully_addressable", True) for v in values)
     xp = jnp if traced or spread else np
-    # A concrete sigma keeps concrete extremes when only eps is traced (the passive-Debye skip reads them).
     sigma = values[1]
     xs = np if not (abstract_masks or is_tracer(sigma)
                     or not getattr(sigma, "is_fully_addressable", True)) else xp
@@ -427,8 +422,6 @@ def combine_pole_extremes(records_from_all_slabs):
                 combined[record.code] = record
                 continue
             previous = combined[record.code]
-            # Counts and occupancy follow the extremes: a jax operator on concrete
-            # records under an outer jit would stage them, and the judge would refuse.
             values = (previous.mu_low, record.mu_low, previous.eps_low, previous.sigma_low, previous.sigma_high,
                       record.eps_low, record.sigma_low, record.sigma_high,
                       previous.count, record.count, *previous.occupied, *record.occupied)
@@ -483,7 +476,7 @@ def _eager_batch_members(args):
     def member(v, i):
         if not isinstance(v, BatchTracer):
             return v
-        value = np.asarray(_concrete(v.val))   # an eager grad/jvp around the vmap wraps the batch
+        value = np.asarray(_concrete(v.val))
         return value if v.batch_dim is None else np.take(value, i, axis=v.batch_dim)
     return [tuple(member(v, i) for v in args) for i in range(size)]
 
@@ -521,9 +514,9 @@ def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
             if not count:
                 return
             if not (np.all(np.isfinite([eps, low, high, step])) and np.all(np.isfinite(pole_values)) and eps > 0):
-                return   # invalid cells are reported by the checks that own them
+                return
             if step * step * budget > eps * (1.0 + ROOT_TOLERANCE):
-                return   # the step is above the Courant limit of these cells without any pole: not the poles' doing
+                return
             growth = max(largest_growth(eps, s, pole_values, step, 4.0 * step * step * budget, debye=debye)
                          for s in (low, high))
             if growth <= 1.0 + ROOT_TOLERANCE:
@@ -552,13 +545,9 @@ def judge_pole_sets(records, dt, budget, *, grid_kind, in_program=True):
 
         args = (record.eps_low, record.sigma_low, record.sigma_high, dt, local, record.mu_low, record.count, record.map_corners,
                 *(v for p in record.poles + record.debye for v in p))
-        # Eager autodiff carries concrete primals: judge them on the host. A
-        # callback would copy a value replicated over processes to one device.
         args = tuple(_concrete(v) for v in args)
         if not in_program and any(_is_abstract(v) for v in args):
             if not record.poles and _passive_debye(record):
-                # A passive Debye-only set (delta_eps >= 0, tau > 0, sigma >= 0) grows at most 1 inside the
-                # check's Courant pre-filter (trapezoidal update), so the check cannot refuse it.
                 continue
             members = _eager_batch_members(args)
             if members is None:
@@ -685,9 +674,6 @@ def judge_prebuilt_poles(grid, lorentz, debye=None, *, periodic=(False, False, F
                 scale = np.max(abs(result))
                 if not scale:
                     return result
-                # Multiplication by a three-quarter fraction rounds once.
-                # Undo that roundoff, rather than inventing tiny extra poles
-                # in empty cells. Only a recovered binary cell mask qualifies.
                 binary = np.rint(result / scale)
                 transverse = np.prod([shape[t] for t in range(3) if t != component])
                 error = 4 * np.finfo(values.dtype).eps * transverse * scale
