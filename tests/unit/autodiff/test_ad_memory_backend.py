@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import jax
 import pytest
 
+from tests._fake_local_devices import fake_local_devices
 from tests.unit.autodiff.test_estimate_ad_memory import _uniform_sim
 
 
@@ -14,8 +15,8 @@ def test_device_limit_is_used(monkeypatch, platform):
     def stats():
         calls.append(True)
         return {"bytes_limit": 8e9}
-    monkeypatch.setattr(jax, "local_devices", lambda: [
-        SimpleNamespace(platform=platform, memory_stats=stats)])
+    monkeypatch.setattr(jax, "local_devices", fake_local_devices(lambda: [
+        SimpleNamespace(platform=platform, memory_stats=stats)]))
     estimate = _uniform_sim().estimate_ad_memory(4)
     assert estimate.available_gb == 8
     assert calls == [True]
@@ -34,7 +35,7 @@ def test_mps_unknown_limit_has_one_advisory(monkeypatch, stats):
     device = SimpleNamespace(platform="mps")
     if stats != "missing-method":
         device.memory_stats = memory_stats
-    monkeypatch.setattr(jax, "local_devices", lambda: [device, device])
+    monkeypatch.setattr(jax, "local_devices", fake_local_devices(lambda: [device, device]))
     sim = _uniform_sim()
     estimate = sim.estimate_ad_memory(4)
     assert estimate.available_gb is None
@@ -47,8 +48,8 @@ def test_mps_unknown_limit_has_one_advisory(monkeypatch, stats):
 def test_no_device_budget_query_or_new_advisory(monkeypatch, platform):
     def forbidden():
         pytest.fail("backend without memory stats queried the device budget")
-    monkeypatch.setattr(jax, "local_devices", lambda: [
-        SimpleNamespace(platform=platform, memory_stats=forbidden)])
+    monkeypatch.setattr(jax, "local_devices", fake_local_devices(lambda: [
+        SimpleNamespace(platform=platform, memory_stats=forbidden)]))
     estimate = _uniform_sim().estimate_ad_memory(4)
     assert estimate.available_gb is None
     assert "cannot be read" not in (estimate.warning or "")
@@ -58,7 +59,7 @@ def test_explicit_budget_skips_device_query(monkeypatch):
     monkeypatch.setattr(jax, "default_backend", lambda: "mps")
     def forbidden():
         pytest.fail("explicit budget queried devices")
-    monkeypatch.setattr(jax, "local_devices", forbidden)
+    monkeypatch.setattr(jax, "local_devices", fake_local_devices(forbidden))
     estimate = _uniform_sim().estimate_ad_memory(4, available_memory_gb=6)
     assert estimate.available_gb == 6
     assert "cannot be read" not in (estimate.warning or "")
@@ -68,7 +69,7 @@ def test_mps_device_query_failure_is_advised(monkeypatch):
     monkeypatch.setattr(jax, "default_backend", lambda: "mps")
     def unavailable():
         raise RuntimeError("devices unavailable")
-    monkeypatch.setattr(jax, "local_devices", unavailable)
+    monkeypatch.setattr(jax, "local_devices", fake_local_devices(unavailable))
     estimate = _uniform_sim().estimate_ad_memory(4)
     assert estimate.available_gb is None
     assert estimate.warning.count("cannot be read") == 1
