@@ -4,4 +4,4 @@
   changes hold. Five conventions the code cannot show now stand as one docstring sentence on the function, class or
   module they belong to, where `help()` on that object shows them. One literal whose comment gave its meaning is a
   private named constant. The other comments were removed.
-- No check, message or computation changes.
+- No refusal, message or computation in rfx changes.

@@ -315,7 +315,6 @@ def _build_nu_scan(
     host loop. ``n_steps`` is used only to size the zero-source
     placeholder table; the source waveform arrays themselves define the
     table length when sources are present.
-    The one-dimensional TF/SF auxiliary grid requires a uniform x axis.
     """
     from rfx.stepping.vector_pad import refuse_if_forced
     refuse_if_forced("graded")

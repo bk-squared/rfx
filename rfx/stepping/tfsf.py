@@ -21,7 +21,7 @@ def apply_tfsf_e(state, cfg, tfsf_st, dx: float, dt: float):
     crosses the TFSF boundary.
 
     Dispatches to 2D auxiliary grid version for oblique incidence.
-    For normal-incidence open-slab corrections, incident H samples lie half a cell outside the total-field x interval.
+    For normal-incidence open-slab corrections, incident H is sampled at x_lo - 1/2 and x_hi + 1/2, half a cell outside the total-field E-node interval [x_lo, x_hi].
     """
     if is_tfsf_methodB(cfg):
         from rfx.stepping.tfsf_oblique import apply_methodB_e

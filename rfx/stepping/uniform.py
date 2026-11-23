@@ -220,7 +220,10 @@ def make_uniform_step(
                     frame.tfsf_h_state = ctx.update_tfsf_1d_h(ctx.tfsf_cfg, frame.carry["tfsf"], dx, dt)
 
     def magnetic_drives(frame: UniformFrame):
-        """Inject magnetic currents into the completed H half step."""
+        """Inject magnetic currents into the completed H half step.
+
+        Magnetic waveform values are added to H unscaled, so each must already be the increment -dt/mu * M at step n+1/2.
+        """
         if mag_drives is not None:
             frame.st = core_drives.inject_drives(frame.st, mag_drives, frame.mag_src_vals)
 

@@ -115,7 +115,6 @@ def design_adjoint_scan(ctx, initial, xs):
                               design_hook=hook if recording else None,
                               hooks={HookPoint.AFTER_H: (h_hook,)} if targets is not None else None)
         def step(carry, row):
-            """The post-update adjoint E spectrum represents ``L^-1 b``."""
             state, acc_e, acc_h, peak, last_e, tail = carry
             state, probes, extras = core(state, *row)
             if targets is None:
