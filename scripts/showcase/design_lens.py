@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _lens_filter_common as common
 
 CASE = "lens"
-MESHES = (1.5e-3, 1e-3, .75e-3)
+MESHES = (1e-3, .75e-3, .5e-3)
 DESIGN_DX = 1e-3
 SMOKE_DX = 3e-3
 SHAPE = (15, 15, 10)
@@ -37,6 +37,41 @@ def expand_pixels(free, dx, xp=np):
     for axis in range(3):
         full = xp.repeat(full, n, axis=axis)
     return full
+
+
+FACES = (np.r_[0., .003, .123, .126, .048, .078, .018 + .003 * np.arange(31)],
+         np.r_[0., .003, .123, .126, .048, .078, .018 + .003 * np.arange(31)],
+         np.r_[0., .003, .018, .117, .120, .072 + .003 * np.arange(11)])
+
+
+def graded_profiles(dx):
+    from rfx.model.graded_profile import make_band_profile
+    spans = ((.048 - .65 * dx, .048 + .35 * dx),
+             (.078 - .35 * dx, .078 + .65 * dx))
+    result = {}
+    for axis, faces in zip("xy", FACES[:2]):
+        lines = sorted(float(v) for v in faces
+                       if all(abs(v - e) > 1e-12 for e in (.048, .078)))
+        lines = sorted(set(lines + [v for span in spans for v in span]))
+        lines = [v for i, v in enumerate(lines) if i == 0 or v - lines[i - 1] > 1e-12]
+        protected = [any(abs(a - lo) <= 1e-12 and abs(b - hi) <= 1e-12
+                         for lo, hi in spans) for a, b in zip(lines[:-1], lines[1:])]
+        result[f"d{axis}_profile"] = make_band_profile(
+            lines, [dx] * (len(lines) - 1), protected=protected,
+            max_ratio=1.3, boundary_cell=dx)
+    return result
+
+
+def pixel_weights(nodes, faces, boundary):
+    widths = np.diff(nodes)
+    overlap = np.maximum(0., np.minimum(nodes[1:, None], faces[None, 1:]) -
+                         np.maximum(nodes[:-1, None], faces[None, :-1]))
+    weights = overlap / widths[:, None]
+    weights[abs(weights) < 1e-12] = 0.
+    if boundary == "nearest":
+        pixels = np.searchsorted(faces, (nodes[:-1] + nodes[1:]) / 2, side="right") - 1
+        weights = np.eye(len(faces) - 1)[pixels]
+    return weights
 
 
 def textbook_grin(r):
@@ -297,14 +332,19 @@ def with_objective(objective):
 
 
 class Model(common.ModelBase):
-    def __init__(self, dx=DESIGN_DX, precision="float32", smoke=False):
-        from rfx import Simulation
+    def __init__(self, dx=DESIGN_DX, precision="float32", smoke=False, *,
+                 mesh="graded", boundary=None):
+        from rfx import Grid, Simulation
         from rfx.geometry.csg import Box
         from validation.crossval.comparators import realized_conductors as RC
         self.dx, self.precision, self.smoke = dx, precision, smoke
+        self.mesh, self.boundary = mesh, boundary
+        if mesh not in ("graded", "uniform") or boundary not in (None, "nearest", "arith", "harm"):
+            raise ValueError("invalid mesh or boundary")
         self.freqs = FREQS
         self.sim = Simulation(freq_max=12.6e9, domain=(.126, .126, .120), dx=dx,
-                              cpml_layers=common.integral_cells(.015, dx), precision=precision)
+                              cpml_layers=common.integral_cells(.015, dx), precision=precision,
+                              snap="strict", **(graded_profiles(dx) if mesh == "graded" else {}))
         self.sim.add_source((.063, .063, .027), "ex", amplitude_kind="current")
         self.probes = ((.063, .063, .087), (.1065, .1065, .087),
                        (.063, .063, .1095), (.078, .063, .021))
@@ -313,25 +353,77 @@ class Model(common.ModelBase):
         self.sim.add(Box((.048, .048, .018), (.078, .078, .018)), material="pec")
         self.sim.add_ntff_box(corner_lo=(.003, .003, .003),
                               corner_hi=(.123, .123, .117), freqs=list(FREQS))
-        self.grid = self.sim._build_grid()
-        # Every geometric face, including all internal printable-pixel faces.
-        faces = (np.r_[0., .003, .123, .126, .048, .078, .018 + .003 * np.arange(31)],
-                 np.r_[0., .003, .123, .126, .048, .078, .018 + .003 * np.arange(31)],
-                 np.r_[0., .003, .018, .117, .120, .072 + .003 * np.arange(11)])
-        for axis, coords in enumerate(faces):
-            for coordinate in coords:
-                common.assert_node(self.grid, axis, coordinate)
-        self.lo = self.grid.position_to_index((.018, .018, .072))
-        self.hi = self.grid.position_to_index((.108, .108, .102))
-        realized = (np.asarray(self.hi) - np.asarray(self.lo)) * dx
+        if mesh == "graded":
+            from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
+            self.grid = self.sim._build_nonuniform_grid()
+            for name in ("dx_arr_f64", "dy_arr_f64", "dz_f64"):
+                spine = getattr(self.grid, name)
+                if spine is None or np.asarray(spine).dtype != np.float64:
+                    raise ValueError(f"missing float64 cell spine: {name}")
+            coords = coords_from_nonuniform_grid(self.grid)
+            self.nodes = tuple(np.asarray(v, dtype=np.float64) for v in (coords.x, coords.y, coords.z))
+            for axis, faces in enumerate(FACES):
+                for v in faces:
+                    on = np.min(abs(self.nodes[axis] - v)) <= 1e-12
+                    edge = axis < 2 and any(abs(v - e) <= 1e-12 for e in (.048, .078))
+                    if on == edge:
+                        raise ValueError(f"axis {axis}, face {v}: node alignment")
+            plane = self.index((.063, .063, .018))[2]
+            normal = np.diff(self.nodes[2][plane - 1:plane + 2])
+            for line in self.nodes[:2]:
+                for edge in (.048, .078):
+                    k = np.searchsorted(line, edge, side="right") - 1
+                    width = line[k + 1] - line[k]
+                    if abs(width / dx - 1) > 1e-9 or np.any(abs(normal / width - 1) > 1e-9):
+                        raise ValueError("plate edge cell or normal ratio")
+        else:
+            self.grid = self.sim._build_grid()
+            self.nodes = tuple(np.asarray([self.grid.node_of(a, i) for i in range(n)], dtype=np.float64)
+                               for a, n in enumerate(self.grid.shape))
+            for axis, faces in enumerate(FACES):
+                for v in faces:
+                    common.assert_node(self.grid, axis, v)
+        self.lo = self.index((.018, .018, .072))
+        self.hi = self.index((.108, .108, .102))
+        realized = np.array([line[b] - line[a] for line, a, b in zip(self.nodes, self.lo, self.hi)])
         if not np.allclose(realized, (.09, .09, .03), atol=1e-12, rtol=0):
             raise ValueError(f"realized lens region {realized}")
+        if mesh == "graded":
+            counts = {1e-3: (92, 92, 30), .75e-3: (122, 122, 40), .5e-3: (182, 182, 60)}
+            if dx not in counts or tuple(b - a for a, b in zip(self.lo, self.hi)) != counts[dx]:
+                raise ValueError("unexpected graded design box cell counts")
+        self.box = (tuple(line[a] for line, a in zip(self.nodes, self.lo)),
+                    tuple(line[b - 1] for line, b in zip(self.nodes, self.hi)))
+        self.weights = tuple(pixel_weights(line[a:b + 1], faces, boundary)
+                             for line, a, b, faces in zip(
+                                 self.nodes, self.lo, self.hi,
+                                 (.018 + .003 * np.arange(31), .018 + .003 * np.arange(31),
+                                  .072 + .003 * np.arange(11))))
         self.plate = RC.assert_wall_planes(self.sim, 2, [.018], at=(.063, .063),
                                            label="reflector", grid=self.grid, tol_m=1e-12)
-        self.default_steps = common.segmented_steps(self.grid.num_timesteps(num_periods=60))
+        uniform = Grid(freq_max=12.6e9, domain=(.126, .126, .120), dx=dx,
+                       cpml_layers=common.integral_cells(.015, dx))
+        self.default_steps = common.segmented_steps(
+            int(np.ceil(uniform.num_timesteps(num_periods=60) * uniform.dt / self.grid.dt))
+            if mesh == "graded" else self.grid.num_timesteps(num_periods=60))
         if smoke:
             self.default_steps = 200
         self._functions = {}
+
+    def index(self, position):
+        return tuple(int(np.argmin(abs(line - v))) for line, v in zip(self.nodes, position))
+
+    def cells(self, free, xp=np):
+        if self.mesh == "uniform":
+            return expand_pixels(free, self.dx, xp)
+        if self.boundary is None:
+            raise ValueError("graded lens mapping requires --boundary")
+        full = xp.concatenate((free[::-1, :, :], free), axis=0)
+        full = xp.concatenate((full[:, ::-1, :], full), axis=1)
+        wx, wy, wz = (xp.asarray(w, dtype=full.dtype) for w in self.weights)
+        values = 1 / full if self.boundary == "harm" else full
+        cells = xp.einsum("ip,jq,kr,pqr->ijk", wx, wy, wz, values, optimize=True)
+        return 1 / cells if self.boundary == "harm" else cells
 
     def response_fn(self, n_steps, normalize="flux"):
         import jax
@@ -352,11 +444,10 @@ class Model(common.ModelBase):
         # Design-box formulation (#1179): reverse mode stores box-shaped
         # fields per step instead of grid-shaped ones; the same gradient
         # (docstring of Simulation.forward). Corners are inclusive cells.
-        box_lo = tuple(float(v) for v in (.018, .018, .072))
-        box_hi = tuple(float(v - self.dx) for v in (.108, .108, .102))
+        box_lo, box_hi = self.box
 
         def run(e):
-            cells = expand_pixels(jnp.asarray(e, dtype=dtype), self.dx, jnp)
+            cells = self.cells(jnp.asarray(e, dtype=dtype), jnp)
             return self.sim.forward(design_box=(box_lo, box_hi), design_eps_override=cells,
                                     n_steps=n_steps, checkpoint=False, skip_preflight=True)
 
@@ -396,10 +487,20 @@ class Model(common.ModelBase):
                           "field_dtype": str(r.ntff_data.x_lo.dtype), **summary(response)}
 
     def describe(self):
-        return {**super().describe(), "reflector": self.plate,
+        g = self.grid
+        description = {"dx_m": self.dx, "grid_shape": g.shape, "grid_points": int(np.prod(g.shape)),
+                       "cells": int(np.prod(np.asarray(g.shape) - 1)), "dt_s": g.dt,
+                       "cpml_layers": g.pad_x_lo, "cpml_thickness_m": -self.nodes[0][0],
+                       "n_steps": self.default_steps,
+                       "checkpoint_segments": common.sqrt_segments(self.default_steps),
+                       "design_lo": self.lo, "design_hi_exclusive": self.hi,
+                       "design_lo_m": [line[a] for line, a in zip(self.nodes, self.lo)],
+                       "design_hi_m": [line[b] for line, b in zip(self.nodes, self.hi)],
+                       "freqs_hz": self.freqs, "precision": self.precision, "smoke": self.smoke,
+                       "mesh": self.mesh, "boundary": self.boundary}
+        return {**description, "reflector": self.plate,
                 "probe_declared_m": self.probes,
-                "probe_realized_m": [(np.asarray(self.grid.position_to_index(p)) -
-                                      np.asarray(self.grid.axis_pads)) * self.dx for p in self.probes],
+                "probe_realized_m": [[line[i] for line, i in zip(self.nodes, self.index(p))] for p in self.probes],
                 "theta_rad": np.r_[0., np.linspace(1e-4, np.pi - 1e-4, 73)[1:]],
                 "phi_rad": np.linspace(0., 2 * np.pi, 73),
                 "quadrature_theta_rad": np.linspace(1e-4, np.pi - 1e-4, 73),

@@ -9,13 +9,18 @@ import numpy as np
 import _design_common as dc
 
 
-def build(dx,empty=False):
+def build(dx,empty=False,mesh="uniform"):
     from rfx import Simulation
     from rfx.geometry.csg import Box
     from rfx.sources.sources import CustomWaveform, GaussianPulse
     import _lens_filter_common as common
+    profiles = {}
+    if mesh == "graded":
+        from design_lens import graded_profiles
+        physical = graded_profiles(dx)
+        profiles = dict(dy_profile=physical["dx_profile"], dz_profile=physical["dy_profile"])
     sim=Simulation(freq_max=12.6e9,domain=(.120,.126,.126),dx=dx,
-                   boundary='cpml',cpml_layers=common.integral_cells(.015,dx),precision='float32')
+                   boundary='cpml',cpml_layers=common.integral_cells(.015,dx),precision='float32',snap='strict',**profiles)
     # The original feed is solely add_source(..., 'ex'), not conductor geometry.
     if not empty:sim.add(Box((.018,.048,.048),(.018,.078,.078)),material='pec')
     sim.add_tfsf_source(f0=1e10,bandwidth=.5,polarization='ey',direction='-x',
@@ -25,7 +30,7 @@ def build(dx,empty=False):
         for component in ('ex','ey','ez'):
             sim.add_dft_plane_probe(axis=normal,coordinate=.063,component=component,
                                    freqs=[1e10],name=f'{plane}_{component}')
-    return sim,sim._build_grid()
+    return sim,(sim._build_nonuniform_grid() if mesh == "graded" else sim._build_grid())
 
 
 def physical_bounds(sim,grid):
@@ -90,14 +95,15 @@ def run(case,args,source):
     with np.load(source/'iterations.npz',allow_pickle=False) as z:designs=z['eps']
     if designs.shape[1:]!=case.SHAPE or any(k<0 or k>=len(designs) for k in args.iterates):raise ValueError('invalid design/iterate')
     if not np.any(np.isclose(saved['freqs_hz'],1e10,rtol=0,atol=1)):raise ValueError('10 GHz record required')
-    sim,grid=build(saved['dx_m'],args.empty)
+    model=case.Model(saved['dx_m'],args.precision,args.smoke)
+    sim,grid=build(saved['dx_m'],args.empty,model.mesh)
     if tuple(np.asarray(grid.shape)[[1,2,0]])!=tuple(saved['grid_shape']) or not np.isclose(grid.dt,length['dt_s'],rtol=1e-12,atol=0):raise ValueError('record grid/timestep mismatch')
     bounds=physical_bounds(sim,grid)
     for axis,low,high in [('x',.018,.108),('y',.018,.108),('z',.018,.102)]:
         if not bounds[axis][0]<low<=high<bounds[axis][1]:raise ValueError('TFSF boundary intersects lens or plate')
     drive='finite six-face normal TFSF; physical -z propagation, Ex polarization; CustomWaveform(GaussianPulse(f0=10GHz,bandwidth=0.5)); only source; raw rectangular DFT sum E(t)*exp(-2j*pi*f*t)*dt; native Yee components'
     amplitude,zref=incident_spectrum(sim,grid,n)
-    details=dict(source=str(source.resolve()),n_steps=n,dt_s=grid.dt,dx_m=grid.dx,drive=drive,
+    details=dict(source=str(source.resolve()),n_steps=n,dt_s=grid.dt,dx_m=model.dx,drive=drive,
       empty=args.empty,planes=['xz','yz'],freqs_hz=[1e10],tfsf_box_bounds_m=bounds,
       solver_axes_physical=['z','x','y'],physical_components_from_solver=['ey','ez','ex'],
       reflector='removed' if args.empty else 'inside total-field box; PEC plate is illuminated and scatters',
@@ -107,11 +113,11 @@ def run(case,args,source):
       files=[],iterates={},display_only=True,field_monitor_tail_judged=False)
     for k in dict.fromkeys(args.iterates):
         eps=np.ones(grid.shape,np.float32)
-        lo=grid.position_to_index((.072,.018,.018));hi=grid.position_to_index((.102,.108,.108))
-        if not args.empty:eps[tuple(slice(a,b) for a,b in zip(lo,hi))]=case.expand_pixels(designs[k],grid.dx).transpose(2,0,1)
+        lo=tuple(model.lo[a] for a in (2,0,1));hi=tuple(model.hi[a] for a in (2,0,1))
+        if not args.empty:eps[tuple(slice(a,b) for a,b in zip(lo,hi))]=model.cells(designs[k]).transpose(2,0,1)
         result=sim.forward(eps_override=jnp.asarray(eps),n_steps=n,checkpoint=False,skip_preflight=True)
         arrays=plane_arrays(result,grid,eps)
-        arrays.update(iterate=np.int64(k),freqs_hz=np.array([1e10],np.float32),planes=np.array(['xz','yz']),drive=np.asarray(drive),n_steps=np.int64(n),dx_m=np.float32(grid.dx),empty=np.bool_(args.empty))
+        arrays.update(iterate=np.int64(k),freqs_hz=np.array([1e10],np.float32),planes=np.array(['xz','yz']),drive=np.asarray(drive),n_steps=np.int64(n),dx_m=np.float32(model.dx),empty=np.bool_(args.empty))
         filename=f'field_reciprocal_{k}.npz';dc.save_npz(args.out/filename,**arrays)
         details['files'].append(filename)
         details['iterates'][str(k)]=dict(witnesses=witnesses(arrays,bounds,amplitude)) if args.empty else {}

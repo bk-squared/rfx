@@ -209,7 +209,8 @@ def field(case, args, source):
     import jax.numpy as jnp
     for k in dict.fromkeys(args.iterates):
         eps = np.ones(model.grid.shape, dtype=np.float32)
-        block = case.expand_pixels(designs[k], model.dx).astype(np.float32)
+        block = (model.cells(designs[k]) if case.CASE == "lens" else
+                 case.expand_pixels(designs[k], model.dx)).astype(np.float32)
         hi = model.hi
         if case.CASE == "filter":
             block = np.pad(block, ((0, 0), (0, 1), (0, 1)), mode="edge")
@@ -548,6 +549,8 @@ def resolved(case, args, source):
             evaluate(case, model, designs, n, directory, "normalization_crosscheck", normalize=False)
         all_rows.append(rows)
         record(directory, case, model, "resolve", {"n_steps": n, "best_iteration": best, "measurements": rows})
+    if case.CASE == "lens" and len(case.MESHES) < 3:
+        return
     trend = {}
     if new_objective:
         limits = {"boresight_dbi": .3, "outer_max_dbi": 1.}
@@ -647,9 +650,29 @@ def resolved(case, args, source):
     record(args.out, case, model, "resolve", {"best_iteration": best, "trend": trend, **eligibility})
 
 
+def cost(case, args):
+    import jax
+    import jax.numpy as jnp
+    model = setup(case, args.out, args.dx * 1e-3, args.precision, False)
+    response = model.response_fn(args.steps)
+    objective = lambda e: case.loss(response(e))
+    fn = jax.jit(jax.value_and_grad(objective) if args.kind == "gradient" else objective)
+    dtype = jnp.float64 if args.precision == "float64" else jnp.float32
+    e = jnp.asarray(case.starts()["primary"], dtype=dtype)
+    jax.block_until_ready(fn(e))
+    start = time.perf_counter()
+    jax.block_until_ready(fn(e))
+    wall = time.perf_counter() - start
+    stats = jax.devices()[0].memory_stats()
+    details = {"wall_s": wall, "peak_bytes_in_use": stats["peak_bytes_in_use"],
+               "n_steps": args.steps, "kind": args.kind, "warmup_calls": 1}
+    dc.save_json(args.out / "cost.json", details)
+    record(args.out, case, model, "cost", details)
+
+
 def main(case, argv=None):
     parser = argparse.ArgumentParser(description=case.__doc__)
-    parser.add_argument("--stage", choices=("timing", "fd", "rlw", "trial", "main", "resolve", "baselines", "describe", "frame", "field"), required=True)
+    parser.add_argument("--stage", choices=(("cost",) if case.CASE == "lens" else ()) + ("timing", "fd", "rlw", "trial", "main", "resolve", "baselines", "describe", "frame", "field"), required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--record", type=Path, help="source trial/main record; never modified")
     parser.add_argument("--smoke", action="store_true")
@@ -665,9 +688,34 @@ def main(case, argv=None):
     parser.add_argument("--empty", action="store_true", help="reciprocal field: remove lens, feed and reflector")
     if case.CASE == "lens":
         parser.add_argument("--objective", choices=("boresight", "mask", "flattop", "wide", "fan"), default="boresight")
+        parser.add_argument("--mesh", choices=("graded", "uniform"), default="graded")
+        parser.add_argument("--boundary", choices=("nearest", "arith", "harm"))
+        parser.add_argument("--meshes", help="comma-separated mesh sizes in mm")
+        parser.add_argument("--dx", type=float, help="cost mesh size in mm")
+        parser.add_argument("--steps", type=int)
+        parser.add_argument("--kind", choices=("forward", "gradient"))
     args = parser.parse_args(argv)
     if case.CASE == "lens":
         case = case.with_objective(args.objective)
+        if args.mesh == "graded" and args.boundary is None and args.stage != "describe":
+            parser.error("graded solves require --boundary")
+        if args.meshes is not None:
+            try:
+                meshes = tuple(float(v) * 1e-3 for v in args.meshes.split(","))
+            except ValueError:
+                parser.error("--meshes must be a comma list in mm")
+            if not meshes or len(set(meshes)) != len(meshes) or any(v not in case.MESHES for v in meshes):
+                parser.error("--meshes must select distinct supported meshes")
+            case.MESHES = meshes
+        if args.stage == "cost":
+            if args.dx is None or args.dx * 1e-3 not in case.MESHES or not args.steps or args.steps < 1 or args.kind is None:
+                parser.error("cost requires supported --dx, positive --steps and --kind")
+            if args.objective != "boresight":
+                parser.error("cost requires the boresight objective")
+        elif any(v is not None for v in (args.dx, args.steps, args.kind)):
+            parser.error("--dx, --steps and --kind require --stage cost")
+        from functools import partial
+        case.Model = partial(case.Model, mesh=args.mesh, boundary=args.boundary)
         if args.record is not None:
             path = args.record / "result.json"
             if not path.exists():
@@ -693,14 +741,19 @@ def main(case, argv=None):
     args.out.mkdir(parents=True, exist_ok=True)
     import jax
     jax.config.update("jax_default_matmul_precision", "highest")
-    if args.precision == "float64" and (args.stage != "fd" or not jax.config.x64_enabled):
-        raise SystemExit("float64 is an FD-only separate process: set JAX_ENABLE_X64=1")
+    if args.precision == "float64" and (args.stage not in (("fd", "cost") if case.CASE == "lens" else ("fd",)) or not jax.config.x64_enabled):
+        raise SystemExit("float64 requires a separate FD or lens cost process: set JAX_ENABLE_X64=1"
+                         if case.CASE == "lens" else
+                         "float64 is an FD-only separate process: set JAX_ENABLE_X64=1")
     if args.precision == "float32" and jax.config.x64_enabled:
         raise SystemExit("float32 stages require JAX_ENABLE_X64=0")
     if not args.smoke and args.stage != "describe" and jax.default_backend() == "cpu":
         raise SystemExit("full solves are VESSL GPU only; use --smoke on the Mac")
     if args.smoke and args.stage not in ("timing", "fd", "field"):
         raise SystemExit("--smoke supports timing, fd and stored smoke field records; it cannot create trial admission")
+    if args.stage == "cost":
+        cost(case, args)
+        return 0
     if args.stage == "describe":
         for dx in case.MESHES:
             model = setup(case, args.out, dx, args.precision, False)
