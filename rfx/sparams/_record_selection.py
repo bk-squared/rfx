@@ -104,7 +104,8 @@ def build_settling_witness(result, *, bins, dt, freq_max, probe_info,
         from rfx.measurement.record_readers import result_port_s_reader
         db, detail = port_record_witness(
             records, dt, port_source_end, bins, freq_max=freq_max,
-            reader=result_port_s_reader(result, records))
+            reader=result_port_s_reader(result, records),
+            echo_bound=getattr(result, 'settling_echo_bound', None))
         rows.append({**detail, 'reads': ('S-parameters',)})
     if getattr(result, 'waveguide_ports', None):
         db, detail = settling_db_from_port_records(
