@@ -505,6 +505,18 @@ Setting `impedance=` to that value requests the line's own reference; it does no
 A finer mesh changes Z_built non-monotonically: 40.55 / 44.08 / 41.29 ohm at
 0.4 / 0.3 / 0.2 mm on the SMA line (measured; record kept with the project).
 
+### A coax-fed patch's S11 does not yet converge over three uniform meshes.
+
+Tracker: #1958
+
+A synthetic coax-fed patch (a 15 x 12 mm patch on a 1.5 mm substrate over a finite ground plate, fed by an SMA-size
+coax through a hole in the plate, `add_coaxial_port()` on uniform `run()`) was solved at 0.30, 0.25 and 0.1875 mm.
+The 50-ohm S11 minimum moves +27.2 MHz from 0.30 to 0.25 mm and +44.8 MHz from 0.25 to 0.1875 mm: the finer pair
+moves more. |S11| at 9.90 GHz reads -4.84 / -3.80 / -2.27 dB. The cause is not established. The port's own checks
+on the same meshes pass (a shorted line reads |Gamma| within 2.4e-5 of 1 and radiates nothing; doubling the line
+moves |S11| by at most 0.091 dB). What to do: solve a coax-fed antenna on at least three meshes and state the trend;
+do not read its resonance from one mesh.
+
 ### A microstrip strip drawn past an MSL port to the domain edge is an open stub that can short the port.
 
 Tracker: #1512
