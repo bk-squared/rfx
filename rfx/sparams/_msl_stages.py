@@ -57,7 +57,6 @@ def _validate_msl_family(
 def _prepare_msl_probes(
     entries, grid, msl_h_plane_stencil, msl_port_from_entry, msl_probe_x_coords_n, self,
 ):
-    """The H sample at index ``i`` lies half a propagation cell beyond E node ``i`` along the positive coordinate axis."""
     msl_ports = [msl_port_from_entry(pe) for pe in entries]
 
     n_probes_per_port = [int(pe.n_probes) for pe in entries]
@@ -343,7 +342,6 @@ def _integrate_msl_port(
     i_first_per_port, jnp, meta, msl_loop_current, msl_modal_voltage, msl_ports, p_idx,
     planes, raw_3probe_dump_path, raw_i1_left, raw_i1_same_index, trace_k_per_port, v_per_port, variant,
 ):
-    """The transverse Ampere frame is ordered ``(y, z)`` for x-directed ports and ``(z, x)`` for y-directed ports."""
     vs = []
     for nm in ez_probe_names[p_idx]:
         ez_plane = jnp.asarray(planes[nm].accumulator)

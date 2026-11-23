@@ -1,4 +1,7 @@
-"""Derived simulation state omitted from portable design documents."""
+"""Derived simulation state omitted from portable design documents.
+
+Each DFT plane region in ``_dft_plane_regions`` is the crop rectangle the user passed to ``add_dft_plane_probe(region=)``.
+"""
 
 EXCLUDED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_realization_early_outcomes",
