@@ -779,7 +779,7 @@ def equal_request_pair(declaration, path, direction, *, level=None, n_steps=150,
                            sim._freq_max, 50, host='graded' in path)}
     run = call('run', run_options if direction == 'a' else
                {**options, 'compute_s_params': False})
-    if direction == 'a':
+    if direction == 'a' and run['outcome'] != 'not_called':
         sim = BUILDERS[declaration](path)
         if any(port.impedance != 0 for port in sim._ports):
             returned = run if level is None else run_l2(BUILDERS[declaration], 'run', path,
