@@ -87,7 +87,11 @@ def test_library_sweep_member_reads_its_own_arrays(capsys, monkeypatch):
     base, row = result.settling_witness
     check_window(result.dt[0])
     with capsys.disabled():
-        print(f'19 sweep: base={base}; member={row}', file=sys.stderr, flush=True)
+        print(f'19 sweep: base_index={base["echo_bound"]["n_max"]}; '
+              f'base_status={base["status"]}; base_reason={base["reason"]}; '
+              f'member_index={row["echo_bound"]["n_max"]}; '
+              f'member_status={row["status"]}; member_reason={row["reason"]}',
+              file=sys.stderr, flush=True)
     assert base['echo_bound']['n_max'] == BASE_INDEX
     assert base['status'] == 'pass', base
     assert row['echo_bound']['n_max'] == MEMBER_INDEX, row
