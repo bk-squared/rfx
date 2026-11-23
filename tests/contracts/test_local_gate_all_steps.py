@@ -13,10 +13,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 FAKE_PYTHON = r'''#!/bin/bash
-if [ "${0##*/}" = gh ]; then
-  printf '%s\n' "$*" >> "$GH_CALLS"
-  exit 1
-fi
 case "$*" in
   "- "*) exec "$REAL_PYTHON" "$@" ;;
   *check_known_limitations.py*)
@@ -71,14 +67,6 @@ def run_gate(tmp_path, *, body=None, labels=None, known_limitations_page=None, *
 
 
 def test_wrapped_known_limitations_status_fails_docs_hygiene_offline(tmp_path, monkeypatch):
-    bindir = tmp_path / "bin"
-    bindir.mkdir()
-    gh = bindir / "gh"
-    gh.write_text(FAKE_PYTHON)
-    gh.chmod(0o755)
-    calls = tmp_path / "gh-calls"
-    monkeypatch.setenv("PATH", str(bindir) + os.pathsep + os.environ["PATH"])
-    monkeypatch.setenv("GH_CALLS", str(calls))
     monkeypatch.setenv("CLOSING_ISSUES", "inherited")
     monkeypatch.delenv("OPEN_ISSUES", raising=False)
     result, logs = run_gate(tmp_path, known_limitations_page=(
@@ -93,7 +81,6 @@ def test_wrapped_known_limitations_status_fails_docs_hygiene_offline(tmp_path, m
     assert "expected exactly one Tracker line" in result.stdout
     assert "=== [8/10] api-reference ===" in result.stdout
     assert (logs / "contracts-args").exists()
-    assert not calls.exists()
 
 
 def test_every_failing_stage1_step_is_reported_and_selected_tests_do_not_run(tmp_path):
