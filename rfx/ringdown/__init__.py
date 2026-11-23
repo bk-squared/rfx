@@ -2171,6 +2171,11 @@ class RingdownForward(RingdownRun):
 
     caller = "forward"
 
+    def __init__(self, sim, spec: RingdownSpec, **kwargs):
+        super().__init__(sim, spec, **kwargs)
+        from rfx.measurement._echo_forward import forward_echo_bound
+        self._forward_echo = forward_echo_bound(self.grid, sim, self.bins)
+
     def run(self, call):
         """Scope the probes to the lane call, then complete (traced)."""
         from rfx.measurement.identification import ringdown_probes
@@ -2180,14 +2185,12 @@ class RingdownForward(RingdownRun):
         n_user = len(probes) or (len(self.sim._ports) if self.lane == "uniform" else 0)
         with ringdown_probes(probes, _ringdown_probe_entries(self.grid, self.probe_keys), "RingdownForward.run"):
             result = call()
-        from rfx.measurement._echo_forward import forward_echo_bound
-        bound, index_read, index_operands = forward_echo_bound(
-            result.grid, self.sim, self.bins)
-        result = result._replace(settling_echo_bound=bound)
         self.sim = None          # the plan outlives the call inside the result
-        return self._finish_forward(result, n_user, index_read, index_operands)
+        return self._finish_forward(result, n_user)
 
-    def _finish_forward(self, result, n_user: int, index_read=None, index_operands=()):
+    def _finish_forward(self, result, n_user: int):
+        bound, index_read, index_operands = self.__dict__.pop('_forward_echo')
+        result = result._replace(settling_echo_bound=bound)
         full = result.time_series
         n_int = len(self.probe_keys)
         if tuple(full.shape) != (self.n_steps, n_user + n_int):
