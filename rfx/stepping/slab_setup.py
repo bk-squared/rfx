@@ -2,6 +2,7 @@
 from contextlib import nullcontext
 from functools import lru_cache
 from types import SimpleNamespace
+from typing import Any
 import sys
 import warnings
 
@@ -82,7 +83,7 @@ def slab_drive_columns(materials, debye, lorentz, sources, volumes, dt, layout, 
         def arrays(a):
             return None if a is None else (a[:, None, None],)
         return drive_columns(arrays(e), arrays(s), arrays(k), scalar_cells,
-                             owners == rank, samples, volumes, dt, cb=c)
+                             owners == rank, samples, volumes, dt, cb=c, dtype=jnp.float32)
     if _realized.ACTIVE is None:
         table = jax.vmap(local)(eps, sigma, keep, cb, ranks)
     else:
@@ -492,12 +493,13 @@ def finish(invariants, carry, layout, mesh, *, waveforms, dt=None):
 def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
                 pec_mask=None, occupancy=None, debye=None, lorentz=None,
                 cpml=False, cpml_state=None, emit_time_series=True, material_drive=None, port_plan=None,
-                rlc_metas=()):
+                rlc_metas=(), measurement=None):
     """Build the wrapped setup without a whole-domain _build_nu_scan."""
     from rfx.boundaries.setup import nonuniform_boundaries
     from rfx.boundaries.axes import resolve_cpml_axes
     from rfx.stepping.absorber import apply_cpml_h, apply_cpml_e_step
-    from rfx.stepping.graded import GradedStepContext, make_graded_step, graded_probe_table
+    from rfx.stepping.graded import GradedStepContext, make_graded_step
+    from rfx.measurement.projector import plan_tables
     from rfx.core.drives import drive_layout
     # Pole masks/parameters can be traced even when the cell arrays are fixed.
     pole_inputs = (None if debye is None else debye[0], None if lorentz is None else lorentz[0])
@@ -539,6 +541,12 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     zeros = jnp.zeros((layout.n_devices * layout.nx_local,) + tuple(grid.shape[1:]),
                        dtype=jnp.float32, device=NamedSharding(mesh, P('x')))
     carry = dict(fdtd=FDTDState(*(zeros for _ in range(6)), step=jnp.asarray(0, dtype=jnp.int32)))
+    if measurement is None:
+        raise ValueError('the wrapped graded step reads its probe and port tables '
+                         'from the attached measurement plan; none was given')
+    with jax.ensure_compile_time_eval():
+        tables = plan_tables(measurement, n_probes=len(probes),
+                             port_specs=() if port_plan is None else port_plan.specs, dtype=zeros.dtype)
     if debye is not None:
         carry['debye'] = debye[1]
     if lorentz is not None:
@@ -551,7 +559,7 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     inv = dict(inv_dx=cut(grid.inv_dx, layout, 'inv_dx', mesh=mesh),
         inv_dx_h=cut(grid.inv_dx_h, layout, 'inv_dx_h', mesh=mesh), dx_arr=cut(grid.dx_arr, layout, 'width', mesh=mesh),
         drives=drive_layout([(s.i, s.j, s.k, s.component) for s in sources], waves.dtype),
-        probe_table=graded_probe_table([(p.i, p.j, p.k, p.component) for p in probes], grid.shape, dtype=zeros.dtype),
+        probe_table=tables['probe_table'],
         materials=kernel_materials(staged, electric=not (debye or lorentz)), pec_edge_masks=pec_mask,
         pec_occupancy=(product_rows(occupancy, layout, mesh, 'pec_occupancy')
                        if occupancy is not None and occupancy.ndim == 4 else occupancy), pec_static_edge_masks=None, cpml_inv_eps_r=inverse, e_loss=loss,
@@ -573,7 +581,8 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
         use_flux_monitors=False, flux_meta=(), use_ntff=False, ntff_box=None, _accumulate_cm=None,
         emit_time_series=emit_time_series)
     from rfx.stepping.slab_ports import setup_ports
-    ctx = setup_ports(ctx, carry, inv, port_plan, layout, mesh, n_steps)
+    ctx = setup_ports(ctx, carry, inv, port_plan, layout, mesh, n_steps,
+                      port_table=tables['port_table'], port_owners=tables['port_owners'])
     if cpml:
         from rfx.stepping.slab_cpml import publish, import_state
         shell = SimpleNamespace(step_fn_inv=SimpleNamespace(context=ctx), invariants={}, carry_init={'cpml': psi})
@@ -584,8 +593,10 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
         carry['cpml'] = initial['cpml']  # type: ignore[misc, valid-type]  # mypy treats the rebound imported function as a type application; publish returned a dict.
         if cpml_state is not None:
             carry['cpml'] = import_state(cpml_state, psi, layout, native=True)
+    step: Any = make_graded_step(ctx)
+    step.port_owners = tables['port_owners']
     return SimpleNamespace(invariants=inv, carry_init=carry, src_waveforms=waves,
-                            step_fn_inv=make_graded_step(ctx),
+                            step_fn_inv=step,
                             materials_realized='whole_grid_host' if device is not None else 'per_slab',
                             materials_realized_reason=reason)
 

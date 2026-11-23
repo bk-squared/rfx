@@ -5,6 +5,7 @@ one process. Each call may leave compiled programs in JAX's caches, but no
 array of the lattice's size: before the fix a graded-mesh run with CPML left
 nine per call (0.65 GiB per call at 19 M cells), held by per-call closures
 that JAX keeps with a ``custom_jvp`` function.
+An odd lattice is unlikely to be shared by another test in the process.
 """
 import gc
 
@@ -15,7 +16,6 @@ import pytest
 
 from rfx import Simulation
 
-# An odd lattice no other test in the process is likely to share.
 DOMAIN = (.011, .013, .009)
 
 
@@ -173,6 +173,5 @@ def test_device_memory_is_flat_over_repeated_forward_calls_on_this_backend():
         gc.collect()
         used.append(jax.local_devices()[0].memory_stats()['bytes_in_use'])
     one_array = 4 * cells
-    # Before the fix each call kept nine such arrays.
     assert used[1] - used[0] <= one_array and used[2] - used[0] <= one_array, (used, one_array)
 

@@ -1,4 +1,6 @@
-"""Fail-closed evidence checks and isolated end-to-end selected-stage crashes."""
+"""Fail-closed evidence checks and isolated end-to-end selected-stage crashes.
+The fake sessions must not inherit the xdist worker identity because a fixture keys its collection on PYTEST_XDIST_WORKER.
+"""
 from __future__ import annotations
 
 import importlib.util
@@ -11,8 +13,6 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-# The gate runs this file inside an xdist worker; the fake sessions below must not
-# inherit that identity (a fixture here keys its collection on PYTEST_XDIST_WORKER).
 _BASE_ENV = {k: v for k, v in os.environ.items() if not k.startswith("PYTEST_XDIST")}
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -128,8 +128,9 @@ def test_nothing(tmp_path):
 
 
 def run_fragment(tmp_path, workers="2", fake=False, first=0, retry=0, kinds=None):
-    """Execute verbatim local.sh selected-stage fragment, never the entire gate."""
-    # Isolate even when the caller keeps temporary files inside this worktree.
+    """Execute verbatim local.sh selected-stage fragment, never the entire gate.
+    A temporary pytest.ini isolates fake sessions even when the caller keeps temporary files inside the worktree.
+    """
     (tmp_path / "pytest.ini").write_text("[pytest]\n")
     stage = (ROOT / "scripts/ci/local.sh").read_text().split("selected_tests=()", 1)[1]
     stage = "selected_tests=()" + stage.split('\necho\necho "all ', 1)[0]
@@ -221,7 +222,7 @@ def test_shell_nothing(tmp_path):
 
 
 def seven_files(tmp_path, failing, persistent):
-    # Reviewer run2.sh layout and timings; sentinel variant isolates lost coverage.
+    """The sentinel variant isolates lost coverage."""
     crash = 'os._exit(7)' if persistent else 'time.sleep(0.1); Path("crashed").touch(); os._exit(7)'
     condition = '"PYTEST_XDIST_WORKER" in os.environ'
     if not persistent:
@@ -260,7 +261,7 @@ def test_real_xdist_unrun_coverage(tmp_path, failing):
         successful = {(c.get("classname"), c.get("name")) for c in cases
                       if c.find("failure") is None and c.find("error") is None}
         records = list((tmp_path / "selected-collection").glob("*.json"))
-        assert len(records) == 2  # Both workers wrote collection before the crash.
+        assert len(records) == 2
         nodes = json.loads(records[0].read_text())
         assert len(successful) == 19
         assert {outcome.junit_key(n) for n in nodes} == successful
@@ -268,11 +269,11 @@ def test_real_xdist_unrun_coverage(tmp_path, failing):
 
 @pytest.mark.parametrize("failing", [True, False])
 def test_reviewer_verbatim_repeated_crash_fails(tmp_path, failing):
+    """Immediate os._exit can race xdist scheduling into exit 3 (fail closed)."""
     pytest.importorskip("xdist")
     seven_files(tmp_path, failing, persistent=True)
     result = run_fragment(tmp_path)
     assert result.returncode == 1, result.stdout + result.stderr
-    # Immediate os._exit can also race xdist scheduling into exit 3 (fail closed).
     retry = tmp_path / "retry-outcome.json"
     if retry.exists():
         assert json.loads(retry.read_text())["outcome"] != "PASS"
@@ -329,7 +330,6 @@ def test_collection_records_must_be_identical(tmp_path):
 @pytest.mark.parametrize("shrinks", [True, False], ids=["shrinking", "identical"])
 def test_real_xdist_retry_collection(tmp_path, shrinks):
     pytest.importorskip("xdist")
-    # Reviewer's envdep case: one crashed file, therefore its retry is serial.
     count = '3 if os.environ.get("PYTEST_XDIST_WORKER") else 1' if shrinks else '3'
     assertion = 'assert i == 0, "REAL FAILURE in a node only the first run collected"' if shrinks else 'pass'
     (tmp_path / "test_a.py").write_text(
@@ -380,7 +380,6 @@ def test_selection_cleanup_on_exit(tmp_path, status):
         assert "all 1 steps passed" in result.stdout
 
 
-# Frozen pytest 9.1.1 / xdist 3.8.0 output; provenance and reproduction in fixtures.
 REAL_REPORTS = ROOT / "tests/contracts/fixtures/gate_stage2"
 REAL_NODES = [
     "test_a.py::test_before", "test_a.py::test_crash", "test_a.py::test_after",

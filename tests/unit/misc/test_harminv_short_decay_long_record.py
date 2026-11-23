@@ -12,8 +12,8 @@ import numpy as np
 
 from rfx import GaussianPulse, Result
 
-_DT = 1.0209367720161057e-13  # the sheet oracle's realized dt
-_N = 120000                    # its record length
+_DT = 1.0209367720161057e-13
+_N = 120000
 _FREQ = 25.40e9
 _Q = 13.9
 _WAVEFORM = GaussianPulse(f0=29e9, bandwidth=0.6)

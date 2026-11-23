@@ -2,6 +2,7 @@
 
 No differences are classified here. Each entry uses a fresh public declaration.
 Only declarations, seam capture, freezing, and comparison are retained here.
+Importing slab_wrap binds its scan_loop default before capture() patches jax.lax.scan.
 """
 from contextlib import ExitStack
 from dataclasses import dataclass, fields, is_dataclass
@@ -18,12 +19,8 @@ import pytest
 
 from rfx import Simulation, Box, Sphere, PolylineWire, DebyePole, LorentzPole, drude_pole
 from rfx.boundaries.spec import Boundary, BoundarySpec
-from rfx.stepping import slab_wrap as _slab_wrap  # Bind scan defaults before capture guards.
+from rfx.stepping import slab_wrap as _slab_wrap
 
-# Every patched module/attribute is named here once. The contract passes this
-# table to capture, so a pipeline restructure changes its integration seams here.
-# run_after_admission moves only dispatch: these downstream lookup sites stay
-# in the same modules, so its extraction needs no SEAMS target substitution.
 SEAMS = {
     'scan': ('jax.lax', 'scan'),
     'uniform': ('rfx.simulation', 'run'),
@@ -44,8 +41,6 @@ PROBE = (.021, .012, .007)
 BOX_LO = (.0143, .0072, .0033)
 BOX_HI = (.0197, .0138, .0086)
 
-# Contract addendum 11: common arrays always compare; these sets govern
-# one-sided arrays only. Unknown one-sided roots require review.
 MEASUREMENT_ROOTS = {
     'time_series', 'dft_planes', 'dft_time_records', 'flux_monitors',
     'ntff_data', 'ntff_box', 's_params', 'freqs', 'freqs_hz',
@@ -111,7 +106,7 @@ def build_pw_a(path):
 
 
 def build_pw_b(path):
-    # tests/contracts/test_tfsf_boundary_override.py:45-50: methodB requires oblique incidence.
+    """Method B requires oblique incidence."""
     return base_scene(path, source=False).add_tfsf_source(method='methodB', angle_deg=20, polarization='ez')
 
 
@@ -121,6 +116,33 @@ def build_pw_oblique(path):
 
 def build_pw_closed(path):
     return base_scene(path, source=False).add_tfsf_source(closed_box=True)
+
+
+def build_plane_wave_companion(path, *, first=False, port=False, closed_box=True):
+    sim = base_scene(path, source=False)
+
+    def companion():
+        if port:
+            sim.add_port(SOURCE, 'ez', impedance=50.)
+        else:
+            sim.add_source(SOURCE, 'ez', amplitude_kind='current')
+
+    if first:
+        companion()
+    sim.add_tfsf_source(closed_box=closed_box)
+    if not first:
+        companion()
+    return sim
+
+
+def build_waveguide_soft_source(path, *, first=False):
+    sim = base_scene(path, source=False, boundary=BoundarySpec(x='cpml', y='pec', z='pec'))
+    if first:
+        sim.add_source(SOURCE, 'ez', amplitude_kind='current')
+    sim.add_waveguide_port(.006, f0=10e9, freqs=np.array([10e9]), probe_offset=3, ref_offset=2)
+    if not first:
+        sim.add_source(SOURCE, 'ez', amplitude_kind='current')
+    return sim
 
 
 def build_p_lumped(path):
@@ -140,7 +162,7 @@ def build_p_wire_driven(path):
 
 
 def build_p_wire_refplane(path):
-    # #2450: one opted-in port isolates the per-cell versus whole-port S frame.
+    """One opted-in port isolates the per-cell versus whole-port S frame."""
     if path != 'uniform':
         raise NotImplementedError('P-wire-refplane is supported only on uniform')
     from rfx.sources.sources import GaussianPulse
@@ -167,15 +189,10 @@ def build_p_wire_refplane(path):
 
 
 def build_p_coax(path):
-    # Arguments from tests/contracts/test_line_stub_refusal_1512.py:184.
     return base_scene(path).add_coaxial_port((.006, .006, .008), face='bottom', pin_length=.004)
 
 
 def build_p_msl(path):
-    # Layout: tests/unit/preflight/test_line_stub.py:278-289, strip starts at
-    # the port plane and reaches the domain end, over substrate and ground.
-    # Relative to base: x domain 30 -> 40 mm; substrate/ground added; strip
-    # x=6..40 mm, y=10..14 mm, z=3 mm. Base source/probe retained.
     sim = base_scene(path, domain=(.040, .020, .012))
     sim.add_material('sub', eps_r=2.2)
     sim.add(Box((0., 0., 0.), (.040, .020, .003)), material='sub')
@@ -188,21 +205,45 @@ def build_p_msl(path):
     return sim
 
 
+def build_p_msl_s(path):
+    sim = base_scene(path, source=False, domain=(.040, .020, .012))
+    sim.add_material('sub', eps_r=2.2)
+    sim.add(Box((0., 0., 0.), (.040, .020, .003)), material='sub')
+    sim.add(Box((0., 0., 0.), (.040, .020, 0.)), material='pec')
+    trace_z = sum(v * .001 for v in PROFILE[:3]) if path in ('graded', 'multi-device-graded') else 3 * .001
+    sim.add(Box((.006, (10 - .35) * .001, trace_z), (.040, (14 + .35) * .001, trace_z)), material='pec')
+    sim.add_msl_port(position=(.006, .012, 0.), width=.004, height=.003,
+                     direction='+x', impedance=50., eps_r_sub=2.2,
+                     n_probe_offset=3, n_probe_spacing=2, n_probes=3)
+    return sim
+
+
+def msl_noop_eps_override(sim, path):
+    import jax.numpy as jnp
+
+    if path == 'uniform':
+        grid = sim._build_grid()
+        materials = sim._assemble_materials(
+            grid, sheet_specs=[], pec_sheets=[], pec_wires=[])[0]
+    else:
+        grid = sim._build_nonuniform_grid()
+        materials = sim._assemble_materials_nu(
+            grid, sheet_specs=[], pec_sheets=[], pec_wires=[])[0]
+    return jnp.asarray(materials.eps_r)
+
+
 def build_p_waveguide(path):
-    # Replaces boundary with y/z PEC; full aperture (default ranges).
     return base_scene(path, source=False, boundary=BoundarySpec(x='cpml', y='pec', z='pec')).add_waveguide_port(
         .006, f0=10e9, freqs=np.array([10e9]), probe_offset=3, ref_offset=2)
 
 
 def build_p_waveguide_2mode(path):
-    # The P-waveguide port with a second mode; only compute_waveguide_s_matrix()
-    # drives the per-mode list, so run() and forward() refuse it (#2070).
+    """Only compute_waveguide_s_matrix() drives the per-mode list, so run() and forward() refuse a second mode."""
     return base_scene(path, source=False, boundary=BoundarySpec(x='cpml', y='pec', z='pec')).add_waveguide_port(
         .006, f0=10e9, freqs=np.array([10e9]), probe_offset=3, ref_offset=2, n_modes=2)
 
 
 def build_p_waveguide2(path):
-    # #2449: two driven waveguide ports expose run/forward admission disagreement.
     return build_p_waveguide(path).add_waveguide_port(
         .024, direction='-x', f0=10e9, freqs=np.array([10e9]), probe_offset=3, ref_offset=2)
 
@@ -214,8 +255,7 @@ def build_p_waveguide2_one_driven(path):
 
 
 def build_p_floquet(path):
-    # Port arguments imitate tests/contracts/boundary_cases.py:28.
-    # Replaces boundary with x/y periodic, as required by a z-normal Floquet port.
+    """A z-normal Floquet port requires x/y periodic boundaries."""
     return base_scene(path, boundary=BoundarySpec(x='periodic', y='periodic', z='cpml')).add_floquet_port(
         .003, freqs=np.array([10e9]), f0=10e9)
 
@@ -248,8 +288,6 @@ def build_m_lorentz(path):
 
 
 def build_m_drude(path):
-    # Public Drude form: lorentz_poles=[drude_pole(omega_p, gamma)].
-    # Imitates tests/contracts/path_equivalence/builders.py:74.
     return dielectric(path, lorentz_poles=[drude_pole(2 * np.pi * 5e9, 1e9)])
 
 
@@ -271,8 +309,6 @@ def build_c_film(path):
 
 
 def build_c_wire(path):
-    # Public thin-wire form: add(PolylineWire(..., radius=0), material='pec').
-    # Imitates tests/contracts/test_realized_geometry_record.py:330.
     return base_scene(path).add(PolylineWire(((.014, .012, .004), (.019, .012, .004)), radius=0.), material='pec')
 
 
@@ -281,7 +317,6 @@ def build_c_pinned(path):
 
 
 def build_c_smooth(path):
-    # Subpixel smoothing is an entry keyword (A6), not a constructor option.
     return dielectric(path)
 
 
@@ -327,8 +362,7 @@ def build_o_vector(path):
 
 
 def build_o_cm(path):
-    # rfx/current_moments.py:1014-1032: k*max_offset <= .5, including slab
-    # thickness. At 10 GHz use 1 mm blocks and a 3 mm slab (z=4..7 mm).
+    """At 10 GHz, 1 mm blocks and a 3 mm slab keep k*max_offset <= .5, including slab thickness."""
     return base_scene(path).add_current_moment_monitor((.006, .004, .004), (.025, .016, .007), .001, np.array([10e9]))
 
 
@@ -339,6 +373,14 @@ BUILDERS = {
     'B-asym': build_b_asym, 'B-closed': build_b_closed,
     'S-field': build_s_field, 'S-polarized': build_s_polarized,
     'PW-A': build_pw_a, 'PW-B': build_pw_b, 'PW-oblique': build_pw_oblique,
+    'PW-closed-soft-last': build_plane_wave_companion,
+    'PW-closed-soft-first': partial(build_plane_wave_companion, first=True),
+    'PW-port-last': partial(build_plane_wave_companion, port=True),
+    'PW-port-first': partial(build_plane_wave_companion, port=True, first=True),
+    'PW-slab-soft-last': partial(build_plane_wave_companion, closed_box=False),
+    'PW-slab-soft-first': partial(build_plane_wave_companion, closed_box=False, first=True),
+    'WG-soft-last': build_waveguide_soft_source,
+    'WG-soft-first': partial(build_waveguide_soft_source, first=True),
     'PW-closed': build_pw_closed, 'P-lumped': build_p_lumped,
     'P-lumped2': build_p_lumped2, 'P-wire': build_p_wire,
     'P-wire-driven': build_p_wire_driven,
@@ -373,9 +415,6 @@ class FrozenArray:
 def freeze(value, _active=None):
     """Freeze recursively; unsupported or cyclic values remain explicit markers."""
     if isinstance(value, jax.core.Tracer):
-        # Observe the primal through JAX's public callback API. The one-value
-        # sweep invokes this once with its element 0; AD supplies its primal.
-        # No tracer internals, replayed builder, or reconstructed model is used.
         observed = []
         jax.debug.callback(lambda item: observed.append(freeze(np.asarray(item))), value, ordered=True)
         jax.effects_barrier()
@@ -584,7 +623,6 @@ def capture(builder, entry, path, level, n_steps=150, *, entry_options=None, sea
     scan = original('scan')
     def forbid_step(*args, **kwargs):
         if path == 'uniform' and level == 'b' and 'ctx' in captured:
-            # Addendum 12: the drive table lives in xs, outside the ctx.
             scan_inputs = bound_arguments(scan, args, kwargs)
             captured['xs'] = freeze(scan_inputs['xs'])
             captured['init'] = freeze(scan_inputs['init'])
@@ -595,7 +633,6 @@ def capture(builder, entry, path, level, n_steps=150, *, entry_options=None, sea
         sim = builder(path)
         with ExitStack() as stack:
             install(stack, 'scan', forbid_step)
-            # Full-domain fallbacks use the same graded capture seams on both entries.
             capture_path = ('graded' if path == 'multi-device-graded'
                             and (sim._waveguide_ports or sim._tfsf is not None) else path)
             if level == 'a':
@@ -691,8 +728,6 @@ def observables(result):
                     read_attribute(value, name, f'{path}/{name}' if path else str(name))
         finally:
             active.remove(id(value))
-    # Enumerate the result's full public attribute surface, including class
-    # attributes and computed properties. Reading each attribute is isolated.
     for name in dir(result):
         if not name.startswith('_'):
             read_attribute(result, name, name)
@@ -789,13 +824,11 @@ DRIVER_OPTIONS = {
 
 
 def normalize_inputs(value, path, location=()):
-    """Only C2(b,c) and the path-specific addendum normalizations."""
+    """Only C2(b,c) and the path-specific addendum normalizations.
+    Grid-array identities do not represent physical inputs."""
     if isinstance(value, dict):
         return {key: normalize_inputs(item, path, location + (key,))
                 for key, item in value.items()
-                # grid_key caches ids of grid arrays, not physical inputs. The
-                # attached plan names its entry and availability per entry; its
-                # run/forward equality is test_measurement_plan_attachment's.
                 if key != 'grid_key' and location + (key,) != ('arguments', 'measurement') and not (
                     path == 'multi-device-graded' and location == ('arguments',)
                     and key in DRIVER_OPTIONS)}
@@ -814,7 +847,6 @@ def l2_differences(comparison):
         if root in MEASUREMENT_ROOTS:
             failures.append(dict(path=name, **sides))
         elif root not in PACKAGING_ROOTS:
-            # A known-row xfail must never hide an unclassified root.
             raise CaptureFailure(f'unclassified one-sided observable: {name}')
     return failures
 
@@ -858,9 +890,6 @@ def port_drive_witness_leaves(sim, run, forward):
     row_index, run_row = run_rows[0]
     forward_row = forward_rows[0]
     assert 'per_drive' not in expected
-    # (d) Top-level record selection, each side by its definition: run's S
-    # comes from its separate drives, so its main-record port records are
-    # skipped as unread; forward scores them (decision C).
     assert actual.get('run_records_scored') is True and 'run_records_scored' not in expected
     assert actual['scored_port_record_ids'] == [] and expected['scored_port_record_ids'] == port_ids
     assert [(row['id'], row['reason']) for row in actual['skipped_port_records']] == [
@@ -868,11 +897,9 @@ def port_drive_witness_leaves(sim, run, forward):
     assert expected['skipped_port_records'] == []
     assert all('per_drive' not in row for row in expected['runs'])
     leaves = []
-    # The top level repeats per_drive only when the S row is the worst row.
     places = ((('settling_witness', actual),) if 'per_drive' in actual else ()) + (
         (f'settling_witness/runs/{row_index}', run_row),)
     for prefix, witness in places:
-        # (a) One witness per impedance port, indexed in declaration order.
         assert len(witness['per_drive']) == len(ports), prefix
         for column, ((_, port), port_id, drive) in enumerate(
                 zip(ports, port_ids, witness['per_drive'], strict=True)):
@@ -880,16 +907,13 @@ def port_drive_witness_leaves(sim, run, forward):
             assert drive['route'] == 's_channels', (location, port_id)
             assert drive['scored_port_record_ids'] == port_ids, (location, port_id)
             if port.excite:
-                # (b) Compare the port-record row, not the probe aggregate.
                 shared = drive.keys() & forward_row.keys()
                 assert {'db', 'status', 'error_per_bin', 'share_per_bin'} <= shared, (location, shared)
                 for key in shared:
                     _assert_same_witness_value(drive[key], forward_row[key],
                                                f'{location}/{key}: {port_id}')
             else:
-                # (c) This ordinal is the passive port's run-only drive.
                 assert np.isnan(np.asarray(forward.s_params)[:, column]).all()
-            # Both stored representations must retain the same drive fields.
             if witness is run_row and 'per_drive' in actual:
                 assert drive.keys() == actual['per_drive'][column].keys(), location
                 for key in drive:
@@ -900,22 +924,17 @@ def port_drive_witness_leaves(sim, run, forward):
 
 
 def port_s_pair(declaration, path, *, n_steps=150):
-    """Equal bin requests; run is the independent reference for measured columns."""
+    """Equal bin requests; run is the independent reference for measured columns.
+    Independent drive solves make columns of non-excited ports run-only."""
     sim = BUILDERS[declaration](path)
-    # One record gives one driven column; independent drive solves make
-    # columns of non-excited ports run-only BY CONSTRUCTION.
     RUN_ONLY_PORT_COLUMNS = tuple(k for k, port in enumerate(
         pe for pe in sim._ports if pe.impedance != 0) if not port.excite)
     if path == 'multi-device-graded' and RUN_ONLY_PORT_COLUMNS:
-        # Stated fact: graded run() forms a passive port's column only on one
-        # device (one drive per port); on several it refuses that request by name.
         with pytest.raises(NotImplementedError, match='needs a drive of its own'):
             invoke(sim, 'run', path, n_steps, dict(compute_s_params=True))
         return {'run': {'outcome': 'refused'}, 'forward': {'outcome': 'not compared'}}
     run = invoke(sim, 'run', path, n_steps)
     if run.s_params is None:
-        # A default run() that forms no S (two driven ports, a plain source,
-        # periodic axes): equal explicit requests still read one S path.
         freqs = np.array([2e9, 5e9, 8e9])
         explicit = invoke(sim, 'run', path, n_steps,
                           dict(compute_s_params=True, s_param_freqs=freqs))
@@ -935,3 +954,35 @@ def port_s_pair(declaration, path, *, n_steps=150):
         assert np.isnan(actual[:, column]).all()
     return {'run': {'outcome': 'admitted', 'result': run},
             'forward': {'outcome': 'admitted', 'result': forward}}
+
+
+def build_s_request_declaration(path, *, kind):
+    """Explicit S declarations, independently of fields-only companion scenes."""
+    if kind == 'soft':
+        return BUILDERS['S-field'](path)
+    if kind == 'plane-soft':
+        sim = base_scene(path, source=False)
+        sim.add_tfsf_source(closed_box=True)
+        sim.add_source(SOURCE, 'ez')
+        return sim
+    if kind == 'soft-plane':
+        sim = base_scene(path, source=False)
+        sim.add_source(SOURCE, 'ez')
+        sim.add_tfsf_source(closed_box=True)
+        return sim
+    if kind in ('msl', 'msl-only'):
+        from tests.unit.sparams.test_mixed_port_sparam import _base_sim, _add_feed, _add_msl
+        sim, y_c = _base_sim()
+        if kind == 'msl':
+            _add_feed(sim, y_c)
+        _add_msl(sim, y_c)
+        return sim
+    assert kind == 'floquet'
+    sim = base_scene(path, source=False, boundary=BoundarySpec(x='periodic', y='periodic', z='cpml'))
+    sim.add_floquet_port(.003, freqs=np.array([10e9]), f0=10e9)
+    sim.add_port(SOURCE, 'ez', impedance=50.)
+    return sim
+
+
+S_REQUEST_BUILDERS = {kind: partial(build_s_request_declaration, kind=kind)
+                      for kind in ('soft', 'plane-soft', 'soft-plane', 'msl-only', 'msl', 'floquet')}

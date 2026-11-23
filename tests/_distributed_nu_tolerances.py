@@ -33,6 +33,7 @@ Class E — Structural / composition assertions
     Used for API-contract tests (raises correct exception) and bit-match
     checkpoint tests.  No numeric threshold; assertion is exact equality or
     exception type.
+The 5% energy conservation bound catches dissipative bugs in seam exchange or accidental double-application of PEC at a slab boundary.
 """
 
 from __future__ import annotations
@@ -42,9 +43,6 @@ from typing import Sequence
 import jax.numpy as jnp
 import numpy as np
 
-# ---------------------------------------------------------------------------
-# Class A — gradient parity
-# ---------------------------------------------------------------------------
 
 RTOL_A: float = 1e-6
 """Relative tolerance for float32 gradient parity (Class A)."""
@@ -95,9 +93,6 @@ def assert_class_a_grad_seam(
     )
 
 
-# ---------------------------------------------------------------------------
-# Class B — forward probe parity
-# ---------------------------------------------------------------------------
 
 RTOL_PROBE_B: float = 5e-5
 """Relative tolerance for the final-step probe value (Class B)."""
@@ -126,7 +121,6 @@ def assert_class_b_parity(
     ts_dist = jnp.asarray(ts_dist)
     tag = f" [{label}]" if label else ""
 
-    # Final-step check
     final_single = ts_single[-1]
     final_dist = ts_dist[-1]
     rel_final = float(
@@ -137,7 +131,6 @@ def assert_class_b_parity(
         f"rel_err={rel_final:.3e} >= {RTOL_PROBE_B:.3e}"
     )
 
-    # Time-integrated energy check
     energy_single = float(jnp.sum(ts_single ** 2))
     energy_dist = float(jnp.sum(ts_dist ** 2))
     rel_energy = abs(energy_dist - energy_single) / (abs(energy_single) + 1e-30)
@@ -147,9 +140,6 @@ def assert_class_b_parity(
     )
 
 
-# ---------------------------------------------------------------------------
-# Class C — CPML internal-state structural assertion
-# ---------------------------------------------------------------------------
 
 CPML_X_FACE_PSI_FIELDS: tuple[str, ...] = (
     "psi_ey_xlo", "psi_ey_xhi",
@@ -187,9 +177,6 @@ def assert_class_c_cpml_seam_noop(cpml_state, label: str = "") -> None:
         )
 
 
-# ---------------------------------------------------------------------------
-# Class D — Debye/Lorentz drift sweep
-# ---------------------------------------------------------------------------
 
 RTOL_DRIFT_D: float = 5e-4
 """Relative tolerance for Debye/Lorentz drift at each checked time point (Class D)."""
@@ -256,9 +243,6 @@ def assert_class_d_timeseries_drift(
     )
 
 
-# ---------------------------------------------------------------------------
-# Class E — structural / composition (no numeric threshold)
-# ---------------------------------------------------------------------------
 
 def assert_class_e_raises(exc_type, fn, *args, label: str = "", **kwargs) -> None:
     """Assert that calling fn(*args, **kwargs) raises exc_type.
@@ -297,32 +281,6 @@ def assert_class_e_bit_match(
     )
 
 
-# ---------------------------------------------------------------------------
-# Class F — absolute-physics validation (analytic / first-principles)
-# ---------------------------------------------------------------------------
-#
-# Class F is the "absolute" tier of the distributed-NU tolerance contract.
-# Where Classes A-E compare distributed against single-device (parity), Class
-# F compares distributed against an analytic/first-principles reference, so
-# it catches common-origin bugs that pure parity tests cannot see (e.g. a
-# numerical error reproduced by both single-device and distributed because
-# they share a helper, or a slab-boundary-specific construction that has no
-# single-device counterpart).
-#
-# Two sub-tolerances live here:
-#
-#   * ``RTOL_ANALYTIC_F`` — discretisation tolerance for an FDTD-vs-analytic
-#     resonance frequency check at ~10 cells per wavelength.  5% is the
-#     standard textbook bound for a Yee scheme at this resolution; tighter
-#     would require finer meshing or a larger run budget than the kernel
-#     test suite can afford on a CPU virtual cluster.
-#
-#   * ``RTOL_ENERGY_DRIFT_F`` — energy conservation tolerance for a closed
-#     PEC cavity over the test horizon (a few hundred steps after the
-#     source switches off).  Pure FDTD on a hard-PEC box is essentially
-#     lossless; well-formed runs sit comfortably under 1%.  5% is the
-#     generous bound that catches dissipative bugs in seam exchange or
-#     accidental double-application of PEC at a slab boundary.
 
 RTOL_ANALYTIC_F: float = 0.05
 """Relative tolerance for FDTD-vs-analytic resonance frequency (Class F)."""

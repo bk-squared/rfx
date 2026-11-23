@@ -13,20 +13,17 @@ METHOD = "compute_waveguide_s_matrix"
 
 
 def _simulation():
-    # One-period uniform waveguide: the dispatch suite's cheapest real solve.
     return build(np.linspace(4e9, 6e9, 6), dx=2e-3, cpml=8,
                  boundary={"x": "cpml", "y": "pec", "z": "pec"})
 
 
 def _record_all_except_dependency_deprecation():
     warnings.simplefilter("always")
-    # Lazy solver import emits this independent JAX API migration warning.
     warnings.filterwarnings("ignore", message=r"jax\.experimental\.shard_map is deprecated.*",
                             category=DeprecationWarning)
 
 
 def _deprecations(record):
-    # Only the alias's own warning: another library's deprecation on the solve path is not counted.
     return [w for w in record if issubclass(w.category, DeprecationWarning) and "lane=" in str(w.message)]
 
 
@@ -86,7 +83,7 @@ def test_invalid_method_names_method(entry):
 
 @pytest.mark.parametrize("entry", ["compute_s_matrix", "s_matrix_lane"])
 def test_alias_value_is_not_ignored(entry):
-    # Auto-selection would accept this registration; the explicit mismatch must fail.
+    assert _simulation().s_matrix_lane() == METHOD, "Waveguide registration must auto-select the expected method"
     with pytest.warns(DeprecationWarning, match="method=") as record:
         with pytest.raises(ValueError, match="method=.*contradicts the registrations"):
             getattr(_simulation(), entry)(lane="compute_coaxial_two_port")

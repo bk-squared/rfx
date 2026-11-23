@@ -1,4 +1,9 @@
-"""Device operands pinned to the pre-table stepping signatures and pad writes."""
+"""Device operands pinned to the pre-table stepping signatures and pad writes.
+
+The tensor operands the base passed as separate step kwargs (aniso_eps,
+aniso_inv_eps, conformal_weights) arrive attached to the model as
+materials.components.tensor; the renaming table is _ATTACHED.
+"""
 
 from dataclasses import fields, is_dataclass
 import numpy as np
@@ -27,6 +32,24 @@ LANES = (
 )
 
 
+_TENSOR = "materials.components.tensor"
+
+_ATTACHED = (
+    ("aniso_eps.diagonal.", f"{_TENSOR}.eps."),
+    ("aniso_eps.nodes.", f"{_TENSOR}.node_smoothing."),
+    ("aniso_eps.", f"{_TENSOR}.eps."),
+    ("aniso_inv_eps.", f"{_TENSOR}.inv_eps."),
+    ("conformal_weights.", f"{_TENSOR}.conformal_weights."),
+)
+
+
+def _attached_name(key):
+    for old, new in _ATTACHED:
+        if key.startswith(old):
+            return new + key[len(old):]
+    return key
+
+
 def arrays(value, path=""):
     if isinstance(value, (jax.Array, np.ndarray, jax.core.Tracer)):
         return {path: (tuple(value.shape), str(value.dtype))}
@@ -49,20 +72,16 @@ def arrays(value, path=""):
 
 @pytest.mark.parametrize("lane", LANES)
 def test_device_material_arrays_match_base(lane, monkeypatch):
+    """The graded slab's x extent is ceil(11/2) + three ghosts in (rank, x, y, z) order."""
     from rfx.stepping import prepared
 
-    # cb4cd5c16: uniform/graded take (grid, MaterialArrays, n_steps);
-    # slab takes sharded_materials, graded slab takes it positionally;
-    # subgrid takes coarse/fine.
-    # MaterialArrays and ComponentMaterials below are written out from that
-    # commit, never derived from the current product or an assembly helper.
     shape = (15, 15, 15) if lane == "cpml" else (11, 11, 11)
     if lane in ("distributed_v2_run", "distributed_v2_forward"):
-        shape = (11, 11, 11)  # whole-domain inputs to prepare_uniform
+        shape = (11, 11, 11)
     elif lane == "distributed_v2_tfsf":
-        shape = (15, 15, 15)  # whole-domain CPML inputs to prepare_uniform
+        shape = (15, 15, 15)
     elif lane.startswith("distributed_nu"):
-        shape = (2, 9, 11, 11)  # rank, ceil(11/2) + three ghosts, y, z
+        shape = (2, 9, 11, 11)
     expected = {}
     for prefix, size in [("materials", shape)] + (
         [("fine", (21, 21, 13))] if lane == "subgridded" else []
@@ -121,6 +140,7 @@ def test_device_material_arrays_match_base(lane, monkeypatch):
             }
         )
         expected["aniso_eps.nodes.guard_count"] = ((), "int32")
+    expected = {_attached_name(key): value for key, value in expected.items()}
     calls = []
     orig = prepared.advance
 
@@ -136,8 +156,7 @@ def test_device_material_arrays_match_base(lane, monkeypatch):
                 mats = {"materials": args[1]}
                 if lane == "subgridded":
                     mats["fine"] = args[2]
-            # The base stepping signatures pass these tensor operands separately.
-            mats.update(
+            separate = arrays(
                 {
                     name: kwargs[name]
                     for name in ("aniso_eps", "aniso_inv_eps", "conformal_weights")
@@ -145,6 +164,9 @@ def test_device_material_arrays_match_base(lane, monkeypatch):
                 }
             )
             observed = arrays(mats)
+            attached = [k for k in observed if k.startswith(_TENSOR + ".")]
+            assert not (separate and attached), (lane, separate, attached)
+            observed.update(separate)
             assert observed == expected, (lane, observed)
             calls.append(observed)
             return stepper(*args, **kwargs)
@@ -218,7 +240,8 @@ def test_device_material_arrays_match_base(lane, monkeypatch):
 
 
 def test_pad_device_array_updates_match_base(monkeypatch):
-    """Also catch throwaway device arrays that never reach the stepping call."""
+    """Also catch throwaway device arrays that never reach the stepping call.
+    The frozen baseline copies three float32 material arrays per axis with one low-pad write and two high writes (boundary + pad)."""
     from jax._src.numpy.array_methods import _IndexUpdateRef
     import rfx.model.materials as assembly
 
@@ -248,6 +271,4 @@ def test_pad_device_array_updates_match_base(monkeypatch):
     sim.add_material("glass", eps_r=2.0)
     sim.add(Box((0.0, 0.002, 0.002), (0.01, 0.006, 0.006)), material="glass")
     sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
-    # Base copies three float32 material arrays: for each axis, one low pad
-    # write and two high writes (boundary + pad). No dispersion in this scene.
     assert writes == [((15, 15, 15), "float32")] * (3 * (1 + 2) * 3)

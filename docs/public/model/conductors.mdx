@@ -165,9 +165,9 @@ for bit, as the same metal drawn with `add_pinned_sheet`
 (`tests/contracts/test_pinned_sheet_layout.py::test_declared_layout_bytes`), so
 one compile serves a search over layouts. It is a switch, not a sensitivity:
 values between 0 and 1 are refused, and a gradient with respect to it raises
-`TypeError`. Other solver paths refuse it, and so does a port, source, lumped
-element, surface-impedance sheet, microstrip feed or plane wave on a switched
-sheet.
+`TypeError`. Other solver paths refuse it, and so does a port, source,
+surface-impedance sheet, microstrip feed or plane wave on a switched sheet.
+A lumped element on a switched sheet keeps its edge free, with a warning.
 
 ### Gaps between conductors
 
@@ -248,6 +248,11 @@ board.add(Box((XY_LO, XY_LO, Z_GND), (XY_HI, XY_HI, Z_GND + H_SUB)),
 board.add_thin_conductor(Box((XY_LO, XY_LO, Z_GND), (XY_HI, XY_HI, Z_GND)))
 board.fidelity_report()
 ```
+
+<figure data-rfx="media">
+  <img src="/rfx/model/assets/conductors/board.png" loading="lazy" alt="Section through a board inside absorber: a thin foil on the bottom face of a laminate layer, reaching very slightly past the laminate at both ends." />
+  <figcaption>The board this code builds, cut at y = 19.97 mm: the laminate fills z = 3.935 to 4.722 mm, and the foil lies on the node plane at the laminate's bottom face. The foil's last nodes are on the laminate's end faces, and the figure extends it 0.35 cell (0.069 mm) beyond them, because rfx takes a sheet's free edge to lie that far past its last node.</figcaption>
+</figure>
 
 The report has no findings. The z rows read:
 

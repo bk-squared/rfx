@@ -60,24 +60,6 @@ def test_one_sample_faces_retain_legacy_coefficient_convention(budget: int) -> N
             np.testing.assert_array_equal(getattr(electric, name), getattr(magnetic, name))
 
 
-# --------------------------------------------------------------------------
-# Falsifiers for the mirror tests above (independent review, 2026-09-14).
-#
-# The mirror tests discriminate STAGGERING but not absorber ORIENTATION: an
-# in-memory swap of the lo/hi magnetic pair reverses the grading and still
-# passes all three physical mirrors with residual exactly 0, because swapping
-# a mirror-consistent pair is itself mirror-consistent. The mirror must
-# therefore not be the only gate on the magnetic profiles. The three tests
-# below close that: an absolute orientation pin on the profiles themselves,
-# a swap falsifier on the field correction, and two mirror arms that actually
-# exercise b's memory term and nontrivial kappa grading (the original arms
-# start from psi = 0 and run at kappa_max = 1, so neither was reached).
-# --------------------------------------------------------------------------
-
-# Leading psi axis is always the face's own axis, so the mirror is a flip
-# along axis 0 whatever the trailing permutation is. Names follow the
-# component the mirror tests read: magnetic axis a drives h[(a+1) % 3],
-# electric axis a drives e[(a+2) % 3].
 _MAGNETIC_PSI = {
     0: ("psi_hy_xlo", "psi_hy_xhi"),
     1: ("psi_hz_ylo", "psi_hz_yhi"),
@@ -147,10 +129,11 @@ def _mirror_consistent_psi(auxiliary, axis: int, magnetic: bool, seed: int):
     H carry is antisymmetric under i -> depth-2-i (its last sample lands on
     the excluded global index N-1); the E carry is symmetric under
     i -> depth-1-i.
+
+    The innermost lo sample (global index depth-1) mirrors to a node no face buffer covers, and the innermost hi sample lands on the excluded global index N-1.
     """
     lo_name, hi_name = (_MAGNETIC_PSI if magnetic else _ELECTRIC_PSI)[axis]
     template = np.asarray(getattr(auxiliary, lo_name))
-    # Seed in the fixture's original layout, then restore field axis order.
     component_axis = "xyz".index(lo_name.split("_")[1][1])
     order = [axis, component_axis]
     order += [i for i in range(3) if i not in order]
@@ -159,10 +142,6 @@ def _mirror_consistent_psi(auxiliary, axis: int, magnetic: bool, seed: int):
     lo = rng.standard_normal(template.shape).astype(template.dtype)
     hi = np.zeros_like(lo)
     if magnetic:
-        # depth-1 pairs with depth-2-j; the innermost lo sample (global
-        # index depth-1) mirrors to a node no face buffer covers, and the
-        # innermost hi sample lands on the excluded global index N-1. Both
-        # are zeroed so the arm asserts the mirror, not a coincidence.
         lo[-1] = 0.0
         hi[:-1] = -np.flip(lo[:-1], axis=0)
     else:
@@ -182,31 +161,26 @@ def test_magnetic_profiles_pin_the_absorber_orientation(axis_name: str) -> None:
     absolute pin. Every value here is derived from ``n``, and the two scales
     (sigma_max, the alpha slope) are read off the E profile this change
     leaves bit-identical -- nothing is pasted from a previous run.
+
+    H samples the E grading half a cell further into the domain on the lo face, and half a cell further out before the hi-face reversal.
     """
     grid = _stagger_grid()
     params, _ = init_cpml(grid)
     assert params.magnetic is not None
     n = grid.cpml_layers
     index = np.arange(n, dtype=np.float64)
-    # H samples the E grading half a cell further into the domain on the lo
-    # face, and half a cell further out before the hi-face reversal.
     rho_lo = np.clip((n - 1 - index - 0.5) / (n - 1), 0.0, 1.0)
     rho_hi = np.clip((index + 0.5) / (n - 1), 0.0, 1.0)
 
     electric_lo = getattr(params, f"{axis_name}_lo")
     magnetic_lo = getattr(params.magnetic, f"{axis_name}_lo")
     magnetic_hi = getattr(params.magnetic, f"{axis_name}_hi")
-    # alpha = alpha_slope * (1 - rho) is linear, so it recovers rho without
-    # assuming the grading order. Both scales come from the E profile: its
-    # lo face runs rho = 1 at index 0 down to rho = 0 at index n-1.
     sigma_max = float(np.asarray(electric_lo.sigma)[0])
     alpha_slope = float(np.asarray(electric_lo.alpha)[-1])
     assert sigma_max > 0 and alpha_slope > 0
     measured_lo = 1.0 - np.asarray(magnetic_lo.alpha, dtype=np.float64) / alpha_slope
     measured_hi = 1.0 - np.asarray(magnetic_hi.alpha, dtype=np.float64) / alpha_slope
 
-    # The four endpoints, each derived from n (n = 12 -> 0.9545454..., 0,
-    # 0.0454545..., 1). A reversed pair fails all four.
     assert measured_lo[0] == pytest.approx((n - 1.5) / (n - 1), rel=1e-6)
     assert measured_lo[-1] == pytest.approx(0.0, abs=1e-6)
     assert measured_hi[0] == pytest.approx(0.5 / (n - 1), rel=1e-6)
@@ -214,8 +188,6 @@ def test_magnetic_profiles_pin_the_absorber_orientation(axis_name: str) -> None:
     np.testing.assert_allclose(measured_lo, rho_lo, rtol=1e-6, atol=1e-7)
     np.testing.assert_allclose(measured_hi, rho_hi, rtol=1e-6, atol=1e-7)
 
-    # sigma follows the same rho. The grading order is not pasted either: it
-    # is the exponent the untouched E profile already obeys.
     rho_electric = 1.0 - index / (n - 1)
     order = int(round(float(np.log(
         np.asarray(electric_lo.sigma, dtype=np.float64)[1] / sigma_max,
@@ -232,7 +204,6 @@ def test_magnetic_profiles_pin_the_absorber_orientation(axis_name: str) -> None:
         np.asarray(magnetic_hi.sigma, dtype=np.float64),
         sigma_max * rho_hi**order, rtol=1e-6, atol=1e-12,
     )
-    # Direction, stated once without reference to any mirror.
     assert np.all(np.diff(np.asarray(magnetic_lo.sigma)) < 0)
     assert np.all(np.diff(np.asarray(magnetic_hi.sigma)) > 0)
 
@@ -246,6 +217,8 @@ def test_swapped_magnetic_face_pair_passes_the_mirror_but_moves_the_field(axis: 
     pair still satisfies the physical H mirror exactly, because a swapped
     mirror-consistent pair is mirror-consistent. What DOES move is the
     field: the correction at the outer lo-face layer is a different number.
+
+    The 100x bound is loose on purpose: the claim is the direction, not the ratio (measured 0.0014300662 vs 4.6407476e-07 A/m, ratio ~3.1e3, on all three axes).
     """
     grid = _stagger_grid()
     params, auxiliary = init_cpml(grid)
@@ -257,36 +230,22 @@ def test_swapped_magnetic_face_pair_passes_the_mirror_but_moves_the_field(axis: 
         f"{face}_hi": getattr(magnetic, f"{face}_lo"),
     }))
 
-    # offset=1 so the forward difference reaches absorber layer 0.
+    OUTERMOST_LAYER_SOURCE_OFFSET = 1
     correct, correct_mirror = _one_update_mirror(
-        grid, params, auxiliary, axis, True, offset=1)
+        grid, params, auxiliary, axis, True, offset=OUTERMOST_LAYER_SOURCE_OFFSET)
     reversed_, reversed_mirror = _one_update_mirror(
-        grid, swapped, auxiliary, axis, True, offset=1)
-    # The blind spot, asserted rather than described: both pass the mirror.
+        grid, swapped, auxiliary, axis, True, offset=OUTERMOST_LAYER_SOURCE_OFFSET)
     np.testing.assert_allclose(correct, correct_mirror, rtol=1e-6, atol=0)
     np.testing.assert_allclose(reversed_, reversed_mirror, rtol=1e-6, atol=0)
 
     outer_correct = np.take(correct, [0], axis=axis)
     outer_reversed = np.take(reversed_, [0], axis=axis)
     assert np.any(outer_correct != 0)
-    # The falsifier: a reversed absorber is a different operator at the
-    # outermost layer, and the difference is not a rounding artefact.
     residual = float(np.max(np.abs(outer_correct - outer_reversed)))
     assert residual > 0.0
-    # Direction, not merely difference. The correct orientation puts the
-    # strongest grading on the outermost layer, so its correction there is
-    # the larger one by orders of magnitude (measured 0.0014300662 vs
-    # 4.6407476e-07 A/m, ratio ~3.1e3, on all three axes). The 100x bound
-    # is loose on purpose: the claim is the direction, not the ratio.
     assert float(np.max(np.abs(outer_correct))) > 100.0 * float(
         np.max(np.abs(outer_reversed)))
 
-    # The same falsifier on the fixture the mirror tests themselves use
-    # (offset 6, which drives layers 5 and 6, not layer 0): the peak
-    # correction over the whole component moves 0.0005091045 -> 0.0007448532
-    # A/m under the swap while the mirror residual stays exactly 0. This is
-    # the reviewer's own measurement, reproduced here so the blind spot is
-    # pinned at the geometry where it was found.
     default_correct, _ = _one_update_mirror(grid, params, auxiliary, axis, True)
     default_reversed, default_mirror = _one_update_mirror(
         grid, swapped, auxiliary, axis, True)
@@ -314,13 +273,11 @@ def test_physical_mirror_holds_with_memory_and_kappa_grading(
     kappa_max = 3.0 if arm == "kappa" else None
     params, auxiliary = init_cpml(grid, kappa_max=kappa_max)
     assert params.magnetic is not None
-    # The profile this arm actually exercises: H reads .magnetic, E does not.
     profile = getattr(params.magnetic if magnetic else params, "xyz"[axis] + "_lo")
     if arm == "memory":
         auxiliary = _mirror_consistent_psi(auxiliary, axis, magnetic, seed=20260914)
         carry = getattr(auxiliary, (_MAGNETIC_PSI if magnetic else _ELECTRIC_PSI)[axis][0])
         assert float(np.max(np.abs(np.asarray(carry)))) > 0
-        # b actually multiplies something: the memory term is live.
         b = np.asarray(profile.b)
         assert np.all(b > 0) and np.any(b < 1)
     else:

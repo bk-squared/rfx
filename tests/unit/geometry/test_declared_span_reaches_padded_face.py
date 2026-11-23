@@ -23,10 +23,6 @@ import pytest
 from rfx import Box, Cylinder, Simulation
 from rfx.geometry.rasterize_grid import PadFillShortfall
 
-#: The #1070 rig: RO4003C at h = 0.787 mm, dx = h/4, cpml_layers 8. +10h
-#: makes plain ceil invent a cell beyond x = 232*dx. With the #1138 band,
-#: +8h/+12h also lose two nodes at a hi face under the old sizing; the
-#: harmless-round-up test below moves its faces half a cell off the nodes.
 H = 0.787e-3
 DX = H / 4.0
 EPS_R = 3.38
@@ -34,6 +30,7 @@ CPML = 8
 
 
 def _rig(pad_h: float = 10, *, hi_shrink_cells: float = 0.0, cylinder: bool = False):
+    """The flat cylinder end keeps the shortfall outside the Box domain-face rule."""
     dom_x = 38 * H + 2 * (pad_h * H)
     dom_y = 23 * H + 2 * (pad_h * H)
     dom_z = 16 * H
@@ -41,7 +38,6 @@ def _rig(pad_h: float = 10, *, hi_shrink_cells: float = 0.0, cylinder: bool = Fa
                      boundary="cpml", cpml_layers=CPML)
     sim.add_material("ro4003c", eps_r=EPS_R, sigma=0.0)
     box_hi_x = dom_x - hi_shrink_cells * DX
-    # The flat cylinder end keeps the shortfall outside the Box domain-face rule.
     shape = (Cylinder((dom_x / 2, dom_y / 2, 7 * H), H, dom_x, axis="x")
              if cylinder else Box((0.0, 0.0, 6 * H), (box_hi_x, dom_y, 8 * H)))
     sim.add(shape, material="ro4003c")
@@ -54,7 +50,7 @@ def _size_by_plain_ceil(monkeypatch) -> None:
 
     monkeypatch.setattr(grid_mod, "cells_spanning",
                         lambda length, dx, **kw: int(math.ceil(length / dx)))
-    monkeypatch.setattr(grid_mod, "realized_cells",  # wall axes too (#1887)
+    monkeypatch.setattr(grid_mod, "realized_cells",
                         lambda length, dx, kind: int(math.ceil(length / dx)))
 
 
@@ -118,7 +114,6 @@ def test_the_pad_values_that_lose_only_one_node_stay_silent(
         grid, include_cpml_pad_extension=False)[0].eps_r)
     for axis in (0, 1):
         face = sim._geometry[0].shape.corner_hi[axis]
-        # Ceil adds a partial cell; its face is well outside the 1e-9 band.
         fractional_cell = face / DX - math.floor(face / DX)
         assert 1e-9 < fractional_cell < 1 - 1e-9
         others = tuple(a for a in range(3) if a != axis)
@@ -198,7 +193,6 @@ def test_the_check_is_skipped_where_no_pad_will_be_filled(monkeypatch) -> None:
     sim._assemble_materials(grid)
 
 
-# --- PEC entries are not asked the question (review of PR #1136, C) --------
 
 def _pec_rig(monkeypatch, *, sheet: bool):
     """The defective sizing, with the domain-spanning body declared PEC.
@@ -242,7 +236,6 @@ def test_the_same_body_as_a_dielectric_is_still_reported(monkeypatch) -> None:
         sim._assemble_materials(sim._build_grid())
 
 
-# --- the audit path reports instead of raising (review of PR #1136, A) -----
 
 def test_fidelity_report_names_the_shortfall_instead_of_raising(
         monkeypatch) -> None:
@@ -278,7 +271,6 @@ def test_pad_fill_shortfall_is_a_value_error() -> None:
     assert issubclass(PadFillShortfall, ValueError)
 
 
-# --- the two pad predicates differ on purpose (review of PR #1136, B) ------
 
 def test_the_smoothing_lane_continues_a_corner_at_the_declared_face(monkeypatch) -> None:
     """Smoothing continues the Box; the material guard still rejects a cylinder."""
@@ -332,7 +324,6 @@ def test_a_lo_face_shortfall_is_silent_and_that_is_the_documented_scope(
             material="ro4003c")
     grid = sim._build_grid()
 
-    # The gap is real and it is five nodes wide, measured rather than assumed.
     raw = np.asarray(sim._assemble_materials(
         grid, include_cpml_pad_extension=False)[0].eps_r)
     k = raw.shape[2] // 2
@@ -350,10 +341,8 @@ def test_a_lo_face_shortfall_is_silent_and_that_is_the_documented_scope(
             break
     assert lead == 5, lead
 
-    # Silent, with the full assembly and the pad extension on.
     sim._assemble_materials(grid)
 
-    # The Box reaches the hi face; the cylinder retains the two-node shortfall.
     _assert_box_reaches_realized_face(_rig(10))
     cylinder = _rig(10, cylinder=True)
     with pytest.raises(PadFillShortfall):
@@ -362,10 +351,11 @@ def test_a_lo_face_shortfall_is_silent_and_that_is_the_documented_scope(
 
 @pytest.mark.parametrize("skip_preflight", [False, True])
 def test_run_raises_pad_fill_shortfall(monkeypatch, skip_preflight):
-    """A diagnostic collector must never turn an invalid solve into vacuum."""
+    """A diagnostic collector must never turn an invalid solve into vacuum.
+    Keep the mutation witness build-only if a collector suppresses the raise.
+    """
     _size_by_plain_ceil(monkeypatch)
     sim = _rig(10)
-    # Keep the mutation witness build-only if a collector suppresses the raise.
     from rfx import Result
     import rfx.runners.uniform as uniform
     monkeypatch.setattr(uniform, "run_uniform", lambda *a, **k:

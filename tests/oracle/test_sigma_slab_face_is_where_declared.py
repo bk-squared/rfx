@@ -15,6 +15,7 @@ same fixture reads the PEC occupancy lane's number.
 The PEC lane is run here, in the same process and on the same build, rather
 than quoted: it is the reference that makes this a statement about WHERE the
 face is, not about how well a lossy slab imitates a PEC one.
+SIGMA = 1e5 S/m stays below the 1e6 S/m PEC-mask threshold.
 """
 from __future__ import annotations
 
@@ -28,17 +29,16 @@ from rfx.harminv import matrix_pencil
 C0 = 299792458.0
 DX, N = 1e-3, 24
 L = N * DX
-H = 6e-3          # declared slab height
+H = 6e-3
 F0 = 10.5e9
 STEPS = 3000
-SIGMA = 1e5       # S/m -- a short at 10 GHz, below the 1e6 PEC-mask threshold
+SIGMA = 1e5
 
 
 def _fixture(debye_block=False):
+    """The Debye cube puts the whole grid on the dispersive E update."""
     sim = Simulation(freq_max=2 * F0, domain=(L, L, L), dx=DX, boundary="pec")
     if debye_block:
-        # #1260: a 1 mm, delta_eps 1e-6 Debye cube in the far upper corner puts
-        # the whole grid on the dispersive E update without changing the model.
         from rfx import Box
         from rfx.materials.debye import DebyePole
         sim.add_material("dbl", eps_r=1.0,

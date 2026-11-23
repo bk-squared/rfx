@@ -93,7 +93,6 @@ def assert_same_setup(field, device, *, label):
             name = field['material_paths'][component] if key == 'materials' else 'xyz'[component]
             context = f'{label}: {key}[{name}]'
             assert a.shape == b.shape and a.dtype == b.dtype, context
-            # Compare bytes as well as values (including the sign bit of zero).
             bits_a = a.reshape(-1).view(np.uint8).reshape(a.size, a.dtype.itemsize)
             bits_b = b.reshape(-1).view(np.uint8).reshape(b.size, b.dtype.itemsize)
             different = np.any(bits_a != bits_b, axis=1).reshape(a.shape)

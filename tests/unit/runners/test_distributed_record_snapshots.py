@@ -74,19 +74,20 @@ def _equations(value):
 
 @pytest.mark.parametrize("n_devices,interval", [(2, 1), (3, 3)])
 def test_snapshot_scan_does_not_rebuild_history(n_devices, interval, monkeypatch, tmp_path):
-    from rfx.runners import _distributed_nu_wrapped  # Bind its loop before patching.
+    """A local component history is much larger than all field/ghost temporaries."""
+    from rfx.runners import _distributed_nu_wrapped
     from rfx.stepping import slab_wrap
 
     sim, grid, seam = model("pec", n_devices)
     frames = 19
     spec = SnapshotSpec(interval=interval, components=("ex", "ez", "hy"))
-    # A local component history is much larger than all field/ghost temporaries.
     history_size = frames * seam * grid.shape[1] * grid.shape[2]
     original = jax.lax.scan
     run_steps = slab_wrap.run_steps
     reports = []
 
     def inspect_scan(body, initial, xs, *args, **kwargs):
+        """An earlier measurement of history passed through the rank conditional grew in cost with frames times steps."""
         if isinstance(initial, dict) and "snapshots" in initial.get("records", {}):
             traced = jax.make_jaxpr(body)(initial, jax.tree.map(lambda a: a[0], xs))
             equations = list(_equations(traced))
@@ -95,8 +96,6 @@ def test_snapshot_scan_does_not_rebuild_history(n_devices, interval, monkeypatch
                        if np.prod(getattr(v.aval, "shape", ())) >= history_size]
             updates = [v.aval.shape for e in equations if e.primitive.name == "dynamic_update_slice"
                        for v in e.outvars if np.prod(v.aval.shape) >= history_size]
-            # A history passed through the rank conditional is copied by XLA
-            # every step (measured: cost grew with frames x steps).
             through_cond = [(v.aval.shape) for e in equations if e.primitive.name == "cond"
                             for v in (*e.invars, *e.outvars)
                             if np.prod(getattr(v.aval, "shape", ())) >= history_size]

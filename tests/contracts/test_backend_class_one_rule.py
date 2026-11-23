@@ -25,7 +25,7 @@ def test_faked_platform_table(monkeypatch, platform, accelerator, writeback, mem
                             platform in ("cpu", "gpu", "cuda", "rocm"))
     monkeypatch.setattr(jax, "default_backend", lambda: platform)
     assert backend_class() == expected
-    # Explicit classification must not query the process's backend.
+
     def forbidden():
         pytest.fail("an explicit platform queried JAX")
     monkeypatch.setattr(jax, "default_backend", forbidden)
@@ -131,7 +131,7 @@ def _raw_comparisons(source):
         if isinstance(node, ast.Attribute):
             if node.attr in ("platform", "device_kind"):
                 return {"raw"}
-            # Preserve bound method aliases as well as direct method calls.
+
             if "raw" in kinds(node.value):
                 return {"raw", node.attr}
             if node.attr in {"default_backend", "devices", "local_devices"} | lookups:
@@ -141,7 +141,7 @@ def _raw_comparisons(source):
             func = node.func
             called = kinds(func)
             args = set().union(*(kinds(arg) for arg in node.args))
-            # Any method on a raw value preserves provenance, including aliases.
+
             if "raw" in called:
                 return {"raw"}
             if "default_backend" in called:
@@ -158,7 +158,7 @@ def _raw_comparisons(source):
                 return args
             return set()
         if isinstance(node, ast.Compare):
-            return set()  # The comparison's result is a boolean, not metadata.
+            return set()
         if isinstance(node, ast.Subscript):
             return kinds(node.value)
         if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):

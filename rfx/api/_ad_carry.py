@@ -23,7 +23,7 @@ def linear_accumulators(sim, grid, n_steps):
         try:
             state = jax.eval_shape(initialize)
         except (TimeoutError,): raise
-        except Exception as error:  # noqa: BLE001 - recorded in warnings
+        except Exception as error:  # noqa: BLE001
             path = "graded" if sim._uses_nonuniform_mesh else "uniform"
             warnings.append(f"Linear accumulator {name.replace('_', ' ')} on the {path} path "
                             f"could not be initialized ({type(error).__name__}: {error}); "
@@ -96,9 +96,13 @@ def read_carry(sim, grid, n_steps, *, design_box, design, shape, checkpoint,
             return result.time_series, result.ntff_data
 
         traced = jax.make_jaxpr(forward)(*inputs)
-        # Auxiliary waveform scans do not own six full-grid E/H arrays.
+        from rfx.model.graded_grid import NonUniformGrid
+        from rfx.stepping.vector_pad import planned_extents
+        extents = {tuple(grid.shape), planned_extents(tuple(grid.shape), sim._periodic_flags(),
+                                                      two_d=bool(getattr(grid, "is_2d", False)),
+                                                      graded=isinstance(grid, NonUniformGrid))}
         candidates = [leaves for leaves in _scans(traced)
-                      if sum(tuple(a.shape) == tuple(grid.shape) for a in leaves) >= 6]
+                      if sum(tuple(a.shape) in extents for a in leaves) >= 6]
         carry = max(candidates, key=lambda leaves: len(leaves))
         declared = defaultdict(deque)
         accumulators, warnings = linear_accumulators(sim, grid, n_steps)

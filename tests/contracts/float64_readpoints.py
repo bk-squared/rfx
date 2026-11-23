@@ -50,7 +50,6 @@ def scene(label):
     if label == 'U-conformal':
         sim.add(Sphere(mm((32.6, 15.3, 12.9)), 3.1e-3), material='pec')
     if label.endswith('tfsf'):
-        # test_api.py normal-incidence declaration uses default CPML boundaries.
         sim.add_tfsf_source(f0=3e9, bandwidth=.5, amplitude=1., margin=3)
     else:
         sim.add_source(mm((9.85, 12.35, 10.85)), 'ez', waveform=GaussianPulse(f0=3e9))
@@ -126,6 +125,8 @@ def capture(label, *, values=None):
             for key, value in leaves(local['grid'], 'grid'):
                 keep('R2', key, value)
         if event == 'return' and name == 'init_cpml' and arg is not None:
+            if values is not None:
+                values.update(cpml=arg[0], cpml_grid=local['grid'])
             for key, value in leaves(arg[0], 'cpml'):
                 keep('R3', key, value)
         if event == 'return' and name == 'pole_component_weights' and arg is not None:
@@ -195,7 +196,7 @@ def capture(label, *, values=None):
         if a.dtype.kind not in 'fc':
             continue
         if a.dtype in (np.dtype('float64'), np.dtype('complex128')) and not rounded_through_float32(a):
-            continue  # A2e: passing R4 constants need no name.
+            continue
         name = named.get(id(value))
         if name is None:
             for _, candidate, original in originals:

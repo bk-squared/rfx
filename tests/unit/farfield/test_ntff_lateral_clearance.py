@@ -21,7 +21,7 @@ from rfx import Box, Simulation
 FREQ = 10e9
 DOMAIN = (0.120, 0.120, 0.120)
 SHEET_LO = (0.040, 0.040, 0.050)
-SHEET_HI = (0.080, 0.080, 0.050)      # zero thickness = a sheet declaration
+SHEET_HI = (0.080, 0.080, 0.050)
 SOURCE = (0.060, 0.060, 0.056)
 
 

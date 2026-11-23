@@ -1,4 +1,5 @@
-"""Compile-only saved-tape slopes against JAX memory_analysis (#1786)."""
+"""Compile-only saved-tape slopes against JAX memory_analysis (#1786).
+The public resident_bytes field is populated only by compiled estimates."""
 import json
 import sys
 import time
@@ -95,12 +96,10 @@ def _assert_slope(label, estimated, compiled):
     assert .999 <= ratio <= 1.6, f"B1 {label}: est slope={estimated}, compiled slope={compiled}, ratio={ratio}"
 
 
-# Prior mixed box measurement, n=800/1600: estimated 17,496 B/step,
-# compiled 12,320 B/step. Mixed whole-grid tape and c0 remain uncalibrated.
 @pytest.mark.parametrize("precision", ("mixed", "float64"))
 @pytest.mark.parametrize("box", (False, True))
 def test_uncalibrated_precision_refused(box, precision):
-    # Admit the float64 scene before testing the estimator's separate refusal.
+    """Mixed whole-grid tape and c0 remain uncalibrated."""
     with jax.enable_x64(precision == "float64"):
         sim, _, corners, _ = _scene(precision=precision)
         options = dict(design_box=corners if box else None)
@@ -174,7 +173,6 @@ def test_carry_contract(feature, graded):
                              eps_override=eps, sigma_override=sigma,
                              checkpoint_every=None, checkpoint_segments=None, n_warmup=0)
         return result.time_series, result.ntff_data
-    # Trace exactly the estimator's request, including abstract overrides.
     try:
         traced = jax.make_jaxpr(observations)(*inputs)
     except Exception as cause:
@@ -185,7 +183,6 @@ def test_carry_contract(feature, graded):
         print("AD_CARRY_REFUSAL " + json.dumps(dict(feature=feature, graded=graded,
               exception=type(cause).__name__, reason=str(cause))), file=sys.stderr, flush=True)
         return
-    # The oracle imports no estimator helper.
     _, carry = max(_scan_carries(traced), key=lambda row: len(row[1]))
     estimate = sim.estimate_ad_memory(4, checkpoint=False)
     records = (*estimate.saved, *estimate.excluded_linear)
@@ -228,8 +225,6 @@ def test_carry_contract(feature, graded):
               est_slope=est_slope, compiled_slope=compiled_slope, ratio=ratio)), file=sys.stderr, flush=True)
         assert ratio >= .999, f"graded flux slope: est={est_slope}, compiled={compiled_slope}, ratio={ratio}"
         return
-    # Independent feature initializers pin the exclusion, not just the
-    # partition: dropping NTFF must fail even though all leaves stay saved.
     expected = []
     if sim._ntff is not None:
         from rfx.farfield import make_ntff_box, init_ntff_data
@@ -251,19 +246,16 @@ def test_carry_contract(feature, graded):
 
 @pytest.mark.parametrize("n_steps", (80, 160))
 def test_box_incident_line_is_resident_not_per_step_tape(n_steps):
+    """Six write windows plus one frequency's four complex64 NTFF phases determine the tape-step bytes."""
     from rfx.sources.tfsf import tfsf_from_declaration
 
     sim, grid, corners, _ = _scene()
     state = jax.eval_shape(lambda: tfsf_from_declaration(
-        sim._tfsf, grid, sim._freq_max, n_steps=n_steps)[1])
-    # Independent forward initializer, not the estimator's matching helper.
+        sim._tfsf, grid, sim._freq_max, n_steps=n_steps, dtype='float32')[1])
     arrays = [getattr(state, name) for name in ("ex", "ey", "ez", "hx", "hy", "hz")]
     expected_resident = sum(math.prod(a.shape) * a.dtype.itemsize for a in arrays)
     estimate = sim.estimate_ad_memory(n_steps, checkpoint=False, design_box=corners)
-    # Analytic resident storage is included in the fixed allocation; the
-    # public resident_bytes field is populated only by compiled estimates.
     assert estimate.ad_fixed_gb == (192 * math.prod(grid.shape) + expected_resident) * 1e-9
-    # Six write windows plus one frequency's four complex64 NTFF phases.
     assert estimate.tape_step_bytes == 6 * 8**3 * 4 + 1 * 4 * 8
 
 
@@ -285,8 +277,6 @@ def test_ad_memory_tape_terms():
         compiled_slope = (b["compiled_bytes"] - a["compiled_bytes"]) / 800
         _assert_slope(label, est_slope, compiled_slope)
         if case.get("k") in (8, 16) and case["checkpoint"]:
-            # Remove the measured live-segment growth from each executable
-            # before comparing K intercepts: this isolates boundary storage.
             pairs[case["box"], case["k"]] = (
                 a["estimate_bytes"] - 800 * est_slope,
                 a["compiled_bytes"] - 800 * compiled_slope)
@@ -306,7 +296,7 @@ def test_closed_box_record_memory_slope(segments, record_chosen):
     sim, grid, _, _ = _scene()
     rows = []
     for n in (800, 1600):
-        cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=n)
+        cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=n, dtype='float32')
         assert face_record_pays(cfg, n, checkpoint=True, checkpoint_segments=segments) == record_chosen
         rows.append(_measure(n, box=False, checkpoint=True, k=segments))
         jax.clear_caches()

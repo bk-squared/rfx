@@ -62,6 +62,7 @@ the strong-reflector class of a thin symmetric inductive iris (Marcuvitz,
 d/a = 0.444: about 0.88-0.66 over the band), so each test also bounds
 |S11| <= 1 per bin. Power at the band-edge bins (|S11|^2+|S21|^2 0.57 at
 8.2 GHz) is low on both lanes; nothing here reads it.
+The S-matrix preflight holds the PEC guide walls and fin faces to their drawn spacing.
 """
 from __future__ import annotations
 
@@ -82,20 +83,16 @@ from tests.unit._wall_planes_m import wall_planes_m
 _A, _B, _FMAX = 0.02286, 0.01016, 12e9
 _FREQS = jnp.linspace(8.2e9, 12.4e9, 5)
 _NP = 20
-# The guide walls and the fin faces are PEC planes the S-matrix preflight
-# holds to their drawn spacing (#1895): dx = a/18 = b/8 puts both guide
-# walls on nodes, and each fin spans 5 cells of the 18 (55.6 % blocked).
 _DX = _A / 18
 _FIN = 5 * _DX
 
 
 def _graded_dy(ratio: float = 2.0, base: float = 0.75e-3):
+    """Each span between PEC planes is graded on its own so the fin faces at _FIN and _A - _FIN stay mesh nodes."""
     n = int(round(_A / base))
     x = np.linspace(-1, 1, n)
     w = 1.0 + (ratio - 1.0) * np.abs(x)
     nodes = np.concatenate([[0.0], np.cumsum(w / w.sum() * _A)])
-    # Grade each span between PEC planes on its own so the fin faces at
-    # _FIN and _A - _FIN stay mesh nodes.
     cells = []
     for lo, hi in ((0.0, _FIN), (_FIN, _A - _FIN), (_A - _FIN, _A)):
         inside = np.diff(nodes[(nodes >= lo) & (nodes <= hi)])
@@ -117,18 +114,12 @@ def _iris_sim(*, nonuniform: bool):
         ),
         cpml_layers=8, **kw,
     )
-    sim.add_material("metal", eps_r=1.0, sigma=1e7)  # sigma > 1e6 -> PEC
+    PEC_METAL_CONDUCTIVITY = 1e7
+    assert PEC_METAL_CONDUCTIVITY > sim._PEC_SIGMA_THRESHOLD, (
+        "The iris metal conductivity must exceed the PEC threshold")
+    sim.add_material("metal", eps_r=1.0, sigma=PEC_METAL_CONDUCTIVITY)
     x_lo, x_hi = (nx // 2) * dx, (nx // 2 + 1) * dx
     fin = _FIN
-    # #931: the fins are a VOLUME (a metal block through the guide), and
-    # they are drawn ON node planes so drawn thickness == realized
-    # thickness: one cell, walls at xc -/+ dx/2. The pre-#931 corners
-    # (xc -/+ 1 mm at the then dx = 1.5 mm) sat mid-cell, so the realized fin was
-    # one cell wide between two node planes the drawing never named and the
-    # realized position depended on where the box fell between two cell
-    # centres. Nothing in this file is about the fin's thickness — it is a
-    # strong-reflector witness — but an ambiguous drawing is what the
-    # contract exists to remove.
     y_hi = float(np.cumsum(kw["dy_profile"])[-1]) if nonuniform else 16 * dx
     sim.add(Box((x_lo, 0.0, 0.0), (x_hi, fin, 7 * dx)),
             material="metal")
@@ -144,15 +135,13 @@ def _iris_sim(*, nonuniform: bool):
 
 
 def _iris_s11_max(*, nonuniform: bool) -> float:
+    """The 0.05 allowance on |S11| covers extraction noise (an earlier measurement reached 0.94 at most)."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         res = _iris_sim(nonuniform=nonuniform).compute_waveguide_s_matrix(
             num_periods=_NP, normalize="flux",
         )
     s11 = np.abs(np.asarray(res.s_params)[0, 0, :])
-    # A passive iris cannot reflect more than it receives. The lower bounds
-    # below once accepted |S11|max 2.17 (2026-09-07, see the module
-    # docstring); 0.05 covers extraction noise (0.94 measured at most).
     assert np.all(s11 <= 1.0 + 0.05), (
         f"PEC iris |S11| per bin {np.round(s11, 3)} exceeds 1 on a passive "
         "structure: suspect the extraction or a mis-sized realized guide")
@@ -210,9 +199,6 @@ def test_nonuniform_pec_iris_reflects():
         f"NU PEC iris |S11|max={s11_nu:.3f} <= 0.2 — iris not reflecting; the "
         "NU vacuum-reference interior-PEC-strip fix has regressed"
     )
-    # Same strong-reflector class as the uniform witness (both are the
-    # identical iris geometry); the NU iris must land within a factor of the
-    # uniform max, not collapse toward 0.
     s11_uni = _iris_s11_max(nonuniform=False)
     assert s11_nu > 0.4 * s11_uni, (
         f"NU PEC iris |S11|max={s11_nu:.3f} not in the uniform reflector class "

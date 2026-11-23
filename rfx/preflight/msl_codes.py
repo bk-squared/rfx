@@ -18,25 +18,14 @@ from rfx.diagnostic_records import Diagnostic
 from rfx.preflight._msl_text import Message, render, join_messages as msl_join
 from rfx.preflight._msl_text import DisplayedValue as msl_value
 
-#: Witness for :data:`MSL_PROBE_CLEARANCE_EFFECT`; kept separate so a test
-#: can assert the run id survives every rewording of the sentence.
 MSL_PROBE_CLEARANCE_WITNESS = (
     "VESSL 369367260508, microstrip open-stub notch fixed-source"
 )
 
-#: The ONE sentence allowed to quote either retired claim, because it is what
-#: retracts them. Named so every test that asserts "this site does not state a
-#: retired claim" can strip exactly this and nothing else -- four of them do,
-#: including the docs scan.
 MSL_PROBE_CLEARANCE_RETRACTION = (
     "Neither 'S11/S21 are unaffected' nor the retired '-5 to -10 dB' figure is right."
 )
 
-#: What probe-clearance corruption does, with its numbers and their limits.
-#: Embedded by the preflight layout warning, ``compute_msl_s_matrix``'s Z0
-#: guard (only when the port's clearance is NOT satisfied) and the
-#: auto-offset resolver's empty-interval warning, so the three cannot drift
-#: apart again.
 MSL_PROBE_CLEARANCE_EFFECT = (
     "Measured on ONE fixture (" + MSL_PROBE_CLEARANCE_WITNESS + ", same "
     "source, load and DUT; only p1's observation offset varied; both arms "
@@ -55,8 +44,6 @@ MSL_PROBE_CLEARANCE_EFFECT = (
     "Hammerstad-Jensen Z0 rather than with the fit. " + MSL_PROBE_CLEARANCE_RETRACTION
 )
 
-#: What a caller should do, including when the feed admits no compliant
-#: offset at all ("interval empty").
 MSL_PROBE_CLEARANCE_GUIDANCE = (
     "Gate on probe_clearance for the geometric condition and beta_railed "
     "for the fitted-value symptom; reliable is a per-bin fit-quality mask "
@@ -479,9 +466,6 @@ TEMPLATES.update(
 )
 
 
-# These are wording variants of the SAME reflector-distance check: both call
-# msl_probe_clearance_for_port and test the same threshold on the same ladder.
-# The calculator route gives shorter advice; general preflight gives intervals.
 VARIANTS = {
     "msl.probe_placement_note": (
         "placement_traced",
@@ -545,7 +529,6 @@ class CodeDefinition:
     value_names: tuple[str, ...]
 
 
-# Shared fragments used by more than one check remain in this same table.
 _FRAGMENTS = {
     "reflector_scan_incomplete": ("reflector_bounds_remedy",),
     "normal_resolution": ("conductor_gap", "material_column", "declared_faces"),
@@ -610,8 +593,6 @@ def _definition(code, slug, severity):
     return CodeDefinition(slug, severity, keys, names)
 
 
-# Quantities in the retained historical prose are observations too. Issue/run
-# identifiers and channel names (S11/S21) are identities, not SI quantities.
 STATIC_VALUES = {
     "reflector_clearance_general": {"reflector_wavelength_divisor": 4},
     "automatic_wavelength_term": {"automatic_wavelength_divisor": 4},

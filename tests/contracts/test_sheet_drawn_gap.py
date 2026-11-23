@@ -76,6 +76,7 @@ def same(actual, expected):
 
 def coordinate_masks(intervals, graded, periodic):
     """Independent closed-node/segment oracle for the x-normal K1 boxes."""
+    HOST_COORDINATE_ROUNDOFF_M = 1e-12
     grid, coords, _, _ = lattice(graded, periodic)
     y, z = np.asarray(coords.y), np.asarray(coords.z)
     next_y = np.append(y[1:], .020 if periodic else np.inf)
@@ -83,11 +84,10 @@ def coordinate_masks(intervals, graded, periodic):
     y_nodes, y_edges = np.zeros(y.shape, bool), np.zeros(y.shape, bool)
     for lo, hi in intervals:
         for shift in ((0., .020, -.020) if periodic else (0.,)):
-            # Only absorb host-coordinate roundoff, not the drawn-gap tolerance.
-            y_nodes |= (y >= lo+shift-1e-12) & (y <= hi+shift+1e-12)
-            y_edges |= (y >= lo+shift-1e-12) & (next_y <= hi+shift+1e-12)
-    z_nodes = (z >= .002-1e-12) & (z <= .006+1e-12)
-    z_edges = (z >= .002-1e-12) & (next_z <= .006+1e-12)
+            y_nodes |= (y >= lo+shift-HOST_COORDINATE_ROUNDOFF_M) & (y <= hi+shift+HOST_COORDINATE_ROUNDOFF_M)
+            y_edges |= (y >= lo+shift-HOST_COORDINATE_ROUNDOFF_M) & (next_y <= hi+shift+HOST_COORDINATE_ROUNDOFF_M)
+    z_nodes = (z >= .002-HOST_COORDINATE_ROUNDOFF_M) & (z <= .006+HOST_COORDINATE_ROUNDOFF_M)
+    z_edges = (z >= .002-HOST_COORDINATE_ROUNDOFF_M) & (next_z <= .006+HOST_COORDINATE_ROUNDOFF_M)
     expected = [np.zeros(grid.shape, bool) for _ in range(3)]
     expected[1][4] = y_edges[:, None] & z_nodes[None, :]
     expected[2][4] = y_nodes[:, None] & z_edges[None, :]
@@ -115,7 +115,6 @@ def test_k1_drawn_gap(kind, lane, k, gap):
     else:
         alone = [masks([sp], periodic, kind) for sp in pair]
         same(actual, tuple(a | b for a, b in zip(*alone)))
-        # Coordinates supply each sheet's nodes, independently of the rule.
         nodes = np.asarray(lattice(graded, periodic)[1].y)
         own = [np.zeros(nodes.shape, bool) for _ in pair]
         for covered, (lo, hi) in zip(own, intervals):
@@ -174,6 +173,7 @@ def test_k2_three_sheets(graded, cover):
 @pytest.mark.parametrize('graded', [False, True])
 @pytest.mark.parametrize('kind', ['volume', 'wire', 'lumped', 'stack', 'crossing', 'indices'])
 def test_k3_unchanged(graded, kind):
+    """A one-cell drawn feed gap is shorted by the legacy union rule at every edge but the port's own."""
     sim = model(graded, kind == 'crossing')
     grid = sim._build_realized_grid()
     y = lambda j: grid.node_of(1, j)
@@ -199,7 +199,6 @@ def test_k3_unchanged(graded, kind):
         [replace(sp, drawn=None) for sp in root.sheets], root.wires, root.periodic)
     old = replace(root, pec_edges=legacy)
     if kind == 'lumped':
-        # A one-cell drawn feed gap: the old rule shorted it at every edge but the port's own.
         root, old = C.preview_port_stages(sim, root), C.preview_port_stages(sim, old)
         new_ey, old_ey = np.asarray(root.pec_edges[1]), np.array(old.pec_edges[1])
         assert not new_ey[2:7, 10, 4].any()
@@ -224,9 +223,8 @@ def _film_rows(graded, intervals, rows):
 @pytest.mark.parametrize('graded', [False, True])
 @pytest.mark.parametrize('case', [0, 1, 2, 3, 4])
 def test_k7_dc_film(graded, case):
+    """A touching pair is one continuous film whose joint edge carries the film's interior edge value."""
     values = _film_rows(graded, named_intervals(graded, case), (9, 10))
-    # Survey's five rows: the first three have a gap at row 10; last two touch. A touching
-    # pair is one continuous film: its joint edge carries the film's interior edge value.
     assert values[0] > 0.
     assert values[1] == (0. if case < 3 else values[0])
 
@@ -241,8 +239,6 @@ def mirrored_intervals(graded, case):
 @pytest.mark.parametrize('graded', [False, True])
 @pytest.mark.parametrize('case', range(2))
 def test_k7_dc_film_mirrored(graded, case):
-    # A drawn gap stays open on either side of a node (#1624); on main the
-    # node-sampled film closed case 1's half-cell gap below the node.
     values = _film_rows(graded, mirrored_intervals(graded, case), (8, 9, 10))
     assert values[0] > 0. and values[2] > 0.
     assert values[1] == 0.
@@ -257,8 +253,7 @@ def test_k7_dc_film_extra_gaps(intervals):
 
 
 def film_pair(graded, intervals=None, *, periodic=False):
-    # A genuinely graded mesh with min(dy)=1 mm keeps 1 nm inside the
-    # existing sheet tie tolerance on BOTH sweep meshes.
+    """A graded mesh with min(dy)=1 mm keeps a 1 nm gap within the sheet tie tolerance on both sweep meshes."""
     profile = np.r_[.001, np.tile([.0011, .0013], 9), .001]
     sim = Simulation(domain=(.008, float(profile.sum()) if graded else .020, .008), dx=.001,
         freq_max=5e9, snap='declared',
@@ -308,7 +303,6 @@ def test_k7_dc_film_gap_sweep(graded, gap, tmp_path):
     occupied = (actual[0] | actual[1]).any(axis=0)
     limits = np.flatnonzero(occupied)
     assert bool(occupied[limits[0]:limits[-1]+1].all()) == (gap <= 1e-9)
-    # The public record and the solve collector must publish the same cells.
     record = sim.realized_geometry()
     for entity, mask in zip(record.entities, actual):
         np.testing.assert_array_equal(np.asarray(entity.mask).any(axis=2), mask)
@@ -318,9 +312,7 @@ def test_k7_dc_film_gap_sweep(graded, gap, tmp_path):
 
 @pytest.mark.parametrize('reverse', [False, True])
 def test_k7_dc_film_coverage_owner(reverse):
-    # Later film's first row is 0.2 empty / 0.8 drawn, versus 0.9
-    # drawn in the earlier film's last row. Reversing declaration order
-    # must retain the same physical winner.
+    """The later film's first row is 0.2 empty / 0.8 drawn versus 0.9 drawn in the earlier film's last row."""
     intervals = [(.005, .0099), (.0102, .015)]
     if reverse:
         intervals.reverse()
@@ -332,9 +324,7 @@ def test_k7_dc_film_coverage_owner(reverse):
 
 
 def test_k7_dc_film_coverage_owner_fraction():
-    # Pin the rule's literal 0.8/0.2 input contract. A centre-sampled Box
-    # does not retain a 0.2-covered boundary row, so supply these footprints
-    # directly; the assembly-level asymmetric case above tests the sampler.
+    """A centre-sampled Box does not retain a 0.2-covered boundary row."""
     from rfx.model.thin_conductors import FilmFootprint, separate_film_footprints
     _, grid, y, _, _ = film_pair(False, ((.005, .0098), (.0108, .015)))
     rows = []
@@ -518,8 +508,6 @@ def test_realization_stopgap_cases(intervals, route):
     grid = sim._build_realized_grid()
     root = C.realized_conductors(sim, grid)
     y = np.array([grid.node_of(1, j) for j in range(grid.shape[1])])
-    # Independent interval segments: an edge is wholly covered by a single
-    # connected drawn interval. Merge touching/overlapping metric intervals.
     merged = []
     for lo, hi in sorted(intervals):
         if merged and lo <= merged[-1][1]:
@@ -660,7 +648,6 @@ def test_f1_tfsf_wrap_masks(touch):
     sim.add_tfsf_source(f0=5e9, bandwidth=.3, polarization='ez', direction='+x')
     grid = sim._build_realized_grid()
     coords, sizes = coords_from_uniform_grid(grid), cell_sizes_from_uniform_grid(grid)
-    # TFSF wraps the stored padded index line, not just the physical domain.
     period = grid.shape[1] * grid.dx
     y = np.asarray(coords.y)
     split = .5 * grid.dx if touch else 0.
@@ -669,7 +656,7 @@ def test_f1_tfsf_wrap_masks(touch):
             coords, sizes, grid=grid) for lo, hi in intervals]
     from rfx.sources.tfsf import init_tfsf
     cfg, _ = init_tfsf(grid.nx, grid.dx, grid.dt, ny=grid.ny, nz=grid.nz,
-                       cpml_layers=8, f0=5e9, bandwidth=.3, polarization='ez', direction='+x')
+                       cpml_layers=8, f0=5e9, bandwidth=.3, polarization='ez', direction='+x', dtype='float32')
     flags, _ = boundary_flags(cfg, grid)
     assert flags == (False, True, True)
     assert 'y' not in grid.periodic_axes

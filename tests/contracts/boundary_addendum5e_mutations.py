@@ -36,7 +36,6 @@ def main(mode):
                 tilt = "y" if electric == "z" else "z"
                 records = kwargs.get("records")
                 records = tfsf.grid_face_depths(grid) if records is None else records
-                # Bypass both the requirement loop and the array judge on tilt.
                 kwargs["records"] = tuple(replace(face, kind=tfsf.Kind.PERIODIC)
                                           if face.name.startswith(tilt + "_") else face
                                           for face in records)

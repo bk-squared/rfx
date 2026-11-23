@@ -22,15 +22,14 @@ SHAPE = (23, 17, 13)
 N_STEPS = 240
 BINS_HZ = (3e9, 6e9, 9e9, 12e9, 15e9)
 SOURCES = {'U-0.2': (.003, .007, .005), 'D-random': (.006, .007, .005)}
-# Columns of time_series, in add_probe order: three Ez (the third is the
-# source edge itself), then Hx and Hy.
 E_COLUMNS = (0, 1, 2)
 SOURCE_EDGE_COLUMN = 2
 H_COLUMNS = (3, 4)
-OBJECTIVE_COLUMNS = (0, 1)  # source edge excluded from the gradient objective
+OBJECTIVE_COLUMNS = (0, 1)
 
 
 def scene(row):
+    """The time_series columns are three Ez (the third is the source edge itself), then Hx and Hy."""
     sim = Simulation(freq_max=15e9, domain=(.022, .016, .012), dx=.001,
                      boundary='pec',
                      dy_profile=np.array([.001] + [.0009, .0011] * 7 + [.001]))
@@ -51,7 +50,7 @@ def occupancy(row):
     else:
         cells = np.random.default_rng(202).uniform(0, .85, SHAPE).astype(np.float32)
         cells[0, 2:5, 1:4] = .5
-        width = -(-SHAPE[0] // 2)  # seam rows of two devices; same array for every count
+        width = -(-SHAPE[0] // 2)
         for seam in range(width, SHAPE[0], width):
             cells[seam - 1:seam + 1, 1:4, 2:4] = .75
     return jnp.asarray(cells)
@@ -152,7 +151,6 @@ def test_occupancy_one_vs_several_within_cross_trace_bars(runs, row, devices, re
     assert dt_several == dt
     e_one = one[:, E_COLUMNS]
     e_pk = np.float32(np.max(np.abs(e_one)))
-    # The source edge carries the record's largest field: the family peak.
     assert e_pk == np.max(np.abs(one[:, SOURCE_EDGE_COLUMN])), 'E peak not at the source edge'
     h_pk = np.float32(np.max(np.abs(one[:, H_COLUMNS])))
     h_scale = np.float32(max(float(h_pk), float(e_pk) / Z0))

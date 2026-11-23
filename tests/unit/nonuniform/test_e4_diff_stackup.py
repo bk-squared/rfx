@@ -44,6 +44,7 @@ def test_map_invariants():
 
 
 def _map_invariants():
+    """Interior-node permittivities use a computed quotient rather than a literal, so the check uses 1e-12 rather than bitwise equality."""
     jac = np.asarray(jax.jacfwd(lambda p: e4.stackup(p)[0])(jnp.asarray(e4.PARAMS0))[:, 0], np.float64)
     want = e4.declared_jacobian_h()
     assert np.allclose(jac, want, rtol=1e-6, atol=1e-9), "Jacobian of dz w.r.t. h_thin is not the declared one"
@@ -63,8 +64,6 @@ def _map_invariants():
         assert abs(eps[20] - (4.3 * dz[19] + 3.0 * dz[20]) / (dz[19] + dz[20])) <= 1e-6
         assert abs(eps[24] - (3.0 * dz[23] + 4.3 * dz[24]) / (dz[23] + dz[24])) <= 1e-6
         assert abs(eps[44] - (4.3 * dz[43] + 1.0 * dz[44]) / (dz[43] + dz[44])) <= 1e-6
-        # interior nodes: (e d + e d) / (d + d) is a computed quotient, not a
-        # literal — 1e-12, not bitwise (first-run test fix, no window involved)
         assert np.allclose(eps[21:24], 3.0, rtol=0, atol=1e-12)
         assert np.allclose(eps[45:], 1.0, rtol=0, atol=1e-12) and np.allclose(eps[:20], 4.3, rtol=0, atol=1e-12)
 

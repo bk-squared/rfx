@@ -43,7 +43,7 @@ class Scene:
 
 def describe(sim, name, count, steps, expected_nx, expected_box, expected_seams, freqs):
     grid = sim._build_grid()
-    cfg, line = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=steps)
+    cfg, line = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=steps, dtype='float32')
     layout = Slab(grid.nx, count)
     seams = [r * layout.nx_per_rank for r in range(1, count)]
     box_rows = [[getattr(cfg, f"{axis}_lo"), getattr(cfg, f"{axis}_hi")] for axis in "xyz"]
@@ -108,7 +108,6 @@ def build_box(name="B2", count=3, *, scale=1, steps=None):
     sim.add_material("plate", eps_r=1.0, sigma=1e7)
     sim.add_material("sheet", eps_r=1.0, sigma=2.65)
     xlo, xhi = ((.014, .027) if name == "B1" else (.010, .031))
-    # Thin in y, extended along x: both objects cross both B2 seams.
     sim.add(Box(corner("plate.lo", (xlo, .015, .014)),
                 corner("plate.hi", (xhi, .016, .027))), material="plate")
     sim.add(Box(corner("sheet.lo", (xlo, .023, .014)),
@@ -118,7 +117,6 @@ def build_box(name="B2", count=3, *, scale=1, steps=None):
     for p, position in enumerate(((.015, .016, .017), (.025, .018, .021))):
         sim.add_vector_probe(corner(f"probe{p}", position))
     freqs = np.linspace(5e9, 10e9, 9)
-    # Outside all TF correction planes, inside the absorber, fixed metres.
     sim.add_ntff_box(corner("ntff.lo", (.003,) * 3), corner("ntff.hi", (.036,) * 3), freqs=freqs)
     nx = {1: 48, 1.5: 72, 2: 95}[scale]
     lo = layers + margin
@@ -173,7 +171,6 @@ def build_s1(count, *, steps=400):
     assert meta["ntff_rows"] == [[8, 41], [7, 37], [7, 35]], meta
     assert meta["pad_x"] == {2: 0, 3: 1, 4: 2}[count], meta
     assert meta["physical_rows_per_rank"][-1] == {2: 25, 3: 16, 4: 11}[count], meta
-    # These are corner rows; volume occupancy is half-open at the high corner.
     scatterer_rows = {name: [list(scene.grid.position_to_index(p)) for p in pair]
                       for name, pair in corners.items()}
     assert [p[0] for p in scatterer_rows["plate"]] == [13, 25], scatterer_rows
@@ -194,6 +191,7 @@ def build_s1(count, *, steps=400):
 
 
 def build_sphere(count, x_extra_cells=0):
+    """A 12-cell sphere cannot lie on the grid, so the Mie bar judges the staircase."""
     assert x_extra_cells in (0, 6)
     directory = Path(__file__).resolve().parents[2] / "fixtures" / "rcs_sphere_mie"
     geo = json.loads((directory / "fixture.json").read_text())["geometry"]
@@ -205,8 +203,6 @@ def build_sphere(count, x_extra_cells=0):
     dx = C0 / f0 / geo["resolution_cells_per_lambda"]
     domain = list(geo["domain_m"])
     domain[0] += x_extra_cells * dx
-    # A 12-cell sphere cannot lie on the grid; the Mie bar judges the staircase (as in
-    # test_distributed_tfsf_slab.py, same fixture).
     sim = Simulation(snap="declared", freq_max=f0 * 1.5, domain=tuple(domain), dx=dx,
                      boundary="cpml", cpml_layers=geo["cpml_layers"])
     sim.add_material("PEC", eps_r=1., sigma=geo["pec_sigma_s_per_m"])
@@ -245,9 +241,9 @@ def observe_line(records, *, multi):
 
     def wrap(original, phase):
         def call(*args, **kwargs):
+            """The E advance increments the step."""
             result = original(*args, **kwargs)
             line = result
-            # H advance leaves step unchanged; E advance increments it.
             step = line.step + (1 if phase == "H" else 0)
             jax.debug.callback(lambda n, *v: capture(phase, n, *v), step,
                                *(getattr(line, c) for c in COMPONENTS))
@@ -370,8 +366,6 @@ def measure_box(scene, count):
                                          delta=delta[:, p].tolist())
     report["first_difference"] = min(first, key=lambda v: v["step"]) if first else None
     report["FF"] = compare_far_field(one, many)
-    # Read both real line advances. A mismatch here is evidence of its stage;
-    # no automatic claim that it caused a later mismatch in the grid.
     line_first = None
     for step in range(1, scene.steps + 1):
         for phase in ("H", "E"):
@@ -531,8 +525,8 @@ def test_step_comparison_matches_whole_record():
     """step_comparison equals the whole-record form on planted float32 cases; positions are literals."""
     rng = np.random.default_rng(20261112)
     base = rng.standard_normal((7, 5, 4, 3)).astype(np.float32)
-    base[2, 0, 0, 0] = np.float32(-100.0)  # the largest magnitude is negative: the peak is max |a|
-    base[3] = np.float32(0.0)  # an all-zero step for the signed-zero cases
+    base[2, 0, 0, 0] = np.float32(-100.0)
+    base[3] = np.float32(0.0)
 
     def planted(*edits):
         b = base.copy()

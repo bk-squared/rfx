@@ -1,4 +1,6 @@
-"""The boundary registry follows the source, with named unresolved exceptions."""
+"""The boundary registry follows the source, with named unresolved exceptions.
+The exception list may only shrink.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +16,6 @@ ROOT = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.source_scan
 
 
-# This list may only shrink: a fix PR removes its entry.
 EXCEPTIONS = (
     (
         "rfx/model/realization_reference_area.py",

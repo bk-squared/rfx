@@ -47,6 +47,16 @@ ff = compute_far_field(result.ntff_data, result.ntff_box, result.grid, theta, ph
 pattern_db = radiation_pattern(ff)   # (n_freqs, n_theta, n_phi), peak = 0 dB
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/measure/assets/far-field-and-rcs/structure.png" loading="lazy" alt="Section through a point source and a probe inside a square far-field box, which stays clear of the surrounding absorber." />
+  <figcaption>The model as built, cut at y = 100 mm: on each axis the box was requested from 45 to 155 mm and is built from 44 to 156 mm. The source and the probe are Ez samples, which sit half a cell above the grid node at z = 100 mm, so at z = 102 mm.</figcaption>
+</figure>
+
+<figure data-rfx="media">
+  <img src="/rfx/measure/assets/far-field-and-rcs/pattern.png" loading="lazy" alt="Two polar plots of the far field: two lobes with nulls along z in the x-z plane, and a circle in the x-y plane." />
+  <figcaption>The pattern this run returns at 3 GHz in two planes, in dB relative to its peak, on a radial scale that ends at −20 dB at the centre. It comes from one 4 mm mesh.</figcaption>
+</figure>
+
 `compute_far_field` returns a `FarFieldResult` with `E_theta`, `E_phi`,
 `theta`, `phi` and `freqs`. Angles are in radians. The mesh here is coarse
 for speed; see [Limits](#limits) for what a real pattern needs.
@@ -150,9 +160,11 @@ incidence), so it does not depend on the observation grid you pass.
 ### Which RCS numbers to trust
 
 **Monostatic (backscatter).** `monostatic_rcs` is the quantity checked
-against the exact Mie series for a PEC sphere at ka ≈ 1 (λ/40 cells); that
-test holds it within 1.0 dB of Mie on that one mesh. It is always taken from the plain
-run, whatever you set for `subtract_incident_reference`.
+against the exact Mie series for a PEC sphere over ka 0.75–1.25. It is within
+2 dB of Mie on three meshes (λ/40, λ/60, λ/80), but the difference still falls
+with each refinement, so convergence is not established; at λ/40 and ka ≈ 1 it
+reads 0.56 dB above Mie. It is always taken from the plain run, whatever you
+set for `subtract_incident_reference`.
 
 **Bistatic.** With the default `subtract_incident_reference=False`, the
 **bistatic pattern is not validated**: off-backscatter angles can be several

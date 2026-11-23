@@ -1,4 +1,6 @@
-"""Port Cb and RLC D0 consume the stored, stamped E-update operands."""
+"""Port Cb and RLC D0 consume the stored, stamped E-update operands.
+Forward S from one record needs isolated drives.
+"""
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
 from dataclasses import replace
@@ -19,6 +21,7 @@ from types import SimpleNamespace
 @pytest.mark.parametrize("component", ["ex", "ey", "ez"])
 @pytest.mark.parametrize("periodic", [(False, False, False), (True, True, True)])
 def test_drive_and_denominator_match_stored_update(component, periodic):
+    """Only the stored operand moves because future rules may differ from today's mean."""
     axis = {"ex": 0, "ey": 1, "ez": 2}[component]
     transverse = (axis + 1) % 3
     shape = (4, 4, 4)
@@ -32,7 +35,6 @@ def test_drive_and_denominator_match_stored_update(component, periodic):
                              eps_r_lumped=parts, sigma_lumped=parts)
     mats = with_components(raw, None, periodic=periodic, high_wall=(False, False, False))
     grid = SimpleNamespace(dt=1e-12)
-    # Independent grid-wide E-update coefficients; never the cell helper.
     cb = yee.e_component_coeffs(mats, grid.dt, periodic, high_wall=unpadded_high_walls(grid))[1][axis][cell]
     wave = port_drive_waveform(grid, cell, component, jnp.ones_like, 3, mats,
                                sigma_port=2., unit_field=4.)
@@ -41,7 +43,6 @@ def test_drive_and_denominator_match_stored_update(component, periodic):
     assert float(e) != float(raw.eps_r[cell])
     expected = float(e) * EPS_0 / grid.dt + float(s) / 2.
     assert edge_update_denominator(mats, cell, component, grid.dt, as_float=True) == expected
-    # Future rules may differ from today's mean: only the stored operand moves.
     changed = list(mats.components.eps_update)
     changed[axis] = changed[axis].at[cell].multiply(1.7)
     changed = mats._replace(components=replace(mats.components, eps_update=tuple(changed)))
@@ -72,6 +73,7 @@ def test_queue_preserves_source_order_and_supplies_final_materials():
 
 def test_realized_edge_material_gradient_matches_legacy():
     def loss(scale, realized):
+        """The raw-array fixture has no wall face."""
         eps = jnp.ones((4, 4, 4)).at[2:].set(4. * scale)
         mats = yee.MaterialArrays(eps, jnp.zeros_like(eps), jnp.ones_like(eps))
         if realized:
@@ -79,7 +81,6 @@ def test_realized_edge_material_gradient_matches_legacy():
         grid = SimpleNamespace(dt=1e-12)
         wave = port_drive_waveform(grid, (2, 2, 2), "ez",
                                   jnp.ones_like, 2, mats, sigma_port=2., unit_field=4.)
-        # This raw-array fixture has no wall face.
         return jnp.sum(wave) + edge_update_denominator(mats, (2, 2, 2), "ez", 1e-12, grid=grid)
 
     a = jax.value_and_grad(lambda x: loss(x, False))(jnp.float32(1.))
@@ -91,6 +92,7 @@ def test_realized_edge_material_gradient_matches_legacy():
 @pytest.mark.parametrize("forward", [False, True])
 @pytest.mark.parametrize("kind", ["lumped", "wire", "msl"])
 def test_main_paths_build_drives_and_rlc_after_realization(monkeypatch, graded, forward, kind):
+    """Drawn from 2 mm, the strip left a 3 mm open stub whose effective quarter wave (11.9 GHz) is within 1.5x of 0..8 GHz."""
     from rfx import Box, Simulation
     from rfx.model import materials as model
     from rfx.sources import port_drive
@@ -108,8 +110,6 @@ def test_main_paths_build_drives_and_rlc_after_realization(monkeypatch, graded, 
     if kind == "msl":
         sim.add(Box(((2 - .35) * .001, (2 - .35) * .001, .003),
                     ((10 + .35) * .001, (9 + .35) * .001, .003)), material="pec")
-        # #1512: the strip starts at the port's grid node. Drawn from 2 mm it left a 3 mm
-        # open stub whose effective quarter wave (11.9 GHz) is within 1.5x of 0..8 GHz.
         from rfx.preflight.line_port_coverage import port_node_coordinate
         node = port_node_coordinate(sim, (.005, .005, .003))
         sim.add(Box((node, (4 - .35) * .001, .005),
@@ -120,8 +120,6 @@ def test_main_paths_build_drives_and_rlc_after_realization(monkeypatch, graded, 
         sim.add_port((.005, .005, .005), "ez", waveform=jnp.ones_like,
                      extent=.002 if kind == "wire" else None)
         if kind == "lumped":
-            # forward() S from one record needs isolated drives: the second port is
-            # passive there; run() keeps both driven (its S driver isolates them)
             sim.add_port((.005, .005, .005), "ez", impedance=75., waveform=jnp.ones_like,
                          excite=not forward)
     for j, topology in enumerate(("series", "parallel")):
@@ -135,7 +133,6 @@ def test_main_paths_build_drives_and_rlc_after_realization(monkeypatch, graded, 
     def realize(*args, **kwargs):
         mats = original_realize(*args, **kwargs)
         calls["realize"] += 1
-        # Model a later rule change without changing cells or any consumer.
         c = mats.components
         return mats._replace(components=replace(c, eps_update=tuple(e * 1.3 for e in c.eps_update)))
 
@@ -173,10 +170,8 @@ def test_main_paths_build_drives_and_rlc_after_realization(monkeypatch, graded, 
 
 import sys
 
-# #1961: references use stored operands, independently of every consumer helper.
-# The public smooth, full-tensor and conformal paths all step with tensor.eps;
-# the inverse-tensor kernel is outside this table.
 def _o2_operands(materials, branch, axis):
+    """The public smooth, full-tensor and conformal paths step with tensor.eps."""
     c = materials.components
     eps = c.eps_update if branch == "plain" else c.tensor.eps
     return (np.asarray(eps[axis], dtype=np.float64),
@@ -297,7 +292,6 @@ _O2_ROWS = tuple((x, b) for x in _O2_OPERATORS for b in _O2_BRANCHES) + (
     ('waveguide_second_medium', 'plain'),)
 _O2_RTOL = 1e-6
 
-# Values agree only because section admission enforces a scalar medium.
 NOTE = {
     ('waveguide', b): (
         f'{b}: step 1 omits the unequal-cell precondition because the section must '
@@ -322,41 +316,16 @@ REFUSED = {
         'waveguide sections require one homogeneous, isotropic, lossless, '
         'non-dispersive medium'),
 }
-# The corrected waveguide aperture includes v_hi-1: its weight is 0.6.
-# Every remaining combination either reaches an eligible edge or refuses by name.
 UNREACHABLE = {}
 
-# Measured |observed-reference|/|reference|, identical on run and forward.
 _O2_XFAIL_REL = {
-    ('lumped', 'smooth'): .192144888, ('lumped', 'full'): .174978157,
-    ('lumped', 'conformal'): 84.8711297,
-    ('wire', 'smooth'): .123831689, ('wire', 'full'): .112768240,
-    ('wire', 'conformal'): 50.4323076,
-    ('msl', 'smooth'): .258927820, ('msl', 'full'): .000376344724,
-    ('msl', 'conformal'): 2.26802405,
-    ('rlc', 'smooth'): .75, ('rlc', 'full'): .640101789,
-    ('rlc', 'conformal'): .996277330,
     ('waveguide', 'conformal'): .666666605,
     ('sheet', 'plain'): .562499985,
     ('kerr', 'plain'): 1.285714286, ('kerr', 'conformal'): .0692840508,
 }
 
 
-# Each xfail row's judged edge and operands, measured on run and forward.
-# component, index, operator epsilon, update epsilon, sigma, applied w, length cut.
 _O2_XFAIL_AT_EDGE = {
-    ('lumped', 'smooth'): ('ez', (6, 6, 6), 1.75, 1.0, 20.0, None, None),
-    ('lumped', 'full'): ('ez', (6, 6, 6), 1.75, 1.0670069456100464, 20.0, None, None),
-    ('lumped', 'conformal'): ('ez', (7, 6, 9), 1.0, 268.6243896484375, 20.0, 0.0037226700223982334, True),
-    ('wire', 'smooth'): ('ez', (6, 6, 6), 1.75, 1.0, 40.0, None, None),
-    ('wire', 'full'): ('ez', (6, 6, 6), 1.75, 1.0670069456100464, 40.0, None, None),
-    ('wire', 'conformal'): ('ez', (7, 6, 9), 1.0, 268.6243896484375, 40.0, 0.0037226700223982334, True),
-    ('msl', 'smooth'): ('ez', (6, 6, 6), 1.75, 1.0, 10.649312019348145, None, None),
-    ('msl', 'full'): ('ez', (6, 6, 5), 1.0, 1.000807762145996, 10.649312019348145, None, None),
-    ('msl', 'conformal'): ('ez', (7, 4, 8), 1.0, 5.8684492111206055, 10.649312019348145, 0.17040276527404785, True),
-    ('rlc', 'smooth'): ('ez', (6, 6, 6), 1.75, 1.0, 0.0, None, None),
-    ('rlc', 'full'): ('ez', (6, 6, 6), 1.75, 1.0670069456100464, 0.0, None, None),
-    ('rlc', 'conformal'): ('ez', (7, 6, 9), 1.0, 268.6243896484375, 0.0, 0.0037226700223982334, True),
     ('waveguide', 'conformal'): ('ez', (6, 0, 6), 1.0, 1.6666666269302368, 0.0, 0.6000000238418579, True),
     ('sheet', 'plain'): ('ez', (6, 6, 6), 4.0, 1.75, 0.0, None, None),
     ('kerr', 'plain'): ('ez', (5, 7, 7), 4.0, 1.75, 0.0, None, None),
@@ -365,6 +334,7 @@ _O2_XFAIL_AT_EDGE = {
 
 
 def _o2_parameter(operator, branch):
+    """An earlier measurement of the judged edge operands and |observed-reference|/|reference| was identical on run and forward."""
     marks = []
     if (operator, branch) in _O2_XFAIL_REL:
         component, edge, operand, effective, sigma, weight, cut = _O2_XFAIL_AT_EDGE[operator, branch]
@@ -405,6 +375,7 @@ def _o2_options(branch):
 
 
 def _o2_scene(operator, branch, mixed_section=False):
+    """Section admission enforces a homogeneous scalar medium."""
     from rfx import Box, Simulation, Sphere
     from rfx.boundaries.spec import Boundary, BoundarySpec
 
@@ -414,8 +385,6 @@ def _o2_scene(operator, branch, mixed_section=False):
                          boundary=BoundarySpec(x='cpml',
                              y='pec',
                              z=Boundary('pec', 'pec', conformal=branch == 'conformal')))
-        # The section must stay homogeneous. The distant shape activates
-        # smoothing without putting a second medium in the port section.
         sim.add_material('remote', eps_r=4.)
         sim.add(Sphere((.004 if mixed_section else .014, .004, .003), .0013), material='remote')
         sim.add_waveguide_port(.004, direction='+x', mode=(1, 0), mode_type='TE',
@@ -579,8 +548,7 @@ def _o2_measure_impl(operator, branch, entry, change, mixed_section, seen):
         raise _O2ReferenceCaptured
 
     def waveguide(state, cfg, step, dt, dx):
-        # Observe the actual additive correction from zero to avoid subtractive
-        # cancellation with the E curl. Use an existing nonzero incident sample.
+        """The additive correction is observed from zero to avoid subtractive cancellation with the E curl."""
         index = int(np.argmax(np.abs(np.asarray(cfg.h_inc_table))))
         seen.setdefault('checks', []).append(('incident samples', cfg.h_inc_table.size > 1))
         zero = state._replace(ex=jnp.zeros_like(state.ex), ey=jnp.zeros_like(state.ey), ez=jnp.zeros_like(state.ez))
@@ -695,7 +663,6 @@ def test_o2_operator_operand(_o2_observations, operator, branch, entry):
                                err_msg=str(row))
     changed = row['follow']
     _o2_assert_measurement(changed)
-    # First prove the intervention, including when admission refused the scene.
     np.testing.assert_allclose(changed['eps'], 1.7 * row['eps'], rtol=_O2_RTOL)
     assert changed['cell'] == row['cell']
     if 'refused' in changed:
@@ -735,7 +702,9 @@ def test_o2_classifications(_o2_observations):
 
 @pytest.mark.parametrize('branch', _O2_BRANCHES)
 def test_o2_intervention_reaches_kernel(monkeypatch, branch):
-    """Always exercise the intervention, even if every operator fails step 1."""
+    """Always exercise the intervention, even if every operator fails step 1.
+    Expected Cb comes from the unscaled scene and the requested 1.7x change, independently of whether the realization hook moved anything.
+    """
     from rfx.stepping import uniform_loop, yee as kernels
 
     row = _o2_measure('rlc', branch, 'run')
@@ -761,8 +730,6 @@ def test_o2_intervention_reaches_kernel(monkeypatch, branch):
         with pytest.raises(_O2ReferenceCaptured):
             sim.run(n_steps=1, skip_preflight=True, **_o2_options(branch))
     intervention = seen['intervention']
-    # Expected Cb comes from the unscaled scene and the requested 1.7x change,
-    # independently of whether the realization hook actually moved anything.
     cb_scaled = 1. / (1.7 * row['eps'] * EPS_0 / row['dt'] + row['sigma'] / 2.)
     cb_unscaled = 1. / (row['eps'] * EPS_0 / row['dt'] + row['sigma'] / 2.)
     print(f'O2 kernel {branch}: increment={seen["increment"]:.12g}, '

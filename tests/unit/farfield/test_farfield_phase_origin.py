@@ -53,13 +53,15 @@ def _grid(graded, *, zero_face="pec", symmetric=False):
             kwargs[f"{zero_face}_faces"] = {"z_lo"}
     if not graded:
         return Grid(1.5 * FREQ, (0.032,) * 3, dx=DX, **kwargs)
-    # Positive 0.75--1.25 mm cells, unchanged 1 mm boundary cells. Each
-    # interior profile spans exactly 32 mm; the three grade in different ways.
     profiles = [DX * (1 + 0.25 * np.sin(np.linspace(0, 2 * np.pi, 32) * n))
                 for n in (1, 2, 3)]
+    assert all(np.all((p >= 0.75e-3) & (p <= 1.25e-3)) and np.isclose(p.sum(), 0.032, rtol=0, atol=1e-14) and np.allclose(p[[0, -1]], DX, rtol=0, atol=1e-14) for p in profiles) and all(not np.array_equal(profiles[a], profiles[b]) for a, b in ((0, 1), (0, 2), (1, 2))), "The graded profiles must have 0.75 to 1.25 mm cells, span 32 mm, retain 1 mm boundary cells, and differ by axis."
     return make_nonuniform_grid((0.032, 0.032), profiles[2], DX,
                                 dx_profile=profiles[0], dy_profile=profiles[1],
                                 **kwargs)
+
+
+REQUIRED_BOX_FIELDS = 7
 
 
 def _box(grid, graded, *, hand_built=False):
@@ -71,14 +73,12 @@ def _box(grid, graded, *, hand_built=False):
                                j_lo=lo[1], j_hi=hi[1], k_lo=lo[2], k_hi=hi[2],
                                freqs=np.array([FREQ]))
     if hand_built:
-        # The seven required fields remain sufficient: no pad metadata.
-        box = NTFFBox(*box[:7], face_centre=True)
+        box = NTFFBox(*box[:REQUIRED_BOX_FIELDS], face_centre=True)
     return box
 
 
 def _dipole_record(grid, box):
-    # Independent geometry, without the transform's _face_positions or pad
-    # resolver: the physical origin is the grid's first interior node.
+    """The midpoint truncation-error scale budgets both tangential directions and both phases in a directional difference."""
     nodes, widths = [], []
     for axis in "xyz":
         cells = np.asarray(grid.cells(axis), dtype=np.float64)
@@ -98,15 +98,11 @@ def _dipole_record(grid, box):
                                   [[0, 0, 1]], [[0, 0, 0]], k=2 * np.pi * FREQ / C0)
             shape = (1, bounds[a][1] - bounds[a][0], bounds[b][1] - bounds[b][0], 4)
             arrays.append(np.stack([E[:, a], E[:, b], H[:, a], H[:, b]], axis=-1).reshape(shape))
-    # Midpoint rule: each tangential direction contributes h^2 f''/24.
-    # The oscillatory part has curvature k^2; the strongest radial term
-    # R^-3 has relative curvature 12/R^2. Budget both tangent directions
-    # and both phases in a directional difference. This is a conservative
-    # truncation-error scale, plus 2e-5 rad for float32 phase/reduction error.
     h = max(np.max(d[lo:hi]) for d, (lo, hi) in zip(widths, bounds))
     distance = min(min(SOURCE[a] - nodes[a][lo], nodes[a][hi] - SOURCE[a])
                    for a, (lo, hi) in enumerate(bounds))
-    tolerance = 4 * h**2 / 24 * ((2 * np.pi * FREQ / C0)**2 + 12 / distance**2) + 2e-5
+    FLOAT32_PHASE_ERROR_RAD = 2e-5
+    tolerance = 4 * h**2 / 24 * ((2 * np.pi * FREQ / C0)**2 + 12 / distance**2) + FLOAT32_PHASE_ERROR_RAD
     return NTFFData(*arrays), tolerance
 
 
@@ -114,6 +110,7 @@ def _dipole_record(grid, box):
 @pytest.mark.parametrize("hand_built", [False, True], ids=["constructor", "hand-built"])
 @pytest.mark.parametrize("transform", [compute_far_field, compute_far_field_jax], ids=["numpy", "jax"])
 def test_off_centre_source_phase(graded, hand_built, transform):
+    """The absolute phase reference uses a unit current moment."""
     grid = _grid(graded)
     box = _box(grid, graded, hand_built=hand_built)
     data, tolerance = _dipole_record(grid, box)
@@ -125,7 +122,6 @@ def test_off_centre_source_phase(graded, hand_built, transform):
     analytic = np.angle(np.exp(1j * (phase - phase[0, 0])))
     residual = np.angle(np.exp(1j * (measured - analytic)))
     assert np.max(np.abs(residual)) < tolerance
-    # Also fix the absolute complex reference for a unit current moment.
     expected = 1j * ETA_0 * FREQ / (2 * C0) * np.sin(th) * np.exp(1j * phase)
     assert np.max(np.abs(np.angle(ff.E_theta[0] / expected))) < tolerance / 2
     print(f"\nphase {graded=} {hand_built=} {transform.__name__}: "
@@ -170,12 +166,10 @@ def test_symmetric_origin_is_bit_identical_to_scalar_grid(graded, transform):
     grid = _grid(graded, symmetric=True)
     box = _box(grid, graded)
     data, _ = _dipole_record(grid, box)
-    # A legacy grid-like object with no pad attributes takes the historical
-    # scalar path. Identical arithmetic is required, not just close phases.
     attrs = {name: getattr(grid, name) for name in ("dx", "dy", "dz", "dx_arr", "dy_arr", "cpml_layers")
              if hasattr(grid, name)}
     legacy = SimpleNamespace(**attrs)
-    hand = NTFFBox(*box[:7], face_centre=True)
+    hand = NTFFBox(*box[:REQUIRED_BOX_FIELDS], face_centre=True)
     actual = transform(data, box, grid, THETA, PHI)
     expected = transform(data, hand, legacy, THETA, PHI)
     np.testing.assert_array_equal(actual.E_theta, expected.E_theta)
@@ -184,6 +178,7 @@ def test_symmetric_origin_is_bit_identical_to_scalar_grid(graded, transform):
 
 @pytest.mark.parametrize("graded", [False, True])
 def test_surface_export_and_transform_share_physical_origin(graded):
+    """The tolerance allows quantization between the transform’s float32 solver cell store and the export’s float64 coordinate spine."""
     grid = _grid(graded)
     box = _box(grid, graded)
     data, _ = _dipole_record(grid, box)
@@ -197,8 +192,6 @@ def test_surface_export_and_transform_share_physical_origin(graded):
     N, L = phase @ surface.J_s[0], phase @ surface.M_s[0]
     expected = -1j * k / (4 * np.pi) * np.sum(L * ph_hat + ETA_0 * N * th_hat, axis=-1)
     ff = compute_far_field(data, box, grid, THETA, PHI)
-    # The transform retains its float32 solver cell store on a NU grid;
-    # export uses the float64 coordinate spine. Allow that quantization.
     np.testing.assert_allclose(ff.E_theta[0], expected, rtol=5 * np.finfo(np.float32).eps)
 
 
@@ -214,11 +207,10 @@ def test_margin_error_is_not_hidden_by_pad_conflict(graded):
 
 @pytest.mark.parametrize("transform", [compute_far_field, compute_far_field_jax])
 def test_legacy_none_scalar_pad_means_unpadded(transform):
+    """With no realized or explicit pads, a None scalar means no padding while an explicit per-face zero is preserved."""
     grid = _grid(False)
-    box = NTFFBox(*_box(grid, False)[:7], face_centre=True)
+    box = NTFFBox(*_box(grid, False)[:REQUIRED_BOX_FIELDS], face_centre=True)
     data, _ = _dipole_record(grid, box)
-    # With no realized or explicit pads, None has the same meaning as an
-    # omitted scalar: no padding. Preserve any explicit per-face zero too.
     attrs = dict(dx=DX, face_layers={"x_lo": 0, "y_lo": 2})
     actual = transform(data, box, SimpleNamespace(**attrs, cpml_layers=None), THETA, PHI)
     expected = transform(data, box, SimpleNamespace(**attrs, cpml_layers=0), THETA, PHI)

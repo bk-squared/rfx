@@ -51,6 +51,7 @@ def reference(values, widths, component, cell, periodic):
 @pytest.mark.parametrize('periodic', [(False,)*3, (True,)*3, (True, False, True)])
 @pytest.mark.parametrize('shape', [(3, 4, 5), (1, 4, 3)])
 def test_volume_sigma_and_poles_against_hand_reference(periodic, shape):
+    """The hand reference uses beta=eps0*delta_eps*dt/(2*tau+dt)*occupancy, with delta_eps=2 and tau=1e-11 s."""
     rng = np.random.default_rng(733)
     g = MetricGrid([np.arange(n, dtype=float) + 1 for n in shape])
     eps = rng.uniform(1, 8, shape).astype(np.float32)
@@ -59,7 +60,6 @@ def test_volume_sigma_and_poles_against_hand_reference(periodic, shape):
     m = MaterialArrays(jnp.asarray(eps), jnp.asarray(sigma), jnp.ones(shape))
     c = realize_components(ComponentCells(m, ([DebyePole(2., 1e-11)], mask)),
                            g, periodic=periodic)
-    # beta = eps0 * delta_eps * dt/(2*tau+dt) * occupancy.
     beta_scale = 8.8541878128e-12 * 2 * g.dt / (2e-11 + g.dt)
     for a, cell in product(range(3), np.ndindex(shape)):
         for array, edge in ((eps, c.eps_update[a]), (sigma, c.sigma_update[a]),
@@ -164,6 +164,7 @@ def test_slab_widths_and_existing_ghost_match_global_reference():
 @pytest.mark.parametrize('kind', ['plain', 'lossy', 'debye', 'lorentz'])
 @pytest.mark.parametrize('drive', ['current', 'port'])
 def test_first_e_sample_at_unequal_interface(kind, drive):
+    """The interface E edge sits between dx=.0011 vacuum and dx=.0009 slab cells."""
     from rfx import Simulation, Box
     widths = np.array([1., 1., .9, 1.1, .9, 1.1, 1., 1.]) * .001
     sim = Simulation(freq_max=8e9, domain=(.008,)*3, dx=.001,
@@ -187,7 +188,6 @@ def test_first_e_sample_at_unequal_interface(kind, drive):
     sim.add_probe(position, 'ez')
     grid = sim._build_nonuniform_grid()
     dt = float(grid.dt)
-    # The edge sits between dx=.0011 (vacuum) and dx=.0009 (slab).
     fraction = .9 / (1.1 + .9)
     eps = 1 + 3*fraction + (1e-14/(8.8541878128e-12*.001) if drive == 'rlc' else 0.)
     sigma = conductivity*fraction + (20. if drive in ('port','rlc') else 0.)
@@ -264,6 +264,7 @@ def test_first_e_sample_with_graded_lumped_rc(kind):
 @pytest.mark.parametrize('periodic', [(False, False, False), (True, True, True)])
 @pytest.mark.parametrize('term', ['fraction', 'coupling'])
 def test_lorentz_occupancy_and_recurrence_against_hand_reference(periodic, term):
+    """The independent Lorentz reference uses central-difference/CN recurrence coupling."""
     from rfx.model.materials import pole_component_weights
     shape = (3, 4, 5)
     widths = (np.array([1., 2., 4.]), np.array([3., 1., 2., 5.]),
@@ -282,7 +283,6 @@ def test_lorentz_occupancy_and_recurrence_against_hand_reference(periodic, term)
     for axis in range(3):
         for cell in np.ndindex(shape):
             expected[(axis, *cell)] = reference(mask, widths, axis, cell, periodic)[0]
-    # Independent central-difference / CN Lorentz recurrence coupling.
     scale = 8.8541878128e-12 * (delta_eps*omega0**2) * grid.dt**2 / (1 + delta*grid.dt)
     coupling = np.asarray(realized.lorentz.coefficients[2])[:, 0]
     if term == 'fraction':
@@ -295,7 +295,6 @@ def test_lorentz_occupancy_and_recurrence_against_hand_reference(periodic, term)
 def test_rounded_inverse_duals_cannot_decide_primal_constancy(tensor):
     from rfx.core.yee import init_state
     from rfx.stepping.yee import update_e_nu, update_e_nu_aniso
-    # Unequal float64 cells become indistinguishable as float32 inverse duals.
     grid = MetricGrid(([1., 1.+1e-9, 1.],)*3)
     assert not any(grid.is_constant(a) for a in range(3))
     widths = electric_cell_sizes(grid)

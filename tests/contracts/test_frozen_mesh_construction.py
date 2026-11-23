@@ -30,7 +30,6 @@ def test_freeze_before_first_geometry_survives_execution(entry):
     grid = sim.freeze_mesh()
     d = float(grid.dx)
     sim.add(Box((2*d, d, d), (3*d, 4*d, 4*d)), material="pec")
-    # Adding this first body used to engage the feature planner and move nodes.
     result = getattr(sim, entry)(n_steps=1, skip_preflight=True)
     assert result.grid.dx == grid.dx
     assert result.grid.shape == grid.shape

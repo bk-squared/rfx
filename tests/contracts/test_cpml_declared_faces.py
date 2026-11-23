@@ -18,17 +18,14 @@ CELLS = (24, 20, 16)
 STEPS = 60
 IMAGE_BAR = 1e-5
 LANE_ULP_BAR = 9
-# Design A18/A19: uniform vs constant-profile graded uses two kernels;
-# tests/unit/nonuniform/test_nonuniform_face_depths.py:94 sets this bar.
 TWO_KERNEL_BAR = STEPS * 10 * np.finfo(np.float32).eps
-# PMC run/forward/nonuniform/distributed images already have rows in
-# test_realized_boundary.py::test_declared_face. Only distributed_nu is new.
 ROWS = [("pec-zlo", entry) for entry in
         ("run", "nonuniform", "distributed", "distributed_nu")]
 ROWS += [("pmc-cpml", "distributed_nu")]
 
 
 def _model(case, entry, layers, *, image=False, opposite=False):
+    """Ez is half-cell displaced along z and node-centred along x."""
     axis = 2 if case == "pec-zlo" else 0
     token = "pec" if axis == 2 else "pmc"
     if opposite:
@@ -39,16 +36,12 @@ def _model(case, entry, layers, *, image=False, opposite=False):
     faces = dict.fromkeys("xyz", "cpml")
     if image:
         cells[axis] *= 2
-        # Ez is half-cell displaced along z, node-centred along x.
-        # Reflection of its lattice index is 2*N-i-1 on z, 2*N-i on x.
         source[axis] += CELLS[axis]
         mirror = source.copy()
         mirror[axis] = 2 * CELLS[axis] - source[axis] - (axis == 2)
         for probe in probes:
             probe[axis] = CELLS[axis] - probe[axis] - (axis == 2)
         if axis == 0:
-            # Mirroring across x=0 retains the far PMC wall and its mirror
-            # at the doubled box's two outer x faces; y/z stay CPML.
             faces["x"] = "pmc"
         sources = (source, mirror)
     else:
@@ -111,8 +104,6 @@ def test_declared_reflector_matches_even_image(case, entry):
             reference = "nonuniform" if entry == "distributed_nu" else "run"
             single = _record(case, reference, layers)
             two_kernel = entry == "nonuniform"
-            # Design A21: two-vs-one-device graded probe bar from
-            # tests/unit/runners/test_distributed_graded_run.py:93-99.
             distributed_graded = entry == "distributed_nu"
             quantity = f"lane-vs-{reference}/" + ("peak" if two_kernel or distributed_graded else "peak-ULP")
             _difference(row, quantity, half, single, ulp=not (two_kernel or distributed_graded),

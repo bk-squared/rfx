@@ -85,7 +85,7 @@ def test_t7_traced_nominal_x_boundary_can_differ_from_dx():
     nominal = np.asarray(profile, dtype=np.float64)
 
     def build(cells):
-        # The nominal sum must match the declared extent, including f32 rounding.
+        """The nominal sum must match the declared extent, including f32 rounding."""
         grid = Simulation(
             freq_max=20e9, domain=(float(nominal.sum()), 20e-3, 10e-3), dx=1e-3,
             boundary="cpml", cpml_layers=4, dx_profile=cells,

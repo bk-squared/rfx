@@ -49,20 +49,15 @@ from rfx import Box, Simulation
 from rfx.boundaries.pec import SheetSpec, realized_pec_edge_masks
 
 
-# --------------------------------------------------------------------------
-# 1. a sheet owns no cell and writes no material
-# --------------------------------------------------------------------------
 
 DX = 100e-6
-T_CU = 17e-6            # a real foil: 0.17 of a cell, so it can only be a sheet
+T_CU = 17e-6
 EPS_CORE = 3.38
 LX = LY = 1.0e-3
 LZ = 2.0e-3
-Z_SHEET = 0.8e-3        # a node on BOTH lanes below
+COMMON_SHEET_NODE_M = 0.8e-3
+Z_SHEET = COMMON_SHEET_NODE_M
 
-# 10 x 50 µm then 10 x 150 µm: a grading ratio unlike either transverse axis,
-# so a uniform-valued profile cannot take the NU path without exercising it.
-# Nodes: 0 .. 500 µm by 50, then 650, 800, ... — 800 µm is node 12.
 DZ_GRADED = np.concatenate([np.full(10, 50e-6), np.full(10, 150e-6)])
 
 
@@ -73,7 +68,9 @@ def _stack(*, with_sheet, span_the_plane=True, lane="uniform"):
     distinguishes: the laminate drawn THROUGH the foil plane (the remedy), or
     drawn abutting the foil's two physical faces so the plane itself is a
     17 µm slot of vacuum (the #702 geometry).
+    The sheet at 800 µm is node 12 on the graded lane.
     """
+    assert T_CU < DX, 'The foil is thinner than a cell, so it requires a sheet declaration.'
     if lane == "nu":
         sim = Simulation(freq_max=10e9, domain=(LX, LY, 0.0), dx=DX,
                          dz_profile=DZ_GRADED, boundary="pec")
@@ -96,6 +93,7 @@ def _stack(*, with_sheet, span_the_plane=True, lane="uniform"):
 
 def _assemble(sim, lane="uniform"):
     """``(grid, materials, pec_mask, pec_sheets)`` on either lane."""
+    assert float(np.ptp(DZ_GRADED)) > 0, 'The z profile must be graded to exercise a nonuniform metric.'
     sheets: list = []
     if lane == "nu":
         grid = sim._build_nonuniform_grid()
@@ -156,8 +154,8 @@ def test_two_identical_slot_levels_stay_vacuum_and_agree():
     the stack-up actually drew, not a resampled laminate. If either level
     reads ``EPS_CORE`` again, a resample has come back; if the two disagree,
     a material value is following the metal again.
+    One whole primal cell stays empty above each sheet under centre sampling.
     """
-    # Leave one whole primal cell empty above each sheet under centre sampling.
     z_a, z_b = 0.6e-3, 1.0e-3
     sim = Simulation(freq_max=10e9, domain=(LX, LY, LZ), dx=DX,
                      boundary="pec")
@@ -181,7 +179,6 @@ def test_two_identical_slot_levels_stay_vacuum_and_agree():
     assert got[0] == pytest.approx(1.0, abs=1e-9), (
         "the slot the stack-up drew must stay vacuum; preflight's "
         "sheet_slot_vacuum is what surfaces it, not a silent resample")
-    # the fixture really is the slot geometry: laminate on both sides
     for sp in sheets:
         assert float(eps[i, j, sp.plane - 1]) == pytest.approx(EPS_CORE, abs=1e-5)
         assert float(eps[i, j, sp.plane + 1]) == pytest.approx(EPS_CORE, abs=1e-5)
@@ -203,9 +200,6 @@ def test_the_realized_sheet_plane_equals_the_declared_one(lane):
         "the normal E through a sheet stays live (§1.3)")
 
 
-# --------------------------------------------------------------------------
-# 2. the 2-D lane: a sheet whose normal is a length-1 axis
-# --------------------------------------------------------------------------
 
 def _rect_footprint(shape, i0, i1, j0, j1):
     """Closed node rectangle ``i0..i1`` x ``j0..j1`` on plane k = 0."""
@@ -272,9 +266,6 @@ def test_two_d_sheet_through_the_api_is_one_plane_and_no_cell():
                                   np.asarray(spec.footprint))
 
 
-# --------------------------------------------------------------------------
-# 3. the declaration survives serialization
-# --------------------------------------------------------------------------
 
 def test_a_sheet_declaration_round_trips_through_the_design_ir():
     """A serialized design must not silently reinterpret its conductors.

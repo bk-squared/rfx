@@ -40,6 +40,7 @@ What is pinned here, on both lanes:
 * the chunk hooks with a stop that never fires leave both loops bit-identical,
   and a stop at k steps returns k steps;
 * refusals.
+The floor is written here rather than read from ``rfx.ringdown`` so that changing ``STOP_FLOOR_DECAY_TIMES`` is caught.
 """
 
 from __future__ import annotations
@@ -61,8 +62,6 @@ from rfx.ringdown import RingdownSpec
 from tests.unit.sparams.test_ringdown_run import (
     BAR_DB, BAR_DEG, FREQS, N_LONG, _box, _db_deg, _digest, _long)
 
-#: The floor, written here rather than read from the module
-#: so that changing the module's constant is caught.
 FLOOR = 0.5
 LANES = ("uniform", "graded")
 
@@ -94,10 +93,6 @@ def _strong_slowest_tau(poles):
     a_max = max(p.amplitude for p in poles)
     return 1.0 / min(p.decay_per_s for p in poles if p.amplitude >= 1e-3 * a_max)
 
-
-# ---------------------------------------------------------------------------
-# The stop on the resonant box
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("lane", LANES)
 def test_the_run_stops_early_with_the_settled_s_parameters(lane):
@@ -154,7 +149,6 @@ def test_the_floor_holds_the_stop_where_the_witness_already_agrees(lane):
     last = st.checks[-1]
     assert last.record_over_tau >= FLOOR, last
     assert last.n_record * st.dt >= FLOOR * last.tau_slowest_s
-    # the decay time the floor reads is the settled record's own slowest pole
     tau_long = _strong_slowest_tau(_long(lane).ringdown.report.poles)
     print(f"\n[{lane}] held at {[c.n_record for c in held]} steps "
           f"({[round(c.record_over_tau, 3) for c in held]} decay times); stopped "
@@ -242,7 +236,8 @@ def test_a_static_field_does_not_hold_the_floor():
     constant. The floor must read the ringing mode, so the stop fires at the
     first record past half its decay time -- 3250 steps of 1 ps, checked every
     250 steps with the real check function and stop rule -- and the report
-    names the 10 GHz pole and the static pole it left out."""
+    names the 10 GHz pole and the static pole it left out.
+    The completed spectrum is 2.5x the record's at half a decay time, requiring scaling so the synthetic S stays below 1 and reads passive."""
     dt, f0, q = 1.0e-12, 10.0e9, 200.0
     alpha = math.pi * f0 / q
     t = np.arange(3250) * dt
@@ -250,8 +245,6 @@ def test_a_static_field_does_not_hold_the_floor():
     Y = np.stack([ring * np.cos(2 * np.pi * f0 * t) + 0.5,
                   ring * np.sin(2 * np.pi * f0 * t + 0.3) - 0.3], axis=1)
     f_bins = np.linspace(5e9, 15e9, 41)
-    # the completed spectrum is 2.5x the record's at half a decay time: scale
-    # so the synthetic "S" stays below 1 and reads passive
     scale = 4.0 * float(np.max(np.abs(ringdown_tail.plain_dft(Y - np.array([0.5, -0.3]),
                                                    dt, f_bins))))
     spec = RingdownSpec()
@@ -274,14 +267,8 @@ def test_a_static_field_does_not_hold_the_floor():
     assert abs(abs(last.floor_pole.f_hz) / f0 - 1.0) < 1e-4
     left = last.zero_frequency_poles
     assert left and all(abs(p.f_hz) < 1.0 / last.record_s for p in left)
-    # the pole left out would have held the floor: it does not decay
     assert min(p.decay_per_s for p in left) < 1e-3 * alpha
 
-
-# ---------------------------------------------------------------------------
-# What the floor and the stop's other conditions are for: synthetic records
-# through the stop's own check (_judge_record) and schedule (_StopSchedule)
-# ---------------------------------------------------------------------------
 
 _DT = 1.2148552052451076e-12
 
@@ -494,10 +481,11 @@ def test_a_pole_the_record_cannot_tell_from_dc_is_not_moved_onto_a_bin():
     T = 2.25e-9
     s = np.array([-5.0e6 + 0.0j, -1.0e8 + 2j * np.pi * 10.0e9, -1.0e8 - 2j * np.pi * 10.0e9])
     bins = np.array([0.2e9, 5.0e9, 10.01e9])
+    assert np.all(np.abs(bins - s[2].imag / (2 * np.pi)) > 1 / T), "The negative-frequency pole must have no bin within the record resolution."
     out = rd._on_nearest_bin(s, bins, T)
     assert out[0] == s[0]
     assert out[1] == s[1].real + 2j * np.pi * 10.01e9
-    assert out[2] == s[2]          # no positive bin within 1/T of -10 GHz
+    assert out[2] == s[2]
 
 
 def test_a_non_passive_completion_does_not_stop():
@@ -533,10 +521,6 @@ def test_the_floor_reads_the_largest_decay_time_the_consecutive_rule_rests_on():
     assert c.tau_slowest_s == 1e-9 and c.floor_from == 750
 
 
-# ---------------------------------------------------------------------------
-# The rule
-# ---------------------------------------------------------------------------
-
 def _decide(sequence):
     """Stop index of a sequence of (sources_off, we_ok, floor_ok) checks, or None."""
     run = 0
@@ -548,21 +532,17 @@ def _decide(sequence):
 
 
 @pytest.mark.parametrize("sequence, expected", [
-    ([(True, True, True)], None),                                  # one check is not two
-    ([(True, False, True), (True, True, True)], None),             # WE failed just before
-    ([(False, False, False), (True, True, True)], None),           # a source was on before
-    ([(True, True, False), (True, True, True)], 1),                # floor only at the stop
+    ([(True, True, True)], None),
+    ([(True, False, True), (True, True, True)], None),
+    ([(False, False, False), (True, True, True)], None),
+    ([(True, True, False), (True, True, True)], 1),
     ([(True, True, True), (True, False, True), (True, True, True),
-      (True, True, True)], 3),                                     # a failure restarts the count
-    ([(True, True, False)] * 5, None),                             # never past the floor
+      (True, True, True)], 3),
+    ([(True, True, False)] * 5, None),
 ])
 def test_the_stop_needs_two_checks_in_a_row(sequence, expected):
     assert _decide(sequence) == expected
 
-
-# ---------------------------------------------------------------------------
-# The hooks: a stop that never fires changes nothing
-# ---------------------------------------------------------------------------
 
 def _uniform_low_level(n, **kw):
     """A CPML box with a dielectric inclusion, a DC-free pulse and two probes."""
@@ -640,8 +620,6 @@ def test_the_graded_loop_hook_is_a_continuation():
     stopped = loop(200, stop_fn=lambda s, p: s >= 100)
     assert np.asarray(stopped.time_series).shape[0] == 100
     _same(stopped, loop(100))
-    # a stop between two progress lines (every 80 steps: 100, then 200) prints
-    # its own line at the stop
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
         stopped = loop(200, stop_fn=lambda s, p: s >= 150, report_every=80)
@@ -652,10 +630,6 @@ def test_the_graded_loop_hook_is_a_continuation():
     loop(151, stop_fn=never)
     assert [s for s, _ in seen] == [50, 100, 151], "no one-step last chunk"
 
-
-# ---------------------------------------------------------------------------
-# Refusals
-# ---------------------------------------------------------------------------
 
 def _with_plane(sim):
     sim.add_dft_plane_probe(axis="z", coordinate=2.0e-3, component="ez",

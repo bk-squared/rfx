@@ -21,6 +21,7 @@ def _matrices(xi):
 
 
 def test_touching_substrate_and_rod_compose_spd():
+    """At the touching face both volumes have f=1/2 and normal along z."""
     grid = _grid()
     substrate = Box((-.1, -.1, -.1), (.1, .1, .004))
     rod = Cylinder((.005, .005, .006), .0024, .004, 'z')
@@ -29,10 +30,9 @@ def test_touching_substrate_and_rod_compose_spd():
     matrices = _matrices(result.nodes.xi)
     assert np.array_equal(matrices, matrices.swapaxes(-1, -2))
     assert np.linalg.eigvalsh(matrices.astype(np.float64)).min() > 0
-    # At the touching face both volumes have f=1/2 and normal along z.
     index = (5, 5, 4)
     old = _matrices(prior.nodes.xi)[index]
-    assert old[0, 0] != old[2, 2]  # prior is an interface, not isotropic
+    assert old[0, 0] != old[2, 2]
     outside = 4.
     expected = np.diag([1. / (.5 * 38. + .5 * outside)] * 2
                        + [.5 / 38. + .5 / outside])
@@ -45,9 +45,10 @@ def test_traced_radius_gradient_matches_concrete_central_fd():
     grid = _grid()
 
     def objective(radius):
+        """The sampled node has partial fill, away from clipping and normal ties."""
         rod = Cylinder((.005, .005, .005), radius, .008, 'z')
         xi = compute_node_tensor_eps(grid, [(rod, 38.)]).nodes.xi
-        index = (7, 6, 5)  # partial fill, away from clipping and normal ties
+        index = (7, 6, 5)
         return xi[0][index] + .2 * xi[1][index] + .3 * xi[3][index]
 
     radius, h = .0024, 1e-6

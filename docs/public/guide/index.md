@@ -6,8 +6,8 @@ sidebar:
 ---
 
 Start with a physical question, build a model, and decide what you will measure.
-The [visual manual](/rfx/gallery/visual-manual/) shows that sequence with fields,
-structures and response curves.
+The [teaching examples](/rfx/examples/teaching/boundary-reflection/) show that
+sequence with a model, its field movie and a probe record.
 
 New here? Read [Installation](/rfx/start/install/),
 [first runnable model](/rfx/guide/first-run/), [Quick Start](/rfx/start/first-simulation/),
@@ -16,7 +16,7 @@ cells, boundaries, conductors, sources and ports, and when a run is finished.
 
 | Your next step | Read or run |
 |---|---|
-| See what rfx can simulate | [Visual examples](/rfx/gallery/) |
+| See what rfx can simulate | [Showcase](/rfx/showcase/) |
 | Choose a material and draw a structure | [Materials & geometry](/rfx/model/materials/) |
 | Excite the model | [Sources & ports](/rfx/model/ports/) |
 | Inspect fields and export plots | [Visualization & analysis](/rfx/measure/plots-and-export/) |

@@ -5,6 +5,7 @@ Validates that:
 2. Source injection and probe recording work through scan
 3. Multiport S-matrix has reciprocity (S12 = S21)
 4. TFSF + periodic-boundary integration matches the manual loop
+Every domain length written as N * (C0 / 5e9 / 20) is a whole number of cells of dx, so the solved domain equals the declared one.
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -54,12 +55,10 @@ def test_compiled_runner_energy_conservation():
     shape = (20, 20, 20)
     dx = 0.003
     0.99 * dx / (C0 * np.sqrt(3))
-    # Build a minimal Grid-like object or use raw parameters
-    grid = Grid(freq_max=5e9, domain=((shape[0] + 1) * (C0 / 5e9 / 20.0), (shape[1] + 1) * (C0 / 5e9 / 20.0), (shape[2] + 1) * (C0 / 5e9 / 20.0)),  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=((shape[0] + 1) * (C0 / 5e9 / 20.0), (shape[1] + 1) * (C0 / 5e9 / 20.0), (shape[2] + 1) * (C0 / 5e9 / 20.0)),
                 cpml_layers=0)
     materials = init_materials(grid.shape)
 
-    # Seed initial field (cavity mode)
     Lx = (grid.nx - 1) * grid.dx
     Ly = (grid.ny - 1) * grid.dx
     x = np.arange(grid.nx) * grid.dx
@@ -68,20 +67,15 @@ def test_compiled_runner_energy_conservation():
                np.sin(np.pi * y[None, :, None] / Ly) *
                np.ones((1, 1, grid.nz)))
 
-    # Run with compiled runner — probe at center
     center = make_probe(grid,
                         (grid.nx//2 * grid.dx, grid.ny//2 * grid.dx,
                          grid.nz//2 * grid.dx),
                         "ez")
     n_steps = 200
 
-    # We can't seed initial field through run(), so compare energies
-    # via the Python loop approach.  Instead, test that the runner
-    # at least produces a valid state with zero initial energy preserved.
     result = run(grid, materials, n_steps, probes=[center])
 
     assert result.time_series.shape == (n_steps, 1)
-    # With no sources, all fields should stay zero
     assert float(jnp.max(jnp.abs(result.time_series))) == 0.0
     assert _total_energy(result.state, grid.dx) == 0.0
 
@@ -149,7 +143,7 @@ def test_run_until_decay_supports_upml_boundary():
 
 def test_compiled_runner_source_and_probe():
     """Compiled runner with a point source produces non-zero probe data."""
-    grid = Grid(freq_max=5e9, domain=(11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0)), cpml_layers=0)
     materials = init_materials(grid.shape)
     n_steps = 200
 
@@ -160,11 +154,9 @@ def test_compiled_runner_source_and_probe():
     result = run(grid, materials, n_steps, sources=[src], probes=[prb])
 
     assert result.time_series.shape == (n_steps, 1)
-    # Source should inject energy → non-zero probe readings
     peak = float(jnp.max(jnp.abs(result.time_series[:, 0])))
     assert peak > 0, "Probe should detect non-zero field from source"
 
-    # Final state should have non-zero energy
     energy = _total_energy(result.state, grid.dx)
     assert energy > 0, "Simulation should have non-zero energy"
     print(f"\nCompiled runner: peak probe = {peak:.4e}, energy = {energy:.4e}")
@@ -172,7 +164,7 @@ def test_compiled_runner_source_and_probe():
 
 def test_compiled_runner_matches_python_loop():
     """Compiled runner should produce identical results to a Python loop."""
-    grid = Grid(freq_max=5e9, domain=(11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0)), cpml_layers=0)
     materials = init_materials(grid.shape)
     n_steps = 100
 
@@ -180,12 +172,10 @@ def test_compiled_runner_matches_python_loop():
     src_pos = (0.015, 0.015, 0.015)
     prb_pos = (0.02, 0.02, 0.02)
 
-    # ---- compiled runner ----
     src = make_source(grid, src_pos, "ez", pulse, n_steps)
     prb = make_probe(grid, prb_pos, "ez")
     result = run(grid, materials, n_steps, sources=[src], probes=[prb])
 
-    # ---- manual Python loop ----
     state = init_state(grid.shape)
     si, sj, sk = grid.position_to_index(src_pos)
     pi, pj, pk = grid.position_to_index(prb_pos)
@@ -194,7 +184,6 @@ def test_compiled_runner_matches_python_loop():
         state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
-        # Soft source
         val = float(pulse(step * grid.dt))
         state = state._replace(ez=state.ez.at[si, sj, sk].add(val))
         manual_ts.append(float(state.ez[pi, pj, pk]))
@@ -202,7 +191,6 @@ def test_compiled_runner_matches_python_loop():
     manual_ts = np.array(manual_ts)
     compiled_ts = np.array(result.time_series[:, 0])
 
-    # Should match to machine precision
     max_err = np.max(np.abs(compiled_ts - manual_ts))
     print(f"\nCompiled vs manual loop max error: {max_err:.2e}")
     assert max_err < 1e-5, f"Compiled runner diverged from Python loop: {max_err:.2e}"
@@ -210,7 +198,7 @@ def test_compiled_runner_matches_python_loop():
 
 def test_compiled_runner_dft_plane_matches_manual_loop():
     """Compiled runner should match manual DFT plane accumulation."""
-    grid = Grid(freq_max=5e9, domain=(11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0), 11 * (C0 / 5e9 / 20.0)), cpml_layers=0)
     materials = init_materials(grid.shape)
     n_steps = 80
 
@@ -262,7 +250,7 @@ def test_compiled_runner_tfsf_matches_manual_loop():
         f0=4e9,
         bandwidth=0.5,
         amplitude=1.0,
-    )
+    dtype='float32')
     probe = ProbeSpec(
         i=tfsf_cfg.x_lo + 8,
         j=grid.ny // 2,
@@ -325,7 +313,7 @@ def test_compiled_runner_tfsf_ey_matches_manual_loop():
         bandwidth=0.5,
         amplitude=1.0,
         polarization="ey",
-    )
+    dtype='float32')
     probe = ProbeSpec(
         i=tfsf_cfg.x_lo + 8,
         j=grid.ny // 2,
@@ -389,7 +377,7 @@ def test_compiled_runner_tfsf_negative_x_matches_manual_loop():
         amplitude=1.0,
         polarization="ez",
         direction="-x",
-    )
+    dtype='float32')
     probe = ProbeSpec(
         i=tfsf_cfg.x_lo + 8,
         j=grid.ny // 2,
@@ -436,12 +424,12 @@ def test_compiled_runner_tfsf_negative_x_matches_manual_loop():
 
 
 def test_compiled_runner_tfsf_oblique_matches_manual_loop():
-    """Compiled runner should preserve oblique-incidence TFSF ordering."""
+    """Compiled runner should preserve oblique-incidence TFSF ordering.
+    The extra 83 steps equal 2 tau (f0 5 GHz, bw 0.2, dt 7.63 ps) because the Bloch pulse peaks at 5 tau, without which the record holds 1e-5 of the pulse and the 1e-5 bar cannot fail.
+    """
     grid = Grid(freq_max=5e9, domain=(0.12, 0.12, 0.006), dx=0.004, cpml_layers=8)
     materials = init_materials(grid.shape)
     periodic = (False, True, True)
-    # + 83 steps = 2 tau (f0 5 GHz, bw 0.2, dt 7.63 ps): the Bloch pulse peaks at 5 tau since
-    # #1831; without them the record holds 1e-5 of the pulse and the 1e-5 bar cannot fail.
     n_steps = 120 + 83
 
     tfsf_cfg, tfsf_state0 = init_tfsf(
@@ -456,7 +444,7 @@ def test_compiled_runner_tfsf_oblique_matches_manual_loop():
         polarization="ez",
         angle_deg=30.0,
         ny=grid.ny,
-    )
+    dtype='float32')
     probe = ProbeSpec(
         i=tfsf_cfg.x_lo + 5,
         j=grid.ny // 2,
@@ -475,12 +463,6 @@ def test_compiled_runner_tfsf_oblique_matches_manual_loop():
         probes=[probe],
     )
 
-    # Detect 2D auxiliary grid for oblique incidence. #404: the oblique 2D-aux
-    # TFSF drives the shared solver on the COMPLEX Bloch-envelope path (the
-    # compiled `run()` above does the same via _build_step_setup), so the manual
-    # loop mirrors it: complex fields + per-axis roll phase + complex CPML carry.
-    # The low-level `run()` returns the (unreconstructed) envelope, so we compare
-    # envelopes directly.
     _is_2d = is_tfsf_2d(tfsf_cfg)
     if _is_2d:
         from rfx.sources.tfsf_2d import (
@@ -561,7 +543,9 @@ class _CompiledWgGrid:
 
 
 def test_compiled_runner_waveguide_port_matches_manual_loop():
-    """Compiled runner should preserve waveguide-port source/probe behavior."""
+    """Compiled runner should preserve waveguide-port source/probe behavior.
+    Source injection precedes cpml_e/pec to match the compiled scan-body ordering.
+    """
     import sys
 
     a_wg = 0.04
@@ -573,10 +557,8 @@ def test_compiled_runner_waveguide_port_matches_manual_loop():
 
     grid = _CompiledWgGrid(length, a_wg, b_wg, dx, nc)
     materials = init_materials(grid.shape)
-    # TE20 cutoff c/a = 7.49 GHz for a = 40 mm; above it the single-mode V-I
-    # extractor is not physical. Use the same band as
-    # test_extract_waveguide_s_matrix_two_port_reciprocity.
     freqs = jnp.linspace(5.0e9, 7.0e9, 12)
+    assert np.all((np.asarray(freqs) > C0 / (2 * a_wg)) & (np.asarray(freqs) < C0 / a_wg)), "The non-flux V-I extractor needs a single-mode band strictly between the TE10 and TE20 cutoffs."
     n_steps = grid.num_timesteps(num_periods=30)
 
     port = WaveguidePort(
@@ -614,9 +596,6 @@ def test_compiled_runner_waveguide_port_matches_manual_loop():
         state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
         state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
-        # Source injection before cpml_e/pec to match the compiled scan-body
-        # ordering introduced in 15c6a13 (waveguide-port TFSF-pair / soft-E
-        # fallback both run between update_e and apply_cpml_e).
         state = inject_waveguide_port(state, manual_cfg, t, grid.dt, grid.dx)
         state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
         state = apply_pec(state, axes="yz")
@@ -640,13 +619,8 @@ def test_extract_waveguide_s_matrix_two_port_reciprocity():
 
     grid = _CompiledWgGrid(length, a_wg, b_wg, dx, nc)
     materials = init_materials(grid.shape)
-    # Single-mode band only: for a=40mm, TE10 cutoff = c/(2a) = 3.75 GHz and
-    # TE20 cutoff = c/a = 7.5 GHz. The non-flux V·I extractor is valid only for a
-    # single propagating mode away from cutoff — near 3.75 GHz (small beta) and
-    # at/above 7.5 GHz (TE20 onset) the single-mode |S11| is non-physical. This
-    # test validates the S-matrix ASSEMBLY/reciprocity, so it runs in the clean
-    # single-mode band; broad-band/multimode is the normalize='flux' path (#88).
     freqs = jnp.linspace(5.0e9, 7.0e9, 12)
+    assert np.all((np.asarray(freqs) > C0 / (2 * a_wg)) & (np.asarray(freqs) < C0 / a_wg)), "The non-flux V-I extractor needs a single-mode band strictly between the TE10 and TE20 cutoffs."
     n_steps = grid.num_timesteps(num_periods=30)
 
     port0 = WaveguidePort(
@@ -705,6 +679,7 @@ def test_extract_waveguide_s_matrix_mixed_normal_branch_reciprocity():
     Walls are sigma-filled material cells sampled at cell centres. The
     node-aligned drawing keeps the same occupied cells under the shared
     volume rule, so the reciprocity thresholds stay unchanged.
+    A port aperture holding wall material is refused, so the half-open slices end at the sigma wall.
     """
     dx = 0.002
     nc = 10
@@ -726,14 +701,9 @@ def test_extract_waveguide_s_matrix_mixed_normal_branch_reciprocity():
             sigma=jnp.where(mask, 1e10, materials.sigma),
         )
 
-    # Single-mode band (a=40mm: TE10 cutoff 3.75 GHz, TE20 cutoff 7.5 GHz). The
-    # non-flux V·I extractor is single-mode-only; this reciprocity check runs
-    # away from both cutoffs (broad-band/multimode is the flux path — #88).
     freqs = jnp.linspace(5.0e9, 7.0e9, 10)
     n_steps = grid.num_timesteps(num_periods=30)
     padx, pady, padz = grid.axis_pads
-    # Half-open slices end at the wall: the cell at 0.08 m is the sigma wall,
-    # and a port aperture holding wall material is refused (rfx#1994).
     xslice = (padx + int(round(0.04 / dx)), padx + int(round(0.08 / dx)))
     yslice = (pady + int(round(0.04 / dx)), pady + int(round(0.08 / dx)))
     zslice = (padz, grid.nz - padz - 1)
@@ -778,6 +748,7 @@ def test_extract_waveguide_s_matrix_mixed_normal_branch_reciprocity():
         v_slice=zslice,
     )
 
+    assert np.all((np.asarray(freqs) > C0 / (2 * left.a)) & (np.asarray(freqs) < C0 / left.a)), "The non-flux V-I extractor needs a single-mode band strictly between the TE10 and TE20 cutoffs."
     cfgs = [
         init_waveguide_port(port, dx, freqs, f0=6e9, ref_offset=3, probe_offset=15, dft_total_steps=n_steps)
         for port in (left, right, top)
@@ -812,7 +783,7 @@ def test_init_tfsf_rejects_impossible_geometry():
     """Oversized CPML+margin should fail loudly instead of misconfiguring TFSF."""
     dt = Grid.courant_dt(0.001)
     with pytest.raises(ValueError, match="too large for the grid"):
-        init_tfsf(nx=21, dx=0.001, dt=dt, cpml_layers=4, tfsf_margin=6)
+        init_tfsf(nx=21, dx=0.001, dt=dt, cpml_layers=4, tfsf_margin=6, dtype='float32')
 
 
 def test_s_matrix_two_port_reciprocity():
@@ -820,8 +791,9 @@ def test_s_matrix_two_port_reciprocity():
 
     Two lumped ports in a PEC cavity. Since the system is linear and
     reciprocal, S12 = S21 at all frequencies.
+    S11 should be significant because the PEC cavity reflects.
     """
-    grid = Grid(freq_max=5e9, domain=(17 * (C0 / 5e9 / 20.0), 17 * (C0 / 5e9 / 20.0), 9 * (C0 / 5e9 / 20.0)), cpml_layers=0)  # main's solved length; #1887
+    grid = Grid(freq_max=5e9, domain=(17 * (C0 / 5e9 / 20.0), 17 * (C0 / 5e9 / 20.0), 9 * (C0 / 5e9 / 20.0)), cpml_layers=0)
     materials = init_materials(grid.shape)
 
     pulse = GaussianPulse(f0=3e9, bandwidth=0.8, amplitude=1.0)
@@ -848,17 +820,14 @@ def test_s_matrix_two_port_reciprocity():
     s12 = S[0, 1, :]
     s21 = S[1, 0, :]
 
-    # Reciprocity: |S12 - S21| should be small relative to |S12|
     diff = np.abs(s12 - s21)
     mag = np.maximum(np.abs(s12), np.abs(s21))
-    # Only check where signals are significant
     significant = mag > 1e-6
     if np.any(significant):
         rel_err = np.max(diff[significant] / mag[significant])
         print(f"\nTwo-port reciprocity: max |S12-S21|/|S12| = {rel_err:.4e}")
         assert rel_err < 0.05, f"Reciprocity violated: relative error {rel_err:.4f}"
 
-    # S11 should be significant (PEC cavity reflects)
     s11_db = 20 * np.log10(np.maximum(np.abs(S[0, 0, :]), 1e-10))
     print(f"  S11 mean: {np.mean(s11_db):.1f} dB")
     assert np.mean(s11_db) > -10, "S11 too low for PEC cavity"

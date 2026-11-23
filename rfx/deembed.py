@@ -25,7 +25,6 @@ import numpy as np
 
 from rfx.measurement.phasors import exp_j
 
-# Speed of light in vacuum (m/s)
 _C0 = 299_792_458.0
 
 
@@ -78,20 +77,10 @@ def deembed_port_extension(
             f"s_matrix has {n_ports} ports"
         )
 
-    # Propagation constant: beta = 2*pi*f * sqrt(eps_eff) / c
-    # Shape: (n_freqs,) after broadcast
-    beta = 2.0 * np.pi * freqs * np.sqrt(eps_eff) / _C0  # (n_freqs,)
+    beta = 2.0 * np.pi * freqs * np.sqrt(eps_eff) / _C0
 
-    # Phase shift per port: exp(+j * beta * L_i)
-    # We *add* phase to undo the delay (shift reference plane inward).
-    # port_phase[i, f] = exp(j * beta[f] * L_i)
-    port_phase = exp_j(np.outer(port_lengths, beta))  # (n_ports, n_freqs)
+    port_phase = exp_j(np.outer(port_lengths, beta))
 
-    # Build the de-embedding matrix.
-    # S'_ij(f) = S_ij(f) * exp(j * beta * L_i) * exp(j * beta * L_j)
-    # For diagonal (reflection): round-trip  => exp(j * 2*beta*L_i)
-    # For off-diagonal (transmission): one-way each => exp(j*beta*(L_i + L_j))
-    # Both are captured by the product port_phase[i] * port_phase[j].
     s_deembedded = np.empty_like(s_matrix)
     for i in range(n_ports):
         for j in range(n_ports):
@@ -161,23 +150,16 @@ def deembed_thru(
         t_meas = _s_to_t(s_measured[:, :, fi])
         t_thru = _s_to_t(s_thru[:, :, fi])
 
-        # Matrix square root of the thru T-matrix gives the fixture half
         t_fix_half = _matrix_sqrt_2x2(t_thru)
 
-        # Invert the fixture half
         t_fix_inv = np.linalg.inv(t_fix_half)
 
-        # De-embed: remove fixture from both sides
         t_dut = t_fix_inv @ t_meas @ t_fix_inv
 
         s_dut[:, :, fi] = _t_to_s(t_dut)
 
     return s_dut
 
-
-# ---------------------------------------------------------------------------
-# Internal helpers: S <-> T matrix conversions for 2-port networks
-# ---------------------------------------------------------------------------
 
 def _s_to_t(s: np.ndarray) -> np.ndarray:
     """Convert a 2x2 S-matrix to a transfer (T) matrix.
@@ -234,9 +216,7 @@ def _matrix_sqrt_2x2(m: np.ndarray) -> np.ndarray:
 
     s = np.sqrt(tr + 2.0 * sqrt_det)
 
-    # Guard against near-zero s (degenerate case)
     if abs(s) < 1e-30:
-        # Fall back to eigendecomposition
         eigvals, eigvecs = np.linalg.eig(m)
         sqrt_m = eigvecs @ np.diag(np.sqrt(eigvals)) @ np.linalg.inv(eigvecs)
         return sqrt_m

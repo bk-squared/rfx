@@ -27,6 +27,8 @@ was not drawn on without saying so. Nothing this file gates depends on h: the
 advisory is about the ground plane's LATERAL extent against λ, and the source
 still sits between the two sheets, well inside the λ/2 image-coupling zone
 (λ = 125 mm).
+
+The advisory wavelength reference uses the maximum requested NTFF frequency.
 """
 
 from __future__ import annotations
@@ -37,13 +39,13 @@ from rfx import Box, Simulation
 
 
 FREQ_MAX = 3e9
-NTFF_FREQS = (2.4e9,)      # λ = 124.9 mm; advisory λ-reference = max(freqs)
+NTFF_FREQS = (2.4e9,)
 LAM = 3e8 / NTFF_FREQS[0]
 
 PATCH_L = 29.5e-3
 PATCH_W = 38.0e-3
 DX = 2.5e-3
-H_SUB = DX                 # substrate: one cell, so both foils are on nodes
+H_SUB = DX
 
 
 def _patch_sim(gp_x: float, gp_y: float, *, with_ntff: bool = True,
@@ -52,20 +54,21 @@ def _patch_sim(gp_x: float, gp_y: float, *, with_ntff: bool = True,
     margin = 0.04
     dom = (gp_x + 2 * margin, gp_y + 2 * margin, 0.05)
     cx, cy = dom[0] / 2, dom[1] / 2
-    z_gp = 0.010                       # a node on the 2.5 mm mesh
-    z_patch = z_gp + H_SUB             # the next node up
+    z_gp = 0.010
+    z_patch = z_gp + H_SUB
+    assert (
+        (z_gp / DX).is_integer()
+        and z_patch == z_gp + DX
+    ), (
+        'The ground foil must be on a mesh node and the patch on the next node')
 
-    # #1138: geometry[1] x solved -9.322 % off; this test checks wording is advisory expected physics never error.
     sim = Simulation(snap="declared", freq_max=FREQ_MAX, domain=dom, boundary="cpml",
                      cpml_layers=4, dx=DX)
-    # ground plane (sheet) + patch element (sheet, smaller footprint)
     sim.add(Box((cx - gp_x / 2, cy - gp_y / 2, z_gp),
                 (cx + gp_x / 2, cy + gp_y / 2, z_gp)), material="pec")
     sim.add(Box((cx - PATCH_L / 2, cy - PATCH_W / 2, z_patch),
                 (cx + PATCH_L / 2, cy + PATCH_W / 2, z_patch)),
             material="pec")
-    # feed between GP and patch: inside the patch footprint (over the GP), or
-    # laterally clear of every sheet for the "no radiator over it" case
     if source_over_gp:
         src_xy = (cx - PATCH_L / 2 + 8e-3, cy)
     else:
@@ -93,7 +96,7 @@ def test_small_gp_pattern_fixture_fires_once_on_the_ground_plane():
     assert len(issues) == 1, (
         f"expected exactly one small-GP advisory, got {issues!r}")
     msg = str(issues[0])
-    assert "60.0mm × 55.0mm" in msg, msg   # the GP, largest qualifying sheet
+    assert "60.0mm × 55.0mm" in msg, msg
     assert "38.0mm" not in msg, (
         "advisory anchored on the patch element, not the ground plane: " + msg)
     assert "0.48λ × 0.44λ" in msg, msg
@@ -107,10 +110,9 @@ def test_wording_is_advisory_expected_physics_never_error():
     msg = str(issue)
     assert "expected physics" in msg, msg
     assert "edge diffraction" in msg, msg
-    assert "intentional" in msg, msg           # the legitimate-design branch
+    assert "intentional" in msg, msg
     assert "error" not in msg.lower(), msg
     assert getattr(issue, "severity", None) == "warning"
-    # a warning-only report must not block the errors-only launch gate
     report.raise_for_failure()
 
 

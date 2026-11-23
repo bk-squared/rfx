@@ -32,7 +32,6 @@ def test_checkify_invariants_catches_user_checks_under_jit():
 
 
 def test_checkify_invariants_survive_grad():
-    # The module docstring promises failures survive `grad`; lock that path.
     def loss(x):
         check_bounds(x, lower=0.0, upper=10.0, name="x")
         return jnp.sum(x ** 2)
@@ -76,7 +75,6 @@ def test_checkify_invariants_can_disable_float_checks_and_enable_index_checks():
     )
     err, _ = checked_index(jnp.array([1.0, 2.0]))
     assert "out-of-bounds" in str(err.get())
-
 
 
 def test_check_helpers_work_with_vmap():

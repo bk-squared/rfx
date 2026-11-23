@@ -69,9 +69,6 @@ def _planes(masks):
     return [realized_wall_planes(masks, a) for a in range(3)]
 
 
-# ---------------------------------------------------------------------------
-# volumes: every shape class puts a wall on BOTH drawn faces
-# ---------------------------------------------------------------------------
 
 def test_box_volume_walls_sit_on_the_drawn_faces():
     kind, masks, cells, _ = _realize(Box((0.006, 0.006, 0.008),
@@ -133,21 +130,16 @@ def test_pec_and_dielectric_samplers_differ_on_purpose():
     sim = Simulation(freq_max=10e9, domain=DOM, dx=DX, boundary="pec")
     grid = sim._build_grid()
     box = Box((0.006, 0.006, 0.008), (0.014, 0.014, 0.012))
-    node = np.asarray(box.mask(grid))                       # dielectric rule
-    _, _, centre, _ = _realize(box)                         # PEC volume rule
+    node = np.asarray(box.mask(grid))
+    _, _, centre, _ = _realize(box)
     centre = np.asarray(centre)
     assert node.shape == centre.shape
     assert node.sum() == 8 * 8 * 4 and centre.sum() == 8 * 8 * 4
-    # same COUNT, shifted by half a cell: the node mask spans nodes 6..13,
-    # the cell mask spans cells 6..13 whose upper corner is node 14.
     assert np.where(node.any(axis=(1, 2)))[0].tolist() == list(range(6, 14))
     assert np.where(centre.any(axis=(1, 2)))[0].tolist() == list(range(6, 14))
-    assert not np.array_equal(node, centre) or True   # equal here by luck of alignment
+    assert not np.array_equal(node, centre) or True
 
 
-# ---------------------------------------------------------------------------
-# sheets: zero-thickness Boxes from the compound primitives
-# ---------------------------------------------------------------------------
 
 def test_via_barrel_is_a_volume_and_its_pads_are_sheets():
     """One primitive emits both declarations: the barrel owns cells, each
@@ -158,10 +150,8 @@ def test_via_barrel_is_a_volume_and_its_pads_are_sheets():
     kinds = [_realize(s, f"via[{i}]")[0] for i, s in enumerate(shapes)]
     assert kinds[0] == "volume"
     assert set(kinds[1:]) == {"sheet"}
-    # the pads land on the layer faces they were drawn on, one plane each
     pad_planes = [_planes(_realize(s, "pad")[1])[2] for s in shapes[1:]]
     assert sorted(pad_planes) == [[8], [12]]
-    # the barrel spans both faces
     assert _planes(_realize(shapes[0], "barrel")[1])[2] == list(range(8, 13))
 
 
@@ -178,20 +168,17 @@ def test_curved_patch_segments_are_sheets_on_their_own_planes():
         assert kind == "sheet", i
         assert len(_planes(masks)[2]) == 1, (i, _planes(masks)[2])
         assert sheet.normal_axis == 2
-        # the normal component stays live through a sheet (§1.3)
         assert not bool(np.asarray(masks[2]).any()), i
 
 
-# ---------------------------------------------------------------------------
-# wires (§1.4)
-# ---------------------------------------------------------------------------
 
 def test_thin_polyline_wire_is_a_filament_and_a_thick_one_is_a_volume():
     thin = PolylineWire(((0.006, 0.010, 0.010), (0.014, 0.010, 0.010)),
                         radius=0.2e-3)
     with pytest.raises(ValueError, match="resolve the wire as a volume"):
         _realize(thin, "positive subcell radius")
-    thin = PolylineWire(thin.points, radius=0.)  # legacy filament ownership
+    FILAMENT_RADIUS = 0.
+    thin = PolylineWire(thin.points, radius=FILAMENT_RADIUS)
     kind, masks, cells, _ = _realize(thin, "thin")
     assert kind == "wire" and cells is None
     ex = np.asarray(masks[0])

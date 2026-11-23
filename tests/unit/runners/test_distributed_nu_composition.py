@@ -79,9 +79,6 @@ from tests._distributed_nu_tolerances import (
     assert_class_e_bit_match,
 )
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def _require_two_devices() -> list:
     """Return jax.devices()[:2] or skip the test."""
@@ -121,6 +118,7 @@ def _make_nu_sim_small(
     Uses a constant dx_profile so it is degenerate-uniform (safest baseline).
     The non-trivial composition tests can override profiles after calling this.
     Grid is small (16×12×12 default) to keep CPU runtime short.
+    The source is well inside device-0 slab (x < nx//2) to avoid seam artifacts.
     """
     from rfx import Simulation
 
@@ -132,7 +130,6 @@ def _make_nu_sim_small(
         dx_profile=np.full(nx, dx),
     )
     if add_source:
-        # Place source well inside device-0 slab (x < nx//2) to avoid seam artifacts
         sx = (nx // 4) * dx
         sim.add_source(position=(sx, ny // 2 * dx, nz // 2 * dx), component="ez")
     if add_probe:
@@ -141,20 +138,6 @@ def _make_nu_sim_small(
     return sim
 
 
-# ---------------------------------------------------------------------------
-# Tests — API contract: distributed=True public API
-# ---------------------------------------------------------------------------
-#
-# (Removed the M5 spike test `test_shard_map_checkpoint_trivial_scan_grad`
-# on 2026-04-17. The upstream JAX composition
-# `jax.grad(jit(checkpoint(shard_map(scan))))` remains broken in
-# jax 0.6.x, but Phase 2F shipped a `custom_vjp` workaround that is the
-# production segmented-remat path; the minimal-reproducer xfail sentinel
-# is no longer needed.  If JAX upstream fixes the composition, the
-# custom_vjp path can be removed in a future simplification pass, but
-# that is a refactor opportunity, not a correctness gate.)
-#
-# ---------------------------------------------------------------------------
 
 def test_forward_distributed_flag_requires_multi_device():
     """forward(distributed=True) with only 1 device must raise ValueError.
@@ -162,14 +145,12 @@ def test_forward_distributed_flag_requires_multi_device():
     When the kwarg IS wired (Phase 2A), passing distributed=True with a
     single device should raise ValueError, not silently fall back.
     """
-    _require_two_devices()  # skip if <2 devices available
+    _require_two_devices()
 
     from rfx import Simulation
 
-    # Build a minimal NU sim with PEC boundary (fastest)
     sim = _make_nu_sim_small(boundary="pec")
 
-    # Pass an explicit single-device list — must raise ValueError.
     with pytest.raises(ValueError, match="at least 2"):
         sim.forward(n_steps=4, distributed=True, devices=[jax.devices()[0]])
 
@@ -180,7 +161,6 @@ def test_forward_distributed_admits_uniform_mesh():
 
     from rfx import Simulation
 
-    # Uniform mesh: no dx_profile
     sim = Simulation(
         freq_max=5e9,
         domain=(0.1, 0.06, 0.06),
@@ -201,8 +181,6 @@ def test_forward_distributed_refuses_tfsf_on_nu_path():
 
     from rfx import Simulation
 
-    # TFSF requires boundary='cpml' and no lumped point sources/ports, so build
-    # a NU sim with CPML and only the probe (no add_source).
     sim = _make_nu_sim_small(boundary="cpml", add_source=False)
     sim.add_tfsf_source(
         f0=3e9,
@@ -227,8 +205,8 @@ def test_forward_distributed_requested_devices_gt_available_raises():
 
     sim = _make_nu_sim_small(boundary="pec")
 
-    # Build a fake list longer than available devices
-    fake_extra_devices = devices + devices  # 4 elements, but only 2 real devices
+    fake_extra_devices = devices + devices
+    assert len(fake_extra_devices) > len(jax.devices()), "The fake device list must exceed the number of available devices."
 
     with pytest.raises(ValueError, match="requested"):
         sim.forward(
@@ -254,13 +232,10 @@ def test_forward_distributed_devices_without_distributed_flag_raises():
     with pytest.raises(ValueError, match="requires distributed=True"):
         sim.forward(
             n_steps=4,
-            devices=devices,  # devices without distributed=True -> must raise
+            devices=devices,
         )
 
 
-# ---------------------------------------------------------------------------
-# Tests 7-12 — Physics parity: forward parity on small cases (Class B)
-# ---------------------------------------------------------------------------
 
 def test_forward_distributed_pec_two_device_matches_single_device_small_case():
     """Distributed forward with PEC boundary must match single-device to Class B.
@@ -275,11 +250,9 @@ def test_forward_distributed_pec_two_device_matches_single_device_small_case():
 
     n_steps = 20
 
-    # Single-device reference
     sim_s = _make_nu_sim_small(boundary="pec")
     res_s = sim_s.forward(n_steps=n_steps)
 
-    # 2-device distributed (raises TypeError until Phase 2A)
     sim_d = _make_nu_sim_small(boundary="pec")
     res_d = sim_d.forward(
         n_steps=n_steps,
@@ -308,8 +281,6 @@ def test_forward_distributed_cpml_two_device_matches_single_device_small_case():
 
     n_steps = 20
 
-    # nx must satisfy nx_local > 2*cpml_layers (default 8) on each rank, so for
-    # 2-device 1D-x sharding we need nx >= 2*(2*8+1) = 34.
     nx, ny, nz, dx = 36, 12, 12, 5e-3
 
     sim_s = _make_nu_sim_small(boundary="cpml", nx=nx, ny=ny, nz=nz, dx=dx)
@@ -353,7 +324,6 @@ def test_forward_distributed_debye_two_device_matches_single_device_small_case()
             boundary="pec",
             dx_profile=np.full(nx, dx),
         )
-        # Debye slab spanning x-index 6..9 (straddles seam at nx//2=8)
         sim.add_material(
             "debye_slab",
             eps_r=2.0,
@@ -377,14 +347,12 @@ def test_forward_distributed_debye_two_device_matches_single_device_small_case()
         devices=devices,
     )
 
-    # Class B
     assert_class_b_parity(
         res_s.time_series[0],
         res_d.time_series[0],
         label="debye_two_device",
     )
 
-    # Class D: drift sweep
     assert_class_d_timeseries_drift(
         res_s.time_series[0],
         res_d.time_series[0],
@@ -415,7 +383,6 @@ def test_forward_distributed_lorentz_two_device_matches_single_device_small_case
             boundary="pec",
             dx_profile=np.full(nx, dx),
         )
-        # Lorentz slab near seam
         sim.add_material(
             "lorentz_slab",
             eps_r=2.0,
@@ -475,8 +442,6 @@ def test_forward_distributed_mixed_dispersion_two_device_matches_single_device_s
             boundary="pec",
             dx_profile=np.full(nx, dx),
         )
-        # Combined Debye+Lorentz slab near seam (single named material with
-        # both pole types so the runner takes the mixed dispatch).
         sim.add_material(
             "mixed_slab",
             eps_r=2.0,
@@ -540,17 +505,9 @@ def test_forward_distributed_pec_occupancy_two_device_matches_single_device():
         sim.add_probe(position=(5 * dx, ny // 2 * dx, nz // 2 * dx), component="ez")
         return sim
 
-    # Build a soft-PEC occupancy mask: partial conductivity in a slab near the seam
-    # Shape matches the FIELD GRID, which is cells+1 per axis (#562)
-    # #931 §1.6: the soft rule is the noisy-OR of the four cells incident to
-    # each edge, ``M = 1 - prod(1 - o_c)``, under the same #689 shifts as the
-    # hard rule — one relaxation of ONE realization, not a second spelling
-    # of a neighbour rule. At binary occupancy it is bit-identical to
-    # ``apply_pec_mask`` (pinned in tests/contracts). What is asserted here
-    # is that the sharded lane reproduces the single-device one, which is a
-    # property of the sharding, not of the rule.
+    PARTIAL_SEAM_OCCUPANCY = 0.5
     pec_occ = jnp.zeros(_field_shape(nx, ny, nz))
-    pec_occ = pec_occ.at[7:9, :, :].set(0.5)  # partial occupancy near seam
+    pec_occ = pec_occ.at[7:9, :, :].set(PARTIAL_SEAM_OCCUPANCY)
 
     sim_s = _build_sim()
     res_s = sim_s.forward(n_steps=n_steps, pec_occupancy_override=pec_occ)
@@ -570,9 +527,6 @@ def test_forward_distributed_pec_occupancy_two_device_matches_single_device():
     )
 
 
-# ---------------------------------------------------------------------------
-# Tests 13-15 — Gradient parity (Class A)
-# ---------------------------------------------------------------------------
 
 def test_forward_distributed_checkpoint_every_matches_no_segment_small_grad_case():
     """Distributed forward with checkpoint_every must produce bit-identical grad.
@@ -629,7 +583,6 @@ def test_forward_distributed_checkpoint_every_matches_no_segment_small_grad_case
     grad_no_seg = jax.grad(loss_no_segment)(eps)
     grad_checkpt = jax.grad(loss_with_checkpoint)(eps)
 
-    # Class E bit-match
     assert_class_e_bit_match(grad_no_seg, grad_checkpt, label="checkpoint_every_bit_match")
 
 
@@ -686,16 +639,6 @@ def test_forward_distributed_n_warmup_tail_grad_matches_single_device():
     assert_class_a_grad(grad_single, grad_dist, label="n_warmup_tail_grad")
 
 
-# ---------------------------------------------------------------------------
-# Test 17 — Seam isolation (Class B)
-#
-# Note: the interior-seam CPML noop assertion (Class C) is covered at the
-# kernel level by tests/unit/runners/test_distributed_nu_kernel.py::
-# test_distributed_cpml_internal_seam_is_noop. The composition-level variant
-# was removed because Simulation.forward() does not expose per-rank CPML
-# internal state and an indirect probe-based check would duplicate the
-# kernel test less precisely.
-# ---------------------------------------------------------------------------
 
 def test_forward_distributed_pec_mask_seam_exchange_preserves_field():
     """PEC mask at the seam must survive ghost-cell exchange unchanged (Class B).
@@ -703,6 +646,7 @@ def test_forward_distributed_pec_mask_seam_exchange_preserves_field():
     A hard-PEC mask (pec_mask_override) that spans the seam boundary between
     rank 0 and rank 1 must produce identical field values to the single-device
     reference.  Ghost exchange must not corrupt the PEC-masked cells.
+    The three-cell volume realizes walls at x = nx//2 - 1 and x = nx//2 + 2 with Ex shorted through the slab.
     """
     devices = _require_two_devices()
 
@@ -711,13 +655,6 @@ def test_forward_distributed_pec_mask_seam_exchange_preserves_field():
     nx, ny, nz, dx = 16, 12, 12, 5e-3
     n_steps = 20
 
-    # PEC cell occupancy: a 3-cell VOLUME straddling the seam
-    # (x = nx//2 - 1 .. nx//2 + 1). #931: this is a volume declaration
-    # (§1.2) and realizes walls at x = nx//2 - 1 and x = nx//2 + 2 with Ex
-    # shorted through the slab. It was commented "a thin conductor", which
-    # a 3-cell body never was; a sheet owns no cell and has no cell-mask
-    # spelling. What the test measures is ghost exchange across the seam,
-    # and that is unchanged.
     pec_mask = jnp.zeros(_field_shape(nx, ny, nz), dtype=bool)
     pec_mask = pec_mask.at[nx // 2 - 1 : nx // 2 + 2, :, :].set(True)
 
@@ -751,9 +688,6 @@ def test_forward_distributed_pec_mask_seam_exchange_preserves_field():
     )
 
 
-# ---------------------------------------------------------------------------
-# Test 18 (G1) — Per-cell seam gradient parity (Class A near seam)
-# ---------------------------------------------------------------------------
 
 def test_forward_distributed_grad_per_cell_matches_single_device_near_seam():
     """Per-cell gradient for seam-adjacent cells must match single-device (Class A seam).
@@ -805,7 +739,6 @@ def test_forward_distributed_grad_per_cell_matches_single_device_near_seam():
     grad_single = jax.grad(loss_single)(eps)
     grad_dist = jax.grad(loss_dist)(eps)
 
-    # Seam-adjacent cells: x = nx//2-2 to nx//2+2
     seam = slice(nx // 2 - 2, nx // 2 + 2)
     assert_class_a_grad_seam(
         grad_single[seam],
@@ -814,7 +747,6 @@ def test_forward_distributed_grad_per_cell_matches_single_device_near_seam():
         rtol=1e-4,
     )
 
-    # Non-seam cells: standard Class A
     non_seam_single = jnp.concatenate([grad_single[:nx//2-2].ravel(),
                                         grad_single[nx//2+2:].ravel()])
     non_seam_dist   = jnp.concatenate([grad_dist[:nx//2-2].ravel(),
@@ -822,9 +754,6 @@ def test_forward_distributed_grad_per_cell_matches_single_device_near_seam():
     assert_class_a_grad(non_seam_single, non_seam_dist, label="non_seam_cells")
 
 
-# ---------------------------------------------------------------------------
-# Test 19 (G2) — NaN propagation via ghost exchange (Class E structural)
-# ---------------------------------------------------------------------------
 
 def test_forward_distributed_nan_propagates_via_ghost_exchange():
     """NaN on rank 0 must reach rank 1's probe within 2*exchange_interval steps.
@@ -844,7 +773,7 @@ def test_forward_distributed_nan_propagates_via_ghost_exchange():
 
     nx, ny, nz, dx = 16, 12, 12, 5e-3
     exchange_interval = 1
-    n_steps = 4 * exchange_interval + 4  # enough steps for NaN to propagate
+    n_steps = 4 * exchange_interval + 4
 
     sim = Simulation(
         freq_max=5e9,
@@ -853,15 +782,15 @@ def test_forward_distributed_nan_propagates_via_ghost_exchange():
         boundary="pec",
         dx_profile=np.full(nx, dx),
     )
-    # Source on rank 0 side (x < nx//2)
-    sim.add_source(position=(3 * dx, ny // 2 * dx, nz // 2 * dx), component="ez")
-    # Probe on rank 1 side (x >= nx//2)
+    NAN_SOURCE_X_CELL = 3
+    NAN_PROBE_SEAM_OFFSET_CELLS = 3
+    assert 0 <= NAN_SOURCE_X_CELL < nx // 2 <= nx // 2 + NAN_PROBE_SEAM_OFFSET_CELLS < nx, "The NaN source and probe must straddle the rank seam."
+    sim.add_source(position=(NAN_SOURCE_X_CELL * dx, ny // 2 * dx, nz // 2 * dx), component="ez")
     sim.add_probe(
-        position=((nx // 2 + 3) * dx, ny // 2 * dx, nz // 2 * dx),
+        position=((nx // 2 + NAN_PROBE_SEAM_OFFSET_CELLS) * dx, ny // 2 * dx, nz // 2 * dx),
         component="ez",
     )
 
-    # Inject NaN into rank 0's eps slab (x = 0..nx//2-1)
     eps_nan = jnp.ones(_field_shape(nx, ny, nz))
     eps_nan = eps_nan.at[: nx // 2, :, :].set(jnp.nan)
 
@@ -873,30 +802,22 @@ def test_forward_distributed_nan_propagates_via_ghost_exchange():
         exchange_interval=exchange_interval,
     )
 
-    # res.time_series is shape (n_steps, n_probes); slice all time steps
-    # for the single probe (index 0).  The original Phase 1 test used
-    # `res.time_series[0]` which returned only the first time step
-    # across probes — masked by the xfail marker until Phase 3.1 cleanup
-    # exposed the NaN already propagates correctly within ~4 steps.
-    ts = np.asarray(res.time_series[:, 0])  # probe on rank 1, all steps
+    ts = np.asarray(res.time_series[:, 0])
 
-    # NaN must appear within 2*exchange_interval steps of rank-1 probe
     nan_steps = np.where(np.isnan(ts))[0]
     assert len(nan_steps) > 0, (
         f"G2: NaN did not propagate from rank 0 to rank 1 probe within {n_steps} steps. "
         f"time_series={ts}. Ghost exchange may not be wired."
     )
     first_nan = nan_steps[0]
-    max_allowed = 2 * exchange_interval + 2  # +2 for source injection latency
+    SOURCE_INJECTION_LATENCY_STEPS = 2
+    max_allowed = 2 * exchange_interval + SOURCE_INJECTION_LATENCY_STEPS
     assert first_nan <= max_allowed, (
         f"G2: NaN took {first_nan} steps to propagate; expected <= {max_allowed}. "
         f"Ghost exchange interval may be too large or exchange is not per-step."
     )
 
 
-# ---------------------------------------------------------------------------
-# The refusal names the actual face and both global/per-face remedies.
-# ---------------------------------------------------------------------------
 
 def test_distributed_cpml_preflight_error_names_per_face_thickness():
     """A high-x absorber with seven owned rows cannot hold eight layers."""
