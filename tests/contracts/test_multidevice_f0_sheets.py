@@ -31,7 +31,6 @@ def model(graded, boundary, placement, count, *, sheet=True, drive=True):
     seam = grid.node_of(0, per)
     plane = grid.node_of(0, per + (placement == 'beside'))
     if placement == 'end_rows':
-        # In-plane faces ON node planes produce free end-row edges.
         shape = Box((grid.node_of(0, 5), grid.node_of(1, 5), .004),
                     (grid.node_of(0, grid.shape[0] - 5), grid.node_of(1, 10), .004))
     elif placement == 'span':
@@ -40,8 +39,6 @@ def model(graded, boundary, placement, count, *, sheet=True, drive=True):
         shape = Box((plane, .00235, .00135), (plane, .00765, .00765))
     if sheet:
         sim.add_thin_conductor(shape, sigma_bulk=100., surface_impedance_f0=5e9)
-    # Excite all components off the symmetry planes. The short pulse reaches
-    # sheet interiors and free end rows during this record.
     if drive:
         for axis, component in enumerate(CHANNELS[:3]):
             sim.add_source((seam - .002, .004, .003), component,
@@ -113,7 +110,6 @@ def compare(reference, actual, case, cells):
                          axis=(0, 2, 3, 4))
     worst = differences / np.spacing(peaks)
     assert np.all(peaks > 0), (case, peaks)
-    # Record ii's source-inclusive, per-component reference unit is diagnostic only.
     component_peak, component_worst = peak_ulps(fields, other_fields, (0, 2, 3, 4))
     probe_peaks, probe_worst = peak_ulps(probes, other_probes, (0, 1))
     print('F0_PARITY ' + json.dumps(dict(case=case, steps=SAMPLE_STEPS,
@@ -185,7 +181,6 @@ def test_v1_end_rows(graded, monkeypatch):
             contexts.append(context)
         return context
 
-    # Capture setup only; the one-device builder and all step arithmetic run unchanged.
     with monkeypatch.context() as patch:
         patch.setattr(thin_conductor, 'build_sheet_impedance_ctx', capture)
         reference = record(sim, 1)
@@ -233,7 +228,7 @@ def probe_spectra(series, dt):
     x = x.reshape(x.shape[0], -1)
     n =np.arange(1, x.shape[0] + 1, dtype=np.float64)
     kernel = np.exp(-2j * np.pi * np.outer(SPECTRUM_FREQS, n) * dt) * dt
-    return kernel @ x  # (bins, probes)
+    return kernel @ x
 
 
 def spectra_ratios(reference, actual, dt):
@@ -271,8 +266,6 @@ def test_lumped_port_s_and_spectra_parity(count):
     position = (grid.node_of(0, per) + .004, .006, .005)
     sim.add_port(position, 'ez', impedance=50.0,
                  waveform=GaussianPulse(f0=5e9, bandwidth=1.6))
-    # The realized port cell, not the declared position: outside the CPML and
-    # off the rows next to a slab boundary (expected 20 on two devices, 15 on three).
     i, nx, per = seam_cell(sim, position, count)
     assert 3 <= i <= nx - 5, (i, nx)
     assert i % per not in (0, per - 1), (i, per)

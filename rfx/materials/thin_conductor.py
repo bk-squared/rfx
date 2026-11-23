@@ -819,6 +819,7 @@ def has_f0_sheets(thin_conductors) -> bool:
 
 def refuse_f0_sheets(thin_conductors, lane: str, *, context=None) -> None:
     """Raise for an f0 declaration or a realized sheet ``context``.
+    Low-level runners supply the realized operator rather than declarations.
 
     ``lane`` must be UNIQUE per call site: it is what
     ``tests/unit/materials/test_sheet_impedance.py`` matches on to tell which of the
@@ -826,7 +827,6 @@ def refuse_f0_sheets(thin_conductors, lane: str, *, context=None) -> None:
     also needs a row in that file's ``FENCE_REGISTRY`` and a test entering
     its lane — the inventory guard there fails otherwise.
     """
-    # Low-level runners receive the realized operator rather than declarations.
     if context is not None or has_f0_sheets(thin_conductors):
         raise RfxRefusal(
             f"surface-impedance (surface_impedance_f0) thin conductors are "

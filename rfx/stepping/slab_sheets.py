@@ -8,14 +8,13 @@ from rfx.stepping.slab import cut
 
 
 def cut_sheets(context, coefficients, layout, mesh, *, uniform=False):
+    """Cut sheet operands; alignment rows and the final high ghost carry no edge."""
     if context is None:
         return None, None
     values = {}
     merged = jnp.arange(layout.n_devices * layout.nx_local)
     row = merged % layout.nx_local
     real = (row >= layout.ghost_width) & (row < layout.nx_local - layout.ghost_width)
-    # Global x row of each merged row; rows at or beyond the realized nx are
-    # alignment rows (or the last slab's high ghost) and carry no sheet edge.
     global_row = (merged // layout.nx_local) * layout.nx_per_rank + row - layout.ghost_width
     inside = global_row < layout.nx
     for field in fields(context):

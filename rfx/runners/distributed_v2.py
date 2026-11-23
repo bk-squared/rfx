@@ -569,8 +569,6 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     port_freqs = s_param_freqs if compute_s_params else None
     ports = UniformPortPlan(*port_args, jnp.float32, port_freqs)
     if sim._tfsf is not None or exchange_interval != 1:
-        # No parity measurement covers a sheet with TF/SF or a skipped
-        # exchange on several devices: refuse before the step is staged.
         from rfx.materials.thin_conductor import refuse_f0_sheets
         refuse_f0_sheets(sim._thin_conductors, "uniform multi-device TF/SF step")
 

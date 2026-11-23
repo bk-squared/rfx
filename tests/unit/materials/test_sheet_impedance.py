@@ -1158,7 +1158,6 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
     ("rfx/runners/uniform.py", "run_uniform",
      "subpixel_smoothing / conformal_pec"):
         (__name__, "test_fence_uniform_run_subpixel_or_conformal"),
-    # refuse_sheet_dispersion(...): one call, in admit(), for every entry.
     ("rfx/runners/_admission.py", "admit", "dispersive (Debye/Lorentz)"):
         ("tests.contracts.test_sheet_dispersion_every_entry",
          "test_sheet_dispersion_refused_at_every_entry"),

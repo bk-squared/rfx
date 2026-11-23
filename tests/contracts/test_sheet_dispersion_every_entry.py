@@ -28,15 +28,8 @@ from rfx.errors import RfxRefusal
 from rfx.materials.lorentz import LorentzPole
 
 
-# In-plane faces 0.35 cell outside nodes 4 and 16 (dx = 1 mm in x and y on
-# both meshes): the footprint covers nodes 4..16 and an f0 sheet is solved
-# 0.35 cell beyond its last node at each free edge, so the solved size,
-# 12 + 2 * 0.35 = 12.7 mm, equals the drawn 16.35 - 3.65 = 12.7 mm and the
-# sheet-size preflight (1 %) passes. Same rule as _sheet_sim in
-# tests/unit/materials/test_sheet_impedance.py.
 SHEET = Box(((4 - .35) * 1e-3, (4 - .35) * 1e-3, 12e-3),
             ((16 + .35) * 1e-3, (16 + .35) * 1e-3, 12e-3))
-# Below the sheet plane (z = 12 mm), off the source and probe columns.
 POLE_BOX = Box((2e-3, 2e-3, 2e-3), (6e-3, 6e-3, 6e-3))
 OMEGA_0 = 2 * np.pi * 8e9
 
@@ -79,7 +72,6 @@ def cube(graded, *, port=False, poles="debye"):
 def multidevice(graded):
     from tests.contracts.test_multidevice_f0_sheets import model
     sim = model(graded, "pec", "span", 2)
-    # Below the sheet plane (z = 4 mm) and away from the sources.
     return add_poles(sim, Box((.002, .002, .001), (.006, .006, .003)))
 
 
@@ -98,8 +90,6 @@ def wr90(graded):
                               z=Boundary(lo="pec", hi="pec")),
         cpml_layers=6, snap="declared", **profile)
     add_sheet(sim, Box((0.02, 0.0, 0.006), (0.03, 0.024, 0.006)))
-    # The pole block lies outside both ports' source-to-reference spans
-    # (9-18 mm, 42-51 mm), so only admit() can stop this row.
     add_poles(sim, Box((0.030, 0.006, 0.0), (0.036, 0.018, 0.003)))
     freqs = jnp.linspace(6e9, 7e9, 3)
     for x, d, name in ((0.009, "+x", "l"), (0.051, "-x", "r")):
@@ -219,9 +209,7 @@ _ARMED = {"on": False}
 
 
 def _guarded_scan(*args, **kwargs):
-    # A module imported while the patch is on may bind this function as a
-    # default argument (slab_wrap's scan_loop=jax.lax.scan); disarmed, it is
-    # the real scan, so no later test inherits the failure.
+    """Refuse steps while armed; otherwise call the real scan, including bound defaults."""
     if _ARMED["on"]:
         pytest.fail("stepped an f0 sheet with a pole medium")
     return _REAL_SCAN(*args, **kwargs)

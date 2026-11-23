@@ -120,8 +120,6 @@ def test_record_and_context_cells(monkeypatch, lane, model):
 def test_refused_cells_and_distributed_dc_record(lane, model):
     sim = _record_model(model)
     if lane in ('run_distributed', 'run_distributed_nu', 'fwd_distributed_nu'):
-        # Multi-device lanes admit PEC, DC and f0 sheets; an f0 sheet realizes
-        # the same sheet context as one device (30 Ex edges, 10 of them end rows).
         admit(sim, lane)
         record = sim.realized_geometry()
         assert record.entities[0].axes[1].extent_m == pytest.approx((5.7 if model == 'pec' else 5)*DX, rel=1e-9)

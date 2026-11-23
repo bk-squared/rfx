@@ -11,8 +11,6 @@ from tests._multi_device_scene import host_devices
 
 @pytest.mark.parametrize("entry", ["forward", "run"])
 def test_uniform_refusal_names_entry(entry):
-    # Wall loss is refused on several devices at dispatch, which names the
-    # call; an f0 sheet, the scene this test used before, now runs there.
     devices = host_devices(2)
     sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
                      boundary="pec")
