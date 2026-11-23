@@ -769,6 +769,10 @@ def _forward_from_materials(
     # Multi-drive S-matrix hook (item-5 Stage 1): return the raw all-port
     # (v_dft, i_dft) accumulators for off-line wave decomposition by the
     # production-scan driver, bypassing the diagonal-only extraction below.
+    from rfx.measurement.echo_bound import runner_echo_bound
+    echo_bound = runner_echo_bound(self, grid, materials, freqs=port_s11_freqs,
+        debye=debye_spec, lorentz=lorentz_spec, smoothing=subpixel_smoothing,
+        waveguide_ports=waveguide_ports)
     if _return_raw_port_sparams:
         _raw_freqs = None
         if result.lumped_port_sparams:
@@ -800,6 +804,7 @@ def _forward_from_materials(
                 if self._dft_planes else None
             ),
             "time_series": getattr(result, "time_series", None),
+            "settling_echo_bound": echo_bound,
             "dt": getattr(result, "dt", grid.dt),
             # Flux monitors for the arch-A magnitude channel
             # (same name-keyed contract the runner uses for run()).
@@ -844,10 +849,6 @@ def _forward_from_materials(
         )
 
     from rfx.sparams._record_selection import finish_forward
-    from rfx.measurement.echo_bound import runner_echo_bound
-    echo_bound = runner_echo_bound(self, grid, materials, freqs=port_s11_freqs,
-        debye=debye_spec, lorentz=lorentz_spec, smoothing=subpixel_smoothing,
-        waveguide_ports=waveguide_ports)
     return result_with_diagnostics(finish_forward(pack_uniform_forward_result(
         self, grid, result, diagnostics=diagnostics, s_params=s_params_out,
         freqs=freqs_out, current_moment_monitor=current_moments_fwd,

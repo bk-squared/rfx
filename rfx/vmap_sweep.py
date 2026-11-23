@@ -896,10 +896,12 @@ def vmap_material_sweep(
                 for name, acc in zip(dft_names, dft_accs)
             }
 
+        from rfx.measurement.echo_bound import sweep_echo_bounds
+        echo_bounds = sweep_echo_bounds(grid, batched_materials)
         from rfx.measurement.sweep_settling import sweep_member_witnesses
         dbs, witnesses = sweep_member_witnesses(
             sim, grid, time_series_np, dft_names, run_one_fn.dft_probes, dft_planes_out,
-            param_name=param_name, param_values=param_values)
+            echo_bounds=echo_bounds)
         return VmapSweepResult(
             time_series=time_series_np,
             param_name=param_name,

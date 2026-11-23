@@ -956,7 +956,7 @@ def extract_waveguide_s_matrix_flux(
             _sd_dev, _detail_dev = settling_db_from_port_records(
                 dev_final_cfgs, echo_bound=(echo_bound if echo_bound is not None else echo_delay_bound(grid, materials=materials, debye=debye, lorentz=lorentz, waveguide_ports=dev_final_cfgs)), freq_max=getattr(grid, "freq_max", None), return_detail=True)
             _sd_ref, _detail_ref = settling_db_from_port_records(
-                ref_final_cfgs, echo_bound=(echo_bound if echo_bound is not None else echo_delay_bound(grid, materials=ref_mat_drive, debye=ref_debye, lorentz=ref_lorentz, waveguide_ports=ref_final_cfgs)), freq_max=getattr(grid, "freq_max", None), return_detail=True)
+                ref_final_cfgs, echo_bound=(echo_delay_bound(grid, materials=ref_mat_drive, debye=ref_debye, lorentz=ref_lorentz, waveguide_ports=ref_final_cfgs)), freq_max=getattr(grid, "freq_max", None), return_detail=True)
             settling_runs.append(
                 float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
                 else max(_sd_dev, _sd_ref))
@@ -1259,7 +1259,7 @@ def extract_waveguide_s_params_normalized(
             _sd_dev, _detail_dev = settling_db_from_port_records(
                 dev_final_cfgs, echo_bound=(echo_bound if echo_bound is not None else echo_delay_bound(grid, materials=materials, debye=debye, lorentz=lorentz, waveguide_ports=dev_final_cfgs)), freq_max=getattr(grid, "freq_max", None), return_detail=True)
             _sd_ref, _detail_ref = settling_db_from_port_records(
-                ref_final_cfgs, echo_bound=(echo_bound if echo_bound is not None else echo_delay_bound(grid, materials=ref_materials, debye=ref_debye, lorentz=ref_lorentz, waveguide_ports=ref_final_cfgs)), freq_max=getattr(grid, "freq_max", None), return_detail=True)
+                ref_final_cfgs, echo_bound=(echo_delay_bound(grid, materials=ref_materials, debye=ref_debye, lorentz=ref_lorentz, waveguide_ports=ref_final_cfgs)), freq_max=getattr(grid, "freq_max", None), return_detail=True)
             settling_runs.append(
                 float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
                 else max(_sd_dev, _sd_ref))
@@ -1637,7 +1637,7 @@ def extract_multimode_s_matrix_flux(
         if settling_details is not None:
             from rfx.sparams._tail_witness import combine_witness_details
             _, ref_detail = settling_db_from_port_records(
-                ref_final_cfgs, echo_bound=(echo_bound if echo_bound is not None else echo_delay_bound(grid, materials=ref_materials, debye=ref_debye, lorentz=ref_lorentz, waveguide_ports=ref_final_cfgs)), freq_max=getattr(grid, 'freq_max', None), return_detail=True)
+                ref_final_cfgs, echo_bound=(echo_delay_bound(grid, materials=ref_materials, debye=ref_debye, lorentz=ref_lorentz, waveguide_ports=ref_final_cfgs)), freq_max=getattr(grid, 'freq_max', None), return_detail=True)
             _, dev_detail = settling_db_from_port_records(
                 dev_final_cfgs, echo_bound=(echo_bound if echo_bound is not None else echo_delay_bound(grid, materials=materials, debye=debye, lorentz=lorentz, waveguide_ports=dev_final_cfgs)), freq_max=getattr(grid, 'freq_max', None), return_detail=True)
             settling_details.append(combine_witness_details(dev_detail, ref_detail))

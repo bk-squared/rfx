@@ -733,7 +733,8 @@ def _run_subgridded_once(
     coarse_bound = runner_echo_bound(sim, measurement_grid, base_materials_coarse, freqs=freqs)
     fine_bound = runner_echo_bound(sim, measurement_grid, mats_f, freqs=freqs,
                                   debye=debye_f, lorentz=lorentz_f)
-    echo_bound = {key: jnp.maximum(coarse_bound[key], fine_bound[key]) for key in coarse_bound}
+    echo_bound = dict(coarse_bound, n_max=jnp.maximum(coarse_bound['n_max'], fine_bound['n_max']),
+                      tau_max=jnp.maximum(coarse_bound['tau_max'], fine_bound['tau_max']))
     return Result(
         realized_geometry=geometry_record,
         diagnostics=diagnostics,

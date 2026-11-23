@@ -107,6 +107,12 @@ def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
     for shape_eps in smoothing_eps:
         n = jnp.maximum(n, jnp.sqrt(jnp.max(jnp.asarray(shape_eps, jnp.float32)) * jnp.max(mu)))
     n = _up(jnp.where(invalid, jnp.inf, n * (1 + margin)))
+    return bound_on_grid(grid, n, configs)
+
+
+def bound_on_grid(grid, n, configs=()):
+    """Geometry and time margin shared with the batched material reduction."""
+    from rfx.measurement.record_end import echo_group_factor
     lengths, count = [], 0
     for axis in 'xyz':
         if axis == 'z' and getattr(grid, 'is_2d', False):
@@ -137,7 +143,7 @@ def runner_echo_bound(sim, grid, materials, *, freqs=None, debye=None, lorentz=N
     if smoothing:
         from rfx.geometry.smoothing import smoothed_shape_pairs
         shapes = tuple(eps for _, eps in smoothed_shape_pairs(sim, grid)[0])
-    if freqs is None or not len(freqs):
+    if (freqs is None or not len(freqs)) and not waveguide_ports:
         freqs = (0., sim._freq_max)
     return realized_echo_bound(grid, materials, freqs=freqs, debye=debye, lorentz=lorentz,
                               smoothing_eps=shapes, waveguide_ports=waveguide_ports, valid=valid)
@@ -175,3 +181,14 @@ def sharded_echo_bound(sim, grid, materials, sharded_grid, mesh, *, freqs=None,
     valid = stage(np.ones(grid.shape, dtype=bool), 'pole_mask').astype(bool)
     return runner_echo_bound(sim, grid, materials, freqs=freqs,
         debye=spec(debye), lorentz=spec(lorentz), valid=valid)
+
+
+def sweep_echo_bounds(grid, materials):
+    """One volume reduction over all cells for every actual sweep member."""
+    from rfx.core.yee import permittivity_without_lumped
+    eps = permittivity_without_lumped(materials)
+    n = _up(jnp.maximum(1., jnp.max(jnp.sqrt(jnp.abs(eps * materials.mu_r)),
+                                  axis=tuple(range(1, eps.ndim)))))
+    bound = bound_on_grid(grid, n)
+    return tuple(dict(D=bound['D'], g=bound['g'], n_max=bound['n_max'][i],
+                      tau_max=bound['tau_max'][i]) for i in range(len(n)))
