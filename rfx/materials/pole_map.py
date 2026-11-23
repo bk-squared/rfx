@@ -128,8 +128,6 @@ def map_terms(pole, mask, dt, shape, fractions, *, periodic, high_wall, cell_siz
             damping, restoring, c = lorentz_pole_coeffs([LorentzPole(pole.omega_0, ds, strength)], dt, shape, [fractions])
             return damping[0], restoring[0], tuple(v[0] for v in c)
     else:
-        # The normalization scale cancels between the builder and edge weights.
-        # Holding it fixed avoids differentiating a squared SI-strength divisor.
         ks = jax.lax.stop_gradient(xp.max(xp.where(occupied, kappa, 0.)))
         ds = delta.reshape(-1)[xp.argmax(xp.where(occupied, kappa, 0.))]
         constant_delta = False
@@ -145,7 +143,6 @@ def map_terms(pole, mask, dt, shape, fractions, *, periodic, high_wall, cell_siz
     if si_tracer and _pole_underflow_check_enabled():
         k = pole_underflow_guard(k, (ks,), scalar=False)
     strength = RelativeStrength(pole.kappa.reference, ks) if relative else (RelativeStrength(1.0, ks) if si_tracer else ks)
-    # Concrete products are rounded before entering the edge-mean program.
     edge_xp = np if concrete and not constant_delta else jnp
     mk = edge_xp.asarray(xp.where(occupied, k, 0.))
     kwargs = dict(periodic=periodic, high_wall=high_wall, cell_sizes=cell_sizes, array_module=edge_xp)

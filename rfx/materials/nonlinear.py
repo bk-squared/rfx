@@ -37,16 +37,10 @@ class KerrMaterial(NamedTuple):
     chi3: float
 
 
-# ---------------------------------------------------------------------------
-# ADE (Auxiliary Differential Equation) Kerr correction
-# ---------------------------------------------------------------------------
 
-_KERR_FIXED_POINT_ITERS = 4   # fixed-point iterations for the reactive-Kerr constitutive solve
+_KERR_FIXED_POINT_ITERS = 4
 
 
-# ---------------------------------------------------------------------------
-# Legacy eps_r-based Kerr update
-# ---------------------------------------------------------------------------
 
 def apply_kerr_update(materials, state, kerr_regions):
     """Update eps_r based on instantaneous E-field intensity.
@@ -71,18 +65,15 @@ def apply_kerr_update(materials, state, kerr_regions):
     current E-field is used for the next E-update. Stable only when
     chi3 * |E_max|^2 << eps_r_linear. For strongly nonlinear regimes,
     a predictor-corrector scheme would be needed.
+
+    Electric components ``Ex``, ``Ey`` and ``Ez`` lie at ``(i + 1/2, j, k)``, ``(i, j + 1/2, k)`` and ``(i, j, k + 1/2)``, respectively.
     """
     eps_r = materials.eps_r
 
-    # Average E-components to cell centers for correct staggered-grid intensity
-    # Ex at (i+1/2, j, k) → average in x
     ex_avg = 0.5 * (state.ex[:-1, :, :] + state.ex[1:, :, :])
-    # Ey at (i, j+1/2, k) → average in y
     ey_avg = 0.5 * (state.ey[:, :-1, :] + state.ey[:, 1:, :])
-    # Ez at (i, j, k+1/2) → average in z
     ez_avg = 0.5 * (state.ez[:, :, :-1] + state.ez[:, :, 1:])
 
-    # Compute |E|^2 at cell centers (interior cells)
     nx, ny, nz = eps_r.shape
     sx = min(ex_avg.shape[0], nx)
     sy = min(ey_avg.shape[1], ny)
@@ -102,7 +93,6 @@ def apply_kerr_update(materials, state, kerr_regions):
     return materials._replace(eps_r=eps_r)
 
 
-# Lazy compatibility export for the time-step implementation.
 _LAZY_EXPORTS = {
     "apply_kerr_ade": "rfx.stepping.kerr",
 }

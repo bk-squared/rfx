@@ -29,9 +29,6 @@ from rfx.dashboard.components import (
     source_panel,
 )
 
-# ---------------------------------------------------------------------------
-# Page configuration
-# ---------------------------------------------------------------------------
 
 st.set_page_config(
     page_title="rfx FDTD Simulator",
@@ -47,9 +44,6 @@ except ImportError:
 st.title("rfx — JAX FDTD Simulator")
 st.caption(f"Interactive electromagnetic simulation powered by rfx v{_rfx_version}")
 
-# ---------------------------------------------------------------------------
-# Material library (populated from rfx)
-# ---------------------------------------------------------------------------
 
 try:
     from rfx.api import MATERIAL_LIBRARY
@@ -60,9 +54,6 @@ except ImportError:
         "silicon", "ptfe", "copper", "aluminum", "pec",
     ]
 
-# ---------------------------------------------------------------------------
-# Sidebar: simulation parameters
-# ---------------------------------------------------------------------------
 
 with st.sidebar:
     st.header("Simulation Setup")
@@ -113,19 +104,14 @@ with st.sidebar:
     st.markdown("---")
     st.caption(f"rfx v{_rfx_version} — JAX-native 3D FDTD")
 
-# ---------------------------------------------------------------------------
-# Main area: tabs
-# ---------------------------------------------------------------------------
 
 tab_geo, tab_source, tab_results = st.tabs(
     ["Geometry & Materials", "Sources & Ports", "Results"],
 )
 
-# --- Geometry tab ---
 with tab_geo:
     geometries = geometry_panel(_AVAILABLE_MATERIALS)
 
-    # Material reference
     with st.expander("Material Library Reference"):
         try:
             from rfx.api import MATERIAL_LIBRARY as _ml
@@ -144,15 +130,12 @@ with tab_geo:
         except ImportError:
             st.info("Install rfx to see material properties.")
 
-# --- Source tab ---
 with tab_source:
     ports, probes = source_panel()
 
-# --- Results tab ---
 with tab_results:
     st.subheader("Simulation Results")
 
-    # Summary of what will be simulated
     n_geo = len(st.session_state.get("geometries", []))
     n_ports = len(st.session_state.get("ports", []))
     n_probes = len(st.session_state.get("probes", []))
@@ -165,7 +148,6 @@ with tab_results:
     with col_s3:
         st.metric("Probes", n_probes)
 
-    # Validation
     can_run = True
     if freq_min >= freq_max:
         st.error("Invalid frequency range: min >= max.")
@@ -189,12 +171,10 @@ with tab_results:
             )
             st.stop()
 
-        # --- Build simulation ---
         freq_max_hz = freq_max * 1e9
         freq_min_hz = freq_min * 1e9
         domain_m = (dom_x * 1e-3, dom_y * 1e-3, dom_z * 1e-3)
 
-        # Cell size from accuracy
         from rfx.grid import C0
         wavelength_min = C0 / freq_max_hz
         dx = wavelength_min / acc["cells_per_wl"]
@@ -208,7 +188,6 @@ with tab_results:
             mode=mode,
         )
 
-        # Add geometries
         shape_builders = {
             "Box": lambda p: Box(p["corner_lo"], p["corner_hi"]),
             "Sphere": lambda p: Sphere(p["center"], p["radius"]),
@@ -223,7 +202,6 @@ with tab_results:
                 shape = builder(g.params)
                 sim.add(shape, material=g.material)
 
-        # Add ports
         port_entries: list[PortEntry] = st.session_state.get("ports", [])
         for p in port_entries:
             waveform = GaussianPulse(
@@ -237,12 +215,10 @@ with tab_results:
                 waveform=waveform,
             )
 
-        # Add probes
         probe_entries: list[ProbeEntry] = st.session_state.get("probes", [])
         for pr in probe_entries:
             sim.add_probe(pr.position, pr.component)
 
-        # --- Run ---
         n_steps_val = n_steps_override if n_steps_override > 0 else None
         num_periods = acc["num_periods"]
 
@@ -252,7 +228,6 @@ with tab_results:
         try:
             progress_bar.progress(10, text="Building grid and materials...")
 
-            # Determine actual step count for progress display
             if n_steps_val is None:
                 grid_preview = sim._build_realized_grid()
                 actual_steps = (sim._nu_n_steps(num_periods) if sim._uses_nonuniform_mesh
@@ -274,7 +249,7 @@ with tab_results:
             st.success(f"Simulation complete in {elapsed:.1f}s ({actual_steps} steps)")
 
         except (TimeoutError,): raise
-        except Exception as exc:  # noqa: BLE001 - recorded in Simulation failed message / Show full traceback
+        except Exception as exc:  # noqa: BLE001
             progress_bar.empty()
             st.error(f"Simulation failed: {exc}")
             with st.expander("Show full traceback"):
@@ -282,21 +257,18 @@ with tab_results:
                 st.code(traceback.format_exc(), language="python")
             st.stop()
 
-        # --- Display results ---
         st.markdown("---")
 
         res_tab_sparams, res_tab_smith, res_tab_field, res_tab_time, res_tab_export = st.tabs(
             ["S-Parameters", "Smith Chart", "Field Snapshot", "Time Series", "Export"],
         )
 
-        # S-Parameters
         with res_tab_sparams:
             if result.s_params is not None and result.freqs is not None:
                 display_s_params(result.s_params, result.freqs)
             else:
                 st.info("No S-parameter data. Add ports to compute S-parameters.")
 
-        # Smith chart
         with res_tab_smith:
             if result.s_params is not None and result.freqs is not None:
                 s11 = result.s_params[0, 0, :]
@@ -304,7 +276,6 @@ with tab_results:
             else:
                 st.info("No S11 data available.")
 
-        # Field snapshot
         with res_tab_field:
             col_fc, col_fa = st.columns(2)
             with col_fc:
@@ -322,7 +293,6 @@ with tab_results:
             grid = sim._build_realized_grid()
             display_field_slice(result.state, grid, component=field_comp, axis=field_axis)
 
-        # Time series
         with res_tab_time:
             ts = np.asarray(result.time_series)
             if ts.size > 0 and ts.shape[-1] > 0:
@@ -330,11 +300,9 @@ with tab_results:
             else:
                 st.info("No probe time-series data. Add probes to record fields.")
 
-        # Export
         with res_tab_export:
             st.subheader("Export Data")
 
-            # Touchstone download
             if result.s_params is not None and result.freqs is not None:
                 n_p = result.s_params.shape[0]
                 touchstone_bytes = export_touchstone(result.s_params, result.freqs)
@@ -346,7 +314,6 @@ with tab_results:
                     key="dl_touchstone",
                 )
 
-            # Field data download (numpy)
             if result.state is not None:
                 import io as _io
 
@@ -367,7 +334,6 @@ with tab_results:
                     key="dl_fields",
                 )
 
-            # Time series CSV
             ts = np.asarray(result.time_series)
             if ts.size > 0 and ts.shape[-1] > 0:
                 import io as _io
