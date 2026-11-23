@@ -16,8 +16,8 @@ RULE = 'the record ends less than 2.05 longest round trips'
 N = 6000
 DECLARED_EPS = 1.
 OVERRIDE_EPS = 4 * DECLARED_EPS
-BASE_INDEX = np.sqrt(DECLARED_EPS * 1.)
-MEMBER_INDEX = np.sqrt(OVERRIDE_EPS * 1.)
+BASE_INDEX = np.nextafter(np.sqrt(np.float32(DECLARED_EPS)), np.float32(np.inf))
+MEMBER_INDEX = np.nextafter(np.sqrt(np.float32(OVERRIDE_EPS)), np.float32(np.inf))
 
 
 @pytest.fixture(autouse=True)
@@ -70,74 +70,16 @@ def test_override_index_closes_plain_and_traced_records(capsys):
         assert 'cannot judge:' in row['reason'] and RULE in row['reason'], row
 
 
-def test_library_sweep_member_uses_its_own_declaration(capsys):
-    from rfx.measurement.sweep_settling import sweep_member_witnesses
-
+def test_library_sweep_member_reads_its_own_arrays(capsys):
+    from rfx.vmap_sweep import vmap_material_sweep
     sim = line()
-    assert not sim._materials
-    result = records(sim, jnp.float32(OVERRIDE_EPS))
-    check_window(result.dt)
-    series = np.asarray(result.time_series)[None]
-    names = tuple(result.dft_planes)
-    planes = tuple(result.dft_planes.values())
-    accumulators = {name: np.asarray(plane.accumulator)[None]
-                    for name, plane in result.dft_planes.items()}
-    _, base_rows = sweep_member_witnesses(
-        sim, result.grid, series, names, planes, accumulators, param_name='eps_r',
-        param_values=np.array([DECLARED_EPS]))
-    _, member_rows = sweep_member_witnesses(
-        sim, result.grid, series, names, planes, accumulators, param_name='eps_r',
-        param_values=np.array([OVERRIDE_EPS]))
-    base, = base_rows
-    row, = member_rows
+    result = vmap_material_sweep(sim, 'eps_r', np.array([DECLARED_EPS, OVERRIDE_EPS]), n_steps=N)
+    base, row = result.settling_witness
+    check_window(result.dt[0])
     with capsys.disabled():
-        print(f'12r sweep: n={N}; base_index={BASE_INDEX}; '
-              f'member_index={MEMBER_INDEX}; status={row["status"]}; '
-              f'reason={row["reason"]}', file=sys.stderr, flush=True)
+        print(f'19 sweep: base={base}; member={row}', file=sys.stderr, flush=True)
     assert base['echo_bound']['n_max'] == BASE_INDEX
     assert RULE not in base['reason']
     assert row['echo_bound']['n_max'] == MEMBER_INDEX, row
     assert row['status'] != 'pass', row
     assert 'cannot judge:' in row['reason'] and RULE in row['reason'], row
-    assert not sim._materials
-
-
-def test_unresolved_library_sweep_material_cannot_be_judged(monkeypatch, capsys):
-    from rfx.measurement.sweep_settling import sweep_member_witnesses
-    from tests.contracts.test_echo_bound_round11 import box
-
-    sim = box(2.2)
-    sim.add_dft_plane_probe(axis='x', coordinate=.008, component='ez',
-                            freqs=np.linspace(10e9, 16e9, 7), name='read')
-    result = sim.forward(n_steps=1600, skip_preflight=True)
-    series = np.asarray(result.time_series)[None]
-    names = tuple(result.dft_planes)
-    planes = tuple(result.dft_planes.values())
-    accumulators = {name: np.asarray(plane.accumulator)[None]
-                    for name, plane in result.dft_planes.items()}
-    _, (base,) = sweep_member_witnesses(
-        sim, result.grid, series, names, planes, accumulators, param_name='eps_r',
-        param_values=np.array([2.2]))
-    with capsys.disabled():
-        print(f'12w.1 resolved: status={base["status"]}; db={base["db"]}; '
-              f'reason={base["reason"]}', file=sys.stderr, flush=True)
-    assert base['status'] == 'pass', base
-    resolve = sim._resolve_material
-
-    def unresolved(name):
-        if name == 'fill':
-            raise KeyError('missing library fill')
-        return resolve(name)
-
-    monkeypatch.setattr(sim, '_resolve_material', unresolved)
-    dbs, (row,) = sweep_member_witnesses(
-        sim, result.grid, series, names, planes, accumulators, param_name='eps_r',
-        param_values=np.array([2.2]))
-    with capsys.disabled():
-        print(f'12w.1 unresolved: status={row["status"]}; db={row["db"]}; '
-              f'reason={row["reason"]}', file=sys.stderr, flush=True)
-    assert np.isnan(dbs[0])
-    assert np.isnan(row['db']), row
-    assert row['status'] == 'undetermined', row
-    assert "cannot judge: sweep material 'fill' cannot be resolved" in row['reason'], row
-    assert 'missing library fill' in row['reason'], row

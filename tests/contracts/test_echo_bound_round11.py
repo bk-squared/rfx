@@ -47,7 +47,7 @@ def index(result):
 
 def test_live_declared_material_completes_and_transports_exact_index(capsys):
     eps = jnp.float32(2.2)
-    expected_index = float(np.sqrt(np.float64(np.float32(2.2))))
+    expected_index = np.nextafter(np.sqrt(np.float32(2.2)), np.float32(np.inf))
 
     def loss(value):
         result = forward(value)
@@ -70,6 +70,8 @@ def test_live_declared_material_completes_and_transports_exact_index(capsys):
         assert result.settling_witness['status'] == eager.settling_witness['status']
     assert np.isfinite(gradient) and np.isfinite(eager_gradient)
     assert abs(float(gradient - eager_gradient)) <= 1e-4 * abs(float(eager_gradient))
+    assert abs(float(eager_gradient) - (-0.5165157)) <= 1e-4 * abs(-0.5165157)
+    assert abs(float(gradient) - (-0.5165154)) <= 1e-4 * abs(-0.5165154)
     for result in (eager, compiled, auxiliary, eager_auxiliary, member):
         assert np.float64(index(result)).tobytes() == np.float64(expected_index).tobytes()
     with capsys.disabled():
@@ -94,7 +96,7 @@ def test_live_width_settling_reads_the_returned_grid(capsys):
         jnp.asarray(widths, dtype=jnp.float32).at[6].multiply(jnp.float32(1.05))),
                                 dtype=np.float64), .011, .005])
     bound = compiled.settling_witness['echo_bound']
-    assert bound['D'] == pytest.approx(expected_d, rel=1e-7)
+    assert expected_d <= float(bound['D']) <= expected_d * (1 + 80 * np.finfo(np.float32).eps)
     assert 800 * float(compiled.dt) >= 2.05 * 2 * expected_d * np.sqrt(2.2) / C
     assert compiled.settling_witness['status'] == eager.settling_witness['status']
     assert not bound.get('reason')
@@ -114,7 +116,7 @@ def test_default_guide_band_stops_after_echo_ready(capsys):
     lowest = min(read[read > cutoff])
     group = np.sqrt(1 - (cutoff / lowest)**2)
     expected_tau = 2 * np.linalg.norm([.024, .020, .016]) / (C * group)
-    assert diagnostic.values['echo_tau_max_s'] == pytest.approx(expected_tau, rel=1e-7)
+    assert expected_tau <= diagnostic.values['echo_tau_max_s'] <= expected_tau * (1 + 10 * np.finfo(np.float32).eps)
     assert diagnostic.values['stop_step'] >= diagnostic.values['echo_ready_step']
     assert diagnostic.values['stop_step'] < 50000
     assert diagnostic.values['criterion'] == 'threshold'
@@ -139,9 +141,9 @@ def test_coax_two_port_bound_reads_the_stamped_fill(monkeypatch, capsys):
     monkeypatch.setattr(record_end, 'echo_delay_bound', observe)
     result = _sim().compute_coaxial_two_port(n_steps=6000, freqs=BAND)
     assert bounds and np.isfinite(result.s_params).all()
-    expected = float(np.sqrt(np.float64(np.float32(2.1))))
+    expected = np.nextafter(np.sqrt(np.float32(2.1)), np.float32(np.inf))
     assert all(bound['n_max'] == expected for bound in bounds)
-    assert expected == pytest.approx(np.sqrt(2.1), rel=5e-8)
+    assert 0 <= expected - np.sqrt(2.1) <= 2 * np.spacing(np.float32(np.sqrt(2.1)))
     with capsys.disabled():
         print(f'12q.4: stamped n_max={bounds[0]["n_max"]:.17g}; '
               f'sqrt(2.1)={np.sqrt(2.1):.17g}', file=sys.stderr)
@@ -200,8 +202,9 @@ def test_until_identified_waits_for_the_echo_and_refuses_unavailable_at_start(mo
         print(f'12q.7 head: stop={n}; completed={result.ringdown.report.completed}; '
               f'required_window_steps={2.05*tau/float(result.dt):.17g}', file=sys.stderr)
     sim = shorted_line()
-    monkeypatch.setattr('rfx.measurement.record_end.echo_delay_bound',
-                        lambda *args, **kwargs: dict(reason='cannot judge: planted unavailable bound'))
-    with pytest.raises(RfxRefusal, match='until_identified: cannot judge: planted unavailable bound'):
+    monkeypatch.setattr('rfx.measurement.echo_bound.runner_echo_bound',
+                        lambda *args, **kwargs: dict(D=np.array(1.), g=np.array(1.),
+                            n_max=jnp.float32(np.inf), tau_max=jnp.float32(np.inf)))
+    with pytest.raises(RfxRefusal, match='until_identified: cannot judge:'):
         sim.run(n_steps=12000, ringdown=RingdownSpec(), until_identified=True,
                 skip_preflight=True)

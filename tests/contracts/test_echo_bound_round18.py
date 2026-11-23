@@ -1,4 +1,4 @@
-"""Concrete declarations need no callback; live declarations admit host reads."""
+"""The realized bound has one array tree and no host callback in any context."""
 import warnings
 
 import jax
@@ -17,77 +17,49 @@ def quiet():
     jax.clear_caches()
 
 
-def test_concrete_forward_override_and_material_build_no_echo_callback(monkeypatch):
-    from rfx.ringdown import _jax
-
+def test_concrete_forward_override_and_material_build_no_echo_callback():
     sim = box(jnp.float32(2.2))
     override = jnp.full(sim._build_realized_grid().shape, jnp.float32(2.2))
-    calls = []
-    original = _jax.host_echo_index
-
-    def observed(*args):
-        calls.append(True)
-        return original(*args)
-
-    monkeypatch.setattr(_jax, 'host_echo_index', observed)
     result = sim.forward(n_steps=4, eps_override=override, skip_preflight=True)
-    jax.block_until_ready(result)
-    assert len(calls) == 0, 'concrete material leaves built host_echo_index'
     reference = sim.run(n_steps=4, skip_preflight=True)
-    assert result.settling_echo_bound == reference.settling_echo_bound
-    assert result.settling_echo_bound['n_max'] == float(np.sqrt(np.float64(np.float32(2.2))))
-    assert all(type(value) is float for value in result.settling_echo_bound.values())
+    for key in ('D', 'g', 'n_max', 'tau_max'):
+        np.testing.assert_array_equal(result.settling_echo_bound[key], reference.settling_echo_bound[key])
+        assert np.shape(result.settling_echo_bound[key]) == ()
+    expected = np.nextafter(np.sqrt(np.float32(2.2)), np.float32(np.inf))
+    assert result.settling_echo_bound['n_max'] == expected
 
 
-def test_fixed_declaration_keeps_realized_bound_under_eval_shape(monkeypatch):
-    from rfx.ringdown import _jax
-
+def test_fixed_declaration_keeps_realized_bound_under_eval_shape():
     sim = box(jnp.float32(2.2))
-    override = jnp.full(sim._build_realized_grid().shape, jnp.float32(2.2))
-
-    def forbidden(*args):
-        pytest.fail('a fixed declaration built host_echo_index')
-
-    monkeypatch.setattr(_jax, 'host_echo_index', forbidden)
-
     def forward():
-        return sim.forward(n_steps=4, eps_override=override, skip_preflight=True)
+        return sim.forward(n_steps=4, skip_preflight=True)
+    eager, abstract = forward(), jax.eval_shape(forward)
+    assert set(abstract.settling_echo_bound) == set(eager.settling_echo_bound) == {'D', 'g', 'n_max', 'tau_max'}
+    for key, value in abstract.settling_echo_bound.items():
+        assert value.shape == np.shape(eager.settling_echo_bound[key])
 
-    eager = forward()
-    abstract = jax.eval_shape(forward)
-    assert abstract.settling_echo_bound == eager.settling_echo_bound
-    assert all(type(value) is float for value in abstract.settling_echo_bound.values())
 
-
-@pytest.mark.parametrize('operand', ['material', 'override'])
-def test_live_echo_index_refuses_without_a_cpu_device(monkeypatch, operand):
-    from rfx import _traced_check
-    from rfx.backend import backend_class
-    from rfx.measurement._echo_forward import echo_override_declaration, forward_echo_bound
-    from rfx.ringdown import _jax
-
-    grid = box(2.2)._build_realized_grid()
-    monkeypatch.setattr(_traced_check, 'backend_class', lambda: backend_class('gpu'))
-    monkeypatch.setenv('JAX_PLATFORMS', 'cuda')
-
-    def no_cpu():
-        raise RuntimeError('Unknown backend cpu')
-
-    def forbidden(*args):
-        pytest.fail('callback built before host admission')
-
-    monkeypatch.setattr(_traced_check, 'host_cpu_device', no_cpu)
-    monkeypatch.setattr(_jax, 'host_echo_index', forbidden)
-
+@pytest.mark.parametrize('context', ['eager', 'jit', 'vmap', 'eval_shape', 'grad'])
+def test_live_echo_bound_has_no_callback(context):
+    sim = box(2.2)
+    grid = sim._build_realized_grid()
+    from rfx.core.yee import init_materials
+    from rfx.measurement.echo_bound import realized_echo_bound
     def read(value):
-        sim = box(value if operand == 'material' else 2.2)
-        if operand == 'override':
-            sim = echo_override_declaration(sim, dict(eps_override=value))
-        return forward_echo_bound(grid, sim, None)[0]
-
-    with pytest.raises(RuntimeError) as caught:
-        jax.make_jaxpr(read)(jnp.float32(2.2))
-    assert str(caught.value) == (
-        "forward: echo delay bound: a host check inside compiled code runs on this "
-        "process's CPU device, and JAX has none (JAX_PLATFORMS='cuda'); add cpu, "
-        "e.g. JAX_PLATFORMS=cuda,cpu")
+        mats = init_materials(grid.shape)._replace(eps_r=jnp.full(grid.shape, value))
+        return realized_echo_bound(grid, mats)
+    value = jnp.float32(2.2)
+    operation, operand = read, value
+    if context == 'jit':
+        operation = jax.jit(read)
+    elif context == 'vmap':
+        operation, operand = jax.vmap(read), jnp.array([2.2, 3.])
+    elif context == 'eval_shape':
+        abstract = jax.eval_shape(read, value)
+        assert set(abstract) == {'D', 'g', 'n_max', 'tau_max'}
+    elif context == 'grad':
+        operation = jax.grad(lambda v: read(v)['tau_max'])
+        assert operation(value) == 0.
+    operation(operand)
+    lowered = jax.jit(operation).lower(operand).as_text()
+    assert lowered.count('pure_callback') == 0, lowered
