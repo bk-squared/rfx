@@ -13,7 +13,7 @@ def echo_override_declaration(sim, arguments):
         return sim
     maxima = tuple(
         1. if arguments.get(name) is None else
-        (jnp.max(arguments[name]) if isinstance(arguments[name], jax.core.Tracer)
+        (jnp.max(arguments[name]) if isinstance(arguments[name], (jax.Array, jax.core.Tracer))
          else np.max(np.asarray(arguments[name], dtype=np.float64)))
         for name in names)
     member = copy.copy(sim)
