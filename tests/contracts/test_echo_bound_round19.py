@@ -100,6 +100,21 @@ def test_volume_capacitor_does_not_raise_index():
     assert result.settling_echo_bound['n_max'] == expected
 
 
+def test_forward_drive_witness_receives_its_realized_bound():
+    """The drive row already owns its bound before the aggregate is closed."""
+    from rfx.sparams._record_selection import build_settling_witness
+    result = equal_request_pair('P-lumped2', 'uniform', 'a', n_steps=150)['forward']['result']
+    _, witness = build_settling_witness(
+        result, bins=np.asarray(result.freqs), dt=result.dt,
+        freq_max=result.settling_freq_max, probe_info=result.settling_probe_info,
+        source_end=result.settling_probe_source_end_index,
+        port_source_end=result.settling_source_end_index, warn=False)
+    row = next(row for row in witness['runs'] if row.get('route') == 's_channels')
+    assert row['echo_bound'] is not None
+    for key, value in result.settling_echo_bound.items():
+        np.testing.assert_array_equal(row['echo_bound'][key], value)
+
+
 def test_smoothing_reader_includes_subcell_shape():
     """The bound reader includes a shape even when assembly refuses its empty mask."""
     from rfx.core.yee import init_materials
