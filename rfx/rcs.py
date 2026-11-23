@@ -157,13 +157,12 @@ def compute_rcs_jax(
     compute_far_field_jax : the differentiable far-field this builds on.
     """
     ff = compute_far_field_jax(ntff_data, box, grid, theta, phi)
-    power_scat = jnp.abs(ff.E_theta) ** 2 + jnp.abs(ff.E_phi) ** 2  # (nf, nθ, nφ)
-    power_inc = jnp.abs(jnp.asarray(e_inc_amplitude)) ** 2          # (nf,)
+    power_scat = jnp.abs(ff.E_theta) ** 2 + jnp.abs(ff.E_phi) ** 2
+    power_inc = jnp.abs(jnp.asarray(e_inc_amplitude)) ** 2
     safe_power_inc = jnp.where(power_inc > 0, power_inc, 1e-30)
     return 4.0 * jnp.pi * power_scat / safe_power_inc[:, None, None]
 
 
-# Lazy compatibility exports keep record definitions free of import cycles.
 _LAZY_EXPORTS = {
     "compute_rcs": "rfx.measurement.rcs",
 }

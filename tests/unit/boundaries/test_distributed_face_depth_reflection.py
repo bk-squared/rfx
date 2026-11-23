@@ -21,13 +21,11 @@ def test_asymmetric_face_reflection_on_two_devices(tmp_path):
 
 
 def assert_reflections(returns):
+    """The measured float32 |delta R| floor is 7.075e-8 across all four paths, with uniform/graded two-vs-one floors of 5.022e-8 / 6.586e-8; a 2e-7 absolute bar resolves the ~-100 dB deep echo without dividing by it."""
     reference = returns["uniform_one"]
     amplitudes = 10 ** (reference / 20)
     margin = reference[0] - reference[1]
     assert np.all(margin > 35), ("single-device depth advantage", margin)
-    # Measured float32 |delta R| floor: 7.075e-8 across all four paths;
-    # uniform/graded two-vs-one floors are 5.022e-8 / 6.586e-8. A 2e-7
-    # absolute bar resolves the ~-100 dB deep echo without dividing by it.
     for lane, values in returns.items():
         np.testing.assert_allclose(10 ** (values / 20), amplitudes, atol=2e-7, rtol=0,
                                    err_msg=f"{lane}: per-face plane-wave reflection")

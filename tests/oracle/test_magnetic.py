@@ -72,7 +72,7 @@ def test_magnetic_impedance_reflection():
         amplitude=1.0,
         polarization="ez",
         direction="+x",
-    )
+    dtype='float32')
 
     # Magnetic slab: starts at nx//4, ends 10 cells before x_hi
     # Slab must NOT touch TFSF boundaries (vacuum buffer at both ends)
@@ -104,7 +104,7 @@ def test_magnetic_impedance_reflection():
             amplitude=1.0,
             polarization="ez",
             direction="+x",
-        )
+        dtype='float32')
         state = init_state(grid.shape)
         cp, cs = init_cpml(grid)
 
@@ -202,7 +202,7 @@ def test_magnetic_phase_velocity():
         amplitude=1.0,
         polarization="ez",
         direction="+x",
-    )
+    dtype='float32')
 
     # Uniform magnetic medium filling most of the TFSF interior
     medium_lo = tfsf_cfg.x_lo + 5

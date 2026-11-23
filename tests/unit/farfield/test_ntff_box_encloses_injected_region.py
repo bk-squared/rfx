@@ -22,6 +22,7 @@ clean box (1.2049e-03 m^2 band backscatter):
 A box wholly inside the injected region is unmixed and still useless: in an
 EMPTY domain it reports 1.94e-03 m^2 of backscatter against 1.81e-12 m^2 for
 a clean box — it measures the source, not a scatterer.
+The injection planes are chosen by hand so the expected indices are independent of the code under test.
 """
 import jax.numpy as jnp
 import numpy as np
@@ -38,8 +39,6 @@ from rfx.measurement.rcs import compute_rcs
 from rfx.simulation import run
 from rfx.sources.tfsf import init_tfsf, tfsf_injection_planes
 
-# Injection planes for the arithmetic tests. Chosen by hand so every expected
-# index below is written out, not computed from the code under test.
 X_LO, X_HI = 11, 34
 PLANES = {"x": (X_LO, X_HI)}
 FREQS = jnp.array([1e10], dtype=jnp.float32)
@@ -51,9 +50,6 @@ def _box(i_lo, i_hi, *, face_centre=True):
                    freqs=FREQS, face_centre=face_centre)
 
 
-# ---------------------------------------------------------------------------
-# The placement arithmetic
-# ---------------------------------------------------------------------------
 
 def test_tightest_enclosing_box_is_accepted():
     """i_lo = x_lo - 1 and i_hi = x_hi + 2: every sample scattered-field."""
@@ -85,11 +81,8 @@ def test_low_face_on_the_injection_plane_is_refused():
 
 @pytest.mark.parametrize("face_centre", [True, False])
 @pytest.mark.parametrize("i_lo,i_hi,face", [
-    # Low face inside the injected region, high face correctly outside.
     (X_LO + 1, X_HI + 2, "i_lo"),
-    # High face inside, low face correctly outside.
     (X_LO - 1, X_HI, "i_hi"),
-    # Both faces inside: unmixed, encloses nothing.
     (X_LO + 1, X_HI, "i_lo"),
 ])
 def test_a_face_inside_the_injected_region_is_refused(i_lo, i_hi, face,
@@ -173,9 +166,6 @@ def test_a_source_with_no_injection_planes_is_not_checked():
     require_box_encloses_injected_region(_box(X_LO + 1, X_HI), {})
 
 
-# ---------------------------------------------------------------------------
-# run(): the refusal happens before the time loop
-# ---------------------------------------------------------------------------
 
 def _tiny_tfsf_setup():
     grid = Grid(freq_max=15e9, domain=(0.045, 0.045, 0.045), dx=0.003,
@@ -183,7 +173,7 @@ def _tiny_tfsf_setup():
     mats = init_materials(grid.shape)
     cfg, st = init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt,
                         cpml_layers=6, tfsf_margin=3, f0=10e9, bandwidth=0.5,
-                        amplitude=1.0, polarization="ez", direction="+x")
+                        amplitude=1.0, polarization="ez", direction="+x", dtype='float32')
     return grid, mats, cfg, st
 
 
@@ -226,10 +216,10 @@ def test_nonuniform_run_refuses_the_same_placement():
 
     dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
     domain = (0.08, 0.006, float(np.sum(dz)))
-    grid = build_nonuniform_grid(8e9, domain, 0.001, 8, dz)
+    grid = build_nonuniform_grid(8e9, domain, 0.001, 8, dz, dtype="float32")
     cfg, _ = init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=8,
                        tfsf_margin=3, f0=4e9, bandwidth=0.5,
-                       polarization="ez", direction="+x")
+                       polarization="ez", direction="+x", dtype='float32')
     x_lo, x_hi = tfsf_injection_planes(cfg)["x"]
 
     def x_position_of(index):
@@ -250,32 +240,28 @@ def test_nonuniform_run_refuses_the_same_placement():
         sim.run(n_steps=8, compute_s_params=False, skip_preflight=True)
 
 
-# ---------------------------------------------------------------------------
-# The oblique source injects on a rectangle, so its y faces count too
-# ---------------------------------------------------------------------------
 
 def test_oblique_source_reports_both_injected_axes():
     """Method B corrects Ez/Hy on the x planes and Ez/Hx on the y planes.
 
     Total field runs over x_lo <= i <= x_hi AND y_lo <= j <= y_hi, so the box
     has to clear four planes, not two.
+    A square domain would let a y entry copied from x pass unnoticed.
     """
     from rfx.sources.tfsf_oblique_open import init_tfsf_methodB
 
-    # NOT square: on a square domain the y planes equal the x planes and a
-    # y entry copied from x would pass unnoticed.
     grid = Grid(freq_max=30e9, domain=(0.09, 0.066, 0.006), dx=0.002,
                 cpml_layers=6)
     nx, ny, nz = grid.shape
     assert nx != ny
     cfg, _ = init_tfsf_methodB(nx, ny, 0.002, grid.dt, nz=nz, cpml_layers=6,
                                tfsf_margin=6, f0=10e9, polarization="ez",
-                               direction="+x", theta_deg=20.0)
+                               direction="+x", theta_deg=20.0, dtype='float32')
     planes = tfsf_injection_planes(cfg)
     assert set(planes) == {"x", "y"}
-    # The source sets its planes cpml + margin = 12 cells in from each end.
-    assert planes["x"] == (12, nx - 12)
-    assert planes["y"] == (12, ny - 12)
+    CPML_PLUS_MARGIN_CELLS = 12
+    assert planes["x"] == (CPML_PLUS_MARGIN_CELLS, nx - CPML_PLUS_MARGIN_CELLS)
+    assert planes["y"] == (CPML_PLUS_MARGIN_CELLS, ny - CPML_PLUS_MARGIN_CELLS)
     assert planes["x"] != planes["y"]
 
     kz = nz // 2
@@ -285,7 +271,6 @@ def test_oblique_source_reports_both_injected_axes():
         k_lo=kz - 1, k_hi=kz + 1, freqs=FREQS)
     require_box_encloses_injected_region(enclosing, planes)
 
-    # x faces clear, y high face on the plane: still refused, on y.
     for j_lo, j_hi, face in ((cfg.y_lo - 1, cfg.y_hi + 1, "j_hi"),
                              (cfg.y_lo, cfg.y_hi + 2, "j_lo"),
                              (cfg.y_lo + 1, cfg.y_hi + 2, "j_lo")):
@@ -305,9 +290,6 @@ def test_normal_incidence_has_no_y_or_z_planes_to_clear():
     assert set(tfsf_injection_planes(cfg)) == {"x"}
 
 
-# ---------------------------------------------------------------------------
-# compute_rcs builds its own box; that arithmetic has to satisfy the check
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("ntff_offset", [1, 2, 3])
 def test_compute_rcs_box_placement_passes_the_check(ntff_offset):

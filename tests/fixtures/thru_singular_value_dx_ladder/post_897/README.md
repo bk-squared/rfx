@@ -21,7 +21,7 @@ post-correction record alongside it.
 | rfx commit | `f5ee3b59c3e83832f7df1682f0ad30abb260a42e` — SHA guard in the log: `HEAD=f5ee3b59… EXPECT=f5ee3b59… / sha guard passed` |
 | producer | `scripts/diagnostics/thru_singular_value_dx_ladder.py`, md5 `21b54da5ddeca8359789b7aa1391d218` at f5ee3b59 — the pre-#897 run's producer differs only by a docstring path, so the measurement code is unchanged |
 | half-step present | `rfx/core/dft_utils.py:54 def half_step_current_phase(...)`, 3 uses in `rfx/probes/probes.py`, 2 in `rfx/simulation.py` (quoted in the job log) |
-| run dir (originals) | `claude-workspace/rfx/runs/thru_sv_dx_ladder/20260906T071525Z-f5ee3b59-post897/` on the personal-workspaces NFS mount |
+| run dir (originals) | `<workspace>/rfx/runs/thru_sv_dx_ladder/20260906T071525Z-f5ee3b59-post897/` on the personal-workspaces NFS mount |
 | stack | jax 0.4.33.dev20241023+e3c6d6430, gpu (CudaDevice 0), `JAX_ENABLE_X64=0`, default field dtype, python 3.10.12, rfx 1.7.0 |
 | wall time (total) | 9.1 s / 15 s / 162 s |
 

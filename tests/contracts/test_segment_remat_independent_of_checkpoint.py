@@ -37,7 +37,6 @@ def _compile(n, *, box, checkpoint, k=None, graded=False, observations=False):
 
     with jax.default_device(jax.devices("cpu")[0]):
         params = jnp.array([4. if box else 1., .2 if box else 0.], jnp.float32)
-        # Exclude auxiliary observations from the memory oracle, matching #1786.
         executable = jax.jit(jax.value_and_grad(lambda p: objective(p)[0])).lower(params).compile()
         memory = executable.memory_analysis()
     compiled = (memory.argument_size_in_bytes + memory.output_size_in_bytes
@@ -58,6 +57,7 @@ def _bit_identical(a, b):
 @pytest.mark.parametrize("path", ("uniform", "graded",
     pytest.param("distributed-graded", marks=pytest.mark.source_scan), "distributed-uniform"))
 def test_segment_remat_independent_of_checkpoint(path):
+    """The graded row pins flag independence because boundary storage can outweigh a small box's window-tape saving."""
     if path == "uniform":
         rows = []
         for box in (False, True):
@@ -67,7 +67,6 @@ def test_segment_remat_independent_of_checkpoint(path):
                 on = _compile(800, box=box, checkpoint=True, k=k)[0]
                 rows.append((box, k, baseline, off, on))
                 jax.clear_caches()
-        # Collect every memory row before failing, so a mutation gives all numbers.
         for box, k, baseline, off, on in rows:
             assert abs(off - on) <= .01 * on, (box, k, baseline, off, on)
             assert max(off, on) < baseline, (box, k, baseline, off, on)
@@ -87,14 +86,11 @@ def test_segment_remat_independent_of_checkpoint(path):
         off = _compile(800, box=True, checkpoint=False, k=40, graded=True)[0]
         on = _compile(800, box=True, checkpoint=True, k=40, graded=True)[0]
         assert abs(off - on) <= .01 * on, (off, on)
-        # Boundary storage can outweigh a small box's window-tape saving.
-        # This row pins flag independence, not an unconditional memory saving.
         sim, _, _, _ = _scene(graded=True)
         with pytest.raises(NotImplementedError, match="uniform single-device"):
             sim.forward(n_steps=8, checkpoint=False, checkpoint_segments=4, skip_preflight=True)
         jax.clear_caches()
     elif path == "distributed-graded":
-        # Static path proof, not a claim of measured multi-device memory.
         from rfx.stepping import slab_graded_legacy_loop
         from rfx.stepping import remat
         runner = ast.parse(inspect.getsource(slab_graded_legacy_loop))

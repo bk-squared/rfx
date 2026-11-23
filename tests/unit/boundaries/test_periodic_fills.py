@@ -19,7 +19,7 @@ DX = L / 17
 
 
 def model():
-    # solved length; #1887
+    """Domain lengths L, 8 * DX, and 6 * DX are whole numbers of cells of DX, so the solved domain equals the declared one."""
     return Simulation(20e9, (L, 8 * DX, 6 * DX), dx=DX, cpml_layers=0,
                       boundary=BoundarySpec(x='periodic',
                                             y=Boundary(lo='pec', hi='pmc'), z='pec'))
@@ -53,10 +53,11 @@ def same_fill(actual, reference):
 @pytest.mark.parametrize('material', ['dielectric', 'pec'])
 def test_box_spanning_many_periods_fills_the_cell(material):
     reference = realized([box(0., L)], material)
-    # The second drawing is wholly outside [0,L]: clipping to k=0 cannot
-    # pass just because the first drawing happens to cover the base cell.
     for lo, hi in [(-2 * L, 3.5 * L), (2 * L, 7.5 * L)]:
         same_fill(realized([box(lo, hi)], material), reference)
+    assert lo >= L or hi <= 0, (
+        "The second drawing must be wholly outside [0,L] so clipping cannot pass"
+    )
 
 
 @pytest.mark.parametrize('material', ['dielectric', 'pec'])
@@ -117,8 +118,6 @@ def test_composite_thin_boxes_translate_without_extra_endpoint_cells(kind, mater
                  CurvedPatch(center=(x, 3.1 * DX, 1.2 * DX), length=4.6 * DX,
                              width=3.2 * DX, radius=2.7 * DX))
         return realized([shape], material)
-    # A composite's sub-cell Boxes must choose their nearest node on the
-    # complete image lattice, as a directly declared thin Box does.
     if material == 'dielectric':
         from rfx.errors import RfxRefusal
         for shift in (0, 8):
@@ -129,14 +128,13 @@ def test_composite_thin_boxes_translate_without_extra_endpoint_cells(kind, mater
 
 
 def test_shape_without_bounds_uses_adjacent_images():
+    """UnboundedSampler and BoundedSampler use node sampling; built-in Sphere materials use cell centres, so they would be a different physical reference."""
     class UnboundedSampler:
         def mask_on_coords(self, x, y, z):
             return Sphere((L - .6 * DX, 3.1 * DX, 2.7 * DX), 1.8 * DX).mask_on_coords(x, y, z)
     class BoundedSampler(UnboundedSampler):
         def bounding_box(self):
             return Sphere((L - .6 * DX, 3.1 * DX, 2.7 * DX), 1.8 * DX).bounding_box()
-    # Both custom shapes use node sampling; built-in Sphere materials use
-    # cell centres, so they would be a different physical reference here.
     same_fill(realized([UnboundedSampler()]),
               realized([BoundedSampler()]))
 
@@ -153,12 +151,11 @@ def test_sheet_endpoint_roundoff_does_not_fill_the_opposite_gap(rim):
 
 
 def test_traced_zero_thickness_box_keeps_plane_admission():
+    """Staircase bounds, including a plane, must remain concrete: a traced zero-thickness Box is refused by name before the sheet is classified."""
     def material(x):
         sim = model()
         sim.add_material('dielectric', eps_r=3.7)
         sim.add(box(x, x), material='dielectric')
         return sim._build_materials(sim._build_grid())[0].eps_r
-    # Staircase bounds, including a plane, must remain concrete: a traced
-    # zero-thickness Box is refused by name before the sheet is classified.
     with pytest.raises(TracedShapeDimensionError, match="Box with a traced extent"):
         jax.jit(material)(jnp.float32(1.5 * L)).block_until_ready()

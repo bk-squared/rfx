@@ -50,8 +50,6 @@ def test_graded_entry_refusal(entry, kind, lane, expected, monkeypatch):
     assert lanes == ([] if lane is None else [lane])
 
 
-# One message for both entries: an equal request is refused alike (run/forward
-# one-pipeline contract), and the message names the way out from either call.
 PLAIN_SOURCE_S_REFUSAL = (
     "Lumped/wire S-matrix requests do not support plain sources / "
     "0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): "
@@ -65,6 +63,7 @@ PLAIN_SOURCE_S_REFUSAL = (
     ("run", PLAIN_SOURCE_S_REFUSAL),
 ])
 def test_plain_source_s_request(entry, expected):
+    """The run/forward one-pipeline contract requires equal S requests to be refused alike."""
     sim = model()
     with pytest.raises(NotImplementedError) as error:
         if entry == "forward":

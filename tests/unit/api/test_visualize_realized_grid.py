@@ -78,8 +78,6 @@ def test_screenshot_uses_nonuniform_physical_coordinates(monkeypatch, tmp_path, 
     if three_dimensional:
         np.testing.assert_allclose(surfaces[1][0], [0.0, 0.5, 2.0, 4.0], atol=1e-6)
     else:
-        # Colorbar meshes are interspersed; locate the x-z field panel by
-        # its title rather than depending on Matplotlib's internal calls.
         xz = next(mesh for mesh in meshes if mesh.axes.get_title().startswith("ez @ y="))
         np.testing.assert_allclose(xz.get_coordinates()[:, 0, 1],
                                    [0.0, 0.5, 2.0, 4.0], atol=1e-6)

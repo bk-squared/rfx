@@ -35,8 +35,6 @@ def test_auto_mesh_material_fit_returns_finite_s_params(conformal):
         return sim
 
     truth = DebyeFitResult(eps_inf=2.0, poles=[DebyePole(delta_eps=3.0, tau=50e-12)], fit_error=0.0)
-    # This independent template reports the realized mesh; the fit's factory
-    # always returns a fresh, unresolved model, including while tracing.
     grid = factory(truth.eps_inf, truth.poles, []).freeze_mesh()
     print(f"fit conformal={conformal}: mesh={grid.shape}, dx={grid.dx:.12g}, "
           f"steps={grid.num_timesteps(num_periods=20.0)}, expected=finite final_s_params",
@@ -66,11 +64,12 @@ def _frozen_model(domain):
 
 
 def test_frozen_domain_mutation_preserves_probe_record():
+    """The y dimension is read through the frozen snapshot for conformal walls."""
     domain = [0.024, 0.009, 0.009]
     sim = _frozen_model(domain)
     sim.freeze_mesh()
     domain[2] = 0.050
-    domain[1] = 0.006  # y is read through the frozen snapshot (conformal walls)
+    domain[1] = 0.006
     expected = _frozen_model((0.024, 0.009, 0.009)).run(n_steps=16)
     actual = sim.run(n_steps=16)
     a, b = np.asarray(actual.time_series), np.asarray(expected.time_series)

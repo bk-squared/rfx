@@ -69,9 +69,10 @@ resolved. Keep `sigma` below `1e6` for a lossy bulk medium. For conductor loss
 on a metal sheet, use `add_thin_conductor(..., surface_impedance_f0=f0)`.
 
 **Fitting measured data.** `fit_debye(freqs, eps_measured, n_poles=1, *,
-eps_inf=None)` and `fit_lorentz(...)` fit poles to complex permittivity data;
+eps_inf=None, tau="free")` and `fit_lorentz(...)` fit poles to complex permittivity data;
 `load_material_csv(path, ...)` reads it from a CSV file. See the
 [generated reference](/rfx/api/generated/).
+For `fit_debye`, `tau="placed"` uses log-spaced times in the data span; both modes and `fit_lorentz` bound a free `eps_inf` at 1. `fit_lorentz` keeps resonances inside the data span and uses starts spread across it.
 
 ## Placing shapes
 

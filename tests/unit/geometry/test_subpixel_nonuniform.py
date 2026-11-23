@@ -30,7 +30,7 @@ def _build_sim(*, n_z: int = 12) -> Simulation:
     """
     dx = 1e-3
     dz_profile = np.full(n_z, dx)
-    dz_profile[n_z // 2] = dx * 0.5  # introduce a fine cell
+    dz_profile[n_z // 2] = dx * 0.5
 
     sim = Simulation(
         freq_max=20e9,
@@ -41,8 +41,6 @@ def _build_sim(*, n_z: int = 12) -> Simulation:
         cpml_layers=0,
     )
     sim.add_material("diel", eps_r=4.0, sigma=0.0)
-    # Block fills cells [4..8] in z but offset by half a cell so the lower
-    # face crosses a Yee voxel.
     z_lo = (n_z // 2) * dx + 0.5 * (dx * 0.5)
     z_hi = (n_z - 1) * dx
     sim.add(Box((0.0, 0.0, z_lo),
@@ -82,13 +80,10 @@ def test_subpixel_changes_nu_result():
     ts_off = np.asarray(res_off.time_series).ravel()
     ts_on = np.asarray(res_on.time_series).ravel()
 
-    # Same shape, both finite
     assert ts_off.shape == ts_on.shape
     assert np.isfinite(ts_off).all()
     assert np.isfinite(ts_on).all()
 
-    # Must NOT be identical — if subpixel were still silently dropped,
-    # the two runs would return bit-for-bit the same time series.
     diff = np.max(np.abs(ts_off - ts_on))
     assert diff > 1e-6, (
         f"subpixel_smoothing=True did not change the NU result "
@@ -113,21 +108,18 @@ def test_compute_smoothed_eps_nonuniform_interface_values():
         cpml_layers=0,
     )
     eps_bulk = 4.0
-    # Box covers half of the z-axis with the lower face at z = 4.3·dx,
-    # placing the boundary inside a Yee voxel.
     box = CsgBox((0.0, 0.0, 4.3 * dx),
                  (8 * dx, 8 * dx, 8 * dx))
+    assert not float(box.corner_lo[2] / dx).is_integer(), "lower dielectric face must lie inside a Yee voxel to exercise partial filling"
 
     eps_ex, eps_ey, eps_ez = compute_smoothed_eps_nonuniform(
         grid, [(box, eps_bulk)], background_eps=1.0,
-    )
+    dtype='float32')
     eps_ez_np = np.asarray(eps_ez)
 
-    # Bulk cells (well inside box) should hit eps_bulk; outside cells stay
-    # at background. The boundary-z slice should sit strictly between.
-    assert eps_ez_np[4, 4, 7] == eps_bulk          # well inside (k=7)
-    assert eps_ez_np[4, 4, 1] == 1.0               # well outside (k=1)
-    boundary = eps_ez_np[4, 4, 4]                  # straddles z=4.3·dx
+    assert eps_ez_np[4, 4, 7] == eps_bulk
+    assert eps_ez_np[4, 4, 1] == 1.0
+    boundary = eps_ez_np[4, 4, 4]
     assert 1.0 < boundary < eps_bulk, (
         f"interface voxel ε should be between 1.0 and {eps_bulk}, "
         f"got {boundary}"
@@ -160,9 +152,8 @@ def test_compute_smoothed_eps_nonuniform_reduces_to_uniform():
     dx = 1e-3
     n = 8
     eps_bulk = 4.0
-    # Interface deliberately INSIDE a voxel (z = 4.3 dx) — a face-aligned
-    # interface would agree under both conventions and prove nothing.
     box = CsgBox((0.0, 0.0, 4.3 * dx), (n * dx, n * dx, n * dx))
+    assert not float(box.corner_lo[2] / dx).is_integer(), "face-aligned interfaces cannot distinguish node and centre smoothing conventions"
     shapes = [(box, eps_bulk)]
 
     ug = Grid(freq_max=30e9, domain=(n * dx, n * dx, n * dx), dx=dx,
@@ -172,8 +163,8 @@ def test_compute_smoothed_eps_nonuniform_reduces_to_uniform():
     assert nug.shape == ug.shape, (nug.shape, ug.shape)
 
     for comp, u_arr, n_arr in zip(("ex", "ey", "ez"),
-                                  compute_smoothed_eps(ug, shapes),
-                                  compute_smoothed_eps_nonuniform(nug, shapes)):
+                                  compute_smoothed_eps(ug, shapes, dtype='float32'),
+                                  compute_smoothed_eps_nonuniform(nug, shapes, dtype='float32')):
         worst = float(np.max(np.abs(np.asarray(u_arr) - np.asarray(n_arr))))
         assert worst < 1e-5, (
             f"{comp}: NU smoother differs from the uniform smoother by "

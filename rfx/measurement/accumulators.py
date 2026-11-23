@@ -99,7 +99,9 @@ def validate_flux_prefix(sim, grid, plan, monitors):
 
 def plan_accumulator_meta(plan, dtype, *, grid, dft_planes, flux_monitors, allow_flux_tail=False):
     """Compile boxes once, checking nodes and the runner-owned carry shapes."""
-    from .plan import _plane_nodes
+    from .plan import _plane_nodes, _join_node_arrays, node_arrays, _traced
+    from dataclasses import replace
+    import numpy as np
     from rfx.probes.probes import _FLUX_COMPONENTS
 
     def owners(kind, prefix, count, tail=False):
@@ -126,11 +128,13 @@ def plan_accumulator_meta(plan, dtype, *, grid, dft_planes, flux_monitors, allow
             planes = (((index, 0.),) if zero else
                       ((normal_h_neighbor(index, grid.shape[axis], periodic), weights[0]),
                        (index, weights[1])))
-        expanded = tuple((n.component, n.i, n.j, n.k, weight)
-                         for plane, weight in planes
-                         for n in _plane_nodes(grid, axis, plane, channel.name, region))
-        actual = tuple((n.component, n.i, n.j, n.k, n.weight) for n in channel.nodes)
-        if expanded != actual:
+        expanded = _join_node_arrays([
+            replace(p, weight=np.full(len(p), weight), area=None)
+            for plane, weight in planes
+            for p in (_plane_nodes(grid, axis, plane, channel.name, region),)])
+        actual = node_arrays(channel.nodes)
+        weights = not (_traced(expanded.weight) or _traced(actual.weight))
+        if expanded.content_key(weights=weights, area=False) != actual.content_key(weights=weights, area=False):
             raise ValueError(f'{owner.id}: box and nodes disagree')
         return axis, index, region
 
@@ -162,7 +166,7 @@ def plan_monitor_objects(plan, grid):
     import jax.numpy as jnp
     import numpy as np
     from .monitors import ntff_owner, current_moment_owner
-    from .plan import _traced
+    from .plan import _traced, node_arrays
 
     def bits(a, b):
         if a is None or b is None:
@@ -171,20 +175,17 @@ def plan_monitor_objects(plan, grid):
         return a.dtype == b.dtype and a.shape == b.shape and a.tobytes() == b.tobytes()
 
     def channels_equal(actual, expected):
-        if len(actual) != len(expected):
-            return False
-        for a, b in zip(actual, expected):
-            keys = ('name', 'kind', 'sample_stage', 'slot_offset', 'e_time_offset', 'h_time_offset', 'box')
-            if any(getattr(a, k) != getattr(b, k) for k in keys) or len(a.nodes) != len(b.nodes):
+        for a in actual:
+            b = next(expected, None)
+            if b is None:
                 return False
-            for n, m in zip(a.nodes, b.nodes):
-                if (n.component, n.i, n.j, n.k) != (m.component, m.i, m.j, m.k):
-                    return False
-                if not bits(n.area, m.area):
-                    return False
-                if not _traced((n.weight, m.weight)) and not bits(n.weight, m.weight):
-                    return False
-        return True
+            keys = ('name', 'kind', 'sample_stage', 'slot_offset', 'e_time_offset', 'h_time_offset', 'box')
+            if any(getattr(a, k) != getattr(b, k) for k in keys):
+                return False
+            if node_arrays(a.nodes) != node_arrays(b.nodes):
+                return False
+            del b
+        return next(expected, None) is None
 
     objects: list = []
     for kind, name, expand in (('ntff', 'ntff_box:0', ntff_owner),
@@ -199,7 +200,7 @@ def plan_monitor_objects(plan, grid):
         source = owner.source
         if source is None:
             raise ValueError(f'{name}: missing source')
-        if not channels_equal(owner.channels, expand(grid, source).channels):
+        if not channels_equal(owner.channels, expand(grid, source, channels_only=True)):
             raise ValueError(f'{name}: source and channels disagree')
         if _traced(owner.frequencies):
             if kind == 'current_moment':

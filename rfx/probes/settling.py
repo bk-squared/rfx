@@ -38,8 +38,6 @@ def _cell_of(grid, position, component=None):
         idx = (field_index(grid, position, component) if component is not None
                else _resolve_position_to_index(grid, position))
     except ValueError:
-        # A drive or probe declared outside the built grid cannot be
-        # co-located with anything; position_to_index raises there.
         return None
     return tuple(int(v) for v in idx)
 
@@ -115,15 +113,16 @@ def probe_record_info(time_series, entries, internal_indices=(),
     the declared position (absent when unresolved), which tells co-located
     records apart. All stay integers so the selection metadata can
     ride inside a JAX result tree.
+
+    Only columns of declared ``entries`` get an item, so a source-position
+    fallback record that ``forward()`` adds when no probe is registered has
+    no user provenance.
     """
     shape = getattr(time_series, "shape", ())
     count = 1 if len(shape) == 1 else shape[1] if len(shape) == 2 else 0
     internal = internal_indices or ()
     dominated = source_dominated or ()
     result = []
-    # forward() may create a source-position fallback record when the user
-    # registered no probe. Only declared probe columns have user provenance;
-    # an extra backend record must not silently provide this witness.
     for col in range(min(count, len(entries))):
         if col in internal:
             continue
@@ -149,16 +148,16 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
     independent scored record exists. When they are the only scored records,
     ``qualifier`` / ``source_dominated`` retain that spatial coverage caveat.
     sensitivities are judged by a separate witness
+
+    A record whose component and cell are known is grouped with the records
+    of the same field kind in the same cell, because its rounding level is
+    eps times the fields that cancel at its own point.
     """
     from rfx.sources.waveguide_port import settling_db_from_named_records
 
     def absent(reason, skipped=()):
         _, detail = settling_db_from_named_records(
             (), dt=dt, freqs=freqs, freq_max=freq_max, return_detail=True)
-        # ``source_dominated``/``qualifier`` describe the record that
-        # CARRIES the verdict; an absent witness has none, so they are
-        # empty here rather than describing records nothing rests on.
-        # No NaN in an absent witness: no number rests on it.
         return None, {**detail, "db": None, "worst_freq_hz": None,
                       "status": "absent", "route": None,
                       "worst_record": None, "per_record_db": {},
@@ -192,8 +191,6 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
     scale_groups = {}
     dominated_names = set()
     for item in info:
-        # Two-tuple metadata has no source-dominated flag; score it with nothing
-        # marked dominated.
         col, component = int(item[0]), int(item[1])
         flag = int(item[2]) if len(item) > 2 else 0
         if not 0 <= col < series.shape[1]:
@@ -203,8 +200,6 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
         named.append((name, series[:, col]))
         if label != "?":
             scale_groups[name] = label
-        # A rounding record's level is eps times the fields that cancel at
-        # its own point, so its reference is the same-kind records there.
         cell = tuple(int(v) for v in item[3:6]) if len(item) > 5 else None
         if label != "?" and cell is not None and min(cell) >= 0:
             groups[name] = f"{label[0].upper()} at cell {cell}"
@@ -224,7 +219,6 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
         "worst_record": max(finite, key=finite.get) if finite else None,
         "source_dominated": bool(qualifier),
         "source_dominated_records": sorted(dominated_names),
-        # Lone: its cell is known and no other scored record shares it.
         "lone_records": sorted(name for name, _ in selected if name in groups
                                and [groups.get(other) for other, _ in selected]
                                .count(groups[name]) < 2),

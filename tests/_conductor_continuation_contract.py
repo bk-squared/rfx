@@ -1,4 +1,5 @@
-"""Read the arrays assembled for a declared model; never invoke continuation."""
+"""Read the arrays assembled for a declared model; never invoke continuation.
+PEC cells and the component-normal E edge are cell-indexed on the comparison axis, with other arrays sampling nodes."""
 import numpy as np
 
 
@@ -32,12 +33,10 @@ def assembled_arrays(sim, *, include_smoothed=True):
         arrays[f"sheet_{i}"] = np.asarray(sheet.footprint)
     for i, sheet in enumerate(impedances):
         arrays[f"impedance_{i}"] = np.asarray(sheet.mask)
-    # Build the same tensor as the uniform kottke_pec runner, from the
-    # assembler's shapes and production smoothed dielectric pairs.
     if not nu and include_smoothed:
         pairs, _ = smoothed_shape_pairs(sim, grid)
         tensor = compute_inv_eps_tensor_diag(grid, dielectric_shapes=pairs,
-                                             pec_shapes=pec_shapes, background_eps=1.)
+                                             pec_shapes=pec_shapes, background_eps=1., dtype='float32')
         for axis, arr in zip("xyz", tensor):
             arrays["tensor_"+axis] = np.asarray(arr)
         from rfx.boundaries.pec import kottke_fenced_edge_masks
@@ -49,7 +48,7 @@ def assembled_arrays(sim, *, include_smoothed=True):
         from rfx.geometry.smoothing import compute_smoothed_eps_nonuniform
         pairs, _ = smoothed_shape_pairs(sim, grid)
         if pairs:
-            tensor = compute_smoothed_eps_nonuniform(grid, pairs, background_eps=1.)
+            tensor = compute_smoothed_eps_nonuniform(grid, pairs, background_eps=1., dtype='float32')
             for axis, arr in zip("xyz", tensor):
                 arrays["smoothed_"+axis] = np.asarray(arr)
     poles = []
@@ -66,6 +65,7 @@ def violations(sim, grid, arrays, poles, nodes, *, held_faces=()):
     Exceptions are constructed from declarations, independently of the
     geometry continuation code: pole columns, literal held-face rows, and
     unsupported conducting shapes' rasterized transverse support.
+    Sheets can snap off their declared z coordinate.
     """
     from rfx.geometry.csg import Box, Cylinder, declared_bounds
     findings, exceptions = [], []
@@ -100,10 +100,6 @@ def violations(sim, grid, arrays, poles, nodes, *, held_faces=()):
                     reason = "port-terminal:"+name
                 if reason is None:
                     continue
-                # The exception belongs to the ENTRY. Read its declared
-                # cell/sheet/wire lattice directly, without continuation.
-                # Sheets can snap off their declared z coordinate, and their
-                # closed footprints need not share the Box node sampler.
                 from rfx.geometry.rasterize_grid import (
                     GridCoords, classify_pec_entry, cell_centres_from_nodes,
                     cell_sizes_from_uniform_grid, cell_sizes_from_nonuniform_grid)
@@ -121,15 +117,12 @@ def violations(sim, grid, arrays, poles, nodes, *, held_faces=()):
                 if any(key.startswith("tensor_") for key in arrays):
                     from rfx.geometry.smoothing import compute_inv_eps_tensor_diag
                     tensor = compute_inv_eps_tensor_diag(grid, dielectric_shapes=[],
-                                                        pec_shapes=[shape], background_eps=1.)
+                                                        pec_shapes=[shape], background_eps=1., dtype='float32')
                 smoothed = None
                 if any(key.startswith("smoothed_") for key in arrays):
-                    # The NU smoothed lane carries a conducting entry as an
-                    # eps_r = 1 shape; its influence footprint is where that
-                    # shape alone moves a background that is not 1.
                     from rfx.geometry.smoothing import compute_smoothed_eps_nonuniform
                     smoothed = compute_smoothed_eps_nonuniform(
-                        grid, [(shape, 1.0)], background_eps=2.)
+                        grid, [(shape, 1.0)], background_eps=2., dtype='float32')
                 counts = {}
                 for key in arrays:
                     support = None
@@ -154,8 +147,6 @@ def violations(sim, grid, arrays, poles, nodes, *, held_faces=()):
                 exceptions.append((axis, side, reason, counts))
             for name, raw in arrays.items():
                 arr = raw[:-1, :-1, :-1]
-                # PEC cells and the component-normal E edge are cell-indexed
-                # on this axis. Other arrays sample nodes.
                 cell_axis = name == "pec_mask" or name in (
                     "edge_"+"xyz"[axis], "fenced_"+"xyz"[axis],
                     "tensor_"+"xyz"[axis], "smoothed_"+"xyz"[axis])

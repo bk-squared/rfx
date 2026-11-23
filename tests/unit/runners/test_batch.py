@@ -39,14 +39,12 @@ def test_parameter_sweep_produces_results():
     assert len(results) == 2
     assert results[0][0]["eps_r"] == 1.0
     assert results[1][0]["eps_r"] == 4.0
-    # Both should have time_series
     assert results[0][1].time_series is not None
     assert results[1][1].time_series is not None
 
 
 def test_dataset_export_numpy():
     """Dataset should produce correctly shaped X, Y arrays."""
-    # Mock results
     results = [
         ({"w": 0.01, "e": 2.0}, type("R", (), {"s_params": np.array([[[0.1+0j, 0.2+0j]]])})()),
         ({"w": 0.02, "e": 4.0}, type("R", (), {"s_params": np.array([[[0.3+0j, 0.4+0j]]])})()),

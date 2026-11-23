@@ -49,7 +49,6 @@ def test_t4_mixed_partition_and_declaration_order(graded, distributed):
     with enable_x64(False):
         sim = constant_scene(graded, 'wire')
         dx = 1 / 1024
-        # Interleave kinds; declaration order within each kind must survive.
         sim.add_port((7*dx, 4*dx, 2*dx), 'ez', impedance=65., excite=False)
         sim.add_port((5*dx, 3*dx, 2*dx), 'ez', impedance=75., extent=2*dx, excite=False)
         sim.add_port((6*dx, 4*dx, 2*dx), 'ez', impedance=85., excite=False)

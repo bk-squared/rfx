@@ -117,6 +117,7 @@ def slab_guide(delta, lo=22, hi=26):
     return sim
 
 
+@pytest.mark.slow
 def test_slab_passes_default_preflight():
     def compute(delta):
         return jnp.real(jnp.asarray(slab_guide(delta).compute_waveguide_s_matrix(

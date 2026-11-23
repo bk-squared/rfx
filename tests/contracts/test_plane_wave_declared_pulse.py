@@ -33,11 +33,12 @@ def _build(path, **kwargs):
     options = dict(f0=8e9, bandwidth=0.5, cpml_layers=4, tfsf_margin=4)
     options.update(kwargs)
     if path == "normal":
-        return init_tfsf(61, 1e-3, 1e-12, **options)
+        return init_tfsf(61, 1e-3, 1e-12, **options, dtype='float32')
     if path == "closed":
-        return init_plane_wave(61, 1e-3, 1e-12, ny=49, nz=41, n_steps=16, **options)
+        return init_plane_wave(61, 1e-3, 1e-12, ny=49, nz=41, n_steps=16, **options, dtype='float32')
     builder = init_tfsf_methodB if path == "methodB" else init_tfsf_2d
-    return builder(61, 49, 1e-3, 1e-12, nz=3, theta_deg=30, **options)
+    return builder(61, 49, 1e-3, 1e-12, nz=3, theta_deg=30,
+                   **options, **({'dtype': 'float32'} if path == 'methodB' else {}))
 
 
 def _scene(path, **kwargs):
@@ -99,7 +100,7 @@ def test_p1_declared_bandwidth_sets_pulse_width(path, waveform, t0):
 def test_p1_declared_bandwidth_reaches_methodb_through_the_declaration():
     """The declaration's bandwidth reaches method B's auxiliary line through the one builder."""
     sim = _scene("methodB", bandwidth=0.2)
-    cfg, _ = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=16)
+    cfg, _ = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=16, dtype='float32')
     assert cfg.src_waveform == DG
     assert cfg.src_tau == TAU_BW02
     assert cfg.src_t0 == DG_T0_BW02
@@ -116,14 +117,14 @@ def test_p2_default_is_declared_and_launched(path, expected, t0):
     """
     sim = _scene(path)
     assert sim._tfsf.waveform == expected
-    cfg, _ = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=16)
+    cfg, _ = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=16, dtype='float32')
     assert cfg.src_tau == TAU
     assert cfg.src_t0 == t0
     assert getattr(cfg, "src_waveform", MG) == expected
     cfg, _ = init_tfsf(61, .001, 1e-12, ny=49, nz=41, f0=8e9,
                        closed_box=path == "closed", n_steps=16,
                        angle_deg=30 if path in ("methodB", "bloch") else 0,
-                       method="methodB" if path == "methodB" else "bloch")
+                       method="methodB" if path == "methodB" else "bloch", dtype='float32')
     assert getattr(cfg, "src_waveform", MG) == expected
     assert cfg.src_tau == TAU
     assert cfg.src_t0 == t0
@@ -141,7 +142,7 @@ def test_p3_explicit_bloch_dg_refused(entry):
         if entry == "declaration":
             _scene("bloch", waveform=DG)
         elif entry == "init":
-            init_tfsf(61, .001, 1e-12, ny=49, angle_deg=30, waveform=DG)
+            init_tfsf(61, .001, 1e-12, ny=49, angle_deg=30, waveform=DG, dtype='float32')
         elif entry == "direct_bloch":
             _build("bloch", waveform=DG)
         else:
@@ -160,11 +161,11 @@ def test_p4_measured_incident_spectrum_ratio():
     """E_DG(f)/E_MG(f) equals DFT[DG(n·dt)]/DFT[MG(n·dt)] over the same samples t = n·dt.
 
     The linear auxiliary-line launch factor cancels in this ratio.
+    The TF/SF line launches GaussianPulse's charge-free DG.
     """
     n_steps, dt = 2000, 1e-12
     freqs = np.array([6e9, 7e9, 8e9, 9e9, 10e9])
     t = np.arange(n_steps) * dt
-    # The TF/SF line launches GaussianPulse's charge-free DG (#1839).
     dg = _charge_free_dg(t, TAU, DG_T0)
     mg = np.cos(2 * np.pi * 8e9 * (t - MG_T0)) * np.exp(-((t - MG_T0) / TAU)**2)
     assert abs(dg[-1]) < 1e-6 * np.max(abs(dg))

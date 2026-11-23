@@ -12,12 +12,11 @@ from rfx.sources.msl_eigenmode import (
 from rfx.sources.msl_port import MSLPort
 
 
-# Integration-test geometry constants (RO4350B, 50 Ω microstrip)
 EPS_R = 3.66
 H_SUB = 254e-6
 W_TRACE = 600e-6
-DX_COARSE = 80e-6  # 3 substrate cells
-DX_FINE = 40e-6    # 6 substrate cells
+DX_COARSE = 80e-6
+DX_FINE = 40e-6
 
 
 def _build_grid_and_port(dx: float):

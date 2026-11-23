@@ -42,8 +42,6 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 
-# (file, function) -> what it builds. Each must call one of ROUTES, and none
-# may read EPS_0 in its own body.
 BUILDERS = {
     ("rfx/core/yee.py", "e_update_coeffs"):
         "Ca/Cb of update_e, update_e_nu, update_e_box, the design box and every "
@@ -72,10 +70,10 @@ BUILDERS = {
     ("rfx/model/dispersive_poles.py", "init_debye"): "Debye initialization",
     ("rfx/model/dispersive_poles.py", "debye_e_coeffs"):
         "Debye ADE ca/cb/cc, including distributed in-loop builders",
-    ("rfx/materials/lorentz.py", "init_lorentz"): "Lorentz initialization",
-    ("rfx/materials/lorentz.py", "lorentz_e_coeffs"):
+    ("rfx/model/dispersive_poles.py", "init_lorentz"): "Lorentz initialization",
+    ("rfx/model/dispersive_poles.py", "lorentz_e_coeffs"):
         "Lorentz ADE ca/cb/cc, including distributed in-loop builders",
-    ("rfx/materials/lorentz.py", "mixed_e_component_coeffs"):
+    ("rfx/model/dispersive_poles.py", "mixed_e_component_coeffs"):
         "mixed Debye+Lorentz ca/cb/cc on every supported lane",
     ("rfx/stepping/uniform_setup.py", "_update_e_with_optional_dispersion"):
         "uniform mixed Debye+Lorentz update",
@@ -91,8 +89,6 @@ _SUBGRID = ("the SBP-SAT coupling takes SI eps, but no traced permittivity "
             "reaches the subgridded lane: forward()/optimize() refuse "
             "add_refinement (#1240) and run() takes no eps_override")
 
-# (file, qualified function) -> why no traced permittivity is divided through
-# EPS_0 here. May only shrink (ALLOWLIST_CEILING).
 NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/core/node_tensor.py", "add_node_increment"):
         "the full-tensor cross increment (#1632) is written in eps_r units: EPS_0 groups with dt as a "
@@ -109,7 +105,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
         "a recorded field difference; no permittivity, traced or not, is divided through it",
     ("rfx/model/dispersive_poles.py", "debye_pole_coeffs"):
         "material-independent ADE beta: EPS_0 multiplies the pole strength",
-    ("rfx/materials/lorentz.py", "pole_update_coeffs"):
+    ("rfx/model/dispersive_poles.py", "pole_update_coeffs"):
         "material-independent ADE c: EPS_0 multiplies the pole strength",
 
 
@@ -144,12 +140,14 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
         _HOST + " (unit-voltage electrostatic energy; no traced coefficient)",
     ("rfx/sources/msl_port.py", "compute_msl_mode_profile._cap_per_metre"): _HOST,
     ("rfx/sources/tfsf_discrete_plane_wave.py", "_tables"): _VACUUM,
+    ("rfx/sources/tfsf_discrete_plane_wave.py", "_line_damping"):
+        _C0 + "; the closed-box line's lossy ends are host float64 factors, no traced permittivity",
     ("rfx/stepping/tfsf.py", "apply_tfsf_e"): _VACUUM,
     ("rfx/sources/tfsf.py", "update_tfsf_1d_e"): _VACUUM + " (the 1-D auxiliary line)",
     ("rfx/stepping/tfsf_2d.py", "_update_e_tez"): _VACUUM + " (the 1-D auxiliary line)",
     ("rfx/stepping/tfsf_2d.py", "_update_e_tmz"): _VACUUM + " (the 1-D auxiliary line)",
     ("rfx/sources/tfsf_2d.py", "apply_tfsf_2d_e"): _VACUUM,
-    ("rfx/sources/tfsf_2d.py", "init_tfsf_2d"): _C0,
+    ("rfx/sources/tfsf_2d.py", "oblique_angle_fields"): _C0,
     ("rfx/stepping/tfsf_oblique.py", "apply_methodB_e"): _VACUUM,
     ("rfx/model/waveguide_modes.py", "_compute_mode_impedance"):
         "port medium is a concrete resolved scalar; traced section permittivity is refused",
@@ -172,22 +170,19 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/subgridding/sbp_sat_3d.py", "compute_energy_3d"): _ENERGY,
 }
 
-# The allow-list's length when it was written. Lower it when a row goes; a PR
-# that raises it is adding an EPS_0 reader it says is not a coefficient.
-ALLOWLIST_CEILING = 51  # f0_uses_solved_span reads EPS_0 for eta0 only (S2 regime predicate).
+ALLOWLIST_CEILING = 52
 
 HELPER = "si_value_eps_r_grad"
 SHARED_ROUTES = {
     ("rfx/core/yee.py", "e_update_coeffs"),
     ("rfx/model/dispersive_poles.py", "debye_e_coeffs"),
-    ("rfx/materials/lorentz.py", "lorentz_e_coeffs"),
-    ("rfx/materials/lorentz.py", "mixed_e_component_coeffs"),
+    ("rfx/model/dispersive_poles.py", "lorentz_e_coeffs"),
+    ("rfx/model/dispersive_poles.py", "mixed_e_component_coeffs"),
 }
 ROUTES = {HELPER} | {name for _, name in SHARED_ROUTES}
 _EPS_0 = "EPS_0"
 
 
-# --- the AST walk ---------------------------------------------------------
 
 def _module_rel(module: str) -> str:
     return module.replace(".", "/") + ".py"
@@ -201,7 +196,7 @@ class _Module:
         self.rel = rel
         self.tree = ast.parse(text)
         self.defs: dict[str, ast.AST] = {}
-        self.imports: dict[str, tuple[str, str]] = {}   # local -> (rel, name)
+        self.imports: dict[str, tuple[str, str]] = {}
         self.eps_names = {_EPS_0}
         for node in ast.walk(self.tree):
             if isinstance(node, ast.ImportFrom) and node.module:
@@ -343,7 +338,6 @@ def mods():
     return _parse(REPO)
 
 
-# --- the gates -------------------------------------------------------------
 
 
 @pytest.mark.parametrize("row", sorted(BUILDERS), ids=lambda r: f"{r[0]}::{r[1]}")

@@ -10,8 +10,7 @@ from rfx.model.waveguide_modes import _compute_beta, _compute_mode_impedance
 @pytest.mark.parametrize('discrete', [False,True])
 @pytest.mark.parametrize('mode', ['TE','TM'])
 def test_hand_written_modal_formulas(medium, discrete, mode):
-    # Hand-written expected expressions. No implementation helper supplies kc,
-    # c, beta, or Z. Cutoff is specified in the filled medium.
+    """Cutoff is specified in the filled medium."""
     eps0, mu0 = 8.8541878128e-12, 1.25663706212e-6
     speed = 1 / np.sqrt(eps0 * mu0 * medium.eps_r * medium.mu_r)
     f, fc = np.array([5e9,7e9,9e9]), 3e9

@@ -36,7 +36,6 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    # Default to the PR subset even when a gate overrides the slow filter.
     if os.environ.get('RFX_S0_FULL') == '1':
         return
     excluded = [item for item in items if item.get_closest_marker('s0_weekly')]

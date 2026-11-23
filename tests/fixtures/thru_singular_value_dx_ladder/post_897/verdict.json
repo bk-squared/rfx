@@ -4,7 +4,7 @@
   "predeclaration": "docs/design_notes/thru_singular_value_dx_ladder_predeclaration.md",
   "predeclaration_section": "3. Outcome table",
   "vessl_run_id": "369367258720",
-  "run_dir_on_nfs": "claude-workspace/rfx/runs/thru_sv_dx_ladder/20260906T071525Z-f5ee3b59-post897",
+  "run_dir_on_nfs": "<workspace>/rfx/runs/thru_sv_dx_ladder/20260906T071525Z-f5ee3b59-post897",
   "rfx_sha": "f5ee3b59c3e83832f7df1682f0ad30abb260a42e",
   "floor": 1e-05,
   "excess_3ghz": {

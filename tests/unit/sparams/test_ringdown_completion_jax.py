@@ -34,6 +34,7 @@ empty mask; without x64 the map runs in complex64 and stays finite.
 Moved from the research lane's E3' map
 (``validation/research/fdtd_acc/e3_completion_jax.py`` and its tests), with the lane's own
 identification replaced by ``rfx.ringdown.identify``.
+The float32 value/JVP bars of 2e-5/5e-5 allow about 3–4 times the largest peak-relative errors measured earlier against the analytic answer, 4.6e-6/1.6e-5 respectively.
 """
 
 from __future__ import annotations
@@ -46,15 +47,15 @@ from rfx.ringdown import _jax as rj
 from rfx import ringdown as rd
 from tests._x64_compat import enable_x64
 
-DT = 1.2148552052451076e-12            # a patch board's realized dt (s)
-N_WINDOWED = 8000                      # 9.72 ns: the slow modes still ring
-N_START = N_WINDOWED // 2              # the window [T/2, T]
+PATCH_BOARD_REALIZED_DT_S = 1.2148552052451076e-12
+DT = PATCH_BOARD_REALIZED_DT_S
+N_WINDOWED = 8000
+N_START = N_WINDOWED // 2
 FREQS = 1.5e9 + 1.0e7 * np.arange(201)
-F_REF = 4.0e9                          # decimation reference, above every mode
+F_REF = 4.0e9
 GUARD = 0.9
-K_TEST = 12                            # 8 real poles + 4 inert ones
+K_TEST = 12
 
-# (f0 Hz, Q0, dQ/Q per unit p, residue ch0, residue ch1, amplitude slope ch0, ch1)
 MODES = (
     (2.03e9, 60.0, 0.4, 0.50 * np.exp(0.3j), 0.15 * np.exp(-1.1j), 0.3, -0.2),
     (2.51e9, 100.0, -0.3, 0.40 * np.exp(-0.7j), 0.50 * np.exp(2.0j), -0.5, 0.4),
@@ -64,7 +65,9 @@ MODES = (
 
 
 def _modes(p=0.0):
-    """Poles s, residues r (K, 2) at parameter p, and their p-derivatives."""
+    """Poles s, residues r (K, 2) at parameter p, and their p-derivatives.
+    Each mode row follows the convention (f0 Hz, Q0, dQ/Q per unit p, residue ch0, residue ch1, amplitude slope ch0, amplitude slope ch1).
+    """
     s, r, ds, dr = [], [], [], []
     for f0, q0, qs, r0, r1, a0, a1 in MODES:
         w = 2.0 * np.pi * f0 * np.exp(-p / 2.0)
@@ -85,6 +88,8 @@ def _modes(p=0.0):
 
 def _series(n):
     """Record y (n, 2) at p = 0 and its exact tangent dy/dp."""
+    assert F_REF > max(mode[0] for mode in MODES), (
+        "The decimation reference must be above every synthetic mode.")
     s, r, ds, dr = _modes()
     t = np.arange(n) * DT
     e = np.exp(np.outer(t, s))
@@ -320,14 +325,13 @@ def test_the_host_sees_the_window_bit_for_bit(x64):
         dtype = jnp.float64 if x64 else jnp.float32
         w = jnp.asarray(y, dtype=dtype) * 1.000001
         s, mask, status, tail_arg, count = jax.block_until_ready(
-            jax.jit(lambda a: rj.host_poles(spy, a, 4, DT, FREQS[:3]))(w))   # the callback has run
+            jax.jit(lambda a: rj.host_poles(spy, a, 4, DT, FREQS[:3]))(w))
         w_host = np.asarray(w)
     assert seen["w"].dtype == w_host.dtype and seen["w"].shape == w_host.shape
     assert np.array_equal(seen["w"].view(np.uint8), w_host.view(np.uint8))
     assert int(status) == rj.STATUS_OK and np.asarray(mask).tolist() == [1, 1, 0, 0]
     assert int(count) == 2
     assert np.asarray(s)[0] == pytest.approx(-1.0e8 + 2j * np.pi * 2.0e9, rel=1e-6)
-    # the pad poles are lambda = 0.5 per step, and the tail argument is s dt + log z
     assert np.abs(np.exp(np.asarray(s)[2:] * DT)) == pytest.approx(0.5, rel=1e-5)
     want = (np.asarray(s)[None, :].astype(np.complex128) * DT
             - 2j * np.pi * FREQS[:3, None] * DT)
@@ -357,11 +361,6 @@ def test_a_failed_identification_comes_back_as_a_status(case):
     assert np.all(np.isfinite(np.asarray(s)))
 
 
-#: The float32 map against the analytic answer, relative to the peak (float32
-#: data): measured on the base oracle (Q 40-100) value 5.8e-7 / 5.9e-7 and JVP
-#: 1.6e-6 / 1.7e-6 (JAX 0.10.2 / 0.4.33); at a Q 1e4 mode value 4.6e-6 and
-#: JVP 1.4e-5 / 1.6e-5, at Q 5e4 value 4.5e-6 and JVP 1.3e-5. Bars: 3-4x the
-#: largest.
 F32_BAR_VALUE, F32_BAR_JVP = 2.0e-5, 5.0e-5
 
 
@@ -385,8 +384,6 @@ def test_float32_path_is_finite_complex64():
     assert _rel(dC, _dy) < F32_BAR_JVP, _rel(dC, _dy)
 
 
-#: A high-Q mode (the Q is set by the argument) beside a Q 60 one, 12,000 samples
-#: at dt 1 ps, bins 5.9-6.26 GHz across the high-Q resonance at 6.08 GHz.
 HQ_DT, HQ_FMAX, HQ_N = 1.0e-12, 10.0e9, 12000
 HQ_FREQS = 5.9e9 + 1.0e6 * np.arange(361)
 

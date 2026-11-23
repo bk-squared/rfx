@@ -1,4 +1,5 @@
-"""High-wall material formulas and public probe parity across stepping lanes."""
+"""High-wall material formulas and public probe parity across stepping lanes.
+The declared slab occupies cell centres before wall images are applied."""
 import sys
 import jax.numpy as jnp
 import numpy as np
@@ -44,6 +45,7 @@ def numpy_h(array, walls):
 
 
 def wall_scene(debye=False, *, graded=False):
+    """Seventeen by six by five cells include terminal nodes at grid shape (18, 7, 6)."""
     h = .001
     sim = Simulation(freq_max=10e9, domain=(17*h, 6*h, 5*h), dx=h,
         boundary=BoundarySpec(x='pmc', y='pec', z='pec'), cpml_layers=0,
@@ -66,11 +68,11 @@ def assert_components(actual, expected):
                          ids=['distributed-2', 'distributed-3', 'graded'])
 @pytest.mark.parametrize('debye', [False, True], ids=['static', 'debye'])
 def test_wall_material_probe_lane_parity(debye, count, graded):
-    """A dielectric ending at PMC keeps its near-wall record across lanes."""
+    """A dielectric ending at PMC keeps its near-wall record across lanes.
+    The float32 stepping intervals must agree despite different rounding of the grid builders' float64 Courant calculations."""
     devices = host_devices(count)
     options = dict(n_steps=40, compute_s_params=False, skip_preflight=True)
     reference = wall_scene(debye).run(devices=devices[:1], **options)
-    # Endpoint nodes: 17 x 6 x 5 cells, including each terminal node.
     assert reference.grid.shape == (18, 7, 6)
     shape = reference.grid.shape
 
@@ -79,7 +81,6 @@ def test_wall_material_probe_lane_parity(debye, count, graded):
         source = geometry.sources[0].edges
         probe = geometry.probes[0].index
         assert source and probe is not None
-        # Only y and z have PEC faces in this fixture.
         assert all(0 < edge[a] < result.grid.shape[a] - 1
                    for edge in (*source, probe) for a in (1, 2))
         return f'driven_indices={source} probe_index={probe}'
@@ -87,7 +88,6 @@ def test_wall_material_probe_lane_parity(debye, count, graded):
     reference_indices = indices(reference)
     print(f'{debye=}/reference: {reference_indices}', file=sys.stderr)
     occupied = np.zeros(shape, dtype=bool)
-    # Cell centres inside the independently declared slab, before wall images.
     occupied[10:17, 1:6, 1:4] = True
     eps = np.where(occupied, 4., 1.).astype(np.float32)
     sigma = np.where(occupied, .125, 0.).astype(np.float32)
@@ -113,8 +113,6 @@ def test_wall_material_probe_lane_parity(debye, count, graded):
     a, b = np.asarray(reference.time_series), np.asarray(result.time_series)
     assert a.shape == b.shape == (40, 1)
     assert np.isfinite(a).all() and np.isfinite(b).all()
-    # The two grid builders round their float64 Courant calculation differently;
-    # the float32 stepping interval must agree, as must the probe records below.
     assert np.float32(result.dt) == np.float32(reference.dt)
     peak = float(np.max(np.abs(a)))
     assert peak > 0, 'the near-wall probe must see the source'
@@ -126,8 +124,6 @@ def test_wall_material_probe_lane_parity(debye, count, graded):
           f'compared_dt={float(result.dt):.17g} reference[{reference_indices}] '
           f'compared[{indices(result)}]', file=sys.stderr)
     if graded:
-        # Uniform/constant-profile two-kernel bar:
-        # tests/unit/nonuniform/test_nonuniform_face_depths.py:91-94.
         residual = float(error.max() / peak)
         bar = options['n_steps'] * 10 * np.finfo(np.float32).eps
         print(f'{row}: max_error={error.max():.12g} peak={peak:.12g} '
@@ -135,8 +131,6 @@ def test_wall_material_probe_lane_parity(debye, count, graded):
               f'mesh={result.grid.shape}', file=sys.stderr)
         assert residual < bar, f'{row}: residual {residual:.12g} >= {bar:.12g}'
     elif debye:
-        # Pole cross-trace law: tests/_one_device_parity.py:110;
-        # exercised by test_distributed_uniform_forward_media_parity.py:65.
         bar = 1.2e-7 * np.cumsum(np.abs(a.astype(np.float64)).max(axis=1))
         ratio = np.divide(error, bar, out=np.where(error > 0, np.inf, 0.), where=bar > 0)
         worst = int(np.argmax(ratio))
@@ -148,7 +142,6 @@ def test_wall_material_probe_lane_parity(debye, count, graded):
               f'bar=1 steps=40 mesh={result.grid.shape}', file=sys.stderr)
         assert np.all(error <= bar), f'{row}: accumulated-law ratio {ratio.max():.12g} > 1'
     else:
-        # One/several: tests/contracts/test_uniform_distributed_main_s.py:84.
         worst = int(np.argmax(error))
         print(f'{row}: worst_step={worst + 1} expected={a[worst, 0]:.12g} '
               f'measured={b[worst, 0]:.12g} absolute_bar={9 * ulp:.12g} '

@@ -36,7 +36,6 @@ def model(boundary, eps_r=2.25):
     sim.add_material('dielectric', eps_r=eps_r)
     sim.add(Box(position((12, 12, 12)), position((17, 17, 17))), material='dielectric')
     sim.add_tfsf_source(f0=7.5e9, bandwidth=.8, closed_box=True, margin=7)
-    # These are fixed global nodes, independent of the implementation's cuts.
     for nodes in ((14, 14, 14), (15, 16, 13), (20, 14, 17), (21, 13, 15)):
         sim.add_vector_probe(position(nodes))
     sim.add_dft_plane_probe(axis='y', coordinate=position((14, 14, 14))[1],
@@ -100,6 +99,7 @@ def report(row):
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 @pytest.mark.parametrize('steps', [12, 60, 240])
 def test_t1_t2(boundary, entry, steps):
+    """DFT is complex, so both quadratures are preserved in the error norm."""
     if jax.device_count() < 3:
         pytest.skip('requires three forced CPU devices')
     one = evaluate(boundary, entry, steps, 1)
@@ -112,7 +112,6 @@ def test_t1_t2(boundary, entry, steps):
                                                  [many[0][c] for c in components])
             indices = [i for i in range(one[1].shape[1]) if COMPONENTS[i % 6] in components]
             scores[family + '_probes'] = metric([one[1][:, indices]], [many[1][:, indices]])
-        # DFT is complex: preserve both quadratures in the error norm.
         peak = float(np.max(np.abs(one[2])))
         delta = float(np.max(np.abs(many[2].astype(np.complex128) - one[2])))
         dft = delta / peak if peak else (0. if delta == 0 else float('inf'))
@@ -140,8 +139,6 @@ def evaluate_ntff(devices):
     grid = sim._build_grid()
     lo = tuple((8 - getattr(grid, f'pad_{axis}_lo')) * grid.dx for axis in 'xyz')
     hi = tuple((22 - getattr(grid, f'pad_{axis}_lo')) * grid.dx for axis in 'xyz')
-    # At x=14 the face-centre average reads x=15, the left slab's high ghost.
-    # The y=8 face includes the Hx correction just outside the TF box [9,20].
     sim.add_ntff_box(lo, hi, freqs=[5e9, 7.5e9, 10e9])
     options = dict(n_steps=60, skip_preflight=True, compute_s_params=False)
     if devices > 1:
@@ -180,7 +177,6 @@ def test_tfsf_ntff_seam():
     row = dict(bar='NTFF', devices=2, steps=60, errors=errors,
                compensation_error_over_sum=compensation)
     report(row)
-    # Match test_distributed_ntff.py's CPML bars, including compensation.
     assert max(value for name, value in errors.items()
                if name not in compensation) <= 5e-5, row
     assert max(compensation.values()) <= 2 * np.finfo(np.float32).eps, row

@@ -1,11 +1,12 @@
-"""run_until_decay must support lumped RLC elements."""
+"""run_until_decay must support lumped RLC elements.
+The domain lengths written as ``7 * (299792458.0 / 5e9 / 20.0)`` are whole numbers of cells of dx, so the solved domain equals the declared one."""
 import numpy as np
 from rfx import Simulation, GaussianPulse
 
 
 class TestDecayWithRLC:
     def test_decay_with_inductor(self):
-        sim = Simulation(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+        sim = Simulation(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
         sim.add_source(position=(0.01, 0.01, 0.01), component="ez",
                        waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8))
         sim.add_lumped_rlc(position=(0.01, 0.01, 0.01), component="ez",
@@ -18,7 +19,7 @@ class TestDecayWithRLC:
         assert np.max(np.abs(ts)) > 1e-15
 
     def test_decay_with_high_r_stops_early(self):
-        sim = Simulation(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+        sim = Simulation(freq_max=5e9, domain=(7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0), 7 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
         sim.add_source(position=(0.01, 0.01, 0.01), component="ez",
                        waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8))
         sim.add_lumped_rlc(position=(0.01, 0.01, 0.01), component="ez",

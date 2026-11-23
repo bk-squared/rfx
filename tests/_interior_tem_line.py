@@ -12,6 +12,7 @@ The line continues through 20 CPML cells at each longitudinal end.
 The port and load are shunts across a through line, not terminal loads.
 Non-integral port/load declarations are snapped; the realized coordinates,
 not the declarations, enter the longitudinal transform.
+The DFT kernel is exp(-j omega t).
 """
 from dataclasses import dataclass
 import sys
@@ -39,9 +40,8 @@ class Line:
 
 
 def impedance(gap):
-    # Discrete Dirichlet problem on the realized transverse cells. The inner
-    # filament is held at 1 V, the four outer sheets at 0 V. Unknown nodes
-    # are y=3,4 and z=3..2+gap, excluding the filament at (3,3).
+    INNER_FILAMENT_POTENTIAL_V = 1
+    OUTER_SHEET_POTENTIAL_V = 0.
     unknown = [(y, z) for y in (3, 4) for z in range(3, 3 + gap) if (y, z) != (3, 3)]
     index = {node: k for k, node in enumerate(unknown)}
     a = 4 * np.eye(len(unknown))
@@ -50,11 +50,11 @@ def impedance(gap):
         y, z = node
         for neighbor in ((y-1, z), (y+1, z), (y, z-1), (y, z+1)):
             if neighbor == (3, 3):
-                rhs[k] += 1
+                rhs[k] += INNER_FILAMENT_POTENTIAL_V
             elif neighbor in index:
                 a[k, index[neighbor]] -= 1
     potentials = dict(zip(unknown, np.linalg.solve(a, rhs)))
-    capacitance_over_eps0 = sum(1 - potentials.get(node, 0.)
+    capacitance_over_eps0 = sum(INNER_FILAMENT_POTENTIAL_V - potentials.get(node, OUTER_SHEET_POTENTIAL_V)
                                 for node in ((2, 3), (4, 3), (3, 2), (3, 4)))
     return float(ETA0 / capacitance_over_eps0)
 
@@ -68,6 +68,7 @@ def build(kind="lumped", *, dx=0.25e-3, cells=9, gap=1, ratio=2.,
     Default declarations snap to x nodes 1 and cells-3 before padding.
     axial_positions holds fixed physical declarations for mesh ladders.
     load_shift moves only the fixture; a mutation must retain its nominal oracle.
+    The load index is the declaration's snap because Result/ForwardResult expose no assembled RLC cell record.
     """
     domain = (cells * dx, 8 * dx, (7 + gap) * dx)
     profiles = {} if profile is None else dict(
@@ -113,8 +114,6 @@ def build(kind="lumped", *, dx=0.25e-3, cells=9, gap=1, ratio=2.,
             return position_to_index(grid, position)
 
         xs = np.asarray(coords_from_nonuniform_grid(grid).x)
-    # Inspect realized conductor edges before solving the line. No
-    # material parameter or measured S value enters the electrostatic oracle.
     sheets, wires = [], []
     assemble = sim._assemble_materials if profile is None else sim._assemble_materials_nu
     materials = assemble(grid, pec_sheets=sheets, pec_wires=wires)
@@ -129,19 +128,11 @@ def build(kind="lumped", *, dx=0.25e-3, cells=9, gap=1, ratio=2.,
     assert not ez[3:5, 2:3 + gap].any()
     assert ey[2:5, 2].all() and ey[2:5, 3 + gap].all()
     assert ez[2, 2:3 + gap].all() and ez[5, 2:3 + gap].all()
-    # Every physical Ex layer, including both CPML pads, has the same
-    # internal inner/outer conductor cross-section. Last Ex slot is unused.
     for ix in range(grid.shape[0] - 1):
         np.testing.assert_array_equal(np.asarray(hard[0])[ix, 2:6, 2:4 + gap], expected_ex)
     assert grid.pad_x_lo == grid.pad_x_hi == cpml_layers
-    # The load index is the declaration's snap: Result/ForwardResult expose
-    # no assembled RLC cell record. A moved load is independently caught by
-    # the measured residual check. Ports are checked against solved specs by
-    # assert_solved_ports after the scan, not certified by this recomputation.
     ip, il = index(port), index(load_pos)
     if not two and load == "short":
-        # A PEC short DOES expose assembled edges: read the actual radial
-        # bridge from the realized Ez mask, independently of its declaration.
         short_x = np.flatnonzero(np.asarray(hard[2])[:, 3, 3])
         assert len(short_x) == 1, f"expected one assembled short bridge, got {short_x}"
         il = (int(short_x[0]), 3, 3)
@@ -166,9 +157,6 @@ def assert_realized_separation(line, declared, positions=None):
                                    positions, rtol=0, atol=1e-14)
 
 
-# Fourier convention: DFT kernel exp(-j omega t); a delay has exp(-j beta d),
-# and a series inductor has impedance +j omega L. Frequencies and reference
-# planes below are exactly those requested from the solve (snapped Ez nodes).
 MU0 = 1.25663706212e-6
 CELL_L_COEFFICIENT = 0.214
 
@@ -189,8 +177,6 @@ def input_reflection(line, freqs, zload, *, element_l=0.):
     """
     w = 2 * np.pi * np.asarray(freqs)
     zl = np.asarray(zload) + 1j * w * element_l
-    # Complex infinity arithmetic otherwise produces nan in 2*zl. An absent
-    # shunt has exactly zero load-junction reflection.
     with np.errstate(invalid="ignore", divide="ignore"):
         r = np.where(np.isinf(zl), 0., -line.zc / (2 * zl + line.zc))
     q = r * np.exp(-2j * w * line.length / C0)
@@ -302,7 +288,6 @@ def chain(kind, dut, *, dx=None, separation=.0301):
         sim, line = build(kind, dx=.025e-3, cells=1205, gap=4,
                           ratio={"res_half": .5, "res_double": 2., "matched": 1.}.get(dut, 1.),
                           load=dut if dut in ("short", "open") else "resistor")
-        # Preserve the exact declarations/geometry of the tracker-1549 case.
         assert_realized_separation(line, .030025)
         return sim, line
     dx = .1e-3 if dx is None else dx

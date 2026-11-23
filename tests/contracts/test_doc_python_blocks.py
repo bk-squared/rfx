@@ -14,8 +14,6 @@ from tests._git_tracked import tracked_set
 REPO = Path(__file__).resolve().parents[2]
 pytestmark = pytest.mark.docs_consistency
 
-# Each exception names the documentation-batch issue; repaired or missing
-# blocks must be removed from this list, never silently retained.
 KNOWN_BROKEN: dict[tuple[str, int], str] = {}
 
 PAGES = sorted(

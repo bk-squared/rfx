@@ -110,8 +110,6 @@ def test_order4_fenced_nonuniform():
         sim.run(n_steps=10, skip_preflight=True)
 
 
-
-
 def test_order4_fenced_dispersive():
     """stencil_order=4 with a Debye dispersive material raises."""
     from rfx.geometry.csg import Box
@@ -150,8 +148,6 @@ def test_order4_cfl_derated():
         wire_port_sparams=[], lumped_port_sparams=[], lumped_rlc=[],
         kerr_chi3=None, field_dtype=None, mag_sources=[],
     )
-    # No conductor at all (pec_mask=None in ``common``); this test is about
-    # the stencil-order CFL derating, not conductor realization.
     setup2 = _build_step_setup(grid, mats, stencil_order=2, **common)
     setup4 = _build_step_setup(grid, mats, stencil_order=4, **common)
 

@@ -42,7 +42,9 @@ def _run_waveguide(port, dx, freqs, f0, n_steps, grid):
 
 
 def test_eigenmode_port_matches_analytical():
-    """Eigenmode-derived port should produce same S21 as analytical for uniform guide."""
+    """Eigenmode-derived port should produce same S21 as analytical for uniform guide.
+    The node row past the high wall is outside the guide.
+    """
     a, b, dx, nc = 0.04, 0.02, 0.002, 10
     f0 = 6e9
     freqs = jnp.linspace(4.5e9, 8e9, 12)
@@ -51,26 +53,21 @@ def test_eigenmode_port_matches_analytical():
 
     ny, nz = grid.ny, grid.nz
 
-    # Analytical port (standard)
     port_analytical = WaveguidePort(
-        x_index=nc + 5, y_slice=(0, ny), z_slice=(0, nz),
+        x_index=nc + 5, y_slice=(0, ny - 1), z_slice=(0, nz - 1),
         a=(ny - 1) * dx, b=(nz - 1) * dx,
         mode=(1, 0), mode_type="TE", direction="+x",
     )
     s21_analytical = _run_waveguide(port_analytical, dx, freqs, f0, n_steps, grid)
 
-    # Eigenmode port — use port aperture size (ny, nz) not (ny-1, nz-1)
     a_wg = (ny - 1) * dx
     b_wg = (nz - 1) * dx
-    # Eigenmode solver grid must match port aperture: ny × nz cells
+    assert (a_wg, b_wg) == (port_analytical.a, port_analytical.b), "eigenmode solver grid must match the analytical cell aperture"
     modes = solve_waveguide_modes(a_wg, b_wg, dx, np.array(freqs), n_modes=1)
     mode = modes[0]
 
-    # Resize eigenmode profiles to match port aperture (ny, nz)
-    # The eigenmode solver produces (nu, nv) where nu=round(a/dx), nv=round(b/dx)
-    # The port aperture is (ny, nz) which may differ by 1 cell
     from scipy.ndimage import zoom
-    target_shape = (ny, nz)
+    target_shape = (ny - 1, nz - 1)
     def resize_profile(prof, target):
         if prof.shape == target:
             return prof
@@ -83,7 +80,7 @@ def test_eigenmode_port_matches_analytical():
     hz_resized = resize_profile(np.array(mode.hz_profile), target_shape)
 
     port_eigen = WaveguidePort(
-        x_index=nc + 5, y_slice=(0, ny), z_slice=(0, nz),
+        x_index=nc + 5, y_slice=(0, ny - 1), z_slice=(0, nz - 1),
         a=a_wg, b=b_wg,
         mode=mode.mode_indices, mode_type=mode.mode_type, direction="+x",
     )
@@ -98,7 +95,6 @@ def test_eigenmode_port_matches_analytical():
         f_cutoff=float(mode.f_cutoff),
     )
 
-    # Run with eigenmode profiles
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
     cp, cs = init_cpml(grid)
@@ -133,11 +129,9 @@ def test_eigenmode_partially_filled_cutoff():
     a, b, dx = 0.04, 0.02, 0.002
     freqs = np.array([5e9, 6e9, 7e9])
 
-    # Uniform: cutoff = c/(2a) ≈ 3.75 GHz
     modes_uniform = solve_waveguide_modes(a, b, dx, freqs, n_modes=1)
     f_c_uniform = modes_uniform[0].f_cutoff
 
-    # Half-filled with eps_r=4: cutoff should be lower
     ny = int(round(a / dx))
     nz = int(round(b / dx))
     eps_cross = np.ones((ny, nz))
@@ -146,7 +140,6 @@ def test_eigenmode_partially_filled_cutoff():
                                           eps_cross=eps_cross)
     f_c_filled = modes_filled[0].f_cutoff
 
-    # Full eps_r=4: cutoff = c/(2a*sqrt(4)) ≈ 1.875 GHz
     f_c_full = cutoff_frequency(a, b, 1, 0) / np.sqrt(4.0)
 
     print("\nPartially-filled waveguide cutoff:")

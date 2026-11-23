@@ -11,13 +11,12 @@ from rfx.runners import distributed_v2
 
 
 def scene(kind, boundary):
+    """The lumped Ez H(i-1) lies on rank 0 while its E midpoint lies on rank 1."""
     sim = Simulation(freq_max=10e9, domain=(.016, .006, .006), dx=.001,
                      boundary=boundary, cpml_layers=2)
     grid = sim._build_grid()
     seam = (grid.shape[0] + 1) // 2
     x = (seam - grid.pad_x_lo) * grid.dx
-    # Lumped Ez's H(i-1) is on rank 0; its E midpoint is on rank 1.
-    # The Ex wire straddles the seam; rank 0 alone loses its midpoint.
     position = (x - .001, .003, .003) if kind == 'wire' else (x, .003, .003)
     sim.add_port(position, 'ex' if kind == 'wire' else 'ez', impedance=50.,
                  waveform=GaussianPulse(f0=5e9, bandwidth=1.6),
@@ -54,8 +53,6 @@ def test_main_record_and_s(kind, entry, boundary):
                            **({'devices': devices, 'distributed': True} if distributed
                               else {'checkpoint': False}))
 
-    # All expected samples, accumulator values and S come from a public
-    # one-device solve. No cut, reduction, sampler or DFT helper is the oracle.
     with patch.object(distributed_v2, 'run_distributed', wraps=distributed_v2.run_distributed) as runs:
         actual = call(True)
     print(f'{entry}/{kind}/{boundary}: runs={runs.call_count}', flush=True)

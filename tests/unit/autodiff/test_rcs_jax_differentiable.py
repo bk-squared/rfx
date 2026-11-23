@@ -13,7 +13,7 @@ Three gates (ground truths):
   • ``test_rcs_jax_gradient_fd_convergence`` — dσ_backscatter/dε is finite and central-FD
     CONVERGES to AD as h→0. σ(ε) sits near a backscatter maximum here (strongly curved), so
     a single large-h FD is unreliable (ch07 doctrine: step-sweep, not single-h).
-
+TH_B and PH_B denote backscatter for +x incidence.
 """
 import numpy as np
 import jax
@@ -36,7 +36,7 @@ N_STEPS = 220
 DOMAIN = (0.09, 0.09, 0.09)
 DX = 0.003
 FREQS = np.array([F0])
-TH_B, PH_B = np.array([np.pi / 2]), np.array([np.pi])  # backscatter for +x incidence
+TH_B, PH_B = np.array([np.pi / 2]), np.array([np.pi])
 
 
 def _materials(grid, eps_scale):
@@ -44,13 +44,13 @@ def _materials(grid, eps_scale):
     sx, sy, sz = grid.shape
     block = np.zeros(grid.shape, np.float32)
     block[sx // 2 - 3:sx // 2 + 3, sy // 2 - 3:sy // 2 + 3, sz // 2 - 3:sz // 2 + 3] = 1.0
-    return mb._replace(eps_r=mb.eps_r + eps_scale * 3.0 * jnp.asarray(block))  # ε_r=4 @ scale=1
+    return mb._replace(eps_r=mb.eps_r + eps_scale * 3.0 * jnp.asarray(block))
 
 
 def _tfsf(grid):
     return init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=CPML, tfsf_margin=3,
                      f0=F0, bandwidth=BW, amplitude=1.0, polarization="ez",
-                     direction="+x", angle_deg=0.0)
+                     direction="+x", angle_deg=0.0, dtype='float32')
 
 
 def _setup_run(grid, materials):
@@ -69,7 +69,7 @@ def _setup_run(grid, materials):
 @pytest.fixture(scope="module")
 def rcs_run():
     grid = Grid(freq_max=15e9, domain=DOMAIN, dx=DX, cpml_layers=CPML)
-    # the incident the grid carries, as compute_rcs normalizes (#820)
+
     e_inc = measure_normal_incident_spectrum(*_tfsf(grid), N_STEPS, FREQS, grid.dt)
     mats = _materials(grid, 1.0)
     ntff_data, box = _setup_run(grid, mats)
@@ -113,7 +113,7 @@ def test_rcs_jax_gradient_fd_convergence(rcs_run):
     g_ad = float(jax.grad(sigma_of)(1.0))
     assert np.isfinite(g_ad) and abs(g_ad) > 1e-9, f"gradient collapsed/NaN: {g_ad}"
     errs = []
-    for h in (0.01, 0.005):  # σ(ε) is curved near ε=1 => small h needed
+    for h in (0.01, 0.005):
         g_fd = (float(sigma_of(1.0 + h)) - float(sigma_of(1.0 - h))) / (2 * h)
         errs.append(abs(g_ad - g_fd) / abs(g_ad))
     assert errs[1] < errs[0], f"central-FD not converging to AD: {errs}"
@@ -130,10 +130,10 @@ def test_rcs_jax_equals_numpy_on_oblique_observation_grid(rcs_run):
     regardless of the injection angle; it is a prerequisite for a future oblique
     RCS objective, decoupled from the (still-fenced) oblique INJECTION path."""
     g, box, e_inc, nd = rcs_run["grid"], rcs_run["box"], rcs_run["e_inc"], rcs_run["ntff_data"]
-    th = np.linspace(0.05, np.pi - 0.05, 7)      # 7 polar angles across the sphere
-    ph = np.linspace(0.0, 2 * np.pi, 9)[:-1]     # 8 azimuths (drop duplicate 2*pi)
+    th = np.linspace(0.05, np.pi - 0.05, 7)
+    ph = np.linspace(0.0, 2 * np.pi, 9)[:-1]
     ff = compute_far_field(nd, box, g, th, ph)
-    p = np.abs(np.asarray(ff.E_theta)) ** 2 + np.abs(np.asarray(ff.E_phi)) ** 2  # (nf,nθ,nφ)
+    p = np.abs(np.asarray(ff.E_theta)) ** 2 + np.abs(np.asarray(ff.E_phi)) ** 2
     sig_numpy = 4 * np.pi * p / (np.abs(e_inc) ** 2)[:, None, None]
     sig_jax = np.asarray(compute_rcs_jax(nd, box, g, th, ph, e_inc))
     assert sig_jax.shape == sig_numpy.shape == (len(FREQS), len(th), len(ph))

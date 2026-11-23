@@ -21,8 +21,6 @@ def test_graded_wire_port_centers_and_unavailable_classification(axis):
     np.testing.assert_allclose(centers, expected, rtol=0, atol=1e-9)
     assert midpoint == 1
 
-    # NU rasterization is known; the separate dead-cell classifier still
-    # discloses its unsupported lane rather than silently omitting the note.
     findings = sim.preflight()
     hits = [finding for finding in findings
             if finding.code == "wire_port_dead_cell_classification_unavailable"]

@@ -1,4 +1,6 @@
-"""A vacuum TEM pulse measures each absorber face's reflection at 2–30 GHz."""
+"""A vacuum TEM pulse measures each absorber face's reflection at 2–30 GHz.
+For (layers, kappa) = (4, 1), measured -16.6 dB and defect -9.9 dB give midpoint -13 dB; for (8, 1), measured -49.8 dB gives +6 dB rounded up to -40 dB; for (16, 1), measured -96.3 dB gives +6 dB rounded up to -90 dB; for (8, 3), measured -33.1 dB gives +6 dB rounded up to -25 dB.
+"""
 
 import jax
 import numpy as np
@@ -14,13 +16,9 @@ from tests._absorber_witness import (
 
 FREQUENCIES = (2e9, 10e9, 30e9)
 BOUNDS_DB = {
-    # Measured -16.6 dB, defect -9.9 dB: midpoint -13 dB; #1012 fixed this absorber; before it, 8 layers reflected −15 dB.
     (4, 1): -13,
-    # Measured -49.8 dB, defect -15.3 dB: +6 dB rounded up to -40 dB; #1012 fixed this absorber; before it, 8 layers reflected −15 dB.
     (8, 1): -40,
-    # Measured -96.3 dB, defect -22.6 dB: +6 dB rounded up to -90 dB; #1012 fixed this absorber; before it, 8 layers reflected −15 dB.
     (16, 1): -90,
-    # Measured -33.1 dB, defect -12.8 dB: +6 dB rounded up to -25 dB; #1012 fixed this absorber; before it, 8 layers reflected −15 dB.
     (8, 3): -25,
 }
 
@@ -57,8 +55,7 @@ def test_reflection_strictly_improves_with_depth(reflections, face):
 
 
 def test_absorber_sensitivity_of_complex_record():
-    # An independently specified pair checks complex differences and the
-    # deeper record as denominator, including unchanged and zero entries.
+    """The deeper record is the denominator, including unchanged and zero entries."""
     calls = []
     records = {8: np.array([3 + 4j, 2j, 0, 1]), 16: np.array([3, 2j, 0, 0])}
 
@@ -71,20 +68,19 @@ def test_absorber_sensitivity_of_complex_record():
 
 
 def test_oblique_reflection_at_45_degrees():
+    """Measured -69.7 dB gives +6 dB rounded up to -60 dB."""
     with jax.default_device(jax.devices("cpu")[0]):
         measured = oblique_plane_wave_reflection()
-    # Measured -69.7 dB, defect -15.9 dB: +6 dB rounded up to -60 dB; #1012 fixed this absorber; before it, 8 layers reflected −15 dB.
     assert measured < -60, f"45 degree TMz return = {measured} dB"
 
 
 @pytest.mark.parametrize("layers,measured_db", [
-    # Matched -112.2 dB, shipped defect -27.1 dB: +6 dB rounded up to -105 dB; main reference: #1012 fixed this absorber; before it, 8 layers reflected −15 dB.
     (20, -27.1),
-    # Matched -114.9 dB, shipped defect -84.0 dB: +6 dB rounded up to -105 dB; main reference: #1012 fixed this absorber; before it, 8 layers reflected −15 dB.
     (200, -84.0),
 ])
 @pytest.mark.parametrize("face", ("lo", "hi"))
 def test_tfsf_auxiliary_reflection(layers, measured_db, face):
+    """At 20 layers, matched -112.2 dB gives +6 dB rounded up to -105 dB; at 200 layers, matched -114.9 dB gives +6 dB rounded up to -105 dB."""
     with jax.default_device(jax.devices("cpu")[0]):
         measured = tfsf_auxiliary_reflection(layers, face, FREQUENCIES)
     assert np.all(measured < -105), (

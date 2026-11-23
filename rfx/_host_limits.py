@@ -39,5 +39,4 @@ def check_map_count() -> None:
                 MapCountWarning, stacklevel=2,
             )
         except MapCountWarning:
-            # Warning filters (including -W error) must not stop a solve.
             pass

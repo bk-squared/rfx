@@ -76,10 +76,6 @@ def test_reference_probe_preserves_phase():
                                np.linspace(0.0, 1.2, 8), atol=1e-5)
 
 
-# ---------------------------------------------------------------------------
-# Public-entry validation (no FDTD reached: the mode checks raise before
-# the optimization loop; only a tiny grid build runs)
-# ---------------------------------------------------------------------------
 
 def _tiny_factory(n_probes):
     from rfx.api import Simulation

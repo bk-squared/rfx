@@ -34,16 +34,13 @@ def test_pmc_waveguide_mode_solver_refuses(graded, skip, entry, monkeypatch):
 
 @pytest.mark.parametrize('smoothing', [True, 'kottke_pec'])
 def test_waveguide_smoothing_guard_independent_of_mode_refusal(monkeypatch, smoothing):
-    # Keep the smoothing fence even if a future magnetic aperture solver
-    # removes the earlier refusal. The material SDF still needs an extension.
+    """The material SDF needs a magnetic extension even if a magnetic aperture solver removes the mode refusal."""
     import rfx.boundaries.pmc as pmc
     monkeypatch.setattr(pmc, 'refuse_waveguide_pmc', lambda sim: None)
     import rfx.runners._admission as admission
     monkeypatch.setattr(admission, 'admit', lambda *args, **kwargs: None)
     sim = model(two_ports=True)
     sim.add_material('dielectric', eps_r=3.)
-    # Touch the PMC face between the launch sections so this pin reaches
-    # the smoothing fence without first refusing a partially filled port.
     sim.add(Box((.018, .005, .001), (.022, .020, .003)), material='dielectric')
     with pytest.raises(NotImplementedError, match='subpixel smoothing.*y_hi.*half a cell'):
         sim.compute_waveguide_s_matrix(num_periods=1, subpixel_smoothing=smoothing)

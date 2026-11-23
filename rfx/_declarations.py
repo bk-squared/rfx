@@ -6,6 +6,8 @@ keys snapshot their contents. Traced inputs are retained without concretization.
 """
 from collections.abc import Mapping
 from copy import copy
+from dataclasses import replace
+import math
 
 import jax
 import numpy as np
@@ -55,13 +57,13 @@ DECLARATIONS = (
     ("_ntff", "value"),
     ("_current_moments", "value"),
     ("_dft_plane_regions", "value"),
+    ("_time_recorded_dft_planes", "value"),
     ("_internal_probe_indices", "value"),
     ("_msl_auto_offset_min", "value"),
     ("_msl_auto_probe_spacing", "value"),
     ("_msl_auto_probe_lengths", "value"),
 )
 
-# The literal reason "cache" is also the cache inventory for declaration copies.
 NOT_DECLARATIONS = (
     ("_realization_early_outcomes", "derived: early_outcomes feeds the realization table"),
     ("_pf_campaign_ctx", "cache"),
@@ -167,3 +169,127 @@ def declaration_variant(sim, **replacements):
         setattr(variant, attr, value)
     release_declaration_caches(variant)
     return variant
+
+
+DEVICE_DECLARATIONS = frozenset(
+    name for name, form in DECLARATIONS if form in {"entries", "mapping"}
+) | {
+    "_refinement", "_tfsf", "_ntff", "_current_moments", "_dft_plane_regions",
+    "_time_recorded_dft_planes",
+    "_internal_probe_indices", "_msl_auto_offset_min", "_msl_auto_probe_spacing",
+    "_msl_auto_probe_lengths",
+}
+
+
+def _scaled_port_count(count, factor):
+    return max(1, math.floor(count / factor + .5))
+
+
+def declaration_at_dx(sim, factor=1.0, *, caller, pin_resolved_mesh=False, _base_grid=None):
+    """Declare the same model at ``factor`` times its built cell size.
+
+    Profiles, mesh-deformation pins, node-index sheets/crops and frozen meshes
+    cannot be rescaled: use ``convergence_study`` with a factory declaring each
+    mesh. At factor != 1, waveguide reported planes are declared metre planes
+    fixed to the factor-one grid, and waveguide and lumped sampling counts scale.
+    CPML layers, TF/SF and current-moment margins, MSL counts and auto memos stay
+    unchanged. Unchanged entries and mesh arrays
+    remain shared, while
+    declaration containers and run state belong to this new model.
+
+    ``pin_resolved_mesh`` fixes the built dx and resolved domain/profiles before
+    geometry is removed from an empty-guide reference. ``_base_grid`` lets a
+    convergence study build the factor-one grid just once, on its own copy.
+    """
+    try:
+        factor = float(factor)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"{caller}: factor must be finite and positive") from exc
+    if not math.isfinite(factor) or factor <= 0:
+        raise ValueError(f"{caller}: factor must be finite and positive")
+    if pin_resolved_mesh and factor != 1.0:
+        raise ValueError(f"{caller}: pin_resolved_mesh requires factor=1.0")
+
+    mesh_names = {"_dx", "_domain", "_dx_profile", "_dy_profile", "_dz_profile"}
+    if factor != 1.0:
+        mesh = sim._resolve_mesh()
+        reasons = []
+        for name in ("_dx_profile", "_dy_profile", "_dz_profile"):
+            if mesh[name] is not None:
+                origin = "inferred by automatic meshing" if sim.__dict__.get(name) is None else "declared"
+                reasons.append(f"{name[1:]}= ({origin}) fixes axis cell widths")
+        for name, public in (("_nominal_profiles", "nominal_profiles="),
+                             ("_dt_min_cell", "dt_min_cell=")):
+            if getattr(sim, name, None) is not None:
+                reasons.append(f"{public} pins a mesh-deformation family")
+        if getattr(sim, "_pinned_sheets", None):
+            reasons.append("add_pinned_sheet: a node-pinned sheet has size set by NODE INDEX; "
+                           "at dx/2 the conductor is half as long")
+        if getattr(sim, "_dft_plane_regions", None):
+            reasons.append("add_dft_plane_probe(region=) fixes a node-index crop")
+        if "_frozen_mesh" in sim.__dict__:
+            reasons.append("freeze_mesh(): mesh is frozen. Build a new Simulation to remesh")
+        for entry in sim._waveguide_ports:
+            if entry.ref_offset != entry.probe_offset and _scaled_port_count(entry.ref_offset, factor) == _scaled_port_count(entry.probe_offset, factor):
+                reasons.append(f"waveguide port {entry.name!r}: ref_offset={entry.ref_offset} and probe_offset={entry.probe_offset} collapse; use offsets further apart")
+        if reasons:
+            raise ValueError(
+                f"{caller}: cannot scale dx: {'; '.join(reasons)}. "
+                "Use convergence_study with a factory that builds each rung, "
+                "or declare an explicit uniform dx= without mesh pins/profiles "
+                "and declare conductors in metres with add_thin_conductor."
+            )
+
+    variant = declaration_variant(sim)
+    variant._declaration_root = variant
+    for name, form in DECLARATIONS:
+        value = variant.__dict__.get(name)
+        if form == "value" and name not in mesh_names and isinstance(value, (dict, set, list)):
+            variant.__dict__[name] = copy(value)
+    for name in ("_realization_early_outcomes", "_amplitude_kind_warned",
+                 "_boundary_default_warned", "_waveguide_call_overrides"):
+        variant.__dict__.pop(name, None)
+
+    if factor != 1.0 or pin_resolved_mesh:
+        g1 = variant._build_realized_grid() if _base_grid is None else _base_grid
+        base_dx = float(g1.dx)
+        if pin_resolved_mesh:
+            mesh = variant._resolve_mesh()
+            variant.__dict__.pop("_frozen_mesh", None)
+            variant._dx = base_dx
+            variant._domain = tuple(mesh["_domain"])
+            for name in ("_dx_profile", "_dy_profile", "_dz_profile"):
+                setattr(variant, name, mesh[name])
+        else:
+            variant._dx = factor * base_dx
+            from rfx.api._compile import waveguide_count_planes
+            from rfx.sparams._waveguide_planes import reported_from_planes
+            entries = []
+            for entry in sim._waveguide_ports:
+                _, source, reference, probe = waveguide_count_planes(entry, g1)
+                reported = reported_from_planes(entry, {"source": source, "reference": reference, "probe": probe})
+                planes = {name: value for name, value in zip(("reference_plane", "probe_plane"), reported[:2]) if getattr(entry, name) is None}
+                if planes:
+                    planes["calibration_preset"] = None
+                entries.append(replace(entry, **planes, probe_offset=_scaled_port_count(entry.probe_offset, factor), ref_offset=_scaled_port_count(entry.ref_offset, factor)))
+            variant._waveguide_ports = entries
+            variant._ports = [replace(entry, reference_plane_cells=_scaled_port_count(entry.reference_plane_cells, factor)) if entry.reference_plane_cells is not None else entry for entry in sim._ports]
+            if sim._dt_pin is not None:
+                variant._dt_pin = factor * sim._dt_pin
+    release_declaration_caches(variant)
+    return variant
+
+
+def reset_device_declarations(variant):
+    """Reset device contents to a bare Simulation, retaining mesh and numerics."""
+    bare = type(variant)(freq_max=variant._freq_max, domain=tuple(variant._domain))
+    for name, form in DECLARATIONS:
+        if name not in DEVICE_DECLARATIONS:
+            continue
+        if form == "entries":
+            setattr(variant, name, [])
+        elif name in bare.__dict__:
+            setattr(variant, name, bare.__dict__[name])
+        else:
+            variant.__dict__.pop(name, None)
+    release_declaration_caches(variant)
