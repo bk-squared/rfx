@@ -111,8 +111,6 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                     material_drive.append(None)
         for cell, component, waveform, sigma_port, unit_field in drives.get(len(sim._ports), ()):
             if overridden:
-                # Resolve against the final stamped component materials in slab
-                # staging, just as one-device forward's with_components does.
                 queue.append((*cell, component, current_source_samples(grid, waveform, n_steps)))
                 material_drive.append((None, 0., sigma_port, unit_field))
             else:
