@@ -400,7 +400,7 @@ def test_msl_s_scan_refused():
 
     sim = build_scene("T1").sim
     sim.add_port((.008, .004, .0004), "ez", impedance=50.)
-    with pytest.raises(NotImplementedError, match="compute_msl_s_matrix"):
+    with pytest.raises(NotImplementedError, match="isolated port drives"):
         compute_lumped_wire_s_matrix_via_scan(
             sim, [10e9], n_steps=2, devices=_devices(), skip_preflight=True)
 

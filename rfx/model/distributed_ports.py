@@ -110,7 +110,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                     material_drive.append(None)
         for cell, component, waveform, sigma_port, unit_field in drives.get(len(sim._ports), ()):
             queue.defer(_port_drive_source, grid, cell, component, waveform, n_steps,
-                        sigma_port=sigma_port, unit_field=unit_field)
+                        sigma_port=sigma_port, unit_field=unit_field, dtype='float32')
             material_drive.append(None)
         if (ports_present or sim._msl_ports) and not overridden:
             from rfx.model.materials import with_components
