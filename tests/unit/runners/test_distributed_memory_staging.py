@@ -215,13 +215,18 @@ def _measure_setup(case, *, base=False):
 
 
 def _measure(case, multi_process):
-    sim = _build_box(case)
+    if case in ("msl", "msl_graded"):
+        from tests.unit.runners._msl_multidevice_scene import build_scene
+        sim = build_scene("T1_graded" if case == "msl_graded" else "T1").sim
+    else:
+        sim = _build_box(case)
+    graded = case in ("nu", "msl_graded")
     devices = jax.devices("cpu")[:2]
     assert len(devices) == 2
-    grid = sim._build_nonuniform_grid() if case == "nu" else sim._build_grid()
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     cells = int(np.prod(grid.shape))
     records = []
-    runner = distributed_nu if case == "nu" else distributed_v2
+    runner = distributed_nu if graded else distributed_v2
     loop = slab_graded_legacy_loop if case == "nu" else slab_wrap
     scan = jax.lax.scan
     boundary_ghosts_true = None
@@ -385,7 +390,7 @@ def _measure(case, multi_process):
                         "pec_mask_boundary_ghosts_true": boundary_ghosts_true})
         return scan(body, carry, *args, **kwargs)
 
-    if case == 'nu':
+    if graded:
         loop.lax = SimpleNamespace(**{**vars(jax.lax), "scan": traced_scan})
         runner.lax = loop.lax
     else:
@@ -413,6 +418,7 @@ def _measure(case, multi_process):
     ("nu", False), ("debye", False), ("debye2", False), ("lorentz", False),
     ("lossy", False), ("pec", True), ("cpml", True), ("volume", True), ("lossy", True),
     ("mixed", False), ("pad_debye", False), ("cpml_lorentz", False),
+    ("msl", False), ("msl_graded", False),
     *((case, True) for case in _DISPERSION_CASES),
 ])
 def test_time_loop_holds_only_local_slabs(case, multi_process):
