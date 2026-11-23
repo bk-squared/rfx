@@ -221,7 +221,7 @@ def test_box_with_one_traced_corner_on_a_periodic_axis_fills_as_the_plain_call()
 
     def fill(lo):
         return jnp.stack([jnp.asarray(a) for a in
-                          compute_smoothed_eps(grid, [(_periodic_box(lo, BOX_HI), 4.)])])
+                          compute_smoothed_eps(grid, [(_periodic_box(lo, BOX_HI), 4.)], dtype='float32')])
 
     assert 0 <= (BOX_LO + BOX_HI) / 2 <= PERIOD
     traced = np.asarray(jax.block_until_ready(jax.jit(fill)(jnp.float32(BOX_LO))))
