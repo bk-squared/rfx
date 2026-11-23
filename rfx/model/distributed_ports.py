@@ -1,4 +1,6 @@
 """Global graded port assembly before slab staging."""
+from typing import Any
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -84,7 +86,8 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                         raise NotImplementedError('Graded multi-device port overrides on Debye/Lorentz live edges are not measured by the step2-graded-port-s design (D3b).')
     # The same region-bypassing run route needs concrete drive samples and scales.
     with jax.ensure_compile_time_eval():
-        queue, material_drive = PortSourceQueue(), []
+        queue = PortSourceQueue()
+        material_drive: list[tuple[Any, Any] | tuple[Any, Any, Any, Any] | None] = []
         for index, pe in enumerate(sim._ports):
             if pe.is_soft_source:
                 cell = _grid_metric.field_index(grid, pe.position, pe.component)
