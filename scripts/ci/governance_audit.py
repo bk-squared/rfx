@@ -1,47 +1,14 @@
 #!/usr/bin/env python3
 """Weekly report on the intake rules that CI cannot enforce on a single PR.
 
-Three of the repository's working rules are only checkable ACROSS pull requests
-and issues, so no per-PR gate can see them:
+Reviews are checked on merged PRs, or on each listed merge-train member.
+Accepted reviews pass. Claimed exceptions remain visible: maintainer instructions
+are informational, while docs/comment exceptions require a readable diff with
+unchanged Python ASTs after docstring removal and no other source-tree edits.
 
-* **Reviews.** ``scripts/ci/check_pr_body.py`` accepts ``Review: skipped - (a)``
-  and ``(b)``, by design -- the rule has two exceptions. What it cannot see is
-  how OFTEN the exception is claimed. An exception used every week is not an
-  exception, and the only way to notice is to count them weekly.
-* **Intake.** ``.github/ISSUE_TEMPLATE/`` makes "someone will DO or DECIDE
-  something" a required field, which works only for issues filed THROUGH a
-  form. An issue opened through the API or transferred from elsewhere skips it
-  and has no ``### Lane`` section.
-* **Lane labels on issues.** Filing through the form is not the same as ending
-  up queryable. ``.github/workflows/issue-lane-label.yml`` deliberately does
-  nothing -- and stays green -- when the dropdown was left unanswered or when a
-  pasted second ``### Lane`` section makes the body ambiguous. Both leave a
-  perfectly well-formed issue with no ``lane:*`` label, invisible to every lane
-  query, and nothing on the issue itself says so. Asking for the LABEL rather
-  than the heading is what catches that.
-* **Data carried past the budget.** ``scripts/ci/check_data_budget.py`` lets a
-  PR labelled ``data-budget-exception`` merge records the budget would refuse,
-  with a warning on that PR only. Whether the label became the way records land
-  is a question about many PRs, so it is counted here.
-* **One campaign at a time.** Work runs
-  one campaign at a time, and an open milestone is how that is visible. A merged
-  PR that closes an issue outside every open milestone is work that happened off
-  the current campaign; a merged PR that closes no issue at all may be fine
-  (housekeeping) or may be an issue nobody filed.
-
-None of this is a gate. A row here is a thing to look at, not a thing that was
-forbidden -- the report is deliberately loud (a failing row exits 1, so the
-scheduled run is RED and shows up in the Actions list) because a green weekly
-summary nobody opens reports nothing. Do not make it a required check.
-
-Two sections are INFORMATIONAL and never touch the exit code. Merged PRs that
-close no issue: infrastructure and documentation work legitimately closes
-nothing, and on the week this was written that section alone was 65 of 102
-merged PRs -- a report that is red every week for a thing that is usually fine
-is a report nobody opens by the third week. And merged PRs that added or
-modified more than ``FROZEN_REPORT_BYTES`` of frozen test data: the data budget
-allows 5,000,000 bytes per PR in the frozen-data homes, which bounds each PR and
-not their sum, so the sum is watched here, with the total on main in the header.
+Issues need a lane label, regardless of their body headings. Data-budget
+exceptions remain failing rows. Milestone, unlinked and frozen-data rows remain
+visible but informational. This weekly report must not become a required check.
 
 Reads GitHub through ``gh``; classification is a pure function over the JSON so
 the tests need no network. Stdlib only, Python 3.11.
@@ -56,6 +23,8 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import ast
+import base64
 import datetime as dt
 import importlib.util
 import json
@@ -65,10 +34,10 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Dict, Iterable, List, NamedTuple, Optional, Sequence
+from urllib.parse import quote
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _CHECK_PR_BODY = REPO_ROOT / "scripts" / "ci" / "check_pr_body.py"
-_ISSUE_LANE = REPO_ROOT / "scripts" / "ci" / "issue_lane_label.py"
 _DATA_BUDGET = REPO_ROOT / "scripts" / "ci" / "check_data_budget.py"
 
 DEFAULT_DAYS = 7
@@ -95,23 +64,25 @@ def _load(path: Path, name: str):
 # accepted `Review:` line looks like, or a body that passes CI shows up here as
 # unreviewed every Monday.
 _cpb = _load(_CHECK_PR_BODY, "rfx_check_pr_body")
-_lane = _load(_ISSUE_LANE, "rfx_issue_lane_label")
 # The label name is the gate's own constant, for the same reason.
 _budget = _load(_DATA_BUDGET, "rfx_check_data_budget")
 
 
 class Row(NamedTuple):
-    """One line of the report."""
+    """One report line; permitted review exceptions carry informational=True."""
 
     kind: str
     ref: str
     title: str
     detail: str
+    informational: bool = False
 
 
 #: Heading, and the sentence under it, for each kind. Printed in this order.
 #: Kinds that do NOT set the exit code. Listed and counted, never failed on.
-INFORMATIONAL = ("unlinked", "frozen")
+INFORMATIONAL = ("unlinked", "frozen", "milestone", "review-exceptions")
+
+MEMBER_RE = re.compile(r"^Merge-train-member: #([0-9]+)\b")
 
 #: A merged PR that added or modified more frozen-home data than this is listed.
 FROZEN_REPORT_BYTES = 1_000_000
@@ -119,9 +90,15 @@ FROZEN_REPORT_BYTES = 1_000_000
 SECTIONS = (
     (
         "review",
-        "Merged PRs with no accepted review, or a claimed exception",
-        "`Review: skipped` is allowed for the two exceptions. An exception "
-        "claimed often is not an exception.",
+        "Merged PRs with no accepted review",
+        "Missing accepted reviews and docs/comment exceptions outside their "
+        "permitted file bound make the run red.",
+    ),
+    (
+        "review-exceptions",
+        "Claimed review exceptions (informational)",
+        "Permitted docs/comment and maintainer-instruction exceptions remain "
+        "visible. Does not make the run red.",
     ),
     (
         "data-budget",
@@ -135,13 +112,6 @@ SECTIONS = (
         "Invisible to `gh issue list -l lane:...`, so no session can find it. "
         "An unanswered dropdown, or a pasted second `### Lane` section, leaves "
         "the label job doing nothing and green -- this is where that shows up.",
-    ),
-    (
-        "form",
-        "Issues opened outside the issue forms",
-        "No `### Lane` section at all, so nobody answered \"who will DO or "
-        "DECIDE something\". An issue can appear here and above; they are "
-        "different facts.",
     ),
     (
         "milestone",
@@ -184,6 +154,77 @@ def review_state(body: str) -> tuple[str, str]:
     return "ok", ""
 
 
+def member_numbers(body: str) -> List[int]:
+    """Visible merge-train member numbers, deduplicated in body order."""
+    return list(dict.fromkeys(
+        int(match.group(1))
+        for line in _cpb.body_lines(body or "")
+        if (match := MEMBER_RE.match(line))
+    ))
+
+
+def same_code(before: str, after: str) -> bool:
+    """Compare Python ASTs, ignoring comments and leading docstrings only.
+
+    Parse errors propagate so callers can distinguish unreadable source from a
+    readable code change. String expressions outside docstring positions stay.
+    """
+    def stripped(source: str) -> str:
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                body = node.body
+                if (body and isinstance(body[0], ast.Expr)
+                        and isinstance(body[0].value, ast.Constant)
+                        and isinstance(body[0].value.value, str)):
+                    del body[0]
+        return ast.dump(tree, include_attributes=False)
+
+    return stripped(before) == stripped(after)
+
+
+def review_result(pr: dict) -> tuple[str, str]:
+    """Bound a docs/comment claim using replayable source texts, without IO.
+
+    Any unreadable input fails the claim. Otherwise the first changed Python
+    AST or non-Python source-tree path is named in the failing row.
+    """
+    state, detail = review_state(pr.get("body") or "")
+    if state != "skipped" or re.match(r"^Review: skipped " + _cpb._DASH + r" \(b\) ", detail):
+        return state, detail
+    diff = pr.get("diff")
+    files = diff.get("files") if isinstance(diff, dict) else None
+    if not isinstance(files, list) or len(files) >= COMPARE_FILE_LIMIT:
+        return "missing", f"{detail}: diff not read"
+    first = None
+    for entry in files:
+        if not isinstance(entry, dict):
+            return "missing", f"{detail}: diff not read"
+        path = entry.get("filename")
+        previous = entry.get("previous_filename", path)
+        if not all(isinstance(name, str) and name for name in (path, previous)):
+            return "missing", f"{detail}: diff not read"
+        if previous != path and (path.endswith(".py") or previous.endswith(".py")):
+            first = first or path
+            continue
+        for name in (previous, path):
+            if name.startswith("rfx/") and not name.endswith(".py"):
+                first = first or name
+        if path.endswith(".py") or previous.endswith(".py"):
+            before, after = entry.get("before"), entry.get("after")
+            if not isinstance(before, str) or not isinstance(after, str):
+                return "missing", f"{detail}: diff not read"
+            try:
+                equal = same_code(before, after)
+            except (SyntaxError, ValueError, TypeError, RecursionError):
+                return "missing", f"{detail}: diff not read"
+            if not equal:
+                first = first or path
+    if first:
+        return "missing", f"{detail}: {first}"
+    return state, detail
+
+
 def linked_issues(body: str) -> List[int]:
     """Issue numbers this PR body says it closes, in order, deduplicated."""
     seen: List[int] = []
@@ -224,9 +265,13 @@ def classify(
     merged_prs: Sequence[dict],
     opened_issues: Sequence[dict],
     issue_index: Dict[int, dict],
+    member_index: Optional[Dict[int, dict]] = None,
 ) -> List[Row]:
     """The report rows. Pure: everything it needs is in the arguments.
 
+    *member_index* maps member numbers to bodies and diff inputs. Absent members fail
+    review. Failures and permitted exceptions have separate sections, including
+    when both occur within one batch. Permitted exceptions are informational.
     *issue_index* maps an issue number to its record, and must cover every
     number a merged PR links to. A record carrying ``is_pull_request`` is
     skipped: "Fixes #1042" pointing at a pull request is a cross-reference
@@ -241,9 +286,22 @@ def classify(
         title = pr.get("title", "")
         body = pr.get("body") or ""
 
-        state, detail = review_state(body)
-        if state != "ok":
-            rows.append(Row("review", ref, title, detail or "no accepted `Review:` line"))
+        members = member_numbers(body)
+        reviews = [
+            (f"#{number}: ", review_result((member_index or {}).get(number) or {}))
+            for number in members
+        ] if members else [("", review_result(pr))]
+        failures = [prefix + detail for prefix, (state, detail) in reviews if state == "missing"]
+        exceptions = [prefix + detail for prefix, (state, detail) in reviews if state == "skipped"]
+        if failures:
+            rows.append(Row(
+                "review", ref, title, "; ".join(failures),
+            ))
+        if exceptions:
+            rows.append(Row(
+                "review-exceptions", ref, title, "; ".join(exceptions),
+                informational=True,
+            ))
 
         if _budget.EXCEPTION_LABEL in label_names(pr):
             rows.append(Row(
@@ -289,11 +347,6 @@ def classify(
         # a second `### Lane` section was pasted in.
         if not lane_labels_of(issue):
             rows.append(Row("unlabelled", ref, title, "no `lane:*` label"))
-
-        # A separate fact, kept separate: this one says nobody was ever ASKED
-        # the form's questions. An issue with neither appears in both sections.
-        if not _lane.has_lane_section(issue.get("body") or ""):
-            rows.append(Row("form", ref, title, "no `### Lane` section"))
 
     return rows
 
@@ -365,8 +418,8 @@ def render(rows: Iterable[Row], since: dt.date, until: dt.date, counts: dict) ->
 
 
 def failing_rows(rows: Iterable[Row]) -> List[Row]:
-    """The rows that set the exit code."""
-    return [row for row in rows if row.kind not in INFORMATIONAL]
+    """Exclude informational kinds and permitted review-exception rows."""
+    return [row for row in rows if row.kind not in INFORMATIONAL and not row.informational]
 
 
 # --------------------------------------------------------------------------
@@ -412,6 +465,60 @@ def _capped(rows: list, limit: int, what: str, window: str) -> list:
     return rows
 
 
+COMPARE_FILE_LIMIT = 300
+
+
+def fetch_diff(record: dict, head: Optional[str] = None) -> Optional[dict]:
+    """Fetch one claim's inputs; failures are local and replay as unreadable.
+
+    The compare API lists at most three hundred files. At the cap completeness
+    is unknown. Contents are read at the merge base and the claimed head;
+    additions and removals use an empty module on the absent side.
+    """
+    state, detail = review_state(record.get("body") or "")
+    if state != "skipped" or re.match(r"^Review: skipped " + _cpb._DASH + r" \(b\) ", detail):
+        return None
+    base = record.get("baseRefOid")
+    head = head or record.get("headRefOid")
+    if not all(isinstance(oid, str) and re.fullmatch(r"[0-9a-fA-F]{40}", oid)
+               for oid in (base, head)):
+        return None
+    try:
+        comparison = _gh_one(["api", f"repos/{{owner}}/{{repo}}/compare/{base}...{head}"])
+        merge_base = comparison["merge_base_commit"]["sha"]
+        files = comparison["files"]
+        if not isinstance(files, list) or len(files) >= COMPARE_FILE_LIMIT:
+            return None
+        inputs = []
+        for entry in files:
+            path = entry["filename"]
+            previous = entry.get("previous_filename", path)
+            status = entry["status"]
+            if status not in ("added", "removed", "modified", "renamed", "copied", "changed"):
+                return None
+            item = {"filename": path, "status": status}
+            if previous != path:
+                item["previous_filename"] = previous
+            if path.endswith(".py") or previous.endswith(".py"):
+                for key, name, ref, absent in (
+                    ("before", previous, merge_base, status == "added" or not previous.endswith(".py")),
+                    ("after", path, head, status == "removed" or not path.endswith(".py")),
+                ):
+                    if absent:
+                        item[key] = ""
+                    else:
+                        content = _gh_one([
+                            "api", f"repos/{{owner}}/{{repo}}/contents/{quote(name, safe='/')}?ref={ref}",
+                        ])
+                        if content.get("encoding") != "base64" or content.get("type") != "file":
+                            return None
+                        item[key] = base64.b64decode(content["content"]).decode("utf-8-sig")
+            inputs.append(item)
+        return {"base": base, "head": head, "merge_base": merge_base, "files": inputs}
+    except (subprocess.CalledProcessError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+
+
 def fetch(days: int, limit: int = FETCH_LIMIT) -> dict:
     """Everything `classify` needs, as one JSON-serializable dict."""
     until = dt.datetime.now(dt.timezone.utc).date()
@@ -428,6 +535,31 @@ def fetch(days: int, limit: int = FETCH_LIMIT) -> dict:
         "--search", f"created:>={since.isoformat()}",
         "--json", "number,title,body,createdAt,url,labels",
     ]), limit, "opened issues", window)
+
+    member_index: Dict[int, dict] = {}
+    members = {}
+    for pr in prs:
+        for line in _cpb.body_lines(pr.get("body") or ""):
+            match = re.fullmatch(r"Merge-train-member: #([0-9]+) ([0-9a-fA-F]{40})", line)
+            if match:
+                members[int(match.group(1))] = match.group(2)
+        for number in member_numbers(pr.get("body") or ""):
+            members.setdefault(number, None)
+    for number, head in sorted(members.items()):
+        try:
+            record = _gh_one(["pr", "view", str(number), "--json", "body,baseRefOid,headRefOid"])
+        except (subprocess.CalledProcessError, ValueError):
+            record = {}
+        record["diff"] = fetch_diff(record, head) if head else None
+        member_index[number] = record
+    for pr in prs:
+        if review_state(pr.get("body") or "")[0] != "skipped" or member_numbers(pr.get("body") or ""):
+            continue
+        try:
+            refs = _gh_one(["pr", "view", str(pr["number"]), "--json", "baseRefOid,headRefOid"])
+            pr["diff"] = fetch_diff({**refs, "body": pr.get("body")})
+        except (subprocess.CalledProcessError, ValueError):
+            pr["diff"] = None
 
     for pr in prs:
         oid = (pr.get("mergeCommit") or {}).get("oid")
@@ -468,6 +600,7 @@ def fetch(days: int, limit: int = FETCH_LIMIT) -> dict:
         "since": since.isoformat(),
         "until": until.isoformat(),
         "merged_prs": prs,
+        "member_index": {str(k): v for k, v in member_index.items()},
         "opened_issues": issues,
         "issue_index": {str(k): v for k, v in index.items()},
         "frozen_main": frozen_main,
@@ -481,7 +614,8 @@ def report(data: dict) -> tuple[str, int]:
     """
     index = {int(k): v for k, v in (data.get("issue_index") or {}).items()}
     rows = classify(
-        data.get("merged_prs") or [], data.get("opened_issues") or [], index
+        data.get("merged_prs") or [], data.get("opened_issues") or [], index,
+        {int(k): v for k, v in (data.get("member_index") or {}).items()},
     )
     text = render(
         rows,
