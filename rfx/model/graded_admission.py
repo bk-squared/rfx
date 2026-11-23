@@ -5,7 +5,7 @@ grid exists: the domain extents a cell-size profile implies, the pinned time
 step and its declared smallest cell, and the concrete nominal profile of a
 traced axis. ``Simulation.__init__`` calls :func:`admit_graded_profiles` and
 keeps what it returns; the messages are the ones the constructor raised.
-``DECLARED_Z_RTOL`` is the allowed relative discrepancy between a concrete z profile and a positive declared z extent.
+``NOMINAL_SUM_RTOL`` is the relative tolerance within which a nominal profile's cell widths must sum to the declared domain extent.
 """
 from __future__ import annotations
 

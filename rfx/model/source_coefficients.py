@@ -202,7 +202,7 @@ def current_source_cb(eps_r_c, sigma_c, dt):
 def current_source_volume(grid, position_ijk, component):
     """``(dV, grid_traced)``: the control volume of the E node a current
     source at ``position_ijk`` injects into, and whether the profile is
-    traced (then ``dV`` is a jnp scalar, else a Python float).An electric component's control volume uses the primal width along its component axis and dual spacings along the transverse axes.
+    traced (then ``dV`` is a jnp scalar, else a Python float). An electric component lies on a cell edge along its own axis and on a node along the transverse axes.
     """
     i, j, k = position_ijk
 

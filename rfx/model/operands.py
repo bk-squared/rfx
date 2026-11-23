@@ -224,6 +224,8 @@ def realized_operands(grid, materials, updates, localized) -> tuple[OperandRecor
     ``source`` is the original update value, or None for material leaves.
     Assembly specs keep their tuple and masks by identity; setup ADE records
     retain their prebuilt source and have no assembly ``pole_spec``.
+
+    Symmetric tensor entries are ordered xx, yy, zz, xy, xz, yz.
     """
     records = []
     periodic = tuple(axis in getattr(grid, "periodic_axes", "") for axis in "xyz")

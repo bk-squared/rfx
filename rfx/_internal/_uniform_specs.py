@@ -1,4 +1,7 @@
-"""Shared uniform-runner records and scalar helpers."""
+"""Shared uniform-runner records and scalar helpers.
+
+``_ORDER4_CFL_FACTOR`` is six sevenths rounded, the fourth-order staggered stencil's one-dimensional Courant bound relative to the second-order bound.
+"""
 
 from __future__ import annotations
 

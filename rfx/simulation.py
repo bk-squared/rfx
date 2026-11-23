@@ -5,7 +5,6 @@ plane-wave injection into a single JIT-compiled time loop via
 ``jax.lax.scan``. All subsystem selection (CPML, dispersion, TFSF) is
 resolved at Python trace-time so the compiled function contains only
 the needed code paths.
-The fourth-order staggered stencil's one-dimensional Courant bound is six sevenths of the second-order bound.
 """
 
 from __future__ import annotations

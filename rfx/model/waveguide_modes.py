@@ -568,7 +568,8 @@ def init_waveguide_port(
     grid : Grid or None
         Validate the aperture against a uniform Grid's declared electric,
         magnetic and periodic boundaries.
-    For y-normal ports, the transverse coordinates follow physical ``(x, z)`` order.
+
+    For y-normal ports the transverse order ``(x, z)`` is left-handed about +y, so the magnetic templates are negated to keep the measured power flowing along +y.
     """
     from rfx.grid import Grid
 
