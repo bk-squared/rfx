@@ -41,8 +41,6 @@ def s_read_records(result):
         return ()
     records = tuple(r for r in getattr(result, 'sparam_time_records', None) or () if r.id in ids.ids)
     if hasattr(getattr(result, 'grid', None), 'dx_arr'):
-        # Graded S still reads only the physical channels. Its new reference
-        # is retained for record parity, not as another settling-fit input.
         from dataclasses import replace
         records = tuple(replace(r, channels=r.channels[:-1], samples=r.samples[..., :-1])
                         if r.channels[-1:] == ('V_ref',) else r for r in records)
@@ -73,7 +71,6 @@ def forward_settling_witness(result):
     db, witness = build_settling_witness(
         result, bins=bins, dt=result.dt, freq_max=freq_max,
         probe_info=result.settling_probe_info,
-        # Transit is to the records judged: probes for the probe row, ports for the port row.
         source_end=(result.settling_probe_source_end_index
                     if result.settling_probe_source_end_index is not None
                     else result.settling_source_end_index),
