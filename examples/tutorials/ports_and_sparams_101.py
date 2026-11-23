@@ -128,7 +128,6 @@ def build_microstrip_ports() -> Simulation:
 
     ground, substrate, trace = map(shifted, (ground, substrate, trace))
     edge_dx = dx
-    # Last sheet nodes 0.35 cell inside the drawn edges; port planes on nodes.
     pad = 8 * edge_dx
 
     def interior_box(box):
@@ -180,7 +179,6 @@ def build_microstrip_ports() -> Simulation:
         substrate,
         material="substrate",
     )
-    # The trace's last nodes lie 0.35 cell inside its drawn 1 mm width.
     sim.add_thin_conductor(trace)
 
     common = {

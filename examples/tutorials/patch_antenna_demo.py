@@ -332,12 +332,6 @@ def build_simulation():
     probe_x, probe_y = feed_x + 4e-3, feed_y + 4e-3
     pad = (N_CPML + 3) * DX
 
-    # In-plane mesh.  A PEC sheet's edge is taken EDGE_OFFSET = 0.35 of a
-    # cell beyond its last node (measured with the cell normal to the sheet
-    # as long as the in-plane cell; preflight's sheet_effective_size uses the
-    # same number), so on a uniform 2 mm lattice preflight predicts this
-    # 32 x 40 mm patch as 31.4 x 39.4 mm (edges mid-cell, this domain) or
-    # 33.4 x 41.4 mm (edges on nodes) and refuses it.
     # edge_aware_profiles grades x and y (1.86-2 mm) so a node sits 0.35 cell
     # inside every sheet edge, and puts the feed, the probe and the NTFF faces
     # on nodes.  The check after the build asserts the result.
@@ -427,10 +421,6 @@ def build_simulation():
             f"declared {SUB_THICK * 1e3:.4f} mm"
         )
 
-    # The same check in-plane: the patch and the ground span their drawn size
-    # by preflight's 0.35-cell edge model, and the feed edge is at its drawn point.  The
-    # substrate cells cannot also start on the ground's edge -- the node
-    # there is the sheet's -- so they are checked to within one cell.
     nodes_span, solved_span, sub_span, feed_node = realized_in_plane(
         sim, (k_gnd, k_patch), (feed_x, feed_y, src_z))
     checks = {
@@ -523,11 +513,6 @@ def main():
 
     sim = build_simulation()
 
-    # Preflight prints each advisory verbatim.  Expected on this registered
-    # board: ntff_near_field for the close bottom NTFF face, and
-    # ntff_small_ground_plane for finite-ground diffraction.  The sheets'
-    # last nodes lie 0.35 cell inside their drawn edges, so an off-lattice
-    # conductor-face residual is not an expected advisory.
     report = sim.preflight()
     print(f"preflight advisories: {len(list(report))}")
 
