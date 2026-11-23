@@ -33,6 +33,8 @@ from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
 from rfx.model.conductors import coax_declared_conductors, coax_kernel_conductors
 from rfx.model.coax_line import CoaxLineEnd, build_coax_line
 
+import warnings
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -604,9 +606,8 @@ def compute_coaxial_two_port(
     name-keyed on ``result.flux_monitors``
     (``{port_name: {monitor_name: (n_monitor_freqs,) float64}}``, net
     flux, positive = +axis). The S-parameter math is untouched — the
-    non-perturbation witness (S bit-identical with and without
-    monitors) is gated in
-    ``tests/unit/sparams/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s``.
+    non-perturbation witness compared S with and without monitors in the
+    retired transition test.
     The registered-monitor guard is unchanged: monitors registered ON
     this sim still raise, because this method builds its own probes.
     """
@@ -1177,11 +1178,9 @@ def compute_coax_msl_transition(
     matrix-pencil wave fit with built coax / analytic MSL normalization; this is
     not a traceable or validated cross-family extraction.
     """
-    import warnings
-
     warnings.warn(
         "compute_coax_msl_transition is not supported and will be removed after rfx 2.3: "
-        "the coax-to-microstrip transition matrix it returns is not passive on the measured boards.",
+        "the coax-to-microstrip transition matrix it returns is not passive.",
         DeprecationWarning,
         stacklevel=2,
     )
@@ -1240,7 +1239,6 @@ def compute_coax_msl_transition(
     sheet_findings = None
     if not skip_preflight:
         # This lane owns its port checks; run only the shared sheet verdict.
-        import warnings
         from rfx.geometry.csg import Box
         from rfx.preflight._common import PreflightIssue, PreflightWarning
         from rfx.preflight.pec_geometry import (

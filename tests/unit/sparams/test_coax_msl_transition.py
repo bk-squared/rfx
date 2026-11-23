@@ -51,10 +51,7 @@ touches every part of it:
   ``TRACE_NODE_ROWS_2`` and the entity cell counts) is a measurement of the
   old realization, and the continuity checks read a CELL column that a
   sheet-declared ground plane no longer populates;
-* ``test_attempt3_junction_is_attempt2_plus_hole_only`` asserts the numeric
-  effect of #702's ``resample_sheet_node_materials``, which this branch
-  deleted: with no resample the eps_r arrays agree at the 38 hole cells, so
-  ``eps_diff`` empties while ``xor`` stays 38.
+The attempt-3 and wide-trace tests were removed with the deprecation.
 
 The PREDECLARATION / PREDECLARATION_ATTEMPT2 blocks and ``SETTLED_RUN_RECORD``
 are frozen; the post-contract junction needs its OWN attempt predeclaration
@@ -82,22 +79,7 @@ PEC, wide ring 68/68, no open node in the 9x9 window), the coax shell contacts
 ground 32/32 and the ground lip is 32/32 on both fixtures, and the trace is
 untouched.
 
-Five are ``xfail(strict=True)`` because the contract found something the
-channel change does not fix, each with the measurement in its marker:
-
-* the four attempt-3 launch tests. Attempt 3's clearance hole is itself a
-  compensation for the rule the contract deletes — 20 half-cell ground Boxes
-  leaving the disk uncovered IN CELLS — and under §1.2 each Box's inner faces
-  are now realized as walls on the hole's rim. The annulus reads 25/36 PEC,
-  the window 11 open nodes, the post-stamp open fraction 0.3056. The open
-  launch has to be REDRAWN under the contract.
-* the wide Step-B byte-identity test. Its trace is placed by the
-  ``-3 / +2`` node compensation while attempt 2 draws the same trace by its
-  physical width; on exact node coordinates the two land one row apart
-  (13..19 against 14..20).
-
-Both fixes are fixture changes that move what a run measures, so they belong
-with the post-contract attempt predeclaration and its GPU run, not here.
+The attempt-3 and wide-trace tests were removed with the deprecation.
 """
 
 from __future__ import annotations
@@ -630,9 +612,7 @@ def test_attempt1_pin_axis_pec_column_is_continuous_because_ground_is_solid():
     about an OPEN launch. The second assertion below pins that historical
     fact (all 36 clearance-annulus cells at the junction node are PEC) so
     this test reads as what it is: a PEC-column witness, not a launch
-    certificate. The launch (open-hole) contract lives in the attempt-3
-    tests (``test_attempt3_ground_clearance_annulus_is_open`` and
-    siblings) further down.
+    certificate. The attempt-3 and wide-trace tests were removed with the deprecation.
     The pin and the outer conductor are returned as a cell mask rather than written into materials.sigma.
     """
     from rfx.sources.coaxial_port import stamp_coaxial_line, PEC_SIGMA
@@ -1222,7 +1202,6 @@ LX_2W = LX_2 + (JUNCTION_X_2W - JUNCTION_X)
 _TRACE_Y_LO_OFFSET_NODES = -3
 _TRACE_Y_HI_OFFSET_NODES = 2
 _TRACE_X_START_OFFSET_NODES = 0
-JUNCTION_WINDOW_ATTEMPT2 = {"x": (0, 40), "y": (0, 34)}
 
 
 def _half_cell_box(n_lo, n_hi):
@@ -1746,8 +1725,8 @@ PREDECLARATION_ATTEMPT3 = {
         "38 cells, all at z node 25 (the 49-cell hole minus the pin's 11-"
         "cell realized footprint); eps_r/sigma arrays np.array_equal; PTFE "
         "Cylinder, substrate, trace, pin, both ports, domain, kwargs "
-        "unchanged (asserted by test_attempt3_junction_is_attempt2_plus_"
-        "hole_only). The 0.4 < r <= 0.5 mm ring under the coax dielectric "
+        "unchanged. The attempt-3 and wide-trace tests were removed with "
+        "the deprecation. The 0.4 < r <= 0.5 mm ring under the coax dielectric "
         "stays PEC (a one-cell ground lip, 32/32) -- part of the "
         "predeclared clearance, flagged as a convention question "
         "(flush 0.5 mm aperture would be a NEW predeclaration)."
@@ -2110,9 +2089,8 @@ def test_junction_pin_axis_is_pec_continuous_stub_to_trace(fixture):
     coax stamper's own conductor cells OR stamped sigma >= PEC_SIGMA/2 on the
     axis for every z in [z_stub_lo, trace node], AND the axis cell at the
     junction node is REGISTERED PEC (the pin). Passes on attempt 2 too --
-    through solid ground -- so it is only meaningful together with
-    test_attempt3_ground_clearance_annulus_is_open, which is what
-    distinguishes 'pin' from 'ground' at that node.
+    through solid ground, so it does not distinguish pin from ground.
+    The attempt-3 and wide-trace tests were removed with the deprecation.
 
     The coax cells are a third term because ``stamp_coaxial_line`` returns the
     pin and the outer conductor as a mask for ``realized_pec_edge_masks``
@@ -2143,8 +2121,7 @@ def test_junction_coax_shell_contacts_ground(fixture):
     The wall starts at the declared OUTER_R and grows outward, clamped by
     absorber clearance. The geometric ring between CLEAR_R_CELLS and
     SHELL_INNER_CELLS also remains PEC, forming the ground lip over the
-    coax dielectric. Its discriminating partner is
-    test_attempt3_ground_clearance_annulus_is_open.
+    coax dielectric. The attempt-3 and wide-trace tests were removed with the deprecation.
     The ground lip contains 32 lattice nodes with 16 < di^2 + dj^2 <= 25."""
     sim = _JUNCTION_FIXTURES[fixture]()
     grid, materials, pec, i0, j0, kj = _assemble_junction_realized(sim)
@@ -2241,8 +2218,7 @@ def _attempt3_scratch_flux_entries():
 
     Report-only instrument: these monitors are passed through
     ``compute_coax_msl_transition(extra_flux_monitors=...)``, whose
-    non-perturbation is witnessed by
-    ``test_extra_flux_monitors_do_not_perturb_s``.
+    non-perturbation witness was retired with the deprecation.
     The +axis-positive closure convention is coax_z22 = msl_x20 + top_z36 - xlo_x05 - ylo_y03 + yhi_y31.
     """
     from rfx.api import Simulation as _Sim

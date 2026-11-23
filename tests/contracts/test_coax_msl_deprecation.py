@@ -8,7 +8,7 @@ from rfx.api import Simulation
 
 MESSAGE = (
     "compute_coax_msl_transition is not supported and will be removed after rfx 2.3: "
-    "the coax-to-microstrip transition matrix it returns is not passive on the measured boards."
+    "the coax-to-microstrip transition matrix it returns is not passive."
 )
 
 
@@ -44,3 +44,26 @@ def test_transition_deprecation_as_error_prevents_admission(monkeypatch):
         with pytest.raises(DeprecationWarning) as raised:
             Simulation.compute_coax_msl_transition(object(), junction_x=0.0)
     assert str(raised.value) == MESSAGE
+
+
+def test_dispatch_transition_deprecation_warns_once_at_caller(monkeypatch):
+    """Dispatch suppresses only the delegate's duplicate deprecation warning."""
+    from tests._coax_msl_instrument_fixture import build_instrument_junction
+
+    sim = build_instrument_junction()
+    admissions = []
+
+    def refuse(entry, arguments):
+        admissions.append(entry)
+        raise ValueError("admission sentinel")
+
+    monkeypatch.setattr("rfx.sparams.coax.admit_coax_entry", refuse)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with pytest.raises(ValueError, match="admission sentinel"):
+            sim.compute_s_matrix(junction_x=0.0)
+    assert admissions == ["Simulation.compute_coax_msl_transition"]
+    assert len(caught) == 1
+    assert caught[0].category is DeprecationWarning
+    assert str(caught[0].message) == MESSAGE
+    assert caught[0].filename == __file__

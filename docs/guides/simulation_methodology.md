@@ -143,7 +143,7 @@ one under-settled record) and warns when a run exceeds the line. Every lane
 that carries the witness enforces the same line through the same warner
 (issue #662): `compute_waveguide_s_matrix`, `compute_msl_s_matrix`,
 `compute_mixed_s_matrix`, `compute_coaxial_two_port` and
-`compute_coax_msl_transition`. Since issue #885 `sim.run()` carries the same
+`compute_coax_msl_transition` (not supported (deprecated); removed after 2.3). Since issue #885 `sim.run()` carries the same
 witness as `Result.settling_db`, scored from the user probe time series by the
 same arithmetic, so NTFF far fields, field-DFT planes and Harminv modes are
 guarded too. A run with no probe reports `settling_db = None` and
