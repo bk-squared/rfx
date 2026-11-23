@@ -92,7 +92,6 @@ def debye_e_component(coeffs: DebyeCoeffs, c: int, e_old, curl, p,
     return e_new, p_new
 
 
-# Lazy compatibility export for the time-step implementation.
 _LAZY_EXPORTS = {
     "update_e_debye": "rfx.stepping.poles",
 }

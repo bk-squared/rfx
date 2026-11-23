@@ -37,7 +37,6 @@ __all__ = [
 
 
 def _is_tracer(value: Any) -> bool:
-    # Imported lazily: this leaf must stay importable without paying for jax.
     from rfx.core.jax_utils import is_tracer
 
     return bool(is_tracer(value))
@@ -109,7 +108,6 @@ def check_sequence(value: Any, *, what: str, min_length: int = 0) -> tuple:
             f"({value!r:.60})"
         )
     if not hasattr(value, "__len__"):
-        # Iterable but unsized: a generator or other one-shot iterator.
         raise UnsupportedDesignFeature(
             f"{what} is a {type(value).__name__}, which has no length. A "
             f"one-shot iterator is consumed by exporting it, so a second export "

@@ -324,12 +324,13 @@ def test_admission_admits_exactly_the_carried_cells():
 
 def test_lane_gates_are_the_listed_ones():
     """A lane gate admits a row the table marks refused for some declarations
-    only. Each one is listed in the table module, on a cell that is not
-    carried there: no gate the table does not name, and no named one missing."""
+    only. Required conditions can also constrain an admitted row. Each gate
+    is listed in the table module; no named gate can be missing."""
     gated = {(lane, row) for lane, gates in A.LANE_GATES.items() for row in gates}
     assert gated == set(T.LANE_GATES), sorted(gated ^ set(T.LANE_GATES))
     for lane, (attr, feature) in gated:
-        assert T.cell(attr, feature, lane).kind == T.REFUSES, (lane, attr, feature)
+        expected = T.CARRIES if (attr, feature) in A.ADMITS[lane] else T.REFUSES
+        assert T.cell(attr, feature, lane).kind == expected, (lane, attr, feature)
 
 
 def test_graded_precision_disposition_by_value():

@@ -61,22 +61,10 @@ import warnings
 import jax
 import numpy as np
 
-#: The inert padding pole, per step (``s = log(0.5) / dt``). Its basis column
-#: underflows toward zero within a few hundred samples and is masked anyway.
 INERT_LAMBDA = 0.5
-#: Block length of the plain DFT (host-built float64 kernel, cast per block).
 DFT_BLOCK = 1024
-#: Mutations, for the unit tests' revived-defect checks only:
-#: ``"poles_constant"`` drops the pole derivative (the frequency-shift term is
-#: lost); ``"hold_residues"`` stops the gradient of the residues;
-#: ``"device_tail_arg"`` forms ``s dt + log z`` on the device in the working
-#: precision (the complex64 cancellation at high Q).
 MUTATIONS = (None, "poles_constant", "hold_residues", "device_tail_arg")
-#: Host status codes carried back with the poles.
 STATUS_OK, STATUS_FAILED, STATUS_OVER_BUDGET = 0, 1, 2
-#: Set by the caller (not the host): its in-program consistency check failed,
-#: or a precondition checked before the completion (the solver's step, the
-#: port's probed span) did.
 STATUS_INCONSISTENT, STATUS_PRECONDITION = 3, 4
 
 
@@ -98,9 +86,6 @@ def _callback_keywords():
     return {"vectorized": False}
 
 
-# ---------------------------------------------------------------------------
-# Poles from the host
-# ---------------------------------------------------------------------------
 
 def host_poles(identify_window, window, k_max, dt, freqs):
     """``(s, mask, status, tail_arg, count)`` from the host, traced constants.
@@ -132,7 +117,7 @@ def host_poles(identify_window, window, k_max, dt, freqs):
     shape = tuple(int(d) for d in window.shape)
     dt = float(dt)
     inert = complex(np.log(INERT_LAMBDA)) / dt
-    logz = -2j * np.pi * np.asarray(freqs, dtype=np.float64) * dt      # (nf,)
+    logz = -2j * np.pi * np.asarray(freqs, dtype=np.float64) * dt
     nf = int(logz.size)
 
     def words(z):
@@ -153,7 +138,7 @@ def host_poles(identify_window, window, k_max, dt, freqs):
         except IdentificationMemoryRefused:
             raise
         except (TimeoutError,): raise
-        except Exception:  # noqa: BLE001 - recorded in status (STATUS_FAILED)
+        except Exception:  # noqa: BLE001
             s, status = np.zeros(0, dtype=np.complex128), STATUS_FAILED
         count = -1 if status == STATUS_FAILED else s.size
         if s.size > K:
@@ -161,7 +146,7 @@ def host_poles(identify_window, window, k_max, dt, freqs):
         s_out[:s.size] = s
         if s.size:
             mask[:s.size] = np.where(complete, 1, 2)
-        arg = s_out[None, :] * dt + logz[:, None]                          # float64
+        arg = s_out[None, :] * dt + logz[:, None]
         return (words(s_out), mask, np.asarray(status, dtype=np.int32), words(arg),
                 np.asarray(count, dtype=np.int32))
 
@@ -178,19 +163,11 @@ def host_poles(identify_window, window, k_max, dt, freqs):
         parts = jax.lax.bitcast_convert_type(x[..., 0] if n_words == 1 else x, rdt)
         return jax.lax.complex(parts[..., 0], parts[..., 1]).astype(cdt)
 
-    # The pole is the unit that crossed from the host: a complex s (1/s) in
-    # the working precision.
     return from_words(s_words), mask_i, status, from_words(arg_words), count
 
 
-# ---------------------------------------------------------------------------
-# DFTs
-# ---------------------------------------------------------------------------
 
 
-# ---------------------------------------------------------------------------
-# Masked least squares (QR on normalised columns, padded columns decoupled)
-# ---------------------------------------------------------------------------
 
 def _basis(s, M, dt):
     """``B[m, k] = exp(s_k m dt)``, ``m = 0..M-1`` (the window's first sample is m = 0)."""
@@ -215,8 +192,6 @@ def _qr_masked(A, mask):
     norms = jax.lax.stop_gradient(jnp.where(mask > 0, norms, 1.0))
     aug = jnp.diag((1.0 - mask).astype(A.dtype))
     A_aug = jnp.concatenate([A / norms.astype(A.dtype)[None, :], aug], axis=0)
-    # The derivative rule of QR issues its own matrix products, which a
-    # precision= argument cannot reach; the context sets them to HIGHEST too.
     with jax.default_matmul_precision("highest"):
         Q, R = jnp.linalg.qr(A_aug, mode="reduced")
     return Q, R, norms
@@ -300,9 +275,6 @@ def _pole_step_jvp(primals, tangents):
     return ds, ds_dot
 
 
-# ---------------------------------------------------------------------------
-# The completion map
-# ---------------------------------------------------------------------------
 
 def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
                mutation=None, return_aux=False):

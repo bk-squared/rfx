@@ -150,7 +150,8 @@ def test_other_forward_measurements_have_no_replay_tables(kind, graded, monkeypa
 def test_coaxial_spectra_not_reachable_from_forward(graded):
     sim = _scene(graded)
     sim.add_coaxial_port((.008,) * 3)
-    with pytest.raises(NotImplementedError, match="not wired into Simulation.forward"):
+    fragment = "add_coaxial_port.*is not carried" if graded else "CPML on all six faces"
+    with pytest.raises(NotImplementedError, match=fragment):
         sim.forward(n_steps=8, skip_preflight=True)
-    with pytest.raises(ValueError, match="not wired into Simulation.forward"):
+    with pytest.raises(ValueError, match=fragment):
         sim.estimate_ad_memory(8)

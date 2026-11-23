@@ -11,15 +11,6 @@ import jax
 import numpy as np
 
 
-# The two streams below are serial recurrences over the pieces of a line.
-# Each has ONE step function that holds its rule; two drivers apply it in
-# order. NumPy (the host path) calls it in a Python loop. A traced build
-# runs the same step in ``jax.lax.scan``: an unrolled Python loop over
-# full-grid arrays has no loop left in the compiled program, so XLA would
-# inline the whole chain before each output into that output and compute
-# it again, and the work would grow with the square of the piece count.
-# The step is selects, comparisons and in-order sums, so both drivers give
-# the same bits.
 
 
 def _merge_step(xp, carry, piece):
@@ -85,7 +76,6 @@ def _own_stream(xp, lo, hi, flat, half, shape, scan=None):
         carry, (starts, ends) = jax.lax.scan(lambda c, piece: _own_step(xp, c, piece, half),
                                              carry, pieces)
         gaps = [(starts[i], ends[i]) for i in range(starts.shape[0])]
-    # After the last interval the open run closes.
     carry, gap = _own_close(xp, carry, True, half)
     thin, inside, previous = carry[:3]
     gaps.append(gap)

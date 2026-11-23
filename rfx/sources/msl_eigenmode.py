@@ -44,9 +44,6 @@ _C0 = 1.0 / np.sqrt(MU_0 * EPS_0)
 _ETA0 = float(np.sqrt(MU_0 / EPS_0))
 
 
-# ---------------------------------------------------------------------------
-# Hammerstad-Jensen analytic Z0 / ε_eff (kept for callers that already use it)
-# ---------------------------------------------------------------------------
 
 
 def hammerstad_jensen_z0_eps_eff(
@@ -74,9 +71,6 @@ def hammerstad_jensen_z0_eps_eff(
     return float(z0), float(eps_eff)
 
 
-# ---------------------------------------------------------------------------
-# MSLEigenmodeData container — public API consumed by msl_port.py
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -93,32 +87,31 @@ class MSLEigenmodeData:
     equals +1V (sign-flipped from physical Ez to match the FDTD source
     polarity used by the 3-probe extractor in
     :func:`rfx.api.Simulation.compute_msl_s_matrix`).
+
+    ``z0_energy`` is the design-frequency impedance obtained from Poynting power as ``V**2 / (2 * P)``.
     """
 
     ey: np.ndarray
     ez: np.ndarray
     hy: np.ndarray
     hz: np.ndarray
-    beta: np.ndarray             # (n_freqs,) — β(ω) curve
-    z0: float                    # V/I extraction at f_design
-    z0_energy: float             # Poynting V²/(2P) extraction at f_design
-    eps_eff: float               # design-frequency ε_eff
+    beta: np.ndarray
+    z0: float
+    z0_energy: float
+    eps_eff: float
     f_design: float
     j_grid_lo: int
     k_grid_lo: int
     n_y_grid: int
-    n_z_grid: int                # = n_z_sub (substrate cells only)
+    n_z_grid: int
     dy: float
     dz: float
-    cell_indices: list           # FDTD (i, j, k) cells in cross-section
-    sigma_support_mask: np.ndarray  # (n_y_grid, n_z_grid) bool
+    cell_indices: list
+    sigma_support_mask: np.ndarray
     trace_j_lo_local: int
     trace_j_hi_local: int
 
 
-# ---------------------------------------------------------------------------
-# Public API: compute_msl_eigenmode_profile
-# ---------------------------------------------------------------------------
 
 
 def compute_msl_eigenmode_profile(

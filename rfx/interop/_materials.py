@@ -31,9 +31,6 @@ __all__ = [
     "materials_to_dict",
 ]
 
-# Pole parameter names are pinned here and asserted against the live NamedTuple
-# definitions by the interop contract test, so adding a pole parameter upstream
-# fails a test instead of vanishing from exported designs.
 _POLE_FIELDS: dict[str, tuple[type, tuple[str, ...]]] = {
     "debye_poles": (DebyePole, ("delta_eps", "tau")),
     "lorentz_poles": (LorentzPole, ("omega_0", "delta", "kappa")),
@@ -201,9 +198,6 @@ def materials_from_dict(payload: dict[str, Any]) -> dict[str, MaterialSpec]:
         raise UnsupportedDesignFeature(
             f"materials payload must be a mapping, got {type(payload).__name__}"
         )
-    # Symmetric with materials_to_dict: a non-string key is refused rather than
-    # coerced, so a JSON object with numeric-looking keys cannot quietly become a
-    # material named "5".
     return {
         check_text(name, what="material name"): material_from_dict(spec)
         for name, spec in payload.items()

@@ -203,7 +203,10 @@ def plan_tables(plan, *, n_probes, port_specs, dtype):
         raise ValueError(f'the measurement plan has {len(probes)} probe owners; '
                          f'the runner records {n_probes} probes')
     owners = plan_port_owners(plan, port_specs)
-    return dict(probe_table=sample_table(probes, dtype=dtype), port_owners=owners,
+    coax = tuple(o for o in plan.owners if o.kind == 'coax' and o.channels)
+    return dict(coax_table=sample_table(coax, dtype=dtype),
+                coax_freqs=coax[0].frequencies if coax else (),
+                probe_table=sample_table(probes, dtype=dtype), port_owners=owners,
                 port_table=sample_table(tuple(replace(o, channels=tuple(
                     c for c in o.channels if c.sample_stage == 'post-injection')) for o in owners),
                     dtype=dtype))
