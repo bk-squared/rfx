@@ -289,13 +289,13 @@ downstream of each feed:
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 h_sub, L = 0.75e-3, 0.013
-# The trace's side edges fall on y nodes 1.5 mm apart (0.25 mm cells).
-# Preflight takes a free side edge 0.35 cell beyond its last node, so it
-# predicts 1.5 mm + 2 x 0.35 x 0.25 mm = 1.675 mm. Draw it at that width.
+# The trace's last y nodes are 1.5 mm apart (0.25 mm cells). Preflight
+# takes a free side edge 0.35 cell beyond its last node, so it predicts
+# 1.5 mm + 2 x 0.35 x 0.25 mm = 1.675 mm. The design width is that 1.675 mm.
 w_trace = 1.675e-3
 substrate = Box((0, 0, 0), (L, 0.008, h_sub))
-# The trace runs from port to port. An end fed by a port is not a free edge,
-# so it is solved where it is drawn.
+# The trace runs from port to port. Preflight does not treat an end fed by
+# a port as a free edge, so it predicts that end where it is drawn.
 trace = Box((0.0035, 0.004 - w_trace / 2, h_sub), (L - 0.0035, 0.004 + w_trace / 2, h_sub))
 board = Simulation(
     freq_max=10e9, domain=(L, 0.008, 0.003), dx=0.25e-3, cpml_layers=6,
@@ -331,18 +331,25 @@ This is the microstrip S-matrix on a uniform mesh, the path the
 [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md)
 documents (**limited**: quasi-TEM, ports along ±x or ±y, a zero-thickness strip).
 
-Draw a metal sheet at the size preflight predicts for it. Preflight compares
-the two and stops the run when they differ: drawn 1.5 mm wide on this mesh, the
-trace is reported as "solved as 1.675mm (+11.67%)". Either draw the width
-preflight reports, as here, or move the mesh lines.
+On a uniform mesh a sheet's width can only take the values its node spacing
+allows, so choose a design width that the mesh holds, as here, or move the
+mesh lines to the design (see
+[Mesh lines at sheet edges](/rfx/model/domain-mesh/#mesh-lines-at-sheet-edges)).
+Preflight compares each sheet's drawn size with the size it predicts and stops
+the run when they differ by more than 1 %: a trace drawn 1.5 mm wide on this
+mesh is reported as "solved as 1.675mm (+11.67%)", where "solved" is
+preflight's prediction.
 
-Preflight's 1.675 mm uses the 0.35-cell offset measured on a free sheet with
-square cells. This trace's cells are square (0.25 mm), but the trace lies three
-cells above the ground on the substrate's top face. For a strip three cells
-above a ground plane in air the offset was measured as 0.37 cell, which makes
-the line 1.685 mm wide; for an edge on a face between a dielectric of εr 2.2
-and air, without a ground, 0.33 cell (E parallel to the edge), which makes it
-1.665 mm. With the substrate and the ground together it has not been measured.
+Preflight's 1.675 mm uses the 0.35-cell offset measured on a free sheet in
+vacuum with the cell normal to the sheet as long as the in-plane cell beside
+its edge. This trace's cells are 0.25 mm on every axis, but the trace lies
+three cells above the ground on the substrate's top face. Two nearby cases
+were measured. For a strip three cells above a ground plane in air the offset
+is 0.37 cell, with which the line would be 1.685 mm wide. For an edge on a
+face between a dielectric of εr 2.2 and air, without a ground, it is 0.33 cell
+with E parallel to the edge (E perpendicular was not judged), with which the
+line would be 1.665 mm wide. With the substrate and the ground together it has
+not been measured.
 
 This board has only 3 cells through the substrate and 6 across the trace, so
 it runs quickly but prints several warnings. They are the ones you should

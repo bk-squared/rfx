@@ -131,7 +131,7 @@ print(report.format())
 
 <figure data-rfx="media">
   <img src="/rfx/examples/assets/first-patch/structure.png" loading="lazy" alt="Top view of the patch over the board with source, probe and absorber, beside an x-z cut showing thin cells through the substrate and larger cells in the air" />
-  <figcaption>The model as built, with the patch declared 29.46 × 38.01 mm and the ground and substrate 60 × 55 mm: each metal sheet's last nodes lie 0.35 cell inside its declared edges, and the substrate measures 59.3 × 54.3 mm on the grid. The z cells are 0.25 mm through the substrate and grow to 1 mm in the air.</figcaption>
+  <figcaption>The model as built, with the patch declared 29.46 × 38.01 mm and the ground and substrate 60 × 55 mm: each metal sheet's last nodes lie 0.35 cell inside its declared edges, and the substrate measures 59.3 × 54.3 mm on the grid, because its faces go to the nearest nodes, which the mesh places for the ground's edges. The z cells are 0.25 mm through the substrate and grow to 1 mm in the air.</figcaption>
 </figure>
 
 ### Reading what rfx tells you
@@ -143,15 +143,15 @@ Q or efficiency, pass `surface_impedance_f0=f0`. The sheet is then modelled as
 a resistive sheet with copper's surface resistance at `f0`, on the same
 footprint, instead of as PEC.
 
-A metal sheet's free edge is solved about 0.35 cell beyond its last node, so
-the in-plane `edge_aware_profiles` mesh puts the last node of the ground and of
+Preflight takes a metal sheet's free edge to lie 0.35 cell beyond its last
+node, so the in-plane `edge_aware_profiles` mesh puts the last node of the ground and of
 the patch 0.35 cell inside each drawn edge, and the feed and probe on grid
 nodes; the patch is not rounded to a uniform lattice. The 0.35 was measured
 where the cell normal to the sheet is as long as the in-plane cell beside its
 edge. Here the z cells at the sheets are 0.25 to 0.29 mm and the in-plane cell
-beside each edge is 0.95 mm. At that ratio the offset was measured only for a
-free sheet in vacuum; on the substrate face, where these sheets lie, it has not
-been measured, so neither the solved size of this patch nor the direction of its
+beside each edge is 0.95 mm, ratios of 0.26 to 0.31. At those ratios the
+offset was measured only for a free sheet in vacuum; on the substrate face,
+where these sheets lie, it has not been measured, so neither the solved size of this patch nor the direction of its
 error is known. `sim.fidelity_report()` and the preflight findings show the nodes the
 grid built; neither replaces a mesh-convergence study.
 

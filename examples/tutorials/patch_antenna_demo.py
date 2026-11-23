@@ -87,9 +87,10 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   confirmed, the size is not, and the 8.2-point remainder is unattributed
   here.
 - The sign is not a settled coarse-grid bias that finer cells remove.  Two
-  discretization errors push opposite ways: the substrate under-resolved in z
-  reads high, the staircased PEC patch edge reads low, and they are not
-  separated here.  The substrate-permittivity half is addressable with the
+  discretization errors are present: the substrate under-resolved in z, and
+  the patch's solved edges, whose offset on a substrate face at these cell
+  ratios is not measured; they are not separated here.  The
+  substrate-permittivity half is addressable with the
   opt-in interface treatment ``sim.run(..., subpixel_smoothing=True)``
   (closed-form cavity comparison in ``tests/oracle/test_patch_cavity_eps_oracle.py``).
   Measured on this fixture (dx = 2 / 1 / 0.5 mm, substrate 4 / 8 / 16 cells):
@@ -628,8 +629,10 @@ def main():
         "is measured on the registered board. The former far-field lock "
         "used a different board and does not gate this result. "
         "The patch's last nodes lie 0.35 cell inside its drawn edges; with "
-        "z cells about a fifth of the in-plane cell the solved size is not "
-        "measured, so refine the mesh to measure the discretization error."
+        "z cells about a fifth of the in-plane cell the edge offset was "
+        "measured only for a free sheet in vacuum, not on a substrate face, "
+        "so the solved size is not known; refine the mesh to measure the "
+        "discretization error."
     )
     print(
         f"  D {d_dbi[k_star]:.2f} dBi vs openEMS {OPENEMS_D_DBI:.2f} dBi "

@@ -196,14 +196,16 @@ print(msl.s_matrix_lane())                # compute_msl_s_matrix
 
 The strip runs from port to port: a strip that continued behind a port would be
 an open stub, and the calculator refuses one that shorts the port near the
-band. The edge-aware in-plane mesh puts the 600 µm strip's last nodes 0.35
-cell inside its drawn edges. The 0.35 was measured where the cell normal to the
-sheet is as long as the in-plane cell beside its edge. Here the z cell is
-100 µm and the in-plane cell beside each side edge 90 µm, a ratio of 1.11. At
-that ratio a free sheet's edge lies 0.37 to 0.38 cell beyond its last node
-(measured in vacuum only), which makes this strip 604 to 605 µm wide. On the
-substrate's top face, where the strip lies, the offset has not been measured.
-On a uniform 100 µm mesh preflight predicts 670 µm and refuses the strip. A cell of 100 µm puts 3 cells across the 300 µm substrate, which is coarse for speed:
+band. Preflight takes a free sheet edge to lie 0.35 in-plane cell beyond the
+sheet's last node, so the edge-aware in-plane mesh puts the 600 µm strip's last
+nodes 0.35 cell inside its drawn edges. The 0.35 was measured where the cell
+normal to the sheet is as long as the in-plane cell beside its edge. Here the
+z cell is 100 µm and the in-plane cell beside each side edge 90 µm, a ratio of
+1.11. For a free sheet in vacuum the offset at that ratio was measured as 0.37
+to 0.38 cell (E perpendicular and parallel to the edge), so in vacuum this
+strip would be 604 to 605 µm wide. On the substrate's top face, where the
+strip lies, the offset has not been measured. On a uniform 100 µm mesh
+preflight predicts 670 µm, and `run()` refuses the strip. A cell of 100 µm puts 3 cells across the 300 µm substrate, which is coarse for speed:
 preflight warns below 4. For microstrip, the substrate thickness
 sets the cell size, not the wavelength.
 

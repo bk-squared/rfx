@@ -124,21 +124,21 @@ sim.fidelity_report()   # declared vs realized planes for every entity
 
 <figure data-rfx="media">
   <img src="/rfx/start/assets/concepts/structure.png" loading="lazy" alt="Section through a domain surrounded by absorber: a thin foil lies on the bottom face of a substrate, and a solid metal block floats above the substrate." />
-  <figcaption>The model this code builds, cut at y = 7.75 mm: the foil is one node plane at z = 4 mm, and the block fills z = 6 to 7 mm. The figure shows the foil between its declared edges, 0.35 cell beyond its last nodes, while the substrate, declared from x = 5 to 15 mm, ends on those nodes, at 5.17 and 14.83 mm.</figcaption>
+  <figcaption>The model this code builds, cut at y = 7.75 mm: the foil is one node plane at z = 4 mm, and the block fills z = 6 to 7 mm. The figure shows the foil between its declared edges, 0.35 cell beyond its last nodes, while the substrate, declared from x = 5 to 15 mm, ends on those nodes, at 5.17 and 14.83 mm, because a dielectric face goes to the nearest node and the mesh puts its nodes there for the foil.</figcaption>
 </figure>
 
 The first `add_thin_conductor` call warns that the sheet is lossless PEC. That
 warning is expected: see the materials note above.
 
-A sheet is solved as if it reached about 0.35 of a cell past its last mesh
-node, so on a plain uniform grid this 10 mm foil is solved wider than drawn.
-Preflight reports a sheet solved more than 1 % off its drawing as an error, so
+Preflight takes a sheet's free edge to lie 0.35 of a cell past its last mesh
+node, so on a plain uniform grid it predicts this 10 mm foil wider than drawn.
+Preflight reports a sheet predicted more than 1 % off its drawing as an error, so
 `run()` and `forward()` stop before the first step. Build the in-plane mesh with
 `rfx.mesh_edges.edge_aware_profiles`, as above: it puts the sheet's last nodes
 0.35 cell inside its drawn edges. The offset was measured where the cell
 normal to the sheet is as long as the in-plane cell beside its edge; here they
-are 0.5 and 0.475 mm, a ratio of 1.05, and the foil lies on the substrate's top
-face, where the offset at that ratio has not been measured. Or pass
+are 0.5 and 0.475 mm, a ratio of 1.05, and the foil lies on the substrate's
+bottom face, where the offset at that ratio has not been measured. Or pass
 `Simulation(..., snap="declared")` to accept the difference as a warning,
 recorded in `sim.realized_geometry()`. With the graded in-plane mesh, preflight also notes that the grading reaches the cells next to an
 absorbing face, which should stay uniform over as many cells as the face has
