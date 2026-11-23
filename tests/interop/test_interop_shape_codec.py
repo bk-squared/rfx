@@ -214,7 +214,7 @@ def test_subclass_of_supported_shape_is_refused():
 def test_same_named_impostor_class_is_refused():
     """Registry lookup is by class identity, not by name."""
     @dataclasses.dataclass(frozen=True)
-    class Sphere:  # noqa: N801 - deliberately shadows the real primitive
+    class Sphere:  # noqa: N801
         center: tuple[float, float, float]
         radius: float
 

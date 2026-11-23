@@ -30,7 +30,7 @@ def commit(repo, message):
 
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
-    # Keep any caller's index/object overlay out of these independent repositories.
+    """Independent repositories must not inherit the caller’s Git index or object overlays."""
     for name in ("GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
                  "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR"):
         monkeypatch.delenv(name, raising=False)
@@ -193,7 +193,6 @@ def test_error_added_on_top_of_base_fails_even_below_old_total(repo, tmp_path, f
         assert f"parent {base}" in git(clone, "cat-file", "-p", "HEAD").splitlines()
         return clone
 
-    # Measure the shallow-worktree assumption explicitly before relying on it.
     probe = shallow_clone("probe")
     git(probe, "fetch", "--no-tags", "--depth=1", "origin", base)
     probe_tree = tmp_path / "probe-tree"
@@ -225,7 +224,6 @@ def test_error_added_on_top_of_base_fails_even_below_old_total(repo, tmp_path, f
     assert captured.out == ""
     assert "fetch" in captured.err and "origin" in captured.err
 
-    # A replacement head has the original three markers at different locations.
     git(repo, "checkout", "--detach", base)
     (repo / "rfx/mod.py").write_text("\n# error: alpha\n\n# error: beta\n\n# error: gamma\n")
     commit(repo, "move markers")
@@ -250,7 +248,6 @@ def test_added_errors_are_a_multiset_ignoring_lines_and_columns(run_gate):
 def test_explicit_base_revision(repo, fake_mypy, capsys):
     install, _, _ = fake_mypy
     install(marker_mypy)
-    # At a root commit the explicit revision is still usable.
     git(repo, "checkout", "--detach", "HEAD^1")
     git(repo, "branch", "comparison")
     short = git(repo, "rev-parse", "--short", "HEAD")

@@ -108,7 +108,7 @@ class Reference:
         self.literal = literal
         self.unit = unit
 
-    def __repr__(self) -> str:  # pragma: no cover - test ids only
+    def __repr__(self) -> str:  # pragma: no cover
         return f"{self.doc}::{self.site}::{self.raw}"
 
 
@@ -770,7 +770,7 @@ def test_each_classification_holds_mechanically(doc: str) -> None:
             f"{doc} is classified {SYMBOL_SPAN_PARSER_SCOPE!r} but every `::` "
             f"span in it now parses, so nothing blocks opting it in. Gate it."
         )
-    else:  # pragma: no cover - the closed set is enforced here
+    else:  # pragma: no cover
         raise AssertionError(f"{doc}: unknown classification {kind!r}")
 
 

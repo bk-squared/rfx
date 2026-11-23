@@ -48,7 +48,7 @@ from tests.contracts.path_equivalence.comparison import compare
 
 try:
     from jax import enable_x64
-except ImportError:  # pragma: no cover - JAX version drift, see tests/_x64_compat.py
+except ImportError:  # pragma: no cover
     from tests._x64_compat import enable_x64
 
 

@@ -210,7 +210,7 @@ def test_no_test_module_flips_x64_at_import_time():
             continue
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        except SyntaxError as exc:  # pragma: no cover - a broken file is its own failure
+        except SyntaxError as exc:  # pragma: no cover
             pytest.fail(f"{relative}: {exc}")
         for line, spelling in _module_level_flips(tree):
             offenders.append(f"{relative}:{line} ({spelling})")

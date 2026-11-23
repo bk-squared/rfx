@@ -1,4 +1,5 @@
-"""Live wire loads and owning-slab recordings on uniform run(devices=)."""
+"""Live wire loads and owning-slab recordings on uniform run(devices=).
+Summed quantities use a tolerance relative to the peak across traces rather than per-bin relative error near zeros."""
 import os
 from dataclasses import replace
 from pathlib import Path
@@ -16,8 +17,6 @@ from rfx.sources.sources import GaussianPulse
 
 pytestmark = pytest.mark.distributed
 FREQS = np.array([1, 2.5, 5, 7.5, 10]) * 1e9
-# Summed quantities: 1e-4 of peak across traces, not relative error at zeros.
-# These tighter bars are declared before measuring float32 owning-slab sums.
 S_ATOL = 2e-5
 TRACE_RTOL = 2e-5
 
@@ -43,7 +42,6 @@ def _model(case="ez", planes=False, n_devices=2):
     if case == "dielectric":
         sim.add_material("substrate", eps_r=4.)
         sim.add(Box((.007, .003, .004), (.017, .013, .008)), material="substrate")
-    # Include all wire cells, the seam cell, and a transmitted field away from drive.
     for x in (.005, .019):
         for z in (.004, .005, .006, .007):
             sim.add_probe(xyz(x, .008, z), "ex" if ex else "ez")
@@ -64,6 +62,7 @@ def _live(sim):
 
 
 def _parity(case="ez", mode="explicit", n_devices=2):
+    """Residual final fields are normalized to the recorded pulse peak in matching E or H units to avoid a nearly zero late-time denominator."""
     sim = _model(case, n_devices=n_devices)
     if case in ("ex", "dead"):
         grid, cells = _live(sim)
@@ -97,8 +96,6 @@ def _parity(case="ez", mode="explicit", n_devices=2):
     for component in ("ex", "ey", "ez", "hx", "hy", "hz"):
         a, b = np.asarray(getattr(actual.state, component)), np.asarray(getattr(expected.state, component))
         field_delta = float(np.max(np.abs(a - b)))
-        # Normalize residual final fields to the recorded pulse peak in the
-        # same units (E or H), not a nearly-zero late-time component.
         group = expected.time_series[:, :9] if component[0] == "e" else expected.time_series[:, 9:]
         field_peak = float(np.max(np.abs(group)))
         assert field_delta <= TRACE_RTOL * field_peak, (component, field_delta, field_peak)
@@ -110,8 +107,6 @@ def test_wire_parity(case):
     _parity(case)
 
 
-# The one-device refusal of a mixed lumped + wire port set, verbatim as at
-# beb0d3fd (rfx/probes/sparam_driver.py). Both lanes must keep raising it.
 _BASE_MIXED_REFUSAL = (
     "compute_lumped_wire_s_matrix_via_scan: mixed lumped + wire port "
     "sets are not supported in Stage 1 (the off-diagonal wave-"
@@ -202,7 +197,7 @@ def test_single_wire_zero_wave():
 
 
 @pytest.mark.parametrize("kind,message", [
-    ("planes", "reference_plane_cells"),  # Radius parity is in the contract.
+    ("planes", "reference_plane_cells"),
     ("passive", "passive port"), ("pmc", "PMC")])
 @pytest.mark.parametrize("compute_s", [None, True, False])
 def test_refusals(kind, message, compute_s):
@@ -245,6 +240,7 @@ def test_graded_wire_s_follows_one_device(compute_s):
 
 @pytest.mark.parametrize("mutation", ["no_stamps"])
 def test_mutations(monkeypatch, mutation):
+    """A port drive has no source impedance without the load its setup stamped, so missing load setup is refused before parity."""
     from rfx.sources import sources
     from rfx.model import lumped_stamp
     from rfx.probes import sparam_driver as driver
@@ -265,9 +261,6 @@ def test_mutations(monkeypatch, mutation):
             result = original_run(*args, **kwargs)
             return result
     monkeypatch.setattr(runner, "run_distributed", mutated_run)
-    # Without the load stamp a port has no source impedance to drive behind
-    # (#1463: the drive is the stamped conductance times the source field), so
-    # that mutation is refused before stepping instead of reaching the parity.
     expected = ((RuntimeError, "no stamped load") if mutation == "no_stamps"
                 else (AssertionError, "S parity|trace parity"))
     with pytest.raises(expected[0], match=expected[1]):

@@ -617,7 +617,7 @@ def test_the_report_is_written_to_the_step_summary(tmp_path: Path) -> None:
 
 def test_replaying_a_payload_makes_no_network_call(tmp_path: Path, monkeypatch) -> None:
     """`--input` is what makes this testable; a stray `gh` call would break that."""
-    def explode(*args, **kwargs):  # pragma: no cover - the point is not reaching it
+    def explode(*args, **kwargs):  # pragma: no cover
         raise AssertionError(f"governance_audit called out: {args}")
 
     monkeypatch.setattr(audit.subprocess, "run", explode)
