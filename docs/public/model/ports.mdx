@@ -245,8 +245,9 @@ line.add_port((0.035, 0.010, 0.003), "ez", extent=3e-3,
 ```
 
 The edge-aware mesh puts the 2 mm strip's last nodes 0.35 cell inside its
-drawn edges, the offset measured where the cell across the sheet equals the
-cell beside its edge; on a uniform 1 mm mesh it solves 2.7 mm wide and `run()` refuses it.
+drawn edges; the strip is solved 2 mm wide only where the cell normal to it is
+as long as the in-plane cell beside its edges, the case the 0.35 was measured
+on. On a uniform 1 mm mesh it solves 2.7 mm wide and `run()` refuses it.
 
 Preflight warns (`port_conductor_continues`) when a port's conductor runs into
 the absorber and no port terminates it. A ground plane should continue; name

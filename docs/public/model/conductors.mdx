@@ -100,8 +100,9 @@ sim.add_thin_conductor(trace, sigma_bulk=5.8e7, thickness=35e-6)
 ```
 
 The mesh from `edge_aware_profiles` puts the trace's last nodes 0.35 cell
-inside its drawn 2 mm, the offset measured where the cell across the sheet
-equals the cell beside its edge. On a uniform 0.5 mm mesh the same trace solves 2.35 mm wide,
+inside the edges of its drawn 2 mm width. The trace is solved 2 mm wide only
+where the cell normal to it is as long as the in-plane cell beside its edges,
+the case the 0.35 was measured on. On a uniform 0.5 mm mesh the same trace solves 2.35 mm wide,
 and `run()` refuses it (`sheet_effective_size`; see
 [Mesh lines at sheet edges](/rfx/model/domain-mesh/#mesh-lines-at-sheet-edges)).
 
@@ -360,9 +361,10 @@ The solver paths refuse what they do not implement:
 
 - A sheet's free edge is solved 0.35 of a cell beyond its last node. This was
   measured on a thin PEC fin against a fine-mesh reference for both
-  polarizations and two cell sizes, with the cell across the sheet equal to the
-  cell beside its edge (`scripts/diagnostics/pec_sheet_edge_offset.py`); on
-  other cell shapes the offset differs (see
+  polarizations and two cell sizes, with the cell normal to the sheet as long
+  as the in-plane cell beside its edge
+  (`scripts/diagnostics/pec_sheet_edge_offset.py`); at other ratios the offset
+  differs and a sheet's solved size has not been measured (see
   [Check the model on the grid](/rfx/check/model-on-grid/#accuracy));
   the size check built on it is pinned in
   `tests/contracts/test_sheet_solved_edge_reports.py`. An end that lies on

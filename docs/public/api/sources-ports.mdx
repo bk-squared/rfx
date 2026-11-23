@@ -197,8 +197,9 @@ print(msl.s_matrix_lane())                # compute_msl_s_matrix
 The strip runs from port to port: a strip that continued behind a port would be
 an open stub, and the calculator refuses one that shorts the port near the
 band. The edge-aware in-plane mesh puts the 600 µm strip's last nodes 0.35
-cell inside its drawn edges, the offset measured where the cell across the
-sheet equals the cell beside its edge (on a uniform 100 µm mesh it solves
+cell inside its drawn edges; it is solved 600 µm wide only where the cell
+normal to it is as long as the in-plane cell beside its edges, the case the
+0.35 was measured on (on a uniform 100 µm mesh it solves
 670 µm wide and is refused). A cell of 100 µm puts 3 cells across the 300 µm substrate, which is coarse for speed:
 preflight warns below 4. For microstrip, the substrate thickness
 sets the cell size, not the wavelength.
