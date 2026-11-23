@@ -354,7 +354,8 @@ def evaluate(case, model, designs, n, out, label, normalize="flux"):
     for name, e in designs.items():
         t0 = time.perf_counter()
         response, row = model.evaluate(e, n, normalize)
-        rows[name] = {**row, "objective": float(case.loss(response)), "n_steps": n,
+        rows[name] = {**row, "objective": float(case.loss(response[model.design_indices] if case.CASE == "lens" and model.band
+                                                   else response)), "n_steps": n,
                       "wall_s": time.perf_counter() - t0}
         arrays[name] = response
         dc.save_json(out / f"{label}.json", rows)
@@ -521,6 +522,66 @@ def selected_design(directory):
         return np.asarray(data["eps"][index]), index
 
 
+def band_frequencies(text, design_freqs):
+    try:
+        lo, hi, step = (float(v) for v in text.split(","))
+    except ValueError as exc:
+        raise ValueError("--band requires F0,F1,DF in GHz") from exc
+    if not np.isfinite([lo, hi, step]).all() or lo <= 0 or hi < lo or step <= 0:
+        raise ValueError("--band requires finite positive frequencies and step, F1 >= F0")
+    intervals = (hi - lo) / step
+    if intervals > 10000 or not np.isclose(intervals, round(intervals), rtol=0, atol=1e-8):
+        raise ValueError("--band endpoints must span an integral number of steps, at most 10000")
+    bins = (lo + step * np.arange(round(intervals) + 1, dtype=np.float64)) * 1e9
+    for f in design_freqs:
+        index = int(np.argmin(abs(bins - f)))
+        if abs(bins[index] - f) > 1e3:
+            raise ValueError("--band must include all three design bins to 1e-6 GHz")
+        bins[index] = f
+    return bins
+
+
+def lens_resolve_context(case, model, source, best, n, directory):
+    provenance = _record.source_block(case.REPO, model.precision)
+    from rfx.geometry.rasterize_grid import interior_lattice_mask
+    from rfx.mesh_edges import solved_sheet_span
+    ctx = model.sim._campaign_ctx()
+    sheets = [e for e in ctx.interior_pec_entries() if e.kind == "sheet"]
+    if len(sheets) != 1:
+        raise ValueError("expected one reflector sheet")
+    entry = sheets[0]
+    footprint = interior_lattice_mask(entry.sheet.footprint, ctx.grid)
+    plate = {}
+    for axis, name in enumerate("xy"):
+        span = solved_sheet_span(footprint, axis, ctx.nodes[axis], float(entry.lo[axis]),
+                                 float(entry.hi[axis]), float(model.sim._domain[axis]),
+                                 normal_axis=int(entry.sheet.normal_axis))
+        if span is None:
+            raise ValueError("empty reflector footprint")
+        plate[name] = {"lo_m": float(span.lo), "hi_m": float(span.hi),
+                       "size_m": float(span.hi - span.lo)}
+    import hashlib
+    scripts = [Path(__file__), Path(case.__file__)]
+    context = {"freqs_hz": model.freqs, "design_freqs_hz": case.FREQS,
+               "dt_s": model.grid.dt, "n_steps": n, "duration_s": n * model.grid.dt,
+               "boundary": model.boundary, "preflight": model.preflight_record,
+               "realized_plate": plate,
+               "model": model.describe(), "nodes_m": model.nodes,
+               "rfx_commit": provenance["repo_sha"], "script_commit": provenance["repo_sha"],
+               "script_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in scripts},
+               "design_record": str(source.resolve()), "reported_iteration": best,
+               "selection_rule": "earliest minimum objective over all stored iterates",
+               "quantity_definitions": {
+                   "boresight_dbi": "10 log10 of phi-mean linear D at exactly theta=0",
+                   "strip_min_dbi": "minimum dBi at nominal theta <= 30 deg, phi 85,90,95,265,270,275 deg",
+                   "strip_max_dbi": "maximum dBi on the same strip",
+                   "narrow_hpbw_deg": "sum of first -3 dB crossings from boresight at phi 0 and 180 deg; linear interpolation on nominal 2.5 deg theta grid",
+                   "outside_max_dbi": "maximum dBi at nominal theta >= 60 deg, phi endpoint 2pi excluded"}}
+    if getattr(case, "OBJECTIVE", "boresight") == "fan":
+        context["quantity_definitions"]["boresight_dbi"] = "10 log10 of linear D at theta=0, phi=0"
+    dc.save_json(directory / "resolve_context.json", context)
+
+
 def resolved(case, args, source):
     e, best = selected_design(source)
     length_path = source / "reported_record_length.json"
@@ -536,9 +597,17 @@ def resolved(case, args, source):
     for dx in case.MESHES:
         directory = args.out / f"mesh_{dx:.9g}"
         directory.mkdir(parents=True, exist_ok=True)
-        model = setup(case, directory, dx, args.precision, False)
-        n = math.ceil(duration / model.grid.dt)
-        rows = evaluate(case, model, designs, n, directory, "resolve")
+        try:
+            kwargs = {"freqs": args.band} if case.CASE == "lens" and getattr(args, "band", None) is not None else {}
+            model = setup(case, directory, dx, args.precision, False, **kwargs)
+            n = math.ceil(duration / model.grid.dt)
+            if case.CASE == "lens":
+                lens_resolve_context(case, model, source, best, n, directory)
+            rows = evaluate(case, model, designs, n, directory, "resolve")
+        except Exception as exc:
+            if case.CASE == "lens":
+                dc.save_json(directory / "failure.json", {"message": str(exc), "type": type(exc).__name__})
+            raise
         if case.CASE == "filter":
             initial_n = n
             for factor in (1.5, 2.):
@@ -549,7 +618,7 @@ def resolved(case, args, source):
             evaluate(case, model, designs, n, directory, "normalization_crosscheck", normalize=False)
         all_rows.append(rows)
         record(directory, case, model, "resolve", {"n_steps": n, "best_iteration": best, "measurements": rows})
-    if case.CASE == "lens" and len(case.MESHES) < 3:
+    if case.CASE == "lens" and (len(case.MESHES) < 3 or getattr(args, "band", None) is not None):
         return
     trend = {}
     if new_objective:
@@ -690,6 +759,7 @@ def main(case, argv=None):
         parser.add_argument("--objective", choices=("boresight", "mask", "flattop", "wide", "fan"), default="boresight")
         parser.add_argument("--mesh", choices=("graded", "uniform"), default="graded")
         parser.add_argument("--boundary", choices=("nearest", "arith", "harm"))
+        parser.add_argument("--band", help="resolve frequencies F0,F1,DF in GHz")
         parser.add_argument("--meshes", help="comma-separated mesh sizes in mm")
         parser.add_argument("--dx", type=float, help="cost mesh size in mm")
         parser.add_argument("--steps", type=int)
@@ -697,6 +767,13 @@ def main(case, argv=None):
     args = parser.parse_args(argv)
     if case.CASE == "lens":
         case = case.with_objective(args.objective)
+        if args.band is not None:
+            if args.stage != "resolve":
+                parser.error("--band requires lens --stage resolve")
+            try:
+                args.band = band_frequencies(args.band, case.FREQS)
+            except ValueError as exc:
+                parser.error(str(exc))
         if args.mesh == "graded" and args.boundary is None and args.stage != "describe":
             parser.error("graded solves require --boundary")
         if args.meshes is not None:
@@ -870,7 +947,9 @@ def main(case, argv=None):
                     record(directory, case, model, args.stage, {"n_steps": n})
                 subprocess.run([sys.executable, str(Path(case.__file__)), "--stage", "fd", "--out", str(directory),
                                 "--start", name, "--precision", "float64", "--record", str(directory)]
-                               + (["--objective", case.OBJECTIVE] if case.CASE == "lens" else [])
+                               + (["--objective", case.OBJECTIVE, "--mesh", args.mesh]
+                                  + (["--boundary", args.boundary] if args.boundary else [])
+                                  if case.CASE == "lens" else [])
                                + (["--smoke"] if args.smoke else []), env=env, check=True)
             store = optimize(case, model, e, n, 30 if args.stage == "trial" else (args.iterations or case.ITERATIONS),
                              directory, args.stage, **({"y_uniform": True} if args.y_uniform else {}))

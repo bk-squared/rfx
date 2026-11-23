@@ -104,17 +104,17 @@ def loss(response, objective="boresight"):
     return -jnp.mean(jnp.log(jnp.maximum(response[:, 0, :].mean(axis=1), 1e-30)))
 
 
-def summary(response, objective="boresight"):
+def summary(response, objective="boresight", freqs=FREQS):
     if objective == "fan":
         return fan_summary(response)
     if objective == "wide":
-        return wide_summary(response)
+        return wide_summary(response, freqs)
     if objective != "boresight":
-        return mask_summary(response, objective)
+        return mask_summary(response, objective, freqs)
 
     d = np.asarray(response)
     bore = 10 * np.log10(np.maximum(d[:, 0, :].mean(axis=1), 1e-30))
-    bound = 10 * np.log10(4 * np.pi * .09 ** 2 / (299792458. / FREQS) ** 2)
+    bound = 10 * np.log10(4 * np.pi * .09 ** 2 / (299792458. / np.asarray(freqs)) ** 2)
     return {"boresight_dbi": bore, "mean_boresight_dbi": float(bore.mean()),
             "aperture_bound_dbi": bound, "above_aperture_bound": bore > bound}
 
@@ -188,7 +188,7 @@ def wide_loss(response):
     return -jnp.mean(m)
 
 
-def wide_summary(response):
+def wide_summary(response, freqs=FREQS):
     spec = objective_spec("wide")
     linear = np.asarray(response)[:, :, :72]
     d = 10 * np.log10(np.maximum(linear, spec["linear_floor"]))
@@ -224,7 +224,7 @@ def wide_summary(response):
     return {"sector_min_dbi": lo, "sector_max_dbi": hi, "ripple_db": hi - lo,
             "smooth_min_dbi": m, "outside_max_dbi": outside,
             "outside_minus_sector_min_db": outside - lo,
-            "boresight_dbi": summary(response)["boresight_dbi"],
+            "boresight_dbi": summary(response, freqs=freqs)["boresight_dbi"],
             "cone_power_fraction": fraction, "rolloff_deg": rolloff,
             "meets_ripple": hi - lo <= spec["judged"]["ripple_max_db"],
             "meets_level": lo >= spec["judged"]["level_min_dbi"],
@@ -286,9 +286,9 @@ def mask_loss(response, objective):
                              jnp.maximum(c - 14.5, 0) ** 2, axis=(1, 2)) + q("O", 1))
 
 
-def mask_summary(response, objective):
+def mask_summary(response, objective, freqs=FREQS):
     spec = objective_spec(objective)
-    result = summary(response)
+    result = summary(response, freqs=freqs)
     if objective == "flattop":
         for key in ("aperture_bound_dbi", "above_aperture_bound"):
             result.pop(key)
@@ -321,9 +321,10 @@ def with_objective(objective):
         def evaluate(self, e, n_steps, normalize="flux"):
             response, row = super().evaluate(e, n_steps, normalize)
             if objective != "boresight":
-                for key in summary(response):
+                for key in summary(response, freqs=self.freqs):
                     row.pop(key)
-                row.update(summary(response, objective))
+                row.update(summary(np.asarray(response, dtype=np.float64) if self.band else response,
+                                   objective, self.freqs))
             return response, row
     return SimpleNamespace(**{**vars(sys.modules[__name__]), "OBJECTIVE": objective,
                               "objective_metadata": spec, "Model": ObjectiveModel,
@@ -333,7 +334,7 @@ def with_objective(objective):
 
 class Model(common.ModelBase):
     def __init__(self, dx=DESIGN_DX, precision="float32", smoke=False, *,
-                 mesh="graded", boundary=None):
+                 mesh="graded", boundary=None, freqs=None):
         from rfx import Grid, Simulation
         from rfx.geometry.csg import Box
         from validation.crossval.comparators import realized_conductors as RC
@@ -341,7 +342,11 @@ class Model(common.ModelBase):
         self.mesh, self.boundary = mesh, boundary
         if mesh not in ("graded", "uniform") or boundary not in (None, "nearest", "arith", "harm"):
             raise ValueError("invalid mesh or boundary")
-        self.freqs = FREQS
+        self.band = freqs is not None
+        self.freqs = FREQS if freqs is None else np.asarray(freqs, dtype=np.float64)
+        self.design_indices = [int(np.argmin(abs(self.freqs - f))) for f in FREQS]
+        if any(abs(self.freqs[i] - f) > 1e3 for i, f in zip(self.design_indices, FREQS)):
+            raise ValueError("resolve frequencies must include the three design bins")
         self.sim = Simulation(freq_max=12.6e9, domain=(.126, .126, .120), dx=dx,
                               cpml_layers=common.integral_cells(.015, dx), precision=precision,
                               snap="strict", **(graded_profiles(dx) if mesh == "graded" else {}))
@@ -352,7 +357,7 @@ class Model(common.ModelBase):
             self.sim.add_probe(p, "ex")
         self.sim.add(Box((.048, .048, .018), (.078, .078, .018)), material="pec")
         self.sim.add_ntff_box(corner_lo=(.003, .003, .003),
-                              corner_hi=(.123, .123, .117), freqs=list(FREQS))
+                              corner_hi=(.123, .123, .117), freqs=list(self.freqs))
         if mesh == "graded":
             from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
             self.grid = self.sim._build_nonuniform_grid()
@@ -459,8 +464,7 @@ class Model(common.ModelBase):
             ff = compute_far_field_jax(ntff_data, box, self.grid, t[None], ph)
             return ((jnp.abs(ff.E_theta) ** 2 + jnp.abs(ff.E_phi) ** 2) * 1e27)[:, 0, :]
 
-        def response(e):
-            r = run(e)
+        def transform(r):
             p = jnp.moveaxis(jax.lax.map(lambda t: row_power(r.ntff_data, t), th), 0, 1)
             prad = jnp.sum(p * w[None, :, :], axis=(1, 2))
             bore = compute_far_field_jax(r.ntff_data, box, self.grid, jnp.zeros(1, dtype=dtype), ph)
@@ -468,23 +472,42 @@ class Model(common.ModelBase):
             d = 4 * jnp.pi * p / jnp.maximum(prad[:, None, None], 1e-30)
             return d.at[:, :1, :].set(4 * jnp.pi * p0 / jnp.maximum(prad[:, None, None], 1e-30))
 
+        def response(e):
+            return transform(run(e))
+
         response.run = run
+        response.transform = transform
         self._functions[n_steps] = response
         return response
 
     def evaluate(self, e, n_steps, normalize="flux"):
         from rfx.sparams._tail_witness import tail_share_witness
         fn = self.response_fn(n_steps)
-        response = np.asarray(fn(e))
-        # A separate eager record retains four concrete probe traces for the
-        # host-only pole identification; no witness is inferred from a JIT trace.
+        response = None if self.band else np.asarray(fn(e))
         r = fn.run(e)
+        if self.band:
+            response = np.asarray(fn.transform(r), dtype=np.float64)
         traces = np.asarray(r.time_series)
         w = tail_share_witness(tuple((f"probe{i}", traces[:, i]) for i in range(4)),
-                               self.grid.dt, r.settling_source_end_index, FREQS,
+                               self.grid.dt, r.settling_source_end_index, self.freqs,
                                freq_max=12.6e9)
         return response, {"settling": w._asdict(), "settled": w.status == "pass",
-                          "field_dtype": str(r.ntff_data.x_lo.dtype), **summary(response)}
+                          "field_dtype": str(r.ntff_data.x_lo.dtype), **summary(response, freqs=self.freqs)}
+
+    def preflight(self):
+        import warnings
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            report = self.sim.preflight()
+        self.preflight_record = {"verdict": "PASS" if report.ok else "FAIL",
+                                 "findings": report.to_dict()["issues"],
+                                 "text": report.format(),
+                                 "warnings": [{"message": str(w.message),
+                                               "severity": getattr(w.message, "severity", "warning")}
+                                              for w in caught]}
+        messages = [str(i) for i in report] + [f"warning: {w.message}" for w in caught]
+        print("PREFLIGHT BEGIN", *messages, "PREFLIGHT END", sep="\n", flush=True)
+        return messages
 
     def describe(self):
         g = self.grid
