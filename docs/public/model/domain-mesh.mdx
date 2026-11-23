@@ -160,10 +160,11 @@ Preflight reports this as a `sheet_effective_size` error.
 Build profiles with `edge_aware_profiles` to put each sheet's last node 0.35
 cell inside its drawn edge. Where the cell normal to the sheet is as long as
 the in-plane cell beside its edge, the sheet is then solved at its drawn size;
-at other ratios the offset differs and the solved size has not been measured
-(see [the accuracy notes](/rfx/check/model-on-grid/#accuracy)). In the board
-example above, the z cells at the ground are 0.27 to 0.34 mm and the in-plane
-cell beside its edges is 0.94 mm, so its solved size has not been measured. Use `axes="xyz"` and pass the returned `dz_profile` too
+at other ratios the offset differs, and it was measured only for a free sheet
+in vacuum (see [the accuracy notes](/rfx/check/model-on-grid/#accuracy)). In
+the board example above, the z cells at the ground are 0.27 to 0.34 mm and the
+in-plane cell beside its edges is 0.94 mm; the ground lies on the substrate's
+bottom face, so its solved size has not been measured. Use `axes="xyz"` and pass the returned `dz_profile` too
 for vertical sheets; the horizontal ground above only needs x/y registration
 and keeps its layered z profile. Alternatively, `Simulation(snap="declared")`
 accepts the difference as a warning and records the choice on
@@ -193,6 +194,13 @@ patch_sim = Simulation(freq_max=6e9, domain=(LX, LY, LZ), dx=1e-3,
 patch_sim.add(board, material="fr4")
 patch_sim.add_thin_conductor(patch)
 ```
+
+Here the z cells below and above the patch are 0.80 and 0.95 mm and the
+in-plane cell beside its edges is 0.96 to 0.98 mm, ratios of 0.82 to 0.99. A
+free sheet in vacuum at those ratios, with the same cell on both sides, would
+make the patch 18.97 to 19.02 mm by 13.36 to 13.41 mm (measured in vacuum
+only). The patch lies on the board's top face and has a different cell on each
+side; there the offset has not been measured.
 
 Draw the geometry at its true size; do not shift it to compensate.
 

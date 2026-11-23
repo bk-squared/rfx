@@ -100,10 +100,15 @@ sim.add_thin_conductor(trace, sigma_bulk=5.8e7, thickness=35e-6)
 ```
 
 The mesh from `edge_aware_profiles` puts the trace's last nodes 0.35 cell
-inside the edges of its drawn 2 mm width. The trace is solved 2 mm wide only
-where the cell normal to it is as long as the in-plane cell beside its edges,
-the case the 0.35 was measured on. On a uniform 0.5 mm mesh the same trace solves 2.35 mm wide,
-and `run()` refuses it (`sheet_effective_size`; see
+inside the edges of its drawn 2 mm width. The 0.35 was measured where the cell
+normal to the sheet is as long as the in-plane cell beside its edge, with the
+same cell on both sides of the sheet. Here the z cells below and above the
+trace are 0.343 and 0.414 mm and the in-plane cell beside each side edge is
+0.426 mm, ratios of 0.81 and 0.97. A free sheet in vacuum at those ratios,
+with the same cell on both sides, would make this trace 1.983 to 2.005 mm wide
+and 29.96 to 29.99 mm long (measured in vacuum only). With a different cell on
+each side, as here, the offset has not been measured. On a uniform 0.5 mm mesh
+preflight predicts 2.35 mm, and `run()` refuses the trace (`sheet_effective_size`; see
 [Mesh lines at sheet edges](/rfx/model/domain-mesh/#mesh-lines-at-sheet-edges)).
 
 `sigma_bulk` and `surface_impedance_f0` choose the model:

@@ -289,9 +289,9 @@ downstream of each feed:
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 h_sub, L = 0.75e-3, 0.013
-# The trace's side edges fall on y nodes 1.5 mm apart (0.25 mm cells). A free
-# side edge acts 0.35 cell beyond its last node, so the line is solved
-# 1.5 mm + 2 x 0.35 x 0.25 mm = 1.675 mm wide. Draw it at that width.
+# The trace's side edges fall on y nodes 1.5 mm apart (0.25 mm cells).
+# Preflight takes a free side edge 0.35 cell beyond its last node, so it
+# predicts 1.5 mm + 2 x 0.35 x 0.25 mm = 1.675 mm. Draw it at that width.
 w_trace = 1.675e-3
 substrate = Box((0, 0, 0), (L, 0.008, h_sub))
 # The trace runs from port to port. An end fed by a port is not a free edge,
@@ -316,7 +316,7 @@ S_msl = np.asarray(msl.S)                    # (2, 2, 21)
 
 <figure data-rfx="media">
   <img src="/rfx/measure/assets/s-parameters/structure.png" loading="lazy" alt="Top view and side section of a microstrip line on its substrate between ports p1 and p2, with each port's probe row and the absorber, into which the substrate and ground continue." />
-  <figcaption>The board as built: the line is 6 mm long with a solved width of 1.675 mm, on 0.75 mm of substrate over a PEC ground, and both the substrate and the ground continue into the absorber at the four sides. Each port's probes lie 3.75 to 5.75 mm from that port's feed, toward the other port.</figcaption>
+  <figcaption>The board as built: the line is 6 mm long and drawn 1.675 mm wide, the width preflight predicts from its 1.5 mm node span, on 0.75 mm of substrate over a PEC ground, and both the substrate and the ground continue into the absorber at the four sides. Each port's probes lie 3.75 to 5.75 mm from that port's feed, toward the other port.</figcaption>
 </figure>
 
 <figure data-rfx="media">
@@ -331,10 +331,18 @@ This is the microstrip S-matrix on a uniform mesh, the path the
 [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md)
 documents (**limited**: quasi-TEM, ports along ±x or ±y, a zero-thickness strip).
 
-Draw a metal sheet at the size it is solved at. Preflight compares the two and
-stops the run when they differ: drawn 1.5 mm wide on this mesh, the trace is
-reported as "solved as 1.675mm (+11.67%)". Either draw the solved width, as
-here, or move the mesh lines.
+Draw a metal sheet at the size preflight predicts for it. Preflight compares
+the two and stops the run when they differ: drawn 1.5 mm wide on this mesh, the
+trace is reported as "solved as 1.675mm (+11.67%)". Either draw the width
+preflight reports, as here, or move the mesh lines.
+
+Preflight's 1.675 mm uses the 0.35-cell offset measured on a free sheet with
+square cells. This trace's cells are square (0.25 mm), but the trace lies three
+cells above the ground on the substrate's top face. For a strip three cells
+above a ground plane in air the offset was measured as 0.37 cell, which makes
+the line 1.685 mm wide; for an edge on a face between a dielectric of εr 2.2
+and air, without a ground, 0.33 cell (E parallel to the edge), which makes it
+1.665 mm. With the substrate and the ground together it has not been measured.
 
 This board has only 3 cells through the substrate and 6 across the trace, so
 it runs quickly but prints several warnings. They are the ones you should

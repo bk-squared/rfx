@@ -245,9 +245,13 @@ line.add_port((0.035, 0.010, 0.003), "ez", extent=3e-3,
 ```
 
 The edge-aware mesh puts the 2 mm strip's last nodes 0.35 cell inside its
-drawn edges; the strip is solved 2 mm wide only where the cell normal to it is
-as long as the in-plane cell beside its edges, the case the 0.35 was measured
-on. On a uniform 1 mm mesh it solves 2.7 mm wide and `run()` refuses it.
+drawn edges. The 0.35 was measured where the cell normal to the sheet is as
+long as the in-plane cell beside its edge. Here the z cell is 1 mm and the
+in-plane cell beside each side edge 0.75 mm, a ratio of 1.33. At that ratio a
+free sheet's edge lies 0.43 cell beyond its last node (measured in vacuum
+only), which makes this strip 2.12 mm wide. Three cells above a ground plane,
+as here, the offset at this ratio has not been measured. On a uniform 1 mm
+mesh preflight predicts 2.7 mm and `run()` refuses the strip.
 
 Preflight warns (`port_conductor_continues`) when a port's conductor runs into
 the absorber and no port terminates it. A ground plane should continue; name
@@ -294,6 +298,13 @@ print(np.abs(msl.S[1, 0]))     # |S21| across the band
   <img src="/rfx/model/assets/ports/microstrip-s.png" loading="lazy" alt="S21 magnitude between −1.04 and −0.55 dB from 2 to 6 GHz, and S11 magnitude between −9.4 and −6.8 dB, highest at 4 GHz; the two highest frequencies are marked as ‘low signal’." />
   <figcaption>|S21| and |S11| returned by this run on a single mesh, referred to 50 Ω. The open circles are the two highest frequencies, where <code>msl.reliable</code> is False.</figcaption>
 </figure>
+
+On this board the z cell is 0.25 mm. Along the line the in-plane cell beside
+each open end is also 0.25 mm; across it the cell beside each side edge is
+0.2125 mm, a ratio of 1.18. At that ratio a free sheet's edge lies 0.39 cell
+beyond its last node (measured in vacuum only), which makes the line 1.015 to
+1.018 mm wide. The line lies on the substrate's top face, where the offset has
+not been measured.
 
 `position` is `(feed plane, trace centre, substrate bottom)`. `direction` may
 be `"+x"`, `"-x"`, `"+y"` or `"-y"`; the substrate normal is always z. `S` is

@@ -104,7 +104,8 @@ thin_conductor[0] ... PEC sheet on node plane z = 5000.00 um
 
 The realized span is the one predicted with the 0.35-cell offset. Here the z
 cell at the patch is 0.5 mm and the in-plane cells beside its edges are 0.483
-and 0.470 mm, ratios of 1.04 and 1.06 at which the offset has not been measured.
+and 0.470 mm, ratios of 1.04 and 1.06. The patch lies on the substrate's top
+face, where the offset at these ratios has not been measured.
 
 The same spans in code:
 
@@ -172,9 +173,15 @@ that preflight uses to predict a sheet's solved size was measured on a thin PEC
 fin against a fine-mesh reference, for both polarizations and two cell sizes
 (`scripts/diagnostics/pec_sheet_edge_offset.py`), with the cell normal to the
 sheet as long as the in-plane cell beside its edge. The offset changes with the
-ratio of those two cells (normal over in-plane): for a free sheet it reads 0.27
-cell at 1/2 and 0.60 at 2; for a strip three cells above a ground plane it
-reads 0.37, 0.31 and 0.31 at 1, 1/2 and 1/4. Preflight, `fidelity_report()` and
+ratio of those two cells (normal over in-plane). For a free sheet in vacuum,
+with the same cell on both sides, it reads 0.26 cell at 1/5 and 1/4, 0.28 at
+1/2, 0.35 to 0.36 at 1, 0.37 to 0.38 at 1.11, 0.39 at 1.18, 0.56 to 0.57 at 2
+and 1.03 at 4 (the two values are E perpendicular and parallel to the edge).
+For a strip three cells above a ground plane in air it reads 0.37, 0.31 and
+0.31 at 1, 1/2 and 1/4. For an edge on a face between a dielectric of εr 2.2
+and air, with square cells and E parallel to the edge, it reads 0.33. An edge
+on a dielectric face at any other ratio, and a sheet with a different cell on
+each side, have not been measured. Preflight, `fidelity_report()` and
 `edge_aware_profiles` use 0.35 at every ratio, so at other ratios a passing
 size check does not measure the solved size; `edge_aware_profiles(...,
 edge_offset=)` takes another value. The size check is pinned in

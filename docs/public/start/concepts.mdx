@@ -137,7 +137,8 @@ Preflight reports a sheet solved more than 1 % off its drawing as an error, so
 `rfx.mesh_edges.edge_aware_profiles`, as above: it puts the sheet's last nodes
 0.35 cell inside its drawn edges. The offset was measured where the cell
 normal to the sheet is as long as the in-plane cell beside its edge; here they
-are 0.5 and 0.475 mm, a ratio of 1.05 at which it has not been measured. Or pass
+are 0.5 and 0.475 mm, a ratio of 1.05, and the foil lies on the substrate's top
+face, where the offset at that ratio has not been measured. Or pass
 `Simulation(..., snap="declared")` to accept the difference as a warning,
 recorded in `sim.realized_geometry()`. With the graded in-plane mesh, preflight also notes that the grading reaches the cells next to an
 absorbing face, which should stay uniform over as many cells as the face has
