@@ -313,3 +313,43 @@ def test_point_source_spectra_parity(placement, count):
           spectra=ratios)), flush=True)
     for family, ratio in ratios.items():
         assert ratio <= 1e-4, f'{placement} {count} devices {family}: spectra ratio {ratio} > 1e-4'
+
+
+def test_msl_with_f0_sheet_fields_and_planes():
+    """Compare uniform MSL plus an off-trace f0 sheet with one device at the B1 bars."""
+    from tests._multi_device_scene import host_devices
+    from tests.unit.runners.test_distributed_msl_ports import observed_scene
+
+    devices = host_devices(2)
+    sim, _ = observed_scene('T1', 'uniform', 'laplace', 2)
+    sim.add_thin_conductor(
+        Box((.004, .0056, .0008), (.008, .0064, .0008)),
+        sigma_bulk=100., surface_impedance_f0=5e9)
+    options = dict(compute_s_params=False, skip_preflight=True)
+    longest = sim.run(n_steps=2100, **options)
+    expected = sim.run(n_steps=1050, **options)
+    actual = sim.run(n_steps=1050, devices=devices, **options)
+    jax.block_until_ready((actual.time_series, actual.dft_planes))
+    a, b = np.asarray(actual.time_series), np.asarray(expected.time_series)
+    assert a.shape == b.shape
+    assert np.all(np.isfinite(a)) and np.all(np.isfinite(b))
+    peak = np.max(np.abs(np.asarray(longest.time_series)), axis=0)
+    delta = np.max(np.abs(a - b), axis=0)
+    report = dict(scene='T1', lane='uniform', mode='laplace', n=2, length=1050,
+                  probe_peaks=peak.tolist(), probe_deltas=delta.tolist(),
+                  probe_relative=(delta / peak).tolist(), planes={})
+    assert actual.dft_planes.keys() == expected.dft_planes.keys()
+    for name, plane in expected.dft_planes.items():
+        reference = np.asarray(plane.accumulator)
+        other = np.asarray(actual.dft_planes[name].accumulator)
+        assert reference.shape == other.shape
+        assert np.all(np.isfinite(reference)) and np.all(np.isfinite(other))
+        p = float(np.max(np.abs(reference)))
+        d = float(np.max(np.abs(other - reference)))
+        report['planes'][name] = dict(peak=p, delta=d, relative=d / p if p else None)
+    print('F0_MSL_PARITY ' + json.dumps(report), flush=True)
+    assert np.all(peak > 0), report
+    assert np.all(delta <= 9e-6 * peak), report
+    for name, row in report['planes'].items():
+        assert row['peak'] > 0, (name, row)
+        assert row['delta'] <= 1e-4 * row['peak'], (name, row)
