@@ -58,14 +58,14 @@ def context_from_conductors(sim, conductors, *, grid=None):
                 continue
             products_on_host = host_products(cells, sheet, wire, shape)
             if products_on_host is None:
-                ctx.omitted_pec_products.append(f'{label} ({type(shape).__name__})')
+                ctx.omitted_pec_products.append(f'{label} ({type(entry.shape).__name__})')
                 continue
             cells, sheet, wire = products_on_host
             kind = 'volume' if cells is not None else 'sheet' if sheet is not None else 'wire' if wire is not None else 'lossy'
             section = sections[i].shape if prefix == "geometry" else entry.shape
             bounds = _shape_bounds(section)
             ctx._entries.append(_EntryRealization(label=label,
-                name=getattr(entry, 'material_name', label), shape=section,
+                name=getattr(entry, 'material_name', label), shape=section, declared_shape=entry.shape,
                 solved_shape=shape, kind=kind, cells=cells, sheet=sheet, wire=wire,
                 lo=None if bounds is None else np.asarray(bounds[0]),
                 hi=None if bounds is None else np.asarray(bounds[1])))

@@ -164,8 +164,7 @@ def cross_section_2d(shape, grid):
         boxes = tuple(b if b.corner_lo[2] == b.corner_hi[2] else
                       Box((*b.corner_lo[:2], bottom), (*b.corner_hi[:2], top))
                       for b, _ in shape.to_shapes()
-                      if b.corner_lo[2] == b.corner_hi[2]
-                      or _present(b.corner_lo[2], b.corner_hi[2], z0, width, b))
+                      if _present(b.corner_lo[2], b.corner_hi[2], z0, width, b))
         return _BoxSections(boxes)
     bounds = _bounds(shape)
     if bounds is not None and not _present(bounds[0][2], bounds[1][2], z0, width, shape):

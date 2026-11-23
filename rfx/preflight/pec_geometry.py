@@ -451,7 +451,7 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
                    f"{_fmt_len(float(e.hi[a]))})"
                    if e.lo is not None else " (shape reports no bounds)")
                 for a, k_lo, k_hi in thin_axes)
-            desc.append(f"{e.label} '{e.name}' ({type(e.shape).__name__}) "
+            desc.append(f"{e.label} '{e.name}' ({e.shape_name}) "
                         f"is one cell thick along "
                         f"{'/'.join('xyz'[a] for a, _k1, _k2 in thin_axes)} "
                         f"[{per_axis}]")
@@ -901,7 +901,7 @@ def _validate_cfg_congruent_rasterization_parity(self, _w, ctx) -> None:
     _w.warn(PreflightWarning(
         f"{len(flagged)} congruent-conductor group(s) realize to "
         "UNEQUAL PEC edge sets on this lattice (design-identical "
-        f"conductors, different meshes). Worst group ({key[0]}, "
+        f"conductors, different meshes). Worst group ({'/'.join(dict.fromkeys(e.shape_name for e, *_ in members))}, "
         f"{key[1]}, sorted extents "
         + " x ".join(_fmt_len(k * _CONGRUENCE_EXTENT_QUANTUM_M)
                      for k in ext_key)

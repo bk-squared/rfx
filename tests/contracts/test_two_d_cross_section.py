@@ -441,3 +441,35 @@ def test_traced_uniform_dx_transform_guard():
 
     with pytest.raises(NotImplementedError, match="2-D cross-section: traced uniform dx"):
         jax.jit(section)(jnp.array(.001))
+
+
+@pytest.mark.parametrize("kind", ["sphere", "via"])
+@pytest.mark.parametrize("mode", ["2d_tez", "2d_tmz"])
+def test_conductor_message_names_declared_shape(kind, mode):
+    from rfx.geometry.via import Via
+    shape = (Sphere((.0155, .0155, 0.), .0006) if kind == "sphere" else
+             Via(center=(.0155, .0155), drill_radius=.0005, pad_radius=.005,
+                 layers=[(-.001, .002)]))
+    sim = _scene(shape, mode, snap="declared")
+    sim._geometry.clear()
+    sim.add(shape, material="pec")
+    findings = sim.preflight().by_code("pec_box_one_cell")
+    assert len(findings) == 1
+    declared_name = "Sphere" if kind == "sphere" else "Via"
+    assert f"geometry[0] 'pec' ({declared_name})" in str(findings[0])
+
+
+@pytest.mark.parametrize("mode", ["2d_tez", "2d_tmz"])
+def test_via_keeps_on_node_pad_sheet(monkeypatch, mode):
+    from rfx.geometry.via import Via
+    shape = Via(center=(.015, .015), drill_radius=.002,
+                pad_radius=.005, layers=[(0., .002)])
+    sim = _scene(shape, mode)
+    sim._geometry.clear()
+    sim.add(shape, material="pec")
+    product = _prepared(monkeypatch, sim)
+    x, y = _coordinates(product.grid, .5)
+    expected = ((x[:, None] >= .010) & (x[:, None] < .020)
+                & (y[None, :] >= .010) & (y[None, :] < .020))
+    assert np.count_nonzero(expected) == 100
+    np.testing.assert_array_equal(np.asarray(product.pec_cells)[:, :, 0], expected)

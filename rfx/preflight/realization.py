@@ -208,16 +208,18 @@ class _EntryRealization:
     (a filament), ``"lossy"`` (a sigma-fold thin conductor — fenced, not
     PEC realization) or ``"refused"`` (the classifier raised; ``error``
     carries its message). Nothing here is inferred from an extent: the
-    kind is what the shared classifier says.
+    kind is what the shared classifier says. ``shape`` supplies realized
+    bounds; ``shape_name`` identifies the declaration in user messages.
     """
 
     def __init__(self, *, label, name, shape, kind, cells=None, sheet=None,
                  wire=None, error=None, lo=None, hi=None, declared_mid=None,
-                 tie_planes=None, solved_shape=None, subject_label=None):
+                 tie_planes=None, solved_shape=None, subject_label=None, declared_shape=None):
         self.label = label
         self.subject_label = label if subject_label is None else subject_label
         self.name = name
         self.shape = shape
+        self.shape_name = type(shape if declared_shape is None else declared_shape).__name__
         self.solved_shape = shape if solved_shape is None else solved_shape
         self.kind = kind
         self.cells = None if cells is None else np.asarray(cells, dtype=bool)
@@ -551,7 +553,7 @@ class _CampaignStaticsContext:
                         name=entry.material_name, grid=self.grid)
             except self._NARROW_EXCS as exc:
                 out.append(_EntryRealization(
-                    label=label, name=entry.material_name, shape=section,
+                    label=label, name=entry.material_name, shape=section, declared_shape=entry.shape,
                     kind="refused",
                     error=(str(exc) if isinstance(exc, ValueError)
                            else f"{type(exc).__name__}: {exc}"),
@@ -559,17 +561,17 @@ class _CampaignStaticsContext:
                 continue
             if cells is not None:
                 out.append(_EntryRealization(
-                    label=label, name=entry.material_name, shape=section,
+                    label=label, name=entry.material_name, shape=section, declared_shape=entry.shape,
                     kind="volume", cells=cells, lo=lo, hi=hi, solved_shape=solved))
             elif sheet is not None:
                 mid, tie = _tie(sheet, lo, hi)
                 out.append(_EntryRealization(
-                    label=label, name=entry.material_name, shape=section,
+                    label=label, name=entry.material_name, shape=section, declared_shape=entry.shape,
                     kind="sheet", sheet=sheet, lo=lo, hi=hi, solved_shape=solved,
                     declared_mid=mid, tie_planes=tie))
             else:
                 out.append(_EntryRealization(
-                    label=label, name=entry.material_name, shape=section,
+                    label=label, name=entry.material_name, shape=section, declared_shape=entry.shape,
                     kind="wire", wire=wire, lo=lo, hi=hi))
         for i, tc in enumerate(getattr(sim, "_thin_conductors", ())):
             label = f"thin_conductor[{i}]"
