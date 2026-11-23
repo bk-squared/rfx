@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box
+from rfx import Box, GaussianPulse, Simulation
 from tests.contracts.test_echo_bound_closing_rule import shorted_line
 
 
@@ -73,9 +73,13 @@ def test_override_index_closes_plain_and_traced_records(capsys):
 
 def test_library_sweep_member_reads_its_own_arrays(capsys, monkeypatch):
     from rfx.vmap_sweep import vmap_material_sweep
-    sim = line()
-    drive = sim._ports.pop()
-    sim.add_source(drive.position, drive.component, waveform=drive.waveform)
+    sim = Simulation(freq_max=14e9, domain=(.340, .003, .002), dx=.001,
+                     boundary=dict(x='cpml', y='pec', z='pec'), cpml_layers=8)
+    sim.add_material('background', eps_r=DECLARED_EPS, sigma=.3)
+    sim.add(Box((0., 0., 0.), (.340, .003, .002)), material='background')
+    sim.add_source((.010, .001, 0.), 'ez', waveform=GaussianPulse(f0=8e9, bandwidth=1.))
+    sim.add_probe((.012, .001, 0.), 'ez')
+    sim.add_dft_plane_probe(axis='x', coordinate=.012, component='ez', n_freqs=7, name='read')
     def refuse_fallback(*args, **kwargs):
         raise AssertionError('the member witness must exercise the batched material arrays')
     monkeypatch.setattr('rfx.vmap_sweep._sequential_fallback', refuse_fallback)

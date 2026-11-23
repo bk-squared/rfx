@@ -105,6 +105,21 @@ def test_smoothing_subcell_dielectric_raises_index():
     assert smoothed.settling_echo_bound['n_max'] == np.nextafter(np.float32(2.), np.float32(np.inf))
 
 
+def test_smoothing_reader_includes_subcell_shape():
+    """The bound reader includes a shape even when assembly refuses its empty mask."""
+    from rfx.core.yee import init_materials
+    from rfx.measurement.echo_bound import runner_echo_bound
+    sim = Simulation(freq_max=20e9, domain=(.012, .011, .005), dx=.001, boundary='pec')
+    sim.add_material('tiny', eps_r=4.)
+    sim.add(Box((.00405, .00405, .00205), (.00415, .00415, .00215)), material='tiny')
+    grid = sim._build_realized_grid()
+    materials = init_materials(grid.shape)
+    staircase = runner_echo_bound(sim, grid, materials)
+    smoothed = runner_echo_bound(sim, grid, materials, smoothing=True)
+    assert staircase['n_max'] == np.nextafter(np.float32(1.), np.float32(np.inf))
+    assert smoothed['n_max'] == np.nextafter(np.float32(2.), np.float32(np.inf))
+
+
 @pytest.mark.parametrize('eps', [1., 2.2, 4., 9.1])
 def test_rounding_is_one_float32_ulp(eps):
     from rfx.core.yee import init_materials
