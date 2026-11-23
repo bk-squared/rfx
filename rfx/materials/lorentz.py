@@ -189,7 +189,6 @@ def lorentz_e_component(coeffs: LorentzCoeffs, comp: int, e_old, curl, dp,
     return e_new if fdtype is None else e_new.astype(fdtype)
 
 
-# Lazy compatibility export for the time-step implementation.
 _LAZY_EXPORTS = {
     "update_e_lorentz": "rfx.stepping.poles",
 }

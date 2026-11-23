@@ -8,8 +8,6 @@ def constructor_boundary(sim):
     refresh_boundary_model(sim)
     if sim._boundary_explicit is None:
         return resolved_guide_spec(sim)
-    # A Floquet port and an open TF/SF source replace the shorthand's lateral
-    # faces; an explicit spec would declare them.
     open_tfsf = sim._tfsf is not None and not sim._tfsf.closed_box
     if (sim._floquet_ports or open_tfsf) and sim._boundary_spec is scalar_spec(sim):
         return str(sim._boundary) if boundary_was_explicit(sim) else DEFAULT_BOUNDARY
@@ -21,9 +19,6 @@ def resolved_guide_spec(sim):
     if sim._uses_nonuniform_mesh or not sim._waveguide_ports:
         return sim._boundary_spec
     payload = sim._boundary_spec.to_dict()
-    # The admission record retains the former full-guide faces even when an
-    # explicit absorber now allocates pads. Old documents lack provenance;
-    # importing them must still recognize the same implicit guide default.
     for face in sim._build_grid()._waveguide_admission[0]:
         axis, side = face.split("_")
         if payload[axis][side] in ("cpml", "upml"):

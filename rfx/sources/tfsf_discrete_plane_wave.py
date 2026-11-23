@@ -1,4 +1,7 @@
-"""Exact rational plane waves on the uniform three-dimensional Yee lattice."""
+"""Exact rational plane waves on the uniform three-dimensional Yee lattice.
+
+``YEE_OFFSETS`` gives component locations in cell units relative to the lower node of each primal cell.
+"""
 from __future__ import annotations
 from rfx._traced_inputs import admit_traced_inputs
 
@@ -22,20 +25,13 @@ if TYPE_CHECKING:
 
 
 COMPONENTS = ("ex", "ey", "ez", "hx", "hy", "hz")
-# rfx/snapshots.py:65-70; these also make yee.py's forward-H/backward-E
-# differences exactly symmetric about each target component's location.
 YEE_OFFSETS = np.array(((.5, 0, 0), (0, .5, 0), (0, 0, .5),
                         (0, .5, .5), (.5, 0, .5), (.5, .5, 0)))
-# Target x/y/z curl: (positive source, derivative axis, negative source, axis).
 CURL_TERMS = ((2, 1, 1, 2), (0, 2, 2, 0), (1, 0, 0, 1))
 
 
 def _bloch_cutoff_level_db(angle_deg: float, bandwidth: float) -> float:
     """Amplitude at |f0 sin(theta)| relative to f0 for the Bloch drive."""
-    # init_tfsf dispatches BOTH Gaussian waveform names to init_tfsf_2d,
-    # whose drive is exp(-i*2*pi*f0*t) * exp(-(t/tau)**2),
-    # tau = 1/(pi*f0*bandwidth). Thus |S(fc)/S(f0)| = exp(-offset**2).
-    # Work directly in dB to avoid underflow for narrow pulses.
     offset = (1.0 - abs(math.sin(math.radians(angle_deg)))) / bandwidth
     return -(20.0 / math.log(10.0)) * offset * offset
 
@@ -94,7 +90,6 @@ class PlaneWaveConfig:
     face_record: object = None
     face_gathers: tuple = ()
     record_faces: bool = False
-    # Preserve the requested angles for lane admission after realization.
     theta_deg: float = 0.0
     phi_deg: float = 0.0
     absorber_nodes: int = 0
@@ -232,14 +227,11 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
     source_p = min_p - (3 * radius + 3)
     windows, q1, sigma = (), 0.0, 0
     if info["m"] == (1, 0, 0):
-        # Old i0=n_cpml+10, src=n_cpml+3: seven E nodes before x_lo.
         source_p = bounds.x_lo - (AUX_N_MARGIN_1D - AUX_SRC_OFFSET_1D)
     elif info["m"] == (-1, 0, 0):
-        # Old n_tfsf includes x_hi+1: the right source is eight nodes past x_hi.
         source_p = -(bounds.x_hi + AUX_N_MARGIN_1D - AUX_SRC_OFFSET_1D + 1)
     else:
         q1, sigma = launch_window_width(info["m"])
-        # The entire launch support must be upstream of the source-free box.
         source_p -= 4 * sigma
     source_n = np.rint(source_p - fractions[:3]).astype(np.int64)
     delays = (source_n + fractions[:3] - source_p) * (dx / np.linalg.norm(m)) / (299792458.0 * dt)
@@ -266,8 +258,6 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
     t0 = source_scalar("t0", t0)
     run_dtype = jnp.promote_types(jnp.float32, dtype)
     dtype = jnp.promote_types(jnp.result_type(float), run_dtype)
-    # CPU Yee SI coefficient factorization: yee.py:1052-1057, 1221-1228;
-    # H: yee.py:496-500. Keep the array operations, not Python-folded ratios.
     one, zero = jnp.asarray(1., dtype), jnp.asarray(0., dtype)
     ca, cb = e_update_coeffs(one, zero, dt)
     ch = dt / (one * MU_0)
@@ -290,7 +280,6 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
 
 def _line_damping(n_nodes, length, fractions, spacing, dt, zero_loss=False, *, dtype):
     """Matched exponential loss at each component's own position, stored in the line dtype."""
-    # Interfaces are at index L and n_nodes-L. Integral sigma*eta dz = ln(1e4).
     depth = length * spacing
     sigma_max = 4 * math.log(1e4) / (math.sqrt(MU_0 / EPS_0) * depth)
     n = np.arange(length)
@@ -439,7 +428,6 @@ def rational_direction(theta_deg, phi_deg, direction, direction_tol_deg, max_com
     theta, phi = np.deg2rad([theta_deg, phi_deg])
     requested = np.array([(1 if direction == "+x" else -1) * np.cos(theta),
                           np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi)])
-    # Exact cardinal requests must not inherit sin(pi)'s roundoff octant.
     requested[np.abs(requested) < 8 * np.finfo(float).eps] = 0
     requested /= np.linalg.norm(requested)
     signs = np.sign(requested).astype(np.int64)
@@ -532,8 +520,6 @@ def validate_declaration(sim, theta, phi, tol, cap, pol, direction, angle, wavef
     if any(not np.all(np.asarray(grid.cells(a)) == cell) for a in "xyz"):
         raise NotImplementedError("closed_box requires a cubic uniform grid (dx=dy=dz)")
     cfg = box_bounds(grid.shape, grid.cpml_layers, margin)
-    # Declaration checks read cells only; sheets and wires are checked by the
-    # final realized-operator check at execution.
     materials, debye, lorentz, pec, _, _, kerr = sim._assemble_materials(
         grid, pec_sheets=[], pec_wires=[])
     masks = [v for v in (pec, kerr) if v is not None]
@@ -722,7 +708,7 @@ def add_tfsf_source(
                 "(transverse=y) only; 'ey' is future work"
             )
 
-    if method == "bloch" and is_oblique(angle_deg):  # the 2D-aux dispatch test in tfsf.py
+    if method == "bloch" and is_oblique(angle_deg):
         warn_bloch_cutoff(angle_deg, bandwidth, f0 if f0 is not None else self._freq_max / 2)
 
     self._tfsf = _TFSFEntry(
@@ -757,14 +743,6 @@ def document_fields(_NUM, _INT, _STR, _BOOL, _opt):
         "direction": _STR,
         "angle_deg": _NUM,
         "waveform": _STR,
-        # transverse boundary-value-problem selector — 'bloch' runs
-        # periodic=(F,T,T)/cpml_axes="x" (laterally periodic: infinite array),
-        # 'methodB' runs periodic=(F,F,T)/cpml_axes="xy" (open transverse
-        # boundary: compact isolated scatterer). Design state, not run control:
-        # the two lanes describe different physical structures. The labels are
-        # rfx-internal; a future TFSF emitter should translate the semantic
-        # (transverse boundary = periodic vs absorbing), not hunt for another
-        # solver's "method B".
         "method": _STR,
         "closed_box": _BOOL,
         "theta_deg": _NUM,

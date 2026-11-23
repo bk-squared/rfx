@@ -297,8 +297,6 @@ def run_subgridded_jit(
     from rfx.sources.wire_radius import require_radius_update
     for mats in (mats_c, mats_f):
         require_radius_update(mats, lane="subgridded", unsupported=True)
-    # Unpack the bundled options into same-named locals so the body below is
-    # byte-unchanged from the historical keyword-argument signature.
     pec_mask_c = opts.pec_mask_c
     pec_mask_f = opts.pec_mask_f
     sources_f = opts.sources_f
@@ -326,9 +324,6 @@ def run_subgridded_jit(
     ghost_exterior_coarse_shadow_from_fine = (
         opts.ghost_exterior_coarse_shadow_from_fine
     )
-    # The material_sat_* scale knobs are consumed directly from ``opts`` by
-    # the _z_slab_material_coupling_{h,e}_3d helpers, so the runner body no
-    # longer unpacks them here.
     defer_material_h_sat_until_after_e = opts.defer_material_h_sat_until_after_e
     inject_sources_before_e_coupling = opts.inject_sources_before_e_coupling
     use_exterior_box_interfaces = opts.use_exterior_box_interfaces
@@ -351,10 +346,8 @@ def run_subgridded_jit(
 
     mats_c, mats_f = subgrid_components(mats_c, mats_f, grid_c, config)
 
-    # Override coarse grid dt to match subgrid global timestep
     grid_c.dt = dt
 
-    # ---- Subsystem flags (resolved at trace time, not inside scan) ----
     use_cpml = grid_c.cpml_layers > 0
     pad_x_lo = int(getattr(grid_c, "pad_x_lo", grid_c.cpml_layers))
     pad_x_hi = int(getattr(grid_c, "pad_x_hi", grid_c.cpml_layers))
@@ -494,10 +487,6 @@ def run_subgridded_jit(
             or jnp.any(jnp.abs(mats.mu_r[face_slice] - 1.0) > 1e-12)
         )
 
-    # Material weighting is needed only when the artificial coarse/fine
-    # interface itself sees non-vacuum impedance.  Material discontinuities
-    # wholly inside the fine slab should use ordinary Yee material updates
-    # internally and the established vacuum z-interface SAT at the slab faces.
     if use_material_sat is None:
         use_material_sat = bool(
             _face_nonvacuum(mats_c, (*c_xy, config.fk_lo))
@@ -509,8 +498,6 @@ def run_subgridded_jit(
     cpml_params = None
     cpml_state = None
     if use_cpml:
-        # apply_cpml_{e,h} are consumed by step_fn via the _make_step_fn ctx
-        # dict (built from locals()), not referenced directly here.
         from rfx.boundaries.cpml import (  # noqa: F401
             init_cpml,
             apply_cpml_h,
@@ -518,14 +505,12 @@ def run_subgridded_jit(
         )
         cpml_params, cpml_state = init_cpml(grid_c)
 
-    # Initialize field states
     shape_c = (config.nx_c, config.ny_c, config.nz_c)
     shape_f = (config.nx_f, config.ny_f, config.nz_f)
 
     state_c = init_state(shape_c)
     state_f = init_state(shape_f)
 
-    # Precompute source waveforms matrix (n_steps, n_sources)
     if sources_f:
         src_waveforms = jnp.stack([jnp.array(s[4]) for s in sources_f], axis=-1)
     else:
@@ -574,7 +559,6 @@ def run_subgridded_jit(
     use_pec_mask_c = pec_mask_c is not None
     use_pec_mask_f = pec_mask_f is not None
 
-    # Pack carry — include CPML state only when CPML is active
     carry_init = {
         "c": (state_c.ex, state_c.ey, state_c.ez,
               state_c.hx, state_c.hy, state_c.hz),
@@ -593,7 +577,6 @@ def run_subgridded_jit(
     cpml_axes = "xyz"
 
 
-    # Run scan
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms, src_waveforms_c)
     _step_locals = dict(locals())
     _step_ctx = {n: _step_locals[n] for n in _STEP_FN_CAPTURES if n in _step_locals}
@@ -613,7 +596,6 @@ def run_subgridded_jit(
     )
     time_series, time_series_c = probe_series
 
-    # Unpack final state
     ex_c, ey_c, ez_c, hx_c, hy_c, hz_c = final_carry["c"]
     ex_f, ey_f, ez_f, hx_f, hy_f, hz_f = final_carry["f"]
 

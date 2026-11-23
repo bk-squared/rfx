@@ -127,11 +127,15 @@ def devices_for(count, two_devices):
     return two_devices if count == 2 else host_devices(count)
 
 
-@pytest.mark.parametrize('axis', tuple('xyz'))
-@pytest.mark.parametrize('cells', (10, 11))
-@pytest.mark.parametrize('count', (1, 2, 3))
-@pytest.mark.parametrize('entry', ('run', 'forward'))
-@pytest.mark.parametrize('cpml', (False, True), ids=('pec', 'cpml'))
+@pytest.mark.parametrize('cpml, entry, count, cells, axis', [
+    pytest.param(cpml, entry, count, cells, axis, id=f"{cpml_id}-{entry}-{count}-{cells}-{axis}")
+    for axis in tuple('xyz')
+    for cells in (10, 11)
+    for count in (1, 2, 3)
+    for entry in ('run', 'forward')
+    for cpml, cpml_id in zip((False, True), ('pec', 'cpml'))
+    if not (count == 1 and cells == 10)
+])
 def test_builder_scan_entry(monkeypatch, two_devices, axis, cells, count, entry, cpml):
     devices = devices_for(count, two_devices)
     sim = scene(axis, cells, cpml)

@@ -40,20 +40,13 @@ from rfx.core.yee import EPS_0, MU_0
 from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
 
 
-# Speed of light (used for static-Z0 closed form)
 _C0 = 1.0 / np.sqrt(MU_0 * EPS_0)
 _ETA0 = np.sqrt(MU_0 / EPS_0)
 
 
-# ---------------------------------------------------------------------------
-# Axis roles
-# ---------------------------------------------------------------------------
 
-#: Axis name -> index into a physical ``(x, y, z)`` tuple.
 _MSL_AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
 
-#: ``direction`` -> ``(propagation, width, substrate-normal, sign)``.
-#: The substrate normal is always z; see :func:`msl_axis_roles`.
 _MSL_AXIS_ROLES = {
     "+x": ("x", "y", "z", +1.0),
     "-x": ("x", "y", "z", -1.0),
@@ -61,36 +54,10 @@ _MSL_AXIS_ROLES = {
     "-y": ("y", "x", "z", -1.0),
 }
 
-#: Right-handed cyclic transverse pair ``(a, b)`` for a propagation axis
-#: ``p``, defined by ``a_hat x b_hat = p_hat``.  This is what makes the
-#: closed Ampere loop enclose current along ``+p_hat``: traversing
-#: ``+a`` at low ``b``, ``+b`` at high ``a``, ``-a`` at high ``b``,
-#: ``-b`` at low ``a`` is a counter-clockwise circuit about ``+p_hat``.
-#:
-#: Getting this wrong is NOT a loud failure.  A naive ``x <-> y`` axis
-#: SWAP (determinant -1, a reflection rather than a rotation) flips the
-#: sign of the enclosed current exactly -- measured ``I_swap / I_x =
-#: -1.00000009`` on the committed thru fixture's recorded H planes.  That
-#: exchanges the wave amplitudes ``a = (V + Z0*I)/2`` and ``b = (V -
-#: Z0*I)/2``, which maps the assembled ``S = B A^-1`` to ``A B^-1 =
-#: S^-1``.  For the low-loss, nearly-matched line that any MSL lane is
-#: validated on, ``S`` is nearly unitary, so ``S^-1 ~ S^dagger``: the
-#: MAGNITUDES barely move (measured max ||S| - |S_swapped|| = 1.3e-3,
-#: |S11| 0.17905 -> 0.17875) while ``arg(S21)`` is exactly NEGATED
-#: (measured: the two angles sum to <= 0.02 deg across the band, i.e. a
-#: negative group delay).  Nothing in the lane catches it: |S11| stays
-#: far under the 1.05 honesty-guard threshold, column power stays below
-#: 1 so the passivity projection is silent, and cond(A) = 1.32.  The
-#: complex error is O(1) (max |S - S_swapped| = 1.912).
-#: Hence: derive the pair here, never hand-write a per-direction swap,
-#: and compare COMPLEX S in any equivalence test.
 _MSL_CYCLIC_PAIR = {"x": ("y", "z"), "y": ("z", "x"), "z": ("x", "y")}
 
-#: Directions ``add_msl_port`` / :class:`MSLPort` accept.
 MSL_SUPPORTED_DIRECTIONS = ("+x", "-x", "+y", "-y")
 
-#: Directions that are axis-aligned but cannot be expressed by this port's
-#: geometry contract -- see :func:`msl_axis_roles`.
 MSL_REJECTED_DIRECTIONS = ("+z", "-z")
 
 
@@ -163,9 +130,6 @@ def msl_ampere_pair(direction: str) -> tuple[str, str]:
     return _MSL_CYCLIC_PAIR[prop]
 
 
-# ---------------------------------------------------------------------------
-# Port description
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -259,9 +223,6 @@ def msl_port_from_entry(pe) -> "MSLPort":
     )
 
 
-# ---------------------------------------------------------------------------
-# Cross-section helpers
-# ---------------------------------------------------------------------------
 
 
 def _msl_grid_geometry(grid):
@@ -311,6 +272,8 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
     observation-only; they must never be returned to the PEC zeroing path.
     This validates attachment and the open substrate interval, not modal
     accuracy or the approximation of a coarse trace width.
+
+    Conductor sheet footprints are closed node intervals.
     """
     from rfx.preflight.msl_codes import msl_geometry_error, msl_text
     from rfx.boundaries.pec import realized_wall_planes
@@ -347,8 +310,6 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
     if "z_hi" in faces:
         domain_planes.add(grid.shape[2]-1)
 
-    # Sheet footprints are CLOSED node intervals. Do not demand conductor
-    # beneath the intentional lateral fringing part of a Laplace source.
     width_nodes = nodes[iw]
     local = _local_cell(width_nodes, sizes[iw], .5*(port.y_lo+port.y_hi))
     if span["width_axis"] in getattr(grid, "periodic_axes", ""):
@@ -365,8 +326,6 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
     widths = sorted({int(w) % len(nodes[iw]) for w in widths} | {span["w_centre"]})
     if (span["width_axis"] in getattr(grid, "periodic_axes", "")
             and 0 in span["width_nodes"]):
-        # A rounded endpoint can select the seam node even just below L.
-        # That selected image needs a conductor too.
         widths = sorted(set(widths) | {0})
     for axis, indices in ((ip, [p]), (iw, widths)):
         for side, boundary_node in (("lo", 0), ("hi", grid.shape[axis]-1)):
@@ -399,9 +358,6 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
     for w in widths:
         for role, k, declared in (("ground", lower, port.z_lo), ("trace", upper, port.z_hi)):
             if not along_trace(w, k):
-                # Only the conductor run under the port's centre node counts;
-                # another trace on the same plane is not this port's. A
-                # periodic width axis keeps the node-level message.
                 if (span["width_axis"] not in getattr(grid, "periodic_axes", "")
                         and along_trace(span["w_centre"], k)):
                     lo_j = hi_j = span["w_centre"]
@@ -443,9 +399,6 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
                     ),
                     subject=name,
                 )
-        # A volume owns internal planes too. Its substrate-facing surface
-        # must leave ALL normal source edges live, not merely appear in a
-        # tangential-wall census. Also catches posts crossing the port.
         occupied = [k for k in range(lower, upper)
                     if hard[2][msl_cell(port.direction, p, w, k)]]
         if occupied:
@@ -512,7 +465,6 @@ def _axis_cell_size(grid, axis: str, idx: int) -> float:
         n = int(np.asarray(profile).shape[0])
         clamped = max(0, min(idx, n - 1))
         return float(np.asarray(profile)[clamped])
-    # Fallback for axis-specific scalar (Grid doesn't carry .dy/.dz today)
     return float(getattr(grid, axis if axis != "x" else "dx", grid.dx))
 
 
@@ -552,6 +504,8 @@ def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
     NORMAL axis. Indices are returned in physical ``(i, j, k)`` order, and
     the iteration order is width-major then normal -- for a ``"+x"`` port
     that is exactly the historical ``for j: for k:`` order over y then z.
+
+    Substrate-normal electric edges span consecutive nodes with the trace-plane node as the exclusive upper edge bound.
     """
     prop, width, normal, _sign = msl_axis_roles(port.direction)
     ip = _MSL_AXIS_INDEX[prop]
@@ -564,9 +518,6 @@ def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
         msl_physical_point(port.direction, port.feed_x, port.y_hi, port.z_hi))
     i_feed = int(lo_idx[ip])
     w_a, w_b = sorted((int(lo_idx[iw]), int(hi_idx[iw])))
-    # Width owns both endpoint nodes; height owns the edges between nodes.
-    # The endpoint at L is node zero's image, included only once even for
-    # a full-period width. Keep the interval helper's bounds admission.
     widths = list(range(w_a, w_b + 1))
     if width in getattr(grid, 'periodic_axes', ''):
         widths = list(dict.fromkeys(w % grid.shape[iw] for w in widths))
@@ -579,9 +530,6 @@ def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
         )
     cells = []
     for w in widths:
-        # E_normal[n] lives on [node n, node n+1]. The trace-plane node
-        # is the EXCLUSIVE edge bound; including it injects/loads above
-        # the trace. Width coordinates of E_normal remain nodal/inclusive.
         for n in range(n_a, n_b):
             cell = [0, 0, 0]
             cell[ip] = i_feed
@@ -661,9 +609,6 @@ def msl_cell(direction: str, i_prop: int, i_width: int, i_normal: int
     return (cell[0], cell[1], cell[2])
 
 
-# ---------------------------------------------------------------------------
-# 2D quasi-TEM mode solver (electrostatic Laplace)
-# ---------------------------------------------------------------------------
 
 
 def compute_msl_mode_profile(
@@ -712,13 +657,6 @@ def compute_msl_mode_profile(
         ``trace_j_lo``   : int — local j-index where trace conductor sits.
         ``trace_j_hi``   : int — inclusive.
     """
-    # Cross-section indices on the FDTD grid (substrate only).
-    # "y" below is the trace-WIDTH axis and "z" the substrate-NORMAL axis
-    #: for a "+x"/"-x" port those are literally y and z, for
-    # a "+y"/"-y" port the width axis is x. The solve itself is a pure
-    # (width, normal) cross-section problem -- measured independent of the
-    # propagation axis beyond ``i_feed`` (identical ez_profile/z0_static/
-    # eps_eff across two feed planes and opposite directions).
     span = msl_cross_section_span(grid, port, require_contiguous_width=True)
     width_axis = span["width_axis"]
     normal_axis = span["normal_axis"]
@@ -735,24 +673,13 @@ def compute_msl_mode_profile(
     H_sub = float(port.z_hi - port.z_lo)
     W_trace = float(port.y_hi - port.y_lo)
 
-    # Box padding: clamp into the available grid footprint so we don't
-    # overshoot into CPML regions.
     if pad_y_cells is None:
-        # FDTD-grid lateral source extent. Default ≈ 1·H_sub on each
-        # side of the trace — enough to inject the dominant fringing
-        # tail (where Ez(y) drops to ~10% of trace-centre value) while
-        # avoiding the deep fringing region whose source contribution
-        # is parasitic. Capped at a minimum of 1 cell.
         target = max(1, int(round(1.0 * H_sub / dy)))
         pad_y_cells = target
     if pad_z_cells is None:
-        # ≥ 4·H above substrate top (used inside the Laplace box for
-        # static-Z0 fidelity; does not enlarge the FDTD source set).
         target = max(4, int(round(4.0 * H_sub / dz)))
         pad_z_cells = target
 
-    # FDTD-grid cells that will receive an Ez source (clamped into the
-    # available grid). Capture the maximum y-padding the grid allows.
     if (width_axis in getattr(grid, "periodic_axes", "")
             and (j_trace_lo - pad_y_cells < 0
                  or j_trace_hi + pad_y_cells >= grid.shape[span["width_idx"]])):
@@ -761,19 +688,9 @@ def compute_msl_mode_profile(
             "the seam; its fringing profile requires a contiguous width window.")
     j_grid_lo = max(0, j_trace_lo - pad_y_cells)
     j_grid_hi = min(grid.shape[span["width_idx"]] - 1, j_trace_hi + pad_y_cells)
-    k_grid_lo = k_sub_lo  # ground at bottom of substrate
+    k_grid_lo = k_sub_lo
     n_y_grid = j_grid_hi - j_grid_lo + 1
 
-    # Laplace solve box can extend BEYOND the FDTD grid (free-space
-    # Neumann decoupled from CPML/PEC) so static Z0 captures fringing
-    # accurately. Use a large box: 5·W lateral and 4·H above substrate
-    # WITHOUT clamping into the grid. The Ez profile will be sliced back
-    # onto the FDTD-grid window after solving.
-    #
-    # Internal refinement (``refine``×): we solve the Laplace problem on
-    # a sub-mesh ``refine`` times finer in y and z so static Z0 / Ez
-    # profile shape converge. Profile is averaged back to FDTD cell
-    # resolution before injection.
     refine = max(1, int(refine))
     dy_fine = dy / refine
     dz_fine = dz / refine
@@ -785,15 +702,12 @@ def compute_msl_mode_profile(
                              int(round(4.0 * H_sub / dz_fine)))
     n_y_box_fine = n_y_trace_fine + 2 * laplace_pad_y_fine
     n_z_box_fine = n_z_sub_fine + laplace_pad_z_fine
-    # Local trace position inside the refined box.
     j_trace_local_lo_box_fine = laplace_pad_y_fine
     j_trace_local_hi_box_fine = laplace_pad_y_fine + (n_y_trace_fine - 1)
 
-    # Substrate occupies the lowest n_z_sub_fine rows of the box.
     eps_yz = np.ones((n_y_box_fine, n_z_box_fine), dtype=np.float64)
     eps_yz[:, : n_z_sub_fine] = float(eps_r_sub)
 
-    # Trace conductor: thin strip at the FIRST air row above substrate.
     trace_mask = np.zeros((n_y_box_fine, n_z_box_fine), dtype=bool)
     if n_z_sub_fine < n_z_box_fine:
         trace_mask[
@@ -806,19 +720,14 @@ def compute_msl_mode_profile(
             n_z_sub_fine - 1,
         ] = True
 
-    # Ground plane: row k_local = 0 (bottom of substrate sits on PEC).
     ground_mask = np.zeros((n_y_box_fine, n_z_box_fine), dtype=bool)
     ground_mask[:, 0] = True
 
-    # --- Substrate-loaded solve ---
     phi_sub = _solve_laplace_2d(eps_yz, trace_mask, ground_mask, dy_fine, dz_fine)
-    # --- Air-only solve (same geometry, εr=1 everywhere) ---
     phi_air = _solve_laplace_2d(
         np.ones_like(eps_yz), trace_mask, ground_mask, dy_fine, dz_fine
     )
 
-    # Capacitance per metre via energy integral W = (1/2) C V², V = 1
-    # so C = ε₀ ∫ εr |∇φ|² dA. Compute with central differences.
     def _cap_per_metre(phi: np.ndarray, eps: np.ndarray, ddy: float, ddz: float) -> float:
         gy = np.zeros_like(phi)
         gy[1:-1, :] = (phi[2:, :] - phi[:-2, :]) / (2.0 * ddy)
@@ -835,7 +744,6 @@ def compute_msl_mode_profile(
     eps_eff = C_sub / C_air if C_air > 0 else 1.0
     z0_static = 1.0 / (_C0 * np.sqrt(C_sub * C_air)) if (C_sub > 0 and C_air > 0) else float(port.impedance)
 
-    # Ez = -∂φ/∂z on the fine substrate cells (k_loc 0..n_z_sub_fine-1).
     ez_fine = np.zeros((n_y_box_fine, n_z_sub_fine), dtype=np.float64)
     for k_loc in range(n_z_sub_fine):
         if k_loc + 1 < phi_sub.shape[1]:
@@ -843,8 +751,6 @@ def compute_msl_mode_profile(
         else:
             ez_fine[:, k_loc] = -(phi_sub[:, k_loc] - phi_sub[:, k_loc - 1]) / dz_fine
 
-    # Average Ez fine cells back to FDTD coarse cells (refine × refine
-    # block average per FDTD cell).
     n_y_box_coarse = n_y_trace + 2 * (laplace_pad_y_fine // refine)
     ez_coarse_full = np.zeros((n_y_box_coarse, n_z_sub), dtype=np.float64)
     laplace_pad_y_coarse = laplace_pad_y_fine // refine
@@ -858,24 +764,6 @@ def compute_msl_mode_profile(
             k_f1 = (k_c + 1) * refine
             ez_coarse_full[j_c, k_c] = float(np.mean(ez_fine[j_f0:j_f1, k_f0:k_f1]))
 
-    # Normalise so ∫Ez·dz at the trace centre = 1 V (in COARSE cells,
-    # which is what the FDTD source uses).
-    #
-    # ``v_centre`` is a MODAL VOLTAGE: the line integral of Ez along the
-    # substrate-normal axis at the trace-centre column.  The Ez node at
-    # normal index k sits on the PRIMAL z-edge of length ``dz_arr[k]``, so
-    # the discrete line integral is ``Σ_k Ez[k]·dz_arr[k]`` — per cell.  A
-    # single scalar ``dz`` is only correct when every edge in the span has
-    # that length.
-    #
-    # The reader fixes the spelling, not a convention chosen here:
-    # ``rfx.api._sparams.msl_modal_voltage`` extracts V as
-    # ``Σ_k ez_plane[...,k] * float(dz_arr[k])``.  Normalising against a
-    # scalar leaves the injected "1 V" mode carrying a different voltage
-    # than the extractor reads back, and — the σ sizing integral is per-cell — the two
-    # scalar-``dz`` errors do not cancel.
-    # Measured on a 2:1 z-graded substrate, realized termination impedance
-    # against a nominal 50 Ω: 135.56 Ω with the scalar, 50.00 Ω with this.
     j_trace_coarse_lo = laplace_pad_y_coarse
     j_centre_coarse = j_trace_coarse_lo + span["w_centre"] - j_trace_lo
     dz_span = np.array(
@@ -885,7 +773,6 @@ def compute_msl_mode_profile(
     if abs(v_centre) > 1e-30:
         ez_coarse_full = ez_coarse_full / v_centre
 
-    # Slice onto the FDTD-grid lateral window.
     box_offset = laplace_pad_y_coarse - (j_trace_lo - j_grid_lo)
     j_box_start = box_offset
     j_box_end = box_offset + n_y_grid
@@ -918,9 +805,6 @@ def compute_msl_mode_profile(
         n_z_sub=int(n_z_sub),
         dy=float(dy),
         dz=float(dz),
-        # which physical axis each of the two cross-section
-        # indices belongs to, so consumers can project a physical
-        # (i, j, k) cell back onto (width, normal) without re-deriving it.
         direction=str(port.direction),
         prop_idx=int(span["prop_idx"]),
         width_idx=int(span["width_idx"]),
@@ -931,9 +815,6 @@ def compute_msl_mode_profile(
     )
 
 
-# ---------------------------------------------------------------------------
-# Material setup: distribute Z0 as σ over the cross-section
-# ---------------------------------------------------------------------------
 
 
 def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None = None):
@@ -957,6 +838,8 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
     certify that the Laplace profile is a propagating Maxwell mode.
 
     Returns the updated ``materials`` NamedTuple.
+
+    The propagation and width spacings are dual spacings, while the substrate-normal voltage uses primal edge lengths.
     """
     port._drive_stamps.clear()
     if mode_profile is None:
@@ -966,29 +849,12 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
             return materials
         n_y = len(span["width_nodes"])
         n_z = span["n_hi"] - span["n_lo"]
-        # these three cell sizes are the PROPAGATION, WIDTH
-        # and NORMAL cell sizes -- not literally dx/dy/dz. sigma scales as
-        # 1/d_prop (measured: halving the propagation-axis cell doubles
-        # sum(sigma), ratio 2.0000), so reading dx here for a "+y" port
-        # would be wrong by dy/dx -- and EXACTLY RIGHT on a cubic grid,
-        # which is why no cubic-cell equivalence test can catch it.
         ax_p = span["prop_axis"]
         ax_w = span["width_axis"]
         ax_n = span["normal_axis"]
         ip, iw, inr = span["prop_idx"], span["width_idx"], span["normal_idx"]
         for cell in cells:
             i, j, k = cell
-            # the two axes TRANSVERSE to the port component (which is
-            # always "ez", along the substrate NORMAL) enter through the dual
-            # face the cell current pierces, so d_prop / d_width are DUAL
-            # spacings; d_norm stays PRIMAL — it is the E edge the cell
-            # voltage is taken over. With this spelling every cell realizes
-            # G_cell = n_z/(Z0·n_y) exactly, on any grading, so the
-            # series-in-normal / parallel-in-width total is exactly 1/Z0.
-            # The old all-primal form was off by dual/primal on each
-            # transverse axis (measured on a 2:1 dx grading with the feed on
-            # the transition node: Y·Z0 = 0.750 fine->coarse, 1.500
-            # coarse->fine, 1.000 on a uniform control).
             d_prop = _axis_dual_size(grid, ax_p, cell[ip])
             d_width = _axis_dual_size(grid, ax_w, cell[iw])
             d_norm = _axis_cell_size(grid, ax_n, cell[inr])
@@ -996,40 +862,15 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
                 (n_z * d_norm) / (port.impedance * n_y * d_prop * d_width)
             )
             port._drive_stamps[tuple(cell)] = (sigma_cell, 1 / (n_z * d_norm))
-            # the port's termination is a lumped load across the
-            # port edges, not a cell volume property, so it is recorded as
-            # an edge-owned stamp and kept out of the edge average.
             materials = _stamp_lumped_sigma(materials, (i, j, k), sigma_cell,
                                             msl_normal_component(port))
         return materials
 
-    # Laplace-profile termination: uniform σ across the (extended) port
-    # cross-section. For real Ez = ez_w * V on this support, its added
-    # instantaneous Joule loss is V²/Z0. At an electric substep use the
-    # midpoint field. A peak-phasor time average has a factor 1/2 on both
-    # sides; this identity does not qualify an arbitrary TEM field.
-    #
-    #     P_diss  = σ · dual_prop · ∫∫ |Ez(y,z)|² dual_w dy · d_norm dz
-    #     V²/Z0   = matched-load power
-    #     ⇒ σ    = 1 / (Z0 · dual_prop · ∫∫ |ez_w|² dual_w d_norm)
-    #
-    # the Joule control volume of an "ez" node is
-    # d_norm(PRIMAL) · dual_prop · dual_width, so the propagation- and
-    # width-axis factors are DUAL spacings and only the normal-axis factor is
-    # the primal cell. The scalar ``dy``/``dz`` the mode profile carries are
-    # the single cells at the trace/substrate corner, which is also wrong on
-    # a mesh graded across the cross-section — the sum below is per-cell.
-    #
-    # ez_w is the normalised mode shape (∫ez_w·dz = 1V at trace centre),
-    # so its coefficient V is the centre-line voltage for a field exactly
-    # proportional to that profile. It is not the excitation waveform's
-    # amplitude. The integral covers the returned fringing footprint.
     ez_profile = np.asarray(mode_profile["ez_profile"], dtype=np.float64)
     cell_indices = mode_profile["cell_indices"]
     j_box_lo = int(mode_profile["j_grid_lo"])
     k_box_lo = int(mode_profile["k_grid_lo"])
     n_z_sub = int(mode_profile["n_z_sub"])
-    # project physical cells onto (width, normal) indices.
     ip = int(mode_profile["prop_idx"])
     iw = int(mode_profile["width_idx"])
     inr = int(mode_profile["normal_idx"])
@@ -1037,14 +878,9 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
     ax_w = str(mode_profile["width_axis"])
     ax_n = str(mode_profile["normal_axis"])
 
-    # i_feed is constant across cell_indices, on the PROPAGATION axis.
     i_feed = cell_indices[0][ip]
     dx_feed = float(_axis_dual_size(grid, ax_p, i_feed))
 
-    # Per-cell cross-section weights: DUAL along the width axis, PRIMAL along
-    # the substrate normal. ``dy``/``dz`` from the mode profile stay in use
-    # for the Laplace box geometry only. On a uniform mesh this reduces to
-    # ``sum(ez**2) * dy * dz`` to the last bits.
     w_dual = np.array(
         [_axis_dual_size(grid, ax_w, j_box_lo + jl)
          for jl in range(ez_profile.shape[0])], dtype=np.float64)
@@ -1065,8 +901,6 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
             continue
         if not (0 <= j_loc < ez_profile.shape[0]):
             continue
-        # Match the source's exact nonzero profile support. This is not
-        # an amplitude threshold or a propagating/evanescent-mode filter.
         if float(ez_profile[j_loc, k_loc]) == 0.0:
             continue
         port._drive_stamps[tuple(cell)] = (sigma_uniform, float(ez_profile[j_loc, k_loc]))
@@ -1075,9 +909,6 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
     return materials
 
 
-# ---------------------------------------------------------------------------
-# Source construction
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -1160,13 +991,6 @@ def make_msl_port_sources_jm(
     if port.excitation is None:
         return [], []
 
-    # this launch is x-only and stays that way. It hard-codes
-    # the (hy, hz) / (ey, ez) TFSF correction pair and ``coeff_H = dt /
-    # (MU_0 * dx)`` to the x propagation axis, and its eigenmode source
-    # (``rfx.sources.msl_eigenmode``) is itself a documented falsified
-    # dead-end kept only under a strict xfail. Generalising it would mean
-    # re-deriving a solver that is not on the supported lane, so a non-x
-    # direction is refused rather than half-rotated.
     if port.direction not in ("+x", "-x"):
         raise NotImplementedError(
             f"MSL mode='eigenmode' supports direction '+x'/'-x' only, got "
@@ -1176,14 +1000,13 @@ def make_msl_port_sources_jm(
             "add_msl_port default) for a y-directed port."
         )
 
-    from rfx._internal._uniform_specs import SourceSpec, MagneticSourceSpec  # local import: avoid cycles
+    from rfx._internal._uniform_specs import SourceSpec, MagneticSourceSpec
 
     dt = grid.dt
     dx = float(grid.dx)
     from rfx.sources._sampling import concrete_waveform_eval
     with concrete_waveform_eval(port.excitation, dt):
         times_e = jnp.arange(n_steps, dtype=jnp.promote_types(dtype, jnp.float32)) * dt
-        # H lives at half-integer steps: t_{n+1/2} = (n + 0.5) * dt
         times_h = (jnp.arange(n_steps, dtype=jnp.promote_types(dtype, jnp.float32)) + 0.5) * dt
         base_wave_e = jax.vmap(port.excitation)(times_e)
         base_wave_h = jax.vmap(port.excitation)(times_h)
@@ -1194,13 +1017,10 @@ def make_msl_port_sources_jm(
     n_y = em.n_y_grid
     n_z = em.n_z_grid
 
-    # TFSF coefficients — identical to waveguide_port.py apply_waveguide_port_h/e
     from rfx.core.yee import MaterialArrays, component_h_materials
     mu_abs = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
     coeff_H = float(dt / (mu_abs * dx))
 
-    # Direction: +x → H plane behind = i-1; sign = -1 (matches waveguide port)
-    #            -x → H plane behind = i;   sign = +1
     if port.direction == "+x":
         h_i_offset = -1
         sign = -1.0
@@ -1222,16 +1042,12 @@ def make_msl_port_sources_jm(
         hy_w = float(em.hy[j_loc, k_loc])
         hz_w = float(em.hz[j_loc, k_loc])
 
-        # Each electric correction reads its own component's coefficient;
-        # transverse interfaces can give Ey and Ez different permittivities.
         from rfx.model.materials import e_update_coefficient_at
         coeff_E = float(e_update_coefficient_at(materials, (i, j, k), "ez", dt, grid=grid)) / dx
         coeff_Ey = float(e_update_coefficient_at(materials, (i, j, k), "ey", dt, grid=grid)) / dx
 
-        i_h = int(i) + h_i_offset  # H correction cell index
+        i_h = int(i) + h_i_offset
 
-        # --- E correction at i_feed (driven by H profile) ---
-        # Ez += -sign * coeff_E * hy_mode * wave_e
         if hy_w != 0.0:
             e_specs.append(SourceSpec(
                 i=int(i), j=int(j), k=int(k),
@@ -1239,7 +1055,6 @@ def make_msl_port_sources_jm(
                 waveform=jnp.array(-sign * coeff_E * hy_w, dtype=jnp.promote_types(dtype, jnp.float32)) * base_wave_e,
             ))
 
-        # Ey += +sign * coeff_E * hz_mode * wave_e
         if hz_w != 0.0:
             e_specs.append(SourceSpec(
                 i=int(i), j=int(j), k=int(k),
@@ -1247,11 +1062,9 @@ def make_msl_port_sources_jm(
                 waveform=jnp.array(sign * coeff_Ey * hz_w, dtype=jnp.promote_types(dtype, jnp.float32)) * base_wave_e,
             ))
 
-        # --- H correction at i_feed - 1 (driven by E profile) ---
         if i_h < 0:
-            continue  # clamp: no H correction before grid boundary
+            continue
 
-        # Hy += sign * coeff_H * ez_mode * wave_h   (sign=-1 for +x)
         if ez_w != 0.0:
             h_specs.append(MagneticSourceSpec(
                 i=i_h, j=int(j), k=int(k),
@@ -1259,7 +1072,6 @@ def make_msl_port_sources_jm(
                 waveform=jnp.array(sign * coeff_H * ez_w, dtype=jnp.promote_types(dtype, jnp.float32)) * base_wave_h,
             ))
 
-        # Hz += -sign * coeff_H * ey_mode * wave_h
         if ey_w != 0.0:
             h_specs.append(MagneticSourceSpec(
                 i=i_h, j=int(j), k=int(k),
@@ -1270,9 +1082,6 @@ def make_msl_port_sources_jm(
     return e_specs, h_specs
 
 
-# ---------------------------------------------------------------------------
-# Probe-plane locations
-# ---------------------------------------------------------------------------
 
 
 def _msl_position_to_index(grid, pos):
@@ -1309,16 +1118,14 @@ def _msl_coord_for_index(grid, axis: str, target_i: int) -> float:
     if axis in getattr(grid, 'periodic_axes', ''):
         return grid.node_of(axis, grid.index_of(axis, int(target_i) * float(grid.cells(axis)[0])))
     clamped = max(0, min(int(target_i), n_axis - 1))
-    u = clamped - pad  # user-domain (non-CPML) interior index
+    u = clamped - pad
     arr_attr = {"x": "dx_arr", "y": "dy_arr", "z": "dz"}[axis]
     from rfx.model.graded_grid import NonUniformGrid
     if not isinstance(grid, NonUniformGrid):
-        # Uniform Grid — legacy scalar spacing (byte-identical).
         return float(u * grid.dx)
     per_cell = getattr(grid, arr_attr, None)
     if per_cell is None:
         return float(u * grid.dx)
-    # NonUniformGrid — cumulative interior cell-edge positions.
     pad_hi = int(getattr(grid, f"pad_{axis}_hi", 0))
     from rfx.model.graded_grid import interior_cells
     interior = interior_cells(np.asarray(per_cell, dtype=float), pad, pad_hi)
@@ -1509,9 +1316,6 @@ def msl_probe_x_coords_n(
     )
 
 
-# ---------------------------------------------------------------------------
-# Closed Ampère-loop current (∮H·dl) for S-parameter extraction
-# ---------------------------------------------------------------------------
 
 
 def msl_loop_current(
@@ -1646,19 +1450,12 @@ def msl_loop_current(
     js = slice(j_lo, j_hi + 1)
     ks = slice(k_trace_lo, k_trace_hi + 1)
 
-    # Horizontal legs — Hy integrated across the trace width.
     bottom = (hy_plane[:, js, k_trace_lo - 1] * dy[js]).sum(axis=1)
     top = (hy_plane[:, js, k_trace_hi] * dy[js]).sum(axis=1)
-    # Vertical legs — Hz integrated over the trace height.
     right = (hz_plane[:, j_hi, ks] * dz[ks]).sum(axis=1)
     left = (hz_plane[:, j_lo - 1, ks] * dz[ks]).sum(axis=1)
 
     i_loop = bottom - top + right - left
-    # Negate for positive-going ports: "+x" and "+y" both negate, "-x"
-    # and "-y" both do not. Resolving through msl_axis_roles also makes an
-    # unsupported direction fail loudly here rather than silently skipping
-    # the negation, which is what a bare ``== "+x"`` test would have done
-    # for a "+y" port.
     _prop, _w, _n, sign = msl_axis_roles(direction)
     if sign > 0:
         i_loop = -i_loop

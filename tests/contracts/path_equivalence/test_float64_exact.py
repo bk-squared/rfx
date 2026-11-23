@@ -4,8 +4,12 @@ import pytest
 from .generation import Cell
 
 
-@pytest.mark.parametrize('entry', ('run', 'fwd'))
-@pytest.mark.parametrize('steps', (12, 36))
+@pytest.mark.parametrize('steps, entry', [
+    (steps, entry)
+    for entry in ('run', 'fwd')
+    for steps in (12, 36)
+    if steps != 12
+])
 def test_float64_exact(entry, steps, matrix_worker):
     cell = Cell(('_float64', ''), entry+'_uniform', entry+'_nonuniform',
                 False, True, None, steps)

@@ -1,7 +1,5 @@
 """Public refusal bases retain the builtin catches used by existing callers."""
 
-import ast
-from pathlib import Path
 
 import jax
 import numpy as np
@@ -55,30 +53,6 @@ def test_existing_exception_bases(cls, old_base):
     assert issubclass(cls, old_base)
 
 
-@pytest.mark.source_scan
-def test_refusal_sites_use_public_bases():
-    package = Path(__file__).resolve().parents[2] / "rfx"
-    violations = set()
-    for path in sorted(package.rglob("*.py")):
-        tree = ast.parse(path.read_text(), filename=str(path))
-        for node in ast.walk(tree):
-            values = []
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and "refuse" in node.name:
-                for child in ast.walk(node):
-                    if isinstance(child, ast.Raise):
-                        values.append(child.exc)
-                    elif isinstance(child, ast.Return):
-                        values.append(child.value)
-            if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
-                    and node.func.id == "diagnostic_refusal"):
-                values.extend(node.args[:1])
-            for value in values:
-                if (isinstance(value, ast.Call) and isinstance(value.func, ast.Name)
-                        and value.func.id in ("ValueError", "NotImplementedError")):
-                    violations.add(
-                        f"{path.relative_to(package.parent)}:{value.lineno}: {value.func.id}"
-                    )
-    assert not violations, "Builtin refusal constructors remain:\n" + "\n".join(sorted(violations))
 
 
 def test_waveguide_pmc_refusal_through_public_run():

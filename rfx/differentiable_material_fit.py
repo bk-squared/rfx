@@ -74,7 +74,7 @@ from typing import Callable, cast
 import jax
 import jax.numpy as jnp
 
-from rfx.measurement.dft import probe_spectrum
+from rfx.measurement import dft
 import numpy as np
 
 from rfx.materials.debye import DebyePole, init_debye
@@ -565,7 +565,10 @@ def differentiable_material_fit(
 
         ts = result.time_series
 
-        s_raw = probe_spectrum(ts, freqs, dt)
+        s_raw = jnp.stack([
+            dft.transform(ts[:, i], freqs, dt, pe.component[0].upper(), window="rect")
+            for i, pe in enumerate(sim._probes)
+        ], axis=1).T
 
         n_ports = s_meas_jnp.shape[0]
         s_sim = _normalize_probe_spectra(
