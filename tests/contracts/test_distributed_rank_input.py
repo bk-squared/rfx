@@ -2,7 +2,7 @@
 
 CPU compilation also runs the SPMD partitioner: inspect compiled HLO, not
 just StableHLO, where a device-identity operation can still be hidden.
-One fresh subprocess uses the same two virtual host devices as root conftest,
+Each group uses a fresh subprocess with the same two virtual host devices as root conftest,
 with XLA dumping every optimized module, including eager and setup JITs.
 """
 import os
@@ -14,8 +14,9 @@ import time
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
-from rfx import Box, DebyePole, LorentzPole, Simulation
+from rfx import Box, DebyePole, LorentzPole, Simulation, SnapshotSpec
 
 
 # Extended wire ports refuse before compilation.
@@ -54,8 +55,15 @@ def model(lane, mode, boundary):
         sim.add_source(pos, "ez", amplitude_kind=("current" if material_kind == "sharded" else "field"),
                        waveform=lambda t: amplitude * jnp.cos(t * 2e10))
     sim.add_probe(pos, "ez")
-    if mode == "ntff":
+    if mode in ("ntff", "farfield"):
         sim.add_ntff_box((3e-3, 2e-3, 2e-3), (12e-3, 5e-3, 5e-3), freqs=[5e9])
+    if mode == "planes":
+        sim.add_dft_plane_probe(axis="y", coordinate=3e-3, component="ez", freqs=[5e9])
+    if mode == "flux":
+        sim.add_flux_monitor(axis="y", coordinate=3e-3, freqs=[5e9])
+    if mode == "moments":
+        sim.add_current_moment_monitor((3e-3, 2e-3, 2e-3), (12e-3, 5e-3, 5e-3),
+                                       block_size=2e-3, freqs=[5e9])
     if material_kind in ("debye", "lorentz"):
         sim.add_material("debye", eps_r=4.,
                          **({"debye_poles": [DebyePole(delta_eps=1., tau=1e-11)]}
@@ -74,14 +82,38 @@ PROGRAMS = [case for case in CASES if not case[1].startswith("forward")] + [
     ("uniform", "gradient-debye", "cpml"),
     ("graded", "gradient-checkpoint", "cpml"),
 ]
+PROGRAM_GROUPS = {
+    "existing": PROGRAMS,
+    "record-join": [("uniform", kind, "cpml") for kind in
+                    ("planes", "flux", "moments", "snapshots", "farfield")],
+}
 
 
-def exercise_programs():
+def exercise_programs(group):
     devices = jax.devices("cpu")
     assert len(devices) == 2, devices
-    for lane, mode, boundary in PROGRAMS:
+    for lane, mode, boundary in PROGRAM_GROUPS[group]:
         sim = model(lane, mode, boundary)
         kwargs = dict(n_steps=4, devices=devices, skip_preflight=True)
+        if mode == "snapshots":
+            kwargs["snapshot"] = SnapshotSpec(interval=1, components=("ez",))
+        if mode == "farfield":
+            from rfx.measurement.farfield import compute_far_field_jax
+
+            def radiation(amplitude):
+                scene = model(lane, mode, boundary)
+                scene.add_source((7e-3, 3e-3, 3e-3), "ez", amplitude_kind="field",
+                                 waveform=lambda t: amplitude*jnp.cos(t*2e10))
+                result = scene.run(**kwargs)
+                ff = compute_far_field_jax(result.ntff_data, result.ntff_box, scene._build_grid(),
+                                           jnp.asarray([.4]), jnp.asarray([.3]))
+                return jnp.sum(jnp.abs(ff.E_theta)**2 + jnp.abs(ff.E_phi)**2)
+
+            value = jax.value_and_grad(radiation)(jnp.float32(1.))
+            jax.block_until_ready(value)
+            assert all(np.isfinite(np.asarray(a)).all() for a in value)
+            print(f"completed {lane}-{mode}-{boundary}", flush=True)
+            continue
         if mode.startswith("gradient"):
             grid = sim._build_nonuniform_grid()
             eps = jnp.full(grid.shape, 1.5, jnp.float32)
@@ -127,7 +159,8 @@ def assert_clean_dumps(directory):
     return len(modules)
 
 
-def test_distributed_programs_have_no_device_identity(tmp_path, record_property):
+@pytest.mark.parametrize("group", PROGRAM_GROUPS)
+def test_distributed_programs_have_no_device_identity(tmp_path, record_property, group):
     root = Path(__file__).resolve().parents[2]
     dump = tmp_path / "hlo"
     dump.mkdir()
@@ -137,17 +170,17 @@ def test_distributed_programs_have_no_device_identity(tmp_path, record_property)
                # A persistent compilation cache would hide optimized modules.
                JAX_ENABLE_COMPILATION_CACHE="false")
     started = time.monotonic()
-    run = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--worker"],
+    run = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--worker", group],
                          cwd=root, env=env, capture_output=True, text=True, timeout=240)
     elapsed = time.monotonic() - started
     assert run.returncode == 0, run.stdout + run.stderr
-    assert run.stdout.count("completed ") == len(PROGRAMS), run.stdout
+    assert run.stdout.count("completed ") == len(PROGRAM_GROUPS[group]), run.stdout
     count = assert_clean_dumps(dump)
     record_property("wall_seconds", elapsed)
     record_property("optimized_dump_files", count)
-    print(f"{len(PROGRAMS)} programs; {count} optimized dump files; {elapsed:.2f} s")
+    print(f"{group}: {len(PROGRAM_GROUPS[group])} programs; {count} optimized dump files; {elapsed:.2f} s")
 
 
 if __name__ == "__main__":
-    assert sys.argv[1:] == ["--worker"], sys.argv
-    exercise_programs()
+    assert len(sys.argv) == 3 and sys.argv[1] == "--worker" and sys.argv[2] in PROGRAM_GROUPS, sys.argv
+    exercise_programs(sys.argv[2])
