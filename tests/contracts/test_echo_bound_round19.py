@@ -149,7 +149,8 @@ def test_traced_zero_damping_cannot_judge(resonance):
                                    lorentz=([pole], [None]))
 
     result = jax.jit(bound)(jnp.float32(0.))
-    witness = dict(status='pass', db=-100., reason='', window_starts={1000: (500, 750)})
+    witness = dict(status='pass', db=-100., reason='',
+                   window_starts={10**12: (5 * 10**11, 75 * 10**10)})
     db, detail = with_echo_bound(-100., witness, result, float(grid.dt))
     assert np.isinf(result['n_max']) and np.isinf(result['tau_max'])
     assert np.isnan(db) and detail['status'] == 'undetermined'
