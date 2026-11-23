@@ -61,6 +61,16 @@ current 1.055e+05 1.043e+05 1.035e+05
 field 0.00196 0.00109 0.0004805
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/model/assets/sources/structure.png" loading="lazy" alt="Section through an empty domain surrounded by absorber, with the source and the probe 18 mm apart on one horizontal line." />
+  <figcaption>The first of the six models, with 2 mm cells, cut at y = 30 mm. In each model the source and the probe sit on two Ez grid points, 18 mm apart along x and half a cell above z = 30 mm.</figcaption>
+</figure>
+
+<figure data-rfx="media">
+  <img src="/rfx/model/assets/sources/records.png" loading="lazy" alt="Two panels of Ez at the probe against time: for the ‘current’ amplitude kind the curves of the three cell sizes nearly coincide, and for the ‘field’ kind the amplitude falls as the cells get smaller." />
+  <figcaption>The probe's whole record in each of the six runs, one panel for each <code>amplitude_kind</code>. The numbers printed by the example are the largest magnitudes of these records.</figcaption>
+</figure>
+
 With `"current"`, the peak field at the probe 18 mm away moves by 1.1 % from
 2 mm to 1.5 mm cells and by 0.8 % from 1.5 mm to 1 mm: it converges, as a
 physical source should. With `"field"`, adding a fixed E increment to one cell

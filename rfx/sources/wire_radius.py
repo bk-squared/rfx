@@ -37,10 +37,6 @@ from rfx.model.materials import e_update_material_at
 
 
 LATTICE_RADIUS = math.exp(-np.euler_gamma) / math.sqrt(8.0)
-# Long-record sweeps bracket a loss of stability near 0.29 at the default step.
-# At the conservative bound below mu_eff/mu = 0.9952 > 0.99**2: it also
-# retains the unmodified grid's 0.99 vacuum-CFL margin (E stamps are positive).
-# No negative magnetic energy / negative series inductor is admitted.
 MAX_RADIUS_RATIO = 0.2
 
 
@@ -230,8 +226,6 @@ def stamp_wire_radius(grid, materials, component, radius, cells, *, pole_clearan
         from rfx.model.graded_ports import port_metric_axes
         spine = (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)
         if all(v is not None for v in spine):
-            # A fixed mesh built inside jit has traced solver arrays but
-            # concrete geometry spines. Validate geometry on those spines.
             widths = [np.asarray(v) for v in spine]
         else:
             metrics = port_metric_axes(grid)
@@ -266,8 +260,6 @@ def stamp_wire_radius(grid, materials, component, radius, cells, *, pole_clearan
     else:
         widths = [grid.cells(t) for t in range(3)]
 
-    # The measured model excludes absorber intersections. Keep every
-    # modified H edge outside its pads, including along the port axis.
     pad_lo = getattr(grid, f"pad_{'xyz'[axis]}_lo", 0)
     pad_hi = getattr(grid, f"pad_{'xyz'[axis]}_hi", 0)
     duplicate = int('xyz'[axis] not in getattr(grid, "periodic_axes", ""))
@@ -280,7 +272,6 @@ def stamp_wire_radius(grid, materials, component, radius, cells, *, pole_clearan
             "axial grading is not implemented for this model")
 
     h_parts = list(materials.mu_r_wire or (None, None, None))
-    # Read the background before any of this port's E quadrature stamps.
     own_eps = lumped_components(materials.eps_r_lumped)[axis]
     eps = [e_update_material_at(materials, c, component,
             tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz"), grid=grid)[0]

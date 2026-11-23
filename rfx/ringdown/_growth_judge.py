@@ -118,7 +118,6 @@ def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
             dec = replace(model, s=model.s[decaying], c=model.c[decaying])
             own = np.abs(_pole_tails(dec, n_record - 1, freqs)) / horizon_denominator[:, None, :]
             if not np.isfinite(own).all():
-                # The horizon only bounds a growing pole's tail; without one there is nothing to judge.
                 return (result("cannot judge", "non-finite decaying pole tail share") if growing
                         else result("pass", none_growing))
             significant = np.any(own >= significance, axis=(0, 2))
@@ -137,8 +136,6 @@ def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
         band = float(np.exp(min(log_band, log_max)))
         s, c = model.s[growing], model.c[growing]
         rate = s.real * model.dt
-        # |1-exp(z)| = exp(Re(z)) |1-exp(-z)| for a growing pole.
-        # No positive exponential is formed, even far outside the band.
         z = s[None, :] * model.dt - 2j * np.pi * freqs[:, None] * model.dt
         log_divisor = np.maximum(rate, 0)[None, :] + np.log(np.abs(
             -np.expm1(np.where(rate[None, :] > 0, -z, z))))
@@ -146,12 +143,8 @@ def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
                    + (n_record - model.n_ref) * rate)[:, None]
         log_values = (log_amp[None, :, :] + np.log(np.abs(c))[None, :, :]
                       - log_divisor[:, :, None] - np.log(denominator[:, None, :]))
-        # -inf represents an exact zero residue or inactive channel; +inf/NaN
-        # here means a singular divisor or invalid denominator, not overflow.
         values = np.exp(np.minimum(log_values, log_max))
         share = np.max(values, axis=(1, 2))
-        # The S-parameter report's kept-growing row retains its positive-rate
-        # meaning; the judge's total share also covers unresolved decay and DC rate.
         if np.any(rate > 0):
             positive_share = np.max(values[:, rate > 0, :], axis=(1, 2))
     f, k, ch = np.unravel_index(np.argmax(log_values), values.shape)

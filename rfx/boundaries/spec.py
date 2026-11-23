@@ -79,7 +79,6 @@ class Boundary:
                 f"lo={self.lo!r} hi={self.hi!r}. Use Boundary(lo='periodic', "
                 f"hi='periodic') or rename the asymmetric side."
             )
-        # thickness is meaningful only on absorbing faces.
         if self.lo_thickness is not None and self.lo not in ABSORBING_TOKENS:
             raise ValueError(
                 f"lo_thickness is only meaningful for absorbing faces "
@@ -220,7 +219,6 @@ class BoundarySpec:
         for axis_name, boundary in (("x", self.x), ("y", self.y),
                                     ("z", self.z)):
             if boundary.lo == "periodic":
-                # symmetry already enforced in Boundary.__post_init__
                 out.append(axis_name)
         return "".join(out)
 

@@ -17,17 +17,11 @@ MESSAGE = (
 )
 
 
-@pytest.mark.parametrize("entry", ["run", "forward"])
-@pytest.mark.parametrize("smoothing,body,transform", [
-    ("kottke_pec", "volume", "eager"),
-    (True, "volume", "eager"),
-    (False, "volume", "eager"),
-    ("kottke_pec", "dielectric", "eager"),
-    ("kottke_pec", "sheet", "eager"),
-    ("kottke_pec", "box_sheet", "eager"),
-    ("kottke_pec", "wire", "eager"),
-    ("kottke_pec", "volume", "jit"),
-    ("kottke_pec", "volume", "grad"),
+@pytest.mark.parametrize('smoothing, body, transform, entry', [
+    (smoothing, body, transform, entry)
+    for entry in ['run', 'forward']
+    for smoothing,body,transform in [('kottke_pec', 'volume', 'eager'), (True, 'volume', 'eager'), (False, 'volume', 'eager'), ('kottke_pec', 'dielectric', 'eager'), ('kottke_pec', 'sheet', 'eager'), ('kottke_pec', 'box_sheet', 'eager'), ('kottke_pec', 'wire', 'eager'), ('kottke_pec', 'volume', 'jit'), ('kottke_pec', 'volume', 'grad')]
+    if entry != 'run' or (smoothing, body, transform) == ('kottke_pec', 'volume', 'eager')
 ])
 def test_kottke_pec_volume_warning(entry, smoothing, body, transform):
     """#2390: off-grid PEC/dielectric faces bias a closed-box resonance.

@@ -473,25 +473,7 @@ where nx is the cell count along x, the axis the run splits; the 2 counts one gh
 
 Example, measured: a Debye box of 25 × 13 × 13 cells holds 13 × 20,280 = 263,640 bytes on each of two devices, and 13 × 22,308 = 290,004 bytes on each of three. By the formula, a model of 10⁸ cells with one Debye pole holds about 13 × 0.4 GB ≈ 5.2 GB on every device, whatever the device count.
 What to do: if a model fits only when split over devices, call `run(devices=...)` or `forward(distributed=True)` without an enclosing `jax.jit`.
-
-### A multi-device run that records snapshots holds more than twice the whole snapshot record on each device while it joins the record
-
-Tracker: #2608
-
-`run(devices=..., snapshot=SnapshotSpec(...))` joins the devices' snapshot histories into one record at the end of the
-run. While it does so, each device holds more than twice the whole snapshot record, and after the run every device
-keeps a full copy of the record. The same run on one device peaks at 1.0 to 1.05 times the record. So the largest
-snapshot record that fits is smaller on two devices than on one.
-Measured on two CPU host devices, all six components of a uniform 48³-cell box (CPML cells included) recorded for 100,
-200 and 400 steps: 2.75 to 2.76 times the record on each device at all three lengths, growing by 6.96 MiB per recorded
-step. Host memory rose by a further 1.0 times the record during the join, so these figures are lower bounds (record
-kept with the project). GPUs, graded meshes, more than two devices, fewer components and slices were not measured.
-From the code: the join needs at least twice the record on each device for any device count, so more devices do not
-raise the limit; the multiple is larger when fewer components are recorded; and a slice normal to x (`slice_axis=0`) is
-held whole on every device during the run, so its join grows with the device count.
-What to do: record fewer frames (`SnapshotSpec(interval=...)`); the measured peak grew in proportion to the frame count.
-A 2-D slice normal to y or z (`slice_axis=1` or `2` with `slice_index`) lowers the peak with its size; fewer components
-lower it by less than the record shrinks. Or run a snapshot-heavy case on one device.
+Or set the environment variable `JAX_USE_SIMPLIFIED_JAXPR_CONSTANTS=1` before Python imports jax. Then the twelve measured caller-jit cases (uniform and graded boxes with a dielectric, a Debye or Lorentz pole, a lumped port or a thin wire, on two and three devices) compile with no constant as large as one device's slab. Setting it from Python after jax is imported has no effect. The variable is process-wide: it changes how every jax program in the process takes in the arrays its functions close over. What each device then holds as program inputs was not measured.
 
 ### `preflight()` and `realized_geometry()` keep the model's whole-domain inspection arrays until a solve or `clear_inspection_cache()`
 
@@ -810,6 +792,19 @@ Tracker: #2725
 
 The waveguide ports' own mode profiles do not have this problem: they take the requested mode within the pair.
 
+### Saved waveguide-port configurations checked in another process can read "cannot judge" for a correct record.
+
+Tracker: #2988
+
+`settling_db_from_port_records` rebuilds each port's incident tables in float64 and requires them to equal the stored
+tables bit for bit. The last bit of that rebuild depends on which SIMD path NumPy takes on the machine. Configurations
+saved on one machine and checked on another (or under another `NPY_DISABLE_CPU_FEATURES` setting) can therefore be
+refused: the settling value is NaN, with status `undetermined` and the reason "… is not the table its configuration
+rebuilds …". On one x86 machine with AVX512, tables built with NumPy's AVX512 path enabled and rebuilt with it disabled
+differed by one float64 unit in the last place at the table's peak, and the check refused them in both directions.
+The check passes in the process that built the record. Run the settling check where the record was built, or on a
+machine with the same NumPy build and CPU features.
+
 ### MSL S-parameters under `eps_override` refuse an override that varies under a port line, and a call under `jax.jit`
 
 Tracker: none — accepted limitation (refused at default: tests/unit/sparams/test_msl_feed_shift_eps_override.py::test_override_varying_along_the_shifted_length_is_refused_by_port_name)
@@ -900,39 +895,6 @@ Stronger or single weak modes do hold the stop. What to do: where weak high-Q
 features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
 `tests/unit/sparams/test_ringdown_early_stop.py`.
-
-### A long identification window can be refused at stage 2, the original-rate residue fit, above the memory bound.
-
-Tracker: #2874
-
-`run(ringdown=...)` and `forward(ringdown=...)` identify poles in two stages:
-- stage 1, the pencil, runs on the decimated record;
-- stage 2 fits the residues at the original sample rate and needs `1.71 × 16 × 5 × n_win × r` bytes, where `n_win` is the window length in samples and `r` the kept rank.
-
-When that exceeds `rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES` (4 GiB by default), the window is refused by name with `IdentificationMemoryRefused`. The message names the stage, the dimensions, the memory needed and the bound. For example, n_win = 80,000 at r = 600 needs 6.1 GiB. No number is returned for that window.
-
-What to do:
-- raise `rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES` when the device has the memory;
-- or shorten the identification window.
-
-#2874 plans a streamed stage-2 fit, whose memory scales with `r²`.
-
-### A long identification window can exhaust device memory in the traced pole step of `forward(ringdown=...)`, with no refusal.
-
-Tracker: #2874
-
-`forward(ringdown=...)` moves the identified poles by one frozen Gauss-Newton step, so a derivative reaches them (`rfx/ringdown/_jax.py`, `completion` and `_pole_step`). For each identification window the step builds arrays of `M × C × K` complex values, 8 bytes each (complex64; 16 bytes with `jax_enable_x64`): the pole-derivative basis, and its projection, which is the step's Jacobian. It factors that Jacobian by QR once for the value and once more for the derivative, and each factor is about as large again.
-- `M` is the window length in samples;
-- `C` is the number of fitted channels: with ports, the voltage and the current of each port plus the identification probe columns; with probe spectra only, the identification probe columns;
-- `K` is the window's pole budget, the smaller of the pencil's capacity and `rfx.ringdown.TRACED_POLE_BUDGET` (512 by default).
-
-Two windows are identified: the main window `[window_start × T, T]` and the early-start comparison window `[window_start / 2 × T, T]`, which is 1.5 times longer at the default `window_start = 0.5`. For example, a 120,635-step record with 8 channels and K = 512 gives M = 60,317 and 90,476, so each array takes 60,317 × 8 × 512 × 8 B = 1.98 GB and 90,476 × 8 × 512 × 8 B = 2.96 GB. Nothing checks this memory before the step runs: a device without it ends the call with the allocator's `RESOURCE_EXHAUSTED`.
-
-What to do:
-- shorten the identification window: a larger `RingdownSpec.window_start`, or a shorter record;
-- or lower the pole budget by assignment before the call is traced, for example `rfx.ringdown.TRACED_POLE_BUDGET = 256`; a function already compiled by `jax.jit` keeps its old budget until it is traced again. A window that keeps more poles than the budget then returns NaN, and its status reason names the kept count and the budget.
-
-#2874's streamed fit is planned to cover this step too.
 
 ### A plain record shorter than a weakly coupled resonance's decay misreads S near it on any port, and the end-of-run decay check can miss it.
 

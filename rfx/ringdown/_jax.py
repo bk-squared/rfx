@@ -61,22 +61,10 @@ import warnings
 import jax
 import numpy as np
 
-#: The inert padding pole, per step (``s = log(0.5) / dt``). Its basis column
-#: underflows toward zero within a few hundred samples and is masked anyway.
 INERT_LAMBDA = 0.5
-#: Block length of the plain DFT (host-built float64 kernel, cast per block).
 DFT_BLOCK = 1024
-#: Mutations, for the unit tests' revived-defect checks only:
-#: ``"poles_constant"`` drops the pole derivative (the frequency-shift term is
-#: lost); ``"hold_residues"`` stops the gradient of the residues;
-#: ``"device_tail_arg"`` forms ``s dt + log z`` on the device in the working
-#: precision (the complex64 cancellation at high Q).
 MUTATIONS = (None, "poles_constant", "hold_residues", "device_tail_arg")
-#: Host status codes carried back with the poles.
 STATUS_OK, STATUS_FAILED, STATUS_OVER_BUDGET = 0, 1, 2
-#: Set by the caller (not the host): its in-program consistency check failed,
-#: or a precondition checked before the completion (the solver's step, the
-#: port's probed span) did.
 STATUS_INCONSISTENT, STATUS_PRECONDITION = 3, 4
 
 
@@ -98,9 +86,6 @@ def _callback_keywords():
     return {"vectorized": False}
 
 
-# ---------------------------------------------------------------------------
-# Poles from the host
-# ---------------------------------------------------------------------------
 
 def host_poles(identify_window, window, k_max, dt, freqs):
     """``(s, mask, status, tail_arg, count)`` from the host, traced constants.
@@ -132,7 +117,7 @@ def host_poles(identify_window, window, k_max, dt, freqs):
     shape = tuple(int(d) for d in window.shape)
     dt = float(dt)
     inert = complex(np.log(INERT_LAMBDA)) / dt
-    logz = -2j * np.pi * np.asarray(freqs, dtype=np.float64) * dt      # (nf,)
+    logz = -2j * np.pi * np.asarray(freqs, dtype=np.float64) * dt
     nf = int(logz.size)
 
     def words(z):
@@ -153,7 +138,7 @@ def host_poles(identify_window, window, k_max, dt, freqs):
         except IdentificationMemoryRefused:
             raise
         except (TimeoutError,): raise
-        except Exception:  # noqa: BLE001 - recorded in status (STATUS_FAILED)
+        except Exception:  # noqa: BLE001
             s, status = np.zeros(0, dtype=np.complex128), STATUS_FAILED
         count = -1 if status == STATUS_FAILED else s.size
         if s.size > K:
@@ -161,7 +146,7 @@ def host_poles(identify_window, window, k_max, dt, freqs):
         s_out[:s.size] = s
         if s.size:
             mask[:s.size] = np.where(complete, 1, 2)
-        arg = s_out[None, :] * dt + logz[:, None]                          # float64
+        arg = s_out[None, :] * dt + logz[:, None]
         return (words(s_out), mask, np.asarray(status, dtype=np.int32), words(arg),
                 np.asarray(count, dtype=np.int32))
 
@@ -178,19 +163,11 @@ def host_poles(identify_window, window, k_max, dt, freqs):
         parts = jax.lax.bitcast_convert_type(x[..., 0] if n_words == 1 else x, rdt)
         return jax.lax.complex(parts[..., 0], parts[..., 1]).astype(cdt)
 
-    # The pole is the unit that crossed from the host: a complex s (1/s) in
-    # the working precision.
     return from_words(s_words), mask_i, status, from_words(arg_words), count
 
 
-# ---------------------------------------------------------------------------
-# DFTs
-# ---------------------------------------------------------------------------
 
 
-# ---------------------------------------------------------------------------
-# Masked least squares (QR on normalised columns, padded columns decoupled)
-# ---------------------------------------------------------------------------
 
 def _basis(s, M, dt):
     """``B[m, k] = exp(s_k m dt)``, ``m = 0..M-1`` (the window's first sample is m = 0)."""
@@ -215,8 +192,6 @@ def _qr_masked(A, mask):
     norms = jax.lax.stop_gradient(jnp.where(mask > 0, norms, 1.0))
     aug = jnp.diag((1.0 - mask).astype(A.dtype))
     A_aug = jnp.concatenate([A / norms.astype(A.dtype)[None, :], aug], axis=0)
-    # The derivative rule of QR issues its own matrix products, which a
-    # precision= argument cannot reach; the context sets them to HIGHEST too.
     with jax.default_matmul_precision("highest"):
         Q, R = jnp.linalg.qr(A_aug, mode="reduced")
     return Q, R, norms
@@ -275,8 +250,10 @@ def _first_order_only_jvp(primals, tangents):
 def _pole_step(Yw, A, w, mask_c):
     """The frozen Gauss-Newton pole step: zero in value, ``Dmat dYw`` in derivative.
 
-    ``Yw (M, C)`` is the complex window, ``A (M*C, K)`` the frozen weighted
-    Jacobian and ``w (C,)`` the frozen channel weights. The value is the
+    ``Yw (r, C)`` is the compressed window ``Q2^H Y``, ``A (r*C, K)``
+    the frozen compressed weighted Jacobian ``Ghat`` and ``w (C,)`` the
+    frozen channel weights. The projection is linear in the window with
+    its poles, factors and column norms frozen. The value is the
     least-squares solution against ``(Yw - Yw) w``, which is zero unless the
     data are not finite. The first derivative is the least-squares solution
     against ``dYw w``; a second derivative is NaN (:func:`_first_order_only`).
@@ -298,9 +275,6 @@ def _pole_step_jvp(primals, tangents):
     return ds, ds_dot
 
 
-# ---------------------------------------------------------------------------
-# The completion map
-# ---------------------------------------------------------------------------
 
 def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
                mutation=None, return_aux=False):
@@ -327,16 +301,14 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
     from rfx.measurement.ringdown_tail_jax import plain_dft, tail_dft
     import jax
     import jax.numpy as jnp
-    from rfx._internal._precision import HIGHEST
 
     rdt, cdt = working_dtypes()
     if mutation not in MUTATIONS:
         raise ValueError(f"mutation {mutation!r} not in {MUTATIONS}")
-    n, C = int(y.shape[0]), int(y.shape[1])
+    n = int(y.shape[0])
     n_start = int(n_start)
     if not (0 <= n_start < n):
         raise ValueError(f"window [{n_start}, {n}) outside {n} samples")
-    M = n - n_start
     K = int(s0.shape[0])
     y = y.astype(rdt)
     yw = y[n_start:]
@@ -345,30 +317,10 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
     mask = (mask > 0).astype(rdt)
     mask_c = mask.astype(cdt)
 
-    # the value: least-squares residues at the host poles
-    B0, t = _basis(s0, M, dt)
-    B0m = B0 * mask_c[None, :]
-    Q0, R0, nrm0 = _qr_masked(B0, mask_c)
-    c0 = _solve_qr(Q0, R0, nrm0, mask_c, Yw)                                   # (K, C)
+    from rfx.measurement.ringdown_blocked import fit_window
 
-    if mutation == "poles_constant":
-        ds = jnp.zeros_like(s0)
-    else:
-        # the frozen Gauss-Newton implicit derivative of the poles
-        rms = jnp.sqrt(jnp.mean(jnp.abs(yw) ** 2, axis=0))
-        w = jax.lax.stop_gradient(1.0 / rms).astype(cdt)                       # (C,)
-        D = t.astype(cdt)[:, None, None] * B0m[:, None, :] * (c0.T * w[:, None])[None, :, :]
-        QB = Q0[:M] * mask_c[None, :]
-        PD = D - jnp.einsum("mk,kcj->mcj", QB,
-                            jnp.einsum("mk,mcj->kcj", jnp.conj(QB), D, precision=HIGHEST),
-                            precision=HIGHEST)
-        A = jax.lax.stop_gradient(PD.reshape(M * C, K))
-        ds = _pole_step(Yw, A, w, mask_c)
-    s = s0 + ds
-
-    # residues re-fitted differentiably at s(y); in value, the fit at s0
-    B, _t = _basis(s, M, dt)
-    c = lstsq_masked(B, Yw, mask_c)
+    s, c, c0, ds = fit_window(Yw, s0, dt, mask_c, pole_step=_pole_step,
+                              constant_poles=mutation == "poles_constant")
     if mutation == "hold_residues":
         c = jax.lax.stop_gradient(c)
 

@@ -239,7 +239,8 @@ def assemble_cells(
             # vacuum values either way.
             cells, sheet, wire = classify_pec_entry(
                 solved_shape, _coords, _centres, _cell_sizes,
-                name=entry.material_name, grid=sampling_grid, domain_faces=domain_faces)
+                name=entry.material_name, grid=sampling_grid, domain_faces=domain_faces,
+                nominal_grid=grid)
             if assembly_entries is not None:
                 assembly_entries.append((id(declared_entry), cells, sheet, wire, solved_shape))
             if cells is not None:

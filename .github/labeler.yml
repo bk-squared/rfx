@@ -144,7 +144,6 @@
           - "docs/**"
           - "examples/**"
           - "validation/tmtt_paper/**"
-          - "gallery-deploy/**"
           - "README.md"
           - "ROADMAP.md"
 

@@ -79,7 +79,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         completed = subprocess.run(cmd, check=False)
     except FileNotFoundError:
-        # streamlit importable but console script absent: run via the module.
         cmd = [sys.executable, "-m", "streamlit", "run", str(app_path), *argv]
         completed = subprocess.run(cmd, check=False)
 
