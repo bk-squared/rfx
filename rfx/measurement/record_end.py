@@ -64,128 +64,38 @@ def echo_group_factor(configs):
     return g
 
 
-def material_echo_index(specs, bins, *, declared, debye=None, lorentz=None,
-                        override_maxima=()):
-    """Form the declared maximum index in host float64 for every caller."""
-    n_max = 1.0
-    for material in specs:
-        eps = np.asarray(material.eps_r, dtype=np.float64)
-        mu = np.asarray(material.mu_r, dtype=np.float64)
-        dp = getattr(material, 'debye_poles', None) or ()
-        lp = getattr(material, 'lorentz_poles', None) or ()
-        if (dp or lp) and not bins.size:
-            raise ValueError("the dispersive material read band is unavailable")
-        if not declared and (debye is not None or lorentz is not None or dp or lp):
-            raise ValueError("low-level dispersive material declarations are unavailable")
-        if not declared:
-            if not np.all(np.isfinite(eps)) or not np.all(np.isfinite(mu)) or np.any(eps <= 0) or np.any(mu <= 0):
-                raise ValueError("nonfinite or nonpositive material index")
-            n_max = max(n_max, float(np.sqrt(np.max(eps) * np.max(mu))))
-            if not np.isfinite(n_max):
-                raise ValueError("nonfinite material index")
-            continue
-        lp = tuple(p for p in lp if float(p.omega_0) != 0.)
-        for pole in lp:
-            resonance = float(pole.omega_0) / (2 * np.pi)
-            if (float(pole.omega_0) > 0 and float(pole.delta) == 0
-                    and np.min(bins) <= resonance <= np.max(bins)):
-                raise ValueError("an undamped Lorentz resonance lies inside the read band")
-        peaks = [np.sqrt(float(p.omega_0)**2 - 2 * float(p.delta)**2) / (2 * np.pi)
-                 for p in lp if float(p.omega_0)**2 > 2 * float(p.delta)**2]
-        samples = np.r_[0., bins, [f for f in peaks if np.min(bins) <= f <= np.max(bins)]]
-        for frequency in samples:
-            omega = 2 * np.pi * frequency
-            response = eps.astype(np.complex128)
-            for pole in dp:
-                response = response + float(pole.delta_eps) / (1 + 1j * omega * float(pole.tau))
-            for pole in lp:
-                strength = getattr(pole.kappa, 'si', pole.kappa)
-                response = response + np.asarray(strength) / (
-                    float(pole.omega_0)**2 - omega**2 + 2j * float(pole.delta) * omega)
-            values = np.sqrt(np.abs(response * mu))
-            if not np.all(np.isfinite(values)):
-                raise ValueError("nonfinite material index")
-            n_max = max(n_max, float(np.max(values)))
-    if override_maxima:
-        eps_max, design_max, mu_max = override_maxima
-        eps_max = max(1., float(eps_max), float(design_max),
-                      *(float(np.max(np.asarray(spec.eps_r, dtype=np.float64))) for spec in specs))
-        mu_max = max(1., float(mu_max),
-                     *(float(np.max(np.asarray(spec.mu_r, dtype=np.float64))) for spec in specs))
-        index = np.sqrt(eps_max * mu_max)
-        if not np.isfinite(index):
-            raise ValueError("nonfinite material override index")
-        n_max = max(n_max, float(index))
-    return n_max
-
-
 def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_ports=(),
                      debye=None, lorentz=None):
-    """Return ``tau_max, D, n_max, g`` from the realized physical domain.
+    """Compatibility entry: realize cells before reading the device quantity.
 
-    An unavailable host operand returns a reason instead of a numerical bound.
-    Pads and the nonperiodic fence-post cell never contribute to D. Declared
-    materials include vacuum and every material used by the geometry. For
-    dispersion, the static response, band edges and Lorentz peaks enter the
-    maximum, excluding Drude poles: a conductor's interior is not an echo
-    path. A low-level caller supplies concrete nondispersive arrays or an
-    explicit host bound.
+    Production runners attach their own bound. A raw ADE coefficient tuple
+    carries no physical susceptibility spec and is explicitly refused here.
     """
+    from rfx.measurement.echo_bound import realized_echo_bound, runner_echo_bound
     try:
-        bins = np.asarray(() if freqs is None else freqs, dtype=np.float64).reshape(-1)
-        configs = tuple(waveguide_ports.values() if hasattr(waveguide_ports, 'values')
-                        else waveguide_ports or ())
-        if not bins.size and configs:
-            bins = np.unique(np.concatenate([np.asarray(cfg.freqs, dtype=np.float64)
-                                             for cfg in configs]))
         if sim is not None:
-            specs = [sim._resolve_material(name) for name in
-                     dict.fromkeys(entry.material_name for entry in sim._geometry)]
-            if not bins.size:
-                bins = np.asarray([0., sim._freq_max], dtype=np.float64)
-        elif materials is not None:
-            specs = (materials if isinstance(materials, (list, tuple)) and not hasattr(materials, 'eps_r')
-                     else [materials])
-        else:
-            raise ValueError("material declarations are unavailable")
-        g = echo_group_factor(configs)
-        n_max = material_echo_index(specs, bins, declared=sim is not None,
-                                    debye=debye, lorentz=lorentz,
-                                    override_maxima=getattr(sim, '_echo_override_maxima', ()))
-        return echo_delay_bound_on_grid(grid, dict(n_max=n_max, g=g))
+            materials, debye, lorentz, *_ = sim._assemble_materials(grid)
+            return runner_echo_bound(sim, grid, materials, freqs=freqs,
+                debye=debye, lorentz=lorentz, waveguide_ports=waveguide_ports)
+        if materials is None:
+            raise ValueError('realized volume arrays are unavailable')
+        if debye is not None or lorentz is not None:
+            raise ValueError('low-level dispersive physical pole specs are unavailable')
+        return realized_echo_bound(grid, materials, freqs=freqs, waveguide_ports=waveguide_ports)
     except (TypeError, ValueError, AttributeError, OverflowError) as exc:
-        return dict(tau_max=None, D=None, n_max=None, g=locals().get('g'),
+        return dict(tau_max=None, D=None, n_max=None, g=None,
                     reason=_echo_bound_unavailable_reason(exc))
 
 
 def echo_delay_bound_on_grid(grid, bound):
-    """Reuse the declared index and group factor with realized host widths.
-
-    Only D and tau_max change. Declaration refusals remain unchanged; a
-    width refusal keeps the declared factors so realized widths can repair it.
-    """
-    if bound.get('reason') and (bound.get('n_max') is None or bound.get('g') is None):
+    """Compatibility regridding of a supplied realized bound, without transport."""
+    from rfx.measurement.echo_bound import bound_on_grid
+    if bound.get('reason'):
         return bound
-    try:
-        lengths = []
-        for axis in "xyz":
-            if axis == 'z' and getattr(grid, 'is_2d', False):
-                lengths.append(0.)
-                continue
-            cells = np.asarray(grid.cells(axis), dtype=np.float64)
-            if axis not in getattr(grid, "periodic_axes", ()):
-                cells = cells[:-1]
-            lo, hi = getattr(grid, f"pad_{axis}_lo"), getattr(grid, f"pad_{axis}_hi")
-            interior = cells[lo:len(cells) - hi]
-            if not interior.size or not np.all(np.isfinite(interior)) or np.any(interior <= 0):
-                raise ValueError(f"unavailable physical {axis} cell widths")
-            lengths.append(float(np.sum(interior)))
-        D = float(np.linalg.norm(lengths))
-        return dict(tau_max=2 * D * bound['n_max'] / (299792458.0 * bound['g']),
-                    D=D, n_max=bound['n_max'], g=bound['g'])
-    except (TypeError, ValueError, AttributeError, OverflowError) as exc:
-        return dict(tau_max=None, D=None, n_max=bound['n_max'], g=bound['g'],
-                    reason=_echo_bound_unavailable_reason(exc))
+    from types import SimpleNamespace
+    configs = (() if bound['g'] == 1 else
+               (SimpleNamespace(freqs=np.array([1.]), f_cutoff=np.sqrt(1 - bound['g']**2)),))
+    return bound_on_grid(grid, bound['n_max'], configs)
 
 
 def echo_bound_reason(bound):

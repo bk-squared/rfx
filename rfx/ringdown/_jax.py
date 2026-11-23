@@ -98,23 +98,6 @@ def _callback_keywords():
     return {"vectorized": False}
 
 
-def host_closing_factor(host, dtype, *operands):
-    """Return a scalar host judgement with no derivative through its operands."""
-    return jax.pure_callback(host, jax.ShapeDtypeStruct((), dtype),
-                             *(jax.lax.stop_gradient(c) for c in operands),
-                             **_callback_keywords())
-
-
-def host_echo_index(read, *operands):
-    """Pack the host float64 index without a context-dependent float32 cast."""
-    def packed(*values):
-        return np.asarray(read(*values), dtype=np.float64).reshape(1).view(np.uint32)
-
-    return jax.pure_callback(packed, jax.ShapeDtypeStruct((2,), np.uint32),
-                             *(jax.lax.stop_gradient(value) for value in operands),
-                             **_callback_keywords())
-
-
 # ---------------------------------------------------------------------------
 # Poles from the host
 # ---------------------------------------------------------------------------

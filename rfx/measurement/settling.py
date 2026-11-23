@@ -206,16 +206,12 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
     if not forward_result and (not hasattr(result, "_replace") or not hasattr(result, "settling_witness")):
         return result
     coverage = accumulator_coverage(result, sim=sim, n_steps=n_steps)
-    from rfx.measurement.record_end import echo_delay_bound, with_echo_bound
+    from rfx.measurement.record_end import with_echo_bound
     from rfx.sparams._tail_witness import result_read_bins
     bound = getattr(result, 'settling_echo_bound', None)
-    if forward_result and bound is None:
-        from rfx.measurement._echo_forward import forward_echo_bound
-        bound, _, _ = forward_echo_bound(result.grid, sim, result_read_bins(result),
-                                        getattr(result, 'waveguide_ports', None))
-    elif bound is None:
-        bound = echo_delay_bound(result.grid, sim=sim, freqs=result_read_bins(result),
-                                 waveguide_ports=getattr(result, 'waveguide_ports', None))
+    if bound is None:
+        bound = dict(D=None, g=None, n_max=None, tau_max=None,
+                     reason='cannot judge: runner supplied no realized echo bound')
     result = result._replace(settling_echo_bound=bound)
     if forward_result:
         from rfx.core.jax_utils import is_tracer
@@ -229,11 +225,8 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
             settling_source_end_index=sim._settling_source_end(
                 result, records=sim._ports if s_read_records(result) else None),
             settling_probe_source_end_index=sim._settling_source_end(result))
-        if is_tracer(result.time_series) or is_tracer(bound.get('index_words')):
+        if is_tracer(result.time_series) or is_tracer(bound.get('tau_max')):
             return result
-        from rfx.measurement._echo_forward import realized_echo_bound
-        bound = realized_echo_bound(result.grid, bound)
-        result = result._replace(settling_echo_bound=bound)
     from rfx.measurement import decay_stop_first
     settling_db, witness = decay_stop_first(result, *sim._run_settling_witness(result))
     tail_status = witness["status"]

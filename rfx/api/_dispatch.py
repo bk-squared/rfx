@@ -402,9 +402,6 @@ def _declaration_setup_at_trace_time(entry=None, *, run=False):
     @functools.wraps(entry)
     def staged_entry(self, *args, **kwargs):
         admit_traced_inputs("Simulation." + entry.__name__, bound_arguments(self, args, kwargs))
-        if entry.__name__ == 'forward':
-            from rfx.measurement._echo_forward import echo_override_declaration
-            self = echo_override_declaration(self, kwargs)
         self._resolve_field_dtype()
         guard_shape_tangents(self)
         distributed = bool(kwargs.get("distributed", False))

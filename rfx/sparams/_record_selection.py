@@ -66,10 +66,6 @@ def forward_settling_witness(result):
             "For a batch, take one element first: "
             "jax.tree_util.tree_map(lambda a: a[i], result).")
     from rfx.sparams._tail_witness import result_read_bins
-    from rfx.measurement._echo_forward import realized_echo_bound
-
-    result = result._replace(settling_echo_bound=realized_echo_bound(
-        result.grid, result.settling_echo_bound))
 
     bins = result_read_bins(result)
     freq_max = (result.settling_freq_max or getattr(result.grid, 'freq_max', None)

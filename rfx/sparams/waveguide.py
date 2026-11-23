@@ -289,8 +289,6 @@ def compute_waveguide_s_matrix(
         ``run()`` and ``forward()`` still refuse traced waveguide meshes.
     """
     admit_traced_inputs("Simulation.compute_waveguide_s_matrix", locals())
-    from rfx.measurement._echo_forward import echo_override_declaration
-    self = echo_override_declaration(self, dict(eps_override=eps_override))
     conformal_pec = _waveguide_stages._admit_waveguide_options(
         RfxUnsupported, conformal_pec, port_reference_sims, resolve_field_dtype, self, subpixel_smoothing,
     )
