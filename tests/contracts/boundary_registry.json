@@ -488,11 +488,6 @@
       "kind": "roll/diff"
     },
     {
-      "file": "rfx/measurement/ports.py",
-      "function": "coax_owner",
-      "kind": "roll/diff"
-    },
-    {
       "file": "rfx/measurement/probes.py",
       "function": "_ampere_loop",
       "kind": "neighbour",

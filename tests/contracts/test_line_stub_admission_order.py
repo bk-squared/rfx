@@ -35,7 +35,7 @@ def test_uninspectable_shape_defers_to_execution_checks(method, monkeypatch):
         getattr(sim, method)(skip_preflight=True)
 
 
-@pytest.mark.parametrize('method,match', [('run', 'not wired'), ('forward', 'not wired'), ('_forward_from_materials', 'conformal_pec="cut_cell_floor" is not implemented on fwd_uniform'), ('compute_mixed_s_matrix', 'at least one sparam-eligible'), ('compute_coaxial_line_reflection', 'constructs the complete line'), ('compute_coaxial_two_port', 'constructs the complete line'), ('compute_coax_msl_transition', 'exactly one add_coaxial_port')])
+@pytest.mark.parametrize('method,match', [('run', 'no other S-port family'), ('forward', 'no other S-port family'), ('_forward_from_materials', 'conformal_pec="cut_cell_floor" is not implemented on fwd_uniform'), ('compute_mixed_s_matrix', 'at least one sparam-eligible'), ('compute_coaxial_line_reflection', 'constructs the complete line'), ('compute_coaxial_two_port', 'constructs the complete line'), ('compute_coax_msl_transition', 'exactly one add_coaxial_port')])
 def test_declaration_refusal_precedes_stub_mesh_planning(method, match, monkeypatch):
     sim = Simulation(domain=(.02, .01, .01), dx=.001, freq_max=10e9,
                      boundary='cpml', cpml_layers=2)

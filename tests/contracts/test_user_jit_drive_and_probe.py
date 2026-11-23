@@ -1,7 +1,7 @@
 """Plain versus user-jitted public drives, probes and port records (#2241).
 
 Subgrid is out: it is a research lane without forward(). Dedicated coax
-calculators are out: coax is refused by run()/forward(). Floquet is out:
+calculators are out; the short coax fixture is refused by name. Floquet is out:
 it inherits the #2252 sampler. Linux x86 CPU binds the declared bars.
 Each entry is a separate row; strict xfails follow design amendment 1.
 Set RFX_USER_JIT_METRICS to save one JSON per row, including construction errors.
@@ -324,7 +324,7 @@ def test_host_control_keeps_its_user_jit_behavior(options, exception, fragment, 
 REFUSALS = []
 for _entry in ('run', 'forward'):
     REFUSALS.append(('uniform', 'coax', _entry, False, False, NotImplementedError,
-                     f'add_coaxial_port() is not wired into Simulation.{_entry}().'))
+                     'add_coaxial_port(): domain too short; needs at least 65 line cells for the shielded source end'))
 REFUSALS.append(('uniform', 'msl-eigenmode', 'forward', False, False, NotImplementedError,
                  "MSL port mode='eigenmode' is supported on the"))
 for _path in ('multi-uniform', 'multi-graded'):

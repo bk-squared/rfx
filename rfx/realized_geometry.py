@@ -92,6 +92,10 @@ class PortGeometry:
     edges: tuple[tuple[int, int, int], ...]
     aperture: tuple[tuple[int, int], ...] | None = None
     error: str | None = None
+    cleared_bore_cells: tuple = ()
+    cleared_bore_edges: tuple = ()
+    z_tem_ohm: float | None = None
+    pin_cells: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -504,7 +508,19 @@ def _ports(sim, ctx, assembled):
         rows.append(PortGeometry(f"waveguide_port[{i}]", "waveguide", None, (), tuple(aperture)))
     for attr, kind in (("_msl_ports", "msl"), ("_coaxial_ports", "coaxial"),
                        ("_floquet_ports", "floquet")):
-        for i, _ in enumerate(getattr(sim, attr, ())):
+        for i, port in enumerate(getattr(sim, attr, ())):
+            if kind == 'coaxial' and assembled.coax_bore_release is not None:
+                cells = np.logical_or.reduce([e.cells for e in assembled.stamped_entities])
+                indices = np.nonzero(cells)
+                coax_aperture = tuple((int(k.min()), int(k.max()) + 1) for k in indices)
+                release = assembled.coax_bore_release
+                from rfx.model.coax_port import stamp_coax_pin
+                rows.append(PortGeometry(f'coaxial_port[{i}]', kind, None, (), coax_aperture,
+                    cleared_bore_cells=tuple(map(tuple, release.cells)),
+                    cleared_bore_edges=tuple(tuple(map(tuple, e)) for e in release.edges),
+                    z_tem_ohm=release.z_tem_ohm,
+                    pin_cells=tuple(map(tuple, np.argwhere(stamp_coax_pin(grid, port, release.layout))))))
+                continue
             rows.append(PortGeometry(f"{kind}_port[{i}]", kind, None, (),
                                      error="not represented: family-specific aperture/drive assembly"))
     return tuple(rows)
@@ -556,12 +572,25 @@ def realized_geometry(sim):
     assembled = PreparedSolve(sim).realized(report_context=ctx)
     if isinstance(assembled, RealizedConductors):
         assembled = preview_port_stages(sim, assembled)
+        from rfx.model.realization_report import preview_coax_port
+        from rfx.errors import RfxUnsupported
+        lane = "run_uniform" if ctx.lane == "uniform" else ctx.lane
+        coax_error = None
+        try:
+            assembled = preview_coax_port(sim, assembled, lane)
+        except RfxUnsupported as error:
+            coax_error = str(error)
         if _traced_product(assembled) and not traced_inputs(sim, assembled.grid, assembled):
             refuse_unavailable(assembled, ctx.lane)
         record = bind_table(
             sim, assembled, lane=ctx.lane, compact=False)
         if record is None:
             refuse_unavailable(assembled, ctx.lane)
+        if coax_error is not None:
+            from dataclasses import replace
+            record = _conductor_view(replace(record, ports=tuple(
+                PortGeometry(row.label, 'coaxial', None, (), error=coax_error)
+                if row.kind == 'coaxial' else row for row in record.ports)), assembled)
     else:
         record = _build_record(sim, ctx)
         from dataclasses import replace
