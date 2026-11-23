@@ -233,9 +233,9 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
             return result
         from rfx.measurement._echo_forward import realized_echo_bound
         bound = realized_echo_bound(result.grid, bound)
+        result = result._replace(settling_echo_bound=bound)
     from rfx.measurement import decay_stop_first
-    read_result = result._replace(settling_echo_bound=bound) if forward_result else result
-    settling_db, witness = decay_stop_first(result, *sim._run_settling_witness(read_result))
+    settling_db, witness = decay_stop_first(result, *sim._run_settling_witness(result))
     tail_status = witness["status"]
     settling_db, witness = with_coverage(settling_db, witness, coverage)
     settling_db, witness = with_echo_bound(settling_db, witness, bound,
