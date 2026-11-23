@@ -3,8 +3,8 @@
 
 Reviews are checked on merged PRs, or on each listed merge-train member.
 Accepted reviews pass. Claimed exceptions remain visible: maintainer instructions
-are informational, while docs/comment exceptions require a readable file list
-with no path under the source, test or script trees.
+are informational, while docs/comment exceptions require a readable diff with
+unchanged Python ASTs after docstring removal and no other source-tree edits.
 
 Issues need a lane label, regardless of their body headings. Data-budget
 exceptions remain failing rows. Milestone, unlinked and frozen-data rows remain
@@ -23,6 +23,8 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import ast
+import base64
 import datetime as dt
 import importlib.util
 import json
@@ -32,6 +34,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Dict, Iterable, List, NamedTuple, Optional, Sequence
+from urllib.parse import quote
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _CHECK_PR_BODY = REPO_ROOT / "scripts" / "ci" / "check_pr_body.py"
@@ -160,27 +163,62 @@ def member_numbers(body: str) -> List[int]:
     ))
 
 
-def review_result(pr: dict) -> tuple[str, str]:
-    """Check one review and bound docs exceptions using only its JSON files.
+def same_code(before: str, after: str) -> bool:
+    """Compare Python ASTs, ignoring comments and leading docstrings only.
 
-    An absent, null or malformed file list is unreadable. A known restricted
-    path takes precedence so that the report names the offending path.
+    Parse errors propagate so callers can distinguish unreadable source from a
+    readable code change. String expressions outside docstring positions stay.
+    """
+    def stripped(source: str) -> str:
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                body = node.body
+                if (body and isinstance(body[0], ast.Expr)
+                        and isinstance(body[0].value, ast.Constant)
+                        and isinstance(body[0].value.value, str)):
+                    del body[0]
+        return ast.dump(tree, include_attributes=False)
+
+    return stripped(before) == stripped(after)
+
+
+def review_result(pr: dict) -> tuple[str, str]:
+    """Bound a docs/comment claim using replayable source texts, without IO.
+
+    Any unreadable input fails the claim. Otherwise the first changed Python
+    AST or non-Python source-tree path is named in the failing row.
     """
     state, detail = review_state(pr.get("body") or "")
     if state != "skipped" or re.match(r"^Review: skipped " + _cpb._DASH + r" \(b\) ", detail):
         return state, detail
-    files = pr.get("files")
-    if not isinstance(files, list):
-        return "missing", f"{detail}: file list not read"
-    unreadable = False
+    diff = pr.get("diff")
+    files = diff.get("files") if isinstance(diff, dict) else None
+    if not isinstance(files, list) or len(files) >= COMPARE_FILE_LIMIT:
+        return "missing", f"{detail}: diff not read"
+    first = None
     for entry in files:
-        path = entry.get("path") if isinstance(entry, dict) else None
-        if not isinstance(path, str) or not path:
-            unreadable = True
-        elif path.startswith(("rfx/", "tests/", "scripts/")):
-            return "missing", f"{detail}: {path}"
-    if unreadable:
-        return "missing", f"{detail}: file list not read"
+        if not isinstance(entry, dict):
+            return "missing", f"{detail}: diff not read"
+        path = entry.get("filename")
+        previous = entry.get("previous_filename", path)
+        if not all(isinstance(name, str) and name for name in (path, previous)):
+            return "missing", f"{detail}: diff not read"
+        for name in (previous, path):
+            if name.startswith("rfx/") and not name.endswith(".py"):
+                first = first or name
+        if path.endswith(".py") or previous.endswith(".py"):
+            before, after = entry.get("before"), entry.get("after")
+            if not isinstance(before, str) or not isinstance(after, str):
+                return "missing", f"{detail}: diff not read"
+            try:
+                equal = same_code(before, after)
+            except (SyntaxError, ValueError, TypeError, RecursionError):
+                return "missing", f"{detail}: diff not read"
+            if not equal:
+                first = first or path
+    if first:
+        return "missing", f"{detail}: {first}"
     return state, detail
 
 
@@ -228,7 +266,7 @@ def classify(
 ) -> List[Row]:
     """The report rows. Pure: everything it needs is in the arguments.
 
-    *member_index* maps member numbers to bodies and files. Absent members fail
+    *member_index* maps member numbers to bodies and diff inputs. Absent members fail
     review. Failures and permitted exceptions have separate sections, including
     when both occur within one batch. Permitted exceptions are informational.
     *issue_index* maps an issue number to its record, and must cover every
@@ -424,6 +462,60 @@ def _capped(rows: list, limit: int, what: str, window: str) -> list:
     return rows
 
 
+COMPARE_FILE_LIMIT = 300
+
+
+def fetch_diff(record: dict, head: Optional[str] = None) -> Optional[dict]:
+    """Fetch one claim's inputs; failures are local and replay as unreadable.
+
+    The compare API lists at most three hundred files. At the cap completeness
+    is unknown. Contents are read at the merge base and the claimed head;
+    additions and removals use an empty module on the absent side.
+    """
+    state, detail = review_state(record.get("body") or "")
+    if state != "skipped" or re.match(r"^Review: skipped " + _cpb._DASH + r" \(b\) ", detail):
+        return None
+    base = record.get("baseRefOid")
+    head = head or record.get("headRefOid")
+    if not all(isinstance(oid, str) and re.fullmatch(r"[0-9a-fA-F]{40}", oid)
+               for oid in (base, head)):
+        return None
+    try:
+        comparison = _gh_one(["api", f"repos/{{owner}}/{{repo}}/compare/{base}...{head}"])
+        merge_base = comparison["merge_base_commit"]["sha"]
+        files = comparison["files"]
+        if not isinstance(files, list) or len(files) >= COMPARE_FILE_LIMIT:
+            return None
+        inputs = []
+        for entry in files:
+            path = entry["filename"]
+            previous = entry.get("previous_filename", path)
+            status = entry["status"]
+            if status not in ("added", "removed", "modified", "renamed", "copied", "changed"):
+                return None
+            item = {"filename": path, "status": status}
+            if previous != path:
+                item["previous_filename"] = previous
+            if path.endswith(".py") or previous.endswith(".py"):
+                for key, name, ref, absent in (
+                    ("before", previous, merge_base, status == "added" or not previous.endswith(".py")),
+                    ("after", path, head, status == "removed" or not path.endswith(".py")),
+                ):
+                    if absent:
+                        item[key] = ""
+                    else:
+                        content = _gh_one([
+                            "api", f"repos/{{owner}}/{{repo}}/contents/{quote(name, safe='/')}?ref={ref}",
+                        ])
+                        if content.get("encoding") != "base64" or content.get("type") != "file":
+                            return None
+                        item[key] = base64.b64decode(content["content"]).decode("utf-8-sig")
+            inputs.append(item)
+        return {"base": base, "head": head, "merge_base": merge_base, "files": inputs}
+    except (subprocess.CalledProcessError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+
+
 def fetch(days: int, limit: int = FETCH_LIMIT) -> dict:
     """Everything `classify` needs, as one JSON-serializable dict."""
     until = dt.datetime.now(dt.timezone.utc).date()
@@ -442,19 +534,29 @@ def fetch(days: int, limit: int = FETCH_LIMIT) -> dict:
     ]), limit, "opened issues", window)
 
     member_index: Dict[int, dict] = {}
-    members = {number for pr in prs for number in member_numbers(pr.get("body") or "")}
-    for number in sorted(members):
+    members = {}
+    for pr in prs:
+        for line in _cpb.body_lines(pr.get("body") or ""):
+            match = re.fullmatch(r"Merge-train-member: #([0-9]+) ([0-9a-fA-F]{40})", line)
+            if match:
+                members[int(match.group(1))] = match.group(2)
+        for number in member_numbers(pr.get("body") or ""):
+            members.setdefault(number, None)
+    for number, head in sorted(members.items()):
         try:
-            member_index[number] = _gh_one(["pr", "view", str(number), "--json", "body,files"])
-        except subprocess.CalledProcessError:
-            member_index[number] = {}
+            record = _gh_one(["pr", "view", str(number), "--json", "body,baseRefOid,headRefOid"])
+        except (subprocess.CalledProcessError, ValueError):
+            record = {}
+        record["diff"] = fetch_diff(record, head) if head else None
+        member_index[number] = record
     for pr in prs:
         if review_state(pr.get("body") or "")[0] != "skipped" or member_numbers(pr.get("body") or ""):
             continue
         try:
-            pr["files"] = _gh_one(["pr", "view", str(pr["number"]), "--json", "body,files"]).get("files")
-        except subprocess.CalledProcessError:
-            pr["files"] = None
+            refs = _gh_one(["pr", "view", str(pr["number"]), "--json", "baseRefOid,headRefOid"])
+            pr["diff"] = fetch_diff({**refs, "body": pr.get("body")})
+        except (subprocess.CalledProcessError, ValueError):
+            pr["diff"] = None
 
     for pr in prs:
         oid = (pr.get("mergeCommit") or {}).get("oid")
