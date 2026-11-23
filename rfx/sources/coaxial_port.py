@@ -76,9 +76,6 @@ from rfx.measurement.coax_records import (
 
 
 
-# ---------------------------------------------------------------------------
-# CoaxialPort descriptor
-# ---------------------------------------------------------------------------
 
 class CoaxialPort(NamedTuple):
     """SMA-style coaxial probe port for cavity coupling.
@@ -105,13 +102,13 @@ class CoaxialPort(NamedTuple):
         Source waveform (GaussianPulse, ModulatedGaussian, etc.).
     """
 
-    position: tuple       # (x, y, z) — center of port on cavity wall
-    face: str             # "top", "bottom", "front", "back", "left", "right"
-    pin_length: float     # protrusion into cavity (m), default 5 mm
-    pin_radius: float     # center pin radius (m), default 0.635 mm (SMA)
-    outer_radius: float   # outer conductor radius (m), default 2.055 mm (SMA)
-    impedance: float      # port impedance, default 50 ohm
-    excitation: object    # waveform (GaussianPulse etc.)
+    position: tuple
+    face: str
+    pin_length: float
+    pin_radius: float
+    outer_radius: float
+    impedance: float
+    excitation: object
     terminates: tuple = ()
 
 

@@ -12,6 +12,8 @@ clears JAX compilation caches so a previously traced program cannot hide a
 site, or retain an observer after exit. The optional transform is solely
 for the consumption experiment: the returned operands are used by the
 existing update. With no transform the observer returns the same objects.
+
+``OWNED`` stores ``(start, count)`` for the global x rows represented by local rows after the low ghost.
 """
 
 from contextlib import contextmanager
@@ -43,8 +45,6 @@ class Capture:
                            for x in jax.tree.leaves(values)), (
                                site, "realized records must contain concrete arrays")
             values = jax.tree.map(lambda x: np.array(x, copy=True), values)
-            # A scan emits the same static operands each step. Keep each
-            # distinct slab once, including different slabs of equal shape.
             key = (lane, site, repr(region), tuple(
                 (x.shape, x.dtype.str, x.tobytes())
                 for x in jax.tree.leaves(values)))
@@ -99,9 +99,6 @@ def capture(*, transform=None):
             jax.clear_caches()
 
 
-#: (start, count) of the x slab whose step is being traced, set by the
-#: multi-device wrapper so a record from the one-device kernels says which
-#: global rows its local rows (after one low ghost) are.
 OWNED = None
 
 
@@ -122,10 +119,8 @@ def enter(sim, lane):
 
 def electric(materials, eps, sigma, site, *, periodic=(False,) * 3,
              region=None, owned_start=None, owned_count=None):
-    # The NU run entry shares the forward runner's traced material site.
     if site == "distributed.E" and ACTIVE.lane == "run_distributed_nu":
         site = "distributed_nu.E"
-    # The wrapped multi-device step consumes the one-device producer per slab.
     if site == "yee.E" and OWNED is not None:
         if ACTIVE.lane in ("run_distributed", "fwd_distributed"):
             site = "distributed.E"
@@ -133,7 +128,6 @@ def electric(materials, eps, sigma, site, *, periodic=(False,) * 3,
             site = "distributed_nu.E"
     eps = ACTIVE.apply(site, "eps_e", eps)
     sigma = ACTIVE.apply(site, "sigma_e", sigma)
-    # Keep the legacy cell-view payload; eps/sigma above are the consumed arrays.
     payload = dict(eps_e=eps, sigma_e=sigma, materials=materials._replace(components=None))
     if owned_start is None and OWNED is not None:
         owned_start, owned_count = OWNED

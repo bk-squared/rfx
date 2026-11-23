@@ -46,24 +46,12 @@ from rfx.core.yee import EPS_0, MU_0, MaterialArrays, component_h_materials
 from rfx.sources.sources import CustomWaveform
 
 
-# ---------------------------------------------------------------------------
-# Auxiliary-grid absorber
-# ---------------------------------------------------------------------------
-# See rfx/sources/tfsf_2d.py for the finding.  The 1-D grid is the normal-
-# incidence path (cv04's); it shipped at 20 cells with
-# sigma_max = 0.8 * 4 / (eta dx_1d) and reflected |B/A| ~ 4e-02.  The 1-D CPML
-# update applies b and c but no kappa stretching, so kappa_max stays 1
-# and an override to anything else is refused rather than silently ignored.
-# With H sampled at its Yee half cell, 20 cells return at most
-# -111.8 dB over the measured 2--30 GHz band and both faces at dx = 1 mm.
-# Ten cells return -87.4 dB; the auxiliary requirement is -105 dB.
-# Keep the normal-incidence target R = 1e-6 and restore the 20-cell depth.
 AUX_N_CPML_1D = 20
-AUX_CPML_ORDER_1D = 3       # rfx/boundaries/cpml.py _cpml_profile default
+AUX_CPML_ORDER_1D = 3
 AUX_CPML_KAPPA_MAX_1D = 1.0
 AUX_CPML_R_ASYMPTOTIC_1D = 1e-6
 AUX_N_MARGIN_1D = 10
-AUX_SRC_OFFSET_1D = 3       # source sits this many cells inside the absorber's inner edge
+AUX_SRC_OFFSET_1D = 3
 
 
 def pulse_timing(waveform, f0, bandwidth):
@@ -164,9 +152,9 @@ def tfsf_injection_planes(cfg) -> "dict[str, tuple[int, int]]":
 
 class TFSFState(NamedTuple):
     """1D auxiliary FDTD state for TFSF plane-wave generation."""
-    e1d: jnp.ndarray   # Ez incident (n_1d,)
-    h1d: jnp.ndarray   # Hy incident (n_1d,)
-    psi_e_lo: jnp.ndarray  # 1D CPML psi for E at lo end
+    e1d: jnp.ndarray
+    h1d: jnp.ndarray
+    psi_e_lo: jnp.ndarray
     psi_e_hi: jnp.ndarray
     psi_h_lo: jnp.ndarray
     psi_h_hi: jnp.ndarray
@@ -174,42 +162,42 @@ class TFSFState(NamedTuple):
 
 
 class TFSFConfig(NamedTuple):
-    """Static TFSF configuration (compile-time constants for JIT)."""
-    x_lo: int       # TFSF box x-lo index (inclusive, total-field starts here)
-    x_hi: int       # TFSF box x-hi index (inclusive, total-field ends here)
-    i0: int         # 1D index that maps to 3D x_lo
-    src_idx: int    # 1D source injection index
-    n_cpml: int     # Number of 1D CPML layers
-    # 1D CPML coefficients
-    b_cpml: jnp.ndarray   # (n_cpml,)
+    """Static TFSF configuration (compile-time constants for JIT).
+
+    ``curl_sign`` is positive for the ``Ez/Hy`` pair and negative for the ``Ey/Hz`` pair.
+    """
+    x_lo: int
+    x_hi: int
+    i0: int
+    src_idx: int
+    n_cpml: int
+    b_cpml: jnp.ndarray
     c_cpml: jnp.ndarray
-    # Source waveform (inlined for JIT)
     src_amp: float
     src_t0: float
     src_tau: float
-    src_fcen: float          # carrier frequency for modulated Gaussian
-    src_waveform: str        # "differentiated_gaussian" or "modulated_gaussian"
-    # Polarization selection
-    electric_component: str  # "ez" or "ey"
-    magnetic_component: str  # "hy" or "hz"
-    curl_sign: float         # +1 for Ez/Hy, -1 for Ey/Hz
-    direction: str           # "+x" or "-x"
-    direction_sign: float    # +1 for +x, -1 for -x
+    src_fcen: float
+    src_waveform: str
+    electric_component: str
+    magnetic_component: str
+    curl_sign: float
+    direction: str
+    direction_sign: float
     angle_deg: float
     cos_theta: float
     sin_theta: float
     grid_pad: int
-    transverse_axis: str     # "y" for Ez, "z" for Ey
-    dx_1d: float             # legacy scalar retained for existing callers
+    transverse_axis: str
+    dx_1d: float
     magnetic_lo: CPMLParams
     magnetic_hi: CPMLParams
-    primal_widths: float | np.ndarray  # scalar iff every realized x cell agrees
-    dual_widths: float | np.ndarray    # 0.5 * (d[k-1] + d[k]) at E nodes
-    e_face_widths: tuple[float, float]  # host widths for x_lo and x_hi+1
-    h_face_widths: tuple[float, float]  # host widths for x_lo-1 and x_hi
+    primal_widths: float | np.ndarray
+    dual_widths: float | np.ndarray
+    e_face_widths: tuple[float, float]
+    h_face_widths: tuple[float, float]
     b_cpml_hi: jnp.ndarray
     c_cpml_hi: jnp.ndarray
-    custom_waveform: object = None  # static JAX-compatible scalar callable
+    custom_waveform: object = None
     closed_box: bool = False
     y_lo: int = 0
     y_hi: int = 0
@@ -369,9 +357,6 @@ def init_tfsf(
             polarization=polarization, direction=direction, theta_deg=theta_deg,
             phi_deg=phi_deg, direction_tol_deg=direction_tol_deg,
             max_component=max_component, waveform=waveform, n_steps=n_steps, dtype=dtype)
-    # continuous_wave lives only in the 1D-auxiliary (normal-incidence) injector; the 2D
-    # oblique grid carries only an analytic MG, so reject it here rather than
-    # silently drop it (fail-loud, not right-guard-mis-gated).
     if waveform == "continuous_wave" and is_oblique(angle_deg):
         raise ValueError(
             "waveform='continuous_wave' is only supported at normal incidence "
@@ -379,16 +364,7 @@ def init_tfsf(
         )
     if method not in ("bloch", "methodB"):
         raise ValueError(f"method must be 'bloch' or 'methodB', got {method!r}")
-    # Oblique open-domain Method B (real float32, 1D-aux-along-k̂ + 4-edge box).
-    # Angle alone cannot disambiguate this from the Bloch 2D-aux path, so it is
-    # selected explicitly via method='methodB'. angle_deg=0 falls through to the
-    # normal 1D-aux path below regardless of method (byte-unchanged).
     if is_oblique(angle_deg) and method == "methodB":
-        # Method B builds its own 1-D auxiliary absorber (tfsf_oblique_open.py:
-        # 20 cells, sigma_max = 0.8 * 4/(eta d_aux), rho**3) -- its own heuristic,
-        # independent of this lane. Accepting an aux_* override here
-        # and dropping it would be the same silent-drop the waveform guard
-        # above exists to prevent.
         _aux_overrides = {
             "aux_n_cpml": aux_n_cpml, "aux_cpml_order": aux_cpml_order,
             "aux_cpml_kappa_max": aux_cpml_kappa_max,
@@ -419,12 +395,10 @@ def init_tfsf(
             theta_deg=angle_deg,
             waveform=waveform,
         dtype=dtype)
-    # Dispatch to 2D auxiliary grid for oblique angles (Bloch field-transform).
-    # The 2D grid naturally matches the 3D numerical dispersion at any angle.
     if is_oblique(angle_deg):
         from rfx.sources.tfsf_2d import init_tfsf_2d
         if ny is None:
-            ny = nx  # default: square grid
+            ny = nx
         return init_tfsf_2d(
             nx, ny, dx, dt,
             nz=nz,
@@ -437,8 +411,6 @@ def init_tfsf(
             direction=direction,
             theta_deg=angle_deg,
             waveform=waveform,
-            # forwarded, not dropped: the reflection gate measures the oblique
-            # absorber through this entry point
             aux_n_cpml=aux_n_cpml,
             aux_cpml_order=aux_cpml_order,
             aux_cpml_kappa_max=aux_cpml_kappa_max,
@@ -461,11 +433,8 @@ def init_tfsf(
     cos_theta = float(np.cos(theta))
     sin_theta = float(np.sin(theta))
 
-    # 1D cell size: for normal incidence (the only case reaching this
-    # code path), dx_1d = dx.  Oblique angles dispatch to 2D above.
     dx_1d = dx
 
-    # TFSF box boundaries in x
     offset = cpml_layers + tfsf_margin
     x_lo = offset
     x_hi = nx - offset - 1
@@ -475,37 +444,25 @@ def init_tfsf(
             "TFSF margin/cpml_layers are too large for the grid: "
             f"nx={nx}, cpml_layers={cpml_layers}, tfsf_margin={tfsf_margin}"
         )
-    # 1D auxiliary grid: spans x_lo..x_hi + margins for source + CPML
     n_cpml_1d = AUX_N_CPML_1D if aux_n_cpml is None else int(aux_n_cpml)
-    n_tfsf = x_hi - x_lo + 2   # +2 for the correction at x_hi+1
-    # Normal incidence only reaches this code path (oblique dispatches to 2D above).
+    n_tfsf = x_hi - x_lo + 2
     n_margin = AUX_N_MARGIN_1D
     n_1d = n_cpml_1d + n_margin + n_tfsf + n_margin + n_cpml_1d
 
-    # i0: 1D index that maps to 3D x_lo
     i0 = n_cpml_1d + n_margin
     if direction == "+x":
-        # Launch from the left margin so the right-going wave enters the mapped region.
         src_idx = n_cpml_1d + AUX_SRC_OFFSET_1D
     else:
-        # Launch from the right margin so the left-going wave enters the mapped region.
         src_idx = n_1d - n_cpml_1d - AUX_SRC_OFFSET_1D - 1
 
-    # Include both outside cells read by the four corrections and their
-    # updates. Source and absorber margins continue each mapped end cell.
     cells = np.full(nx, dx) if x_cells is None else np.asarray(x_cells, dtype=float)
     mapped = cells[x_lo - 1:x_hi + 2]
     primal_widths = np.pad(mapped, (i0 - 1, n_1d - (i0 - 1) - len(mapped)),
                           mode="edge")
     dual_widths = np.concatenate([primal_widths[:1],
                                  0.5 * (primal_widths[:-1] + primal_widths[1:])])
-    # Specialize only from the realized propagation-axis cells. Keeping a
-    # constant width as a Python float preserves the existing scan arithmetic.
     uniform_x = bool(np.all(cells == cells[0]))
 
-    # 1D CPML profile.  sigma_max is DERIVED from a target reflection through the
-    # same law the 3-D absorber uses (rfx/boundaries/cpml.py::_cpml_profile), on
-    # each mapped end cell width -- see AUX_*_1D above.
     _kappa_1d = (AUX_CPML_KAPPA_MAX_1D if aux_cpml_kappa_max is None
                  else float(aux_cpml_kappa_max))
     if _kappa_1d != 1.0:
@@ -679,19 +636,14 @@ def update_tfsf_1d_h(cfg: TFSFConfig, st: TFSFState, dx: float,
     n = cfg.n_cpml
     e1d, h1d = st.e1d, st.h1d
 
-    # 1D Faraday pair for +x propagation:
-    #   Ez/Hy  ->  +sign
-    #   Ey/Hz  ->  -sign
     de = jnp.concatenate([e1d[1:], jnp.zeros(1)]) - e1d
     width_h = getattr(cfg, "primal_widths", cfg.dx_1d)
     de = de / width_h
     h1d = h1d + cfg.curl_sign * (dt / mu_abs) * de
 
-    # H CPML lo end
     psi_h_lo = cfg.magnetic_lo.b * st.psi_h_lo + cfg.magnetic_lo.c * de[:n]
     h1d = h1d.at[:n].add(cfg.curl_sign * (dt / mu_abs) * psi_h_lo)
 
-    # H CPML hi end
     b_hi = jnp.flip(cfg.magnetic_hi.b)
     c_hi = jnp.flip(cfg.magnetic_hi.c)
     psi_h_hi = b_hi * st.psi_h_hi + c_hi * de[-n:]
@@ -717,19 +669,14 @@ def update_tfsf_1d_e(cfg: TFSFConfig, st: TFSFState, dx: float,
     n = cfg.n_cpml
     e1d, h1d = st.e1d, st.h1d
 
-    # 1D Ampere pair for +x propagation:
-    #   Ez/Hy  ->  +sign
-    #   Ey/Hz  ->  -sign
     dh = h1d - jnp.concatenate([jnp.zeros(1), h1d[:-1]])
     width_e = getattr(cfg, "dual_widths", cfg.dx_1d)
     dh = dh / width_e
     e1d = e1d + cfg.curl_sign * (dt / EPS_0) * dh
 
-    # E CPML lo end
     psi_e_lo = cfg.b_cpml * st.psi_e_lo + cfg.c_cpml * dh[:n]
     e1d = e1d.at[:n].add(cfg.curl_sign * (dt / EPS_0) * psi_e_lo)
 
-    # E CPML hi end
     b_hi = jnp.flip(getattr(cfg, "b_cpml_hi", cfg.b_cpml))
     c_hi = jnp.flip(getattr(cfg, "c_cpml_hi", cfg.c_cpml))
     psi_e_hi = b_hi * st.psi_e_hi + c_hi * dh[-n:]
@@ -761,14 +708,12 @@ def line_source_value(cfg, t, amplitude):
         carrier = jnp.cos(2.0 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
         return amplitude * env * carrier
     if cfg.src_waveform == "continuous_wave":
-        # raised-cosine ramp 0->1 over src_t0, then constant amplitude
         ramp = 0.5 * (1.0 - jnp.cos(jnp.pi * jnp.clip(t / cfg.src_t0, 0.0, 1.0)))
         return amplitude * ramp * jnp.sin(2.0 * jnp.pi * cfg.src_fcen * t)
     from rfx.sources.sources import charge_free_dg
     return amplitude * charge_free_dg(t, cfg.src_tau, cfg.src_t0 / cfg.src_tau)
 
 
-# Lazy compatibility exports keep record definitions free of import cycles.
 _LAZY_EXPORTS = {
     "apply_tfsf_e": "rfx.stepping.tfsf",
     "apply_tfsf_h": "rfx.stepping.tfsf",
