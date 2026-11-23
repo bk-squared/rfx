@@ -555,8 +555,8 @@ Check a wire-port reflection on three meshes before using it as a converged numb
 
 Tracker: #1479
 
-The coax-to-microstrip transition is not supported in rfx. Its status is
-**not supported (deprecated); removed after 2.3**. Each call to
+The coax-to-microstrip transition is not supported in rfx.
+Its status is **not supported (deprecated); removed after 2.3**. Each call to
 `compute_coax_msl_transition(...)` emits `DeprecationWarning` before any work.
 Its experimental result and all existing refusals are unchanged. It returns a
 matrix whose columns carry more power out than the incident wave brings in,
