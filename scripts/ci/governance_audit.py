@@ -77,7 +77,7 @@ class Row(NamedTuple):
 
 #: Heading, and the sentence under it, for each kind. Printed in this order.
 #: Kinds that do NOT set the exit code. Listed and counted, never failed on.
-INFORMATIONAL = ("unlinked", "frozen", "milestone")
+INFORMATIONAL = ("unlinked", "frozen", "milestone", "review-exceptions")
 
 MEMBER_RE = re.compile(r"^Merge-train-member: #([0-9]+)\b")
 
@@ -87,9 +87,15 @@ FROZEN_REPORT_BYTES = 1_000_000
 SECTIONS = (
     (
         "review",
-        "Merged PRs with no accepted review, or a claimed exception",
-        "`Review: skipped` is allowed for the two exceptions. An exception "
-        "claimed often is not an exception.",
+        "Merged PRs with no accepted review",
+        "Missing accepted reviews and docs/comment exceptions outside their "
+        "permitted file bound make the run red.",
+    ),
+    (
+        "review-exceptions",
+        "Claimed review exceptions (informational)",
+        "Permitted docs/comment and maintainer-instruction exceptions remain "
+        "visible. Does not make the run red.",
     ),
     (
         "data-budget",
@@ -223,8 +229,8 @@ def classify(
     """The report rows. Pure: everything it needs is in the arguments.
 
     *member_index* maps member numbers to bodies and files. Absent members fail
-    review. Review exceptions stay in the review section, with a per-row flag
-    controlling whether the row contributes to the exit code.
+    review. Failures and permitted exceptions have separate sections, including
+    when both occur within one batch. Permitted exceptions are informational.
     *issue_index* maps an issue number to its record, and must cover every
     number a merged PR links to. A record carrying ``is_pull_request`` is
     skipped: "Fixes #1042" pointing at a pull request is a cross-reference
@@ -246,10 +252,14 @@ def classify(
         ] if members else [("", review_result(pr))]
         failures = [prefix + detail for prefix, (state, detail) in reviews if state == "missing"]
         exceptions = [prefix + detail for prefix, (state, detail) in reviews if state == "skipped"]
-        if failures or exceptions:
+        if failures:
             rows.append(Row(
-                "review", ref, title, "; ".join(failures + exceptions),
-                informational=not failures,
+                "review", ref, title, "; ".join(failures),
+            ))
+        if exceptions:
+            rows.append(Row(
+                "review-exceptions", ref, title, "; ".join(exceptions),
+                informational=True,
             ))
 
         if _budget.EXCEPTION_LABEL in label_names(pr):

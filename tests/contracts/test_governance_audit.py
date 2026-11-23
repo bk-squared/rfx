@@ -437,7 +437,7 @@ def test_every_row_kind_has_a_section_heading() -> None:
 def test_the_sections_cover_every_kind_classify_can_emit() -> None:
     """Pinned by name: a kind added to classify and not to SECTIONS vanishes."""
     assert {kind for kind, _, _ in audit.SECTIONS} == {
-        "review", "data-budget", "unlabelled", "milestone", "frozen", "unlinked",
+        "review", "review-exceptions", "data-budget", "unlabelled", "milestone", "frozen", "unlinked",
     }
 
 
@@ -653,6 +653,45 @@ def test_a_batch_with_an_unreviewed_member_names_that_member(batch_payload) -> N
     text, count = audit.report(batch_payload)
     assert count == 1
     assert f"#{number}: no accepted `Review:` line" in text
+
+
+@pytest.mark.parametrize("batch", [False, True])
+def test_review_failures_and_permitted_exceptions_render_separately(batch, batch_payload) -> None:
+    """Bound failures stay red; permitted claims have their own section.
+
+    Expected table text comes from the fixture records, without classifier or
+    rendering helpers. A mixed batch must preserve both member details under
+    their respective headings while counting only one failing row.
+    """
+    members = list(batch_payload["member_index"].items())
+    for (_, record), path in zip(members, ["rfx/core.py", "docs/guide.md"]):
+        record.update(body=SKIPPED, files=[{"path": path}])
+    if not batch:
+        batch_payload["merged_prs"] = [
+            {**pr(int(number), record["body"]), "files": record["files"]}
+            for number, record in members
+        ]
+
+    expected_rows = []
+    for index, (number, record) in enumerate(members):
+        merged = batch_payload["merged_prs"][0 if batch else index]
+        detail = (f"#{number}: " if batch else "") + record["body"]
+        if index == 0:
+            detail += ": " + record["files"][0]["path"]
+        expected_rows.append(f"| #{merged['number']} | {merged['title']} | {detail} |")
+
+    text, count = audit.report(batch_payload)
+    sections = dict(section.split("\n", 1) for section in text.split("### ")[1:])
+    review = sections["Merged PRs with no accepted review (1)"]
+    exceptions = sections["Claimed review exceptions (informational) (1)"]
+    assert expected_rows[0] in review
+    assert expected_rows[1] not in review
+    assert expected_rows[1] in exceptions
+    assert expected_rows[0] not in exceptions
+    informational = len(batch_payload["merged_prs"]) + 1
+    assert f"**1 row to look at**, plus {informational} informational." in text
+    assert count == 1
+    assert "review-exceptions" in audit.INFORMATIONAL
 
 
 @pytest.mark.parametrize("member_present", [False, True])
