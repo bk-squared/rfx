@@ -100,7 +100,7 @@ def geometry_panel(materials: list[str]) -> list[GeometryEntry]:
         with c1:
             cx = st.number_input("center_x (mm)", value=25.0, step=1.0, key="sph_cx")
             cy = st.number_input("center_y (mm)", value=25.0, step=1.0, key="sph_cy")
-            cz = st.number_input("center_z (mm)", value=0.0, step=1.0, key="sph_cz")
+            cz = st.number_input("center_z (mm)", value=12.5, step=1.0, key="sph_cz")
         with c2:
             r = st.number_input("radius (mm)", value=10.0, step=1.0, min_value=0.1, key="sph_r")
         params = {
@@ -114,7 +114,7 @@ def geometry_panel(materials: list[str]) -> list[GeometryEntry]:
         with c1:
             cx = st.number_input("center_x (mm)", value=25.0, step=1.0, key="cyl_cx")
             cy = st.number_input("center_y (mm)", value=25.0, step=1.0, key="cyl_cy")
-            cz = st.number_input("center_z (mm)", value=0.0, step=1.0, key="cyl_cz")
+            cz = st.number_input("center_z (mm)", value=12.5, step=1.0, key="cyl_cz")
         with c2:
             r = st.number_input("radius (mm)", value=5.0, step=1.0, min_value=0.1, key="cyl_r")
             h = st.number_input("height (mm)", value=10.0, step=1.0, min_value=0.1, key="cyl_h")
