@@ -26,6 +26,7 @@ from dataclasses import replace
 from typing import Callable, NamedTuple
 from rfx._internal import _realized, _grid_metric
 from rfx.measurement.plane_records import init_plane_records
+from rfx.measurement.coax_port import init_coax_records, coax_records
 
 import jax
 import jax.numpy as jnp
@@ -316,6 +317,7 @@ def run(
         design_occupancy=design_occupancy,
     )
     carry_init = _setup.carry_init
+    init_coax_records(carry_init, measurement, n_steps)
     init_plane_records(carry_init, dft_planes, record_dft, n_steps)
     init_uniform_records(carry_init, n_steps, wire_port_sparams, lumped_port_sparams, wire_refplane_sparams, field_dtype, port_record_specs)
     dt = _setup.dt
@@ -732,7 +734,8 @@ def run(
         waveguide_ports=final_waveguide_ports,
         wire_port_sparams=final_wire_sparams,
         lumped_port_sparams=final_lumped_sparams,
-        sparam_time_records=uniform_records(final_carry, _step_ctx, int(final_carry["fdtd"].step) if stop_fn is not None else None),
+        coax_sparam_accs=final_carry.get("coax_sparam_accs"),
+        sparam_time_records=uniform_records(final_carry, _step_ctx, int(final_carry["fdtd"].step) if stop_fn is not None else None) + coax_records(final_carry, measurement, int(final_carry["fdtd"].step) if stop_fn is not None else None),
         dft_time_records=tuple(r[:int(final_carry["fdtd"].step)] if stop_fn is not None else r
                                 for r in final_carry.get("dft_time_records", ()) if r is not None),
         snapshots=snapshots,
@@ -983,6 +986,7 @@ def run_until_decay(
         sheet_impedance=sheet_impedance,
     )
     carry = _setup.carry_init
+    init_coax_records(carry, measurement, max_steps)
     init_plane_records(carry, dft_planes, record_dft, max_steps)
     init_uniform_records(carry, max_steps, wire_port_sparams, lumped_port_sparams, (), field_dtype, port_record_specs)
     from rfx.stepping import vector_pad
@@ -1313,7 +1317,8 @@ def run_until_decay(
         waveguide_ports=final_waveguide_ports,
         wire_port_sparams=final_wire_sparams,
         lumped_port_sparams=final_lumped_sparams,
-        sparam_time_records=uniform_records(carry, _step_ctx, actual_steps),
+        coax_sparam_accs=carry.get("coax_sparam_accs"),
+        sparam_time_records=uniform_records(carry, _step_ctx, actual_steps) + coax_records(carry, measurement, actual_steps),
         dft_time_records=tuple(r[:actual_steps] for r in carry.get("dft_time_records", ()) if r is not None),
         snapshots=snapshots,
         ntff_box=ntff,

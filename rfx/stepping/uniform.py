@@ -622,6 +622,10 @@ def make_uniform_step(
             new_carry["sparam_time_records"] = tuple(
                 jax.lax.stop_gradient(record.at[frame.step_idx].set(sample))
                 for record, sample in zip(frame.carry["sparam_time_records"], frame.port_samples))
+        if 'coax_table' in invariants:
+            from rfx.measurement.coax_port import update_coax
+            new_carry.update(update_coax(frame.carry, view(frame.st), frame.step_idx, dt,
+                                        invariants['coax_table'], invariants['coax_freqs']))
         if ctx.use_cpml:
             new_carry["cpml"] = frame.cpml_new
         if ctx.use_debye:

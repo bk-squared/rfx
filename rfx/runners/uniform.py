@@ -241,11 +241,16 @@ def run_uniform(
         operator=conductor_operator(smoothing=subpixel_smoothing, conformal=conformal_pec))
     from rfx.model.conductors import stepped_conductors
     conductors = stepped_conductors(conductors, conformal_operands=conformal_weights)
+    from rfx.model.coax_port import assemble_coax_port
+    materials, conductors, _ = assemble_coax_port(
+        sim, grid, materials, conductors, sources, mag_sources, n_steps=sizing_n)
     pec_mask = conductors.pec_cells
     pec_edge_masks = conductors.pec_edges
     from rfx.measurement.port_s_contract import passive_record_diagnostic
     passive_diagnostic = passive_record_diagnostic(sim)
     from rfx.measurement.prepared import attach_measurement
+    if sim._coaxial_ports and compute_s_params is not False and s_param_freqs is None:
+        s_param_freqs = jnp.linspace(sim._freq_max / 10, sim._freq_max, 50, dtype=jnp.float32)
     attach_measurement(sim, conductors, n_steps=sizing_n, path='run_uniform',
                        frequencies=s_param_freqs if compute_s_params is None or compute_s_params or passive_diagnostic else None)
     _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
@@ -703,6 +708,8 @@ def run_uniform(
                         "stop_interval": int(stop_interval)}
 
     from rfx.stepping import prepared as prepared_step
+    if sim._coaxial_ports and materials.components.tensor is None:
+        materials = materials._replace(components=None)
     conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
     stepping_product = conductors
     if sim._lumped_rlc:
@@ -876,6 +883,12 @@ def run_uniform(
             subpixel_smoothing=subpixel_smoothing,
         )
 
+    coax_metadata = None
+    if sim._coaxial_ports and compute_s_params:
+        from rfx.measurement.coax_port import port_result
+        s_params, freqs_out, coax_metadata = port_result(sim, stepping_product, sim_result)
+        sparam_read_ids = SReadPorts(('coax_port:0:mode:0',))
+
     declared_measurements = package_declared_measurements(
         sim, grid, entry="run()",
         flux_monitors=sim_result.flux_monitors or (),
@@ -898,6 +911,7 @@ def run_uniform(
         state=sim_result.state,
         time_series=sim_result.time_series,
         s_params=s_params,
+        coax_port_metadata=coax_metadata,
         freqs=freqs_out,
         ntff_data=sim_result.ntff_data,
         ntff_box=ntff_box,

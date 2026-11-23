@@ -254,37 +254,14 @@ Pass `forward(..., skip_preflight=True)` and run `sim.preflight()` once on a con
 Under a trace the curved high-contrast check cannot judge a traced material; it warns (`CurvedSmoothingWarning`) that the check was not judged and names the material.
 Two materials given different tracers are smoothed as two media even when their values are equal; a concrete run merges equal values into one medium.
 
-### A material with permittivity below 0.98 grows without bound at the default time step, and nothing refuses it.
+### A traced pole-map profile that is undefined outside its material gives a NaN gradient.
 
-Tracker: #2772
+Tracker: #2650
 
-A Yee cell of relative permittivity ε (μr 1) is stable only for a time step up to √ε times the vacuum Courant limit,
-because its fastest waves travel at c/√ε, faster than light for ε below 1. In a Debye material the pole terms vanish at
-the grid's Nyquist frequency, so the cell sees ε∞ there. No check refuses a step above a cell's own limit: the default
-step is 0.99 of the vacuum limit, and the pole stability check skips a cell whose step is above that cell's limit
-without its poles. A material with `eps_r` below 0.98 (0.99²), or a Debye material with ε∞ below 0.98 (such as a
-`fit_debye` result before 2.3), therefore grows until the fields are non-finite at the default step when it fills cells that set
-the step (every cell on a uniform mesh); this was measured at 0.5 on the uniform and the graded mesh. Between 0.98 and 1
-the default step stays inside the cell's limit. Nothing refuses the run; it ends with an `AccuracyWarning` about
-non-finite values.
-
-Two material fits reach this entry, measured with a 12.3 × 11.5 × 10.8 mm box of the fitted material on 1 mm cells in
-an open domain (uniform mesh, and a graded mesh with five 0.8 mm cells in x), at the default step:
-- On a table with ε′ 4.4 and tan δ 0.02 constant over 1–40 GHz, `fit_debye` with a free ε∞ returned ε∞ 0.5 before
-  2.3 (it now keeps ε∞ at 1 or above). `run()` admits the 2-pole fit on both meshes; the fields grow by a factor of 1.04 per step and become
-  non-finite at step 2025 (uniform) and 2008 (graded).
-- On a table with heavy loss at low ε′ (ε′ 1.1, tan δ 0.1, constant over 1–40 GHz), `fit_lorentz` returned ε∞ 0.1, its
-  lower bound, with 2 and with 3 resonances before 2.3 (it now keeps ε∞ at 1 or above). `run()` admits both fits on both meshes; the fields grow by a factor of
-  100 to 140 per step and become non-finite at step 22.
-
-In both cases preflight reports only advisories, and the run ends with the `AccuracyWarning` about non-finite values.
-Before building a material from a fit, check `fit.eps_inf`: below 0.98, the material is outside the default step's
-stable range. The 2-pole `fit_debye` result above ran 17143 steps without growth at 0.61 of the vacuum Courant limit
-of the smallest cell, on a graded board with a pinned `dt=`. No step was measured for the `fit_lorentz` result.
-
-Keep `eps_r` and ε∞ at 1 or above. On a graded mesh, a pinned `dt=` below √ε times the vacuum Courant
-limit, with ε the smallest permittivity, is inside the stable range: at 0.6 of the limit a material with ε 0.5 ran
-without growth.
+A `LorentzPoleMap` (or `drude_pole_map`, `lorentz_pole_map`) callable is evaluated at every cell centre, and only the occupied cells' values are kept.
+Under `jax.grad` the unoccupied cells still pass a zero cotangent through the callable's derivative, so a profile whose value or derivative is not finite there (a square root of a negative number, a division by zero) gives a NaN gradient while the objective is finite.
+A concrete run is not affected.
+Clamp the argument where the profile is undefined, for example `jnp.sqrt(jnp.maximum(u, 0.))`: on the occupied cells the value is unchanged and the gradient is finite.
 
 ### `subpixel_smoothing="full_tensor"` keeps the one-plane rule next to a sphere, a cylinder or another non-Box shape, and refuses traced coordinates beside a Box.
 
@@ -505,6 +482,18 @@ Setting `impedance=` to that value requests the line's own reference; it does no
 A finer mesh changes Z_built non-monotonically: 40.55 / 44.08 / 41.29 ohm at
 0.4 / 0.3 / 0.2 mm on the SMA line (measured; record kept with the project).
 
+### A coax-fed patch's S11 does not yet converge over three uniform meshes.
+
+Tracker: #1958
+
+A synthetic coax-fed patch (a 15 x 12 mm patch on a 1.5 mm substrate over a finite ground plate, fed by an SMA-size
+coax through a hole in the plate, `add_coaxial_port()` on uniform `run()`) was solved at 0.30, 0.25 and 0.1875 mm.
+The 50-ohm S11 minimum moves +27.2 MHz from 0.30 to 0.25 mm and +44.8 MHz from 0.25 to 0.1875 mm: the finer pair
+moves more. |S11| at 9.90 GHz reads -4.84 / -3.80 / -2.27 dB. The cause is not established. The port's own checks
+on the same meshes pass (a shorted line reads |Gamma| within 2.4e-5 of 1 and radiates nothing; doubling the line
+moves |S11| by at most 0.091 dB). What to do: solve a coax-fed antenna on at least three meshes and state the trend;
+do not read its resonance from one mesh.
+
 ### A microstrip strip drawn past an MSL port to the domain edge is an open stub that can short the port.
 
 Tracker: #1512
@@ -575,6 +564,46 @@ calculators are not pursued further before 2.0, so the excess will not be attrib
 corrected; use the single-family extractors separately (`compute_msl_s_matrix(...)`,
 the coaxial two-port and line-reflection calculators) for a result you can cite.
 #838 was closed as not planned before 2.0 (decided 2026-09-20); this is a standing limitation.
+
+Part of the excess came from the coax side's plane voltage, which counted the cells next
+to the inner and outer conductors at half weight and so read 0.84 of the line voltage on
+the 0.1 mm test mesh. With the whole-cell voltage, the short test fixture's |S21| falls
+from 3.81 to 3.22 at 6 GHz and its column power from 14.6 to 10.5; the matrix is still
+far from passive, and the rest of the excess is not attributed.
+
+### On a radiating device, the coax calculators' S11 includes coupling from their open feed end.
+
+Tracker: #2975
+
+`compute_coaxial_line_reflection`, `compute_coaxial_two_port` and `compute_coax_msl_transition`
+end each coax line just past its matched feed sheet and leave the line open behind it.
+When the device at the far end radiates, as an open line end or an antenna does, the open
+feed end couples to it through the device's surroundings, and S11 includes that coupling.
+
+On a 40 mm open-ended line in a 12 x 12 mm box with 0.5 mm cells, the S11 of
+`compute_coaxial_line_reflection` differs by 1.5e-4 to 2.7e-4 at 4-6 GHz from the
+`run()`/`forward()` coax port, whose feed end is capped. With the device shorted, 89-96 % of
+that difference goes away. The calculator does not accept user geometry, so the shorted case
+was measured on a `run()` model that reproduces the calculator bit for bit.
+
+Only `compute_coaxial_line_reflection` was measured. The two-port and coax→microstrip
+calculators have the same open feed end and were not measured. They refuse an extra flux
+monitor that reaches the open side of a feed.
+
+### The record-tail witness can report a record settled while a slow mode above `freq_max` holds the tail.
+
+Tracker: #2977
+→ [#2977](https://github.com/bk-squared/rfx/issues/2977)
+
+The witness identifies poles after decimating each record toward 4 × `freq_max` sampling. When a
+structure keeps a long-lived mode above `freq_max`, as a closed or lightly loaded line or cavity
+can, the anti-alias filter passes a small image of it. Once the in-band ringing has decayed, the
+witness reads that image as an in-band pole and evaluates the mode's tail at the folded frequency.
+In a synthetic reproduction, the witness read a largest share of 1.4e-4 and passed. An
+identification that holds the mode read 1.02e-2, above the 1e-2 bar. The per-channel share also
+grows just above a channel's DFT null, so the largest share is set by the bin nearest some
+channel's null. Until this is fixed, check a settling verdict on such a structure against a run
+with a longer record.
 
 ### The microstrip S-matrix can come back non-passive, and says so.
 
@@ -1185,6 +1214,12 @@ its simulation time predates the current decay check. It is re-measured after
 (decided 2026-10-04, recorded on
 [#1471](https://github.com/bk-squared/rfx/issues/1471)).
 
+### Traced material values on several devices, a backend without host callbacks or a GPU process without a CPU backend (`JAX_PLATFORMS=cuda`) bypass the cell time-step limit.
+
+Tracker: #2755
+
+A `jax.jit`-traced ε or μr on several devices, or on a backend without host callbacks (including MPS on Apple silicon), or in a GPU process without a CPU backend (`JAX_PLATFORMS=cuda`), is not judged against the cell time-step limit. Below ε·μr = 0.98, such a run goes non-finite with no named refusal ([#2755](https://github.com/bk-squared/rfx/issues/2755)). Concrete values and eager `jax.grad` / `jax.jvp` primals and `jax.vmap` members are still judged on the host.
+
 ---
 
 ## What this page is not
@@ -1195,3 +1230,7 @@ tracking, decisions pending, and research narrative are deliberately absent — 
 open work see the
 [issue tracker](https://github.com/bk-squared/rfx/issues), and for what is
 supported at all see the [support matrix](support_matrix.md).
+
+### Uniform coax ports remain experimental
+
+Experimental uniform coax ports: calculator equality on the open line (through a `run()` model of the calculator) and on a shorted line (against the capped port), run()/forward() equality, bottom-feed, NTFF-leakage and occupancy-gradient checks define the validation scope; the antenna-level result against an independent solver is not yet shown. NTFF leakage and record-length gradient evidence must be checked for the antenna being reported.

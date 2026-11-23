@@ -18,14 +18,6 @@ def _refuse(message: str) -> "UnsupportedDesignFeature":
     return UnsupportedDesignFeature(message)
 
 
-# ``check_number`` / ``check_text`` / ``check_vector`` come from
-# ``rfx/interop/_validate.py`` — the shared leaf the shape and material codecs
-# also sit on. They refuse JAX tracers, ``bool`` (an int in Python, so
-# ``float(True)`` would silently record 1.0), ``str``/``bytes`` (a quoted
-# numeric in a hand-written document), one-shot iterators (consumed by the act
-# of exporting, so a second export would emit an empty sequence with no error)
-# and non-finite floats. The two coercions below are the ones the leaf does not
-# provide; they build on it rather than re-deriving its rules.
 
 
 def _integer(value: Any, *, what: str) -> int:
@@ -74,16 +66,6 @@ def _require_exact_keys(payload: dict, expected: set[str], *, what: str) -> None
         )
 
 
-# ---------------------------------------------------------------------------
-# Array codec — full values, dtype and namespace preserved
-# ---------------------------------------------------------------------------
-#
-# Mesh profiles and frequency lists reach the builder as Python lists, numpy
-# arrays or jax arrays, and the container matters: ``Simulation.__init__``
-# synthesises ``domain`` from ``float(np.sum(profile))``, so a float32 profile
-# reloaded as float64 shifts the domain extent in the last ULPs and breaks the
-# bit-identity gates the repo relies on.  The dtype and the array namespace are
-# therefore part of the record.
 
 _ARRAY_CONTAINERS = ("list", "tuple", "numpy", "jax")
 

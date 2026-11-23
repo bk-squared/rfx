@@ -48,7 +48,7 @@ from rfx.core.yee import (
     EPS_0, MU_0, CurlBoundary,
 )
 from rfx.boundaries import (
-    apply_pec,  # noqa: F401 -- re-exported; tests import it from here (not used by the step)
+    apply_pec,  # noqa: F401
     apply_pec_edges,
     apply_pec_faces,
 )
@@ -62,17 +62,6 @@ from rfx.snapshots import (
 )
 
 
-# CFL derating for the (2,4) fourth-order-in-space stencil.  The wider
-# staggered difference raises the maximum spatial wavenumber the scheme
-# resolves, so the explicit-leapfrog stability bound tightens: the (2,4)
-# stable timestep is ~0.857x the (2,2) Courant limit (the 1D bound is
-# 6/7 ≈ 0.857; see the kernel header in rfx/core/yee.py).  Applied only
-# when stencil_order == 4; order=2 keeps grid.dt unchanged (byte-identical).
-
-
-# ---------------------------------------------------------------------------
-# Source / probe specifications
-# ---------------------------------------------------------------------------
 
 
 
@@ -80,9 +69,8 @@ from rfx.snapshots import (
 
 
 
-# ---------------------------------------------------------------------------
-# Helpers to build source / probe specs
-# ---------------------------------------------------------------------------
+
+
 
 def _source_cell_cb(grid: Grid, idx, materials, component,
                     periodic=(False, False, False)):
@@ -229,9 +217,6 @@ def make_probe(grid: Grid, position: tuple[float, ...] | list[float], component:
 
 
 
-# ---------------------------------------------------------------------------
-# Compiled runner
-# ---------------------------------------------------------------------------
 
 
 
@@ -243,25 +228,6 @@ def _suggest_checkpoint_segments(n_steps: int) -> int:
     return _nearest_divisor(n_steps, max(1, int(math.isqrt(n_steps))))
 
 
-# ---------------------------------------------------------------------------
-# Shared setup helper (W6.2)
-# ---------------------------------------------------------------------------
-#
-# ``run()`` and ``run_until_decay()`` share ~73% of their setup code: boundary
-# resolution, subsystem flags, carry_init assembly, metadata extraction, and
-# the _StepContext field population.  ``_build_step_setup`` centralises that
-# shared work and returns a ``_SimSetup`` NamedTuple.  Each driver then
-# applies its handful of driver-specific overrides before constructing the
-# final ``_StepContext``.
-#
-# Intentional behavioural differences preserved:
-#   * ``flux_meta_11`` (11-field, with window name/alpha) used by ``run()``;
-#     ``flux_meta_8`` (8-field, no window) used by ``run_until_decay()``
-#     (use_flux_window=False).  Unifying decay onto windowed DFT is a
-#     deliberate future task.
-#   * ``use_fast_he`` / ``fast_coeffs`` — ``run()`` only; decay path is a
-#     chunked scan with the fast path deliberately OFF to preserve its
-#     standalone-step arithmetic.
 
 
 
@@ -274,29 +240,6 @@ from rfx.model import design_box_bounds, resolve_design_box
 
 
 
-# ---------------------------------------------------------------------------
-# Shared Yee scan body (W6.1)
-# ---------------------------------------------------------------------------
-#
-# ``run()`` and ``run_until_decay()`` (formerly Python loop + jax.jit)
-# ran two ~85%-identical copies of the per-step Yee kernel.  ``make_core_step``
-# is the single source of truth.  Both call sites build a ``_StepContext`` from
-# their own setup code, then:
-#   * ``run()``           wraps ``core`` in a scan body that unpacks ``xs`` and
-#                         assembles the scan output tuple (probe + snapshot).
-#   * ``run_until_decay`` scans ``core`` in chunks and checks decay
-#                         against the after-drive energy at chunk boundaries.
-#
-# Every free variable of the old closures is passed explicitly via the context
-# (no capture of caller locals) so the builder is unit-testable.  Numerics,
-# Yee sub-step ordering, and dtype casts are unchanged — this is pure code
-# motion.  The two documented behavioural differences are parameterised:
-#   * ``use_fast_he`` / ``fast_coeffs`` — GPU baked-PEC path (run() only today).
-#   * ``use_flux_window`` + 11-field ``flux_meta`` — streaming DFT window for
-#     flux monitors.  ``run_until_decay`` passes ``use_flux_window=False`` and
-#     an 8-field ``flux_meta`` to keep its historical rect-window (no weight)
-#     behaviour bit-identical.  Unifying the decay path onto windows is a
-#     deliberate follow-up, not part of this refactor.
 
 
 
@@ -307,9 +250,6 @@ from rfx.model import design_box_bounds, resolve_design_box
 
 
 
-# ---------------------------------------------------------------------------
-# Field-decay-based stopping criterion (host checks + compiled scan chunks)
-# ---------------------------------------------------------------------------
 
 
 from rfx.stepping import make_core_step

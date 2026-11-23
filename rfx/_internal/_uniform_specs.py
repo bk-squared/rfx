@@ -1,4 +1,7 @@
-"""Shared uniform-runner records and scalar helpers."""
+"""Shared uniform-runner records and scalar helpers.
+
+``_ORDER4_CFL_FACTOR`` is six sevenths rounded, the fourth-order staggered stencil's one-dimensional Courant bound relative to the second-order bound.
+"""
 
 from __future__ import annotations
 
@@ -267,6 +270,7 @@ class SimResult(NamedTuple):
     current_moment_data: object = None
     current_moment_monitor: object = None
     adjoint_settling: object = None
+    coax_sparam_accs: object = None
     sparam_time_records: tuple | None = None
     dft_time_records: tuple | None = None
     decay_stop: object = None

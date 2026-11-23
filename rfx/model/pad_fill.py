@@ -20,7 +20,6 @@ def check_pad_fill(sim, grid, geometry_masks, *, record=None, conductors=None):
                 sim._unresolved_domain, record=record)
             for row in (() if record is None else record[before:]):
                 row["subject"] = f"geometry[{i}]"
-    # Stamped PEC volumes, like declared PEC, are not dielectric pad fills.
     for entity in getattr(conductors, 'stamped_entities', ()):
         if entity.kind == 'material':
             before = len(record) if record is not None else 0

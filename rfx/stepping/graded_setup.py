@@ -354,7 +354,7 @@ def _build_nu_scan(
     from rfx.model.pole_stability import judge_prebuilt_poles
     from rfx.materials.lorentz import pole_sets_judged
     if lorentz is not None and not pole_sets_judged(lorentz[0]):
-        judge_prebuilt_poles(grid, lorentz, debye, periodic=tuple(a in grid.periodic_axes for a in "xyz"))
+        judge_prebuilt_poles(grid, lorentz, debye, periodic=tuple(a in grid.periodic_axes for a in "xyz"), mu_r=materials.mu_r)
     use_wire_ports = len(wire_ports) > 0
     use_debye = debye is not None
     use_lorentz = lorentz is not None
@@ -474,6 +474,8 @@ def _build_nu_scan(
             ),
         )
     use_design_box = design_box_coeffs is not None
+    from rfx.model.pole_stability import refuse_subluminal_cells
+    refuse_subluminal_cells(materials, grid, step_grid.dt, design_box=design_box)
 
     carry_init = {"fdtd": state}
     if use_cpml:

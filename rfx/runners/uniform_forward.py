@@ -182,6 +182,7 @@ def _forward_from_materials(
 
     from rfx.sources.port_drive import PortSourceQueue
     sources = PortSourceQueue()
+    mag_sources: list = []
     probes = []
     # ── Effective boundary flags, resolved BEFORE the PEC realization ──
     # the realized PEC edge masks (Mx, My, Mz) are only
@@ -238,6 +239,15 @@ def _forward_from_materials(
         self, grid, materials, pec_mask, pec_sheets, pec_wires, periodic_bool,
         conductors, sheet_impedance,
         operator=conductor_operator(smoothing=subpixel_smoothing, conformal=_conformal))
+    if self._coaxial_ports:
+        from rfx.model.coax_port import assemble_coax_port
+        materials, conductors, pec_occupancy_local = assemble_coax_port(
+            self, grid, materials, conductors, sources, mag_sources, n_steps=n_steps,
+            occupancy=pec_occupancy_local)
+        from rfx.model.coax_admission import refuse_design_box
+        refuse_design_box(design_box, conductors)
+        pec_mask_local = conductors.pec_cells
+        pec_edge_masks_local = conductors.pec_edges
     from rfx.measurement.prepared import attach_measurement
     attach_measurement(self, conductors, n_steps=n_steps, path=lane or 'fwd_uniform',
                        frequencies=port_s11_freqs,
@@ -540,9 +550,9 @@ def _forward_from_materials(
                     "imperative Simulation.run() path "
                     "(`runners/uniform.py::run_uniform_path`) but not "
                     "yet on the differentiable Simulation.forward() "
-                    "path — the J+M Schelkunoff source pair needs a "
-                    "magnetic-source channel that `_forward_from_materials` "
-                    "does not currently expose.  Use mode='laplace' "
+                    "path — the MSL J+M Schelkunoff source pair is not "
+                    "wired into its magnetic-source channel. "
+                    "Use mode='laplace' "
                     "(the default) on the differentiable path."
                 )
             materials = setup_msl_port(grid, mp, materials,
@@ -709,6 +719,8 @@ def _forward_from_materials(
         )
 
     from rfx.stepping import prepared as prepared_step
+    if self._coaxial_ports and getattr(materials.components, 'tensor', None) is None:
+        materials = materials._replace(components=None)
     conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
     stepping_product = conductors
     if self._lumped_rlc:
@@ -731,6 +743,7 @@ def _forward_from_materials(
         debye=debye,
         lorentz=lorentz,
         sources=sources,
+        mag_sources=mag_sources or None,
         probes=probes,
         waveguide_ports=waveguide_ports if waveguide_ports else None,
         ntff=ntff_box,
@@ -816,8 +829,12 @@ def _forward_from_materials(
             ),
         }
 
+    coax_metadata = None
     s_params_out = getattr(result, "s_params", None)
     freqs_out = getattr(result, "freqs", None)
+    if self._coaxial_ports and port_s11_freqs is not None:
+        from rfx.measurement.coax_port import port_result
+        s_params_out, freqs_out, coax_metadata = port_result(self, stepping_product, result)
     from rfx.measurement.port_s_contract import uniform_record_pairs
     pairs = uniform_record_pairs(result)
     if pairs:
@@ -847,7 +864,7 @@ def _forward_from_materials(
     from rfx.sparams._record_selection import finish_forward
     return result_with_diagnostics(finish_forward(pack_uniform_forward_result(
         self, grid, result, diagnostics=diagnostics, s_params=s_params_out,
-        freqs=freqs_out, current_moment_monitor=current_moments_fwd,
+        freqs=freqs_out, current_moment_monitor=current_moments_fwd, coax_port_metadata=coax_metadata,
         realized_geometry=stepping_product._realization_record,
     )._replace(tfsf_angle_deg=tfsf_angle_override)), conductors.design_findings)
 

@@ -309,7 +309,7 @@ def _build_step_setup(
     from rfx.model.pole_stability import judge_prebuilt_poles
     from rfx.materials.lorentz import pole_sets_judged
     if lorentz is not None and not pole_sets_judged(lorentz[0]):
-        judge_prebuilt_poles(grid, lorentz, debye, periodic=periodic)
+        judge_prebuilt_poles(grid, lorentz, debye, periodic=periodic, mu_r=materials.mu_r)
 
     # ---- boundary configuration ----
     from rfx.model.materials import with_components
@@ -751,6 +751,11 @@ def _build_step_setup(
             ),
         )
 
+    from rfx.model.pole_stability import refuse_subluminal_cells
+    refuse_subluminal_cells(materials, grid, dt, periodic=periodic,
+        design_box=design_box, stencil_order=stencil_order,
+        conservative='conformal' if getattr(grid, '_courant_conformal_floor', False) else None)
+
     # ---- design occupancy: fence, then build its 1 - M once ----
     design_occupancy_keep = None
     if design_occupancy is not None:
@@ -964,6 +969,8 @@ def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None,
         from rfx.measurement.time_records import uniform_specs
         specs = uniform_specs(ctx)
         tables = plan_tables(measurement, n_probes=len(ctx.prb_meta), port_specs=specs, dtype=dtype)
+        if tables['coax_table'].n_channels:
+            invariants.update(coax_table=tables['coax_table'], coax_freqs=tables['coax_freqs'])
         invariants.update({key: tables[key] for key, used in
                            (('probe_table', ctx.prb_meta), ('port_table', specs)) if used})
     if ctx.use_waveguide_ports:

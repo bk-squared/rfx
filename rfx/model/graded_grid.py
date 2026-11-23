@@ -52,65 +52,34 @@ class NonUniformGrid(NamedTuple):
     that side even when the axis as a whole uses CPML. For back-compat
     the six fields default to ``cpml_layers`` on every face (the
     pre-per-face-allocation symmetric layout).
+    On non-periodic axes, the trailing cell-width entry supplies the final electric node and contributes no physical extent.
     """
     nx: int
     ny: int
     nz: int
-    dx: float              # BOUNDARY x cell size (CPML + legacy scalars)
-    dy: float              # BOUNDARY y cell size
-    dx_arr: jnp.ndarray    # (nx,) — per-cell dx (includes CPML padding)
-    dy_arr: jnp.ndarray    # (ny,) — per-cell dy
-    dz: jnp.ndarray        # (nz,) z cell sizes (already per-cell)
-    dt: float | jax.Array  # timestep; eager float in normal use, traced
-                           # jax.Array on the run_nonuniform traced path.
-                           # Readers must not apply float() / .item() without
-                           # an is_tracer(dt) guard or a host-boundary context.
+    dx: float
+    dy: float
+    dx_arr: jnp.ndarray
+    dy_arr: jnp.ndarray
+    dz: jnp.ndarray
+    dt: float | jax.Array
     cpml_layers: int
-    # Non-periodic cell-size arrays carry pads and a trailing duplicate so N
-    # cells are bounded by N+1 E-nodes. The
-    # duplicate is a node-provider, not physical extent: its H term is the one
-    # the stencil zeroes. Read extents from node positions
-    # (coords_from_nonuniform_grid, or cumsum edges up to index nx-1) — NEVER
-    # from sum(dx_arr), which overshoots by that trailing cell.
-    # Periodic axes have N cells and N nodes, no pads or duplicate, and both
-    # inverse metrics are 1/d at every node, including the seam.
-    # Pre-computed inverse spacing arrays (length N, padded).
-    # CORE-C2: inv_d* feed the E update (mean spacing), inv_d*_h feed
-    # the H update (local cell width). See _profile_to_inv_arrays.
-    inv_dx: jnp.ndarray    # (nx,) — E update: 2/(dx[i-1]+dx[i]); [0]=1/dx[0]
-    inv_dy: jnp.ndarray    # (ny,) — E update: 2/(dy[j-1]+dy[j]); [0]=1/dy[0]
-    inv_dz: jnp.ndarray    # (nz,) — E update: 2/(dz[k-1]+dz[k]); [0]=1/dz[0]
-    inv_dx_h: jnp.ndarray  # (nx,) — H update: 1/dx[i]; [nx-1]=0
-    inv_dy_h: jnp.ndarray  # (ny,) — H update: 1/dy[j]; [ny-1]=0
-    inv_dz_h: jnp.ndarray  # (nz,) — H update: 1/dz[k]; [nz-1]=0
-    # Per-face CPML padding for PMC+CPML composition
+    inv_dx: jnp.ndarray
+    inv_dy: jnp.ndarray
+    inv_dz: jnp.ndarray
+    inv_dx_h: jnp.ndarray
+    inv_dy_h: jnp.ndarray
+    inv_dz_h: jnp.ndarray
     pad_x_lo: int = 0
     pad_x_hi: int = 0
     pad_y_lo: int = 0
     pad_y_hi: int = 0
     pad_z_lo: int = 0
     pad_z_hi: int = 0
-    # Exact float64 copies of the padded cell-size profiles.
-    # The node-position spine (coords_from_nonuniform_grid) reads these, so
-    # realized geometry does not inherit the float32 quantization of the
-    # solver-facing stores above — a cumsum of f32-widened cell sizes lands
-    # ~1e-10 m off the exact node positions, which flips half-open inclusion
-    # at node-aligned faces and splits the one-cell-sheet plane between the
-    # uniform and NU lanes. Populated by make_nonuniform_grid on the
-    # concrete path only (None when the profile is traced, and on grids
-    # built by hand — the coordinate producer then widens the f32 store,
-    # and emits ExactNodeSpineMissingWarning so the
-    # degraded node line is never silent). Solver arithmetic keeps reading
-    # the float32 fields; both derive from the same padded profile at
-    # construction, so they cannot drift independently.
     dx_arr_f64: np.ndarray | None = None
     dy_arr_f64: np.ndarray | None = None
     dz_f64: np.ndarray | None = None
     face_layers: dict[str, int] | None = None
-    # The caller's concrete nominal interior widths of each TRACED axis
-    # (``Simulation(nominal_profiles=)``), float64 numpy keyed "x"/"y"/"z",
-    # or None. Read only by ``_axis_position_to_index`` to resolve a metre
-    # coordinate on a traced axis; never part of the node spine above.
     nominal_cells: dict[str, np.ndarray] | None = None
     traced_cells: dict[str, tuple[int, int]] | None = None
     periodic_axes: str = ""
@@ -127,27 +96,6 @@ class NonUniformGrid(NamedTuple):
         callers subtract from array indices to recover user coords."""
         return (self.pad_x_lo, self.pad_y_lo, self.pad_z_lo)
 
-    # ------------------------------------------------------------------
-    # Grid metric interface (step 0a, design note
-    # docs/design_notes/20260922_nu_grid_core_predeclaration.md decision 2).
-    #
-    # THE CONVENTION -- index origin, the primal/dual rule, the end entries
-    # of ``inv_d_e`` / ``inv_d_h``, and which consumer is entitled to which
-    # metric -- is written once, in ``rfx/_internal/_grid_metric.py``. Read that module
-    # before adding a metric formula at a call site.
-    #
-    # ``rfx.grid.Grid`` carries the same seven methods with the same meaning,
-    # so a consumer can hold either class and never branch on its type. 0a
-    # adds the interface only: no consumer moves onto it here, and the scalar
-    # ``dx`` / ``dy`` fields keep their present meaning (the BOUNDARY cell).
-    #
-    # Source of truth (decision 1): the float64 cell arrays
-    # ``dx_arr_f64`` / ``dy_arr_f64`` / ``dz_f64``. ``make_nonuniform_grid``
-    # fills all three for every CONCRETE axis, and re-checks that the cells
-    # it realized between the declared domain faces sum to the declared
-    # profile. Nodes, duals and both inverse-metric arrays are derived from
-    # the cells; none of them is stored independently.
-    # ------------------------------------------------------------------
 
     def _axis_layout(self, axis) -> tuple[int, int, int, int]:
         """``(axis_index, n, pad_lo, pad_hi)`` for a normalized axis."""
@@ -588,16 +536,12 @@ def _profile_to_inv_arrays(profile_full: np.ndarray, *, dtype, periodic=False) -
     first slot feeds the E update, the second feeds ``update_h_nu``.
     """
     arr = jnp.asarray(profile_full, dtype=dtype)
-    inv_local = 1.0 / arr                          # 1/d[k]
+    inv_local = 1.0 / arr
     if periodic:
         inv_periodic = jnp.asarray(1.0 / np.asarray(profile_full, dtype=np.float64), dtype=dtype)
         return inv_periodic, inv_periodic
-    inv_mean = 2.0 / (arr[:-1] + arr[1:])          # 2/(d[k]+d[k+1])
-    # H update: local cell width; trailing 0 (forward-diff has no d[N]).
+    inv_mean = 2.0 / (arr[:-1] + arr[1:])
     inv_d_h = jnp.concatenate([inv_local[:-1], jnp.zeros(1, dtype=dtype)])
-    # E update: mean of (d[k-1], d[k]); leading 1/d[0] (backward-diff
-    # boundary — reproduces the pre-fix value so the face cell is
-    # unchanged).
     inv_d_e = jnp.concatenate([inv_local[:1], inv_mean])
     return inv_d_e, inv_d_h
 
@@ -710,11 +654,6 @@ def _pinned_dt(dt_pin, dt_min_cell, profiles, axis_names,
             f"limit {limit:.6e} s of the smallest cells [{detail}] — the run "
             f"would diverge. Ratio dt/limit = {dt_val / limit:.4f}."
         )
-    # A DECLARED floor is a claim about cells nobody has measured yet. Declare
-    # it too large and the check above passes on a mesh whose smallest cell is
-    # actually below the pinned step: the fields then diverge to NaN with
-    # nothing said, while the same profile handed over concretely is refused
-    # here. Measure the claim against the realized cells when they arrive.
     for name, prof in zip(axis_names, profiles):
         if is_tracer(prof):
             _assert_declared_floor_at_runtime(prof, float(dt_min_cell), name,
@@ -897,14 +836,10 @@ def make_nonuniform_grid(
     )
     from rfx.grid import axis_kinds, realized_cells
     kinds = axis_kinds(boundary_depths)
-    # --- x profile (uniform or provided) ---
     if dx_profile is None:
         nx_interior = realized_cells(domain_xy[0], dx, kinds["x"])
         dx_prof_phys = np.full(nx_interior, float(dx))
     elif is_tracer(dx_profile):
-        # With a nominal profile the ends are not checked here: the fixed-cell
-        # check holds them outside a declared window (free inside, or with no
-        # window), and dx agreement is judged where a structure is resolved.
         dx_prof_phys = jnp.asarray(dx_profile, dtype=dtype)
         if nominal_profiles is None or "x" not in nominal_profiles:
             _assert_boundary_cells(dx_prof_phys, dx, "x")
@@ -917,16 +852,11 @@ def make_nonuniform_grid(
             dx_full, pad_x_lo, pad_x_hi, dx_prof_phys, "x", periodic="x" in periodic_axes)
     nx = int(dx_full.shape[0])
 
-    # --- y profile ---
     if dy_profile is None:
-        # Uniform y uses `dx` as the cell size (legacy behaviour)
         ny_interior = realized_cells(domain_xy[1], dx, kinds["y"])
         dy_prof_phys = np.full(ny_interior, float(dx))
         dy_boundary = float(dx)
     elif is_tracer(dy_profile):
-        # With a nominal profile the ends are not checked here: the fixed-cell
-        # check holds them outside a declared window (free inside, or with no
-        # window), and dx agreement is judged where a structure is resolved.
         dy_prof_phys = jnp.asarray(dy_profile, dtype=dtype)
         dy_boundary = float(dx)
         if nominal_profiles is None or "y" not in nominal_profiles:
@@ -941,7 +871,6 @@ def make_nonuniform_grid(
             dy_full, pad_y_lo, pad_y_hi, dy_prof_phys, "y", periodic="y" in periodic_axes)
     ny = int(dy_full.shape[0])
 
-    # --- z profile ---
     dz_full = _append_bounding_node(_pad_profile(dz_profile, pad_z_lo, pad_z_hi, dtype=dtype), periodic="z" in periodic_axes)
     if not is_tracer(dz_full):
         assert_cells_span_declared_profile(
@@ -951,7 +880,6 @@ def make_nonuniform_grid(
     for axis, profile in zip("xyz", (dx_prof_phys, dy_prof_phys, dz_profile)):
         _warn_float32_width_resolution(profile, axis)
 
-    # --- CFL from minimum cell size on every axis ---
     dt_pin = dt
 
     def _axis_min(d_full):
@@ -974,14 +902,10 @@ def make_nonuniform_grid(
                         (dx_full, dy_full, dz_full), ("x", "y", "z"),
                         where=dt_caller or "make_nonuniform_grid")
 
-    # --- Per-cell arrays + inverse spacings ---
     dx_arr = jnp.asarray(dx_full, dtype=dtype)
     dy_arr = jnp.asarray(dy_full, dtype=dtype)
     dz_arr = jnp.asarray(dz_full, dtype=dtype)
 
-    # Exact float64 spine for node positions: concrete profiles
-    # only — a traced profile has no host copy and its axis keeps the traced
-    # coordinate path.
     def _exact_f64(d_full):
         return None if is_tracer(d_full) else np.asarray(d_full,
                                                          dtype=np.float64)

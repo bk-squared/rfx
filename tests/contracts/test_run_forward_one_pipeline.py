@@ -148,6 +148,7 @@ ASSEMBLY_ROWS = (
     ('P-lumped', 'multi-device-uniform'),
     ('P-wire-driven', 'multi-device-uniform'),
     ('P-wire', 'multi-device-uniform'),
+    ('P-coax', 'uniform'),
     ('C-conformal', 'uniform'),
     ('P-conformal', 'uniform'),
     ('C-full-tensor', 'graded'),
@@ -259,6 +260,7 @@ ASSEMBLY_ROWS = (
 )
 
 FIELD_ROWS = (
+    ('P-coax', 'uniform'),
     ('C-conformal', 'uniform'),
     ('P-conformal', 'uniform'),
     ('C-full-tensor', 'graded'),
@@ -395,6 +397,7 @@ FIELD_ROWS = (
 )
 
 ADMISSION_ROWS = (
+    ('P-coax', 'uniform'),
     ('O-cm', 'multi-device-graded'),
     ('O-dft', 'multi-device-graded'),
     ('O-flux', 'multi-device-graded'),
@@ -462,7 +465,6 @@ BOTH_REFUSE_ROWS = tuple((declaration, path)
     ('P-coax', 'graded'),
     ('P-coax', 'multi-device-graded'),
     ('P-coax', 'multi-device-uniform'),
-    ('P-coax', 'uniform'),
     ('P-floquet', 'multi-device-uniform'),
     ('P-lumped2', 'multi-device-uniform'),
     ('P-waveguide', 'multi-device-graded'),
@@ -711,6 +713,7 @@ ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] in ('B-cpml', 'C-co
     ('C-full-tensor', 'uniform'),
     ('P-wire-driven', 'uniform'),
     ('P-wire-driven', 'multi-device-uniform'),
+    ('P-coax', 'uniform'),
     ('O-dft', 'uniform'), ('O-ntff', 'uniform'), ('O-cm', 'uniform'), ('P-msl', 'uniform'),
     ('B-closed', 'uniform'), ('P-lumped', 'multi-device-uniform'), ('P-lumped2', 'uniform')) or any(
     (d, p, level) == (*row, 'L2') for d, p, level, ident, reason in KNOWN_ROWS))
@@ -1062,3 +1065,19 @@ def test_waveguide_soft_source_refused_before_step(monkeypatch, declaration, ent
     assert raised_in_rfx(record)
     assert record['type'] == ('RfxUnsupported' if declaration == 'WG-soft-last' and entry != 'compute_waveguide_s_matrix' else 'ValueError')
     assert 'a lumped or wire port, or a soft source (add_source)' in record['message']
+
+
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_coax_requested_bins_reach_measurement(monkeypatch, entry):
+    from tests.contracts.test_coax_port_model_and_drive import scene, Captured
+    requested = np.array([4e9, 5e9, 6e9])
+    def kernel(grid, materials, n_steps, **kwargs):
+        owner, = (o for o in kwargs['measurement'].owners if o.kind == 'coax')
+        np.testing.assert_array_equal(owner.frequencies, requested)
+        assert len(owner.channels) == 12
+        assert owner.reference_planes[-1].index == 8
+        raise Captured
+    monkeypatch.setattr('rfx.simulation.run', kernel)
+    options = {'s_param_freqs': requested} if entry == 'run' else {'port_s11_freqs': requested}
+    with pytest.raises(Captured):
+        getattr(scene(), entry)(n_steps=3, skip_preflight=True, **options)
