@@ -19,7 +19,7 @@ reproduce a record that names it.
 
 from __future__ import annotations
 
-from rfx.runners._distributed_common import (  # noqa: F401 -- re-exported
+from rfx.runners._distributed_common import (  # noqa: F401
     gather_array_x,
     split_array_x,
     split_poles_x,

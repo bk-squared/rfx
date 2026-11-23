@@ -21,12 +21,11 @@ def apply_tfsf_e(state, cfg, tfsf_st, dx: float, dt: float):
     crosses the TFSF boundary.
 
     Dispatches to 2D auxiliary grid version for oblique incidence.
+    For normal-incidence open-slab corrections, incident H samples lie half a cell outside the total-field x interval.
     """
-    # Dispatch to open-domain oblique Method B (real float32, 4-edge box).
     if is_tfsf_methodB(cfg):
         from rfx.stepping.tfsf_oblique import apply_methodB_e
         return apply_methodB_e(state, cfg, tfsf_st, dx, dt)
-    # Dispatch to 2D if config is TFSF2DConfig
     if is_tfsf_2d(cfg):
         from rfx.sources.tfsf_2d import apply_tfsf_2d_e
         return apply_tfsf_2d_e(state, cfg, tfsf_st, dx, dt)
@@ -37,17 +36,11 @@ def apply_tfsf_e(state, cfg, tfsf_st, dx: float, dt: float):
     coeff_lo = dt / (EPS_0 * cfg.e_face_widths[0])
     coeff_hi = dt / (EPS_0 * cfg.e_face_widths[1])
 
-    # ---- Normal incidence: direct 1D grid lookup ----
-    # Hy_inc at position x_lo - 0.5 → h1d[i0 - 1]
-    # (h1d[i] represents Hy at (i + 0.5) in 1D grid coords;
-    #  h1d[i0-1] is at position i0 - 0.5, which maps to x_lo - 0.5 in 3D)
     h_inc_lo = tfsf_st.h1d[i0 - 1]
 
-    # Hy_inc at position x_hi + 0.5 → h1d[i0 + (x_hi - x_lo)]
     h_inc_hi = tfsf_st.h1d[i0 + (cfg.x_hi - cfg.x_lo)]
 
     e_field = getattr(state, cfg.electric_component)
-    # Sign flips for Ey/Hz because Ampere carries -dH/dx there.
     e_field = e_field.at[cfg.x_lo, :, :].add(-cfg.curl_sign * coeff_lo * h_inc_lo)
     e_field = e_field.at[cfg.x_hi + 1, :, :].add(cfg.curl_sign * coeff_hi * h_inc_hi)
 
@@ -63,11 +56,9 @@ def apply_tfsf_h(state, cfg, tfsf_st, dx: float, dt: float):
     Dispatches to 2D auxiliary grid version for oblique incidence.
     """
     mu_abs = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
-    # Dispatch to open-domain oblique Method B (real float32, 4-edge box).
     if is_tfsf_methodB(cfg):
         from rfx.stepping.tfsf_oblique import apply_methodB_h
         return apply_methodB_h(state, cfg, tfsf_st, dx, dt)
-    # Dispatch to 2D if config is TFSF2DConfig
     if is_tfsf_2d(cfg):
         from rfx.sources.tfsf_2d import apply_tfsf_2d_h
         return apply_tfsf_2d_h(state, cfg, tfsf_st, dx, dt)
@@ -78,15 +69,11 @@ def apply_tfsf_h(state, cfg, tfsf_st, dx: float, dt: float):
     coeff_lo = dt / (mu_abs * cfg.h_face_widths[0])
     coeff_hi = dt / (mu_abs * cfg.h_face_widths[1])
 
-    # ---- Normal incidence: direct 1D grid lookup ----
-    # Ez_inc at position x_lo → e1d[i0]
     e_inc_lo = tfsf_st.e1d[i0]
 
-    # Ez_inc at position x_hi+1 → e1d[i0 + (x_hi+1 - x_lo)]
     e_inc_hi = tfsf_st.e1d[i0 + (cfg.x_hi + 1 - cfg.x_lo)]
 
     h_field = getattr(state, cfg.magnetic_component)
-    # Sign flips for Ey/Hz because Faraday carries -dE/dx there.
     h_field = h_field.at[cfg.x_lo - 1, :, :].add(-cfg.curl_sign * coeff_lo * e_inc_lo)
     h_field = h_field.at[cfg.x_hi, :, :].add(cfg.curl_sign * coeff_hi * e_inc_hi)
 

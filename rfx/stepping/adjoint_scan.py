@@ -86,7 +86,6 @@ def design_adjoint_scan(ctx, initial, xs):
     def run(coeffs, targets=None, recording=False):
         local = replace(step_base, design_box=base.design_box._replace(ca=coeffs[0], cb=coeffs[1]))
         if targets is not None:
-            # Suppress primal drives. CPML and ordinary Yee updates are reused.
             local = replace(local, drives=None,
                             use_dft_planes=False, dft_meta=(), prb_meta=(), use_ntff=False)
             from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -116,10 +115,10 @@ def design_adjoint_scan(ctx, initial, xs):
                               design_hook=hook if recording else None,
                               hooks={HookPoint.AFTER_H: (h_hook,)} if targets is not None else None)
         def step(carry, row):
+            """The post-update adjoint E spectrum represents ``L^-1 b``."""
             state, acc_e, acc_h, peak, last_e, tail = carry
             state, probes, extras = core(state, *row)
             if targets is None:
-                # Yee E edges owned by the design box, after the full update.
                 last_e = jnp.max(jnp.stack([
                     jnp.max(jnp.abs(getattr(state["fdtd"], c)[sl]))
                     for c in ("ex", "ey", "ez")]))
@@ -127,8 +126,6 @@ def design_adjoint_scan(ctx, initial, xs):
                 tail = jnp.where(row[0] >= steps - tail_steps,
                                  jnp.maximum(tail, last_e), tail)
             if recording:
-                # Forward Epre and curl use the post-update timestamp. Adjoint
-                # E is post-update; its DFT then represents L^-1 b.
                 e, h = extras["design_record"]
                 if targets is not None:
                     e = tuple(getattr(state["fdtd"], c)[sl] for c in ("ex", "ey", "ez"))
@@ -142,7 +139,6 @@ def design_adjoint_scan(ctx, initial, xs):
             step, (start, z, z, jnp.zeros((), dtype), jnp.zeros((), dtype),
                    jnp.zeros((), dtype)), xs)
         if targets is None:
-            # No excitation gives no settling evidence, rather than a false zero.
             last = {**last, "adjoint_settling": jax.lax.stop_gradient(
                 jnp.where(peak > 0, tail / peak, jnp.nan))}
         return (last, e, h), outputs
@@ -174,7 +170,6 @@ def design_adjoint_scan(ctx, initial, xs):
             entry = (meta[0].name, _plane_slice(meta, ctx.grid.shape), target)
             (electric if meta[0].name.startswith("e") else magnetic).append(entry)
         if ctx.use_ntff:
-            # Symbolic zeros include untouched faces and all compensation leaves.
             bar = jax.tree.map(lambda a, b: jnp.zeros_like(a) if isinstance(b, symbolic) else b,
                                initial["ntff"], last_bar["ntff"],
                                is_leaf=lambda v: isinstance(v, symbolic))

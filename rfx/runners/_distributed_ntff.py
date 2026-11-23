@@ -55,9 +55,6 @@ class SlabNTFF:
         return NTFFData(*arrays)
 
     def update(self, buffer, state, dt, step, *, ranks):
-        # The right ghost Hx equals the neighbour's first real Hx: the H
-        # update computes ghost rows from exchanged E, including CPML
-        # corrections. Face-centre y/z samples rely on this invariant.
         branches = []
         for lo, hi, faces, offset, shapes, sizes in self.parts:
             def branch(args, lo=lo, hi=hi, faces=faces, offset=offset,

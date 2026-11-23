@@ -8,8 +8,6 @@ def require_concrete_port_records(result):
     for _, accs in (result.wire_port_sparams or ()) + (result.lumped_port_sparams or ()):
         for value in accs:
             if isinstance(value, jax.core.Tracer):
-                # Keep the concrete-array boundary without transferring
-                # already concrete spectra back to the host.
                 np.asarray(value)
 
 

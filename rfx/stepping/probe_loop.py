@@ -42,7 +42,6 @@ def make_probe_step(grid, materials, ports, driven, *, use_cpml,
             unit_field=stamped_drive(port, cell)[1], time=t, dtype=jnp.float32) for cell in cells])
 
     def before_sources(frame):
-        # Probe updates belong to this frame, never to the caller's input dict.
         frame.carry = dict(frame.carry)
         update = (observers.update_wire_drive_ref_probe if wire
                   else observers.update_lumped_drive_ref_probe)

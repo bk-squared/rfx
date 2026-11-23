@@ -159,20 +159,11 @@ def make_uniform_step(
         """Retain E at n for reactive elements and current-moment observations."""
         frame.st = frame.carry["fdtd"]
         frame.tfsf_h_state = None
-        # a series RLC element is solved together with its edge field
-        # and needs E^n there; nothing before the E update writes E, so the
-        # carry's value IS E^n on every path (fast H+E kernel included).
         frame.rlc_e_prev = (
             tuple(getattr(frame.st, m.component)[m.i, m.j, m.k]
                   for m in ctx.rlc_meta)
             if ctx.use_lumped_rlc else ())
 
-        # E^n on the slab, taken before anything in this step writes E. The
-        # H update below does not touch E, so this is the same array the
-        # E update is about to consume — and the difference against the
-        # post-update field is exactly one timestep, which is what makes
-        # ``J = curl_h H - eps0 dE/dt`` the lattice's own current.
-        # Slab-sized: the reverse-mode tape carries the slab, not the domain.
         if ctx.use_current_moments:
             frame.e_prev_slab = _slab_e_snapshot(view(frame.st), ctx.current_moments)
 
@@ -206,9 +197,6 @@ def make_uniform_step(
                     ctx.apply_cpml_h, frame.st, frame.carry["cpml"],
                     materials=materials, periodic=periodic,
                     h_row_factors=invariants["h_row_factors"])
-            # After CPML-H, intersect the old full-node (smooth) or pairwise
-            # (binary) mask with H whose every curl driver is frozen. This
-            # retains PEC damping while releasing field-driven corner H.
             if ctx.use_aniso_inv:
                 from rfx.boundaries.pec import apply_pec_h_mask, undriven_h_masks
                 _inv_xx, _inv_yy, _inv_zz = aniso_inv_eps
@@ -233,28 +221,15 @@ def make_uniform_step(
 
     def magnetic_drives(frame: UniformFrame):
         """Inject magnetic currents into the completed H half step."""
-        # Magnetic current (Schelkunoff M / J-magnetic) injection —
-        # applied after H update so the Yee leapfrog ordering is
-        # H^{n+1/2} += -dt/mu · M^{n+1/2}. The coefficient is
-        # pre-baked into the waveform values at construction time.
         if mag_drives is not None:
             frame.st = core_drives.inject_drives(frame.st, mag_drives, frame.mag_src_vals)
 
     def e_update(frame: UniformFrame):
         """Advance E to n+1, including dispersive and design-box updates."""
         if not ctx.use_fast_he:
-            # Snapshot E^n before the linear E-update for the reactive Kerr
-            # increment: E^{n+1} = E^n + (E_lin - E^n)/(1 + chi3|E^n|^2/eps_r).
             frame.e_prev_kerr = (frame.st.ex, frame.st.ey, frame.st.ez) if ctx.use_kerr else None
-            # Snapshot E^n for the sheet operator (it REPLACES the
-            # standard update at masked tangential edges with
-            # A*E^n + B*curlH, so it needs the pre-update E).
             frame.e_prev_sheet = (
                 (frame.st.ex, frame.st.ey, frame.st.ez) if ctx.use_sheet_impedance else None)
-            # the design box REDOES the E update at its own cells from
-            # the pre-update state.  The whole state, because it needs E^n and
-            # the same H^{n+1/2} the update below consumes; H is not touched
-            # between the two, and a NamedTuple alias costs nothing.
             frame.st_prev_design = frame.st if ctx.use_design_box else None
 
             if ctx.use_upml:
@@ -282,12 +257,6 @@ def make_uniform_step(
                     **face_args,
                 )
 
-            # design box: redo the E update at the design cells with
-            # coefficients built from the traced permittivity, leaving the
-            # grid-wide ``materials`` constant.  Slot: immediately after the
-            # E update, on the same H, before anything that reads or writes
-            # E.  The fences in _build_step_setup guarantee that nothing
-            # later in this step reads ``materials`` at a design cell.
             if ctx.use_design_box:
                 frame.st = update_e_box(
                     frame.st, frame.st_prev_design, ctx.design_box.bounds,
@@ -307,7 +276,6 @@ def make_uniform_step(
     def e_boundary(frame: UniformFrame):
         """Apply nonlinear/incident E corrections and the electric absorber."""
         if not ctx.use_fast_he:
-            # Reactive Kerr correction: scale the E-increment by eps_r/eps_eff.
             if ctx.use_kerr:
                 frame.st = ctx.apply_kerr_ade(frame.st, frame.e_prev_kerr, ctx.kerr_chi3, materials.eps_r)
 
@@ -327,14 +295,10 @@ def make_uniform_step(
                         ctx.debye_coeffs if ctx.use_debye else None,
                         ctx.lorentz_coeffs if ctx.use_lorentz else None, dt),
                     boundary=ctx.curl_boundary)
-            # Re-enforce Kottke-frozen E cells after CPML-E correction.
 
     def pec(frame: UniformFrame):
         """Enforce frozen cells, realized edges and occupancy before sheets."""
         if not ctx.use_fast_he:
-            # CPML adds a psi-driven correction that can thaw cells
-            # where inv_eps==0; re-zero them here so the frozen
-            # boundary condition is not violated.
             if ctx.use_aniso_inv:
                 _inv_xx_r, _inv_yy_r, _inv_zz_r = aniso_inv_eps
                 frame.st = frame.st._replace(
@@ -344,40 +308,16 @@ def make_uniform_step(
                 )
 
             if ctx.use_conformal and not ctx.use_aniso_inv:
-                # Stage 1 path. Stage 2 (use_aniso_inv) skips this —
-                # the inv-eps tensor encodes the fully-PEC-cell zero
-                # already, so this would be redundant double-zeroing.
                 from rfx.stepping.conductors import apply_conformal_pec
                 frame.st = apply_conformal_pec(frame.st, *invariants["conformal_zero_masks"])
             if ctx.use_pec_edges:
-                # the (Mx, My, Mz) realized once at setup.
-                #
-                # NOT an ``elif`` on the conformal branch. Dey-Mittra is a
-                # subpixel UPDATE-COEFFICIENT model, not a second geometry
-                # realization: ``apply_conformal_pec`` zeroes only edges
-                # whose weight is exactly 0, and no edge of a one-cell PEC
-                # slab is fully covered — both its faces sit ON the slab's
-                # own boundary, so w = 1/2 there. While the waveguide
-                # S-matrix lane folded interior PEC into sigma=1e10 the
-                # conductor survived anyway; with that fold deleted
-                # the ``elif`` dropped it outright — measured on the
-                # conformal PEC-short battery, min|S11| 0.2296 against a
-                # gate of 0.99, restored to 0.9942 by applying both.
                 frame.st = pec_walls.apply_pec_edges(frame.st, ctx.pec_edge_masks)
 
-            # the design occupancy REDOES the scaling at its window
-            # from the field BEFORE the grid-wide one, for the same reason
-            # the design box keeps the pre-update state -- the multiply is
-            # not invertible where the static factor is 0.
             st_prev_occ = frame.st if ctx.use_design_occupancy else None
 
             if ctx.use_pec_occupancy:
                 frame.st = apply_edge_keep(frame.st, materials.edge_keep)
 
-            # design occupancy: the traced 1 - M on its window, over
-            # a field the static occupancy has not scaled. Outside the
-            # window no design cell can reach, so the grid-wide factor
-            # there is already the right one.
             if ctx.use_design_occupancy:
                 frame.st = apply_pec_occupancy_box(
                     frame.st, st_prev_occ, ctx.design_occupancy.write,
@@ -386,9 +326,6 @@ def make_uniform_step(
     def constitutive(frame: UniformFrame):
         """Apply sheets, then domain faces, then lumped constitutive laws."""
         if not ctx.use_fast_he:
-            # curlH comes from the SAME shared stencil helper update_e uses,
-            # on the same H^{n+1/2} the E update consumed (H is unchanged
-            # between the E update and this slot).
             if ctx.use_sheet_impedance:
                 frame.st = apply_pec_faces(frame.st, ctx.wall_loss_faces)
                 from rfx.core.yee import curl_h as _curl_h
@@ -415,16 +352,6 @@ def make_uniform_step(
 
     def before_sources(frame: UniformFrame):
         """Sample drive references before electric source injection."""
-        # Wire-port DRIVE-REFERENCE DFT accumulation at the historical
-        # PRE-injection slot (
-        # docs/design_notes/issue683_decomposer_flip_predeclaration.md
-        # section 3): the receive-wave sign and Z0/n_cells
-        # normalization were calibrated against the pre-injection drive
-        # sample, so that sample is kept as its own channel `v_ref_dft` —
-        # bit-identical to the historical `v_dft` — and feeds ONLY the
-        # off-diagonal incident-wave denominator and the byte-frozen
-        # legacy diagonal in decompose_wire_s_matrix. The physical
-        # channels (v, i, v_port) are accumulated POST-injection below.
         refs = pre_injection_samples(view(frame.st), port_specs, lambda component, mid: dx,
                                      table=invariants.get('port_table'))
         frame.wire_ref_samples = [ref for spec, ref in zip(port_specs, refs) if spec[2] == 'wire']
@@ -435,25 +362,12 @@ def make_uniform_step(
                 frame.new_wire_refs.append(ref_dft_update(
                     accs[4], v_ref, frame.step_idx, wp_meta.freqs, dt))
 
-        # Lumped-port DRIVE-REFERENCE DFT accumulation at the historical
-        # PRE-injection slot: the off-diagonal incident
-        # wave is calibrated against this sample, so it is kept as its own
-        # channel — bit-identical to the pre-decision `v_dft` — and feeds
-        # ONLY the off-diagonal denominator in decompose_lumped_s_matrix.
-        # The physical V/I are accumulated POST-injection below.  Mirrors
-        # the wire-port block above.
         if ctx.use_lumped_sparams:
             frame.new_lumped_refs = []
             for accs, lp_meta, v_ref_l in zip(frame.carry["lumped_sparam_accs"], ctx.lumped_sparam_meta, frame.lumped_ref_samples):
                 frame.new_lumped_refs.append(ref_dft_update(
                     accs[2], v_ref_l, frame.step_idx, lp_meta.freqs, dt))
 
-        # Reference-plane V/I DFT accumulation — same
-        # rect-DFT kernel as the port-cell channels.  This slot is before
-        # the soft-source loop, but the planes sit >= 1 cell from every
-        # source cell, so pre/post-injection sampling is identical here
-        # and the wire-port flip (which moved only the port-CELL
-        # physical channels below the source loop) does not apply.
         if ctx.use_wire_refplanes:
             from rfx.probes.refplane import wire_refplane_step_vi
             frame.new_refplane_accs = []
@@ -472,8 +386,6 @@ def make_uniform_step(
 
     def sources(frame: UniformFrame):
         """Inject the realized electric drives into E."""
-        # Soft sources — cast source value to field dtype to avoid
-        # mixed-precision scatter warnings (float32 -> float16).
         if drives is not None:
             inject = ctx.electric_injector or core_drives.inject_drives
             frame.st = inject(frame.st, drives, frame.src_vals)
@@ -510,19 +422,6 @@ def make_uniform_step(
                     accs, port_values[offset:offset + 3], frame.step_idx, wp_meta.freqs, dt, phase),
                     v_ref_new))
 
-        # Lumped-port PHYSICAL V/I DFT accumulation AFTER source injection.
-        # Decided by the lumped known-load decision run
-        # (scripts/diagnostics/lumped_port_known_load_line.py), which measured that on a
-        # parallel-plate line terminated in a known R, the pre-injection
-        # slot read |S11| 0.714 / 1.248 / 4.757 against a closed form of
-        # 0.333 / 0 / 0.333, and its terminal V/(Zc·I) was -0.167 / +0.110
-        # / +0.659 where the load is 0.5 / 1.0 / 2.0.  The one-cell WIRE
-        # port on the SAME cell — same sigma (setup_wire_port with
-        # n_live=1), same injection (apply_wire_port with n_live=1) — read
-        # 0.334 / 0.0004 / 0.333 and 0.500 / 0.999 / 1.988.  The physics
-        # was never the difference; the extraction lane was.  `t` stamping
-        # is unchanged (phase computed at the pre slot and reused), so a
-        # PASSIVE port reads bit-identically to the old slot in V.
         if ctx.use_lumped_sparams:
             frame.new_lumped_accs = []
             for accs, lp_meta, (v_ref_new_l, phase_l) in zip(
@@ -547,9 +446,6 @@ def make_uniform_step(
                     v_inc_t=accs[4],
                     n_steps_recorded=accs[5],
                 )
-                # TFSF-style H and E corrections are applied earlier in their respective Yee
-                # sub-steps (canonical TFSF slots). This samples `st` AFTER source injection
-                # above.
                 cfg_updated = write_waveguide_record(cfg, waveguide_values[4*port:4*port+4], frame.st.step, dt)
                 frame.new_waveguide_port_accs.append(
                     (
@@ -562,7 +458,6 @@ def make_uniform_step(
                     )
                 )
 
-        # Probe samples
         if 'probe_table' in invariants:
             frame.probe_out = project(st, invariants['probe_table'])
         else:
@@ -570,14 +465,10 @@ def make_uniform_step(
                        for pi, pj, pk, pc in ctx.prb_meta]
             frame.probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
 
-        # NTFF accumulation
         if ctx.use_ntff:
             frame.ntff_new = ctx.accumulate_ntff(
                 frame.carry["ntff"], st, ctx.ntff, dt, frame.step_idx)
 
-        # Block current moments — same slot as the NTFF box, so the state
-        # holds E at (n+1)*dt and H at (n+1/2)*dt, and the soft-source loop
-        # above has already put the feed current into E.
         if ctx.use_current_moments:
             frame.cm_new = ctx.accumulate_current_moments(
                 frame.carry["current_moments"], st, frame.e_prev_slab,
@@ -600,7 +491,6 @@ def make_uniform_step(
             else:
                 frame.tfsf_new = ctx.update_tfsf_1d_e(ctx.tfsf_cfg, frame.tfsf_h_state, dx, dt, frame.t)
 
-        # ---- per-step extras (caller-specific outputs) ----
         frame.extras: dict = {}
         if ctx.use_snapshot:
             frame.extras["snap_fields"] = ctx.snapshot_extractor(view(frame.st))
@@ -610,7 +500,6 @@ def make_uniform_step(
 
     def finish(frame: UniformFrame):
         """Assemble the existing runner carry and per-step outputs."""
-        # Rebuild carry
         new_carry: dict = {"fdtd": frame.st}
         if "dft_time_records" in frame.carry:
             new_carry["dft_time_records"] = update_plane_records(
@@ -661,8 +550,6 @@ def make_uniform_step(
         HookPoint.AFTER_H: (magnetic_drives,) if mag_drives is not None else (),
         HookPoint.AFTER_E_UPDATE: (design,) if design_hook is not None else (),
         HookPoint.BEFORE_SOURCES: ((before_sources,) if (port_specs or ctx.use_wire_refplanes) else ()),
-        # Slab observers read owned rows from the exchanged state, so the
-        # ghost write does not need to preserve a separate pre-exchange E.
         HookPoint.AFTER_SOURCES: () if slab else (after_sources,),
         HookPoint.STEP_END: (after_sources, step_end) if slab else (step_end,),
     }
