@@ -2,7 +2,7 @@
 
 CPU compilation also runs the SPMD partitioner: inspect compiled HLO, not
 just StableHLO, where a device-identity operation can still be hidden.
-One fresh subprocess uses the same two virtual host devices as root conftest,
+Each group uses a fresh subprocess with the same two virtual host devices as root conftest,
 with XLA dumping every optimized module, including eager and setup JITs.
 """
 import os
@@ -14,6 +14,7 @@ import time
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from rfx import Box, DebyePole, LorentzPole, Simulation, SnapshotSpec
 
@@ -33,8 +34,6 @@ CASES = [
     ("graded", "gradient-lorentz", "cpml"),
     ("graded", "gradient-sharded", "cpml"),
 ]
-CASES += [("uniform", kind, "cpml") for kind in
-          ("planes", "flux", "moments", "snapshots", "farfield")]
 
 
 def model(lane, mode, boundary):
@@ -83,12 +82,17 @@ PROGRAMS = [case for case in CASES if not case[1].startswith("forward")] + [
     ("uniform", "gradient-debye", "cpml"),
     ("graded", "gradient-checkpoint", "cpml"),
 ]
+PROGRAM_GROUPS = {
+    "existing": PROGRAMS,
+    "record-join": [("uniform", kind, "cpml") for kind in
+                    ("planes", "flux", "moments", "snapshots", "farfield")],
+}
 
 
-def exercise_programs():
+def exercise_programs(group):
     devices = jax.devices("cpu")
     assert len(devices) == 2, devices
-    for lane, mode, boundary in PROGRAMS:
+    for lane, mode, boundary in PROGRAM_GROUPS[group]:
         sim = model(lane, mode, boundary)
         kwargs = dict(n_steps=4, devices=devices, skip_preflight=True)
         if mode == "snapshots":
@@ -155,7 +159,8 @@ def assert_clean_dumps(directory):
     return len(modules)
 
 
-def test_distributed_programs_have_no_device_identity(tmp_path, record_property):
+@pytest.mark.parametrize("group", PROGRAM_GROUPS)
+def test_distributed_programs_have_no_device_identity(tmp_path, record_property, group):
     root = Path(__file__).resolve().parents[2]
     dump = tmp_path / "hlo"
     dump.mkdir()
@@ -165,17 +170,17 @@ def test_distributed_programs_have_no_device_identity(tmp_path, record_property)
                # A persistent compilation cache would hide optimized modules.
                JAX_ENABLE_COMPILATION_CACHE="false")
     started = time.monotonic()
-    run = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--worker"],
+    run = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--worker", group],
                          cwd=root, env=env, capture_output=True, text=True, timeout=240)
     elapsed = time.monotonic() - started
     assert run.returncode == 0, run.stdout + run.stderr
-    assert run.stdout.count("completed ") == len(PROGRAMS), run.stdout
+    assert run.stdout.count("completed ") == len(PROGRAM_GROUPS[group]), run.stdout
     count = assert_clean_dumps(dump)
     record_property("wall_seconds", elapsed)
     record_property("optimized_dump_files", count)
-    print(f"{len(PROGRAMS)} programs; {count} optimized dump files; {elapsed:.2f} s")
+    print(f"{group}: {len(PROGRAM_GROUPS[group])} programs; {count} optimized dump files; {elapsed:.2f} s")
 
 
 if __name__ == "__main__":
-    assert sys.argv[1:] == ["--worker"], sys.argv
-    exercise_programs()
+    assert len(sys.argv) == 3 and sys.argv[1] == "--worker" and sys.argv[2] in PROGRAM_GROUPS, sys.argv
+    exercise_programs(sys.argv[2])
