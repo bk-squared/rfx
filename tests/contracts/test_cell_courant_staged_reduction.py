@@ -5,6 +5,7 @@ what the product code actually reduces, while independent float64 arithmetic
 and plain calls supply the expected failures and messages for every ULP lane.
 """
 
+import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -112,7 +113,7 @@ def test_a_admitted_host_calls(monkeypatch, eps, form):
         jax.effects_barrier()
     assert len(executions) == expected, (form, eps, len(executions))
     assert len(calls) == (0 if form == 'vmap' else expected)
-    print(f'HOST_CALLS form={form} eps={eps} calls={len(executions)} lanes={4 if "vmap" in form else 1}')
+    print(f'HOST_CALLS form={form} eps={eps} calls={len(executions)} lanes={4 if "vmap" in form else 1}', file=sys.stderr)
     if form == 'jit':
         assert 'cond[' in str(jax.make_jaxpr(loss)(value))
 
@@ -136,6 +137,19 @@ def test_b_refused_jit_and_each_mixed_batch_lane(monkeypatch, eps):
             jax.block_until_ready(jax.jit(jax.vmap(loss))(batch))
         assert expected in str(caught.value)
         assert [message for _, message in calls if message is not None] == [expected]
+
+
+@pytest.mark.parametrize('dtype', [jnp.float16, jnp.bfloat16])
+def test_b_low_precision_refused_jit(monkeypatch, dtype):
+    grid, _ = _grid()
+    value = jnp.full(SHAPE, .5, dtype)
+    expected = _plain_message(np.asarray(value, dtype=np.float64), grid, {})
+    assert expected is not None
+    calls = _record_hosts(monkeypatch)
+    with pytest.raises(Exception) as caught:
+        jax.block_until_ready(jax.jit(_loss(grid))(value))
+    assert expected in str(caught.value)
+    assert calls[-1][1] == expected
 
 
 def _host_failed(eps, mu, widths, step, *, periodic, factor, conservative, x_range):
@@ -326,7 +340,7 @@ def test_x_range_sharded_jit_reduces_globally(monkeypatch):
         assert result.sharding.is_fully_replicated
         executable = program.lower(argument).compile().as_text().lower()
     assert 'all-reduce' in executable
-    print('X_RANGE_SUM global=16 replicated=True all-reduce=True devices=2')
+    print('X_RANGE_SUM global=16 replicated=True all-reduce=True devices=2', file=sys.stderr)
 
 
 def test_x_range_out_of_program_returns_before_reduction():

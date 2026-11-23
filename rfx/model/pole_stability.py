@@ -260,7 +260,8 @@ def refuse_subluminal_cells(materials, grid, dt=None, *, budget=None, periodic=N
         if isinstance(eps, (tuple, list)):
             eps = jnp.min(jnp.stack([jnp.asarray(e) for e in eps]), axis=0)
         eps = jnp.asarray(eps)
-        dtype = eps.dtype
+        dtype = jnp.promote_types(eps.dtype, jnp.float32)
+        eps = eps.astype(dtype)
         if box_eps is not None:
             b = design_box.bounds
             eps = eps.at[tuple(slice(b[2*a], b[2*a+1]) for a in range(3))].set(box_eps)
