@@ -299,11 +299,12 @@ runs nothing. Two cases need you to decide:
 - Lumped/wire-only models raise, naming `run(compute_s_params=True)`, because
   that call needs your `n_steps`.
 
-**Experimental cross-family calculators.** `compute_mixed_s_matrix()` (lumped
-or wire plus microstrip) and `compute_coax_msl_transition()` (coax plus
-microstrip) are diagnostics. Their magnitudes are not validated, and the
-coax-to-microstrip matrix is not passive, so by default the call raises
-`ValueError`. Measure each side with its own calculator instead.
+**Cross-family calculators.** `compute_mixed_s_matrix()` (lumped or wire plus
+microstrip) is experimental. `compute_coax_msl_transition()` (coax plus
+microstrip) is **not supported (deprecated); removed after 2.3**. Their
+magnitudes are not validated, and the coax-to-microstrip matrix is not passive,
+so by default the call raises `ValueError`. Measure each side with its own
+calculator instead.
 
 ### Checking a calculator before the run
 

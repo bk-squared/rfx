@@ -555,15 +555,17 @@ Check a wire-port reflection on three meshes before using it as a converged numb
 
 Tracker: #1479
 
-`compute_coax_msl_transition(...)` returns a matrix whose columns carry more power
-out than the incident wave brings in, so it is not passive. The call refuses it by
-default (`strict_passivity=True`, raising `ValueError`); pass `strict_passivity=False`
-to get the diagnostic matrix back with a `UserWarning`. Transition S-parameters from
-this path are not usable as an absolute power reference. Cross-family transition
-calculators are not pursued further before 2.0, so the excess will not be attributed or
-corrected; use the single-family extractors separately (`compute_msl_s_matrix(...)`,
-the coaxial two-port and line-reflection calculators) for a result you can cite.
-#838 was closed as not planned before 2.0 (decided 2026-09-20); this is a standing limitation.
+The coax-to-microstrip transition is not supported in rfx.
+Its status is **not supported (deprecated); removed after 2.3**. Each call to
+`compute_coax_msl_transition(...)` emits `DeprecationWarning` before any work.
+Its experimental result and all existing refusals are unchanged. It returns a
+matrix whose columns carry more power out than the incident wave brings in,
+so it is not passive. The call refuses it by default (`strict_passivity=True`,
+raising `ValueError`); pass `strict_passivity=False` to get the diagnostic matrix
+back with a `UserWarning`. Transition S-parameters from this path are not usable
+as an absolute power reference. Use the single-family extractors separately
+(`compute_msl_s_matrix(...)`, the coaxial two-port and line-reflection calculators)
+for a result you can cite within their documented scope.
 
 Part of the excess came from the coax side's plane voltage, which counted the cells next
 to the inner and outer conductors at half weight and so read 0.84 of the line voltage on

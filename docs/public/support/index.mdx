@@ -84,7 +84,7 @@ you, except for a model with only lumped or wire ports, which it refuses (call
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | **limited** | One `face="top"` port, a line the calculator builds itself, float32, uniform mesh, CPML on every face. |
 | `add_coaxial_port(...)` | `compute_coaxial_two_port(...)` | **limited** | One through-line family. |
 | lumped/wire + microstrip | `compute_mixed_s_matrix()` | **experimental** | Magnitude not validated; the default passivity projection changes the diagonal (the measured values are in `S_raw`). |
-| coax + microstrip | `compute_coax_msl_transition()` | **experimental** | Diagnostic only. The matrix is not passive and is refused by default (`strict_passivity=True`). |
+| coax + microstrip | `compute_coax_msl_transition()` | **not supported (deprecated); removed after 2.3** | Diagnostic only. The matrix is not passive and is refused by default (`strict_passivity=True`). |
 | `add_floquet_port(...)` | none | **experimental** | Diagnostic helpers only. |
 | sources, plane wave, probes, DFT planes, flux monitors | none | **not a port** | No reference impedance or reference plane, so no S-parameters. |
 
