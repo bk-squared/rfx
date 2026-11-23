@@ -960,7 +960,7 @@ def test_msl_s_equal_requests(path):
     np.testing.assert_array_equal(run.reliable, forward.reliable)
 
 
-def test_msl_s_multi_device_entry_matches_one_device():
+def test_msl_s_devices_is_keyword_only():
     """Multi-device results match one device in tests/unit/runners/test_distributed_msl_s_matrix.py."""
     from rfx import Simulation
 
