@@ -121,11 +121,12 @@ def test_outer_jit_cannot_silently_drop_a_declared_filament_radius(lane):
 
 @pytest.mark.parametrize("graded", [False, True])
 def test_traced_mesh_cannot_silently_reclassify_a_radius_filament(graded):
+    """The remote minimum cell width must not replace the wire's local cell width."""
     from rfx.geometry.rasterize_grid import GridCoords, classify_pec_entry
     nodes = np.arange(8)*.001
     y_sizes = np.full(8, .001)
     if graded:
-        y_sizes[0] = .0001  # Remote minimum must not replace the LOCAL cell.
+        y_sizes[0] = .0001
     y_nodes = np.r_[0., np.cumsum(y_sizes[:-1])]
     sizes = (np.full(8, .001), y_sizes, np.full(8, .001))
     wire = PolylineWire(((.003, .003, .002), (.003, .003, .005)), radius=.0003)
@@ -151,7 +152,6 @@ def test_traced_mesh_resolved_wire_keeps_volume_mask(ratio, cells):
         coords = GridCoords(x=x, y=nodes, z=nodes, shape=(8,)*3)
         mask, sheet, filament = classify_pec_entry(wire, coords, coords, sizes)
         assert sheet is None and filament is None
-        # origin/main sends a traced wire straight to this volume sampler.
         return mask, pec_volume_cell_mask(wire, coords, sizes)
 
     for displacement in (0., .00015):

@@ -10,6 +10,7 @@ checked by ``tests/unit/runners/test_path_disposition_cells.py``.
 It also checks that lane admission (``rfx/runners/_admission.py``) enforces
 this table: every input row has a detector, and a lane admits exactly the
 rows whose cell on it is ``carries`` or ``ignorable``.
+A function disposition is a table column, "internal to <columns>" or "grid-level: <why>" for a function taking a Grid rather than a Simulation.
 """
 
 from __future__ import annotations
@@ -20,14 +21,13 @@ import warnings
 from pathlib import Path
 
 from rfx import Simulation
+from rfx import _declarations as declarations
 from rfx.runners import _admission as A
 from tests.contracts import path_disposition as T
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# Functions that reach a kernel without _dispatch_plan, or are part of a lane.
-# A value is a column of the table, "internal to <columns>" or
-# "grid-level: <why>" for a function that takes a Grid, not a Simulation.
+
 KERNEL_CALLERS = {
     "rfx/runners/run.py:run_after_admission":
         "internal to run_uniform, run_nonuniform, run_subgridded, run_distributed, run_distributed_nu",
@@ -65,8 +65,7 @@ KERNEL_CALLERS = {
     "rfx/measurement/rcs.py:compute_rcs": "grid-level: takes a Grid and a TFSF/NTFF setup",
 }
 
-# Top-level functions that call a field update themselves: a new one is a new
-# kernel, and its paths need cells.
+
 FIELD_STEPPERS = {
     "rfx/stepping/slab_update.py:update_h_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
     "rfx/stepping/slab_update.py:update_e_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
@@ -75,13 +74,13 @@ FIELD_STEPPERS = {
     "rfx/stepping/uniform_setup.py:_update_e_with_optional_dispersion":
         "internal to run_uniform, fwd_uniform, s_matrix_scan, mixed_s_matrix, topology_optimize, "
         "waveguide_s_matrix, coaxial_line_reflection, coaxial_two_port, coax_msl_transition, material_fit",
-    # The one uniform-mesh step (S3-2): the scan step, the material sweep and the
-    # grid-level eager lumped and wire extractors all build their step here.
+
+
     "rfx/stepping/uniform.py:make_uniform_step":
         "internal to run_uniform, fwd_uniform, s_matrix_scan, mixed_s_matrix, topology_optimize, "
         "waveguide_s_matrix, coaxial_line_reflection, coaxial_two_port, coax_msl_transition, material_fit, vmap_sweep_batched, "
         "run_distributed, fwd_distributed",
-    # The one graded-mesh step (S3-2 stage B).
+
     "rfx/stepping/graded.py:make_graded_step": "internal to run_nonuniform, fwd_nonuniform",
     "rfx/stepping/subgrid_disjoint.py:_yee_step": "internal to run_subgridded",
     "rfx/stepping/subgrid_disjoint.py:_yee_h_step": "internal to run_subgridded",
@@ -102,8 +101,8 @@ _KERNELS = {
     "run_nonuniform_distributed_pec", "run_subgridded_jit",
     "run_nonuniform", "run_uniform_loop",
 }
-_SIMULATION_KERNELS = {"run", "run_until_decay"}  # rfx.simulation, under any alias
-# rfx.simulation re-exports run from the module that defines it; a read there is the same kernel.
+_SIMULATION_KERNELS = {"run", "run_until_decay"}
+
 _KERNEL_MODULES = {"rfx.simulation", "rfx.stepping.uniform_loop"}
 _KERNEL_FILES = {"rfx/simulation.py", "rfx/stepping/uniform_loop.py"}
 _FIELD_UPDATES = {
@@ -189,12 +188,20 @@ def _fresh_attributes():
 
 
 def test_every_simulation_attribute_has_a_row():
-    new = sorted(_fresh_attributes() - set(T.TABLE))
-    # A removed attribute cannot be dropped; a stale row is harmless.
-    assert not new, (
-        f"Simulation gained {new}: add a row to tests/contracts/path_disposition.py "
-        "with a cell on every lane (carries, refuses, falls back, not reachable or "
-        "ignorable) and a ROW_CLASS entry")
+    declared = {name for name, _ in declarations.DECLARATIONS}
+    required = _fresh_attributes() | declared
+    assert set(T.PENDING_ROWS) <= declared, (
+        f"PENDING_ROWS names absent from DECLARATIONS: "
+        f"{sorted(set(T.PENDING_ROWS) - declared)}")
+
+    assert required - set(T.TABLE) == set(T.PENDING_ROWS), (
+        f"Attributes without a TABLE row or PENDING_ROWS entry: "
+        f"{sorted(required - set(T.TABLE) - set(T.PENDING_ROWS))}. "
+        "For each, add a TABLE row in tests/contracts/path_disposition.py with "
+        "a cell on every lane, a ROW_CLASS entry and a detector in "
+        "rfx/runners/_admission.py; until that is done, add a PENDING_ROWS "
+        "entry with its reason. Remove PENDING_ROWS entries that now have "
+        f"a row: {sorted(set(T.PENDING_ROWS) & set(T.TABLE))}")
     assert set(T.ROW_CLASS) == set(T.TABLE), sorted(set(T.ROW_CLASS) ^ set(T.TABLE))
 
 
@@ -306,7 +313,7 @@ def test_admission_admits_exactly_the_carried_cells():
             key = (attr, feature)
             for lane in T.PATHS:
                 if T.ROW_CLASS[attr] == T.BOOKKEEPING:
-                    admitted = False   # bookkeeping is no input: no detector, no admission
+                    admitted = False
                 else:
                     admitted = row[lane].kind in (T.CARRIES, T.IGNORABLE)
                 if (key in A.ADMITS[lane]) != admitted:

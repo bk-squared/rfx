@@ -16,7 +16,8 @@ def section(array, axis, index):
 
 
 def classify(fields, grid, psi=(), lossless=None):
-    """Use E/H values, auxiliary decay and responses to remote field pulses."""
+    """Use E/H values, auxiliary decay and responses to remote field pulses.
+    Exact zero in two independent nonzero seeds is imposed by the wall."""
     faces = {}
     for axis, a in enumerate("xyz"):
         tangent_e = [i for i in range(3) if i != axis]
@@ -32,7 +33,6 @@ def classify(fields, grid, psi=(), lossless=None):
         for side_i, side in enumerate(("lo", "hi")):
             name = f"{a}_{side}"
             e_index, h_index = (0, 0) if side == "lo" else (-1, -2)
-            # Two independent nonzero seeds; exact zero is imposed by the wall.
             e_zero = all(np.max(np.abs(section(fields[v, tangent_e], axis, e_index))) == 0
                          for v in (0, 1))
             h_zero = all(np.max(np.abs(section(fields[v, tangent_h], axis, h_index))) == 0
@@ -135,7 +135,8 @@ def compare(model, grid, measured, entry):
 
 
 def compare_values(model, grid, measured, baseline):
-    """Lock recorded zero planes and coupled periods independently of xfails."""
+    """Lock recorded zero planes and coupled periods independently of xfails.
+    Metre tolerance covers coordinate rounding, not a fraction of a Yee cell."""
     expected = realize(model, grid)
     periods = dict(expected.periods)
     for face in expected.faces:
@@ -153,7 +154,6 @@ def compare_values(model, grid, measured, baseline):
                                [] if new["period_m"] is None else [new["period_m"]],
                                periods.get(face.name[0], model.declaration.domain["xyz".index(face.name[0])])))
         for quantity, before, after, declared in quantities:
-            # Metre tolerance covers coordinate rounding, not a fraction of a Yee cell.
             if len(before) == len(after) and np.allclose(before, after, rtol=0, atol=1e-10):
                 continue
             if declared is None or not before or not after:

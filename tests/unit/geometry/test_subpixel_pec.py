@@ -32,14 +32,12 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.geometry.csg import Box
 
 
-# WR-90 cross-section in metres.
-WR_90_A = 0.02286
-WR_90_B = 0.01016
+WR_90_A_METRES = 0.02286
+WR_90_B_METRES = 0.01016
+WR_90_A = WR_90_A_METRES
+WR_90_B = WR_90_B_METRES
 
 
-# -----------------------------------------------------------------------------
-# Boundary dataclass tests
-# -----------------------------------------------------------------------------
 
 
 def test_boundary_conformal_flag_accepted_on_pec_face():
@@ -47,22 +45,21 @@ def test_boundary_conformal_flag_accepted_on_pec_face():
     sides are PEC. Default is False (bit-identical with current code)."""
     b = Boundary(lo="pec", hi="pec", conformal=True)
     assert b.conformal is True
-    # Default off
     b_default = Boundary(lo="pec", hi="pec")
     assert b_default.conformal is False
 
 
 def test_boundary_conformal_roundtrip_via_dict():
     """``conformal`` survives ``to_dict``/``from_dict`` so legacy specs
-    stored in JSON manifests do not silently lose the flag."""
+    stored in JSON manifests do not silently lose the flag.
+
+    The default flag must not pollute the serialised form so existing snapshots stay byte-equal."""
     b = Boundary(lo="pec", hi="pec", conformal=True)
     d = b.to_dict()
     assert d.get("conformal") is True
     b2 = Boundary.from_dict(d)
     assert b2.conformal is True
 
-    # Default flag must not pollute the serialised form (so existing
-    # snapshots stay byte-equal).
     d_default = Boundary(lo="pec", hi="pec").to_dict()
     assert "conformal" not in d_default
 
@@ -70,13 +67,13 @@ def test_boundary_conformal_roundtrip_via_dict():
 def test_boundary_conformal_rejects_non_pec_face():
     """``conformal=True`` is meaningless on absorbing or periodic faces
     — the flag drives the *PEC* face-shift path. Mis-typed configs
-    should fail loudly rather than silently no-op."""
+    should fail loudly rather than silently no-op.
+
+    One PEC face is enough to make the conformal flag meaningful, but it is ambiguous which face it applies to."""
     with pytest.raises(ValueError, match="conformal"):
         Boundary(lo="cpml", hi="cpml", conformal=True)
     with pytest.raises(ValueError, match="conformal"):
         Boundary(lo="periodic", hi="periodic", conformal=True)
-    # Mixed: one PEC face is enough to make the flag meaningful, but it
-    # is ambiguous which face it applies to. Reject for clarity.
     with pytest.raises(ValueError, match="conformal"):
         Boundary(lo="cpml", hi="pec", conformal=True)
 
@@ -103,9 +100,6 @@ def test_boundaryspec_conformal_faces_inventory():
     assert spec_yz.conformal_faces() == {"y_lo", "y_hi", "z_lo", "z_hi"}
 
 
-# -----------------------------------------------------------------------------
-# Simulation._assemble_materials integration
-# -----------------------------------------------------------------------------
 
 
 def _wr90_sim(*, conformal: bool):
@@ -117,8 +111,9 @@ def _wr90_sim(*, conformal: bool):
     no work to do and the test would be vacuous.
     """
     domain_x = 0.06
-    domain_y = 0.025  # > WR_90_A so j=22 is interior, j=23..24 sit past wall
-    domain_z = 0.012  # > WR_90_B
+    domain_y = 0.025
+    domain_z = 0.012
+    assert domain_y > WR_90_A and domain_z > WR_90_B, "WR-90 domains must extend beyond both aperture walls to exercise fractional boundary cells"
     sim = Simulation(
         freq_max=10e9,
         snap="declared",
@@ -131,8 +126,10 @@ def _wr90_sim(*, conformal: bool):
         ),
         cpml_layers=8,
     )
+    PORT_INTERIOR_X_METRES = 0.020
+    assert 0 < PORT_INTERIOR_X_METRES < domain_x, "WR-90 port position must be inside the physical interior beyond the external x CPML"
     sim.add_waveguide_port(
-        0.020,  # Inside the interior, well past the 8-layer x-CPML.
+        PORT_INTERIOR_X_METRES,
         y_range=(0.0, WR_90_A),
         z_range=(0.0, WR_90_B),
         direction="+x",
@@ -191,14 +188,12 @@ def test_assemble_materials_injects_halfspace_for_conformal_face():
     grid = sim._build_grid()
     _, _, _, _, pec_shapes, _, _ = sim._assemble_materials(grid)
 
-    # y_hi: half-space whose corner_lo[1] == WR_90_A
     y_hi = _half_space_box_lo_y(pec_shapes, axis_idx=1, value=WR_90_A)
     assert len(y_hi) >= 1, (
         f"expected a half-space Box with corner_lo[1]={WR_90_A:.5f} m for "
         f"y_hi conformal PEC; got pec_shapes={pec_shapes!r}"
     )
 
-    # z_hi: half-space whose corner_lo[2] == WR_90_B
     z_hi = _half_space_box_lo_y(pec_shapes, axis_idx=2, value=WR_90_B)
     assert len(z_hi) >= 1, (
         f"expected a half-space Box with corner_lo[2]={WR_90_B:.5f} m for "
@@ -215,8 +210,6 @@ def test_assemble_materials_unchanged_without_conformal():
     grid = sim._build_grid()
     _, _, _, _, pec_shapes, _, _ = sim._assemble_materials(grid)
 
-    # No geometry, no thin conductors — the only PEC is the boundary
-    # spec, which should NOT spawn any pec_shapes entries.
     assert pec_shapes == [], (
         f"expected empty pec_shapes when conformal=False; got {pec_shapes!r}"
     )
@@ -238,9 +231,6 @@ def test_conformal_weights_fractional_at_wr90_y_boundary_cell():
     assert float(w_ey[i, j - 1, k]) == pytest.approx(expected, abs=1e-7)
 
 
-# -----------------------------------------------------------------------------
-# Stage 1 step 2: end-to-end run smoke + auto-routing
-# -----------------------------------------------------------------------------
 
 
 def test_run_smokes_with_conformal_boundary():
@@ -314,25 +304,6 @@ def test_run_explicit_false_overrides_conformal_boundary():
     )
 
 
-# -----------------------------------------------------------------------------
-# Stage 1 step 3: battery-geometry support + DROP-skip on conformal +face
-# -----------------------------------------------------------------------------
-#
-# The Stage 1 step 1 hi-side veto silently no-ops on the validation
-# battery's geometry: when ``y_range`` / ``z_range`` is omitted on
-# ``add_waveguide_port`` (the default), the port aperture spans the
-# *full* ``self._domain``, so ``wall_hi == self._domain[axis]`` and
-# the original "domain edge already coincides with the physical wall"
-# check skipped the Box. But the *grid* extends past ``self._domain``
-# due to dx-snap, so a fractional cell still exists at the boundary.
-# The fix is to always inject the hi-side Box (the SDF naturally
-# produces weight=1 when no fractional cell exists).
-#
-# Then the binary DROP in ``init_waveguide_port`` becomes wrong on
-# conformal axes: the staircase shift is now handled by Dey-Mittra
-# eps_correction at the boundary cell, so zeroing the same cell in
-# the modal V/I integral is double-counting (the failure mode the
-# 2026-04-29 first attempt produced).
 
 
 def _wr90_battery_sim(*, conformal: bool):
@@ -399,31 +370,8 @@ def test_grid_carries_conformal_faces_from_boundaryspec():
     assert getattr(grid_off, "conformal_faces", set()) == set()
 
 
-def test_waveguide_port_skips_drop_on_conformal_face():
-    """``init_waveguide_port``'s binary DROP at the +face boundary
-    cell must be suppressed when that face is conformal — the
-    Dey-Mittra eps_correction at the same cell is the principled
-    handler. Otherwise the cell is zeroed twice (DROP in V/I + 1/α
-    eps scaling) which over-corrects and caps PEC-short closure
-    (the 2026-04-29 first-attempt failure mode).
-
-    TWO PATHS, and after issue #868 they differ. The DROP fires only when
-    the aperture slice reaches the array edge, i.e. only when the aperture
-    contains a cell PAST the +face wall:
-
-    * the ``Simulation`` builder now hands the port the guide's CELL span,
-      so its aperture stops at the last real guide cell and there is nothing
-      past the wall to drop — the double correction this test guards against
-      cannot arise on that path at all, in either conformal setting. That is
-      asserted below as an equality between the two settings plus an exact
-      aperture area, which is a STRONGER statement than "the last row is
-      zero": under the old node span the area came out right only BECAUSE
-      the extra row was dropped.
-    * a low-level caller that hands ``WaveguidePort`` the whole node plane
-      (``y_slice=(0, grid.ny)``) still has that cell inside its aperture, and
-      the suppression logic still has to discriminate there. That is where
-      the original assertion is re-run, so the guard keeps a firing path.
-    """
+def test_waveguide_port_refuses_node_plane_with_or_without_conformal_faces():
+    """The builder keeps its cell span; low-level node planes are refused."""
     import jax.numpy as jnp
     from rfx.sources.waveguide_port import WaveguidePort, init_waveguide_port
 
@@ -444,21 +392,17 @@ def test_waveguide_port_skips_drop_on_conformal_face():
     dA_off = np.asarray(cfg_off.aperture_dA)
     dA_on = np.asarray(cfg_on.aperture_dA)
 
-    # --- builder path: no cell past the wall, so nothing to drop ---------
     dx = grid_off.dx
-    n_u, n_v = grid_off.ny - 1, grid_off.nz - 1     # guide cells, not nodes
+    n_u, n_v = grid_off.ny - 1, grid_off.nz - 1
     assert dA_off.shape == (n_u, n_v), (dA_off.shape, (n_u, n_v))
     assert np.all(dA_off > 0.0), (
         f"the builder aperture is the guide's {n_u} x {n_v} cells; none of "
         f"them sits past a wall, so none may be dropped; got dA={dA_off}")
     assert np.all(dA_on > 0.0), dA_on
-    # Same aperture either way — the conformal branch has nothing to suppress.
     assert np.array_equal(dA_off, dA_on)
-    # And the area is the rasterized guide's, exactly.
     assert float(dA_off.sum()) == pytest.approx(n_u * dx * n_v * dx, rel=1e-6)
 
-    # --- low-level path: the node plane still contains the ghost cell -----
-    def _lowlevel_dA(grid):
+    for grid in (grid_off, grid_on):
         port = WaveguidePort(
             x_index=int(0.030 / grid.dx) + grid.axis_pads[0],
             y_slice=(0, grid.ny), z_slice=(0, grid.nz),
@@ -466,20 +410,11 @@ def test_waveguide_port_skips_drop_on_conformal_face():
             mode=(1, 0), mode_type="TE", direction="+x", normal_axis="x",
             u_slice=(0, grid.ny), v_slice=(0, grid.nz),
         )
-        cfg = init_waveguide_port(port, grid.dx, freqs, f0=8e9, bandwidth=0.5,
-                                  dft_total_steps=200, dt=float(grid.dt),
-                                  grid=grid)
-        return np.asarray(cfg.aperture_dA)
-
-    ll_off, ll_on = _lowlevel_dA(grid_off), _lowlevel_dA(grid_on)
-    assert np.all(ll_off[-1, :] == 0.0), (
-        f"expected DROP at u_hi (y_hi) without conformal on the node-plane "
-        f"aperture; got dA[-1,:]={ll_off[-1, :]}")
-    assert np.all(ll_on[-1, :] > 0.0), (
-        f"expected aperture preserved at u_hi when conformal=True; "
-        f"got dA[-1,:]={ll_on[-1, :]}")
-    assert np.all(ll_off[:, -1] == 0.0)
-    assert np.all(ll_on[:, -1] > 0.0)
+        with pytest.raises(ValueError, match="as Simulation builds it") as error:
+            init_waveguide_port(port, grid.dx, freqs, f0=8e9, bandwidth=0.5,
+                                dft_total_steps=200, dt=float(grid.dt), grid=grid)
+        assert f"y_slice={(0, grid.ny)}" in str(error.value)
+        assert f"cell span y_slice={(0, grid.ny - 1)}" in str(error.value)
 
 
 def test_run_battery_geometry_auto_routes():
@@ -498,9 +433,6 @@ def test_run_battery_geometry_auto_routes():
     )
 
 
-# -----------------------------------------------------------------------------
-# Stage 1 step 4: cv11-style PEC-short acceptance gate via S-matrix path
-# -----------------------------------------------------------------------------
 
 
 def _pec_short_sim(*, conformal: bool, domain=(0.12, 0.04, 0.02)):
@@ -508,7 +440,9 @@ def _pec_short_sim(*, conformal: bool, domain=(0.12, 0.04, 0.02)):
     PEC wall midway through the guide; with num_periods=40 the round
     trip settles inside the DFT window and |S11| → 1.0 for a correct
     extractor. Mirrors ``tests/oracle/test_waveguide_port_validation_battery
-    ::test_pec_short_s11_magnitude`` so the gate is directly comparable."""
+    ::test_pec_short_s11_magnitude`` so the gate is directly comparable.
+
+    A sub-cell PEC volume is refused by the lattice ownership contract."""
     import jax.numpy as jnp
 
     sim = Simulation(
@@ -523,46 +457,24 @@ def _pec_short_sim(*, conformal: bool, domain=(0.12, 0.04, 0.02)):
         cpml_layers=10,
      snap="declared")
     assert_declared_wall_warning(sim)
-    # #931: the old 2 mm slab on a 3 mm grid is a sub-cell VOLUME the
-    # contract refuses (it was realized by the thin branch as one wall at
-    # x = 0.087 m). Drawn as one full cell, 0.084 -> 0.087 m: a solid
-    # short with walls on both drawn planes, the far one still at 0.087 m.
-    # The |S11| magnitude gate below is unchanged.
-    sim.add(Box((0.084, 0, 0), (0.087, domain[1], domain[2])), material="pec")
+    SHORT_FAR_FACE_METRES = 0.087
+    sim.add(Box((0.084, 0, 0), (SHORT_FAR_FACE_METRES, domain[1], domain[2])), material="pec")
     freqs = jnp.linspace(5e9, 7e9, 6)
     sim.add_waveguide_port(
         0.010, direction="+x", mode=(1, 0), mode_type="TE",
         freqs=freqs, f0=6e9, bandwidth=0.5, name="left",
     )
-    # #1913: the right port stands 4 cells behind the short's far face (87 mm),
-    # so its 3-cell reflection plane (90 mm) is in front of the short; at 90 mm
-    # it read the far side of the short. |S11| is bit-identical either way.
+    RIGHT_PORT_X_METRES = 0.099
+    assert RIGHT_PORT_X_METRES - 3 * sim._dx > SHORT_FAR_FACE_METRES, "right port must leave its three-cell reflection plane beyond the short far face"
     sim.add_waveguide_port(
-        0.099, direction="-x", mode=(1, 0), mode_type="TE",
+        RIGHT_PORT_X_METRES, direction="-x", mode=(1, 0), mode_type="TE",
         freqs=freqs, f0=6e9, bandwidth=0.5, name="right",
     )
     return sim
 
 
-# Two-sided |S11| envelope for the conformal PEC-short. DERIVED FROM
-# MEASUREMENT (2026-09-15, #1043 / PR #1047), not chosen:
-#   interior bins 1-4, measured |dev| -- head 0.0017/0.0012/0.0019/0.0023,
-#                                        pre-fix 0.0007/0.0029/0.0023/0.0033
-#   band-edge bins 0 and 5           -- head 0.0145 / 0.0123
-# The interior bar is the measured interior worst (0.0033) rounded up to the
-# next half-percent.
-#
-# The all-bin bar is the **40-PERIOD** edge worst (0.0145 here, 0.0278 pre-fix)
-# rounded up to the next percent, and it is only a 40-period envelope. The same
-# rig reads a max |dev| of 0.0448 at 80 periods and 0.0363 at 160, all of it in
-# band-edge bin 5 -- so this bar would NOT hold at a longer record and must not
-# be quoted as a record-independent envelope. The gate below runs at 40
-# periods, which is what makes it applicable here.
 _PEC_SHORT_DEV_INTERIOR = 0.005
 _PEC_SHORT_DEV_ALL_BINS_AT_40_PERIODS = 0.03
-# Band edges of the 5-7 GHz sweep. Bin 5 (7.0 GHz) sits just under the guide's
-# second-mode cutoff (40 mm x 20 mm -> TE20/TE01 at 7.5 GHz), and bin 0 is the
-# low edge; both carry the largest extraction deviation on every tree measured.
 _PEC_SHORT_INTERIOR_BINS = slice(1, 5)
 
 
@@ -625,7 +537,9 @@ def test_pec_short_s11_with_conformal_face_pec():
 
     The gate that catches the growth is
     ``test_pec_short_conformal_stays_bounded_over_a_long_record`` below — this
-    one is the 40-period envelope, that one is the physics."""
+    one is the 40-period envelope, that one is the physics.
+
+    The interior bar is the earlier measured interior worst (0.0033) rounded up to the next half-percent, and the all-bin bar is the earlier 40-period edge worst (0.0278) rounded up to the next percent, applicable only at 40 periods."""
     sim = _pec_short_sim(conformal=True)
     res = sim.compute_waveguide_s_matrix(num_periods=40, normalize=False)
     s11 = np.abs(np.asarray(res.s_params)[0, 0, :])
@@ -655,10 +569,6 @@ def test_pec_short_s11_with_conformal_face_pec():
     )
 
 
-# The growth bar. Provenance, both measured on this rig at 160 periods:
-# this tree max |S11| = 1.0014, the pre-fix tree max |S11| = 12.0899. Any
-# threshold between them separates them; 1.05 is the passivity bound (|S11|
-# <= 1 for a lossless short) plus the measured discretization headroom.
 _PEC_SHORT_LONG_RECORD_MAX_S11 = 1.05
 
 
@@ -681,7 +591,9 @@ def test_pec_short_conformal_stays_bounded_over_a_long_record():
     RED on the pre-fix tree (12.0899), green here (1.0014). If this ever goes
     red again, do not relax it: re-read the per-bin trace and the settling
     witness first — a PEC short that returns more than it was given is not a
-    tolerance problem."""
+    tolerance problem.
+
+    The 1.05 growth threshold is the passivity bound (|S11| <= 1 for a lossless short) plus the earlier measured discretization headroom."""
     sim = _pec_short_sim(conformal=True)
     res = sim.compute_waveguide_s_matrix(num_periods=160, normalize=False)
     s11 = np.abs(np.asarray(res.s_params)[0, 0, :])
@@ -728,10 +640,8 @@ def test_pec_short_s11_baseline_unchanged_with_binary_path():
     diverges, |S11| in [0.57, 2.77] on the same geometry. That is the
     Dey-Mittra face-PEC lane, which #931 §1.8 fences out of the ownership
     contract, and it is recorded here as an observation, not fixed.)
-    """
-    # #1887: declare whole cells, instead of rounding 40/20 mm to 42/21 mm.
+    The domain lengths (0.12, 0.042, 0.021) are whole numbers of cells of dx=0.003, so the solved domain equals the declared one."""
     sim = _pec_short_sim(conformal=False, domain=(0.12, 0.042, 0.021))
-    # build-time: the short realizes walls on BOTH drawn faces (#931 §1.2)
     from tests._realized_geometry import assert_wall_planes
     assert_wall_planes(sim, 0, [0.084, 0.087], what="cv11-style PEC short")
 
@@ -741,25 +651,12 @@ def test_pec_short_s11_baseline_unchanged_with_binary_path():
         f"PEC-short |S11| baseline regressed: min={s11.min():.4f} "
         f"(gate 0.99). Stage 1 must not affect the binary path."
     )
-    # the record must also not be contaminated the way 40 periods was: a
-    # passive short cannot reflect more than it receives.
     assert s11.max() <= 1.01, (
         f"|S11| max={s11.max():.4f} > 1 for a passive short — the DFT "
         "window is contaminated; lengthen num_periods before reading the "
         "minimum as physics")
 
 
-# -----------------------------------------------------------------------------
-# Stage 1 step 5 (nice-to-have): mesh-convergence S21 with Boundary(conformal=True)
-# -----------------------------------------------------------------------------
-#
-# The binary-PEC mesh-conv case
-# (``test_mesh_convergence_s21_scaled_cpml`` in the validation battery)
-# already passes since the 2026-04-29 Box.mask_on_coords fix; this test
-# locks the conformal=True path to the same convergence behaviour so the
-# Dey-Mittra coefficient-modifying lane stays Meep-class on
-# inverse-design / topology-changing geometries where binary staircase
-# would re-introduce the cell-count rounding jitter.
 
 
 def _wr90_meshconv_sim(*, dx: float, conformal: bool, cpml_layers: int):
@@ -833,10 +730,6 @@ def test_mesh_convergence_s21_with_conformal_pec_baseline():
     )
 
 
-# Measured envelope for the conformal mesh-convergence ladder, 2026-09-15
-# (#1043 / PR #1047). DERIVED, not chosen: the three rungs read
-# 0.7796 / 0.6974 / 0.7274 on this tree, so the ladder spans [0.6974, 0.7796]
-# and the widening quantum is the ladder's own coarse delta, 0.0822.
 _MESHCONV_CONFORMAL_S21_LO = 0.6974 - 0.0822
 _MESHCONV_CONFORMAL_S21_HI = 0.7796 + 0.0822
 
@@ -884,7 +777,9 @@ def test_mesh_convergence_s21_with_conformal_pec():
     verdicts that falsified four conformal methods were all taken with this
     defect present and have to be re-measured before any accuracy claim. This
     test gates stability and mesh convergence, which is what it always
-    measured."""
+    measured.
+
+    The earlier measured envelope is the conformal ladder's own span [0.6974, 0.7796] widened by its own coarse delta, 0.0822."""
     target_cpml_m = 0.030
     resolutions = [0.003, 0.002, 0.0015]
     s21_values: list[float] = []
@@ -898,10 +793,6 @@ def test_mesh_convergence_s21_with_conformal_pec():
         s21_values.append(s21)
         print(f"[meshconv-conformal] dx={dx*1e3:.1f}mm cpml={layers} |S21|={s21:.4f}")
 
-    # PRIMARY signal: the historical failure mode was a NaN |S21| at fine dx,
-    # not a tolerance miss, so finiteness is asserted on its own. It stays the
-    # first assertion now that the test is a real gate -- a regression here
-    # would come back as a NaN before it came back as a bad tolerance.
     assert np.all(np.isfinite(s21_values)), (
         f"conformal=True produced non-finite |S21| at fine dx: {s21_values} — "
         "this is the pre-#1043 conformal-fine-dx NaN returning. Its cause was "
@@ -924,9 +815,6 @@ def test_mesh_convergence_s21_with_conformal_pec():
         f"Fine-mesh |S21| change too large with conformal=True: "
         f"{fine_delta:.4f} (gate 0.10)"
     )
-    # The measured envelope, so a rung that goes finite-but-wrong is caught
-    # too and not just a NaN. Bounds are the ladder's own span widened by its
-    # own coarse delta -- see the constants above for the derivation.
     assert all(_MESHCONV_CONFORMAL_S21_LO <= v <= _MESHCONV_CONFORMAL_S21_HI
                for v in s21_values), (
         f"conformal mesh-convergence ladder left its measured envelope "
@@ -936,9 +824,6 @@ def test_mesh_convergence_s21_with_conformal_pec():
     )
 
 
-# -----------------------------------------------------------------------------
-# G-WI5 guardrail: DELETED 2026-09-15 (#1043 / PR #1047)
-# -----------------------------------------------------------------------------
 
 
 def test_guardrail_conformal_normalize_no_longer_warns():

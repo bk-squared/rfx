@@ -1,4 +1,5 @@
-"""#2453: declared paint order and distant same-medium union contracts."""
+"""#2453: declared paint order and distant same-medium union contracts.
+A and C in mesh_arrays overlap by 0.15 mm."""
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -17,9 +18,9 @@ MODES = (True, 'kottke_pec', 'full_tensor')
 
 
 def grid_for(path='uniform', domain=.012):
+    """Node 6 remains at 6 mm on the nonconstant physical widths."""
     if path == 'uniform':
         return Grid(freq_max=20e9, domain=(domain,) * 3, dx=.001, cpml_layers=0)
-    # Nonconstant physical widths on all three axes; node 6 remains at 6 mm.
     profile = np.array([.001] * 4 + [.0008, .0012] * 2 + [.001] * 4)
     return make_nonuniform_grid((domain, domain), profile, .001, cpml_layers=0,
                                cpml_axes='', dx_profile=profile, dy_profile=profile)
@@ -51,10 +52,10 @@ def arrays_for(grid, pairs, mode):
         return {'diagonal': np.asarray(result.diagonal), 'xi': np.asarray(result.nodes.xi),
                 'triplets': np.asarray(result.nodes.triplets)}
     if mode == 'kottke_pec':
-        return {'inverse_diagonal': np.asarray(smoothing.compute_inv_eps_tensor_diag(grid, pairs, []))}
+        return {'inverse_diagonal': np.asarray(smoothing.compute_inv_eps_tensor_diag(grid, pairs, [], dtype='float32'))}
     build = (smoothing.compute_smoothed_eps_nonuniform if hasattr(grid, 'dx_arr')
              else smoothing.compute_smoothed_eps)
-    return {'diagonal': np.asarray(build(grid, pairs))}
+    return {'diagonal': np.asarray(build(grid, pairs, dtype='float32'))}
 
 
 @pytest.mark.parametrize('path,mode', [('uniform', m) for m in MODES] +
@@ -64,7 +65,7 @@ def test_b1_box_values(path, mode, with_a):
     arrays = arrays_for(grid_for(path), b1_shapes(with_a=with_a), mode)
     for name, array in arrays.items():
         if name == 'triplets':
-            continue  # Revision 1 pins xi and diagonal here; all triplets below.
+            continue
         actual = array[:, 6, 6, 6]
         expected = ([.25, .25, .25, 0., 0., 0.] if name == 'xi' else
                     [.25, .25, .25] if name == 'inverse_diagonal' else [4., 4., 4.])
@@ -74,10 +75,10 @@ def test_b1_box_values(path, mode, with_a):
 @pytest.mark.parametrize('path,mode', [('uniform', m) for m in MODES] +
                          [('graded', True), ('graded', 'full_tensor')])
 def test_b1_sphere_remote_arrays(path, mode):
+    """The material arrays' leading dimension is component (3/6) or triplet (all eight)."""
     grid = grid_for(path)
     with_a = arrays_for(grid, b1_shapes(sphere=True), mode)
     without_a = arrays_for(grid, b1_shapes(sphere=True, with_a=False), mode)
-    # Physical node coordinates, independently spelled from this test's mesh.
     line = (np.arange(13) * .001 if path == 'uniform' else
             np.array([0., .001, .002, .003, .004, .005, .006, .007, .008,
                       .0088, .010, .0108, .012]))
@@ -86,7 +87,6 @@ def test_b1_sphere_remote_arrays(path, mode):
            (line[None, :, None] > .0031 + reach) |
            (line[None, None, :] > .0031 + reach))
     for name in with_a:
-        # Leading dimension is component (3/6) or triplet (all eight).
         np.testing.assert_array_equal(with_a[name][:, far], without_a[name][:, far])
 
 
@@ -98,7 +98,6 @@ def test_b3_distant_intervening_medium(mode, sphere):
     adc = arrays_for(grid, [a, d, c], mode)
     acd = arrays_for(grid, [a, c, d], mode)
     for name in adc:
-        # Expected difference is exactly zero for every array and all triplets.
         np.testing.assert_array_equal(adc[name] - acd[name], 0.)
 
 
@@ -120,14 +119,13 @@ def test_periodic_images_and_axis_lengths():
     d = (Box((.002, .0185, .002), (.004, .0195, .004)), 10.2)
     c = (Box((.002, .0002, .002), (.004, .0012, .004)), 4.)
     assert list(smoothing._medium_groups([a, d, c], grid)) == [(0, 4.), (1, 10.2), (2, 4.)]
-    # A whole-period translation keeps the same decision in absolute coordinates.
     shifted = (Box((.002, .0402, .002), (.004, .0412, .004)), 4.)
     assert list(smoothing._medium_groups([a, d, shifted], grid)) == [(0, 4.), (1, 10.2), (2, 4.)]
 
 
 def test_realized_graded_maximum_and_traced_bounds():
+    """The 2.1 mm gap joins on 1 mm cells and splits when any axis reaches 1.2 mm."""
     a, c, d = b3_shapes()
-    # The 2.1 mm gap joins on 1 mm cells, splits when any axis reaches 1.2 mm.
     assert len(smoothing._medium_groups([a, d, c], grid_for())) == 2
     assert len(smoothing._medium_groups([a, d, c], grid_for('graded'))) == 3
 
@@ -163,6 +161,7 @@ def test_join_window_checks_every_later_painted_group(path, mode):
 
 def mesh_arrays(delta, mode, *, nominal=True, adjacent=False, order='ADC',
                 nearby=False, membership_only=False, windowed=False):
+    """Centres and bounds clear the realized and nominal plane sets by >= 0.03 mm."""
     from types import SimpleNamespace
     from rfx.model.tensor_operands import full_tensor_eps, smoothing_nominal_h_max
     profile = np.array([.001] * 4 + [.0008, .0012] * 2 + [.001] * 4)
@@ -174,8 +173,6 @@ def mesh_arrays(delta, mode, *, nominal=True, adjacent=False, order='ADC',
                      dt=.2 * .001 / 299792458., dt_min_cell=.0005,
                      nominal_profiles={a: declaration for a in 'xyz'} if traced and nominal else None)
     grid = sim._build_nonuniform_grid()
-    # Revision 2c: centres and bounds clear both plane sets by >= 0.03 mm.
-    # A and C overlap by 0.15 mm; distant D leaves their union unchanged.
     a = (Sphere((.00363, .00527, .00533), .00156), 4.)
     c = (Sphere((.00646, .00527, .00533), .00142), 4.)
     d = (Sphere((.01069, .00871, .00933) if nearby else
@@ -194,7 +191,7 @@ def mesh_arrays(delta, mode, *, nominal=True, adjacent=False, order='ADC',
                   'triplets': result.nodes.triplets}
     else:
         arrays = {'diagonal': jnp.stack(smoothing.compute_smoothed_eps_nonuniform(
-            grid, pairs, nominal_h_max=maximum))}
+            grid, pairs, nominal_h_max=maximum, dtype='float32'))}
     return membership, arrays
 
 
@@ -223,7 +220,7 @@ def test_traced_mesh_nominal_order_arrays(mode):
 
 @pytest.mark.parametrize('windowed', [False, True], ids=['plain', 'windowed'])
 def test_traced_mesh_nominal_nearby_membership(windowed):
-    # D' has a 2.20 mm x-gap: beyond 2*dx, inside 2*max(nominal_profiles).
+    """The nearby D sphere has a 2.20 mm x-gap, beyond 2*dx and inside 2*max(nominal_profiles)."""
     groups = jax.jit(lambda d: mesh_arrays(
         d, True, nearby=True, membership_only=True, windowed=windowed))(0.)
     np.testing.assert_array_equal(groups, [0, 1, 2])

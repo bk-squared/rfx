@@ -12,6 +12,7 @@ The workflow assertion is the second half: the check is worthless if the body
 reaches the shell instead of the environment, because a PR body is
 attacker-controlled text and ``${{ }}`` inside a ``run:`` block is an
 injection.
+GitHub closes every issue named after a closing keyword on merge, wherever the keyword sits.
 """
 
 from __future__ import annotations
@@ -37,9 +38,9 @@ cpb = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = cpb
 _spec.loader.exec_module(cpb)
 
-# A deliberately small allowed set: the point is that the check reads the live
-# labels, not that it hardcodes today's ten.
-ENV = {"LANE_LABELS": "lane:ci-infra\nlane:crossval\nlane:msl-port\n"}
+
+SMALL_LIVE_LANE_LABEL_SET = "lane:ci-infra\nlane:crossval\nlane:msl-port\n"
+ENV = {"LANE_LABELS": SMALL_LIVE_LANE_LABEL_SET}
 
 ACCEPT = "Review: opus (separate instance) — ACCEPT"
 
@@ -139,11 +140,6 @@ def test_physics_cutover_does_not_exempt_lane_or_review() -> None:
     assert "`Review:` line" in problems[1]
 
 
-# --------------------------------------------------------------------------
-# Bodies that must pass
-# --------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     "review",
     [
@@ -154,7 +150,7 @@ def test_physics_cutover_does_not_exempt_lane_or_review() -> None:
         "Review: opus (separate instance) – ACCEPT",
         "Review: opus (separate instance) – ACCEPT WITH CHANGES",
         "Review: skipped — (a) pure docs change, one paragraph, trivially reverted",
-        "Review: skipped - (b) PI instructed the skip on 2026-09-18",
+        "Review: skipped - (b) the maintainer instructed the skip on 2026-09-18",
         "Review: skipped – (a) one comment typo, reverted with one click",
     ],
     ids=[
@@ -199,11 +195,6 @@ def test_fallback_lane_list_is_used_when_the_env_is_absent() -> None:
 def test_an_empty_lane_labels_env_falls_back_rather_than_rejecting_everything() -> None:
     """`gh label list` failing must not make every lane label unknown."""
     assert cpb.check(body("Physics: none — CI process", "Lane: lane:absorber", ACCEPT), {"LANE_LABELS": "\n\n"}) == []
-
-
-# --------------------------------------------------------------------------
-# Bodies that must fail
-# --------------------------------------------------------------------------
 
 
 def test_reject_never_passes() -> None:
@@ -343,11 +334,6 @@ def test_crlf_bodies_are_handled() -> None:
     assert cpb.check("Physics: none — CI process\r\nLane: lane:ci-infra\r\n" + ACCEPT + "\r\n", ENV) == []
 
 
-# --------------------------------------------------------------------------
-# A placeholder reviewer is not a review record
-# --------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     "review",
     [
@@ -431,9 +417,8 @@ def test_the_remediation_text_is_not_itself_a_passing_body() -> None:
     report = cpb.failure_report(cpb.check("", ENV), ENV)
     problems = cpb.check(report, ENV)
     assert len(problems) == 3, f"the remediation text passes its own gate: {problems}"
-    # The examples must be counted, not swallowed by earlier prose. The first
-    # cut wrote a literal "<pre>" in the report, hiding the rest of the body.
-    # The plain example and four indented alternatives now fail the count rule.
+
+
     assert "5 `Review:` lines" in problems[1], problems[1]
     assert "Review: <who read it> (separate instance) - ACCEPT" in cpb.body_lines(report)
 
@@ -450,11 +435,6 @@ def test_failure_report_names_the_contract_and_the_fields() -> None:
     assert "(separate instance) - ACCEPT" in report
     assert "Review: skipped - (a)" in report
     assert "scripts/ci/check_pr_body.py" in report
-
-
-# --------------------------------------------------------------------------
-# A skipped review must say WHICH exception
-# --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -476,11 +456,6 @@ def test_skipped_without_a_named_exception_fails(review: str) -> None:
 def test_a_bare_skip_is_told_which_exceptions_exist() -> None:
     problems = cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", "Review: skipped - x"), ENV)
     assert "(a)" in problems[0] and "(b)" in problems[0]
-
-
-# --------------------------------------------------------------------------
-# Lines that are invisible once GitHub renders the body do not count
-# --------------------------------------------------------------------------
 
 
 def test_lines_inside_a_code_fence_do_not_count() -> None:
@@ -581,11 +556,6 @@ def test_the_pr_template_alone_does_not_pass() -> None:
     )
 
 
-# --------------------------------------------------------------------------
-# An adorned line still fails, but the message says why
-# --------------------------------------------------------------------------
-
-
 @pytest.mark.parametrize(
     "adorned",
     ["- Lane: lane:ci-infra", "> Lane: lane:ci-infra", "**Lane: lane:ci-infra**",
@@ -608,11 +578,6 @@ def test_a_plain_missing_line_does_not_get_the_adornment_hint() -> None:
     assert "must start the line" not in problems[0]
 
 
-# --------------------------------------------------------------------------
-# Closing keywords: GitHub links the PR to every issue its body names after one,
-# wherever it sits, and closes that issue on merge (#1132)
-# --------------------------------------------------------------------------
-
 _IN_PROSE = (
     "a closing keyword inside a sentence closes the issue when the PR merges. "
     'If you do NOT mean to close it, take the keyword out ("the closing keyword '
@@ -631,7 +596,7 @@ _IN_PROSE = (
         "resolves bk-squared/rfx#12.",
         "  Close #12 and CLOSED #13  ",
         "Closes https://github.com/bk-squared/rfx/issues/12",
-        # the house style of this repo's merged PRs: the close, then a summary
+
         "Closes #958. Makes the taper commensurate.",
         "Closes #790. Closes #978.",
         "Closes #627 — the static half.",
@@ -648,15 +613,15 @@ def test_a_closing_reference_that_starts_its_line_passes(line: str) -> None:
 @pytest.mark.parametrize(
     "line",
     [
-        # the two sentences that closed an open issue, verbatim from the merged PR bodies
-        "It does not close #737. The three decisions the tracker needs from the PI",  # PR #1086
-        "It was opened as `Fixes #752`; that is withdrawn. What it does fix still",  # PR #1125
+
+        "It does not close #737. The three decisions the tracker needs from the maintainer",
+        "It was opened as `Fixes #752`; that is withdrawn. What it does fix still",
         "Rejected: Close #726 from settling alone",
         "Fixes #752 is withdrawn from the PR body",
-        "Closes #742 items 1-2; item 3 rides with the next PR",  # closes ALL of #742
+        "Closes #742 items 1-2; item 3 rides with the next PR",
         "FIXES #9 later",
         "fixed https://github.com/bk-squared/rfx/issues/9 yesterday",
-        "Stacked on the flip PR. Closes #770.",  # intended, but not at the start of its line
+        "Stacked on the flip PR. Closes #770.",
     ],
 )
 def test_a_closing_reference_inside_a_sentence_fails_and_quotes_the_line(line: str) -> None:
@@ -736,8 +701,9 @@ def test_each_closing_reference_in_prose_is_a_problem() -> None:
 
 
 def test_closing_problem_reports_the_body_line_number_and_trims_the_quote() -> None:
+    """CRLF and a lone CR count as one line break each."""
     line = "   Fixes #752 is withdrawn " + "x" * 140 + "   "
-    # CRLF and a lone CR must count as one line break each, as body_lines() counts them.
+
     text = "Physics: none — CI process\r\nLane: lane:ci-infra\r\n" + ACCEPT + "\r<!--\ncontext\n-->\n\n" + line
     problems = cpb.check(text, ENV)
     assert len(problems) == 1
@@ -752,11 +718,6 @@ def test_a_body_that_fails_only_on_a_closing_keyword_is_not_told_to_fill_in_lane
     assert "Fill these two lines in" not in report
     both = cpb.failure_report(problems + ["no `Lane:` line"], ENV)
     assert "Fill these two lines in" in both
-
-
-# --------------------------------------------------------------------------
-# The command-line entry points
-# --------------------------------------------------------------------------
 
 
 PASSING_BODY = body("Physics: none — CI process", "Lane: lane:ci-infra", ACCEPT)
@@ -821,11 +782,6 @@ def test_cli_with_no_body_at_all_fails_rather_than_passing_vacuously() -> None:
     assert "no body to check" in result.stderr
 
 
-# --------------------------------------------------------------------------
-# The workflow that runs it
-# --------------------------------------------------------------------------
-
-
 def _workflow() -> dict:
     return yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
 
@@ -846,11 +802,12 @@ def _run_blocks(node: object) -> list[str]:
 
 
 def test_workflow_exists_and_runs_the_script() -> None:
+    """`on:` parses as the boolean True in YAML 1.1."""
     assert _WORKFLOW.is_file(), f"missing {_WORKFLOW}"
     data = _workflow()
     scripts = _run_blocks(data)
     assert any("scripts/ci/check_pr_body.py" in block for block in scripts)
-    # `on:` parses as the boolean True in YAML 1.1; accept either spelling.
+
     triggers = data.get("on", data.get(True))
     assert triggers["merge_group"] == {"types": ["checks_requested"]}
     assert set(triggers["pull_request"]["types"]) == {
@@ -916,11 +873,6 @@ def test_workflow_reads_the_labels_live_not_from_the_event_payload() -> None:
     assert "${{ github.event.pull_request.number }}" in env_values
 
 
-# --------------------------------------------------------------------------
-# The lane: the line is required, and the labels cross-check it
-# --------------------------------------------------------------------------
-
-#: A PR that `.github/labeler.yml` put in one lane.
 ONE_LABEL = dict(ENV, PR_LABELS_JSON='["lane:ci-infra", "release"]')
 TWO_LABELS = dict(ENV, PR_LABELS_JSON='["lane:ci-infra", "lane:crossval"]')
 
@@ -1051,11 +1003,6 @@ def test_a_label_containing_a_comma_survives_the_json() -> None:
     assert cpb.pr_lane_labels(env) == ("lane:ci-infra",)
 
 
-# --------------------------------------------------------------------------
-# A retired label warns; it never fails
-# --------------------------------------------------------------------------
-
-
 def test_a_lane_label_the_repository_no_longer_has_is_only_a_warning() -> None:
     """Retiring a label must not turn every open PR red for nobody's mistake."""
     env = dict(ENV, PR_LABELS_JSON='["lane:ci-infra", "lane:retired"]')
@@ -1104,11 +1051,6 @@ def test_the_remediation_text_says_the_label_is_not_a_substitute() -> None:
     assert "do not replace the line" in report
 
 
-
-#: The ruff scope CI runs: the packages under test, plus every script that gates
-#: a merge. The rest of `scripts/` has 197 findings under this selector and is
-#: its own cleanup -- but an unlinted gate is a gate nobody notices breaking, so
-#: a helper that can fail a PR is never outside the scope.
 RUFF_SCOPE = (
     "rfx/",
     "tests/",

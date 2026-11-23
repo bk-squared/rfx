@@ -98,7 +98,7 @@ def test_assembled_and_realized_faces(offset, graded, periodic, rich, smoothing)
     if smoothing:
         from rfx.geometry.smoothing import compute_smoothed_eps, compute_smoothed_eps_nonuniform
         smooth = compute_smoothed_eps_nonuniform if graded else compute_smoothed_eps
-        components = smooth(grid, [(shape, 4.)])
+        components = smooth(grid, [(shape, 4.)], dtype='float32')
         assert all(np.isfinite(np.asarray(component)).all() for component in components)
     _assert_arrays(built, expected, rich)
     _assert_record(sim, indices, nodes)
@@ -329,7 +329,7 @@ def test_smoothed_composite_fallback_uses_volume_leaves(graded):
                           for face in (.0033, .0073, .0033, .0083))
     expected[xlo:xhi, xlo:xhi, zlo:zhi] = True
     smooth = compute_smoothed_eps_nonuniform if graded else compute_smoothed_eps
-    for component in smooth(grid, [(via, 4.)]):
+    for component in smooth(grid, [(via, 4.)], dtype='float32'):
         np.testing.assert_array_equal(np.asarray(component) == 4., expected)
 
 

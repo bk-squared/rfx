@@ -172,13 +172,7 @@ class ConfigCheck(NamedTuple):
     family: str
 
 
-# Core checks preserve the sequence pinned by
-# ``tests/locks/test_preflight_registry_sequence.py``. Adapters read their
-# inputs from ``ConfigCheckContext``.
-# ``_validate_cfg_compute_cpml_thickness`` remains in the hub because it
-# produces context (face thicknesses and PMC faces) and emits nothing.
 CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
-    # Admission precedes diagnostics that may be unavailable after a refusal.
     ConfigCheck("_validate_cfg_assembly",
                 lambda sim, c: sim._validate_cfg_assembly(c.warn),
                 "realization"),
@@ -280,10 +274,6 @@ CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
     ConfigCheck("_validate_cfg_subgrid_limitations",
                 lambda sim, c: sim._validate_cfg_subgrid_limitations(c.warn),
                 "mesh"),
-    # Remove a core check only when it becomes a false positive and cite the
-    # tripwire establishing that. Removal shortens the sequence without
-    # reordering surviving advisories; update the sequence lock and affected
-    # snapshots together.
     ConfigCheck("_validate_cfg_lossless_resonator_in_absorber",
                 lambda sim, c: sim._validate_cfg_lossless_resonator_in_absorber(
                     c.warn),
@@ -316,60 +306,29 @@ CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
     ConfigCheck("_check_coaxial_port_junction_aperture",
                 lambda sim, c: sim._check_coaxial_port_junction_aperture(),
                 "ports"),
-    # Append shipped checks at the end so existing checks keep their indices and snapshot advisory order.
-    #
-    # It is not registered through ``register_config_check`` even though this
-    # module's "Adding a check" recipe reads that way, because
-    # ``tests/locks/test_preflight_registry_sequence.py
-    # ::test_no_extra_check_is_registered_by_importing_rfx`` forbids exactly
-    # that for a SHIPPED check: a family module that registered one as an
-    # import side effect would change what every ``preflight()`` in the
-    # process emits, and that lock's own instruction is "register from an
-    # explicit opt-in instead". ``EXTRA_CONFIG_CHECKS`` is for a caller's
-    # opt-in; an always-on check belongs in this reviewed, locked list, and
-    # the two locks that read it are edited in the same change -- the review
-    # a red lock is supposed to force.
     ConfigCheck("_validate_cfg_dielectric_at_absorber_seam",
                 lambda sim, c: sim._validate_cfg_dielectric_at_absorber_seam(
                     c.warn),
                 "absorber"),
-    # As for the row above, a SHIPPED check belongs in this reviewed, locked list, never in
-    # ``register_config_check``. It reports the measured conjunction -- a
-    # conductor realizing within two cells of an absorbing face that carries
-    # six layers or fewer -- and is an advisory, not a refusal, because the
-    # mechanism behind that growth is not established.
     ConfigCheck("_validate_cfg_conductor_in_thin_absorber",
                 lambda sim, c: sim._validate_cfg_conductor_in_thin_absorber(
                     c.warn, c.dx, c.absorber_label),
                 "absorber"),
-    # append the explicit port-termination diagnostic.
     ConfigCheck("_validate_cfg_port_conductor_continues",
                 lambda sim, c: sim._validate_cfg_port_conductor_continues(c.warn),
                 "absorber"),
-    # Half-node split: a port, source or probe
-    # and a wire vertex or PEC sheet declared at one half-node coordinate land
-    # one cell apart. An ERROR; _dispatch_plan refuses the same pairs at run
-    # time through the same function.
     ConfigCheck("_validate_cfg_half_node_split",
                 lambda sim, c: sim._validate_cfg_half_node_split(c.warn),
                 "ports"),
-    # report realized absorber depth on either mesh lane, in vacuum too.
     ConfigCheck("_validate_cfg_thin_absorber",
                 lambda sim, c: sim._validate_cfg_thin_absorber(c.warn, c.dx),
                 "absorber"),
-    # shipped admission appended; extras remain explicit opt-in.
     ConfigCheck("_validate_cfg_waveguide_port_span",
                 lambda sim, c: sim._validate_cfg_waveguide_port_span(c.warn),
                 "waveguide_port_span"),
 )
 
 
-#: Checks registered by a family module at import time. EMPTY in a clean
-#: ``import rfx`` -- a lock asserts that, because a check that registered
-#: itself as a side effect of importing rfx would be a preflight behaviour
-#: change nobody opted into. Mutable by design: :func:`register_config_check`
-#: appends to it, and a test that registers a throwaway check is expected to
-#: monkeypatch this list rather than leave an entry behind.
 EXTRA_CONFIG_CHECKS: list[ConfigCheck] = []
 
 
@@ -410,15 +369,12 @@ def run_config_checks(sim: Any, ctx: ConfigCheckContext) -> None:
     """
     from rfx.preflight.line_stub import preflight_line_stubs
     from rfx.preflight.ports import preflight_wire_port_radius
-    preflight_line_stubs(sim, ctx.warn)
+    from rfx.preflight._not_judged import judge_or_report
+    judge_or_report(
+        "preflight_line_stubs", lambda: preflight_line_stubs(sim, ctx.warn), ctx.warn)
     for check in CORE_CONFIG_CHECKS:
-        check.run(sim, ctx)
-    # A radius-less wire port: one advisory, after every core advisory so no
-    # committed report changes order, and before the opt-in extras so a
-    # registered extra still lands last. Called like the line-stub report
-    # above rather than as a CORE entry: an entry needs a method bound on
-    # _PreflightMixin, i.e. a new import line in rfx/api/_preflight.py,
-    # whose line count may only fall.
-    preflight_wire_port_radius(sim, ctx.warn)
+        judge_or_report(check.name, lambda: check.run(sim, ctx), ctx.warn)
+    judge_or_report(
+        "preflight_wire_port_radius", lambda: preflight_wire_port_radius(sim, ctx.warn), ctx.warn)
     for check in EXTRA_CONFIG_CHECKS:
-        check.run(sim, ctx)
+        judge_or_report(check.name, lambda: check.run(sim, ctx), ctx.warn)

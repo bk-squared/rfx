@@ -30,8 +30,6 @@ def test_tangential_h_has_odd_image_at_pmc_face():
     from rfx.core.yee import CurlBoundary, h_neighbor
     boundary = CurlBoundary(pmc_faces=frozenset({"z_lo"}))
     for field in (res.state.hx, res.state.hy):
-        # H[0] is half a cell INSIDE: preserve it. Interpolation between
-        # that sample and its odd image puts H_t=0 on the declared face.
         assert np.max(np.abs(np.asarray(field)[:, :, 0])) > 0
         image = h_neighbor(field, 2, boundary=boundary)
         np.testing.assert_array_equal(np.asarray(field + image)[:, :, 0], 0.)
@@ -83,8 +81,6 @@ def test_pmc_plus_distributed_forward_is_finite():
     )
     sim.add_source((0.005, 0.005, 0.002), "ez")
     sim.add_probe((0.005, 0.005, 0.003), "ez")
-    # Use a real single-device list. Multi-device sharded-PMC evidence
-    # lives in tests/unit/boundaries/test_boundary_pmc_distributed.py.
     devices = [jax.devices()[0]]
     result = sim.forward(n_steps=20, distributed=True, devices=devices,
                          skip_preflight=True)
@@ -103,7 +99,6 @@ def test_pmc_and_pec_produce_physically_different_h_at_face():
         sim.add_probe((0.005, 0.005, 0.005), "ez")
         return sim.run(n_steps=40).state
 
-    # Both nearest H planes lie inside the domain; neither is the wall.
     st_pmc = _final_state(BoundarySpec(x="cpml", y="cpml",
                                        z=Boundary(lo="pmc", hi="cpml")))
     st_pec = _final_state(BoundarySpec(x="cpml", y="cpml",

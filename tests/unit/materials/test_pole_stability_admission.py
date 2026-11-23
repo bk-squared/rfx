@@ -4,6 +4,7 @@ The pole update is explicit, so the medium has a step limit on top of the grid's
 damping it is ``(omega_p dt)^2 + x <= 4 eps_inf`` for every ``0 <= x <= 4 s^2`` (``s`` the Courant fraction);
 above it a filled box goes non-finite within a few hundred steps. Expected values here come from that closed
 form and from runs, not from the module's predicate.
+At Courant fraction squared S2, BULK_LIMIT is omega_p*dt for eps_inf=1.
 """
 import warnings
 
@@ -42,12 +43,13 @@ def _run(sim, n_steps=400):
         return np.asarray(sim.run(n_steps=n_steps, compute_s_params=False, skip_preflight=True).time_series)
 
 
-S2 = (C0 * _default_step()) ** 2 * 3 / DX ** 2          # Courant fraction squared, 0.99^2
-BULK_LIMIT = 2 * np.sqrt(1.0 - S2)                       # omega_p dt, eps_inf = 1
+S2 = (C0 * _default_step()) ** 2 * 3 / DX ** 2
+BULK_LIMIT = 2 * np.sqrt(1.0 - S2)
 
 
 @pytest.mark.parametrize("eps_inf", [1.0, 2.0, 4.0])
 def test_growth_factor_matches_the_closed_form_for_an_undamped_drude_pole(eps_inf):
+    """The hand reference uses the unstable root of eps (z-1)^2 + (x + wp^2 dt^2) z at x = 4 s^2."""
     dt = _default_step()
     limit = 2 * np.sqrt(eps_inf - S2)
     for factor, stable in ((0.5, True), (0.98, True), (1.02, False), (1.5, False)):
@@ -55,7 +57,6 @@ def test_growth_factor_matches_the_closed_form_for_an_undamped_drude_pole(eps_in
         growth = largest_growth(eps_inf, 0.0, [(0.0, 0.0, wp * wp)], dt, 4 * S2)
         assert (growth <= 1 + 1e-6) == stable, (eps_inf, factor, growth)
         if not stable:
-            # the unstable root of eps (z-1)^2 + (x + wp^2 dt^2) z at x = 4 s^2, by hand
             q = (4 * S2 + (factor * limit) ** 2) / eps_inf
             assert growth == pytest.approx((q - 2 + np.sqrt(q * (q - 4))) / 2, rel=1e-6)
 
@@ -65,7 +66,7 @@ def test_largest_stable_step_is_the_closed_form(eps_inf):
     dt = _default_step()
     wp = 1.2 * 2 * np.sqrt(eps_inf - S2) / dt
     budget = C0 * C0 * 3 / DX ** 2
-    want = 2 * np.sqrt(eps_inf) / np.sqrt(wp * wp + 4 * budget)             # (wp dt)^2 + 4 dt^2 budget = 4, eps_inf = 1
+    want = 2 * np.sqrt(eps_inf) / np.sqrt(wp * wp + 4 * budget)
     assert largest_stable_step(eps_inf, 0.0, [(0.0, 0.0, wp * wp)], dt, budget) == pytest.approx(want, rel=1e-5)
 
 
@@ -81,7 +82,7 @@ def test_medium_above_the_limit_is_refused_with_the_stable_step(graded, gamma_dt
         _run(_box(0.45, graded=graded, gamma_dt=gamma_dt), n_steps=5)
     message = str(err.value)
     assert "largest stable step" in message and "eps_low=" in message and "kappa=" in message
-    assert ("pass dt=" in message) == graded            # dt= is named only where it is accepted
+    assert ("pass dt=" in message) == graded
 
 
 def test_forward_refuses_the_same_medium():
@@ -104,9 +105,9 @@ def test_the_stable_step_from_the_message_makes_the_graded_model_run():
 
 
 def test_a_lorentz_pole_and_a_second_pole_are_judged_together():
+    """An earlier measurement on this box found bounded fields at 0.97 of 1.97 versus non-finite fields at 1.03 of 1.97."""
     dt = _default_step()
     lorentz = lorentz_pole(1.0, 0.5 / dt, 0.01 / dt)
-    # measured on this box (rfx-archive records/20261010-pole-stability-limit): bounded at 0.97 of 1.97, non-finite at 1.03
     assert np.all(np.isfinite(_run(_box(0.85 * 1.95, eps_inf=2.0, extra=(lorentz,)))))
     with pytest.raises(ValueError, match="unstable at this model's time step"):
         _run(_box(1.15 * 1.97, eps_inf=2.0, extra=(lorentz,)), n_steps=5)
@@ -118,7 +119,7 @@ def test_what_the_refusal_prevents():
     original = module.refuse_unstable_cells
     module.refuse_unstable_cells = lambda *args, **kwargs: None
     try:
-        import rfx.model.materials  # the hook imports the name at call time
+        import rfx.model.materials
         series = _run(_box(0.45), n_steps=500)
     finally:
         module.refuse_unstable_cells = original
@@ -162,10 +163,7 @@ def test_small_undamped_lorentz_pole_has_unit_or_lower_growth(w0_dt):
 
 @pytest.mark.parametrize("partial", [False, True])
 def test_a_later_drude_medium_is_judged_alone_on_its_cells(partial):
-    # A later shape replaces the earlier one on its cells, poles included, so two media that are
-    # each stable are not judged as their sum. Before that rule the two pole sets added up on the
-    # shared cells and this model was refused. Stacked poles belong in ONE material
-    # (test_two_drude_poles_in_one_medium).
+    """Two individually stable media are not judged as their sum because a later shape replaces the earlier medium on its cells, poles included."""
     limit = 2 * np.sqrt(4 - S2)
     sim = _box(0.90 * limit, eps_inf=4)
     sim.add_material("second", eps_r=4, lorentz_poles=[drude_pole(0.85 * limit / _default_step(), 0)])
@@ -183,9 +181,10 @@ def test_a_later_unstable_medium_is_refused_on_its_cells():
 
 
 def test_a_plain_block_drawn_into_drude_is_a_hole_and_is_not_refused():
-    # The Drude pole is stable in eps_inf = 4 and would not be in eps = 1. The block replaces the
-    # medium on its cells, pole included, so no cell holds that pole over eps = 1.
-    sim = _box(3.0, eps_inf=4)
+    """A plain block replaces the Drude medium on its cells, pole included, so no cell holds that pole over eps=1."""
+    HOLE_DRUDE_OMEGA_P_DT = 3.0
+    assert 4 < HOLE_DRUDE_OMEGA_P_DT ** 2 + 4 * S2 <= 16, 'The hole pole must be stable only in the higher permittivity'
+    sim = _box(HOLE_DRUDE_OMEGA_P_DT, eps_inf=4)
     sim.add_material("plain", eps_r=1)
     sim.add(Box((.003,) * 3, (.009,) * 3), material="plain")
     assert np.all(np.isfinite(_run(sim, n_steps=2000)))
@@ -249,16 +248,15 @@ def test_two_dimensional_tmz(wp_dt):
 
 
 def test_growth_includes_conductivity():
-    # At x=0 one Drude pair solves (eps+beta) z^2 +
-    # (kappa*dt^2 - 2 eps) z + eps-beta = 0, plus neutral roots.
+    """At x=0 one Drude pair solves (eps+beta) z^2 + (kappa*dt^2 - 2 eps) z + eps-beta = 0, plus neutral roots."""
     roots = np.roots([2.2, 9. - 4., 1.8])
     assert largest_growth(2, .4 * 8.8541878128e-12, [(0, 0, 9)], 1., 0.) == pytest.approx(max(abs(roots)))
 
 
 def test_growth_just_above_the_bar_is_refused():
+    """For z=-1.005, the reciprocal root yields q=2+1.005+1/1.005."""
     from rfx.core.yee import MaterialArrays
     from rfx.model.pole_stability import refuse_unstable_cells
-    # z=-1.005; reciprocal root yields q=2+1.005+1/1.005.
     q = 2 + 1.005 + 1 / 1.005
     cells = MaterialArrays(np.ones((1, 1, 1)), np.zeros((1, 1, 1)), None)
     with pytest.raises(ValueError, match="unstable at this model's time step"):

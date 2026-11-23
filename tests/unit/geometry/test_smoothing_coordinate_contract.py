@@ -15,14 +15,14 @@ Three things are pinned here:
 (3) replaced the measured DRIFT PIN PR #1088 left here (max rel 1.131e-06 /
 6.467e-07 / 1.025e-06 for ex/ey/ez, 15 / 5 / 11 f32 ulps on the Box fixture,
 every interface voxel differing): with concrete shapes the smoothing chain now
-runs in host float64 and is cast to the active JAX dtype once (option (a),
-PI decision 2026-09-16), so the two flags agree exactly and the lock is
+runs in host float64 and is cast to the active JAX dtype once, so the two flags agree exactly and the lock is
 bitwise. A traced shape parameter still takes the ``jax.numpy`` path, which
 is exercised separately below.
 
 Both flags are exercised from any pytest session by running the measurement
 in a subprocess with ``JAX_ENABLE_X64`` set (x64 scoped per process, never
 flipped at module level).
+NU shapes on the graded fixture are in units of NU_D.
 """
 
 import json
@@ -41,38 +41,23 @@ from tests._gate_policy import gate_from_envelope
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
-# Auditor's boundary-voxel fixture (#833, 2026-09-16): Grid + one Box whose
-# faces sit off-node so every interface voxel carries a partial fill.
 UNIFORM_FIXTURE = dict(freq_max=1.0e9, domain=(7.0e-3, 5.0e-3, 3.0e-3),
                        dx=2.54e-4, cpml_layers=2)
 BOX_LO = (1.3e-3, 1.1e-3, 0.7e-3)
 BOX_HI = (4.7e-3, 3.9e-3, 2.3e-3)
 BOX_EPS = 4.0
 
-# Graded fixture the #833 audit measured the NU centres on: WR-90-class
-# dz profile 20xD | 10xD/2 | 20xD, D = 0.3048 mm, all-CPML, cpml_layers=8.
 NU_D = 0.3048e-3
 NU_DZ = np.concatenate([np.full(20, NU_D), np.full(10, NU_D / 2), np.full(20, NU_D)])
 NU_GRADING_ADVISORY = "dz_profile has max adjacent cell ratio 2.000"
 
-# Sphere / Cylinder siblings on the same grid (all three SDF families), and
-# two PEC bodies for the ``compute_inv_eps_tensor_diag`` PEC-limit branch.
 SPHERE = dict(center=(3.5e-3, 2.5e-3, 1.5e-3), radius=1.1e-3)
 CYLINDER = dict(center=(3.5e-3, 2.5e-3, 1.5e-3), radius=1.3e-3, height=1.7e-3, axis="z")
 PEC_SPHERE = dict(center=(1.2e-3, 1.0e-3, 0.8e-3), radius=0.55e-3)
 PEC_CYLINDER = dict(center=(5.8e-3, 4.0e-3, 2.1e-3), radius=0.45e-3, height=1.1e-3, axis="y")
-# A mask-only PEC body for the staircase-fallback / traced-mask cases.
 PEC_BOX = dict(lo=(1.0e-3, 0.8e-3, 0.5e-3), hi=(2.0e-3, 1.6e-3, 1.1e-3))
-# Measured envelope of the TRACED (jax.numpy) path against the concrete host
-# path, x64=0, Sphere fixture above: max rel 4.79e-06 (80 f32 ulps) — this is
-# the pre-#833 float32 arithmetic the traced fallback deliberately keeps. Gate
-# = envelope x ENVELOPE_GATE_MULTIPLIER rounded up to 1e-7 (tests/_gate_policy).
 TRACED_PATH_ENVELOPE_REL = 4.79e-06
 TRACED_PATH_GATE_REL = gate_from_envelope(TRACED_PATH_ENVELOPE_REL, quantum=1e7)
-# NU shapes on the graded fixture, in units of D; the Box has 12 voxels
-# exactly 0.2 D inside BOTH its x-lo and z-hi faces (rx == rz in exact
-# arithmetic), where the pre-fix float32 path resolved the nearest-face
-# selection differently per flag (eps 2.105 vs 3.100).
 NU_BOX = dict(lo=(2.3, 1.7, 5.6), hi=(20.4, 13.3, 17.2))
 NU_SPHERE = dict(center=(15.0, 10.0, 12.0), radius=5.3)
 NU_CYLINDER = dict(center=(15.0, 10.0, 12.0), radius=6.1, height=9.7, axis="z")
@@ -103,12 +88,12 @@ cyl = Cylinder(tuple(cfg["cylinder"]["center"]), cfg["cylinder"]["radius"],
 pec_sph = Sphere(tuple(cfg["pec_sphere"]["center"]), cfg["pec_sphere"]["radius"])
 pec_cyl = Cylinder(tuple(cfg["pec_cylinder"]["center"]), cfg["pec_cylinder"]["radius"],
                    cfg["pec_cylinder"]["height"], cfg["pec_cylinder"]["axis"])
-put("u_box", sm.compute_smoothed_eps(grid, [(box, cfg["eps"])], background_eps=1.0))
-put("u_sphere", sm.compute_smoothed_eps(grid, [(sph, cfg["eps"])], background_eps=1.0))
-put("u_cylinder", sm.compute_smoothed_eps(grid, [(cyl, cfg["eps"])], background_eps=1.0))
-put("inv_box", sm.compute_inv_eps_tensor_diag(grid, dielectric_shapes=[(box, cfg["eps"])]))
+put("u_box", sm.compute_smoothed_eps(grid, [(box, cfg["eps"])], background_eps=1.0, dtype=jnp.float32))
+put("u_sphere", sm.compute_smoothed_eps(grid, [(sph, cfg["eps"])], background_eps=1.0, dtype=jnp.float32))
+put("u_cylinder", sm.compute_smoothed_eps(grid, [(cyl, cfg["eps"])], background_eps=1.0, dtype=jnp.float32))
+put("inv_box", sm.compute_inv_eps_tensor_diag(grid, dielectric_shapes=[(box, cfg["eps"])], dtype=jnp.float32))
 put("inv_box_pec", sm.compute_inv_eps_tensor_diag(
-    grid, dielectric_shapes=[(box, cfg["eps"])], pec_shapes=[pec_sph, pec_cyl]))
+    grid, dielectric_shapes=[(box, cfg["eps"])], pec_shapes=[pec_sph, pec_cyl], dtype=jnp.float32))
 # --- mask-only shapes (no SDF): concrete staircase fallback, and the same
 #     mask made a TRACER under jax.jit (closes over a traced scalar) -- must
 #     route through the jax.numpy path and build, as it did before #833.
@@ -119,17 +104,17 @@ class MaskOnly:
 class TracedMask(MaskOnly):
     def __init__(self, inner, t): self.inner, self.t = inner, t
     def mask(self, g): return jnp.asarray(self.inner.mask(g)) & (self.t > 0)
-put("mask_inv", sm.compute_inv_eps_tensor_diag(grid, pec_shapes=[MaskOnly(pec_box)]))
+put("mask_inv", sm.compute_inv_eps_tensor_diag(grid, pec_shapes=[MaskOnly(pec_box)], dtype=jnp.float32))
 put("mask_inv_jit", jax.jit(lambda t: sm.compute_inv_eps_tensor_diag(
-    grid, pec_shapes=[TracedMask(pec_box, t)]))(1.0))
-put("mask_eps", sm.compute_smoothed_eps(grid, [(MaskOnly(pec_box), cfg["eps"])]))
+    grid, pec_shapes=[TracedMask(pec_box, t)], dtype=jnp.float32))(1.0))
+put("mask_eps", sm.compute_smoothed_eps(grid, [(MaskOnly(pec_box), cfg["eps"])], dtype=jnp.float32))
 put("mask_eps_jit", jax.jit(lambda t: sm.compute_smoothed_eps(
-    grid, [(TracedMask(pec_box, t), cfg["eps"])]))(1.0))
+    grid, [(TracedMask(pec_box, t), cfg["eps"])], dtype=jnp.float32))(1.0))
 # --- NU centres on the graded fixture
 D = cfg["D"]; dz = np.asarray(cfg["dz"], dtype=np.float64)
 with warnings.catch_warnings(record=True) as w:
     warnings.simplefilter("always")
-    g = build_nonuniform_grid(12e9, (30 * D, 20 * D, float(dz.sum())), D, 8, dz)
+    g = build_nonuniform_grid(12e9, (30 * D, 20 * D, float(dz.sum())), D, 8, dz, dtype=jnp.float32)
 res["nu_warnings"] = np.array([str(ww.message) for ww in w])
 res["nu_shape"] = np.array(g.shape)
 coords = coords_from_nonuniform_grid(g)
@@ -156,15 +141,18 @@ nb = cfg["nu_box"]; ns = cfg["nu_sphere"]; nc = cfg["nu_cylinder"]
 nu_box = Box(tuple(v * D for v in nb["lo"]), tuple(v * D for v in nb["hi"]))
 nu_sph = Sphere(tuple(v * D for v in ns["center"]), ns["radius"] * D)
 nu_cyl = Cylinder(tuple(v * D for v in nc["center"]), nc["radius"] * D, nc["height"] * D, nc["axis"])
-put("nu_box", sm.compute_smoothed_eps_nonuniform(g, [(nu_box, cfg["eps"])], background_eps=1.0))
-put("nu_sphere", sm.compute_smoothed_eps_nonuniform(g, [(nu_sph, cfg["eps"])], background_eps=1.0))
-put("nu_cylinder", sm.compute_smoothed_eps_nonuniform(g, [(nu_cyl, cfg["eps"])], background_eps=1.0))
+put("nu_box", sm.compute_smoothed_eps_nonuniform(g, [(nu_box, cfg["eps"])], background_eps=1.0, dtype=jnp.float32))
+put("nu_sphere", sm.compute_smoothed_eps_nonuniform(g, [(nu_sph, cfg["eps"])], background_eps=1.0, dtype=jnp.float32))
+put("nu_cylinder", sm.compute_smoothed_eps_nonuniform(g, [(nu_cyl, cfg["eps"])], background_eps=1.0, dtype=jnp.float32))
 np.savez(out, **res)
 """
 
 
 def _measure_under_flag(flag: int, tmp_path: Path):
-    """Run the worker with ``JAX_ENABLE_X64=flag`` and return its arrays."""
+    """Run the worker with ``JAX_ENABLE_X64=flag`` and return its arrays.
+
+    The worker's standalone comparisons keep float32 under both x64 flags.
+    """
     cfg = dict(uniform=UNIFORM_FIXTURE, lo=BOX_LO, hi=BOX_HI, eps=BOX_EPS,
                sphere=SPHERE, cylinder=CYLINDER,
                pec_sphere=PEC_SPHERE, pec_cylinder=PEC_CYLINDER, pec_box=PEC_BOX,
@@ -191,15 +179,11 @@ def both_flags(tmp_path_factory):
 
 
 def test_smoothing_uses_shared_uniform_node_spine():
+    """The smoothing path may use the active JAX storage precision, but it must consume the same host-built node values as the binary rasterizer."""
     grid = Grid(**UNIFORM_FIXTURE)
     expected = coords_from_uniform_grid(grid)
     actual = _yee_coords(grid)
 
-    # The smoothing path may use the active JAX storage precision, but it
-    # must consume the same host-built node values as the binary rasterizer.
-    # This certifies "correctly rounded f32 of the spine" at x64=0 — NOT that
-    # the sampled positions are flag-independent (they are not; see the
-    # drift pin below).
     for got, want in zip(actual, (expected.x, expected.y, expected.z)):
         got_array = np.asarray(got)
         np.testing.assert_array_equal(got_array, np.asarray(want, dtype=got_array.dtype))
@@ -221,8 +205,6 @@ def test_nu_smoothing_centres_come_from_the_f64_spine(both_flags, flag):
     """
     data = both_flags[flag]
     assert tuple(int(n) for n in data["nu_shape"]) == (47, 37, 67), data["nu_shape"]
-    # Preflight-class output is part of the result: the only warning this
-    # fixture may raise is the known grading advisory (ratio 2.0 > 1.4).
     for msg in data["nu_warnings"].tolist():
         assert NU_GRADING_ADVISORY in msg, msg
     for name in "xyz":
@@ -238,13 +220,6 @@ def test_nu_smoothing_centres_come_from_the_f64_spine(both_flags, flag):
                 err_msg=f"axis {name}, x64=0: not the f32 rounding of the exact centre")
 
 
-# (case prefix, expected dtype at x64=1 or None). ``compute_smoothed_eps*``
-# return the active default float dtype once SDF arithmetic reached the
-# output; the dielectric inverse is float32 by contract. ``inv_box_pec`` pins
-# NO x64=1 dtype: the PEC-limit branch's output dtype at x64=1 is the subject
-# of the pre-existing ``test_compute_inv_eps_tensor_diag_returns_float32``
-# (red on main at x64=1) and this lock asserts VALUES only there, so the two
-# tests cannot encode contradictory dtype contracts.
 INVARIANCE_CASES = [
     ("u_box", "float64"), ("u_sphere", "float64"), ("u_cylinder", "float64"),
     ("inv_box", "float32"), ("inv_box_pec", None),
@@ -271,6 +246,7 @@ def test_smoothed_eps_is_x64_invariant(both_flags, case, dtype_x64):
     some part of the chain runs in the active JAX precision again. The
     x64=1 output dtype is asserted only where it is settled (``dtype_x64``
     not None); ``inv_box_pec`` leaves it to the pre-existing float32 test.
+    The fixture must actually exercise interface voxels, or the lock is vacuous.
     """
     lo, hi = both_flags[0], both_flags[1]
     for k in ("ex", "ey", "ez"):
@@ -278,9 +254,6 @@ def test_smoothed_eps_is_x64_invariant(both_flags, case, dtype_x64):
         if dtype_x64 is not None:
             assert str(hi[f"{case}_{k}_dtype"]) == dtype_x64, (case, k)
         a, b = lo[f"{case}_{k}"], hi[f"{case}_{k}"]
-        # The fixture must actually exercise interface voxels, or the lock is
-        # vacuous: a value strictly between background and bulk (or, for the
-        # inverse, strictly between their reciprocals / above zero for PEC).
         partial = (b != b.min()) & (b != b.max())
         assert int(partial.sum()) > 0, f"{case}/{k}: no interface voxel in the fixture"
         np.testing.assert_array_equal(
@@ -305,8 +278,8 @@ def test_traced_shape_parameter_takes_the_jax_path():
 
     grid = Grid(**UNIFORM_FIXTURE)
     centre, radius = SPHERE["center"], SPHERE["radius"]
-    concrete = compute_smoothed_eps(grid, [(Sphere(centre, radius), BOX_EPS)])
-    traced = jax.jit(lambda r: compute_smoothed_eps(grid, [(Sphere(centre, r), BOX_EPS)]))(radius)
+    concrete = compute_smoothed_eps(grid, [(Sphere(centre, radius), BOX_EPS)], dtype='float32')
+    traced = jax.jit(lambda r: compute_smoothed_eps(grid, [(Sphere(centre, r), BOX_EPS)], dtype='float32'))(radius)
     for k, c, t in zip(("ex", "ey", "ez"), concrete, traced):
         c, t = np.asarray(c, np.float64), np.asarray(t, np.float64)
         assert np.isfinite(t).all(), k

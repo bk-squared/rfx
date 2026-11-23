@@ -31,13 +31,6 @@ from mie_oracle import bistatic_over_pi_a2  # noqa: E402
 
 sys.path.insert(0, str(_REPO))
 
-# The v2 accuracy bar's magnitude line (PI, 2026-09-23, #820): the corrected
-# pattern is judged against exact Mie within 2 dB, not against a window derived
-# from an earlier run. The previous bars (1.06 dB mean, from a measured 0.705 via
-# the envelope policy, and 0.5 dB at backscatter) were measured with the
-# normal-incidence denominator that was 1.135 dB too large (#820); corrected, this
-# rig reads 1.21 dB mean and +0.73 dB at backscatter, converging toward Mie with
-# the mesh (monostatic sphere +0.73 / +0.54 / +0.38 dB at lambda/40 / 60 / 80).
 PATTERN_MEAN_BAR = 2.0
 BACKSCATTER_BAR = 2.0
 
@@ -69,8 +62,8 @@ def test_forward_oblique_lobe_removed_vs_exact_mie(fx):
     mie = _db(fx["mie_bistatic_over_pi_a2"])
     u = np.abs(_db(fx["rfx_uncorrected_over_pi_a2"]) - mie)[fo]
     c = np.abs(_db(fx["rfx_corrected_over_pi_a2"]) - mie)[fo]
-    assert u.max() > 5.0, u.max()          # the lobe was really there
-    assert c.max() < 2.0, c.max()          # and is removed
+    assert u.max() > 5.0, u.max()
+    assert c.max() < 2.0, c.max()
 
 
 def test_corrected_pattern_shape_matches_exact_mie(fx):
@@ -79,18 +72,19 @@ def test_corrected_pattern_shape_matches_exact_mie(fx):
     which a correlation cannot see.)"""
     mie = _db(fx["mie_bistatic_over_pi_a2"])
     corr = _db(fx["rfx_corrected_over_pi_a2"])
-    assert np.corrcoef(corr, mie)[0, 1] >= 0.95       # measured 1.000 (0.977 before the second-order NTFF rule, #1159)
+    assert np.corrcoef(corr, mie)[0, 1] >= 0.95
 
 
 def test_corrected_pattern_magnitude_matches_exact_mie(fx):
-    """Small mean distance and clean backscatter of the corrected bistatic vs exact Mie."""
+    """Small mean distance and clean backscatter of the corrected bistatic vs exact Mie.
+
+    The 2 dB limits come from the accuracy bar's magnitude line: power and magnitude
+    within 2 dB.
+    """
     mie = _db(fx["mie_bistatic_over_pi_a2"])
     corr = _db(fx["rfx_corrected_over_pi_a2"])
-    # Judged against exact Mie at the v2 bar (see PATTERN_MEAN_BAR). No stored
-    # rfx number is compared here: the fixture's rfx columns are the measurement
-    # being judged, Mie is the reference.
-    assert np.abs(corr - mie).mean() <= PATTERN_MEAN_BAR       # measured 1.209 dB
-    assert abs(corr[-1] - mie[-1]) <= BACKSCATTER_BAR            # measured +0.733 dB
+    assert np.abs(corr - mie).mean() <= PATTERN_MEAN_BAR
+    assert abs(corr[-1] - mie[-1]) <= BACKSCATTER_BAR
 
 
 def test_the_pattern_bar_still_rejects_the_uncorrected_path(fx):
@@ -104,10 +98,6 @@ def test_the_pattern_bar_still_rejects_the_uncorrected_path(fx):
     """
     mie = _db(fx["mie_bistatic_over_pi_a2"])
     un = _db(fx["rfx_uncorrected_over_pi_a2"])
-    # The uncorrected path must fail what the corrected one passes: its mean
-    # distance exceeds the bar (3.69 dB against 2.0) and, the sharper test, its
-    # shape does not correlate with Mie (-0.045 against >= 0.95 for the
-    # corrected pattern).
     assert np.abs(un - mie).mean() > PATTERN_MEAN_BAR
     assert np.corrcoef(un, mie)[0, 1] < 0.95
 
@@ -118,8 +108,8 @@ def test_empty_domain_isolates_leakage(fx):
     why the monostatic bin is clean and stays so under subtraction."""
     leak = np.array(fx["empty_domain_leakage_over_pi_a2"])
     peak, back = leak.max(), leak[-1]
-    assert _db(peak) > _db(1.0)                        # peak leakage is O(1)*(pi a^2), large
-    assert _db(back) < _db(peak) - 40.0                # backscatter leakage >=40 dB down
+    assert _db(peak) > _db(1.0)
+    assert _db(back) < _db(peak) - 40.0
 
 
 def test_subtract_reference_branch_runs_live():
@@ -144,7 +134,7 @@ def test_subtract_reference_branch_runs_live():
     vac = MaterialArrays(ones, jnp.zeros(grid.shape, jnp.float32), ones)
 
     r_vac = compute_rcs(grid, vac, 200, subtract_incident_reference=True, **kw)
-    assert float(np.max(np.asarray(r_vac.rcs_linear))) < 1e-12   # self-cancels exactly
+    assert float(np.max(np.asarray(r_vac.rcs_linear))) < 1e-12
 
     c = 0.05 / 2
     eps_s, sig_s = rasterize(grid, [(Sphere(center=(c,) * 3, radius=0.008), 1.0, 1e7)])

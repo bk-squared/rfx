@@ -208,7 +208,7 @@ Pre-declared expectations for THIS revision's re-analysis (falsifiable)
 ======================================================================
 R1 memory citations (unchanged)
 ======================================================================
-  - `rfx-known-issues.md` "#511 + #507 MSL extractor" entry: `S = B.A^-1`
+  - `the recorded findings` "#511 + #507 MSL extractor" entry: `S = B.A^-1`
     (same algebra as the coax lane's #489 tool) is the validated pattern this
     script reuses via `msl_solve_s_from_waves`, not reimplements.
   - `project_lumped_twoport_vi_lane.md`: port-cell waves are a

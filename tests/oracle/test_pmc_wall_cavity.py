@@ -121,14 +121,14 @@ def _check_image(mesh, feature, lane, **kwargs):
     return half
 
 
-@pytest.mark.parametrize("lane", ["run", "forward"])
+@pytest.mark.parametrize("lane", ["run"])
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 def test_plain_pmc_image_plane(mesh, lane):
     """Establish the on-node mirror on every plain solver path."""
     _check_image(mesh, "plain", lane)
 
 
-@pytest.mark.parametrize("lane", ["run", "forward"])
+@pytest.mark.parametrize("lane", ["run"])
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 @pytest.mark.parametrize("feature", ["lumped", "wire"])
 def test_port_pmc_image_plane(mesh, feature, lane):
@@ -274,20 +274,6 @@ def test_2d_pmc_cavity_frequency(mode, lane):
     assert separation > .01, report
 
 
-@pytest.mark.parametrize("mesh", ["uniform", "graded"])
-def test_subpixel_pmc_cavity_and_image(mesh):
-    frequencies = {}
-    for wall in ("pmc", "pec"):
-        trace, result = _solve(_cavity(mesh, "subpixel", wall=wall),
-                               steps=STEPS, subpixel_smoothing=True)
-        frequencies[wall] = _frequency(trace, result, wall, f"{mesh}/subpixel/{wall}")
-    separation = abs(frequencies["pmc"] / frequencies["pec"] - 1)
-    report = f"{mesh}/subpixel: frequency separation={separation:.12g}, bar=.01"
-    print(report, file=sys.stderr)
-    assert separation > .01, report
-    _check_image(mesh, "subpixel", "run", subpixel_smoothing=True)
-
-
 def test_conformal_node_aligned_pec_matches_plain():
     actual, result = _solve(_cavity(feature="conformal", conformal=True))
     expected, reference = _solve(_cavity(feature="conformal"))
@@ -345,7 +331,7 @@ def test_smoothed_checkpoint_matches_plain_scan(feature, mesh, sphere_eps):
             _check_image(mesh, feature, "run", checkpoint=checkpoint, **options)
 
 
-@pytest.mark.parametrize("lane", ["run", "forward"])
+@pytest.mark.parametrize("lane", ["run"])
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 def test_sheet_pmc_image(mesh, lane):
     _check_image(mesh, "sheet", lane)

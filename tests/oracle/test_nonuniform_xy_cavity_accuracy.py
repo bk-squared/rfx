@@ -123,12 +123,14 @@ def test_nonuniform_xy_graded_cavity_tm110_accuracy():
     enforced by a genuine-grading assert (max/min cell ratio > 2 on both in-plane
     axes) — verified externally that a near-uniform profile (ratio 1.11) FAILS it,
     so the gate cannot silently degrade into a uniform-mesh check.
+    The envelope is deliberately taken at the committed configuration rather than over the whole scan, so the gate is a regression lock on that configuration.
     """
     from rfx import Simulation, GaussianPulse
     from rfx.auto_config import smooth_grading
     from rfx.grid import C0
 
-    dx = 1e-3
+    BOUNDARY_CELL_SIZE_M = 1e-3
+    dx = BOUNDARY_CELL_SIZE_M
     fine = 0.25e-3
 
     def graded_profile(coarse_mm, fine_mm):
@@ -139,15 +141,12 @@ def test_nonuniform_xy_graded_cavity_tm110_accuracy():
         raw = [dx] * n_coarse + [fine] * n_fine + [dx] * n_coarse
         return list(smooth_grading(raw, max_ratio=1.3))
 
-    # Grade BOTH x and y (a != b so TM110 is isolated from TM210/TM120); keep z
-    # uniform+thin (TM110 has p=0 -> z-independent, so z carries no frequency and
-    # 10 uniform cells are enough for a valid 3D Yee cavity).
     dx_prof = graded_profile(coarse_mm=19.0, fine_mm=2.0)
     dy_prof = graded_profile(coarse_mm=16.0, fine_mm=2.0)
     dz_prof = [dx] * 10
 
-    a = float(np.sum(dx_prof))              # actual graded x extent (NOT hardcoded)
-    b = float(np.sum(dy_prof))              # actual graded y extent (NOT hardcoded)
+    a = float(np.sum(dx_prof))
+    b = float(np.sum(dy_prof))
     d = float(np.sum(dz_prof))
     ratio_x = max(dx_prof) / min(dx_prof)
     ratio_y = max(dy_prof) / min(dy_prof)
@@ -155,22 +154,19 @@ def test_nonuniform_xy_graded_cavity_tm110_accuracy():
     def f_mnp(m, n, p):
         return (C0 / 2) * np.sqrt((m / a) ** 2 + (n / b) ** 2 + (p / d) ** 2)
 
-    f_tm110 = f_mnp(1, 1, 0)   # z-INDEPENDENT (p=0), set 100% by in-plane a,b
-    f_tm210 = f_mnp(2, 1, 0)   # nearest Ez-coupling neighbour
+    f_tm110 = f_mnp(1, 1, 0)
+    f_tm210 = f_mnp(2, 1, 0)
     f_tm120 = f_mnp(1, 2, 0)
 
     sim = Simulation(
         freq_max=2 * f_tm110,
-        domain=(0, 0, 0),        # overridden by the three axis profiles
-        boundary="pec",          # closed cavity, no CPML (energy-conserving, cheap)
-        dx=dx,                   # required boundary cell size for in-plane profiles
+        domain=(0, 0, 0),
+        boundary="pec",
+        dx=dx,
         dz_profile=np.asarray(dz_prof),
         dx_profile=np.asarray(dx_prof),
         dy_profile=np.asarray(dy_prof),
     )
-    # ez soft source + ez probe couple to the TM (Ez) family. Source at (a/3, b/3),
-    # probe at (2a/3, 2b/3): sin(pi/3)=sin(2pi/3)=0.866 keeps TM110 (and TM210)
-    # visible while avoiding the wall nodes. z at d/2 is arbitrary (p=0, uniform-z).
     sim.add_source((a / 3, b / 3, d / 2), "ez",
                    waveform=GaussianPulse(f0=f_tm110, bandwidth=0.8))
     sim.add_probe((2 * a / 3, 2 * b / 3, d / 2), "ez")
@@ -178,7 +174,6 @@ def test_nonuniform_xy_graded_cavity_tm110_accuracy():
     result = sim.run(n_steps=8000)
     modes = result.find_resonances(freq_range=(0.6 * f_tm110, 1.5 * f_tm110))
 
-    # --- R5: dump the full extracted spectrum + analytic anchors, not a headline ---
     sim_freqs = sorted(m.freq for m in modes)
     print(f"\n[NU-xy-cavity] a(x graded)={a*1e3:.3f} mm, b(y graded)={b*1e3:.3f} mm, "
           f"d(z unif)={d*1e3:.3f} mm; grading ratio x={ratio_x:.2f} y={ratio_y:.2f}")
@@ -189,18 +184,11 @@ def test_nonuniform_xy_graded_cavity_tm110_accuracy():
 
     assert modes, "no resonances found in the TM110 band"
 
-    # Anti-vacuity: the mesh must be GENUINELY graded on both in-plane axes, else
-    # this silently becomes a uniform-mesh check (covered elsewhere) with zero
-    # dx_profile/dy_profile coverage — the exact vacuity #403 flags.
     assert ratio_x > 2.0 and ratio_y > 2.0, (
         f"mesh not genuinely graded in-plane (max/min ratio x={ratio_x:.2f} "
         f"y={ratio_y:.2f}; need >2) — the test would be a vacuous uniform check"
     )
 
-    # Mode-ID robustness (separation RATIO, not an absolute window, and NOT
-    # amplitude rank): TM110 = the sim mode nearest the analytic value, and the
-    # match must be UNAMBIGUOUS — the 2nd-nearest sim mode must be several times
-    # farther. Measured: nearest delta ~0.12 GHz, 2nd-nearest ~2.76 GHz (~22x).
     by_dist = sorted(sim_freqs, key=lambda f: abs(f - f_tm110))
     f_sim = by_dist[0]
     d_near = abs(f_sim - f_tm110)
@@ -214,65 +202,11 @@ def test_nonuniform_xy_graded_cavity_tm110_accuracy():
     print(f"[NU-xy-cavity] TM110 f_sim={f_sim/1e9:.4f} GHz, err={err*100:.3f}% "
           f"(2nd-nearest delta {d_second/1e9:.3f} GHz, sep ratio {d_second/d_near:.1f}x)")
 
-    # The gate is DERIVED, not chosen: measured envelope x the repo-wide
-    # envelope multiplier, quantized up by the shared helper (#528/#539), in
-    # percent units. Envelope = 0.0282 % measured at this test's own
-    # configuration; gate_from_envelope(0.0282, quantum=100) = 0.05 %.
-    #
-    # It was 3.5 % until #562 removed the one-cell extent defect that dominated
-    # the residual (2.43 % -> 0.028 %, an ~87x improvement on unchanged
-    # geometry). A 3.5 % gate on a 0.028 % residual could not catch the defect
-    # class it exists for — a 125x-loose gate is a formality.
-    #
-    # Measured surrounding sensitivity (single machine, this configuration and
-    # four neighbours; percent error of TM110 vs the closed form):
-    #
-    #     dx = 1.0 mm, grading 4:1  ->  0.0282   <- this test
-    #     dx = 1.0 mm, grading 2:1  ->  0.0224
-    #     dx = 1.0 mm, uniform      ->  0.0108
-    #     dx = 0.5 mm, grading 4:1  ->  0.0458   (fixed n_steps = shorter record)
-    #     dx = 2.0 mm, grading 4:1  ->  0.0868
-    #
-    # Domain-SIZE sensitivity, measured by the #573 reviewer at fixed dx and
-    # fixed 4:1 grading while sweeping cavity size (xy, percent error):
-    #
-    #     0.0489 / 0.0390 / 0.0282 / 0.0139 / 0.0203
-    #
-    # The residual tracks f0, so the gate binds the dispersion floor rather than
-    # a fixture artifact — but the worst case is 97.8% of the gate ON THE #573
-    # REVIEWER'S (unrecorded) size grid; the committed producer's documented
-    # grid (validation/research/nu_cavity_gates/nu_cavity_gate_scan.py, #596)
-    # measures its smallest-cavity point ABOVE this gate (0.0613% vs 0.05%) —
-    # direct evidence that the "do NOT re-parameterize without re-deriving"
-    # warning covers cavity SIZE as well as dx.
-    #
-    # Harminv window sensitivity, same source: over n_steps in {4k, 8k, 12k, 16k}
-    # the error spans 0.0071 pt (xy) / 0.0110 pt (z), and the committed 8000-step
-    # point is each family's MAXIMUM — so the envelope already covers estimator
-    # scatter by construction rather than by luck. z's margin over that scatter
-    # is ~1.35x, which makes z the more fragile of the two gates.
-    #
-    # The envelope is deliberately taken at THIS configuration rather than over
-    # the whole scan: the test only ever runs this one, so the gate is a
-    # regression lock on it, and the neighbours are recorded as evidence rather
-    # than folded into the margin. These cases run only in the weekly slow lane
-    # (both cavity tests are `slow`-marked), so the envelope is single-machine.
-    # If another runner reds, the response is to re-measure and widen with the
-    # new datum recorded — not to blanket-loosen.
     from tests._gate_policy import gate_from_envelope
     _MEASURED_ENVELOPE_PCT = 0.0282
     GATE = gate_from_envelope(_MEASURED_ENVELOPE_PCT, quantum=100) / 100.0
 
-    # In-test FALSIFIER (proves the gate has discrimination power, not vacuous).
-    # The perturbation has to scale with the gate: +/-10 % proved nothing about
-    # a 0.05 % gate, since it clears it by 200x. +/-0.5 % is 10x the gate and
-    # still an order of magnitude below the old one — so this now demonstrates
-    # discrimination the 3.5 % gate never had.
     _FALSIFIER = 0.005
-    # And the gate must reject the REAL historical regression, not only a
-    # synthetic perturbation: the residual this configuration measured while the
-    # #562 extent defect was live was 2.43 %, which the new gate rejects
-    # by 49x. The old gate accepted it.
     assert 0.0243 > GATE, (
         "the derived gate would NOT have caught the #562-era residual "
         f"(2.43 % vs gate {GATE*100:.3f} %) — tightening bought nothing")
@@ -286,12 +220,6 @@ def test_nonuniform_xy_graded_cavity_tm110_accuracy():
             f"does NOT exceed the {GATE*100:.3f}% gate — the gate would not catch it"
         )
 
-    # The ANALYTIC accuracy gate (the coverage #403 flags as missing): the x&y
-    # graded NU mesh reproduces the closed-form in-plane-dependent TM110 to within
-    # the measured tolerance. (The grading-faithful finding is 0.0282% graded vs
-    # 0.0084% ungraded at identical extents — factor 3.35x, grading DOMINANT, as
-    # measured at :48-50; the 2.43% == 2.47% pair it used to
-    # cite was the #562-era baseline both legs shared.)
     assert err < GATE, (
         f"NU in-plane-graded TM110 error {err*100:.4f}% >= {GATE*100:.3f}% — the "
         f"non-uniform x/y grid does not reproduce the closed-form cavity resonance "

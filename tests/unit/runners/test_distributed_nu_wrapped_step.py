@@ -11,6 +11,7 @@ from rfx import Simulation
 from rfx.core.yee import EPS_0, MU_0, MaterialArrays
 from tests.contracts.path_equivalence.test_one_vs_several_devices_occupancy import BINS_HZ
 from tests._multi_device_scene import host_devices
+from tests._stated_plan import stated_plan
 from rfx.model.electric_metrics import stage_forward_materials
 from rfx.stepping.graded_setup import _build_nu_scan
 from rfx.nonuniform import make_current_source, run_nonuniform
@@ -65,6 +66,7 @@ def several(data, steps, devices, *, edge_masks=None, **kw):
     result = run_nonuniform_distributed_pec(sg, stage_forward_materials(mat, sg.layout, mesh),
         cut(edge_masks, sg.layout, 'pec_edge', mesh=mesh), steps, sources=[SourceSpec(*s) for s in sources], probes=[ProbeSpec(*p) for p in probes],
         n_devices=devices, devices=selected,
+        measurement=stated_plan(sg, [ProbeSpec(*p) for p in probes], n_steps=steps),
         sharded_pec_occupancy=cut(occ, sg.layout, 'pec_occupancy', mesh=mesh), **kw)
     return result['time_series'], result['final_state']
 
@@ -182,8 +184,6 @@ class BeforeStepping(Exception):
 def test_one_slab_invariants(row, kind, monkeypatch):
     data = scene(row, True, kind=kind)
     grid, mat, occ, sources, probes = data
-    # Nonconstant component materials, actual hard masks, and interleaved
-    # components make this more than a vacuum/None-only placement check.
     mat = mat._replace(eps_r=mat.eps_r.at[4:10, 3:9, 2:8].set(2.3),
                        sigma=mat.sigma.at[8:12, 2:6, 3:7].set(.02),
                        mu_r=mat.mu_r.at[2:7, 5:9, 4:7].set(1.7))
@@ -251,8 +251,6 @@ def test_first_difference(devices):
                 delta = difference(want, got)
                 if delta:
                     record = dict(devices=devices, row=row, on=on, step=step, summary=delta)
-                    # The accumulated probe can name an earlier sample. Report
-                    # the first differing final field cell at this first step.
                     for component in FIELDS:
                         a, b = np.asarray(getattr(want[1], component)), np.asarray(getattr(got[1], component))
                         cells = np.argwhere(a.view(np.uint32) != b.view(np.uint32))
@@ -335,7 +333,6 @@ def localized_operands(target, data, previous, current, reference, staged, layou
         add('pec_mask.' + 'xyz'[axis],
             np.bool_(False) if masks is None else masks[axis][cell],
             np.bool_(False) if cut_masks is None else cut_masks[axis][slab_cell])
-    # Resolve matching source rows independently on the two actual tables.
     def drives_at(drives, waveforms, at_cell, rank=None):
         rows = []
         for field, indices in drives.nodes.items():
@@ -364,9 +361,6 @@ def test_localized_operands(row, on, monkeypatch):
     from rfx.runners import _distributed_nu_wrapped as runner
     from rfx.stepping.slab import Slab
 
-    # The first differing step follows the source samples (3 with the old
-    # default pulse, 4-5 since it starts at zero): find it, then verify the
-    # step before still agrees. No difference in 12 steps is the stronger result.
     def differs(n):
         d = scene(row, on, n)
         return bool(difference(single(d, n), several(d, n, 1)))
@@ -411,8 +405,6 @@ def test_pole_selector(debye, lorentz):
         select_step(debye=debye, lorentz=lorentz, ports=True, pmc=True)
 
 
-# Scenes S1 and S2 of rfx-archive records/20261011-debye-one-vs-two (deb_scene.py, copied):
-# a Debye body in a PEC box on a 24-cell x axis, S2 alternating 0.9/1.1 mm inner cells.
 _S2_PROFILE = np.array([1.0e-3] + [0.9e-3, 1.1e-3] * 11 + [1.0e-3])
 
 
@@ -440,8 +432,6 @@ def pole_scene(name):
         extra = dict(debye_poles=[DebyePole(3., 2e-11)]) if name == 'mixed' else {}
         sim.add_material('body', eps_r=4., **extra, lorentz_poles=[LorentzPole(
             omega_0=2*np.pi*8e9, delta=2*np.pi*1e9, kappa=(2*np.pi*8e9)**2)])
-    # Keep the scene's two E probes and add H at those positions for the
-    # paired H bar; the declared builder has no magnetic probes.
     sim.add_probe((.0085, .006, .006), 'hy')
     sim.add_probe((.021, .005, .006), 'hy')
     return sim
@@ -497,7 +487,6 @@ def test_pole_one_slab_invariants(name, monkeypatch):
             pole_scene(name)._forward_distributed_nonuniform_from_materials(
                 n_steps=2, devices=list(mesh.devices), skip_preflight=True)
     actual, carry = captured_cut[0]
-    # Spatial leaves and (pole, x, ...) leaves have distinct owned axes.
     spatial = dict(expected.invariants)
     for family in ('debye', 'lorentz'):
         spatial[family + '_coeffs'] = None
@@ -517,7 +506,6 @@ def test_pole_one_slab_invariants(name, monkeypatch):
                              owned=owned if field in spatial_fields else None)
         assert_same_tree(expected.carry_init[family],
                          jax.tree.map(lambda a: a[:, owned], carry[family]), family + '.state')
-        # FILL covers both physical ghosts and alignment rows (2/3 slabs).
         from rfx.stepping.slab import vacuum_dispersion_values
         vacuum = vacuum_dispersion_values(coeffs, expected.step_fn_inv.context.dt)
         for devices in (2, 3):
@@ -544,8 +532,7 @@ def pole_law(one, several):
     Pole media are not bit-stable across compiled forms on one device: the
     Debye box differs from itself under jit by 251 ULP of the peak, and the
     multi-device step's difference is formed inside the compiled step from
-    byte-equal operands (rfx-archive rfx/records/20261017-item5-dispersive,
-    RESULT.md). A per-step 9-ULP bar is the wrong unit for such a difference;
+    byte-equal operands. A per-step 9-ULP bar is the wrong unit for such a difference;
     at step n it is allowed 1.2e-7 x the running sum of the peak |field| up to n.
     Returns the largest difference/allowance ratio for E and for H.
     """
@@ -562,6 +549,7 @@ def pole_law(one, several):
 
 @pytest.mark.parametrize('name', ['S1', 'S2', 'lorentz'])
 def test_pole_two_vs_three_bitwise_and_bars(name):
+    """An earlier measurement on S2 found 10 ULP of the peak at step 57, with a law ratio ~0.5 (Mac 0.48)."""
     one = pole_scene(name).run(n_steps=60)
     two = pole_scene(name).run(n_steps=60, devices=host_devices(2))
     three = pole_scene(name).run(n_steps=60, devices=host_devices(3))
@@ -569,7 +557,6 @@ def test_pole_two_vs_three_bitwise_and_bars(name):
     for result in (two, three):
         e, h, dft = pole_metrics(one.time_series, result.time_series, float(one.dt))
         law_e, law_h = pole_law(one.time_series, result.time_series)
-        # S2 on the CI host: 10 ULP of the peak at step 57, law ratio ~0.5 (Mac 0.48).
         assert law_e <= 1. and law_h <= 1., (law_e, law_h, np.max(e), np.max(h))
         assert dft <= 1e-4, dft
 
@@ -687,13 +674,11 @@ def test_cpml_one_slab_invariants(name, monkeypatch):
                 continue
             assert_same_tree(inv[key], actual[key], key, owned=owned)
         if name == 'scene2':
-            # Plain CPML keeps its existing in-loop component arithmetic.
             assert actual['e_loss'] is None and actual['cpml_inv_eps_r'] is None
         else:
             assert_same_tree(inv['cpml_inv_eps_r'], actual['cpml_inv_eps_r'],
                              'cpml_inv_eps_r', owned=owned)
             loss = actual['e_loss']
-            # wrap() restores the static relative-epsilon flag per device.
             assert_same_tree(inv['e_loss'], None if loss is None else (*loss, False),
                              'e_loss', owned=owned)
         for family in ('debye', 'lorentz'):
@@ -708,18 +693,15 @@ def test_cpml_one_slab_invariants(name, monkeypatch):
                 assert_same_tree(getattr(coeffs, field), value, family + '.' + field,
                                  owned=owned if field in spatial else None)
             assert_same_tree(initial[family], jax.tree.map(lambda a: a[:, owned], carry[family]), family)
-        # Tables are checked with the existing slice-1 identity helper.
         tables = {key: inv[key] for key in ('drives', 'probe_table')}
         check_one_slab_cut(expected._replace(invariants=tables), actual, layout)
         assert_same_tree(initial['fdtd'], carry['fdtd'], 'fdtd', owned=owned)
-        # Native x psi has one-device depth; y/z psi has local x rows.
         for field in initial['cpml']._fields:
             value = getattr(carry['cpml'], field)
             if field.split('_')[-1][0] != 'x':
                 value = value[owned]
             assert_same_tree(getattr(initial['cpml'], field), value, 'native.' + field)
         canonical = expected.step_fn_inv.context.cpml_params
-        # Observe the exact profiles and restored widths passed to the kernel.
         from dataclasses import replace
         local = replace(staged_contexts[-1], x_face_frame={'x': (1, layout.nx + 1)})
         def inspect(state, profiles, psi, grid, **kwargs):
@@ -737,12 +719,13 @@ def test_cpml_one_slab_invariants(name, monkeypatch):
 
 @pytest.mark.parametrize('name', ['scene2'])
 def test_cpml_two_vs_three_bitwise_and_bars(name):
+    """Forward omits gathered fields."""
     from tests._distributed_dispersive_cpml import scene, measure, check
+    three_devices = host_devices(3)
     sim = scene('debye') if name == 'debye' else cpml_scene(name)
     outputs = [sim.forward(n_steps=60, checkpoint=False, skip_preflight=True,
-        **({} if n == 1 else dict(distributed=True, devices=host_devices(n))))
+        **({} if n == 1 else dict(distributed=True, devices=three_devices if n == 3 else host_devices(2))))
         for n in (1, 2, 3)]
-    # Forward omits gathered fields, so use the run entry for final-field identity.
     from rfx.runners import _distributed_nu_wrapped as runner
     from unittest.mock import patch
     states = []
@@ -754,7 +737,7 @@ def test_cpml_two_vs_three_bitwise_and_bars(name):
     with patch.object(runner, 'reduce', gather):
         for n in (2, 3):
             sim.forward(n_steps=60, checkpoint=False, skip_preflight=True,
-                        distributed=True, devices=host_devices(n))
+                        distributed=True, devices=three_devices if n == 3 else host_devices(2))
     assert_bits((outputs[1].time_series, states[0]), (outputs[2].time_series, states[1]))
     for result in outputs[1:]:
         if name == 'debye':
@@ -774,6 +757,7 @@ def test_cpml_selector(debye, lorentz):
 
 @pytest.mark.parametrize('name,mode', [('scene2', mode) for mode in ('run', 'grad')])
 def test_cpml_entries_reach_wrap(name, mode, monkeypatch):
+    """A gradient summed over the record uses 1e-4 of its peak as the cross-trace bar."""
     from rfx.runners import _distributed_nu_wrapped as runner
     calls = []
     original = runner.split
@@ -798,7 +782,6 @@ def test_cpml_entries_reach_wrap(name, mode, monkeypatch):
         assert np.isfinite(two).all()
         if name == 'scene2':
             one = np.asarray(jax.grad(loss)(materials.eps_r))
-            # A gradient summed over the record: 1e-4 of its peak (cross-trace bar).
             assert np.max(np.abs(two - one)) <= 1e-4 * np.max(np.abs(one))
     assert calls and all(calls)
 
@@ -861,6 +844,7 @@ def _probe_ulp(one, several):
 
 
 def test_graded_cpml_runs_on_wrapped_equal_values(monkeypatch):
+    """The sign of an exact zero may differ (-0.0 vs 0.0 seen in an earlier comparison at nx=28)."""
     from rfx.runners import _distributed_nu_wrapped as runner
     calls = []
     original = runner.run_wrapped
@@ -871,7 +855,6 @@ def test_graded_cpml_runs_on_wrapped_equal_values(monkeypatch):
     assert calls == [1]
     one, two = np.asarray(one), np.asarray(two)
     assert one.dtype == two.dtype and one.shape == two.shape
-    # Equal values; the sign of an exact zero may differ (-0.0 vs 0.0 seen at nx=28).
     assert np.array_equal(one, two), _probe_ulp(one, two)
 
 
@@ -909,8 +892,6 @@ def _item6_identity(case, devices, mode='plain', mutate=None):
     lorentz = None if lr is None else init_lorentz(lr[0], mats, grid.dt, mask=lr[1], high_wall=unpadded_high_walls(grid))
     sources = [SourceSpec(3, 2, 2, 'ez', jnp.arange(3, dtype=jnp.float32))]
     probes = [ProbeSpec(4, 2, 2, 'ez')]
-    # This is the sole whole-grid build in this test. It does not use any
-    # uniform helper or production setup helper to make expected values.
     whole = _build_nu_scan(grid, mats, 3, cpml_axes='', debye=debye, lorentz=lorentz,
         pec_edge_masks=edges, pec_occupancy=occ, sources=[tuple(a) for a in sources],
         probes=[tuple(a) for a in probes], pec_faces={f'{a}_{b}' for a in 'xyz' for b in ('lo', 'hi')})
@@ -922,6 +903,7 @@ def _item6_identity(case, devices, mode='plain', mutate=None):
         d = stage_dispersion(material, grid.dt, db, grid, layout, mesh, 'debye')
         lorentz = stage_dispersion(material, grid.dt, lr, grid, layout, mesh, 'lorentz')
         setup = build_setup(grid, material, layout, mesh, 3, sources, probes,
+            measurement=stated_plan(grid, probes, n_steps=3),
             debye=d, lorentz=lorentz, occupancy=cut(occ, layout, 'pec_occupancy', mesh=mesh),
             pec_mask=stage_pec(mask, sheets, wires, grid, layout, mesh))
         result = finish(setup.invariants, setup.carry_init, layout, mesh,
@@ -956,9 +938,8 @@ def test_item6_owned_ulp_mutation_is_caught():
 
 
 def test_item6_missing_extra_runtime_row_is_caught(monkeypatch):
+    """Whole-grid host reconstruction ignores the extra input row, so the gate checks the retained per-slab producer's stencil halo."""
     from rfx.stepping import slab_setup
-    # Whole-grid host reconstruction ignores the extra input row; this gate
-    # checks the retained per-slab producer's stencil halo.
     monkeypatch.setattr(slab_setup, '_material_host_device', lambda *args, **kwargs: (None, 'traced inputs'))
     original = slab_setup.uniform_from_cut
     def missing(*args, **kwargs):
@@ -1033,19 +1014,16 @@ def _item6_memory_subprocess(boundary, devices, mode, mutation=False, case='mixe
     return json.loads(next(s[11:] for s in p.stdout.splitlines() if s.startswith('ITEM6_JSON ')))
 
 
-# Archive slice3/memw.py and memw_pec.py, commit 7cc7deeb6, CPU,
-# remeasured 2026-10-14 with three visible devices and explicit selection.
 _ITEM6_LEGACY_MAX = {
     ('pec', 2, 'plain'): 1298821, ('pec', 2, 'grad'): 1298833,
     ('pec', 3, 'plain'): 935612, ('pec', 3, 'grad'): 935624,
-    # CPML: the same scene without poles (case 'nopole'), legacy forced, 2a2344276,
-    # 2026-10-15 (rfx-archive records/20261013-w1-wrapped-vs-legacy/redo-2a2344276).
     ('cpml', 2, 'plain'): 1122543, ('cpml', 2, 'grad'): 1122555,
     ('cpml', 3, 'plain'): 830359, ('cpml', 3, 'grad'): 830367,
 }
 
 
 def _assert_item6_memory(record):
+    """_ITEM6_LEGACY_MAX was measured earlier on CPU with three visible devices and explicit device selection, with CPML rows using the nopole scene and the legacy path forced."""
     assert not record['whole'], f"whole-domain arrays: {record['whole']}"
     legacy = _ITEM6_LEGACY_MAX[record['boundary'], record['devices'], record['mode']]
     assert max(record['bytes'].values()) <= 2.0 * legacy, record
@@ -1064,7 +1042,6 @@ def test_item6_first_scan_memory(boundary, devices, mode):
         for device, live in rows['wrapped']['bytes'].items():
             assert live <= 2 * rows['legacy']['bytes'][device], rows
         return
-    # CPML: the staging scene without poles, against legacy on that scene.
     kw = dict(case='nopole') if boundary == 'cpml' else {}
     _assert_item6_memory(_item6_memory_subprocess(boundary, devices, mode, **kw))
 

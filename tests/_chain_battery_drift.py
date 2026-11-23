@@ -13,12 +13,12 @@ The guards solve the CHEAPEST rung of each battery again, with the battery's
 own driver so that the live case is the recorded case, check that the grid it
 builds is the recorded grid, and hold the live S to the stored S with the bar
 the battery itself is judged by (``docs/design_notes/chain_closure_contract.md``,
-"The v2.0 battery for lumped/wire, MSL and coax", and the PI's deep-null
-ruling of 2026-09-21): magnitude within 2 dB outside the core of a deep null,
+"The v2.0 battery for lumped/wire, MSL and coax"): magnitude within 2 dB
+outside the core of a deep null,
 a quantity that is near zero by construction held to -20 dB, a frequency
 feature (a notch, a reflection zero, a phase crossing) within 1 %, and a line's
 electrical length — the slope of its unwrapped phase against frequency — within
-1 % (the PI's phase item of 2026-09-24, ``tests/_electrical_length.py``). A
+1 % (``tests/_electrical_length.py``). A
 line with no frequency feature has nothing else that sees its length: with
 every edge permittivity above vacuum read 5 % high the coaxial thru solves
 2.48 % longer electrically while its |S21| moves 0.01 dB. The phase also has to
@@ -27,6 +27,7 @@ conjugated S (the other time convention) changes and nothing else sees.
 
 This module holds the arithmetic the three guards share. The rules each family
 applies are in its own lock module.
+The accuracy bar is written here, not read from a fixture, so a fixture cannot move the bar it is judged by.
 """
 from __future__ import annotations
 
@@ -42,8 +43,6 @@ from tests._electrical_length import (ELECTRICAL_LENGTH_FRAC, electrical_length_
 
 REPO = Path(__file__).resolve().parents[1]
 
-# The v2 accuracy bar. Written here, not read from a fixture, so a fixture
-# cannot move the bar it is judged by.
 MAGNITUDE_DB = 2.0
 FREQUENCY_FRAC = 0.01
 DEEP_NULL_DB = -20.0
@@ -53,9 +52,6 @@ SETTLING_DB = -40.0
 
 DB_FLOOR = 1e-300
 
-# A realized-geometry block is cell counts, node indices and positions in
-# metres. A cell is at least 1e-4 of any length in these blocks, so this
-# tolerance only absorbs the last bits of platform arithmetic.
 REALIZED_REL_TOL = 1e-9
 REALIZED_ABS_TOL = 1e-15
 
@@ -133,7 +129,7 @@ def magnitude_findings(label: str, freqs, stored, live, *, deep=None,
 
     ``deep`` marks the core of a null — bins where the reference is at or below
     the deep-null level — in which a dB difference is the difference of two
-    near-zeros and says nothing (the PI's 2026-09-21 ruling). By default the
+    near-zeros and says nothing. By default the
     core is where the STORED curve is at or below -20 dB. The worst distance is
     appended to ``report`` whether or not it is inside the bar.
     """

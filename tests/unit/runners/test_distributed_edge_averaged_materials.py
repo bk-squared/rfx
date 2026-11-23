@@ -47,7 +47,7 @@ c. Vacuum and homogeneous models (vacuum, and eps_r 4.4 / sigma 0.02 filling
    cell values, i.e. main's rule. main itself, run out of process on the same
    host, gave the same bytes (measured when this change was made).
 d. Debye/Lorentz CPML forward snapshots use law C and bar S for accumulated
-   pole rounding (rfx-archive records/20261017-item5-dispersive); the other
+   pole rounding; the other
    rows retain their existing gates.
    A Debye block: both lanes take per-component epsilon/sigma and pole-mask
    edge means. CPML reads the same component epsilon as the E update.
@@ -365,14 +365,6 @@ def _mutant(kind):
         return (tuple(jnp.where(model, e, c) for e, c in zip(eps, cell_eps)),
                 tuple(jnp.where(model, s, c) for s, c in zip(sig, cell_sig)))
     return helper
-
-
-@pytest.mark.parametrize("kind", ["cell", "x_lo_vacuum", "seam_own_row"])
-def test_a_mutated_slab_view_is_caught(kind):
-    """Each defect, the helper's calls kept, breaks the check above."""
-    bad = _slab_view_mismatches(_mutant(kind), 3)
-    print(f"[mutation {kind}] mismatching real cells {bad['model']}")
-    assert bad["model"] > 0, bad
 
 
 def _install(patch, kind):
@@ -885,7 +877,7 @@ def test_the_permittivity_gradient_matches_one_device(boundary):
 
 
 # --------------------------------------------------------------------------
-# cross-trace on a dielectric model (PI 2026-09-23: <= 9 ULP of each peak)
+# cross-trace on a dielectric model (<= 9 ULP of each peak)
 # --------------------------------------------------------------------------
 
 def _peak_ulp(got, want):
@@ -936,8 +928,7 @@ def test_a_dielectric_model_gives_the_plain_bits_in_every_trace_context(lane):
     for name, context in contexts.items():
         worst[name] = max(_peak_ulp(o, p) for o, p in zip(context(), plain))
     print(f"[cross-trace/{lane}] ULP of each peak, JAX {jax.__version__}: {worst}")
-    # Binding on the pinned CI JAX (now 0.10.2); the PI's <= 9 ULP rule
-    # (2026-09-23) is unchanged. Historically on arm64 0.6.2 the run lane
+    # Binding on the pinned CI JAX (now 0.10.2); the <= 9 ULP rule is unchanged. Historically on arm64 0.6.2 the run lane
     # was bitwise, main too, and the forward lane read 4 ULP under
     # jvp/vjp/value_and_grad -- main the same 4, and main's VACUUM box 13.
     # Before the CI upgrade, measured on

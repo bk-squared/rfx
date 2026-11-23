@@ -1,9 +1,8 @@
 """The coax termination adds radial conductance and preserves its host fill.
 
 Root cause: writing vacuum at the sheet removed a shunt capacitance and
-artificially lowered the matched reflection floor. See rfx-archive record
-``rfx/records/20261107-coax-oneport-floor/PREDECLARE-load-fill.md`` and its
-2026-11-10 14:25 KST addendum. The edge ownership remains that of #1373.
+artificially lowered the matched reflection floor.
+The edge ownership remains that of #1373.
 """
 from __future__ import annotations
 
@@ -53,7 +52,6 @@ def test_annular_resistor_loads_only_ex_and_ey_on_its_node_plane(reader, host_ep
                & ~np.asarray(pec)[:, :, z])
     assert annulus.any()
     assert shell_inner == SMA_OUTER_RADIUS
-    # Closed-form sheet conductivity, independent of the stamp's helpers.
     sigma_load = np.log(2.055e-3 / 0.635e-3) / (
         2 * np.pi * 0.4e-3 * resistance)
     if reader is component_e_materials:
@@ -67,8 +65,6 @@ def test_annular_resistor_loads_only_ex_and_ey_on_its_node_plane(reader, host_ep
         if axis < 2:
             own[:, :, z] = annulus
             np.testing.assert_allclose(actual[own], sigma_load, rtol=1e-6)
-        # Every other conductivity, including both adjacent node planes and
-        # the entire Ez component, is bit-identical to the unstamped line.
         assert actual[~own].tobytes() == original[~own].tobytes()
         for plane in (z - 1, z + 1):
             assert actual[:, :, plane].tobytes() == original[:, :, plane].tobytes()

@@ -3,6 +3,18 @@
 from __future__ import annotations
 
 
+def admit_coax_entry(owner, arguments) -> None:
+    """Refuse a traced static input of a coaxial calculator, then resolve its field dtype.
+
+    ``arguments`` is the calculator's ``locals()`` at entry. Both steps only
+    raise, so the calculator's own warnings keep their caller frame.
+    """
+    from rfx._traced_inputs import admit_traced_inputs
+    from rfx._internal._precision import resolve_field_dtype
+    admit_traced_inputs(owner, arguments)
+    resolve_field_dtype(arguments["self"]._precision)
+
+
 def _require_absorption_on_every_axis(sim, cpml_axes: str | None, lane: str) -> None:
     """Both coax line lanes absorb on x, y and z.
 

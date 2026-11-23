@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """WR-90 chain battery — the measurement driver (v1.8 WP2).
 
-Runs the 2026-09-08 PI amendment in
+Runs the amendment in
 ``docs/design_notes/waveguide_chain_battery_predeclaration.md`` (schema 4).
 Historical schema 1--3 artifacts remain frozen. This driver builds from
 ``tests/_waveguide_chain_battery_fixture.py`` and records the global per-arm
@@ -84,7 +84,7 @@ PREDECLARATION = "docs/design_notes/waveguide_chain_battery_predeclaration.md"
 ARTIFACT = "tests/fixtures/waveguide_chain_battery/fixture_931_adfd.json"
 SUPERSEDES = "tests/fixtures/waveguide_chain_battery/fixture_v18_close.json"
 SUPERSEDES_REASON = (
-    "2026-09-08 PI amendment: second-order forward eps stencil at theta0=0; "
+    "amendment: second-order forward eps stencil at theta0=0; "
     "every arm certified over the full array; lossless PEC eps magnitude excluded")
 README = "tests/fixtures/waveguide_chain_battery/README.md"
 DRIVER = "scripts/diagnostics/waveguide_chain_battery_measure.py"
@@ -857,7 +857,7 @@ def assemble(args, out_dir: Path, prov: dict) -> Path:
         "dft": "rectangular full-record DFT with kernel exp(-j omega t) (rfx.sources.waveguide_port._rect_dft)",
         "yee_half_step": "beta for plane shifts and the PEC-short oracle from _compute_beta(dt, dx) "
                          "(Yee-discrete dispersion); the Airy oracle uses the continuous vacuum beta",
-        "external_phase_data": "none enters; if it ever does it is conjugated first (rfx-known-issues.md, "
+        "external_phase_data": "none enters; if it ever does it is conjugated first (the recorded findings, "
                                "time-convention conjugation)",
     }
 

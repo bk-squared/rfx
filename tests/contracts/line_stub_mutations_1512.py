@@ -5,6 +5,7 @@ import pytest
 from rfx.preflight import line_stub
 
 def main():
+    """The fixed_stacklevel mutation must fail because solve entries have different call-stack depths."""
     source = Path('rfx/preflight/line_stub.py').read_text()
     mutations = {
      'drop_refusal': ('                raise ValueError(stub_message(finding, band))', '                return'),
@@ -15,17 +16,11 @@ def main():
      'vacuum_eps': ('port.width, port.height, eps)[1]', 'port.width, port.height, eps)[1]; eps = 1.0'),
      'declared_first': ('result = None', 'result = None\n    if explicit is not None:\n        return float(explicit)'),
      'fundamental_only': ('return (2 * first - 1, 2 * last - 1) if first <= last else None', 'return (1, 1) if lo <= 1 <= hi else None'),
-     # The pre-fix rule: metal length alone, no open-end extension.
      'no_end_extension': ('extension = open_end_extension(port.width, port.height, eps)', 'extension = 0.0'),
-     # An enumeration cap drops every odd order above 3.
      'order_cap': ('    last = math.floor((hi + tol + 1) / 2)\n', '    last = min(math.floor((hi + tol + 1) / 2), 2)\n'),
-     # Coax eps read at the metal pin centre again (falls back to 1).
      'coax_centre_eps': ('    if axis is not None:\n', '    if False:\n'),
-     # skip_preflight makes a skipped shape silent again.
      'silent_skip': ('        if skipped:\n            _warn_uninspectable(skipped)\n', ''),
-     # A fixed stack level cannot serve entries of different depth.
      'fixed_stacklevel': ('warnings.warn(_uninspectable_warning(skipped), stacklevel=level)', 'warnings.warn(_uninspectable_warning(skipped), stacklevel=4)'),
-     # One uninspectable shape switches the whole check off again (the pre-isolation behaviour).
      'inspection_raises': ('            cache[key] = []\n', '            raise\n'),
     }
     if sys.argv[1] in ('warning_wrapper', 'early_admission'):

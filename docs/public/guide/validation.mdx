@@ -100,6 +100,11 @@ for dx in (2e-3, 1e-3, 0.5e-3):
           f"error {100 * (f / f_exact - 1):+.3f} %")
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/guide/assets/validation/structure.png" loading="lazy" alt="The same cavity cross-section on three successively finer grids, each with the source at lower left and the probe at upper right." />
+  <figcaption>The cavity on the 2, 1 and 0.5 mm meshes of the loop, each cut at the height of its Ez samples (z = 5, 5.5 and 5.25 mm). On each mesh the source and the probe, requested at (x, y) = (7.2, 7) and (15.6, 12) mm, move to the grid points shown, by at most 1.3 mm in this plane.</figcaption>
+</figure>
+
 On a CPU this prints errors of about −0.13 %, −0.03 % and −0.01 %. Each
 halving of the cell cuts the error by about four, the second-order convergence
 the Yee scheme should show. Your own study works the same way. Pick one number

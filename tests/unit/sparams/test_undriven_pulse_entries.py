@@ -65,12 +65,12 @@ def test_coax_msl_transition():
 
 
 def test_msl_s_matrix():
+    """The trace runs port to port, so no line stub is refused first."""
     sim = Simulation(freq_max=20e9, domain=(0.012, 0.008, 0.0032), dx=2e-4,
                      boundary="cpml", cpml_layers=8, snap="declared")
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, 0.008, 0.0008)), material="sub")
     sim.add(Box((0., 0., 0.), (0.012, 0.008, 0.)), material="pec")
-    # The trace runs port to port, so no line stub is refused first.
     sim.add(Box((0.002, 0.0034, 0.0008), (0.010, 0.0046, 0.0008)), material="pec")
     sim.add_msl_port(position=(0.002, 0.004, 0.0), width=0.0012, height=0.0008,
                      direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
@@ -79,7 +79,7 @@ def test_msl_s_matrix():
     sim._msl_ports[0] = dataclasses.replace(sim._msl_ports[0], waveform=HZ)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        with pytest.raises(ValueError, match=REFUSAL):  # run()'s preflight refuses
+        with pytest.raises(ValueError, match=REFUSAL):
             sim.compute_msl_s_matrix(freqs=jnp.linspace(2e9, 18e9, 4), num_periods=1.0)
 
 

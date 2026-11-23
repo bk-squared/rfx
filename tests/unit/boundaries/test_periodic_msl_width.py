@@ -13,22 +13,20 @@ from rfx.boundaries.spec import BoundarySpec
 
 def microstrip_model(*, full_period=False, point_loads=False, mode='uniform', short_trace=False,
                      field_source=True, end=.006):
-    # #1138: geometry[1] x solved +8.75 % off the domain-clipped drawing (all variants); this test checks periodic microstrip mode aperture is refused.
     sim = Simulation(20e9, (.010, .006, .004), snap="declared", dx=.001, cpml_layers=0,
                      boundary=BoundarySpec(x='pec', y='periodic', z='pec'))
     sim.add(Box((0., 0., .001), (.010, .006, .001)), material='pec')
     lo, hi = (0., .006) if full_period else (.004, end)
     sim.add(Box((.001, lo, .002), (.009, .005 if short_trace else hi, .002)), material='pec')
+    PARALLEL_LOAD_OHMS = 50.
     if point_loads:
-        # Named physical nodes, independent of the aperture resolver. Parallel
-        # 150 ohm (or six 300 ohm) resistors have total resistance 50 ohm.
         widths = (0, 1, 2, 3, 4, 5) if full_period else (4, 5, 0)
         for j in widths:
             sim.add_port((.002, j*.001, .001), component='ez',
-                         impedance=50.*len(widths), excite=False)
+                         impedance=PARALLEL_LOAD_OHMS*len(widths), excite=False)
     else:
         sim.add_msl_port((.002, (lo+hi)/2, .001), width=hi-lo, height=.001,
-                         direction='+x', impedance=50., excite=False, mode=mode,
+                         direction='+x', impedance=PARALLEL_LOAD_OHMS, excite=False, mode=mode,
                          n_probe_offset=3, n_probe_spacing=2, n_probes=3)
     if field_source:
         sim.add_source((.007, .003, .001), 'ez', amplitude_kind='field')
@@ -37,9 +35,9 @@ def microstrip_model(*, full_period=False, point_loads=False, mode='uniform', sh
 
 
 def _check_microstrip_trace(actual, reference):
+    """Identical edge resistances permit only float32 evaluation residual."""
     peak = np.max(np.abs(reference))
     assert peak > .01
-    # The same edge resistances permit only float32 evaluation residual.
     np.testing.assert_allclose(actual, reference, rtol=0,
                                atol=8*np.finfo(reference.dtype).eps*peak)
 
@@ -126,10 +124,7 @@ def test_periodic_microstrip_current_aperture_is_refused(operation):
 
 @pytest.mark.parametrize('short_trace,end', [(True, .006), (False, .0057)])
 def test_seam_column_requires_a_trace_conductor(short_trace, end):
-    # End the three-column trace at 5 mm. The port's
-    # zero-image column now has no upper conductor and must be refused.
-    # A width ending at 5.7 mm also rounds to node 6 == 0, while its
-    # conductor footprint ends at node 5. Check the selected load node.
+    """A width ending at 5.7 mm rounds to node 6 == 0, while its conductor footprint ends at node 5."""
     sim = microstrip_model(short_trace=short_trace, end=end)
     with pytest.raises(ValueError, match='trace'):
         sim.run(n_steps=8, compute_s_params=False)
@@ -138,8 +133,6 @@ def test_seam_column_requires_a_trace_conductor(short_trace, end):
 def test_seam_aperture_names_only_incident_conductors():
     from rfx.geometry.port_termination import default_msl_terminates
     sim = microstrip_model()
-    # This separate strip lies between the minimum and maximum image indices,
-    # but outside the port's three physical columns (4, 5, 0 mm).
     sim.add(Box((.001, .0015, .002), (.009, .0025, .002)), material='pec')
     refs = default_msl_terminates(sim, sim._build_grid(), position=(.002, .005, .001),
                                   width=.002, height=.001, direction='+x')

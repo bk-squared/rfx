@@ -15,7 +15,6 @@ Replaces the retracted ``test_forward_tfsf_reflection_objective.py`` (#417), whi
 SINGLE-POINT (T−I)/I extraction (the #404-defective method → |Γ|>1, 170–290% vs analytic).
 Measured envelope (CPU, this config): |Γ| err 1.7/2.4/3.6% @ εr=2/4/9; phase 10.7° off 180°
 (the εr-independent Yee half-cell reference-plane constant); d|Γ|/dε AD==FD 0.01%.
-Validation harness: docs/research_notes/experiments/i404_oblique_20260720/diffrefl_v3_complex_and_grad.py
 """
 import numpy as np
 import jax
@@ -29,19 +28,16 @@ from rfx.probes import fresnel_reflection_coefficient
 F0 = 5e9
 DOMAIN = (0.50, 0.12, 0.006)
 DX = 0.002
-X_IFACE, X_SLAB_END = 0.15, 0.40      # finite slab (0.25 m), ends well before the +x CPML
-PLATEAU = (0.05, 0.13)                # probe line, TF region in front of the slab
+X_IFACE, X_SLAB_END = 0.15, 0.40
+PLATEAU = (0.05, 0.13)
 C0 = 299792458.0
 
 
 def _fresnel(eps):
     n = np.sqrt(eps)
-    return (1.0 - n) / (1.0 + n)      # normal incidence, vacuum->dielectric (negative real)
+    return (1.0 - n) / (1.0 + n)
 
 
-# --------------------------------------------------------------------------- #
-# FAST synthetic contract: the extractor math + differentiability, no FDTD.
-# --------------------------------------------------------------------------- #
 def _synthetic_two_run(gamma_true, dists, f0=F0, n_periods=8, spp=24):
     """Build (total, incident) real time series carrying a planted complex Γ.
 
@@ -54,24 +50,25 @@ def _synthetic_two_run(gamma_true, dists, f0=F0, n_periods=8, spp=24):
     dt = 1.0 / (f0 * spp)
     n = n_periods * spp
     t = np.arange(n) * dt
-    ip = np.exp(-1j * k * dists)                       # (n_probes,)
+    ip = np.exp(-1j * k * dists)
     rp = ip * gamma_true * np.exp(-1j * 2 * k * dists)
-    osc = np.exp(1j * 2 * np.pi * f0 * t)              # (n,)
-    inc = np.real(ip[None, :] * osc[:, None])          # (n, n_probes)
+    osc = np.exp(1j * 2 * np.pi * f0 * t)
+    inc = np.real(ip[None, :] * osc[:, None])
     total = np.real((ip + rp)[None, :] * osc[:, None])
     return jnp.asarray(total), jnp.asarray(inc), dt
 
 
 def test_reflection_helper_recovers_planted_gamma():
-    """Helper recovers a planted complex Γ (amplitude+phase) and is grad-safe."""
-    dists = np.array([0.010, 0.014, 0.018, 0.022])     # metres in front of the ref plane
+    """Helper recovers a planted complex Γ (amplitude+phase) and is grad-safe.
+    Probe distances are metres in front of the reference plane.
+    """
+    dists = np.array([0.010, 0.014, 0.018, 0.022])
     for g_true in (-0.4 + 0j, 0.3j, 0.25 - 0.15j):
         total, inc, dt = _synthetic_two_run(g_true, dists)
         g = complex(fresnel_reflection_coefficient(
             total, inc, f0=F0, dt=dt, probe_distances=dists))
         assert abs(g - g_true) < 2e-2, f"Γ={g:.4f} vs planted {g_true:.4f}"
 
-    # differentiability: total = inc + θ·reflected ⇒ |Γ|(θ)=θ·|Γ_true|, grad=|Γ_true|
     total, inc, dt = _synthetic_two_run(-0.4 + 0j, dists)
     refl = total - inc
 
@@ -84,21 +81,19 @@ def test_reflection_helper_recovers_planted_gamma():
     assert abs(g_ad - 0.4) < 1e-3, f"d|Γ|/dθ={g_ad:.5f} vs closed form 0.4"
 
 
-# --------------------------------------------------------------------------- #
-# SLOW physics ground truth: forward() reflection off a slab vs analytic Fresnel.
-# --------------------------------------------------------------------------- #
 def _build():
+    """Probe distances are in metres from the interface reference plane in consistent cell-index space."""
+    assert 0 < PLATEAU[0] < PLATEAU[1] < X_IFACE < X_SLAB_END < DOMAIN[0], "The probe plateau must precede the finite slab, which must end before the CPML."
     grid = Grid(freq_max=10e9, domain=DOMAIN, dx=DX, cpml_layers=10)
     xi = grid.position_to_index((X_IFACE, 0.06, 0.003))[0]
     xe = grid.position_to_index((X_SLAB_END, 0.06, 0.003))[0]
     xprobes = np.arange(PLATEAU[0], PLATEAU[1], DX)
     probe_idx = np.array([grid.position_to_index((float(xp), 0.06, 0.003))[0] for xp in xprobes])
-    # reference plane = the interface; probe distances in metres (CONSISTENT cell-index space)
     probe_distances = (xi - probe_idx).astype(np.float64) * DX
-    # time-gate: stop before the FASTEST (εr=2) back-face reflection reaches the plateau
     n_fast = np.sqrt(2.0)
     t_back = (2 * (X_IFACE - PLATEAU[1]) / C0) + (2 * (X_SLAB_END - X_IFACE) / (C0 / n_fast))
     ns = int(0.9 * t_back / grid.dt)
+    assert ns * grid.dt < t_back, "The record must stop before the fastest back-face reflection reaches the plateau."
 
     sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary="cpml", cpml_layers=10, mode="3d")
     sim.add_tfsf_source(f0=F0, bandwidth=0.5, polarization="ez", direction="+x",
@@ -110,7 +105,7 @@ def _build():
 
 def _series(sim, eps_arr, ns, ckpt=False):
     return sim.forward(eps_override=eps_arr, n_steps=ns, checkpoint=ckpt,
-                       skip_preflight=True).time_series  # (n_steps, n_probes)
+                       skip_preflight=True).time_series
 
 
 def _eps_slab(shape, xi, xe, eps):
@@ -121,7 +116,7 @@ def _eps_slab(shape, xi, xe, eps):
 @pytest.fixture(scope="module")
 def fresnel_run():
     sim, shape, xi, xe, dists, dt, ns = _build()
-    inc = _series(sim, _eps_slab(shape, xi, xe, 1.0), ns)          # vacuum incident
+    inc = _series(sim, _eps_slab(shape, xi, xe, 1.0), ns)
     out = {"sim": sim, "shape": shape, "xi": xi, "xe": xe, "dists": dists,
            "dt": dt, "ns": ns, "inc": inc, "gamma": {}}
     for eps in (2.0, 4.0, 9.0):
@@ -185,7 +180,7 @@ def test_fresnel_complex_target_gradient(fresnel_run):
     sim, shape, xi, xe = fresnel_run["sim"], fresnel_run["shape"], fresnel_run["xi"], fresnel_run["xe"]
     dists, dt, ns = fresnel_run["dists"], fresnel_run["dt"], fresnel_run["ns"]
     inc = _series(sim, _eps_slab(shape, xi, xe, 1.0), ns, ckpt=True)
-    g_target = 0.30 * np.exp(1j * 2.5)  # arbitrary complex RIS target (amplitude + phase)
+    g_target = 0.30 * np.exp(1j * 2.5)
 
     def loss(eps):
         tot = _series(sim, jnp.ones(shape, jnp.float32).at[xi:xe, :, :].set(eps), ns, ckpt=True)

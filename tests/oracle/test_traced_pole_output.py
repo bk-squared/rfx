@@ -12,6 +12,8 @@ from rfx.measurement.ringdown_resolution import completion_poles
 from tests._x64_compat import enable_x64
 from tests.oracle._traced_pole_scene import scene, SIGMA, RECORD_S, BINS
 
+COMPLETION_START_INDEX = 0
+
 
 def test_closed_box_pole_derivative_sums(monkeypatch):
     with enable_x64():
@@ -25,7 +27,7 @@ def test_closed_box_pole_derivative_sums(monkeypatch):
 
         def capture(*args, **kw):
             model = original(*args, **kw)
-            if args[2] == 0:  # completion callback; exclude lazy report identification
+            if args[2] == COMPLETION_START_INDEX:
                 models.append(model)
             return model
 

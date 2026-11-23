@@ -32,9 +32,10 @@ from rfx.sources.waveguide_port import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Test solve_rectangular_modes
-# ---------------------------------------------------------------------------
+
+
+WR90_WIDTH_M = 22.86e-3
+WR90_HEIGHT_M = 10.16e-3
 
 
 class TestSolveRectangularModes:
@@ -42,26 +43,23 @@ class TestSolveRectangularModes:
 
     def test_wr90_cutoff_frequencies(self):
         """TE10, TE20, TE01 cutoff frequencies for WR-90."""
-        a = 22.86e-3   # WR-90 width
-        b = 10.16e-3   # WR-90 height
+        a = WR90_WIDTH_M
+        b = WR90_HEIGHT_M
         modes = solve_rectangular_modes(a, b, freq_max=20e9, n_modes=5)
 
         assert len(modes) >= 3, f"Expected at least 3 modes, got {len(modes)}"
 
-        # TE10: f_c = c/(2a) = 6.557 GHz
         fc_te10_expected = C0 / (2 * a)
         assert modes[0]["mode_type"] == "TE"
         assert modes[0]["m"] == 1
         assert modes[0]["n"] == 0
         assert abs(modes[0]["f_cutoff"] - fc_te10_expected) / fc_te10_expected < 0.01
 
-        # TE20: f_c = c/a = 13.12 GHz
         fc_te20_expected = C0 / a
         te20 = [m for m in modes if m["m"] == 2 and m["n"] == 0 and m["mode_type"] == "TE"]
         assert len(te20) == 1
         assert abs(te20[0]["f_cutoff"] - fc_te20_expected) / fc_te20_expected < 0.01
 
-        # TE01: f_c = c/(2b) = 14.76 GHz
         fc_te01_expected = C0 / (2 * b)
         te01 = [m for m in modes if m["m"] == 0 and m["n"] == 1 and m["mode_type"] == "TE"]
         assert len(te01) == 1
@@ -84,18 +82,17 @@ class TestSolveRectangularModes:
         assert modes[0]["n"] == 0
 
     def test_freq_max_filter(self):
-        """Only modes below freq_max are returned."""
+        """Only modes below freq_max are returned.
+        The TE10 cutoff is approximately 3.75 GHz."""
         a, b = 0.04, 0.02
-        # TE10 cutoff ~ 3.75 GHz
         modes_low = solve_rectangular_modes(a, b, freq_max=5e9, n_modes=10)
-        # Only TE10 should be below 5 GHz
         assert len(modes_low) == 1
         assert modes_low[0]["m"] == 1 and modes_low[0]["n"] == 0
 
     def test_tm_modes_included(self):
-        """TM modes should appear in the list when cutoff is below freq_max."""
+        """TM modes should appear in the list when cutoff is below freq_max.
+        The TM11 cutoff is approximately 8.38 GHz for a=0.04, b=0.02."""
         a, b = 0.04, 0.02
-        # TM11 cutoff ~ 8.38 GHz for a=0.04, b=0.02
         modes = solve_rectangular_modes(a, b, freq_max=10e9, n_modes=10)
         tm_modes = [m for m in modes if m["mode_type"] == "TM"]
         assert len(tm_modes) >= 1, "Expected at least one TM mode below 10 GHz"
@@ -108,23 +105,19 @@ class TestSolveRectangularModes:
         modes_7 = solve_rectangular_modes(a, b, freq_max=30e9, n_modes=7)
         assert len(modes_3) == 3
         assert len(modes_7) == 7
-        # The first 3 should match
         for i in range(3):
             assert modes_3[i]["m"] == modes_7[i]["m"]
             assert modes_3[i]["n"] == modes_7[i]["n"]
             assert modes_3[i]["mode_type"] == modes_7[i]["mode_type"]
 
     def test_empty_when_freq_max_below_cutoff(self):
-        """Returns empty list when no modes exist below freq_max."""
+        """Returns empty list when no modes exist below freq_max.
+        The TE10 cutoff is approximately 3.75 GHz."""
         a, b = 0.04, 0.02
-        # TE10 cutoff ~ 3.75 GHz, use freq_max below that
         modes = solve_rectangular_modes(a, b, freq_max=2e9, n_modes=5)
         assert len(modes) == 0
 
 
-# ---------------------------------------------------------------------------
-# Test init_multimode_waveguide_port
-# ---------------------------------------------------------------------------
 
 
 class TestInitMultimodeWaveguidePort:
@@ -159,22 +152,18 @@ class TestInitMultimodeWaveguidePort:
         cfgs = init_multimode_waveguide_port(port, dx, freqs, n_modes=2)
         assert len(cfgs) == 2
 
-        # First mode (TE10) should be driven (nonzero amplitude)
         assert cfgs[0].src_amp != 0.0
 
-        # Second mode should be passive (zero amplitude)
         assert cfgs[1].src_amp == 0.0
 
-        # Cutoff frequencies should be different
         assert cfgs[0].f_cutoff != cfgs[1].f_cutoff
 
-        # First mode should have lower cutoff
         assert cfgs[0].f_cutoff < cfgs[1].f_cutoff
 
     def test_three_modes_wr90(self):
         """Three-mode WR-90 port: TE10, TE20, TE01."""
-        a = 22.86e-3
-        b = 10.16e-3
+        a = WR90_WIDTH_M
+        b = WR90_HEIGHT_M
         dx = 1e-3
         ny, nz = int(round(a / dx)), int(round(b / dx))
         nc = 10
@@ -186,10 +175,8 @@ class TestInitMultimodeWaveguidePort:
         cfgs = init_multimode_waveguide_port(port, dx, freqs, n_modes=3)
         assert len(cfgs) == 3
 
-        # Verify cutoff ordering
         assert cfgs[0].f_cutoff < cfgs[1].f_cutoff < cfgs[2].f_cutoff
 
-        # Verify all share the same aperture location
         assert all(cfg.x_index == cfgs[0].x_index for cfg in cfgs)
         assert all(cfg.u_lo == cfgs[0].u_lo for cfg in cfgs)
         assert all(cfg.u_hi == cfgs[0].u_hi for cfg in cfgs)
@@ -207,7 +194,6 @@ class TestInitMultimodeWaveguidePort:
         )
         cfgs = init_multimode_waveguide_port(port, dx, freqs, n_modes=3)
 
-        # Check pairwise orthogonality of E-field profiles
         for i in range(len(cfgs)):
             for j in range(i + 1, len(cfgs)):
                 ey_i = np.array(cfgs[i].ey_profile).flatten()
@@ -215,10 +201,8 @@ class TestInitMultimodeWaveguidePort:
                 ey_j = np.array(cfgs[j].ey_profile).flatten()
                 ez_j = np.array(cfgs[j].ez_profile).flatten()
 
-                # Overlap integral: sum(Ey_i * Ey_j + Ez_i * Ez_j) * dA
                 overlap = np.sum(ey_i * ey_j + ez_i * ez_j) * dx * dx
 
-                # Self-overlap for normalization
                 self_i = np.sum(ey_i ** 2 + ez_i ** 2) * dx * dx
                 self_j = np.sum(ey_j ** 2 + ez_j ** 2) * dx * dx
 
@@ -256,9 +240,6 @@ class TestInitMultimodeWaveguidePort:
                            np.array(cfg_m.ez_profile), atol=1e-6)
 
 
-# ---------------------------------------------------------------------------
-# Test multi-mode S-matrix extraction via FDTD
-# ---------------------------------------------------------------------------
 
 
 class TestMultiModeSMatrix:
@@ -281,12 +262,12 @@ class TestMultiModeSMatrix:
         ny, nz = grid.ny, grid.nz
 
         port_in = WaveguidePort(
-            x_index=nc + 5, y_slice=(0, ny), z_slice=(0, nz),
+            x_index=nc + 5, y_slice=(0, ny - 1), z_slice=(0, nz - 1),
             a=(ny - 1) * dx, b=(nz - 1) * dx,
             mode=(1, 0), mode_type="TE", direction="+x",
         )
         port_out = WaveguidePort(
-            x_index=grid.nx - nc - 6, y_slice=(0, ny), z_slice=(0, nz),
+            x_index=grid.nx - nc - 6, y_slice=(0, ny - 1), z_slice=(0, nz - 1),
             a=(ny - 1) * dx, b=(nz - 1) * dx,
             mode=(1, 0), mode_type="TE", direction="-x",
         )
@@ -306,7 +287,6 @@ class TestMultiModeSMatrix:
             probe_offset=15, ref_offset=3, dft_total_steps=n_steps,
         )
 
-        # Run with input port driven
         all_cfgs = cfgs_in + cfgs_out
         state = init_state(grid.shape)
         materials = init_materials(grid.shape)
@@ -327,11 +307,9 @@ class TestMultiModeSMatrix:
                 for cfg in all_cfgs
             ]
 
-        # Check S21 from input port
         _, s21 = extract_waveguide_sparams(all_cfgs[0])
         s21_abs = np.abs(np.array(s21))
 
-        # Above cutoff, S21 should be reasonable for an empty guide
         fc = cutoff_frequency(port_in.a, port_in.b, 1, 0)
         above = np.array(freqs) > fc * 1.2
         if np.any(above):
@@ -340,8 +318,9 @@ class TestMultiModeSMatrix:
 
     def test_two_mode_shapes(self, waveguide_setup):
         """Two-mode port configs should have correct S-matrix shape."""
+        SHAPE_CHECK_STEPS = 100
         grid, dx, freqs, port_in, port_out, nc = waveguide_setup
-        n_steps = 100  # Short run just to verify shape/mechanics
+        n_steps = SHAPE_CHECK_STEPS
 
         cfgs_in = init_multimode_waveguide_port(
             port_in, dx, freqs, n_modes=2, f0=6e9,
@@ -352,11 +331,9 @@ class TestMultiModeSMatrix:
             probe_offset=15, ref_offset=3, dft_total_steps=n_steps,
         )
 
-        # Verify we get 2 configs per physical port
         assert len(cfgs_in) == 2, f"Expected 2 input configs, got {len(cfgs_in)}"
         assert len(cfgs_out) == 2, f"Expected 2 output configs, got {len(cfgs_out)}"
 
-        # Only the dominant mode should be driven
         assert cfgs_in[0].src_amp != 0.0
         assert cfgs_in[1].src_amp == 0.0
         assert cfgs_out[0].src_amp != 0.0
@@ -364,7 +341,8 @@ class TestMultiModeSMatrix:
 
     @pytest.mark.parametrize("normalization", ["direct", "flux"])
     def test_multimode_s_matrix_shape(self, waveguide_setup, normalization):
-        """Multi-mode S-matrix should be (N_total, N_total, n_freqs)."""
+        """Multi-mode S-matrix should be (N_total, N_total, n_freqs).
+        The four total channels are two ports times two modes."""
         grid, dx, freqs, port_in, port_out, nc = waveguide_setup
         n_steps = grid.num_timesteps(num_periods=10)
 
@@ -377,7 +355,7 @@ class TestMultiModeSMatrix:
             probe_offset=15, ref_offset=3, dft_total_steps=n_steps,
         )
 
-        port_mode_cfgs = [cfgs_in, cfgs_out]  # 2 ports x 2 modes = 4 total
+        port_mode_cfgs = [cfgs_in, cfgs_out]
 
         from rfx.sources.waveguide_port import extract_multimode_s_matrix_flux
 
@@ -400,25 +378,19 @@ class TestMultiModeSMatrix:
         assert len(details) == 4
         assert all(row['status'] in {'pass', 'fail', 'undetermined'} for row in details)
         assert all(row['share_per_bin'].shape == (len(freqs),) for row in details)
-        n_total = 4  # 2 ports x 2 modes
+        n_total = 4
         n_freqs = len(freqs)
         assert s_matrix.shape == (n_total, n_total, n_freqs), (
             f"S-matrix shape {s_matrix.shape}, expected ({n_total}, {n_total}, {n_freqs})"
         )
 
-        # Mode map should have 4 entries
         assert len(mode_map) == 4
-        # First two entries belong to port 0
-        assert mode_map[0][0] == 0 and mode_map[0][1] == 0  # port 0, mode 0
-        assert mode_map[1][0] == 0 and mode_map[1][1] == 1  # port 0, mode 1
-        # Next two entries belong to port 1
-        assert mode_map[2][0] == 1 and mode_map[2][1] == 0  # port 1, mode 0
-        assert mode_map[3][0] == 1 and mode_map[3][1] == 1  # port 1, mode 1
+        assert mode_map[0][0] == 0 and mode_map[0][1] == 0
+        assert mode_map[1][0] == 0 and mode_map[1][1] == 1
+        assert mode_map[2][0] == 1 and mode_map[2][1] == 0
+        assert mode_map[3][0] == 1 and mode_map[3][1] == 1
 
 
-# ---------------------------------------------------------------------------
-# Test API-level multi-mode support
-# ---------------------------------------------------------------------------
 
 
 class TestAPIMultiMode:
@@ -449,9 +421,6 @@ class TestAPIMultiMode:
             sim.add_waveguide_port(0.005, direction="+x", n_modes=-1)
 
 
-# ---------------------------------------------------------------------------
-# Near-cutoff robustness and degenerate-mode handling (GitHub issue #1)
-# ---------------------------------------------------------------------------
 
 
 class TestNearCutoffRobustness:
@@ -466,18 +435,15 @@ class TestNearCutoffRobustness:
         """
         from rfx.sources.waveguide_port import solve_rectangular_modes
         from rfx.model.waveguide_modes import _te_mode_profiles, _tm_mode_profiles
-        a, b = 22.86e-3, 10.16e-3  # WR-90
+        a, b = WR90_WIDTH_M, WR90_HEIGHT_M
         modes = solve_rectangular_modes(a, b, freq_max=7e9, n_modes=3)
 
-        # Should get at least TE10 (the only mode below 7 GHz)
         assert len(modes) >= 1, f"Expected at least 1 mode, got {len(modes)}"
         assert modes[0]["f_cutoff"] < 7e9
 
-        # All returned modes must have cutoff below freq_max
         for m_info in modes:
             assert m_info["f_cutoff"] <= 7e9
 
-        # Verify mode profiles have no NaN/Inf
         n_pts = 20
         y_coords = np.linspace(0.5e-4, a - 0.5e-4, n_pts)
         z_coords = np.linspace(0.5e-4, b - 0.5e-4, n_pts)
@@ -502,11 +468,11 @@ class TestNearCutoffRobustness:
         mode barely propagates. The compiled WaveguidePortConfig must still
         have finite profiles and a valid cutoff frequency.
         """
-        a, b = 22.86e-3, 10.16e-3
+        a, b = WR90_WIDTH_M, WR90_HEIGHT_M
         dx = 1e-3
         ny, nz = int(round(a / dx)), int(round(b / dx))
         nc = 10
-        freqs = jnp.linspace(6.6e9, 7e9, 5)  # Just above TE10 cutoff
+        freqs = jnp.linspace(6.6e9, 7e9, 5)
         port = WaveguidePort(
             x_index=nc + 5, y_slice=(0, ny), z_slice=(0, nz),
             a=a, b=b, mode=(1, 0), mode_type="TE", direction="+x",
@@ -515,12 +481,10 @@ class TestNearCutoffRobustness:
         assert len(cfgs) == 1
         cfg = cfgs[0]
 
-        # Cutoff must be finite and close to expected value
         fc_expected = C0 / (2 * a)
         assert np.isfinite(cfg.f_cutoff)
         assert abs(cfg.f_cutoff - fc_expected) / fc_expected < 0.01
 
-        # Profiles must be finite
         for label, arr in [("ey", cfg.ey_profile), ("ez", cfg.ez_profile),
                            ("hy", cfg.hy_profile), ("hz", cfg.hz_profile)]:
             arr_np = np.array(arr)
@@ -534,20 +498,17 @@ class TestNearCutoffRobustness:
         cutoff frequency. solve_rectangular_modes must return both without
         error, and their cutoff frequencies must be numerically equal.
         """
-        a, b = 20e-3, 20e-3  # Square waveguide
+        a, b = 20e-3, 20e-3
         modes = solve_rectangular_modes(a, b, freq_max=15e9, n_modes=5)
 
-        # Must return at least 2 modes
         assert len(modes) >= 2, f"Expected at least 2 modes, got {len(modes)}"
 
         cutoffs = [m["f_cutoff"] for m in modes]
 
-        # TE10 and TE01 should have identical cutoff (within floating-point tolerance)
         assert abs(cutoffs[0] - cutoffs[1]) / cutoffs[0] < 1e-10, (
             f"First two modes not degenerate: {cutoffs[0]:.6e} vs {cutoffs[1]:.6e}"
         )
 
-        # The two degenerate modes should be TE10 and TE01 (or TE01 and TE10)
         first_two = {(m["mode_type"], m["m"], m["n"]) for m in modes[:2]}
         assert ("TE", 1, 0) in first_two, f"TE10 missing from first two modes: {first_two}"
         assert ("TE", 0, 1) in first_two, f"TE01 missing from first two modes: {first_two}"
@@ -596,10 +557,8 @@ class TestNearCutoffRobustness:
         cfgs = init_multimode_waveguide_port(port, dx, freqs, n_modes=2, f0=10e9)
         assert len(cfgs) == 2
 
-        # Both cutoffs should be nearly equal (degenerate)
         assert abs(cfgs[0].f_cutoff - cfgs[1].f_cutoff) / cfgs[0].f_cutoff < 1e-10
 
-        # But profiles must differ — at least one component should be substantially different
         ey_diff = np.max(np.abs(np.array(cfgs[0].ey_profile) - np.array(cfgs[1].ey_profile)))
         ez_diff = np.max(np.abs(np.array(cfgs[0].ez_profile) - np.array(cfgs[1].ez_profile)))
         assert ey_diff > 0.01 or ez_diff > 0.01, (
@@ -608,19 +567,18 @@ class TestNearCutoffRobustness:
 
     def test_near_cutoff_single_mode_only(self):
         """When freq_max barely exceeds TE10 cutoff, only one mode is returned."""
-        a, b = 22.86e-3, 10.16e-3
-        fc_te10 = C0 / (2 * a)  # ~6.557 GHz
+        a, b = WR90_WIDTH_M, WR90_HEIGHT_M
+        fc_te10 = C0 / (2 * a)
 
-        # freq_max is 1% above TE10 cutoff
         modes = solve_rectangular_modes(a, b, freq_max=fc_te10 * 1.01, n_modes=10)
         assert len(modes) == 1, f"Expected exactly 1 mode, got {len(modes)}"
         assert modes[0]["mode_type"] == "TE"
         assert modes[0]["m"] == 1 and modes[0]["n"] == 0
 
     def test_square_guide_higher_degenerate_pairs(self):
-        """Square guide TE11/TM11 should also be degenerate."""
+        """Square guide TE11/TM11 should also be degenerate.
+        The TE11 and TM11 cutoff is approximately 10.6 GHz for a=20mm."""
         a = b = 20e-3
-        # TE11 and TM11 cutoff = c * sqrt(2) / (2a) ~ 10.6 GHz for a=20mm
         modes = solve_rectangular_modes(a, b, freq_max=12e9, n_modes=10)
 
         te11 = [m for m in modes if m["mode_type"] == "TE" and m["m"] == 1 and m["n"] == 1]

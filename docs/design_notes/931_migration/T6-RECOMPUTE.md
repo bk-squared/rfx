@@ -29,7 +29,7 @@ there. Source of truth for the yamls is `scripts/vessl_931/` (moved there from a
 
 All runs: cluster `remilab-c0`, preset `gpu-rtx4090`, `JAX_PLATFORMS=cpu`,
 image `ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8`, artifacts under
-`/root/workspace/claude-workspace/rfx/runs/issue931-post-<case>-<ts>/`
+`<workspace>/rfx/runs/issue931-post-<case>-<ts>/`
 (`pytest.log`, `junit.xml`, `commit.txt`; the latest path is echoed to
 `issue931-post-<case>.latest`).
 

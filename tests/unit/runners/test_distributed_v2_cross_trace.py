@@ -1,9 +1,8 @@
 """sim.run(devices=...) gives the plain call's bits in every trace context.
 
 A source waveform that closes over a traced amplitude runs the multi-device lane
-under jax.jvp, jax.vjp, jax.value_and_grad, jax.vmap and stop_gradient. The PI's
-cross-trace rule (2026-09-15; scoped 2026-09-23 to the CI build, the required
-lane's JAX on Linux x86) says the same forward physics must give the same bits in
+under jax.jvp, jax.vjp, jax.value_and_grad, jax.vmap and stop_gradient. The
+cross-trace rule on the CI build (the required lane's JAX on Linux x86) says the same forward physics must give the same bits in
 each of them. The sources and probes sit in the two cells on either side of the
 slab cut, where the ghost exchange is the only way values cross.
 
@@ -44,7 +43,7 @@ def _forward(model):
                          dx=1e-3, boundary=boundary, cpml_layers=layers)
         grid = sim._build_grid()
         width = (grid.shape[0] + len(devices) - 1) // len(devices)
-        for i in (width - 1, width):   # the last real cell of slab 0, the first of slab 1
+        for i in (width - 1, width):
             position = ((i - grid.pad_x_lo) * grid.dx, 2e-3, 2e-3)
             sim.add_source(position, "ez", amplitude_kind="field",
                            waveform=lambda t: amplitude * jnp.cos(t * 2e10))

@@ -20,9 +20,9 @@ import rfx.geometry.node_tensor as NT
 
 EPS = 10.0
 H = .001
-ONNODE = ((.003, .004, .004), (.0077, .008, .008))      # x-lo face on node 3, y-lo on node 4
-BISECTOR = ((.0026, .0036, .0033), (.0077, .0082, .0083))  # x-lo and y-lo 0.4 cell inside node (3, 4)
-R_UNIFORM = 1.25 * np.sqrt(1.5) * H                     # the reach on a 1 mm mesh
+ONNODE = ((.003, .004, .004), (.0077, .008, .008))
+BISECTOR = ((.0026, .0036, .0033), (.0077, .0082, .0083))
+R_UNIFORM = 1.25 * np.sqrt(1.5) * H
 
 
 def _sim(items, n=12):
@@ -187,13 +187,15 @@ def test_a_later_box_paints_over_an_earlier_one(monkeypatch):
                   (Box((.0022, .0022, .0053), (.0097, .0097, .0105)), 10.2),
                   (Box((.0032, .0032, .0062), (.0088, .0088, .0098)), 4.0)], monkeypatch)
     triplets = np.asarray(eps.nodes.triplets)
-    inside = triplets[:, 5:8, 5:8, 8]       # nodes 5..7 mm in x and y, 8 mm in z
+    inside = triplets[:, 5:8, 5:8, 8]
     np.testing.assert_array_equal(inside, np.broadcast_to(np.eye(3, dtype=np.float32) / 4, inside.shape))
 
 
 @pytest.mark.parametrize("wrapped", ["box", "sphere"], ids=["box-content", "sphere-blocker"])
 def test_periodic_images_reach_the_lower_x_face(wrapped, monkeypatch):
-    """Wrapped content keeps declared order; a wrapped sphere keeps the planar rule."""
+    """Wrapped content keeps declared order; a wrapped sphere keeps the planar rule.
+
+    Axis 0 / sign 0 is x+; triplets 0 through 3 have x+."""
     from rfx.grid import Grid
 
     grid = Grid(domain=(.012, .008, .008), dx=H, freq_max=10e9,
@@ -203,8 +205,6 @@ def test_periodic_images_reach_the_lower_x_face(wrapped, monkeypatch):
     items = [(first, 9.0), (Box((.0003, .0023, .0023), (.0034, .0057, .0057)), 4.0)]
     triplets = np.asarray(NT.compute_node_tensor_eps(grid, items).nodes.triplets)
     if wrapped == "box":
-        # As in _single_box_content, axis 0 / sign 0 is x+; triplets 0..3 have x+.
-        # B covers 0..0.6 mm, then A paints 0.3..1 mm of the x+ support at node 0.
         np.testing.assert_allclose(triplets[:4, 0, 4, 4, 0, 0], .3 / 9 + .7 / 4, rtol=1e-6)
     else:
         import rfx.geometry.box_content as BC

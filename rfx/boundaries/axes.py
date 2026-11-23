@@ -59,12 +59,3 @@ def padded_axes(grid, cpml_axes: str) -> str:
     """
     return "".join(a for a in "xyz" if a in cpml_axes
                    and getattr(grid, f"pad_{a}_lo") + getattr(grid, f"pad_{a}_hi") > 0)
-
-
-def hi_face_is_wall(grid, axis: str) -> bool:
-    """Whether a grid's high face on ``axis`` is an electric wall.
-
-    True when the axis does not absorb at all or the face is declared PEC.
-    """
-    pec_faces = getattr(grid, "pec_faces", set()) or set()
-    return axis not in getattr(grid, "cpml_axes", "") or f"{axis}_hi" in pec_faces

@@ -36,10 +36,11 @@ def _graded_dy(ratio=2.0, base=0.75e-3):
 
 
 def _nu_sim():
+    """The x and z domain lengths nx*dx and 7*dx are whole cell counts times the solved spacing."""
     dx = 1.5e-3
     nx = int(round(0.064 / dx))
     sim = Simulation(
-        freq_max=_FMAX, domain=(nx * dx, _A, 7 * dx),  dx=dx,  # solved length; #1887
+        freq_max=_FMAX, domain=(nx * dx, _A, 7 * dx),  dx=dx,
         boundary=BoundarySpec(
             x=Boundary(lo="cpml", hi="cpml"),
             y=Boundary(lo="pec", hi="pec"),
@@ -70,7 +71,7 @@ def test_nu_checkpoint_no_longer_fenced_and_forward_identical():
     """It runs (no NotImplementedError) AND the S-matrix is forward-identical to
     the non-checkpointed NU scan for any K (the NU runner pads+truncates)."""
     s_none = _s_of(None)
-    s_k4 = _s_of(4)          # K need NOT divide n_steps on the NU path
+    s_k4 = _s_of(4)
     s_k7 = _s_of(7)
     assert np.allclose(s_none, s_k4, rtol=1e-4, atol=1e-6), \
         f"checkpoint K=4 changed the NU S-matrix: max|d|={np.abs(s_none-s_k4).max():.2e}"

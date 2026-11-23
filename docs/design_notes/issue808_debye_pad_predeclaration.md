@@ -144,7 +144,7 @@ green. If either goes red, that is a STOP, not a gate edit.
 4. F4: revert probe + advisory quote.
 
 Declared gap: GPU acceptance (the pinned VESSL GPU suite — #808's failing
-lane) is the orchestrator's job post-review; not attempted from this worktree.
+lane) is a separate step post-review; not attempted from this worktree.
 
 R2 ledger for this session: 0 verification arms run at the time of this
 commit; the fix gets ONE pre-declared arm (F1-F4 above). The two discriminator
@@ -193,4 +193,4 @@ Stability pre-declaration held: both stability asserts stayed green; the
 gate only removed material from pads.
 
 Declared gap (unchanged): the pinned VESSL GPU suite — #808's failing
-lane — is the orchestrator's job post-review.
+lane — is a separate step post-review.

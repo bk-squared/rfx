@@ -43,7 +43,6 @@ def measure(h=1e-3, record_s=RECORD_S):
     sim, grid, _ = scene(h)
     built = realized_conductors(sim, grid)
     near, far = built.sheet_specs
-    # Read the concrete production sheet planes, never the traced realization row.
     a = grid.node_of("x", far.plane) - grid.node_of("x", near.plane)
     b = grid.node_of("y", grid.shape[1] - 1) - grid.node_of("y", 0)
     d = grid.node_of("z", grid.shape[2] - 1) - grid.node_of("z", 0)
@@ -51,7 +50,6 @@ def measure(h=1e-3, record_s=RECORD_S):
     n_steps = round(record_s / grid.dt)
 
     def pole(Rs):
-        # The user's Rs forms sigma_bulk inside the differentiated scene build.
         traced_sim, traced_grid, spec = scene(h, Rs)
         result = traced_sim.forward(
             sigma_override=jnp.full(traced_grid.shape, SIGMA), n_steps=n_steps,

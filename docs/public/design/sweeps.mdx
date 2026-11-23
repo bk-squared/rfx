@@ -52,6 +52,11 @@ def peak_probe(result):
     return float(np.max(np.abs(np.asarray(result.time_series[:, 0]))))
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/design/assets/sweeps/structure.png" loading="lazy" alt="Top view of a domain surrounded by absorber: a rectangular insert in the middle, the source to its left and the probe to its right." />
+  <figcaption>The model <code>make_insert_sim()</code> builds with its default 12 mm width, cut at z = 15 mm: the insert fills y = 14 to 26 mm between the source at x = 14 mm and the probe at x = 46 mm. The absorber has six cells on every face.</figcaption>
+</figure>
+
 ## One parameter
 
 `parametric_sweep` calls `factory(value)` for each value, runs it, and returns
@@ -67,6 +72,11 @@ sweep1 = parametric_sweep(lambda w: make_insert_sim(insert_width=w),
 for w, result in zip(sweep1.param_values, sweep1.results):
     print(f"width {w * 1e3:.0f} mm: peak probe {peak_probe(result):.3e}")
 ```
+
+<figure data-rfx="media">
+  <img src="/rfx/design/assets/sweeps/peak.png" loading="lazy" alt="Three markers of the largest probe |Ez| against insert width, at 8, 12 and 16 mm, at about 5.0, 4.8 and 4.7 × 10⁴ on an axis from 0 to 6 × 10⁴." />
+  <figcaption>The largest |Ez| at the probe over the 300 steps of each <code>sweep1</code> run (4.97, 4.84 and 4.74 × 10⁴), against the realized insert width on the grid (8, 12 and 16 mm). All three runs use one 2 mm mesh.</figcaption>
+</figure>
 
 `n_steps=` and `until_decay=` go to each `run()`; anything else goes in
 `run_kwargs=`. `rfx.plot_sweep(sweep1, metric=peak_probe)` plots a metric

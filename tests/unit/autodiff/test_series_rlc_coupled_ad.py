@@ -19,9 +19,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-try:  # modern JAX: scoped x64 promoted to top-level
+try:
     from jax import enable_x64 as _enable_x64
-except ImportError:  # older JAX
+except ImportError:
     from tests._x64_compat import enable_x64 as _enable_x64
 
 from rfx import GaussianPulse, Simulation
@@ -35,11 +35,8 @@ R0 = 50.0
 C0 = 1e-12
 FREQ = np.array([5e9])
 N_STEPS = 1200
-#: Relative FD step. The FD side runs float64 fields, so round-off is ~1e-16
-#: relative and the truncation error (h^2/6)|f'''| dominates; 1e-3 puts it
-#: near 1e-7 relative -- far below the 5 % bar (the chain-closure contract's
-#: AD/FD bar, also used by the lumped/wire battery).
-H_REL = 1e-3
+FD_RELATIVE_STEP = 1e-3
+H_REL = FD_RELATIVE_STEP
 BAR = 0.05
 
 
@@ -67,6 +64,7 @@ def _objective(sim):
 
 
 def test_dS11sq_dR_series_rc_ad_matches_float64_fd():
+    """The relative finite-difference step 1e-3 targets the estimated central-difference truncation error (h**2/6)|f'''| near 1e-7 relative, well below the 5% gradient bar."""
     with _enable_x64(True):
         sim32 = _sim("float32")
         sim64 = _sim("float64")

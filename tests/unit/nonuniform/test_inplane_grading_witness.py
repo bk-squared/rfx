@@ -1,7 +1,6 @@
 """A PEC cavity graded in plane at a cell ratio of 1.40 rings at its discrete model's frequency.
 
-Pins the witness behind the in-plane grading cap of 1.4 (rfx-archive records/20261029-inplane-cap-1p4; design
-rfx/plans/nu/20261029-inplane-cap-DESIGN.md). A 40 x 34 x 10 mm air box with PEC walls is graded on x and y with two
+Pins the witness behind the in-plane grading cap of 1.4. A 40 x 34 x 10 mm air box with PEC walls is graded on x and y with two
 fine bands of h/4 per axis, and every step between neighbouring cells is exactly 1.40. Its TM110 mode has the closed
 form (c/2) sqrt(1/a^2 + 1/b^2). On a separable box the discrete frequency is exact from the 1-D graded operators: the
 eigenvalues of the second difference with primal spacing d[k] on cells and dual spacing (d[k-1] + d[k])/2 on nodes,
@@ -49,9 +48,11 @@ def _profile(edges, h=H, r=RATIO):
 
 
 def _lowest_eigenvalue(widths):
-    """Smallest eigenvalue of -d2/dx2 on the graded nodes, PEC (zero) at both ends."""
+    """Smallest eigenvalue of -d2/dx2 on the graded nodes, PEC (zero) at both ends.
+    The dual-spacing array indexes interior nodes 1 through N-1.
+    """
     d = np.asarray(widths, float)
-    dual = 0.5 * (d[:-1] + d[1:])                      # interior nodes 1..N-1
+    dual = 0.5 * (d[:-1] + d[1:])
     diag = (1 / d[:-1] + 1 / d[1:]) / dual
     off = -(1 / d[1:-1]) / np.sqrt(dual[:-1] * dual[1:])
     m = np.diag(diag) + np.diag(off, 1) + np.diag(off, -1)

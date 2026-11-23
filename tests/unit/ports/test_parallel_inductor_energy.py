@@ -40,9 +40,9 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-try:  # modern JAX: scoped x64 promoted to top-level
+try:
     from jax import enable_x64 as _enable_x64
-except ImportError:  # older JAX
+except ImportError:
     from tests._x64_compat import enable_x64 as _enable_x64
 
 from rfx import lumped
@@ -54,17 +54,14 @@ from rfx.grid import Grid
 L_H = 2e-9
 C_F = 1e-12
 N_STEPS = 1600
-#: float64 rounding over 1600 steps measured 3.6e-15; float32 2.3e-6. The
-#: float32 bar sits 4x over its measurement and 11x under the ill-conditioned
-#: spelling's 1.1e-4.
 BARS = {"float64": 1e-10, "float32": 1e-5}
-#: 1/2 L I^2 over W0: MEASURED 0.484 on average and 0.977 at its peak (the box's
-#: own field keeps the rest); 0 and 0 if the inductor update is a no-op.
 INDUCTOR_MEAN_SHARE = (0.45, 0.50)
 INDUCTOR_PEAK_SHARE = 0.95
 
 
 def _energy_trace(field_dtype):
+    """An inductor update that did nothing would leave a lossless folded C whose energy check alone
+    would pass."""
     grid = Grid(freq_max=10e9, domain=(8e-3, 8e-3, 8e-3), dx=1e-3, cpml_layers=0)
     dx, dt = float(grid.dx), float(grid.dt)
     spec = lumped.LumpedRLCSpec(L=L_H, C=C_F, topology="parallel",
@@ -108,6 +105,8 @@ def _energy_trace(field_dtype):
 
 @pytest.mark.parametrize("precision", ["float64", "float32"])
 def test_parallel_lc_in_a_pec_box_keeps_its_energy(precision):
+    """The float32 bar sits 4x over its earlier measured 2.3e-6, 11x under the ill-conditioned
+    spelling's 1.1e-4."""
     if precision == "float64":
         with _enable_x64(True):
             w, w_l, periods = _energy_trace(jnp.float64)
@@ -115,10 +114,6 @@ def test_parallel_lc_in_a_pec_box_keeps_its_energy(precision):
         w, w_l, periods = _energy_trace(jnp.float32)
     assert periods >= 10.0
     assert np.all(np.isfinite(w)) and w[0] > 0.0
-    # The inductor must take part: an LC ring hands the whole energy to L
-    # once per half period and holds half of it on average. An inductor
-    # update that did nothing would leave a lossless folded C, and the
-    # energy check alone would pass.
     share, peak = w_l.mean() / w[0], w_l.max() / w[0]
     assert INDUCTOR_MEAN_SHARE[0] <= share <= INDUCTOR_MEAN_SHARE[1] and peak >= INDUCTOR_PEAK_SHARE, (
         f"{precision}: the inductor held {share:.3f} of the energy on average and "

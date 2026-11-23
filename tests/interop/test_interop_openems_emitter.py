@@ -40,20 +40,13 @@ from rfx.interop.emitters import (
 from rfx.interop.emitters.openems import PEC_SIGMA_THRESHOLD, UNIT_M
 from rfx.sources.sources import GaussianPulse
 
-# ---------------------------------------------------------------------------
-# Fixtures — designs, not documents, so the exporter stays in the loop
-# ---------------------------------------------------------------------------
 
 _PULSE = GaussianPulse(f0=1.0e9, bandwidth=0.8, amplitude=1.0)
 
-# Matches scripts/diagnostics/build_lumped_openems_sparameter_comparison.py's
-# DEFAULT_CASE: a coarse two-port PEC box that exercises only constructs with a
-# 1:1 openEMS counterpart, so it is the cheapest thing that can actually run.
 _CAVITY_DOMAIN = (0.030, 0.020, 0.015)
 _CAVITY_DX = 5.0e-3
 _CAVITY_FREQS = (0.8e9, 1.0e9, 1.2e9, 1.5e9, 1.8e9)
 
-# Matches the committed thru fixture in tests/locks/test_refplane_port_waves.py.
 _THRU_DX = 0.5e-3
 _THRU_DOMAIN = (0.032, 0.020, 0.010)
 _THRU_H = 1.0e-3
@@ -110,9 +103,6 @@ def _refuses(match: str):
     return pytest.raises(UnsupportedDesignFeature, match=match)
 
 
-# ===========================================================================
-# D1 — the absorber span, the highest-severity translation hazard
-# ===========================================================================
 
 @pytest.mark.parametrize(
     "cpml_layers, boundary",
@@ -151,7 +141,8 @@ def test_mesh_span_reproduces_rfx_grid_shape(cpml_layers, boundary):
 
 
 def test_mesh_extends_outside_the_user_domain_by_the_pads():
-    """The added margin is on the outside, and ``PML_<N>`` eats exactly it."""
+    """The added margin is on the outside, and ``PML_<N>`` eats exactly it.
+    The user domain starts at exactly 0.0 in the coordinate frame the rfx design is written in."""
     sim = Simulation(
         freq_max=10e9, domain=(0.010, 0.010, 0.010), dx=1.0e-3,
         boundary="cpml", cpml_layers=8,
@@ -163,7 +154,6 @@ def test_mesh_extends_outside_the_user_domain_by_the_pads():
     assert plan.n_cells == (10, 10, 10)
     assert plan.pad_lo == (8, 8, 8)
     assert plan.pad_hi == (8, 8, 8)
-    # 11 domain lines + 8 outside each face = 27, the measured rfx shape.
     assert plan.grid_shape == (27, 27, 27)
 
     dx_mm = plan.dx_m / UNIT_M
@@ -171,8 +161,6 @@ def test_mesh_extends_outside_the_user_domain_by_the_pads():
         lines = plan.mesh_lines_mm[axis]
         assert lines[0] == pytest.approx(-8 * dx_mm)
         assert lines[-1] == pytest.approx((10 + 8) * dx_mm)
-        # The user domain starts at exactly 0.0 — the coordinate frame the rfx
-        # design is written in must survive.
         assert 0.0 in lines
         assert pytest.approx(10 * dx_mm) in lines
 
@@ -185,9 +173,6 @@ def test_pec_face_gets_no_pad_even_on_a_cpml_axis():
     assert plan.mesh_lines_mm["z"][0] == 0.0
 
 
-# ===========================================================================
-# Boundary strings
-# ===========================================================================
 
 def test_pml_string_uses_underscore_and_the_design_layer_count():
     """``'PML_<N>'``; the hyphen form raises "Unknown boundary condition"."""
@@ -240,9 +225,6 @@ def test_mur_is_never_emitted():
     assert "'MUR'" not in script and '"MUR"' not in script
 
 
-# ===========================================================================
-# D6 — paint order → priority
-# ===========================================================================
 
 def test_paint_order_maps_to_monotonic_priority_within_a_material_class():
     """Later paint must win, which in openEMS means a strictly higher priority."""
@@ -279,7 +261,6 @@ def test_metal_outranks_ports_which_outrank_dielectrics():
         boundary="pec", cpml_layers=0,
     )
     sim.add_material("sub", eps_r=4.4)
-    # PEC painted FIRST, dielectric SECOND: in rfx the PEC still wins.
     sim.add(Box((0.002, 0.002, 0.002), (0.008, 0.008, 0.003)), material="pec")
     sim.add(Box((0.001, 0.001, 0.001), (0.009, 0.009, 0.004)), material="sub")
     sim.add_port(position=(0.005, 0.005, 0.006), component="ez",
@@ -326,15 +307,11 @@ def test_cylinder_becomes_axis_endpoints_plus_radius():
     plan = plan_openems_projection(design_to_dict(sim))
     cylinder = plan.geometry[0]
     assert cylinder.kind == "cylinder"
-    # centre 4 mm, height 2 mm -> endpoints 3 mm and 5 mm, radius 0.6 mm.
     assert cylinder.start_mm == pytest.approx((5.0, 5.0, 3.0))
     assert cylinder.stop_mm == pytest.approx((5.0, 5.0, 5.0))
     assert cylinder.radius_mm == pytest.approx(0.6)
 
 
-# ===========================================================================
-# D5 — port edges must coincide with mesh lines
-# ===========================================================================
 
 @pytest.mark.parametrize("build", [_cavity, lambda: _thru(), lambda: _thru(msl=True)])
 def test_every_port_edge_lands_exactly_on_a_mesh_line(build):
@@ -382,7 +359,6 @@ def test_geometry_faces_are_not_pinned():
         freq_max=10e9, domain=(0.010, 0.010, 0.010), dx=1.0e-3,
         boundary="pec", cpml_layers=0,
     )
-    # Deliberately off-grid box faces (0.35 mm, 9.15 mm).
     sim.add(Box((0.00035, 0.00035, 0.00035), (0.00915, 0.00915, 0.00915)),
             material="pec")
     sim.add_port(position=(0.005, 0.005, 0.005), component="ez",
@@ -396,16 +372,12 @@ def test_geometry_faces_are_not_pinned():
         assert 9.15 not in lines
 
 
-# ===========================================================================
-# The generated artifact
-# ===========================================================================
 
 def test_generated_script_is_valid_python_and_self_contained():
+    """The numpy alias shim must precede the openEMS import because openEMS.ports.MSLPort still uses np.int."""
     script = emit_openems_script(_cavity_doc(), freqs_hz=_CAVITY_FREQS)
-    ast.parse(script)  # raises SyntaxError on a malformed emission
+    ast.parse(script)
     assert script.startswith("#!/usr/bin/env python3")
-    # The numpy alias shim must precede the openEMS import: numpy 2.x dropped
-    # np.int, and openEMS.ports.MSLPort still uses it.
     assert script.index("setattr(np, _name, _value)") < script.index(
         "from openEMS.openEMS import openEMS"
     )
@@ -426,8 +398,6 @@ def test_header_itemises_provenance_and_every_approximation():
     flat = " ".join(header.split())
     assert "not evidence of physics agreement" in flat
 
-    # Every itemised approximation must be numbered in the header, and the
-    # same list must be machine-readable in the emitted artifact.
     assert len(plan.approximations) >= 8
     for index in range(1, len(plan.approximations) + 1):
         assert f"[{index:2d}]" in header
@@ -437,16 +407,13 @@ def test_header_itemises_provenance_and_every_approximation():
 
 
 def test_divergences_are_cited_in_the_generated_runner():
+    """No scalar ref_impedance is passed because of the upstream bug when Z_ref is array-valued."""
     script = emit_openems_script(_cavity_doc(), freqs_hz=_CAVITY_FREQS)
-    # D13: no scalar ref_impedance (upstream bug when Z_ref is array-valued).
     assert "port.CalcPort(sim_dir, FREQS_HZ)" in script
     assert "ref_impedance=" not in script
-    # D14: absolute path, and the CWD is restored in a finally.
     assert "os.path.abspath" in script
     assert "os.chdir(original_cwd)" in script
-    # D5: the runtime excitation guard that stands in for rfx preflight.
     assert "injected no incident wave" in script
-    # Passivity witness against the repo's documented envelope.
     assert "1.05" in script
 
 
@@ -472,21 +439,18 @@ def test_num_periods_and_n_timesteps_are_mutually_exclusive():
 
 
 def test_msl_port_span_and_direction():
+    """msl_port_w_cells has no rfx counterpart, so it must surface in the header as an assumption the reader is accepting."""
     plan = plan_openems_projection(design_to_dict(_thru(msl=True)),
                                    msl_port_w_cells=6)
     p0, p1 = plan.ports
     span = 6 * _THRU_DX / UNIT_M
-    # rfx add_msl_port documents `direction` as the propagation direction, so
-    # the MSLPort span extends that way. start is the trace plane, stop the
-    # ground plane, giving exc_dir=2 pointing trace -> ground.
     assert p0.stop_mm[0] - p0.start_mm[0] == pytest.approx(+span)
     assert p1.stop_mm[0] - p1.start_mm[0] == pytest.approx(-span)
-    assert p0.start_mm[2] == pytest.approx(_THRU_H / UNIT_M)
-    assert p0.stop_mm[2] == pytest.approx(0.0)
-    assert p0.exc_dir == 2 and p0.prop_dir == 0
+    TRACE_TO_GROUND_AXIS = 2
+    assert p0.start_mm[TRACE_TO_GROUND_AXIS] == pytest.approx(_THRU_H / UNIT_M)
+    assert p0.stop_mm[TRACE_TO_GROUND_AXIS] == pytest.approx(0.0)
+    assert p0.exc_dir == TRACE_TO_GROUND_AXIS and p0.prop_dir == 0
     assert plan.driven_port_numbers == (1,)
-    # msl_port_w_cells has no rfx counterpart, so it must surface in the header
-    # as an assumption the reader is accepting — never buried as a literal.
     msl_notes = [n for n in plan.approximations if "msl_port_w_cells" in n]
     assert len(msl_notes) == 1
     assert "NO rfx counterpart" in msl_notes[0]
@@ -529,8 +493,6 @@ def test_msl_span_extends_along_the_rfx_propagation_direction():
                 (_THRU_X2, y_mid + _THRU_W / 2, _THRU_H + _THRU_DX)),
             material="pec")
     pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
-    # Left port launches +x (rightwards, into the line); right port launches
-    # -x (leftwards, into the line).
     sim.add_msl_port((_THRU_X1, y_mid, 0.0), width=_THRU_W, height=_THRU_H,
                      direction="+x", waveform=pulse)
     sim.add_msl_port((_THRU_X2, y_mid, 0.0), width=_THRU_W, height=_THRU_H,
@@ -540,16 +502,12 @@ def test_msl_span_extends_along_the_rfx_propagation_direction():
     left, right = plan.ports
     span = 6 * _THRU_DX / UNIT_M
 
-    # openEMS derives propagation from sign(stop - start) on the prop axis.
     assert left.stop_mm[0] - left.start_mm[0] == pytest.approx(+span)
     assert right.stop_mm[0] - right.start_mm[0] == pytest.approx(-span)
 
-    # The physical statement: both spans point into the trace, so each span's
-    # far end is strictly inside the port-to-port interval.
     x_lo, x_hi = _THRU_X1 / UNIT_M, _THRU_X2 / UNIT_M
     assert x_lo < left.stop_mm[0] < x_hi
     assert x_lo < right.stop_mm[0] < x_hi
-    # ... and they approach each other rather than diverging.
     assert left.stop_mm[0] < right.stop_mm[0]
 
     sense = [n for n in plan.approximations if "MSL span SENSE" in n]
@@ -574,7 +532,6 @@ def test_wire_port_direction_is_reported_as_not_carried():
     assert "excitations.lumped_ports[1].direction='+x'" in notes[0]
     assert "OUTWARD normal" in notes[0]
 
-    # A design that never set direction must not carry the note.
     quiet = plan_openems_projection(_cavity_doc())
     assert not [n for n in quiet.approximations if "direction= is NOT carried" in n]
 
@@ -587,12 +544,9 @@ def test_header_states_the_measured_port_convention_gap():
     note = gap[0]
     assert "build_wire_openems_broad_envelope.py:12-16" in note
     assert "FLOOR on any agreement claim" in note
-    # Explicitly relate it to the cv06b gates so nobody reads a pass at this
-    # tolerance as evidence that the port models agree.
     assert "0.13" in note and "0.25" in note
     assert "NOT evidence that the port models" in note
 
-    # And it must reach the generated artifact, not just the plan.
     script = emit_openems_script(design_to_dict(_thru()))
     flat = " ".join(script.split())
     assert "0.20 is therefore the FLOOR" in flat
@@ -603,9 +557,6 @@ def test_msl_port_w_cells_below_the_openems_assert_is_refused():
         emit_openems_script(design_to_dict(_thru(msl=True)), msl_port_w_cells=4)
 
 
-# ===========================================================================
-# Refusals — one test per path, each asserting the construct is NAMED
-# ===========================================================================
 
 def test_refuses_coaxial_port():
     sim = Simulation(
@@ -801,7 +752,7 @@ def test_pec_material_is_not_refused_for_its_unused_fields():
         "eps_r": 4.0, "sigma": 1e10, "mu_r": 7.0, "chi3": 1e-20,
         "debye_poles": None, "lorentz_poles": None,
     }
-    emit_openems_script(doc)  # must not raise
+    emit_openems_script(doc)
 
 
 def test_refuses_non_gaussian_waveform():
@@ -857,9 +808,6 @@ def test_refusals_do_not_mutate_the_document():
     assert doc == before
 
 
-# ===========================================================================
-# Executed end-to-end — needs the real solver
-# ===========================================================================
 
 def _openems_available() -> bool:
     if shutil.which("openEMS") is None:
@@ -893,6 +841,7 @@ def test_generated_script_runs_under_openems_and_is_finite_and_passive():
     on-grid (the excitation guard fires otherwise), runs, and produces an
     S-matrix inside the repository's documented 1.05 passivity envelope.  What
     passing does **not** mean: that openEMS and rfx agree on this structure.
+    A much smaller |S11| in a lossless closed PEC cavity would mean the port is coupling into something it should not.
     """
     script = emit_openems_script(_cavity_doc(), freqs_hz=_CAVITY_FREQS,
                                  num_periods=60.0)
@@ -921,7 +870,6 @@ def test_generated_script_runs_under_openems_and_is_finite_and_passive():
     assert payload["driven_ports"] == [1]
     assert payload["grid"]["boundary"] == ["PEC"] * 6
 
-    # The excitation actually entered the grid (D5 guard's positive form).
     diagnostics = payload["port_diagnostics"]["1"]
     assert diagnostics["incident_peak_abs"] > 0.0
     assert diagnostics["port_ut_peak_abs"] > 0.0
@@ -935,9 +883,6 @@ def test_generated_script_runs_under_openems_and_is_finite_and_passive():
 
     assert payload["passivity"]["within_envelope"] is True
     assert payload["passivity"]["max_abs_s"] <= 1.05
-    # A lossless closed PEC cavity reflects essentially everything; a much
-    # smaller |S11| would mean the port is coupling into something it should
-    # not, which is the failure mode this cheap case exists to catch.
     s11 = np.array([complex(re, im) for re, im in payload["s_matrix"]["S11"]])
     assert np.all(np.abs(s11) > 0.9)
 
@@ -964,7 +909,6 @@ def test_upml_collapse_onto_pml_is_itemised():
     assert "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi" in notes[0]
     assert "The layer count survives; the absorber does not" in notes[0]
 
-    # A pure-cpml design must not carry it.
     quiet = plan_openems_projection(design_to_dict(_thru()))
     assert not [n for n in quiet.approximations if "UPML faces" in n]
 
@@ -994,6 +938,5 @@ def test_off_node_wall_mesh_matches_realized_grid():
     sim.add_port(position=(.010, .006, .003), component='ez',
                  impedance=50., waveform=_PULSE)
     plan = plan_openems_projection(design_to_dict(sim))
-    # x: 21 + 16 pads + 1; y: 13 + 16 + 1; z: round(7.4) + 1.
     assert plan.grid_shape == (38, 30, 8)
     assert plan.grid_shape == sim._build_grid().shape

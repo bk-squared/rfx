@@ -147,11 +147,10 @@ def test_measurement_planes_keep_port_axis_indices(declared, monkeypatch):
 ])
 @pytest.mark.parametrize("graded", [False, True])
 def test_both_meshes_scene_aperture_answers_unchanged(declaration, graded):
+    """The lattice's wall-length error is accepted solely to inspect the aperture spans."""
     from tests.contracts.test_guide_admission_both_meshes import guide
     sim = guide(declaration, graded=graded)
     if declaration == "wr90-nonwhole-cells":
-        # Main refuses this lattice's wall-length error before guide admission.
-        # Accept that existing snap solely to inspect the same aperture spans.
         sim._snap = "declared"
     grid = sim._build_realized_grid()
     expected = [True] if declaration == "wr90-nonwhole-cells" else [True, True]

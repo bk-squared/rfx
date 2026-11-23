@@ -55,6 +55,7 @@ These gates do NOT re-open the O3 envelope: alpha here is ~0.858 Np/m against
 1.055 analytic on every profile, which is the R2-STOPped one-cell sheet-dynamics
 deficit recorded in tests/oracle/test_leontovich_alpha_oracle.py. What is gated here is
 mesh INVARIANCE of the realized sheet, which is independent of that offset.
+INVARIANCE_CASES entries are (case, control, expected dual/primal at the hi plate).
 """
 
 import warnings
@@ -77,25 +78,13 @@ from tests.oracle.test_leontovich_alpha_oracle import (
 
 MM = 1e-3
 
-# dz profiles (mm). Every one totals 6.000 mm and keeps interior E nodes on
-# z = 0.5 mm (lo plate), 3.0 mm (DFT plane) and 5.5 mm (hi plate); they differ
-# only in the cells adjacent to the HI plate and in how the 0.5 mm shorted
-# backing stub behind it is meshed.
 PROFILES = {
-    # matched: both plates sit on nodes with equal neighbours
     "ref":     [0.5] * 12,
-    # hi plate on a 0.25/0.50 mm node (d[k-1]=0.25, d[k]=0.50); stub = 1 cell,
-    # same as ref, so ref IS its locally-uniform control
     "a_step":  [0.5] * 10 + [0.25, 0.25] + [0.5],
-    # hi plate on a 1.00/0.25 mm node (d[k-1]=1.00, d[k]=0.25); stub = 2 cells
     "b_step":  [0.5] * 9 + [1.0] + [0.25, 0.25],
-    # b_step's locally-uniform control: same 2-cell stub, hi plate node has
-    # EQUAL neighbours (0.25/0.25), so primal == dual and the fold is exact
-    # there under either normalization
     "b_ctrl":  [0.5] * 10 + [0.25] * 4,
 }
 
-# (case, control, expected dual/primal at the hi plate)
 INVARIANCE_CASES = (
     ("a_step", "ref", 0.375 / 0.500),
     ("b_step", "b_ctrl", 0.625 / 0.250),
@@ -103,13 +92,9 @@ INVARIANCE_CASES = (
 
 RATIO_GATE = (0.98, 1.02)
 
-# same physical duration on every mesh (the oracle's 4000 steps at dx = 0.5 mm)
 T_PHYS = 4000 * (0.99 * DX / (299792458.0 * np.sqrt(3.0)))
 
 
-# ---------------------------------------------------------------------------
-# Pure algebra — no FDTD
-# ---------------------------------------------------------------------------
 
 def test_dual_spacing_is_the_e_update_metric():
     """``e_node_dual_spacings`` must be the reciprocal of the metric the NU E
@@ -121,11 +106,10 @@ def test_dual_spacing_is_the_e_update_metric():
                  [0.25e-3] * 3 + [1.0e-3] * 4,
                  [0.5e-3, 0.5e-3, 0.25e-3, 1.5e-3, 0.75e-3, 0.75e-3]):
         arr = np.asarray(prof, dtype=np.float64)
-        inv_d_e, _ = _profile_to_inv_arrays(arr)
+        inv_d_e, _ = _profile_to_inv_arrays(arr, dtype="float32")
         dual = np.asarray(e_node_dual_spacings(jnp.asarray(arr,
                                                            dtype=jnp.float32)))
         np.testing.assert_allclose(dual * np.asarray(inv_d_e), 1.0, rtol=1e-6)
-        # explicit form: dual[0] = d[0]; dual[k] = (d[k-1]+d[k])/2
         expect = np.concatenate([arr[:1], 0.5 * (arr[:-1] + arr[1:])])
         np.testing.assert_allclose(dual, expect, rtol=1e-6)
 
@@ -136,7 +120,9 @@ def test_dual_spacing_is_the_e_update_metric():
 
 def _graded_sheet_sigma(zc, *, realized=False, profile=None, **tc_kwargs):
     """Assemble the #373 graded fixture and return
-    (sigma at the sheet node, primal cell, dual spacing)."""
+    (sigma at the sheet node, primal cell, dual spacing).
+    The first occupied Ex edge has half the interior weight.
+    """
     dx = 0.5e-3
     dz = [0.5e-3] * 8 + [1.5e-3] * 8 if profile is None else profile
     L = 24 * dx
@@ -148,7 +134,7 @@ def _graded_sheet_sigma(zc, *, realized=False, profile=None, **tc_kwargs):
             Box((6 * dx, 6 * dx, zc), (18 * dx, 18 * dx, zc)), **tc_kwargs)
         grid = build_nonuniform_grid(
             sim._freq_max, sim._domain, sim._dx, sim._cpml_layers,
-            sim._dz_profile, dx_profile=sim._dx_profile,
+            sim._dz_profile, dtype="float32", dx_profile=sim._dx_profile,
             dy_profile=sim._dy_profile,
             pec_faces=sim._boundary_spec.pec_faces(),
             pmc_faces=sim._boundary_spec.pmc_faces(),
@@ -156,9 +142,6 @@ def _graded_sheet_sigma(zc, *, realized=False, profile=None, **tc_kwargs):
         specs = []
         mats = assemble_materials_nu(sim, grid, sheet_specs=specs)[0]
         if tc_kwargs.get("surface_impedance_f0") is not None:
-            # #677: the f0 sheet no longer rides materials.sigma — the
-            # realized per-node sheet conductivity is on the emitted spec,
-            # which is the SAME quantity this fixture always measured.
             assert float(np.asarray(mats.sigma).max()) == 0.0
             assert len(specs) == 1
             sigma = np.asarray(specs[0].sigma_sheet)
@@ -171,7 +154,6 @@ def _graded_sheet_sigma(zc, *, realized=False, profile=None, **tc_kwargs):
     k = ks[0]
     primal = float(np.asarray(grid.dz)[k])
     dual = float(np.asarray(e_node_dual_spacings(grid.dz))[k])
-    # Interior weight is one; the first occupied Ex edge has half weight.
     interior = tuple((nz[:, a].min() + nz[:, a].max()) // 2 for a in range(3))
     values = float(sigma[interior]), primal, dual
     if realized:
@@ -179,7 +161,6 @@ def _graded_sheet_sigma(zc, *, realized=False, profile=None, **tc_kwargs):
         components = realize_components(mats, grid, periodic=(False,) * 3)
         widths = np.asarray(grid.cells(2), dtype=float)
         duals = np.r_[widths[0], (widths[:-1] + widths[1:]) / 2]
-        # An interior footprint edge, away from transverse mask boundaries.
         i, j = [(nz[:, axis].min() + nz[:, axis].max()) // 2
                 for axis in (0, 1)]
         conductances = [np.sum(np.asarray(edge)[i, j, :] * duals)
@@ -194,19 +175,12 @@ def test_dc_fold_uses_dual_spacing_at_a_grading_transition():
     rs_spec = 1.0 / (sigma_bulk * t)
     spacings = [0.75e-3] * 8 + [1.5e-3] * 8
 
-    # The old diagnostic assumed the cell value was read at the node. Since
-    # the E-edge mean (#1210), the solver realizes sum(sigma_edge * dual) over
-    # node planes. On main this was 2.5% off sigma*t between 0.9h|1.1h cells
-    # while that diagnostic passed. Record: rfx-archive/rfx/records/
-    # 20261008-dc-sheet-realized-conductance-unequal-cells/.
-    # matched node (deep in the coarse region): primal == dual, unchanged
     sig, primal, dual, rs = _graded_sheet_sigma(
         9.0e-3, sigma_bulk=sigma_bulk, thickness=t, realized=True, profile=spacings)
     assert abs(dual / primal - 1.0) < 1e-6
     assert np.all(abs(rs / rs_spec - 1.0) < 1e-4)
     assert abs(1.0 / (sig * dual) / rs_spec - 1.0) < 1e-4
 
-    # ON the 0.75 | 1.5 mm transition: G is the hand surface conductance.
     conductance = sigma_bulk * t
     sig, primal, dual, rs = _graded_sheet_sigma(
         sum(spacings[:8]), sigma_bulk=sigma_bulk, thickness=t,
@@ -215,7 +189,6 @@ def test_dc_fold_uses_dual_spacing_at_a_grading_transition():
     assert np.all(abs(rs / rs_spec - 1.0) < 1e-4), (
         f"DC sheet realizes R_s = {rs} over its node planes, specified {rs_spec:.4f}")
     assert abs(sig * dual / conductance - 1.0) < 1e-4
-    # Either primal width would misrepresent this same plane's conductance.
     for primal_width in spacings[7:9]:
         assert abs(sig * primal_width / conductance - 1.0) > 0.3
 
@@ -233,7 +206,9 @@ def test_leontovich_fold_uses_dual_spacing_at_a_grading_transition():
 
 def test_graded_fold_stays_on_the_ad_path():
     """The primal-width fold keeps the sigma_bulk*t DoF differentiable at a
-    transition node: d/dt sum(sigma) == n_cells * sigma_bulk / primal."""
+    transition node: d/dt sum(sigma) == n_cells * sigma_bulk / primal.
+    Ex weights on a [6,18) by [6,18) footprint sum to 12*(.5+11+.5)=144.
+    """
     import jax
 
     dx = 0.5e-3
@@ -249,15 +224,13 @@ def test_graded_fold_stays_on_the_ad_path():
             sigma_bulk=sigma_bulk, thickness=t0)
         grid = build_nonuniform_grid(
             sim._freq_max, sim._domain, sim._dx, sim._cpml_layers,
-            sim._dz_profile, dx_profile=sim._dx_profile,
+            sim._dz_profile, dtype="float32", dx_profile=sim._dx_profile,
             dy_profile=sim._dy_profile,
             pec_faces=sim._boundary_spec.pec_faces(),
             pmc_faces=sim._boundary_spec.pmc_faces(),
             cpml_axes="xyz")
     shape = sim._thin_conductors[0].shape
     sigma0 = np.asarray(assemble_materials_nu(sim, grid)[0].sigma_film[0])
-    # Old expectation used occupied cells / primal. Ex weights on a
-    # [6,18) by [6,18) footprint sum to 12*(.5+11+.5)=144.
     n_cells = 12 * 12
     k = int(np.argwhere(sigma0 > 0)[0][2])
     dual = float((np.asarray(grid.dz)[k - 1] + np.asarray(grid.dz)[k]) / 2)
@@ -302,15 +275,12 @@ def test_preflight_advises_on_a_sheet_landing_on_a_grading_step():
     f0mode = dict(sigma_bulk=SIGMA_BULK, thickness=THICKNESS,
                   surface_impedance_f0=F0)
 
-    # fires: sheet ON the 0.5/1.5 mm step, both fold modes
     for kw in (lossy, f0mode):
         fired = _msgs(graded, 4.0e-3, **kw)
         assert "adjacent cells differ" in fired, fired
         assert "DUAL spacing" in fired, fired
         assert "500µm below" in fired and "1.5mm above" in fired, fired
 
-    # quiet: matched node on the same graded mesh; uniform profile; uniform
-    # lane (no profile at all); and a PEC sheet, which folds no sigma
     assert "adjacent cells differ" not in _msgs(graded, 8.0e-3, **lossy)
     assert "adjacent cells differ" not in _msgs([0.5e-3] * 16, 4.0e-3, **lossy)
     assert "adjacent cells differ" not in _msgs(None, 4.0e-3, **lossy)
@@ -318,9 +288,6 @@ def test_preflight_advises_on_a_sheet_landing_on_a_grading_step():
         graded, 4.0e-3, sigma_bulk=5.8e7, thickness=35e-6)
 
 
-# ---------------------------------------------------------------------------
-# FDTD: attenuation must not depend on where the sheet sits in the grading
-# ---------------------------------------------------------------------------
 
 def _default_sheet(zs):
     """The committed sheet shape: a zero-thickness Box spanning the guide."""
@@ -332,6 +299,7 @@ def _build_guide_nu(profile_mm, sheet_shape=None):
     reproduces the committed Box guide exactly."""
     sheet_shape = _default_sheet if sheet_shape is None else sheet_shape
     prof = np.asarray(profile_mm, dtype=float) * MM
+    assert all(np.any(np.isclose(np.r_[0., np.cumsum(prof)], z, rtol=0., atol=1e-12)) for z in (0.5e-3, 3.0e-3, 5.5e-3)), 'Guide profiles must retain the plate and DFT nodes'
     assert abs(prof.sum() - DOMAIN[2]) < 1e-12, prof.sum()
     sim = Simulation(
         freq_max=10e9, domain=(DOMAIN[0], DOMAIN[1], 0.0), dx=DX,
@@ -364,7 +332,7 @@ def _build_guide_nu(profile_mm, sheet_shape=None):
 def _nu_grid_of(sim):
     return build_nonuniform_grid(
         sim._freq_max, sim._domain, sim._dx, sim._cpml_layers,
-        sim._dz_profile, dx_profile=sim._dx_profile,
+        sim._dz_profile, dtype="float32", dx_profile=sim._dx_profile,
         dy_profile=sim._dy_profile,
         pec_faces=sim._boundary_spec.pec_faces(),
         pmc_faces=sim._boundary_spec.pmc_faces(),
@@ -379,6 +347,7 @@ def _run_nu_guide(name, sheet_shape=None, tag="box"):
 
     ``sheet_shape``/``tag`` (issue #674) swap in a non-Box sheet of the same
     footprint; ``tag`` keys the cache so the two variants never collide.
+    A plate's realized sigma_sheet is 1/(Rs0*dual), approximately 800-1350 S/m.
     """
     key = (name, tag)
     if key in _cache:
@@ -397,10 +366,6 @@ def _run_nu_guide(name, sheet_shape=None, tag="box"):
     alpha, resid = _fit_alpha(xs, np.abs(acc[0, i0:i1 + 1, j]))
     ts = np.abs(np.asarray(result.time_series)[:, 0])
     tail = ts[int(0.95 * len(ts)):].max()
-    # sheet-node geometry actually realized. #677: the sheets live on the
-    # emitted specs (sigma_sheet = (1/Rs0)/dual per node), not in
-    # materials.sigma — assert the arrays are sheet-free (absorber only,
-    # <= 2 S/m) and read the realized nodes off the specs.
     specs = []
     mats_nu = assemble_materials_nu(sim, grid, sheet_specs=specs)[0]
     assert float(np.asarray(mats_nu.sigma).max()) <= 2.0 + 1e-6
@@ -411,8 +376,6 @@ def _run_nu_guide(name, sheet_shape=None, tag="box"):
     primal = np.asarray(grid.dz)
     dual = np.asarray(e_node_dual_spacings(grid.dz))
     rs0 = float(leontovich_rs(F0, SIGMA_BULK))
-    # a plate's realized sigma_sheet is 1/(Rs0*dual) ~ 800-1350 S/m, so
-    # 100 S/m separates it from the absorber with 8x margin (tooth kept)
     sheet_ks = sorted({int(k) for k in np.argwhere(sigma > 100.0)[:, 2]})
     assert len(sheet_ks) == 2, (sheet_ks, float(sigma.max()))
     out = {
@@ -438,18 +401,14 @@ def test_alpha_invariant_to_sheet_node_grading(case, control,
     got = _run_nu_guide(case)
     ref = _run_nu_guide(control)
 
-    # the fixture must still be discriminating: the hi plate really sits on a
-    # step, and the control's plates really do not
     hi_case = got["sheets"][-1]
     assert abs(hi_case[2] / hi_case[1] - dual_over_primal) < 1e-3, hi_case
     for k, prim, dual, _prod in ref["sheets"]:
         assert abs(dual / prim - 1.0) < 1e-6, (k, prim, dual)
 
-    # per-node algebra (R5: the metric must reflect the realized sheet)
     for _k, _p, _d, prod in got["sheets"] + ref["sheets"]:
         assert abs(prod - 1.0) < 1e-5, prod
 
-    # run witnesses
     for out in (got, ref):
         assert out["resid"] < 0.02, out["resid"]
         assert out["settle_db"] < -40.0, out["settle_db"]

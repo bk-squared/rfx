@@ -46,7 +46,6 @@ def _sim(shape=None, **kwargs):
 def _world_inside(axes):
     x, y, z = np.meshgrid(*axes, indexing="ij")
     x, y, z = x - Q0[0], y - Q0[1], z - Q0[2]
-    # Explicit fixed world-frame plane equations; no product rotation helper.
     world = (R0[0] + (x + 2*y + 2*z)/3,
              R0[1] + (2*x + y - 2*z)/3,
              R0[2] + (-2*x + 2*y - z)/3)
@@ -94,8 +93,6 @@ def test_f0_world_planes_match_every_material_cell_and_e_edge(x64):
         eps, sigma = rasterize(grid, [(_shape(), 3.25, .125)])
         np.testing.assert_array_equal(eps, mats.eps_r)
         np.testing.assert_array_equal(sigma, mats.sigma)
-        # The future closed-box source's four stencil planes on every axis
-        # remain vacuum. This is setup geometry, not a source integration run.
         for axis, n in enumerate(grid.shape):
             lo, hi = PAD + 4, n - PAD - 4 - 1
             assert not np.take(expected, (lo-1, lo, hi, hi+1), axis=axis).any()
@@ -207,8 +204,8 @@ def test_unsupported_special_operator_never_falls_back(operator):
     from rfx.geometry.conformal import compute_conformal_weights, compute_conformal_weights_sdf
     grid = _sim()._build_grid()
     calls = {
-        "smooth": lambda: compute_smoothed_eps(grid, [(_shape(), 3.25)]),
-        "inverse": lambda: compute_inv_eps_tensor_diag(grid, pec_shapes=[_shape()]),
+        "smooth": lambda: compute_smoothed_eps(grid, [(_shape(), 3.25)], dtype='float32'),
+        "inverse": lambda: compute_inv_eps_tensor_diag(grid, pec_shapes=[_shape()], dtype='float32'),
         "conformal": lambda: compute_conformal_weights_sdf(grid, [_shape()]),
         "legacy_conformal": lambda: compute_conformal_weights(grid, [_shape()]),
     }

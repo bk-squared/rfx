@@ -14,8 +14,7 @@ check: the coax chain battery's PTFE-filled SMA line at 4 annulus cells
 holds it to the battery's bounds — max |Gamma| <= 1.02 at both records, and the
 largest per-bin change of |Gamma| between them below 0.0259 (one tenth of the
 2 dB magnitude gate at |Gamma| = 1). The sweep that chose it, the shipped lane
-against the fixed one at 4 and 6 annulus cells on 40 mm and 25 mm boards, is
-``rfx/records/20260924-coax-closed-can/open_check_config.json`` in rfx-archive:
+against the fixed one at 4 and 6 annulus cells on 40 mm and 25 mm boards, is:
 
   annulus  board   cell-steps   shipped lane (z only)          fixed lane (x, y, z)
   cells            (2 records)  max|Gamma| 12/24     shift     max|Gamma| 12/24   shift
@@ -30,8 +29,7 @@ peak. The case is built by the battery's own driver, so the live board is the
 swept one, and the record lengths are asserted before the solve.
 
 Lane: the pull-request lane, unmarked. It pins a number a user receives (the
-open's |Gamma| <= 1.02), and a cheap physics lock runs before merge (PI,
-2026-09-24). It takes 70 s on four pinned VESSL CPU cores (run 369367264656),
+open's |Gamma| <= 1.02), and a cheap physics lock runs before merge. It takes 70 s on four pinned VESSL CPU cores (run 369367264656),
 which ``.test_durations`` carries so the shards stay balanced. With both coax
 lanes forced back to ``cpml_axes="z"`` inside the runner call, every helper
 call kept, the same test fails on the shift, 0.0313 at 9.2 GHz (run
@@ -47,9 +45,9 @@ DRIVER = "scripts/diagnostics/coax_chain_battery_measure.py"
 RUNG = 4
 BOARD_M = (0.008, 0.008, 0.025)
 RECORD_UNITS = (12.0, 24.0)
-RECORD_STEPS = (2200, 4400)           # the swept records' own step counts
+RECORD_STEPS = (2200, 4400)
 MAX_ABS_GAMMA = 1.02
-DOUBLING_SHIFT_MAX = (10 ** (2.0 / 20.0) - 1.0) / 10.0          # 0.025893
+DOUBLING_SHIFT_MAX = (10 ** (2.0 / 20.0) - 1.0) / 10.0
 
 
 def test_the_open_end_is_passive_and_settled():

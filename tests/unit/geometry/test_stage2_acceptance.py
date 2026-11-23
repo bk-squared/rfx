@@ -20,7 +20,7 @@ Locks three physics requirements before Stage 2 can be promoted to claims-bearin
 
 Step 5 gate still pending:
   - Patch antenna gate: the case that carried it, the former cv05 patch case,
-    was removed 2026-09-21; see rfx-known-issues.md.
+    was removed 2026-09-21.
   - Rotated PEC cavity: blocked on rfx lacking a rotation/affine geometry
     primitive (Box, Cylinder, Sphere are all axis-aligned).
 
@@ -40,9 +40,6 @@ from rfx.geometry.csg import Cylinder
 from rfx.boundaries.spec import BoundarySpec, Boundary
 
 
-# ---------------------------------------------------------------------------
-# Shared geometry builder
-# ---------------------------------------------------------------------------
 
 def _make_cylinder_sim(subpixel_smoothing, *, n_steps=None):
     """Cylindrical PEC obstacle (r=8mm) in a rectangular PEC box.
@@ -74,7 +71,7 @@ def _make_cylinder_sim(subpixel_smoothing, *, n_steps=None):
             cpml_layers=8,
         )
     sim.add(Cylinder((cx, cy, cz), r, h, axis="z"), material="pec")
-    # Source and probe in the vacuum gap between cylinder surface and domain wall
+    assert 0 < cx - r - 2 * dx < cx - r and cx + r < cx + r + 2 * dx < Lx, "source and probe must lie in the vacuum gaps between the cylinder and the domain walls"
     sim.add_source((cx - r - 2 * dx, cy, cz), "ez")
     sim.add_probe((cx + r + 2 * dx, cy, cz), "ez")
 
@@ -85,9 +82,6 @@ def _make_cylinder_sim(subpixel_smoothing, *, n_steps=None):
     return result
 
 
-# ---------------------------------------------------------------------------
-# Step 5a: long-run stability
-# ---------------------------------------------------------------------------
 
 
 def test_cylinder_kottke_pec_cpml_stability():
@@ -105,15 +99,11 @@ def test_cylinder_kottke_pec_cpml_stability():
         "kottke_pec + CPML on Cylinder: Ez has non-finite values after 3000 steps. "
         "Regression of Step-B CPML ordering fix (186079b)."
     )
-    # Source should have driven some nonzero field somewhere
     assert float(np.max(np.abs(ez))) > 0, (
         "kottke_pec + CPML on Cylinder: Ez is everywhere zero — source not injecting."
     )
 
 
-# ---------------------------------------------------------------------------
-# Step 5b: curved PEC correction is active (not a staircase no-op)
-# ---------------------------------------------------------------------------
 
 
 def test_cylinder_kottke_pec_differs_from_staircase():
@@ -142,9 +132,6 @@ def test_cylinder_kottke_pec_differs_from_staircase():
     )
 
 
-# ---------------------------------------------------------------------------
-# Step 5c: Stage 2 ≈ Stage 1 energy-level agreement
-# ---------------------------------------------------------------------------
 
 
 def test_cylinder_kottke_pec_energy_consistent_with_stage1():
@@ -160,7 +147,7 @@ def test_cylinder_kottke_pec_energy_consistent_with_stage1():
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        r_stage1 = _make_cylinder_sim(False, n_steps=n)   # Stage 1 default (staircase)
+        r_stage1 = _make_cylinder_sim(False, n_steps=n)
         r_stage2 = _make_cylinder_sim("kottke_pec", n_steps=n)
 
     def _energy(result):

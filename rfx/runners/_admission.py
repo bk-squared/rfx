@@ -91,13 +91,13 @@ SLAB_OWNER_ONLY_H_WRITERS = ("closed_box_tfsf",)
 
 def slab_tfsf_refusal(entry) -> str | None:
     """Return the slab refusal kind for a declaration or realized config."""
-    from rfx.sources.tfsf import is_tfsf_2d, is_tfsf_methodB
+    from rfx.sources.tfsf import is_oblique, is_tfsf_2d, is_tfsf_methodB
     if getattr(entry, "face_record", None) is not None:
         kind = "TFSF face_record replay"
-    elif is_tfsf_methodB(entry) or (abs(getattr(entry, "angle_deg", 0.)) > .01
+    elif is_tfsf_methodB(entry) or (is_oblique(getattr(entry, "angle_deg", 0.))
                                     and getattr(entry, "method", None) == "methodB"):
         kind = "TFSF Method B oblique (is_tfsf_methodB)"
-    elif is_tfsf_2d(entry) or abs(getattr(entry, "angle_deg", 0.)) > .01:
+    elif is_tfsf_2d(entry) or is_oblique(getattr(entry, "angle_deg", 0.)):
         kind = "TFSF 2-D Bloch line (is_tfsf_2d)"
     elif getattr(entry, "closed_box", False) and (
         getattr(entry, "theta_deg", 0.) != 0 or getattr(entry, "phi_deg", 0.) != 0
@@ -1109,16 +1109,31 @@ def refuse_undriven_drives(sim) -> None:
     check(_NoWarnings, sim._dx or C0 / sim._freq_max / 20.0)
 
 
+def refuse_plane_wave_with_port(sim, *, adding=None) -> None:
+    """Admit soft sources beside a plane wave, but refuse cell-loading ports."""
+    if (sim._tfsf is not None or adding == "plane_wave") and (
+        adding == "port" or any(pe.is_port for pe in sim._ports)
+    ):
+        raise RfxRefusal(
+            "A TF/SF plane wave is not supported together with a lumped or wire port "
+            "(add_port): the port loads its cells and records a port response; "
+            "soft sources (add_source) are admitted"
+        )
+
+
 def refuse_mixed_waveguide_sources(sim) -> None:
-    """A waveguide drive cannot share a run with lumped/wire ports or TFSF."""
+    """A waveguide drive cannot share a run with ports, soft sources or TFSF."""
     if sim._waveguide_ports and (sim._ports or sim._tfsf):
         raise RfxUnsupported(
-            "Waveguide ports are not supported together with lumped ports or TFSF"
+            "Waveguide ports are not supported together with a lumped or wire port, or a soft source (add_source) or TFSF"
         )
 
 
 def refuse_distributed_sources(sim, lane):
     """Name sources that cannot be stepped on the requested slab lane."""
+    from rfx.materials.pole_map import refuse_maps
+    refuse_maps([p for m in _placed(sim) for p in (m.lorentz_poles or ())],
+                f"distributed_v2 / distributed_nu ({lane})")
     if getattr(sim, "_waveguide_ports", ()):
         raise RfxUnsupported(f"waveguide ports (add_waveguide_port) are not supported on {lane}; use one device")
     entry = getattr(sim, "_tfsf", None)
@@ -1193,6 +1208,9 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     the call's static arguments that ``CALL_GATES`` read; ``grid`` is the
     grid the lane built, for its ``LANE_GATES``. A drive whose pulse is not
     resolved by dt is refused first (``refuse_undriven_drives``)."""
+    if lane in {"run_subgridded", "material_fit"}:
+        from rfx.materials.pole_map import refuse_maps
+        refuse_maps([p for m in _placed(sim) for p in (m.lorentz_poles or ())], lane)
     if sim._precision == "float64":
         # UPML replaces the whole-grid update with float32 arithmetic.
         if sim._boundary == "upml":
@@ -1200,8 +1218,9 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
                 "precision='float64' with UPML would compute a float32 UPML update. "
                 "Declare precision='float32' or use boundary='cpml' for float64.")
         # Oblique Bloch steps complex64 fields; Method B remains real-valued.
+        from rfx.sources.tfsf import is_oblique
         tfsf = sim._tfsf
-        if tfsf is not None and abs(tfsf.angle_deg) > .01 and tfsf.method == "bloch":
+        if tfsf is not None and is_oblique(tfsf.angle_deg) and tfsf.method == "bloch":
             raise RfxUnsupported(
                 "precision='float64' with oblique Bloch would compute complex64 fields. "
                 "Declare precision='float32' or use normal incidence for float64.")
@@ -1212,6 +1231,11 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
             raise RfxUnsupported("run_subgridded does not implement RelativeStrength Lorentz poles; use a uniform or graded run")
     admit_conformal_floor(sim, lane, (run_args or {}).get("conformal_pec"),
                           smoothing=(run_args or {}).get("subpixel_smoothing", False), grid=grid)
+    from rfx.model.smoothing_admission import admit_full_tensor
+    admit_full_tensor(
+        sim, (run_args or {}).get("subpixel_smoothing", False),
+        distributed=lane in {"run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"},
+    )
     if lane in {"run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"}:
         refuse_distributed_sources(sim, lane)
     if lane == "s_matrix_scan":
@@ -1255,26 +1279,83 @@ def _warn_implicit_s(message):
     warnings.warn(message, ConfigurationWarning, stacklevel=stacklevel)
 
 
+def default_run_forms_s(sim, *, devices=None):
+    """Whether the default lumped/wire request forms S on this declaration."""
+    ports = [p for p in sim._ports if p.is_port]
+    if (not ports or sim._refinement is not None
+            or any(p.is_soft_source for p in sim._ports)):
+        return False
+    if devices is not None and len(devices) > 1:
+        if sim._uses_nonuniform_mesh and any(not p.excite for p in ports):
+            return False
+    elif len(ports) == 1 and ports[0].extent is not None and not ports[0].excite:
+        return False
+    if not sim._uses_nonuniform_mesh or any(p.extent is not None for p in ports):
+        return True
+    return not sim._periodic_axes and sum(p.excite for p in ports) == 1
+
+
+def s_drive_inventory(sim):
+    """Declared record injections as (kind, label); plain sources have their own rule."""
+    drives = [("wire" if p.extent is not None else "lumped",
+               f"port {index} at {p.position}")
+              for index, p in enumerate(sim._ports) if p.impedance > 0 and p.excite]
+    drives.extend(("microstrip", p.name) for p in sim._msl_ports if p.excite)
+    for kind, entries in (("waveguide", sim._waveguide_ports), ("Floquet", sim._floquet_ports)):
+        drives.extend((kind, p.name) for p in entries if _differs(p.amplitude, 0.0))
+    if sim._tfsf is not None:
+        drives.append(("TFSF", "source"))
+    drives.extend(("coaxial", f"port {index} at {p.position}")
+                  for index, p in enumerate(sim._coaxial_ports))
+    return drives
+
+
+def refuse_foreign_s_drives(sim):
+    """A non-impedance drive fires in every column of a lumped/wire scan."""
+    if not any(p.is_port for p in sim._ports):
+        return
+    foreign = [(kind, label) for kind, label in s_drive_inventory(sim)
+               if kind not in {"lumped", "wire"}]
+    if foreign:
+        detail = "; ".join(f"{kind} {label}" for kind, label in foreign)
+        remedy = " Use compute_mixed_s_matrix() for lumped/wire + microstrip S." if any(
+            kind == "microstrip" for kind, _ in foreign) else ""
+        raise RfxUnsupported(
+            f"Lumped/wire S scans require isolated port drives; foreign drives: {detail}."
+            + remedy + " Use run(compute_s_params=False) for fields only.")
+
+
 def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
     """Admit S from one record, or omit implicit S when drives are mixed."""
-    # Waveguide S is always formed, including for an amplitude-zero entry.
-    if len(sim._waveguide_ports) > 1:
+    # Keep the driven-waveguide refusal ahead of the drive inventory check.
+    from rfx.measurement.waveguide_power import driven_waveguide_indices
+
+    driven = driven_waveguide_indices(sim._waveguide_ports)
+    if len(driven) > 1:
+        names = ", ".join(sim._waveguide_ports[i].name for i in driven)
         raise ValueError(
-            "One run() or forward() record supports a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"
+            "One run() or forward() record supports at most one driven waveguide port; "
+            f"driven ports: {names}. Set amplitude 0.0 on all but one, or use "
+            "compute_waveguide_s_matrix() for the full matrix, with every port's amplitude nonzero."
         )
-    excited = [(index, port) for index, port in enumerate(sim._ports)
-               if port.impedance > 0 and port.excite]
-    if len(excited) < 2:
+    if not sim._waveguide_ports and not any(p.is_port for p in sim._ports):
         return True
-    ports = "; ".join(f"port {index} at {port.position}" for index, port in excited)
+    excited = s_drive_inventory(sim)
+    family = {"waveguide"} if sim._waveguide_ports else {"lumped", "wire"}
+    foreign = any(kind not in family for kind, _ in excited)
+    if not foreign and len(excited) < 2:
+        return True
+    ports = "; ".join(f"{kind} {label}" for kind, label in excited)
     message = (
         f"S-parameters from one record require an isolated drive; excited ports: {ports}. "
         "set excite=False on every port but the driven one and run once per driven port, "
         "or use run(compute_s_params=True) on one device, which drives one port per run"
     )
-    if fields_only:
+    if any(kind == "microstrip" for kind, _ in excited):
+        message += "; use compute_mixed_s_matrix() for lumped/wire + microstrip S"
+    if fields_only or foreign:
         message += "; use run(compute_s_params=False) for fields only"
-    if implicit:
+    if implicit and not sim._waveguide_ports:
         _warn_implicit_s(message + "; returning no S-parameters.")
         return False
     raise ValueError(message)
@@ -1287,15 +1368,16 @@ def graded_lumped_default_s(sim):
     source or 0-ohm port and no periodic axis; otherwise the run returns
     fields with S=None (two driven ports also warn, as forward() does; with no
     driven port there is no incident wave to form S from). A port
-    set with a wire port keeps the wire default. Never a refusal: the user did
-    not ask for S.
+    set with a wire port keeps the wire default. Foreign drives must still
+    satisfy the one-record admission rule.
     """
     ports = [p for p in sim._ports if p.is_port]
     if (not ports or any(p.extent is not None for p in ports)
             or any(p.is_soft_source for p in sim._ports) or sim._periodic_axes
             or not any(p.excite for p in ports)):
         return False
-    return require_isolated_s_drive(sim, implicit=True)
+    isolated = require_isolated_s_drive(sim, implicit=True)
+    return isolated and default_run_forms_s(sim)
 
 
 def refuse_plain_sources_s_matrix(sim, *, main_record=False, implicit=False):
@@ -1371,6 +1453,52 @@ def resolve_plain_source_s_request(sim, compute_s_params, *, requested, devices=
     return compute_s_params
 
 
+_S_REQUEST_FAMILIES = (
+    ("_msl_ports", "add_msl_port(...): MSL ports use compute_msl_s_matrix(); "
+     "run(compute_s_params=True) does not include MSL ports in Result.s_params"),
+    ("_waveguide_ports", "add_waveguide_port(...) uses compute_waveguide_s_matrix() "
+     "for the full S-matrix; run() may return per-port result.waveguide_sparams "
+     "but not Result.s_params"),
+    ("_floquet_ports", "add_floquet_port(...): Floquet ports are experimental and "
+     "have no forward S11 path or claims-bearing run(compute_s_params=True) S-matrix path"),
+    ("_tfsf", "add_tfsf_source(...): TFSF is a plane-wave source, not a port"),
+    ("_coaxial_ports", "add_coaxial_port(...) is not wired into run(compute_s_params=True) "
+     "or forward(port_s11_freqs=...); use Simulation.compute_coaxial_line_reflection(...) "
+     "for a one-port reflection or Simulation.compute_coaxial_two_port(...) for a through "
+     "line (for a single add_coaxial_port(), compute_s_matrix(method=...) dispatches to "
+     "either), or add_port(extent=...) for the probe-feed S-parameter path"),
+)
+
+
+def _s_request_family_messages(sim):
+    return [message for attribute, message in _S_REQUEST_FAMILIES
+            if (getattr(sim, attribute) is not None if attribute == "_tfsf"
+                else bool(getattr(sim, attribute)))]
+
+
+def admit_s_request(sim, caller, *, details=()):
+    """Refuse missing impedance ports and incompatible S-result families."""
+    port_entries = sim._port_sparameter_entries()
+    messages = [*_s_request_family_messages(sim), *details]
+    if not port_entries:
+        if any(pe.is_soft_source for pe in sim._ports):
+            messages.append(
+                "add_source(...) / add_polarized_source(...) are source-only observables, "
+                "not impedance ports, and cannot populate Result.s_params")
+        detail = "; ".join(messages) if messages else "register at least one add_port(...) impedance port"
+        raise ValueError(
+            f"{caller} requires add_port(...) lumped or wire ports: run(compute_s_params=True) "
+            "computes Result.s_params only for these ports; forward(port_s11_freqs=...) "
+            f"computes S11 only for these ports on the uniform single-device path; {detail}.")
+    if messages:
+        raise NotImplementedError(
+            f"{caller} has a single result schema for add_port(...) lumped/wire ports and "
+            "cannot be combined with specialized or non-port excitation families. "
+            "Mixed or specialized port families must use their documented calculators: "
+            + "; ".join(messages) + ".")
+    return port_entries
+
+
 def admit_forward_s_matrix(sim):
     """Check explicit forward S requests before dispatch or stepping."""
     from rfx.preflight._msl_probe_rules import admit_msl_auto_probes
@@ -1379,21 +1507,28 @@ def admit_forward_s_matrix(sim):
     from rfx.measurement import admit_waveguide_entries
     admit_waveguide_entries(sim)
     refuse_plain_sources_s_matrix(sim, main_record=True)
-    require_isolated_s_drive(sim)
+    # forward(port_s11_freqs=) forms S11 only for add_port ports; the following family check refuses every other declared family.
+    if not _s_request_family_messages(sim):
+        require_isolated_s_drive(sim)
 
 
 def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,
-                       distributed=False):
+                       distributed=False, subpixel_smoothing=False):
     """Check the requested scan extraction before run() starts its field solve."""
     uses_scan = (False if distributed and sim._uses_nonuniform_mesh else
                  any(p.is_port for p in sim._ports) if distributed else _s_matrix_ports(sim))
     if compute_s_params is not False:
         # Without the scan, S is read from the main run's own record.
         refuse_plain_sources_s_matrix(sim, main_record=not uses_scan)
+        if uses_scan:
+            refuse_foreign_s_drives(sim)
+        elif any(p.is_port for p in sim._ports):
+            require_isolated_s_drive(sim)
     if compute_s_params is False or not uses_scan:
         return
     try:
-        admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec})
+        admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec,
+                                               "subpixel_smoothing": subpixel_smoothing})
     except NotImplementedError as error:
         rows = refused(sim, "s_matrix_scan", {"conformal_pec": conformal_pec})
         inputs = ", ".join(ROW_WORDS[row] for row in rows) or str(error)
@@ -1439,14 +1574,14 @@ def _no_shape_tangent(value):
 
 @_no_shape_tangent.defjvp
 def _no_shape_tangent_jvp(primals, tangents):
-    raise NotImplementedError(
+    raise RfxUnsupported(
         "A gradient with respect to a declared shape dimension (a size or position "
         "of a shape added with Simulation.add) is not supported: run() and "
         "forward() draw shapes onto grid cells, so the result is a step function "
         "of that dimension and its gradient would be zero almost everywhere. "
         "Differentiate a material value through eps_override, or use a design "
         "region (design_box / design_eps_override) for shape optimisation. "
-        "jax.jit and jax.vmap over a Sphere or Cylinder dimension are supported "
+        "jax.jit and jax.vmap over a dielectric Sphere or Cylinder dimension are supported "
         "(with subpixel_smoothing only in a closed PEC domain).")
 
 

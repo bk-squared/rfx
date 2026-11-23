@@ -7,7 +7,7 @@ wave along the realized rational direction m (``Simulation.tfsf_incidence()``):
 - E perpendicular to sin(k dx / 2), so its part along k-hat is the small lattice tilt between the two vectors;
 - the same amplitude as the normal-incidence box of the same declaration.
 Its continuum limit is the analytic plane wave: k / k0 - 1 is second order in dx. That limit was measured at
-1.0 and 0.5 mm in rfx-archive ``rfx/records/20261029-oblique-closedbox-uniform/``, which also gives the bars below.
+1.0 and 0.5 mm with the bars below.
 The scattered-field leak of the same engine is pinned by
 ``tests/unit/sources/test_tfsf_discrete_plane_wave.py::test_v1_v2_l1``.
 """
@@ -21,7 +21,6 @@ from rfx import Simulation
 C0 = 299792458.0
 DX, N_STEPS = 1e-3, 600
 FREQS = np.linspace(8e9, 12e9, 9)
-# Total-field sample planes (mm), unequal per axis, inside the 4-20 mm box with the half-cell Yee offsets.
 PLANES_MM = ((5, 9, 14, 19), (6, 10, 13, 18), (5, 8, 12, 17))
 E_OFFSETS = np.array(((.5, 0, 0), (0, .5, 0), (0, 0, .5)))
 
@@ -89,7 +88,6 @@ def test_oblique_closed_box_is_the_lattice_plane_wave(theta, phi, pol):
         k_fit = row["k_fit"]
         angle = np.degrees(np.arctan2(np.linalg.norm(np.cross(k_fit, k_hat)), k_fit @ k_hat))
         assert angle <= 1e-3, angle
-        # The analytic wave's wavenumber is missed by the lattice dispersion only, less than along the axis.
         error = np.linalg.norm(k_fit) / row["k0"] - 1
         assert abs(error) < abs(np.linalg.norm(ref["k_fit"]) / ref["k0"] - 1), error
         co = abs(e_hat @ row["amp"])

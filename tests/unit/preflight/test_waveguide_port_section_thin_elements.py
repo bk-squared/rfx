@@ -87,7 +87,7 @@ def test_beyond_reference_admitted(element, label):
 def test_lumped_port_refused_regardless_of_section(graded, entry, inside):
     sim = _guide("lumped_port", inside=inside, graded=graded)
     with pytest.raises(ValueError, match=(
-            "^Waveguide ports are not supported together with lumped ports or TFSF$")):
+            r"^Waveguide ports are not supported together with a lumped or wire port, or a soft source \(add_source\) or TFSF$")):
         _execute(sim, entry)
 
 
@@ -196,7 +196,7 @@ def test_interior_conductor_edges_admitted_on_the_reference_path(traced):
     """An edge closed by PEC on every neighbouring cell is the conductor, not a
     sheet (m5, m6). The reference-sim path carries realized PEC edges and no
     cell mask (rfx/sparams/waveguide.py port_reference_sims); the section check
-    reads the same edges plain or traced (rfx-core-desk L:0bbcf4) and admits a
+    reads the same edges plain or traced and admits a
     port section inside the block. A block face on the reference plane stays
     refused (B4 scene b). Direct entries refuse this scene earlier (#1994)."""
     import jax

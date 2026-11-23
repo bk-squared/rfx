@@ -59,8 +59,6 @@ import numpy as np
 _COMPONENTS = ("ex", "ey", "ez", "hx", "hy", "hz")
 _AXIS_NAMES = ("x", "y", "z")
 
-#: Half-cell offset, in cells, of each component's sample from the E node with
-#: the same indices. See the module docstring for where each row comes from.
 _YEE_STAGGER = {
     "ex": (0.5, 0.0, 0.0),
     "ey": (0.0, 0.5, 0.0),
@@ -220,9 +218,6 @@ def field_sample_coords(grid, component: str) -> dict[str, np.ndarray]:
     out = {}
     for ax, name in enumerate(_AXIS_NAMES):
         node = np.array((nodes.x, nodes.y, nodes.z)[ax], dtype=np.float64)
-        # Sample = node + half of the primal cell it opens, derived FROM the
-        # node (the direction ``geometry.smoothing._uniform_sample_coords``
-        # uses). ``grid.cells`` is ``dx`` everywhere on a uniform grid.
         out[name] = _readonly(node + grid.cells(ax) * 0.5
                               if _YEE_STAGGER[comp][ax] else node)
     return out
@@ -336,7 +331,7 @@ def plan_snapshot_pieces(n: int, lo: int, interval: int) -> list:
     head = min((-lo) % m, n)
     n_blocks = (n - head) // m
     tail = n - head - n_blocks * m
-    runs = []                       # [kind, length], in step order
+    runs = []
     if head:
         runs.append(["plain", head])
     if n_blocks:
@@ -349,8 +344,6 @@ def plan_snapshot_pieces(n: int, lo: int, interval: int) -> list:
                   if kind == "plain" and length == 1), None)
         if i is None:
             break
-        # Neighbour: a plain piece first, then the shorter rec piece, then
-        # blocks.
         cands = [j for j in (i - 1, i + 1) if 0 <= j < len(runs)]
         rank = {"plain": 0, "rec": 1, "blocks": 2}
         j = min(cands, key=lambda k: (rank[runs[k][0]], runs[k][1]))
@@ -362,7 +355,7 @@ def plan_snapshot_pieces(n: int, lo: int, interval: int) -> list:
             rest = [["plain", length - 1]] if length > 2 else []
             merged = ["rec", 2 if length != 2 else 3]
             new = [merged] + rest if right else rest + [merged]
-        else:                       # blocks: borrow one step of one block
+        else:
             others = [["blocks", length - m]] if length > m else []
             part = [["plain", m - 1]] if m > 1 else []
             if right:

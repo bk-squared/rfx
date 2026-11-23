@@ -24,7 +24,6 @@ def test_te10_cutoff_frequency():
     a = 22.86e-3
     b = 10.16e-3
     f_c = cutoff_frequency(a, b, 1, 0)
-    # Analytical: f_c = c / (2*a) = 6.557 GHz
     f_c_exact = C0 / (2 * a)
     err = abs(f_c - f_c_exact) / f_c_exact
     print(f"\nTE10 cutoff: {f_c/1e9:.4f} GHz (exact: {f_c_exact/1e9:.4f} GHz)")
@@ -47,19 +46,15 @@ def test_te10_mode_profile_shape():
 
     ey, ez, hy, hz = _te_mode_profiles(a, b, 1, 0, y, z)
 
-    # TE10: Ey should be zero everywhere (n=0 → no Ey component)
     assert np.allclose(ey, 0, atol=1e-10), f"TE10 Ey not zero: max={np.max(np.abs(ey))}"
 
-    # Ez should have sin(pi*y/a) shape along y, constant along z
-    ez_mid = ez[:, nz // 2]  # slice at middle z
+    ez_mid = ez[:, nz // 2]
     expected_shape = np.sin(np.pi * y / a)
-    # Normalize both for shape comparison
     ez_norm = ez_mid / np.max(np.abs(ez_mid))
     exp_norm = expected_shape / np.max(np.abs(expected_shape))
     assert np.allclose(np.abs(ez_norm), np.abs(exp_norm), atol=0.05), \
         "TE10 Ez profile shape mismatch"
 
-    # H profiles: hy = -ez, hz = ey = 0
     assert np.allclose(hz, 0, atol=1e-10), "TE10 Hz not zero"
     assert np.allclose(hy, -ez, atol=1e-10), "TE10 Hy != -Ez"
 
@@ -72,6 +67,7 @@ def test_te11_mode_profile_derivative_weights():
     The derivative weights (n*pi/b) and (m*pi/a) give different peak
     amplitudes for Ey and Ez. For a=40mm, b=20mm:
         |Ey_max|/|Ez_max| = (pi/b) / (pi/a) = a/b = 2.0
+    Cell centers don't land exactly on walls, so boundary values need only be much smaller than peak.
     """
     from rfx.model.waveguide_modes import _te_mode_profiles
 
@@ -83,17 +79,13 @@ def test_te11_mode_profile_derivative_weights():
 
     ey, ez, hy, hz = _te_mode_profiles(a, b, 1, 1, y, z)
 
-    # Both components should be nonzero for TE11
     assert np.max(np.abs(ey)) > 0.01, "TE11 Ey should be nonzero"
     assert np.max(np.abs(ez)) > 0.01, "TE11 Ez should be nonzero"
 
-    # Before normalization, |Ey_max|/|Ez_max| = (n*pi/b)/(m*pi/a) = a/b
-    # After normalization (integral = 1), the ratio is preserved
-    # Check the ratio of peak amplitudes
     ey_peak = np.max(np.abs(ey))
     ez_peak = np.max(np.abs(ez))
     ratio = ey_peak / ez_peak
-    expected_ratio = a / b  # = 2.0
+    expected_ratio = a / b
 
     print(f"\nTE11 mode: |Ey|_max={ey_peak:.4f}, |Ez|_max={ez_peak:.4f}")
     print(f"  Ratio |Ey/Ez| = {ratio:.3f} (expected {expected_ratio:.1f})")
@@ -101,9 +93,6 @@ def test_te11_mode_profile_derivative_weights():
     assert abs(ratio - expected_ratio) / expected_ratio < 0.1, \
         f"TE11 Ey/Ez ratio {ratio:.3f} != expected {expected_ratio:.1f}"
 
-    # PEC BCs: Ey ∝ sin(nπz/b) → 0 at walls, Ez ∝ sin(mπy/a) → 0 at walls.
-    # Cell centers don't land exactly on walls, so check that boundary values
-    # are much smaller than peak (first/last cells are near the wall).
     ey_boundary_ratio = max(np.max(np.abs(ey[:, 0])), np.max(np.abs(ey[:, -1]))) / ey_peak
     ez_boundary_ratio = max(np.max(np.abs(ez[0, :])), np.max(np.abs(ez[-1, :]))) / ez_peak
     print(f"  Boundary ratios: Ey={ey_boundary_ratio:.3f}, Ez={ez_boundary_ratio:.3f}")
@@ -134,7 +123,9 @@ def test_tm_mode_invalid():
     ],
 )
 def test_waveguide_sparams_recover_traveling_waves(mode_type, mode, freqs):
-    """S11/S21 should reconstruct known forward/backward modal waves."""
+    """S11/S21 should reconstruct known forward/backward modal waves.
+    The tolerance absorbs the synthetic construction mismatch (an earlier ~0.04% TE offset and ~1.5% TM-mode1 offset at higher freq) between analytic-Z V/I and the Yee-discrete-Z extractor.
+    """
     port = WaveguidePort(
         x_index=5,
         y_slice=(0, 20),
@@ -171,9 +162,6 @@ def test_waveguide_sparams_recover_traveling_waves(mode_type, mode, freqs):
     v_probe = a_probe + b_probe
     i_probe = (a_probe - b_probe) / z_mode
 
-    # Phase 2 cleanup (2026-04-25): the in-scan DFT accumulators were
-    # removed from WaveguidePortConfig. Pass V/I spectra as explicit
-    # kwargs into the wave-decomposition extractor.
     s11_full, s21_full = extract_waveguide_sparams(
         cfg,
         v_ref_dft=jnp.array(v_ref),
@@ -183,16 +171,14 @@ def test_waveguide_sparams_recover_traveling_waves(mode_type, mode, freqs):
     )
     s11 = np.array(s11_full)
     s21 = np.array(s21_full)
-    # Synthetic V/I built with analytic Z; extractor uses Yee-discrete Z.
-    # TE: ~0.04% offset, TM-mode1 at higher freq: ~1.5% — tolerance widened
-    # to absorb the synthetic construction mismatch (the discrete-Z extractor
-    # is the physically correct one for FDTD-recorded V/I).
     np.testing.assert_allclose(s11, b_ref / a_ref, rtol=2e-2, atol=1e-6)
     np.testing.assert_allclose(s21, s21_expected, rtol=2e-2, atol=1e-6)
 
 
 def test_waveguide_sparams_support_reference_plane_shifts():
-    """De-embedding shifts should recover the desired source/probe planes."""
+    """De-embedding shifts should recover the desired source/probe planes.
+    The tolerance absorbs the synthetic V/I + discrete-Z extractor mismatch (an earlier ~0.4% relative difference).
+    """
     freqs = jnp.array([6.0e9, 8.0e9])
     port = WaveguidePort(
         x_index=5,
@@ -210,8 +196,10 @@ def test_waveguide_sparams_support_reference_plane_shifts():
     beta = np.sqrt((omega / C0) ** 2 - kc ** 2)
     z_mode = omega * MU_0 / beta
 
-    ref_plane_shift = -0.006   # desired plane is 6 mm upstream of stored ref plane
-    probe_plane_shift = -0.010 # desired plane is 10 mm upstream of stored probe plane
+    REFERENCE_PLANE_6MM_UPSTREAM = -0.006
+    ref_plane_shift = REFERENCE_PLANE_6MM_UPSTREAM
+    PROBE_PLANE_10MM_UPSTREAM = -0.010
+    probe_plane_shift = PROBE_PLANE_10MM_UPSTREAM
 
     a_ref_target = np.array([1.0 + 0.2j, 0.7 - 0.1j], dtype=np.complex64)
     b_ref_target = np.array([0.10 - 0.04j, -0.05 + 0.03j], dtype=np.complex64)
@@ -234,9 +222,6 @@ def test_waveguide_sparams_support_reference_plane_shifts():
     assert positions["reference"] == pytest.approx(0.016)
     assert positions["probe"] == pytest.approx(0.030)
 
-    # Phase 2 cleanup (2026-04-25): inject mock V/I spectra via the
-    # explicit-kwarg path on extract_waveguide_sparams (the in-scan
-    # DFT accumulator fields were removed from WaveguidePortConfig).
     s11, s21 = extract_waveguide_sparams(
         cfg,
         ref_shift=ref_plane_shift,
@@ -246,7 +231,6 @@ def test_waveguide_sparams_support_reference_plane_shifts():
         v_probe_dft=jnp.array(v_probe),
         i_probe_dft=jnp.array(i_probe),
     )
-    # See note above: synthetic V/I + discrete-Z extractor → ~0.4% rel diff.
     np.testing.assert_allclose(np.array(s11), b_ref_target / a_ref_target, rtol=1e-2, atol=1e-6)
     np.testing.assert_allclose(np.array(s21), s21_target, rtol=1e-2, atol=1e-6)
 
@@ -261,9 +245,7 @@ class _WgGrid:
         self.dx = dx
         self.cpml_layers = cpml_layers
         self.dt = 0.99 * dx / (C0 * np.sqrt(3))
-        # x: physical domain + CPML padding on both sides
         self.nx = int(np.ceil(length / dx)) + 1 + 2 * cpml_layers
-        # y, z: exact waveguide dimensions (PEC at boundaries)
         self.ny = int(np.ceil(a_wg / dx)) + 1
         self.nz = int(np.ceil(b_wg / dx)) + 1
         self.shape = (self.nx, self.ny, self.nz)
@@ -286,7 +268,6 @@ def _run_waveguide_sim(a_wg, b_wg, length, f0, dx, nc, freqs,
     grid = _WgGrid(length, a_wg, b_wg, dx, nc)
     dt = grid.dt
 
-    # Actual waveguide dimensions from grid
     a_actual = (grid.ny - 1) * dx
     b_actual = (grid.nz - 1) * dx
     f_c = C0 / (2 * a_actual)
@@ -295,7 +276,7 @@ def _run_waveguide_sim(a_wg, b_wg, length, f0, dx, nc, freqs,
 
     port = WaveguidePort(
         x_index=port_x,
-        y_slice=(0, grid.ny), z_slice=(0, grid.nz),
+        y_slice=(0, grid.ny - 1), z_slice=(0, grid.nz - 1),
         a=a_actual, b=b_actual,
         mode=(1, 0), mode_type="TE",
     )
@@ -317,7 +298,7 @@ def _run_waveguide_sim(a_wg, b_wg, length, f0, dx, nc, freqs,
         state, cs = apply_cpml_h(state, cp, cs, grid, axes="x")
         state = update_e(state, materials, dt, dx, high_wall=unpadded_high_walls(grid))
         state, cs = apply_cpml_e(state, cp, cs, grid, axes="x")
-        state = apply_pec(state, axes="yz")  # PEC on y/z only (waveguide walls)
+        state = apply_pec(state, axes="yz")
 
         state = inject_waveguide_port(state, port_cfg, t, dt, dx)
         port_cfg = update_waveguide_port_probe(port_cfg, state, dt, dx)
@@ -351,7 +332,6 @@ def test_waveguide_port_propagation():
     s21 = extract_waveguide_s21(port_cfg)
     s21_mag = np.abs(np.array(s21))
 
-    # Above cutoff band
     f_arr = np.array(freqs)
     above_cutoff = f_arr > f_c * 1.3
     s21_above = s21_mag[above_cutoff]
@@ -367,8 +347,6 @@ def test_waveguide_port_propagation():
 
     s11 = extract_waveguide_s11(port_cfg)
     s11_mag = np.abs(np.array(s11))
-    # TE10 above cutoff: with tapered DFT accumulation, the extracted S21 band
-    # should now be much smoother and stay near unity on average.
     assert mean_s21_db > -6, \
         f"Mean |S21| = {mean_s21_db:.1f} dB, expected > -6 dB"
     assert np.max(s21_above) < 1.5, \
@@ -380,11 +358,15 @@ def test_waveguide_port_propagation():
 
 
 def test_te10_below_cutoff_evanescent():
-    """Below cutoff, TE10 mode should be evanescent (|S21| -> 0).
+    """Below cutoff, TE10 modal voltage decays and power-wave S is undefined.
 
     At f < f_cutoff, the mode cannot propagate. Modal voltage at the
     downstream probe should be much smaller than at the reference probe.
+    With 12 cells between ref and probe (24mm) and f well below cutoff, expect significant attenuation.
     """
+    from rfx.measurement.waveguide_power import WaveguideCutoffWarning
+    from rfx.measurement.waveguide_s import _rect_dft
+
     a_wg = 0.04
     b_wg = 0.02
     length = 0.10
@@ -399,20 +381,36 @@ def test_te10_below_cutoff_evanescent():
         probe_offset=15, ref_offset=3,
     )
 
-    s21 = extract_waveguide_s21(port_cfg)
-    s21_mag = np.abs(np.array(s21))
+    v_ref = np.asarray(_rect_dft(
+        port_cfg.v_ref_t, freqs, dt, port_cfg.n_steps_recorded,
+    ))
+    v_probe = np.asarray(_rect_dft(
+        port_cfg.v_probe_t, freqs, dt, port_cfg.n_steps_recorded,
+    ))
+    voltage_ratio = np.abs(v_probe / v_ref)
 
     f_arr = np.array(freqs)
     below_cutoff = f_arr < f_c * 0.7
-    s21_below = s21_mag[below_cutoff]
-    s21_below_db = 20 * np.log10(np.maximum(np.mean(s21_below), 1e-10))
+    voltage_below = voltage_ratio[below_cutoff]
+    voltage_below_db = 20 * np.log10(np.maximum(np.mean(voltage_below), 1e-10))
+    planes = waveguide_plane_positions(port_cfg)
+    d = abs(planes["probe"] - planes["reference"])
+    alpha = (2 * np.pi / C0) * np.sqrt(f_c**2 - f_arr**2)
+    closed_form = np.exp(-alpha * d)
+    closed_form_db = 20 * np.log10(np.mean(closed_form[below_cutoff]))
 
     print("\nWaveguide port TE10 below cutoff:")
     print(f"  f_cutoff = {f_c/1e9:.2f} GHz, f0 = {f0/1e9:.1f} GHz")
-    print(f"  |S21| below cutoff (mean): {np.mean(s21_below):.4f} ({s21_below_db:.1f} dB)")
+    print(f"  Plane spacing: {d:.6f} m")
+    print(f"  |V_probe/V_ref| below 0.7 f_c (mean): {np.mean(voltage_below):.6f} ({voltage_below_db:.6f} dB)")
+    print(f"  Closed-form decay below 0.7 f_c (mean): {np.mean(closed_form[below_cutoff]):.6f} ({closed_form_db:.6f} dB)")
+    for f, measured, expected in zip(f_arr, voltage_ratio, closed_form):
+        print(f"  {f/1e9:.6f} GHz: measured={measured:.6f}, exp(-alpha*d)={expected:.6f}")
 
-    # Below cutoff: evanescent mode decays exponentially with distance.
-    # With 12 cells between ref and probe (24mm) and f well below cutoff,
-    # expect significant attenuation.
-    assert s21_below_db < -3, \
-        f"Mean |S21| below cutoff = {s21_below_db:.1f} dB, expected < -3 dB"
+    assert voltage_below_db < -3, \
+        f"Mean |V_probe/V_ref| below cutoff = {voltage_below_db:.1f} dB, expected < -3 dB"
+
+    with pytest.warns(WaveguideCutoffWarning, match="below cutoff") as caught:
+        s21 = extract_waveguide_s21(port_cfg)
+    assert len(caught) == 1
+    assert np.all(np.isnan(np.asarray(s21)[f_arr <= f_c]))

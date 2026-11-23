@@ -5,7 +5,7 @@ coefficient. Its Debye beta was unpacked rows-first, so the pole sum ran along x
 0.478 of its value (probe traces 35-52 % of peak, the eps gradient 84-100 %). The override here is the drawn
 permittivity, so one device with and without it is the same model. Bars: the accumulated rounding law on every
 E cell (1.2e-7 x the running sum of max|E|), the probe spectra within 1e-6 of their largest bin, the gradient
-within 1e-4 (rfx-archive records/20261017-item5-dispersive).
+within 1e-4.
 """
 import jax
 import jax.numpy as jnp
@@ -56,6 +56,7 @@ def _drawn_eps(sim):
     return jnp.asarray(sim._assemble_materials_nu(sim._build_nonuniform_grid())[0].eps_r)
 
 
+@pytest.mark.slow
 def test_mixed_pole_override_fields_match_one_device():
     sim = _scene(cells=True)
     eps, dt = _drawn_eps(sim), float(sim._build_nonuniform_grid().dt)

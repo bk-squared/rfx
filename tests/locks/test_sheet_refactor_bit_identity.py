@@ -121,7 +121,7 @@ def test_realized_edges_bit_identity_with_inline_zero_pad_rule():
     mask = jnp.asarray(rng.random(_SHAPE) < 0.3)
 
     ref = _inline_volume_rule(mask, _shift_bwd)
-    got = realized_pec_edge_masks(mask)        # default: non-periodic
+    got = realized_pec_edge_masks(mask)
     for ax in range(3):
         assert np.array_equal(np.asarray(got[ax]), np.asarray(ref[ax])), ax
 
@@ -142,8 +142,6 @@ def test_realized_edges_interior_is_convention_independent():
         sl = tuple(sl)
         assert np.array_equal(np.asarray(pad[c][sl]),
                               np.asarray(wrap[c][sl])), c
-        # ... and it is NOT a no-op overall on this fixture, so the gate has
-        # teeth: the transverse index-0 slices do differ.
         assert not np.array_equal(np.asarray(pad[c]), np.asarray(wrap[c])), c
 
 
@@ -265,12 +263,12 @@ def test_update_kernels_equal_the_shared_curl_and_coefficient_helpers():
 
     inv = [jnp.asarray(rng.random(n).astype(np.float32) + 0.5) for n in _SHAPE]
     cell_sizes = tuple(1 / d for d in inv)
+    GRADED_LANE_PERIODIC = (False, False, False)
 
     @jax.jit
     def ref_nu(st, mats, inv_dx, inv_dy, inv_dz):
-        # The graded-mesh lane installs no periodic BC (#1210 docstring).
         (eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z) = edge_averaged_materials(
-            mats.eps_r, mats.sigma, (False, False, False), cell_sizes=cell_sizes, high_wall=(False, False, False))
+            mats.eps_r, mats.sigma, GRADED_LANE_PERIODIC, cell_sizes=cell_sizes, high_wall=(False, False, False))
         out = []
         for e_r, s_v, fld, curl in zip(
                 (eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z),
@@ -290,8 +288,10 @@ def test_update_kernels_equal_the_shared_curl_and_coefficient_helpers():
 
 
 def _assert_e_fields(got, expected):
-    # This assembly lock retains its existing 1e-5 envelope; E components
-    # share the E field peak over both graphs. H is never included.
+    """The bar is this assembly lock's 1e-5 envelope: rtol 1e-5 per element and atol 1e-5
+    of the E-field peak shared by the three E components of both graphs; H never enters
+    that peak.
+    """
     peak = array_peak(*got, *expected)
     for g, r in zip(got, expected):
         np.testing.assert_allclose(np.asarray(g), np.asarray(r), rtol=1e-5,
@@ -300,7 +300,6 @@ def _assert_e_fields(got, expected):
 
 @pytest.mark.parametrize('component', [0, 1, 2])
 def test_assembly_field_peak_mutations(component):
-    # Both kernel sites above use this helper, independently of solver setup.
     peak = np.float32(2.**20)
     ulp = np.spacing(peak)
     tiny = np.array([1e-8], dtype=np.float32)
@@ -313,7 +312,6 @@ def test_assembly_field_peak_mutations(component):
         _assert_e_fields(candidate, expected)
         with pytest.raises(AssertionError):
             np.testing.assert_allclose(noisy, tiny, rtol=1e-5, atol=1e-5 * abs(tiny).max())
-    # 10 ULP is below this lock's existing 1e-5 bar. Test its actual boundary.
     candidate[component] = tiny + 1.01e-5 * peak
     with pytest.raises(AssertionError):
         _assert_e_fields(candidate, expected)

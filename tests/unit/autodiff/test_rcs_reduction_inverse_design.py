@@ -34,7 +34,7 @@ The box's far x face sits 2 cells outside the TFSF plane on purpose: the face-ce
 from the plane one cell nearer, and at 1 cell that plane carries total-field H (band backscatter 1.4e-1).
 
 Builds on tests/unit/autodiff/test_rcs_jax_differentiable.py (equivalence to Mie-validated numpy + FD gradient).
-Harness: docs/research_notes/experiments/i404_oblique_20260720/rcs_reduction_diag.py
+The optimum-location bound is one-sided because the first normalized step is 6.3*lr.
 """
 import numpy as np
 import jax
@@ -53,13 +53,13 @@ F0, BW = 10e9, 0.5
 CPML, N_STEPS = 8, 220
 DOMAIN = (0.09, 0.09, 0.09)
 DX = 0.003
-FREQS = np.array([9.0, 10.0, 11.0]) * 1e9  # broadband objective
+FREQS = np.array([9.0, 10.0, 11.0]) * 1e9
 TH_B, PH_B = np.array([np.pi / 2]), np.array([np.pi])
 
 
 def _setup():
     grid = Grid(freq_max=15e9, domain=DOMAIN, dx=DX, cpml_layers=CPML)
-    # the incident the grid carries, as compute_rcs normalizes (#820)
+
     e_inc = measure_normal_incident_spectrum(*_tfsf(grid), N_STEPS, FREQS, grid.dt)
     sx, sy, sz = grid.shape
     blk = np.zeros(grid.shape, np.float32)
@@ -70,13 +70,13 @@ def _setup():
 def _tfsf(grid):
     return init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=CPML, tfsf_margin=3,
                      f0=F0, bandwidth=BW, amplitude=1.0, polarization="ez",
-                     direction="+x", angle_deg=0.0)
+                     direction="+x", angle_deg=0.0, dtype='float32')
 
 
 def _band_rcs(grid, e_inc, blk, sigma_scale):
     mb = init_materials(grid.shape)
-    mats = mb._replace(eps_r=mb.eps_r + 3.0 * blk,               # εr=4 core
-                       sigma=mb.sigma + sigma_scale * blk)        # lossy coating DoF
+    mats = mb._replace(eps_r=mb.eps_r + 3.0 * blk,
+                       sigma=mb.sigma + sigma_scale * blk)
     cfg, st = _tfsf(grid)
     fl = {k: CPML for k in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")}
     box = NTFFBox.from_grid(
@@ -104,7 +104,8 @@ def test_rcs_reduction_gradient_brackets_ram_optimum():
 
 @pytest.mark.slow
 def test_rcs_reduction_inverse_design_reduces_backscatter():
-    """Gradient descent on σ_coat reduces the broadband backscatter RCS by a large margin."""
+    """Gradient descent on σ_coat reduces the broadband backscatter RCS by a large margin.
+    An earlier run measured best/r0 = 0.591 at sigma = 0.32 (scan minimum 0.591 at 0.3)."""
     grid, e_inc, blk = _setup()
     vg = jax.value_and_grad(lambda s: _band_rcs(grid, e_inc, blk, s))
 
@@ -113,9 +114,10 @@ def test_rcs_reduction_inverse_design_reduces_backscatter():
     assert g0 < 0.0, "at σ_coat=0 more loss must reduce RCS (descent increases σ)"
     best, s_best = r0, 0.0
     m = v = 0.0
-    # The normalized first step is 6.3*lr whatever the gradient; 0.05 keeps it (0.32) on the near
-    # side of the optimum instead of jumping over it (module docstring).
-    lr = 0.05
+
+
+    NEAR_SIDE_LEARNING_RATE = 0.05
+    lr = NEAR_SIDE_LEARNING_RATE
     for _ in range(20):
         val, g = vg(s)
         if float(val) < best:
@@ -127,9 +129,8 @@ def test_rcs_reduction_inverse_design_reduces_backscatter():
     last = float(vg(s)[0])
     if last < best:
         best, s_best = last, s
-    # Measured: best/r0 = 0.591 at sigma = 0.32 (scan minimum 0.591 at 0.3).
+
     assert best < 0.65 * r0, f"RCS reduction too small: {r0:.4e} -> {best:.4e} ({(1-best/r0)*100:.1f}%)"
-    # The optimum's LOCATION is what discriminates: the 0.65 bar above also passes on the pre-#1159
-    # far-field rule (0.484 there), whose minimum sat near sigma = 1.0 (best iterate 0.87). One-sided on
-    # purpose: no iterate can land in (0, 6.3*lr), so a lower bound could never fire.
+
+
     assert s_best <= 0.6, f"RAM optimum moved: best iterate at sigma_coat = {s_best:.2f} S/m"

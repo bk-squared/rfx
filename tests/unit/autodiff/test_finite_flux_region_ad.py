@@ -29,6 +29,12 @@ def test_clamped_flux_in_raw_port_hook_preserves_material_ad_and_primal():
                               sigma=mats.sigma.astype(jnp.float64),
                               mu_r=mats.mu_r.astype(jnp.float64))
 
+        assert (np.all(np.asarray(mats.eps_r) == 1)
+                and np.all(np.asarray(mats.sigma) == 0)
+                and np.all(np.asarray(mats.mu_r) == 1)), (
+            "Vacuum material inputs must be exactly eps_r=1, sigma=0, mu_r=1 for run/AD parity."
+        )
+
         def observable(alpha):
             changed = mats._replace(eps_r=mats.eps_r * alpha)
             result = sim._forward_from_materials(
@@ -50,6 +56,4 @@ def test_clamped_flux_in_raw_port_hook_preserves_material_ad_and_primal():
         assert np.isfinite([value, gradient, fd, imperative]).all()
         assert abs(fd) > 1e-5 * abs(float(value)) > 0
         np.testing.assert_allclose(gradient, fd, rtol=3e-4, atol=0)
-        # The imperative material assembly stores float32 constants even on
-        # a float64-field sim. Here they are exactly 1/0/1 on both paths.
         np.testing.assert_allclose(value, imperative, rtol=1e-6, atol=0)

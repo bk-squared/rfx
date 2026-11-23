@@ -1,4 +1,6 @@
-"""PEC and f0 rows report and admit one solved free-edge model."""
+"""PEC and f0 rows report and admit one solved free-edge model.
+At 5 GHz, the 1e4 S/m sheet has 1.405 ohm/sq, below 1e-2 eta0.
+"""
 import warnings
 
 import pytest
@@ -6,7 +8,7 @@ import pytest
 from rfx import Box, Simulation
 
 
-@pytest.mark.parametrize("sigma", [5.8e7, 1e4])  # 1.405 ohm/sq at 5 GHz, below 1e-2 eta0
+@pytest.mark.parametrize("sigma", [5.8e7, 1e4])
 @pytest.mark.parametrize("aligned", [False, True])
 def test_f0_and_pec_share_solved_spans_and_one_verdict(sigma, aligned):
     dx = .001
@@ -39,7 +41,7 @@ def test_f0_and_pec_share_solved_spans_and_one_verdict(sigma, aligned):
             assert findings[0].code == "sheet_effective_size"
             assert findings[0].severity == "error"
         row = sim.realized_geometry().realization_table.row(label)
-        # Covered nodes span 6 and 8 cells; each of two free ends adds .35 cell.
+
         for axis, covered in zip(row.axes[:2], (6, 8), strict=True):
             assert axis.cell_size_m == pytest.approx(dx)
             assert axis.realized_span_m == pytest.approx((covered + 2*.35)*dx)

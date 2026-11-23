@@ -33,22 +33,9 @@ from tests._realized_geometry import (
 _EPS_R = 3.66
 _H_SUB = 254e-6
 _W_TRACE = 600e-6
-# ON-LATTICE board (#931 §1.3): h_sub / dx = 3 exactly, so the laminate
-# face IS a node line and the foil sheet lands on it with no snap. The
-# fixture ran at dx = 80 um (h_sub/dx = 3.175) until the ownership
-# contract: there the substrate realizes FOUR cells (320 um, +26%) and a
-# sheet declared at 254 um snaps down to node 3 = 240 um, buried inside
-# the dielectric. Neither is the board the fixture describes, and the
-# contract reports that instead of absorbing it — so the board moves onto
-# the lattice. The one fixture that still wants the bisecting mesh builds
-# it for itself (_bisecting_sim below), because measuring the snap IS its
-# subject.
 _DX = _H_SUB / 3.0
 
 
-# ---------------------------------------------------------------------------
-# Layer 1a — pure power-wave assembly falsifiers (no FDTD)
-# ---------------------------------------------------------------------------
 
 def _synthetic_unit_transfer(z0_lump=50.0, z0_msl=30.0, n_freqs=3):
     """Phasors for an ideal matched unit POWER transfer lumped <-> MSL.
@@ -72,16 +59,12 @@ def _synthetic_unit_transfer(z0_lump=50.0, z0_msl=30.0, n_freqs=3):
     i_lw = np.zeros_like(v_lw)
     v0_msl = np.zeros_like(v_lw)
     i_msl = np.zeros_like(v_lw)
-    # run 0 — lumped driven: a=1 ((-V+Z0 I)/(2 sqrt(Z0))), diag b=0.
     v_lw[0, 0] = -s50 * ones
     i_lw[0, 0] = ones / s50
-    # run 0 — MSL receives unit power wave: (V0 - Zm I)/2 = sqrt(Zm).
     v0_msl[0, 0] = s30 * ones
     i_msl[0, 0] = -ones / s30
-    # run 1 — MSL driven: (V0 + Zm I)/2/sqrt(Zm) = 1.
     v0_msl[1, 0] = s30 * ones
     i_msl[1, 0] = ones / s30
-    # run 1 — lumped receives unit power wave: (V - Z0 I)/(2 sqrt(Z0)) = 1.
     v_lw[1, 0] = s50 * ones
     i_lw[1, 0] = -ones / s50
     return v_lw, i_lw, v0_msl, i_msl
@@ -102,17 +85,17 @@ def test_power_wave_normalization_unequal_z0():
         wire_mode=False, drive_plan=[("lw", 0), ("msl", 0)],
     )
     S = np.asarray(S)
-    pseudo_ratio = np.sqrt(z0_msl / z0_lump)  # 0.7746 — the #460 error
+    pseudo_ratio = np.sqrt(z0_msl / z0_lump)
     assert abs(pseudo_ratio - 1.0) > 0.2
-    # The invalid per-cell drive frame refuses the whole driven column.
     assert np.isnan(S[1, 0, :]).all()
     np.testing.assert_allclose(np.abs(S[0, 1, :]), 1.0, atol=1e-5)
-    # The mixed driven lumped diagonal is refused, even on matched phasors.
     assert np.isnan(S[0, 0, :]).all()
 
 
 def test_reciprocity_on_synthetic_transfer():
-    """S12 == S21 on the synthetic reciprocal transfer (both = 1)."""
+    """S12 == S21 on the synthetic reciprocal transfer (both = 1).
+    Reciprocity cannot compare a refused drive.
+    """
     v_lw, i_lw, v0_msl, i_msl = _synthetic_unit_transfer()
     S, _ = _assemble_mixed_power_wave_s(
         v_lw, i_lw, v0_msl, i_msl,
@@ -120,7 +103,6 @@ def test_reciprocity_on_synthetic_transfer():
         wire_mode=False, drive_plan=[("lw", 0), ("msl", 0)],
     )
     S = np.asarray(S)
-    # Reciprocity cannot compare a refused drive; retain the independent receive oracle.
     assert np.isnan(S[:, 0]).all()
     np.testing.assert_allclose(np.abs(S[0, 1, :]), 1.0, atol=1e-5)
 
@@ -131,6 +113,7 @@ def test_power_witness_matches_synthetic():
     P_del = 0.5*Re(Z_in)*|I|^2 = 0.5 at the matched synthetic drive,
     so |a|_recon = sqrt(2*P_del/(1-|S11|^2)) = 1 and the witness equals
     |b_msl_pw| = 1 (issue #313 triangulation channel).
+    The power witness inherits the diagonal refusal through its 1 - |S00|² denominator.
     """
     v_lw, i_lw, v0_msl, i_msl = _synthetic_unit_transfer()
     _, s21_power = _assemble_mixed_power_wave_s(
@@ -138,7 +121,6 @@ def test_power_witness_matches_synthetic():
         np.asarray([50.0]), np.asarray([1]), np.asarray([30.0]),
         wire_mode=False, drive_plan=[("lw", 0), ("msl", 0)],
     )
-    # This witness divides by 1 - |S00|² and inherits the diagonal refusal.
     assert np.isnan(s21_power[0, 0, :]).all()
 
 
@@ -148,6 +130,7 @@ def test_wire_mode_uses_per_cell_impedance():
     Rebuilding the run-0 synthetic with Z0c = 50/5 in the wave formulas
     must again read |S21| = 1 under wire_mode with n_live = 5; feeding the
     LUMPED-convention phasors instead mis-normalizes by sqrt(n_live).
+    Wire drives share the refused per-cell frame, including their off-diagonals.
     """
     n_live, z0_lump, z0_msl = 5, 50.0, 30.0
     z0c = z0_lump / n_live
@@ -157,24 +140,22 @@ def test_wire_mode_uses_per_cell_impedance():
     i_lw = np.zeros_like(v_lw)
     v0_msl = np.zeros_like(v_lw)
     i_msl = np.zeros_like(v_lw)
-    v_lw[0, 0] = -sqc * ones          # a = (-V + Z0c I)/(2 sqrt(Z0c)) = 1
+    v_lw[0, 0] = -sqc * ones
     i_lw[0, 0] = ones / sqc
-    v0_msl[0, 0] = s30 * ones          # b_pw = 1 at the MSL port
+    v0_msl[0, 0] = s30 * ones
     i_msl[0, 0] = -ones / s30
     S, _ = _assemble_mixed_power_wave_s(
         v_lw, i_lw, v0_msl, i_msl,
         np.asarray([z0_lump]), np.asarray([n_live]), np.asarray([z0_msl]),
         wire_mode=True, drive_plan=[("lw", 0)],
     )
-    # Wire drives share the refused per-cell frame, including their off-diagonals.
     assert np.isnan(np.asarray(S)[:, 0, :]).all()
 
 
-# ---------------------------------------------------------------------------
-# Layer 1b — registration-guard contract (v1 envelope)
-# ---------------------------------------------------------------------------
 
 def _base_sim(**kw):
+    """35 um foil is a SHEET on the laminate face, declared by a zero-thickness Box."""
+    assert _H_SUB / _DX == 3.0, 'The board substrate height must be exactly three mesh cells.'
     lx, ly, lz = 8e-3, 3e-3, 754e-6
     kw.setdefault("snap", "declared")
     sim = Simulation(
@@ -186,10 +167,6 @@ def _base_sim(**kw):
     sim.add_material("sub", eps_r=_EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
     y_c = ly / 2.0
-    # 35 um foil: a SHEET (#931 §1.3) on the laminate face, declared by a
-    # zero-thickness Box. One cell thick it is a VOLUME — walls at both z
-    # faces and the Ez edge between them shorted, i.e. 85 um of solid
-    # metal.
     sim.add(Box((0.0, y_c - _W_TRACE / 2, _H_SUB),
                 (lx, y_c + _W_TRACE / 2, _H_SUB)), material="pec")
     return sim, y_c
@@ -221,19 +198,14 @@ def _bisecting_sim():
 
 
 def _add_msl(sim, y_c, x=5.5e-3, direction="-x", **kw):
-    # Default facing is TOWARD the wire feed (issue #488 attempt-1 defect
-    # D1: a port facing away from the DUT measures launch+return mixed
-    # in its a-channel and its probe ladder walks into the CPML).
+    """Default facing is TOWARD the wire feed because a port facing away from the DUT measures launch+return mixed in its a-channel."""
     sim.add_msl_port(position=(x, y_c, 0.0), width=_W_TRACE,
                      height=_H_SUB, direction=direction, impedance=50.0,
                      waveform=GaussianPulse(f0=2.5e9, bandwidth=0.5), **kw)
 
 
 def _add_feed(sim, y_c, x=2e-3, extent=None):
-    # Vertical probe feed: ez wire port, ground plane -> foil sheet. On
-    # the lattice ``extent=_H_SUB`` lands the port's top NODE on the
-    # sheet plane, which is galvanic contact (#929: a feed that reaches a
-    # conductor is not "inside PEC").
+    """On the lattice, ``extent=_H_SUB`` lands the port's top NODE on the sheet plane, which is galvanic contact."""
     sim.add_port(position=(x, y_c, 0.0), component="ez",
                  impedance=50.0, extent=_H_SUB if extent is None else extent, terminates=sim._geometry[-1].shape)
 
@@ -241,11 +213,9 @@ def _add_feed(sim, y_c, x=2e-3, extent=None):
 def test_a_lumped_feed_reaches_the_lumped_branch_and_its_numbers_are_pinned():
     """The one-cell lumped feed refuses its unverified driven reflection."""
     sim, y_c = _base_sim()
-    # No ``extent`` — a one-cell lumped port, which is what selects the branch.
     sim.add_port(position=(2e-3, y_c, 0.0), component="ez", impedance=50.0)
     _add_msl(sim, y_c, n_probe_offset=10, n_probe_spacing=4)
 
-    # The old warning plus a finite diagonal is replaced by refusal.
     with pytest.warns(UserWarning, match="refused lumped/wire-driven columns"):
         res = sim.compute_mixed_s_matrix(
             freqs=np.linspace(1e9, 2e9, 3), num_periods=2.0,
@@ -258,7 +228,6 @@ def test_a_lumped_feed_reaches_the_lumped_branch_and_its_numbers_are_pinned():
     S = np.asarray(res.S)
     assert S.shape == (2, 2, 3)
     assert np.isnan(S[0, 0]).all()
-    # The driven lumped transmission uses the same refused incident wave.
     assert np.isnan(S[1, 0]).all()
     assert np.isfinite(S[:, 1]).all()
 
@@ -297,9 +266,9 @@ def test_guard_rejects_nonuniform_mesh():
 
 def test_guard_rejects_mixed_lumped_and_wire():
     sim, y_c = _base_sim()
-    _add_feed(sim, y_c)                       # wire (extent set)
+    _add_feed(sim, y_c)
     sim.add_port(position=(1.5e-3, y_c, 4e-4), component="ez",
-                 impedance=50.0)              # lumped (no extent)
+                 impedance=50.0)
     _add_msl(sim, y_c)
     with pytest.raises(NotImplementedError, match="lumped \\+ wire"):
         sim.compute_mixed_s_matrix(skip_preflight=True)
@@ -312,30 +281,35 @@ def test_flux_magnitude_override_math():
     plane carrying 0.36 toward the port must read |S21| = 0.6 with the
     WAVE phase preserved and the diagonal untouched — regardless of how
     wrong the wave-channel magnitude was (the #313 class).
+    The MSL-driven column has P_inc = 1.0 from P_net = (-1)*(-0.99) = 0.99 and |S22|=0.1.
     """
     from rfx.api._sparams import _mixed_flux_magnitude_override
     n_freqs = 3
     S_wave = np.zeros((2, 2, n_freqs), dtype=np.complex64)
-    S_wave[0, 0, :] = 0.5                       # validated diagonal
-    S_wave[1, 0, :] = 1.7j                      # wrong magnitude, known phase
+    S_wave[0, 0, :] = 0.5
+    WRONG_MAGNITUDE_QUADRATURE_WAVE = 1.7j
+    S_wave[1, 0, :] = WRONG_MAGNITUDE_QUADRATURE_WAVE
     S_wave[1, 1, :] = 0.1
-    S_wave[0, 1, :] = -0.2                      # wrong magnitude, phase pi
+    WRONG_MAGNITUDE_PI_PHASE_WAVE = -0.2
+    S_wave[0, 1, :] = WRONG_MAGNITUDE_PI_PHASE_WAVE
     box_lw = np.zeros((2, 1, n_freqs))
     plane_msl = np.zeros((2, 1, n_freqs))
-    box_lw[0, 0, :] = 0.75                      # run 0: lw driven, net out
-    plane_msl[0, 0, :] = 0.36                   # +x toward the "-x" port
-    plane_msl[1, 0, :] = -0.99                  # run 1: msl driven, away=-x
-    box_lw[1, 0, :] = -0.25                     # inward 0.25 at the lw box
+    LUMPED_DRIVE_NET_OUTWARD_POWER = 0.75
+    box_lw[0, 0, :] = LUMPED_DRIVE_NET_OUTWARD_POWER
+    MSL_RECEIVE_PLUS_X_POWER = 0.36
+    plane_msl[0, 0, :] = MSL_RECEIVE_PLUS_X_POWER
+    MSL_DRIVE_MINUS_X_POWER = -0.99
+    plane_msl[1, 0, :] = MSL_DRIVE_MINUS_X_POWER
+    LUMPED_RECEIVE_INWARD_BOX_FLUX = -0.25
+    box_lw[1, 0, :] = LUMPED_RECEIVE_INWARD_BOX_FLUX
     S_out, ill, neg = _mixed_flux_magnitude_override(
         S_wave, box_lw, plane_msl, [("lw", 0), ("msl", 0)],
         msl_away_signs=[-1.0], n_lw=1,
     )
     S_out = np.asarray(S_out)
-    np.testing.assert_allclose(S_out[0, 0, :], 0.5, atol=1e-6)   # untouched
+    np.testing.assert_allclose(S_out[0, 0, :], 0.5, atol=1e-6)
     np.testing.assert_allclose(np.abs(S_out[1, 0, :]), 0.6, rtol=1e-5)
     np.testing.assert_allclose(np.angle(S_out[1, 0, :]), np.pi / 2, atol=1e-5)
-    # msl-driven column: P_net = (-1)*(-0.99) = 0.99, |S22|=0.1 ->
-    # P_inc = 1.0; lw receive inward = 0.25 -> |S12| = 0.5, phase pi.
     np.testing.assert_allclose(np.abs(S_out[0, 1, :]), 0.5, rtol=1e-5)
     np.testing.assert_allclose(np.abs(np.angle(S_out[0, 1, :])), np.pi, atol=1e-5)
     assert not ill.any() and not neg.any()
@@ -357,15 +331,17 @@ def test_flux_column_power_is_an_identity_not_a_passivity_check():
     passivity gate here sees why it cannot discriminate.
     """
     from rfx.api._sparams import _mixed_flux_magnitude_override
+    ARBITRARY_WRONG_WAVE_MAGNITUDE = 0.123
     for s11_mag in (0.03, 0.41, 0.90):
         S_wave = np.zeros((2, 2, 1), dtype=np.complex64)
         S_wave[0, 0, :] = s11_mag
         S_wave[1, 1, :] = 0.5
-        S_wave[1, 0, :] = 0.123          # arbitrary wrong wave magnitude
+        S_wave[1, 0, :] = ARBITRARY_WRONG_WAVE_MAGNITUDE
         box_lw = np.zeros((2, 1, 1))
         plane_msl = np.zeros((2, 1, 1))
-        box_lw[0, 0, :] = 0.4            # net launched
-        plane_msl[0, 0, :] = 0.4         # all of it arrives (lossless)
+        box_lw[0, 0, :] = 0.4
+        plane_msl[0, 0, :] = 0.4
+        assert np.array_equal(plane_msl[0, 0, :], box_lw[0, 0, :]), 'The lossless input must receive all net launched power.'
         S_out, _, _ = _mixed_flux_magnitude_override(
             S_wave, box_lw, plane_msl, [("lw", 0)],
             msl_away_signs=[-1.0], n_lw=1,
@@ -377,13 +353,13 @@ def test_flux_column_power_is_an_identity_not_a_passivity_check():
         assert col_power == pytest.approx(1.0, abs=1e-6), (
             f"identity broken for |S11|={s11_mag}: {col_power}"
         )
-    # Power GAIN is still detectable — that is all this quantity tests.
     S_wave = np.zeros((2, 2, 1), dtype=np.complex64)
     S_wave[0, 0, :] = 0.0
     box_lw = np.zeros((2, 1, 1))
     plane_msl = np.zeros((2, 1, 1))
     box_lw[0, 0, :] = 0.4
-    plane_msl[0, 0, :] = 0.8             # twice as much arrives: gain
+    plane_msl[0, 0, :] = 0.8
+    assert np.array_equal(plane_msl[0, 0, :], 2 * box_lw[0, 0, :]), 'The gain input must receive twice the net launched power.'
     S_out, _, _ = _mixed_flux_magnitude_override(
         S_wave, box_lw, plane_msl, [("lw", 0)],
         msl_away_signs=[-1.0], n_lw=1,
@@ -394,10 +370,12 @@ def test_flux_column_power_is_an_identity_not_a_passivity_check():
 def test_flux_override_masks_ill_conditioned_and_negative():
     from rfx.api._sparams import _mixed_flux_magnitude_override
     S_wave = np.zeros((2, 2, 2), dtype=np.complex64)
-    S_wave[0, 0, :] = 0.999                     # near-total reflection
+    NEAR_TOTAL_REFLECTION = 0.999
+    S_wave[0, 0, :] = NEAR_TOTAL_REFLECTION
     box_lw = np.zeros((2, 1, 2))
     plane_msl = np.zeros((2, 1, 2))
-    box_lw[0, 0, :] = -1e-3                     # negative net at the drive
+    box_lw[0, 0, :] = -1e-3
+    assert np.all(box_lw[0, 0, :] < 0), 'The driven input must have negative net box power.'
     _, ill, neg = _mixed_flux_magnitude_override(
         S_wave, box_lw, plane_msl, [("lw", 0), ("msl", 0)],
         msl_away_signs=[-1.0], n_lw=1,
@@ -414,20 +392,19 @@ def test_reciprocity_witness_catches_a_wrong_diagonal():
     identity — see the anti-gate-lock test); reciprocity can. This is the
     exact failure class that reached review in the first revision of this
     lane.
+    The SHIPPED DEFAULT tolerance is required so the warning a user actually gets would fire.
     """
     from rfx.api._sparams import (
         _mixed_flux_magnitude_override,
         _mixed_reciprocity_deviation,
     )
-    # Symmetric lossless 2-port: both ports launch 1.0 and receive 1.0.
     box_lw = np.zeros((2, 1, 1))
     plane_msl = np.zeros((2, 1, 1))
-    # "-x" MSL port: away_sign = -1, so the code reads net launched power
-    # as -plane and arriving power as +plane.
-    box_lw[0, 0, :] = 1.0            # run 0: lw driven, net outward
-    plane_msl[0, 0, :] = 1.0         # ...arrives at the msl plane
-    plane_msl[1, 0, :] = -1.0        # run 1: msl driven, net away
-    box_lw[1, 0, :] = -1.0           # ...arrives back at lw (inward)
+    box_lw[0, 0, :] = 1.0
+    plane_msl[0, 0, :] = 1.0
+    plane_msl[1, 0, :] = -1.0
+    box_lw[1, 0, :] = -1.0
+    assert np.array_equal(box_lw, -box_lw[::-1]) and np.array_equal(plane_msl, box_lw), 'The symmetric lossless input must launch and receive equal power on both ports.'
     plan = [("lw", 0), ("msl", 0)]
 
     def run(s11, s22):
@@ -438,13 +415,7 @@ def test_reciprocity_witness_catches_a_wrong_diagonal():
         )
         return _mixed_reciprocity_deviation(out)[1]
 
-    # Matching diagonals -> reciprocity holds.
     assert run(0.4, 0.4) == pytest.approx(0.0, abs=1e-5)
-    # A wrong diagonal on ONE port breaks it. Assert against the SHIPPED
-    # DEFAULT tolerance, not an ad-hoc constant: a review round found the
-    # first version of this test asserting > 0.05 while the runtime
-    # default was 0.15, so the test proved the helper discriminates but
-    # NOT that the warning a user actually gets would ever fire.
     import inspect
 
     default_tol = inspect.signature(
@@ -454,9 +425,8 @@ def test_reciprocity_witness_catches_a_wrong_diagonal():
         f"a wrong diagonal deviates by {run(0.4, 0.03):.3f}, which the "
         f"shipped default tolerance {default_tol} would NOT warn about"
     )
-    # And the observed real-fixture residual (9%) must also trip it —
-    # the tolerance has to sit below the known residual, not above it.
-    assert default_tol < 0.09
+    EARLIER_REAL_FIXTURE_RESIDUAL = 0.09
+    assert default_tol < EARLIER_REAL_FIXTURE_RESIDUAL
 
 
 def test_guard_requires_pec_ground_for_flux_channel():
@@ -469,8 +439,6 @@ def test_guard_requires_pec_ground_for_flux_channel():
     )
     sim.add_material("sub", eps_r=_EPS_R)
     sim.add(Box((0.0, 0.0, 0.0), (lx, ly, _H_SUB)), material="sub")
-    # A physical MSL ground still exists when the domain's z_lo is CPML.
-    # Only the flux extractor requires that domain face itself to be PEC.
     sim.add(Box((0.0, 0.0, 0.0), (95 * _DX, 36 * _DX, 0.0)), material="pec")
     y_c = ly / 2.0
     sim.add(Box((0.0, 14 * _DX, 3 * _DX),
@@ -479,7 +447,6 @@ def test_guard_requires_pec_ground_for_flux_channel():
     _add_msl(sim, y_c, n_probe_offset=10, n_probe_spacing=4)
     with pytest.raises(NotImplementedError, match="PEC z_lo"):
         sim.compute_mixed_s_matrix(skip_preflight=True)
-    # The wave channel makes no such assumption and must still build.
     sim.compute_mixed_s_matrix(
         freqs=np.linspace(1e9, 2e9, 2), num_periods=1.0,
         skip_preflight=True, magnitude_channel="wave",
@@ -502,8 +469,10 @@ def test_negative_arriving_power_is_tracked_not_only_driven():
     S_wave = np.zeros((2, 2, 1), dtype=np.complex64)
     box_lw = np.zeros((1, 1, 1))
     plane_msl = np.zeros((1, 1, 1))
-    box_lw[0, 0, :] = 1.0            # healthy driven net power
-    plane_msl[0, 0, :] = -1.0        # mis-signed: reads as arriving < 0
+    HEALTHY_DRIVEN_NET_POWER = 1.0
+    box_lw[0, 0, :] = HEALTHY_DRIVEN_NET_POWER
+    MIS_SIGNED_RECEIVE_POWER = -1.0
+    plane_msl[0, 0, :] = MIS_SIGNED_RECEIVE_POWER
     S_out, _, neg = _mixed_flux_magnitude_override(
         S_wave, box_lw, plane_msl, [("lw", 0)],
         msl_away_signs=[-1.0], n_lw=1,
@@ -547,9 +516,6 @@ def test_guard_rejects_cpml_adjacent_probe_ladder():
         sim.compute_mixed_s_matrix(skip_preflight=True)
 
 
-# ---------------------------------------------------------------------------
-# Layer 1c — end-to-end plumbing smoke (NOT a physics gate)
-# ---------------------------------------------------------------------------
 
 def _assert_drive_settling_witnesses(sim, result, periods, end_amplitudes):
     from rfx.measurement.record_end import source_end_step
@@ -580,37 +546,31 @@ def test_mixed_probe_fed_msl_plumbing_smoke():
     (shapes, port order, finiteness, witnesses recorded), not physics.
     The claims-bearing battery with the pre-declared falsifiers is the
     slow-lane fixture battery (issue #488 arc).
+    The absence of a ring-down warning on a 4-period open-domain record would itself be a bug.
     """
     sim, y_c = _base_sim()
     _add_feed(sim, y_c, x=2e-3)
     _add_msl(sim, y_c, x=5.5e-3, n_probe_offset=10, n_probe_spacing=4)
     freqs = np.linspace(1e9, 4e9, 5)
     with pytest.warns(UserWarning):
-        # The truncated record must surface the ring-down warning — its
-        # absence on a 4-period open-domain record would itself be a bug.
         res = sim.compute_mixed_s_matrix(
             freqs=freqs, num_periods=4.0, skip_preflight=True,
         )
     S = np.asarray(res.S)
     assert S.shape == (2, 2, 5)
-    # Only the MSL-driven flux column survives the per-cell drive refusal.
     assert np.isnan(S[:, 0]).all()
     assert np.all(np.isfinite(S[:, 1]))
     assert res.port_families == ("wire", "msl")
     assert res.port_names[1] != "lw0" and res.port_names[0] == "lw0"
     assert res.z0_ref.shape == (2,)
     assert res.z0_ref[0] == pytest.approx(50.0)
-    assert res.z0_ref[1] == pytest.approx(50.0)  # declared impedance= (#2014)
-    assert 20.0 < res.line_impedances[1] < 120.0  # HJ analytic, sane band
+    assert res.z0_ref[1] == pytest.approx(50.0)
+    assert 20.0 < res.line_impedances[1] < 120.0
     assert res.s21_power_witness.shape == (1, 1, 5)
-    # The power witness of a refused wire-driven column is refused too.
     assert np.isnan(res.s21_power_witness).all()
     assert res.magnitude_channel == "flux"
     assert res.S_wave is not None and res.S_wave.shape == S.shape
-    # re-pinned 2026-10-12: default pulse onset fix (issue 1668 PR); old values
-    # (0.0780274, 0.322321).
     _assert_drive_settling_witnesses(sim, res, 4., (0.0780033, 0.322213))
-    # Registration state restored after the drive loop.
     assert len(sim._dft_planes) == 0
     assert len(sim._probes) == 0
     assert sim._msl_ports[0].excite is True
@@ -660,38 +620,12 @@ def test_mixed_probe_fed_msl_smoke_slow_lane_exists():
     )
     S = np.asarray(res.S)
     assert S.shape == (2, 2, 5)
-    # Only the MSL-driven flux column survives the per-cell drive refusal.
     assert np.isnan(S[:, 0]).all()
     assert np.all(np.isfinite(S[:, 1]))
-    # Apply the unchanged bound to the retained, unprojected MSL column.
     assert np.all(np.abs(S[:, 1]) < 1.5), f"gross blow-up: max|S|={np.max(np.abs(S[:, 1])):.3f}"
-    # re-pinned 2026-10-12: default pulse onset fix (issue 1668 PR); old values
-    # (4.13651e-21, 1.59952e-4).
     _assert_drive_settling_witnesses(sim, res, 8., (4.13523e-21, 1.59902e-4))
 
 
-# ---------------------------------------------------------------------------
-# Layer 1d (issue #520 leg 3) — the mixed lane's OWN V-span anchor
-# ---------------------------------------------------------------------------
-#
-# compute_msl_s_matrix's V-span anchoring fix (issue #511/PR #516 finding
-# F2: anchor k_hi on the RASTERIZED trace node, not round(h_sub/dx)) was
-# copied by hand into compute_mixed_s_matrix's own MSL leg (the
-# msl_modal_voltage call at _sparams.py that reads
-# trace_k_per_port[p_idx][0] — the call site's own comment says it
-# "mirrors compute_msl_s_matrix line-for-line"). Nothing exercises that
-# copy: every existing mixed-lane test drives real FDTD fields, where the
-# F2 defect's effect is a single-digit-percent V bias lost in ordinary
-# run-to-run noise, not a loud, well-defined discriminator. This plants a
-# per-z-node Ez marker — same technique and same bisecting dx=80um mesh as
-# test_v_span_on_bisecting_mesh_reaches_the_rasterized_trace in
-# test_msl_modal_voltage_and_wave_solve.py, where the real trace node (4)
-# and the retired round(h_sub/dx) proxy (3) disagree — directly into the
-# mixed lane's own ``_forward_from_materials`` scan hook (the mixed lane
-# does not call ``self.run()``, so that file's ``sim.run`` stub does not
-# apply here), and reads back the raw V via ``return_diagnostics=True``.
-# This proves the MIXED LANE'S OWN copy, independently of the shared
-# helper's own unit tests.
 
 
 def _fake_forward_mixed_z_profile(nz_markers, n_lw):
@@ -730,7 +664,7 @@ def _fake_forward_mixed_z_profile(nz_markers, n_lw):
                 acc = jnp.broadcast_to(
                     ((0.018 + 0.004j) * zramp)[None, None, :],
                     (n_f, grid.ny, grid.nz))
-            else:  # hz
+            else:
                 acc = jnp.broadcast_to(
                     ((0.005 + 0.001j) * zramp)[None, None, :],
                     (n_f, grid.ny, grid.nz))
@@ -772,6 +706,7 @@ def test_mixed_lane_v_span_reaches_the_realized_trace_on_bisecting_mesh(monkeypa
     plane is read from ``realized_wall_planes`` so that if the lattice
     ever puts the trace somewhere else, this test states the new place
     instead of silently agreeing with a proxy that happens to match.
+    The ``v0_msl`` axes are (n_runs, n_msl, n_freqs).
     """
     marker = {0: 1.0, 1: 1.0, 2: 1.0, 3: 10.0, 4: -1000.0}
     sim, y_c = _bisecting_sim()
@@ -786,11 +721,11 @@ def test_mixed_lane_v_span_reaches_the_realized_trace_on_bisecting_mesh(monkeypa
         return_diagnostics=True, skip_preflight=True,
     )
     del result
-    v0_msl = np.asarray(diag["v0_msl"])  # (n_runs, n_msl, n_freqs)
+    v0_msl = np.asarray(diag["v0_msl"])
     assert v0_msl.shape[1:] == (1, 1)
 
-    dz = 80e-6  # bisecting mesh, uniform -- msl_modal_voltage weights each edge by dz
-    # Where the lattice actually put the trace, from the single owner.
+    BISECTING_MESH_EDGE_LENGTH_M = 80e-6
+    dz = BISECTING_MESH_EDGE_LENGTH_M
     rz = realized(sim)
     k_trace = rz.sheet_planes[2][0]
     assert k_trace == 3, (
@@ -798,7 +733,7 @@ def test_mixed_lane_v_span_reaches_the_realized_trace_on_bisecting_mesh(monkeypa
         "below from it before trusting the numbers")
     expected_correct = sum(marker[k] for k in range(k_trace)) * dz
     expected_overreach = expected_correct + marker[k_trace] * dz
-    v_msl0 = v0_msl[:, 0, 0]  # every drive run, MSL port 0, the one frequency
+    v_msl0 = v0_msl[:, 0, 0]
     np.testing.assert_allclose(v_msl0.real, expected_correct, rtol=1e-5)
     assert not np.isclose(v_msl0[0].real, expected_overreach, rtol=1e-3), (
         f"V over-reached the realized trace plane ({expected_overreach} "
@@ -828,23 +763,11 @@ def test_bisecting_mesh_reports_its_declared_vs_realized_offset():
     assert abs(declared - realized_z) == pytest.approx(14e-6, abs=1e-9), (
         "the declared-vs-realized offset of the bisecting board is 14 um; "
         f"got {(declared - realized_z) * 1e6:.3f} um")
-    # ...and the on-lattice sibling has none.
     on_lattice, _ = _base_sim()
     assert_sheet_planes(on_lattice, 2, [_H_SUB], what="on-lattice foil")
     assert_wall_planes(on_lattice, 2, [_H_SUB], what="on-lattice foil")
 
 
-# ---------------------------------------------------------------------------
-# Issue #544: preflight's wire-port dead-extent-cell advisory disagreed
-# with the assembler's actual n_live_lw on this fixture (3/4 advisory vs 4
-# actual). The fix makes the advisory derive its count from the SAME
-# primitive the assembler uses (_wire_port_live_cells against the real
-# assembled pec_mask) instead of a standalone bounding-box-vs-cell-center
-# approximation. These tests pin the corrected fixture, confirm a
-# previously-agreeing case stays unchanged (no false positive introduced),
-# and falsify the OLD method against ground truth (mutation-style: the
-# geometry is identical, only the classification method differs).
-# ---------------------------------------------------------------------------
 
 def _ground_truth_wire_port_n_live(sim, position, component, extent,
                                    impedance=50.0):
@@ -859,9 +782,6 @@ def _ground_truth_wire_port_n_live(sim, position, component, extent,
     end[axis] += extent
     wp = WirePort(start=tuple(position), end=tuple(end),
                   component=component, impedance=impedance)
-    # #931 §1.9: liveness is read off the port component's own REALIZED
-    # edge, so the ground truth realizes the same geometry through the
-    # single owner rather than scanning cells.
     _, live_flags, n_live = _wire_port_live_cells(
         grid, wp, realized(sim).edge_masks)
     return n_live, len(live_flags)
@@ -1030,6 +950,7 @@ def test_a_cell_occupancy_classifier_cannot_see_a_sheet_at_all():
     That is the general form of #544: an advisory that re-derives
     occupancy instead of reading the realization is blind to an entire
     conductor class, and no amount of tuning fixes it.
+    The mask is checked rather than re-running the old classifier because a zero-thickness bbox makes its verdict turn on a float tie at the sheet plane.
     """
     import numpy as _np
 
@@ -1037,24 +958,16 @@ def test_a_cell_occupancy_classifier_cannot_see_a_sheet_at_all():
     _add_feed(sim, y_c, x=2e-3)
     _add_msl(sim, y_c, x=5.5e-3, n_probe_offset=10, n_probe_spacing=4)
 
-    # The Ez feed: both methods agree, and that agreement is the accident.
     n_live_truth, n = _ground_truth_wire_port_n_live(
         sim, position=(2e-3, y_c, 0.0), component="ez", extent=_H_SUB)
     n_live_old, n_old = _old_buggy_dead_cell_classification(
         sim, position=(2e-3, y_c, 0.0), component="ez", extent=_H_SUB)
     assert (n_live_truth, n) == (n_live_old, n_old) == (3, 3)
 
-    # A port lying IN the sheet: every cell dead under the contract, so
-    # the shared primitive refuses the port outright (#318).
     with pytest.raises(ValueError, match="ex edge shorted by realized PEC"):
         _ground_truth_wire_port_n_live(
             sim, position=(3e-3, y_c, _H_SUB), component="ex",
             extent=4 * _DX)
-    # ...and the cell-occupancy view of that same conductor is EMPTY, so
-    # any classifier built on it reports the port fully live. Stated on
-    # the mask rather than by re-running the old classifier: with a
-    # zero-thickness bbox its verdict turns on a float tie at the sheet
-    # plane, and a knife edge is not a falsifier.
 
     rz = realized(sim)
     assert rz.pec_mask is None or not bool(_np.asarray(rz.pec_mask).any()), (
@@ -1199,26 +1112,6 @@ def test_wire_port_advisory_does_not_swallow_a_timeout_signal(monkeypatch):
         sim.preflight()
 
 
-# ---------------------------------------------------------------------------
-# Issue #556 (D5 follow-up): wire port terminating one cell SHORT of a
-# realized conductor — the false-NEGATIVE sibling of the #544-fixed
-# false-positive class. No port cell is dead, so #314/#319 are correctly
-# silent, yet the feed never galvanically reaches the conductor and
-# couples only capacitively (measured on the D5 lane: |S21| rising with
-# frequency). The advisory fires ONLY on that exact signature.
-#
-# #931 changed BOTH what the signature is and how the fixture states it.
-# The original D5 board was off-lattice (dx = 80 um, h_sub = 254 um,
-# h_sub/dx = 3.175): the trace snapped one node above the wire's top and
-# the gap was an accident of rasterization. On the lattice that accident
-# cannot happen — a foil sheet lands on the laminate face and a feed
-# drawn to h_sub reaches it. So the gap here is DECLARED: the feed is
-# drawn one cell short (extent = h_sub - dx) and the advisory must find
-# it. And the signature itself is now an EDGE question, not a cell one:
-# a sheet owns no cell, so "the cell beyond the end is PEC" can never be
-# true for a foil. Contact means the port's end NODE carries a realized
-# wall; a one-cell gap means the wall is one cell further on.
-# ---------------------------------------------------------------------------
 
 def _d5_gap_ground_truth(sim, position, component, extent, impedance=50.0):
     """Independent ground-truth premise check for the #556 signature.
@@ -1242,7 +1135,6 @@ def _d5_gap_ground_truth(sim, position, component, extent, impedance=50.0):
                   component=component, impedance=impedance)
     rz = realized(sim)
     cells, live_flags, _ = _wire_port_live_cells(grid, wp, rz.edge_masks)
-    # The port's end NODE is one past its last cell along the port axis.
     end_node = int(cells[-1][axis]) + 1
     ij = tuple(int(cells[-1][a]) for a in range(3) if a != axis)
     walls = realized_wall_planes(rz.edge_masks, axis, ij=ij,
@@ -1301,10 +1193,7 @@ def test_wire_port_end_gap_advisory_fires_on_a_declared_one_cell_gap():
         f"#556 advisory must be advisory (warning) severity, got "
         f"{getattr(hits[0], 'severity', None)!r}"
     )
-    # PreflightIssue carries code/severity, but no side field (ports.py).
     assert str(hits[0]).count("+z-side") == 1
-    # The advisory must not double-fire as a dead-cell finding: no cell
-    # is dead here (#544 regression lock pins 4/4 live).
     codes = [getattr(s, "code", None) for s in issues]
     assert "wire_port_dead_extent_cells" not in codes
     assert "wire_port_midpoint_in_pec" not in codes
@@ -1366,17 +1255,14 @@ def test_wire_port_end_gap_advisory_silent_in_open_vacuum():
     one-cell-short of anything. Geometry mirrors
     tests/unit/preflight/test_inverse_design_preflight.py's _clean_sim (which pins
     preflight() == [] on it, so this control is double-locked).
+    Eight CPML layers and an explicit wire radius keep the open-vacuum control fully clean.
     """
-    # 8 layers, as _clean_sim: a 6-layer face now draws the #1272
-    # thin_absorber advisory, and this control must stay fully clean.
     sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02),
                      dx=0.02 / 15, boundary="cpml", cpml_layers=8)
     sim.add_port(position=(0.0093, 0.0093, 0.0093), component="ez",
                  impedance=50.0,
                  waveform=GaussianPulse(f0=5e9, bandwidth=0.9),
                  extent=0.004,
-                 # Mirrors _clean_sim: without radius= the port draws
-                 # wire_port_no_radius and the report is not clean.
                  radius=0.1e-3)
 
     issues = sim.preflight()

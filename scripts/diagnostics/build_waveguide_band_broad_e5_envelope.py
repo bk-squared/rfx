@@ -31,7 +31,7 @@ ETA0 = 376.730313668
 # number and NOT a (k·dx)² dispersion formula. T2.4 (2026-06-17) fit the 20
 # committed cases to `C·(k·dx)² + floor` and FALSIFIED it (C<0, R²=0.19): the
 # error is dominated by dielectric contrast / slab-interface staircasing, not
-# grid dispersion (see docs/research_notes/20260617_t2.4_dispersion_tolerance_falsified.md).
+# grid dispersion (see the measurement notes).
 # So MAX_TOL is the measured envelope: the worst committed case diff is 0.0414
 # (an eps_r=4 slab at fine mesh); 0.05 = 0.0414 × ~1.2 safety margin. The margin
 # is bounded on BOTH sides by tests/crossval/test_waveguide_broad_e5.py

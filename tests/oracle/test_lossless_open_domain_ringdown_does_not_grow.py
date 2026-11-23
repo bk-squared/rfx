@@ -93,8 +93,7 @@ step, red through both halves of the predicate (VESSL 369367262982).  The eight-
 the continuation read -44.82 dB and -1.992e-04 per step (VESSL 369367262981).
 
 WHAT THE MUTATION DOES NOW, AND WHAT IT DID (measured 2026-09-20, VESSL 369367262373, rtx4090,
-float32, this file's ``__main__`` run unchanged at two commits; logs
-``bk-workspace/.1141-ringdown/20260920T163029Z/``).  Until #1136 the falsifier required GROWTH,
+float32, this file's ``__main__`` run unchanged at two commits).  Until #1136 the falsifier required GROWTH,
 a positive rate on every probe.  #1136 (#1070) sizes the grid from the declared length: this
 fixture's x ratio is ``232.00000000000003`` and ``ceil`` had bought a 233rd cell, which no Box
 filled and which the CPML pad extension replicated as a vacuum column through the x-hi pad.
@@ -149,6 +148,7 @@ Related: #801 (the growth record and the live thin-absorber class), #931 (the co
 that ended the n = 4 / 8-layer growth), #1070 / #1136 (the absorber-pad defect found on the same
 fixture, whose fix removed the cell the growth record depended on), #1141 (the decision to
 record this rather than re-pin the old grid).
+Fixture lengths are in units of the substrate thickness h so they span whole cells at every integer resolution.
 """
 from __future__ import annotations
 
@@ -157,32 +157,20 @@ import math
 import numpy as np
 import pytest
 
-# Fixture geometry, in units of the substrate thickness, so every length lands on a lattice
-# node at every resolution (the refinement-ladder property the original rig was built around).
-H = 0.787e-3                  # substrate thickness; the unit of every length
-EPS_R = 3.38                  # RO4003C
-L_H, W_H = 11, 13             # patch 11h x 13h
+SUBSTRATE_THICKNESS_M = 0.787e-3
+H = SUBSTRATE_THICKNESS_M
+RO4003C_RELATIVE_PERMITTIVITY = 3.38
+EPS_R = RO4003C_RELATIVE_PERMITTIVITY
+L_H, W_H = 11, 13
 DOMX_H, DOMY_H, DOMZ_H = 38, 23, 16
 ZGND_H, XP0_H = 5, 16
-PAD_H = 10                    # lateral padding each side, in h -- the growing arm's value
-N_CELLS_PER_H = 4             # dx = h / N_CELLS_PER_H; the resolution the record was taken at
+PAD_H = 10
+N_CELLS_PER_H = 4
 F0, BW = 8.5e9, 1.6
 
-# 150 periods = 26659 steps.  A FLOOR for the gate (the healthy arm is at -34.87 dB at 120
-# periods) and, since #1136, close to a CEILING for the falsifier: the mutated arm now decays and
-# is derived to cross -40 dB at about 170-187 periods.  Do not change it without re-measuring
-# both arms.  See the docstring.
 NUM_PERIODS = 150.0
 
-# Gate, two-sided.
-# (1) The shipped ring-down witness's own bar.  Shipped / both defects restored:
-#     -45.9632 / -24.4192 dB on (187, 142, 61), VESSL 369367264159.
 SETTLING_DB_BAR = -40.0
-# (2) The late-time decay rate must be negative.  Worst rate per step, shipped /
-#     both defects restored: -2.69821e-4 / -2.94935e-5, VESSL 369367264159.
-#     The bar sits an order of magnitude above the shipped rate, so a rate that is merely "not
-#     very negative" fails too.  It does NOT separate today's mutated arm, which passes it; the
-#     settling half does.
 MAX_LOG_RATE_PER_STEP = -2.0e-5
 
 
@@ -296,16 +284,11 @@ def _run_rates(monkeypatch=None, continuation_off=False):
         from rfx.geometry import smoothing
         monkeypatch.setattr(smoothing, "continued_conductor_shape",
                             lambda sim, grid, shape, **kwargs: shape)
-    # The preflight is part of the result, so it is READ rather than skipped blind: this
-    # fixture is a deliberate anti-pattern (one-cell PEC volumes, a lossless dielectric in an
-    # open domain, a thin absorber) and must keep saying so. An empty preflight here would mean
-    # the board changed under the test, which is the thing the gate cannot afford to miss.
     findings = [str(v) for v in sim.preflight()]
     assert findings, (
         "preflight reported NOTHING on a fixture built to trip it (one-cell PEC volumes, a "
         "lossless dielectric in an open CPML domain). The board this test scores is not the "
         "board it was written for.")
-    # Re-run without the advisory pass; it has already been read.
     result = sim.run(num_periods=NUM_PERIODS, skip_preflight=True)
     series = np.asarray(result.time_series)
     assert series.ndim == 2 and series.shape[1] == 4, f"unexpected probe record {series.shape}"
@@ -357,7 +340,7 @@ def test_the_gate_is_red_without_continuation_and_with_integer_magnetic_profile(
         f"builder and NUM_PERIODS retain the measured six-layer model.")
 
 
-if __name__ == "__main__":  # measurement helper, not part of the suite
+if __name__ == "__main__":
     import sys
     from contextlib import contextmanager
 

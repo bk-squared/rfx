@@ -70,6 +70,7 @@ now the intended one, so Re(Z0) sits 3.6 % below the declared board's
 Hammerstad–Jensen anchor of 47.89 Ω instead of 20 % above it, and the
 reflection the port sees against its own 50 Ω reference falls 5.7×.
 Nothing was widened; nothing was translated.
+LY uses fixed physical lateral clearance (≥2·h_sub each side) because microstrip fringing extends ~2·h_sub laterally.
 """
 
 from __future__ import annotations
@@ -87,55 +88,31 @@ from tests._realized_geometry import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Geometry constants
-# ---------------------------------------------------------------------------
 
-EPS_R = 3.66          # RO4350B
-H_SUB = 254e-6        # substrate thickness, metres
-W_TRACE = 600e-6      # trace width, metres
-L_LINE = 10e-3        # thru-line length
-PORT_MARGIN = 2e-3    # feed → domain edge clearance
+RO4350B_RELATIVE_PERMITTIVITY = 3.66
+EPS_R = RO4350B_RELATIVE_PERMITTIVITY
+SUBSTRATE_THICKNESS_M = 254e-6
+H_SUB = SUBSTRATE_THICKNESS_M
+TRACE_WIDTH_M = 600e-6
+W_TRACE = TRACE_WIDTH_M
+THRU_LINE_LENGTH_M = 10e-3
+L_LINE = THRU_LINE_LENGTH_M
+FEED_TO_DOMAIN_EDGE_M = 2e-3
+PORT_MARGIN = FEED_TO_DOMAIN_EDGE_M
 
-# ON-LATTICE board (#931 §1.3): dx = h_sub/3, so the laminate face IS a
-# node line and the foil sheet lands on it. The fixture ran at dx = 80 µm
-# (254/80 = 3.175): there the substrate realizes FOUR cells and the strip
-# sat at z = 320 µm over a 254 µm dielectric plus a 66 µm air gap — the
-# structure the docstrings below call "not the intended board". Its own
-# text already names dx = 84.67 µm as the aligned sibling that rasterizes
-# the intended structure and reads 44.11 Ω against 57.58 Ω. That is the
-# board this fixture now simulates, so the three gate windows are
-# RE-MEASURED on it (see the results dir's RECOMPUTE.md) rather than
-# carried across; nothing here is widened.
 DX = H_SUB / 3
 F_MAX = 5e9
 
 LX = L_LINE + 2 * PORT_MARGIN
-# LY uses fixed physical lateral clearance (≥2·h_sub each side) instead
-# of cell-counted clearance: microstrip fringing extends ~2·h_sub
-# laterally, and a CPML lateral wall closer than that systematically
-# inflates Z0 (and makes Z0 mesh-divergent under refinement). Verified
-# 2026-05-04 fixed-LY mesh-conv sweep: with this LY, Z0 lands within
-# 2-9% of Hammerstad analytic across dx=40-80µm; with the previous
-# LY=W+6·dx the box shrank with mesh and Z0 drifted 54→60Ω.
-# See docs/research_notes/20260504_msl_meshconv_fixed_ly.md.
-LY = W_TRACE + 2 * (2 * H_SUB + 8 * DX)   # W + (2·h_sub + 8·dx) each side
-LZ = H_SUB + 1.5e-3      # substrate + 1.5 mm air above
+LY = W_TRACE + 2 * (2 * H_SUB + 8 * DX)
+AIR_ABOVE_SUBSTRATE_M = 1.5e-3
+LZ = H_SUB + AIR_ABOVE_SUBSTRATE_M
 
-# Evaluation window: quasi-TEM mode is well-established at 3–4.5 GHz
-# (below this the staircase substrate has Z0 < 40 Ω due to poor resolution).
 GATE_F_LO = 3.0e9
 GATE_F_HI = 4.5e9
 
-# Issue #610 (single-source, no second copy of the gate): hoisted out of
-# test_msl_thru_line_z0_length_invariance_and_positive_sign to module scope so
-# tests/locks/test_msl_z0_platform_datums.py can import and re-derive the SAME gate
-# instead of restating 0.007 as a fresh literal in a second file. Values and
-# derivation are UNCHANGED — see that test's docstring for the arithmetic and
-# tests/fixtures/msl_z0_length_invariance/platform_datums.json for the
-# cross-platform datum ledger.
-MEASURED_SPREAD_ENVELOPE = 0.004607   # {8,10,12} mm legs, 2026-08-09
-LEG_S11_BOUND = 0.15                  # per-leg mean|S11| bound, any leg length
+MEASURED_SPREAD_ENVELOPE = 0.004607
+LEG_S11_BOUND = 0.15
 
 
 @pytest.mark.slow
@@ -153,7 +130,6 @@ def test_msl_thru_line_passive_gate():
     ~1.5x. ``compute_msl_s_matrix`` now measures the closed Ampère-loop
     current ``∮H·dl`` (``msl_loop_current``). The (40, 65) bound has been
     left UNCHANGED throughout — it was never weakened to make this pass.
-    See ``docs/agent-memory/port_sparam_review_2026-05-19.md``.
 
     CALIBRATION REFRESHED 2026-07-30 (issues #511/#507 + PR #516 review
     finding F2) and again 2026-09-07 (#931 R6 — the on-lattice sheet
@@ -188,37 +164,26 @@ def test_msl_thru_line_passive_gate():
 
     A future refinement of this fixture should prefer dx = h_sub/3 or
     h_sub/4 (84.7 / 63.5 µm), which preflight already recommends.
+    The foil sheet lands on the laminate face at dx = h_sub/3.
     """
 
-    # #1138: trace y solved +8.656% off; this tests the passive MSL gate.
     sim = Simulation(snap="declared",
         freq_max=F_MAX,
         domain=(LX, LY, LZ),
         dx=DX,
         cpml_layers=8,
-        # PEC ground plane at z=0 (microstrip ground); CPML above.
         boundary=BoundarySpec(
             x="cpml", y="cpml",
-            z=Boundary(lo="pec", hi="cpml"),  # PEC ground plane at z=0
+            z=Boundary(lo="pec", hi="cpml"),
         ),
     )
 
-    # --- substrate fill (RO4350B, lossless) ---
     sim.add_material("ro4350b", eps_r=EPS_R)
     sim.add(
         Box((0.0, 0.0, 0.0), (LX, LY, H_SUB)),
         material="ro4350b",
     )
 
-    # --- PEC trace strip: a SHEET on the laminate face (#931 §1.3) ---
-    # A microstrip quasi-TEM mode requires a metal trace above the
-    # substrate. Without the trace, the Ez source excites a TM substrate
-    # mode (Z0 >> 50 Ω). 35 µm copper is foil, so it is declared as a
-    # zero-thickness Box at z = H_SUB and realized as ONE wall plane with
-    # the normal Ez left live. The one-cell-thick spelling this fixture
-    # used to carry is a VOLUME under the contract: walls at H_SUB and
-    # H_SUB + dx with the Ez between them shorted, i.e. 85 µm of solid
-    # metal.
     y_centre = LY / 2.0
     trace_y_lo = y_centre - W_TRACE / 2.0
     trace_y_hi = y_centre + W_TRACE / 2.0
@@ -226,8 +191,8 @@ def test_msl_thru_line_passive_gate():
         Box((0.0, trace_y_lo, H_SUB), (LX, trace_y_hi, H_SUB)),
         material="pec",
     )
+    assert [(int(spec.normal_axis), int(spec.plane) - sim.realized_geometry().domain[2].padding[0]) for spec in sim.realized_geometry().sheets] == [(2, 3)], "The realized foil sheet must occupy z node 3 on the uniform board"
 
-    # --- port 0: driven from left, propagates +x ---
     sim.add_msl_port(
         position=(PORT_MARGIN, y_centre, 0.0),
         width=W_TRACE,
@@ -236,7 +201,6 @@ def test_msl_thru_line_passive_gate():
         impedance=50.0,
     )
 
-    # --- port 1: passive matched at right end, propagates -x ---
     sim.add_msl_port(
         position=(PORT_MARGIN + L_LINE, y_centre, 0.0),
         width=W_TRACE,
@@ -245,20 +209,17 @@ def test_msl_thru_line_passive_gate():
         impedance=50.0,
     )
 
-    # ------------------------------------------------------------------ run
     result = sim.compute_msl_s_matrix(
         n_freqs=30,
         num_periods=12,
     )
 
-    S = result.S          # shape (n_ports, n_ports, n_freqs)
-    Z0 = result.Z0        # shape (n_ports, n_freqs)
-    freqs = result.freqs  # shape (n_freqs,)
+    S = result.S
+    Z0 = result.Z0
+    freqs = result.freqs
 
-    # Gate window: 3–4.5 GHz where quasi-TEM is well-established at DX=80µm.
     gate_mask = (freqs >= GATE_F_LO) & (freqs <= GATE_F_HI)
     if not np.any(gate_mask):
-        # Fallback: centre 10 points
         n_f = freqs.shape[0]
         gate_mask = np.zeros(n_f, dtype=bool)
         gate_mask[max(0, n_f // 2 - 5):min(n_f, n_f // 2 + 5)] = True
@@ -279,13 +240,10 @@ def test_msl_thru_line_passive_gate():
     nz_sub = int(round(H_SUB / DX))
     print(f"[MSL thru] dx = {DX*1e6:.0f} µm, nz_sub ≈ {nz_sub}")
 
-    # --- reflection gate (laplace mode; measured 0.0203 on the #931
-    #     on-lattice sheet board, 0.1160 on the pre-#931 bisecting mesh) ---
     assert mean_s11 < 0.15, (
         f"|S11| = {mean_s11:.4f} ≥ 0.15 — excessive reflection at source plane"
     )
 
-    # --- passivity / transmission gate ---
     assert mean_s21 > 0.90, (
         f"|S21| = {mean_s21:.4f} ≤ 0.90 — insufficient forward transmission"
     )
@@ -293,16 +251,14 @@ def test_msl_thru_line_passive_gate():
         f"|S21| = {mean_s21:.4f} ≥ 1.05 — passivity violated"
     )
 
-    # --- Z0 gate (window unchanged since the dx=80µm correction; measured
-    #     46.16 Ω on the #931 board, 57.58 Ω on the pre-#931 one) ---
     assert 40.0 < mean_z0 < 65.0, (
         f"Re(Z0) = {mean_z0:.2f} Ω outside (40, 65) Ω"
     )
 
 
 def test_msl_thru_line_eigenmode_request_is_refused():
-    """The S-matrix entry point refuses the removed eigenmode source."""
-    # #1138: trace y solved +8.656% off; this tests the eigenmode source gate.
+    """The S-matrix entry point refuses the removed eigenmode source.
+    The trace’s +8.656% solved y offset is accepted to test the eigenmode source gate."""
     sim = Simulation(snap="declared",
         freq_max=F_MAX,
         domain=(LX, LY, LZ),
@@ -343,8 +299,6 @@ def test_msl_thru_line_eigenmode_request_is_refused():
         eps_r_sub=EPS_R,
     )
 
-    # The uniform S-matrix entry propagates the profile refusal through
-    # rfx/sparams/msl.py:705; it has no separate eigenmode refusal message.
     with pytest.raises(NotImplementedError, match="Path B from-scratch FDFD eigenmode solver"):
         sim.compute_msl_s_matrix(n_freqs=30, num_periods=12)
 
@@ -356,9 +310,9 @@ def _run_msl_thru(l_line: float):
     Identical geometry/run params to ``test_msl_thru_line_passive_gate`` (the
     validated single-length envelope), parameterised by ``l_line`` so the
     length-invariance test can sweep it. ``LY``/``LZ`` are length-independent.
+    The trace’s +8.656% solved y offset is accepted to test Z0 length invariance.
     """
     lx = l_line + 2 * PORT_MARGIN
-    # #1138: trace y solved +8.656% off; this tests Z0 length invariance.
     sim = Simulation(snap="declared",
         freq_max=F_MAX,
         domain=(lx, LY, LZ),
@@ -495,7 +449,7 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     same-commit disagreements, and that row has no commit.
     Nothing here re-derives a bound: MEASURED_SPREAD_ENVELOPE is still the
     retired board's 0.004607, and the #931 board's envelope would TIGHTEN the
-    gate, which is a PI decision and not this issue's.
+    gate, which is outside this issue.
 
     The envelope has DRIFTED since 2026-08-09: a full-precision pod re-measure
     at HEAD (1f005d0d) gives spread = 0.0046760 (0.4676%) vs the committed
@@ -525,7 +479,7 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     Per issue #610's no-silent-loosening rule the gate STAYS 0.007 and
     MEASURED_SPREAD_ENVELOPE stays 0.004607: attribution is not a licence to
     re-derive, and on current main any re-derivation would have to be measured
-    on the #931 board, not this one. That call is the PI's, not maintenance.
+    on the #931 board, not this one.
     Full-precision per-leg mean|Z0[+x]| moved:
     57.3381 → 57.32987 Ω (−0.00823) at L=8mm, 57.5778 → 57.57185 Ω (−0.00595)
     at L=10mm, 57.6030 → 57.59874 Ω (−0.00426) at L=12mm — all DECREASES
@@ -558,11 +512,6 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     platform/BLAS is diagnosed against the ledger, never fixed by loosening.
     @slow: three full FDTD thru-line runs.
     """
-    # Legs {8, 10, 12} mm (L = 6 mm removed 2026-08-09, issue #518 — short-line
-    # N-probe fit conditioning; see docstring). Largest domain is now
-    # L + 2*PORT_MARGIN = 16 mm (the validated single-length gate's domain is
-    # 14 mm); the set spans a 50% length range — still enough to expose any
-    # length-dependent Z0 drift.
     lengths = [8e-3, 10e-3, 12e-3]
     mean_abs_z0_per_length = []
     for l_line in lengths:
@@ -570,12 +519,11 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
         S, Z0, freqs = result.S, result.Z0, result.freqs
         mask = (freqs >= GATE_F_LO) & (freqs <= GATE_F_HI)
         assert np.any(mask), f"no gate-band freqs at L={l_line}"
-        z0_p0 = Z0[0, mask]   # +x driven port
-        z0_p1 = Z0[1, mask]   # -x port (the one that read negative pre-fix)
+        z0_p0 = Z0[0, mask]
+        z0_p1 = Z0[1, mask]
         s11 = np.abs(S[0, 0, mask])
         s21 = np.abs(S[1, 0, mask])
 
-        # R5 witness: dump the full per-port Z0 trace, not just a headline.
         print(f"\n[MSL z0-len L={l_line*1e3:.0f}mm] Re(Z0[+x]) min/mean/max = "
               f"{z0_p0.real.min():.2f}/{z0_p0.real.mean():.2f}/{z0_p0.real.max():.2f}")
         print(f"[MSL z0-len L={l_line*1e3:.0f}mm] Re(Z0[-x]) min/mean/max = "
@@ -583,36 +531,28 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
         print(f"[MSL z0-len L={l_line*1e3:.0f}mm] mean|S11|={np.mean(s11):.4f} "
               f"mean|S21|={np.mean(s21):.4f}")
 
-        # (1) #140 LOCK: positive Re(Z0) on BOTH ports, every band bin.
         assert np.all(z0_p0.real > 0), f"+x port Re(Z0) not all positive at L={l_line}"
         assert np.all(z0_p1.real > 0), (
             f"-x port Re(Z0) not all positive at L={l_line} — issue #140 sign regression"
         )
-        # (2) passivity (per-bin, not just mean).
         assert np.max(s11) <= 1.05 and np.max(s21) <= 1.05, (
             f"passivity violated at L={l_line}: max|S11|={np.max(s11):.3f} "
             f"max|S21|={np.max(s21):.3f}"
         )
-        # (3) transmission + reflection envelope (consistent with the single-length gate).
         assert float(np.mean(s21)) > 0.90, f"|S21|={np.mean(s21):.3f} too low at L={l_line}"
         assert float(np.mean(s11)) < LEG_S11_BOUND, (
             f"|S11|={np.mean(s11):.3f} too high at L={l_line}"
         )
-        # (4) |Z0| magnitude symmetry: the -x port differs from +x only in (now-fixed) sign.
         m0 = float(np.mean(np.abs(z0_p0)))
         m1 = float(np.mean(np.abs(z0_p1)))
         assert abs(m0 - m1) / m0 < 0.05, (
             f"|Z0| +x/-x magnitude mismatch at L={l_line}: {m0:.2f} vs {m1:.2f}"
         )
-        # consistent with the existing single-length Z0 gate.
         assert 40.0 < float(np.mean(z0_p0.real)) < 65.0, (
             f"mean Re(Z0[+x])={np.mean(z0_p0.real):.2f} outside (40,65) at L={l_line}"
         )
         mean_abs_z0_per_length.append(m0)
 
-    # (5) |Z0| length-invariance: per-unit-length property -> agree across lengths.
-    # Bound derived from the fresh 2026-08-09 measured envelope through the
-    # shared gate policy (see docstring for the per-leg numbers + arithmetic).
     spread_tol = gate_from_envelope(MEASURED_SPREAD_ENVELOPE, quantum=1000)
     assert spread_tol == 0.007, (
         f"spread gate derives to {spread_tol}, not its committed 0.007 — the "
@@ -631,9 +571,6 @@ def test_msl_thru_line_z0_length_invariance_and_positive_sign():
     )
 
 
-# ---------------------------------------------------------------------------
-# The ownership contract on this board — build time, no solve
-# ---------------------------------------------------------------------------
 
 def test_declared_conductor_is_the_realized_conductor():
     """A correctly drawn conductor realizes what it declares (#931).
@@ -663,9 +600,8 @@ def test_declared_conductor_is_the_realized_conductor():
     pinned here so that a change in the sampling rule shows up as a
     changed residual rather than as silence, but it is NOT an equality:
     only a dimension commensurate with dx realizes exactly.
+    The footprint is compared against ``node_index`` because ceil/floor of lo/dx can disagree by a whole row at a face within a float ulp of a node.
     """
-    # The same board the gate above builds, stated once here; nothing is
-    # stepped, so this costs one grid build.
     sim = Simulation(
         freq_max=F_MAX, domain=(LX, LY, LZ), dx=DX, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml",
@@ -696,12 +632,6 @@ def test_declared_conductor_is_the_realized_conductor():
     j_lo = node_index(rz.grid, 1, y_c - W_TRACE / 2)
     j_hi = node_index(rz.grid, 1, y_c + W_TRACE / 2)
     rows = np.flatnonzero(fp[:, :, plane].any(axis=0))
-    # The drawn rectangle is realized CLOSED on the in-plane axes (§1.3),
-    # hi row included, so the first and last footprint rows are the nodes
-    # nearest the two drawn faces. Compared against node_index rather than
-    # against a ceil/floor of lo/dx: re-deriving the sampling here would be
-    # a second rule, and at a face that lands within a float ulp of a node
-    # the two disagree by a whole row.
     assert (int(rows[0]), int(rows[-1])) == (j_lo, j_hi), (
         f"the trace's realized node rows are {int(rows[0])}..{int(rows[-1])}, "
         f"drawn {j_lo}..{j_hi}")

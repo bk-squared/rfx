@@ -29,7 +29,6 @@ def cell_table_scene(name):
         'saddle_spheres': [Sphere((.005, .005, .006), .0007),
                            Sphere((.006, .006, .006), .0007)],
         'empty': [],
-        # Overlapping device bodies with three distinct nearest-SDF owners.
         'device_three_body': [Sphere((.0053, .0057, .0062), .0024),
                               Cylinder((.0068, .0062, .006), .0018, .007, axis='z'),
                               Sphere((.0072, .0048, .0051), .002)],

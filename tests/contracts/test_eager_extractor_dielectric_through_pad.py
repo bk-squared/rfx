@@ -30,9 +30,7 @@ class _CompiledProbe(SParamProbe):
 
 
 def test_eager_extractor_dielectric_through_pad(monkeypatch):
-    # Keep the public extractor's Python loop, drive/probe plumbing and
-    # material preparation. Compile its unchanged step kernel
-    # so this 400-step regression remains suitable for the default suite.
+    """Compiling the unchanged step kernel keeps the 400-step regression suitable for the default suite."""
     from rfx.stepping import probe_loop
     make_step = probe_loop.make_probe_step
     def compiled_step(*args, **kwargs):
@@ -42,11 +40,9 @@ def test_eager_extractor_dielectric_through_pad(monkeypatch):
             carry = {**carry, 'sprobes': tuple(_CompiledProbe(*probe)
                                              for probe in carry['sprobes'])}
             return compiled(carry, *values)
-        # Keep the supplied waveform's Python-float evaluation unchanged.
         return call, source
     monkeypatch.setattr(probe_loop, 'make_probe_step', compiled_step)
 
-    # A deliberate gain must be rejected by the SAME assertion as the scene.
     with pytest.raises(AssertionError):
         _assert_passive(np.full(7, 1.01))
 

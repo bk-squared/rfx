@@ -40,8 +40,9 @@ from tests._printed_numbers import agrees, printed_after, significant_figures
 
 
 C0 = 299_792_458.0
-RUNG_M = F.DX_LADDER[2]          # a / 36, the fine rung of the battery ladder
-RUNG_N = F.N_LADDER[2]
+FINE_RUNG_INDEX = 2
+RUNG_M = F.DX_LADDER[FINE_RUNG_INDEX]
+RUNG_N = F.N_LADDER[FINE_RUNG_INDEX]
 
 
 def _sinc(x: float) -> float:
@@ -80,9 +81,6 @@ def _number_after(text: str, marker: str) -> float:
     return float(re.search(r"-?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?", tail).group(0))
 
 
-# ---------------------------------------------------------------------------
-# (a) record length vs the far-boundary round trip
-# ---------------------------------------------------------------------------
 
 def test_analytic_cutoff_is_an_independent_oracle_for_the_port_config():
     """The sinc cutoff this file computes IS the port's own discrete cutoff.
@@ -98,10 +96,10 @@ def test_analytic_cutoff_is_an_independent_oracle_for_the_port_config():
 
 
 def test_record_shorter_than_one_round_trip_is_error_severity():
+    """The port's discrete-solve cutoff can round differently from the analytic cutoff."""
     num_periods = 10.0
     sim, grid, cfgs, n_steps = _built(num_periods=num_periods)
 
-    # --- hand computation, from the fixture's declared dimensions ---------
     f_min = float(min(F.FREQS))
     f_c = _analytic_te10_cutoff_hz(RUNG_N)
     v_g = C0 * math.sqrt(1.0 - (f_c / f_min) ** 2)
@@ -110,14 +108,14 @@ def test_record_shorter_than_one_round_trip_is_error_severity():
     tau_far = 2.0 * far_path / v_g
     T = n_steps * float(grid.dt)
     ratio = T / tau_far
-    assert ratio < 1.0, ratio          # the regime this test is about
+    assert ratio < 1.0, ratio
 
     msgs = _collect(sim, "_validate_cfg_record_vs_far_boundary",
                     freqs=F.FREQS, num_periods=num_periods,
                     grid=grid, cfgs=cfgs, n_steps=n_steps)
     hits = [m for m in msgs
             if m.code == "record_shorter_than_far_boundary_round_trip"]
-    assert len(hits) == 2, _codes(msgs)      # one per port
+    assert len(hits) == 2, _codes(msgs)
     assert all(m.severity == "error" for m in hits)
 
     left = next(m for m in hits if m.loc == "waveguide_port[0]")
@@ -135,18 +133,10 @@ def test_record_shorter_than_one_round_trip_is_error_severity():
     assert _number_after(text, "cutoff f_c = ") == pytest.approx(f_c / 1e9, rel=1e-4)
     assert _number_after(text, "absorber pad ") == pytest.approx(
         pad_m * 1e3, rel=1e-4)
-    # The remedy is a knob value, in the knob's own units.
     required = int(math.ceil(3.0 * tau_far * float(grid.freq_max)))
     assert f"num_periods >= {required} makes T/tau_far >= 3" in text
-    # ... and it is the value that actually clears the threshold.
     assert (int(grid.num_timesteps(required)) * float(grid.dt)) / tau_far >= 3.0
 
-    # Every printed value is the hand computation to its last printed digit,
-    # printed the way `.4g` prints (no more than four significant figures, no
-    # trailing zeros) and with as many figures as `.4g` gives the hand value.
-    # Not compared as formatted strings: the port's cutoff comes from its own
-    # discrete mode solve, 1e-6 from the analytic one used here, so the two
-    # values can sit on either side of a rounding edge.
     for label, value in (("far_path = ", far_path * 1e3), ("T/tau_far = ", ratio)):
         tokens = printed_after(text, label)
         assert all(agrees(t, value) for t in tokens), (label, tokens, value)
@@ -196,9 +186,6 @@ def test_unreadable_launch_direction_is_skipped_with_a_note():
     assert "launch direction could not be read" in str(hits[0])
 
 
-# ---------------------------------------------------------------------------
-# (b) port index mirror covariance
-# ---------------------------------------------------------------------------
 
 def _runner_plane_sums(grid, cfgs):
     """The four index sums, from the runner's own plane arithmetic.
@@ -219,13 +206,11 @@ def _runner_plane_sums(grid, cfgs):
 
 
 def test_mirror_audit_reports_only_the_known_e_plane_offset():
+    """A dual node at (j+0.5)*d mirrors to j' = n_axis - 2 - j."""
     sim, grid, cfgs, n_steps = _built()
     n_axis = int(grid.shape[0])
     sums = _runner_plane_sums(grid, cfgs)
 
-    # The layout IS mirror-symmetric: the primal planes sit on n_axis - 1 and
-    # the dual (H) plane on n_axis - 2, because a dual node at (j+0.5)*d
-    # mirrors to j' = n_axis - 2 - j. Only the E plane carries the shipped +1.
     assert sums["source E plane"] == n_axis
     assert sums["source H plane"] == n_axis - 2
     assert sums["reference probe plane"] == n_axis - 1
@@ -247,6 +232,7 @@ def test_mirror_audit_reports_only_the_known_e_plane_offset():
 
 
 def test_one_port_moved_one_cell_fires_the_asymmetry_warning():
+    """The moved port shifts every primal plane by one cell, so their sums are one above the covariant value."""
     sim = F.build_simulation("thru", RUNG_M)
     grid = sim._build_grid()
     n_steps = int(grid.num_timesteps(20.0))
@@ -267,8 +253,6 @@ def test_one_port_moved_one_cell_fires_the_asymmetry_warning():
         assert plane in named
     n_axis = int(grid.shape[0])
     sums = _runner_plane_sums(grid, cfgs)
-    # The moved port shifts every primal plane by one cell, so their sums are
-    # one ABOVE the covariant value; the message must print both.
     assert sums["reference probe plane"] == n_axis
     hit = next(m for m in hits if "reference probe plane" in str(m))
     assert f"sum = {n_axis}" in str(hit)
@@ -291,9 +275,6 @@ def test_single_port_axis_is_silent():
     assert msgs == []
 
 
-# ---------------------------------------------------------------------------
-# wiring
-# ---------------------------------------------------------------------------
 
 def test_preflight_sparameters_waveguide_carries_the_audits():
     """The audits reach the report, advisory, with .ok still True.
@@ -310,14 +291,11 @@ def test_preflight_sparameters_waveguide_carries_the_audits():
     assert "record_shorter_than_far_boundary_round_trip" in codes
     assert "port_index_mirror_known_e_plane_offset" in codes
     assert report.ok and not report.errors
-    # The three tiers partition the report and .warnings excludes info.
     assert len(report.errors) + len(report.warnings) + len(report.infos) == len(report)
     assert [i.code for i in report.infos] == [
         "port_index_mirror_known_e_plane_offset"]
     assert all(i.code == "record_shorter_than_far_boundary_round_trip"
                for i in report.warnings)
-    # The fixture's own record is longer than the audit's evaluation default,
-    # and still short of the threshold — stated as a number, not an adjective.
     grid = sim._build_grid()
     assert F.NUM_PERIODS == 40.0
     assert (int(grid.num_timesteps(F.NUM_PERIODS)) * float(grid.dt)) / (
@@ -325,9 +303,6 @@ def test_preflight_sparameters_waveguide_carries_the_audits():
         * float(grid.dt)) == pytest.approx(2.0, rel=2e-3)
 
 
-# ---------------------------------------------------------------------------
-# strict=True escalates errors only (review of the item-2 PR)
-# ---------------------------------------------------------------------------
 
 def test_strict_does_not_raise_on_a_healthy_two_port_guide():
     """The falsifier for the review's HIGH finding.
@@ -339,7 +314,7 @@ def test_strict_does_not_raise_on_a_healthy_two_port_guide():
     sim = F.build_simulation("thru", F.DX_LADDER[0])
     report = sim.preflight_sparameters(calculator="waveguide", strict=True)
     assert not report.errors
-    assert report.warnings and report.infos      # not a vacuous pass
+    assert report.warnings and report.infos
     assert report.ok
 
 
@@ -355,14 +330,10 @@ def test_strict_raises_when_an_error_severity_finding_is_present():
     text = str(excinfo.value)
     assert "error-severity issue(s)" in text
     assert "record ends BEFORE the far-boundary round trip" in text
-    # The info note is returned, counted as advisory, and NOT escalated.
     assert "advisory/informational finding(s)" in text
     assert "port_index_mirror_known_e_plane_offset" not in text
 
 
-# ---------------------------------------------------------------------------
-# a builder exception is reported, never re-raised
-# ---------------------------------------------------------------------------
 
 def test_builder_exception_skips_the_audits_and_says_so(monkeypatch):
     sim = F.build_simulation("thru", F.DX_LADDER[0])
@@ -378,8 +349,6 @@ def test_builder_exception_skips_the_audits_and_says_so(monkeypatch):
     assert skipped[0].severity == "warning"
     assert "mode solve exploded" in str(skipped[0])
     assert "UNCHECKED" in str(skipped[0])
-    # Skipped, not half-run: neither audit reported anything else, and the
-    # call returned instead of raising.
     assert [i.code for i in report] == ["waveguide_setup_audit_skipped"]
     assert report.ok
 

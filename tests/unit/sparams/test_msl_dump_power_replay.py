@@ -17,11 +17,12 @@ LEGACY_CURRENT = ('line current sign normalized so +x and -x MSL ports '
 def _write(tmp_path, version=4, *, assembly='multi_drive_solve', missing_references=False):
     refs = np.array([25., 100.])
     root_r = np.sqrt(refs)
-    # A prescribed passive reciprocal power S, with BOTH incident port
-    # waves nonzero on each record. A per-drive receiving-role shortcut
-    # cannot reproduce this complete wave-system oracle.
     expected = np.array([[.2+.1j, .6-.05j], [.6-.05j, -.1+.2j]])
     a = np.array([[1., .3j], [.2-.1j, .8]])
+    assert (np.all(a != 0) and np.array_equal(expected, expected.T)
+            and np.all(np.linalg.svd(expected, compute_uv=False) <= 1.0)), (
+        "Nonzero incident waves at both ports require the complete passive reciprocal power-S oracle"
+    )
     b = expected @ a
     v = root_r[:, None] * (a+b)
     i = (a-b) / root_r[:, None]
@@ -88,13 +89,11 @@ def test_declared_fallback_replays_its_power_ratios_without_lumped_receive_sign(
 
 @pytest.mark.parametrize('version', [3, 4])
 def test_fallback_preserves_the_producers_wave_units_for_its_legacy_floor(tmp_path, version):
+    """The fallback S-matrix diagonals keep the voltage-unit guard."""
     path, _ = _write(tmp_path, version, assembly='single_ratio_fallback')
     dump = load_port_vi_dump_npz(path)
     dump.voltages[:] = 0.5e-30
     dump.currents[:] = 0
-    # Voltage waves are 0.25e-30. v4 relative row scales are [1, 0.5].
-    # Diagonals keep the voltage-unit guard; receiving rows use the working
-    # wave guard. Removing that floor incorrectly makes every entry one.
     expected = np.full((2, 2), 0.2)
     if version == 4:
         expected[0, 1] = 2 / 9

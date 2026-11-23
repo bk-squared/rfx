@@ -21,9 +21,7 @@ beta under test never enters beta_2L.
 
 Measured on branch ports/msl-plane (Mac CPU, 2026-10-13): beta_KJ/beta_2L - 1
 = -1.226 % ... -0.220 % (outside 1 % at 2.0, 3.5 and 4.9 GHz); doubling the
-absorber moved beta_2L by at most 0.033 %. Record: bk-squared/rfx-archive
-``rfx/plans/20261005-s2-measurement-plan/MSL-PLANE.md``, decision records 11
-and 12 (the bar 1.35e-2 is the measured 1.226 % plus about 10 % margin, set by the ports editor: decision record 16).
+absorber moved beta_2L by at most 0.033 %. The bar 1.35e-2 is the measured 1.226 % plus about 10 % margin.
 The shift's phase error on this board is at most 1.9e-2 rad over 2-18 GHz
 (decision record 15). Moving
 probe 0 on ONE line is not this measurement: within 5 substrate heights of
@@ -33,7 +31,7 @@ from __future__ import annotations
 
 LOCK_PROVENANCE = {
     "fixture": "none",
-    "generator": "this module's two-line measurement (rfx-archive rfx/records/20261012-msl-plane-measure/m4; bar from MSL-PLANE.md decision record 16)",
+    "generator": "this module's two-line measurement",
     "commit": "a1cad87",
     "date": "2026-10-13",
     "run_id": "local",
@@ -83,9 +81,10 @@ def _feed_nodes(sim):
 
 
 def _probe0_s21(res):
-    # beta from the S21 phase ratio of two lines is a line property and
-    # assumes the line reference: S is brought back from the declared 50 ohm
-    # to line_impedances (#2014) before the phase is read.
+    """Beta from the S21 phase ratio of two lines is a line property and assumes the line
+    reference, so S is brought back from the declared 50 ohm to ``line_impedances``
+    before the phase is read.
+    """
     beta = np.asarray(res.shift_beta, dtype=np.float64)
     offsets = np.asarray(res.reference_plane_offsets_m, dtype=np.float64)
     u = np.exp(1j * beta * offsets[:, None])
@@ -98,8 +97,6 @@ def test_closed_form_beta_matches_the_two_line_beta_on_the_coarse_board():
 
     short, long_ = _board(0), _board(_DELTA_CELLS)
     fs, fl = _feed_nodes(short), _feed_nodes(long_)
-    # Realized length difference, and the same port-to-strip-end geometry:
-    # the strip runs feed node to feed node on both, 2 mm from each x face.
     d_l = (fl[1] - fl[0]) - (fs[1] - fs[0])
     np.testing.assert_allclose(d_l, _DELTA_CELLS * _DX, rtol=1e-9)
     np.testing.assert_allclose([fs[0], fl[0]], [0.002, 0.002], rtol=1e-9)

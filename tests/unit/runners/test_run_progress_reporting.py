@@ -24,6 +24,7 @@ thing, or a constant, would pass too.
 
 Chunk sizes here deliberately do NOT divide the step count, so the ragged
 final chunk (a second XLA compile, different scan length) is on the gate.
+An earlier max|Ez|/max|Hx| measurement of the loaded-carry fixture read 789 at the boundary and 275 at the end, both within about 2x of the free-space wave impedance Z0 = 377.
 """
 
 from __future__ import annotations
@@ -40,10 +41,6 @@ from rfx import Box, Simulation, simulation as _sim
 from rfx.core.yee import MaterialArrays
 from rfx.grid import Grid
 from rfx.progress import ProgressReporter, validate_report_every
-
-# --------------------------------------------------------------------------
-# helpers
-# --------------------------------------------------------------------------
 
 
 def _sha(*arrays) -> str:
@@ -145,23 +142,20 @@ def _msl_thru():
     itself, which for a matched thru changes neither reading. ``beta/k0``
     is 0.872 on 8 of the 12 bins (eps_eff 0.76, below vacuum) and does not
     move with ``num_periods`` 6 -> 20 — the same class as
-    ``rfx-known-issues.md`` 2026-08-20, "MSL extractor reports non-physical
+    "MSL extractor reports non-physical
     Z0 / eps_eff ... DIAGNOSTIC-ONLY".
 
     So: nothing in this file is a physics gate on the trace, and the
     build-time assertion below is what says the declared trace is realized
     where it is drawn. Do not quote this fixture's Z0/beta as physics.
+    An earlier strip drawn across the whole domain left 2 mm open stubs whose effective quarter wave (23.8 GHz) is within 1.5x of the 2-18 GHz read.
     """
     domain_y, y_c = 0.008, 0.004
-    # #1138: thin_conductor[0] y solved +11.67 % off; this test checks chunking is bit exact msl s matrix.
     sim = Simulation(snap="declared", freq_max=20e9, domain=(0.012, domain_y, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, domain_y, 0.0008)), material="sub")
     sim.add(Box((0, 0, 0), (0.012, domain_y, 0)), material="pec")
-    # #1512: the strip spans the two port nodes (2 and 10 mm). Drawn across the whole
-    # domain it left 2 mm open stubs whose effective quarter wave (23.8 GHz) is within
-    # 1.5x of the 2-18 GHz read.
     sim.add_thin_conductor(Box((0.002, y_c - 0.0006, 0.0008),
                                (0.010, y_c + 0.0006, 0.0008)))
     sim.add_msl_port(position=(0.002, y_c, 0.0), width=0.0012, height=0.0008,
@@ -182,8 +176,6 @@ def test_msl_thru_realizes_the_trace_where_it_is_drawn():
     rz = realized(sim)
     assert rz.pec_mask is None or not bool(np.any(np.asarray(rz.pec_mask))), (
         "a sheet owns no cell")
-    # a sheet leaves the normal component live (#690); a one-cell VOLUME
-    # would short it — that is what the old drawing realized.
     assert not bool(np.any(np.asarray(rz.edge_masks[2])))
 
 
@@ -196,11 +188,6 @@ def _msl_digest(res) -> dict:
         "Z0": _sha(np.asarray(res.Z0)),
         "beta": _sha(np.asarray(res.beta)),
     }
-
-
-# --------------------------------------------------------------------------
-# identity gates — the reason this feature is allowed to exist
-# --------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("every", [64, 97, _N_STEPS, _N_STEPS + 500])
@@ -334,6 +321,7 @@ def test_chunk_boundary_carry_is_a_live_intermediate():
     continuation would be trivial and the identity gate would be testing
     nothing. Chunk k's boundary carry is by construction the state of a run
     of length ``k * report_every``, so run those lengths directly.
+    An earlier max|Ez| measurement rang down from 2.21e-2 to 3.14e-4, a factor ~70.
     """
     every = 64
     _, at_boundary = _loaded_run(None, n_steps=every)
@@ -342,12 +330,8 @@ def test_chunk_boundary_carry_is_a_live_intermediate():
     ez_b, ez_e = at_boundary["field.ez"], at_end["field.ez"]
     hx_b = at_boundary["field.hx"]
 
-    # (a) not the zero initial condition (measured max|Ez| = 2.21e-2)
     assert np.abs(ez_b).max() > 1e-4, np.abs(ez_b).max()
 
-    # (b) genuinely different from the final state. Normalise by the LARGER
-    # of the two norms so the ratio stays bounded as the field rings down
-    # (measured 1.0 -- the two states barely overlap).
     assert not np.array_equal(ez_b, ez_e)
     rel = (np.linalg.norm(ez_b - ez_e)
            / max(np.linalg.norm(ez_b), np.linalg.norm(ez_e),
@@ -358,9 +342,6 @@ def test_chunk_boundary_carry_is_a_live_intermediate():
         f"solve nowhere."
     )
 
-    # (c) the field is ringing down, not sitting on a static remnant. A DC
-    # soft-source charge would freeze max|Ez| (issue #388 class): measured
-    # 2.21e-2 -> 3.14e-4, a factor ~70.
     decay = np.abs(ez_b).max() / max(np.abs(ez_e).max(), np.finfo(float).tiny)
     assert decay > 5.0, (
         f"max|Ez| barely moved between step {every} and step {_N_STEPS} "
@@ -369,20 +350,12 @@ def test_chunk_boundary_carry_is_a_live_intermediate():
         f"looks."
     )
 
-    # (d) independent witness that this is a real EM field rather than an
-    # electrostatic artifact: max|Ez|/max|Hx| should sit near the free-space
-    # wave impedance Z0 = 377. Measured 789 at the boundary and 275 at the
-    # end -- both within about 2x of Z0. The DC-carrying source this fixture
-    # started with read 1.8e7 at step 220 instead, which is what an
-    # electrostatic remnant looks like.
     eh = np.abs(ez_b).max() / max(np.abs(hx_b).max(), np.finfo(float).tiny)
     assert 37.7 < eh < 3770.0, (
         f"max|Ez|/max|Hx| = {eh:.3g} is more than a decade from Z0=377; the "
         f"fixture is not driving a propagating field."
     )
 
-    # (e) the accumulators are mid-integration, not finished (measured 39%
-    # relative change between the boundary and the end)
     acc_b, acc_e = at_boundary["dft_plane[0]"], at_end["dft_plane[0]"]
     assert np.abs(acc_b).max() > 0.0, "DFT accumulator empty at the boundary"
     arel = np.linalg.norm(acc_b - acc_e) / np.linalg.norm(acc_e)
@@ -425,32 +398,22 @@ def test_chunking_is_bit_exact_msl_s_matrix():
     )
 
 
-# --------------------------------------------------------------------------
-# default-off contract
-# --------------------------------------------------------------------------
-
-
 def test_default_is_off_and_silent(capsys):
     _low_level_run(None)
     assert "[PROGRESS]" not in capsys.readouterr().out
 
 
 def test_reports_are_emitted_with_the_documented_fields(capsys):
+    """220 steps / 64 gives three full chunks plus a ragged 28-step chunk."""
     _low_level_run(64)
     lines = [ln for ln in capsys.readouterr().out.splitlines()
              if "[PROGRESS]" in ln]
-    # 220 steps / 64 -> 3 full chunks + a ragged 28-step chunk.
     assert len(lines) == 4, lines
     for ln in lines:
         assert "steps" in ln and "elapsed" in ln
         assert "steps/s" in ln and "ETA" in ln
     assert lines[0].startswith("  [PROGRESS] gate: 64/220 steps")
     assert lines[-1].startswith("  [PROGRESS] gate: 220/220 steps (100.0%)")
-
-
-# --------------------------------------------------------------------------
-# fences — a reporting request that cannot be honoured must say so
-# --------------------------------------------------------------------------
 
 
 def test_rejected_under_jit():
@@ -540,8 +503,8 @@ def test_grouped_concat_matches_flat_concat():
     from rfx.progress import _CONCAT_GROUP, concat_chunks
 
     rng = np.random.default_rng(0)
-    # More chunks than one group, so the grouping actually recurses.
     n_chunks = _CONCAT_GROUP * 2 + 3
+    assert n_chunks > _CONCAT_GROUP, "More chunks than one group must exercise recursive grouping"
     parts = [(jnp.asarray(rng.standard_normal((3, 2)), dtype=jnp.float32),)
              for _ in range(n_chunks)]
 
@@ -572,16 +535,20 @@ def _low_level_run_with_segments():
                     checkpoint_segments=4, report_every=5)
 
 
+EVERY_STEP_AS_BOOL = True
+
+
 @pytest.mark.parametrize("bad", [
     0, -1, 0.5, 1000.5,
-    float("inf"),   # int(inf) raises OverflowError, not ValueError
+    float("inf"),
     float("nan"),
-    True,           # Python bools are ints; True would mean "every step"
+    EVERY_STEP_AS_BOOL,
     False,
     "100",
     None.__class__,
 ])
 def test_rejects_nonsense_report_every(bad):
+    """int(inf) raises OverflowError, not ValueError."""
     with pytest.raises(ValueError, match="report_every"):
         validate_report_every(bad, n_steps=100)
 
@@ -591,17 +558,13 @@ def test_validate_accepts_int_like():
     assert validate_report_every(np.int64(7), n_steps=100) == 7
 
 
-# --------------------------------------------------------------------------
-# until_decay lane — already a host loop, so the tick is a pure addition
-# --------------------------------------------------------------------------
-
-
 def test_until_decay_reports_and_is_bit_exact(capsys):
     """Reporting on the decay lane must not move the result or the stop step.
 
     ``decay_by=0.0`` is the documented forced-N escape (``U < 0`` never
     fires), so both runs execute exactly ``max_steps`` steps and any
     difference would be the reporting itself.
+    Ticks at 50 and 100 plus the final line at the true stop step 120 give three ticks.
     """
     def go(report_every):
         grid = Grid(freq_max=20e9, domain=(0.005, 0.005, 0.005), dx=5e-4,
@@ -632,15 +595,9 @@ def test_until_decay_reports_and_is_bit_exact(capsys):
     assert got == ref, "reporting perturbed the until_decay result"
 
     lines = [ln for ln in out.splitlines() if "[PROGRESS]" in ln]
-    # ticks at 50 and 100, then the final line at the true stop step 120.
     assert len(lines) == 3, lines
     assert "(cap)" in lines[0], "max_steps is a cap, and the line must say so"
     assert lines[-1].startswith("  [PROGRESS] decay: 120/120 (cap) steps")
-
-
-# --------------------------------------------------------------------------
-# unsupported lanes must warn rather than silently produce nothing
-# --------------------------------------------------------------------------
 
 
 def _nu_sim():
@@ -675,11 +632,6 @@ def test_nonuniform_lane_warns_on_the_checkpoint_fallback():
     msgs = [str(w.message) for w in caught if "report_every" in str(w.message)]
     assert msgs, "the checkpoint fallback must not drop report_every in silence"
     assert "checkpoint" in msgs[0]
-
-
-# --------------------------------------------------------------------------
-# reporter formatting unit
-# --------------------------------------------------------------------------
 
 
 def test_reporter_line_shape(capsys):
