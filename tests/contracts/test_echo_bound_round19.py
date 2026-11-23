@@ -8,7 +8,8 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
-from tests.contracts.run_forward_census import BUILDERS, equal_request_pair
+from tests.contracts.run_forward_census import BUILDERS, PATHS, equal_request_pair
+from tests.contracts.test_run_forward_one_pipeline import directions
 from tests.contracts.test_echo_bound_closing_rule import shorted_line
 
 
@@ -41,16 +42,19 @@ def declared_index(name):
     return 1., 1.
 
 
-@pytest.mark.parametrize('name', tuple(BUILDERS))
-def test_census_equal_values_and_conservative_requirement(name, capsys):
+@pytest.mark.parametrize('name,path,direction', [
+    pytest.param(name, path, direction or 'b', id=f'{name}-{path}-{direction or "fields"}')
+    for name in BUILDERS for path in PATHS for direction in directions(name)
+])
+def test_census_equal_values_and_conservative_requirement(name, path, direction, capsys):
     options = ({'subpixel_smoothing': 'full_tensor'} if name == 'C-full-tensor' else
                {'subpixel_smoothing': True} if name == 'C-smooth' else {})
-    pair = equal_request_pair(name, 'uniform', 'b', n_steps=1, entry_options=options)
+    pair = equal_request_pair(name, path, direction, n_steps=1, entry_options=options)
     admitted = [entry for entry in ('run', 'forward') if pair[entry]['outcome'] == 'admitted']
     if len(admitted) != 2:
         refused = {entry: record for entry, record in pair.items() if entry not in admitted}
         with capsys.disabled():
-            print(f'19 census {name}: refuses {refused}', file=sys.stderr)
+            print(f'20 census {name}/{path}/{direction}: refuses {refused}', file=sys.stderr)
     if not admitted:
         return
     expected, old_host = declared_index(name)
@@ -78,9 +82,11 @@ def test_census_equal_values_and_conservative_requirement(name, capsys):
             group = min(group, float(np.sqrt(1 - (float(cfg.f_cutoff) / min(propagating))**2)))
     required = 2.05 * 2 * np.linalg.norm(lengths) * expected / (299792458. * group)
     got = 2.05 * float(bounds[0]['tau_max'])
-    assert required <= got <= required * (1 + 10*np.finfo(np.float32).eps), (name, got, required)
+    unit = np.finfo(np.float32).eps / 2
+    margin = (1 + 2 * unit)**5 - 1
+    assert required <= got <= required * (1 + margin), (name, path, direction, got, required)
     with capsys.disabled():
-        print(f'19 census {name}: round17_host={old_host!r}; n_max={actual!r}; '
+        print(f'20 census {name}/{path}/{direction}: round17_host={old_host!r}; n_max={actual!r}; '
               f'host_required={required!r}; required={got!r}', file=sys.stderr, flush=True)
 
 
@@ -92,17 +98,6 @@ def test_volume_capacitor_does_not_raise_index():
     expected = np.nextafter(np.float32(1.), np.float32(np.inf))
     assert baseline['n_max'] == expected
     assert result.settling_echo_bound['n_max'] == expected
-
-
-def test_smoothing_subcell_dielectric_raises_index():
-    sim = Simulation(freq_max=20e9, domain=(.012, .011, .005), dx=.001, boundary='pec')
-    sim.add_material('tiny', eps_r=4.)
-    sim.add(Box((.00405, .00405, .00205), (.00415, .00415, .00215)), material='tiny')
-    sim.add_probe((.008, .007, .002), 'ez')
-    staircase = sim.forward(n_steps=2, skip_preflight=True)
-    smoothed = sim.forward(n_steps=2, skip_preflight=True, subpixel_smoothing=True)
-    assert staircase.settling_echo_bound['n_max'] == np.nextafter(np.float32(1.), np.float32(np.inf))
-    assert smoothed.settling_echo_bound['n_max'] == np.nextafter(np.float32(2.), np.float32(np.inf))
 
 
 def test_smoothing_reader_includes_subcell_shape():
@@ -118,6 +113,32 @@ def test_smoothing_reader_includes_subcell_shape():
     smoothed = runner_echo_bound(sim, grid, materials, smoothing=True)
     assert staircase['n_max'] == np.nextafter(np.float32(1.), np.float32(np.inf))
     assert smoothed['n_max'] == np.nextafter(np.float32(2.), np.float32(np.inf))
+
+
+@pytest.mark.parametrize('resonance', [3e9, 8e9], ids=['in-band', 'out-of-band'])
+def test_traced_zero_damping_cannot_judge(resonance):
+    """Zero damping under a trace has no finite susceptibility error margin."""
+    from rfx.core.yee import init_materials
+    from rfx.materials.lorentz import LorentzPole
+    from rfx.measurement.echo_bound import realized_echo_bound
+    from rfx.measurement.record_end import with_echo_bound
+    grid = shorted_line()._build_realized_grid()
+    materials = init_materials(grid.shape)
+    w0 = 2 * np.pi * resonance
+
+    def bound(delta):
+        pole = LorentzPole(w0, delta, .4 * w0**2)
+        return realized_echo_bound(grid, materials, freqs=[2e9, 4e9],
+                                   lorentz=([pole], [None]))
+
+    result = jax.jit(bound)(jnp.float32(0.))
+    witness = dict(status='pass', db=-100., reason='', window_starts={1000: (500, 750)})
+    db, detail = with_echo_bound(-100., witness, result, float(grid.dt))
+    assert np.isinf(result['n_max']) and np.isinf(result['tau_max'])
+    assert np.isnan(db) and detail['status'] == 'undetermined'
+    assert detail['reason'].startswith('cannot judge:')
+    damped = jax.jit(bound)(jnp.float32(.15 * w0))
+    assert np.isfinite(damped['n_max']) and np.isfinite(damped['tau_max'])
 
 
 @pytest.mark.parametrize('eps', [1., 2.2, 4., 9.1])
