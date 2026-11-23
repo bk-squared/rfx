@@ -1,47 +1,14 @@
 #!/usr/bin/env python3
 """Weekly report on the intake rules that CI cannot enforce on a single PR.
 
-Three of the repository's working rules are only checkable ACROSS pull requests
-and issues, so no per-PR gate can see them:
+Reviews are checked on merged PRs, or on each listed merge-train member.
+Accepted reviews pass. Claimed exceptions remain visible: maintainer instructions
+are informational, while docs/comment exceptions require a readable file list
+with no path under the source, test or script trees.
 
-* **Reviews.** ``scripts/ci/check_pr_body.py`` accepts ``Review: skipped - (a)``
-  and ``(b)``, by design -- the rule has two exceptions. What it cannot see is
-  how OFTEN the exception is claimed. An exception used every week is not an
-  exception, and the only way to notice is to count them weekly.
-* **Intake.** ``.github/ISSUE_TEMPLATE/`` makes "someone will DO or DECIDE
-  something" a required field, which works only for issues filed THROUGH a
-  form. An issue opened through the API or transferred from elsewhere skips it
-  and has no ``### Lane`` section.
-* **Lane labels on issues.** Filing through the form is not the same as ending
-  up queryable. ``.github/workflows/issue-lane-label.yml`` deliberately does
-  nothing -- and stays green -- when the dropdown was left unanswered or when a
-  pasted second ``### Lane`` section makes the body ambiguous. Both leave a
-  perfectly well-formed issue with no ``lane:*`` label, invisible to every lane
-  query, and nothing on the issue itself says so. Asking for the LABEL rather
-  than the heading is what catches that.
-* **Data carried past the budget.** ``scripts/ci/check_data_budget.py`` lets a
-  PR labelled ``data-budget-exception`` merge records the budget would refuse,
-  with a warning on that PR only. Whether the label became the way records land
-  is a question about many PRs, so it is counted here.
-* **One campaign at a time.** Work runs
-  one campaign at a time, and an open milestone is how that is visible. A merged
-  PR that closes an issue outside every open milestone is work that happened off
-  the current campaign; a merged PR that closes no issue at all may be fine
-  (housekeeping) or may be an issue nobody filed.
-
-None of this is a gate. A row here is a thing to look at, not a thing that was
-forbidden -- the report is deliberately loud (a failing row exits 1, so the
-scheduled run is RED and shows up in the Actions list) because a green weekly
-summary nobody opens reports nothing. Do not make it a required check.
-
-Two sections are INFORMATIONAL and never touch the exit code. Merged PRs that
-close no issue: infrastructure and documentation work legitimately closes
-nothing, and on the week this was written that section alone was 65 of 102
-merged PRs -- a report that is red every week for a thing that is usually fine
-is a report nobody opens by the third week. And merged PRs that added or
-modified more than ``FROZEN_REPORT_BYTES`` of frozen test data: the data budget
-allows 5,000,000 bytes per PR in the frozen-data homes, which bounds each PR and
-not their sum, so the sum is watched here, with the total on main in the header.
+Issues need a lane label, regardless of their body headings. Data-budget
+exceptions remain failing rows. Milestone, unlinked and frozen-data rows remain
+visible but informational. This weekly report must not become a required check.
 
 Reads GitHub through ``gh``; classification is a pure function over the JSON so
 the tests need no network. Stdlib only, Python 3.11.
@@ -68,7 +35,6 @@ from typing import Dict, Iterable, List, NamedTuple, Optional, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _CHECK_PR_BODY = REPO_ROOT / "scripts" / "ci" / "check_pr_body.py"
-_ISSUE_LANE = REPO_ROOT / "scripts" / "ci" / "issue_lane_label.py"
 _DATA_BUDGET = REPO_ROOT / "scripts" / "ci" / "check_data_budget.py"
 
 DEFAULT_DAYS = 7
@@ -95,23 +61,25 @@ def _load(path: Path, name: str):
 # accepted `Review:` line looks like, or a body that passes CI shows up here as
 # unreviewed every Monday.
 _cpb = _load(_CHECK_PR_BODY, "rfx_check_pr_body")
-_lane = _load(_ISSUE_LANE, "rfx_issue_lane_label")
 # The label name is the gate's own constant, for the same reason.
 _budget = _load(_DATA_BUDGET, "rfx_check_data_budget")
 
 
 class Row(NamedTuple):
-    """One line of the report."""
+    """One report line; permitted review exceptions carry informational=True."""
 
     kind: str
     ref: str
     title: str
     detail: str
+    informational: bool = False
 
 
 #: Heading, and the sentence under it, for each kind. Printed in this order.
 #: Kinds that do NOT set the exit code. Listed and counted, never failed on.
-INFORMATIONAL = ("unlinked", "frozen")
+INFORMATIONAL = ("unlinked", "frozen", "milestone")
+
+MEMBER_RE = re.compile(r"^Merge-train-member: #([0-9]+)\b")
 
 #: A merged PR that added or modified more frozen-home data than this is listed.
 FROZEN_REPORT_BYTES = 1_000_000
@@ -135,13 +103,6 @@ SECTIONS = (
         "Invisible to `gh issue list -l lane:...`, so no session can find it. "
         "An unanswered dropdown, or a pasted second `### Lane` section, leaves "
         "the label job doing nothing and green -- this is where that shows up.",
-    ),
-    (
-        "form",
-        "Issues opened outside the issue forms",
-        "No `### Lane` section at all, so nobody answered \"who will DO or "
-        "DECIDE something\". An issue can appear here and above; they are "
-        "different facts.",
     ),
     (
         "milestone",
@@ -184,6 +145,39 @@ def review_state(body: str) -> tuple[str, str]:
     return "ok", ""
 
 
+def member_numbers(body: str) -> List[int]:
+    """Visible merge-train member numbers, deduplicated in body order."""
+    return list(dict.fromkeys(
+        int(match.group(1))
+        for line in _cpb.body_lines(body or "")
+        if (match := MEMBER_RE.match(line))
+    ))
+
+
+def review_result(pr: dict) -> tuple[str, str]:
+    """Check one review and bound docs exceptions using only its JSON files.
+
+    An absent, null or malformed file list is unreadable. A known restricted
+    path takes precedence so that the report names the offending path.
+    """
+    state, detail = review_state(pr.get("body") or "")
+    if state != "skipped" or re.match(r"^Review: skipped " + _cpb._DASH + r" \(b\) ", detail):
+        return state, detail
+    files = pr.get("files")
+    if not isinstance(files, list):
+        return "missing", f"{detail}: file list not read"
+    unreadable = False
+    for entry in files:
+        path = entry.get("path") if isinstance(entry, dict) else None
+        if not isinstance(path, str) or not path:
+            unreadable = True
+        elif path.startswith(("rfx/", "tests/", "scripts/")):
+            return "missing", f"{detail}: {path}"
+    if unreadable:
+        return "missing", f"{detail}: file list not read"
+    return state, detail
+
+
 def linked_issues(body: str) -> List[int]:
     """Issue numbers this PR body says it closes, in order, deduplicated."""
     seen: List[int] = []
@@ -224,9 +218,13 @@ def classify(
     merged_prs: Sequence[dict],
     opened_issues: Sequence[dict],
     issue_index: Dict[int, dict],
+    member_index: Optional[Dict[int, dict]] = None,
 ) -> List[Row]:
     """The report rows. Pure: everything it needs is in the arguments.
 
+    *member_index* maps member numbers to bodies and files. Absent members fail
+    review. Review exceptions stay in the review section, with a per-row flag
+    controlling whether the row contributes to the exit code.
     *issue_index* maps an issue number to its record, and must cover every
     number a merged PR links to. A record carrying ``is_pull_request`` is
     skipped: "Fixes #1042" pointing at a pull request is a cross-reference
@@ -241,9 +239,18 @@ def classify(
         title = pr.get("title", "")
         body = pr.get("body") or ""
 
-        state, detail = review_state(body)
-        if state != "ok":
-            rows.append(Row("review", ref, title, detail or "no accepted `Review:` line"))
+        members = member_numbers(body)
+        reviews = [
+            (f"#{number}: ", review_result((member_index or {}).get(number) or {}))
+            for number in members
+        ] if members else [("", review_result(pr))]
+        failures = [prefix + detail for prefix, (state, detail) in reviews if state == "missing"]
+        exceptions = [prefix + detail for prefix, (state, detail) in reviews if state == "skipped"]
+        if failures or exceptions:
+            rows.append(Row(
+                "review", ref, title, "; ".join(failures + exceptions),
+                informational=not failures,
+            ))
 
         if _budget.EXCEPTION_LABEL in label_names(pr):
             rows.append(Row(
@@ -289,11 +296,6 @@ def classify(
         # a second `### Lane` section was pasted in.
         if not lane_labels_of(issue):
             rows.append(Row("unlabelled", ref, title, "no `lane:*` label"))
-
-        # A separate fact, kept separate: this one says nobody was ever ASKED
-        # the form's questions. An issue with neither appears in both sections.
-        if not _lane.has_lane_section(issue.get("body") or ""):
-            rows.append(Row("form", ref, title, "no `### Lane` section"))
 
     return rows
 
@@ -365,8 +367,8 @@ def render(rows: Iterable[Row], since: dt.date, until: dt.date, counts: dict) ->
 
 
 def failing_rows(rows: Iterable[Row]) -> List[Row]:
-    """The rows that set the exit code."""
-    return [row for row in rows if row.kind not in INFORMATIONAL]
+    """Exclude informational kinds and permitted review-exception rows."""
+    return [row for row in rows if row.kind not in INFORMATIONAL and not row.informational]
 
 
 # --------------------------------------------------------------------------
@@ -429,6 +431,21 @@ def fetch(days: int, limit: int = FETCH_LIMIT) -> dict:
         "--json", "number,title,body,createdAt,url,labels",
     ]), limit, "opened issues", window)
 
+    member_index: Dict[int, dict] = {}
+    members = {number for pr in prs for number in member_numbers(pr.get("body") or "")}
+    for number in sorted(members):
+        try:
+            member_index[number] = _gh_one(["pr", "view", str(number), "--json", "body,files"])
+        except subprocess.CalledProcessError:
+            member_index[number] = {}
+    for pr in prs:
+        if review_state(pr.get("body") or "")[0] != "skipped" or member_numbers(pr.get("body") or ""):
+            continue
+        try:
+            pr["files"] = _gh_one(["pr", "view", str(pr["number"]), "--json", "body,files"]).get("files")
+        except subprocess.CalledProcessError:
+            pr["files"] = None
+
     for pr in prs:
         oid = (pr.get("mergeCommit") or {}).get("oid")
         if not oid:
@@ -468,6 +485,7 @@ def fetch(days: int, limit: int = FETCH_LIMIT) -> dict:
         "since": since.isoformat(),
         "until": until.isoformat(),
         "merged_prs": prs,
+        "member_index": {str(k): v for k, v in member_index.items()},
         "opened_issues": issues,
         "issue_index": {str(k): v for k, v in index.items()},
         "frozen_main": frozen_main,
@@ -481,7 +499,8 @@ def report(data: dict) -> tuple[str, int]:
     """
     index = {int(k): v for k, v in (data.get("issue_index") or {}).items()}
     rows = classify(
-        data.get("merged_prs") or [], data.get("opened_issues") or [], index
+        data.get("merged_prs") or [], data.get("opened_issues") or [], index,
+        {int(k): v for k, v in (data.get("member_index") or {}).items()},
     )
     text = render(
         rows,

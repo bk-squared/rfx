@@ -76,7 +76,7 @@ def test_a_body_with_no_review_line_is_reported() -> None:
 
 
 def test_a_claimed_exception_is_reported_with_the_reason() -> None:
-    """Allowed by the gate. Counted here, because an exception used weekly is not one."""
+    """A claimed docs exception stays visible even when its files were unreadable."""
     body = f"Lane: lane:absorber\n{SKIPPED}\n\nFixes #10\n"
     rows = classify_one(body, {10: issue(10, "", OPEN_MILESTONE)})
     assert kinds(rows) == ["review"]
@@ -180,7 +180,7 @@ def test_a_pr_closing_no_issue_does_not_make_the_run_red() -> None:
     assert audit.failing_rows(rows) == []
 
 
-@pytest.mark.parametrize("kind", ["review", "data-budget", "form", "milestone", "unlabelled"])
+@pytest.mark.parametrize("kind", ["review", "data-budget", "unlabelled"])
 def test_the_other_sections_do_make_the_run_red(kind: str) -> None:
     assert audit.failing_rows([audit.Row(kind, "#1", "t", "d")])
 
@@ -330,10 +330,9 @@ def test_an_issue_filed_through_a_form_produces_no_row() -> None:
     assert rows == []
 
 
-def test_an_issue_filed_outside_the_forms_is_reported() -> None:
+def test_a_labelled_issue_without_a_lane_section_produces_no_row() -> None:
     rows = audit.classify([], [issue(20, HAND_ISSUE)], {})
-    assert kinds(rows) == ["form"]
-    assert rows[0].ref == "#20"
+    assert rows == []
 
 
 def test_a_form_issue_that_never_got_a_lane_label_is_reported() -> None:
@@ -357,7 +356,6 @@ def test_an_unanswered_dropdown_is_caught_by_the_label_check() -> None:
 
 def test_two_conflicting_lane_sections_are_caught_by_the_label_check() -> None:
     body = "### Lane\n\nlane:absorber\n\n### Lane\n\nlane:msl-port\n"
-    assert audit._lane.resolve_lane(body)[0] is None
     rows = audit.classify([], [issue(22, body, labels=[])], {})
     assert kinds(rows) == ["unlabelled"]
 
@@ -372,15 +370,15 @@ def test_a_labelled_form_issue_produces_no_row() -> None:
     assert rows == []
 
 
-def test_an_issue_with_neither_appears_in_both_sections() -> None:
-    """Two different facts: nobody was asked, and nothing can find it."""
+def test_an_issue_without_a_section_or_label_has_only_an_unlabelled_row() -> None:
+    """The lane label is the issue rule."""
     rows = audit.classify([], [issue(20, HAND_ISSUE, labels=[])], {})
-    assert kinds(rows) == ["unlabelled", "form"]
+    assert kinds(rows) == ["unlabelled"]
 
 
-def test_a_hand_filed_issue_someone_labelled_by_hand_is_only_a_form_row() -> None:
+def test_a_hand_labelled_issue_produces_no_row() -> None:
     rows = audit.classify([], [issue(20, HAND_ISSUE, labels=["lane:plan"])], {})
-    assert kinds(rows) == ["form"]
+    assert rows == []
 
 
 @pytest.mark.parametrize(
@@ -404,13 +402,8 @@ def test_the_issue_listing_asks_github_for_labels() -> None:
     assert "number,title,body,createdAt,url,labels" in source
 
 
-def test_the_intake_check_uses_the_lane_parser_the_workflow_uses() -> None:
-    """A form whose Lane heading moved must fail in ONE place, not diverge."""
-    assert audit._lane.has_lane_section(FORM_ISSUE) is True
-
-
-def test_an_issue_whose_dropdown_was_left_blank_is_not_a_FORM_row() -> None:
-    """The form WAS used, so not that row -- the label check is what catches it."""
+def test_a_labelled_issue_with_a_blank_dropdown_produces_no_row() -> None:
+    """A lane label satisfies the issue rule even when the dropdown is blank."""
     body = "### What is wrong\n\nx\n\n### Lane\n\n_No response_\n"
     rows = audit.classify([], [issue(21, body, labels=["lane:absorber"])], {})
     assert rows == []
@@ -444,7 +437,7 @@ def test_every_row_kind_has_a_section_heading() -> None:
 def test_the_sections_cover_every_kind_classify_can_emit() -> None:
     """Pinned by name: a kind added to classify and not to SECTIONS vanishes."""
     assert {kind for kind, _, _ in audit.SECTIONS} == {
-        "review", "data-budget", "unlabelled", "form", "milestone", "frozen", "unlinked",
+        "review", "data-budget", "unlabelled", "milestone", "frozen", "unlinked",
     }
 
 
@@ -591,7 +584,7 @@ def test_a_clean_week_exits_zero(tmp_path: Path) -> None:
 
 def test_any_failing_row_makes_the_run_red(tmp_path: Path) -> None:
     """A green weekly summary nobody opens reports nothing."""
-    result = _run(_payload(opened_issues=[issue(20, HAND_ISSUE)]), tmp_path)
+    result = _run(_payload(opened_issues=[issue(20, HAND_ISSUE, labels=[])]), tmp_path)
     assert result.returncode == 1
     assert "#20" in result.stdout
 
@@ -613,7 +606,7 @@ def test_the_report_is_written_to_the_step_summary(tmp_path: Path) -> None:
     summary = tmp_path / "summary.md"
     summary.write_text("", encoding="utf-8")
     result = _run(
-        _payload(opened_issues=[issue(20, HAND_ISSUE)]),
+        _payload(opened_issues=[issue(20, HAND_ISSUE, labels=[])]),
         tmp_path,
         {"GITHUB_STEP_SUMMARY": str(summary)},
     )
@@ -628,10 +621,167 @@ def test_replaying_a_payload_makes_no_network_call(tmp_path: Path, monkeypatch) 
         raise AssertionError(f"governance_audit called out: {args}")
 
     monkeypatch.setattr(audit.subprocess, "run", explode)
-    text, count = audit.report(_payload(opened_issues=[issue(20, HAND_ISSUE)]))
+    text, count = audit.report(_payload(opened_issues=[issue(20, HAND_ISSUE, labels=[])]))
     assert count == 1 and "#20" in text
 
 
 def classify_one(body: str, index: dict) -> list:
     """One merged PR, no opened issues."""
     return audit.classify([pr(1, body)], [], index)
+
+
+@pytest.fixture
+def batch_payload() -> dict:
+    members = [2, 3]
+    return _payload(
+        merged_prs=[pr(1, "\n".join(
+            f"Merge-train-member: #{number} abcdef" for number in members
+        ))],
+        member_index={str(number): {"body": ACCEPTED, "files": []} for number in members},
+    )
+
+
+def test_a_batch_with_all_members_reviewed_has_no_failing_row(batch_payload) -> None:
+    text, count = audit.report(batch_payload)
+    assert count == 0
+    assert "Merged PRs with no accepted review" not in text
+
+
+def test_a_batch_with_an_unreviewed_member_names_that_member(batch_payload) -> None:
+    number = next(iter(batch_payload["member_index"]))
+    batch_payload["member_index"][number]["body"] = "No review recorded"
+    text, count = audit.report(batch_payload)
+    assert count == 1
+    assert f"#{number}: no accepted `Review:` line" in text
+
+
+@pytest.mark.parametrize("member_present", [False, True])
+def test_an_unreadable_batch_member_fails(batch_payload, member_present) -> None:
+    number = next(iter(batch_payload["member_index"]))
+    if member_present:
+        batch_payload["member_index"][number] = {}
+    else:
+        del batch_payload["member_index"][number]
+    text, count = audit.report(batch_payload)
+    assert count == 1
+    assert f"#{number}: no accepted `Review:` line" in text
+
+
+@pytest.mark.parametrize("batch", [False, True])
+@pytest.mark.parametrize(
+    "files,expected,detail",
+    [
+        ([{"path": "docs/guide.md"}], 0, "(a) docs only"),
+        ([{"path": "rfx/core.py"}], 1, "rfx/core.py"),
+        ([{"path": "tests/test_core.py"}], 1, "tests/test_core.py"),
+        ([{"path": "scripts/check.py"}], 1, "scripts/check.py"),
+        (None, 1, "file list not read"),
+        ([{}], 1, "file list not read"),
+        ([], 0, "(a) docs only"),
+    ],
+    ids=["docs", "source", "tests", "scripts", "unreadable", "malformed", "empty"],
+)
+def test_docs_exception_bound(files, expected, detail, batch, batch_payload) -> None:
+    if batch:
+        data = batch_payload
+        number = next(iter(data["member_index"]))
+        record = data["member_index"][number]
+    else:
+        record = pr(1, SKIPPED)
+        data = _payload(merged_prs=[record])
+    record.update(body=SKIPPED, files=files)
+    text, count = audit.report(data)
+    assert count == expected
+    assert detail in text
+    if batch:
+        assert f"#{number}: Review: skipped" in text
+
+
+@pytest.mark.parametrize("batch", [False, True])
+def test_maintainer_skip_is_informational(batch, batch_payload) -> None:
+    body = "Review: skipped — (b) maintainer instruction"
+    if batch:
+        data = batch_payload
+        next(iter(data["member_index"].values()))["body"] = body
+    else:
+        data = _payload(merged_prs=[pr(1, body)])
+    text, count = audit.report(data)
+    assert count == 0
+    assert body in text
+
+
+def test_milestone_row_is_informational() -> None:
+    number = 10
+    data = _payload(
+        merged_prs=[pr(1, f"{ACCEPTED}\nCloses #{number}")],
+        issue_index={str(number): {"milestone": None}},
+    )
+    text, count = audit.report(data)
+    assert count == 0
+    assert f"closes #{number}: no milestone" in text
+
+
+def test_batch_input_replay_is_offline(batch_payload, monkeypatch) -> None:
+    def refuse(*args, **kwargs):
+        raise AssertionError("unexpected network call")
+
+    monkeypatch.setattr(audit.subprocess, "run", refuse)
+    text, count = audit.report(json.loads(json.dumps(batch_payload)))
+    assert count == 0
+    assert "Merged PRs with no accepted review" not in text
+
+
+def test_batch_and_docs_payload_exit_zero_offline(batch_payload, tmp_path) -> None:
+    next(iter(batch_payload["member_index"].values())).update(
+        body=SKIPPED, files=[{"path": "docs/guide.md"}],
+    )
+    result = _run(batch_payload, tmp_path, {"PATH": str(tmp_path)})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert SKIPPED in result.stdout
+
+
+def test_fetch_reads_closed_members_and_exception_files(monkeypatch) -> None:
+    numbers = [2, 3]
+    batch = pr(1, "\n".join(f"Merge-train-member: #{n} abcdef" for n in numbers))
+    claimed = pr(4, SKIPPED)
+    calls = []
+
+    def listing(args):
+        return [batch, claimed] if args[0] == "pr" else []
+
+    def view(args):
+        calls.append(args)
+        return {"body": ACCEPTED, "files": [{"path": "docs/guide.md"}]}
+
+    monkeypatch.setattr(audit, "_gh", listing)
+    monkeypatch.setattr(audit, "_gh_one", view)
+    monkeypatch.setattr(audit._budget, "frozen_on", lambda *args: (0, 0))
+    data = audit.fetch(7)
+    assert calls == [
+        ["pr", "view", str(n), "--json", "body,files"] for n in [*numbers, claimed["number"]]
+    ]
+    assert data["member_index"] == {
+        str(n): {"body": ACCEPTED, "files": [{"path": "docs/guide.md"}]} for n in numbers
+    }
+    assert claimed["files"] == [{"path": "docs/guide.md"}]
+    assert audit.report(data)[1] == 0
+
+
+def test_fetch_preserves_unreadable_members_and_files_as_failures(monkeypatch) -> None:
+    number = 2
+    batch = pr(1, f"Merge-train-member: #{number} abcdef")
+    claimed = pr(3, SKIPPED)
+
+    def listing(args):
+        return [batch, claimed] if args[0] == "pr" else []
+
+    def refuse(args):
+        raise subprocess.CalledProcessError(1, args)
+
+    monkeypatch.setattr(audit, "_gh", listing)
+    monkeypatch.setattr(audit, "_gh_one", refuse)
+    monkeypatch.setattr(audit._budget, "frozen_on", lambda *args: (0, 0))
+    text, count = audit.report(audit.fetch(7))
+    assert count == 2
+    assert f"#{number}: no accepted `Review:` line" in text
+    assert "file list not read" in text

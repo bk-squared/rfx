@@ -294,14 +294,13 @@ It reports what no single-PR gate can see, over the last seven days:
 
 | row | why it is listed |
 |---|---|
-| merged PR with no accepted `Review:` line | the gate has only been required since 2026-09-19, and a body can be edited after the merge |
-| merged PR claiming `Review: skipped` | the rule has two exceptions; an exception claimed weekly is not one |
+| merged PR with no accepted `Review:` line | checked on each listed merge-train member for batches; missing or invalid reviews make the run red |
+| merged PR claiming `Review: skipped` | informational for `(b)`; `(a)` requires readable files with no path under `rfx/`, `tests/` or `scripts/`, including each batch member |
 | issue opened with no `lane:*` label | invisible to `gh issue list -l lane:...`, so no session can find it |
-| issue opened with no `### Lane` section | filed outside the forms, so nobody answered "who will DO or DECIDE" |
-| merged PR closing an issue outside every open milestone | work off the current campaign |
+| merged PR closing an issue outside every open milestone | informational campaign context; never red |
 | merged PR closing no issue | INFORMATIONAL only, never red: housekeeping legitimately closes nothing, and this was 65 of 102 merged PRs the week the report was written |
 
-**It is a report, not a gate.** A non-empty table exits 1 so the scheduled run shows
+**It is a report, not a gate.** Failing rows exit 1 so the scheduled run shows
 up red in the Actions list and somebody opens it. Do not make it a required check —
 it would block every merge on a report about last week.
 
