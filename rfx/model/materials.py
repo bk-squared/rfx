@@ -8,7 +8,7 @@ Conductors own their realized products in rfx.model.conductors.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 import jax
 
@@ -23,6 +23,7 @@ from rfx.core.yee import (
     lumped_components, lumped_total, permittivity_without_lumped,
 )
 from rfx.geometry.csg import Box, _grid_coords
+from rfx.geometry.cross_section import realize_sections
 from rfx.geometry._pole_keying import _accumulate_pole_mask, _clear_pole_masks, _spec_from_pole_masks
 from rfx.geometry.rasterize_grid import (
     GridCoords, _material_cell_mask, assert_declared_span_is_filled,
@@ -216,15 +217,16 @@ def assemble_cells(
     _check_pad_fill = (check_declared_span and not nonuniform and include_cpml_pad_extension
                        and sim._boundary in ("cpml", "upml")
                        and sim._cpml_layers > 0)
-    from rfx.geometry.smoothing import continued_conductor_shape, warn_unextendable_shapes
-    conductor_findings = []
+    from rfx.geometry.smoothing import UnextendableShape, continued_conductor_shape, warn_unextendable_shapes
+    conductor_findings: list[UnextendableShape] = []
 
     # NU historically continues all PEC declarations before sampling any entry.
+    sections = realize_sections(sim._geometry, grid)
     geometry = [replace(entry, shape=continued_conductor_shape(
                     sim, grid, entry.shape, entry=entry, unextendable=conductor_findings))
                 if sim._resolve_material(entry.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD
-                else entry for entry in sim._geometry] if nonuniform else sim._geometry
-    for declared_entry, entry in zip(sim._geometry, geometry, strict=True):
+                else entry for entry in sections] if nonuniform else sections
+    for declared_entry, section, entry in zip(sim._geometry, sections, geometry, strict=True):
         mat = sim._resolve_material(entry.material_name)
         mask = _material_cell_mask(entry.shape, _coords, _centres,
                                    grid=sampling_grid, cell_sizes=_cell_sizes, domain_faces=domain_faces,
@@ -305,12 +307,12 @@ def assemble_cells(
         pole_mask = mask
         if mat.debye_poles or mat.lorentz_poles:
             # Poles retain their declared occupancy, before continuation.
-            pole_mask = _material_cell_mask(declared_entry.shape, _coords, _centres,
+            pole_mask = _material_cell_mask(section.shape, _coords, _centres,
                                             grid=sampling_grid, cell_sizes=_cell_sizes, domain_faces=domain_faces,
                                             name=entry.material_name, refuse_empty=mat.sigma < sim._PEC_SIGMA_THRESHOLD)
             if mat.sigma >= sim._PEC_SIGMA_THRESHOLD and cells is not None:
                 from rfx.geometry.rasterize_grid import pec_volume_cell_mask
-                pole_mask = pec_volume_cell_mask(declared_entry.shape, _centres, _cell_sizes, grid=sampling_grid, domain_faces=domain_faces)
+                pole_mask = pec_volume_cell_mask(section.shape, _centres, _cell_sizes, grid=sampling_grid, domain_faces=domain_faces)
 
         if mat.debye_poles:
             for pole in mat.debye_poles:
@@ -607,8 +609,8 @@ class EdgePoles:
     handed to the drive builders only. An edge's ADE terms are built from the
     cells around that edge, by the functions the kernels' coefficients use."""
 
-    debye_spec: object
-    lorentz_spec: object
+    debye_spec: tuple[Any, Any] | None
+    lorentz_spec: tuple[Any, Any] | None
     grid: Any = None
     field_dtype: object = field(kw_only=True)
 
@@ -617,7 +619,7 @@ class EdgePoles:
         window = tuple(slice(a, int(i) + 1) for a, i in zip(lo, cell))
         local = (slice(None),) + tuple(int(i) - a for a, i in zip(lo, cell))
         shape = tuple(int(i) + 1 - a for a, i in zip(lo, cell))
-        out = []
+        out: list[Any] = []
         for spec, kind in ((self.debye_spec, "Debye"), (self.lorentz_spec, "Lorentz")):
             if spec is None:
                 out.append(None)
@@ -654,7 +656,7 @@ def _ade_cb(eps, sigma, dt, axis, debye_terms, lorentz_terms):
         lc = lorentz_e_coeffs(operands, dt, *lorentz_terms)
     if dc is not None and lc is not None:
         return mixed_e_component_coeffs(dc, lc, axis, dt)[1]
-    return (dc if dc is not None else lc).cb[axis]
+    return cast(Any, dc if dc is not None else lc).cb[axis]
 
 
 def tensor_operand_at(materials, cell, component):

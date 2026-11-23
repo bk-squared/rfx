@@ -117,6 +117,10 @@ def compute_conformal_weights(
     (w_ex, w_ey, w_ez) : each shape grid.shape, values in [0, 1]
         1.0 = fully outside PEC, 0.0 = fully inside PEC.
     """
+    if getattr(grid, "is_2d", False):
+        raise NotImplementedError(
+            "Legacy conformal subsampling does not support 2-D cross-sections; "
+            "use compute_conformal_weights_sdf instead")
     dx = grid.dx
     nx, ny, nz = grid.shape
 

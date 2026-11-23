@@ -729,10 +729,10 @@ def _declared_conductor_lattice(sim, grid, shape, coords):
             return [(np.asarray(_thin_conductor_cell_mask(shape, grid)),
                      (False, False, False))]
         centres = cell_centres_from_nodes(coords, sizes)
-        name = next((e.material_name for e in getattr(sim, "_geometry", ())
+        material_name = next((e.material_name for e in getattr(sim, "_geometry", ())
                      if e.shape is shape), None)
         cells, sheet, wire = classify_pec_entry(
-            shape, coords, centres, sizes, name=name, grid=grid)
+            shape, coords, centres, sizes, name=material_name, grid=grid)
         if cells is not None:
             return [(np.asarray(cells), (True, True, True))]
         if sheet is not None:
@@ -1054,11 +1054,12 @@ def smoothed_shape_pairs(sim, grid):
     nothing reaches a padded face.
     """
     from rfx.model.materials import assembled_as_pec
+    from rfx.geometry.cross_section import section_entries
 
     if (getattr(sim, "_boundary", None) not in ("cpml", "upml")
             or int(getattr(sim, "_cpml_layers", 0)) <= 0):
         pairs = [(entry.shape, sim._resolve_material(entry.material_name).eps_r)
-                 for entry in sim._geometry if not assembled_as_pec(sim, entry)]
+                 for entry in section_entries(sim, grid) if not assembled_as_pec(sim, entry)]
         return pairs, []
 
     if hasattr(grid, "dx_arr"):
@@ -1084,15 +1085,15 @@ def smoothed_shape_pairs(sim, grid):
     # in insertion order and later shapes overwrite earlier ones, so the list
     # is rebuilt position for position rather than partitioned and rejoined.
     out = []
-    unextendable = []
-    for idx, entry in enumerate(sim._geometry):
+    unextendable: list[UnextendableShape] = []
+    for idx, entry in enumerate(section_entries(sim, grid)):
         shape = entry.shape
         mat = sim._resolve_material(entry.material_name)
         has_poles = (getattr(mat, "debye_poles", None)
                      or getattr(mat, "lorentz_poles", None))
         # Both lanes realize conductors through the same geometry helper.
         if assembled_as_pec(sim, entry):
-            unext = []
+            unext: list[UnextendableShape] = []
             continued_conductor_shape(sim, grid, shape, entry=entry, unextendable=unext)
             # Pole-carrying entries previously bypassed the pad report.
             if not has_poles:

@@ -179,7 +179,8 @@ def _acceptance_fixture(eps_inf, debye_poles, lorentz_poles, *,
     sim = Simulation(freq_max=5e9, domain=(.012, .010, .008), dx=.002, **kwargs)
     sim.add_material("dut", eps_r=eps_inf, debye_poles=debye_poles,
                      lorentz_poles=lorentz_poles)
-    sim.add(Box((.008, .006, .004), (.010, .008, .006)), material="dut")
+    sim.add(Box((.008, .006, 0. if sim._mode.startswith("2d") else .004),
+                (.010, .008, .006)), material="dut")
     sim.add_port(position, "ez", waveform=GaussianPulse(f0=3e9, bandwidth=.5))
     sim.add_probe((.008, .006, .004), "ez")
     return sim
