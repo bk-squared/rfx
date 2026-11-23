@@ -13,7 +13,7 @@ import numpy as np
 from rfx._internal._grid_metric import node_tie_tol
 from rfx.core.jax_utils import is_tracer
 from rfx.errors import RfxUnsupported
-from rfx.geometry.csg import Box, Cylinder, OrientedBox, PolylineWire, Sphere, _grid_coords
+from rfx.geometry.csg import Box, Cylinder, OrientedBox, PolylineWire, Shape, Sphere, _grid_coords
 from rfx.geometry.via import Via
 
 
@@ -48,7 +48,7 @@ def _bounds(shape):
 
 @dataclass(frozen=True)
 class _NodeSection:
-    declared: object
+    declared: Shape
     z0: float
     bounds: tuple
 
@@ -123,12 +123,11 @@ def cross_section_2d(shape, grid):
     if isinstance(shape, (Sphere, Cylinder)):
         zc = _concrete(shape.center[2], shape)
         dz = z0 - zc
-        axial = isinstance(shape, Cylinder) and shape.axis == "z"
-        reach = shape.height / 2 if axial else shape.radius
+        reach = shape.height / 2 if isinstance(shape, Cylinder) and shape.axis == "z" else shape.radius
         if not (dz == 0 and is_tracer(reach)):
             if not _present(zc - reach, zc + reach, z0, width, shape):
                 _refuse(shape, z0)
-        if axial:
+        if isinstance(shape, Cylinder) and shape.axis == "z":
             return replace(shape, center=(*shape.center[:2], z0), height=2 * cap)
         radius = (shape.radius if dz == 0 else
                   jnp.sqrt(jnp.maximum(shape.radius**2 - dz**2, 0.))
@@ -138,8 +137,8 @@ def cross_section_2d(shape, grid):
         axis = "xy".index(shape.axis)
         half = [radius, radius]
         half[axis] = shape.height / 2
-        return Box(tuple(shape.center[a] - half[a] for a in range(2)) + (bottom,),
-                   tuple(shape.center[a] + half[a] for a in range(2)) + (top,))
+        return Box((shape.center[0] - half[0], shape.center[1] - half[1], bottom),
+                   (shape.center[0] + half[0], shape.center[1] + half[1], top))
     if isinstance(shape, OrientedBox):
         rotation = np.asarray(shape.rotation)
         axes = [a for a in range(3) if np.allclose(
@@ -153,7 +152,7 @@ def cross_section_2d(shape, grid):
             _refuse(shape, z0)
         size = list(shape.size)
         size[axis] = 2 * cap
-        return replace(shape, center=(*shape.center[:2], z0), size=tuple(size))
+        return replace(shape, center=(*shape.center[:2], z0), size=(size[0], size[1], size[2]))
     if isinstance(shape, CurvedPatch):
         if not _present(bounds[0][2], bounds[1][2], z0, width, shape):
             _refuse(shape, z0)

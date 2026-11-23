@@ -1,5 +1,7 @@
 """Body-only signed distances, edge lengths, and marching-square face areas."""
 
+from typing import Any
+
 import numpy as np
 
 from rfx._internal._periodic import periodic_sdf
@@ -107,7 +109,8 @@ def build_cell_table(grid, pec_shapes, *, include_trailing_node=False):
         grid = grid._replace(domain=domain)
     from rfx.geometry.smoothing import _get_sdf_fn
 
-    lines, widths, max_widths, lattice, sample_lines = [], [], [], [], []
+    lines, widths, max_widths, sample_lines = [], [], [], []
+    lattice: list[tuple[Any, float | None, bool]] = []
     for axis, cells in enumerate(axis_cells):
         cells = np.asarray(cells, dtype=np.float64)
         uniform = bool(np.all(cells == cells[0]))

@@ -8,7 +8,7 @@ Conductors own their realized products in rfx.model.conductors.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 import jax
 
@@ -217,8 +217,8 @@ def assemble_cells(
     _check_pad_fill = (check_declared_span and not nonuniform and include_cpml_pad_extension
                        and sim._boundary in ("cpml", "upml")
                        and sim._cpml_layers > 0)
-    from rfx.geometry.smoothing import continued_conductor_shape, warn_unextendable_shapes
-    conductor_findings = []
+    from rfx.geometry.smoothing import UnextendableShape, continued_conductor_shape, warn_unextendable_shapes
+    conductor_findings: list[UnextendableShape] = []
 
     # NU historically continues all PEC declarations before sampling any entry.
     sections = realize_sections(sim._geometry, grid)
@@ -609,8 +609,8 @@ class EdgePoles:
     handed to the drive builders only. An edge's ADE terms are built from the
     cells around that edge, by the functions the kernels' coefficients use."""
 
-    debye_spec: object
-    lorentz_spec: object
+    debye_spec: tuple[Any, Any] | None
+    lorentz_spec: tuple[Any, Any] | None
     grid: Any = None
     field_dtype: object = field(kw_only=True)
 
@@ -619,7 +619,7 @@ class EdgePoles:
         window = tuple(slice(a, int(i) + 1) for a, i in zip(lo, cell))
         local = (slice(None),) + tuple(int(i) - a for a, i in zip(lo, cell))
         shape = tuple(int(i) + 1 - a for a, i in zip(lo, cell))
-        out = []
+        out: list[Any] = []
         for spec, kind in ((self.debye_spec, "Debye"), (self.lorentz_spec, "Lorentz")):
             if spec is None:
                 out.append(None)
@@ -656,7 +656,7 @@ def _ade_cb(eps, sigma, dt, axis, debye_terms, lorentz_terms):
         lc = lorentz_e_coeffs(operands, dt, *lorentz_terms)
     if dc is not None and lc is not None:
         return mixed_e_component_coeffs(dc, lc, axis, dt)[1]
-    return (dc if dc is not None else lc).cb[axis]
+    return cast(Any, dc if dc is not None else lc).cb[axis]
 
 
 def tensor_operand_at(materials, cell, component):

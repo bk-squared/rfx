@@ -3,10 +3,13 @@
 Equal-material unions are partitioned by their minimum signed-distance owner.
 The reduction never evaluates a shape or introduces another sampling rule.
 """
+from typing import Any
+from weakref import ReferenceType
+
 import numpy as np
 
 
-_stores = {}
+_stores: dict[int, tuple[ReferenceType, dict[str, Any]]] = {}
 
 
 def quantities(grid, *, create=False):
@@ -18,7 +21,7 @@ def quantities(grid, *, create=False):
         return found[1]
     if not create:
         return {}
-    store = {}
+    store: dict[str, Any] = {}
     _stores[key] = weakref.ref(owner, lambda ref: _stores.pop(key, None)), store
     return store
 

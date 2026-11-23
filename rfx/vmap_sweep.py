@@ -618,7 +618,8 @@ def _build_full_scan_fn(
     ):
         periodic = (False, False, False)
         if sim._periodic_axes:
-            periodic = tuple(axis in sim._periodic_axes for axis in "xyz")
+            periodic = ("x" in sim._periodic_axes, "y" in sim._periodic_axes,
+                        "z" in sim._periodic_axes)
         if grid.is_2d:
             periodic = (periodic[0], periodic[1], True)
 

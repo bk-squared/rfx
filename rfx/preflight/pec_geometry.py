@@ -58,6 +58,8 @@ exactly as wide after this leg as before it -- still 55.
 
 from __future__ import annotations
 
+from typing import Any
+
 from rfx.preflight._not_judged import not_judged
 
 from rfx.model.realization_verdict import legacy_mismatch, legacy_table_ready, replay_legacy_findings
@@ -481,7 +483,7 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
     sheets = [e for e in entries if e.kind == "sheet"]
     if not sheets:
         return
-    rows = []
+    rows: list[tuple[float, Any, int, int, float, float | None, float]] = []
     ties = []
     for e in sheets:
         a = int(e.sheet.normal_axis)
@@ -498,7 +500,7 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
         if e.tie_planes is not None:
             ties.append((e, a, k, float(declared)))
     rows.sort(key=lambda t: -t[0])
-    desc = "; ".join(
+    sheet_desc = "; ".join(
         f"{e.label} '{e.name}' normal {'xyz'[a]}: declared mid-plane "
         + ("n/a" if declared is None else _fmt_len(declared))
         + f", realized node plane {k} at {_fmt_len(realized_z)}"
@@ -515,7 +517,7 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
           f"{len(sheets)} PEC sheet(s) realized (lattice ownership "
           f"contract in docs/design_notes/20260906_plan_realign_lattice_ownership.md: one node plane each, closed footprint, "
           f"normal E through the plane live), {n_off} of them off their "
-          f"declared mid-plane; worst first: {desc}. A sheet snaps to the "
+          f"declared mid-plane; worst first: {sheet_desc}. A sheet snaps to the "
           "node plane nearest its declared mid-plane (an exact half-cell "
           "tie resolves LOWER); an offset means the declared plane — a "
           "laminate face, a ground level — is not on this mesh's node "

@@ -108,7 +108,7 @@ def _axis(axis, declared, realized, cell):
     return RealizationAxis(
         axis, declared, realized, drawn, span, cell,
         None if miss is None else miss / cell,
-        None if not drawn else 100 * miss / drawn,
+        None if not drawn or miss is None else 100 * miss / drawn,
         None if declared is None else (sum(realized) - sum(declared)) / (2 * cell))
 
 
