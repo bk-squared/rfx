@@ -57,5 +57,17 @@ def SlabNTFF(self, buffer):
     return NTFFData(*result)
 
 
+def TimePlaneRecords(self, buffer):
+    """Place each rank's owned rectangle using NumPy, independently of production assemblers."""
+    import numpy as np
+    result = [np.zeros((self.frames,) + t.accumulator.shape[1:], self.dtype)
+              for t in self.templates]
+    for rank, part in enumerate(self.parts):
+        for number, meta, destinations in part:
+            width = meta[-1][1] - meta[-1][0]
+            result[number][:, destinations[0]] = np.asarray(buffer[number])[rank, :, :width]
+    return tuple(result)
+
+
 def assemble(layout, buffer):
     return globals()[type(layout).__name__](layout, buffer)
