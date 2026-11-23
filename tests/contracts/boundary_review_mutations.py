@@ -77,7 +77,6 @@ def main():
         original = features._admit_graded_guide
 
         def admit_explicit(sim, lane):
-            # Restore main's early return; retain provenance and admission helpers.
             if features.boundary_was_explicit(sim) is not False:
                 return
             return original(sim, lane)

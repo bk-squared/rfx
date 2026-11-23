@@ -13,6 +13,7 @@ from rfx.model.pole_stability import C0, courant_budget, refuse_unstable_cells
 @pytest.mark.parametrize("operand", ["cells", "mask", "both"])
 @pytest.mark.parametrize("transform", ["eager", "jvp", "grad", "jit", "vmap"])
 def test_traced_poles_keep_local_budget_and_refuse(operand, transform):
+    """A global budget would wrongly refuse wp*dt=1.5 because the occupied cells have a local limit of about 1.829."""
     shape = (8, 3, 3)
     widths = np.array([1., 1., 1., 1., .25, .25, .25, .25])
     occupied = np.zeros(shape, bool)
@@ -42,16 +43,15 @@ def test_traced_poles_keep_local_budget_and_refuse(operand, transform):
             result = f(1.)
         jax.block_until_ready(result)
 
-    call(1.5)  # global budget would wrongly refuse: local limit is 1.829...
+    call(1.5)
     with pytest.raises(Exception, match="unstable at this model's time step"):
         call(2.05)
 
 
 def test_abstract_disjoint_and_empty_pole_sets_are_not_summed():
+    """The sum of two poles that are stable alone at x=0 is unstable."""
     shape, dt = (4, 2, 2), 1.
     materials = MaterialArrays(jnp.ones(shape), jnp.zeros(shape), None)
-    # Each pole is stable alone at x=0; their sum is unstable. Dynamic masks
-    # choose disjoint sets and leave the possible overlap empty.
     @jax.jit
     def checked(left, right):
         refuse_unstable_cells(materials, ([(0., 0., 3.), (0., 0., 3.)], [left, right]),
@@ -64,9 +64,7 @@ def test_abstract_disjoint_and_empty_pole_sets_are_not_summed():
 
 
 def test_concrete_records_of_a_set_spanning_two_slabs_combine_concrete_under_jit():
-    # A Lorentz set on two slabs, closed over by an outer jax.jit: its concrete
-    # records must combine on the host, or the judge sees a traced count and
-    # refuses a run it can judge (3 devices refused where 2 ran).
+    """Concrete slab records must combine on the host to avoid refusing a run because the judge sees a traced count."""
     from rfx.core.jax_utils import is_tracer
     from rfx.model.pole_stability import PoleSetExtremes, combine_pole_extremes
 
@@ -91,7 +89,7 @@ def test_out_of_program_debye_only_under_jit_is_skipped_only_when_passive(delta_
     """#1934: a passive Debye-only set cannot fail the check, so a jit-traced one runs; an active one is refused."""
     from rfx.materials.debye import DebyePole
     dt = 1e-12
-    sigma_cells = np.full((2, 2, 2), sigma, np.float32)   # concrete: only eps is traced
+    sigma_cells = np.full((2, 2, 2), sigma, np.float32)
 
     def checked(eps):
         materials = MaterialArrays(jnp.full((2, 2, 2), eps), sigma_cells, None)
@@ -108,10 +106,9 @@ def test_out_of_program_debye_only_under_jit_is_skipped_only_when_passive(delta_
 
 @pytest.mark.parametrize("transform", ["eager", "jvp", "grad", "jit", "vmap", "grad_vmap"])
 def test_out_of_program_admission_judges_concrete_primals_and_refuses_traced(transform):
+    """At dt=1 and budget=0 the undamped Drude condition kappa<=4*eps makes kappa=9 stable at eps=3 and unstable at eps=1."""
     def checked(eps):
         materials = MaterialArrays(jnp.full((2, 2, 2), eps), jnp.zeros((2, 2, 2)), None)
-        # At dt=1, budget=0, the undamped Drude condition is kappa<=4*eps:
-        # literal kappa=9 is stable at eps=3 and unstable at eps=1.
         refuse_unstable_cells(materials, ([(0., 0., 9.)], None), 1., 0.,
                               grid_kind="Grid", in_program=False)
         return eps ** 2
@@ -126,7 +123,6 @@ def test_out_of_program_admission_judges_concrete_primals_and_refuses_traced(tra
         if transform == "vmap":
             return jax.vmap(checked)(jnp.full((2,), eps))
         if transform == "grad_vmap":
-            # eager grad around an eager vmap: members are JVP-wrapped concrete values
             return jax.grad(lambda e: jax.vmap(checked)(e).sum())(jnp.full((2,), eps))
         return checked(eps)
 
@@ -135,11 +131,9 @@ def test_out_of_program_admission_judges_concrete_primals_and_refuses_traced(tra
                                       np.full((2,), 9.) if transform == "vmap" else
                                       np.full((2,), 6.) if transform == "grad_vmap" else 9.)
     if transform != "jit":
-        # An eager vmap carries concrete members; each is judged (#1934).
         with pytest.raises(ValueError, match="unstable at this model's time step"):
             call(1.)
     else:
-        # #1934: outside a program a jit-traced value cannot be judged; it is refused, stable or not.
         for eps in (3., 1.):
             with pytest.raises(ValueError, match=r"traced by an outer jax\.jit"):
                 call(eps)
@@ -154,8 +148,8 @@ def test_traced_mask_pattern_cap(n_poles, transform):
     materials = MaterialArrays(jnp.ones(shape), jnp.zeros(shape), None)
 
     def checked(value):
+        """Concrete eager primals must remain uncapped."""
         mask = jnp.full(shape, value > 0)
-        # Count both families; concrete eager primals must remain uncapped.
         records = pole_set_extremes(materials, ([(0., 0., 1.)] * (n_poles - 1), mask),
                                    debye_spec=([DebyePole(1., 1.)], mask))
         judge_pole_sets(records, .1, 0., grid_kind="Grid")
@@ -173,7 +167,7 @@ def test_traced_mask_pattern_cap(n_poles, transform):
         jax.block_until_ready(result)
 
     if n_poles == 9 and transform in ("jit", "vmap"):
-        with pytest.raises(ValueError, match=r"cannot judge: 9 poles give 2\^9 patterns"):
+        with pytest.raises(ValueError, match=r"9 distinct poles, with cell occupancy traced"):
             call()
     else:
         call()

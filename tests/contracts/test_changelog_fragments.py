@@ -24,6 +24,26 @@ import pytest
 from tests._git_tracked import git_available
 from tests._changelog_context import allow_topic_fragments
 
+MISSING_HEADING_PREFIX = "Fixed — headline (#12)"
+
+MISSING_HEADLINE = "### Fixed — "
+
+MISMATCHED_NUMBER_HEADING = "### Fixed — headline (#13)"
+
+MISMATCHED_TYPE_HEADING = "### Added — headline (#12)"
+
+ASCII_HYPHEN_HEADING = "### Fixed - headline (#12)"
+
+LEADING_ZERO_FRAGMENT_NUMBER = "0012.fixed.md"
+
+MISSING_FRAGMENT_TYPE = "12.md"
+
+NON_MARKDOWN_FRAGMENT = "12.fixed.txt"
+
+UNKNOWN_FRAGMENT_TYPE = "12.wrong.md"
+
+MISSING_FRAGMENT_NUMBER = "abc.fixed.md"
+
 REPO = Path(__file__).resolve().parents[2]
 ASSEMBLER_PATH = REPO / "scripts" / "changelog" / "assemble.py"
 CHECKER_PATH = REPO / "scripts" / "ci" / "check_changelog_fragment.py"
@@ -176,11 +196,6 @@ def _write_fragments(root: Path, specs) -> None:
         )
 
 
-# --------------------------------------------------------------------------
-# assembler
-# --------------------------------------------------------------------------
-
-
 def test_unreleased_inserts_newest_first_and_deletes_fragments(workspace: Path):
     _write_fragments(workspace, [(5, "added", "Added"),
                                  (100, "fixed", "Fixed"),
@@ -192,18 +207,14 @@ def test_unreleased_inserts_newest_first_and_deletes_fragments(workspace: Path):
     text = (workspace / "CHANGELOG.md").read_text(encoding="utf-8")
     lines = text.split("\n")
     heading = lines.index("## [Unreleased — 2.0.0]")
-    # Directly under the heading, in descending number order.
     assert lines[heading + 1] == ""
     assert lines[heading + 2] == "### Fixed — headline number 100 (#100)"
     order = [lines.index(f"### {word} — headline number {n} (#{n})")
              for n, word in ((100, "Fixed"), (42, "BREAKING"), (5, "Added"))]
     assert order == sorted(order)
-    # The pre-existing entry and the released section are untouched and still
-    # below every inserted one.
     assert lines.index("### Fixed — an entry that was already here (#700)") > order[-1]
     assert "## [1.8.0] - 2026-09-06" in text
     assert text.startswith("# Changelog\n\nPreamble that must survive byte-identical.\n")
-    # Fragments are gone; README.md (absent here) is never a fragment.
     assert list((workspace / "changelog.d").iterdir()) == []
 
 
@@ -226,7 +237,6 @@ def test_release_renames_the_heading_and_opens_a_fresh_one(workspace: Path):
     fresh = lines.index("## [Unreleased]")
     cut = lines.index("## [2.0.0] - 2026-09-18")
     assert cut == fresh + 2 and lines[fresh + 1] == ""
-    # The fragment landed in the cut version, not in the fresh Unreleased.
     entry = lines.index("### Fixed — headline number 9 (#9)")
     assert entry > cut
     assert "## [Unreleased — 2.0.0]" not in "\n".join(lines)
@@ -310,11 +320,11 @@ def test_check_allow_topic_still_validates_fragments(workspace, name, text):
 
 
 @pytest.mark.parametrize("name", [
-    "abc.fixed.md",          # no number
-    "12.wrong.md",           # unknown type
-    "12.fixed.txt",          # not markdown
-    "12.md",                 # no type
-    "0012.fixed.md",         # leading zero
+    MISSING_FRAGMENT_NUMBER,
+    UNKNOWN_FRAGMENT_TYPE,
+    NON_MARKDOWN_FRAGMENT,
+    MISSING_FRAGMENT_TYPE,
+    LEADING_ZERO_FRAGMENT_NUMBER,
 ])
 def test_check_rejects_malformed_names(workspace: Path, name: str):
     (workspace / "changelog.d" / name).write_text(
@@ -325,11 +335,11 @@ def test_check_rejects_malformed_names(workspace: Path, name: str):
 
 
 @pytest.mark.parametrize("first", [
-    "### Fixed - headline (#12)",        # ASCII hyphen, not an em dash
-    "### Added — headline (#12)",   # heading word contradicts the filename
-    "### Fixed — headline (#13)",   # references someone else's number
-    "### Fixed — ",                 # no headline
-    "Fixed — headline (#12)",       # not a heading
+    ASCII_HYPHEN_HEADING,
+    MISMATCHED_TYPE_HEADING,
+    MISMATCHED_NUMBER_HEADING,
+    MISSING_HEADLINE,
+    MISSING_HEADING_PREFIX,
 ])
 def test_check_rejects_malformed_first_lines(workspace: Path, first: str):
     (workspace / "changelog.d" / "12.fixed.md").write_text(
@@ -432,7 +442,6 @@ def test_a_crlf_changelog_is_not_rewritten_wholesale(workspace: Path):
                    "--fragments", str(workspace / "changelog.d")])
     raw = changelog.read_bytes().decode("utf-8")
     assert "\r\n" in raw
-    # Every line ending is still CRLF -- no lone LF survived the round trip.
     assert raw.replace("\r\n", "") .count("\n") == 0
     inserted = "\r\n### Changed \u2014 headline number 7 (#7)\r\n\r\n- bullet for 7.\r\n"
     assert raw.replace(inserted, "", 1) == SYNTHETIC.replace("\n", "\r\n")
@@ -457,10 +466,6 @@ def test_a_label_containing_a_comma_is_not_the_release_label(git_repo: Path):
     assert labels == ["pre,release"]
     failures = _run_check(git_repo, base, head, labels=labels)
     assert len(failures) == 1 and "without the 'release' label" in failures[0]
-
-# --------------------------------------------------------------------------
-# CI checker
-# --------------------------------------------------------------------------
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -745,15 +750,9 @@ def test_the_workflow_names_the_job_and_passes_labels_as_json():
         encoding="utf-8")
     assert "name: changelog-fragment" in workflow
     assert "PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}" in workflow
-    # The comma form is gone, not merely unused (the comment still names it).
     assert "PR_LABELS:" not in workflow
     assert "${{ join(" not in workflow
     assert "REQUIRED check in branch protection" in workflow
-
-
-# --------------------------------------------------------------------------
-# At most 12 lines
-# --------------------------------------------------------------------------
 
 
 def _long_fragment(number: int, lines: int) -> str:
@@ -764,8 +763,6 @@ def _long_fragment(number: int, lines: int) -> str:
 
 def test_fragment_line_count_matches_what_the_assembler_inserts():
     assert checker.fragment_line_count(_long_fragment(7, 12)) == 12
-    # Leading and trailing blank lines are dropped by the assembler, so they are
-    # not counted; blank lines between bullets are inserted, so they are.
     assert checker.fragment_line_count("\n\n" + _long_fragment(7, 12) + "\n\n\n") == 12
     assert checker.fragment_line_count("### h (#7)\n\n- a\n\n- b\n") == 5
     assert checker.fragment_line_count(_long_fragment(7, 12).replace("\n", "\r\n")) == 12
@@ -789,7 +786,7 @@ def test_an_added_fragment_of_13_lines_fails(git_repo: Path):
     assert len(failures) == 1
     assert "changelog.d/77.fixed.md is 13 lines" in failures[0]
     assert "at most 12, heading included" in failures[0]
-    assert "PR body" in failures[0] and "bk-squared/rfx-archive" in failures[0]
+    assert "PR body" in failures[0] and "the record repository" in failures[0]
 
 
 def test_editing_a_long_fragment_on_main_is_checked(git_repo: Path):

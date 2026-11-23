@@ -30,9 +30,8 @@ def test_oversized_uniform_region_excludes_cpml_and_bounding_node(axis):
     region = resolve_flux_region(grid, sim._flux_monitors[0], sim._domain, warn=False)
     assert region["realized_bounds_m"] == [[0., .020], [0., .020]]
     assert region["clamped_ends"] == [[True, True], [True, True]]
-    # A constant physical density plus a deliberately large artificial value
-    # in the absorber exposes accidental integration of even one pad cell.
-    density = np.full((37, 37), 1000.)
+    ABSORBER_DENSITY = 1000.
+    density = np.full((37, 37), ABSORBER_DENSITY)
     density[8:28, 8:28] = 2.
     selected = density[monitor.lo1:monitor.hi1, monitor.lo2:monitor.hi2]
     assert selected.sum() * grid.dx**2 == pytest.approx(2 * .020**2)
@@ -41,8 +40,6 @@ def test_oversized_uniform_region_excludes_cpml_and_bounding_node(axis):
 @pytest.mark.parametrize("center", [(-.001, .010), (.021, .010)])
 def test_partial_uniform_clamp_is_warned_even_below_half_a_cell(center):
     sim = _sim()
-    # Tiny endpoint overflows used to be labelled indistinguishable from
-    # snapping on the NU lane. The physical request identifies the clamp.
     c = (.0009 if center[0] < 0 else .0191, center[1])
     sim.add_flux_monitor(axis="x", coordinate=.010, size=(.002, .004), center=c)
     with pytest.warns(UserWarning, match="CLAMPED"):
@@ -53,13 +50,12 @@ def test_partial_uniform_clamp_is_warned_even_below_half_a_cell(center):
 @pytest.mark.parametrize("scale", [1e-6, 1., 1e6])
 @pytest.mark.parametrize("side", ["low", "high"])
 def test_boundary_roundoff_guard_scales_with_coordinate_arithmetic(scale, side):
+    """Endpoint cancellation uncertainty comes from the nonzero centre and extent operands."""
     edges = np.linspace(0., .020 * scale, 21)
     if side == "high":
         lo, hi = .015 * scale, .020 * scale
         center, size = (lo + hi) / 2, hi - lo
     else:
-        # The endpoint cancellation is near zero, but its uncertainty comes
-        # from the nonzero centre and extent operands.
         size = .010 * scale
         center = np.nextafter(size / 2, -np.inf)
     record = resolve_flux_axis(edges, 8, center, size)
@@ -122,6 +118,7 @@ def test_two_dimensional_collapsed_axis_is_one_integration_cell():
 
 
 def test_finite_flux_window_keeps_nonzero_field_gradient():
+    """flux_spectrum's DFT convention has no time-average 1/2."""
     from rfx.probes.probes import flux_spectrum
 
     sim = _sim()
@@ -138,7 +135,6 @@ def test_finite_flux_window_keeps_nonzero_field_gradient():
 
     derivative = jax.jit(jax.grad(power))(jnp.float32(2.))
     assert np.isfinite(derivative) and derivative != 0
-    # flux_spectrum's existing DFT convention has no time-average 1/2.
     np.testing.assert_allclose(derivative, .020**2, rtol=2e-6)
 
 

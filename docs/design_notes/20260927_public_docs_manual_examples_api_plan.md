@@ -50,8 +50,8 @@ Sources:
 
 - [Public documentation ownership and exclusions](../guides/public_docs_architecture.md)
 - [Current landing page](../public/index.mdx), [Examples](../public/examples/index.mdx),
-  [Gallery](../public/gallery/index.mdx), and the patch diagnostic scope (gallery/patch_antenna.mdx, removed in 2.0 and absent from the repository)
-- [Gallery generator](../../scripts/precompute_gallery_artifacts.py),
+  [Gallery](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/docs/public/gallery/index.mdx), and the patch diagnostic scope (gallery/patch_antenna.mdx, removed in 2.0 and absent from the repository)
+- [Gallery generator](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/scripts/precompute_gallery_artifacts.py),
   [route check](../../scripts/check_public_docs_manifest.py),
   [deployment exporter](../../scripts/export_public_docs_to_gitops.py)
 - [Documentation batch update #1171](https://github.com/bk-squared/rfx/issues/1171),

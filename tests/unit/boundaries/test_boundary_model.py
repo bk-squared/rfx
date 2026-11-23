@@ -4,6 +4,7 @@ from itertools import product
 from inspect import signature
 from types import SimpleNamespace
 
+import jax.numpy as jnp
 import pytest
 
 from rfx import Simulation
@@ -41,6 +42,7 @@ def test_per_face_wall_sets(tokens):
 
 
 def test_asymmetric_faces_and_absorber_terminal_metres():
+    """The alpha profile stores float32."""
     sim = Simulation(freq_max=20e9, domain=(.024, .020, .016), dx=.001,
                      cpml_layers=8, cpml_kappa_max=2,
                      boundary=BoundarySpec(x=Boundary("pmc", "cpml", hi_thickness=5),
@@ -51,7 +53,6 @@ def test_asymmetric_faces_and_absorber_terminal_metres():
                                                 Kind.PEC, Kind.PERIODIC, Kind.PERIODIC)
     assert tuple(f.layers for f in model.faces) == (0, 5, 0, 0, 0, 0)
     assert tuple(f.conformal for f in model.faces) == (False, False, True, True, False, False)
-    # The alpha profile stores float32; the other scalars come from the signature.
     assert dict(model.absorber_parameters) == {
         "kappa_max": 2, "order": 3, "R_asymptotic": 1e-15,
         "alpha_max": pytest.approx(.05, rel=1e-7, abs=0),
@@ -71,9 +72,10 @@ def test_asymmetric_faces_and_absorber_terminal_metres():
     ("upml", upml._sigma_profile_1d, ("order", "R_asymptotic")),
 ])
 def test_absorber_parameters_match_profile_defaults(absorber, profile, names):
+    """Absorber metadata keeps the public float32 cpml profile record."""
     expected = {name: signature(profile).parameters[name].default for name in names}
     if absorber == "cpml":
-        expected["alpha_max"] = float(profile(8, 1e-12, .001).alpha.max())
+        expected["alpha_max"] = float(profile(8, 1e-12, .001, dtype=jnp.float32).alpha.max())
     model = resolve_kinds(BoundarySpec.uniform(absorber), mode="3d", features=Features())
     compare_faces(expected, dict(model.absorber_parameters))
     for name, value in expected.items():

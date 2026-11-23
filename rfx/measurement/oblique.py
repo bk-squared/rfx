@@ -12,7 +12,7 @@ def reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
     acceptance tests use (``exp(-1j·k_transverse·y)``).
     """
     import jax.numpy as _jnp
-    k_t = float(tfsf_cfg.k_transverse)
+    k_t = tfsf_cfg.k_transverse
     taxis = 1 if tfsf_cfg.transverse_axis == "y" else 2
     d_t = float(grid.cells("y")[0]) if taxis == 1 \
         else float(grid.cells("z")[0])

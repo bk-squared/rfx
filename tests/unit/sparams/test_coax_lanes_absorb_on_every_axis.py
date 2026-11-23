@@ -27,7 +27,8 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.sources.sources import GaussianPulse
 
 LANES = ("compute_coaxial_line_reflection", "compute_coaxial_two_port")
-DX = (2.055e-3 - 0.635e-3) / 4.0          # four annulus cells
+ANNULUS_CELL_COUNT = 4.0
+DX = (2.055e-3 - 0.635e-3) / ANNULUS_CELL_COUNT
 
 
 class _ReachedTheRunner(Exception):
@@ -76,8 +77,6 @@ def _runner_arguments(monkeypatch, sim: Simulation, lane: str, **kw) -> dict:
 def test_the_runner_absorbs_on_every_axis(monkeypatch, lane):
     seen = _runner_arguments(monkeypatch, _sim(lane), lane)
     assert seen["boundary"] == "cpml"
-    # The runner absorbs on the axes it resolves from the grid (#1494), so
-    # judge the effective axes, not the literal argument.
     from rfx.boundaries.axes import resolve_cpml_axes
     effective = resolve_cpml_axes(seen["grid"], seen["cpml_axes"])
     assert effective == "xyz", (

@@ -15,10 +15,6 @@ from rfx.convergence import (
 pytestmark = pytest.mark.gpu
 
 
-# ---------------------------------------------------------------------------
-# Helper: lightweight sim factory
-# ---------------------------------------------------------------------------
-
 def _make_sim(dx):
     """Create a minimal PEC-cavity simulation at the given cell size."""
     sim = Simulation(
@@ -32,12 +28,10 @@ def _make_sim(dx):
     return sim
 
 
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
 def test_convergence_study_runs():
-    """Convergence study produces results for multiple dx values."""
+    """Convergence study produces results for multiple dx values.
+    dx_values should be sorted coarse to fine.
+    """
     dx_values = [4e-3, 3e-3, 2e-3]
     cr = convergence_study(
         sim_factory=_make_sim,
@@ -52,9 +46,7 @@ def test_convergence_study_runs():
     assert len(cr.metrics) == 3
     assert len(cr.results) == 3
     assert len(cr.errors) == 3
-    # dx_values should be sorted coarse to fine
     assert cr.dx_values[0] >= cr.dx_values[-1]
-    # Extrapolated value should be finite
     assert np.isfinite(cr.extrapolated)
     assert np.isfinite(cr.order)
 
@@ -65,19 +57,19 @@ def test_richardson_extrapolation():
     Synthetic test: f(dx) = f_exact + C * dx^2.
     Extrapolation should recover f_exact.
     """
-    f_exact = 7.5e9  # exact resonance
-    C = 1e15  # coefficient for O(dx^2) error
+    EXACT_RESONANCE_HZ = 7.5e9
+    f_exact = EXACT_RESONANCE_HZ
+    QUADRATIC_ERROR_COEFFICIENT = 1e15
+    C = QUADRATIC_ERROR_COEFFICIENT
 
     dx_vals = np.array([3e-3, 2e-3, 1e-3])
     values = f_exact + C * dx_vals ** 2
 
     extrapolated, order = richardson_extrapolation(values, dx_vals, expected_order=2.0)
 
-    # Should recover the exact value to high precision
     assert abs(extrapolated - f_exact) / f_exact < 1e-6, (
         f"Extrapolated {extrapolated:.6e} should be close to exact {f_exact:.6e}"
     )
-    # Estimated order should be ~2
     assert abs(order - 2.0) < 0.1, (
         f"Estimated order {order:.2f} should be close to 2.0"
     )
@@ -93,7 +85,6 @@ def test_richardson_extrapolation_two_points():
     extrapolated, order = richardson_extrapolation(values, dx_vals, expected_order=2.0)
 
     assert abs(extrapolated - f_exact) / f_exact < 1e-6
-    # With only 2 points, order defaults to expected_order
     assert abs(order - 2.0) < 1e-10
 
 
@@ -133,7 +124,6 @@ def test_convergence_plot():
     mpl.use("Agg")
     import matplotlib.pyplot as plt
 
-    # Build a synthetic ConvergenceResult
     dx_vals = np.array([4e-3, 3e-3, 2e-3, 1e-3])
     f_exact = 5.0e9
     C = 2e15
@@ -152,9 +142,8 @@ def test_convergence_plot():
 
     fig = cr.plot()
     assert fig is not None
-    assert hasattr(fig, "savefig")  # quacks like a Figure
+    assert hasattr(fig, "savefig")
 
-    # Also test passing an existing axes
     fig2, ax = plt.subplots()
     fig3 = cr.plot(ax=ax, title="Custom title")
     assert fig3 is fig2

@@ -72,11 +72,6 @@ def mesh_intelligence_report(
 
     dx = sim._dx or (C0 / sim._freq_max / 20.0)
 
-    # one shape source, shared with estimate_ad_memory — the
-    # grid the solve will actually build. This method carried its own
-    # copy of the same ceil(extent/dx)+1+2*cpml re-derivation, so the
-    # report's cell count and its AD estimate could describe two
-    # different grids, neither of them the one that runs.
     _accounting = sim._ad_memory_static_accounting()
     grid_shape = (
         _accounting["nx"], _accounting["ny"], _accounting["nz"],
@@ -100,8 +95,6 @@ def mesh_intelligence_report(
         float(uniform_fine_cells / cells) if cells > 0 else float("inf")
     )
 
-    # preflight() prints a summary by design; suppress it so the
-    # report method remains a pure information-returning API.
     with contextlib.redirect_stdout(io.StringIO()):
         preflight_issues = tuple(
             sim.preflight(
@@ -630,10 +623,6 @@ def _absorber_from_state(state: dict[str, Any], nominal_dx: float) -> dict[str, 
     }
 
 
-# rfx.api._preflight.PreflightIssue severity -> support-row status. "info" is
-# already a status this schema uses elsewhere (the dispersion and stability
-# rows), so an informational finding gets its own row state rather than being
-# reported as something to fix.
 _SUPPORT_STATUS_BY_SEVERITY = {"error": "fail", "warning": "warn", "info": "info"}
 
 

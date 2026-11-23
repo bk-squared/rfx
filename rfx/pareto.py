@@ -146,11 +146,6 @@ def pareto_mask(
         if not mask[i]:
             continue
         candidate = oriented[i]
-        # ``no_worse`` must stay an exact componentwise ``<=`` so the dominance
-        # relation is a strict partial order; ``atol`` only relaxes the
-        # strict-improvement test. Adding the tolerance to ``no_worse`` too
-        # would make dominance non-transitive and could mark every point
-        # dominated (empty front) for non-empty input.
         no_worse = np.all(oriented <= candidate, axis=1)
         strictly_better = np.any(oriented < candidate - tolerance, axis=1)
         dominated_by_other = no_worse & strictly_better

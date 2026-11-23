@@ -24,14 +24,6 @@ def msl_min_probe_clearance(freq_max: float) -> float:
     return 0.25 * lambda_g_min
 
 
-# Fix B / the MSL feed's own near-field standoff.
-# ``add_msl_port`` floors its AUTO ``n_probe_offset`` to
-# ``max(3, lam_cells, round(5*h_sub/dx))`` (rfx/api/__init__.py,
-# the ``_hsub_cells`` term). That same rule is stated three more times in this
-# file (check 4's compliant-interval endpoint, check 4a's ``_abs_off_lo``, and
-# ``_validate_forward_sparameter_request``'s explicit-offset guard). This is
-# the ONE place it is computed; every one of those sites calls it, so they
-# cannot disagree about the same port.
 _MSL_NEAR_FIELD_STANDOFF_H_SUB = 5.0
 _MSL_NEAR_FIELD_MIN_OFFSET_CELLS = 3
 
@@ -118,18 +110,6 @@ def msl_source_near_field_standoff_cells(h_sub_m: float, dx_m: float) -> int:
     return max(floor, int(round(_MSL_NEAR_FIELD_STANDOFF_H_SUB * h / dx)))
 
 
-# ``add_msl_port``'s automatic probe ladder, as LENGTHS counted in a cell.
-#
-# The automatic offset clears two near-field scales of the launch, and both
-# are lengths: the source fringing (``5*h_sub``, the standoff above) and
-# ``lambda_eff/(4*pi)`` at f_max. The automatic spacing keeps the ladder span
-# at ``lambda_eff/8``. ``add_msl_port`` counts them in the simulation's scalar
-# cell; on a graded propagation axis the driver-time resolver
-# (``rfx.sparams._common._resolve_msl_auto_offsets``) counts the same lengths
-# in the runway cell at the port, and preflight check 5 and the S-parameter
-# routing check ask what the automatic offset would be. All four call the
-# functions below, so they cannot disagree about a port. With the scalar cell
-# they return the integers ``add_msl_port`` has always stored.
 
 _MSL_AUTO_MIN_SPACING_CELLS = 2
 
@@ -162,23 +142,16 @@ def msl_auto_probe_declaration(sim, *, position, width, height, n_probes,
 
     Keep the bounding-box estimate used at registration; admission calls this
     again after all geometry has been declared. Explicit permittivity wins.
+    ``height`` measures substrate thickness along z, the substrate normal.
     """
     from rfx.grid import C0
     from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
 
     _dx = float(sim._dx or (C0 / sim._freq_max / 10))
-    # Resolve the substrate permittivity for the wavelength estimate.
-    # Precedence: explicit eps_r_sub kwarg > the dielectric registered
-    # under the port (a shape containing the substrate mid-point whose
-    # material has eps_r > 1) > conservative 1.0 fallback (largest
-    # lam_min_eff, hence largest offset — safe but coarse).
     if eps_r_sub is not None:
         eps_r_sub_estimate = float(eps_r_sub)
     else:
         eps_r_sub_estimate = 1.0
-        # ``position`` is physical and ``height`` is always along z
-        # (the substrate normal), so the substrate mid-point probe is
-        # direction-independent.
         probe_pt = (
             float(position[0]), float(position[1]),
             float(position[2]) + height / 2.0,
@@ -189,8 +162,6 @@ def msl_auto_probe_declaration(sim, *, position, width, height, n_probes,
             try:
                 (lo0, lo1, lo2), (hi0, hi1, hi2) = ge.shape.bounding_box()
             except NotImplementedError:
-                # Shape without a bounding_box() implementation:
-                # skip it for the estimate rather than fail port setup.
                 continue
             if not (
                 lo0 <= probe_pt[0] <= hi0
@@ -403,12 +374,6 @@ def msl_absorber_compliant_offset_max(
         msl_probe_x_coords_n as _probe_x_coords_n,
     )
 
-    # The proximity band is measured inward from where the absorber begins,
-    # so its width is the cell AT THAT FACE -- the absorber pad replicates
-    # it -- and the two faces need not agree on a profiled axis. Read off
-    # the grid this function is already walking, through the step-0a
-    # accessor; ``dx`` is the answer on a uniform grid and the fallback for
-    # anything that cannot answer (G17).
     _prop_axis = _axis_roles(port.direction)[0]
     try:
         _cell_lo = float(grid.boundary_cell(_prop_axis, "lo"))

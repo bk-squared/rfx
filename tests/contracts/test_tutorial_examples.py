@@ -1,4 +1,6 @@
-"""End-to-end checks for the materials and far-field tutorials."""
+"""End-to-end checks for the materials and far-field tutorials.
+CSV rounding is below 1e-6 dB in the antenna far-field cut.
+"""
 
 from __future__ import annotations
 
@@ -15,24 +17,18 @@ TUTORIALS_DIR = REPO_ROOT / "examples" / "tutorials"
 
 
 def _run_tutorial(name: str) -> str:
+    """A script run by path gets its own directory first on sys.path."""
     path = TUTORIALS_DIR / name
     assert path.exists(), f"missing tutorial: {path}"
 
-    # PYTHONPATH is not optional here.  Running a script BY PATH puts the
-    # SCRIPT'S directory on sys.path, not ``cwd``, so ``import rfx`` in the
-    # child resolves to whatever ``rfx`` is INSTALLED -- on this pod a path
-    # install pointing at a different checkout.  Without this the test runs
-    # the tutorial source from THIS tree against SOMEONE ELSE'S rfx, and
-    # reports the result as if it were this checkout's.
-    #
-    # It stayed invisible until a tutorial used a symbol that exists only
-    # here: ports_and_sparams_101 imports ``realized_pec_edge_masks`` (#931)
-    # and the child raised ImportError against the installed copy.  Every
-    # earlier green in this file was measured against the installed rfx.
     env = dict(os.environ)
     env["PYTHONPATH"] = (
         str(REPO_ROOT) + os.pathsep + env["PYTHONPATH"]
         if env.get("PYTHONPATH") else str(REPO_ROOT)
+    )
+
+    assert env["PYTHONPATH"].split(os.pathsep)[0] == str(REPO_ROOT), (
+        "The child's PYTHONPATH must start with this checkout."
     )
 
     completed = subprocess.run(
@@ -85,7 +81,9 @@ def _assert_only_absorber_reports(output: str, minimum: int):
 
 def test_antenna_farfield_pattern_tutorial_runs():
     """The dipole reports its warning, directivity, and a fresh E-plane cut:
-    the plot, and the cut's samples in degrees (#1271)."""
+    the plot, and the cut's samples in degrees (#1271).
+    The console rounds to 0.001 dB.
+    """
     plot_path = TUTORIALS_DIR / "output" / "short_dipole_e_plane.png"
     plot_path.unlink(missing_ok=True)
     samples_path = TUTORIALS_DIR / "output" / "short_dipole_e_plane.csv"
@@ -98,7 +96,6 @@ def test_antenna_farfield_pattern_tutorial_runs():
     assert _reported_absorber_layers(output) == {
         (face, 6) for face in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
     }
-    # After the explicit corrected report, run() prints its own advisory tier.
     _assert_only_absorber_reports(output.split("Corrected face spacing:", 1)[1], 1)
     match = re.search(r"Peak directivity:\s*([^\s]+)\s*dBi", output)
     assert match is not None
@@ -108,10 +105,6 @@ def test_antenna_farfield_pattern_tutorial_runs():
     assert plot_path.is_file()
     assert plot_path.stat().st_size > 0
 
-    # The cut's samples: one row per polar angle of the tutorial's 73-point
-    # theta grid, in degrees, on phi = 0 only. The last column is absolute
-    # IEEE gain; for this lossless dipole its peak matches the directivity
-    # reported above (broadside, near theta = 90 degrees).
     import numpy as np
 
     header = samples_path.read_text().splitlines()[0]
@@ -122,38 +115,28 @@ def test_antenna_farfield_pattern_tutorial_runs():
     np.testing.assert_allclose(
         rows[:, 0], np.degrees(np.linspace(0.01, np.pi - 0.01, 73)), rtol=1e-6)
     assert np.all(rows[:, 1] == 0.0)
-    # The console rounds to 0.001 dB; CSV rounding is below 1e-6 dB here.
-    # #1369 changes this column's old 0 dB peak to about 1.76 dBi.
     assert abs(rows[:, 6].max() - peak_directivity_dbi) < 5.1e-4
     assert 75.0 <= rows[np.argmax(rows[:, 6]), 0] <= 105.0
 
 
 def test_ports_and_sparams_101_tutorial_runs():
-    """Every port family preflights and the live RLC load changes S11."""
+    """Every port family preflights and the live RLC load changes S11.
+    The gap between the declared foils must be the height the MSL ports were told.
+    """
     output = _run_tutorial("ports_and_sparams_101.py")
 
-    # The generic-port and microstrip examples retain their four- and
-    # three-layer absorbers; both depths must remain visible in the report.
     assert _reported_absorber_layers(output) == {
         (face, depth)
         for face in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
         for depth in (3, 4)
     }
-    # #1138: edge-aware x/y registration removes the sheet-size refusal.
     assert "solved more than 1% off their drawn size" not in output
     assert "Microstrip port setup ready: True" in output
-    # The declared foils must BE the realized wall planes, and the gap between
-    # them the height the MSL ports were told.  build_microstrip_ports() raises
-    # if not; this pins the measured line so a silent plane move is visible.
     assert (
         "Microstrip realized conductor planes along z: [8, 12] "
         "(ground 1.25 mm, trace 2.25 mm, strip-to-ground 1.00 mm"
     ) in output
     assert "Waveguide port setup ready: True" in output
-    # The waveguide setup audits are part of what this tutorial teaches, and
-    # this small model draws both of them (2.4 far-boundary round trips at the
-    # default num_periods, plus the informational E-plane offset). Readiness is
-    # report.ok, so those advisories must show WITHOUT flipping it to False.
     assert "record_shorter_than_far_boundary_round_trip" in output
     assert "port_index_mirror_known_e_plane_offset" in output
     assert "Coax build-only advisory observed: True" in output

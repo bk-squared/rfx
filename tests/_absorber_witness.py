@@ -155,6 +155,7 @@ def oblique_plane_wave_reflection(n_layers=8, frequency=10e9, *, duration=5.1e-9
     A 300 ps analytic Gaussian pulse has fixed ky; only its 10 GHz carrier
     is judged. The 5.1 ns window includes the near echo but precedes the
     far face's return (600 mm away); the reference faces are 1500 mm away.
+    The analytic source uses exp(-i omega t), hence the positive DFT sign.
     """
     dx, tau = 1e-3, 300e-12
     dt = float(_line(n_layers, 1, 660, dx)[0].dt)
@@ -168,7 +169,6 @@ def oblique_plane_wave_reflection(n_layers=8, frequency=10e9, *, duration=5.1e-9
         grid, propagate = _line(n_layers, 1, interior, dx, phase)
         params, auxiliary = cpml.init_cpml(grid)
         records.append(np.asarray(propagate(params, auxiliary, n_layers + distance, waveform)))
-    # The analytic source uses exp(-i omega t), hence the positive DFT sign.
     weight = np.exp(2j * np.pi * frequency * t)
     incident = np.dot(records[1], weight)
     echo = np.dot(records[0] - records[1], weight)
@@ -214,8 +214,8 @@ def tfsf_auxiliary_reflection(n_layers, face, freqs, *, far=400, reference_dista
         raise ValueError("increase far/reference_distance to isolate the complete near-face echo")
 
     def trace(interior, distance):
-        # init_tfsf adds 20 margin cells and nx-4 mapped cells.
-        cfg, state = init_tfsf(interior - 15, dx, dt, aux_n_cpml=n_layers)
+        """init_tfsf adds 20 margin cells."""
+        cfg, state = init_tfsf(interior - 15, dx, dt, aux_n_cpml=n_layers, dtype='float32')
         source_index = n_layers + distance
         cfg = cfg._replace(src_idx=source_index, src_t0=60e-12,
                            src_tau=12e-12, src_amp=0.5)
@@ -240,6 +240,7 @@ def tfsf_oblique_auxiliary_reflection(n_layers=30, *, polarization="ez", directi
     modes to 96 spatial samples. The source is between the low absorber and
     the samples for +x, and beyond the samples for -x. This measures the
     auxiliary return, separately from cancellation at an empty TF/SF box.
+    One rectangular FFT of the whole record reads the pulse's position in the window.
     """
     from rfx.sources.tfsf_2d import init_tfsf_2d, update_tfsf_2d_e, update_tfsf_2d_h
     from tests._aux_absorber_reflection import _yee_kx, bandwidth_for
@@ -264,9 +265,6 @@ def tfsf_oblique_auxiliary_reflection(n_layers=30, *, polarization="ez", directi
         state = update_tfsf_2d_e(cfg, state, dx, dt, t)
         return state, state.ez_2d[sample_indices, 0]
 
-    # The record window starts 3 tau before the pulse peak, as in
-    # tests/_aux_absorber_reflection.py::measure_aux_reflection_2d (#1831): one rectangular FFT of
-    # the whole record reads the pulse's position in the window.
     n0 = int(round((float(cfg.src_t0) - 3.0 * float(cfg.src_tau)) / dt))
     record = np.asarray(jax.lax.scan(step, state, jnp.arange(n0 + steps) * dt)[1])[n0:]
     spectrum = np.fft.fft(np.conj(record), axis=0)
@@ -308,7 +306,7 @@ def tfsf_methodb_auxiliary_reflection(theta_deg, face, freqs, *,
     dx = 1e-3
     dt = float(0.99 / np.sqrt(3) * dx / C0)
     config, zero_state = init_tfsf_methodB(
-        151, 93, dx, dt, nz=3, theta_deg=theta_deg, f0=10e9)
+        151, 93, dx, dt, nz=3, theta_deg=theta_deg, f0=10e9, dtype='float32')
     spacing, depth = config.dx_1d, config.n_cpml
     steps = int(0.9 * 2 * far * spacing / C0 / dt)
     if not 30 < far < reference_distance or steps * dt <= 120e-12 + 2 * (30 + depth) * spacing / C0:

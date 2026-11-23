@@ -24,6 +24,7 @@ def _equations(jaxpr):
 
 @pytest.fixture
 def slab_case(monkeypatch):
+    """The overlap witnesses float32 rounding in production term order."""
     monkeypatch.setattr(_cpml_slab, "writeback_form", lambda: "slab")
     shape = (11, 9, 7)
     windows = ((slice(2, 6), slice(None), slice(None)),
@@ -33,7 +34,6 @@ def slab_case(monkeypatch):
     values = tuple(rng.standard_normal(field[sl].shape).astype(np.float32)
                    for sl in windows)
     owner = np.indices(values[0].shape).sum(axis=0) % 3 == 0
-    # The overlap also witnesses float32 rounding in production term order.
     field[3, 4, 2] = np.float32(2**24)
     values[0][1, 4, 2] = np.float32(-(2**24))
     values[1][3, 1, 2] = np.float32(1)

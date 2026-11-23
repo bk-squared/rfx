@@ -195,18 +195,17 @@ def _graded_line_leak(case, direction, entry, steps, *, off_axis=False):
     return float(np.max(np.abs(ts[:, 1])) / np.max(np.abs(ts[:, 0])))
 
 
-@pytest.mark.parametrize("steps", [1500, 3000, 6000])
-@pytest.mark.parametrize("entry", ["run", "forward"])
-@pytest.mark.parametrize("direction", ["+x", "-x"])
-@pytest.mark.parametrize("case", ["a", "b", "c"])
+@pytest.mark.parametrize("case,direction,entry,steps", [
+    pytest.param(c, d, e, s, id=f"{c}-{d}-{e}-{s}")
+    for c in "abc" for d in ("+x", "-x") for e in ("run", "forward")
+    for s in (1500, 3000, 6000) if s == 1500 or (c == "a" and e == "run")
+])
 def test_realized_x_line_leakage(case, direction, entry, steps):
     """No scatterer, x graded: the scattered-field region stays at or below
     1e-5 of the total-field peak (#2078 bar, declared before the run). Before
     the line followed the realized x cells, (a) read 0.716. (c) puts the step
     across the low face, so the outside cell's width enters the corrections.
     """
-    if case != "a" and steps != 1500:
-        pytest.skip("three record lengths are declared for profile (a) only")
     leak = _graded_line_leak(case, direction, entry, steps)
     assert leak <= 1e-5, f"{case} {direction} {entry} {steps}: {leak:.17g}"
 
@@ -244,7 +243,7 @@ def test_transverse_grading_keeps_the_scalar_x_line(axis):
     # Same physical extent, boundary cells, smallest cell and timestep.
     profile = np.array([1., 1.5, 1.5, 1.5, 1.5, 1.]) * _DX
     graded = model(**{f"d{axis}_profile": profile}, dt=ref_grid.dt, dt_min_cell=_DX)
-    pairs = [tfsf_from_declaration(sim._tfsf, sim._build_realized_grid(), sim._freq_max)
+    pairs = [tfsf_from_declaration(sim._tfsf, sim._build_realized_grid(), sim._freq_max, dtype='float32')
              for sim in (reference, graded)]
     lines = []
     for sim, (cfg, state) in zip((reference, graded), pairs):

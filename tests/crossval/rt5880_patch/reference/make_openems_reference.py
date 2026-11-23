@@ -91,8 +91,7 @@ measured.
 The gate: the Stage A |S11| minimum, located with the repository's sub-bin
 estimator over the tutorial's whole 1-3 GHz grid, lies within +-1 % of 2.430 GHz
 AND is at least 10 dB deep. The -10 dB is the tutorial's own criterion for
-calling the minimum a resonance. The window is the v2 frequency bar, 1 % (crossval
-leader, 2026-09-24; the implementer proposed 2 %): the figure reads to 0.2 %, and
+calling the minimum a resonance. The window is the v2 frequency bar, 1 % (the proposed alternative was 2 %): the figure reads to 0.2 %, and
 the one recorded run of this tutorial file (the audit trail below) sits +0.10 %
 from it, so 1 % leaves room for the unmeasured differences just named. The transmission-line estimate for the
 tutorial's board is recorded beside the gate and is not part of it.
@@ -206,14 +205,13 @@ from pathlib import Path
 import numpy as np
 
 
-# ---------------------------------------------------------------------------
-# The shared tutorial gate, loaded by PATH, exactly as the Sheen maker loads it:
-# on the cluster this runs as a bare file and ``tests`` is not a package.
-# ---------------------------------------------------------------------------
 _GATE_MODULE_NAME = "_rfx_openems_tutorial_gate"
 
 
 def _load_tutorial_gate():
+    """The shared tutorial gate is loaded by path because on the cluster this runs as a
+    bare file.
+    """
     if _GATE_MODULE_NAME in sys.modules:
         return sys.modules[_GATE_MODULE_NAME]
     path = Path(__file__).resolve().parents[2] / "_openems_tutorial_gate.py"
@@ -232,45 +230,26 @@ def _load_tutorial_gate():
 _gate = _load_tutorial_gate()
 _smooth_estimate = _gate._smooth_estimate
 _builder_body_after_kw = _gate._builder_body_after_kw
-# max(|S11|^2 + |S21|^2) <= 1 + 0.05, the shared module's. With S21 = 0 that is
-# |S11| <= sqrt(1.05) = 1.0247.
 PASSIVITY_TOL = _gate.PASSIVITY_TOL
 
 
-# ---------------------------------------------------------------------------
-# THE BOARD (metres). The retired script's own constants, same names, same
-# values. --self-check compares every one with the retired script's assignment
-# line (frozen below, and read off disk while the file exists).
-# ---------------------------------------------------------------------------
 C0 = 2.99792458e8
-EPS_R = 2.2                 # RT/Duroid 5880
+EPS_R = 2.2
 TAN_DELTA = 1.0e-3
-H_SUB = 3.175e-3            # 1/8 inch
-# every edge of the board just outside a node common to the rfx
-# ladder's h/4, h/8 and h/12 (h = 3.175 mm; the patch centre is a node). Each
-# half-extent is k * h/4 plus a pad: L/2 = 25 h/4 + 6.25 um, W/2 = 31 h/4 +
-# 18.75 um, GP_X/2 = 35 h/4 + 18.75 um, GP_Y/2 = 41 h/4 + 6.25 um. Declared
-# departures from the retired 40 / 50 / 56 / 66 mm: delta 10 and
-# DECLARED_CONSTANT_DEPARTURES.
-L_PATCH = 39.7e-3          # resonant length (x)
-W_PATCH = 49.25e-3         # radiating width (y)
+H_SUB = 3.175e-3
+L_PATCH = 39.7e-3
+W_PATCH = 49.25e-3
 GP_X = 55.6e-3
 GP_Y = 65.1e-3
-# the probe moves to a node on every rfx rung h/4, h/8, h/12
-# (-11, -22, -33 cells of h/n from the patch centre); a declared departure from
-# the retired script's -9.0 mm, delta 9 and DECLARED_CONSTANT_DEPARTURES.
 FEED_OFFSET_X = -8.73125e-3
 N_SUB = 4
-F_LO, F_HI = 1.6e9, 3.4e9   # S11 search / sweep band
+F_LO, F_HI = 1.6e9, 3.4e9
 
 RETIRED_REL_PATH = "validation/crossval/15_patch_antenna_rt5880.py"
 RETIRED_FUNCTION = "run_openems"
 RETIRED_FROZEN_AT_COMMIT = "150ed1d846ae395dd3afae479ee0e4caab6f42c4"
 RETIRED_FROZEN_LINE_RANGE = (1087, 1125)
 
-# The retired script's assignment lines, verbatim. Each constant above must equal
-# the literal on its line, and each line must be a whole line of the script
-# while the script exists.
 RETIRED_CONSTANT_LINES = {
     "C0": "C0 = 2.99792458e8",
     "EPS_R": "EPS_R = 2.2                 # RT/Duroid 5880",
@@ -285,9 +264,6 @@ RETIRED_CONSTANT_LINES = {
     "F_LO, F_HI": "F_LO, F_HI = 1.6e9, 3.4e9   # S11 search / sweep band",
 }
 
-# The retired constants this maker does NOT keep: name -> (the retired value,
-# this maker's value, why). --self-check holds the retired line to the first and
-# the constant to the second, so the departure is stated, not silent.
 _BOARD_REASON = ("every edge just outside a node common to the rfx "
                  "ladder's h/4, h/8 and h/12; delta 10")
 DECLARED_CONSTANT_DEPARTURES = {
@@ -299,14 +275,8 @@ DECLARED_CONSTANT_DEPARTURES = {
     "GP_X": (56.0e-3, 55.6e-3, _BOARD_REASON),
     "GP_Y": (66.0e-3, 65.1e-3, _BOARD_REASON),
 }
-# The retired board, for the checks that must run on it: the TL model against
-# the retired record, the retired builder's line counts, and the negative
-# controls that reproduce what the reviewer found in the retired mesh.
 RETIRED_BOARD = {name: was for name, (was, _, _) in DECLARED_CONSTANT_DEPARTURES.items()}
 
-# What the retired, unprovenanced record says about itself, frozen so that the
-# numbers the dry run compares against survive the record's removal.
-# --self-check re-reads the file while it exists.
 RETIRED_RECORD_REL_PATH = "validation/crossval/_15_patch_results/openems.json"
 RETIRED_RECORD = {
     "mesh_res_mm": 2.7758560925925924,
@@ -337,10 +307,6 @@ def f_tm010_tl_model(eps_r: float, h: float, length: float, width: float,
 F_TM010_BOARD_HZ = f_tm010_tl_model(EPS_R, H_SUB, L_PATCH, W_PATCH)[0]
 
 
-# ---------------------------------------------------------------------------
-# STAGE A: the tutorial. Everything here is the tutorial's own, and the numbers
-# the real pass uses are parsed from the frozen text by --self-check.
-# ---------------------------------------------------------------------------
 A_TUTORIAL = {
     "repo": "thliebig/openEMS",
     "path": "python/Tutorials/Simple_Patch_Antenna.py",
@@ -352,8 +318,8 @@ A_TUTORIAL = {
     "frozen_lines": "28-104 (the build block), plus the post-processing lines "
                     "in _FROZEN_TUTORIAL_POSTPROCESSING",
 }
-A_TUTORIAL_PROJECT_COMMIT = "5b423bdfe0c84064cf9028167bb759007c33b182"   # openEMS-Project
-A_TUTORIAL_OPENEMS_COMMIT = "2000574e8785667a4ad107ad32a304a5034d872a"   # its openEMS submodule
+A_TUTORIAL_PROJECT_COMMIT = "5b423bdfe0c84064cf9028167bb759007c33b182"
+A_TUTORIAL_OPENEMS_COMMIT = "2000574e8785667a4ad107ad32a304a5034d872a"
 A_TUTORIAL_SHA256 = "33017faa27dc22134fe56964b5cb56623c4043916df01921f27ee54ad1b6a79a"
 A_TUTORIAL_IMAGE_CHECK = {
     "image": ("ghcr.io/bk-squared/rfx-openems@sha256:ea8df42dbf1bdcbc93479cfe0618c336"
@@ -447,9 +413,6 @@ _FROZEN_TUTORIAL_BUILD = "\n".join([
     'nf2ff = FDTD.CreateNF2FFBox()',
 ])
 
-# The tutorial's post-processing lines this maker reproduces, verbatim, with
-# their line numbers in the pinned file. --self-check parses the grid and the
-# far-field call out of them.
 _FROZEN_TUTORIAL_POSTPROCESSING = {
     120: 'f = np.linspace(max(1e9,f0-fc),f0+fc,401)',
     121: 'port.CalcPort(Sim_Path, f)',
@@ -467,12 +430,8 @@ A_COPY_SUBSTITUTIONS = [
     ("FDTD = openEMS(NrTS=30000, EndCriteria=1e-4)", "FDTD = openEMS(**kw)"),
 ]
 A_IMPORT_LINE = "    from openEMS.physical_constants import C0, EPS0"
-# The names the frozen block reads without defining. The import line above plus
-# the builder's two arguments and the module's numpy must supply every one.
 A_FREE_NAMES = {"C0", "EPS0", "np", "openEMS", "ContinuousStructure"}
 
-# The tutorial's own numbers, as this maker uses them. --self-check parses each
-# from the frozen text above.
 A_F0_HZ = 2e9
 A_FC_HZ = 1e9
 A_REAL_NRTS = 30000
@@ -498,8 +457,6 @@ def stage_a_freqs_hz() -> np.ndarray:
 
 STAGE_A_BAND_HZ = (max(1e9, A_F0_HZ - A_FC_HZ), A_F0_HZ + A_FC_HZ)
 
-# The documented result, read off the documentation's own figure. See the module
-# docstring for what the figure is and where it came from.
 STAGE_A_DOCUMENTED = {
     "what": ("the |S11| and input-impedance figures on openEMS's documentation page "
              "for this tutorial; the tutorial file itself prints no number"),
@@ -541,14 +498,9 @@ STAGE_A_DOCUMENTED = {
     "re_zin_peak_ohm": 50.3,
     "re_zin_peak_f_hz": 2.424e9,
 }
-# +-1 % around the documented dip, the v2 frequency bar. The figure reads to
-# 0.2 %; the recorded run of this tutorial sits +0.10 % from it. See the docstring.
 STAGE_A_WINDOW_REL = 0.01
-# The tutorial's own criterion for a resonance (its line 137: s11_dB < -10).
 STAGE_A_MAX_DEPTH_DB = -10.0
 
-# The one earlier run of the unmodified tutorial in this repository. Carried into
-# every record as the tutorial's audit trail; never a gate (see the docstring).
 STAGE_A_RECORDED_REPRODUCTION = {
     "vessl_run": "369367247478",
     "date": "2026-07-18",
@@ -605,11 +557,6 @@ def stage_a_gate_verdict(f_res_hz: float, depth_db: float) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# STAGE A builder: the frozen block, indented, with the one declared
-# substitution. --self-check derives it from _FROZEN_TUTORIAL_BUILD and compares
-# character for character.
-# ---------------------------------------------------------------------------
 def _build_stage_a_tutorial(ContinuousStructure, openEMS, *,
                             nrts: int | None, end_criteria: float | None):
     """openEMS's Simple Patch Antenna tutorial, verbatim. Returns (FDTD, port, nf2ff)."""
@@ -699,9 +646,6 @@ def _build_stage_a_tutorial(ContinuousStructure, openEMS, *,
     return FDTD, port, nf2ff
 
 
-# ---------------------------------------------------------------------------
-# STAGE B: the retired script's run_openems build block, frozen verbatim.
-# ---------------------------------------------------------------------------
 _FROZEN_BUILDER_SLICE = "\n".join([
     '    unit = 1e-3',
     '    Lp, Wp = L_PATCH * 1e3, W_PATCH * 1e3',
@@ -746,17 +690,12 @@ _FROZEN_BUILDER_SLICE = "\n".join([
 B_SLICE_FIRST_LINE = "    unit = 1e-3"
 B_SLICE_LAST_LINE = "    nf2ff = FDTD.CreateNF2FFBox() if do_gain else None"
 
-# Two substitutions turn the retired block into this board at rung 1.0: the
-# stop criteria come from the caller (delta 2) and every face is PML (delta 1).
 B_COPY_SUBSTITUTIONS = [
     ("    FDTD = openEMS(NrTS=30000, EndCriteria=1e-4)",
      "    FDTD = openEMS(**kw)"),
     ("    FDTD.SetBoundaryCond(['MUR'] * 6)",
      "    FDTD.SetBoundaryCond(['PML_8'] * 6)"),
 ]
-# Three more make it a rung (delta 3): the air resolution, the patch-region
-# resolution (which also scales the thirds-rule offsets, metal_edge_res =
-# patch_res / 2) and the substrate's own z cells.
 B_RUNG_SUBSTITUTIONS = [
     ("    mesh_res = C0 / (f0 + fc) / unit / 30        # ~lambda/30 in air (well-resolved)",
      "    mesh_res = C0 / (f0 + fc) / unit / 30 * resolution_factor  # ~lambda/30 in air, x rung"),
@@ -765,11 +704,6 @@ B_RUNG_SUBSTITUTIONS = [
     ("    mesh.AddLine('z', np.linspace(0, h, N_SUB + 1))",
      "    mesh.AddLine('z', np.linspace(0, h, substrate_z_cells(resolution_factor) + 1))"),
 ]
-# Three more make every rung the same board (delta 8 and delta 1): the evenly
-# spaced patch lines lose any line closer than half a patch cell to a port line,
-# a thirds-rule line, a patch edge or a ground edge, and eight absorber cells
-# are laid OUTSIDE the retired box after smoothing, so the absorber's inner
-# faces are the retired box faces on every rung.
 B_EDGE_SUBSTITUTIONS = [
     ("    mesh.AddLine('x', np.arange(-Lp / 2 - 2, Lp / 2 + 2 + patch_res, patch_res))",
      "    mesh.AddLine('x', _clear_comb(np.arange(-Lp / 2 - 2, Lp / 2 + 2 + patch_res, patch_res), 'x', patch_res))"),
@@ -778,18 +712,9 @@ B_EDGE_SUBSTITUTIONS = [
     ("    mesh.SmoothMeshLines('all', mesh_res, 1.4)",
      "    mesh.SmoothMeshLines('all', mesh_res, 1.4)\n    _absorber_cells_outside(mesh, B_PML_CELLS)"),
 ]
-# Half a patch cell: the thirds-rule pair at a patch edge is itself half a patch
-# cell wide (metal_edge_res = patch_res / 2), so no cell near a port or an edge
-# is narrower than that pair on any rung.
 COMB_CLEARANCE_CELLS = 0.5
 B_PML_CELLS = 8
-# The retired box faces, in mm: the absorber's inner faces on every rung.
-# Held at the retired board's air box (60 mm around the retired 56 x 66 mm
-# ground) when the ground moved to 55.6 x 65.1 mm (delta 10): the box does not
-# follow the board.
 B_BOX_FACES_MM = {"x": (-88.0, 88.0), "y": (-93.0, 93.0), "z": (-40.0, 90.0)}
-# One more keeps the box when the board changes (delta 10): the air box's x and y
-# lines are the retired faces, not 60 mm around the current ground.
 B_BOX_SUBSTITUTIONS = [
     ("    air = 60.0",
      "    air = 60.0  # noqa: F841  (the retired box's air; its faces are held, delta 10)"),
@@ -903,22 +828,15 @@ def _build_patch_board_at_rung(ContinuousStructure, openEMS, *,
     return FDTD, port, nf2ff
 
 
-# ---------------------------------------------------------------------------
-# Stage B's run parameters.
-# ---------------------------------------------------------------------------
 B_UNIT_M = 1e-3
-B_F0_HZ, B_FC_HZ = 2.4e9, 1.2e9       # the builder's own SetGaussExcite(f0, fc)
-B_N_FREQS = 901                        # 2.0 MHz bins over F_LO..F_HI
+B_F0_HZ, B_FC_HZ = 2.4e9, 1.2e9
+TWO_MHZ_SPACED_FREQUENCY_COUNT = 901
+B_N_FREQS = TWO_MHZ_SPACED_FREQUENCY_COUNT
 B_BOUNDARY = ["PML_8"] * 6
-# The real pass PASSES both stop criteria (delta 2), and the record carries what
-# was passed. Passing nothing would not give 1e-5: the pinned build's python
-# binding sets NrTS to 1e9 when it is not given but never calls SetEndCriteria
-# (openEMS.pyx:74-85), so the C++ constructor's endCrit = 1e-6 stays
-# (openems.cpp:117); the binding's docstring "default=1e-5" (openEMS.pyx:57) is
-# not what runs.
-B_REAL_NRTS = 1_000_000_000            # what the binding itself sets when none is given
-B_REAL_END_CRITERIA = 1e-5             # -50 dB of the box energy's peak
-OPENEMS_UNSET_END_CRITERIA = 1e-6      # what runs when EndCriteria is not passed
+B_REAL_NRTS = 1_000_000_000
+BOX_ENERGY_MINUS_50_DB = 1e-5
+B_REAL_END_CRITERIA = BOX_ENERGY_MINUS_50_DB
+OPENEMS_UNSET_END_CRITERIA = 1e-6
 OPENEMS_UNSET_END_CRITERIA_SOURCE = (
     "openEMS 2000574e: openems.cpp:117 (endCrit = 1e-6 in the constructor); "
     "python/openEMS/openEMS.pyx:74-85 sets NrTS = 1e9 when absent and calls "
@@ -936,11 +854,8 @@ STAGE_B_FACTORS = {
     "stage_b_fine": B_FINE_RESOLUTION_FACTOR,
 }
 STAGE_NAMES = ("stage_a", "stage_b_coarse", "stage_b_mid", "stage_b_fine")
-# The retired script's own search window for the dip: 0.80-1.20 x its analytic
-# TM010 (its lines 1142-1143), here handed to the shared sub-bin estimator.
 B_RESONANCE_BAND_HZ = (0.80 * F_TM010_BOARD_HZ, 1.20 * F_TM010_BOARD_HZ)
 B_WITNESS_BAND_HZ = (F_LO, F_HI)
-# The retired script's condition for computing the far field at all.
 B_FARFIELD_MAX_DEPTH_DB = -6.0
 B_FARFIELD_THETA = (-180.0, 180.0, 2.0)
 B_FARFIELD_PHI = (0.0, 90.0)
@@ -1051,9 +966,6 @@ DELTA_LIST = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# The copy proofs' plumbing.
-# ---------------------------------------------------------------------------
 def _repo_root() -> Path:
     env = os.environ.get("RFX_REPO_ROOT")
     if env:
@@ -1200,22 +1112,6 @@ def _tutorial_source_refusal(info: dict):
     return f"the image's tutorial at {info['path']} differs from the frozen one: " + "; ".join(why)
 
 
-# ---------------------------------------------------------------------------
-# THE PLAN: the builders themselves, run against a recording stand-in for
-# openEMS and CSXCAD. No second copy of any builder exists here -- what the dry
-# run prints is what the builder hands the solver, up to the smoothing.
-#
-# The stand-in's line rules are the pinned build's, read in its source:
-# CSXCAD's CSRectGrid sorts and drops EXACT duplicates (CSRectGrid.cpp Sort);
-# openEMS's AddEdges2Grid places lines by automesh.mesh_hint_from_box (the
-# thirds rule when metal_edge_res is given, the box faces otherwise);
-# AddLumpedPort with edges2grid adds the port's start (and stop, if different)
-# on each named axis (openEMS.pyx); CreateNF2FFBox puts the box one line inside
-# each boundary layer (openEMS.pyx, BC size PML_n -> n + 1, MUR -> 2). The
-# smoothing is CSXCAD's own SmoothMeshLines when it can be had (see
-# ``_smoothing``); otherwise an estimate that applies CSXCAD's near-duplicate
-# rule and subdivides the gaps evenly.
-# ---------------------------------------------------------------------------
 _AXES = {"x": 0, "y": 1, "z": 2}
 _AXIS_NAMES = ("x", "y", "z")
 
@@ -1409,7 +1305,7 @@ def _realize(build) -> dict:
     except Exception:
         pkg = types.ModuleType("openEMS")
         pc = types.ModuleType("openEMS.physical_constants")
-        pc.C0 = 299792458                      # openEMS python/openEMS/physical_constants.py
+        pc.C0 = 299792458
         pc.MUE0 = 4e-7 * np.pi
         pc.EPS0 = 1 / (pc.MUE0 * pc.C0 ** 2)
         pkg.physical_constants = pc
@@ -1437,11 +1333,6 @@ def _realize(build) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# The realized-line check: what must be a line, bit for bit, and what must not
-# crowd it. Values are computed with the builders' own expressions so that they
-# are the same floats the builders hand CSXCAD.
-# ---------------------------------------------------------------------------
 def _line_spec_b(resolution_factor: float) -> dict:
     Lp, Wp = L_PATCH * 1e3, W_PATCH * 1e3
     h = H_SUB * 1e3
@@ -1461,7 +1352,7 @@ def _line_spec_b(resolution_factor: float) -> dict:
     required += [("x", "ground x- edge", -gpx / 2), ("x", "ground x+ edge", gpx / 2),
                  ("y", "ground y- edge", -gpy / 2), ("y", "ground y+ edge", gpy / 2),
                  ("z", "ground plane, z = 0", 0.0), ("z", "patch plane, z = h", h)]
-    faces = dict(B_BOX_FACES_MM)   # the retired box, on every board (delta 10)
+    faces = dict(B_BOX_FACES_MM)
     return {
         "required": required,
         "absorber_faces": [(ax, lo, hi, B_PML_CELLS) for ax, (lo, hi) in faces.items()],
@@ -1566,7 +1457,6 @@ def _cfl_dt_s(lines: dict, unit_m: float) -> float:
     return unit_m / (C0 * math.sqrt(inv))
 
 
-# The cost model. Every number has its source beside it.
 PLAN_SPEED_MC_PER_S = 200.0
 PLAN_SPEED_SOURCE = (
     "openEMS on 8 threads on remilab-c0 ran 24.8 M cells x 28120 steps in 2848 s "
@@ -1713,9 +1603,6 @@ def _stage_plans(stages) -> dict:
     return out
 
 
-# ---------------------------------------------------------------------------
-# Features: reported, never gated here (Stage A's gate reads two of them).
-# ---------------------------------------------------------------------------
 def _tutorial_pick(freqs_hz, s11) -> dict:
     """The tutorial's own resonance pick, its line 137, verbatim in effect."""
     f = np.asarray(freqs_hz, dtype=float)
@@ -1789,12 +1676,6 @@ def _one_port_features(sf, band_hz, *, with_tutorial_pick: bool = False):
     return features
 
 
-# ---------------------------------------------------------------------------
-# openEMS's own log lines, read back. The formats: openems.cpp at
-# A_TUTORIAL_OPENEMS_COMMIT, and the Sheen branch's capture of a real container
-# log (crossval/sheen-lpf-test, run 369367263401), which showed the timestep
-# line printing "0.00 s" -- hence dt from the Nyquist line.
-# ---------------------------------------------------------------------------
 _PROGRESS_LINE_RE = re.compile(
     r"Timestep:\s*(\d+).*?Energy:.*?\(\s*(-?\s*(?:[0-9]*\.?[0-9]+|inf|nan))\s*dB\s*\)",
     re.IGNORECASE)
@@ -1810,7 +1691,11 @@ _DT_LINE_RE = re.compile(r"FDTD timestep is:\s*([0-9]*\.?[0-9]+(?:[eE][+-]?[0-9]
 
 
 def _solver_run_summary(log_text: str, wall_s: float) -> dict:
-    """dt, steps, the last box energy openEMS printed, and its speed."""
+    """dt, steps, the last box energy openEMS printed, and its speed.
+
+    In an earlier capture, the pinned image printed the timestep line as "0.00 s"; the
+    Nyquist convention is N = floor(1 / (2 f dt)).
+    """
     out: dict = {"wall_time_s": round(float(wall_s), 1)}
     d = _DT_LINE_RE.search(log_text)
     if d and float(d.group(1)) > 0.0:
@@ -1821,8 +1706,6 @@ def _solver_run_summary(log_text: str, wall_s: float) -> dict:
         n, f = int(m.group(1)), float(m.group(2))
         out.update({"nyquist_steps": n, "nyquist_f_hz": f})
         if "dt_s" not in out:
-            # The pinned image prints the timestep line as "0.00 s" (the Sheen
-            # branch's capture, run 369367263401); N = floor(1 / (2 f dt)).
             out.update({"dt_s": 1.0 / (2.0 * f * n), "dt_s_uncertainty_rel": 1.0 / n,
                         "dt_s_source": "dt = 1 / (2 f N) from openEMS's Nyquist line"})
     trace = []
@@ -1850,9 +1733,6 @@ def _solver_run_summary(log_text: str, wall_s: float) -> dict:
     return out
 
 
-# ---------------------------------------------------------------------------
-# What the solver built, read back.
-# ---------------------------------------------------------------------------
 def _realized_geometry(lines_mm, *, patch_x_mm, patch_y_mm, feed_xy_mm, ground_x_mm,
                        ground_y_mm, sub_h_mm, thirds_res_mm, boundary_cells) -> dict:
     if lines_mm is None:
@@ -1929,11 +1809,6 @@ def _farfield(nf2ff, sim_dir: str, f_hz, theta_spec, phi, center, *, drop_dumps:
     return out
 
 
-# ---------------------------------------------------------------------------
-# The run: one lumped port, the shared module's gates around it. The sequence is
-# the shared ``run_stage``'s; that function reads two ports and S21, this board
-# has one port.
-# ---------------------------------------------------------------------------
 def _realized_lines_mm(fdtd):
     """The lines CSXCAD built, per axis, in the CSX unit (mm for both stages)."""
     lines = _gate._mesh_lines(fdtd)
@@ -2034,7 +1909,6 @@ def _run_one_port_stage(*, label: str, sim_root: str, threads: int, build, freqs
         meta["openems"] = _gate._openems_version(real_log)
         record.update(features_fn(freqs, s11, zin))
         _gate._non_physical_guard(np.abs(s11), label + "_s11")
-        # The shared witness, untouched, fed zeros for S21: it bounds |S11|^2.
         _gate._passivity_witness(s11, np.zeros_like(s11), label,
                                  tol=PASSIVITY_TOL, idx=band)
     except RuntimeError as exc:
@@ -2231,9 +2105,6 @@ def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict, stages:
     return artifact
 
 
-# ---------------------------------------------------------------------------
-# --dry-run
-# ---------------------------------------------------------------------------
 def _fmt_s(seconds: float) -> str:
     return f"{seconds:,.0f} s ({seconds / 60:.1f} min)"
 
@@ -2463,10 +2334,11 @@ def _dry_run(stage: str, do_gain: bool) -> int:
     return 0
 
 
-# ---------------------------------------------------------------------------
-# --self-check
-# ---------------------------------------------------------------------------
 def _self_check() -> int:
+    """Unloaded Q 38.6 gives a matched parallel resonance whose -10 dB band is 0.667 f /
+    Q = 42 MHz wide, the documented figure's span.
+    """
+    UNLOADED_Q = 38.6
     failures: list = []
     notes: list = []
 
@@ -2700,10 +2572,8 @@ def _self_check() -> int:
         sf = _gate.load_spectral_features()
         fa = stage_a_freqs_hz()
         f_planted = 2.4317e9
-        # Unloaded Q 38.6: a matched parallel resonance whose -10 dB band is
-        # 0.667 f / Q = 42 MHz wide, the documented figure's span.
-        x = 2.0 * 38.6 * (fa - f_planted) / f_planted
-        gamma = -1j * x / (2.0 + 1j * x) * 0.999 + 0.001      # a matched parallel resonance
+        x = 2.0 * UNLOADED_Q * (fa - f_planted) / f_planted
+        gamma = -1j * x / (2.0 + 1j * x) * 0.999 + 0.001
         zin = 50.0 * (1 + gamma) / (1 - gamma)
         feats = _one_port_features(sf, STAGE_A_BAND_HZ, with_tutorial_pick=True)(fa, gamma, zin)
         r = feats["resonance"]
@@ -2826,9 +2696,6 @@ def _self_check() -> int:
     return 1 if failures else 0
 
 
-# ---------------------------------------------------------------------------
-# main
-# ---------------------------------------------------------------------------
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--stage", choices=["A", "B", "both"], default="both")

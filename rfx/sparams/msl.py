@@ -5,6 +5,7 @@ variants. The caller retains its declared port and observer containers.
 """
 
 from __future__ import annotations
+from rfx._traced_inputs import admit_traced_inputs
 
 from rfx.sparams import _msl_stages
 
@@ -293,6 +294,7 @@ def compute_msl_s_matrix(
         cannot run on a tracer, so the solve result is taken as-is — see
         ``cond_a``).
     """
+    admit_traced_inputs("Simulation.compute_msl_s_matrix", locals())
     if devices is not None:
         for name, value, reason in (
             ("eps_override", eps_override, "microstrip forward has no multi-device gradient parity bar"),

@@ -151,6 +151,13 @@ def _traced_unit(step, freqs, dt, offset, dtype):
     return jnp.exp(-1j * angle).astype(dtype)
 
 
+def host_stamp(freqs, dt, kinds):
+    """Host float64 unit stamps (nf, C); phase() computes in float32 with x64 off."""
+    frequencies = np.asarray(freqs, dtype=np.float64).ravel()
+    offsets = np.asarray([_offset(_kind(k), 0.) for k in kinds], dtype=np.float64)
+    return np.exp(-2j * np.pi * frequencies[:, None] * offsets[None, :] * np.float64(dt))
+
+
 def phase(step, freqs, dt, kind='E', *, dtype=None, time_shift=0.):
     """DFT weight including dt, with a single kind-dependent time offset.
 

@@ -8,7 +8,6 @@ import pytest
 
 from rfx.geometry.triplet_tensor import build_triplets, fractions
 
-# A unit cubic cell, asked per axis as the builder asks a uniform Grid.
 UNIT_GRID = SimpleNamespace(cells=lambda axis: np.ones(4), is_constant=lambda axis: True)
 
 
@@ -36,7 +35,6 @@ def test_faces_against_independent_grid_and_continuity(xp):
     s = rng.uniform(-.8, .8, size=20)
     args = dict(signed_distance=s, normal=tuple(normal.T))
     lengths, areas = fractions(xp, UNIT_GRID, None, None, **args)
-    # Independent brute-force midpoint count, absolute tolerance 1e-5.
     u = (np.arange(2000) + .5) / 2000 - .5
     for i in range(20):
         for axis in range(3):

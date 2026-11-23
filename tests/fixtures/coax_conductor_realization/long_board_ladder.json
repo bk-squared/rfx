@@ -487,7 +487,7 @@
     "status": "passed",
     "settling_db": []
    },
-   "run_dir": "/root/workspace/claude-workspace/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-loadlong25-r379"
+   "run_dir": "<workspace>/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-loadlong25-r379"
   },
   {
    "schema": "rfx.coax_conductor_oracle_ladder",
@@ -963,7 +963,7 @@
     "status": "passed",
     "settling_db": []
    },
-   "run_dir": "/root/workspace/claude-workspace/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-loadlong25-r4"
+   "run_dir": "<workspace>/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-loadlong25-r4"
   },
   {
    "schema": "rfx.coax_conductor_oracle_ladder",
@@ -1439,7 +1439,7 @@
     "status": "passed",
     "settling_db": []
    },
-   "run_dir": "/root/workspace/claude-workspace/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-loadlong25-r6"
+   "run_dir": "<workspace>/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-loadlong25-r6"
   },
   {
    "schema": "rfx.coax_conductor_oracle_ladder",
@@ -1915,7 +1915,7 @@
     "status": "passed",
     "settling_db": []
    },
-   "run_dir": "/root/workspace/claude-workspace/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-loadlong25-r9"
+   "run_dir": "<workspace>/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-loadlong25-r9"
   },
   {
    "schema": "rfx.coax_conductor_oracle_ladder",
@@ -2391,7 +2391,7 @@
     "status": "passed",
     "settling_db": []
    },
-   "run_dir": "/root/workspace/claude-workspace/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-loadlong100-r379"
+   "run_dir": "<workspace>/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-loadlong100-r379"
   },
   {
    "schema": "rfx.coax_conductor_oracle_ladder",
@@ -2867,7 +2867,7 @@
     "status": "passed",
     "settling_db": []
    },
-   "run_dir": "/root/workspace/claude-workspace/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-loadlong100-r4"
+   "run_dir": "<workspace>/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-loadlong100-r4"
   },
   {
    "schema": "rfx.coax_conductor_oracle_ladder",
@@ -3343,7 +3343,7 @@
     "status": "passed",
     "settling_db": []
    },
-   "run_dir": "/root/workspace/claude-workspace/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-loadlong100-r6"
+   "run_dir": "<workspace>/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-loadlong100-r6"
   },
   {
    "schema": "rfx.coax_conductor_oracle_ladder",
@@ -3819,7 +3819,7 @@
     "status": "passed",
     "settling_db": []
    },
-   "run_dir": "/root/workspace/claude-workspace/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-loadlong100-r9"
+   "run_dir": "<workspace>/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-loadlong100-r9"
   },
   {
    "schema": "rfx.coax_conductor_oracle_ladder",
@@ -4076,7 +4076,7 @@
     "worst_s11_db": -77.17959367047494,
     "n_bins_below_column_power_min": 0
    },
-   "run_dir": "/root/workspace/claude-workspace/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-thrugate-r379"
+   "run_dir": "<workspace>/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-thrugate-r379"
   },
   {
    "schema": "rfx.coax_conductor_oracle_ladder",
@@ -4333,7 +4333,7 @@
     "worst_s11_db": -77.3440736627199,
     "n_bins_below_column_power_min": 0
    },
-   "run_dir": "/root/workspace/claude-workspace/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-thrugate-r6"
+   "run_dir": "<workspace>/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-thrugate-r6"
   },
   {
    "schema": "rfx.coax_conductor_oracle_ladder",
@@ -4590,7 +4590,7 @@
     "worst_s11_db": -60.562578968684086,
     "n_bins_below_column_power_min": 0
    },
-   "run_dir": "/root/workspace/claude-workspace/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-thrugate-r9"
+   "run_dir": "<workspace>/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-thrugate-r9"
   },
   {
    "schema": "rfx.coax_conductor_oracle_ladder",
@@ -5595,7 +5595,7 @@
     "worst_s11_db": -99.86628357044617,
     "n_bins_below_column_power_min": 0
    },
-   "run_dir": "/root/workspace/claude-workspace/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-thrulong-r379"
+   "run_dir": "<workspace>/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-thrulong-r379"
   },
   {
    "schema": "rfx.coax_conductor_oracle_ladder",
@@ -6600,7 +6600,7 @@
     "worst_s11_db": -99.03402358315032,
     "n_bins_below_column_power_min": 0
    },
-   "run_dir": "/root/workspace/claude-workspace/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-thrulong-r4"
+   "run_dir": "<workspace>/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-thrulong-r4"
   },
   {
    "schema": "rfx.coax_conductor_oracle_ladder",
@@ -7605,7 +7605,7 @@
     "worst_s11_db": -99.35304299438882,
     "n_bins_below_column_power_min": 0
    },
-   "run_dir": "/root/workspace/claude-workspace/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-thrulong-r6"
+   "run_dir": "<workspace>/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-thrulong-r6"
   },
   {
    "schema": "rfx.coax_conductor_oracle_ladder",
@@ -8610,7 +8610,7 @@
     "worst_s11_db": -86.56379560730498,
     "n_bins_below_column_power_min": 0
    },
-   "run_dir": "/root/workspace/claude-workspace/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-thrulong-r9"
+   "run_dir": "<workspace>/rfx/runs/coax-1138-extent-repin-20260930T221343Z/ladder-thrulong-r9"
   }
  ],
  "record_length_probe": [

@@ -357,6 +357,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     -------
     Result
     """
+    from rfx.stepping.vector_pad import refuse_if_forced
+    refuse_if_forced("distributed uniform")
     from rfx._diagnostic_transport import merge_diagnostics, report_diagnostics
     diagnostics = merge_diagnostics(diagnostics, report_diagnostics(assembly))
     validate_exchange_interval(exchange_interval)
@@ -526,7 +528,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
                                live_cells[len(live_cells) // 2], _port_index))
             conductors = publish_port_release(conductors, [c for c, on in zip(cells, live) if on],
                 component=pe.component, entity_id=f"port[{_port_index}]", kind="wire")
-            materials = setup_wire_port(grid, wp, materials, pec_edge_masks=wire_edges)
+            materials = setup_wire_port(grid, wp, materials, pec_edge_masks=wire_edges,
+                                        radius_sim=sim, radius_port=f"port[{_port_index}]")
             if _source_port_indices is None or port_idx in _source_port_indices:
                 sources.defer(make_wire_port_sources,
                               grid, wp, n_steps=n_steps, pec_edge_masks=wire_edges)
@@ -575,8 +578,10 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # A dispersive edge's drive needs the ADE update's coefficient, as on one
     # device; the pole terms are read edge by edge from the specs.
     from rfx.model.source_coefficients import dispersive_drive_model
+    from rfx._internal._precision import resolve_field_dtype
     drive_materials = dispersive_drive_model(materials, debye_spec, lorentz_spec, grid=grid,
-                                            in_program=mesh.devices.size < 2)
+        in_program=mesh.devices.size < 2,
+        field_dtype=resolve_field_dtype(sim._precision) or jnp.float32)
     sources = sources.resolve(drive_materials)
     del wire_edges, drive_materials, msl_geometry_edges
 

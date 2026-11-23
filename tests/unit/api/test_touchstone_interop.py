@@ -15,6 +15,7 @@ from rfx import (
 
 
 def test_read_touchstone_full_parses_v2_s4p_standard_row_wise(tmp_path: Path):
+    """Standard full matrix order for three or more ports is row-wise S11,S12,...S44."""
     text = "\n".join([
         "[Version] 2.0",
         "# GHz S RI R 50",
@@ -23,7 +24,6 @@ def test_read_touchstone_full_parses_v2_s4p_standard_row_wise(tmp_path: Path):
         "[Reference] 50 55 60 65",
         "[Matrix Format] Full",
         "[Network Data]",
-        # Standard full matrix order for 3+ ports: row-wise S11,S12,...S44.
         "1.0  1 0 2 0 3 0 4 0",
         "  5 0 6 0 7 0 8 0",
         "  9 0 10 0 11 0 12 0",
@@ -238,10 +238,11 @@ def test_v1_writer_rejects_information_block(tmp_path: Path):
 
 def test_v2_writer_defaults_to_standard_row_wise_multiport_layout(tmp_path: Path):
     s_params = np.zeros((3, 3, 1), dtype=np.complex128)
-    # Non-symmetric values expose row-major vs column-major ordering bugs.
     for i in range(3):
         for j in range(3):
             s_params[i, j, 0] = 10 * (i + 1) + (j + 1)
+    assert not np.array_equal(s_params, s_params.swapaxes(0, 1)), (
+        'The multiport values must distinguish row-wise and column-major layouts')
     freqs = np.array([2.5e9])
     path = tmp_path / "standard-default.s3p"
 
@@ -255,10 +256,11 @@ def test_v2_writer_defaults_to_standard_row_wise_multiport_layout(tmp_path: Path
 
 def test_standard_layout_is_default_for_v1_multiport(tmp_path: Path):
     s_params = np.zeros((3, 3, 1), dtype=np.complex128)
-    # Values chosen so row-wise and column-major layouts would differ.
     for i in range(3):
         for j in range(3):
             s_params[i, j, 0] = 10 * (i + 1) + (j + 1)
+    assert not np.array_equal(s_params, s_params.swapaxes(0, 1)), (
+        'The multiport values must distinguish row-wise and column-major layouts')
     freqs = np.array([2e9])
     path = tmp_path / "legacy.s3p"
 

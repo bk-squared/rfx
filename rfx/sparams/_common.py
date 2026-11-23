@@ -12,7 +12,7 @@ import numpy as np
 
 from rfx.sparams._settling_warning import _warn_if_ringdown_truncated
 
-try:  # Public API on current JAX; the 0.4.x GPU image uses the old location.
+try:
     from jax import enable_x64 as _enable_x64
 except ImportError:
     from jax.experimental import enable_x64 as _enable_x64

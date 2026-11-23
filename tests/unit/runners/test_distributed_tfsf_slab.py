@@ -18,7 +18,8 @@ from rfx.sources.tfsf import tfsf_from_declaration
 
 
 def test_f4_one_device_mie_anchor():
-    """Simulation's declared PEC sphere must independently meet the 1 dB bar."""
+    """Simulation's declared PEC sphere must independently meet the 1 dB bar.
+    The NTFF nodes enclose every total-field correction plane with face-centred H interpolation outside the total-field region."""
     fixture_dir = Path(__file__).resolve().parents[2] / "fixtures" / "rcs_sphere_mie"
     geo = json.loads((fixture_dir / "fixture.json").read_text())["geometry"]
     spec = importlib.util.spec_from_file_location(
@@ -39,11 +40,9 @@ def test_f4_one_device_mie_anchor():
                         closed_box=True, margin=3)
     grid = sim._build_grid()
     assert tuple(grid.shape) == tuple(geo["grid_shape"])
-    # TF box nodes are 27..62; these NTFF nodes (26, 64) enclose all
-    # correction planes, with the face-centred H interpolation outside TF.
     sim.add_ntff_box((2 * dx,) * 3, (40 * dx,) * 3, freqs=[f0])
     cfg, state = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max,
-                                       n_steps=geo["n_steps"])
+                                       n_steps=geo["n_steps"], dtype='float32')
     assert (cfg.x_lo, cfg.x_hi) == (27, 62)
     with redirect_stdout(sys.stderr):
         result = sim.run(n_steps=geo["n_steps"])
@@ -98,8 +97,8 @@ def test_splitter_owned_rows_and_padding(count):
     shape = (11, 5, 4)
     layout = Slab(shape[0], count)
     mesh = Mesh(np.array(jax.devices("cpu")[:count]), ("x",))
-    # Deliberately unordered targets and unequal rank counts, including both seam neighbours.
     nodes = np.array([(10, 4, 3), (0, 1, 2), (4, 3, 1), (6, 0, 2), (5, 2, 0), (8, 1, 1)])
+    assert np.any(np.diff(nodes[:, 0]) < 0), 'correction targets must be unordered to exercise splitter ordering'
     target = np.ravel_multi_index(nodes.T, shape).astype(np.int32)
     source = np.arange(len(target), dtype=np.int32) + 7
     coefficient = np.arange(len(target), dtype=np.float32) + .125

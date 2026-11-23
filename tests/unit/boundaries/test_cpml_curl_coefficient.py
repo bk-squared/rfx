@@ -16,8 +16,11 @@ def test_raw_entry_uses_loss_or_explicit_curl(override):
     sigma = np.float32(4 * EPS_0 / float(grid.dt))
     mats = mats._replace(sigma=jnp.full(grid.shape, sigma))
     params, psi = init_cpml(grid)
-    # A stored psi with zero H isolates the coefficient actually multiplied.
     psi = psi._replace(psi_ez_xlo=jnp.ones_like(psi.psi_ez_xlo))
+    assert all(np.all(np.asarray(getattr(state, component)) == 0)
+               for component in ("hx", "hy", "hz")), (
+        "Zero H isolates the coefficient multiplied by stored psi"
+    )
     kwargs = {}
     if override:
         kwargs = dict(e_loss=(jnp.full(grid.shape, 99.),) * 3,

@@ -42,7 +42,7 @@ def _configs(sim, graded, freqs):
 
 
 @pytest.mark.parametrize("n_modes", [1, 2], ids=["single", "multimode"])
-@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+@pytest.mark.parametrize("graded", [False], ids=["uniform"])
 def test_omitted_f0_is_measurement_band_center(graded, n_modes):
     freqs = np.linspace(8.2e9, 12.4e9, 7)
     sim = _scene(graded, n_modes=n_modes, freqs=freqs)

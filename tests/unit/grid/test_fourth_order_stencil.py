@@ -65,6 +65,8 @@ def test_update_order2_state_byte_identical():
     called the disagreement a kernel defect; the kernel was the IEEE-
     faithful side of it. ``np.array_equal`` is unchanged: this is still a
     BYTE gate, now against arithmetic that cannot drift with the compiler.
+    ey's curl_y spans axis 0 (via bwd(hz, 0)), so asserting .ex and .ey covers all three
+    difference axes.
     """
     st, mats = _rand_state_mats()
     dt, dx, per = 1e-13, 1e-3, (False, True, False)
@@ -94,12 +96,7 @@ def test_update_order2_state_byte_identical():
     h2 = update_h(st, mats, dt, dx, per, stencil_order=2, high_wall=(False, False, False))
 
     dx32 = np.float32(dx)
-    # E update reference (sigma=0 -> ca=1, cb=dt/eps). ey's curl_y spans AXIS 0
-    # (via bwd(hz, 0)), so asserting .ex AND .ey covers all three diff axes.
     hx, hy, hz = npf32(st.hx), npf32(st.hy), npf32(st.hz)
-    # the kernel's own coefficient expression, in numpy: eps_r is float32
-    # and dt/EPS_0 are weak Python floats, so every step here is float32,
-    # exactly as ``update_e`` computes it (sigma=0 -> ca=1, cb=dt/eps).
     cb = dt / (npf32(mats.eps_r) * EPS_0)
     assert cb.dtype == np.float32
     ex_ref = (npf32(st.ex)
@@ -109,7 +106,6 @@ def test_update_order2_state_byte_identical():
     assert np.array_equal(np.asarray(e2.ex), ex_ref.astype(st.ex.dtype))
     assert np.array_equal(np.asarray(e2.ey), ey_ref.astype(st.ey.dtype))
 
-    # H update reference; hy's curl_y spans AXIS 0 (via fwd(ez, 0)).
     ex, ey, ez = npf32(st.ex), npf32(st.ey), npf32(st.ez)
     cm = dt / (npf32(mats.mu_r) * MU_0)
     assert cm.dtype == np.float32
@@ -146,7 +142,7 @@ def test_order4_is_more_accurate_at_coarse_mesh():
         a = jnp.asarray(np.sin(2 * np.pi * x).astype(np.float32)).reshape(n, 1, 1)
         d = np.asarray(_diff_fwd_o(a, 0, (True, False, False), order)[:, 0, 0]) / h
         return float(np.max(np.abs(d.astype(np.float64) - 2 * np.pi * np.cos(2 * np.pi * (x + h / 2)))))
-    assert deriv_err(4, 16) < deriv_err(2, 48)  # 3x coarser, still more accurate
+    assert deriv_err(4, 16) < deriv_err(2, 48)
 
 
 def test_order4_nonperiodic_stable():

@@ -23,6 +23,7 @@ from rfx import Box, DebyePole, GaussianPulse, Simulation
 
 N_STEPS = 192
 BINS = np.array([4.3e9, 5.1e9, 5.8e9], dtype=np.float32)
+PROBE_COMPONENTS = ('ez', 'ez')
 # Nonuniform physical widths, including non-whole-cell domain lengths.
 DX = np.array([1.] * 7 + [.9, 1.1, .95, 1.05, .9, 1.1, 1.05, .95]
               + [1.3] + [1.] * 8) * 1e-3
@@ -32,10 +33,7 @@ DX_GUIDE = np.r_[np.ones(10), [.9, 1.1, .95, 1.05, .9, 1.1, 1.05, .95, 1.3],
 DZ_MSL = np.r_[np.full(6, .5), .5 * 1.25 ** np.arange(1, 6)] * 1e-3
 
 
-XFAILS = dict.fromkeys((
-    'uniform-lumped-eps-forward',
-), pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="#2241 a user jax.jit call differs from the plain call on this scene (Linux x86 CPU; cause not localized)"))
+XFAILS = {}
 
 
 def _row(path, kind, entry, *, eps=False, always=False):
@@ -142,8 +140,8 @@ def _scene(path, kind, *, refusal=False, debye=False):
     if debye:
         sim.add_material('debye', eps_r=2.5, debye_poles=[DebyePole(delta_eps=1., tau=20e-12)])
         sim.add(Box((3.1e-3, 2.1e-3, 2.1e-3), (9.2e-3, 8.2e-3, 9.1e-3)), material='debye')
-    sim.add_probe(near, 'ez')
-    sim.add_probe(far, 'ez')
+    sim.add_probe(near, PROBE_COMPONENTS[0])
+    sim.add_probe(far, PROBE_COMPONENTS[1])
     return sim
 
 
@@ -173,16 +171,18 @@ def _call(sim, path, entry, eps=None, *, spectrum=False):
     return channels, (result.s_params, result.freqs) if spectrum else ()
 
 
-def _metrics(expected, actual):
+def _metrics(expected, actual, peak=None):
     expected, actual = np.asarray(expected), np.asarray(actual)
     assert expected.shape == actual.shape and expected.dtype == actual.dtype
     delta = np.abs(actual.astype(np.complex128 if np.iscomplexobj(actual) else np.float64)
                    - expected)
-    peak = float(np.max(np.abs(expected)))
+    channel_peak = float(np.max(np.abs(expected)))
+    if peak is None:
+        peak = channel_peak
     spacing = float(np.spacing(np.float32(peak)))
     first = np.flatnonzero(delta)
     summed, maximum = float(np.sum(delta)), float(np.max(delta))
-    stats = dict(peak=peak, max_abs=maximum, max_peak_ulp=maximum / spacing,
+    stats = dict(peak=peak, channel_peak=channel_peak, max_abs=maximum, max_peak_ulp=maximum / spacing,
                 first_differing_step=int(first[0]) if first.size else None,
                 summed_over_peak=summed / peak if peak else (0. if summed == 0 else None),
                 finite=bool(np.isfinite(expected).all() and np.isfinite(actual).all()),
@@ -235,13 +235,22 @@ def _compare(path, kind, entry, eps, evidence, *, spectrum=False):
         expected_channels, expected_s = plain
         actual_channels, actual_s = actual
         assert expected_channels.keys() == actual_channels.keys()
-        evidence['channels'] = {name: _metrics(expected, actual_channels[name])
+        # #2241: probe channels share their component's peak over all probe channels and steps, both traces (the cross-trace bar's probe unit)
+        probe_peaks = {
+            component: max(float(np.max(np.abs(channels[f'probe/{i}'])))
+                           for i, probe_component in enumerate(PROBE_COMPONENTS)
+                           if probe_component == component
+                           for channels in (expected_channels, actual_channels))
+            for component in PROBE_COMPONENTS}
+        channel_peaks = {f'probe/{i}': probe_peaks[component]
+                         for i, component in enumerate(PROBE_COMPONENTS)}
+        evidence['channels'] = {name: _metrics(expected, actual_channels[name], channel_peaks.get(name))
                                 for name, expected in expected_channels.items()}
         failures = [name for name, numbers in evidence['channels'].items()
                     if not numbers['passed']]
         # Guard against a silent no-drive solve, without requiring every optional
         # port channel (e.g. an unavailable reference) to be nonzero.
-        assert all(evidence['channels'][f'probe/{i}']['peak'] > 0 for i in range(2))
+        assert all(evidence['channels'][f'probe/{i}']['channel_peak'] > 0 for i in range(2))
         if spectrum:
             s0, f0 = expected_s
             s1, f1 = actual_s

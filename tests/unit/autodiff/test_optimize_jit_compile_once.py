@@ -46,7 +46,8 @@ def _compiles(fn, *args):
 
 
 def _tiny_sim():
-    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")  # solved length; #1887
+    """Every domain length written as ``6 * (299792458.0 / 5e9 / 20.0)`` is a whole number of cells of dx, so the solved domain equals the declared one."""
+    sim = Simulation(freq_max=5e9, domain=(6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0), 6 * (299792458.0 / 5e9 / 20.0)), dx=(299792458.0 / 5e9 / 20.0), boundary="pec")
     sim.add_port((0.005, 0.0075, 0.0075), "ez")
     sim.add_probe((0.011, 0.0075, 0.0075), "ez")
     return sim

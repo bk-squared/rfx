@@ -64,7 +64,7 @@ the port.
 
 RE-MEASURED under the contract (VESSL run 369367259274, commit 770c4e6c,
 ``JAX_PLATFORMS=cpu``; producer ``docs/design_notes/931_migration/
-t3_remeasure.py``, output ``/root/workspace/claude-workspace/rfx/runs/
+t3_remeasure.py``, output ``<workspace>/rfx/runs/
 issue931-post-t3-measure-20260907T191140Z/t3_remeasure.json``), S11 at
 0.2 GHz, uniform lane and NU lane agreeing to ~1e-6 on every row:
 
@@ -156,12 +156,9 @@ PORT_Z = 5e-3
 N_STEPS = 800
 FREQS = jnp.array([0.2e9, 0.5e9, 1.0e9])
 
-# Pre-declared gates (see module docstring for the measured values).
-LANE_PARITY_ATOL = 1e-4      # |S_NU - S_uniform|, per bin
-ANALYTIC_ATOL = 1e-3         # |S11 - (1-n)/(1+n)| in the quasi-static bins
-PASSIVITY_MAX = 1.0 + 1e-3   # UNDRIVEN ports only: |r| <= Z0/n_live is a
-                             # property of the port cell, so this bounds
-                             # the passive reading and NOT a driven one
+LANE_PARITY_ATOL = 1e-4
+ANALYTIC_ATOL = 1e-3
+PASSIVITY_MAX = 1.0 + 1e-3
 
 
 def _build(nu, *, extent=3e-3, excite=False, z0=50.0, port_x=8e-3,
@@ -171,21 +168,12 @@ def _build(nu, *, extent=3e-3, excite=False, z0=50.0, port_x=8e-3,
     ``nu=True`` passes a UNIFORM-VALUED ``dz_profile`` of the same spacing,
     so the two lanes discretise bit-identical geometry and any S-parameter
     difference is the extractor, not the mesh.
+    The vacuum cell on each side of the port makes the PEC plates a load near the port rather than a short.
     """
     kw = {"dz_profile": np.full(NZ, DX)} if nu else {}
     sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX,
                      boundary="cpml", cpml_layers=6, **kw)
     if load == "pec_plates":
-        # Two one-cell PEC plates, one below the port and one above it,
-        # each separated from the port edge by one cell of vacuum. They
-        # are VOLUMES (#931 §1.2), drawn on node planes, so each realizes
-        # walls at BOTH of its drawn faces and shorts the normal E between
-        # them — the object the name "plate" always meant. Before #931 a
-        # one-cell body realized ONE wall and left its normal E live, so
-        # the plates were films, not plates. Neither realization shorts the
-        # PORT: the vacuum cell on each side is what makes this a "load
-        # near the port", and the module docstring's point is that the
-        # passive reading does not move for ANY of the three loads.
         w = 2e-3
         sim.add(Box((port_x - w, PORT_Y - w, PORT_Z - 2 * DX),
                     (port_x + w, PORT_Y + w, PORT_Z - DX)), material="pec")
@@ -206,10 +194,6 @@ def _build(nu, *, extent=3e-3, excite=False, z0=50.0, port_x=8e-3,
                  impedance=z0, extent=extent, excite=excite,
                  waveform=(pulse if excite else None), direction=direction)
     if not excite:
-        # Passive port: illuminate it with a separate source, which keeps
-        # D1 clear of the #683 ordering question entirely — a passive port's
-        # V/I is untouched by the source-injection ordering, since I reads H
-        # only and the source loop writes E only, at the SOURCE cell.
         sim.add_source(position=(port_x + 3 * DX, PORT_Y, PORT_Z + DX),
                        component="ez", waveform=pulse)
     return sim
@@ -272,9 +256,6 @@ def _analytic_s11(extent):
     return (1.0 - n) / (1.0 + n)
 
 
-# --------------------------------------------------------------------------
-# Independent oracle: the RAW V/I ratio, no wave decomposition involved.
-# --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("nu", [False, True])
 def test_the_pec_plates_load_realizes_two_solid_plates(nu):
@@ -299,8 +280,6 @@ def test_the_pec_plates_load_realizes_two_solid_plates(nu):
     assert len(zs) == len(want), f"realized z wall planes {zs}, want {want}"
     for got, exp in zip(zs, want):
         assert abs(got - exp) < 1e-9, (zs, want)
-    # the port edge itself is not inside either plate: the load sits one
-    # cell away on each side, which is what makes it a LOAD and not a short.
     assert all(not (PORT_Z - 1e-12 <= z <= PORT_Z + extent + 1e-12)
                for z in zs)
 
@@ -346,9 +325,6 @@ def test_raw_port_ratio_matches_the_analytic_admittance(extent):
     sim = _build(False, extent=extent, z0=z0)
     fr = _passive_result(sim)
     _spec, accs = fr.wire_port_sparams[0]
-    # Issue #764: the accumulator tuple grew a 4th slot (whole-port
-    # v_port_dft). This test's channels — the single-cell v_dft/i_dft and
-    # every asserted value — are byte-identical; only the unpack widens.
     v_dft, i_dft = accs[0], accs[1]
     r = np.asarray(v_dft) / np.asarray(i_dft)
     n = _n_live(extent)
@@ -360,9 +336,6 @@ def test_raw_port_ratio_matches_the_analytic_admittance(extent):
                                err_msg=f"raw V/I = {r}")
 
 
-# --------------------------------------------------------------------------
-# D1 — lane parity and passivity on a PASSIVE port.
-# --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("extent,load", [
     (1e-3, "vacuum"),
@@ -462,9 +435,6 @@ def test_passive_lane_parity_across_the_domain(port_x):
     assert np.max(np.abs(s_nu)) <= PASSIVITY_MAX
 
 
-# --------------------------------------------------------------------------
-# The excited port — the #683 sampling-ordering question, DECIDED and locked.
-# --------------------------------------------------------------------------
 
 @pytest.mark.parametrize("load", ["vacuum", "pec_plates"])
 def test_excited_port_lane_ordering_disagreement_is_open_683(load):
@@ -505,9 +475,6 @@ def test_excited_port_lane_ordering_disagreement_is_open_683(load):
         f"(NU {s_nu}, uniform {s_uni})")
 
 
-# --------------------------------------------------------------------------
-# The raw-accumulator channel has ONE shape across the two lanes.
-# --------------------------------------------------------------------------
 
 def test_both_lanes_hand_back_the_raw_accumulators_as_meta_acc_pairs():
     """``for meta, accs in result.wire_port_sparams`` runs on either lane.
@@ -550,8 +517,6 @@ def test_both_lanes_hand_back_the_raw_accumulators_as_meta_acc_pairs():
                 f"four channels are one spectrum each, on the same bins")
             assert np.all(np.isfinite(a)), f"{name} lane {chan} is not finite"
 
-    # The port impedance is readable from each lane's metadata, by the
-    # spelling that lane documents (rfx/api/_spec.py, Result).
     uni_meta = uni.wire_port_sparams[0][0]
     nu_meta = nu.wire_port_sparams[0][0]
     assert float(uni_meta.impedance) == 50.0

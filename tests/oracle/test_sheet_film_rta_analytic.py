@@ -19,23 +19,23 @@ ETA0 = 376.730
 
 F0 = 10e9
 BW = 0.5
-DX = 0.5e-3                 # lambda/60 at 10 GHz
+DX = 0.5e-3
 DOM_X = 90e-3
 DOM_Y = 10e-3
-SHEET_X = 45e-3             # one-cell Box, film on its lower node plane
+SHEET_X = 45e-3
 REFL_X = 25e-3
 TRANS_X = 65e-3
 FREQS = np.linspace(8e9, 12e9, 9)
 
-# film target: Rs = eta0/2 -> sigma_bulk * t = 2/eta0
 T_FILM = 35e-6
-SIGMA_FILM = (2.0 / ETA0) / T_FILM          # ~151.7 S/m << 1e6 -> lossy path
+SIGMA_FILM = (2.0 / ETA0) / T_FILM
 
 
 def _build(kind: str) -> Simulation:
     sim = Simulation(freq_max=15e9, domain=(DOM_X, DOM_Y, DX), dx=DX,
                      boundary="cpml", cpml_layers=20, mode="2d_tmz")
     if kind == "film":
+        assert SIGMA_FILM < 1e6, "The film conductivity must stay below 1e6 S/m to use the lossy path."
         sim.add_thin_conductor(Box((SHEET_X, -1, -1), (SHEET_X + DX, 1, 1)),
                                sigma_bulk=SIGMA_FILM, thickness=T_FILM)
     elif kind == "pec":
@@ -59,6 +59,7 @@ def test_the_pec_sheet_realizes_one_plane_at_the_declared_x():
     The T < 1e-3 gate below only means "opaque at the declared plane" if
     the plane is where the declaration put it. This reads it back off the
     single owner (#931 §1.7) instead of trusting the Box coordinates.
+    The normal component Ex stays live so charge can sit on the film.
     """
     from tests._realized_geometry import assert_sheet_planes, realized
 
@@ -68,8 +69,6 @@ def test_the_pec_sheet_realizes_one_plane_at_the_declared_x():
     assert rz.pec_mask is None or not bool(np.asarray(rz.pec_mask).any()), (
         "a sheet owns no cell")
     mx, my, mz = (np.asarray(m) for m in rz.edge_masks)
-    # x-normal sheet: the two tangential components are PEC on the plane,
-    # the normal one (Ex) stays live so charge can sit on the film.
     assert mx.sum() == 0, mx.sum()
     assert mz.sum() == rz.grid.shape[1], (mz.sum(), rz.grid.shape)
     assert my.sum() == rz.grid.shape[1] - 1, my.sum()

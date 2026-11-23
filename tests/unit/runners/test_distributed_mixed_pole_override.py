@@ -56,6 +56,7 @@ def _drawn_eps(sim):
     return jnp.asarray(sim._assemble_materials_nu(sim._build_nonuniform_grid())[0].eps_r)
 
 
+@pytest.mark.slow
 def test_mixed_pole_override_fields_match_one_device():
     sim = _scene(cells=True)
     eps, dt = _drawn_eps(sim), float(sim._build_nonuniform_grid().dt)

@@ -132,7 +132,7 @@ def test_c1_c2_c4_kernel_occupancy(monkeypatch, lane, kind, placement, p):
     if lane == 'topology':
         from rfx.topology import density_to_material_fields
         rho = jax.nn.sigmoid(jnp.log(p/(1.-p+1e-8)+1e-8))
-        value = density_to_material_fields(jnp.full(tuple(hi-lo),rho), 1., 1., pec_fg=True, beta=1.).pec_occupancy
+        value = density_to_material_fields(jnp.full(tuple(hi-lo),rho), 1., 1., pec_fg=True, beta=1., dtype='float32').pec_occupancy
         expected[tuple(slice(a,b) for a,b in zip(lo,hi))] = np.asarray(value)
     unreleased = np.ones(grid.shape, bool)
     unreleased[tuple(root.released_cells.T)] = False

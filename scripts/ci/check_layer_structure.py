@@ -25,6 +25,7 @@ import sys
 REPO = Path(__file__).resolve().parents[2]
 BASELINE = "scripts/ci/layer_baseline.json"
 CHECKER = "scripts/ci/check_layer_structure.py"
+PLAN_READ_BASELINE = "scripts/ci/plan_read_baseline.json"
 FIVE_FILES = (
     "rfx/api/_execute.py", "rfx/api/__init__.py", "rfx/simulation.py",
     "rfx/nonuniform.py", "rfx/sources/waveguide_port.py",
@@ -949,7 +950,7 @@ def report(result: dict):
         print(summary + " " + " ".join(f"{r}={len(rules[r])}" for r in RULES))
     print("surface sizes: " + " ".join(f"{p}={n}" for p, n in result["surface_sizes"].items()))
     print("\noutside the layer packages — may only fall, not a 2.0 condition "
-          "(PI to decide how far 2.0 reaches)")
+          "(how far 2.0 reaches is not decided)")
     outside = result["baseline"]["outside"]
     for path, rules in sorted(outside.items(), key=lambda item: (
             -sum(len(names) for names in item[1].values()), item[0])):
@@ -975,6 +976,31 @@ def report(result: dict):
         for chain in chains:
             print(chain)
 
+
+
+def plan_read_violations(sources: Sources, base: str) -> list[str]:
+    """Kinds consumed from the plan may only rise on each execution path."""
+    def read(revision):
+        if revision:
+            if not git(sources.repo, "ls-tree", revision, "--", PLAN_READ_BASELINE):
+                return {}
+            data = git(sources.repo, "show", f"{revision}:{PLAN_READ_BASELINE}")
+        else:
+            path = sources.repo / PLAN_READ_BASELINE
+            if not path.exists():
+                return {}
+            data = path.read_bytes()
+        value = json.loads(data)
+        if not isinstance(value, dict) or any(
+                not isinstance(kinds, list) or any(not isinstance(kind, str) for kind in kinds)
+                for kinds in value.values()):
+            raise ValueError(f"{PLAN_READ_BASELINE}: expected path-to-kind lists")
+        return value
+
+    previous, current = read(base), read(sources.head)
+    return [f"{PLAN_READ_BASELINE}: {path} kinds may only rise; missing {kind}"
+            for path, kinds in sorted(previous.items())
+            for kind in sorted(set(kinds) - set(current.get(path, [])))]
 
 
 def check(repo: Path, base: str = "", head: str = "", *, write_baseline=False, list_allowed=False,
@@ -1015,6 +1041,8 @@ def check(repo: Path, base: str = "", head: str = "", *, write_baseline=False, l
         current = baseline(sources.read(BASELINE))
     errors = violations(actual, current, previous,
                         renames=RenameMatcher(sources, base) if previous is not None else None)
+    if base:
+        errors += plan_read_violations(sources, base)
     errors += five_file_definitions(result["caller_definitions"])
     errors += result["load_chains"]
     for error in errors:

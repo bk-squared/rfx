@@ -10,9 +10,8 @@ from rfx.sources.sources import _wire_port_cells, wire_port_from_entry
 
 
 def scene(lane):
-    # Ten cells total 10 mm; first/last cells are 1 mm on every axis.
-    # Five interior cells total 5 mm, even on the graded line.
     widths = np.array([1, 1, .8, 1.2, 1, 1, 1.2, .8, 1, 1]) * .001
+    assert widths.size == 10 and np.isclose(widths.sum(), .01) and np.all(widths[[0, -1]] == .001) and np.isclose(widths[:5].sum(), .005), "Placement scene must retain its ten-cell and five-cell metric sums"
     profiles = ({f"d{a}_profile": widths for a in "xyz"} if lane == "graded" else {})
     return Simulation(freq_max=25e9, domain=(.01,) * 3, dx=.001,
                       cpml_layers=8, **profiles)
@@ -37,6 +36,47 @@ def traced_scene(profile):
     sim.add_source((.005,) * 3, "ez", amplitude_kind="field")
     sim.add_probe((.006, .005, .005), "ez")
     return sim
+
+
+def test_interior_graded_point_admission_cost_is_per_pass(monkeypatch):
+    from rfx.model import graded_grid, point_placement
+
+    sims = [scene("graded") for _ in (10, 100)]
+    grids = [sim._build_nonuniform_grid() for sim in sims]
+    for sim, grid, count in zip(sims, grids, (10, 100)):
+        for axis in "xyz":
+            assert getattr(grid, f"pad_{axis}_lo") > 0
+            assert getattr(grid, f"pad_{axis}_hi") > 0
+        for i in range(count):
+            sim.add_probe((.002 + .006 * i / count, .005, .005))
+        assert all(0. < coordinate < .01 for probe in sim._probes for coordinate in probe.position), "Cost probes must lie strictly between the interior faces"
+
+    counts = dict(node_tie_tol=0, node_of=0, cells=0, host_nominal_grid=0)
+
+    def counting(name, original):
+        def wrapped(*args, **kwargs):
+            counts[name] += 1
+            return original(*args, **kwargs)
+        return wrapped
+
+    for owner, name in ((point_placement, "node_tie_tol"),
+                        (graded_grid.NonUniformGrid, "node_of"),
+                        (graded_grid.NonUniformGrid, "cells"),
+                        (graded_grid, "host_nominal_grid")):
+        monkeypatch.setattr(owner, name, counting(name, getattr(owner, name)))
+
+    per_pass = []
+    for sim, grid in zip(sims, grids):
+        counts.update(dict.fromkeys(counts, 0))
+        point_placement.admit_simulation_points(sim, grid)
+        assert counts["node_tie_tol"] == 0, counts
+        per_pass.append({name: counts[name] for name in
+                         ("node_of", "cells", "host_nominal_grid")})
+    assert per_pass[0] == per_pass[1], per_pass
+
+    counts.update(dict.fromkeys(counts, 0))
+    graded_grid.position_to_index(grids[0], (.005,) * 3, allow_in_absorber=None)
+    assert counts["node_tie_tol"] == 0, counts
 
 
 def test_traced_mesh_preflight_without_campaign_grid():
@@ -125,7 +165,6 @@ def test_located_pad_refusal_names_every_object_and_skips_internal_probes():
     add(sim, "probe", -.001, False)
     add(sim, "source", -.001, False)
     add(sim, "lumped", -.001, False)
-    # Both ends are in the pad; this is still one refused object.
     add(sim, "wire", -.001, False)
     report = sim.preflight()
     findings = report.by_code("absorber_point_refused")
@@ -140,12 +179,11 @@ def test_located_pad_refusal_names_every_object_and_skips_internal_probes():
 @pytest.mark.parametrize("outside", [False, True], ids=["pad1", "beyond_grid"])
 @pytest.mark.parametrize("allow", [False, True])
 def test_point_placement(lane, kind, outside, allow):
+    """Mesh resolution is deferred, so preflight and skip-preflight solves must give the same refusal."""
     sim = scene(lane)
     x = -.010 if outside else -.001
     add(sim, kind, x, allow)
     if outside or not allow:
-        # Mesh resolution is deferred; preflight and skip-preflight solves
-        # must give the same refusal. Ten cells deep is two beyond CPML8.
         depth = "10 cells" if outside else "1 cell"
         message = rf"{depth} into the x-lo CPML pad.*allow_in_absorber=True"
         with pytest.raises(ValueError, match=message):
@@ -160,7 +198,6 @@ def test_point_placement(lane, kind, outside, allow):
                ("attenuated" in str(i) if kind == "probe" else "absorbed" in str(i))
                for i in report)
     grid = sim._build_nonuniform_grid() if lane == "graded" else sim._build_grid()
-    # 8 pad cells - 1 mm / (1 mm per cell); y/z: 8 + five interior cells.
     expected = (8 - 1, 8 + 5, 8 + 5)
     entry = (sim._probes if kind == "probe" else sim._ports)[0]
     assert entry.allow_in_absorber is True
@@ -217,6 +254,7 @@ def test_every_solve_lane_refuses_before_stepping(lane, operation, kind):
 
 @pytest.mark.parametrize("kind", ["probe", "source", "lumped", "wire"])
 def test_subgridded_full_cpml_box_cannot_reach_fine_placement(kind, monkeypatch):
+    """The subgridded lane does not carry a full CPML box."""
     from rfx.runners import subgridded
     sim = scene("uniform")
     sim.add_refinement((.002, .008), ratio=2, validation="off")
@@ -229,8 +267,6 @@ def test_subgridded_full_cpml_box_cannot_reach_fine_placement(kind, monkeypatch)
         return original(*args, **kwargs)
 
     monkeypatch.setattr(subgridded, "_run_subgridded_once", witness)
-    # Opt-in clears point admission, but this lane does not carry a full CPML box.
-    # Its lane gate runs before the nested fine-grid position lookup.
     with pytest.raises(ValueError, match="a CPML absorber is not carried by the subgridded run"):
         sim.run(n_steps=1, compute_s_params=False, skip_preflight=True)
     assert reached == [True]
@@ -246,7 +282,8 @@ def test_subgridded_absorbing_lid_placement(kind, allow):
     sim = Simulation(freq_max=25e9, domain=(.012, .012, .016), dx=.001,
                      cpml_layers=8, boundary=boundary)
     sim.add_refinement((0., .010), ratio=2, validation="off")
-    position = (.005, .005, .017)  # One cell into the supported coarse z lid.
+    COARSE_LID_PAD_POSITION = (.005, .005, .017)
+    position = COARSE_LID_PAD_POSITION
     kw = dict(component="ex", allow_in_absorber=allow)
     if kind == "probe":
         sim.add_probe(position, **kw)
@@ -307,7 +344,6 @@ def test_material_paths_apply_pad_probe_rule(lane, allow, monkeypatch):
     if not allow:
         with pytest.raises(ValueError, match=r"Probe\[0\].*1 cell into the x-lo CPML pad.*allow_in_absorber=True"):
             run()
-        # A later kernel admission must not hide placement before refusal.
         assert placed == []
     else:
         output = run()
@@ -320,7 +356,8 @@ def test_material_paths_apply_pad_probe_rule(lane, allow, monkeypatch):
 def test_float32_domain_end_is_admitted(lane, boundary):
     from rfx.model.point_placement import admit_simulation_points
 
-    end = .012  # float32 rounds this endpoint above the declared high face.
+    end = .012
+    assert float(np.float32(end)) > end, "The float32 endpoint must round above the declared high face"
     widths = np.array([1., .8, 1.2, 1.] * 3) * .001
     profiles = {"dx_profile": widths} if lane == "graded" else {}
     sim = Simulation(freq_max=25e9, domain=(end,) * 3, dx=.001,
@@ -368,11 +405,11 @@ def test_ringdown_run_keeps_port_opt_in(stop):
 
 @pytest.mark.parametrize("operation, columns", [("forward", 1), ("run", 0)])
 def test_ringdown_interior_port_with_back_leg_in_pad(operation, columns):
+    """At x cell 8, the first interior cell, the Hy back leg is cell 7 (-1 mm)."""
     from rfx import GaussianPulse
     from rfx.ringdown import RingdownSpec
 
     sim = scene("uniform")
-    # x cell 8 is the first interior cell; the Hy back leg is cell 7 (-1 mm).
     sim.add_port((0., .005, .005), extent=.002,
                  waveform=GaussianPulse(f0=25e9, bandwidth=1.))
     assert sim._ports[0].allow_in_absorber is False

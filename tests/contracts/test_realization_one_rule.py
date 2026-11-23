@@ -6,6 +6,8 @@ import pytest
 
 from rfx import Box, PolylineWire, Simulation, Sphere
 
+PIN_REALIZED_WIDTH_CELLS = 4
+
 
 FAMILIES = ("pec_box", "dielectric_box", "sphere", "sheet", "dc_film", "wire", "wall", "probe")
 LANES = ("uniform_run", "uniform_forward", "graded_run", "graded_forward")
@@ -16,9 +18,9 @@ HI = np.array((6.61, 6.73, 6.57)) * D
 
 @pytest.mark.parametrize("snap", ("strict", "declared"))
 def test_skip_preflight_keeps_narrowed_microstrip_verdict(snap):
+    """The PEC bottom wall is the ground."""
     import warnings
 
-    # The PEC bottom wall is the ground; the strip rests on the substrate.
     sim = Simulation(freq_max=1e9, domain=(10*D,)*3, dx=D, boundary="pec", snap=snap)
     sim.add_material("substrate", eps_r=2.)
     sim.add(Box((0., 0., 0.), (10*D, 10*D, 4*D)), material="substrate")
@@ -28,7 +30,6 @@ def test_skip_preflight_keeps_narrowed_microstrip_verdict(snap):
     nodes = np.r_[0., np.cumsum(cells)]
     centres = (nodes[:-1] + nodes[1:])/2
     occupied = np.flatnonzero((centres >= 3.9*D) & (centres < 6.1*D))
-    # Occupied centres 4.5, 5.5 mm span faces 4, 6 mm: 2.2 -> 2 mm.
     width = nodes[occupied[-1]+1] - nodes[occupied[0]]
     drawn = (6.1-3.9)*D
     np.testing.assert_allclose(nodes[occupied[[0, -1]]] / D, [4., 5.])
@@ -75,8 +76,6 @@ def test_result_metadata_roundtrip(lane, operation):
     assert isinstance(table.prepared, weakref.ReferenceType)
     assert table.prepared() is None
 
-    # Walk tuple payloads AND attachment dictionaries/slots, without following
-    # weakrefs into the solve. Exercise each reachable realization object too.
     pending, seen, walked = [result], set(), set()
     while pending:
         value = pending.pop()
@@ -130,7 +129,6 @@ def expected(family, record):
     cells = tuple(np.asarray(axis) for axis in record.cell_sizes)
     centres = [n[:-1] + c/2 for n, c in zip(nodes, cells)]
     if family == "wall":
-        # Nearest whole cell, exact half goes up; graded z uses its profile.
         return np.array([(0., nodes[a][int(np.floor(length / D + .5))])
                          for a, length in enumerate((10.04*D, 10*D, 10*D))])
     if family == "probe":
@@ -140,7 +138,6 @@ def expected(family, record):
         points = ((2.23*D, 6.61*D), (4.27*D, 4.27*D), (4.19*D, 4.19*D))
         indices = [(int(np.argmin(abs(n-lo))), int(np.argmin(abs(n-hi))))
                    for n, (lo, hi) in zip(nodes, points)]
-        # Sum every occupied edge, from its start node to its end node.
         return np.array([(n[lo], n[lo] + sum(n[k+1]-n[k] for k in range(lo, hi)))
                          for n, (lo, hi) in zip(nodes, indices)])
     if family == "sphere":
@@ -152,7 +149,6 @@ def expected(family, record):
     for a, n in enumerate(nodes):
         if family in ("sheet", "dc_film") and a == 2:
             k = np.argmin(abs(n - 4.27*D))
-            # Both surface families occupy one node plane in the normal direction.
             result.append((n[k], n[k]))
             continue
         sample = n[:-1] if family == "sheet" else centres[a]
@@ -226,7 +222,6 @@ def test_spans_and_assembly(family, lane, monkeypatch):
         assert row.declared_area_m2 == pytest.approx(declared)
         assert row.area_equivalent_length_m == pytest.approx(np.sqrt(area))
         assert row.area_miss_percent == pytest.approx(100*(np.sqrt(area/declared)-1))
-    # Run diagnostics share the solved table; forward leaves pre-run reporting.
     count = len(builds)
     preview = sim.realized_geometry()
     assert len(builds) - count <= 1
@@ -398,7 +393,6 @@ def test_distributed_run(family, monkeypatch):
     assert observed == [record.realization_table]
     row = record.realization_table.row(label(family))
     np.testing.assert_allclose([a.bounds_m for a in row.axes], expected(family, record), atol=1e-12, rtol=0)
-    # A diagnostic call prepares current declarations and checks its rows.
     count = len(builds)
     preview = sim.realized_geometry()
     assert len(builds) - count <= 1
@@ -471,7 +465,6 @@ def test_refined_region_uses_fine_mask():
     assert name == "fine"
     nodes = [np.arange(0, 10.5*D, D/2), np.arange(0, 10.5*D, D/2),
              np.arange(2*D, 8.5*D, D/2)]
-    # The fine rasterizer samples dielectric Boxes at cell centres.
     for a, (axis, n) in enumerate(zip(axes, nodes)):
         sample = n[:-1] + D/4
         indices = np.flatnonzero((sample >= LO[a]) & (sample < HI[a]))
@@ -516,7 +509,6 @@ def test_material_continuation_reads_actual_pad_copy(graded, smoothed):
         sim.run(n_steps=1, skip_preflight=True, compute_s_params=False, subpixel_smoothing=True)
     record = sim.realized_geometry()
     assert record.realization_table.row("geometry[0]").continued_faces == ("x-lo", "x-hi")
-    # The high boundary node and its pad carry the same non-vacuum column.
     assert np.asarray(record.materials.eps_r)[-1, 5, 5] == 2.
 
 
@@ -545,7 +537,6 @@ def test_inplane_profile_preserves_drawn_wall_extent(frozen):
     assert axis.declared_span_m == 12*D
     np.testing.assert_allclose(axis.realized_span_m, 10*D)
     np.testing.assert_allclose(axis.miss_cells, -2.)
-    # The legacy record retains the existing admitted-domain interpretation.
     assert record.domain[0].declared_length_m == sim._domain[0]
     result = sim.forward(n_steps=1, skip_preflight=True)
     solved = result.realized_geometry.realization_table.row("domain").axes[0]
@@ -656,7 +647,6 @@ def test_prepared_at_step(lane, monkeypatch):
     else:
         hand = expected("probe", result.realized_geometry)
     np.testing.assert_allclose([a.bounds_m for a in table.row("probe[0]").axes], hand, atol=1e-12, rtol=0)
-    # Neither sim nor the result pins the solve's dense product.
     import gc
     gc.collect()
     assert table.prepared() is None
@@ -683,7 +673,7 @@ def test_two_port_primary_table(monkeypatch):
     table = result.realized_geometry.realization_table
     assert table is stepped[0]
     assert len(stepped) == 3
-    assert len(calls) == len({id(t) for t in stepped})  # One compact record per prepared product.
+    assert len(calls) == len({id(t) for t in stepped})
     assert sim.realized_geometry().realization_table is table
     assert table.lane == "run_uniform"
     assert {"port[0]", "port[1]"} <= {row.label for row in table.rows}
@@ -774,7 +764,6 @@ def test_no_dense_array_retained_after_solve(lane, preview_first):
     axis_limit = max(len(axis) - 1 for axis in result.realized_geometry.nodes)
     gc.collect()
     assert result.realized_geometry.realization_table.prepared() is None
-    # Realization metadata owns this contract; measurement fields keep their arrays.
     roots = {
         'result.realized_geometry': result.realized_geometry,
         'sim realization store': _kernel_views.get(sim),
@@ -800,7 +789,6 @@ def test_reporter_refuses_rows_that_changed_at_call_time(monkeypatch):
     def changed_rule(axis, declared, realized, cell):
         return original_axis(axis, declared, (realized[0], realized[1] + cell), cell)
 
-    # Change only the reporter-time rule, keeping the solved declarations intact.
     monkeypatch.setattr(tables, '_axis', changed_rule)
     assert declaration_key(sim) == key
     with pytest.raises(ValueError, match='Realization rows differ from the solved table'):
@@ -820,7 +808,6 @@ def test_reporter_reads_box_changed_between_calls(solved, edit, reporter):
     if solved:
         result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
     first = sim.realized_geometry()
-    # Keep the previous preparation alive while replacing the declaration.
     entry = sim._geometry[0]
     box = Box(tuple(LO), (8.61*D, HI[1], HI[2]))
     if edit == 'add':
@@ -831,7 +818,6 @@ def test_reporter_reads_box_changed_between_calls(solved, edit, reporter):
     if reporter == 'geometry':
         second = sim.realized_geometry()
         table = second.realization_table
-        # The dielectric cell-centre sampler owns cells 2..8.
         assert table.row(f'geometry[{index}]').axes[0].bounds_m == pytest.approx((2*D, 9*D))
     else:
         report = sim.fidelity_report(print_report=False)
@@ -869,8 +855,6 @@ def test_interior_face_comparison(boundary, material, short):
     sim = Simulation(domain=(10*D,)*3, dx=D, freq_max=1e9,
                      boundary={"x": boundary, "y": "pec", "z": "pec"}, cpml_layers=2, snap="strict")
     sim.add_material("glass", eps_r=2.)
-    # The occupied x cells are 2..9. A lower face at 2.087042532 mm
-    # still selects cell 2; its interior span is 8 mm / 1.011.
     end = 12*D if boundary == "periodic" else 11*D
     start = ((end - 10*D/1.011 if short else 2*D) if boundary == "periodic"
              else 10*D - 8*D/1.011 if short else 2*D)
@@ -888,7 +872,7 @@ def test_interior_face_comparison(boundary, material, short):
             ((first, first+length),) if first+length <= period else
             ((0., first+length-period), (first, period)))
         declared = sum(hi-lo for lo, hi in intervals)
-        # The gap between 2 mm and 2.108803165 mm contains no cell centre.
+        assert not any(2*D < (lo+hi)/2 < first for lo, hi in zip(nodes[:domain.n_cells], nodes[1:domain.n_cells+1])), 'The periodic gap must contain no cell centre.'
         physical = sum(np.diff(nodes[:domain.n_cells+1]))
         assert row.axes[0].declared_intervals_m == intervals
         assert row.axes[0].realized_span_m == pytest.approx(physical)
@@ -918,7 +902,6 @@ def test_periodic_split_union_preserves_gap(material):
     n = np.asarray(record.nodes[0])
     period = n[record.domain[0].n_cells] - n[0]
     intervals = ((n[0], 11*D-period), (2*D, period))
-    # Projected occupied cells: 0 and 2..9, leaving cell 1 empty.
     occupied_length = (n[1]-n[0]) + (n[10]-n[2])
     row = record.realization_table.row("geometry[0]").axes[0]
     assert row.declared_intervals_m == intervals
@@ -1014,7 +997,6 @@ def test_verdict_boundary(family, lane, miss, snap):
         domain[0] = 10*D/(1+miss)
     if family == "profile_domain":
         kwargs["dx_profile"] = np.full(10, D)
-    # Build the oracle grid under declared acceptance before exercising strict.
     sim = Simulation(freq_max=1e9, domain=tuple(domain), dx=D, boundary="pec",
                      snap="declared", **kwargs)
     oracle = Simulation(freq_max=1e9, domain=(120*D if family in ("wire", "port") else 10*D, 10*D, 10*D),
@@ -1055,8 +1037,6 @@ def test_verdict_boundary(family, lane, miss, snap):
         sim.add_thin_conductor(Box(tuple(low), tuple(high)), sigma_bulk=100., thickness=35e-6)
     elif family in ("wire", "port"):
         if family == "wire":
-            # Edges 2..41 span 40 cells, from the first start to the last end.
-            # (stepped_span - drawn) / drawn = -miss => drawn = stepped_span / (1-miss).
             stepped_span = sum(nodes[0][k+1]-nodes[0][k] for k in range(2, 42))
             length = stepped_span/(1-miss)
         else:
@@ -1175,6 +1155,7 @@ def test_integral_verdict_boundary_smoothed(lane, smoothing, miss, snap):
     cells = [np.asarray(grid.cells(a)) for a in range(3)]
     nodes = [np.r_[0., np.cumsum(c[:-1])] for c in cells]
     centre = np.array((5.23, 5.17, 4.91))*D
+    assert all(np.allclose(c, D, rtol=0, atol=1e-15) for c in cells) and np.all(centre > (3.5+.5)*D) and np.all(centre < (10-3.5-.5)*D), 'Occupied quadrature cells must be interior with primal and dual widths D.'
     samples = []
     for component in ((3,) if smoothing == "full_tensor" else range(3)):
         xyz = np.meshgrid(*[n + (cells[a]/2 if a == component else 0.)
@@ -1182,8 +1163,6 @@ def test_integral_verdict_boundary_smoothed(lane, smoothing, miss, snap):
         samples.append(np.sqrt(sum((x-centre[a])**2 for a, x in enumerate(xyz))))
 
     def measure(radius):
-        # All occupied quadrature cells are interior; their primal/dual widths
-        # are D in this grid, for both the node tensor and E-edge samples.
         filled = np.mean([np.sum(np.clip(.5-(distance-radius)/D, 0., 1.))*D**3
                           for distance in samples])
         declared = 4*np.pi*radius**3/3
@@ -1219,6 +1198,7 @@ def test_integral_verdict_boundary_conformal(conformal, miss, snap):
     cells = [np.asarray(grid.cells(a)) for a in range(3)]
     nodes = [np.r_[0., np.cumsum(c[:-1])] for c in cells]
     centre = np.array((2.1, 2.17, 1.91))*D
+    assert np.all(centre > 1.75*D) and np.all(centre + 1.75*D < 4*D), 'Every reference disk must lie wholly inside the transverse domain.'
     corners = []
     for normal in range(3):
         u, v = [a for a in range(3) if a != normal]
@@ -1256,7 +1236,6 @@ def test_integral_verdict_boundary_conformal(conformal, miss, snap):
             if conformal == "cut_cell_floor" and 0 < area < 1:
                 area = max(area, .25*max(edges))
             realized += area*D**2
-        # Each plane cuts a complete disk, wholly inside the transverse domain.
         drawn = sum(len(n)*(4*D)**2 - np.pi*np.maximum(radius**2-(n-centre[a])**2, 0.).sum()
                     for a, n in enumerate(nodes))
         return np.sqrt(realized/drawn)-1, realized
@@ -1289,7 +1268,6 @@ def test_aperture_verdict_boundary(lane, miss, snap):
     length = 4*D/(1+miss)
     centre = (5*D, (4.8 if graded else 5)*D)
     ranges = [(c-length/2, c+length/2) for c in centre]
-    # The aperture's snapped edges are bounded by node-aligned PEC walls.
     zlo, zhi = ((2.8, 6.8) if graded else (3., 7.))
     for lo, hi in (((0, 0, 0), (10, 3, 10)), ((0, 7, 0), (10, 10, 10)),
                    ((0, 0, 0), (10, 10, zlo)), ((0, 0, zhi), (10, 10, 10))):
@@ -1380,8 +1358,8 @@ def test_standalone_preflight_reads_the_verdict(snap, monkeypatch):
 
 @pytest.mark.parametrize("smoothing", (True, "full_tensor"))
 def test_integral_without_reference_is_reported(smoothing):
+    """Overlapping curved unions have no analytic union-volume reference."""
     import warnings
-    # Overlapping curved unions have no analytic union-volume reference.
     sim = Simulation(freq_max=1e9, domain=(10*D,)*3, dx=D, boundary="pec")
     sim.add_material("glass", eps_r=2.)
     for x in (4*D, 5*D):
@@ -1408,7 +1386,6 @@ def test_wire_span_includes_the_last_stepped_edge(case, monkeypatch):
     dx = 1 / 1024 if case == "graded_z" else D
     profiles = {}
     if case == "graded_z":
-        # The source-on-PEC fixture's metric; z=3*dx is NOT a node here.
         for axis, count in zip("xyz", (12, 8, 8)):
             profile = np.full(count, dx)
             profile[2:4] = (.9*dx, 1.1*dx)
@@ -1442,7 +1419,6 @@ def test_wire_span_includes_the_last_stepped_edge(case, monkeypatch):
         grid, masks = captured[-1]
         indices = np.where(masks[axis])[axis]
         assert sorted(indices.tolist()) == ([10, 11, 12, 13] if axis == 0 else [3, 4])
-        # Count the actual stepping operand's edges by hand using grid cells.
         cells = np.asarray(grid.cells(axis), dtype=float)
         hand_span = sum(float(cells[k]) for k in indices)
         assert hand_span == pytest.approx((4 if axis == 0 else 2.1 if profiles else 2)*dx)
@@ -1454,6 +1430,7 @@ def test_wire_span_includes_the_last_stepped_edge(case, monkeypatch):
 
 
 def test_port_built_conductors_leave_user_wire_verdict_intact(monkeypatch):
+    """The shell wall is 1 mm = 4dx: radius 11.75dx, nodes 9..31 span faces 9..32."""
     import warnings
     from rfx import GaussianPulse
     from rfx.errors import RfxRefusal
@@ -1467,7 +1444,6 @@ def test_port_built_conductors_leave_user_wire_verdict_intact(monkeypatch):
         return root
     monkeypatch.setattr(calculators, "coax_kernel_conductors", capture)
 
-    # All three declarations use the same uniform grid and 0.23-cell offset.
     dx = D / 4
     def uniform():
         return Simulation(freq_max=20e9, domain=(.01, .01, .02), dx=dx,
@@ -1491,9 +1467,7 @@ def test_port_built_conductors_leave_user_wire_verdict_intact(monkeypatch):
     port = tables[0].row("port[0]")
     assert port.axes[2].declared_span_m == pytest.approx(4.38*dx)
     assert port.axes[2].realized_span_m == pytest.approx(5*dx)
-    # Node samples: pin x/y nodes 19..22 -> cell faces 19..23;
-    # shell wall is 1 mm = 4dx: radius 11.75dx, nodes 9..31 -> faces 9..32.
-    for name, drawn, realized in (("pin", 4.26*dx, 4*dx),
+    for name, drawn, realized in (("pin", 4.26*dx, PIN_REALIZED_WIDTH_CELLS*dx),
                                   ("shell", 23.5*dx, 23*dx)):
         row = tables[1].row(f"coaxial_port[0]/{name}")
         for axis in row.axes[:2]:

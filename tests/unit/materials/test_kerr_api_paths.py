@@ -23,6 +23,7 @@ the peak field amplitude is PRESERVED (0.93–1.14× across χ³, a lossless ind
 the pre-#437 dissipative operator would have driven well below 1. The exact quantitative SPM
 magnitude (matching k0·L·χ³⟨E²⟩/(2n0) to a few %) still needs a clean CW ⟨E²⟩ comparator; the
 operator's correctness against analytic ε_eff is pinned in 1D.
+The chi3 values stay in the moderate reactive regime because chi3=4 is strongly nonlinear.
 """
 import numpy as np
 import pytest
@@ -38,10 +39,6 @@ X_IFACE, X_SLAB_END = 0.12, 0.27
 XPROBES = (0.16, 0.18, 0.20, 0.22, 0.33)
 
 
-# --------------------------------------------------------------------------- #
-# forward(): the differentiable path RUNS reactive Kerr on the uniform lane (#437),
-# byte-identical to run(), and is differentiable THROUGH the Kerr operator.
-# --------------------------------------------------------------------------- #
 def _kerr_sim(chi3):
     sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary="cpml",
                      cpml_layers=10, mode="3d")
@@ -96,14 +93,11 @@ def test_forward_kerr_differentiable():
     assert abs(g_ad - g_fd) < 0.03 * abs(g_fd) + 1e-6, f"AD={g_ad:.4e} vs FD={g_fd:.4e}"
 
 
-# --------------------------------------------------------------------------- #
-# SLOW: run() actually applies Kerr, monotonically and stably.
-# --------------------------------------------------------------------------- #
 def _run_probe_series(chi3):
     return np.asarray(_kerr_sim(chi3).run(num_periods=30, skip_preflight=True).time_series)
 
 
-CHI3S = (0.5, 1.0, 2.0)   # moderate reactive regime (χ³=4 is strongly nonlinear)
+CHI3S = (0.5, 1.0, 2.0)
 
 
 @pytest.fixture(scope="module")
@@ -125,7 +119,6 @@ def test_run_wires_kerr_byte_identity_and_change(kerr_run_diffs):
     """χ³=0 is byte-identical to a truly-linear (no-Kerr) run, and χ³>0 measurably changes the
     field — the public run() API threads χ³. If run() dropped it (like forward() did), the
     χ³>0 diffs would be ~0."""
-    # byte-identity: a chi3=0 Kerr material == the same geometry with a plain linear material
     lin = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary="cpml", cpml_layers=10, mode="3d")
     lin.add_material("lin", eps_r=EPS_R)
     lin.add(Box((X_IFACE, -1, -1), (X_SLAB_END, 1, 1)), material="lin")

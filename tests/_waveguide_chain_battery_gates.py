@@ -29,6 +29,7 @@ Sign conventions used throughout (pre-declaration §5(b), §5(d)):
   (``scripts/diagnostics/build_waveguide_band_broad_e5_phase_envelope.py``);
 * the PEC-short phase oracle at a default plane ``d`` from the face is
   ``π − 2βd`` (reflection −1 at the face, round trip ``−2βd``).
+The lossless PEC-short eps magnitude is excluded from the relative-accuracy family: its continuum derivative is zero.
 """
 
 from __future__ import annotations
@@ -66,67 +67,52 @@ from tests.unit.autodiff.test_msl_ad_fd_converged import (  # noqa: E402
 from tests.unit.sparams.test_waveguide_phase_gate import MAG_MASK_FRAC, PHASE_TOL_DEG  # noqa: E402
 from build_waveguide_band_broad_e5_envelope import _committed_noise_floor  # type: ignore  # noqa: E402
 
-# --- pre-declared gates, each with its source -------------------------------
-SETTLING_DB_MAX = float(_SETTLING_WITNESS_DB)          # −40 dB, CLAUDE.md ring-down rule
-NON_VACUITY_MIN_MAX_S11 = 0.20                          # twoport_contract_v1.py:266
-ABS_S_INVARIANCE_RTOL = 1e-3                            # twoport_contract_v1.py:270
-ABS_S_INVARIANCE_ATOL = 1e-4                            # twoport_contract_v1.py:270
-ROTATION_TOL_YEE_DEG = 3.0                              # test_waveguide_phase_gate.py:259
-ROTATION_TOL_CONTINUOUS_DEG = float(PHASE_TOL_DEG)      # 6.0, phase_gate.py:63
-WRONG_SIGN_MIN_DEG = 10.0                               # phase_gate.py:266
-ROTATION_MAG_MASK_FRAC = float(MAG_MASK_FRAC)           # 0.05 of the entry's band peak, phase_gate.py:68
-ROTATION_NOISE_FLOOR = float(_committed_noise_floor())  # measured empty-guide |S| floor (~7e-4): an entry whose
-                                                        # band peak sits below it carries no measurable phase
-AD_FD_REL_GATE = 0.05                                   # sparam_ad_end_to_end.py:298, flux_ad.py:84
-FD_ULP_FLOOR = float(_MIN_FD_ULP_SPAN)                  # 1e4, msl_ad_fd_converged.py:136
-FORWARD_IDENTITY_RTOL = 1e-5                            # flux_ad.py:104
-FORWARD_IDENTITY_ATOL = 1e-7                            # flux_ad.py:104
-GRADIENT_REPORT_BAR = 1e-2                              # pre-declaration §5(b), report-first
-GRADIENT_PIN_QUANTUM = 1000                             # gate_from_envelope(measured, quantum=1000)
-LADDER_FLOOR_MAG = 0.005                                # port_validation_battery.py:474
-LADDER_FLOOR_PHASE_DEG = 1.0                            # pre-declaration §5(c)
-LADDER_RATIO_WINDOW = (0.15, 0.70)                      # pre-declaration §5(c), guard 2
-PEC_SHORT_S11_MIN = 0.99                                # port_validation_battery.py:541
-PEC_SHORT_S11_MAX = 1.03                                # port_validation_battery.py:550
-PEC_SHORT_MEAN_TOL = 0.02                               # port_validation_battery.py:554
-SLAB_AIRY_MAG_TOL = float(MAX_TOL)                      # 0.05, envelope.py:33
-SLAB_AIRY_PHASE_TOL_DEG = float(MAX_PHASE_TOL_DEG)      # 15.0, phase_envelope.py:99
-SLAB_AIRY_PHASE_MAG_FLOOR = float(PHASE_MAG_FLOOR)      # 0.30, phase_envelope.py — part of that gate
-COLUMN_POWER_MAX = 1.02                                 # port_validation_battery.py:307
-RECIPROCITY_MAG_MAX = 0.01                              # port_validation_battery.py:340
-RECIPROCITY_COMPLEX_MAX = 0.01                          # pre-declaration §6, first measurement
+SETTLING_DB_MAX = float(_SETTLING_WITNESS_DB)
+NON_VACUITY_MIN_MAX_S11 = 0.20
+ABS_S_INVARIANCE_RTOL = 1e-3
+ABS_S_INVARIANCE_ATOL = 1e-4
+ROTATION_TOL_YEE_DEG = 3.0
+ROTATION_TOL_CONTINUOUS_DEG = float(PHASE_TOL_DEG)
+WRONG_SIGN_MIN_DEG = 10.0
+ROTATION_MAG_MASK_FRAC = float(MAG_MASK_FRAC)
+ROTATION_NOISE_FLOOR = float(_committed_noise_floor())
+AD_FD_REL_GATE = 0.05
+FD_ULP_FLOOR = float(_MIN_FD_ULP_SPAN)
+FORWARD_IDENTITY_RTOL = 1e-5
+FORWARD_IDENTITY_ATOL = 1e-7
+GRADIENT_REPORT_BAR = 1e-2
+GRADIENT_PIN_QUANTUM = 1000
+LADDER_FLOOR_MAG = 0.005
+LADDER_FLOOR_PHASE_DEG = 1.0
+LADDER_RATIO_WINDOW = (0.15, 0.70)
+PEC_SHORT_S11_MIN = 0.99
+PEC_SHORT_S11_MAX = 1.03
+PEC_SHORT_MEAN_TOL = 0.02
+SLAB_AIRY_MAG_TOL = float(MAX_TOL)
+SLAB_AIRY_PHASE_TOL_DEG = float(MAX_PHASE_TOL_DEG)
+SLAB_AIRY_PHASE_MAG_FLOOR = float(PHASE_MAG_FLOOR)
+COLUMN_POWER_MAX = 1.02
+RECIPROCITY_MAG_MAX = 0.01
+RECIPROCITY_COMPLEX_MAX = 0.01
 
 RUNG_LABELS = ("coarse", "mid", "fine")
 RUNG_DX = dict(zip(RUNG_LABELS, F.DX_LADDER))
 LANE_LABELS = {False: "false", "flux": "flux"}
 LANE_FROM_LABEL = {"false": False, "flux": "flux"}
-CLAIMS_RUNG = "fine"                                     # pre-declaration §2.6
-LEGS_RUNG_DEFAULT = "fine"                               # AD / FD / plane legs
+CLAIMS_RUNG = "fine"
+LEGS_RUNG_DEFAULT = "fine"
 
-# Distance from each DEFAULT reference plane to the near DUT face (§2.3).
-# #931: the pec_short oracle is anchored to the DECLARED near face, and under
-# the ownership contract that is also the REALIZED near wall — drawn = realized
-# (§1.2), no longer a coincidence of the old rule putting a body's only wall at
-# its lower node plane. This is the one compensation-free oracle in the
-# battery, so it is the reference pattern rather than a special case; what
-# makes it true is checked, not assumed, by
-# :func:`assert_oracle_anchors_are_realized` below.
-D_PLANE_TO_PEC_FACE_M = F.PEC_SHORT_X_M[0] - F.REF_LEFT_DEFAULT_M     # 0.03810
-D_PLANE_TO_SLAB_FACE_M = F.SLAB_X_M[0] - F.REF_LEFT_DEFAULT_M         # 0.03556
-SLAB_THICKNESS_M = F.SLAB_X_M[1] - F.SLAB_X_M[0]                      # 0.01016
-# The ACTIVE shift pair, i.e. the one the builder currently realizes and the one
-# a new measurement runs at. A replayed artifact is read against the pair IT was
-# measured with (``plane_shift[key]["shift_m"]``), never against this one — the
-# two artifacts in tests/fixtures/waveguide_chain_battery/ carry different pairs.
-SHIFT_LEFT_M = F.REF_LEFT_SHIFTED_M - F.REF_LEFT_DEFAULT_M            # +0.00508
-SHIFT_RIGHT_M = F.REF_RIGHT_SHIFTED_M - F.REF_RIGHT_DEFAULT_M         # −0.00254
+D_PLANE_TO_PEC_FACE_M = F.PEC_SHORT_X_M[0] - F.REF_LEFT_DEFAULT_M
+D_PLANE_TO_SLAB_FACE_M = F.SLAB_X_M[0] - F.REF_LEFT_DEFAULT_M
+SLAB_THICKNESS_M = F.SLAB_X_M[1] - F.SLAB_X_M[0]
+SHIFT_LEFT_M = F.REF_LEFT_SHIFTED_M - F.REF_LEFT_DEFAULT_M
+SHIFT_RIGHT_M = F.REF_RIGHT_SHIFTED_M - F.REF_RIGHT_DEFAULT_M
 SHIFT_PAIRS_M = {name: (l - F.REF_LEFT_DEFAULT_M, r - F.REF_RIGHT_DEFAULT_M)
                  for name, (l, r) in F.SHIFT_PAIRS_M.items()}
-DEFAULT_SHIFT_PAIR_NAME = "half_turn_pair"   # what a schema_version 1 artifact was measured with
+DEFAULT_SHIFT_PAIR_NAME = "half_turn_pair"
 FC_TE10_HZ = C0_LOCAL / (2.0 * F.A_M)
 
 OBJECTIVES = {
-    # name: (kind, port-entry (recv, drive), function of the complex entry)
     "s11_mag2": ("magnitude", (0, 0)),
     "s21_mag2": ("magnitude", (1, 0)),
     "re_s21": ("complex", (1, 0)),
@@ -134,36 +120,16 @@ OBJECTIVES = {
     "re_s11": ("complex", (0, 0)),
     "im_s11": ("complex", (0, 0)),
 }
-# Current relative-accuracy family, amended 2026-09-08. The lossless
-# PEC-short eps magnitude is excluded: its continuum derivative is zero.
 AD_LEGS = {
     ("slab", "eps"): ("s11_mag2", "s21_mag2", "re_s21", "im_s21"),
     ("pec_short", "sigma"): ("s11_mag2",),
     ("pec_short", "eps"): ("re_s11", "im_s11"),
 }
-# Historical schema 1--3 replay ONLY; no prospective expected-skip/null leg.
 EXPECTED_ULP_SKIP = {("pec_short", "eps", "s11_mag2")}
-# v1.8 closing declaration (docs/design_notes/20260905_v18_close_predeclaration.md):
-# contract criterion 1 (forward identity) and 3(a) (AD-vs-FD) are evaluated under x64 on the
-# lanes named here. The forward default stays float32. `normalize=False` is bit-identical at 0
-# in float32 and is not declared. Both readings are stored in the artifact; `primary_precision`
-# on each leg says which one the gate read, and RFX_CHAIN_PRIMARY=float32 at measurement time
-# is the pre-declaration's section-4 falsifier (must reproduce run 2's 9 red).
 X64_DECLARED_LANES = {"flux"}
-# Zero-derivative legs (EXPECTED_ULP_SKIP) whose FD nonetheless resolves above the ULP floor
-# are gated on SIGN and ORDER of the x64 gradient against FD, not on rel <= 0.05: the
-# remeasure pre-declaration's own section (ii) branch ("within a factor 3 of -9.821e-7 and
-# keep its sign"), promoted from a report to a gate for that leg only. rel on a ~1e-6 gradient
-# of a 16.0 loss is a ULP question, which is why rel 38 there was never an accuracy finding.
 ZERO_DERIVATIVE_RATIO_MAX = 3.0
-# The closing pre-declaration's section-3 fail branch for that leg (row 3): report_only is
-# admissible only while the x64 AD and FD keep one sign AND both stay at or below 1e-5 in
-# magnitude — "sign flip, or either |g| above 1e-5: float64 tape and FD disagree on a NON-zero
-# derivative — defect on both precisions, root-cause, do not close". Outside it the leg is
-# fail, whatever EXPECTED_ULP_SKIP says (independent review of PR #908, finding 6).
 ZERO_DERIVATIVE_ABS_MAX = 1e-5
 LADDER_OBSERVABLES = (
-    # name, dut, entry, kind
     ("slab_s11_mag", "slab", (0, 0), "mag"),
     ("slab_s21_mag", "slab", (1, 0), "mag"),
     ("slab_s21_phase_deg", "slab", (1, 0), "phase"),
@@ -172,7 +138,6 @@ LADDER_OBSERVABLES = (
 )
 
 
-# --- small helpers ----------------------------------------------------------
 
 def wrap_deg(x: np.ndarray) -> np.ndarray:
     return np.degrees(np.angle(np.exp(1j * np.radians(np.asarray(x, dtype=float)))))
@@ -265,7 +230,6 @@ def fit_guide_cutoff(S21: np.ndarray, freqs_hz, dt_s: float, dx_m: float, length
     return out
 
 
-# --- per-cell metrics (§4, §6) ----------------------------------------------
 
 def cell_metrics(S: np.ndarray) -> dict:
     S = np.asarray(S, dtype=complex)
@@ -286,7 +250,6 @@ def cell_metrics(S: np.ndarray) -> dict:
     }
 
 
-# --- oracles (§5(c), §5(d)) -------------------------------------------------
 
 def airy_reference(freqs_hz) -> tuple[np.ndarray, np.ndarray]:
     """Airy slab moved to the DEFAULT reference planes (d_L = d_R = 35.56 mm),
@@ -304,7 +267,6 @@ def pec_short_phase_oracle_deg(beta: np.ndarray) -> np.ndarray:
     return wrap_deg(np.degrees(np.pi - 2.0 * np.asarray(beta) * D_PLANE_TO_PEC_FACE_M))
 
 
-# --- referee (§5(d)) -------------------------------------------------------
 
 def referee_pec_short(S: np.ndarray, freqs_hz) -> dict:
     S = np.asarray(S, dtype=complex)
@@ -368,7 +330,6 @@ def referee_slab_phase_pass(r: dict) -> bool:
     return r["max_phase_diff_deg"] <= SLAB_AIRY_PHASE_TOL_DEG
 
 
-# --- plane shift (§5(b)) ----------------------------------------------------
 
 def rotation_predictions_deg(beta: np.ndarray, shift_left_m: float | None = None,
                              shift_right_m: float | None = None) -> dict[str, np.ndarray]:
@@ -399,7 +360,8 @@ def plane_shift_rotation(S_base: np.ndarray, S_shift: np.ndarray, freqs_hz,
     """Rotation of every entry under the shift, against the pre-declared
     prediction (β of the guide's TE10 cutoff c/2a: Yee-discrete and
     continuous) and, when ``fc_port_hz`` is given, against the extractor's
-    OWN β (the port config's cutoff) as a mechanism witness."""
+    OWN β (the port config's cutoff) as a mechanism witness.
+    An entry whose band peak is below the extractor's measured |S| noise floor carries no measurable phase."""
     S_base = np.asarray(S_base, dtype=complex)
     S_shift = np.asarray(S_shift, dtype=complex)
     f = np.asarray(freqs_hz, dtype=float)
@@ -419,9 +381,6 @@ def plane_shift_rotation(S_base: np.ndarray, S_shift: np.ndarray, freqs_hz,
     for name, (i, j) in _ENTRY.items():
         mag = np.abs(S_base[i, j])
         peak = float(mag.max())
-        # An entry whose band peak is below the extractor's measured |S| noise
-        # floor (the PEC-short's transmission) carries no measurable phase;
-        # within a measurable entry the phase gate's own weak-signal mask applies.
         measurable = peak > ROTATION_NOISE_FLOOR
         mask = (mag >= ROTATION_MAG_MASK_FRAC * peak) if measurable else np.zeros_like(mag, dtype=bool)
         meas = wrap_deg(np.degrees(np.angle(S_shift[i, j] * np.conj(S_base[i, j]))))
@@ -488,7 +447,6 @@ def gradient_invariance_entry(kind: str, g_base_re, g_base_im, g_shift_re, g_shi
     return out
 
 
-# --- AD vs FD (§5(a)) -------------------------------------------------------
 
 def ad_fd_entry(*, g_ad: float, f_plus: float, f_minus: float, h: float, loss_dtype) -> dict:
     span = float(_fd_ulp_span(float(f_plus), float(f_minus), loss_dtype))
@@ -509,8 +467,6 @@ def forward2_ad_fd_entry(*, g_ad: float, f0: float, f_plus: float,
     values = np.asarray([f0, f_plus, f_2h], dtype=loss_dtype)
     assert np.all(np.isfinite(values)) and np.isfinite(g_ad) and np.isfinite(h) and h > 0, (
         f"FD configuration defect BLOCKED: nonfinite objective/gradient or invalid h: {values}, {g_ad}, {h}")
-    # Algebraically -3*f0 + 4*f_h - f_2h, evaluated as differences to avoid
-    # gratuitous cancellation of the common loss offset.
     numerator = 4.0 * (float(values[1]) - float(values[0])) - (float(values[2]) - float(values[0]))
     budget = float(np.dot([3.0, 4.0, 1.0], np.abs(np.spacing(values)).astype(float)))
     span = abs(numerator) / max(budget, float(np.nextafter(0.0, 1.0)))
@@ -601,20 +557,13 @@ def forward_identity_historical_pass(max_abs_diff_scaled: float) -> bool:
     return max_abs_diff_scaled <= 1.0
 
 
-# Compatibility for scripts/diagnostics/waveguide_chain_battery_v18_close_read.py:
-# that read-only caller counts historical stored reds. No current replay uses
-# this old name; edits to scripts/ are outside this test-only change.
 forward_identity_pass = forward_identity_historical_pass
 
 
 def forward_identity_cross_trace_pass(max_abs_diff: float, abs_untraced_at_worst: float) -> bool:
-    # Repository rule "Cross-trace agreement": 1e-4 of
-    # the peak of the same compared array. A frozen record's |untraced| at
-    # the worst scaled entry is a LOWER bound on that peak, so this gate is
-    # at least as strict as the rule. A live comparison must use its true peak.
-    # Measured cause: float32 reverse-mode reassociation of a 2849-step
-    # Poynting DFT; x64 agrees to 1e-14.
-    return max_abs_diff <= 1e-4 * abs_untraced_at_worst
+    """A frozen record's |untraced| at the worst scaled entry is a LOWER bound on the compared array's peak, so the gate is at least as strict as the cross-trace agreement rule."""
+    CROSS_TRACE_PEAK_FRAC = 1e-4
+    return max_abs_diff <= CROSS_TRACE_PEAK_FRAC * abs_untraced_at_worst
 
 
 def forward_identity_metric(S_traced, S_untraced) -> dict:
@@ -628,7 +577,6 @@ def forward_identity_metric(S_traced, S_untraced) -> dict:
             "pass": forward_identity_historical_pass(float(scaled.max()))}
 
 
-# --- dx ladder (§5(c)) ------------------------------------------------------
 
 def _observable(S: np.ndarray, entry, kind: str) -> np.ndarray:
     z = np.asarray(S, dtype=complex)[entry[0], entry[1]]
@@ -662,7 +610,6 @@ def ladder_eval(S_by_rung: dict[str, np.ndarray], entry, kind: str, freqs_hz,
     excess = fine_delta - coarse_delta
     k_worst = int(np.argmax(excess))
     gate_pass = bool(np.all(fine_delta <= coarse_delta + floor))
-    # Witness (i): monotonicity and successive-delta ratio.
     d1 = (v["mid"] - v["coarse"]) if kind == "mag" else wrap_deg(v["mid"] - v["coarse"])
     d2 = (v["fine"] - v["mid"]) if kind == "mag" else wrap_deg(v["fine"] - v["mid"])
     monotone = (np.sign(d1) == np.sign(d2)) | (np.abs(d2) <= floor)
@@ -679,7 +626,7 @@ def ladder_eval(S_by_rung: dict[str, np.ndarray], entry, kind: str, freqs_hz,
     else:
         k_ratio = None
         ratio_worst = None
-        interpretable = True     # every bin already inside the floor: nothing to interpret
+        interpretable = True
     out = {
         "kind": kind, "floor": floor,
         "values_by_rung": {r: [float(x) for x in v[r]] for r in RUNG_LABELS},
@@ -725,7 +672,6 @@ def ladder_eval(S_by_rung: dict[str, np.ndarray], entry, kind: str, freqs_hz,
     return out
 
 
-# --- verdicts ---------------------------------------------------------------
 
 def _cell_key(c: dict) -> str:
     return f"{c['dut']}|{rung_label(c['dx_m'])}|{c['lane']}"
@@ -817,27 +763,22 @@ def recompute_verdicts(fx: dict) -> dict:
     ``{"pass", "fail", "report_only", "skipped", "not_interpretable", "owed"}``. The
     driver stores this dict under ``verdicts``; the replay test recomputes it
     with this same function and compares.
+    An absent pin in schema 4 is unfinished adjudication, not permission to demote a discriminator to a report.
     """
     v: dict[str, str] = {}
-    # Schema 4 retains the already-pinned battery program. An absent pin is
-    # unfinished adjudication, not permission to demote a discriminator to a
-    # report. Preserve the report-first semantics of historical artifacts.
     missing_pin = "owed" if fx.get("schema_version", 1) >= 4 else "report_only"
     cells = {_cell_key(c): c for c in fx["cells"]}
 
-    # settling (§2.5) per cell/drive, on the claims-bearing record
     for key, c in cells.items():
         eff = cell_settling_effective(c)
         v[f"settling|{key}"] = "pass" if all(x <= SETTLING_DB_MAX for x in eff.values()) else "fail"
 
-    # non-vacuity (§4): both reflecting DUTs, every rung and lane
     for key, c in cells.items():
         if c["dut"] == "thru":
             continue
         v[f"non_vacuity|{key}"] = ("pass" if c["non_vacuity_max_s11"] > NON_VACUITY_MIN_MAX_S11
                                    else "fail")
 
-    # physics gates (§6): gated at the claims rung, reported elsewhere
     for key, c in cells.items():
         if c["dut"] == "thru":
             continue
@@ -850,7 +791,6 @@ def recompute_verdicts(fx: dict) -> dict:
         v[f"reciprocity_complex|{key}"] = ("pass" if rc else "fail") if gated else "report_only"
         v[f"power_closure|{key}"] = "report_only"
 
-    # referee (§5(d)) at the claims rung; other rungs reported
     for key, c in cells.items():
         if c["dut"] == "thru":
             continue
@@ -866,32 +806,19 @@ def recompute_verdicts(fx: dict) -> dict:
             v[f"referee_slab_airy_phase|{key}"] = (
                 ("pass" if referee_slab_phase_pass(r) else "fail") if gated else "report_only")
 
-    # AD vs FD (§5(a)) and the forward identity (criterion 1)
     if fx.get("schema_version", 1) >= 4:
         assert_ad_fd_records(fx["ad_vs_fd"])
     for leg in fx["ad_vs_fd"]:
         key = f"{leg['dut']}|{leg['lane']}|{leg['theta_kind']}|{leg['objective']}"
         e = ad_fd_from_leg(leg)
         verdict = e["verdict"]
-        # v1.8 closing declaration (schema_version 3): on a lane in X64_DECLARED_LANES the
-        # stored ``g_ad`` / ``forward_identity`` are the x64 readings and ``primary_precision``
-        # says so. A declared lane whose leg was read at float32 has not been measured under
-        # the declaration — not_interpretable, never pass. The pre-declared zero-derivative
-        # leg is report_only on that lane when its x64 reading is not an ULP-floor skip
-        # (closing pre-declaration section 2): the sign / factor-3 entry stored beside it
-        # under ``zero_derivative`` is a report, never the verdict.
         primary = leg.get("primary_precision", "float32")
-        # schema_version 1 and 2 artifacts were measured under their own pre-declarations
-        # with float32 primary on every lane; their stored verdicts are the record and
-        # the declaration does not re-read them.
         declared = fx.get("schema_version", 1) >= 3 and leg["lane"] in X64_DECLARED_LANES
         if declared and primary != "x64":
             verdict = "not_interpretable"
         elif (fx.get("schema_version", 1) <= 3 and declared and primary == "x64"
               and (leg["dut"], leg["theta_kind"], leg["objective"]) in EXPECTED_ULP_SKIP
               and verdict != "skipped_under_ulp_floor"):
-            # report_only only inside the pre-declared branch; a sign flip or a gradient
-            # above ZERO_DERIVATIVE_ABS_MAX is a fail, not a report
             verdict = ("report_only" if zero_derivative_report_only_admissible(
                 g_ad_x64=leg["g_ad"], g_fd=leg["g_fd"]) else "fail")
         v[f"ad_vs_fd|{key}"] = verdict
@@ -899,7 +826,6 @@ def recompute_verdicts(fx: dict) -> dict:
             "not_interpretable" if declared and primary != "x64" else
             "pass" if forward_identity_historical_pass(leg["forward_identity"]["max_scaled_diff"]) else "fail")
 
-    # plane shift (§5(b))
     for key, p in fx["plane_shift"].items():
         if key == "cheap_refute":
             continue
@@ -920,14 +846,12 @@ def recompute_verdicts(fx: dict) -> dict:
                 v[gk] = "pass" if g["rel_change"] <= g["pinned_gate"] else "fail"
     refute = fx["plane_shift"].get("cheap_refute")
     if refute is not None:
-        # the gate must go RED under the flipped sign: every entry's residual > 10°
         v["cheap_refute_flip_shift_sign"] = (
             "pass" if refute["resid_yee_min_over_entries"] > WRONG_SIGN_MIN_DEG
             and not refute["rotation_gate_would_pass"] else "fail")
     elif fx.get("schema_version", 1) >= 4:
         v["cheap_refute_flip_shift_sign"] = "owed"
 
-    # ladder (§5(c))
     for key, lad in fx["ladder"].items():
         v[f"ladder|{key}"] = lad["verdict"]
         pin = lad.get("pinned_richardson_gate")
@@ -961,7 +885,7 @@ def pin_lower_from_envelope(measured: float, *, quantum: int) -> float:
     return math.floor(float(measured) / _gate_policy.ENVELOPE_GATE_MULTIPLIER * quantum) / quantum
 
 
-RICHARDSON_PIN_QUANTUM = {"mag": 100, "phase": 10}   # cv18 precedent (0.0051 -> 0.01); 0.1 deg for phases
+RICHARDSON_PIN_QUANTUM = {"mag": 100, "phase": 10}
 MONOTONE_PIN_QUANTUM = 100
 
 
@@ -1002,7 +926,6 @@ def rebase_gradient_invariance_float32(fx: dict) -> dict:
             if gi["kind"] == "magnitude":
                 base = f32_by_key.get((dut, lane, kind_theta, obj))
                 if base is None:
-                    # no x64 primary on this leg: the stored base already IS float32
                     gi.update(base_precision="float32", shift_precision="float32")
                     continue
                 rebuilt = gradient_invariance_entry("magnitude", base, 0.0, gi["value_shifted"], 0.0, None)
@@ -1048,11 +971,7 @@ def pin_fixture(fx: dict) -> dict:
     Nothing measured is touched; only the ``pinned_*`` fields and ``verdicts``.
     """
     def _in_program(dut: str, gi_key: str) -> bool:
-        # The pre-declared ULP-floor skip leg (PEC-short |S11|² under eps θ) is
-        # outside the gradient program by §5(a) ("the magnitude leg that carries
-        # weight on the PEC-short is the sigma leg"): its gradient is the
-        # derivative of a numerical residual (7.8e-5 measured), so its
-        # invariance ratio is noise over noise and would set the envelope.
+        """The PEC-short |S11|² under eps θ invariance ratio is noise over noise and would set the envelope."""
         kind, obj = gi_key.split(":", 1)
         return (dut, kind, obj) not in EXPECTED_ULP_SKIP
 
@@ -1081,13 +1000,11 @@ def pin_fixture(fx: dict) -> dict:
             gi["pinned_gate_envelope"] = max(rels) if rels else None
     for key, lad in fx["ladder"].items():
         if lad["verdict"] == "not_interpretable":
-            # "the coarse rung is dropped or a finer one added before any claim"
             lad["pinned_richardson_gate"] = None
             lad["pinned_monotone_fraction_min"] = None
             lad["pin_note"] = "not interpretable at this ladder: no pin (§5(c) guard 2)"
             continue
         if "richardson" in lad:
-            # the asymptotic pair, cv18's form (its 0.0051 -> 0.01 was the fine pair)
             lad["pinned_richardson_pair"] = "mid-fine"
             lad["pinned_richardson_gate"] = float(gate_from_envelope(
                 lad["richardson"]["mid-fine"]["max_abs_diff"], quantum=RICHARDSON_PIN_QUANTUM[lad["kind"]]))

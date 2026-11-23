@@ -41,11 +41,6 @@ def _assert_fields_match(whole, chunked):
 def _run():
     sim = Simulation(freq_max=20e9, domain=(6e-3, 6e-3, 6e-3), dx=300e-6,
                      boundary="cpml", cpml_layers=6)
-    # a solid scatterer: a VOLUME (2 cells per axis, node to node), left one.
-    # #931 §1.2 gives it walls on BOTH bounding planes of every axis, so its
-    # absolute scattered field moved; this file's gate is chunked == whole
-    # to rounding (1e-4 of the field peak) on the same run, which does not
-    # read that. Same cube as test_ntff_box_nu_pads.
     sim.add(Box((2.7e-3, 2.7e-3, 2.7e-3), (3.3e-3, 3.3e-3, 3.3e-3)),
             material="pec")
     sim.add_source(position=(3e-3, 3e-3, 2.4e-3), component="ez",
@@ -65,9 +60,10 @@ def test_chunked_matches_single_shot_to_rounding():
 
     whole = compute_far_field_jax(res.ntff_data, res.ntff_box, res.grid,
                                   th, ph, max_phase_bytes=float("inf"))
-    # a budget small enough to force several passes
+    SPLIT_PHASE_BUDGET_BYTES = 1e4
+    assert len(th) * len(ph) * len(res.ntff_box.freqs) * max(np.prod(np.shape(getattr(res.ntff_data, face))[1:3]) for face in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")) * 16 > SPLIT_PHASE_BUDGET_BYTES, "The phase budget must force more than one theta chunk."
     chunked = compute_far_field_jax(res.ntff_data, res.ntff_box, res.grid,
-                                    th, ph, max_phase_bytes=1e4)
+                                    th, ph, max_phase_bytes=SPLIT_PHASE_BUDGET_BYTES)
 
     _assert_fields_match(whole, chunked)
     assert np.array_equal(np.asarray(whole.theta), np.asarray(chunked.theta))
@@ -119,7 +115,8 @@ def test_default_budget_chunks_a_large_problem():
     per_theta = n_freqs * len(ph) * n_cells * 16.0
     assert per_theta > 0
 
-    budget = per_theta * 5          # fits five directions, not sixty-one
+    budget = per_theta * 5
+    assert int(budget // per_theta) == 5 and int(budget // per_theta) < len(th), "The phase budget must fit five directions and split the sixty-one-direction input."
     expected_width = max(1, int(budget // per_theta))
     expected_length = (len(th) + expected_width - 1) // expected_width
     traced = jax.make_jaxpr(
@@ -181,11 +178,10 @@ def test_default_budget_chunks_a_large_problem():
     assert scan.params["length"] == expected_length, (
         f"realized {scan.params['length']} chunks; expected {expected_length}")
     theta_operand = scan.invars[scan.params["num_consts"] + scan.params["num_carry"]]
-    chunk_shape = theta_operand.aval.shape[1:]  # remove the scan iteration axis
+    chunk_shape = theta_operand.aval.shape[1:]
     assert chunk_shape == (expected_width,), (
         f"realized theta chunk shape {chunk_shape}; expected {(expected_width,)}")
 
-    # A budget that does not split theta enters no direction-chunk map.
     unsplit = jax.make_jaxpr(
         lambda theta: real(res.ntff_data, res.ntff_box, res.grid, theta, ph,
                            max_phase_bytes=float("inf"))
@@ -273,11 +269,11 @@ def test_split_matches_unsplit_with_both_polarizations_present():
 
     n_cells = max(int(getattr(data, f).shape[1]) * int(getattr(data, f).shape[2])
                   for f in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"))
-    per_theta = 3 * len(ph) * n_cells * 16.0   # the public budget's rule
+    per_theta = 3 * len(ph) * n_cells * 16.0
     width = 4
     budget = width * per_theta
     n_chunks = -(-len(th) // width)
-    assert len(th) % width != 0                # padding > 0
+    assert len(th) % width != 0
 
     whole = compute_far_field_jax(data, box, grid, th, ph,
                                   max_phase_bytes=float("inf"))
@@ -286,11 +282,8 @@ def test_split_matches_unsplit_with_both_polarizations_present():
 
     ratio = (float(np.max(np.abs(np.asarray(whole.E_phi))))
              / float(np.max(np.abs(np.asarray(whole.E_theta)))))
-    # measured 0.944 (E_phi 0.2097, E_theta 0.2222); split vs unsplit
-    # differs by 3.7e-8 (E_theta) and 1.3e-7 (E_phi) of the field peak
     assert ratio >= 0.1, f"E_phi/E_theta peak ratio {ratio:.3f} < 0.1"
 
-    # the budget realized a split: a scan of n_chunks steps over theta
     def scan_lengths(program):
         if hasattr(program, "jaxpr"):
             yield from scan_lengths(program.jaxpr)

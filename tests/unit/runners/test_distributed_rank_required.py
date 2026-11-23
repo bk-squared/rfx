@@ -13,8 +13,7 @@ _SHMAPS = sorted({fn for module in (common, nu, uniform) for name, fn in vars(mo
 
 @pytest.mark.parametrize("helper", _SHMAPS, ids=lambda fn: fn.__name__)
 def test_shard_helpers_require_rank_input(helper):
-    # Supply every other required parameter; missing rank must fail at binding,
-    # before these sentinel values can enter a numerical operation.
+    """Missing rank must fail at binding before the sentinel values can enter a numerical operation."""
     args = {name: None for name, p in inspect.signature(helper).parameters.items()
             if p.default is inspect.Parameter.empty and name != "ranks"}
     with pytest.raises(TypeError, match="required keyword-only argument: 'ranks'"):
@@ -33,10 +32,6 @@ def test_cpml_rejects_absent_rank(graded, monkeypatch):
     jax.clear_caches()
     from rfx.boundaries import cpml
     from rfx.stepping import absorber
-    # The graded wrapped step reaches the kernel through rfx.boundaries.cpml
-    # and rfx.stepping.absorber (H, bound when the slab setup is built); the
-    # legacy graded runner through its own names; the uniform wrapped setup
-    # captures both kernels from rfx.boundaries.cpml.
     modules = (nu, cpml, absorber) if graded else (cpml,)
     calls = []
     for module, name in [(m, n) for m in modules for n in ("apply_cpml_e", "apply_cpml_h")]:

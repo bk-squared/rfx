@@ -52,7 +52,7 @@ from tests.unit.runners.test_distributed_v2_pec_body_seam import (
 )
 
 GATE = 1e-3
-BLOCK_X = SEAM_FACE_BODY_X     # one device has no seam; any block will do
+BLOCK_X = SEAM_FACE_BODY_X
 
 _CACHE: dict = {}
 

@@ -1,4 +1,6 @@
-"""Drawn film size: literal cell areas and the measured sheet edge model."""
+"""Drawn film size: literal cell areas and the measured sheet edge model.
+In the half-cell-end drawing, cell centres 3.25..6.75 mm lie in [3.25, 7), giving cells 3.0..7.0 mm spanning 4 mm.
+"""
 import warnings
 import re
 
@@ -16,9 +18,8 @@ from rfx.model.thin_conductors import (
 
 
 def film(*, snap='strict', aligned=False):
+    """For the 3.5 x 7 mm drawing, the low edge at 3.5 mm meets cell 3's centre, kept by Box's inclusive low face: 4 x 7 cells."""
     sim = Simulation(10e9, (.024, .016, .012), dx=.001, boundary='pec', snap=snap)
-    # T1: 3.5 x 7 mm drawn; cells are sampled at their centres and the low edge
-    # at 3.5 mm meets cell 3's centre, kept by Box's inclusive low face: 4 x 7 cells.
     lo, hi = (.003, .006) if aligned else (.0035, .007)
     shape = Box((lo, .003, .005), (hi, .010, .005))
     sim.add_thin_conductor(shape, sigma_bulk=100., thickness=35e-6)
@@ -26,6 +27,7 @@ def film(*, snap='strict', aligned=False):
 
 
 def test_t1_box_area_strict_refusal_and_declared_warning():
+    """By hand, sqrt(28/24.5) - 1 = sqrt(8/7) - 1 = +0.0690449676497."""
     sim, grid, shape = film()
     with pytest.raises(DCFilmAdmissionError, match='dc|DC') as caught:
         assemble_cells(sim, grid)
@@ -33,7 +35,6 @@ def test_t1_box_area_strict_refusal_and_declared_warning():
     message = str(caught.value)
     assert float(re.search(r'A_d=([^ ]+)', message)[1]) == pytest.approx(2.45e-5, abs=1e-18)
     assert float(re.search(r'A_r=([^ ]+)', message)[1]) == pytest.approx(2.8e-5, abs=1e-18)
-    # By hand: sqrt(28/24.5) - 1 = sqrt(8/7) - 1 = +0.0690449676497.
     assert 'e=sqrt(A_r/A_d)-1=+0.0690449676497' in message
     assert 0 in dc_film_refusals(sim, grid)
     report = sim.preflight(check_ntff=False, check_resolution=False)
@@ -54,7 +55,6 @@ def test_t2_on_lattice_area_and_traced_fold():
     assert admitted.declared_area == pytest.approx(2.1e-5, abs=1e-18)
     assert admitted.realized_area == pytest.approx(2.1e-5, abs=1e-18)
     cells = assemble_cells(sim, grid)[0]
-    # A traced graded coordinate must preserve the pre-existing Box fold.
     def traced(profile):
         model = Simulation(10e9, (.024, .016, .012), dx=.001,
                            boundary='pec', dx_profile=profile)
@@ -67,8 +67,8 @@ def test_t2_on_lattice_area_and_traced_fold():
 
 @pytest.mark.parametrize('snap,severity', [('strict', 'error'), ('declared', 'warning')])
 def test_t3_f0_sheet_effective_size(snap, severity):
+    """Closed nodes 4..7 span 3 mm, giving a solved span of 3.7 mm vs 3.5 mm drawn."""
     sim = Simulation(10e9, (.024, .016, .012), dx=.001, boundary='pec', snap=snap)
-    # Closed nodes 4..7 span 3 mm; solved span is 3.7 mm vs 3.5 mm drawn.
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
         sim.add_thin_conductor(Box((.0035, .003, .005), (.007, .010, .005)),
@@ -97,13 +97,13 @@ def test_t6_non_box_sheet_gets_no_size_finding_as_a_pec_sheet_gets_none(f0):
 
 @pytest.mark.parametrize('graded', [False, True])
 def test_t4_whole_plane_on_cpml_grid(graded):
+    """The whole plane spans 16 + 2*8 mm by 12 + 2*8 mm, including CPML padding."""
     kw = {'dy_profile': .001 * np.array([1.] * 4 + [.8, 1.2] * 4 + [1.] * 4)} if graded else {}
     sim = Simulation(10e9, (.024, .016, .012), dx=.001, boundary='cpml', cpml_layers=8, **kw)
     shape = Box((.010, -1., -1.), (.010, 1., 1.))
     sim.add_thin_conductor(shape, sigma_bulk=100., thickness=35e-6)
     grid = sim._build_realized_grid()
     admitted = admit_dc_film(shape, grid)
-    # 16 + 2*8 mm by 12 + 2*8 mm, including CPML padding.
     assert admitted.declared_area == pytest.approx(.000896, abs=1e-16)
     assert admitted.realized_area == pytest.approx(.000896, abs=1e-16)
     assert abs(np.sqrt(admitted.realized_area / admitted.declared_area) - 1) <= 1e-12
@@ -111,14 +111,13 @@ def test_t4_whole_plane_on_cpml_grid(graded):
 
 
 def test_t5a_2d_whole_line_is_admitted_under_strict():
-    # The analytic R/T/A drawing, on a smaller domain; z has one sample.
+    """The y span is 10 + 2*8*0.5 = 18 mm, with invariant z contributing a factor of 1."""
     sim = Simulation(15e9, (.024, .010, .0005), dx=.0005,
                      boundary='cpml', cpml_layers=8, mode='2d_tmz', snap='strict')
     shape = Box((.012, -1., -1.), (.0125, 1., 1.))
     sim.add_thin_conductor(shape, sigma_bulk=(2. / 376.730) / 35e-6, thickness=35e-6)
     grid = sim._build_realized_grid()
     admitted = admit_dc_film(shape, grid)
-    # y: 10 + 2*8*0.5 = 18 mm; invariant z contributes a factor of 1.
     assert admitted.declared_area == pytest.approx(.018, abs=1e-16)
     assert admitted.realized_area == pytest.approx(.018, abs=1e-16)
     assert abs(admitted.realized_area / admitted.declared_area - 1) <= 1e-12
@@ -126,10 +125,9 @@ def test_t5a_2d_whole_line_is_admitted_under_strict():
 
 
 def test_t5b_2d_half_cell_end_is_refused_under_strict():
+    """By hand, 4/3.75 - 1 = +1/15 in one tangential dimension."""
     sim = Simulation(15e9, (.024, .010, .0005), dx=.0005,
                      boundary='pec', mode='2d_tmz', snap='strict')
-    # y=3.25..7 mm draws 3.75 mm; cell centres 3.25..6.75 mm lie in [3.25, 7):
-    # cells 3.0..7.0 mm span 4 mm.
     shape = Box((.012, .00325, -1.), (.0125, .007, 1.))
     sim.add_thin_conductor(shape, sigma_bulk=(2. / 376.730) / 35e-6, thickness=35e-6)
     grid = sim._build_realized_grid()
@@ -139,5 +137,4 @@ def test_t5b_2d_half_cell_end_is_refused_under_strict():
     message = str(caught.value)
     assert float(re.search(r'A_d=([^ ]+)', message)[1]) == pytest.approx(.00375, abs=1e-18)
     assert float(re.search(r'A_r=([^ ]+)', message)[1]) == pytest.approx(.004, abs=1e-18)
-    # By hand: 4/3.75 - 1 = +1/15 (one tangential dimension).
     assert 'e=(A_r/A_d)^(1/1)-1=+0.0666666666667' in message

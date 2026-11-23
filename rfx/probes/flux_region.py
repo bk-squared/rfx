@@ -37,6 +37,10 @@ def resolve_flux_axis(edges, pad_lo, center, size, *, indices=None):
     """Nearest-edge finite CELL slice, clamped to the physical interior.
 
     ``indices`` may supply uniform indices; both lanes use the shared tie rule.
+
+    ``clamped_low`` and ``clamped_high`` are true only when a requested
+    endpoint passes the interior boundary by more than one rounding of each
+    of the centre, the size, the endpoint and the boundary.
     """
     edges = np.asarray(edges, dtype=float)
     if edges.ndim != 1 or edges.size < 2 or not np.isfinite(edges).all() or np.any(np.diff(edges) <= 0):
@@ -60,11 +64,6 @@ def resolve_flux_axis(edges, pad_lo, center, size, *, indices=None):
     lo, hi = (max(0, min(int(i), edges.size - 1)) for i in indices)
     if hi <= lo:
         raise ValueError("flux monitor resolves to a degenerate aperture with no interior cell; widen size or move center")
-    # Distinguish roundoff at a boundary from physical overflow. Allow one
-    # rounding of each supplied centre, size and boundary, plus the endpoint
-    # addition: |delta c| + |delta s|/2 + |delta endpoint| + |delta boundary|.
-    # Operand ULPs matter near zero, where subtraction can cancel. This bound
-    # has no cell-size fraction and does not change the chosen cell indices.
     roundoff = [
         .5 * ulp(center) + .25 * ulp(size) + .5 * ulp(endpoint) + .5 * ulp(float(boundary))
         for endpoint, boundary in zip(requested, (edges[0], edges[-1]))
@@ -91,7 +90,11 @@ def flux_region_message(record):
 
 
 def resolve_flux_region(grid, entry, domain, *, warn=True):
-    """Return a JSON-native finite-region record, or None for legacy full plane."""
+    """Return a JSON-native finite-region record, or None for legacy full plane.
+
+    On the uniform lane in 2D, the collapsed ``z`` axis is one extruded
+    integration cell, not a pair of stored bounding nodes.
+    """
     size, center = validate_flux_region_inputs(entry.size, getattr(entry, "center", None))
     if size is None:
         return None
@@ -114,9 +117,6 @@ def resolve_flux_region(grid, entry, domain, *, warn=True):
         c = None if center is None else center[n]
         indices = None
         if nonuniform:
-            # Use the canonical float64 geometry spine. Cumulative sums of
-            # solver-facing float32 spacings can select a different boundary
-            # and disagree with the coordinates that preflight reports.
             edges = np.asarray(getattr(coords, letter))[pad_lo:grid.shape[t] - pad_hi]
             if letter in grid.periodic_axes:
                 from rfx._internal._periodic import interval_coordinates
@@ -124,8 +124,6 @@ def resolve_flux_region(grid, entry, domain, *, warn=True):
                 c = grid.domain[t] / 2 if c is None else c
                 interval_coordinates(grid, t, c - size[n] / 2, c + size[n] / 2)
         else:
-            # The collapsed z direction in 2D is one extruded integration
-            # cell, not a pair of stored bounding nodes.
             if getattr(grid, "is_2d", False) and t == 2:
                 cells = 1
             else:

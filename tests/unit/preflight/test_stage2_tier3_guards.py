@@ -28,7 +28,6 @@ def test_position_to_index_in_bounds_unchanged():
     """Valid in-domain positions still resolve to the same index."""
     grid = Grid(freq_max=5e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
                 cpml_layers=0)
-    # Domain centre resolves to a valid interior index.
     idx = grid.position_to_index((0.01, 0.01, 0.01))
     assert all(0 <= c for c in idx)
     nx, ny, nz = grid.shape
@@ -38,12 +37,12 @@ def test_position_to_index_in_bounds_unchanged():
 def test_position_to_index_raises_on_out_of_bounds():
     """A position outside the domain raises ValueError instead of
     silently returning an out-of-range / negative index."""
+    EXTERIOR_X_M = 0.5
     grid = Grid(freq_max=5e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
                 cpml_layers=0)
-    # Well outside the +x domain edge.
+    assert EXTERIOR_X_M > grid.domain[0], "The positive test position lies beyond the x domain edge."
     with pytest.raises(ValueError, match="outside the grid shape"):
-        grid.position_to_index((0.5, 0.01, 0.01))
-    # Negative coordinate (would wrap to a negative index).
+        grid.position_to_index((EXTERIOR_X_M, 0.01, 0.01))
     with pytest.raises(ValueError, match="outside the grid shape"):
         grid.position_to_index((-0.01, 0.01, 0.01))
 
@@ -56,14 +55,12 @@ def test_vmap_sequential_fallback_material_rebuild_keeps_chi3():
 
     mat = MaterialSpec(eps_r=2.0, sigma=0.1, chi3=1e-18)
 
-    # Post-fix: the fallback does dataclasses.replace(mat, eps_r=val).
     swept = dataclasses.replace(mat, eps_r=5.0)
     assert swept.eps_r == 5.0
-    assert swept.chi3 == 1e-18  # carried through — the fix
+    assert swept.chi3 == 1e-18
 
-    # Pre-fix pattern, for contrast: explicit 5-field reconstruction.
     pre_fix = MaterialSpec(
         eps_r=5.0, sigma=mat.sigma, mu_r=mat.mu_r,
         debye_poles=mat.debye_poles, lorentz_poles=mat.lorentz_poles,
     )
-    assert pre_fix.chi3 == 0.0  # silently dropped — the bug
+    assert pre_fix.chi3 == 0.0

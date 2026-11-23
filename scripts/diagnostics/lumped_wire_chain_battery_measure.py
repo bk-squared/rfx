@@ -1691,7 +1691,7 @@ def _solve_entry(rec: dict) -> dict:
     # for a reflecting DUT the comparison is a curve against a constant and the
     # dB distance is the bar's own quantity.
     #
-    # The matched control is the exception the PI ruled on: its closed form is
+    # The matched control is the exception: its closed form is
     # identically zero, so a dB difference against it is a difference against a
     # floor constant and says nothing (it reads ~6000 dB). That case is judged
     # by its own upper bound below and carries no dB comparison at all — not a

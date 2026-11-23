@@ -19,12 +19,10 @@ def test_closed_box_carry_shapes_do_not_depend_on_step_bound():
 def test_only_a_paying_forward_builds_a_face_record(monkeypatch):
     """A paying checkpointed forward builds one face record; until_decay keeps the line.
 
-    Segments save one line per boundary whatever ``checkpoint`` says (#1815),
-    so eight segments without checkpoint pay here too (8 x 1,392 B of lines
-    against a 5,696 B record). A record over until_decay's whole step bound
-    would cost (bound) x (line nodes), and the line grows with the bound too:
-    an early-stopping oblique box at the default bound took 50 times longer
-    (#1814).
+    Segments save one line per boundary whatever ``checkpoint`` says.
+    The line now has 136 padding nodes instead of the old 20 padding
+    nodes on both sides: 8 x 4,176 B repays the 5,696 B record. The line
+    length stays constant for until_decay, which carries it directly.
     """
     import rfx.stepping.incident_line as line
     from rfx import Simulation
@@ -79,7 +77,7 @@ def test_face_record_overrun_reads_nan():
     from rfx.sources.tfsf_discrete_plane_wave import IncidentStep, table_operands
     from rfx.stepping.incident_line import prepare_tfsf_for_scan
     sim, grid, _, _ = _scene()
-    pair = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=8, record_faces=True)
+    pair = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=8, record_faces=True, dtype='float32')
     cfg, _ = prepare_tfsf_for_scan(pair, grid.dx, grid.dt)
     for magnetic, tables in ((True, cfg.tables_h), (False, cfg.tables_e)):
         assert bool(jnp.all(jnp.isfinite(table_operands(cfg, IncidentStep(jnp.int32(7)), tables[0], 0, magnetic))))

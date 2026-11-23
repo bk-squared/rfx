@@ -367,20 +367,8 @@ def field_softmax(
             [jnp.abs(arrays[n]).reshape(-1) ** 2 for n in name_list]
         )
         scale = jax.lax.stop_gradient(jnp.max(vals))
-        # Guard the degenerate all-zero-field case (scale == 0) rather
-        # than dividing by it; beta_eff = beta there reproduces the
-        # pre-auto-scale behaviour, which is harmless because vals is
-        # uniformly 0 too (logsumexp(0)/beta = log(count)/beta exactly
-        # either way -- there is no signal to lose).
         scale_safe = jnp.where(scale > 0, scale, jnp.asarray(1.0, dtype=vals.dtype))
         beta_eff = beta / scale_safe
-        # Guard the relocated overflow footgun (see the docstring
-        # warning): beta_eff = beta / scale_safe can itself overflow to
-        # inf when beta is large and the field is physically tiny,
-        # producing a silent nan downstream. Clip to the dtype's largest
-        # finite value instead -- beta_eff only ever sharpens the
-        # approximation, so the clip is the sharpest representable
-        # answer, not a wrong one.
         beta_eff_finite = jnp.isfinite(beta_eff)
         beta_eff = jnp.where(
             beta_eff_finite, beta_eff, jnp.asarray(jnp.finfo(vals.dtype).max, dtype=vals.dtype)
@@ -578,32 +566,6 @@ def jacobian_fwd(
     ``pec_occupancy_override``). Tangents through a Kerr material have not
     been checked.
     """
-    # Warmup scope rationale (moved from the API docstring).
-    # - **[RAISES, inherited]** ``n_warmup``: ``forward()`` itself raises
-    #   ``NotImplementedError`` for a nonzero ``n_warmup`` on the uniform
-    #   lane -- so on ``jacobian_fwd``'s supported (uniform)
-    #   lane, a ``n_warmup``-using ``sim_fn`` already fails loud. It used to
-    #   be a measured SILENT NO-OP (bit-identical value AND tangent at
-    #   ``n_warmup=0`` vs ``n_warmup=60`` of 80 steps) before the fence was
-    #   added. Do not read this as "n_warmup is safe elsewhere": on the
-    #   non-uniform lane where it IS implemented, ``n_warmup`` truncation
-    #   error DEPENDS ON DISTANCE FROM THE SOURCE TO THE DESIGN REGION, not
-    #   merely on ``n_warmup``'s value -- it is (near-)exact while
-    #   ``n_warmup`` stays below the wavefront's arrival time at the design
-    #   region (``K_safe ~= floor(min_distance(source, design_region) /
-    #   (C0 * dt))``) and grows sharply beyond it, up to ~6-7% at half the
-    #   pre-loss-window length, 58% at the loss-window boundary itself,
-    #   exactly zero once far enough beyond it, FOR A NEAR-SOURCE
-    #   placement specifically (a
-    #   far-from-source placement stays within this repo's ~1.5% AD-vs-FD
-    #   noise floor for every ``n_warmup <= K_safe`` (growing smoothly, not
-    #   a sharp cliff, from <0.01% well below ``K_safe`` to ~1.2% AT
-    #   ``K_safe`` itself), see ``rfx/nonuniform.py``'s ``n_warmup split``
-    #   comment for the full measured curves and formula) -- it is
-    #   not fenced there (truncated-BPTT is a legitimate, if
-    #   placement-dependent, construction), and any future non-uniform
-    #   extension of this function must account for ``K_safe``, not treat
-    #   ``n_warmup`` as uniformly lossy OR uniformly free.
     if isinstance(tangents, str):
         if tangents != "identity":
             raise ValueError(
@@ -614,160 +576,14 @@ def jacobian_fwd(
     else:
         tangent_batch, n_t = _explicit_tangent_batch(params, tangents)
 
-    # Forward-mode cost rationale (moved from the API docstring).
-    # Cost characterization: NOT "a few times one solve" -- see
-    #     ``scripts/benchmark_jacobian_fwd.py`` (regenerable; run it for current
-    #     numbers on your hardware/grid) and the CHANGELOG entry for this issue
-    #     for measured wall-time/flops/memory ratios. The honest summary: wall
-    #     time and flops scale roughly as ``(1 + n_t)`` plain solves and that
-    #     ratio MOVES with grid size (do not trust one ratio across problem
-    #     sizes); memory is the argument FOR this mode, not speed -- forward-mode
-    #     peak is ``O(state) * (1 + n_t)`` and independent of ``n_steps``, while
-    #     reverse mode without segmented checkpointing is tens of times one
-    #     plain solve even for a single scalar output, and ``jax.jacrev`` refuses
-    #     a complex-valued observable outright (raises ``TypeError`` without
-    #     ``holomorphic=True``). Numbers are never published here -- see the
-    #     anti-rot rule in the module/CHANGELOG instead of trusting a docstring
-    #     number, which rots.
-    # Checkpoint implementation rationale (moved from API docstring).
-    # - **[DOCS ONLY -- inert, not a raise]** ``checkpoint`` /
-    # ``checkpoint_segments``: measured EXACTLY NEUTRAL under forward mode
-    # (flops/temp bytes identical across ``checkpoint=False``,
-    # ``checkpoint=True`` (the ``forward()`` default), and
-    # ``checkpoint_segments=K``) -- remat only pays off under reverse-mode
-    # transposition, and forward mode builds no tape to transpose. A
-    # ``sim_fn`` built for use with ``jacobian_fwd`` should pass
-    # ``checkpoint=False`` explicitly (``forward()`` defaults to
-    # ``checkpoint=True``) to avoid inheriting dead HLO plus
-    # ``checkpoint_segments``' ``n_steps % K == 0`` divisibility raise for
-    # no forward-mode benefit. These are reverse-mode knobs; document them
-    # as such, do not reach for them here.
-    #
-    # Stock JAX packaging (moved from API docstring).
-    # ``jax.jvp`` / ``jax.jacfwd`` / ``jax.vmap(jax.jvp)`` already run
-    # end-to-end through ``sim.forward(eps_override=...)`` ->
-    # :func:`dft_field` / :func:`field_energy` / :func:`field_softmax` today,
-    # with zero solver changes -- this function is a thin, gated PACKAGING
-    # layer over that stock-JAX capability (tangent-basis construction,
-    # dtype/shape validation, primal de-duplication, sequential-vs-batched
-    # dispatch), not a new AD engine.
-    #
-    # Nonlinear scope evidence (moved from API docstring).
-    # - Nonlinear (Kerr chi3) tangents ran clean under ``vmap(jvp)`` in
-    # testing but were numerically indistinguishable from the linear
-    # baseline at the tested chi3 -- that is NOT a validation of the
-    # nonlinear tangent path. Treat it as unverified until measured at a
-    # chi3 large enough to move the Jacobian outside noise.
     def _jvp_row(tangent_row):
         return jax.jvp(sim_fn, (params,), (tangent_row,))
 
-    # Primal sharing and tangent-independent output (moved from the API docstring).
-    # Mechanism: ``jax.vmap`` over the TANGENT argument of ``jax.jvp`` (NOT
-    #     ``jax.linearize``). Measured on the real uniform-lane FDTD scan: the
-    #     ``vmap(jvp)`` jaxpr contains exactly ONE ``lax.scan`` (the FDTD time
-    #     loop) whose carry holds one UNBATCHED copy of the field state (the
-    #     primal sweep) plus ``n_t`` BATCHED tangent copies -- the primal sweep
-    #     really is shared across every tangent direction, which is the premise
-    #     asked to verify. ``jax.linearize`` was measured to cost 24x more
-    #     peak memory on the same fixture (8654 MB vs 355 MB at n_steps=600,
-    #     n_t=10) because it materialises the whole scan's primal residuals --
-    #     i.e. the reverse-mode tape -- which forward mode never needs.
-    #
-    #     API TRAP (verify this, do not assume it): a naive
-    #     ``jax.vmap(jax.jvp(...))`` ALSO stacks the primal, returning a
-    #     ``(n_t,) + value.shape`` array of ``n_t`` copies of the same value.
-    #     This function passes ``out_axes=(None, 0)`` to ``jax.vmap`` so the
-    #     returned ``value`` is the single, unstacked primal -- but that only
-    #     works because the primal computation genuinely does not depend on
-    #     which tangent direction is being evaluated. If you change ``sim_fn``
-    #     in a way that breaks that invariant, ``jax.vmap`` raises loudly
-    #     (``out_axes=None`` on an output that DOES depend on the mapped axis is
-    #     a vmap error, not a silent wrong answer). ``batch_tangents=False``
-    #     (the sequential path) has NO ``jax.vmap`` of its own to inherit that
-    #     check from -- it just calls ``jax.jvp`` ``n_t`` times in a plain
-    #     Python loop and returns ``values[0]``, so without an explicit guard a
-    #     ``sim_fn`` that violates the invariant would silently return one
-    #     arbitrary tangent row's primal on that path instead of raising. This
-    #     function closes that gap on the sequential path via two guards, so
-    #     the memory-vs-speed knob is not also a safety-vs-speed knob: (1) a
-    #     ``jax.eval_shape`` abstract trace of the SAME ``out_axes=(None, 0)``
-    #     vmap the batched path actually runs -- shape-only, zero FLOPs, zero
-    #     extra memory (verified: reproduces the identical
-    #     ``ValueError`` a real violating vmap call raises, including when this
-    #     whole call is itself wrapped in an outer ``jax.jit`` by the caller,
-    #     since ``eval_shape`` is trace-time like ``vmap``'s own check); (2)
-    #     when running eagerly (params are not themselves tracers, so the
-    #     computed primal values are concrete), an exact pairwise comparison of
-    #     all ``n_t`` sequentially-computed primal values, raising ``ValueError``
-    #     on any mismatch -- a strictly stronger, numeric confirmation of the
-    #     same invariant, skipped only when it is not expressible (under an
-    #     enclosing ``jax.jit``, where guard (1) is the check in effect).
-    # Sequential/batched execution and compilation (moved from API docstring).
-    # batch_tangents : bool, optional
-    # ``True`` (default): run all ``n_t`` tangent directions as ONE
-    # ``jax.vmap(jax.jvp(...))`` call -- lower wall time (measured 2.3-3.1x
-    # faster than the sequential control at n_t in {4, 10}), higher peak
-    # memory (``O(state) * (1 + n_t)``, all ``n_t`` tangent copies live
-    # at once). ``False``: run the ``n_t`` directions as independent
-    # sequential ``jax.jvp`` calls in a plain Python loop -- the
-    # memory-vs-speed knob, trading the wall-time win for a peak that
-    # scales with ONE tangent copy at a time instead of ``n_t``
-    # (measured: primal-sharing still holds sequentially, at ``~1 + n_t``
-    # compute but with a lower peak than the batched path scales to as
-    # ``n_t`` grows). CORRECTION: this function does not call
-    # ``jax.jit`` itself on EITHER path -- there is no ``jax.jit``
-    # CALL anywhere in this module (verify:
-    # ``grep -nE '@jax\\.jit|jax\\.jit\\(' rfx/observables.py`` returns
-    # nothing -- a plain ``grep jax.jit`` also matches this sentence's
-    # own prose, so it is not a useful self-check). ``batch_tangents=False`` runs the ``n_t``
-    # sequential ``jax.jvp`` calls exactly as written, at whatever JIT
-    # boundary the CALLER supplies (eager if the caller does not
-    # ``jax.jit`` anything; compiled as part of one program if the
-    # caller wraps its own outer function, as
-    # ``scripts/benchmark_jacobian_fwd.py`` and
-    # ``tests/unit/autodiff/test_jacobian_fwd.py`` both do for compiled/jaxpr
-    # measurement) -- an earlier version of this docstring claimed
-    # ``jax.jit`` wrapping was part of this function's own behaviour,
-    # which was never true. The two paths (batched vs. sequential) are
-    # DIFFERENT XLA programs and may disagree at float32 reassociation
-    # scale (~1e-6 relative); they are not bit-identical. See "Fail-loud
-    # fences" below for how the two paths' SAFETY differs, not just
-    # their performance.
-    #
     if batch_tangents:
         value, jacobian = jax.vmap(
             _jvp_row, in_axes=0, out_axes=(None, 0),
         )(tangent_batch)
     else:
-        # Guard 1 (trace-time, works eager or under an outer jax.jit):
-        # abstractly trace the SAME out_axes=(None, 0) vmap the batched
-        # path actually runs, via jax.eval_shape -- shape-only: no time
-        # step runs and no O(n_t) memory is held (that cost is exactly
-        # what this branch exists to avoid); a forward() inside sim_fn
-        # evaluates its declaration-only set-up once while traced,
-        # as each row's jvp below does. If sim_fn's primal genuinely
-        # depends on the tangent direction, this raises the identical
-        # ValueError a real vmap(..., out_axes=(None, 0)) call would, so
-        # the sequential path inherits the batched path's fail-loud
-        # invariant instead of silently returning one arbitrary row's
-        # primal. See the tangent-independent output rationale above.
-        #
-        # eval_shape abstracts EVERY value inside the traced function
-        # (unlike a real vmap call, which keeps `params` -- not part of
-        # the vmapped axis -- concrete). A sim_fn with a data-dependent
-        # Python branch on `params` (fine under plain jax.jvp AND under a
-        # REAL jax.vmap(..., out_axes=(None,0)) call, since `params`
-        # never becomes a BatchTracer there) can therefore be untraceable
-        # under eval_shape specifically, raising
-        # ConcretizationTypeError -- that is an eval_shape LIMITATION
-        # (this sim_fn is fine; eval_shape's abstract mode alone cannot
-        # decide), not a genuine out_axes violation. Catch it and fall
-        # through to guard 2 rather than propagating it as if it were the
-        # same class of failure -- otherwise the sequential path would be
-        # STRICTER than every other path (plain jax.jvp, batched
-        # jax.vmap, and eager base all accept this sim_fn), inverting
-        # this guard's own goal of matching the batched path's
-        # behaviour, not exceeding it.
         try:
             jax.eval_shape(
                 lambda t: jax.vmap(_jvp_row, in_axes=0, out_axes=(None, 0))(t),
@@ -783,27 +599,6 @@ def jacobian_fwd(
             values.append(v)
             jac_rows.append(j)
         value = values[0]
-        # Guard 2 (eager only -- a strictly stronger numeric check on top
-        # of guard 1, skipped under an outer jax.jit where the primal
-        # values are still abstract tracers and cannot be compared as
-        # concrete numbers): every sequentially-computed primal must
-        # agree with value (they are, mathematically, n_t independent
-        # evaluations of the same sim_fn(params)). Checks EVERY params
-        # leaf for tracer-ness, not just the first: under an outer
-        # jax.jit, a mixed concrete/traced params pytree (e.g. a
-        # (concrete, tracer) tuple) would otherwise crash on
-        # bool(jnp.array_equal(...)) below with
-        # TracerBoolConversionError, since JAX's tracing model means
-        # either ALL or NONE of a single trace's values are tracers
-        # together -- checking any one leaf is logically equivalent to
-        # checking all of them, but explicit here so this does not
-        # regress if that invariant ever changes. equal_nan=True: a
-        # PURE, deterministic sim_fn whose FDTD diverged returns the
-        # SAME nan on every tangent row (nan is not a sign of
-        # tangent-dependence, IEEE-754 float semantics just make
-        # nan != nan by default) -- comparing with equal_nan=False would
-        # misdiagnose ordinary divergence as a primal/tangent-purity
-        # violation.
         params_leaves = jax.tree_util.tree_leaves(params)
         if params_leaves and not any(
             is_tracer(leaf) for leaf in params_leaves

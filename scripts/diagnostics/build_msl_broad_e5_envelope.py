@@ -4,7 +4,7 @@ Reads the per-case NPZ + manifest written by
 ``run_msl_broad_e5_sweep.py`` and emits the family broad-E5 envelope
 artifact + a markdown gate report.
 
-Pass criteria (per docs/research_notes/20260528_msl_broad_e5_scope.md):
+Pass criteria (per the measurement notes):
   thru-line:
     mean |S21| over band         > 0.95
     max  |S11| over band         < 0.10
@@ -212,7 +212,7 @@ def build_envelope(manifest_path: Path, out_dir: Path) -> dict:
         "family": "microstrip_line_port",
         "primitive": "add_msl_port(...)",
         "extractor": "extract_msl_nprobe (issue #80 Fix C, JAX SVD lstsq)",
-        "scope_notes_path": "docs/research_notes/20260528_msl_broad_e5_scope.md",
+        "scope_notes_path": "the measurement notes",
         "n_cases_total": n_total,
         "n_cases_passed": n_passed,
         "passed": n_passed == n_total,
@@ -233,7 +233,7 @@ def build_envelope(manifest_path: Path, out_dir: Path) -> dict:
     lines.append("")
     lines.append("Family: `microstrip_line_port`")
     lines.append("Extractor: `extract_msl_nprobe` (issue #80 Fix C)")
-    lines.append("Scope: `docs/research_notes/20260528_msl_broad_e5_scope.md`")
+    lines.append("Scope: `the measurement notes`")
     lines.append("")
     lines.append("## Cases")
     lines.append("")

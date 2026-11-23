@@ -42,7 +42,6 @@ def test_x_face_gradient(side, scale, monkeypatch):
     reference = sim.forward(eps_override=eps, **options)
     normalized_field = float(np.max(np.abs(reference.time_series)))
     assert .5 <= normalized_field <= 2, ('x-face field normalization', normalized_field)
-    # DFT records carry seconds; normalize the objective before differentiation.
     power_scale = float(abs(np.asarray(flux_spectrum(reference.flux_monitors['flux']))).max())
     assert power_scale > 0
 

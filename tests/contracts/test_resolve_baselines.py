@@ -44,9 +44,10 @@ def write(repo, path, text):
 
 
 def baselines(repo, compact=False, limits=None, cap=20):
-    """The size gate has no writer: use its counter, validator, and check."""
-    data = {"counts": "code-lines", "cap": cap, "files": {
-        path: resolver.size.code_lines((repo / path).read_bytes())
+    """The size gate has no writer: use its counter, validator, and check.
+    Put each side's valid baseline on one line so Git must conflict even when the independent rule changes are farther apart than a diff hunk."""
+    data = {"counts": resolver.size.UNIT, "cap": cap, "files": {
+        path: resolver.size.ratchet_lines((repo / path).read_bytes(), path)
         for path in (X, Y) if (repo / path).exists()
     }}
     if limits is not None:
@@ -57,8 +58,6 @@ def baselines(repo, compact=False, limits=None, cap=20):
         assert resolver.size.check(repo) == 0
         assert resolver.layer.check(repo, write_baseline=True) == 0
     if compact:
-        # Put each side's valid baseline on one line so Git must conflict even
-        # when the independent rule changes are farther apart than a diff hunk.
         for path in resolver.BASELINES:
             write(repo, path, json.dumps(json.loads((repo / path).read_bytes())) + "\n")
 
@@ -92,7 +91,9 @@ def tree():
 
 
 def merge(tree, ours=None, theirs=None, extra=False, layer_conflict=True, omit_ours=(), omit_theirs=(),
-          ours_limits=None, theirs_limits=None, ours_cap=20, theirs_cap=20):
+          ours_limits=None, theirs_limits=None, ours_cap=20, theirs_cap=20, ours_unit=None):
+    """Stop a merge of side-b into side-a; ``ours_unit`` rewrites side-a's ``counts``
+    (``"legacy"`` removes it)."""
     git(tree, "checkout", "-qb", "side-a")
     write(tree, LEFT, "def step():\n    pass\n")
     if ours is None:
@@ -102,10 +103,14 @@ def merge(tree, ours=None, theirs=None, extra=False, layer_conflict=True, omit_o
     if extra:
         write(tree, "other.txt", "ours\n")
     baselines(tree, compact=True, limits=ours_limits, cap=ours_cap)
-    if omit_ours:
+    if omit_ours or ours_unit:
         data = json.loads((tree / SIZE).read_bytes())
         for path in omit_ours:
             del data["files"][path]
+        if ours_unit == "legacy":
+            del data["counts"]
+        elif ours_unit:
+            data["counts"] = ours_unit
         write(tree, SIZE, json.dumps(data) + "\n")
     commit(tree, "Lower first baseline")
     git(tree, "checkout", "-qb", "side-b", "main")
@@ -159,7 +164,7 @@ def test_independent_lowerings_resolve(tree):
     assert "layer_baseline.json: regenerated and staged" in result.stdout
     assert "lowered to" not in result.stdout
     assert git(tree, "diff", "--name-only", "--diff-filter=U") == b""
-    assert git(tree, "rev-parse", "HEAD") == head  # The resolver never commits.
+    assert git(tree, "rev-parse", "HEAD") == head
     resolved = snapshot(tree)
     for checker in (resolver.size, resolver.layer):
         with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
@@ -172,7 +177,7 @@ def test_independent_lowerings_resolve(tree):
 
 
 def test_both_lowered_limits_keep_other_entries_untouched(tree):
-    # Slack in both changed and untouched entries must survive the merge.
+    """An older base permits both original ceilings, so the test asserts the merge rule itself rather than relying on the checker's base-ratchet rejection."""
     low, high = "rfx/low.py", "rfx/high.py"
     write(tree, low, "value = 0\n")
     write(tree, high, "value = 0\n" * 2)
@@ -180,12 +185,10 @@ def test_both_lowered_limits_keep_other_entries_untouched(tree):
     baselines(tree, limits=original)
     commit(tree, "Keep existing ratchet slack")
     merge(tree, ours_limits={**original, X: 15}, theirs_limits={**original, Y: 17})
-    # An older base permits both original ceilings, so this asserts the merge
-    # rule itself rather than relying on the checker's base-ratchet rejection.
     result = run(tree, "--base", "main")
     assert result.returncode == 0, result.stderr
     data = json.loads((tree / SIZE).read_bytes())
-    assert data == {"counts": "code-lines", "cap": 20,
+    assert data == {"counts": resolver.size.UNIT, "cap": 20,
                     "files": {**original, X: 15, Y: 17}}
     assert "lowered to" not in result.stdout
     for checker in (resolver.size, resolver.layer):
@@ -195,12 +198,11 @@ def test_both_lowered_limits_keep_other_entries_untouched(tree):
 
 @pytest.mark.parametrize("failure", ["merged-count", "base-ratchet"])
 def test_growth_preserves_conflicted_bytes(tree, failure):
+    """An explicitly older base does not permit X, so the base-ratchet case reaches the final in-process checks and tests rollback."""
     merge(tree, ours=lambda repo: write(repo, Y, "value = 1\n" * 9),
           theirs=lambda repo: write(repo, X, "value = 2\n" * 14))
     args = []
     if failure == "base-ratchet":
-        # Both side ceilings now permit X, but an explicitly older base does
-        # not. This reaches the final in-process checks and tests rollback.
         args = ["--ours", "side-b", "--theirs", "side-b", "--base", "main"]
     before, index = snapshot(tree), git(tree, "ls-files", "--stage", "-z")
     assert all(b"<<<<<<<" in raw for raw in before.values())
@@ -315,8 +317,7 @@ def test_nonconflicted_baseline_is_still_checked(tree):
 
 def test_only_layer_conflicted_keeps_size_bytes(tree):
     merge(tree)
-    # Resolve size ourselves with valid, deliberately noncanonical whitespace.
-    data = {"counts": "code-lines", "cap": 20, "files": {X: 8, Y: 9}}
+    data = {"counts": resolver.size.UNIT, "cap": 20, "files": {X: 8, Y: 9}}
     write(tree, SIZE, json.dumps(data) + "\n")
     git(tree, "add", "--", SIZE)
     before = (tree / SIZE).read_bytes()
@@ -363,8 +364,7 @@ def test_removed_entry_compared_with_merged_cap(tree, limit, kept):
 
 
 def test_dropped_entry_count_checked_against_merged_cap(tree):
-    # The surviving side's explicit limit is 25, but removal makes cap=10
-    # govern X. A later working-tree edit must therefore fail at count 11.
+    """Removal makes cap=10 govern X."""
     baselines(tree, limits={X: 25})
     commit(tree, "Prepare removed entry")
     merge(tree, omit_ours=(X,), ours_cap=10, theirs_limits={X: 25})
@@ -443,11 +443,7 @@ def test_checker_exception_restores_bytes(tree, monkeypatch, checker_name):
 
 @pytest.mark.parametrize("kind", ["size", "layer"])
 def test_main_tree_regeneration_is_byte_exact(kind):
-    # Clone only committed HEAD (depth 1), without alternates or shared object
-    # links. Counters only read its sources; all generation remains in memory.
-    # A full local clone copies the whole object store: on the gate image that is
-    # 430 MB, 8.5-21 s for clone and checkout on a 2-CPU cpu-16 job, and it passed
-    # 30 s on two gates; depth 1 copies 41 MB in about 7 s (2026-10-21).
+    """On the gate image, an earlier full local clone took 8.5-21 s for clone and checkout on a 2-CPU cpu-16 job."""
     with tempfile.TemporaryDirectory(prefix="baseline-main-") as directory:
         clone = Path(directory) / "repo"
         git(REPO, "clone", "-q", "--depth", "1", "--no-checkout", REPO.as_uri(), str(clone),
@@ -469,9 +465,7 @@ def test_main_tree_regeneration_is_byte_exact(kind):
 
 
 def test_default_repo_is_the_current_directory_not_the_script_location(tree):
-    # A session may run another checkout's copy of the script: the tree being merged is the
-    # current directory's repository. Run THIS worktree's script (not the tree's copy) from inside
-    # the tree with no --repo.
+    """A session may run another checkout's copy of the script, so the tree being merged is the current directory's repository."""
     merge(tree)
     result = subprocess.run(
         [sys.executable, str(REPO / SCRIPT), "--theirs", "side-b"],
@@ -482,7 +476,6 @@ def test_default_repo_is_the_current_directory_not_the_script_location(tree):
 
 
 def test_checkers_differing_from_the_tree_refused(tree):
-    # The final check must run the merged tree's own checkers, not this script's neighbours.
     merge(tree)
     checker = tree / "scripts/ci/check_file_size_ratchet.py"
     checker.write_bytes(checker.read_bytes() + b"\n# local edit\n")
@@ -497,11 +490,34 @@ def test_checkers_differing_from_the_tree_refused(tree):
 
 
 def test_entry_the_base_side_removed_is_dropped(tree):
-    # Main (theirs, the --base) removed a below-cap entry the PR still lists: keeping it would fail
-    # the checker against main ("unlisted"), so it is dropped and the cap governs the file.
+    """Keeping a below-cap entry removed by the base side would fail the checker against the base as unlisted."""
     merge(tree, omit_theirs=(X,))
     result = run(tree, "--theirs", "side-b")
     assert result.returncode == 0, result.stderr
     assert X not in json.loads((tree / SIZE).read_bytes())["files"]
     with redirect_stderr(io.StringIO()):
         assert resolver.size.check(tree, "side-b") == 0
+
+
+@pytest.mark.parametrize("unit,units", [
+    ("code-lines", "code-lines, code-lines-without-docstrings"),
+    ("legacy", "code-lines-without-docstrings, legacy"),
+])
+def test_mixed_units_refused_and_nothing_written(tree, unit, units):
+    merge(tree, ours_unit=unit)
+    before, index = snapshot(tree), git(tree, "ls-files", "--stage", "-z")
+    result = run(tree)
+    assert result.returncode == 1
+    assert (f"file_size_baseline.json: the two sides count in different units ({units}); "
+            "take main's file and lower your entries again") in result.stderr
+    unchanged(tree, before, index)
+
+
+def test_new_unit_sides_merge_without_docstrings(tree):
+    """X holds 11 code lines, 3 of them its docstring: the merged entry is 8, not 11."""
+    merge(tree, ours=lambda repo: write(repo, X, '"""Doc\nmore\n"""\n' + "value = 1\n" * 8))
+    assert resolver.size.code_lines((tree / X).read_bytes()) == 11
+    result = run(tree)
+    assert result.returncode == 0, result.stderr
+    data = json.loads((tree / SIZE).read_bytes())
+    assert data == {"counts": "code-lines-without-docstrings", "cap": 20, "files": {X: 8, Y: 9}}

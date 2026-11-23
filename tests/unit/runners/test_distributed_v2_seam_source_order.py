@@ -80,9 +80,9 @@ both seam cases red at 1.859e-01 / 1.653e-01. The v1 rows were verified the
 same way against ``6210e9fe:rfx/runners/distributed.py`` (#1055): both seam
 cases red at the same 1.859e-01 / 1.653e-01, which is the four-digit agreement
 that identified the two defects as one.
+The CPU device count must be set before importing JAX.
 """
 
-# Simulate 2 devices on CPU. Must be set BEFORE importing JAX.
 import os  # noqa: I001
 
 os.environ.setdefault(
@@ -105,13 +105,13 @@ pytestmark = pytest.mark.skipif(
 from rfx import Simulation  # noqa: E402
 
 DX = 1e-3
-NX_CELLS = 31        # -> nx = 32 nodes, so nx_per_rank = 16 and pad_x = 0
-NYZ_CELLS = 15       # -> ny = nz = 16
-SEAM_X = 16e-3       # global x node 16 == rank 1's FIRST real cell
-SEAM_LO_X = 15e-3    # global x node 15 == rank 0's LAST real cell
-INTERIOR_X = 8e-3    # 8 cells from the seam, inside rank 0
-PROBE_LO_X = 12e-3   # 4 cells inside rank 0
-PROBE_HI_X = 20e-3   # 4 cells inside rank 1
+NX_CELLS = 31
+NYZ_CELLS = 15
+SEAM_X = 16e-3
+SEAM_LO_X = 15e-3
+INTERIOR_X = 8e-3
+PROBE_LO_X = 12e-3
+PROBE_HI_X = 20e-3
 CENTER = 8e-3
 N_STEPS = 300
 
@@ -119,6 +119,7 @@ GATE = 1e-3
 
 
 def _build(boundary):
+    """For the PEC fixture, nx = 32 nodes gives nx_per_rank = 16 and pad_x = 0."""
     kw = dict(freq_max=15e9,
               domain=(NX_CELLS * DX, NYZ_CELLS * DX, NYZ_CELLS * DX),
               dx=DX, boundary=boundary,

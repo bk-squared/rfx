@@ -17,14 +17,14 @@ def test_absent_occupancy_is_the_exact_stack_program():
     samples = jnp.asarray(np.random.default_rng(1579).normal(size=(3, 17)).astype(np.float32))
     meta = [(2, 2, 2, c) for c in ('ex', 'ez', 'hx')]
     def actual(x):
-        return drive_table(list(x), meta, 17)
+        return drive_table(list(x), meta, 17, dtype='float32')
     def expected(x):
         return jnp.stack(list(x), axis=-1)
     np.testing.assert_array_equal(jax.jit(actual)(samples), expected(samples))
     actual_jaxpr = str(jax.make_jaxpr(jax.jit(actual))(samples))
     assert 'mul ' not in actual_jaxpr
     assert str(jax.make_jaxpr(actual)(samples)) == str(jax.make_jaxpr(expected)(samples))
-    empty = drive_table([], [], 17)
+    empty = drive_table([], [], 17, dtype='float32')
     assert empty.shape == (17, 0) and empty.dtype == jnp.float32
 
 
@@ -56,7 +56,7 @@ def test_weight_against_independent_incident_cells(component, value):
         cells.fill(value)
     cell = (2, 2, 2)
     result = drive_table([jnp.ones(3, jnp.float32)], [(*cell, component)], 3,
-                         occupancy=jnp.asarray(cells))
+                         occupancy=jnp.asarray(cells), dtype='float32')
     expected = incident_product(cells, component, cell)
     np.testing.assert_allclose(result, expected, rtol=0, atol=np.spacing(np.float32(1)))
     if value is not None:
@@ -74,7 +74,7 @@ def test_released_port_edge_has_exactly_unit_weight():
         released = release_port_occupancy(jnp.full(grid.shape, .5), conductors)
     cell = field_index(grid, (.004, .003, .002), 'ez')
     samples = jnp.asarray([1., -3., .125], jnp.float32)
-    actual = drive_table([samples], [(*cell, 'ez')], 3, occupancy=released)
+    actual = drive_table([samples], [(*cell, 'ez')], 3, occupancy=released, dtype='float32')
     np.testing.assert_array_equal(actual[:, 0], samples)
 
 
@@ -82,7 +82,7 @@ def test_released_port_edge_has_exactly_unit_weight():
 def test_magnetic_column_is_untouched(component):
     samples = jnp.asarray([1., -3., .125], jnp.float32)
     result = drive_table([samples, samples], [(2, 2, 2, 'ez'), (2, 2, 2, component)],
-                         3, occupancy=jnp.ones((4, 4, 4)))
+                         3, occupancy=jnp.ones((4, 4, 4)), dtype='float32')
     np.testing.assert_array_equal(result[:, 0], 0.)
     np.testing.assert_array_equal(result[:, 1], samples)
 
@@ -126,11 +126,11 @@ def test_design_window_weight_replaces_the_background():
                              occupancy=jnp.full((2, 2, 2), .3, jnp.float32))
     table = drive_table([jnp.ones(3, jnp.float32)], [(3, 3, 3, 'ez')], 3,
                         occupancy=jnp.asarray(background), design=window,
-                        shape=background.shape)
+                        shape=background.shape, dtype='float32')
     inside = (np.float32(1) - np.float32(.3)) ** 4
     assert abs(float(table[0, 0]) - float(inside)) <= np.spacing(np.float32(1))
     without = drive_table([jnp.ones(3, jnp.float32)], [(3, 3, 3, 'ez')], 3,
-                          occupancy=jnp.asarray(background), shape=background.shape)
+                          occupancy=jnp.asarray(background), shape=background.shape, dtype='float32')
     assert abs(float(without[0, 0]) - float(np.float32(.5) ** 4)) <= np.spacing(np.float32(1))
 
 
@@ -142,9 +142,9 @@ def test_design_window_ignores_supplied_keep():
     kwargs = dict(occupancy=background, design=window, shape=background.shape)
     series = [jnp.asarray([1., -3., .125], jnp.float32)]
     meta = [(3, 3, 3, 'ez')]
-    expected = drive_table(series, meta, 3, **kwargs)
+    expected = drive_table(series, meta, 3, **kwargs, dtype='float32')
     supplied = tuple(jnp.zeros_like(background) for _ in range(3))
-    actual = drive_table(series, meta, 3, keep=supplied, **kwargs)
+    actual = drive_table(series, meta, 3, keep=supplied, **kwargs, dtype='float32')
     assert np.array_equal(actual, expected)
 
 
@@ -158,6 +158,6 @@ def test_periodic_axis_wraps_the_incident_cell():
     cells[5, 3, 3] = .3
     kwargs = dict(occupancy=jnp.asarray(cells), shape=cells.shape)
     wrapped = drive_table([jnp.ones(3, jnp.float32)], [(0, 3, 3, 'ez')], 3,
-                          periodic=(True, False, False), **kwargs)
+                          periodic=(True, False, False), **kwargs, dtype='float32')
     assert abs(float(wrapped[0, 0]) - float(np.float32(1) - np.float32(.3))) <= np.spacing(np.float32(1))
-    assert float(drive_table([jnp.ones(3, jnp.float32)], [(0, 3, 3, 'ez')], 3, **kwargs)[0, 0]) == 1.0
+    assert float(drive_table([jnp.ones(3, jnp.float32)], [(0, 3, 3, 'ez')], 3, **kwargs, dtype='float32')[0, 0]) == 1.0

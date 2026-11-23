@@ -7,12 +7,12 @@
 [![PyPI](https://img.shields.io/pypi/v/rfx-fdtd)](https://pypi.org/project/rfx-fdtd/)
 
 See waves propagate, measure a component's response, and differentiate a design objective.
-Start with the [visual manual and examples](https://remilab.ai/rfx/).
+Start with the [documentation and examples](https://remilab.ai/rfx/).
 The website identifies its source version; select the release matching your installation.
 
 | You want to… | Start here |
 |---|---|
-| See results computed with the current code | [Showcase](https://remilab.ai/rfx/showcase/) · [visual archive](https://remilab.ai/rfx/gallery/) |
+| See results computed with the current code | [Showcase](https://remilab.ai/rfx/showcase/) |
 | Run a first model | [First run](https://remilab.ai/rfx/guide/first-run/) · [runnable examples](https://github.com/bk-squared/rfx/blob/main/examples/README.md) |
 | Look up an argument or result | [API reference](https://remilab.ai/rfx/api/) |
 | Use rfx with a coding assistant | [Machine-readable documentation](https://remilab.ai/rfx/llms.txt) |
@@ -20,7 +20,7 @@ The website identifies its source version; select the release matching your inst
 
 ## Release status: 2.0
 
-rfx 2.1.0 is the current release. What 2.0 changes for a user:
+rfx 2.2.0 is the current release. What 2.0 changes for a user:
 
 - **An input a solver path does not implement is refused, never dropped.** If `run()`,
   `forward()` or an S-parameter calculator routes your model to a path that does not

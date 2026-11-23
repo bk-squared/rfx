@@ -12,6 +12,7 @@ from tests.unit.runners.test_distributed_graded_records_ntff import add_box
 
 @pytest.mark.parametrize('n_devices', [2, 3])
 def test_debye_cpml(n_devices, monkeypatch):
+    """Kahan pairs represent total minus compensation."""
     sim, grid, seam = radiating_model('cpml', n_devices, pole=True)
     add_planes(sim, grid, seam)
     add_flux(sim, grid, seam)
@@ -40,7 +41,6 @@ def test_debye_cpml(n_devices, monkeypatch):
     for key, m in one.flux_monitors.items():
         for name in ('e1_dft', 'e2_dft', 'h1_dft', 'h2_dft'):
             values[f'flux/{key}/{name}'] = measure(getattr(many.flux_monitors[key], name), getattr(m, name))
-    # Kahan pairs represent total minus compensation; compare that recorded quantity.
     for i, name in enumerate(one.ntff_data._fields[:6]):
         values['ntff/' + name] = measure(many.ntff_data[i] - many.ntff_data[i+6],
                                         one.ntff_data[i] - one.ntff_data[i+6])

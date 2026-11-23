@@ -1,4 +1,6 @@
-"""skip_preflight drops advisories only: a sheet-size refusal stays on every lane."""
+"""skip_preflight drops advisories only: a sheet-size refusal stays on every lane.
+EDGE is the solved PEC sheet edge beyond its last node, in cells (measured rule).
+"""
 import warnings
 
 import numpy as np
@@ -8,7 +10,7 @@ from rfx import Box, GaussianPulse, Simulation
 from tests._coax_msl_instrument_fixture import DX, build_instrument_junction, instrument_kwargs
 
 D = 1e-3
-EDGE = .35  # solved PEC sheet edge beyond its last node, in cells (measured rule)
+EDGE = .35
 
 
 def solved(nodes, lo, hi, free_ends):
@@ -40,11 +42,11 @@ def scan_expected(half):
 
 
 def coax_expected():
+    """Walls and abutting sheets are not free ends."""
     nodes = np.arange(126)*DX
     clear, yc, trace = 4*DX, 17*DX, 10*DX
-    # (label, axis, lo, hi, free ends): walls and abutting sheets are not free.
-    dims = [("geometry[1]", "x", 0., trace-clear, 1),   # wall | clearance hole
-            ("geometry[2]", "x", trace+clear, 125*DX, 1),  # under 1 %, not listed
+    dims = [("geometry[1]", "x", 0., trace-clear, 1),
+            ("geometry[2]", "x", trace+clear, 125*DX, 1),
             ("geometry[3]", "y", 0., yc-clear, 1),
             ("geometry[4]", "y", yc+clear, 34*DX, 1),
             ("geometry[5]", "y", yc-3*DX, yc+3*DX, 2)]

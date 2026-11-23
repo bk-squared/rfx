@@ -72,6 +72,16 @@ modes = result.find_resonances()   # list of modes with .freq, .Q, ...
 print([f"{m.freq / 1e9:.3f} GHz" for m in modes[:3]])
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/start/assets/coming-from-other-solvers/structure.png" loading="lazy" alt="Outline of a square 100 mm domain seen from above, with the source at x = y = 30 mm and the probe at x = y = 60 mm." />
+  <figcaption>The rfx model above, cut at z = 21.25 mm, where the Ez samples of the source and the probe sit, half a cell above the requested 20 mm. The domain is 40 × 40 × 20 cells of 2.5 mm, and the code declares all six faces PEC.</figcaption>
+</figure>
+
+<figure data-rfx="media">
+  <img src="/rfx/start/assets/coming-from-other-solvers/record.png" loading="lazy" alt="Ez at the probe against time up to about 24 ns: it keeps oscillating between about −1.5×10⁵ and 1.5×10⁵ in arbitrary units, with peaks of varying height." />
+  <figcaption>The probe's Ez over the 5000 steps of that run, which end at 23.8 ns, computed on a single 2.5 mm mesh.</figcaption>
+</figure>
+
 Coordinates are in metres and `freq_max` in hertz; there are no normalized
 units. With no `dx`, rfx picks a cell size from `freq_max`, and with no
 waveform the source is a `GaussianPulse` centred at `freq_max / 2`.

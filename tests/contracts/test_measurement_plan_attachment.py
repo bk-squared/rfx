@@ -61,7 +61,6 @@ def capture(path, *, sim=None, decay=False):
             'rfx.measurement.prepared.build_measurement_plan', wraps=build_measurement_plan) as builder:
         options = dict(n_steps=12, skip_preflight=True)
         if 'distributed' in path:
-            # Root conftest forces two virtual CPU devices before importing JAX.
             devices = jax.devices('cpu')[:2]
             if len(devices) < 2:
                 pytest.skip('needs two virtual CPU devices from root conftest XLA_FLAGS')
@@ -109,12 +108,12 @@ def test_b4_attached_once(path):
     ('run_distributed_nu', 'fwd_distributed_nu'),
 ])
 def test_b3_same_request(run, forward):
+    """The plan comparison excludes forward()'s default probes at port positions."""
     graded = 'nonuniform' in run or run.endswith('_nu')
     sim = build(('_dft_planes', 'dft_plane'),
                 'run_nonuniform' if graded else 'run_uniform', graded=graded)
     sim.add_flux_monitor(axis='x', coordinate=4/1024, freqs=FREQS)
     plans = [capture(path, sim=sim) for path in (run, forward)]
-    # The one listed exclusion: forward()'s default probes at port positions.
     normalized = [replace(plan, path='', owners=tuple(
         replace(owner, availability='') for owner in plan.owners
         if not owner.id.startswith('probe:port'))) for plan in plans]

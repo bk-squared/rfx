@@ -31,7 +31,8 @@ def test_short_stage1_record_meets_its_existing_continuum_gate():
     with np.load(path) as data:
         modes = matrix_pencil(data["signal"], float(data["dt"]),
                         float(data["fmin"]), float(data["fmax"]))
-    continuum = C0 / 2 * np.sqrt(2) / 0.04  # TM110, a=b=40 mm, air
+    TM110_AIR_SIDE_M = 0.04
+    continuum = C0 / 2 * np.sqrt(2) / TM110_AIR_SIDE_M
     mode = min(modes, key=lambda m: abs(m.freq - continuum))
     assert 100 * abs(mode.freq / continuum - 1) <= _GATE_PCT
 
@@ -67,7 +68,7 @@ def test_automatic_harminv_meets_cavity_lattice_and_stationarity_gates(case, cor
         assert all(v is not None for v in found["per_mode"].values())
         windows.append(found["per_mode"])
 
-    window = G.estimator_floor()  # The case's existing gate, not a re-pin.
+    window = G.estimator_floor()
     lattice_errors = []
     scatter_errors = []
     for mode in modes:
@@ -84,7 +85,4 @@ def test_automatic_harminv_meets_cavity_lattice_and_stationarity_gates(case, cor
     if correct_metric:
         assert max(lattice_errors) <= window, (case, lattice_errors, window)
     else:
-        # The wrong operator still produces seven stationary modes. Their
-        # frequencies must be rejected against the intended lattice: a more
-        # accurate extractor cannot turn wrong FDTD physics into a PASS.
         assert max(lattice_errors) > window, (case, lattice_errors, window)

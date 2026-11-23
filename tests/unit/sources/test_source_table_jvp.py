@@ -30,7 +30,6 @@ def _record(steps):
             result = original(*args, **kwargs)
             built.append(result)
             return result
-        # The graded lane reads the builder through the rfx.model package top.
         assert rfx.model.source_table is tables.source_table
         with patch.object(tables, 'source_table', capture), \
                 patch.object(rfx.model, 'source_table', capture):

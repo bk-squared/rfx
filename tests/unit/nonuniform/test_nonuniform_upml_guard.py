@@ -14,6 +14,7 @@ positive measurement, not only by the absence of an exception.
 Graded profiles here use a DIFFERENT ratio per axis on purpose: equal
 ratios leave dual_x == dual_y == dual_z at the node, so an axis
 permutation would pass.
+A dispatch-rejected nonuniform combination receives an advisory explaining the coming error before the lane guard refuses it.
 """
 
 import numpy as np
@@ -37,8 +38,8 @@ def _sim(boundary, **profiles):
 
 
 DZ = _graded(8, 0.30e-3, 1.07)
-DX = _graded(8, 0.50e-3, 1.03)   # deliberately a different ratio from dz
-DY = _graded(8, 0.50e-3, 1.11)   # and different again from dx
+DX = _graded(8, 0.50e-3, 1.03)
+DY = _graded(8, 0.50e-3, 1.11)
 
 
 @pytest.mark.parametrize("profiles", [
@@ -105,16 +106,6 @@ def test_uniform_lane_still_reaches_the_real_upml_kernel():
         upml_mod.apply_upml_e = original
 
 
-# ---------------------------------------------------------------------------
-# The preflight advisory (#680 follow-up).
-#
-# The lane guard above is the enforcement point, but ``sim.preflight()``
-# printed "All checks passed" and then ``run()`` refused — a preflight that
-# does not know what the runner will do. The repo's convention for a
-# dispatch-rejected non-uniform combination is an ADVISORY that explains the
-# coming error in advance and covers ``skip_preflight=True``
-# (``_validate_cfg_precision_x64``). These pin the matching one.
-# ---------------------------------------------------------------------------
 
 _ADVISORY = "upml_nonuniform_lane_unsupported"
 
@@ -131,8 +122,8 @@ def test_preflight_warns_before_the_lane_guard_raises():
     ("upml", {"dz_profile": DZ}, True),
     ("upml", {"dx_profile": DX}, True),
     ("upml", {"dy_profile": DY}, True),
-    ("upml", {}, False),            # uniform lane DOES implement UPML
-    ("cpml", {"dz_profile": DZ}, False),   # NU lane's real absorber
+    ("upml", {}, False),
+    ("cpml", {"dz_profile": DZ}, False),
     ("cpml", {}, False),
 ])
 def test_advisory_fires_exactly_when_the_run_is_refused(boundary, profiles,
@@ -170,22 +161,16 @@ def test_advisory_carries_its_basis_not_only_its_verdict():
     """
     (hit,) = _sim("upml", dz_profile=DZ).preflight(strict=False) \
         .by_code(_ADVISORY)
-    msg = str(hit)   # PreflightIssue subclasses str: it IS its message
-    # observed
+    msg = str(hit)
     assert "apply_upml_e ran 1x" in msg and "0x on the non-uniform" in msg
     assert "sim._boundary still read 'upml'" in msg
-    # mechanism
     assert "use_cpml = grid.cpml_layers > 0" in msg
     assert "rfx/nonuniform.py" in msg
-    # cost
     assert "differ in reflection" in msg
-    # alternative
     assert "boundary='cpml'" in msg
     assert "uniform lane" in msg
-    # falsifier
     assert "stale if" in msg
     assert "apply_upml_* call site appears outside rfx/simulation.py" in msg
-    # why the requested absorber is refused
     assert "non-uniform runner has no UPML code at all" in msg
 
 

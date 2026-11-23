@@ -34,7 +34,7 @@ def main(mode):
         original = depths.distributed_electric_walls
 
         def zero_depth_only(grid):
-            faces = original(grid)  # Keep the helper call; only mutate its selection.
+            faces = original(grid)
             positive = {f.name for f in grid.boundary_depths
                         if f.kind == depths.Kind.ABSORBER and f.realized > 0}
             return faces - positive

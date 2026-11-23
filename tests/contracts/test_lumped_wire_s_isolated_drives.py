@@ -62,7 +62,6 @@ def test_several_excited_ports_refused_before_step(monkeypatch, path, graded, wi
 
 @pytest.mark.parametrize("second_excited", [False, True])
 def test_graded_run_drives_each_port(second_excited):
-    # run() on one device forms every column, one drive per port, as on a uniform mesh.
     S = np.asarray(_call(_model(True, second_excited), "graded_run").s_params)
     assert S.shape == (2, 2, len(FREQS)) and np.all(np.isfinite(S))
 
@@ -82,12 +81,11 @@ def test_graded_forward_ringdown_without_bins_refused_before_step(monkeypatch):
 
 @pytest.mark.parametrize("path,graded,wire", PATHS)
 def test_one_drive_and_passive_receiver_forms_s(path, graded, wire):
+    """The passive receiver's column is NaN because it is never measured."""
     result = _call(_model(graded, False, wire), path)
     assert result.s_params is not None
     S = np.asarray(result.s_params)
     assert S.shape == (2, 2, len(FREQS))
-    # One record measures one column: the driven port's column is S,
-    # the passive receiver's column is NaN (never measured).
     assert np.all(np.isfinite(S[:, 0])) and np.all(np.isnan(S[:, 1]))
 
 

@@ -81,6 +81,11 @@ print("ok:", sim.preflight().ok)
 sim.fidelity_report()
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/check/assets/model-on-grid/structure.png" loading="lazy" alt="Section through a thin substrate layer that runs across the domain and the absorber frame around it, with a patch line on its top face and the mesh lines of the graded grid behind it." />
+  <figcaption>The model built with <code>edge_aware_profiles</code>, cut at y = 9.86 mm, with its node lines: the substrate fills z = 4 to 5 mm, and the patch is drawn from x = 5 to 15 mm. The patch's outermost grid nodes lie at x = 5.17 and 14.83 mm, and the cells on both sides of each patch edge are equal: 0.483 mm in x and 0.470 mm in y.</figcaption>
+</figure>
+
 Preflight now reports no error. The warnings left are not about the patch
 size: the model has no source yet (`no_sources`), the copper's thickness is not
 modelled (`thin_conductor_thickness_unmodelled`), a lossless resonator in an
