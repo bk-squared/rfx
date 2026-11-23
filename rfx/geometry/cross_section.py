@@ -92,7 +92,8 @@ class _BoxSections(Via):
 def cross_section_2d(shape, grid):
     """Return the z extrusion at the node, refusing an absent top-level volume.
 
-    Sheets and wires retain their own invariant-axis admission. A custom
+    Sheets retain their sampling rules after presence admission; wires retain
+    their own invariant-axis admission. A custom
     shape may supply ``cross_section_2d(grid)``; otherwise its own mask is
     evaluated on the singleton node plane. Presence decisions are concrete;
     a radius remains differentiable when its centre is on the node.
@@ -100,13 +101,18 @@ def cross_section_2d(shape, grid):
     if not getattr(grid, "is_2d", False) or isinstance(shape, PolylineWire):
         return shape
     from rfx.geometry.curved import CurvedPatch
-    if not isinstance(shape, CurvedPatch):
-        bounds = _bounds(shape)
-        if bounds is not None and any(not is_tracer(lo) and not is_tracer(hi) and lo == hi
-                                      for lo, hi in zip(*bounds)):
-            return shape
+    if is_tracer(getattr(grid, "dx", None)):
+        raise RfxUnsupported("2-D cross-section: traced uniform dx is unsupported; use a concrete mesh")
     z0 = float(_grid_coords(grid)[2][0])
     width = float(grid.cells(2)[0])
+    bounds = _bounds(shape)
+    sheets = ([] if bounds is None else [a for a, (lo, hi) in enumerate(zip(*bounds))
+              if not is_tracer(lo) and not is_tracer(hi) and lo == hi])
+    if sheets:
+        if 2 in sheets and not _present(
+                bounds[0][2], bounds[1][2], z0, width, shape):
+            _refuse(shape, z0)
+        return shape
     cap = 4 * (max(abs(float(v)) for line in _grid_coords(grid) for v in line)
                + max(float(np.max(grid.cells(a))) for a in range(3)))
     bottom, top = z0 - cap, z0 + cap
@@ -136,7 +142,9 @@ def cross_section_2d(shape, grid):
                    tuple(shape.center[a] + half[a] for a in range(2)) + (top,))
     if isinstance(shape, OrientedBox):
         rotation = np.asarray(shape.rotation)
-        axes = np.flatnonzero(np.abs(rotation[2]) >= 1 - 32 * np.finfo(float).eps)
+        axes = [a for a in range(3) if np.allclose(
+            np.abs(rotation[:, a]), (0., 0., 1.), rtol=0,
+            atol=shape.orthogonality_tolerance)]
         if not len(axes):
             raise RfxUnsupported("OrientedBox: tilted out of the 2-D plane")
         axis = int(axes[0])
@@ -146,13 +154,18 @@ def cross_section_2d(shape, grid):
         size = list(shape.size)
         size[axis] = 2 * cap
         return replace(shape, center=(*shape.center[:2], z0), size=tuple(size))
-    if isinstance(shape, (Via, CurvedPatch)):
-        children = ([b for b, _ in shape.to_shapes()] if isinstance(shape, Via)
-                    else shape.to_staircase(float(grid.cells(0)[0])))
-        boxes = tuple(Box((*b.corner_lo[:2], bottom), (*b.corner_hi[:2], top))
-                      for b in children if _present(b.corner_lo[2], b.corner_hi[2], z0, width, b))
-        if not boxes:
+    if isinstance(shape, CurvedPatch):
+        if not _present(bounds[0][2], bounds[1][2], z0, width, shape):
             _refuse(shape, z0)
+        return shape
+    if isinstance(shape, Via):
+        if not _present(bounds[0][2], bounds[1][2], z0, width, shape):
+            _refuse(shape, z0)
+        boxes = tuple(b if b.corner_lo[2] == b.corner_hi[2] else
+                      Box((*b.corner_lo[:2], bottom), (*b.corner_hi[:2], top))
+                      for b, _ in shape.to_shapes()
+                      if b.corner_lo[2] == b.corner_hi[2]
+                      or _present(b.corner_lo[2], b.corner_hi[2], z0, width, b))
         return _BoxSections(boxes)
     bounds = _bounds(shape)
     if bounds is not None and not _present(bounds[0][2], bounds[1][2], z0, width, shape):
@@ -176,11 +189,11 @@ def realize_sections(entries, grid):
 
 
 def section_entries(sim, grid):
-    """Read the assembled shapes without transforming declarations again."""
+    """Read cached sections, recomputing them when the declarations change."""
     saved = getattr(grid, "_cross_section_entries", None)
     if saved is None:
-        return sim._geometry
+        return realize_sections(sim._geometry, grid)
     declared, realized = saved
     if len(declared) == len(sim._geometry) and all(a is b for a, b in zip(declared, sim._geometry)):
         return realized
-    return sim._geometry
+    return realize_sections(sim._geometry, grid)

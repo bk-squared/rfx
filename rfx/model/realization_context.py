@@ -46,6 +46,8 @@ def context_from_conductors(sim, conductors, *, grid=None):
             return None
         return cells, sheet, wire
 
+    from rfx.geometry.cross_section import section_entries
+    sections = section_entries(sim, ctx.grid)
     products = {key: (cells, sheet, wire, shape)
                 for key, cells, sheet, wire, shape in conductors.assembly_entries}
     for collection, prefix in ((sim._geometry, 'geometry'), (sim._thin_conductors, 'thin_conductor')):
@@ -60,9 +62,10 @@ def context_from_conductors(sim, conductors, *, grid=None):
                 continue
             cells, sheet, wire = products_on_host
             kind = 'volume' if cells is not None else 'sheet' if sheet is not None else 'wire' if wire is not None else 'lossy'
-            bounds = _shape_bounds(entry.shape)
+            section = sections[i].shape if prefix == "geometry" else entry.shape
+            bounds = _shape_bounds(section)
             ctx._entries.append(_EntryRealization(label=label,
-                name=getattr(entry, 'material_name', label), shape=entry.shape,
+                name=getattr(entry, 'material_name', label), shape=section,
                 solved_shape=shape, kind=kind, cells=cells, sheet=sheet, wire=wire,
                 lo=None if bounds is None else np.asarray(bounds[0]),
                 hi=None if bounds is None else np.asarray(bounds[1])))

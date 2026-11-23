@@ -528,7 +528,10 @@ class _CampaignStaticsContext:
                     return mid, (k, k + 1)
             return mid, None
 
+        from rfx.geometry.cross_section import section_entries
+        sections = section_entries(sim, self.grid)
         for i, entry in enumerate(sim._geometry):
+            section = sections[i].shape
             try:
                 mat = sim._resolve_material(entry.material_name)
             except KeyError:
@@ -536,19 +539,19 @@ class _CampaignStaticsContext:
             if mat.sigma < sim._PEC_SIGMA_THRESHOLD:
                 continue
             label = f"geometry[{i}]"
-            lo, hi = _bounds(entry.shape)
+            lo, hi = _bounds(section)
             try:
                 if id(entry) in products:
                     cells, sheet, wire, solved = products[id(entry)]
                 else:
                     solved = continued_conductor_shape(
-                        sim, self.grid, entry.shape, entry=entry)
+                        sim, self.grid, section, entry=entry)
                     cells, sheet, wire = classify_pec_entry(
                         solved, self.coords, self.centres, self.cell_sizes,
                         name=entry.material_name, grid=self.grid)
             except self._NARROW_EXCS as exc:
                 out.append(_EntryRealization(
-                    label=label, name=entry.material_name, shape=entry.shape,
+                    label=label, name=entry.material_name, shape=section,
                     kind="refused",
                     error=(str(exc) if isinstance(exc, ValueError)
                            else f"{type(exc).__name__}: {exc}"),
@@ -556,17 +559,17 @@ class _CampaignStaticsContext:
                 continue
             if cells is not None:
                 out.append(_EntryRealization(
-                    label=label, name=entry.material_name, shape=entry.shape,
+                    label=label, name=entry.material_name, shape=section,
                     kind="volume", cells=cells, lo=lo, hi=hi, solved_shape=solved))
             elif sheet is not None:
                 mid, tie = _tie(sheet, lo, hi)
                 out.append(_EntryRealization(
-                    label=label, name=entry.material_name, shape=entry.shape,
+                    label=label, name=entry.material_name, shape=section,
                     kind="sheet", sheet=sheet, lo=lo, hi=hi, solved_shape=solved,
                     declared_mid=mid, tie_planes=tie))
             else:
                 out.append(_EntryRealization(
-                    label=label, name=entry.material_name, shape=entry.shape,
+                    label=label, name=entry.material_name, shape=section,
                     kind="wire", wire=wire, lo=lo, hi=hi))
         for i, tc in enumerate(getattr(sim, "_thin_conductors", ())):
             label = f"thin_conductor[{i}]"

@@ -127,8 +127,12 @@ def realization_table(prepared) -> RealizationTable:
         declared_bounds = entity.declared_bounds_m
         for prefix, entries in (("geometry[", sim._geometry), ("thin_conductor[", sim._thin_conductors)):
             if entity.label.startswith(prefix):
-                declaration = entries[int(entity.label[len(prefix):-1])].shape
+                index = int(entity.label[len(prefix):-1])
+                declaration = entries[index].shape
                 shape = type(declaration).__name__
+                if prefix == "geometry[":
+                    from rfx.geometry.cross_section import section_entries
+                    declaration = section_entries(sim, prepared.conductors.grid)[index].shape
                 # Preserve the reporter's analytic-bounds availability contract.
                 try:
                     declared_bounds = tuple(tuple(float(v) for v in side)

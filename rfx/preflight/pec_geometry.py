@@ -996,7 +996,7 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
 
     results = []
     spacing_objects: list[object] = []
-    for a in range(3):
+    for a in range(2 if getattr(ctx.grid, "is_2d", False) else 3):
         planes = []
         for e in conductors:
             if e.kind == "sheet":

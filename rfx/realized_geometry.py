@@ -265,8 +265,9 @@ def _build_record(sim, ctx, *, compact=False):
     conductors = {e.label: e for e in ctx.entry_realizations()}
     interior = {e.label: e for e in ctx.interior_pec_entries()}
     sheet_neighbors = [*interior.values(), *ctx.impedance_sheet_entries()]
+    from rfx.geometry.cross_section import section_entries
     declarations = [(f"geometry[{i}]", e.material_name, e.shape)
-                    for i, e in enumerate(sim._geometry)]
+                    for i, e in enumerate(section_entries(sim, ctx.grid))]
     declarations.extend((f"thin_conductor[{i}]", f"thin_conductor[{i}]", e.shape)
                         for i, e in enumerate(sim._thin_conductors))
     entities = []
