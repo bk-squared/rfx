@@ -177,7 +177,7 @@ def _build_uniform_grid(sim, axes):
                 f'({admitted[0]!r} s) or dt=0.25 * Grid.courant_dt ({admitted[1]!r} s) '
                 f'on this realized grid; got dt={pin!r}')
         grid.dt = float(pin)
-        grid._courant_conformal_floor = True
+        grid._courant_conformal_floor = True  # type: ignore[attr-defined]
     return grid
 
 
