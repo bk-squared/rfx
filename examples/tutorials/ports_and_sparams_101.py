@@ -128,7 +128,6 @@ def build_microstrip_ports() -> Simulation:
 
     ground, substrate, trace = map(shifted, (ground, substrate, trace))
     edge_dx = dx
-    # #1138: register solved edges and port planes to the drawing.
     pad = 8 * edge_dx
 
     def interior_box(box):
@@ -180,7 +179,6 @@ def build_microstrip_ports() -> Simulation:
         substrate,
         material="substrate",
     )
-    # The 1 mm drawn trace is 1 mm at its solved free edges.
     sim.add_thin_conductor(trace)
 
     common = {

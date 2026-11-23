@@ -73,8 +73,8 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   the 32 mm feed-axis design mode.  The feed sits on the patch's y centre
   line, as in openEMS, and the 40 mm cross mode is absent from the printed
   mode list.  (Mode pairing repinned 2026-08-27, #693.)
-  Until #1375 the x/y lattice was uniform with every edge mid-cell: the patch
-  was solved 31.4 x 39.4 mm, the feed sat 1 mm off in x and y, and the board
+  Until #1375 the x/y lattice was uniform with every edge mid-cell: preflight
+  put the patch at 31.4 x 39.4 mm, the feed sat 1 mm off in x and y, and the board
   read 2.5072 GHz (cross mode 2.0345 GHz — VESSL 369367259175), +3.5 %.
   Before the ownership contract that board read +11.3 % (2.6953 GHz,
   cross mode 2.2157 GHz — VESSL 369367259020, which reproduces the numbers
@@ -87,9 +87,10 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   confirmed, the size is not, and the 8.2-point remainder is unattributed
   here.
 - The sign is not a settled coarse-grid bias that finer cells remove.  Two
-  discretization errors push opposite ways: the substrate under-resolved in z
-  reads high, the staircased PEC patch edge reads low, and they are not
-  separated here.  The substrate-permittivity half is addressable with the
+  discretization errors are present: the substrate under-resolved in z, and
+  the patch's solved edges, whose offset on a substrate face at these cell
+  ratios is not measured; they are not separated here.  The
+  substrate-permittivity half is addressable with the
   opt-in interface treatment ``sim.run(..., subpixel_smoothing=True)``
   (closed-form cavity comparison in ``tests/oracle/test_patch_cavity_eps_oracle.py``).
   Measured on this fixture (dx = 2 / 1 / 0.5 mm, substrate 4 / 8 / 16 cells):
@@ -331,11 +332,6 @@ def build_simulation():
     probe_x, probe_y = feed_x + 4e-3, feed_y + 4e-3
     pad = (N_CPML + 3) * DX
 
-    # In-plane mesh (#1375).  A PEC sheet's edge is solved EDGE_OFFSET = 0.35
-    # of a cell beyond its last node (measured; preflight's
-    # sheet_effective_size uses the same number), so a uniform 2 mm lattice
-    # cannot hold this 32 x 40 mm patch: edges mid-cell (this domain) solved
-    # 31.4 x 39.4 mm, edges on nodes would solve 33.4 x 41.4 mm.
     # edge_aware_profiles grades x and y (1.86-2 mm) so a node sits 0.35 cell
     # inside every sheet edge, and puts the feed, the probe and the NTFF faces
     # on nodes.  The check after the build asserts the result.
@@ -425,10 +421,6 @@ def build_simulation():
             f"declared {SUB_THICK * 1e3:.4f} mm"
         )
 
-    # The same check in-plane (#1375): the patch and the ground are SOLVED at
-    # their drawn size, and the feed edge is at its drawn point.  The
-    # substrate cells cannot also start on the ground's edge -- the node
-    # there is the sheet's -- so they are checked to within one cell.
     nodes_span, solved_span, sub_span, feed_node = realized_in_plane(
         sim, (k_gnd, k_patch), (feed_x, feed_y, src_z))
     checks = {
@@ -521,11 +513,6 @@ def main():
 
     sim = build_simulation()
 
-    # Preflight prints each advisory verbatim.  Expected on this registered
-    # board: ntff_near_field for the close bottom NTFF face, and
-    # ntff_small_ground_plane for finite-ground diffraction.  The sheet
-    # outlines are registered to their solved edges, so an off-lattice
-    # conductor-face residual is not an expected advisory.
     report = sim.preflight()
     print(f"preflight advisories: {len(list(report))}")
 
@@ -626,8 +613,11 @@ def main():
         f"{OPENEMS_F_RES / 1e9:.4f} GHz: {dev_pct:+.2f}% — the design mode "
         "is measured on the registered board. The former far-field lock "
         "used a different board and does not gate this result. "
-        "The patch is solved at its drawn size; refine the mesh to measure "
-        "the remaining discretization error."
+        "The patch's last nodes lie 0.35 cell inside its drawn edges; with "
+        "z cells about a fifth of the in-plane cell the edge offset was "
+        "measured only for a free sheet in vacuum, not on a substrate face, "
+        "so the solved size is not known; refine the mesh to measure the "
+        "discretization error."
     )
     print(
         f"  D {d_dbi[k_star]:.2f} dBi vs openEMS {OPENEMS_D_DBI:.2f} dBi "
