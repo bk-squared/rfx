@@ -1,4 +1,4 @@
-### Performance — Cell time-step checks (#PR)
+### Changed — a compiled call no longer runs the cell time-step check on the host unless a cell can fail it (#PR)
 
 Admitted JIT calls now test possible cell Courant refusals on the device before
 running the unchanged ordered host check. On an RTX 4090, the staged check cost
