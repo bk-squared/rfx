@@ -75,8 +75,8 @@ last mesh node, so on this grid it predicts the patch 3.5 % wider than drawn;
 `forward()` would stop here with the same message. What clears the error is a
 mesh whose last nodes lie 0.35 cell inside the drawn edges, so that the
 predicted solved edges fall on the drawn ones. Whether the patch is then solved
-at its drawn size depends on the cells around its edges; the paragraph after
-the report below says how. The mesh:
+at its drawn size depends on the cells around its edges;
+[Accuracy](#accuracy) below says how. The mesh:
 
 ```python
 profiles = edge_aware_profiles(domain, 0.5e-3, sheets=[patch], solids=[substrate])
@@ -128,9 +128,10 @@ Two options change what the check does:
 - `preflight(strict=True)` collects every finding, warnings and notes
   included, and raises one `ValueError` that lists them all.
 
-`run(skip_preflight=True)` skips preflight, its errors included. Only the
-refusals about the realized geometry, such as `sheet_effective_size`, still
-stop the run. Use `snap='declared'` to turn geometry size misses into
+`run(skip_preflight=True)` skips preflight, its errors included.
+Refusals outside preflight still stop the run, among them those about the
+realized geometry, such as `sheet_effective_size`, and those of inputs the
+solver path does not implement ([Refused inputs](/rfx/check/refusals/)). Use `snap='declared'` to turn geometry size misses into
 warnings.
 
 ## How rfx checks it

@@ -25,7 +25,7 @@ Each calculator takes one port family, apart from two that join families:
 and `compute_coax_msl_transition()` is deprecated (see [Limits](#limits)). If
 you are not sure which calculator a model needs, `sim.s_matrix_lane()` tells
 you without running anything, and `sim.compute_s_matrix(**kwargs)` calls it
-for you. It refuses a model with only lumped or wire ports: call
+for you. `compute_s_matrix` refuses a model with only lumped or wire ports: call
 `run(compute_s_params=True)` for those.
 
 ## Waveforms
@@ -85,9 +85,10 @@ sim.add_source((0.025, 0.025, 0.010), "ez",
 
 Always pass `amplitude_kind`:
 
-- `"current"`: the waveform's `amplitude` is a current moment in A·m, a source strength
+- `"current"`: the waveform's amplitude (its `amplitude`, or the value a
+  `CustomWaveform` returns) is a current moment in A·m, a source strength
   that does not refer to the cell. Use this by default.
-- `"field"`: the waveform's `amplitude` is added to E each step, in V/m.
+- `"field"`: the waveform's amplitude is added to E each step, in V/m.
 
 Omitting it or passing `None` selects `"current"` and warns once per simulation.
 `tests/unit/sources/test_source_amplitude_kind.py` checks that omitting the kind
@@ -226,9 +227,10 @@ different windows of the record. These checks catch a bad fit. They are not an
 error bound.
 
 `ringdown=` works with wire ports on a fixed-length record: one wire port on a
-uniform mesh, and one or several on a graded mesh. With several ports, a
-uniform-mesh `run()` builds S from one separate run per driven port, which the
-completion's probes do not see. The source must be off in the
+uniform mesh, and one or several on a graded mesh. Several wire ports on a
+uniform mesh are refused: there `run()` builds S from one separate run per
+driven port, while the completion fits the port records of the one run it is
+given. Use a graded mesh, where one run fills the driven column. The source must be off in the
 second half of the record. Lumped, microstrip, waveguide and coaxial ports,
 TFSF, `until_decay` and `devices=` are refused.
 `forward(..., ringdown=RingdownSpec())` puts the same completion inside the
