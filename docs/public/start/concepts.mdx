@@ -17,9 +17,12 @@ position in the cell. E components sit on cell edges and H components sit on
 cell faces. You rarely need the exact positions, but they explain two things
 you will see:
 
-- Geometry snaps to the lattice. A face drawn between two grid planes lands on
-  the nearest plane. `sim.fidelity_report()` prints the declared and realized
-  position of every face.
+- Geometry snaps to the lattice. A dielectric or metal-volume face drawn
+  between two grid planes lands on the nearest plane, and a metal sheet lands
+  on the nearest node plane. A sheet's in-plane edge follows its own rule,
+  given under [Three kinds of conductor](#three-kinds-of-conductor).
+  `sim.fidelity_report()` prints the declared and realized position of every
+  face.
 - A probe or port reads a field at a grid location, which may be up to half a
   cell away from the coordinate you gave.
 
@@ -67,10 +70,12 @@ sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.01), dx=0.5e-3,
 print(spec.to_dict())
 ```
 
-Don't mix roles. A cavity with one absorbing wall is neither a cavity nor an
-antenna, and its Q means nothing. A PEC **boundary** is also infinite in its
+The PEC face in this example is an infinite ground under an open problem. A
+cavity with one absorbing wall is a different thing: it is neither a cavity nor
+an antenna, and its Q means nothing. A PEC **boundary** is also infinite in its
 own plane. For a finite ground plane, draw a metal sheet inside an all-CPML
-domain instead, as described next.
+domain instead, as described under
+[Three kinds of conductor](#three-kinds-of-conductor).
 
 ## Materials
 
@@ -87,14 +92,15 @@ use `add_thin_conductor(..., surface_impedance_f0=f0)`.
 
 ## Three kinds of conductor
 
-Metal inside the domain is always exactly one of three things. **Your
-declaration decides which**, not the shape's size on the mesh:
+Metal that rfx accepts inside the domain is exactly one of three things.
+**Your declaration decides which**, not the shape's size on the mesh. A PEC
+shape that fits none of them is refused (see below the figure):
 
 | Kind | Real-world object | Declare it with | What the solver builds |
 |---|---|---|---|
 | **sheet** | etched copper: ground plane, patch, trace | `sim.add_thin_conductor(Box(...))` with zero thickness on one axis | one grid plane with in-plane E zeroed; occupies no cell |
 | **volume** | plate, iris, post, machined wall | `sim.add(shape, material="pec")` | walls at both drawn faces, interior shorted |
-| **wire** | thin filament | `PolylineWire(..., radius=0)`; a positive radius below half the smallest local cell is refused, and from half a cell up the wire is a volume | a path of zeroed E edges |
+| **wire** | thin filament | `PolylineWire(..., radius=0)`. A positive radius declares a volume instead, refused below half the smallest local cell | a path of zeroed E edges |
 
 ```python
 from rfx import Box
@@ -140,9 +146,13 @@ normal to the sheet is as long as the in-plane cell beside its edge; here they
 are 0.5 and 0.475 mm, a ratio of 1.05, and the foil lies on the substrate's
 bottom face, where the offset at that ratio has not been measured. Or pass
 `Simulation(..., snap="declared")` to accept the difference as a warning,
-recorded in `sim.realized_geometry()`. With the graded in-plane mesh, preflight also notes that the grading reaches the cells next to an
-absorbing face, which should stay uniform over as many cells as the face has
-absorber layers.
+recorded in `sim.realized_geometry()`. With the graded in-plane mesh, preflight
+also warns that the grading reaches the cells next to an absorbing face, which
+should stay uniform over as many cells as the face has absorber layers.
+`edge_aware_profiles` adjusts the cells all the way to the domain faces, so a
+wider margin does not clear this warning, and its effect on the absorber has
+not been measured (see
+[Non-Uniform Mesh](/rfx/model/domain-mesh/#building-a-z-profile)).
 
 A PEC shape that is thinner than one cell but not zero is neither a sheet nor a
 resolved volume. Preflight reports it as an error and `run()` refuses it, so
@@ -177,7 +187,7 @@ reference impedance or a reference plane, so they cannot produce S-parameters.
 | a field value over time at a point | `add_probe`, `add_vector_probe` |
 | a field on a plane at chosen frequencies | `add_dft_plane_probe` |
 | power through a plane (R, T, absorption) | `add_flux_monitor` |
-| radiation pattern, directivity, RCS | `add_ntff_box`, then `compute_far_field`; for RCS, `compute_rcs`, which runs its own plane-wave simulation on a `Grid` ([Far Field and RCS](/rfx/measure/far-field-and-rcs/)) |
+| radiation pattern, directivity, RCS | `add_ntff_box`, then `compute_far_field`; for RCS, `compute_rcs`, a lower-level function that takes a uniform `rfx.Grid` and material arrays instead of a `Simulation` and runs its own plane-wave simulation ([Far Field and RCS](/rfx/measure/far-field-and-rcs/)) |
 | resonant frequencies and Q | a probe plus `result.find_resonances()` (matrix pencil fit) |
 | S-parameters | a port family and its calculator (table above) |
 
