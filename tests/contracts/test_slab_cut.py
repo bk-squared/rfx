@@ -69,6 +69,26 @@ def test_closed_over_concrete_array_can_be_staged_during_a_trace():
     _assert_rows(result, array, layout, 'eps_r')
 
 
+def test_concrete_input_keeps_no_host_copy():
+    """Replicated readback caches only a temporary, eagerly and under caller jit."""
+    if len(jax.devices('cpu')) < 2:
+        pytest.skip('requires 2 CPU devices')
+    layout = Slab(11, 2)
+    mesh = Mesh(np.array(jax.devices('cpu')[:2]), ('x',))
+    array = np.arange(66, dtype=np.float32).reshape(11, 2, 3)
+    sharding = NamedSharding(mesh, P())
+    control = jax.device_put(array, sharding)
+    np.asarray(control)
+    assert getattr(control, '_npy_value', None) is not None
+    for caller_jit in (False, True):
+        src = jax.device_put(array, sharding)
+        assert getattr(src, '_npy_value', None) is None
+        invoke = lambda: cut(src, layout, 'eps_r', mesh=mesh)
+        result = jax.jit(invoke)() if caller_jit else invoke()
+        assert getattr(src, '_npy_value', None) is None
+        _assert_rows(result, array, layout, 'eps_r')
+
+
 @pytest.mark.parametrize('n_devices', [2, 3])
 @pytest.mark.parametrize('nx', [11, 12])
 @pytest.mark.parametrize('kind', tuple(POLICIES))
