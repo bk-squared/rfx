@@ -355,6 +355,13 @@ def boundary_flags(cfg, grid=None):
     return tuple(a in axes for a in "xyz"), "".join(a for a in "xyz" if a not in axes)
 
 
+def run_periodic_flags(sim) -> tuple[bool, bool, bool]:
+    """The per-axis periodic flags the time step uses."""
+    if sim._tfsf is not None and not sim._uses_nonuniform_mesh:
+        return boundary_flags(sim._tfsf)[0]
+    return sim._periodic_flags()
+
+
 def require_tfsf_side_faces(sim):
     """Refuse explicit side faces the uniform TF/SF lane would replace."""
     from rfx.sources.tfsf import is_oblique
