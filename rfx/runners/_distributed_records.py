@@ -64,8 +64,8 @@ class Packed:
         return jnp.pad(flat, (0, self.capacity - flat.size))
 
     def mapped(self, buffer, state, step, branches, *, ranks, previous=None, operands=None):
-        inputs = (buffer, state, step)
-        specs = (P("x"), _field_specs(state), P())
+        inputs: tuple[Any, ...] = (buffer, state, step)
+        specs: tuple[Any, ...] = (P("x"), _field_specs(state), P())
         if previous is not None:
             inputs += (previous,)
             specs += (P("x"),)
