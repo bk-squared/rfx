@@ -69,9 +69,6 @@ def sum_partials(final, mesh, ranks):
             records = []
             for partial, total in zip(values['sparam_time_records'], totals['sparam_time_records']):
                 ref = partial[0, :, -1]
-                # Only the midpoint owner contributes a reference; other
-                # ranks contribute +0. Preserve its signed zero in the
-                # stop-gradient time record, which ordinary psum erases.
                 negative_zero = jax.lax.psum(((ref == 0) & jnp.signbit(ref)).astype(jnp.int32), 'x') > 0
                 ref_total = total[:, -1]
                 ref_total = jnp.where((ref_total == 0) & negative_zero,

@@ -89,8 +89,8 @@ def exchange_component_shmap(field, mesh, n_devices, *, ranks):
         check_rep=False,
     )
     def _exchange(f, *, rank):
-        right_boundary = f[-2:-1, :, :]   # last real cell -> right neighbour's left ghost
-        left_boundary = f[1:2, :, :]      # first real cell -> left neighbour's right ghost
+        right_boundary = f[-2:-1, :, :]
+        left_boundary = f[1:2, :, :]
 
         perm_right = [(i, (i + 1) % n_devices) for i in range(n_devices)]
         left_ghost_recv = lax.ppermute(right_boundary, "x", perm=perm_right)

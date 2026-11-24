@@ -27,8 +27,6 @@ def metadata(sim, grid, materials, *, pec_edges=None, uniform=False):
                   for spec in sim._lumped_rlc)
     refuse_stacked_solved_elements(sim._lumped_rlc, metas)
     if uniform:
-        # Uniform slabs enforce PEC after sources; one device enforces it
-        # before RLC. Refuse overlapping edges instead of changing that rule.
         for meta in metas:
             cell, axis = (meta.i, meta.j, meta.k), 'xyz'.index(meta.component[1])
             wall = any(cell[a] in (0, grid.shape[a] - 1) for a in range(3) if a != axis)
@@ -82,7 +80,7 @@ class SlabRLC:
     def read(self, state, *, ranks):
         def local(state, *, rank):
             return tuple(a[None] for a in read(state, self.metas, self.layout, rank))
-        spec = FDTDState(*(P('x') for _ in range(6)), step=P())  # type: ignore[misc]  # mypy cannot infer the generator's six positional arguments.
+        spec = FDTDState(*(P('x') for _ in range(6)), step=P())  # type: ignore[misc]
         return rank_shard_map(local, mesh=self.mesh, in_specs=(spec,),
                               out_specs=P('x'))(ranks, state)
 
@@ -91,6 +89,6 @@ class SlabRLC:
             state, states = update(state, jax.tree.map(lambda a: a[0], states), self.metas,
                                    jax.tree.map(lambda a: a[0], previous), self.layout, rank)
             return state, jax.tree.map(lambda a: a[None], states)
-        spec = FDTDState(*(P('x') for _ in range(6)), step=P())  # type: ignore[misc]  # mypy cannot infer the generator's six positional arguments.
+        spec = FDTDState(*(P('x') for _ in range(6)), step=P())  # type: ignore[misc]
         return rank_shard_map(local, mesh=self.mesh, in_specs=(spec, P('x'), P('x')),
                               out_specs=(spec, P('x')))(ranks, state, states, previous)

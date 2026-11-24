@@ -68,9 +68,6 @@ def _build_vmap_scan_fn(
     probes = probes or []
     dft_probes = dft_probes or []
 
-    # realize (Mx, My, Mz) ONCE here, at build time, under the
-    # flags this scan body will use.  Sheets and wires own no cell, so
-    # this is the only place the batched lane can see them.
     pec_sheets = tuple(pec_sheets or ())
     pec_wires = tuple(pec_wires or ())
     pec_edge_masks = None if conductors is None else conductors.pec_edges
@@ -86,7 +83,6 @@ def _build_vmap_scan_fn(
     if use_cpml:
         from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 
-    # Precompute source waveform matrix (these don't depend on materials)
     if sources:
         src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)
     else:
@@ -95,10 +91,8 @@ def _build_vmap_scan_fn(
     src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
 
-    # Material-dependent source locations; samples are prepared before vmap.
     j_src_meta = j_source_meta
 
-    # Initialize CPML once (shared across batch)
     if use_cpml:
         cpml_params, cpml_state_init = init_cpml(grid)
 

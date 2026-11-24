@@ -33,8 +33,6 @@ def _emulate_accumulators(lane: str, pm: _PortMeta, e32, h32, dt):
                 vp_dft + v_port * phase), (v_port, i_val)
 
     nf = int(freqs.shape[0])
-    # The run's own carry dtype: complex64, or complex128 on the uniform lane
-    # under x64 (``rfx.simulation``'s ``_sparam_acc_dtype``).
     init = tuple(jnp.zeros(nf, dtype=np.asarray(a).dtype) for a in pm.accs)
     n = e32.shape[0]
     xs = (jnp.arange(n, dtype=jnp.int32), jnp.asarray(e32),

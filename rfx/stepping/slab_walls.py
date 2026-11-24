@@ -60,9 +60,9 @@ def apply_pec_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
         rank_shard_map,
         mesh=mesh,
         in_specs=(
-            P("x"),  # ex
-            P("x"),  # ey
-            P("x"),  # ez
+            P("x"),
+            P("x"),
+            P("x"),
         ),
         out_specs=(
             P("x"),
@@ -149,28 +149,8 @@ def apply_pec_mask_shmap(state: FDTDState, sharded_pec_mask, mesh,
         check_rep=False,
     )
     def _pec_mask(ex, ey, ez, mask, *, rank):
-        # ONE neighbour rule for both lanes: call the shared helper rather
-        # than re-spelling it (an inlined copy disagreed at a y/z domain face —
-        # measured on two 4x4 plates in a (6,6,10) domain, real cells only:
-        #
-        #   placement           single-device      this lane, inlined roll
-        #   z faces  k=0 & k=9  [32, 32,  0]       [32, 32, 32]
-        #   y faces  j=0 & j=5  [32,  0, 32]       [32, 32, 32]
-        #   z interior k=1,k=8  [32, 32,  0]       [32, 32,  0]   (agreed)
-        #
-        # ``periodic=(True, False, False)``: the SHARDED axis keeps the
-        # wrap, which is what the inlined copy relied on and is correct
-        # here — a slab's ghost rows carry the seam neighbour's PEC status
-        # (``shard_pec_mask_x_slab``), and the wrap only ever reaches
-        # indices 0 and nx_local-1, both ghosts, both forced False below.
-        # So no REAL cell sees the x wrap and the x behaviour is unchanged.
-        # y and z have no ghosts and no periodic BC on this lane (the NU
-        # runners install none), so they take the same zero-pad convention
-        # ``rfx/nonuniform.py``'s ``apply_pec_mask(st, pec_mask)`` takes.
         mask_ex, mask_ey, mask_ez = distributed_mask_edges(mask)
 
-        # Force ghost rows to False so we never touch a neighbour rank's
-        # cells.  Real cells span [ghost, nx_local - ghost).
         ghost = 1
         ghost_zero = jnp.zeros_like(mask_ex[0:1, :, :])
         mask_ex = mask_ex.at[0:ghost, :, :].set(ghost_zero[0:ghost, :, :])

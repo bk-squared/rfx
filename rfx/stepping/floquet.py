@@ -31,24 +31,9 @@ def apply_bloch_periodic_x(
     -------
     Updated FDTDState with Bloch-periodic x boundaries.
     """
-    # For the Yee grid, periodic wrapping copies the field from the
-    # last interior cell to the ghost cell at the opposite end, with
-    # the appropriate phase factor applied.
-    #
-    # For H-field forward differences: F[N] = F[0] * phase
-    # For E-field backward differences: F[-1] = F[N-1] * conj(phase)
-    #
-    # In the standard periodic case (phase=1), jnp.roll handles this
-    # automatically. For Bloch-periodic, we need explicit wrapping.
     phase_re = jnp.real(phase_x)
 
-    # Apply to each field component at x boundaries
-    # x=0 boundary: field = field[nx-1] * conj(phase_x)
-    # x=nx-1 boundary: field = field[0] * phase_x
     def _wrap(f):
-        # For real FDTD, we only apply the real part of the phase shift.
-        # This is exact for broadside and a good approximation for small angles.
-        # For full complex Bloch, a split-field formulation would be needed.
         f = f.at[0, :, :].set(f[-1, :, :] * phase_re)
         f = f.at[-1, :, :].set(f[0, :, :] * phase_re)
         return f
@@ -113,22 +98,19 @@ def inject_floquet_source(
     tau = 1.0 / (f0 * bandwidth * jnp.pi)
     t0 = 3.0 * tau
 
-    # Gaussian pulse envelope
     arg = (t - t0) / tau
     pulse = amplitude * (-2.0 * arg) * jnp.exp(-(arg ** 2))
 
-    if axis == 2:  # z-normal
+    if axis == 2:
         if polarization == "te":
-            # TE: inject Ex
             field = state.ex
             field = field.at[:, :, port_index].add(pulse)
             state = state._replace(ex=field)
         else:
-            # TM: inject Ey
             field = state.ey
             field = field.at[:, :, port_index].add(pulse)
             state = state._replace(ey=field)
-    elif axis == 0:  # x-normal
+    elif axis == 0:
         if polarization == "te":
             field = state.ey
             field = field.at[port_index, :, :].add(pulse)
@@ -137,7 +119,7 @@ def inject_floquet_source(
             field = state.ez
             field = field.at[port_index, :, :].add(pulse)
             state = state._replace(ez=field)
-    else:  # y-normal (axis == 1)
+    else:
         if polarization == "te":
             field = state.ex
             field = field.at[:, port_index, :].add(pulse)

@@ -41,7 +41,6 @@ def inject_waveguide_port(state, cfg: WaveguidePortConfig,
         src_val = cfg.src_amp * jnp.cos(
             2.0 * jnp.pi * cfg.src_fcen * tt
         ) * jnp.exp(-(arg ** 2))
-        # Meep-style hard cutoff at ±5·width (= ±t0 for s=5).
         src_val = jnp.where(jnp.abs(tt) > cfg.src_t0, 0.0, src_val)
     else:
         src_val = cfg.src_amp * (-2.0 * arg) * jnp.exp(-(arg ** 2))
@@ -76,8 +75,6 @@ def apply_waveguide_port_h(state, cfg: WaveguidePortConfig,
     table = cfg.e_inc_table
     table_size = table.shape[0]
     if table_size <= 1:
-        # Tables unavailable — delegate source emission to the legacy
-        # soft-E fallback inside apply_waveguide_port_e. No-op here.
         return state
     safe_step = jnp.clip(jnp.asarray(step, dtype=jnp.int32),
                          0, table_size - 1)
@@ -86,10 +83,6 @@ def apply_waveguide_port_h(state, cfg: WaveguidePortConfig,
     mu_abs = component_h_materials(MaterialArrays(None, None, cfg.medium.mu_r), high_wall=(False, False, False))[0] * MU_0
     coeff = dt / (mu_abs * dx)
 
-    # For a "+axis" port the source's backward emission travels in "−axis";
-    # the Yee H-curl stencil that reads the injected E lives one half-cell
-    # on the −axis side of the source plane, at H-index x_src − 1.
-    # For a "−axis" port the mirrored H-plane is at x_src.
     if cfg.direction.startswith("+"):
         h_plane_index = cfg.x_index - 1
         sign = -1.0
@@ -102,7 +95,6 @@ def apply_waveguide_port_h(state, cfg: WaveguidePortConfig,
     h_u_field = getattr(state, cfg.h_u_component)
     h_v_field = getattr(state, cfg.h_v_component)
 
-    # H_u is driven by E_v (ez); H_v by E_u (ey) with opposite curl sign.
     h_u_field = h_u_field.at[indexer_h].add(sign * coeff * src_val * cfg.ez_profile)
     h_v_field = h_v_field.at[indexer_h].add(-sign * coeff * src_val * cfg.ey_profile)
 
@@ -127,11 +119,6 @@ def apply_waveguide_port_e(state, cfg: WaveguidePortConfig,
     """
     coeff = dt / (EPS_0 * cfg.medium.eps_r * dx)
 
-    # h_inc_table is empty (shape (1,)) when dt or dft_total_steps was not
-    # supplied at init time. In that case the paired H correction is also
-    # disabled (see apply_waveguide_port_h) and we emit via the legacy
-    # soft-E source so low-level callers that never knew about the TFSF
-    # pair keep working unchanged.
     table = cfg.h_inc_table
     table_size = table.shape[0]
     if table_size <= 1:
@@ -156,23 +143,13 @@ def apply_waveguide_port_e(state, cfg: WaveguidePortConfig,
         })
 
     safe_step = jnp.clip(jnp.asarray(step, dtype=jnp.int32), 0, table_size - 1)
-    # Table stores the unit-amplitude response; scale by cfg.src_amp so the
-    # passive-port convention (``src_amp=0``) cleanly disables this
-    # correction alongside ``apply_waveguide_port_h``.
     h_inc_scalar = cfg.src_amp * table[safe_step]
 
     if cfg.direction.startswith("+"):
         e_plane_index = cfg.x_index
         sign = -1.0
     else:
-        # "−axis" port emits toward −axis; TFSF boundary sits at x_src + 1.
         e_plane_index = cfg.x_index + 1
-        # The E-side correction has the same curl sign as the +axis case.
-        # The propagation-direction reversal is already represented by the
-        # mirrored correction plane and the opposite H-side correction above.
-        # Using +1 here launches a weaker negative-direction reference wave
-        # and breaks reciprocal two-port normalization (S12 ≠ S21) even in a
-        # geometrically symmetric guide.
         sign = -1.0
 
     indexer_e = _plane_indexer(cfg, e_plane_index)
@@ -180,10 +157,6 @@ def apply_waveguide_port_e(state, cfg: WaveguidePortConfig,
     e_u_field = getattr(state, cfg.e_u_component)
     e_v_field = getattr(state, cfg.e_v_component)
 
-    # E_v is corrected by H_u (hy_profile); E_u by H_v (hz_profile) with
-    # opposite curl sign. The modal H amplitude (positive for positive
-    # forward E) multiplies the stored h*_profile which already carries
-    # the mode-specific sign relative to its e_*_profile counterpart.
     e_v_field = e_v_field.at[indexer_e].add(sign * coeff * h_inc_scalar * cfg.hy_profile)
     e_u_field = e_u_field.at[indexer_e].add(-sign * coeff * h_inc_scalar * cfg.hz_profile)
 

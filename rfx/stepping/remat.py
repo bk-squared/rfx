@@ -101,8 +101,6 @@ def segmented_scan(step_fn, carry, xs, chunk, scan=jax.lax.scan):
         lambda y: y.reshape((end,) + y.shape[2:]), ys
     )
     if r:
-        # The tail is one more checkpointed segment of length r, run through
-        # the caller's ``scan`` too (a recorded scan must see every step).
         tail = jax.tree_util.tree_map(lambda x: x[end:][None], xs)
         carry, tail_ys = scan(body, carry, tail)
         ys = jax.tree_util.tree_map(
@@ -135,8 +133,6 @@ def _nested_scan(step_fn, carry, xs, lengths, scan):
         lambda y: y.reshape((end,) + y.shape[2:]), ys
     )
     if r:
-        # The tail is one more checkpointed unit of r steps through the
-        # caller's ``scan``; inside it the inner levels split the r steps.
         tail = jax.tree_util.tree_map(lambda x: x[end:][None], xs)
         carry, tail_ys = scan(body, carry, tail)
         ys = jax.tree_util.tree_map(

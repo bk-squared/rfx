@@ -28,7 +28,6 @@ def global_plan(sim, grid, specs, lane, freqs, compute_s_params):
         return None
     if lane == 'run_distributed_nu':
         from rfx.measurement.port_s_contract import passive_record_diagnostic
-        # An all-passive set keeps its V/I spectra without S, as on one device.
         if compute_s_params is False and not passive_record_diagnostic(sim):
             freqs = None
         elif freqs is None:
@@ -68,5 +67,4 @@ def setup_ports(context, carry, invariants, plan, layout, mesh, n_steps, *,
     return context
 
 
-# Compatibility import for callers of the graded setup module.
 from rfx.stepping.slab_measurements import sum_partials
