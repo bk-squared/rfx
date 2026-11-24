@@ -66,8 +66,7 @@ def test_synthetic_literals_and_directories(tmp_path):
     contracts.mkdir()
     (contracts / "test_contract.py").write_text('PATH = "docs/guide.md"')
     assert selector.select_tests(["docs/guide.md"], tmp_path) == [
-        "tests/unit/test_bare_directory.py", "tests/unit/test_directory.py",
-        "tests/unit/test_file.py", "tests/unit/test_parts.py",
+        "tests/unit/test_directory.py", "tests/unit/test_file.py",
     ]
     assert selector.select_tests(["docs-other/guide.md", "rfx/core.py"], tmp_path) == []
     assert selector.select_tests([], tmp_path) == []
@@ -112,20 +111,33 @@ def test_workflow_and_classifier_wiring():
     assert len(calls) == 1
     assert '"${selected_files[@]}"' in calls[0]
     assert "--strict-markers" in calls[0] and "-p no:cacheprovider" in calls[0]
+    assert "-ra" in calls[0]
+    arguments = calls[0].split()[3:]
+    assert "-m" not in arguments and "-o" not in arguments
     assert "addopts" not in calls[0]
+    assert "JAX_COMPILATION_CACHE_DIR" not in step["env"]
+    assert "JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS" not in step["env"]
     script = (ROOT / "scripts/ci/classify_changes.sh").read_text()
     assert '"$here/select_notcode_tests.py" --stdin --null < "$changed_file"' in script
     assert 'echo "notcode_tests=$notcode_tests" >> "$GITHUB_OUTPUT"' in script
     assert selector.is_code_path("scripts/ci/select_notcode_tests.py")
 
 
-@pytest.mark.parametrize("count,group,status,expected,runs", [
-    (24, 2, 0, 0, True), (24, 20, 5, 0, True),
-    (24, 1, 1, 1, True), (24, 1, 2, 2, True),
-    (3, 1, 0, 0, True), (3, 2, 0, 0, False),
-    (0, 1, 5, 0, True), (24, 1, 0, 0, False),
+@pytest.mark.parametrize("collection,collect_status,count,group,status,expected,runs", [
+    ("24/30 tests collected (some deselected) in 0.01s", 0, 24, 2, 0, 0, True),
+    ("24 tests collected in 0.51s", 0, 24, 2, 0, 0, True),
+    ("24/30 tests collected", 0, 24, 20, 5, 0, True),
+    ("24/30 tests collected", 0, 24, 1, 1, 1, True),
+    ("24/30 tests collected", 0, 24, 1, 2, 2, True),
+    ("3/30 tests collected", 0, 3, 1, 0, 0, True),
+    ("3/30 tests collected", 0, 3, 2, 0, 0, False),
+    ("0/30 tests collected", 0, 0, 1, 5, 0, True),
+    ("24/30 tests collected", 0, 24, 1, 0, 0, False),
+    ("no tests collected (5 deselected)", 5, 0, 1, 5, 0, True),
+    ("no tests collected (5 deselected)", 5, 0, 2, 5, 0, False),
+    ("collection failed", 2, 0, 1, 0, 2, False),
 ])
-def test_notcode_branch_execution(tmp_path, count, group, status, expected, runs):
+def test_notcode_branch_execution(tmp_path, collection, collect_status, count, group, status, expected, runs):
     """Execute the real shell branch with a recording pytest to check shards and exits."""
     fake = tmp_path / "pytest_stub.py"
     record = tmp_path / "calls.jsonl"
@@ -136,8 +148,8 @@ def test_notcode_branch_execution(tmp_path, count, group, status, expected, runs
         'with Path(os.environ["CALLS"]).open("a") as stream:\n'
         '    stream.write(json.dumps(args) + "\\n")\n'
         'if "--collect-only" in args:\n'
-        '    print(os.environ["COUNT"] + "/30 tests collected (some deselected) in 0.01s")\n'
-        '    sys.exit(0)\n'
+        '    print(os.environ["COLLECTION"])\n'
+        '    sys.exit(int(os.environ["COLLECT_STATUS"]))\n'
         'sys.exit(int(os.environ["STATUS"]))\n'
     )
     script = notcode_step()["run"]
@@ -146,7 +158,7 @@ def test_notcode_branch_execution(tmp_path, count, group, status, expected, runs
     result = subprocess.run(["bash", "-e", "-c", script], text=True, capture_output=True, env={
         **os.environ, "NOTCODE_TESTS": "tests/unit/test_reader.py" if (count != 24 or group != 1 or status != 0) else "",
         "SHARD_GROUP": str(group), "RUNNER_TEMP": str(tmp_path),
-        "CALLS": str(record), "COUNT": str(count), "STATUS": str(status),
+        "CALLS": str(record), "COLLECTION": collection, "COLLECT_STATUS": str(collect_status), "STATUS": str(status),
     })
     assert result.returncode == expected, result.stdout + result.stderr
     calls = [json.loads(line) for line in record.read_text().splitlines()] if record.exists() else []
@@ -155,6 +167,8 @@ def test_notcode_branch_execution(tmp_path, count, group, status, expected, runs
     if executions:
         assert executions[0][-1] == "tests/unit/test_reader.py"
         assert "--strict-markers" in executions[0]
+        assert "-ra" in executions[0]
+        assert "-m" not in executions[0] and "-o" not in executions[0]
         assert ("--splits" in executions[0]) is (count >= 20)
 
 
@@ -164,10 +178,10 @@ def test_cli_reads_null_separated_paths():
         input="./docs/guides/sparameter_support_matrix.json\0docs/missing page.md\0",
         text=True, capture_output=True, cwd=ROOT, check=True,
     )
-    assert result.stdout.splitlines() == [
+    assert {
         "tests/unit/autodiff/test_ad_surface_contract.py",
         "tests/unit/sparams/test_sparameter_support_contract.py",
-    ]
+    } <= set(result.stdout.splitlines())
 
 
 def test_classifier_emits_the_selection(tmp_path):
@@ -183,6 +197,108 @@ def test_classifier_emits_the_selection(tmp_path):
             "GITHUB_OUTPUT": str(output), "EVENT_NAME": "pull_request",
             "BASE_SHA": "base", "HEAD_SHA": "head",
         }, check=True)
-    expected = "notcode_tests=tests/unit/autodiff/test_ad_surface_contract.py tests/unit/sparams/test_sparameter_support_contract.py"
-    assert set(output.read_text().splitlines()) == {"code_changed=false", expected}
-    assert expected in result.stdout
+    lines = output.read_text().splitlines()
+    assert "code_changed=false" in lines
+    selection = next(line for line in lines if line.startswith("notcode_tests="))
+    assert {
+        "tests/unit/autodiff/test_ad_surface_contract.py",
+        "tests/unit/sparams/test_sparameter_support_contract.py",
+    } <= set(selection.removeprefix("notcode_tests=").split())
+    assert selection in result.stdout
+
+
+@pytest.mark.parametrize("source,changed,expected", [
+    ('ROOT / "scripts" / "ci" / "x.py"', "scripts/ci/x.py", ["tests/test_reader.py"]),
+    ('ROOT / "scripts" / "ci" / "x.py"', "scripts/other.py", []),
+    ('ROOT / "scripts"', "scripts/other.py", ["tests/test_reader.py"]),
+    ('data["scripts"]', "scripts/a.py", []),
+    ('PATH = "docs"', "docs/a.md", []),
+    ('PATH = "docs"', "docs", ["tests/test_reader.py"]),
+    ('os.path.join(ROOT, "docs", "a.md")', "docs/a.md", ["tests/test_reader.py"]),
+    ('os.path.join(ROOT, "docs", "a.md")', "docs/other.md", []),
+    ('Path("docs") / "a.md"', "docs/a.md", ["tests/test_reader.py"]),
+    ('pathlib.Path("docs") / "a.md"', "docs/other.md", []),
+    ('PurePosixPath("docs") / "a.md"', "docs/a.md", ["tests/test_reader.py"]),
+    ('ROOT / "docs" / "guide"', "docs/guide/a.md", ["tests/test_reader.py"]),
+    ('ROOT / "docs/guide" / "a.md"', "docs/guide/other.md", []),
+    ('pathlib.Path("docs") / "a.md"', "docs/a.md", ["tests/test_reader.py"]),
+])
+def test_joined_and_single_component_readers(tmp_path, source, changed, expected):
+    """Join operands are consumed once and single components match only exactly."""
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "test_reader.py").write_text(source)
+    assert selector.select_tests([changed], tmp_path) == expected
+
+
+@pytest.mark.parametrize("statement", [
+    "import tests.unit.helper", "from tests.unit.helper import PATH",
+    "from tests.unit import helper", "import helper", "from helper import PATH",
+    "from . import helper", "from .helper import PATH",
+])
+def test_helper_imports_propagate_transitively(tmp_path, statement):
+    """Absolute, top-level and relative helper imports propagate through a second helper."""
+    tests = tmp_path / "tests/unit"
+    tests.mkdir(parents=True)
+    (tests / "helper.py").write_text('PATH = "docs/a.md"')
+    (tests / "bridge.py").write_text(statement)
+    (tests / "test_user.py").write_text("from . import bridge")
+    (tests / "test_unrelated.py").write_text("import unrelated")
+    assert selector.select_tests(["docs/a.md"], tmp_path) == ["tests/unit/test_user.py"]
+
+
+def test_scan_is_cached_but_changed_checks_are_fresh(tmp_path, monkeypatch):
+    """One scan per root serves different diffs, including absent changed paths."""
+    tests = tmp_path / "tests"
+    tests.mkdir()
+    (tests / "conftest.py").write_text('PATH = "docs/a.md"')
+    (tests / "test_user.py").write_text("import conftest")
+    assert selector.select_tests(["docs/other.md"], tmp_path) == []
+    def unexpected_parse(*args, **kwargs):
+        raise AssertionError("The cached tree was parsed again")
+    with monkeypatch.context() as patch:
+        patch.setattr(selector.ast, "parse", unexpected_parse)
+        selected = selector.select_tests(["docs/a.md"], tmp_path)
+    assert selected == ["tests/test_user.py"]
+
+
+def test_real_helper_importers():
+    selected = selector.select_tests(["scripts/diagnostics/build_waveguide_band_broad_e5_envelope.py"], ROOT)
+    assert {
+        "tests/oracle/test_waveguide_chain_battery_closure.py",
+        "tests/oracle/test_waveguide_chain_battery_v18_close.py",
+        "tests/unit/autodiff/test_waveguide_chain_battery_fd_redesign.py",
+        "tests/unit/sparams/test_waveguide_reciprocity_advisory.py",
+    } <= set(selected)
+
+
+def test_script_change_excludes_unrelated_join_parts():
+    selected = selector.select_tests(["scripts/ci/check_comment_content.py"], ROOT)
+    assert not set(selected) & {
+        "tests/unit/cli/test_cli_smoke.py",
+        "tests/unit/ports/test_msl_port_preflight.py",
+        "tests/unit/runners/test_decay_flux_convergence.py",
+        "tests/unit/sparams/test_coax_conductor_geometry.py",
+        "tests/unit/sparams/test_coax_msl_transition.py",
+        "tests/unit/sparams/test_mixed_refplane_measurement.py",
+        "tests/unit/sparams/test_msl_ladder_standoff.py",
+        "tests/unit/sparams/test_msl_null_reliability_mask.py",
+        "tests/unit/sparams/test_msl_z0_bias_floor_sweep_realized_anchor.py",
+        "tests/unit/sparams/test_sparam_driver_dump_parity.py",
+        "tests/unit/sparams/test_waveguide_s21_phase_residual.py",
+    }
+
+
+def test_literal_paths_interface(tmp_path):
+    """The public literal reader preserves deleted joins and excludes their bare parts."""
+    assert selector.literal_paths('ROOT / "docs" / "guide"', tmp_path, ["docs/guide/a.md"]) == {"docs/guide"}
+
+
+def test_package_helpers_and_cycles(tmp_path):
+    """Package initializers are helpers and cyclic imports reach a fixed point."""
+    tests = tmp_path / "tests/unit"
+    tests.mkdir(parents=True)
+    (tests / "__init__.py").write_text('from . import bridge\nPATH = "docs/a.md"')
+    (tests / "bridge.py").write_text("import tests.unit")
+    (tests / "test_user.py").write_text("from . import bridge")
+    assert selector.select_tests(["docs/a.md"], tmp_path) == ["tests/unit/test_user.py"]
