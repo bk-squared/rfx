@@ -1234,7 +1234,6 @@ open work see the
 [issue tracker](https://github.com/bk-squared/rfx/issues), and for what is
 supported at all see the [support matrix](support_matrix.md).
 
-A material array changed at run time (`eps_override`, a traced design variable) above the declared index is not covered by the echo delay bound.
 ### Uniform coax ports remain experimental
 
 Experimental uniform coax ports: calculator equality on the open line (through a `run()` model of the calculator) and on a shorted line (against the capped port), run()/forward() equality, bottom-feed, NTFF-leakage and occupancy-gradient checks define the validation scope; the antenna-level result against an independent solver is not yet shown. NTFF leakage and record-length gradient evidence must be checked for the antenna being reported.
