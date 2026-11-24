@@ -82,7 +82,7 @@ def _refuse_front_pec(sim, root, port, layout):
                 allowed_edges = [a | e for a, e in zip(allowed_edges, owned)]
     if ((root.pec_cells is not None and np.any(np.asarray(root.pec_cells) & front & ~allowed_cells))
             or any(np.any(np.asarray(e) & mask & ~a) for e, mask, a in zip(root.edges, front_edges, allowed_edges))):
-        raise RfxUnsupported(f"add_coaxial_port(): user PEC in front of the reference plane inside the bore, between the reference node {ref} and the pin's tip node {tip}; name the pin contact in terminates=")
+        raise RfxUnsupported(f"add_coaxial_port(): user PEC in front of the reference plane inside the bore, between the reference node {ref} and the pin's tip node {tip}; name the pin contact in terminates=; a named entry that also reaches the outer conductor terminates the line in a short at the reference plane")
 
 
 def deferred_coax_sources(*, spec, magnetic_sources, materials):

@@ -411,7 +411,8 @@ def test_span_metal_refused(monkeypatch, entry):
     tip = grid.position_to_index((.006, .006, .040))[2]
     message = (f"add_coaxial_port(): user PEC in front of the reference plane inside the bore, "
                f"between the reference node {ref} and the pin's tip node {tip}; "
-               "name the pin contact in terminates=")
+               "name the pin contact in terminates=; a named entry that also reaches the outer "
+               "conductor terminates the line in a short at the reference plane")
     error = refusal(monkeypatch, sim, entry, re.escape(message))
     print(str(error))
 
