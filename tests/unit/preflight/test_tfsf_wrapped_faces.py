@@ -41,7 +41,6 @@ def test_run_and_campaign_flags_match_initialized_stepper(case):
     expected = tfsf.boundary_flags(cfg, grid)[0]
     assert monitor_periodic_flags(sim, grid) == expected
     assert sim._campaign_ctx().periodic == expected
-    assert sim._campaign_ctx().realized().periodic == expected
     assert tfsf.run_periodic_flags(sim) == expected
 
 

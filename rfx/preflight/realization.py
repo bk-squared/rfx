@@ -742,10 +742,8 @@ def _assemble_realized(self, grid, *, nonuniform: bool):
     cell mask: a sheet owns no cell, and a volume's far face is a
     wall the cell mask does not mark (the class).
     """
-    from rfx.boundaries.tfsf import run_periodic_flags
     from rfx.model.conductors import realized_conductors
-    return realized_conductors(self, grid, nonuniform=nonuniform, mode="audit",
-                               periodic=run_periodic_flags(self))
+    return realized_conductors(self, grid, nonuniform=nonuniform, mode="audit")
 
 def _port_realized_edges(self, grid):
     """:class:`_RealizedPEC` for the uniform lane, or ``None``.
