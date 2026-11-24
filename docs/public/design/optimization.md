@@ -328,7 +328,7 @@ design region.
 | `"adam"` (default) | optional; with bounds, Adam steps a latent `u` with `x = lo + (hi - lo) * sigmoid(u)` | `lr`, default 0.01 |
 | `"projected_adam"` | required | Adam on the box variable in [0, 1], clipped to the box; `lr`, default 0.01 |
 | `"mma"` | required | the method of moving asymptotes (Svanberg); no learning rate |
-| `"gcmma"` | required | the globally convergent form of MMA: a trial point is accepted only when its objective lies under the conservative approximation, within 50 units in the last place of \|f\|; no learning rate |
+| `"gcmma"` | required | the globally convergent form of MMA: each step's model of the objective is made more conservative until the trial point's objective lies under the model's value there, within 50 units in the last place of \|f\|; after the inner-step cap the trial is accepted anyway and `GCMMAInnerCapWarning` says it is not conservative; no learning rate |
 
 - `bounds`: one `(min, max)` pair per parameter, finite and strictly ordered.
   `x0` must lie inside. The values `fun` receives are clipped to the box.
@@ -361,11 +361,13 @@ print(float(res_r.x[0]), res_r.fun)
 
 `MinimizeResult` holds `x`, the last evaluated iterate, and `fun`, its
 objective; `history` and `x_history` over the finite iterates; `nfev`, every
-evaluation including GCMMA trial points; `solves` and `solves_history`, the
-forward and reverse passes; `subproblem_caps`, the MMA and GCMMA subproblems
+evaluation including GCMMA trial points (not the one forward evaluation that
+`worst_case` makes first to scale the objective); `solves` and
+`solves_history`, the forward, reverse and forward-mode passes; `subproblem_caps`, the MMA and GCMMA subproblems
 that reached their solver cap (`MMASubproblemCapWarning` says so); and
 `stopped_nonfinite`, true when an evaluation was not finite and fewer than
-`n_iters` iterates were recorded. An invalid method, bounds, start or budget,
+`n_iters` iterates were recorded. An invalid method, bounds, start or
+`n_iters`,
 or `worst_case` with another method, raises `RfxRefusal`
 (`tests/unit/autodiff/test_minimize.py`,
 `tests/unit/autodiff/test_minimize_gcmma.py`).

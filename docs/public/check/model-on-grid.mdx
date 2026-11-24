@@ -177,7 +177,7 @@ how they read, and the [support page](/rfx/support/) lists them.
 
 ## Accuracy
 
-This page makes no accuracy statement of its own. The 0.35-cell edge offset
+The 0.35-cell edge offset
 that preflight uses to predict a sheet's solved size was measured on a thin PEC
 fin against a fine-mesh reference, for both polarizations and two cell sizes
 (`scripts/diagnostics/pec_sheet_edge_offset.py`), with the cell normal to the
@@ -190,9 +190,9 @@ at 4. Where two values are given they are E perpendicular and E parallel to
 the edge; a single value holds for both to within 0.01 cell, except
 at 4, where only E perpendicular was measured. Other pages interpolate between
 these ratios linearly in the logarithm of the ratio.
-For a strip three cells above a ground plane in air, with square cells, it
-reads 0.37 on one mesh with three cells in the gap, and 0.352 when the gap
-is meshed with 3, 6, 12 and 24 cells and extrapolated. At 1/2 and 1/4 it
+For a strip above a ground plane in air, with square cells, it reads 0.37 on
+one mesh with three cells in the gap, and 0.352 when the same gap is meshed
+with 3, 6, 12 and 24 cells and the trend is extrapolated. At 1/2 and 1/4 it
 reads 0.31 with three cells in the gap; those two values come from one mesh
 and were not checked on finer meshes. For an edge on a face between a dielectric of εr 2.2
 and air, with square cells and E parallel to the edge, it reads 0.33. An edge

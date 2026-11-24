@@ -143,10 +143,10 @@ a 10 GB card ran out of memory in the far-field step); a 24 GB card runs it.
 settling bar near 115 on the average slope, and the multi-mode tail beats
 rather than decaying smoothly.  The corrected board's cavity is thinner and
 its modes are higher-Q, so that ladder is not transferable; what is measured
-on it is an endpoint settled below the -40 dB bar at 125 periods (369367270265)
-(-45.4 dB on the pre-#1375 board, 369367259175; -50.9 dB on
-the pre-contract one).  The witness below re-measures the end-of-run envelope
-every run — trust it over this paragraph.
+on it is an endpoint settled below the -40 dB bar at 125 periods (-45.4 dB on
+an earlier version of this board and -50.9 dB on the pre-contract one).  The
+witness below re-measures the end-of-run envelope every run — trust it over
+this paragraph.
 """
 
 from __future__ import annotations
@@ -206,8 +206,7 @@ AIR_BELOW = 30.0e-3
 # air distances.
 AIR_ABOVE = 84.0e-3
 
-# 125 periods settles this fixture below the -40 dB bar:
-# SETTLED (VESSL 369367270265; -48.2 dB before #1546, 369367265975).  On the pre-contract board, endpoints
+# 125 periods settles this fixture below the -40 dB bar.  On the pre-contract board, endpoints
 # -36.5 dB at 90 periods and -52.6 dB at 204 put the bar near 115 on the
 # average slope, but the multi-mode tail beats
 # rather than decaying smoothly, so trust the printed witness over slope

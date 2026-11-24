@@ -89,8 +89,9 @@ What to know:
   step.
 - Splitting is along x only. A domain whose x size does not divide evenly is
   padded. Each device exchanges a whole y-z face every step, so a box whose
-  longest axis is not x runs slower per step: 1.51 to 1.69 times on three
-  RTX A6000 GPUs, and with CPML on two GPUs slower than on one. The result then
+  longest axis is not x runs slower per step than the same box turned with its
+  longest axis along x: 1.51 to 1.69 times on three RTX A6000 GPUs, and with
+  CPML on two GPUs slower than on one. The result then
   carries the advisory `multi_device_split_axis` in `result.diagnostics`, with
   the realized cell counts; the run is not changed. If the structure allows,
   put its longest axis along x (`tests/unit/runners/test_split_axis_advisory.py`).

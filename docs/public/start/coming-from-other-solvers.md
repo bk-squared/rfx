@@ -52,11 +52,11 @@ sim = mp.Simulation(
     cell_size=mp.Vector3(100, 100, 50),         # 100 x 100 x 50 mm
     resolution=0.4,                             # 2.5 mm cells
     boundary_layers=[],
-    sources=[mp.Source(mp.GaussianSource(frequency=fcen, fwidth=0.5 * fcen),
+    sources=[mp.Source(mp.GaussianSource(frequency=fcen, fwidth=fcen),
                        component=mp.Ez,
                        center=mp.Vector3(-20, -20, -5))],  # (30, 30, 20) mm from the corner
 )
-h = mp.Harminv(mp.Ez, mp.Vector3(10, 10, -5), fcen, fcen)  # (60, 60, 20) mm
+h = mp.Harminv(mp.Ez, mp.Vector3(10, 10, -5), fcen, 2 * fcen)  # (60, 60, 20) mm, 0-5 GHz
 sim.run(mp.after_sources(h), until=7135)        # 23.8 ns in a/c
 print([f"{m.freq * 299792458 / 1e-3 / 1e9:.3f} GHz" for m in h.modes[:3]])
 ```

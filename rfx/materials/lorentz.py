@@ -83,7 +83,8 @@ class LorentzPoleMap:
 
     Callables take broadcastable X, Y, Z arrays in metres. On occupied cells,
     delta and kappa must be finite and non-negative. A callable is read only at
-    occupied cells, including under jax.grad. Maps are keyed by identity.
+    occupied cells, including under jax.grad (with a traced occupancy that selects
+    no cell, at the first cell). Maps are keyed by identity.
     """
     omega_0: float
     delta: float | Callable

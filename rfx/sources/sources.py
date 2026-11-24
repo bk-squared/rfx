@@ -101,7 +101,8 @@ class GaussianPulse:
     bandwidth : float
         Fractional bandwidth (0–1). Default 0.5.
     amplitude : float
-        Peak amplitude (V/m). Default 1.0.
+        Scale of the pulse (V/m). Default 1.0. The differentiated Gaussian's
+        extrema are +/- sqrt(2/e), about 0.858, times it.
     cutoff : float
         Number of tau between t=0 and the Gaussian centre: t0 = cutoff * tau.
         Default 3.0; at least 2.5.

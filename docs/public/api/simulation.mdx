@@ -211,16 +211,18 @@ completion was produced.
 **Field-probe spectra.** With `RingdownSpec(identification_probes=(((x, y, z), "ez"), ...),
 probe_freqs=(...))` rfx completes the spectra of those probes instead of port
 S-parameters. The model is driven by soft sources only, or by a closed-box plane
-wave (`add_tfsf_source(closed_box=True)`) at normal incidence along x with its
-differentiated Gaussian pulse; other plane waves and waveforms are refused by
-name. `result.ringdown.probe_spectra` holds the completed spectra, shape
-(frequencies, probes), at `probe_freqs`, each on its field kind's own sampling
-clock, and `result.ringdown.s_params` is `None`. With
-`probe_normalization="incident"` on a closed-box plane wave, each `ey` or `ez`
-spectrum is divided by the incident E spectrum at the probe's x plane, so a
-probe behind a shield gives its transfer function X from one run, and
-20 log10 |1/X| is the shielding effectiveness; `report.incident_spectra` holds
-the divisor. Port S-parameters and probe spectra need separate runs. Probe
+wave (`add_tfsf_source(closed_box=True)`) at normal incidence along x whose
+waveform is the default differentiated Gaussian; other plane waves and
+waveforms are refused by name. `result.ringdown.probe_spectra` holds the
+completed spectra, shape (frequencies, probes), at `probe_freqs`, each on its
+own field's time grid (E at (n + 1)·dt, H at (n + ½)·dt for row n), and
+`result.ringdown.s_params` is `None`. With `probe_normalization="incident"` on
+a closed-box plane wave, every probe must be an `ey` or `ez` probe inside the
+total-field box (another component, or a probe outside the box, is refused),
+and its spectrum is divided by the incident E spectrum at its x plane. A probe
+behind a shield then gives its transfer function X from one run, and
+20 log10 |1/X| is the shielding effectiveness;
+`result.ringdown.report.incident_spectra` holds the divisor. Port S-parameters and probe spectra need separate runs. Probe
 completion forms no passivity check, because a field spectrum has no passivity
 bound, and `until_identified=True` is refused with it
 (`tests/unit/sparams/test_ringdown_probe_channels.py`,
@@ -279,15 +281,25 @@ respect to `design_eps_override` in a `design_box` by reciprocity instead: it
 stores the design cells' DFTs at the objective's frequencies and runs a second
 ordinary forward simulation. The objective reads DFT planes, E or H, and the
 far-field data of an NTFF box, all at the same positive frequencies below the
-Nyquist frequency, on a uniform mesh on one device. It returns the gradient of
-the settled spectrum only. `ForwardResult.adjoint_settling` divides the largest
+Nyquist frequency, on a uniform mesh on one device. Every plane and every NTFF
+face must lie at least one cell inside the absorber layers (inside the outermost
+cell with no CPML): a DFT plane with no `region` spans the whole grid and is
+refused, so give it a `region`. It returns the gradient of the settled spectrum
+only. `ForwardResult.adjoint_settling` divides the largest
 \|E\| on the design cells' edges over the last period of the lowest frequency by
 its record maximum: above about 1e-2 the record has not settled, and a small value proves
-nothing, so judge the gradient with `gradient_record_length_witness`. Refused
-by name: a graded mesh, `distributed=True`, `ringdown=`, ports, Debye, Lorentz
-and Kerr media, UPML, a plane-wave source, surface-impedance sheets,
-current-moment monitors, `precision="mixed"`, occupancy, conductivity and
-whole-grid overrides, and an objective read from `time_series`
+nothing, so judge the gradient with `gradient_record_length_witness`, which
+compares it with the gradient of a longer record (see
+[Gradients](/rfx/design/gradients/)). Refused by name: a graded mesh,
+`distributed=True`, `ringdown=`; every port, lumped RLC element and
+`port_s11_freqs`; a plane-wave source; Debye, Lorentz and Kerr media and
+anisotropic tensors; UPML, Bloch or periodic axes and PMC faces; conformal PEC,
+PEC and design occupancy and surface-impedance sheets; flux and current-moment
+monitors; a non-Yee solver, `stencil_order=4` and `precision="mixed"`;
+`design_sigma_override` and every other override (permittivity, conductivity,
+permeability, PEC and occupancy masks, `rlc_values_override`); a call without
+`design_box` and `design_eps_override`; and an objective read from
+`time_series`
 (`tests/unit/autodiff/test_reciprocity_adjoint.py`,
 `tests/unit/autodiff/test_adjoint_farfield.py`).
 

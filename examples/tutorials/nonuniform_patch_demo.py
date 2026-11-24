@@ -557,7 +557,7 @@ def main() -> None:
     t_axis = (np.arange(len(ts)) + 1) * dt_val * 1e9   # ns
     fig, ax = plt.subplots(figsize=(8, 3))
     ax.plot(t_axis, ts, lw=0.7)
-    ax.axvline(skip * dt_val * 1e9, color="r", ls="--", lw=1.0, label="Harminv start")
+    ax.axvline((skip + 1) * dt_val * 1e9, color="r", ls="--", lw=1.0, label="Harminv start")
     ax.set_xlabel("Time (ns)")
     ax.set_ylabel("Ez (a.u.)")
     ax.set_title("Probe Ez — patch ringdown (NU runner)")
