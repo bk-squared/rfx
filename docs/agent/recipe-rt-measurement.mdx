@@ -35,18 +35,12 @@ sim.add_flux_monitor(axis="x", coordinate=refl_x, freqs=freqs_rt, name="refl")
 sim.add_flux_monitor(axis="x", coordinate=trans_x, freqs=freqs_rt, name="trans")
 ```
 
-### `run(until_decay=...)`
+### `run(n_steps=...)` and a probe on each plane
 
-Decay-adaptive termination (see the `Simulation.run()` docstring for the
-authoritative description per solver path). The stop reads the field energy
-after the drive has ended: on absorbing (CPML/UPML) boundaries — including the
-non-uniform `dx/dy/dz`-profile runner — the run stops when the total
-interior-domain energy decays to `until_decay * peak` (issue #169).
-`decay_monitor_component` and `decay_monitor_position` are retired: they no
-longer affect the stop, and setting them warns. This kwarg is load-bearing for accuracy: a
-fixed `n_steps` that ends before the field has rung down truncates the signal
-and aliases residual energy into the spectrum. Detail (e) shows how a run
-checks its own record.
+Both runs use one fixed record, `n_steps`, and put a probe on each flux plane.
+From those probes rfx forms the ring-down witness (detail (e)), which says
+whether the record held the whole response. If it does not pass, lengthen
+`n_steps`. Detail (b) says what `run(until_decay=...)` does on these runs.
 
 ### Two-run reference subtraction
 
@@ -56,7 +50,8 @@ Subtract the DFT accumulators at the field level before computing the power flux
 ## Two-run template
 
 This template requires domain dimensions, frequency samples, source settings,
-monitor coordinates and a Lorentz pole supplied by the caller; the complete
+monitor coordinates, a Lorentz pole and the record length `n_steps` supplied by
+the caller; the complete
 `examples/tutorials/slab_rt_flux_monitor.py` is the runnable reference. The
 tutorial uses a lossless, dispersionless slab (εr = 4, no pole) and a fixed
 1200-step record.
@@ -86,17 +81,17 @@ def build_sim(with_slab: bool) -> Simulation:
 
 # Run 1 — reference (no scatterer)
 sim_ref = build_sim(with_slab=False)
-res_ref = sim_ref.run(n_steps=12000, until_decay=1e-5)
+res_ref = sim_ref.run(n_steps=n_steps)
 ref_refl_fm = res_ref.flux_monitors["refl"]
 ref_trans_flux = np.asarray(flux_spectrum(res_ref.flux_monitors["trans"]))
 
 # Run 2 — sample (with scatterer)
 sim_slab = build_sim(with_slab=True)
-res_slab = sim_slab.run(n_steps=12000, until_decay=1e-5)
+res_slab = sim_slab.run(n_steps=n_steps)
 slab_refl_fm = res_slab.flux_monitors["refl"]
 slab_trans_flux = np.asarray(flux_spectrum(res_slab.flux_monitors["trans"]))
 
-# Both records must hold the whole response (detail (e))
+# Both records must hold the whole response (detail (e)); if not, lengthen n_steps
 for res in (res_ref, res_slab):
     assert res.settling_witness["status"] == "pass", res.settling_witness["reason"]
 
@@ -123,13 +118,25 @@ out the four private accumulator field names — and it raises `ValueError`
 instead of broadcasting when the two monitors do not cover the same plane and
 the same frequencies.
 
-### (b) `until_decay` is load-bearing
+### (b) Record length: one fixed record, checked by the witness
 
-A fixed `n_steps` makes the DFT aliasing depend on where the signal happens to
-be truncated. For dispersive or high-Q scatterers, use `until_decay=1e-5` or
-tighter. For simple lossless slabs `1e-3` is often sufficient. Whichever way the
-run ends, the ring-down witness of detail (e) says whether the record was long
-enough; the tutorial uses a fixed 1200-step record that its witness passes.
+A flux spectrum is a DFT over the record, so a record that ends while the field
+still rings leaves part of the response out of every bin. The template uses one
+fixed `n_steps` for both runs and asserts the ring-down witness of detail (e),
+which judges that per frequency bin. The tutorial's 1200-step record passes it
+at about −139 dB for the reference run and −92 dB for the slab run.
+
+`run(until_decay=1e-5)` also gave a passing witness on both runs, measured on
+the tutorial's slab and on a Lorentz slab (8 mm, εr∞ = 2, one pole at 10 GHz).
+Three things differ from a fixed record:
+
+- The vacuum reference run never reaches the requested 1e-5. Its field energy
+  stops falling near 1e-13 of the drive's peak, and the run ends on the float32
+  floor with an `AccuracyWarning`; both measured reference runs ended this way.
+- On the tutorial's slab that reference run lasted 25,900 steps, about 22 times
+  the 1200-step record, and R and T came out the same to three decimals.
+- Under `until_decay` the `n_steps` argument is ignored; the run stops at the
+  latest at `decay_max_steps`.
 
 ### (c) TFSF transverse-periodicity gotcha
 
@@ -209,7 +216,7 @@ says whether the signal had ended before the DFT was read.
 
 For dispersionless media there is no group-velocity chirp, so the raw
 time-series approach does not produce this artifact — but `add_flux_monitor`
-is still preferred for its cleaner interface and decay-adaptive stopping.
+is still preferred for its cleaner interface.
 
 ## Known accuracy
 
