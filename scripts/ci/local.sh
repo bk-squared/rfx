@@ -98,6 +98,7 @@ bash scripts/ci/lint.sh || fail
 begin 1
 (
 bash scripts/ci/docs_hygiene.sh || fail
+CLOSING_ISSUES= OPEN_ISSUES= "$PYTHON" scripts/ci/check_known_limitations.py || fail
 ) || step_failed
 
 begin 2

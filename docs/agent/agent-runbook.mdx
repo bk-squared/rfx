@@ -59,8 +59,8 @@ was 5 min 16 s of it, and everything else together was under ten seconds.
 
 `scripts/ci/local.sh` runs, in order: ruff, docs-hygiene, changelog-fragment, data-budget, file-size-ratchet, pr-body, workflow-yaml, api-reference, contract-tests.
 
-After those it runs the selected tests, and its file-size step also runs the
-layer-structure check.
+After those it runs the selected tests, its docs-hygiene step also checks the
+known-limitations page offline, and its file-size step also runs the layer-structure check.
 
 ```
 scripts/ci/local.sh                   # the local checks; pr-body reports skipped
@@ -74,8 +74,8 @@ of `lint.yml`. `pr-body.yml` runs `scripts/ci/check_pr_body.py` and
 `scripts/ci/check_known_limitations.py`; `changelog-fragment.yml` runs
 `scripts/ci/check_changelog_fragment.py`. On a batch branch both use
 `scripts/ci/check_batch.py` instead, and both pass a merge group without checking. The
-local runner calls the same scripts, with two differences: it does not run the
-known-limitations check, and it adds the selected tests. So a green local run is
+local runner calls the same scripts, checking the known-limitations page offline
+without checking closing issues, and adds the selected tests. So a green local run is
 close to, not the same as, a green CI run.
 `tests/contracts/test_ci_workflows_contract.py` fails if a command moves back inline,
 and if this list and `local.sh` stop agreeing (it allows the extra selected-tests
