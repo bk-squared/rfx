@@ -29,9 +29,9 @@ a strip three cells above a ground wall -- a printed conductor's situation --
 it reads 0.37, 0.31 and 0.31 when the cell normal to the sheet is 1, 1/2 and
 1/4 of the in-plane cell (``pec_strip_over_ground_offset.py``), so the fixed
 0.35 leaves at most 0.042 cell per edge there. For a free-standing sheet with
-strongly non-square cells it moves more (0.27 at 1/2, 0.60 at 2); pass
-``edge_offset=`` for such a mesh. A conductor one or more cells THICK ends in
-a face between two corners and has a smaller offset, not handled here.
+strongly non-square cells it moves more (0.28 at 1/2, 0.56 to 0.57 at 2);
+pass ``edge_offset=`` for such a mesh. A conductor one or more cells THICK
+ends in a face between two corners and has a smaller offset, not handled here.
 
 :func:`edge_aware_profile` builds such an axis profile. It only computes
 where the lines go; the cells between them come from

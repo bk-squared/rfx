@@ -832,13 +832,13 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
                 f"{axis_name} = {_fmt_len(float(nodes[k]))}, an E node "
                 f"whose adjacent cells differ by "
                 f"{(large / small - 1.0):.0%} ({_fmt_len(d_below)} below, "
-                f"{_fmt_len(d_above)} above). A DC fold is normalized by "
-                f"the occupied cell's primal width; a surface-impedance sheet by the "
-                f"E-node DUAL spacing {_fmt_len(dual)}. A sheet on a grading step is "
-                f"where the realized sheet resistance is most "
-                f"mesh-sensitive: move the sheet onto a locally uniform "
-                f"node (or flatten the grading there) if its loss is "
-                f"claims-bearing.",
+                f"{_fmt_len(d_above)} above). A DC film and a surface-impedance "
+                f"sheet alike spread their conductance over the E-node DUAL "
+                f"spacing {_fmt_len(dual)} (half of each adjacent cell), so the "
+                f"folded sheet resistance is the declared one. The grading step "
+                f"still perturbs the field around the sheet: move the sheet onto "
+                f"a locally uniform node (or flatten the grading there) if its "
+                f"loss is claims-bearing.",
                 **finding_subjects(self, objects=(tc,)),
                 code="thin_conductor_graded_node",
                 source="_validate_cfg_thin_conductor_graded_node",
