@@ -123,7 +123,7 @@ starting points for a convergence study. They are not a substitute for one.
 
 | Port family | Start from | What the coarser mesh costs |
 |---|---|---|
-| Lumped or wire port, one-port `S11` | about 60 cells per wavelength at the highest frequency | at 60 cells/λ, `\|S11\|` of resistive loads is within 0.54 dB of the closed form (shorts and opens exact); at 30 cells/λ magnitudes are within 1.1 dB and phase-crossing frequencies sit 1.7–2.9 % from the closed form (measured through `forward(port_s11_freqs=...)`) |
+| Lumped or wire port, one-port `S11` | about 60 cells per wavelength at the highest frequency | no current test measures the accuracy at that resolution; a mesh series decides it ([Is the mesh fine enough?](/rfx/check/mesh-convergence/)) |
 | Microstrip line, `compute_msl_s_matrix` | at least 4 cells through the substrate (preflight warns below that) | the substrate thickness sets the cell size, not the wavelength |
 | Coaxial line | at least 4 cells across the annulus | refining shortens the probe span the phase fit uses, so give the probe array enough physical length |
 

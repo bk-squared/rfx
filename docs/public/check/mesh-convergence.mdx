@@ -152,11 +152,13 @@ analytic result or a measurement. See
 - **Graded meshes.** `convergence_study` passes one number to your factory,
   so it can be a scale factor instead of a cell size: build `dx`,
   `dz_profile` and so on from it. Refine the fine and coarse regions together,
-  and keep neighbouring cells within a ratio of about 1.3. See
-  [Non-Uniform Mesh](/rfx/model/domain-mesh/).
-- **Ports.** Lumped and wire port S11 needs about 60 cells per wavelength at
-  the top frequency. Microstrip is usually set by the substrate thickness.
-  Coax needs at least 4 cells across the annulus. See
+  and keep every ratio between neighbouring cells at or below 1.4 (preflight
+  warns above it). See [Non-Uniform Mesh](/rfx/model/domain-mesh/).
+- **Ports.** For lumped and wire port S11, start from about 60 cells per
+  wavelength at the top frequency. No current test measures the accuracy at
+  that resolution; the mesh series on this page decides it. Microstrip is
+  usually set by the substrate thickness. Coax needs at least 4 cells across
+  the annulus. See
   [Probes and S-Parameters](/rfx/measure/s-parameters/).
 - **Coaxial probes are placed in cells.** A coaxial port's probes are spaced
   in cells, so refining the mesh shortens the physical span they cover. Give

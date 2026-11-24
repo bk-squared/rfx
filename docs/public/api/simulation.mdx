@@ -190,8 +190,8 @@ poles and the checks. `report.ok` is decided by comparing the completions from
 comparison cannot be formed and a shorter second window is compared instead
 (`W2` in the report), which can read the error low. Neither comparison is an
 error bound. The source must be off in
-the fit window. It covers wire ports (one port on a uniform mesh, or a graded
-mesh) with a fixed `n_steps`. Other ports, TFSF, `until_decay` and `devices=`
+the fit window. It covers wire ports (one wire port on a uniform mesh, one or
+several on a graded mesh) with a fixed `n_steps`. Other ports, TFSF, `until_decay` and `devices=`
 are refused with the reason. `s_params` is `None` when the report says no
 completion was produced.
 
