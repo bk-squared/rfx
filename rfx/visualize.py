@@ -965,6 +965,7 @@ def plot_time_series(
     *,
     labels: list[str] | None = None,
     title: str = "Probe Time Series",
+    components: list[str] | None = None,
 ) -> object:
     """Plot probe time series.
 
@@ -974,20 +975,25 @@ def plot_time_series(
     dt : timestep in seconds
     labels : probe labels
     title : plot title
+    components : one field name per column, in registration order
+        E probes are drawn at (n + 1) * dt and H probes at (n + 0.5) * dt.
+        Without components, every column is drawn as an E probe.
 
     Returns
     -------
     matplotlib Figure
     """
     plt = _pyplot()
+    from rfx.measurement.plan import record_sample_times
+
     ts = np.asarray(time_series)
     n_steps, n_probes = ts.shape
-    t_ns = np.arange(n_steps) * dt * 1e9
+    t_ns = record_sample_times(dt, n_steps, components, n_cols=n_probes) * 1e9
 
     fig, ax = plt.subplots(figsize=(8, 4))
     for i in range(n_probes):
         label = labels[i] if labels else f"Probe {i}"
-        ax.plot(t_ns, ts[:, i], label=label)
+        ax.plot(t_ns[:, i], ts[:, i], label=label)
 
     ax.set_xlabel("Time (ns)")
     ax.set_ylabel("Field amplitude")
