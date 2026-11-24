@@ -19,6 +19,8 @@ from rfx.runners._rank import rank_shard_map
 from rfx.runners._distributed_ntff import SlabNTFF
 from rfx.stepping.record_join import join_owned, packed_pieces, record_bytes
 from rfx.stepping.slab import place
+from rfx.stepping.slab_moments import (snapshot_bounds, moment_operands,
+                                       moment_metadata, local_monitor)
 from rfx.measurement import accumulators
 from rfx.measurement.plane_records import time_recorded_dft_selection
 
@@ -61,11 +63,15 @@ class Packed:
         flat = jnp.concatenate([a.ravel() for a in arrays]) if arrays else jnp.zeros(0, self.dtype)
         return jnp.pad(flat, (0, self.capacity - flat.size))
 
-    def mapped(self, buffer, state, step, branches, *, ranks, previous=None):
-        inputs = (buffer, state, step)
-        specs = (P("x"), _field_specs(state), P())
+    def mapped(self, buffer, state, step, branches, *, ranks, previous=None, operands=None):
+        inputs: tuple[Any, ...] = (buffer, state, step)
+        specs: tuple[Any, ...] = (P("x"), _field_specs(state), P())
         if previous is not None:
             inputs += (previous,)
+            specs += (P("x"),)
+
+        if operands is not None:
+            inputs += (operands,)
             specs += (P("x"),)
 
         @partial(rank_shard_map, mesh=self.mesh, in_specs=specs,
@@ -372,23 +378,27 @@ class MomentRecords(Packed):
     def prepare(self, state, *, ranks):
         from rfx.current_moments import slab_e_snapshot
         branches = []
-        for m in self.parts:
+        for m in map(snapshot_bounds, self.parts):
             def branch(args, m=m):
                 _, fields, _ = args
                 return self.previous.pack(slab_e_snapshot(fields, m))
             branches.append(branch)
-        return self.previous.mapped(self.previous.initial(), state, 0, branches, ranks=ranks)
+        start = jnp.zeros((self.mesh.size, self.previous.capacity), self.previous.dtype)
+        return self.previous.mapped(start, state, 0, branches, ranks=ranks)
 
-    def update(self, buffer, state, dt, step, *, ranks, previous):
+    def operands(self):
+        return moment_operands(self.parts, self.mesh)
+
+    def update(self, buffer, state, dt, step, *, ranks, previous, operands):
         from rfx.current_moments import accumulate_current_moments
         branches = []
-        for rank, m in enumerate(self.parts):
+        for rank, m in enumerate(map(moment_metadata, self.parts)):
             def branch(args, rank=rank, m=m):
-                local, fields, n, old = args
+                local, fields, n, old, weights = args
                 return self.pack(accumulate_current_moments(
-                    self.unpack(local[0], rank), fields, self.previous.unpack(old[0], rank), m, dt, n))
+                    self.unpack(local[0], rank), fields, self.previous.unpack(old[0], rank), local_monitor(m, weights), dt, n))
             branches.append(branch)
-        return self.mapped(buffer, state, step, branches, ranks=ranks, previous=previous)
+        return self.mapped(buffer, state, step, branches, ranks=ranks, previous=previous, operands=operands)
 
     def assemble(self, buffer, *, multi_process=False):
         if multi_process:
@@ -422,10 +432,9 @@ class SlabRecords:
             from rfx.farfield import make_ntff_box
             self.ntff_box = make_ntff_box(grid, *sim._ntff)
             self.layouts["ntff"] = SlabNTFF(self.ntff_box, grid.shape, nx_per, mesh, field_dtype)
-        with jax.ensure_compile_time_eval():
-            planes = build_planes(sim, grid, n_steps)
-            flux = build_flux_monitor_cfgs(sim, grid, n_steps)
-            monitor = monitor_for_simulation(sim, grid, sim._periodic_flags())
+        planes = build_planes(sim, grid, n_steps)
+        flux = build_flux_monitor_cfgs(sim, grid, n_steps)
+        monitor = monitor_for_simulation(sim, grid, sim._periodic_flags())
         for what, template in (("a DFT plane probe", planes), ("a flux monitor", flux),
                                ("a current-moment monitor", monitor)):
             if any(isinstance(leaf, jax.core.Tracer) for leaf in jax.tree.leaves(template)):
@@ -457,9 +466,12 @@ class SlabRecords:
     def prepare(self, state, *, ranks):
         return self.layouts["moments"].prepare(state, ranks=ranks) if "moments" in self.layouts else None
 
-    def update(self, buffer, state, dt, step, *, ranks, previous):
+    def operands(self):
+        return {"moments": self.layouts["moments"].operands()} if "moments" in self.layouts else {}
+
+    def update(self, buffer, state, dt, step, *, ranks, previous, operands):
         return {kind: layout.update(buffer[kind], state, dt, step, ranks=ranks,
-                                    **({"previous": previous} if kind == "moments" else {}))
+                                    **({"previous": previous, "operands": operands[kind]} if kind == "moments" else {}))
                 for kind, layout in self.layouts.items()}
 
     def assemble(self, buffers, *, multi_process):
