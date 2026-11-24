@@ -42,20 +42,23 @@ is a volume. rfx follows the same split: the declaration decides it. See
 ### Meep: cavity resonance
 
 ```text
-# Meep (for comparison only)
+# Meep (for comparison only), with the length unit a = 1 mm: frequency is in
+# c/a, resolution in cells per mm and time in a/c (3.336 ps). The origin is the
+# centre of the cell, and with no PML every face is a metal wall.
 import meep as mp
 
+fcen = 2.5e9 * 1e-3 / 299792458                 # 2.5 GHz in c/a
 sim = mp.Simulation(
-    cell_size=mp.Vector3(0.1, 0.1, 0.05),
-    resolution=50,
+    cell_size=mp.Vector3(100, 100, 50),         # 100 x 100 x 50 mm
+    resolution=0.4,                             # 2.5 mm cells
     boundary_layers=[],
+    sources=[mp.Source(mp.GaussianSource(frequency=fcen, fwidth=0.5 * fcen),
+                       component=mp.Ez,
+                       center=mp.Vector3(-20, -20, -5))],  # (30, 30, 20) mm from the corner
 )
-sim.sources = [mp.Source(
-    mp.GaussianSource(frequency=2.0, fwidth=0.5),
-    component=mp.Ez,
-    center=mp.Vector3(0.03, 0.03, 0.02),
-)]
-sim.run(until_after_sources=mp.stop_when_fields_decayed(50, mp.Ez, mp.Vector3(), 1e-6))
+h = mp.Harminv(mp.Ez, mp.Vector3(10, 10, -5), fcen, fcen)  # (60, 60, 20) mm
+sim.run(mp.after_sources(h), until=7135)        # 23.8 ns in a/c
+print([f"{m.freq * 299792458 / 1e-3 / 1e9:.3f} GHz" for m in h.modes[:3]])
 ```
 
 ```python
@@ -85,6 +88,9 @@ print([f"{m.freq / 1e9:.3f} GHz" for m in modes[:3]])
 Coordinates are in metres and `freq_max` in hertz; there are no normalized
 units. With no `dx`, rfx picks a cell size from `freq_max`, and with no
 waveform the source is a `GaussianPulse` centred at `freq_max / 2`.
+rfx's `GaussianPulse` is a differentiated Gaussian and Meep's `GaussianSource`
+is a Gaussian-modulated sinusoid, so the two scripts excite the modes with
+different amplitudes: compare the mode frequencies, not the field values.
 
 A closed PEC box has no loss, so its field never decays and `until_decay` is
 the wrong stop. Choose a fixed record long enough for the frequency resolution

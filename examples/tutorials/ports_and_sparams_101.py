@@ -156,8 +156,9 @@ def build_microstrip_ports() -> Simulation:
     sim.add_material("substrate", eps_r=3.2, sigma=0.01)
 
     # The metal and dielectric end before the absorbing cells.  The 1 mm
-    # substrate has x/y faces 23–43 µm off nodes where sheet-edge registration
-    # takes precedence; side clearance exceeds twice the substrate height.
+    # substrate's x/y faces are realized 87.5 µm (x) and 74.4 µm (y) inside the
+    # drawn faces, where sheet-edge registration takes precedence; side clearance
+    # exceeds twice the substrate height.
     #
     # FOIL IS A SHEET, A PLATE IS A VOLUME.  A microstrip ground plane and its
     # trace are etched copper foil — tens of microns on a 1 mm board — so they
@@ -303,12 +304,12 @@ def main() -> None:
     # are needed here; a settled microstrip S-matrix costs much more than the
     # small generic-port demonstrations above.
     #
-    # The edge-aware propagation mesh reports that the automatic downstream
-    # reflector-clearance solve is skipped on graded cells. Both short feeds
-    # also report insufficient probe clearance; fitted Z0/beta are unreadable.
-    # The three-layer
-    # absorber also remains advisory. This section only builds the setup; it
-    # does not quote a settled microstrip S-matrix.
+    # General preflight reports line_stub_behind_port for both short feeds
+    # and msl_port_geometry for the automatic probe-offset interval solve
+    # skipped on the graded propagation axis. The MSL S-parameter preflight
+    # reports all checks passed. The three-layer absorber, zero-thickness
+    # conductor and substrate realization also remain advisory. This section
+    # only builds the setup; it does not quote a settled microstrip S-matrix.
     microstrip_report = microstrip.preflight()
     microstrip_route = microstrip.preflight_sparameters(calculator="msl")
     print(

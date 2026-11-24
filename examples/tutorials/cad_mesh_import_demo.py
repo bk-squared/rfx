@@ -77,6 +77,7 @@ def build_simulation():
     # source in free space ABOVE the plate (plate top is z≈15.75 mm), not inside the PEC
     sim.add_source((0.03, 0.02, 0.022), component="ez",
                    amplitude_kind="current")
+    sim.add_probe((0.03, 0.02, 0.022), component="ez")
     return sim
 
 
@@ -98,7 +99,8 @@ def main() -> int:
 
     # 5. Run a few steps to confirm the imported geometry rasterises and steps cleanly.
     result = sim.run(num_periods=2)
-    print(f"\nran OK — probe finite: {bool(np.all(np.isfinite(result.time_series)))}")
+    print(f"\nran OK — probe finite: {bool(np.all(np.isfinite(result.time_series)))}; "
+          f"peak |Ez| > 0: {bool(np.max(np.abs(result.time_series)) > 0)}")
     return 0
 
 

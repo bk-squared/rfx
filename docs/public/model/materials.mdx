@@ -126,7 +126,7 @@ from rfx import Cylinder, Sphere
 
 slab = Box((0.0, 0.0, 0.0), (0.05, 0.05, 0.002))         # corner_lo, corner_hi
 ball = Sphere((0.025, 0.025, 0.010), radius=0.005)        # center, radius
-via = Cylinder((0.025, 0.015, 0.001), radius=0.0005,      # center, radius,
+via = Cylinder((0.025, 0.015, 0.001), radius=0.0006,      # center, radius,
                height=0.002, axis="z")                     # height, axis
 sim.add(ball, material="alumina")
 sim.add(via, material="copper")

@@ -279,7 +279,7 @@ def main() -> None:
     axes[1].legend(loc="best", fontsize=7)
     axes[1].grid(True, alpha=0.3)
 
-    t_axis = np.arange(len(ts)) * dt * 1e9
+    t_axis = (np.arange(len(ts)) + 1) * dt * 1e9
     axes[2].plot(t_axis, ts, lw=0.7)
     axes[2].set_xlabel("Time (ns)")
     axes[2].set_ylabel("Ez at leak_near probe")

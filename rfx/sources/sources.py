@@ -103,7 +103,7 @@ class GaussianPulse:
     amplitude : float
         Peak amplitude (V/m). Default 1.0.
     cutoff : float
-        Number of tau between t=0 and the pulse peak: t0 = cutoff * tau.
+        Number of tau between t=0 and the Gaussian centre: t0 = cutoff * tau.
         Default 3.0; at least 2.5.
     """
 
@@ -122,7 +122,12 @@ class GaussianPulse:
 
     @property
     def t0(self) -> float:
-        """Pulse delay: the peak lies cutoff*tau after the start at t=0."""
+        """Gaussian centre delay, t0 = cutoff * tau, with tau = 1/(f0*bandwidth*pi).
+
+        The uncorrected differentiated Gaussian is zero at t0, with extrema
+        at t0 +/- tau/sqrt(2). The charge-free onset correction shifts these
+        slightly in the evaluated pulse.
+        """
         return self.cutoff * self.tau
 
     def __call__(self, t: float) -> float:

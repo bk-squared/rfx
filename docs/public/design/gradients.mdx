@@ -104,8 +104,11 @@ does not establish mesh convergence or agreement with an external solver.
 
 Before you optimize a new setup, compare the autodiff gradient with a central
 finite difference at one cell. The model below is a small closed PEC box, so
-every grid index is a physical cell and nothing lands in an absorber. The mesh
-is coarse so the check runs in seconds.
+nothing lands in an absorber. The permittivity grid has one more index than
+cells on each axis, (21, 16, 11) for 20 × 15 × 10 cells, so the last index on
+each axis is not a cell of the box. `eps_override` replaces the permittivity of
+every cell: the solved box is filled with εr 4, and the declared slab keeps
+only its conductivity. The mesh is coarse so the check runs in seconds.
 
 ```python
 import jax
@@ -132,7 +135,7 @@ def loss_fn(eps_r):
 
 ad_grad = jax.grad(loss_fn)(params)
 
-idx = (10, 7, 5)          # a cell inside the slab
+idx = (10, 7, 5)          # a cell in the slab's conductive block
 h = 1e-1                  # FD step in eps_r units
 fd_grad = (loss_fn(params.at[idx].add(h))
            - loss_fn(params.at[idx].add(-h))) / (2 * h)

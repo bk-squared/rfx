@@ -76,7 +76,7 @@ def build_simulation() -> Simulation:
     # comes back with ``settling_db = None`` and no truncation guard at all.
     # Broadside to the z-directed dipole, where E_z is largest: 12 mm from the
     # source (0.32 wavelengths at 8 GHz), 7.5 mm inside the nearest corrected
-    # monitor face, and 9 mm clear of the CPML, so it records live field
+    # monitor face, and 18 mm clear of the CPML, so it records live field
     # without sitting on the Huygens surface or inside the absorber.
     sim.add_probe((CENTER[0] + PROBE_OFFSET, CENTER[1], CENTER[2]), "ez")
     return sim
@@ -142,7 +142,7 @@ def main() -> None:
     close_advisory_observed = bool(close_report.by_code("ntff_near_field"))
     print(f"Close-box advisory observed: {close_advisory_observed}")
 
-    # Move every face 19.5 mm from the source: beyond lambda/2, and one cell
+    # Move every face 19.5 mm from the source: beyond lambda/2, and seven cells
     # inside the CPML-free region.  Only the six-layer absorber advisory should
     # remain.  The full check also catches a conductor crossing a
     # monitor face, which run()'s automatic advisory tier does not check.
