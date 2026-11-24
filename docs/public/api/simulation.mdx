@@ -69,9 +69,9 @@ Every `add_*` method returns the simulation, so calls can be chained.
 | `add_material(name, *, eps_r, sigma, mu_r, ...)` | register a named material | [Geometry & Materials](/rfx/api/geometry-materials/) |
 | `add(shape, *, material)` | fill a shape with a material | [Geometry & Materials](/rfx/api/geometry-materials/) |
 | `add_thin_conductor(shape, ...)` | a zero-thickness metal sheet | [Geometry & Materials](/rfx/api/geometry-materials/) |
-| `add_source`, `add_polarized_source`, `add_tfsf_source` | field excitation, no impedance | [Sources & Ports](/rfx/api/sources-ports/) |
-| `add_port`, `add_msl_port`, `add_waveguide_port`, `add_coaxial_port` | ports for S-parameters | [Sources & Ports](/rfx/api/sources-ports/) |
-| `add_lumped_rlc` | an R/L/C element in one cell | [Sources & Ports](/rfx/api/sources-ports/) |
+| `add_source`, `add_polarized_source`, `add_tfsf_source` | field excitation, no impedance | [Sources and Ports API](/rfx/api/sources-ports/) |
+| `add_port`, `add_msl_port`, `add_waveguide_port`, `add_coaxial_port` | ports for S-parameters | [Sources and Ports API](/rfx/api/sources-ports/) |
+| `add_lumped_rlc` | an R/L/C element in one cell | [Sources and Ports API](/rfx/api/sources-ports/) |
 | `add_probe`, `add_vector_probe`, `add_dft_plane_probe`, `add_flux_monitor`, `add_ntff_box` | observables | [Results & Observables](/rfx/api/results/) |
 | `add_refinement(z_range, *, ratio=4, ..., validation="production")` | a finer z slab (subgridding) | refused with the default `validation="production"`; with `validation="research"`, only `run()` on a uniform mesh accepts it |
 
@@ -89,7 +89,7 @@ sim.add_probe((0.030, 0.015, 0.015), "ez")
 | Method | Returns | Use |
 |---|---|---|
 | `preflight(*, strict=False, check_ntff=True, check_resolution=True, ...)` | `PreflightReport` | Setup errors and warnings. `run()` calls it for you. |
-| `preflight_sparameters(*, calculator="run", strict=False, ...)` | `PreflightReport` | Is this port family valid for the S-parameter calculator you plan to call? See [Sources & Ports](/rfx/api/sources-ports/#checking-a-calculator-before-the-run). |
+| `preflight_sparameters(*, calculator="run", strict=False, ...)` | `PreflightReport` | Is this port family valid for the S-parameter calculator you plan to call? See [Sources and Ports API](/rfx/api/sources-ports/#checking-a-calculator-before-the-run). |
 | `fidelity_report(print_report=True)` | report | Where each shape actually landed on the grid, next to what you drew. |
 | `freeze_mesh()` | `Grid` or `NonUniformGrid` | Fix the mesh now, so you can read grid indices before placing more geometry. |
 | `plan_mesh(*, n_steps=None, available_memory_gb=None, sparameter_calculator=None, ...)` | `MeshPlan` | A serializable summary of the mesh, memory estimate and checks. See [Automation](/rfx/api/functions/). |
@@ -169,7 +169,7 @@ study, give the same physical record length on every mesh: the same `num_periods
 | `compute_s_params=True`, `s_param_freqs=` | S-parameters for lumped and wire ports (`add_port`) only. Other port families have their own calculator. |
 | `snapshot=SnapshotSpec(interval=10, components=("ez",), slice_axis=None, slice_index=None)` | Record field snapshots. See [Visualization & Result Analysis](/rfx/measure/plots-and-export/). |
 | `report_every=N` | Print progress (steps, rate, ETA) every N steps. Does not change the result. |
-| `subpixel_smoothing=True` | Smoothed permittivity at dielectric interfaces. Only the diagonal of the averaged tensor is kept, so a curved interface converges first order (measured on a lossless εr 4 sphere's extinction against Mie over three meshes). The resonance of an εr 38 cylinder (radius 5.7 mm, height 4.75 mm) in a metal housing was 4.658 GHz at 0.5 mm cells and 4.627 GHz at 0.25 mm (measured; record kept with the project). |
+| `subpixel_smoothing=True` | Smoothed permittivity at dielectric interfaces. Only the diagonal of the averaged tensor is kept, so a curved interface converges first order (measured: on graded meshes the three lowest modes of an εr 4 sphere in a PEC box converge at slopes 0.99–1.01, and an εr 38 cylinder's TE01δ resonance reads about 1 % high at 0.5 mm cells; records kept with the project). |
 | `subpixel_smoothing="full_tensor"` | The full averaged tensor, off-diagonal terms included: second order at a curved dielectric interface (measured on the same εr 4 sphere; not measured on high-contrast rods), on uniform and graded meshes, one device. It refuses some inputs that `True` runs on a uniform mesh (`boundary="upml"`, `compute_waveguide_s_matrix`, conformal PEC, a traced `eps_r`); see [Support](/rfx/support/). |
 | `subpixel_smoothing="kottke_pec"` | Experimental. Also smooths metal faces, but it is not recommended for metal: on every measured case with a metal face off the grid it was farther from the reference than the staircase. A run that uses it with a PEC volume warns. For curved metal use `conformal_pec=True`. |
 | `conformal_pec=True` | Cut-cell updates at curved metal: each cut edge and face uses its PEC-free length and area. On a PEC sphere it is closer to Mie than the staircase, but the error falls only first order with the cell size, and every run with it warns. Judge a curved body by a mesh series. |
@@ -282,7 +282,7 @@ Each port family has its own calculator method on `Simulation`:
 and wire ports use `run(compute_s_params=True)`. `compute_s_matrix(method=None,
 **kwargs)` picks the right method from the registered ports and forwards your
 arguments. `s_matrix_lane()` tells you which one it would pick without running
-anything. Details: [Sources & Ports](/rfx/api/sources-ports/#s-parameter-calculators).
+anything. Details: [Sources and Ports API](/rfx/api/sources-ports/#s-parameter-calculators).
 
 ## `Simulation.auto()`
 

@@ -97,7 +97,7 @@ physics, even below 1.01 where no warning fires: switch to `"flux"` or refine
 the mesh rather than reporting that number.
 
 rfx also checks every result for reciprocity and warns when an entry of S differs
-from its mirror entry (S21 from S12) by more than 0.011. These warnings almost always
+from its mirror entry (S21 from S12) by more than 0.011 of the largest |S| at that frequency. These warnings almost always
 mean the extraction is wrong, not the physics.
 
 ## A single port with `run()`

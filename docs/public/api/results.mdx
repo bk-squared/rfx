@@ -141,7 +141,8 @@ f_max, ...)` or `matrix_pencil_from_probe(...)`.
 ## `ForwardResult`
 
 `forward()` returns a smaller named tuple: `time_series`, `s_params` and
-`freqs` (lumped/wire S11 vectors when `port_s11_freqs=` is set),
+`freqs` (with `port_s11_freqs=`, lumped/wire S of shape (ports, ports,
+frequencies): the driven port's column, the others NaN),
 `lumped_port_sparams`, `wire_port_sparams`, `dft_planes`, `ntff_data`,
 `ntff_box`, `grid`, `dt` and `settling_probe_info`. Its JAX arrays can carry
 a gradient.

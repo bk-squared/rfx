@@ -210,8 +210,9 @@ catch.
   planes are judged only through a probe: without one the status is `absent`,
   so add a point probe away from the source.
 - The S-parameter calculators run one simulation per port, driving each in
-  turn (`run()` reads a model with a single port from one run), and warn when
-  the record of any of them ends too early.
+  turn, and warn when the record of any of them ends too early.
+  `forward(port_s11_freqs=)` and `run()` on a model with a single port read S
+  from one record.
 - High-Q structures need long records. A resonator with quality factor Q
   decays over roughly Q / (π f) seconds.
 

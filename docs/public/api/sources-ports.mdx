@@ -179,10 +179,15 @@ a short probe array downstream of the feed.
   S-parameters are not validated.
 - `n_probe_offset`, `n_probe_spacing`: in cells. Left at `None`, each is set
   from a length and counted again at run time in the cells where the probes
-  lie. The offset is the larger of five substrate heights, over which the
-  field the feed launches settles into the line's mode, and λ/(4π) at
-  `freq_max` in the substrate; the spacing comes from the guided wavelength at
-  `freq_max`. On a mesh graded along the line, the count uses the uniform
+  lie. The offset starts at the larger of five substrate heights, over which
+  the field the feed launches settles into the line's mode, and λ/(4π), with
+  λ the wavelength at `freq_max` in the substrate; the spacing starts at
+  λ/8/(`n_probes` − 1). On an axis that is not graded, the S-parameter
+  calculators then move the offset to the middle of the interval that keeps
+  the deepest probe at least λg/4 from the nearest reflector, when a reflector
+  bounds it, and widen the spacing toward a total span of
+  (`n_probes` − 1)·λg/4, with λg the guided wavelength at `freq_max`. On a
+  mesh graded along the line neither step runs: the count uses the uniform
   cells beside the feed when the probes stay inside them; otherwise the counts
   made at declaration are kept and a warning says so.
 
@@ -330,9 +335,9 @@ side with its own calculator instead.
 - `compute_mixed_s_matrix()` (lumped or wire plus microstrip) is experimental.
   By default (`enforce_passivity=True`) it clips a non-passive S to a passive
   one, and the clip changes the passive entries too.
-- `compute_coax_msl_transition()` (coax plus microstrip) is **not supported
-  (deprecated); removed after 2.3**. Its matrix is not passive, so by default
-  (`strict_passivity=True`) it raises `ValueError`.
+- `compute_coax_msl_transition()` (coax plus microstrip) is **refused by
+  default; deprecated, removed after 2.3**. Its matrix is not passive, so the
+  default `strict_passivity=True` raises `ValueError`.
 
 ### Checking a calculator before the run
 
@@ -372,9 +377,9 @@ For waveguides it also audits the setup:
   fast with frequency. Size the distance to the far wall and the absorber from
   the guide wavelength at a frequency below the band, not at its lowest bin, and
   confirm with the record check above. On a WR-90 sweep, a box sized from the
-  band's own lowest bin left the band's bottom bins unconverged, while a larger
-  box, sized from a lower frequency (the lowest bin of the band below it in
-  that sweep), converged them (measured; record kept with the project).
+  band's own lowest bin left the band's bottom bins farther from their converged
+  values than a larger box sized from a lower frequency, the lowest bin of the
+  band below it in that sweep (measured; record kept with the project).
 
 The coaxial calculators check their own requirements when called.
 

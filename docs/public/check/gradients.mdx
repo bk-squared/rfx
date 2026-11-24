@@ -22,8 +22,8 @@ each new setup before you optimize, and again for any gradient you report.
 
 ## Check a gradient from a longer run
 
-The model is the one on the [simulation time](/rfx/check/simulation-time/)
-page: a lossy slab between a 50 Ω lumped port and a probe. The parameter is the
+The model is the one on the page
+[Is the run long enough?](/rfx/check/simulation-time/): a lossy slab between a 50 Ω lumped port and a probe. The parameter is the
 slab's permittivity, and the objective is the power the probe sees at three
 frequencies. The objective takes the number of time steps as its second
 argument, because the check runs it twice:
@@ -67,7 +67,7 @@ gradient record-length witness PASS: 400 -> 800 steps moved the gradient by 0.37
 ```
 
 At 200 steps the source has not ended inside the run (the settling check on
-the [simulation time](/rfx/check/simulation-time/) page says
+the page [Is the run long enough?](/rfx/check/simulation-time/) says
 `undetermined`), and doubling the run moves both the value, by 4.2 %, and the
 gradient, by 5.8 %. From 300 steps on the gradient moves by less than 0.5 %,
 inside the 5 % tolerance chosen here, and its direction does not turn (cosine

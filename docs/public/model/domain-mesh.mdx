@@ -64,9 +64,10 @@ Rules of thumb:
 - **At least 4 cells** through a substrate; 6–8 when the field inside it
   matters.
 - **Neighbour ratio ≤ 1.4** on every axis. Up to that ratio the solver's own
-  checks hold: the energy of a lossless graded box stays bounded, and each
-  transition reflects about −54 dB at 30 fine cells per wavelength
-  (`tests/unit/nonuniform/test_multiband_nu_envelope.py`). Ports, flux and far
+  checks hold: the energy of a lossless graded box stays bounded over 10⁶
+  steps (`tests/unit/nonuniform/test_multiband_nu_envelope.py`), and each
+  transition reflects about −54 dB at ratio 1.4 and 30 fine cells per
+  wavelength (measured; record kept with the project). Ports, flux and far
   field on a graded mesh have no such check. Preflight warns above 1.4. The
   example above uses 1.3.
 - **Interfaces on cell boundaries.** `make_band_profile` does this for you.

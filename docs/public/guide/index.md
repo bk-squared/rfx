@@ -18,7 +18,7 @@ cells, boundaries, conductors, sources and ports, and when a run is finished.
 |---|---|
 | See what rfx can simulate | [Showcase](/rfx/showcase/) |
 | Choose a material and draw a structure | [Materials & geometry](/rfx/model/materials/) |
-| Excite the model | [Sources & ports](/rfx/model/ports/) |
+| Excite the model | [Sources and Ports](/rfx/model/ports/) |
 | Inspect fields and export plots | [Visualization & Result Analysis](/rfx/measure/plots-and-export/) |
 | Measure reflection and transmission | [Probes & S-parameters](/rfx/measure/s-parameters/) |
 | Build a real device | [Your First Patch Antenna](/rfx/examples/first-patch/) |
