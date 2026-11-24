@@ -29,10 +29,12 @@ hold the whole response. Each run carries a six-component probe
 (``add_vector_probe``) on each flux plane; from those records rfx forms the
 ring-down witness, the share of each frequency bin that a tail beyond the
 record would still add (bar 1e-2, i.e. -40 dB). ``report_record_coverage``
-stops the script unless that witness passes and both monitors are covered. At
-the fixed 1200-step record the witness reads about -139 dB for the reference
-run and -92 dB for the slab run; at 2400 or 4800 steps the printed R/T table
-does not change.
+stops the script unless that witness passes and both monitors are covered; the
+step it prints per monitor is a geometric bound on the drive's passage, not a
+sign that the response has died away. Both runs use one fixed 1200-step
+record and no decay stop. At that record the witness reads about -139 dB for
+the reference run and -92 dB for the slab run; at 2400 or 4800 steps the
+printed R/T table does not change.
 
 Public docs:
   - docs/agent/recipe-rt-measurement.mdx   (canonical two-run pattern)
@@ -133,12 +135,6 @@ def build_sim(with_slab: bool) -> Simulation:
     return sim
 
 
-# One fixed record for both runs. The field leaves the reflection plane by
-# step 605 (the record-end guard printed below). A decay stop is not used: in
-# the vacuum run the pulse has left before the drive ends, so the stop's
-# reference is a 1e-9 remainder at the lattice cutoff (about 106 GHz) and the
-# run went to its 50,000-step cap. R and T in 4-14 GHz move by at most 2e-5
-# when the record grows to 2400 or 4800 steps.
 N_STEPS = 1200
 
 
@@ -214,7 +210,7 @@ def report_record_coverage(label, witness):
     else:
         print(f"  {label}: settling witness {status}")
     for row in rows:
-        print(f"    {row['name']}: {row['verdict']} (field leaves at step "
+        print(f"    {row['name']}: {row['verdict']} (drive past the plane by step "
               f"{row['end_step']}, record {row['n_record']} steps)")
     uncovered = [row["name"] for row in rows if row["verdict"] != "covered"]
     if not rows or uncovered:
