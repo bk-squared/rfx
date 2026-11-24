@@ -52,7 +52,7 @@ sim.add_material("plasma",                              # 10 GHz plasma frequenc
 | `sigma` | conductivity in S/m. At or above `1e6` the material is a perfect conductor (see below). |
 | `mu_r` | relative permeability |
 | `debye_poles` | list of `DebyePole(delta_eps, tau)`: Δε = εs − ε∞, τ in seconds |
-| `lorentz_poles` | list of `LorentzPole`. Build them with `lorentz_pole(delta_eps, omega_0, delta)` or `drude_pole(omega_p, gamma)` (all rates in rad/s) rather than by hand. A pole adds κ / (ω0² − ω² + 2jδω) to ε (time convention e^{+jωt}): `lorentz_pole` sets κ = Δε·ω0², so `delta` is half the damping rate; `drude_pole` sets ω0 = 0, κ = ωp² and δ = γ/2. A pole set above its own time-step limit on the model's cells is refused when the model is assembled (an optical-frequency metal such as gold always is on RF cells). |
+| `lorentz_poles` | list of `LorentzPole`. Build them with `lorentz_pole(delta_eps, omega_0, delta)` or `drude_pole(omega_p, gamma)` (all rates in rad/s) rather than by hand. A pole adds κ / (ω0² − ω² + 2jδω) to ε (time convention exp(+jωt)): `lorentz_pole` sets κ = Δε·ω0², so `delta` is half the damping rate; `drude_pole` sets ω0 = 0, κ = ωp² and δ = γ/2. A pole set above its own time-step limit on the model's cells is refused when the model is assembled (an optical-frequency metal such as gold always is on RF cells). |
 | `chi3` | Kerr (third-order) nonlinearity |
 
 **Library materials** need no `add_material` call: `"vacuum"`, `"air"`,
