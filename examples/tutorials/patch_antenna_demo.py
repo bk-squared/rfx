@@ -434,7 +434,8 @@ def build_simulation():
         return "(" + ", ".join(f"{float(c) * 1e3:.2f}" for c in v) + ")"
 
     print(
-        "realized in-plane (x lo, x hi, y lo, y hi) mm: patch nodes "
+        "realized in-plane (x lo, x hi, y lo, y hi) mm; 'solved' is the "
+        "0.35-cell edge model's value: patch nodes "
         f"{_mm(nodes_span[k_patch])}, ground nodes {_mm(nodes_span[k_gnd])} | "
         + " | ".join(f"{name} {_mm(got)}"
                      for name, (_want, got, _tol) in checks.items()))
@@ -613,11 +614,16 @@ def main():
         f"{OPENEMS_F_RES / 1e9:.4f} GHz: {dev_pct:+.2f}% — the design mode "
         "is measured on the registered board. The former far-field lock "
         "used a different board and does not gate this result. "
-        "The patch's last nodes lie 0.35 cell inside its drawn edges; with "
-        "z cells about a fifth of the in-plane cell the edge offset was "
-        "measured only for a free sheet in vacuum, not on a substrate face, "
-        "so the solved size is not known; refine the mesh to measure the "
-        "discretization error."
+        "The 'patch solved' and 'ground solved' sizes printed at build are "
+        "the 0.35-cell edge model's values: the mesh puts each sheet's last "
+        "nodes 0.35 cell inside its drawn edges. Here the z cells beside the "
+        "sheets are 0.38 to 0.50 mm, 0.19 to 0.27 of the 1.86-2 mm in-plane "
+        "cell. Near these ratios the offset was measured in vacuum only: "
+        "0.26 cell for a free sheet (z cell 1/5 and 1/4 of the in-plane "
+        "cell) and 0.31 cell for a strip three cells above a ground plane "
+        "(1/4). On a substrate face, with a different z cell on each side, "
+        "as here, it has not been measured, so the patch's solved size is "
+        "not known; refine the mesh to measure the discretization error."
     )
     print(
         f"  D {d_dbi[k_star]:.2f} dBi vs openEMS {OPENEMS_D_DBI:.2f} dBi "
