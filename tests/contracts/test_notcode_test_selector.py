@@ -73,6 +73,29 @@ def test_synthetic_literals_and_directories(tmp_path):
     assert selector.select_tests([], tmp_path) == []
 
 
+@pytest.mark.parametrize("changed,expected", [
+    ("docs/guide.md", ["tests/unit/test_file.py"]),
+    ("docs/deleted/page.md", ["tests/unit/test_directory.py"]),
+    ("docs/guidebook.md", []),
+    ("etc/passwd", []),
+    ("rfx/missing.py", []),
+])
+def test_absent_path_readers(tmp_path, changed, expected):
+    """Deleted or renamed readers select by exact path or ancestor, excluding siblings and invalid paths."""
+    tests = tmp_path / "tests/unit"
+    tests.mkdir(parents=True)
+    sources = {
+        "test_file.py": 'PATH = "./docs/guide.md"',
+        "test_directory.py": 'PATH = "docs/deleted/"',
+        "test_sibling.py": 'PATH = "docs/gui"',
+        "test_invalid.py": 'PATHS = (".", "..", "../docs/guide.md", "/docs/guide.md", "/etc/passwd", "rfx/missing.py")',
+    }
+    for name, source in sources.items():
+        (tests / name).write_text(source)
+    assert not (tmp_path / "docs").exists()
+    assert selector.select_tests([changed], tmp_path) == expected
+
+
 def notcode_step():
     """Read the single required shard step that executes the not-code branch."""
     workflow = yaml.safe_load((ROOT / ".github/workflows/pr-tests.yml").read_text())

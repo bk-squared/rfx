@@ -1,6 +1,8 @@
 """Select tests with literal file or directory readers of changed not-code paths.
 
-Only string constants outside docstrings naming existing repository paths count.
+String constants outside docstrings count when they name existing repository
+paths, equal a changed path or name an ancestor of one, even after deletion or
+rename. Absolute paths, parent traversal and code paths are excluded.
 Paths assembled at run time from parts, helpers or globs are invisible; tests
 using those readers must live in tests/contracts to run on not-code changes.
 """
@@ -16,8 +18,9 @@ from collections.abc import Iterable, Sequence
 from changed_paths import is_code_path, normalize
 
 
-def literal_paths(source: str, root: Path) -> set[str]:
-    """Find existing not-code paths in constants outside module and body docstrings."""
+def literal_paths(source: str, root: Path, changed: Iterable[str] = ()) -> set[str]:
+    """Find existing or changed not-code readers outside module and body docstrings."""
+    changed = set(changed)
     tree = ast.parse(source)
     docstrings = set()
     for node in ast.walk(tree):
@@ -32,12 +35,14 @@ def literal_paths(source: str, root: Path) -> set[str]:
             continue
         if id(node) in docstrings:
             continue
-        path = normalize(node.value)
+        if Path(node.value.strip().replace("\\", "/")).is_absolute():
+            continue
+        path = normalize(node.value).rstrip("/")
         if not path or path in (".", "..") or ".." in Path(path).parts or is_code_path(path):
             continue
         try:
-            if (root / path).exists():
-                paths.add(path.rstrip("/"))
+            if any(target == path or target.startswith(path + "/") for target in changed) or (root / path).exists():
+                paths.add(path)
         except (OSError, ValueError):
             continue
     return paths
@@ -51,9 +56,9 @@ def select_tests(paths: Iterable[str], root: Path) -> list[str]:
         relative = test.relative_to(root).as_posix()
         if relative.startswith("tests/contracts/"):
             continue
-        readers = literal_paths(test.read_text(encoding="utf-8"), root)
+        readers = literal_paths(test.read_text(encoding="utf-8"), root, changed)
         if any(
-            path == reader or ((root / reader).is_dir() and path.startswith(reader + "/"))
+            path == reader or path.startswith(reader + "/")
             for reader in readers for path in changed
         ):
             selected.append(relative)
