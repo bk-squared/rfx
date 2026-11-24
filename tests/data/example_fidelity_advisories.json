@@ -53,7 +53,7 @@
    "code": "geometry_in_absorber",
    "disposition": "intended",
    "reason": "The slab Box is drawn (-1 m, -1 m) to (1 m, 1 m) transversally ON PURPOSE and the code says why: 'The material Box must span the full transverse extent (incl. CPML padding): with TFSF the transverse axes are periodic, so any cell outside the material mask breaks the plane-wave assumption (detail (c)).' The advisory measures the declared face at -1 m, which is an over-draw that the domain clips, not material sitting in the absorber by accident.",
-   "ref": "examples/tutorials/slab_rt_flux_monitor.py:94-97",
+   "ref": "examples/tutorials/slab_rt_flux_monitor.py:104-107",
    "rows": 1,
    "variant": "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=True"
   },

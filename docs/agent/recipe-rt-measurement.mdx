@@ -45,8 +45,9 @@ energy decays to `until_decay * peak` (issue #169); on closed/PEC boundaries
 the uniform runner falls back to the field at a single monitor position, and
 `decay_monitor_component` / `decay_monitor_position` control which field and
 where to sample that fallback. This kwarg is load-bearing for accuracy: a
-fixed `n_steps` truncates the signal and aliases residual energy into the
-spectrum.
+fixed `n_steps` that ends before the field has rung down truncates the signal
+and aliases residual energy into the spectrum. Detail (e) shows how a run
+checks its own record.
 
 ### Two-run reference subtraction
 
@@ -171,12 +172,13 @@ bin, the share that a tail beyond the record would still add. It passes at a
 share of 1e-2 (−40 dB). Without a probe the witness is `absent`, and every run
 warns `no ring-down settling witness ... flux monitors`.
 
-Use `add_vector_probe`. In 2-D TMz it records Ez and Hy together with
-components that stay zero; the witness skips those as rounding and judges Ez
-and Hy, and the co-located records let it tell rounding from signal. The
-tutorial puts one on each plane. At its fixed 1200-step record the witness reads
-about −139 dB for the reference run and −92 dB for the slab run, and the script
-stops if either run does not pass.
+The tutorial puts an `add_vector_probe` on each plane. It records every
+component at that point; in 2-D TMz the witness skips the components that stay
+at zero or at rounding level, judged against the largest record of the same
+kind (E or H) in the same cell, and judges Ez and Hy. Point probes on Ez and Hy
+give the same witness values. At the tutorial's fixed 1200-step record the
+witness reads about −139 dB for the reference run and −92 dB for the slab run,
+and the script stops if either run does not pass.
 
 The probe serves the witness only; R and T still come from the flux monitors
 (see "Do NOT use" below).
@@ -229,8 +231,8 @@ necessarily a usage error in either tool.
 - `examples/tutorials/slab_rt_flux_monitor.py` — **the recommended path**: `add_flux_monitor`
   + two-run field-level reference subtraction via the `Simulation` API, with a
   ring-down witness on both runs (detail (e)), an analytic Fresnel comparison and
-  an energy-conservation readout (on the coarse demo grid R+T sits slightly above
-  1; refine `dx` to tighten it). Start here.
+  an energy-conservation readout (R+T prints 1.000 at every frequency on the
+  coarse demo grid). Start here.
 
 ## Companion primitives
 

@@ -128,6 +128,8 @@ def build_sim(with_slab: bool) -> Simulation:
     sim.add_tfsf_source(f0=F0, bandwidth=BW, polarization="ez", direction="+x")
     sim.add_flux_monitor(axis="x", coordinate=REFL_X, freqs=FREQS_RT, name="refl")
     sim.add_flux_monitor(axis="x", coordinate=TRANS_X, freqs=FREQS_RT, name="trans")
+    sim.add_vector_probe((REFL_X, Y_CENTER, 0.0))
+    sim.add_vector_probe((TRANS_X, Y_CENTER, 0.0))
     return sim
 
 
@@ -201,15 +203,24 @@ def main():
 
 
 def report_record_coverage(label, witness):
-    """Print the run's record-end guard and stop if a monitor is not covered."""
+    """Print the run's record-end guards and stop unless the ring-down witness passes and every monitor is covered."""
+    witness = witness or {}
+    status = witness.get("status")
+    reason = witness.get("reason")
+    db = witness.get("db")
     rows = (witness or {}).get("coverage", ())
-    print(f"  {label}: settling witness {(witness or {}).get('status')}")
+    if isinstance(db, (int, float)) and np.isfinite(db):
+        print(f"  {label}: settling witness {status}, {db:.0f} dB (bar -40 dB)")
+    else:
+        print(f"  {label}: settling witness {status}")
     for row in rows:
         print(f"    {row['name']}: {row['verdict']} (field leaves at step "
               f"{row['end_step']}, record {row['n_record']} steps)")
     uncovered = [row["name"] for row in rows if row["verdict"] != "covered"]
     if not rows or uncovered:
         raise RuntimeError(f"{label}: the record ends before the field leaves {uncovered or 'the monitors'}")
+    if status != "pass":
+        raise RuntimeError(f"{label}: the ring-down witness reads {status} ({reason}); lengthen N_STEPS")
 
 
 if __name__ == "__main__":
