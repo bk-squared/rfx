@@ -5,8 +5,10 @@ Standalone one-component constants match only an exact changed path; other
 constants and joined directories can match ancestors, even after deletion.
 Absolute paths, parent traversal and code paths are excluded. Imported helpers
 propagate readers transitively to their test importers outside tests/contracts.
-Paths built by helper functions, f-strings, format, globs or variables are
-invisible; such tests must live in tests/contracts to run on not-code changes.
+The literal text of an f-string is read as a constant, so its leading directory
+can match. Paths built by helper functions, format, globs or variables, and the
+variable parts of f-strings, are invisible; such tests must live in
+tests/contracts to run on not-code changes.
 """
 
 from __future__ import annotations
