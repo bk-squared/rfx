@@ -70,8 +70,12 @@ is in hertz, and `amplitude_kind="current"` makes the excitation a current in am
 
 `result.time_series` has shape `(120, 1)`: one row per time step, one column per
 probe. The probe is two cells away from the source. `result.dt` is the time
-between rows. The pulse reflects in the lossless closed box, so continued
-oscillation is expected; this is not an absorption or decay demonstration.
+between rows. In these 120 steps (0.458 ns) the probe records one pulse that is
+back near zero by the end of the record. The pulse (`f0=5e9`,
+`bandwidth=0.8`, a differentiated Gaussian) has its spectral peak near 2.8 GHz
+and is about 45 dB below that peak at the cube's lowest resonance, 10.6 GHz.
+The walls are lossless, so this run is not an absorption or decay
+demonstration.
 
 Preflight findings describe the model before it runs. Read warnings as well as
 errors. Completing these 120 steps checks the installation and API use; it does

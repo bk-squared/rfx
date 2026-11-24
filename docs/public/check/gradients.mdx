@@ -50,7 +50,7 @@ freqs = jnp.array([2.5e9, 3.0e9, 3.5e9])
 def objective(eps_slab, n_steps):
     eps = jnp.ones(grid.shape).at[lo[0]:hi[0], lo[1]:hi[1], lo[2]:hi[2]].set(eps_slab)
     out = sim.forward(eps_override=eps, n_steps=n_steps, skip_preflight=True)
-    t = jnp.arange(n_steps) * grid.dt
+    t = (jnp.arange(n_steps) + 1) * grid.dt        # E sample times
     phasor = jnp.exp(-2j * jnp.pi * freqs[:, None] * t) @ out.time_series[:, 0] * grid.dt
     return jnp.abs(phasor) ** 2
 

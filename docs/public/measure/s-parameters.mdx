@@ -42,7 +42,7 @@ sim.add_dft_plane_probe(axis="z", coordinate=0.025, component="ez",
 result = sim.run(n_steps=400)
 
 ts = np.asarray(result.time_series)       # shape (n_steps, 7)
-t = np.arange(ts.shape[0]) * result.dt    # seconds
+t = (np.arange(ts.shape[0]) + 1) * result.dt  # E samples, seconds; H: t - dt/2
 ez_probe = ts[:, 0]
 hy_vector = ts[:, 1 + 4]                  # Hy of the vector probe
 
@@ -364,7 +364,7 @@ vacuum with the cell normal to the sheet as long as the in-plane cell beside
 its edge. This trace's cells are 0.25 mm on every axis, but the trace lies
 three cells above the ground on the substrate's top face. Two nearby cases
 were measured. For a strip three cells above a ground plane in air the offset
-is 0.37 cell, with which the line would be 1.685 mm wide. For an edge on a
+measured on one mesh is 0.37 cell, with which the line would be 1.685 mm wide. For an edge on a
 face between a dielectric of εr 2.2 and air, without a ground, it is 0.33 cell
 with E parallel to the edge (E perpendicular was not judged), with which the
 line would be 1.665 mm wide. With the substrate and the ground together it has
@@ -376,8 +376,13 @@ expect on your own coarse runs:
 
 - preflight reports that 3 cells through the substrate is below its
   recommendation of 4, that 6 absorbing layers is below its recommendation of
-  8, and that the lossless substrate would give an infinite Q (harmless here:
-  this run measures S, not Q);
+  8, that the 35 µm conductor thickness (the default of `add_thin_conductor`) is
+  not solved, because the trace is solved as a sheet, and
+  that the lossless substrate would give an infinite Q (harmless here: this run
+  measures S, not Q);
+- `add_thin_conductor` warns that the sheet is lossless PEC;
+- JAX warns that a requested complex128 dtype is truncated to complex64,
+  because the run is in float32;
 - a **low-signal** warning names three bins at the top of the band, and
   `msl.reliable` is False there;
 - a **passivity** warning reports that the largest singular value of S is
