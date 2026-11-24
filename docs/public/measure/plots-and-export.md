@@ -91,7 +91,7 @@ fig = plot_radiation_pattern(ff, freq_idx=0)
 ```
 
 `plot_rcs(rcs_result, freq_idx=0, polar=True)` plots the `RCSResult` from
-`compute_rcs`. Both are covered on [Far-Field & RCS](/rfx/measure/far-field-and-rcs/).
+`compute_rcs`. Both are covered on [Far-Field & Radar Cross Section](/rfx/measure/far-field-and-rcs/).
 
 ## Field snapshots
 

@@ -70,7 +70,7 @@ The ideas from adjoint design still apply:
   the backward pass to limit memory. For long runs, segmented checkpointing
   (`checkpoint_segments` on a uniform mesh, `checkpoint_every` on a non-uniform
   one) cuts memory to roughly `sqrt(n_steps)`. See
-  [Memory Reduction](/rfx/run/memory-and-speed/).
+  [Reduce Memory Use](/rfx/run/memory-and-speed/).
 - Keep design variables out of the CPML. Gradients through absorber cells are
   not meaningful design information.
 
@@ -203,7 +203,7 @@ run is long enough.
 - **Design cells inside the CPML**: the gradient there is not design
   information. Keep the design region in the physical domain.
 - **Out-of-memory in the backward pass**: use segmented checkpointing and the
-  memory estimators in [Memory Reduction](/rfx/run/memory-and-speed/).
+  memory estimators in [Reduce Memory Use](/rfx/run/memory-and-speed/).
 - **A proxy loss optimized well, but the real metric did not improve**: verify
   the final design with the calibrated workflow for that metric (see the
   [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md)).

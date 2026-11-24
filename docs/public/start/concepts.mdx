@@ -189,7 +189,7 @@ reference impedance or a reference plane, so they cannot produce S-parameters.
 | a field value over time at a point | `add_probe`, `add_vector_probe` |
 | a field on a plane at chosen frequencies | `add_dft_plane_probe` |
 | power through a plane (R, T, absorption) | `add_flux_monitor` |
-| radiation pattern, directivity, RCS | `add_ntff_box`, then `compute_far_field`; for RCS, `compute_rcs`, a lower-level function that takes a uniform `rfx.Grid` and material arrays instead of a `Simulation` and runs its own plane-wave simulation ([Far Field and RCS](/rfx/measure/far-field-and-rcs/)) |
+| radiation pattern, directivity, RCS | `add_ntff_box`, then `compute_far_field`; for RCS, `compute_rcs`, a lower-level function that takes a uniform `rfx.Grid` and material arrays instead of a `Simulation` and runs its own plane-wave simulation ([Far-Field & Radar Cross Section](/rfx/measure/far-field-and-rcs/)) |
 | resonant frequencies and Q | a probe plus `result.find_resonances()` (matrix pencil fit) |
 | S-parameters | a port family and its calculator (table above) |
 

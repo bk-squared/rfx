@@ -63,8 +63,12 @@ Rules of thumb:
 
 - **At least 4 cells** through a substrate; 6–8 when the field inside it
   matters.
-- **Neighbour ratio ≤ 1.4** on every axis (the validated limit). Preflight warns
-  above that. The example above uses 1.3.
+- **Neighbour ratio ≤ 1.4** on every axis. Up to that ratio the solver's own
+  checks hold: the energy of a lossless graded box stays bounded, and each
+  transition reflects about −54 dB at 30 fine cells per wavelength
+  (`tests/unit/nonuniform/test_multiband_nu_envelope.py`). Ports, flux and far
+  field on a graded mesh have no such check. Preflight warns above 1.4. The
+  example above uses 1.3.
 - **Interfaces on cell boundaries.** `make_band_profile` does this for you.
 - **Uniform cells next to the absorber.** Leave room for `cpml_layers`
   full-size cells between the last ramp and each absorbing face. Here the
@@ -162,7 +166,8 @@ A PEC sheet's in-plane free edge is solved about 0.35 of a cell beyond its
 last grid node where the cell normal to the sheet is as long as the in-plane
 cell beside its edge, so a patch or trace comes out slightly larger than drawn.
 Preflight uses this 0.35 to predict each sheet's solved size, and `run()`,
-`forward()` and `compute_mixed_s_matrix()` refuse a sheet whose predicted size
+`forward()` and `compute_mixed_s_matrix()` (the experimental calculator for
+lumped plus microstrip ports) refuse a sheet whose predicted size
 is more than 1 % off its drawing. Preflight reports this as a
 `sheet_effective_size` error.
 
@@ -206,7 +211,11 @@ patch_sim.add(board, material="fr4")
 patch_sim.add_thin_conductor(patch)
 ```
 
-Here the z cells below and above the patch are 0.80 and 0.95 mm and the
+This example shows only how the sheet edges are registered: at 1 mm the
+1.6 mm board gets two z cells, below the four the rules of thumb above ask
+for. A real model combines these x/y profiles with a graded z profile, as in
+the board example. Here the z cells below and above the patch are 0.80 and
+0.95 mm and the
 in-plane cell beside its edges is 0.96 to 0.98 mm, ratios of 0.82 to 0.99.
 Interpolated between the ratios measured for a free sheet in vacuum (1/2 and
 1), with the same cell on both sides, the patch would be 18.97 to 19.02 mm by
@@ -277,6 +286,9 @@ print(plan.recommendation)
 print(f"{mesh_report.cell_savings_factor:.1f}x fewer cells than uniform-fine")
 ```
 
+`cell_savings_factor` compares the graded mesh with a uniform mesh at the
+finest cell size of the profile.
+
 These are planning numbers. They say nothing about accuracy.
 
 ## What runs on a graded mesh
@@ -288,7 +300,7 @@ These are planning numbers. They say nothing about accuracy.
 | NTFF far field | limited: one dipole case checked against theory |
 | DFT planes, flux monitors | run; no general accuracy statement |
 | wire-port S-parameters (`add_port(..., extent=...)`) | experimental; compare with a uniform run |
-| one-cell lumped-port S-parameters | formed by `run(compute_s_params=True)`, by default when every port is lumped and exactly one is driven, and by `forward(port_s11_freqs=...)`; limited (a one-cell feed model) |
+| one-cell lumped-port S-parameters | formed by `run(compute_s_params=True)` and by `forward(port_s11_freqs=...)`; with no S argument, `run()` forms them only when every port is lumped and exactly one is driven; limited (a one-cell feed model) |
 | `compute_msl_s_matrix` | experimental; `mode="eigenmode"` refused |
 | `compute_waveguide_s_matrix` | single-mode, `normalize=True` or `"flux"` |
 | coaxial calculators | refused |
@@ -296,17 +308,18 @@ These are planning numbers. They say nothing about accuracy.
 | Floquet ports, UPML | refused |
 
 Unsupported combinations raise before the first step instead of running with
-a feature silently dropped. On a graded mesh, `run()` refuses snapshots and
-`conformal_pec=True`, and on a closed (PEC) boundary it refuses `until_decay`;
-use a fixed `n_steps` there.
+a feature silently dropped. On a graded mesh, `run()` refuses
+`conformal_pec=True`, refuses snapshots on one device (`run(devices=...)`
+takes them), and on a closed (PEC) boundary refuses `until_decay`; use a fixed
+`n_steps` there.
 
 ## Limits
 
 - **Accuracy is per observable.** A graded run that completes does not show
   that its S-parameters, flux or far field are right. Compare with a uniform
   run or an external reference.
-- **Grading ratios** above 1.4 on any axis are outside the validated range.
-  Preflight warns.
+- **Grading ratios** above 1.4 on any axis are outside the range the solver
+  checks cover. Preflight warns.
 - **TFSF along a graded x axis:** normal incidence runs. The incident line
   uses the realized x cells, and with no scatterer the scattered-field region
   reads within 1×10⁻⁵ of the total-field peak (measured 7×10⁻⁶), as on

@@ -10,8 +10,11 @@ sidebar:
 A declared `Simulation` is stepped in time by one of two calls. `run()` is for
 analysis: it gives you a result object with S-parameters, field records,
 snapshots and the settling check. `forward()` is for design: it returns the
-same time signals as JAX arrays, so you can differentiate them with respect to
-the materials and optimize. Both assemble the same model and step it with the
+same time signals as JAX arrays and takes material overrides and design
+variables, so you can differentiate the signals with respect to them and
+optimize. `run()` also passes gradients on one device when a value in the
+declaration is traced, but it takes no override or design argument (see the
+table below). Both assemble the same model and step it with the
 same time step; this page says what each adds, how long they run, and the
 settings that apply to both.
 
@@ -78,11 +81,11 @@ against a longer run ([Checking a gradient](/rfx/check/gradients/)).
 | | `run()` | `forward()` |
 |---|---|---|
 | returns | `Result`: `time_series`, `s_params` and `freqs`, `dft_planes`, `flux_monitors`, far-field data, `waveguide_ports` and `waveguide_sparams`, `snapshots`, `settling_witness`, `state`, `ringdown` | `ForwardResult`: the same records (`time_series`, `s_params` and `freqs`, `dft_planes`, `flux_monitors`, far-field data, `waveguide_ports` and `waveguide_sparams`, `ringdown`), with `settling_db` / `settling_witness` computed once the arrays are concrete; no `state` and no snapshots |
-| differentiable | on one device, under `jax.grad`, `jax.jit` and `jax.vmap` when material values in the declaration (such as `eps_r` or `sigma`) are traced. A shape's size or position is not a gradient input: a gradient with respect to it raises. `jax.jit` and `jax.vmap` run over a dielectric `Sphere` or `Cylinder` dimension, but a traced `Box` corner or a PEC `Sphere` radius is refused. `run()` takes no override or design arguments, and `report_every` raises under a transform | yes, with respect to `eps_override`, `sigma_override`, `pec_occupancy_override` and the design box (`design_box`, `design_eps_override`, `design_sigma_override`) on either mesh on one device; `design_occupancy_override`, `rlc_values_override` and `mu_r_override` on a uniform mesh on one device; a graded mesh over several devices takes the permittivity, conductivity and PEC overrides |
+| differentiable | on one device, under `jax.grad`, `jax.jit` and `jax.vmap`, when a material value in the declaration (such as `eps_r` or `sigma`) or a source amplitude is traced. A shape's size or position is never a gradient input: a gradient with respect to it raises. Without a gradient, `jax.jit` and `jax.vmap` accept a traced radius or height of a dielectric `Sphere` or `Cylinder`; a traced `Box` corner or PEC `Sphere` radius is refused. `run()` takes no override or design arguments, and `report_every` raises under a transform | yes, with respect to `eps_override`, `sigma_override`, `pec_occupancy_override` and the design box (`design_box`, `design_eps_override`, `design_sigma_override`) on either mesh on one device; `design_occupancy_override`, `rlc_values_override` and `mu_r_override` on a uniform mesh on one device; a graded mesh over several devices takes the permittivity, conductivity and PEC overrides |
 | S-parameters | the S-matrix of the lumped and wire ports (`add_port`) at `s_param_freqs`, default 50 points from `freq_max/10` to `freq_max`; a waveguide port gives `waveguide_sparams`. On a graded mesh, without an S argument, lumped S is formed only for lumped ports with exactly one driven; otherwise S is `None` | with `port_s11_freqs`: `s_params` of shape (ports, ports, frequencies) with the driven port's column filled and the others NaN, one driven port per run; that column equals `run()`'s S |
 | stops on decay | `until_decay=` | no: a fixed number of steps |
 | progress, snapshots | `report_every=`, `snapshot=` | no |
-| memory | `checkpoint=False` by default | `checkpoint=True` by default, for the backward pass; `forward(distributed=True)` on a uniform mesh does not checkpoint and refuses a `checkpoint` argument |
+| memory | `checkpoint=False` by default | `checkpoint=None` by default, which turns checkpointing on for the backward pass; `forward(distributed=True)` on a uniform mesh does not checkpoint and refuses a `checkpoint` argument |
 
 Both run preflight by default. `skip_preflight=True` skips preflight, its
 errors included. Refusals outside preflight still stop the run, among them those about the
@@ -94,7 +97,7 @@ requests require an impedance `add_port`. A soft source, including one beside
 a closed TF/SF box, does not provide a port response. Both calls refuse missing
 impedance ports and mixtures with MSL, waveguide, Floquet, TF/SF or coaxial
 families through the same admission rules; use each family's documented
-calculator where available. Forward also reports MSL near-field probe details.
+calculator where available.
 
 Where the two calls still differ:
 
@@ -138,7 +141,8 @@ in `result.snapshots` with coordinates in `result.snapshot_axes`. A full 3-D
 snapshot of every step is large; take a slice. Snapshots are taken on a uniform
 mesh, on one device or several, and by `run(devices=...)` on a graded mesh. A
 graded mesh on one device, subgridding and an oblique plane wave on the
-Bloch path (`angle_deg`) refuse `snapshot=`; an oblique closed box takes it.
+Bloch path (`angle_deg`) refuse `snapshot=`; a closed TF/SF box
+(`closed_box=True`) driven at an angle (`theta_deg`, `phi_deg`) takes it.
 
 ### JAX transforms
 
@@ -200,7 +204,7 @@ is converged is on [Checking a gradient](/rfx/check/gradients/).
 
 ## See also
 
-- [Memory and speed](/rfx/run/memory-and-speed/): checkpointing and cost.
-- [Multi-device](/rfx/run/multi-device/): `run(devices=)` and `forward(distributed=True)`.
+- [Reduce Memory Use](/rfx/run/memory-and-speed/): checkpointing and cost.
+- [Multi-device runs](/rfx/run/multi-device/): `run(devices=)` and `forward(distributed=True)`.
 - [Simulation API](/rfx/api/simulation/): every argument.
 - [Autodiff and adjoint background](/rfx/design/gradients/).

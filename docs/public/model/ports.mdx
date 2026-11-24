@@ -155,7 +155,7 @@ t0 = 5τ, oblique Bloch included.
 
 TFSF cannot share a simulation with any port, and `add_tfsf_source` also
 refuses when a point source is already declared. It is not a port and gives no
-S-parameters. For RCS, see [Far-Field and RCS](/rfx/measure/far-field-and-rcs/).
+S-parameters. For RCS, see [Far-Field & Radar Cross Section](/rfx/measure/far-field-and-rcs/).
 
 ## Lumped and wire ports
 
@@ -479,7 +479,7 @@ Getting an accurate result:
 - **Lumped/wire ports**: start from about 60 cells per wavelength; no current
   test measures S11's accuracy there, so a mesh series decides it.
   `forward(port_s11_freqs=...)` works on either mesh; over
-  several devices see [Run on several devices](/rfx/run/multi-device/).
+  several devices see [Multi-device runs](/rfx/run/multi-device/).
   Wire ports on a graded mesh are experimental.
 - **Microstrip** `mode="eigenmode"` runs only for an x-directed port on a
   uniform mesh on one device and is refused elsewhere. Its launch does not

@@ -163,7 +163,7 @@ still refuses closed-boundary `until_decay` (set `n_steps`). Use a fixed
 | Argument | Meaning |
 |---|---|
 | `compute_s_params=True`, `s_param_freqs=` | S-parameters for lumped and wire ports (`add_port`) only. Other port families have their own calculator. |
-| `snapshot=SnapshotSpec(interval=10, components=("ez",), slice_axis=None, slice_index=None)` | Record field snapshots. See [Visualization and Analysis](/rfx/measure/plots-and-export/). |
+| `snapshot=SnapshotSpec(interval=10, components=("ez",), slice_axis=None, slice_index=None)` | Record field snapshots. See [Visualization & Result Analysis](/rfx/measure/plots-and-export/). |
 | `report_every=N` | Print progress (steps, rate, ETA) every N steps. Does not change the result. |
 | `subpixel_smoothing=True` | Smoothed permittivity at dielectric interfaces. Only the diagonal of the averaged tensor is kept, so a curved interface converges first order: the resonance of an εr 38 cylinder (radius 5.7 mm, height 4.75 mm) in a metal housing fell from 4.658 GHz at 0.5 mm cells to 4.627 GHz at 0.25 mm, about linearly in the cell size (measured; record kept with the project). |
 | `subpixel_smoothing="full_tensor"` | The full averaged tensor, off-diagonal terms included: second order at a curved dielectric interface, on uniform and graded meshes, one device. It refuses some inputs that `True` runs on a uniform mesh (`boundary="upml"`, `compute_waveguide_s_matrix`, conformal PEC, a traced `eps_r`); see [Support](/rfx/support/). |
@@ -247,7 +247,7 @@ print(jax.grad(loss)(3.0))
 | `eps_override`, `sigma_override`, `mu_r_override` | whole-grid material arrays, shape `grid.shape`; they replace the registered materials everywhere |
 | `design_box=` with `design_eps_override=` / `design_sigma_override=` / `design_occupancy_override=` | a box-sized design region; far less reverse-mode memory than a whole-grid override (pass `checkpoint=False` with it) |
 | `pec_occupancy_override` | relaxed metal occupancy in [0, 1] |
-| `port_s11_freqs=` | lumped/wire S11 vectors, on either mesh; over several devices see [Run on several devices](/rfx/run/multi-device/) |
+| `port_s11_freqs=` | lumped/wire S11 vectors, on either mesh; over several devices see [Multi-device runs](/rfx/run/multi-device/) |
 | `rlc_values_override={index: {"R": ..., "L": ..., "C": ...}}` | values of registered `add_lumped_rlc` elements |
 
 **Per-cell versus per-edge conductivity in a design box.** A single
@@ -266,7 +266,7 @@ does not support raises instead of returning a zero gradient. A model with
 `add_refinement` is refused by `forward()`. Guides:
 [Autodiff and Adjoint](/rfx/design/gradients/),
 [Inverse Design](/rfx/design/optimization/),
-[Memory Reduction](/rfx/run/memory-and-speed/).
+[Reduce Memory Use](/rfx/run/memory-and-speed/).
 
 ## S-parameter calculators
 
@@ -303,7 +303,7 @@ geometry instead, use `auto_configure` or `plan_mesh` on the
 These are documented in the [generated reference](/rfx/api/generated/):
 `estimate_ad_memory`, `plan_ad_memory`, `ad_memory_preflight` and
 `explain_ad_memory` (reverse-mode memory, see
-[Memory Reduction](/rfx/run/memory-and-speed/)); `export_scene`,
+[Reduce Memory Use](/rfx/run/memory-and-speed/)); `export_scene`,
 `export_artifact_bundle` and `artifact_report` (saving a model and its
 results); `conductor_mask`.
 
