@@ -50,15 +50,16 @@ The boundary decides what happens at the edge of the domain.
 
 | Boundary | Use it for | Notes |
 |---|---|---|
-| `"cpml"` | open problems: antennas, scattering, lines that leave the box | an absorber `cpml_layers` cells thick (default 16), added **outside** `domain` |
+| `"cpml"` | open problems: antennas, scattering, lines that leave the box | an absorber `cpml_layers` cells thick (default 16), added **outside** `domain`. A structure drawn to the face continues through the absorber, and the cells next to the face should stay uniform over that depth |
 | `"pec"` | closed problems: cavities, shielded boxes | energy cannot leave, so resonances ring indefinitely |
 | `"pmc"` (via `BoundarySpec`) | a symmetry plane, which halves the problem | only where the fields really are symmetric |
 | `"periodic"` (via `BoundarySpec`) | infinite arrays and unit cells | the paired faces go together |
 | `"upml"` | legacy absorber | reflects noticeably more than CPML; prefer CPML |
 
-A single string (`"cpml"`, `"pec"` or `"upml"`) applies to all six faces. Use
-`BoundarySpec` to set each face separately, and for `"pmc"` and `"periodic"`
-(a dict per axis, such as `{"x": "cpml", "y": "pec", "z": "pec"}`, also works):
+A single string (`"cpml"`, `"pec"` or `"upml"`) applies to all six faces. To
+set each face separately, or to use `"pmc"` or `"periodic"`, pass a
+`BoundarySpec`. A dict per axis, such as
+`{"x": "cpml", "y": "pec", "z": "pec"}`, also works:
 
 ```python
 from rfx import Simulation
@@ -167,15 +168,15 @@ rule, with the index conventions, is in
   injects a field. It has no impedance and does not load the structure. Use it
   for fields, resonances, far-field patterns and scattering.
 - A **port** injects a signal *and* terminates the line in a known impedance,
-  so rfx can compute S-parameters. Each port family has its own calculator,
-  and only that calculator gives S-parameters for it:
+  so rfx can compute S-parameters. Each port family has its own S-parameter
+  route, and only that route gives S-parameters for it:
 
 | Structure | Port | S-parameter calculator |
 |---|---|---|
 | discrete feed, lumped component terminals | `add_port(...)` (lumped; `extent=` makes a wire port) | `run(compute_s_params=True)` or `forward(port_s11_freqs=...)` |
 | microstrip line | `add_msl_port(...)` | `compute_msl_s_matrix()` |
 | rectangular waveguide | `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` |
-| coaxial line | `add_coaxial_port(...)` | `compute_coaxial_line_reflection()`, `compute_coaxial_two_port()` |
+| coaxial line | `add_coaxial_port(...)` | `compute_coaxial_line_reflection()`, `compute_coaxial_two_port()`; experimental: S11 from `run(compute_s_params=True)` or `forward(port_s11_freqs=...)` on a uniform mesh on one device |
 
 Probes, flux monitors and DFT planes record fields. They do not define a
 reference impedance or a reference plane, so they cannot produce S-parameters.
@@ -200,12 +201,16 @@ far fields, DFT planes and resonances. If the record stops while energy is
 still bouncing around, the result is wrong in a way that no warning can fully
 catch.
 
-- Check `result.settling_witness["status"]`. For every frequency a spectral
-  result reads, rfx estimates from the poles still ringing after the source
-  ends how much of the value lies past the record's end; `settling_db` is the
-  worst share in dB, and at or below −40 dB the status is `pass`. `fail`,
-  `undetermined` and `absent` (nothing recorded to judge) are not passes.
-- The S-parameter calculators warn when a drive's record ends too early.
+- Check `result.settling_witness["status"]`. rfx judges each port's record
+  and each point probe, at every frequency the run's spectral results read.
+  From the poles still ringing after the source ends it estimates how much of
+  the value lies past the record's end; `settling_db` is the worst share in
+  dB, and at or below −40 dB the status is `pass`. `fail`, `undetermined` and
+  `absent` (nothing recorded to judge) are not passes. Flux, far fields and DFT
+  planes are judged only through a probe: without one the status is `absent`,
+  so add a point probe away from the source.
+- The S-parameter calculators run one simulation per driven port, and warn
+  when the record of any of them ends too early.
 - High-Q structures need long records. A resonator with quality factor Q
   decays over roughly Q / (π f) seconds.
 
@@ -229,9 +234,13 @@ comparison with a reference; see
 
 - `sim.run(...)` is the general entry point. It returns a `Result` with probe
   time series, S-parameters, DFT planes, flux and far-field data.
-- `sim.forward(...)` is the differentiable entry point. Wrap it in `jax.grad`
-  to get gradients with respect to material overrides or design variables.
-  It supports a narrower set of features. See
+- `sim.forward(...)` is the entry point built for gradients. Wrap it in
+  `jax.grad` to get gradients with respect to material overrides or design
+  variables. It supports a narrower set of features.
+- `run()` also passes gradients on one device when a declared value, such as a
+  material's `eps_r` or a source amplitude, is traced, but it takes no override
+  or design argument. The comparison is in
+  [run() and forward()](/rfx/run/run-and-forward/). See
   [Autodiff and Adjoint](/rfx/design/gradients/) and
   [Inverse Design](/rfx/design/optimization/).
 

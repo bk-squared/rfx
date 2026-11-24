@@ -46,10 +46,11 @@ Node `i` is at `x_i = i·Δx`. Cell `i` spans `[x_i, x_{i+1}]`. `Ex[i,j,k]` sits
 at `(x_{i+½}, y_j, z_k)`, and `Ey`, `Ez` likewise are offset by half a cell
 along their own axis.
 
-- **Volumes** are sampled at cell centres: cell `i` is occupied when
-  `lo ≤ x_{i+½} < hi`. A box drawn on node planes occupies exactly the cells
-  between them. An off-lattice face rounds to the nearest node plane.
-- **Dielectrics** are sampled at nodes, half-open.
+- **Volumes**, metal and dielectric alike, are sampled at cell centres: cell
+  `i` is occupied when `lo ≤ x_{i+½} < hi`. A box drawn on node planes
+  occupies exactly the cells between them. A face between node planes goes to
+  the nearest one, and a dielectric layer with no cell centre inside it is
+  refused.
 - **Sheets** land on the node plane nearest the shape's mid-plane along its
   normal. An exact half-cell tie goes to the lower plane.
 - **Sheet edges.** Preflight takes a sheet's in-plane free edge to lie 0.35
@@ -127,20 +128,23 @@ normal to the sheet):
 | `sigma_bulk < 1e6` (resistive film, ink) | lossy sheet with conductivity `sigma_bulk * thickness / d`, preserving the sheet resistance 1/(σ·t) |
 | `surface_impedance_f0=f0` | resistive sheet with Rs = √(π f0 μ0 / σ_bulk), same footprint and edges as the PEC sheet |
 
-A lossy film takes the cells of its plane whose centres lie inside its
-drawing. It gets no edge offset: its edges are the faces of those cells, and a
-film whose cells miss its drawn area by more than 1 % in equivalent length is
+A lossy film covers the squares the grid draws in its node plane (the cell
+faces in that plane) whose centres lie inside its drawing. It gets no edge
+offset: its edges are the sides of those squares, and a film whose squares
+miss its drawn area by more than 1 % in equivalent length is
 refused (see [Inputs rfx refuses](#inputs-rfx-refuses)) unless
 `snap="declared"`. A gap drawn between two lossy films on one plane stays open
 at any width, as between metal sheets: where both films reach the same row of
 cells along the gap, the film that covers less of that row gives it up, so the
-gap is solved at least one cell wide. On a traced mesh, two films on one plane within one cell of
-each other are refused (`dc_film_traced_pair`).
+gap is solved at least one cell wide. When the cell widths or the film
+coordinates are traced (differentiated by `jax.grad`, as when the mesh is a
+design variable), the gap cannot be decided from the values, so two films on
+one plane within one cell of each other are refused (`dc_film_traced_pair`).
 
-On every sheet `eps_r` stays 1: a PEC or surface-impedance sheet and a pinned
-sheet refuse any other value, or a traced one, when you declare them, and a lossy
-film refuses it when the run starts. Declare the dielectric around a sheet with
-`add(..., material=...)`.
+On every sheet `eps_r` stays 1. A PEC sheet, a surface-impedance sheet and a
+pinned sheet refuse another value, or a traced one, at the call that declares
+them. A lossy film refuses it when the run starts. Declare the dielectric
+around a sheet with `add(..., material=...)`.
 
 On a graded mesh `d` is `(d[k-1] + d[k]) / 2`, the average of the two cells
 either side of the sheet plane, so you get the sheet resistance you asked for
@@ -207,9 +211,12 @@ Metal on a curved or slanted surface lands as a staircase of cell faces. On a
 uniform mesh on one device, `run(conformal_pec=True)` weights the update at the
 cut cells instead: each cut E edge uses its PEC-free length and each cut H face
 its PEC-free area, and a stability clamp keeps the ordinary time step. Left at
-its default, `conformal_pec` follows the PEC boundary faces declared with
-`Boundary(..., conformal=True)`; `forward()`, which has no `conformal_pec=`
-argument, takes the same update from that declaration. Graded meshes, multiple
+its default (`None`), `conformal_pec` turns on when an axis of a
+`BoundarySpec` is declared `Boundary(lo="pec", hi="pec", conformal=True)`.
+Such an axis solves its two PEC domain faces as PEC half-spaces through the
+same cut-cell update, and the run then applies that update to every PEC body
+in the model as well. `forward()`, which has no `conformal_pec=` argument,
+takes the update from that declaration. Graded meshes, multiple
 devices and subgrids refuse it. With conformal PEC a flat wall sits at its
 drawn plane, and on a PEC sphere the cut-cell update is closer to Mie than the
 staircase, but its error falls only first order with the cell size. Every run
@@ -245,9 +252,11 @@ came from:
   scattering examples use it on purpose because TFSF illumination takes
   material arrays directly.
 - **Subpixel smoothing and conformal PEC** (`subpixel_smoothing="kottke_pec"`,
-  `conformal_pec=True`) use their own weights near curved metal. Subpixel
-  smoothing averages dielectrics only: the fill around a PEC body (a via, a
-  coax pin, a post) keeps its permittivity.
+  `conformal_pec=True`) use their own weights near curved metal.
+  `subpixel_smoothing=True` averages dielectrics only: the fill around a PEC
+  body (a via, a coax pin, a post) keeps its permittivity. `"kottke_pec"`
+  also smooths the cells at a metal face (experimental; see
+  [Curved metal](#curved-metal)).
 
 Coax conductors built by the coaxial port are realized PEC, not a σ fill; see
 [Sources and Ports](/rfx/model/ports/#coaxial-ports).
@@ -297,9 +306,10 @@ cells are also PEC.
 
 Drawing the foil with its 35 µm thickness centred on the laminate face is wrong
 in a third way: a sheet is solved on one node plane, so the drawn thickness
-counts into the spacing between the foil and the next metal plane. When that
-cavity is solved more than 1 % off its drawn spacing, the default
-`snap="strict"` refuses the run (`sheet_cavity_spacing`).
+counts into the spacing between the foil and any parallel metal plane above
+or below it, such as a patch on the laminate's top face. When that spacing is
+solved more than 1 % off its drawn value, the default `snap="strict"`
+refuses the run (`sheet_cavity_spacing`).
 
 ### Worked example: a plate is a volume
 
@@ -404,7 +414,7 @@ The solver paths refuse what they do not implement:
 
 ## See also
 
-- [Materials](/rfx/model/materials/): dielectrics, loss and draw order.
+- [Materials and Geometry](/rfx/model/materials/): dielectrics, loss and draw order.
 - [Check the model on the grid](/rfx/check/model-on-grid/): preflight and the realized geometry.
-- [Domain and mesh](/rfx/model/domain-mesh/#mesh-lines-at-sheet-edges): mesh lines placed at sheet edges.
-- [Ports](/rfx/model/ports/): wire ports and coaxial conductors.
+- [Non-Uniform Mesh](/rfx/model/domain-mesh/#mesh-lines-at-sheet-edges): mesh lines placed at sheet edges.
+- [Sources and Ports](/rfx/model/ports/): wire ports and coaxial conductors.

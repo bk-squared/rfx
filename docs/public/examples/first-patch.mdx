@@ -100,8 +100,11 @@ Three rules for graded meshes:
 
 - Keep every ratio between neighbouring cells at or below 1.4, the largest
   ratio rfx validates; preflight warns above it. This profile stays below 1.3.
-- Start and end the profile with cells equal to `dx`, so the absorber sees the
-  same cell size on every face.
+- End the profile, at both ends, in a run of uniform cells at least as deep
+  as the absorber (`cpml_layers`, 8 here): this profile has 10 cells of `dx`
+  at the bottom and 24 at the top, so the absorber starts on a uniform mesh.
+  Preflight warns (`nu_grading_reaches_absorber`) where grading reaches the
+  cells next to an absorbing face, as Section 3 shows for x and y.
 - Put material interfaces in z exactly on cell boundaries. Here the substrate
   starts at `sum(lower_air)` for that reason. Section 3 says where its x and y
   faces land.
@@ -124,7 +127,7 @@ sim.add_thin_conductor(patch)
 src_z = z_sub_lo + 2.5 * dz_sub
 sim.add_source((feed_x, feed_y, src_z), "ez",
                waveform=GaussianPulse(f0=f0, bandwidth=0.8),
-               amplitude_kind="current")
+               amplitude_kind="current")   # the amplitude is a current moment in A·m
 sim.add_probe((probe_x, probe_y, src_z), "ez")
 
 report = sim.preflight()
@@ -139,16 +142,18 @@ print(report.format())
 ### Reading what rfx tells you
 
 Each `add_thin_conductor` call warns that the sheet is a **lossless PEC
-sheet**, because copper's conductivity is above the 1e6 S/m PEC threshold.
+sheet**. With no material named, `add_thin_conductor` models copper
+(`sigma_bulk=5.8e7` S/m), which is above the 1e6 S/m PEC threshold.
 The patch therefore has no conductor loss. If conductor loss matters for your
 Q or efficiency, pass `surface_impedance_f0=f0`. The sheet is then modelled as
 a resistive sheet with copper's surface resistance at `f0`, on the same
 footprint, instead of as PEC.
 
 Preflight takes a metal sheet's free edge to lie 0.35 cell beyond its last
-node, so the in-plane `edge_aware_profiles` mesh puts the last node of the ground and of
-the patch 0.35 cell inside each drawn edge, and the feed and probe on grid
-nodes; the patch is not rounded to a uniform lattice. The 0.35 was measured
+node. The in-plane `edge_aware_profiles` mesh therefore puts the last node of
+the ground and of the patch 0.35 cell inside each drawn edge, so preflight
+predicts each sheet at its drawn size. The same mesh puts the feed and the
+probe on grid nodes. The patch is not rounded to a uniform lattice. The 0.35 was measured
 where the cell normal to the sheet is as long as the in-plane cell beside its
 edge. Here the z cells at the sheets are 0.25 to 0.29 mm and the in-plane cell
 beside each edge is 0.95 mm, ratios of 0.26 to 0.31. Near those ratios the
@@ -189,7 +194,9 @@ assert ts.size > 0 and np.isfinite(ts).all()
 print(f"{ts.shape[0]} steps, settling {short_run.settling_db:.1f} dB")
 ```
 
-This shows that the model runs and produces finite data. Two periods is far too
+`num_periods` sets the record length in periods of `freq_max`: two periods at
+4 GHz are 0.5 ns. This shows that the model runs and produces finite data. Two
+periods is far too
 short for the patch to ring down, so rfx warns that the ring-down is
 truncated. The settling figure prints `nan`: a run with only probes reads no
 frequency for the check to judge, so `short_run.settling_witness["status"]`
@@ -204,13 +211,17 @@ is `"absent"` (see [Quick Start](/rfx/start/first-simulation/)). Nothing from th
 
 To report a resonance, Q or return loss for this patch:
 
-1. **Run long enough.** Use `until_decay=` or a long fixed `n_steps`. A patch
-   has a moderately high Q, so it needs many periods. Once the run reads
-   frequencies (a port, an NTFF box), check `result.settling_db`; with probes
-   alone, judge the probe signal's decay.
+1. **Run long enough.** Use `until_decay=` or a long fixed `n_steps`.
+   `until_decay=1e-4`, for example, stops the run when the field energy in the
+   domain has fallen to 10⁻⁴ of its largest value after the source ends. A
+   patch has a moderately high Q, so it needs many periods. Once the run reads
+   frequencies through a port, or through an NTFF box together with a probe,
+   check that `result.settling_db` is at or below −40 dB; with probes alone,
+   judge the probe signal's decay.
 2. **Extract the resonance** with `result.find_resonances(freq_range=(2e9, 3e9))`.
    Pick the mode by its field pattern or far field, not by which peak is
-   biggest. Handle the case where no mode is found.
+   biggest. It returns an empty list when it finds no mode; then lengthen the
+   record or widen `freq_range`.
 3. **Refine the mesh** in x/y and z, and enlarge the air margin. Report how
    much the frequency moves, not just the finest answer. See
    [Is the mesh fine enough?](/rfx/check/mesh-convergence/).
