@@ -728,7 +728,7 @@ def _validate_cfg_multiband_grading(self, _w) -> None:
 def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
     """Advisory: a LOSSY thin conductor landing on a grading transition.
 
-    A lossy sheet folds into ``materials.sigma`` at ONE E node along its
+    A lossy sheet folds its conductance onto ONE E node along its
     normal, and the length that node's sigma acts over is the DUAL spacing
     ``(d[k-1]+d[k])/2`` — not either adjacent cell. Where the two adjacent
     cells are equal the distinction is invisible, so a fold dividing by the primal cell ``d[k]`` conceals the error:

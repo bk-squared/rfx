@@ -557,7 +557,7 @@ def e_node_dual_spacings(profile_full):
 
     which is exactly ``1/inv_d_e``. An f0 sheet and a DC film fold both
     divide by this node dual, so each realizes its declared sheet resistance
-    on a grading step. Dividing by the primal width ``d[k]`` instead gave
+    on a grading step. Dividing an f0 sheet by the primal width ``d[k]`` gave
     attenuation ratios 1.2021 on a 0.25/0.50 mm transition and 0.6214 on a
     1.00/0.25 mm transition against a matched mesh (expected 1.000).
 
