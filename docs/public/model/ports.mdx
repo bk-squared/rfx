@@ -85,9 +85,9 @@ sim.add_source((0.025, 0.025, 0.010), "ez",
 
 Always pass `amplitude_kind`:
 
-- `"current"`: the amplitude is a current moment in A·m, a source strength
+- `"current"`: the waveform's `amplitude` is a current moment in A·m, a source strength
   that does not refer to the cell. Use this by default.
-- `"field"`: the amplitude is added to E each step, in V/m.
+- `"field"`: the waveform's `amplitude` is added to E each step, in V/m.
 
 Omitting it or passing `None` selects `"current"` and warns once per simulation.
 `tests/unit/sources/test_source_amplitude_kind.py` checks that omitting the kind
@@ -136,9 +136,9 @@ For oblique incidence, set `angle_deg` and choose `method`:
 - `method="methodB"`: an open domain around a compact scatterer. It needs
   `polarization="ez"`, `direction="+x"` and a uniform grid.
 
-With `waveform=None` (the default), normal incidence, `closed_box=True` and
-method B launch a differentiated Gaussian; oblique Bloch launches a modulated
-Gaussian. Method B honours the declared pulse and bandwidth. Explicit
+With `waveform=None` (the default), the pulse depends on the launch: a
+differentiated Gaussian at normal incidence, with `closed_box=True` and with
+method B, and a modulated Gaussian for oblique Bloch. Method B honours the declared pulse and bandwidth. Explicit
 `waveform="differentiated_gaussian"` on oblique Bloch is refused: its fixed
 transverse wavenumber is right only near `f0`, so it can carry only a
 modulated Gaussian centred on `f0`. Declare
