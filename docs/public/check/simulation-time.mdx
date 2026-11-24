@@ -121,8 +121,9 @@ Closed PEC boxes on the uniform mesh use the same after-drive energy rule.
 A lossy box can reach the threshold; a lossless box can reach `decay_max_steps`
 with energy still inside. The cap message reports the after-drive reference
 as a fraction of the drive's peak energy. The public graded-mesh `run()` still
-refuses closed-box `until_decay`; use fixed `n_steps` there and in convergence
-studies. Read the settling check after a decay-stopped run, as after any other.
+refuses closed-box `until_decay`; use fixed `n_steps` there. In a convergence
+study, give the same physical record length on every mesh: the same `num_periods`, or an
+`n_steps` scaled to each mesh's time step. Read the settling check after a decay-stopped run, as after any other.
 
 On absorbing boundaries, `run(until_decay=..., radiated_flux_box=((x0, y0, z0),
 (x1, y1, z1)))` stops on the power flowing out through a box around the

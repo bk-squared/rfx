@@ -155,8 +155,9 @@ interior field energy relative to its largest value after the drive ends. This a
 uniform meshes with closed or absorbing boundaries and graded meshes with
 absorbing boundaries. A lossless closed PEC box generally reaches the step
 cap; a lossy box can stop when its energy decays. The public graded-mesh runner
-still refuses closed-boundary `until_decay` (set `n_steps`). Use a fixed
-`n_steps` in convergence studies.
+still refuses closed-boundary `until_decay` (set `n_steps`). In a convergence
+study, give the same physical record length on every mesh: the same `num_periods`, or an
+`n_steps` scaled to each mesh's time step.
 
 **Other arguments you will use:**
 

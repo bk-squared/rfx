@@ -120,7 +120,9 @@ Give one of `n_steps` (exact steps), `num_periods` (periods at `freq_max`,
 default 20, used when nothing else is given) or, for `run()` only,
 `until_decay`. [Is the run long enough?](/rfx/check/simulation-time/) explains
 the three, the decay stop and its limits, and the check to read afterwards.
-Use a fixed `n_steps` in closed structures and in convergence studies.
+Use a fixed record, not `until_decay`, in closed structures. In a
+convergence study, give the same physical record length on every mesh: the same `num_periods`, or an
+`n_steps` scaled to each mesh's time step.
 
 ### Precision
 

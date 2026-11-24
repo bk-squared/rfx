@@ -32,7 +32,7 @@ for another.
 |---|---|---|---|
 | Lumped or wire `add_port(...)` | `run(compute_s_params=True)`, or `forward(port_s11_freqs=...)` for a differentiable `S11` | about 60 cells per wavelength at the highest frequency; no current test measures the accuracy there, so a mesh series decides it ([Is the mesh fine enough?](/rfx/check/mesh-convergence/)) | A discrete feed across one gap, not a modal line port. V is read at the port node and I half a cell toward the line, so a two-port `S21` phase is referenced to the port separation less half a cell. |
 | Microstrip `add_msl_port(...)` | `compute_msl_s_matrix(...)` | at least 4 cells through the substrate (preflight warns below that) | Returns the raw extracted `S`; read `sigma_max_excess` for any passivity breach, or pass `enforce_passivity=True` to project it. Check `probe_clearance` for the probe layout and `settling_db` for the record length. |
-| Rectangular waveguide `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | the documented rectangular-guide modes and bands | Single-mode magnitudes are checked most widely; phase, junctions, multimode and graded meshes less. Only `normalize=False` and `normalize="flux"` carry a gradient. |
+| Rectangular waveguide `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | the WR-90 checks use 9, 18 and 36 cells across the 22.86 mm broad wall and judge on the finest; start a mesh series in that range | Single-mode magnitudes are checked most widely; phase, junctions, multimode and graded meshes less. Only `normalize=False` and `normalize="flux"` carry a gradient. |
 | Coaxial `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` for one port, `compute_coaxial_two_port(...)` for a through line | at least 4 cells across the annulus | Exactly one coaxial port with `face="top"`, `precision="float32"`, a uniform 3-D grid and CPML on all six faces. The calculator builds its own line, source and probes; it is not a general coaxial-network solver. |
 
 Field sources, plane waves, probes, DFT planes and flux monitors have no port
@@ -51,9 +51,9 @@ conductor that runs into the absorber unterminated.
 
 | Configuration | What to know |
 |---|---|
-| Graded (non-uniform) mesh | Check the limit for each source, port and observable in [Non-Uniform Mesh](/rfx/model/domain-mesh/). A plane wave on a graded mesh runs at normal incidence along x, graded or not; oblique incidence and a closed box on a graded x are refused. `add_refinement` is refused on a graded mesh. |
+| Graded (non-uniform) mesh | Check the limit for each source, port and observable in [Non-Uniform Mesh](/rfx/model/domain-mesh/). On a graded mesh a plane wave runs only at normal incidence along x, whether or not the x axis itself is graded; oblique incidence, and a closed box on a graded x axis, are refused. `add_refinement` is refused on a graded mesh. |
 | Local refinement, `add_refinement` | Refused by default; with `validation="research"` it takes effect only through `run()` on a uniform mesh, with a warning. `forward()`, `optimize()`, `topology_optimize()` and the S-parameter calculators refuse a refined model. |
-| Multi-device, `run(devices=[...])` | Uses the shard_map runner with `exchange_interval=1`. Lumped RLC elements, MSL ports, refinements and Kerr materials are refused. |
+| Multi-device, `run(devices=[...])` | Uses the shard_map runner with `exchange_interval=1`. Inputs it does not carry are refused by name, among them lumped RLC elements, surface-impedance sheets, waveguide, microstrip, coaxial and Floquet ports, periodic axes, refinements and Kerr materials; [Support](/rfx/support/) has the full list. |
 | Differentiable design | The objective is a proxy. Check the final design with a converged forward run of the RF quantity you report. |
 
 When a run argument is not implemented on the path your model takes (for

@@ -18,7 +18,7 @@ rfx tests its solver in three independent ways.
 | Kind of check | What it compares | Where it lives | When it runs |
 |---|---|---|---|
 | **Analytic** | rfx against a closed-form answer: cavity modes, slab reflection and transmission (lossless, lossy, Debye, Lorentz, Drude, oblique TE), a PEC sphere against the Mie series, empty, shorted and slab-loaded rectangular waveguides, a WR-90 inductive iris against mode matching, lumped R, L and C loads on a line, dipole far fields | `tests/oracle/` | most on every pull request |
-| **Cross-solver** | rfx against another solver on structures with no closed form: a microstrip open-stub notch filter (openEMS and Palace) and the resonance and input resistance of an RT/duroid 5880 patch (openEMS) | `tests/crossval/` | on demand and on GPU, against frozen reference records |
+| **Cross-solver** | rfx against another solver on structures with no closed form: a microstrip open-stub notch filter (openEMS and Palace) and the resonance and input resistance of an RT/duroid 5880 patch (openEMS). Each case judges only when its own mesh series converges; otherwise it reports the distance and states no verdict | `tests/crossval/` | on demand and on GPU, against frozen reference records |
 | **Convergence** | rfx against itself as the mesh is refined. A result that moves when you refine the mesh is not converged yet | the same tests, and your own studies | as above |
 
 The cross-solver cases compare against reference records that are frozen in
@@ -33,9 +33,9 @@ Two limits apply to all of these checks:
 - **Some features are checked little or not at all.** The support tables in
   [Support](/rfx/support/) say which are
   *supported*, which are *limited* to stated conditions, and which are
-  outside the documented scope. The maintainer
+  outside the documented scope. The full
   [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md)
-  has the detail for each feature.
+  in the repository gives the conditions and the tests behind each feature.
 
 ## What you must check yourself
 
@@ -111,10 +111,13 @@ the Yee scheme should show. Your own study works the same way. Pick one number
 you care about, refine the mesh, and check that the number settles toward a
 limit.
 
-The box is lossless, so its physical Q is infinite. The frequency is the
-result here; a Q from this record would only measure the record length. A
-closed box never rings down, so the run uses a fixed `n_steps` rather than
-`until_decay`.
+The box is lossless, so its modes never decay and the record never settles.
+`until_decay` would never stop such a run, so it uses a fixed `n_steps`, the
+same physical record on every mesh. The matrix pencil fit still reads the
+frequency of an undamped mode from a finite record. With the same record on
+every mesh, the error still falls by about four per halving, so the record
+length adds at most about 0.01 % here. A Q from this record would only
+measure the record length, because the physical Q is infinite.
 
 ## Starting resolutions for port results
 

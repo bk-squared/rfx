@@ -14,11 +14,13 @@ The port aperture defines the guide. A port that spans the whole domain
 cross-section (no `y_range=` / `z_range=`, or ranges equal to it) uses the transverse domain faces as
 the guide walls, so those faces must be PEC: declare the absorber on the port
 axis only, for an x-directed guide `boundary={"x": "cpml", "y": "pec", "z": "pec"}`.
-On a uniform mesh `boundary="cpml"` on all faces is refused before the first step. If you leave
-`boundary` out, a uniform mesh solves those faces as PEC and warns once; a graded
-mesh refuses until you declare them. Ports need a 3-D simulation (`mode="3d"`, the default), and cannot share a
-model with lumped, wire or passive ports, a point source (`add_source`) or a TFSF
-source; `run()` and `forward()` refuse that model on both meshes.
+On a uniform mesh, passing `boundary="cpml"` for all faces is refused before
+the first step. If you do not pass `boundary` at all, a uniform mesh solves the
+guide's transverse faces as PEC and warns once; a graded mesh refuses until you
+declare them. Ports need a 3-D simulation (`mode="3d"`, the default), and cannot
+share a model with a lumped or wire port (driven or not, `excite=False`
+included), a point source (`add_source`) or a TFSF source; `run()` and
+`forward()` refuse that model on both meshes.
 
 ## A two-port S-matrix
 
@@ -84,12 +86,15 @@ guide without the device, at the same planes. `normalize=True` cannot be
 differentiated; `False` and `"flux"` can.
 
 With `normalize=False`, a passive strong reflector can read slightly above
-|S| = 1. When it rises beyond the expected range, rfx prints an advisory. Switch
-to `"flux"` or refine the mesh rather than reporting that number.
+|S| = 1. rfx warns when any |S| exceeds 1.5, or when the power of a column (the
+sum of |S|² over the receiving ports for one driven port) exceeds 2.25. With
+`True` or `"flux"` it warns when any |S| exceeds 1.05 or a column's power
+exceeds 1.1. A value above 1 is not physics even without a warning: switch to
+`"flux"` or refine the mesh rather than reporting that number.
 
-rfx also checks every result for passivity and reciprocity and warns when a
-column carries more power than it received. That warning almost always means
-the extraction is wrong, not the physics.
+rfx also checks every result for reciprocity and warns when an entry of S differs
+from its mirror entry (S21 from S12) by more than 0.011. These warnings almost always
+mean the extraction is wrong, not the physics.
 
 ## A single port with `run()`
 
@@ -260,9 +265,11 @@ graded mesh it is a target segment count.
   aperture edges, or make the domain cross-section equal to the aperture and
   declare its transverse faces PEC. A PEC face farther from an edge does not
   close that edge.
-- **Validated scope** is uniform, single-mode, straight rectangular guides and
-  same-guide junctions under the far-port conditions above. Phase is
-  validated on fewer configurations than magnitude.
+- **Tested scope**: single-mode magnitude of straight rectangular guides on a
+  uniform mesh, with and without a device in the guide (the WR-90 chain, an
+  inductive iris against mode matching). Phase is checked on fewer cases than
+  magnitude. Junctions (branches, T-junctions, septa) are checked less, even
+  under the far-port conditions above.
 - **Ports with different cross-sections** are outside the validated scope.
   Between ports in one medium, S is a ratio of each port's own modal waves, so
   it equals a power-wave S only when all ports share one cross-section and

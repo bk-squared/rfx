@@ -20,9 +20,7 @@ can hit inside these limits are on
 | **supported** | Documented for routine use within the stated limits. |
 | **limited** | Documented only for the geometry, mode, mesh or observable stated. Outside that, you have to validate it yourself. |
 | **experimental** | Runs and has regression tests, but it has not been compared with references enough to rely on the numbers. |
-| **not documented** | Code exists, but there is no public workflow. |
-| **unsupported** | Refused with an error. |
-| **refused** | The code raises before the first time step, with a message that says what to do instead. |
+| **refused** | The code raises before the first time step, with a message that says what to do instead. The repository's support matrix calls such a combination **unsupported**. |
 
 A clean preflight or a completed run does not move a feature up this scale.
 
@@ -56,12 +54,12 @@ Subgridding is outside the 2.0 supported scope:
 | Metal sheets (`add_thin_conductor`) | **supported** | A lossless sheet on one grid plane. |
 | Lossy sheets and films (`surface_impedance_f0=`, `sigma_bulk` below the metal threshold) | **limited** | A sheet on one node plane, no thicker than one cell, on uniform and graded meshes. A lossy film is also solved on several devices. Not a general dispersive conductor model. |
 | Probes and flux monitors | **supported** | On a uniform grid. See [graded meshes](#graded-meshes). |
-| Resonances (`find_resonances`) | **supported** | A matrix pencil fit of a probe signal. The signal must have decayed after the source ends, and the structure needs some loss. |
+| Resonances (`find_resonances`) | **supported** | A matrix pencil fit of a probe signal from after the source ends. It reads the frequency of lossy and lossless modes alike. A Q needs real loss in the structure: the fitted Q of a lossless mode only measures the record length. |
 | Far field / RCS (NTFF) | **limited** | The cases in [Far-Field & Radar Cross Section](/rfx/measure/far-field-and-rcs/). |
 | Plane wave (`add_tfsf_source`) | **limited** | Propagation along x, in 3-D or 2-D (TMz/TEz), with CPML. Oblique incidence only in the plane set by the polarization. |
 | Graded meshes | **limited by feature** | See [graded meshes](#graded-meshes). |
 | Multi-device runs (`devices=`) | **supported** | Within the limits of the support matrix. Each record is compared with a one-device run of the same model. Inputs a multi-device run does not carry are refused by name, never dropped: lumped RLC elements, surface-impedance sheets, waveguide, microstrip, coaxial and Floquet ports, periodic axes, Kerr materials, an open-slab plane wave on a uniform mesh and any plane wave on a graded mesh. See the refused-input tables. |
-| Subgridding (`add_refinement`) | **not documented** | Refused by default; see [solver paths](#solver-paths). |
+| Subgridding (`add_refinement`) | **refused** | Refused by default. `validation="research"` runs it on a uniform mesh with a warning, outside the 2.0 scope; see [solver paths](#solver-paths). |
 | Floquet / Bloch ports | **experimental** | Normal incidence on a single-device uniform mesh. No high-level S-parameter API. |
 
 ## Port families and S-parameters
@@ -104,10 +102,10 @@ accurate.
 | Plane wave + graded mesh | **experimental** | Normal incidence along ±x, through `run()` and `forward()`; x may be graded. Oblique incidence, incidence along ±z, a closed box and a `CustomWaveform` are refused. |
 | Waveguide S-matrix + graded mesh | **experimental** | Single mode, `normalize=True` or `"flux"`. With `boundary` omitted a full-aperture guide is refused; declare the walls. A reference-plane shift across cells of more than one size is refused. |
 | Microstrip S-matrix + graded mesh | **experimental** | `mode="laplace"` / `"uniform"`; regression checks only. `mode="eigenmode"` is refused. |
-| Coaxial port + graded mesh | **unsupported** | Refused. |
-| `boundary="upml"` + graded mesh | **unsupported** | Refused. Use CPML. |
+| Coaxial port + graded mesh | **refused** | |
+| `boundary="upml"` + graded mesh | **refused** | Use CPML. |
 | Periodic axis + graded mesh | **experimental** | One device, `run()` and `forward()`, with one cell size along the periodic axis. A graded profile along it, a plane wave, `interface_eps='dual_average'` and Bloch phases are refused. |
-| Floquet port + graded mesh | **unsupported** | Refused. |
+| Floquet port + graded mesh | **refused** | |
 
 ## Refused inputs
 
