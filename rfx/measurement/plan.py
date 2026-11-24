@@ -226,6 +226,37 @@ class TimeBase:
                      * np.float64(self.dt))
 
 
+def record_sample_times(dt, n_rows, components=None, *, n_cols=1):
+    """Return float64 sampling times in seconds, one column per probe.
+
+    Row n is sampled at (n + 1) * dt for E and (n + 0.5) * dt for H,
+    using TimeBase offsets; omitted components treat every column as E.
+    """
+    if not (np.isfinite(dt) and dt > 0):
+        raise ValueError(f"dt must be a positive finite time step, got {dt!r}")
+    if n_rows < 0:
+        raise ValueError(f"n_rows must be non-negative, got {n_rows!r}")
+    if components is None:
+        components = ('ez',) * n_cols
+    else:
+        components = tuple(components)
+    if len(components) != n_cols:
+        raise ValueError(
+            f"components {components!r} must have {n_cols} entries, one per column; "
+            f"accepted names: {', '.join(_COMPONENTS)}"
+        )
+    clock = TimeBase(dt=dt, record_length=n_rows)
+    offsets = []
+    for component in components:
+        if component not in _COMPONENTS:
+            raise ValueError(
+                f"invalid component {component!r}; accepted names: {', '.join(_COMPONENTS)}"
+            )
+        offsets.append(clock.e_offset if component.startswith('e') else clock.h_offset)
+    return (np.arange(n_rows, dtype=np.float64)[:, None]
+            + np.asarray(offsets, dtype=np.float64)[None, :]) * np.float64(dt)
+
+
 KERNEL_KNOWN_DIFFERENCES = (
     'rfx/measurement/floquet.py update_floquet_dft: own sum, H centred on E in space and time; no caller in rfx/',
     'subgridded runner: own lumped V/I sum stamped n dt, without the H half step',

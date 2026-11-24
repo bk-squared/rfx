@@ -1741,7 +1741,8 @@
         "time_series",
         "dt",
         "labels",
-        "title"
+        "title",
+        "components"
       ]
     },
     "polarization_sense": {

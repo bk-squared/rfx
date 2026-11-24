@@ -84,3 +84,45 @@ def test_plot_field_slice_axes():
         assert fig is not None
         plt.close(fig)
     print("\nplot_field_slice all axes: OK")
+
+
+@pytest.mark.skipif(not HAS_MPL, reason="matplotlib not installed")
+@pytest.mark.parametrize("entry_point", ["visualize_mixed", "visualize_default", "dashboard_mixed"])
+def test_plotted_time_axis_is_the_record_sampling_time(monkeypatch, entry_point):
+    """Plotted E and H rows retain their physical leapfrog sampling times."""
+    from types import SimpleNamespace
+    from rfx.visualize import plot_time_series
+
+    n, dt = 7, 1.3e-12
+    ts = np.column_stack((np.arange(n) + 2.0, np.arange(n) * 3.0 - 4.0))
+    figures, warnings, charts = [], [], []
+    if entry_point == "dashboard_mixed":
+        from rfx.dashboard import components
+
+        stub = SimpleNamespace(pyplot=figures.append, warning=warnings.append,
+                               line_chart=charts.append)
+        monkeypatch.setattr(components, "_require_st", lambda: stub)
+        components.display_time_series(ts, dt, components=["ez", "hx"])
+        assert not warnings
+        assert not charts
+        assert len(figures) == 1
+        fig = figures[0]
+    elif entry_point == "visualize_default":
+        fig = plot_time_series(ts, dt)
+    else:
+        fig = plot_time_series(ts, dt, components=["ez", "hx"])
+    try:
+        expected_e = (np.arange(n) + 1) * dt * 1e9
+        expected_h = (np.arange(n) + 0.5) * dt * 1e9
+        lines = fig.axes[0].lines
+        assert len(lines) == 2
+        np.testing.assert_allclose(lines[0].get_xdata(), expected_e, rtol=1e-12)
+        np.testing.assert_allclose(
+            lines[1].get_xdata(),
+            expected_e if entry_point == "visualize_default" else expected_h,
+            rtol=1e-12,
+        )
+        np.testing.assert_array_equal(lines[0].get_ydata(), ts[:, 0])
+        np.testing.assert_array_equal(lines[1].get_ydata(), ts[:, 1])
+    finally:
+        plt.close(fig)
