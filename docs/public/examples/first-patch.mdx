@@ -161,8 +161,9 @@ where the cell normal to the sheet is as long as the in-plane cell beside its
 edge. Here the z cells at the sheets are 0.25 to 0.29 mm and the in-plane cell
 beside each edge is 0.95 mm, ratios of 0.26 to 0.31. Near those ratios the
 offset was measured in vacuum only, with the z cell a quarter of the in-plane
-cell: 0.26 cell for a free sheet and 0.31 cell for a strip three cells above a
-ground plane ([the accuracy notes](/rfx/check/model-on-grid/#accuracy)). On
+cell: 0.26 cell for a free sheet, extrapolated over three meshes, and 0.31 cell
+for a strip three cells above a ground plane, from one mesh and not checked on
+finer meshes ([the accuracy notes](/rfx/check/model-on-grid/#accuracy)). On
 the substrate face, where these sheets lie, with a different cell on each
 side, it has not been measured, so neither the solved size of this patch nor
 the direction of its error is known. `sim.fidelity_report()` and the preflight findings show the nodes the

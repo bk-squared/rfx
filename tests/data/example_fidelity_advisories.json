@@ -29,7 +29,7 @@
    "code": "ntff_near_field",
    "disposition": "intended",
    "reason": "Teaching point 3 of the tutorial: 'Every face should sit at least half a wavelength from the radiator where the domain allows. The face below the ground plane cannot: it sits 6 mm below the ground. Preflight flags it, the run quotes the warning verbatim, and a solver-to-solver cross-check backs the placement. Preflight output is part of the result; do not suppress it.' The placement is cross-checked against openEMS at the design-mode bin: D 6.59 dBi against openEMS 6.83 dBi, -0.24 dB (module docstring).",
-   "ref": "examples/tutorials/patch_antenna_demo.py:33-37,104-109,384-390,518-522",
+   "ref": "examples/tutorials/patch_antenna_demo.py:33-45,112-117,387-389,512-516",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
@@ -37,7 +37,7 @@
    "code": "ntff_small_ground_plane",
    "disposition": "intended",
    "reason": "The geometry is the openEMS 'Simple Patch Antenna' tutorial verbatim -- a 60 x 60 mm finite ground plane -- and the finite plane is the structure under test, not an oversight. main()'s comment lists this row among the advisories expected on this fixture: 'ntff_small_ground_plane for finite-ground diffraction'; the openEMS reference solves the same finite ground plane.",
-   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,518-522",
+   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,512-516",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
@@ -45,7 +45,7 @@
    "code": "no_sources",
    "disposition": "intended",
    "reason": "The tutorial ASSERTS this row. main(): 'Because this model deliberately ends after construction, general preflight should report that there is no generic run source', then expected_build_only_advisory = bool(coaxial_report.by_code('no_sources')) and prints it. A missing row here would be the defect.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:329-336",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:332-339",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_coaxial_port::default"
   },
@@ -438,7 +438,7 @@
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=6, x_hi=6, y_lo=6, y_hi=6, z_lo=6, z_hi=6. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/tutorials/antenna_farfield_pattern.py:48-60 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/tutorials/antenna_farfield_pattern.py:54-72 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/tutorials/antenna_farfield_pattern.py::build_simulation::default"
   },
@@ -470,7 +470,7 @@
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=3, x_hi=3, y_lo=3, y_hi=3, z_lo=3, z_hi=3. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:114-126 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:114-140 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
@@ -478,7 +478,7 @@
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=4, x_hi=4. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:223-235 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:233-245 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_waveguide_ports::default"
   },
@@ -502,7 +502,7 @@
    "code": "msl_port_geometry",
    "disposition": "intended",
    "reason": "#1138: edge-aware x/y profiles grade the propagation axis; this tutorial builds the MSL setup only. The skipped automatic offset solve is reported without claiming fitted Z0/beta or a settled S-matrix. (Two earlier probe-clearance rows named this tutorial's own finite ground sheet as the reflector, at -11.25 mm; a conductor at the port's ground reference is no longer a reflector candidate, so they are gone.)",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:114-148,315-321",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:114-162,318-324",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
@@ -622,7 +622,7 @@
    "code": "thin_conductor_thickness_unmodelled",
    "disposition": "intended",
    "reason": "This example declares its copper with add_thin_conductor at the API's default 35 um, solved with zero thickness, on a 1.524 mm substrate (t/h 2.3 %). The advisory states that the declared thickness is not in the model and that a strip or patch on this substrate reads electrically long by about 0.27 % (#1523 table); that is true of this example and is the known limitation 'Conductor thickness is not solved' in docs/guides/known_limitations.md. The ground sheet (thin_conductors[0]) covers the substrate footprint and is not reported; only the patch (thin_conductors[1]) is.",
-   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,369-371",
+   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,370-372",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
@@ -630,7 +630,7 @@
    "code": "thin_conductor_thickness_unmodelled",
    "disposition": "intended",
    "reason": "This example declares its copper with add_thin_conductor at the API's default 35 um, solved with zero thickness, on a 1 mm substrate (t/h 3.5 %). The advisory states that the declared thickness is not in the model and that a strip or patch on this substrate reads electrically long by about 0.37 % (#1523 table); that is true of this example and is the known limitation 'Conductor thickness is not solved' in docs/guides/known_limitations.md. The ground sheet (thin_conductors[0]) covers the substrate footprint and is not reported; only the trace (thin_conductors[1]) is.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:157-184",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:116-119,172-194",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
@@ -654,7 +654,7 @@
    "code": "realization",
    "disposition": "intended",
    "reason": "true positive on the substrate overhang; the patch metal is on nodes. x: realized 30 cells (0.0586 m), declared 30.7167235495 cells (0.06 m).",
-   "ref": "examples/tutorials/patch_antenna_demo.py:326-327,375",
+   "ref": "examples/tutorials/patch_antenna_demo.py:327-328,376",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
@@ -662,7 +662,7 @@
    "code": "realization",
    "disposition": "intended",
    "reason": "true positive on the substrate; strip and ports silent. y: realized 36 cells (0.00835125 m), declared 36.641221374 cells (0.0085 m).",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:120-129,179-182",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:134-143,189-192",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
