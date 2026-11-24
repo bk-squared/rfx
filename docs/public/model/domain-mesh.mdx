@@ -181,7 +181,8 @@ geometry.
 An end that is joined rather than free gets no offset, because the metal
 continues there: a seam, overlap or T-join with other sheet metal, an end at
 or past a domain face, or an end joined over its whole width to a PEC volume.
-Preflight takes such an end at its last node. A gap of one cell or more to a
+An end fed by a port at every node is treated the same way. Preflight takes
+such an end at its last node and leaves it out of the size check. A gap of one cell or more to a
 block still leaves a free edge. `rfx.mesh_edges.solved_sheet_span` holds these
 rules.
 

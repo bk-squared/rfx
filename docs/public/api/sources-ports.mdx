@@ -15,9 +15,11 @@ compute S-parameters. Worked examples are in the
 ## Waveforms
 
 `add_source()`, `add_polarized_source()`, `add_port()` and `add_msl_port()`
-take a `waveform=` object. Waveguide ports and TFSF sources take `f0`,
-`bandwidth` and a pulse name as a string (`waveform="modulated_gaussian"`)
-instead; Floquet ports take `f0` and `bandwidth` only.
+take a `waveform=` object. Waveguide ports take `f0` and `bandwidth` and
+accept only `waveform="modulated_gaussian"`. TFSF sources take `f0`,
+`bandwidth` and a pulse name (`"differentiated_gaussian"`,
+`"modulated_gaussian"` or `"continuous_wave"`) or a `CustomWaveform`. Floquet
+ports take `f0` and `bandwidth` only.
 
 | Waveform | Signature | Use |
 |---|---|---|
@@ -189,7 +191,7 @@ strip = Box((0.003, 0.004 - w / 2, h), (0.017, 0.004 + w / 2, h))  # port to por
 msl = Simulation(freq_max=10e9, domain=domain, dx=100e-6,
                  boundary="cpml", cpml_layers=8,
                  **edge_aware_profiles(domain, 100e-6, sheets=[strip],
-                                       faces={"x": [0.003, 0.017], "y": [0.004]}))
+                                       faces={"y": [0.004]}))
 msl.add_material("ro4350b", eps_r=3.66)
 msl.add(Box((0.0, 0.0, 0.0), (0.020, 0.008, h)), material="ro4350b")
 msl.add_thin_conductor(Box((0.0, 0.0, 0.0), (0.020, 0.008, 0.0)))            # ground
@@ -204,9 +206,13 @@ The strip runs from port to port: a strip that continued behind a port would be
 an open stub, and the calculator refuses one that shorts the port near the
 band. Preflight takes a free sheet edge to lie 0.35 in-plane cell beyond the
 sheet's last node, so the edge-aware in-plane mesh puts the 600 µm strip's last
-nodes 0.35 cell inside its drawn side edges. Its two ends are fed by the
-microstrip ports over the trace's full width, so preflight takes them where
-they are drawn, and `faces=` puts nodes on them. The 0.35 was measured where the cell
+nodes 0.35 cell inside its drawn side edges. `edge_aware_profiles` does not
+know where the ports are, so it meshes the two ends as free edges too, with
+the last node 0.35 cell inside each; a plane declared in `faces=` on a sheet
+edge would be dropped with a warning, so the example declares only the trace's
+centre line. The microstrip ports feed those ends over the trace's full width,
+so preflight takes each end at its last node and leaves it out of the size
+check. The 0.35 was measured where the cell
 normal to the sheet is as long as the in-plane cell beside its edge. Here the
 z cell is 100 µm and the in-plane cell beside each side edge 90 µm, a ratio of
 1.11. For a free sheet in vacuum the offset at that ratio was measured as 0.37

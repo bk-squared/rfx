@@ -128,10 +128,10 @@ Two options change what the check does:
 - `preflight(strict=True)` collects every finding, warnings and notes
   included, and raises one `ValueError` that lists them all.
 
-`run(skip_preflight=True)` skips preflight's warnings and notes (the
-advisories); errors about the realized geometry, such as
-`sheet_effective_size`, still stop the run. Use `snap='declared'` to turn
-geometry size misses into warnings.
+`run(skip_preflight=True)` skips preflight, its errors included. Only the
+refusals about the realized geometry, such as `sheet_effective_size`, still
+stop the run. Use `snap='declared'` to turn geometry size misses into
+warnings.
 
 ## How rfx checks it
 
@@ -139,7 +139,7 @@ Preflight's findings that compare the drawing with the grid:
 
 | Finding | What it means | What to do |
 |---|---|---|
-| a sheet predicted more than 1 % off its drawn size (`sheet_effective_size`, error) | Preflight takes the sheet's free edges to lie 0.35 of a cell past its last node (measured where the cell normal to the sheet is as long as the in-plane cell beside its edge; see Accuracy below). It takes an edge whose every node lies on a port's feed to lie where it is drawn: a microstrip port's feed covers the trace's full width, while a lumped or wire port feeds a single node of the edge. | Build the in-plane mesh with `edge_aware_profiles`, or pass `snap="declared"`. |
+| a sheet predicted more than 1 % off its drawn size (`sheet_effective_size`, error) | Preflight takes the sheet's free edges to lie 0.35 of a cell past its last node (measured where the cell normal to the sheet is as long as the in-plane cell beside its edge; see Accuracy below). An edge whose every node lies on a port's feed gets no offset: preflight takes it at its last node and leaves it out of the size check. A microstrip port's feed covers the trace's full width, while a lumped or wire port feeds a single node of the edge. | Build the in-plane mesh with `edge_aware_profiles`, or pass `snap="declared"`. |
 | a cavity between adjacent parallel PEC faces solved more than 1 % off its drawn spacing (`sheet_cavity_spacing`, error) | Two sheets, a sheet and a PEC `Box` face, two PEC `Box` faces, or one of these and the domain's PEC floor or lid sit on node planes whose spacing differs from the drawing, and a cavity resonance follows that spacing. A non-Box volume and an absorbing, magnetic or conformal domain face are not checked. | Put both faces on mesh nodes: a `dx` that divides the heights and the domain extent, or `edge_aware_profiles(..., sheets=[...], solids=[...], axes="xyz")` with the PEC Boxes in `solids`. Or pass `snap="declared"`. |
 | a conductor face off the grid (`off_lattice_design_edges`, warning) | A PEC volume face sits more than 0.5 % of its extent away from the nearest node, or a sheet's predicted solved edge (0.35 cell past its last node) sits that far from its drawn edge. A sheet meshed with `edge_aware_profiles`, as above, does not raise it. | Choose `dx` commensurate with the shape, or place a node on the face with a graded profile. |
 | a PEC shape thinner than one cell but not zero (error) | It is neither a sheet nor a resolved volume. | Declare a sheet, or resolve the thickness. See [Conductors](/rfx/model/conductors/). |

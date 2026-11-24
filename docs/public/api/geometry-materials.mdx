@@ -31,7 +31,7 @@ domain = (0.04, 0.03, 0.02)
 board = Box((0.005, 0.005, 0.004), (0.035, 0.025, 0.0056))
 ground = Box((0.005, 0.005, 0.004), (0.035, 0.025, 0.004))
 patch = Box((0.012, 0.010, 0.0056), (0.028, 0.020, 0.0056))
-# Last sheet nodes 0.35 cell inside the drawn edges; board faces on nodes.
+# Last sheet nodes 0.35 cell inside the drawn edges; board z faces on nodes.
 sim = Simulation(freq_max=5e9, domain=domain, dx=1e-3, boundary="cpml",
                  **edge_aware_profiles(domain, 1e-3, sheets=[ground, patch],
                                        solids=[board], axes="xyz"))
@@ -146,7 +146,9 @@ sim.add_thin_conductor(patch, surface_impedance_f0=3e9)
 Preflight takes a PEC sheet's in-plane free edge to lie 0.35 cell beyond its
 last node and refuses a sheet predicted more than 1 % off its drawn size. In
 the example above, `edge_aware_profiles` puts the last nodes 0.35 cell inside
-the drawn edges and the board's faces on nodes. The ground and patch lie on the
+the drawn edges and the board's top and bottom faces on nodes. The board's x
+and y faces lie on the ground's edges, where the edge rule wins, so they land
+on the ground's last nodes, 0.35 cell inside. The ground and patch lie on the
 board's faces, where that offset has not been measured;
 [Check the model on the grid](/rfx/check/model-on-grid/#accuracy) lists where
 it has.

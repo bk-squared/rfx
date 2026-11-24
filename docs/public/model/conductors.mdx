@@ -393,8 +393,9 @@ The solver paths refuse what they do not implement:
   the size check built on it is pinned in
   `tests/contracts/test_sheet_solved_edge_reports.py`. An end that lies on
   other metal over its whole width, such as a patch edge on a shorting wall,
-  is joined, not free, and gets no offset. Preflight also takes an end fed by
-  a port at every node to lie where it is drawn (see
+  is joined, not free, and gets no offset, and so does an end fed by a port
+  at every node: preflight takes such an end at its last node and leaves it
+  out of the size check (see
   [Check the model on the grid](/rfx/check/model-on-grid/#how-rfx-checks-it)).
 - A lossy film on one node plane with sheet resistance η₀/2 reflects,
   transmits and absorbs 0.25, 0.25 and 0.5 of a normally incident wave at

@@ -30,9 +30,11 @@ call `run(compute_s_params=True)` for those.
 
 ## Waveforms
 
-Point sources and lumped/wire ports take a waveform object. Waveguide ports and
-TFSF sources take `f0` and `bandwidth` as arguments and name their pulse with a
-string (`waveform="modulated_gaussian"`), not a waveform object.
+Point sources and lumped/wire ports take a waveform object. Waveguide ports
+take `f0` and `bandwidth` as arguments and accept only
+`waveform="modulated_gaussian"`. TFSF sources take `f0` and `bandwidth` and
+name their pulse with a string (`"differentiated_gaussian"`,
+`"modulated_gaussian"` or `"continuous_wave"`), or take a `CustomWaveform`.
 
 ```python
 import jax.numpy as jnp
