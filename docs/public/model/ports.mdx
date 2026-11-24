@@ -226,8 +226,10 @@ different windows of the record. These checks catch a bad fit. They are not an
 error bound.
 
 `ringdown=` works with wire ports on a fixed-length record: one wire port on a
-uniform mesh, and one or several on a graded mesh. On a uniform mesh rfx drives
-several ports in separate runs, which the completion cannot see. The source must be off in the
+uniform mesh, and one or several on a graded mesh. With several ports, a
+uniform-mesh `run()` builds S from one separate run per driven port, which the
+completion's probes do not see; a graded-mesh run fills the driven column in
+one run. The source must be off in the
 second half of the record. Lumped, microstrip, waveguide and coaxial ports,
 TFSF, `until_decay` and `devices=` are refused.
 `forward(..., ringdown=RingdownSpec())` puts the same completion inside the
