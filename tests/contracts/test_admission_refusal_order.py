@@ -30,7 +30,9 @@ def test_pec_refusal_names_input_before_material_gate(lane, kind, feature):
 
 def test_distributed_nu_entries_share_runner_carriers():
     assert admission.ADMITS['run_distributed_nu'] == admission.ADMITS['fwd_distributed_nu']
-    assert admission.ADMITS['run_distributed_nu'] == admission._DISTRIBUTED_NU_ROWS
+    assert admission.ADMITS['run_distributed_nu'] == admission._DISTRIBUTED_NU_ROWS | {
+        ('_thin_conductors', 'surface_impedance')}
+    assert ('_thin_conductors', 'surface_impedance') in admission.ADMITS['fwd_distributed_nu']
     for lane in ('run_distributed', 'fwd_distributed', 'run_distributed_nu', 'fwd_distributed_nu'):
         assert ("_msl_ports", "msl_port") in admission.ADMITS[lane]
 

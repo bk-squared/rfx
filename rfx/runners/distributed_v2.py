@@ -359,10 +359,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     from rfx._diagnostic_transport import merge_diagnostics, report_diagnostics
     diagnostics = merge_diagnostics(diagnostics, report_diagnostics(assembly))
     validate_exchange_interval(exchange_interval)
-    from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     from rfx.model.wall_loss import refuse_wall_loss
     refuse_wall_loss(sim, "distributed (v2) runner")
-    _refuse_f0(sim._thin_conductors, "distributed (v2) runner")
     if sim._boundary == "upml":
         raise ValueError("boundary='upml' does not support distributed execution")
 
@@ -451,7 +449,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # drop it now so no whole-domain array stays alive through the loop.
     del _assembly_rest
     conductors = kernel_conductors(sim, grid, base_materials, pec_mask,
-        _d_pec_sheets, _d_pec_wires, periodic=sim._periodic_flags(), root=conductors)
+        _d_pec_sheets, _d_pec_wires, periodic=sim._periodic_flags(), root=conductors,
+        sheet_specs=conductors.sheet_impedance)
     del _geometry_masks, _assembly_entries
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(base_materials, lane="distributed_v2", unsupported=True)
@@ -569,6 +568,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
                  CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, sim._periodic_flags()))
     port_freqs = s_param_freqs if compute_s_params else None
     ports = UniformPortPlan(*port_args, jnp.float32, port_freqs)
+    if sim._tfsf is not None or exchange_interval != 1:
+        from rfx.materials.thin_conductor import refuse_f0_sheets
+        refuse_f0_sheets(sim._thin_conductors, "uniform multi-device TF/SF step")
 
     # All port loads must be present before any drive reads its E operands.
     # No whole-domain realization here: the slab kernels form their own edge
@@ -590,8 +592,11 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     from rfx.stepping import prepared as prepared_step
     conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
     stepping_product = conductors
-    conductors, geometry_record = at_kernel(sim, conductors, lane="run_distributed", pec_edges=conductors.pec_edges)
+    sheet_impedance = conductors.sheet_context(conductors.pec_edges)
+    conductors, geometry_record = at_kernel(sim, conductors, lane="run_distributed",
+        pec_edges=conductors.pec_edges, sheet_operator=sheet_impedance)
     pec_edges = conductors.pec_edges
+    sheet_impedance = conductors.sheet_operator
     if sim._tfsf is not None and sim._tfsf.closed_box:
         from rfx.boundaries.tfsf import validate_realized_vacuum_boundary
         from rfx.sources.tfsf_discrete_plane_wave import box_bounds
@@ -626,7 +631,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         _operand_layout="wrapped_uniform_slab", n_steps=n_steps,
         boundary=sim._boundary, dispersion=dispersion, port_plan=ports,
         record_vref=_record_vref, tfsf=tfsf, exchange_interval=exchange_interval,
-        rlc_metas=rlc_metas)
+        rlc_metas=rlc_metas, sheet_impedance=sheet_impedance)
 
     if multi_process:
         from jax.experimental import multihost_utils

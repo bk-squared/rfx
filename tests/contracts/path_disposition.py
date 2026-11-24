@@ -508,10 +508,11 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_nonuniform=carries("the per-step node-thin operator"),
             run_subgridded=refuses("surface_impedance_f0 sheets refused", raises=F0),
 
-            run_distributed=refuses("surface_impedance_f0 sheets refused", raises=F0),
+            run_distributed=carries("one-device sheet operator on each slab; legacy steps refuse (#2219)"),
+            run_distributed_nu=carries("one-device sheet operator on each slab; legacy steps refuse (#2219)"),
             fwd_uniform=carries("the per-step node-thin operator"),
             fwd_nonuniform=carries("the per-step node-thin operator"),
-            fwd_distributed_nu=refuses("surface_impedance_f0 sheets refused", raises=F0),
+            fwd_distributed_nu=carries("one-device sheet operator on each slab; legacy steps refuse (#2219)"),
 
         ),
     },
