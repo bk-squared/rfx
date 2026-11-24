@@ -68,13 +68,15 @@ def expression_end(text: str, start: int) -> int:
 
 
 def allowed_expression(expression: str) -> bool:
-    """Only a whole comment or a single string/template literal is prose-safe."""
+    """Only a whole comment or a single string literal without interpolation is prose-safe."""
     if not expression.endswith("}"):
         return False
     body = expression[1:-1].strip()
     if body.startswith("/*"):
         return body.find("*/", 2) == len(body) - 2
     if body.startswith(("'", '"', "`")):
+        if body[0] == "`" and "${" in body:
+            return False
         end = js_template_end(body, 0) if body[0] == "`" else js_string_end(body, 0)
         trailing_slashes = len(body[:-1]) - len(body[:-1].rstrip("\\"))
         return (len(body) >= 2 and body[-1] == body[0]
@@ -100,6 +102,28 @@ def tag_end(text: str, start: int) -> int | None:
     return None
 
 
+def code_span_limit(text: str, start: int) -> int:
+    """A code span cannot close in another block or table cell."""
+    boundary = re.search(
+        r"\n(?:[^\S\n]*\n| {0,3}(?:#|[-*+] |\d+[.)] |>+|\||<))", text[start:])
+    limit = start + boundary.start() if boundary else len(text)
+    line_start = text.rfind("\n", 0, start) + 1
+    line_end = text.find("\n", start)
+    if line_end == -1:
+        line_end = len(text)
+    line = text[line_start:line_end]
+    if re.match(r" {0,3}#", line):
+        limit = min(limit, line_end)
+    elif re.match(r" {0,3}\|", line):
+        limit = min(limit, line_end)
+        for token in re.finditer(r"\\.|\|", line):
+            pipe = line_start + token.start()
+            if token[0] == "|" and pipe >= start:
+                limit = min(limit, pipe)
+                break
+    return limit
+
+
 def offending_lines(page: str) -> list[str]:
     fence = None
     frontmatter = False
@@ -117,10 +141,10 @@ def offending_lines(page: str) -> list[str]:
             lines.append(blank(line))
             if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip():
                 fence = None
-        elif marker:
+        elif marker and (marker[1][0] != "`" or "`" not in marker[2]):
             fence = marker[1]
             lines.append(blank(line))
-        elif re.match(r"^(?:import|export)\b", line):
+        elif (not lines or not lines[-1].strip()) and re.match(r"^(?:import|export)\b", line):
             lines.append(blank(line))
         else:
             lines.append(line)
@@ -134,8 +158,7 @@ def offending_lines(page: str) -> list[str]:
         elif char == "`":
             opener = re.match(r"`+", text[position:])[0]
             end = position + len(opener)
-            boundary = re.search(r"\n[^\S\n]*\n", text[end:])
-            limit = end + boundary.start() if boundary else len(text)
+            limit = code_span_limit(text, end)
             closer = next((run for run in re.finditer(r"`+", text[end:limit])
                            if len(run[0]) == len(opener)), None)
             position = end + closer.end() if closer else end
@@ -166,8 +189,10 @@ def offending_lines(page: str) -> list[str]:
     ("{ /* note */ }", []),
     ("<code>{'\"x\"'}</code>", []),
     ('<code>{"x"}</code>', []),
-    ("<code>{`a ${b}`}</code>", []),
-    ('{`outer ${`inner ${"}"}`} tail`}', []),
+    ("<code>{`plain`}</code>", []),
+    ("<code>{`a ${b}`}</code>", ["1: <code>{`a ${b}`}</code>"]),
+    ('{`outer ${`inner ${"}"}`} tail`}', ['1: {`outer ${`inner ${"}"}`} tail`}']),
+    ("{`echo ${HOME}`}", ["1: {`echo ${HOME}`}"]),
     ("<Figure caption={x} />", []),
     ("<Figure\n prop={{a: 1}} />", []),
     ('<Figure title="{x} >" />', []),
@@ -185,16 +210,32 @@ def offending_lines(page: str) -> list[str]:
     ("the ` key\n\n{x}\n\nuse `y`", ["3: {x}"]),
     ("{x}\n{y}", ["1: {x}", "2: {y}"]),
     ("`{` and }", ["1: `{` and }"]),
+    ("# Head ` tick\nText {x} and `code`", ["2: Text {x} and `code`"]),
+    ("- a ` b\n- {x} `c`", ["2: - {x} `c`"]),
+    ("| `x | {y} | z` |", ["1: | `x | {y} | z` |"]),
+    (r"| `x \| {y} z` |", []),
+    ("Some text\nimport the field {x}", ["2: import the field {x}"]),
+    ("Some text\nexport the field {x}", ["2: export the field {x}"]),
+    ("```js `x`\n{y}\n```", ["2: {y}"]),
+    ("~~~js `x`\n{y}\n~~~", []),
+    ("`wrapped\n{x}`", []),
 ])
 def test_offending_lines(page, expected):
     assert offending_lines(page) == expected
+
+
+@pytest.mark.parametrize("marker", ["#", "-", "*", "+", "1.", "2)", ">", "|", "<div>"])
+@pytest.mark.parametrize("indent", ["", "   "])
+def test_code_span_stops_at_block_start(marker, indent):
+    line = f"{indent}{marker} {{x}} `code`"
+    assert offending_lines(f"Text ` tick\n{line}") == [f"2: {line}"]
 
 
 @pytest.mark.reads_docs_for_gate(reason=(
     "Checks MDX syntax the site build evaluates: a brace in prose is read as JavaScript "
     "and stops the build; formulas go in code spans or escaped braces."))
 def test_public_docs_mdx_braces():
-    root = Path(__file__).resolve().parents[3]
+    root = Path(__file__).resolve().parents[2]
     pages = sorted((root / "docs/public").rglob("*.mdx"))
     assert pages
     failures = [

@@ -155,7 +155,7 @@ def test_offending_lines(page, expected):
     "Checks JSX code syntax that lets the site build convert command quotes; "
     "quoted commands must use markdown code spans or JS string expressions."))
 def test_public_docs_code_quotes():
-    root = Path(__file__).resolve().parents[3]
+    root = Path(__file__).resolve().parents[2]
     pages = sorted((root / "docs/public").rglob("*.mdx"))
     assert pages
     failures = [

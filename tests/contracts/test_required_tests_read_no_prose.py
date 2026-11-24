@@ -337,10 +337,10 @@ GATE_OPT_OUTS = {
     "tests/contracts/test_docs_frontmatter.py::test_page_frontmatter_parses":
         "Parses the YAML frontmatter the site build parses; a page that does not parse blocks the merge train "
         "(PR 1704). It checks syntax and the presence of a title, never the prose.",
-    "tests/unit/docs/test_public_docs_mdx_braces.py::test_public_docs_mdx_braces":
+    "tests/contracts/test_public_docs_mdx_braces.py::test_public_docs_mdx_braces":
         "Checks MDX syntax the site build evaluates: a brace in prose is read as JavaScript "
         "and stops the build; formulas go in code spans or escaped braces.",
-    "tests/unit/docs/test_public_docs_code_quotes.py::test_public_docs_code_quotes":
+    "tests/contracts/test_public_docs_code_quotes.py::test_public_docs_code_quotes":
         "Checks JSX code syntax that lets the site build convert command quotes; "
         "quoted commands must use markdown code spans or JS string expressions.",
 }
