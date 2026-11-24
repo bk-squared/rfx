@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 import build_public_docs_bundle as bundle
 import check_public_docs_sync as sync
 from export_public_docs_to_gitops import contained_destination, export_snapshot, transformed_source

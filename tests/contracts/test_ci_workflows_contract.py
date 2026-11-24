@@ -587,9 +587,10 @@ def test_the_contract_tests_run_when_the_diff_is_not_code() -> None:
     assert len(contracts) == 1, contracts
     suite = contracts[0]["run"]
     assert "pytest tests/contracts " in suite
-    assert "--collect-only" not in suite
-    assert "--ignore" not in suite
-    assert re.findall(r"--splits\s+(\d+)", suite) == ["20"]
+    contract_call = next(line for line in suite.splitlines() if "pytest tests/contracts " in line)
+    assert "--collect-only" not in contract_call
+    assert "--ignore" not in contract_call
+    assert re.findall(r"--splits\s+(\d+)", contract_call) == ["20"]
     assert "--group ${{ matrix.group }}" in suite
     assert fast["strategy"]["matrix"]["group"] == list(range(1, 21))
 

@@ -109,7 +109,8 @@ in-flight CI run and starts a new one. Merge-group runs are never cancelled;
 
 The heavy lane is path-aware, so what a push costs depends on what it touches. A diff
 confined to docs, most of `scripts/` or `changelog.d/` skips the twenty simulator shards
-and runs the contract tests in their place; anything touching `rfx/`, `tests/`,
+and runs the contract tests and selected literal readers in their place; anything
+touching `rfx/`, `tests/`,
 `validation/`, `examples/` or the lane configuration runs everything, as does any push
 to `main`. What the shards cost when they do
 run is in the runbook. Ask the classifier before pushing, in the NUL-separated form
