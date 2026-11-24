@@ -100,7 +100,7 @@ sim.add(Via(center=(0.015, 0.020), drill_radius=0.3e-3, pad_radius=0.6e-3,
 | `Box` | `Box(corner_lo, corner_hi)` | axis-aligned block; a zero-thickness `Box` is a sheet |
 | `Sphere` | `Sphere(center, radius)` | |
 | `Cylinder` | `Cylinder(center, radius, height, axis="z")` | `center` is the middle of the cylinder, not its base |
-| `PolylineWire` | `PolylineWire(points, radius)` | a wire through the given vertices; `radius=0` selects the legacy filament, while a positive PEC radius must resolve as a volume wire |
+| `PolylineWire` | `PolylineWire(points, radius)` | a wire through the given vertices; `radius=0` makes a filament on grid edges, and a positive radius makes a volume wire, refused below half the smallest local cell |
 | `Via` | `Via(*, center, drill_radius, pad_radius, layers, material="pec")` | a PCB via with pads; `center` is `(x, y)` and `layers` is a list of `(z_bottom, z_top)` |
 | `CurvedPatch` | `CurvedPatch(*, center, length, width, radius, axis="x")` | a patch bent along `axis`, built from flat segments |
 | `MeshShape` | `MeshShape.from_file(path, *, scale, translate=(0.0, 0.0, 0.0))` | CAD import, see below |
@@ -143,6 +143,14 @@ sim.add_thin_conductor(patch, surface_impedance_f0=3e9)
 - `sigma_bulk < 1e6` makes a resistive sheet whose sheet conductance is
   `sigma_bulk * thickness`.
 
+Preflight takes a PEC sheet's in-plane free edge to lie 0.35 cell beyond its
+last node and refuses a sheet predicted more than 1 % off its drawn size. In
+the example above, `edge_aware_profiles` puts the last nodes 0.35 cell inside
+the drawn edges and the board's faces on nodes. The ground and patch lie on the
+board's faces, where that offset has not been measured;
+[Check the model on the grid](/rfx/check/model-on-grid/#accuracy) lists where
+it has.
+
 A metal plate or wall that really is thick is a **volume**:
 `add(Box(...), material="pec")`. A PEC volume has walls at both drawn faces
 at any thickness.
@@ -154,11 +162,14 @@ a PEC volume already gets both faces.
 
 - Metal with `sigma >= 1e6` S/m is lossless. For ohmic loss, use a sheet with
   `surface_impedance_f0` or a below-threshold `sigma`.
-- A shape face between two grid planes snaps to the nearest plane. For thin
-  layers, choose `dx` or a graded profile so the faces fall on grid planes, and
-  check with `fidelity_report()`.
-- A sheet declared through `add_thin_conductor` must be one grid plane thick.
-  A PEC shape that is thinner than a cell but not zero is refused
+- A dielectric or PEC-volume face between two grid planes snaps to the nearest
+  plane, and a sheet to the nearest node plane; a sheet's in-plane edge follows
+  the 0.35-cell rule under [Metal sheets](#metal-sheets). For thin layers,
+  choose `dx` or a graded profile so the faces fall on grid planes, and check
+  with `fidelity_report()`.
+- A sheet declared through `add_thin_conductor` lands on one node plane; give
+  the shape zero thickness along its normal. A shape thicker than one cell
+  along its normal is refused (declare it with `add()`). A PEC shape that is thinner than a cell but not zero is refused
   (`pec_box_subcell`); see
   [How conductors land on the lattice](/rfx/model/conductors/#how-conductors-land-on-the-lattice).
 - `MeshShape` geometry is not differentiable.
