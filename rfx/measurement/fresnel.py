@@ -166,11 +166,11 @@ def fresnel_reflection_coefficient(
         )
     ns = total.shape[0] if n_gate is None else int(n_gate)
     t = jnp.arange(ns) * dt
-    kern = jnp.exp(-1j * 2.0 * jnp.pi * f0 * t) * dt  # real field -> standard -j DFT
-    tp = jnp.sum(total[:ns].astype(jnp.complex64) * kern[:, None], axis=0)  # (n_probes,)
+    kern = jnp.exp(-1j * 2.0 * jnp.pi * f0 * t) * dt
+    tp = jnp.sum(total[:ns].astype(jnp.complex64) * kern[:, None], axis=0)
     ip = jnp.sum(inc[:ns].astype(jnp.complex64) * kern[:, None], axis=0)
     k = 2.0 * jnp.pi * f0 * background_index / _C0
-    deembed = jnp.exp(+1j * 2.0 * k * jnp.asarray(probe_distances))  # probe -> reference plane
+    deembed = jnp.exp(+1j * 2.0 * k * jnp.asarray(probe_distances))
     gamma_p = (tp - ip) / ip * deembed
     return jnp.mean(gamma_p)
 
@@ -240,11 +240,10 @@ def oblique_reflection_coefficient(
         )
     ns = total.shape[0] if n_gate is None else int(n_gate)
     t = jnp.arange(ns) * dt
-    kern = jnp.exp(+1j * 2.0 * jnp.pi * f0 * t) * dt  # +j conjugate kernel (oblique envelope)
+    kern = jnp.exp(+1j * 2.0 * jnp.pi * f0 * t) * dt
     tp = jnp.sum(total[:ns].astype(jnp.complex64) * kern[:, None], axis=0)
     ip = jnp.sum(inc[:ns].astype(jnp.complex64) * kern[:, None], axis=0)
     idx = jnp.asarray(probe_index, jnp.float32)
-    # self-calibrated de-rotation slope S = -2·(incident phase slope), in-graph linear fit.
     ph = jnp.unwrap(jnp.angle(ip))
     xm = idx - jnp.mean(idx)
     slope_inc = jnp.sum(xm * (ph - jnp.mean(ph))) / jnp.sum(xm * xm)
@@ -314,7 +313,7 @@ def oblique_reflection_magnitude(
         )
     ns = total.shape[0] if n_gate is None else int(n_gate)
     t = jnp.arange(ns) * dt
-    kern = jnp.exp(+1j * 2.0 * jnp.pi * f0 * t) * dt  # +j conjugate kernel (oblique envelope)
+    kern = jnp.exp(+1j * 2.0 * jnp.pi * f0 * t) * dt
     tp = jnp.sum(total[:ns].astype(jnp.complex64) * kern[:, None], axis=0)
     ip = jnp.sum(inc[:ns].astype(jnp.complex64) * kern[:, None], axis=0)
     return jnp.mean(jnp.abs(tp - ip)) / jnp.mean(jnp.abs(ip))

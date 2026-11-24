@@ -87,9 +87,6 @@ def ntff_sweep(sim, freqs, *, batch_size: int | None = None,
     batches: list[np.ndarray] = [
         freqs[i:i + batch_size] for i in range(0, len(freqs), batch_size)
     ]
-    # Same sim across all frequency batches → preflight once (first batch),
-    # skip thereafter to avoid flooding the loop with repeated preflight
-    # warnings/prints. Honor a user-supplied skip_preflight as-is.
     _sp_explicit = "skip_preflight" in run_kwargs
     per_batch_data: list[NTFFData] = []
     try:

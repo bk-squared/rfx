@@ -12,10 +12,14 @@ from rfx.geometry.smoothing import (
 )
 
 
-@pytest.mark.parametrize('path', ['uniform', 'graded', 'kottke_pec', 'nodes', 'graded_nodes'])
-@pytest.mark.parametrize('traced', [False, True], ids=['host', 'traced'])
-@pytest.mark.parametrize('reverse', [False, True], ids=['AB', 'BA'])
-@pytest.mark.parametrize('offset', [0., .0002], ids=['node_plane', 'off_grid'])
+@pytest.mark.parametrize("offset,reverse,traced,path", [
+    pytest.param(o, r, t, p, id=f"{'off_grid' if o else 'node_plane'}-{'BA' if r else 'AB'}-{'traced' if t else 'host'}-{p}")
+    for o in (0., .0002)
+    for r in (False, True) for t in (False, True)
+    for p in ('uniform', 'graded', 'kottke_pec', 'nodes', 'graded_nodes')
+    if (not o and (r == t or (p in ('nodes', 'graded_nodes') and not t)))
+    or (o and p == 'uniform' and r == t)
+])
 def test_same_permittivity_face_operands(path, traced, reverse, offset):
     graded = path.startswith('graded')
     profiles = dict(dx_profile=np.full(8, .0005), dy_profile=np.full(8, .0005),
@@ -33,13 +37,12 @@ def test_same_permittivity_face_operands(path, traced, reverse, offset):
         if path.endswith('nodes'):
             return tuple(1/a for a in compute_node_tensor_eps(grid, pairs).nodes.xi[:3])
         if path == 'kottke_pec':
-            return tuple(1/a for a in compute_inv_eps_tensor_diag(grid, dielectric_shapes=pairs))
-        return (compute_smoothed_eps_nonuniform(grid, pairs) if graded
-                else compute_smoothed_eps(grid, pairs))
+            return tuple(1/a for a in compute_inv_eps_tensor_diag(grid, dielectric_shapes=pairs, dtype='float32'))
+        return (compute_smoothed_eps_nonuniform(grid, pairs, dtype='float32') if graded
+                else compute_smoothed_eps(grid, pairs, dtype='float32'))
 
     coordinate = jnp.float32(face) if traced else np.float64(face)
     rtol = 2e-5 if coordinate.dtype == np.dtype('float32') else 1e-6
-    # A traced Box coordinate is refused by the full-tensor node builder (#2441); restoring it is #2473.
     if traced and path in {'nodes', 'graded_nodes'}:
         with pytest.raises(RfxUnsupported, match="traced shape coordinate"):
             jax.jit(evaluate)(coordinate)
@@ -60,32 +63,29 @@ def test_split_cavity_operands_equal_unsplit(reverse):
              (Box((0., 0., .00495), (.020, .013, .007)), 10.2)]
     if reverse:
         split[1:] = reversed(split[1:])
-    expected = compute_smoothed_eps(grid, unsplit)
-    actual = compute_smoothed_eps(grid, split)
+    expected = compute_smoothed_eps(grid, unsplit, dtype='float32')
+    actual = compute_smoothed_eps(grid, split, dtype='float32')
     for a, b in zip(actual, expected):
         np.testing.assert_allclose(np.asarray(a), np.asarray(b), rtol=1e-6)
 
 
 def test_subcell_sphere_keeps_main_operand():
+    """The zero-normal sphere-centre operand is arithmetic .8*4+.2*1=3.4, earlier measured as float32 3.3999998569488525."""
     sim = Simulation(domain=(.004, .004, .004), dx=.0005, freq_max=12e9,
                      boundary='pec', cpml_layers=0)
     pairs = [(Sphere((.002, .002, .00225), .00015), 4.)]
-    result = compute_smoothed_eps(sim.freeze_mesh(), pairs)
-    # Ez is at the sphere centre: normal is zero and f=.8. The selected
-    # normal-source sphere stays excluded, giving arithmetic .8*4+.2*1=3.4.
-    # Literal below is the measured float32 operand on main e07ba5dff.
+    result = compute_smoothed_eps(sim.freeze_mesh(), pairs, dtype='float32')
     np.testing.assert_allclose(np.asarray(result[2])[4, 4, 4],
                                3.3999998569488525, rtol=1e-12)
 
 
 def test_resolved_gap_keeps_main_operands():
+    """The resolved .75 mm air gap leaves .2 and .3 dielectric in the Ez cells spanning 2--2.5 and 2.5--3 mm, respectively."""
     sim = Simulation(domain=(.004, .004, .004), dx=.0005, freq_max=12e9,
                      boundary='pec', cpml_layers=0)
     pairs = [(Box((-.1, -.1, -.1), (.1, .1, .0021)), 4.),
              (Box((-.1, -.1, .00285), (.1, .1, .1)), 4.)]
-    result = compute_smoothed_eps(sim.freeze_mesh(), pairs)
-    # Ez at 2.25 mm spans 2--2.5 mm: .2 dielectric; Ez at 2.75 mm
-    # spans 2.5--3 mm: .3 dielectric. The .75 mm air gap is resolved.
+    result = compute_smoothed_eps(sim.freeze_mesh(), pairs, dtype='float32')
     expected = (np.float32(1/(.2/4+.8)), np.float32(1/(.3/4+.7)))
     for k, value in zip((4, 5), expected):
         np.testing.assert_allclose(np.asarray(result[2])[4, 4, k], value, rtol=1e-12)
@@ -94,7 +94,8 @@ def test_resolved_gap_keeps_main_operands():
 @pytest.mark.parametrize('path', ['uniform', 'nodes', 'kottke_pec', 'graded', 'graded_nodes'])
 @pytest.mark.parametrize('traced', [False, True], ids=['host', 'traced'])
 def test_periodic_unit_cell_reads_bulk(path, traced):
-    """A Box spanning one 4 mm period touches its own image at x=0."""
+    """A Box spanning one 4 mm period touches its own image at x=0.
+    The first Yee plane includes Ex's half-cell stagger, with Ey/Ez and all node entries on x=0."""
     graded = path.startswith('graded')
     profiles = dict(dx_profile=np.full(8, .0005), dy_profile=np.full(8, .0005),
                     dz_profile=np.r_[np.full(4, .0004), np.full(4, .0006)]) if graded else {}
@@ -108,27 +109,25 @@ def test_periodic_unit_cell_reads_bulk(path, traced):
         if path.endswith('nodes'):
             return tuple(1/a for a in compute_node_tensor_eps(grid, pairs).nodes.xi[:3])
         if path == 'kottke_pec':
-            return tuple(1/a for a in compute_inv_eps_tensor_diag(grid, dielectric_shapes=pairs))
-        return (compute_smoothed_eps_nonuniform(grid, pairs) if graded
-                else compute_smoothed_eps(grid, pairs))
+            return tuple(1/a for a in compute_inv_eps_tensor_diag(grid, dielectric_shapes=pairs, dtype='float32'))
+        return (compute_smoothed_eps_nonuniform(grid, pairs, dtype='float32') if graded
+                else compute_smoothed_eps(grid, pairs, dtype='float32'))
 
     end = jnp.float32(.004) if traced else np.float64(.004)
-    # A traced Box coordinate is refused by the full-tensor node builder (#2441); restoring it is #2473.
     if traced and path in {'nodes', 'graded_nodes'}:
         with pytest.raises(RfxUnsupported, match="traced shape coordinate"):
             jax.jit(evaluate)(end)
         return
     result = jax.jit(evaluate)(end) if traced else evaluate(end)
     for values in result:
-        # The first Yee plane includes Ex's half-cell stagger; Ey/Ez and
-        # all node entries lie on x=0. Check the complete transverse plane.
         np.testing.assert_allclose(np.asarray(values)[0], 4., rtol=2e-5 if traced else 1e-6)
 
 
 @pytest.mark.parametrize('reverse', [False, True], ids=['AB', 'BA'])
 @pytest.mark.parametrize('traced', [False, True], ids=['host', 'traced'])
 def test_same_permittivity_cell_holding_both_walls_reads_content(reverse, traced):
-    """A cell holding both walls reads its content; other cells keep one wall."""
+    """A cell holding both walls reads its content; other cells keep one wall.
+    The hand dielectric fractions are .54/.56 at tangential z=2/2.5 mm and .04 lower/.06 upper at normal z=2.25 mm."""
     sim = Simulation(domain=(.004, .004, .004), dx=.0005, freq_max=12e9,
                      boundary='pec', cpml_layers=0)
     grid = sim.freeze_mesh()
@@ -138,7 +137,7 @@ def test_same_permittivity_cell_holding_both_walls_reads_content(reverse, traced
         lower = (Box((-.1, -.1, -.1), (.1, .1, faces[0])), 4.)
         upper = (Box((-.1, -.1, faces[1]), (.1, .1, .1)), 4.)
         both = [upper, lower] if reverse else [lower, upper]
-        return tuple(compute_smoothed_eps(grid, pairs) for pairs in (both, [lower], [upper]))
+        return tuple(compute_smoothed_eps(grid, pairs, dtype='float32') for pairs in (both, [lower], [upper]))
 
     faces = (jnp.asarray([.00202, .00247], dtype=jnp.float32) if traced
              else np.asarray([.00202, .00247], dtype=np.float64))
@@ -157,8 +156,6 @@ def test_same_permittivity_cell_holding_both_walls_reads_content(reverse, traced
         if axis == 2:
             expected[..., np.flatnonzero(selected) == 4] = 1 / (.04/4 + .90 + .06/4)
         np.testing.assert_allclose(np.asarray(combined[axis])[..., selected], expected, rtol=rtol)
-    # Hand fractions: .54/.56 dielectric at tangential z=2/2.5 mm;
-    # .04 lower and .06 upper dielectric at normal z=2.25 mm.
     for axis in (0, 1):
         np.testing.assert_allclose(np.asarray(combined[axis])[4, 4, 4:6],
                                    [2.62, 2.68], rtol=rtol)

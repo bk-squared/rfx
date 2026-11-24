@@ -12,7 +12,7 @@ def reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
     acceptance tests use (``exp(-1j·k_transverse·y)``).
     """
     import jax.numpy as _jnp
-    k_t = float(tfsf_cfg.k_transverse)
+    k_t = tfsf_cfg.k_transverse
     taxis = 1 if tfsf_cfg.transverse_axis == "y" else 2
     d_t = float(grid.cells("y")[0]) if taxis == 1 \
         else float(grid.cells("z")[0])
@@ -31,7 +31,7 @@ def reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
 
     new_ts = sim_result.time_series
     if new_ts is not None and _jnp.iscomplexobj(new_ts):
-        if probes:  # time_series is (n_steps, n_probes) in probe order
+        if probes:
             idxs = _jnp.array([(p.j if taxis == 1 else p.k) for p in probes])
             ph = _jnp.exp(-1j * k_t * idxs * d_t)
             new_ts = _jnp.real(new_ts * ph[None, :])

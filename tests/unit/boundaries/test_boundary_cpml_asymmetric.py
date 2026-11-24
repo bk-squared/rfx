@@ -80,15 +80,11 @@ def test_padded_profile_structure_is_correct():
     grid = sim._build_grid()
     params, _ = init_cpml(grid)
 
-    # Thin (4-layer) z_lo: first 4 sigma entries are real + descending;
-    # indices 4..15 must all be zero (no-op padding).
     sigma_zlo = np.asarray(params.z_lo.sigma)
     assert sigma_zlo[0] > 0.0, "thin z_lo outer-boundary sigma must be > 0"
     assert np.all(sigma_zlo[4:] == 0.0), (
         f"thin z_lo padding region must be zero, got {sigma_zlo[4:]}"
     )
-    # 16-layer z_hi: no padding, all 16 entries active. After _flip_profile
-    # sigma has σ_max at index 15, 0 at index 0.
     sigma_zhi = np.asarray(params.z_hi.sigma)
     assert sigma_zhi[-1] > 0.0, "full-thickness z_hi outer-boundary sigma must be > 0"
     assert sigma_zhi[0] == 0.0, "z_hi interior-facing sigma must be 0 (pre-flipped convention)"

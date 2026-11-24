@@ -32,7 +32,8 @@ not production support; earlier production-envelope refusals remain refused.
 Where the cells are checked
 ---------------------------
 * ``tests/contracts/test_path_disposition.py``: every attribute of a fresh
-  ``Simulation`` has a row, every row has a cell on every column, the lane
+  ``Simulation`` and every registered declaration has a row or a reason in
+  ``PENDING_ROWS``, every row has a cell on every column, the lane
   columns are the lanes ``_dispatch_plan`` returns plus the declared kernel
   routes, and every function in ``rfx/`` that reaches a time-stepping kernel
   or steps fields is registered.
@@ -85,6 +86,16 @@ Not ``Simulation`` paths, because they take a ``Grid``: ``rfx.run``,
 from __future__ import annotations
 
 from typing import NamedTuple
+
+# Lazy declarations whose rows require product changes to lane admission.
+PENDING_ROWS = {
+    "_wall_losses": (
+        "#1961: lazily created declaration; its row needs a detector in rfx/runners/_admission.py"),
+    "_dft_plane_regions": (
+        "#1961: lazily created declaration; its row needs a detector in rfx/runners/_admission.py"),
+    "_time_recorded_dft_planes": (
+        "#1961: lazily created declaration; its row needs a detector in rfx/runners/_admission.py"),
+}
 
 CARRIES = "carries"
 REFUSES = "refuses"
@@ -172,10 +183,8 @@ _SHEET_OWNS_NO_CELL = "a sheet or wire owns no cell, and this lane applies PEC f
 SUBGRID_SHEETS = refuses(_SHEET_OWNS_NO_CELL, raises="does not realize PEC sheets or wires")
 F0 = "surface_impedance_f0) thin conductors are not supported"
 DIST_FWD_PORTS = carries("shared graded load, voltage drive and wrapped in-loop V/I/S; passive ports carry a load only")
-RUN_COAX = refuses("run() refuses add_coaxial_port(); the coax calculators solve it",
-                   raises="add_coaxial_port() is not wired into Simulation.run()")
-FWD_COAX = refuses("forward() refuses add_coaxial_port()",
-                   raises="add_coaxial_port() is not wired into Simulation.forward()")
+RUN_COAX = refuses("coax ports require a uniform single-device run()", raises="a coaxial port (add_coaxial_port)")
+FWD_COAX = refuses("coax ports require a uniform single-device forward()", raises="a coaxial port (add_coaxial_port)")
 GRADED_REFINEMENT = refuses("refinement on a graded mesh refused (#1282)",
                             raises="asks for subgridding on a non-uniform mesh")
 
@@ -197,9 +206,9 @@ def admission(what, lane, before):
 
 
 # A 2-D mode on a graded mesh: _dispatch_plan's own check refuses it on every
-# graded lane and names the remedy, a thin 3-D box. Until #1355 a 2d_tmz model
+# graded lane and names the remedy, a thin 3-D box. Earlier a 2d_tmz model
 # one cell thick between PEC walls ran there as that 3-D box, whose record
-# differs from run_uniform's 2-D solve by 0.34 of the probe peak (#1340).
+# differs from run_uniform's 2-D solve by 0.34 of the probe peak.
 GRADED_2D = refuses("a 2-D mode is refused on the graded lanes, naming the thin 3-D box "
                     "(mode='3d') as the remedy (#1340)",
                     raises="Build the 2-D problem as a thin 3-D box")
@@ -499,10 +508,11 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_nonuniform=carries("the per-step node-thin operator"),
             run_subgridded=refuses("surface_impedance_f0 sheets refused", raises=F0),
 
-            run_distributed=refuses("surface_impedance_f0 sheets refused", raises=F0),
+            run_distributed=carries("one-device sheet operator on each slab; legacy steps refuse (#2219)"),
+            run_distributed_nu=carries("one-device sheet operator on each slab; legacy steps refuse (#2219)"),
             fwd_uniform=carries("the per-step node-thin operator"),
             fwd_nonuniform=carries("the per-step node-thin operator"),
-            fwd_distributed_nu=refuses("surface_impedance_f0 sheets refused", raises=F0),
+            fwd_distributed_nu=carries("one-device sheet operator on each slab; legacy steps refuse (#2219)"),
 
         ),
     },
@@ -584,10 +594,10 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_subgridded=admission("a microstrip port (add_msl_port)", RUN_SG,
                                  "it was dropped although production validation passes (#1311)"),
 
-        run_distributed=refuses("MSL ports refused (#1241)", raises="add_msl_port() port(s)"),
+        run_distributed=carries("whole-grid laplace/uniform stamp, owning-slab drive; eigenmode refused"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=refuses("MSL ports refused by the shared multi-device check (#1241, #2076)", raises="add_msl_port() port(s)"),
+        fwd_distributed_nu=carries("laplace/uniform forward, including material overrides; eigenmode refused"),
 
     )},
     "_waveguide_ports": {"waveguide_port": lanes(
@@ -614,12 +624,12 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
 
     )},
     "_coaxial_ports": {"coax_port": lanes(
-        run_uniform=RUN_COAX,
+        run_uniform=carries("coax line model, TEM drive and voltage-spectrum S11"),
         run_nonuniform=RUN_COAX,
         run_subgridded=RUN_COAX,
 
         run_distributed=RUN_COAX,
-        fwd_uniform=FWD_COAX,
+        fwd_uniform=carries("coax line model, TEM drive and voltage-spectrum S11"),
         fwd_nonuniform=FWD_COAX,
         fwd_distributed_nu=FWD_COAX,
 
@@ -759,7 +769,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_nonuniform=carries(),
         run_subgridded=_subgrid("boundary_terminated_requires_pec_no_cpml", "CPML on the other faces: " + GUARDED_LID_NOTE),
 
-        # #1235: the distributed absorber takes every face's profile from init_cpml, so the PEC wall
+        # The distributed absorber takes every face's profile from init_cpml, so the PEC wall
         # carries no absorber backing (test_realized_boundary.py pec-zlo--distributed departures gone).
         run_distributed=carries(),
         fwd_uniform=carries(),
@@ -1641,6 +1651,11 @@ for (_attr, _feature), _cells in CALCULATOR_CELLS.items():
     TABLE[_attr][_feature].update(_cells)
 
 LANE_GATES.update({
+    (lane, ("_coaxial_ports", "coax_port")): "uniform single-device coax conditions and grid layout"
+    for lane in ("run_uniform", "fwd_uniform")
+})
+
+LANE_GATES.update({
     ("run_nonuniform", ("_precision", "")): "float64 carries; mixed refuses with the existing message",
     ("fwd_nonuniform", ("_precision", "")): "float64 carries; mixed refuses with the existing message",
     ("waveguide_s_matrix", ("_dt_pin", "")): "graded builder reads dt",
@@ -1675,6 +1690,8 @@ for _features in TABLE.values():
     for _cells in _features.values():
         if "run_distributed" in _cells:
             _cells["fwd_distributed"] = _cells["run_distributed"]
+TABLE["_msl_ports"]["msl_port"]["fwd_distributed"] = carries(
+    "laplace/uniform forward fields; uniform overrides and eigenmode refused")
 TABLE["_coaxial_ports"]["coax_port"]["fwd_distributed"] = FWD_COAX
 TABLE["_pec_occupancy_model"]["kottke"]["fwd_distributed"] = refuses(
     "uniform distributed forward refuses the occupancy override", raises="pec_occupancy_override")
@@ -1707,7 +1724,7 @@ PLAIN_SOURCE_S_REQUEST = {
 }
 
 
-# #2032 Part A: radius carrier routes, checked by the radius contract.
+# Radius carrier routes, checked by the radius contract.
 WIRE_RADIUS_PATHS = {
     "run_distributed": carries("global stamp, uniform slab realization"),
     "fwd_distributed": carries("admits as run_distributed; same uniform step"),

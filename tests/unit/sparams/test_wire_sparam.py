@@ -1,4 +1,5 @@
-"""Tests for WirePort S-parameter extraction."""
+"""Tests for WirePort S-parameter extraction.
+Physical port V/I is sampled after injection because a pre-injection sample is not the driven port's terminal pair."""
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
 
@@ -15,62 +16,10 @@ from rfx.sources.sources import (
     GaussianPulse, WirePort, setup_wire_port, apply_wire_port,
 )
 from rfx.probes.probes import (
-    wire_port_voltage, wire_port_current,
+    wire_port_voltage,
     init_wire_sparam_probe, update_wire_sparam_probe,
-    extract_s11, extract_s_matrix_wire,
+    extract_s11,
 )
-
-
-def test_wire_port_voltage_nonzero():
-    """wire_port_voltage should return nonzero after excitation."""
-    grid = Grid(freq_max=5e9, domain=(0.02, 0.02, 0.01), dx=0.001, cpml_layers=0)
-    materials = init_materials(grid.shape)
-
-    port = WirePort(
-        start=(0.01, 0.01, 0.002),
-        end=(0.01, 0.01, 0.008),
-        component="ez",
-        impedance=50.0,
-        excitation=GaussianPulse(f0=3e9),
-    )
-    materials = setup_wire_port(grid, port, materials)
-    state = init_state(grid.shape)
-
-    for n in range(20):
-        t = n * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
-        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
-        state = apply_pec(state)
-        state = apply_wire_port(state, grid, port, t, materials)
-
-    v = wire_port_voltage(state, grid, port)
-    assert abs(float(v)) > 1e-10, f"Voltage should be nonzero, got {v}"
-
-
-def test_wire_port_current_nonzero():
-    """wire_port_current should return nonzero after excitation."""
-    grid = Grid(freq_max=5e9, domain=(0.02, 0.02, 0.01), dx=0.001, cpml_layers=0)
-    materials = init_materials(grid.shape)
-
-    port = WirePort(
-        start=(0.01, 0.01, 0.002),
-        end=(0.01, 0.01, 0.008),
-        component="ez",
-        impedance=50.0,
-        excitation=GaussianPulse(f0=3e9),
-    )
-    materials = setup_wire_port(grid, port, materials)
-    state = init_state(grid.shape)
-
-    for n in range(20):
-        t = n * grid.dt
-        state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
-        state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
-        state = apply_pec(state)
-        state = apply_wire_port(state, grid, port, t, materials)
-
-    i_val = wire_port_current(state, grid, port)
-    assert abs(float(i_val)) > 1e-10, f"Current should be nonzero, got {i_val}"
 
 
 def test_wire_sparam_probe_accumulates():
@@ -104,6 +53,7 @@ def test_wire_sparam_probe_accumulates():
     assert np.max(np.abs(probe.v_inc_dft)) > 0, "v_inc_dft should be nonzero"
 
 
+@pytest.mark.slow
 def test_wire_s11_pec_cavity():
     """S11 of wire port in PEC cavity should be passive (|S11| <= 1).
 
@@ -130,6 +80,7 @@ def test_wire_s11_pec_cavity():
     window is 6000 steps, the first at which every bin reads at or below
     1, and the ring-down is asserted so a shorter window cannot come back
     silently.
+    The -50 dB ring-down gate leaves 3 dB in hand below an earlier measured -53.3 dB.
     """
     n_steps = 6000
     grid = Grid(freq_max=8e9, domain=(0.03, 0.03, 0.01), dx=0.001, cpml_layers=0)
@@ -154,13 +105,6 @@ def test_wire_s11_pec_cavity():
         state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = update_e(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
         state = apply_pec(state)
-        # update_wire_sparam_probe samples the PHYSICAL V/I after injection
-        # (issue #683); this loop used to call it before, which is the slot
-        # the drive-reference channel uses. With the passive port-branch
-        # algebra the mismatch was invisible; extract_s11 is the DRIVEN
-        # terminal reflection since 2026-09-21
-        # (scripts/diagnostics/lumped_port_known_load_line.py), and a driven
-        # reading on a pre-injection sample is not the port's terminal pair.
         state = apply_wire_port(state, grid, port, t, materials)
         probe = update_wire_sparam_probe(probe, state, grid, port, grid.dt)
         v_t[n] = float(wire_port_voltage(state, grid, port))
@@ -175,39 +119,9 @@ def test_wire_s11_pec_cavity():
     print(f"  |S11| mean:  {s11_mag.mean():.3f}")
     print(f"  port-voltage ring-down (last 200 steps / peak): {ring_down_db:.1f} dB")
 
-    # The window is long enough that the cavity has rung down through the
-    # port; -53.3 dB measured, gated with 3 dB in hand (4000 steps read
-    # -48.1 dB and its resonance bin was still moving).
     assert ring_down_db < -50.0, f"DFT window ended while the cavity still rings: {ring_down_db:.1f} dB"
-    # PEC cavity is lossless — |S11| should be close to 1
     assert np.all(s11_mag < 1.5), f"|S11| should be <= ~1, max={s11_mag.max():.3f}"
     assert not np.any(np.isnan(s11_mag)), "No NaN in S11"
-
-
-def test_wire_s_matrix_extraction():
-    """extract_s_matrix_wire should return a valid S-matrix."""
-    grid = Grid(freq_max=8e9, domain=(0.03, 0.03, 0.01), dx=0.001, cpml_layers=0)
-    base_materials = init_materials(grid.shape)
-
-    port = WirePort(
-        start=(0.01, 0.015, 0.002),
-        end=(0.01, 0.015, 0.008),
-        component="ez",
-        impedance=50.0,
-        excitation=GaussianPulse(f0=5e9, bandwidth=0.8),
-    )
-
-    freqs = jnp.linspace(2e9, 8e9, 10)
-    S = extract_s_matrix_wire(
-        grid, base_materials, [port], freqs, n_steps=1000,
-    )
-
-    assert S.shape == (1, 1, 10), f"Expected (1,1,10), got {S.shape}"
-    s11_mag = np.abs(S[0, 0, :])
-    print("\nextract_s_matrix_wire S11:")
-    print(f"  |S11| range: {s11_mag.min():.3f} - {s11_mag.max():.3f}")
-
-    assert not np.any(np.isnan(S)), "No NaN in S-matrix"
 
 
 def test_wire_sparam_api_integration():

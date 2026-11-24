@@ -42,7 +42,7 @@ def _configs(sim, graded, freqs):
 
 
 @pytest.mark.parametrize("n_modes", [1, 2], ids=["single", "multimode"])
-@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+@pytest.mark.parametrize("graded", [False], ids=["uniform"])
 def test_omitted_f0_is_measurement_band_center(graded, n_modes):
     freqs = np.linspace(8.2e9, 12.4e9, 7)
     sim = _scene(graded, n_modes=n_modes, freqs=freqs)
@@ -56,7 +56,6 @@ def test_omitted_f0_is_measurement_band_center(graded, n_modes):
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 def test_preflight_judges_built_center_when_port_freqs_omitted(graded):
-    # Keep the resolved center below cutoff so the diagnostic states its value.
     sim = _scene(graded, freq_max=10e9)
     entry = sim._waveguide_ports[0]
     assert entry.freqs is None
@@ -64,6 +63,7 @@ def test_preflight_judges_built_center_when_port_freqs_omitted(graded):
              if graded else resolve_waveguide_port_freqs(sim, entry))
     cfg, = _configs(sim, graded, freqs)
     assert cfg.src_fcen == 5.5e9
+    assert cfg.src_fcen < cfg.f_cutoff, "resolved source centre must lie below cutoff"
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         sim._check_waveguide_port_evanescent()

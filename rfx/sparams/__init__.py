@@ -10,7 +10,8 @@ Modules:
   ringdown and geometry advisories, the mixed and coaxial power-wave
   assemblers, and the shared constants.
 * :mod:`rfx.sparams.coax` — ``compute_coaxial_line_reflection``,
-  ``compute_coaxial_two_port`` and ``compute_coax_msl_transition``.
+  ``compute_coaxial_two_port`` and ``compute_coax_msl_transition``
+  (not supported (deprecated); removed after 2.3).
 * :mod:`rfx.sparams.waveguide` — ``compute_waveguide_s_matrix`` and its
   non-uniform-mesh lane ``_compute_waveguide_s_matrix_nu``.
 * :mod:`rfx.sparams.mixed` — ``compute_mixed_s_matrix``, the lumped/wire +

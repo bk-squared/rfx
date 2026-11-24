@@ -60,8 +60,6 @@ def test_conformal_scan_reads_boolean_zero_masks():
     body = _step_jaxpr(_scene(), conformal_pec=True)
     selects = []
     for eq, source in _equations(body):
-        # Inspect the whole body: moving the compare just outside the helper
-        # must not evade the pin. This scene has no other float-grid zero test.
         if eq.primitive.name == 'eq' and any(
                 hasattr(v, 'val') and np.shape(v.val) == () and v.val == 0
                 for v in eq.invars):
@@ -75,6 +73,7 @@ def test_conformal_scan_reads_boolean_zero_masks():
 
 
 def test_conformal_final_fields_zero_inside_pec_and_live_on_cut_edges():
+    """A Yee edge runs from its node to the next node along its component."""
     result = _scene().run(n_steps=20, conformal_pec=True, skip_preflight=True)
     grid = result.grid
     assert grid.shape == (20, 18, 16)
@@ -83,7 +82,6 @@ def test_conformal_final_fields_zero_inside_pec_and_live_on_cut_edges():
                           for a in range(3)), indexing='ij')
     cut_peak = 0.
     for axis, component in enumerate(('ex', 'ey', 'ez')):
-        # A Yee edge runs from its node to the next node along its component.
         inside = np.ones(grid.shape, bool)
         intersects = np.ones(grid.shape, bool)
         for a in range(3):
@@ -107,8 +105,7 @@ def test_conformal_final_fields_zero_inside_pec_and_live_on_cut_edges():
 
 
 def test_conformal_zero_refuses_float_weights():
-    # w = 0 inside PEC and 1 in free space: as a condition the weights would
-    # zero the open edge and keep the field inside the conductor.
+    """Conformal weights are 0 inside PEC and 1 in free space."""
     weight = np.array([0.0, 1.0], np.float32)
     state = namedtuple('E', 'ex ey ez')(*(np.ones(2, np.float32),) * 3)
     with pytest.raises(TypeError, match='boolean w == 0 mask'):

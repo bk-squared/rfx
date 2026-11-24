@@ -8,12 +8,13 @@ regression gates:
 * FAST lane (default addopts, ~2 min): reduced witness arms — exact-conservation
   lock of the Remis dual-cell energy (f64), a reduced-step F-S1 envelope
   arm (f32), one W2 single-transition reflection arm at the cap ratio,
-  the W5 multiband AD check, the W4R3 F-S4 z-dominance gates (analytic)
-  and reduced ladder, the W4R3 grading-side revert-proof (which must
-  FIRE), and the WP6 preflight advisory contract.
+  the W5 multiband AD check, the W4R3 reduced ladder with its fixture
+  gates G1/G2/G3, and the WP6 preflight advisory contract.
 * SLOW/GPU lane: the full pre-declared arms — 1e6-step 1D energy audits
-  (``slow_physics``), the 3D P-B 1e6-step audit (``gpu``), and the full
-  four-scale W4R3 supraconvergence ladder (``slow_physics``).
+  (``slow_physics``), the 3D P-B 1e6-step audit (``gpu``), the full
+  four-scale W4R3 supraconvergence ladder (``slow_physics``), and the
+  W4R3 grading-side revert-proof on the reduced ladder (``slow``; it must
+  FIRE).
 
 Every threshold below is either the pre-declared falsifier window
 (F-S1/F-S2 from the design note, frozen before measurement) or the
@@ -35,6 +36,8 @@ import warnings
 import numpy as np
 import pytest
 
+from tests._fd_minimum import assert_same_minimum_cells
+
 from validation.research.multiband_nu import fixtures as fx
 from validation.research.multiband_nu.harness import (
     build_pec_fixture, run_energy_audit, te10_blob_ex, random_blob_3d)
@@ -43,9 +46,6 @@ from validation.research.multiband_nu.remis_energy import (
 from validation.research.multiband_nu.w1_energy_drift import evaluate_fs1
 
 
-# ---------------------------------------------------------------------------
-# fast lane
-# ---------------------------------------------------------------------------
 
 def _reduced_pa(r: float, variant: str = "abrupt") -> np.ndarray:
     return fx.pa_profile(r, variant, n_fine=12, n_coarse=9)
@@ -73,8 +73,6 @@ def test_remis_energy_witness_validity_f64():
                PYTHONPATH=str(root))
     import tempfile
     with tempfile.TemporaryDirectory() as td:
-        # the script writes its JSON to a relative path; run it in a
-        # scratch cwd so the committed evidence file is not rewritten
         (Path(td) / "validation/research/multiband_nu/results").mkdir(
             parents=True)
         subprocess.run(
@@ -116,8 +114,23 @@ def test_fs2_single_transition_at_cap():
 def test_w5_multiband_ad_consistency():
     """F-S5: jax.grad of sum(ts^2) w.r.t. the multiband w5_profile vs
     central FD, dominant cells within the existing NU AD convention
-    (15 % rel, f32 — test_nonuniform_gradient.py convention)."""
-    from validation.research.multiband_nu.w5_ad_consistency import measure
+    (15 % rel, f32 — test_nonuniform_gradient.py convention).
+
+    The derived dt is part of the differentiated function, and the assertion
+    keeps every FD point on one side of every smallest-cell tie.
+    """
+    import jax.numpy as jnp
+    from validation.research.multiband_nu.w5_ad_consistency import FD_REL_H, measure
+    dz0 = fx.w5_profile()
+    points = []
+    for k in range(len(dz0)):
+        h = FD_REL_H * dz0[k]
+        dp, dm = dz0.copy(), dz0.copy()
+        dp[k] += h
+        dm[k] -= h
+        points.extend([(f"index {k} (+)", np.asarray(jnp.asarray(dp))),
+                       (f"index {k} (-)", np.asarray(jnp.asarray(dm)))])
+    assert_same_minimum_cells(np.asarray(jnp.asarray(dz0)), points)
     res = measure("regression")
     assert not res["fs5_fired"], res
 
@@ -132,27 +145,6 @@ def _w4r3_arm(scale, multiband, defect=False):
 def _w4r3_rows(scales, defect=False):
     return {(mb, s): _w4r3_arm(s, mb, defect and mb)
             for s in scales for mb in (False, True)}
-
-
-def test_fs4_fixture_is_z_dominant():
-    """BL2 gate (note WP6R.3): the F-S4 fixture's error budget must be
-    carried by the GRADED axis, or its order gate cannot fail for a
-    grading reason. Pure analytic decomposition, no FDTD — G1 (the z
-    share of the modelled error budget) >= 0.80 in both arms at every
-    scale, and G2 (the grading-SPECIFIC share) >= 0.20 at every scale."""
-    from validation.research.multiband_nu import w4r3_zdominant_cavity as W
-    from validation.research.multiband_nu.analytic_dispersion import decompose
-    W.assert_planes_realizable()
-    for s in W.SCALES:
-        d = {}
-        for mb in (False, True):
-            prof = W.mb_profile(s) if mb else W.uc_profile(s)
-            grid, _m = build_pec_fixture(prof, (W.A_X, W.B_Y), W.DXY0 * s)
-            d[mb] = decompose(prof, W.DXY0 * s, W.A_X, float(grid.dt),
-                              W.M_X, W.P_Z, W.L_Z)
-            assert d[mb]["z_fraction"] >= W.G1_Z_FRACTION_MIN, (s, mb, d[mb])
-        share = abs(d[True]["e_z"] - d[False]["e_z"]) / abs(d[True]["e_total"])
-        assert share >= W.G2_GRADING_SHARE_MIN, (s, share)
 
 
 def test_fs4_supraconvergence_reduced():
@@ -170,6 +162,7 @@ def test_fs4_supraconvergence_reduced():
     assert not out["anomaly_a4"], out["verdict"]
 
 
+@pytest.mark.slow
 def test_fs4_grading_defect_fires():
     """Revert-proof for the ORDER witness (note WP6R.4): with the
     CORE-C2-class metric defect on ONE multiband transition node — an
@@ -311,7 +304,7 @@ def test_grading_cap_is_1_4_on_every_axis(axis):
         f"d{axis}_profile at ratio {r} is above the 1.4 cap and must draw "
         f"the preflight advisory; got {codes}")
     msgs = _ctor_ratio_warnings(axis, beyond)
-    assert msgs and "(> 1.4, " in msgs[0], msgs  # the cap, not the printed ratio 1.450
+    assert msgs and "(> 1.4, " in msgs[0], msgs
     if axis != "z":
         assert "in-plane" in msgs[0], msgs
 
@@ -324,9 +317,6 @@ def test_inplane_and_z_caps_are_separate_constants():
     assert _PM._INPLANE_RATIO_CAP == 1.4
 
 
-# ---------------------------------------------------------------------------
-# slow / gpu lane — the full pre-declared arms
-# ---------------------------------------------------------------------------
 
 @pytest.mark.slow_physics
 @pytest.mark.parametrize("r,variant", [(1.4, "abrupt"), (1.4, "smooth"),

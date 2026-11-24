@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, GaussianPulse, Simulation, RfxUnsupported
+from rfx.errors import RfxRefusal
 from rfx.boundaries.spec import BoundarySpec
 from rfx.ringdown import RingdownSpec
 
@@ -27,14 +28,17 @@ def _scene(kind, path):
         sim.add_port((.004, .004, .003), 'ez', impedance=50,
                      extent=.002 if kind == 'wire' else None,
                      waveform=GaussianPulse(f0=2e9, bandwidth=.9))
+    elif kind == 'coax':
+        mesh = {'dz_profile': np.linspace(.4e-3, .6e-3, 80)} if graded else {}
+        sim = Simulation(freq_max=10e9, domain=(.012, .012, .040), dx=.0005,
+                         boundary='cpml', cpml_layers=4, snap='declared', **mesh)
+        sim.add_coaxial_port((.006, .006, .038), face='bottom', pin_length=0)
     else:
         mesh = {'dz_profile': np.linspace(.8e-3, 1.2e-3, 16)} if graded else {}
         sim = Simulation(freq_max=20e9, domain=(.024, .020, .016), dx=.001,
                          boundary=BoundarySpec(x='cpml', y='pec', z='pec'),
                          cpml_layers=2, **mesh)
-        if kind == 'coax':
-            sim.add_coaxial_port((.006, .006, .008), face='bottom', pin_length=.004)
-        elif kind == 'waveguide':
+        if kind == 'waveguide':
             sim.add_waveguide_port(.006, f0=10e9, freqs=np.array([10e9]),
                                    probe_offset=3, ref_offset=2)
         else:
@@ -84,6 +88,7 @@ def _success(outcome):
     assert value is not None
     spectrum, freqs = value
     assert spectrum is not None and freqs is not None
+    freqs = np.asarray(freqs)
     assert np.isfinite(spectrum).all() and np.isfinite(freqs).all()
     assert freqs.dtype == np.float32
     np.testing.assert_array_equal(freqs, REQUEST)
@@ -153,6 +158,7 @@ def test_distributed_subprocess(tmp_path):
     for ringdown in (False, True) for path in PATHS for kind in KINDS
 ])
 def test_port_bins(kind, path, ringdown):
+    """The reduced witness applies if the small-scene pulse cannot turn off before the graded fit window."""
     if path.startswith('multi-'):
         if os.environ.get('RFX_TRACED_BINS_CHILD') != '1':
             pytest.skip('covered by test_distributed_subprocess')
@@ -165,7 +171,14 @@ def test_port_bins(kind, path, ringdown):
     actual = _evaluate(lambda: _call(sim, path, ringdown, jnp.asarray(REQUEST)), compiled=True)
     print(f'REACH {kind}-{path}, ringdown={ringdown}, staged={actual[2]}', file=sys.stderr)
 
-    if ringdown and path.startswith('multi-'):
+    if kind == 'coax' and path != 'uniform':
+        leading = {
+            'graded': 'The graded forward() lane (fwd_nonuniform): a coaxial port (add_coaxial_port) is not carried',
+            'multi-uniform': 'The forward(distributed=True) lane (fwd_distributed): a coaxial port (add_coaxial_port) is not carried',
+            'multi-graded': 'The forward(distributed=True) lane (fwd_distributed_nu): a coaxial port (add_coaxial_port) is not carried',
+        }[path]
+        _same_refusal(eager, actual, RfxUnsupported, leading)
+    elif ringdown and path.startswith('multi-'):
         _same_refusal(eager, actual, RfxUnsupported,
                       'forward(ringdown=...) is not supported with distributed=True')
     elif ringdown and kind != 'wire':
@@ -174,8 +187,6 @@ def test_port_bins(kind, path, ringdown):
     elif ringdown:
         concrete = _evaluate(lambda: _call(sim, path, ringdown, REQUEST), compiled=True)
         if path == 'graded' and eager[1] is not None:
-            # This reduced witness applies if this one small-scene
-            # attempt cannot turn its pulse off before the graded fit window.
             assert type(eager[1]) is ValueError
             assert 'is still on inside the identification window' in str(eager[1])
             _same_refusal(eager, concrete, ValueError, 'forward(ringdown=...):')
@@ -193,15 +204,17 @@ def test_port_bins(kind, path, ringdown):
             assert message in str(actual[1])
             print(f'ConcretizationTypeError: {message}', file=sys.stderr)
     elif kind == 'coax':
-        _same_refusal(eager, actual, RfxUnsupported,
-                      'add_coaxial_port() is not wired into Simulation.forward().')
+        _success(eager)
+        if actual[2]:
+            _refusal(actual, RfxRefusal, 'line-port read frequencies must be concrete')
+        else:
+            _equal(eager, actual)
     elif kind in ('waveguide', 'msl'):
         _same_refusal(eager, actual, ValueError,
-                      'forward(port_s11_freqs=...) computes S11 only for add_port(...)')
-        assert ('waveguide ports use compute_waveguide_s_matrix()' if kind == 'waveguide'
+                      'forward(port_s11_freqs=...) requires add_port(...)')
+        assert ('add_waveguide_port(...) uses compute_waveguide_s_matrix()' if kind == 'waveguide'
                 else 'MSL ports use compute_msl_s_matrix()') in str(eager[1])
     elif path == 'multi-graded':
-        # Graded multi-device ports run the one-device step per slab (#1402 step 2).
         _equal(eager, actual)
         _equal(_evaluate(lambda: _call(sim, 'graded', False, REQUEST)), eager)
     elif path == 'multi-uniform' and actual[2]:

@@ -24,7 +24,8 @@ from rfx.model.graded_admission import host_cells
 
 from rfx._internal._grid_metric import field_index
 from dataclasses import dataclass, field, replace
-from itertools import product
+from hashlib import blake2b
+from operator import index as integer_index
 
 import jax
 import jax.numpy as jnp
@@ -41,11 +42,129 @@ class Node:
     area: float | None = None
 
 
+_COMPONENTS = ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')
+
+
+@dataclass(frozen=True, eq=False, repr=False)
+class NodeArrays:
+    """Read-only node columns; materialize a Node only at the sequence boundary.
+
+    Keys normalize values in bounded chunks, independently of storage dtype.
+    Traced comparisons omit weights on both sides. As with the old monitor
+    check, these compare geometry while the weights belong to the trace.
+    """
+    component: np.ndarray
+    i: np.ndarray
+    j: np.ndarray
+    k: np.ndarray
+    weight: np.ndarray | jax.Array
+    area: np.ndarray | None = None
+    _keys: dict = field(default_factory=dict, init=False, compare=False, repr=False)
+
+    def __post_init__(self):
+        for name, dtype in (('component', np.int8), ('i', np.int32),
+                            ('j', np.int32), ('k', np.int32),
+                            ('weight', None), ('area', np.float64)):
+            value = getattr(self, name)
+            if value is None and name == 'area':
+                continue
+            if name == 'weight' and _traced(value):
+                column = value
+            else:
+                column = np.asarray(value, dtype=dtype)
+                column.setflags(write=False)
+            if column.ndim != 1 or len(column) != len(self.component):
+                raise ValueError('node columns must be one-dimensional and equally sized')
+            object.__setattr__(self, name, column)
+        self.content_key()
+
+    def __len__(self):
+        return len(self.component)
+
+    def __getitem__(self, item):
+        if isinstance(item, slice):
+            return NodeArrays(component=self.component[item], i=self.i[item],
+                              j=self.j[item], k=self.k[item], weight=self.weight[item],
+                              area=None if self.area is None else self.area[item])
+        item = integer_index(item)
+        weight = self.weight[item]
+        return Node(_COMPONENTS[int(self.component[item])],
+                    int(self.i[item]), int(self.j[item]), int(self.k[item]),
+                    weight if _traced(weight) else float(weight),
+                    None if self.area is None else float(self.area[item]))
+
+    def __iter__(self):
+        for item in range(len(self)):
+            yield self[item]
+
+    def content_key(self, *, weights=True, area=True):
+        weights = weights and not _traced(self.weight)
+        mode = weights, area
+        if mode not in self._keys:
+            digest = blake2b(digest_size=32)
+            digest.update(np.asarray([len(self)], dtype='<i8').tobytes())
+            for name, dtype in (('component', 'i1'), ('i', '<i8'),
+                                ('j', '<i8'), ('k', '<i8'),
+                                ('weight', '<f8'), ('area', '<f8')):
+                if (name == 'weight' and not weights) or (name == 'area' and not area):
+                    continue
+                column = getattr(self, name)
+                digest.update(name.encode())
+                if column is None:
+                    if len(self):
+                        digest.update(b'None')
+                else:
+                    for start in range(0, len(self), 8192):
+                        digest.update(np.asarray(column[start:start+8192], dtype=dtype).tobytes())
+            self._keys[mode] = digest.digest()
+        return self._keys[mode]
+
+    def __eq__(self, other):
+        if isinstance(other, tuple):
+            if not all(isinstance(node, Node) for node in other):
+                return NotImplemented
+            other = node_arrays(other)
+        if not isinstance(other, NodeArrays):
+            return NotImplemented
+        weights = not (_traced(self.weight) or _traced(other.weight))
+        return self.content_key(weights=weights) == other.content_key(weights=weights)
+
+    def __hash__(self):
+        """Hash the content key; an equal Node tuple keeps Python's own tuple hash."""
+        return hash(self.content_key())
+
+    def __repr__(self):
+        return f'NodeArrays(count={len(self)}, key={self.content_key().hex()[:12]})'
+
+
+def node_arrays(nodes):
+    """Normalize legacy tuples at checks without copying existing columns."""
+    if isinstance(nodes, NodeArrays):
+        return nodes
+    weights = tuple(n.weight for n in nodes)
+    i, j, k = (np.asarray([getattr(n, a) for n in nodes], dtype=np.int32) for a in 'ijk')
+    return NodeArrays(
+        component=np.asarray([_COMPONENTS.index(n.component) for n in nodes], dtype=np.int8),
+        i=i, j=j, k=k,
+        weight=jnp.stack(weights) if _traced(weights) else np.asarray(weights, dtype=np.float64),
+        area=None if all(n.area is None for n in nodes) else np.asarray([n.area for n in nodes], dtype=np.float64))
+
+
+def _join_node_arrays(parts):
+    """Concatenate the small number of planes in a channel, column by column."""
+    if len(parts) == 1:
+        return parts[0]
+    component, i, j, k, weight = (np.concatenate([getattr(p, name) for p in parts])
+                                for name in ('component', 'i', 'j', 'k', 'weight'))
+    return NodeArrays(component=component, i=i, j=j, k=k, weight=weight,
+                      area=None if parts[0].area is None else np.concatenate([p.area for p in parts]))
+
+
 @dataclass(frozen=True)
 class Channel:
     name: str
     kind: str
-    nodes: tuple[Node, ...]
+    nodes: tuple[Node, ...] | NodeArrays
     sample_stage: str = 'post-injection'
     slot_offset: int = 0
     e_time_offset: float = 0.0
@@ -107,8 +226,6 @@ class TimeBase:
                      * np.float64(self.dt))
 
 
-#: Sums that are not on the shared DFT kernel (rfx.measurement.dft), and the
-#: one case in which the kernel itself is less accurate.
 KERNEL_KNOWN_DIFFERENCES = (
     'rfx/measurement/floquet.py update_floquet_dft: own sum, H centred on E in space and time; no caller in rfx/',
     'subgridded runner: own lumped V/I sum stamped n dt, without the H half step',
@@ -194,15 +311,16 @@ def _plane_nodes(grid, axis, index, component, region=None, weights=None):
     for a, start, stop in zip(axes, (lo, low), (hi, high)):
         refuse_window_cells(grid, a, slice(start, stop), "waveguide ports plane owner")
     cells = [np.asarray(host_cells(grid, a)) for a in axes]
-    nodes = []
-    for u, v in product(range(lo, hi), range(low, high)):
-        idx = [0, 0, 0]
-        # Flux windows alone may include a virtual periodic closing node.
-        us, vs = u % sizes[0], v % sizes[1]
-        idx[axis], idx[axes[0]], idx[axes[1]] = index, us, vs
-        w = 1.0 if weights is None else float(weights[u-lo, v-low])
-        nodes.append(Node(component, *idx, w, float(cells[0][us] * cells[1][vs])))
-    return tuple(nodes)
+    u = np.repeat(np.arange(lo, hi, dtype=np.int32), high-low) % sizes[0]
+    v = np.tile(np.arange(low, high, dtype=np.int32), hi-lo) % sizes[1]
+    indices = [None] * 3
+    indices[axis] = np.full(len(u), index, dtype=np.int32)
+    indices[axes[0]], indices[axes[1]] = u, v
+    i, j, k = indices
+    return NodeArrays(component=np.full(len(u), _COMPONENTS.index(component), dtype=np.int8),
+                      i=i, j=j, k=k,
+                      weight=np.ones(len(u)) if weights is None else np.asarray(weights).ravel(),
+                      area=cells[0][u] * cells[1][v])
 
 
 def _pec_edges(sim, grid):
@@ -330,14 +448,15 @@ def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
         regions = flux_regions(cfg)
         channels = []
         for c, component in enumerate(_FLUX_COMPONENTS[axis]):
-            # Weight belongs to the E/H product, not to each linear DFT.
             area = areas[(0, 1, 1, 0)[c]]
             planes = (((index, 1.0),) if c < 2 else
                       ((index, 0.0),) if cfg.normal_h_zero else
                       ((normal_h_neighbor(index, grid.shape[axis], cfg.normal_periodic), cfg.normal_h_weights[0]), (index, cfg.normal_h_weights[1])))
-            nodes = tuple(Node(n.component, n.i, n.j, n.k, weight, float(a))
-                          for plane, weight in planes
-                          for n, a in zip(_plane_nodes(grid, axis, plane, component, regions[c]), area.flat))
+            nodes = _join_node_arrays([
+                replace(p, weight=np.full(len(p), weight),
+                        area=area.ravel().astype(np.float64))
+                for plane, weight in planes
+                for p in (_plane_nodes(grid, axis, plane, component, regions[c]),)])
             channels.append(field_channel(component, nodes, box=(axis, index, regions[c]),
                                     e_time_offset=0., h_time_offset=0.))
         owners.append(Owner(f'flux_plane:{i}', 'flux', tuple(channels), _frequencies(sim, entry),
@@ -354,7 +473,7 @@ def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
     from .ports import lumped_wire_owner
     for i, entry in enumerate(sim._ports):
         if entry.is_soft_source:
-            continue  # a soft source has no measurement owner
+            continue
         live = (field_index(grid, entry.position, entry.component),)
         if entry.extent is not None:
             end = list(entry.position)
@@ -395,6 +514,10 @@ def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
     from .ports import waveguide_owners
     owners.extend(waveguide_owners(sim, grid, n_steps, nu))
     supplied = {owner.id: owner for owner in calculator_owners}
+    if sim._coaxial_ports and path in ('run_uniform', 'fwd_uniform') and conductors is not None:
+        from .coax_port import port_owner
+        owner = port_owner(sim, grid, conductors, frequencies)
+        supplied.setdefault(owner.id, owner)
     for attr, kind in (('_msl_ports', 'msl'), ('_coaxial_ports', 'coax')):
         for i, _ in enumerate(getattr(sim, attr)):
             key = f'{kind}_port:{i}:mode:0'

@@ -1,4 +1,5 @@
-"""Closed-box power from field DFTs and independently integrated real nodes."""
+"""Closed-box power from field DFTs and independently integrated real nodes.
+Every C1 box is asymmetric about the source on every axis, including the half-cell displacement of the z-directed source edge."""
 import json
 import os
 from pathlib import Path
@@ -12,8 +13,6 @@ from rfx.probes.probes import flux_spectrum
 
 FREQS = np.array([8e9, 10e9, 12e9])
 STEPS = 768
-# Every C1 box is asymmetric about the source on every axis, including
-# the half-cell displacement of the z-directed source edge.
 OFFSETS = (((-3, 5), (-4, 3), (-3, 5)),
            ((-4, 3), (-3, 5), (-5, 3)),
            ((-5, 4), (-5, 4), (-4, 6)))
@@ -26,8 +25,6 @@ def _record(name, values):
 
 
 def _axis_integral_weights(x, lo, hi, nodal, full=False):
-    # Integrate the linear interpolant on each interval, assigning half the
-    # interval to each bounding node. No production area/weight helper is read.
     stop = hi-1 if full else hi
     lengths = np.diff(x[lo:stop+1])
     if not nodal:
@@ -49,13 +46,14 @@ def _field_integral(mon, coords):
                    for a, lo, hi in zip(axes, (mon.lo1, mon.lo2), (mon.hi1, mon.hi2))]
         area = weights[0][:, None] * weights[1][None, :]
         if e.shape[-2:] != area.shape:
-            return None  # baseline layout witness, never accepted by the test
+            return None
         product = np.asarray(e, dtype=np.complex128) * np.conj(np.asarray(h, dtype=np.complex128))
         terms.append(np.sum(product * area, axis=(-2, -1)))
     return np.real(terms[0]-terms[1])
 
 
 def measure_scene(graded, model, steps=STEPS):
+    """The full model is symmetric in y only for comparison with the reflected half model."""
     half, mirror = model == 'half', model != 'asymmetric'
     profiles = [np.r_[1., np.linspace(.8, 1.2, 22), 1.]*.001,
                 np.full(12 if half else 24, .001),
@@ -67,8 +65,6 @@ def measure_scene(graded, model, steps=STEPS):
                      boundary=BoundarySpec(x='cpml', y=Boundary('pmc', 'cpml') if half else 'cpml', z='cpml'),
                      **({f'd{a}_profile': p for a, p in zip('xyz', profiles)} if graded else {}))
     grid = sim._build_realized_grid()
-    # Coordinates from the declared cell profiles, including explicit CPML
-    # padding. These do not call the production flux builder or geometry spine.
     coords = []
     for a, p in zip('xyz', profiles):
         low, high = getattr(grid, f'pad_{a}_lo'), getattr(grid, f'pad_{a}_hi')
@@ -82,8 +78,6 @@ def measure_scene(graded, model, steps=STEPS):
     for box, offsets in enumerate(OFFSETS):
         indices = source_node[:, None] + np.array(offsets)
         if mirror:
-            # Explicitly symmetric in y only for comparison with the reflected
-            # half model. x and z remain asymmetric in every box.
             reach = (3, 4, 5)[box]
             indices[1] = (0, reach) if half else (12-reach, 12+reach)
         endpoints = np.array([[np.r_[0., np.cumsum(p)][i] for i in pair]
@@ -115,7 +109,7 @@ def measure_scene(graded, model, steps=STEPS):
         monitors = result.flux_monitors
     record = result.sparam_time_records[0]
     v_t, i_t = np.asarray(record['V']), np.asarray(record['I'])
-    power_channels = np.stack([v_t, i_t], axis=1)  # columns V, I by name
+    power_channels = np.stack([v_t, i_t], axis=1)
     time = np.arange(len(v_t))
     voltage = np.exp(-2j*np.pi*FREQS[:, None]*(time+1)*grid.dt) @ v_t * grid.dt
     current = np.exp(-2j*np.pi*FREQS[:, None]*(time+.5)*grid.dt) @ i_t * grid.dt
@@ -161,7 +155,7 @@ def test_c1_asymmetric_boxes(scenes):
     flux = _independent_integral(scenes['asymmetric'])
     assert np.all(np.ptp(flux, axis=0) <= 1e-4*np.max(flux)), flux
     if scenes['asymmetric']['mesh'] == 'graded':
-        assert np.all(np.ptp(flux, axis=0) <= 1e-5*np.max(flux)), flux  # F2b declaration
+        assert np.all(np.ptp(flux, axis=0) <= 1e-5*np.max(flux)), flux
 
 
 def test_c2_magnetic_face_closed_boxes(scenes):
@@ -210,6 +204,7 @@ def test_full_plane_between_pec_walls(graded):
 
 
 def test_finite_periodic_window_includes_its_closing_node():
+    """The last node at y=6 mm is the image of y=0, not the final stored y=5 mm sample."""
     import jax.numpy as jnp
     from rfx.core.yee import init_state
     from rfx.probes.probes import update_flux_monitor
@@ -224,8 +219,6 @@ def test_finite_periodic_window_includes_its_closing_node():
     state = state._replace(ez=jnp.broadcast_to((2+jnp.arange(6))[None, :, None], grid.shape),
                            hy=jnp.ones(grid.shape), step=jnp.asarray(1))
     actual = flux_spectrum(update_flux_monitor(monitor, state, 1.), exact_f64=True)
-    # E_z on y=2,3,4,5,6 mm reads 4,5,6,7,2: the last node is the image
-    # of y=0, not the final stored y=5 mm sample. Integrate over 3 mm in z.
     expected = -(.5*4+5+6+7+.5*2)*.001*.003
     np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=0.)
 

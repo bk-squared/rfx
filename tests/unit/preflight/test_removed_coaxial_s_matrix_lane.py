@@ -32,6 +32,7 @@ called for real; only their grid build is replaced by a sentinel, so
 "accepted" means every guard passed and no FDTD runs. (The two
 ``calculator="coaxial"`` checks moved here from the deleted
 ``tests/unit/sparams/test_coaxial_s_matrix.py``.)
+A lateral face with no absorber pad is a PEC wall behind nothing, which rebuilds the closed can on that side.
 """
 
 from __future__ import annotations
@@ -94,7 +95,6 @@ def _with(sim: Simulation, register) -> Simulation:
     return sim
 
 
-# (setup, the lane requirement the preflight must name)
 REFUSED_BY_BOTH_LANES = {
     "pec-one-port": (lambda: _coax_sim(boundary="pec"),
                      ["boundary='cpml'"]),
@@ -107,8 +107,6 @@ REFUSED_BY_BOTH_LANES = {
     "pec-z-face": (lambda: _coax_sim(boundary=BoundarySpec(
         x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml"))),
                    ["positive CPML thickness on all six faces"]),
-    # Issue 1218: a lateral face with no absorber pad is a PEC wall behind
-    # nothing, which rebuilds the closed can on that side.
     "no-x-hi-absorber": (lambda: _coax_sim(boundary=BoundarySpec(
         x=Boundary(lo="cpml", hi="cpml", hi_thickness=0), y="cpml", z="cpml")),
                          ["positive CPML thickness on all six faces"]),

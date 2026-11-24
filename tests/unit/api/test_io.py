@@ -167,9 +167,6 @@ def test_touchstone_writer_uses_touchstone_port_order():
     ]
 
 
-# ---------------------------------------------------------------------------
-# Multi-port tests (.s2p, .s3p, .s4p, .snp)
-# ---------------------------------------------------------------------------
 
 def test_write_read_s2p_roundtrip():
     """2-port RI round-trip: write then read should recover identical data."""
@@ -194,8 +191,6 @@ def test_write_read_s3p_roundtrip():
         path = Path(tmpdir) / "coupler.s3p"
         write_touchstone(path, s_params, freqs, fmt="RI")
 
-        # Verify multi-line layout: each freq should span 3 lines
-        # (first line: freq + 4 pairs, second: 4 pairs, third: 1 pair)
         content = path.read_text()
         s_read, f_read, z0 = read_touchstone(path)
 
@@ -203,13 +198,10 @@ def test_write_read_s3p_roundtrip():
     np.testing.assert_allclose(f_read, freqs, rtol=1e-6)
     np.testing.assert_allclose(s_read, s_params, atol=1e-6)
 
-    # Check that continuation lines are present (indented, no freq column)
     data_lines = [
         l for l in content.splitlines()
         if l.strip() and not l.strip().startswith("!") and not l.strip().startswith("#")
     ]
-    # 3-port: 9 pairs = first line (4 pairs) + 2 continuation lines (4+1)
-    # So 3 raw lines per frequency, 8 freqs -> 24 data lines
     assert len(data_lines) == 8 * 3
 
 
@@ -228,8 +220,6 @@ def test_write_s4p():
     np.testing.assert_allclose(f_read, freqs, rtol=1e-6)
     np.testing.assert_allclose(s_read, s_params, atol=1e-6)
 
-    # 4-port: 16 pairs. First line: freq + 4 pairs, then 3 cont lines of 4 pairs.
-    # => 4 raw lines per frequency point.
     data_lines = [
         l for l in content.splitlines()
         if l.strip() and not l.strip().startswith("!") and not l.strip().startswith("#")
@@ -253,8 +243,6 @@ def test_write_read_s6p_roundtrip():
 
 def test_read_s2p_db_format():
     """Read a hand-crafted 2-port DB-format file and verify decoded values."""
-    # S11 = -20 dB @ -45 deg, S21 = -3 dB @ -90 deg
-    # S12 = -3 dB @ -90 deg, S22 = -20 dB @ -45 deg
     text = "\n".join([
         "! 2-port filter in dB/angle format",
         "# GHz S DB R 50",
@@ -271,13 +259,11 @@ def test_read_s2p_db_format():
     assert z0 == 50.0
     np.testing.assert_allclose(freqs, [1e9, 2e9])
 
-    # S11 at f=1 GHz: mag = 10^(-20/20) = 0.1, angle = -45 deg
     s11_mag = np.abs(s_read[0, 0, 0])
     s11_ang = np.degrees(np.angle(s_read[0, 0, 0]))
     np.testing.assert_allclose(s11_mag, 0.1, rtol=1e-6)
     np.testing.assert_allclose(s11_ang, -45.0, atol=1e-3)
 
-    # S21 at f=1 GHz: mag = 10^(-3/20) ~ 0.7079, angle = -90 deg
     s21_mag = np.abs(s_read[1, 0, 0])
     s21_ang = np.degrees(np.angle(s_read[1, 0, 0]))
     np.testing.assert_allclose(s21_mag, 10**(-3/20), rtol=1e-4)
@@ -326,9 +312,9 @@ def test_s4p_db_roundtrip():
 
 
 def test_read_s4p_multiline_handcrafted():
-    """Read a hand-written 4-port file with explicit multi-line layout."""
-    # 4-port: 16 pairs. Line 1: freq + 4 pairs, then 3 continuation lines.
-    # Column-major order: S11 S21 S31 S41 | S12 S22 S32 S42 | S13 ... | S14 ...
+    """Read a hand-written 4-port file with explicit multi-line layout.
+    The legacy-rfx layout uses column-major order: S11 S21 S31 S41, then S12 S22 S32 S42.
+    """
     text = "\n".join([
         "! Hand-crafted 4-port RI",
         "# MHz S RI R 50",
@@ -346,17 +332,13 @@ def test_read_s4p_multiline_handcrafted():
     assert s_read.shape == (4, 4, 1)
     np.testing.assert_allclose(freqs, [100e6])
 
-    # Verify column-major mapping:
-    # vals 1..4 -> S11,S21,S31,S41 (column j=0)
-    # vals 5..8 -> S12,S22,S32,S42 (column j=1)
-    # etc.
-    assert s_read[0, 0, 0] == 1 + 0j   # S11
-    assert s_read[1, 0, 0] == 2 + 0j   # S21
-    assert s_read[2, 0, 0] == 3 + 0j   # S31
-    assert s_read[3, 0, 0] == 4 + 0j   # S41
-    assert s_read[0, 1, 0] == 5 + 0j   # S12
-    assert s_read[1, 1, 0] == 6 + 0j   # S22
-    assert s_read[3, 3, 0] == 16 + 0j  # S44
+    assert s_read[0, 0, 0] == 1 + 0j
+    assert s_read[1, 0, 0] == 2 + 0j
+    assert s_read[2, 0, 0] == 3 + 0j
+    assert s_read[3, 0, 0] == 4 + 0j
+    assert s_read[0, 1, 0] == 5 + 0j
+    assert s_read[1, 1, 0] == 6 + 0j
+    assert s_read[3, 3, 0] == 16 + 0j
 
 
 def test_inline_comments_ignored():

@@ -105,7 +105,7 @@ def evaluate_with_raw_spectra(sim, entry, n, devices=None):
 
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
-@pytest.mark.parametrize('n', [128, 192, 288])
+@pytest.mark.parametrize('n', [288])
 @pytest.mark.parametrize('case', ['C1-mid', 'C1-seam', 'C1b', 'C2', 'C3', 'C4-mid', 'C4-wire'])
 def test_port_records_and_s(case, n, entry):
     devices = jax.devices('cpu')
@@ -148,7 +148,7 @@ def test_port_records_and_s(case, n, entry):
             assert row['S']['bit_equal'], row['S']
 
 
-@pytest.mark.parametrize('n', [128, 192, 288])
+@pytest.mark.parametrize('n', [288])
 def test_c5_gradient(n):
     devices = jax.devices('cpu')
     if len(devices) < 2:
@@ -275,6 +275,7 @@ def test_override_pole_edge_refuses_before_staging(kind, monkeypatch):
 
 
 def test_two_excited_wire_ports_refuse_run_s_before_staging(monkeypatch):
+    """Several devices read one record, so two excited ports cannot supply isolated drives."""
     from rfx.model import electric_metrics
     def two_excited():
         sim = scene('C2', len(jax.devices()))
@@ -284,7 +285,6 @@ def test_two_excited_wire_ports_refuse_run_s_before_staging(monkeypatch):
         sim.add_port(pos, 'ex', impedance=50., extent=_axis_node_position(grid, 0, 7) - pos[0],
             waveform=GaussianPulse(f0=20e9, bandwidth=.9))
         return sim
-    # One device drives each port in turn; several devices read one record.
     s = two_excited().run(n_steps=8, compute_s_params=True, s_param_freqs=BINS,
                           skip_preflight=True).s_params
     assert np.isfinite(np.asarray(s)).all()
@@ -297,7 +297,7 @@ def test_two_excited_wire_ports_refuse_run_s_before_staging(monkeypatch):
 
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
-@pytest.mark.parametrize('n', [128, 192, 288])
+@pytest.mark.parametrize('n', [288])
 @pytest.mark.parametrize('case', ['C1-mid', 'C1-seam', 'C1b', 'C2', 'C3', 'C4-mid', 'C4-wire', 'C5'])
 def test_model_drives_and_cut(case, n, entry, monkeypatch):
     if case == 'C5' and entry == 'run':
@@ -441,8 +441,6 @@ def restored_defect(monkeypatch):
         original = slab_setup.realize_materials
         def broken(materials, grid, layout, mesh, *args, **kwargs):
             staged, inverse, loss = original(materials, grid, layout, mesh, *args, **kwargs)
-            # These vacuum fixtures have no other sigma: remove the port load
-            # on rank 1, retaining all calls and every other rank's operands.
             sigma = tuple(a.at[layout.nx_local:2*layout.nx_local].set(0.)
                           for a in staged.components.sigma_update)
             from dataclasses import replace

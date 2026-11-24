@@ -292,15 +292,14 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostic
         )
 
     msl = getattr(sim, "_msl_ports", None) or ()
-    if msl:
+    if any(p.mode == "eigenmode" for p in msl):
         from rfx._diagnostic_transport import diagnostic_refusal
+        reason = (
+            "mode='eigenmode' needs a magnetic-source channel for its J+M launch; slabs have none"
+        )
         raise diagnostic_refusal(RfxUnsupported(
             f"add_msl_port() port(s) ({len(msl)}): not supported on the {lane} path; "
-            "the lane never drives or terminates microstrip ports, so a model fed "
-            "only by them returns a zero field, with no warning "
-            "(rfx.runners.distributed_v2.run_distributed / "
-            "rfx.runners.distributed.run_distributed have no MSL port update). "
-            f"Remove the MSL ports, or {single_device_hint}."
+            f"{reason} (rfx.runners.distributed_v2). {single_device_hint}."
         ), diagnostics)
 
     if getattr(sim, "_refinement", None) is not None:
@@ -355,13 +354,13 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     -------
     Result
     """
+    from rfx.stepping.vector_pad import refuse_if_forced
+    refuse_if_forced("distributed uniform")
     from rfx._diagnostic_transport import merge_diagnostics, report_diagnostics
     diagnostics = merge_diagnostics(diagnostics, report_diagnostics(assembly))
     validate_exchange_interval(exchange_interval)
-    from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     from rfx.model.wall_loss import refuse_wall_loss
     refuse_wall_loss(sim, "distributed (v2) runner")
-    _refuse_f0(sim._thin_conductors, "distributed (v2) runner")
     if sim._boundary == "upml":
         raise ValueError("boundary='upml' does not support distributed execution")
 
@@ -373,7 +372,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     )
 
     from rfx.runners._distributed_records import refuse_record_options
-    refuse_record_options(sim, kwargs)
+    refuse_record_options(sim, kwargs, run=lane == "run_distributed")
 
     from rfx.api import Result
 
@@ -450,7 +449,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # drop it now so no whole-domain array stays alive through the loop.
     del _assembly_rest
     conductors = kernel_conductors(sim, grid, base_materials, pec_mask,
-        _d_pec_sheets, _d_pec_wires, periodic=sim._periodic_flags(), root=conductors)
+        _d_pec_sheets, _d_pec_wires, periodic=sim._periodic_flags(), root=conductors,
+        sheet_specs=conductors.sheet_impedance)
     del _geometry_masks, _assembly_entries
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(base_materials, lane="distributed_v2", unsupported=True)
@@ -490,6 +490,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     port_idx = -1
     wire_edges = None
     port_entries, port_specs = [], []
+    msl_geometry_edges = conductors.pec_edges if sim._msl_ports else None
     from rfx.model.conductors import lumped_port_stage, publish_port_release
     for _port_index, pe in enumerate(sim._ports):
         if pe.component not in ("ex", "ey", "ez"):
@@ -522,7 +523,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
                                live_cells[len(live_cells) // 2], _port_index))
             conductors = publish_port_release(conductors, [c for c, on in zip(cells, live) if on],
                 component=pe.component, entity_id=f"port[{_port_index}]", kind="wire")
-            materials = setup_wire_port(grid, wp, materials, pec_edge_masks=wire_edges)
+            materials = setup_wire_port(grid, wp, materials, pec_edge_masks=wire_edges,
+                                        radius_sim=sim, radius_port=f"port[{_port_index}]")
             if _source_port_indices is None or port_idx in _source_port_indices:
                 sources.defer(make_wire_port_sources,
                               grid, wp, n_steps=n_steps, pec_edge_masks=wire_edges)
@@ -537,6 +539,17 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
                 sources.defer(make_source, grid, pe.position, pe.component,
                               pe.waveform, n_steps,
                               amplitude_kind=pe.amplitude_kind)
+    if sim._msl_ports:
+        from rfx.model.msl_stamp import realize_msl_ports
+        from rfx.model.conductors import drawn_launch_eps
+        forward_msl = lane == "fwd_distributed"
+        msl = realize_msl_ports(sim, grid, materials, conductors,
+            eps_source=(drawn_launch_eps(sim, grid, base_materials)
+                        if forward_msl else materials.eps_r), stamp_drive_materials=None,
+            edge_release="forward_uniform" if forward_msl else "run", eigenmode=lane,
+            geometry_edges=msl_geometry_edges, sources=sources, n_steps=n_steps)
+        materials, conductors = msl.materials, msl.conductors
+        del msl
     if _record_probes is None:
         for pe in sim._probes:
             probes.append(make_probe(grid, pe.position, pe.component))
@@ -555,6 +568,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
                  CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, sim._periodic_flags()))
     port_freqs = s_param_freqs if compute_s_params else None
     ports = UniformPortPlan(*port_args, jnp.float32, port_freqs)
+    if sim._tfsf is not None or exchange_interval != 1:
+        from rfx.materials.thin_conductor import refuse_f0_sheets
+        refuse_f0_sheets(sim._thin_conductors, "uniform multi-device TF/SF step")
 
     # All port loads must be present before any drive reads its E operands.
     # No whole-domain realization here: the slab kernels form their own edge
@@ -563,10 +579,12 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # A dispersive edge's drive needs the ADE update's coefficient, as on one
     # device; the pole terms are read edge by edge from the specs.
     from rfx.model.source_coefficients import dispersive_drive_model
+    from rfx._internal._precision import resolve_field_dtype
     drive_materials = dispersive_drive_model(materials, debye_spec, lorentz_spec, grid=grid,
-                                            in_program=mesh.devices.size < 2)
+        in_program=mesh.devices.size < 2,
+        field_dtype=resolve_field_dtype(sim._precision) or jnp.float32)
     sources = sources.resolve(drive_materials)
-    del wire_edges, drive_materials
+    del wire_edges, drive_materials, msl_geometry_edges
 
     if _realized.ACTIVE is not None:
         _realized.sources(grid, materials, sources, "distributed.sources")
@@ -574,8 +592,11 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     from rfx.stepping import prepared as prepared_step
     conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
     stepping_product = conductors
-    conductors, geometry_record = at_kernel(sim, conductors, lane="run_distributed", pec_edges=conductors.pec_edges)
+    sheet_impedance = conductors.sheet_context(conductors.pec_edges)
+    conductors, geometry_record = at_kernel(sim, conductors, lane="run_distributed",
+        pec_edges=conductors.pec_edges, sheet_operator=sheet_impedance)
     pec_edges = conductors.pec_edges
+    sheet_impedance = conductors.sheet_operator
     if sim._tfsf is not None and sim._tfsf.closed_box:
         from rfx.boundaries.tfsf import validate_realized_vacuum_boundary
         from rfx.sources.tfsf_discrete_plane_wave import box_bounds
@@ -610,7 +631,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         _operand_layout="wrapped_uniform_slab", n_steps=n_steps,
         boundary=sim._boundary, dispersion=dispersion, port_plan=ports,
         record_vref=_record_vref, tfsf=tfsf, exchange_interval=exchange_interval,
-        rlc_metas=rlc_metas)
+        rlc_metas=rlc_metas, sheet_impedance=sheet_impedance)
 
     if multi_process:
         from jax.experimental import multihost_utils

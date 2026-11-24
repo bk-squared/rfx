@@ -15,7 +15,10 @@ Six rules over the PR's diff against its merge base, all mechanical:
    ``LINE_BUDGET`` lines and ``TEXT_BYTE_BUDGET`` bytes of text in total (a
    whole added file, and the growth of a modified one: ten one-line JSON files
    of 0.95 MB each are ten lines), and binary ones at most ``BINARY_BUDGET``
-   bytes. Deletions are free: moving records out is the point.
+   bytes. A binary file moved unchanged spends none of it: a new path with the
+   blob id of a path the same diff deletes, one new path per deleted one (blob
+   ids, not git's rename detection); a changed file or a copy counts whole.
+   Deletions are free: moving records out is the point.
 2. No data file the PR adds or modifies may exceed ``FILE_CAP`` bytes, on the
    allowlist or off it, except a file in a frozen-data home that a reader names
    (rule 3's test), which may reach ``FROZEN_FILE_CAP``. Four fixtures tests
@@ -65,6 +68,7 @@ import os
 import re
 import subprocess
 import sys
+from collections import Counter
 from pathlib import Path, PurePosixPath
 from typing import Dict, FrozenSet, Iterable, List, NamedTuple, Optional, Sequence, Tuple
 
@@ -109,7 +113,6 @@ ALLOWLIST: Tuple[Tuple[str, str], ...] = (
     ("validation/crossval/manifest.json", "cross-validation manifest (22 PRs, 170 lines)"),
     ("docs/design_notes/schemas/*.schema.json", "design IR schema tests/interop reads (5 PRs, 161 lines)"),
     ("docs/public/site_map.json", "public docs map scripts/check_public_docs_manifest.py reads (1 PR, 1 line)"),
-    ("docs/public/gallery/assets/**", "gallery precompute outputs (1 PR, 1 line)"),
     ("tests/contracts/boundary_registry.json", "registry tests/contracts reads (1 PR, 1,041 lines)"),
     ("scripts/ci/layer_baseline.json", "unit lists the layer-structure ratchet reads; every PR that removes a layer violation edits it (rfx PR 1637, 623 lines)"),
     ("tests/fixtures/**", "frozen reference data, rule 3 applies (34 PRs, 324,083 lines)"),
@@ -254,6 +257,27 @@ def _statuses(base: str, head: str, repo: Path) -> Dict[str, Tuple[str, str]]:
                 out[tokens[index + 1]] = (status[0], tokens[index + 1])
             index += 2
     return out
+
+
+def _unchanged_moves(base: str, head: str, repo: Path) -> FrozenSet[str]:
+    """New paths paired one-to-one by blob id with deletions in the same diff."""
+    tokens = _split_z(_git(repo, "diff", "--raw", "-z", "--no-abbrev", "--no-renames",
+                           f"{base}...{head}"))
+    deleted = Counter()
+    added = {}
+    for index in range(0, len(tokens) - 1, 2):
+        meta = tokens[index].split()
+        path = tokens[index + 1]
+        if meta[4] == "D" and meta[0] != ":160000":
+            deleted[meta[2]] += 1
+        elif meta[4] == "A":
+            added[path] = meta[3]
+    moved = set()
+    for path, blob in sorted(added.items()):
+        if deleted[blob]:
+            moved.add(path)
+            deleted[blob] -= 1
+    return frozenset(moved)
 
 
 def _added_lines(base: str, head: str, repo: Path) -> Dict[str, Optional[int]]:
@@ -505,7 +529,8 @@ def evaluate(base: str, head: str, repo: Path) -> Findings:
     changes = data_changes(base, head, repo, statuses)
     outside = [change for change in changes if not allowlisted(change.path)]
     outside_text = [c for c in outside if c.added is not None]
-    outside_binary = [c for c in outside if c.added is None]
+    unchanged_moves = _unchanged_moves(base, head, repo)
+    outside_binary = [c for c in outside if c.added is None and c.path not in unchanged_moves]
     frozen = [change for change in changes if FROZEN_HOME_RE.match(change.path)]
     gitattributes = [path for path in sorted(statuses)
                      if PurePosixPath(path).name == ".gitattributes"]

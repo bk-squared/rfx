@@ -13,10 +13,10 @@ class _PortMeta(NamedTuple):
     excite: bool
     live_cells: tuple
     k_mid: int
-    accs: tuple          # rfx's (v, i, v_port) accumulators
-    freqs: object        # jnp float32 bins the accumulators used
-    meta: object         # the run's own metadata entry
-    owner: object        # shared realized sampling owner
+    accs: tuple
+    freqs: object
+    meta: object
+    owner: object
 
 
 def _port_vi(lane: str, pm: _PortMeta, metrics: dict, e, hx, hy, hz):
@@ -45,7 +45,6 @@ def _assemble(lane: str, pms, spectra_vp, spectra_i, freqs32, dt, v_mid=None):
         lane, pms, [as_acc(a) for a in spectra_vp], [as_acc(a) for a in spectra_i],
         freqs32, dt, v_mid=None if v_mid is None else [as_acc(a) for a in v_mid])
     if lane == "uniform":
-        # the runner's container (rfx/runners/uniform.py, single-port wire path)
         S = np.zeros((1, 1, nf), dtype=np.complex64)
         S[0, 0, :] = np.array(S_lane)
         return S
@@ -78,7 +77,6 @@ def _assemble_core(lane: str, pms, vp, ii, freqs32, dt, v_mid=None):
     setup = SimpleNamespace(
         dt=float(dt), dft_planes=None, flux_monitors=None,
         wire_ports=[{'kind': pm.owner.kind} for pm in pms],
-        # Spectral completion reuses S assembly without a time-step scan.
         step_fn_inv=SimpleNamespace(port_owners=(), port_acc_indices=()),
         waveguide_meta=None, wp_meta=metas,
         sp_freqs=jnp.asarray(np.asarray(freqs32), dtype=jnp.float32),
@@ -104,8 +102,6 @@ def _s_observable(lane: str, pms, freqs32, dt):
     nf = int(f_bins.size)
 
     def to_s(spectra):
-        # ``spectra`` may hold several copies of the bins stacked along its
-        # first axis (``_tail_influence``); the S axis then holds them in turn.
         reps = int(np.shape(spectra)[0]) // nf
         h = half if reps == 1 else np.tile(half, reps)
         fq = freqs32 if reps == 1 else np.tile(np.asarray(freqs32), reps)

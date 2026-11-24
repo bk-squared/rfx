@@ -33,16 +33,17 @@ from rfx.sources.sources import GaussianPulse  # noqa: E402
 from rfx.harminv import matrix_pencil  # noqa: E402
 
 C0 = 299792458.0
-A, B, D = 24e-3, 24e-3, 12e-3   # cavity dims (m)
+CAVITY_DIMENSIONS_M = 24e-3, 24e-3, 12e-3
+A, B, D = CAVITY_DIMENSIONS_M
 
 
 def _fundamental(dx, kottke, h_diel, eps_r=4.0, fmax=12e9):
-    """Lowest strong PEC-cavity resonance (GHz), or None."""
+    """Lowest strong PEC-cavity resonance (GHz), or None.
+    An off-symmetry source/probe couples to the low modes."""
     sim = Simulation(freq_max=fmax, domain=(A, B, D), dx=dx, boundary="pec")
     if h_diel > 0:
         sim.add_material("diel", eps_r=eps_r, sigma=0.0)
         sim.add(Box((0, 0, 0), (A, B, h_diel)), material="diel")
-    # off-symmetry source/probe couples to the low modes
     sim.add_source(position=(A * 0.3, B * 0.35, D * 0.5), component="ez",
                    waveform=GaussianPulse(f0=fmax * 0.45, bandwidth=1.6))
     sim.add_probe(position=(A * 0.7, B * 0.62, D * 0.5), component="ez")
@@ -84,10 +85,8 @@ def test_full_fill_kottke_is_noop_and_matches_exact_analytic():
     f_off = _fundamental(dx=1.0e-3, kottke=False, h_diel=D + 1e-6)
     f_on = _fundamental(dx=1.0e-3, kottke=True, h_diel=D + 1e-6)
     assert f_off is not None and f_on is not None
-    # exact analytic oracle: coarse Yee is already very close with no interface
     assert abs(f_off - f_an) / f_an < 0.01, \
         f"full-fill off {f_off:.4f} vs analytic {f_an:.4f}"
-    # Kottke must be a NO-OP with no dielectric interface present
     assert abs(f_on - f_off) / f_off < 1e-3, \
         f"Kottke must not change a homogeneous fill: off {f_off:.4f} on {f_on:.4f}"
 
@@ -121,7 +120,7 @@ def test_half_fill_kottke_closes_error_vs_fine_truth():
     """
     dx_c = 1.5e-3
     h = 5.25e-3
-    f_truth = _fundamental(dx=0.375e-3, kottke=False, h_diel=h)   # fine-mesh truth
+    f_truth = _fundamental(dx=0.375e-3, kottke=False, h_diel=h)
     f_off = _fundamental(dx=dx_c, kottke=False, h_diel=h)
     f_on = _fundamental(dx=dx_c, kottke=True, h_diel=h)
     assert None not in (f_truth, f_off, f_on)

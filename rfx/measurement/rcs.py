@@ -168,8 +168,9 @@ def compute_rcs(
     NTFF placement and CPML thickness, and enlarge the domain when deep pattern
     nulls matter. Compare each new target and configuration with an analytic or
     independent reference before treating the bistatic values as quantitative.
+
+    This route is float32 only: it has no run-precision argument.
     """
-    # Defaults
     if theta_obs is None:
         theta_obs = np.linspace(0.01, np.pi - 0.01, 37)
     else:
@@ -186,41 +187,10 @@ def compute_rcs(
         freqs_arr = np.asarray(freqs, dtype=np.float64)
 
     if phase_reference is not None:
-        # NTFF accumulates at float32 bins. Normalize and de-embed at those
-        # same realized frequencies, not at a subtly different requested bin.
         freqs_arr = freqs_arr.astype(np.float32).astype(np.float64)
     dx = grid.dx
     dt = grid.dt
 
-    # ---- Oblique incidence routing ----
-    # theta_inc != 0 routes the illumination through the OPEN-DOMAIN oblique
-    # Method-B TFSF (real float32, dispersion-matched 1D-aux-along-k̂ + a 4-edge
-    # box; rfx/sources/tfsf_oblique_open.py), NOT the periodic complex-Bloch 2D-aux
-    # path which assumes lateral periodicity and is the wrong tool for a
-    # compact scatterer. Method B is a 2.5-D path: k̂ lies in the x-y plane, the
-    # transverse y-axis is OPEN (CPML) and z is thin/periodic (z-invariant far
-    # field), so the fields stay real and the NTFF/DFT read physical fields.
-    #
-    # VALIDATED by the specular-peak gate (tests/oracle/test_oblique_rcs_specular.py):
-    # the bistatic far-field of a finite PEC plate (normal +x) peaks at the
-    # reflection-law specular direction phi = pi - theta_inc (theta_obs = pi/2)
-    # across {0, 20, 40} deg, within the measured envelope in the theta_inc
-    # parameter docstring above (peak error <= 4 deg, gated +/-6 deg, 3-7 deg
-    # domain-size sensitivity — NOT ~1 deg); the theta->0 limit reduces to
-    # backscatter (= specular at normal). The +/-6 deg tolerance is ~0.2 of the
-    # 2.2-lambda plate's ~30 deg physical-optics 3 dB specular lobe at
-    # theta_inc=40 (0.886*lambda/(W*cos(theta))) — argmax on a 1 deg grid
-    # inside a broad lobe, an envelope pin, not a loose bound.
-    # ABSOLUTE sigma: normalized by the MEASURED 1D-aux
-    # incident spectrum (measure_incident_spectrum below), validated vs a PO
-    # uniform-aperture oracle for this plate at 20/40 deg: four settled meshes
-    # lambda/30 to lambda/120 give +0.08 to +0.16 dB at 5 GHz, converged within
-    # 0.006 dB from lambda/60 to lambda/120. The gate-grid level is locked by
-    # tests/unit/farfield/test_oblique_rcs_absolute_sigma.py. sigma corresponds to an
-    # aperture height h_eff = (k_hi-k_lo)*dx = 2*dx (z-faces cancel for
-    # x-y-plane observation; span-doubling ratio 4.000 measured). Kept fenced
-    # for combos Method B does not support: non-ez polarization and
-    # non-uniform / distributed grids.
     _oblique = is_oblique(float(theta_inc))
     reference_index = None
     reference_position = None
@@ -264,12 +234,6 @@ def compute_rcs(
                 "grids (Method B requires a uniform single-device grid). "
                 "Use a uniform Grid or theta_inc=0.0."
             )
-        # Method B is 2.5-D: z is thin + PERIODIC and the NTFF z-box is a
-        # 2-cell midplane span, so the returned sigma is for an infinite
-        # z-periodic replication of the target sampled at the midplane. Refuse
-        # a z-varying (genuinely 3-D) target rather than return that number
-        # silently (review F4 — "refuse rather than return an unvalidated
-        # number").
         for _mname in ("eps_r", "sigma", "mu_r"):
             _marr = np.asarray(getattr(materials, _mname))
             if _marr.ndim == 3 and _marr.shape[2] > 1 and not np.array_equal(
@@ -283,10 +247,6 @@ def compute_rcs(
                     "theta_inc=0.0."
                 )
 
-    # --- 1. Set up TFSF source ---
-    # angle_deg=0 ignores `method` (normal 1D-aux path, byte-identical); the
-    # oblique branch selects Method B explicitly. ny/nz are only consumed by the
-    # oblique path and ignored at normal incidence.
     tfsf_cfg, tfsf_st = init_tfsf(
         nx=grid.nx,
         dx=dx,
@@ -302,12 +262,9 @@ def compute_rcs(
         ny=grid.ny,
         nz=grid.nz,
         method="methodB" if _oblique else "bloch",
-    )
-    # This calculator owns its NTFF request and bypasses Simulation dispatch.
+        dtype=jnp.float32)
     from rfx.boundaries.depths import FACES, grid_face_depths
     from rfx.boundaries.features import refuse_ntff_reflecting_faces
-    # Non-absorbing strings install array walls, not a periodic exterior.
-    # The oblique path wraps z, regardless of the grid's face declarations.
     walls = (tuple(face for face in FACES if not (_oblique and face.startswith("z_")))
              if boundary not in ("cpml", "upml") else None)
     faces = grid_face_depths(grid, pec_faces=walls)
@@ -318,30 +275,16 @@ def compute_rcs(
         raise ValueError("phase_reference.x must lie inside the total-field slab")
 
     if _oblique:
-        # compute_rcs never ran the preflight vacuum validator. Run
-        # the identical all-four-planes check here so a target crossing a
-        # TFSF boundary plane fails loud instead of corrupting the scattered
-        # field (the runner-side validator covers the Simulation API lane).
         from rfx.sources.tfsf_oblique_open import validate_vacuum_boundary
 
         validate_vacuum_boundary(materials, tfsf_cfg)
 
-    # --- 2. Set up NTFF box just outside TFSF box ---
-    # NTFF box must be in scattered-field region (outside TFSF box).
-    # Place it `ntff_offset` cells outside the TFSF boundaries.
-    # Use realized pads for placement as well as the phase origin: declared
-    # face_layers may still carry a nonzero budget on a PEC/PMC face.
     fl = _ntff_face_pads(grid)
     ntff_i_lo = tfsf_cfg.x_lo - ntff_offset
     ntff_i_hi = tfsf_cfg.x_hi + ntff_offset + 1
     ntff_j_lo = fl["y_lo"] + ntff_offset
     ntff_j_hi = grid.ny - fl["y_hi"] - ntff_offset
     if _oblique:
-        # Method B is 2.5-D: z is THIN + PERIODIC (no real z-CPML), so the box
-        # z-faces sit symmetric about the mid-plane with a 2-cell span rather than
-        # inset from a (nonexistent) z-CPML. The two z-faces carry identical
-        # z-invariant tangential fields with opposite outward normals, so they
-        # cancel for x-y-plane (theta_obs=pi/2) observation — the validated cut.
         _kz = grid.nz // 2
         ntff_k_lo = _kz - 1
         ntff_k_hi = _kz + 1
@@ -349,7 +292,6 @@ def compute_rcs(
         ntff_k_lo = fl["z_lo"] + ntff_offset
         ntff_k_hi = grid.nz - fl["z_hi"] - ntff_offset
 
-    # Clamp to valid range
     ntff_i_lo = max(ntff_i_lo, 1)
     ntff_i_hi = min(ntff_i_hi, grid.nx - 2)
     ntff_j_lo = max(ntff_j_lo, 1)
@@ -368,10 +310,6 @@ def compute_rcs(
         freqs=jnp.array(freqs_arr, dtype=jnp.float32),
     )
 
-    # The box must enclose the whole injected region, or the far-field
-    # integral is not over the scattered field. run() checks this too, but it
-    # only sees indices; the caller of compute_rcs never chose one. Check here
-    # with the levers that actually produced them, before the run starts.
     from rfx.farfield import require_box_encloses_injected_region
     from rfx.sources.tfsf import tfsf_injection_planes
 
@@ -407,16 +345,11 @@ def compute_rcs(
         ntff_box, tfsf_injection_planes(tfsf_cfg), context=_ctx,
         shape=grid.shape)
 
-    # --- 3. Run simulation with TFSF + NTFF ---
-    # Open-domain Method B forces the transverse y-axis OPEN (CPML) with
-    # thin-periodic z; normal incidence keeps the historical full-open defaults
-    # (byte-identical: `_run_kw` collapses to the pre-relaxation call).
     _run_kw = dict(boundary=boundary, tfsf=(tfsf_cfg, tfsf_st), ntff=ntff_box)
     if _oblique:
         _run_kw.update(cpml_axes="xy", periodic=(False, False, True))
     result = run(grid, materials, n_steps, **_run_kw)
 
-    # --- 4. Compute far-field from NTFF data ---
     ff = compute_far_field(
         result.ntff_data,
         ntff_box,
@@ -425,13 +358,6 @@ def compute_rcs(
         phi_obs,
     )
 
-    # --- 4b. Optional two-run incident-reference subtraction ---
-    # The NTFF side faces cut through the transversely infinite total-field
-    # slab and read the full incident field. It is target-independent, so
-    # subtract the matching vacuum run at the complex far-field level before
-    # forming power: E_scat = E_far[target] - E_far[vacuum]. See the committed
-    # sphere comparison in tests/fixtures/rcs280_reference_subtraction/.
-    # Default OFF preserves the separately checked monostatic path.
     if subtract_incident_reference:
         vacuum = MaterialArrays(
             eps_r=jnp.ones(grid.shape, dtype=jnp.float32),
@@ -439,8 +365,6 @@ def compute_rcs(
             mu_r=jnp.ones(grid.shape, dtype=jnp.float32),
         )
         if reference_position is not None:
-            # Complex subtraction requires the same numerical precision in
-            # both solves, including when the caller supplies float64 media.
             vacuum = MaterialArrays(jnp.ones_like(materials.eps_r),
                                     jnp.zeros_like(materials.sigma),
                                     jnp.ones_like(materials.mu_r))
@@ -454,28 +378,13 @@ def compute_rcs(
             theta=ff.theta, phi=ff.phi, freqs=ff.freqs,
         )
 
-    # --- 5. Compute incident field spectrum for normalization ---
     if _oblique:
-        # Method B hardcodes its own waveform (t0=40·dt, tau=12·dt modulated
-        # Gaussian) and its source->aux launch response is theta-dependent, so
-        # the analytic normal-path spectrum is the wrong denominator (measured
-        # sigma inflated +6.58 dB at theta=20 deg, +4.51 dB at 40 deg
-        # on the gate grid). Normalize by the MEASURED 1D-aux spectrum instead
-        # — a standalone replay of the same aux the box injects from.
         from rfx.measurement.incident import measure_incident_spectrum
 
         E_inc_spectrum = measure_incident_spectrum(
             tfsf_cfg, tfsf_st, n_steps, freqs_arr, dx,
         )
     else:
-        # Normal incidence: the 1-D auxiliary line ADDS the waveform at one
-        # node (a soft source), and the wave it launches across the TF/SF
-        # plane is 1/(2 S cos(k~dx/2)) of it -- -1.14 dB at 40 cells per
-        # wavelength and the uniform-grid Courant number. sigma goes as
-        # |E_scat/E_inc|^2 with E_scat following the launched wave, so
-        # dividing by the waveform's own DFT made every normal-incidence
-        # sigma low by that same 1.14 dB. Replay
-        # the same auxiliary line and normalize by what it carries.
         E_inc_spectrum = measure_normal_incident_spectrum(
             tfsf_cfg, tfsf_st, n_steps, freqs_arr, dt,
             **({"reference_index": reference_index} if reference_index is not None else {}),
@@ -484,62 +393,23 @@ def compute_rcs(
             not np.all(np.isfinite(E_inc_spectrum)) or np.any(np.abs(E_inc_spectrum) == 0)):
         raise ValueError("phase_reference cannot normalize a zero or non-finite incident spectrum")
 
-    # --- 6. Compute RCS ---
-    # RCS = 4*pi * |E_far|^2 / |E_inc|^2
-    # where E_far already includes the jk/(4*pi) factor from compute_far_field,
-    # so: |E_far|^2 = |E_theta|^2 + |E_phi|^2
-    # The far-field result has E_theta, E_phi in V*m (omitting 1/r).
-    # The NTFF formulation gives: E_far(r) = (jk/4*pi*r) * [N, L integrals]
-    # So |E_far * r|^2 = |E_theta|^2 + |E_phi|^2 as returned.
-    #
-    # RCS = 4*pi * r^2 * |E_scat|^2 / |E_inc|^2
-    #     = 4*pi * |E_far_r|^2 / |E_inc|^2
-    # where E_far_r = r * E_far (the quantity returned by compute_far_field).
 
-    E_theta = np.asarray(ff.E_theta, dtype=np.complex128)  # (nf, n_theta, n_phi)
+    E_theta = np.asarray(ff.E_theta, dtype=np.complex128)
     E_phi = np.asarray(ff.E_phi, dtype=np.complex128)
 
-    power_scat = np.abs(E_theta) ** 2 + np.abs(E_phi) ** 2  # (nf, n_theta, n_phi)
-    power_inc = np.abs(E_inc_spectrum) ** 2  # (nf,)
+    power_scat = np.abs(E_theta) ** 2 + np.abs(E_phi) ** 2
+    power_inc = np.abs(E_inc_spectrum) ** 2
 
-    # Avoid division by zero
     safe_power_inc = np.where(power_inc > 0, power_inc, 1e-30)
 
     rcs_linear = 4.0 * np.pi * power_scat / safe_power_inc[:, None, None]
 
-    # Convert to dBsm
     rcs_dbsm = 10.0 * np.log10(np.maximum(rcs_linear, 1e-30))
 
-    # --- 7. Extract monostatic (backscatter) RCS ---
-    # Backscatter is the direction OPPOSITE the incident propagation
-    # vector.  The TFSF source above propagates along +x
-    # (``direction="+x"`` in the init_tfsf call); a non-zero theta_inc
-    # tilts the propagation in the x-y plane for "ez" polarization and
-    # in the x-z plane for "ey" (see the t_delay lines in
-    # rfx/sources/tfsf_2d.py).  So:
-    #     k_hat = (cos(theta_inc), sin(theta_inc), 0)   for "ez"
-    #     k_hat = (cos(theta_inc), 0, sin(theta_inc))   for "ey"
-    #     b_hat = -k_hat                                (backscatter)
-    # Under the far-field convention (rfx/farfield.py:
-    # r_hat = [sin(th)cos(ph), sin(th)sin(ph), cos(th)], theta = polar
-    # angle from +z), the spherical angles of b_hat are
-    #     theta_back = arccos(b_hat_z)
-    #     phi_back   = atan2(b_hat_y, b_hat_x)
-    # For the supported normal-incidence case (theta_inc = 0) this gives
-    # (theta_back, phi_back) = (pi/2, pi), i.e. the -x direction.
-    # NOTE: the pre-fix code hardcoded (theta=pi, phi=0),
-    # which under this convention is the -z BROADSIDE direction, not
-    # backscatter.
-    #
-    # The far field is evaluated EXACTLY at the backscatter direction
-    # (one extra direction on the already-accumulated NTFF data) instead
-    # of argmin-snapping to the observation grid: the default phi grid
-    # ([0, pi/2]) does not contain phi=pi, so grid snapping would
-    # silently return a different cut.
     theta_inc_rad = float(np.radians(theta_inc))
     if polarization == "ey":
         k_hat = np.array([np.cos(theta_inc_rad), 0.0, np.sin(theta_inc_rad)])
-    else:  # "ez"
+    else:
         k_hat = np.array([np.cos(theta_inc_rad), np.sin(theta_inc_rad), 0.0])
     b_hat = -k_hat
     theta_back = float(np.arccos(np.clip(b_hat[2], -1.0, 1.0)))
@@ -563,7 +433,7 @@ def compute_rcs(
         )
     Eb_theta = np.asarray(ff_back.E_theta, dtype=np.complex128)[:, 0, 0]
     Eb_phi = np.asarray(ff_back.E_phi, dtype=np.complex128)[:, 0, 0]
-    power_back = np.abs(Eb_theta) ** 2 + np.abs(Eb_phi) ** 2  # (nf,)
+    power_back = np.abs(Eb_theta) ** 2 + np.abs(Eb_phi) ** 2
     mono_linear = 4.0 * np.pi * power_back / safe_power_inc
     monostatic_rcs = 10.0 * np.log10(np.maximum(mono_linear, 1e-30))
 
@@ -595,7 +465,6 @@ def compute_rcs(
     incident = E_inc_spectrum
     th, ph = np.meshgrid(theta_obs, phi_obs, indexing="ij")
     s_hat = np.stack((np.sin(th) * np.cos(ph), np.sin(th) * np.sin(ph), np.cos(th)), axis=-1)
-    # NTFF uses global physical positions: remove the outgoing origin phase.
     phase = np.exp(-2j * np.pi * freqs_arr[:, None, None] / C0
                    * (s_hat @ reference_position)[None, :, :])
     factor = phase / incident[:, None, None]
@@ -630,8 +499,6 @@ def _incident_spectrum_amplitude(
     times = np.arange(n_steps) * dt
     waveform = np.asarray(charge_free_dg(times, tau, 3.0))
 
-    # DFT at requested frequencies
-    # S(f) = sum_n s(n*dt) * exp(-j*2*pi*f*n*dt) * dt
     amplitudes = np.zeros(len(freqs), dtype=np.complex128)
     for i, f in enumerate(freqs):
         phase = np.exp(-1j * 2 * np.pi * f * times)

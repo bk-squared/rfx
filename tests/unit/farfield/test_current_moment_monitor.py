@@ -78,9 +78,6 @@ C0 = 299_792_458.0
 ETA0 = float(np.sqrt(1.25663706212e-6 / EPS_0))
 
 
-# ---------------------------------------------------------------------------
-# The second route, written here: the same current from recorded DFT planes
-# ---------------------------------------------------------------------------
 
 def _midpoint_span(cells, k):
     """Distance between the centres of the two cells node ``k`` sits between.
@@ -174,20 +171,17 @@ def _plane_route_edges(planes, end_state, *, nodes, cells, window, freqs, dt,
     ones = np.ones((ii.size, jj.size))
     for k in range(k0, k1 + 1):
         sz = _midpoint_span(cz, k)
-        # ex(i+1/2, j, k): dHz/dy - dHy/dz
         curl = ((P("hz", k) - P("hz", k, dj=1)) / sy
                 - (P("hy", k) - P("hy", k - 1)) / sz)
         add(0, k, curl, "ex",
             (nx_[II] + 0.5 * cx[II], ny_[JJ], nz_[k] * ones),
             cx[ii][:, None] * sy * sz * ones)
-        # ey(i, j+1/2, k): dHx/dz - dHz/dx
         curl = ((P("hx", k) - P("hx", k - 1)) / sz
                 - (P("hz", k) - P("hz", k, di=1)) / sx)
         add(1, k, curl, "ey",
             (nx_[II], ny_[JJ] + 0.5 * cy[JJ], nz_[k] * ones),
             sx * cy[jj][None, :] * sz * ones)
     for k in range(k0, k1):
-        # ez(i, j, k+1/2): dHy/dx - dHx/dy
         curl = ((P("hy", k) - P("hy", k, di=1)) / sx
                 - (P("hx", k) - P("hx", k, dj=1)) / sy)
         add(2, k, curl, "ez",
@@ -263,36 +257,17 @@ def _disagreement(acc, monitor, blocks, orders=("P", "Q", "T")):
                for name in orders for f in range(blocks["P"].shape[0]))
 
 
-# ---------------------------------------------------------------------------
-# Two fixtures: one uniform, one graded in z
-# ---------------------------------------------------------------------------
 
 DX = 2.0e-3
 N_STEPS = 260
 FREQS = np.array([5.0e9, 7.5e9, 1.0e10])
-SLAB_HALF = 4          # in-plane half width of the slab, in cells
+SLAB_HALF_WIDTH_CELLS = 4
+SLAB_HALF = SLAB_HALF_WIDTH_CELLS
 BLOCK_CELLS = 3
 
-# The vacuum residual in float32 on THESE slabs, measured on the unmutated
-# runs (CPU, JAX 0.6.2): 1.7e-06 on the uniform fixture and 1.7e-08 on the
-# graded one; the floors below are those rounded up. It is float32 round-off
-# on the cancellation between ``curl_h H`` and ``eps0 dE/dt``, scaled by the
-# local field, so it belongs to the fixture and to where the slab sits. The
-# bar is ten times the floor measured here and is not a bar any other
-# fixture inherits.
 VACUUM_FLOOR = {"uniform": 1.8e-06, "graded": 5.0e-08}
 VACUUM_BAR = {kind: 10.0 * v for kind, v in VACUUM_FLOOR.items()}
 
-# In-loop moments against the plane route: the two are the same numbers up
-# to float32 arithmetic. What sets the floor is the phase: both sides form
-# exp(-j w t) from a float32 time, whose last bit is worth eps32 * w * t, and
-# t runs to the record length. That is 3.8e-06 at 10 GHz on the uniform
-# fixture (a 1.0 ns record) and 8e-07 on the graded one (approximately 0.39 ns); measured
-# (CPU, JAX 0.6.2): 5.3e-06 and 2.2e-06 worst over P, Q, T and frequency,
-# loaded or not. The bar is ten times the worst; the smallest monitor defect
-# in the mutation table below reads 3.2e-02. A one-step stamp error is
-# |exp(-j w dt) - 1| = 3.6e-02 of the in-loop moment here, at least 1.6e-03
-# on this scale, and a sign or metric defect is order one.
 EQUALITY_BAR = 5e-5
 
 
@@ -373,8 +348,8 @@ def _uniform_case(monitor_kwargs=None, n_steps=N_STEPS, with_planes=True,
 
 
 GRADED_N_STEPS = 320
-GRADED_SLAB_K = (11, 24)          # straddles both grading ramps
-GRADED_SRC_K = 17                 # inside the fine band
+GRADED_SLAB_K = (11, 24)
+GRADED_SRC_K = 17
 
 
 def _graded_grid():
@@ -411,6 +386,12 @@ def _graded_case(monitor_kwargs=None, n_steps=GRADED_N_STEPS,
     i_range = (ci - SLAB_HALF, ci + SLAB_HALF + 1)
     j_range = (cj - SLAB_HALF, cj + SLAB_HALF + 1)
     k_nodes = GRADED_SLAB_K
+    assert (
+        np.any(np.diff(cells[2][k_nodes[0]:k_nodes[1]]) < 0)
+        and np.any(np.diff(cells[2][k_nodes[0]:k_nodes[1]]) > 0)
+        and cells[2][ck] == cells[2].min()
+    ), (
+        'The slab must straddle both grading ramps and the source must be in the fine band')
     monitor = build_current_moment_monitor(
         node_x=nodes[0], node_y=nodes[1], node_z=nodes[2],
         cell_x=cells[0], cell_y=cells[1], cell_z=cells[2],
@@ -472,9 +453,6 @@ def _reference_blocks(kind, loaded=False):
     return _route_blocks(_reference(kind, loaded))
 
 
-# ---------------------------------------------------------------------------
-# Shared readings
-# ---------------------------------------------------------------------------
 
 def _source_block(case):
     m = case["monitor"]
@@ -538,9 +516,6 @@ def _vacuum_against_the_closed_form(case, acc=None):
                   / np.abs(analytic)).max())
 
 
-# ---------------------------------------------------------------------------
-# 1. The edge set, the volumes, the block map and the centres
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("kind", ["uniform", "graded"])
 def test_geometry_matches_the_plane_route(kind):
@@ -597,7 +572,6 @@ def test_graded_edge_volumes_are_primal_times_midpoint_spans():
     want = {
         "x": cx[ii][:, None, None] * sy[None, :, None] * sz[None, None, :],
         "y": sx[:, None, None] * cy[jj][None, :, None] * sz[None, None, :],
-        # the z-edge volume's third factor is its own primal cell, not a span
         "z": sx[:, None, None] * sy[None, :, None] * cz[kz][None, None, :],
     }
     ratio = cz[m.k_lo:m.k_hi + 1] / sz
@@ -620,7 +594,7 @@ def test_realized_window_takes_the_lower_node_at_half_node_corners():
     nx, ny, nz = grid.shape
     nodes = [(np.arange(n) - pad) * DX for n, pad in
              ((nx, grid.pad_x_lo), (ny, grid.pad_y_lo), (nz, grid.pad_z_lo))]
-    lo_m = float(nodes[0][10]) + 0.5 * DX       # exactly between two nodes
+    lo_m = float(nodes[0][10]) + 0.5 * DX
     hi_m = float(nodes[0][14]) + 0.5 * DX
     monitor = current_moment_monitor_from_grid(
         grid, corner_lo=(lo_m, lo_m, float(nodes[2][11])),
@@ -638,9 +612,6 @@ def test_realized_window_takes_the_lower_node_at_half_node_corners():
     assert monitor.block_cells == 3
 
 
-# ---------------------------------------------------------------------------
-# 2. The vacuum identity and the closed form for the source
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("kind", ["uniform", "graded"])
 def test_vacuum_identity_source_block_and_the_rest(kind):
@@ -650,6 +621,9 @@ def test_vacuum_identity_source_block_and_the_rest(kind):
     primal_z), so on the graded fixture it sees the z PRIMAL width and not the
     z DUAL span that enters the ex and ey volumes; the volume test above is
     the general witness for those.
+
+    The vacuum-residual bar is ten times the floor measured on earlier runs of these
+    slabs and is not a bar any other fixture inherits.
     """
     case = _reference(kind)
     g = _source_block(case)
@@ -661,9 +635,6 @@ def test_vacuum_identity_source_block_and_the_rest(kind):
     assert err.max() <= 1e-4, err
 
 
-# ---------------------------------------------------------------------------
-# 3. Equality with the plane route
-# ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("loaded", [False, True], ids=["vacuum", "loaded"])
 @pytest.mark.parametrize("kind", ["uniform", "graded"])
@@ -675,6 +646,9 @@ def test_equality_with_the_plane_route(kind, loaded):
     route above; what is left is the order the float32 sums run in. The
     loaded run adds a lossy dielectric block, so polarization and loss
     current and the edge-averaged material faces enter both sides.
+
+    The equality bar comes from ten times the worst difference measured earlier
+    (5.3e-06 on the uniform fixture and 2.2e-06 on the graded fixture).
     """
     case = _reference(kind, loaded)
     _edges, blocks = _reference_blocks(kind, loaded)
@@ -700,7 +674,6 @@ def test_the_modules_own_conversion_matches_the_plane_route(kind):
     mine = to_post_processing_convention(case["acc"], end, dt, FREQS,
                                          plane_stamp_steps=case["stamp"])
     w = 2.0 * np.pi * FREQS
-    # The route's ``post`` blocks carry exp(+j w dt (s - 1/2)); take it off.
     rephase = np.exp(-1j * w * dt * (case["stamp"] - 0.5))
     got = dict(zip("PQT", moments_to_PQT(mine, m)))
     worst = 0.0
@@ -728,9 +701,6 @@ def test_the_two_runners_use_physical_plane_stamps():
     assert 0.5 * one_step <= a_wrong <= 2.0 * one_step, (a_wrong, one_step)
 
 
-# ---------------------------------------------------------------------------
-# 4. The far field
-# ---------------------------------------------------------------------------
 
 def _direct_dipole_sum(theta, phi, pos, p, k):
     """E_theta, E_phi of point current moments, summed one by one.
@@ -798,21 +768,6 @@ def test_block_far_field_expansion_against_a_direct_sum():
         assert _rel_l2(np.asarray(y), x) < 1e-5
 
 
-# The strip dipole below, against the face-centre NTFF box on the same run
-# (CPU, JAX 0.6.2, 1 mm cells, 2 mm blocks through the 4 mm slab, k*|delta|
-# 0.28 / 0.38 / 0.48, order 2). The comparison reads only what a common time
-# origin cannot change: the two routes stamp their fields at times whose
-# offset has not been established, so a complex distance would mix a
-# per-frequency phase into the verdict. Measured at 6 / 8 / 10 GHz: the
-# largest difference of the two patterns, each in dB below its own peak, over
-# the directions where the box's pattern is within 20 dB of its peak,
-# 0.0054 / 0.0103 / 0.0221 dB; directivity 0.0006 / 0.0031 / 0.0082 dB apart;
-# radiated power 0.0026 / 0.0068 / 0.0158 dB apart. With 4 mm blocks
-# (k*|delta| up to 0.67, now refused) the same run read 0.0061 / 0.0128 /
-# 0.0278 dB on the pattern. Bars: twice the worst measured value of each,
-# rounded up to two digits. P alone (order 0) on the same accumulator reads
-# 0.107 / 0.211 / 0.369 dB on the pattern and must stay above the pattern bar
-# at every frequency.
 DIPOLE_SHAPE_FLOOR_DB = -20.0
 DIPOLE_SHAPE_BAR_DB = 0.045
 DIPOLE_DIRECTIVITY_BAR_DB = 0.017
@@ -854,6 +809,9 @@ def test_far_field_matches_the_ntff_box_on_a_strip_dipole():
     ``current_moment_far_field`` returns the repository's ``FarFieldResult``,
     so ``directivity``, ``radiation_pattern`` and ``axial_ratio`` take it
     unchanged.
+
+    The pattern, directivity and radiated-power bars are twice the worst values measured
+    on an earlier strip-dipole run, rounded up to two digits.
     """
     from rfx import (axial_ratio, compute_far_field, directivity,
                      radiation_pattern)
@@ -885,7 +843,6 @@ def test_far_field_matches_the_ntff_box_on_a_strip_dipole():
     assert p_db.max() <= DIPOLE_POWER_BAR_DB, p_db
     assert np.isfinite(axial_ratio(mon)).all()
 
-    # Negative control on the same accumulator: the total moment P alone.
     m = res.current_moment_monitor
     p_only = res._replace(
         current_moment_data=(np.asarray(res.current_moment_data[0])[..., :1],),
@@ -904,15 +861,12 @@ def test_far_field_refuses_a_result_without_moments():
         current_moment_far_field(res, np.array([0.5]), np.array([0.0]))
 
 
-# ---------------------------------------------------------------------------
-# 5. The gradient through the monitor
-# ---------------------------------------------------------------------------
 
-GRAD_FREQS = np.array([4e9, 5e9])     # k*|delta| 0.39 / 0.49
+GRAD_FREQS = np.array([4e9, 5e9])
 GRAD_N_STEPS = 220
 
 
-GRAD_BOX = ((7e-3, 5e-3, 5e-3), (8e-3, 7e-3, 7e-3))   # 2 x 3 x 3 cells
+GRAD_BOX = ((7e-3, 5e-3, 5e-3), (8e-3, 7e-3, 7e-3))
 
 
 def _grad_problem():
@@ -976,9 +930,6 @@ def test_gradient_without_jit_is_the_jitted_one():
         assert abs(grad - grad_j) <= 1e-12 * abs(grad_j), (grad, grad_j)
 
 
-# ---------------------------------------------------------------------------
-# 6. The monitor leaves the solve alone, and the two runners agree
-# ---------------------------------------------------------------------------
 
 def test_monitor_does_not_move_the_field_by_one_bit():
     """Turning the monitor on must not change the solve at all."""
@@ -1019,11 +970,8 @@ def test_nonuniform_lane_matches_the_uniform_lane():
     assert err < 1e-4, err
 
 
-# ---------------------------------------------------------------------------
-# 7. Through the public API: a port, a substrate, both lanes
-# ---------------------------------------------------------------------------
 
-API_FREQS = np.array([5e9, 7e9])      # k*|delta| up to 0.47 / 0.49
+API_FREQS = np.array([5e9, 7e9])
 
 
 def _api_board(lane):
@@ -1035,7 +983,6 @@ def _api_board(lane):
     """
     from rfx import Box, Simulation
     if lane == "graded":
-        # nodes 0, 1, 2, 3.0, 3.8, 4.4, 4.9, 5.4, 6.0, 6.8 ... mm
         dz = np.array([1.0, 1.0, 1.0, 0.8, 0.6, 0.5, 0.5, 0.6, 0.8, 1.0, 1.0,
                        1.0]) * 1e-3
         kw, lz, top = {"dz_profile": dz}, float(dz.sum()), 4.9e-3
@@ -1091,6 +1038,8 @@ def test_the_public_run_matches_the_plane_route_with_a_port(lane):
     The monitor is realized against the grid the run builds; the planes are
     the run's own ``Result.dft_planes``. Port load, substrate polarization
     and loss current and the feed all enter both sides.
+
+    The plane stamp is the physical H stamp on both lanes.
     """
     sim, grid, specs = _api_board(lane)
     res = sim.run(n_steps=500, skip_preflight=True)
@@ -1098,7 +1047,7 @@ def test_the_public_run_matches_the_plane_route_with_a_port(lane):
     assert m is not None and res.current_moment_data is not None
     planes = {spec: np.asarray(res.dft_planes[f"{spec[0]}{spec[1]}"]
                                .accumulator) for spec in specs}
-    stamp = plane_stamp_steps(grid)  # M2: physical H stamp on both lanes.
+    stamp = plane_stamp_steps(grid)
     edges = _plane_route_edges(
         planes, res.state, nodes=[_node_line(grid, a) for a in range(3)],
         cells=[_cells(grid, a) for a in range(3)],
@@ -1118,7 +1067,6 @@ def _ringdown_box(lane):
     from rfx import Box, GaussianPulse, Simulation
     mm = 1e-3
     if lane == "graded":
-        # nodes 0, 1, 2, 2.8, 3.4, 4.8, 6, 7, 8 mm
         dz = np.array([1.0, 1.0, 0.8, 0.6, 1.4, 1.2, 1.0, 1.0]) * mm
         kw, lz, top = {"dz_profile": dz}, float(dz.sum()), 3.4 * mm
         pos, ext = (6 * mm, 6 * mm, 2.8 * mm), 0.6 * mm
@@ -1134,7 +1082,7 @@ def _ringdown_box(lane):
                  waveform=GaussianPulse(f0=13.0e9, bandwidth=0.8, cutoff=4.5))
     sim.add_current_moment_monitor(
         (1 * mm, 1 * mm, 1 * mm), (11 * mm, 11 * mm, 6 * mm),
-        block_size=2 * mm, freqs=np.array([6e9, 8e9]))   # k*|delta| <= 0.49
+        block_size=2 * mm, freqs=np.array([6e9, 8e9]))
     return sim
 
 
@@ -1167,9 +1115,6 @@ def test_ringdown_completion_returns_the_same_moments(lane):
     assert ulps <= 9.0, ulps
 
 
-# ---------------------------------------------------------------------------
-# 8. Mutations of the monitor
-# ---------------------------------------------------------------------------
 
 def _mutations(cells, block_cells=BLOCK_CELLS, cell=DX):
     """Every monitor mutation, with all the helper calls left in place.
@@ -1204,8 +1149,6 @@ def _mutations(cells, block_cells=BLOCK_CELLS, cell=DX):
     }
 
 
-# The first two run in the pull-request lane; the rest are the same check
-# on further defects and run with the slow tests.
 MUTATION_NAMES = [
     name if i < 2 else pytest.param(name, marks=pytest.mark.slow)
     for i, name in enumerate(_mutations([np.ones(3)] * 3))]
@@ -1239,9 +1182,6 @@ def test_monitor_mutations_are_caught(kind, name):
     assert ("RED" if red else "GREEN") == expect[kind], worst
 
 
-# ---------------------------------------------------------------------------
-# 9. Mutations of the snapshot slot, in the runners themselves
-# ---------------------------------------------------------------------------
 
 def _load_mutated(path: Path, name: str, replacements):
     """Import a copy of a runner module with the given text edits applied."""
@@ -1250,7 +1190,6 @@ def _load_mutated(path: Path, name: str, replacements):
         assert src.count(old) == 1, (path.name, src.count(old), old[:60])
         src = src.replace(old, new)
 
-    # Moving a slot must retain every call, including reduction and phase.
     def calls(text):
         return sorted(ast.dump(node) for node in ast.walk(ast.parse(text))
                       if isinstance(node, ast.Call))
@@ -1275,10 +1214,10 @@ GRADED_SETUP_SRC = REPO_ROOT / "rfx" / "stepping" / "graded_setup.py"
 GRADED_SRC = REPO_ROOT / "rfx" / "stepping" / "graded.py"
 
 _SNAP_UNI = ("        if ctx.use_current_moments:\n"
-             "            frame.e_prev_slab = _slab_e_snapshot(frame.st, ctx.current_moments)\n")
+             "            frame.e_prev_slab = _slab_e_snapshot(view(frame.st), ctx.current_moments)\n")
 _ACC_UNI = ("        if ctx.use_current_moments:\n"
             "            frame.cm_new = ctx.accumulate_current_moments(\n"
-            "                frame.carry[\"current_moments\"], frame.st, frame.e_prev_slab,\n"
+            "                frame.carry[\"current_moments\"], st, frame.e_prev_slab,\n"
             "                ctx.current_moments, dt, frame.step_idx)\n")
 _RLC_UNI = ("        if ctx.use_lumped_rlc:\n"
             "            frame.st, frame.new_rlc_states = ctx.update_rlc_elements(")
@@ -1290,7 +1229,7 @@ _ACC_NU = ("        frame.new_cm = None\n"
            "            frame.new_cm = ctx._accumulate_cm(\n"
            "                frame.carry[\"current_moments\"], frame.st, frame.e_prev_slab, ctx.current_moments,\n"
            "                ctx.dt, frame.step_idx)\n")
-_RLC_NU = "        # Lumped RLC ADE update (after E update + boundaries, before sources)"
+_RLC_NU = "        frame.new_rlc_states = None"
 
 
 def _runner_mutations(kind):
@@ -1305,12 +1244,10 @@ def _runner_mutations(kind):
     """
     if kind == "uniform":
         snap, acc, rlc = _SNAP_UNI, _ACC_UNI, _RLC_UNI
-        # Split only this observer out of AFTER_SOURCES and attach it at
-        # BEFORE_SOURCES. Moving after_sources itself would also move ports,
-        # NTFF, planes and flux, which is a different defect.
         before_sources = [
             (acc, ""),
             ("    attachments = {", "    def moved_current_moments(frame):\n"
+             "        st = frame.st\n"
              + acc + "\n    attachments = {"),
             ("(port_specs or ctx.use_wire_refplanes) else ()),",
              "(port_specs or ctx.use_wire_refplanes) else ())"
@@ -1453,9 +1390,6 @@ def test_snapshot_slot_mutations_in_the_runner(kind, mut, record_property):
     vac_red = vac > VACUUM_BAR[kind]
     src_red = src_err > 1e-4
     if mut == "accumulated before the source loop":
-        # Every edge, source included, reads exactly zero: the electric field
-        # this reads is the one BEFORE the step's injection, so the impressed
-        # current never enters and the vacuum identity is satisfied trivially.
         assert not vac_red, vac
         assert src_red, src_err
     else:
@@ -1472,11 +1406,12 @@ def test_the_snapshot_is_the_previous_steps_accumulated_field(kind):
     from the (N-1)-step run's FINAL state as ``e_prev`` and the N-step run's
     final state as the post-update one. Move the snapshot anywhere else in
     the step and this stops holding.
+
+    The two accumulators are float32 sums of ~30 comparable increments, so their
+    difference carries both totals' round-off, not just the step's.
     """
-    # Read while the pulse is still in the domain: by step 120 the CPML has
-    # absorbed it and both accumulators' last increment is exactly zero in
-    # float32, which makes the comparison 0/0 rather than a check.
-    n = 60
+    PULSE_PRESENT_STEPS = 60
+    n = PULSE_PRESENT_STEPS
     long = CASE_BUILDERS[kind](with_planes=False, n_steps=n)
     short = CASE_BUILDERS[kind](with_planes=False, n_steps=n - 1)
     m = long["monitor"]
@@ -1484,21 +1419,14 @@ def test_the_snapshot_is_the_previous_steps_accumulated_field(kind):
     one, _comp = accumulate_current_moments(
         init_current_moment_data(m), long["state"],
         slab_e_snapshot(short["state"], m), m, dt, n - 1)
-    # The two runs use different source waveform tables (they are cut to
-    # their own length), so compare only over the steps they share.
     assert np.array_equal(long["wave"][:n - 1], short["wave"])
     got = long["acc"] - short["acc"]
     one = np.asarray(one)
     assert np.linalg.norm(one) > 0.0, "the rebuilt step is identically zero"
-    # The two accumulators are float32 sums of ~30 comparable increments, so
-    # their difference carries both totals' round-off, not just the step's.
     err = _rel_l2(got, one)
     assert err < 1e-4, err
 
 
-# ---------------------------------------------------------------------------
-# 10. Fences
-# ---------------------------------------------------------------------------
 
 def test_refuses_a_slab_inside_the_absorber():
     grid = Grid(freq_max=1.2e10, domain=(2.4e-2, 2.4e-2, 2.4e-2), dx=DX,
@@ -1554,11 +1482,15 @@ def test_refuses_a_slab_that_starts_at_index_zero():
 
 
 def test_refuses_a_graded_in_plane_mesh():
+    """The CPML profile is calibrated on the boundary dx."""
     from rfx.nonuniform import make_nonuniform_grid
-    # dx_profile's first and last cell must equal the boundary dx (the CPML
-    # profile is calibrated on it), so the grading sits in the middle.
     dx_prof = np.concatenate([np.full(4, DX), np.full(4, 0.5 * DX),
                               np.full(4, DX)])
+    assert (
+        dx_prof[0] == DX
+        and dx_prof[-1] == DX
+    ), (
+        'The CPML profile requires the first and last cells to equal the boundary dx')
     grid = make_nonuniform_grid((2.4e-2, 2.4e-2), np.full(12, DX), DX,
                                 cpml_layers=6, dx_profile=dx_prof)
     with pytest.raises(NotImplementedError, match="uniform in-plane mesh"):
@@ -1629,20 +1561,12 @@ def test_declaration_accepts_order_two_only(order):
             freqs=FREQS, order=order)
 
 
-# The Simulation-level models below test refusals, lanes and weight dtypes,
-# not patterns, so their frequency list does not weaken them. It is 2 and
-# 3 GHz so that their 6 mm blocks through a 12 mm slab (k*|delta| 1.46 at
-# 10 GHz) stay inside the block-extent bound (0.44 at 3 GHz).
 GUARD_FREQS = np.array([2e9, 3e9])
 
 
-# The model the guard tests below vary: 2 mm cells, a 24 mm cube of vacuum
-# in CPML, a soft Ez source at the centre, and a slab from 6 to 18 mm on
-# every axis, i.e. node indices 9..15 with a 6-cell absorber. Its interior
-# (the window without the outermost layer) is edge index 10..14 in-plane and
-# node planes 10..14; a cell must sit at index 10..13 on every axis for all
-# twelve of its edges to be inside.
 def _guard_sim(**kw):
+    """The frequency list is 2 and 3 GHz so that the 6 mm blocks through a 12 mm slab stay
+    inside the block-extent bound."""
     from rfx import Simulation
     sim = Simulation(freq_max=1.2e10, domain=(2.4e-2,) * 3, dx=DX,
                      cpml_layers=6, **({"boundary": "cpml"} | kw))
@@ -1704,7 +1628,6 @@ def test_refuses_a_radiator_the_slab_does_not_hold(case):
     if case == "dielectric outside":
         _block(sim, (2, 2, 2), (4, 4, 4))
     elif case == "dielectric on the outermost layer":
-        # cells 9..10 on x: cell 9's edges lie on the slab's first layer
         _block(sim, (6, 10, 10), (10, 14, 14))
     elif case == "conductor sheet crossing the slab":
         sim.add(Box(((4 - .35) * DX, (4 - .35) * DX, 12e-3),
@@ -1766,56 +1689,6 @@ def test_refuses_a_design_box_outside_the_slab():
         jax.grad(f)(2.0)
 
 
-# The block-extent bound (rfx.current_moments.MAX_K_OFFSET = 0.5): k at the
-# highest monitored frequency times the largest distance from a block's centre
-# to an edge in it, slab thickness included, must not exceed 0.5. The
-# expansion is second order; a board sets the bound because in each block
-# column the patch current and its ground return nearly cancel in total moment
-# P, so the board radiates through the first moment Q and the dropped term is
-# second order in k|delta| relative to what radiates (third order for a dipole
-# or wire, where P dominates).
-#
-# "shape" is the largest dB difference of two patterns, each normalized to its
-# own peak, within 20 dB of the reference's peak; dD directivity.
-#
-# Tutorial patch (examples/tutorials/patch_antenna_demo.py), 2 mm cells,
-# 2.0 / 2.4 / 2.8 / 3.4 / 4.0 GHz: one run with one-cell blocks, coarser
-# blocks (4-28 mm) built exactly from those moments by the parallel-axis
-# shift, shape against the one-cell pattern (the one-cell pattern itself is
-# 0.03-0.15 dB off the NTFF box):
-#
-#   k|delta|    points  shape max dB (where)          |dD| max  >0.2 dB
-#   0.10-0.21      6    0.021 (8 mm, 2.0 GHz)           0.003     0
-#   0.26-0.46      8    0.162 (12 mm, 2.8 GHz)          0.019     0
-#   0.54-0.68      7    0.308 (16 mm, 2.8 GHz; 0.203    0.042     4
-#                       at 0.54)
-#   0.76-0.96      8    0.715 (28 mm, 2.4 GHz)          0.088     5
-#   1.12-1.60      6    1.955 (28 mm, 4.0 GHz)          0.189     6
-#
-# One block against the direct sum of its current (the test below repeats
-# the first two rows):
-#
-#   current in the block                         k|delta| 0.5   0.7    1.0
-#   a sheet over its opposite, 1/12 of the side  0.187          0.368  0.748
-#   a square loop (P = 0)                        0.180          0.354  0.726
-#   a uniform sheet (P dominates)                0.002          0.007  0.029
-#
-# Strip dipoles and wires, 1 mm cells, 6 / 8 / 10 GHz, 3000 steps, against
-# the NTFF box on the same run (x dipole 14 mm, 1-14 mm blocks; x wire 8+20
-# mm, 1-12 mm; z dipoles 6-20 mm and z wires 4+10 / 8+20 mm, 2-4 mm):
-#
-#   k|delta|    points  shape max dB (where)          |dD| max  |dP| max
-#   0.26-0.47     11    0.114 (x wire, 1 mm blocks)     0.015     0.023
-#   0.53-0.74     10    0.115 (x wire, 4 mm blocks)     0.017     0.022
-#   0.84-0.98      8    0.185 (x dipole, 10 mm blocks)  0.016     0.019
-#   1.06-1.25      9    0.420 (x dipole, 10 mm, 1.23)   0.030     0.023
-#   1.27-1.96     11    0.903 (x wire, 12 mm, 1.41)     0.087     0.104
-#   2.04-3.39      5    6.670 (z wire 8+20, 3.39)       0.351     2.087
-#
-# Dropped from that ladder: the same wires in a 46 mm domain, whose far end
-# lay outside the NTFF box, so the box itself missed current. The tutorial
-# patch at 1 mm, 8 mm blocks, 50 frequencies to 4 GHz (k|delta| 0.46) stays
-# accepted.
 
 
 def _block_vs_direct_sum(pos, current, k_offset):
@@ -1850,7 +1723,12 @@ def test_the_block_extent_bound_holds_where_the_total_moment_cancels():
     """At k*|delta| = MAX_K_OFFSET, a block whose total moment cancels (a
     current sheet over its opposite, as a patch column over its ground; a
     loop) still reads within 0.2 dB of its direct sum. Measured: 0.187 and
-    0.180 dB at 0.5; 0.748 and 0.726 dB at 1.0."""
+    0.180 dB at 0.5; 0.748 and 0.726 dB at 1.0.
+
+    A board sets the bound because in each block column the patch current and its ground
+    return nearly cancel in total moment P, so the board radiates through the first
+    moment Q and the dropped term is second order in k|delta| relative to what radiates.
+    """
     from rfx.current_moments import MAX_K_OFFSET
     g = np.linspace(-0.5, 0.5, 41)[:-1] + 1.0 / 80.0
     X, Y = (v.ravel() for v in np.meshgrid(g, g, indexing="ij"))
@@ -1867,7 +1745,6 @@ def test_the_block_extent_bound_holds_where_the_total_moment_cancels():
     loop_j = np.concatenate([np.tile(v, (s.size, 1)) for _, v in sides]).astype(complex)
     for pos, cur in ((pair, pair_j), (loop, loop_j)):
         assert _block_vs_direct_sum(pos, cur, MAX_K_OFFSET) <= 0.2
-        # the same block at twice the bound is well past it
         assert _block_vs_direct_sum(pos, cur, 2.0 * MAX_K_OFFSET) > 0.5
 
 
@@ -1972,8 +1849,6 @@ def test_topology_design_region_inside_the_slab_runs():
     assert _topology((10, 10, 10), (14, 14, 14), "diel6") is not None
 
 
-# One refused and one accepted model per branch of the guard. Each helper
-# puts the thing either outside the slab (refused) or inside it (accepted).
 def _surface_impedance_sheet(sim, inside):
     from rfx import Box
     z = 12e-3 if inside else 20e-3
@@ -1989,8 +1864,8 @@ def _kerr(sim, inside):
 
 
 def _pec_wire(sim, inside):
+    """The monitor's conductor guard is independent of radius."""
     from rfx.geometry.csg import PolylineWire
-    # Legacy filament; the monitor's conductor guard is independent of radius.
     y = 12e-3 if inside else 4e-3
     sim.add(PolylineWire(points=((10e-3, y, 12e-3), (14e-3, y, 12e-3)),
                          radius=0.), material="pec")
@@ -2040,7 +1915,6 @@ def test_refuses_a_plane_port_and_accepts_a_lumped_port():
     sim = bare()
     sim.add_waveguide_port(4e-3, y_range=(4e-3, 20e-3), z_range=(8e-3, 16e-3),
                            freqs=GUARD_FREQS)
-    # PEC guide walls on the aperture edges, ending before the slab (x < 6 mm)
     for lo, hi in (((0., 2e-3, 6e-3), (2 * DX, 4e-3, 9 * DX)),
                    ((0., 20e-3, 6e-3), (2 * DX, 22e-3, 9 * DX)),
                    ((0., 2e-3, 6e-3), (2 * DX, 22e-3, 8e-3)),
@@ -2053,24 +1927,14 @@ def test_refuses_a_plane_port_and_accepts_a_lumped_port():
     assert _guard_runs(sim).current_moment_data is not None
 
 
-# ---------------------------------------------------------------------------
-# Microstrip ports
-# ---------------------------------------------------------------------------
 
-# A suspended microstrip for the refusal and realized-cell tests: 1 mm cells,
-# a 2 mm wide trace 2 mm above a ground strip of the same width, no
-# dielectric, fed at x = 8 mm. The port's launch and matched load sit on the
-# Ez edges of the feed plane between ground and trace, over the trace's three
-# width nodes (y = 11..13 mm) and two more on each side, the static-Laplace
-# profile's fringe window (one substrate height): y = 9..15 mm. With no
-# dielectric and a ground no wider than the trace, those fringe edges are
-# vacuum away from every conductor, so only the port's own check sees them.
 MSL_GUARD_FREQS = np.array([4e9, 5e9])
-# graded: 6 mm of 1 mm cells, the gap in three cells, then back up
 MSL_GUARD_DZ = np.array([1.0] * 6 + [0.8, 0.65, 0.55] + [0.75] + [1.0] * 4) * 1e-3
 
 
 def _msl_guard_sim(slab_y=(7e-3, 17e-3), *, lane="uniform", **port_kw):
+    """With no dielectric and a ground no wider than the trace, the fringe edges are vacuum
+    away from every conductor, so only the port's own check sees them."""
     from rfx import Box, Simulation
     kw, lz = (({"dz_profile": MSL_GUARD_DZ}, float(MSL_GUARD_DZ.sum()))
               if lane == "graded" else ({}, 14e-3))
@@ -2156,13 +2020,6 @@ def test_the_checked_msl_edges_hold_every_edge_the_lane_stamps(
         assert stamped == checked
 
 
-# A generic edge-fed patch on a finite board, fed through a microstrip port:
-# eps_r 2.2, 1 mm substrate, a 10 x 12 mm patch on a 22 x 18 mm board, a 3 mm
-# trace from the port 7 mm to the patch edge, 0.5 mm cells in plane (graded
-# lane: 0.25 mm through the substrate). TM010 near 9.5 GHz. The port, the line
-# and the board lie inside the slab's interior and inside the Huygens box.
-# The bars are the tutorial patch's (#1301: peak directivity 0.011 dB,
-# radiated power 0.024 dB, any direction within 20 dB of the peak 0.14 dB).
 MSL_PATCH_FREQS = np.array([8.5e9, 9.5e9, 10.5e9])
 MSL_PATCH_DZ = np.array([0.5] * 4 + [0.4, 0.3, 0.3] + [0.25] * 4
                         + [0.3, 0.4] + [0.5] * 6) * 1e-3
@@ -2183,11 +2040,11 @@ def _msl_patch_run(lane):
     sim.add(Box((3 * mm, 3 * mm, 3 * mm), (25 * mm, 21 * mm, 4 * mm)),
             material="sub")
     for lo, hi in (((3 - .35 * .5, 3 - .35 * .5, 3),
-                    (25 + .35 * .5, 21 + .35 * .5, 3)),  # ground
+                    (25 + .35 * .5, 21 + .35 * .5, 3)),
                    ((12 - .35 * .5, 6 - .35 * .5, 4),
-                    (22 + .35 * .5, 18 + .35 * .5, 4)),  # patch
+                    (22 + .35 * .5, 18 + .35 * .5, 4)),
                    ((5, 10.5 - .35 * .5, 4),
-                    (12, 13.5 + .35 * .5, 4))):         # trace
+                    (12, 13.5 + .35 * .5, 4))):
         sim.add(Box(tuple(v * mm for v in lo), tuple(v * mm for v in hi)),
                 material="pec")
     sim.add_msl_port((5 * mm, 12 * mm, 3 * mm), width=3 * mm, height=1 * mm,
@@ -2198,8 +2055,8 @@ def _msl_patch_run(lane):
     sim.add_current_moment_monitor((2 * mm, 2 * mm, 2.5 * mm),
                                    (26 * mm, 22 * mm, 4.5 * mm),
                                    block_size=1.5 * mm, freqs=MSL_PATCH_FREQS)
-    sim.add_probe((20 * mm, 12 * mm, 3.5 * mm), "ez")      # under the patch
-    sim.add_probe((8 * mm, 5 * mm, 6.0 * mm), "ez")        # above the board
+    sim.add_probe((20 * mm, 12 * mm, 3.5 * mm), "ez")
+    sim.add_probe((8 * mm, 5 * mm, 6.0 * mm), "ez")
     return sim.run(n_steps=MSL_PATCH_STEPS[lane], skip_preflight=True)
 
 
@@ -2212,6 +2069,9 @@ def test_msl_fed_patch_far_field_matches_the_ntff_box(lane):
     ``J = curl_h H - eps0 dE/dt``, so the pattern from the block moments is
     the Huygens box's on the same run. The record has rung down (both probes
     below -60 dB of their peak by the end).
+
+    The bars are the tutorial patch's: peak directivity 0.011 dB, radiated power 0.024
+    dB, any direction within 20 dB of the peak 0.14 dB.
     """
     from rfx import compute_far_field, directivity, radiation_pattern
     res = _msl_patch_run(lane)
@@ -2241,7 +2101,6 @@ def test_msl_fed_patch_far_field_matches_the_ntff_box(lane):
     p_db = np.abs(10.0 * np.log10(radiated(mon) / radiated(box)))
     assert p_db.max() <= MSL_PATCH_POWER_BAR_DB, p_db
 
-    # Negative control on the same accumulator: the total moment P alone.
     m = res.current_moment_monitor
     p_only = res._replace(
         current_moment_data=(np.asarray(res.current_moment_data[0])[..., :1],),
@@ -2270,12 +2129,18 @@ def _forward_with(sim, **kw):
 @pytest.mark.parametrize("override", ["pec_mask_override", "pec_occupancy_override"])
 def test_concrete_pec_overrides_are_measured(override, inside):
     """A concrete ``pec_mask_override`` / ``pec_occupancy_override`` is part
-    of the conductor the run solves, and the guard reads it."""
+    of the conductor the run solves, and the guard reads it.
+
+    A soft source on a realized PEC edge is refused.
+    """
     sim = _guard_sim()
     shape = sim._build_grid().shape
-    # Inside the monitor slab, one cell above the source: off its own Ez edge at
-    # (12, 12, 12): a soft source on a realized PEC edge is refused (#1508).
     cell = (12, 12, 13) if inside else (5, 12, 12)
+    assert (
+        cell != (12, 12, 12)
+        and (not inside or cell == (12, 12, 13))
+    ), (
+        'The inside PEC cell must be one cell above the source and off its Ez edge')
     if override == "pec_mask_override":
         arr = np.zeros(shape, dtype=bool)
         arr[cell] = True
@@ -2318,9 +2183,6 @@ def test_declaration_rejects_an_unknown_keyword():
             block_size=6e-3, freqs=FREQS, curl_signs=(1,) * 6)
 
 
-# ---------------------------------------------------------------------------
-# 11. The lanes that do not accumulate the monitor refuse it
-# ---------------------------------------------------------------------------
 
 def _sim_with_monitor(**kw):
     from rfx import Simulation
@@ -2409,13 +2271,12 @@ def test_a_declared_monitor_cannot_come_back_empty_from_any_lane():
     sim = _sim_with_monitor()
     res = sim.run(n_steps=4, skip_preflight=True)
     assert res.current_moment_data is not None
-    require_accumulated_current_moments(sim, res, "run")        # filled: silent
+    require_accumulated_current_moments(sim, res, "run")
 
     emptied = res._replace(current_moment_data=None)
     with pytest.raises(NotImplementedError, match="returned no block current"):
         require_accumulated_current_moments(sim, emptied, "run")
 
-    # No monitor declared: an empty field is the normal case and stays silent.
     from rfx import Simulation
     plain = Simulation(freq_max=1.2e10, domain=(2.4e-2,) * 3, dx=DX,
                        cpml_layers=6, boundary="cpml")
@@ -2438,7 +2299,6 @@ def test_every_user_facing_return_carries_the_backstop():
             text))
         if returns or guards:
             counts[path.relative_to(REPO_ROOT).as_posix()] = (returns, guards)
-    # Each file that hands a result back guards every such site.
     assert all(r == g for r, g in counts.values()), counts
     assert sum(r for r, _ in counts.values()) == 5, counts
 
@@ -2466,9 +2326,6 @@ def test_the_traceable_moment_unpack_matches_the_host_one():
                                           err_msg=name)
 
 
-# ---------------------------------------------------------------------------
-# 12. The weights are stored at the field's precision, not pinned
-# ---------------------------------------------------------------------------
 
 def test_weight_dtype_follows_the_runs_precision():
     """float32 fields keep float32 weights; float64 fields get float64 ones.
@@ -2478,6 +2335,9 @@ def test_weight_dtype_follows_the_runs_precision():
     accumulator is; with the weights pinned to float32 the float64 gradient
     check in this file misses its bar. The float32 branch is pinned too:
     that is the path every existing run takes.
+
+    The first-order weight slots change sign, so an element-wise ratio blows up where a
+    weight passes through zero.
     """
     from rfx import Simulation
     from rfx.current_moments import monitor_for_simulation, weight_dtype_for
@@ -2503,9 +2363,6 @@ def test_weight_dtype_follows_the_runs_precision():
         m64 = monitor_for_simulation(s64, s64._build_grid())
         assert m64.w_ex.dtype == jnp.float64, m64.w_ex.dtype
         assert m64.inv_dx_e.dtype == jnp.float64, m64.inv_dx_e.dtype
-        # Same numbers, wider storage, normalised by the largest weight in
-        # the slot: the first-order slots change sign, so an element-wise
-        # ratio blows up where a weight passes through zero.
         a = np.asarray(m64.w_ex, dtype=np.float64)
         b = np.asarray(m32.w_ex, dtype=np.float64)
         scale = np.abs(a).max(axis=(1, 2, 3), keepdims=True)

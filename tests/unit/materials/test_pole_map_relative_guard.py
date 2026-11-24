@@ -13,8 +13,9 @@ from tests.unit.materials.test_pole_map_runs import record
 
 
 def objective_for(graded, relative):
-    # Construct the declared mesh before recording the reverse pass warnings;
-    # its existing adjacent-cell-ratio AccuracyWarning is independent of poles.
+
+
+    """The declared mesh's adjacent-cell-ratio AccuracyWarning is independent of poles."""
     sim, grid = scene(parameters(), graded)
     def objective(params):
         log_kappa, slope = params
@@ -33,6 +34,13 @@ def objective_for(graded, relative):
 
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 def test_b6_2_si_guard(monkeypatch, graded):
+    """The float32 SI-scale gradient is underflow-limited (rfx#2561).
+
+    Per-cell cotangents fall below float32's normal range. On the uniform mesh
+    this float32 SI-map gradient sits about 14 % below the RelativeStrength value;
+    on the graded mesh it is exactly zero. The gradient is sensitive to reverse-pass
+    order. RelativeStrength is the documented route for traced SI-scale strengths.
+    """
     objective = objective_for(graded, False)
     monkeypatch.setenv('RFX_POLE_UNDERFLOW_CHECK', '1')
     with pytest.warns(AccuracyWarning) as caught:
@@ -41,7 +49,7 @@ def test_b6_2_si_guard(monkeypatch, graded):
     record(f'B6.2-{graded}', dict(warnings=len(warnings_found), counts=[getattr(w, 'count', None) for w in warnings_found],
            objective=float(checked[0]), gradient=np.asarray(checked[1]).tolist()))
     assert len(warnings_found) == 1
-    monkeypatch.delenv('RFX_POLE_UNDERFLOW_CHECK')
+    monkeypatch.setenv('RFX_POLE_UNDERFLOW_CHECK', '0')
     unchecked = jax.block_until_ready(jax.value_and_grad(objective)(parameters()))
     for a, b in zip(jax.tree.leaves(checked), jax.tree.leaves(unchecked)):
         assert np.asarray(a).tobytes() == np.asarray(b).tobytes()
@@ -49,13 +57,21 @@ def test_b6_2_si_guard(monkeypatch, graded):
 
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 def test_b6_2_si_guard_jit(monkeypatch, graded):
+    """The float32 SI-scale gradient is underflow-limited (rfx#2561).
+
+    Per-cell cotangents fall below float32's normal range. On the uniform mesh
+    this float32 SI-map gradient sits about 14 % below the RelativeStrength value;
+    on the graded mesh it is exactly zero. The gradient is sensitive to reverse-pass
+    order. RelativeStrength is the documented route for traced SI-scale strengths.
+    """
     objective = objective_for(graded, False)
     def with_aux(params):
         value = objective(params)
         return value, value
 
     def evaluate():
-        # Retrace after changing the switch: arming is decided at trace time.
+
+        """Arming is decided at trace time."""
         jax.clear_caches()
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter('always')
@@ -66,7 +82,7 @@ def test_b6_2_si_guard_jit(monkeypatch, graded):
 
     monkeypatch.setenv('RFX_POLE_UNDERFLOW_CHECK', '1')
     checked, found = evaluate()
-    monkeypatch.delenv('RFX_POLE_UNDERFLOW_CHECK')
+    monkeypatch.setenv('RFX_POLE_UNDERFLOW_CHECK', '0')
     unchecked, _ = evaluate()
     equal = all(np.asarray(a).tobytes() == np.asarray(b).tobytes()
                 for a, b in zip(jax.tree.leaves(checked), jax.tree.leaves(unchecked)))
@@ -97,6 +113,7 @@ def test_b6_10_delta_only_guard(monkeypatch, graded):
         return guard(out, factors, scalar=scalar)
 
     monkeypatch.setattr(lorentz, 'pole_underflow_guard', spy)
+    monkeypatch.setattr('rfx.model.dispersive_poles.pole_underflow_guard', spy)
     monkeypatch.setenv('RFX_POLE_UNDERFLOW_CHECK', '1')
     jax.clear_caches()
     with warnings.catch_warnings(record=True) as caught:

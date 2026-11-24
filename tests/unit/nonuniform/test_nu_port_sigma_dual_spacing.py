@@ -128,6 +128,7 @@ mesh-sensitive here: move the port onto a locally uniform node (or flatten
 the grading there) if its S-parameters are claims-bearing.``
 and the same sentence for ``y = 4mm``, ``200% (500µm below, 1.5mm above)``,
 ``DUAL spacing 1mm``.
+The 0.40 blindness guard stays below the fixture's worst-case-best relative conductance error of 50%.
 """
 
 import warnings
@@ -166,12 +167,6 @@ def _cell_centre(prof, i):
 PORT_POS = tuple(_cell_centre(p, i)
                  for p, i in zip((GX, GY, GZ), PORT_CELL))
 
-# The blind guard below is derived FROM this fixture. Per-axis dual/primal
-# is 0.75 (x), 0.667 (y), 0.625 (z), so the primal spelling of the two
-# transverse widths is low by 0.5 (ez), 0.4167 (ex) or 0.4688 (ey) — a
-# relative conductance error of 50% at worst-case-best. If the fixture is
-# ever softened (CFL, runtime), re-derive this from the new profiles rather
-# than carrying 0.40 over.
 BLIND_GUARD = 0.40
 
 
@@ -327,7 +322,6 @@ def test_a_transverse_axis_swap_would_be_caught(component, extent, label):
             if (pb, pc) == (min(b, c), max(b, c)):
                 continue
             wrong = st["dual"][pb][idx[pb]] * st["dual"][pc][idx[pc]]
-            # sigma scales as 1/(dp1*dp2), so G scales as right/wrong
             ratio = right / wrong
             assert abs(ratio - 1.0) > 0.1, (component, label, a, pb, pc,
                                             ratio)
@@ -375,21 +369,13 @@ def _termination_ratio(component, extent):
     return np.real(ratio), n_live
 
 
-# #931 R8 made a wire port's extent HALF-OPEN in edges, so every declaration
-# here realizes one cell fewer than it did. The extents below are re-declared
-# to realize the SAME cell counts the oracle was built on (2, 3, 2, 2) —
-# measured per component, because the port sits in the coarse run and the
-# three axes have different spacings there, so no single multiple of D works
-# for all of them. Nothing about the oracle moved: the guard is still
-# n_live >= 2 and the expected values are still -1/3 and -1/2. Re-deriving
-# the extents rather than lowering the guard is the point — at n_live = 1 the
-# closed form is S11 = 0, which every wrong cell resistance also satisfies,
-# so the test would still be green and would no longer discriminate.
 @pytest.mark.parametrize("component,extent", [("ez", 5 * D), ("ez", 9 * D),
                                               ("ex", 3 * D), ("ey", 4 * D)])
 def test_passive_port_quasi_static_s11_matches_the_closed_form(component,
                                                                extent):
-    """ORACLE 2 — raw V/I termination ratio, independent of Z0; not S."""
+    """ORACLE 2 — raw V/I termination ratio, independent of Z0; not S.
+    At n_live = 1 the closed form is S11 = 0 for every wrong cell resistance, so the oracle would not discriminate.
+    """
     s11, n_live = _termination_ratio(component, extent)
     expect = (1.0 - n_live) / (1.0 + n_live)
     assert n_live >= 2, n_live

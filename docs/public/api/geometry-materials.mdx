@@ -31,7 +31,7 @@ domain = (0.04, 0.03, 0.02)
 board = Box((0.005, 0.005, 0.004), (0.035, 0.025, 0.0056))
 ground = Box((0.005, 0.005, 0.004), (0.035, 0.025, 0.004))
 patch = Box((0.012, 0.010, 0.0056), (0.028, 0.020, 0.0056))
-# A mesh that keeps the sheets at their drawn size and the board faces on nodes.
+# Last sheet nodes 0.35 cell inside the drawn edges; board faces on nodes.
 sim = Simulation(freq_max=5e9, domain=domain, dx=1e-3, boundary="cpml",
                  **edge_aware_profiles(domain, 1e-3, sheets=[ground, patch],
                                        solids=[board], axes="xyz"))
@@ -69,9 +69,10 @@ resolved. Keep `sigma` below `1e6` for a lossy bulk medium. For conductor loss
 on a metal sheet, use `add_thin_conductor(..., surface_impedance_f0=f0)`.
 
 **Fitting measured data.** `fit_debye(freqs, eps_measured, n_poles=1, *,
-eps_inf=None)` and `fit_lorentz(...)` fit poles to complex permittivity data;
+eps_inf=None, tau="free")` and `fit_lorentz(...)` fit poles to complex permittivity data;
 `load_material_csv(path, ...)` reads it from a CSV file. See the
 [generated reference](/rfx/api/generated/).
+For `fit_debye`, `tau="placed"` uses log-spaced times in the data span; both modes and `fit_lorentz` bound a free `eps_inf` at 1. `fit_lorentz` keeps resonances inside the data span and uses starts spread across it.
 
 ## Placing shapes
 

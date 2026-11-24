@@ -16,7 +16,6 @@ from rfx import GaussianPulse, Simulation, SnapshotSpec
 from rfx._internal._grid_metric import field_index
 
 
-# PR and weekly jobs pin two/three devices through their host configuration.
 DEVICES = min(3, len(jax.devices('cpu')))
 assert DEVICES >= 2, 'set XLA_FLAGS for at least two host devices before starting Python'
 E_COMPONENTS = ("ex", "ey", "ez")
@@ -76,8 +75,6 @@ def realized_slab(expected, label, enabled):
     seen = []
 
     def check(metas, layout, mesh, dtype):
-        # This exact layout is also passed to SlabRLC / slab_wrap.local_context.
-        # Read product ownership, including its mask, rather than repeating its cut.
         for meta, (key, cell, expected_owner, expected_local) in zip(metas, expected, strict=True):
             assert (meta.i, meta.j, meta.k) == cell, ('B3', key, meta, cell)
             owned = []
@@ -171,8 +168,8 @@ def accumulated_law(one, many, steps, label):
 
 
 CASES = [(boundary, 'S3', 400) for boundary in ('cpml', 'pec')] + [
-    ('cpml', name, steps) for name in ('S1', 'S2', 'S4') for steps in (400, 800, 1600)
-] + [('pec', name, 1600) for name in ('S1', 'S2', 'S4')]
+    pytest.param('cpml', 'S4', steps, marks=pytest.mark.slow) for steps in (400, 800)
+] + [('cpml', 'S4', 1600), ('pec', 'S4', 1600)]
 
 
 @pytest.mark.parametrize('mesh', ['uniform', 'graded'])

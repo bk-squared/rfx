@@ -4,7 +4,7 @@ Only the realized update arrays can establish invariance. Declared geometry
 and read-only monitors are not used as proxies for those arrays.
 """
 
-from rfx.errors import AccuracyWarning, RfxRefusal
+from rfx.errors import AccuracyWarning, RfxRefusal, RfxUnsupported
 from rfx._warning_origin import user_stacklevel
 from dataclasses import fields, is_dataclass
 import warnings
@@ -78,7 +78,23 @@ def validate_realized_vacuum_boundary(
             window = tuple(slice(b[2 * d], min(b[2 * d + 1] + 1, grid.shape[d]))
                            for d in range(3))
             nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
-    sim._validate_tfsf_vacuum_boundary(materials, cfg, nonvacuum_masks=tuple(nonvacuum))
+    sim._validate_tfsf_vacuum_boundary(without_attached_tensor(materials), cfg,
+                                       nonvacuum_masks=tuple(nonvacuum))
+
+
+def without_attached_tensor(materials):
+    """The materials view the vacuum-boundary check walks: no attached tensor.
+
+    The tensor reaches that check as the caller's aniso_eps, aniso_inv_eps
+    and conformal_weights masks, as before it was attached to the model.
+    """
+    components = getattr(materials, "components", None)
+    if components is None:
+        return materials
+    if getattr(components, "tensor", None) is None:
+        return materials
+    from dataclasses import replace
+    return materials._replace(components=replace(components, tensor=None))
 
 
 def validate_source_boundary(sim, *, closed_box):
@@ -134,23 +150,19 @@ def invariant(value, axis, shape, *, periodic=(False, False, False)):
 
     Unknown traced inputs return None; Addendum 5c(5) preserves their legacy
     operator and reports that invariance was not judged.
+
+    ADE inputs must place the pole dimension before their spatial dimensions.
     """
     unjudged = ""
     for name, array in _leaves(value, "update", periodic=periodic):
         dims = tuple(array.shape)
-        # ADE coefficients and states store poles before the three spatial
-        # dimensions. A pole count equal to nx must not be mistaken for x.
-        # Both material arrays and pole coefficients can broadcast singleton
-        # spatial dimensions. Non-singleton dimensions must remain invariant.
         spatial = (len(dims) - 3 if len(dims) >= 3
                    and all(n in (1, size) for n, size in zip(dims[-3:], shape)) else None)
         if spatial is None:
             continue
         index = spatial + axis
         if dims[index] == 1:
-            continue  # broadcasting is constant even when its value is traced
-        # JVP/linearization carries a concrete primal when the design value
-        # is known. Inspect that realized value without changing its trace.
+            continue
         while hasattr(array, "primal"):
             array = array.primal
         from rfx.core.jax_utils import is_tracer
@@ -160,7 +172,7 @@ def invariant(value, axis, shape, *, periodic=(False, False, False)):
         try:
             host = np.asarray(array)
         except (TimeoutError,): raise
-        except Exception as exc:  # noqa: BLE001 - recorded in invariance reason
+        except Exception as exc:  # noqa: BLE001
             return False, f"{name} ({type(exc).__name__}: invariance unavailable)"
         host = _without_duplicated_end_edge(name, host, axis, index)
         first = np.take(host, [0], axis=index)
@@ -211,16 +223,13 @@ def replacement_axes(cfg, grid, *, requirements=(), records=None, nonuniform=Fal
     electric = getattr(cfg, "electric_component", getattr(cfg, "polarization", "ez"))[-1]
     magnetic = "y" if electric == "z" else "z"
     records = {face.name: face for face in (grid_face_depths(grid) if records is None else records)}
-    # Propagation-axis walls keep main's operator (Addendum 5c(5)).
     result = []
     for axis, wall in ((magnetic, Kind.PMC), (electric, Kind.PEC)):
-        # Only Method B absorbs on the uniform tilt axis. The graded
-        # lane retains its own oblique-incidence refusal.
         if axis == magnetic and (_open_oblique_method_b(cfg) or
                                  (nonuniform and is_oblique(getattr(cfg, "angle_deg", 0)))):
             continue
         if grid.shape["xyz".index(axis)] == 1:
-            continue  # the invariant 2-D lane
+            continue
         pair = tuple(records[f"{axis}_{side}"].kind for side in ("lo", "hi"))
         allowed = (Kind.PERIODIC, wall)
         if pair in ((Kind.ABSORBER,) * 2, (wall,) * 2):
@@ -283,7 +292,6 @@ def check_arrays(cfg, grid, values, *, localized=(), requirements=(), records=No
 
 def admit_simulation(sim, *, root=None, materials=None, material_overrides=()):
     """Dispatch and preflight use the production rasterization, never shapes."""
-    # Both meshes require invariance; the graded operator retains its absorbers.
     if sim._tfsf is None or sim._tfsf.closed_box:
         return ()
     import jax
@@ -302,8 +310,6 @@ def admit_simulation(sim, *, root=None, materials=None, material_overrides=()):
         replacements = {name: value for name, value in
                         zip(("eps_r", "sigma", "mu_r"), material_overrides)
                         if value is not None}
-        # Match forward's replacement semantics, including removal of folded
-        # material views. Unoverridden components and conductors still count.
         if "eps_r" in replacements:
             replacements["eps_r_lumped"] = None
         if "sigma" in replacements:
@@ -327,8 +333,6 @@ def report(sim, issues, *, root=None, material_overrides=()):
     if (not sim._uses_nonuniform_mesh and sim._tfsf is not None
             and not sim._tfsf.closed_box and is_oblique(sim._tfsf.angle_deg)):
         grid = root.grid if root is not None else sim._build_realized_grid()
-        # The registration entry, not an initialized config: open oblique
-        # Method B absorbs on y and wraps z only (sources/tfsf.py).
         wrapped = (False, sim._tfsf.method != "methodB", True)
         axes = tuple(axis for axis, wraps, size in
                      zip("xyz", wrapped, grid.shape) if wraps and size > 1)
@@ -347,7 +351,6 @@ def _wrapped_axes(cfg):
 
 
 def boundary_flags(cfg, grid=None):
-    # Admitted declarations retain the same wrap and absorber axes.
     axes = _wrapped_axes(cfg)
     return tuple(a in axes for a in "xyz"), "".join(a for a in "xyz" if a not in axes)
 
@@ -363,8 +366,6 @@ def require_tfsf_side_faces(sim):
         axes = axes.replace("z", "")
     conflicts = declared_nonperiodic_faces(sim, axes)
     if conflicts:
-        # Declarations reaching different lanes must not silently change the solved
-        # model, including TF/SF side faces.
         remedy = _finite_scatterer_remedy(sim._tfsf, mode=sim._mode)
         oblique_bloch = is_oblique(sim._tfsf.angle_deg) and not _open_oblique_method_b(sim._tfsf)
         suffix = (f"; {remedy}" if remedy else "")
@@ -407,13 +408,12 @@ def refuse_injection_plane_operands(cfg, grid, materials, updates, localized):
             spatial_slice["xyz".index(axis)] = slice(index, index + 1)
 
             def select(record):
-                # A record with no kinds is judged against vacuum, never exempted.
                 if record.kinds and all(rule[kind] == "accept" for kind in record.kinds):
                     return None
                 field, component = record.family, record.component
                 if suffix in ("lo", "hi") and (
                         component == axis or (field, suffix) in (("E", "hi"), ("H", "lo"))):
-                    return None  # Uncorrected total-field component; adjacent planes still count.
+                    return None
                 return tuple(spatial_slice)
 
             for record, cut in operands_at(operands, select):
@@ -447,18 +447,45 @@ def admit_setup(*, grid, tfsf, materials, waveguide_ports, ntff, updates,
         require_box_encloses_injected_region(
             ntff, tfsf_injection_planes(cfg), shape=grid.shape)
     if getattr(cfg, "closed_box", False) or not feature_owned:
-        # Explicit low-level periodic flags are the caller's declaration,
-        # not a feature rewrite (Addendum 5c(5)).
         return waveguide_ports
     check_arrays(cfg, grid, dict(materials=materials, **updates),
-                 # The low-level RCS path does not install the slab wrap.
-                 # The open transverse operator is retained. The
-                 # graded mesh keeps its transverse absorbers (a periodic
-                 # axis is refused at admission), so it judges the axes
-                 # admit_simulation judges.
                  active_axes=None if nonuniform else tuple(
                      axis for axis, wraps in zip("xyz", periodic) if wraps),
                  records=grid_face_depths(grid, pec_faces=pec_faces, pmc_faces=pmc_faces),
                  localized=localized, nonuniform=nonuniform)
 
     return waveguide_ports
+
+
+def admit_tfsf_angle_override(sim, lane, override):
+    """Admit an angle operand after the existing forward dispatch refusals."""
+    if override is None:
+        return
+    from rfx.sources.tfsf import is_oblique
+    entry = sim._tfsf
+    if entry is None:
+        kind = "missing incident source"
+    elif entry.closed_box:
+        kind = "closed box"
+    elif entry.method != "bloch":
+        kind = entry.method
+    elif not is_oblique(entry.angle_deg):
+        kind = "normal incidence"
+    else:
+        kind = None
+    if kind is not None:
+        raise RfxUnsupported(f"tfsf_angle_override is not supported for {kind}")
+    if lane == "fwd_nonuniform":
+        raise RfxUnsupported("tfsf_angle_override is not supported on fwd_nonuniform")
+
+    def check_angle(theta):
+        if not abs(float(theta)) < 90:
+            raise RfxRefusal("tfsf_angle_override requires |angle| < 90 degrees")
+
+    from rfx._traced_check import traced_check
+    from rfx.core.jax_utils import is_tracer
+    traced_check("tfsf_angle_override", "angle range", check_angle, override)
+    if not is_tracer(override):
+        from rfx.sources.tfsf_discrete_plane_wave import warn_bloch_cutoff
+        warn_bloch_cutoff(float(override), entry.bandwidth,
+                         entry.f0 if entry.f0 is not None else sim._freq_max / 2)

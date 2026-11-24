@@ -85,8 +85,6 @@ def slab_neighbor(arr, axis, depth, lo, forward, boundary=None, *,
         return part
 
     if framed:
-        # Only this face's physical end cuts the backward operand. In
-        # particular, a one-row high frame still reads its low ghost.
         view = take(frame_lo, size) if lo else take(0, frame_hi)
         return slab_neighbor(view, axis, depth, lo, False, boundary,
                              h_neighbor=h_neighbor)
@@ -100,8 +98,6 @@ def slab_neighbor(arr, axis, depth, lo, forward, boundary=None, *,
     part = take(start if terminal_lo else start - 1, stop - 1)
 
     def terminal(index):
-        # Read only the terminal plane through the shared boundary convention.
-        # Interior operands above are slices of the original field.
         if frame_size == 1:
             return h_neighbor(view, axis, boundary=boundary)
         at = [slice(None)] * 3
@@ -124,26 +120,31 @@ def face_windows(shape, depths, frame, periodic, grid):
     A face whose realized pad is zero (PEC, PMC, periodic, 2-D z) gets depth 0
     on every frame. Full frames keep the axis depth on CPML faces; framed faces
     use their realized depth. Psi retains the single-device axis depth; rows
-    outside a face's window must not be read or written.
+    outside a face's window must not be read or written. A high-pad frame
+    (``HighPadFrame``: the array holds pad cells past ``hi``) differs from
+    the allocated axis only by that pad, so it keeps the full frame's depth
+    and whole psi, with the high window ending at ``hi``.
     """
+    high_pad = getattr(frame, "high_pad", False)
     frame = tuple((frame or {}).get(axis, (0, size)) for axis, size in zip("xyz", shape))
     windows, psi_windows, face_depths = {}, {}, {}
     from rfx.boundaries.axes import absorbing_face_depths
     realized = absorbing_face_depths(grid)
     for axis, (size, depth, (lo, hi)) in enumerate(zip(shape, depths, frame)):
         full = (lo, hi) == (0, size)
+        padded = high_pad and lo == 0 and hi < size
         if periodic[axis] and not full:
             raise ValueError(f"periodic {'xyz'[axis]} axis requires a full CPML frame")
         for side in ("lo", "hi"):
             face = f"{'xyz'[axis]}_{side}"
             d = min(depth, realized[face])
-            if full and d:
-                # A CPML face keeps its axis-depth window (identity rows beyond
-                # its own layers); only a face not declared CPML drops out.
+            if (full or padded) and d:
                 d = depth
             sl = [slice(None)] * 3
             psi_sl = [slice(None)] * 3
-            if full and d == depth:
+            if padded and d == depth:
+                sl[axis] = slice(0, depth) if side == "lo" else slice(hi - depth, hi)
+            elif full and d == depth:
                 sl[axis] = slice(None, depth) if side == "lo" else slice(-depth, None)
             else:
                 sl[axis] = slice(lo, lo + d) if side == "lo" else slice(hi - d, hi)
@@ -156,7 +157,6 @@ def face_windows(shape, depths, frame, periodic, grid):
 
 def store_psi(old, new, window, owner):
     """Select only the active psi rows, leaving identity padding untouched."""
-    # Round once at storage, including the partial windows used by slabs.
     new = new.astype(old.dtype)
     full = all(sl == slice(None) for sl in window)
     if owner is not None:
@@ -174,13 +174,9 @@ def writeback_form():
 
 @partial(jax.custom_jvp, nondiff_argnums=(0,))
 def _apply_ordered_slab(windows, field, values, owners):
-    # Plain reverse AD of the in-place write-back uses domain-sized updates.
-    # Keep the forward in-place write; the custom tangent transposes to slabs.
     for window, value, owner in zip(windows, values, owners):
         sl = tuple(slice(start, stop) for start, stop in window)
         starts = tuple(window.indices(size)[0] for window, size in zip(sl, field.shape))
-        # Match .at[sl].add: promote the operands for the addition, then
-        # cast its result back to the destination's work dtype per update.
         updated = (field[sl] + value).astype(field.dtype)
         if owner is not None:
             updated = jnp.where(owner, updated, field[sl])
@@ -215,7 +211,6 @@ def apply_ordered(field, terms):
                 start, stop, _ = window.indices(size)
                 pads.append((start, size - stop))
                 if start != 0 or stop != size:
-                    # A face slab restricts one axis; the mask is that axis's.
                     assert mask is True, "a CPML slab restricts exactly one axis"
                     shape = [1, 1, 1]
                     shape[axis] = size

@@ -59,8 +59,6 @@ def test_declared_wall_warning_is_coded_once_per_axis_per_simulation():
         ('wall_axis_off_node', axis, 'judge_wall_axes') for axis in 'yz']
     assert all(w.message.severity == 'warning' for w in caught)
 
-    # A new Simulation owns a separate history; preflight preserves the code
-    # while its internal validators repeatedly build the same grid.
     other = model(.0015, snap='declared')
     report = other.preflight()
     assert [issue.loc for issue in report.by_code('wall_axis_off_node')] == ['y', 'z']
@@ -70,7 +68,6 @@ def test_declared_wall_warning_is_coded_once_per_axis_per_simulation():
         other._build_realized_grid()
     assert not repeated
 
-    # A changed tuple warns again; restoring a previously warned tuple does not.
     original = sim._domain
     sim._domain = (original[0], .0232, original[2])
     with pytest.warns(UserWarning) as changed:
@@ -134,7 +131,7 @@ def test_absorber_count_is_ceiling_in_both_lanes(graded, length, count):
 
 def test_synthesized_graded_z_uses_absorber_ceiling():
     grid = build_nonuniform_grid(10e9, (.006, .006, .0607), .0015, 2,
-                                None, dx_profile=np.full(4, .0015))
+                                None, dtype="float32", dx_profile=np.full(4, .0015))
     assert spans(grid)[2] == pytest.approx(41 * .0015, abs=1e-12)
 
 
@@ -177,7 +174,10 @@ def test_periodic_and_wall_fit_share_one_search():
 ])
 @pytest.mark.parametrize('explicit_ranges', [False, True])
 def test_simulation_entry_refuses_wr90_before_stepping(entry, explicit_ranges, mesh, monkeypatch):
-    """Every drive entry must reach the common wall judgement before stepping."""
+    """Every drive entry must reach the common wall judgement before stepping.
+
+    The expected cell size is 22.86 mm / 15 cells = 1.524 mm.
+    """
     import jax
     from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
     from rfx.stepping import graded, uniform
@@ -188,14 +188,11 @@ def test_simulation_entry_refuses_wr90_before_stepping(entry, explicit_ranges, m
         stepping.append(True)
         pytest.fail('time stepping reached before the wall-axis refusal')
 
-    # Guard both step factories and scan execution; leave all builders and
-    # admission checks real. A registration-time exception is outside raises.
     monkeypatch.setattr(uniform, 'make_uniform_step', unexpected_step)
     monkeypatch.setattr(graded, 'make_graded_step', unexpected_step)
     monkeypatch.setattr(jax.lax, 'scan', unexpected_step)
     sim = model(.0015, graded=mesh == 'graded')
     if explicit_ranges and entry in ('run', 'forward', 'compute_waveguide_s_matrix'):
-        # Uniform guide allocation leaves transverse absorber faces at depth 0.
         if mesh == 'uniform':
             sim = Simulation(299792458.0 / .0015 / 20, (.060, .02286, .01016),
                              dx=.0015, cpml_layers=8)
@@ -228,7 +225,6 @@ def test_simulation_entry_refuses_wr90_before_stepping(entry, explicit_ranges, m
         else:
             sim.compute_waveguide_s_matrix(n_steps=1, normalize=True)
     assert "axis 'y'" in str(caught.value)
-    # 22.86 mm / 15 cells = 1.524 mm.
     assert "nearest dx=1.524 mm" in str(caught.value)
     assert not stepping
 
@@ -261,7 +257,7 @@ def test_graded_declared_full_aperture_refuses(entry, monkeypatch):
 
 
 def test_zero_depth_absorbers_round_and_are_judged():
-    # 10.4 / 1 = 10.4 cells -> 10 cells -> 10 mm on each wall axis.
+    """10.4 mm / 1 mm = 10.4 cells rounds to 10 cells, 10 mm on each wall axis."""
     sim = Simulation(10e9, (.0104, .0104, .0104), dx=.001, cpml_layers=0)
     with pytest.raises(ValueError, match="wall axis 'x'.*solved 10 mm"):
         sim._build_realized_grid()

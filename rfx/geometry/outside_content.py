@@ -23,6 +23,12 @@ from typing import Any, NamedTuple
 import jax
 import numpy as np
 
+from rfx.model.line_streams import _merge_stream, _own_stream
+
+
+_MEMBERSHIP_INSIDE = 1.
+_MEMBERSHIP_OUTSIDE = 0.
+
 
 class _LinePieces(NamedTuple):
     lo: Any
@@ -136,8 +142,6 @@ def _outside_pieces(xp, groups, current, coords, distance, normal, length,
     widths = tuple(grid.cells(a) for a in range(3))
     concrete_widths = _host_path(*widths)
     h_max = max(float(np.max(w)) for w in widths) if concrete_widths else nominal_h_max
-    # With traced widths use their actual maximum for the window. The host
-    # candidate filter is off; the nominal reach still controls image lists.
     reach = (h_max if concrete_widths else
              xp.maximum(xp.maximum(xp.max(widths[0]), xp.max(widths[1])), xp.max(widths[2])))
     padding = h_max if h_max is not None else max(float(grid.domain[a]) for a in range(3))
@@ -185,11 +189,9 @@ def _outside_pieces(xp, groups, current, coords, distance, normal, length,
         key = medium_key(eps)
         code = keys.setdefault(key, len(keys) + 1)
         if not isinstance(shape, (Box, Sphere, Cylinder)):
-            # Point-only shapes retain the existing mask/SDF lookup, with
-            # an artificial 0/1 material to recover its membership mask.
-            only = {current: (1., [shape])}
+            only = {current: (_MEMBERSHIP_INSIDE, [shape])}
             point = _bulk_outside(
-                xp, only, current, coords, distance, normal, length, 0., masks, grid,
+                xp, only, current, coords, distance, normal, length, _MEMBERSHIP_OUTSIDE, masks, grid,
                 normal_source=xp.where(normal_source == source_index, 0, -1),
                 normal_image=normal_image)
             intervals.append((xp.where(point != 0, -reach, reach), reach, eps, code))
@@ -201,14 +203,10 @@ def _outside_pieces(xp, groups, current, coords, distance, normal, length,
                             for a, (p, k) in enumerate(zip(coords, image)))
             lo, hi = _line_interval(xp, shape, shifted, normal, reach)
             if own_fill and source_index >= 0:
-                # The own body's whole interval, the normal source included.
                 own_lines.append((lo, hi, _planar_line(xp, shape, shifted, normal, reach, lo, hi)))
             excluded = normal_source == source_index
             for k, source in zip(image, normal_image):
                 excluded = excluded & (k == source)
-            # A33: use the source's own exit only when it also supplies the
-            # union's signed value. Inspect the raw interval before exclusion
-            # and empty-interval normalization; clipped/empty sources retain -s.
             source_end = excluded & (best_s == distance) & (hi >= lo) & (hi < reach) & (hi > -reach)
             face = xp.where(source_end, hi, face)
             lo = xp.where(excluded, reach, xp.clip(lo, -reach, reach))
@@ -230,37 +228,21 @@ def _outside_pieces(xp, groups, current, coords, distance, normal, length,
             merge_code = xp.where(background == eps, 0, code)
         values = xp.where(inside, eps, values)
         codes = xp.where(inside, merge_code, codes)
-    # Stream through positive pieces. Empty sort slots cannot split a run.
-    start, end, value, code = low[0], low[0], values[0], codes[0]
-    merged_lo, merged_hi, merged_eps = [], [], []
-    for i in range(low.shape[0]):
-        positive = high[i] > low[i]
-        change = positive & (end > start) & (codes[i] != code)
-        merged_lo.append(start)
-        merged_hi.append(xp.where(change, end, start))
-        merged_eps.append(value)
-        new = positive & ((end == start) | change)
-        start = xp.where(new, low[i], start)
-        value = xp.where(new, values[i], value)
-        code = xp.where(new, codes[i], code)
-        end = xp.where(positive, high[i], end)
-    merged_lo.append(start)
-    merged_hi.append(end)
-    merged_eps.append(value)
+    merged_lo, merged_hi, merged_eps = _merge_stream(xp, low, high, values, codes)
     own = _own_runs(xp, own_lines, length, reach, broadcast.shape) if own_lines else None
-    return _LinePieces(xp.stack(merged_lo), xp.stack(merged_hi), xp.stack(merged_eps), face, own)
+    return _LinePieces(merged_lo, merged_hi, merged_eps, face, own)
 
 
 def _planar_line(xp, shape, points, normal, reach, lo, hi):
     """Whether a body's interval on this line lies between parallel planes.
 
-    A Box's always does. A Cylinder's does only where both ends are its end
-    caps, not its curved side. A Sphere's never does: a chord is not a
+    A Box's does only for a normal with one nonzero component. A Cylinder's
+    does only where both ends are its end caps, not its curved side. A Sphere's never does: a chord is not a
     laminate, so a thin Sphere keeps the one-face fill.
     """
     from rfx.geometry.csg import Box, Cylinder
     if isinstance(shape, Box):
-        return True
+        return sum((n != 0).astype(xp.int32) for n in normal) == 1
     if isinstance(shape, Cylinder):
         cap_lo, cap_hi = _axial_interval(xp, shape, points, normal, reach)
         return (lo == cap_lo) & (hi == cap_hi)
@@ -278,7 +260,7 @@ def _own_runs(xp, lines, length, reach, shape):
     own run inside the support; the gaps are the rest of the support.
     """
     half = length / 2
-    far = 2 * reach  # beyond the window, so an empty interval sorts last
+    far = 2 * reach
     lo = xp.stack([xp.broadcast_to(a, shape) for a, _, _ in lines])
     hi = xp.stack([xp.broadcast_to(b, shape) for _, b, _ in lines])
     flat = xp.stack([xp.broadcast_to(xp.asarray(p), shape) for _, _, p in lines])
@@ -286,24 +268,7 @@ def _own_runs(xp, lines, length, reach, shape):
     lo, hi = xp.where(valid, lo, far), xp.where(valid, hi, far)
     order = xp.argsort(lo, axis=0)
     lo, hi, flat = (xp.take_along_axis(a, order, axis=0) for a in (lo, hi, flat))
-    thin = xp.zeros(shape, dtype=bool)
-    inside = xp.zeros(shape, dtype=lo.dtype)
-    previous = xp.broadcast_to(-half, shape)
-    gaps = []
-    start, end, planar = lo[0], hi[0], flat[0]
-    for i in range(1, lo.shape[0] + 1):
-        last = i == lo.shape[0]
-        new = True if last else lo[i] > end
-        thin = thin | (new & planar & (start > -half) & (end < half))
-        held = xp.maximum(xp.minimum(end, half) - xp.maximum(start, -half), 0)
-        inside = inside + xp.where(new, held, 0)
-        gaps.append((xp.maximum(previous, -half), xp.where(new, xp.minimum(start, half), -half)))
-        previous = xp.where(new, end, previous)
-        if not last:
-            start = xp.where(new, lo[i], start)
-            planar = xp.where(new, flat[i], planar & flat[i])
-            end = xp.where(new, hi[i], xp.maximum(end, hi[i]))
-    gaps.append((xp.maximum(previous, -half), xp.broadcast_to(half, shape)))
+    thin, inside, gaps = _own_stream(xp, lo, hi, flat, half, shape)
     return _OwnRuns(thin, inside / length, gaps)
 
 
@@ -328,6 +293,8 @@ def _segment_content(xp, pieces, face, end, *, start=None, cdf=None, gaps=None):
     weighted by length. A zero-weight portion takes the right-hand medium
     at the source face. A single merged piece returns its original operand
     without a sum.
+
+    Portions outside the finite window may be requested only for bulk nodes whose results are discarded.
     """
     if gaps is None:
         start = face if start is None else xp.maximum(face, start)
@@ -342,7 +309,6 @@ def _segment_content(xp, pieces, face, end, *, start=None, cdf=None, gaps=None):
     total = xp.sum(weight, axis=0)
     right = (pieces.lo <= face) & (pieces.hi > face)
     fallback = xp.sum(xp.where(right, pieces.eps, 0), axis=0)
-    # Outside the window only discarded bulk nodes can ask for a portion.
     fallback = xp.where(xp.any(right, axis=0), fallback, pieces.eps[-1])
     single = xp.sum(positive, axis=0) <= 1
     operand = xp.where(total > 0, xp.sum(xp.where(positive, pieces.eps, 0), axis=0), fallback)
@@ -357,6 +323,4 @@ def _segment_content(xp, pieces, face, end, *, start=None, cdf=None, gaps=None):
                            xp.where(total > 0, maximum, fallback))
 
 
-# rfx.geometry.smoothing imports this module part-way through its own body,
-# after it defines these four names, so either import order resolves them.
 from rfx.geometry.smoothing import _bulk_outside, _has_sdf, _host_path, medium_key  # noqa: E402

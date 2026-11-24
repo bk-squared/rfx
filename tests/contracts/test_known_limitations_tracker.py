@@ -15,13 +15,13 @@ SPEC.loader.exec_module(kl)
 
 @pytest.mark.reads_docs_for_gate(reason='Every known limitation must have an explicit tracker or accepted reason')
 def test_every_limitation_has_a_valid_tracker():
+    """Evidence is resolved without importing test modules to avoid importing JAX."""
     subjects = kl.entries(kl.PAGE.read_text())
     assert subjects, 'No subjects found'
     problems = []
     for entry in subjects:
         try:
             kl.trackers(entry)
-            # Resolve evidence without importing test modules (and thus JAX).
             match = re.search(
                 r'(?:at default|diagnostic, does not enter the result): (tests/[^)]+)\)',
                 entry.body,

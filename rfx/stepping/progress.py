@@ -8,21 +8,11 @@ from __future__ import annotations
 import time
 
 from rfx.core.jax_utils import is_tracer
+from rfx.errors import RfxRefusal
 
 _PREFIX = "  [PROGRESS]"
 
 
-# Bounded argument count per concatenate call. `jnp.concatenate` takes one
-# ARGUMENT per chunk, and XLA trace+compile cost grows superlinearly in the
-# argument count -- which bites exactly the long runs this feature exists
-# for. Measured on a (225000, 20) float32 assembly, first (compiling) call:
-#
-#     chunks   flat jnp.concatenate   grouped (this constant)
-#      2,250              2.567 s                   0.133 s
-#     22,500            232.2   s                   0.994 s
-#
-# Grouping is exact: concatenation is associative, so the joined bytes are
-# unchanged (locked by test_grouped_concat_matches_flat_concat).
 _CONCAT_GROUP = 64
 
 
@@ -54,9 +44,8 @@ def validate_report_every(report_every: object, *, n_steps: int) -> int:
     simply yields one report at the end.
     """
     if is_tracer(report_every):
-        raise ValueError(_TRACED_MSG)
+        raise RfxRefusal(_TRACED_MSG)
     if isinstance(report_every, bool):
-        # Python bools ARE ints, so True would silently mean "every step".
         raise ValueError(
             f"report_every must be an integer number of steps or None, got "
             f"{report_every!r} (a bool). Pass None to disable reporting."
@@ -64,14 +53,11 @@ def validate_report_every(report_every: object, *, n_steps: int) -> int:
     try:
         every = int(report_every)
     except (TypeError, ValueError, OverflowError):
-        # OverflowError is what int(float('inf')) raises.
         raise ValueError(
             f"report_every must be a finite integer number of steps or None, "
             f"got {report_every!r}"
         ) from None
     if every != report_every:
-        # Truncating 1000.5 -> 1000 would silently report on a cadence the
-        # caller did not ask for.
         raise ValueError(
             f"report_every must be a whole number of steps, got "
             f"{report_every!r}"

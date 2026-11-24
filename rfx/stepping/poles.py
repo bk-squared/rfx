@@ -19,7 +19,7 @@ def update_e_debye(
     dx: float,
     periodic: tuple = (False, False, False),
     boundary=None,
-    *, frame=None, owned=None,
+    *, frame=None, owned=None, bloch=None, bloch_operand=None,
 ) -> tuple[FDTDState, DebyeState]:
     """E-field update with Debye ADE dispersion.
 
@@ -44,12 +44,11 @@ def update_e_debye(
 
     hx, hy, hz = state.hx, state.hy, state.hz
 
-    # curl(H) via backward differences
+    if bloch_operand is not None:
+        bloch = bloch_operand
     curl_x, curl_y, curl_z = curl_h(
-        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True, frame=frame, owned=owned)
+        hx, hy, hz, dx, periodic, bloch=bloch, boundary=boundary, scale_after=True, frame=frame, owned=owned)
 
-    # E^{n+1} = Ca_c·E^n + Cb_c·curl(H) + Σ_p Cc_{p,c}·P_p^n, then
-    # P_p^{n+1} = α_p·P_p^n + β_{p,c}·(E^{n+1} + E^n), per component
     ex_new, px_new = debye_e_component(coeffs, 0, state.ex, curl_x,
                                        debye_state.px, _fdtype, _pdtype)
     ey_new, py_new = debye_e_component(coeffs, 1, state.ey, curl_y,
@@ -74,7 +73,7 @@ def update_e_lorentz(
     dx: float,
     periodic: tuple = (False, False, False),
     boundary=None,
-    *, frame=None, owned=None,
+    *, frame=None, owned=None, bloch=None, bloch_operand=None,
 ) -> tuple[FDTDState, LorentzState]:
     """E-field update with Lorentz/Drude ADE dispersion.
 
@@ -95,21 +94,20 @@ def update_e_lorentz(
     this body would return float64 for a float32 field/P carry.
 
     ``_pdtype`` promotes rather than pinning to ``lor_state.px.dtype`` on
-    purpose: with a real P carry and a COMPLEX field (oblique Bloch) it
-    stays complex, so the carry mismatch is still raised. Pinning would cast
-    the imaginary part away and close the scan on wrong physics — the
-    dispersive branches ignore the Bloch phase entirely.
+    purpose: with a complex Bloch envelope it preserves the imaginary
+    polarization. Setup promotes the initial pole carry to the field dtype
+    before entering the scan.
     """
     _fdtype = state.ex.dtype
     _pdtype = jnp.promote_types(lor_state.px.dtype, _fdtype)
 
     hx, hy, hz = state.hx, state.hy, state.hz
 
-    # curl(H)
+    if bloch_operand is not None:
+        bloch = bloch_operand
     curl_x, curl_y, curl_z = curl_h(
-        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True, frame=frame, owned=owned)
+        hx, hy, hz, dx, periodic, bloch=bloch, boundary=boundary, scale_after=True, frame=frame, owned=owned)
 
-    # P^{n+1} = a P^n + b P^{n-1} + c_comp E^n (per pole, per component)
     px_new, vx_new = lorentz_p_component(coeffs, 0, state.ex, lor_state.px,
                                  lor_state.vx, _pdtype)
     py_new, vy_new = lorentz_p_component(coeffs, 1, state.ey, lor_state.py,
@@ -117,12 +115,10 @@ def update_e_lorentz(
     pz_new, vz_new = lorentz_p_component(coeffs, 2, state.ez, lor_state.pz,
                                  lor_state.vz, _pdtype)
 
-    # ΔP is the stored increment, summed over poles
     dpx = jnp.sum(vx_new, axis=0)
     dpy = jnp.sum(vy_new, axis=0)
     dpz = jnp.sum(vz_new, axis=0)
 
-    # E^{n+1} = Ca E^n + Cb curl(H) - Cc ΔP, per component
     ex_new = lorentz_e_component(coeffs, 0, state.ex, curl_x, dpx, _fdtype)
     ey_new = lorentz_e_component(coeffs, 1, state.ey, curl_y, dpy, _fdtype)
     ez_new = lorentz_e_component(coeffs, 2, state.ez, curl_z, dpz, _fdtype)

@@ -193,7 +193,7 @@
         "graded-mesh evidence is limited to a WR-90 dielectric slab with normalize=flux against the closed form; no comparison with another solver on a graded mesh is in the repository",
         "dz_profile now dispatches to the nonuniform lane under the same normalize=True/flux single-mode restrictions (#811), and no dz-graded accuracy evidence exists yet (#810) -- the nonuniform Palace evidence above is graded-dy only; the nonuniform lane carries the same settling_db ring-down witness and aggregate warning as the uniform single-mode lane (#827 waveguide instance)",
         "nonuniform eps_override and sigma_override AD are implemented only for normalize=flux; only eps_override has a nonuniform AD-vs-FD regression test, and that test is not RF validation",
-        "lumped ports, TFSF, and manual periodic-axis overrides are incompatible",
+        "a lumped or wire port, or a soft source (add_source), TFSF, and manual periodic-axis overrides are incompatible",
         "branches, T-junctions, and septa require per-port matched straight-guide references and far-port placement; compact arbitrary junctions are not covered",
         "the automatic guard includes full driven-column power; passing it is not an accuracy guarantee",
         "the E4-external leg of the rectangular_waveguide_port broad-E5 chain is current and committed, with the dielectric slab lattice-aligned and Palace slab S11 passing the committed tolerances; this is evidence for the stated uniform single-mode recipe, not a general phase/junction/nonuniform claim",
@@ -280,22 +280,27 @@
       "primitive": "add_coaxial_port(...)",
       "family": "coaxial_port",
       "is_port": true,
-      "support_status": "limited_one_port_line_reflection",
+      "support_status": "experimental_uniform_run_forward_and_limited_calculators",
       "calculation_api": [
+        "Simulation.run(...) with add_coaxial_port(...)",
+        "Simulation.forward(...) with add_coaxial_port(...)",
         "Simulation.compute_coaxial_line_reflection(...)",
         "Simulation.compute_coaxial_s_matrix(...) (removed)",
         "Simulation.compute_coaxial_two_port(...) (validated with scope, issue #489 stage 2)"
       ],
       "result_type": [
+        "Result.s_params / ForwardResult.s_params: reference-plane S11 renormalized to impedance",
         "CoaxialLineReflectionResult",
         "CoaxialSMatrixResult (removed)",
         "CoaxialTwoPortResult (validated with scope)"
       ],
       "supported_configurations": [
+        "experimental_uniform_single_device_run_forward_one_top_or_bottom_coax_port",
         "3d_float32_second_order_uniform_yee_positive_xyz_cpml_no_periodic_rf_coaxial_line_reflection_exactly_one_top_face_port"
       ],
-      "validation_status": "The one-port TEM-line reflection API has broad analytic validation over termination, impedance, frequency, and mesh axes plus a broad MEEP short/open comparison. It is differentiable through eps_scale. The older single-plane V/I S-matrix API has been removed. compute_coaxial_two_port(...) (issue #489 stage 2) is a separate, two-drive through-line extension -- not covered by the 1-port evidence above -- whose own label is VALIDATED WITH SCOPE after its external-referee, mesh-refinement, wiring-pin, and AD legs all closed; see its own known_limits entry and tests/unit/sparams/test_coax_two_port_smatrix.py. The separate coax<->MSL transition lane (compute_coax_msl_transition) stays EXPERIMENTAL, diagnostic-only regardless of this promotion.",
+      "validation_status": "Experimental uniform coax ports: same-line calculator equality, run()/forward() equality, bottom-feed, NTFF-leakage and occupancy-gradient checks define the validation scope; the antenna-level result against an independent solver is not yet shown. The one-port TEM-line reflection API has broad analytic validation over termination, impedance, frequency, and mesh axes plus a broad MEEP short/open comparison. It is differentiable through eps_scale. The older single-plane V/I S-matrix API has been removed. compute_coaxial_two_port(...) (issue #489 stage 2) is a separate, two-drive through-line extension -- not covered by the 1-port evidence above -- whose own label is VALIDATED WITH SCOPE after its external-referee, mesh-refinement, wiring-pin, and AD legs all closed; see its own known_limits entry and tests/unit/sparams/test_coax_two_port_smatrix.py. The separate coax<->MSL transition lane (compute_coax_msl_transition) stays EXPERIMENTAL, diagnostic-only regardless of this promotion.",
       "known_limits": [
+        "Uniform run() and forward() coax ports are experimental. Experimental uniform coax ports: same-line calculator equality, run()/forward() equality, bottom-feed, NTFF-leakage and occupancy-gradient checks define the validation scope; the antenna-level result against an independent solver is not yet shown. Uniform mesh, one device, one coax port and no other S-port family; face top or bottom, float32, three-dimensional second-order Yee, CPML on all six faces, no periodic axis or TF/SF. The shell needs at least one whole cell from every lateral absorber, enough axial room for the line, and an NTFF box, when declared, containing the whole port. No conformal PEC, subpixel smoothing, eps_override or sigma_override.",
         "compute_coaxial_line_reflection(...) requires exactly one registered coaxial port with face='top' and no mixed port family",
         "compute_coaxial_line_reflection(...) is not a general multi-port coaxial network solver",
         "compute_coaxial_line_reflection(...) requires mode='3d', solver='yee', precision='float32', stencil_order=2, a uniform grid, and boundary='cpml' with cpml_layers > 0",
@@ -307,7 +312,6 @@
         "The removed compute_coaxial_s_matrix(...) could report non-physical |S11| > 1 for a lossless short",
         "compute_coaxial_s_matrix(...) has been removed; do not use it as evidence for either the 1-port compute_coaxial_line_reflection(...) or the 2-port compute_coaxial_two_port(...) result",
         "nonuniform, Floquet, TFSF, SBP-SAT, arbitrary launches, and mixed-port combinations are unsupported",
-        "Simulation.run() and Simulation.forward() reject high-level coaxial S-parameter requests",
         "compute_coaxial_line_reflection(...) has no shared automatic passivity guard; status and residual diagnostics do not replace RF validation",
         "compute_coaxial_two_port(...) drives each end of one through line and is VALIDATED WITH SCOPE (issue #489): an external openEMS referee brackets -- it does not judge -- this method's own |S21| and, via the port's own measured beta, its phase on the through-line class; a mesh-refinement convergence witness and the GRAD_SAFE eps_scale AD channel check that scope (tests/unit/autodiff/test_ad_surface_contract.py). NOT covered: every DUT it can currently gate against (none, a matched feed, or a coaxial dielectric plug) is azimuthally symmetric and excites only TM0n modes, while the transition discontinuities issue #489 targets excite TE11, evanescently surviving to the first probe plane -- coax<->planar transitions use the SEPARATE compute_coax_msl_transition(...) primitive/lane (own entry, own status); nor does this evidence generalize to other coax geometry families; unlike compute_coaxial_line_reflection(...) its result IS routed through the shared automatic passivity guard"
       ],
@@ -340,7 +344,7 @@
         "MEEP covers short/open; resistive cases are covered by the analytic transmission-line fixture"
       ],
       "ad_traceable": "yes",
-      "ad_evidence": "eps_scale gradients checked against finite differences for compute_coaxial_line_reflection (tests/unit/autodiff/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent) and compute_coaxial_two_port (validated with scope; tests/unit/autodiff/test_coax_two_port_ad.py::test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent); owner-platform (GPU) re-measurement pending. compute_coaxial_s_matrix is removed; its former concrete numpy extraction was not traceable. See tests/unit/autodiff/test_ad_surface_contract.py::AD_CLASSIFICATION for per-calculator classification."
+      "ad_evidence": "eps_scale gradients checked against finite differences for compute_coaxial_line_reflection (tests/unit/autodiff/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent) and compute_coaxial_two_port (validated with scope; tests/unit/autodiff/test_coax_two_port_ad.py::test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent); owner-platform (GPU) re-measurement pending. compute_coaxial_s_matrix is removed; its former concrete numpy extraction was not traceable. See tests/unit/autodiff/test_ad_surface_contract.py::AD_CLASSIFICATION for per-calculator classification. Uniform forward() carries PEC-occupancy gradients through in-scan voltage accumulators; port radii, pin_length and impedance are static."
     },
     {
       "primitive": "add_floquet_port(...)",
@@ -532,7 +536,7 @@
       "primitive": "add_coaxial_port(...) + add_msl_port(...) driven by compute_coax_msl_transition(...)",
       "family": "coax_msl_transition",
       "is_port": false,
-      "support_status": "experimental_diagnostic_not_in_validated_set",
+      "support_status": "not supported (deprecated); removed after 2.3",
       "calculation_api": [
         "Simulation.compute_coax_msl_transition(...)"
       ],

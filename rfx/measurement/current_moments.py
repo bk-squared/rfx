@@ -61,6 +61,8 @@ Vocabulary: a ``slab`` is the index window of E edges the monitor reads, a
 ``block`` is one in-plane square of that slab taken through its whole
 thickness, ``P``/``Q``/``T`` are the three expansion orders, and a ``slot``
 is one of the 30 numbers a block keeps (3 components x 10 weights).
+
+Within each component, the volume-weighted slots are ordered as ``1``, ``x``, ``y``, ``z``, ``xx``, ``xy``, ``xz``, ``yy``, ``yz`` and ``zz``, with coordinates measured from the block centre.
 """
 
 from __future__ import annotations
@@ -83,15 +85,11 @@ C0 = 299_792_458.0
 MU_0 = 1.25663706212e-6
 ETA_0 = float(np.sqrt(MU_0 / EPS_0))
 
-# Weight slots per component. 0 is the plain edge volume (-> P), 1..3 carry
-# one displacement factor (-> Q), 4..9 the six independent products of two
-# (-> T, symmetric in its two position indices).
 _W_P = 1
 _W_Q = 4
 _W_T = 10
 NUMBERS_PER_BLOCK = {0: 3, 1: 12, 2: 30}
 
-# (a, b) position-index pair behind each second-order slot.
 _T_PAIRS = ((0, 0), (0, 1), (0, 2), (1, 1), (1, 2), (2, 2))
 
 
@@ -184,9 +182,6 @@ class CurrentMomentMonitor(NamedTuple):
         return int(len(self.freqs)) * self.n_blocks * self.numbers_per_block
 
 
-# ---------------------------------------------------------------------------
-# Lattice metrics
-# ---------------------------------------------------------------------------
 
 def e_dual_spacings(cells):
     """Distance between the two H cell centres the E update differences.
@@ -246,9 +241,6 @@ def _axis_arrays(grid, axis: int):
     return nodes, cells, pad_lo, pad_hi, n
 
 
-# ---------------------------------------------------------------------------
-# Building the monitor
-# ---------------------------------------------------------------------------
 
 def build_current_moment_monitor(
     *,
@@ -284,6 +276,8 @@ def build_current_moment_monitor(
     deliberately wrong metric, centre, sign or time stamp in and measure what
     the declared checks then read. The defaults are the derived values and
     are what every result uses.
+
+    The electric edges ``ex``, ``ey`` and ``ez`` lie at ``(i+1/2, j, k)``, ``(i, j+1/2, k)`` and ``(i, j, k+1/2)``, respectively.
     """
     order = int(order)
     if order not in (0, 1, 2):
@@ -313,8 +307,6 @@ def build_current_moment_monitor(
     if pads is not None:
         px_lo, px_hi, py_lo, py_hi, pz_lo, pz_hi = (int(v) for v in pads)
         nx, ny, nz = node_x.size, node_y.size, node_z.size
-        # The curl reads one index back on each axis, so the window that has
-        # to clear the absorber starts one cell below the slab itself.
         for name, lo, hi, n, p_lo, p_hi in (
                 ("x", i0 - 1, i1, nx, px_lo, px_hi),
                 ("y", j0 - 1, j1, ny, py_lo, py_hi),
@@ -328,8 +320,8 @@ def build_current_moment_monitor(
 
     ii = np.arange(i0, i1)
     jj = np.arange(j0, j1)
-    kk = np.arange(k0, k1 + 1)          # node planes: ex, ey
-    kz = np.arange(k0, k1)              # half planes: ez
+    kk = np.arange(k0, k1 + 1)
+    kz = np.arange(k0, k1)
     ni, nj, nk, nkz = ii.size, jj.size, kk.size, kz.size
 
     cs = (curl_spacings if curl_spacings is not None
@@ -345,8 +337,6 @@ def build_current_moment_monitor(
     dual_y = np.asarray(vs[1], dtype=np.float64)
     dual_z = np.asarray(vs[2], dtype=np.float64)
 
-    # ---- edge positions, the true Yee ones -------------------------------
-    # ex(i+1/2, j, k), ey(i, j+1/2, k), ez(i, j, k+1/2).
     px = np.empty((ni, nj, nk, 3))
     px[..., 0] = (node_x[ii] + 0.5 * cell_x[ii])[:, None, None]
     px[..., 1] = node_y[jj][None, :, None]
@@ -360,7 +350,6 @@ def build_current_moment_monitor(
     pz[..., 1] = node_y[jj][None, :, None]
     pz[..., 2] = (node_z[kz] + 0.5 * cell_z[kz])[None, None, :]
 
-    # ---- edge volumes: dual x dual x primal, axis by axis -----------------
     vx = (cell_x[ii][:, None, None] * dual_y[jj][None, :, None]
           * dual_z[kk][None, None, :]) * np.ones((ni, nj, nk))
     vy = (dual_x[ii][:, None, None] * cell_y[jj][None, :, None]
@@ -368,7 +357,6 @@ def build_current_moment_monitor(
     vz = (dual_x[ii][:, None, None] * dual_y[jj][None, :, None]
           * cell_z[kz][None, None, :]) * np.ones((ni, nj, nkz))
 
-    # ---- block map: in-plane only, whole slab thickness in one block ------
     d = int(block_cells)
     off = int(off_cells)
     bi = (ii - i0 + off) // d
@@ -379,8 +367,6 @@ def build_current_moment_monitor(
     seg = np.asarray(seg, dtype=np.int64).ravel()
     n_blocks = int(uniq.shape[0])
 
-    # ---- centres: unweighted mean of the positions of the edges in the
-    # block, over every component and every plane.
     if centres_override is not None:
         centres = np.asarray(centres_override, dtype=np.float64)
         if centres.shape != (n_blocks, 3):
@@ -398,7 +384,6 @@ def build_current_moment_monitor(
                                   minlength=n_blocks)
         centres = sums / counts[:, None]
 
-    # ---- weights: volume times the displacement products ------------------
     n_w = _n_weights(order)
 
     def _weights(pos, vol, nkc):
@@ -435,9 +420,6 @@ def build_current_moment_monitor(
         w_ey=jnp.asarray(w_ey, dtype=dtype),
         w_ez=jnp.asarray(w_ez, dtype=dtype),
         seg=jnp.asarray(seg, dtype=jnp.int32),
-        # Host float64: the centres never enter the scan (they are already
-        # baked into the weights), and a float32 copy moved a block centre by
-        # 4e-10 m against the post-processing route's own.
         centres=np.asarray(centres, dtype=np.float64),
         inv_dx_e=jnp.asarray(inv_dx_e, dtype=dtype),
         inv_dy_e=jnp.asarray(inv_dy_e, dtype=dtype),
@@ -517,9 +499,6 @@ def current_moment_monitor_from_grid(
     j0, j1 = _index_window(nodes[1], corner_lo[1], corner_hi[1], ny, my)
     k0, k1 = _index_window(nodes[2], corner_lo[2], corner_hi[2], nz, mz)
 
-    # The window has to exist inside the array before anything reads a cell
-    # width out of it: a margin that pushes an index below 1 used to die in
-    # numpy ("zero-size array to reduction operation maximum") instead of here.
     for name, lo_i, hi_i, n_ax in (("x", i0, i1, nx), ("y", j0, j1, ny),
                                    ("z", k0, k1, nz)):
         if lo_i < 1 or hi_i > n_ax - 1 or hi_i <= lo_i:
@@ -529,11 +508,6 @@ def current_moment_monitor_from_grid(
                 "or above and end at least one node inside the array (the curl "
                 "reads one H sample back). Shrink the slab or the margin.")
 
-    # The block side is a whole number of cells, and the in-plane mesh has to
-    # be uniform for one number to describe it: the block map is an index
-    # rule, so a graded x or y axis would make blocks of different physical
-    # size carry one declared side, and a dx != dy mesh would make them
-    # rectangles reported as a square.
     cx = np.asarray(cells[0][i0:i1 + 1], dtype=np.float64)
     cy = np.asarray(cells[1][j0:j1 + 1], dtype=np.float64)
     in_plane = np.concatenate([cx, cy])
@@ -557,9 +531,6 @@ def current_moment_monitor_from_grid(
         pads=pads, **kwargs)
 
 
-# ---------------------------------------------------------------------------
-# The scan-body half
-# ---------------------------------------------------------------------------
 
 def current_moment_accum_dtype(field_dtype=jnp.float32):
     """Complex dtype for the accumulator, given the field dtype.
@@ -618,17 +589,14 @@ def slab_curl_h(state, monitor: CurrentMomentMonitor):
     iy = m.inv_dy_e[None, :, None]
     iz = m.inv_dz_e[None, None, :]
 
-    # ex(i+1/2, j, k): dHz/dy - dHy/dz
     curl_x = (
         s[0] * (hz[i0:i1, j0:j1, k0:k1 + 1] - hz[i0:i1, j0 - 1:j1 - 1, k0:k1 + 1]) * iy
         + s[1] * (hy[i0:i1, j0:j1, k0:k1 + 1] - hy[i0:i1, j0:j1, k0 - 1:k1]) * iz
     )
-    # ey(i, j+1/2, k): dHx/dz - dHz/dx
     curl_y = (
         s[2] * (hx[i0:i1, j0:j1, k0:k1 + 1] - hx[i0:i1, j0:j1, k0 - 1:k1]) * iz
         + s[3] * (hz[i0:i1, j0:j1, k0:k1 + 1] - hz[i0 - 1:i1 - 1, j0:j1, k0:k1 + 1]) * ix
     )
-    # ez(i, j, k+1/2): dHy/dx - dHx/dy
     curl_z = (
         s[4] * (hy[i0:i1, j0:j1, k0:k1] - hy[i0 - 1:i1 - 1, j0:j1, k0:k1]) * ix
         + s[5] * (hx[i0:i1, j0:j1, k0:k1] - hx[i0:i1, j0 - 1:j1 - 1, k0:k1]) * iy
@@ -650,7 +618,7 @@ def _reduce_to_blocks(monitor: CurrentMomentMonitor, jx, jy, jz):
         out.append(jax.ops.segment_sum(
             per_ij.reshape(-1, w.shape[0]), m.seg,
             num_segments=m.n_blocks, indices_are_sorted=False))
-    return jnp.stack(out, axis=1)          # (n_blocks, 3, n_w)
+    return jnp.stack(out, axis=1)
 
 
 def accumulate_current_moments(data, state, e_prev_slab,
@@ -686,16 +654,12 @@ def accumulate_current_moments(data, state, e_prev_slab,
                       time_shift=m.half_step-.5)
 
     val = moments[None, :, :, :] * phase[:, None, None, None]
-    # Kahan compensated summation, as in ``accumulate_ntff``.
     y = val - comp
     total = acc + y
     comp_new = (total - acc) - y
     return (total, comp_new)
 
 
-# ---------------------------------------------------------------------------
-# Reading the accumulator
-# ---------------------------------------------------------------------------
 
 def moments_to_PQT(accumulator, monitor: CurrentMomentMonitor):
     """Split the slots into ``(P, Q, T)``, shaped as the far field wants them.
@@ -715,7 +679,7 @@ def moments_to_PQT(accumulator, monitor: CurrentMomentMonitor):
     if order >= 2:
         T = np.zeros(a.shape[:-2] + (3, 3, 3), dtype=a.dtype)
         for s, (i, j) in enumerate(_T_PAIRS):
-            val = a[..., 4 + s]                 # (..., n_blocks, 3)
+            val = a[..., 4 + s]
             T[..., i, j, :] = val
             T[..., j, i, :] = val
     return P, Q, T
@@ -746,8 +710,6 @@ def moments_to_PQT_jax(accumulator, monitor: CurrentMomentMonitor):
 
 
 
-# The H-derived current's physical clock; E planes independently use n+1.
-# M2 history: formerly 1 (uniform) and 0 (NU), when both kinds shared a stamp.
 UNIFORM_PLANE_STAMP_STEPS = 0.5
 NONUNIFORM_PLANE_STAMP_STEPS = 0.5
 
@@ -830,8 +792,6 @@ def current_moment_far_field(result, theta, phi):
                               freqs=np.asarray(monitor.freqs,
                                                dtype=np.float64))
 
-    # With x64 enabled an outer jax.jit can trace the monitor frequencies;
-    # keep k a jnp scalar for both traced and concrete frequencies.
     freqs = jnp.asarray(monitor.freqs)
     P, Q, T = moments_to_PQT_jax(acc, monitor)
     th_out, ph_out = [], []
@@ -912,17 +872,6 @@ def monitor_for_simulation(sim, grid, periodic=None, *, overrides=None, conducto
     return monitor
 
 
-#: The largest k * |delta| the block expansion is trusted at: k at the highest
-#: monitored frequency, |delta| the largest distance from a block's centre to
-#: an edge in it (slab thickness included). On a board each block column holds
-#: a current and its return just below it, their total moments cancel, and
-#: what radiates is the first moment, so the dropped term is second order in
-#: k|delta| relative to it, not third. Pattern shape measured on the tutorial
-#: patch (2 mm cells; coarse blocks built from the one-cell moments of the same
-#: run, against the one-cell pattern) and on a current sheet over its opposite
-#: (against the direct sum): at most 0.19 dB at k|delta| <= 0.5, 0.4 dB at 0.8,
-#: 0.7 dB at 1.0 (tests/unit/farfield/test_current_moment_monitor.py carries
-#: the table).
 MAX_K_OFFSET = 0.5
 
 
@@ -947,13 +896,11 @@ def refuse_blocks_too_large(monitor, freqs) -> None:
 
 def _slab_interior(monitor, shape):
     """Per-component E-edge masks of the slab without its outermost layer."""
-    # The outermost layer stays excluded (verification F1): conformal/Kottke
-    # move conductor edges up to one sub-cell outward.
     m = monitor
     inner = []
     for c in range(3):
         mask = np.zeros(tuple(int(v) for v in shape), dtype=bool)
-        k_top = m.k_hi if c < 2 else m.k_hi - 1     # ez lives on half planes
+        k_top = m.k_hi if c < 2 else m.k_hi - 1
         mask[m.i_lo + 1:m.i_hi - 1, m.j_lo + 1:m.j_hi - 1, m.k_lo + 1:k_top] = True
         inner.append(mask)
     return inner
@@ -1060,10 +1007,6 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
                 "structure with add_port(), add_source() or "
                 "add_msl_port(mode='laplace') inside the slab.")
     for pe in list(getattr(sim, "_msl_ports", ()) or ()):
-        # The laplace and uniform launches add an E increment and a
-        # conductivity on the substrate-normal edges of the feed plane and
-        # write no H; both sit inside J = curl_h H - eps0 dE/dt. The
-        # eigenmode launch adds the M half of a J+M pair on H.
         if getattr(pe, "mode", "laplace") == "eigenmode":
             raise RfxUnsupported(
                 f"the current-moment monitor is not supported with the "
@@ -1080,8 +1023,6 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
         _warnings.simplefilter("ignore")
         from rfx.model.conductors import realized_conductors
         model = conductors
-        # The census is the declared sim, not topology/mixed caller arrays.
-        # Kernel-only products lack the sim's dispersive/Kerr assembly too.
         if (model is None or not model.assembly_from_sim
                 or any(is_tracer(v) for v in jax.tree.leaves(
                     (model.materials, model.assembly)))):
@@ -1249,8 +1190,6 @@ def _edge_ends_mm(grid, component, index):
     return lo, hi
 
 
-# Lanes whose scan body accumulates the monitor. Every other entry point has
-# to say so rather than return a result with the field quietly set to None.
 SUPPORTED_LANES = ("uniform run()/run_until_decay", "graded-mesh run()",
                    "uniform forward()", "graded-mesh forward()")
 
@@ -1270,7 +1209,7 @@ def require_accumulated_current_moments(sim, result, context: str) -> None:
     if getattr(sim, "_current_moments", None) is None:
         return
     if not hasattr(result, "current_moment_data"):
-        return  # e.g. the all-port S-parameter dict of forward()
+        return
     if result.current_moment_data is None:
         raise NotImplementedError(
             f"add_current_moment_monitor() was declared, but the lane that "
@@ -1338,7 +1277,7 @@ def block_far_field_jax(theta, phi, centres, P, Q, T, k, order, eta=ETA_0):
     th_hat = jnp.asarray(th_hat)
     ph_hat = jnp.asarray(ph_hat)
     centres = jnp.asarray(centres)
-    ph = jnp.exp(1j * k * jnp.matmul(r_hat, centres.T, precision=HIGHEST))  # (n_dir, n_blocks)
+    ph = jnp.exp(1j * k * jnp.matmul(r_hat, centres.T, precision=HIGHEST))
     N = jnp.matmul(ph, jnp.asarray(P), precision=HIGHEST)
     if order >= 1 and Q is not None:
         Qj = jnp.asarray(Q)

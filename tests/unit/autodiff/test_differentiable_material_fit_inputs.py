@@ -98,7 +98,10 @@ def _fixture(case, eps_inf, debye_poles, lorentz_poles):
 @pytest.mark.parametrize("declaration", ["static", "traced"])
 def test_unsupported_fixture_is_refused_before_assembly(
         monkeypatch, case, input_name, remedy, declaration):
-    """Exercise the public factory at static setup and at its traced rebuild."""
+    """Exercise the public factory at static setup and at its traced rebuild.
+    A missing refusal must fail at assembly entry before an unrelated setup error such as the zero-
+    ohm source.
+    """
     calls = []
 
     def factory(eps_inf, debye_poles, lorentz_poles):
@@ -116,8 +119,6 @@ def test_unsupported_fixture_is_refused_before_assembly(
     def unexpected_grid(*args, **kwargs):
         raise AssertionError("unsupported static fixture reached grid construction before refusal")
 
-    # Assert at assembly entry as well as the scan: a missing refusal must
-    # fail here, before an unrelated setup error (e.g. the zero-ohm source).
     monkeypatch.setattr(Simulation, "_assemble_materials", unexpected_assembly)
     monkeypatch.setattr("rfx.simulation.run", unexpected_assembly)
     match = re.escape(input_name) + r".*" + re.escape(remedy)
@@ -131,8 +132,8 @@ def test_unsupported_fixture_is_refused_before_assembly(
 @pytest.mark.parametrize("conductor", ["volume", "sheet", "pinned_sheet"])
 def test_port_on_pec_edge_is_refused_before_fdtd(monkeypatch, conductor):
     def factory(eps_inf, debye_poles, lorentz_poles):
+        """The point port's Ez edge starts at (2, 4, 2) mm."""
         sim = _fixture("supported", eps_inf, debye_poles, lorentz_poles)
-        # The point port's Ez edge starts at (2, 4, 2) mm.
         if conductor == "volume":
             sim.add(Box((.0, .002, .0), (.004, .006, .006)), material="pec")
         elif conductor == "sheet":
@@ -157,6 +158,7 @@ class _FDTDReached(RuntimeError):
 
 
 def _fit_to_scan(monkeypatch, factory):
+    """NotImplementedError is also a RuntimeError, so retaining the exception distinguishes refusal from reaching the scan."""
     def reached(grid, materials, *args, **kwargs):
         from rfx.model.materials import validate_components
         from rfx.simulation import resolve_periodic
@@ -165,8 +167,6 @@ def _fit_to_scan(monkeypatch, factory):
         raise _FDTDReached("material fit reached FDTD")
 
     monkeypatch.setattr("rfx.simulation.run", reached)
-    # NotImplementedError is also a RuntimeError: retain the exception so
-    # the test's own assertion distinguishes refusal from reaching the scan.
     with pytest.raises(RuntimeError) as caught:
         differentiable_material_fit(
             factory, np.zeros((1, 1, 3), complex), np.array([2e9, 3e9, 4e9]),
@@ -179,7 +179,8 @@ def _acceptance_fixture(eps_inf, debye_poles, lorentz_poles, *,
     sim = Simulation(freq_max=5e9, domain=(.012, .010, .008), dx=.002, **kwargs)
     sim.add_material("dut", eps_r=eps_inf, debye_poles=debye_poles,
                      lorentz_poles=lorentz_poles)
-    sim.add(Box((.008, .006, .004), (.010, .008, .006)), material="dut")
+    sim.add(Box((.008, .006, 0. if sim._mode.startswith("2d") else .004),
+                (.010, .008, .006)), material="dut")
     sim.add_port(position, "ez", waveform=GaussianPulse(f0=3e9, bandwidth=.5))
     sim.add_probe((.008, .006, .004), "ez")
     return sim
@@ -209,7 +210,10 @@ def test_ez_port_on_z_normal_pec_sheet_reaches_fdtd(monkeypatch):
 @pytest.mark.parametrize("x,refused", [(.0076, False), (.0036, True)],
                          ids=["rounded_clear", "rounded_pec"])
 def test_off_node_port_next_to_pec_block(monkeypatch, x, refused):
-    """2 mm cells; the PEC block spans x = 4–6 mm, with two CPML pad cells."""
+    """2 mm cells; the PEC block spans x = 4–6 mm, with two CPML pad cells.
+    The off-node port x coordinates 7.6 mm and 3.6 mm round to 8 mm and 4 mm rather than floor to 6
+    mm and 2 mm, respectively.
+    """
     def factory(eps_inf, debye_poles, lorentz_poles):
         sim = _acceptance_fixture(
             eps_inf, debye_poles, lorentz_poles, position=(x, .0044, .0024),
@@ -217,8 +221,6 @@ def test_off_node_port_next_to_pec_block(monkeypatch, x, refused):
         sim.add(Box((.004, .002, .002), (.006, .008, .006)), material="pec")
         return sim
 
-    # 7.6 mm rounds to x = 8 mm; 3.6 mm rounds to x = 4 mm.
-    # Flooring would instead select x = 6 mm and x = 2 mm, respectively.
     error = _fit_to_scan(monkeypatch, factory)
     if refused:
         assert isinstance(error, NotImplementedError), f"PEC port was accepted: {error}"

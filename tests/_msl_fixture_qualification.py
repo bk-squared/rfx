@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import numpy as np
 
-# Production S uses probe-0 wave amplitudes, not the launch positions.
-# These physical reference planes are checked against compiled port configs.
 REFERENCE_PLANES_M = (5e-3, 9e-3)
 
 
@@ -33,16 +31,14 @@ def quasi_static_line(freqs, *, width=600e-6, height=254e-6,
 
 
 def qualify_result(result):
-    """Return all failures and raw per-bin witnesses; never modify a result."""
+    """Return all failures and raw per-bin witnesses; never modify a result.
+    Include endpoint rounding by one float32 ULP to restore the intended 4.5 GHz bin to the checks."""
     freqs = np.asarray(result.freqs, dtype=float)
     projected = np.asarray(result.S)
     raw = projected if result.S_raw is None else np.asarray(result.S_raw)
     z0 = np.asarray(result.Z0)
     beta = np.asarray(result.beta)
     oracle_z0, oracle_beta, oracle_s21 = quasi_static_line(freqs)
-    # jnp.linspace(float32) represents the intended4.5 GHz bin as
-    # 4,500,000,256 Hz. Include endpoint rounding by one float32 ULP;
-    # this restores that bin to the checks, not a wider numerical gate.
     lower = float(np.nextafter(np.float32(3e9), np.float32(-np.inf)))
     upper = float(np.nextafter(np.float32(4.5e9), np.float32(np.inf)))
     band = (freqs >= lower) & (freqs <= upper)

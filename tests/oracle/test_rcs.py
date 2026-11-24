@@ -30,7 +30,6 @@ from rfx.measurement.rcs import compute_rcs
 from rfx.rcs import RCSResult
 
 
-# PEC conductivity: very high value to approximate perfect conductor
 PEC_SIGMA = 1e7
 
 
@@ -73,13 +72,14 @@ class TestRCSPECPlateNormalIncidence:
     """
 
     def test_rcs_pec_plate_normal_incidence(self):
-        f0 = 3e9  # 3 GHz, lambda = 0.1 m
+        """Accept within 10 dB for the coarse FDTD grid."""
+        PLATE_FREQUENCY_HZ = 3e9
+        f0 = PLATE_FREQUENCY_HZ
         lam = C0 / f0
         cpml = 8
 
-        # Domain: enough room for plate + TFSF + NTFF + CPML
-        domain_size = 0.12  # 12 cm per side
-        # Use coarser resolution for speed: lambda/10
+        PLATE_DOMAIN_SIDE_M = 0.12
+        domain_size = PLATE_DOMAIN_SIDE_M
         dx = lam / 10
 
         grid = Grid(
@@ -89,18 +89,19 @@ class TestRCSPECPlateNormalIncidence:
             cpml_layers=cpml,
         )
 
-        # PEC plate: 4cm x 4cm, 1 cell thick, centered
-        plate_size = 0.04  # 4 cm = 0.4 lambda
-        plate_thickness = dx  # 1 cell
+        PLATE_SIDE_M = 0.04
+        plate_size = PLATE_SIDE_M
+        plate_thickness = dx
         center = (domain_size / 2, domain_size / 2, domain_size / 2)
 
         materials = _make_pec_plate_materials(
             grid, plate_thickness, plate_size, center,
         )
 
-        # Enough steps for pulse to traverse domain twice (incident + scattered)
         n_steps = 400
         theta_obs = np.linspace(0.01, np.pi - 0.01, 37)
+        assert n_steps * grid.dt > 2 * domain_size / C0, (
+            'n_steps must allow the pulse to traverse the domain twice for incident and scattered propagation.')
         phi_obs = np.array([0.0])
 
         result = compute_rcs(
@@ -120,13 +121,11 @@ class TestRCSPECPlateNormalIncidence:
 
         assert isinstance(result, RCSResult)
 
-        # Analytical PEC plate RCS at normal incidence (physical optics):
-        # RCS = 4 * pi * A^2 / lambda^2
         A = plate_size ** 2
         rcs_analytical = 4.0 * np.pi * A ** 2 / lam ** 2
         rcs_analytical_dbsm = 10.0 * np.log10(rcs_analytical)
 
-        mono_rcs = result.monostatic_rcs[0]  # dBsm at f0
+        mono_rcs = result.monostatic_rcs[0]
 
         print("\nPEC plate RCS test:")
         print(f"  Plate area: {A*1e4:.1f} cm^2")
@@ -137,16 +136,11 @@ class TestRCSPECPlateNormalIncidence:
         print(f"  Computed monostatic RCS: {mono_rcs:.1f} dBsm")
         print(f"  Difference: {abs(mono_rcs - rcs_analytical_dbsm):.1f} dB")
 
-        # Accept within 10 dB for coarse FDTD grid.
-        # At plate_size/lambda ~ 0.4, the PO approximation itself deviates
-        # significantly from the exact solution, and lambda/10 FDTD adds
-        # further discretization and staircasing error.
         assert abs(mono_rcs - rcs_analytical_dbsm) < 10.0, (
             f"Monostatic RCS {mono_rcs:.1f} dBsm too far from "
             f"analytical {rcs_analytical_dbsm:.1f} dBsm (>10 dB)"
         )
 
-        # Also verify the RCS is physically reasonable (not absurdly wrong)
         assert mono_rcs > -50.0, f"RCS {mono_rcs:.1f} dBsm unreasonably low"
         assert mono_rcs < 10.0, f"RCS {mono_rcs:.1f} dBsm unreasonably high"
 
@@ -171,12 +165,13 @@ class TestRCSPECSphere:
     """
 
     def test_rcs_pec_sphere_mie(self):
+        """Accept within 15 dB for the resonance region, coarse grid and staircasing of the sphere on the Cartesian grid."""
         f0 = 3e9
         lam = C0 / f0
         cpml = 8
 
-        # Sphere radius: ~1.5 cm -> ka ~ 0.94 (resonance region)
-        radius = 0.015
+        SPHERE_RADIUS_M = 0.015
+        radius = SPHERE_RADIUS_M
         ka = 2 * np.pi * radius / lam
 
         domain_size = 0.10
@@ -211,7 +206,6 @@ class TestRCSPECSphere:
             cpml_layers=cpml,
         )
 
-        # Geometrical optics: RCS = pi * a^2
         rcs_go = np.pi * radius ** 2
         rcs_go_dbsm = 10.0 * np.log10(rcs_go)
 
@@ -223,15 +217,11 @@ class TestRCSPECSphere:
         print(f"  Computed monostatic RCS: {mono_rcs:.1f} dBsm")
         print(f"  Difference: {abs(mono_rcs - rcs_go_dbsm):.1f} dB")
 
-        # At ka ~ 1, the actual Mie RCS oscillates around the GO limit.
-        # Accept within 15 dB (generous for resonance region + coarse grid +
-        # staircasing of sphere on Cartesian grid).
         assert abs(mono_rcs - rcs_go_dbsm) < 15.0, (
             f"Sphere monostatic RCS {mono_rcs:.1f} dBsm too far from "
             f"GO limit {rcs_go_dbsm:.1f} dBsm (>15 dB)"
         )
 
-        # Basic sanity: RCS should be finite and not extremely wrong
         assert np.isfinite(mono_rcs), "Monostatic RCS should be finite"
         assert mono_rcs > -60.0, "Monostatic RCS suspiciously low"
 
@@ -253,7 +243,6 @@ class TestRCSResultStructure:
             cpml_layers=cpml,
         )
 
-        # Small PEC box as scatterer
         center = (domain_size / 2, domain_size / 2, domain_size / 2)
         box_size = 0.01
         materials = _make_pec_plate_materials(
@@ -267,10 +256,11 @@ class TestRCSResultStructure:
         test_theta = np.linspace(0.1, np.pi - 0.1, n_theta)
         test_phi = np.array([0.0, np.pi / 2])
 
+        STRUCTURE_CHECK_STEPS = 200
         result = compute_rcs(
             grid,
             materials,
-            200,  # fewer steps for speed
+            STRUCTURE_CHECK_STEPS,
             f0=f0,
             bandwidth=0.5,
             theta_obs=test_theta,
@@ -280,7 +270,6 @@ class TestRCSResultStructure:
             cpml_layers=cpml,
         )
 
-        # Check types
         assert isinstance(result, RCSResult)
         assert isinstance(result.freqs, np.ndarray)
         assert isinstance(result.theta, np.ndarray)
@@ -288,7 +277,6 @@ class TestRCSResultStructure:
         assert isinstance(result.rcs_dbsm, np.ndarray)
         assert isinstance(result.rcs_linear, np.ndarray)
 
-        # Check shapes
         assert result.freqs.shape == (n_freqs,), \
             f"freqs shape: {result.freqs.shape} != ({n_freqs},)"
         assert result.theta.shape == (n_theta,), \
@@ -300,23 +288,19 @@ class TestRCSResultStructure:
         assert result.rcs_linear.shape == (n_freqs, n_theta, n_phi), \
             f"rcs_linear shape: {result.rcs_linear.shape} != ({n_freqs}, {n_theta}, {n_phi})"
 
-        # Check monostatic_rcs
         assert result.monostatic_rcs is not None
         assert result.monostatic_rcs.shape == (n_freqs,), \
             f"monostatic shape: {result.monostatic_rcs.shape} != ({n_freqs},)"
 
-        # Check unit consistency: dBsm = 10 * log10(rcs_linear)
         expected_dbsm = 10.0 * np.log10(np.maximum(result.rcs_linear, 1e-30))
         np.testing.assert_allclose(
             result.rcs_dbsm, expected_dbsm, atol=1e-6,
             err_msg="dBsm != 10*log10(rcs_linear)"
         )
 
-        # Check rcs_linear is non-negative
         assert np.all(result.rcs_linear >= 0), \
             "RCS linear values should be non-negative"
 
-        # Check all values are finite
         assert np.all(np.isfinite(result.rcs_dbsm)), \
             "All rcs_dbsm values should be finite"
         assert np.all(np.isfinite(result.rcs_linear)), \
@@ -324,7 +308,6 @@ class TestRCSResultStructure:
         assert np.all(np.isfinite(result.monostatic_rcs)), \
             "All monostatic_rcs values should be finite"
 
-        # Check frequency values match input
         np.testing.assert_allclose(result.freqs, test_freqs, rtol=1e-10)
 
         print("\nRCSResult structure test passed:")
@@ -345,7 +328,6 @@ def test_compute_rcs_oblique_fence_kept_for_unsupported():
 
     grid = Grid(freq_max=10e9, domain=(0.06, 0.06, 0.06), dx=0.003, cpml_layers=6)
     materials = init_materials(grid.shape)
-    # oblique + ey polarization is NOT supported -> must raise
     with pytest.raises(NotImplementedError, match="ez"):
         compute_rcs(grid, materials, n_steps=10, f0=5e9, bandwidth=0.5,
                     theta_inc=30.0, polarization="ey",

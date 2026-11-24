@@ -109,11 +109,11 @@ def test_two_device_pole_override_is_judged_eagerly_and_refused_under_outer_jit(
     assert np.all(np.isfinite(eager))
 
     # An eager vmap carries concrete members: each is judged, so one unstable
-    # member refuses the batch with its stable step (#1934).
+    # member refuses the batch with its stable step.
     with pytest.raises(ValueError, match=r"Lorentz/Drude poles \(omega_0=.*unstable at this model's time step"):
         jax.vmap(forward)(jnp.stack([stable, unstable]))
 
-    # #1934: a jit-traced value cannot be judged on two devices, so it is
+    # A jit-traced value cannot be judged on two devices, so it is
     # refused by name whatever its value (it ran unjudged before).
     compiled = jax.jit(forward)
     for eps in (stable, unstable):
@@ -338,18 +338,33 @@ def test_lumped_rlc_pmc_face_is_refused(entry, mesh):
 @pytest.mark.parametrize("entry", ("run", "forward"))
 @pytest.mark.parametrize("overlap", ("domain_face", "conductor_edge"))
 def test_lumped_rlc_pec_overlap_is_refused(entry, overlap):
+    from rfx.errors import RfxRefusal
+
     sim = _build()
     point = (0., .006, .006)
     if overlap == "conductor_edge":
         sim.add(Box((.008, .004, .004), (.010, .008, .008)), material="pec")
         point = (.008, .004, .006)
     sim.add_lumped_rlc(point, "ez", R=50., L=1e-9, C=1e-12, topology="series")
-    with pytest.raises(NotImplementedError, match="on a PEC face or realized PEC edge"):
+    if overlap == "domain_face":
+        message = (
+            "lumped_rlc[0] at (0.0, 0.006, 0.006) (ez), grid index (0, 6, 6): "
+            "its own E edge is PEC, so the declared PEC wall face(s) x_lo short the "
+            "element and it would have no effect. Move it at least one cell inside "
+            "the domain, off the wall.")
+    else:
+        message = (
+            "lumped_rlc[0] at (0.008, 0.004, 0.006) (ez), grid index (8, 4, 6): "
+            "its own E edge is PEC, so the conductor shorts the element and it would "
+            "have no effect. Realized conductor provenance (assembly): geometry[0]. "
+            "Cut a gap in the conductor at the element, or move the element off it.")
+    with pytest.raises(RfxRefusal) as caught:
         kwargs = dict(n_steps=2, devices=_devices(), skip_preflight=True)
         if entry == "run":
             sim.run(**kwargs, compute_s_params=False)
         else:
             sim.forward(**kwargs, distributed=True, checkpoint=False)
+    assert str(caught.value) == message
 
 
 @pytest.mark.parametrize("entry", ENTRIES)
@@ -360,12 +375,57 @@ def test_subgrid_refinement_is_refused(entry):
     _assert_refused(sim, entry, "add_refinement()")
 
 
-@pytest.mark.parametrize("entry", ENTRIES)
-def test_msl_port_is_refused(entry):
-    """Before the refusal a trace fed by an MSL port read exactly 0 under the
-    trace on two devices (22.3 on one) - review of #1239."""
-    sim = _build(entry=entry, msl=True)
-    _assert_refused(sim, entry, "add_msl_port()")
+@pytest.mark.parametrize("lane", ("uniform", "graded"))
+@pytest.mark.parametrize("entry", ("run_eigenmode", "forward_eigenmode"))
+def test_msl_named_refusals(lane, entry):
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+
+    sim = build_scene("T1" + ("_graded" if lane == "graded" else ""),
+                      mode="eigenmode").sim
+    reason = "magnetic-source channel"
+    with pytest.raises(NotImplementedError, match=reason) as error:
+        kwargs = dict(n_steps=2, devices=_devices(), skip_preflight=True)
+        if entry == "run_eigenmode":
+            sim.run(**kwargs, compute_s_params=False)
+        else:
+            sim.forward(**kwargs, distributed=True, checkpoint=False)
+    assert "add_msl_port()" in str(error.value)
+    if entry == "run_eigenmode":
+        assert "eigenmode" in str(error.value)
+
+
+def test_msl_s_scan_refused():
+    from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+
+    sim = build_scene("T1").sim
+    sim.add_port((.008, .004, .0004), "ez", impedance=50.)
+    with pytest.raises(NotImplementedError, match="isolated port drives"):
+        compute_lumped_wire_s_matrix_via_scan(
+            sim, [10e9], n_steps=2, devices=_devices(), skip_preflight=True)
+
+
+def test_msl_passive_port_s_scan_refused():
+    from dataclasses import replace
+
+    from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+
+    sim = build_scene("T1").sim
+    sim._msl_ports = [replace(port, excite=False) for port in sim._msl_ports]
+    sim.add_port((.008, .004, .0004), "ez", impedance=50.)
+    with pytest.raises(NotImplementedError, match="does not measure microstrip ports"):
+        compute_lumped_wire_s_matrix_via_scan(
+            sim, [10e9], n_steps=2, devices=_devices(), skip_preflight=True)
+
+
+def test_msl_graded_pmc_refused():
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+
+    sim = build_scene("T1_graded").sim
+    sim._boundary_spec = BoundarySpec(x=Boundary(lo="pmc", hi="cpml"), y="cpml", z="cpml")
+    with pytest.raises(NotImplementedError, match="Graded multi-device ports require the wrapped step"):
+        sim.run(n_steps=2, devices=_devices(), compute_s_params=False, skip_preflight=True)
 
 
 # How the multi-device lane treats every Simulation attribute is the
@@ -469,7 +529,7 @@ def test_face_record_refused_before_split(monkeypatch):
     sim = Simulation(freq_max=15e9, domain=(.024, .018, .016), dx=.001, cpml_layers=4)
     sim.add_tfsf_source(f0=7.5e9, closed_box=True)
     grid = sim._build_grid()
-    cfg, line = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=4)
+    cfg, line = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=4, dtype='float32')
     cfg = replace(cfg, face_record=(np.zeros((4, 1)), np.zeros((4, 1))))
     monkeypatch.setattr("rfx.sources.tfsf.tfsf_from_declaration", lambda *a, **k: (cfg, line))
     monkeypatch.setattr(slab_tfsf, "split_tables", lambda *a: pytest.fail("split a replay"))
@@ -501,6 +561,10 @@ def test_graded_passive_port_is_carried(entry):
     one = evaluate(sim, entry, 32)
     multi = evaluate(sim, entry, 32, devices)
     assert len(multi.sparam_time_records) == 2
+    if entry == 'forward':
+        witness = multi.settling_witness
+        assert any(row.get('reader_frame') == 'whole-port'
+                   for row in witness.get('runs', (witness,))), witness
     for a, b in zip(one.sparam_time_records, multi.sparam_time_records):
         np.testing.assert_array_equal(a.samples, b.samples)
 
@@ -581,7 +645,7 @@ def test_realized_oblique_closed_box_refused(angles):
     from rfx.runners._admission import refuse_slab_tfsf
     from rfx.sources.tfsf import tfsf_from_declaration
     sim = _closed_box_scene(polarization="s", **angles)
-    cfg, _ = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=4)
+    cfg, _ = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=4, dtype='float32')
     with pytest.raises(NotImplementedError, match="oblique closed-box TFSF"):
         refuse_slab_tfsf(cfg)
 
@@ -643,3 +707,75 @@ def test_subgrid_refuses_relative_strength_by_name(validation):
     sim.add(Box((.008, .003, .003), (.016, .009, .009)), material="relative")
     with pytest.raises(NotImplementedError, match="run_subgridded.*RelativeStrength"):
         sim.run(n_steps=1, skip_preflight=True)
+
+
+@pytest.mark.parametrize('lane', ['uniform', 'graded'])
+def test_msl_forward_is_carried(lane):
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+    sim = build_scene('T1A' + ('_graded' if lane == 'graded' else ''), excite_all=True).sim
+    sim.add_probe((.006, .004, .0004), 'ez')
+    expected = sim.forward(n_steps=2).time_series
+    actual = sim.forward(n_steps=2, distributed=True, devices=_devices()).time_series
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize('name', [
+    'eps_override', 'sigma_override', 'pec_mask_override', 'pec_occupancy_override',
+    'design_box', 'checkpoint_every', 'grad', 'jvp', 'vmap',
+])
+def test_msl_uniform_forward_design_refusals(name):
+    import jax.numpy as jnp
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+    sim = build_scene('T1A', excite_all=True).sim
+    grid = sim._build_realized_grid()
+    eps = jnp.ones(grid.shape, jnp.float32)
+    def solve(eps):
+        return jnp.sum(sim.forward(eps_override=eps, n_steps=2,
+                                  distributed=True, devices=_devices()).time_series)
+    with pytest.raises(NotImplementedError, match='eps_override|sigma_override|pec_mask_override|pec_occupancy_override|design_box|checkpoint_every'):
+        if name == 'grad':
+            jax.grad(solve)(eps)
+        elif name == 'jvp':
+            jax.jvp(solve, (eps,), (eps,))
+        elif name == 'vmap':
+            jax.vmap(solve)(eps[None])
+        else:
+            value = ((.004, .003, 0.), (.005, .004, .0006)) if name == 'design_box' else 2 if name == 'checkpoint_every' else eps
+            sim.forward(n_steps=2, distributed=True, devices=_devices(), **{name: value})
+
+
+@pytest.mark.parametrize('lane', ['uniform', 'graded'])
+def test_msl_forward_ringdown_refused(lane):
+    from rfx.ringdown import RingdownSpec
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+    sim = build_scene('T1A' + ('_graded' if lane == 'graded' else ''), excite_all=True).sim
+    with pytest.raises(NotImplementedError, match='ringdown=.*distributed=True'):
+        sim.forward(n_steps=2, distributed=True, devices=_devices(), ringdown=RingdownSpec())
+
+
+def test_msl_graded_design_box_refused():
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+    sim = build_scene('T1A_graded', excite_all=True).sim
+    with pytest.raises(NotImplementedError, match='design_box'):
+        sim.forward(n_steps=2, distributed=True, devices=_devices(),
+                    design_box=((.004, .003, 0.), (.005, .004, .0006)))
+
+
+@pytest.mark.parametrize('lane', ['uniform', 'graded'])
+@pytest.mark.parametrize('name', ['checkpoint_every', 'checkpoint_segments'])
+def test_msl_calculator_devices_checkpoint_refused(lane, name):
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+    sim = build_scene('T1A' + ('_graded' if lane == 'graded' else ''), excite_all=True).sim
+    with pytest.raises(NotImplementedError, match=name + '.*devices.*forward checkpoints'):
+        sim.compute_msl_s_matrix(devices=_devices(), **{name: 2})
+
+
+def test_msl_graded_kottke_occupancy_refused():
+    import jax.numpy as jnp
+    from tests.unit.runners._msl_multidevice_scene import build_scene
+    sim = build_scene('T1_graded').sim
+    sim._pec_occupancy_model = 'kottke'
+    occupancy = jnp.full(sim._build_realized_grid().shape, .5)
+    with pytest.raises(NotImplementedError, match="kottke.*pec_occupancy_override"):
+        sim.forward(n_steps=2, distributed=True, devices=_devices(),
+                    pec_occupancy_override=occupancy)

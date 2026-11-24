@@ -6,6 +6,7 @@ coefficient. Its Debye beta was unpacked rows-first, so the pole sum ran along x
 permittivity, so one device with and without it is the same model. Bars: the accumulated rounding law on every
 E cell (1.2e-7 x the running sum of max|E|), the probe spectra within 1e-6 of their largest bin, the gradient
 within 1e-4.
+The first four probe channels are the two E and two H probes.
 """
 import jax
 import jax.numpy as jnp
@@ -18,7 +19,7 @@ from tests.unit.runners.test_distributed_nu_wrapped_step import pole_scene
 pytestmark = pytest.mark.distributed
 
 N_STEPS = 400
-N_NAMED = 4  # pole_scene's two E and two H probes come first
+N_NAMED = 4
 
 
 def _all_e_cells(sim):
@@ -56,6 +57,7 @@ def _drawn_eps(sim):
     return jnp.asarray(sim._assemble_materials_nu(sim._build_nonuniform_grid())[0].eps_r)
 
 
+@pytest.mark.slow
 def test_mixed_pole_override_fields_match_one_device():
     sim = _scene(cells=True)
     eps, dt = _drawn_eps(sim), float(sim._build_nonuniform_grid().dt)

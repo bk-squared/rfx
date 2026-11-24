@@ -23,37 +23,36 @@ class Fill(NamedTuple):
 
 
 FILL = {
-    'cpml_psi': Fill(0., 0.),  # No auxiliary field outside physical rows.
-    'cpml_zero': Fill(0., 0.),  # Exterior sigma, alpha and c are zero.
-    'cpml_one': Fill(1., 1.),  # Exterior b and kappa retain the identity profile.
-    'debye_ca': Fill(1., 1.),  # Vacuum E decay, from init_debye.
-    'debye_cb': Fill('dt/eps0', 'dt/eps0'),  # Vacuum curl coupling at the caller's dt.
-    'debye_cc': Fill('1/eps0', '1/eps0'),  # Vacuum polarization coupling, with initializer rounding.
-    'debye_alpha': Fill(0., 0.),  # No pole reaches an exterior cell.
-    'debye_beta': Fill(0., 0.),  # No exterior E-to-polarization coupling.
-    'debye_state': Fill(0., 0.),  # Initial/exterior Debye polarization is zero.
-    'lorentz_ca': Fill(1., 1.),  # Vacuum E decay, from init_lorentz.
-    'lorentz_cb': Fill('dt/eps0', 'dt/eps0'),  # Vacuum curl coupling at the caller's dt.
-    # 1/cc must stay finite in mixed ADE backward; zero caused NaN eps gradients.
+    'cpml_psi': Fill(0., 0.),
+    'cpml_zero': Fill(0., 0.),
+    'cpml_one': Fill(1., 1.),
+    'debye_ca': Fill(1., 1.),
+    'debye_cb': Fill('dt/eps0', 'dt/eps0'),
+    'debye_cc': Fill('1/eps0', '1/eps0'),
+    'debye_alpha': Fill(0., 0.),
+    'debye_beta': Fill(0., 0.),
+    'debye_state': Fill(0., 0.),
+    'lorentz_ca': Fill(1., 1.),
+    'lorentz_cb': Fill('dt/eps0', 'dt/eps0'),
     'lorentz_cc': Fill('1/eps0', '1/eps0'),
-    'lorentz_damping': Fill(1., 1.),  # Cancel the incoming exterior increment.
-    'lorentz_restoring': Fill(1., 1.),  # Cancel the exterior polarization.
-    'lorentz_c': Fill(0., 0.),  # No exterior E-to-polarization coupling.
-    'lorentz_state': Fill(0., 0.),  # Initial/exterior Lorentz polarization and increment are zero.
-    'pole_mask': Fill(False, False),  # No Debye/Lorentz pole outside the real cells.
-    'eps_r': Fill(1., 1.),  # Vacuum permittivity; avoid division by zero in Yee updates.
-    'mu_r': Fill(1., 1.),  # Vacuum permeability; magnetic face means keep their own low-face view.
-    'sigma': Fill(0., 0.),  # No conductive material outside the real cells.
-    'lumped': Fill(0., 0.),  # No component-owned lumped stamp outside the model.
-    'edge_keep': Fill(1., 1.),  # Published occupancy is neutral outside owned rows.
-    'state': Fill(0., 0.),  # Initial field/state split has zero exterior fields.
-    'pec_edge': Fill(True, False),  # Alignment is metal; True physical ghosts short x faces.
-    'pec_cell': Fill(True, False),  # Legacy incident-cell PEC rule uses the same ghost-False convention.
-    'pec_occupancy': Fill(0., 0.),  # No soft conductor outside the domain.
-    'inv_dx': Fill(0., 1.),  # Inert alignment; historical E inverse-spacing physical ghost is 1.
-    'pmc_h_factor': Fill(0., 0.),  # Inert exterior/alignment H rows; preserve the real PMC high ghost zero.
-    'inv_dx_h': Fill(0., 0.),  # Inert alignment and H ghosts; retain the real high-boundary H zero.
-    'width': Fill('edge', 'edge'),  # Primal lengths replicate endpoints, retaining true seam neighbours.
+    'lorentz_damping': Fill(1., 1.),
+    'lorentz_restoring': Fill(1., 1.),
+    'lorentz_c': Fill(0., 0.),
+    'lorentz_state': Fill(0., 0.),
+    'pole_mask': Fill(False, False),
+    'eps_r': Fill(1., 1.),
+    'mu_r': Fill(1., 1.),
+    'sigma': Fill(0., 0.),
+    'lumped': Fill(0., 0.),
+    'edge_keep': Fill(1., 1.),
+    'state': Fill(0., 0.),
+    'pec_edge': Fill(True, False),
+    'pec_cell': Fill(True, False),
+    'pec_occupancy': Fill(0., 0.),
+    'inv_dx': Fill(0., 1.),
+    'pmc_h_factor': Fill(0., 0.),
+    'inv_dx_h': Fill(0., 0.),
+    'width': Fill('edge', 'edge'),
 }
 
 
@@ -165,9 +164,6 @@ def forward_sharding(arr):
 
 def place(array, sharding):
     """Place a logical array, allowing batching to insert unpartitioned axes."""
-    # Let jit transform the logical sharding with the value. In vmap(jvp),
-    # only the tangent may be batched; inspecting the primal misses that axis
-    # and device_put applies the slab spec to the tangent's batch dimension.
     pending, seen = [array], set()
     while pending:
         value = pending.pop()
@@ -177,7 +173,6 @@ def place(array, sharding):
         if getattr(value, 'batch_dim', None) is not None:
             return _placement_map(sharding)(array)
         pending.extend(getattr(value, attr, None) for attr in ('primal', 'tangent'))
-    # Unbatched device_put returns gradients on the design's original placement.
     return jax.device_put(array, sharding)
 
 
@@ -207,6 +202,28 @@ def is_sharded(arr, layout, mesh):
     return True
 
 
+def is_forward_sharded_override(arr, sharded_grid, mesh):
+    """Validate an override's global layout without fetching any device data.
+
+    Any other placement (replicated, or split along y/z or another mesh axis)
+    is a local whole-domain array.
+    """
+    sharding = forward_sharding(arr)
+    if sharding is None:
+        return False
+    spec = tuple(sharding.spec) + (None,) * (3 - len(sharding.spec))
+    if spec != ("x", None, None):
+        return False
+    expected = (sharded_grid.nx_padded, sharded_grid.ny, sharded_grid.nz)
+    if (arr.shape != expected
+            or sharding.mesh.devices.shape != mesh.devices.shape
+            or not np.array_equal(sharding.mesh.devices, mesh.devices)):
+        raise ValueError(
+            f"sharded forward override must have shape {expected}, P('x'), "
+            "and the same ordered devices as forward(devices=...).")
+    return True
+
+
 def _halo(arr, layout, mesh, fill):
     """Keep the existing ppermute transpose: ghosts return cotangents to owners."""
     if layout.ghost_width != 1:
@@ -230,7 +247,6 @@ def _halo_map(layout, mesh, fill):
             return jnp.where(real.reshape(shape), slab, jnp.asarray(fill.physical, local.dtype))
         padded = (indices >= layout.nx) & (indices < layout.nx_padded)
         if fill.physical == 'edge':
-            # Widths are geometry, but retain a differentiable endpoint policy.
             low = lax.all_gather(local[0], 'x')[0]
             owner = (layout.nx - 1) // layout.nx_per_rank
             high = lax.all_gather(local[(layout.nx - 1) % layout.nx_per_rank], 'x')[owner]
@@ -318,7 +334,6 @@ def cut(array, layout, kind, *, mesh=None, dt=None, host=False, uniform=False):
             return _slice(array, layout, (index[0].start or 0) // layout.nx_local, fill, np)
         return jax.make_array_from_callback(shape, sharding or NamedSharding(mesh, P('x')),
                                            slab)
-    # Match the historical local AD program: align first, then slice and stack.
     arr = array[:layout.nx] if array.shape[0] != layout.nx else array
     arr = _pad(arr, 0, layout.pad_x, fill.alignment, jnp)
     aligned = Slab(layout.nx_padded, layout.n_devices, layout.ghost_width)
@@ -408,7 +423,6 @@ def pole_fill(kind, dt=None, n_poles=1):
         family, field = kind.split('_', 1)
         if dt is None and field == 'cb':
             raise ValueError(f'{kind} requires dt for its vacuum fill')
-        # Keep the initializer's rounding (including its configured precision).
         value = _vacuum_dispersion_values(family, n_poles, (0. if dt is None else float(dt)))[field]
         return Fill(value, value)
     return fill

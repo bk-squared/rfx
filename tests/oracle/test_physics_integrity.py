@@ -2,6 +2,7 @@
 
 NOT accuracy tests (frequency matching). These verify the FDTD engine
 correctly implements Maxwell's equations at the discrete level.
+Counting the high-z Ez ghost before PEC projection would create a spurious initial energy loss.
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -16,9 +17,6 @@ from rfx.stepping.yee import update_h, update_e
 from rfx.boundaries.pec import apply_pec
 
 
-# =====================================================================
-# 1A. Maxwell residual: curl(E) + dB/dt ≈ 0
-# =====================================================================
 
 def test_maxwell_residual_vacuum():
     """Faraday's law residual should be at machine precision in vacuum.
@@ -26,36 +24,28 @@ def test_maxwell_residual_vacuum():
     After one H-update: H^{n+1/2} = H^n - (dt/mu)*curl(E^n)
     Rearranging: curl(E^n) + mu*(H^{n+1/2} - H^n)/dt = 0
     The residual should be ~1e-7 (float32 precision).
+    The residual excludes boundary cells because edge effects do not obey the interior stencil.
     """
     grid = Grid(freq_max=5e9, domain=(0.05, 0.04, 0.03), dx=0.001, cpml_layers=0)
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
 
-    # Inject a non-trivial field pattern
     ez_init = jnp.sin(jnp.linspace(0, 3.14, grid.nx))[:, None, None] * \
               jnp.sin(jnp.linspace(0, 3.14, grid.ny))[None, :, None] * \
               jnp.ones((1, 1, grid.nz)) * 1.0
     state = state._replace(ez=ez_init.astype(jnp.float32))
 
-    # Store H before update
     hx_before = state.hx.copy()  # noqa: F841
 
-    # One H update
     state_after = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
 
-    # Compute curl(E) numerically (forward differences, matching Yee)
     dx = grid.dx
-    # curl_x = dEz/dy - dEy/dz
     dez_dy = (state.ez[:, 1:, :] - state.ez[:, :-1, :]) / dx
-    # Pad to match shape
     dez_dy = jnp.pad(dez_dy, ((0, 0), (0, 1), (0, 0)))
 
-    # Faraday residual for Hx: dHx/dt = -(1/mu) * curl_x(E)
-    # → mu * (Hx_after - Hx_before) / dt + curl_x(E) = 0
     dhx_dt = (state_after.hx - hx_before) / grid.dt
     residual_hx = MU_0 * dhx_dt + dez_dy
 
-    # Interior only (boundary cells have edge effects)
     interior = residual_hx[2:-2, 2:-2, 2:-2]
     max_residual = float(jnp.max(jnp.abs(interior)))
     mean_residual = float(jnp.mean(jnp.abs(interior)))
@@ -64,42 +54,32 @@ def test_maxwell_residual_vacuum():
     print(f"  Max:  {max_residual:.2e}")
     print(f"  Mean: {mean_residual:.2e}")
 
-    # Float32 precision: residual should be < 1e-5 relative to field magnitude
     field_scale = float(jnp.max(jnp.abs(ez_init)))
     rel_residual = max_residual / (field_scale / dx * MU_0 / grid.dt + 1e-30)
     print(f"  Relative: {rel_residual:.2e}")
     assert rel_residual < 1e-4, f"Maxwell residual too large: {rel_residual:.2e}"
 
 
-# =====================================================================
-# 1B. Energy conservation in PEC cavity (lossless)
-# =====================================================================
 
 def test_energy_conservation_pec_cavity():
     """Total EM energy must be constant in lossless PEC cavity.
 
     E_total = (1/2) * ε₀ * ∫|E|²dV + (1/2) * μ₀ * ∫|H|²dV
+    The 5% drift bar permits float32 PEC dissipation of non-eigenmode components over 500 steps.
     """
     grid = Grid(freq_max=5e9, domain=(0.05, 0.04, 0.03), dx=0.001, cpml_layers=0)
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
 
-    # Initialize with the analytical TM110 eigenmode for clean energy test.
-    # Pure eigenmode avoids exciting spurious modes that cause apparent drift.
-    # Ez = E0 * sin(pi*x/a) * sin(pi*y/b), uniform in z
     a, b = 0.05, 0.04
-    E0 = 1e6  # large amplitude for energy well above float32 noise
+    INITIAL_E_AMPLITUDE = 1e6
+    E0 = INITIAL_E_AMPLITUDE
     x = jnp.arange(grid.nx) * grid.dx
     y = jnp.arange(grid.ny) * grid.dx
     X, Y = jnp.meshgrid(x, y, indexing="ij")
     ez_mode = E0 * jnp.sin(jnp.pi * X / a) * jnp.sin(jnp.pi * Y / b)
     ez_init = ez_mode[:, :, None] * jnp.ones((1, 1, grid.nz))
     state = state._replace(ez=ez_init.astype(jnp.float32))
-    # Project the analytical field onto the same discrete PEC state used by
-    # the time stepper before measuring the baseline.  The Yee layout keeps an
-    # Ez ghost layer at the +z wall; counting that ghost-layer energy in the
-    # initial value and then zeroing it on the first step creates a spurious
-    # one-time loss that is not physical cavity drift.
     state = apply_pec(state)
 
     dV = grid.dx ** 3
@@ -111,7 +91,6 @@ def test_energy_conservation_pec_cavity():
 
     E_initial = total_energy(state)
 
-    # Run 500 steps
     energies = [E_initial]
     for _ in range(500):
         state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
@@ -127,23 +106,19 @@ def test_energy_conservation_pec_cavity():
     print(f"  Final:   {E_final:.6e}")
     print(f"  Drift:   {drift:.2e}")
 
-    # Leapfrog Yee conserves the DISCRETE Hamiltonian exactly in exact
-    # arithmetic. In float32 with PEC boundaries, the discrete PEC
-    # correction (zeroing tangential E) is slightly dissipative for
-    # non-eigenmode components. Drift < 5% over 500 steps is acceptable.
     assert drift < 0.05, f"Energy drift {drift:.2e} exceeds 5% tolerance"
 
 
-# =====================================================================
-# 1B'. Energy decay in lossy medium matches Poynting theorem
-# =====================================================================
 
 def test_energy_decay_lossy():
     """Energy decay rate should match σ∫|E|²dV (Poynting theorem).
 
     dW/dt = -σ ∫|E|²dV (ohmic loss)
+    The decreasing-trend bound allows float32 jitter in a dissipative medium.
     """
-    sigma_val = 0.1  # S/m
+    CONDUCTIVITY_S_PER_M = 0.1
+    SIGNIFICANT_INCREASE_FRACTION = 1e-6
+    sigma_val = CONDUCTIVITY_S_PER_M
     grid = Grid(freq_max=5e9, domain=(0.04, 0.04, 0.04), dx=0.002, cpml_layers=0)
     state = init_state(grid.shape)
     eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
@@ -151,7 +126,6 @@ def test_energy_decay_lossy():
     mu_r = jnp.ones(grid.shape, dtype=jnp.float32)
     materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
 
-    # Inject energy in a block (not single cell) for measurable energy
     cx, cy, cz = grid.nx // 2, grid.ny // 2, grid.nz // 2
     r = 3
     state = state._replace(
@@ -164,7 +138,6 @@ def test_energy_decay_lossy():
         return float(0.5 * EPS_0 * jnp.sum(st.ex**2 + st.ey**2 + st.ez**2) * dV +
                       0.5 * MU_0 * jnp.sum(st.hx**2 + st.hy**2 + st.hz**2) * dV)
 
-    # Run and track energy
     energies = []
     for step in range(200):
         state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
@@ -172,12 +145,11 @@ def test_energy_decay_lossy():
         state = apply_pec(state)
         energies.append(total_energy(state))
 
-    # Energy should monotonically decrease (lossy medium dissipates)
     energies = np.array(energies)
     non_zero = energies > 1e-30
     if np.sum(non_zero) > 10:
         diffs = np.diff(energies[non_zero])
-        increasing = np.sum(diffs > 1e-6 * np.max(energies))  # significant increases only
+        increasing = np.sum(diffs > SIGNIFICANT_INCREASE_FRACTION * np.max(energies))
         total_points = len(diffs)
         frac_increasing = increasing / max(total_points, 1)
         print("\nLossy energy decay:")
@@ -185,17 +157,16 @@ def test_energy_decay_lossy():
         print(f"  Final:   {energies[-1]:.6e}")
         print(f"  Ratio:   {energies[-1] / (energies[0] + 1e-30):.4f}")
         print(f"  Significant increases: {increasing}/{total_points} ({frac_increasing:.1%})")
-        # Overall trend must be decreasing; allow float32 jitter
         assert frac_increasing < 0.3, f"Energy increased in {frac_increasing:.0%} of steps"
         assert energies[-1] < energies[0] * 0.99, "Lossy medium should dissipate energy"
 
 
-# =====================================================================
-# 1C. Field pattern matches analytical mode shape
-# =====================================================================
 
+@pytest.mark.slow_physics
 def test_field_pattern_tm110():
-    """Ez pattern in PEC cavity should match sin(πx/a)*sin(πy/b)."""
+    """Ez pattern in PEC cavity should match sin(πx/a)*sin(πy/b).
+    A cavity eigenmode's overall sign is arbitrary.
+    """
     a, b, d = 0.05, 0.04, 0.03
     grid = Grid(freq_max=5e9, domain=(a, b, d), dx=0.001, cpml_layers=0)
     state = init_state(grid.shape)
@@ -207,7 +178,6 @@ def test_field_pattern_tm110():
     si, sj = grid.nx // 3, grid.ny // 3
     sk = grid.nz // 2
 
-    # Run until mode establishes (100 periods)
     n_steps = grid.num_timesteps(num_periods=100)
     for n in range(n_steps):
         state = update_h(state, materials, grid.dt, grid.dx, high_wall=unpadded_high_walls(grid))
@@ -215,20 +185,16 @@ def test_field_pattern_tm110():
         state = apply_pec(state)
         state = state._replace(ez=state.ez.at[si, sj, sk].add(pulse(n * grid.dt)))
 
-    # Extract Ez at z=d/2, compute correlation with analytical mode
     ez_slice = np.array(state.ez[:, :, sk])
 
-    # Analytical: sin(πx/a) * sin(πy/b)
     x = np.arange(grid.nx) * grid.dx
     y = np.arange(grid.ny) * grid.dx
     X, Y = np.meshgrid(x, y, indexing="ij")
     analytical = np.sin(np.pi * X / a) * np.sin(np.pi * Y / b)
 
-    # Normalize both
     ez_norm = ez_slice / (np.max(np.abs(ez_slice)) + 1e-30)
     ana_norm = analytical / (np.max(np.abs(analytical)) + 1e-30)
 
-    # Sign ambiguity: field could be + or -
     corr_pos = np.corrcoef(ez_norm.ravel(), ana_norm.ravel())[0, 1]
     corr_neg = np.corrcoef(ez_norm.ravel(), -ana_norm.ravel())[0, 1]
     correlation = max(corr_pos, corr_neg)
@@ -238,21 +204,19 @@ def test_field_pattern_tm110():
     assert correlation > 0.95, f"Field pattern mismatch: correlation={correlation:.4f}"
 
 
-# =====================================================================
-# 1D. Reciprocity: S12 == S21
-# =====================================================================
 
 def test_reciprocity_two_port():
     """S12 should equal S21 for a passive reciprocal structure.
 
     Uses a PEC cavity with two probes — the coupling should be symmetric.
+    Earlier CPU float32 modal decomposition showed about 3% numerical noise, motivating the 5% reciprocity bar.
     """
     from rfx import Simulation, Box
 
-    # Larger domain so ports are well inside the interior (not in CPML).
-    # CPML = 8 layers × 2mm = 16mm per side. Ports must be > 20mm from edge.
-    a, b, d = 0.12, 0.04, 0.03  # 120mm long waveguide
-    f0 = (C0 / 2) * np.sqrt((1/0.04)**2 + (1/0.03)**2)  # TE10 of b×d cross-section
+    GUIDE_LENGTH_M = 0.12
+    PORT_INSET_FROM_DOMAIN_FACE_M = 0.025
+    a, b, d = GUIDE_LENGTH_M, 0.04, 0.03
+    f0 = (C0 / 2) * np.sqrt((1/0.04)**2 + (1/0.03)**2)
 
     sim = Simulation(freq_max=f0 * 2, domain=(a, b, d), boundary={"x": "cpml", "y": "pec", "z": "pec"},
                      cpml_layers=8, dx=0.002)
@@ -260,14 +224,13 @@ def test_reciprocity_two_port():
     sim.add(Box((a/3, 0, 0), (2*a/3, b, d)), material="dielectric")
 
     freqs = np.linspace(f0 * 0.7, f0 * 1.3, 20)
-    # Ports well inside domain (>20mm from CPML boundary)
-    sim.add_waveguide_port(0.025, direction="+x", mode=(1, 0), mode_type="TE",
+    sim.add_waveguide_port(PORT_INSET_FROM_DOMAIN_FACE_M, direction="+x", mode=(1, 0), mode_type="TE",
                            freqs=freqs, f0=f0, name="port1")
-    sim.add_waveguide_port(a - 0.025, direction="-x", mode=(1, 0), mode_type="TE",
+    sim.add_waveguide_port(a - PORT_INSET_FROM_DOMAIN_FACE_M, direction="-x", mode=(1, 0), mode_type="TE",
                            freqs=freqs, f0=f0, name="port2")
 
     result = sim.compute_waveguide_s_matrix(num_periods=30, normalize=True)
-    S = np.array(result.s_params)  # (2, 2, n_freq)
+    S = np.array(result.s_params)
 
     s12 = np.abs(S[0, 1, :])
     s21 = np.abs(S[1, 0, :])
@@ -282,16 +245,10 @@ def test_reciprocity_two_port():
     print(f"  Max diff:   {max_diff:.6f}")
     print(f"  Rel diff:   {mean_diff / (mean_mag + 1e-30):.2e}")
 
-    # Reciprocity is a fundamental property of passive linear networks.
-    # GPU achieves ~0% with normalize=True; CPU float32 waveguide modal
-    # decomposition has ~3% numerical noise, so use 5% threshold.
     rel_diff = mean_diff / (mean_mag + 1e-30)
     assert rel_diff < 0.05, f"Reciprocity violation: relative |S12-S21| = {rel_diff:.2%}"
 
 
-# =====================================================================
-# 1E. Convergence order O(dx²)
-# =====================================================================
 
 @pytest.mark.slow_physics
 def test_convergence_order():
@@ -317,7 +274,6 @@ def test_convergence_order():
         si, sj, sk = grid.nx // 3, grid.ny // 3, grid.nz // 2
         pi, pj = 2 * grid.nx // 3, 2 * grid.ny // 3
 
-        # More periods for finer frequency resolution in FFT
         n_steps = grid.num_timesteps(num_periods=150)
         ts = np.zeros(n_steps)
         for n in range(n_steps):
@@ -327,13 +283,11 @@ def test_convergence_order():
             state = state._replace(ez=state.ez.at[si, sj, sk].add(pulse(n * grid.dt)))
             ts[n] = float(state.ez[pi, pj, sk])
 
-        # FFT peak with parabolic interpolation for sub-bin accuracy
-        nfft = len(ts) * 16  # more zero-padding
+        nfft = len(ts) * 16
         spec = np.abs(np.fft.rfft(ts, n=nfft))
         freqs = np.fft.rfftfreq(nfft, d=grid.dt)
         band = (freqs > f_analytical * 0.5) & (freqs < f_analytical * 1.5)
         peak_idx = np.argmax(spec * band)
-        # Parabolic interpolation
         if 0 < peak_idx < len(spec) - 1:
             alpha, beta, gamma = spec[peak_idx-1], spec[peak_idx], spec[peak_idx+1]
             denom = alpha - 2*beta + gamma
@@ -348,7 +302,6 @@ def test_convergence_order():
         errors.append(err)
         print(f"  dx={dx*1e3:.1f}mm: f={f_sim/1e9:.6f} GHz, err={err:.6e}")
 
-    # Convergence rate: log(err1/err2) / log(dx1/dx2)
     if errors[0] > 1e-10 and errors[1] > 1e-10:
         rate_1 = np.log(errors[0] / errors[1]) / np.log(dxs[0] / dxs[1])
     else:
@@ -362,6 +315,5 @@ def test_convergence_order():
     print(f"  Rate (coarse→medium): {rate_1:.2f}")
     print(f"  Rate (medium→fine):   {rate_2:.2f}")
 
-    # Second-order scheme: rate should be ≈ 2 (allow 1.5-3.0 range)
     avg_rate = (rate_1 + rate_2) / 2
     assert avg_rate > 1.0, f"Convergence rate {avg_rate:.2f} < 1.0 (expected ~2.0)"

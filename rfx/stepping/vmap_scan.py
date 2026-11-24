@@ -68,9 +68,6 @@ def _build_vmap_scan_fn(
     probes = probes or []
     dft_probes = dft_probes or []
 
-    # realize (Mx, My, Mz) ONCE here, at build time, under the
-    # flags this scan body will use.  Sheets and wires own no cell, so
-    # this is the only place the batched lane can see them.
     pec_sheets = tuple(pec_sheets or ())
     pec_wires = tuple(pec_wires or ())
     pec_edge_masks = None if conductors is None else conductors.pec_edges
@@ -86,7 +83,6 @@ def _build_vmap_scan_fn(
     if use_cpml:
         from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 
-    # Precompute source waveform matrix (these don't depend on materials)
     if sources:
         src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)
     else:
@@ -95,10 +91,8 @@ def _build_vmap_scan_fn(
     src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
 
-    # Material-dependent source locations; samples are prepared before vmap.
     j_src_meta = j_source_meta
 
-    # Initialize CPML once (shared across batch)
     if use_cpml:
         cpml_params, cpml_state_init = init_cpml(grid)
 
@@ -112,6 +106,8 @@ def _build_vmap_scan_fn(
         """
         from rfx.model.materials import with_components
         materials = with_components(materials, grid, periodic=periodic)
+        from rfx.model.pole_stability import refuse_subluminal_cells
+        refuse_subluminal_cells(materials, grid, dt, periodic=periodic)
         fdtd = init_state(grid.shape)
         drives = drive_layout(src_meta + list(j_src_meta), fdtd.ex.dtype)
 
@@ -140,6 +136,14 @@ def _build_vmap_scan_fn(
             apply_cpml_h=apply_cpml_h if use_cpml else None,
             apply_cpml_e=apply_cpml_e if use_cpml else None,
         )
+        import dataclasses
+        from rfx.stepping import vector_pad
+        plan = vector_pad.uniform_plan(grid, periodic, path="vmap material sweep",
+            unsupported=vector_pad.uniform_unsupported(
+                {f.name: getattr(ctx, f.name) for f in dataclasses.fields(ctx)},
+                stencil_order=2, field_dtype=fdtd.ex.dtype))
+        pad = plan if plan.active else None
+        ctx = ctx if pad is None else dataclasses.replace(ctx, pad_plan=pad)
         core = make_core_step(ctx)
 
         def step_fn(carry, xs):
@@ -159,6 +163,8 @@ def _build_vmap_scan_fn(
             init_carry["cpml"] = cpml_state_init
         if use_dft:
             init_carry["dft_planes"] = dft_acc_init
+        if pad is not None:
+            init_carry = vector_pad.pad_carry(init_carry, pad)
         final_carry, time_series = jax.lax.scan(step_fn, init_carry, xs)
         final_dft_accs = final_carry.get("dft_planes", ())
         return time_series, final_dft_accs

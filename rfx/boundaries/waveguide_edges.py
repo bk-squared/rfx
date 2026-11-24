@@ -3,6 +3,9 @@
 from rfx.errors import RfxRefusal
 from rfx.model.graded_admission import host_cells
 import jax
+import jax.numpy as jnp
+
+from rfx._internal._precision import resolve_field_dtype
 import numpy as np
 
 from rfx.boundaries.depths import Kind, grid_face_depths
@@ -56,13 +59,16 @@ def default_conformal_weights(sim, grid, root):
     pec_shapes = root.assembly[4]
     if not pec_shapes:
         return None
+    dtype = jnp.promote_types(resolve_field_dtype(sim._precision) or jnp.float32, jnp.float32)
     if sim._dt_pin is not None:
         from rfx.geometry.cell_table import build_cell_table
         from rfx.model.conformal_rules import conformal_fractions_from_table
         table = build_cell_table(grid, pec_shapes, include_trailing_node=True)
-        return conformal_fractions_from_table(table, grid, "cut_cell_floor", pec_shapes=pec_shapes)[0]
-    from rfx.geometry.conformal import clamp_conformal_weights, compute_conformal_weights_sdf
-    return clamp_conformal_weights(*compute_conformal_weights_sdf(grid, pec_shapes), 0.1)
+        return conformal_fractions_from_table(table, grid, "cut_cell_floor", pec_shapes=pec_shapes, field_dtype=dtype)[0]
+    from rfx.geometry.conformal import clamp_conformal_weights
+    from rfx.geometry.conformal_cells import compute_conformal_fractions
+    lengths = compute_conformal_fractions(grid, pec_shapes, field_dtype=dtype)[0]
+    return clamp_conformal_weights(*lengths, 0.1)
 
 
 def _check_edges(sim, grid, masks, lane):
@@ -70,8 +76,6 @@ def _check_edges(sim, grid, masks, lane):
     from rfx.model.graded_grid import position_to_index
     from rfx.runners.nonuniform import _range_to_slice_nu
 
-    # Uniform grids retain the face record; graded grids thread its canonical
-    # declaration separately from their allocated pads, as their setup does.
     faces = {face.name: face for face in grid_face_depths(grid, spec=sim._boundary_spec)}
     nodes = {axis: np.asarray(_axis_node_positions(
         host_cells(grid, axis), getattr(grid, f"pad_{axis}_lo"))) for axis in "xyz"}
@@ -99,7 +103,6 @@ def _check_edges(sim, grid, masks, lane):
             cut = [slice(None)] * 3
             cut[normal] = source
             cut[tangent] = slice(spans[tangent][0], spans[tangent][1] - 1)
-            # The remaining two dimensions retain their original order.
             mask = masks.get("xyz"[tangent])
             conductor = np.zeros(grid.shape[a], dtype=bool)
             if mask is not None:

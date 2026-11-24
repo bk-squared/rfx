@@ -1,4 +1,6 @@
 """Flux quadrature on realized nodes, including full-plane storage conventions."""
+
+from rfx._internal._precision import resolve_coefficient_dtype
 import numpy as np
 
 from rfx.model.graded_admission import host_cells, refuse_window_cells
@@ -88,8 +90,6 @@ def grid_flux_monitor(grid, *, axis, index, freqs, pmc_faces=(), periodic=None, 
         nodes.append(x)
     normal = np.asarray(getattr(coords, 'xyz'[axis]), dtype=float)
     normal_cells = np.asarray(host_cells(grid, axis))
-    # Include the grid's existing high fence-post/ghost provider, as for the
-    # tangential periodic closing coordinate. It has no physical box extent.
     normal = np.r_[normal, normal[-1] + normal_cells[-1]]
     h_weights = normal_weights(normal, index, uniform=np.all(normal_cells == normal_cells[0]))
     return init_flux_monitor(axis, index, freqs, grid.shape,
@@ -115,7 +115,7 @@ def monitor_periodic_flags(sim, grid):
     from rfx.sources.tfsf import tfsf_from_declaration
     from rfx.boundaries.tfsf import boundary_flags
     entry = sim._tfsf
-    cfg, _ = tfsf_from_declaration(entry, grid, sim._freq_max, bounds_only=True)
+    cfg, _ = tfsf_from_declaration(entry, grid, sim._freq_max, bounds_only=True, dtype=resolve_coefficient_dtype(sim._precision))
     return boundary_flags(cfg, grid)[0]
 
 
@@ -161,7 +161,6 @@ def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None, *, periodic=None):
             if pe.freqs is not None
             else default_frequency_grid(sim._freq_max, pe.n_freqs)
         )
-        # Compute tangential index bounds from size (finite flux region)
         tangential_axes = [a for a in range(3) if a != axis_idx]
         grid_ns = [grid.shape[a] for a in tangential_axes]
         region = resolve_flux_region(grid, pe, sim._domain)

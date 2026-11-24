@@ -41,17 +41,16 @@ def _run(mesh, smoothing):
 
 @pytest.mark.parametrize('mesh', ['uniform', 'graded'])
 def test_scanned_matrix_is_reciprocal(mesh):
+    """An earlier comparison measured an S12-S21 difference of 4e-6 (graded) and 6e-6 (uniform) of a peak near 1 with smoothing on."""
     s = _run(mesh, False)
     assert s.shape == (2, 2, FREQS.size) and np.isfinite(s).all()
-    # Measured 4e-6 (graded) and 6e-6 (uniform) of a peak near 1 with smoothing on.
     assert np.abs(s[0, 1] - s[1, 0]).max() <= 1e-4 * np.abs(s).max()
 
 
 @pytest.mark.parametrize('mesh', ['uniform', 'graded'])
 def test_smoothing_reaches_every_drive(mesh):
+    """An earlier comparison measured smoothing changes in port 1's own reflection of 0.06 graded and 0.09 uniform."""
     on, off = _run(mesh, True), _run(mesh, False)
-    # Port 1 is 0.3 mm from the block face: smoothing moves its own reflection
-    # (measured 0.06 graded, 0.09 uniform); a drive that drops it moves nothing.
     assert np.abs(on[1, 1] - off[1, 1]).max() > 1e-2
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')

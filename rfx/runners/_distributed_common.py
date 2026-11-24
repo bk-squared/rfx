@@ -85,21 +85,6 @@ __all__ = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Domain splitting / gathering (x-axis slabs with ghost cells)
-# ---------------------------------------------------------------------------
-#
-# Moved VERBATIM from ``distributed.py``, where they sat at
-# L58/L107 -- ten lines AFTER that module's own import of this one. Nothing
-# about them was duplicated; they move because they are the x-slab primitives
-# every shared helper in this module that touches slabs has to call, and a
-# shared body could not reach them at their old address without a circular
-# import. ``distributed.py`` re-exports both at the position they were
-# defined, so ``rfx.runners.distributed.split_array_x`` / ``.gather_array_x``
-# still resolve for its external importers.
-#
-# Spatial placement delegates to rfx.stepping.slab; gather retains its
-# original shape-only operation. The public re-exports remain identical.
 
 
 def split_array_x(arr, n_devices, ghost=1, pad_value=0.0):
@@ -187,10 +172,8 @@ def gather_array_x(slabs, ghost=1):
     -------
     arr : ndarray, shape (nx, ny, nz)
     """
-    # Strip ghost cells from each slab and concatenate
-    inner = slabs[:, ghost:-ghost, :, :]  # (n_devices, nx_per, ny, nz)
+    inner = slabs[:, ghost:-ghost, :, :]
     n_devices = inner.shape[0]
-    # Reshape: merge device and x dims
     nx_per = inner.shape[1]
     ny = inner.shape[2]
     nz = inner.shape[3]
@@ -238,46 +221,21 @@ def unstack_and_gather(sharded_arr, n_devices, nx_local, ghost, pad_x, nx):
         (n_devices, nx_local) + tuple(sharded_arr.shape[1:]),
     )
     gathered = gather_array_x(stacked, ghost)
-    # Trim padding cells if nx was padded
     if pad_x > 0:
         gathered = gathered[:nx]
     return gathered
 
 
-# ---------------------------------------------------------------------------
-# Vacuum CPML field-update coefficients
-# ---------------------------------------------------------------------------
-#
-# Architect residual (a): the vacuum assumption is encoded in the NAME.
-# The distributed CPML correction is applied where ``eps_r``/``mu_r`` are
-# NOT in scope (``_apply_cpml_*_distributed`` and ``_apply_cpml_*_local_nu``
-# receive only field arrays + profile coefficients). The vacuum form is
-# therefore structural; these helpers + the guard test in
-# ``tests/locks/test_cpml_axis_params_refactor_bit_identical.py`` make that
-# explicit and prevent a CORE-C2-class hidden-assumption helper. A
-# per-cell-``eps_r`` CPML coefficient is a separate future effort and is
-# deliberately NOT supported by this signature.
 
 
 
 
 
 
-# ---------------------------------------------------------------------------
-# Stacked CPML psi allocation
-# ---------------------------------------------------------------------------
-#
-# ``distributed._init_cpml_distributed`` and
-# ``distributed_nu.init_cpml_for_sharded_nu`` share this allocator for the
-# 24 psi arrays of a ``CPMLState``. Both callers run at setup time,
-# outside any jit/shard_map trace.
 
 
 
 
-# ---------------------------------------------------------------------------
-# shard_map ghost-cell exchange (single field component)
-# ---------------------------------------------------------------------------
 
 
 from rfx.stepping.slab_exchange import exchange_component_shmap
@@ -289,56 +247,19 @@ from rfx.stepping.slab_exchange import exchange_h_yee_shmap
 from rfx.stepping.slab_exchange import exchange_e_yee_shmap
 
 
-# ---------------------------------------------------------------------------
-# Domain-face boundary conditions inside shard_map
-# ---------------------------------------------------------------------------
-#
-# Unlike the leg-1/leg-2 helpers, these were already TOP-LEVEL functions
-# taking every value they need as an explicit parameter, on both runners.
-# Nothing became a parameter that was not one before, so the inner kernel
-# closes over exactly the names it closed over at its old address and the
-# traced jaxpr is structurally unchanged -- the 13 baseline fixtures are
-# what says so, not this comment.
 
 from rfx.stepping.slab_walls import apply_pec_face_shmap
 
 
-# Shared realized-PEC cell-mask kernel for distributed runners. Call
-# ``rfx.boundaries.pec.realized_pec_edge_masks`` rather than re-spelling the
-# neighbour rule, so periodic seams and volume/sheet realization share
-# a single owner across lanes.
 
 
 from rfx.stepping.slab_walls import apply_pec_mask_shmap
 
 
-# ---------------------------------------------------------------------------
-# CPML face-depth packing remains with the absorber adapters.
 
 
 
 
-# ---------------------------------------------------------------------------
-# Per-device source injection / probe sampling via shard_map
-# ---------------------------------------------------------------------------
-#
-# Unlike the sharding helpers above, these two ARE traced: both are called
-# from inside the jitted step body, and each builds a ``shard_map`` kernel
-# whose Python loop is unrolled at trace time over ``*_local_specs`` and
-# ``*_device_ids``.  Lifting them out of ``run_distributed`` /
-# ``run_nonuniform_distributed_pec`` turns four closed-over locals into
-# parameters, which is exactly the jaxpr-shape change the leg-0 lock
-# was built to police.  It is done here because the lock says the arrays did
-# not move: all 13 fixtures stay bit-identical, and the four that exercise
-# these paths (distributed_v2_cpml, distributed_v2_pec,
-# distributed_v2_nu_branch, distributed_nu_direct_pec) carry a non-empty,
-# non-zero time_series, so the probe path is witnessed rather than assumed.
-#
-# The shape is ``exchange_component_shmap``'s: take ``mesh`` explicitly and
-# build the ``shard_map`` inside.  The bodies are the pre-move bodies
-# verbatim -- ``distributed_v2.py``'s copies differed only in a docstring,
-# two lead comments and a one-spec-per-line ``in_specs`` layout, whose
-# content is preserved in these docstrings instead.
 
 
 from rfx.stepping.slab_update import inject_sources_shmap
@@ -347,23 +268,6 @@ from rfx.stepping.slab_update import inject_sources_shmap
 from rfx.stepping.slab_update import sample_probes_shmap
 
 
-# ---------------------------------------------------------------------------
-# Local NU update kernels (operate on per-device slab including ghosts)
-# ---------------------------------------------------------------------------
-#
-# The shared NU shard wrappers below call these local kernels.
-# This module MUST NOT import from ``rfx.runners.distributed_nu`` (it is the
-# leaf of the runner DAG, and ``distributed_nu`` imports it). Their only
-# dependencies are ``rfx.core.yee`` names.
-#
-# ``distributed_nu.py`` re-imports both at the position they were defined, so
-# ``rfx.runners.distributed_nu._update_{h,e}_local_nu`` keeps resolving for
-# ``tests/unit/runners/test_distributed_nu_kernel.py`` and for
-# ``distributed_v2.py``'s function-local import. The two leading-underscore
-# names in ``__all__`` above are deliberate: renaming a physics kernel to fit
-# this module's public-name convention would put a rename inside a
-# bit-identity leg for cosmetic reasons, so the exported spelling is the
-# original one.
 
 from rfx.stepping.slab_update import _update_h_local_nu
 
@@ -389,19 +293,6 @@ from rfx.stepping.slab_update import slab_e_materials_shmap
 from rfx.stepping.slab_update import _update_e_local_nu
 
 
-# ---------------------------------------------------------------------------
-# NU shard_map update wrappers
-# ---------------------------------------------------------------------------
-#
-# Both runners keep a same-named nested ``_update_h_shmap`` that forwards
-# here. These wrappers take the closed-over values explicitly and build
-# the ``shard_map`` inside.
-#
-# TRACED, not eager. Unlike the leg-3 face kernels these are called from inside
-# the jitted step body and lifting the locals to parameters changes the jaxpr's
-# shape. Fixture 9 (``distributed_v2_nu_branch``) is the only fast-lane witness
-# for v2's ``is_nu`` branch; fixtures 11-12 (``distributed_nu_*``) witness the
-# NU runner. Those rows staying bit-identical is the evidence, not the argument.
 
 from rfx.stepping.slab_update import update_h_nu_shmap
 
@@ -409,21 +300,6 @@ from rfx.stepping.slab_update import update_h_nu_shmap
 from rfx.stepping.slab_update import update_e_nu_shmap
 
 
-# ---------------------------------------------------------------------------
-# Uniform x-slab splitting, local Yee updates and x-slab CPML
-# ---------------------------------------------------------------------------
-#
-# Moved VERBATIM from ``distributed.py`` ahead of retiring its ``jax.pmap``
-# runner: ``distributed_v2`` imported twelve names from that module (the eleven
-# below it uses, plus ``gather_array_x``, which leg 2 already moved here), and
-# ``distributed_nu`` imported the four dispersive splitters from it lazily.
-# ``_update_e_local``, ``_update_e_debye_local`` and ``_update_e_lorentz_local``
-# ride along because ``_update_e_local_with_dispersion`` calls them. The names
-# keep their leading underscore so every call site reads as it did;
-# ``distributed.py`` re-exports all of them. Bodies are byte-identical to the
-# ones they replace -- tests/locks/test_runner_split_bit_identity.py's baseline
-# rows are what say the arrays did not move, and its _SHARED_HELPER_BINDINGS
-# rows what says each importer holds this one object.
 
 
 def _split_state(state, n_devices, ghost=1):
@@ -445,9 +321,6 @@ def _split_materials(materials, n_devices, ghost=1):
 
 
 
-# ---------------------------------------------------------------------------
-# Dispersive material (Debye / Lorentz) splitting
-# ---------------------------------------------------------------------------
 
 def _split_debye_coeffs(coeffs: DebyeCoeffs, n_devices, ghost=1, *, dt):
     return cut_pole_coeffs(coeffs, Slab(jax.tree.leaves(coeffs.ca)[0].shape[0], n_devices, ghost),
@@ -467,9 +340,6 @@ def _split_lorentz_state(state: LorentzState, n_devices, ghost=1):
     return cut_poles(state, Slab(state.px.shape[1], n_devices, ghost), "lorentz_state")
 
 
-# ---------------------------------------------------------------------------
-# Local update functions (operate on per-device slab with ghosts)
-# ---------------------------------------------------------------------------
 
 from rfx.stepping.slab_update import _update_h_local
 
@@ -477,9 +347,6 @@ from rfx.stepping.slab_update import _update_h_local
 from rfx.stepping.slab_update import _update_e_local
 
 
-# ---------------------------------------------------------------------------
-# Local dispersive E-update functions (operate on per-device slab)
-# ---------------------------------------------------------------------------
 
 from rfx.stepping.slab_update import _update_e_debye_local
 
@@ -491,9 +358,6 @@ from rfx.stepping.slab_update import _update_e_local_with_dispersion
 
 
 
-# ---------------------------------------------------------------------------
-# Distributed CPML support (Phase 2)
-# ---------------------------------------------------------------------------
 
 
 

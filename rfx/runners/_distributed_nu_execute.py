@@ -16,7 +16,8 @@ from rfx.api._spec import ForwardResult
 def _require_wrapped_records(records, step_kind):
     if records.layouts and step_kind != "wrapped":
         labels = {"planes": "DFT planes", "flux": "flux monitors", "ntff": "NTFF",
-                  "moments": "current moments", "snapshots": "field snapshots"}
+                  "moments": "current moments", "snapshots": "field snapshots",
+                  "time_planes": "dft_time_records"}
         names = ", ".join(labels[kind] for kind in records.layouts)
         raise NotImplementedError(
             f"Graded multi-device {names} require the wrapped step; PMC is not supported")
@@ -67,15 +68,15 @@ def execute_from_materials(
     # stencil_order (both distributed and non-uniform are unsupported).
     self._check_stencil_order_supported(distributed=True)
     from rfx.runners._distributed_records import refuse_record_options
-    refuse_record_options(self, {})
+    refuse_record_options(self, {}, run=is_run)
     import warnings as _w
     from rfx.runners.distributed_nu import (
         build_sharded_nu_grid,
         init_cpml_for_sharded_nu,
         run_nonuniform_distributed_pec,
-        is_forward_sharded_override,
         stage_forward_dispersion_x_slab,
     )
+    from rfx.stepping.slab import is_forward_sharded_override
     from rfx.core.yee import MaterialArrays
     from rfx.model.source_coefficients import (
         make_current_source as _nu_make_current_source,
@@ -213,13 +214,16 @@ def execute_from_materials(
                                             n_devices=mesh.devices.size)
     diagnostics = merge_diagnostics(diagnostics, solve_diagnostics)
     from rfx.model.distributed_ports import assemble
-    stepping_product, materials, pec_mask, pec_edges, geometry_record, sources, material_drive, port_specs, pec_occupancy_override = assemble(
+    stepping_product, materials, pec_mask, pec_edges, sheet_impedance, geometry_record, sources, material_drive, port_specs, pec_occupancy_override = assemble(
         self, grid, materials, conductors, pec_mask, _dnu_pec_sheets, _dnu_pec_wires,
         eps_override=eps_override, sigma_override=sigma_override, pec_mask_override=pec_mask_override,
         pec_occupancy_override=pec_occupancy_override, debye_spec=debye_spec, lorentz_spec=lorentz_spec, n_steps=n_steps, lane=lane,
         gather=gather_final_state, diagnostics=diagnostics, s_param_freqs=s_param_freqs, mesh=mesh,
         compute_s_params=compute_s_params)
     from rfx.stepping import prepared as prepared_step
+    from rfx.materials.thin_conductor import sheet_update_coeffs
+    sheet_coeffs = (None if sheet_impedance is None else
+                    sheet_update_coeffs(sheet_impedance.sigma_sheet, materials, grid.dt))
     prepared_step.release_dense(stepping_product)
     del conductors
     from rfx.stepping.slab_lumped import metadata
@@ -235,13 +239,13 @@ def execute_from_materials(
     if _realized.ACTIVE is not None:
         _realized.sources(grid, materials, sources, "distributed_nu.sources")
     from rfx.model.electric_metrics import stage_forward_materials
-    sharded_grid = sharded_grid.select_step(debye_spec, lorentz_spec, self._boundary_spec, ports=bool(port_specs))
+    sharded_grid = sharded_grid.select_step(debye_spec, lorentz_spec, self._boundary_spec, ports=bool(port_specs or self._msl_ports))
     sharded_materials = stage_forward_materials(materials, sharded_grid.layout, mesh, uniform=sharded_grid.step_kind == 'wrapped')
     del materials
 
     sharded_pec_mask = _conductors.stage_distributed_edges(
         pec_edges, sharded_grid, mesh, multiprocess,
-        inputs=None if port_specs else (pec_mask, _dnu_pec_sheets, _dnu_pec_wires))
+        inputs=None if port_specs or self._msl_ports else (pec_mask, _dnu_pec_sheets, _dnu_pec_wires))
     del pec_mask, pec_edges
     sharded_pec_occupancy = _conductors.stage_distributed_occupancy(pec_occupancy_override, sharded_grid, mesh)
     del pec_occupancy_override
@@ -304,8 +308,9 @@ def execute_from_materials(
         gather_final_state=gather_final_state,
         pmc_faces=frozenset(self._boundary_spec.pmc_faces()),
         material_drive=tuple(material_drive),
-        port_plan=port_plan, rlc_metas=rlc_metas,
+        port_plan=port_plan, msl_ports=bool(self._msl_ports), rlc_metas=rlc_metas,
         slab_records=records,
+        sheet_impedance=sheet_impedance, sheet_coeffs=sheet_coeffs,
         prepare_only=port_plan is not None,
     )
     if port_plan is not None:
@@ -356,11 +361,8 @@ def dispatch_forward(self, *, plan, _solve_assembly, _call_args):
         diagnostics=_solve_assembly.diagnostics,
     )
     from rfx.api._gradient_witness import with_conductivity_record
-    from rfx.materials.thin_conductor import refuse_f0_sheets
     from rfx.model.wall_loss import refuse_wall_loss
     refuse_wall_loss(self, "distributed non-uniform forward()")
-    refuse_f0_sheets(self._thin_conductors,
-                     "distributed non-uniform forward()")
     result = self._forward_distributed_nonuniform_from_materials(
         **{name: _call_args[name] for name in (
             "subpixel_smoothing", "eps_override", "sigma_override", "pec_mask_override",

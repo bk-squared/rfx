@@ -17,6 +17,7 @@ def _warn_if_ringdown_truncated(
     consequence: str | None = None,
     quoted_thing: str = "any S value",
     witnesses: list | tuple | None = None,
+    outputs_sentence: str = "",
 ) -> None:
     """Warn for excessive pole tails or concrete undetermined witnesses."""
     from rfx.sparams._common import settling_verdict, _SETTLING_WITNESS_DB
@@ -38,12 +39,19 @@ def _warn_if_ringdown_truncated(
         knob, record = "num_periods", f"num_periods={num_periods:g}"
     elif n_steps is not None:
         knob, record = "n_steps", f"n_steps={int(n_steps):d}"
-    else:  # pragma: no cover - guarded by the call sites
+    else:  # pragma: no cover
         knob, record = "the record length", "fixed-length"
     def _label(i: int) -> str:
         if drive_labels is not None:
             return drive_labels[i] if i < len(drive_labels) else str(i)
-        return f"port {port_names[i] if i < len(port_names) else i} driven"
+        label = f"port {port_names[i] if i < len(port_names) else i} driven"
+        if witnesses is not None and i < len(witnesses):
+            row = witnesses[i]
+            error = np.asarray(row.get('record_end_error_per_bin', ()))
+            kappa = np.asarray(row.get('kappa_per_bin', ()))
+            if error.size and kappa.size:
+                label += f", e_Q {float(np.max(error)):.8g}, kappa_Q {float(np.max(kappa)):.8g}"
+        return label
 
     per_run = ", ".join(
         (f"{_label(i)}: {witnesses[i]['status']} ({witnesses[i]['reason']})"
@@ -51,12 +59,13 @@ def _warn_if_ringdown_truncated(
         for i in np.flatnonzero(hot)
     )
     consequence_text = f" {consequence}." if consequence else ""
+    if any(not unknown[i] for i in np.flatnonzero(hot)):
+        consequence_text += " A failing record-end witness means lengthen the record."
     memory_refused = witnesses is not None and any(
         unknown[i] and 'rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES' in witnesses[i]['reason']
         for i in np.flatnonzero(hot))
     advice = ("Check identification before quoting " if memory_refused else
               f"Increase {knob} and check identification before quoting ")
-    # The share is one budget: pole tail plus a port's known drive beyond the record.
     drive = max((float(np.max(row['drive_share_per_bin'])) for i, row in enumerate(witnesses or ())
                  if i < len(hot) and hot[i] and len(row.get('drive_share_per_bin', ()))), default=0.)
     if drive > 0:
@@ -68,6 +77,7 @@ def _warn_if_ringdown_truncated(
         "ring-down settling witness NOT PASSED (pole-tail amplitude threshold "
         f"{_SETTLING_WITNESS_DB:.0f} dB): {per_run}. The {record} "
         f"record has no passing value witness.{consequence_text} {advice}"
-        f"{quoted_thing} (see the result's settling_db and settling_witness fields).", AccuracyWarning,
+        f"{quoted_thing} (see the result's settling_db and settling_witness fields)."
+        f"{outputs_sentence}", AccuracyWarning,
         stacklevel=user_stacklevel(),
     )

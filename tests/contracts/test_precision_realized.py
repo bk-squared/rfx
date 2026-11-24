@@ -2,6 +2,7 @@
 
 Materials, coefficients and intermediate spectra retain main's precision.
 Only the changed final lumped/wire S casts promise complex128 here.
+Lumped precision is checked on retained entries when per-cell drives refuse a complete column.
 """
 import rfx.stepping.uniform_loop as uniform_loop
 import rfx.stepping.uniform_setup as uniform_setup
@@ -27,7 +28,6 @@ HONOURS += ('optimize', 'progressive_optimize', 'compute_msl_s_matrix',
             'compute_mixed_s_matrix', 'topology_optimize',
             'run_ringdown', 'forward_ringdown', 'run_msl', 'forward_msl',
             'run_tfsf', 'forward_tfsf', 'run_window', 'forward_window', 'vmap_sweep_fallback')
-# These refusals predate #1567; preserve the original exception and message.
 MAIN_REFUSALS = {
     'differentiable_material_fit': (NotImplementedError, "precision='float64'.*Use precision='float32'"),
     **{name: (ValueError, "requires precision='float32'") for name in (
@@ -36,13 +36,12 @@ MAIN_REFUSALS = {
     'run_subgridded': (NotImplementedError, 'subgrid|SBP|precision'),
 }
 REFUSES = tuple(MAIN_REFUSALS)
-# Final S conversion sites retained from this change. Other returned spectra
-# are measured below, without imposing a new end-to-end precision contract.
 FINAL_S = ('run_decay', 'run_lumped', 'run_wire', 'run_wire_single',
            'driver_lumped', 'driver_wire', 'driver_refplane', 'sweep', 'batch', 'batch_manifest')
 
 
 def model(precision, entry):
+    """A one-record forward S result requires an isolated driven port."""
     if entry in ('run_msl', 'forward_msl', 'compute_msl_s_matrix'):
         from tests.unit.autodiff.test_design_box_holds_port import _msl_board
         sim = _msl_board()
@@ -93,8 +92,6 @@ def model(precision, entry):
     sim = Simulation(freq_max=5e9, domain=domain, dx=.003,
                      precision=precision, **exterior)
     for i, x in enumerate((.006, .012)[:1 if 'single' in entry else 2]):
-        # forward S from one record needs one driven port (isolated drives); the
-        # run/distributed entries keep both driven so their own refusal order is tested
         sim.add_port((x, .006, .006), 'ez', impedance=50.,
                      waveform=GaussianPulse(f0=3e9, bandwidth=.8),
                      excite=i == 0 or not entry.startswith('forward'),
@@ -213,7 +210,6 @@ def _forbid(*args, **kwargs):
 def test_off_refuses_before_allocation(monkeypatch, entry):
     with jax.enable_x64(False):
         sim = model('float64', entry)
-        # Includes the zero-sized tracing probe, not just FDTD initialization.
         for name in ('zeros','ones','empty','array','asarray','arange','full'):
             monkeypatch.setattr(jnp, name, _forbid)
         monkeypatch.setattr(sim, '_build_grid', _forbid)
@@ -228,8 +224,7 @@ def test_off_refuses_before_allocation(monkeypatch, entry):
 
 @pytest.mark.parametrize('entry', HONOURS)
 def test_mps_backend_refuses_float64_before_allocation(monkeypatch, entry):
-    # Tracker 1824. CI has no Apple GPU, so the real jax-mps plugin cannot run
-    # here; the backend name the refusal reads is faked instead.
+    """The backend-name double exercises the float64 refusal without an Apple GPU."""
     with jax.enable_x64():
         sim = model('float64', entry)
         monkeypatch.setattr(jax, 'default_backend', lambda: 'mps')
@@ -252,8 +247,7 @@ def test_mps_backend_admits_float32(monkeypatch):
 
 
 def test_mps_backend_refuses_float32_under_x64(monkeypatch):
-    # A float32 run under 64-bit mode forms complex128 spectra, which the
-    # plugin returns with wrong values.
+    """The float32-under-x64 refusal protects complex128 spectra from unsupported plugin results."""
     monkeypatch.setattr(jax, 'default_backend', lambda: 'mps')
     with jax.enable_x64():
         sim = model('float32', 'run_lumped')
@@ -321,9 +315,13 @@ def numeric_arrays(result):
         yield result[0]
 
 
-@pytest.mark.parametrize('entry', HONOURS + ('run_nonuniform', 'forward_nonuniform', 'graded_decay', 'graded_tfsf'))
-@pytest.mark.parametrize('precision', ['float32','float64'])
+@pytest.mark.parametrize('precision, entry', [
+    pytest.param(precision, entry, marks=pytest.mark.slow if precision == 'float32' and entry not in FINAL_S else ())
+    for entry in HONOURS + ('run_nonuniform', 'forward_nonuniform', 'graded_decay', 'graded_tfsf')
+    for precision in ['float32', 'float64']
+])
 def test_realized_field_storage(monkeypatch, entry, precision):
+    """Undriven source columns of forward S matrices are NaN rather than measured data."""
     if entry in ('run_nonuniform', 'forward_nonuniform', 'graded_decay', 'graded_tfsf'):
         from tests.contracts.graded_precision import check_graded_storage
         return check_graded_storage(monkeypatch, entry, precision)
@@ -388,13 +386,9 @@ def test_realized_field_storage(monkeypatch, entry, precision):
 
             def check_finite_entries(a):
                 if entry == 'compute_mixed_s_matrix':
-                    # The per-cell drive frame refuses the whole lumped column;
-                    # precision still applies to every retained entry.
                     assert np.isnan(a[:, 0]).all(), entry
                     assert np.isfinite(a[:, 1]).all(), entry
                 elif entry.startswith('forward') and a.ndim == 3 and a.shape[:2] == (2, 2):
-                    # forward S-matrix (N, N, F): only port 0 is driven, so the
-                    # column of port 1 is NaN by definition (not measured).
                     assert np.isfinite(a[:, 0]).all(), entry
                     assert np.isnan(a[:, 1]).all(), entry
                 else:

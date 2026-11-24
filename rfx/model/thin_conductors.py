@@ -33,8 +33,6 @@ def admit_thin_conductor(
     selects (PEC sheet or Leontovich sheet); the warnings name the user's call.
     """
     if surface_impedance_f0 is not None:
-        # Concrete-value checks only: traced f0 / sigma_bulk are legal
-        # differentiable DoFs and skip these (documented on Simulation.add_thin_conductor).
         if (not is_tracer(surface_impedance_f0)
                 and float(surface_impedance_f0) <= 0.0):
             raise ValueError(
@@ -47,10 +45,6 @@ def admit_thin_conductor(
                 f"add_thin_conductor: sigma_bulk={sigma_bulk!r} must be "
                 f"> 0 when surface_impedance_f0 is set — Rs0 = "
                 f"sqrt(pi*f0*mu0/sigma_bulk) is undefined otherwise.")
-        # any shape that can rasterize itself is allowed — the
-        # fold is per occupied cell and shape-agnostic. Two structural
-        # requirements survive, and both fail loud on BOTH lanes because skipping a sheet
-        # on one lane silently changes the model.
         if not callable(getattr(shape, "mask_on_coords", None)):
             raise ValueError(
                 f"add_thin_conductor: surface_impedance_f0 requires a "
@@ -70,12 +64,6 @@ def admit_thin_conductor(
         thickness=thickness, eps_r=eps_r,
         surface_impedance_f0=surface_impedance_f0,
     )
-    # Tell the caller which model they actually got. The predicate is
-    # sigma_bulk ALONE (materials/thin_conductor.py:60-62) — an earlier
-    # version of this warning printed sigma_bulk*thickness/dx and claimed
-    # it "exceeds 1e6", which was a false statement for ordinary inputs
-    # (e.g. aluminium at 17 um and dx = 1 mm gives 5.95e5, announced as
-    # exceeding 1e6 while the conductor was routed to PEC anyway).
     if tc.is_pec:
         import warnings
         _thin_dflt = 35e-6
@@ -98,7 +86,8 @@ def admit_thin_conductor(
     if surface_impedance_f0 is not None:
         import warnings
         if not (is_tracer(surface_impedance_f0) or is_tracer(sigma_bulk)):
-            _rs0 = float(tc.r_s_leontovich)
+            with jax.ensure_compile_time_eval():
+                _rs0 = float(tc.r_s_leontovich)
             _rs_txt = f"Rs0 = {_rs0:.4g} ohm/sq"
         else:
             _rs_txt = ("Rs0 = sqrt(pi*f0*mu0/sigma_bulk) (traced value "
@@ -179,8 +168,6 @@ def separate_film_footprints(films, grid):
             right = films[j]
             if left.normal != right.normal or left.plane != right.plane:
                 continue
-            # Compare footprints on their solved node plane even when their
-            # original normal cell layers differ.
             a, b = masks[i].any(axis=left.normal), masks[j].any(axis=left.normal)
             for axis in range(3):
                 if axis == left.normal or _sheet_pair_touches(left, right, axis, periodic):
@@ -188,8 +175,6 @@ def separate_film_footprints(films, grid):
                 t = axis - (axis > left.normal)
                 aa, bb = np.moveaxis(a, t, 0), np.moveaxis(b, t, 0)
                 n = len(aa)
-                # Include common cells as well as both face orientations.
-                # Removing cells cannot create another conflicting face.
                 for row in range(n):
                     for other in (row - 1, row, row + 1):
                         if not periodic[axis] and not 0 <= other < n:
@@ -228,8 +213,6 @@ def dc_footprint_areas(shape, grid, mask, normal):
             if 'xyz'[a] in getattr(grid, 'periodic_axes', ''):
                 spans.append(min(max(hi - lo, 0.0), float(np.sum(grid.cells(a)))))
             else:
-                # The final node's metric is a fence-post provider, not
-                # another cell beyond the sampled coordinate extent.
                 widths[i] = np.minimum(widths[i], np.maximum(
                     float(coords[a][-1]) - np.asarray(coords[a]), 0.0))
                 spans.append(max(0.0, min(hi, float(coords[a][-1]))
@@ -260,6 +243,7 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True, judge_area=True):
     without a new refusal; preflight judges the concrete realized grid.
     """
     from rfx._internal._periodic import periodic_mask, plane_coordinate
+    from rfx.preflight._not_judged import not_judged
     from rfx.geometry.rasterize_grid import _local_cell
     from rfx.preflight._common import PreflightWarning
     name = type(shape).__name__
@@ -270,6 +254,7 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True, judge_area=True):
             mask = dc_cell_mask(shape, grid)
             if any(is_tracer(v) for v in jax.tree_util.tree_leaves(
                     (lo, hi, _grid_coords(grid), mask))):
+                not_judged(None, "warn_dc_films")
                 return DCFilmGeometry(mask, normal, None, None)
             realized, declared = dc_footprint_areas(shape, grid, mask, normal)
         if judge_area:
@@ -307,7 +292,6 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True, judge_area=True):
                 'snap="declared" runs without checking area or the one-layer rule; '
                 'check the same geometry on a concrete mesh.', code='dc_film_unchecked',
                 source='admit_dc_film'), stacklevel=user_stacklevel())
-        # Keep the coordinate-dependent Box selection and cross-section traced.
         plane_lo, plane_hi = list(lo), list(hi)
         plane_lo[normal] = plane_hi[normal] = mid
         sample = list(footprint_sample_coords(grid, tangents, carrier="cell"))
@@ -401,8 +385,6 @@ def dc_film_plane(shape, grid):
     periodic = 'xyz'[normal] in getattr(grid, 'periodic_axes', '')
     if periodic:
         mid = plane_coordinate(grid, normal, mid)
-        # Periodic stores omit the duplicate high node. Include that candidate
-        # for nearest-node selection, then identify it with node zero.
         xp = jnp if is_tracer(nodes) else np
         nodes = xp.concatenate((nodes, nodes[-1:] + grid.cells(normal)[-1]))
     if is_tracer(nodes):
@@ -420,6 +402,7 @@ def dc_film_plane(shape, grid):
 
 def admit_dc_plane(conductor, grid, *, pmc_faces=None, mode=None):
     """Admission shared by Box/non-Box folds and the diagnostic audit."""
+    from rfx.preflight._not_judged import not_judged
     if conductor.is_pec or conductor.surface_impedance_f0 is not None:
         return
     if is_tracer(conductor.eps_r) or conductor.eps_r != 1:
@@ -430,8 +413,6 @@ def admit_dc_plane(conductor, grid, *, pmc_faces=None, mode=None):
     if not isinstance(conductor.shape, Box) and (
             lo is None or hi is None or
             any(is_tracer(v) for v in jax.tree_util.tree_leaves((lo, hi)))):
-        # Preserve the non-Box admission's descriptive bounds refusal before
-        # the node selector attempts any concrete geometry arithmetic.
         admit_dc_film(conductor.shape, grid, emit=False)
     normal, plane = dc_film_plane(conductor.shape, grid)
     if mode is None:
@@ -441,6 +422,8 @@ def admit_dc_plane(conductor, grid, *, pmc_faces=None, mode=None):
             "a film normal to a 2-D model's invariant axis is not supported",
             code='dc_film_invariant')
     faces = getattr(grid, 'pmc_faces', ()) if pmc_faces is None else pmc_faces
+    if is_tracer(plane):
+        not_judged(None, "warn_dc_films")
     if not is_tracer(plane):
         face = ('xyz'[normal] + '_lo' if plane == 0 else
                 'xyz'[normal] + '_hi' if plane == grid.shape[normal] - 1 else None)
@@ -499,6 +482,7 @@ def dc_film_refusals(sim, grid):
 
 def warn_dc_films(sim, warn):
     """Expose assembly refusals through the existing structured finding carrier."""
+    from rfx.preflight._not_judged import not_judged
     from rfx.preflight._common import PreflightWarning
     if not any(not tc.is_pec and tc.surface_impedance_f0 is None
                for tc in sim._thin_conductors):
@@ -514,8 +498,6 @@ def warn_dc_films(sim, warn):
         if tc.is_pec or tc.surface_impedance_f0 is not None:
             continue
         try:
-            # Emit declared findings directly, including when the diagnostic
-            # assembly cache contains a previous strict refusal.
             with warnings.catch_warnings(record=True) as findings:
                 warnings.simplefilter('always')
                 admit_dc_plane(tc, grid, pmc_faces=sim._boundary_spec.pmc_faces(), mode=sim._mode)
@@ -537,6 +519,8 @@ def warn_dc_films(sim, warn):
         else:
             normal, plane = dc_film_plane(tc.shape, grid)
             face = None
+            if is_tracer(plane):
+                not_judged(None, "warn_dc_films")
             if not is_tracer(plane):
                 face = ('xyz'[normal] + '_lo' if plane == 0 else
                         'xyz'[normal] + '_hi' if plane == grid.shape[normal] - 1 else None)
@@ -547,7 +531,6 @@ def warn_dc_films(sim, warn):
                     **finding_subjects(sim, objects=(("_thin_conductors", i), "domain")),  source='admit_dc_film',
                     loc=f'thin_conductors[{i}]'))
             for finding in findings:
-                # The captured admission helpers emit PreflightWarning instances.
                 from typing import cast
                 message = cast(PreflightWarning, finding.message)
                 annotations = (retained_subjects(message) if message.scope == "object" else
@@ -665,11 +648,6 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
         return materials, pec_mask
     if geometry_masks is not None:
         geometry_masks.append((geometry_key, mask))
-    # Keep the path's existing metric and precision: a Python scalar on
-    # uniform grids, the solver's dual array on profiled grids.
-    # Uniform grid: one cell size on every axis, so any axis's dual spacing is the divisor (a mask-shape DC
-    # conductor has no declared normal here). Asked of the grid, not read from the scalar attribute, and kept a
-    # Python float so the arithmetic is main's exactly (decision record 3).
     dual = None if nonuniform else float(grid.duals(0)[0])
     if nonuniform:
         dual = e_node_dual_spacings((grid.dx_arr, grid.dy_arr, grid.dz)[normal])
@@ -681,7 +659,6 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
         if sheet_specs is not None:
             density = conductance / dual
             if nonuniform:
-                # Preserve main's promotion when material sigma is float64.
                 density = density * jnp.ones_like(materials.sigma)
             sigma_sheet = jnp.where(mask, density, 0.0)
             sheet_specs.append(SheetImpedanceSpec(
@@ -744,7 +721,6 @@ def refuse_design_films(sim, grid, bounds):
                 'contains cells incident to its tangential edges. Move the box or the sheet.')
         if tc.is_pec or tc.surface_impedance_f0 is not None:
             continue
-        # Geometry decides admission even when conductance is differentiated.
         geometric = replace(tc, sigma_bulk=1.0, thickness=1.0)
         mats, _ = fold_thin_conductor(grid, geometric, init_materials(grid.shape),
                                     snap=sim._snap, film_geometry=films.get(index))

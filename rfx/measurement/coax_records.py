@@ -196,6 +196,8 @@ def coaxial_tem_reference_plane_vi_from_cartesian_plane(
     This adapter performs bilinear interpolation and then delegates the actual
     TEM V/I integration to :func:`coaxial_tem_reference_plane_vi`.  It does not
     run FDTD and is not a promoted coaxial S-parameter API.
+
+    The plane-local polar basis is ``r_hat=(cos(theta), sin(theta))`` and ``phi_hat=(-sin(theta), cos(theta))``.
     """
 
     _validate_coaxial_tem_geometry(inner_radius, outer_radius, eps_r=eps_r)
@@ -239,8 +241,6 @@ def coaxial_tem_reference_plane_vi_from_cartesian_plane(
         if np.any(~np.isfinite(angles)):
             raise ValueError("azimuthal_angles_rad must be finite")
 
-    # Voltage line integral along the +u radial ray.  On this ray
-    # e_radial == e_u.
     e_radial = _interp_bilinear_plane(
         e_u,
         u_coords,
@@ -249,8 +249,6 @@ def coaxial_tem_reference_plane_vi_from_cartesian_plane(
         np.full_like(radial_positions, center_v),
     )
 
-    # Current loop integral around radius h_radius.  In plane-local
-    # coordinates, r_hat=(cosθ, sinθ), phi_hat=(-sinθ, cosθ).
     loop_u = center_u + h_radius * np.cos(angles)
     loop_v = center_v + h_radius * np.sin(angles)
     h_u_loop = _interp_bilinear_plane(h_u, u_coords, v_coords, loop_u, loop_v)
@@ -451,24 +449,6 @@ def extract_coaxial_plane_vi_from_dft(
     )
 
 
-# ===========================================================================
-# Coaxial transmission-line S-parameter extraction (broad-E5 redesign)
-#
-# A single-plane V/I power-wave measurement reported non-physical |S11|>1
-# for a lossless short. Root cause was NOT the V/I extractor (its math is exact for a clean
-# lossless TEM field) but the measurement TOPOLOGY: a ~5mm coax stub in a
-# hardcoded closed PEC box has no transmission line for a clean reflection.
-#
-# The validated method below builds a real coax line terminated in a matched
-# resistive feed (conductors must NOT run into a PML — that is unstable) and
-# extracts the reflection from the modal voltage V(z)=∫E_r dr sampled at >=3
-# equally spaced reference planes, using a matrix-pencil estimate of the
-# complex propagation constant. It is Z0-free and self-measures beta, so it is
-# immune to the coarse-mesh |V/I| magnitude bias. The recurrence residual is a
-# built-in single-TEM-mode validity gate. Resolution recipe: >=~4 cells across
-# the (outer-inner) annulus (dx <~ 0.38 mm for SMA); below that the coax mode
-# is under-resolved and the high-frequency reflection degrades.
-# ===========================================================================
 
 
 class CoaxialLineReflection(NamedTuple):
@@ -491,90 +471,32 @@ class CoaxialLineReflection(NamedTuple):
 
 
 def coaxial_line_plane_voltage(
-    grid: Grid,
-    ex_dft,
-    ey_dft,
-    *,
-    center_xy: tuple[float, float],
-    pin_radius: float = SMA_PIN_RADIUS,
-    outer_radius: float = SMA_OUTER_RADIUS,
-    eps_r: float = PTFE_EPS_R,
+    grid: Grid, ex_dft, ey_dft, *, center_xy: tuple[float, float],
+    pin_radius: float = SMA_PIN_RADIUS, outer_radius: float = SMA_OUTER_RADIUS,
+    eps_r: float = PTFE_EPS_R, pec_cell_mask=None, plane_index=None,
 ):
-    """Modal TEM voltage ``V = ∫ E_r dr`` at a z-plane from Ex/Ey DFT planes.
-
-    Reuses the radial line-integral of
-    :func:`coaxial_tem_reference_plane_vi_from_cartesian_plane`; only the voltage
-    is returned (the line method does not need the azimuthal current). Leading
-    axes of ``ex_dft``/``ey_dft`` (for example frequency) are preserved.
-    """
-
+    """Sum whole Ex edges between realized conductor faces, preserving leading axes."""
+    from .coax_voltage import coax_voltage_weights
     _require_coaxial_aperture(grid, (0, 1), center_xy, outer_radius)
-    u = (np.arange(grid.nx, dtype=np.float64) - grid.pad_x_lo) * grid.dx
-    v = (np.arange(grid.ny, dtype=np.float64) - grid.pad_y_lo) * grid.dx
-    ex = np.asarray(ex_dft, dtype=np.complex128)
-    ey = np.asarray(ey_dft, dtype=np.complex128)
-    res = coaxial_tem_reference_plane_vi_from_cartesian_plane(
-        u, v, ex, ey, ex, ey,  # H args unused for the voltage line-integral
-        center_u_m=float(center_xy[0]),
-        center_v_m=float(center_xy[1]),
-        inner_radius=float(pin_radius),
-        outer_radius=float(outer_radius),
-        eps_r=float(eps_r),
-    )
-    return np.asarray(res.vi.voltage, dtype=np.complex128)
+    weights = coax_voltage_weights(grid, center_xy=center_xy,
+                                   pec_cell_mask=pec_cell_mask, plane_index=plane_index)
+    i, j, length = map(np.asarray, zip(*weights))
+    return np.sum(np.asarray(ex_dft, dtype=np.complex128)[..., i, j] * length, axis=-1)
 
 
 def coaxial_line_plane_voltage_jnp(
-    grid: Grid,
-    ex_dft,
-    *,
-    center_xy: tuple[float, float],
-    pin_radius: float = SMA_PIN_RADIUS,
-    outer_radius: float = SMA_OUTER_RADIUS,
+    grid: Grid, ex_dft, *, center_xy: tuple[float, float],
+    pin_radius: float = SMA_PIN_RADIUS, outer_radius: float = SMA_OUTER_RADIUS,
+    pec_cell_mask=None, plane_index=None,
 ):
-    """Differentiable ``jax.numpy`` modal TEM voltage ``V = ∫ E_r dr`` at a z-plane.
-
-    jnp-native counterpart of :func:`coaxial_line_plane_voltage` for the AD path
-    (``compute_coaxial_line_reflection(eps_scale=...)``). The radial sample
-    geometry and the bilinear-interpolation weights are STATIC (grid coordinates,
-    concrete NumPy); only ``ex_dft`` (the DFT E-field plane) carries the tape.
-    Byte-close to the numpy path (difference is float reassociation in the
-    trapezoid only, ~1e-10). Voltage-only: the coax line-reflection method does
-    not use the azimuthal current, so ``ey_dft``/the H-loop are not needed here.
-
-    On the ``+u`` radial ray ``e_radial == e_u == ex``. ``ex_dft`` may carry
-    leading axes (e.g. frequency); they are preserved and the integral is over
-    the trailing radial axis.
-    """
+    """Differentiable whole-edge voltage with the same concrete geometry as NumPy."""
+    from .coax_voltage import coax_voltage_weights
     _require_coaxial_aperture(grid, (0, 1), center_xy, outer_radius)
-    u = (np.arange(grid.nx, dtype=np.float64) - grid.pad_x_lo) * grid.dx
-    v = (np.arange(grid.ny, dtype=np.float64) - grid.pad_y_lo) * grid.dx
-    cu, cv = float(center_xy[0]), float(center_xy[1])
-    radial = u - cu
-    sel = (radial >= float(pin_radius)) & (radial <= float(outer_radius))
-    radial_positions = radial[sel]
-    if radial_positions.size < 2:
-        radial_positions = np.linspace(float(pin_radius), float(outer_radius), 33)
-    su = cu + radial_positions
-    sv = np.full_like(su, cv)
-    # Concrete bilinear indices + weights (mirrors _interp_bilinear_plane); only
-    # the gathered field values below are traced.
-    iu = np.clip(np.searchsorted(u, su) - 1, 0, u.size - 2)
-    iv = np.clip(np.searchsorted(v, sv) - 1, 0, v.size - 2)
-    tu = jnp.asarray((su - u[iu]) / (u[iu + 1] - u[iu]))
-    tv = jnp.asarray((sv - v[iv]) / (v[iv + 1] - v[iv]))
+    weights = coax_voltage_weights(grid, center_xy=center_xy,
+                                   pec_cell_mask=pec_cell_mask, plane_index=plane_index)
+    i, j, length = map(np.asarray, zip(*weights))
     ex = jnp.asarray(ex_dft)
-    f00 = ex[..., iu, iv]
-    f10 = ex[..., iu + 1, iv]
-    f01 = ex[..., iu, iv + 1]
-    f11 = ex[..., iu + 1, iv + 1]
-    e_radial = (
-        f00 * (1 - tu) * (1 - tv)
-        + f10 * tu * (1 - tv)
-        + f01 * (1 - tu) * tv
-        + f11 * tu * tv
-    )
-    return jnp.trapezoid(e_radial, jnp.asarray(radial_positions), axis=-1)
+    return jnp.sum(ex[..., i, j] * jnp.asarray(length, dtype=ex.real.dtype), axis=-1)
 
 
 def _coaxial_line_reflection_jnp(
@@ -592,10 +514,10 @@ def _coaxial_line_reflection_jnp(
     V = jnp.asarray(plane_voltages)
     Vm, Vc, Vp = V[:-2], V[1:-1], V[2:]
     den = jnp.sum(jnp.abs(Vc) ** 2)
-    safe_den = jnp.where(den > 0.0, den, 1.0)          # AD-safe divide (all-zero field)
+    safe_den = jnp.where(den > 0.0, den, 1.0)
     p = jnp.sum((Vm + Vp) * jnp.conj(Vc)) / safe_den
     gamma = jnp.arccosh(p / 2.0 + 0j) / D
-    gamma = jnp.where(jnp.imag(gamma) < 0.0, jnp.conj(gamma), gamma)  # enforce beta > 0
+    gamma = jnp.where(jnp.imag(gamma) < 0.0, jnp.conj(gamma), gamma)
     rec_arg = jnp.sum(jnp.abs((Vm + Vp) - p * Vc) ** 2) / (jnp.abs(p) ** 2 * den + 1e-300)
     rec_ok = rec_arg > 0.0
     rec_resid = jnp.where(rec_ok, jnp.sqrt(jnp.where(rec_ok, rec_arg, 1.0)), 0.0)
@@ -605,16 +527,14 @@ def _coaxial_line_reflection_jnp(
     AB, *_ = jnp.linalg.lstsq(Phi, V, rcond=None)
     A, B = AB[0], AB[1]
     resid = jnp.matmul(Phi, AB, precision=HIGHEST) - V
-    # AD-safe norm (double-where): a perfect fit makes the residual exactly 0,
-    # where d(sqrt)/dx = inf; symmetric with rec_resid above.
     fit_sq = jnp.sum(jnp.abs(resid) ** 2)
     fit_ok = fit_sq > 0.0
     fit_num = jnp.where(fit_ok, jnp.sqrt(jnp.where(fit_ok, fit_sq, 1.0)), 0.0)
     fit_resid = fit_num / (jnp.sqrt(jnp.sum(jnp.abs(V) ** 2)) + 1e-300)
 
     zr = reference_plane_m - z0
-    a_wave = A * jnp.exp(+gamma * zr)    # travels -z
-    b_wave = B * jnp.exp(-gamma * zr)    # travels +z
+    a_wave = A * jnp.exp(+gamma * zr)
+    b_wave = B * jnp.exp(-gamma * zr)
     if load_below:
         v_inc, v_ref = a_wave, b_wave
     else:
@@ -673,6 +593,8 @@ def coaxial_line_reflection_from_plane_voltages(
     by
     ``tests/unit/autodiff/test_ad_surface_contract.py::test_coaxial_reflection_extraction_is_traceable``
     and ``tests/unit/sparams/test_coaxial_line_reflection.py``.
+
+    The propagation constant is taken with a positive imaginary part, which assumes a passive line, so a wave growing along the line is reported with the sign of its attenuation constant reversed.
     """
 
     z = np.asarray(plane_positions_m, dtype=np.float64)
@@ -689,54 +611,39 @@ def coaxial_line_reflection_from_plane_voltages(
     if np.any(np.abs(d - D) > spacing_rtol * D):
         raise ValueError("plane_positions_m must be equally spaced for the matrix pencil")
     z0 = float(z.mean())
-    # Reference (load) plane side vs the probe centroid; ``<=`` keeps the tie
-    # case (load exactly at the probe mean — not a valid one-port geometry) on
-    # the load-below branch deterministically. Static (positions only).
     load_below = bool(reference_plane_m <= z0)
 
-    # Traced voltages -> jax.numpy core (differentiable); concrete -> NumPy.
-    # ``_prefer_jnp`` forces the jnp core even for concrete inputs (used by the
-    # end-to-end AD path so a concrete FD probe uses the same tolerant jnp lstsq
-    # instead of numpy's strict SVD, which raises on marginal fits).
     if _prefer_jnp or isinstance(plane_voltages, jax.core.Tracer):
         return _coaxial_line_reflection_jnp(
             z, plane_voltages, reference_plane_m=float(reference_plane_m),
             D=D, z0=z0, load_below=load_below,
         )
 
-    # --- concrete path: NumPy (float64), byte-identical to the pre-AD code ---
     V = np.asarray(plane_voltages, dtype=np.complex128)
 
-    # Matrix-pencil estimate of p = 2 cosh(γΔ) (LS over interior planes).
     Vm, Vc, Vp = V[:-2], V[1:-1], V[2:]
     den = float(np.sum(np.abs(Vc) ** 2))
     if den <= 0.0:
         raise ValueError("plane_voltages are all zero; cannot estimate gamma")
     p = np.sum((Vm + Vp) * np.conj(Vc)) / den
-    # cosh is even, so p is invariant under gamma -> -gamma. We resolve the
-    # two-fold branch by forcing beta = Im(gamma) > 0 (a forward-propagating
-    # phase). This implies the line is PASSIVE (driven from the feed, field
-    # decaying away from the load): alpha = Re(gamma) is reported as a magnitude;
-    # a genuinely growing wave would be (correctly) unsupported here.
     gamma = np.arccosh(p / 2.0 + 0j) / D
-    if np.imag(gamma) < 0.0:           # enforce beta = Im(gamma) > 0
+    if np.imag(gamma) < 0.0:
         gamma = np.conj(gamma)
     rec_resid = float(
         np.sqrt(np.sum(np.abs((Vm + Vp) - p * Vc) ** 2) / (np.abs(p) ** 2 * den + 1e-300))
     )
 
-    # Two-wave least squares for A, B (centred for conditioning).
     Phi = np.stack([np.exp(+gamma * (z - z0)), np.exp(-gamma * (z - z0))], axis=1)
     AB, *_ = np.linalg.lstsq(Phi, V, rcond=None)
     A, B = complex(AB[0]), complex(AB[1])
     fit_resid = float(np.linalg.norm(Phi @ AB - V) / (np.linalg.norm(V) + 1e-300))
 
     zr = float(reference_plane_m) - z0
-    a_wave = A * np.exp(+gamma * zr)    # travels -z
-    b_wave = B * np.exp(-gamma * zr)    # travels +z
-    if load_below:                      # load below the probes: incident is -z (a_wave)
+    a_wave = A * np.exp(+gamma * zr)
+    b_wave = B * np.exp(-gamma * zr)
+    if load_below:
         v_inc, v_ref = a_wave, b_wave
-    else:                               # load above the probes: incident is +z (b_wave)
+    else:
         v_inc, v_ref = b_wave, a_wave
     reflection = v_ref / v_inc if abs(v_inc) > 0.0 else complex(np.nan, np.nan)
     return CoaxialLineReflection(
@@ -797,10 +704,10 @@ def _solve_two_port_from_wave_amplitudes_jnp(a_inc, b_out) -> TwoPortWaveSolve:
             "a_inc/b_out must have shape (2, 2, n_freqs) indexed "
             f"[measured_port, driven_port, freq]; got {a.shape}."
         )
-    A = jnp.moveaxis(a, -1, 0)   # (n_freqs, 2, 2)
-    B = jnp.moveaxis(b, -1, 0)   # (n_freqs, 2, 2)
-    s = jnp.matmul(B, complex_inv(A), precision=HIGHEST)    # (n_freqs, 2, 2)
-    cond_a = jnp.linalg.cond(A)             # (n_freqs,)
+    A = jnp.moveaxis(a, -1, 0)
+    B = jnp.moveaxis(b, -1, 0)
+    s = jnp.matmul(B, complex_inv(A), precision=HIGHEST)
+    cond_a = jnp.linalg.cond(A)
     return TwoPortWaveSolve(s_params=jnp.moveaxis(s, 0, -1), cond_a=cond_a)
 
 
@@ -918,9 +825,6 @@ def solve_two_port_from_wave_amplitudes(
     identical branch on both sides, not two functions that merely agree in
     the well-conditioned case).
     """
-    # Traced amplitudes -> jax.numpy core (differentiable); concrete -> NumPy,
-    # UNCHANGED below (mirrors coaxial_line_reflection_from_plane_voltages's
-    # own dispatch).
     if (
         _prefer_jnp
         or isinstance(a_inc, jax.core.Tracer)

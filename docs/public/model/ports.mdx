@@ -18,7 +18,7 @@ gives S-parameters for it:
 | discrete feed, component terminals | `add_port(...)` (lumped; with `extent=` a wire port) | `run(compute_s_params=True)`, or `forward(port_s11_freqs=...)` for gradients |
 | microstrip line | `add_msl_port(...)` | `compute_msl_s_matrix()` |
 | rectangular waveguide | `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` |
-| coaxial line | `add_coaxial_port(...)` | `compute_coaxial_line_reflection()`, `compute_coaxial_two_port()` |
+| coaxial line | `add_coaxial_port(...)` | experimental uniform `run()` / `forward()`; `compute_coaxial_line_reflection()`, `compute_coaxial_two_port()` |
 
 Port families cannot be mixed in one S-parameter calculation. If you are not
 sure which calculator a model needs, `sim.s_matrix_lane()` tells you without
@@ -244,8 +244,18 @@ line.add_port((0.035, 0.010, 0.003), "ez", extent=3e-3,
               waveform=GaussianPulse(f0=3e9), terminates=strip)
 ```
 
-The edge-aware mesh keeps the 2 mm strip at its drawn width; on a uniform
-1 mm mesh it solves 2.7 mm wide and `run()` refuses it.
+Preflight takes a free sheet edge to lie 0.35 in-plane cell beyond the sheet's
+last node, so the edge-aware mesh puts the 2 mm strip's last nodes 0.35 cell
+inside its drawn edges. The 0.35 was measured where the cell normal to the
+sheet is as long as the in-plane cell beside its edge. Here the z cell is 1 mm
+and the in-plane cell beside each side edge 0.75 mm, a ratio of 1.33.
+Interpolated between the ratios measured for a free sheet in vacuum (1.18 and
+2, in [the accuracy notes](/rfx/check/model-on-grid/#accuracy)), the edge
+would lie 0.43 cell beyond the last node, and the strip would be 2.12 mm wide
+in vacuum. Three cells above a ground plane, as here, the offset at this ratio
+has not been measured. Preflight uses 0.35 at every ratio, so it accepts this
+strip; on a uniform 1 mm mesh it predicts 2.7 mm, and `run()` refuses the
+strip.
 
 Preflight warns (`port_conductor_continues`) when a port's conductor runs into
 the absorber and no port terminates it. A ground plane should continue; name
@@ -282,6 +292,26 @@ msl = board.compute_msl_s_matrix(freqs=np.linspace(2e9, 6e9, 13),
                                  num_periods=20)
 print(np.abs(msl.S[1, 0]))     # |S21| across the band
 ```
+
+<figure data-rfx="media">
+  <img src="/rfx/model/assets/ports/structure.png" loading="lazy" alt="Top view and side section of a short microstrip board inside an absorber, with a feed at each port, drawn across the trace, and a bracket for each port's probe planes between the two feeds." />
+  <figcaption>The board <code>build_microstrip_ports()</code> builds, seen from above and cut along the trace: a line drawn 18.5 mm long and 1 mm wide on 1 mm of substrate, with the substrate and the ground ending inside the domain. The feeds are at x = 16 and 28 mm, each bracket spans the x range of one port's probe planes, and the line continues past each feed to an open end.</figcaption>
+</figure>
+
+<figure data-rfx="media">
+  <img src="/rfx/model/assets/ports/microstrip-s.png" loading="lazy" alt="S21 magnitude between −1.04 and −0.55 dB from 2 to 6 GHz, and S11 magnitude between −9.4 and −6.8 dB, highest at 4 GHz; the two highest frequencies are marked as ‘low signal’." />
+  <figcaption>|S21| and |S11| returned by this run on a single mesh, referred to 50 Ω. The open circles are the two highest frequencies, where <code>msl.reliable</code> is False.</figcaption>
+</figure>
+
+On this board the edge-aware mesh puts the line's last nodes 0.35 cell inside
+its drawn edges, and the z cell is 0.25 mm. Along the line the in-plane cell
+beside each open end is also 0.25 mm, a ratio of 1, where the offset measured
+for a free sheet in vacuum (0.35 to 0.36 cell) is the one preflight uses. Across
+the line the cell beside each side edge is 0.2125 mm, a ratio of 1.18. For a
+free sheet in vacuum the offset at that ratio was measured as 0.39 cell, so in
+vacuum the line would be 1.015 to 1.018 mm wide (the range covers E
+perpendicular and parallel to the edge). The line lies on the substrate's top
+face, where the offset has not been measured.
 
 `position` is `(feed plane, trace centre, substrate bottom)`. `direction` may
 be `"+x"`, `"-x"`, `"+y"` or `"-y"`; the substrate normal is always z. `S` is
@@ -354,6 +384,12 @@ calibration planes and junctions.
 
 ## Coaxial ports
 
+`add_coaxial_port(...)` builds a coax line, matched feed, TEM drive and voltage planes in experimental uniform single-device `run()` and `forward()`. `position` is the reference plane; `face="top"` or `"bottom"` selects the feed side and `pin_length` extends the pin toward the device. `run(compute_s_params=True, s_param_freqs=...)` and `forward(port_s11_freqs=...)` read S11 at that plane using the built line impedance, then renormalize it to `impedance`. The radii, `pin_length` and `impedance` are static declarations; PEC occupancy elsewhere can be differentiated. The coaxial calculators remain available with their own line layouts and limits.
+
+Uniform mesh, one device, one coax port and no other S-port family; face top or bottom, float32, three-dimensional second-order Yee, CPML on all six faces, no periodic axis or TF/SF. The shell needs at least one whole cell from every lateral absorber, enough axial room for the line, and an NTFF box, when declared, containing the whole port. No conformal PEC, subpixel smoothing, eps_override or sigma_override.
+
+Experimental uniform coax ports: same-line calculator equality, run()/forward() equality, bottom-feed, NTFF-leakage and occupancy-gradient checks define the validation scope; the antenna-level result against an independent solver is not yet shown.
+
 The coaxial calculators build their own line: a coax along z with a matched
 feed, a TEM source, and a row of probe planes. You register one
 `add_coaxial_port` for the cross-section (its x/y centre, radii and
@@ -406,9 +442,9 @@ Getting an accurate result:
 
 - **Sources give no S-parameters.** `add_source`, polarized sources and TFSF
   have no impedance. Use a port and its calculator.
-- **One port family per calculation.** Mixed lumped + microstrip and
-  coax-to-microstrip calculators exist but are experimental; measure each line
-  with its own calculator instead.
+- **One port family per calculation.** Mixed lumped + microstrip is experimental.
+  The coax-to-microstrip calculator is not supported (deprecated); removed after 2.3.
+  Measure each line with its own calculator instead.
 - **Circular polarization** from `add_polarized_source` is unverified.
 - **Lumped/wire ports** need about 60 cells per wavelength for S11 within
   about 0.5 dB. `forward(port_s11_freqs=...)` works on either mesh; over

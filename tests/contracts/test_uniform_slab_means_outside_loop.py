@@ -35,7 +35,6 @@ def _mean_sources():
 
 
 def means_inside_while(hlo):
-    # Recent XLA stores source_file/source_line in an indexed metadata table.
     files = dict(re.findall(r'^(\d+) "([^"]+)"$', hlo.split('FunctionNames')[0], re.M))
     locations = {key: (files[file], line) for key, file, line in re.findall(
         r'^(\d+) \{file_name_id=(\d+) function_name_id=\d+ line=(\d+)', hlo, re.M)}
@@ -79,6 +78,7 @@ def means_inside_while(hlo):
 
 
 @pytest.mark.parametrize('boundary', ['cpml', 'pec'])
+@pytest.mark.slow
 def test_uniform_slab_mean_placement(boundary, monkeypatch, tmp_path):
     assert len(jax.devices('cpu')) >= 2, 'requires two CPU devices'
     original = jax.jit
@@ -112,6 +112,7 @@ def test_uniform_slab_mean_placement(boundary, monkeypatch, tmp_path):
         assert_mean_placement(means, boundary, stage, driver='wrapped')
 
 
+@pytest.mark.slow
 def test_closed_box_tfsf_keeps_wrapped_cpml_means_outside_loop(monkeypatch, tmp_path):
     assert len(jax.devices('cpu')) >= 2, 'requires two CPU devices'
     original = jax.jit
@@ -158,7 +159,9 @@ def assert_mean_placement(means, boundary, stage, *, driver):
 
 
 def independent_means():
-    """Cell-index reference: no rfx material or slab helpers build expected values."""
+    """Cell-index reference: no rfx material or slab helpers build expected values.
+    The high PMC wall uses the last interior material cell.
+    """
     nx, nx_per, ny, nz = 9, 5, 5, 4
     cells = np.arange(nx * ny * nz, dtype=np.float32).reshape(nx, ny, nz)
     whole = (1 + (cells % 13) / np.float32(4),
@@ -186,7 +189,6 @@ def independent_means():
                 view[i] = slab[source]
             views.append(view)
         expected_view.append(views[2].copy())
-        # All three high faces are PMC: high nodes read the last inside cell.
         for view in views:
             view[:, -1, :] = view[:, -2, :]
             view[:, :, -1] = view[:, :, -2]

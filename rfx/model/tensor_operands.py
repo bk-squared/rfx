@@ -1,6 +1,9 @@
 """Form geometry permittivity and permeability operands in array order."""
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 from rfx.errors import RfxUnsupported
+from rfx._internal._precision import resolve_field_dtype
 
 from dataclasses import dataclass, field, replace
 
@@ -45,6 +48,57 @@ def attach_tensor(materials, operands):
     return materials._replace(components=replace(components, tensor=operands))
 
 
+def _same_operand(a, b):
+    """Identity of one operand field; a tuple field compares its arrays by identity.
+
+    Operands may be traced, so they are never compared by value.
+    """
+    if a is b:
+        return True
+    if isinstance(a, tuple) and isinstance(b, tuple) and len(a) == len(b):
+        return all(x is y for x, y in zip(a, b))
+    return False
+
+
+def step_tensor(materials, operands):
+    """The operand set a step setup uses: the attached one, else the arguments.
+
+    A runner attaches its finished operands to the realization before it
+    builds any drive, so the drives and the step read one object. A direct
+    low-level caller passes them as arguments instead. When both are present
+    they must be the same arrays (each array field the same object, the
+    smooth flag equal); anything else is two operand sets for one model.
+    """
+    components = getattr(materials, "components", None)
+    attached = None if components is None else components.tensor
+    if attached is None or operands is None:
+        return operands if attached is None else attached
+    same = (_same_operand(attached.eps, operands.eps)
+            and _same_operand(attached.inv_eps, operands.inv_eps)
+            and _same_operand(attached.conformal_weights, operands.conformal_weights)
+            and _same_operand(attached.node_smoothing, operands.node_smoothing)
+            and bool(attached.inv_eps_smooth) == bool(operands.inv_eps_smooth))
+    if not same:
+        raise ValueError("two tensor operand sets for one model")
+    return attached
+
+
+def attach_run_tensor(materials, aniso_eps=None, aniso_inv_eps=None, conformal_weights=None,
+                      inv_eps_smooth=False):
+    """Attach a runner's finished operands once, before any drive is built.
+
+    Returns ``materials`` unchanged when there is no operand. The attach
+    goes through the realization entry (``with_components``), which checks
+    that the realization is current and attaches by :func:`attach_tensor`.
+    """
+    operands = TensorOperands.of(aniso_eps, aniso_inv_eps, conformal_weights, inv_eps_smooth)
+    if operands is None:
+        return materials
+    from rfx.model import materials as model
+    return model.with_components(materials, None, periodic=materials.components.periodic,
+                                 tensor=operands)
+
+
 def smoothing_nominal_h_max(sim, grid):
     """Maximum physical width, substituting declared profiles on traced axes.
 
@@ -74,7 +128,7 @@ def full_tensor_eps(sim, grid, materials, shape_eps_pairs):
     return compute_node_tensor_eps(
         grid, shape_eps_pairs, background_eps=1.0,
         nominal_h_max=smoothing_nominal_h_max(sim, grid),
-        field_dtype=(jnp.float64 if sim._precision == 'float64' else materials.eps_r.dtype))
+        field_dtype=resolve_coefficient_dtype(sim._precision))
 
 
 def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
@@ -89,11 +143,6 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
     begin(sim, grid, conformal_shapes=pec_shapes or (), smoothing=subpixel_smoothing,
           conformal=conformal)
     conformal_module.validate_conformal_min_weight(conformal_min_weight)
-    # Stage 2 unified path: subpixel_smoothing="kottke_pec" replaces
-    # the Stage 1 (Kottke dielectric + Dey-Mittra weights + per-step
-    # apply_conformal_pec) chain with a single inverse-permittivity
-    # tensor that encodes both dielectric subpixel smoothing and PEC
-    # behaviour (inv = 0 freezes the field).
     _unextendable = []
     aniso_eps = None
     aniso_inv_eps = None
@@ -102,10 +151,6 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
         from rfx.geometry.smoothing import (
             compute_inv_eps_tensor_diag, smoothed_shape_pairs, warn_curved_high_contrast,
         )
-        # the pairs carry the CPML/UPML pad continuation, so a
-        # dielectric that touches the domain edge is solved with the material
-        # in its own pad instead of a vacuum facet at the seam. PEC shapes
-        # arrive continued from assembly, with the MSL entry exception.
         shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
         begin(sim, grid, shapes=shape_eps_pairs)
         warn_curved_high_contrast(shape_eps_pairs, sim=sim)
@@ -115,37 +160,17 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
             pec_shapes=pec_shapes or [],
             background_eps=1.0,
             nominal_h_max=smoothing_nominal_h_max(sim, grid),
-        )
-        # Yee-stagger correction: the Kottke union reaches inv=0
-        # on Yee-staggered components only when the cell-center
-        # AND the offset position are both inside the PEC shape.
-        # For thin PEC obstacles (e.g. a 1-cell-wide PEC short),
-        # cell-center is inside but Ey/Ez Yee positions are at
-        # cell-corner offsets that fall *outside* the box → inv
-        # remains 1 (vacuum). That leaves the H field free to
-        # propagate inside the PEC region and seeds late-time
-        # exponential growth.
-        #
-        # Fix: where ``pec_mask`` (cell-center binary) is True,
-        # force all three inv components to zero. This is the
-        # cell-center analogue of Stage 1's sigma=1e10 fold,
-        # without the Ca→-1 instability that the sigma fold has
-        # at Yee-staggered cells where inv > 0.
+        dtype=resolve_coefficient_dtype(sim._precision))
         if zero_inverse_on is not None:
             inv_xx, inv_yy, inv_zz = aniso_inv_eps
             inv_xx = jnp.where(zero_inverse_on, 0.0, inv_xx)
             inv_yy = jnp.where(zero_inverse_on, 0.0, inv_yy)
             inv_zz = jnp.where(zero_inverse_on, 0.0, inv_zz)
             aniso_inv_eps = (inv_xx, inv_yy, inv_zz)
-            # zero_inverse_on marks interior PEC geometry (e.g. the PEC
-            # short). The reference run has no interior PEC — do NOT
-            # apply zero_inverse_on to ref_aniso_inv_eps, or the reference
-            # becomes identical to the device and S11 = 0.
     elif subpixel_smoothing:
         from rfx.geometry.smoothing import (
             smoothed_shape_pairs, warn_curved_high_contrast,
         )
-        # same pad continuation as the Stage-2 site above.
         shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
         begin(sim, grid, shapes=shape_eps_pairs)
         if subpixel_smoothing != "full_tensor":
@@ -157,11 +182,8 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
                 from rfx.geometry.smoothing import compute_smoothed_eps
                 aniso_eps = compute_smoothed_eps(
                     grid, shape_eps_pairs, background_eps=1.0,
-                    nominal_h_max=smoothing_nominal_h_max(sim, grid))
+                    nominal_h_max=smoothing_nominal_h_max(sim, grid), dtype=resolve_coefficient_dtype(sim._precision))
 
-    # Conformal PEC: form node lengths, face areas, and the SC clamp.
-    # Entry admission refuses this with Stage 2; keep the exclusion
-    # defensive so the two PEC treatments cannot be applied together.
     conformal_weights = None
     conformal_areas = None
     if conformal and pec_shapes and not use_kottke_pec:
@@ -174,14 +196,10 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
             refuse_traced_conformal_shape(shape)
         table = build_cell_table(grid, pec_shapes, include_trailing_node=conformal == "cut_cell_floor")
         conformal_weights, conformal_areas = conformal_fractions_from_table(
-            table, grid, conformal, pec_shapes=pec_shapes)
+            table, grid, conformal, pec_shapes=pec_shapes,
+            field_dtype=resolve_field_dtype(sim._precision) or jnp.float32)
 
-        # The 1/w permittivity is formed below, once the run's final
-        # periodic flags are known.
 
-    # Edge-owned capacitors go onto the Stage-2 inverse tensor here; the
-    # Stage-1 / smoothed tensor gets them below, after the conformal
-    # correction, so a conformal weight never divides a lumped C.
     aniso_inv_eps = add_lumped_eps(
         aniso_inv_eps, materials.eps_r_lumped, inverse=True)
 
@@ -194,55 +212,44 @@ def finish_tensor_operands(materials, aniso_eps, conformal_weights):
     nodes = aniso_eps.nodes if isinstance(aniso_eps, SmoothedEps) else None
     if nodes is not None:
         aniso_eps = aniso_eps.diagonal
-    # Conformal PEC (Stage 1) permittivity: the same four-cell
-    # edge mean of the volume permittivity the plain E update uses, on the
-    # run's final periodic flags (after the TFSF / 2-D overrides), divided
-    # by the edge's weight w (not its open fraction). At w == 1 it
-    # is the plain path's value exactly.
     if conformal_weights is not None:
         w_ex, w_ey, w_ez = conformal_weights
         eps_mean = materials.components.eps
         eps_ex_c, eps_ey_c, eps_ez_c = conformal_module.conformal_eps_correction(
             eps_mean, w_ex, w_ey, w_ez)
         if aniso_eps is not None:
-            # Merge: conformal PEC overrides smoothed eps at PEC boundary cells
             s_ex, s_ey, s_ez = aniso_eps
             eps_ex_c = jnp.where(w_ex < 1.0, eps_ex_c, s_ex)
             eps_ey_c = jnp.where(w_ey < 1.0, eps_ey_c, s_ey)
             eps_ez_c = jnp.where(w_ez < 1.0, eps_ez_c, s_ez)
         aniso_eps = (eps_ex_c, eps_ey_c, eps_ez_c)
 
-    # Complete the volume tensor before adding edge-owned capacitors:
-    # conformal weights must act on the volume, never on a lumped C.
     aniso_eps = add_lumped_eps(aniso_eps, materials.eps_r_lumped)
 
     return SmoothedEps(aniso_eps, nodes) if nodes is not None else aniso_eps
 
 
-def form_reference_operands(grid, materials, *, subpixel_smoothing,
+def form_reference_operands(grid, materials, *, dtype, subpixel_smoothing,
                             conformal_weights, boundary_pec_shapes, reference_eps=1.0, conformal_pec=None):
     """Form the waveguide reference operands; conformal walls cut the reference medium (reference_eps)."""
     ref_aniso_inv_eps = None
     ref_aniso_eps = None
     if subpixel_smoothing == "kottke_pec":
         from rfx.geometry.smoothing import compute_inv_eps_tensor_diag
-        # Reference run is empty guide with same boundary walls only.
-        # Must NOT include interior PEC geometry (e.g. PEC short box):
-        # if device and reference share the same obstacle, both DFTs
-        # are identical and (device - reference) / incident = 0.
         ref_aniso_inv_eps = compute_inv_eps_tensor_diag(
             grid,
             dielectric_shapes=[],
             pec_shapes=boundary_pec_shapes,
             background_eps=1.0,
-        )
+            dtype=dtype)
     reference = None
     if conformal_weights is not None:
         from rfx.geometry.cell_table import build_cell_table
         from rfx.model.conformal_rules import conformal_fractions_from_table
         table = build_cell_table(grid, boundary_pec_shapes, include_trailing_node=conformal_pec == "cut_cell_floor")
         weights, areas = conformal_fractions_from_table(
-            table, grid, conformal_pec, pec_shapes=boundary_pec_shapes)
+            table, grid, conformal_pec, pec_shapes=boundary_pec_shapes,
+            field_dtype=dtype)
         ref_aniso_eps = conformal_module.conformal_eps_correction(
             jnp.full_like(materials.eps_r, reference_eps), *weights)
         reference = (weights, areas)
@@ -293,9 +300,6 @@ def refuse_tensor_conflicts(sim, grid, *, subpixel_smoothing, conformal_pec,
         from rfx.geometry.smoothing import refuse_pmc_smoothing
         refuse_pmc_smoothing(sim, grid)
 
-    # A Debye/Lorentz E update reads neither the smoothed permittivity
-    # tensor nor the Dey-Mittra eps correction
-    # (``_update_e_with_optional_dispersion``); running on would drop them.
     if debye_spec is not None or lorentz_spec is not None:
         sim._refuse_unsupported_run_kwargs(
             "uniform mesh with Debye/Lorentz materials", {
@@ -313,9 +317,6 @@ def refuse_tensor_conflicts(sim, grid, *, subpixel_smoothing, conformal_pec,
                     "eps correction, so PEC would be staircased",
             })
 
-    # The UPML E update is built from the Stage-1 per-component eps
-    # (``init_upml(aniso_eps=...)``) and never reads the Stage-2 inverse
-    # tensor ``kottke_pec`` builds, so that tensor would be dropped.
     if sim._boundary == "upml" and grid.cpml_layers > 0:
         sim._refuse_unsupported_run_kwargs(
             "uniform mesh with boundary='upml'", {

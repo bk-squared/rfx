@@ -46,14 +46,13 @@ def _edges(cells):
 
 @pytest.mark.parametrize('overlap,offset', [('pin', 0), ('shell', 8)])
 def test_transition_restored_state_and_board_readers(monkeypatch, overlap, offset):
+    """The synthetic stamp fixture widens y to retain the required wall-to-CPML clearance."""
     import rfx.sparams.coax as calculators
     import rfx.sources.coaxial_port as coax
     import rfx.sources.msl_port as msl
     import rfx.probes.msl_wave_decomp as probe
     import tests._coax_msl_instrument_fixture as fixture
 
-    # Synthetic stage instrumentation: put the stamp under the existing feed;
-    # widen y to retain the required wall-to-CPML clearance. No RF claim.
     monkeypatch.setattr(fixture, 'DOMAIN', (12.5e-3, 3.6e-3, 3.9e-3))
     sim = fixture.build_instrument_junction()
     sim._coaxial_ports[0] = sim._coaxial_ports[0]._replace(
@@ -110,14 +109,15 @@ def test_transition_restored_state_and_board_readers(monkeypatch, overlap, offse
         calls.append('validate')
         assert kwargs['pec_edge_masks'] is seen['board'].pec_edges, 'validation needs board-only edges'
         result = validate(*args, **kwargs)
-        assert result is None  # main e46544a on both overlap fixtures
+        assert result is None
         return result
 
     def trace_board(edges, *args, **kwargs):
         calls.append('trace')
         assert edges is seen['board'].pec_edges, 'trace reader needs board-only edges'
         result = trace(edges, *args, **kwargs)
-        assert result == (36, 36)  # main e46544a: k_trace_lo and upper plane
+        TRACE_LO_AND_UPPER_PLANES = (36, 36)
+        assert result == TRACE_LO_AND_UPPER_PLANES
         return result
 
     def kernel(grid, materials, n_steps, **kwargs):
@@ -177,8 +177,6 @@ def test_diagnostic_fault_preserves_s_and_warnings(monkeypatch, reader):
         raise RuntimeError('injected diagnostic failure')
 
     def fault_at_handover(owner, *args, **kwargs):
-        # Fault injection is restricted to the diagnostic read: admission and
-        # time stepping remain real. There are no observations inside this wrapper.
         with monkeypatch.context() as patch:
             if reader == '_campaign_ctx':
                 patch.setattr(owner, reader, fail)

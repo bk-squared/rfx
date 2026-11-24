@@ -1,10 +1,14 @@
-"""Run-specific source coefficient selection and absorber admission."""
+"""Run-specific source coefficient selection and absorber admission.
+
+Standalone calls of ``make_current_source`` keep float32 sampling; run
+callers pass their dtype.
+"""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from numpy.typing import ArrayLike
+    from numpy.typing import ArrayLike, DTypeLike
     from collections.abc import Callable
     from rfx.core.yee import MaterialArrays
     from collections.abc import Sequence
@@ -24,7 +28,7 @@ from rfx.grid import Grid
 from rfx.model.graded_grid import NonUniformGrid, e_node_dual_spacing_at
 
 
-def drive_columns(eps, sigma, keep, cells, owned, samples, volumes, dt, *, cb=None):
+def drive_columns(eps, sigma, keep, cells, owned, samples, volumes, dt, *, cb=None, dtype=jnp.float32):
     """Build graded increments from local realized edges in source order.
 
     Run eagerly (including eager vmap over ranks): compiling these products
@@ -56,11 +60,11 @@ def drive_columns(eps, sigma, keep, cells, owned, samples, volumes, dt, *, cb=No
             column = column * jnp.where(owned[n], keep[axis][cell], 0.)
         columns.append(column)
     return (jnp.stack(columns, axis=-1) if columns else
-            jnp.zeros((samples.shape[0], 0), dtype=jnp.float32))
+            jnp.zeros((samples.shape[0], 0), dtype=jnp.promote_types(dtype, jnp.float32)))
 
 
 def drive_table(series, meta, n_steps, *, occupancy=None, periodic=(False,) * 3,
-                sheet_edge_masks=None, design=None, shape=None, pad=False, keep=None):
+                sheet_edge_masks=None, design=None, shape=None, pad=False, keep=None, dtype):
     """Stack resolved drives, storing each electric edge's occupancy weight.
 
     Occupancy is the released input used by this lane's step. The optional
@@ -78,7 +82,7 @@ def drive_table(series, meta, n_steps, *, occupancy=None, periodic=(False,) * 3,
         series = [s[:n_steps] if s.shape[0] >= n_steps else
                   jnp.pad(s, (0, n_steps - s.shape[0])) for s in series]
     table = (jnp.stack(series, axis=-1) if series else
-             jnp.zeros((n_steps, 0), dtype=jnp.float32))
+             jnp.zeros((n_steps, 0), dtype=jnp.promote_types(dtype, jnp.float32)))
     if not series or (keep is None and occupancy is None and design is None):
         return table
     if keep is None or design is not None:
@@ -116,7 +120,7 @@ def source_table(samples, kind=None, *, native="raw", coefficient=None, volume=1
     in the waveform product also makes eager and jit agree with traced Cb.
     """
     from rfx.api._source_semantics import needs_scale
-    needs_scale(kind, native)  # validate Python-level dispatch, never a tracer
+    needs_scale(kind, native)
     if kind == "field" or (kind is None and native == "raw"):
         return samples
     cb = coefficient() if callable(coefficient) else coefficient
@@ -128,14 +132,21 @@ def source_table(samples, kind=None, *, native="raw", coefficient=None, volume=1
 
 
 def uniform_source_table(grid, cell, component, waveform, n_steps, materials,
-                         kind=None, *, native="raw", periodic=(False,) * 3):
-    """Uniform and sweep adapters share samples, edge reads and product order."""
+                         kind=None, *, native="raw", periodic=(False,) * 3, dtype=None):
+    """Uniform and sweep adapters share samples, edge reads and product order.
+
+    ``dtype=None`` takes the materials' dtype, because the frozen
+    ``simulation.make_source``, ``make_j_source``, ``make_port_source`` and
+    ``make_wire_port_sources`` callers omit it.
+    """
     import jax
     import jax.numpy as jnp
     from rfx.model.materials import e_update_coefficient_at, electric_grid_kwargs
     from rfx.sources._sampling import concrete_waveform_eval
+    if dtype is None:
+        dtype = materials.eps_r.dtype if materials is not None else jnp.float32
     with concrete_waveform_eval(waveform, grid.dt):
-        times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+        times = jnp.arange(n_steps, dtype=jnp.promote_types(dtype, jnp.float32)) * grid.dt
         samples = jax.vmap(waveform)(times)
     return source_table(
         samples, kind, native=native,
@@ -152,22 +163,22 @@ def vacuum_source_table(samples, kind, dt, volume):
                         coefficient=lambda: e_update_coeffs(1.0, 0.0, dt)[1])
 
 
-def field_source_samples(waveform, n_steps, dt):
+def field_source_samples(waveform, n_steps, dt, *, dtype):
     """Prescribed field table sampled at the supplied timestep."""
     import jax
     import jax.numpy as jnp
     from rfx.sources._sampling import concrete_waveform_eval
     with concrete_waveform_eval(waveform, dt):
-        samples = jax.vmap(waveform)(jnp.arange(n_steps, dtype=jnp.float32) * dt)
+        samples = jax.vmap(waveform)(jnp.arange(n_steps, dtype=jnp.promote_types(dtype, jnp.float32)) * dt)
     return source_table(samples, "field")
 
 
-def current_source_samples(grid, waveform_fn, n_steps):
+def current_source_samples(grid, waveform_fn, n_steps, *, dtype):
     """The current ``I(t)`` in amperes at the ``n_steps`` step times
-    ``t = float32(n)*dt``, promoted by dt, before ``Cb/dV`` normalisation."""
+    ``t = coefficient_dtype(n)*dt``, promoted by dt, before ``Cb/dV`` normalisation."""
     from rfx.sources._sampling import concrete_waveform_eval
     with concrete_waveform_eval(waveform_fn, grid.dt):
-        times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+        times = jnp.arange(n_steps, dtype=jnp.promote_types(dtype, jnp.float32)) * grid.dt
         return jax.vmap(waveform_fn)(times)
 
 
@@ -183,8 +194,6 @@ def current_source_cb(eps_r_c, sigma_c, dt):
     and the distributed graded forward, which builds it inside its jitted
     program from the slabs its E update receives, both call it.
     """
-    # In eps_r units the reverse pass avoids squaring eps ~ 1e-11,
-    # which overflowed float32 cotangents into NaN gradients.
     eps_r = jnp.asarray(eps_r_c)
     sigma = jnp.asarray(sigma_c)
     return (dt / EPS_0) / (eps_r + sigma * (dt / (2.0 * EPS_0)))
@@ -193,24 +202,10 @@ def current_source_cb(eps_r_c, sigma_c, dt):
 def current_source_volume(grid, position_ijk, component):
     """``(dV, grid_traced)``: the control volume of the E node a current
     source at ``position_ijk`` injects into, and whether the profile is
-    traced (then ``dV`` is a jnp scalar, else a Python float)."""
+    traced (then ``dV`` is a jnp scalar, else a Python float). An electric component lies on a cell edge along its own axis and on a node along the transverse axes.
+    """
     i, j, k = position_ijk
 
-    # Control volume of the E node this source injects into.
-    # An E_a component is an EDGE along its own axis a and sits ON a node on
-    # the two transverse axes, so its control volume is MIXED:
-    #   axis == a  -> primal per-cell width d[idx]
-    #   axis != a  -> dual spacing (d[idx-1]+d[idx])/2, which is exactly the
-    #                 metric the NU E update divides curl H by (CORE-C2,
-    #                 ``_profile_to_inv_arrays``); the Ex update, for
-    #                 instance, uses inv_dy and inv_dz and never inv_dx.
-    # Using the primal width on all three axes is right only where
-    # both neighbour pairs are equal. On a 2:1 grading step it mis-normalizes
-    # the injected current moment by the local cell ratio on each graded
-    # TRANSVERSE axis (measured: dV too large by 1.333 with one graded
-    # transverse axis, 1.778 with two).
-    # Stay in jnp when the profile is traced so a mesh-as-design variable
-    # propagates the gradient into the waveform normalisation.
     _axis_of = {"ex": 0, "ey": 1, "ez": 2}
     if component not in _axis_of:
         raise ValueError(
@@ -241,7 +236,7 @@ def current_source_volume(grid, position_ijk, component):
 
 
 def make_current_source(grid: NonUniformGrid, position_ijk: Sequence[int], component: str,
-                        waveform_fn: Callable[[float], float] | Callable[[jax.Array], jax.Array], n_steps: int, materials: MaterialArrays, amplitude_kind: str | None = None) -> tuple[int, int, int, str, jax.Array | np.ndarray]:
+                        waveform_fn: Callable[[float], float] | Callable[[jax.Array], jax.Array], n_steps: int, materials: MaterialArrays, amplitude_kind: str | None = None, *, dtype: DTypeLike = jnp.float32) -> tuple[int, int, int, str, jax.Array | np.ndarray]:
     """Create a properly normalized current source for non-uniform grid.
 
     The waveform specifies CURRENT (Amperes). The E-field addition is:
@@ -262,8 +257,6 @@ def make_current_source(grid: NonUniformGrid, position_ijk: Sequence[int], compo
     """
     i, j, k = position_ijk
 
-    # Read the edge's own eps and sigma, averaged over its four cells,
-    # with the same differentiable drive formula on every trace.
     from rfx.model import e_update_coefficient_at
     if str(component).lower() not in ("ex", "ey", "ez"):
         raise ValueError(
@@ -275,7 +268,7 @@ def make_current_source(grid: NonUniformGrid, position_ijk: Sequence[int], compo
     dV, grid_traced = current_source_volume(grid, (i, j, k), component)
     any_traced = materials_traced or grid_traced
     waveform = source_table(
-        current_source_samples(grid, waveform_fn, n_steps), amplitude_kind,
+        current_source_samples(grid, waveform_fn, n_steps, dtype=dtype), amplitude_kind,
         native="cb_over_dv", volume=dV,
         coefficient=lambda: e_update_coefficient_at(
             materials, (i, j, k), component, grid.dt, periodic=tuple(a in grid.periodic_axes for a in "xyz"), host=True, grid=grid))
@@ -364,7 +357,7 @@ def subgrid_source_tables(requests, grid, materials, n_steps, *, high_wall, nati
             sigma, unit_field = drive
             waveform = port_drive_waveform(
                 grid, cell, pe.component, pe.waveform, n_steps, materials,
-                sigma_port=sigma, unit_field=unit_field)
+                sigma_port=sigma, unit_field=unit_field, dtype='float32')
             fine.append((*cell, pe.component, np.array(waveform)))
     return fine, coarse
 
@@ -393,16 +386,32 @@ def _refuse_pad_edge(grid, cell, label, component=None):
             "Move the source/port edge into the interior.")
 
 
-def resolve_run_sources(queue, materials, sim, grid, *, tensor=False):
-    """Resolve after all stamps; preserve tensor branches pending their audit."""
-    upml = sim._boundary == "upml" and grid.cpml_layers > 0
+def upml_active(sim, grid):
+    """Whether the run's E update is the UPML one on the whole grid."""
+    return sim._boundary == "upml" and grid.cpml_layers > 0
+
+
+def drive_materials(materials, sim, grid):
+    """The materials a drive or element reads its edge coefficient from.
+
+    Under UPML the step's E coefficient is the UPML form on every edge, so
+    the readers take that branch (``source_upml``), with the attached
+    tensor's float32 diagonal when there is one. Elsewhere the materials
+    are returned unchanged.
+    """
+    if not upml_active(sim, grid):
+        return materials
+    return materials._replace(components=replace(
+        materials.components, source_upml=True))
+
+
+def resolve_run_sources(queue, materials, sim, grid):
+    """Resolve after all stamps and after the run's tensor operands are attached."""
+    upml = upml_active(sim, grid)
     undriven = set()
     if upml:
         from rfx.sources.sources import _wire_port_cells, wire_port_from_entry
         from rfx.sources.msl_port import _msl_yz_cells, msl_port_from_entry
-        # Only a current drive multiplies the update coefficient. A source
-        # that prescribes the field increment and a port that is a load only
-        # inject nothing through it and are admitted anywhere.
         for n, port in enumerate(sim._ports):
             cells = (_wire_port_cells(grid, wire_port_from_entry(port))
                      if port.extent is not None else
@@ -423,9 +432,7 @@ def resolve_run_sources(queue, materials, sim, grid, *, tensor=False):
             position["xyz".index(port.axis)] = port.position
             _refuse_pad_edge(grid, grid.position_to_index(tuple(position)),
                              f"floquet_port[{n}]")
-        materials = materials._replace(components=replace(
-            materials.components, source_upml=not tensor))
-    sources = queue.resolve(materials)
+    sources = queue.resolve(drive_materials(materials, sim, grid))
     if upml:
         for source in sources:
             cell = (int(source.i), int(source.j), int(source.k))
@@ -436,7 +443,7 @@ def resolve_run_sources(queue, materials, sim, grid, *, tensor=False):
 
 
 def dispersive_drive_model(materials, debye_spec, lorentz_spec, grid=None, *,
-                           stability_grid=None, in_program=True):
+                           stability_grid=None, in_program=True, field_dtype=jnp.float32):
     """Materials a drive reads its coefficient from on a lane that keeps no
     realization of its own (the distributed lanes). Nothing whole-domain is
     built: a dispersive model carries its pole specs, read edge by edge."""
@@ -449,7 +456,8 @@ def dispersive_drive_model(materials, debye_spec, lorentz_spec, grid=None, *,
     if debye_spec is None and lorentz_spec is None and grid is None:
         return materials
     from rfx.model.materials import EdgePoles
-    return materials._replace(components=EdgePoles(debye_spec, lorentz_spec, grid))
+    return materials._replace(components=EdgePoles(
+        debye_spec, lorentz_spec, grid, field_dtype=field_dtype))
 
 
 def debye_pole_term(drive_model, cell, component, dt):

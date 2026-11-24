@@ -2,6 +2,7 @@
 
 The expected side is always the runner's own formation, called with the
 arguments the runner passed to its stepper; the plan never supplies it.
+A graded periodic axis needs a constant profile, which is refused.
 """
 import sys
 from dataclasses import replace
@@ -19,12 +20,12 @@ from rfx.stepping.graded import graded_probe_table
 from tests.contracts.path_equivalence.builders import build, DX, FREQS, point, waveform
 
 SCENES = ('periodic', '2d', 'wire_pec', 'wire_lumped', 'no_probe')
-# A graded periodic axis needs a constant profile (refused), and 2-D runs uniform.
 CASES = [(scene, mesh, entry) for scene in SCENES for mesh in ('uniform', 'graded')
          for entry in ('run', 'forward') if not (scene in ('2d', 'periodic') and mesh == 'graded')]
 
 
 def scene(name, graded):
+    """S from one record needs an isolated drive."""
     lane = 'run_nonuniform' if graded else 'run_uniform'
     if name == 'periodic':
         return build(('_periodic_axes', 'periodic'), lane, graded=graded)
@@ -41,8 +42,6 @@ def scene(name, graded):
         sim.add(Box(point(edge, 2, 2), point(6, edge, 3)), material='pec')
         return sim
     if name == 'wire_lumped':
-        # Plan order (as declared: lumped, wire) differs from spec order (wires first).
-        # One driven port: S from one record needs an isolated drive.
         sim = build(('_ports', 'passive_port'), lane, graded=graded)
         sim.add_port(point(7, 4, 2), 'ez', impedance=50., extent=2*DX, waveform=waveform)
         return sim
@@ -52,14 +51,13 @@ def scene(name, graded):
 
 
 def call(sim, entry, n_steps=12):
+    """The S scan refuses a mixed lumped + wire set."""
     ports = [p for p in sim._ports if p.impedance]
     if entry == 'run':
-        # The S scan refuses a mixed lumped + wire set; the main scan still records both.
         mixed = len({p.extent is None for p in ports}) > 1
         return sim.run(n_steps=n_steps, skip_preflight=True, compute_s_params=bool(ports) and not mixed,
                        **({'s_param_freqs': FREQS} if ports else {}))
     return sim.forward(n_steps=n_steps, checkpoint=False, skip_preflight=True,
-                       # A plain source fires in every port drive: no S request then.
                        **({'port_s11_freqs': FREQS} if any(p.excite for p in ports)
                           and len(ports) == len(sim._ports) else {}))
 
@@ -101,7 +99,6 @@ def capture(sim, entry, graded, edit=None, n_steps=12):
 def case(name, mesh, entry):
     graded = mesh == 'graded'
     seen = capture(scene(name, graded), entry, graded)
-    # Today's formation: the same stepper and arguments, with no plan.
     pairs = [(stepper(*args, **kwargs),
               stepper(*args, **{k: v for k, v in kwargs.items() if k != 'measurement'}))
              for stepper, args, kwargs in seen['calls']]
@@ -189,7 +186,6 @@ def test_b2_tables_from_plan(name, mesh, entry):
             assert [o.kind for o in plan.owners if o.kind in ('wire', 'lumped')] == ['lumped', 'wire']
         if name == 'no_probe':
             ids = [o.id for o in plan.owners if o.kind == 'probe']
-            # Only the uniform forward() adds probes at port positions.
             assert ids == (['probe:port0'] if (entry, mesh) == ('forward', 'uniform') else [])
             assert len(probes) == len(ids)
 
@@ -293,13 +289,11 @@ def test_b3_step_reads_plan(mesh):
     sim = scene('wire_pec', graded)
     seen = capture(sim, 'run', graded, edit=moved, n_steps=60)
     plan = seen['plan']
-    # probe:0 sits inside this scene's PEC block; probe:1 sees the field.
     probe = next(o for o in plan.owners if o.id == 'probe:1').channels[0].nodes[0]
     port = next(o for o in plan.owners if o.kind in ('wire', 'lumped'))
     v = port.channels[0].nodes[0]
     stepper, args, kwargs = seen['calls'][0]
     s1 = stepper(*args, **kwargs)
-    # Captured fields: the same stepper with no plan and two more direct probes.
     extra = [(probe.i, probe.j, probe.k, probe.component), (v.i, v.j, v.k, v.component)]
     if graded:
         probes = list(kwargs['probes']) + extra
@@ -315,6 +309,5 @@ def test_b3_step_reads_plan(mesh):
     record = next(r for r in port_record(s1, mesh) if r.id == port.id)
     np.testing.assert_array_equal(np.asarray(record['V']), np.float32(v.weight) * captured[:, n+1])
     assert np.any(captured[:, n+1] != 0) and np.any(captured[:, n] != captured[:, 1])
-    # Both edits are visible: today's formation reads other values.
     unedited = next(r for r in port_record(fields, mesh) if r.id == port.id)
     assert np.any(np.asarray(unedited['V']) != np.asarray(record['V']))

@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 from inspect import signature
 
 import jax
+import jax.numpy as jnp
 
 from rfx.boundaries import cpml, upml
 from rfx.boundaries.spec import normalize_boundary
@@ -107,12 +108,12 @@ class Realization:
 
 
 def _read_absorber_parameters():
+    """The alpha_max record uses the public float32 profile."""
     cpml_defaults = signature(cpml._cpml_profile).parameters
     cpml_parameters = {name: cpml_defaults[name].default
                        for name in ("order", "R_asymptotic", "kappa_max")}
-    # Alpha is set in the profile body, not in its signature.
     with jax.ensure_compile_time_eval():
-        cpml_parameters["alpha_max"] = float(cpml._cpml_profile(2, 0.0, 1.0).alpha.max())
+        cpml_parameters["alpha_max"] = float(cpml._cpml_profile(2, 0.0, 1.0, dtype=jnp.float32).alpha.max())
     upml_defaults = signature(upml._sigma_profile_1d).parameters
     return {
         "cpml": tuple(sorted(cpml_parameters.items())),
@@ -184,6 +185,8 @@ def realize(model: BoundaryModel, grid) -> Realization:
 
     ``grid.cells`` supplies the pad metrics. Declared lengths come from the
     model metadata or ``grid.domain``; stored node counts do not set a period.
+
+    The last stored width supplies a bounding node rather than an absorber pad cell.
     """
     domain = model.declaration.domain
     if domain is None:
@@ -196,8 +199,6 @@ def realize(model: BoundaryModel, grid) -> Realization:
             periods.append((axis.name, length))
         for side in ("lo", "hi"):
             name = f"{axis.name}_{side}"
-            # Only the full-guide default faces are relabelled. Other feature
-            # departures (including Floquet) retain their declared kinds.
             guide_faces = getattr(grid, "_waveguide_admission", ((),))[0]
             face = records[name] if name in guide_faces else model.face(name)
             plane = 0.0 if side == "lo" else length
@@ -206,7 +207,6 @@ def realize(model: BoundaryModel, grid) -> Realization:
             elif face.kind == Kind.ABSORBER:
                 cells = grid.cells(ax)
                 pad = records[name].realized
-                # Last stored width supplies a bounding node, not a pad cell.
                 widths = cells[:pad] if side == "lo" else cells[len(cells) - 1 - pad:len(cells) - 1]
                 terminal = plane + (-1 if side == "lo" else 1) * sum(widths)
                 planes.append(FacePlane(face.name, face.kind, plane, terminal, Kind.PEC))

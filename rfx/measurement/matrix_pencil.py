@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from rfx.measurement._block_plan import block_plan
+
 
 DECIMATION_GUARD = 8
 _MAX_DECIMATION_STAGE = 13
@@ -41,9 +43,6 @@ def _decimation_plan(n_samples: int, dt: float, f_max: float,
             columns = _pencil_columns(kept, pencil_parameter)
             if (kept < _MIN_PENCIL_SAMPLES
                     or min(columns, kept - columns) < capacity):
-                # Default p=.33/K=50 needs 155 retained samples. A rejected
-                # stage (q<=13) therefore leaves at most 2262 inputs to the
-                # core. Other requested pencil shapes/ranks change that bound.
                 break
             factors.append(factor)
             n_samples = kept
@@ -97,8 +96,8 @@ def _pencil(Yd: np.ndarray, sv_rel: float, unit_tol: float, *,
     b0, b1 = [], []
     for ch in range(C):
         y = Yd[:, ch].astype(np.complex128) / rms[ch]
-        b0.append(sliding_window_view(y, L)[:M])        # [i, j] = y[i + j]
-        b1.append(sliding_window_view(y[1:], L)[:M])    # [i, j] = y[i + j + 1]
+        b0.append(sliding_window_view(y, L)[:M])
+        b1.append(sliding_window_view(y[1:], L)[:M])
     Y0 = np.concatenate(b0, axis=1)
     Y1 = np.concatenate(b1, axis=1)
     U, sv, Vh = np.linalg.svd(Y0, full_matrices=False)
@@ -140,17 +139,52 @@ def _fit_residues(Y_win: np.ndarray, s: np.ndarray, dt: float, *,
     """Fit bounded exponential columns and return start- or column-referenced residues."""
     if s.size == 0:
         return np.zeros((0, Y_win.shape[1]), dtype=np.complex128)
-    m = np.arange(Y_win.shape[0], dtype=np.float64) * float(dt)
+    length, channels = Y_win.shape
+    rank = s.size
+    plan = _residue_block_plan(length, rank, channels)
+    end = (length - 1) * float(dt)
     growing = s.real > 0
-    exponents = np.outer(m, s)
-    exponents[:, growing] = np.outer(m - m[-1], s[growing])
-    basis = np.exp(exponents)
-    norms = np.linalg.norm(basis, axis=0)
-    norms = np.where(norms > 0, norms, 1.0)
-    coef = np.linalg.lstsq(basis / norms, Y_win.astype(np.complex128), rcond=None)[0]
+
+    def rows(start, stop):
+        """Growing columns retain the original window's end reference."""
+        t = np.arange(start, stop, dtype=np.float64) * float(dt)
+        exponents = t[:, None] * s[None, :]
+        exponents[:, growing] = (t - end)[:, None] * s[None, growing]
+        return np.exp(exponents)
+
+    sums = np.zeros(rank)
+    for start, stop in plan:
+        sums += np.sum(np.abs(rows(start, stop))**2, axis=0)
+    norms = np.where(sums > 0, np.sqrt(sums), 1.0)
+    triangle = np.zeros((rank + channels, rank + channels), dtype=np.complex128)
+    for start, stop in plan:
+        block = np.concatenate((rows(start, stop) / norms,
+                                Y_win[start:stop].astype(np.complex128)), axis=1)
+        triangle = np.linalg.qr(np.concatenate((triangle, block)), mode="r")
+    cutoff = np.finfo(np.float64).eps * max(length, rank)
+    coef = np.linalg.lstsq(triangle[:rank, :rank], triangle[:rank, rank:], rcond=cutoff)[0]
     residues = coef / norms[:, None]
     if not column_reference:
-        residues[growing] *= np.exp(-m[-1] * s[growing])[:, None]
+        residues[growing] *= np.exp(-end * s[growing])[:, None]
     return residues
 
 
+def _residue_block_plan(length, rank, channels):
+    """Balance the byte target's count, capped at length // (rank + channels).
+
+    Every real block has at least rank + channels rows when length permits;
+    sizes differ by at most one. Shorter windows form one block. The host QR
+    and its refusal law read this plan and the same call-time byte target.
+    """
+    return block_plan(length, rank + channels, _RESIDUE_BLOCK_TARGET_BYTES, 16)
+
+
+def _residue_memory_bytes(length, rank, channels):
+    """Conservative complex128 live blocks and square QR/SVD workspace."""
+    plan = _residue_block_plan(length, rank, channels)
+    size = max(stop - start for start, stop in plan)
+    width = rank + channels
+    return 1.71 * 16 * 5 * (size * width + width**2)
+
+
+_RESIDUE_BLOCK_TARGET_BYTES = 2**20

@@ -46,6 +46,16 @@ S = result.s_params            # (n_ports, n_ports, n_freqs), S[receiver, driven
 print(np.abs(S[1, 0]).round(3))   # |S21| of the empty guide: 1.0 across the band
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/guide/assets/waveguide-ports/structure.png" loading="lazy" alt="Long empty guide seen from above, with a port line across its width near each end and an absorber beyond each end." />
+  <figcaption>The guide this code builds, cut at z = 9 mm, with the ports at x = 10 and 90 mm across the whole 40 mm width. The absorber, 16 cells of 2 mm, lies only beyond the two x ends, and the code declares the four side faces PEC.</figcaption>
+</figure>
+
+<figure data-rfx="media">
+  <img src="/rfx/guide/assets/waveguide-ports/s21.png" loading="lazy" alt="Seven markers of S21 magnitude from 5 to 6.5 GHz, all at 1.0 on an axis that runs from 0 to 1.1." />
+  <figcaption>|S21| at the seven frequencies of this run, on a single 2 mm mesh with <code>normalize="flux"</code>. The largest of the seven values is 1.000001.</figcaption>
+</figure>
+
 The first argument is the port plane's coordinate along its normal axis, the
 axis named by `direction` (`"+x"`, `"-x"`, `"+y"`, `"-y"`, and so on). By
 default the aperture spans the whole domain cross-section; restrict it with

@@ -21,11 +21,12 @@ from rfx.sources.waveguide_port import C0_LOCAL
 
 def test_modal_net_power_applies_halfstep_colocation():
     """① _modal_net_power must co-locate the H-derived current before V·conj(I), so a reactive
-    (quadrature) V/I component does NOT leak into the reported real power."""
+    (quadrature) V/I component does NOT leak into the reported real power.
+    The relative difference is compared explicitly because np.allclose’s default atol swamps the ~1e-19 DFT magnitudes."""
     dt, f0, n = 3e-12, 6e9, 400
     t = np.arange(n) * dt
     v = np.cos(2 * np.pi * f0 * t)
-    i = np.cos(2 * np.pi * f0 * t + np.pi / 3)   # 60° phase ⇒ a real reactive component
+    i = np.cos(2 * np.pi * f0 * t + np.pi / 3)
     cfg = types.SimpleNamespace(
         v_ref_t=jnp.asarray(v), i_ref_t=jnp.asarray(i),
         freqs=jnp.asarray([f0]), dt=dt, n_steps_recorded=n,
@@ -35,13 +36,10 @@ def test_modal_net_power_applies_halfstep_colocation():
     v_dft = np.array(_rect_dft(cfg.v_ref_t, cfg.freqs, cfg.dt, cfg.n_steps_recorded))
     i_dft = np.array(_rect_dft(cfg.i_ref_t, cfg.freqs, cfg.dt, cfg.n_steps_recorded))
     i_corr = np.asarray(_co_located_current_spectrum(cfg, i_dft))
-    expected = 0.5 * np.real(v_dft * np.conj(i_corr))   # co-located (correct)
-    raw = 0.5 * np.real(v_dft * np.conj(i_dft))          # pre-fix (buggy)
+    expected = 0.5 * np.real(v_dft * np.conj(i_corr))
+    raw = 0.5 * np.real(v_dft * np.conj(i_dft))
 
     np.testing.assert_allclose(P, expected, rtol=1e-6)
-    # discriminating: with a reactive component the co-located power differs materially from the
-    # raw product (~10% here). (np.allclose's default atol swamps the ~1e-19 DFT magnitudes, so
-    # compare the RELATIVE difference explicitly.)
     rel_diff = float(np.max(np.abs((P - raw) / expected)))
     assert rel_diff > 1e-2, (
         f"co-located net power barely differs from the raw product (rel {rel_diff:.1e}) — the "
@@ -53,8 +51,9 @@ def test_evanescent_beta_has_inverse_metre_units():
     A WR-90 TE10 guide (f_c≈6.56 GHz) evaluated at 3 GHz has |β| ≈ 122 m⁻¹; the pre-fix ×C0
     form returned ~3.6e10 (units s⁻¹)."""
     a = 22.86e-3
-    f_cutoff = C0_LOCAL / (2 * a)            # WR-90 TE10 cutoff ≈ 6.56 GHz
-    freqs = jnp.asarray([3e9])                # below cutoff → evanescent
+    f_cutoff = C0_LOCAL / (2 * a)
+    freqs = jnp.asarray([3e9])
+    assert np.all(np.asarray(freqs) < f_cutoff), "The test frequency must be below cutoff to exercise evanescent beta"
     beta = np.asarray(_compute_beta(freqs, f_cutoff, dt=1e-12, dx=1e-3, medium=PortMedium()))
     b = complex(beta[0])
     assert abs(b.real) < 1e-3, f"evanescent β should be ~pure imaginary, got {b}"
@@ -83,5 +82,4 @@ def test_add_floquet_port_rejects_unimplemented_modes_and_tm():
         _sim().add_floquet_port(0.008, axis="z", n_modes=3)
     with pytest.raises(NotImplementedError, match="TM"):
         _sim().add_floquet_port(0.008, axis="z", polarization="tm")
-    # the supported path still works
     _sim().add_floquet_port(0.008, axis="z", polarization="te", n_modes=1)

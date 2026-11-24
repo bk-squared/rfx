@@ -10,6 +10,7 @@ from tests._absorber_witness import plane_wave_reflection
 
 
 def test_asymmetric_face_reflection_uniform_and_graded():
+    """The measured float32 cross-path floor is max |delta R| = 6.531e-7 over 2--10 GHz, up to 0.574 dB near -100 dB, so amplitude is compared with a 1e-6 absolute floor; the uniform measured advantage is 35.96--43.51 dB, with an independent lower bound so two paths making the same depth mistake cannot pass."""
     freqs = np.array([2, 4, 6, 8, 10]) * 1e9
     returns = {}
     for nonuniform in (False, True):
@@ -20,16 +21,11 @@ def test_asymmetric_face_reflection_uniform_and_graded():
             ) for face in ("lo", "hi")
         ])
     uniform, graded = returns[False], returns[True]
-    # Measured float32 cross-path floor: max |delta R| = 6.531e-7 over
-    # 2--10 GHz. Near -100 dB this is up to 0.574 dB; compare amplitude
-    # with a 1e-6 absolute floor, not a relative error on near-zero echoes.
     np.testing.assert_allclose(10 ** (graded / 20), 10 ** (uniform / 20),
                                rtol=0, atol=1e-6,
                                err_msg="per-face reflection differs between uniform and graded paths")
     uniform_margin = uniform[0] - uniform[1]
     graded_margin = graded[0] - graded[1]
-    # Uniform measured advantage: 35.96--43.51 dB. Pin an independent
-    # lower bound so two paths making the same depth mistake cannot pass.
     assert np.all(uniform_margin > 35), uniform_margin
     assert np.all(graded_margin >= uniform_margin - 1.0), (
         "16-layer face lost the uniform path's depth advantage (1 dB tolerance)",

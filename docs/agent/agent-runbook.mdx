@@ -59,8 +59,8 @@ was 5 min 16 s of it, and everything else together was under ten seconds.
 
 `scripts/ci/local.sh` runs, in order: ruff, docs-hygiene, changelog-fragment, data-budget, file-size-ratchet, pr-body, workflow-yaml, api-reference, contract-tests.
 
-After those it runs the selected tests, and its file-size step also runs the
-layer-structure check.
+After those it runs the selected tests, its docs-hygiene step also checks the
+known-limitations page offline, and its file-size step also runs the layer-structure check.
 
 ```
 scripts/ci/local.sh                   # the local checks; pr-body reports skipped
@@ -74,8 +74,8 @@ of `lint.yml`. `pr-body.yml` runs `scripts/ci/check_pr_body.py` and
 `scripts/ci/check_known_limitations.py`; `changelog-fragment.yml` runs
 `scripts/ci/check_changelog_fragment.py`. On a batch branch both use
 `scripts/ci/check_batch.py` instead, and both pass a merge group without checking. The
-local runner calls the same scripts, with two differences: it does not run the
-known-limitations check, and it adds the selected tests. So a green local run is
+local runner calls the same scripts, checking the known-limitations page offline
+without checking closing issues, and adds the selected tests. So a green local run is
 close to, not the same as, a green CI run.
 `tests/contracts/test_ci_workflows_contract.py` fails if a command moves back inline,
 and if this list and `local.sh` stop agreeing (it allows the extra selected-tests
@@ -135,8 +135,8 @@ means a `changes` job that dies of a runner fault leaves the heavy jobs skipped 
 dependency, and a skipped job does not fail a required context — a merge would go
 through having run nothing. The job is 15 s, so requiring it costs nothing.
 
-`mypy` is non-required. Its workflow runs `python scripts/ci/check_mypy_count.py`
-against `scripts/ci/mypy_baseline.txt`; only a rising error count fails the comparison.
+The non-required `mypy` workflow runs `python scripts/ci/check_mypy_count.py`, which
+compares with the first parent of the checked-out commit (the base branch tip on a PR's test merge); only errors added on top of that base fail it.
 It stays out of `scripts/ci/local.sh` because it is slow. Required checks are configured
 in GitHub's `main` branch ruleset, outside this repository.
 
@@ -294,14 +294,13 @@ It reports what no single-PR gate can see, over the last seven days:
 
 | row | why it is listed |
 |---|---|
-| merged PR with no accepted `Review:` line | the gate has only been required since 2026-09-19, and a body can be edited after the merge |
-| merged PR claiming `Review: skipped` | the rule has two exceptions; an exception claimed weekly is not one |
+| merged PR with no accepted `Review:` line | checked on each listed merge-train member for batches; missing or invalid reviews make the run red |
+| merged PR claiming `Review: skipped` | informational for `(b)`; `(a)` requires readable files with no path under `rfx/`, `tests/` or `scripts/`, including each batch member |
 | issue opened with no `lane:*` label | invisible to `gh issue list -l lane:...`, so no session can find it |
-| issue opened with no `### Lane` section | filed outside the forms, so nobody answered "who will DO or DECIDE" |
-| merged PR closing an issue outside every open milestone | work off the current campaign |
+| merged PR closing an issue outside every open milestone | informational campaign context; never red |
 | merged PR closing no issue | INFORMATIONAL only, never red: housekeeping legitimately closes nothing, and this was 65 of 102 merged PRs the week the report was written |
 
-**It is a report, not a gate.** A non-empty table exits 1 so the scheduled run shows
+**It is a report, not a gate.** Failing rows exit 1 so the scheduled run shows
 up red in the Actions list and somebody opens it. Do not make it a required check —
 it would block every merge on a report about last week.
 

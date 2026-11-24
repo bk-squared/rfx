@@ -342,6 +342,11 @@
       "count": 6
     },
     {
+      "file": "rfx/differentiable_material_fit.py",
+      "function": "differentiable_material_fit",
+      "kind": "boundary"
+    },
+    {
       "file": "rfx/fidelity.py",
       "function": "_max_run_length",
       "kind": "roll/diff"
@@ -349,6 +354,11 @@
     {
       "file": "rfx/geometry/cell_table/body.py",
       "function": "face_fraction.polygon",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/geometry/cell_table/box_overlap.py",
+      "function": "exact_box_overlap",
       "kind": "roll/diff"
     },
     {
@@ -405,6 +415,11 @@
       "file": "rfx/geometry/triplet_tensor.py",
       "function": "fractions",
       "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/measurement/_block_plan.py",
+      "function": "block_plan",
+      "kind": "difference"
     },
     {
       "file": "rfx/measurement/_radiated_power.py",
@@ -470,11 +485,6 @@
     {
       "file": "rfx/measurement/ntff_surface.py",
       "function": "NTFFSurface.__post_init__",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/measurement/ports.py",
-      "function": "coax_owner",
       "kind": "roll/diff"
     },
     {
@@ -551,6 +561,11 @@
     {
       "file": "rfx/model/operands.py",
       "function": "node_tensor_operands",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/model/pole_stability.py",
+      "function": "refuse_subluminal_cells.check",
       "kind": "roll/diff"
     },
     {

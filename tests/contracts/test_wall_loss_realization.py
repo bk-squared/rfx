@@ -1,4 +1,6 @@
-"""Opaque ownership, hand-counted edges and high-face ghost contracts."""
+"""Opaque ownership, hand-counted edges and high-face ghost contracts.
+Using an earlier control measurement, the spectral bar rounds max(4 * 1.0429e-11, 1e-4 * 2**-53 / 2**-24) = 4.17e-11 upward from a floor of 1.86e-13.
+"""
 import json
 
 import numpy as np
@@ -46,34 +48,36 @@ def test_realized_masks_planes_conductor_and_port_admission_unchanged(selection)
 
 
 def test_tiny_face_edges_and_rim_sum():
+    """Four physical cells per axis give each y face 4*3 Ex and 3*4 Ez edges."""
     sim = model()
     sim.add_wall_loss(sigma_bulk=5.8e5, f0=8e9, faces=("y_lo", "y_hi"))
     _, _, ctx = operator(sim)
-    # Four physical cells per axis: each y face owns 4*3 Ex and 3*4 Ez.
+
     assert [int(np.asarray(m).sum()) for m in (ctx.mask_ex, ctx.mask_ey, ctx.mask_ez)] == [24, 0, 24]
-    assert not np.asarray(ctx.mask_ex)[:, :, 0].any()  # undeclared z rim stays PEC
+    assert not np.asarray(ctx.mask_ex)[:, :, 0].any()
     rim = model()
     rim.add_wall_loss(sigma_bulk=5.8e5, f0=8e9, faces=("x_lo", "y_lo"))
     _, _, ctx = operator(rim)
     assert bool(ctx.mask_ez[0, 0, 1])
-    # Independent SI closed form, two full 1.5 mm E-curl spacings.
-    expected = 2 / np.sqrt(np.pi * 8e9 * (4*np.pi*1e-7) / 5.8e5) / .0015
+
+    FULL_E_CURL_SPACING_M = .0015
+    expected = 2 / np.sqrt(np.pi * 8e9 * (4*np.pi*1e-7) / 5.8e5) / FULL_E_CURL_SPACING_M
     assert float(ctx.sigma_sheet[2, 0, 0, 1]) == pytest.approx(expected, rel=2e-6)
 
 
 def test_solid_face_conductivity_closed_form():
+    """For the solid spanning cells 1,2 and node planes 1..3, the Ey edges at x_lo index [1,1,2] (z=2 between rim planes 1,3) and z_lo index [2,1,1] (x=2 between rim planes 1,3) run y=1..2."""
     sim = model()
     solid = Box((.0015,) * 3, (.0045,) * 3)
     sim.add(solid, material="pec")
     sim.add_wall_loss(sigma_bulk=5.8e5, f0=8e9, shape=solid)
     _, _, ctx = operator(sim)
-    # The solid spans cells 1,2 and node planes 1..3 on each axis.
-    # x_lo: Ey[1,1,2] runs y=1..2 at x=1,z=2; z=2 is between rim planes 1,3.
-    # z_lo: Ey[2,1,1] runs y=1..2 at x=2,z=1; x=2 is between rim planes 1,3.
-    # Each edge's open segment is interior to its face, not along a face rim.
+
+
     indices = ((1, 1, 2), (2, 1, 1))
     rs = np.sqrt(np.pi * 8e9 * (4*np.pi*1e-7) / 5.8e5)
-    expected = 1 / (rs * .0015)  # One full E-curl spacing, independent SI formula.
+    SOLID_E_CURL_SPACING_M = .0015
+    expected = 1 / (rs * SOLID_E_CURL_SPACING_M)
     actual = [float(ctx.sigma_sheet[(1,) + index]) for index in indices]
     print(json.dumps(dict(component="ey", faces=["x_lo", "z_lo"], indices=indices,
                           sigma_sheet=actual, expected=expected)))
@@ -97,13 +101,13 @@ def test_declared_high_normal_ghost_stays_exactly_zero(monkeypatch, graded, axis
     seeded_states = []
 
     def seeded(*args, **kwargs):
+        """Graded inv_d*_h[-1] is zero, so an interior seed cannot drive the stored high H row."""
         state = original(*args, **kwargs)
         index = [2, 2, 2]
         index[axis] = -2
         hz = state.hz.at[tuple(index)].set(1.)
-        # Graded inv_d*_h[-1] is zero: an interior seed cannot drive the
-        # stored high H row. Seed that row too so its transverse curl drives
-        # the normal E ghost, whose initial value remains zero.
+
+
         index[axis] = -1
         state = state._replace(hz=hz.at[tuple(index)].set(1.))
         seeded_states.append(state)
@@ -166,11 +170,13 @@ def test_wall_parameters_keep_closed_form_derivatives():
 def test_uniform_graded_high_face_row_parity(monkeypatch):
     """Pin lossy, lossless and padded high rows on identical dyadic cells.
 
-    bk-squared/rfx#2613 owns the 4.553e-8 lane amplitude scale: the uniform
-    current-source coefficient forms eps_r * EPS_0 in float32 at
-    rfx/core/yee.py:1014, even in a float64 run. Its fix PR must tighten
-    these record bars to the rounding-only control (exactly 0 on this box
-    in Stage A) and write the cause.
+    The uniform current-source coefficient formed eps_r * EPS_0 in float32
+    at rfx/core/yee.py:1014, causing the 4.553e-8 lane amplitude scale.
+    Float64 material assembly now keeps that product in float64. The bars
+    bound the remaining accumulated rounding between the two lanes, using
+    the larger x86/arm64 control over all three scenes, measured on main
+    with only the float64 source coefficient before this change was read.
+    Using an earlier control measurement, the per-step bar rounds max(4 * 4.948e-12, 9 * 2**-52) = 1.98e-11 upward from a floor of 2.0e-15.
     """
     import math
     import time
@@ -227,8 +233,11 @@ def test_uniform_graded_high_face_row_parity(monkeypatch):
                       for x, dt in zip(records, dts)]
             r = float(abs(du-dg) / abs(du))
             print(f"{scene} per_step={per_step:.17g} r={r:.17g}")
-            assert per_step <= 2e-7, (scene, "per_step", per_step)
-            assert r <= 2e-7, (scene, "r", r)
+
+            assert per_step <= 2.0e-11, (scene, "per_step", per_step)
+
+
+            assert r <= 4.2e-11, (scene, "r", r)
             if scene == "S1":
                 q_relative = abs(qs[0]/qs[1]-1)
                 print(f"S1 Q_U={qs[0]:.17g} Q_G={qs[1]:.17g} Q_relative={q_relative:.17g}")
@@ -261,7 +270,7 @@ def test_withheld_cpml_high_h_rows():
         grid = sim._build_grid()
         assert grid.shape == (63, 45, 57)
         steps = math.ceil(5e-9 / grid.dt)
-        # S2's Ey current location, independently rounded onto its Yee edge.
+
         node = (round(.0073/h) + 16, round(.0041/h - .5) + 16,
                 round(.0059/h) + 16)
         pulse = GaussianPulse(f0=8e9, bandwidth=.25)
@@ -290,7 +299,9 @@ def test_withheld_cpml_high_h_rows():
 
 
 def test_unwalled_faces_end_as_magnetic_walls():
-    """Unpadded faces omitted from pec_axes end at half-cell magnetic walls."""
+    """Unpadded faces omitted from pec_axes end at half-cell magnetic walls.
+    PMC planes sit half a cell beyond each end of the 24 mm node span.
+    """
     import jax
     import jax.numpy as jnp
 
@@ -314,7 +325,7 @@ def test_unwalled_faces_end_as_magnetic_walls():
         modes = [m for m in matrix_pencil(record[600:2400], float(grid.dt), 2e9, 14e9)
                  if m.Q > 30]
         frequency = max(modes, key=lambda m: m.amplitude).freq
-    # PMC planes sit half a cell beyond each end of the 24 mm node span.
+
     expected = 299792458.0 * np.sqrt(2) / (2 * .025)
     relative_error = abs(frequency - expected) / expected
     print(f"unwalled frequency_Hz={frequency:.17g} relative_error={relative_error:.17g}")

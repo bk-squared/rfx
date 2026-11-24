@@ -33,20 +33,19 @@ from scipy.special import spherical_jn, spherical_yn
 def _riccati(n_max, x):
     """Return psi, psi', xi, xi' arrays for n = 1..n_max at scalar x."""
     n = np.arange(0, n_max + 1)
-    jn = spherical_jn(n, x)                     # j_n(x)
-    jnp_ = spherical_jn(n, x, derivative=True)  # j_n'(x)
-    yn = spherical_yn(n, x)                     # y_n(x)
-    ynp_ = spherical_yn(n, x, derivative=True)  # y_n'(x)
+    jn = spherical_jn(n, x)
+    jnp_ = spherical_jn(n, x, derivative=True)
+    yn = spherical_yn(n, x)
+    ynp_ = spherical_yn(n, x, derivative=True)
 
-    hn = jn + 1j * yn        # h_n^(1)(x)
-    hnp_ = jnp_ + 1j * ynp_  # h_n^(1)'(x)
+    hn = jn + 1j * yn
+    hnp_ = jnp_ + 1j * ynp_
 
-    psi = x * jn             # psi_n = x j_n
-    psip = jn + x * jnp_     # psi_n' = j_n + x j_n'
-    xi = x * hn              # xi_n = x h_n^(1)
-    xip = hn + x * hnp_      # xi_n' = h_n^(1) + x h_n^(1)'
+    psi = x * jn
+    psip = jn + x * jnp_
+    xi = x * hn
+    xip = hn + x * hnp_
 
-    # drop n=0 (Mie sum starts at n=1)
     return psi[1:], psip[1:], xi[1:], xip[1:]
 
 
@@ -80,7 +79,7 @@ def pi_tau(n_max, cos_t):
     taun = np.zeros(n_max + 1)
     pin[0] = 0.0
     pin[1] = 1.0
-    taun[1] = cos_t * pin[1]  # tau_1 = 1*cos*pi_1 - 2*pi_0 = cos
+    taun[1] = cos_t * pin[1]
     for n in range(2, n_max + 1):
         pin[n] = ((2 * n - 1) / (n - 1)) * cos_t * pin[n - 1] \
             - (n / (n - 1)) * pin[n - 2]
@@ -117,7 +116,6 @@ def validate_oracle():
     Raises AssertionError on any failure; returns a dict of the measured
     witness values on success.
     """
-    # (a) Rayleigh limit: sigma/(pi a^2) -> 9 (ka)^4 as ka -> 0
     ka = 0.1
     val = backscatter_rcs_over_pi_a2(ka, n_max=8)
     rayleigh = 9.0 * ka ** 4
@@ -127,7 +125,6 @@ def validate_oracle():
         f"9(ka)^4={rayleigh:.6e}, rel err {rel_a:.3e} >= 0.02"
     )
 
-    # (b) geometric-optics limit: window-mean over ka in [18, 22] -> 1
     n_terms = int(np.ceil(22.0 + 4.05 * 22.0 ** (1 / 3) + 2)) + 5
     kas = np.linspace(18, 22, 41)
     go_mean = float(np.mean(
@@ -138,7 +135,6 @@ def validate_oracle():
         f"= {go_mean:.4f}, expected 1.0 +/- 0.1"
     )
 
-    # (c) series convergence at ka ~ 1: doubling n_max changes < 1e-6
     conv = {}
     for ka_c in (0.9997, 1.0):
         v1 = backscatter_rcs_over_pi_a2(ka_c, n_max=10)
@@ -150,7 +146,6 @@ def validate_oracle():
         )
         conv[ka_c] = dd
 
-    # (d) bistatic-formula bridge: (4/x^2)|S(pi)|^2 == backscatter formula
     x = 0.9997
     back_formula = backscatter_rcs_over_pi_a2(x, n_max=20)
     back_bi_H = bistatic_over_pi_a2(x, np.pi, "H")

@@ -23,8 +23,6 @@ from rfx.geometry.conformal_cells import compute_conformal_fractions
 
 def apply_conformal_pec(state, w_ex, w_ey, w_ez):
     """Compatibility entry for weight callers; production forms masks at setup."""
-    # Imported here: geometry loads before the model layer, and a module-level
-    # import would load the time-step layer with it.
     from rfx.stepping.conductors import apply_conformal_pec as _apply_conformal_pec
 
     return _apply_conformal_pec(state, w_ex == 0.0, w_ey == 0.0, w_ez == 0.0)
@@ -76,16 +74,12 @@ def warn_conformal_model(conformal_pec=None):
     warnings.warn(message, AccuracyWarning, stacklevel=user_stacklevel())
 
 
-# ---------------------------------------------------------------------------
-# Vectorized SDF-based conformal weight computation (Phase 1)
-# ---------------------------------------------------------------------------
-
 def compute_conformal_weights_sdf(grid: Grid, pec_shapes: list):
     """Compatibility E operands: node free lengths after the SC clamp.
 
     Call ``compute_conformal_fractions`` when forming H operands too.
     """
-    return compute_conformal_fractions(grid, pec_shapes)[0]
+    return compute_conformal_fractions(grid, pec_shapes, field_dtype=jnp.float32)[0]
 
 
 def validate_conformal_min_weight(value):
@@ -100,10 +94,6 @@ def clamp_conformal_weights(w_ex, w_ey, w_ez, w_min=0.1):
     validate_conformal_min_weight(w_min)
     return w_ex, w_ey, w_ez
 
-
-# ---------------------------------------------------------------------------
-# Legacy sub-sampling weight computation (fallback)
-# ---------------------------------------------------------------------------
 
 def compute_conformal_weights(
     grid: Grid,
@@ -127,6 +117,10 @@ def compute_conformal_weights(
     (w_ex, w_ey, w_ez) : each shape grid.shape, values in [0, 1]
         1.0 = fully outside PEC, 0.0 = fully inside PEC.
     """
+    if getattr(grid, "is_2d", False):
+        raise NotImplementedError(
+            "Legacy conformal subsampling does not support 2-D cross-sections; "
+            "use compute_conformal_weights_sdf instead")
     dx = grid.dx
     nx, ny, nz = grid.shape
 
@@ -140,28 +134,23 @@ def compute_conformal_weights(
     if not pec_shapes:
         return jnp.array(w_ex), jnp.array(w_ey), jnp.array(w_ez)
 
-    # Get combined PEC mask
     combined_mask = np.zeros((nx, ny, nz), dtype=bool)
     for shape in pec_shapes:
         combined_mask |= np.array(shape.mask(grid))
 
-    # Build a point-test function from all PEC shapes
     def _point_inside_pec(px, py, pz):
         """Check if physical point (px, py, pz) is inside any PEC shape."""
         for shape in pec_shapes:
             if hasattr(shape, 'center') and hasattr(shape, 'radius'):
-                # Sphere
                 c = shape.center
                 r = shape.radius
                 if (px - c[0])**2 + (py - c[1])**2 + (pz - c[2])**2 <= r**2:
                     return True
             elif hasattr(shape, 'corner_lo') and hasattr(shape, 'corner_hi'):
-                # Box
                 lo, hi = shape.corner_lo, shape.corner_hi
                 if lo[0] <= px <= hi[0] and lo[1] <= py <= hi[1] and lo[2] <= pz <= hi[2]:
                     return True
             elif hasattr(shape, 'axis') and hasattr(shape, 'radius'):
-                # Cylinder
                 c = shape.center
                 r = shape.radius
                 h = shape.height
@@ -171,7 +160,6 @@ def compute_conformal_weights(
                         return True
         return False
 
-    # For cells near PEC boundary, compute fractional area via sub-sampling
     from scipy.ndimage import binary_dilation
     boundary = binary_dilation(combined_mask, iterations=1) & ~combined_mask
     boundary |= combined_mask & binary_dilation(~combined_mask, iterations=1)
@@ -184,7 +172,6 @@ def compute_conformal_weights(
     for idx in boundary_indices:
         i, j, k = idx
 
-        # Ex face at (i+0.5, j, k)
         n_inside = 0
         px = (i + 0.5 - pad[0]) * dx
         for sy in sub:
@@ -195,7 +182,6 @@ def compute_conformal_weights(
                     n_inside += 1
         w_ex[i, j, k] = 1.0 - n_inside / (n_sub * n_sub)
 
-        # Ey face at (i, j+0.5, k)
         n_inside = 0
         py = (j + 0.5 - pad[1]) * dx
         for sx in sub:
@@ -206,7 +192,6 @@ def compute_conformal_weights(
                     n_inside += 1
         w_ey[i, j, k] = 1.0 - n_inside / (n_sub * n_sub)
 
-        # Ez face at (i, j, k+0.5)
         n_inside = 0
         pz = (k + 0.5 - pad[2]) * dx
         for sx in sub:
@@ -217,7 +202,6 @@ def compute_conformal_weights(
                     n_inside += 1
         w_ez[i, j, k] = 1.0 - n_inside / (n_sub * n_sub)
 
-    # Interior PEC cells: weight = 0
     w_ex[combined_mask] = 0.0
     w_ey[combined_mask] = 0.0
     w_ez[combined_mask] = 0.0

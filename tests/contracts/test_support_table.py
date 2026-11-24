@@ -35,7 +35,7 @@ WORDS = {
     "unclassified": {T.UNCLASSIFIED},
 }
 SETTINGS = {"_precision", "_stencil_order", "_mode", "_dt_pin", "_dt_min_cell"}
-# All exemptions, with their reasons, live in this one dictionary.
+
 EXEMPTIONS = {
     "run_adi": "ADI is experimental: one experimental row and no page",
     "fwd_adi": "ADI is experimental: one experimental row and no page",
@@ -141,6 +141,8 @@ def parse_clauses(value: str, column: str):
         if not match:
             raise ValueError(f"invalid clause {clause!r}")
         word, star, qualifier = match.groups()
+        if word == "supported" and qualifier == "experimental":
+            qualifier = None
         selected_qualifiers = qualifier.split(", ") if qualifier is not None else []
         if any(q not in qualifiers for q in selected_qualifiers):
             raise ValueError(f"unknown qualifier ({qualifier})")
@@ -255,6 +257,7 @@ def check_rows(page: ParsedPage, *, table=T.TABLE, cell=T.cell,
 
     Synthetic tables supply their matching cell callable (including '*' row
     resolution). The real table always uses path_disposition.cell unchanged.
+    Kind describes the default model used by the cell tests.
     """
     errors = list(page.errors)
     for word in ("Subgridded",):
@@ -320,8 +323,8 @@ def check_rows(page: ParsedPage, *, table=T.TABLE, cell=T.cell,
             calculator_value = value.removesuffix(refused_suffix) + ")"
         if conditional:
             waveguide = cells.get("waveguide_s_matrix")
-            # The table stores these conditional exceptions in notes/gates,
-            # while kind describes the default model used by the cell tests.
+
+
             if conditional == "carried":
                 setting = "dt" if attr == "_dt_pin" else attr.removeprefix("_")
                 agrees = (waveguide is not None and waveguide.kind == T.REFUSES
@@ -397,8 +400,8 @@ def test_supported_changed_to_refused(page_text):
 
 
 def test_refused_star_removed(page_text):
-    # Use a current TABLE row; unrelated page grammar must not prevent the
-    # synthetic wrong= fallback from checking the star requirement.
+
+
     candidates = []
     for row in parse_page(page_text).rows:
         if row.section != PATH_SECTION or row.key != "_materials/kerr":
@@ -414,7 +417,7 @@ def test_refused_star_removed(page_text):
         text = _mutate(page_text, row.key, column, row.values[column].replace("refused*", "refused", 1))
         _assert_red(text, row.key, column, "star must be present")
         return
-    # This row has no wrong= refusal today: synthetic mini-table + TABLE.
+
     assert not candidates
     table = {"_synthetic": {"": {"*": T.Cell(T.REFUSES, wrong="#1293")}}}
     text = "\n".join((
@@ -438,6 +441,13 @@ def test_refused_star_removed(page_text):
 def test_stray_qualifier(page_text):
     text = _mutate(page_text, "_materials/kerr", "Uniform", "supported (cpu)")
     _assert_red(text, "_materials/kerr", "unknown qualifier (cpu)")
+
+
+def test_experimental_support_keeps_its_disposition():
+    assert parse_clauses("supported (experimental)", "Uniform") == [
+        ("supported", False, COLUMNS["Uniform"])]
+    with pytest.raises(ValueError, match="unknown qualifier"):
+        parse_clauses("refused (experimental)", "Uniform")
 
 
 def test_mixed_multi_device_qualifiers(page_text):
@@ -465,12 +475,13 @@ def test_pin_without_refusal(page_text):
 
 
 def test_real_class_helper_pin(page_text):
+    """Unrelated real-page disagreements must not make the class helper pin expectation fail."""
     text = _mutate(page_text, "admission:multi-device-outer-jit", "Pinned by",
                    "`tests/unit/runners/test_distributed.py::TestExchangeInterval::test_interval_refused`")
     page = parse_page(text)
     assert not page.errors
-    # Isolate the changed combination: unrelated real-page disagreements must
-    # not make this hand-written green expectation fail.
+
+
     row, = [row for row in page.rows if row.key == "admission:multi-device-outer-jit"]
     assert check_rows(ParsedPage((row,), page.intro, ()), table={}, row_class={}) == []
 
@@ -602,7 +613,7 @@ def test_conditional_calculators(page_text, key):
     page = ParsedPage((row,), "Subgridded", ())
     kwargs = dict(table={attr: {feature: T.TABLE[attr][feature]}},
                   row_class={attr: T.ROW_CLASS[attr]})
-    # Isolate the calculator assertion: _dt_pin's Uniform disagreement stays.
+
     assert not [e for e in check_rows(page, **kwargs) if "Calculators:" in e]
     original = T.cell(attr, feature, "waveguide_s_matrix")
     for replacement in (original._replace(note=""),

@@ -1,6 +1,8 @@
 """Subgridded (SBP-SAT) run path extracted from Simulation."""
 
 from __future__ import annotations
+
+from rfx.measurement.calculator_drive import calculator_drive
 from rfx._warning_origin import user_stacklevel
 
 from rfx._internal._grid_metric import field_index
@@ -17,6 +19,9 @@ from rfx.core.yee import EPS_0, MU_0
 from rfx.probes.probes import PreDecisionLumpedDiagonalWarning
 from rfx.grid import Grid
 from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
+
+
+_FINE_GRID_CFL_SAFETY_FACTOR = 0.99
 
 
 def _run_subgridded_once(
@@ -75,15 +80,11 @@ def _run_subgridded_once(
     dx_c = grid_coarse.dx
     dx_f = dx_c / ratio
 
-    # Map z_range to coarse grid indices
     pad_z_lo = int(getattr(grid_coarse, "pad_z_lo", grid_coarse.cpml_layers))
     pad_z_hi = int(getattr(grid_coarse, "pad_z_hi", grid_coarse.cpml_layers))
     fk_lo = max(nearest_uniform_index(z_lo / dx_c) + pad_z_lo, pad_z_lo)
     fk_hi = min(nearest_uniform_index(z_hi / dx_c) + pad_z_lo + 1, grid_coarse.nz - pad_z_hi)
 
-    # Fine region covers full x/y by default.  A finite xy_margin enables a
-    # research-only local x/y window inset from the physical x/y boundaries;
-    # production validation rejects that lane until its waveform gates pass.
     xy_margin = ref.get("xy_margin")
     if xy_margin is None:
         fi_lo = grid_coarse.pad_x_lo
@@ -113,29 +114,14 @@ def _run_subgridded_once(
             grid_coarse.ny - grid_coarse.pad_y_hi,
         )
 
-    # Fine grid dimensions.
-    #
-    # Grid.shape uses endpoint nodes: a physical span with N coarse cells has
-    # N+1 coarse indices.  A node-aligned fine slab over the same span must
-    # therefore have ``(N * ratio) + 1`` fine indices, or equivalently
-    # ``(n_coarse_nodes - 1) * ratio + 1``.  The legacy ``n_nodes * ratio``
-    # formula created one extra fine interval per axis and made the z-hi fine
-    # face physically offset from the coarse face it was SAT-coupled to.
-    #
-    # ``overlap_fine_extent`` is the single source of truth shared with
-    # ``rfx.subgridding.validation.build_subgrid_region`` so the validation
-    # report and this executed fine grid cannot drift apart.
     from rfx.subgridding.validation import overlap_fine_extent
 
     nx_f = overlap_fine_extent(fi_hi - fi_lo, ratio)
     ny_f = overlap_fine_extent(fj_hi - fj_lo, ratio)
     nz_f = overlap_fine_extent(fk_hi - fk_lo, ratio)
 
-    # Global timestep (limited by fine grid CFL)
     C0_val = 1.0 / np.sqrt(float(EPS_0) * float(MU_0))
-    # Use the same CFL factor as Grid.courant_dt (0.99/sqrt(3))
-    # to match uniform runner's timestep for equivalent dx
-    dt = 0.99 * dx_f / (C0_val * np.sqrt(3))
+    dt = _FINE_GRID_CFL_SAFETY_FACTOR * dx_f / (C0_val * np.sqrt(3))
 
     config = SubgridConfig3D(
         nx_c=grid_coarse.nx, ny_c=grid_coarse.ny, nz_c=grid_coarse.nz,
@@ -160,9 +146,6 @@ def _run_subgridded_once(
         if validation_mode == "production":
             validation_report.raise_if_unsupported()
 
-    # Every declared input this lane does not carry is refused here, in
-    # every validation mode, after the production refusals above and before
-    # the first step.
     from rfx.runners._admission import admit
     admit(
         sim,
@@ -191,10 +174,6 @@ def _run_subgridded_once(
         and config.fj_lo == grid_coarse.pad_y_lo
         and config.fj_hi == grid_coarse.ny - grid_coarse.pad_y_hi
     )
-    # The boundary-terminated exterior z-interface path is implemented only
-    # for full-x/y z slabs.  Local x/y windows use the endpoint-node 6-face box
-    # SAT path plus fine physical PEC faces; auto-selecting the z-slab-only
-    # exterior path for those windows would fail before the first timestep.
     auto_boundary_terminated_exterior = (
         is_full_xy_region
         and (
@@ -214,10 +193,8 @@ def _run_subgridded_once(
         )
     )
 
-    # Build fine-grid materials by rasterizing geometry at fine resolution
     shape_f = (nx_f, ny_f, nz_f)
 
-    # Create a Grid for fine region (for position_to_index utility)
     fine_domain = ((nx_f - 1) * dx_f, (ny_f - 1) * dx_f, (nz_f - 1) * dx_f)
     fine_grid = Grid(
         freq_max=sim._freq_max,
@@ -225,13 +202,9 @@ def _run_subgridded_once(
         dx=dx_f,
         cpml_layers=0,
     )
-    # Override shape to match exactly (Grid may add +1 rounding)
     fine_grid._shape_override = shape_f
-    # Port tables must use the fine stepper's actual time step.
     fine_grid.dt = dt
 
-    # Rasterize geometry into fine grid materials using shared function.
-    # Uses cell-center coordinates (not cell edges) for correct placement.
     x_off = (fi_lo - grid_coarse.pad_x_lo) * dx_c
     y_off = (fj_lo - grid_coarse.pad_y_lo) * dx_c
     z_off = (fk_lo - grid_coarse.pad_z_lo) * dx_c
@@ -239,13 +212,6 @@ def _run_subgridded_once(
     from rfx.geometry.rasterize_grid import coords_from_fine_grid, rasterize_geometry, volume_domain_faces
 
     coords_f = coords_from_fine_grid(nx_f, ny_f, nz_f, dx_f, x_off, y_off, z_off)
-    # the fine-region coordinates are already cell CENTRES
-    # (coords_from_fine_grid), so they double as the PEC centre samples.
-    # Sheets and wires are deliberately NOT collected here: this lane
-    # applies PEC from a cell mask on two grids and has no carrier for a
-    # zero-cell conductor, so ``run()`` refuses a declared sheet or wire
-    # before it reaches this function (rfx/api/_execute.py, run_subgridded
-    # lane). Collecting them here would only hide the refusal.
     fine_masks, fine_entries = [], []
     mats_f, debye_f, lorentz_f, pec_mask_f, _, _ = rasterize_geometry(
         sim._geometry,
@@ -255,12 +221,11 @@ def _run_subgridded_once(
         centres=coords_f,
         domain_faces=volume_domain_faces(grid_coarse),
         cell_sizes=tuple(np.full(n, dx_f) for n in coords_f.shape),
-        sub_region=True,  # a body drawn wholly outside the fine region is the coarse grid's
+        sub_region=True,
         geometry_masks=fine_masks, assembly_entries=fine_entries,
     )
     has_pec_f = bool(jnp.any(pec_mask_f)) if pec_mask_f is not None else False
 
-    # An interior fine-grid end is a coarse/fine interface, not a wall.
     from rfx.geometry.rasterize_grid import unpadded_high_walls, coords_from_uniform_grid
     coarse_coords = coords_from_uniform_grid(grid_coarse)
     global_walls = unpadded_high_walls(grid_coarse)
@@ -269,16 +234,12 @@ def _run_subgridded_once(
         and float(coords_f[a][-1]) > float(coarse_coords[a][-1])
         for a, end in enumerate((fi_hi, fj_hi, fk_hi)))
 
-    # Helper: convert physical position to fine-grid index
     def _pos_to_fine_idx(pos, component=None):
         idx = (
             nearest_uniform_index((pos[0] - x_off) / dx_f),
             nearest_uniform_index((pos[1] - y_off) / dx_f),
             nearest_uniform_index((pos[2] - z_off) / dx_f),
         )
-        # Bounds check — source/probe outside fine grid causes garbage results.
-        # JAX scatter/gather can otherwise silently drop or clamp OOB indices,
-        # so fail at the API boundary instead of returning a misleading run.
         if not (0 <= idx[0] < nx_f and 0 <= idx[1] < ny_f and 0 <= idx[2] < nz_f):
             raise ValueError(
                 f"Position {pos} maps to fine-grid index {idx} which is outside "
@@ -291,12 +252,7 @@ def _run_subgridded_once(
             fine_grid, (pos[0] - x_off, pos[1] - y_off, pos[2] - z_off), component)
         return tuple(resolved[a] if high_wall[a] else idx[a] for a in range(3))
 
-    # Build sources on fine grid
     source_requests = []
-    # Local x/y windows keep an overlapping coarse shadow grid.  The validated
-    # central-source lane therefore co-injects soft sources on that coarse
-    # shadow by default; explicit source/projection knobs remain diagnostic
-    # overrides and are still rejected by production validation.
     inject_sources_on_coarse_shadow = bool(
         ref.get("inject_sources_on_coarse_shadow", ref.get("xy_margin") is not None)
     )
@@ -398,16 +354,6 @@ def _run_subgridded_once(
 
         lo = min(idx_start[axis], idx_end[axis])
         hi = max(idx_start[axis], idx_end[axis])
-        # HALF-OPEN in edges, the same rule as the uniform lane
-        # (rfx.sources.sources.wire_port_edge_span) and the non-uniform
-        # runner: the driven edges are the ones whose own location lies
-        # inside the declared extent, so n cells of extent drive n edges.
-        # This lane carried its own endpoint-INCLUSIVE copy; once the
-        # other two were corrected it was the only place where the same
-        # declaration drove one more edge. The shared helper is not called
-        # here because its sub-cell branch needs a node line and these are
-        # FINE-grid indices; an extent that snaps to a single fine node
-        # keeps its one edge, as before.
         cells = []
         for a in range(lo, max(hi, lo + 1)):
             cell = list(idx_start)
@@ -426,18 +372,9 @@ def _run_subgridded_once(
             source_requests.append((pe, _pos_to_fine_idx(pe.position, pe.component), None))
             continue
 
-        # Port conductance -> sigma. The general axis-aware form is
-        # sigma = G * d_parallel / (d_perp1 * d_perp2); the subgrid fine
-        # region is a uniform cubic Grid (dx_f = dx_c / ratio, a single
-        # scalar — SBP-SAT subgridding is defined only on uniform grids),
-        # so d_parallel / (d_perp1 * d_perp2) reduces exactly to 1 / dx_f.
-        # This is the correct cubic-cell result, not a hidden cubic
-        # assumption — there is no non-cubic subgrid path to be wrong on.
         if pe.extent is not None:
-            # Wire port: compute cells manually
             cells = _wire_port_cells_f(pe)
             n_cells = max(len(cells), 1)
-            # Distribute port impedance
             sigma_port_per_cell = n_cells / (pe.impedance * dx_f)
             for cell in cells:
                 i, j, k = cell
@@ -451,7 +388,6 @@ def _run_subgridded_once(
                     (pe, cell, (sigma_port_per_cell, 1 / (n_cells * dx_f)))
                     for cell in cells)
         else:
-            # Lumped port
             idx = _pos_to_fine_idx(pe.position, pe.component)
             i, j, k = idx
             sigma_port = 1.0 / (pe.impedance * dx_f)
@@ -475,7 +411,6 @@ def _run_subgridded_once(
         shadow_entries=(_coarse_shadow_source_entries
                         if inject_sources_on_coarse_shadow else None))
 
-    # Build probes on fine grid
     probe_indices_f = []
     probe_components = []
     for pe in sim._probes:
@@ -569,11 +504,6 @@ def _run_subgridded_once(
         lumped_sparam_freqs_f=diagnostic_lumped_sparam_freqs,
         ntff_box_f=ntff_box_f,
         ntff_data_f=ntff_data_f,
-        # Use the impedance-upwind Maxwell SAT path for all full-x/y z-slab
-        # artificial interfaces.  Its vacuum limit is the physically relevant
-        # cross-coupled interface condition.  An undocumented refinement-dict
-        # override is kept only for research diagnostics that compare the
-        # legacy same-kind averaging SAT against the production-candidate path.
         use_material_sat=ref.get("use_material_sat", True),
         sync_coarse_interface_from_fine=ref.get("sync_coarse_interface_from_fine", False),
         sync_coarse_shadow_from_fine=ref.get("sync_coarse_shadow_from_fine", False),
@@ -648,15 +578,6 @@ def _run_subgridded_once(
     s_params = None
     freqs = None
     if result.lumped_sparam_v_dft_f is not None and result.lumped_sparam_i_dft_f is not None:
-        # This experimental subgrid lane is the one lumped lane the
-        # known-load decision run did NOT move
-        # (scripts/diagnostics/lumped_port_known_load_line.py).  Its
-        # sampling slot is not fixed — whether the accumulation block runs
-        # before or after injection depends on the runtime
-        # ``inject_sources_before_e_coupling`` flag — so neither the
-        # post-injection slot nor the dt/2 current phase the correction
-        # rests on is derivable here.  Say so rather than return a number
-        # on a convention the uniform lane no longer uses.
         import warnings as _w
         _w.warn(
             "run_subgridded: the diagnostic lumped-port S-matrix is on the "
@@ -705,20 +626,12 @@ def _run_subgridded_once(
                 z_in = -v_dft[driven] / safe_i
                 s_value = (z_in - z0_i) / (z_in + z0_i)
             elif recv == driven:
-                # Single-cell drive-port diagonal: byte-frozen
-                # extract_lumped_s11 algebra.
                 z0_cell_i = z0_i / n_cells_i
                 b_i = (-v_dft[recv] - z0_cell_i * i_dft[recv]) / (
                     2.0 * jnp.sqrt(z0_cell_i)
                 )
                 s_value = b_i / safe_a
             else:
-                # Passive receive port: orthogonal wave channel,
-                # sign pinned by the DC falsifier — single-truth with
-                # decompose_lumped_s_matrix (and with the wire decomposer's
-                # LEGACY v_port=None path; the wire production off-diagonal
-                # uses the whole-port frame — this experimental
-                # subgrid lane still uses the per-cell channel).
                 z0_cell_i = z0_i / n_cells_i
                 b_i = (v_dft[recv] - z0_cell_i * i_dft[recv]) / (
                     2.0 * jnp.sqrt(z0_cell_i)
@@ -830,7 +743,7 @@ def run_subgridded_path(
     try:
         for driven in range(n_ports):
             sim._ports = [
-                replace(pe, excite=(idx == driven))
+                replace(pe, excite=calculator_drive(idx == driven, excite=pe.excite))
                 for idx, pe in enumerate(port_entries)
             ]
             column_result = _run_subgridded_once(

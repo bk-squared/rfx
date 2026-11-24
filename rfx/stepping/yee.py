@@ -22,7 +22,7 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              stencil_order: int = 2,
              bloch: tuple | None = None, *, high_wall: tuple[bool, bool, bool],
              magnetic_factors=(None, None, None),
-             h_row_factors=(None, None, None)) -> FDTDState:
+             h_row_factors=(None, None, None), bloch_operand=None) -> FDTDState:
     """Magnetic field half-step update (Faraday's law).
 
     H^{n+1/2} = H^{n-1/2} - (dt / μ) * curl(E^n)
@@ -38,6 +38,8 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
         Bloch field-transformation.  When set, the fields must be a
         complex dtype (the transformed envelope P); requires stencil_order=2.
     """
+    if bloch_operand is not None:
+        bloch = bloch_operand
     so = stencil_order
     if so not in (2, 4):
         raise ValueError(f"stencil_order must be 2 or 4, got {so}")
@@ -48,12 +50,6 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
             f"bloch phase (oblique-periodic BC) requires stencil_order=2, got {so}"
         )
 
-    # Compute dtype: the oblique-periodic Bloch path carries a complex field
-    # envelope P; the real path computes at ``max(state dtype, float32)`` --
-    # upcast for reduced-precision (float16) fields (byte-identical for
-    # float32 storage), and PROMOTED for float64 storage so the arithmetic
-    # does not re-quantize a higher-precision field back to float32 every
-    # timestep (a hard `jnp.float32` pin would discard float64 field precision regardless of storage dtype).
     _fdtype = state.ex.dtype
     _cdtype = (
         jnp.complex64 if jnp.iscomplexobj(state.ex)
@@ -73,18 +69,14 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     ch_x, ch_y, ch_z = magnetic_update_coefficients(
         (ch_x, ch_y, ch_z), h_row_factors)
 
-    # curl E components via forward staggered differences (order=2 byte-identical)
-    # dEz/dy - dEy/dz
     curl_x = (
         _diff_fwd_o(ez, 1, periodic, so, bloch) / dx
         - _diff_fwd_o(ey, 2, periodic, so, bloch) / dx
     )
-    # dEx/dz - dEz/dx
     curl_y = (
         _diff_fwd_o(ex, 2, periodic, so, bloch) / dx
         - _diff_fwd_o(ez, 0, periodic, so, bloch) / dx
     )
-    # dEy/dx - dEx/dy
     curl_z = (
         _diff_fwd_o(ey, 0, periodic, so, bloch) / dx
         - _diff_fwd_o(ex, 1, periodic, so, bloch) / dx
@@ -105,7 +97,7 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
                  periodic: tuple = (False, False, False),
                  stencil_order: int = 2,
                  bloch: tuple | None = None,
-                 inv_d: tuple | None = None, *, boundary=None) -> FDTDState:
+                 inv_d: tuple | None = None, *, boundary=None, frame=None) -> FDTDState:
     """Redo the E update inside one index box with its own Ca/Cb.
 
     ``prev`` is the state BEFORE the grid-wide E update of this timestep. It
@@ -156,10 +148,6 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
     i0, i1, j0, j1, k0, k1 = box
     sl = (slice(i0, i1), slice(j0, j1), slice(k0, k1))
 
-    # Same compute/storage dtype policy as update_e -- the two results are
-    # compared cell-for-cell by the equality gate, so they must round alike.
-    # update_e_nu's policy is the same expression without the complex branch
-    # (it has no Bloch path), so one spelling serves both lanes.
     _fdtype = state.ex.dtype
     _cdtype = (
         jnp.complex64 if jnp.iscomplexobj(state.ex)
@@ -169,7 +157,7 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
         curl_x, curl_y, curl_z = curl_h(
             prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),
             prev.hz.astype(_cdtype), dx, periodic, stencil_order, bloch,
-            boundary=boundary)
+            boundary=boundary, frame=frame)
     else:
         curl_x, curl_y, curl_z = curl_h_nu(
             prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),
@@ -198,7 +186,7 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              periodic: tuple = (False, False, False),
              stencil_order: int = 2,
              bloch: tuple | None = None, *, boundary=None, high_wall: tuple[bool, bool, bool],
-             frame=None, owned=None) -> FDTDState:
+             frame=None, owned=None, bloch_operand=None) -> FDTDState:
     """Electric field full-step update (Ampere's law).
 
     For lossy media with conductivity σ:
@@ -221,6 +209,8 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
         Bloch field-transformation; requires stencil_order=2 and complex
         fields.  The backward differences use the conjugate phase automatically.
     """
+    if bloch_operand is not None:
+        bloch = bloch_operand
     so = stencil_order
     if so not in (2, 4):
         raise ValueError(f"stencil_order must be 2 or 4, got {so}")
@@ -229,10 +219,6 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
             f"bloch phase (oblique-periodic BC) requires stencil_order=2, got {so}"
         )
 
-    # Compute dtype: complex for the Bloch envelope path, ``max(state dtype,
-    # float32)`` for the real path (byte-identical for float32 storage;
-    # upcast covers reduced-precision fields; promoted for float64 storage
-    # -- see the matching comment in update_h).
     _fdtype = state.ex.dtype
     _cdtype = (
         jnp.complex64 if jnp.iscomplexobj(state.ex)
@@ -241,8 +227,6 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     hx = state.hx.astype(_cdtype)
     hy = state.hy.astype(_cdtype)
     hz = state.hz.astype(_cdtype)
-    # the coefficients are per COMPONENT, from the mean of eps_r and
-    # sigma over the four cells incident to that component's edge.
     (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_component_coeffs(
         materials, dt, periodic, high_wall=high_wall)
 
@@ -276,16 +260,12 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
         everywhere. Built by
         ``rfx.nonuniform._profile_to_inv_arrays`` (second return value).
     """
-    # Compute dtype: max(state dtype, float32) -- byte-identical for float32
-    # storage, upcast for float16, promoted for float64.
     _fdtype = state.ex.dtype
     _cdtype = jnp.promote_types(_fdtype, jnp.float32)
     ex = state.ex.astype(_cdtype)
     ey = state.ey.astype(_cdtype)
     ez = state.ez.astype(_cdtype)
     if cell_sizes is None:
-        # Compatibility for direct kernel callers supplying inverse primal
-        # metrics. Production grids pass their original cell lengths.
         cell_sizes = tuple(1 / jnp.where(v > 0, v, v[-2])
                            for v in (inv_dx_h, inv_dy_h, inv_dz_h))
     mu = (materials.components.mu_update
@@ -296,7 +276,6 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
     ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
 
-    # Forward differences wrap periodic axes; other axes keep zero padding.
     curl_x = (
         _diff_fwd_o(ez, 1, periodic, 2) * inv_dy_h[None, :, None]
         - _diff_fwd_o(ey, 2, periodic, 2) * inv_dz_h[None, None, :]
@@ -332,23 +311,16 @@ def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
         k>=1, ``inv_d_e[0] = 1/d[0]``. Built by
         ``rfx.nonuniform._profile_to_inv_arrays`` (first return value).
     """
-    # Compute dtype: max(state dtype, float32) -- byte-identical for float32
-    # storage, upcast for float16, promoted for float64.
     _fdtype = state.ex.dtype
     _cdtype = jnp.promote_types(_fdtype, jnp.float32)
     hx = state.hx.astype(_cdtype)
     hy = state.hy.astype(_cdtype)
     hz = state.hz.astype(_cdtype)
 
-    # One spelling with the uniform lane and with update_e_box, so a design
-    # box on a graded mesh builds the SAME Ca/Cb from its own permittivity.
-    # per component, from the mean over the four cells
-    # incident to the edge, with periodic flags from the NU boundary.
     (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_component_coeffs(
         materials, dt, boundary.periodic if boundary is not None else (False,) * 3,
         **_nu_e_metric_kwargs(materials, (inv_dx, inv_dy, inv_dz), cell_sizes), high_wall=high_wall)
 
-    # Backward differences with same shape (zero-pad via _shift_bwd)
     curl_x, curl_y, curl_z = curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, boundary=boundary)
 
     ex = (ca_x * state.ex.astype(_cdtype) + cb_x * curl_x).astype(_fdtype)
@@ -364,8 +336,6 @@ def update_h_fast(state: FDTDState, ch: jnp.ndarray | tuple) -> FDTDState:
     Avoids recomputing material coefficients each timestep.
     Non-periodic boundaries only (uses ``_shift_fwd``).
     """
-    # Compute dtype: max(state dtype, float32) -- byte-identical for float32
-    # storage, upcast for float16, promoted for float64.
     _fdtype = state.ex.dtype
     _cdtype = jnp.promote_types(_fdtype, jnp.float32)
     ex = state.ex.astype(_cdtype)
@@ -392,8 +362,6 @@ def update_e_fast(
 
     Non-periodic boundaries only (uses ``_shift_bwd``).
     """
-    # Compute dtype: max(state dtype, float32) -- byte-identical for float32
-    # storage, upcast for float16, promoted for float64.
     _fdtype = state.ex.dtype
     _cdtype = jnp.promote_types(_fdtype, jnp.float32)
     hx = state.hx.astype(_cdtype)
@@ -425,30 +393,19 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
     off-diagonal increment is added as on the uniform path, its couplings
     weighted by the local cell sizes.
     """
-    # Compute dtype: max(state dtype, float32) -- byte-identical for float32
-    # storage, upcast for float16, promoted for float64.
     _fdtype = state.ex.dtype
     _cdtype = jnp.promote_types(_fdtype, jnp.float32)
     hx = state.hx.astype(_cdtype)
     hy = state.hy.astype(_cdtype)
     hz = state.hz.astype(_cdtype)
-    # sigma is a VOLUME conductivity, so it takes the same
-    # per-component edge average the subpixel lane already gives eps -- the
-    # conduction paths of the four cells lie in parallel along the edge. The
-    # permittivity here stays the Kottke/subpixel tensor, which is already
-    # per-component by construction. Where sigma is uniform (every lossless
-    # subpixel fixture) the mean of four equal floats is that float, so those
-    # runs keep their bytes. Periodic axes use the boundary's seam average.
     sigma_ex, sigma_ey, sigma_ez = (materials.components.sigma_update if materials.components is not None
         else component_e_materials(materials, boundary.periodic if boundary is not None else (False,) * 3,
             **({} if cell_sizes is None else dict(cell_sizes=cell_sizes)), high_wall=high_wall)[1])
 
-    # The same arithmetic as update_e's, so one spelling (and its eps_r-unit derivative) serves both.
     ca_ex, cb_ex = e_update_coeffs(eps_ex, sigma_ex, dt)
     ca_ey, cb_ey = e_update_coeffs(eps_ey, sigma_ey, dt)
     ca_ez, cb_ez = e_update_coeffs(eps_ez, sigma_ez, dt)
 
-    # Backward differences with per-cell inv-spacing (mirrors update_e_nu)
     curl_x, curl_y, curl_z = curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, boundary=boundary)
 
     ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
@@ -467,11 +424,12 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
     return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
 
 
-@partial(jax.jit, static_argnames=("periodic", "boundary", "high_wall"))
+@partial(jax.jit, static_argnames=("periodic", "bloch", "boundary", "high_wall"))
 def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
                        inv_xx: jnp.ndarray, inv_yy: jnp.ndarray, inv_zz: jnp.ndarray,
                        dt: float, dx: float,
-                       periodic: tuple = (False, False, False), *, boundary=None, high_wall: tuple[bool, bool, bool]) -> FDTDState:
+                       periodic: tuple = (False, False, False), bloch: tuple | None = None,
+                       *, boundary=None, high_wall: tuple[bool, bool, bool], bloch_operand=None) -> FDTDState:
     """Electric field update with per-component **inverse** permittivity.
 
     Stage 2 production form: takes the diagonal of the inverse-eps
@@ -513,26 +471,14 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
     dt, dx : float
     periodic : tuple of 3 bools
     """
-    # Compute dtype: max(state dtype, float32) -- byte-identical for float32
-    # storage, upcast for float16, promoted for float64.
     _fdtype = state.ex.dtype
     _cdtype = jnp.promote_types(_fdtype, jnp.float32)
     hx = state.hx.astype(_cdtype)
     hy = state.hy.astype(_cdtype)
     hz = state.hz.astype(_cdtype)
-    # sigma is a VOLUME conductivity, so it takes the same
-    # per-component edge average the subpixel lane already gives eps -- the
-    # conduction paths of the four cells lie in parallel along the edge. The
-    # permittivity here stays the Kottke/subpixel tensor, which is already
-    # per-component by construction. Where sigma is uniform (every lossless
-    # subpixel fixture) the mean of four equal floats is that float, so those
-    # runs keep their bytes.
     sigma_ex, sigma_ey, sigma_ez = (materials.components.sigma_update if materials.components is not None
         else component_e_materials(materials, periodic, high_wall=high_wall)[1])
 
-    # Per-component lossy update coefficients in inv-eps form
-    # (:func:`_e_update_coeffs_inv_si`). For those bits, the eps_r-unit
-    # derivative (``* inv_eps0`` handed the cotangent a factor 1/EPS_0).
     ca_ex, cb_ex = si_value_eps_r_grad(
         _e_update_coeffs_inv_si, _ca_cb_inv_eps_r_units, inv_xx, sigma_ex, dt)
     ca_ey, cb_ey = si_value_eps_r_grad(
@@ -540,8 +486,9 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
     ca_ez, cb_ez = si_value_eps_r_grad(
         _e_update_coeffs_inv_si, _ca_cb_inv_eps_r_units, inv_zz, sigma_ez, dt)
 
-    # curl H (identical to update_e and update_e_aniso).
-    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, boundary=boundary)
+    if bloch_operand is not None:
+        bloch = bloch_operand
+    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, bloch=bloch, boundary=boundary)
 
     ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
     ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)
@@ -556,7 +503,8 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
 def update_e_aniso(state: FDTDState, materials: MaterialArrays,
                    eps_ex: jnp.ndarray, eps_ey: jnp.ndarray, eps_ez: jnp.ndarray,
                    dt: float, dx: float,
-                   periodic: tuple = (False, False, False), *, boundary=None, high_wall: tuple[bool, bool, bool]) -> FDTDState:
+                   periodic: tuple = (False, False, False), bloch: tuple | None = None,
+                   *, boundary=None, high_wall: tuple[bool, bool, bool], bloch_operand=None) -> FDTDState:
     """Electric field update with per-component anisotropic permittivity.
 
     Same as :func:`update_e` but uses separate permittivity arrays for
@@ -574,20 +522,11 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
     dt, dx : float
     periodic : tuple of 3 bools
     """
-    # Compute dtype: max(state dtype, float32) -- byte-identical for float32
-    # storage, upcast for float16, promoted for float64.
     _fdtype = state.ex.dtype
     _cdtype = jnp.promote_types(_fdtype, jnp.float32)
     hx = state.hx.astype(_cdtype)
     hy = state.hy.astype(_cdtype)
     hz = state.hz.astype(_cdtype)
-    # sigma is a VOLUME conductivity, so it takes the same
-    # per-component edge average the subpixel lane already gives eps -- the
-    # conduction paths of the four cells lie in parallel along the edge. The
-    # permittivity here stays the Kottke/subpixel tensor, which is already
-    # per-component by construction. Where sigma is uniform (every lossless
-    # subpixel fixture) the mean of four equal floats is that float, so those
-    # runs keep their bytes.
     sigma_ex, sigma_ey, sigma_ez = (materials.components.sigma_update if materials.components is not None
         else component_e_materials(materials, periodic, high_wall=high_wall)[1])
 
@@ -596,15 +535,13 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
             materials, (eps_ex, eps_ey, eps_ez),
             (sigma_ex, sigma_ey, sigma_ez), "aniso.E", periodic=periodic)
 
-    # Per-component lossy update coefficients: the arithmetic of
-    # e_update_coeffs, so one spelling (and its eps_r-unit
-    # derivative) serves both.
     ca_ex, cb_ex = e_update_coeffs(eps_ex, sigma_ex, dt)
     ca_ey, cb_ey = e_update_coeffs(eps_ey, sigma_ey, dt)
     ca_ez, cb_ez = e_update_coeffs(eps_ez, sigma_ez, dt)
 
-    # curl H (same as update_e)
-    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, boundary=boundary)
+    if bloch_operand is not None:
+        bloch = bloch_operand
+    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, bloch=bloch, boundary=boundary)
 
     ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
     ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)

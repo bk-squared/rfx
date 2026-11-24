@@ -23,6 +23,7 @@ What is pinned:
 This is NOT the removed ``design_mask`` (ledger; gated by
 ``test_design_mask_removed.py``). Nothing is masked and no field state is
 ``stop_gradient``'d: the arrays the tape holds are themselves box-shaped.
+Integer multiples of DX keep the fixture corners and source/probe coordinates away from half-cell rounding ties.
 """
 
 from __future__ import annotations
@@ -43,8 +44,6 @@ F0 = 8e9
 DX = 2e-3
 CPML = 5
 DOMAIN = (24e-3, 20e-3, 16e-3)
-# Both corners and every source/probe position sit on a cell centre, so the
-# realized box does not depend on how round() breaks a tie at dx/2.
 BOX_LO = (10e-3, 8e-3, 6e-3)
 BOX_HI = (14e-3, 12e-3, 10e-3)
 N_STEPS = 80
@@ -74,10 +73,7 @@ def _eps_design(shape, seed=1):
 
 
 def _loss_box(sim, eps_design, n_steps=N_STEPS, **kwargs):
-    # checkpoint=False throughout: forward()'s default per-step remat saves
-    # the scan CARRY (six grid-sized field arrays) once per step whatever the
-    # coefficients are, which hides the term this design removes -- measured
-    # 0.59 MB of residuals here against 26.2 MB with the default on.
+    """Disabling per-step checkpointing isolates the box tape from whole-grid carry retention, measured earlier as 0.59 MB here versus 26.2 MB with checkpointing."""
     result = sim.forward(design_box=(BOX_LO, BOX_HI),
                          design_eps_override=eps_design,
                          n_steps=n_steps, checkpoint=False,
@@ -94,9 +90,6 @@ def _loss_override(sim, eps_design, n_steps=N_STEPS, **kwargs):
     return jnp.sum(result.time_series ** 2)
 
 
-# ---------------------------------------------------------------------------
-# Equality with the whole-grid formulation
-# ---------------------------------------------------------------------------
 
 def test_design_box_gradient_equals_eps_override_in_float64():
     """The two formulations are the same computation, to round-off."""
@@ -167,20 +160,18 @@ def test_design_box_matches_eps_override_through_a_driven_port():
 
 def test_design_box_carries_a_lossy_background_and_a_traced_sigma():
     """A conductive design region: sigma defaults to the run's own, or is traced."""
+    BACKGROUND_SIGMA_S_PER_M = 0.05
     with enable_x64():
         sim = _sim(precision="float64")
-        sim.add_material("lossy", eps_r=3.0, sigma=0.05)
+        sim.add_material("lossy", eps_r=3.0, sigma=BACKGROUND_SIGMA_S_PER_M)
         sim.add(Box(BOX_LO, BOX_HI), material="lossy")
         sl, shape = _box_cells(sim)
         eps = jnp.asarray(_eps_design(shape, seed=2), jnp.float64)
 
-        # sigma=None keeps the declared 0.05 S/m of the box cells: the box
-        # update must reproduce the reference, which reads that same sigma.
         rel_default = abs(float(_loss_box(sim, eps))
                           - float(_loss_override(sim, eps)))
         assert rel_default / abs(float(_loss_override(sim, eps))) < 1e-10
 
-        # An explicit conductivity is differentiable on the same footing.
         sigma = jnp.asarray(0.02 + 0.01 * np.arange(np.prod(shape))
                             .reshape(shape), jnp.float64)
         grad = jax.grad(lambda s: _loss_box(sim, eps, design_sigma_override=s))(sigma)
@@ -188,9 +179,6 @@ def test_design_box_carries_a_lossy_background_and_a_traced_sigma():
         assert np.max(np.abs(np.asarray(grad))) > 0.0
 
 
-# ---------------------------------------------------------------------------
-# The invariant: what the tape holds scales with the box, not with the grid
-# ---------------------------------------------------------------------------
 
 def _residuals(sim, eps_design, **kwargs):
     return inspect_ad_saved_residuals(
@@ -320,7 +308,6 @@ def test_design_box_on_a_reflecting_wall_is_accepted_and_exact(wall, mesh):
             options["dx_profile"] = np.r_[DX, interior, DX]
         sim = _mixed_boundary_sim(wall=wall, precision=precision, **options)
         geometry = sim.realized_geometry()
-        # The public geometry report supplies the exact realized reference.
         base = jnp.asarray(geometry.materials.eps_r, dtype=dtype)
         lo_m, hi_m = (0.0, 0.0, 0.0), (4e-3, 4e-3, 4e-3)
         lo = tuple(int(np.argmin(abs(nodes - x)))
@@ -393,7 +380,6 @@ def test_fence_still_catches_the_one_absorbing_face():
     sim = _mixed_boundary_sim()
     grid = sim._build_grid()
     n_x = grid.shape[0]
-    # Last interior cell on x, then three more into the absorber.
     x_lo_m = (n_x - grid.pad_x_hi - 1) * DX
     lo_m = (x_lo_m, 0.0, 0.0)
     hi_m = (x_lo_m + 3 * DX, 4e-3, 4e-3)
@@ -426,9 +412,6 @@ def test_design_box_survives_the_gpu_baked_coefficient_path():
     assert np.array_equal(np.asarray(grad_cpu), np.asarray(grad_gpu))
 
 
-# ---------------------------------------------------------------------------
-# Fences
-# ---------------------------------------------------------------------------
 
 def _forward_with_box(sim, **kwargs):
     _, shape = _box_cells(sim)
@@ -589,6 +572,7 @@ def test_fence_anisotropic_and_bloch_paths():
     ``aniso_eps`` / ``aniso_inv_eps`` / the Bloch phase are not reachable
     through ``forward(design_box=...)`` today, so they are checked on the
     resolver itself rather than through a fixture that cannot exist.
+    Resolved bounds describe a write window extended one cell on each plus face to include the electric edges reached by the design material.
     """
     from rfx.simulation import DesignBoxSpec
     from rfx.model import resolve_design_box
@@ -603,10 +587,6 @@ def test_fence_anisotropic_and_bloch_paths():
                   use_lorentz=False, use_kerr=False, aniso_eps=None,
                   aniso_inv_eps=None, stencil_order=2, bloch=None,
                   sheet_impedance=None, cell_metas=())
-    # The same arguments without a flag resolve cleanly. The resolved bounds
-    # are the WRITE window, one cell past the declared box on the plus side of
-    # each axis since #1210 -- the design material reaches the E components on
-    # those edges, so the redo has to write them.
     assert resolve_design_box(spec, **common).bounds == (10, 14, 9, 13, 8, 12)
     ones = jnp.ones(grid.shape, jnp.float32)
     for flag, value in (("aniso_eps", (ones, ones, ones)),
@@ -641,7 +621,6 @@ def test_fence_on_an_axis_the_grid_does_not_absorb_but_the_run_does():
               sheet_impedance=None, cell_metas=())
     with pytest.raises(ValueError, match="CPML absorber"):
         resolve_design_box(spec, cpml_axes="xyz", **kw)
-    # The grid's own axes: x carries no absorber, the box is accepted.
     resolve_design_box(spec, cpml_axes="z", **kw)
 
 
@@ -652,14 +631,13 @@ def test_fence_design_box_flush_against_a_periodic_face():
     the grid-wide average wraps to the far side, while the box's one-cell
     window stops at the face. Refused rather than silently different. An
     INTERIOR box on the same periodic domain is unaffected.
+    An absorber-free grid isolates the periodic-seam refusal from the absorber fence that would otherwise fire first.
     """
     from rfx.grid import Grid
     from rfx.simulation import DesignBoxSpec
     from rfx.model import resolve_design_box
     from rfx.core.yee import init_materials
 
-    # No absorber: this fence is about the periodic seam, and a CPML grid
-    # would hit the absorber fence first.
     grid = Grid(freq_max=16e9, domain=(24e-3, 20e-3, 16e-3), dx=2e-3,
                 cpml_layers=0, cpml_axes="")
     mats = init_materials(tuple(grid.shape))
@@ -674,12 +652,10 @@ def test_fence_design_box_flush_against_a_periodic_face():
                           eps_r=jnp.ones((3, 3, 3), jnp.float32))
     with pytest.raises(NotImplementedError, match="PERIODIC y face"):
         resolve_design_box(flush, periodic=(False, True, False), **common)
-    # the hi face too
     flush_hi = DesignBoxSpec(bounds=(4, 7, ny - 3, ny, 4, 7),
                              eps_r=jnp.ones((3, 3, 3), jnp.float32))
     with pytest.raises(NotImplementedError, match="PERIODIC y face"):
         resolve_design_box(flush_hi, periodic=(False, True, False), **common)
-    # interior on the same periodic axis resolves
     inner = DesignBoxSpec(bounds=(4, 7, 4, 7, 4, 7),
                           eps_r=jnp.ones((3, 3, 3), jnp.float32))
     assert resolve_design_box(

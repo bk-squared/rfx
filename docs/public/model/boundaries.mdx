@@ -58,6 +58,11 @@ z hi cpml
 periodic must be symmetric on an axis; got lo='periodic' hi='cpml'. Use Boundary(lo='periodic', hi='periodic') or rename the asymmetric side.
 ```
 
+<figure data-rfx="media">
+  <img src="/rfx/model/assets/boundaries/structure.png" loading="lazy" alt="Section through an empty domain with an absorber 12 layers deep at both sides, 8 layers deep on top, and a PEC wall along the whole bottom of the grid." />
+  <figcaption>The grid this code builds, cut at y = 15 mm: 60 × 60 × 30 cells of 0.5 mm, 12 absorber layers outside each side face, 8 above, and the PEC wall below. The example declares no geometry, so the domain is empty.</figcaption>
+</figure>
+
 The rules the spec enforces when you build it:
 
 - A periodic axis is periodic on both faces.

@@ -35,10 +35,13 @@ from rfx.model.lumped_stamp import (
 )
 
 
+_DG_TAIL_CLIP_TAU = 50.0
+
+
 def _validate_dg_cutoff(cutoff):
     try:
         cutoff = float(cutoff)
-    except TypeError:  # traced: checked where it was concrete
+    except TypeError:
         return
     if not cutoff >= 2.5:
         raise ValueError(
@@ -57,21 +60,11 @@ def charge_free_dg(t, tau, cutoff, *, _arg_timing=None):
     _validate_dg_cutoff(cutoff)
     u = t / tau
     c = cutoff
-    # Both terms are exactly 0 in float32 beyond 50 tau (exp(-2500)); the
-    # clamps keep u**3 and arg**2 from overflowing there (inf * 0 = NaN in
-    # the value and its gradient, e.g. for a tau of 1e-20 s), and change
-    # nothing, value or gradient, for u < 50.
-    uc = jnp.clip(u, -50.0, 50.0)
-    # Preserve GaussianPulse's independent width evaluations in its reverse
-    # f0 derivative. Sharing their value would change the rounding of that sum.
+    uc = jnp.clip(u, -_DG_TAIL_CLIP_TAU, _DG_TAIL_CLIP_TAU)
     t0, arg_tau = (cutoff * tau, tau) if _arg_timing is None else _arg_timing
-    arg = jnp.clip((t - t0) / arg_tau, -50.0, 50.0)
+    arg = jnp.clip((t - t0) / arg_tau, -_DG_TAIL_CLIP_TAU, _DG_TAIL_CLIP_TAU)
     onset = jnp.exp(-c**2 - uc**2) * (2*c + (4*c**2 - 2)*uc - 4*c*uc**2 - 4*c**2*uc**3)
     value = -2.0 * arg * jnp.exp(-(arg**2)) - onset
-    # For z = 2cu < 3 the two terms above nearly cancel (each about 2c*exp(-c^2)).
-    # There the same pulse is exp(-c^2 - u^2) * (2c*R1(z) - 2u*R2(z)), z = 2cu,
-    # with R1, R2 = exp(z) less its Taylor terms through z^1, z^2, summed as series
-    # so every evaluation path keeps float32's relative accuracy.
     z = jnp.clip(2*c*u, 0.0, 3.0)
     term, r1, r2 = z**2 / 2, 0.0, 0.0
     for k in range(2, 22):
@@ -237,7 +230,6 @@ def add_lumped_port(
     i, j, k = idx
     dx = grid.dx
 
-    # Simple hard source for Stage 1
     e_value = voltage / dx
     field = getattr(state, component)
     field = field.at[i, j, k].set(e_value)
@@ -262,6 +254,8 @@ class LumpedPort:
         Port reference impedance Z0 in ohms. Default 50 ohm.
     excitation : GaussianPulse
         Source waveform (returns volts).
+
+    ``_drive_stamps`` records the build-local material stamp and unit-voltage shape.
     """
 
     position: tuple[float, float, float]
@@ -269,8 +263,6 @@ class LumpedPort:
     impedance: float
     excitation: GaussianPulse
     allow_in_absorber: bool = False
-    # Build-local record of the actual stamp and unit-voltage shape. Excluded
-    # from descriptor identity; setup populates it before source assembly.
     _drive_stamps: dict = field(default_factory=dict, init=False, repr=False, compare=False)
 
 
@@ -287,7 +279,7 @@ def apply_lumped_port(state, grid: Grid, port: LumpedPort, t: float, materials) 
     increment = port_drive_waveform(
         grid, idx, port.component, port.excitation, None, materials,
         sigma_port=stamped_drive(port, idx)[0],
-        unit_field=stamped_drive(port, idx)[1], time=t)
+        unit_field=stamped_drive(port, idx)[1], time=t, dtype=state.ex.dtype)
 
     field = getattr(state, port.component)
     field = field.at[i, j, k].add(increment)
@@ -316,7 +308,7 @@ class WirePort:
     end: tuple[float, float, float]
     component: str
     impedance: float = 50.0
-    excitation: object = None  # GaussianPulse or similar
+    excitation: object = None
     radius: float | None = None
     allow_in_absorber: bool = False
     _drive_stamps: dict = field(default_factory=dict, init=False, repr=False, compare=False)
@@ -355,7 +347,7 @@ def apply_wire_port(state, grid, port, t, materials, pec_edge_masks=None):
         increment = port_drive_waveform(
             grid, cell, port.component, port.excitation, None, materials,
             sigma_port=stamped_drive(port, cell)[0],
-            unit_field=stamped_drive(port, cell)[1], time=t)
+            unit_field=stamped_drive(port, cell)[1], time=t, dtype=state.ex.dtype)
         field = field.at[i, j, k].add(increment)
 
     return state._replace(**{port.component: field})
@@ -402,7 +394,7 @@ class CustomWaveform:
         at time *t*.
     """
 
-    func: object  # callable; use ``object`` for frozen dataclass compat
+    func: object
 
     def __call__(self, t: float) -> float:
         """Evaluate the user-defined waveform at time *t*."""

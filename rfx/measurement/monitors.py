@@ -17,7 +17,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from .plan import Channel, Node, Owner, _phase_values, _traced
+from .plan import Channel, NodeArrays, Owner, _COMPONENTS, _phase_values, _traced
 
 
 def default_frequency_grid(freq_max, n_freqs, *, host=False):
@@ -38,9 +38,12 @@ def _eager_frequency_grid(freq_max, n_freqs, x64):
     Reset the outer trace and its constant-folding switch while evaluating
     linspace, then publish the same concrete bins in every caller.
     Cache by precision as well as bounds/count; never cache a tracer.
+    Jit is forced on: under ``jax.disable_jit()`` linspace runs op by op and
+    its float32 bins differ by up to 1 ULP, which the cache would then serve
+    to every later call in the process.
     """
     from rfx.core.jax_utils import compile_time_switch
-    with jax.core.eval_context():
+    with jax.core.eval_context(), jax.disable_jit(False):
         switch = compile_time_switch()
         with switch(False) if switch is not None else nullcontext():
             start, stop = freq_max / 10, freq_max
@@ -60,8 +63,6 @@ def monitor_owners(sim, grid, *, conductors=None, periodic=None, overrides=None)
         freqs = sim._current_moments[3]
         declaration = sim
         if _traced(freqs):
-            # Only geometry is frozen here. Frequency-dependent admission belongs
-            # to the run; its phase leaves do not determine the block stencil.
             declaration = copy(sim)
             spec = list(sim._current_moments)
             spec[3] = np.zeros(freqs.shape, dtype=np.float32)
@@ -79,10 +80,17 @@ def monitor_owners(sim, grid, *, conductors=None, periodic=None, overrides=None)
     return owners
 
 
-def ntff_owner(grid, box):
-    """Expand the normal interpolation and tangential midpoint averages."""
+def ntff_owner(grid, box, *, channels_only=False):
+    """Freeze the normal interpolation and tangential midpoint averages."""
+    channels = ntff_channels(grid, box)
+    if channels_only:
+        return channels
+    return Owner('ntff_box:0', 'ntff', tuple(channels), _phase_values(box.freqs), source=box)
+
+
+def ntff_channels(grid, box):
+    """Rebuild at most one face channel at a time for validation."""
     bounds = ((box.i_lo, box.i_hi), (box.j_lo, box.j_hi), (box.k_lo, box.k_hi))
-    channels = []
     from rfx.model.graded_admission import refuse_window_cells
     for a in range(3):
         refuse_window_cells(grid, a, slice(None), "waveguide ports NTFF owner")
@@ -92,59 +100,86 @@ def ntff_owner(grid, box):
         plane = bounds[axis][side]
         tangents = [a for a in range(3) if a != axis]
         lower = getattr(box, 'w_'+face)
+        u, v = np.meshgrid(*(np.arange(*bounds[a], dtype=np.int32) for a in tangents), indexing='ij')
+        u, v = u.ravel(), v.ravel()
+        areas = cells[tangents[0]][u] * cells[tangents[1]][v]
         for kind, component_axis in product(('E', 'H'), tangents):
             component = kind.lower()+'xyz'[component_axis]
             shift_axis = next(a for a in tangents if a != component_axis) if kind == 'E' else component_axis
             normals = ((plane-1, lower), (plane, 1-lower)) if kind == 'H' and box.face_centre else ((plane, 1.),)
             shifts = ((0, .5), (1, .5)) if box.face_centre else ((0, 1.),)
-            nodes = []
-            for u, v in product(range(*bounds[tangents[0]]), range(*bounds[tangents[1]])):
-                area = float(cells[tangents[0]][u]*cells[tangents[1]][v])
-                for (p, normal), (shift, transverse) in product(normals, shifts):
-                    idx = [0, 0, 0]
-                    idx[axis], idx[tangents[0]], idx[tangents[1]] = p, u, v
-                    idx[shift_axis] += shift
-                    nodes.append(Node(component, *idx, float(normal*transverse), area))
-            channels.append(Channel(face+':'+component, kind, tuple(nodes),
-                                    e_time_offset=0., h_time_offset=0.))
-    return Owner('ntff_box:0', 'ntff', tuple(channels), _phase_values(box.freqs), source=box)
+            stencil = tuple(product(normals, shifts))
+            repeats = len(stencil)
+            indices = [None] * 3
+            indices[axis] = np.tile(np.asarray([p for (p, _), _ in stencil], np.int32), len(u))
+            indices[tangents[0]] = np.repeat(u, repeats)
+            indices[tangents[1]] = np.repeat(v, repeats)
+            indices[shift_axis] += np.tile([shift for _, (shift, _) in stencil], len(u))
+            i, j, k = indices
+            nodes = NodeArrays(component=np.full(len(u)*repeats, _COMPONENTS.index(component), np.int8),
+                               i=i, j=j, k=k,
+                               weight=np.tile([float(normal*transverse)
+                                               for (_, normal), (_, transverse) in stencil], len(u)),
+                               area=np.repeat(areas, repeats))
+            yield Channel(face+':'+component, kind, nodes, e_time_offset=0., h_time_offset=0.)
+            del nodes
 
 
-def current_moment_owner(grid, monitor):
-    """Expand the existing slab curl and volume-weighted block reductions."""
+def current_moment_owner(grid, monitor, *, channels_only=False):
+    """Freeze slab curls, sharing geometry across weights and E/E_prev."""
     from rfx.core.yee import EPS_0
-    m = monitor
-    dtype = np.asarray(m.w_ex).dtype
+    dtype = np.asarray(monitor.w_ex).dtype
     coef = dtype.type(EPS_0)/(jnp.asarray(grid.dt, dtype=dtype) if _traced(grid.dt)
                               else dtype.type(grid.dt))
+    channels = current_moment_channels(monitor, coef)
+    if channels_only:
+        return channels
+    return Owner('current_moment:0', 'current_moment', tuple(channels),
+                 _phase_values(monitor.freqs), source=monitor)
+
+
+def current_moment_channels(m, coef):
+    """Yield channels in component/block/weight order without cell objects.
+
+    Within each block, cells keep np.ndindex's row-major order.
+    """
     inverse = tuple(np.asarray(a) for a in (m.inv_dx_e, m.inv_dy_e, m.inv_dz_e))
     starts = (m.i_lo, m.j_lo, m.k_lo)
-    curls = ((('hz', 1), ('hy', 2)), (('hx', 2), ('hz', 0)), (('hy', 0), ('hx', 1)))
-    channels = []
+    curls = (((5, 1), (4, 2)), ((3, 2), (5, 0)), ((4, 0), (3, 1)))
+    segments = np.asarray(m.seg).ravel()
+    order = np.argsort(segments, kind='stable')
+    boundaries = np.searchsorted(segments[order], np.arange(m.n_blocks+1))
     for c, weights in enumerate((m.w_ex, m.w_ey, m.w_ez)):
         weights = np.asarray(weights)
-        segments = np.asarray(m.seg).reshape(weights.shape[1:3])
-        for block, w in product(range(m.n_blocks), range(m.n_weights)):
-            electric, magnetic = [], []
-            for index in np.ndindex(weights.shape[1:]):
-                if segments[index[:2]] != block:
-                    continue
-                value = weights[(w, *index)]
-                idx = tuple(p+q for p, q in zip(starts, index))
-                weight = -value*coef
-                electric.append(Node('e'+'xyz'[c], *idx, weight if _traced(weight) else float(weight)))
-                for term, (component, axis) in enumerate(curls[c]):
-                    weight = float(value*inverse[axis][index[axis]]*m.curl_signs[2*c+term])
-                    back = list(idx)
-                    back[axis] -= 1
-                    magnetic.extend((Node(component, *idx, weight), Node(component, *back, -weight)))
-            prefix = f'block:{block}:component:{c}:weight:{w}:'
-            previous = tuple(Node(n.component, n.i, n.j, n.k, -n.weight) for n in electric)
-            # Stencil terms form one projected current at the H half-step.
-            for name, kind, nodes, stage in (('E', 'E', tuple(electric), 'post-injection'),
-                                             ('E_prev', 'E', previous, 'pre-update'),
-                                             ('H', 'H', tuple(magnetic), 'post-injection')):
-                channels.append(Channel(prefix+name, 'H', nodes, sample_stage=stage,
-                                        e_time_offset=0., h_time_offset=float(m.half_step)-.5))
-    return Owner('current_moment:0', 'current_moment', tuple(channels),
-                 _phase_values(m.freqs), source=m)
+        _, ni, nj, nk = weights.shape
+        for block in range(m.n_blocks):
+            xy = order[boundaries[block]:boundaries[block+1]]
+            local = (np.repeat(xy // nj, nk).astype(np.int32),
+                     np.repeat(xy % nj, nk).astype(np.int32),
+                     np.tile(np.arange(nk, dtype=np.int32), len(xy)))
+            indices = tuple(a+start for a, start in zip(local, starts))
+            count = len(local[0])
+            components = np.full(count, c, np.int8)
+            h_components = np.tile(np.repeat([term[0] for term in curls[c]], 2).astype(np.int8), count)
+            h_indices = [np.repeat(a, 4).reshape(count, 4) for a in indices]
+            for term, (_, axis) in enumerate(curls[c]):
+                h_indices[axis][:, 2*term+1] -= 1
+            hi, hj, hk = (a.ravel() for a in h_indices)
+            i, j, k = indices
+            for w in range(m.n_weights):
+                value = weights[w][local]
+                prefix = f'block:{block}:component:{c}:weight:{w}:'
+                electric = NodeArrays(component=components, i=i, j=j, k=k, weight=-value*coef)
+                yield Channel(prefix+'E', 'H', electric,
+                              h_time_offset=float(m.half_step)-.5)
+                yield Channel(prefix+'E_prev', 'H', replace(electric, weight=-electric.weight),
+                              sample_stage='pre-update', h_time_offset=float(m.half_step)-.5)
+                del electric
+                magnetic = np.empty((count, 4), dtype=weights.dtype)
+                for term, (_, axis) in enumerate(curls[c]):
+                    weight = value*inverse[axis][local[axis]]*m.curl_signs[2*c+term]
+                    magnetic[:, 2*term], magnetic[:, 2*term+1] = weight, -weight
+                yield Channel(prefix+'H', 'H', NodeArrays(component=h_components, i=hi, j=hj, k=hk,
+                                                       weight=magnetic.ravel()),
+                              h_time_offset=float(m.half_step)-.5)
+                del magnetic, weight

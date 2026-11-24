@@ -56,15 +56,13 @@ def apply_kerr_ade(state, e_prev, chi3_arr, eps_r_arr):
     FDTDState with the reactive-Kerr-corrected E-field components.
     """
     ex_p, ey_p, ez_p = e_prev
-    e_sq_p = ex_p ** 2 + ey_p ** 2 + ez_p ** 2       # |E^n|^2 (co-located, pre-update)
-    # D_target/ε0 = ε_r·E_lin + χ³·|E^n|²·E^n  (advance the reconstructed D linearly)
+    e_sq_p = ex_p ** 2 + ey_p ** 2 + ez_p ** 2
     dtx = eps_r_arr * state.ex + chi3_arr * e_sq_p * ex_p
     dty = eps_r_arr * state.ey + chi3_arr * e_sq_p * ey_p
     dtz = eps_r_arr * state.ez + chi3_arr * e_sq_p * ez_p
-    # solve  ε_r·E + χ³·|E|²·E = D_target  by fixed-point  E = D_target/(ε_r + χ³|E|²)
-    ex, ey, ez = state.ex, state.ey, state.ez         # initial guess = E_lin
+    ex, ey, ez = state.ex, state.ey, state.ez
     for _ in range(_KERR_FIXED_POINT_ITERS):
-        denom = eps_r_arr + chi3_arr * (ex ** 2 + ey ** 2 + ez ** 2)   # = ε_eff (>= ε_r >= 1)
+        denom = eps_r_arr + chi3_arr * (ex ** 2 + ey ** 2 + ez ** 2)
         ex = dtx / denom
         ey = dty / denom
         ez = dtz / denom

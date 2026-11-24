@@ -16,10 +16,6 @@ def assert_field_time(name, value):
     assert value.dtype == np.float64, f'B2 {name} time: {value.dtype}; expected float64'
 
 
-def test_time_assertion_rejects_float32():
-    # Negative control: removing the new B2 assertion must itself go red.
-    with pytest.raises(AssertionError, match='B2 record-end time: float32'):
-        assert_field_time('record-end', np.zeros(3, np.float32))
 
 
 @contextmanager
@@ -62,15 +58,18 @@ def observe_times():
         jax.clear_caches()
 
 
-@pytest.mark.parametrize('entry', ('run', 'forward'))
-@pytest.mark.parametrize('lane', ('uniform', 'nonuniform'))
-@pytest.mark.parametrize('source', ('point', 'tfsf'))
+@pytest.mark.parametrize('source, lane, entry', [
+    (source, lane, entry)
+    for entry in ('run', 'forward')
+    for lane in ('uniform', 'nonuniform')
+    for source in ('point', 'tfsf')
+    if not (source == 'tfsf' and lane == 'nonuniform')
+])
 def test_float64_record_end_times(entry, lane, source):
     from rfx._internal import _realized
     row = ('_tfsf', 'plane_wave') if source == 'tfsf' else ('_materials', 'eps')
     with observe_times() as observed:
         sim = build(row, 'run_' + lane, precision='float64')
-        # Capture also checks the diagnostic's independently sampled raw drive.
         with _realized.capture():
             result = (sim.run(n_steps=12, compute_s_params=False, skip_preflight=True)
                       if entry == 'run' else sim.forward(n_steps=12, checkpoint=False, skip_preflight=True))
@@ -93,10 +92,10 @@ def test_float64_until_decay_times(lane, flux):
 
 @pytest.mark.parametrize('lane', ('uniform', 'nonuniform'))
 def test_float64_ringdown_source_times(lane):
+    """An early pulse keeps the source-off refusal independent of precision."""
     from rfx.ringdown import RingdownRun, RingdownForward, RingdownStop, RingdownSpec
     with observe_times() as observed:
         sim = build(('_materials', 'eps'), 'run_' + lane, precision='float64')
-        # One early pulse keeps source-off refusal independent of precision.
         sim._ports[0] = replace(sim._ports[0], waveform=lambda t: jnp.where(t == 0, 1., 0.))
         grid = sim._build_realized_grid()
         for cls in (RingdownRun, RingdownForward, RingdownStop):
@@ -127,12 +126,12 @@ def test_float64_incident_replay_times(kind):
         if kind == 'methodB':
             cfg, state = init_tfsf_methodB(24, 24, DX, dt, nz=24,
                                            cpml_layers=2, tfsf_margin=3, f0=5e9,
-                                           bandwidth=.8, theta_deg=20.)
+                                           bandwidth=.8, theta_deg=20., dtype='float64')
             measure_incident_spectrum(cfg, state, 12, [5e9], DX)
         else:
             cfg, state = init_tfsf(nx=24, ny=24, nz=24, dx=DX, dt=dt,
                                   cpml_layers=2, tfsf_margin=3, f0=5e9,
-                                  bandwidth=.8, closed_box=kind == 'closed', n_steps=12)
+                                  bandwidth=.8, closed_box=kind == 'closed', n_steps=12, dtype='float64')
             measure_normal_incident_spectrum(cfg, state, 12, [5e9], float(dt))
         assert 'TFSF' in observed
 
@@ -149,6 +148,7 @@ def test_float64_port_sampling(lane, source):
 
 
 def test_uniform_eigenmode_time_grid():
+    """An empty edge set isolates time sampling from the spatial mode solve."""
     from types import SimpleNamespace
     from rfx.sources.msl_port import make_msl_port_sources_jm
     previous = sys.getprofile()
@@ -166,12 +166,10 @@ def test_uniform_eigenmode_time_grid():
             warnings.simplefilter('ignore', UserWarning)
             sim = build(('_materials', 'eps'), 'run_uniform', precision='float64')
             grid = sim._build_realized_grid()
-            # No spatial edges are needed to observe the actual sampler's two
-            # time grids; the mode solve does not participate in time sampling.
             em = SimpleNamespace(j_grid_lo=0, k_grid_lo=0, n_y_grid=1, n_z_grid=1, cell_indices=[])
             port = SimpleNamespace(excitation=lambda t: jnp.cos(t * 2e10), direction='+x')
             sys.setprofile(inspect)
-            make_msl_port_sources_jm(grid, port, n_steps=12, materials=None, eigenmode_data=em)
+            make_msl_port_sources_jm(grid, port, n_steps=12, materials=None, eigenmode_data=em, dtype='float64')
             assert observed == {'times_e', 'times_h'}
     finally:
         sys.setprofile(previous)

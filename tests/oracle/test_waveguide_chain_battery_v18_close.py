@@ -4,6 +4,7 @@ Live cells use the #1012 CPML half-cell artifact; the shift-sign falsifier
 uses the enforced schema-4 realized-PEC / forward2 artifact. The live
 AD-vs-FD leg and cross-backend tolerance were moved unchanged from the
 original battery. Historical artifacts and pre-declarations remain in place.
+The quantum is 1e-4 so the live-layer pin is not a 2x knife edge on a float32 reassociation envelope.
 """
 from __future__ import annotations
 
@@ -21,15 +22,8 @@ from tests import _waveguide_chain_battery_gates as G
 from tests import _waveguide_chain_battery_enforcement as E
 from tests._gate_policy import gate_from_envelope
 
-# Live-layer tolerance on |S_live − S_fixture| (absolute, per entry), derived
-# from the measured cross-backend envelope through the shared policy: the 12
-# coarse + mid cells re-measured on this box (CPU, jax 0.6.2) against the
-# fixture (VESSL 369367257823, gpu-rtx4090, jax 0.4.33) differed by at most
-# 5.000e-6 (pec_short-coarse-flux; the others 9.6e-7 .. 2.6e-6). The quantum
-# is 1e-4 so the pin is not a 2x knife edge on a float32 reassociation
-# envelope; the fine rung (4x the steps) is compared on the GPU lane only.
 LIVE_ABS_S_ENVELOPE = 5.000e-6
-LIVE_ABS_S_TOL: float | None = gate_from_envelope(LIVE_ABS_S_ENVELOPE, quantum=10000)   # 1e-4
+LIVE_ABS_S_TOL: float | None = gate_from_envelope(LIVE_ABS_S_ENVELOPE, quantum=10000)
 
 
 def _measure_cell(dut: str, rung: str, lane, num_periods: float = F.NUM_PERIODS):
@@ -49,13 +43,12 @@ LIVE_CELLS_SHA256 = "90ac2c88a7686baa888f9b7de5f0d145a81e89d3d153a25a235bf45e463
 
 @pytest.fixture(scope="module")
 def live_fx() -> dict:
-    # A missing live reference is an ingest defect, not a reason to skip.
+    """A missing live reference is an ingest defect, not a reason to skip."""
     return E.load_enforced_fixture()
 
 
 @pytest.fixture(scope="module")
 def live_cells_fx() -> dict:
-    # #1012 live cells include the slab re-freeze; historical replay stays on #931.
     raw = LIVE_CELLS_FIXTURE.read_bytes()
     assert hashlib.sha256(raw).hexdigest() == LIVE_CELLS_SHA256, "live cell record SHA-256 mismatch"
     return json.loads(raw)
@@ -66,8 +59,6 @@ def _cell(fx_: dict, dut: str, rung: str, lane: str) -> dict:
 
 
 def _live_compare(fx_, rung: str):
-    # Every cell is measured and printed before any assertion, so one red cell
-    # does not hide the cells after it.
     cells = []
     for dut in F.DUTS:
         for lane in F.LANES:

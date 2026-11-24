@@ -97,7 +97,6 @@ def test_shape_kind_of_matches_registry(kind):
 def test_round_trip_through_json_text(kind):
     original = SHAPES[kind]
     payload = shape_to_dict(original)
-    # Must survive real JSON, not just dict copying.
     rebuilt = shape_from_dict(json.loads(json.dumps(payload)))
 
     assert type(rebuilt) is type(original)
@@ -215,7 +214,7 @@ def test_subclass_of_supported_shape_is_refused():
 def test_same_named_impostor_class_is_refused():
     """Registry lookup is by class identity, not by name."""
     @dataclasses.dataclass(frozen=True)
-    class Sphere:  # noqa: N801 - deliberately shadows the real primitive
+    class Sphere:  # noqa: N801
         center: tuple[float, float, float]
         radius: float
 
@@ -376,15 +375,9 @@ def test_numpy_array_parameters_are_still_accepted():
 def test_payload_shape_is_json_serialisable_scalars_only():
     for shape in SHAPES.values():
         payload = shape_to_dict(shape)
-        # json.dumps would accept tuples too; assert the canonical list form so
-        # emitted files stay byte-stable across writers.
         text = json.dumps(payload, sort_keys=True)
         assert "(" not in text
 
-
-# ---------------------------------------------------------------------------
-# the PolylineWire radius threshold (#931 §1.4)
-# ---------------------------------------------------------------------------
 
 def test_a_polyline_wire_round_trips_on_both_sides_of_the_filament_threshold():
     """§1.4's decision, exercised through the codec rather than assumed.

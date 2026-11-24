@@ -1,7 +1,4 @@
 """PMC high ghosts are held by coefficients, with identical CPU field records."""
-import os
-
-os.environ.setdefault('XLA_FLAGS', '--xla_force_host_platform_device_count=2')
 
 import jax
 import numpy as np
@@ -14,9 +11,9 @@ FIELDS = ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')
 
 
 def scene(*, axis='x', cpml=False, graded=False, absorber='cpml'):
+    """Boundary cells retain dx, with the extra declared length inside."""
     boundary = dict.fromkeys('xyz', absorber if cpml else 'pec')
     boundary[axis] = Boundary('pec', 'pmc')
-    # Boundary cells retain dx; the extra declared length belongs inside.
     profiles = {'dx_profile': np.array([.001] * 8 + [.0013] + [.001] * 8)} if graded else {}
     sim = Simulation(freq_max=12e9, domain=(.0173, .0081, .0072), dx=.001,
                      boundary=BoundarySpec(**boundary), snap="declared", cpml_layers=2 if cpml else 0,
@@ -32,9 +29,9 @@ def scene(*, axis='x', cpml=False, graded=False, absorber='cpml'):
 
 
 def record(sim, devices):
+    """A graded run exposes Result.state rather than SnapshotSpec."""
     kwargs = dict(devices=jax.devices('cpu')[:devices], compute_s_params=False, skip_preflight=True)
     if sim._uses_nonuniform_mesh:
-        # Graded run() exposes Result.state, not SnapshotSpec. Observe each step.
         rows = {c: [] for c in FIELDS}
         for steps in range(1, 41):
             result = sim.run(n_steps=steps, **kwargs)
@@ -72,9 +69,14 @@ def test_pmc_high_ghost_bit_identity(pec_box_records):
         assert one[c].tobytes() == slabs[c].tobytes(), f'{c}: every snapshot must be bit-identical on 1 and 2 devices'
 
 
-@pytest.mark.parametrize('axis', tuple('xyz'))
-@pytest.mark.parametrize('graded', (False, True))
-@pytest.mark.parametrize('devices', (1, 2))
+@pytest.mark.parametrize(
+    'devices,graded,axis',
+    [(devices, graded, axis)
+     for devices in (1, 2)
+     for graded in (False, True)
+     for axis in 'xyz'
+     if not (graded and axis == 'x' and devices == 1)],
+)
 def test_pmc_high_ghost_with_transverse_cpml(axis, graded, devices):
     check_ghosts(record(scene(axis=axis, cpml=True, graded=graded), devices), axis,
                  f'cpml graded={graded} devices={devices}')
@@ -82,14 +84,12 @@ def test_pmc_high_ghost_with_transverse_cpml(axis, graded, devices):
 
 
 def tfsf_scene(*, axis='x', graded=False):
-    # The uniform TF/SF lane solves its side faces periodic and refuses declared ones (#2127).
+    """The uniform TF/SF lane refuses declared non-periodic side faces."""
+    PERIODIC_YZ_CELL_WIDTH_M = .0009
     boundary = dict.fromkeys('xyz', 'cpml') if graded else {'x': 'cpml', 'y': 'periodic', 'z': 'periodic'}
-    # The uniform +x plane wave needs its absorber on x_lo (a closed x axis leaves it none).
     boundary[axis] = Boundary('pec' if graded or axis != 'x' else 'cpml', 'pmc')
     profiles = {'dx_profile': np.array([.001] * 8 + [.0013] + [.001] * 8)} if graded else {}
-    # A vacuum scene meets TF/SF's transverse and injection-plane conditions.
-    # Periodic y and z need whole cells: 0.9 mm divides 8.1 and 7.2 mm (x stays a fractional count).
-    return Simulation(freq_max=12e9, domain=(.0173, .0081, .0072), dx=.001 if graded else .0009,
+    return Simulation(freq_max=12e9, domain=(.0173, .0081, .0072), dx=.001 if graded else PERIODIC_YZ_CELL_WIDTH_M,
                       boundary=BoundarySpec(**boundary), snap='declared', cpml_layers=2,
                       **profiles)
 
@@ -127,9 +127,10 @@ def test_pmc_high_ghost_with_transverse_upml(axis):
 
 
 def seeded_run(monkeypatch, graded, devices):
-    """One step from whole arrays seeded to hy = +7, hz = -7 and ez = 1."""
+    """One step from whole arrays seeded to hy = +7, hz = -7 and ez = 1.
+    Ez = 1 gives the high ghost Hy a nonzero x curl, so only its update coefficient or inverse spacing can hold it."""
     import jax.numpy as jnp
-    from rfx.runners import _distributed_nu_wrapped  # Bind its loop before patching.
+    from rfx.runners import _distributed_nu_wrapped
     from rfx.stepping import slab_wrap
 
     original_scan = jax.lax.scan
@@ -143,10 +144,6 @@ def seeded_run(monkeypatch, graded, devices):
         def seed(value):
             if is_state(value):
                 seeded.append(value.hy.shape)
-                # Seed whole H arrays so this covers physical ghosts even in
-                # packed slabs, without using production slab/index helpers.
-                # Ez = 1 gives the high ghost Hy a nonzero x curl, so only its
-                # update coefficient or inverse spacing can hold it.
                 return value._replace(hy=jnp.full_like(value.hy, 7.),
                                       hz=jnp.full_like(value.hz, -7.),
                                       ez=jnp.ones_like(value.ez))

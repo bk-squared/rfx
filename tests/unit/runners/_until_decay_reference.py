@@ -45,7 +45,6 @@ import jax.numpy as jnp
 
 
 def _reference_drives(meta, waves):
-    # Independent source-order adapter: do not use the production assembler.
     nodes, coef, ids, owners = {}, {}, {}, {}
     for index, (i, j, k, component) in enumerate(meta):
         nodes.setdefault(component, []).append((i, j, k))
@@ -252,8 +251,6 @@ def run_until_decay_reference(
     else:
         _iz0, _iz1 = (grid.pad_z_lo, grid.nz - grid.pad_z_hi)
 
-    # Independent operands and drive end, from this loop's own tables; the
-    # caller's n_end is not read.
     del n_end
     eps = (materials.components.eps_update if materials.components is not None
            else component_e_materials(materials, _setup.periodic, high_wall=unpadded_high_walls(grid))[0])
@@ -343,7 +340,6 @@ def run_until_decay_reference(
         carry, probe_out, monitor_val = _single_step(carry, step_idx, src_vals, mag_src_vals)
         all_probes.append(probe_out)
         if family_peaks is not None:
-            # Largest |E| and |H| over every step: the cross-trace rule's family peak.
             fields = carry["fdtd"]
             for family, comps in (("e", ("ex", "ey", "ez")), ("h", ("hx", "hy", "hz"))):
                 peak = max(float(jnp.max(jnp.abs(getattr(fields, c)))) for c in comps)
@@ -449,6 +445,10 @@ def run_until_decay_reference(
         snap_axes = snapshot_axes(grid, snapshot, actual_steps, dt=_setup.dt)
     from rfx.measurement import PortTimeRecord
     record_ids = [spec[4] for spec in port_record_specs] if port_record_specs is not None else range(len(record_kinds))
+    record_identities = ([(spec[0], *spec[3]) for spec in port_record_specs]
+        if port_record_specs is not None else
+        [(spec.component, spec.mid_i, spec.mid_j, spec.mid_k) for spec in wire_port_sparams] +
+        [(spec.component, spec.i, spec.j, spec.k) for spec in lumped_port_sparams])
     return SimResult(
         state=carry["fdtd"] if return_state else None,
         time_series=time_series,
@@ -466,8 +466,8 @@ def run_until_decay_reference(
         current_moment_data=carry.get("current_moments"),
         current_moment_monitor=current_moments,
         dft_time_records=tuple(r[:actual_steps] for r in carry.get("dft_time_records", ())),
-        sparam_time_records=tuple(PortTimeRecord(f'port:{i}:mode:0', kind, names, r[:actual_steps])
-            for i, r, kind, names in zip(record_ids, carry.get("sparam_time_records", ()),
+        sparam_time_records=tuple(PortTimeRecord(f'port:{i}:mode:0', kind, names, r[:actual_steps], identity)
+            for i, r, kind, names, identity in zip(record_ids, carry.get("sparam_time_records", ()),
                 record_kinds,
-                [('V', 'I', 'V_port', 'V_ref') if kind == 'wire' else ('V', 'I', 'V_ref') for kind in record_kinds])),
+                [('V', 'I', 'V_port', 'V_ref') if kind == 'wire' else ('V', 'I', 'V_ref') for kind in record_kinds], record_identities)),
     )

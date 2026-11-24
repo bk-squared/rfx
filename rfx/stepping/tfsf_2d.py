@@ -23,29 +23,20 @@ def update_tfsf_2d(cfg: TFSF2DConfig, st: TFSF2DState,
 
 def _update_e_tez(cfg, st, dx, dt, t):
     """TEz E update: Ey += (dt/eps0)*(dHx/dz - dHz/dx) + source."""
-    ey = st.ez_2d   # Ey stored in ez_2d slot
-    hx = st.hx_2d   # Hx
-    hz = st.hy_2d   # Hz stored in hy_2d slot
+    ey = st.ez_2d
+    hx = st.hx_2d
+    hz = st.hy_2d
     coeff_e = dt / EPS_0
 
-    # dHx/dz -- Bloch field-transform: plain roll + exp(+j k_z dz) on the
-    # backward neighbour (conjugate of the forward pshift; k_z=0 -> plain diff).
     pconj = jnp.exp(1j * cfg.k_transverse * dx)
     dhx_dz = (hx - jnp.roll(hx, 1, axis=1) * pconj) / dx
 
-    # dHz/dx -- zero-pad backward difference along x
     dhz_dx = (hz - jnp.concatenate([jnp.zeros((1, hz.shape[1]), hz.dtype), hz[:-1, :]], axis=0)) / dx
 
-    # TEz Ampere: Ey += coeff * (dHx/dz - dHz/dx)
     ey = ey + coeff_e * (dhx_dz - dhz_dx)
 
-    # CFS-CPML for Ey (x-direction, from -dHz/dx term)
-    # The x-derivative contribution is -coeff_e * dHz/dx, so CPML sign is -coeff_e
     ey, psi_ez_xlo, psi_ez_xhi = _apply_cpml_e(cfg, st, dhz_dx, ey, -coeff_e)
 
-    # ---- Inject oblique plane wave: z-uniform complex analytic modulated
-    # Gaussian (carrier at f0). The transverse k_z is carried by the transformed
-    # derivatives above, not by a per-cell time delay. ----
     arg = (t - cfg.src_t0) / cfg.src_tau
     src_val = (cfg.src_amp
                * jnp.exp(-1j * 2.0 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
@@ -65,22 +56,15 @@ def _update_e_tmz(cfg, st, dx, dt, t):
     hx, hy = st.hx_2d, st.hy_2d
     coeff_e = dt / EPS_0
 
-    # dHy/dx -- zero-pad backward difference along x
     dhy_dx = (hy - jnp.concatenate([jnp.zeros((1, hy.shape[1]), hy.dtype), hy[:-1, :]], axis=0)) / dx
 
-    # dHx/dy -- Bloch field-transform: plain roll + exp(+j k_y dx) on the
-    # backward neighbour (conjugate of the forward pshift; k_y=0 -> plain diff).
     pconj = jnp.exp(1j * cfg.k_transverse * dx)
     dhx_dy = (hx - jnp.roll(hx, 1, axis=1) * pconj) / dx
 
     ez = ez + coeff_e * (dhy_dx - dhx_dy)
 
-    # CFS-CPML for Ez (x-direction, from dHy/dx)
     ez, psi_ez_xlo, psi_ez_xhi = _apply_cpml_e(cfg, st, dhy_dx, ez, coeff_e)
 
-    # ---- Inject oblique plane wave: y-uniform complex analytic modulated
-    # Gaussian (carrier at f0). The transverse k_y is carried by the transformed
-    # derivatives above, not by a per-cell time delay. ----
     arg = (t - cfg.src_t0) / cfg.src_tau
     src_val = (cfg.src_amp
                * jnp.exp(-1j * 2.0 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
@@ -97,25 +81,19 @@ def _update_e_tmz(cfg, st, dx, dt, t):
 def _update_h_tez(cfg, st, dx, dt):
     """TEz H update: Hx += (dt/mu0)*dEy/dz,  Hz -= (dt/mu0)*dEy/dx."""
     mu_abs = component_h_materials(MaterialArrays(None, None, 1.0), high_wall=(False, False, False))[0] * MU_0
-    ey = st.ez_2d   # Ey stored in ez_2d slot
-    hx = st.hx_2d   # Hx
-    hz = st.hy_2d   # Hz stored in hy_2d slot
+    ey = st.ez_2d
+    hx = st.hx_2d
+    hz = st.hy_2d
     coeff_h = dt / mu_abs
 
-    # dEy/dz -- Bloch field-transform: plain roll + exp(-j k_z dz) on the
-    # forward neighbour (transverse axis is z here; k_z=0 -> plain periodic diff).
     pshift = jnp.exp(-1j * cfg.k_transverse * dx)
     dey_dz = (jnp.roll(ey, -1, axis=1) * pshift - ey) / dx
 
-    # dEy/dx -- zero-pad forward difference along x=axis0
     dey_dx = (jnp.concatenate([ey[1:, :], jnp.zeros((1, ey.shape[1]), ey.dtype)], axis=0) - ey) / dx
 
-    # TEz Faraday: Hx += coeff * dEy/dz,  Hz -= coeff * dEy/dx
     hx = hx + coeff_h * dey_dz
     hz = hz - coeff_h * dey_dx
 
-    # CFS-CPML for Hz (x-direction only) — note the sign: Hz -= coeff*dEy/dx
-    # so CPML correction sign is -coeff_h
     hz, psi_hy_xlo, psi_hy_xhi = _apply_cpml_h(cfg, st, dey_dx, hz, -coeff_h)
 
     return st._replace(
@@ -131,18 +109,14 @@ def _update_h_tmz(cfg, st, dx, dt):
     hx, hy = st.hx_2d, st.hy_2d
     coeff_h = dt / mu_abs
 
-    # dEz/dy -- Bloch field-transform: plain roll + exp(-j k_y dx) on the
-    # forward neighbour. k_y=0 (normal) -> pshift=1 -> ordinary periodic diff.
     pshift = jnp.exp(-1j * cfg.k_transverse * dx)
     dez_dy = (jnp.roll(ez, -1, axis=1) * pshift - ez) / dx
 
-    # dEz/dx -- zero-pad forward difference along x=axis0
     dez_dx = (jnp.concatenate([ez[1:, :], jnp.zeros((1, ez.shape[1]), ez.dtype)], axis=0) - ez) / dx
 
     hx = hx - coeff_h * dez_dy
     hy = hy + coeff_h * dez_dx
 
-    # CFS-CPML for Hy (x-direction only)
     hy, psi_hy_xlo, psi_hy_xhi = _apply_cpml_h(cfg, st, dez_dx, hy, coeff_h)
 
     return st._replace(
@@ -171,10 +145,15 @@ def bloch_phase_tuple(cfg: TFSF2DConfig, dx: float) -> tuple:
     matching ``cfg.transverse_axis`` (``y``=axis 1 for TMz, ``z``=axis 2 for TEz).
     All other axes are 1.0.  Pass the result as ``update_e/h(..., bloch=...)``.
     """
-    ph = complex(jnp.exp(-1j * cfg.k_transverse * dx))
+    from rfx.core.jax_utils import is_tracer
+    ph = jnp.exp(-1j * cfg.k_transverse * dx)
+    if is_tracer(cfg.k_transverse):
+        one = jnp.ones_like(ph)
+    else:
+        ph, one = complex(ph), 1.0 + 0j
     if cfg.transverse_axis == "z":
-        return (1.0 + 0j, 1.0 + 0j, ph)
-    return (1.0 + 0j, ph, 1.0 + 0j)
+        return (one, one, ph)
+    return (one, ph, one)
 
 
 def _apply_cpml_h(cfg, st, dez_dx, hy, coeff_h):

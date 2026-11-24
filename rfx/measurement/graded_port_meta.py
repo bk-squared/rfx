@@ -50,8 +50,6 @@ def _build_wp_meta(wire_ports, grid):
             return port_metric(_dx_arr_np[ci], _x_host)
         if comp == "ey":
             return port_metric(_dy_arr_np[cj], _y_host)
-        # ez: index grid.dz WITHOUT np.asarray so a traced dz_profile
-        # keeps its gradient through the extractor.
         return _dz_m[ck]
 
     meta = []

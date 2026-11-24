@@ -27,10 +27,9 @@ class _FakeSimulation:
 
 
 def _write_metric_artifact(case_dir: Path, params, result):
+    """An output-root-relative artifact path lets resume validation work across processes."""
     path = case_dir / "metrics.json"
     path.write_text(json.dumps({"value": float(result.value)}))
-    # Return a case-local path.  The manifest runner should normalize this to
-    # an output-root-relative path so resume validation works across processes.
     return {"metrics": "metrics.json"}
 
 
@@ -84,7 +83,7 @@ def test_run_batch_with_manifest_records_and_resumes_completed_cases(tmp_path: P
     assert len(manifest["cases"]) == 2
     assert all(record["status"] == "completed" for record in manifest["cases"].values())
 
-    def forbidden_factory(width):  # pragma: no cover - only runs on regression
+    def forbidden_factory(width):  # pragma: no cover
         raise AssertionError("resume should skip completed cases")
 
     second = run_batch_with_manifest(
@@ -472,7 +471,7 @@ def test_manifest_without_metric_fn_still_records_resume_metric(tmp_path: Path):
     first = run_batch_with_manifest(factory, sweep, tmp_path)
     assert first[0].metrics == {"completed": True}
 
-    def forbidden_factory(width):  # pragma: no cover - only runs on regression
+    def forbidden_factory(width):  # pragma: no cover
         raise AssertionError("default completion metric should permit resume")
 
     second = run_batch_with_manifest(forbidden_factory, sweep, tmp_path, resume=True)
@@ -532,7 +531,7 @@ def test_tiny_physical_sweep_records_metrics_and_resumes(tmp_path: Path):
     assert first[1].metrics["peak_time_series"] >= first[0].metrics["peak_time_series"]
     manifest_before = json.loads((tmp_path / "manifest.json").read_text())
 
-    def forbidden_factory(amplitude):  # pragma: no cover - only runs on regression
+    def forbidden_factory(amplitude):  # pragma: no cover
         raise AssertionError("resume should skip completed physical cases")
 
     second = run_batch_with_manifest(

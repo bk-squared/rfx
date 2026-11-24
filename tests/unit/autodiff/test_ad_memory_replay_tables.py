@@ -60,7 +60,7 @@ def test_waveguide_replay_bytes_match_pullback(graded, n_steps, n_bins, segmente
 
 @pytest.mark.parametrize("graded", (False, True), ids=("uniform", "graded"))
 def test_replay_refuses_two_ports_with_shared_bins(graded):
-    # #2449: a forward AD objective must not read S polluted by the other drive.
+    """A forward AD objective must not read S polluted by the other drive."""
     sim = _scene(graded)
     for name in ("first", "second"):
         sim.add_waveguide_port(.004, direction="+x", freqs=jnp.linspace(10e9, 14e9, 2),
@@ -70,7 +70,7 @@ def test_replay_refuses_two_ports_with_shared_bins(graded):
         result = sim.forward(n_steps=8, eps_override=e, skip_preflight=True)
         return sum(jnp.sum(jnp.abs(p.s11) ** 2) for p in result.waveguide_sparams.values())
 
-    with pytest.raises(ValueError, match="supports a single waveguide port"):
+    with pytest.raises(ValueError, match="supports at most one driven waveguide port"):
         jax.vjp(objective, jnp.ones(sim._build_realized_grid().shape, jnp.float32))
     jax.clear_caches()
 
@@ -85,12 +85,12 @@ def test_replay_refuses_different_port_bins(graded):
         result = sim.forward(n_steps=8, eps_override=e, skip_preflight=True)
         return sum(jnp.sum(jnp.abs(p.s11) ** 2) for p in result.waveguide_sparams.values())
 
-    with pytest.raises(ValueError, match="supports a single waveguide port"):
+    with pytest.raises(ValueError, match="supports at most one driven waveguide port"):
         jax.vjp(objective, jnp.ones(sim._build_realized_grid().shape, jnp.float32))
-    with pytest.raises(ValueError, match="supports a single waveguide port"):
+    with pytest.raises(ValueError, match="supports at most one driven waveguide port"):
         sim.estimate_ad_memory(8)
     for options in ({}, {"max_levels": 2}) if graded else ({},):
-        with pytest.raises(ValueError, match="supports a single waveguide port"):
+        with pytest.raises(ValueError, match="supports at most one driven waveguide port"):
             sim.plan_ad_memory(8, available_memory_gb=1e-6, **options)
     jax.clear_caches()
 
@@ -150,7 +150,8 @@ def test_other_forward_measurements_have_no_replay_tables(kind, graded, monkeypa
 def test_coaxial_spectra_not_reachable_from_forward(graded):
     sim = _scene(graded)
     sim.add_coaxial_port((.008,) * 3)
-    with pytest.raises(NotImplementedError, match="not wired into Simulation.forward"):
+    fragment = "add_coaxial_port.*is not carried" if graded else "CPML on all six faces"
+    with pytest.raises(NotImplementedError, match=fragment):
         sim.forward(n_steps=8, skip_preflight=True)
-    with pytest.raises(ValueError, match="not wired into Simulation.forward"):
+    with pytest.raises(ValueError, match=fragment):
         sim.estimate_ad_memory(8)

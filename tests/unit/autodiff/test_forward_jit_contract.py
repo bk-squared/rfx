@@ -49,17 +49,14 @@ from rfx import Box, GaussianPulse, Simulation
 
 MM = 1e-3
 N_STEPS = 40
-N_STEPS_OPEN = 120           # the open (CPML) boards: long enough to show drift
-MAX_ULP_AT_PEAK = 9          # per-step quantities
-MAX_REL_SUMMED = 1.0e-4      # quantities summed over the record
-# Graded z: 0.5 mm cells through the ground and the substrate (z 0-3 mm),
-# then a 1.25x growth into the air.
+N_STEPS_OPEN = 120
+MAX_ULP_AT_PEAK = 9
+MAX_REL_SUMMED = 1.0e-4
 DZ = np.concatenate([np.full(6, 0.5), 0.5 * 1.25 ** np.arange(1, 6)]) * MM
 DESIGN_BOX = ((9 * MM, 3 * MM, 1.5 * MM), (11 * MM, 5 * MM, 2.5 * MM))
 THETA = np.linspace(0.2, 2.9, 4)
 PHI = np.array([0.0, 1.5])
 
-# Also runs on the GPU backend in the merge train's pre-merge GPU job.
 pytestmark = pytest.mark.gpu_gate
 
 
@@ -137,7 +134,6 @@ def _ntff(graded):
     sim.add_source((8 * MM, 8 * MM, 2 * MM), "ez", waveform=_pulse(),
                    amplitude_kind="field")
     sim.add_probe((10 * MM, 6 * MM, 2 * MM), "ez")
-    # numpy float64 frequencies: the natural input, and the one that failed.
     sim.add_ntff_box((1 * MM, 1 * MM, 1 * MM), (15 * MM, 15 * MM, 6 * MM),
                      freqs=np.array([7e9, 8e9]))
     return sim
@@ -147,13 +143,6 @@ def _lumped_open(graded):
     return _lumped(graded, boundary="cpml")
 
 
-# One model per host-read class, on the lanes that carry it, and a lumped
-# port on an open board per lane:
-# name -> (builder, graded, summed observable, design input, steps).
-# "s": the port's S (port_s11_freqs); "far field": compute_far_field
-# of the NTFF box; None: the probe record only. The design input is a
-# design-box permittivity, or a whole-grid eps_override where the lane
-# refuses a design box (an MSL port on the graded lane).
 MODELS = {
     "wire port/uniform": (_wire, False, "s", "box", N_STEPS),
     "wire port/graded": (_wire, True, "s", "box", N_STEPS),
@@ -193,7 +182,6 @@ def _run(sim, graded, observable, design, n_steps, eps):
     elif eps is not None:
         kw = {"design_box": DESIGN_BOX, "design_eps_override": eps}
     if observable == "s":
-        # numpy, so a function with no traced input really has none
         kw["port_s11_freqs"] = (np.linspace(sim._freq_max / 10, sim._freq_max, 50)
                                 if graded else np.array([6e9, 8e9], np.float32))
     r = sim.forward(n_steps=n_steps, skip_preflight=True, checkpoint=False, **kw)
@@ -235,8 +223,6 @@ def _model(name):
     return build(graded), graded, observable, design, n_steps
 
 
-# The open boards are left out here: their subject is the per-step record,
-# and their jitted gradient costs 20 s each.
 GRAD_MODELS = sorted(name for name, m in MODELS.items() if m[4] == N_STEPS)
 
 
@@ -244,7 +230,10 @@ GRAD_MODELS = sorted(name for name, m in MODELS.items() if m[4] == N_STEPS)
 def test_jit_of_the_gradient_equals_the_plain_call(name):
     """``jax.jit(jax.value_and_grad(loss))`` with a design input traces and
     agrees with the plain call (the objective and its gradient are sums over
-    the record: 1e-4 of the peak)."""
+    the record: 1e-4 of the peak).
+    The open boards are excluded from the gradient comparison because their subject is the per-step
+    record.
+    """
     sim, graded, observable, design, n_steps = _model(name)
     loss = _loss(sim, graded, observable, design, n_steps)
     eps = jnp.asarray(2.0 + np.random.default_rng(3).random(
@@ -309,9 +298,6 @@ def test_the_time_stepping_is_recorded_not_run_while_tracing(name):
 
 
 
-# ---------------------------------------------------------------------------
-# The helper's mechanisms (rfx.core.jax_utils)
-# ---------------------------------------------------------------------------
 
 @pytest.fixture
 def fallback_solve(monkeypatch):
@@ -319,7 +305,7 @@ def fallback_solve(monkeypatch):
     from rfx.core import jax_utils
 
     monkeypatch.setattr(jax_utils, "compile_time_switch", lambda: None)
-    import rfx.stepping.scan as scan  # recorded_scan reads it here
+    import rfx.stepping.scan as scan
     monkeypatch.setattr(scan, "compile_time_switch", lambda: None)
     sim, graded, observable, design, n_steps = _model("lumped port, cpml/uniform")
 
@@ -341,8 +327,6 @@ def test_the_fallback_records_the_time_stepping_over_opaque_operands(
     assert error <= MAX_REL_SUMMED, error
 
 
-# Arm64 CPU only. Measured: 34 ULP on macOS arm64; within the bar on x86-64
-# Linux (VESSL 369367268769) and 0 ULP on GPU (VESSL 369367268759).
 @pytest.mark.xfail(
     jax.default_backend() == "cpu"
     and platform.machine().lower() in ("arm64", "aarch64"),
@@ -353,7 +337,10 @@ def test_the_fallback_records_the_time_stepping_over_opaque_operands(
            "in one program and run-time values in the other",
 )
 def test_the_fallback_probe_record_equals_the_plain_call(fallback_solve):
-    """Per-step agreement remains subject to the CPU fallback's known drift."""
+    """Per-step agreement remains subject to the CPU fallback's known drift.
+    An earlier measurement was 34 ULP on macOS arm64, within the bar on x86-64 Linux and 0 ULP on
+    GPU.
+    """
     _, solve = fallback_solve
     ts, _ = solve()
     ts_j, _ = jax.jit(solve)()

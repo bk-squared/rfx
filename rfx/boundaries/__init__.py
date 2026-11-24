@@ -1,6 +1,5 @@
 """Boundary conditions: CPML, PEC, PMC."""
 
-# Re-export bound here: later patches of the defining module do not replace it.
 from rfx.boundaries.cpml import (  # noqa: F401
     apply_cpml_e,
     apply_cpml_h,
@@ -28,8 +27,14 @@ from rfx.boundaries.spec import (  # noqa: F401
     normalize_boundary,
 )
 
-# The layer entries the five large files may call (scripts/ci/check_layer_structure.py rule I).
+def admit_tfsf_angle_override(sim, lane, override):
+    """Admit the angle operand after lane selection without importing model at startup."""
+    from rfx.boundaries import tfsf
+    return tfsf.admit_tfsf_angle_override(sim, lane, override)
+
+
 __all__ = [
+    "admit_tfsf_angle_override",
     "apply_pec",
     "apply_pec_edges",
     "apply_pec_faces",

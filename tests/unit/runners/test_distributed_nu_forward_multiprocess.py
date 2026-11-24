@@ -3,6 +3,7 @@
 Fresh children isolate memory accounting and CPU topology. The Linux gate uses
 one device per process and a separate one-process, two-device reference. No
 host gather is used inside the objective (only owned gradient shards are saved).
+Distributed initialization must precede any import that might initialize JAX's backend.
 """
 
 import inspect
@@ -19,8 +20,6 @@ from types import SimpleNamespace
 
 import jax
 
-# Initialize before importing RFX or any fixture that might initialize JAX's
-# backend. Each worker is a fresh interpreter with one local CPU device.
 if __name__ == "__main__" and sys.argv[1] == "worker" and sys.argv[2] != "reference":
     jax.distributed.initialize(sys.argv[2], 2, int(sys.argv[3]), initialization_timeout=30)
 
@@ -71,6 +70,7 @@ def _trace(sim, eps, sigma=None, occupancy=None):
 
 
 def _parity():
+    """Only a gradient with respect to occupancy sees a halo transpose that drops or double-counts a ghost because occupancy ghosts enter the seam cells' soft-PEC product."""
     sim = _model()
     host = _host_inputs(sim)
     local = [jnp.asarray(a) for a in host]
@@ -79,10 +79,6 @@ def _parity():
     for inputs in (local, sharded):
         f = lambda e, s, o: _trace(sim, e, s, o)
         traces.append(f(*inputs))
-        # All three designs: eps and sigma ghosts only feed ghost-cell updates
-        # that the E exchange overwrites (zero cotangent), but occupancy ghosts
-        # enter the seam cells' soft-PEC product, so only a gradient w.r.t.
-        # occupancy sees a halo transpose that drops or double-counts a ghost.
         gradients.append(jax.grad(lambda e, s, o: jnp.sum(f(e, s, o) ** 2),
                                   argnums=(0, 1, 2))(*inputs))
     nx = host[0].shape[0]
@@ -93,8 +89,6 @@ def _parity():
         assert got.sharding == design.sharding, name
         assert np.all(np.asarray(got)[nx:] == 0), name
         metrics[f"gradient_{name}"] = _within(want, np.asarray(got)[:nx])
-    # Direct halo equality makes the seam contract observable even when a
-    # short trace happens not to encounter a particular material ghost.
     sg = nu.build_sharded_nu_grid(sim._build_nonuniform_grid(), len(jax.devices()))
     for a, b, pad in zip(local, sharded, (1., 0., 0.)):
         expected = nu.stage_forward_array_x_slab(a, sg, b.sharding.mesh, pad)
@@ -137,8 +131,6 @@ def _compiled_memory(kind, mesh, expected_bytes):
     compiled = jax.jit(lambda: arrays(call_sim(sim, "forward", devices))).lower().compile()
     jax.block_until_ready(compiled())
     constants = []
-    # Inspect constant instructions in every computation, including fusions
-    # and loop bodies. Abbreviated literals count; parameters do not.
     for line in compiled.as_text().splitlines():
         match = re.search(r"(\w+)\[([\d,]*)\](?:\{[^}]*\})?\s+constant\(", line)
         if match:
@@ -207,9 +199,6 @@ def _mutate(kind):
             '(inv_dx_sharded, inv_dy_rep, inv_dz_rep,\n         inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep) = spacings[:6]',
             '(_, inv_dy_rep, inv_dz_rep,\n         inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep) = spacings[:6]')
         assert new != source, "mutation target not found: spacing"
-        # Capture the enclosing concrete metric instead of the traced spacing.
-        # The runner imports this function locally on each call.
-        # Keep the module globals so the closure gate can instrument jit/scan.
         exec(new, vars(slab_graded_legacy_loop))
     elif kind == "halo":
         original = slab_placement._halo
@@ -225,8 +214,6 @@ def _mutate(kind):
         retained = []
 
         def copy_whole(arr, sg, mesh, pad_value):
-            # Recreate the prohibited staging route and keep its input alive
-            # through the loop, as happens when a caller owns the local design.
             local = jnp.asarray(np.asarray(arr), device=jax.devices()[0])
             retained.append(local)
             return slab_placement.cut(local[:sg.nx], sg, pad_value, mesh=mesh)
@@ -257,6 +244,7 @@ def _child(mode, *args, devices=2):
 @pytest.mark.source_scan
 @pytest.mark.parametrize("devices", [2, pytest.param(3, marks=pytest.mark.slow)])
 def test_sharded_overrides_match_local_trace_and_gradient(devices):
+    """Direct halo equality makes the seam contract observable even when a short trace happens not to encounter a particular material ghost."""
     _child("parity", devices=devices)
 
 
@@ -270,7 +258,6 @@ def test_sharded_transformed_primals():
 @pytest.mark.parametrize("mode,expected_bytes", [
     pytest.param("plain", None, id="plain"),
     pytest.param("grad", None, id="grad"),
-    # Measured material-input byte lists, ordered independently of packing.
     pytest.param("jit-epsilon_box-uniform-2", [20280], id="jit-epsilon_box-uniform-2"),
     pytest.param("jit-epsilon_box-graded-2", [16900], id="jit-epsilon_box-graded-2",
         marks=pytest.mark.xfail(strict=True, reason="#2486 graded multi-device material arrays under a caller's jax.jit are embedded ghost-padded as whole-domain literals")),
@@ -286,14 +273,13 @@ def test_sharded_transformed_primals():
         marks=pytest.mark.xfail(strict=True, reason="#2486 multi-device dispersive coefficients under a caller's jax.jit are embedded as whole-domain literals")),
     pytest.param("jit-debye-graded-2", [16900, 4225], id="jit-debye-graded-2",
         marks=pytest.mark.xfail(strict=True, reason="#2486 multi-device dispersive coefficients under a caller's jax.jit are embedded as whole-domain literals")),
-    # Lorentz was refused before compilation; use the matching epsilon-box
-    # input budget so removing the coefficient literals makes these XPASS.
     pytest.param("jit-lorentz-uniform-2", [20280], id="jit-lorentz-uniform-2",
         marks=pytest.mark.xfail(strict=True, reason="#2486 multi-device dispersive coefficients under a caller's jax.jit are embedded as whole-domain literals")),
     pytest.param("jit-lorentz-graded-2", [16900], id="jit-lorentz-graded-2",
         marks=pytest.mark.xfail(strict=True, reason="#2486 multi-device dispersive coefficients under a caller's jax.jit are embedded as whole-domain literals")),
 ])
 def test_no_whole_domain_buffer_at_loop(mode, expected_bytes):
+    """An earlier material-input measurement gives byte lists ordered independently of packing."""
     if mode.startswith("jit-"):
         _child("memory", mode, json.dumps(expected_bytes), devices=int(mode.rsplit("-", 1)[1]))
     else:
@@ -401,7 +387,6 @@ def test_vmap_over_a_traced_mask_matches_single_calls():
     source = position_to_index(grid, sim._ports[0].position)
     probe = position_to_index(grid, sim._probes[0].position)
     masks = np.zeros((2, *grid.shape), bool)
-    # PEC between source and probe: the second member's trace must differ.
     masks[1, source[0] + 1:probe[0], source[1], source[2]] = True
     f = lambda m: sim.forward(pec_mask_override=m, distributed=True,
                               devices=jax.devices("cpu"), n_steps=8,
@@ -423,6 +408,7 @@ def test_mutations_trip_gates(kind, gate, error):
 
 
 def _worker(address, rank, output, mode):
+    """Only the occupancy gradient sees a halo transpose that drops or double-counts a ghost because occupancy ghosts enter the seam cells' soft-PEC product."""
     rank = int(rank)
     if address != "reference":
         assert jax.process_count() == 2 and jax.local_device_count() == 1
@@ -435,8 +421,6 @@ def _worker(address, rank, output, mode):
         print(f"rank={rank} local overrides refused", flush=True)
     else:
         shape, sharding = sim.distributed_override_layout()
-        # Deterministic design generated by global indices, independently on
-        # each owning device. No rank ever constructs a full design on device.
         def design(offset, step):
             def local(index):
                 lo, hi, _ = index[0].indices(shape[0])
@@ -448,8 +432,6 @@ def _worker(address, rank, output, mode):
         designs = (design(1.2, .05), design(0., .0005), design(0., .002))
         f = lambda e, s, o: _trace(sim, e, s, o)
         trace = f(*designs)
-        # Occupancy ghosts enter the seam cells' soft-PEC product, so only its
-        # gradient sees a halo transpose that drops or double-counts a ghost.
         grads = jax.grad(lambda e, s, o: jnp.sum(f(e, s, o) ** 2),
                          argnums=(0, 1, 2))(*designs)
         assert trace.is_fully_replicated
@@ -503,12 +485,12 @@ def two_process_results(tmp_path_factory):
 
 @pytest.mark.source_scan
 def test_two_process_plain_and_grad(two_process_results):
+    """CPU device IDs in multi-process JAX encode process index (e.g. 0, 2048)."""
     output, reference, _ = two_process_results
     expected_trace = np.load(reference / "trace-0.npy")
     assert np.any(expected_trace), "non-vacuous multi-process trace"
     for rank in range(2):
         print("RESULT trace", rank, _within(expected_trace, np.load(output / f"trace-{rank}.npy")))
-    # CPU device IDs in multi-process JAX encode process index (e.g. 0, 2048).
     def gathered(directory, name):
         return np.concatenate([np.load(p) for p in sorted(
             directory.glob(f"grad-{name}-*.npy"), key=lambda p: int(p.stem.split("-")[2]))])

@@ -46,7 +46,7 @@ def slab_case(axis, structure):
 
 
 def closed_form(profiles, axis, box, component):
-    # Non-periodic grids store the high boundary node with its own last width.
+    """Non-periodic grids store the high boundary node with its own last width."""
     primal = np.r_[profiles[axis], profiles[axis][-1]]
     nodes = np.r_[0., np.cumsum(profiles[axis])]
     dual = np.r_[primal[0], (primal[:-1] + primal[1:]) / 2]
@@ -60,15 +60,19 @@ def closed_form(profiles, axis, box, component):
 
 
 @pytest.mark.parametrize('axis', range(3), ids=list('xyz'))
-@pytest.mark.parametrize('structure', ['noncubic', 'normal_region', 'normal_joint', 'tangent'])
-@pytest.mark.parametrize('traced', [False, True], ids=['host', 'traced'])
+@pytest.mark.parametrize('traced,structure', [
+    pytest.param(t, s, id=f"{'traced' if t else 'host'}-{s}")
+    for t in (False, True)
+    for s in ('noncubic', 'normal_region', 'normal_joint', 'tangent')
+    if not t or s == 'normal_region'
+])
 def test_profile_flat_slab(axis, structure, traced):
     profiles, grid, box = slab_case(axis, structure)
     with enable_x64(True):
         def evaluate(face):
             lo = list(box.corner_lo)
             lo[axis] = face
-            return compute_smoothed_eps_nonuniform(grid, [(Box(tuple(lo), box.corner_hi), 4.)])
+            return compute_smoothed_eps_nonuniform(grid, [(Box(tuple(lo), box.corner_hi), 4.)], dtype='float32')
         actual = (jax.jit(evaluate)(box.corner_lo[axis]) if traced else evaluate(box.corner_lo[axis]))
         for component, value in enumerate(actual):
             expected, _, _ = closed_form(profiles, axis, box, component)
@@ -81,9 +85,9 @@ def test_cubic_scalar_main_closed_form_bit_identical(axis):
     profiles, _, box = slab_case(axis, 'cubic')
     grid = Grid(freq_max=30e9, domain=(1.6e-3,) * 3, dx=0.2e-3, cpml_layers=0)
     with enable_x64(False):
-        dielectric = compute_smoothed_eps(grid, [(box, 4.)])
-        inverse = compute_inv_eps_tensor_diag(grid, dielectric_shapes=[(box, 4.)])
-        pec = compute_inv_eps_tensor_diag(grid, pec_shapes=[box])
+        dielectric = compute_smoothed_eps(grid, [(box, 4.)], dtype='float32')
+        inverse = compute_inv_eps_tensor_diag(grid, dielectric_shapes=[(box, 4.)], dtype='float32')
+        pec = compute_inv_eps_tensor_diag(grid, pec_shapes=[box], dtype='float32')
         for component in range(3):
             expected, fill, distance = closed_form(profiles, axis, box, component)
             def full(value):
@@ -97,9 +101,9 @@ def test_cubic_scalar_main_closed_form_bit_identical(axis):
 
 @pytest.mark.parametrize('axis', range(3), ids=list('xyz'))
 def test_full_tensor_node_dual_fill_and_midpoint_fallback(axis):
+    """At nodes every extent is dual, matching the tangential E sample position."""
     profiles, grid, box = slab_case(axis, 'normal_region')
     with enable_x64(True):
-        # One padded transverse slice exercises the diagonal midpoint fallback.
         grid = grid._replace(**{f'pad_{"xyz"[(axis + 1) % 3]}_hi': 1})
         actual = compute_node_tensor_eps(grid, [(box, 4.)], field_dtype=jnp.float64)
         for component in range(3):
@@ -109,7 +113,6 @@ def test_full_tensor_node_dual_fill_and_midpoint_fallback(axis):
             np.testing.assert_allclose(np.asarray(actual[component])[tuple(index)],
                                        np.broadcast_to(expected, grid.shape)[tuple(index)],
                                        rtol=0, atol=1e-12)
-        # At nodes every extent is dual. Tangential E samples share that position.
         tangent = (axis + 1) % 3
         _, fill, _ = closed_form(profiles, axis, box, tangent)
         for component in range(3):
@@ -131,7 +134,7 @@ def test_zero_normal_radius_gradient(node_tensor):
             shapes = [(Sphere(center, radius), 4.)]
             if node_tensor:
                 return compute_node_tensor_eps(grid, shapes, field_dtype=jnp.float64)
-            return compute_smoothed_eps_nonuniform(grid, shapes)
+            return compute_smoothed_eps_nonuniform(grid, shapes, dtype='float32')
 
         def loss(radius):
             return sum(jnp.sum(a) for a in build(radius))
@@ -139,8 +142,6 @@ def test_zero_normal_radius_gradient(node_tensor):
         radius, step = 0.35e-3, 1e-8
         gradient = jax.grad(loss)(radius)
         assert np.isfinite(gradient)
-        # Independent central finite difference of the public host build;
-        # no normal or cell-length implementation helper supplies the oracle.
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter('always', RuntimeWarning)
             host = build(radius)

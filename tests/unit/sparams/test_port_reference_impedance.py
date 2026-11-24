@@ -50,7 +50,6 @@ def _random_passive(n, n_freqs, rng):
     return a
 
 
-# ---- T1: the helper against the impedance-matrix route -----------------------
 
 def test_t1_quarter_wave_section_matches_impedance_route():
     """A lossless 90 deg section of a 52.91 ohm line at 10 GHz, S at its own
@@ -64,7 +63,6 @@ def test_t1_quarter_wave_section_matches_impedance_route():
     want = _route_via_z(s_line, [zc, zc], [z_to, z_to])
     assert np.max(np.abs(got - want)) < 1e-12
 
-    # ABCD of a line section: [[cos, j Zc sin], [j sin / Zc, cos]].
     a, b = np.cos(theta), 1j * zc * np.sin(theta)
     c, d = 1j * np.sin(theta) / zc, np.cos(theta)
     den = a + b / z_to + c * z_to + d
@@ -104,7 +102,6 @@ def test_t1_partial_change_matches_route_and_confines_nan_columns():
     assert np.max(np.abs(got_nan[:, 1:, :] - got[:, 1:, :])) < 1e-12
 
 
-# ---- T1b: the issue's circuit (closed form, no FDTD) --------------------------
 
 _C0 = 299792458.0
 
@@ -162,12 +159,10 @@ def test_t1b_stub_matched_load_dip_moves_with_the_reference():
     assert abs(f_line - 10.000e9) <= 1e6 and db_line < -100.0
     assert abs(f_50 - 10.034e9) <= 1e6 and -35.0 < db_50 < -28.0
 
-    # The helper reproduces the 50 ohm curve from the line-Z0 curve.
     got = renormalize_power_waves(s_line[None, None, :], [zc], [50.0])[0, 0]
     assert np.max(np.abs(got - s_50)) < 1e-12
 
 
-# ---- T2: bit identity where nothing moves -------------------------------------
 
 def test_t2_equal_references_return_the_same_object():
     rng = np.random.default_rng(0)
@@ -178,8 +173,6 @@ def test_t2_equal_references_return_the_same_object():
 
 
 def _thru_at(impedance):
-    # The geometry of tests/unit/sparams/test_msl_passivity_enforcement.py's
-    # _thru(), with the ports' impedance= as the variable.
     sim = Simulation(snap="declared", freq_max=20e9, domain=(0.012, 0.008, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
@@ -212,7 +205,6 @@ def test_t2_msl_thru_at_its_line_z0_is_bit_identical(monkeypatch):
     np.testing.assert_array_equal(new.line_impedances, [Z_HJ, Z_HJ])
 
 
-# ---- T3: end to end, declared 50 ohm on the lock fixture ----------------------
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
 def test_t3_msl_thru_is_referenced_to_the_declared_impedance(monkeypatch):
@@ -225,11 +217,9 @@ def test_t3_msl_thru_is_referenced_to_the_declared_impedance(monkeypatch):
     want = _route_via_z(at_line.S, [Z_HJ, Z_HJ], [50.0, 50.0])
     got = np.asarray(res.S, dtype=np.complex128)
     assert np.max(np.abs(got - want)) < 1e-6
-    # The reference really moved: the two S differ by more than rounding.
     assert np.max(np.abs(got - np.asarray(at_line.S))) > 1e-3
 
 
-# ---- T4: the product helper and the test route on unequal references ----------
 
 def test_t4_helper_agrees_with_test_route_on_random_two_port():
     rng = np.random.default_rng(4)
@@ -260,17 +250,15 @@ def test_jnp_path_matches_numpy_and_is_differentiable():
         assert abs(grad - fd) < 1e-6 * max(1.0, abs(fd))
 
 
-# ---- Coax two-port: the line under each probe ladder is the wave reference ----
-#
-# No FDTD: the run, the plane voltage and the ladder assembly are replaced, and
-# the assembly returns a planted voltage-wave S. What is left is exactly the
-# producer's reference handling, compared with the impedance-matrix route.
+
+FLOAT32_LINE_IMPEDANCE_RTOL = 1e-7
 
 _PLANTED_COAX = np.array([[[0.21 + 0.05j], [0.62 - 0.31j]],
                           [[0.58 - 0.36j], [-0.17 + 0.12j]]])
 
 
 def _coax_two_port(monkeypatch, eps_scale=None, impedance=50.0):
+    """The coaxial fixture plants a native S at ``z_tem``."""
     from rfx.sources.coaxial_port import coaxial_tem_characteristic_impedance
     from rfx.sources import GaussianPulse
     import rfx.simulation as simulation_mod
@@ -310,8 +298,6 @@ def _coax_two_port(monkeypatch, eps_scale=None, impedance=50.0):
     port = sim._coaxial_ports[0]
     z_tem = coaxial_tem_characteristic_impedance(port.pin_radius,
                                                  port.outer_radius)
-    # This fixture plants a native S at z_tem. Plant the corresponding source
-    # metadata too: the real source now reports its mesh-dependent built Z.
     build_source = coax_mod.build_coaxial_tem_plane_source_specs
 
     def planted_source(**kwargs):
@@ -349,28 +335,25 @@ def test_coax_two_port_at_its_line_z0_returns_the_ratio_unchanged(monkeypatch):
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
 def test_coax_two_port_eps_scale_moves_the_line_under_the_ladders(monkeypatch):
-    # A uniform scale s over the whole line: the line under both ladders is
-    # z_tem / sqrt(s), and that is the impedance the waves sit at.
+    """A uniform scale s over the whole line puts the waves at ``z_tem / sqrt(s)``."""
     run, _, z_tem = _coax_two_port(monkeypatch)
     res = run(jnp.asarray(1.21))
     z_line = z_tem / 1.1
-    np.testing.assert_allclose(res.line_impedances, [z_line, z_line], rtol=1e-7)  # float32 1.21
+    np.testing.assert_allclose(res.line_impedances, [z_line, z_line], rtol=FLOAT32_LINE_IMPEDANCE_RTOL)
     want = _route_via_z(_PLANTED_COAX, [z_line, z_line], [50.0, 50.0])
     assert np.max(np.abs(np.asarray(res.s_params) - want)) < 1e-6
 
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
 def test_coax_two_port_unequal_ladder_lines_are_power_waves(monkeypatch):
-    # The top half filled 1.21x: port 1 (top) reads a z_tem/1.1 line, port 2
-    # (bottom) z_tem. The voltage ratio between them is a power-wave S only
-    # after sqrt(Z_driven / Z_receiver).
+    """The voltage ratio between unequal ladder lines is a power-wave S only after ``sqrt(Z_driven / Z_receiver)``."""
     run, sim, z_tem = _coax_two_port(monkeypatch)
     nz = sim._build_grid().shape[2]
     scale = np.ones(sim._build_grid().shape)
     scale[:, :, nz // 2:] = 1.21
     res = run(jnp.asarray(scale))
     z_line = np.array([z_tem / 1.1, z_tem])
-    np.testing.assert_allclose(res.line_impedances, z_line, rtol=1e-7)  # float32 1.21
+    np.testing.assert_allclose(res.line_impedances, z_line, rtol=FLOAT32_LINE_IMPEDANCE_RTOL)
     root = np.sqrt(z_line)
     s_power = _PLANTED_COAX * root[None, :, None] / root[:, None, None]
     want = _route_via_z(s_power, z_line, [50.0, 50.0])
@@ -388,8 +371,7 @@ def test_coax_two_port_refuses_a_scale_that_varies_over_a_ladder(monkeypatch):
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
 def test_coax_two_port_gradient_carries_the_line_impedance_term(monkeypatch):
-    # With the planted S fixed, everything d|S'|^2/ds holds comes from the
-    # line under the ladders moving against the fixed 50 ohm reference.
+    """With the planted S fixed, everything ``d|S'|^2/ds`` holds comes from the line under the ladders moving against the fixed 50 ohm reference."""
     run, _, z_tem = _coax_two_port(monkeypatch)
 
     def route(s):
@@ -408,9 +390,7 @@ def test_coax_two_port_gradient_carries_the_line_impedance_term(monkeypatch):
 
 @pytest.mark.filterwarnings("ignore::UserWarning")
 def test_coax_two_port_fill_only_scale_reads_the_stamped_fill(monkeypatch):
-    # A scale on exactly the cells the stamp filled (read from the materials
-    # the run received, not rebuilt here) is one uniform line under each
-    # ladder: no refusal, and z_tem / 1.1 at both ends.
+    """A scale on exactly the cells the stamp filled is one uniform line under each ladder."""
     from rfx.sources.coaxial_port import PTFE_EPS_R
     run, _, z_tem = _coax_two_port(monkeypatch)
     run(None)
@@ -418,4 +398,4 @@ def test_coax_two_port_fill_only_scale_reads_the_stamped_fill(monkeypatch):
     assert fill.any()
     res = run(jnp.asarray(np.where(fill, 1.21, 1.0)))
     z_line = z_tem / 1.1
-    np.testing.assert_allclose(res.line_impedances, [z_line, z_line], rtol=1e-7)
+    np.testing.assert_allclose(res.line_impedances, [z_line, z_line], rtol=FLOAT32_LINE_IMPEDANCE_RTOL)

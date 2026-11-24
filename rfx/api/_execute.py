@@ -31,7 +31,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.runners._admission import admit_traced_run, refuse_coaxial_port, refuse_forward_smoothing, refuse_conformal_occupancy_overrides
+from rfx.runners._admission import admit_traced_run, admit_forward_entry, refuse_forward_smoothing, refuse_conformal_occupancy_overrides
 from rfx.runners._exchange_interval import validate_exchange_interval
 from rfx.runners.nonuniform import bind_solve_call
 
@@ -989,6 +989,7 @@ class _ExecuteMixin:
     def forward(
         self,
         *,
+        tfsf_angle_override: object = None,
         eps_override: jnp.ndarray | None = None,
         sigma_override: jnp.ndarray | None = None,
         mu_r_override: jnp.ndarray | None = None,
@@ -1026,9 +1027,12 @@ class _ExecuteMixin:
 
         Parameters
         ----------
+        tfsf_angle_override : scalar, optional
+            Uniform Bloch incidence angle in degrees at fixed f0; supports grad/jvp/vmap/jit.
+            Declare the largest |angle| used: the cutoff warning grows with |angle|.
         subpixel_smoothing : bool or str
-            False: staircase; True: diagonal, first order on curved interfaces (worst at eps ~30+).
-            "full_tensor": full anisotropic averaging, uniform single-device; synthetic eps-4 sphere extinction measured second order over three meshes.
+            False: staircase (the default); True: diagonal only, first order on curved interfaces (an eps-38 cylinder about 1 % high at 0.5 mm).
+            "full_tensor": full anisotropic averaging, second order on uniform and graded one-device meshes; refusals (UPML, conformal PEC, traced eps_r, ...): support matrix.
             Farjadpour 2006; Oskooi 2009; Werner-Bauer-Cary 2013 node form. "kottke_pec": unified PEC inverse tensor.
         gradient : {"autodiff", "adjoint"}
             Opt-in settled-spectrum reciprocity design eps adjoint.
@@ -1377,8 +1381,8 @@ class _ExecuteMixin:
             records on the concrete result using the run() diagnostic and
             underflow floor. They are host diagnostics, unavailable during
             tracing, and can be read on concrete records outside the jitted
-            objective. Other result fields keep their existing JIT
-            restrictions, including the host Grid object. Absent
+            objective. A whole result can be returned under JIT;
+            host data stays as computed during the trace. Absent
             records yield None rather than a passing value. Use
             ``settling_verdict(result.settling_db)`` for the shared -40 dB bar.
 
@@ -1456,8 +1460,8 @@ class _ExecuteMixin:
                 "Either set distributed=True or omit devices."
             )
 
-        refuse_coaxial_port(self, "forward")
-        if port_s11_freqs is not None or ringdown is not None:
+        admit_forward_entry(self, _call_args)
+        if port_s11_freqs is not None or (ringdown is not None and ringdown.probe_freqs is None):
             self._validate_forward_sparameter_request()
         _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
 
@@ -1478,6 +1482,7 @@ class _ExecuteMixin:
             emit_time_series=emit_time_series,
             checkpoint_every=checkpoint_every,
             n_warmup=n_warmup, tfsf_material_overrides=(eps_override, sigma_override, mu_r_override),
+            tfsf_angle_override=tfsf_angle_override,
         )
         if _realized.ACTIVE is not None:
             _realized.enter(self, plan.lane)
@@ -1509,13 +1514,13 @@ class _ExecuteMixin:
             refuse_forward_lane(plan.lane, sum(
                 1 for p in self._ports
                 if float(p.impedance) > 0.0 and p.extent is not None),
-                port_s11_freqs=port_s11_freqs)
+                port_s11_freqs=port_s11_freqs, spec=ringdown)
 
         # WP 4-E: rlc_values_override is only wired on the uniform lane.  Fail
         # loudly rather than silently returning a zero gradient on a lane that
         # does not iterate self._lumped_rlc in forward().
         if rlc_values_override is not None and plan.lane != "fwd_uniform":
-            raise NotImplementedError(
+            raise RfxUnsupported(
                 "forward(rlc_values_override=...) is only supported on the "
                 f"uniform single-device forward lane, not {plan.lane!r}. "
                 "Lumped RLC component-value gradients require the uniform mesh "
@@ -1534,14 +1539,6 @@ class _ExecuteMixin:
                 f"single-device lane, not {plan.lane!r} (which discards chi3 → silent "
                 "linear physics + linear gradient). Use a uniform mesh + single device "
                 "for differentiable nonlinear (Kerr) design."
-            )
-
-        # Both single-device lanes build TFSF; distributed lanes do not.
-        if self._tfsf is not None and plan.lane not in ("fwd_uniform", "fwd_nonuniform"):
-            raise NotImplementedError(
-                "Differentiable TFSF plane-wave forward refuses distributed "
-                f"lanes, including {plan.lane!r}. Use a uniform or graded "
-                "single-device forward lane for TFSF/plane-wave inverse design."
             )
 
         # mu_r_override is wired only on the uniform lane; the NU/distributed
@@ -1683,13 +1680,6 @@ class _ExecuteMixin:
                 "update with its split-field form, which the sheet operator "
                 "would silently override at its edges. Use boundary='cpml' "
                 "or 'pec'.")
-        if _fwd_sheet_ctx is not None and (
-                debye_spec is not None or lorentz_spec is not None):
-            raise ValueError(
-                "surface-impedance (surface_impedance_f0) sheets combined "
-                "with dispersive (Debye/Lorentz) materials in one run are "
-                "not supported: the sheet operator would "
-                "silently override the ADE dispersion update at its edges.")
 
         _design_spec = None
         _design_occ_spec = None
@@ -1749,6 +1739,7 @@ class _ExecuteMixin:
                 "pec_mask": pec_mask_override,
                 "pec_occupancy": pec_occupancy_override,
             },
+            tfsf_angle_override=tfsf_angle_override,
             lane="fwd_uniform",
             diagnostics=_solve_assembly.diagnostics,
         )
@@ -1867,8 +1858,8 @@ class _ExecuteMixin:
         snapshot : SnapshotSpec or None
             Field snapshot schedule and selection; None disables snapshots.
         subpixel_smoothing : bool or str
-            False: staircase; True: diagonal, first order on curved interfaces (worst at eps ~30+).
-            "full_tensor": full anisotropic averaging, uniform single-device; synthetic eps-4 sphere extinction measured second order over three meshes.
+            False: staircase (the default); True: diagonal only, first order on curved interfaces (an eps-38 cylinder about 1 % high at 0.5 mm).
+            "full_tensor": full anisotropic averaging, second order on uniform and graded one-device meshes; refusals (UPML, conformal PEC, traced eps_r, ...): support matrix.
             Farjadpour 2006; Oskooi 2009; Werner-Bauer-Cary 2013 node form. "kottke_pec": unified PEC occupancy rule.
         skip_preflight : bool
             Skip advisories only; realization refusals and runtime admission still apply.
@@ -1972,8 +1963,8 @@ class _ExecuteMixin:
         -------
         Result
         """
-        from rfx.geometry.conformal import validate_conformal_min_weight
-        validate_conformal_min_weight(conformal_min_weight)
+        from rfx._traced_inputs import admit_traced_inputs
+        admit_traced_inputs("Simulation.run", locals())
         self._resolve_field_dtype()
         admit_traced_run(self, until_decay, decay_max_steps, radiated_flux_box, conformal_pec)
         from rfx.runners.run import run_after_admission

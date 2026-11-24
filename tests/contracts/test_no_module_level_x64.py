@@ -69,22 +69,16 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 TESTS_ROOT = REPO_ROOT / "tests"
 ROOT_CONFTEST = REPO_ROOT / "conftest.py"
 
-# Repo-relative paths, not basenames: an `_x64_compat.py` written anywhere else
-# in the tree must not inherit the allowance by name alone.
-#
-# The shim IS the sanctioned scoped flip; its call sits inside a contextmanager
-# function, so the walker would pass it anyway. Named here so a reader does not
-# have to re-derive that.
+
 _SANCTIONED = frozenset({"tests/_x64_compat.py"})
 
 _X64_FLAG = "jax_enable_x64"
 _ENV_KEY = "JAX_ENABLE_X64"
 
-# `os.environ` methods that WRITE. `get`/`__contains__` read and are fine at
-# module level; these change the process environment.
+
 _ENV_MUTATORS = frozenset({"setdefault", "update", "pop", "__setitem__"})
-# Module-level `os.putenv`/`os.unsetenv`, and `setenv` for a monkeypatch-shaped
-# helper that somehow ran at import.
+
+
 _ENV_FUNCTIONS = frozenset({"putenv", "unsetenv", "setenv"})
 
 
@@ -102,9 +96,8 @@ def _is_x64_flip(node: ast.Call) -> bool:
                 return True
         return False
     if func.attr == "enable_x64":
-        # jax.config.enable_x64() — the old module-level spelling. The scoped
-        # context manager `jax.experimental.enable_x64` is a bare Name when
-        # imported, not an Attribute, so it is not matched here.
+
+
         return isinstance(func.value, ast.Attribute) and func.value.attr == "config"
     return False
 
@@ -217,7 +210,7 @@ def test_no_test_module_flips_x64_at_import_time():
             continue
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        except SyntaxError as exc:  # pragma: no cover - a broken file is its own failure
+        except SyntaxError as exc:  # pragma: no cover
             pytest.fail(f"{relative}: {exc}")
         for line, spelling in _module_level_flips(tree):
             offenders.append(f"{relative}:{line} ({spelling})")
@@ -298,26 +291,6 @@ def test_the_sanctioned_list_is_an_exact_path_not_a_basename():
         )
 
 
-# Run in a CHILD interpreter, because the question is what a fresh process looks
-# like after an import. Every module is imported in one child rather than one
-# child each: both readings below are taken after each import and reset, so an
-# offender does not contaminate the modules behind it, and 579 subprocesses
-# would cost minutes instead of seconds.
-#
-# The child does NOT pre-import jax. That is the whole point: under pytest the
-# root conftest imports it at collection, so an import-time env line arrives too
-# late to change the flag and only leaks into subprocesses. Outside pytest, or
-# ahead of that conftest, the same line latches the flag for the process. The
-# second is the worse failure and only an interpreter with jax still unimported
-# can see it.
-#
-# TWO readings, because they are two different harms and a fix for one does not
-# imply the other. `env` is the leak into every subprocess a later test spawns.
-# `x64` is the latched process-global flag, which survives the environment being
-# put back: a module that sets the variable, lets jax read it, and then restores
-# the variable leaves `env` clean and the flag True. Importing jax is NOT an
-# offence — hundreds of test modules do it legitimately. Only flipping the flag
-# is.
 _IMPORT_PROBE = r"""
 import importlib, json, os, pathlib, sys
 

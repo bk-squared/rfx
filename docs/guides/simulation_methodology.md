@@ -143,7 +143,7 @@ one under-settled record) and warns when a run exceeds the line. Every lane
 that carries the witness enforces the same line through the same warner
 (issue #662): `compute_waveguide_s_matrix`, `compute_msl_s_matrix`,
 `compute_mixed_s_matrix`, `compute_coaxial_two_port` and
-`compute_coax_msl_transition`. Since issue #885 `sim.run()` carries the same
+`compute_coax_msl_transition` (not supported (deprecated); removed after 2.3). Since issue #885 `sim.run()` carries the same
 witness as `Result.settling_db`, scored from the user probe time series by the
 same arithmetic, so NTFF far fields, field-DFT planes and Harminv modes are
 guarded too. A run with no probe reports `settling_db = None` and
@@ -156,6 +156,13 @@ channels — they cannot build it without concretising a traced time series,
 so on those channels the rule stays the caller's to satisfy. The rule
 does not apply to closed PEC domains (energy conservation is correct there)
 or to CW drive.
+
+For concrete `run()` and `forward()` results, record-end warnings name the
+outputs read from each record whose judgement did not pass: S-parameters,
+NTFF far fields, field-DFT planes, flux monitors, and current-moment far fields,
+as applicable. A passing source-dominated record also warns. An S record's
+pass does not guard field outputs without a probe record. These warnings do
+not complete the truncated record or refuse the returned outputs (#2030).
 
 ## 7. Interpret the requested observable, not a convenient proxy
 

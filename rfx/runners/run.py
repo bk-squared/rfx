@@ -11,7 +11,7 @@ from rfx.api._spec import Result, _warn_if_nonfinite_result
 from rfx.model import conductors as _conductors
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.ringdown import RingdownSpec
-from rfx.runners._admission import refuse_coaxial_port, resolve_run_conformal, refuse_tfsf_decay_without_source_off
+from rfx.runners._admission import resolve_run_conformal, refuse_tfsf_decay_without_source_off
 from rfx.runners._exchange_interval import validate_exchange_interval
 from rfx.runners.nonuniform import bind_solve_call
 from rfx.simulation import SnapshotSpec
@@ -49,6 +49,8 @@ def run_after_admission(
     ringdown: RingdownSpec | None = None,
     until_identified: bool = False,
 ) -> Result:
+    from rfx.runners._admission import admit_coax_declaration
+    admit_coax_declaration(self, 'run', locals())
     from rfx.model.wall_loss import admit_wall_loss
     admit_wall_loss(self, "run admission", smoothing=subpixel_smoothing, conformal=conformal_pec)
     validate_exchange_interval(exchange_interval)
@@ -76,7 +78,6 @@ def run_after_admission(
 
     conformal_pec = resolve_run_conformal(self, conformal_pec, devices, subpixel_smoothing)
 
-    refuse_coaxial_port(self, "run")
     compute_s_params = self._validate_run_sparameter_request(
         compute_s_params=compute_s_params,
         s_param_freqs=s_param_freqs,
@@ -94,7 +95,7 @@ def run_after_admission(
 
     # ---- W6.3 unified lane dispatch: one place decides + rejects ----
     plan = self._dispatch_plan(
-        mode="run", subpixel_smoothing=subpixel_smoothing,
+        mode="run", subpixel_smoothing=subpixel_smoothing, conformal_pec=conformal_pec,
         diagnostics=_diagnostics,
         n_steps=n_steps,
         num_periods=num_periods,

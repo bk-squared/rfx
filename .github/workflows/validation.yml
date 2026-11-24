@@ -283,9 +283,11 @@ jobs:
         env:
           JAX_PLATFORMS: cpu
           XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        # The [debye] two-vs-three case in test_distributed_nu_wrapped_poles_cpml.py needs 3 host devices and runs in no other lane (381 s alone on a 12-CPU cluster node); its item-6 memory cases start their own 3-device child and already run in the PR and weekly shards.
         run: >
           pytest -v -ra -p no:cacheprovider -o addopts=""
           tests/unit/runners/test_distributed_nu_wrapped_step.py
+          tests/unit/runners/test_distributed_nu_wrapped_poles_cpml.py::test_cpml_two_vs_three_bitwise_and_bars
           tests/contracts/path_equivalence/test_slab_view_producers.py
           tests/contracts/test_slab_cut.py
 
@@ -328,6 +330,15 @@ jobs:
           tests/unit/runners/test_distributed_graded_derivatives_parity.py
           tests/unit/runners/test_distributed_uniform_directivity_parity.py
           tests/unit/runners/test_distributed_tfsf_slab.py
+
+      - name: Run three-device owned record join cases
+        if: ${{ !cancelled() }}
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        run: >
+          pytest -v -ra -p no:cacheprovider -o addopts=""
+          tests/unit/runners/test_record_join.py
 
       - name: Run three-device uniform and graded CPML lumped RLC S4 contracts
         if: ${{ !cancelled() }}
@@ -373,6 +384,17 @@ jobs:
           pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_memory.py
           pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_poles.py
           pytest -q -p no:cacheprovider -o addopts="" tests/unit/runners/test_distributed_graded_records_one_device.py
+
+      - name: Run three-device microstrip port cases
+        if: ${{ !cancelled() }}
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        run: >
+          pytest -q -p no:cacheprovider -o addopts=""
+          'tests/unit/runners/test_distributed_msl_ports.py::test_msl_fields_and_planes[T1L-uniform-laplace-n3-1050]'
+          'tests/unit/runners/test_distributed_msl_ports.py::test_msl_fields_and_planes[T1L-graded-laplace-n3-1050]'
+          'tests/unit/runners/test_distributed_msl_s_matrix.py::test_msl_s_matrix[T1A-uniform-n3-1050]'
 
       - name: Job time against the job limit
         if: always()

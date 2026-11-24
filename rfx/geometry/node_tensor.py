@@ -73,7 +73,7 @@ def _union(xp, grid, shapes, coords, *, distance=False, fill_length=None,
     for shape_index, shape in enumerate(shapes):
         sdf, ns, image = periodic_sdf(
             grid, shape, coords, smooth._get_sdf_fn(shape), xp=xp,
-            normal_fn=smooth._get_normal_fn(shape), return_image=True)
+            normal_fn=smooth._grid_normal_fn(grid, shape), return_image=True)
         if union is None:
             owner = host_owner(sdf) if distance else None
             union, nearest, normal = sdf, xp.abs(sdf), ns
@@ -152,7 +152,7 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
             masks, grid=grid, nominal_h_max=nominal_h_max)
     else:
         midpoint = smooth._smoothed_eps_uniform(
-            xp, grid, coords, shapes, background_eps, masks, nominal_h_max=nominal_h_max)
+            xp, grid, coords, shapes, background_eps, masks, nominal_h_max=nominal_h_max, dtype=field_dtype)
         samples = smooth._uniform_sample_coords(xp, coords, uniform_cell(grid))
         mid_length = None
     x, y, z = (xp.asarray(a, dtype=acc_dtype) for a in coords[:3])
@@ -202,7 +202,7 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
             xp, grid, supported, nodes, ns, eps, outside, matrices(xp, xi),
             signed_distance=signed_distance, cell_lengths=lengths, outside_pieces=pieces)
         triplets = xp.where(touched[..., None, None], current, triplets)
-        if scope is not None:  # exact triplets (w = 1) replace the planar ones
+        if scope is not None:
             touched = touched & ~scope.replaced
         guard_count = guard_count + xp.sum(guards & touched, dtype=xp.int32)
         bulk = xp.where(f > 0, ~interface, bulk)
@@ -221,9 +221,6 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
                 sl = [slice(None)] * 3
                 sl[axis] = slice(0, count) if side == 'lo' else slice(-count, None)
                 pad[tuple(sl)] = True
-    # Attempt-2 decision 1: all eight incident triplets must be exactly
-    # isotropic bulk tensors. A node-volume mask can delete only one side of
-    # an Eq. 10 coupling and therefore break assembled symmetry.
     triplet_bulk = xp.all(triplets == triplets[..., :1, :1] * xp.eye(3), axis=(-2, -1))
     bulk_ends = tuple(tuple(xp.all(xp.stack([
         triplet_bulk[t] for t, signs in enumerate(SIGNS) if signs[a] == s]), axis=0)

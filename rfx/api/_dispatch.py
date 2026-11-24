@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import functools
+import inspect
+
+from rfx._traced_inputs import admit_traced_inputs
 import jax.numpy as jnp
 
 from typing import NamedTuple
@@ -44,16 +47,33 @@ class _DispatchPlan(NamedTuple):
 
 
 
+def _admitted_dispatch(select):
+    @functools.wraps(select)
+    def dispatch(self, **kwargs):
+        plan = select(self, **kwargs)
+        if self._coaxial_ports:
+            from rfx.runners._admission import admit
+            overrides = kwargs.get('tfsf_material_overrides', ())
+            args = dict(kwargs, **dict(zip(('eps_override', 'sigma_override', 'mu_r_override'), overrides)))
+            admit(self, plan.lane, run_args={**args, 'subpixel_smoothing': kwargs.get('subpixel_smoothing', False)},
+                  diagnostics=kwargs.get('diagnostics'))
+        return plan
+    return dispatch
+
+
+@_admitted_dispatch
 def _dispatch_plan(
     self,
     *,
     mode: str,
     subpixel_smoothing=False,
+    conformal_pec=None,
     diagnostics=(),
     n_steps: int | None,
     num_periods: float,
     # forward-only inputs
     tfsf_material_overrides: tuple = (),
+    tfsf_angle_override=None,
     distributed: bool = False,
     port_s11_freqs: object | None = None,
     checkpoint_segments: int | None = None,
@@ -171,6 +191,11 @@ def _dispatch_plan(
         raise ValueError("boundary='upml' does not support distributed execution")
 
     if mode == "forward":
+        def _admit_forward_plan(plan: _DispatchPlan) -> _DispatchPlan:
+            from rfx.boundaries import admit_tfsf_angle_override
+            admit_tfsf_angle_override(self, plan.lane, tfsf_angle_override)
+            return plan
+
         if isinstance(checkpoint_segments, tuple):
             raise ValueError("forward checkpoint_segments must be an int; use checkpoint_every for levels on the graded path")
         def _fwd_nu_n_steps() -> int:
@@ -195,7 +220,7 @@ def _dispatch_plan(
                 _n = n_steps if n_steps is not None else self._build_grid().num_timesteps(num_periods=num_periods)
                 _reject_lane_precision("run_distributed")
                 release_inspection(self)
-                return _DispatchPlan(lane="fwd_distributed", n_steps=_n)
+                return _admit_forward_plan(_DispatchPlan(lane="fwd_distributed", n_steps=_n))
             # Uniform and graded distributed runners admit PMC faces.
             # The curl reads the declared magnetic image; no separate
             # post-H face write is dispatched here. Uniform slabs use
@@ -207,7 +232,7 @@ def _dispatch_plan(
             _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
             _reject_lane_precision("fwd_distributed_nu")
             release_inspection(self)
-            return _DispatchPlan(lane="fwd_distributed_nu", n_steps=_n)
+            return _admit_forward_plan(_DispatchPlan(lane="fwd_distributed_nu", n_steps=_n))
 
         if is_nonuniform:
             # Let the NU runner build grid/materials so it can apply the
@@ -216,7 +241,7 @@ def _dispatch_plan(
             _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
             _reject_lane_precision("fwd_nonuniform")
             release_inspection(self)
-            return _DispatchPlan(lane="fwd_nonuniform", n_steps=_n)
+            return _admit_forward_plan(_DispatchPlan(lane="fwd_nonuniform", n_steps=_n))
 
         # Uniform forward lane: the remaining kwargs are NU-only.
         if not emit_time_series:
@@ -250,7 +275,7 @@ def _dispatch_plan(
         # n_steps for the uniform forward lane is resolved by the caller
         # from the grid it builds and reuses for material assembly.
         release_inspection(self)
-        return _DispatchPlan(lane="fwd_uniform", n_steps=n_steps)
+        return _admit_forward_plan(_DispatchPlan(lane="fwd_uniform", n_steps=n_steps))
 
     # mode == "run"
     distributed_run = multi_device
@@ -353,8 +378,20 @@ def _declaration_setup_at_trace_time(entry=None, *, run=False):
     if entry is None:
         return functools.partial(_declaration_setup_at_trace_time, run=run)
 
+    entry_signature = inspect.signature(entry)
+
+    def bound_arguments(self, args, kwargs):
+        try:
+            return entry_signature.bind(self, *args, **kwargs).arguments
+        except TypeError:
+            return {}
+
     @functools.wraps(entry)
     def staged_entry(self, *args, **kwargs):
+        admit_traced_inputs("Simulation." + entry.__name__, bound_arguments(self, args, kwargs))
+        if entry.__name__ == 'forward':
+            from rfx.runners._admission import admit_coax_declaration
+            admit_coax_declaration(self, 'forward', bound_arguments(self, args, kwargs))
         self._resolve_field_dtype()
         guard_shape_tangents(self)
         distributed = bool(kwargs.get("distributed", False))

@@ -31,7 +31,7 @@ from rfx.sources.sources import GaussianPulse
 DX = 1e-3
 DOMAIN = (12e-3, 12e-3, 12e-3)
 PORT_X, PORT_Y = 6e-3, 6e-3
-Z0_PORT = 4e-3            # port start (cell k=4); extent 3 mm -> edges 4,5,6
+Z0_PORT = 4e-3
 EXTENT = 3e-3
 FREQS = jnp.array([1.0e9])
 PULSE = GaussianPulse(f0=2e9, bandwidth=0.9)
@@ -41,8 +41,6 @@ def _build(nu: bool):
     kw = {"dz_profile": np.full(12, DX)} if nu else {}
     sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary="pec",
                      **kw)
-    # PEC block whose top two cell-layers (k=4,5) swallow the port's two
-    # lower extent cells; k=6 stays vacuum (the single LIVE cell).
     sim.add(Box((4e-3, 4e-3, 2e-3), (8e-3, 8e-3, 6e-3)), material="pec")
     sim.add_port(position=(PORT_X, PORT_Y, Z0_PORT), component="ez",
                  impedance=50.0, extent=EXTENT, excite=True, waveform=PULSE)
@@ -68,7 +66,6 @@ def test_uniform_spec_mid_is_live_run_midpoint():
     specs = cap["specs"]
     assert specs and len(specs) == 1
     spec = specs[0]
-    # extent cells are k=4,5,6; 4 and 5 are dead (inside the PEC block).
     assert spec.live_cells == ((6, 6, 6),), spec.live_cells
     assert (spec.mid_i, spec.mid_j, spec.mid_k) == (6, 6, 6), (
         "all-extent midpoint (k=5, DEAD — a quenched Ampere loop) leaked "
@@ -126,6 +123,4 @@ def test_probe_helpers_use_live_run_midpoint():
     probe = init_wire_sparam_probe(grid, wp, np.asarray(FREQS),
                                    pec_edge_masks=edges)
     assert tuple(probe.port_index) == (6, 6, 6), probe.port_index
-    # None (or no dead cells) stays bit-identical to the historical
-    # all-extent midpoint.
     assert tuple(_wire_port_live_mid(grid, wp, None)) == (6, 6, 5)

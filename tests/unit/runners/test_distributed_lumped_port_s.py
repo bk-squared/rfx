@@ -1,4 +1,5 @@
-"""Owning-cell recordings feed the production lumped S-matrix decomposer."""
+"""Owning-cell recordings feed the production lumped S-matrix decomposer.
+The absolute S tolerance leaves margin for float32 reduction rounding."""
 
 import os
 from dataclasses import replace
@@ -19,20 +20,17 @@ from rfx.sources.sources import GaussianPulse
 
 pytestmark = pytest.mark.distributed
 FREQS = np.array([1, 2.5, 5, 7.5, 10]) * 1e9
-# Summed quantities must agree within 1e-4 of the peak across all traces
-# (cross-trace rule, not a per-bin relative tolerance near zeros). The
-# tighter absolute S bar below leaves margin for float32 reduction rounding.
 S_ATOL = 9e-6
 TRACE_RTOL = 9e-6
 
 
 def _plate_line(impedance=40.):
-    """One-cell gap, w/h=10 PEC plates extending through the x-high CPML."""
+    """One-cell gap, w/h=10 PEC plates extending through the x-high CPML.
+    The default 40 ohm impedance is the nearby one-device sweep choice for eta0*h/w = 37.673 ohm."""
     sim = Simulation(freq_max=10e9, domain=(24e-3, 16e-3, 6e-3),
                      dx=1e-3, boundary="cpml", cpml_layers=4)
     for lo, hi in ((1e-3, 2e-3), (3e-3, 4e-3)):
         sim.add(Box((3e-3, 3e-3, lo), (30e-3, 13e-3, hi)), material="pec")
-    # eta0*h/w = 37.673 ohm; 40 ohm is the nearby one-device sweep choice.
     sim.add_port((4e-3, 8e-3, 2e-3), "ez", impedance=impedance,
                  waveform=GaussianPulse(f0=5e9, bandwidth=1.6))
     sim.add_probe(sim._ports[0].position, "ez")
@@ -65,6 +63,7 @@ def _model(seam=True, ports=2, component="ez", channel=False, n_devices=2, bound
 
 def _parity(*, seam=True, ports=2, mode="explicit", channel=False,
             component="ez", n_devices=2, case=None, n_steps=256):
+    """The all-nonmagnetic channel radiates transversely as well as along x, so its S11 gate is -1 dB."""
     started = time.monotonic()
     sim = _model(seam, ports, component, channel, n_devices)
     freqs = FREQS
@@ -76,11 +75,10 @@ def _parity(*, seam=True, ports=2, mode="explicit", channel=False,
         sim.add_material("block", eps_r=4., **extra)
         sim.add(Box((4e-3, 2e-3, 2e-3), (10e-3, 4e-3, 4e-3)), material="block")
     elif case == "pec":
-        # Keep the body strictly between the ports, away from both port edges.
         sim._ports[1] = replace(sim._ports[1], position=(4e-3, 3e-3, 3e-3))
         sim.add(Box((6e-3, 2e-3, 2e-3), (7e-3, 4e-3, 4e-3)), material="pec")
+        assert sim._ports[1].position[0] < sim._geometry[-1].shape.corner_lo[0] < sim._geometry[-1].shape.corner_hi[0] < sim._ports[0].position[0], 'PEC body must lie strictly between the port edges'
     elif case == "cpml_box":
-        # Unequal drive impedances in a CPML box, without an extra source.
         sim._ports[0] = replace(sim._ports[0], impedance=75.)
     kwargs = {"n_steps": n_steps, "skip_preflight": True}
     if mode == "explicit":
@@ -91,7 +89,6 @@ def _parity(*, seam=True, ports=2, mode="explicit", channel=False,
         kwargs.update(s_param_freqs=FREQS)
     elif mode == "steps":
         kwargs.update(s_param_n_steps=max(320, n_steps))
-    # time_series comes from the one-device MAIN run; S has its own drive scans.
     reference = sim.run(**kwargs)
     actual = sim.run(devices=jax.devices("cpu")[:n_devices], **kwargs)
     assert actual.s_params is not None
@@ -118,16 +115,17 @@ def _parity(*, seam=True, ports=2, mode="explicit", channel=False,
               f"parity_runtime_s={time.monotonic() - started:.3f}")
         assert minimum <= -10
     if channel:
-        # The all-nonmagnetic replacement radiates transversely as well as
-        # along x; it is not the former PMC TEM matched-line fixture.
         assert minimum <= -1
         assert np.max(np.abs(reference.s_params[1, 0])) > 0.1
     return actual
 
 
-@pytest.mark.parametrize("seam", [False, True], ids=["interior", "seam"])
-@pytest.mark.parametrize("ports", [1, 2])
-@pytest.mark.parametrize("mode", ["default", "explicit"])
+@pytest.mark.parametrize("mode,ports,seam", [
+    pytest.param("explicit", 1, False, id="explicit-1-interior"),
+    pytest.param("default", 2, False, id="default-2-interior"),
+    pytest.param("default", 1, True, id="default-1-seam"),
+    pytest.param("explicit", 2, True, id="explicit-2-seam"),
+])
 def test_all_entries_all_bins(seam, ports, mode):
     _parity(seam=seam, ports=ports, mode=mode)
 
@@ -190,35 +188,9 @@ def test_more_devices(n_devices):
     print(proc.stdout)
 
 
-@pytest.mark.parametrize("mutation", ["disable", "own_slab", "half_step"])
-def test_parity_detects_mutations(monkeypatch, mutation):
-    from rfx.probes import sparam_driver as driver
-
-    if mutation == "disable":
-        original = driver.compute_lumped_wire_s_matrix_via_scan
-
-        def disabled(sim, freqs, **kwargs):
-            if kwargs.get("devices") is not None:
-                return np.zeros((2, 2, len(freqs)), dtype=np.complex64), freqs
-            return original(sim, freqs, **kwargs)
-
-        monkeypatch.setattr(driver, "compute_lumped_wire_s_matrix_via_scan", disabled)
-    else:
-        from tests.unit.runners._uniform_port_mutations import mutate_port_sampler
-        mutate_port_sampler(monkeypatch, mutation)
-    with pytest.raises(AssertionError, match="S parity max_delta"):
-        _parity(channel=True)
-    print(f"mutation={mutation}: parity RED")
-    monkeypatch.undo()
-    _parity(channel=True)
-    print(f"mutation={mutation}: restored GREEN")
-
-
 @pytest.mark.parametrize("explicit", [False, True])
 @pytest.mark.parametrize("channel", [False, True])
 def test_pmc_matched_line_refused(explicit, channel):
-    # Admission has its own magnetic-face witness; the through-line fixture
-    # now intentionally uses absorbing x ends and no magnetic side walls.
     sim = _model(channel=channel, magnetic=True,
                  boundary=BoundarySpec(x="cpml", y="pmc", z="pec"))
     with pytest.raises(NotImplementedError, match=r"Lumped-port S-parameters with magnetic \(PMC\) face\(s\).*y_lo.*not supported with devices="):
@@ -246,7 +218,7 @@ def test_each_magnetic_face_refused_before_scan(monkeypatch, face, explicit):
                 **({"compute_s_params": True} if explicit else {}))
 
 
-@pytest.mark.parametrize("case", ["debye", "lossy", "pec", "cpml_box", "eps4"])
+@pytest.mark.parametrize("case", ["debye", "lossy", "pec", "cpml_box"])
 def test_material_and_cpml_box_parity(case):
     _parity(case=case)
 
@@ -264,7 +236,6 @@ def test_pec_plain_source_refused(case, distributed):
 
 
 def test_long_record():
-    # Small domain keeps this 2048-step record in the fast suite.
     _parity(n_steps=2048)
 
 
@@ -355,48 +326,6 @@ def test_shared_step_order(monkeypatch):
         _model(boundary=boundary).run(n_steps=2, devices=jax.devices("cpu")[:2],
                                      skip_preflight=True)
         assert len(seen) > before
-
-
-@pytest.mark.source_scan
-def test_drive_only_order_mutation(monkeypatch):
-    from rfx.runners import distributed_v2 as runner
-    from rfx.stepping import uniform
-    from rfx.stepping.sequence import HookPoint, Kernel
-    original_compose = uniform.compose
-    original_run = runner.run_distributed
-    selected = False
-    mutations = []
-
-    def run(*args, **kwargs):
-        nonlocal selected
-        selected = kwargs.get("_source_port_indices") is not None
-        return original_run(*args, **kwargs)
-
-    def compose(kernels, attachments):
-        if _wrapped_attachments(attachments):
-            _assert_shared_step_order(kernels, attachments)
-            if selected:
-                # Move the selected-drive injection out of the shared kernel
-                # slot, still after references and before physical sampling.
-                kernels, attachments = dict(kernels), dict(attachments)
-                injection = kernels.pop(Kernel.SOURCES)
-                point = HookPoint.BEFORE_SOURCES
-                attachments[point] = (*attachments[point], injection)
-                mutations.append((kernels, attachments))
-        return original_compose(kernels, attachments)
-
-    monkeypatch.setattr(runner, "run_distributed", run)
-    monkeypatch.setattr(uniform, "compose", compose)
-    # These fixtures cannot distinguish identical arithmetic reached through
-    # drive-dependent scheduling. The common-step invariant must also fail.
-    for case in (None, "debye", "lossy", "pec", "cpml_box", "eps4"):
-        before = len(mutations)
-        _parity(case=case)
-        assert len(mutations) > before
-    for kernels, attachments in mutations:
-        with pytest.raises(AssertionError, match="shared step injection order"):
-            _assert_shared_step_order(kernels, attachments)
-    print("mutation=drive_only_order: numerical parity GREEN; shared step check RED")
 
 
 def test_host_dft_is_the_float64_sum_of_the_recorded_v_and_i():

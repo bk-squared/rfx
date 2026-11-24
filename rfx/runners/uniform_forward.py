@@ -1,6 +1,9 @@
 """_forward_from_materials moved from rfx/api/_execute.py in Block E1, a pure move; the body is unchanged."""
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
+from rfx.measurement.calculator_drive import calculator_drive
+
 from rfx.errors import RfxUnsupported
 
 from rfx.api._spec import ForwardResult
@@ -38,6 +41,7 @@ def _forward_from_materials(
     diagnostics=(),
     n_steps: int,
     conductors=None,
+    tfsf_angle_override=None,
     checkpoint: bool = True,
     gradient: str = "autodiff",
     checkpoint_segments: int | None = None,
@@ -118,11 +122,6 @@ def _forward_from_materials(
         conformal_pec=_conformal, debye_spec=debye_spec, lorentz_spec=lorentz_spec,
         pec_shapes=pec_shapes, kerr_chi3=kerr_chi3)
 
-    # The uniform forward lane has no subgrid. forward() (and
-    # optimize() through it), topology_optimize() and
-    # compute_lumped_wire_s_matrix_via_scan() all enter here; its other
-    # callers never carry a refinement (run() sends one to the subgridded
-    # lane, compute_mixed_s_matrix refuses it first).
     self._require_no_refinement_without_a_subgrid(
         "forward()/optimize()/topology_optimize()/compute_lumped_wire_s_matrix_via_scan()",
         diagnostics=diagnostics,
@@ -143,15 +142,6 @@ def _forward_from_materials(
         _wire_port_cells,
     )
 
-    # ── Lumped RLC elements — differentiable lane (WP 4-E) ──────────
-    # Fold R/C into the jnp materials arrays FIRST (mirrors the concrete
-    # run() ordering in runners/uniform.py:82), so subsequent port folds
-    # stack on top. The traced metas are built at the very end (after all
-    # material folding) just before the _run(...) call.  Component values
-    # may be supplied AS tracers via ``rlc_values_override`` so
-    # ``jax.grad`` flows w.r.t. R/L/C (LumpedRLCSpec stores plain floats).
-    # For a sim with NO lumped RLC this block is skipped and ``rlc_metas``
-    # stays None -> the _run(...) call is byte-identical to before.
     rlc_metas = None
     if self._lumped_rlc:
         from rfx.lumped import (
@@ -178,55 +168,50 @@ def _forward_from_materials(
 
     from rfx.sources.port_drive import PortSourceQueue
     sources = PortSourceQueue()
+    mag_sources: list = []
     probes = []
-    # ── Effective boundary flags, resolved BEFORE the PEC realization ──
-    # the realized PEC edge masks (Mx, My, Mz) are only
-    # correct under the periodic flags the step function will use, and
-    # the port setup below reads those masks, so the flag resolution
-    # moves ahead of it.  The Floquet SOURCE injection stays where it
-    # was, so the source list order is unchanged.
     periodic_bool = resolve_periodic(grid, self._periodic_flags())
 
-    # Forward the declared absorbing axes and full-guide defaults from the grid.
-    # Low-level runners also default to the grid. Keep this explicit
-    # value so the TFSF subset override below shares these flags.
     cpml_axes_run = grid.cpml_axes
     pec_axes_run = None
 
-    # Differentiable TFSF plane-wave: build the 2D/1D-aux TFSF cfg and
-    # force its boundary (transverse-periodic + CPML on the propagation axis),
-    # mirroring rfx/runners/uniform.py. The shared scan (_build_step_setup ->
-    # make_core_step) injects it and auto-activates the complex Bloch path for
-    # oblique (field_dtype -> complex64, per-axis roll phase). Gradients flow
-    # w.r.t. the scatterer materials through the same validated kernel as run().
     tfsf_run = None
     if self._tfsf is not None:
         from rfx.sources.tfsf import tfsf_from_declaration
         tfsf_run = tfsf_from_declaration(
             self._tfsf, grid, self._freq_max, n_steps=n_steps,
-        )
+        dtype=resolve_coefficient_dtype(self._precision))
+        if tfsf_angle_override is not None:
+            from rfx.sources.tfsf_2d import with_angle
+            tfsf_run = (with_angle(tfsf_run[0], tfsf_angle_override), tfsf_run[1])
         from dataclasses import replace
         from rfx.api._ad_memory_model import face_record_pays
         if face_record_pays(tfsf_run[0], n_steps, checkpoint=checkpoint,
                             checkpoint_segments=checkpoint_segments):
             tfsf_run = (replace(tfsf_run[0], record_faces=True), tfsf_run[1])
-        # The slab's vacuum check uses the final materials below.
-        # The closed box also checks the final realized operators below,
-        # after material overrides and port setup (including AD values).
         from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
         periodic_bool, cpml_axes_run = tfsf_boundary_flags(tfsf_run[0], grid)
         pec_axes_run = None
 
 
-    # realize (Mx, My, Mz) ONCE, here, from the volume cells
-    # plus the declared sheets/wires.  Port clearing, wire-port liveness
-    # and the reference-plane footprint all read THIS object from here
-    # on; a sheet owns no cell, so it exists nowhere else.
     pec_sheets = tuple(pec_sheets or ())
     pec_wires = tuple(pec_wires or ())
     pec_mask_local = pec_mask
     pec_occupancy_local = pec_occupancy
-    conductors, _drawn_materials, pec_edge_masks_local = _conductors.forward_products(self, grid, materials, pec_mask, pec_sheets, pec_wires, periodic_bool, conductors, sheet_impedance)
+    from rfx.model.source_admission import conductor_operator
+    conductors, _drawn_materials, pec_edge_masks_local = _conductors.forward_products(
+        self, grid, materials, pec_mask, pec_sheets, pec_wires, periodic_bool,
+        conductors, sheet_impedance,
+        operator=conductor_operator(smoothing=subpixel_smoothing, conformal=_conformal))
+    if self._coaxial_ports:
+        from rfx.model.coax_port import assemble_coax_port
+        materials, conductors, pec_occupancy_local = assemble_coax_port(
+            self, grid, materials, conductors, sources, mag_sources, n_steps=n_steps,
+            occupancy=pec_occupancy_local)
+        from rfx.model.coax_admission import refuse_design_box
+        refuse_design_box(design_box, conductors)
+        pec_mask_local = conductors.pec_cells
+        pec_edge_masks_local = conductors.pec_edges
     from rfx.measurement.prepared import attach_measurement
     attach_measurement(self, conductors, n_steps=n_steps, path=lane or 'fwd_uniform',
                        frequencies=port_s11_freqs,
@@ -234,7 +219,7 @@ def _forward_from_materials(
                            (i, p.position, p.component) for i, p in enumerate(self._ports)),
                        overrides={**(monitor_overrides or {}), 'design_box': design_box,
                                   'design_occupancy': design_occupancy})
-    _msl_geometry_edges = pec_edge_masks_local  # before ANY port clearing
+    _msl_geometry_edges = pec_edge_masks_local
     from rfx.measurement import ordered_specs, register_lumped, register_wire
     port_record_specs = []
     lumped_port_sparam_specs: list = []
@@ -245,37 +230,27 @@ def _forward_from_materials(
     else:
         _s11_freqs_arr = None
 
-    # Multi-drive S-matrix hook (item-5 Stage 1): 0-based counter over the
-    # sparam-eligible lumped/wire ports (impedance != 0) in registration
-    # order. When ``_sparam_drive_idx`` is set, only the port whose counter
-    # equals it is excited; all others are matched loads regardless of
-    # ``pe.excite``. When ``_sparam_drive_idx`` is None this counter is
-    # inert and excitation follows ``pe.excite`` (current behavior).
     _sparam_port_idx = -1
 
     def _excite_this_port(pe) -> bool:
         if _sparam_drive_idx is None:
             return pe.excite
-        return _sparam_port_idx == _sparam_drive_idx
+        return calculator_drive(_sparam_port_idx == _sparam_drive_idx, excite=pe.excite)
 
+    frozen_drive_requests = []
     for _port_index, pe in enumerate(self._ports):
         if pe.is_soft_source:
             from rfx.sources.port_drive import defer_soft_source
             defer_soft_source(sources, grid, pe, n_steps,
                               field_dtype=self._resolve_field_dtype())
+            if pe.amplitude_kind != "field":
+                frozen_drive_requests.append((
+                    f"Soft source _ports[{_port_index}]", pe.position, pe.component,
+                    (_grid_metric.field_index(grid, pe.position, pe.component),)))
             continue
 
-        # Sparam-eligible lumped/wire port — advance the multi-drive index.
         _sparam_port_idx += 1
 
-        # Effective drive decision + waveform for this pass.
-        # A passive port (excite=False) registers waveform=None BY DESIGN
-        # (add_port only defaults the waveform when excite=True). When the
-        # S-matrix scan driver (_sparam_drive_idx) selects such a port as the driven one,
-        # synthesize the same default excitation add_port() applies for
-        # excite=True ports — otherwise make_port_source /
-        # make_wire_port_sources hits jax.vmap(None)
-        # ("TypeError: Expected a callable value, got None").
         _drive_this_port = _excite_this_port(pe)
         _drive_waveform = pe.waveform
         if _drive_this_port and _drive_waveform is None:
@@ -295,57 +270,31 @@ def _forward_from_materials(
                 excitation=_drive_waveform,
                 radius=pe.radius, allow_in_absorber=pe.allow_in_absorber,
             )
-            # Capture the pre-clearing live-cell mask for the deferred drive.
             materials = setup_wire_port(
                 grid, wp, materials,
-                pec_edge_masks=pec_edge_masks_local)
+                pec_edge_masks=pec_edge_masks_local,
+                radius_sim=self, radius_port=f"port[{_port_index}]")
             if _drive_this_port:
                 sources.defer(make_wire_port_sources,
                     grid, wp, n_steps=n_steps,
                     pec_edge_masks=pec_edge_masks_local)
+                frozen_drive_requests.append((
+                    f"Wire port _ports[{_port_index}]", pe.position, pe.component,
+                    tuple(wp._drive_stamps)))
             wp_cells = _wire_port_cells(grid, wp)
-            # Clear PEC mask/occupancy at LIVE wire cells only.
-            # Dead extent cells stay PEC: clearing them would punch a
-            # one-cell in-plane conductivity hole in the DUT conductor.
-            # Only live edges publish incident cells for occupancy release.
             from rfx.sources.sources import _wire_port_live_cells
             _, wp_live_flags, _ = _wire_port_live_cells(
                 grid, wp, pec_edge_masks_local)
             _wp_live_cells = [c for c, _l in zip(wp_cells, wp_live_flags)
                               if _l]
-            # No edge clearing: a cell is LIVE
-            # exactly when the port component's own edge is not PEC, so
-            # releasing that component is a no-op, and releasing the two
-            # tangential edges would open the conductor the port foot
-            # stands on.  The CELL clearing below stays: it is the
-            # volume carrier; the stage also publishes live port edges.
             conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_port_stage(conductors, _wp_live_cells, pe.component, f"port[{_port_index}]", port_kind="wire", release_edges=False)
-            # Register a JIT-integrated S-param accumulator for this
-            # WirePort when forward(port_s11_freqs=...) was requested.
-            # Mirrors the lumped
-            # registration below; uses the LIVE-run midpoint cell as
-            # the V/I reference plane (identical to the
-            # all-extent midpoint with no dead cells; consistent with
-            # wire_sparam_meta in the JIT scan body of
-            # rfx/simulation.py) and carries the static live run for
-            # the whole-port gap-voltage accumulator.
             register_wire(port_record_specs, wire_port_sparam_specs, pe.component,
                           wp_cells, wp_live_flags, _s11_freqs_arr, pe.impedance, _drive_this_port, _port_index)
-            # Opt-in reference-plane V/I accumulators.
-            # Registered ONLY on the production-scan S-matrix driver
-            # path (_sparam_drive_idx is not None): the plane waves
-            # feed the OFF-diagonal S_ij and need the multi-drive
-            # sweep; forward()'s diagonal path is untouched (its S11
-            # never uses the planes), and the geometry derivation
-            # below needs concrete (non-traced) pec_mask values.
             if (pe.reference_plane_cells is not None
                     and _s11_freqs_arr is not None
                     and _sparam_drive_idx is not None
                     and wp_cells):
                 from rfx.probes.refplane import build_wire_refplane_specs
-                # Guard: the planes must not reach past another port
-                # along the same line axis (they must sit on the
-                # uniform line BETWEEN the ports).
                 _axis_of = {"x": 0, "y": 1, "z": 2}
                 _l_ax = _axis_of[pe.direction[1]]
                 _sign = -1 if pe.direction[0] == "+" else +1
@@ -372,11 +321,6 @@ def _forward_from_materials(
                             "separated port on a different parallel "
                             "trace also trips it — the check can be "
                             "revisited if that layout is needed.")
-                # Same guard, extended to MSL ports: a microstrip
-                # port's de-embedding probe ladder must stay
-                # outboard of the plane zone too. The helper walks
-                # the RESOLVED ladder (the one the S-matrix drivers
-                # probe), not the registration ladder.
                 if self._msl_ports:
                     _refplane_reject_msl_ladder_in_plane_zone(
                         self, grid, pe, line_axis=_l_ax,
@@ -391,28 +335,9 @@ def _forward_from_materials(
                     n_cells=int(pe.reference_plane_cells),
                     freqs=_s11_freqs_arr,
                     port_index=_sparam_port_idx,
-                    # hand it the FULL conductor footprint, not
-                    # the bare pec_mask. An f0 sheet is a
-                    # node-thin operator present in neither pec_mask
-                    # nor materials.sigma, so a sheet-traced line
-                    # reached build_wire_refplane_specs as "no metal"
-                    # and raised on a healthy model. The ctx's
-                    # sigma_sheet is nonzero exactly on the sheet
-                    # cells, so no re-assembly is needed here. Skipped
-                    # under a tracer: this whole branch already
-                    # requires concrete pec_mask values (see the
-                    # comment above), and a traced OR would only move
-                    # the failure.
                     pec_mask=_refplane_conductor_mask(
                         pec_mask, sheet_impedance, pec_sheets),
                 )
-                # Both planes must lie INSIDE the declared domain
-                # and clear of the absorber — a distinct message
-                # class. Checked AFTER build_wire_refplane_specs so
-                # its own "no conductor found" geometry error keeps
-                # precedence (frozen by
-                # tests/locks/test_refplane_port_waves.py::
-                # test_refplane_requires_pec_trace_at_plane).
                 _refplane_reject_planes_off_the_uniform_line(
                     grid, pe, _plane_specs, line_axis=_l_ax)
                 wire_refplane_specs.extend(_plane_specs)
@@ -428,19 +353,14 @@ def _forward_from_materials(
         materials = setup_lumped_port(grid, lp, materials)
         if _drive_this_port:
             sources.defer(make_port_source, grid, lp, n_steps=n_steps)
+            frozen_drive_requests.append((
+                f"Lumped port _ports[{_port_index}]", pe.position, pe.component,
+                tuple(lp._drive_stamps)))
         idx = _grid_metric.field_index(grid, pe.position, pe.component)
         conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_lumped_port_stage(conductors, pe, f"port[{_port_index}]")
-        # Register a JIT-integrated S-param accumulator for this
-        # lumped port when the user requested forward(port_s11_freqs=...).
-        # Skipping passive ports keeps S11 indexing
-        # aligned with the active-port list.
         register_lumped(port_record_specs, lumped_port_sparam_specs, pe.component,
                         idx, _s11_freqs_arr, pe.impedance, _drive_this_port, _port_index)
 
-    # MSL ports — full cross-section distributed feed; built like the
-    # wire-port branch above but with N_y × N_z cells.  S-parameters are
-    # extracted post-scan by ``compute_msl_s_matrix`` from registered
-    # DFT plane probes (no JIT accumulator wiring needed here).
     if self._msl_ports:
         from rfx.sources.msl_port import (
             _msl_yz_cells,
@@ -452,61 +372,27 @@ def _forward_from_materials(
             msl_port_from_entry,
             setup_msl_port,
         )
-        # all automatic Laplace launches read the original
-        # drawn substrate, already carried by the solve assembly.
         _static_eps_483 = None
         if any(pe.eps_r_sub is None and getattr(pe, "mode", "uniform") == "laplace"
                for pe in self._msl_ports):
-            # Read the drawn value before design/material overrides.
             _static_eps_483 = _conductors.drawn_launch_eps(self, grid, _drawn_materials)
         for _msl_port_index, pe in enumerate(self._msl_ports):
-            # Use the same physical-to-port frame as run(). In a y-fed
-            # port feed_x names physical y, and y_lo/y_hi name width x.
             mp = msl_port_from_entry(pe)
             from rfx.sources.msl_port import validate_msl_port_geometry
             validate_msl_port_geometry(
                 grid, mp, pec_edge_masks=_msl_geometry_edges,
                 sheet_impedance=sheet_impedance, periodic=periodic_bool,
                 pec_faces=self._boundary_spec.pec_faces(), name=pe.name)
-            # Honour `pe.mode` so the source distribution matches
-            # the imperative `run_uniform_path`.  ``laplace`` is the default for
-            # ``add_msl_port`` and gives a structured Ez source from
-            # the static-Laplace quasi-TEM mode shape.  ``eigenmode``
-            # mode requires the J+M Schelkunoff source pair which the
-            # legacy uniform forward path does not yet wire — refuse
-            # explicitly so users do not silently get a wrong source.
             port_mode = getattr(pe, "mode", "uniform")
             mode_profile = None
             if port_mode == "laplace":
                 span = msl_cross_section_span(grid, mp)
-                # Keep the declared midpoint sample when the source edge
-                # list becomes half-open; it is not the midpoint
-                # of the list's last E-edge index. Match run() on all axes.
                 k_mid = (span["n_lo"] + span["n_hi"]) // 2
                 eps_cell = msl_cell(pe.direction, span["i_feed"],
                                     span["w_centre"], k_mid)
                 if pe.eps_r_sub is not None:
                     eps_r_sub = float(pe.eps_r_sub)
                 else:
-                    # the launch fixture (mode profile,
-                    # added sigma, imposed force e*u) is STATIC
-                    # and must derive from the REGISTERED
-                    # materials — never from `materials`, which may
-                    # carry a (traced or concrete) override. The actual
-                    # E increment Cb(eps, sigma_total)*e*u MUST retain
-                    # its material dependence on the AD tape. The old
-                    # code sampled the override through stop_gradient:
-                    # finite differences then re-derived the fixture at
-                    # alpha±h while the AD tape saw it frozen at the
-                    # linearization point, so FD and jax.grad
-                    # differentiated DIFFERENT functions (measured:
-                    # 61.7% raw / 13.7% converged gradient deficit;
-                    # with the fixture constant on both sides the same
-                    # f64 referee reads 0.01-0.09%). The registered materials are
-                    # re-assembled host-side once per forward build
-                    # (hoisted above the port loop) — correct
-                    # for every caller (forward, topology,
-                    # sparam_driver) without threading a handle.
                     eps_r_sub = float(np.asarray(
                         _static_eps_483[eps_cell]
                     ))
@@ -517,20 +403,21 @@ def _forward_from_materials(
                     "imperative Simulation.run() path "
                     "(`runners/uniform.py::run_uniform_path`) but not "
                     "yet on the differentiable Simulation.forward() "
-                    "path — the J+M Schelkunoff source pair needs a "
-                    "magnetic-source channel that `_forward_from_materials` "
-                    "does not currently expose.  Use mode='laplace' "
+                    "path — the MSL J+M Schelkunoff source pair is not "
+                    "wired into its magnetic-source channel. "
+                    "Use mode='laplace' "
                     "(the default) on the differentiable path."
                 )
             materials = setup_msl_port(grid, mp, materials,
                                        mode_profile=mode_profile)
             if pe.excite and pe.waveform is not None:
+                frozen_drive_requests.append((
+                    f"msl_port[{_msl_port_index}]", pe.position, "ez",
+                    tuple(mp._drive_stamps)))
                 sources.defer(make_msl_port_sources,
                     grid, mp, n_steps=n_steps,
-                    mode_profile=mode_profile,
+                    mode_profile=mode_profile, dtype=resolve_coefficient_dtype(self._precision),
                 )
-            # Clear PEC mask over the cross-section so the source/σ cells
-            # are not zeroed by the PEC update.
             _msl_cells = list(_msl_yz_cells(grid, mp))
             conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_port_stage(
                 conductors, _msl_cells, _msl_normal_component(mp), f"msl_port[{_msl_port_index}]",
@@ -549,7 +436,8 @@ def _forward_from_materials(
 
     from rfx.model.materials import with_components
     materials = with_components(materials, grid, periodic=periodic_bool,
-        debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+        debye_spec=debye_spec, lorentz_spec=lorentz_spec,
+        field_dtype=self._resolve_field_dtype() or jnp.float32)
     materials = finish_conformal_mu(materials, conformal_areas)
     aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
     _, debye, lorentz = self._init_dispersion(
@@ -563,30 +451,20 @@ def _forward_from_materials(
         corner_lo, corner_hi, freqs = self._ntff
         ntff_box = make_ntff_box(grid, corner_lo, corner_hi, freqs)
 
-    # In-loop block current moments. Same monitor object the run() lane
-    # builds, so a forward()/value_and_grad call accumulates the same
-    # numbers the forward run does.
     from rfx.current_moments import monitor_for_simulation as _cm_for_sim
     current_moments_fwd = _cm_for_sim(
         self, grid, periodic_bool, conductors=conductors,
         overrides={**(monitor_overrides or {}), "design_box": design_box,
                    "design_occupancy": design_occupancy})
 
-    # Declared flux monitors are accumulated and returned on forward as on run.
-    # The DFT accumulators add to the AD tape only when the user declares a monitor.
     flux_monitor_cfgs = []
     if self._flux_monitors:
         from rfx.runners.uniform import build_flux_monitor_cfgs
         flux_monitor_cfgs = build_flux_monitor_cfgs(self, grid, n_steps, periodic=periodic_bool)
 
-    # DFT plane probes — mirror runners/uniform.py:340-359 so the
-    # JIT scan body actually accumulates plane-resolved DFT, then
-    # carry the result back through ForwardResult.dft_planes for
-    # plane-integrated V/I objectives.
     from rfx.measurement.setup import build_planes
     dft_planes = build_planes(self, grid, n_steps)
 
-    # Waveguide ports (differentiable DFT accumulation inside scan)
     waveguide_ports = []
     if self._waveguide_ports:
         for pe in self._waveguide_ports:
@@ -595,59 +473,49 @@ def _forward_from_materials(
 
     conductors, pec_occupancy_local = _conductors.prepare_port_occupancy(conductors, waveguide_ports, pec_occupancy_local, design_occupancy, sim=self, sheet_operator=sheet_impedance)
 
-    # Tensor lane (opt-in via ``pec_occupancy_model="kottke"``): when
-    # ``pec_occupancy_local`` is supplied, build an ``aniso_inv_eps``
-    # tensor from the occupancy with the lattice contract's edge rule
-    # (``inv_c = (1 - M_c) * baseline``) and run it through the
-    # same ``update_e_aniso_inv`` path hard ``Box(material="pec")``
-    # uses. Bypasses the ``apply_pec_occupancy`` E-scaling path on
-    # this branch — the two would double-correct at sigmoid edges.
-    pec_occupancy_for_run, aniso_inv_eps_run, occupancy_tensor = _occupancy.select_occupancy_operator(
-        self, grid, materials, pec_occupancy_local, periodic_bool, design_occupancy)
-    from rfx.model.source_coefficients import resolve_run_sources
-    sources = resolve_run_sources(sources, materials, self, grid,
-        tensor=occupancy_tensor or aniso_eps is not None or aniso_inv_eps is not None or conformal_weights is not None)
+    pec_occupancy_for_run, aniso_inv_eps_run, _occupancy_tensor = _occupancy.select_occupancy_operator(
+        self, grid, materials, pec_occupancy_local, periodic_bool, design_occupancy,
+        debye=debye, lorentz=lorentz)
+    _inv_eps_smooth = aniso_inv_eps is None and aniso_inv_eps_run is not None
+    if aniso_inv_eps is not None:
+        aniso_inv_eps_run = aniso_inv_eps
+    from rfx.model.tensor_operands import attach_run_tensor
+    materials = attach_run_tensor(materials, aniso_eps, aniso_inv_eps_run,
+                                  conformal_weights, _inv_eps_smooth)
+    from rfx.model.source_admission import refuse_frozen_drive_edges
+    _run_tensor = getattr(materials.components, "tensor", None)
+    refuse_frozen_drive_edges(_run_tensor, frozen_drive_requests)
+    from rfx.model.source_coefficients import resolve_run_sources, drive_materials
+    sources = resolve_run_sources(sources, materials, self, grid)
 
-    # Floquet ports — inject soft source, same as run_uniform.py:274-327
     if self._floquet_ports:
         from rfx.floquet import floquet_port_source
         for fpe in self._floquet_ports:
-            sources.append(floquet_port_source(grid, fpe, self._freq_max, self._domain, n_steps)[1])
+            sources.append(floquet_port_source(grid, fpe, self._freq_max, self._domain, n_steps, dtype=resolve_coefficient_dtype(self._precision))[1])
 
-    if aniso_inv_eps is not None:
-        aniso_inv_eps_run = aniso_inv_eps
-
-    # Build the RLC metas now that all material folding (RLC + ports)
-    # is complete — build_rlc_meta reads the final eps/sigma at each
-    # element cell, mirroring the concrete runners/uniform.py:516 ordering.
     if self._lumped_rlc:
         from rfx.lumped import build_rlc_meta
         _rlc_ov = rlc_values_override or {}
         rlc_metas = []
         from rfx.simulation import resolve_periodic as _resolve_periodic
-        # The run's own periodic flags: a series element's D0 is its
-        # edge's E-update coefficient.
         _rlc_periodic = _resolve_periodic(grid, periodic_bool)
         for _rlc_idx, _rlc_spec in enumerate(self._lumped_rlc):
             _v = _rlc_ov.get(_rlc_idx, {})
             rlc_metas.append(build_rlc_meta(
-                grid, _rlc_spec, materials,
+                grid, _rlc_spec, drive_materials(materials, self, grid),
                 r_val=_v.get("R"), l_val=_v.get("L"), c_val=_v.get("C"),
                 periodic=_rlc_periodic,
             ))
-        # at most one element with its own solve per realized edge.
         from rfx.lumped import refuse_stacked_solved_elements
         refuse_stacked_solved_elements(self._lumped_rlc, rlc_metas)
 
-    # Validate the operators handed to the scan, after every port fold
-    # and PEC clearing. A passive load can reach the source shell even
-    # when all of its conductor geometry is clear of that shell.
     if self._tfsf is not None and self._tfsf.closed_box:
         from rfx.boundaries.tfsf import validate_realized_vacuum_boundary
         validate_realized_vacuum_boundary(
             self, grid, materials, tfsf_run[0], pec_edge_masks=pec_edge_masks_local,
             debye_spec=debye_spec, lorentz_spec=lorentz_spec, kerr_chi3=kerr_chi3,
-            aniso_inv_eps=aniso_inv_eps_run, sheet_ctx=sheet_impedance,
+            aniso_inv_eps=(_run_tensor.inv_eps if _run_tensor is not None else None),
+            sheet_ctx=sheet_impedance,
             extra_masks=(pec_occupancy_local,), design_regions=(design_box, design_occupancy),
             rlc_indices=(_grid_metric.field_index(grid, spec.position, spec.component)
                          for spec in self._lumped_rlc))
@@ -662,8 +530,6 @@ def _forward_from_materials(
         self._validate_tfsf_vacuum_boundary(
             materials, tfsf_run[0], nonvacuum_masks=tuple(nonvacuum))
 
-    # Every declared input this lane does not carry is refused here,
-    # after the specific refusals above and before the first step.
     if lane is not None:
         from rfx.runners._admission import admit
         admit(
@@ -675,8 +541,13 @@ def _forward_from_materials(
         )
 
     from rfx.stepping import prepared as prepared_step
+    if self._coaxial_ports and getattr(materials.components, 'tensor', None) is None:
+        materials = materials._replace(components=None)
     conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
     stepping_product = conductors
+    if self._lumped_rlc:
+        from rfx.model.source_admission import LumpedRLCInputs
+        rlc_metas = LumpedRLCInputs(rlc_metas, self, stepping_product)
     from rfx.runners.uniform import assemble_wall_loss
     sheet_impedance = assemble_wall_loss(self, conductors, sheet_impedance, lane=lane or "fwd_uniform")
     conductors, pec_edge_masks_local, sheet_impedance = _conductors.forward_kernel_inputs(
@@ -694,6 +565,7 @@ def _forward_from_materials(
         debye=debye,
         lorentz=lorentz,
         sources=sources,
+        mag_sources=mag_sources or None,
         probes=probes,
         waveguide_ports=waveguide_ports if waveguide_ports else None,
         ntff=ntff_box,
@@ -705,13 +577,7 @@ def _forward_from_materials(
         pec_sheets=pec_sheets,
         pec_wires=pec_wires,
         pec_occupancy=pec_occupancy_for_run,
-        conformal_weights=conformal_weights,
-        aniso_eps=aniso_eps,
-        aniso_inv_eps=aniso_inv_eps_run,
         subpixel_smoothing=tensor_smoothing,
-        # Only the occupancy operator is smooth; the Kottke tensor keeps
-        # run()'s fenced PEC edges.
-        aniso_inv_eps_smooth=(aniso_inv_eps is None and aniso_inv_eps_run is not None),
         port_record_specs=ordered_specs(port_record_specs),
         lumped_port_sparams=lumped_port_sparam_specs or None,
         wire_port_sparams=wire_port_sparam_specs or None,
@@ -730,15 +596,11 @@ def _forward_from_materials(
         field_dtype=self._resolve_field_dtype(),
     )
 
-    # Return the physical point-probe field, as run_uniform does.
     from rfx.measurement import reconstruct_oblique_physical
     from rfx.sources.tfsf import is_tfsf_2d
     if tfsf_run is not None and is_tfsf_2d(tfsf_run[0]):
         result = reconstruct_oblique_physical(result, tfsf_run[0], grid, probes)
 
-    # Multi-drive S-matrix hook (item-5 Stage 1): return the raw all-port
-    # (v_dft, i_dft) accumulators for off-line wave decomposition by the
-    # production-scan driver, bypassing the diagonal-only extraction below.
     if _return_raw_port_sparams:
         _raw_freqs = None
         if result.lumped_port_sparams:
@@ -752,13 +614,6 @@ def _forward_from_materials(
             "dft_time_records": named_plane_records(self, result.dft_time_records),
             "wire_refplane": result.wire_refplane_sparams,
             "freqs": _raw_freqs,
-            # Mixed-family S-matrix hook: the DFT plane
-            # probes and probe time series recorded in the SAME run, so
-            # compute_mixed_s_matrix can read MSL port planes + settling
-            # witnesses alongside the lumped/wire accumulators without a
-            # second pass. The name-keyed dict mirrors the run()/forward()
-            # ``ForwardResult.dft_planes`` contract below. PURE ADD — the
-            # lumped/wire scan driver reads only the keys above.
             "dft_planes": (
                 {
                     entry.name: probe
@@ -771,8 +626,6 @@ def _forward_from_materials(
             ),
             "time_series": getattr(result, "time_series", None),
             "dt": getattr(result, "dt", grid.dt),
-            # Flux monitors for the arch-A magnitude channel
-            # (same name-keyed contract the runner uses for run()).
             "flux_monitors": (
                 {
                     entry.name: fmv
@@ -785,8 +638,12 @@ def _forward_from_materials(
             ),
         }
 
+    coax_metadata = None
     s_params_out = getattr(result, "s_params", None)
     freqs_out = getattr(result, "freqs", None)
+    if self._coaxial_ports and port_s11_freqs is not None:
+        from rfx.measurement.coax_port import port_result
+        s_params_out, freqs_out, coax_metadata = port_result(self, stepping_product, result)
     from rfx.measurement.port_s_contract import uniform_record_pairs
     pairs = uniform_record_pairs(result)
     if pairs:
@@ -796,10 +653,6 @@ def _forward_from_materials(
             channels, metas, wire_mode=pairs is result.wire_port_sparams)
         freqs_out = metas[0].freqs
 
-    # Passivity self-check (tracer-safe; skipped under jax.grad/jit) — the
-    # eager single-cell lumped/wire extractor can return non-physical
-    # |S11|>1 where the incident wave is weak (spectral band edges), and
-    # forward() previously surfaced no check (unlike compute_*_s_matrix).
     if s_params_out is not None and (
         result.lumped_port_sparams or result.wire_port_sparams
     ):
@@ -816,21 +669,11 @@ def _forward_from_materials(
     from rfx.sparams._record_selection import finish_forward
     return result_with_diagnostics(finish_forward(pack_uniform_forward_result(
         self, grid, result, diagnostics=diagnostics, s_params=s_params_out,
-        freqs=freqs_out, current_moment_monitor=current_moments_fwd,
+        freqs=freqs_out, current_moment_monitor=current_moments_fwd, coax_port_metadata=coax_metadata,
         realized_geometry=stepping_product._realization_record,
-    )), conductors.design_findings)
+    )._replace(tfsf_angle_deg=tfsf_angle_override)), conductors.design_findings)
 
 
-# ---------------------------------------------------------------------------
-# Pre-move ``__qualname__``, restored explicitly (as rfx/preflight/sources.py
-# does). The function above was a ``def`` in ``_ExecuteMixin``'s body. Its
-# decorator's wrapper copies the qualname at decoration time, and
-# ``rfx/api/__init__.py`` rewrites exactly ``<mixin>.<name>`` ->
-# ``Simulation.<name>`` on the wrapper at class composition and skips a bare
-# name. The wrapped function keeps ``_ExecuteMixin._forward_from_materials``,
-# which is what a TypeError for a bad keyword reports, as before the move.
-# ``tests/contracts/test_execute_split_qualnames.py`` pins both.
-# ---------------------------------------------------------------------------
 _forward_from_materials.__qualname__ = "_ExecuteMixin._forward_from_materials"
 _forward_from_materials.__wrapped__.__qualname__ = "_ExecuteMixin._forward_from_materials"
 

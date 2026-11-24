@@ -58,27 +58,16 @@ fixture makes speak on that path, which is the weaker half of the coverage
 this file exists to backstop. Root-cause it, and if the change is intended,
 edit the tuple WITH the reason -- and expect the snapshot lock to want
 regenerating too if any fixture does reach the moved check.
+
+The lock has no committed data artifact: its baseline is the git object named under
+``generator``, and the ``commit`` SHA is the weak half of the provenance because
+rebasing the leg stack rewrites it, so the durable reference is that branch or, once the
+stack has landed, the parent of the leg's first commit.
 """
 
 from __future__ import annotations
 
 LOCK_PROVENANCE = {
-    # No committed data artifact: this lock reads the live registry and the
-    # live source tree. Its baseline is the git object named under
-    # "generator".
-    #
-    # The SHA below is the leg-7 tip as it stood when this lock was written,
-    # and it is the weak half of this provenance: the #980 leg stack is
-    # rebased before it merges, so the sha gets rewritten. It already did
-    # once during this leg (b5387c46 -> f59d7c97), and `git diff --quiet`
-    # between the two returned 0 -- identical trees, hashes only. The durable
-    # reference is therefore the BRANCH in "generator", or after the stack
-    # lands, the parent of this leg's first commit. Re-deriving from any of
-    # them gives the same 37 rows; the tuple below is now 35, being those 37
-    # less the three deleted checks (#1047 ``_validate_cfg_conformal_fine_dx``,
-    # #1030 ``_validate_cfg_ntff_min_steps``, #1163
-    # ``_validate_cfg_tfsf_with_lumped_rlc``, all commented in place) plus the
-    # one appended after them (#1043 stage B).
     "fixture": "none",
     "generator": (
         "ast walk of _PreflightMixin._validate_simulation_config in "
@@ -102,23 +91,15 @@ import pytest
 _HERE = Path(__file__).resolve()
 _REPO = _HERE.parents[2]
 
-#: The checks ``_validate_simulation_config`` calls, in body order, with the
-#: CONTEXT FIELD each positional argument became. 37 rows at the leg-7 tip;
-#: 35 now -- three deleted (#1047, #1030, #1163) and left commented in place,
-#: one appended (#1043 stage B). See the module docstring for how this was
-#: derived and for why the argument lists are pinned here rather than left to
-#: the report snapshots.
 _CALL_SEQUENCE_AT_LEG7_TIP = (("_validate_cfg_assembly", ("warn",)), ("_validate_cfg_precision_x64", ("warn",)), ("_validate_cfg_pec_faces_with_finite_pec", ("warn",)), ("_validate_cfg_upml_refinement", ()), ("_validate_cfg_upml_nonuniform_lane", ("warn",)), ("_validate_cfg_floquet_nonuniform", ()), ("_validate_cfg_absorber_placement",
      ("warn", "dx", "cpml_thickness", "cpml_thick_lo", "cpml_thick_hi", "absorber_label")), ("_validate_cfg_source_on_reflector_plane", ("warn", "dx", "pmc_faces")), ("_validate_cfg_ntff_absorber_overlap",
      ("warn", "cpml_thickness", "cpml_thick_lo", "cpml_thick_hi", "absorber_label")), ("_validate_cfg_settling_witness_present", ("warn",)), ("_validate_cfg_geometry_in_cpml",
      ("warn", "cpml_thickness", "cpml_thick_lo", "cpml_thick_hi", "absorber_label")), ("_validate_cfg_body_flush_on_absorber",
      ("warn", "cpml_thickness", "cpml_thick_lo", "cpml_thick_hi", "absorber_label")), ("_validate_cfg_port_inside_pec", ("warn", "dx")), ("_validate_cfg_floating_single_cell_port", ("warn",)), ("_validate_cfg_pec_boundary_open_structure", ("warn",)), ("_validate_cfg_no_sources", ("warn",)), ("_validate_cfg_unresolved_pulse", ("warn", "dx")), ("_validate_cfg_thin_conductor_surface_impedance", ("warn",)), ("_validate_cfg_f0_sheet_backed_gap", ("warn",)), ("_validate_cfg_thin_conductor_thickness", ("warn",)), ("_validate_cfg_thin_conductor_graded_node", ("warn",)), ("_validate_cfg_source_on_graded_node", ("warn",)), ("_validate_cfg_wire_port_on_graded_node", ("warn",)), ("_validate_cfg_nonuniform_limitations", ("warn", "cpml_thickness")), ("_validate_cfg_multiband_grading", ("warn",)), ("_validate_cfg_graded_box_rasterization", ("warn",)), ("_validate_cfg_subgrid_limitations", ("warn",)), ("_validate_cfg_lossless_resonator_in_absorber", ("warn",)), ("_validate_cfg_dispersive_pole_at_absorber_face",
      ("warn", "dx", "cpml_thick_lo", "cpml_thick_hi")), ("_validate_cfg_waveguide_reference_plane",
-     ("warn", "cpml_thick_lo", "cpml_thick_hi")), ("_validate_cfg_refplane_placement", ("warn",)), ("_validate_cfg_absorber_budget_vs_grid", ("warn", "dx")), ("_validate_cfg_campaign_statics", ("warn",)), ("_check_waveguide_port_evanescent", ()), ("_check_msl_port_geometry", ("dx", "cpml_thick_lo", "cpml_thick_hi")), ("_check_coaxial_port_junction_aperture", ()), ("_validate_cfg_dielectric_at_absorber_seam", ("warn",)), ("_validate_cfg_conductor_in_thin_absorber",
+     ("warn", "cpml_thick_lo", "cpml_thick_hi")), ("_validate_cfg_refplane_placement", ("warn",)), ("_validate_cfg_absorber_budget_vs_grid", ("warn", "dx")), ("_validate_cfg_campaign_statics", ("warn",)), ("_check_waveguide_port_evanescent", ()), ("_check_msl_port_geometry", ("dx", "cpml_thick_lo", "cpml_thick_hi")), ("_validate_cfg_dielectric_at_absorber_seam", ("warn",)), ("_validate_cfg_conductor_in_thin_absorber",
      ("warn", "dx", "absorber_label")), ("_validate_cfg_port_conductor_continues", ("warn",)), ("_validate_cfg_half_node_split", ("warn",)), ("_validate_cfg_thin_absorber", ("warn", "dx")), ("_validate_cfg_waveguide_port_span", ("warn",)))
 
-# Sequence addition beside the f0 validity check: new check f0_sheet_backed_gap, #2429.
-#: Just the names, in order -- the runtime view of the tuple above.
 _CALL_NAMES_AT_LEG7_TIP = tuple(n for n, _ in _CALL_SEQUENCE_AT_LEG7_TIP)
 
 
@@ -131,6 +112,9 @@ def test_core_config_checks_are_the_pre_registry_call_sequence():
     """
     from rfx.preflight._registry import CORE_CONFIG_CHECKS
 
+    assert not {"_validate_cfg_conformal_fine_dx", "_validate_cfg_ntff_min_steps",
+                "_validate_cfg_tfsf_with_lumped_rlc"} & set(_CALL_NAMES_AT_LEG7_TIP), (
+        "the pinned sequence leaves out the three checks deleted from preflight")
     got = tuple(c.name for c in CORE_CONFIG_CHECKS)
     assert got == _CALL_NAMES_AT_LEG7_TIP, (
         "CORE_CONFIG_CHECKS no longer reproduces the pre-registry call "
@@ -242,6 +226,9 @@ def test_no_extra_check_is_registered_by_importing_rfx():
     ``preflight()`` in the process emits. Measured in a FRESH interpreter,
     not in this session: a test that registers a throwaway extra (below)
     would otherwise decide the answer by ordering.
+
+    The probe's answer is the last line of its output; anything ``import rfx`` prints
+    before it is not part of the answer.
     """
     out = subprocess.run(
         [sys.executable, "-c",
@@ -250,7 +237,6 @@ def test_no_extra_check_is_registered_by_importing_rfx():
         capture_output=True, text=True, cwd=str(_REPO), check=False,
     )
     assert out.returncode == 0, out.stderr
-    # The probe's answer is its last line; anything `import rfx` prints is not.
     assert out.stdout.strip().splitlines()[-1] == "[]", (
         "importing rfx registered extra preflight config checks: "
         f"{out.stdout.strip()}. That silently changes preflight output for "

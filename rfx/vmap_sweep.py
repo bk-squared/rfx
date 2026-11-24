@@ -31,6 +31,8 @@ Limitations
 
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -375,7 +377,8 @@ def _build_batched_materials(
         coords = coords_from_uniform_grid(grid)
         centres = centres_from_uniform_grid(grid)
         from rfx.model.materials import assembled_as_pec
-        for entry in sim._geometry:
+        from rfx.geometry.cross_section import section_entries
+        for entry in section_entries(sim, grid):
             if entry.material_name == mat_name:
                 mask = mask | _material_cell_mask(entry.shape, coords, centres, grid=grid, name=entry.material_name,
                                                   size_rule=not assembled_as_pec(sim, entry))
@@ -615,7 +618,8 @@ def _build_full_scan_fn(
     ):
         periodic = (False, False, False)
         if sim._periodic_axes:
-            periodic = tuple(axis in sim._periodic_axes for axis in "xyz")
+            periodic = ("x" in sim._periodic_axes, "y" in sim._periodic_axes,
+                        "z" in sim._periodic_axes)
         if grid.is_2d:
             periodic = (periodic[0], periodic[1], True)
 
@@ -753,19 +757,10 @@ def vmap_material_sweep(
     silently loses data on either path — it is only the FAST path that is
     conditional on eligibility, not the DFT-plane *output*.
 
-    TFSF sweeps — angle batching is intentionally out of scope, not just
-    unimplemented: it is a structural mismatch with this function's
-    material-only batching model, not a missing feature. The TFSF incident
-    field is itself an auxiliary FDTD solution advanced *inside* the scan
-    (not closed-form); Method B's auxiliary-grid size is angle-dependent
-    (a batch of angles would need a batch of scan shapes, which
-    ``jax.vmap`` cannot express); and the oblique 2D-aux Bloch path
-    concretizes its transverse phase factors from ``angle_deg`` at trace
-    time (rfx/sources/tfsf_2d.py). More basically, rfx cannot even
-    *express* a general incidence triple ``(theta, phi, psi)`` today — only
-    ``angle_deg`` + a binary ``direction`` + a two-way ``polarization``
-    choice — so there is no batchable angle parameter to expose in the
-    first place. Route illumination/angle sweeps to ``parametric_sweep()``
+    TFSF angle batches on the uniform Bloch line use
+    ``jax.vmap`` over ``forward(tfsf_angle_override=)``. This function batches
+    materials only; Method B's angle-dependent auxiliary-grid shape cannot
+    be batched by vmap. Route general illumination sweeps to ``parametric_sweep()``
     instead: it already returns full ``Result`` objects including
     ``dft_planes`` for each swept value. Caveat there too: oblique-Bloch
     TFSF (``angle_deg != 0``, ``method='bloch'``, the default) combined
@@ -864,6 +859,7 @@ def vmap_material_sweep(
             if pe.is_soft_source and pe.amplitude_kind == "current"
         ]
         prepared_drives = []
+        from rfx.model.pole_stability import refuse_subluminal_cells
         native = "cb" if sim._boundary == "cpml" else "raw"
         for batch_idx in range(len(param_values)):
             mats = MaterialArrays(
@@ -872,11 +868,12 @@ def vmap_material_sweep(
                 mu_r=batched_materials.mu_r[batch_idx],
                 sigma_film=jax.tree.map(lambda a: a[batch_idx], batched_materials.sigma_film),
             )
+            refuse_subluminal_cells(mats, grid, periodic=source_periodic)
             waveforms = [uniform_source_table(
                 grid, field_index(grid, pe.position, pe.component), pe.component,
                 pe.waveform, n_steps, mats, pe.amplitude_kind,
                 native=native, periodic=source_periodic,
-            ) for pe in dynamic_sources]
+            dtype=resolve_coefficient_dtype(sim._precision)) for pe in dynamic_sources]
             prepared_drives.append(
                 jnp.stack(waveforms, axis=-1) if waveforms else
                 jnp.zeros((n_steps, 0), dtype=jnp.float32))

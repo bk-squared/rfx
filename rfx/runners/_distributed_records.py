@@ -1,11 +1,13 @@
 """Owned records at the uniform and graded distributed sampling slots.
 
-Ranks are data, and assembly replicates before indexing by rank.
-Only placement is performed for cell records; moment pairs are summed once.
+Ranks are data: assembly reduces owned chunks without replicating the carry.
+Cell records preserve signed zeros; moment pairs are summed once. Multi-process
+assembly retains the host-array placement after process_allgather.
 """
 
 from rfx.errors import RfxUnsupported
 from functools import partial
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -15,6 +17,7 @@ from jax.sharding import NamedSharding, PartitionSpec as P
 
 from rfx.runners._rank import rank_shard_map
 from rfx.runners._distributed_ntff import SlabNTFF
+from rfx.stepping.record_join import join_owned, packed_pieces, record_bytes
 from rfx.stepping.slab import place
 from rfx.stepping.slab_moments import (snapshot_bounds, moment_operands,
                                        moment_metadata, local_monitor)
@@ -22,11 +25,11 @@ from rfx.measurement import accumulators
 from rfx.measurement.plane_records import time_recorded_dft_selection
 
 
-def refuse_record_options(sim, options):
+def refuse_record_options(sim, options, *, run=False):
     names = [name for name in ("record_dft", "dft_time_records", "dft_planes",
                                "flux_monitors", "current_moments")
              if options.get(name) is not None and options.get(name) is not False]
-    if any(time_recorded_dft_selection(sim)):
+    if not run and any(time_recorded_dft_selection(sim)):
         names.append("dft_time_records (record_dft from _time_recorded_dft_planes)")
     if names:
         raise RfxUnsupported(f"{', '.join(names)} is not supported on the distributed record path")
@@ -153,7 +156,32 @@ class PlaneRecords(Packed):
             branches.append(branch)
         return self.mapped(buffer, state, step, branches, ranks=ranks)
 
-    def assemble(self, buffer):
+    def assemble(self, buffer, *, multi_process=False):
+        if multi_process:
+            return self._assemble_host(buffer)
+        arrays = [a for t in self.templates for a in (t[:4] if self.flux else (t.accumulator,))]
+        record_size = record_bytes(arrays)
+        owners: dict[tuple[int, int], list[list[tuple]]] = {}
+        axes = {}
+        for rank, part in enumerate(self.parts):
+            pieces = iter(packed_pieces(self.shapes[rank], self.sizes[rank]))
+            for number, meta, destinations in part:
+                axes[number] = None if meta[0 if self.flux else 1] == 0 else 1
+                for component, destination in enumerate(destinations):
+                    offset, shape = next(pieces)
+                    owners.setdefault((number, component), [[] for _ in self.parts])[rank].append(
+                        (offset, shape, (0, destination.start or 0, 0), shape))
+        result = []
+        for number, t in enumerate(self.templates):
+            values = [join_owned(buffer, owners[(number, component)], a.shape, a.dtype,
+                                mesh=self.mesh, kind="flux" if self.flux else "planes",
+                                record_size=record_size, x_axis=axes[number])
+                      for component, a in enumerate(t[:4] if self.flux else (t.accumulator,))]
+            result.append(t._replace(**dict(zip(("e1_dft", "e2_dft", "h1_dft", "h2_dft")
+                                                if self.flux else ("accumulator",), values))))
+        return tuple(result)
+
+    def _assemble_host(self, buffer):
         buffer = self.replicated(buffer)
         result = [[jnp.zeros(a.shape, a.dtype) for a in (t[:4] if self.flux else (t.accumulator,))]
                   for t in self.templates]
@@ -165,6 +193,74 @@ class PlaneRecords(Packed):
         return tuple(t._replace(**dict(zip(("e1_dft", "e2_dft", "h1_dft", "h2_dft")
                                            if self.flux else ("accumulator",), values)))
                      for t, values in zip(self.templates, result))
+
+
+class TimePlaneRecords:
+    """Selected real plane frames, with histories outside the rank conditional."""
+
+    def __init__(self, mesh, templates, shape, nx_per, n_steps, dtype):
+        layout = PlaneRecords(mesh, templates, shape, nx_per)
+        self.mesh, self.templates, self.parts = mesh, templates, layout.parts
+        self.frames, self.dtype = n_steps, dtype
+        self.shapes = []
+        for number, template in enumerate(templates):
+            widths = [meta[-1][1] - meta[-1][0] for part in self.parts
+                      for index, meta, _ in part if index == number]
+            self.shapes.append((max(widths), template.accumulator.shape[2]))
+
+    def initial(self):
+        return tuple(place(np.zeros((self.mesh.size, self.frames) + shape, self.dtype),
+                           NamedSharding(self.mesh, P("x"))) for shape in self.shapes)
+
+    def update(self, buffer, state, dt, step, *, ranks):
+        branches = []
+        for part in self.parts:
+            def branch(fields, part=part):
+                frames = [jnp.zeros(shape, self.dtype) for shape in self.shapes]
+                for number, (channel, axis, index, _, region), _ in part:
+                    value = accumulators.plane_sample(fields, channel.name, axis, index, region)
+                    frames[number] = jnp.pad(value, tuple((0, cap - size) for cap, size in
+                                            zip(self.shapes[number], value.shape))).astype(self.dtype)
+                return tuple(frames)
+            branches.append(branch)
+
+        @partial(rank_shard_map, mesh=self.mesh,
+                 in_specs=(P("x"), _field_specs(state), P()), out_specs=P("x"), check_rep=False)
+        def apply(local, fields, n, *, rank):
+            frames = lax.switch(rank, branches, fields)
+            return tuple(lax.stop_gradient(lax.dynamic_update_slice(
+                history, value[None, None], (0, n, 0, 0)))
+                for history, value in zip(local, frames))
+        return apply(ranks, buffer, state, step)
+
+    def assemble(self, buffer, *, multi_process=False):
+        shapes = [(self.frames,) + t.accumulator.shape[1:] for t in self.templates]
+        record_size = sum(int(np.prod(s)) for s in shapes) * np.dtype(self.dtype).itemsize
+        result = []
+        for number, (history, shape) in enumerate(zip(buffer, shapes)):
+            owners = []
+            for part in self.parts:
+                pieces = []
+                for index, meta, destinations in part:
+                    if index == number:
+                        region = meta[-1]
+                        extent = (self.frames, region[1] - region[0], region[3] - region[2])
+                        pieces.append((0, (self.frames,) + self.shapes[number],
+                                       (0, destinations[0].start or 0, 0), extent))
+                owners.append(pieces)
+            if multi_process:
+                value = np.zeros(shape, self.dtype)
+                for rank, pieces in enumerate(owners):
+                    for _, _, destination, extent in pieces:
+                        rows = slice(destination[1], destination[1] + extent[1])
+                        value[:, rows] = np.asarray(history[rank])[:, :extent[1]]
+            else:
+                value = join_owned(history, owners, shape, self.dtype, mesh=self.mesh,
+                                   kind="time_planes", record_size=record_size,
+                                   x_axis=None if self.templates[number].axis == 0 else 1)
+                value = lax.stop_gradient(value)
+            result.append(value)
+        return tuple(result)
 
 
 class SnapshotRecords:
@@ -230,7 +326,23 @@ class SnapshotRecords:
             return tuple(arrays)
         return apply(ranks, buffer, state, step)
 
-    def assemble(self, buffer):
+    def assemble(self, buffer, *, multi_process=False):
+        if multi_process or not self.frames:
+            return self._assemble_host(buffer)
+        shape = (self.frames,) + self.full_shape
+        source_shape = (self.frames,) + self.frame_shape
+        record_size = len(self.spec.components) * int(np.prod(shape)) * np.dtype(self.dtype).itemsize
+        owners = []
+        for start, end, owned in self.parts:
+            destination = (0,) * len(shape) if self.axis == 0 else (0, start) + (0,) * (len(shape) - 2)
+            extent = shape if self.axis == 0 else (self.frames, end - start) + shape[2:]
+            owners.append([(0, source_shape, destination, extent)] if owned else [])
+        return {component: join_owned(history, owners, shape, self.dtype, mesh=self.mesh,
+                                      kind="snapshots", record_size=record_size,
+                                      x_axis=None if self.axis == 0 else 1)
+                for component, history in zip(self.spec.components, buffer)}
+
+    def _assemble_host(self, buffer):
         buffer = jax.tree.map(lambda a: (place(a, NamedSharding(self.mesh, P()))
                                         if isinstance(a, (jax.Array, jax.core.Tracer)) else a), buffer)
         result = {c: jnp.zeros((self.frames,) + self.full_shape, self.dtype) for c in self.spec.components}
@@ -288,10 +400,19 @@ class MomentRecords(Packed):
             branches.append(branch)
         return self.mapped(buffer, state, step, branches, ranks=ranks, previous=previous, operands=operands)
 
-    def assemble(self, buffer):
+    def assemble(self, buffer, *, multi_process=False):
+        if multi_process:
+            return self._assemble_host(buffer)
+        record_size = sum(self.sizes[0]) * np.dtype(buffer.dtype).itemsize
+        return tuple(join_owned(buffer, [[(offset, shape, (0,) * len(shape), shape)] for _ in self.parts],
+                                shape, buffer.dtype, mesh=self.mesh, kind="moments",
+                                record_size=record_size, x_axis=None, summed=True)
+                     for offset, shape in packed_pieces(self.shapes[0], self.sizes[0]))
+
+    def _assemble_host(self, buffer):
         buffer = self.replicated(buffer)
         summed = jnp.sum(buffer, axis=0)
-        return tuple(self.unpack(summed, 0))
+        return tuple(a.astype(buffer.dtype) for a in self.unpack(summed, 0))
 
 
 def _host_arrays(value):
@@ -304,7 +425,8 @@ class SlabRecords:
         from rfx.measurement.setup import build_planes
         from rfx.measurement.flux_weights import build_flux_monitor_cfgs
         from rfx.current_moments import monitor_for_simulation
-        self.layouts, self.sim, self.grid = {}, sim, grid
+        self.layouts: dict[str, Any] = {}
+        self.sim, self.grid = sim, grid
         self.ntff_box = None
         if sim._ntff is not None:
             from rfx.farfield import make_ntff_box
@@ -325,6 +447,10 @@ class SlabRecords:
             raise NotImplementedError("x-normal flux at global x index 0 is not supported on the distributed path; use one device")
         if planes:
             self.layouts["planes"] = PlaneRecords(mesh, planes, grid.shape, nx_per)
+        selected = tuple(p for p, keep in zip(planes, time_recorded_dft_selection(sim)) if keep)
+        if selected:
+            self.layouts["time_planes"] = TimePlaneRecords(
+                mesh, selected, grid.shape, nx_per, n_steps, field_dtype)
         if flux:
             self.layouts["flux"] = PlaneRecords(mesh, flux, grid.shape, nx_per, flux=True,
                 window_from_state=not sim._uses_nonuniform_mesh)
@@ -355,11 +481,15 @@ class SlabRecords:
             if multi_process:
                 from jax.experimental import multihost_utils
                 buffer = multihost_utils.process_allgather(buffer, tiled=True)
-            values[kind] = layout.assemble(buffer)
+            values[kind] = (layout.assemble(buffer, multi_process=True) if multi_process
+                            else layout.assemble(buffer))
         result = dict(ntff_box=self.ntff_box, ntff_data=values.get("ntff"),
                       current_moment_data=values.get("moments"), current_moment_monitor=self.monitor)
         if "planes" in values:
             result["dft_planes"] = {e.name: p for e, p in zip(self.sim._dft_planes, values["planes"])}
+        if "time_planes" in values:
+            from rfx.measurement.plane_records import named_plane_records
+            result["dft_time_records"] = named_plane_records(self.sim, values["time_planes"])
         if "flux" in values:
             result["flux_monitors"] = {e.name: m for e, m in zip(self.sim._flux_monitors, values["flux"])}
         if "snapshots" in values:

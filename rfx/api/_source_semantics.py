@@ -60,16 +60,8 @@ from __future__ import annotations
 
 SOURCE_AMPLITUDE_KINDS = ("field", "current")
 
-# Native waveform coefficient of each helper, i.e. what multiplies w(t) in
-# the E update when the helper is fed the waveform unscaled:
-#   'raw'        E += w              (rfx.simulation.make_source)
-#   'cb'         E += Cb * w         (rfx.simulation.make_j_source)
-#   'cb_over_dv' E += Cb * w / dV    (rfx.nonuniform.make_current_source)
 _NATIVES = ("raw", "cb", "cb_over_dv")
 
-# Which named kind each native coefficient already realizes. 'cb' realizes
-# NEITHER kind — it is the legacy open-uniform third contract, reachable
-# through low-level helper calls with amplitude_kind=None.
 _NATIVE_REALIZES = {"raw": "field", "cb": None, "cb_over_dv": "current"}
 
 
@@ -131,9 +123,7 @@ def source_amplitude_scale(kind, native, *, cb, dV):
     if not needs_scale(kind, native):
         return 1.0
     if kind == "field":
-        # native 'cb': 1/Cb;  native 'cb_over_dv': dV/Cb
         return (1.0 / cb) if native == "cb" else (dV / cb)
-    # kind == 'current': native 'raw': Cb/dV;  native 'cb': 1/dV
     return (cb / dV) if native == "raw" else (1.0 / dV)
 
 
@@ -159,9 +149,6 @@ def guard_float16_source_increment(waveform, field_dtype, amplitude_kind=None):
 
     from rfx._traced_check import traced_check
 
-    # Refuse only an increment that overflows float16 on its own, in one
-    # step: an explicit 'current' source with a one-step increment of ~4e4
-    # ran finite before this guard existed and must still run.
     limit = float(np.finfo(np.float16).max)
 
     def check(samples):

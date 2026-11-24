@@ -56,13 +56,11 @@ def test_mesh_report_ad_memory_argument_error_propagates():
 
 
 def test_mesh_intelligence_report_compares_uniform_fine_cells(capsys):
+    """Only preflight lines belong to the report stdout contract because other process components may write to stdout."""
     sim = _patch_like_nonuniform_sim()
 
     report = sim.mesh_intelligence_report()
 
-    # The report runs preflight() and must swallow its printed summary. Only the
-    # [PREFLIGHT] lines are this call's to check: another part of the process
-    # may write to stdout (the CI lane's memory sampler did, run 35837183022).
     assert "[PREFLIGHT]" not in capsys.readouterr().out
     sim.preflight()
     assert "[PREFLIGHT]" in capsys.readouterr().out, "nothing to swallow here"

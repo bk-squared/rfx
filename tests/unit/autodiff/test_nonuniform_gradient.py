@@ -20,6 +20,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+from tests._fd_minimum import assert_same_minimum_cells
+
 from rfx.core.yee import EPS_0, MaterialArrays
 from rfx.nonuniform import make_nonuniform_grid, run_nonuniform
 
@@ -116,13 +118,12 @@ def test_grad_wrt_dz_profile_flows():
     Issue #45 removed those boundaries so ``dz_profile`` now flows as a
     tracer through grid construction, CFL / ``dt`` derivation, and the
     CPML profile.  This unblocks mesh-as-design-variable inverse design.
+    A constant-zero derivative would also be finite.
     """
     dz0 = jnp.asarray([0.5e-3] * 5 + [0.3e-3] * 4, dtype=jnp.float32)
     grad_ad = jax.grad(_loss_from_dz)(dz0)
     assert grad_ad.shape == dz0.shape
     assert jnp.all(jnp.isfinite(grad_ad)), "dz_profile grad contains NaN/Inf"
-    # At least one cell moves the loss non-trivially — verifies the
-    # tracer actually propagates (constant-zero would also be finite).
     assert float(jnp.max(jnp.abs(grad_ad))) > 1.0
 
 
@@ -136,8 +137,9 @@ def test_grad_wrt_dz_profile_matches_fd():
     a bug.  The test uses a strictly-monotone ``dz_profile`` so ``min`` is
     uniquely attained and AD↔FD agreement on dominant cells (>5 % of
     max magnitude) is a meaningful regression guard.
+    The derived dt is part of the differentiated function, and the assertion
+    keeps every FD point on one side of every smallest-cell tie.
     """
-    # Strictly-monotone profile — no ties in min(dz_full).
     dz0 = jnp.asarray(
         [0.50e-3, 0.51e-3, 0.52e-3, 0.53e-3, 0.54e-3,
          0.30e-3, 0.31e-3, 0.32e-3, 0.33e-3],
@@ -149,6 +151,9 @@ def test_grad_wrt_dz_profile_matches_fd():
     grad_fd = np.zeros_like(grad_ad)
     for i in range(len(dz0)):
         e = np.zeros(len(dz0), dtype=np.float32); e[i] = h
+        assert_same_minimum_cells(np.asarray(dz0), [
+            (f"index {i} (+)", np.asarray(dz0 + jnp.asarray(e))),
+            (f"index {i} (-)", np.asarray(dz0 - jnp.asarray(e)))])
         lp = float(_loss_from_dz(dz0 + jnp.asarray(e)))
         lm = float(_loss_from_dz(dz0 - jnp.asarray(e)))
         grad_fd[i] = (lp - lm) / (2.0 * h)
@@ -173,6 +178,7 @@ def test_grad_wrt_dz_profile_reduces_loss():
     This is the strongest physical check available for the mesh-as-
     design-variable direction — it verifies that the gradient is usable
     as an optimisation signal, not just a first-order match to FD.
+    The 1e-6 relative floor sits about three orders below the earlier observed 0.046% reduction signal.
     """
     dz0 = jnp.asarray(
         [0.50e-3, 0.51e-3, 0.52e-3, 0.53e-3, 0.54e-3,
@@ -181,13 +187,10 @@ def test_grad_wrt_dz_profile_reduces_loss():
     )
     loss0 = float(_loss_from_dz(dz0))
     grad = jax.grad(_loss_from_dz)(dz0)
-    # Tiny step — grads are ~1e5, we want a ~1e-7 change in dz (well
-    # below the cell spacing).  Clamp to physical range.
-    dz1 = jnp.clip(dz0 - 1e-12 * grad, 0.1e-3, 1.0e-3)
+    STEP_FOR_SUBCELL_DZ_CHANGE = 1e-12
+    dz1 = jnp.clip(dz0 - STEP_FOR_SUBCELL_DZ_CHANGE * grad, 0.1e-3, 1.0e-3)
     loss1 = float(_loss_from_dz(dz1))
     reduction = loss0 - loss1
-    # Floor is 1e-6 * |loss0|: three orders of magnitude below the observed
-    # ~0.046% reduction signal, tight enough to catch noise-dominated passes.
     floor = max(1e-6 * abs(loss0), 1e-12)
     assert reduction > floor, (
         f"gradient step must produce meaningful loss reduction: "

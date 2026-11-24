@@ -23,8 +23,6 @@ from rfx.api import Simulation
 from ._shapes import shape_from_config
 from ._waveforms import waveform_from_config
 
-# Top-level config keys the loader understands. An unknown top-level key is an
-# error (fail loud) rather than a silent typo (e.g. ``boundry``).
 _KNOWN_TOP_KEYS = {
     "frequency",
     "domain",
@@ -42,10 +40,6 @@ _KNOWN_TOP_KEYS = {
     "execution",
 }
 
-# Source ``type`` values the loader supports today. ``port`` -> add_port
-# (lumped, with resistive termination + excitation); ``source`` -> add_source
-# (soft point source, no impedance load). Other physical port types are
-# explicitly deferred.
 _DEFERRED_SOURCE_TYPES = {
     "waveguide": "add_waveguide_port",
     "coaxial": "add_coaxial_port",
@@ -261,14 +255,12 @@ def _add_sources(sim: Simulation, sources_cfg) -> None:
             amplitude_kind = entry.get("amplitude_kind")
             if amplitude_kind is not None:
                 amplitude_kind = str(amplitude_kind)
-            # add_source validates/resolves None at the declaration storage site.
             sim.add_source(
                 position, component, waveform=waveform,
                 amplitude_kind=amplitude_kind,
             )
             continue
 
-        # Lumped port.
         extra = set(entry) - {
             "type", "position", "component", "waveform",
             "impedance", "extent", "radius", "excite", "direction",

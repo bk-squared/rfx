@@ -49,7 +49,7 @@ from rfx._internal import _realized
 from rfx.stepping import segmented_scan
 from rfx.stepping.slab_wrap import record_step_kind, runner_step_kind, validate_scan_controls
 from rfx.stepping.slab import (
-    Slab, Fill, cut, cut_poles, cut_pole_coeffs, owned_values, forward_sharding as _forward_sharding,
+    Slab, Fill, cut, cut_poles, cut_pole_coeffs, owned_values,
 )
 
 import jax
@@ -429,26 +429,6 @@ from rfx.stepping.slab_update import _concrete_on_mesh
 
 
 
-def is_forward_sharded_override(arr, sharded_grid, mesh):
-    """Validate an override's global layout without fetching any device data."""
-    sharding = _forward_sharding(arr)
-    if sharding is None:
-        return False
-    spec = tuple(sharding.spec) + (None,) * (3 - len(sharding.spec))
-    if spec != ("x", None, None):
-        # Any other placement (replicated, or split along y/z or another
-        # mesh axis) is a local whole-domain array, as it was before.
-        return False
-    expected = (sharded_grid.nx_padded, sharded_grid.ny, sharded_grid.nz)
-    if (arr.shape != expected
-            or sharding.mesh.devices.shape != mesh.devices.shape
-            or not np.array_equal(sharding.mesh.devices, mesh.devices)):
-        raise ValueError(
-            f"sharded forward override must have shape {expected}, P('x'), "
-            "and the same ordered devices as forward(devices=...).")
-    return True
-
-
 def stage_sharded_forward_override(arr, sharded_grid, mesh, pad_value=0.0):
     return cut(arr, Slab.from_grid(sharded_grid), Fill(pad_value, pad_value), mesh=mesh)
 
@@ -513,8 +493,9 @@ def run_nonuniform_distributed_pec(
     pmc_faces: frozenset = frozenset(),
     gather_final_state: bool = True,
     material_drive=None,
-    port_plan=None, rlc_metas=(),
-    prepare_only=False, slab_records=None,
+    port_plan=None, msl_ports=False, rlc_metas=(),
+    prepare_only=False, slab_records=None, measurement=None,
+    sheet_impedance=None, sheet_coeffs=None,
 ) -> dict:
     """Phase 2B/2C/2D sharded NU scan body — hard PEC, ghost exchange,
     optional CPML, and optional Debye/Lorentz dispersion on x-slabs.
@@ -732,6 +713,8 @@ def run_nonuniform_distributed_pec(
         override when there is one, traced when it is -- by
         :func:`material_drive_scales`; ``(dV, 2*sum(beta)/dt)`` on a Debye edge.
     """
+    from rfx.stepping.vector_pad import refuse_if_forced
+    refuse_if_forced("distributed non-uniform")
     # Wrapped slabs carry the globally stamped radius records.
     # The legacy H shard retains its own refusal for unstaged callers.
     if n_devices != sharded_grid.n_devices:
@@ -790,14 +773,16 @@ def run_nonuniform_distributed_pec(
             raise ValueError(f"distributed_nu: unsupported source component {source.component}")
     probes = list(probes) if probes is not None else []
 
-    if runner_step_kind(sharded_grid, cpml=use_cpml, debye=use_debye, lorentz=use_lorentz, pmc=bool(pmc_faces), ports=port_plan is not None) == "wrapped":
+    if runner_step_kind(sharded_grid, cpml=use_cpml, debye=use_debye, lorentz=use_lorentz, pmc=bool(pmc_faces), ports=port_plan is not None or msl_ports, sheet=sheet_impedance) == "wrapped":
         from rfx.runners._distributed_nu_wrapped import run_wrapped
         return run_wrapped(sharded_grid, sharded_materials, sharded_pec_mask,
             n_steps, sources, probes, devices=devices, occupancy=sharded_pec_occupancy,
             checkpoint_every=checkpoint_every, n_warmup=n_warmup,
             emit_time_series=emit_time_series, gather_final_state=gather_final_state,
             material_drive=material_drive, debye=debye, lorentz=lorentz, cpml=use_cpml, cpml_state=cpml_state, port_plan=port_plan,
-            prepare_only=prepare_only, slab_records=slab_records, rlc_metas=rlc_metas)
+            prepare_only=prepare_only, slab_records=slab_records, rlc_metas=rlc_metas,
+            sheet_impedance=sheet_impedance, sheet_coeffs=sheet_coeffs,
+            measurement=measurement)
 
     # Defer the `Mesh` import to runtime so module import remains
     # lightweight (matches distributed_v2.py's pattern).

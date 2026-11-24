@@ -18,8 +18,6 @@ def _metric_scalar(value):
 
 
 def _port_cells(grid, axis, nu):
-    # Match _build_wp_meta: concrete x/y solver stores widened to f64;
-    # z arithmetic stays in its solver dtype, including the dual addition.
     if not nu:
         return np.asarray(host_cells(grid, axis))
     import jax
@@ -51,7 +49,6 @@ def lumped_wire_owner(grid, component, live_cells, *, nu, pmc_faces, periodic,
     widths = _port_cells(grid, axis, nu)
     voltage = tuple(Node(component, *p, -_metric_scalar(widths[p[axis]])) for p in live)
     v = (Node(component, *mid, -_metric_scalar(widths[mid[axis]])),)
-    # Ampere circulation: each H term is weighted by its own dual edge.
     pairs = {'ez': (('hy', 0, 1), ('hx', 1, -1)),
              'ex': (('hz', 1, 1), ('hy', 2, -1)),
              'ey': (('hx', 2, 1), ('hz', 0, -1))}
@@ -75,7 +72,6 @@ def lumped_wire_owner(grid, component, live_cells, *, nu, pmc_faces, periodic,
             if periodic[back_axis] or grid.shape[back_axis] == 1:
                 back[back_axis] %= grid.shape[back_axis]
             else:
-                # h_neighbor's zero exterior contributes no sampled node.
                 continue
         current.append(Node(h_component, *back, -sign*width*(2 if factor == 0 else 1)))
     channels = [Channel('V', 'E', v), Channel('I', 'H', tuple(current))]
@@ -93,7 +89,7 @@ def waveguide_owners(sim, grid, n_steps, nu):
     from rfx.measurement.waveguide_planes import admit_waveguide_entries
     from rfx.preflight.waveguide import resolve_waveguide_port_freqs
     from rfx.runners.nonuniform import _build_waveguide_port_config_nu
-    admit_waveguide_entries(sim)  # the graded builder does not re-check planes
+    admit_waveguide_entries(sim)
     result = []
     for i, entry in enumerate(sim._waveguide_ports):
         freqs = jnp.asarray(resolve_waveguide_port_freqs(sim, entry))
@@ -121,7 +117,6 @@ def waveguide_owner(grid, cfg, *, port_id=0, mode_id=0):
             nodes = []
             for component, profile in zip(components, profiles):
                 weighted = np.asarray(profile) * area
-                # Adjoint of the actual edge-clamped transverse H average.
                 if kind == 'H':
                     for a, offset in reversed(tuple(enumerate(cfg.h_offset))):
                         if offset == 0:
@@ -130,8 +125,6 @@ def waveguide_owner(grid, cfg, *, port_id=0, mode_id=0):
                             raise ValueError('unsupported waveguide H offset')
                         bar = .25 * weighted
                         expanded = 2.0 * bar
-                        # Keep the sampler's transpose addition order, including
-                        # the two clamped endpoints, in its profile dtype.
                         low, high = [slice(None)]*2, [slice(None)]*2
                         low[a], high[a] = 0, -1
                         expanded[tuple(high)] += bar[tuple(high)]
@@ -168,12 +161,14 @@ def msl_owner(grid, *, port_id, direction, voltage_indices, span, trace_planes,
     Arguments are the calculator setup's span, PEC trace planes and H stencil,
     not feed-profile normalization. Indices use the same propagation/width/z
     frame as msl_cross_section_span. No measurement convention is changed.
+
+    The transverse current frame uses the right-handed orders ``(y, z)`` about +x and ``(z, x)`` about +y.
     """
     from rfx.model.graded_admission import refuse_window_cells
     for a in range(3):
         refuse_window_cells(grid, a, slice(None), "waveguide ports MSL owner")
     prop, width = 'xyz'.index(direction[1]), 1 if direction[1] == 'x' else 0
-    cells = [np.asarray(host_cells(grid, a)).astype(np.float32).astype(float) if nonuniform
+    cells = [np.asarray(host_cells(grid, a, store=True), dtype=float) if nonuniform
              else np.asarray(host_cells(grid, a)) for a in range(3)]
     offset = 0.0
     channels = []
@@ -185,7 +180,6 @@ def msl_owner(grid, *, port_id, direction, voltage_indices, span, trace_planes,
             nodes.append(Node('ez', *idx, float(cells[2][k])))
         channels.append(Channel(f'V:{number}', 'E', tuple(nodes),
                                 e_time_offset=offset, h_time_offset=offset))
-    # Current uses the right-handed transverse frame (a,b), including for y ports.
     a, b = ((1, 2) if prop == 0 else (2, 0))
     alo, ahi, blo, bhi = ((span['w_lo'], span['w_hi'], *trace_planes) if prop == 0
                           else (*trace_planes, span['w_lo'], span['w_hi']))
@@ -214,7 +208,7 @@ def msl_owner(grid, *, port_id, direction, voltage_indices, span, trace_planes,
 
 
 def coax_owner(grid, *, port_id, plane_indices, center_xy, pin_radius, outer_radius,
-               frequencies, reference_index=None):
+               frequencies, reference_index=None, pec_cell_mask=None):
     """Describe the voltage ladders of the existing coax line calculators.
 
     These calculators fit plane voltages; they do not sample an H current
@@ -225,26 +219,11 @@ def coax_owner(grid, *, port_id, plane_indices, center_xy, pin_radius, outer_rad
     from rfx.model.graded_grid import NonUniformGrid
     if isinstance(grid, NonUniformGrid) or any(not grid.is_constant(a) for a in range(3)):
         raise ValueError('coax calculators require a uniform grid')
-    coords = [np.asarray([grid.node_of(a, i) for i in range(grid.shape[a])]) for a in (0, 1)]
-    u, v = coords
-    cu, cv = center_xy
-    radial = u-cu
-    radial = radial[(radial >= pin_radius) & (radial <= outer_radius)]
-    if radial.size < 2:
-        radial = np.linspace(pin_radius, outer_radius, 33)
-    widths = np.diff(radial)
-    quadrature = np.r_[widths[0]/2, (widths[:-1]+widths[1:])/2, widths[-1]/2]
-    weights = defaultdict(float)
-    for r, length in zip(radial, quadrature):
-        i = int(np.clip(np.searchsorted(u, cu+r)-1, 0, u.size-2))
-        j = int(np.clip(np.searchsorted(v, cv)-1, 0, v.size-2))
-        tu, tv = (cu+r-u[i])/(u[i+1]-u[i]), (cv-v[j])/(v[j+1]-v[j])
-        for di, dj in product((0, 1), repeat=2):
-            weights[i+di, j+dj] += float(length*(tu if di else 1-tu)*(tv if dj else 1-tv))
+    from .coax_voltage import coax_voltage_weights
     channels = tuple(Channel(f'V:{n}', 'E', tuple(Node('ex', i, j, int(p), w)
-                                                 for (i, j), w in sorted(weights.items())),
-                             e_time_offset=0.0, h_time_offset=0.0)
-                     for n, p in enumerate(plane_indices))
+        for i, j, w in coax_voltage_weights(grid, center_xy=center_xy,
+            pec_cell_mask=pec_cell_mask, plane_index=p)),
+        e_time_offset=0.0, h_time_offset=0.0) for n, p in enumerate(plane_indices))
     refs = [ReferencePlane(f'probe:{i}', 2, int(p), float(grid.node_of(2, int(p))))
             for i, p in enumerate(plane_indices)]
     if reference_index is not None:
@@ -252,8 +231,8 @@ def coax_owner(grid, *, port_id, plane_indices, center_xy, pin_radius, outer_rad
                                    float(grid.node_of(2, int(reference_index)))))
     return Owner(f'coax_port:{port_id}:mode:0', 'coax', channels,
                  _phase_values(frequencies), tuple(refs),
-                 mode_profile_reference='positive-x radial ray, bilinear interpolation, trapezoid',
-                 known_differences=('coax calculator only; NU refused; I inferred from voltage fit',))
+                 mode_profile_reference='positive-x ray, whole Yee edges between realized conductor faces',
+                 known_differences=('coax voltage fit; NU refused; no H-current contour',))
 
 
 def build_msl_owners(sim, grid, *, frequencies, pec_edges=_UNSET):

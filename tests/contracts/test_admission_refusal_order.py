@@ -30,7 +30,11 @@ def test_pec_refusal_names_input_before_material_gate(lane, kind, feature):
 
 def test_distributed_nu_entries_share_runner_carriers():
     assert admission.ADMITS['run_distributed_nu'] == admission.ADMITS['fwd_distributed_nu']
-    assert admission.ADMITS['run_distributed_nu'] == admission._DISTRIBUTED_NU_ROWS
+    assert admission.ADMITS['run_distributed_nu'] == admission._DISTRIBUTED_NU_ROWS | {
+        ('_thin_conductors', 'surface_impedance')}
+    assert ('_thin_conductors', 'surface_impedance') in admission.ADMITS['fwd_distributed_nu']
+    for lane in ('run_distributed', 'fwd_distributed', 'run_distributed_nu', 'fwd_distributed_nu'):
+        assert ("_msl_ports", "msl_port") in admission.ADMITS[lane]
 
 
 @pytest.mark.parametrize('row,graded', (
@@ -71,9 +75,9 @@ def test_conformal_pec_refusal_rows(lane):
             admission.admit(sim, lane, run_args={'conformal_pec': True})
 
 
-def test_2d_box_face_on_slice_refuses_conformal_by_name():
+def test_2d_box_off_slice_refuses_conformal_by_name():
     sim = Simulation(20e9, (.012, .012, .001), dx=.001, boundary='pec',
                      mode='2d_tmz', snap='declared')
-    sim.add(Box((.004, .004, 0.), (.008, .008, .004)), material='pec')
-    with pytest.raises(NotImplementedError, match=r'conformal PEC.*Box.*2-D.*/issues/1373'):
+    sim.add(Box((.004, .004, .0001), (.008, .008, .004)), material='pec')
+    with pytest.raises(NotImplementedError, match=r"Box: in a 2-D model.*does not contain it"):
         sim.run(n_steps=4, conformal_pec=True, skip_preflight=True, compute_s_params=False)

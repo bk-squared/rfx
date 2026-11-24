@@ -2,7 +2,7 @@
 # The runtime guard must execute before the public JAX-dependent imports.
 # ruff: noqa: F401, E402
 
-__version__ = "2.2.0"
+__version__ = "2.3.0.dev0"
 
 import sys as _sys
 
@@ -134,6 +134,8 @@ from rfx.optimize import (
     ProgressiveOptimizeResult,
     progressive_optimize,
 )
+from rfx._minimize import minimize, MinimizeResult
+from rfx.optimizers import MMASubproblemCapWarning
 from rfx.topology import (
     TopologyDesignRegion, TopologyResult,
     topology_optimize, apply_density_filter, apply_projection, density_to_eps,
@@ -247,29 +249,6 @@ from rfx.convergence import (
     quick_convergence,
 )
 
-# ---------------------------------------------------------------------------
-# Curated public surface (W5.5).
-#
-# ``__all__`` is the *front door*: ``from rfx import *`` and rendered API
-# references use it. It contains 218 names, a strict subset of the flat
-# symbols imported above. Per-step kernel internals,
-# low-level bookkeeping/state classes, and dump/replay round-trip helpers are
-# omitted from the star-import surface.
-#
-# Excluded categories (still importable by explicit attribute access):
-#   - per-step Yee/port kernels: init_*/update_*/inject_*/apply_waveguide_port_*,
-#   - low-level state/bookkeeping classes: ADIState2D/3D, RLCState, RLCCellMeta,
-#     Coaxial*PlaneVI, CoaxialPlaneSourceSpec, FloquetDFTAccumulator,
-#     PortVIDump/PortDumpMetadata/PortSMatrixObservable/PortReplayComparison,
-#     SubgridValidationIssue/Report, BATCH_MANIFEST_SCHEMA
-#   - low-level coaxial/floquet/waveguide plane helpers and modal builders
-#     (coaxial_tem_*, *_plane_vi*, extract_floquet_modes, extract_multimode_*,
-#     init_multimode_waveguide_port, solve_rectangular_modes,
-#     waveguide_plane_positions, floquet_phase_shift/wave_vector)
-#   - dump/replay round-trip + secondary IO: save_*/load_*_npz,
-#     save_snapshots/load_snapshots, save_materials/load_materials,
-#     replay_smatrix_from_port_vi_dump, save_optimization_trajectory,
-#     render_artifact_markdown, validate_artifact_report, build_*_report/artifact
 __all__ = [
     "RfxError", "RfxRefusal", "RfxUnsupported",
     "RfxWarning", "AccuracyWarning", "ConfigurationWarning",
@@ -334,6 +313,7 @@ __all__ = [
     "antenna_bandwidth", "BandwidthResult", "plot_antenna_summary",
     # optimization / inverse design + objectives
     "DesignRegion", "OptimizeResult", "optimize",
+    "minimize", "MinimizeResult", "MMASubproblemCapWarning",
     "GradientCheckResult", "gradient_check",
     "ProgressiveStage", "ProgressiveOptimizeResult", "progressive_optimize",
     "TopologyDesignRegion", "TopologyResult", "topology_optimize", "density_to_eps",
@@ -384,16 +364,3 @@ __all__ = [
 ]
 
 from rfx.fidelity import fidelity_report  # noqa: E402,F401
-
-
-_REMOVED_ADI_NAMES = {
-    "ADIState2D", "ADIState3D", "thomas_solve", "adi_step_2d",
-    "run_adi_2d", "adi_step_3d", "run_adi_3d",
-}
-
-
-def __getattr__(name):
-    if name in _REMOVED_ADI_NAMES:
-        from rfx.model.solver_admission import ADI_REMOVED
-        raise AttributeError(f"{name}: {ADI_REMOVED}")
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

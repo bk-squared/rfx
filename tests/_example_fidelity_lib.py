@@ -33,6 +33,7 @@ uses it as a MACHINE CHECK on top of the hand-authored table for every
 bucket, not just the two the audit required — a script whose classification
 disagrees with what its own source does is a bug in the table, not a
 judgement call, and should fail loudly rather than rot silently.
+A defect-open advisory row requires an issue number so the row cannot sit in limbo.
 """
 from __future__ import annotations
 
@@ -53,23 +54,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 SNAPSHOT_PATH = REPO_ROOT / "tests" / "data" / "example_fidelity_snapshot.json"
 ADVISORY_PATH = REPO_ROOT / "tests" / "data" / "example_fidelity_advisories.json"
 
-# Dispositions a pinned advisory row may carry (#737 item 1).
-#   intended    -- the example deliberately shows or tolerates the
-#                  condition; the reason cites the example's own
-#                  docstring/comment, or the physics.
-#   defect-open -- the example should not emit it and the fix is bigger
-#                  than the PR that classified it; an issue number is
-#                  REQUIRED so the row cannot sit in limbo.
-# There is deliberately no plain "defect": a defect small enough to fix
-# is fixed, and its row then leaves the snapshot instead of leaving an
-# entry here.
 ADVISORY_DISPOSITIONS = frozenset({"intended", "defect-open"})
 
-# Every Simulation method that actually time-steps or otherwise solves. A
-# script whose builder-candidate function calls one of these in its OWN body
-# has fused build and solve -- there is no point in that function's source
-# where "declared but not yet solved" holds, so it cannot be audited without
-# either solving for real (forbidden) or forking the script (out of scope).
 SOLVE_ATTRS = frozenset({
     "run",
     "forward",
@@ -96,6 +82,7 @@ def _block_evidence_mutation(event, args):
     The audit hook stays installed but is inert outside ``build_only``.
     This is an accidental-side-effect guard, not a sandbox for native code
     or child processes. The contract also checks file hashes after its run.
+    Import caches are not measured evidence.
     """
     if not _protected_roots:
         return
@@ -114,8 +101,6 @@ def _block_evidence_mutation(event, args):
         if not isinstance(path, (str, bytes, os.PathLike)):
             continue
         resolved = Path(os.fsdecode(path)).resolve()
-        # Import caches are not measured evidence. Existing mkdir(exist_ok)
-        # calls are harmless and common at script module scope.
         if "__pycache__" in resolved.parts:
             continue
         if event == "os.mkdir" and resolved.is_dir():
@@ -158,11 +143,6 @@ def discover_scripts() -> list[str]:
     )
     return sorted(p.relative_to(REPO_ROOT).as_posix() for p in paths)
 
-
-# --------------------------------------------------------------------------
-# AST predicates -- these are what make each bucket machine-checkable rather
-# than a trusted prose reason (2026-08-27 review, required change #4).
-# --------------------------------------------------------------------------
 
 def _parse(relpath: str) -> ast.Module:
     return ast.parse((REPO_ROOT / relpath).read_text(), filename=relpath)
@@ -257,15 +237,6 @@ def functions_building_simulation(relpath: str) -> dict[str, bool]:
     return out
 
 
-# --------------------------------------------------------------------------
-# Module loading -- exec the script's top level (imports, defs, constants),
-# never main(). Safe for every "audited" and "builder_fused_with_solve"
-# entry: every audited script carries a main guard AND no module-scope solve
-# call, both asserted per script by the "audited" branch of
-# test_not_auditable_classifications_are_machine_checked, so nothing solves
-# merely by loading them. Pattern matches tests/contracts/test_crossval_example_imports.py.
-# --------------------------------------------------------------------------
-
 class MissingOptionalDependency(ImportError):
     """A script could not be loaded because a DECLARED optional dep is absent.
 
@@ -283,18 +254,6 @@ class MissingOptionalDependency(ImportError):
         self.module = module
 
 
-# Optional third-party imports an audited script may legitimately lack in a
-# given environment. Keyed by script, so the exemption is per-script and
-# narrow: an undeclared ModuleNotFoundError is still a hard failure.
-#
-# Why this table exists rather than a blanket try/except on import: CI
-# installs `.[dev]`, which does NOT carry optax, while a developer pod often
-# does. Without the declaration a contributor adding `import optax` to any
-# example would silently remove it from this gate in CI and nobody would
-# see it -- the exact "visible SKIP, never green" line in
-# development_methodology.md 2.7's exit-code convention.
-# test_optional_dependency_declarations_are_grounded keeps the table honest
-# in both directions.
 OPTIONAL_DEPENDENCIES: dict[str, frozenset[str]] = {
     "examples/tutorials/cad_mesh_import_demo.py": frozenset({"trimesh"}),
     "validation/tmtt_paper/beam_steering_superstrate.py": frozenset({"optax"}),
@@ -303,8 +262,7 @@ OPTIONAL_DEPENDENCIES: dict[str, frozenset[str]] = {
 
 
 def load_module(relpath: str) -> ModuleType:
-    # Check at the point of execution, even if a caller did not run the
-    # classification tests first. cv01-cv05 must never execute here (#967).
+    """The build-only execution check must hold even if a caller did not run the classification tests first."""
     if not has_main_guard(relpath) or has_top_level_solve_call(
             relpath, skip_main_guard=True):
         raise UnsafeExampleExecution(
@@ -329,10 +287,6 @@ def load_module(relpath: str) -> ModuleType:
     return module
 
 
-# --------------------------------------------------------------------------
-# Classification table
-# --------------------------------------------------------------------------
-
 @dataclass(frozen=True)
 class Variant:
     label: str
@@ -342,14 +296,13 @@ class Variant:
 @dataclass(frozen=True)
 class Builder:
     fn: str
-    result_index: int | None  # None: builder returns the Simulation directly
+    result_index: int | None
     variants: tuple[Variant, ...]
 
 
 @dataclass(frozen=True)
 class Entry:
-    kind: str  # audited | builder_fused_with_solve | module_level_solve
-    #            | no_simulation | no_solve
+    kind: str
     reason: str
     builders: tuple[Builder, ...] = field(default_factory=tuple)
 
@@ -374,9 +327,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "Reuses quickstart.hello_world.build_simulation via _make_sim, adds a "
         "dielectric insert, and delegates solves to parametric_sweep; the "
         "end-to-end tutorial test checks the resulting artifact."),
-    # ---- no_simulation: zero real Simulation() calls, AST-verified ------
-    # (bucket sizes are not written here: they rot. Count them with a
-    #  Counter over CLASSIFICATION, the way the two docstrings above say.)
     "validation/crossval/comparators/realized_conductors.py": Entry(
         "no_simulation",
         "crossval-side build-time realized-conductor gate (#931): takes a "
@@ -444,14 +394,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "pytest battery over the portgrid.m1b_retry prototype -- no rfx "
         "Simulation is constructed by this script"),
 
-    # SPEC-01 multiband-NU witness package (#780). These are a witness
-    # LIBRARY plus per-witness measurement drivers, not demo examples; the
-    # thirteen below never construct a `Simulation` (AST-verified). Ten of
-    # them drive the non-uniform kernels through
-    # `rfx.nonuniform.make_nonuniform_grid` / `run_nonuniform` directly
-    # (the design note requires explicit profile vectors, bypassing the
-    # `auto_config` builders so a solver property is never confounded with
-    # a builder defect), and three are pure numpy/analysis.
     "validation/research/multiband_nu/__init__.py": Entry(
         "no_simulation", "package marker -- empty file"),
     "validation/research/nu_cost/__init__.py": Entry(
@@ -563,9 +505,7 @@ CLASSIFICATION: dict[str, Entry] = {
         "`a1_production_column()` builds one only to read its rasterized "
         "eps column) -- no separable build-only path"),
 
-    # ---- module_level_solve: solves at import time, no main guard -------
 
-    # ---- builder_fused_with_solve: build+solve share one function -------
     "validation/research/nu_cost/g4/cpml_baseline.py": Entry(
         "no_simulation",
         "G4 frozen low-level CPML reference; defines operators and state, "
@@ -608,13 +548,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "builder_fused_with_solve",
         "issue #636 CFS-alpha factorial: `vacuum_floor()` (and `run_cell()` "
         "via `build_sim`) construct and call .run(...) for the same cell"),
-    # ---- audited: builder is separable from solve ----
-    # #737 item 2 (2026-09-16): build-only entry points on the pattern the
-    # Sheen low-pass filter and cv15 set, for the scripts the reopen comment
-    # listed as unreachable. Each
-    # builder is the one the script's own main path calls, so what the gate
-    # pins is the model that runs, not a copy of it. cad_mesh_import_demo
-    # joined them with #1271, below.
     "examples/quickstart/hello_world.py": Entry(
         "audited",
         "`build_simulation()` returns Simulation with no solve call (split "
@@ -831,7 +764,6 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/tmtt_paper/waveguide_dielectric_taper.py": Entry(
         "audited", "`build_sim()` returns Simulation with no solve call",
         (Builder("build_sim", None, (_v("default"),)),)),
-    # ---- issue #786 attribution lane (validation/research/convergence_floor)
     "validation/research/convergence_floor/fixture.py": Entry(
         "audited",
         "`build_sim(scale, dz_profile, ...)` returns the W4R P-C "
@@ -892,15 +824,6 @@ CLASSIFICATION: dict[str, Entry] = {
     "validation/research/convergence_floor/verdict.py": Entry(
         "no_simulation", "reads committed JSON only; no Simulation"),
 
-    # SPEC-01 multiband-NU W4 fixtures (#780) -- the only two scripts in
-    # that package that construct a `Simulation` (P-C, the microstrip-class
-    # multi-band resonator; preflight is deliberately ON there). Both
-    # expose `build_sim(scale, dz_profile)` with no solve call, so the gate
-    # pins exactly what this lane most needs pinned: declared-vs-realized
-    # geometry on a multi-band graded mesh. Audited at the COARSEST declared
-    # ladder scale of each script (cheapest build, same declared geometry at
-    # every scale by construction -- the alignment invariant in the design
-    # note's section 1), multiband profile, which is the arm under test.
     "validation/research/multiband_nu/msl_notch_graded.py": Entry(
         "audited",
         "`build_graded(rung, placement, arm_length_m)` returns "
@@ -979,14 +902,8 @@ def iter_audited_variants():
                     yield relpath, builder.fn, variant.label, sim
 
 
-# --------------------------------------------------------------------------
-# Digests -- keyed by entity IDENTITY (material + declared bounds) and axis
-# LETTER, never by list position (2026-08-27 review, required change #2):
-# inserting one new entity anywhere in a script's geometry list must not
-# relabel every entity after it in the diff.
-# --------------------------------------------------------------------------
-
 def _entity_key(item: dict, seen: dict[str, int]) -> str:
+    """The entity-key prefix names the DECLARATION ROUTE, not the realization class."""
     if any(f.get("kind") == "out-of-scope" for f in item.get("findings", [])):
         return "out-of-scope"
     name = str(item.get("entity", ""))
@@ -994,17 +911,6 @@ def _entity_key(item: dict, seen: dict[str, int]) -> str:
         return "domain"
     lo, hi = item.get("declared_lo"), item.get("declared_hi")
     if lo is not None and hi is not None:
-        # The prefix names the DECLARATION ROUTE, not the realization class:
-        # under the lattice ownership contract (#931) a sheet can be declared
-        # either as a zero-thickness Box through ``add()`` (entity name
-        # "geometry[i]") or through ``add_thin_conductor`` (entity name
-        # "thin_conductor[i]"), and the two realize identically. Migrating a
-        # foil from the first spelling to the second therefore moves its row
-        # from ``geometry|...`` to ``thin_conductor|...`` in the snapshot —
-        # that is the intended, reviewable diff, not a key regression. A sheet
-        # still reports declared_lo/declared_hi (its drawn corners, with
-        # lo == hi on the normal axis), so it stays on this
-        # position-independent branch.
         kind = "thin_conductor" if name.startswith("thin_conductor") else "geometry"
         mat = item.get("material") or {}
         tag = mat.get("name", mat.get("kind", "?"))
@@ -1012,7 +918,6 @@ def _entity_key(item: dict, seen: dict[str, int]) -> str:
         hi_s = ",".join(f"{v * 1e6:.3f}" for v in hi)
         key = f"{kind}|{tag}|{lo_s}um->{hi_s}um"
     else:
-        # A non-geometric entity without a bounding box uses its stable name.
         key = name
     n = seen.get(key, 0)
     seen[key] = n + 1
@@ -1020,6 +925,7 @@ def _entity_key(item: dict, seen: dict[str, int]) -> str:
 
 
 def digest_fidelity(report: list[dict]) -> dict:
+    """Inserting one new entity anywhere in a script's geometry list must not relabel every entity after it in the diff."""
     seen: dict[str, int] = {}
     out = {}
     for item in report:
@@ -1046,6 +952,7 @@ def load_advisory_classification() -> list[dict]:
     inside it would be destroyed by every re-capture. Keeping it beside the
     snapshot means a re-capture changes what is pinned and the contract then
     reports which rows lost (or gained) an explanation.
+    After a small defect is fixed, its row leaves the snapshot instead of leaving an entry in the disposition table.
     """
     import json
     if not ADVISORY_PATH.exists():

@@ -2,6 +2,7 @@
 
 A declaration-time tool. Moved verbatim from ``rfx/nonuniform.py``, which
 re-exports every name here.
+``_EDGE_TOL`` is the node-coordinate tolerance in metres.
 """
 
 from __future__ import annotations
@@ -16,10 +17,6 @@ from typing import NamedTuple
 import numpy as np
 
 
-# ---------------------------------------------------------------------------
-# Band profile builder — axis-agnostic, interface-exact, ratio-law-exact.
-# Design note: docs/design_notes/20260907_nu_band_profile_predeclaration.md
-# ---------------------------------------------------------------------------
 
 class _BandSeg(NamedTuple):
     """One declared segment of a band profile (private engine input).
@@ -61,11 +58,10 @@ class _Anchor(NamedTuple):
     kind: str
 
 
-# Engine constants — see make_band_profile's docstring for the numbers.
-_RATIO_FLOOR = 1.0001        # a 2x transition already needs 6932 cells here
+_RATIO_FLOOR = 1.0001
 _MAX_PROFILE_CELLS = 1_000_000
-_STEP_TOL = 1e-10            # relative slack on the ramp step count (F5 fix)
-_EDGE_TOL = 1e-12            # the I1 node tolerance, metres
+_STEP_TOL = 1e-10
+_EDGE_TOL = 1e-12
 
 
 def _ramp_steps(ratio: float, cap: float) -> int:
@@ -99,7 +95,7 @@ def _ramp_spec(anchor: _Anchor | None, u: float, cap: float) -> tuple[str, int]:
     tol = 1e-12
     if kind == "emax":
         if u <= v * (1.0 + tol):
-            return "none", 0            # thin run: its cells are <= emax
+            return "none", 0
         return "emax", _ramp_steps(u / v, cap)
     if u > v * (1.0 + tol):
         return "up", _ramp_steps(u / v, cap)
@@ -130,7 +126,6 @@ def _ramp_sum(anchor: _Anchor | None, u: float, mode: str, m: int) -> float:
             return u
         rho = (v / u) ** (1.0 / m)
         return (v - u) / (rho - 1.0)
-    # emax: v, v rho, ..., u  (m + 1 cells)
     if m == 1:
         return v + u
     rho = (u / v) ** (1.0 / m)
@@ -210,8 +205,6 @@ def _band_realize_free(length: float, target: float, cap: float,
                 if t < P * (1.0 - _STEP_TOL):
                     th.add(t)
                 k += 1
-    # Merge thresholds closer than the step slack (a seam cell on the law
-    # exactly produces two thresholds 1e-13 apart from the two sides).
     bounds = [P]
     for t in sorted(th, reverse=True):
         if t < bounds[-1] * (1.0 - _STEP_TOL):
@@ -233,13 +226,13 @@ def _band_realize_free(length: float, target: float, cap: float,
         tol_g = 1e-10 * (abs(g_hi) + m_lo + m_hi + 1.0)
         n = max(int(np.ceil(g_hi - tol_g)), 0 if has_ramp else 1)
         if n > g_lo + tol_g:
-            continue                      # no integer reachable on this piece
+            continue
         if g_hi >= n - tol_g:
-            u = b_hi                      # root at the top (u == P exact)
+            u = b_hi
         elif g_lo <= n + tol_g:
             u = b_lo
         else:
-            a, b = b_lo, b_hi             # G(a) > n > G(b)
+            a, b = b_lo, b_hi
             for _ in range(200):
                 mid = 0.5 * (a + b)
                 if _G(mid) - n > 0.0:
@@ -256,9 +249,6 @@ def _band_realize_free(length: float, target: float, cap: float,
         cells = left + [float(u)] * n + right[::-1]
         if not cells:
             continue
-        # Float dust: onto the plateau cells; with no plateau, spread
-        # over the ramp cells that are not pinned by construction (an
-        # ``emax`` first/last cell is ``dx_fine`` exactly and stays so).
         dust = length - float(np.sum(cells))
         if n > 0:
             per = dust / n
@@ -309,9 +299,6 @@ def _band_realize_protected(seg: _BandSeg, lim_lo: float | None,
             f"{_MAX_PROFILE_CELLS} cell ceiling. A neighbouring segment is "
             "a sliver (edges from float noise?) and the ratio law is "
             "pulling this one down to its size; merge or widen it.")
-    # Seam guard: the realized seam cell must respect the limit itself (the
-    # 1e-9 ceil tolerance above is for float dust on the declared quotient,
-    # not a licence to overshoot a seam limit).
     while True:
         d = seg.length / n
         if lim_lo is not None and d * f_lo > lim_lo * (1.0 + 1e-13):
@@ -375,8 +362,6 @@ def _build_band_profile(segs: list[_BandSeg], cap: float,
             raise ValueError(
                 f"segment {k}: span {segs[k].length*1e3:.6g} mm is shorter "
                 f"than the pinned boundary cell(s) it must hold")
-        # A remainder inside the node tolerance is float dust from the
-        # edge subtraction (10 mm - 9 mm - 1 mm = 8.7e-19 m), not a run.
         return L if L > _EDGE_TOL else 0.0
 
     lens = [_free_len(k) if not s.protected else float(s.length)
@@ -394,12 +379,6 @@ def _build_band_profile(segs: list[_BandSeg], cap: float,
             m = max(1, int(np.ceil(lens[k] / P - 1e-9)))
             real.append([lens[k] / m] * m)
 
-    # An end segment whose span EQUALS its pinned cell has no free cells:
-    # the pin is then that segment's seam cell on BOTH sides (its lo side
-    # for k == 0, its hi side for k == n_seg - 1), so the neighbour ramps
-    # from it and the seam audit sees it. Exposing the pin only on the outside hides a
-    # ratio-10 seam in ``make_band_profile([0, 1e-3, 5e-3], [1e-3, 1e-4],
-    # boundary_cell=1e-3)``.
     def _lo_cell(k, cur):
         if cur[k]:
             return cur[k][0]
@@ -477,7 +456,6 @@ def _build_band_profile(segs: list[_BandSeg], cap: float,
                 f"band profile would need {n_cells} cells, more than the "
                 f"{_MAX_PROFILE_CELLS} cell ceiling (a sliver segment or a "
                 "ratio close to 1 is driving the count)")
-        # Seam audit on the ACTUAL seam cells.
         viol = []
         for k in range(n_seg - 1):
             a = _hi_cell(k, new)
@@ -487,11 +465,6 @@ def _build_band_profile(segs: list[_BandSeg], cap: float,
             r = max(a / b, b / a)
             if r > cap * (1.0 + 1e-11):
                 viol.append((k, a, b))
-        # Convergence is judged with a 1e-11 relative tolerance: two adjacent
-        # free runs feed each other their seam cells, and the ramp
-        # arithmetic can flip those by one ulp in a two-cycle (measured on
-        # the fuzz family: 1e-18 m swings, every seam compliant), which an
-        # exact-equality test never settles.
         changed = any(
             len(x) != len(y)
             or any(abs(p - q) > 1e-11 * max(abs(p), abs(q))
@@ -526,7 +499,6 @@ def _build_band_profile(segs: list[_BandSeg], cap: float,
                         f"mm cell with no room for a ramp (ratio "
                         f"{max(a, b)/fine_cell:.3f} > {cap:g}); widen the "
                         f"segment so it can hold the ramp")
-                # free coarse side re-ramps from the fresh neighbour cell
         real = new
     else:
         raise RuntimeError("band profile: fixed-point iteration did not "
@@ -540,7 +512,6 @@ def _build_band_profile(segs: list[_BandSeg], cap: float,
     if pin_hi is not None:
         parts.append(float(pin_hi))
     out = np.asarray(parts, dtype=np.float64)
-    # Self-audit of the invariants the caller relies on.
     total = float(sum(float(s.length) for s in segs))
     if abs(float(np.sum(out)) - total) > 1e-12:
         raise RuntimeError("band profile: column length not realized "
@@ -726,20 +697,11 @@ def make_z_profile(
         raise ValueError(f"grading must be a finite number (got {grading})")
     cap = grading
     if grading <= 1.0:
-        # No grading: uniform dx_fine everywhere, which is what the old
-        # loop produced for grading <= 1 (its plateau never grew). The
-        # seams between the uniform segments are then held at the
-        # default 1.4.
         dx_coarse = dx_fine
         cap = 1.4
     if not (domain_z > 0.0):
         raise ValueError(f"domain_z must be > 0 (got {domain_z})")
 
-    # Features outside [0, domain_z] cannot be node planes of a column
-    # that sums to domain_z (the old loop silently extended the column);
-    # features closer together than the 1e-12 m node tolerance are one
-    # plane (0.1 mm + 0.2 mm vs 0.3 mm differ by 5e-20 m and used to
-    # become a 5e-20 m cell).
     pts = sorted(float(f) for f in features)
     for f in pts:
         if f < -_EDGE_TOL or f > domain_z + _EDGE_TOL:
@@ -760,7 +722,6 @@ def make_z_profile(
         if span <= 0:
             continue
         if dx_coarse <= dx_fine * 1.01 or span <= 4 * dx_fine:
-            # Uniform fine cells for thin segments or when no grading needed
             n = max(1, int(round(span / dx_fine)))
             segs.append(_BandSeg(length=span, target=span / n, protected=False))
         else:

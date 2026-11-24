@@ -10,7 +10,6 @@ def run_reflection_record(grid, materials, n_steps, *, spec, conductors, cpml_ax
     from rfx.sources.coaxial_port import coaxial_line_plane_voltage
 
     dz = float(grid.dx)
-    # Match the two-port witness: an annular point at the ladder's middle plane.
     witness_probes = [ProbeSpec(
         i=int(round((center_xy[0] + 0.5 * (a + b)) / dz)) + int(grid.pad_x_lo),
         j=int(round(center_xy[1] / dz)) + int(grid.pad_y_lo),
@@ -42,7 +41,8 @@ def run_reflection_record(grid, materials, n_steps, *, spec, conductors, cpml_ax
             channels = [
                 (f"coax/plane{pi}/V", np.asarray(coaxial_line_plane_voltage(
                     grid, plane_records[2*pi], plane_records[2*pi+1],
-                    center_xy=center_xy, pin_radius=a, outer_radius=b)))
+                    center_xy=center_xy, pin_radius=a, outer_radius=b,
+                    pec_cell_mask=conductors.pec_cells, plane_index=probes_z[pi])))
                 for pi in range(len(probes_z))
             ] if plane_records else []
             if channels:

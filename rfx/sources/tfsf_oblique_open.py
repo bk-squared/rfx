@@ -13,7 +13,7 @@ clean and the TFSF leakage is low.
 Design invariant (Stage-2 relevant): ``MethodBConfig`` is a NEW ``NamedTuple``,
 NOT a ``TFSF2DConfig`` subclass, so ``is_tfsf_2d(cfg)`` is ``False`` — the
 oblique-Bloch complex64/NTFF-reject lane never fires and fields stay real
-``float32``.
+values at the selected precision (including the existing x64 promotion).
 
 STAGE 1 (this module + the standalone driver) only: the per-step kernels here
 are ``jnp`` + functional (no numpy in-place, no python-data-dependent indexing;
@@ -52,10 +52,11 @@ from rfx.boundaries.cpml import CPMLParams, _cpml_profile
 from rfx.core.yee import EPS_0, MU_0
 from rfx.sources.tfsf import TFSFState, update_tfsf_1d_h, update_tfsf_1d_e
 
+_METHOD_B_SOURCE_PAD_CELLS = 60
+
+
 C0 = 299_792_458.0
 
-# The 1D-aux state shape is exactly the normal-path 1D FDTD state, so the reused
-# update_tfsf_1d_h/e kernels advance it unchanged.
 MethodBState = TFSFState
 
 
@@ -65,28 +66,23 @@ class MethodBConfig(NamedTuple):
     Box indices are plain Python ``int`` (compile-time slice bounds); projection
     scalars are Python ``float`` baked at trace time; the CPML profiles
     and the 24 gather-table arrays are ``jnp`` (built once at init).
+
+    Each gather triple is (base int32, w0 and w1 in the coefficient dtype);
+    base is clipped to [0, n_aux-2] so base+1 is always in range.
+
+    Gather fields named ``<face>_e_<part>`` read electric nodes for magnetic corrections, while fields named ``<face>_h_<part>`` read magnetic half-nodes for electric corrections.
     """
-    # --- static TFSF box indices (Python int -> compile-time slice bounds) ---
-    # Total-field region is INCLUSIVE: x in [x_lo, x_hi], y in [y_lo, y_hi] —
-    # the upper-face corrections (Hy[x_hi], Hx[.,y_hi], Ez[x_hi+1], Ez[.,y_hi+1])
-    # are only self-consistent if x_hi / y_hi are total-field nodes, so the
-    # transverse face slices must include them (see module docstring: the
-    # prototype's exclusive slicing skipped the corners and leaked).
-    # Corrections also touch x_lo-1, x_hi, y_lo-1, y_hi, x_hi+1, y_hi+1.
     x_lo: int
     x_hi: int
     y_lo: int
     y_hi: int
-    # --- projection scalars (Python float) ---
     cos_theta: float
     sin_theta: float
-    d_aux: float           # dispersion-matched 1D cell size along k-hat
-    dx_1d: float           # == d_aux (reused 1D kernels read cfg.dx_1d)
-    dt: float              # baked so advance_methodB_* need no dt arg
+    d_aux: float
+    dx_1d: float
+    dt: float
     angle_deg: float
-    transverse_axis: str   # "y" for ez
-    # --- 1D-aux source/CPML params (names match TFSFConfig so the 1D kernels
-    #     update_tfsf_1d_h/e duck-type over this config unchanged) ---
+    transverse_axis: str
     n_cpml: int
     b_cpml: jnp.ndarray
     c_cpml: jnp.ndarray
@@ -98,16 +94,11 @@ class MethodBConfig(NamedTuple):
     src_tau: float
     src_fcen: float
     src_waveform: str
-    curl_sign: float          # +1.0 for ez/hy
-    electric_component: str   # "ez"
-    magnetic_component: str   # "hy"
+    curl_sign: float
+    electric_component: str
+    magnetic_component: str
     direction: str
     direction_sign: float
-    # --- 8 precomputed face-projection gather tables (jnp, static geometry) ---
-    #   naming <face>_<read>: read=e -> gather e1d (H-correction);
-    #                         read=h -> gather h1d half-node (E-correction).
-    #   each triple (base:int32, w0:float32, w1:float32); base clipped to
-    #   [0, n_aux-2] so base+1 is always in range.
     xlo_e_base: jnp.ndarray; xlo_e_w0: jnp.ndarray; xlo_e_w1: jnp.ndarray
     xhi_e_base: jnp.ndarray; xhi_e_w0: jnp.ndarray; xhi_e_w1: jnp.ndarray
     ylo_e_base: jnp.ndarray; ylo_e_w0: jnp.ndarray; ylo_e_w1: jnp.ndarray
@@ -118,10 +109,6 @@ class MethodBConfig(NamedTuple):
     yhi_h_base: jnp.ndarray; yhi_h_w0: jnp.ndarray; yhi_h_w1: jnp.ndarray
 
 
-# ---------------------------------------------------------------------------
-# Dispersion-matched 1D cell size (bisection, numpy — init-time only).
-# Ported verbatim from the prototype (k_numerical / dx_aux_matched).
-# ---------------------------------------------------------------------------
 
 def _k_numerical(omega, theta, dt, dx):
     """2D Yee numerical wavenumber |k| at angle theta (kx=|k|cosθ, ky=|k|sinθ):
@@ -145,27 +132,28 @@ def _dx_aux_matched(omega, k_num, dt):
 
     def f(D):
         return np.sin(k_num * D / 2.0) / D - rhs
-    lo, hi = 1e-6, 2.0 * np.pi / k_num * 0.999   # first half-period
+    lo, hi = 1e-6, 2.0 * np.pi / k_num * 0.999
     for _ in range(200):
         m = 0.5 * (lo + hi)
         lo, hi = (lo, m) if f(lo) * f(m) <= 0 else (m, hi)
     return 0.5 * (lo + hi)
 
 
-def _gather_table(idx: np.ndarray, n_aux: int):
+def _gather_table(idx: np.ndarray, n_aux: int, *, dtype):
     """Build (base, w0, w1) linear-interp gather triple from float indices.
 
     Matches the prototype's per-step ``interp``: floor -> fractional weight from
     the UNCLIPPED floor -> clip base to [0, n_aux-2] (so base+1 <= n_aux-1).
-    Runs in numpy at init; only the int32/float32 results cross into jnp.
+    Runs in numpy at init; int32 indices and run-typed weights cross into jnp.
     """
+    dtype = jnp.promote_types(jnp.float32, dtype)
     fl = np.floor(idx)
-    w1 = (idx - fl).astype(np.float32)
-    w0 = (1.0 - w1).astype(np.float32)
+    w1 = (idx - fl).astype(dtype)
+    w0 = (1.0 - w1).astype(dtype)
     base = np.clip(fl.astype(np.int32), 0, n_aux - 2)
     return (jnp.asarray(base, dtype=jnp.int32),
-            jnp.asarray(w0, dtype=jnp.float32),
-            jnp.asarray(w1, dtype=jnp.float32))
+            jnp.asarray(w0, dtype=dtype),
+            jnp.asarray(w1, dtype=dtype))
 
 
 def init_tfsf_methodB(
@@ -184,6 +172,7 @@ def init_tfsf_methodB(
     polarization: str = "ez",
     direction: str = "+x",
     theta_deg: float = 0.0,
+    dtype,
 ) -> tuple[MethodBConfig, MethodBState]:
     """Build the Method-B config + zero 1D-aux state (open-domain oblique TFSF).
 
@@ -194,6 +183,8 @@ def init_tfsf_methodB(
     Source timing follows ``pulse_timing`` for the declared Gaussian pulse.
     ``compute_rcs`` normalizes absolute sigma by the measured auxiliary
     spectrum, including the angle-dependent launch response.
+
+    Auxiliary absorber profiles take the run dtype with a float32 floor.
     """
     from rfx.sources.tfsf import pulse_timing
     if waveform not in ("differentiated_gaussian", "modulated_gaussian"):
@@ -206,9 +197,6 @@ def init_tfsf_methodB(
     if direction not in ("+x", "-x"):
         raise ValueError(f"direction must be '+x' or '-x', got {direction!r}")
     if direction == "-x":
-        # direction_sign is stored but never consumed: the gather tables are
-        # built with +cosθ/+sinθ projections and the 1D source sits at the lo
-        # pad, so '-x' would silently inject a +x-travelling wave (review F2).
         raise NotImplementedError(
             "Method B supports direction='+x' only; '-x' is not wired into the "
             "gather tables / 1D-aux layout yet. Use direction='+x' (mirror the "
@@ -216,18 +204,12 @@ def init_tfsf_methodB(
         )
     if not abs(theta_deg) < 90.0:
         raise ValueError(f"abs(theta_deg) must be < 90, got {theta_deg}")
-    # NOTE: Method B's math is valid for the full range 0 <= |theta| < 90 (theta=0
-    # reduces to normal incidence with d_aux==dx). theta=0 is used by the Stage-1
-    # port-validation gate. In Stage 2 the init_tfsf dispatch chooses methodB vs
-    # the faster normal-incidence 1D-aux path via an explicit `method` kwarg,
-    # not by rejecting theta=0 here.
 
     theta = np.radians(theta_deg)
     ct = float(np.cos(theta))
     st = float(np.sin(theta))
     omega = 2.0 * np.pi * f0
 
-    # --- TFSF box (prototype: xl,xh = off, nx-off ; yl,yh = off, ny-off) ---
     off = int(cpml_layers + tfsf_margin)
     x_lo, x_hi = off, nx - off
     y_lo, y_hi = off, ny - off
@@ -238,59 +220,44 @@ def init_tfsf_methodB(
             f"nx={nx}, ny={ny}, cpml_layers={cpml_layers}, tfsf_margin={tfsf_margin}"
         )
 
-    # --- dispersion-matched 1D cell size along k-hat ---
     k_num = _k_numerical(omega, theta, dt, dx)
     d_aux = float(_dx_aux_matched(omega, k_num, dt))
 
-    # --- 1D-aux sizing (prototype layout) ---
     n_cpml_1d = 20
-    n_src_pad = 60                       # source sits 60 cells in from the lo end
-    d_max = (nx * ct + ny * st) * dx     # max projection over the (padded) domain
+    n_src_pad = _METHOD_B_SOURCE_PAD_CELLS
+    d_max = (nx * ct + ny * st) * dx
     n_aux = int(d_max / d_aux) + 2 * n_src_pad + 4
-    src_off = n_src_pad                  # 1D index mapping projection d = 0
+    src_off = n_src_pad
 
-    # Keep the existing sigma_max = 0.8*4/(eta*d_aux), expressed through
-    # the shared grading law. H samples lie half a cell from the E nodes.
     profile_options = dict(R_asymptotic=np.exp(-1.6 * n_cpml_1d))
-    electric = _cpml_profile(n_cpml_1d, dt, d_aux, **profile_options)
+    electric = _cpml_profile(n_cpml_1d, dt, d_aux, dtype=jnp.promote_types(jnp.float32, dtype), **profile_options)
     magnetic_lo = _cpml_profile(
-        n_cpml_1d, dt, d_aux, sample_offset=0.5, **profile_options)
+        n_cpml_1d, dt, d_aux, dtype=jnp.promote_types(jnp.float32, dtype), sample_offset=0.5, **profile_options)
     magnetic_hi = _cpml_profile(
-        n_cpml_1d, dt, d_aux, sample_offset=-0.5, **profile_options)
+        n_cpml_1d, dt, d_aux, dtype=jnp.promote_types(jnp.float32, dtype), sample_offset=-0.5, **profile_options)
 
     src_tau, src_t0 = pulse_timing(waveform, f0, bandwidth)
 
-    # --- gather tables ---------------------------------------------------------
-    # aux index for an E-node projection (read by H-correction, gathers e1d):
-    #   idx_E(ix, iy) = (ix*ct + iy*st)*dx / d_aux + src_off
-    # aux index for an H-node (read by E-correction, gathers h1d on half-nodes):
-    #   idx_H(ix, iy) = idx_E(ix, iy) - 0.5
     def idx_E(ix, iy):
         return ((ix * ct + iy * st) * dx) / d_aux + src_off
 
     def idx_H(ix, iy):
         return idx_E(ix, iy) - 0.5
 
-    # INCLUSIVE transverse extents — the corners x_hi / y_hi are total-field
-    # nodes and must receive their correction (module docstring, review F1).
-    iy_face = np.arange(y_lo, y_hi + 1)  # x-faces vary iy over [y_lo, y_hi]
-    ix_face = np.arange(x_lo, x_hi + 1)  # y-faces vary ix over [x_lo, x_hi]
+    iy_face = np.arange(y_lo, y_hi + 1)
+    ix_face = np.arange(x_lo, x_hi + 1)
 
-    # H-face tables (gather e1d) — projection at the E-node coordinate.
-    xlo_e = _gather_table(idx_E(x_lo,       iy_face), n_aux)
-    xhi_e = _gather_table(idx_E(x_hi + 1,   iy_face), n_aux)
-    ylo_e = _gather_table(idx_E(ix_face,    y_lo),    n_aux)
-    yhi_e = _gather_table(idx_E(ix_face,    y_hi + 1), n_aux)
+    xlo_e = _gather_table(idx_E(x_lo,       iy_face), n_aux, dtype=dtype)
+    xhi_e = _gather_table(idx_E(x_hi + 1,   iy_face), n_aux, dtype=dtype)
+    ylo_e = _gather_table(idx_E(ix_face,    y_lo),    n_aux, dtype=dtype)
+    yhi_e = _gather_table(idx_E(ix_face,    y_hi + 1), n_aux, dtype=dtype)
 
-    # E-face tables (gather h1d, half-node) — fractional cell coord + (-0.5).
-    xlo_h = _gather_table(idx_H(x_lo - 0.5, iy_face), n_aux)
-    xhi_h = _gather_table(idx_H(x_hi + 0.5, iy_face), n_aux)
-    ylo_h = _gather_table(idx_H(ix_face,    y_lo - 0.5), n_aux)
-    yhi_h = _gather_table(idx_H(ix_face,    y_hi + 0.5), n_aux)
+    xlo_h = _gather_table(idx_H(x_lo - 0.5, iy_face), n_aux, dtype=dtype)
+    xhi_h = _gather_table(idx_H(x_hi + 0.5, iy_face), n_aux, dtype=dtype)
+    ylo_h = _gather_table(idx_H(ix_face,    y_lo - 0.5), n_aux, dtype=dtype)
+    yhi_h = _gather_table(idx_H(ix_face,    y_hi + 0.5), n_aux, dtype=dtype)
 
-    # Real auxiliary fields follow dt's promotion, with a float32 floor.
-    # A numpy float64 dt promotes the shared 1-D update under x64.
-    fdtype = jnp.promote_types(jnp.result_type(float, dt), jnp.float32)
+    fdtype = jnp.promote_types(jnp.result_type(float, dt), dtype)
     cfg = MethodBConfig(
         x_lo=x_lo, x_hi=x_hi, y_lo=y_lo, y_hi=y_hi,
         cos_theta=ct, sin_theta=st,
@@ -333,16 +300,12 @@ def init_tfsf_methodB(
     return cfg, state
 
 
-# ---------------------------------------------------------------------------
-# Discriminator + aux advance (thin wrappers over the byte-identical 1D kernels)
-# ---------------------------------------------------------------------------
 
 def is_tfsf_methodB(cfg) -> bool:
     """True iff cfg is a Method-B (open-domain oblique) config."""
     return isinstance(cfg, MethodBConfig)
 
 
-# synonym used in the integration spec
 is_open_oblique = is_tfsf_methodB
 
 
@@ -350,16 +313,6 @@ is_open_oblique = is_tfsf_methodB
 
 
 
-# Spec synonyms (Stage-2 dispatch names): dx/dt from the 3D call site are
-# ignored by the 1D kernels (they use cfg.dx_1d/cfg.dt).
-
-
-
-
-# ---------------------------------------------------------------------------
-# The genuinely new code: 4-edge TFSF box corrections onto the full z-plane.
-# jnp gather (arr[base]*w0 + arr[base+1]*w1) + functional .at[...].add.
-# ---------------------------------------------------------------------------
 
 
 
@@ -367,9 +320,10 @@ is_open_oblique = is_tfsf_methodB
 
 
 
-# ---------------------------------------------------------------------------
-# Boundary-plane vacuum validation
-# ---------------------------------------------------------------------------
+
+
+
+
 
 def validate_vacuum_boundary(materials, cfg: MethodBConfig) -> None:
     """Use the same injection-plane rule as both step setups."""
@@ -380,13 +334,9 @@ def validate_vacuum_boundary(materials, cfg: MethodBConfig) -> None:
         raise ValueError(f"{exc}. Shrink the target or enlarge tfsf_margin.") from exc
 
 
-# ---------------------------------------------------------------------------
-# Measured incident spectrum — the absolute-sigma normalization
-# ---------------------------------------------------------------------------
 
 
 
-# Lazy compatibility export avoids a cycle through MethodBConfig.
 _LAZY_EXPORTS = {
     "measure_incident_spectrum": "rfx.measurement.incident",
 }

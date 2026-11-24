@@ -37,13 +37,20 @@ def record_step_kind(grid, debye_spec, lorentz_spec, boundary_spec, *, ports=Fal
         lorentz=lorentz_spec is not None, pmc=bool(boundary_spec.pmc_faces()), ports=ports))
 
 
-def runner_step_kind(grid, **flags):
-    """The step a direct runner call takes: the one the grid recorded, else the decision from flags."""
+def runner_step_kind(grid, *, sheet=None, **flags):
+    """The step a direct runner call takes: the one the grid recorded, else the decision from flags.
+
+    The legacy step has no sheet operator, so a surface-impedance sheet
+    context is refused here, where the legacy kind is chosen, before any step.
+    """
     step_kind = grid.step_kind
     if step_kind is None:
         step_kind = select_step(**flags)
     if flags.get('ports') and step_kind != 'wrapped':
         raise NotImplementedError('Graded multi-device ports require the wrapped step; PMC and periodic x are not supported.')
+    if step_kind != 'wrapped':
+        from rfx.materials.thin_conductor import refuse_f0_sheets
+        refuse_f0_sheets((), "graded multi-device legacy step", context=sheet)
     return step_kind
 
 

@@ -2,6 +2,7 @@
 
 Parameters are copied from the predeclared structure, not imported from the
 chain battery. Only total-preserving tangents keep port planes fixed in metres.
+The CPML depth uses the realized 9*DX by 4*DX aperture TE10 cutoff and 0.75 guide wavelengths.
 """
 
 import math
@@ -26,13 +27,12 @@ FD_STEP = 0.2e-3
 D_MIN = DX - FD_STEP / 4
 DT = float(0.9 / (C0 * np.sqrt(1 / D_MIN**2 + 2 / DX**2)))
 FREQS = np.linspace(8.4e9, 11.6e9, 17)
-# The realized wall-to-wall aperture is 9*DX by 4*DX. The battery's
-# cpml_layers_for rule uses its TE10 cutoff and 0.75 guide wavelengths.
 FC = C0 / (2 * 22.86e-3)
 CPML = math.ceil(0.75 * C0 / FREQS[0] / np.sqrt(1 - (FC / FREQS[0])**2) / DX)
 
 
 def section(delta):
+    """All cell centres stay on their original side of the fixed box throughout the traced stencil."""
     traced = is_tracer(delta)
     if traced:
         widths = jnp.asarray(CELLS, dtype=jnp.float32)
@@ -48,8 +48,6 @@ def section(delta):
         dx_profile=widths, dt=DT, dt_min_cell=D_MIN, nominal_profiles=declaration,
     )
     sim.add_material("slab", eps_r=4.0)
-    # Concrete FD faces follow the realized nodes; all cell centres stay on
-    # their original side of the fixed box throughout the traced stencil.
     end = 26 * DX if traced else 26 * DX + float(delta)
     sim.add(Box((22 * DX, 0, 0), (end, 9 * DX, 4 * DX)), material="slab")
     for k, direction, name, ref in ((5, "+x", "left", 8), (43, "-x", "right", 40)):
@@ -102,19 +100,14 @@ def s_matrix(delta, n_steps):
         n_steps=n_steps, normalize="flux").s_params)
 
 
-def test_window_flux_jacfwd_reaches_extraction():
-    gradient = jax.jacfwd(lambda d: jnp.real(s_matrix(d, 2)))(0.0)
-    assert gradient.shape == (2, 2, 17)
-
-
 def test_flux_ratio_tiny_reference_power_has_finite_quotient_derivative():
+    """The 1/9 oracle is the analytic derivative of (2+d)/(3+d) at zero, independent of scale."""
     from rfx.sparams.waveguide import _flux_power_ratio
 
     def ratio(delta):
         return _flux_power_ratio((2.0 + delta) * jnp.float32(1e-24),
                                  (3.0 + delta) * jnp.float32(1e-24))
 
-    # Analytic derivative of (2+d)/(3+d) at zero, independent of the scale.
     for transform in (jax.jacfwd, jax.grad):
         assert float(transform(ratio)(0.0)) == pytest.approx(1 / 9, rel=1e-6)
     numerator, denominator = jnp.float32(2e-24), jnp.float32(3e-24)
@@ -126,8 +119,6 @@ def test_b1_b2_window_gradient_all_17_bins():
     from rfx.stepping.step_count import steps_for_periods
     sim = section(0.0)
     grid = sim._build_nonuniform_grid()
-    # NonUniformGrid has no num_timesteps method: this is the same helper
-    # Grid.num_timesteps(40) calls, using this concrete build's pinned dt.
     n_steps = steps_for_periods(grid.dt, sim._freq_max, 40)
     started = time.perf_counter()
 

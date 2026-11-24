@@ -1,4 +1,6 @@
-"""Build-only #1138 contract: solved edges decide acceptance, not node span."""
+"""Build-only #1138 contract: solved edges decide acceptance, not node span.
+In test_realized_volume_join_and_vacuum_gap, the joined Box is off its electric walls.
+"""
 import warnings
 
 import numpy as np
@@ -89,10 +91,9 @@ def test_declared_acceptance_is_recorded_and_changes_no_solved_numbers(monkeypat
 
 @pytest.mark.parametrize("inset,aligned", [(0.0, False), (2e-6, False), (2e-6, True)])
 def test_verdict_spans_equal_public_record_per_entity_axis(inset, aligned):
+    """The on-node span gains 0.7 cell, versus an inset loss of 1.3 cells."""
     sim = _build(inset=inset, aligned=aligned)
-    # A second declaration tests identity and both declaration routes.
     sim.add_thin_conductor(Box((0.004, 0.004, 0.004), (0.016, 0.016, 0.004)))
-    # Both x ends continue to domain faces; only the y free ends are judged.
     sim.add_thin_conductor(Box((-0.001, 0.006, 0.005), (0.021, 0.014, 0.005)))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -128,7 +129,6 @@ def test_verdict_spans_equal_public_record_per_entity_axis(inset, aligned):
         for e, a, drawn, residual in offenders:
             assert f"{e.label} '{e.name}' {a.axis}: drawn {_fmt_len(drawn)}" in message
             assert f"solved as {_fmt_len(a.extent_m)} ({residual:+.2%})" in message
-    # Independently pin the on-node +0.7 cell and inset loss of 1.3 cells.
     if not aligned:
         axis = record.entities[0].axes[0]
         assert axis.extent_m == pytest.approx(0.0107 if inset == 0 else 0.0087)
@@ -245,7 +245,6 @@ def test_declared_survives_design_and_convergence_rebuild(monkeypatch):
 
     monkeypatch.setattr("rfx.convergence.convergence_study", study)
     assert quick_convergence(restored) == "rebuilt"
-    # Older design documents have the original strict default.
     del document["solver"]["snap"]
     assert simulation_from_design(document)._snap == "strict"
 
@@ -264,8 +263,8 @@ def test_config_carries_snap():
 @pytest.mark.parametrize("gap", [0, 1, 2])
 @pytest.mark.parametrize("face_shift", [0.0, 0.0002])
 def test_realized_volume_join_and_vacuum_gap(monkeypatch, side, gap, face_shift):
+    """The free end is 0.35 cell beyond its last node on the uniform x axis."""
     calls = _stub_runners(monkeypatch)
-    # x stays uniform: the free end is 0.35 cell beyond its last node.
     lo, hi = 0.00465, 0.012 - gap * DX
     block_lo, block_hi = 0.012 + face_shift, 0.015
     if side == "lo":
@@ -289,7 +288,7 @@ def test_realized_volume_join_and_vacuum_gap(monkeypatch, side, gap, face_shift)
     assert span.comparison_bounds(lo, hi, DOMAIN[0]) == axis.comparison_bounds_m
     assert bool(sim.preflight().by_code(CODE)) == bool(gap)
     spacing, = sim.preflight().by_code("sheet_cavity_spacing")
-    assert spacing.severity == "error"  # The joined Box is off its electric walls.
+    assert spacing.severity == "error"
     if gap:
         with pytest.raises(ValueError, match="conductor sheet dimension"):
             sim.run(n_steps=1, compute_s_params=False)

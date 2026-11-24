@@ -17,18 +17,23 @@ they do not run at import time.
 
 from __future__ import annotations
 
+from rfx.measurement.calculator_drive import calculator_drive
+
 from rfx.sparams import _coax_msl_stages, _coax_oneport_record, _settling_groups
 from rfx.sparams._coax_messages import COAX_MSL_TRANSITION_REFUSAL_HINT
 from rfx.sparams._coax_status import coax_extraction_status
+from rfx.sparams._coax_flux import refuse_open_feed_flux, two_port_feed_layout
 
-from rfx.errors import AccuracyWarning
-from rfx._internal._precision import resolve_field_dtype
+from rfx.errors import AccuracyWarning, RfxRefusal
 from rfx.preflight.realization import release_inspection
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.sparams._grid_metrics import _calculator_source_plane
 from rfx.sparams.passivity_warning import warn_if_singular_value_exceeds_one
 from rfx.model.conductors import coax_declared_conductors, coax_kernel_conductors
+from rfx.model.coax_line import CoaxLineEnd, build_coax_line
+
+import warnings
 
 import jax
 import jax.numpy as jnp
@@ -56,7 +61,7 @@ from rfx.sparams._port_reference import (coax_two_port_line_waves,
     renormalize_power_waves, warn_line_reference_mismatch)
 
 
-from rfx.sparams._coax_admission import _require_absorption_on_every_axis
+from rfx.sparams._coax_admission import _require_absorption_on_every_axis, admit_coax_entry
 from rfx.sparams.coax_geometry import _coax_pec_edge_masks
 
 
@@ -146,7 +151,7 @@ def compute_coaxial_line_reflection(
     path. The AD↔FD gate is ``tests/unit/autodiff/test_coax_end_to_end_ad.py``.
     """
 
-    resolve_field_dtype(self._precision)
+    admit_coax_entry("Simulation.compute_coaxial_line_reflection", locals())
     if self._boundary != "cpml" or self._cpml_layers <= 0:
         raise ValueError(
             "compute_coaxial_line_reflection() requires boundary='cpml' "
@@ -190,7 +195,7 @@ def compute_coaxial_line_reflection(
     if any(declared_mesh[name] is not None for name in (
         "_dx_profile", "_dy_profile", "_dz_profile"
     )):
-        raise ValueError(
+        raise RfxRefusal(
             "compute_coaxial_line_reflection() supports only a uniform Yee "
             "grid; dx_profile, dy_profile, and dz_profile are not supported."
         )
@@ -200,7 +205,7 @@ def compute_coaxial_line_reflection(
             "refinement; remove add_refinement() from this simulation."
         )
     if self._geometry or self._thin_conductors:
-        raise ValueError(
+        raise RfxRefusal(
             "compute_coaxial_line_reflection() constructs the complete line "
             "geometry; registered geometry and thin conductors are not "
             "supported. Use the documented Simulation, port, and method "
@@ -242,7 +247,7 @@ def compute_coaxial_line_reflection(
     if isinstance(probe_count, bool) or not isinstance(
         probe_count, (int, np.integer)
     ):
-        raise ValueError("probe_count must be an integer of at least 3.")
+        raise RfxRefusal("probe_count must be an integer of at least 3.")
     requested_probe_count = int(probe_count)
     if requested_probe_count < 3:
         raise ValueError("probe_count must be at least 3.")
@@ -309,34 +314,40 @@ def compute_coaxial_line_reflection(
     R_dut = float(dut_impedance) if dut_impedance is not None else R_feed
 
     materials, _, _ = self._build_materials(grid)
-    stamp_entities = []
-    materials, shell_inner, pec_cells = stamp_coaxial_line(
-        grid, materials, center_xy=center_xy, z_lo_index=z_dut,
-        z_hi_index=z_hi_coax, pin_radius=a, outer_radius=b, realized_entities=stamp_entities,
-    )
-    materials = stamp_coaxial_annular_resistor(
-        grid, materials, center_xy=center_xy, z_index=z_feed, pin_radius=a,
-        outer_radius=b, target_impedance=R_feed, shell_inner_radius=shell_inner,
-        pec_cell_mask=pec_cells,
-    )
-    if termination == "short":
-        materials, short_cells = stamp_coaxial_short_plane(
-            grid, materials, center_xy=center_xy, z_index=z_dut, outer_radius=b,
-        )
-        pec_cells = pec_cells | short_cells
-    elif termination == "matched":
-        materials = stamp_coaxial_annular_resistor(
-            grid, materials, center_xy=center_xy, z_index=z_dut, pin_radius=a,
-            outer_radius=b, target_impedance=R_dut, shell_inner_radius=shell_inner,
-            pec_cell_mask=pec_cells,
-        )
-    # "open": conductors simply end at z_dut (open circuit) — no extra stamp.
+    def finish_line(materials, shell_inner, pec_cells):
+        """Keep DUT stamps in the calculator before source profile construction."""
+        if termination == "short":
+            materials, short_cells = stamp_coaxial_short_plane(
+                grid, materials, center_xy=center_xy, z_index=z_dut, outer_radius=b,
+            )
+            pec_cells = pec_cells | short_cells
+        elif termination == "matched":
+            materials = stamp_coaxial_annular_resistor(
+                grid, materials, center_xy=center_xy, z_index=z_dut, pin_radius=a,
+                outer_radius=b, target_impedance=R_dut, shell_inner_radius=shell_inner,
+                pec_cell_mask=pec_cells,
+            )
+        if eps_scale is not None:
+            materials = materials._replace(eps_r=materials.eps_r * jnp.asarray(eps_scale))
+        return materials, pec_cells
 
-    # Differentiable design channel: applied AFTER the (numpy) stamps as a
-    # MULTIPLIER so the stamped dielectric (PTFE fill) + PEC (in sigma) are
-    # preserved and only modulated — well-conditioned (vs replacing the fill).
-    if eps_scale is not None:
-        materials = materials._replace(eps_r=materials.eps_r * jnp.asarray(eps_scale))
+    src_port = _CoaxPort(
+        position=(center_xy[0], center_xy[1], (z_src - grid.pad_z_lo) * dz),
+        face="top", pin_length=dz, pin_radius=a, outer_radius=b,
+        impedance=port.impedance,
+        excitation=port.excitation if calculator_drive(True) else None,
+    )
+    line = build_coax_line(
+        grid, materials, center_xy=center_xy, pin_radius=a, outer_radius=b,
+        z_lo_index=z_dut, z_hi_index=z_hi_coax,
+        ends=[CoaxLineEnd(z_feed, _calculator_source_plane(grid, src_port),
+                          tuple(probes_z), R_feed, src_port)],
+        n_steps=n_steps, field_scale=field_scale, finish_line=finish_line,
+        stamp_line=stamp_coaxial_line, stamp_resistor=stamp_coaxial_annular_resistor,
+        build_source=build_coaxial_tem_plane_source_specs,
+    )
+    materials, pec_cells, stamp_entities = line.materials, line.pec_cells, line.conductor_entities
+    spec = line.ends[0].source_spec
 
     if freqs is None:
         freqs = jnp.linspace(
@@ -344,19 +355,6 @@ def compute_coaxial_line_reflection(
         )
     else:
         freqs = jnp.asarray(freqs, dtype=jnp.float32)
-
-    # TEM TFSF source at z_src (internal descriptor places pin_center there).
-    src_port = _CoaxPort(
-        position=(center_xy[0], center_xy[1], (z_src - grid.pad_z_lo) * dz),
-        face="top", pin_length=dz, pin_radius=a, outer_radius=b,
-        impedance=port.impedance, excitation=port.excitation,
-    )
-    spec = build_coaxial_tem_plane_source_specs(
-        grid=grid, port=src_port, n_steps=int(n_steps),
-        plane_axial_index=_calculator_source_plane(grid, src_port), field_scale=float(field_scale),
-        magnetic_ratio=1.0, shell_inner_radius=shell_inner,
-        pec_cell_mask=pec_cells,
-    )
 
     planes = []
     for z in probes_z:
@@ -390,7 +388,7 @@ def compute_coaxial_line_reflection(
             [
                 coaxial_line_plane_voltage_jnp(
                     grid, result.dft_planes[pi * 2 + 0].accumulator,
-                    center_xy=center_xy, pin_radius=a, outer_radius=b,
+                    center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=probes_z[pi],
                 )
                 for pi in range(len(probes_z))
             ],
@@ -435,7 +433,7 @@ def compute_coaxial_line_reflection(
         ey = result.dft_planes[pi * 2 + 1].accumulator
         v_by_plane.append(
             coaxial_line_plane_voltage(
-                grid, ex, ey, center_xy=center_xy, pin_radius=a, outer_radius=b,
+                grid, ex, ey, center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=probes_z[pi],
             )
         )
     V = np.stack(v_by_plane, axis=0)          # (n_planes, n_freqs)
@@ -493,6 +491,10 @@ def compute_coaxial_two_port(
     extra_flux_monitors: "list | None" = None,
 ) -> "CoaxialTwoPortResult":
     """Two-drive coaxial 2-port S-parameters — VALIDATED WITH SCOPE.
+
+    Extra flux monitors must stay strictly inward of every open coax feed
+    sheet, including their full tangential extent. The run()/forward() port
+    has a shielded source end; this calculator keeps its open feed ends.
 
     .. note::
         **VALIDATED WITH SCOPE, not EXPERIMENTAL** (
@@ -604,14 +606,13 @@ def compute_coaxial_two_port(
     name-keyed on ``result.flux_monitors``
     (``{port_name: {monitor_name: (n_monitor_freqs,) float64}}``, net
     flux, positive = +axis). The S-parameter math is untouched — the
-    non-perturbation witness (S bit-identical with and without
-    monitors) is gated in
-    ``tests/unit/sparams/test_coax_msl_transition.py::test_extra_flux_monitors_do_not_perturb_s``.
+    non-perturbation witness compared S with and without monitors in the
+    retired transition test.
     The registered-monitor guard is unchanged: monitors registered ON
     this sim still raise, because this method builds its own probes.
     """
 
-    resolve_field_dtype(self._precision)
+    admit_coax_entry("Simulation.compute_coaxial_two_port", locals())
     if self._boundary != "cpml" or self._cpml_layers <= 0:
         raise ValueError(
             "compute_coaxial_two_port() requires boundary='cpml' "
@@ -655,7 +656,7 @@ def compute_coaxial_two_port(
     if any(declared_mesh[name] is not None for name in (
         "_dx_profile", "_dy_profile", "_dz_profile"
     )):
-        raise ValueError(
+        raise RfxRefusal(
             "compute_coaxial_two_port() supports only a uniform Yee "
             "grid; dx_profile, dy_profile, and dz_profile are not "
             "supported."
@@ -748,12 +749,9 @@ def compute_coaxial_two_port(
     # i489_stage2_two_port_fdtd_predeclaration.md for the derivation of
     # why each feed sits strictly on the scattered-only side of its own
     # drive's TFSF boundary.
-    z_hi_coax_top = nz - int(grid.pad_z_hi) - 2
-    z_feed_top = z_hi_coax_top - 1
-    z_src_top = z_hi_coax_top - 3
-    z_lo_coax_bot = int(grid.pad_z_lo) + 2
-    z_feed_bot = z_lo_coax_bot + 1
-    z_src_bot = z_lo_coax_bot + 3
+    z_hi_coax_top, z_feed_top, z_src_top, z_lo_coax_bot, z_feed_bot, z_src_bot = two_port_feed_layout(grid)
+    refuse_open_feed_flux(extra_flux_monitors, grid, self._domain, 'compute_coaxial_two_port',
+                         low=z_feed_bot, high=z_feed_top)
 
     probes_top = sorted(
         z_src_top - int(probe_start_cells) - int(probe_spacing_cells) * k
@@ -780,29 +778,31 @@ def compute_coaxial_two_port(
     R_feed = float(feed_impedance) if feed_impedance is not None else float(z_tem)
 
     materials, _, _ = self._build_materials(grid)
-    stamp_entities = []
-    materials, shell_inner, pec_cells = stamp_coaxial_line(
-        grid, materials, center_xy=center_xy, z_lo_index=z_lo_coax_bot,
-        z_hi_index=z_hi_coax_top, pin_radius=a, outer_radius=b, realized_entities=stamp_entities,
+    src_port_top = _CoaxPort(
+        position=(center_xy[0], center_xy[1], (z_src_top - grid.pad_z_lo) * dz),
+        face="top", pin_length=dz, pin_radius=a, outer_radius=b,
+        impedance=port.impedance,
+        excitation=port.excitation if calculator_drive(True) else None,
     )
-    materials = stamp_coaxial_annular_resistor(
-        grid, materials, center_xy=center_xy, z_index=z_feed_top, pin_radius=a,
-        outer_radius=b, target_impedance=R_feed, shell_inner_radius=shell_inner,
-        pec_cell_mask=pec_cells,
+    src_port_bot = _CoaxPort(
+        position=(center_xy[0], center_xy[1], (z_src_bot - grid.pad_z_lo) * dz),
+        face="bottom", pin_length=dz, pin_radius=a, outer_radius=b,
+        impedance=port.impedance,
+        excitation=port.excitation if calculator_drive(True) else None,
     )
-    materials = stamp_coaxial_annular_resistor(
-        grid, materials, center_xy=center_xy, z_index=z_feed_bot, pin_radius=a,
-        outer_radius=b, target_impedance=R_feed, shell_inner_radius=shell_inner,
-        pec_cell_mask=pec_cells,
+    line = build_coax_line(
+        grid, materials, center_xy=center_xy, pin_radius=a, outer_radius=b,
+        z_lo_index=z_lo_coax_bot, z_hi_index=z_hi_coax_top,
+        ends=[CoaxLineEnd(z_feed_top, _calculator_source_plane(grid, src_port_top),
+                          tuple(probes_top), R_feed, src_port_top),
+              CoaxLineEnd(z_feed_bot, _calculator_source_plane(grid, src_port_bot),
+                          tuple(probes_bot), R_feed, src_port_bot)],
+        n_steps=n_steps, field_scale=field_scale,
+        stamp_line=stamp_coaxial_line, stamp_resistor=stamp_coaxial_annular_resistor,
+        build_source=build_coaxial_tem_plane_source_specs,
     )
-
-    # Differentiable design channel: applied AFTER the
-    # (numpy) stamps as a MULTIPLIER, same contract as the 1-port
-    # compute_coaxial_line_reflection's own eps_scale — the stamped
-    # dielectric (PTFE fill) + PEC (in sigma) are preserved and only
-    # modulated. Applied ONCE, before either drive's _run() call below,
-    # so it reaches both (the through line has no DUT break to scope it
-    # to one end).
+    materials, pec_cells, stamp_entities = line.materials, line.pec_cells, line.conductor_entities
+    spec_top, spec_bot = (end.source_spec for end in line.ends)
     if eps_scale is not None:
         materials = materials._replace(eps_r=materials.eps_r * jnp.asarray(eps_scale))
 
@@ -813,32 +813,6 @@ def compute_coaxial_two_port(
     else:
         freqs = jnp.asarray(freqs, dtype=jnp.float32)
     n_f = int(freqs.shape[0])
-
-    # TEM TFSF sources: port 1 (+z end) mirrors the 1-port fixture's own
-    # face='top' source exactly; port 2 (-z end) is the mirror image,
-    # face='bottom'.
-    src_port_top = _CoaxPort(
-        position=(center_xy[0], center_xy[1], (z_src_top - grid.pad_z_lo) * dz),
-        face="top", pin_length=dz, pin_radius=a, outer_radius=b,
-        impedance=port.impedance, excitation=port.excitation,
-    )
-    src_port_bot = _CoaxPort(
-        position=(center_xy[0], center_xy[1], (z_src_bot - grid.pad_z_lo) * dz),
-        face="bottom", pin_length=dz, pin_radius=a, outer_radius=b,
-        impedance=port.impedance, excitation=port.excitation,
-    )
-    spec_top = build_coaxial_tem_plane_source_specs(
-        grid=grid, port=src_port_top, n_steps=int(n_steps),
-        plane_axial_index=_calculator_source_plane(grid, src_port_top),
-        field_scale=float(field_scale), magnetic_ratio=1.0,
-        shell_inner_radius=shell_inner, pec_cell_mask=pec_cells,
-    )
-    spec_bot = build_coaxial_tem_plane_source_specs(
-        grid=grid, port=src_port_bot, n_steps=int(n_steps),
-        plane_axial_index=_calculator_source_plane(grid, src_port_bot),
-        field_scale=float(field_scale), magnetic_ratio=1.0,
-        shell_inner_radius=shell_inner, pec_cell_mask=pec_cells,
-    )
 
     n_bot = len(probes_bot)
     n_top = len(probes_top)
@@ -926,7 +900,7 @@ def compute_coaxial_two_port(
                 [
                     coaxial_line_plane_voltage_jnp(
                         grid, result.dft_planes[pi * 2 + 0].accumulator,
-                        center_xy=center_xy, pin_radius=a, outer_radius=b,
+                        center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=probes_bot[pi],
                     )
                     for pi in range(n_bot)
                 ],
@@ -936,7 +910,7 @@ def compute_coaxial_two_port(
                 [
                     coaxial_line_plane_voltage_jnp(
                         grid, result.dft_planes[top_off + pi * 2 + 0].accumulator,
-                        center_xy=center_xy, pin_radius=a, outer_radius=b,
+                        center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=probes_top[pi],
                     )
                     for pi in range(n_top)
                 ],
@@ -954,7 +928,7 @@ def compute_coaxial_two_port(
                     coaxial_line_plane_voltage(
                         grid, result.dft_planes[pi * 2 + 0].accumulator,
                         result.dft_planes[pi * 2 + 1].accumulator,
-                        center_xy=center_xy, pin_radius=a, outer_radius=b,
+                        center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=probes_bot[pi],
                     )
                     for pi in range(n_bot)
                 ],
@@ -965,7 +939,7 @@ def compute_coaxial_two_port(
                     coaxial_line_plane_voltage(
                         grid, result.dft_planes[top_off + pi * 2 + 0].accumulator,
                         result.dft_planes[top_off + pi * 2 + 1].accumulator,
-                        center_xy=center_xy, pin_radius=a, outer_radius=b,
+                        center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=probes_top[pi],
                     )
                     for pi in range(n_top)
                 ],
@@ -981,7 +955,7 @@ def compute_coaxial_two_port(
                 _plane_records = getattr(result, "dft_time_records", None)
                 _channels = [(f"coax/plane{pi}/V", np.asarray(coaxial_line_plane_voltage(
                     grid, _plane_records[2*pi], _plane_records[2*pi+1],
-                    center_xy=center_xy, pin_radius=a, outer_radius=b)))
+                    center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=all_probes_z[pi])))
                     for pi in range(len(all_probes_z))] if _plane_records else []
                 if _channels:
                     _channels.extend((f"probe{i}", ts[:, i]) for i in range(ts.shape[1]))
@@ -1073,7 +1047,13 @@ def compute_coax_msl_transition(
 ) -> "CoaxMSLTransitionResult":
     """Compute coax-to-microstrip transition S-parameters from separate drives.
 
-    This method is experimental and is not in the validated set.
+    Extra flux monitors must stay strictly inward of every open coax feed
+    sheet, including their full tangential extent. The run()/forward() port
+    has a shielded source end; this calculator keeps its open feed ends.
+
+    The coax-to-microstrip transition is not supported in rfx. This method
+    is deprecated and will be removed after rfx 2.3. Each call emits a
+    ``DeprecationWarning``; its experimental result and refusals are unchanged.
     A non-passive S matrix raises ``ValueError`` by default;
     ``strict_passivity=False`` returns it with a ``UserWarning``.
     Register the substrate, trace, ground plane, clearance hole, and
@@ -1198,7 +1178,13 @@ def compute_coax_msl_transition(
     matrix-pencil wave fit with built coax / analytic MSL normalization; this is
     not a traceable or validated cross-family extraction.
     """
-    resolve_field_dtype(self._precision)
+    warnings.warn(
+        "compute_coax_msl_transition is not supported and will be removed after rfx 2.3: "
+        "the coax-to-microstrip transition matrix it returns is not passive.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    admit_coax_entry("Simulation.compute_coax_msl_transition", locals())
     from rfx.sources.coaxial_port import (
         CoaxialPort as _CoaxPort,
         build_coaxial_tem_plane_source_specs,
@@ -1253,7 +1239,6 @@ def compute_coax_msl_transition(
     sheet_findings = None
     if not skip_preflight:
         # This lane owns its port checks; run only the shared sheet verdict.
-        import warnings
         from rfx.geometry.csg import Box
         from rfx.preflight._common import PreflightIssue, PreflightWarning
         from rfx.preflight.pec_geometry import (
@@ -1369,38 +1354,34 @@ def compute_coax_msl_transition(
     a, b = float(port.pin_radius), float(port.outer_radius)
     z_junction_idx, z_stub_lo, z_feed, z_src, z_stub_hi, probes_coax = _coax_msl_stages._prepare_coax_msl_stub_layout(
         grid, msl_cross_section_span, msl_port_base, port, probe_count, probe_spacing_cells, probe_start_cells,
+        extra_flux_monitors=extra_flux_monitors, domain=self._domain,
     )
 
     z_tem = coaxial_tem_characteristic_impedance(a, b)
     r_feed = float(feed_impedance) if feed_impedance is not None else float(z_tem)
     junction_materials = materials
-    stamp_entities = []
-    materials, shell_inner, coax_pec_cells = stamp_coaxial_line(
-        grid, materials, center_xy=center_xy, z_lo_index=z_stub_lo,
-        z_hi_index=z_stub_hi, pin_radius=a, outer_radius=b, realized_entities=stamp_entities,
-    )
-    materials = stamp_coaxial_annular_resistor(
-        grid, materials, center_xy=center_xy, z_index=z_feed,
-        pin_radius=a, outer_radius=b, target_impedance=r_feed,
-        shell_inner_radius=shell_inner, pec_cell_mask=coax_pec_cells,
-    )
-    # The declared stub ends below the junction node. The caller owns the
-    # junction, post and laminate: preserve the registered arrays at and above
-    # that node, so no DUT conductor/dielectric is cut.
-    from rfx.model.thin_conductors import splice_junction_materials
-    materials = splice_junction_materials(materials, junction_materials, z_junction_idx)
+    def finish_line(materials, shell_inner, pec_cells):
+        """Preserve caller materials at and above the junction node."""
+        from rfx.model.thin_conductors import splice_junction_materials
+        return splice_junction_materials(materials, junction_materials, z_junction_idx), pec_cells
 
     src_port = _CoaxPort(
         position=(center_xy[0], center_xy[1], (z_src - grid.pad_z_lo) * dz),
         face="bottom", pin_length=dz, pin_radius=a, outer_radius=b,
-        impedance=port.impedance, excitation=port.excitation,
+        impedance=port.impedance,
+        excitation=port.excitation if calculator_drive(True) else None,
     )
-    spec_coax = build_coaxial_tem_plane_source_specs(
-        grid=grid, port=src_port, n_steps=int(n_steps),
-        plane_axial_index=_calculator_source_plane(grid, src_port),
-        field_scale=float(field_scale), magnetic_ratio=1.0,
-        shell_inner_radius=shell_inner, pec_cell_mask=coax_pec_cells,
+    line = build_coax_line(
+        grid, materials, center_xy=center_xy, pin_radius=a, outer_radius=b,
+        z_lo_index=z_stub_lo, z_hi_index=z_stub_hi,
+        ends=[CoaxLineEnd(z_feed, _calculator_source_plane(grid, src_port),
+                          tuple(probes_coax), r_feed, src_port)],
+        n_steps=n_steps, field_scale=field_scale, finish_line=finish_line,
+        stamp_line=stamp_coaxial_line, stamp_resistor=stamp_coaxial_annular_resistor,
+        build_source=build_coaxial_tem_plane_source_specs,
     )
+    materials, coax_pec_cells, stamp_entities = line.materials, line.pec_cells, line.conductor_entities
+    spec_coax = line.ends[0].source_spec
     ref_coax_m = (z_junction_idx - grid.pad_z_lo) * dz
     z_planes_coax_m = np.array(
         [(z - grid.pad_z_lo) * dz for z in probes_coax], dtype=np.float64
@@ -1472,13 +1453,13 @@ def compute_coax_msl_transition(
         _coax_pec_edge_masks(coax_pec_cells), stamp_entities, root=declared_conductors,
         skip_preflight=skip_preflight, sheet_findings=sheet_findings)
     for drive_idx in range(2):
-        if drive_idx == 0:
+        if calculator_drive(drive_idx == 0):
             sources = list(spec_coax.electric_sources)
             mag_sources = list(spec_coax.magnetic_sources)
         else:
             sources = make_msl_port_sources(
                 grid, msl_port_driven, materials, int(n_steps),
-                mode_profile=mode_profile,
+                mode_profile=mode_profile, dtype=jnp.float32,
             )
             mag_sources = []
 
@@ -1537,7 +1518,7 @@ def compute_coax_msl_transition(
                 coaxial_line_plane_voltage(
                     grid, result.dft_planes[pi * 2 + 0].accumulator,
                     result.dft_planes[pi * 2 + 1].accumulator,
-                    center_xy=center_xy, pin_radius=a, outer_radius=b,
+                    center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=probes_coax[pi],
                 )
             )
         for pi in range(len(xs_sorted)):
@@ -1559,7 +1540,7 @@ def compute_coax_msl_transition(
             if _plane_records:
                 _channels.extend((f"coax/plane{pi}/V", np.asarray(coaxial_line_plane_voltage(
                     grid, _plane_records[2*pi], _plane_records[2*pi+1],
-                    center_xy=center_xy, pin_radius=a, outer_radius=b)))
+                    center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=probes_coax[pi])))
                     for pi in range(len(probes_coax)))
                 _channels.extend((f"msl/plane{pi}/V", np.asarray(msl_modal_voltage(
                     _plane_records[n_coax_planes+pi], j_centre=j_centre_msl,

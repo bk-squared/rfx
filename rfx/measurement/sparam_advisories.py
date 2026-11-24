@@ -13,6 +13,10 @@ from rfx.model.graded_grid import interior_cells
 from rfx.sparams._grid_metrics import _msl_axis_spacing, _msl_axis_cell_f64
 
 
+_MINIMUM_EVANESCENT_DECAY_LENGTHS = 3.0
+_RECOMMENDED_EVANESCENT_DECAY_LENGTHS = 5.0
+
+
 def _warn_msl_wave_split_unreliable(
     reliable: np.ndarray, freqs: object
 ) -> None:
@@ -89,34 +93,7 @@ def _warn_msl_beta_scan_railed(
     )
 
 
-_SETTLING_WITNESS_DB = -40.0
-
-
-def settling_verdict(settling_db) -> str:
-    """The ONE -40 dB ring-down comparison in this codebase.
-
-    Returns ``"pass"``, ``"fail"`` or ``"absent"``. ``"absent"`` covers
-    ``None`` and every non-finite value (NaN, +/-inf) -- the states that mean
-    "no witness was established", which a bare ``> -40`` comparison silently
-    turns into a pass. That is not hypothetical: a campaign driver read a
-    missing witness as ``np.nan`` through ``getattr(result, "settling_db",
-    np.nan)``, compared it to the bar, and a completed 3-hour two-arm
-    experiment came back INCONCLUSIVE for an instrument reason.
-
-    Every caller that needs the decision calls this instead of writing the
-    comparison again -- including the aggregate warner below and the
-    ``run()`` post-run advisories in ``rfx/api/_execute.py``. A value exactly
-    at the bar passes (the bar is the inclusive limit, unchanged).
-    """
-    if settling_db is None:
-        return "absent"
-    try:
-        value = float(settling_db)
-    except (TypeError, ValueError):
-        return "absent"
-    if not np.isfinite(value):
-        return "absent"
-    return "fail" if value > _SETTLING_WITNESS_DB else "pass"
+from rfx.measurement.record_end import settling_verdict, _SETTLING_WITNESS_DB
 
 
 def _validate_extra_flux_monitor_entries(entries, domain, fn_name):
@@ -362,12 +339,9 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
         if off_min is None and sp_eps_eff is None:
             resolved.append(pe)
             continue
-        # project position/domain onto this port's propagation
-        # and width axes before handing them to the x-frame helper.
         _prop_ax, _width_ax, _, _dir_sign = _msl_axis_roles(pe.direction)
         _ip = _MSL_AX[_prop_ax]
         _iw = _MSL_AX[_width_ax]
-        # Grading gates propagation; tracing also gates width tolerances.
         dx_u, _graded, _evaluable = _msl_axis_spacing(grid, _ip)
         if not _evaluable or (not _graded and is_tracer(grid.cells(_iw))):
             _graded_skips.append(
@@ -381,8 +355,6 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
             resolved.append(pe)
             continue
         if _graded:
-            # count the automatic LENGTHS in the runway cell at
-            # the source node, where the whole ladder lies in one zone.
             _lengths = _auto_lengths.get(pe.name)
             if _lengths is None:
                 _graded_skips.append(
@@ -448,12 +420,6 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
             resolved.append(
                 dataclasses.replace(pe, **_fields) if _fields else pe)
             continue
-        # A uniform propagation axis can still have a cell other than the one
-        # add_msl_port counted in: a uniform dy_profile finer than dx, or an
-        # auto mesh that settled on another dx after the port was registered.
-        # The stored lengths are recounted in this axis's own cell, so the
-        # interval solve below starts from the right lower edge and spacing.
-        # Where the two cells are equal the counts are the stored ones.
         _lengths = _auto_lengths.get(pe.name)
         if _lengths is not None:
             _cell_u = _msl_axis_cell_f64(grid, _ip)
@@ -481,9 +447,6 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                            local_cell(grid, _iw, float(pe.position[_iw]) + float(pe.width) / 2)),
             domain_y=float(sim._domain[_iw]),
             direction=pe.direction, port_position=pe.position,
-            # same conductor rule as the assembler, and thin
-            # conductors included, so the solved offset is not derived
-            # from a scan that was blind to most of the metal.
             resolve_material=sim._resolve_material,
             thin_conductors=getattr(sim, "_thin_conductors", ()),
             pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD,
@@ -501,11 +464,6 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
             )
             resolved.append(pe)
             continue
-        # --- Auto probe-spacing widening.
-        # Target λ_g(f_max)/4 per probe step, capped by half the reflector
-        # interval and by the absorber clearance; floors at the hard
-        # 2-cell minimum. Explicit spacings (sp_eps_eff is None) pass
-        # through untouched.
         spacing = int(pe.n_probe_spacing)
         off_base = int(off_min if off_min is not None else pe.n_probe_offset)
         if sp_eps_eff is not None:
@@ -537,8 +495,6 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
             _fields["n_probe_spacing"] = spacing
 
         if off_min is None or not np.isfinite(d_refl):
-            # Explicit offset, or no downstream reflector: no offset
-            # midpoint to solve — carry only the spacing resolution.
             resolved.append(
                 dataclasses.replace(pe, **_fields) if _fields else pe
             )
@@ -602,7 +558,7 @@ def _sigma_max_excess(S):
     Concrete arrays only. A tracer has no value to take singular values of,
     so every caller gates on :func:`rfx.core.jax_utils.is_tracer` first.
     """
-    s_t = np.asarray(S).transpose(2, 0, 1)  # (n_freqs, n_ports, n_ports)
+    s_t = np.asarray(S).transpose(2, 0, 1)
     real_dtype = s_t.real.dtype
     work_dtype = np.complex128 if np.iscomplexobj(s_t) else np.float64
     finite = np.all(np.isfinite(s_t), axis=(1, 2))
@@ -634,10 +590,6 @@ def _warn_if_sigma_max_excess(
     """
     exc = np.asarray(excess)
     finite = np.isfinite(exc)
-    # Same margin _project_passive clips to: a lossless thru reads
-    # sigma_max = 1 + O(eps) in float32, and a warning that fires on
-    # rounding teaches the caller to ignore it. The field keeps the raw
-    # value; only the warning has a floor.
     floor = 64.0 * float(np.finfo(exc.dtype if exc.dtype.kind == "f"
                                   else np.float32).eps)
     if not np.any(exc[finite] > floor):
@@ -693,9 +645,6 @@ def _warn_if_passivity_projected(
     f = np.asarray(freqs)
     n_touched = int((corr[finite] > 0.0).sum())
     n_big = int((corr[finite] > envelope).sum())
-    # nanargmax: a NaN raw bin would otherwise be selected and the message
-    # would read "worst sigma_max = nan". NaN bins stay NaN in S (the
-    # finiteness self-check flags them); the bound claim applies to finite bins.
     k = int(np.nanargmax(np.where(finite, corr, -np.inf)))
     warnings.warn(
         f"S-matrix projected onto the passive set (singular values clipped "
@@ -828,7 +777,6 @@ def _reciprocity_advisory_message(s_np, f_np, port_names, *, extractor, tol):
     if s_np.ndim != 3 or s_np.shape[0] < 2 or s_np.shape[2] < 1:
         return None
     if not np.all(np.isfinite(s_np)):
-        # Non-finite data is the passivity/finiteness guard's business.
         return None
 
     per_bin_max = np.max(np.abs(s_np), axis=(0, 1))
@@ -914,7 +862,6 @@ def _warn_if_nonpassive_smatrix(
     """
     s = getattr(result, "s_params", None)
     if s is None:
-        # MSLSMatrixResult uses the historical ``S`` field name.
         s = getattr(result, "S", None)
     if s is None:
         return
@@ -928,12 +875,6 @@ def _warn_if_nonpassive_smatrix(
             s_np, refused_positions, extractor, strict, passivity_tol, amplitude_eps)
         return
 
-    # WARN-ONLY reciprocity advisory, enabled per port family by the caller
-    # (today: the waveguide extractor, the only family with a measured
-    # complex-reciprocity envelope). Emitted as its OWN warning, before the
-    # passivity guard below, so that it can neither be swallowed by that
-    # guard's early return nor promoted into its ``strict`` raise: a
-    # reciprocity finding must stay advisory on every path.
     if check_reciprocity:
         _recip_msg = _reciprocity_advisory_message(
             s_np, f_np, tuple(result.port_names),
@@ -955,20 +896,6 @@ def _warn_if_nonpassive_smatrix(
         passivity_tol=float(passivity_tol),
     )
 
-    # Independent per-frequency amplitude advisory.  Keep this
-    # separate from the column-power gate above: normalize=False deliberately
-    # has a loose column-power tolerance, but an individual |S_ij| materially
-    # above unity is still useful evidence of an extraction/normalization
-    # artifact.  One worst-bin warning keeps a broadband result actionable
-    # without producing one warning per frequency.
-    # Tolerance-class-aware threshold: the loose normalize=False waveguide
-    # path (passivity_tol >= 2.0) has a DOCUMENTED validated |S11| envelope
-    # reaching ~1.41 (Yee dispersion + band edge — see the normalize docstring
-    # and the policy locks in test_sparam_passivity_guard.py), so
-    # its amplitude advisory only fires above 1.5 (still catches the eager
-    # ~1.98 spike class). Tight paths (lumped/MSL/coax/normalize=True) keep
-    # the 1 + amplitude_eps (default 1.05) threshold — the MSL documented
-    # envelope is 1.0063 and the measured field case was 1.36.
     eff_amplitude_eps = (float(amplitude_eps) if float(passivity_tol) < 2.0
                          else max(float(amplitude_eps), 0.5))
     amplitude_advisory = None
@@ -991,26 +918,6 @@ def _warn_if_nonpassive_smatrix(
         if i.code in ("passivity_violation", "nonfinite_sparams")
     ]
     if not bad:
-        # SOFT ADVISORY: the hard check above
-        # uses the caller's ``passivity_tol``. On the ``normalize=False``
-        # waveguide path that tol is loose (2.0 -> column-power limit 3.0,
-        # i.e. |S| <= 1.732 for a 1-port) to tolerate the DOCUMENTED single-run
-        # Yee/near-cutoff over-unity: a validated strong reflector (PEC short)
-        # sits at column power ~2.0 there (|S11| entry ~1.03 plus the
-        # convention |S21| ~ 1 that the single-run decomposition does not
-        # cancel — see test_waveguide_broad_e5_live_anchor / the tol=2.0 lock
-        # in test_sparam_passivity_guard::
-        # test_normalize_aware_tol_tolerates_documented_overshoot). That leaves
-        # the window (~2.0, 3.0] UNGUARDED: a passive result whose column power
-        # is materially above the documented envelope but below the
-        # extractor-broken hard limit returns silently. Surface it as a
-        # SEPARATE, humble advisory (never raise) so a naive caller does not
-        # trust an over-unity |S| from a reference-plane / normalize choice or
-        # an under-resolved mesh. The floor 2.25 (|S| ~ 1.5 for a 1-port)
-        # clears the ~2.0 documented envelope AND the committed normalize=False
-        # PEC-short column power (~2.00) with margin; the window is EMPTY on
-        # the tight-tol path (tol=0.10 -> hard limit 1.10 < 2.25), so this
-        # advisory only fires for the loose normalize=False tol.
         _SOFT_COLPOWER_FLOOR = 2.25
         hard_limit = 1.0 + float(passivity_tol)
         max_cp = report.metrics.get("max_column_power")
@@ -1138,18 +1045,12 @@ def _warn_junction_probe_clearance(
     f_cen = 0.5 * (float(f_arr.min()) + f_max)
     for i, cfg in enumerate(cfgs):
         a = float(cfg.a)
-        fc2 = _C0_SPARAMS / a  # TE20 cutoff for a TE10 port of width a
+        fc2 = _C0_SPARAMS / a
         if f_max >= fc2:
-            # Next higher mode propagates in-band; a separate preflight warns.
             continue
         ax = axis_idx[cfg.normal_axis]
         other_axes = tuple(j for j in range(3) if j != ax)
         diff_profile = np.any(np.asarray(ref_sigmas[i]) != dev, axis=other_axes)
-        # PEC is represented by the solver's realized E edges, not sigma.
-        # Reading sigma alone therefore sees identical vacuum in a PEC
-        # junction and its straight references. Compare each component:
-        # unioning the three masks first would hide differently oriented
-        # sheets that occupy the same node plane.
         ref_edges = None if ref_pec_edges is None else ref_pec_edges[i]
         if device_pec_edges is not None or ref_edges is not None:
             for component in range(3):
@@ -1167,8 +1068,8 @@ def _warn_junction_probe_clearance(
         alpha = 2.0 * np.pi * np.sqrt(max(fc2 ** 2 - f_cen ** 2, 0.0)) / _C0_SPARAMS
         if alpha <= 0.0:
             continue
-        minimum_m = 3.0 / alpha       # validated-envelope floor (fires below)
-        recommended_m = 5.0 / alpha   # recommendation in the message
+        minimum_m = _MINIMUM_EVANESCENT_DECAY_LENGTHS / alpha
+        recommended_m = _RECOMMENDED_EVANESCENT_DECAY_LENGTHS / alpha
         if clearance_m < minimum_m:
             warnings.warn(PreflightWarning(
                 f"port_reference_sims: port index {i} ({cfg.normal_axis}-normal) "
@@ -1205,9 +1106,8 @@ def _warn_junction_cpml_thickness(grid, cfgs, freqs, cpml_layers):
     for i, cfg in enumerate(cfgs):
         cpml_m = junction_absorber_depth(grid, cfg.normal_axis, int(cpml_layers))
         a = float(cfg.a)
-        fc1 = _C0_SPARAMS / (2.0 * a)  # TE10 cutoff
+        fc1 = _C0_SPARAMS / (2.0 * a)
         if f_cen <= fc1:
-            # Below cutoff at band centre; the guide wavelength is undefined.
             continue
         lambda0 = _C0_SPARAMS / f_cen
         lambda_g = lambda0 / np.sqrt(1.0 - (fc1 / f_cen) ** 2)
@@ -1263,10 +1163,6 @@ def _warn_ntff_box_dropped(sim, method_name: str) -> None:
         stacklevel=3,
     )
 
-# Far-port discipline: minimum absorber depth as a fraction of the guide
-# wavelength at the LOWEST measured frequency. The message quotes this value,
-# so it MUST NOT be duplicated as a literal there — a mismatch would report one
-# threshold while enforcing another.
 _FAR_PORT_LAMBDA_G_FRACTION = 0.5
 
 
@@ -1315,8 +1211,6 @@ def _warn_thin_absorber_vs_guide_wavelength(
     f_lo = float(f_arr.min())
     seen: set = set()
     for cfg in cfgs:
-        # A multimode port arrives as a list of per-mode configs; the
-        # lowest-cutoff mode carries the least demanding requirement.
         modes = cfg if isinstance(cfg, list) else [cfg]
         if not modes:
             continue

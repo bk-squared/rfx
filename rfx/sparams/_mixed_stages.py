@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rfx.measurement.calculator_drive import calculator_drive
+
 import numpy as np
 
 from rfx.errors import AccuracyWarning
@@ -9,7 +11,6 @@ from rfx.sources.msl_port import MSLPort
 def _validate_mixed_family(
     RfxRefusal, RfxUnsupported, _diagnostics, diagnostic_refusal, self,
 ):
-    # ---- Registration guards (v1 envelope) --------------------------
     if not self._msl_ports:
         raise diagnostic_refusal(RfxRefusal(
             "compute_mixed_s_matrix() needs at least one add_msl_port() "
@@ -96,8 +97,6 @@ def _validate_mixed_family(
 def _prepare_mixed_probes(
     grid, msl_h_plane_stencil, msl_probe_x_coords_n, self,
 ):
-    # ---- MSL geometry prep (mirrors compute_msl_s_matrix; uniform
-    # lane only, so the NU grid/dz-profile machinery is not needed) ----
     entries = self._resolve_msl_probe_entries(grid)
     n_msl = len(entries)
     msl_ports: list[MSLPort] = []
@@ -113,9 +112,6 @@ def _prepare_mixed_probes(
             impedance=pe.impedance,
             excitation=pe.waveform,
         ))
-    # Probe-0 x-coordinate per port: the S1 V*I wave split lives at
-    # probe 0 (the de-embedding reference plane); the mixed lane does
-    # not run the N-probe spatial fit, so only probe 0 is recorded.
     probe_xs = [
         msl_probe_x_coords_n(
             grid, mp,
@@ -127,13 +123,6 @@ def _prepare_mixed_probes(
     ]
     h_stencils = [msl_h_plane_stencil(grid, mp, xs[0])
                   for mp, xs in zip(msl_ports, probe_xs)]
-    # Resolved in rfx.preflight.msl, NOT through the rfx.api._preflight
-    # re-export, so that this reader and preflight's own reader
-    # (_check_msl_port_geometry, which lives in that module and looks the
-    # name up in its globals) share ONE lookup target.
-    # tests/unit/ports/test_msl_clearance_diagnostic.py asserts that one
-    # monkeypatch covers both readers; importing the re-export would
-    # split them into two bindings of which only one is patched.
     from rfx.preflight.msl import msl_probe_clearance_for_port
     probe_clearance = tuple(msl_probe_clearance_for_port(
         self, pe, grid, probe_coordinates=xs,
@@ -145,19 +134,6 @@ def _check_mixed_ladder(
     RfxRefusal, _diagnostics, diagnostic_refusal, entries, grid, probe_xs,
     self,
 ):
-    # Probe-LADDER validation. The V*I split records probe 0 only, but
-    # must not silently accept a ladder the validated MSL lane rejects.
-    # msl_probe_x_coords_n clamps coordinates outside the declared domain.
-    # A probe near the domain edge can sample the trace's open end
-    # (a Box is rasterized
-    # only inside the declared domain — the trace does NOT continue
-    # into the CPML padding, so every boundary-touching trace has an
-    # OPEN end there). The plane then measures the open-stub
-    # standing-wave impedance -j*Z0*cot(beta*d) ~ 1/f (~1400 ohm at
-    # 1 GHz vs the 48 ohm line) instead of a travelling wave.
-    # Hard guard: every ladder coordinate strictly inside (0, lx)
-    # and strictly monotonic (clamp shows up as duplicates).
-    # Advisory: probe-0 closer than lambda_g/4 to a domain x-edge.
     from rfx.preflight._msl_probe_rules import msl_min_probe_clearance
     _lx_dom = float(self._domain[0])
     _clear = msl_min_probe_clearance(float(self._freq_max))
@@ -217,9 +193,6 @@ def _prepare_mixed_anchors(
     grid, hammerstad_jensen_z0_eps_eff, lw_entries, materials, msl_ports, n_lw, n_msl,
     port_idx_meta, self, wire_mode,
 ):
-    # Analytic Hammerstad-Jensen anchor per MSL port (eps precedence
-    # mirrors compute_msl_s_matrix: explicit eps_r_sub > rasterised
-    # eps_r at the trace-centre substrate cell).
     z0_hj_per_port: list[float] = []
     beta0_per_port: list[np.ndarray] = []
     eps_r_ref_per_port: list[float] = []
@@ -245,8 +218,6 @@ def _prepare_mixed_anchors(
             / _c0_mixed
         )
 
-    # Trace-conductor z-cell span (closed Ampere loop needs the PEC
-    # trace; mirrors compute_msl_s_matrix).
     trace_k_per_port: list[tuple[int, int]] = []
     for p_idx in range(n_msl):
         meta = port_idx_meta[p_idx]
@@ -266,8 +237,6 @@ def _prepare_mixed_anchors(
             )
         trace_k_per_port.append((_k_lo_tr, _k_hi_tr))
 
-    # Wire live-cell counts for the per-cell impedance normalization
-    # (mirrors compute_lumped_wire_s_matrix_via_scan).
     n_live_lw = np.ones(n_lw, dtype=np.int64)
     if wire_mode:
         from rfx.sources.sources import WirePort, _wire_port_live_cells
@@ -306,13 +275,6 @@ def _check_mixed_flux(
                                          reason="Flux magnitudes cannot compare these powers.")
         except ValueError as error:
             raise diagnostic_refusal(error, _diagnostics) from None
-        # The per-port flux box is CLOSED by the z-lo PEC ground: it
-        # has five faces and omits the bottom because flux through a
-        # PEC face is identically zero. It also treats pe.extent as a
-        # VERTICAL height. Both are physical preconditions, so check
-        # them instead of assuming (review finding: a user with an
-        # open z-lo boundary or a horizontal port would otherwise get
-        # a silently wrong P_net on the DEFAULT channel).
         _pec_faces = (
             self._boundary_spec.pec_faces()
             if self._boundary_spec is not None else set()
@@ -345,20 +307,14 @@ def _prepare_mixed_observers(
     declaration_variant, entries, freqs_arr, grid, jnp, lw_entries, magnitude_channel,
     probe_xs, self,
 ):
+    """Lumped/wire flux-face signs denote outward normals of the five-face box closed by the PEC z-low ground."""
     observers = declaration_variant(
         self, _internal_probe_indices=set(self._internal_probe_indices))
-    # Ring-down settling witness probes at every MSL probe plane,
-    # mid-substrate (worst plane wins — a single plane is
-    # standing-wave-node sensitive; mirrors compute_msl_s_matrix).
     _witness_base = len(observers._probes)
     _witness_total = 0
     for pe_w, pxs_w in zip(entries, probe_xs):
-        # This calculator-created midpoint is not a declaration. Keep
-        # its historical half-to-even node when the substrate has an
-        # odd number of cells; user port/source coordinates still use
-        # the shared lower-node tie rule.
         witness_z = float(pe_w.position[2]) + 0.5 * float(pe_w.height)
-        dz = float(grid.cells(2)[0])   # uniform mesh (refused graded above)
+        dz = float(grid.cells(2)[0])
         witness_z = int(round(witness_z / dz)) * dz
         for _x_w in pxs_w:
             observers.add_probe(
@@ -374,12 +330,6 @@ def _prepare_mixed_observers(
         range(_witness_base, _witness_base + _witness_total)
     )
 
-    # Flux surfaces for the magnitude channel (registered once —
-    # geometry is drive-independent). Lumped/wire port p: a closed
-    # 5-face box over the z-lo ground plane (flux through the PEC
-    # ground face is identically zero); outward-signed face list.
-    # MSL port p: one full-cross-section x-plane at probe 0 (its
-    # de-embedding reference plane).
     flux_faces_lw: list[list[tuple[str, float]]] = []
     flux_names_msl: list[str] = []
     if magnitude_channel == "flux":
@@ -419,20 +369,13 @@ def _prepare_mixed_drive(
     GaussianPulse, _dc, _register_msl_h_planes, declaration_variant, entries, fam, freqs_arr,
     h_stencils, jnp, loc, observers, probe_xs, run_idx, self,
 ):
-    # Excite exactly one port; every other port keeps its
-    # physical termination (matched resistor cells for
-    # lumped/wire, passive probe column for MSL). The driven
-    # lumped/wire port's default waveform is synthesised by
-    # the runner; the driven MSL port mirrors the
-    # compute_msl_s_matrix default.
     run_ports = [
-        _dc.replace(pe, excite=(fam == "lw" and k == loc))
+        _dc.replace(pe, excite=calculator_drive(fam == "lw" and k == loc, excite=pe.excite))
         for k, pe in enumerate(self._ports)
     ]
-    # Use the resolved ladder that the material/probe setup describes.
     run_msl = []
     for k, pe in enumerate(entries):
-        driven = fam == "msl" and k == loc
+        driven = calculator_drive(fam == "msl" and k == loc, excite=pe.excite)
         wf = (
             (pe.waveform if pe.waveform is not None else
              GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8))
@@ -444,16 +387,10 @@ def _prepare_mixed_drive(
         _internal_probe_indices=set(observers._internal_probe_indices),
         _dft_plane_regions=dict(getattr(self, "_dft_plane_regions", {})))
 
-    # Per-run named DFT planes: Ez at probe 0 (line voltage),
-    # Hy+Hz at probe 0 (closed Ampere-loop current legs).
     names = []
     h_names = []
     for p_idx, pxs in enumerate(probe_xs):
         nm = f"_mixed_run{run_idx}_p{p_idx}"
-        # Full ez ladder: probe 0 feeds the V*I wave split;
-        # the N-probe least-squares fit (measured line Zc for
-        # the MSL diagonal — see the z0_fit block below) needs
-        # every plane.
         for q_idx, x_c in enumerate(pxs):
             variant.add_dft_plane_probe(
                 axis="x", coordinate=float(x_c), component="ez",
@@ -479,6 +416,7 @@ def _run_mixed_drive(
     n_freqs_used, n_lw, n_steps, pec_mask, plane_msl, run_idx,
     v_lw, variant, vref_lw, wire_mode,
 ):
+    """``vref_lw`` uses pre-injection voltage from wire accumulator slot 4 or lumped slot 2 when a separate reference channel is present."""
     raw = variant._forward_from_materials(
         grid, materials, debye_spec, lorentz_spec,
         n_steps=n_steps, checkpoint=False, pec_mask=pec_mask,
@@ -501,17 +439,9 @@ def _run_mixed_drive(
         v_lw[run_idx, i_port, :] = np.asarray(vi[0])
         i_lw[run_idx, i_port, :] = np.asarray(vi[1])
         if wire_mode:
-            # Pre-injection drive-sample reference channel (vi[4]): the wire wave
-            # algebra is calibrated against this sample; passive samples are
-            # slot-invariant. A shorter tuple marks a lane without a separate v_ref channel
-            # (the NU lane): it samples POST-injection and its decomposer is calibrated
-            # in that frame, so vi[0] is that lane's correct drive reference.
             vref_lw[run_idx, i_port, :] = np.asarray(
                 vi[4] if len(vi) > 4 else vi[0])
         else:
-            # The lumped family also uses the pre-injection drive sample, vi[2]
-            # (scripts/diagnostics/lumped_port_known_load_line.py). A shorter tuple has
-            # no separate reference channel, and vi[0] is that sample.
             vref_lw[run_idx, i_port, :] = np.asarray(
                 vi[2] if len(vi) > 2 else vi[0])
 
@@ -552,7 +482,6 @@ def _score_mixed_record(
     h_stencils, is_tracer, msl_ports, names, port_idx_meta, probe_xs,
     raw, run_idx, self, settling_db_runs, settling_details, trace_k_per_port, variant,
 ):
-    # Score recorded S channels and witness probes.
     _ts = raw.get("time_series")
     if _ts is not None and not is_tracer(_ts):
         _ts_np = np.asarray(
@@ -600,48 +529,6 @@ def _fit_mixed_impedance(
     beta0_per_port, entries, i_msl, jax, jnp, n_freqs_used,
     n_lw, n_msl, probe_xs, v_lad, z0_hj_per_port,
 ):
-    # ---- N-probe line Zc: DIAGNOSTIC ONLY ---------
-    # This lane does NOT substitute a fitted Zc into the MSL
-    # diagonal: the fit's sign is not stable here, and a substitution
-    # that silently falls back to the analytic anchor can look like
-    # a confirmed measurement.
-    #
-    # Mechanism (why a sign fix would not be enough): the model
-    # V_n = alpha*exp(-j beta x_n) + gamma*exp(+j beta x_n) is
-    # invariant under (beta -> -beta, alpha <-> gamma), so a beta
-    # scan that lands on the wrong branch SWAPS the two wave
-    # roles and flips the sign of (alpha - gamma) — and therefore
-    # of z0 = (alpha - gamma)/I1. Measured on one fixture: the
-    # fitted sign differs between num_periods=4 and 20.
-    #
-    # msl_loop_current uses a direction-dependent convention. Own-drive
-    # diagonal on the committed thru fixture:
-    # Re((alpha-gamma)/I1) = +57.52 ohm at the "+x" port and
-    # -57.56 ohm at the "-x" port (same magnitude to 0.08%), so
-    # the lane is self-consistent: |S11|=|S22| to 5 decimals,
-    # reciprocity 1.27e-05, column power <= 0.99998, both reported
-    # Z0 positive. The beta-branch instability above is separate.
-    #
-    # The measurement (VESSL 369367257265, driver
-    # scripts/diagnostics/msl_passive_port_reflection.py) found: the two ports read
-    # |Gamma| 0.1799 and 0.1759 on the shipped R = 50 ohm fixture.
-    # The cell-aligned and +/-y-rotated variants reproduce that to 4
-    # decimals. The fitted Zc here is 41.9 ohm against the
-    # Hammerstad-Jensen 47.9 ohm -- a dx bias, not a
-    # termination error. What remains unexplained is the passive
-    # port's reflection itself: |Gamma_passive| = 0.176-0.180 at
-    # R = 50 ohm with no mechanism named. Both single-reflector
-    # models were falsified over a 25 / Zc / 50 / open R sweep
-    # (shunt Zc/(2R+Zc) misses by up to 0.119, end |R-Zc|/(R+Zc)
-    # by 0.242; implied k runs 1.91 -> 1.03, so the shape does not
-    # follow 1/(2R+Zc)); reported and stopped there, no two-
-    # parameter fit.
-    #
-    # The fit is still computed and EXPOSED (return_diagnostics)
-    # because it is the only handle on the measured-vs-analytic Zc
-    # gap (41.9 ohm fitted vs 47.9 ohm Hammerstad-Jensen on this
-    # mesh), but it never feeds a shipped
-    # number, and its magnitude is reported without a sign claim.
     from rfx.probes.msl_wave_decomp import extract_msl_nprobe
     z0_msl_fit = np.full((n_msl, n_freqs_used), np.nan)
     beta_railed_msl = np.zeros((n_msl, n_freqs_used), dtype=bool)
@@ -687,15 +574,7 @@ def _shift_mixed_planes(
     S, _complex_dtype, entries, eps_r_ref_per_port, freqs_arr, grid, msl_ports,
     n_lw, n_msl, probe_xs, s_wave_full,
 ):
-    # ---- Reference plane: MSL probe 0 -> declared feed plane -------
-    # The same resolver as compute_msl_s_matrix (one expression for
-    # both calculators): L_p from the realized nodes, the closed-form
-    # shift beta (Hammerstad-Jensen + Kirschning-Jansen dispersion),
-    # S[i, j] <- D_i S[i, j] D_j with D = exp(-j beta L) on the MSL
-    # rows and columns and D = 1 on the lumped/wire ones. After the
-    # flux magnitude override, which it cannot disturb (|D| = 1).
-    # S_wave (the pre-override wave-channel matrix) gets the same D, so
-    # every S this result reports is referred to one plane per port.
+    """MSL entries of the input S-matrices are referenced to probe 0."""
     from rfx.measurement.msl_planes import (
         resolve_msl_planes as _resolve_msl_planes,
         apply_feed_plane_shift as _apply_feed_plane_shift,

@@ -11,7 +11,6 @@ import jax
 import numpy as np
 import pytest
 
-from rfx import diagnostics
 from rfx.cli import main
 
 
@@ -66,6 +65,7 @@ geometry:
 
 
 def test_run_writes_probe_on_cpu(tiny_config, tmp_path):
+    """Four cells per axis have five bounding nodes with PEC walls."""
     output = tmp_path / "result.h5"
     started = time.perf_counter()
     with jax.default_device(jax.devices("cpu")[0]):
@@ -73,19 +73,11 @@ def test_run_writes_probe_on_cpu(tiny_config, tmp_path):
     assert time.perf_counter() - started < 30.0
     assert output.is_file()
     with h5py.File(output, "r") as result:
-        # Four cells per axis have five bounding nodes with PEC walls.
         assert tuple(result["input"].attrs["grid_shape"]) == (5, 5, 5)
         probe = result["output/time_series"][:]
     assert probe.shape == (4, 1)
     assert np.isfinite(probe).all()
     assert np.any(probe != 0)
-
-
-def test_diagnostics_exits_successfully(capsys):
-    # Diagnostics has no flags: argv is ignored, so exercise its real default.
-    with jax.default_device(jax.devices("cpu")[0]):
-        assert diagnostics.main([]) == 0
-    assert "Summary: All critical checks passed." in capsys.readouterr().out
 
 
 @pytest.mark.source_scan

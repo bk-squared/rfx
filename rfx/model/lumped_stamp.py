@@ -43,14 +43,6 @@ def _nu_cell_arrays(grid):
             _np.asarray(grid.dz, dtype=_np.float64),
         )
     except jax.errors.TracerArrayConversionError as exc:
-        # The port metric needs concrete per-cell spacings. Falling back to SCALAR
-        # ``grid.dx`` / ``grid.dy`` for the transverse axes would size the port from
-        # the BOUNDARY cell instead of the node's cell. Those scalars are plain
-        # floats even when the profile is traced: a traced ``dx_profile`` with
-        # concrete ``dz`` would run and return a gradient of exactly 0.0 (measured
-        # ``jax.grad`` and grad-norm). An optimiser would read that silently zero
-        # gradient as an insensitive design variable, so refuse the traced metric
-        # instead of falling back to scalars.
         raise NotImplementedError(
             "port metrics (port_sigma / "
             "port_dual_transverse) need CONCRETE per-cell mesh spacings: the "
@@ -299,11 +291,6 @@ def wire_port_edge_span(grid, axis: int, lo: int, hi: int,
     """
     if hi > lo:
         return lo, hi - 1
-    # Sub-cell extent: both ends snapped to node ``lo``, so the half-open
-    # span is empty. The port still drives exactly one edge — the one its
-    # extent lies in — chosen on the side of the node the extent occupies.
-    # A tie (an extent centred on the node) takes the upper edge, which is
-    # what the half-open rule would give for a one-cell extent.
     mid = 0.5 * (float(start_pos) + float(end_pos))
     node_pos = _axis_node_position(grid, axis, lo)
     k = lo if mid >= node_pos else max(lo - 1, 0)
@@ -362,9 +349,6 @@ def _wire_port_live_cells(grid, port, pec_edge_masks=None):
     if pec_edge_masks is None:
         return cells, [True] * len(cells), max(len(cells), 1)
 
-    # One host transfer for the whole extent (``edge_is_pec`` pulls the
-    # full component mask per call, and the eager S-param loops read this
-    # three times per port per step).
     live_flags = [not d for d in
                   edges_are_pec(pec_edge_masks, port.component, cells)]
     n_live = sum(live_flags)
@@ -381,7 +365,7 @@ def _wire_port_live_cells(grid, port, pec_edge_masks=None):
     return cells, live_flags, n_live
 
 
-def setup_wire_port(grid, port, materials, pec_edge_masks=None):
+def setup_wire_port(grid, port, materials, pec_edge_masks=None, *, radius_sim=None, radius_port=None):
     """Distribute port impedance across the LIVE wire cells.
 
     For n_live live cells in series with total impedance Z0:
@@ -399,10 +383,15 @@ def setup_wire_port(grid, port, materials, pec_edge_masks=None):
     port._drive_stamps.clear()
 
     if port.radius is not None:
-        from rfx.sources.wire_radius import stamp_wire_radius
+        from rfx.sources.wire_radius import stamp_wire_radius, require_radius_pole_clearance
+        if radius_sim is not None:
+            require_radius_pole_clearance(
+                radius_sim, grid, port.component,
+                [c for c, live in zip(cells, live_flags) if live], port=radius_port)
         materials = stamp_wire_radius(
             grid, materials, port.component, port.radius,
-            [c for c, live in zip(cells, live_flags) if live])
+            [c for c, live in zip(cells, live_flags) if live],
+            pole_clearance=radius_sim is not None)
     for cell, live in zip(cells, live_flags):
         if not live:
             continue

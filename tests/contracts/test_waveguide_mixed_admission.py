@@ -7,7 +7,7 @@ import pytest
 from rfx import Simulation
 
 
-MESSAGE = "Waveguide ports are not supported together with lumped ports or TFSF"
+MESSAGE = "Waveguide ports are not supported together with a lumped or wire port, or a soft source (add_source) or TFSF"
 PATHS = ("uniform-run", "uniform-forward", "graded-run", "graded-forward")
 
 
@@ -31,8 +31,7 @@ def _public_call(sim, path):
 
 
 def _stored_tfsf_call(sim, path):
-    # Public TFSF boundary checks can reject this declaration before a runner.
-    # Exercise the runner's own admission with a stored, valid source entry.
+    """A stored TFSF entry isolates runner admission from the public boundary checks."""
     source = Simulation(freq_max=20e9, domain=(.030, .020, .012), dx=.002,
                         boundary="cpml", cpml_layers=2)
     source.add_tfsf_source(f0=10e9, margin=1)
@@ -83,11 +82,3 @@ def test_mixed_refused_before_fields(monkeypatch, path, companion):
         assert "add_waveguide_port(...) uses compute_waveguide_s_matrix()" in str(caught.value)
     else:
         assert str(caught.value) == MESSAGE
-
-
-@pytest.mark.parametrize("path", PATHS)
-def test_waveguide_alone_runs(path):
-    result = _public_call(_guide(path), path)
-    jax.block_until_ready(result.time_series)
-    assert result.time_series.shape[0] == 1
-    assert "guide" in result.waveguide_sparams

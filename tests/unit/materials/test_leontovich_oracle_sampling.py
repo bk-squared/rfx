@@ -3,6 +3,7 @@
 Only the field backend and analytic model calls are mocked. The committed
 _run_guide extraction and _model_fits handoff execute unchanged; no FDTD or
 transverse eigenvalue solve runs in this test.
+Over the inclusive 25–125 mm fit span, Ez uses x nodes with Hy half a cell to their right.
 """
 from types import SimpleNamespace
 
@@ -16,10 +17,10 @@ from tests.oracle import test_leontovich_alpha_oracle as oracle
 def test_recorded_component_coordinates_reach_model_fit_and_prediction(
     monkeypatch, ez_cell, expected_ez_z,
 ):
-    # Nonzero padding detects forgotten coordinate offsets. The returned Ez
-    # registration deliberately differs from the builder's nominal z=3 mm.
+    """The bounding E node's Hy slot lies outside the twelve physical Hy z centres spanning the 6 mm stack."""
     grid = SimpleNamespace(pad_x_lo=7, pad_y_lo=2, pad_z_lo=3,
                            shape=(390, 9, 18))
+    assert min(grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo) > 0, 'Nonzero padding exposes omitted coordinate offsets.'
     nx, ny, nz = grid.shape
     x_nodes = (np.arange(nx) - 7) * .0005
     y_nodes = (np.arange(ny) - 2) * .0005
@@ -30,16 +31,13 @@ def test_recorded_component_coordinates_reach_model_fit_and_prediction(
         return (fi + 1) * (1 + 1j * y / .001) * np.exp((-.8 - 17j) * x)
 
     def magnetic(fi, x, z):
-        # Vary both physical axes and quadratures. A constant plane would
-        # fail to discriminate a shifted/incorrectly cropped observation.
+        """A constant plane would fail to discriminate a shifted or incorrectly cropped magnetic observation."""
         return (fi + 1) * (2 + x / .0005 + 1j * (5 + z / .0005))
 
     ez = np.stack([electric(fi, x_nodes[:, None], y_nodes[None, :])
                    for fi in range(len(frequencies))])
     hy = np.stack([magnetic(fi, x_nodes[:, None] + .00025, z_h[None, :])
                    for fi in range(len(frequencies))])
-    # Twelve physical Hy z centres span the 6 mm stack. The bounding E
-    # node's Hy slot (and the padding after it) is outside that stack.
     hy[:, :, :3] = 1e30 + 2e30j
     hy[:, :, 15:] = -3e30 + 4e30j
     result = SimpleNamespace(
@@ -64,8 +62,6 @@ def test_recorded_component_coordinates_reach_model_fit_and_prediction(
         return FakeSimulation()
 
     monkeypatch.setattr(oracle, "_build_guide", build)
-    # The oracle owns module-level caches for expensive runs/fits. A prior
-    # oracle test must not make this handoff check skip its fit/predict calls.
     monkeypatch.setattr(oracle, "_cache", {})
     out = oracle._run_guide(freqs=frequencies, n_steps=37)
     assert builds == [((oracle.SIGMA_BULK,), {
@@ -73,8 +69,6 @@ def test_recorded_component_coordinates_reach_model_fit_and_prediction(
     })]
     assert runs == [{"n_steps": 37, "compute_s_params": False}]
 
-    # Independent hand geometry, including both endpoints of the 25–125 mm
-    # fit span. Ez uses x nodes; Hy is half a cell to their right.
     expected_ex = np.linspace(.025, .125, 201)
     expected_hx = np.linspace(.02525, .12525, 201)
     expected_hz = np.linspace(.00025, .00575, 12)
@@ -113,8 +107,6 @@ def test_recorded_component_coordinates_reach_model_fit_and_prediction(
         assert (f, b, g, rs, eta) == (
             frequencies[fi], oracle.B_PLATE, oracle.G_STUB, oracle.RS0, oracle.ETA_0)
         prediction_calls.append(fitted)
-        # Let the real alpha-fit consumer process an unfitted Ez prediction
-        # with a slope distinct from the mocked Hy model's alpha.
         return np.exp(-(2 + fi) * np.asarray(xs))[:, None] * (1 + .2j)
 
     monkeypatch.setattr(oracle._trm, "fit_hy_field", fit)

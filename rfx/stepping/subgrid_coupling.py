@@ -215,7 +215,6 @@ def _z_slab_coupling_e_3d(
         ef_arr = ef_arr.at[f_slice].add(alpha_f * (ec_us - ef_face))
         return ec_arr, ef_arr
 
-    # z-lo and z-hi: tangential E = Ex, Ey.  Ez is normal to the interface.
     if plan.couple_zlo:
         c_lo = (slice(fi, fi + ni), slice(fj, fj + nj), plan.k_lo_c)
         f_lo = (slice(None), slice(None), 0)
@@ -264,7 +263,6 @@ def _z_slab_coupling_h_3d(
         hf_arr = hf_arr.at[f_slice].add(alpha_f * (hc_us - hf_face))
         return hc_arr, hf_arr
 
-    # z-lo and z-hi: tangential H = Hx, Hy.  Hz is normal to the interface.
     if plan.couple_zlo:
         c_lo = (slice(fi, fi + ni), slice(fj, fj + nj), plan.k_lo_c)
         f_lo = (slice(None), slice(None), 0)
@@ -324,7 +322,6 @@ def _box_node_aligned_coupling_e_3d(
         ef_arr = ef_arr.at[f_slice].add(alpha_f * (ec_us - ef_face))
         return ec_arr, ef_arr
 
-    # x faces: tangential E = Ey, Ez; face coordinates are y,z.
     if nj > 0 and nk > 0 and config.ny_f > 0 and config.nz_f > 0:
         if couple_xlo:
             c_lo = (c_xlo, slice(fj, fj + nj), slice(fk, fk + nk))
@@ -337,7 +334,6 @@ def _box_node_aligned_coupling_e_3d(
             ey_c, ey_f = couple(ey_c, ey_f, c_hi, f_hi, nj, nk, config.ny_f, config.nz_f)
             ez_c, ez_f = couple(ez_c, ez_f, c_hi, f_hi, nj, nk, config.ny_f, config.nz_f)
 
-    # y faces: tangential E = Ex, Ez; face coordinates are x,z.
     if ni > 0 and nk > 0 and config.nx_f > 0 and config.nz_f > 0:
         if couple_ylo:
             c_lo = (slice(fi, fi + ni), c_ylo, slice(fk, fk + nk))
@@ -350,7 +346,6 @@ def _box_node_aligned_coupling_e_3d(
             ex_c, ex_f = couple(ex_c, ex_f, c_hi, f_hi, ni, nk, config.nx_f, config.nz_f)
             ez_c, ez_f = couple(ez_c, ez_f, c_hi, f_hi, ni, nk, config.nx_f, config.nz_f)
 
-    # z faces: tangential E = Ex, Ey; face coordinates are x,y.
     if ni > 0 and nj > 0 and config.nx_f > 0 and config.ny_f > 0:
         if couple_zlo:
             c_lo = (slice(fi, fi + ni), slice(fj, fj + nj), c_zlo)
@@ -405,7 +400,6 @@ def _box_node_aligned_coupling_h_3d(
         hf_arr = hf_arr.at[f_slice].add(alpha_f * (hc_us - hf_face))
         return hc_arr, hf_arr
 
-    # x faces: tangential H = Hy, Hz; face coordinates are y,z.
     if nj > 0 and nk > 0 and config.ny_f > 0 and config.nz_f > 0:
         if couple_xlo:
             c_lo = (c_xlo, slice(fj, fj + nj), slice(fk, fk + nk))
@@ -418,7 +412,6 @@ def _box_node_aligned_coupling_h_3d(
             hy_c, hy_f = couple(hy_c, hy_f, c_hi, f_hi, nj, nk, config.ny_f, config.nz_f)
             hz_c, hz_f = couple(hz_c, hz_f, c_hi, f_hi, nj, nk, config.ny_f, config.nz_f)
 
-    # y faces: tangential H = Hx, Hz; face coordinates are x,z.
     if ni > 0 and nk > 0 and config.nx_f > 0 and config.nz_f > 0:
         if couple_ylo:
             c_lo = (slice(fi, fi + ni), c_ylo, slice(fk, fk + nk))
@@ -431,7 +424,6 @@ def _box_node_aligned_coupling_h_3d(
             hx_c, hx_f = couple(hx_c, hx_f, c_hi, f_hi, ni, nk, config.nx_f, config.nz_f)
             hz_c, hz_f = couple(hz_c, hz_f, c_hi, f_hi, ni, nk, config.nx_f, config.nz_f)
 
-    # z faces: tangential H = Hx, Hy; face coordinates are x,y.
     if ni > 0 and nj > 0 and config.nx_f > 0 and config.ny_f > 0:
         if couple_zlo:
             c_lo = (slice(fi, fi + ni), slice(fj, fj + nj), c_zlo)
@@ -598,8 +590,6 @@ def _z_slab_material_coupling_h_3d(
     from rfx.sources.wire_radius import require_radius_update
     for mats in (mats_c, mats_f):
         require_radius_update(mats, lane="subgridded", unsupported=True)
-    # Unpack the relevant option fields into same-named locals so the body
-    # below is byte-unchanged from the historical keyword-argument signature.
     use_exterior_z_interfaces = opts.use_exterior_z_interfaces
     use_boundary_terminated_exterior_z_interfaces = (
         opts.use_boundary_terminated_exterior_z_interfaces
@@ -681,7 +671,6 @@ def _z_slab_material_coupling_h_3d(
         eps = materials.eps_r[sl]
         mu = sat_face_mu(materials, sl)
         if _realized.ACTIVE is not None:
-            # Each SAT pair consumes its own tangential H face material.
             eps, mu = _realized.face(materials, sl, eps, mu, site)
         return eps * EPS_0, tuple(component * MU_0 for component in mu)
 
@@ -697,7 +686,6 @@ def _z_slab_material_coupling_h_3d(
         eps_c, mu_c = face_coeffs_c(plan.k_lo_c)
         eps_f, mu_f = face_coeffs_f(0)
 
-        # Coarse side: lower=coarse, upper=restricted fine.
         pair_a_c = interface_pair_deltas(
             ex_c[c],
             hy_c_arr[c],
@@ -817,7 +805,6 @@ def _z_slab_material_coupling_h_3d(
                     -zlo_pair_b_fine_scale * pair_b_dv_upper
                 )
             else:
-                # Fine side: lower=prolonged coarse, upper=fine.
                 pair_a_f = interface_pair_deltas(
                     up(ex_c[c]),
                     up(hy_c[c]),
@@ -859,7 +846,6 @@ def _z_slab_material_coupling_h_3d(
                 + material_sat_zhi_coarse_eps_blend * down(eps_f)
             )
 
-        # Coarse side: lower=restricted fine, upper=coarse.
         pair_a_c = interface_pair_deltas(
             down(ex_f[f]),
             down(hy_f_arr[f]),
@@ -971,7 +957,6 @@ def _z_slab_material_coupling_h_3d(
                 hy_f_arr = hy_f_arr.at[f].add(zhi_fine_scale * pair_a_dv_lower)
                 hx_f_arr = hx_f_arr.at[f].add(-zhi_fine_scale * pair_b_dv_lower)
             else:
-                # Fine side: lower=fine, upper=prolonged coarse.
                 pair_a_f = interface_pair_deltas(
                     ex_f[f],
                     hy_f_arr[f],
@@ -1022,8 +1007,6 @@ def _z_slab_material_coupling_e_3d(
     from rfx.sources.wire_radius import require_radius_update
     for mats in (mats_c, mats_f):
         require_radius_update(mats, lane="subgridded", unsupported=True)
-    # Unpack the relevant option fields into same-named locals so the body
-    # below is byte-unchanged from the historical keyword-argument signature.
     use_exterior_z_interfaces = opts.use_exterior_z_interfaces
     use_boundary_terminated_exterior_z_interfaces = (
         opts.use_boundary_terminated_exterior_z_interfaces
@@ -1106,7 +1089,6 @@ def _z_slab_material_coupling_e_3d(
         eps = materials.eps_r[sl]
         mu = sat_face_mu(materials, sl)
         if _realized.ACTIVE is not None:
-            # Each SAT pair consumes its own tangential H face material.
             eps, mu = _realized.face(materials, sl, eps, mu, site)
         return eps * EPS_0, tuple(component * MU_0 for component in mu)
 

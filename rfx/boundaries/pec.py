@@ -5,6 +5,8 @@ convention (E_tan = 0 on the face plane at index 0 / N) — it is not a body.
 Conductor bodies follow the lattice ownership contract:
 :func:`realized_pec_edge_masks` is the one source of PEC E edges for
 volumes, sheets and wires.
+
+Electric components ``Ex``, ``Ey`` and ``Ez`` lie at ``(x_half, y_node, z_node)``, ``(x_node, y_half, z_node)`` and ``(x_node, y_node, z_half)``, respectively.
 """
 
 from __future__ import annotations
@@ -34,30 +36,28 @@ def apply_pec(state, axes: str = "xyz") -> object:
     state : FDTDState
     axes : str
         Which axes to apply PEC on. Default "xyz" = all 6 faces.
+
+    The final z row of ``Ez`` is a ghost outside the physical domain.
     """
     ex, ey, ez = state.ex, state.ey, state.ez
 
     if "x" in axes:
-        # PEC at x=0 and x=end: Ey, Ez tangential → 0
         ey = ey.at[0, :, :].set(0.0)
         ey = ey.at[-1, :, :].set(0.0)
         ez = ez.at[0, :, :].set(0.0)
         ez = ez.at[-1, :, :].set(0.0)
 
     if "y" in axes:
-        # PEC at y=0 and y=end: Ex, Ez tangential → 0
         ex = ex.at[:, 0, :].set(0.0)
         ex = ex.at[:, -1, :].set(0.0)
         ez = ez.at[:, 0, :].set(0.0)
         ez = ez.at[:, -1, :].set(0.0)
 
     if "z" in axes:
-        # PEC at z=0 and z=end: Ex, Ey tangential → 0
         ex = ex.at[:, :, 0].set(0.0)
         ex = ex.at[:, :, -1].set(0.0)
         ey = ey.at[:, :, 0].set(0.0)
         ey = ey.at[:, :, -1].set(0.0)
-        # Ez at k=nz-1 is a ghost cell outside the physical domain.
         ez = ez.at[:, :, -1].set(0.0)
 
     return state._replace(ex=ex, ey=ey, ez=ez)
@@ -126,8 +126,9 @@ def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None, normal_gh
 
     Its tangential zero set is ``wall_edge_masks(state.ex.shape, faces)``;
     the extra Ez high-z ghost cleanup below is excluded from that set.
-    ``frame`` maps axes to static (lo, hi) rows; only x may differ from
-    (0, n). ``owned`` selects each named face's write on its row only;
+    ``frame`` maps axes to static (lo, hi) rows: a shard's x rows, or the
+    physical rows of a high-padded array on any axis (the wall and the
+    normal ghost then sit at ``hi - 1``). ``owned`` selects each named face's write on its row only;
     ``owned=None`` means the caller owns every named face (one device).
 
     Parameters
@@ -142,7 +143,7 @@ def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None, normal_gh
 
     normal_ghost_faces = normal_ghost_faces or ()
     if needs_face_frame(state.ex.shape, faces, frame, owned):
-        return apply_framed_faces(state, faces, frame, owned)
+        return apply_framed_faces(state, faces, frame, owned, normal_ghost_faces)
     if not faces and not normal_ghost_faces:
         return state
     ex, ey, ez = state.ex, state.ey, state.ez
@@ -165,8 +166,6 @@ def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None, normal_gh
     if "z_hi" in faces:
         ex = ex.at[:, :, -1].set(0.0)
         ey = ey.at[:, :, -1].set(0.0)
-        # Ez at k=nz-1 is a ghost cell at z=(nz-0.5)*dx, outside the
-        # physical domain. Zero it to prevent ghost-layer accumulation.
         ez = ez.at[:, :, -1].set(0.0)
 
     if "x_hi" in normal_ghost_faces:
@@ -179,24 +178,6 @@ def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None, normal_gh
     return state._replace(ex=ex, ey=ey, ez=ez)
 
 
-# ---------------------------------------------------------------------------
-# Lattice ownership contract for conductors
-#
-# One sentence, three regions: an E component is PEC iff its own location is
-# inside the closed conductor region — a VOLUME (a set of primal cells), a
-# SHEET (a footprint on one node plane, zero thickness) or a WIRE (a 1-D path
-# of edges).  :func:`realized_pec_edge_masks` is the ONLY function that turns
-# geometry into PEC edges; every consumer reads its ``(Mx, My, Mz)`` or one
-# of the two helpers built on it (:func:`realized_wall_planes`,
-# :func:`edge_is_pec`).  Normative text:
-# docs/design_notes/20260906_plan_realign_lattice_ownership.md (§1).
-#
-# Index conventions (§1.1): node ``i`` at ``x_i`` is the LOWER corner of
-# primal cell ``i``; ``Ex[i,j,k]`` sits at ``(x_{i+1/2}, y_j, z_k)``,
-# ``Ey[i,j,k]`` at ``(x_i, y_{j+1/2}, z_k)``, ``Ez[i,j,k]`` at
-# ``(x_i, y_j, z_{k+1/2})``.  ``C[i,j,k]`` means primal cell ``(i,j,k)`` is
-# conductor.
-# ---------------------------------------------------------------------------
 
 
 def _shift(arr, ax, periodic, direction, *, xp=jnp):
@@ -265,8 +246,6 @@ class SheetFootprint:
         return np.asarray(self)[index]
 
     def __jax_array__(self):
-        # Explicit external array operations can request the inspection view.
-        # Return host data; neither the view nor a device copy is retained.
         return np.asarray(self)
 
     def sum(self, *args, **kwargs):
@@ -309,21 +288,15 @@ class SheetSpec:
     sheet's plane is never a traced quantity (the ``argmin`` cliff).  A
     sheet owns NO cell — it adds nothing to the cell mask and writes no
     material.
+
+    ``drawn`` stores ``None`` on the normal axis and ``(lo, hi, tol)`` in metres on transverse axes, with the index-wrap length appended on concrete axes.
     """
     normal_axis: int
     plane: int
     footprint: object
     name: str | None = None
-    # A physical in-plane interval distinguishes node 0 from its virtual
-    # endpoint N until its edges have been enumerated.
     unwrapped_footprint: object | None = None
-    # Per axis: a boolean vector over that axis' nodes, True on the rows that
-    # lie ON a drawn face of the shape (``None`` = no drawn face there). Made
-    # with the footprint (``rasterize_grid.sheet_end_rows``); read by the
-    # finite-R_s sheet operator only -- a PEC sheet has no weight to adjust.
     end_rows: tuple = (None, None, None)
-    # Per axis: None on the normal, (lo, hi, tol) in metres otherwise.
-    # Concrete axes append the index-wrap length as a fourth entry.
     drawn: tuple | None = None
 
     @classmethod
@@ -414,7 +387,6 @@ class SheetSpec:
             if fp is None and field == 'unwrapped_footprint':
                 continue
             if _is_tracer(fp):
-                # The f0 operator on a moving mesh uses a traced 3-D mask.
                 if fp.ndim != 3:
                     raise ValueError("SheetSpec.footprint must be a 3-D (nx, ny, nz) boolean array")
                 if not 0 <= self.plane < fp.shape[a]:
@@ -672,8 +644,6 @@ def _unwrapped_sheet_edge_masks(sheets, shape, periodic):
             full = _unwrapped_sheet_plane(sp, shape, periodic)
             per_axis.setdefault(a, []).append(_sheet_entry(sp, full))
             continue
-        # Explicit legacy node masks already identify the periodic endpoints.
-        # Also use this as the clip mask for diagnostic copies of a sheet.
         for t in range(3):
             if periodic[t] and t != a:
                 first = [slice(None)] * 3
@@ -918,9 +888,9 @@ def realized_wall_planes(edge_masks: Sequence[jax.Array | np.ndarray], axis: int
                 back[t] = back[t] - 1
                 col = col | m[tuple(back)]
             elif m.shape[t] == 1:
-                pass  # length-1 axis: the node's own index IS the wrap neighbour
+                pass
             elif periodic[t]:
-                back[t] = m.shape[t] - 1   # wrap: node 0's backward edge
+                back[t] = m.shape[t] - 1
                 col = col | m[tuple(back)]
             hit = col if hit is None else (hit | col)
     else:
@@ -997,10 +967,6 @@ def clear_edges(edge_masks, cells, component=None):
     return tuple(out)
 
 
-#: E is frozen where the Kottke Stage-2 inverse-permittivity tensor is this
-#: small.  Same constant the step body's post-CPML re-enforcement and
-#: ``apply_pec_h_mask`` selection use; named once so the fence below and the
-#: step body cannot drift apart.
 PEC_INV_THRESHOLD = 1e-9
 
 
@@ -1137,7 +1103,6 @@ def apply_pec_h_mask(state, pec_mask=None, *,
         pairwise combinations.
     """
     dtype = state.hx.dtype
-    # Build per-component boolean masks (default: nothing zeroed).
     zero_hx = mask_hx
     zero_hy = mask_hy
     zero_hz = mask_hz
@@ -1246,14 +1211,10 @@ def pec_occupancy_box_keep(box, design_occupancy, *, shape, dtype,
     i0, i1, j0, j1, k0, k1 = (int(v) for v in box)
     lo = (i0, j0, k0)
     hi = (i1, j1, k1)
-    # Computation window: one cell of context on the minus side.
     c_lo = tuple(max(v - 1, 0) for v in lo)
-    # Write window: one cell of reach on the plus side. Also the window's
-    # upper bound -- nothing beyond it is computed or written.
     c_hi = tuple(min(v + 1, n) for v, n in zip(hi, shape))
     win = tuple(slice(a, b) for a, b in zip(c_lo, c_hi))
     write = tuple(slice(a, b) for a, b in zip(lo, c_hi))
-    # The write window inside the computation window.
     inner = tuple(slice(a - c, b - c)
                   for a, b, c in zip(lo, c_hi, c_lo))
 

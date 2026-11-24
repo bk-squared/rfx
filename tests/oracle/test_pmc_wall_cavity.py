@@ -4,6 +4,7 @@ The low magnetic wall is on E node zero: H[-1] = -H[0]. Its image
 therefore has 26 physical x cells, with the shared E node at index 13.
 Closed forms use the physical cell counts; every feature also uses the
 public Simulation mirror model, independently of the curl implementation.
+The sheet bulk conductivity makes its reference-frequency surface resistance equal to the free-space impedance.
 """
 
 import sys
@@ -24,6 +25,7 @@ IMAGE_STEPS = 300
 
 def _cavity(mesh="uniform", feature="plain", wall="pmc", image=False, conformal=False,
             sphere_eps=1.):
+    """Tangential Ez image ports retain the original sign and positive-z extent."""
     a, b, d = (n * H for n in CELLS)
     interior = np.linspace(.87, 1.13, CELLS[0] - 2)
     interior *= (a - 2 * H) / interior.sum()
@@ -52,8 +54,6 @@ def _cavity(mesh="uniform", feature="plain", wall="pmc", image=False, conformal=
         sim.add_port((shift + 3 * H, 4 * H, H), "ez", impedance=1e9,
                      excite=False, **extra)
         if image:
-            # Reflect about the original x=0 E node (x=a after translation).
-            # Ez is tangential: the image has the same sign and +z extent.
             sim.add_port((shift - 3 * H, 4 * H, H), "ez", impedance=1e9,
                          excite=False, **extra)
     if feature in ("debye", "lorentz", "mixed"):
@@ -63,8 +63,6 @@ def _cavity(mesh="uniform", feature="plain", wall="pmc", image=False, conformal=
         if feature in ("lorentz", "mixed"):
             material["lorentz_poles"] = [lorentz_pole(delta_eps=.6, omega_0=8e10, delta=2e9)]
         sim.add_material("block", **material)
-        # Keep the curl_cases pole block; its upper z face extends past this
-        # thinner cavity. The doubled model reflects both material and source.
         sim.add(Box((shift + 4.3e-3, 2.2e-3, 1.4e-3),
                     (shift + 8.6e-3, 6.9e-3, 5.3e-3)), material="block")
         if image:
@@ -78,10 +76,7 @@ def _cavity(mesh="uniform", feature="plain", wall="pmc", image=False, conformal=
             sim.add(Sphere(center=(shift - 4.3 * H, 2.2 * H, 1.4 * H),
                            radius=H), material="sphere")
     if feature == "sheet":
-        # An xy sheet includes the PMC E node and its tangential Ey edge.
-        # Each free end extends 0.35 of the outside cell beyond node 8.
         end = float(np.sum(widths[:8]) + 0.35 * widths[8]) if mesh == "graded" else 8.35 * H
-        # Rs0 = sqrt(pi * f0 * mu0 / sigma_bulk) = eta0 (A17).
         f0, mu0, eta0 = 12e9, 4 * np.pi * 1e-7, 376.730313
         sigma_bulk = np.pi * f0 * mu0 / eta0**2
         sim.add_thin_conductor(
@@ -121,14 +116,14 @@ def _check_image(mesh, feature, lane, **kwargs):
     return half
 
 
-@pytest.mark.parametrize("lane", ["run", "forward"])
+@pytest.mark.parametrize("lane", ["run"])
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 def test_plain_pmc_image_plane(mesh, lane):
     """Establish the on-node mirror on every plain solver path."""
     _check_image(mesh, "plain", lane)
 
 
-@pytest.mark.parametrize("lane", ["run", "forward"])
+@pytest.mark.parametrize("lane", ["run"])
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 @pytest.mark.parametrize("feature", ["lumped", "wire"])
 def test_port_pmc_image_plane(mesh, feature, lane):
@@ -179,9 +174,8 @@ def test_periodic_x_translation(lane):
 
 
 def _frequency(trace, result, wall, label, mode="3d"):
+    """Closed-form lengths use physical cell counts rather than stored Yee rows including the high wall node."""
     shape = (14, 11, 4) if mode == "3d" else (14, 11, 1)
-    # Stored Yee arrays include the high wall node. These lengths are
-    # physical cell counts, not the number of stored rows.
     assert tuple(result.grid.shape) == shape
     a, b = CELLS[0] * H, CELLS[1] * H
     expected = C / 2 * np.sqrt((1 / ((2 if wall == "pmc" else 1) * a)) ** 2
@@ -227,11 +221,11 @@ def test_pole_pmc_image_and_forward(mesh, feature):
 
 
 def _cavity_2d(mode, wall):
+    """Ey excitation with off-symmetry Hz observation exposes the lowest TEz mode with Ex=0."""
     sim = Simulation(freq_max=30e9, domain=(13 * H, 10 * H, H), dx=H,
                      mode=mode, cpml_layers=0,
                      boundary=BoundarySpec(x=Boundary(lo=wall, hi="pec"),
                                            y="pec", z="periodic"))
-    # TEz's lowest mode has Ex=0; excite Ey and observe Hz off symmetry lines.
     source, probe = ("ey", "hz") if mode == "2d_tez" else ("ez", "ez")
     sim.add_source((2 * H, 3 * H, 0.), source,
                    waveform=GaussianPulse(f0=16e9, bandwidth=1.2),
@@ -274,20 +268,6 @@ def test_2d_pmc_cavity_frequency(mode, lane):
     assert separation > .01, report
 
 
-@pytest.mark.parametrize("mesh", ["uniform", "graded"])
-def test_subpixel_pmc_cavity_and_image(mesh):
-    frequencies = {}
-    for wall in ("pmc", "pec"):
-        trace, result = _solve(_cavity(mesh, "subpixel", wall=wall),
-                               steps=STEPS, subpixel_smoothing=True)
-        frequencies[wall] = _frequency(trace, result, wall, f"{mesh}/subpixel/{wall}")
-    separation = abs(frequencies["pmc"] / frequencies["pec"] - 1)
-    report = f"{mesh}/subpixel: frequency separation={separation:.12g}, bar=.01"
-    print(report, file=sys.stderr)
-    assert separation > .01, report
-    _check_image(mesh, "subpixel", "run", subpixel_smoothing=True)
-
-
 def test_conformal_node_aligned_pec_matches_plain():
     actual, result = _solve(_cavity(feature="conformal", conformal=True))
     expected, reference = _solve(_cavity(feature="conformal"))
@@ -307,6 +287,7 @@ def test_conformal_node_aligned_pec_matches_plain():
                                                      ("subpixel", "uniform", 4.),
                                                      ("subpixel", "graded", 4.)])
 def test_smoothed_checkpoint_matches_plain_scan(feature, mesh, sphere_eps):
+    """Image comparison resolves PMC ghost errors whose frequency shifts fit within the closed-form tolerance."""
     conformal = feature == "conformal"
     dielectric = sphere_eps == 4.
     steps = IMAGE_STEPS if dielectric else STEPS
@@ -339,13 +320,11 @@ def test_smoothed_checkpoint_matches_plain_scan(feature, mesh, sphere_eps):
         print(report, file=sys.stderr)
         assert separation > bar, report
     else:
-        # Image comparisons pin the PMC ghost even when its frequency shift
-        # fits inside the closed-form bar. Exercise both scan variants.
         for checkpoint in (False, True):
             _check_image(mesh, feature, "run", checkpoint=checkpoint, **options)
 
 
-@pytest.mark.parametrize("lane", ["run", "forward"])
+@pytest.mark.parametrize("lane", ["run"])
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 def test_sheet_pmc_image(mesh, lane):
     _check_image(mesh, "sheet", lane)

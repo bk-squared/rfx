@@ -10,6 +10,7 @@ from tests.unit.runners._graded_records_scene import model, measure, record, mut
 @pytest.mark.parametrize('n_devices,boundary', [(2, 'pec'), (3, 'pec'), (2, 'cpml'), (3, 'cpml')])
 @pytest.mark.parametrize('interval,axis', [(1, None), (3, 0), (3, 1)])
 def test_snapshots(n_devices, boundary, interval, axis):
+    """The 9-ULP snapshot bar allows CPML wrapped-step compile-form rounding with byte-equal operands."""
     sim, grid, seam = model(boundary, n_devices)
     index = None if axis is None else seam if axis == 0 else grid.shape[1] // 2
     spec = SnapshotSpec(interval=interval, components=('ez', 'hy'), slice_axis=axis, slice_index=index)
@@ -38,7 +39,6 @@ def test_snapshots(n_devices, boundary, interval, axis):
               for c in spec.components
               for i, (actual, reference) in enumerate(zip(many.snapshots[c], expected[c]))}
     assert all(len(many.snapshots[c]) == len(expected[c]) for c in spec.components)
-    # CPML wrapped step: compile-form rounding, operands byte-equal.
     with_bars(values, 'snapshot_ulp' if boundary == 'cpml' else 'array_equal')
     record('snapshots', dict(boundary=boundary, devices=n_devices, interval=interval, axis=axis), values)
     assert all(v['passed'] for v in values.values()), ('snapshot bar', values)
@@ -74,6 +74,7 @@ def test_cpml_seam_snapshot_mutations(mutation, monkeypatch):
 
     skipped_cpml_psi_exchange uses the skipped-Hy exchange fallback: the
     wrapped step has no psi exchange to skip.
+    The 9-ULP snapshot bar allows CPML wrapped-step compile-form rounding with byte-equal operands.
     """
     import jax.numpy as jnp
     from rfx.runners import distributed_nu
@@ -122,7 +123,6 @@ def test_cpml_seam_snapshot_mutations(mutation, monkeypatch):
                 values[f'{c}/step{i + 1}'] = value
         return with_bars(values, 'snapshot_ulp')
 
-    # CPML wrapped step: compile-form rounding, operands byte-equal.
     control = run()
     control_values = metrics(control)
     record('snapshot_seam_control', dict(mutation=mutation, devices=2, boundary='cpml'), control_values)
@@ -130,8 +130,6 @@ def test_cpml_seam_snapshot_mutations(mutation, monkeypatch):
     reached = []
     profile_operands = {}
     if mutation == 'skipped_cpml_psi_exchange':
-        # slab_wrap.wrap exchanges only frame.st: psi has no halo exchange.
-        # Authorized fallback: retain rank 1's pre-exchange Hy low ghost only.
         original_exchange = distributed_nu._exchange_h_ghosts_nu
 
         def skip_hy_exchange_fallback(state, mesh, n_devices, *, ranks, local=False):
@@ -144,8 +142,6 @@ def test_cpml_seam_snapshot_mutations(mutation, monkeypatch):
 
         monkeypatch.setattr(distributed_nu, '_exchange_h_ghosts_nu', skip_hy_exchange_fallback)
     else:
-        # slab_cpml.publish broadcasts whole profiles. Mutate after apply has
-        # formed the rank-local profile, immediately before the boundary call.
         original_apply = slab_cpml.apply
 
         def shift_x_hi(kernel, ctx, invariants, state, psi, **kwargs):
@@ -156,9 +152,8 @@ def test_cpml_seam_snapshot_mutations(mutation, monkeypatch):
                 owner = kernel_kwargs['owned']['x_hi']
 
                 def shift(a):
+                    """Hi profiles use increasing x with the outermost entry last."""
                     assert a.ndim == 1 and a.shape[0] >= grid.pad_x_hi
-                    # Hi profiles are stored in increasing x, outermost last;
-                    # the kernel clips any leading allocation padding.
                     return jnp.where(owner, jnp.concatenate((a[1:], a[-1:])), a)
 
                 shifted = params._replace(x_hi=jax.tree.map(shift, params.x_hi),

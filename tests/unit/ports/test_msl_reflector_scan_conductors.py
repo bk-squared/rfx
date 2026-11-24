@@ -24,6 +24,7 @@ x=8.00mm:
   Box, material "metal" (5.8e7 S/m)  inf (clean)  4466um
   thin_conductor f0 sheet            inf (clean)  4466um
   shape with no bounding box         inf (clean)  inf + 1 unevaluated
+35 um foil is a sheet on the laminate face, declared by a zero-thickness Box.
 """
 
 import warnings
@@ -39,21 +40,11 @@ from rfx.api._preflight import (
 from rfx.geometry.csg import Cylinder
 
 H_SUB = 0.000794
-# ON-LATTICE board (#931 §1.3): h_sub / dx = 4 exactly, so the laminate
-# face is a node line and the foil sheets below land on it with no snap.
-# The fixture ran at dx = 200 um (h_sub/dx = 3.97) — close enough that a
-# sheet would still snap to node 4, but the contract asks for the board
-# to be ON the lattice rather than near it. Nothing this file asserts
-# depends on dx: the scan places conductors by bounding box and the
-# clearance rule is a function of frequency alone.
 DX = H_SUB / 4
 DOMAIN = (0.020, 0.02632, 0.0038)
 Y_C = 0.01316
 W_TRACE = 0.002413
 X_PROBE = 0.008
-# Downstream patch: 35 um foil, so a SHEET on the laminate face — a
-# zero-thickness Box (§1.3), the same declaration the thin_conductor
-# variant below makes.
 PATCH = ((0.012466, 0.003, H_SUB), (0.015006, 0.02332, H_SUB))
 
 
@@ -62,10 +53,10 @@ def _base():
                      boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (DOMAIN[0], DOMAIN[1], H_SUB)), material="sub")
-    # The port's own feed trace (contains the feed plane -> excluded).
-    # 35 um foil -> a SHEET on the laminate face (#931 §1.3).
     sim.add(Box((0.001, Y_C - W_TRACE / 2, H_SUB),
                 (0.012466, Y_C + W_TRACE / 2, H_SUB)), material="pec")
+    assert (sim._geometry[-1].shape.corner_lo[0] <= 0.0025
+            <= sim._geometry[-1].shape.corner_hi[0]), "feed trace must contain the feed plane for its scan exclusion"
     return sim
 
 
@@ -96,8 +87,6 @@ def test_pec_promoted_material_under_another_name_is_seen():
     assert "metal" in label
     assert unevaluated == []
 
-    # The old name test is blind to it — pinned so the widening is what
-    # is being measured, not the fixture.
     d_legacy, label_legacy, _ = _scan(sim, legacy=True)
     assert not np.isfinite(d_legacy)
     assert label_legacy is None
@@ -143,28 +132,28 @@ def test_non_box_shape_is_placed_by_its_bounding_box():
     (``classify_pec_entry``). It is left a volume because this test is
     about the SCAN placing a non-Box shape by its bounding box, which is
     the same either way; the arbitrariness is recorded rather than hidden.
+    The 600 um distance is 9.0 mm - 0.4 mm - 8.0 mm.
     """
     sim = _base()
     sim.add(Cylinder(center=(0.0090, Y_C, H_SUB + DX / 2), radius=0.0004,
                      height=DX, axis="z"), material="pec")
     d, label, unevaluated = _scan(sim)
     assert np.isfinite(d)
-    assert round(d * 1e6) == 600           # 9.0mm - 0.4mm - 8.0mm
+    assert round(d * 1e6) == 600
     assert "bounding box" in label, label
     assert unevaluated == []
 
 
 class _NoBBox:
-    """A conductor shape the scan cannot place."""
+    """A conductor shape the scan cannot place.
+    The unplaceable conductor double has to refuse ``mask_on_coords`` to avoid an AttributeError
+    from the ownership classifier.
+    """
 
-    def mask(self, grid):                     # pragma: no cover - unused
+    def mask(self, grid):                     # pragma: no cover
         raise NotImplementedError
 
-    # #931: the ownership classifier reaches a non-Box shape through
-    # ``mask_on_coords`` (rasterize_grid.pec_volume_cell_mask), so the double
-    # has to refuse there too — refusing only ``mask`` let the classifier
-    # raise AttributeError instead of the refusal this fixture is about.
-    def mask_on_coords(self, x, y, z):        # pragma: no cover - unused
+    def mask_on_coords(self, x, y, z):        # pragma: no cover
         raise NotImplementedError
 
 
@@ -210,13 +199,10 @@ def test_the_measured_board_shape_warns_now():
     This is the #685 field report in miniature: the T-junction sits well
     inside msl_min_probe_clearance of the deepest probe and the old scan
     reported the line clean.
+    Proximity is a layout diagnostic.
     """
     sim = _base()
     sim.add_material("metal", eps_r=1.0, sigma=5.8e7)
-    # Junction placed deliberately close to the probe ladder. Foil, so a
-    # SHEET on the laminate face (#931 §1.3) — sigma = 5.8e7 promotes it
-    # to PEC, and a zero-extent axis is a sheet declaration whatever name
-    # the conductor carries.
     sim.add(Box((0.0088, 0.003, H_SUB), (0.0110, 0.02332, H_SUB)),
             material="metal")
     sim.add_msl_port(position=(0.0025, Y_C, 0.0), width=W_TRACE,
@@ -228,10 +214,6 @@ def test_the_measured_board_shape_warns_now():
     hits = [m for m in msgs
             if "from a strong reflector" in m and "metal" in m]
     assert hits, msgs
-    # #726: proximity is a layout diagnostic, and what it costs is now a
-    # MEASURED statement rather than a predicted error in dB. The row carries
-    # the measurement and its witness, says what to gate on, and states
-    # neither of the two retired claims outside the sentence retracting them.
     import rfx.preflight.msl as _pm
     assert all(_pm.MSL_PROBE_CLEARANCE_EFFECT in m for m in hits)
     assert all(_pm.MSL_PROBE_CLEARANCE_GUIDANCE in m for m in hits)

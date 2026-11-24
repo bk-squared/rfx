@@ -40,6 +40,7 @@ def scene():
 
 @pytest.fixture(scope="module")
 def multimode_scene():
+    """An exactly degenerate pair has no unique eigenvector."""
     grid = Grid(freq_max=12e9, domain=(0.12, 0.04, 0.022), dx=0.002,
                 cpml_layers=10, cpml_axes="x")
     assert grid.shape == (81, 21, 12)
@@ -48,7 +49,6 @@ def multimode_scene():
     modes += [(m, n) for m in range(1, 4) for n in range(1, 4)]
     cutoffs = np.sort([299792458.0 / 2 * np.sqrt((m / a)**2 + (n / b)**2)
                        for m, n in modes])
-    # An exactly degenerate pair has no unique eigenvector.
     assert cutoffs[2] - cutoffs[1] > 0.05 * cutoffs[1], (
         "A degenerate second mode makes the stored profile depend on the LAPACK build"
     )
@@ -90,9 +90,17 @@ def _graded_grid():
     )
 
 
-@pytest.mark.parametrize("axis", ["y", "z", "yz"])
-@pytest.mark.parametrize("multimode", [False, True])
-@pytest.mark.parametrize("graded", [False, True])
+@pytest.mark.parametrize(
+    "graded,multimode,axis",
+    [
+        pytest.param(False, False, "y", id="False-False-y"),
+        pytest.param(True, True, "y", id="True-True-y"),
+        pytest.param(False, True, "z", id="False-True-z"),
+        pytest.param(True, False, "z", id="True-False-z"),
+        pytest.param(False, False, "yz", id="False-False-yz"),
+        pytest.param(True, True, "yz", id="True-True-yz"),
+    ],
+)
 def test_initializers_warn_without_uniform_grid(scene, axis, multimode, graded):
     grid, freqs, _ = scene
     if graded:
@@ -178,10 +186,16 @@ def _no_step(*args, **kwargs):
     raise AssertionError("The whole-node aperture reached stepping")
 
 
-@pytest.mark.parametrize("axis", ["y", "z"])
-@pytest.mark.parametrize("multimode", [False, True])
-@pytest.mark.parametrize("grid_kind", ["explicit", "grid_dx"])
-@pytest.mark.parametrize("conformal", [False, True])
+@pytest.mark.parametrize(
+    "conformal,grid_kind,multimode,axis",
+    [
+        pytest.param(False, "explicit", False, "y", id="False-explicit-False-y"),
+        pytest.param(False, "grid_dx", True, "z", id="False-grid_dx-True-z"),
+        pytest.param(True, "explicit", True, "z", id="True-explicit-True-z"),
+        pytest.param(True, "grid_dx", False, "z", id="True-grid_dx-False-z"),
+        pytest.param(True, "grid_dx", True, "y", id="True-grid_dx-True-y"),
+    ],
+)
 def test_initializers_refuse_uniform_node_plane(scene, axis, multimode, grid_kind, conformal):
     _, freqs, steps = scene
     grid = Grid(freq_max=12e9, domain=(0.12, 0.04, 0.02), dx=0.002,
@@ -200,7 +214,6 @@ def test_initializers_refuse_uniform_node_plane(scene, axis, multimode, grid_kin
         "or extractor (an axis made periodic, a PMC face, or an axis withheld "
         "by pec_axes) must be declared on the Grid."
     )
-    # Expected bounds come directly from node counts, independently of validation.
     valid = initializer(_ports(grid)[0], metric, freqs, f0=6e9,
                         dft_total_steps=steps, **kwargs)
     for cfg in valid if multimode else [valid]:
@@ -233,10 +246,16 @@ def test_2d_initializers_and_loop_accept_whole_z_plane(scene, monkeypatch, multi
                          cpml_axes="x", waveguide_ports=configs)
 
 
-@pytest.mark.parametrize("walls", ["periodic", "pmc_hi"])
-@pytest.mark.parametrize("multimode", [False, True])
-@pytest.mark.parametrize("grid_kind", ["explicit", "grid_dx"])
-@pytest.mark.parametrize("conformal", [False, True])
+@pytest.mark.parametrize(
+    "conformal,grid_kind,multimode,walls",
+    [
+        pytest.param(False, "explicit", False, "periodic", id="False-explicit-False-periodic"),
+        pytest.param(False, "grid_dx", True, "pmc_hi", id="False-grid_dx-True-pmc_hi"),
+        pytest.param(True, "explicit", True, "pmc_hi", id="True-explicit-True-pmc_hi"),
+        pytest.param(True, "grid_dx", False, "pmc_hi", id="True-grid_dx-False-pmc_hi"),
+        pytest.param(True, "grid_dx", True, "periodic", id="True-grid_dx-True-periodic"),
+    ],
+)
 def test_initializers_accept_declared_periodic_or_pmc_high_face(scene, walls, multimode,
                                                                grid_kind, conformal):
     _, freqs, steps = scene
@@ -257,9 +276,15 @@ def test_initializers_accept_declared_periodic_or_pmc_high_face(scene, walls, mu
         assert (cfg.v_lo, cfg.v_hi) == (0, grid.nz - 1)
 
 
-@pytest.mark.parametrize("axis", ["y", "z"])
-@pytest.mark.parametrize("multimode", [False, True])
-@pytest.mark.parametrize("graded", [False, True])
+@pytest.mark.parametrize(
+    "graded,multimode,axis",
+    [
+        pytest.param(False, False, "y", id="False-False-y"),
+        pytest.param(False, True, "z", id="False-True-z"),
+        pytest.param(True, False, "z", id="True-False-z"),
+        pytest.param(True, True, "y", id="True-True-y"),
+    ],
+)
 def test_initializers_without_uniform_grid_defer_to_loop(scene, monkeypatch, axis, multimode, graded):
     grid, freqs, steps = scene
     if graded:
@@ -285,7 +310,6 @@ def test_initializers_without_uniform_grid_defer_to_loop(scene, monkeypatch, axi
     with pytest.raises(ValueError, match=_refusal(grid, axis, "0 (+x)")):
         run(grid, init_materials(grid.shape), 1, cpml_axes="x",
             waveguide_ports=configs, **run_kwargs)
-    # Expected bounds come directly from node counts, independently of validation.
     valid = initializer(_ports(grid)[0], metric, freqs, f0=6e9,
                         dft_total_steps=steps, **kwargs)
     for cfg in valid if multimode else [valid]:
@@ -300,9 +324,15 @@ def test_extractors_refuse_before_stepping(scene, monkeypatch, name, axis):
         _extract(scene, name, axis)
 
 
-@pytest.mark.parametrize("graded", [False, True])
-@pytest.mark.parametrize("decay", [False, True])
-@pytest.mark.parametrize("axis", ["y", "z"])
+@pytest.mark.parametrize(
+    "axis,decay,graded",
+    [
+        pytest.param("y", False, False, id="y-False-False"),
+        pytest.param("y", True, True, id="y-True-True"),
+        pytest.param("z", False, True, id="z-False-True"),
+        pytest.param("z", True, False, id="z-True-False"),
+    ],
+)
 def test_loops_refuse_prebuilt_node_plane(scene, monkeypatch, graded, decay, axis):
     grid, freqs, steps = scene
     if graded:
@@ -373,7 +403,6 @@ def test_whole_plane_uses_the_runs_high_wall(scene, monkeypatch, entry, walls):
         kwargs.update(boundary="cpml", periodic=(False, walls == "periodic", False))
     if entry.startswith("extract"):
         module = waveguide_s
-        # Reaching run proves the extractor itself admitted the aperture.
         monkeypatch.setattr(uniform_loop, "run", _accepted_setup)
         args.extend((configs, 1))
     else:

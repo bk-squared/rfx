@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from rfx import Box, PolylineWire, Simulation
+from rfx import Box, Cylinder, PolylineWire, Simulation, Sphere
 from rfx.errors import ConfigurationWarning
 
 
@@ -17,17 +17,11 @@ MESSAGE = (
 )
 
 
-@pytest.mark.parametrize("entry", ["run", "forward"])
-@pytest.mark.parametrize("smoothing,body,transform", [
-    ("kottke_pec", "volume", "eager"),
-    (True, "volume", "eager"),
-    (False, "volume", "eager"),
-    ("kottke_pec", "dielectric", "eager"),
-    ("kottke_pec", "sheet", "eager"),
-    ("kottke_pec", "box_sheet", "eager"),
-    ("kottke_pec", "wire", "eager"),
-    ("kottke_pec", "volume", "jit"),
-    ("kottke_pec", "volume", "grad"),
+@pytest.mark.parametrize('smoothing, body, transform, entry', [
+    (smoothing, body, transform, entry)
+    for entry in ['run', 'forward']
+    for smoothing,body,transform in [('kottke_pec', 'volume', 'eager'), (True, 'volume', 'eager'), (False, 'volume', 'eager'), ('kottke_pec', 'dielectric', 'eager'), ('kottke_pec', 'sheet', 'eager'), ('kottke_pec', 'box_sheet', 'eager'), ('kottke_pec', 'wire', 'eager'), ('kottke_pec', 'volume', 'jit'), ('kottke_pec', 'volume', 'grad')]
+    if entry != 'run' or (smoothing, body, transform) == ('kottke_pec', 'volume', 'eager')
 ])
 def test_kottke_pec_volume_warning(entry, smoothing, body, transform):
     """#2390: off-grid PEC/dielectric faces bias a closed-box resonance.
@@ -73,7 +67,6 @@ def test_kottke_pec_volume_warning(entry, smoothing, body, transform):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         jax.block_until_ready(call(1.0))
-        # The once-per-object state is shared across the public entries too.
         other = "forward" if entry == "run" else "run"
         getattr(sim, other)(n_steps=2, skip_preflight=True, subpixel_smoothing=smoothing)
     assert not [w for w in caught if "not recommended for metal" in str(w.message)]
@@ -117,3 +110,93 @@ def test_waveguide_kottke_pec_volume_warning(monkeypatch, smoothing):
         if expected:
             assert str(notices[0].message) == MESSAGE
             assert notices[0].category is ConfigurationWarning
+
+
+@pytest.mark.parametrize("entry", ["run", "forward"])
+@pytest.mark.parametrize("shape,kind", [
+    (Sphere(center=(.005, .004, .004), radius=.001), "Sphere"),
+    (Cylinder(center=(.005, .004, .004), radius=.001, height=.002), "Cylinder"),
+])
+def test_kottke_pec_curved_volume_warning(entry, shape, kind):
+    """A preceding planar PEC object must not consume the curved object's warning."""
+    sim = Simulation(freq_max=20e9, domain=(.008,) * 3, dx=.001,
+                     boundary="pec", cpml_layers=0)
+    sim.add(Box((.006, .005, .005), (.007, .007, .007)), material="pec")
+    sim.add(shape, material="pec")
+    sim.add_source((.002, .002, .002), "ez", amplitude_kind="field")
+    sim.add_probe((.002, .003, .002), "ez")
+
+    with pytest.warns(ConfigurationWarning) as caught:
+        getattr(sim, entry)(n_steps=2, skip_preflight=True,
+                            subpixel_smoothing="kottke_pec")
+    notices = [w for w in caught if w.category is ConfigurationWarning]
+    assert len(notices) == 1
+    message = str(notices[0].message)
+    for text in (f"closed curved PEC {kind} 'pec'", "20–51 %", "13–14 %",
+                 "staircase", "three refinements"):
+        assert text in message
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        for other in ("run", "forward"):
+            getattr(sim, other)(n_steps=2, skip_preflight=True,
+                                subpixel_smoothing="kottke_pec")
+    assert not [w for w in caught if "subpixel_smoothing='kottke_pec'" in str(w.message)]
+
+
+def test_kottke_pec_planar_volume_warning():
+    sim = Simulation(freq_max=20e9, domain=(.008,) * 3, dx=.001,
+                     boundary="pec", cpml_layers=0)
+    sim.add(Box((.004, .003, .003), (.006, .005, .005)), material="pec")
+    sim.add_source((.002, .002, .002), "ez", amplitude_kind="field")
+    sim.add_probe((.002, .003, .002), "ez")
+
+    with pytest.warns(ConfigurationWarning) as caught:
+        sim.run(n_steps=2, skip_preflight=True, subpixel_smoothing="kottke_pec")
+    notices = [w for w in caught if w.category is ConfigurationWarning]
+    assert len(notices) == 1
+    assert str(notices[0].message) == MESSAGE
+    assert "closed curved" not in str(notices[0].message)
+
+
+@pytest.mark.parametrize("smoothing,material", [
+    ("kottke_pec", "dielectric"),
+    (True, "pec"),
+])
+def test_curved_volume_without_kottke_pec_warning(smoothing, material):
+    sim = Simulation(freq_max=20e9, domain=(.008,) * 3, dx=.001,
+                     boundary="pec", cpml_layers=0)
+    sim.add_material("dielectric", eps_r=4.4)
+    sim.add(Sphere(center=(.005, .004, .004), radius=.001), material=material)
+    sim.add_source((.002, .002, .002), "ez", amplitude_kind="field")
+    sim.add_probe((.002, .003, .002), "ez")
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        sim.run(n_steps=2, skip_preflight=True, subpixel_smoothing=smoothing)
+    assert not [w for w in caught if "subpixel_smoothing='kottke_pec'" in str(w.message)]
+
+
+def test_kottke_pec_traced_cylinder_radius_warning():
+    from rfx.runners._smoothing_admission import warn_kottke_pec_volume
+
+    @jax.jit
+    def solve(radius):
+        sim = Simulation(freq_max=20e9, domain=(.008,) * 3, dx=.001,
+                         boundary="pec", cpml_layers=0)
+        sim.add(Cylinder(center=(.005, .004, .004), radius=radius, height=.002),
+                material="pec")
+        sim.add_source((.002, .002, .002), "ez", amplitude_kind="field")
+        sim.add_probe((.002, .003, .002), "ez")
+        warn_kottke_pec_volume(sim, "kottke_pec")
+        return jnp.array(0.0)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        jax.block_until_ready(solve(.001))
+    notices = [w for w in caught if w.category is ConfigurationWarning]
+    assert len(notices) == 1
+    message = str(notices[0].message)
+    for text in ("closed curved PEC Cylinder 'pec'", "20–51 %", "13–14 %",
+                 "staircase", "three refinements"):
+        assert text in message

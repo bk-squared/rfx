@@ -4,6 +4,8 @@ The single-device uniform and graded steps multiply by these arrays,
 built once before the time loop.
 """
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 from rfx.errors import RfxRefusal, RfxUnsupported
 from functools import partial
 
@@ -16,7 +18,6 @@ from rfx.boundaries.pec import _shift, realized_pec_edge_masks
 def validate_occupancy_model(model):
     """Validate the constructor option and reject the removed shell switch."""
     import os
-    # Migration guard for one minor release; remove after that release.
     if "RFX_PEC_OCC_KOTTKE" in os.environ:
         raise RfxRefusal(
             "RFX_PEC_OCC_KOTTKE was removed; unset it and use "
@@ -85,7 +86,6 @@ def _window_factors(box, design_occupancy, occ, *, dtype, periodic):
     bit for bit.
     """
     if any(periodic):
-        # The existing refusal, verbatim, from the step's own helper.
         from rfx.boundaries.pec import pec_occupancy_box_keep
         pec_occupancy_box_keep(box, design_occupancy, shape=occ.shape,
                                dtype=dtype, pec_occupancy=occ, periodic=periodic)
@@ -99,9 +99,6 @@ def _window_factors(box, design_occupancy, occ, *, dtype, periodic):
     box_local = tuple(slice(a - c, b - c) for a, b, c in zip(lo, hi, c_lo))
     local = jnp.asarray(occ)[win].astype(dtype).at[box_local].set(
         jnp.asarray(design_occupancy).astype(dtype))
-    # A window that starts inside the lattice has real neighbours in its
-    # context layer; where it starts on the wall, ``_shift`` pads as the
-    # whole-domain call does.
     keep = _edge_factors(local, None, dtype=dtype, periodic=(False,) * 3)
     return write, tuple(k[inner] for k in keep)
 
@@ -211,15 +208,15 @@ def publish_slab_occupancy(materials, cut_occupancy, mesh):
     return materials._replace(edge_keep=local(cut_occupancy))
 
 
-def occupancy_from_design(shape, window, values):
-    """Topology's existing full-grid float32 occupancy input, before release."""
+def occupancy_from_design(shape, window, values, *, dtype):
+    """Topology's existing full-grid run-typed occupancy input, before release."""
     if values is None:
         return None
-    return jnp.zeros(shape, dtype=jnp.float32).at[window].set(values)
+    return jnp.zeros(shape, dtype=jnp.promote_types(dtype, jnp.float32)).at[window].set(values)
 
 
 def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
-                              periodic_bool, design_occupancy):
+                              periodic_bool, design_occupancy, *, debye=None, lorentz=None):
     """Keep the existing optional tensor path and all of its refusals."""
     if (self._pec_occupancy_model == "kottke"
             and design_occupancy is not None and pec_occupancy_local is None):
@@ -232,24 +229,26 @@ def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
     pec_occupancy_for_run = pec_occupancy_local
     tensor = pec_occupancy_local is not None and self._pec_occupancy_model == "kottke"
     if tensor:
+        if debye is not None or lorentz is not None:
+            raise RfxUnsupported(
+                "pec_occupancy_override with pec_occupancy_model='kottke' cannot be "
+                "combined with a Debye or Lorentz pole material: the dispersive "
+                "electric-field update does not use the occupancy inverse permittivity tensor. "
+                "Use no pec_occupancy_override, or a material without poles.")
         from rfx.current_moments import refuse_h_side_conductor
         refuse_h_side_conductor(
             self, "the Kottke occupancy lane (pec_occupancy_model='kottke')")
         from rfx.geometry.smoothing import kottke_inv_eps_from_occupancy
         from rfx.core.yee import add_lumped_eps
-        # The plain path's four-cell edge mean, not the per-cell
-        # value: occupancy only scales it where a conductor sits.
         inv_baseline = tuple(
-            (1.0 / eps_c).astype(jnp.float32)
+            (1.0 / eps_c).astype(resolve_coefficient_dtype(self._precision))
             for eps_c in materials.components.eps)
         aniso_inv_eps_run = kottke_inv_eps_from_occupancy(
             grid,
             pec_occupancy_local,
             aniso_inv_eps_baseline=inv_baseline,
-            periodic=periodic_bool,
+            periodic=periodic_bool, dtype=resolve_coefficient_dtype(self._precision),
         )
-        # Occupancy acts on the volume; the capacitor stays on its
-        # declared edge, added once after that correction.
         aniso_inv_eps_run = add_lumped_eps(
             aniso_inv_eps_run, materials.eps_r_lumped, inverse=True)
         pec_occupancy_for_run = None
@@ -328,7 +327,7 @@ def layout_edge_indices(grid, sheet, tangent):
     """Declared local edge coordinates mapped to padded (and periodic) nodes."""
     import numpy as np
     from rfx.materials.thin_conductor import pinned_sheet_spec
-    spec = pinned_sheet_spec(grid, sheet)  # retain declaration range/plane validation
+    spec = pinned_sheet_spec(grid, sheet)
     axes = tuple(a for a in range(3) if a != sheet.normal_axis)
     ranges = (sheet.i_range, sheet.j_range)
     local = np.meshgrid(*(np.arange(lo, hi + (t != tangent)) + grid.axis_pads[a]
@@ -341,7 +340,7 @@ def layout_edge_indices(grid, sheet, tangent):
 
 def with_graded_edge_keep(materials, occupancy, layout, *, grid, sources,
                           waveguide_ports, dtype, sheet_edge_masks, periodic,
-                          cells=None, sheets=(), wires=()):
+                          cells=None, sheets=(), wires=(), element_edges=()):
     """Fold the layout switch into the cell keep.
 
     Full-period node 0 and node N rows address the same physical edges.
@@ -361,9 +360,42 @@ def with_graded_edge_keep(materials, occupancy, layout, *, grid, sources,
     refuse_layout_drives(edge_sets, sources, waveguide_ports)
     keep = list(materials.edge_keep if materials.edge_keep is not None else
                 (jnp.ones(grid.shape, dtype=dtype),) * 3)
+    edge_sets = release_layout_elements(edge_sets, element_edges)
     for _index, _sheet, _tangent, axis, indices, values in edge_sets:
         keep[axis] = keep[axis].at[indices].multiply(1 - values.astype(keep[axis].dtype))
     return materials._replace(edge_keep=tuple(keep))
+
+
+def release_layout_elements(edge_sets, element_edges):
+    """Remove only element edges from layout metal, without changing conductors."""
+    import warnings
+    import numpy as np
+    from rfx.core.jax_utils import is_tracer
+    from rfx.errors import ConfigurationWarning
+    from rfx._warning_origin import user_stacklevel
+    released, descriptions, occupied = list(edge_sets), [], False
+    for number, component, edge in element_edges:
+        sheets = {}
+        for row, (index, sheet, tangent, axis, indices, values) in enumerate(released):
+            if component != f"e{'xyz'[axis]}":
+                continue
+            hits = np.logical_and.reduce([v == e for v, e in zip(indices, edge)])
+            if not np.any(hits):
+                continue
+            occupied |= is_tracer(values) or bool(np.any(np.asarray(values)[hits] != 0))
+            sheets[index] = sheet.name
+            released[row] = (index, sheet, tangent, axis, indices, jnp.where(hits, 0, values))
+        if sheets:
+            names = ', '.join(f"{i} ({name!r})" for i, name in sorted(sheets.items()))
+            label, verb = ('sheet', 'is') if len(sheets) == 1 else ('sheets', 'are')
+            descriptions.append(f"lumped_rlc[{number}] (lumped_rlc, {component}, edge {edge}): "
+                f"pinned_sheet_layout {label} {names} {verb} kept free on this edge")
+    if occupied:
+        clauses = '; '.join(descriptions)
+        warnings.warn("Port occupancy release: " + clauses
+                      + ". Each driven edge is kept free of design metal.",
+                      ConfigurationWarning, stacklevel=user_stacklevel())
+    return released
 
 
 def refuse_layout_seams(layout, grid, cells, sheets, wires, periodic):
@@ -379,7 +411,6 @@ def refuse_layout_seams(layout, grid, cells, sheets, wires, periodic):
     with jax.ensure_compile_time_eval():
         specs = tuple(pinned_sheet_spec(grid, sheet) for _, sheet, _ in layout)
         sheets, wires = tuple(sheets or ()), tuple(wires or ())
-        # Traced cells cannot prove a seam covered: omit them, conservatively.
         cells = np.zeros(grid.shape, dtype=bool) if cells is None or is_tracer(cells) else cells
         full = realized_pec_edge_masks(cells, sheets=sheets + specs, wires=wires, periodic=periodic)
         covered = [np.asarray(mask).copy() for mask in

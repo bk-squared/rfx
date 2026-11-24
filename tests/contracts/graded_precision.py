@@ -42,7 +42,7 @@ def check_graded_storage(monkeypatch, entry, precision):
 
         @wraps(step)
         def checked(carry, xs, invariants):
-            # Inspect the incoming carry, before the step can promote a leaf.
+            """Inspect the incoming carry before the step can promote a leaf."""
             for key in ('fdtd', 'cpml'):
                 check(key, carry.get(key), expected)
             if entry == 'graded_tfsf':

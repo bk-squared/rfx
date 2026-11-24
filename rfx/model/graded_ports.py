@@ -78,7 +78,7 @@ def port_metric(value, host):
 
 
 def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
-                          pec_edge_masks, sizing_n, lane, s_param_freqs, compute_s_params=None):
+                          pec_edge_masks, sizing_n, lane, s_param_freqs, compute_s_params=None, msl=False, msl_drawn_eps=None):
     """Stamp positive-impedance ports without owning the source queue.
 
     Liveness precedes each port's release. Only lumped releases advance the
@@ -86,6 +86,7 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
     ``sizing_n`` is retained in the assembly interface; drive sampling stays
     deferred in the caller until all material stamps have been applied.
     """
+    msl_geometry_edges = pec_edge_masks
     drives = []
     wire_port_specs = []
     lumped_port_specs = []
@@ -246,11 +247,13 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
             mid_cell = list(_live_cells[len(_live_cells) // 2])
 
             if pe.radius is not None:
-                from rfx.sources.wire_radius import stamp_wire_radius
+                from rfx.sources.wire_radius import stamp_wire_radius, require_radius_pole_clearance
+                require_radius_pole_clearance(
+                    sim, grid, pe.component, _live_cells, port=f"port[{_port_index}]")
                 materials = stamp_wire_radius(
-                    grid, materials, pe.component, pe.radius, _live_cells)
+                    grid, materials, pe.component, pe.radius, _live_cells, pole_clearance=True)
                 materials_drive = stamp_wire_radius(
-                    grid, materials_drive, pe.component, pe.radius, _live_cells)
+                    grid, materials_drive, pe.component, pe.radius, _live_cells, pole_clearance=True)
 
             if pe.excite:
                 for cell_ijk, live in zip(_cells_ijk, live_flags):
@@ -342,6 +345,17 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                 'record_only': not (s_param_freqs is not None or (lane == 'run_nonuniform' and (
                     compute_s_params is True or passive_record_diagnostic(sim)))),
             })
+
+    if msl and sim._msl_ports:
+        from rfx.model.msl_stamp import realize_msl_ports
+        realized = realize_msl_ports(sim, grid, materials, conductors,
+            eps_source=materials_drive.eps_r if msl_drawn_eps is None else msl_drawn_eps,
+            stamp_drive_materials=materials_drive,
+            edge_release="forward_graded" if lane == "fwd_nonuniform" else "run",
+            eigenmode=lane,
+            geometry_edges=msl_geometry_edges)
+        materials, materials_drive, conductors = realized[:3]
+        drives.extend((len(sim._ports), drive) for drive in realized.drives)
 
     # Preserve wire indices when explicit bins also include lumped ports.
     wire_port_specs.extend(lumped_port_specs)

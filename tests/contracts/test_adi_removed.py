@@ -1,9 +1,8 @@
 """The removed solver refuses declarations and cannot re-enter through imports."""
 
-import ast
 import importlib
+import inspect
 import sys
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -14,8 +13,6 @@ from rfx.interop import design_to_dict, simulation_from_design
 
 NAMES = ("ADIState2D", "ADIState3D", "thomas_solve", "adi_step_2d",
          "run_adi_2d", "adi_step_3d", "run_adi_3d")
-DELETED = ("rfx.adi", "rfx.stepping.adi", "rfx.runners.adi",
-           "rfx.model.adi_admission", "rfx._adi_notice")
 
 
 def declaration(**kwargs):
@@ -33,22 +30,21 @@ def test_constructor_refuses_adi(graded):
     assert "local refinement where it is supported" in str(caught.value)
 
 
-@pytest.mark.parametrize("factor", [2.0, 0, False, "unused"])
-def test_factor_refuses_any_value(factor):
-    with pytest.raises(ValueError) as caught:
+@pytest.mark.parametrize("factor", [2.0, 0, False, "unused", None])
+def test_factor_keyword_is_gone(factor):
+    with pytest.raises(TypeError, match="adi_cfl_factor"):
         declaration(adi_cfl_factor=factor)
-    assert "removed in 2.1" in str(caught.value)
-    assert 'solver="yee" on a graded mesh' in str(caught.value)
-    assert "local refinement where it is supported" in str(caught.value)
+    assert "adi_cfl_factor" not in inspect.signature(rfx.Simulation.__init__).parameters
+    assert list(inspect.signature(rfx.model.admit_solver).parameters) == ["solver"]
 
 
 @pytest.mark.parametrize("name", NAMES)
 def test_removed_attribute(name):
     with pytest.raises(AttributeError) as caught:
         getattr(rfx, name)
-    assert "removed in 2.1" in str(caught.value)
-    assert 'solver="yee" on a graded mesh' in str(caught.value)
-    assert "local refinement where it is supported" in str(caught.value)
+    assert str(caught.value) == f"module 'rfx' has no attribute '{name}'"
+    assert "__getattr__" not in vars(rfx)
+    assert "_REMOVED_ADI_NAMES" not in vars(rfx)
 
 
 def test_old_yee_document_ignores_factor():
@@ -71,28 +67,10 @@ def test_old_adi_document_refuses():
     assert "local refinement where it is supported" in str(caught.value)
 
 
-def test_deleted_modules_have_no_importers():
-    root = Path(rfx.__file__).parent
-    for module in DELETED:
-        assert not (root.parent / (module.replace(".", "/") + ".py")).exists()
-    for path in root.rglob("*.py"):
-        tree = ast.parse(path.read_text(), filename=str(path))
-        package = ".".join(path.relative_to(root.parent).parts[:-1])
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                imports = [alias.name for alias in node.names]
-            elif isinstance(node, ast.ImportFrom):
-                base = node.module or ""
-                if node.level:
-                    base = importlib.util.resolve_name("." * node.level + base, package)
-                imports = [base, *(base + "." + alias.name for alias in node.names)]
-            else:
-                continue
-            assert not set(imports).intersection(DELETED), (path, node.lineno, imports)
 
 
 def test_removed_module_cannot_import(monkeypatch):
-    # Editable installs may otherwise fall back to a different checkout.
+    """Import isolation prevents editable installs from falling back to a different checkout."""
     monkeypatch.setattr(sys, "meta_path", [finder for finder in sys.meta_path
                                          if not finder.__module__.startswith("__editable__")])
     with pytest.raises(ModuleNotFoundError):

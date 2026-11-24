@@ -1,4 +1,6 @@
-"""Pin every remaining broad handler; each row's reason names where the failure is recorded."""
+"""Pin every remaining broad handler; each row's reason names where the failure is recorded.
+An accepted-debt row covers one handler occurrence, including repeated handlers in the same function, without exempting future handlers.
+"""
 import ast
 from collections import Counter
 from pathlib import Path
@@ -6,8 +8,6 @@ from pathlib import Path
 import pytest
 
 
-# One row per handler, including repeated handlers in the same function.
-# Reasons describe the accepted debt, not an exemption for future handlers.
 ALLOW_LIST = (
     ('rfx/ringdown/_jax.py', 'host_poles', 'recorded in status (STATUS_FAILED)'),
     ('rfx/api/_ad_carry.py', 'read_carry', 're-raises with context'),
@@ -78,6 +78,7 @@ ALLOW_LIST = (
     ('rfx/realized_placement.py', '_probes', 'recorded in ProbeGeometry.error'),
     ('rfx/ringdown/__init__.py', '_judge_record', 'recorded in note'),
     ('rfx/ringdown/__init__.py', '_error_witnesses', 'recorded in RingdownWitness.note'),
+    ('rfx/ringdown/_probe_channels.py', '_error_witnesses', 'recorded in RingdownWitness.note'),
     ('rfx/stepping/rank.py', '_staged_by_enclosing_program', 'fails closed: a probe failure refuses the run'),
     ('rfx/surrogate.py', 'export_geometry_sdf', 're-raises with context'),
 )

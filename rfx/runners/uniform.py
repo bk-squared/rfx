@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rfx._internal._precision import resolve_coefficient_dtype
+
 from rfx.measurement.plane_records import time_recorded_dft_selection, named_plane_records
 
 import numpy as np
@@ -156,13 +158,6 @@ def run_uniform(
                 ": the sheet operator assumes the plain isotropic "
                 "E update at its edges (Stage-1/2 conformal and Kottke "
                 "lanes do not apply the sheet operator).")
-        if debye_spec is not None or lorentz_spec is not None:
-            raise ValueError(
-                "surface-impedance (surface_impedance_f0) sheets combined "
-                "with dispersive (Debye/Lorentz) materials in one run are "
-                "not supported: the sheet operator would "
-                "silently override the ADE dispersion update at its "
-                "edges. Remove the dispersive material or the f0 sheet.")
 
     from rfx.model.tensor_operands import refuse_tensor_conflicts
     refuse_tensor_conflicts(sim, grid, subpixel_smoothing=subpixel_smoothing,
@@ -205,10 +200,8 @@ def run_uniform(
     pec_axes = None
     tfsf = None
 
-    if sim._tfsf is not None and sim._ports:
-        raise ValueError(
-            "TFSF plane-wave source is not supported together with lumped ports"
-        )
+    from rfx.runners._admission import refuse_plane_wave_with_port
+    refuse_plane_wave_with_port(sim)
     from rfx.runners._admission import refuse_mixed_waveguide_sources
     refuse_mixed_waveguide_sources(sim)
     if sim._waveguide_ports:
@@ -223,7 +216,7 @@ def run_uniform(
         tfsf = tfsf_from_declaration(
             sim._tfsf, grid, sim._freq_max, n_steps=n_steps,
             line_steps=decay_max_steps if until_decay is not None else n_steps,
-        )
+        dtype=resolve_coefficient_dtype(sim._precision))
         from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
         periodic, cpml_axes = tfsf_boundary_flags(tfsf[0], grid)
 
@@ -235,15 +228,22 @@ def run_uniform(
     _pec_periodic = _simulation.resolve_periodic(grid, periodic)
     pec_sheets = tuple(pec_sheets or ())
     pec_wires = tuple(pec_wires or ())
+    from rfx.model.source_admission import conductor_operator
     conductors = kernel_conductors(sim, grid, base_materials, pec_mask,
-        pec_sheets, pec_wires, periodic=_pec_periodic, sheet_specs=sheet_specs or (), root=conductors)
+        pec_sheets, pec_wires, periodic=_pec_periodic, sheet_specs=sheet_specs or (), root=conductors,
+        operator=conductor_operator(smoothing=subpixel_smoothing, conformal=conformal_pec))
     from rfx.model.conductors import stepped_conductors
     conductors = stepped_conductors(conductors, conformal_operands=conformal_weights)
+    from rfx.model.coax_port import assemble_coax_port
+    materials, conductors, _ = assemble_coax_port(
+        sim, grid, materials, conductors, sources, mag_sources, n_steps=sizing_n)
     pec_mask = conductors.pec_cells
     pec_edge_masks = conductors.pec_edges
     from rfx.measurement.port_s_contract import passive_record_diagnostic
     passive_diagnostic = passive_record_diagnostic(sim)
     from rfx.measurement.prepared import attach_measurement
+    if sim._coaxial_ports and compute_s_params is not False and s_param_freqs is None:
+        s_param_freqs = jnp.linspace(sim._freq_max / 10, sim._freq_max, 50, dtype=jnp.float32)
     attach_measurement(sim, conductors, n_steps=sizing_n, path='run_uniform',
                        frequencies=s_param_freqs if compute_s_params is None or compute_s_params or passive_diagnostic else None)
     _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
@@ -271,11 +271,17 @@ def run_uniform(
     # this port's own clearing) is in hand.  Feed the S-param specs below.
     wire_port_live_cells = []
     wire_port_excites = []
+    frozen_drive_requests = []
     for _port_index, pe in enumerate(sim._ports):
         if pe.is_soft_source:
             # The declared kind alone decides the drive (forward() calls the same).
             from rfx.sources.port_drive import defer_soft_source
             defer_soft_source(sources, grid, pe, sizing_n, field_dtype=field_dtype)
+            if pe.amplitude_kind != "field":
+                from rfx._internal._grid_metric import field_index as _field_index
+                frozen_drive_requests.append((
+                    f"Soft source _ports[{_port_index}]", pe.position, pe.component,
+                    (_field_index(grid, pe.position, pe.component),)))
             continue
         if pe.extent is not None:
             # Multi-cell wire port
@@ -307,11 +313,15 @@ def run_uniform(
             # here is the assembled-geometry state BEFORE this port's own
             # clearing below, which is exactly the "live" definition.
             materials = setup_wire_port(grid, wp, materials,
-                                        pec_edge_masks=pec_edge_masks)
+                                        pec_edge_masks=pec_edge_masks,
+                                        radius_sim=sim, radius_port=f"port[{_port_index}]")
             if pe.excite:
                 sources.defer(_simulation.make_wire_port_sources,
                     grid, wp, n_steps=sizing_n,
                     pec_edge_masks=pec_edge_masks)
+                frozen_drive_requests.append((
+                    f"Wire port _ports[{_port_index}]", pe.position, pe.component,
+                    tuple(wp._drive_stamps)))
             # No PEC clearing for a wire port:
             # a cell is LIVE exactly when the port component's own edge at
             # that index is not PEC, so releasing that component at the
@@ -330,6 +340,9 @@ def run_uniform(
             materials = setup_lumped_port(grid, lp, materials)
             if pe.excite:
                 sources.defer(_simulation.make_port_source, grid, lp, n_steps=sizing_n)
+                frozen_drive_requests.append((
+                    f"Lumped port _ports[{_port_index}]", pe.position, pe.component,
+                    tuple(lp._drive_stamps)))
             # Release the realized PEC edge the lumped port DRIVES — its
             # own component at its own cell, and nothing else (
             # corrected: the three-component form opened the conductor the
@@ -449,16 +462,19 @@ def run_uniform(
             materials = setup_msl_port(grid, mp, materials,
                                        mode_profile=mode_profile)
             if pe.excite and pe.waveform is not None:
+                frozen_drive_requests.append((
+                    f"msl_port[{_msl_port_index}]", pe.position, "ez",
+                    tuple(mp._drive_stamps)))
                 if eigenmode_data is not None:
                     # Schelkunoff J+M one-sided launch: both E and H sources
                     sources.defer(deferred_msl_sources_jm, grid, mp,
                                   n_steps=sizing_n, eigenmode_data=eigenmode_data,
-                                  magnetic_sources=mag_sources)
+                                  magnetic_sources=mag_sources,
+                                  dtype=resolve_coefficient_dtype(sim._precision))
                 else:
                     sources.defer(make_msl_port_sources,
                         grid, mp, n_steps=sizing_n,
-                        mode_profile=mode_profile,
-                    )
+                        mode_profile=mode_profile, dtype=resolve_coefficient_dtype(sim._precision))
             # Only the SUBSTRATE-NORMAL component over the
             # cross-section: that is the edge the modal source drives
             # (V = sum(E_n * d_n)).  Releasing the two in-plane
@@ -500,7 +516,10 @@ def run_uniform(
         )
 
     if sim._waveguide_ports:
-        from rfx.preflight.waveguide import resolve_waveguide_port_freqs
+        from rfx.preflight.waveguide import resolve_shared_waveguide_port_freqs, resolve_waveguide_port_freqs
+
+        if len(sim._waveguide_ports) > 1:
+            resolve_shared_waveguide_port_freqs(sim, route="uniform run()")
 
         cpml_axes = grid.cpml_axes
         pec_axes = None
@@ -566,20 +585,24 @@ def run_uniform(
         # A soft source at the centre of the port plane (one builder, read
         # again by the source-end collector).
         from rfx.floquet import floquet_port_source
-        sources.append(floquet_port_source(grid, fpe, sim._freq_max, sim._domain, sizing_n)[1])
+        sources.append(floquet_port_source(grid, fpe, sim._freq_max, sim._domain, sizing_n, dtype=resolve_coefficient_dtype(sim._precision))[1])
 
     from rfx.model.materials import with_components
     from rfx.geometry.rasterize_grid import unpadded_high_walls
     materials = with_components(materials, grid,
         high_wall=unpadded_high_walls(grid),
         periodic=_simulation.resolve_periodic(grid, periodic),
-        debye_spec=debye_spec, lorentz_spec=lorentz_spec)
-    from rfx.model.source_coefficients import resolve_run_sources
-    sources = resolve_run_sources(sources, materials, sim, grid,
-        tensor=aniso_eps is not None or conformal_weights is not None)
-
+        debye_spec=debye_spec, lorentz_spec=lorentz_spec,
+        field_dtype=field_dtype if field_dtype is not None else jnp.float32)
     materials = finish_conformal_mu(materials, conformal_areas)
     aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
+    from rfx.model.tensor_operands import attach_run_tensor
+    materials = attach_run_tensor(materials, aniso_eps, aniso_inv_eps, conformal_weights)
+    run_tensor = materials.components.tensor
+    from rfx.model.source_admission import refuse_frozen_drive_edges
+    refuse_frozen_drive_edges(run_tensor, frozen_drive_requests)
+    from rfx.model.source_coefficients import resolve_run_sources, drive_materials
+    sources = resolve_run_sources(sources, materials, sim, grid)
 
     # Thread the field storage dtype into the ADE carry, the
     # same way ``rfx.simulation.run`` threads it into the CPML psi / NTFF /
@@ -614,7 +637,8 @@ def run_uniform(
         # The run's own periodic flags (after the TFSF override above): a
         # series element's D0 is its edge's E-update coefficient.
         _rlc_periodic = _simulation.resolve_periodic(grid, periodic)
-        rlc_metas = [build_rlc_meta(grid, spec, materials, periodic=_rlc_periodic)
+        rlc_metas = [build_rlc_meta(grid, spec, drive_materials(materials, sim, grid),
+                                    periodic=_rlc_periodic)
                      for spec in sim._lumped_rlc]
         # at most one element with its own solve per realized edge.
         from rfx.lumped import refuse_stacked_solved_elements
@@ -630,8 +654,10 @@ def run_uniform(
         from rfx.boundaries.tfsf import validate_realized_vacuum_boundary
         validate_realized_vacuum_boundary(
             sim, grid, materials, tfsf[0], pec_edge_masks=pec_edge_masks,
-            aniso_eps=aniso_eps, aniso_inv_eps=aniso_inv_eps,
-            conformal_weights=conformal_weights, debye_spec=debye_spec,
+            aniso_eps=run_tensor.eps if run_tensor is not None else None,
+            aniso_inv_eps=run_tensor.inv_eps if run_tensor is not None else None,
+            conformal_weights=run_tensor.conformal_weights if run_tensor is not None else None,
+            debye_spec=debye_spec,
             lorentz_spec=lorentz_spec, kerr_chi3=kerr_chi3, sheet_ctx=sheet_ctx,
             rlc_indices=((m.i, m.j, m.k) for m in (rlc_metas or ())))
 
@@ -675,8 +701,13 @@ def run_uniform(
                         "stop_interval": int(stop_interval)}
 
     from rfx.stepping import prepared as prepared_step
+    if sim._coaxial_ports and materials.components.tensor is None:
+        materials = materials._replace(components=None)
     conductors = prepared_step.stage(conductors, grid=grid, materials=materials)
     stepping_product = conductors
+    if sim._lumped_rlc:
+        from rfx.model.source_admission import LumpedRLCInputs
+        rlc_metas = LumpedRLCInputs(rlc_metas, sim, stepping_product)
     # The record and the call below read the same final conductor object.
     conductors, geometry_record = at_kernel(sim, conductors, lane="run_uniform", pec_edges=pec_edge_masks, sheet_operator=sheet_ctx)
     pec_edge_masks = conductors.pec_edges
@@ -720,14 +751,11 @@ def run_uniform(
             current_moments=current_moments,
             snapshot=snapshot,
             checkpoint=checkpoint,
-            aniso_eps=aniso_eps,
-            aniso_inv_eps=aniso_inv_eps,
             subpixel_smoothing=tensor_smoothing,
             pec_mask=pec_mask,
             pec_edge_masks=pec_edge_masks,
             pec_sheets=pec_sheets,
             pec_wires=pec_wires,
-            conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
             lumped_port_sparams=lumped_sparam_specs or None,
             port_record_specs=record_specs,
@@ -760,14 +788,11 @@ def run_uniform(
             current_moments=current_moments,
             snapshot=snapshot,
             checkpoint=checkpoint,
-            aniso_eps=aniso_eps,
-            aniso_inv_eps=aniso_inv_eps,
             subpixel_smoothing=tensor_smoothing,
             pec_mask=pec_mask,
             pec_edge_masks=pec_edge_masks,
             pec_sheets=pec_sheets,
             pec_wires=pec_wires,
-            conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
             lumped_port_sparams=lumped_sparam_specs or None,
             port_record_specs=record_specs,
@@ -851,6 +876,12 @@ def run_uniform(
             subpixel_smoothing=subpixel_smoothing,
         )
 
+    coax_metadata = None
+    if sim._coaxial_ports and compute_s_params:
+        from rfx.measurement.coax_port import port_result
+        s_params, freqs_out, coax_metadata = port_result(sim, stepping_product, sim_result)
+        sparam_read_ids = SReadPorts(('coax_port:0:mode:0',))
+
     declared_measurements = package_declared_measurements(
         sim, grid, entry="run()",
         flux_monitors=sim_result.flux_monitors or (),
@@ -873,6 +904,7 @@ def run_uniform(
         state=sim_result.state,
         time_series=sim_result.time_series,
         s_params=s_params,
+        coax_port_metadata=coax_metadata,
         freqs=freqs_out,
         ntff_data=sim_result.ntff_data,
         ntff_box=ntff_box,

@@ -11,7 +11,7 @@ settled run measured S00 = (-0.9928, -0.0048) at 6 GHz -- a short. The
 only structural test asserted pin-column PEC continuity, which is
 trivially true through a solid ground.
 
-Two findings, both REPORT-ONLY (no refusal, no gate; relevance is the
+A REPORT-ONLY finding (no refusal, no gate; relevance is the
 user's judgment):
 
 (i)  ``dielectric-after-conductor-no-op`` -- a ``fidelity_report`` finding
@@ -20,16 +20,6 @@ user's judgment):
      ``claimed-by-conductor`` finding (fires for either order) stays
      byte-identical; only the ordered case adds a kind.
 
-(ii) ``coaxial_port_junction_short`` -- a preflight advisory: at each
-     coaxial port's junction plane, registered PEC in the FIRST dielectric
-     ring outside the pin means the pin is terminated in a short by
-     registered geometry. The ring is defined ON THE LATTICE, half a cell
-     outside the pin (``a + dz/2 < r <= a + 3dz/2``), so the pin's own
-     knife-edge footprint cells at r == a (design review blocker 2: with a
-     bare ``r > a`` and float64 node coordinates, (+2,0)/(0,+2) at exactly
-     200 um were COUNTED and the advisory fired on the fixed geometry,
-     2/16) are never in the ring.
-
 The fixture geometry below is a copy of the committed attempt-2 fixture
 (``tests/unit/sparams/test_coax_msl_transition.py::_build_coax_msl_transition_sim_
 attempt2``, constants reproduced inline so this file does not import a
@@ -37,8 +27,7 @@ file another change owns), plus the same geometry with the ground plane
 built as 20 half-cell PEC Boxes generated from the integer-lattice disk
 ``di^2 + dj^2 <= 16`` (the attempt-3 recipe). Fail-before-fix: on the
 source as of 88c49bdc, ``test_rule_i_fires_on_the_shorted_junction_copy``
-and ``test_rule_ii_fires_on_the_shorted_junction_copy`` FAIL (no such
-kind / no such code); the negative tests pass trivially there, so their
+FAILS (no such kind); the negative tests pass trivially there, so their
 value is only in combination with the positive ones.
 
 What the fixture declares under #931 (lattice ownership contract). Each
@@ -81,8 +70,6 @@ from rfx.api import Simulation
 from rfx.boundaries.spec import BoundarySpec
 from rfx.geometry.csg import Box, Cylinder
 
-# --- attempt-2 fixture constants, copied verbatim (tests/unit/sparams/test_coax_msl_
-# transition.py, module constants + the attempt-2 block) ---------------------
 DX = 100e-6
 PIN_R = 0.2e-3
 OUTER_R = 0.6e-3
@@ -102,7 +89,6 @@ LZ_2 = JUNCTION_Z + H_SUB + DX + 1.0e-3
 FREQ_MAX_2 = 16.0e9
 
 RULE_I_KIND = "dielectric-after-conductor-no-op"
-RULE_II_CODE = "coaxial_port_junction_short"
 
 
 def _half_cell(n_lo, n_hi):
@@ -214,16 +200,12 @@ def _findings(item, kind):
     return [f for f in item.get("findings", []) if f["kind"] == kind]
 
 
-def _preflight_rows(sim, code):
-    return [i for i in sim.preflight() if i.code == code]
-
-
 def _junction_plane_metal(sim):
     """(realized wall nodes on the junction plane, r_from_axis) on the
     padded grid.
 
     Read through the run's own realized conductor set (#931 §1.7), which
-    is what preflight rule (ii) reads: a node carries metal iff some E
+    is the conductor view: a node carries metal iff some E
     edge tangential to the port axis and incident to it is PEC. The primal
     cell mask cannot answer this -- a sheet owns no cell, and a volume's
     far face is not a cell either (§1.9).
@@ -237,17 +219,9 @@ def _junction_plane_metal(sim):
     return plane, np.hypot(x[:, None], y[None, :])
 
 
-# The pin is a PEC VOLUME, centre-sampled: every node of an occupied cell
-# carries its wall, so its own realized rim reaches half a cell diagonal
-# past its radius. This is the bound preflight rule (ii) uses to separate
-# the pin from OTHER registered conductor (rfx/api/_preflight.py).
 PIN_REACH = PIN_R + DX / math.sqrt(2.0)
 
 
-# ---------------------------------------------------------------------------
-# Fixture witnesses: the two copies differ ONLY by the hole, and the hole is
-# what the findings must see. Measured on 88c49bdc (design review).
-# ---------------------------------------------------------------------------
 
 def test_fixture_copies_differ_only_by_the_junction_hole():
     """The two copies' realized metal at the junction plane differs by the
@@ -267,27 +241,19 @@ def test_fixture_copies_differ_only_by_the_junction_hole():
     11 and the shorted copy 13 -- and it reaches half a cell diagonal past
     200 um, to the eight nodes at 224 um. Those eight are inside the
     clearance annulus but are the PIN's own metal, not the ground's.
+    Absorber continuation is outside the drawn-geometry comparison.
     """
     m_short, r = _junction_plane_metal(_junction_sim(open_annulus=False))
     m_open, _ = _junction_plane_metal(_junction_sim(open_annulus=True))
     annulus = (r > PIN_R + 1e-9) & (r <= CLEAR_R + 1e-9)
     assert int(annulus.sum()) == 36
-    # the shorted copy: every clearance-annulus node at the junction plane
-    # carries a realized PEC wall (#589 root cause, measured 36/36)
     assert int((m_short & annulus).sum()) == 36
-    # the open copy: the only metal left in the annulus is the pin's own
-    # realized rim, all of it at r = 224 um <= PIN_REACH
     assert int((m_open & annulus).sum()) == 8
     assert int((m_open & annulus & (r > PIN_REACH)).sum()) == 0
     assert sorted(set(np.round(r[m_open & annulus] * 1e6).astype(int).tolist())) \
         == [224]
-    # the pin is a volume in BOTH copies and realizes the same 13 nodes
-    # within its own radius; the ground adds nothing there on the open copy
     assert int((m_open & (r <= PIN_R + 1e-9)).sum()) == 13
     assert int((m_short & (r <= PIN_R + 1e-9)).sum()) == 13
-    # In the declared-domain interior the difference is the hole, minus
-    # the 21 nodes the pin holds inside it. Absorber continuation is outside
-    # this drawn-geometry comparison.
     diff = m_short ^ m_open
     grid = _junction_sim(open_annulus=False)._build_grid()
     interior = np.zeros_like(diff)
@@ -298,18 +264,16 @@ def test_fixture_copies_differ_only_by_the_junction_hole():
     assert not bool((diff & (r > CLEAR_R + 1e-9)).any())
 
 
-# ---------------------------------------------------------------------------
-# (i) dielectric-after-conductor-no-op (fidelity_report)
-# ---------------------------------------------------------------------------
 
 def test_rule_i_fires_on_the_shorted_junction_copy():
-    """52 metal faces have declared PTFE cells on both sides."""
+    """52 metal faces have declared PTFE cells on both sides.
+    The ground is a sheet: it owns no cell, so the 52 count is faces.
+    """
     report = _junction_sim(open_annulus=False).fidelity_report(print_report=False)
     (ptfe,) = _rows(report, "ptfe")
     hits = _findings(ptfe, RULE_I_KIND)
     assert len(hits) == 1, [f["kind"] for f in ptfe["findings"]]
     f = hits[0]
-    # The ground is a sheet: it owns no cell, so the 52 count is faces.
     assert f["overlap_faces"] == 52
     assert f["overlap_cells"] == 0
     assert ptfe["n_cells"] == 156
@@ -318,7 +282,6 @@ def test_rule_i_fires_on_the_shorted_junction_copy():
     assert "52 faces" in f["detail"]
     assert "OR-only" in f["detail"] or "cannot carve" in f["detail"]
     assert f["remedy"]
-    # the pre-existing order-blind finding is untouched (it fires here too)
     assert len(_findings(ptfe, "claimed-by-conductor")) == 1
 
 
@@ -377,12 +340,10 @@ def test_rule_i_does_not_fire_on_pec_after_dielectric_the_intended_contacts():
 
 def test_rule_i_minimal_slab_then_cylinder_fires_and_reverse_is_silent():
     def _sim(dielectric_first: bool):
+        """A one-cell PEC VOLUME, not a sheet, is built because the accumulator must hold for both kinds."""
         sim = Simulation(freq_max=10e9, domain=(10e-3, 10e-3, 10e-3), dx=1e-3,
                          boundary="cpml", cpml_layers=4)
         sim.add_material("ptfe", eps_r=2.1)
-        # a one-cell PEC VOLUME drawn on-lattice (cell 4 under centre
-        # sampling, §1.1), not a sheet -- the accumulator must hold for
-        # both kinds
         slab = Box((0.0, 0.0, 4e-3), (10e-3, 10e-3, 5e-3))
         hole = Cylinder(center=(5e-3, 5e-3, 5e-3), radius=1.5e-3, height=3e-3,
                         axis="z")
@@ -406,14 +367,15 @@ def test_rule_i_minimal_slab_then_cylinder_fires_and_reverse_is_silent():
     rep = _sim(dielectric_first=True).fidelity_report(print_report=False)
     (ptfe,) = _rows(rep, "ptfe")
     assert _findings(ptfe, RULE_I_KIND) == []
-    # order-blind finding still fires in the reversed order -- unchanged
     assert len(_findings(ptfe, "claimed-by-conductor")) == 1
 
 
 def test_rule_i_lists_every_earlier_conductor_and_sums_the_union():
     """Two earlier PEC volumes overlapping the same dielectric: the finding
     names both indices and counts the UNION of their cells (a cell claimed by
-    both is one no-op cell, not two)."""
+    both is one no-op cell, not two).
+    The oracle must use the samplers the code uses, or it agrees for the wrong reason: a PEC VOLUME is realized from cell CENTRES and a dielectric from NODES.
+    """
     sim = Simulation(freq_max=10e9, domain=(10e-3, 10e-3, 10e-3), dx=1e-3,
                      boundary="cpml", cpml_layers=4)
     sim.add_material("d", eps_r=4.0)
@@ -424,12 +386,6 @@ def test_rule_i_lists_every_earlier_conductor_and_sums_the_union():
     (d,) = _rows(rep, "d")
     (f,) = _findings(d, RULE_I_KIND)
     assert f["conductor_entities"] == [0, 1]
-    # The oracle must use the samplers the code uses, or it agrees for the
-    # wrong reason: a PEC VOLUME is realized from cell CENTRES and a
-    # dielectric from NODES (#931 §1.1). On this geometry the two PEC
-    # samplers select DIFFERENT z layers (node 4 vs cell 3) that happen to
-    # give the same count, so a node-sampled oracle here would not
-    # discriminate.
     from rfx.geometry.rasterize_grid import (
         centres_from_uniform_grid, cell_sizes_from_uniform_grid, pec_volume_cell_mask)
     grid = sim._build_grid()
@@ -440,7 +396,6 @@ def test_rule_i_lists_every_earlier_conductor_and_sums_the_union():
     m2 = np.asarray(sim._geometry[2].shape.mask(grid), bool)
     assert f["overlap_cells"] == int(((m0 | m1) & m2).sum())
     assert f["overlap_faces"] == 0
-    # and the discrimination the comment claims, measured here
     n0 = np.asarray(sim._geometry[0].shape.mask(grid), bool)
     assert not bool((m0 == n0).all()), "centre and node samplers must differ here"
 
@@ -468,7 +423,6 @@ def test_rule_i_counts_volume_cells_and_sheet_faces_under_separate_keys():
     (f,) = _findings(sub, RULE_I_KIND)
     assert f["conductor_entities"] == [0, 1]
 
-    # Expected counts from masks built here, not from fidelity helpers.
     from rfx.geometry.rasterize_grid import (
         centres_from_uniform_grid, cell_sizes_from_uniform_grid, pec_volume_cell_mask)
     grid = sim._build_grid()
@@ -477,7 +431,6 @@ def test_rule_i_counts_volume_cells_and_sheet_faces_under_separate_keys():
         cell_sizes_from_uniform_grid(grid)), bool)
     dielectric = np.asarray(sim._geometry[2].shape.mask(grid), bool)
     expected_cells = int((volume & dielectric).sum())
-    # Sheet footprint: the nodes on the z = 6 mm plane inside 2..10 mm on x, y.
     x = np.array([grid.node_of("x", i) for i in range(grid.nx)])
     y = np.array([grid.node_of("y", j) for j in range(grid.ny)])
     k = int(np.argmin(np.abs(np.array(
@@ -485,8 +438,6 @@ def test_rule_i_counts_volume_cells_and_sheet_faces_under_separate_keys():
     inside_x = (x > 2 * d - 1e-9) & (x < 10 * d + 1e-9)
     inside_y = (y > 2 * d - 1e-9) & (y < 10 * d + 1e-9)
     footprint = inside_x[:, None] & inside_y[None, :]
-    # A face is metal when all four corners are in the footprint; it counts
-    # when the dielectric fills the cells on both sides of the plane.
     corners = (footprint[:-1, :-1] & footprint[1:, :-1]
                & footprint[:-1, 1:] & footprint[1:, 1:])
     both_sides = dielectric[:-1, :-1, k] & dielectric[:-1, :-1, k - 1]
@@ -515,146 +466,6 @@ def test_rule_i_keys_on_assembled_pec_not_on_the_name_pec():
     (f,) = _findings(ptfe, RULE_I_KIND)
     assert f["conductor_entities"] == [0]
 
-
-# ---------------------------------------------------------------------------
-# (ii) coaxial_port_junction_short (preflight advisory)
-# ---------------------------------------------------------------------------
-
-def test_rule_ii_fires_on_the_shorted_junction_copy():
-    """Every first-ring node at the junction plane carries a realized PEC
-    wall on the attempt-2 copy. FAILS on 88c49bdc: preflight has no such
-    code.
-
-    24/24, was 16/16 (measured 2026-09-07). The ring itself changed, not
-    the verdict: the check's inner bound moved from ``PIN_R + dx/2`` to
-    ``PIN_R + dx/sqrt(2)``, the reach of a centre-sampled pin volume's own
-    rim (§1.1), and the ring is one cell wide from there -- 24 lattice
-    nodes at 283, 300, 316 and 361 um instead of 16 at 283, 300 and 316.
-    The first registered conductor outside the pin is still the (2,2)
-    node at 282.8 um."""
-    rows = _preflight_rows(_junction_sim(open_annulus=False), RULE_II_CODE)
-    assert len(rows) == 1, [str(r) for r in rows]
-    row = rows[0]
-    assert row.severity == "warning"
-    msg = str(row)
-    assert "24/24" in msg
-    assert "short" in msg.lower()
-    assert "registered" in msg.lower()
-    # the realized picture, not an inference: the first registered PEC
-    # beyond the lattice-safe pin bound (r > 250 um) is the (2,2) cell at
-    # 282.8 um -- the ground sheet starts where the pin ends
-    assert "282.8 um" in msg
-
-
-def test_rule_ii_is_silent_on_a_correctly_built_hole_with_the_pin_present():
-    """Design review blocker 2: the fixed geometry keeps the pin's own
-    realized footprint, and a ring defined as ``r > PIN_R`` counts it. The
-    lattice ring excludes it, so the correctly built hole draws no row.
-    The 0.4-0.5 mm ground lip (32/32 PEC, part of the predeclared 0.4 mm
-    clearance) is outside the ring and must not trip it either.
-
-    The blocker is sharper under #931, not softer (measured 2026-09-07).
-    The pin's realized footprint went from 11 asymmetric nodes to 13
-    symmetric ones (centre sampling, §1.1: no lattice point lands on the
-    r == PIN_R knife edge), and its rim now reaches 224 um, so a naive
-    ``PIN_R < r <= PIN_R + 1.5 dx`` band counts 8 of the pin's own nodes,
-    not 2. The check's bound is ``PIN_R + dx/sqrt(2)`` = 270.7 um, the
-    reach of a centre-sampled volume, and past it this geometry has 0."""
-    sim = _junction_sim(open_annulus=True)
-    metal, r = _junction_plane_metal(sim)
-    # preconditions the test's claim depends on
-    assert int((metal & (r <= PIN_R + 1e-9)).sum()) == 13
-    naive = metal & (r > PIN_R + 1e-9) & (r <= PIN_R + 1.5 * DX)
-    assert int(naive.sum()) == 8              # all of it the pin's own rim
-    assert int((naive & (r > PIN_REACH)).sum()) == 0
-    lip = (r > CLEAR_R + 1e-9) & (r <= 0.5e-3 + 1e-9)
-    assert int((metal & lip).sum()) == int(lip.sum()) == 32
-    assert _preflight_rows(sim, RULE_II_CODE) == []
-
-
-def test_rule_ii_ring_is_lattice_based_not_r_gt_pin_radius():
-    """Pin the ring's definition against the fixture's own lattice: the
-    first-ring node set is exactly the 24 lattice offsets with
-    hypot(di, dj) in (2.707, 3.707] cells (r = 283, 300, 316, 361 um),
-    none of which the pin realizes in either copy.
-
-    Was 16 offsets at 283/300/316 um under the ``PIN_R + dx/2`` inner
-    bound. That bound is what this test's name warns against, one cell
-    out: a centre-sampled pin volume realizes nodes to PIN_REACH =
-    270.7 um, and the 250-270.7 um band the old bound admitted is the
-    pin's own metal. Measured here, on the open copy, in the band the old
-    bound would have used."""
-    metal, r = _junction_plane_metal(_junction_sim(open_annulus=False))
-    ring = (r > PIN_REACH) & (r <= PIN_REACH + DX)
-    assert int(ring.sum()) == 24
-    radii = sorted(set(np.round(r[ring] * 1e6).astype(int).tolist()))
-    assert radii == [283, 300, 316, 361]
-    assert int((metal & ring).sum()) == 24   # shorted copy: all PEC
-    metal_open, _ = _junction_plane_metal(_junction_sim(open_annulus=True))
-    assert int((metal_open & ring).sum()) == 0
-    # the band the rejected ``r > PIN_R`` bound would have added is not
-    # empty on this geometry -- it is the pin
-    pin_band = (r > PIN_R + 1e-9) & (r <= PIN_REACH)
-    assert int((metal_open & pin_band).sum()) == 8
-
-
-def test_rule_ii_is_silent_without_geometry_and_without_coax_ports():
-    """No registered geometry -> no registered PEC -> nothing to say; and a
-    plain MSL board without a coaxial port never reaches the check."""
-    sim = Simulation(freq_max=10e9, domain=(10e-3, 10e-3, 10e-3), dx=1e-3,
-                     boundary="cpml", cpml_layers=4)
-    sim.add_coaxial_port(position=(5e-3, 5e-3, 0.0), face="bottom",
-                         pin_radius=0.635e-3, outer_radius=2.055e-3)
-    assert _preflight_rows(sim, RULE_II_CODE) == []
-    sim2 = _junction_sim(open_annulus=False)
-    sim2._coaxial_ports.clear()
-    assert _preflight_rows(sim2, RULE_II_CODE) == []
-
-
-def test_rule_ii_message_names_the_first_registered_pec_radius_on_a_partial_hole():
-    """A hole one cell too small (lattice disk r=3 -> ring nodes at 283 and
-    300 um are inside the hole, 316 and 361 um nodes are not) is still a
-    short by registered geometry, and the message states where the PEC
-    starts.
-
-    16/24, was 8/16 (measured 2026-09-07): the same 16 metal ring nodes,
-    counted against the 24-node ring the widened inner bound defines. The
-    radius the message names is unchanged at 316.2 um."""
-    sim = Simulation(snap="declared",
-        freq_max=FREQ_MAX_2, domain=(LX_2, LY, LZ_2), dx=DX, cpml_layers=8,
-        boundary=BoundarySpec(x="cpml", y="cpml", z="cpml"),
-    )
-    jx, jy = int(round(JUNCTION_X / DX)), int(round(Y_C / DX))
-    for b in _ground_plane_boxes_with_clearance(LX_2, LY, jx, jy, N_GND, 3):
-        sim.add(b, material="pec")
-    sim.add_coaxial_port(position=(JUNCTION_X, Y_C, N_GND * DX), face="bottom",
-                         pin_radius=PIN_R, outer_radius=OUTER_R, impedance=50.0)
-    rows = _preflight_rows(sim, RULE_II_CODE)
-    assert len(rows) == 1
-    msg = str(rows[0])
-    assert "16/24" in msg, msg
-    assert "316.2 um" in msg, msg
-
-
-@pytest.mark.source_scan
-def test_rule_ii_does_not_change_the_emission_classification():
-    """compute_coax_msl_transition stays DIAGNOSTIC_ONLY: the advisory
-    surfaces through sim.preflight() (the driver's --preflight) and through
-    run()/forward() elsewhere, not by wiring preflight into the method."""
-    import ast
-    import inspect
-    import textwrap
-    src = inspect.getsource(Simulation.compute_coax_msl_transition)
-    tree = ast.parse(textwrap.dedent(src))
-    calls = {n.func.attr for n in ast.walk(tree)
-             if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
-    assert not calls & {"preflight", "_auto_preflight", "preflight_sparameters"}
-
-
-# ---------------------------------------------------------------------------
-# (i) never drops a conductor silently: a rasterization failure is a
-# finding, and the audit says where it is incomplete. Rasterize-once.
-# ---------------------------------------------------------------------------
 
 class _NoBoundsBox(Box):
     """A Box that exposes no bounding_box() (the ``no-analytic-bounds``
@@ -696,8 +507,6 @@ def _failing_entity_mask(monkeypatch, shape_cls, exc):
     real = fid._entity_mask
 
     def patched(entry, sim, grid, nonuniform, **kw):
-        # ``pec_volume=`` (20a8ccfc, §1.1) is forwarded untouched: the
-        # double decides WHETHER to raise, never how a row is sampled.
         if isinstance(entry.shape, shape_cls):
             raise exc
         return real(entry, sim, grid, nonuniform, **kw)
@@ -728,9 +537,7 @@ def test_rule_i_reports_a_conductor_whose_mask_fails_instead_of_dropping_it(monk
     assert rf["remedy"]
 
     (d,) = _rows(report, "d")
-    # the no-op finding CANNOT fire (the conductor's cells are unknown) ...
     assert _findings(d, RULE_I_KIND) == []
-    # ... and that gap is stated, not silent.
     (un,) = _findings(d, "dielectric-after-conductor-unaudited")
     assert un["conductor_entities"] == [0]
     assert "geometry[0]" in un["detail"] and "RuntimeError" in un["detail"]
@@ -794,11 +601,6 @@ def test_rule_i_rasterizes_each_conductor_once(monkeypatch):
     assert len(set(calls)) == n_strips + 1
 
 
-# ---------------------------------------------------------------------------
-# The green half of the #931 migration: the SAME ground declared as a sheet,
-# read through the one realization function. No solve, no report — just the
-# geometry the two rules above will have to see once their owners land.
-# ---------------------------------------------------------------------------
 
 def test_junction_plane_metal_under_a_sheet_ground():
     """A full-plane ground declared as a sheet reproduces the oracle counts.
@@ -825,7 +627,7 @@ def test_junction_plane_metal_under_a_sheet_ground():
         boundary=BoundarySpec(x="cpml", y="cpml", z="cpml"),
     )
     z = N_GND * DX
-    sim.add(Box((0.0, 0.0, z), (LX_2, LY, z)), material="pec")   # sheet (§1.5)
+    sim.add(Box((0.0, 0.0, z), (LX_2, LY, z)), material="pec")
 
     grid = sim._build_grid()
     sheets: list = []
@@ -848,7 +650,6 @@ def test_junction_plane_metal_under_a_sheet_ground():
     assert int(ring.sum()) == 16
     assert int((fp & ring).sum()) == 16
 
-    # and the realization: in-plane E zeroed on plane k, normal E live.
     edges = realized_pec_edge_masks(None, sheets=sheets)
     assert bool(np.asarray(edges[0])[:, :, k].any())
     assert bool(np.asarray(edges[1])[:, :, k].any())

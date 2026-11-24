@@ -22,10 +22,9 @@ from rfx.sources.sources import GaussianPulse
 
 
 def fixture(precision='float64'):
+    """Admission requires positive absorber depth on every face, so one is the smallest accepted count."""
     sim = Simulation(freq_max=40e9, domain=(.006, .006, .006), dx=.0005,
                      boundary='cpml', cpml_layers=1, precision=precision)
-    # Admission requires positive absorber depth on every face; one is the
-    # smallest accepted count. This solid PEC cube has a closed surface.
     sim.add(Box((.0015, .002, .0025), (.0025, .003, .0035)), material='pec')
     sim.add_source((.0025, .003, .002), 'ez', amplitude_kind='current',
                    waveform=GaussianPulse(f0=30e9, bandwidth=.8))
@@ -37,7 +36,6 @@ def far_field_function(precision='float64'):
     sim = fixture(precision)
     grid = sim._build_grid()
     shape = grid.shape
-    # A 1 mm dielectric block beside the PEC cube, at (3.5, 2.5, 3) mm.
     pad = grid.cpml_layers
     block = tuple(slice(pad + lo, pad + hi) for lo, hi in ((7, 9), (5, 7), (6, 8)))
     mask = jnp.zeros(shape, dtype=precision).at[block].set(1)

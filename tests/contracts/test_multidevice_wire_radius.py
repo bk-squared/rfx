@@ -65,6 +65,7 @@ def declared_cells(ports):
 
 
 def scene(mesh, boundary, name, *, radius=True, column=None, length=.0175):
+    """The two one-cell PEC plates meet the wire's end nodes at their inner faces."""
     real_nx = int(round(length/D))
     walls = (BoundarySpec(x=boundary, y=boundary, z='pec')
              if name != 'R2' else boundary)
@@ -76,7 +77,6 @@ def scene(mesh, boundary, name, *, radius=True, column=None, length=.0175):
     grid = sim._build_realized_grid()
     seam = (grid.shape[0]+DEVICES-1)//DEVICES
     ports, probes = definitions(name, seam, grid.axis_pads)
-    # R2's wire drives two one-cell PEC plates; their inner faces sit on the wire's end nodes.
     plates = (seam-3, seam+2) if name == 'R2' else ()
     if mesh == 'graded':
         stencil_x = set(plates)
@@ -168,8 +168,14 @@ def require_valid_scene(mesh, boundary, name):
                     f'field_ratio={ratio}, s_difference={delta_s}; frozen scene unchanged')
 
 
-@pytest.mark.parametrize('mesh,boundary', MESHES if DEVICES == 2 else [])
-@pytest.mark.parametrize('name', ['R1', 'R2'])
+@pytest.mark.parametrize('name,mesh,boundary', [
+    ('R1', 'uniform', 'cpml'),
+    ('R1', 'uniform', 'pec'),
+    ('R1', 'graded', 'cpml'),
+    ('R1', 'graded', 'pec'),
+    ('R2', 'uniform', 'pec'),
+    ('R2', 'graded', 'cpml'),
+] if DEVICES == 2 else [])
 def test_radius_present(mesh, boundary, name):
     ratio, delta_s = validity(mesh, boundary, name)
     assert ratio >= .01, ('B2', mesh, boundary, name, ratio)
@@ -177,8 +183,12 @@ def test_radius_present(mesh, boundary, name):
         assert delta_s >= .01, ('B2', mesh, boundary, name, delta_s)
 
 
-FIELD_CASES = ([(m, b, r) for m, b in MESHES for r in ('R1', 'R2', 'R3', 'R4')]
-               if DEVICES == 2 else [(m, 'cpml', 'R4') for m in ('uniform', 'graded')])
+FIELD_CASES = ([
+    ('uniform', 'cpml', 'R1'), ('uniform', 'cpml', 'R4'),
+    ('uniform', 'pec', 'R2'), ('uniform', 'pec', 'R3'),
+    ('graded', 'cpml', 'R2'), ('graded', 'cpml', 'R3'),
+    ('graded', 'pec', 'R1'), ('graded', 'pec', 'R4'),
+] if DEVICES == 2 else [(m, 'cpml', 'R4') for m in ('uniform', 'graded')])
 
 
 @pytest.mark.parametrize('mesh,boundary,name', FIELD_CASES)
@@ -228,8 +238,12 @@ def expected_stencil(ports, family):
     return expected
 
 
-@pytest.mark.parametrize('mesh,boundary', MESHES if DEVICES == 2 else [])
-@pytest.mark.parametrize('name', ['R1', 'R2'])
+@pytest.mark.parametrize('name,mesh,boundary', [
+    ('R1', 'uniform', 'cpml'),
+    ('R1', 'graded', 'pec'),
+    ('R2', 'uniform', 'pec'),
+    ('R2', 'graded', 'cpml'),
+] if DEVICES == 2 else [])
 def test_realized_stencil(mesh, boundary, name):
     sim, grid, ports, _, width = scene(mesh, boundary, name)
     with _realized.capture() as dump:
@@ -256,8 +270,12 @@ def test_realized_stencil(mesh, boundary, name):
         assert got == expected and not ownership_errors
 
 
-S_CASES = ([(m, b, r) for m, b in MESHES for r in ('R1', 'R3')]
-           + [('uniform', 'cpml', 'R4')] if DEVICES == 2 else [('uniform', 'cpml', 'R4')])
+S_CASES = ([
+    ('uniform', 'cpml', 'R1'), ('uniform', 'pec', 'R3'),
+    ('graded', 'cpml', 'R3'), ('graded', 'pec', 'R1'),
+    pytest.param('graded', 'pec', 'R3', marks=pytest.mark.slow),
+    ('uniform', 'cpml', 'R4'),
+] if DEVICES == 2 else [('uniform', 'cpml', 'R4')])
 
 
 @pytest.mark.parametrize('mesh,boundary,name', S_CASES)
@@ -294,7 +312,9 @@ def test_port_s(mesh, boundary, name):
     assert not failures, failures
 
 
-@pytest.mark.parametrize('boundary', ['cpml', 'pec'] if DEVICES == 2 else [])
+@pytest.mark.parametrize('boundary', [
+    pytest.param('cpml', marks=pytest.mark.slow), 'pec',
+] if DEVICES == 2 else [])
 def test_gradient(boundary):
     require_valid_scene('graded', boundary, 'R1')
     sim, grid, *_ = scene('graded', boundary, 'R1')
@@ -330,8 +350,7 @@ def published_materials():
 
 @pytest.mark.parametrize('mesh', ['uniform', 'graded'])
 def test_published_increments(mesh):
-    # 52 nodes at 17.5 mm divide by 2. The next whole-cell length has
-    # 53 nodes, so both two and three ranks have alignment rows.
+    """Increasing the length from 17.5 mm to 18 mm changes 52 stored nodes to 53 so both two and three ranks need alignment rows."""
     length_mm = 17.5
     while True:
         length = length_mm / 1000

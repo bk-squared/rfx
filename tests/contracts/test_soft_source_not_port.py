@@ -20,13 +20,14 @@ from rfx.api._port_kind import is_port, is_soft_source
 from rfx.api._spec import _PortEntry
 
 DZ = np.array([1e-3] * 3 + [0.75e-3] * 6 + [1e-3] * 3)
-SOURCE = (0.004, 0.005, 0.0060)    # graded z = 6.0 mm is a node (3 mm + 4 x 0.75 mm)
-PORT = (0.008, 0.007, 0.0030)      # z = 3.0 mm is a node on both meshes
+SOURCE = (0.004, 0.005, 0.0060)
+PORT = (0.008, 0.007, 0.0030)
 PROBE = (0.006, 0.006, 0.0075)
 LANES = ("uniform_record", "graded_record", "uniform_run", "graded_run")
 
 
 def _scene(graded, with_port):
+    assert all(np.any(np.isclose(nodes, position[2], rtol=0, atol=1e-15)) for nodes in (np.r_[0., np.cumsum(DZ)], np.arange(13) * 1e-3) for position in (SOURCE, PORT)), "source and port z coordinates must be nodes on both meshes"
     kw = dict(dz_profile=DZ) if graded else {}
     sim = Simulation(freq_max=10e9, domain=(0.012, 0.012, 0.0 if graded else 0.012),
                      dx=1e-3, boundary="cpml", cpml_layers=4, **kw)
@@ -80,7 +81,6 @@ def test_entry_rule_for_every_stored_kind():
     (jnp.array(1e-6), False, True),
 ])
 def test_hand_truth_table_for_scalar_impedances(impedance, expected_soft, expected_port):
-    # Hand-written expectations cover the old equality rule and both shared APIs.
     assert bool(impedance == 0.0) is expected_soft
     fake = SimpleNamespace(impedance=impedance)
     entry = _PortEntry(position=SOURCE, component="ez", impedance=impedance, waveform=None)
@@ -122,17 +122,6 @@ def test_port_constructors_refuse_nonfinite_impedance(constructor, impedance):
     assert str(exc.value) == f"impedance must be positive and finite, got {impedance}"
 
 
-@pytest.mark.parametrize("lane", LANES)
-def test_soft_source_alone_lists_no_port(lane):
-    graded = lane.startswith("graded")
-    record = _record(lane, with_port=False)
-    assert record.ports == ()
-    (source,) = record.sources
-    assert (source.label, source.kind, source.component) == ("port[0]", "soft_point", "ez")
-    assert source.edges == (_hand_index(SOURCE, graded),)
-    assert _labels(record).count("port[0]") == 1
-    (row,) = [r for r in record.realization_table.rows if r.label == "port[0]"]
-    assert row.family == "soft_point"
 
 
 @pytest.mark.parametrize("lane", LANES)

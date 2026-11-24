@@ -140,14 +140,8 @@ def _update_e_nu_dispersive(
     else:
         ex_old, ey_old, ez_old = state.ex, state.ey, state.ez
 
-    # Narrow every output back to the dtype of the carry it came from
-    # — the NU lane runs the same ADE recurrences off the same
-    # ``init_debye``/``init_lorentz`` coefficients, which are built from
-    # ``grid.dt`` (an np.float64 scalar, strongly typed in JAX). The full
-    # rationale lives on ``rfx.stepping.poles.update_e_lorentz``.
     _fdtype = state.ex.dtype
 
-    # Every coefficient is per E component: component c takes index c.
     from rfx.materials.debye import debye_e_component, per_component
     from rfx.materials.lorentz import (
         lorentz_e_component, lorentz_p_component, mixed_e_component_coeffs,
@@ -155,7 +149,6 @@ def _update_e_nu_dispersive(
     e_old3 = (ex_old, ey_old, ez_old)
     curls = (curl_x, curl_y, curl_z)
 
-    # --- Debye only ---
     if debye is not None and lorentz is None:
         debye_coeffs, debye_state = debye
         _pdtype = jnp.promote_types(debye_state.px.dtype, _fdtype)
@@ -169,7 +162,6 @@ def _update_e_nu_dispersive(
         new_debye = DebyeState(px=px_new, py=py_new, pz=pz_new)
         return new_fdtd, new_debye, None
 
-    # --- Lorentz only ---
     if lorentz is not None and debye is None:
         lorentz_coeffs, lor_state = lorentz
         _pdtype = jnp.promote_types(lor_state.px.dtype, _fdtype)
@@ -199,13 +191,11 @@ def _update_e_nu_dispersive(
         )
         return new_fdtd, None, new_lor
 
-    # --- Mixed Debye + Lorentz ---
     debye_coeffs, debye_state = debye
     lorentz_coeffs, lor_state = lorentz
     _dpdtype = jnp.promote_types(debye_state.px.dtype, _fdtype)
     _lpdtype = jnp.promote_types(lor_state.px.dtype, _fdtype)
 
-    # Explicit Lorentz polarization update first
     p_l = (lor_state.px, lor_state.py, lor_state.pz)
     v_l = (lor_state.vx, lor_state.vy, lor_state.vz)
     p_d = (debye_state.px, debye_state.py, debye_state.pz)
@@ -326,22 +316,22 @@ def _build_nu_scan(
     placeholder table; the source waveform arrays themselves define the
     table length when sources are present.
     """
+    from rfx.stepping.vector_pad import refuse_if_forced
+    refuse_if_forced("graded")
     field_dtype = field_dtype if field_dtype is not None else jnp.float32
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     from rfx.model.materials import kernel_materials, with_components
-    from rfx.geometry.node_tensor import SmoothedEps
-    from rfx.model.tensor_operands import TensorOperands
+    from rfx.model.tensor_operands import TensorOperands, step_tensor
     from rfx.geometry.rasterize_grid import unpadded_high_walls
-    tensor = TensorOperands.of(aniso_eps) if isinstance(aniso_eps, SmoothedEps) else None
+    tensor = step_tensor(materials, TensorOperands.of(aniso_eps))
     materials = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
                                 high_wall=unpadded_high_walls(grid), tensor=tensor)
-    if tensor is not None:
-        aniso_eps = tensor.eps
+    aniso_eps = tensor.eps if tensor is not None else None
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(
-        materials, lane="non-uniform Yee with dispersion/tensor or design-box updates",
-        unsupported=(debye is not None or lorentz is not None
-                     or aniso_eps is not None or design_box is not None))
+        materials, lane="non-uniform Yee with tensor or design-box updates",
+        debye=debye, lorentz=lorentz,
+        unsupported=(aniso_eps is not None or design_box is not None))
     sources = sources or []
     if _realized.ACTIVE is not None:
         _realized.sources(grid, materials, sources, "graded.sources")
@@ -354,7 +344,7 @@ def _build_nu_scan(
     from rfx.model.pole_stability import judge_prebuilt_poles
     from rfx.materials.lorentz import pole_sets_judged
     if lorentz is not None and not pole_sets_judged(lorentz[0]):
-        judge_prebuilt_poles(grid, lorentz, debye, periodic=tuple(a in grid.periodic_axes for a in "xyz"))
+        judge_prebuilt_poles(grid, lorentz, debye, periodic=tuple(a in grid.periodic_axes for a in "xyz"), mu_r=materials.mu_r)
     use_wire_ports = len(wire_ports) > 0
     use_debye = debye is not None
     use_lorentz = lorentz is not None
@@ -375,9 +365,6 @@ def _build_nu_scan(
     use_waveguide_ports = len(waveguide_ports) > 0
     use_tfsf = tfsf is not None
 
-    # The far-field integral is over the SCATTERED field, which it only is
-    # when the Huygens box encloses the whole injected region. Same check the
-    # uniform lane runs (rfx/simulation.py), same helper.
     from rfx.boundaries.tfsf import admit_setup
 
     from rfx.boundaries.setup import nonuniform_boundaries
@@ -411,9 +398,6 @@ def _build_nu_scan(
         cpml_grid = step_grid
         cpml_params = field_operands(cpml_params, field_dtype)
 
-    # surface-impedance sheet: exponential-stepping A/B built once
-    # from the FINAL scan materials; applied per step at tangential edges
-    # in step_fn (after apply_pec_mask, before sources/DFT sampling).
     use_sheet_impedance = sheet_impedance is not None
     if use_sheet_impedance:
         from rfx.materials.thin_conductor import sheet_update_coeffs
@@ -422,9 +406,11 @@ def _build_nu_scan(
 
     state = init_state((grid.nx, grid.ny, grid.nz), field_dtype=field_dtype)
     src_meta = [(s[0], s[1], s[2], s[3]) for s in sources]
-    materials = with_graded_edge_keep(materials, pec_occupancy, pinned_sheet_layout, grid=grid, sources=sources, waveguide_ports=waveguide_ports, dtype=state.ex.dtype, sheet_edge_masks=pec_static_edge_masks, periodic=tuple(a in grid.periodic_axes for a in "xyz"), cells=pec_mask, sheets=pec_sheets, wires=pec_wires)
+    element_edges = tuple((i, m.component, (int(m.i), int(m.j), int(m.k)))
+                          for i, m in enumerate(rlc_metas)) if pinned_sheet_layout else ()
+    materials = with_graded_edge_keep(materials, pec_occupancy, pinned_sheet_layout, grid=grid, sources=sources, waveguide_ports=waveguide_ports, dtype=state.ex.dtype, sheet_edge_masks=pec_static_edge_masks, periodic=tuple(a in grid.periodic_axes for a in "xyz"), cells=pec_mask, sheets=pec_sheets, wires=pec_wires, element_edges=element_edges)
     src_waveforms = drive_table([jnp.array(s[4]) for s in sources], src_meta, n_steps,
-        occupancy=pec_occupancy, sheet_edge_masks=pec_static_edge_masks, keep=materials.edge_keep, periodic=tuple(a in grid.periodic_axes for a in "xyz"))
+        occupancy=pec_occupancy, sheet_edge_masks=pec_static_edge_masks, keep=materials.edge_keep, periodic=tuple(a in grid.periodic_axes for a in "xyz"), dtype=field_dtype)
     prb_meta = [(p[0], p[1], p[2], p[3]) for p in probes]
 
 
@@ -435,13 +421,6 @@ def _build_nu_scan(
     inv_dy = step_grid.inv_dy
     inv_dz = step_grid.inv_dz
 
-    # ---- design box on the graded mesh: fence, then build Ca/Cb ----
-    # The SAME resolver the uniform lane runs (rfx.simulation), because the
-    # question it answers is the same one: does anything else in this step
-    # read ``materials`` at a design cell. What differs on this lane is only
-    # the curl, and ``update_e_box`` takes it as ``inv_d``. The flags this
-    # lane cannot produce are passed as absent: no UPML runner, no Kerr, no
-    # fourth-order stencil, no Bloch phase, no Stage-2 inverse-eps tensor.
     design_box_coeffs = None
     if design_box is not None:
         from rfx.model import resolve_design_box
@@ -472,12 +451,13 @@ def _build_nu_scan(
             ),
         )
     use_design_box = design_box_coeffs is not None
+    from rfx.model.pole_stability import refuse_subluminal_cells
+    refuse_subluminal_cells(materials, grid, step_grid.dt, design_box=design_box)
 
     carry_init = {"fdtd": state}
     if use_cpml:
         carry_init["cpml"] = cpml_state_init
 
-    # Debye/Lorentz ADE state
     if use_debye:
         debye_coeffs, debye_state = debye
         carry_init["debye"] = debye_state
@@ -488,7 +468,6 @@ def _build_nu_scan(
 
     sp_freqs, wp_meta, use_wire_ports = graded_accumulators(wire_ports, grid, s_param_freqs, carry_init)
 
-    # DFT plane probe carry + static metadata
     if use_dft_planes:
         carry_init["dft_planes"] = tuple(probe.accumulator for probe in dft_planes)
         from rfx.measurement.accumulators import plane_metadata
@@ -496,10 +475,6 @@ def _build_nu_scan(
     else:
         dft_meta = ()
 
-    # Flux monitor carry + static metadata (mirrors the uniform scan body
-    # in rfx/simulation.py). The NU dt is scalar, so the DFT kernels need
-    # no per-axis time weighting; the axis-aware area element dA already
-    # lives on each FluxMonitor (handles graded tangential cells).
     if use_flux_monitors:
         from rfx.measurement.accumulators import flux_metadata
         flux_meta = flux_metadata(flux_monitors, window=True)
@@ -510,12 +485,9 @@ def _build_nu_scan(
     else:
         flux_meta = ()
 
-    # Lumped RLC ADE state (one per element) — metas are Python-static
     if use_lumped_rlc:
         carry_init["rlc_states"] = tuple(rlc_states)
 
-    # NTFF accumulators — seeded from caller, updated per step via
-    # accumulate_ntff. Box indices and freqs are Python-static.
     if use_ntff:
         carry_init["ntff"] = ntff_data
     if use_current_moments:
@@ -524,16 +496,12 @@ def _build_nu_scan(
             init_current_moment_data as _init_cm,
             slab_e_snapshot as _slab_e_snapshot,
         )
-        # Same dtype policy as the NTFF carry.
         carry_init["current_moments"] = _init_cm(
             runner_moments, field_dtype=carry_init["fdtd"].ex.dtype)
 
     if measurement is not None:
         validate_monitor_carries(ntff_box, current_moments, carry_init)
 
-    # Waveguide-port time-series carry (mirrors uniform path).
-    # Spectra are computed POST-SCAN by a rect full-record DFT on the
-    # recorded modal V/I time series.
     if use_waveguide_ports:
         carry_init["waveguide_port_accs"] = tuple(
             (
@@ -555,11 +523,6 @@ def _build_nu_scan(
         waveguide_meta = ()
         waveguide_port_metrics = ()
 
-    # TFSF 1D auxiliary state carry. Injection axis is x (uniform on
-    # NU paths we support — dz-only nonuniformity), so the 1D aux runs
-    # with grid.dx spacing and the E/H corrections use scalar
-    # coeff = dt / (EPS_0 * dx) etc. Oblique / +z,-z cases are
-    # rejected upstream (see rfx/runners/nonuniform.py and rfx/api.py).
     if use_tfsf:
         from rfx.sources.tfsf import is_tfsf_2d as _is_tfsf_2d
         tfsf_cfg, tfsf_state = tfsf
@@ -579,10 +542,6 @@ def _build_nu_scan(
         materials, aniso_eps, use_cpml=use_cpml,
         use_debye=use_debye, use_lorentz=use_lorentz)
 
-    # The per-cell arrays and x spacing vectors reach the step through
-    # ``invariants`` so a jitted loop can pass arrays as an argument.
-    # Spacing vectors are not grid-sized and stay compile-time constants
-    # on one device; CPML profiles stay in the closure (_NUScanSetup).
     from rfx.stepping.graded import GradedStepContext, make_graded_step, graded_probe_table
     invariants = {
         "inv_dx": inv_dx,
@@ -611,7 +570,6 @@ def _build_nu_scan(
                 grid, waveguide_meta, measurement=measurement, dtype=state.ex.dtype)
     plan_owners = None
     if measurement is not None:
-        # The attached plan's owners, compiled once outside the traced step.
         import jax
         from rfx.measurement.projector import plan_tables
         from rfx.measurement.accumulators import plan_accumulator_meta

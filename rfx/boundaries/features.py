@@ -177,6 +177,7 @@ def _build_uniform_grid(sim, axes):
                 f'({admitted[0]!r} s) or dt=0.25 * Grid.courant_dt ({admitted[1]!r} s) '
                 f'on this realized grid; got dt={pin!r}')
         grid.dt = float(pin)
+        grid._courant_conformal_floor = True  # type: ignore[attr-defined]
     return grid
 
 
@@ -453,6 +454,29 @@ OPERAND_RULES["waveguide_port_section"] = {
 }
 
 
+def _waveguide_section_cut(cfg, bounds, record, *, pec_nodes=None):
+    """Include both transverse wall nodes at an operand's recorded location.
+
+    E components are centred along their own axis and nodal along the other
+    axes. Raw node tensors are nodal on every axis; unlocated operands retain
+    cell cuts. Only tangential PEC edges use the supplied normal node span.
+    """
+    normal = "xyz".index(cfg.normal_axis)
+    component = "xyz".index(record.component) if record.family == "E" else None
+    nodal = ".nodes." in record.name or ".node_smoothing." in record.name
+    cut = []
+    for axis, (lo, hi) in enumerate(bounds):
+        if axis != normal and ((component is not None and axis != component)
+                               or (component is None and nodal)):
+            cut.append(slice(lo, hi + 1))
+        elif (axis == normal and pec_nodes is not None
+              and record.name.startswith("pec_edge_masks.") and component != normal):
+            cut.append(slice(*pec_nodes))
+        else:
+            cut.append(slice(lo, hi))
+    return tuple(cut)
+
+
 def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks, grid):
     """Judge thin update operands, exempting only the guide's pinned walls."""
     import numpy as np
@@ -460,16 +484,13 @@ def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks, gr
     from rfx.model.operands import operands_at
 
     rule = OPERAND_RULES["waveguide_port_section"]
-    spatial = tuple(slice(lo, hi) for lo, hi in bounds)
     normal = "xyz".index(cfg.normal_axis)
     # H corrects cell x_index - 1 (+) or x_index (-). Its front node,
     # shared with the source plane, is x_index in either direction.
     nodes = [cfg.x_index, cfg.ref_x]
     from rfx.model.waveguide_mesh import host_index
     nodes.extend(host_index(grid, cfg.normal_axis, p) for p in cfg.segment_planes)
-    edge_spatial = list(spatial)
-    edge_spatial[normal] = slice(min(nodes), max(nodes) + 1)
-    edge_spatial = tuple(edge_spatial)
+    pec_nodes = (min(nodes), max(nodes) + 1)
     behind = cfg.x_index - 1 if cfg.direction.startswith("+") else cfg.x_index + 1
     # An E edge whose four neighbouring cells are each closed by PEC edges on
     # all twelve sides lies inside a conductor: that is the PEC-volume medium,
@@ -516,9 +537,7 @@ def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks, gr
         return interior
 
     def cut_for(record):
-        if record.name.startswith("pec_edge_masks.") and record.component != cfg.normal_axis:
-            return edge_spatial
-        return spatial
+        return _waveguide_section_cut(cfg, bounds, record, pec_nodes=pec_nodes)
 
     def select(record):
         decisions = {rule[kind] for kind in record.kinds}
@@ -552,7 +571,7 @@ def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks, gr
                     if axis == "xyz".index(cfg.normal_axis) or axis == component:
                         continue
                     for node in bounds[axis]:
-                        local = node - bounds[axis][0]
+                        local = node - cut[axis].start
                         if 0 <= local < bad.shape[start + axis]:
                             plane = [slice(None)] * bad.ndim
                             plane[start + axis] = local
@@ -585,9 +604,10 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
     import jax.numpy as jnp
     import numpy as np
     from rfx._traced_check import traced_check
-    from rfx.model.operands import _leaves, realized_operands
+    from rfx.model.operands import _leaves, _record, realized_operands
     from rfx.model.design_box import design_box_window
     from rfx.model.waveguide_modes import PortMedium, with_port_medium
+    from rfx.measurement.waveguide_power import driven_waveguide_indices
     from rfx.boundaries.pec import wall_edge_masks, resolve_wall_faces
 
     wall_masks = wall_edge_masks(grid.shape, resolve_wall_faces(
@@ -631,16 +651,21 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
     reason = ("waveguide sections require one homogeneous, isotropic, lossless, "
               "non-dispersive medium")
 
-    def section(array, bounds):
+    def section(array, bounds, cfg, name):
+        location_name = name.replace(".diagonal.", ".")
+        if location_name.startswith("materials.sigma."):
+            location_name = location_name.replace("materials.sigma.", "materials.components.sigma.", 1)
+        record = _record(location_name, frozenset(), array, None, "")
+        cut = _waveguide_section_cut(cfg, bounds, record)
         trailing = 0
         start = array.ndim - 3 - trailing
         slices = [slice(None)] * array.ndim
         offsets = [0] * array.ndim
         if start >= 0:
-            for axis, (lo, hi) in enumerate(bounds):
-                offsets[start+axis] = lo
+            for axis, span in enumerate(cut):
+                offsets[start+axis] = span.start
                 if array.shape[start+axis] != 1:
-                    slices[start+axis] = slice(lo, hi)
+                    slices[start+axis] = span
         return array[tuple(slices)], start, offsets
 
     def resolve(cfg, multimode):
@@ -657,7 +682,7 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
             if all(max(lo, write[2*a]) < min(hi, write[2*a+1])
                    for a, (lo, hi) in enumerate(bounds)):
                 raise ValueError(prefix + f"design_box update window {write} intersects; " + reason)
-        portions = [section(array, bounds) for _, array, _, _ in operands]
+        portions = [section(array, bounds, cfg, name) for name, array, _, _ in operands]
         arrays = [p[0] for p in portions]
         traced = any(isinstance(x, jax.core.Tracer) for x in arrays)
 
@@ -685,7 +710,7 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
                     if component in ("0", "1", "2") and host.ndim == 3:
                         # Wall smoothing averages with exterior vacuum only on
                         # tangential edges that the PEC update pins to zero.
-                        pinned = np.asarray(section(wall_masks[int(component)], bounds)[0])
+                        pinned = np.asarray(section(wall_masks[int(component)], bounds, cfg, name)[0])
                         bad &= ~pinned
                 if np.any(bad):
                     first = tuple(np.argwhere(bad)[0])
@@ -701,7 +726,7 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
 
         probe_bounds = list(bounds)
         probe_bounds["xyz".index(cfg.normal_axis)] = (cfg.probe_x, cfg.probe_x + 1)
-        probe_arrays = [section(array, probe_bounds)[0] for _, array, _, _ in operands]
+        probe_arrays = [section(array, probe_bounds, cfg, name)[0] for name, array, _, _ in operands]
 
         def probe_medium(medium, *values):
             matches, descriptions = True, []
@@ -720,16 +745,18 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
                 bad = ~np.isclose(value, target, rtol=2e-7, atol=0)
                 component = name.rsplit(".", 1)[-1]
                 if vacuum is None and component in ("0", "1", "2") and value.ndim == 3:
-                    bad &= ~np.asarray(section(wall_masks[int(component)], probe_bounds)[0])
+                    bad &= ~np.asarray(section(wall_masks[int(component)], probe_bounds, cfg, name)[0])
                 if value.size == 0 or np.any(bad):
                     matches = False
                     descriptions.append(f"{label} ({name})={np.unique(value).tolist()}")
             return matches, "; ".join(descriptions)
 
         if traced:
-            # The probe-plane medium cannot mark the config inside a trace, so a mismatch refuses the run.
+            # Only a driven port consumes its probe waves for its own S21.
             def judge_traced(*values):
                 medium = judge(*values[:len(arrays)])
+                if not driven_waveguide_indices([cfg], amplitude_field="src_amp"):
+                    return
                 matches, description = probe_medium(medium, *values[len(arrays):])
                 if not matches:
                     raise ValueError(prefix + "traced override puts another medium at the probe plane ("

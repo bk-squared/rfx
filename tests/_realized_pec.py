@@ -59,7 +59,7 @@ _AXIS_NAME = ("x", "y", "z")
 
 
 @dataclass(frozen=True)
-class RealizedPec:  # noqa: D101 - documented below
+class RealizedPec:  # noqa: D101
     """A crossval-facing view of ``tests._realized_geometry.Realization``.
 
     ``edges`` is the ``(Mx, My, Mz)`` triple: ``True`` where that E component
@@ -101,16 +101,13 @@ class RealizedPec:  # noqa: D101 - documented below
         exactly a material reading, not an edge one. The lane is not
         re-decided here: it is read off the grid the shared reader already
         built.
+        The collectors are passed and dropped so the material read states "cells only" instead of tripping the assembler's refusal on a sheet model.
         """
         import warnings as _warnings
 
         from rfx.nonuniform import NonUniformGrid
         with _warnings.catch_warnings():
             _warnings.simplefilter("ignore")
-            # Materials only — the realized conductors are already on
-            # ``self.inner``. The #931 collectors are passed and dropped so
-            # this read states "cells only" instead of tripping the
-            # assembler's refusal on a sheet model.
             if isinstance(self.grid, NonUniformGrid):
                 return self.sim._assemble_materials_nu(
                     self.grid, pec_sheets=[], pec_wires=[])[0]
@@ -130,7 +127,7 @@ def realize(sim, grid=None) -> RealizedPec:
     the run itself would take and reads the run's own periodic flags, so the
     answer is the one the step function will apply.
     """
-    if grid is not None:                       # pragma: no cover - callers pass none
+    if grid is not None:                       # pragma: no cover
         raise TypeError(
             "realize() takes the simulation only; the shared reader builds the "
             "grid the run would build (tests/_realized_geometry.realized)")
@@ -235,7 +232,7 @@ def _full_wall(realized: RealizedPec, axis: int, k: int, footprint) -> bool:
         m = np.asarray(realized.edges[t], dtype=bool)
         idx = [slice(None)] * 3
         idx[axis] = k
-        plane = m[tuple(idx)]                     # (n_p, n_q) in in-plane order
+        plane = m[tuple(idx)]
         along = 0 if t == in_plane[0] else 1
         if along == 0:
             need = fp[:-1, :] & fp[1:, :]

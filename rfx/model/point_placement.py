@@ -20,7 +20,7 @@ def admit_axis(position, *, axis, lo, hi, cell_lo, cell_hi, pad_lo, pad_hi,
     side = "lo" if pos < lo else "hi"
     pad = pad_lo if side == "lo" else pad_hi
     if pad == 0:
-        return  # Preserve the existing periodic / out-of-grid handling.
+        return
     depth = (lo - pos) / cell_lo if side == "lo" else (pos - hi) / cell_hi
     if lo <= pos <= hi:
         return
@@ -64,7 +64,6 @@ def admit_point(grid, position, *, allow_in_absorber=False, label="Point",
             pad_lo = getattr(grid, f"pad_{axis}_lo")
             pad_hi = getattr(grid, f"pad_{axis}_hi")
             last = grid.shape[a] - pad_hi - 1
-            # Periodic endpoints identify the seam; retain that domain endpoint.
             hi = (float(grid.domain[a]) if axis in getattr(grid, "periodic_axes", "")
                   else float(grid.node_of(a, last)))
             cells = grid.cells(a)

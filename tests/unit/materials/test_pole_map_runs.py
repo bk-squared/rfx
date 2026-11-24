@@ -109,6 +109,7 @@ def capture_scan(sim, steps, monkeypatch, *, forward=False, perturb=False, pertu
         patch.setattr(graded, 'recorded_scan', capture)
         if perturb:
             patch.setattr(lorentz, 'lorentz_e_coeffs', perturbed)
+            patch.setattr('rfx.model.dispersive_poles.lorentz_e_coeffs', perturbed)
         with pytest.raises(_Captured):
             if forward:
                 sim.forward(n_steps=steps, checkpoint=False, skip_preflight=True)
@@ -184,10 +185,7 @@ def test_p1_fields(monkeypatch, graded, callables):
     pytest.param(False, 'float32', id='uniform-float32'),
     pytest.param(True, 'float32', id='graded-float32'),
     pytest.param(False, 'float64', id='uniform-float64'),
-    pytest.param(True, 'float64', id='graded-float64', marks=pytest.mark.xfail(
-        strict=True, raises=AssertionError,
-        reason="rfx#2613: the scalar reference's edge fractions are float32 in a float64 run; "
-               "the map is judged at coefficient level by test_c2_graded_float64_coefficients")),
+    pytest.param(True, 'float64', id='graded-float64'),
 ])
 @pytest.mark.parametrize('pin', ['P2a', 'P2b'])
 def test_p2_staircase(monkeypatch, graded, pin, precision, request):
@@ -201,8 +199,7 @@ def test_p2_staircase(monkeypatch, graded, pin, precision, request):
             strict=True, raises=AssertionError,
             reason=("cannot judge P2a in float32 on x86_64: scalar control 0.1201 graded > 0.1 "
                     "(0.0721 on arm64; the old code bit-equal on the cluster; the 0.1 bar unchanged); "
-                    "no live judge on x86_64 "
-                    "until #2613 PR B lifts the float64 twin's xfail") if graded else
+                    "judged by P2a-graded-float64 (1e-9 bar)") if graded else
                    ("cannot judge P2a in float32 on x86_64: scalar control 0.1179 uniform > 0.1 "
                     "(0.0796 on arm64; the old code bit-equal on the cluster; the 0.1 bar unchanged); "
                     "judged by "
@@ -286,7 +283,6 @@ def test_p6_traced_forward(monkeypatch, graded):
     active_by_component = concrete_path.pop('active')
     paths = [concrete_path]
     occupied = np.asarray(mask, bool)
-    # At least one neighbouring occupied pair differs in both strength and damping.
     mixed = occupied[1:] & occupied[:-1] & (np.diff(pole.delta, axis=0) != 0) & (np.diff(pole.kappa, axis=0) != 0)
     assert np.any(mixed)
     def measured(scale):
@@ -363,10 +359,10 @@ def zero_scene(graded, all_zero, scale=1., without=False):
 
 @pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
 def test_p2c_prime_fields(monkeypatch, graded):
+    """The zero-strength band is checked only in its interior to exclude the mixed interface edge."""
     all_zero = False
     sim, grid, meta = zero_scene(graded, all_zero)
     base = capture_scan(sim, 400, monkeypatch)
-    # The interior of the zero-strength band excludes its mixed interface edge.
     widths = np.asarray(grid.cells(0), float)
     nodes = np.r_[0., np.cumsum(widths[:-1])]
     nodes -= nodes[8]
@@ -387,7 +383,6 @@ def test_p2c_prime_fields(monkeypatch, graded):
         polarization, probes = measure(scan)
         traces = probes[0] if isinstance(probes, tuple) else probes
         return jnp.sum(traces**2), jnp.max(polarization)
-    # One scalar direction needs no reverse-mode tape of the full domain.
     energy, gradient, traced_p = jax.jit(lambda scale: jax.jvp(
         traced, (scale,), (jnp.ones_like(scale),), has_aux=True))(jnp.float32(1.))
     assert np.isfinite(energy) and np.isfinite(gradient)
@@ -425,6 +420,7 @@ def test_p2c_prime_all_zero(monkeypatch, graded, forward):
         candidate, _, _ = zero_scene(graded, True, scale)
         with monkeypatch.context() as patch:
             patch.setattr(lorentz, 'pole_update_coeffs', checked_builder)
+            patch.setattr('rfx.model.dispersive_poles.pole_update_coeffs', checked_builder)
             scan = capture_scan(candidate, 400, monkeypatch, forward=forward)
         return scan, jnp.all(jnp.stack(finite)) if finite else jnp.asarray(True)
 

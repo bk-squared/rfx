@@ -69,10 +69,6 @@ from tests._x64_compat import enable_x64
 PEC_SIGMA = 1e7
 
 
-# ---------------------------------------------------------------------------
-# The premise the whole issue rests on
-# ---------------------------------------------------------------------------
-
 def test_dt_is_a_numpy_float64_scalar():
     """``grid.dt`` is an np.float64 scalar -> strongly typed in JAX.
 
@@ -88,24 +84,22 @@ def test_dt_is_a_numpy_float64_scalar():
     assert jnp.dtype(np.asarray(grid.dt).dtype) == jnp.float64
 
     with enable_x64():
-        # A numpy float64 scalar promotes a complex64 array; a Python float
-        # (weakly typed) does not. That asymmetry is the whole defect.
         c = jnp.zeros(3, dtype=jnp.complex64)
         assert (c * np.float64(1e-12)).dtype == jnp.complex128
         assert (c * 1e-12).dtype == jnp.complex64
 
 
-# ---------------------------------------------------------------------------
-# The dtype policy itself
-# ---------------------------------------------------------------------------
-
 @pytest.mark.parametrize("field_dtype,expected", [
-    (jnp.float16, jnp.complex64),     # mixed precision -> float32 FLOOR
-    (jnp.float32, jnp.complex64),     # default -> unchanged
-    (jnp.complex64, jnp.complex64),   # oblique Bloch (#404) -> stays COMPLEX
+    (jnp.float16, jnp.complex64),
+    (jnp.float32, jnp.complex64),
+    (jnp.complex64, jnp.complex64),
 ])
 def test_ntff_accum_dtype_promotes_never_pins(field_dtype, expected):
-    """Holds identically with x64 off and on."""
+    """Holds identically with x64 off and on.
+
+    The rows are mixed precision (float16 fields, float32 floor), the default float32
+    lane (unchanged) and oblique Bloch (the complex carry stays complex).
+    """
     assert ntff_accum_dtype(field_dtype) == expected
     with enable_x64():
         assert ntff_accum_dtype(field_dtype) == expected
@@ -167,13 +161,8 @@ def test_rlc_carry_follows_ambient_float_with_a_float32_floor():
         st = init_rlc_state()
         assert st.inductor_current.dtype == jnp.float64
         assert st.capacitor_charge.dtype == jnp.float64
-    # flag restored -> back to the ambient default
     assert init_rlc_state().inductor_current.dtype == ambient
 
-
-# ---------------------------------------------------------------------------
-# The three scans must actually CLOSE under x64
-# ---------------------------------------------------------------------------
 
 def _lumped_sim():
     sim = Simulation(freq_max=5e9, domain=(0.01, 0.01, 0.01), dx=1e-3,
@@ -244,7 +233,7 @@ def test_oblique_tfsf_2d_scan_closes_under_x64():
     cfg, st0 = init_tfsf(grid.nx, grid.dx, grid.dt,
                          cpml_layers=grid.cpml_layers, tfsf_margin=3,
                          f0=5e9, bandwidth=0.2, amplitude=1.0,
-                         polarization="ez", angle_deg=30.0, ny=grid.ny)
+                         polarization="ez", angle_deg=30.0, ny=grid.ny, dtype='float32')
     probe = ProbeSpec(i=cfg.x_lo + 3, j=grid.ny // 2, k=grid.nz // 2,
                       component="ez")
     with enable_x64():
@@ -252,10 +241,6 @@ def test_oblique_tfsf_2d_scan_closes_under_x64():
                 periodic=(False, True, True), tfsf=(cfg, st0), probes=[probe])
     assert np.all(np.isfinite(np.asarray(r.time_series)))
 
-
-# ---------------------------------------------------------------------------
-# x64 must not change the default-precision numbers
-# ---------------------------------------------------------------------------
 
 def test_float32_ntff_accumulator_is_complex64_even_under_x64():
     """Turning x64 on must not silently widen (or narrow) the default lane.
@@ -296,10 +281,6 @@ def test_enable_x64_context_restores_the_flag():
     assert bool(jax.config.jax_enable_x64) is before
 
 
-# ---------------------------------------------------------------------------
-# Issue #656 — the dispersion ADE carry (the family member #646 missed)
-# ---------------------------------------------------------------------------
-
 def _dispersive_sim(kind, precision="float32", n=None):
     """Small PEC cavity with one dispersive Box.
 
@@ -322,7 +303,7 @@ def _dispersive_sim(kind, precision="float32", n=None):
             "m", eps_r=2.0,
             lorentz_poles=[lorentz_pole(2.0, 2 * np.pi * 5e9, 1e9)],
             debye_poles=[DebyePole(delta_eps=1.0, tau=1e-10)])
-    else:  # pragma: no cover - guard against a typo in a parametrize list
+    else:  # pragma: no cover
         raise ValueError(kind)
     sim.add(Box((0.006, 0.0, 0.0), (0.014, 0.010, 0.010)), material="m")
     sim.add_source((0.003, 0.005, 0.005), "ez", amplitude_kind="field")
@@ -359,12 +340,16 @@ def _scan_body_dtypes(monkeypatch, kind, precision):
 
 
 @pytest.mark.parametrize("field_dtype,expected", [
-    (jnp.float16, jnp.float32),      # mixed precision -> float32 FLOOR
-    (jnp.float32, jnp.float32),      # default -> unchanged
-    (jnp.complex64, jnp.complex64),  # complex fields -> stays COMPLEX
+    (jnp.float16, jnp.float32),
+    (jnp.float32, jnp.float32),
+    (jnp.complex64, jnp.complex64),
 ])
 def test_ade_state_dtype_promotes_never_pins(field_dtype, expected):
-    """Holds identically with x64 off and on."""
+    """Holds identically with x64 off and on.
+
+    The rows are mixed precision (float16 fields, float32 floor), the default float32
+    lane (unchanged) and complex fields (the carry stays complex).
+    """
     assert ade_state_dtype(field_dtype) == expected
     with enable_x64():
         assert ade_state_dtype(field_dtype) == expected
@@ -411,7 +396,6 @@ def test_ade_allocation_sites_honour_the_policy():
                           field_dtype=jnp.float16, high_wall=(False, False, False))
     _, deb = init_debye([DebyePole(delta_eps=2.0, tau=1e-10)], mats, dt,
                         field_dtype=jnp.float16, high_wall=(False, False, False))
-    # float16 fields must NOT give a float16 recursive accumulator
     assert lor.px.dtype == jnp.float32
     assert lor.vx.dtype == jnp.float32
     assert deb.px.dtype == jnp.float32
@@ -423,8 +407,6 @@ def test_ade_allocation_sites_honour_the_policy():
         assert lor64.px.dtype == jnp.float64
         assert deb64.px.dtype == jnp.float64
 
-
-# ---- the scans must actually CLOSE, per pole family ----
 
 @pytest.mark.parametrize("kind", ["lorentz", "debye", "drude", "both"])
 def test_dispersive_scan_closes_under_x64(kind):
@@ -465,8 +447,6 @@ def test_dispersive_float64_actually_reaches_float64():
         assert r.state.ex.dtype == jnp.float64
         assert np.asarray(r.time_series).dtype == jnp.float64
 
-
-# ---- precision="mixed": float16 FIELDS, float32 ACCUMULATION ----
 
 @pytest.mark.parametrize("kind", ["lorentz", "debye"])
 def test_mixed_precision_keeps_float16_fields_and_a_float32_ade_state(
@@ -511,40 +491,48 @@ def test_x64_does_not_move_the_default_precision_dispersive_result():
     assert np.max(np.abs(ts_on - ts_off)) / scale < 1e-5
 
 
-def test_oblique_bloch_with_dispersion_is_refused():
-    """Refuse the unsupported material before constructing the scan carry.
+@pytest.mark.parametrize("x64", [False, True])
+@pytest.mark.parametrize("field_dtype", [jnp.float16, jnp.float32, jnp.float64])
+def test_oblique_bloch_with_debye_material_steps(monkeypatch, field_dtype, x64):
+    """The complex Debye carry closes under each field and ambient precision.
 
-    The dispersive electric-field update does not apply the Bloch phase.
-    Its fields would therefore be wrong for an oblique Bloch plane wave.
-    Admission must name the pole material and the supported alternatives.
-    The pole region stays away from the injection planes so that their
-    material checks admit it and the oblique material check is reached.
-    The expected message is independent of the ambient precision policy.
+    Keep the pole region off the injection planes and execute the real scan.
+    Every pole leaf must retain its input dtype in the electric update, and
+    the returned fields must remain finite after two steps.
     """
-    from rfx.errors import RfxUnsupported
+    seen = []
+    original = _poles_mod.update_e_debye
 
-    grid = Grid(freq_max=5e9, domain=(0.06, 0.06, 0.006), dx=0.004,
-                cpml_layers=6)
-    mats = init_materials(grid.shape)
-    cfg, st0 = init_tfsf(grid.nx, grid.dx, grid.dt,
-                         cpml_layers=grid.cpml_layers, tfsf_margin=3,
-                         f0=5e9, bandwidth=0.2, amplitude=1.0,
-                         polarization="ez", angle_deg=30.0, ny=grid.ny)
-    probe = ProbeSpec(i=cfg.x_lo + 3, j=grid.ny // 2, k=grid.nz // 2,
-                      component="ez")
-    # Off the injection planes, so their material rule admits it
-    # and the oblique material check is what refuses.
-    mask = jnp.zeros(grid.shape, dtype=bool).at[cfg.x_lo + 2:cfg.x_hi - 1, :, :].set(True)
-    # Delta eps 1.0 stays within the pole time-step bound on these 4 mm cells,
-    # allowing this case to reach the oblique material refusal.
-    lor = init_lorentz([lorentz_pole(1.0, 2 * np.pi * 5e9, 1e9)], mats,
-                       grid.dt, mask=[mask], field_dtype=jnp.float32, high_wall=unpadded_high_walls(grid))
-    with pytest.raises(RfxUnsupported) as caught:
-        run(grid, mats, 8, boundary="cpml", cpml_axes="x",
-            periodic=(False, True, True), tfsf=(cfg, st0), probes=[probe],
-            lorentz=lor)
-    assert str(caught.value) == (
-        "An oblique Bloch plane wave (angle_deg=30.0, method='bloch') cannot be combined with "
-        "a dispersive material (Debye or Lorentz poles): the electric-field update for it "
-        "does not apply the Bloch phase, so the fields would be wrong. "
-        "Use normal incidence, or a material without poles.")
+    def observe(state, coeffs, pole_state, *args, **kwargs):
+        result = original(state, coeffs, pole_state, *args, **kwargs)
+        seen.append((tuple(a.dtype for a in jax.tree.leaves(pole_state)),
+                     tuple(a.dtype for a in jax.tree.leaves(result[1]))))
+        return result
+
+    monkeypatch.setattr(_poles_mod, "update_e_debye", observe)
+    with enable_x64(x64):
+        grid = Grid(freq_max=5e9, domain=(0.06, 0.06, 0.006), dx=0.004,
+                    cpml_layers=6)
+        mats = init_materials(grid.shape)
+        cfg, st0 = init_tfsf(grid.nx, grid.dx, grid.dt,
+                             cpml_layers=grid.cpml_layers, tfsf_margin=3,
+                             f0=5e9, bandwidth=0.2, amplitude=1.0,
+                             polarization="ez", angle_deg=30.0, ny=grid.ny,
+                             dtype='float32')
+        probe = ProbeSpec(i=cfg.x_lo + 3, j=grid.ny // 2, k=grid.nz // 2,
+                          component="ez")
+        mask = jnp.zeros(grid.shape, dtype=bool).at[cfg.x_lo + 2:cfg.x_hi - 1, :, :].set(True)
+        poles = init_debye([DebyePole(delta_eps=1.0, tau=1e-10)], mats,
+                           grid.dt, mask=[mask], field_dtype=field_dtype,
+                           periodic=(False, True, True), high_wall=unpadded_high_walls(grid))
+        result = run(grid, mats, 2, boundary="cpml", cpml_axes="x",
+                     periodic=(False, True, True), tfsf=(cfg, st0), probes=[probe],
+                     debye=poles, field_dtype=field_dtype)
+    assert np.isfinite(np.asarray(result.time_series)).all()
+    assert all(np.isfinite(np.asarray(getattr(result.state, c))).all()
+               for c in ("ex", "ey", "ez", "hx", "hy", "hz"))
+    assert seen
+    for before, after in seen:
+        assert len(before) == len(after) == 3
+        assert before == after
+        assert all(jnp.issubdtype(dtype, jnp.complexfloating) for dtype in before)

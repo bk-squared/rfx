@@ -24,7 +24,8 @@ from tests._slab_te_dispersion import (
     slab_te0_neff, measure_neff_two_wave)
 
 C0 = 2.998e8
-A = 1.0e-6                      # the cv03 lattice constant
+LATTICE_CONSTANT_M = 1.0e-6
+A = LATTICE_CONSTANT_M
 
 
 def _neff_fd(eps_core, eps_clad, d, k0, span=8.0, n=16001):
@@ -45,12 +46,13 @@ def _neff_fd(eps_core, eps_clad, d, k0, span=8.0, n=16001):
     return float(np.sqrt(w[0]) / k0)
 
 
-# ---------------------------------------------------------------- S2 (oracle)
 
 @pytest.mark.parametrize("eps_core", [8.0, 10.0, 11.0, 12.0])
 def test_s2_closed_form_matches_independent_fd_eigensolve(eps_core):
-    """S2: closed form vs an independent FD eigensolve, within 3e-4."""
-    k0 = 2.0 * np.pi * 0.15            # a = 1, c = 1 units
+    """S2: closed form vs an independent FD eigensolve, within 3e-4.
+    The eigensolve uses a = 1, c = 1 units.
+    """
+    k0 = 2.0 * np.pi * 0.15
     closed = slab_te0_neff(eps_core, 1.0, 1.0, k0)
     fd = _neff_fd(eps_core, 1.0, 1.0, k0)
     assert abs(closed / fd - 1.0) < 3e-4, (
@@ -73,7 +75,6 @@ def test_oracle_rejects_an_unbound_configuration():
         slab_te0_neff(1.0, 12.0, 1.0, 2.0 * np.pi * 0.15)
 
 
-# ------------------------------------------------------------- S1' (estimator)
 
 @pytest.mark.parametrize("b_over_a", [0.0, 0.5, 0.9])
 def test_s1p_two_wave_estimator_recovers_a_known_beta(b_over_a):
@@ -114,7 +115,6 @@ def test_single_mode_phase_slope_is_biased_by_a_standing_wave():
     assert abs(two_wave.n_eff / n_true - 1.0) < 1e-9
 
 
-# --------------------------------------------------- the gate can actually fail
 
 def test_g1_would_fail_on_the_audit_defect():
     """A guide built at eps=8 must miss the eps=12 oracle by far more than 2%.

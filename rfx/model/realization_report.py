@@ -1,4 +1,6 @@
 """Build requested diagnostic arrays from current declarations, never a snapshot."""
+
+from rfx._internal._precision import resolve_coefficient_dtype
 from dataclasses import replace
 
 
@@ -8,7 +10,6 @@ def rebuild_view(sim, solved, smoothing, conformal=None):
     from rfx.model.realization_table import finish_table
     from rfx.realized_geometry import record_from_conductors
 
-    # A fresh preparation uses the solve assembler without replacing its store.
     reader = copy.copy(sim)
     reader._pf_campaign_ctx = None
     reader._realized_geometry_record = None
@@ -21,6 +22,7 @@ def rebuild_view(sim, solved, smoothing, conformal=None):
             root.pec_cells, 0, _warn_experimental=False, _prepare_only=True)
     else:
         root = preview_port_stages(reader, root)
+        root = preview_coax_port(reader, root, solved.lane)
     _integrals(reader, root, solved.realization_table, smoothing, conformal)
     rebuilt = finish_table(reader, root, lane=solved.lane)
     table = solved.realization_table
@@ -34,7 +36,6 @@ def rebuild_view(sim, solved, smoothing, conformal=None):
     record = record_from_conductors(reader, root, lane=solved.lane, compact=False)
     record = replace(record, realization_table=table, dt=solved.dt)
     object.__setattr__(root, "realization_table", table)
-    # Preserve a live kernel's identity without promoting its borrowed reference.
     object.__setattr__(record, "_conductors", getattr(solved, "_conductors")
                        if solved.conductors is not None else root)
     object.__setattr__(record, "_report_grid", root.grid)
@@ -58,10 +59,22 @@ def _integrals(sim, root, table, smoothing, conformal=None):
             full_tensor_eps(sim, root.grid, root.materials, pairs)
         else:
             compute_smoothed_eps_nonuniform(
-                root.grid, pairs, nominal_h_max=smoothing_nominal_h_max(sim, root.grid))
+                root.grid, pairs, nominal_h_max=smoothing_nominal_h_max(sim, root.grid), dtype=resolve_coefficient_dtype(sim._precision))
     else:
         from rfx.model.tensor_operands import form_tensor_operands
         shapes = root.assembly[4]
         form_tensor_operands(sim, root.grid, root.materials,
             subpixel_smoothing=mode, conformal=conformal,
             conformal_min_weight=.1, pec_shapes=shapes)
+
+
+def preview_coax_port(sim, root, lane):
+    """Assemble uniform diagnostic ports without publishing calculator caches."""
+    if sim._coaxial_ports and lane in ('run_uniform', 'fwd_uniform'):
+        import copy
+        from rfx.model.coax_port import assemble_coax_port
+        from rfx.sources.port_drive import PortSourceQueue
+        reader = copy.copy(sim)
+        _, root, _ = assemble_coax_port(reader, root.grid, root.materials,
+            root, PortSourceQueue(), [], n_steps=1)
+    return root

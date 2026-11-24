@@ -5,10 +5,11 @@ grid exists: the domain extents a cell-size profile implies, the pinned time
 step and its declared smallest cell, and the concrete nominal profile of a
 traced axis. ``Simulation.__init__`` calls :func:`admit_graded_profiles` and
 keeps what it returns; the messages are the ones the constructor raised.
+``NOMINAL_SUM_RTOL`` is the relative tolerance within which a nominal profile's cell widths must sum to the declared domain extent.
 """
 from __future__ import annotations
 
-from rfx.errors import AccuracyWarning, RfxWarning
+from rfx.errors import AccuracyWarning, RfxRefusal, RfxWarning
 from rfx.model.realization_verdict import legacy_mismatch
 import warnings
 from collections.abc import Mapping
@@ -21,7 +22,6 @@ from rfx._traced_refusal import TracedStructureRefusal
 from rfx.core.jax_utils import is_tracer
 
 _AXES = ("x", "y", "z")
-#: The nominal profile describes the declared domain to this relative figure.
 NOMINAL_SUM_RTOL = 1e-9
 
 
@@ -99,7 +99,6 @@ class DeclaredZWarning(RfxWarning):
     """The caller explicitly keeps a declared z different from the solved length."""
 
 
-#: A concrete z profile may miss a positive declared z by this fraction.
 DECLARED_Z_RTOL = 0.01
 
 
@@ -141,15 +140,10 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
     """
     declared_domain = getattr(domain, "declared", domain)
     early_outcome = None
-    # Synthesize domain extents from axis profiles before validation.
-    # dx_profile / dy_profile set x / y; dz_profile sets z.
-    # Tracer-valued profiles require the caller to supply a concrete
-    # domain extent for that axis since the profile sum cannot be
-    # host-coerced during tracing.
     if dx_profile is not None:
         if is_tracer(dx_profile):
             if len(domain) < 1 or domain[0] <= 0:
-                raise ValueError(
+                raise RfxRefusal(
                     "dx_profile is a JAX tracer; provide a concrete "
                     "domain[0] (profile sum cannot be host-coerced)."
                 )
@@ -160,7 +154,7 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
     if dy_profile is not None:
         if is_tracer(dy_profile):
             if len(domain) < 2 or domain[1] <= 0:
-                raise ValueError(
+                raise RfxRefusal(
                     "dy_profile is a JAX tracer; provide a concrete "
                     "domain[1] (profile sum cannot be host-coerced)."
                 )
@@ -173,7 +167,7 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
             raise ValueError(f"domain x/y must be positive, got {domain}")
         if is_tracer(dz_profile):
             if len(domain) < 3 or domain[2] <= 0:
-                raise ValueError(
+                raise RfxRefusal(
                     "dz_profile is a JAX tracer; provide a concrete "
                     "domain=(..., ..., dz_total) extent (the profile "
                     "sum cannot be host-coerced during tracing)."
@@ -213,33 +207,6 @@ def warn_abrupt_grading(dx_profile, dy_profile, dz_profile,
     ``dx_profile`` and ``dy_profile``. The warning points at the line that built
     the ``Simulation`` (it is raised through ``admit_graded_profiles``).
     """
-    # P2: Warn on abrupt grading in a user-supplied profile. This ran
-    # for dz only, so an in-plane profile with a 2:1 or 4:1 jump was
-    # accepted in silence — the axes differ in which physics
-    # they carry, not in whether an abrupt ratio reflects.
-    # Tracer profiles skip the warning — adjacent ratios can't be
-    # computed host-side during tracing.
-    # Threshold, PER AXIS. dz: 1.3 -> 1.4 (SPEC-01 WP6).
-    # PROVENANCE for that move: 1.3 was `smooth_grading`'s own per-step
-    # default with no measurement behind it, so ratios in (1.3, 1.4]
-    # warned without evidence that they cost anything. The multi-band
-    # witness battery (validation/research/multiband_nu/,
-    # pre-declaration note
-    # docs/design_notes/20260829_spec01_multiband_predeclaration.md)
-    # measures the r = 1.4 transition directly: reflection inside the
-    # exact discrete chain-model window (-54 dB class at 30
-    # cells/wavelength; the class scales as (dz/lambda)^2), round-trip
-    # amplitude asymmetry under the 3e-4 floor, 1e6-step energy bounded
-    # at the float-accumulation class, and 2nd-order supraconvergence
-    # preserved on a fixture whose graded axis carries ~90 % of the
-    # error budget.
-    # The dx/dy cap of 1.4 is supported by in-plane witnesses at 1.40:
-    # transition reflection on x and y (e5_x/e5_y), and on a cavity graded
-    # in plane, second-order resonances and 1e6-step energy
-    # (see the caps in api/_preflight.py).
-    # Beyond the cap this warning still fires, and preflight adds the
-    # richer advisory nu_grading_ratio_beyond_validated_cap with the
-    # accuracy class on both sides.
     for _axis_name, _profile, _cap, _scope in (
             ("dz_profile", dz_profile, multiband_ratio_cap,
              "the validated multi-band grading cap"),
@@ -300,7 +267,7 @@ def admit_nominal_profiles(nominal_profiles, profiles, domain=None):
         if isinstance(value, NominalProfile):
             value = value.cells
         if is_tracer(value):
-            raise ValueError(
+            raise RfxRefusal(
                 f"nominal_profiles[{key!r}] is a JAX tracer; declare the "
                 f"concrete {key} cell widths at the primal point.")
         widths = np.array(value, dtype=np.float64)
@@ -342,7 +309,7 @@ def admit_traced_windows(nominal_profiles):
         for w in windows:
             if (not isinstance(w, tuple) or len(w) != 2
                     or any(type(i) is not int for i in w)):
-                raise ValueError(
+                raise RfxRefusal(
                     f"nominal_profiles[{axis!r}].traced_cells must be a 2-tuple "
                     "of Python ints (not bool), or a non-empty tuple of them.")
             if not 0 <= w[0] < w[1] <= n:
@@ -384,7 +351,7 @@ def nominal_cells(grid, axis, padded: bool = False):
     widths = np.asarray(widths, dtype=np.float64)
     if not padded:
         return widths
-    return np.asarray(_append_bounding_node(_pad_profile(widths, pad_lo, pad_hi)),
+    return np.asarray(_append_bounding_node(_pad_profile(widths, pad_lo, pad_hi, dtype=np.float64)),
                       dtype=np.float64)
 
 
@@ -413,7 +380,7 @@ def host_cells(grid, axis, *, store=False):
     """Host widths in the precision previously read by a metric consumer.
 
     By default this is the concrete float64 spine (``grid.cells``);
-    ``store=True`` preserves the solver's float32 widths (``dx_arr``,
+    ``store=True`` preserves the solver's stored widths (``dx_arr``,
     ``dy_arr``, ``dz``). A traced axis with a declared deformation window
     returns its padded nominal widths in that same precision; consumers
     refuse reads within the window, and waveguide admission checks its
@@ -427,7 +394,7 @@ def host_cells(grid, axis, *, store=False):
         widths = nominal_cells(grid, axis, padded=True)
         if widths is None or traced_cell_mask(grid, axis) is None:
             return stored if store else grid.cells(axis)
-        return np.asarray(widths, dtype=np.float32 if store else np.float64)
+        return np.asarray(widths, dtype=getattr(stored, "dtype", np.float64) if store else np.float64)
     if store and stored is not None and not np.isscalar(stored):
         return np.asarray(stored)
     return np.asarray(grid.cells(axis), dtype=np.float64)

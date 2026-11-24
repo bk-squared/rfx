@@ -1,4 +1,6 @@
-"""#1966 record 6: assembled cells, BASE means, hand-written wall rows."""
+"""#1966 record 6: assembled cells, BASE means, hand-written wall rows.
+The sheet density uses its conductance divided by the 1 mm dual width.
+"""
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -42,23 +44,21 @@ def scene(kind, span=(3, 8), *, graded=False, wall="pmc"):
     ((3, 7), [0, 0, 0, .5, 1, 1, 1, .5, 0]),
 ])
 def test_assembled_wall_rows(graded, wall, kind, span, row):
+    """Half of Ex's z support is dielectric, giving epsilon 1 + 1.5*row and conductivity .1*row for the hand-written y row."""
     grid, result = scene(kind, span, graded=graded, wall=wall)
     mats = result[0]
     widths = electric_cell_sizes(grid)
     if graded:
-        assert widths[2] is not None  # Ex averages over this genuinely graded axis.
+        assert widths[2] is not None
         assert np.ptp(np.asarray(widths[2])) > 0
     eps, sigma = component_e_materials(mats, PERIODIC, high_wall=unpadded_high_walls(grid), cell_sizes=widths)
     mid = grid.shape[0] // 2
     if kind == "film":
         z = grid.pad_z_lo + 6
-        # One plane, density = sheet conductance / the 1 mm dual width.
         np.testing.assert_allclose(np.asarray(sigma[0])[mid, :, z] * (377*H), row,
                                    rtol=2e-7, atol=0)
     else:
         z = grid.pad_z_lo + 3
-        # Half of Ex's z support is dielectric; the hand-written y row
-        # gives epsilon 1 + 1.5*row, conductivity .1*row.
         np.testing.assert_array_equal(np.asarray(eps[0])[mid, :, z], 1 + 1.5*np.array(row))
         np.testing.assert_allclose(np.asarray(sigma[0])[mid, :, z], .1*np.array(row),
                                    rtol=2e-7, atol=0)
@@ -69,14 +69,13 @@ def test_assembled_wall_rows(graded, wall, kind, span, row):
 
 
 def test_debye_wall_replicates_static_and_pole_edges_together():
+    """Promoting eps_inf without the poles is forbidden."""
     grid, result = scene("debye")
     mats, debye = result[:2]
     walls = unpadded_high_walls(grid)
     eps, sig = component_e_materials(mats, PERIODIC, high_wall=walls)
-    weights = pole_component_weights(debye[1][0], PERIODIC, high_wall=walls)
+    weights = pole_component_weights(debye[1][0], PERIODIC, field_dtype=mats.eps_r.dtype, high_wall=walls)
     index = (grid.shape[0]//2, grid.shape[1]-1, grid.pad_z_lo+3)
-    # #808/#627b: promoting eps_inf without the poles is forbidden.
-    # Stored outside cells stay vacuum; both inside Ex cells carry the pole.
     assert float(mats.eps_r[index]) == 1.
     assert float(mats.sigma[index]) == 0.
     assert float(mats.mu_r[index]) == 1.
@@ -96,7 +95,7 @@ def test_wall_read_preserves_air_gap_and_ignores_stored_outside(axis):
     walls = tuple(a == axis for a in range(3))
     got, _, _ = extend_cpml_pad_materials(eps, jnp.zeros(shape), jnp.ones(shape),
                                         0, 0, 0, 0, 0, 0)
-    np.testing.assert_array_equal(got, eps)  # Do not bridge a one-cell air gap.
+    np.testing.assert_array_equal(got, eps)
     from rfx.core.yee import edge_mean_components
     outer = [slice(None)] * 3
     outer[axis] = -1
@@ -135,8 +134,6 @@ def test_high_x_pmc_slabs_equal_whole(nx, devices):
                   component_h_materials(local, high_wall=local_walls))
         for got, expected in zip(jax.tree_util.tree_leaves(actual), jax.tree_util.tree_leaves(whole)):
             assert np.asarray(view.own(got)).tobytes() == np.asarray(expected[view.x0:view.x1]).tobytes()
-    # Execute the uniform runner's actual split/mean on virtual ranks as
-    # well. No physical multi-device availability can skip this contract.
     split = _split_materials(mats, devices)
     per = split.eps_r.shape[1] - 2
     for rank in range(devices):
@@ -175,6 +172,7 @@ def test_traced_design_window_repairs_only_global_wall(end, expected):
     (4., 2.5, 1.75), (1., 1., 1.), (1.0001, 1.00005, 1.000025),
 ])
 def test_design_written_wall_value_and_derivative(seeded, end, value, wall, interior):
+    """The wall and interior-plus-edge references are the four-cell arithmetic means (v+v+1+1)/4 and (v+1+1+1)/4 respectively."""
     from rfx.core.yee import EPS_0
     from rfx.model.materials import _design_box_edge_coeffs
     sim = Simulation(freq_max=10e9, domain=(6*H, 8*H, 10*H), dx=H,
@@ -195,8 +193,6 @@ def test_design_written_wall_value_and_derivative(seeded, end, value, wall, inte
             grid.dt, grid.shape, grid=grid)
         return grid.dt / (EPS_0 * cb[0][1, -1, 0])
 
-    # Wall: (v+v+1+1)/4. Interior plus edge: (v+1+1+1)/4,
-    # the unchanged main convention. Neither reference uses a product mean.
     actual, derivative = jax.value_and_grad(edge_eps)(value)
     np.testing.assert_allclose(actual, wall if end == 8 else interior, rtol=2e-7)
     np.testing.assert_allclose(derivative, .5 if end == 8 else .25, rtol=3e-7)
@@ -237,13 +233,12 @@ def test_design_window_corner_of_two_high_walls(seeded, value):
 
 
 def test_override_and_checkpoint_are_explicit_cell_inputs(tmp_path):
+    """Explicit cell-input writers have no geometry or pole provenance from which to decide a dropped-node repair."""
     from rfx.checkpoint import load_materials, save_materials
     from rfx.model.overrides import apply_material_overrides
     grid, result = scene("static")
     repaired = result[0]
     index = (grid.shape[0]//2, grid.shape[1]-1, grid.pad_z_lo+3)
-    # These writers carry explicit values after assembly. They have no
-    # geometry/pole provenance from which to decide a dropped-node repair.
     explicit = repaired._replace(eps_r=repaired.eps_r.at[:, -1, :].set(1.))
     overridden = apply_material_overrides(repaired, eps_override=explicit.eps_r)
     assert float(component_e_materials(overridden, high_wall=unpadded_high_walls(grid))[0][0][index]) == 2.5

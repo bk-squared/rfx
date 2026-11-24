@@ -1,4 +1,6 @@
-"""One ownership invariant across quantity policies and placement forms."""
+"""One ownership invariant across quantity policies and placement forms.
+Uniform PMC alignment and physical ghosts impose zero on the whole H update.
+"""
 import ast
 from pathlib import Path
 
@@ -14,7 +16,6 @@ from rfx.core.yee import EPS_0
 TEST_DT = 1.7e-12
 
 
-# Independently declared boundary conventions; a FILL edit must be reviewed here.
 POLICIES = {
     'pole_mask': (False, False),
     'debye_ca': (1., 1.), 'debye_cb': ('dt/eps0', 'dt/eps0'),
@@ -30,7 +31,6 @@ POLICIES = {
     'inv_dx_h': (0., 0.), 'width': ('edge', 'edge'),
     'cpml_psi': (0., 0.), 'cpml_zero': (0., 0.), 'cpml_one': (1., 1.),
     'edge_keep': (1., 1.),
-    # Uniform PMC: alignment and physical ghosts impose zero on the whole H update.
     'pmc_h_factor': (0., 0.),
 }
 
@@ -74,6 +74,7 @@ def test_closed_over_concrete_array_can_be_staged_during_a_trace():
 @pytest.mark.parametrize('kind', tuple(POLICIES))
 @pytest.mark.parametrize('form', ['host', 'device', 'traced', 'sharded'])
 def test_owned_alignment_and_ghost_rows(n_devices, nx, kind, form):
+    WRONG_ALIGNMENT_FILL = 997.
     if len(jax.devices('cpu')) < n_devices:
         pytest.skip(f'requires {n_devices} CPU devices')
     layout = Slab(nx, n_devices)
@@ -87,12 +88,10 @@ def test_owned_alignment_and_ghost_rows(n_devices, nx, kind, form):
     elif form == 'device':
         result = cut(jnp.asarray(array), layout, kind, mesh=mesh, dt=TEST_DT)
     elif form == 'traced':
-        # The caller owns the enclosing JIT's result placement.
         result = jax.jit(lambda a: cut(a, layout, kind, mesh=mesh, dt=TEST_DT),
                          out_shardings=NamedSharding(mesh, P('x')))(jnp.asarray(array))
     else:
-        # Caller-supplied alignment is deliberately wrong; cut must replace it.
-        padded = np.pad(array, [(0, layout.pad_x)] + [(0, 0)] * (array.ndim - 1), constant_values=997.)
+        padded = np.pad(array, [(0, layout.pad_x)] + [(0, 0)] * (array.ndim - 1), constant_values=WRONG_ALIGNMENT_FILL)
         placed = jax.device_put(padded, NamedSharding(mesh, P('x')))
         result = cut(placed, layout, kind, mesh=mesh, dt=TEST_DT)
     assert result.sharding == NamedSharding(mesh, P('x'))
@@ -130,6 +129,7 @@ RETIRED = {
 
 
 def _placement_violations(source, path):
+    """Selecting devices is not slicing a spatial array."""
     violations = _positive_placement_violations(source, path)
     for node in ast.walk(ast.parse(source)):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -137,7 +137,6 @@ def _placement_violations(source, path):
         if node.name in ('_split_lumped', 'shard_pec_occupancy_x_slab'):
             violations.append((str(path), node.name, node.lineno, 'removed helper'))
         if node.name in RETIRED:
-            # Import compatibility may retain only one return delegating to cut.
             body = [statement for statement in node.body if not (
                 node.name in ('split_array_x', 'shard_x_slabs')
                 and isinstance(statement, ast.If)
@@ -147,7 +146,6 @@ def _placement_violations(source, path):
                     isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == 'cut'
                     for call in ast.walk(body[0])):
                 violations.append((str(path), node.name, node.lineno, 'retired implementation'))
-        # Follow local names so renaming lo/hi or nx_per cannot hide a copy.
         assigned = {}
         def assign(target, value):
             if isinstance(target, ast.Name):
@@ -176,7 +174,7 @@ def _placement_violations(source, path):
         for sub in (child for child in ast.walk(node) if isinstance(child, ast.Subscript)):
             if (isinstance(sub.value, ast.Call) and isinstance(sub.value.func, ast.Attribute)
                     and sub.value.func.attr in ('devices', 'local_devices')):
-                continue  # Selecting devices is not slicing a spatial array.
+                continue
             deps = dependencies(sub.slice)
             if ('shape_divided' in deps or (isinstance(sub.slice, ast.Slice) and deps & {
                     'n_devices', 'nx_per', 'nx_per_rank'})):
@@ -254,7 +252,6 @@ def test_device_selection_is_not_spatial_placement():
         'def select(n_devices):\n    return jax.devices()[:n_devices]\n', 'runners/device_selection.py')
 
 
-# Exact calls and multiplicities, frozen here; a new placement fails the scan.
 PLACEMENT_ALLOWLIST = {
     ('runners/_distributed_common.py', 'init_cpml_slabs', "jnp.zeros((n_devices * shape[0], *shape[1:]), jnp.float32, device=NamedSharding(mesh, P('x')))"): (1, 'Single-device field-order CPML state placed per rank (#952).'),
     ('runners/distributed_nu.py', 'shard_cpml_state_x_slab', 'shard_stacked(value, shd)'): (1, 'Merge rank into field-order x for the shared CPML kernel (#952).'),
@@ -397,7 +394,6 @@ def test_retained_splitter_contracts():
         shard_x_slabs(jnp.ones((8, 2)), 2, 4, 1, 0., None)
     with pytest.raises(ValueError, match='divisible'):
         split_array_x(jnp.ones((11, 2, 3)), 3)
-    # Float64 remains host data: this does not enable JAX x64.
     for dtype in (np.int16, np.float32, np.float64):
         array = np.arange(8, dtype=dtype)
         actual = split_1d_with_ghost(array, 2, 4, 6, 1, -3)
@@ -447,15 +443,15 @@ def test_owned_values_reads_only_owner_and_preserves_gradient(devices):
     if len(jax.devices()) < devices:
         pytest.skip('requires three virtual CPU devices configured before import')
     mesh = Mesh(np.asarray(jax.devices()[:devices]), ('x',))
-    # Different values on every rank, row and component expose wrong ownership.
     arrays = tuple(jax.device_put(
         jnp.arange(devices * 6 * 2 * 3, dtype=jnp.float32).reshape(-1, 2, 3) + c * 1000,
         NamedSharding(mesh, P('x'))) for c in range(3))
+    assert np.unique(np.concatenate([np.asarray(array).ravel() for array in arrays])).size == sum(array.size for array in arrays), (
+        'Distinct rank, row and component values are required to expose wrong ownership.')
     nodes = ((0, 2, 1, 2, 'ex'), (1, 1, 0, 1, 'ey'), (devices-1, 3, 1, 0, 'ez'))
     ranks = mesh_ranks(mesh)
     read = jax.jit(lambda a, r: owned_values(a, mesh, nodes, ranks=r))
     actual = read(arrays, ranks)
-    # Slab-local: row r holds a node's value only where r owns it, zero elsewhere.
     host = [np.arange(devices * 6 * 2 * 3, dtype=np.float32).reshape(-1, 2, 3) + c * 1000
             for c in range(3)]
     expected = np.zeros((devices, len(nodes)), np.float32)
@@ -470,7 +466,6 @@ def test_owned_values_reads_only_owner_and_preserves_gradient(devices):
         owner, i, j, k, _ = nodes[c]
         expected_grad[owner * 6 + i, j, k] = 1
         np.testing.assert_array_equal(gradient, expected_grad)
-    # A magnetic node keeps its column: 1 on its owner, 0 elsewhere.
     magnetic = np.asarray(owned_values(arrays, mesh, nodes + ((devices - 1, 1, 0, 0, 'hy'),), ranks=ranks))
     np.testing.assert_array_equal(magnetic[:, :3], expected)
     np.testing.assert_array_equal(magnetic[:, 3], np.eye(devices, dtype=np.float32)[devices - 1])

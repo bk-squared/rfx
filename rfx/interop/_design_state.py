@@ -1,13 +1,13 @@
-"""Derived simulation state omitted from portable design documents."""
+"""Derived simulation state omitted from portable design documents.
 
-#: Attributes deliberately absent from the document.  These are derived,
-#: transient, or run-time state — see the module docstring, rule 4.
-#: None of these attributes is set by the constructor.
+Each DFT plane region in ``_dft_plane_regions`` is the crop rectangle the user passed to ``add_dft_plane_probe(region=)``.
+"""
+
 EXCLUDED_SIMULATION_ATTRS: tuple[str, ...] = (
-    "_realization_early_outcomes",  # derived findings; rebuilt from the declarations
+    "_realization_early_outcomes",
     "_mesh_resolution",
     "_boundary_default_warned",
-    # crop rectangles for the internal MSL DFT planes; exists only while
-    # compute_msl_s_matrix runs and is removed on exit (never a design input)
-    "_dft_plane_regions",
 )
+
+
+EXPORTED_LAZY_SIMULATION_ATTRS: tuple[str, ...] = ("_dft_plane_regions",)

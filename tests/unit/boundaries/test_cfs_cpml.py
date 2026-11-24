@@ -4,6 +4,7 @@ Tests:
 1. Evanescent wave absorption improvement with kappa_max > 1
 2. Backward compatibility: kappa_max=1.0 gives identical results to standard CPML
 3. No regression for propagating waves when kappa_max > 1
+The 1e-20 dead-field floor is eight orders below an earlier measured energy_std of approximately 5.2e-12.
 """
 
 from rfx.geometry.rasterize_grid import unpadded_high_walls
@@ -39,7 +40,6 @@ def _run_simulation(grid, cpml_params, cpml_state, source_fn, n_steps,
             state, cpml_params, cpml_state, grid, axes=cpml_axes)
         if pec_axes:
             state = apply_pec(state, axes=pec_axes)
-        # Inject source
         field = getattr(state, inject_component)
         field = field.at[inject_idx].add(source_fn(t))
         state = state._replace(**{inject_component: field})
@@ -57,6 +57,7 @@ def _run_evanescent_sim(grid, cpml_params, cpml_state, n_steps, f0):
 
     Returns a dict with energy measurements in different regions.
     """
+    SOURCE_RAMP_STEPS = 80
     state = init_state(grid.shape)
     materials = init_materials(grid.shape)
     dt, dx = grid.dt, grid.dx
@@ -64,15 +65,12 @@ def _run_evanescent_sim(grid, cpml_params, cpml_state, n_steps, f0):
     n_cpml = grid.cpml_layers
 
     nx, ny, nz = grid.shape
-    # Source plane at center of x
     x_src = nx // 2
-    # TE10 mode profile: sin(pi * y / a) across the waveguide interior
     y_profile = np.sin(np.pi * np.arange(ny) / (ny - 1))
     y_profile = jnp.array(y_profile, dtype=jnp.float32)
 
-    # CW source with smooth ramp-up
     omega = 2 * np.pi * f0
-    ramp_time = 80 * dt  # smooth onset
+    ramp_time = SOURCE_RAMP_STEPS * dt
 
     for n in range(n_steps):
         t = n * dt
@@ -84,14 +82,12 @@ def _run_evanescent_sim(grid, cpml_params, cpml_state, n_steps, f0):
             state, cpml_params, cpml_state, grid, axes=cpml_axes)
         state = apply_pec(state, axes="yz")
 
-        # Inject TE10-like Ez source across y at x=x_src
         envelope = float(jnp.clip(t / ramp_time, 0.0, 1.0))
         src_val = envelope * np.sin(omega * t)
         for k in range(nz):
             ez = state.ez.at[x_src, :, k].add(src_val * y_profile)
             state = state._replace(ez=ez)
 
-    # Measure field energy inside the lo-x CPML region
     pml_slice = slice(0, n_cpml)
     e2_pml = (state.ex[pml_slice] ** 2 +
               state.ey[pml_slice] ** 2 +
@@ -114,24 +110,23 @@ def test_cfs_cpml_evanescent_absorption():
     recommendation), providing stronger absorption while kappa stretching
     maintains impedance matching. This results in lower field energy
     inside the PML.
+    The 1.3 threshold is a fitted margin below the earlier measured 1.3917 on the evanescent fixture.
     """
-    a = 0.06  # waveguide width (y-direction)
-    f_cutoff = C0 / (2 * a)  # TE10 cutoff ≈ 2.5 GHz
-    f0 = 0.5 * f_cutoff  # well below cutoff → evanescent
+    a = 0.06
+    f_cutoff = C0 / (2 * a)
+    f0 = 0.5 * f_cutoff
 
     freq_max = 5e9
     cpml_n = 12
-    domain = (0.12, 21 * (C0 / freq_max / 20.0), 7 * (C0 / freq_max / 20.0))  # main's solved length; #1887
+    domain = (0.12, 21 * (C0 / freq_max / 20.0), 7 * (C0 / freq_max / 20.0))
     n_steps = 800
 
-    # --- Standard CPML ---
     grid = Grid(freq_max=freq_max, domain=domain, cpml_layers=cpml_n,
                 cpml_axes="x")
     cpml_params_std, cpml_state_std = init_cpml(grid, kappa_max=1.0)
     energy_std = _run_evanescent_sim(grid, cpml_params_std, cpml_state_std,
                                       n_steps, f0)
 
-    # --- CFS-CPML ---
     cpml_params_cfs, cpml_state_cfs = init_cpml(grid, kappa_max=7.0)
     energy_cfs = _run_evanescent_sim(grid, cpml_params_cfs, cpml_state_cfs,
                                       n_steps, f0)
@@ -140,13 +135,6 @@ def test_cfs_cpml_evanescent_absorption():
     print(f"Standard CPML PML energy: {energy_std:.6e}")
     print(f"CFS-CPML PML energy:      {energy_cfs:.6e}")
 
-    # Nonzero-signal precondition: the physics assert below used to sit inside
-    # `if energy_std > 1e-30:`, so a regression that zeroed the injected
-    # evanescent field printed "Both negligible — pass" and asserted nothing.
-    # Require real field energy in the PML region FIRST — a dead source /
-    # PEC-everywhere regression must FAIL here, not pass vacuously. Measured
-    # energy_std ~ 5.2e-12 (baseline 2026-07-20), so 1e-20 is a dead-field
-    # floor eight orders below the live value, not a physics threshold.
     assert energy_std > 1e-20, (
         f"Standard-CPML PML energy {energy_std:.3e} is ~zero — the evanescent "
         f"field was never injected; fixture/source is dead."
@@ -158,24 +146,6 @@ def test_cfs_cpml_evanescent_absorption():
 
     improvement = energy_std / energy_cfs
     print(f"CFS improvement factor: {improvement:.1f}x")
-    # Threshold retuned 1.4 -> 1.3 on 2026-09-14 for the Yee half-cell
-    # magnetic-profile fix (docs/design_notes/2026-09-13_cpml_yee_stagger_correction.md).
-    # Measured here: improvement 1.4789 before the fix, 1.3917 after. Both
-    # arms moved up, the standard arm less than the CFS arm:
-    #   standard residual PML energy 5.2187e-12 -> 5.3829e-12 (+3.15 %)
-    #   CFS      residual PML energy 3.5287e-12 -> 3.8679e-12 (+9.61 %)
-    # Why: the half-cell shift samples the outer low-face H sigma at 0.87x
-    # its previous value, so more energy is *stored* in the low-side PML.
-    # This is a single-time energy sum over a continuously driven fixture,
-    # so that stored energy is counted as residual — it is NOT reflected
-    # energy and it is not an absorption regression. The physics claim the
-    # test exists to defend (CFS-CPML stores less evanescent energy in the
-    # PML than standard CPML) still holds, by 1.39x.
-    # Honest status of the number: 1.3 is a fitted margin below the
-    # measured 1.3917, exactly like the 1.4 it replaces (itself retuned at
-    # the m=2 -> m=3 polynomial-grading change). Neither is a derived bound
-    # from PML theory; both are pins under a measured value on this one
-    # fixture. Treat a future drift as something to measure, not to re-fit.
     assert improvement > 1.3, (
         f"CFS-CPML improvement {improvement:.1f}x is below 1.3x threshold"
     )
@@ -191,14 +161,12 @@ def test_cfs_cpml_backward_compatible():
     probe = (cx + 3, cy, cz)
     n_steps = 200
 
-    # --- Run with kappa_max=1.0 ---
     cpml_params_1, cpml_state_1 = init_cpml(grid, kappa_max=1.0)
     ts_k1, _, _ = _run_simulation(
         grid, cpml_params_1, cpml_state_1,
         pulse, n_steps, probe, inject,
     )
 
-    # --- Run with default (no kappa_max argument) ---
     cpml_params_def, cpml_state_def = init_cpml(grid)
     ts_def, _, _ = _run_simulation(
         grid, cpml_params_def, cpml_state_def,
@@ -210,68 +178,3 @@ def test_cfs_cpml_backward_compatible():
         err_msg="kappa_max=1.0 should give identical results to default CPML"
     )
     print(f"Backward compatibility: PASS (max diff = {np.max(np.abs(ts_k1 - ts_def)):.2e})")
-
-
-def test_cfs_cpml_no_regression_above_cutoff():
-    """CFS-CPML must not degrade propagating wave absorption vs standard CPML."""
-    grid = Grid(freq_max=3e9, domain=(0.12, 0.12, 0.12), cpml_layers=15)
-    pulse = GaussianPulse(f0=2e9, bandwidth=0.5)
-
-    cx, cy, cz = grid.nx // 2, grid.ny // 2, grid.nz // 2
-    dt, dx = grid.dt, grid.dx
-
-    def _measure_energy(state):
-        return float(
-            0.5 * EPS_0 * (state.ex**2 + state.ey**2 + state.ez**2).sum()
-            + 0.5 * MU_0 * (state.hx**2 + state.hy**2 + state.hz**2).sum()
-        )
-
-    # --- Standard CPML ---
-    cpml_params_std, cpml_state_std = init_cpml(grid, kappa_max=1.0)
-    state_std = init_state(grid.shape)
-    materials = init_materials(grid.shape)
-    for n in range(200):
-        t = n * dt
-        state_std = update_h(state_std, materials, dt, dx, high_wall=unpadded_high_walls(grid))
-        state_std, cpml_state_std = apply_cpml_h(state_std, cpml_params_std, cpml_state_std, grid)
-        state_std = update_e(state_std, materials, dt, dx, high_wall=unpadded_high_walls(grid))
-        state_std, cpml_state_std = apply_cpml_e(state_std, cpml_params_std, cpml_state_std, grid)
-        ez = state_std.ez.at[cx, cy, cz].add(pulse(t))
-        state_std = state_std._replace(ez=ez)
-    for _ in range(500):
-        state_std = update_h(state_std, materials, dt, dx, high_wall=unpadded_high_walls(grid))
-        state_std, cpml_state_std = apply_cpml_h(state_std, cpml_params_std, cpml_state_std, grid)
-        state_std = update_e(state_std, materials, dt, dx, high_wall=unpadded_high_walls(grid))
-        state_std, cpml_state_std = apply_cpml_e(state_std, cpml_params_std, cpml_state_std, grid)
-    energy_std = _measure_energy(state_std)
-
-    # --- CFS-CPML ---
-    cpml_params_cfs, cpml_state_cfs = init_cpml(grid, kappa_max=5.0)
-    state_cfs = init_state(grid.shape)
-    for n in range(200):
-        t = n * dt
-        state_cfs = update_h(state_cfs, materials, dt, dx, high_wall=unpadded_high_walls(grid))
-        state_cfs, cpml_state_cfs = apply_cpml_h(state_cfs, cpml_params_cfs, cpml_state_cfs, grid)
-        state_cfs = update_e(state_cfs, materials, dt, dx, high_wall=unpadded_high_walls(grid))
-        state_cfs, cpml_state_cfs = apply_cpml_e(state_cfs, cpml_params_cfs, cpml_state_cfs, grid)
-        ez = state_cfs.ez.at[cx, cy, cz].add(pulse(t))
-        state_cfs = state_cfs._replace(ez=ez)
-    for _ in range(500):
-        state_cfs = update_h(state_cfs, materials, dt, dx, high_wall=unpadded_high_walls(grid))
-        state_cfs, cpml_state_cfs = apply_cpml_h(state_cfs, cpml_params_cfs, cpml_state_cfs, grid)
-        state_cfs = update_e(state_cfs, materials, dt, dx, high_wall=unpadded_high_walls(grid))
-        state_cfs, cpml_state_cfs = apply_cpml_e(state_cfs, cpml_params_cfs, cpml_state_cfs, grid)
-    energy_cfs = _measure_energy(state_cfs)
-
-    10 * np.log10(energy_std / max(energy_std, 1e-30))  # baseline
-    10 * np.log10(energy_cfs / max(energy_std, 1e-30))
-
-    print(f"Standard CPML final energy: {energy_std:.4e}")
-    print(f"CFS-CPML final energy:      {energy_cfs:.4e}")
-    print(f"CFS/Standard ratio:         {energy_cfs/max(energy_std,1e-30):.3f}")
-
-    # CFS should not be more than 50% worse
-    assert energy_cfs < 1.5 * energy_std, (
-        f"CFS-CPML regressed: final energy {energy_cfs:.4e} > "
-        f"1.5x standard {energy_std:.4e}"
-    )

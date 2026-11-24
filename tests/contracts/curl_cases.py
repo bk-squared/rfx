@@ -1,8 +1,11 @@
-"""Small asymmetric models used by the runtime E-curl contract and B3a records."""
+"""Small asymmetric models used by the runtime E-curl contract and B3a records.
+On the uniform mesh, the domain lengths written as 13 * 1e-3, 10 * 1e-3, 8 * 1e-3 are whole numbers of the 1e-3 cell width, so the solved domain equals the declared one."""
 import numpy as np
 
 from rfx import Box, DebyePole, GaussianPulse, Simulation, Sphere, lorentz_pole
 from rfx.boundaries.spec import Boundary, BoundarySpec, normalize_boundary
+
+COMMENSURATE_PERIODIC_X_LENGTH_M = 12e-3
 
 
 def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=False):
@@ -29,7 +32,6 @@ def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=
     if feature == "conformal":
         boundary = BoundarySpec(x=Boundary(lo="pec", hi="pec", conformal=True),
                                 y="pec", z="pec")
-    # Routing is tested on the same on-node walls in both lanes (#1887).
     spec = normalize_boundary(boundary)
     domain = tuple(float(np.ceil(v / 1e-3)) * 1e-3
                    if all(getattr(getattr(spec, a), side) in ("pec", "pmc")
@@ -37,21 +39,18 @@ def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=
                    else v for a, v in zip("xyz", domain))
     kwargs = {}
     if mesh == "graded":
-        # Exact declared length, genuinely graded, distinct transverse lengths.
-        # A plane wave grades a transverse axis: along x it is refused (#2078).
         axis = 1 if feature == "tfsf" else 0
         n = round(domain[axis] / 1e-3)
-        length = 12e-3 if wall == "periodic" else domain[axis]
+        length = COMMENSURATE_PERIODIC_X_LENGTH_M if wall == "periodic" else domain[axis]
         interior = np.linspace(.87, 1.13, n - 2)
         interior *= (length - 2e-3) / interior.sum()
         kwargs[f"d{'xy'[axis]}_profile"] = np.r_[1e-3, interior, 1e-3]
     if solved_domain:
-        domain = (13 * 1e-3, 10 * 1e-3, 8 * 1e-3)  # solved length; #1887
+        domain = (13 * 1e-3, 10 * 1e-3, 8 * 1e-3)
     sim = Simulation(freq_max=20e9, domain=domain, dx=1e-3, mode=mode,
                      boundary=boundary, cpml_layers=3, **kwargs)
     if wall == "periodic":
-        # Explicit periodic dx requires a commensurate length (#1221 B2).
-        sim = Simulation(freq_max=20e9, domain=(12e-3, domain[1], domain[2]),
+        sim = Simulation(freq_max=20e9, domain=(COMMENSURATE_PERIODIC_X_LENGTH_M, domain[1], domain[2]),
                          dx=1e-3, mode=mode, boundary=BoundarySpec(x="periodic", y="pec", z="pec"), cpml_layers=0, **kwargs)
     pulse = GaussianPulse(f0=12e9, bandwidth=1.2)
     component = "ex" if mode == "2d_tez" else "ez"
@@ -63,8 +62,9 @@ def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=
         if feature in ("lorentz", "mixed"):
             material["lorentz_poles"] = [lorentz_pole(delta_eps=.6, omega_0=8e10, delta=2e9)]
         sim.add_material("block", **material)
-        sim.add(Box((4.3e-3, 2.2e-3, 1.4e-3), (8.6e-3, 6.9e-3, 5.3e-3)), material="block")
-    if feature == "conformal":
+        sim.add(Box((4.3e-3, 2.2e-3, 0. if mode != "3d" else 1.4e-3),
+                    (8.6e-3, 6.9e-3, 5.3e-3)), material="block")
+    if feature == "conformal" and mode == "3d":
         sim.add(Sphere(center=(6.2e-3, 4.1e-3, 3.3e-3), radius=1.3e-3), material="pec")
     if feature in ("lumped", "wire"):
         kw = {"extent": 2e-3} if feature == "wire" else {}
@@ -73,7 +73,8 @@ def model(feature="plain", mesh="uniform", mode="3d", wall="pmc", solved_domain=
     elif feature == "msl":
         sim.add_material("substrate", eps_r=3.66)
         sim.add(Box((0, 0, 0), (24.3e-3, 12.7e-3, 1e-3)), material="substrate")
-        sim.add(Box((1e-3, 5e-3, 1e-3), (float(np.cumsum(kwargs["dx_profile"])[-2]) if mesh == "graded" else 23e-3, 7e-3, 2e-3)), material="pec")
+        if mode == "3d":
+            sim.add(Box((1e-3, 5e-3, 1e-3), (float(np.cumsum(kwargs["dx_profile"])[-2]) if mesh == "graded" else 23e-3, 7e-3, 2e-3)), material="pec")
         sim.add_msl_port(position=(2e-3, 6e-3, 0), width=2e-3, height=1e-3,
                          direction="+x", impedance=50.0, waveform=pulse)
     elif feature == "waveguide":

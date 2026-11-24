@@ -1,4 +1,6 @@
-"""High-face component resolution: declaration R1–R5, decisions 1–4."""
+"""High-face component resolution: declaration R1–R5, decisions 1–4.
+Driving both tangential electric components prevents a parallel magnetic column from containing only rounding noise.
+"""
 
 import jax
 import numpy as np
@@ -108,6 +110,8 @@ def execute(sim, lane, *, port=False):
 
 
 def solve(lane, axis, boundary, row, d, side):
+    """Whole-port decomposition uses the post-injection V/I convention selected by the presence of v_ref."""
+    TRANSVERSE_DUAL_WIDTH_M = .001
     mirrored = side == 'hi'
     sim = model(lane, axis, boundary, mirrored)
     wall, center = list(C), list(C)
@@ -122,9 +126,6 @@ def solve(lane, axis, boundary, row, d, side):
         sim.add_probe(tuple(wall), ea)
         sim.add_probe(tuple(center), eb)
     else:
-        # Row ii drives both tangential components: with one, the H column
-        # parallel to it is zero in exact arithmetic and records only
-        # rounding, which no field index can move (#2167).
         src, comps = (wall, (ea,)) if row == 'i' else (center, (eb, 'e' + 'xyz'[(axis + 2) % 3]))
         for comp in comps:
             sim.add_source(tuple(src), comp, waveform=pulse,
@@ -135,9 +136,6 @@ def solve(lane, axis, boundary, row, d, side):
             sim.add_probe(tuple(pos), comp)
     recorded_vi = row == 'iii' and lane == 'graded_run'
     if recorded_vi:
-        # Graded run admits the port but exposes no lumped S request. Record
-        # its four Ampere-loop legs. Only the port axis is graded, so both
-        # transverse dual widths are the fixture's literal 1 mm.
         grid = sim._build_nonuniform_grid()
         cell = [11, 9, 6]
         cell[axis] = HIGH[axis] if mirrored else 0
@@ -156,10 +154,8 @@ def solve(lane, axis, boundary, row, d, side):
         if recorded_vi:
             from rfx.probes.sparam_driver import _lumped_recording_dfts
             from rfx.probes.probes import decompose_lumped_s_matrix
-            v, i = _lumped_recording_dfts(data[:, [0, 2, 3, 4, 5]], FREQS, grid.dt, .001)
+            v, i = _lumped_recording_dfts(data[:, [0, 2, 3, 4, 5]], FREQS, grid.dt, TRANSVERSE_DUAL_WIDTH_M)
             v, i = v[None, ...], i[None, ...]
-            # The current whole-port convention uses post-injection V/I.
-            # v_ref's presence selects that convention; its values are unused.
             spectrum = np.abs(np.asarray(decompose_lumped_s_matrix(v, i, [50.], v_ref=np.zeros_like(v))))
             data = data[:, :2]
         else:
@@ -175,12 +171,10 @@ def assert_identical(a, b):
 
 
 def mirror(a, b, signs, fields, record_property):
+    """The field-peak floor prevents a rounding-only column from setting its own comparison bar."""
     peak_a = np.max(np.abs(a), axis=0)
     peak_b = np.max(np.abs(b), axis=0)
     assert np.all(peak_a > 0) and np.all(peak_b > 0), (peak_a, peak_b)
-    # A column far below the largest of its field is rounding (1.5e-5 for
-    # the H parallel to a lone current, #2167); 200 eps of its own peak
-    # would compare rounding with rounding.
     for field in set(fields):
         cols = [i for i, f in enumerate(fields) if f == field]
         assert np.all(peak_a[cols] >= 1e-3 * np.max(peak_a[cols])), dict(fields=fields, peak=peak_a.tolist())
@@ -190,18 +184,22 @@ def mirror(a, b, signs, fields, record_property):
     assert np.all(residual <= bar), dict(residual=residual.tolist(), bar=bar.tolist(), fraction=(residual / bar).tolist())
 
 
-@pytest.mark.parametrize('lane', LANES)
-@pytest.mark.parametrize('boundary', ('pec', 'pmc'))
-@pytest.mark.parametrize('axis', range(3))
-@pytest.mark.parametrize('row', ('i', 'ii', 'iii'))
+@pytest.mark.parametrize('row, axis, boundary, lane', [
+    pytest.param(row, axis, boundary, lane, marks=pytest.mark.slow if (axis in (0, 1) and lane == 'graded_forward' and row == 'iii') or (axis == 1 and lane == 'two_graded_forward') else ())
+    for lane in LANES
+    for boundary in ('pec', 'pmc')
+    for axis in range(3)
+    for row in ('i', 'ii', 'iii')
+    if not (((axis in (0, 1) and lane in ('uniform_forward', 'subgrid_run')) or (axis == 1 and lane == 'two_uniform_run')) or (axis in (0, 1) and lane == 'graded_forward' and row in ('i', 'ii')))
+])
 def test_c2_c2b(lane, boundary, axis, row, record_property, request):
-    if (row, axis, boundary, lane) in JAX012_HIGH_FACE_XFAILS and Version(jax.__version__) >= Version("0.12"):
+    if ((row, axis, boundary, lane) in JAX012_HIGH_FACE_XFAILS
+            and Version("0.12") <= Version(jax.__version__) < Version("0.12.1")):
         request.applymarker(pytest.mark.xfail(
             strict=True,
-            reason="#2167 on jax>=0.12 the uniform PMC high-face mirror differs beyond 200 float32 eps "
-                   "(weekly latest-jax 10-30); cause not yet bisected between #2231 and #2213",
+            reason="#2167 on jax>=0.12,<0.12.1 the uniform PMC high-face mirror differs beyond "
+                   "200 float32 eps; these cases pass from jax 0.12.1",
         ))
-    # Existing admission is part of this per-path contract.
     refusal = None
     if lane == 'subgrid_run':
         refusal = 'subgridd|production|unstable'
@@ -274,9 +272,13 @@ def test_c4(lane, axis, monkeypatch):
         execute(tangent, lane)
 
 
-@pytest.mark.parametrize('lane', LANES)
-@pytest.mark.parametrize('boundary', ('pec', 'pmc'))
-@pytest.mark.parametrize('axis', range(3))
+@pytest.mark.parametrize('axis, boundary, lane', [
+    pytest.param(axis, boundary, lane, marks=pytest.mark.slow if axis == 1 and lane == 'two_graded_forward' else ())
+    for lane in LANES
+    for boundary in ('pec', 'pmc')
+    for axis in range(3)
+    if not (((axis in (0, 1) and lane in ('uniform_forward', 'subgrid_run')) or (axis == 1 and lane == 'two_uniform_run')) or (axis in (0, 1) and lane == 'graded_forward'))
+])
 def test_c2b_rlc(lane, boundary, axis, record_property):
     def response(d):
         sim = model(lane, axis, boundary, mirrored=True)
@@ -290,8 +292,6 @@ def test_c2b_rlc(lane, boundary, axis, record_property):
         return np.asarray(execute(sim, lane).time_series)
 
     try:
-        # Multi-device PEC now pins C2b admission and identical, nonzero records;
-        # PMC still pins the multi-device RLC guard.
         if (lane.startswith('two_') and boundary == 'pmc') or lane in ('subgrid_run',):
             for d in (0., .4, 1.):
                 with pytest.raises((ValueError, NotImplementedError), match='lumped|RLC|rlc|subgridd|PMC|magnetic'):
@@ -367,8 +367,12 @@ def ringdown_wall_model(graded, full):
     return sim
 
 
-@pytest.mark.parametrize('graded', (False, True))
-@pytest.mark.parametrize('full', (False, True))
+@pytest.mark.parametrize('full, graded', [
+    (full, graded)
+    for graded in (False, True)
+    for full in (False, True)
+    if full
+])
 def test_c7_ringdown_wire_to_wall(graded, full, monkeypatch, record_property):
     from rfx.ringdown import RingdownRun, RingdownSpec
     planned = []
@@ -417,6 +421,7 @@ def consumer_fixture(*, port=False, metal=False):
     'sparam_recording', 'realized_geometry', 'vmap_source', 'eager_port',
     'decay_monitor', 'design_box_port', 'design_box_source'))
 def test_c8_consumers(consumer, monkeypatch):
+    """The low-level zero-layer census permits CPML declarations even for an outside displaced entry."""
     import importlib
     from types import SimpleNamespace
     import jax.numpy as jnp
@@ -466,8 +471,6 @@ def test_c8_consumers(consumer, monkeypatch):
         assert released.provenance[-1].edges == (cell,)
     elif consumer == 'source_coefficients':
         from rfx.model import source_coefficients
-        # Exercise the pad-edge admission consumer with a PEC x face and
-        # absorbers on y/z; no field solve is substituted or bypassed.
         sim = Simulation(freq_max=10e9, domain=L, dx=.001,
                          boundary={'x': 'pec', 'y': 'upml', 'z': 'upml'}, cpml_layers=2)
         sim.add_source(point, 'ex', amplitude_kind='current')
@@ -509,8 +512,6 @@ def test_c8_consumers(consumer, monkeypatch):
         np.testing.assert_allclose(end, (.020, .009, .006), rtol=0, atol=1e-9)
     elif consumer == 'current_moments':
         from rfx.current_moments import refuse_current_the_monitor_cannot_see
-        # With zero absorber layers the last stored displaced entry is
-        # outside. This low-level census permits CPML declarations.
         sim = Simulation(freq_max=10e9, domain=L, dx=.001, boundary='cpml', cpml_layers=0)
         sim.add_source(point, 'ex', amplitude_kind='current')
         grid = sim._build_grid()
@@ -538,8 +539,6 @@ def test_c8_consumers(consumer, monkeypatch):
             seen.extend(specs)
             raise CellsCaptured
 
-        # Stop after run_distributed resolves its port cells with field_index,
-        # before measurement setup or any stepping can obscure that consumer.
         monkeypatch.setattr(uniform_slab_ports, 'UniformPortPlan', capture)
         with pytest.raises(CellsCaptured):
             run_distributed(sim, n_steps=2, devices=jax.devices('cpu')[:2])

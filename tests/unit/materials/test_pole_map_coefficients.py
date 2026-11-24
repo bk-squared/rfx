@@ -21,13 +21,15 @@ def _capture_c2(kind, monkeypatch):
     from functools import wraps
     import rfx.materials.lorentz as lorentz
     import rfx.materials.pole_map as pole_map
+    import rfx.model.dispersive_poles as dispersive_poles
     import rfx.model.materials as materials
     from tests.unit.materials.test_pole_map_runs import capture_scan, scene
 
     records = {name: [] for name in ('realize', 'map', 'electric')}
     locals_at_return = {}
     targets = [('realize', materials, '_realize_poles'), ('map', pole_map, 'map_terms'),
-               ('electric', lorentz, 'lorentz_e_coeffs')]
+               ('electric', lorentz, 'lorentz_e_coeffs'),
+               ('electric', dispersive_poles, 'lorentz_e_coeffs')]
     codes = {getattr(mod, attr).__code__ for _, mod, attr in targets}
     def profile(frame, event, arg):
         if event == 'return' and frame.f_code in codes:
@@ -195,6 +197,7 @@ def test_p2c_touching_damping_and_p8_sampling(graded, monkeypatch):
             observed_delta.append(np.asarray(delta))
         return pole_update_coeffs(omega_0, delta, kappa, dt, field_dtype)
     monkeypatch.setattr(lorentz, 'pole_update_coeffs', observe)
+    monkeypatch.setattr('rfx.model.dispersive_poles.pole_update_coeffs', observe)
     coeffs, _ = init(pole, grid, mask)
     assert len(observed_delta) == 3
     assert isinstance(coeffs.damping, tuple) and isinstance(coeffs.restoring, tuple)
@@ -223,7 +226,7 @@ def test_p2c_touching_damping_and_p8_sampling(graded, monkeypatch):
         ulp = abs(float(got) - float(want)) / abs(float(np.spacing(want)))
         worst_restoring = max(worst_restoring, ulp)
         assert ulp <= 2, (comp, cell, got, want, ulp)
-        # A8b: independent float64 closed form, rounded once to float32.
+
         want_c = np.float32(EPS0 * ke * float(grid.dt)**2 / (1 + de * float(grid.dt)))
         got_c = np.float32(np.asarray(coeffs.c[comp])[(0,) + cell])
         assert np.signbit(got_c) == np.signbit(want_c)
@@ -251,6 +254,7 @@ def test_p2c_lorentz_restoring_per_component(graded, monkeypatch):
             observed_delta.append(np.asarray(delta))
         return pole_update_coeffs(omega_0, delta, kappa, dt, field_dtype)
     monkeypatch.setattr(lorentz, 'pole_update_coeffs', observe)
+    monkeypatch.setattr('rfx.model.dispersive_poles.pole_update_coeffs', observe)
     coeffs, _ = init(pole, grid, mask)
     assert len(observed_delta) == 3
     assert isinstance(coeffs.restoring, tuple) and len(coeffs.restoring) == 3
@@ -332,7 +336,8 @@ def test_source_edge_tuple_readers():
     materials = init_materials(grid.shape)
     spec = ([pole], [mask])
     realized = with_components(materials, grid, periodic=(False,) * 3, lorentz_spec=spec)
-    local = materials._replace(components=EdgePoles(None, spec, grid))
+    local = materials._replace(components=EdgePoles(
+        None, spec, grid, field_dtype=materials.eps_r.dtype))
     for component in ('ex', 'ey', 'ez'):
         got = e_update_coefficient_at(realized, (6, 6, 6), component, grid.dt)
         cut = e_update_coefficient_at(local, (6, 6, 6), component, grid.dt)
@@ -426,7 +431,7 @@ def test_exterior_increment_convention(graded, scene_name, vary_delta):
     coeffs, _ = init(pole, grid, mask)
     assert isinstance(coeffs.damping, tuple) == vary_delta
     fractions = pole_component_weights(mask, high_wall=unpadded_high_walls(grid),
-                                       cell_sizes=electric_cell_sizes(grid))
+                                       cell_sizes=electric_cell_sizes(grid), field_dtype=np.float32)
     exterior = ~np.asarray(pole_reach(fractions))
     assert np.any(exterior)
     counts = []

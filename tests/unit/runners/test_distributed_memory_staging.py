@@ -215,13 +215,18 @@ def _measure_setup(case, *, base=False):
 
 
 def _measure(case, multi_process):
-    sim = _build_box(case)
+    if case in ("msl", "msl_graded"):
+        from tests.unit.runners._msl_multidevice_scene import build_scene
+        sim = build_scene("T1_graded" if case == "msl_graded" else "T1").sim
+    else:
+        sim = _build_box(case)
+    graded = case in ("nu", "msl_graded")
     devices = jax.devices("cpu")[:2]
     assert len(devices) == 2
-    grid = sim._build_nonuniform_grid() if case == "nu" else sim._build_grid()
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     cells = int(np.prod(grid.shape))
     records = []
-    runner = distributed_nu if case == "nu" else distributed_v2
+    runner = distributed_nu if graded else distributed_v2
     loop = slab_graded_legacy_loop if case == "nu" else slab_wrap
     scan = jax.lax.scan
     boundary_ghosts_true = None
@@ -257,7 +262,7 @@ def _measure(case, multi_process):
 
         def run(*entry_args, **entry_kwargs):
             nonlocal boundary_ghosts_true
-            # #931: inspect the actual PEC mask argument before it becomes a
+            # Inspect the actual PEC mask argument before it becomes a
             # tracer. Physical-boundary ghost rows must remain False.
             bound = inspect.signature(f).bind(*entry_args, **entry_kwargs).arguments
             mask = (bound.get("pec_mask_arg") if case == "nu" else
@@ -290,7 +295,7 @@ def _measure(case, multi_process):
                 # before the scan. Inspect those exact compiled arguments.
                 coeffs = bound['invariants'][kind + '_coeffs']
                 assert all(value is not None for value in (coeffs.ca, coeffs.cb, coeffs.cc))
-                # #1302: rows outside the domain hold a vacuum cell's
+                # Rows outside the domain hold a vacuum cell's
                 # coefficients (ca 1, cb dt/eps_0, cc 1/eps_0; Lorentz damping
                 # and restoring 1, c 0 to zero P; Debye pole terms 0)
                 # (float32 arithmetic, as the coefficient builders run it)
@@ -300,7 +305,7 @@ def _measure(case, multi_process):
                           "damping": np.float32(1.0), "restoring": np.float32(1.0)}
                 for name, field in zip(coeffs._fields, coeffs):
                     pad = np.float32(vacuum.get(name, 0.0))
-                    # a per-E-component field (#1260) is an (x, y, z) tuple
+                    # a per-E-component field is an (x, y, z) tuple
                     for arr in jax.tree_util.tree_leaves(field):
                         slabs = np.asarray(arr).reshape(len(devices), -1, nx_local, *grid.shape[1:])
                         for row in (slabs[0, :, 0], slabs[-1, :, -1]):
@@ -385,7 +390,7 @@ def _measure(case, multi_process):
                         "pec_mask_boundary_ghosts_true": boundary_ghosts_true})
         return scan(body, carry, *args, **kwargs)
 
-    if case == 'nu':
+    if graded:
         loop.lax = SimpleNamespace(**{**vars(jax.lax), "scan": traced_scan})
         runner.lax = loop.lax
     else:
@@ -413,6 +418,7 @@ def _measure(case, multi_process):
     ("nu", False), ("debye", False), ("debye2", False), ("lorentz", False),
     ("lossy", False), ("pec", True), ("cpml", True), ("volume", True), ("lossy", True),
     ("mixed", False), ("pad_debye", False), ("cpml_lorentz", False),
+    ("msl", False), ("msl_graded", False),
     *((case, True) for case in _DISPERSION_CASES),
 ])
 def test_time_loop_holds_only_local_slabs(case, multi_process):
@@ -651,7 +657,7 @@ def _addressable_dispersion_slabs():
 
 @pytest.mark.parametrize("mode,marker", [
     # 36 coefficient/state arrays x (2 + 3 + 4) devices x 2 pads x 2 pole
-    # counts; 20 arrays (720) before the per-component tuples of #1260.
+    # counts.
     ("direct_dispersion", "DISPERSION_SLABS_OK 1296"),
     ("addressable_dispersion", "ADDRESSABLE_DISPERSION_OK"),
 ])
@@ -673,4 +679,8 @@ if __name__ == "__main__":
     elif sys.argv[1] == "addressable_dispersion":
         _addressable_dispersion_slabs()
     else:
+        import gc
+        # The census must not depend on when the cyclic collector runs: a whole-domain
+        # array held only by a reference cycle stays alive here and fails the census (#2769).
+        gc.disable()
         _measure(sys.argv[1], bool(int(sys.argv[2])))

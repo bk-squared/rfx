@@ -1,4 +1,6 @@
-"""Generate every requested admission cell; missing builders fail closed."""
+"""Generate every requested admission cell; missing builders fail closed.
+The witness choices use earlier measured cold-solve costs for twelve-step candidates.
+"""
 from dataclasses import dataclass
 
 from rfx.runners import _admission as admission
@@ -46,6 +48,7 @@ class Cell:
 
 
 def generate(builders):
+    """The constructor refuses every non-Yee solver."""
     from .builders import build
     validated = set()
     cells = []
@@ -69,9 +72,7 @@ def generate(builders):
             for steps in ((12, 36) if equivalent and row in LONG_ROWS else (12,)):
                 cells.append(Cell(row, a, b, graded, equivalent,
                                   None if equivalent else b if on_a else a, steps))
-    # These paths are outside equivalence scope: only their refusals run.
     for row, admitted in admission._ADMITTED_ON.items():
-        # The constructor refuses every non-Yee solver.
         if row == ('_solver', ''):
             continue
         for lane in ('run_subgridded',):
@@ -84,10 +85,7 @@ def generate(builders):
     return tuple(cells)
 
 
-# Filled from the measured cold-solve cost of passing 12-step candidates.
 PR_CHOICES = {
-    "_float64": "_float64::run_uniform:run_nonuniform:constant:12",
-
     "_boundary": "_boundary:cpml:run_uniform:run_nonuniform:constant:12",
     "_boundary_spec": "_boundary_spec:absorbing_lid:run_uniform:run_nonuniform:constant:12",
     "_cpml_kappa_max": "_cpml_kappa_max:kappa:run_uniform:run_distributed:constant:12",
@@ -125,7 +123,6 @@ PR_REFUSAL_LANES = frozenset((
 ))
 
 
-# Cheapest measured 12-step witness per cause (cold solve cost, including failures).
 PR_FINDING_CHOICES = {
     "nu-missing-vref": "_ports:wire_port:run_uniform:run_nonuniform:constant:12",
     "port-time-record-missing": "_ports:lumped_port:run_uniform:run_distributed:constant:12",
@@ -136,8 +133,7 @@ PR_FINDING_CHOICES = {
 
 def pr_subset(cells, findings):
     """Main-path refusals, one strict witness per cause, and passing families."""
-    chosen = {c.id for c in cells if (not c.equivalence and c.refused in PR_REFUSAL_LANES)
-              or c.row == ('_float64', '')}
+    chosen = {c.id for c in cells if not c.equivalence and c.refused in PR_REFUSAL_LANES}
     causes = {entry['cause'] for groups in findings.values()
               for entries in groups.values() for entry in entries}
     by_id = {c.id: c for c in cells}
@@ -151,6 +147,8 @@ def pr_subset(cells, findings):
         chosen.add(identity)
     families = {c.row[0] for c in cells if c.equivalence}
     for family in sorted(families):
+        if family == '_float64':
+            continue
         candidates = [c for c in cells if c.equivalence and c.steps == 12
                       and c.row[0] == family and c.id not in findings]
         if not candidates:

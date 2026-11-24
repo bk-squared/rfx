@@ -8,12 +8,13 @@ Conductors own their realized products in rfx.model.conductors.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 import jax
 
 import jax.numpy as jnp
 
+from rfx._internal._precision import resolve_field_dtype
 from rfx.model.tensor_operands import TensorOperands
 from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import (
@@ -22,6 +23,7 @@ from rfx.core.yee import (
     lumped_components, lumped_total, permittivity_without_lumped,
 )
 from rfx.geometry.csg import Box, _grid_coords
+from rfx.geometry.cross_section import realize_sections
 from rfx.geometry._pole_keying import _accumulate_pole_mask, _clear_pole_masks, _spec_from_pole_masks
 from rfx.geometry.rasterize_grid import (
     GridCoords, _material_cell_mask, assert_declared_span_is_filled,
@@ -150,16 +152,18 @@ def assemble_cells(
         pec_mask is a boolean array (True at PEC cells) or None.
         pec_shapes is a list of Shape objects that are PEC.
         boundary_pec_shapes is a list of PEC shapes from boundary conditions.
-        kerr_chi3 is a float32 array of chi3 values or None.
+        kerr_chi3 has the run coefficient dtype, or is None.
 
-    Materials/poles retain declaration order and float32 initialization.
+    Materials/poles retain declaration order and the run coefficient dtype.
     Overrides and design boxes enter the cell stage in ``model.overrides``.
     """
+    # Coefficients keep the float32 floor for float16 field storage.
+    dtype = jnp.promote_types(resolve_field_dtype(sim._precision) or jnp.float32, jnp.float32)
     # Start with vacuum
-    eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
-    sigma = jnp.zeros(grid.shape, dtype=jnp.float32)
-    mu_r = jnp.ones(grid.shape, dtype=jnp.float32)
-    chi3_arr = jnp.zeros(grid.shape, dtype=jnp.float32)
+    eps_r = jnp.ones(grid.shape, dtype=dtype)
+    sigma = jnp.zeros(grid.shape, dtype=dtype)
+    mu_r = jnp.ones(grid.shape, dtype=dtype)
+    chi3_arr = jnp.zeros(grid.shape, dtype=dtype)
     pec_mask = jnp.zeros(grid.shape, dtype=jnp.bool_)
     pec_shapes = []
     has_kerr = False
@@ -213,15 +217,16 @@ def assemble_cells(
     _check_pad_fill = (check_declared_span and not nonuniform and include_cpml_pad_extension
                        and sim._boundary in ("cpml", "upml")
                        and sim._cpml_layers > 0)
-    from rfx.geometry.smoothing import continued_conductor_shape, warn_unextendable_shapes
-    conductor_findings = []
+    from rfx.geometry.smoothing import UnextendableShape, continued_conductor_shape, warn_unextendable_shapes
+    conductor_findings: list[UnextendableShape] = []
 
     # NU historically continues all PEC declarations before sampling any entry.
+    sections = realize_sections(sim._geometry, grid)
     geometry = [replace(entry, shape=continued_conductor_shape(
                     sim, grid, entry.shape, entry=entry, unextendable=conductor_findings))
                 if sim._resolve_material(entry.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD
-                else entry for entry in sim._geometry] if nonuniform else sim._geometry
-    for declared_entry, entry in zip(sim._geometry, geometry, strict=True):
+                else entry for entry in sections] if nonuniform else sections
+    for declared_entry, section, entry in zip(sim._geometry, sections, geometry, strict=True):
         mat = sim._resolve_material(entry.material_name)
         mask = _material_cell_mask(entry.shape, _coords, _centres,
                                    grid=sampling_grid, cell_sizes=_cell_sizes, domain_faces=domain_faces,
@@ -236,7 +241,8 @@ def assemble_cells(
             # vacuum values either way.
             cells, sheet, wire = classify_pec_entry(
                 solved_shape, _coords, _centres, _cell_sizes,
-                name=entry.material_name, grid=sampling_grid, domain_faces=domain_faces)
+                name=entry.material_name, grid=sampling_grid, domain_faces=domain_faces,
+                nominal_grid=grid)
             if assembly_entries is not None:
                 assembly_entries.append((id(declared_entry), cells, sheet, wire, solved_shape))
             if cells is not None:
@@ -301,12 +307,12 @@ def assemble_cells(
         pole_mask = mask
         if mat.debye_poles or mat.lorentz_poles:
             # Poles retain their declared occupancy, before continuation.
-            pole_mask = _material_cell_mask(declared_entry.shape, _coords, _centres,
+            pole_mask = _material_cell_mask(section.shape, _coords, _centres,
                                             grid=sampling_grid, cell_sizes=_cell_sizes, domain_faces=domain_faces,
                                             name=entry.material_name, refuse_empty=mat.sigma < sim._PEC_SIGMA_THRESHOLD)
             if mat.sigma >= sim._PEC_SIGMA_THRESHOLD and cells is not None:
                 from rfx.geometry.rasterize_grid import pec_volume_cell_mask
-                pole_mask = pec_volume_cell_mask(declared_entry.shape, _centres, _cell_sizes, grid=sampling_grid, domain_faces=domain_faces)
+                pole_mask = pec_volume_cell_mask(section.shape, _centres, _cell_sizes, grid=sampling_grid, domain_faces=domain_faces)
 
         if mat.debye_poles:
             for pole in mat.debye_poles:
@@ -596,22 +602,24 @@ class ComponentMaterials:
 from types import SimpleNamespace  # noqa: E402
 
 
-class EdgePoles(NamedTuple):
+@dataclass(frozen=True)
+class EdgePoles:
     """Pole specs for a lane that keeps no whole-domain realization (the
     distributed runners): carried in the ``components`` slot of the materials
     handed to the drive builders only. An edge's ADE terms are built from the
     cells around that edge, by the functions the kernels' coefficients use."""
 
-    debye_spec: object
-    lorentz_spec: object
+    debye_spec: tuple[Any, Any] | None
+    lorentz_spec: tuple[Any, Any] | None
     grid: Any = None
+    field_dtype: object = field(kw_only=True)
 
     def at(self, cell, dt):
         lo = tuple(max(int(i) - 1, 0) for i in cell)
         window = tuple(slice(a, int(i) + 1) for a, i in zip(lo, cell))
         local = (slice(None),) + tuple(int(i) - a for a, i in zip(lo, cell))
         shape = tuple(int(i) + 1 - a for a, i in zip(lo, cell))
-        out = []
+        out: list[Any] = []
         for spec, kind in ((self.debye_spec, "Debye"), (self.lorentz_spec, "Lorentz")):
             if spec is None:
                 out.append(None)
@@ -631,7 +639,7 @@ class EdgePoles(NamedTuple):
             terms = _realize_poles(cut, (False,) * 3, kind, SimpleNamespace(dt=dt), shape,
                                    high_wall=tuple(wall and w.stop == n for wall, w, n in
                                        zip(unpadded_high_walls(self.grid), window, self.grid.shape)),
-                                   cell_sizes=widths).coefficients
+                                   cell_sizes=widths, field_dtype=self.field_dtype).coefficients
             out.append(jax.tree.map(lambda value: value[local], terms))
         return out
 
@@ -648,7 +656,67 @@ def _ade_cb(eps, sigma, dt, axis, debye_terms, lorentz_terms):
         lc = lorentz_e_coeffs(operands, dt, *lorentz_terms)
     if dc is not None and lc is not None:
         return mixed_e_component_coeffs(dc, lc, axis, dt)[1]
-    return (dc if dc is not None else lc).cb[axis]
+    return cast(Any, dc if dc is not None else lc).cb[axis]
+
+
+def tensor_operand_at(materials, cell, component):
+    """The attached tensor operand the step's E update reads at one edge.
+
+    Returns ``(kind, value)`` or None. None means no attached operand
+    replaces the plain edge (no tensor, or a dispersive update, which reads
+    no tensor), so the caller keeps the plain path. ``kind`` names the
+    update that steps the edge:
+
+    - ``"upml"``: the UPML E update, which reads the float32 tensor diagonal
+      (``init_upml(aniso_eps=...)``) with the cell-owned conductivity;
+    - ``"inv"``: the Stage-2 inverse ``tensor.inv_eps`` (``update_e_aniso_inv``);
+    - ``"eps"``: the diagonal ``tensor.eps`` (smoothed, full tensor or
+      conformal ``eps/w``; ``update_e_aniso``, ``update_e_nu_aniso``).
+    """
+    c = getattr(materials, "components", None)
+    tensor = getattr(c, "tensor", None)
+    if (tensor is None or getattr(c, "debye", None) is not None
+            or getattr(c, "lorentz", None) is not None):
+        return None
+    axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
+    cell = tuple(cell)
+    if getattr(c, "source_upml", False):
+        if tensor.eps is None:
+            return None
+        return "upml", jnp.asarray(tensor.eps[axis][cell]).astype(jnp.float32)
+    if tensor.inv_eps is not None:
+        return "inv", tensor.inv_eps[axis][cell]
+    if tensor.eps is not None:
+        return "eps", tensor.eps[axis][cell]
+    return None
+
+
+def upml_operands_at(materials, cell, component):
+    """The UPML E update's operands ``(eps, sigma)`` at one edge.
+
+    ``init_upml`` forms every E coefficient from cell-owned operands, not
+    from the four-cell edge mean: the attached tensor's float32 diagonal
+    when there is one, else ``components.upml_eps``, with
+    ``components.upml_sigma``. Under ``source_upml`` a drive's coefficient
+    (:func:`e_update_coefficient_at`) and a lumped element's denominator
+    (:func:`rfx.lumped.edge_update_denominator`) both read them here.
+    """
+    c = materials.components
+    axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
+    cell = tuple(cell)
+    operand = tensor_operand_at(materials, cell, component)
+    eps = operand[1] if operand is not None else c.upml_eps[axis][cell]
+    return eps, c.upml_sigma[axis][cell]
+
+
+def upml_update_cb(eps, sigma, dt):
+    """UPML's interior E coefficient ``Cb`` (``sigma_perp = 0``) from one
+    edge's operands, in the float32 arithmetic ``init_upml`` uses."""
+    from rfx.boundaries.upml import _upml_e_coeffs_si, _upml_e_coeffs_eps_r
+    from rfx.core.yee import si_value_eps_r_grad
+    return si_value_eps_r_grad(
+        _upml_e_coeffs_si, _upml_e_coeffs_eps_r, jnp.float32(0), eps,
+        jnp.asarray(sigma).astype(jnp.float32), jnp.float32(dt))[1]
 
 
 def e_update_material_at(materials, cell, component, periodic=(False, False, False), *, grid=None, cell_sizes=None, high_wall=None):
@@ -656,6 +724,9 @@ def e_update_material_at(materials, cell, component, periodic=(False, False, Fal
 
     Stamps are already included in the stored operands. Legacy callers without
     a realization retain the single-edge averaging rule until they migrate.
+    With an attached tensor the permittivity is the operand the step reads
+    (:func:`tensor_operand_at`); an edge stepped by the inverse permittivity
+    has no permittivity to return, and its readers use the inverse form.
     """
     c = getattr(materials, "components", None)
     if c is None or isinstance(c, EdgePoles):
@@ -671,6 +742,18 @@ def e_update_material_at(materials, cell, component, periodic=(False, False, Fal
                                              electric_cell_sizes(grid)))
     axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
     cell = tuple(cell)
+    operand = tensor_operand_at(materials, cell, component)
+    if operand is not None:
+        kind, value = operand
+        if kind == "inv":
+            raise ValueError(
+                f"the E update at edge {cell} ({component}) reads the inverse "
+                "permittivity; read its coefficient with e_update_coefficient_at "
+                "or its denominator with edge_update_denominator, which use the "
+                "inverse form, never a re-inverted permittivity")
+        if kind == "upml":
+            return value, c.upml_sigma[axis][cell]
+        return value, c.sigma_update[axis][cell]
     return c.eps_update[axis][cell], c.sigma_update[axis][cell]
 
 
@@ -682,25 +765,30 @@ def e_update_coefficient_at(materials, cell, component, dt,
     this avoids rebuilding grid-sized coefficient arrays for every source.
     ``host`` selects the graded current source's eps_r-units formula
     on plain edges. All dispersive coefficients use the kernel's algebra.
+    With an attached tensor the coefficient is formed from the operand the
+    step reads at the edge (:func:`tensor_operand_at`): the diagonal, the
+    UPML form, or the inverse form through the wrapper ``update_e_aniso_inv``
+    uses.
     """
-    from rfx.core.yee import e_update_coeffs
-    eps, sigma = e_update_material_at(materials, cell, component, periodic, grid=grid)
     c = getattr(materials, "components", None)
     axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
     if isinstance(c, EdgePoles):
+        eps, sigma = e_update_material_at(materials, cell, component, periodic, grid=grid)
         terms = c.at(cell, dt)
         if terms[0] is not None or terms[1] is not None:
             return _ade_cb(eps, sigma, dt, axis, *terms)
-        c = None  # Plain graded drives use the shared current-source formula.
+        return _plain_drive_cb(eps, sigma, dt, host)
+    operand = None if c is None else tensor_operand_at(materials, cell, component)
     if c is not None and c.source_upml:
-        # Admission excludes pads. There sigma_perp=0; UPML still uses its
-        # cell-owned E operands, even at an interior material interface.
-        from rfx.boundaries.upml import _upml_e_coeffs_si, _upml_e_coeffs_eps_r
-        from rfx.core.yee import si_value_eps_r_grad
+        upml_eps, upml_sigma = upml_operands_at(materials, cell, component)
+        return upml_update_cb(upml_eps, upml_sigma, dt)
+    if c is not None and operand is not None and operand[0] == "inv":
+        from rfx.core.yee import (si_value_eps_r_grad, _e_update_coeffs_inv_si,
+                                  _ca_cb_inv_eps_r_units)
         return si_value_eps_r_grad(
-            _upml_e_coeffs_si, _upml_e_coeffs_eps_r, jnp.float32(0),
-            c.upml_eps[axis][tuple(cell)],
-            c.upml_sigma[axis][tuple(cell)].astype(jnp.float32), jnp.float32(dt))[1]
+            _e_update_coeffs_inv_si, _ca_cb_inv_eps_r_units,
+            operand[1], c.sigma_update[axis][tuple(cell)], dt)[1]
+    eps, sigma = e_update_material_at(materials, cell, component, periodic, grid=grid)
     if c is not None and (c.debye is not None or c.lorentz is not None):
         pole_cell = (slice(None),) + tuple(cell)
         dt_terms = lt_terms = None
@@ -710,9 +798,16 @@ def e_update_coefficient_at(materials, cell, component, dt,
         if c.lorentz is not None:
             lt_terms = jax.tree.map(lambda value: value[pole_cell], c.lorentz.coefficients)
         return _ade_cb(eps, sigma, dt, axis, dt_terms, lt_terms)
+    return _plain_drive_cb(eps, sigma, dt, host and operand is None)
+
+
+def _plain_drive_cb(eps, sigma, dt, host):
+    """A plain edge's drive coefficient: the graded current-source formula
+    (eps_r units) when ``host``, else the uniform E update's own cb."""
     if host:
         from rfx.model.source_coefficients import current_source_cb
         return current_source_cb(eps, sigma, dt)
+    from rfx.core.yee import e_update_coeffs
     return e_update_coeffs(eps, sigma, dt)[1]
 
 
@@ -751,15 +846,15 @@ def electric_grid_kwargs(grid):
     return dict(grid=grid)
 
 
-def pole_component_weights(mask, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool], cell_sizes=None):
+def pole_component_weights(mask, periodic=(False, False, False), *, high_wall: tuple[bool, bool, bool], cell_sizes=None, field_dtype):
     """Dual-volume pole occupancy, using the electric material rule."""
     if mask is None:
         return None
-    return edge_mean_components(jnp.asarray(mask, dtype=bool).astype(jnp.float32), periodic,
+    return edge_mean_components(jnp.asarray(mask, dtype=bool).astype(jnp.promote_types(field_dtype, jnp.float32)), periodic,
                                 high_wall=high_wall, cell_sizes=cell_sizes)
 
 
-def _realize_poles(spec, periodic, kind, grid, shape, *, high_wall, cell_sizes=None, view=None):
+def _realize_poles(spec, periodic, kind, grid, shape, *, high_wall, cell_sizes=None, view=None, field_dtype):
     if spec is None:
         return None
     from rfx.materials.pole_map import sample_spec, is_map, build_map_coeffs
@@ -772,7 +867,7 @@ def _realize_poles(spec, periodic, kind, grid, shape, *, high_wall, cell_sizes=N
     else:
         masks = [masks] * len(poles)
     weights = tuple(pole_component_weights(_view_wall_cells(m, grid, view, high_wall), periodic,
-                    high_wall=high_wall, cell_sizes=cell_sizes) for m in masks)
+                    high_wall=high_wall, cell_sizes=cell_sizes, field_dtype=field_dtype) for m in masks)
     if grid is None:
         return ComponentDispersion(tuple(poles), None, weights, None)
     if any(is_map(p) for p in poles):
@@ -796,13 +891,16 @@ def _view_wall_cells(array, grid, view, high_wall):
     return jnp.take(array, rows, axis=0)
 
 
-def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None, grid_kind="Grid", high_wall=None):
+def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None, grid_kind="Grid", high_wall=None,
+                       field_dtype=jnp.float32):
     """Realize final cells once, using the existing E/pole and H rules.
 
     ``cells`` is a MaterialArrays or ComponentCells with dispersion specs.
     ``grid=None`` is the uniform-metric compatibility path for direct ADE
     callers. E materials and pole fractions use the same primal dual-volume
     weights; constant transverse axes retain the original arithmetic.
+    Pole weights take the run's field dtype, with a float32 coefficient floor.
+    Raw callers without a run retain the float32 default.
     """
     if high_wall is None:
         if grid is None:
@@ -875,15 +973,18 @@ def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None
         eps, sigma, mu, eps_lumped, sigma_lumped, mu_wire,
         eps_update, sigma_update, mu_update, upml_eps, upml_sigma,
         _realize_poles(debye_spec, periodic, "Debye", grid, materials.eps_r.shape,
-                       high_wall=high_wall, cell_sizes=electric_widths, view=view),
+                       high_wall=high_wall, cell_sizes=electric_widths, view=view,
+                       field_dtype=field_dtype),
         _realize_poles(lorentz_spec, periodic, "Lorentz", grid, materials.eps_r.shape,
-                       high_wall=high_wall, cell_sizes=electric_widths, view=view),
+                       high_wall=high_wall, cell_sizes=electric_widths, view=view,
+                       field_dtype=field_dtype),
         materials, tuple(periodic), _component_grid_key(grid, view),
         pole_sets_judged=pole_sets_judged)
 
 
 def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=None,
-                    view=None, dt=None, budget=None, grid_kind="Grid", tensor=None, high_wall=None):
+                    view=None, dt=None, budget=None, grid_kind="Grid", tensor=None, high_wall=None,
+                    field_dtype=jnp.float32):
     """Attach one realization after the last cell/stamp write, or reuse it.
 
     Callers must not modify the cells after this boundary. Raw low-level
@@ -897,7 +998,7 @@ def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=
     else:
         components = realize_components(
             ComponentCells(materials, debye_spec, lorentz_spec), grid, periodic=periodic,
-            high_wall=high_wall,
+            high_wall=high_wall, field_dtype=field_dtype,
             **({} if view is None else dict(view=view)),
             **({} if budget is None else dict(dt=dt, budget=budget, grid_kind=grid_kind)))
         materials = materials._replace(components=components)
@@ -982,8 +1083,11 @@ def sat_face_mu(materials, sl):
 def subgrid_components(mats_c, mats_f, grid_c, config):
     """Coarse and fine materials with components; the fine grid flags only the global walls it reaches."""
     periodic = tuple(a in getattr(grid_c, "periodic_axes", "") for a in "xyz")
-    return (with_components(mats_c, grid_c, periodic=periodic, high_wall=unpadded_high_walls(grid_c)),
-            with_components(mats_f, None, periodic=(False,) * 3, high_wall=fine_high_walls(grid_c, config)))
+    from rfx.model.pole_stability import refuse_subgrid_cells
+    mats_c = with_components(mats_c, grid_c, periodic=periodic, high_wall=unpadded_high_walls(grid_c))
+    mats_f = with_components(mats_f, None, periodic=(False,) * 3, high_wall=fine_high_walls(grid_c, config))
+    refuse_subgrid_cells(mats_c, mats_f, grid_c, config, config.dt)
+    return mats_c, mats_f
 
 
 def validate_dispersion(realized, poles, dt):
@@ -1215,9 +1319,10 @@ def geometric_interface_components(eps, live, fallback, widths, *, high_wall: tu
 
 
 def electric_materials_traced(materials):
-    """Whether a source coefficient depends on a traced volume or film."""
+    """Whether a source coefficient depends on a traced volume, film or attached tensor."""
+    tensor = getattr(getattr(materials, "components", None), "tensor", None)
     return any(is_tracer(part) for part in jax.tree_util.tree_leaves(
-        (materials.eps_r, materials.sigma, materials.sigma_film)))
+        (materials.eps_r, materials.sigma, materials.sigma_film, tensor)))
 
 
 def volume_eps_mu(materials):

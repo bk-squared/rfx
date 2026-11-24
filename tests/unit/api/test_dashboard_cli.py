@@ -19,7 +19,7 @@ from rfx.dashboard import cli
 def test_help_returns_zero_and_prints_usage(capsys, monkeypatch):
     """--help prints usage and never touches streamlit or subprocess."""
 
-    def _boom(*_args, **_kwargs):  # pragma: no cover - must not be called
+    def _boom(*_args, **_kwargs):  # pragma: no cover
         raise AssertionError("streamlit must not be probed for --help")
 
     monkeypatch.setattr(cli.importlib.util, "find_spec", _boom)
@@ -106,7 +106,7 @@ def test_missing_streamlit_returns_nonzero_with_actionable_message(capsys, monke
 
     monkeypatch.setattr(cli.importlib.util, "find_spec", lambda _name: None)
 
-    def _must_not_run(*_a, **_k):  # pragma: no cover - must not be called
+    def _must_not_run(*_a, **_k):  # pragma: no cover
         raise AssertionError("subprocess.run must not run without streamlit")
 
     monkeypatch.setattr(cli.subprocess, "run", _must_not_run)
