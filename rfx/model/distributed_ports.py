@@ -43,6 +43,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
     field_dtype = resolve_field_dtype(sim._precision) or jnp.float32
     drive_model = sc.dispersive_drive_model(fold(sim, grid, materials), debye_spec, lorentz_spec, grid,
                                           in_program=in_program, field_dtype=field_dtype)
+    drawn_eps = materials.eps_r if overridden and lane == "fwd_distributed_nu" else None
     if overridden:
         materials = apply_material_overrides(materials, eps_override=eps_override,
             sigma_override=sigma_override, judge=(lorentz_spec, grid, debye_spec), in_program=in_program)
@@ -64,7 +65,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
         ports = assemble_graded_ports(sim, grid, materials, materials, conductors,
             pec_edge_masks=conductors.pec_edges, sizing_n=n_steps,
             lane='fwd_nonuniform' if lane == 'fwd_distributed_nu' else 'run_nonuniform',
-            s_param_freqs=s_param_freqs, msl=lane == "run_distributed_nu")
+            s_param_freqs=s_param_freqs, msl=True, msl_drawn_eps=drawn_eps)
     materials, conductors = ports.materials, ports.conductors
     drives = {}
     for index, drive in ports.drives:
@@ -112,9 +113,13 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                         sigma_port=sigma_port, unit_field=unit_field, dtype='float32')
                     material_drive.append(None)
         for cell, component, waveform, sigma_port, unit_field in drives.get(len(sim._ports), ()):
-            queue.defer(_port_drive_source, grid, cell, component, waveform, n_steps,
-                        sigma_port=sigma_port, unit_field=unit_field, dtype='float32')
-            material_drive.append(None)
+            if overridden:
+                queue.append((*cell, component, current_source_samples(grid, waveform, n_steps, dtype='float32')))
+                material_drive.append((None, 0., sigma_port, unit_field))
+            else:
+                queue.defer(_port_drive_source, grid, cell, component, waveform, n_steps,
+                            sigma_port=sigma_port, unit_field=unit_field, dtype='float32')
+                material_drive.append(None)
         if (ports_present or sim._msl_ports) and not overridden:
             from rfx.model.materials import with_components
             final_drive_model = with_components(materials, grid, periodic=(False,) * 3,
