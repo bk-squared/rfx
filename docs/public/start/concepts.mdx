@@ -23,8 +23,9 @@ you will see:
   given under [Three kinds of conductor](#three-kinds-of-conductor).
   `sim.fidelity_report()` prints the declared and realized position of every
   face.
-- A probe or port reads a field at a grid location, which may be up to half a
-  cell away from the coordinate you gave.
+- A probe or port reads a field at a grid location. The coordinate snaps to
+  the nearest grid node, up to half a cell away on each axis, and a probe's
+  field component sits a further half cell from that node on the Yee grid.
 
 **Cell size.** The cell must resolve the shortest wavelength *inside the
 material*, λ_eff = c / (f_max √ε_r). Aim for at least 15–20 cells per λ_eff for

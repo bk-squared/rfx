@@ -26,6 +26,6 @@ cells, boundaries, conductors, sources and ports, and when a run is finished.
 | Change a design using derivatives | [Inverse design](/rfx/design/optimization/) and [gradient behavior](/rfx/guide/gradient-behavior/) |
 
 Use the [Examples hub](/rfx/examples/) to choose by structure or follow the
-ordered source tutorials. Check [Support Boundaries](/rfx/support/)
+ordered source tutorials. Check [Support](/rfx/support/)
 for combinations of ports, materials, grids and runners; the [API](/rfx/api/)
 gives the exact calls.
