@@ -20,13 +20,13 @@ gives S-parameters for it:
 | rectangular waveguide | `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` |
 | coaxial line | `add_coaxial_port(...)` | experimental uniform `run()` / `forward()`; `compute_coaxial_line_reflection()`, `compute_coaxial_two_port()` |
 
-Each calculator takes one port family. The two cross-family calculators are
-the exceptions: `compute_mixed_s_matrix()` (lumped or wire plus microstrip) is
-experimental, and `compute_coax_msl_transition()` is deprecated (see
-[Limits](#limits)). If you are not sure which calculator a model needs, `sim.s_matrix_lane()` tells you without
-running anything, and `sim.compute_s_matrix(**kwargs)` calls it for you. The
-one exception is a lumped/wire-only model, which `compute_s_matrix` refuses:
-call `run(compute_s_params=True)` for those.
+Each calculator takes one port family, apart from two that join families:
+`compute_mixed_s_matrix()` (lumped or wire plus microstrip) is experimental,
+and `compute_coax_msl_transition()` is deprecated (see [Limits](#limits)). If
+you are not sure which calculator a model needs, `sim.s_matrix_lane()` tells
+you without running anything, and `sim.compute_s_matrix(**kwargs)` calls it
+for you. It refuses a model with only lumped or wire ports: call
+`run(compute_s_params=True)` for those.
 
 ## Waveforms
 
@@ -334,8 +334,8 @@ The builder in `examples/tutorials/ports_and_sparams_101.py` uses a
 44 × 34 mm domain, edge-aware x/y profiles, and a uniform z profile of 16 cells of 0.25 mm. It
 builds and preflights this board without solving it in the tutorial; the
 calculation above runs it. This board is coarse for speed, so check `msl.Z0`,
-the line impedance the port fits from its probe planes, against the closed
-form.
+the line impedance the port fits from its probe planes, against the
+Hammerstad–Jensen closed form in `msl.line_impedances`.
 S11 and S21 use the measured V and I, referred to each port's declared
 `impedance=` (default 50 Ω); the fitted Z0 does not enter S. Refine before
 you quote Z0.

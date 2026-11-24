@@ -126,7 +126,9 @@ print(report.format())
 
 `domain[2] = 0` tells rfx to use `sum(dz_profile)` as the height. A positive
 value must match that sum to within 1 %: the default `snap="strict"` refuses a
-larger difference, and `snap="declared"` keeps your value with a warning. Pass
+larger difference, and `snap="declared"` warns and keeps your value. The grid
+still solves `sum(dz_profile)`; your value is what a periodic z axis, flux
+regions, thin conductors and RCS read as the height. Pass
 `float(np.sum(dz_profile))` if you set it yourself.
 
 When `dz_profile` is a JAX tracer, as when its cell widths are design variables

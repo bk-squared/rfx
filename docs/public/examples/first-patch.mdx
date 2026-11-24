@@ -166,8 +166,8 @@ This edge-aware in-plane grading raises four `nu_grading_reaches_absorber`
 warnings because the interior cells next to the x/y absorber faces are not
 uniform. `edge_aware_profiles` keeps the end cells at `dx` but adjusts the
 cells inside them all the way to the domain faces, so a wider air margin does
-not clear these warnings (see
-[Non-Uniform Mesh](/rfx/model/domain-mesh/#building-a-z-profile)). The
+not clear these warnings, and it has no option that keeps those cells uniform
+(see [Non-Uniform Mesh](/rfx/model/domain-mesh/#building-a-z-profile)). The
 absorber then starts on a graded mesh, so its reflection is not the one it was
 characterised with, and this model's accuracy has not been checked. Preflight also notes that the copper's thickness (35 µm, the
 `add_thin_conductor` default) is solved as zero
@@ -209,9 +209,7 @@ To report a resonance, Q or return loss for this patch:
    Pick the mode by its field pattern or far field, not by which peak is
    biggest. Handle the case where no mode is found.
 3. **Refine the mesh** in x/y and z, and enlarge the air margin. Report how
-   much the frequency moves, not just the finest answer. The error from the
-   unknown edge offset of section 3 is a fraction of a cell, so it shrinks
-   with the cell, and the series shows it too. See
+   much the frequency moves, not just the finest answer. See
    [Is the mesh fine enough?](/rfx/check/mesh-convergence/).
 4. **For return loss, use a port.** The soft source here has no impedance, so
    it cannot give S11. Use a lumped or microstrip port and its calculator from
@@ -220,8 +218,9 @@ To report a resonance, Q or return loss for this patch:
    [Benchmarks](/rfx/guide/benchmarks/) shows how rfx's own patch case compares
    with openEMS.
 
-`examples/tutorials/patch_antenna_demo.py` runs steps 1 and 2 on another patch,
-the openEMS "Simple Patch Antenna" geometry, identifies the mode from its far
-field and compares the resonance with openEMS (step 5). It runs one mesh and has
-no port, so it does not do steps 3 and 4. [Examples](/rfx/examples/) lists the
+`examples/tutorials/patch_antenna_demo.py` does points 1, 2 and 5 of this list
+on another patch, the openEMS "Simple Patch Antenna" geometry: it checks that
+its record settled, identifies the resonant mode from its far field and
+compares the resonance with openEMS. It runs one mesh and has no port, so it
+does not do points 3 and 4. [Examples](/rfx/examples/) lists the
 full learning path.

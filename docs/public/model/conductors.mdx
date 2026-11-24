@@ -81,7 +81,7 @@ realized wall planes, in your units. Read it whenever placement matters.
 `sim.add(PolylineWire(points, radius), material="pec")` draws a wire through the
 given vertices. With `radius=0` it is a filament: the grid edges joining the
 nearest nodes of each segment are PEC, and it owns no cell. With a positive
-radius it is a volume, rasterized like any other shape. A radius below half the
+radius it is a volume, rasterized like any other shape. A positive radius below half the
 smallest local cell is refused, because the grid cannot represent it, and a
 thin volume wire may still cover no cell and be refused (`pec_zero_cells`); a
 [wire port](/rfx/model/ports/) is the way to give a thin wire its radius in a
