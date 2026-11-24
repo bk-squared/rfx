@@ -281,9 +281,10 @@ respect to `design_eps_override` in a `design_box` by reciprocity instead: it
 stores the design cells' DFTs at the objective's frequencies and runs a second
 ordinary forward simulation. The objective reads DFT planes, E or H, and the
 far-field data of an NTFF box, all at the same positive frequencies below the
-Nyquist frequency, on a uniform mesh on one device. Every plane and every NTFF
-face must lie at least one cell inside the absorber layers (inside the outermost
-cell with no CPML): a DFT plane with no `region` spans the whole grid and is
+Nyquist frequency, on a uniform mesh on one device. Every plane, and every NTFF
+face with the cells beside it, must stay clear of the absorber with one cell to
+spare: at least one cell beyond the CPML layers, or at least two cells from each
+wall without CPML. A DFT plane with no `region` spans the whole grid and is
 refused, so give it a `region`. It returns the gradient of the settled spectrum
 only. `ForwardResult.adjoint_settling` divides the largest
 \|E\| on the design cells' edges over the last period of the lowest frequency by
