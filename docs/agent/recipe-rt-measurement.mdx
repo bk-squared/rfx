@@ -207,19 +207,20 @@ The probe serves the witness only; R and T still come from the flux monitors
 **`add_probe` (time-series) + `np.fft.rfft`** for dispersive media.
 
 A chirped pulse transmitted through a dispersive slab has frequencies arriving
-at different times. A tapered time-gate window (Hann, Tukey), or a record that
-ends before the chirped transmitted pulse has, introduces a frequency-dependent
-bias because the chirped transmitted pulse and the incident reference pulse
-have different effective envelopes under the same window.
+at different times. A tapered time-gate window (Hann, Tukey) weights the
+chirped transmitted pulse and the incident reference pulse differently, so it
+biases their ratio per frequency. Without a taper, `rfft` of a probe still
+gives the field at one point, not the power through the plane, and only at the
+bins k/(N·dt), not at the frequencies the measurement needs.
 
-`add_flux_monitor` applies no taper by default (`dft_window="rect"`): each
-frequency is a DFT over the whole record, and the ring-down witness from a
-probe on the plane (detail (e)) says whether the signal had ended before the
-record did.
+`add_flux_monitor` applies no taper by default (`dft_window="rect"`): it
+accumulates the DFT at the requested frequencies over the whole record and
+integrates the Poynting flux over the plane. A record cut before the response
+has ended biases either route, with or without dispersion; the ring-down
+witness from a probe on the plane (detail (e)) checks for that.
 
-For dispersionless media there is no group-velocity chirp, so the raw
-time-series approach does not produce this artifact — but `add_flux_monitor`
-is still preferred for its cleaner interface.
+For dispersionless media there is no chirp, so no window bias from it; the
+other two reasons still hold.
 
 ## Known accuracy
 
