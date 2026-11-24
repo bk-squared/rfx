@@ -27,7 +27,8 @@ def test_lens_band(monkeypatch, tmp_path):
             common.band_frequencies(text, design)
     for stage in ("trial", "main", "field", "frame", "cost"):
         with pytest.raises(SystemExit) as exc:
-            common.main(lens, ["--stage", stage, "--out", str(tmp_path), "--band", "9,11,.1"])
+            common.main(lens, ["--stage", stage, "--out", str(tmp_path), "--boundary", "nearest",
+                               "--band", "9,11,.1"])
         assert exc.value.code == 2
     import rfx.measurement.farfield as farfield
     import rfx.sparams._tail_witness as tail

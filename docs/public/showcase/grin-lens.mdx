@@ -59,7 +59,7 @@ high-permittivity ring outside that.
 
 <figure data-rfx="media">
   <img src="/rfx/showcase/assets/grin-lens/final.png" loading="lazy" alt="Ten small squares, one per 3 mm layer of the designed lens, numbered from the layer nearest the feed. Each shows a dark central region of high permittivity and light corners; most show a light ring around the centre, and the first layer has a second dark ring outside it." />
-  <figcaption>The designed lens, layer by layer from the feed side (layer 1 spans 0–3 mm above the lens's lower face). Colour is εr from 1.0 to 2.7.</figcaption>
+  <figcaption>The designed lens, layer by layer from the feed side (layer 1 spans 0–3 mm above the lens's lower face); in each 90 × 90 mm map x runs along the dipole and y across it. Colour is εr from 1.0 to 2.7.</figcaption>
 </figure>
 
 ## The result on three meshes
@@ -69,7 +69,8 @@ lens gives 18.5 / 19.0 / 18.8 dBi at 9.5 / 10 / 10.5 GHz on the 0.5 mm mesh. At
 each of the 21 frequencies from 9 to 11 GHz the value falls as the mesh is
 refined and converges by the rule below: it changes by at most 0.048 dB from
 1.0 to 0.75 mm and by at most 0.034 dB from 0.75 to 0.5 mm. The feed alone gives
-7.5 / 7.4 / 7.3 dBi, so the lens adds 11.0 / 11.5 / 11.5 dB. The uniform-aperture
+7.5 / 7.4 / 7.3 dBi, so the lens adds 11.0 / 11.5 / 11.5 dB (differences of the
+unrounded values). The uniform-aperture
 bound 4πA/λ² for the lens's 90 × 90 mm face, the directivity of a uniformly
 illuminated aperture of that size, is 20.1 / 20.5 / 21.0 dBi.
 
@@ -86,7 +87,7 @@ block.
 
 <figure data-rfx="media">
   <img src="/rfx/showcase/assets/grin-lens/boresight-band.png" loading="lazy" alt="Left: boresight directivity from 9 to 11 GHz of the designed lens (about 17.6 to 19.2 dBi), the textbook GRIN lens (about 16.2 to 17.2 dBi), the best uniform block (about 13.2 to 16.1 dBi) and the feed alone (about 7.2 to 7.5 dBi), each on three meshes, under the aperture bound. Right: each curve's difference from its 0.5 mm value, within 0.1 dB except the uniform block on the 1.0 mm mesh near 11 GHz." />
-  <figcaption>Boresight directivity over 9–11 GHz on the 1.0, 0.75 and 0.5 mm meshes (left), and each curve's difference from the 0.5 mm mesh (right). The line above the curves is the uniform-aperture bound 4πA/λ².</figcaption>
+  <figcaption>Boresight directivity D(0°) over 9–11 GHz on the 1.0, 0.75 and 0.5 mm meshes (left), and each curve's difference from the 0.5 mm mesh (right). The line above the curves is the uniform-aperture bound 4πA/λ².</figcaption>
 </figure>
 
 ## How it was checked
@@ -96,11 +97,13 @@ compare rfx with itself: on three meshes, against finite differences and
 against a longer record. No other solver or closed form is the reference for
 these directivities.
 
-- **Before each solve**, rfx's preflight found no error in the model, for every
-  design and mesh on this page.
+- **Before the solves on each mesh**, rfx's preflight found no error in the
+  model of the feed, the plate and the mesh. The lens enters each solve as a
+  permittivity override, which preflight does not see.
 - **End of the simulation**: for every design and mesh on this page, the
-  response still arriving after the record ends changes each frequency value
-  read by at most 3.3×10⁻⁴ in amplitude (the limit is 10⁻², −40 dB). For the best
+  field still arriving after the record ends changes each frequency value read
+  at four field probes (two inside the lens, one above it and one near the
+  feed) by at most 3.3×10⁻⁴ in amplitude (the limit is 10⁻², −40 dB). For the best
   uniform block the check could not decide with the record length the other
   designs use, because its two estimates of the late response disagreed at a
   few frequencies. That block was solved again with a record twice as long, on
@@ -114,11 +117,13 @@ these directivities.
   the cell size gives d₁ and d₂ the same sign and |d₂| ≤ 1.41 |d₁| on these
   meshes, so a sign change or a larger ratio is not convergence. All four
   boresight curves and the fan design's four quantities below converge at all
-  21 frequencies.
+  21 frequencies. The curves on all three meshes are in the downloaded
+  `lens-page-values.json`, so each verdict can be recomputed from it.
 - **Gradient against central differences**, at the start of each design, with a
-  step of 0.05 in one pixel's εr: the relative difference is at most 1.1×10⁻³ on
-  the two pixels checked for the boresight design and 2.1×10⁻⁴ on the three
-  checked for the fan design (the limit is 5×10⁻²).
+  step of 0.05 in the εr of one pixel and its three mirror images: the relative
+  difference is at most 1.1×10⁻³ on the two pixels judged for the boresight
+  design and 2.1×10⁻⁴ on the three judged for the fan design (the limit is
+  5×10⁻²).
 - **Gradient against a 1.5× longer record**: the relative difference of the
   whole gradient is 5.2×10⁻⁷ at the start and 7.7×10⁻⁵ at the final boresight
   design, and 1.2×10⁻⁶ and 5.3×10⁻⁶ for the fan design (the limit is 5×10⁻²).
@@ -133,15 +138,17 @@ mesh and how much from the plate size was not separated.
 
 The same block, feed and permittivity range can serve another pattern. The
 second design asks for a fan beam: wide in the plane perpendicular to the dipole
-and narrow in the plane that contains it. The strip is the 78 far-field
+and narrow in the plane that contains it. The strip is the 73 far-field
 directions up to 30° from boresight whose azimuth lies within 5° of the wide
 plane. The descent lowers the spread of the directivity over the strip (largest
 minus smallest, in dB) minus its smallest value, averaged over 9.5, 10 and
-10.5 GHz; 150 iterations start from the same uniform block.
+10.5 GHz. The largest and smallest values in this objective are smooth
+estimates (log-sum-exp over a 0.2 dB scale), so every direction in the strip
+carries a gradient. 150 iterations start from the same uniform block.
 
 <figure data-rfx="media">
   <img src="/rfx/showcase/assets/grin-lens/fan.png" loading="lazy" alt="Left: the ten layers of the fan-beam lens, each with dark bands of high permittivity across the middle and light regions between them. Right: directivity against angle from boresight at 10 GHz in the two planes; the wide-plane curve stays between about 10 and 11 dBi across the ±30° strip, just under or on a dashed line at 11.0 dBi, while the narrow-plane curve has one main lobe at boresight." />
-  <figcaption>The fan-beam lens layer by layer (left, colour εr from 1.0 to 2.7) and its directivity at 10 GHz on the 0.5 mm mesh in the wide and the narrow plane (right). The shaded band is the ±30° strip; the dashed line is the 11.0 dBi target.</figcaption>
+  <figcaption>The fan-beam lens layer by layer (left, colour εr from 1.0 to 2.7; x along the dipole, y across it) and its directivity D at 10 GHz on the 0.5 mm mesh in the wide and the narrow plane (right). The shaded band is the ±30° strip; the dashed line is the 11.0 dBi target.</figcaption>
 </figure>
 
 On the 0.5 mm mesh at 9.5 / 10 / 10.5 GHz the directivity over the strip lies
@@ -159,7 +166,7 @@ stays below 2 dB except at 9.0 GHz (2.06 dB).
 
 <figure data-rfx="media">
   <img src="/rfx/showcase/assets/grin-lens/fan-band.png" loading="lazy" alt="Three panels against frequency from 9 to 11 GHz on three meshes: the smallest and largest directivity over the strip (about 9.6 to 10.5 dBi and 10.8 to 11.6 dBi) with the 11.0 dBi target, the narrow-plane half-power beamwidth (about 25 to 28 degrees) above the 23 degree target, and the largest directivity 60 degrees or more from boresight (about 4.3 to 9.7 dBi)." />
-  <figcaption>The fan-beam lens over 9–11 GHz on the 1.0, 0.75 and 0.5 mm meshes: the smallest and largest directivity over the strip, the narrow-plane half-power beamwidth, and the largest directivity 60° or more from boresight, with the 11.0 dBi and 23° targets as dashed lines.</figcaption>
+  <figcaption>The fan-beam lens over 9–11 GHz on the 1.0, 0.75 and 0.5 mm meshes: the smallest and largest directivity over the strip, the narrow-plane half-power beamwidth (HPBW), and the largest directivity 60° or more from boresight (θ is the angle from boresight), with the 11.0 dBi and 23° targets as dashed lines.</figcaption>
 </figure>
 
 <p data-rfx="note">Computed with rfx 2.3.0.dev0. The feed is a soft source, a current impressed on the grid with no feed line, so these are directivities, not realized gains; the lens is a lossless dielectric.</p>
@@ -169,7 +176,7 @@ stays below 2 dB except at 9.0 GHz (2.06 dB).
 <ul data-rfx="downloads">
   <li><a href="https://remilab.cnu.ac.kr/share/cd6e343367e3/grin-lens/result.json">boresight design: result.json</a></li>
   <li><a href="https://remilab.cnu.ac.kr/share/cd6e343367e3/grin-lens/iterations.npz">boresight design: iterations.npz</a></li>
-  <li><a href="https://remilab.cnu.ac.kr/share/cd6e343367e3/grin-lens/lens-page-values.json">lens-page-values.json</a> (the values every figure on this page is drawn from, both designs, all three meshes)</li>
+  <li><a href="https://remilab.cnu.ac.kr/share/cd6e343367e3/grin-lens/lens-page-values.json">lens-page-values.json</a> (every value over 9–11 GHz on the three meshes for both designs, and the checks; the layer maps and the descent are in the two <code>iterations.npz</code> files)</li>
   <li><a href="https://remilab.cnu.ac.kr/share/cd6e343367e3/grin-lens-fan/result.json">fan design: result.json</a></li>
   <li><a href="https://remilab.cnu.ac.kr/share/cd6e343367e3/grin-lens-fan/iterations.npz">fan design: iterations.npz</a></li>
 </ul>
@@ -181,18 +188,25 @@ python scripts/showcase/design_lens.py --stage describe --out out/lens   # build
 ```
 
 The design itself needs a GPU and runs in three stages, each reading the
-previous stage's output folder and writing a new one:
+previous stage's output folder and writing a new one; a second `resolve` gives
+the best uniform block's curves:
 
 ```bash
-python scripts/showcase/design_lens.py --stage trial --boundary nearest --meshes 1.0 --out out/lens-trial
-python scripts/showcase/design_lens.py --stage main --start primary --boundary nearest --meshes 1.0 --record out/lens-trial --out out/lens-main
+python scripts/showcase/design_lens.py --stage trial --boundary nearest --out out/lens-trial
+python scripts/showcase/design_lens.py --stage main --start primary --boundary nearest --record out/lens-trial --out out/lens-main
 python scripts/showcase/design_lens.py --stage resolve --boundary nearest --meshes 1.0,0.75,0.5 --band 9,11,0.1 --record out/lens-main --out out/lens-resolve
+python scripts/showcase/design_lens.py --stage resolve --boundary nearest --meshes 1.0,0.75,0.5 --band 9,11,0.1 --designs best_uniform --duration-factor 2 --record out/lens-main --out out/lens-resolve-uniform
 ```
 
 The mesh is graded by default. `--boundary nearest` gives a cell that straddles
 two lens pixels the permittivity of the pixel that holds its centre; on the
 graded mesh every stage but `describe` refuses to run without a `--boundary`
-choice. `main`
-refuses to start unless the trial met its continuation rule; `resolve` solves
-the final design again on the three meshes over 9–11 GHz in 0.1 GHz steps. Add
-`--objective fan` to every stage for the fan beam.
+choice. `trial` and `main` run on the 1.0 mm mesh. `trial` runs 30 iterations
+of the descent, and `main` refuses to start unless they raised the boresight
+directivity averaged over 9.5, 10 and 10.5 GHz by at least 2 dB (for the fan
+beam: lowered its objective by at least 3 dB). `resolve` solves the final
+design, the feed alone, the textbook lens and the best uniform block again on
+the three meshes over 9–11 GHz in 0.1 GHz steps; the second `resolve` solves
+the best uniform block alone with a record twice as long. Add `--objective fan`
+to the first three stages for the fan beam; its `resolve` solves the fan design
+alone.
