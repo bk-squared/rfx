@@ -111,7 +111,21 @@ def run_generic_s11(*, add_component: bool) -> np.ndarray:
 
 
 def build_microstrip_ports() -> Simulation:
-    """Build a short, lossy microstrip line with the correct modal ports."""
+    """Build a short, lossy microstrip line with the correct modal ports.
+
+    The metal and dielectric end before the absorbing cells. The 1 mm
+    substrate's x and y faces are realized 87.5 µm (x) and 74.4 µm (y) inside
+    the drawn faces, where sheet-edge registration takes precedence; the side
+    clearance exceeds twice the substrate height.
+
+    General preflight reports ``line_stub_behind_port`` for both short feeds
+    and ``msl_port_geometry`` for the automatic probe-offset interval solve,
+    which is skipped on the graded propagation axis; the MSL S-parameter
+    preflight reports all checks passed. The three-layer absorber, the
+    zero-thickness conductors and the substrate realization also give
+    advisories. The tutorial only builds this setup; it does not quote a
+    settled microstrip S-matrix.
+    """
     from rfx.mesh_edges import edge_aware_profiles
 
     domain = (0.044, 0.034, 0.004)
@@ -155,11 +169,6 @@ def build_microstrip_ports() -> Simulation:
     )
     sim.add_material("substrate", eps_r=3.2, sigma=0.01)
 
-    # The metal and dielectric end before the absorbing cells.  The 1 mm
-    # substrate's x/y faces are realized 87.5 µm (x) and 74.4 µm (y) inside the
-    # drawn faces, where sheet-edge registration takes precedence; side clearance
-    # exceeds twice the substrate height.
-    #
     # FOIL IS A SHEET, A PLATE IS A VOLUME.  A microstrip ground plane and its
     # trace are etched copper foil — tens of microns on a 1 mm board — so they
     # are declared with ``add_thin_conductor`` on ZERO-THICKNESS Boxes.  A
@@ -303,13 +312,6 @@ def main() -> None:
     # Expect the MSL-family checks to pass.  Only construction and preflight
     # are needed here; a settled microstrip S-matrix costs much more than the
     # small generic-port demonstrations above.
-    #
-    # General preflight reports line_stub_behind_port for both short feeds
-    # and msl_port_geometry for the automatic probe-offset interval solve
-    # skipped on the graded propagation axis. The MSL S-parameter preflight
-    # reports all checks passed. The three-layer absorber, zero-thickness
-    # conductor and substrate realization also remain advisory. This section
-    # only builds the setup; it does not quote a settled microstrip S-matrix.
     microstrip_report = microstrip.preflight()
     microstrip_route = microstrip.preflight_sparameters(calculator="msl")
     print(

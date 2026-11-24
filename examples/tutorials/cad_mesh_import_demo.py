@@ -77,7 +77,7 @@ def build_simulation():
     # source in free space ABOVE the plate (plate top is z≈15.75 mm), not inside the PEC
     sim.add_source((0.03, 0.02, 0.022), component="ez",
                    amplitude_kind="current")
-    sim.add_probe((0.04, 0.02, 0.022), component="ez")   # 10 mm from the source
+    sim.add_probe((0.04, 0.02, 0.022), component="ez")
     return sim
 
 

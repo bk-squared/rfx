@@ -32,9 +32,17 @@ What this tutorial teaches, in order:
 
 3. Near-to-far-field (NTFF) box placement.  Every face should sit at least half
    a wavelength from the radiator where the domain allows.  The face below the
-   ground plane cannot: its realized face sits 5.285 mm below the ground.  Preflight flags it, the
-   run quotes the warning verbatim, and a solver-to-solver cross-check backs the
-   placement.  Preflight output is part of the result; do not suppress it.
+   ground plane cannot, because the domain holds only 30 mm of air below the
+   ground plane; its realized face sits 5.285 mm below the ground, with the
+   ground plane between the radiator and that face. Preflight flags it, the
+   run quotes the warning verbatim, and a cross-check against openEMS at the
+   design-mode bin backs the placement. Preflight reports four advisories:
+   ``ntff_near_field``, ``ntff_small_ground_plane``,
+   ``thin_conductor_thickness_unmodelled`` and ``realization`` (the substrate
+   realizes 58.6 × 58.6 mm rather than its drawn 60 × 60 mm). Preflight output
+   is part of the result; do not suppress it. The former sheet-board lock used
+   a different board; its directivity reading and envelope do not gate this
+   model.
 
 4. A settling witness (end-of-run envelope vs post-source peak, -40 dB bar) is
    printed BEFORE any frequency is quoted.
@@ -146,7 +154,9 @@ its modes are higher-Q, so that ladder is not transferable; what is measured
 on it is an endpoint settled below the -40 dB bar at 125 periods (-45.4 dB on
 an earlier version of this board and -50.9 dB on the pre-contract one).  The
 witness below re-measures the end-of-run envelope every run — trust it over
-this paragraph.
+this paragraph. The research run of this geometry recorded f_res = 2.2147 GHz
+and D = 6.71 dBi at the 40 mm cross mode, not at the design mode this demo
+reports.
 """
 
 from __future__ import annotations
@@ -206,14 +216,6 @@ AIR_BELOW = 30.0e-3
 # air distances.
 AIR_ABOVE = 84.0e-3
 
-# 125 periods settles this fixture below the -40 dB bar.  On the pre-contract board, endpoints
-# -36.5 dB at 90 periods and -52.6 dB at 204 put the bar near 115 on the
-# average slope, but the multi-mode tail beats
-# rather than decaying smoothly, so trust the printed witness over slope
-# extrapolation.  (The research run of this geometry recorded f_res =
-# 2.2147 GHz and D = 6.71 dBi at the 40 mm cross mode, not at the design mode
-# this demo reports.)
-#
 # run(until_decay=1e-3) also stops on this fixture: the interior energy fell to
 # 1e-3 of its after-drive value at step 48 850, 1.9 times the 25 832 steps of
 # NUM_PERIODS, and the probe fell to 1e-3 of its peak (measured 2026-10-27).
@@ -382,13 +384,6 @@ def build_simulation():
     )
     sim.add_probe(position=(probe_x, probe_y, src_z), component="ez")
 
-    # NTFF box.  Side and top faces keep >= lambda/2-class clearance.  The
-    # bottom face cannot: the domain holds only 30 mm of air below the ground
-    # plane, so the realized face sits 5.285 mm below the ground and preflight flags it (the
-    # warning is quoted in the run output).  The ground plane sits between the
-    # radiator and that face, and the placement is cross-checked against openEMS
-    # at the design-mode bin.  The former sheet-board lock used a different
-    # board; its directivity reading and envelope do not gate this model.
     box_lo = (pad, pad, max(pad, z_gnd - 3 * DX))
     box_hi = (dom_x - pad, dom_y - pad, z_total - pad)
     sim.add_ntff_box(corner_lo=box_lo, corner_hi=box_hi, freqs=NTFF_FREQS)
@@ -513,9 +508,6 @@ def main():
 
     sim = build_simulation()
 
-    # Expected: ntff_near_field, ntff_small_ground_plane,
-    # thin_conductor_thickness_unmodelled, and realization (the substrate
-    # realizes 58.6 x 58.6 mm rather than its drawn 60 x 60 mm).
     report = sim.preflight()
     print(f"preflight advisories: {len(list(report))}")
 

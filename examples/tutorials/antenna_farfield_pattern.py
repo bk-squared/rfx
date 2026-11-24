@@ -11,6 +11,12 @@ small simulation, compares the result with the textbook short-dipole value,
 and saves an E-plane cut: a PNG to look at, and the same cut's samples as a
 CSV written by ``rfx.export_radiation_pattern``.
 
+The moved box puts every face 19.5 mm from the source, beyond half a wavelength
+and seven cells inside the CPML-free region, so only the six-layer absorber
+advisory should remain. The full ``preflight()`` also catches a conductor
+crossing a monitor face, which ``run()``'s automatic advisory tier does not
+check.
+
 Run as::
 
     python examples/tutorials/antenna_farfield_pattern.py
@@ -54,7 +60,13 @@ SAMPLES_PATH = Path(__file__).with_name("output") / "short_dipole_e_plane.csv"
 
 
 def build_simulation() -> Simulation:
-    """Build a small open-domain model of a z-directed short dipole."""
+    """Build a small open-domain model of a z-directed short dipole.
+
+    The probe sits broadside to the z-directed dipole, where E_z is largest:
+    12 mm from the source (0.32 wavelengths at 8 GHz), 7.5 mm inside the
+    nearest corrected monitor face and 18 mm clear of the CPML, so it records
+    live field without sitting on the Huygens surface or inside the absorber.
+    """
     sim = Simulation(
         freq_max=FREQ_MAX,
         domain=(DOMAIN, DOMAIN, DOMAIN),
@@ -74,10 +86,6 @@ def build_simulation() -> Simulation:
     # the end-of-record energy relative to the post-source peak.  run() scores
     # that witness from the probe time series, so a pattern run with no probe
     # comes back with ``settling_db = None`` and no truncation guard at all.
-    # Broadside to the z-directed dipole, where E_z is largest: 12 mm from the
-    # source (0.32 wavelengths at 8 GHz), 7.5 mm inside the nearest corrected
-    # monitor face, and 18 mm clear of the CPML, so it records live field
-    # without sitting on the Huygens surface or inside the absorber.
     sim.add_probe((CENTER[0] + PROBE_OFFSET, CENTER[1], CENTER[2]), "ez")
     return sim
 
@@ -142,10 +150,6 @@ def main() -> None:
     close_advisory_observed = bool(close_report.by_code("ntff_near_field"))
     print(f"Close-box advisory observed: {close_advisory_observed}")
 
-    # Move every face 19.5 mm from the source: beyond lambda/2, and seven cells
-    # inside the CPML-free region.  Only the six-layer absorber advisory should
-    # remain.  The full check also catches a conductor crossing a
-    # monitor face, which run()'s automatic advisory tier does not check.
     sim.add_ntff_box(
         corner_lo=tuple(coordinate - VALID_GAP for coordinate in CENTER),
         corner_hi=tuple(coordinate + VALID_GAP for coordinate in CENTER),
