@@ -808,8 +808,8 @@ class Result(NamedTuple):
         gamma = self.s(m, n)
         return _plot_smith(gamma, self.freqs_hz, **kw)
 
-    def plot_time_series(self, *, labels=None, title: str = "Probe Time Series"):
-        """Plot the probe time series.
+    def plot_time_series(self, *, labels=None, title: str = "Probe Time Series", components=None):
+        """Plot the probe time series, each column at its sampling time.
 
         Thin wrapper over :func:`rfx.visualize.plot_time_series`. Requires
         ``dt`` to be present. ``Simulation.run()`` populates it automatically;
@@ -821,6 +821,10 @@ class Result(NamedTuple):
             Per-probe labels.
         title : str
             Plot title.
+        components : list of str, optional
+            One field name per column, in probe registration order. E columns
+            are drawn at (n + 1) * dt, H columns at (n + 0.5) * dt; without it
+            every column is drawn as an E probe.
 
         Returns
         -------
@@ -841,7 +845,7 @@ class Result(NamedTuple):
         ts = np.asarray(self.time_series)
         if ts.ndim == 1:
             ts = ts[:, None]
-        return _plot_time_series(ts, float(self.dt), labels=labels, title=title)
+        return _plot_time_series(ts, float(self.dt), labels=labels, title=title, components=components)
 
 
 from rfx.model.realization_transport import with_forward_geometry

@@ -296,7 +296,7 @@ with tab_results:
         with res_tab_time:
             ts = np.asarray(result.time_series)
             if ts.size > 0 and ts.shape[-1] > 0:
-                display_time_series(ts, result.dt)
+                display_time_series(ts, result.dt, components=[p.component for p in sim._probes])
             else:
                 st.info("No probe time-series data. Add probes to record fields.")
 
