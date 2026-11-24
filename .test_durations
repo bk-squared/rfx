@@ -5326,7 +5326,6 @@
     "tests/contracts/test_finding_subjects.py::test_msl_declaration_identity": 0.6,
     "tests/contracts/test_finding_subjects.py::test_msl_sparameters_report_survives_mesh_change": 1.9,
     "tests/contracts/test_finding_subjects.py::test_multi_owner_scene[cavity_faces-sheet_cavity_electrical_thickness-expected2]": 0.5,
-    "tests/contracts/test_finding_subjects.py::test_multi_owner_scene[coax_junction_short-coaxial_port_junction_short-expected20]": 3.1,
     "tests/contracts/test_finding_subjects.py::test_multi_owner_scene[congruence_off_lattice-congruent_conductor_rasterization_parity-expected0]": 0.39,
     "tests/contracts/test_finding_subjects.py::test_multi_owner_scene[congruence_off_lattice-pec_box_one_cell-expected28]": 0.077,
     "tests/contracts/test_finding_subjects.py::test_multi_owner_scene[floating_port-floating_port-expected7]": 0.033,

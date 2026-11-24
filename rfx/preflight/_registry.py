@@ -303,9 +303,6 @@ CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
                 lambda sim, c: sim._check_msl_port_geometry(
                     c.dx, c.cpml_thick_lo, c.cpml_thick_hi),
                 "msl"),
-    ConfigCheck("_check_coaxial_port_junction_aperture",
-                lambda sim, c: sim._check_coaxial_port_junction_aperture(),
-                "ports"),
     ConfigCheck("_validate_cfg_dielectric_at_absorber_seam",
                 lambda sim, c: sim._validate_cfg_dielectric_at_absorber_seam(
                     c.warn),

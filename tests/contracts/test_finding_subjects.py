@@ -74,9 +74,9 @@ def test_code_completeness():
     found = {code for _, _, code in sites} - OUTSIDE_GENERAL.keys()
     assert found <= CODE_SCOPE.keys(), sorted(found - CODE_SCOPE.keys())
     assert CODE_SCOPE.keys() <= found, sorted(CODE_SCOPE.keys() - found)
-    assert len(CODE_SCOPE) == 104
+    assert len(CODE_SCOPE) == 103
     assert {scope: list(CODE_SCOPE.values()).count(scope) for scope in set(CODE_SCOPE.values())} == {
-        'object': 74, 'place': 2, 'model': 26, 'mixed': 2}
+        'object': 73, 'place': 2, 'model': 26, 'mixed': 2}
 
 
 def check_report(sim, report, *, unavailable_labels=None):
@@ -476,7 +476,6 @@ def test_sheet_size_unjudged_traced_mesh_path(monkeypatch):
     ('waveguide_refplane_in_slab', 'waveguide_port_obstacle_before_reference', [('geometry[0]', 'waveguide_port[0]')]),
     ('guards_msl_sheet_probe', 'body_flush_on_absorber', [('geometry[0]',)]),
     ('guards_msl_sheet_probe', 'conductor_in_thin_absorber', [('geometry[1]',)] * 2),
-    ('coax_junction_short', 'coaxial_port_junction_short', [('geometry[0]', 'coaxial_port[0]')]),
     ('msl_conductor_plane_mismatch', 'msl_port_conductor_planes', [('geometry[0]', 'msl_port[0]')]),
     ('ntff_pec_overlap_full', 'ntff_pec_overlap', [('geometry[0]', 'ntff')]),
     ('ntff_pec_overlap_full', 'port_in_pec', [('geometry[0]', 'port[0]'), ('geometry[0]', 'probe[0]')]),
