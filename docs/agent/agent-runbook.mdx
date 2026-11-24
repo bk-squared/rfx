@@ -98,12 +98,14 @@ those start only when the diff touches code; merge groups always run them:
 |---|---|
 | `rfx/`, `tests/`, `validation/`, `examples/` | yes |
 | `pyproject.toml`, `setup.*`, `MANIFEST.in`, `pytest.ini`, `tox.ini`, `requirements*.txt`, any `conftest.py`, any `*.test_durations` | yes |
-| `pr-tests.yml`, `changed_paths.py`, `classify_changes.sh` — the lane itself | yes |
-| anything else: `docs/`, other workflows, the rest of `scripts/`, `changelog.d/` | no — but `tests/contracts` still does |
+| `pr-tests.yml`, `changed_paths.py`, `classify_changes.sh`, `select_notcode_tests.py` — the lane itself | yes |
+| anything else: `docs/`, other workflows, the rest of `scripts/`, `changelog.d/` | contracts and selected literal readers |
 | merge group | always yes |
 | push to `main` | no workflow run — the PR or batch run already tested the landing tree |
 
-The `changes` job decides, and its log prints the changed paths and the verdict. Ask it
+The `changes` job decides, and its log prints the changed paths, verdict and selected
+not-code readers. `select_notcode_tests.py` finds literal file and directory readers
+outside contracts; readers that assemble paths at run time belong in contracts. Ask it
 yourself before you push:
 
 ```
@@ -122,7 +124,8 @@ classifier calls not-code. `test_the_lint_scope_covers_this_gates_own_script` pi
 `test_support_matrix_parity.py` pins a file under `docs/guides/`. Skipping them on a
 docs or scripts diff would disarm exactly the gates that watch docs and scripts, so a
 later PR could shrink the ruff scope and the test forbidding it would never run. When
-the verdict is false, the twenty shards each run a share of `tests/contracts`, and
+the verdict is false, the twenty shards each run a share of `tests/contracts` and
+the selected readers with the code branch's default marker filter.
 `guards-and-preflight` checks that at least 500 contract tests are collected (so a
 marker cannot deselect them silently); when it is true, the twenty shards collect the
 whole tree and pick them up there. Count them yourself rather than trusting a number here:

@@ -94,4 +94,10 @@ fi
 if [ "$verdict" = "true" ]; then
   emit true "the diff touches code the test lanes can observe"
 fi
+notcode_tests="$("${PYTHON:-python3}" "$here/select_notcode_tests.py" --stdin --null < "$changed_file")" || emit true "the not-code selector failed"
+notcode_tests="$(printf '%s' "$notcode_tests" | tr '\n' ' ')"
+echo "notcode_tests=$notcode_tests"
+if [ -n "$GITHUB_OUTPUT" ]; then
+  echo "notcode_tests=$notcode_tests" >> "$GITHUB_OUTPUT"
+fi
 emit false "the diff touches no file under rfx/, tests/, validation/, examples/ or the build/lane configuration"

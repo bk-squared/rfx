@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "docs" / "check_public_docs_blocks.py"
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "docs" / "check_public_docs_blocks.py"
 
 HEADER = "page\tblock\tdoc_line\tresult\tdetail"
 
