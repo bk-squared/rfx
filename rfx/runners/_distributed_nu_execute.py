@@ -262,7 +262,8 @@ def execute_from_materials(
     sharded_materials = stage_forward_materials(materials, sharded_grid.layout, mesh, uniform=sharded_grid.step_kind == 'wrapped')
     from rfx.measurement.echo_bound import sharded_echo_bound
     echo_bound = sharded_echo_bound(self, grid, sharded_materials, sharded_grid, mesh,
-        freqs=s_param_freqs, debye=debye_spec, lorentz=lorentz_spec)
+        freqs=s_param_freqs if not is_run or compute_s_params is not False else None,
+        debye=debye_spec, lorentz=lorentz_spec)
     del materials
 
     sharded_pec_mask = _conductors.stage_distributed_edges(

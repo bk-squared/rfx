@@ -625,7 +625,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     echo_materials = stage_forward_materials(materials, layout, mesh, uniform=True)
     echo_bound = sharded_echo_bound(sim, grid, echo_materials,
         SimpleNamespace(step_kind='wrapped', layout=layout), mesh,
-        freqs=s_param_freqs, debye=debye_spec, lorentz=lorentz_spec)
+        freqs=s_param_freqs if compute_s_params else None, debye=debye_spec, lorentz=lorentz_spec)
     del echo_materials
     del materials, pec_edges, pec_mask, pec_shapes, debye_spec, lorentz_spec
     records = SlabRecords(sim, grid, nx_per, mesh, jnp.float32, n_steps, snapshot)

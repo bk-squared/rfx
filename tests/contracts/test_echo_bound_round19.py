@@ -211,15 +211,20 @@ def test_sharded_max_reads_the_high_index_shard(path):
 
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
-def test_one_and_multiple_devices_return_float32_jax_bound_leaves(entry):
+@pytest.mark.parametrize('scene', ['dielectric', 'microstrip'])
+def test_one_and_multiple_devices_return_float32_jax_bound_leaves(entry, scene):
     """One declaration carries the same four device leaves eagerly and staged."""
     devices = jax.devices('cpu')[:2]
     assert len(devices) == 2
-    sim = Simulation(freq_max=15e9, domain=(.015, .007, .007), dx=.001,
-                     boundary='pec')
-    sim.add_material('dielectric', eps_r=4.)
-    sim.add(Box((0., 0., 0.), (.015, .007, .007)), material='dielectric')
-    sim.add_probe((.006, .003, .003), 'ez')
+    if scene == 'microstrip':
+        from tests.unit.runners._msl_multidevice_scene import build_scene
+        sim = build_scene('T1', mode='uniform').sim
+    else:
+        sim = Simulation(freq_max=15e9, domain=(.015, .007, .007), dx=.001,
+                         boundary='pec')
+        sim.add_material('dielectric', eps_r=4.)
+        sim.add(Box((0., 0., 0.), (.015, .007, .007)), material='dielectric')
+        sim.add_probe((.006, .003, .003), 'ez')
 
     def bound(count):
         options = dict(n_steps=2, skip_preflight=True)

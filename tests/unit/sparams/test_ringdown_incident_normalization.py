@@ -27,12 +27,32 @@ from tests._closed_box_plane_wave import EZ_EZ, F0, declare, slotted_box
 from rfx import ringdown as rd
 
 BINS = np.linspace(0.3 * F0, 2.4 * F0, 101)
-N = 4730
+WINDOW_START = 0.5
+
+
+def declared_record_length():
+    """Smallest half-record window covering the scale-1.01 fill's delay."""
+    sim, _, _ = slotted_box(channels=EZ_EZ)
+    grid = sim._build_realized_grid()
+    lengths = []
+    for axis in 'xyz':
+        cells = np.asarray(grid.cells(axis), np.float64)[:-1]
+        lo, hi = getattr(grid, f'pad_{axis}_lo'), getattr(grid, f'pad_{axis}_hi')
+        lengths.append(np.sum(cells[lo:len(cells)-hi], dtype=np.float64))
+    fill = sim._materials['fill']
+    index = np.sqrt(1.01 * fill.eps_r * fill.mu_r)
+    required = 2.05 * 2 * np.linalg.norm(lengths) * index / 299792458.0 / float(grid.dt)
+    upper = 2 * int(np.ceil(required))
+    return next(n for n in range(upper - 2, upper + 2)
+                if n - round(WINDOW_START * n) >= required)
+
+
+N = declared_record_length()
 
 
 def spec(probes, normalization="incident"):
     return rd.RingdownSpec(identification_probes=probes, probe_freqs=BINS,
-                           probe_normalization=normalization)
+                           probe_normalization=normalization, window_start=WINDOW_START)
 
 
 def channel_error(a, b):
@@ -149,6 +169,12 @@ SCALES = (1.0, 1.01)
 @lru_cache(maxsize=None)
 def untraced(scale):
     return scaled_forward()(jnp.float32(scale))
+
+
+@pytest.mark.parametrize('scale', SCALES)
+def test_scaled_fill_completes_at_the_declared_record(scale):
+    result = untraced(scale)
+    assert result.report.completed, result.report.failure
 
 
 def test_run_and_forward_return_the_same_normalized_spectra():

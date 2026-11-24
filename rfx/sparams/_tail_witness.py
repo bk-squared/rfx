@@ -88,8 +88,13 @@ def port_record_witness(records, dt, source_end, freqs, *, freq_max, reader=None
     result = channels.witness(scale_groups=groups, _channel_labels=labels, reader=reader)
     from rfx.measurement.record_end import with_echo_bound
     if echo_bound is not None:
-        echo_bound = {key: value.item() if hasattr(value, 'item') else value
-                      for key, value in echo_bound.items()}
+        import jax
+        if any(isinstance(value, jax.core.Tracer) for value in jax.tree.leaves(echo_bound)):
+            echo_bound = dict(tau_max=None, D=None, n_max=None, g=None,
+                              reason='cannot judge: traced echo delay bound')
+        else:
+            echo_bound = {key: value.item() if hasattr(value, 'item') else value
+                          for key, value in echo_bound.items()}
     db, detail = with_echo_bound(result.db, result._asdict(), echo_bound, dt)
     return db, {**detail, 'route': 's_channels',
                        'worst_record': None, 'per_record_db': {},

@@ -731,10 +731,6 @@ def _forward_from_materials(
     conductors, pec_edge_masks_local, sheet_impedance = _conductors.forward_kernel_inputs(
         self, conductors, lane or "fwd_uniform", pec_edge_masks_local, sheet_impedance,
         realization_options=(subpixel_smoothing, _conformal))
-    from rfx.measurement.echo_bound import runner_echo_bound
-    echo_bound = runner_echo_bound(self, grid, materials, freqs=port_s11_freqs,
-        debye=debye_spec, lorentz=lorentz_spec, smoothing=subpixel_smoothing,
-        waveguide_ports=waveguide_ports, design_box=design_box)
     result = prepared_step.advance(stepping_product, _run,
         grid,
         materials,
@@ -777,6 +773,11 @@ def _forward_from_materials(
         design_occupancy=design_occupancy,
         field_dtype=self._resolve_field_dtype(),
     )
+
+    from rfx.measurement.echo_bound import runner_echo_bound
+    echo_bound = runner_echo_bound(self, grid, materials, freqs=port_s11_freqs,
+        debye=debye_spec, lorentz=lorentz_spec, smoothing=subpixel_smoothing,
+        waveguide_ports=waveguide_ports, design_box=design_box)
 
     # Return the physical point-probe field, as run_uniform does.
     from rfx.measurement import reconstruct_oblique_physical
