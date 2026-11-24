@@ -50,7 +50,7 @@ ALLOWED_CONTEXT_SITES = {
 }
 GUARDED_SITES = {VACUUM_POLE_SITE: ('dt', 'float')}
 
-TRACED_RECORD_NOT_JUDGED = ('settling_witness.*_per_bin', 'settling_witness.pole_contributions.*')
+TRACED_RECORD_NOT_JUDGED = ('settling_witness.*_per_bin', 'settling_witness.pole_contributions.*', 'settling_witness.*_per_channel.*')
 TRACED_RECORD_NOT_JUDGED_REASON = ('a traced record is not judged, and the run says so in an '
                                    'AccuracyWarning')
 X64_OFF_RETURNS_32_BIT = {
