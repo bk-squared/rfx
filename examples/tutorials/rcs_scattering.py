@@ -17,6 +17,11 @@ The setup prints the drawn diameter and the solved x/y/z spans of the
 centre-sampled PEC sphere from its grid record. Quote those solved spans
 with the cell size when describing the sphere used by the setup check.
 
+Record length: the 800-step record lies past step 524, which the run's
+record-end guard prints for the NTFF box. That step is the drive's end plus a
+light-speed transit to the box, a geometric bound; it does not show that the
+sphere's response has died away.
+
 One honest limitation: deep pattern nulls very close to the collection box
 carry larger errors.  This is a known limitation of near-field-to-far-field
 integration; do not tune the setup trying to remove it.
@@ -44,8 +49,6 @@ BANDWIDTH = 0.5
 DOMAIN = 0.100
 DX = (C0 / F0) / 40.0
 CPML_LAYERS = 8
-# The field leaves the NTFF box at step 524 (the run's record-end guard,
-# printed below); 800 steps cover it with room for the sphere's ring-down.
 N_STEPS = 800
 
 # The grid uses DX on x, y and z: draw the sphere's axial extrema on
@@ -213,11 +216,10 @@ def report_record_coverage(label, witness):
     rows = (witness or {}).get("coverage", ())
     print(f"  {label}: settling witness {(witness or {}).get('status')}")
     for row in rows:
-        print(f"    {row['name']}: {row['verdict']} (field leaves at step "
-              f"{row['end_step']}, record {row['n_record']} steps)")
+        print(f"    {row['name']}: {row['verdict']} (drive past the box by step {row['end_step']}, record {row['n_record']} steps)")
     uncovered = [row["name"] for row in rows if row["verdict"] != "covered"]
     if not rows or uncovered:
-        raise RuntimeError(f"{label}: the record ends before the field leaves {uncovered or 'the monitors'}")
+        raise RuntimeError(f"{label}: the record ends before the drive has passed {uncovered or 'the monitors'}")
 
 
 if __name__ == "__main__":

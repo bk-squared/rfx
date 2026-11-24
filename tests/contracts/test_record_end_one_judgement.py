@@ -323,8 +323,8 @@ def test_s2b_r3_accumulator_coverage_and_forward(accumulators, n):
     if n == 196:
         assert result.settling_witness["status"] == "undetermined"
         reason = rows[0]["verdict"]
-        assert reason == (f"cannot judge: the record ends at step {n} before the field leaves "
-                          f"{rows[0]['name']} (step {rows[0]['end_step']})")
+        assert reason == (f"cannot judge: the record ends at step {n}, before the drive has passed "
+                          f"{rows[0]['name']} (step {rows[0]['end_step']}: the drive's end plus a light-speed transit)")
         assert result.settling_witness["reason"] == reason
         from rfx.errors import AccuracyWarning
         assert len(coverage_warnings) == 1 and coverage_warnings[0].category is AccuracyWarning

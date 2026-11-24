@@ -214,7 +214,7 @@ def report_record_coverage(label, witness):
               f"{row['end_step']}, record {row['n_record']} steps)")
     uncovered = [row["name"] for row in rows if row["verdict"] != "covered"]
     if not rows or uncovered:
-        raise RuntimeError(f"{label}: the record ends before the field leaves {uncovered or 'the monitors'}")
+        raise RuntimeError(f"{label}: the record ends before the drive has passed {uncovered or 'the monitors'}")
     if status != "pass":
         raise RuntimeError(f"{label}: the ring-down witness reads {status} ({reason}); lengthen N_STEPS")
 
