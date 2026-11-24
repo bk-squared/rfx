@@ -53,9 +53,13 @@ print(plane.accumulator.shape)            # (n_freqs, nx, ny), complex
 Columns follow registration order across all probe calls, so a vector probe
 added after two point probes occupies columns 2–7.
 
-A position snaps to the nearest grid node, and the field component sits half a
-cell from that node on the Yee grid, so a probe can read a field up to about a
-cell from the coordinate you gave (see [Probes and fields](/rfx/measure/probes-and-fields/)). If you omit `freqs` on a DFT plane,
+A position snaps to the nearest grid node, up to half a cell away on each
+axis, and the field component sits a further half cell from that node on the
+Yee grid (along its own axis for E, along the two other axes for H). A probe
+can therefore read a field up to one cell from the coordinate you gave along
+the axes on which the component is offset, and up to half a cell along the
+others (see
+[Probes and fields](/rfx/measure/probes-and-fields/)). If you omit `freqs` on a DFT plane,
 rfx uses `n_freqs` points from `freq_max / 10` to `freq_max`.
 
 A DFT plane accumulates its spectrum during the run, which is much cheaper
@@ -95,9 +99,10 @@ def slab_run(with_slab):
                    boundary="cpml", cpml_layers=10, mode="2d_tmz")
     if with_slab:
         s.add_material("slab", eps_r=4.0)
-        # A plane wave makes the transverse axes periodic: span them fully.
-        # Preflight notes the slab reaches the y absorber region; y is
-        # periodic here, so there is no absorber there.
+        # add_tfsf_source solves the transverse faces (y here) periodic,
+        # even with boundary="cpml", so the slab must span y fully. Preflight
+        # notes that the slab reaches the y absorber region; on y those cells
+        # are solved periodic too and absorb nothing.
         s.add(Box((slab_lo, -1, -1), (slab_hi, 1, 1)), material="slab")
     s.add_tfsf_source(f0=9e9, bandwidth=0.9, polarization="ez", direction="+x")
     s.add_flux_monitor(axis="x", coordinate=0.06, freqs=freqs_rt, name="refl")
@@ -162,9 +167,16 @@ for m in modes[:3]:
 print(f"analytic TM110: {f_tm110 / 1e9:.3f} GHz")
 ```
 
+`waveform=port_pulse` tells the fit when the drive ends: the fit starts at
+twice the pulse's peak time, 0.48 ns for this port's 5 GHz pulse. Without it,
+rfx assumes a pulse centred in `freq_range` (8 GHz here, bandwidth 0.8) and
+would start the fit at 0.30 ns, while the port is still driving the cavity.
+
 The strongest mode need not sit at the empty-cavity TM110 value: the wire
 port is a metal post with a resistor inside the cavity, so this is no longer
-the empty cavity.
+the empty cavity. The port carries no `radius=`, so preflight warns that its S
+changes under refinement. That warning is expected here: the example reads
+resonances and, below, shows ring-down completion, not a converged S11.
 
 ## S-parameters: pick the calculator for your port
 
@@ -212,21 +224,24 @@ freqs = np.asarray(lp_run.freqs)         # Hz
 s21_db = 20 * np.log10(np.abs(S[1, 0]) + 1e-30)
 ```
 
-rfx runs one simulation per driven port to fill the matrix. Use
-`s_param_freqs=` to choose the frequencies.
+How `run()` fills the matrix depends on the ports. When the model has
+exactly one port, a driven lumped port or a wire port, `run()` reads S11 from
+the record of the run itself (for a lumped port, only when `s_param_n_steps`
+does not ask for another length). Otherwise it runs one further simulation
+per port, driving each in turn, passive ports (`excite=False`) included, so
+every column is filled. Use `s_param_freqs=` to choose the frequencies.
 
-`forward(port_s11_freqs=...)` and the single-wire `run()` path form S from one
-record, so they fill only the column of the port driven in it; the other
-columns are NaN, and a record with two or more driven ports is refused (each
-entry would be a sum over the drives). Drive one port per call, with the
-others passive (`excite=False`). S11 is `s_params[0, 0]`, S21 `s_params[1, 0]`.
+`forward(port_s11_freqs=...)` reads only the one record it runs, so it fills
+only the column of the port driven in it; the other columns are NaN, and a
+record with two or more driven ports is refused (each entry would be a sum
+over the drives). Drive one port per call, with the others passive
+(`excite=False`). S11 is `s_params[0, 0]`, S21 `s_params[1, 0]`.
 
-The uniform and graded `run()` drive scans drive each port in turn, so a
-passive port still gets its S column.
-`forward(port_s11_freqs=...)` and the single-wire path read one record and,
-with every port passive, refuse an explicit S request or warn and return no S
-for a default request; the per-port V, I and V_ref spectra stay in
-`lumped_port_sparams` / `wire_port_sparams` through `run(compute_s_params=False)`.
+When every port is passive, a request that reads one record
+(`forward(port_s11_freqs=...)`, or `run()` with a single wire port) has no S
+to give: an explicit request is refused, and a default one warns and returns
+no S. The per-port V, I and V_ref spectra stay available in
+`lumped_port_sparams` / `wire_port_sparams` from `run(compute_s_params=False)`.
 
 For one-port S11, start from about **60 cells per wavelength** at the highest
 frequency you care about. No current test measures the accuracy at that
@@ -265,11 +280,12 @@ What to know before you rely on it:
   you to lengthen the record.
 - `report.ok` is True when the completion was produced and every judged check
   passed. The deciding check (`WE` in the report) completes the same record
-  again using poles fitted on a window that starts twice as early, and
-  compares the two answers. When a source is still on in that earlier window,
+  again using poles fitted on the longer window `[window_start / 2 * T, T]`
+  (from a quarter of the record with the default `window_start=0.5`), and
+  compares the two answers. When a source is still on in that longer window,
   `WE` cannot be formed; the check then compares the fit window with a shorter
-  one, `[window_start * T, split * T]` (`W2`), which can read the error low by
-  several times.
+  one, `[window_start * T, split * T]` (`W2`, default `split=0.9`), which can
+  read the error low by several times.
 - None of these checks is an error bound. They tell you whether the
   completion is self-consistent, not how close it is to the true answer.
 - If completion cannot be produced, `cav_rd.ringdown.s_params` is `None` and
@@ -333,9 +349,11 @@ This is the microstrip S-matrix on a uniform mesh, the path the
 documents (**limited**: quasi-TEM, ports along ±x or ±y, a zero-thickness strip).
 
 On a uniform mesh a sheet's width can only take the values its node spacing
-allows, so choose a design width that the mesh holds, as here, or move the
-mesh lines to the design (see
-[Mesh lines at sheet edges](/rfx/model/domain-mesh/#mesh-lines-at-sheet-edges)).
+allows. When the width is yours to choose, as for this test line, pick one the
+mesh holds. When the design fixes it (a patch, a board you must match), keep
+the drawn size and move the mesh lines to it (see
+[Mesh lines at sheet edges](/rfx/model/domain-mesh/#mesh-lines-at-sheet-edges)):
+rounding such a dimension to the grid changes the structure.
 Preflight compares each sheet's drawn size with the size it predicts and stops
 the run when they differ by more than 1 %: a trace drawn 1.5 mm wide on this
 mesh is reported as "solved as 1.675mm (+11.67%)", where "solved" is
@@ -462,7 +480,7 @@ returns the per-bin amounts in `sigma_max_excess`. Some calculators check more:
 
 | Calculator | Further automatic checks |
 |---|---|
-| `run(compute_s_params=True)` on one device (uniform or graded) and the uniform `forward(port_s11_freqs=...)`, with lumped or wire ports | non-finite entries, any single `\|S\| > 1.1` |
+| `run(compute_s_params=True)` on one device (uniform or graded) and the uniform `forward(port_s11_freqs=...)`, with lumped or wire ports | non-finite entries, and any single entry with magnitude above 1.1 |
 | `compute_msl_s_matrix`, `compute_waveguide_s_matrix`, `compute_mixed_s_matrix`, `compute_coax_msl_transition` | single entries and total column power |
 | `compute_coaxial_two_port` | the shared column-power check |
 | `compute_coaxial_line_reflection` | read its `status`, `fit_residual`, `recurrence_residual`, `settling_db` and `settling_witness` |
@@ -470,9 +488,28 @@ returns the per-bin amounts in `sigma_max_excess`. Some calculators check more:
 A warning never changes the returned numbers. No warning means only that no
 check fired; it does not mean the S-matrix is correct.
 
-`compute_floquet_s_params` reads the accumulators that `update_floquet_dft`
-builds in your own time loop: call `update_floquet_dft` once per step, after the
-E update, on a plane at index 1 or above. The split takes the wave travelling
+Floquet S-parameters are experimental and have no calculator that runs the
+simulation: `run()` drives a Floquet port but does not fill the accumulators
+that `compute_floquet_s_params` reads. You write the time loop yourself;
+`tests/contracts/test_floquet_centred_split.py` in the repository contains a
+complete one, for a cell periodic across x and y with CPML along z. Its steps:
+
+1. Build the `Grid` with `periodic_axes` across the cell and `cpml_axes`
+   along its normal, and the starting arrays with `init_materials(grid.shape)`,
+   `init_cpml(grid)` and `init_state(grid.shape)`.
+2. Create one accumulator per measurement plane with
+   `init_floquet_dft(len(freqs), plane_shape)`, where `plane_shape` is the
+   grid's shape across the normal.
+3. In each step `n`, call `update_h`, `apply_cpml_h`, `update_e` and
+   `apply_cpml_e` (from `rfx.stepping.yee` and `rfx.boundaries.cpml`), add
+   the source to its E component, and then call
+   `update_floquet_dft(acc, state, k, axis, freqs, dt, n)` for each plane at
+   index `k` (1 or above) along the normal `axis`.
+4. Pass the accumulators to
+   `compute_floquet_s_params(acc_inc, acc_ref, acc_trans, dx, Lx, Ly, freqs)`,
+   where `Lx` and `Ly` are the cell's periods; it returns a dict with `"S11"`.
+
+The split takes the wave travelling
 toward +normal as the incident one, so put the structure on the +normal side of
 the source and the reflection plane between them. A plane on the far side of the
 source reads the source's own backward wave as the reflection.
@@ -505,8 +542,9 @@ The PEC cavity above is far from settled at 1500 steps, which is why ring-down
 completion is useful there. To fix a short record, use a longer `n_steps`,
 `until_decay=`, or `num_periods=` on the calculators. A structure with quality
 factor Q decays over roughly Q / (π f) seconds.
+The guide
 [Recorded-probe settling](https://github.com/bk-squared/rfx/blob/main/docs/guides/probe_settling.md)
-defines the check exactly.
+gives the exact definition of `settling_db` and `settling_witness`.
 
 ## De-embedding
 
@@ -550,32 +588,39 @@ network = read_touchstone_full(os.path.join(out, "two_port_v2.s2p"))
 ```
 
 For plotting S-parameters, fields and time series, see
-[Visualization and Analysis](/rfx/measure/plots-and-export/).
+[Visualization & Result Analysis](/rfx/measure/plots-and-export/).
 
 ## Limits
 
 - **Probe or flux spectrum looks noisy or has ripples** → the record ended
-  before the fields decayed. Run longer. `settling_db` judges a run that reads
-  frequencies through a port, NTFF box or DFT plane; with probes or flux
-  monitors alone it reads `absent`, so check the time signal's decay yourself.
+  before the fields decayed. Run longer. `settling_db` judges the time records of ports and
+  point probes at the frequencies the run reads (port S, flux monitors, an
+  NTFF box, DFT planes). It reads `absent` when either is missing: spectra
+  with no probe or port record, or probes with no frequency read. Add a point
+  probe away from the source, or check the time signal's decay yourself.
   For paired runs (a reference and an object), keep one fixed `n_steps`.
 - **Reflection from two flux runs looks wrong** → subtract the fields with
   `subtract_flux_monitors`, not the flux values, and keep the two runs
   identical apart from the object.
 - **Lumped or wire S11 moves when you refine the mesh** → the mesh is too
   coarse; start from about 60 cells per wavelength at the top frequency and
-  refine until S11 stops moving.
+  refine until S11 stops moving. A wire port also needs `radius=`: without it,
+  S11 keeps moving under refinement.
 - **`reliable` is False at some bins** → don't plot, fit or optimize those
   bins as data; refine the mesh, lengthen the record, or check whether a real
   notch is there.
-- **Passivity warning (largest singular value, |S| or column power above 1)** →
+- **Passivity warning** (the largest singular value of S above 1.01, or a
+  calculator's own limit on |S| or column power, listed above) →
   usually a record that ended too early or a mesh too coarse. The returned S
-  is not clipped.
+  is not clipped, except by `compute_mixed_s_matrix`, which clips by default
+  (`enforce_passivity=True`).
 - **Microstrip line runs into the absorber** → CPML reflects a guided line
   noticeably; end the line at its port instead.
 - **Coax refuses the model with a lateral-absorber message** → the line's
   outer wall is within one cell of a side absorber; widen the domain.
-- **`find_resonances` returns nothing, or a mode you did not expect** → lengthen the
-  record, narrow `freq_range`, and identify modes by field pattern.
+- **`find_resonances` returns nothing** → lengthen the record, or widen
+  `freq_range` if the mode may lie outside it.
+- **`find_resonances` returns a mode you did not expect** → narrow
+  `freq_range` around the mode you want, and identify modes by field pattern.
 - **Ring-down completion refuses the run** → the source is still on in the
   fit window; lengthen the record or raise `window_start`.

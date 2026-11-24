@@ -132,7 +132,8 @@ step. These are refused:
 | Input | Path | Instead |
 |---|---|---|
 | a periodic axis, a Floquet port | all multi-device | one device |
-| a microstrip or coaxial port, a lumped RLC element | all multi-device | one device |
+| a coaxial port | all multi-device | one device |
+| a microstrip port | `forward(distributed=True)` | `run(devices=...)`, or one device |
 | a passive port (`excite=False`) | uniform mesh | a graded mesh, or one device |
 | a wire port with `reference_plane_cells` | all multi-device | one device |
 | a PMC face with a wire port or lumped-port S, or, on a graded mesh, with any port or frequency-domain record | all multi-device | one device |
@@ -163,5 +164,5 @@ A multi-device run is the one-device model to within the rounding stated under
 ## See also
 
 - [run() and forward()](/rfx/run/run-and-forward/): the two calls.
-- [Memory and speed](/rfx/run/memory-and-speed/): when one device is enough.
+- [Reduce Memory Use](/rfx/run/memory-and-speed/): when one device is enough.
 - [Support](/rfx/support/): what each solver path carries.
