@@ -24,6 +24,16 @@ will flag the under-resolution and the lossless slab — both are expected here:
 this is a fast method demo, we measure R/T (not Q), and a lossless slab is what
 matches the lossless analytic Fresnel reference.
 
+Record-end guard: a flux spectrum is a DFT over the record, so the record must
+hold the whole response. Each run carries a six-component probe
+(``add_vector_probe``) on each flux plane; from those records rfx forms the
+ring-down witness, the share of each frequency bin that a tail beyond the
+record would still add (bar 1e-2, i.e. -40 dB). ``report_record_coverage``
+stops the script unless that witness passes and both monitors are covered. At
+the fixed 1200-step record the witness reads about -139 dB for the reference
+run and -92 dB for the slab run; at 2400 or 4800 steps the printed R/T table
+does not change.
+
 Public docs:
   - docs/agent/recipe-rt-measurement.mdx   (canonical two-run pattern)
   - docs/public/measure/s-parameters.mdx   (flux monitors as non-port observables)
