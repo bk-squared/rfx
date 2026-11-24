@@ -41,10 +41,8 @@ def test_run_and_campaign_flags_match_initialized_stepper(case):
     expected = tfsf.boundary_flags(cfg, grid)[0]
     assert monitor_periodic_flags(sim, grid) == expected
     assert sim._campaign_ctx().periodic == expected
-    if case == "closed_box" and not hasattr(tfsf, "run_periodic_flags"):
-        assert sim._periodic_flags() == expected
-    else:
-        assert tfsf.run_periodic_flags(sim) == expected
+    assert sim._campaign_ctx().realized().periodic == expected
+    assert tfsf.run_periodic_flags(sim) == expected
 
 
 def test_uniform_wrapped_faces_have_no_geometry_in_absorber():
@@ -76,11 +74,7 @@ def test_uniform_lorentz_slab_has_no_pole_at_wrapped_absorber_face():
 
 
 def test_graded_tfsf_keeps_declared_y_absorbers():
-    """Pin 4: green on old code; red if uniform wrapping leaks to graded meshes.
-
-    The predecessor flag reader permits the same pin to measure the old code
-    before run_periodic_flags exists.
-    """
+    """Pin 4: green on old code; red if uniform wrapping leaks to graded meshes."""
     dz = np.array([0.4e-3] * 4 + [0.5e-3] * 5)
     sim = Simulation(freq_max=8e9, domain=(0.08, 0.006, float(np.sum(dz))),
                      boundary="cpml", cpml_layers=8, dx=1e-3, dz_profile=dz)
@@ -94,12 +88,15 @@ def test_graded_tfsf_keeps_declared_y_absorbers():
     faces = {face.name: face for face in simulation_face_depths(sim)}
     for side in ("lo", "hi"):
         assert (faces[f"y_{side}"].kind, faces[f"y_{side}"].realized) == (Kind.ABSORBER, 8)
-    flags = getattr(tfsf, "run_periodic_flags", lambda model: model._periodic_flags())
-    assert flags(sim) == sim._periodic_flags()
+    assert tfsf.run_periodic_flags(sim) == sim._periodic_flags()
 
 
 def test_wrapped_pec_face_one_cell_from_interior_wall_has_no_wall_gap():
-    """Pin 5: green on old code; red for zero depth with unwrapped ctx.periodic."""
+    """Pin 5: green on old code; red for zero depth with unwrapped ctx.periodic.
+
+    The run itself refuses this model (a PEC box finite along the wrapped
+    axes); the pin holds the reader: a zero depth on a wrapped face is no wall.
+    """
     from rfx.boundaries.pec import realized_wall_planes
 
     sim = Simulation(freq_max=16e9, domain=(0.08, 0.012, 0.012), dx=1e-3,
