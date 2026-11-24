@@ -2,4 +2,6 @@
 
 Plots drew row n at n·dt, but E probes are sampled at (n + 1)·dt and H probes at (n + ½)·dt.
 E curves were drawn one step early and H curves half a step early.
-`components=` names each column's field; without it every column is drawn as an E probe.
+`components=` names each column's field; without it every column is drawn as an E probe, so an H probe
+is drawn half a step late. `rfx plot --quantity time_series` reads a file that holds no probe components
+and draws every column as an E probe.

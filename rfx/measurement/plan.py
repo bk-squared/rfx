@@ -232,6 +232,10 @@ def record_sample_times(dt, n_rows, components=None, *, n_cols=1):
     Row n is sampled at (n + 1) * dt for E and (n + 0.5) * dt for H,
     using TimeBase offsets; omitted components treat every column as E.
     """
+    if not (np.isfinite(dt) and dt > 0):
+        raise ValueError(f"dt must be a positive finite time step, got {dt!r}")
+    if n_rows < 0:
+        raise ValueError(f"n_rows must be non-negative, got {n_rows!r}")
     if components is None:
         components = ('ez',) * n_cols
     else:

@@ -343,6 +343,7 @@ def display_time_series(time_series: np.ndarray, dt: float, components=None) -> 
             for i in columns:
                 data[f"Probe {i + 1}"] = ts[:, i]
             df = pd.DataFrame(data).set_index("Time (ns)")
+            st.caption(f"{kind.upper()} probes")
             st.line_chart(df)
 
 
