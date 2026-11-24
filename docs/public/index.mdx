@@ -47,29 +47,27 @@ S-matrix shapes it from a uniform fill into a bandpass filter that meets a mask 
 ## A printable lens, designed by gradient
 
 <figure data-rfx="media">
-  <video controls playsInline preload="metadata" poster="https://remilab.cnu.ac.kr/share/f1abd0bff18d/grin-lens/grin_lens_film_poster.png" aria-label="A narrated film of the lens design: the lens cells changing over the iterations with their gradient colour and the radiation lobe">
-    <source src="https://remilab.cnu.ac.kr/share/f1abd0bff18d/grin-lens/grin_lens_film.mp4" type="video/mp4" />
-    <a href="https://remilab.cnu.ac.kr/share/f1abd0bff18d/grin-lens/grin_lens_film.mp4">Download the film (MP4, 1920×1080, 73 s)</a>.
-  </video>
-  <figcaption>73 seconds, with narration.</figcaption>
+  <img src="/rfx/showcase/assets/grin-lens/final.png" loading="lazy" alt="Ten small squares, one per 3 mm layer of the designed lens, numbered from the layer nearest the feed. Each shows a dark central region of high permittivity and light corners; most show a light ring around the centre." />
+  <figcaption>The designed lens, layer by layer from the feed side; colour is εr from 1.0 to 2.7.</figcaption>
 </figure>
 
 <div data-rfx="tiles">
-  <div><strong>19.0 dBi</strong> <span>boresight directivity with the designed lens</span></div>
-  <div><strong>7.5 dBi</strong> <span>the same feed without it</span></div>
+  <div><strong>19.0 dBi</strong> <span>boresight directivity at 10 GHz with the designed lens</span></div>
+  <div><strong>7.4 dBi</strong> <span>the same feed without it</span></div>
 </div>
 
-A dipole above a 30 mm ground plate radiates a broad beam. In front of it sits a
+A dipole 9 mm above a 30 mm ground plate radiates a broad beam. In front of it sits a
 90 × 90 × 30 mm block whose permittivity may take any value PLA printed at variable
 infill can give, 1 ≤ εr ≤ 2.7, in 3 mm pixels: 2,250 design variables after the
 feed's two mirror symmetries. At each step the optimiser takes the gradient of the
 boresight directivity, averaged over 9.5, 10 and 10.5 GHz, with respect to every
 pixel, through the FDTD solve and the far-field transform. Starting from a uniform block, the
-descent grows a graded-index lens, εr 2.6 on the axis falling to about 1 at the
-corners, and the boresight directivity at 10 GHz rises from 7.5 dBi for the feed
-alone to 19.0 dBi. Solved again on 1.5, 1.0 and 0.75 mm meshes, the result moves by
-0.03–0.05 dB over the last refinement; the gradient was checked against central
-differences and against a 1.5× longer simulation. The dipole is driven as a soft
+descent grows a graded-index lens, εr 2.56–2.66 on the axis falling to 1.03–1.09
+at the corners, and the boresight directivity at 10 GHz rises from 7.4 dBi for the
+feed alone to 19.0 dBi. Solved again on 1.0, 0.75 and 0.5 mm meshes, graded so that
+the plate's edge cells are cubes, the result moves by at most 0.034 dB over the
+last refinement at every frequency from 9 to 11 GHz; the gradient was checked
+against central differences and against a 1.5× longer simulation. The dipole is driven as a soft
 source, a current impressed on the grid with no feed line, and the lens is lossless,
 so these are directivities, not realized gains.
 [Read the case →](/rfx/showcase/grin-lens/)

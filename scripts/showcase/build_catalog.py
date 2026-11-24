@@ -12,17 +12,19 @@ from.  Nothing in it is typed by hand:
 * titles and case questions are the pages' own front matter; source questions
   come from result records (falling back to their example name);
 * each printed number is computed here from the share host's files (the
-  ``result.json`` records, and for the two forward comparisons the curves,
+  ``result.json`` records, ``lens-page-values.json`` for the lens, and for the
+  two forward comparisons the curves,
   through the same estimators the cross-validation tests judge with), then
   formatted.  A value that no longer rounds to what the page prints makes the
-  page and the catalog disagree, which ``tests/unit/docs/test_showcase_catalog.py``
-  reports.
+  page and the catalog disagree; no test compares the two, so compare each
+  ``printed`` string with its page after a regeneration.
 
 Every file this script reads from the share host is checked against the
 manifest's SHA-256 before it is used.
 
     python scripts/showcase/build_catalog.py                  # fetch from the share host
-    python scripts/showcase/build_catalog.py --share-dir DIR  # a verified local copy
+    python scripts/showcase/build_catalog.py --share-dir DIR  # a verified local October copy
+    python scripts/showcase/build_catalog.py --lens-share-dir DIR  # a verified local lens copy
     python scripts/showcase/build_catalog.py --check          # compare, do not write
 
 The forward comparisons import the cross-validation test modules (and so rfx);
@@ -45,7 +47,14 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 CATALOG = REPO / "docs/public/showcase/showcase.json"
-SHARE = "https://remilab.cnu.ac.kr/share/f1abd0bff18d/"
+OCTOBER_SHARE = "https://remilab.cnu.ac.kr/share/f1abd0bff18d/"
+LENS_SHARE = "https://remilab.cnu.ac.kr/share/cd6e343367e3/"
+FOLDER_SHARES = {
+    "patch-calibration": OCTOBER_SHARE,
+    "waveguide-filter": OCTOBER_SHARE,
+    "grin-lens": LENS_SHARE,
+    "grin-lens-fan": LENS_SHARE,
+}
 SCHEMA = "rfx-showcase-catalog/1"
 SUPERSCRIPT = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
 
@@ -62,7 +71,8 @@ CASES = {
 class Share:
     """The share host's files, each checked against the manifest before use."""
 
-    def __init__(self, local: Path | None):
+    def __init__(self, base_url: str, local: Path | None):
+        self.base_url = base_url
         self.local = local
         raw = self._bytes("manifest.json")
         self.manifest_sha256 = hashlib.sha256(raw).hexdigest()
@@ -72,7 +82,7 @@ class Share:
     def _bytes(self, name: str) -> bytes:
         if self.local is not None:
             return (self.local / name).read_bytes()
-        with urllib.request.urlopen(SHARE + name, timeout=60) as response:
+        with urllib.request.urlopen(self.base_url + name, timeout=60) as response:
             return response.read()
 
     def read(self, folder: str, name: str) -> bytes:
@@ -81,7 +91,7 @@ class Share:
             record = self.manifest["cases"][folder]["files"][name]
             data = self._bytes(key)
             if len(data) != record["bytes"] or hashlib.sha256(data).hexdigest() != record["sha256"]:
-                raise SystemExit(f"{SHARE}{key}: size or SHA-256 differs from manifest.json")
+                raise SystemExit(f"{self.base_url}{key}: size or SHA-256 differs from manifest.json")
             self._cache[key] = data
         return self._cache[key]
 
@@ -135,12 +145,12 @@ def _printed(value, fmt) -> str:
 
 
 # ------------------------------------------------------------------ numbers
-def headlines(share: Share) -> dict[str, list[dict]]:
+def headlines(share: Share, lens_share: Share) -> dict[str, list[dict]]:
     """Calibration, lens and filter numbers printed on the public pages."""
-    def h(quantity, value, unit, fmt, routes, source, range_ok=False):
+    def h(quantity, value, unit, fmt, routes, source, range_ok=False, separator="–"):
         if range_ok:
             low, high = map(fmt, value)
-            printed = low if low == high else f"{low}–{high}"
+            printed = low if low == high else f"{low}{separator}{high}"
         else:
             printed = _printed(value, fmt)
         return {"quantity": quantity, "printed": printed, "value": value,
@@ -167,19 +177,28 @@ def headlines(share: Share) -> dict[str, list[dict]]:
           src + "band_hz / 1e9", range_ok=True),
     ]
 
-    lens = share.json("grin-lens", "mesh_trend.json")
-    designed = lens["reported"]["boresight_dbi"][-1]
-    feed = lens["no_lens"]["boresight_dbi"][-1]
+    lens = lens_share.json("grin-lens", "lens-page-values.json")
+    designed = lens["boresight"]["reported"]["0.0005"]["design_bins_dbi"]
+    feed = lens["boresight"]["no_lens"]["0.0005"]["design_bins_dbi"]
+    if len(designed) != 3 or len(feed) != 3:
+        raise SystemExit("grin-lens/lens-page-values.json: expected three design bins at 0.5 mm")
+    differences = [d - f for d, f in zip(designed, feed)]
+    ends = [lens["lens_minus_feed_db"][key] for key in ("min_9p5_10p5", "max_9p5_10p5")]
+    if not all(math.isclose(stored, computed, rel_tol=0, abs_tol=1e-9)
+               for stored, computed in zip(ends, (min(differences), max(differences)))):
+        raise SystemExit("grin-lens/lens-page-values.json: lens_minus_feed_db ends differ "
+                         "from min/max of reported minus no_lens design bins at 0.5 mm")
     route = "/rfx/showcase/grin-lens/"
-    src = "grin-lens/mesh_trend.json "
+    src = "grin-lens/lens-page-values.json "
     out["grin-lens"] = [
-        h("reported boresight directivity at 10 GHz, 0.75 mm mesh", designed[1], "dBi",
-          fixed(1), (route, INDEX, HOME), src + "reported.boresight_dbi[-1][1]"),
-        h("feed boresight directivity at 10 GHz, 0.75 mm mesh", feed[1], "dBi",
-          fixed(1), (route, HOME), src + "no_lens.boresight_dbi[-1][1]"),
-        h("minimum designed minus feed directivity, floored", math.floor(min(
-            d - f for d, f in zip(designed, feed))), "dB", lambda v: f"+{v:d}", (route,),
-          src + "floor(min(reported.boresight_dbi[-1] - no_lens.boresight_dbi[-1]))"),
+        h("boresight directivity at 10 GHz with the designed lens, 0.5 mm mesh", designed[1], "dBi",
+          fixed(1), (route, INDEX, HOME), src + 'boresight.reported["0.0005"].design_bins_dbi[1]'),
+        h("feed boresight directivity at 10 GHz, 0.5 mm mesh", feed[1], "dBi",
+          fixed(1), (route, HOME), src + 'boresight.no_lens["0.0005"].design_bins_dbi[1]'),
+        h("designed minus feed directivity at 9.5, 10 and 10.5 GHz, 0.5 mm mesh", ends,
+          "dB", lambda v: f"{v:+.1f}", (route,),
+          src + "[lens_minus_feed_db.min_9p5_10p5, lens_minus_feed_db.max_9p5_10p5]",
+          range_ok=True, separator=" to "),
     ]
     trend = share.json("waveguide-filter", "mesh_trend.json")
     route = "/rfx/showcase/waveguide-filter/"
@@ -238,15 +257,16 @@ def front_matter(path: Path) -> dict:
     return yaml.safe_load(text[4:].split("\n---", 1)[0])
 
 
-def build(share: Share) -> dict:
-    numbers = headlines(share)
+def build(shares: dict[str, Share]) -> dict:
+    numbers = headlines(shares[OCTOBER_SHARE], shares[LENS_SHARE])
     cases = []
     for case, (page, folders) in CASES.items():
         meta = front_matter(REPO / page)
         sources = []
         for folder in folders:
+            share = shares[FOLDER_SHARES[folder]]
             entry = share.manifest["cases"][folder]
-            base = f"{SHARE}{folder}/"
+            base = f"{share.base_url}{folder}/"
             record = share.json(folder, "result.json")
             if "question" in record:
                 question = record["question"]
@@ -256,12 +276,10 @@ def build(share: Share) -> dict:
                 raise SystemExit(f"{folder}/result.json: expected question or example")
             sources.append({
                 "folder": folder, "base_url": base, "rfx_commit": entry["rfx_commit"],
+                "manifest_url": share.base_url + "manifest.json",
                 "question": question, "result_json": base + "result.json",
                 "files": [{"name": name, "url": base + name, "bytes": rec["bytes"],
-                           "sha256": rec["sha256"]} for name, rec in sorted(entry["files"].items())
-                           if folder != "grin-lens" or not name.endswith(".png")
-                           or name in {"grin_lens_fan.png", "grin_lens_film_poster.png", "grin_lens_start.png",
-                                       "lens_iterations.png", "lens_mesh.png", "lens_slices.png"}],
+                           "sha256": rec["sha256"]} for name, rec in sorted(entry["files"].items())],
             })
         cases.append({
             "id": case, "title": meta["title"], "question": meta["description"],
@@ -270,10 +288,11 @@ def build(share: Share) -> dict:
             "sources": sources, "headlines": numbers[case],
         })
     return {"schema": SCHEMA, "generator": "scripts/showcase/build_catalog.py",
-            "share": {"base_url": SHARE, "manifest_url": SHARE + "manifest.json",
+            "shares": [{"base_url": share.base_url, "manifest_url": share.base_url + "manifest.json",
                       "manifest_sha256": share.manifest_sha256,
                       "created": share.manifest["created"], "cite": share.manifest["cite"],
-                      **({"supersedes": share.manifest["supersedes"]} if "supersedes" in share.manifest else {})},
+                      **({"supersedes": share.manifest["supersedes"]} if "supersedes" in share.manifest else {})}
+                       for share in shares.values()],
             "cases": cases}
 
 
@@ -297,10 +316,13 @@ def dumps(value, indent: int = 0, in_list: bool = False) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--share-dir", type=Path, help="a local copy of the share folder")
+    parser.add_argument("--share-dir", type=Path, help="a local copy of the October share folder")
+    parser.add_argument("--lens-share-dir", type=Path, help="a local copy of the new lens share folder")
     parser.add_argument("--check", action="store_true", help="compare with the committed catalog")
     args = parser.parse_args()
-    text = dumps(build(Share(args.share_dir))) + "\n"
+    shares = {url: Share(url, local) for url, local in (
+        (OCTOBER_SHARE, args.share_dir), (LENS_SHARE, args.lens_share_dir))}
+    text = dumps(build(shares)) + "\n"
     if args.check:
         if not CATALOG.is_file() or CATALOG.read_text() != text:
             print(f"{CATALOG.relative_to(REPO)} differs; regenerate with scripts/showcase/build_catalog.py")

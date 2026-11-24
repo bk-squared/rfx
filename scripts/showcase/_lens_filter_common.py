@@ -209,7 +209,8 @@ def field(case, args, source):
     import jax.numpy as jnp
     for k in dict.fromkeys(args.iterates):
         eps = np.ones(model.grid.shape, dtype=np.float32)
-        block = case.expand_pixels(designs[k], model.dx).astype(np.float32)
+        block = (model.cells(designs[k]) if case.CASE == "lens" else
+                 case.expand_pixels(designs[k], model.dx)).astype(np.float32)
         hi = model.hi
         if case.CASE == "filter":
             block = np.pad(block, ((0, 0), (0, 1), (0, 1)), mode="edge")
@@ -303,6 +304,21 @@ def setup(case, out, dx, precision, smoke, **kwargs):
     return model
 
 
+def observe_field_dtypes(model, e, n, precision):
+    """Observe the realized NTFF dtype with one eager solve in requested precision."""
+    e = np.asarray(e, dtype=np.float64 if precision == "float64" else np.float32)
+    result = model.response_fn(n).run(e)
+    observed = str(result.ntff_data.x_lo.dtype) if result.ntff_data is not None else None
+    return [{"requested": precision, "observed": observed}]
+
+
+def require_field_dtypes(seen, precision):
+    """Refuse float64 FD evidence without realized double precision fields."""
+    if precision == "float64" and (not seen or any(
+            row["observed"] not in ("float64", "complex128") for row in seen)):
+        raise RuntimeError(f"float64 FD refused: observed field dtypes {seen}")
+
+
 def fd(case, model, e, n, out, precision):
     import jax
     import jax.numpy as jnp
@@ -353,7 +369,8 @@ def evaluate(case, model, designs, n, out, label, normalize="flux"):
     for name, e in designs.items():
         t0 = time.perf_counter()
         response, row = model.evaluate(e, n, normalize)
-        rows[name] = {**row, "objective": float(case.loss(response)), "n_steps": n,
+        rows[name] = {**row, "objective": float(case.loss(response[model.design_indices] if case.CASE == "lens" and model.band
+                                                   else response)), "n_steps": n,
                       "wall_s": time.perf_counter() - t0}
         arrays[name] = response
         dc.save_json(out / f"{label}.json", rows)
@@ -520,6 +537,67 @@ def selected_design(directory):
         return np.asarray(data["eps"][index]), index
 
 
+def band_frequencies(text, design_freqs):
+    try:
+        lo, hi, step = (float(v) for v in text.split(","))
+    except ValueError as exc:
+        raise ValueError("--band requires F0,F1,DF in GHz") from exc
+    if not np.isfinite([lo, hi, step]).all() or lo <= 0 or hi < lo or step <= 0:
+        raise ValueError("--band requires finite positive frequencies and step, F1 >= F0")
+    intervals = (hi - lo) / step
+    if intervals > 10000 or not np.isclose(intervals, round(intervals), rtol=0, atol=1e-8):
+        raise ValueError("--band endpoints must span an integral number of steps, at most 10000")
+    bins = (lo + step * np.arange(round(intervals) + 1, dtype=np.float64)) * 1e9
+    for f in design_freqs:
+        index = int(np.argmin(abs(bins - f)))
+        if abs(bins[index] - f) > 1e3:
+            raise ValueError("--band must include all three design bins to 1e-6 GHz")
+        bins[index] = f
+    return bins
+
+
+def lens_resolve_context(case, model, source, best, n, directory, *, duration_factor, designs):
+    provenance = _record.source_block(case.REPO, model.precision)
+    from rfx.geometry.rasterize_grid import interior_lattice_mask
+    from rfx.mesh_edges import solved_sheet_span
+    ctx = model.sim._campaign_ctx()
+    sheets = [e for e in ctx.interior_pec_entries() if e.kind == "sheet"]
+    if len(sheets) != 1:
+        raise ValueError("expected one reflector sheet")
+    entry = sheets[0]
+    footprint = interior_lattice_mask(entry.sheet.footprint, ctx.grid)
+    plate = {}
+    for axis, name in enumerate("xy"):
+        span = solved_sheet_span(footprint, axis, ctx.nodes[axis], float(entry.lo[axis]),
+                                 float(entry.hi[axis]), float(model.sim._domain[axis]),
+                                 normal_axis=int(entry.sheet.normal_axis))
+        if span is None:
+            raise ValueError("empty reflector footprint")
+        plate[name] = {"lo_m": float(span.lo), "hi_m": float(span.hi),
+                       "size_m": float(span.hi - span.lo)}
+    import hashlib
+    scripts = [Path(__file__), Path(case.__file__)]
+    context = {"freqs_hz": model.freqs, "design_freqs_hz": case.FREQS,
+               "dt_s": model.grid.dt, "n_steps": n, "duration_s": n * model.grid.dt,
+               "duration_factor": duration_factor, "designs": list(designs),
+               "boundary": model.boundary, "preflight": model.preflight_record,
+               "realized_plate": plate,
+               "model": model.describe(), "nodes_m": model.nodes,
+               "rfx_commit": provenance["repo_sha"], "script_commit": provenance["repo_sha"],
+               "script_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in scripts},
+               "design_record": str(source.resolve()), "reported_iteration": best,
+               "selection_rule": "earliest minimum objective over all stored iterates",
+               "quantity_definitions": {
+                   "boresight_dbi": "10 log10 of phi-mean linear D at exactly theta=0",
+                   "strip_min_dbi": "minimum dBi at nominal theta <= 30 deg, phi 85,90,95,265,270,275 deg",
+                   "strip_max_dbi": "maximum dBi on the same strip",
+                   "narrow_hpbw_deg": "sum of first -3 dB crossings from boresight at phi 0 and 180 deg; linear interpolation on nominal 2.5 deg theta grid",
+                   "outside_max_dbi": "maximum dBi at nominal theta >= 60 deg, phi endpoint 2pi excluded"}}
+    if getattr(case, "OBJECTIVE", "boresight") == "fan":
+        context["quantity_definitions"]["boresight_dbi"] = "10 log10 of linear D at theta=0, phi=0"
+    dc.save_json(directory / "resolve_context.json", context)
+
+
 def resolved(case, args, source):
     e, best = selected_design(source)
     length_path = source / "reported_record_length.json"
@@ -531,13 +609,32 @@ def resolved(case, args, source):
         bas = dc.load_json(source / "baselines.json")
         designs.update(no_lens=case.baselines()["no_lens"], grin=case.baselines()["grin"],
                        best_uniform=case.baselines()[bas["best_uniform"]])
+    resolve_details = {}
+    if case.CASE == "lens":
+        requested = getattr(args, "designs", None)
+        if requested is not None:
+            for name in requested:
+                if name not in designs:
+                    raise SystemExit(f"design {name} is not available for this case")
+            designs = {name: designs[name] for name in requested}
+        duration_factor = getattr(args, "duration_factor", 1.0)
+        duration *= duration_factor
+        resolve_details = {"duration_factor": duration_factor, "designs": list(designs)}
     all_rows = []
     for dx in case.MESHES:
         directory = args.out / f"mesh_{dx:.9g}"
         directory.mkdir(parents=True, exist_ok=True)
-        model = setup(case, directory, dx, args.precision, False)
-        n = math.ceil(duration / model.grid.dt)
-        rows = evaluate(case, model, designs, n, directory, "resolve")
+        try:
+            kwargs = {"freqs": args.band} if case.CASE == "lens" and getattr(args, "band", None) is not None else {}
+            model = setup(case, directory, dx, args.precision, False, **kwargs)
+            n = math.ceil(duration / model.grid.dt)
+            if case.CASE == "lens":
+                lens_resolve_context(case, model, source, best, n, directory, **resolve_details)
+            rows = evaluate(case, model, designs, n, directory, "resolve")
+        except Exception as exc:
+            if case.CASE == "lens":
+                dc.save_json(directory / "failure.json", {"message": str(exc), "type": type(exc).__name__})
+            raise
         if case.CASE == "filter":
             initial_n = n
             for factor in (1.5, 2.):
@@ -547,7 +644,9 @@ def resolved(case, args, source):
                 rows = evaluate(case, model, designs, n, directory, f"resolve_{factor:g}x")
             evaluate(case, model, designs, n, directory, "normalization_crosscheck", normalize=False)
         all_rows.append(rows)
-        record(directory, case, model, "resolve", {"n_steps": n, "best_iteration": best, "measurements": rows})
+        record(directory, case, model, "resolve", {"n_steps": n, "best_iteration": best, "measurements": rows, **resolve_details})
+    if case.CASE == "lens" and (len(case.MESHES) < 3 or getattr(args, "band", None) is not None):
+        return
     trend = {}
     if new_objective:
         limits = {"boresight_dbi": .3, "outer_max_dbi": 1.}
@@ -644,12 +743,32 @@ def resolved(case, args, source):
             eligibility.update(mask_met_each_mesh=[r["reported"]["mask_met_per_frequency"] for r in all_rows],
                                meets_mask=bool(witnesses and all_rows[-1]["reported"]["mask_met"]))
     dc.save_json(args.out / "eligibility.json", eligibility)
-    record(args.out, case, model, "resolve", {"best_iteration": best, "trend": trend, **eligibility})
+    record(args.out, case, model, "resolve", {"best_iteration": best, "trend": trend, **eligibility, **resolve_details})
+
+
+def cost(case, args):
+    import jax
+    import jax.numpy as jnp
+    model = setup(case, args.out, args.dx * 1e-3, args.precision, False)
+    response = model.response_fn(args.steps)
+    objective = lambda e: case.loss(response(e))
+    fn = jax.jit(jax.value_and_grad(objective) if args.kind == "gradient" else objective)
+    dtype = jnp.float64 if args.precision == "float64" else jnp.float32
+    e = jnp.asarray(case.starts()["primary"], dtype=dtype)
+    jax.block_until_ready(fn(e))
+    start = time.perf_counter()
+    jax.block_until_ready(fn(e))
+    wall = time.perf_counter() - start
+    stats = jax.devices()[0].memory_stats()
+    details = {"wall_s": wall, "peak_bytes_in_use": stats["peak_bytes_in_use"],
+               "n_steps": args.steps, "kind": args.kind, "warmup_calls": 1}
+    dc.save_json(args.out / "cost.json", details)
+    record(args.out, case, model, "cost", details)
 
 
 def main(case, argv=None):
     parser = argparse.ArgumentParser(description=case.__doc__)
-    parser.add_argument("--stage", choices=("timing", "fd", "rlw", "trial", "main", "resolve", "baselines", "describe", "frame", "field"), required=True)
+    parser.add_argument("--stage", choices=(("cost",) if case.CASE == "lens" else ()) + ("timing", "fd", "rlw", "trial", "main", "resolve", "baselines", "describe", "frame", "field"), required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--record", type=Path, help="source trial/main record; never modified")
     parser.add_argument("--smoke", action="store_true")
@@ -665,9 +784,56 @@ def main(case, argv=None):
     parser.add_argument("--empty", action="store_true", help="reciprocal field: remove lens, feed and reflector")
     if case.CASE == "lens":
         parser.add_argument("--objective", choices=("boresight", "mask", "flattop", "wide", "fan"), default="boresight")
+        parser.add_argument("--mesh", choices=("graded", "uniform"), default="graded")
+        parser.add_argument("--boundary", choices=("nearest", "arith", "harm"))
+        parser.add_argument("--band", help="resolve frequencies F0,F1,DF in GHz")
+        parser.add_argument("--designs", help="resolve subset: reported,no_lens,grin,best_uniform")
+        parser.add_argument("--duration-factor", type=float, help="resolve duration multiplier (default: 1.0)")
+        parser.add_argument("--meshes", help="comma-separated mesh sizes in mm")
+        parser.add_argument("--dx", type=float, help="cost mesh size in mm")
+        parser.add_argument("--steps", type=int)
+        parser.add_argument("--kind", choices=("forward", "gradient"))
     args = parser.parse_args(argv)
     if case.CASE == "lens":
+        if args.designs is not None or args.duration_factor is not None:
+            if args.stage != "resolve":
+                parser.error("--designs and --duration-factor require lens --stage resolve")
+        if args.duration_factor is None:
+            args.duration_factor = 1.0
+        if not math.isfinite(args.duration_factor) or args.duration_factor <= 0:
+            parser.error("--duration-factor must be finite and > 0")
+        if args.designs is not None:
+            args.designs = args.designs.split(",")
+            known = {"reported", "no_lens", "grin", "best_uniform"}
+            if any(name not in known for name in args.designs) or len(set(args.designs)) != len(args.designs):
+                parser.error("--designs requires at least one known name and no repeats")
         case = case.with_objective(args.objective)
+        if args.band is not None:
+            if args.stage != "resolve":
+                parser.error("--band requires lens --stage resolve")
+            try:
+                args.band = band_frequencies(args.band, case.FREQS)
+            except ValueError as exc:
+                parser.error(str(exc))
+        if args.mesh == "graded" and args.boundary is None and args.stage != "describe":
+            parser.error("graded solves require --boundary")
+        if args.meshes is not None:
+            try:
+                meshes = tuple(float(v) * 1e-3 for v in args.meshes.split(","))
+            except ValueError:
+                parser.error("--meshes must be a comma list in mm")
+            if not meshes or len(set(meshes)) != len(meshes) or any(v not in case.MESHES for v in meshes):
+                parser.error("--meshes must select distinct supported meshes")
+            case.MESHES = meshes
+        if args.stage == "cost":
+            if args.dx is None or args.dx * 1e-3 not in case.MESHES or not args.steps or args.steps < 1 or args.kind is None:
+                parser.error("cost requires supported --dx, positive --steps and --kind")
+            if args.objective != "boresight":
+                parser.error("cost requires the boresight objective")
+        elif any(v is not None for v in (args.dx, args.steps, args.kind)):
+            parser.error("--dx, --steps and --kind require --stage cost")
+        from functools import partial
+        case.Model = partial(case.Model, mesh=args.mesh, boundary=args.boundary)
         if args.record is not None:
             path = args.record / "result.json"
             if not path.exists():
@@ -693,14 +859,19 @@ def main(case, argv=None):
     args.out.mkdir(parents=True, exist_ok=True)
     import jax
     jax.config.update("jax_default_matmul_precision", "highest")
-    if args.precision == "float64" and (args.stage != "fd" or not jax.config.x64_enabled):
-        raise SystemExit("float64 is an FD-only separate process: set JAX_ENABLE_X64=1")
+    if args.precision == "float64" and (args.stage not in (("fd", "cost") if case.CASE == "lens" else ("fd",)) or not jax.config.x64_enabled):
+        raise SystemExit("float64 requires a separate FD or lens cost process: set JAX_ENABLE_X64=1"
+                         if case.CASE == "lens" else
+                         "float64 is an FD-only separate process: set JAX_ENABLE_X64=1")
     if args.precision == "float32" and jax.config.x64_enabled:
         raise SystemExit("float32 stages require JAX_ENABLE_X64=0")
     if not args.smoke and args.stage != "describe" and jax.default_backend() == "cpu":
         raise SystemExit("full solves are VESSL GPU only; use --smoke on the Mac")
     if args.smoke and args.stage not in ("timing", "fd", "field"):
         raise SystemExit("--smoke supports timing, fd and stored smoke field records; it cannot create trial admission")
+    if args.stage == "cost":
+        cost(case, args)
+        return 0
     if args.stage == "describe":
         for dx in case.MESHES:
             model = setup(case, args.out, dx, args.precision, False)
@@ -745,26 +916,11 @@ def main(case, argv=None):
         dc.save_json(args.out / "timing_summary.json", summary)
         details.update(summary)
     elif args.stage == "fd":
-        # Observe all actual solver field dtypes, not just design-array dtype.
-        import rfx.simulation as simulation
-        original, seen = simulation.run, []
-        def observed(*a, **kw):
-            result = original(*a, **kw)
-            state = getattr(result, "state", None)
-            ntff = getattr(result, "ntff_data", None)
-            actual = str(state.ex.dtype) if state is not None else (str(ntff.x_lo.dtype) if ntff is not None else None)
-            seen.append({"requested": str(kw.get("field_dtype")), "observed": actual})
-            return result
-        simulation.run = observed
-        try:
-            details = fd(case, model, e, n, args.out, args.precision)
-        finally:
-            simulation.run = original
+        seen = observe_field_dtypes(model, e, n, args.precision)
+        details = fd(case, model, e, n, args.out, args.precision)
         details["field_dtypes"] = seen
         dc.save_json(args.out / f"fd_{args.precision}.json", details)
-        if args.precision == "float64" and (not seen or any(
-                row["observed"] not in ("float64", "complex128") for row in seen)):
-            raise RuntimeError(f"float64 FD refused: observed field dtypes {seen}")
+        require_field_dtypes(seen, args.precision)
     elif args.stage == "rlw":
         details = rlw(case, model, e, n, args.out, "reported" if args.reported else "start")
     elif args.stage == "baselines":
@@ -817,7 +973,9 @@ def main(case, argv=None):
                     record(directory, case, model, args.stage, {"n_steps": n})
                 subprocess.run([sys.executable, str(Path(case.__file__)), "--stage", "fd", "--out", str(directory),
                                 "--start", name, "--precision", "float64", "--record", str(directory)]
-                               + (["--objective", case.OBJECTIVE] if case.CASE == "lens" else [])
+                               + (["--objective", case.OBJECTIVE, "--mesh", args.mesh]
+                                  + (["--boundary", args.boundary] if args.boundary else [])
+                                  if case.CASE == "lens" else [])
                                + (["--smoke"] if args.smoke else []), env=env, check=True)
             store = optimize(case, model, e, n, 30 if args.stage == "trial" else (args.iterations or case.ITERATIONS),
                              directory, args.stage, **({"y_uniform": True} if args.y_uniform else {}))
