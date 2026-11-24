@@ -72,8 +72,10 @@ frequencies through a port, or through an NTFF box or DFT planes together
 with a point probe, `result.settling_db` must reach −40 dB before you quote a
 frequency. With probes alone the run reads no frequency and the check is
 `absent`; judge the probe signal's decay yourself, as
-[Resonances](/rfx/measure/resonances/) does. The example runs a fixed
-`num_periods` with an NTFF box and checks the ring-down afterwards.
+[Resonances](/rfx/measure/resonances/) does. The example records a
+point probe beside its NTFF box and runs a fixed `num_periods`. It then checks
+the ring-down from the probe's envelope: the largest value in the last 5 % of
+the record must be at least 40 dB below the record's peak.
 
 `result.find_resonances(freq_range=...)` returns several modes. A rectangular
 patch has at least two low-order modes (one along each side). Identify the

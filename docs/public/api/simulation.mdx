@@ -105,8 +105,8 @@ sim.fidelity_report()
 
 `PreflightReport` is a list of coded issues. Read `.ok`, `.errors`,
 `.warnings`, `.infos` or `.by_code(code)`. Testing the report itself for
-truth (`if report`) raises `TypeError`, because an advisory-only report is
-non-empty but fine.
+truth (`if report`) raises `TypeError`: as a list, a clean report is empty and
+reads false, while a report with only advisories is non-empty and reads true.
 `strict=True` raises on any finding, warnings included; for an errors-only
 check call `report.raise_for_failure()` on a normal report.
 
@@ -149,11 +149,14 @@ print(result.time_series.shape, result.settling_witness["status"])
 
 `radiated_flux_box=(lower corner, upper corner)` in metres, a closed box
 around the radiator and clear of the CPML, makes `until_decay` watch the power
-flowing out through that box instead (the largest of the last
-`flux_env_checks` readings). Without it, `until_decay` watches the total
-interior field energy relative to its largest value after the drive ends. This applies to
-uniform meshes with closed or absorbing boundaries and graded meshes with
-absorbing boundaries. A lossless closed PEC box generally reaches the step
+flowing out through that box instead: the run stops once the drive has ended
+and the largest |power| of the last `flux_env_checks` checks has stayed below
+`until_decay` times its largest value since the run began for
+`decay_energy_consecutive` checks in a row. The box needs `boundary="cpml"`
+or `"upml"`. Without it, `until_decay` watches the total interior field
+energy relative to its largest value after the drive ends. The energy rule
+applies to uniform meshes with closed or absorbing boundaries and to graded
+meshes with absorbing boundaries. A lossless closed PEC box generally reaches the step
 cap; a lossy box can stop when its energy decays. The public graded-mesh runner
 still refuses closed-boundary `until_decay` (set `n_steps`). In a convergence
 study, give the same physical record length on every mesh: the same `num_periods`, or an
@@ -166,8 +169,8 @@ study, give the same physical record length on every mesh: the same `num_periods
 | `compute_s_params=True`, `s_param_freqs=` | S-parameters for lumped and wire ports (`add_port`) only. Other port families have their own calculator. |
 | `snapshot=SnapshotSpec(interval=10, components=("ez",), slice_axis=None, slice_index=None)` | Record field snapshots. See [Visualization & Result Analysis](/rfx/measure/plots-and-export/). |
 | `report_every=N` | Print progress (steps, rate, ETA) every N steps. Does not change the result. |
-| `subpixel_smoothing=True` | Smoothed permittivity at dielectric interfaces. Only the diagonal of the averaged tensor is kept, so a curved interface converges first order: the resonance of an εr 38 cylinder (radius 5.7 mm, height 4.75 mm) in a metal housing fell from 4.658 GHz at 0.5 mm cells to 4.627 GHz at 0.25 mm, about linearly in the cell size (measured; record kept with the project). |
-| `subpixel_smoothing="full_tensor"` | The full averaged tensor, off-diagonal terms included: second order at a curved dielectric interface, on uniform and graded meshes, one device. It refuses some inputs that `True` runs on a uniform mesh (`boundary="upml"`, `compute_waveguide_s_matrix`, conformal PEC, a traced `eps_r`); see [Support](/rfx/support/). |
+| `subpixel_smoothing=True` | Smoothed permittivity at dielectric interfaces. Only the diagonal of the averaged tensor is kept, so a curved interface converges first order (measured on a lossless εr 4 sphere's extinction against Mie over three meshes). The resonance of an εr 38 cylinder (radius 5.7 mm, height 4.75 mm) in a metal housing was 4.658 GHz at 0.5 mm cells and 4.627 GHz at 0.25 mm (measured; record kept with the project). |
+| `subpixel_smoothing="full_tensor"` | The full averaged tensor, off-diagonal terms included: second order at a curved dielectric interface (measured on the same εr 4 sphere; not measured on high-contrast rods), on uniform and graded meshes, one device. It refuses some inputs that `True` runs on a uniform mesh (`boundary="upml"`, `compute_waveguide_s_matrix`, conformal PEC, a traced `eps_r`); see [Support](/rfx/support/). |
 | `subpixel_smoothing="kottke_pec"` | Experimental. Also smooths metal faces, but it is not recommended for metal: on every measured case with a metal face off the grid it was farther from the reference than the staircase. A run that uses it with a PEC volume warns. For curved metal use `conformal_pec=True`. |
 | `conformal_pec=True` | Cut-cell updates at curved metal: each cut edge and face uses its PEC-free length and area. On a PEC sphere it is closer to Mie than the staircase, but the error falls only first order with the cell size, and every run with it warns. Judge a curved body by a mesh series. |
 | `ringdown=RingdownSpec(...)` | Complete a wire port's S-parameters when the record was cut while the structure still rings. See below. |
@@ -183,7 +186,7 @@ warning.
 when a Gaussian-pulse probe record had not rung down (end of record above
 −40 dB of peak), when `time_series` or lumped/wire `s_params` contain
 NaN/Inf, when the largest singular value of S exceeds 1.01 at a frequency, and
-when a lumped/wire `|S_ii|` exceeds 1.1. These checks cover only those arrays. For
+when any entry of a lumped/wire S has magnitude above 1.1. These checks cover only those arrays. For
 DFT planes, flux and NTFF data, check `np.isfinite(...)` yourself. No warning
 does not mean the run converged.
 
@@ -209,8 +212,9 @@ completion was produced.
 
 `forward()` runs the same physics with only the outputs a loss function needs,
 so it can sit inside `jax.grad`, `jax.value_and_grad` or `jax.jit`. It
-returns a `ForwardResult` with `time_series`, `s_params`/`freqs` (lumped/wire
-S11 vectors when `port_s11_freqs=` is set), `ntff_data`, `dft_planes`, `grid`
+returns a `ForwardResult` with `time_series`, `s_params`/`freqs` (with `port_s11_freqs=`,
+the lumped/wire S-matrix of shape (ports, ports, frequencies), with the driven
+port's column filled and the others NaN), `ntff_data`, `dft_planes`, `grid`
 and `dt`.
 
 ```text
@@ -248,16 +252,17 @@ print(jax.grad(loss)(3.0))
 | `eps_override`, `sigma_override`, `mu_r_override` | whole-grid material arrays, shape `grid.shape`; they replace the registered materials everywhere |
 | `design_box=` with `design_eps_override=` / `design_sigma_override=` / `design_occupancy_override=` | a box-sized design region; far less reverse-mode memory than a whole-grid override (pass `checkpoint=False` with it) |
 | `pec_occupancy_override` | relaxed metal occupancy in [0, 1] |
-| `port_s11_freqs=` | lumped/wire S11 vectors, on either mesh; over several devices see [Multi-device runs](/rfx/run/multi-device/) |
+| `port_s11_freqs=` | lumped/wire S at these frequencies, shape (ports, ports, frequencies), with the driven port's column filled; on either mesh; over several devices see [Multi-device runs](/rfx/run/multi-device/) |
 | `rlc_values_override={index: {"R": ..., "L": ..., "C": ...}}` | values of registered `add_lumped_rlc` elements |
 
 **Per-cell versus per-edge conductivity in a design box.** A single
 `design_sigma_override` array gives one value per **cell**. Each E edge takes
-the mean of the four cells around it, so the E edges one cell past the box on
-its plus side (larger index) along each axis also change with the design,
-because two of their four cells lie inside the box. A 3-tuple
+the mean of the four cells around it, so the E edges on the box's plus faces
+(the faces at larger index), whose index along that axis is one past the box's
+last cell, also change with the design, because two of their four cells lie
+inside the box. A 3-tuple
 `(sigma_x, sigma_y, sigma_z)` gives one value per **edge**, written as-is at
-the box's own indices, so those edges past the plus side keep the run's own
+the box's own indices, so those edges on the plus faces keep the run's own
 conductivity. If a per-edge design needs them, declare the box one cell larger
 on that side.
 

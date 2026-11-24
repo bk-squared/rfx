@@ -52,7 +52,7 @@ sim.add_material("plasma",                              # 10 GHz plasma frequenc
 | `sigma` | conductivity in S/m. At or above `1e6` the material is a perfect conductor (see below). |
 | `mu_r` | relative permeability |
 | `debye_poles` | list of `DebyePole(delta_eps, tau)`: Δε = εs − ε∞, τ in seconds |
-| `lorentz_poles` | list of `LorentzPole`. Build them with `lorentz_pole(delta_eps, omega_0, delta)` or `drude_pole(omega_p, gamma)` (all rates in rad/s) rather than by hand. A Lorentz pole adds Δε·ω0² / (ω0² − ω² + 2jδω) to ε (time convention e^{+jωt}), so `delta` is half the damping rate; `drude_pole` sets ω0 = 0 and δ = γ/2. A pole set above its own time-step limit on the model's cells is refused when the model is assembled (an optical-frequency metal such as gold always is on RF cells). |
+| `lorentz_poles` | list of `LorentzPole`. Build them with `lorentz_pole(delta_eps, omega_0, delta)` or `drude_pole(omega_p, gamma)` (all rates in rad/s) rather than by hand. A pole adds κ / (ω0² − ω² + 2jδω) to ε (time convention e^{+jωt}): `lorentz_pole` sets κ = Δε·ω0², so `delta` is half the damping rate; `drude_pole` sets ω0 = 0, κ = ωp² and δ = γ/2. A pole set above its own time-step limit on the model's cells is refused when the model is assembled (an optical-frequency metal such as gold always is on RF cells). |
 | `chi3` | Kerr (third-order) nonlinearity |
 
 **Library materials** need no `add_material` call: `"vacuum"`, `"air"`,
@@ -73,7 +73,8 @@ eps_inf=None, tau="free")` and `fit_lorentz(...)` fit poles to complex permittiv
 `load_material_csv(path, ...)` reads it from a CSV file. See the
 [generated reference](/rfx/api/generated/).
 `fit_debye` fits the relaxation times inside the span of the data, from
-1/(2π·f_max) to 1/(2π·f_min), with `tau="free"` (the default); with
+1/(2π·f_hi) to 1/(2π·f_lo), where f_hi and f_lo are the highest and lowest
+frequency in `freqs` (f_lo at least 1 Hz), with `tau="free"` (the default); with
 `tau="placed"` it fixes them log-spaced over that span and fits only the pole
 strengths. When you do not pass `eps_inf`, `fit_debye` and `fit_lorentz` fit
 it too, never below 1. `fit_lorentz` keeps every resonance inside the data
@@ -108,7 +109,7 @@ sim.add(Via(center=(0.015, 0.020), drill_radius=0.3e-3, pad_radius=0.6e-3,
 | `Cylinder` | `Cylinder(center, radius, height, axis="z")` | `center` is the middle of the cylinder, not its base |
 | `PolylineWire` | `PolylineWire(points, radius)` | a wire through the given vertices; `radius=0` makes a filament on grid edges, and a positive radius makes a volume wire, refused below half the smallest local cell |
 | `Via` | `Via(*, center, drill_radius, pad_radius, layers, material="pec")` | a PCB via with pads; `center` is `(x, y)` and `layers` is a list of `(z_bottom, z_top)` |
-| `CurvedPatch` | `CurvedPatch(*, center, length, width, radius, axis="x")` | a metal sheet bent along `axis` (`"x"` or `"y"`), rising in +z away from `center` with the given radius; it is built from zero-thickness z-normal segments about one cell long, each a sheet on its own node plane. Add it with `add(..., material="pec")` |
+| `CurvedPatch` | `CurvedPatch(*, center, length, width, radius, axis="x")` | a metal sheet bent along `axis` (`"x"` or `"y"`) into a circular arc of the given radius R: `center` is the middle of the sheet at its lowest point, and at distance s from it along `axis` the sheet lies R − √(R² − s²) higher in z, for s from −`length`/2 to +`length`/2; it is built from zero-thickness z-normal segments about one cell long, each a sheet on its own node plane. Add it with `add(..., material="pec")` |
 | `MeshShape` | `MeshShape.from_file(path, *, scale, translate=(0.0, 0.0, 0.0))` | CAD import, see below |
 
 `sim.fidelity_report()` prints where every shape actually landed next to what

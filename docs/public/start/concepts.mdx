@@ -209,8 +209,9 @@ catch.
   `absent` (nothing recorded to judge) are not passes. Flux, far fields and DFT
   planes are judged only through a probe: without one the status is `absent`,
   so add a point probe away from the source.
-- The S-parameter calculators run one simulation per driven port, and warn
-  when the record of any of them ends too early.
+- The S-parameter calculators run one simulation per port, driving each in
+  turn (`run()` reads a model with a single port from one run), and warn when
+  the record of any of them ends too early.
 - High-Q structures need long records. A resonator with quality factor Q
   decays over roughly Q / (π f) seconds.
 
@@ -237,9 +238,10 @@ comparison with a reference; see
 - `sim.forward(...)` is the entry point built for gradients. Wrap it in
   `jax.grad` to get gradients with respect to material overrides or design
   variables. It supports a narrower set of features.
-- `run()` also passes gradients on one device when a declared value, such as a
-  material's `eps_r` or a source amplitude, is traced, but it takes no override
-  or design argument. The comparison is in
+- `run()` can also be differentiated on one device: inside a function that
+  `jax.grad` differentiates, a declared value such as a material's `eps_r` or
+  a source amplitude can be the variable (JAX calls such a value *traced*). It
+  takes no override or design argument. The comparison is in
   [run() and forward()](/rfx/run/run-and-forward/). See
   [Autodiff and Adjoint](/rfx/design/gradients/) and
   [Inverse Design](/rfx/design/optimization/).

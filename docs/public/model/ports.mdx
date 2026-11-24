@@ -122,9 +122,13 @@ axial ratio or handedness.
 `add_tfsf_source` launches a plane wave inside a total-field region, for
 scattering and RCS. It travels along x (`"+x"` or `"-x"`) with `"ez"` or `"ey"`
 polarization, and needs CPML on the two x faces; UPML is refused. By default
-the plane wave fills the whole y-z cross-section, and the transverse faces (y,
-and z in 3-D) are solved periodic whatever `boundary` declares (preflight
-notes it), so a structure in its path repeats across them. `closed_box=True` builds a
+the plane wave fills the whole y-z cross-section. On the uniform mesh the
+faces across the beam (y, and z in 3-D) are then solved periodic: with the
+default boundary or `boundary="cpml"`, preflight notes it, and a face declared
+CPML, PMC or PEC on those axes is refused. A structure that is not uniform
+across those faces is refused unless you declare them periodic, and it then
+repeats across them as an array. A graded mesh keeps the declared side faces
+and refuses such a structure. `closed_box=True` builds a
 finite total-field box instead and needs `boundary="cpml"` on all six faces.
 
 ```python
@@ -137,9 +141,10 @@ scatter.add_tfsf_source(f0=5e9, bandwidth=0.4, polarization="ez",
 For oblique incidence, set `angle_deg` and choose `method`:
 
 - `method="bloch"` (default): a periodic unit cell, for infinite arrays and
-  surfaces. Its fields are complex, and frequency monitors (DFT planes, flux,
-  NTFF) read them without converting them to physical fields, so their values
-  are not physical. For monitor data around a compact scatterer, use method B.
+  surfaces. Its fields are complex, so an NTFF box, DFT planes, flux monitors,
+  `snapshot=` and `until_decay=` are refused with it; probes and the final
+  `state` come back as physical fields. For monitor data around a compact
+  scatterer, use method B.
 - `method="methodB"`: an open domain around a compact scatterer. It needs
   `polarization="ez"`, `direction="+x"` and a uniform grid.
 
@@ -402,7 +407,9 @@ Compute the matrix with `guide.compute_waveguide_s_matrix(normalize=...)`.
 builds its incident wave by filtering the pulse to the band, and for this
 pulse the part of the filtered wave before the peak wraps around to the end of
 the record, so the port launches a second pulse there; an empty matched WR-90
-guide read S21 off by up to 11 dB. Use `waveform="modulated_gaussian"` (the
+guide 120 mm long (mesh a/20) read S21 off by 7 to 11 dB at its worst bin over
+records of 10 000 to 30 000 steps, against 0.01 dB with `"modulated_gaussian"`
+(measured; record kept with the project). Use `waveform="modulated_gaussian"` (the
 default).
 [Waveguide Ports](/rfx/guide/waveguide-ports/) covers normalization,
 calibration planes and junctions.

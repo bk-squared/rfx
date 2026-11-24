@@ -140,13 +140,13 @@ Preflight's findings that compare the drawing with the grid:
 
 | Finding | What it means | What to do |
 |---|---|---|
-| a sheet predicted more than 1 % off its drawn size (`sheet_effective_size`, error) | Preflight takes the sheet's free edges to lie 0.35 of a cell past its last node (measured with the same cell on both sides of the sheet, as long as the in-plane cell beside its edge; with a different cell on each side the offset has not been measured; see Accuracy below). An edge whose every node lies on a port's feed gets no offset: preflight takes it at its last node and leaves it out of the size check. A microstrip port's feed covers the trace's full width, while a lumped or wire port feeds a single node of the edge. | Build the in-plane mesh with `edge_aware_profiles`, or pass `snap="declared"`. |
+| a sheet predicted more than 1 % off its drawn size (`sheet_effective_size`, error) | Preflight takes the sheet's free edges to lie 0.35 of a cell past its last node (measured with one cell size on both sides of the sheet, equal to the in-plane cell beside its edge; with a different cell on each side the offset has not been measured; see Accuracy below). An edge whose every node lies on a port's feed gets no offset: preflight takes it at its last node and leaves it out of the size check. A microstrip port's feed covers the trace's full width, while a lumped or wire port feeds a single node of the edge. | Build the in-plane mesh with `edge_aware_profiles`, or pass `snap="declared"`. |
 | a cavity between adjacent parallel PEC faces solved more than 1 % off its drawn spacing (`sheet_cavity_spacing`, error) | Two sheets, a sheet and a PEC `Box` face, two PEC `Box` faces, or one of these and the domain's PEC floor or lid sit on node planes whose spacing differs from the drawing, and a cavity resonance follows that spacing. A non-Box volume and an absorbing, magnetic or conformal domain face are not checked. | Put both faces on mesh nodes: a `dx` that divides the heights and the domain extent, or `edge_aware_profiles(..., sheets=[...], solids=[...], axes="xyz")` with the PEC Boxes in `solids`. Or pass `snap="declared"`. |
 | a conductor face off the grid (`off_lattice_design_edges`, warning) | A PEC volume face sits more than 0.5 % of its extent away from the nearest node, or a sheet's predicted solved edge (0.35 cell past its last node) sits that far from its drawn edge. A sheet meshed with `edge_aware_profiles`, as above, does not raise it. | Choose `dx` commensurate with the shape, or place a node on the face with a graded profile. |
 | a PEC shape thinner than one cell but not zero (error) | It is neither a sheet nor a resolved volume. | Declare a sheet, or resolve the thickness. See [Conductors](/rfx/model/conductors/). |
 | a PEC shape that covers no cell (error) | Metal would vanish. | Make it larger than a cell, or use a wire. |
 | a sheet drawn on a plane that is not a node plane, such as a dielectric face that falls between nodes (`sheet_plane_realized`, info; warning on an exact half-cell tie) | The plane is not a node plane, so the sheet lands on the nearest node plane, up to half a cell away; a tie goes to the lower plane. | Put the face on a node plane. |
-| body flush on an absorber (`body_flush_on_absorber`, warning) | A body touches the absorber with a face across its thinnest dimension, such as a slab lying flat against the face. The absorber continues the body's material outward, so the thin body is solved as a half-space. | Leave free space between the body and the face, or declare that half-space on purpose. PEC and vacuum bodies are excluded. |
+| body flush on an absorber (`body_flush_on_absorber`, warning) | A body lies within half a cell of an absorbing face, and its size along that face's normal is its smallest dimension, such as a slab lying flat against the face. The absorber continues the body's material outward, so the thin body is solved as a half-space. | Leave free space between the body and the face, or declare that half-space on purpose. PEC and vacuum bodies are excluded. |
 | geometry in the absorber, grading that reaches the absorber (`geometry_in_absorber`, `nu_grading_reaches_absorber`, warnings) | The absorber no longer sees a uniform medium in the direction normal to its face. | Keep the structure clear of the absorber, and keep the cells next to each absorbing face uniform over as many cells as the face has absorber layers. |
 
 Other findings are about the setup rather than the grid: cell size against
@@ -166,9 +166,10 @@ of [simulation time](/rfx/check/simulation-time/),
 An error-severity finding stops `run()` and `forward()` with a `ValueError`
 before the first time step. The error carries the findings as `rfx.Diagnostic`
 records (`error.diagnostics`), each with a `code`, a `severity`, a `message` and
-the numbers behind it in `values`. These records use four severities instead
-of `preflight()`'s three: `"refusal"` for an error, `"advisory"` or
-`"warning"` for a warning, and `"info"`.
+the numbers behind it in `values`. These records use `"refusal"` for an error,
+`"advisory"` for a warning and `"info"` for information. A fourth severity,
+`"warning"`, marks the record of an `until_decay` run that stopped at
+`decay_max_steps` or at the float32 floor instead of its threshold.
 
 Inputs a solver path does not implement are refused by a separate check that
 does not depend on the grid; [Refused inputs](/rfx/check/refusals/) explains

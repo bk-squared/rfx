@@ -98,8 +98,11 @@ sim = Simulation(
 
 Three rules for graded meshes:
 
-- Keep every ratio between neighbouring cells at or below 1.4, the largest
-  ratio rfx validates; preflight warns above it. This profile stays below 1.3.
+- Keep every ratio between neighbouring cells at or below 1.4. Up to that
+  ratio the solver's own checks hold, but ports, flux and far field on a
+  graded mesh have no such check (see
+  [Non-Uniform Mesh](/rfx/model/domain-mesh/)). Preflight warns above 1.4.
+  This profile stays below 1.3.
 - End the profile, at both ends, in a run of uniform cells at least as deep
   as the absorber (`cpml_layers`, 8 here): this profile has 10 cells of `dx`
   at the bottom and 24 at the top, so the absorber starts on a uniform mesh.
@@ -142,8 +145,8 @@ print(report.format())
 ### Reading what rfx tells you
 
 Each `add_thin_conductor` call warns that the sheet is a **lossless PEC
-sheet**. With no material named, `add_thin_conductor` models copper
-(`sigma_bulk=5.8e7` S/m), which is above the 1e6 S/m PEC threshold.
+sheet**. Its default conductivity, `sigma_bulk=5.8e7` S/m (copper), is above
+the 1e6 S/m PEC threshold.
 The patch therefore has no conductor loss. If conductor loss matters for your
 Q or efficiency, pass `surface_impedance_f0=f0`. The sheet is then modelled as
 a resistive sheet with copper's surface resistance at `f0`, on the same

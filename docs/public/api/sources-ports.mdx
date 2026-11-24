@@ -1,5 +1,5 @@
 ---
-title: "Sources and Ports"
+title: "Sources and Ports API"
 description: "Current source, waveform, and port entry points for rfx."
 sidebar:
   order: 7
@@ -51,7 +51,7 @@ sim.add_polarized_source((0.010, 0.020, 0.015), polarization="slant45",
 |---|---|---|
 | `add_source` | `add_source(position, component="ez", *, waveform=None, amplitude_kind=None)` | soft source on one E component at one grid edge; no load, so it suits resonance work (`find_resonances`) |
 | `add_polarized_source` | `add_polarized_source(position, *, polarization="ez", waveform=None, amplitude_kind=None)` | linear polarization: `"ex"`, `"ey"`, `"ez"`, `"slant45"` or a real `(Ex, Ey)` tuple. For `"slant45"` or a tuple, each component gets a `GaussianPulse` with the waveform's `f0` and `bandwidth`, so pass a `GaussianPulse` |
-| `add_tfsf_source` | `add_tfsf_source(*, f0=None, bandwidth=0.5, amplitude=1.0, margin=3, polarization="ez", direction="+x", angle_deg=0.0, waveform=None, method="bloch", closed_box=False, theta_deg=0.0, phi_deg=0.0, direction_tol_deg=0.1, max_component=100)` | plane wave travelling along x, for scattering, with CPML along x. Runs in a 3-D or a 2-D simulation (`Simulation(mode="2d_tmz")` or `"2d_tez"`); a closed box and a `CustomWaveform` need 3-D. `angle_deg` tilts the open (slab) wave in the transverse plane its polarization sets; `theta_deg` and `phi_deg` give a closed box's direction |
+| `add_tfsf_source` | `add_tfsf_source(*, f0=None, bandwidth=0.5, amplitude=1.0, margin=3, polarization="ez", direction="+x", angle_deg=0.0, waveform=None, method="bloch", closed_box=False, theta_deg=0.0, phi_deg=0.0, direction_tol_deg=0.1, max_component=100)` | plane wave travelling along x, for scattering, with CPML along x. Runs in a 3-D or a 2-D simulation (`Simulation(mode="2d_tmz")` or `"2d_tez"`); a closed box and a `CustomWaveform` need 3-D. `angle_deg` tilts the two-plane wave (`closed_box=False`) away from x, toward +y for `"ez"` and toward +z for `"ey"` (toward −y or −z with `direction="-x"`); `theta_deg` and `phi_deg` give a closed box's direction |
 | `add_floquet_port` | see the [generated reference](/rfx/api/generated/) | experimental; no documented S-parameter API |
 
 **`amplitude_kind`.** The default is `"current"`: the waveform amplitude is
@@ -178,11 +178,13 @@ a short probe array downstream of the feed.
   runs only for an x-directed port on a uniform mesh on one device, and its
   S-parameters are not validated.
 - `n_probe_offset`, `n_probe_spacing`: in cells. Left at `None`, each is set
-  from a length (the offset from the fringing length, the spacing from the
-  guided wavelength at `freq_max`) and counted again at run time in the cells
-  where the probes lie. On a mesh graded along the line, that is the uniform
-  zone of cells beside the feed, when the probes stay inside it; otherwise the
-  counts made at declaration are kept and a warning says so.
+  from a length and counted again at run time in the cells where the probes
+  lie. The offset is the larger of five substrate heights, over which the
+  field the feed launches settles into the line's mode, and λ/(4π) at
+  `freq_max` in the substrate; the spacing comes from the guided wavelength at
+  `freq_max`. On a mesh graded along the line, the count uses the uniform
+  cells beside the feed when the probes stay inside them; otherwise the counts
+  made at declaration are kept and a warning says so.
 
 ```python
 from rfx import Box
@@ -301,7 +303,7 @@ See the complete example below.
 | Calculator | Signature (key arguments) | Returns |
 |---|---|---|
 | lumped/wire | `run(..., compute_s_params=True, s_param_freqs=None, s_param_n_steps=None)` | `Result.s_params`, `Result.freqs` |
-| lumped/wire, differentiable | `forward(..., port_s11_freqs=freqs)` | `ForwardResult.s_params`, shape (ports, ports, frequencies); only the driven ports' columns are filled, the others are complex NaN |
+| lumped/wire, differentiable | `forward(..., port_s11_freqs=freqs)` | `ForwardResult.s_params`, shape (ports, ports, frequencies); only the driven port's column is filled (one driven port per run; a record with two or more is refused), the others are complex NaN |
 | microstrip | `compute_msl_s_matrix(*, n_steps=None, num_periods=40.0, freqs=None, n_freqs=100, enforce_passivity=False, eps_override=None, ...)` | `MSLSMatrixResult` |
 | waveguide | `compute_waveguide_s_matrix(*, n_steps=None, num_periods=20.0, normalize=False, eps_override=None, sigma_override=None, strict_passivity=False, ...)` | `WaveguideSMatrixResult` |
 | coax, one-port | `compute_coaxial_line_reflection(*, termination="short", n_steps=6000, freqs=None, n_freqs=11, cpml_axes=None, probe_count=12, probe_start_cells=8, probe_spacing_cells=4, feed_impedance=None, dut_impedance=None, eps_scale=None, ...)` | `CoaxialLineReflectionResult` |
@@ -370,8 +372,9 @@ For waveguides it also audits the setup:
   fast with frequency. Size the distance to the far wall and the absorber from
   the guide wavelength at a frequency below the band, not at its lowest bin, and
   confirm with the record check above. On a WR-90 sweep, a box sized from the
-  band's own lowest bin left the band's bottom bins unconverged, while the box
-  sized for the next lower band read them within 3 %.
+  band's own lowest bin left the band's bottom bins unconverged, while a larger
+  box, sized from a lower frequency (the lowest bin of the band below it in
+  that sweep), converged them (measured; record kept with the project).
 
 The coaxial calculators check their own requirements when called.
 

@@ -55,8 +55,10 @@ added after two point probes occupies columns 2–7.
 
 A position snaps to the nearest grid node, up to half a cell away on each
 axis, and the field component sits a further half cell from that node on the
-Yee grid (along its own axis for E, across it for H), so a probe can read a
-field up to about one cell from the coordinate you gave along those axes (see
+Yee grid (along its own axis for E, along the two other axes for H). A probe
+can therefore read a field up to one cell from the coordinate you gave along
+the axes on which the component is offset, and up to half a cell along the
+others (see
 [Probes and fields](/rfx/measure/probes-and-fields/)). If you omit `freqs` on a DFT plane,
 rfx uses `n_freqs` points from `freq_max / 10` to `freq_max`.
 
@@ -222,9 +224,10 @@ freqs = np.asarray(lp_run.freqs)         # Hz
 s21_db = 20 * np.log10(np.abs(S[1, 0]) + 1e-30)
 ```
 
-How `run()` fills the matrix depends on the ports. With a single port (one
-driven lumped port, or one wire port and no lumped port), it reads S11 from
-the record of the run itself. With more ports it runs one further simulation
+How `run()` fills the matrix depends on the ports. When the model has
+exactly one port, a driven lumped port or a wire port, `run()` reads S11 from
+the record of the run itself (for a lumped port, only when `s_param_n_steps`
+does not ask for another length). Otherwise it runs one further simulation
 per port, driving each in turn, passive ports (`excite=False`) included, so
 every column is filled. Use `s_param_freqs=` to choose the frequencies.
 
@@ -487,11 +490,26 @@ check fired; it does not mean the S-matrix is correct.
 
 Floquet S-parameters are experimental and have no calculator that runs the
 simulation: `run()` drives a Floquet port but does not fill the accumulators
-that `compute_floquet_s_params` reads. You fill them in a time loop you write
-with rfx's step functions (`rfx.stepping.yee.update_h`, `update_e`), calling
-`update_floquet_dft` once per step, after the E update, on a plane at index 1
-or above; `tests/contracts/test_floquet_centred_split.py` in the repository
-contains such a loop. The split takes the wave travelling
+that `compute_floquet_s_params` reads. You write the time loop yourself;
+`tests/contracts/test_floquet_centred_split.py` in the repository contains a
+complete one, for a cell periodic across x and y with CPML along z. Its steps:
+
+1. Build the `Grid` with `periodic_axes` across the cell and `cpml_axes`
+   along its normal, and the starting arrays with `init_materials(grid.shape)`,
+   `init_cpml(grid)` and `init_state(grid.shape)`.
+2. Create one accumulator per measurement plane with
+   `init_floquet_dft(len(freqs), plane_shape)`, where `plane_shape` is the
+   grid's shape across the normal.
+3. In each step `n`, call `update_h`, `apply_cpml_h`, `update_e` and
+   `apply_cpml_e` (from `rfx.stepping.yee` and `rfx.boundaries.cpml`), add
+   the source to its E component, and then call
+   `update_floquet_dft(acc, state, k, axis, freqs, dt, n)` for each plane at
+   index `k` (1 or above) along the normal `axis`.
+4. Pass the accumulators to
+   `compute_floquet_s_params(acc_inc, acc_ref, acc_trans, dx, Lx, Ly, freqs)`,
+   where `Lx` and `Ly` are the cell's periods; it returns a dict with `"S11"`.
+
+The split takes the wave travelling
 toward +normal as the incident one, so put the structure on the +normal side of
 the source and the reflection plane between them. A plane on the far side of the
 source reads the source's own backward wave as the reflection.
@@ -575,10 +593,11 @@ For plotting S-parameters, fields and time series, see
 ## Limits
 
 - **Probe or flux spectrum looks noisy or has ripples** → the record ended
-  before the fields decayed. Run longer. `settling_db` judges port records and
-  point probes; a run whose spectra come only from flux monitors, an NTFF box
-  or DFT planes, with no probe, reads `absent`, so add a point probe away from
-  the source or check the time signal's decay yourself.
+  before the fields decayed. Run longer. `settling_db` judges the time records of ports and
+  point probes at the frequencies the run reads (port S, flux monitors, an
+  NTFF box, DFT planes). It reads `absent` when either is missing: spectra
+  with no probe or port record, or probes with no frequency read. Add a point
+  probe away from the source, or check the time signal's decay yourself.
   For paired runs (a reference and an object), keep one fixed `n_steps`.
 - **Reflection from two flux runs looks wrong** → subtract the fields with
   `subtract_flux_monitors`, not the flux values, and keep the two runs
@@ -590,7 +609,8 @@ For plotting S-parameters, fields and time series, see
 - **`reliable` is False at some bins** → don't plot, fit or optimize those
   bins as data; refine the mesh, lengthen the record, or check whether a real
   notch is there.
-- **Passivity warning (largest singular value, |S| or column power above 1)** →
+- **Passivity warning** (the largest singular value of S above 1.01, or a
+  calculator's own limit on |S| or column power, listed above) →
   usually a record that ended too early or a mesh too coarse. The returned S
   is not clipped, except by `compute_mixed_s_matrix`, which clips by default
   (`enforce_passivity=True`).
@@ -598,7 +618,9 @@ For plotting S-parameters, fields and time series, see
   noticeably; end the line at its port instead.
 - **Coax refuses the model with a lateral-absorber message** → the line's
   outer wall is within one cell of a side absorber; widen the domain.
-- **`find_resonances` returns nothing, or a mode you did not expect** → lengthen the
-  record, narrow `freq_range`, and identify modes by field pattern.
+- **`find_resonances` returns nothing** → lengthen the record, or widen
+  `freq_range` if the mode may lie outside it.
+- **`find_resonances` returns a mode you did not expect** → narrow
+  `freq_range` around the mode you want, and identify modes by field pattern.
 - **Ring-down completion refuses the run** → the source is still on in the
   fit window; lengthen the record or raise `window_start`.

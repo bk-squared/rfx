@@ -12,9 +12,10 @@ analysis: it gives you a result object with S-parameters, field records,
 snapshots and the settling check. `forward()` is for design: it returns the
 same time signals as JAX arrays and takes material overrides and design
 variables, so you can differentiate the signals with respect to them and
-optimize. `run()` also passes gradients on one device when a value in the
-declaration is traced, but it takes no override or design argument (see the
-table below). Both assemble the same model and step it with the
+optimize. `run()` can also be differentiated on one device with respect to a value in
+the declaration, such as a material's `eps_r` passed in by the function that
+`jax.grad` differentiates (JAX calls such a value *traced*), but it takes no
+override or design argument (see the table below). Both assemble the same model and step it with the
 same time step; this page says what each adds, how long they run, and the
 settings that apply to both.
 
@@ -120,7 +121,9 @@ Give one of `n_steps` (exact steps), `num_periods` (periods at `freq_max`,
 default 20, used when nothing else is given) or, for `run()` only,
 `until_decay`. [Is the run long enough?](/rfx/check/simulation-time/) explains
 the three, the decay stop and its limits, and the check to read afterwards.
-Use a fixed record, not `until_decay`, in closed structures. In a
+In a lossless closed structure, use a fixed record: its energy does not decay,
+so `until_decay` runs to `decay_max_steps`; the graded-mesh `run()` refuses
+`until_decay` in a closed box. In a
 convergence study, give the same physical record length on every mesh: the same `num_periods`, or an
 `n_steps` scaled to each mesh's time step.
 

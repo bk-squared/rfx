@@ -86,11 +86,15 @@ guide without the device, at the same planes. `normalize=True` cannot be
 differentiated; `False` and `"flux"` can.
 
 With `normalize=False`, a passive strong reflector can read slightly above
-|S| = 1. rfx warns when any |S| exceeds 1.5, or when the power of a column (the
-sum of |S|² over the receiving ports for one driven port) exceeds 2.25. With
-`True` or `"flux"` it warns when any |S| exceeds 1.05 or a column's power
-exceeds 1.1. A value above 1 is not physics even without a warning: switch to
-`"flux"` or refine the mesh rather than reporting that number.
+|S| = 1. Every S-matrix is checked for a largest singular value above 1.01,
+which any |S| above 1.01 also exceeds (see
+[Probes and S-Parameters](/rfx/measure/s-parameters/)). The waveguide
+calculator adds its own limits: with `normalize=False` it warns when any |S|
+exceeds 1.5, or when the power of a column (the sum of |S|² over the receiving
+ports for one driven port) exceeds 2.25; with `True` or `"flux"`, when any
+|S| exceeds 1.05 or a column's power exceeds 1.1. A value above 1 is not
+physics, even below 1.01 where no warning fires: switch to `"flux"` or refine
+the mesh rather than reporting that number.
 
 rfx also checks every result for reciprocity and warns when an entry of S differs
 from its mirror entry (S21 from S12) by more than 0.011. These warnings almost always
@@ -266,10 +270,11 @@ graded mesh it is a target segment count.
   declare its transverse faces PEC. A PEC face farther from an edge does not
   close that edge.
 - **Tested scope**: single-mode magnitude of straight rectangular guides on a
-  uniform mesh, with and without a device in the guide (the WR-90 chain, an
-  inductive iris against mode matching). Phase is checked on fewer cases than
-  magnitude. Junctions (branches, T-junctions, septa) are checked less, even
-  under the far-port conditions above.
+  uniform mesh, with and without a device in the guide (a WR-90 guide empty,
+  shorted and with a dielectric slab, on three meshes; an inductive iris
+  against mode matching). Phase is checked on fewer cases than magnitude.
+  Junctions (branches, T-junctions, septa) are checked less, even when they
+  meet the three conditions for a physical junction S-matrix above.
 - **Ports with different cross-sections** are outside the validated scope.
   Between ports in one medium, S is a ratio of each port's own modal waves, so
   it equals a power-wave S only when all ports share one cross-section and

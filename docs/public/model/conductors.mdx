@@ -213,9 +213,11 @@ cut cells instead: each cut E edge uses its PEC-free length and each cut H face
 its PEC-free area, and a stability clamp keeps the ordinary time step. Left at
 its default (`None`), `conformal_pec` turns on when an axis of a
 `BoundarySpec` is declared `Boundary(lo="pec", hi="pec", conformal=True)`.
-Such an axis solves its two PEC domain faces as PEC half-spaces through the
-same cut-cell update, and the run then applies that update to every PEC body
-in the model as well. `forward()`, which has no `conformal_pec=` argument,
+Such an axis replaces its two PEC domain faces by PEC half-spaces whose
+surfaces lie at the declared domain extent, or at the edges of a waveguide
+port's aperture where that aperture is narrower than the domain across this
+axis, so a wall between nodes is placed by the same cut-cell update; the run
+then applies that update to every PEC body in the model as well. `forward()`, which has no `conformal_pec=` argument,
 takes the update from that declaration. Graded meshes, multiple
 devices and subgrids refuse it. With conformal PEC a flat wall sits at its
 drawn plane, and on a PEC sphere the cut-cell update is closer to Mie than the

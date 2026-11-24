@@ -121,9 +121,11 @@ f_study = float(study.metrics[-1])
 print(f"40 periods: {f_study / 1e9:.5f} GHz, 80 periods: {f_long / 1e9:.5f} GHz")
 ```
 
-If the two agree to far better than the change between the two finest
-meshes, the record length is not what limits the answer. If they differ, give
-every mesh in the study a longer record.
+Compare the difference between the two printed values with the change between
+the two finest meshes of the study, 1.07 MHz here (2.92690 to 2.92797 GHz).
+A difference far smaller than that means the record length is not what limits
+the answer. A comparable or larger one means every mesh in the study needs a
+longer record.
 
 ## 5. Read the result
 
