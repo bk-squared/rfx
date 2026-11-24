@@ -15,8 +15,9 @@ compute S-parameters. Worked examples are in the
 ## Waveforms
 
 `add_source()`, `add_polarized_source()`, `add_port()` and `add_msl_port()`
-take a `waveform=` object. Waveguide, TFSF and Floquet sources take their own
-pulse arguments instead.
+take a `waveform=` object. Waveguide ports and TFSF sources take `f0`,
+`bandwidth` and a pulse name as a string (`waveform="modulated_gaussian"`)
+instead; Floquet ports take `f0` and `bandwidth` only.
 
 | Waveform | Signature | Use |
 |---|---|---|
@@ -52,7 +53,10 @@ sim.add_polarized_source((0.010, 0.020, 0.015), polarization="slant45",
 | `add_floquet_port` | see the [generated reference](/rfx/api/generated/) | experimental; no documented S-parameter API |
 
 **`amplitude_kind`.** The default is `"current"`: the waveform amplitude is
-a current moment in A·m, injected as `E += Cb * I / dV` on Yee paths.
+a current moment I in A·m, injected as the current density I/dV over the
+source cell (dV is the cell's volume), so E gains `Cb * I / dV` each step,
+where Cb is the coefficient that also multiplies the curl of H in the E
+update.
 `"field"` adds the waveform directly to E each step. The signature sentinel
 `None` also resolves to `"current"` and warns once per simulation; pass the
 kind explicitly to silence that warning.
@@ -118,8 +122,10 @@ print(result.s_params.shape)                                # (n_ports, n_ports,
 
 `result.s_params[i, j, k]` is the response at port `i` with port `j` driven, at
 frequency `result.freqs[k]`. `result.s11()` and, on a model with two or more
-ports, `result.s_db(2, 1)` are shortcuts. The mesh here is coarse for speed. For a real one-port S11, use
-about 60 cells per wavelength at the highest frequency of interest.
+ports, `result.s_db(2, 1)` are shortcuts. The mesh here is coarse for speed. For a real one-port S11,
+start from about 60 cells per wavelength at the highest frequency of interest;
+no current test measures the accuracy at that resolution, so a mesh series
+decides it ([Is the mesh fine enough?](/rfx/check/mesh-convergence/)).
 
 ### Lumped R, L, C elements
 
@@ -198,7 +204,9 @@ The strip runs from port to port: a strip that continued behind a port would be
 an open stub, and the calculator refuses one that shorts the port near the
 band. Preflight takes a free sheet edge to lie 0.35 in-plane cell beyond the
 sheet's last node, so the edge-aware in-plane mesh puts the 600 µm strip's last
-nodes 0.35 cell inside its drawn edges. The 0.35 was measured where the cell
+nodes 0.35 cell inside its drawn side edges. Its two ends are fed by the
+microstrip ports over the trace's full width, so preflight takes them where
+they are drawn, and `faces=` puts nodes on them. The 0.35 was measured where the cell
 normal to the sheet is as long as the in-plane cell beside its edge. Here the
 z cell is 100 µm and the in-plane cell beside each side edge 90 µm, a ratio of
 1.11. For a free sheet in vacuum the offset at that ratio was measured as 0.37
@@ -229,7 +237,7 @@ the port axis only (`boundary={"x": "cpml", "y": "pec", "z": "pec"}` for an
 x-directed port); on a uniform mesh `boundary="cpml"` on every face is refused. A
 smaller aperture needs a conductor on every edge: draw PEC walls there, or a bare
 edge is refused on both meshes. Waveguide ports
-need `mode="3d"`, and cannot share a simulation with a lumped or wire port, or a soft source (`add_source`).
+need a 3-D simulation (`Simulation(mode="3d")`, the default), and cannot share a simulation with a lumped or wire port, or a soft source (`add_source`).
 
 A port measures at `freqs`, or at `n_freqs` points from `freq_max/10` to
 `freq_max` when `freqs` is not given (50 by default), on every path.
@@ -388,13 +396,10 @@ print(np.abs(refl.s11))
 
 ## Limits
 
-- **Resolution.** Lumped and wire ports: about 60 cells per wavelength at the
-  highest frequency for one-port S11. At 60 cells per wavelength, `|S11|` on
-  resistive loads is within 0.54 dB of the closed form, and exact on a short
-  or open. At 30 cells per wavelength, magnitudes are within 1.1 dB and the
-  line's phase-crossing frequencies sit 1.7–2.9 % from the closed form (the
-  lumped and wire port tests, measured through `forward(port_s11_freqs=...)`).
-  Coax: at least 4 cells across the annulus. Microstrip: at least 4 cells
+- **Resolution.** Lumped and wire ports: start from about 60 cells per
+  wavelength at the highest frequency for one-port S11. No current test
+  measures the accuracy at that resolution; a mesh series decides it
+  ([Is the mesh fine enough?](/rfx/check/mesh-convergence/)). Coax: at least 4 cells across the annulus. Microstrip: at least 4 cells
   through the substrate (preflight warns below that).
 - **Port reference plane.** A one-cell lumped or wire port reads V at its node
   and I half a cell toward the line. Lumped and wire ports return identical
