@@ -121,9 +121,11 @@ f_study = float(study.metrics[-1])
 print(f"40 periods: {f_study / 1e9:.5f} GHz, 80 periods: {f_long / 1e9:.5f} GHz")
 ```
 
-Here the two agree to far better than the mesh-to-mesh change, so the record
-length is not what limits the answer. If they differed, you would need a
-longer record for every mesh in the study.
+Compare the difference between the two printed values with the change between
+the two finest meshes of the study, 1.07 MHz here (2.92690 to 2.92797 GHz).
+A difference far smaller than that means the record length is not what limits
+the answer. A comparable or larger one means every mesh in the study needs a
+longer record.
 
 ## 5. Read the result
 
@@ -131,9 +133,11 @@ longer record for every mesh in the study.
   the remaining mesh error. Here it is about 0.04 %.
 - **The extrapolated value** estimates the zero-cell-size answer, assuming
   the error follows a power law in `dx`. `errors` are relative to it.
-- **The observed order** should be plausible. Standard Yee is second order;
-  staircased dielectric edges and conductors often pull it lower, as here
-  (1.53). An order near zero, a negative one, or metrics that don't move
+- **The observed order** should be plausible. Standard Yee is second order
+  where the fields are smooth; staircased faces, material edges and corners
+  often pull it lower. Here every face lies on a grid plane, so staircasing
+  does not explain the 1.53, and which feature of the model lowers it was not
+  measured. An order near zero, a negative one, or metrics that don't move
   monotonically mean the study is not in the converging range. Refine
   further or look for a setup problem before trusting the extrapolation.
 

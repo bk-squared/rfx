@@ -6,7 +6,7 @@ sidebar:
 ---
 
 [Your First Patch Antenna](/rfx/examples/first-patch/) builds a patch model that
-passes preflight and runs. This page is the roadmap from there to numbers you
+preflight accepts and that runs. This page is the roadmap from there to numbers you
 can report (resonance, return loss, radiation pattern) and then to design
 iteration. Each step links to the page that covers it in detail.
 
@@ -14,10 +14,10 @@ iteration. Each step links to the page that covers it in detail.
 
 | Step | Goal | Where |
 |---|---|---|
-| 1. Model | size the patch, grade the z mesh, declare foils as sheets, clear preflight | [Your First Patch Antenna](/rfx/examples/first-patch/) |
+| 1. Model | size the patch, grade the z mesh, declare foils as sheets, clear preflight's errors and read every warning it leaves | [Your First Patch Antenna](/rfx/examples/first-patch/) |
 | 2. Resonance | run until the ring-down settles, extract modes, identify the radiating one | [Resonances](/rfx/measure/resonances/) |
 | 3. Return loss | replace the soft source with a port and compute S11 | [Sources and Ports](/rfx/model/ports/) |
-| 4. Radiation | add an NTFF box and compute pattern and directivity | [Far-Field and RCS](/rfx/measure/far-field-and-rcs/) |
+| 4. Radiation | add an NTFF box and compute pattern and directivity | [Far-Field & Radar Cross Section](/rfx/measure/far-field-and-rcs/) |
 | 5. Convergence | refine the mesh and report how much each number moves | [Is the mesh fine enough?](/rfx/check/mesh-convergence/) |
 | 6. Design iteration | sweep or optimize the dimensions and substrate | [Parametric Sweeps](/rfx/design/sweeps/), [Inverse Design](/rfx/design/optimization/) |
 
@@ -68,17 +68,21 @@ cases compare with openEMS.
 ## Resonance
 
 A patch rings down slowly, so run for many periods. When the run reads
-frequencies (a port's S-parameters, an NTFF box, DFT planes),
-`result.settling_db` must reach −40 dB before you quote a frequency. With
-probes alone the check is `absent`; judge the probe signal's decay yourself, as
-[Resonances](/rfx/measure/resonances/) does. The example runs a fixed
-`num_periods` with an NTFF box and checks the ring-down afterwards.
+frequencies through a port, or through an NTFF box or DFT planes together
+with a point probe, `result.settling_db` must reach −40 dB before you quote a
+frequency. With probes alone the run reads no frequency and the check is
+`absent`; judge the probe signal's decay yourself, as
+[Resonances](/rfx/measure/resonances/) does. The example records a
+point probe beside its NTFF box and runs a fixed `num_periods`. It then checks
+the ring-down from the probe's envelope: the largest value in the last 5 % of
+the record must be at least 40 dB below the record's peak.
 
 `result.find_resonances(freq_range=...)` returns several modes. A rectangular
 patch has at least two low-order modes (one along each side). Identify the
 radiating design mode by its far field: a broadside beam and the peak of the
-radiated power. Don't pick it by amplitude, or by which mode is closest to the
-formula estimate. Both have picked the wrong mode on real patches.
+radiated power. Don't pick it by amplitude, which depends on where the source
+and probe sit, or by which mode is closest to the formula estimate, which
+carries the formula's own error.
 
 ## Return loss
 
@@ -106,7 +110,7 @@ Add a near-to-far-field box with `sim.add_ntff_box(...)` around the antenna,
 with each face about half a wavelength from the radiator where the domain
 allows. The face below the ground plane often cannot be that far; preflight
 tells you, and you should report it with the result. Evaluate the pattern at
-the radiating mode's frequency. See [Far-Field and RCS](/rfx/measure/far-field-and-rcs/).
+the radiating mode's frequency. See [Far-Field & Radar Cross Section](/rfx/measure/far-field-and-rcs/).
 
 <figure data-rfx="media">
   <img src="/rfx/examples/assets/patch-antenna/pattern.png" loading="lazy" alt="Two far-field cuts against angle from broadside, each a single broad lobe with its maximum near 0 degrees" />

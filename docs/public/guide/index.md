@@ -18,14 +18,14 @@ cells, boundaries, conductors, sources and ports, and when a run is finished.
 |---|---|
 | See what rfx can simulate | [Showcase](/rfx/showcase/) |
 | Choose a material and draw a structure | [Materials & geometry](/rfx/model/materials/) |
-| Excite the model | [Sources & ports](/rfx/model/ports/) |
-| Inspect fields and export plots | [Visualization & analysis](/rfx/measure/plots-and-export/) |
+| Excite the model | [Sources and Ports](/rfx/model/ports/) |
+| Inspect fields and export plots | [Visualization & Result Analysis](/rfx/measure/plots-and-export/) |
 | Measure reflection and transmission | [Probes & S-parameters](/rfx/measure/s-parameters/) |
 | Build a real device | [Your First Patch Antenna](/rfx/examples/first-patch/) |
-| Refine the mesh and check the answer | [Convergence study](/rfx/check/mesh-convergence/) |
+| Refine the mesh and check the answer | [Is the mesh fine enough?](/rfx/check/mesh-convergence/) |
 | Change a design using derivatives | [Inverse design](/rfx/design/optimization/) and [gradient behavior](/rfx/guide/gradient-behavior/) |
 
 Use the [Examples hub](/rfx/examples/) to choose by structure or follow the
-ordered source tutorials. Check [Support Boundaries](/rfx/support/)
+ordered source tutorials. Check [Support](/rfx/support/)
 for combinations of ports, materials, grids and runners; the [API](/rfx/api/)
 gives the exact calls.

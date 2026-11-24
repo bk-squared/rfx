@@ -87,7 +87,7 @@ nothing is left.
 |---|---|
 | `n_steps` / `num_periods` | record length per iteration (default 20 periods at `freq_max`). Fewer steps use less memory, but the run must still contain the response you optimize. |
 | `jit` | default `None`: compile the loss and gradient once and reuse them in every iteration, on one device (`distributed=True` stays uncompiled). Much faster on real models. See the caveats below. |
-| `checkpoint_segments` | segmented checkpointing on a uniform mesh, for about `sqrt(n_steps)` memory at about 2x compute. Must divide `n_steps`. See [Memory Reduction](/rfx/run/memory-and-speed/). |
+| `checkpoint_segments` | segmented checkpointing on a uniform mesh, for about `sqrt(n_steps)` memory at about 2x compute. Must divide `n_steps`. See [Reduce Memory Use](/rfx/run/memory-and-speed/). |
 | `checkpoint_every` | the non-uniform-mesh counterpart (a chunk size in steps). |
 | `n_starts=N`, `seed` | `N` restarts from random latents; returns the best one. Helps only on a multimodal loss. |
 | `best_iterate=True` | return the lowest-loss iterate visited, not the last one. |
@@ -165,7 +165,7 @@ including ones that change the total radiated power (conductors, loss,
 large permittivity changes). `log_ratio=False` raises `ValueError` because it gives wrong-sign gradients
 for power-changing variables; use the default. NTFF objectives cost more than probe
 objectives, so iterate on a coarse mesh and check the final design with
-[Far-Field and RCS](/rfx/measure/far-field-and-rcs/).
+[Far-Field & Radar Cross Section](/rfx/measure/far-field-and-rcs/).
 
 ### Objectives for a finished `run()`
 
@@ -331,6 +331,6 @@ a bounded latent variable).
   mesh with a wire port and a conductor, or a host read in your objective.
   Every iteration then recompiles; remove the host read, or pass `jit=False`.
 - **Out of memory in the backward pass**: use a design box, segmented
-  checkpointing or fewer steps. See [Memory Reduction](/rfx/run/memory-and-speed/).
+  checkpointing or fewer steps. See [Reduce Memory Use](/rfx/run/memory-and-speed/).
 
 Compare several objectives with [Pareto fronts and selection rules](/rfx/design/pareto/).
