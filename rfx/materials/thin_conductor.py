@@ -345,7 +345,7 @@ class PinnedSheet:
             raise ValueError(
                 f"PinnedSheet: sigma_bulk={self.sigma_bulk:.3g} S/m is below "
                 f"the {_PEC_SIGMA_THRESHOLD:.0e} S/m PEC threshold. A lossy "
-                "sheet folds sigma_bulk*thickness into the cell it sits in, "
+                "sheet folds sigma_bulk*thickness onto the mesh node it sits on, "
                 "which the node-pinned declaration does not carry; declare it "
                 "with add_thin_conductor(shape, sigma_bulk=...).")
         if is_tracer(self.eps_r) or self.eps_r != 1:
