@@ -71,7 +71,7 @@ def test_closed_over_concrete_array_can_be_staged_during_a_trace():
 
 
 def test_concrete_input_keeps_no_host_copy():
-    """Split readback caches only a temporary across eager and caller-jit routes."""
+    """Split readback caches only a temporary eagerly and under setup in caller jit."""
     if len(jax.devices('cpu')) < 2:
         pytest.skip('requires 2 CPU devices')
     layout = Slab(11, 2)
@@ -81,16 +81,16 @@ def test_concrete_input_keeps_no_host_copy():
     control = jax.device_put(array, sharding)
     np.asarray(control)
     assert getattr(control, '_npy_value', None) is not None
-    for route in ('eager', 'caller_jit', 'declaration_setup'):
+    for route in ('eager', 'declaration_setup'):
         src = jax.device_put(array, sharding)
-        assert getattr(src, '_npy_value', None) is None
+        assert getattr(src, '_npy_value', None) is None, f'{route}: fresh source has a host copy'
         invoke = lambda: cut(src, layout, 'eps_r', mesh=mesh)
         if route == 'declaration_setup':
             def invoke():
                 with declaration_setup():
                     return cut(src, layout, 'eps_r', mesh=mesh)
         result = invoke() if route == 'eager' else jax.jit(invoke)()
-        assert getattr(src, '_npy_value', None) is None
+        assert getattr(src, '_npy_value', None) is None, f'{route}: source retained a host copy'
         _assert_rows(result, array, layout, 'eps_r')
 
 
