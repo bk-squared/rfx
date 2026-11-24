@@ -132,7 +132,7 @@ mechanism is not measured. Check a curved film's loss on three meshes before usi
 
 ### A surface-impedance sheet one cell in front of a PEC face gives no loss to a field whose E is normal to it
 
-Tracker: #2429
+Tracker: none — accepted limitation (warns at default: tests/contracts/test_f0_sheet_backed_gap.py::test_s1_cavity_fires)
 
 Use `add_wall_loss(faces=...)` or `add_wall_loss(shape=...)` for opaque PEC wall conductor loss.
 
@@ -148,7 +148,7 @@ both f0 sheets (copper, and ten times copper's resistance), with the E between t
 1.17–1.22 times the cavity-model estimate in the sheets on the bins where |S11| is below −10 dB, at three meshes; input
 power equalled radiated, substrate and sheet power within 3×10⁻⁴ of the input (both measured; records kept with the
 project). Other spacings between a sheet and a lossless conductor behind it were not measured. For a wall one cell in
-front of a PEC face that must carry loss for every field orientation, use a PEC wall or a thick lossy Box.
+front of a PEC face that must carry loss for every field orientation, put the loss on the PEC face with `add_wall_loss`, or use a thick lossy Box.
 Preflight warns when realized conductors bound both sides, or realized PEC owns the sheet's tangential edges away
 from its footprint boundary rows; domain PEC faces contribute only to the two-sided conductor check.
 
@@ -244,24 +244,15 @@ Kerr and declared-shape gradients remain refused for every smoothing option.
 The full_tensor diagonal can jump where an interface enters an absorber pad (triplet interior, Kottke midpoint pad); oblique TFSF refuses a noninvariant padded periodic axis; use a closed box (#1632).
 Tracker: #1632
 
-### A material gradient through `forward()` needs `skip_preflight=True` until preflight reads a traced permittivity.
+### Under a trace, preflight does not judge a traced permittivity, and two traced materials are smoothed as two media.
 
 Tracker: #2436
 
 `jax.grad`, `jax.jit` and `jax.vmap` over a material's `eps_r` now run through `subpixel_smoothing=True` (uniform and graded mesh) and `"kottke_pec"` (uniform mesh); `"full_tensor"` refuses a traced `eps_r` (#2441; see the full-tensor entry on non-Box shapes).
-With the default `skip_preflight=False`, `forward()` with a traced `eps_r` still stops in preflight with a `ConcretizationTypeError` at `rfx/preflight/mesh.py:295`, smoothing on or off: the mesh check reads the permittivity as a Python number.
-Pass `forward(..., skip_preflight=True)` and run `sim.preflight()` once on a concrete value.
+With the default `skip_preflight=False`, `forward()` with a traced `eps_r` runs: each preflight check that reads the traced permittivity warns that it was not judged and names the input, for example `not judged: _validate_mesh_quality reads a traced input (add_material(eps_r))` (`tests/unit/preflight/test_preflight_not_judged_traced.py`), and the gradient equals the one with `skip_preflight=True`.
+Those checks judge the model only on a concrete value: run `sim.preflight()` once with a concrete `eps_r`.
 Under a trace the curved high-contrast check cannot judge a traced material; it warns (`CurvedSmoothingWarning`) that the check was not judged and names the material.
 Two materials given different tracers are smoothed as two media even when their values are equal; a concrete run merges equal values into one medium.
-
-### A traced pole-map profile that is undefined outside its material gives a NaN gradient.
-
-Tracker: #2650
-
-A `LorentzPoleMap` (or `drude_pole_map`, `lorentz_pole_map`) callable is evaluated at every cell centre, and only the occupied cells' values are kept.
-Under `jax.grad` the unoccupied cells still pass a zero cotangent through the callable's derivative, so a profile whose value or derivative is not finite there (a square root of a negative number, a division by zero) gives a NaN gradient while the objective is finite.
-A concrete run is not affected.
-Clamp the argument where the profile is undefined, for example `jnp.sqrt(jnp.maximum(u, 0.))`: on the occupied cells the value is unchanged and the gradient is finite.
 
 ### `subpixel_smoothing="full_tensor"` keeps the one-plane rule next to a sphere, a cylinder or another non-Box shape, and refuses traced coordinates beside a Box.
 
@@ -274,32 +265,6 @@ Within that reach the jump is large. A 12 mm PEC box with εr 10 shapes was meas
 Where a later Box of one permittivity sits inside an earlier Box of another, the triplets carry the later Box's value. A later shape whose permittivity repeats an earlier one is painted in declared order with `True`, `"kottke_pec"` and `"full_tensor"` alike: in an εr 4 Box nested in an εr 10.2 Box after another εr 4 shape, every mode reads 4.0 inside the nested Box.
 A traced permittivity with `"full_tensor"` is refused by name in any scene. With a Box in the scene a traced shape coordinate or mesh profile is also refused by name: the scope of the exact content is decided on concrete coordinates and realized cell sizes, and under a trace the build runs in float32 (plain and `jax.jit` losses 9.7×10⁻⁴ apart with a traced sphere radius beside a concrete εr 2 box, 8.8×10⁻³ with a traced permittivity on an εr 4 box). This is a capability change: main admitted a traced Box coordinate, and its build equalled the host build in shared-face scenes and moved a plain-versus-jit loss by up to 9.65×10⁻⁴ elsewhere (a traced sphere radius beside a Box); restoring it with the exact content formed on traced coordinates is #2473. More than eight boxes meeting one edge support are refused by name. Use `subpixel_smoothing=True` or `"kottke_pec"` for a gradient over `eps_r`.
 → [#2473](https://github.com/bk-squared/rfx/issues/2473)
-
-### Subpixel smoothing retains one source face and point rules for bodies without exact line intervals.
-
-Tracker: #2624
-
-The outside portion of each support now reads the declared content along its normal, including both faces of a thin neighbouring Box, Sphere or Cylinder. Fixed for planar bodies under `subpixel_smoothing=True` (uniform and graded mesh) and `"kottke_pec"`: where a `Box`, or a `Cylinder` cut cap to cap, has both faces inside one cell's averaging length, its fill is its own thickness and the medium outside it is read on both sides (an εr 4 slab 0.3 of a cell thick reads Ez 1.290, the series average, instead of 1.429).
-A thin `Sphere`, a `Cylinder` crossed through its radius, and a run of touching bodies that includes either still use one face for the fill.
-A dielectric `Sphere` or a `Cylinder` crossed through its radius that spans about two cells or fewer is over-polarized, with or without smoothing. Measured by the TE101 resonance shift (about 10.6 GHz) such a body causes in a 20 × 10 × 20 mm PEC cavity: the shift is proportional to the body's polarizability, and so to the field it scatters. The reference is the shift extrapolated from three finer meshes with smoothing (1, 0.5 and 0.25 mm cells: the sphere spans 2, 4 and 8 cells there, the rod 1, 2 and 4); it lies 3–4 % above the first-order perturbation closed form. Ratios to it, εr 4:
-
-| body | cells across | `subpixel_smoothing=True` | no smoothing |
-|---|---|---:|---:|
-| sphere, radius 1 mm, 2 mm cells | 1 | 2.41 | 2.56 |
-| rod across the field, radius 0.5 mm, 2 mm cells | 0.5 | 3.34 | 6.35 |
-| rod across the field, radius 0.5 mm, 1 mm cells | 1 | 1.55 | 1.60 |
-| sphere, radius 1 mm, 1.5 mm cells (cavity realized as 19.5 × 10.5 × 19.5 mm; its closed form uses those lengths) | 1.33 | 1.58 | 1.15 |
-| sphere, radius 1 mm, 1 mm cells | 2 | 1.30 | 1.25 |
-| rod across the field, radius 0.5 mm, 0.5 mm cells | 2 | 1.10 | 1.13 |
-
-Scattered power goes as the square of the ratio, 20·log10 of it in dB: with smoothing, 7.6 dB high for the sphere one cell across, 10.5 dB for the rod half a cell across, 3.8 dB for the rod one cell across, and 0.9–2.3 dB at two cells; without smoothing 8.2, 16.1, 4.1 and 1.1–1.9 dB. Each row was taken at one position; the ratio is expected to depend on where the body sits on the mesh, which was not swept. With smoothing, put more cells across such a body until the result stops moving (without smoothing the measured curves do not approach the reference monotonically; measured on uniform meshes; a graded mesh that refines around the body adds cells there but was not measured).
-A `Sphere`, or a `Cylinder` crossed through its radius, that is not PEC is refused wherever it is placed when its radius is below half the diagonal of the cell containing its centre: 0.866 of the cell on a uniform mesh, and for a `Cylinder` half the diagonal of that cell's cross-section, 0.707 of the cell. Such a body may contain no primal-cell centre, so before this rule it ran at some positions and was refused as "rasterizes to ZERO cells" at others. A sweep of, or a gradient through, its position could cross from a result to a refusal. The rule is not applied on a 2D grid, for a traced centre or traced cell widths, or for a centre outside the grid; there the empty-cell refusal alone decides. `preflight()` warns ("Small dielectric body:") for an admitted dielectric `Sphere`, or a `Cylinder` across its radius, under three cells across. A PEC `Sphere` or `Cylinder` keeps the earlier rule: below a cell, whether it runs depends on its position. Bodies just above the size threshold are still over-polarized, as in the table above.
-Under `"full_tensor"` a thin non-Box body keeps the one-face rule: a `Cylinder` disc 0.3 of a cell thick (εr 4) reads Ez 1.951 on the diagonal where the series average is 1.290 (51 % high), on uniform and graded meshes.
-Mask-only bodies and continued conductor sheet shapes retain the point rule for the outside medium.
-On a curved face, full-tensor dual-face averages still use a first-order planar model.
-A later group's pass with a crossed normal steps when its face enters the cell; measured and listed under subpixel smoothing in the support matrix.
-Full-tensor spectral bounds include zero-weight portions, whose medium just beyond the face can step; a bound that clips then makes the tensor step too.
-A traced shape on a periodic axis is admitted while its bounds lie inside [−L, 2L], but smoothing evaluates only its images −1, 0 and +1. If the shape is declared a full period outside the domain, with its upper bound less than half a cell below 2L, the smoothing samples at the domain's low face miss its copy across the seam and read the background. On 1 mm cells, 0.23 mm below 2L, Ey reads 1.000 where the body gives 1.810. The low end of the interval is affected only on a graded mesh with an oblique face normal: dx 1 mm, dy = dz 3 mm, 0.23 mm above −L, 0.318 off. A shape declared inside [0, L], or across one seam, is not affected. Declare traced periodic shapes there.
 
 ### A metal face resting on a dielectric between grid nodes makes `subpixel_smoothing=True` and `"kottke_pec"` worse than no smoothing.
 
@@ -339,8 +304,9 @@ This field stays to the end of the record instead of decaying.
 The backscatter then depends on the record length: from 6 to 12 ns it changed by 2.3–2.7 dB at most frequencies and by up to 7.7 dB at a backscatter null.
 The extinction from the optical theorem differs from Mie by 20–51 % across the band; the staircase (`subpixel_smoothing=False`) on the same mesh differs by 13–14 %.
 A late field of 1e-2 to 5e-2 of the peak was also seen at ka 10 and on three meshes.
-`run()` warns "no ring-down settling witness" and names the outputs read from that record,
-but does not refuse the run.
+Declaring a PEC `Sphere` or `Cylinder` under `"kottke_pec"` warns before the run, naming the body and its material,
+with these measured errors and the advice below (`ConfigurationWarning`). After the run `run()` warns "no ring-down
+settling witness" and names the outputs read from that record, but does not refuse the run.
 Until a fix lands, use the staircase on a closed curved PEC body.
 Conformal PEC was not measured on this sphere, and it cannot be combined with `"kottke_pec"` (next entry).
 
@@ -361,29 +327,6 @@ Judge a curved body by a mesh series of at least three refinements.
 A closed-form check of the conformal update, the TM010 resonance of a hollow PEC cylinder (`tests/oracle/test_conformal_convergence.py`), stays marked as an expected failure until a fix lands.
 
 The v2.1 opt-in `run(conformal_pec="cut_cell_floor")` with an explicit half- or quarter-Courant step reduces the measured sphere offset; the q = 0.5 result remains first order and misses the order >= 1.5 target (see the [support matrix](support_matrix.md#conformal-pec-cut-cell-floor-opt-in-v21)).
-
-### Conformal PEC cut-cell areas and lengths deviate from the drawn surface where the mesh is nearly tangent to a curved body.
-
-Tracker: #2274
-
-With `conformal_pec=True`, the H update uses the open (PEC-free) area of each cut face. The E update uses the open
-length of each cut edge, after a stability bound that caps it by the areas of the faces around it. Measured against
-the drawn surface on 1 mm cells, before that bound, curved bodies are off by up to 0.44 of a face (cylinder side) and
-0.63 of an edge (sphere), where a mesh face or edge is nearly tangent to the surface.
-
-An axis-aligned Box takes its exact overlap with each cut cell, its edges and corners included. A cut cell that
-another PEC body also reaches (a sphere, a cylinder, or such a body continued into the absorber; within one cell
-diagonal of its surface) keeps that body's rule, so a Box edge there is not exact. Open areas and lengths in cells crossed only by a flat face are exact, and a Box face lying on a
-mesh plane is realized at its drawn plane. In a closed PEC cavity, a PEC block whose faces lie off the mesh planes
-resonates as the exact-area computation does on 1, 0.5 and 0.25 mm cells, and an empty cavity with two or three walls
-off the mesh planes puts each wall within 0.01 cell of the closed form. Effect of the curved-body deviation on
-S-parameters, resonance frequencies and RCS: not measured.
-
-A finer mesh shrinks the region affected near an edge. On a sphere at radius 4.3, 8.6 and 17.2 cells it also shrinks
-the share of nearly tangent cells: the faces off by more than 0.1 of a face were 17, 4 and 6, while the cut faces grew
-16x. The largest deviation does not shrink. Judge a curved body by a mesh series of at least three refinements.
-Measured 2026-10-31 with the conformal update now on main (open edge lengths and cut-face areas); the Box overlap
-measured 2026-11-19; records kept with the project.
 
 ### Inside a user `jax.jit`, `run()` refuses a single port's S-parameters on a uniform mesh, `until_decay` and `report_every`, and a multi-device closed-box plane wave is refused
 
@@ -553,7 +496,7 @@ Check a wire-port reflection on three meshes before using it as a converged numb
 
 ### The coax→microstrip transition reads more power out than in.
 
-Tracker: #1479
+Tracker: none — accepted limitation (warns at default: tests/contracts/test_coax_msl_deprecation.py::test_transition_deprecation_precedes_admission_and_warns_once_per_call)
 
 The coax-to-microstrip transition is not supported in rfx.
 Its status is **not supported (deprecated); removed after 2.3**. Each call to

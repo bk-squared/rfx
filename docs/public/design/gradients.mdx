@@ -43,6 +43,11 @@ compute a vector-Jacobian product for a scalar objective. In practice there is
 no adjoint run object to manage. You write a loss function and call
 `jax.grad(loss_fn)(params)`.
 
+For a permittivity design box whose objective reads DFT planes or a far-field
+box, `forward(gradient="adjoint")` takes the other route: a second ordinary
+forward simulation and reciprocity, on a uniform mesh on one device. See
+[`forward()`](/rfx/api/simulation/#forward-the-differentiable-path).
+
 The ideas from adjoint design still apply:
 
 1. **The objective must be an explicit scalar.** Reflected energy, transmitted

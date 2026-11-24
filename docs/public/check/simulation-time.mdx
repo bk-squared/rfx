@@ -163,7 +163,8 @@ likely to change, all on `RingdownSpec`:
 |---|---|---|
 | `window_start` | 0.5 | The fit uses the last part of the run, from `window_start × T` to the end. The source must be off there. |
 | `witness_tol` | 1e-3 | The largest difference in \|S\| between the two fits (below) that still counts as agreement. |
-| `identification_probes` | none | Extra field probes, `((x, y, z), "ez")` pairs, used only to find the poles. Add one inside a weakly coupled high-Q resonator, which the port alone may not see. |
+| `identification_probes` | none | Extra field probes, `((x, y, z), "ez")` pairs, used to find the poles. Add one inside a weakly coupled high-Q resonator, which the port alone may not see. |
+| `probe_freqs` | none | Frequencies at which the spectra of `identification_probes` are completed instead of the port S-parameters, for a model driven by soft sources or a closed-box plane wave; see [Ring-down completion](/rfx/api/simulation/#ring-down-completion). |
 
 `run(..., ringdown=RingdownSpec(), until_identified=True)` treats `n_steps` as
 the longest run. It stops at the first simulation time where the source is off

@@ -315,6 +315,61 @@ the loss and gradient are finite at every value you evaluate, as the `assert`
 does, and keep an optimizer's R inside a physical range (for example, optimize
 a bounded latent variable).
 
+## Optimize a few scalar parameters
+
+`rfx.minimize(fun, x0, *, bounds=None, method="adam", worst_case=False,
+n_iters=50, lr=None, best_iterate=False, jit=True)` minimizes a JAX-traceable
+objective of a one-dimensional parameter vector, such as a component value or
+a few dimensions that enter through overrides. `optimize()` above is for a
+design region.
+
+| `method` | Bounds | Step |
+|---|---|---|
+| `"adam"` (default) | optional; with bounds, Adam steps a latent `u` with `x = lo + (hi - lo) * sigmoid(u)` | `lr`, default 0.01 |
+| `"projected_adam"` | required | Adam on the box variable in [0, 1], clipped to the box; `lr`, default 0.01 |
+| `"mma"` | required | the method of moving asymptotes (Svanberg); no learning rate |
+| `"gcmma"` | required | the globally convergent form of MMA: a trial point is accepted only when its objective lies under the conservative approximation, within 50 units in the last place of \|f\|; no learning rate |
+
+- `bounds`: one `(min, max)` pair per parameter, finite and strictly ordered.
+  `x0` must lie inside. The values `fun` receives are clipped to the box.
+- `worst_case=True`, with `method="mma"` only: `fun` returns a vector of
+  nonnegative quantities, for example \|S11\|² at several frequencies as linear
+  power (not dB), and MMA minimizes its largest entry.
+- `n_iters`: the number of iterates at which the gradient is evaluated. There
+  is no convergence test; read `history`.
+- `best_iterate=True` returns the finite iterate with the lowest objective
+  instead of the last one.
+
+```python
+import jax.numpy as jnp
+import numpy as np
+import rfx
+
+# The point whose largest squared distance to three points is smallest:
+# the circumcentre of the triangle.
+points = jnp.asarray([[0.0, 0.0], [1.0, 0.1], [0.35, 0.9]])
+fun = lambda x: jnp.sum((x - points) ** 2, axis=1)
+res = rfx.minimize(fun, [1.3, -0.4], bounds=[(-1.0, 2.0)] * 2,
+                   method="mma", worst_case=True, n_iters=40)
+print(np.asarray(res.x), res.fun, res.nfev)
+
+# The series resistor of the section above, bounded to 10-1000 ohm.
+res_r = rfx.minimize(lambda x: load_loss(x[0]), [200.0],
+                     bounds=[(10.0, 1000.0)], method="gcmma", n_iters=10)
+print(float(res_r.x[0]), res_r.fun)
+```
+
+`MinimizeResult` holds `x`, the last evaluated iterate, and `fun`, its
+objective; `history` and `x_history` over the finite iterates; `nfev`, every
+evaluation including GCMMA trial points; `solves` and `solves_history`, the
+forward and reverse passes; `subproblem_caps`, the MMA and GCMMA subproblems
+that reached their solver cap (`MMASubproblemCapWarning` says so); and
+`stopped_nonfinite`, true when an evaluation was not finite and fewer than
+`n_iters` iterates were recorded. An invalid method, bounds, start or budget,
+or `worst_case` with another method, raises `RfxRefusal`
+(`tests/unit/autodiff/test_minimize.py`,
+`tests/unit/autodiff/test_minimize_gcmma.py`).
+
 ## Limits
 
 - **Loss near zero with a clean finite-difference check**: the observation
