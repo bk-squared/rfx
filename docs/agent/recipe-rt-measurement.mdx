@@ -166,8 +166,9 @@ died away.
 A probe records the fields at one point. rfx forms the ring-down witness
 (`result.settling_witness`, `result.settling_db`) from the probes the run
 declares, wherever they sit, and reports the worst. It leaves out records at
-rounding level and, while another probe remains, a probe that shares a cell
-with a point-source or port drive. The witness gives, for each frequency bin, the
+rounding level and, when at least one probe sits off every drive cell, the
+probes that share a cell with a point source, a lumped or wire port or a
+microstrip feed. The witness gives, for each frequency bin, the
 share that a tail beyond the record would still add. It passes at a share of
 1e-2 (−40 dB). A probe on each flux plane is what makes the witness speak for
 the R/T read; a probe placed elsewhere for another purpose also enters the
