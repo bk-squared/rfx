@@ -40,7 +40,7 @@ sim.add_flux_monitor(axis="x", coordinate=trans_x, freqs=freqs_rt, name="trans")
 Both runs use one fixed record, `n_steps`, and put a probe on each flux plane.
 From those probes rfx forms the ring-down witness (detail (e)), which says
 whether the record held the whole response. If it does not pass, lengthen
-`n_steps`. Detail (b) says what `run(until_decay=...)` does on these runs.
+`n_steps` for both runs. Detail (b) says what `run(until_decay=...)` does on these runs.
 
 ### Two-run reference subtraction
 
@@ -49,9 +49,11 @@ Subtract the DFT accumulators at the field level before computing the power flux
 
 ## Two-run template
 
-This template requires domain dimensions, frequency samples, source settings,
-monitor coordinates, a Lorentz pole and the record length `n_steps` supplied by
-the caller; the complete
+This template requires values supplied by the caller: `freq_max`, the domain
+(`dom_x`, `dom_y`, `dx`), the slab corners (`slab_x_lo`, `slab_x_hi`) and
+material (`eps_inf`, a Lorentz `pole`), the source (`f0`, `bw`), the monitor
+planes (`refl_x`, `trans_x`, `freqs_rt`), the probes' `y_center` and the record
+length `n_steps`; the complete
 `examples/tutorials/slab_rt_flux_monitor.py` is the runnable reference. The
 tutorial uses a lossless, dispersionless slab (εr = 4, no pole) and a fixed
 1200-step record.
@@ -91,7 +93,7 @@ res_slab = sim_slab.run(n_steps=n_steps)
 slab_refl_fm = res_slab.flux_monitors["refl"]
 slab_trans_flux = np.asarray(flux_spectrum(res_slab.flux_monitors["trans"]))
 
-# Both records must hold the whole response (detail (e)); if not, lengthen n_steps
+# Both records must hold the whole response (detail (e)); if not, lengthen n_steps for both runs
 for res in (res_ref, res_slab):
     assert res.settling_witness["status"] == "pass", res.settling_witness["reason"]
 
@@ -115,8 +117,8 @@ calling `flux_spectrum`, is exact because Maxwell's equations are linear.
 
 `subtract_flux_monitors(sample, ref)` does exactly that, so nobody has to write
 out the four private accumulator field names — and it raises `ValueError`
-instead of broadcasting when the two monitors do not cover the same plane and
-the same frequencies.
+instead of broadcasting when the two monitors differ in plane, frequencies,
+record length (`total_steps`) or DFT window.
 
 ### (b) Record length: one fixed record, checked by the witness
 
@@ -130,10 +132,9 @@ at about −139 dB for the reference run and −92 dB for the slab run.
 the tutorial's slab and on a Lorentz slab (8 mm, εr∞ = 2, one pole at 10 GHz).
 Three things differ from a fixed record:
 
-- The vacuum reference run never reaches the requested 1e-5. Its field energy
-  stops falling at 1e-13 to 3e-13 of the drive's peak energy, and the run ends
-  on the float32 floor with an `AccuracyWarning`; both measured reference runs
-  ended this way.
+- In both measured cases the vacuum reference run did not reach the requested
+  1e-5: its field energy stopped falling at 1e-13 to 3e-13 of the drive's peak
+  energy, and the run ended on the float32 floor with an `AccuracyWarning`.
 - On the tutorial's slab that reference run lasted 25,900 steps, about 22 times
   the 1200-step record, and R and T came out the same as the tutorial's to three
   decimals (the template's 20 CPML layers against the tutorial's 10).
@@ -206,15 +207,15 @@ The probe serves the witness only; R and T still come from the flux monitors
 **`add_probe` (time-series) + `np.fft.rfft`** for dispersive media.
 
 A chirped pulse transmitted through a dispersive slab has frequencies arriving
-at different times. Any time-gate window (Hann, Tukey, rectangular) introduces
-a frequency-dependent bias because the chirped transmitted pulse and the
-incident reference pulse have different effective envelopes under the same
-window. This bias is independent of grid resolution — halving `dx` does not
-reduce it.
+at different times. A tapered time-gate window (Hann, Tukey), or a record that
+ends before the chirped transmitted pulse has, introduces a frequency-dependent
+bias because the chirped transmitted pulse and the incident reference pulse
+have different effective envelopes under the same window.
 
-`add_flux_monitor` sidesteps this entirely: each frequency is integrated
-continuously, and the ring-down witness from a probe on the plane (detail (e))
-says whether the signal had ended before the DFT was read.
+`add_flux_monitor` applies no taper by default (`dft_window="rect"`): each
+frequency is a DFT over the whole record, and the ring-down witness from a
+probe on the plane (detail (e)) says whether the signal had ended before the
+record did.
 
 For dispersionless media there is no group-velocity chirp, so the raw
 time-series approach does not produce this artifact — but `add_flux_monitor`
@@ -225,7 +226,10 @@ is still preferred for its cleaner interface.
 The cross-validation case that gated normal-incidence slab R(f) and T(f)
 against the analytic Fresnel / transfer-matrix result was removed on
 2026-09-21. The analytic slab comparisons that remain are in
-`tests/oracle/`.
+`tests/oracle/`; the tutorial's contract test
+(`tests/contracts/test_tutorial_examples.py`) also bounds the tutorial's
+band-mean deviations from the Fresnel curve at 0.02, a band mean in the sense
+of the next paragraph.
 
 Do not read a band-mean threshold as an accuracy statement about the fringe
 structure: a band mean over an interference pattern is blind to every zero-mean
@@ -239,8 +243,9 @@ transfer-matrix result. Its gate is the band mean of |R_fdtd − R_analytic|
 (below 0.05; 0.01 for Drude), so it does not bound the fringe shape (above),
 and T(f) has no closed-form check. Two source-verifiable facts to
 keep in mind when comparing against other solvers: rfx discretizes
-Lorentz/Debye poles with a second-order central-difference ADE
-(`rfx/materials/lorentz.py`), while some other FDTD solvers use
+Lorentz and Drude poles with a second-order ADE (central difference,
+Crank-Nicolson damping; `rfx/materials/lorentz.py`) and Debye poles with a
+first-order Crank-Nicolson ADE (`rfx/materials/debye.py`), while some other FDTD solvers use
 recursive-convolution D-field updates; both are O(Δt²) but produce slightly
 different effective ε(f) near stiff resonances, so a small residual between
 solvers at a sharp Lorentz peak is a discretization-level difference, not
@@ -252,8 +257,8 @@ necessarily a usage error in either tool.
   + two-run field-level reference subtraction via the `Simulation` API, with a
   ring-down witness on both runs (detail (e)), an analytic Fresnel comparison and
   an energy-conservation readout. For its lossless slab R+T prints 1.000 at every
-  frequency on the coarse demo grid; that holds for a lossless slab of any
-  permittivity, so it is not an accuracy check. With a lossy pole R+T falls
+  frequency on the coarse demo grid; that follows from energy conservation in a
+  lossless slab, not from accuracy, so it is not an accuracy check. With a lossy pole R+T falls
   below 1 by the absorbed share. Start here.
 
 ## Companion primitives
