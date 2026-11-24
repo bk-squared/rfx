@@ -131,10 +131,12 @@ the tutorial's slab and on a Lorentz slab (8 mm, εr∞ = 2, one pole at 10 GHz)
 Three things differ from a fixed record:
 
 - The vacuum reference run never reaches the requested 1e-5. Its field energy
-  stops falling near 1e-13 of the drive's peak, and the run ends on the float32
-  floor with an `AccuracyWarning`; both measured reference runs ended this way.
+  stops falling at 1e-13 to 3e-13 of the drive's peak energy, and the run ends
+  on the float32 floor with an `AccuracyWarning`; both measured reference runs
+  ended this way.
 - On the tutorial's slab that reference run lasted 25,900 steps, about 22 times
-  the 1200-step record, and R and T came out the same to three decimals.
+  the 1200-step record, and R and T came out the same as the tutorial's to three
+  decimals (the template's 20 CPML layers against the tutorial's 10).
 - Under `until_decay` the `n_steps` argument is ignored; the run stops at the
   latest at `decay_max_steps`.
 

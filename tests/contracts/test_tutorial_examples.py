@@ -223,7 +223,13 @@ def test_resonance_harminv_tutorial_runs():
 
 
 def test_slab_rt_flux_monitor_tutorial_runs():
-    """Pin that both runs form a passing ring-down witness from their flux-plane probes."""
+    """Pin that both runs form a passing ring-down witness from their flux-plane probes.
+
+    The 0.02 bound on the two analytic means sits above the 0.012 the tutorial
+    prints for both; the tutorial's docstring puts that gap to the Fresnel
+    curve on its coarse grid. A table that departs further from the curve on
+    average fails.
+    """
     output = _run_tutorial("slab_rt_flux_monitor.py")
 
     witnesses = re.findall(
