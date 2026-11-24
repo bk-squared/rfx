@@ -52,6 +52,9 @@ along their own axis.
 - **Dielectrics** are sampled at nodes, half-open.
 - **Sheets** land on the node plane nearest the shape's mid-plane along its
   normal. An exact half-cell tie goes to the lower plane.
+- **Sheet edges.** Preflight takes a sheet's in-plane free edge to lie 0.35
+  cell beyond its last node. [Thin conductors](#thin-conductors) shows how to
+  mesh for it, and [Accuracy](#accuracy) says where the 0.35 was measured.
 
 ### What follows
 
@@ -77,11 +80,12 @@ realized wall planes, in your units. Read it whenever placement matters.
 
 `sim.add(PolylineWire(points, radius), material="pec")` draws a wire through the
 given vertices. With `radius=0` it is a filament: the grid edges joining the
-nearest nodes of each segment are PEC, and it owns no cell. With a radius of at
-least half the smallest local cell it is a volume, rasterized like any other
-shape; a thin one may still cover no cell and be refused (`pec_zero_cells`). A positive radius below half a cell is refused, because the grid cannot
-represent it; a [wire port](/rfx/model/ports/) is the way to give a thin wire
-its radius in a feed.
+nearest nodes of each segment are PEC, and it owns no cell. With a positive
+radius it is a volume, rasterized like any other shape. A positive radius below half the
+smallest local cell is refused, because the grid cannot represent it, and a
+thin volume wire may still cover no cell and be refused (`pec_zero_cells`); a
+[wire port](/rfx/model/ports/) is the way to give a thin wire its radius in a
+feed.
 
 ### Thin conductors
 
@@ -114,7 +118,8 @@ offset has not been measured. On a uniform 0.5 mm mesh
 preflight predicts 2.35 mm, and `run()` refuses the trace (`sheet_effective_size`; see
 [Mesh lines at sheet edges](/rfx/model/domain-mesh/#mesh-lines-at-sheet-edges)).
 
-`sigma_bulk` and `surface_impedance_f0` choose the model:
+`sigma_bulk` and `surface_impedance_f0` choose the model (`d` is the cell size
+normal to the sheet):
 
 | Setting | Model |
 |---|---|
@@ -123,10 +128,13 @@ preflight predicts 2.35 mm, and `run()` refuses the trace (`sheet_effective_size
 | `surface_impedance_f0=f0` | resistive sheet with Rs = √(π f0 μ0 / σ_bulk), same footprint and edges as the PEC sheet |
 
 A lossy film takes the cells of its plane whose centres lie inside its
-drawing, so it is solved where it is drawn. A gap drawn between two lossy
-films on one plane stays open at any width, as between metal sheets: the film
-that covers less of the boundary row gives it up, so the gap is solved at least
-one cell wide. On a traced mesh, two films on one plane within one cell of
+drawing. It gets no edge offset: its edges are the faces of those cells, and a
+film whose cells miss its drawn area by more than 1 % in equivalent length is
+refused (see [Inputs rfx refuses](#inputs-rfx-refuses)) unless
+`snap="declared"`. A gap drawn between two lossy films on one plane stays open
+at any width, as between metal sheets: where both films reach the same row of
+cells along the gap, the film that covers less of that row gives it up, so the
+gap is solved at least one cell wide. On a traced mesh, two films on one plane within one cell of
 each other are refused (`dc_film_traced_pair`).
 
 On every sheet `eps_r` stays 1: a PEC or surface-impedance sheet and a pinned
@@ -134,9 +142,9 @@ sheet refuse any other value, or a traced one, when you declare them, and a loss
 film refuses it when the run starts. Declare the dielectric around a sheet with
 `add(..., material=...)`.
 
-Here `d` is the cell size normal to the sheet. On a graded mesh it is
-`(d[k-1] + d[k]) / 2`, the average of the two cells either side of the sheet
-plane, so you get the sheet resistance you asked for wherever the sheet lands.
+On a graded mesh `d` is `(d[k-1] + d[k]) / 2`, the average of the two cells
+either side of the sheet plane, so you get the sheet resistance you asked for
+wherever the sheet lands.
 
 The surface-impedance model is a thick-conductor (Leontovich) loss:
 
@@ -144,8 +152,11 @@ The surface-impedance model is a thick-conductor (Leontovich) loss:
   read slightly high.
 - Rs is fixed at `f0` for the whole run. Its error grows as |√(f/f0) − 1| away
   from `f0`.
-- It is valid for conductors at least about three skin depths thick. For
-  thinner films, use the `sigma_bulk < 1e6` path instead.
+- It is valid for conductors at least about three skin depths thick. For a
+  thinner metal film, use the lossy-film model instead. That model uses only
+  the product `sigma_bulk * thickness`, and copper's own σ would make the
+  sheet PEC, so declare a film of conductivity σ and thickness t with any
+  `sigma_bulk` below 1e6 and `thickness = σ * t / sigma_bulk`.
 - The sheet can have any shape (discs, meanders, `MeshShape` outlines, ground
   planes with holes), but it must rasterize to exactly one cell layer.
 
@@ -199,15 +210,19 @@ its PEC-free area, and a stability clamp keeps the ordinary time step. Left at
 its default, `conformal_pec` follows the PEC boundary faces declared with
 `Boundary(..., conformal=True)`; `forward()`, which has no `conformal_pec=`
 argument, takes the same update from that declaration. Graded meshes, multiple
-devices and subgrids refuse it. `subpixel_smoothing="kottke_pec"` treats the metal edge of a
-dielectric with a smoothed tensor. It is experimental and not recommended for
-metal: on a PEC sphere and on a strip resonator it was farther from the
-reference than the staircase, and a run that uses it with a PEC volume warns. A
-run that sets it together with conformal PEC is refused. A flat wall sits at its drawn plane, and on a PEC sphere the
-cut-cell update is closer to Mie than the staircase, but its error falls only
-first order with the cell size. Every run with it warns. Judge a curved body by
-a mesh series of at least three refinements; the known-limitations list has
-the numbers and the shapes it refuses.
+devices and subgrids refuse it. With conformal PEC a flat wall sits at its
+drawn plane, and on a PEC sphere the cut-cell update is closer to Mie than the
+staircase, but its error falls only first order with the cell size. Every run
+with conformal PEC warns.
+
+`subpixel_smoothing="kottke_pec"` treats the metal edge of a dielectric with a
+smoothed tensor. It is experimental and not recommended for metal: on a PEC
+sphere and on a strip resonator it was farther from the reference than the
+staircase, and a run that uses it with a PEC volume warns. A run that sets it
+together with conformal PEC is refused.
+
+Judge a curved body by a mesh series of at least three refinements; the
+known-limitations list has the numbers and the shapes conformal PEC refuses.
 
 A rotated box (`OrientedBox`) has no conformal or smoothed form. A run with
 `conformal_pec=True`, or with a `Boundary(..., conformal=True)` face that turns
@@ -261,10 +276,11 @@ board.fidelity_report()
 
 <figure data-rfx="media">
   <img src="/rfx/model/assets/conductors/board.png" loading="lazy" alt="Section through a board inside absorber: a thin foil on the bottom face of a laminate layer, reaching very slightly past the laminate at both ends." />
-  <figcaption>The board this code builds, cut at y = 19.97 mm: the laminate fills z = 3.935 to 4.722 mm, and the foil lies on the node plane at the laminate's bottom face. The foil's last nodes are on the laminate's end faces, and the figure extends it 0.35 cell (0.069 mm) beyond them, because preflight takes a sheet's free edge to lie that far past its last node; on a dielectric face, as here, that offset has not been measured.</figcaption>
+  <figcaption>The board this code builds, cut at y = 19.97 mm: the laminate fills z = 3.935 to 4.722 mm, and the foil lies on the node plane at the laminate's bottom face. The foil's last nodes are on the laminate's end faces, and the figure draws the foil where preflight predicts its edges, 0.35 cell (0.069 mm) beyond them; on a dielectric face, as here, that offset has not been measured.</figcaption>
 </figure>
 
-The report has no findings. The z rows read:
+`fidelity_report()` lists no findings. Preflight predicts the foil 0.14 mm (0.47 %)
+longer than drawn on each in-plane axis, inside its 1 % limit. The z rows read:
 
 ```text
   geometry[0] 'rogers4003c'
@@ -377,7 +393,10 @@ The solver paths refuse what they do not implement:
   the size check built on it is pinned in
   `tests/contracts/test_sheet_solved_edge_reports.py`. An end that lies on
   other metal over its whole width, such as a patch edge on a shorting wall,
-  is joined, not free, and gets no offset.
+  is joined, not free, and gets no offset, and so does an end fed by a port
+  at every node: preflight takes such an end at its last node and leaves it
+  out of the size check (see
+  [Check the model on the grid](/rfx/check/model-on-grid/#how-rfx-checks-it)).
 - A lossy film on one node plane with sheet resistance η₀/2 reflects,
   transmits and absorbs 0.25, 0.25 and 0.5 of a normally incident wave at
   8–12 GHz, within 0.001 of the closed form for an ideal resistive sheet

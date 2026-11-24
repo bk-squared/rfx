@@ -84,10 +84,10 @@ against a longer run ([Checking a gradient](/rfx/check/gradients/)).
 | progress, snapshots | `report_every=`, `snapshot=` | no |
 | memory | `checkpoint=False` by default | `checkpoint=True` by default, for the backward pass; `forward(distributed=True)` on a uniform mesh does not checkpoint and refuses a `checkpoint` argument |
 
-Both run preflight by default. `skip_preflight=True` skips advisories only;
-realization refusals still apply. Both also refuse inputs their solver path
-does not implement whether or not advisories run
-([Refused inputs](/rfx/check/refusals/)).
+Both run preflight by default. `skip_preflight=True` skips preflight, its
+errors included. Refusals outside preflight still stop the run, among them those about the
+realized geometry, such as `sheet_effective_size`, and those of inputs the
+solver path does not implement ([Refused inputs](/rfx/check/refusals/)).
 
 Explicit `run(compute_s_params=True)` and `forward(port_s11_freqs=...)`
 requests require an impedance `add_port`. A soft source, including one beside

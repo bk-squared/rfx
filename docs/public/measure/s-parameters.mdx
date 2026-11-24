@@ -228,9 +228,10 @@ with every port passive, refuse an explicit S request or warn and return no S
 for a default request; the per-port V, I and V_ref spectra stay in
 `lumped_port_sparams` / `wire_port_sparams` through `run(compute_s_params=False)`.
 
-For one-port S11, aim for about **60 cells per wavelength** at the highest
-frequency you care about. At 30 cells per wavelength, magnitudes can be off
-by about 1 dB and resonant frequencies move by 1–3 %. A wire port also needs
+For one-port S11, start from about **60 cells per wavelength** at the highest
+frequency you care about. No current test measures the accuracy at that
+resolution; a mesh series decides it
+([Is the mesh fine enough?](/rfx/check/mesh-convergence/)). A wire port also needs
 its radius (`add_port(..., radius=a)`, at most 0.2 of the transverse cell);
 without it, preflight warns that S changes with every mesh refinement and
 does not converge. A one-cell port reads its
@@ -461,7 +462,7 @@ returns the per-bin amounts in `sigma_max_excess`. Some calculators check more:
 
 | Calculator | Further automatic checks |
 |---|---|
-| `run(compute_s_params=True)` on one device (uniform or graded) and the uniform `forward(port_s11_freqs=...)`, with lumped or wire ports | non-finite entries, any single `|S| > 1.1` |
+| `run(compute_s_params=True)` on one device (uniform or graded) and the uniform `forward(port_s11_freqs=...)`, with lumped or wire ports | non-finite entries, any single `\|S\| > 1.1` |
 | `compute_msl_s_matrix`, `compute_waveguide_s_matrix`, `compute_mixed_s_matrix`, `compute_coax_msl_transition` | single entries and total column power |
 | `compute_coaxial_two_port` | the shared column-power check |
 | `compute_coaxial_line_reflection` | read its `status`, `fit_residual`, `recurrence_residual`, `settling_db` and `settling_witness` |
@@ -561,8 +562,9 @@ For plotting S-parameters, fields and time series, see
 - **Reflection from two flux runs looks wrong** → subtract the fields with
   `subtract_flux_monitors`, not the flux values, and keep the two runs
   identical apart from the object.
-- **Lumped or wire S11 is off by around 1 dB** → the mesh is too coarse; aim
-  for about 60 cells per wavelength at the top frequency.
+- **Lumped or wire S11 moves when you refine the mesh** → the mesh is too
+  coarse; start from about 60 cells per wavelength at the top frequency and
+  refine until S11 stops moving.
 - **`reliable` is False at some bins** → don't plot, fit or optimize those
   bins as data; refine the mesh, lengthen the record, or check whether a real
   notch is there.

@@ -28,7 +28,7 @@ cases compare with openEMS.
 
 <figure data-rfx="media">
   <img src="/rfx/examples/assets/patch-antenna/structure.png" loading="lazy" alt="Top view and x-z cut of the patch antenna example: a small board inside a dashed far-field box, inside the absorber, with the bottom face of the box just below the ground" />
-  <figcaption>The model built by <code>patch_antenna_demo.py</code>: a patch drawn 32 × 40 mm over a ground drawn 60 × 60 mm, on a substrate that is drawn 60 × 60 mm and measures 58.6 × 58.6 mm on the grid, because its faces go to the nearest nodes, which the mesh places for the ground's edges. The bottom face of the far-field box lies 5.3 mm below the ground.</figcaption>
+  <figcaption>The model built by <code>patch_antenna_demo.py</code>: a patch drawn 32 × 40 mm over a ground drawn 60 × 60 mm, whose last nodes lie 0.35 cell inside its drawn edges, on a substrate that is drawn 60 × 60 mm and measures 58.6 × 58.6 mm on the grid, because its faces go to the nearest nodes, which the mesh places for the ground's edges. The bottom face of the far-field box lies 5.3 mm below the ground.</figcaption>
 </figure>
 
 ## Modelling rules
@@ -42,24 +42,28 @@ cases compare with openEMS.
   [Materials and Geometry](/rfx/model/materials/).
 - **Resolve the substrate.** A thin substrate needs several cells through its
   thickness. Use a graded `dz_profile` rather than refining the whole domain,
-  and put the substrate faces on cell boundaries. If you build the profile with
-  `smooth_grading`, derive every z coordinate from the final profile: smoothing
-  inserts transition cells that move the fine band. See
+  and put the substrate faces on cell boundaries. If you build the profile by
+  hand and pass it through `rfx.smooth_grading()`, which inserts ramp cells
+  between neighbours of very different size, derive every z coordinate from
+  the final profile: the inserted cells move the fine band. See
   [Non-Uniform Mesh](/rfx/model/domain-mesh/).
 - **Keep the drawn size.** Preflight predicts each sheet's solved size from a
   0.35-cell edge offset and refuses a patch predicted more than 1 % off its
   drawn size. Build the in-plane mesh with `edge_aware_profiles`, as
   [Your First Patch Antenna](/rfx/examples/first-patch/) does, rather than
-  rounding L and W to the grid, because rounding changes the antenna. That mesh puts each sheet's last node 0.35 cell inside its drawn edge. The
-  offset was measured where the cell normal to the sheet is as long as the
-  in-plane cell beside its edge.
+  rounding L and W to the grid, because rounding changes the antenna. That
+  mesh puts each sheet's last node 0.35 cell inside its drawn edge. The 0.35
+  was measured where the cell normal to the sheet is as long as the in-plane
+  cell beside its edge.
   In `patch_antenna_demo.py` the z cells at the sheets are 0.38 to 0.50 mm and
-  the in-plane cells are 1.86 to 2 mm, ratios of 0.19 to 0.27. At those ratios
-  the offset was
-  measured only for a free sheet in vacuum; on the substrate face, where these
-  sheets lie, it has not been measured, so the solved patch size,
-  and with it the resonance this page reports, carries an error this page does
-  not know. See [Check the model on the grid](/rfx/check/model-on-grid/).
+  the in-plane cells are 1.86 to 2 mm, ratios of 0.19 to 0.27. Near those
+  ratios the offset was measured in vacuum only: 0.26 cell for a free sheet
+  with the z cell a fifth or a quarter of the in-plane cell, and 0.31 cell for
+  a strip three cells above a ground plane at a quarter
+  ([the accuracy notes](/rfx/check/model-on-grid/#accuracy)). On the
+  substrate face, where these sheets lie, with a different cell on each side,
+  it has not been measured, so the solved patch size, and with it the
+  resonance this page reports, carries an error this page does not know. See [Check the model on the grid](/rfx/check/model-on-grid/).
 
 ## Resonance
 
@@ -85,9 +89,12 @@ port instead:
   probe feed;
 - a **microstrip port** (`add_msl_port`), for an edge or inset feed.
 
-For a lumped or wire port, use about 60 cells per wavelength at the highest
-frequency of interest for one-port S11. At that resolution the magnitude on
-resistive loads is within 0.54 dB of closed form. For a microstrip port,
+For a wire port, start from about 60 cells per wavelength at the highest
+frequency of interest for one-port S11. No current test measures the accuracy
+at that resolution; a mesh series decides it
+([Is the mesh fine enough?](/rfx/check/mesh-convergence/)). On a graded mesh,
+as in this example, wire-port S-parameters are experimental: check them on
+three meshes before you use them. For a microstrip port,
 the substrate thickness sets the cell (at least 4 cells through it; preflight
 warns below that). See
 [Sources and Ports](/rfx/model/ports/) and the
@@ -103,7 +110,7 @@ the radiating mode's frequency. See [Far-Field and RCS](/rfx/measure/far-field-a
 
 <figure data-rfx="media">
   <img src="/rfx/examples/assets/patch-antenna/pattern.png" loading="lazy" alt="Two far-field cuts against angle from broadside, each a single broad lobe with its maximum near 0 degrees" />
-  <figcaption>Far-field cuts from the example at 2.4 GHz, the far-field box frequency closest to the 2.447 GHz resonance, each normalized to its own maximum. The run used a single mesh (2 mm nominal) and passed its ring-down check; preflight warns that the bottom face of the box is too close to the antenna: “directivity / pattern likely corrupted”.</figcaption>
+  <figcaption>Far-field cuts from the example at 2.4 GHz, the frequency closest to the 2.447 GHz resonance among those the far-field box records, each normalized to its own maximum. The run used a single mesh (2 mm nominal) and passed its ring-down check. The patch's solved size is not known (see Modelling rules), so neither is the error it adds to that resonance. Preflight warns that the bottom face of the box is too close to the antenna (“directivity / pattern likely corrupted”), so these cuts are what the example computed, not a verified pattern.</figcaption>
 </figure>
 
 ## Design iteration

@@ -98,11 +98,13 @@ sim = Simulation(
 
 Three rules for graded meshes:
 
-- Keep neighbouring cell sizes within a ratio of about 1.3.
+- Keep every ratio between neighbouring cells at or below 1.4, the largest
+  ratio rfx validates; preflight warns above it. This profile stays below 1.3.
 - Start and end the profile with cells equal to `dx`, so the absorber sees the
   same cell size on every face.
-- Put material interfaces exactly on cell boundaries. Here the substrate
-  starts at `sum(lower_air)` for that reason.
+- Put material interfaces in z exactly on cell boundaries. Here the substrate
+  starts at `sum(lower_air)` for that reason. Section 3 says where its x and y
+  faces land.
 
 [Non-Uniform Mesh](/rfx/model/domain-mesh/) covers graded meshes in depth.
 
@@ -149,17 +151,28 @@ the patch 0.35 cell inside each drawn edge, and the feed and probe on grid
 nodes; the patch is not rounded to a uniform lattice. The 0.35 was measured
 where the cell normal to the sheet is as long as the in-plane cell beside its
 edge. Here the z cells at the sheets are 0.25 to 0.29 mm and the in-plane cell
-beside each edge is 0.95 mm, ratios of 0.26 to 0.31. At those ratios the
-offset was measured only for a free sheet in vacuum; on the substrate face,
-where these sheets lie, it has not been measured, so neither the solved size of this patch nor the direction of its
-error is known. `sim.fidelity_report()` and the preflight findings show the nodes the
+beside each edge is 0.95 mm, ratios of 0.26 to 0.31. Near those ratios the
+offset was measured in vacuum only, with the z cell a quarter of the in-plane
+cell: 0.26 cell for a free sheet and 0.31 cell for a strip three cells above a
+ground plane ([the accuracy notes](/rfx/check/model-on-grid/#accuracy)). On
+the substrate face, where these sheets lie, with a different cell on each
+side, it has not been measured, so neither the solved size of this patch nor
+the direction of its error is known. `sim.fidelity_report()` and the preflight findings show the nodes the
 grid built; neither replaces a mesh-convergence study.
+
+The substrate's x and y faces lie on the ground's edges. There the sheet's rule
+wins: the mesh puts the node 0.35 cell inside the ground's edge, the substrate
+face goes to that nearest node, and the dielectric is solved about 0.35 mm
+short on each side, 59.3 × 54.3 mm instead of 60 × 55 mm.
 
 This edge-aware in-plane grading raises four `nu_grading_reaches_absorber`
 warnings because the interior cells next to the x/y absorber faces are not
-uniform. The absorber then starts on a graded mesh, so its reflection is not
-the one it was characterised with, and this model's accuracy has not been
-checked. Preflight also notes that the copper's thickness (35 µm, the
+uniform. `edge_aware_profiles` keeps the end cells at `dx` but adjusts the
+cells inside them all the way to the domain faces, so a wider air margin does
+not clear these warnings (see
+[Non-Uniform Mesh](/rfx/model/domain-mesh/#building-a-z-profile)). The
+absorber then starts on a graded mesh, so its reflection is not the one it was
+characterised with, and this model's accuracy has not been checked. Preflight also notes that the copper's thickness (35 µm, the
 `add_thin_conductor` default) is solved as zero
 (`thin_conductor_thickness_unmodelled`), which is what a sheet means.
 
@@ -179,8 +192,8 @@ print(f"{ts.shape[0]} steps, settling {short_run.settling_db:.1f} dB")
 This shows that the model runs and produces finite data. Two periods is far too
 short for the patch to ring down, so rfx warns that the ring-down is
 truncated. The settling figure prints `nan`: a run with only probes reads no
-frequency for the check to judge, so its status is `absent` (see
-[Quick Start](/rfx/start/first-simulation/)). Nothing from this run is a result.
+frequency for the check to judge, so `short_run.settling_witness["status"]`
+is `"absent"` (see [Quick Start](/rfx/start/first-simulation/)). Nothing from this run is a result.
 
 <figure data-rfx="media">
   <img src="/rfx/examples/assets/first-patch/probe.png" loading="lazy" alt="Ez at the probe rising steadily from zero until the record stops at 0.5 ns" />
@@ -208,6 +221,9 @@ To report a resonance, Q or return loss for this patch:
    [Benchmarks](/rfx/guide/benchmarks/) shows how rfx's own patch case compares
    with openEMS.
 
-`examples/tutorials/patch_antenna_demo.py` carries out this workflow end to end,
-including far-field mode identification. [Examples](/rfx/examples/) lists the
+`examples/tutorials/patch_antenna_demo.py` does points 1, 2 and 5 of this list
+on another patch, the openEMS "Simple Patch Antenna" geometry: it checks that
+its record settled, identifies the resonant mode from its far field and
+compares the resonance with openEMS. It runs one mesh and has no port, so it
+does not do points 3 and 4. [Examples](/rfx/examples/) lists the
 full learning path.

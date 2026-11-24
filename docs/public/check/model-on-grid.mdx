@@ -29,7 +29,7 @@ Three calls, none of which runs a time step:
 | `sim.fidelity_report()` | A printed table: every shape's drawn extent next to the extent the grid built, per axis, in micrometres. |
 | `sim.realized_geometry()` | The same facts as a record you can read in code: solved sheet spans, wall planes, port edges, cell sizes, the snap mode. |
 
-After a solve, `result.realized_geometry.realization_table` holds one row per drawn object, built from the grid the time step used. Each entry of `row.axes` gives one axis: the drawn and solved span in metres, the difference in cells and in percent of the drawn extent, and how far the centre moved in cells. After a solve, `sim.realized_geometry()` and `sim.fidelity_report()` read the same table. If you change the model after the solve, they report the changed model.
+After a solve, `result.realized_geometry.realization_table` holds one row per drawn object, built from the grid the time step used. Each entry of `row.axes` gives one axis: the drawn and solved span in metres, the difference in cells and in percent of the drawn extent, and how far the centre moved in cells. Until you change the model, `sim.realized_geometry()` and `sim.fidelity_report()` read that same table; after a change, they build and report the changed model.
 
 A 10 × 10.2 mm patch on a 0.5 mm uniform grid shows the most common finding:
 
@@ -72,8 +72,11 @@ The message of that error reads, in part:
 Preflight takes a metal sheet's free edge to lie 0.35 of a cell beyond its
 last mesh node, so on this grid it predicts the patch 3.5 % wider than drawn;
 "solved as" in the message is that prediction. `run()` and
-`forward()` would stop here with the same message. The fix is a mesh whose last nodes lie 0.35 cell inside the drawn edges, so
-that the predicted solved edges fall on the drawn ones:
+`forward()` would stop here with the same message. What clears the error is a
+mesh whose last nodes lie 0.35 cell inside the drawn edges, so that the
+predicted solved edges fall on the drawn ones. Whether the patch is then solved
+at its drawn size depends on the cells around its edges;
+[Accuracy](#accuracy) below says how. The mesh:
 
 ```python
 profiles = edge_aware_profiles(domain, 0.5e-3, sheets=[patch], solids=[substrate])
@@ -84,7 +87,7 @@ sim.fidelity_report()
 
 <figure data-rfx="media">
   <img src="/rfx/check/assets/model-on-grid/structure.png" loading="lazy" alt="Section through a thin substrate layer that runs across the domain and the absorber frame around it, with a patch line on its top face and the mesh lines of the graded grid behind it." />
-  <figcaption>The model built with <code>edge_aware_profiles</code>, cut at y = 9.86 mm, with its node lines: the substrate fills z = 4 to 5 mm, and the patch is drawn from x = 5 to 15 mm. The patch's outermost grid nodes lie at x = 5.17 and 14.83 mm, and the cells on both sides of each patch edge are equal: 0.483 mm in x and 0.470 mm in y.</figcaption>
+  <figcaption>The model built with <code>edge_aware_profiles</code>, cut at y = 9.86 mm, with its node lines: the substrate fills z = 4 to 5 mm, and the patch is drawn from x = 5 to 15 mm. The patch's outermost grid nodes lie at x = 5.17 and 14.83 mm. The in-plane cells just inside and just outside each patch edge have the same size, 0.483 mm in x and 0.470 mm in y; the z cell at the patch is 0.5 mm.</figcaption>
 </figure>
 
 Preflight now reports no error. The warnings left are not about the patch
@@ -125,8 +128,11 @@ Two options change what the check does:
 - `preflight(strict=True)` collects every finding, warnings and notes
   included, and raises one `ValueError` that lists them all.
 
-`run(skip_preflight=True)` skips advisories only; realization refusals still
-apply. Use `snap='declared'` to warn on geometry size misses.
+`run(skip_preflight=True)` skips preflight, its errors included.
+Refusals outside preflight still stop the run, among them those about the
+realized geometry, such as `sheet_effective_size`, and those of inputs the
+solver path does not implement ([Refused inputs](/rfx/check/refusals/)). Use `snap='declared'` to turn geometry size misses into
+warnings.
 
 ## How rfx checks it
 
@@ -134,12 +140,12 @@ Preflight's findings that compare the drawing with the grid:
 
 | Finding | What it means | What to do |
 |---|---|---|
-| a sheet predicted more than 1 % off its drawn size (`sheet_effective_size`, error) | Preflight takes the sheet's free edges to lie 0.35 of a cell past its last node (measured where the cell normal to the sheet is as long as the in-plane cell beside its edge; see Accuracy below). It takes an edge fed over its whole width by a port to lie where it is drawn. | Build the in-plane mesh with `edge_aware_profiles`, or pass `snap="declared"`. |
+| a sheet predicted more than 1 % off its drawn size (`sheet_effective_size`, error) | Preflight takes the sheet's free edges to lie 0.35 of a cell past its last node (measured where the cell normal to the sheet is as long as the in-plane cell beside its edge; see Accuracy below). An edge whose every node lies on a port's feed gets no offset: preflight takes it at its last node and leaves it out of the size check. A microstrip port's feed covers the trace's full width, while a lumped or wire port feeds a single node of the edge. | Build the in-plane mesh with `edge_aware_profiles`, or pass `snap="declared"`. |
 | a cavity between adjacent parallel PEC faces solved more than 1 % off its drawn spacing (`sheet_cavity_spacing`, error) | Two sheets, a sheet and a PEC `Box` face, two PEC `Box` faces, or one of these and the domain's PEC floor or lid sit on node planes whose spacing differs from the drawing, and a cavity resonance follows that spacing. A non-Box volume and an absorbing, magnetic or conformal domain face are not checked. | Put both faces on mesh nodes: a `dx` that divides the heights and the domain extent, or `edge_aware_profiles(..., sheets=[...], solids=[...], axes="xyz")` with the PEC Boxes in `solids`. Or pass `snap="declared"`. |
-| a conductor face off the grid (`off_lattice_design_edges`, warning) | A metal face sits more than 0.5 % of its extent away from the nearest node. | Choose `dx` commensurate with the shape, or place a node on the face with a graded profile. |
+| a conductor face off the grid (`off_lattice_design_edges`, warning) | A PEC volume face sits more than 0.5 % of its extent away from the nearest node, or a sheet's predicted solved edge (0.35 cell past its last node) sits that far from its drawn edge. A sheet meshed with `edge_aware_profiles`, as above, does not raise it. | Choose `dx` commensurate with the shape, or place a node on the face with a graded profile. |
 | a PEC shape thinner than one cell but not zero (error) | It is neither a sheet nor a resolved volume. | Declare a sheet, or resolve the thickness. See [Conductors](/rfx/model/conductors/). |
 | a PEC shape that covers no cell (error) | Metal would vanish. | Make it larger than a cell, or use a wire. |
-| a sheet off a dielectric face | The face is not on a node plane, so the sheet snaps up to half a cell away. | Put the face on a node plane. |
+| a sheet drawn on a plane that is not a node plane, such as a dielectric face that falls between nodes (`sheet_plane_realized`, info; warning on an exact half-cell tie) | The plane is not a node plane, so the sheet lands on the nearest node plane, up to half a cell away; a tie goes to the lower plane. | Put the face on a node plane. |
 | body flush on an absorber (`body_flush_on_absorber`, warning) | The body's thin face touches the absorber, which continues its material as a half-space. | Leave free space between the body and the face, or declare that half-space on purpose. PEC and vacuum bodies are excluded. |
 | geometry in the absorber, grading that reaches the absorber (`geometry_in_absorber`, `nu_grading_reaches_absorber`, warnings) | The absorber no longer sees a uniform medium in the direction normal to its face. | Keep the structure clear of the absorber, and keep the cells next to each absorbing face uniform over as many cells as the face has absorber layers. |
 
@@ -189,8 +195,9 @@ and air, with square cells and E parallel to the edge, it reads 0.33. An edge
 on a dielectric face at any other ratio, and a sheet with a different cell on
 each side, have not been measured. Preflight, `fidelity_report()` and
 `edge_aware_profiles` use 0.35 at every ratio, so at other ratios a passing
-size check does not measure the solved size; `edge_aware_profiles(...,
-edge_offset=)` takes another value. The size check is pinned in
+size check does not measure the solved size. `edge_aware_profiles(...,
+edge_offset=)` places the nodes for another offset, in cells, but preflight's
+prediction still uses 0.35. The size check is pinned in
 `tests/contracts/test_sheet_solved_edge_reports.py`.
 
 ## See also

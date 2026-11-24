@@ -104,7 +104,7 @@ Helpers on `Result`:
 |---|---|
 | `find_resonances(freq_range=None, probe_idx=0, source_decay_time=None, bandpass=None, waveform=None)` | list of `MatrixPencilMode(freq, decay, Q, amplitude, phase, error)` from one probe, strongest first |
 | `s(m, n)`, `s11()`, `s21()`, `s12()`, `s22()` | complex S-parameter vector, ports numbered from 1 |
-| `s_db(m, n)` | `20 log10 |S_mn|` |
+| `s_db(m, n)` | `20 log10 \|S_mn\|` |
 | `freqs_hz` | the S-parameter frequency vector |
 | `assert_finite(*, raise_on_nonfinite=False)` | `True` when the observables hold no NaN/Inf |
 | `plot_time_series()`, `plot_s_params()`, `plot_smith()` | quick matplotlib plots |
