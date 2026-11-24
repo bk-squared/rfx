@@ -604,13 +604,13 @@ def test_sheet_probe_record_survives_gpu_backend_query(monkeypatch):
     assert actual.tobytes() == expected.tobytes(), f'GPU query changed sheet record: max error {error:.17g}, required bitwise equality'
 
 
-def test_g9_distributed_runners_refuse():
+def test_g9_distributed_runner_carries():
     # The pmap runner's half of this test went with that runner.
     from rfx.runners.distributed_v2 import run_distributed as run_v2
 
     sim = _sheet_sim(boundary="pec")
-    with pytest.raises(ValueError, match="not supported on the distributed"):
-        run_v2(sim, n_steps=8)
+    result = run_v2(sim, n_steps=8, devices=jax.devices()[:2], compute_s_params=False)
+    assert np.all(np.isfinite(result.state.ex))
 
 
 def test_g9_refusal_helper_message_names_the_lane():
@@ -870,34 +870,16 @@ def test_fence_subgridded_run():
            match=r"on the subgridded \(SBP-SAT\) run\(\) lane")
 
 
-def test_fence_distributed_multidevice_run():
-    """Two device handles select the lane; the fence fires before the runner
-    is imported, so this needs no real second device (and therefore no
-    process-global ``XLA_FLAGS`` device-count flip at import time)."""
-    d = jax.devices()[0]
-    _fence(lambda: _cube().run(n_steps=4, skip_preflight=True, devices=[d, d]),
-           where=("_distributed_entry.py", "execute_distributed"),
-           match=r"on the distributed multi-device run\(\) lane")
-
-
-def test_fence_distributed_multidevice_forward():
-    from tests._multi_device_scene import host_devices
-
-    devices = host_devices(2)
-    _fence(lambda: _cube().forward(n_steps=4, skip_preflight=True,
-                                  distributed=True, devices=devices),
-           where=("_distributed_entry.py", "execute_distributed"),
-           match=r"on the distributed multi-device forward\(\) lane")
-
-
-def test_fence_distributed_nonuniform_forward():
-    def go():
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            _nu_cube().forward(n_steps=4, skip_preflight=True,
-                               distributed=True)
-    _fence(go, where=("_execute.py", "forward"),
-           match=r"on the distributed non-uniform forward\(\) lane")
+@pytest.mark.parametrize('graded', [False, True])
+@pytest.mark.parametrize('forward', [False, True])
+def test_distributed_entries_carry_sheet(graded, forward):
+    from tests.contracts.test_multidevice_f0_sheets import model
+    sim = model(graded, 'pec', 'span', 2)
+    options = dict(n_steps=8, devices=jax.devices()[:2], skip_preflight=True)
+    result = (sim.forward(**options, distributed=True) if forward else
+              sim.run(**options, compute_s_params=False))
+    assert np.all(np.isfinite(result.time_series))
+    assert np.any(np.asarray(result.time_series) != 0)
 
 
 def test_fence_msl_junction_mixed_s_matrix():
@@ -1041,16 +1023,15 @@ def test_fence_forward_upml():
 
 
 def test_fence_forward_dispersive_overlap():
-    """``run()``'s dispersive fence lives in ``run_uniform``; ``forward()``
-    carries its OWN copy in ``_execute.forward``, so the message match is
-    not enough to tell them apart — the frame is."""
+    """``run()`` and ``forward()`` share one dispersive fence, in
+    ``admit()``; the frame proves ``forward()`` reaches it."""
     def go():
         sim = _cube()
         sim.add_material("water", eps_r=4.0,
                          debye_poles=[DebyePole(delta_eps=2.0, tau=8.3e-12)])
         sim.add(Box((2e-3, 2e-3, 2e-3), (6e-3, 6e-3, 6e-3)), material="water")
         sim.forward(n_steps=4, skip_preflight=True)
-    _fence(go, where=("_execute.py", "forward"),
+    _fence(go, where=("_admission.py", "admit"),
            match=r"dispersive \(Debye/Lorentz\) materials")
 
 
@@ -1135,15 +1116,13 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
         ("tests.unit.runners.test_forward_subpixel_smoothing",
          "test_surface_impedance_smoothing_refusal_matches_run"),
     # --- refuse_f0_sheets(...) call sites ---
-    ("rfx/runners/_distributed_nu_execute.py", "dispatch_forward",
-     "distributed non-uniform forward()"):
-        (__name__, "test_fence_distributed_nonuniform_forward"),
-    ("rfx/runners/_distributed_entry.py", "execute_distributed",
-     "distributed multi-device run()"):
-        (__name__, "test_fence_distributed_multidevice_run"),
-    ("rfx/runners/_distributed_entry.py", "execute_distributed",
-     "distributed multi-device forward()"):
-        (__name__, "test_fence_distributed_multidevice_forward"),
+    ("rfx/runners/distributed_v2.py", "run_distributed", "uniform multi-device TF/SF step"):
+        ("tests.contracts.test_multidevice_f0_sheets", "test_legacy_refuses_sheet_before_step"),
+    ("rfx/stepping/slab_wrap.py", "runner_step_kind", "graded multi-device legacy step"):
+        ("tests.contracts.test_multidevice_f0_sheets", "test_legacy_refuses_sheet_before_step"),
+    ("rfx/model/distributed_ports.py", "assemble",
+     "graded multi-device design region (pec_occupancy_override)"):
+        ("tests.contracts.test_design_region_admission", "test_path_two_device_graded_refuses"),
     ("rfx/runners/run.py", "run_after_admission", "subgridded (SBP-SAT) run()"):
         (__name__, "test_fence_subgridded_run"),
     ("rfx/sparams/mixed.py", "compute_mixed_s_matrix",
@@ -1163,17 +1142,11 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
         (__name__, "test_fence_gradient_check"),
     ("rfx/topology.py", "topology_optimize", "topology-optimization"):
         (__name__, "test_fence_topology_optimize"),
-    ("rfx/runners/distributed_v2.py", "run_distributed",
-     "distributed (v2) runner"):
-        ("tests.unit.materials.test_sheet_impedance",
-         "test_g9_distributed_runners_refuse"),
 
     # --- inline "(#677 v1)" fences ---
     ("rfx/api/_execute.py", "forward",
      "boundary='upml' on the uniform forward()"):
         (__name__, "test_fence_forward_upml"),
-    ("rfx/api/_execute.py", "forward", "dispersive (Debye/Lorentz)"):
-        (__name__, "test_fence_forward_dispersive_overlap"),
     ("rfx/sparams/waveguide.py", "compute_waveguide_s_matrix",
      "waveguide S-matrix method"):
         (__name__, "test_fence_waveguide_s_matrix_subpixel"),
@@ -1185,13 +1158,9 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
     ("rfx/runners/uniform.py", "run_uniform",
      "subpixel_smoothing / conformal_pec"):
         (__name__, "test_fence_uniform_run_subpixel_or_conformal"),
-    ("rfx/runners/uniform.py", "run_uniform", "dispersive (Debye/Lorentz)"):
-        ("tests.unit.materials.test_sheet_impedance",
-         "test_g9_dispersive_overlap_refuses_uniform_and_nu"),
-    ("rfx/runners/nonuniform.py", "run_nonuniform_path",
-     "dispersive (Debye/Lorentz)"):
-        ("tests.unit.materials.test_sheet_impedance",
-         "test_g9_dispersive_overlap_refuses_uniform_and_nu"),
+    ("rfx/runners/_admission.py", "admit", "dispersive (Debye/Lorentz)"):
+        ("tests.contracts.test_sheet_dispersion_every_entry",
+         "test_sheet_dispersion_refused_at_every_entry"),
     ("rfx/runners/nonuniform.py", "run_nonuniform_path",
      "anisotropic permittivity"):
         (__name__, "test_fence_nonuniform_run_anisotropic_eps"),

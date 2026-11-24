@@ -493,7 +493,7 @@ def finish(invariants, carry, layout, mesh, *, waveforms, dt=None):
 def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
                 pec_mask=None, occupancy=None, debye=None, lorentz=None,
                 cpml=False, cpml_state=None, emit_time_series=True, material_drive=None, port_plan=None,
-                rlc_metas=(), measurement=None):
+                rlc_metas=(), sheet_impedance=None, sheet_coeffs=None, measurement=None):
     """Build the wrapped setup without a whole-domain _build_nu_scan."""
     from rfx.boundaries.setup import nonuniform_boundaries
     from rfx.boundaries.axes import resolve_cpml_axes
@@ -501,6 +501,8 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     from rfx.stepping.graded import GradedStepContext, make_graded_step
     from rfx.measurement.projector import plan_tables
     from rfx.core.drives import drive_layout
+    from rfx.stepping.slab_sheets import cut_sheets
+    sheet_impedance, sheet_coeffs = cut_sheets(sheet_impedance, sheet_coeffs, layout, mesh)
     # Pole masks/parameters can be traced even when the cell arrays are fixed.
     pole_inputs = (None if debye is None else debye[0], None if lorentz is None else lorentz[0])
     device, reason = _material_host_device(materials, occupancy, pole_inputs, mesh=mesh)
@@ -564,7 +566,7 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
         pec_occupancy=(product_rows(occupancy, layout, mesh, 'pec_occupancy')
                        if occupancy is not None and occupancy.ndim == 4 else occupancy), pec_static_edge_masks=None, cpml_inv_eps_r=inverse, e_loss=loss,
         debye_coeffs=None if debye is None else debye[0], lorentz_coeffs=None if lorentz is None else lorentz[0],
-        aniso_eps=None, sheet_impedance=None, sheet_coeffs=None, design_box_coeffs=None)
+        aniso_eps=None, sheet_impedance=sheet_impedance, sheet_coeffs=sheet_coeffs, design_box_coeffs=None)
     from rfx.stepping.slab_lumped import initial
     if rlc_metas:
         carry['rlc_states'] = initial(rlc_metas, layout, mesh, zeros.dtype)
@@ -573,7 +575,7 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
         inv_dz_h=grid.inv_dz_h, grid=grid, use_tfsf=False, tfsf_cfg=None, use_waveguide_ports=False,
         waveguide_meta=(), waveguide_port_metrics=(), use_cpml=use_cpml, apply_cpml_h=apply_cpml_h,
         cpml_params=params, cpml_grid=cpml_grid, cpml_axes_eff=axes, use_pmc_faces=use_pmc,
-        _pmc_faces_frozen=pmc_faces, use_sheet_impedance=False, use_design_box=False,
+        _pmc_faces_frozen=pmc_faces, use_sheet_impedance=sheet_impedance is not None, use_design_box=False,
         use_debye=debye is not None, use_lorentz=lorentz is not None, inv_dy=grid.inv_dy,
         inv_dz=grid.inv_dz, curl_boundary=curl_boundary, apply_cpml_e=apply_cpml_e_step,
         _pec_faces_frozen=pec_faces, use_pec_edges=pec_mask is not None, use_pec_occupancy=occupancy is not None,
