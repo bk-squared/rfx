@@ -4,10 +4,9 @@ not square.
 
 ``pec_sheet_edge_offset.py`` measured the offset on a free fin with square
 cells (0.35 cell) and then found it moves when the cell normal to the sheet
-differs from the cell along it (0.28 at half, 0.56 to 0.57 at double, on three
-meshes). A printed conductor is not a free fin: it lies a few cells above a
-ground plane and its normal cell is usually the SMALLER one. This script
-measures that case.
+differs from the cell along it (0.28 at half, 0.56 to 0.57 at double). A
+printed conductor is not a free fin: it lies a few cells above a ground plane
+and its normal cell is usually the SMALLER one. This script measures that case.
 
 2-D TEz cross-section of a patch (E in the plane, H out of it): a 44 x 20 mm
 PEC box, an air-filled gap h = 1.5 mm between the bottom wall and a PEC strip
