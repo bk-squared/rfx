@@ -38,13 +38,12 @@ sim.add_flux_monitor(axis="x", coordinate=trans_x, freqs=freqs_rt, name="trans")
 ### `run(until_decay=...)`
 
 Decay-adaptive termination (see the `Simulation.run()` docstring for the
-authoritative description per solver path). The stop criterion depends on the
-boundary: on absorbing (CPML/UPML) boundaries — including the non-uniform
-`dx/dy/dz`-profile runner — the run stops when the total interior-domain
-energy decays to `until_decay * peak` (issue #169); on closed/PEC boundaries
-the uniform runner falls back to the field at a single monitor position, and
-`decay_monitor_component` / `decay_monitor_position` control which field and
-where to sample that fallback. This kwarg is load-bearing for accuracy: a
+authoritative description per solver path). The stop reads the field energy
+after the drive has ended: on absorbing (CPML/UPML) boundaries — including the
+non-uniform `dx/dy/dz`-profile runner — the run stops when the total
+interior-domain energy decays to `until_decay * peak` (issue #169).
+`decay_monitor_component` and `decay_monitor_position` are retired: they no
+longer affect the stop, and setting them warns. This kwarg is load-bearing for accuracy: a
 fixed `n_steps` that ends before the field has rung down truncates the signal
 and aliases residual energy into the spectrum. Detail (e) shows how a run
 checks its own record.
@@ -58,7 +57,9 @@ Subtract the DFT accumulators at the field level before computing the power flux
 
 This template requires domain dimensions, frequency samples, source settings,
 monitor coordinates and a Lorentz pole supplied by the caller; the complete
-`examples/tutorials/slab_rt_flux_monitor.py` is the runnable reference.
+`examples/tutorials/slab_rt_flux_monitor.py` is the runnable reference. The
+tutorial uses a lossless, dispersionless slab (εr = 4, no pole) and a fixed
+1200-step record.
 
 ```python
 import numpy as np
@@ -85,23 +86,13 @@ def build_sim(with_slab: bool) -> Simulation:
 
 # Run 1 — reference (no scatterer)
 sim_ref = build_sim(with_slab=False)
-res_ref = sim_ref.run(
-    n_steps=12000,
-    until_decay=1e-5,
-    decay_monitor_component="ez",
-    decay_monitor_position=(trans_x, y_center, 0),
-)
+res_ref = sim_ref.run(n_steps=12000, until_decay=1e-5)
 ref_refl_fm = res_ref.flux_monitors["refl"]
 ref_trans_flux = np.asarray(flux_spectrum(res_ref.flux_monitors["trans"]))
 
 # Run 2 — sample (with scatterer)
 sim_slab = build_sim(with_slab=True)
-res_slab = sim_slab.run(
-    n_steps=12000,
-    until_decay=1e-5,
-    decay_monitor_component="ez",
-    decay_monitor_position=(trans_x, y_center, 0),
-)
+res_slab = sim_slab.run(n_steps=12000, until_decay=1e-5)
 slab_refl_fm = res_slab.flux_monitors["refl"]
 slab_trans_flux = np.asarray(flux_spectrum(res_slab.flux_monitors["trans"]))
 
@@ -166,15 +157,26 @@ evaluated at `d`. Spell on-lattice corners in lattice arithmetic —
 
 A flux monitor keeps only its running DFT, so the monitor alone cannot show
 whether the record held the whole response. The coverage line the tutorial
-prints for each monitor says only that the drive pulse has passed the plane
-before the record ends. A probe at a point on the plane records the fields
-there; for the normally incident plane wave of this recipe they are the same
-across the plane. From that record rfx forms the ring-down witness
-(`result.settling_witness`, `result.settling_db`): for each frequency bin, the
+prints for each monitor is a geometric bound: the step by which the drive has
+ended and a wave at the speed of light from the farthest corner of the TF/SF
+box could have reached the plane. It counts neither repeated reflections nor
+slower travel inside the scatterer, so it does not show that the response has
+died away.
+
+A probe records the fields at one point. rfx forms the ring-down witness
+(`result.settling_witness`, `result.settling_db`) from every probe the run
+declares, wherever it sits, and reports the worst: for each frequency bin, the
 share that a tail beyond the record would still add. It passes at a share of
-1e-2 (−40 dB). Without a probe, and with both monitors covered, the witness is
-`absent` and every run warns `no ring-down settling witness ... flux monitors`;
-a monitor the record does not cover turns it `undetermined`.
+1e-2 (−40 dB). A probe on each flux plane is what makes the witness speak for
+the R/T read; a probe placed elsewhere for another purpose also enters the
+verdict. For a laterally uniform slab or stack under normal incidence the
+fields are the same across the plane, so one point per plane is enough. For a
+periodic surface or another scatterer they vary across the plane, and one point
+can sit where a still-ringing field is zero; use several points on each plane.
+
+Without a probe, and with both monitors covered, the witness is `absent` and
+every run warns `no ring-down settling witness ... flux monitors`; a monitor
+the record does not cover turns it `undetermined`.
 
 The tutorial puts an `add_vector_probe` on each plane. It records every
 component at that point; in 2-D TMz the witness skips the components that stay
@@ -219,9 +221,11 @@ shape error, and with mean gates alone that case passed while the true slab
 permittivity was 12.33% away from what the FDTD built (issue #812). If you need
 an accuracy figure for a slab, quote per-fringe deviations, not band means.
 
-For dispersive media there is currently **no tracked R(f)/T(f) check against a closed form**
-in this repository — treat dispersive R/T results as unvalidated against
-analytic references until such a check exists. Two source-verifiable facts to
+For dispersive media, `tests/oracle/test_dispersive_fresnel_validation.py`
+checks R(f) of a single Debye, Lorentz and Drude slab against the
+transfer-matrix result. Its gate is the band mean of |R_fdtd − R_analytic|
+(below 0.05; 0.01 for Drude), so it does not bound the fringe shape (above),
+and T(f) has no closed-form check. Two source-verifiable facts to
 keep in mind when comparing against other solvers: rfx discretizes
 Lorentz/Debye poles with a second-order central-difference ADE
 (`rfx/materials/lorentz.py`), while some other FDTD solvers use
@@ -235,8 +239,10 @@ necessarily a usage error in either tool.
 - `examples/tutorials/slab_rt_flux_monitor.py` — **the recommended path**: `add_flux_monitor`
   + two-run field-level reference subtraction via the `Simulation` API, with a
   ring-down witness on both runs (detail (e)), an analytic Fresnel comparison and
-  an energy-conservation readout (R+T prints 1.000 at every frequency on the
-  coarse demo grid). Start here.
+  an energy-conservation readout. For its lossless slab R+T prints 1.000 at every
+  frequency on the coarse demo grid; that holds for a lossless slab of any
+  permittivity, so it is not an accuracy check. With a lossy pole R+T falls
+  below 1 by the absorbed share. Start here.
 
 ## Companion primitives
 
