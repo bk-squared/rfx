@@ -556,7 +556,7 @@ def band_frequencies(text, design_freqs):
     return bins
 
 
-def lens_resolve_context(case, model, source, best, n, directory):
+def lens_resolve_context(case, model, source, best, n, directory, *, duration_factor, designs):
     provenance = _record.source_block(case.REPO, model.precision)
     from rfx.geometry.rasterize_grid import interior_lattice_mask
     from rfx.mesh_edges import solved_sheet_span
@@ -579,6 +579,7 @@ def lens_resolve_context(case, model, source, best, n, directory):
     scripts = [Path(__file__), Path(case.__file__)]
     context = {"freqs_hz": model.freqs, "design_freqs_hz": case.FREQS,
                "dt_s": model.grid.dt, "n_steps": n, "duration_s": n * model.grid.dt,
+               "duration_factor": duration_factor, "designs": list(designs),
                "boundary": model.boundary, "preflight": model.preflight_record,
                "realized_plate": plate,
                "model": model.describe(), "nodes_m": model.nodes,
@@ -608,6 +609,17 @@ def resolved(case, args, source):
         bas = dc.load_json(source / "baselines.json")
         designs.update(no_lens=case.baselines()["no_lens"], grin=case.baselines()["grin"],
                        best_uniform=case.baselines()[bas["best_uniform"]])
+    resolve_details = {}
+    if case.CASE == "lens":
+        requested = getattr(args, "designs", None)
+        if requested is not None:
+            for name in requested:
+                if name not in designs:
+                    raise SystemExit(f"design {name} is not available for this case")
+            designs = {name: designs[name] for name in requested}
+        duration_factor = getattr(args, "duration_factor", 1.0)
+        duration *= duration_factor
+        resolve_details = {"duration_factor": duration_factor, "designs": list(designs)}
     all_rows = []
     for dx in case.MESHES:
         directory = args.out / f"mesh_{dx:.9g}"
@@ -617,7 +629,7 @@ def resolved(case, args, source):
             model = setup(case, directory, dx, args.precision, False, **kwargs)
             n = math.ceil(duration / model.grid.dt)
             if case.CASE == "lens":
-                lens_resolve_context(case, model, source, best, n, directory)
+                lens_resolve_context(case, model, source, best, n, directory, **resolve_details)
             rows = evaluate(case, model, designs, n, directory, "resolve")
         except Exception as exc:
             if case.CASE == "lens":
@@ -632,7 +644,7 @@ def resolved(case, args, source):
                 rows = evaluate(case, model, designs, n, directory, f"resolve_{factor:g}x")
             evaluate(case, model, designs, n, directory, "normalization_crosscheck", normalize=False)
         all_rows.append(rows)
-        record(directory, case, model, "resolve", {"n_steps": n, "best_iteration": best, "measurements": rows})
+        record(directory, case, model, "resolve", {"n_steps": n, "best_iteration": best, "measurements": rows, **resolve_details})
     if case.CASE == "lens" and (len(case.MESHES) < 3 or getattr(args, "band", None) is not None):
         return
     trend = {}
@@ -731,7 +743,7 @@ def resolved(case, args, source):
             eligibility.update(mask_met_each_mesh=[r["reported"]["mask_met_per_frequency"] for r in all_rows],
                                meets_mask=bool(witnesses and all_rows[-1]["reported"]["mask_met"]))
     dc.save_json(args.out / "eligibility.json", eligibility)
-    record(args.out, case, model, "resolve", {"best_iteration": best, "trend": trend, **eligibility})
+    record(args.out, case, model, "resolve", {"best_iteration": best, "trend": trend, **eligibility, **resolve_details})
 
 
 def cost(case, args):
@@ -775,12 +787,26 @@ def main(case, argv=None):
         parser.add_argument("--mesh", choices=("graded", "uniform"), default="graded")
         parser.add_argument("--boundary", choices=("nearest", "arith", "harm"))
         parser.add_argument("--band", help="resolve frequencies F0,F1,DF in GHz")
+        parser.add_argument("--designs", help="resolve subset: reported,no_lens,grin,best_uniform")
+        parser.add_argument("--duration-factor", type=float, help="resolve duration multiplier (default: 1.0)")
         parser.add_argument("--meshes", help="comma-separated mesh sizes in mm")
         parser.add_argument("--dx", type=float, help="cost mesh size in mm")
         parser.add_argument("--steps", type=int)
         parser.add_argument("--kind", choices=("forward", "gradient"))
     args = parser.parse_args(argv)
     if case.CASE == "lens":
+        if args.designs is not None or args.duration_factor is not None:
+            if args.stage != "resolve":
+                parser.error("--designs and --duration-factor require lens --stage resolve")
+        if args.duration_factor is None:
+            args.duration_factor = 1.0
+        if not math.isfinite(args.duration_factor) or args.duration_factor <= 0:
+            parser.error("--duration-factor must be finite and > 0")
+        if args.designs is not None:
+            args.designs = args.designs.split(",")
+            known = {"reported", "no_lens", "grin", "best_uniform"}
+            if any(name not in known for name in args.designs) or len(set(args.designs)) != len(args.designs):
+                parser.error("--designs requires at least one known name and no repeats")
         case = case.with_objective(args.objective)
         if args.band is not None:
             if args.stage != "resolve":
