@@ -252,10 +252,12 @@ for the other helpers.
   ring-down check reads your probes, not the NTFF surface, so it is a guide,
   not a proof. Repeat with a longer run (or `until_decay=`) and compare the
   patterns.
-- **`compute_rcs` warns that the record ends before the field leaves the NTFF
-  box** → raise `n_steps`. Without that warning a resonant target can still be
-  ringing at the end of the record; `compute_rcs` does not check this, so
-  compare the RCS from two record lengths.
+- **`compute_rcs` warns that the record ends before the drive has passed the
+  NTFF box** → raise `n_steps`. The step it names is the drive's end plus a
+  light-speed transit to the box, a geometric bound. Without that warning a
+  resonant target can still be ringing at the end of the record;
+  `compute_rcs` does not check this, so compare the RCS from two record
+  lengths.
 - **Directivity looks wrong** → sample the full sphere; a single cut gives
   the wrong total power.
 - **Box too close to the radiator or touching the absorber** → preflight
