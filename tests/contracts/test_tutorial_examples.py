@@ -227,8 +227,8 @@ def test_slab_rt_flux_monitor_tutorial_runs():
 
     The 0.02 bound on the two analytic means sits above the 0.012 the tutorial
     prints for both; the tutorial's docstring puts that gap to the Fresnel
-    curve on its coarse grid. A table that departs further from the curve on
-    average fails.
+    curve on its coarse grid. A table whose mean departure from the curve
+    exceeds 0.02 fails.
     """
     output = _run_tutorial("slab_rt_flux_monitor.py")
 
