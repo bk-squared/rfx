@@ -165,12 +165,16 @@ evaluated at `d`. Spell on-lattice corners in lattice arithmetic —
 ### (e) Put a probe on each flux plane
 
 A flux monitor keeps only its running DFT, so the monitor alone cannot show
-whether the record held the whole response. A probe on the plane records the
-fields the monitor integrates, and from that record rfx forms the ring-down
-witness (`result.settling_witness`, `result.settling_db`): for each frequency
-bin, the share that a tail beyond the record would still add. It passes at a
-share of 1e-2 (−40 dB). Without a probe the witness is `absent`, and every run
-warns `no ring-down settling witness ... flux monitors`.
+whether the record held the whole response. The coverage line the tutorial
+prints for each monitor says only that the drive pulse has passed the plane
+before the record ends. A probe at a point on the plane records the fields
+there; for the normally incident plane wave of this recipe they are the same
+across the plane. From that record rfx forms the ring-down witness
+(`result.settling_witness`, `result.settling_db`): for each frequency bin, the
+share that a tail beyond the record would still add. It passes at a share of
+1e-2 (−40 dB). Without a probe, and with both monitors covered, the witness is
+`absent` and every run warns `no ring-down settling witness ... flux monitors`;
+a monitor the record does not cover turns it `undetermined`.
 
 The tutorial puts an `add_vector_probe` on each plane. It records every
 component at that point; in 2-D TMz the witness skips the components that stay

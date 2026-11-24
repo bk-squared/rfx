@@ -208,7 +208,7 @@ def report_record_coverage(label, witness):
     status = witness.get("status")
     reason = witness.get("reason")
     db = witness.get("db")
-    rows = (witness or {}).get("coverage", ())
+    rows = witness.get("coverage", ())
     if isinstance(db, (int, float)) and np.isfinite(db):
         print(f"  {label}: settling witness {status}, {db:.0f} dB (bar -40 dB)")
     else:
