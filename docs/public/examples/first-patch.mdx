@@ -166,8 +166,8 @@ This edge-aware in-plane grading raises four `nu_grading_reaches_absorber`
 warnings because the interior cells next to the x/y absorber faces are not
 uniform. `edge_aware_profiles` keeps the end cells at `dx` but adjusts the
 cells inside them all the way to the domain faces, so a wider air margin does
-not clear these warnings, and it has no option that keeps those cells uniform
-(see [Non-Uniform Mesh](/rfx/model/domain-mesh/#building-a-z-profile)). The
+not clear these warnings (see
+[Non-Uniform Mesh](/rfx/model/domain-mesh/#building-a-z-profile)). The
 absorber then starts on a graded mesh, so its reflection is not the one it was
 characterised with, and this model's accuracy has not been checked. Preflight also notes that the copper's thickness (35 µm, the
 `add_thin_conductor` default) is solved as zero
