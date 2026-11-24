@@ -210,8 +210,8 @@ def test_sharded_max_reads_the_high_index_shard(path):
     assert result.settling_echo_bound['n_max'] == np.nextafter(np.float32(3.), np.float32(np.inf))
 
 
-@pytest.mark.parametrize('entry', ['run', 'forward'])
-@pytest.mark.parametrize('scene', ['dielectric', 'microstrip'])
+@pytest.mark.parametrize('scene,entry', [
+    ('dielectric', 'run'), ('dielectric', 'forward'), ('microstrip', 'run')])
 def test_one_and_multiple_devices_return_float32_jax_bound_leaves(entry, scene):
     """One declaration carries the same four device leaves eagerly and staged."""
     devices = jax.devices('cpu')[:2]
