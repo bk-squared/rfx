@@ -14,7 +14,7 @@ from rfx.stepping.rank import rank_shard_map
 from rfx.stepping.remat import segmented_scan
 from rfx.stepping.sequence import HookPoint
 from rfx.stepping.slab import cut, cut_pole_coeffs, cut_poles, place, material_kind
-from rfx.stepping.slab_measurements import _nodes, cut_probe_table, local_table
+from rfx.stepping.slab_measurements import _nodes, cut_probe_table, local_table, table_metadata
 
 
 def select_step(*, cpml=False, debye=False, lorentz=False, ports=False,
@@ -207,6 +207,7 @@ def split(invariants, carry, layout, mesh, *, waveforms, dt=None, staged=False):
 def wrap(step, layout, mesh, *, table, port_table=None):
     """Execute the supplied graded step on each slab, attaching two copies."""
     from rfx.runners.distributed_nu import _exchange_h_ghosts_nu, _exchange_e_ghosts_nu
+    table, port_table = table_metadata(table), table_metadata(port_table)
     context = replace(step.context, x_face_frame={'x': (
         layout.ghost_width, layout.ghost_width + layout.nx_per_rank - layout.pad_x)})
 

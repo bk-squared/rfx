@@ -55,14 +55,17 @@ def run_prepared(setup, layout, mesh, invariants, carry, waves, advance, *,
     from rfx.runners import distributed_nu as nu
     if slab_records is not None and slab_records.layouts:
         carry = dict(carry, records=slab_records.initial())
+        invariants = dict(invariants, record_operands=slab_records.operands())
         field_advance = advance
 
         def advance(carry, xs, invariants, *, ranks):
             fields = {key: value for key, value in carry.items() if key != "records"}
             previous = slab_records.prepare(fields['fdtd'], ranks=ranks)
-            final, samples = field_advance(fields, xs, invariants, ranks=ranks)
+            field_inputs = {k: v for k, v in invariants.items() if k != "record_operands"}
+            final, samples = field_advance(fields, xs, field_inputs, ranks=ranks)
             final['records'] = slab_records.update(carry['records'], final['fdtd'],
-                slab_records.grid.dt, xs[0], ranks=ranks, previous=previous)
+                slab_records.grid.dt, xs[0], ranks=ranks, previous=previous,
+                operands=invariants["record_operands"])
             return final, samples
 
     final, records = run_steps(carry, invariants, waves, mesh_ranks(mesh), advance,

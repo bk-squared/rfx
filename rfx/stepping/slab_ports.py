@@ -34,8 +34,7 @@ def global_plan(sim, grid, specs, lane, freqs, compute_s_params):
             from rfx.measurement.monitors import default_frequency_grid
             freqs = default_frequency_grid(sim._freq_max, 50, host=True)
     initial = {}
-    with jax.ensure_compile_time_eval():
-        bins, meta, use = graded_accumulators(specs, grid, freqs, initial)
+    bins, meta, use = graded_accumulators(specs, grid, freqs, initial)
     return PortPlan(graded_specs(specs), graded_acc_indices(specs), meta, bins, use, initial)
 
 

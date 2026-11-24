@@ -327,12 +327,11 @@ def cut(array, layout, kind, *, mesh=None, dt=None, host=False, uniform=False):
     mesh = sharding.mesh if sharding is not None else mesh
     if mesh is not None and layout.ghost_width and is_sharded(array, layout, mesh):
         return _halo(array, layout, mesh, fill)
+    array = array.copy() if mesh is not None and isinstance(array, jax.Array) and not isinstance(array, jax.core.Tracer) else array
     if mesh is not None and not isinstance(array, jax.core.Tracer):
-        xp = np if isinstance(array, np.ndarray) else jnp
         shape = (layout.n_devices * layout.nx_local, *array.shape[1:])
         def slab(index):
-            with jax.ensure_compile_time_eval():
-                return _slice(array, layout, (index[0].start or 0) // layout.nx_local, fill, xp)
+            return _slice(array, layout, (index[0].start or 0) // layout.nx_local, fill, np)
         return jax.make_array_from_callback(shape, sharding or NamedSharding(mesh, P('x')),
                                            slab)
     arr = array[:layout.nx] if array.shape[0] != layout.nx else array
@@ -359,6 +358,10 @@ def _vacuum_dispersion_values(kind, n_poles, dt):
     from rfx.core.yee import MaterialArrays
     from rfx.materials.debye import DebyePole, init_debye
     from rfx.materials.lorentz import LorentzPole, init_lorentz
+    if not isinstance(dt, float):
+        raise TypeError(
+            "the vacuum pole coefficients of a multi-device slab need a concrete "
+            f"Python float time step, got {type(dt).__name__}")
     with jax.core.eval_context():
         one = jnp.ones((1, 1, 1))
         vacuum = MaterialArrays(eps_r=one, sigma=jnp.zeros((1, 1, 1)), mu_r=one)

@@ -302,10 +302,17 @@ def test_compiled_loop_has_no_concrete_arrays(loop_program):
 
 @pytest.mark.slow
 @pytest.mark.parametrize("case", [("mixed", 2, 0), ("mixed", 2, 2), pytest.param(
-    ("cpml", None, 0), id="case2", marks=pytest.mark.xfail(strict=True,
-        reason="#1844 graded multi-device CPML loop captures probe-table records as constants (pre-existing on main)"))])
+    ("cpml", None, 0), id="case2")])
 def test_other_loop_branches_have_no_concrete_arrays(case):
     program = _loop_program.__wrapped__(SimpleNamespace(param=case))
+    test_compiled_loop_has_no_concrete_arrays(program)
+
+
+
+@pytest.mark.parametrize("scene", ["case2", "dft_plane", "flux_monitor", "ntff_box",
+                                  "current_moment", "lumped_port", "wire_port", "graded_pmc"])
+def test_one_setup_loop_scenes(scene):
+    program = _loop_program.__wrapped__(SimpleNamespace(param=("cpml", None, 0)), scene=scene)
     test_compiled_loop_has_no_concrete_arrays(program)
 
 

@@ -23,7 +23,8 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None, exchange_inte
     E exchange follows the PEC mask and sources: a neighbour's next H update
     reads the completed seam plane. H exchange precedes the local E update.
     """
-    from rfx.stepping.slab_measurements import local_table
+    from rfx.stepping.slab_measurements import local_table, table_metadata
+    table, port_table = table_metadata(table), table_metadata(port_table)
     context = replace(context, x_face_frame={'x': (
         layout.ghost_width, layout.ghost_width + layout.nx_per_rank - layout.pad_x)})
 
@@ -310,13 +311,16 @@ def run_prepared(prepared, records, mesh, *, n_steps):
     from rfx.stepping.slab_wrap import run_steps
     carry, invariants, waves, field_advance = prepared
     carry = dict(carry, records=records.initial())
+    invariants = dict(invariants, record_operands=records.operands())
 
     def advance(carry, xs, invariants, *, ranks):
         fields = {key: value for key, value in carry.items() if key != 'records'}
         previous = records.prepare(fields['fdtd'], ranks=ranks)
-        final, samples = field_advance(fields, xs, invariants, ranks=ranks)
+        field_inputs = {k: v for k, v in invariants.items() if k != "record_operands"}
+        final, samples = field_advance(fields, xs, field_inputs, ranks=ranks)
         final['records'] = records.update(carry['records'], final['fdtd'],
-            records.grid.dt, xs[0], ranks=ranks, previous=previous)
+            records.grid.dt, xs[0], ranks=ranks, previous=previous,
+            operands=invariants["record_operands"])
         return final, samples
 
     ranks = mesh_ranks(mesh)

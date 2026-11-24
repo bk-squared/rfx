@@ -52,6 +52,9 @@ class NonUniformGrid(NamedTuple):
     that side even when the axis as a whole uses CPML. For back-compat
     the six fields default to ``cpml_layers`` on every face (the
     pre-per-face-allocation symmetric layout).
+
+    Under a caller's ``jax.jit`` with x64 off, ``dx_arr_f64``,
+    ``dy_arr_f64`` and ``dz_f64`` come back as float32.
     On non-periodic axes, the trailing cell-width entry supplies the final electric node and contributes no physical extent.
     """
     nx: int
