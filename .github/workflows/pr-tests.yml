@@ -78,7 +78,11 @@ jobs:
 
       - name: Classify the changed paths
         id: classify
-        # Classify the diff and select its not-code readers.
+        # Every input arrives through the environment. The decision is
+        # scripts/ci/changed_paths.py (stdlib, unit-tested); the shell around it
+        # is scripts/ci/classify_changes.sh, which answers `true` for every
+        # merge group and any diff it could not compute. On a not-code diff it
+        # also names the tests that read a changed path (select_notcode_tests.py).
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
@@ -305,7 +309,19 @@ jobs:
 
       - name: Contract tests — shard ${{ matrix.group }} of 20 (the diff is not code)
         if: needs.changes.outputs.code_changed == 'false'
-        # Run contracts and the selected literal readers of the changed paths.
+        # The diff touches no file under rfx/, tests/, validation/ or examples/
+        # and no build or lane configuration, so the physics tests would observe
+        # the same code as the tested base tree. The contract tests still run:
+        # they pin docs/, scripts/ and these workflows, which IS what such a diff
+        # changes. They ran in one job until 2026-10-09, when the suite (6052
+        # tests) no longer fitted it: cancelled at 30 min serially, and again on
+        # three workers with 74 % done. Split over the twenty shards instead.
+        # Same flags as the guard suite: `-o addopts=""` so a slow mark inside
+        # tests/contracts cannot deselect from a required gate, the explicit -m
+        # for a CPU-safe run without the docs_consistency tests, --strict-markers
+        # for marker typos. The collect-count floor is in guards-and-preflight.
+        # Then the tests that read a changed path run under the code branch's
+        # own filter (default addopts); under 20 of them run unsplit in group 1.
         env:
           NOTCODE_TESTS: ${{ needs.changes.outputs.notcode_tests }}
           SHARD_GROUP: ${{ matrix.group }}
