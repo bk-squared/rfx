@@ -24,14 +24,17 @@ INSIDE the metal removes it: 0.15 % worst with E along the edge (TMz) and
 for the empty box's own dispersion.
 
 Where the number holds. It does not depend on the polarization or on the cell
-size. It does depend, mildly, on the shape of the cells around the edge: for
-a strip three cells above a ground wall -- a printed conductor's situation --
-it reads 0.37, 0.31 and 0.31 when the cell normal to the sheet is 1, 1/2 and
-1/4 of the in-plane cell (``pec_strip_over_ground_offset.py``), so the fixed
-0.35 leaves at most 0.042 cell per edge there. For a free-standing sheet with
-strongly non-square cells it moves more (0.28 at 1/2, 0.56 to 0.57 at 2);
-pass ``edge_offset=`` for such a mesh. A conductor one or more cells THICK
-ends in a face between two corners and has a smaller offset, not handled here.
+size. It does depend on the shape of the cells around the edge. For a strip
+above a ground wall -- a printed conductor's situation -- with square cells it
+reads 0.37 on one mesh with three cells between strip and ground, and 0.352
+when the same gap is meshed with 3, 6, 12 and 24 cells and extrapolated. With
+the cell normal to the sheet 1/2 and 1/4 of the in-plane cell it reads 0.31
+at three cells (``pec_strip_over_ground_offset.py``); these two are one-mesh
+values, not re-measured on finer meshes. For a free-standing sheet with
+strongly non-square cells it moves more (0.28 at 1/2, 0.56 to 0.57 at 2, the
+0.57 extrapolated from two meshes); pass ``edge_offset=`` for such a mesh. A
+conductor one or more cells THICK ends in a face between two corners and has a
+smaller offset, not handled here.
 
 :func:`edge_aware_profile` builds such an axis profile. It only computes
 where the lines go; the cells between them come from
