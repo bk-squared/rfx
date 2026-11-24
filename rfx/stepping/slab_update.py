@@ -108,7 +108,6 @@ def _update_e_local(state, e_coeffs, dx, *, boundary=None, frame=None, owned=Non
         - (hx - backward(hx, 1)) / dx
     )
 
-    # Match the one-device update: compute first, round once to field storage.
     ex = (ca_x * state.ex + cb_x * curl_x).astype(state.ex.dtype)
     ey = (ca_y * state.ey + cb_y * curl_y).astype(state.ey.dtype)
     ez = (ca_z * state.ez + cb_z * curl_z).astype(state.ez.dtype)
@@ -219,12 +218,6 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
             state, lorentz_coeffs, lorentz_state, dt, dx, boundary=boundary, frame=frame, owned=owned)
         return new_state, None, new_lorentz
 
-    # Mixed Debye + Lorentz: the single-device combined coefficients
-    # (``mixed_e_component_coeffs``), per component.
-    # The Lorentz dP coefficient needs 1/gamma_total = 1/(gamma_Lorentz
-    # + sum beta), which differs from 1/gamma_Lorentz on every edge that carries both a Debye
-    # and a Lorentz pole -- with the edge mean, every edge on a Debye|Lorentz
-    # interface.
     debye_coeffs, debye_state = debye
     lorentz_coeffs, lorentz_state = lorentz
     hx, hy, hz = state.hx, state.hy, state.hz
@@ -374,13 +367,13 @@ def update_h_nu_shmap(st, mat, mesh, dt,
         rank_shard_map,
         mesh=mesh,
         in_specs=(
-            P("x"), P("x"), P("x"),  # ex, ey, ez
-            P("x"), P("x"), P("x"),  # hx, hy, hz
-            P(),                     # step
-            P("x"), P("x"), P("x"),  # eps_r, sigma, mu_r
-            P("x"), P(None), P(None),  # inv_dx, inv_dy, inv_dz
-            P("x"), P(None), P(None),  # inv_dx_h, inv_dy_h, inv_dz_h
-            (P("x"), P(None), P(None)),  # original primal cell lengths
+            P("x"), P("x"), P("x"),
+            P("x"), P("x"), P("x"),
+            P(),
+            P("x"), P("x"), P("x"),
+            P("x"), P(None), P(None),
+            P("x"), P(None), P(None),
+            (P("x"), P(None), P(None)),
         ),
         out_specs=(P("x"), P("x"), P("x"), P()),
         check_rep=False,
@@ -438,9 +431,9 @@ def update_e_nu_shmap(st, mat, mesh, dt,
             P("x"), P("x"), P("x"),
             P(),
             P("x"), P("x"), P("x"),
-            P("x"), P("x"), P("x"),  # lumped and film component records
+            P("x"), P("x"), P("x"),
             P("x"), P(None), P(None),
-            P("x"),                  # e_materials: None or ((eps...), (sig...))
+            P("x"),
         ),
         out_specs=(P("x"), P("x"), P("x"), P()),
         check_rep=False,

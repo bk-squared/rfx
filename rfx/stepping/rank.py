@@ -51,7 +51,7 @@ def _staged_by_enclosing_program():
         return is_tracer(jax.lax.add(np.float32(0), np.float32(0)))
     except TimeoutError:
         raise
-    except Exception:  # noqa: BLE001 - fails closed: a probe failure refuses the run
+    except Exception:  # noqa: BLE001
         return True
 
 
@@ -79,10 +79,7 @@ def rank_shard_map(fun, *, mesh, in_specs, out_specs, check_rep=False):
     def local(rank_shard, *args):
         return fun(*args, rank=rank_shard[0])
 
-    # PartitionSpec is a tuple subclass, but denotes a single tree prefix.
     specs = in_specs if isinstance(in_specs, tuple) and not isinstance(in_specs, P) else (in_specs,)
-    # jax.shard_map with check_vma is what the deprecated jax.experimental
-    # shard_map(check_rep=) calls, argument for argument (JAX 0.10.2).
     return jax.shard_map(local, mesh=mesh, in_specs=(P("x"), *specs),
                          out_specs=out_specs, check_vma=check_rep)
 

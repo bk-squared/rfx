@@ -154,14 +154,15 @@ class UniformSlabView(NamedTuple):
 
 
 class SlabView(NamedTuple):
+    """The owned global x-row interval is [x0, x1)."""
     rank: int
     n_devices: int
-    x0: int                 # first owned global x row
-    x1: int                 # one past the last owned global x row
-    halo_lo: int            # input rows below x0 (0 on the first slab)
-    halo_hi: int            # input rows above x1 (0 on the last slab)
-    grid: Any               # the GLOBAL grid (1-D metrics only)
-    globals: Mapping        # whole-model scalars
+    x0: int
+    x1: int
+    halo_lo: int
+    halo_hi: int
+    grid: Any
+    globals: Mapping
 
     @property
     def nx(self):
@@ -208,15 +209,12 @@ def slab_views(grid, n_devices, *, globals=None, halo_lo=HALO_LO, halo_hi=HALO_H
     layout = Slab(int(grid.nx), int(n_devices))
     views = []
     for rank, (x0, x1) in enumerate(layout.owned):
-        # A slab that owns no row (ceil-divided layouts) reads none either.
         owns = x1 > x0
         view = SlabView(rank, layout.n_devices, x0, x1,
                         halo_lo if owns and x0 > 0 else 0,
                         halo_hi if owns and x1 < layout.nx else 0,
                         grid, dict(globals or {}))
         if layout.nx > 1 and view.hi - view.lo == 1:
-            # The neighbour rules treat a length-1 axis as the 2-D lane's
-            # self-adjacency and wrap it (found by idm's review).
             raise ValueError(
                 f"slab {rank} of {layout.n_devices} would read a single x row of {layout.nx}; "
                 "a one-row slab takes the 2-D self-adjacency rule. Use fewer devices.")
@@ -249,8 +247,6 @@ def uniform_apply(producer, *inputs, mesh, row_count, row_axis=0):
             saved.update(tree=tree, leaves=leaves, dynamic=dynamic)
         return tuple(a if keep else None for a, keep in zip(leaves, dynamic))
 
-    # Arithmetic is eager over the placed device axis; R5 retains only
-    # stage inputs and outputs for reverse mode. Metadata bypasses vmap.
     mapped = jax.checkpoint(jax.vmap(traced))(*inputs)
     return jax.tree.unflatten(saved['tree'], [
         a if keep else original for a, original, keep in
