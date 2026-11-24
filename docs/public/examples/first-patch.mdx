@@ -151,10 +151,13 @@ the patch 0.35 cell inside each drawn edge, and the feed and probe on grid
 nodes; the patch is not rounded to a uniform lattice. The 0.35 was measured
 where the cell normal to the sheet is as long as the in-plane cell beside its
 edge. Here the z cells at the sheets are 0.25 to 0.29 mm and the in-plane cell
-beside each edge is 0.95 mm, ratios of 0.26 to 0.31. At those ratios the
-offset was measured only for a free sheet in vacuum; on the substrate face,
-where these sheets lie, it has not been measured, so neither the solved size of this patch nor the direction of its
-error is known. `sim.fidelity_report()` and the preflight findings show the nodes the
+beside each edge is 0.95 mm, ratios of 0.26 to 0.31. Near those ratios the
+offset was measured in vacuum only, with the z cell a quarter of the in-plane
+cell: 0.26 cell for a free sheet and 0.31 cell for a strip three cells above a
+ground plane ([the accuracy notes](/rfx/check/model-on-grid/#accuracy)). On
+the substrate face, where these sheets lie, with a different cell on each
+side, it has not been measured, so neither the solved size of this patch nor
+the direction of its error is known. `sim.fidelity_report()` and the preflight findings show the nodes the
 grid built; neither replaces a mesh-convergence study.
 
 The substrate's x and y faces lie on the ground's edges. There the sheet's rule

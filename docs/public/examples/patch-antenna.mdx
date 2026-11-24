@@ -51,16 +51,19 @@ cases compare with openEMS.
   0.35-cell edge offset and refuses a patch predicted more than 1 % off its
   drawn size. Build the in-plane mesh with `edge_aware_profiles`, as
   [Your First Patch Antenna](/rfx/examples/first-patch/) does, rather than
-  rounding L and W to the grid, because rounding changes the antenna. That mesh puts each sheet's last node 0.35 cell inside its drawn edge. The
-  offset was measured where the cell normal to the sheet is as long as the
-  in-plane cell beside its edge.
+  rounding L and W to the grid, because rounding changes the antenna. That
+  mesh puts each sheet's last node 0.35 cell inside its drawn edge. The 0.35
+  was measured where the cell normal to the sheet is as long as the in-plane
+  cell beside its edge.
   In `patch_antenna_demo.py` the z cells at the sheets are 0.38 to 0.50 mm and
-  the in-plane cells are 1.86 to 2 mm, ratios of 0.19 to 0.27. At those ratios
-  the offset was
-  measured only for a free sheet in vacuum; on the substrate face, where these
-  sheets lie, it has not been measured, so the solved patch size,
-  and with it the resonance this page reports, carries an error this page does
-  not know. See [Check the model on the grid](/rfx/check/model-on-grid/).
+  the in-plane cells are 1.86 to 2 mm, ratios of 0.19 to 0.27. Near those
+  ratios the offset was measured in vacuum only: 0.26 cell for a free sheet
+  with the z cell a fifth or a quarter of the in-plane cell, and 0.31 cell for
+  a strip three cells above a ground plane at a quarter
+  ([the accuracy notes](/rfx/check/model-on-grid/#accuracy)). On the
+  substrate face, where these sheets lie, with a different cell on each side,
+  it has not been measured, so the solved patch size, and with it the
+  resonance this page reports, carries an error this page does not know. See [Check the model on the grid](/rfx/check/model-on-grid/).
 
 ## Resonance
 
