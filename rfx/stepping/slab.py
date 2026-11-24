@@ -329,7 +329,6 @@ def cut(array, layout, kind, *, mesh=None, dt=None, host=False, uniform=False):
         return _halo(array, layout, mesh, fill)
     array = array.copy() if mesh is not None and isinstance(array, jax.Array) and not isinstance(array, jax.core.Tracer) else array
     if mesh is not None and not isinstance(array, jax.core.Tracer):
-        array = np.asarray(array)
         shape = (layout.n_devices * layout.nx_local, *array.shape[1:])
         def slab(index):
             return _slice(array, layout, (index[0].start or 0) // layout.nx_local, fill, np)
