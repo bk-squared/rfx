@@ -200,10 +200,6 @@ def _findings(item, kind):
     return [f for f in item.get("findings", []) if f["kind"] == kind]
 
 
-def _preflight_rows(sim, code):
-    return [i for i in sim.preflight() if i.code == code]
-
-
 def _junction_plane_metal(sim):
     """(realized wall nodes on the junction plane, r_from_axis) on the
     padded grid.

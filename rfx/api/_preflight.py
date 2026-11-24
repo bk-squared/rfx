@@ -299,7 +299,6 @@ class _PreflightMixin:
         _check_waveguide_port_aperture_snap,
     )
 
-
     from rfx.preflight.waveguide import (
         _emit_waveguide_port_cutoff_findings,
         _check_waveguide_port_evanescent_declared_geometry,
