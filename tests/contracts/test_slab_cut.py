@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from rfx.stepping.slab import FILL, Slab, cut, cut_poles
+from rfx.core.jax_utils import declaration_setup
 from rfx.core.yee import EPS_0
 
 TEST_DT = 1.7e-12
@@ -70,21 +71,25 @@ def test_closed_over_concrete_array_can_be_staged_during_a_trace():
 
 
 def test_concrete_input_keeps_no_host_copy():
-    """Replicated readback caches only a temporary, eagerly and under caller jit."""
+    """Split readback caches only a temporary across eager and caller-jit routes."""
     if len(jax.devices('cpu')) < 2:
         pytest.skip('requires 2 CPU devices')
     layout = Slab(11, 2)
     mesh = Mesh(np.array(jax.devices('cpu')[:2]), ('x',))
     array = np.arange(66, dtype=np.float32).reshape(11, 2, 3)
-    sharding = NamedSharding(mesh, P())
+    sharding = NamedSharding(mesh, P(None, 'x'))
     control = jax.device_put(array, sharding)
     np.asarray(control)
     assert getattr(control, '_npy_value', None) is not None
-    for caller_jit in (False, True):
+    for route in ('eager', 'caller_jit', 'declaration_setup'):
         src = jax.device_put(array, sharding)
         assert getattr(src, '_npy_value', None) is None
         invoke = lambda: cut(src, layout, 'eps_r', mesh=mesh)
-        result = jax.jit(invoke)() if caller_jit else invoke()
+        if route == 'declaration_setup':
+            def invoke():
+                with declaration_setup():
+                    return cut(src, layout, 'eps_r', mesh=mesh)
+        result = invoke() if route == 'eager' else jax.jit(invoke)()
         assert getattr(src, '_npy_value', None) is None
         _assert_rows(result, array, layout, 'eps_r')
 

@@ -327,9 +327,8 @@ def cut(array, layout, kind, *, mesh=None, dt=None, host=False, uniform=False):
     mesh = sharding.mesh if sharding is not None else mesh
     if mesh is not None and layout.ghost_width and is_sharded(array, layout, mesh):
         return _halo(array, layout, mesh, fill)
+    array = array.copy() if mesh is not None and isinstance(array, jax.Array) and not isinstance(array, jax.core.Tracer) else array
     if mesh is not None and not isinstance(array, jax.core.Tracer):
-        if isinstance(array, jax.Array):
-            array = array.copy()
         array = np.asarray(array)
         shape = (layout.n_devices * layout.nx_local, *array.shape[1:])
         def slab(index):
