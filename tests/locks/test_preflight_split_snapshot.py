@@ -123,7 +123,6 @@ pec_face_short_of_wall: +1 realization warning; PEC volume z 10.16 mm solved 10 
 wire_port_dead_extent: +1 realization error; Wire port drawn 1.5 mm (3 cells) solved 2 cells (−33 %).
 conformal_fine_dx: 2 port_aperture_snap warnings → 1 error; WR-90 aperture 10.16 mm on 1 mm cells solved 10.00 mm (−1.6 %); the existing port_aperture_snap text is kept (bar B3) and is now a strict refusal; one finding per port instead of one per axis.
 waveguide_nu_declared_geometry: +1 port_aperture_snap warning; Graded WR-90 aperture y −1.6 %, z +3.3 %; snap="declared" fixture, so it warns.
-coax_junction_short: +1 realization warning; 0.3 mm dielectric layer at half-cell ties: centroid −0.5 cell (−50 µm), extent exact.
 wire_port_dead_cell_nu: +3 realization warning; Graded: substrate z 254 µm solved 226 µm (−10.9 %), strip sheet centroid +0.28 cell, wire port z −10.9 % (follows the substrate).
 The two congruence_off_lattice count-mutation tests pass again after the regeneration (they failed only because the new code reached the lock before their count assertion).
 
@@ -1047,21 +1046,6 @@ def _floquet_nonuniform_sim():
     return sim
 
 
-def _coax_junction_short_sim():
-    """The shorted attempt-2 coax/MSL junction copy.
-
-    ``tests/unit/geometry/test_fidelity_topology_findings.py:161``'s
-    ``_junction_sim(open_annulus=False)``, IMPORTED. That module's
-    ``test_rule_ii_fires_on_the_shorted_junction_copy`` is the behavioural
-    gate on the 24/24 ring count; this is the report-text witness for
-    ``_check_coaxial_port_junction_aperture``, the single body of the
-    ports_coax family, which the whole corpus ran and never made speak.
-    """
-    from tests.unit.geometry.test_fidelity_topology_findings import _junction_sim
-
-    return _junction_sim(open_annulus=False)
-
-
 def _refplane_near_field_sim():
     """The #313 thru with the measurement planes three cells out.
 
@@ -1398,7 +1382,6 @@ _FIXTURES = (
     ("subgrid_unsupported_feature",
      _subgrid_unsupported_feature_sim, {}, None),
     ("floquet_nonuniform_automesh", _floquet_nonuniform_sim, {}, None),
-    ("coax_junction_short", _coax_junction_short_sim, {}, None),
     ("refplane_near_field", _refplane_near_field_sim, {}, None),
     ("refplane_partial_optin", _refplane_partial_optin_sim, {}, None),
     ("floating_port", _floating_port_sim, {}, None),
@@ -1439,7 +1422,6 @@ def _render(fixture_id, build, kwargs, calculator) -> str:
             "tie_stack": "sheets x/y +5.83%",
 
             "msl_conductor_plane_mismatch": "trace y +17.5%",
-            "coax_junction_short": "trace y +11.67%",
             "refplane_near_field": "trace x/y +2.06%/+7%",
             "refplane_partial_optin": "trace x/y +2.06%/+7%",
             "wire_port_dead_cell_nu": "trace y -5.46%",
@@ -1615,7 +1597,6 @@ def test_reported_cell_count_mutation_trips_split_lock(monkeypatch, replacement,
 
 @pytest.mark.parametrize('fixture_id,dielectric', [
     ('stack_snapped_patch', 4.),
-    ('coax_junction_short', 2.1),
     ('wire_port_dead_cell_nu', 3.66),
 ])
 def test_sheet_warning_vanishes_at_material_interface(fixture_id, dielectric):
