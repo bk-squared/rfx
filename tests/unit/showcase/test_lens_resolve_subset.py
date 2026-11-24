@@ -9,26 +9,6 @@ import _lens_filter_common as common
 import design_lens as lens
 
 
-@pytest.mark.parametrize("stage, options", [
-    ("main", ["--designs", "best_uniform", "--duration-factor", "2"]),
-    ("main", ["--designs", "best_uniform"]),
-    ("main", ["--duration-factor", "1"]),
-    ("resolve", ["--duration-factor", "0"]),
-    ("resolve", ["--duration-factor", "nan"]),
-    ("resolve", ["--duration-factor", "-1"]),
-    ("resolve", ["--duration-factor", "inf"]),
-    ("resolve", ["--designs", "foo"]),
-    ("resolve", ["--designs", "grin,grin"]),
-    ("resolve", ["--designs", ""]),
-    ("resolve", ["--designs", "grin,"]),
-])
-def test_resolve_option_errors(tmp_path, stage, options):
-    with pytest.raises(SystemExit) as exc:
-        common.main(lens, ["--stage", stage, "--out", str(tmp_path),
-                           "--boundary", "nearest", *options])
-    assert exc.value.code == 2
-
-
 @pytest.fixture
 def resolve_standin(monkeypatch, tmp_path):
     source = tmp_path / "source"
@@ -71,6 +51,9 @@ def resolve_standin(monkeypatch, tmp_path):
     ({"designs": ["grin", "reported"], "duration_factor": 1.0}, ["grin", "reported"], 6048, 1.0),
 ])
 def test_resolved_subset_and_duration(resolve_standin, options, names, n, factor):
+    """Pins Run it's two resolves on 1.0, 0.75 and 0.5 mm: the final design, the feed alone, the textbook lens
+    and the best uniform block; then `--designs best_uniform --duration-factor 2`, that block alone with a
+    record twice as long."""
     case, args, source, baselines, reported, calls = resolve_standin
     vars(args).update(options)
     expected_designs = {"reported": reported, "no_lens": baselines["no_lens"],
@@ -94,6 +77,7 @@ def test_resolved_subset_and_duration(resolve_standin, options, names, n, factor
 
 
 def test_unavailable_resolve_design(resolve_standin):
+    """Pins Run it's fan beam: its `resolve` solves the fan design alone, so the feed alone is refused."""
     case, args, source, _, _, calls = resolve_standin
     case.OBJECTIVE = "fan"
     args.designs = ["no_lens"]

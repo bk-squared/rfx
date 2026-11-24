@@ -9,6 +9,8 @@ import design_lens as lens
 
 
 def test_lens_graded_mesh():
+    """Pins the page's mesh: cubic cells at the plate's four edges, and with `--boundary nearest`
+    a cell that straddles two lens pixels takes the permittivity of the pixel holding its centre."""
     with jax.default_device(jax.devices("cpu")[0]):
         model = lens.Model(1e-3, boundary="arith")
     nodes = model.nodes

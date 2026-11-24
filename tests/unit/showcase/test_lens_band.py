@@ -14,6 +14,8 @@ import design_lens as lens
 
 
 def test_lens_band(monkeypatch, tmp_path):
+    """Pins Run it's `--stage resolve ... --band 9,11,0.1`: 21 bins over 9-11 GHz in 0.1 GHz steps,
+    the three design frequencies among them, through the far field and the settling check."""
     expected = np.array([9.0, 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 9.8, 9.9,
                          10.0, 10.1, 10.2, 10.3, 10.4, 10.5, 10.6, 10.7, 10.8,
                          10.9, 11.0]) * 1e9
