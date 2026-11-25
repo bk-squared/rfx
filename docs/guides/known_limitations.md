@@ -334,23 +334,20 @@ Tracker: none — accepted limitation (refused at default: tests/contracts/test_
 
 On one device, a fixed-step `run()` inside a user `jax.jit` stays within the cross-trace bar of plain `run()` on Linux CPU (9 float32 ULP of the probe peak per step, 1e-4 of the peak summed over the record) for a point current source and for a lumped or wire port, on uniform and graded meshes. The same holds for `forward()` with a traced `eps_override` and a point source or a lumped port, and for `run(devices=...)` and `forward(distributed=True)` with a point source or a lumped or wire port, on uniform and graded meshes (`tests/contracts/test_user_jit_drive_and_probe.py`). Four requests are refused under a user `jax.jit`: on a uniform mesh, `run()`'s S-parameters of a single lumped or wire port (use `forward(port_s11_freqs=...)` or a plain `run()`); a closed-box plane wave on several devices; `until_decay`; and `report_every` (`test_host_control_keeps_its_user_jit_behavior`). Call these without an enclosing `jax.jit`.
 
-### One process with several GPUs: the per-GPU peak is set while the material coefficients are prepared, and on two GPUs it is higher than on one.
+### One process with several GPUs: GPU 0 builds the material arrays of the whole grid before they are cut into slabs, so that stage of its setup peak does not fall with the GPU count.
 
 Tracker: #2150
 
-In one process, `sim.run(devices=...)` reaches its per-GPU memory peak before the first time step, while it prepares the
-material coefficients of each GPU's slab, not in the time loop.
+In one process, `sim.run(devices=...)` first builds the material arrays of the whole grid on GPU 0: permittivity,
+permeability, the conductivity with wires stamped in, and the port conductivity. Only then does it cut them into the
+per-GPU slabs. The size of that first stage depends on the grid, not on the GPU count.
 
 The case measured: on RTX A6000 GPUs, a 1024 x 64 x 192-cell box with a 3-cell wire port and a DFT plane, in float32.
-- The peak on the largest GPU is 1.680 GB on one GPU, 1.764 GB on two and 1.293 GB on three.
-- The time loop itself needs 0.923 GB per GPU on two GPUs and 0.617 GB on three.
+- On two GPUs, GPU 0 reaches 0.665 GB while it builds the whole-grid arrays, and the other GPU holds nothing yet.
+- The time loop needs 0.923 GB per GPU on two GPUs and 0.617 GB on three.
+- On two GPUs the largest per-GPU peak is 0.832 GB, set by the time loop.
 
-Mechanism: during that preparation, each GPU holds a separate copy of a material array for every place the model
-refers to it, beside the arrays being copied. GPU 0 also holds four material arrays of the whole grid. A second GPU
-therefore does not lower the per-GPU peak.
-
-What to do: size a run on several GPUs from a peak measured on the same number of GPUs. Do not assume that memory per
-GPU halves when the GPU count doubles.
+What to do: on many GPUs, size GPU 0 for the whole-grid material arrays as well as its own slab.
 → [#2150](https://github.com/bk-squared/rfx/issues/2150)
 
 ### A closed PEC box with a TF/SF plane wave runs 11.6 % slower per step on two GPUs than before the shared multi-device time step.
