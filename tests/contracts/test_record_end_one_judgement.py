@@ -512,7 +512,7 @@ def _scene(kind, graded):
     if kind == "coax":
         from rfx import Simulation
         mesh = {"dz_profile": np.full(60, .001)} if graded else {}
-        sim = Simulation(domain=(0.008, 0.008, 0.060), freq_max=40.0e9, boundary="cpml", **mesh)
+        sim = Simulation(domain=(0.008, 0.008, 0.060), freq_max=18.0e9, dx=C0 / 40.0e9 / 20, boundary="cpml", **mesh)
         sim.add_coaxial_port((0.004, 0.004, 0.020), face="top", pin_length=5.0e-3,
                              waveform=GaussianPulse(f0=8.0e9, bandwidth=1.2))
         return sim
