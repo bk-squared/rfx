@@ -65,8 +65,6 @@ def build_simulation(variant: str) -> Simulation:
                      boundary=boundary, cpml_layers=16, mode="2d_tmz")
     if variant == "dielectric":
         sim.add_material("dielectric", eps_r=4.0)
-        # Extend the half-space through the absorbing layers. The interface
-        # lies on the declared 40 mm grid plane; there is no rear slab face.
         sim.add(Box((0.040, -1.0, -1.0), (1.0, 1.0, 1.0)), material="dielectric")
     position, f0, bandwidth = source_settings(variant)
     waveform_type = ModulatedGaussian if variant == "cavity" else GaussianPulse
@@ -110,7 +108,6 @@ def calculate(case: str, output: Path) -> tuple[dict, dict]:
         axes = result.snapshot_axes["ez"]
         fields = np.asarray(result.snapshots["ez"])
         x, y = np.asarray(axes.coords["x"]), np.asarray(axes.coords["y"])
-        # Keep the physical interior for display; the API includes CPML pads.
         xi = np.flatnonzero((x >= -1e-12) & (x <= DOMAIN[0] + 1e-12))
         yi = np.flatnonzero((y >= -1e-12) & (y <= DOMAIN[1] + 1e-12))
         fields = fields[:, xi][:, :, yi]
@@ -170,9 +167,6 @@ def render(case: str, output: Path, arrays: dict, metadata: dict) -> None:
     times = [arrays[f"{v}_frame_times_s"] for v in variants]
     for t in times[1:]:
         np.testing.assert_allclose(t, times[0], rtol=1e-12)
-    # A shared, fixed linear scale across all frames AND compared models.
-    # Only the tiny current-injection neighborhood is excluded when finding
-    # the scale. Its pixels remain in the data and can saturate in the image.
     reference = 0.0
     for variant, field in zip(variants, frames):
         x, y = arrays[f"{variant}_x_m"], arrays[f"{variant}_y_m"]
@@ -226,7 +220,6 @@ def render(case: str, output: Path, arrays: dict, metadata: dict) -> None:
         clock.set_text(f"{CASES[case]['title']}\nt = {times[0][index] * 1e9:.3f} ns")
         return artists + [marker, clock]
 
-    # Posters show a visible field rather than the nearly-zero first frame.
     poster_index = int(len(times[0]) * (0.7 if case == "cavity-standing-wave" else 0.20))
     frame(poster_index)
     fig.savefig(output / f"{case}.png", dpi=120, facecolor=fig.get_facecolor())
@@ -235,7 +228,6 @@ def render(case: str, output: Path, arrays: dict, metadata: dict) -> None:
         fps=15, codec="libx264", bitrate=550,
         extra_args=["-pix_fmt", "yuv420p", "-movflags", "+faststart", "-threads", "2"]), dpi=100)
     plt.close(fig)
-    # Probe CSV has physical units and every recorded time step, not movie samples.
     columns, names = [], []
     for variant in variants:
         columns.extend((arrays[f"{variant}_probe_times_s"], arrays[f"{variant}_probe_ez_V_per_m"]))
@@ -298,7 +290,6 @@ def main() -> None:
             metadata = json.loads((args.output / f"{case}.json").read_text())
         else:
             arrays, metadata = calculate(case, args.output)
-            # Preserve metadata before rendering so a rendering retry needs no solve.
             (args.output / f"{case}.json").write_text(json.dumps(metadata, indent=2) + "\n")
         render(case, args.output, arrays, metadata)
         if args.publish_to:

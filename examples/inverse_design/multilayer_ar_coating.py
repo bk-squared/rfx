@@ -50,6 +50,8 @@ The method comparison quoted by ``rfx.minimize`` documentation is
 Run: python examples/inverse_design/multilayer_ar_coating.py
 Gradient-only CPU smoke: JAX_PLATFORMS=cpu python -B \
     examples/inverse_design/multilayer_ar_coating.py --gradient-witness-only
+
+The substrate must continue through the right absorber to avoid an unintended substrate-to-vacuum reflection.
 """
 
 from __future__ import annotations
@@ -75,9 +77,6 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 C0 = 2.998e8
 
-# ---------------------------------------------------------------------------
-# Problem constants
-# ---------------------------------------------------------------------------
 EPS_SUB = 12.0
 N_LAYERS = 3
 F_LO, F_HI = 8e9, 12e9
@@ -88,26 +87,18 @@ N_REF = EPS_SUB ** (0.5 / (N_LAYERS + 1))
 LAYER_THK = LAMBDA0 / (4.0 * N_REF)
 DX = 0.5e-3
 
-# x-axis layout (relative to domain origin)
 X_PML_PAD = 6e-3
 X_SRC = 10e-3
 X_REFL = 22e-3
 X_DESIGN_LO = 35e-3
 X_DESIGN_HI = X_DESIGN_LO + N_LAYERS * LAYER_THK
 X_TRANS = X_DESIGN_HI + 8e-3
-# Substrate extends through the right-side CPML so the wave is absorbed
-# inside the substrate (CPML works inside dielectrics).  Any partial
-# substrate→vacuum interface inside the domain would create a strong
-# spurious reflection back to the refl probe and inflate |R(f)|².
 LX = X_TRANS + 18e-3
 LY = LZ = DX
 
 N_PERIODS = 30
 
 
-# ---------------------------------------------------------------------------
-# Simulation builder
-# ---------------------------------------------------------------------------
 def _simulation_kwargs(dx, cpml_cells):
     return dict(
         freq_max=F_MAX, domain=(LX, dx, dx), dx=dx,
@@ -217,9 +208,6 @@ def _print_setup(mesh=None) -> None:
           f"substrate cells [{i_sub_lo}, {i_sub_hi})")
 
 
-# ---------------------------------------------------------------------------
-# Geometry helpers
-# ---------------------------------------------------------------------------
 def _vacuum_eps_array() -> jnp.ndarray:
     """All-vacuum reference: pure incident — no substrate, no coating."""
     return _DEFAULT_MESH.vacuum()
@@ -239,16 +227,6 @@ def _latent_to_eps(latent: jnp.ndarray) -> jnp.ndarray:
     return 1.0 + (EPS_SUB - 1.0) * jax.nn.sigmoid(latent)
 
 
-# ---------------------------------------------------------------------------
-# Meep cross-validation reference loader
-# ---------------------------------------------------------------------------
-# Meep R(f) reference for this geometry is computed by a VESSL job:
-#   research/microwave-energy/meep_simulation/jobs/ar_coating_meep_for_rfx.yaml
-#   →  research/microwave-energy/meep_simulation/ar_coating_reference.py
-# Results are dropped into  docs/research_notes/ar_coating_meep_*.json
-# (gitignored).  We load them here when available and overlay on the
-# spectrum plot.  Local Meep is not used (NumPy 1.x/2.x ABI conflict).
-# ---------------------------------------------------------------------------
 def load_meep_reference(name: str) -> dict | None:
     """Load a Meep R(f) JSON dropped by the VESSL job.  None if absent."""
     p = os.path.join(SCRIPT_DIR, "..", "..", "docs", "research_notes",
@@ -258,10 +236,6 @@ def load_meep_reference(name: str) -> dict | None:
         return None
     with open(p) as f:
         return json.load(f)
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# Analytic TMM (numpy)
-# ---------------------------------------------------------------------------
 def tmm_R(layer_eps: np.ndarray, freqs: np.ndarray,
           eps_sub: float = EPS_SUB,
           layer_thk: float | np.ndarray = LAYER_THK) -> np.ndarray:
@@ -296,9 +270,6 @@ def tmm_band_cost(layer_eps: np.ndarray, eps_sub: float = EPS_SUB) -> float:
     return float(np.mean(tmm_R(layer_eps, fs, eps_sub=eps_sub)))
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 def record_length_check(mesh=None):
     """Print the coating reflection gradient's record-length witness.
 
@@ -343,7 +314,6 @@ def main(mesh=None, output_dir=SCRIPT_DIR) -> int:
     _print_setup(mesh)
     record_length_check(mesh)
 
-    # ---- TMM optimum ------------------------------------------------------
     print("\n[TMM] L-BFGS-B optimisation against analytic R(f)...")
     res_tmm = _scimin(
         tmm_band_cost,
@@ -360,7 +330,6 @@ def main(mesh=None, output_dir=SCRIPT_DIR) -> int:
     print(f"  Geometric ladder εr (closed-form approx): {geo_ladder}")
     print(f"  Geometric ladder mean R: {tmm_band_cost(geo_ladder):.4e}")
 
-    # ---- Vacuum reference forward ----------------------------------------
     print("\n[ref] vacuum forward (one-shot, for incident-wave subtraction)...")
     sim_ref = mesh.sim
     t0 = time.time()
@@ -374,7 +343,6 @@ def main(mesh=None, output_dir=SCRIPT_DIR) -> int:
     print(f"  done in {time.time() - t0:.1f}s, "
           f"max |ts_inc_refl| = {float(jnp.max(jnp.abs(ts_inc_refl))):.4e}")
 
-    # ---- Differentiable design forward -----------------------------------
     nfft = int(2 ** np.ceil(np.log2(N_STEPS)))
     freqs_fft = jnp.fft.rfftfreq(nfft, d=DT)
     band_mask = (freqs_fft >= F_LO) & (freqs_fft <= F_HI)
@@ -428,14 +396,12 @@ def main(mesh=None, output_dir=SCRIPT_DIR) -> int:
     initial_R, R_final = np.asarray(initial_R), np.asarray(R_final)
     final_cost = result.fun
 
-    # ---- Meep cross-validation (loaded from VESSL job output) ------------
     meep_rfx = load_meep_reference("rfx_final")
     meep_tmm = load_meep_reference("tmm_optimum")
     meep_rfx_fine = load_meep_reference("rfx_final_fine")
     meep_at_rfx_eps = float(meep_rfx["mean_R_band"]) if meep_rfx else None
     meep_at_tmm_eps = float(meep_tmm["mean_R_band"]) if meep_tmm else None
 
-    # ---- Comparison -------------------------------------------------------
     err_pct = np.abs(final_eps - tmm_eps) / tmm_eps * 100.0
     refl_drop_db = 10.0 * np.log10(losses[0] / max(final_cost, 1e-20))
 
@@ -456,7 +422,6 @@ def main(mesh=None, output_dir=SCRIPT_DIR) -> int:
               f"(TMM: {tmm_cost:.4e}, ratio Meep/TMM = "
               f"{meep_at_tmm_eps/tmm_cost:.3f})")
 
-    # ---- Plots ------------------------------------------------------------
     fs_plot = np.linspace(F_LO, F_HI, 51)
     R_tmm_init_geo = tmm_R(geo_ladder, fs_plot)
     R_tmm_opt = tmm_R(tmm_eps, fs_plot)
@@ -526,7 +491,6 @@ def main(mesh=None, output_dir=SCRIPT_DIR) -> int:
     plt.close()
     print(f"  plot saved: {out_png}")
 
-    # ---- Gates ------------------------------------------------------------
     geo_cost_tmm = tmm_band_cost(geo_ladder)
     cost_ratio_to_tmm = final_cost / max(tmm_cost, 1e-20)
     cost_ratio_to_geo = final_cost / max(geo_cost_tmm, 1e-20)
@@ -534,16 +498,12 @@ def main(mesh=None, output_dir=SCRIPT_DIR) -> int:
     gate_beats_geo = cost_ratio_to_geo <= 0.7
     n_intermediate = int(np.sum((final_eps > 1.5) & (final_eps < EPS_SUB - 0.5)))
     gate_intermediate = n_intermediate >= 2
-    # Meep cross-validation gate: when the VESSL Meep reference is present,
-    # require Meep@TMM-εr to match analytic TMM within 10 % (full-wave FDTD
-    # vs analytic transfer-matrix on the same configuration).  Skipped when
-    # the Meep JSON isn't present so the demo still runs standalone.
     if meep_at_tmm_eps is not None:
         meep_vs_tmm = meep_at_tmm_eps / max(tmm_cost, 1e-20)
         gate_meep_vs_tmm = 0.9 <= meep_vs_tmm <= 1.1
     else:
         meep_vs_tmm = None
-        gate_meep_vs_tmm = True   # not gating when reference absent
+        gate_meep_vs_tmm = True
     all_ok = (gate_match_tmm and gate_beats_geo and gate_intermediate
               and gate_meep_vs_tmm)
 

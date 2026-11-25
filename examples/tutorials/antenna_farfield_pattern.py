@@ -80,12 +80,6 @@ def build_simulation() -> Simulation:
         waveform=GaussianPulse(f0=F0, bandwidth=0.5),
         amplitude_kind="current",
     )
-    # One point probe, so the run carries a ring-down settling witness.
-    # A far-field pattern is a DFT-derived number on an open domain, and this
-    # project's -40 dB settling rule says such a number must be quoted with
-    # the end-of-record energy relative to the post-source peak.  run() scores
-    # that witness from the probe time series, so a pattern run with no probe
-    # comes back with ``settling_db = None`` and no truncation guard at all.
     sim.add_probe((CENTER[0] + PROBE_OFFSET, CENTER[1], CENTER[2]), "ez")
     return sim
 
@@ -137,10 +131,6 @@ def save_e_plane_samples(far_field) -> None:
 def main() -> None:
     sim = build_simulation()
 
-    # At 8 GHz, half a wavelength is 18.74 mm.  These first faces are only
-    # 3 mm from the source, so the next full preflight call should print six
-    # near-field advisories.  That warning is the useful result of this build;
-    # do not compute a pattern from this monitor placement.
     sim.add_ntff_box(
         corner_lo=tuple(coordinate - CLOSE_GAP for coordinate in CENTER),
         corner_hi=tuple(coordinate + CLOSE_GAP for coordinate in CENTER),
@@ -164,23 +154,11 @@ def main() -> None:
         f"(lambda/2 = {HALF_WAVELENGTH * 1e3:.2f} mm)"
     )
 
-    # run() repeats the advisory tier, including the six-layer absorber
-    # warning.  For far-field work, call preflight()
-    # yourself first, as above, to include the full monitor-face checks.
     result = sim.run(n_steps=N_STEPS, compute_s_params=False)
 
-    # The settling witness the probe above makes possible: how far the record
-    # had rung down when it ended, as end/peak energy in dB.  Below -40 dB the
-    # pattern integrates a settled record; above it, the record was cut while
-    # the structure was still ringing and run() says so.  ``None`` would mean
-    # no witness was established -- which is never a pass.
     print(f"Ring-down settling witness: {result.settling_db:.1f} dB "
           f"(rule: below -40 dB before quoting a pattern)")
 
-    # A z-directed point dipole is rotationally symmetric.  Its phi=0 E-plane
-    # is therefore the full angular description, and directivity() integrates
-    # this single azimuth over 2*pi.  This uses the source symmetry; it is not
-    # parameter tuning.
     theta = np.linspace(0.01, np.pi - 0.01, 73)
     phi = np.array([0.0])
     far_field = compute_far_field(
@@ -194,8 +172,6 @@ def main() -> None:
     if not np.isfinite(peak_directivity):
         raise RuntimeError("Far-field directivity is not finite")
 
-    # This coarse grid has a small, known numerical offset.  Do not tune the
-    # physical setup against it; refine a production model instead.
     textbook_directivity = 1.76
     print(f"Peak directivity: {peak_directivity:.3f} dBi")
     print(

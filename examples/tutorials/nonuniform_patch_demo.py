@@ -122,6 +122,8 @@ TM02's Q predicts; doubling the absorber changes no decay rate by more than
 
 Run:
   python examples/tutorials/nonuniform_patch_demo.py
+
+The analytic patch-frequency reference uses the transmission-line model in Balanis, Chapter 14.
 """
 
 import math
@@ -149,14 +151,11 @@ C0 = 2.998e8
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        "nonuniform_patch_demo")
 
-# =============================================================================
-# Geometry constants (identical to the former cv05 patch case, removed 2026-09-21)
-# =============================================================================
 f_design  = 2.4e9
 eps_r     = 4.3
 h_sub     = 1.5e-3
-W         = 38.0e-3            # patch width  (y)  -> TM01 resonant length
-L         = 29.5e-3            # patch length (x)  -> TM10 resonant length
+W         = 38.0e-3
+L         = 29.5e-3
 gx        = 60.0e-3
 gy        = 55.0e-3
 air_above = 25.0e-3
@@ -166,11 +165,8 @@ probe_inset = 8.0e-3
 dx     = 1.0e-3
 n_cpml = 8
 n_sub  = 6
-dz_sub = h_sub / n_sub          # 0.25 mm
-n_buf  = 8                      # uniform-fine buffer cells on EACH side of the
-                                # stack: pushes the grading transition ~2 mm
-                                # clear of the resonator (the lock test checks
-                                # n_buf = 8/12/16 all give >= 2 mm clearance).
+dz_sub = h_sub / n_sub
+n_buf  = 8
 
 n_below = int(math.ceil(air_below / dx))
 n_above = int(math.ceil(air_above / dx))
@@ -185,11 +181,6 @@ patch_y_lo = dom_y / 2 - W / 2;  patch_y_hi = dom_y / 2 + W / 2
 feed_x = patch_x_lo + probe_inset
 feed_y = dom_y / 2
 
-# =============================================================================
-# Analytic reference (Balanis, Ch. 14) — PRINTED REFERENCE ONLY, not a gate:
-# the transmission-line model is 5-8 % approximate for finite ground planes,
-# and (Rule 3) no single-frequency comparison identifies the radiating mode.
-# =============================================================================
 eps_eff = (eps_r + 1) / 2 + (eps_r - 1) / 2 * (1 + 12 * h_sub / W) ** (-0.5)
 delta_L = 0.412 * h_sub * ((eps_eff + 0.3) * (W / h_sub + 0.264)) / \
           ((eps_eff - 0.258) * (W / h_sub + 0.8))
@@ -231,7 +222,7 @@ def build_dz_profile() -> np.ndarray:
     """
     raw_dz = np.concatenate([
         np.full(n_below, dx),
-        np.full(n_buf + n_sub + n_buf, dz_sub),   # buf + substrate + buf
+        np.full(n_buf + n_sub + n_buf, dz_sub),
         np.full(n_above, dx),
     ])
     dz_profile = smooth_grading(raw_dz, max_ratio=1.3)
@@ -245,7 +236,7 @@ def substrate_bounds(dz_profile) -> tuple[float, float]:
     """(z_sub_lo, z_sub_hi) read off the BUILT mesh, not the intended one."""
     edges = np.concatenate([[0.0], np.cumsum(dz_profile)])
     fi = np.where(np.isclose(dz_profile, dz_sub, rtol=1e-6))[0]
-    f0 = int(fi[0]) + n_buf                    # skip the lower buffer cells
+    f0 = int(fi[0]) + n_buf
     return float(edges[f0]), float(edges[f0 + n_sub])
 
 
@@ -282,11 +273,6 @@ def build_simulation(dz_profile=None) -> Simulation:
     patch = Box((patch_x_lo, patch_y_lo, z_patch),
                 (patch_x_hi, patch_y_hi, z_patch))
 
-    # Register x/y to the solved sheet edges (#1383), as in the patch tutorial.
-    # A free edge is solved 0.35 of the outside cell beyond its last PEC node.
-    # Keep the z profile and its layer-registration lesson unchanged.
-    # Nodes pinned at n_cpml*dx from each x/y face keep the 8 interior cells
-    # beside the absorber uniform (the absorber is padded from the outermost cell).
     profiles = edge_aware_profiles(
         (dom_x, dom_y, float(np.sum(dz_profile))), dx,
         sheets=[ground, patch], solids=[substrate],
@@ -305,12 +291,6 @@ def build_simulation(dz_profile=None) -> Simulation:
         cpml_layers=n_cpml,
     )
     sim.add_material("fr4", eps_r=eps_r, sigma=0.0)
-    # Ground and patch: zero-thickness Boxes through add_thin_conductor, i.e.
-    # SHEETS on the substrate's two faces.  add_thin_conductor warns that a
-    # metal's sigma_bulk makes this a lossless PEC sheet and that `thickness`
-    # is unread — expected, and the reason foil is declared this way instead
-    # of as a Box: a Box is a VOLUME and would put a shorted cell of metal
-    # into a 1.5 mm board with a wall on each of its faces.
     sim.add_thin_conductor(ground)
     sim.add(substrate, material="fr4")
     sim.add_thin_conductor(patch)
@@ -391,6 +371,10 @@ def report_realized_planes(sim, dz_profile) -> list[int]:
 
 
 def main() -> None:
+    """Run the patch tutorial and print its results.
+
+    FR4 is modelled lossless (sigma = 0), so the printed Q values are those of the lossless model and include no dielectric loss.
+    """
     print("=" * 60)
     print("Nonuniform-mesh patch demo — register geometry to the BUILT mesh")
     print("=" * 60)
@@ -398,18 +382,13 @@ def main() -> None:
     print(f"  Balanis TM10 estimate ≈ {f_an/1e9:.4f} GHz "
           f"(approximate reference, not a gate)")
 
-    # =============================================================================
-    # PART 1 — THE TRAP (grid-only, costs nothing): place the stack at the
-    # INTENDED pre-smoothing z and look at what actually rasterizes.
-    # =============================================================================
     print("\n[1] THE TRAP — geometry at fixed pre-smoothing z:")
     raw_dz_naive = np.concatenate([
-        np.full(n_below, dx),       # air below the board
-        np.full(n_sub, dz_sub),     # substrate
-        np.full(n_above, dx),       # air above the patch
+        np.full(n_below, dx),
+        np.full(n_sub, dz_sub),
+        np.full(n_above, dx),
     ])
     dz_naive = smooth_grading(raw_dz_naive, max_ratio=1.3)
-    # The intended coordinates ignore the transition cells smooth_grading inserted:
     naive_layers = [
         ("substrate", air_below, air_below + h_sub, n_sub),
     ]
@@ -420,10 +399,6 @@ def main() -> None:
           "warns about exactly this class).")
     assert not naive_ok, "expected the naive placement to misregister (the lesson)"
 
-    # =============================================================================
-    # PART 2 — THE FIX: buffered fine band + z DERIVED from the built profile.
-    # (Same pattern as scripts/diagnostics/patch_tutorial_rfx.py.)
-    # =============================================================================
     print("\n[2] THE FIX — buffered fine band, z derived from the built mesh:")
     dz_profile = build_dz_profile()
     edges = np.concatenate([[0.0], np.cumsum(dz_profile)])
@@ -437,7 +412,6 @@ def main() -> None:
     assert fixed_ok, "mesh-derived registration must realize the intended cells"
     assert abs((z_sub_hi - z_sub_lo) - h_sub) < 1e-9
 
-    # transition clearance: nearest cell that is neither fine nor coarse
     centers = 0.5 * (edges[:-1] + edges[1:])
     is_trans = ~(np.isclose(dz_profile, dz_sub, rtol=1e-6) |
                  np.isclose(dz_profile, dx, rtol=1e-6))
@@ -448,11 +422,7 @@ def main() -> None:
     print(f"  grading-transition clearance from the stack: {clearance*1e3:.2f} mm "
           f"(buffer n_buf={n_buf})")
 
-    # =============================================================================
-    # PART 3 — mesh economics (Rule 2): what the graded mesh buys.
-    # =============================================================================
     sim = build_simulation(dz_profile)
-    # Both sides of this z-resolution comparison use the same registered x/y.
     nx = len(sim._dx_profile)
     ny = len(sim._dy_profile)
     nz_nu = len(dz_profile)
@@ -462,60 +432,17 @@ def main() -> None:
     print(f"\n[3] Mesh economics: NU {nx}x{ny}x{nz_nu} vs uniform-at-dz_sub "
           f"{nx}x{ny}x{nz_uniform_equiv}  ->  {ratio:.2f}x fewer cells")
 
-    # =============================================================================
-    # PART 4 — build + preflight (output is part of the result) + run.
-    # FR4 is modelled lossless (sigma=0) so preflight's infinite-Q advisory will
-    # fire: legitimate here — we quote mode FREQUENCIES, not absolute Q (real FR4
-    # tan_delta ~0.02 would cap Q near ~50).
-    # The second line names the realized PEC sheets and whether each landed on the
-    # plane it declared (#931 §1.3): preflight collects sheets, so a sheet-declared
-    # conductor is visible to it.  It is a statement of where the metal is, not a
-    # finding about this geometry.
-    # =============================================================================
-    # --- Build-time realization check (no solve): declared planes == realized ---
     report_realized_planes(sim, dz_profile)
 
     print("\n[4] Preflight (advisories below are part of the result):")
     sim.preflight(strict=False)
 
-    # 120 periods settled the PRE-#931 board (-53.8 dB, 2026-09-05). It does not
-    # settle this one: with the vacuum cells gone from the cavity the modes are
-    # higher-Q, and the #931 re-solve (VESSL 369367259177) measured -30.9 dB at
-    # 120 — UNDER-SETTLED by the script's own witness. On that board the
-    # binding mode was TM01 on the 38 mm width (1.9037 GHz, Q = 99.9).
-    #
-    # After x/y registration the feed sits on the y centre line and TM01 is not
-    # excited; the slowest decayer left is TM02 (3.7062 GHz, Q = 115.1), and
-    # 200 periods measured -42.5 dB (VESSL 369367266090).
-    # On current main TM02 reads 3.7066 GHz, Q = 118.5. 200 periods measured
-    # -40.7 dB (2026-11-09): 0.7 dB inside the -40 dB bar, while run()'s own
-    # run-end check warned "run ended at -39.2 dB of peak" (ring-down truncated).
-    # 225, 250, 300, 400 and 450 periods measure -44.7, -49.0, -54.2, -67.3 and
-    # -73.8 dB, with the same two modes at every length; from 225 periods on,
-    # run() does not warn (run-end level -43.8 dB at 225).
-    # Before x/y registration, 200 periods measured -41.4 dB (VESSL
-    # 369367259280). That cleared the -40 dB
-    # bar, but by 1.4 dB, which is less margin than the number below was chosen
-    # for — worth knowing before anyone shortens this run or quotes a Q off it.
-    # The two estimates that picked 200 bracketed badly: TM01's free decay says
-    # -43.0 dB at 200 (1.6 dB pessimistic, close), while extrapolating the
-    # measured -30.9 dB linearly in time says -51.5 dB (10 dB optimistic, wrong —
-    # it charges the source ramp to the decay). The MEASURED slope between the two
-    # runs is 0.131 dB/period (-30.9 at 120, -41.4 at 200); size any future change
-    # from a measured slope, not from either estimate. On current main the
-    # witness falls 0.132 dB/period (-40.7 at 200, -73.8 at 450, 2026-11-09).
-    #
-    # Raising the run length is the response to an unsettled run; lowering the bar
-    # would not be.
-    n_periods = 225   # shortest measured length that clears run()'s check by 2 dB (see above)
+    n_periods = 225
     print(f"\nRunning NU simulation (num_periods={n_periods})...")
     t0 = time.time()
     result = sim.run(num_periods=n_periods)
     print(f"Done in {time.time() - t0:.1f} s")
 
-    # =============================================================================
-    # PART 5 — settling witness BEFORE any frequency is quoted (#332/G1).
-    # =============================================================================
     ts = np.asarray(result.time_series).ravel()
     dt_val = float(result.dt)
     amp = np.abs(ts)
@@ -526,9 +453,6 @@ def main() -> None:
     print(f"\n[5] Settling witness: end/peak = {settle_db:.1f} dB "
           f"({'OK (<-40)' if settle_db < -40 else 'UNDER-SETTLED (>-40): raise num_periods for gate-grade numbers'})")
 
-    # =============================================================================
-    # PART 6 — harminv: the FULL mode list (Rule 3), no single-mode gate.
-    # =============================================================================
     skip = int(len(ts) * 0.3)
     signal = ts[skip:]
     modes = [m for m in matrix_pencil(signal, dt_val, 1.5e9, 3.6e9)
@@ -551,9 +475,6 @@ def main() -> None:
           f"{n_sub} fine cells (asserted in [2]) — the mesh lesson, not a "
           f"frequency match.")
 
-    # =============================================================================
-    # PART 7 — plots: ringdown + the built dz profile with the REALIZED substrate.
-    # =============================================================================
     t_axis = (np.arange(len(ts)) + 1) * dt_val * 1e9
     fig, ax = plt.subplots(figsize=(8, 3))
     ax.plot(t_axis, ts, lw=0.7)
