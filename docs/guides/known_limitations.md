@@ -961,9 +961,9 @@ read bins. A passive structure cannot gain energy after its source ends; a longe
 record carries a larger error from this term.
 
 In a WR-90-size guide with a 22.86 × 2.406 mm cross-section, an eps_r 10 slab
-2.406 mm thick and 19.25 mm from the CPML holds a TE10 field near 4.76 GHz that
-grows by e every about 3,050 steps at dt 0.765 ps. For each guide mode, the growth
-rate falls with distance d as exp(-2 alpha d), where alpha is its evanescent
+2.406 mm thick and 2.0 mm from the CPML face holds a TE10 field near 4.76 GHz that
+grows by a factor e about every 3,050 steps at dt 0.765 ps. For each guide mode, the growth
+rate falls with distance d close to exp(-2 alpha d), where alpha is its evanescent
 attenuation constant. Modes near their cutoff therefore fall slowly with distance.
 
 ### Magnetic faces require the single-device second-order Yee image.
