@@ -15,9 +15,9 @@ class Captured(Exception):
 
 
 def scene(face='top', **kwargs):
-    sim = Simulation(freq_max=10e9, domain=(.012, .012, .040), dx=.0005,
+    sim = Simulation(freq_max=10e9, domain=(.012, .012, .052), dx=.0005,
                      boundary='cpml', cpml_layers=4, snap='declared', **kwargs)
-    sim.add_coaxial_port((.006, .006, .002 if face == 'top' else .038),
+    sim.add_coaxial_port((.006, .006, .002 if face == 'top' else .050),
                          face=face, pin_length=0)
     return sim
 
@@ -59,11 +59,11 @@ def test_run_against_calculator(monkeypatch):
     hi = grid.shape[2] - grid.pad_z_hi - 2
     source = int(round(((hi - 3 - grid.pad_z_lo) * grid.dx - grid.dx / 2)
                        / float(np.asarray(grid.cells(2))[0]))) + grid.pad_z_lo
-    print(f'S1 B1 calculator: ref={ref}, span=({ref},{hi}), feed={hi-1}, source={source}, planes={tuple(ref+8+4*k for k in range(12))}', file=sys.stderr)
+    print(f'S1 B1 calculator: ref={ref}, span=({ref},{hi}), feed={hi-1}, source={source}, planes={tuple(ref + 25 + 4 * k for k in range(12))}', file=sys.stderr)
     layout = actual_layout(actual, scene())
     assert (layout.reference_index, layout.z_lo_index, layout.z_hi_index,
             layout.feed_index, layout.source_index, layout.plane_indices) == (
-                ref, ref, hi, hi-7, source-6, tuple(ref+8+4*k for k in range(12)))
+                ref, ref, hi, hi-7, source-6, tuple(ref + 25 + 4 * k for k in range(12)))
     port = scene()._coaxial_ports[0]
     setback = max(2, int(np.ceil(port.outer_radius / float(grid.dx)))) + 1
     feed = layout.feed_index
@@ -103,7 +103,7 @@ def actual_layout(captured, sim):
     from rfx.model.coax_line import coax_port_layout
     grid = captured['grid']
     pads = tuple(getattr(grid, f'pad_{a}_{s}') for a in 'xyz' for s in ('lo', 'hi'))
-    return coax_port_layout(grid, sim._coaxial_ports[0], absorber_pads=pads, ntff=sim._ntff)
+    return coax_port_layout(grid, sim._coaxial_ports[0], absorber_pads=pads, ntff=sim._ntff, freq_max=sim._freq_max)
 
 
 def test_forward_against_run(monkeypatch):
@@ -174,7 +174,7 @@ def test_bottom_is_node_mirror(monkeypatch):
     ('periodic', 'periodic'), ('tfsf', 'TF/SF'),
     ('face', 'face='), ('count', 'exactly one'), ('mixed', 'other (S-port|excitations)'),
     ('conformal_pec', 'conformal_pec'), ('subpixel_smoothing', 'subpixel_smoothing'),
-    ('short', '67 line cells for the shielded source end'), ('lateral', 'absorber'), ('front', 'user PEC in front'),
+    ('short', r'needs at least 92 line cells \(46 mm\) for the band 1 to 10 GHz'), ('lateral', 'absorber'), ('front', 'user PEC in front'),
     ('kerr', 'Kerr material inside the bore'),
 ])
 def test_s1_refusals(monkeypatch, entry, gate, pattern):
@@ -250,14 +250,14 @@ def test_pin_only_continues_in_front(monkeypatch, face):
 @pytest.mark.parametrize('face', ['top', 'bottom'])
 def test_ntff_limits_realized_far_node(monkeypatch, face):
     sim = scene(face)
-    sim.add_ntff_box((.001, .001, .001), (.011, .011, .039), freqs=[5e9])
+    sim.add_ntff_box((.001, .001, .001), (.011, .011, .051), freqs=[5e9])
     captured = capture(monkeypatch, sim, 'run')
     root = sim.realized_geometry().conductors
     layout = root.coax_bore_release.layout
     grid = captured['grid']
-    assert (layout.z_lo_index, layout.z_hi_index) == ((8, 80) if face == 'top' else (7, 79))
+    assert (layout.z_lo_index, layout.z_hi_index) == ((8, 104) if face == 'top' else (7, 103))
     last_node = layout.z_hi_index+1 if face == 'top' else layout.z_lo_index
-    assert (last_node-grid.pad_z_lo)*grid.dx == pytest.approx(.0385 if face == 'top' else .0015)
+    assert (last_node-grid.pad_z_lo)*grid.dx == pytest.approx(.0505 if face == 'top' else .0015)
 
 
 def test_forward_releases_occupancy(monkeypatch):

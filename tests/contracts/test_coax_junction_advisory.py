@@ -9,10 +9,10 @@ from rfx.geometry.csg import Box
 
 
 def a1():
-    sim = Simulation(freq_max=10e9, domain=(.040, .040, .080),
+    sim = Simulation(freq_max=4.5e9, domain=(.040, .040, .120),
                      dx=.001, boundary="cpml", precision="float32")
-    sim.add(Box((.005, .005, .069), (.035, .035, .070)), material="pec")
-    sim.add_coaxial_port(position=(.020, .020, .070), face="bottom",
+    sim.add(Box((.005, .005, .109), (.035, .035, .110)), material="pec")
+    sim.add_coaxial_port(position=(.020, .020, .110), face="bottom",
                          pin_radius=.001, outer_radius=.006, impedance=50.)
     return sim
 

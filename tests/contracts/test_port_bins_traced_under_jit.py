@@ -30,9 +30,9 @@ def _scene(kind, path):
                      waveform=GaussianPulse(f0=2e9, bandwidth=.9))
     elif kind == 'coax':
         mesh = {'dz_profile': np.linspace(.4e-3, .6e-3, 80)} if graded else {}
-        sim = Simulation(freq_max=10e9, domain=(.012, .012, .040), dx=.0005,
+        sim = Simulation(freq_max=10e9, domain=(.012, .012, .052), dx=.0005,
                          boundary='cpml', cpml_layers=4, snap='declared', **mesh)
-        sim.add_coaxial_port((.006, .006, .038), face='bottom', pin_length=0)
+        sim.add_coaxial_port((.006, .006, .050), face='bottom', pin_length=0)
     else:
         mesh = {'dz_profile': np.linspace(.8e-3, 1.2e-3, 16)} if graded else {}
         sim = Simulation(freq_max=20e9, domain=(.024, .020, .016), dx=.001,

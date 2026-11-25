@@ -1,5 +1,6 @@
 """Static closure of the port-owned line, independently read from its cells."""
 from collections import deque
+import sys
 
 import numpy as np
 import pytest
@@ -31,7 +32,7 @@ def shielded(request, monkeypatch):
     radius = np.hypot(x[:, None], y[None, :])
     print(f'shield dx={dx * 1e3:g} mm face={face} g={gap} cap={cap} '
           f'pin_end={cap-direction*(gap+1)} feed={layout.feed_index} '
-          f'source={layout.source_index} planes={layout.plane_indices}')
+          f'source={layout.source_index} planes={layout.plane_indices}', file=sys.stderr)
     return grid, port, root, layout, direction, cap, gap, gap_indices, radius, captured
 
 
@@ -98,6 +99,7 @@ def test_layout_keeps_old_offsets_and_planes(shielded):
     assert layout.feed_index == old_feed-direction*(gap+1)
     assert layout.feed_index-layout.source_index == old_feed-old_source
     assert pin_end-layout.feed_index == old_pin-old_feed
-    assert layout.plane_indices == tuple(ref+direction*(8+4*k) for k in range(12))
+    s_c, D_c = {.0003: (41, 6), .00025: (49, 7), .0001875: (66, 9)}[grid.dx]
+    assert layout.plane_indices == tuple(ref + direction * (s_c + D_c * k) for k in range(12))
     assert layout.reference_index == ref
     assert cap == (far if direction == 1 else far-1)

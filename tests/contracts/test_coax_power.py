@@ -74,15 +74,15 @@ READ_BINS = np.array([7.5e9, 8e9, 8.5e9])
 
 def power_scene():
     """A 7.5 mm monopole fed through a finite ground plate by a bottom coax."""
-    sim = Simulation(freq_max=12e9, domain=(.018, .018, .036), dx=.0003,
+    sim = Simulation(freq_max=12e9, domain=(.018, .018, .054), dx=.0003,
                      boundary='cpml', cpml_layers=6, snap='declared')
-    sim.add(Box((.0015, .0015, .0225), (.0165, .0165, .0225)), material='pec')
-    sim.add_coaxial_port((.009, .009, .0225), face='bottom', pin_length=.0075,
+    sim.add(Box((.0015, .0015, .0405), (.0165, .0165, .0405)), material='pec')
+    sim.add_coaxial_port((.009, .009, .0405), face='bottom', pin_length=.0075,
                          waveform=GaussianPulse(f0=8e9, bandwidth=.8))
     grid = sim._build_grid()
     port = sim._coaxial_ports[0]
     pads = tuple(getattr(grid, f'pad_{a}_{s}') for a in 'xyz' for s in ('lo', 'hi'))
-    layout = coax_port_layout(grid, port, absorber_pads=pads)
+    layout = coax_port_layout(grid, port, absorber_pads=pads, freq_max=sim._freq_max)
     plane = layout.plane_indices[len(layout.plane_indices)//2]
     sim.add_flux_monitor(axis='z', coordinate=grid.node_of(2, plane),
         freqs=READ_BINS, center=port.position[:2], size=(2*port.outer_radius,)*2,

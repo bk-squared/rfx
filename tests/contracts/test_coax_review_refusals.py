@@ -346,18 +346,18 @@ def test_forward_diagnostic_arrays():
 
 def enclosed_line_scene(*, name_contact=True):
     from rfx.geometry.port_termination import resolve_terminates
-    sim = Simulation(freq_max=10e9, domain=(.012, .012, .048), dx=.0005,
+    sim = Simulation(freq_max=10e9, domain=(.012, .012, .060), dx=.0005,
                      boundary='cpml', cpml_layers=4, snap='declared')
-    bottom = Box((.003, .003, .0375), (.009, .009, .038))
-    contact = Box((.004, .0055, .040), (.008, .0065, .0405))
-    top = Box((.003, .003, .043), (.009, .009, .0435))
-    walls = (Box((.003, .003, .038), (.0035, .009, .043)),
-             Box((.0085, .003, .038), (.009, .009, .043)),
-             Box((.003, .003, .038), (.009, .0035, .043)),
-             Box((.003, .0085, .038), (.009, .009, .043)))
+    bottom = Box((.003, .003, .0495), (.009, .009, .050))
+    contact = Box((.004, .0055, .052), (.008, .0065, .0525))
+    top = Box((.003, .003, .055), (.009, .009, .0555))
+    walls = (Box((.003, .003, .050), (.0035, .009, .055)),
+             Box((.0085, .003, .050), (.009, .009, .055)),
+             Box((.003, .003, .050), (.009, .0035, .055)),
+             Box((.003, .0085, .050), (.009, .009, .055)))
     for box in (bottom, contact, top, *walls):
         sim.add(box, material='pec')
-    sim.add_coaxial_port((.006, .006, .038), face='bottom', pin_length=.002)
+    sim.add_coaxial_port((.006, .006, .050), face='bottom', pin_length=.002)
     sim._coaxial_ports[0] = sim._coaxial_ports[0]._replace(
         terminates=resolve_terminates(sim, (bottom, contact) if name_contact else (bottom,),
                                      port='enclosed line'))
@@ -402,7 +402,7 @@ def test_span_metal_refused(monkeypatch, entry):
     grid = sim._build_grid()
     port = sim._coaxial_ports[0]
     pads = tuple(getattr(grid, f'pad_{a}_{s}') for a in 'xyz' for s in ('lo', 'hi'))
-    layout = coax_port_layout(grid, port, absorber_pads=pads)
+    layout = coax_port_layout(grid, port, absorber_pads=pads, freq_max=sim._freq_max)
     pin_edges = realized_pec_edge_masks(stamp_coax_pin(grid, port, layout))
     metal_edges = realized_pec_edge_masks(np.asarray(metal.mask(grid)))
     assert any(np.any(e) for e in metal_edges)

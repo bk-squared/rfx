@@ -226,7 +226,7 @@ def build_coaxial_port() -> Simulation:
     """
     sim = Simulation(
         freq_max=10.0e9,
-        domain=(0.008, 0.008, 0.060),
+        domain=(0.008, 0.008, 0.080),
         dx=0.4e-3,
         boundary="cpml",
     )

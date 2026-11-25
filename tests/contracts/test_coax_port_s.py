@@ -94,7 +94,7 @@ def open_results(a1_results):
 def short_scene(legacy=False):
     dx = .0005
     sim = scene() if legacy else Simulation(
-        freq_max=10e9, domain=(.012, .012, .040), dx=dx,
+        freq_max=10e9, domain=(.012, .012, .052), dx=dx,
         boundary='cpml', cpml_layers=4, snap='declared')
     disc = Cylinder(center=(.006, .006, .002 - dx / 2),
                     radius=.0035, height=dx, axis='z')

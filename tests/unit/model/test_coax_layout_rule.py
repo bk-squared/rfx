@@ -43,17 +43,15 @@ def admitted_layout(monkeypatch, sim, entry):
     return sim.realized_geometry().conductors.coax_bore_release.layout
 
 
-def refused_text(sim, entry, capsys):
+def refused_text(sim, entry):
     with pytest.raises(NotImplementedError) as excinfo:
         getattr(sim, entry)(n_steps=3, skip_preflight=True)
-    with capsys.disabled():
-        print(f'{entry}: {type(excinfo.value).__name__}: {excinfo.value}')
     return str(excinfo.value)
 
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
-def test_length_remedies(monkeypatch, entry, capsys):
-    text = refused_text(scene(.103), entry, capsys)
+def test_length_remedies(monkeypatch, entry):
+    text = refused_text(scene(.103), entry)
     assert 'needs at least 105 line cells (105 mm) for the band 0.45 to 4.5 GHz' in text
     assert 'the line has 100 cells (100 mm) from the reference to the z absorber' in text
     assert 'lengthen the line by 5 cells (5 mm), or raise freq_min=' in text
@@ -69,8 +67,8 @@ def test_length_remedies(monkeypatch, entry, capsys):
 
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
-def test_length_edge_bottom(monkeypatch, entry, capsys):
-    text = refused_text(scene(.107, 'bottom'), entry, capsys)
+def test_length_edge_bottom(monkeypatch, entry):
+    text = refused_text(scene(.107, 'bottom'), entry)
     assert 'needs at least 105 line cells (105 mm) for the band 0.45 to 4.5 GHz' in text
     assert 'lengthen the line by 1 cells (1 mm), or raise freq_min=' in text
     layout = admitted_layout(monkeypatch, scene(.108, 'bottom'), entry)
@@ -82,8 +80,8 @@ def test_length_edge_bottom(monkeypatch, entry, capsys):
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 @pytest.mark.parametrize('face', ['top', 'bottom'])
-def test_length_edge_sma(monkeypatch, entry, face, capsys):
-    text = refused_text(sma_scene(.03525, face), entry, capsys)
+def test_length_edge_sma(monkeypatch, entry, face):
+    text = refused_text(sma_scene(.03525, face), entry)
     assert 'needs at least 133 line cells (33.25 mm) for the band 1.8 to 18 GHz' in text
     assert 'lengthen the line by 1 cells (0.25 mm), or raise freq_min=' in text
     layout = admitted_layout(monkeypatch, sma_scene(.0355, face), entry)
@@ -100,13 +98,13 @@ def test_length_edge_sma(monkeypatch, entry, face, capsys):
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 @pytest.mark.parametrize('face', ['top', 'bottom'])
-def test_ntff_end(entry, face, capsys):
+def test_ntff_end(entry, face):
     sim = clearance_scene(.052, face)
     if face == 'top':
         sim.add_ntff_box((.001, .001, .001), (.011, .011, .045), freqs=[5e9])
     else:
         sim.add_ntff_box((.001, .001, .007), (.011, .011, .051), freqs=[5e9])
-    text = refused_text(sim, entry, capsys)
+    text = refused_text(sim, entry)
     assert 'the line has 84 cells (42 mm) from the reference to the NTFF box; lengthen the line by 8 cells (4 mm), or raise freq_min=' in text
 
 
