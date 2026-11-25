@@ -32,8 +32,8 @@ def clearance_face(grid, axis_nodes, domain, dx, thick, axis, index, end, profil
 def clearance_rule(realized, boundary, axis, end, height, thick, cell, end_cells):
     """Return the face's threshold and the measurement scope of its evidence."""
     scope = "" if realized else msl_text("clearance_unrealized")
-    if thick <= 0:
-        wall = getattr(getattr(boundary, axis), end)
+    wall = getattr(getattr(boundary, axis), end)
+    if wall in ("pec", "pmc") or thick <= 0:
         evidence = msl_text(
             "clearance_wall" if wall in ("pec", "pmc") else "clearance_inactive",
             wall=wall.upper(),

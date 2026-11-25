@@ -311,6 +311,14 @@ def test_family_values_survive_actual_run_results_and_refusals(graded):
     for name, sim in cases(graded):
         solve(name, sim)
 
+    sim = structure(graded)
+    sim._geometry[-1] = replace(
+        sim._geometry[-1],
+        shape=Box((4 * U, 2 * U, 2 * U), (32 * U, 10 * U, 2 * U)),
+    )
+    sim._msl_ports[0] = replace(sim._msl_ports[0], width=8 * U)
+    solve("lateral_below_threshold", sim)
+
     sim = structure(
         graded,
         offset=10,
@@ -462,7 +470,8 @@ def test_nonzero_read_band_values_on_a_real_refusal(graded):
 @pytest.mark.parametrize("wall", [None, "pec", "pmc"], ids=["absorber", "pec", "pmc"])
 def test_unavailable_grid_clearance_uses_declared_faces_and_end_cells(profiled, reverse, wall):
     """Fault injection isolates declared coordinates and side-specific cell sizes."""
-    from rfx import BoundarySpec, Box, Simulation
+    from rfx import Box, Simulation
+    from rfx.boundaries.spec import BoundarySpec
     from tests._msl_diagnostic_cases import U, family_warnings
 
     x_cells = [U] * 31 + [1.25 * U]

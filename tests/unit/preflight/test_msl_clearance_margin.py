@@ -5,7 +5,8 @@ import math
 import numpy as np
 import pytest
 
-from rfx import Boundary, BoundarySpec, Box, Simulation
+from rfx import Box, Simulation
+from rfx.boundaries.spec import Boundary, BoundarySpec
 
 
 U = 2.0**-13
@@ -93,7 +94,7 @@ def test_pin2_below_lateral_and_feed_thresholds_warns():
 
 @pytest.mark.parametrize("reverse", [False, True], ids=["lo", "hi"])
 def test_pin3_solved_edge_warns_when_last_node_clears_threshold(reverse):
-    cells = [U, 1.25 * U] + [1.25 * U] * 14
+    cells = [U] + [1.25 * U] * 14 + [U]
     sim = _board(cells, reverse=reverse)
     node_distance = sum(cells[:2])
     solved_distance = node_distance - EDGE_OFFSET * cells[1]

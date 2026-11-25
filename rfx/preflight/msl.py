@@ -649,15 +649,15 @@ def _check_msl_port_geometry(
                 trace_y_lo, trace_y_hi, y_centre, float(domain[_iw]),
             )
         y_abs_lo, _width_cell_lo = clearance_face(_msl_grid, _clearance_nodes, domain, dx,
-                                                cpml_thick_lo[_iw], _width_ax, _iw, "lo", getattr(self, f"_{_width_ax}_profile"))
+                                                cpml_thick_lo[_iw], _width_ax, _iw, "lo", getattr(self, f"_d{_width_ax}_profile"))
         y_abs_hi, _width_cell_hi = clearance_face(_msl_grid, _clearance_nodes, domain, dx,
-                                                cpml_thick_hi[_iw], _width_ax, _iw, "hi", getattr(self, f"_{_width_ax}_profile"))
+                                                cpml_thick_hi[_iw], _width_ax, _iw, "hi", getattr(self, f"_d{_width_ax}_profile"))
         clearance_lo = trace_y_lo - y_abs_lo
         clearance_hi = y_abs_hi - trace_y_hi
         for side, c, thick, cell, end in (
-            (msl_text("width_low_side", width_axis=_width_ax), clearance_lo,
+            (msl_text("width_low_side", width_axis=_width_ax, side=f"−{_width_ax}"), clearance_lo,
              cpml_thick_lo[_iw], _width_cell_lo, "lo"),
-            (msl_text("width_high_side", width_axis=_width_ax), clearance_hi,
+            (msl_text("width_high_side", width_axis=_width_ax, side=f"+{_width_ax}"), clearance_hi,
              cpml_thick_hi[_iw], _width_cell_hi, "hi"),
         ):
             recommended, evidence = clearance_rule(_clearance_nodes is not None, self._boundary_spec,
