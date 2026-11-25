@@ -18,11 +18,12 @@ Why two runs?
   already-computed fluxes would leave cross terms — see recipe detail (a)).
 
 The slab here is dispersionless (eps_r = 4), so an analytic Fresnel
-transfer-matrix result is available as a sanity witness. The grid is kept coarse
-for speed; halving ``dx`` reduces the error toward the analytic curve. Preflight
-will flag the under-resolution and the lossless slab — both are expected here:
-this is a fast method demo, we measure R/T (not Q), and a lossless slab is what
-matches the lossless analytic Fresnel reference.
+transfer-matrix result is available as a sanity witness. The measured mean
+departures over 4–14 GHz at 4800 steps are 0.011707 for R and 0.011713 for T.
+The grid is kept coarse for speed; halving ``dx`` reduces the error toward the
+analytic curve. Preflight will flag the under-resolution and the lossless slab —
+both are expected here: this is a fast method demo, we measure R/T (not Q), and
+a lossless slab is what matches the lossless analytic Fresnel reference.
 
 Record-end guard: a flux spectrum is a DFT over the record, so the record must
 hold the whole response. Each run carries a six-component probe
@@ -31,10 +32,11 @@ ring-down witness, the share of each frequency bin that a tail beyond the
 record would still add (bar 1e-2, i.e. -40 dB). ``report_record_coverage``
 stops the script unless that witness passes and both monitors are covered; the
 step it prints per monitor is a geometric bound on the drive's passage, not a
-sign that the response has died away. Both runs use one fixed 1200-step
-record and no decay stop. At that record the witness reads about -139 dB for
-the reference run and -92 dB for the slab run; at 2400 or 4800 steps the
-printed R/T table does not change.
+sign that the response has died away. Both runs use one fixed 4800-step
+record and no decay stop. After the identification window starts, the record
+must hold 2.05 of the domain's longest round trips: 5.47 ns for the slab run,
+against the 4800-step window of 5.60 ns. At that record the witness reads about
+-126 dB for the reference run and -111 dB for the slab run.
 
 Public docs:
   - docs/agent/recipe-rt-measurement.mdx   (canonical two-run pattern)
@@ -112,7 +114,7 @@ def build_sim(with_slab: bool) -> Simulation:
     return sim
 
 
-N_STEPS = 1200
+N_STEPS = 4800
 
 
 def run_one(with_slab: bool, n_steps: int = N_STEPS):

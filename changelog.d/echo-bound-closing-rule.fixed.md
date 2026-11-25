@@ -8,3 +8,4 @@ A fail stays a fail; only a pass becomes "cannot judge".
 The limit's largest refractive index is read on the device from the permittivity and permeability arrays the time step uses: material overrides, design regions, smoothed shapes, a coaxial line's fill and each `vmap_material_sweep` member's own arrays; a dispersive medium counts at its largest index over the read band.
 The index is rounded up by one float32 unit in the last place and carries no derivative, so a record on the edge reads "cannot judge" and material gradients are unchanged.
 `run()` and `forward()` return the same `settling_echo_bound` (D, g, n_max and tau_max as float32 arrays) on every path, under `jax.jit`, `vmap` and `grad`, with no host callback.
+The slab R/T tutorial uses 4800 steps instead of 1200 so its identification window holds 2.05 longest round trips and both runs pass the settling witness.
