@@ -138,9 +138,6 @@ def judge_realization(table, snap):
             quantity = "; ".join(
                 f"{'xyz'[a]} sheet plane miss δ={m.delta:.12g} m, L={m.length:.12g} m (limit 1 % of L)"
                 for a, m in node_misses)
-        elif (row.family == "volume" and node_misses and row.integral_comparison is None
-              and row.volume_miss_percent is None and not row.clipped_faces):
-            mismatch = any(m.refused for a, m in node_misses if 'xyz'[a] in table.active_axes)
         if not mismatch and not centroid:
             continue
         detail = "; ".join(

@@ -1,4 +1,4 @@
-"""Declared conductor planes on automatic z meshes, before any time step."""
+"""Declared conductor planes and refusals before any time step."""
 import numpy as np
 import pytest
 
@@ -81,6 +81,8 @@ def test_b3_user_uniform_sheet_off_plane_refuses(plane):
     sim = _model(plane, plane, dx=.0005)
     issues = _conductor_findings(sim.preflight(), 'geometry[1]')
     assert any(i.severity == 'error' and 'sheet plane miss' in str(i) for i in issues)
+    with pytest.raises(RfxRefusal, match=r'geometry\[1\].*sheet plane miss'):
+        sim.run(n_steps=1)
 
 
 @pytest.mark.parametrize('plane', [.0075, .0055], ids=['air', 'board'])
@@ -117,3 +119,10 @@ def test_b5_refinement_conflict_at_mesh_resolution():
     for expected in ('geometry[0]', '4.1 mm', 'grading', 'add_refinement',
                      'multiple of dx=', 'pass dx=', 'remove the refinement'):
         assert expected in text
+
+
+def test_b11_merged_sheet_names_declared_and_solved_planes():
+    sim = _model(.00505, .00505)
+    issues = _conductor_findings(sim.preflight(), 'geometry[1]')
+    assert any(i.severity == 'error' and '0.00505 m' in str(i)
+               and '0.005 m' in str(i) and 'merges' in str(i) for i in issues)

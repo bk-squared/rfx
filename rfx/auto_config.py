@@ -1018,6 +1018,7 @@ def _accepted_dz_profile(z_features, domain_z, dx, sheets, planes, conductors,
                          geometry, offset, graded, snap):
     """Return today's column verbatim until its z realization would refuse."""
     from rfx.geometry.rasterize_grid import GridCoords, sheet_spec_from_shape
+    from rfx.grid import cells_spanning
     from rfx.model.conductor_planes import conductor_node_miss
     from rfx.preflight.realization import _shape_bounds
     today = (_make_dz_profile(z_features, domain_z, dx, sheet_planes=sheets)
@@ -1025,7 +1026,7 @@ def _accepted_dz_profile(z_features, domain_z, dx, sheets, planes, conductors,
     if snap == 'declared' or not conductors:
         return today, None, ()
     z_nodes = (np.r_[0., np.cumsum(today)] if today is not None
-               else np.arange(int(np.ceil(domain_z / dx)) + 1, dtype=np.float64) * dx)
+               else np.arange(cells_spanning(domain_z, dx) + 1, dtype=np.float64) * dx)
     shifted = []
     for shape, _ in geometry:
         b = _shape_bounds(shape)

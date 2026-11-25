@@ -27,6 +27,13 @@ stack_snapped_patch gains a spacing warning. The existing sheet spacing
 messages name conductor kinds and the solids remedy.
 Regenerated with this module's RFX_PREFLIGHT_SNAPSHOT_UPDATE generator.
 
+SNAPSHOT CHANGE, 2026-11-25. The sheet-plane rule now refuses a sheet
+whose solved plane misses its declared [lo, hi] by more than 1 % of the
+smaller layer it bounds, on every mesh.
+sheet_congruence_off_lattice: declared 2.4 mm, solved 2.0 mm; δ 0.2 mm, L 2.2 mm.
+stack_snapped_patch: declared 5.3 mm, solved 5.0 mm; δ 0.3 mm, L 2.3 mm.
+wire_port_dead_cell_nu: declared 0.254 mm, solved 0.2262 mm; δ 27.8 µm, L 0.254 mm.
+
 Structured snapshot policy
 --------------------------
 Pin report codes, locations, counts, severity, source and emission order.

@@ -229,7 +229,9 @@ def realization_table(prepared) -> RealizationTable:
     rows = _traced_sheet_rows(interior_rows(read_rows(rows, quantity_grid, sim), record), sim, prepared.conductors)
     return RealizationTable(rows, prepared.lane,
                             weakref.ref(prepared.conductors),
-                            automatic_dx=(float(sim._dx) if sim._declared_mesh["_dx"] is None else None),
+                            automatic_dx=(float(quantity_grid.dx)
+                                if sim._declared_mesh["_dx"] is None
+                                and (sim._geometry or sim._thin_conductors) else None),
                             auto_z_merges=tuple(getattr(sim, "_auto_z_merges", ())),
                             active_axes=tuple("xyz"[a] for a, n in enumerate(prepared.conductors.grid.shape) if n > 1),
                             periods={d.axis: d.length_m for d in record.domain
