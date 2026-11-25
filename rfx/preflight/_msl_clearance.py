@@ -6,14 +6,19 @@ this module evaluates that footprint and introduces no volume-edge model.
 
 from rfx.geometry.rasterize_grid import _box_axis_closed
 from rfx.mesh_edges import solved_sheet_span
-from rfx.preflight._common import local_cell
+from rfx.preflight._common import local_cell, profile_boundary_cell
 from rfx.preflight.msl_codes import msl_join, msl_text
 
 
-def clearance_face(grid, axis_nodes, domain, dx, thick, axis, index, end):
-    """Return a realized interface and end cell, or the legacy buffered face."""
+def clearance_face(grid, axis_nodes, domain, dx, thick, axis, index, end, profile=None):
+    """Return the interface and end cell on realized or declared coordinates.
+
+    Without realized nodes the absorber starts at the declared domain face;
+    its end cell is the declared profile's first or last cell, or scalar dx.
+    Absorber thickness never enters the distance.
+    """
     if axis_nodes is None:
-        return (thick if end == "lo" else float(domain[index]) - thick), dx
+        return (0.0 if end == "lo" else float(domain[index])), profile_boundary_cell(dx, profile, end)
     nodes = axis_nodes[index]
     pad = getattr(grid, f"pad_{axis}_{end}")
     k = int(pad) if end == "lo" else len(nodes) - int(pad) - 1
@@ -26,14 +31,14 @@ def clearance_face(grid, axis_nodes, domain, dx, thick, axis, index, end):
 
 def clearance_rule(realized, boundary, axis, end, height, thick, cell, end_cells):
     """Return the face's threshold and the measurement scope of its evidence."""
-    if not realized:
-        return 2.0 * height, msl_text("clearance_unrealized")
+    scope = "" if realized else msl_text("clearance_unrealized")
     if thick <= 0:
         wall = getattr(getattr(boundary, axis), end)
-        return 2.0 * height, msl_text(
+        evidence = msl_text(
             "clearance_wall" if wall in ("pec", "pmc") else "clearance_inactive",
             wall=wall.upper(),
         )
+        return 2.0 * height, msl_join(" ", (scope, evidence)) if scope else evidence
     threshold = max(end_cells / 3.0 * height, end_cells * cell)
     mesh_ratio = height / cell
     evidence = msl_text("clearance_measured")
@@ -42,7 +47,7 @@ def clearance_rule(realized, boundary, axis, end, height, thick, cell, end_cells
             "clearance_unmeasured", mesh_height_ratio=mesh_ratio,
             threshold_end_cells=end_cells, end_cell_m=cell,
         )))
-    return threshold, evidence
+    return threshold, msl_join(" ", (scope, evidence)) if scope else evidence
 
 
 def clearance_span(grid, nodes, axis, lo, hi, centre, domain_hi):

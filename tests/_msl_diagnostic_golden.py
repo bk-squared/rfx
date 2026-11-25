@@ -1,17 +1,21 @@
 """MSL wording with centre-sampled material-column counts and extents."""
 
 TEXT_0 = (
-    "MSL port 'checked' (trace W=488µm, h_sub=244µm): lateral clearance from declared trace edge "
-    'with legacy depth buffer to −y face = 244µm (1 h_sub) < recommended 488µm. Realized clearance '
-    'was not inspected: no concrete grid was available. The legacy declared-distance/depth-buffer '
-    'predicate uses 2 h_sub. Increase domain y-extent OR move port further from sidewall.'
+    "MSL port 'checked' (trace W=1221µm, h_sub=244µm): lateral clearance from declared trace edge to −y "
+    'face = 122µm (0.5 h_sub) < recommended 269µm. The realized grid was not available, so the distance '
+    'was read on declared coordinates. The absorbing-face threshold is the smallest clearance measured at '
+    '3 cells per h_sub. S below this clearance is not measured. This mesh (2 cells per h_sub) was not '
+    'measured; the threshold uses the larger of the measured height term and 2.2 end cells (end cell '
+    '122.07µm). Increase domain y-extent OR move port further from sidewall.'
 )
 
 TEXT_1 = (
-    "MSL port 'checked' (trace W=488µm, h_sub=244µm): lateral clearance from declared trace edge "
-    'with legacy depth buffer to +y face = 244µm (1 h_sub) < recommended 488µm. Realized clearance '
-    'was not inspected: no concrete grid was available. The legacy declared-distance/depth-buffer '
-    'predicate uses 2 h_sub. Increase domain y-extent OR move port further from sidewall.'
+    "MSL port 'checked' (trace W=1221µm, h_sub=244µm): lateral clearance from declared trace edge to +y "
+    'face = 122µm (0.5 h_sub) < recommended 269µm. The realized grid was not available, so the distance '
+    'was read on declared coordinates. The absorbing-face threshold is the smallest clearance measured at '
+    '3 cells per h_sub. S below this clearance is not measured. This mesh (2 cells per h_sub) was not '
+    'measured; the threshold uses the larger of the measured height term and 2.2 end cells (end cell '
+    '122.07µm). Increase domain y-extent OR move port further from sidewall.'
 )
 
 TEXT_2 = (
@@ -26,13 +30,6 @@ TEXT_2 = (
     'not quantify Z0 error. The historical sweep and its realized-board Hammerstad-Jensen '
     'anchor are historical float32-coordinate records; a new matched-geometry measurement is needed before '
     'quoting a current accuracy bound.'
-)
-
-TEXT_3 = (
-    "MSL port 'checked' at x=0.49mm, direction='+x': feed distance to −x face = 244µm (1 h_sub) < "
-    'recommended 488µm. Realized clearance was not inspected: no concrete grid was available. The '
-    'legacy declared-distance/depth-buffer predicate uses 2 h_sub. Move port further from boundary '
-    'OR increase domain x-extent.'
 )
 
 TEXT_4 = (
@@ -523,10 +520,14 @@ GOLDEN = {
         TEXT_17,
     ],
     'uniform/unavailable_grid_extrapolation': [
+        TEXT_2,
+        TEXT_18,
+        TEXT_19,
+    ],
+    'uniform/unavailable_grid_wide_trace': [
         TEXT_0,
         TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_18,
         TEXT_19,
     ],
@@ -613,10 +614,14 @@ GOLDEN = {
         TEXT_44,
     ],
     'graded/unavailable_grid_extrapolation': [
+        TEXT_2,
+        TEXT_18,
+        TEXT_19,
+    ],
+    'graded/unavailable_grid_wide_trace': [
         TEXT_0,
         TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_18,
         TEXT_19,
     ],

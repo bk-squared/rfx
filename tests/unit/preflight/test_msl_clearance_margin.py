@@ -1,4 +1,4 @@
-"""#3062: hand-computed solved-edge and feed clearance pins, preflight only."""
+"""Microstrip port clearance to the absorber, read from the solved strip edge: preflight-only pins."""
 
 import math
 

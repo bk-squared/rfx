@@ -1,13 +1,5 @@
 """Tests for ``compute_coax_msl_transition`` (issue #489 leg 4).
 
-#3062 clearance supersession: the frozen attempt records below describe
-the former depth-buffered 2*h_sub advisory. Their values and declarations
-remain historical; the current absorbing feed threshold is
-max((4/3)*h_sub, 4*end_cell), measured from the realized feed node to the
-realized interface without a depth buffer. It was measured on one board at
-3 cells per h_sub, with 8-32 layers against a 12*h_sub reference; other
-meshes and S below that threshold were not measured.
-
 Structure (mirrors ``tests/unit/sparams/test_coax_two_port_smatrix.py``, the
 closest precedent):
 

@@ -455,3 +455,53 @@ def test_nonzero_read_band_values_on_a_real_refusal(graded):
         if isinstance(value, (int, float)):
             parsed, tolerance = printed(key, record.message)
             assert abs(parsed - value) <= tolerance + math.ulp(parsed) + math.ulp(value), (key, parsed, value)
+
+
+@pytest.mark.parametrize("profiled", [False, True], ids=["scalar", "profile"])
+@pytest.mark.parametrize("reverse", [False, True], ids=["lo", "hi"])
+@pytest.mark.parametrize("wall", [None, "pec", "pmc"], ids=["absorber", "pec", "pmc"])
+def test_unavailable_grid_clearance_uses_declared_faces_and_end_cells(profiled, reverse, wall):
+    """Fault injection isolates declared coordinates and side-specific cell sizes."""
+    from rfx import BoundarySpec, Box, Simulation
+    from tests._msl_diagnostic_cases import U, family_warnings
+
+    x_cells = [U] * 31 + [1.25 * U]
+    y_cells = [U] * 11 + [1.25 * U]
+    lx, ly = (sum(x_cells), sum(y_cells)) if profiled else (32 * U, 12 * U)
+    profiles = {"dx_profile": x_cells, "dy_profile": y_cells} if profiled else {}
+    height = 3 * U
+    distance = 3.25 * U
+    feed = lx - distance if reverse else distance
+    sim = Simulation(domain=(lx, ly, 12 * U), dx=U, snap="declared",
+                     freq_max=5e9, cpml_layers=8,
+                     boundary=BoundarySpec(x="cpml", y=wall or "cpml", z="cpml"), **profiles)
+    sim.add_material("substrate", eps_r=3.66)
+    sim.add(Box((0, 0, 0), (lx, ly, height)), material="substrate")
+    sim.add(Box((0, 0, 0), (lx, ly, 0)), material="pec")
+    sim.add(Box((0, U, height), (lx, ly - U, height)), material="pec")
+    sim.add_msl_port((feed, ly / 2, 0), width=ly - 2 * U, height=height,
+                     direction="-x" if reverse else "+x", name="declared",
+                     n_probe_offset=5, n_probe_spacing=2)
+    sim._build_realized_grid = lambda: (_ for _ in ()).throw(ValueError("grid unavailable"))
+    findings = [warning.diagnostic for warning in family_warnings(sim)
+                if warning.code == "msl_port_geometry"]
+    lateral = [d for d in findings if d.code == "msl.lateral_clearance"]
+    assert len(lateral) == 2
+    for diagnostic in lateral:
+        end_cell = y_cells[-1] if profiled and diagnostic.values["side"] == "+y" else U
+        threshold = 2 * height if wall else max((2.2 / 3) * height, 2.2 * end_cell)
+        assert diagnostic.values["lateral_clearance_m"] == pytest.approx(U)
+        assert diagnostic.values["clearance_height_ratio"] == pytest.approx(U / height)
+        assert diagnostic.values["recommended_clearance_m"] == pytest.approx(threshold)
+        if wall:
+            assert diagnostic.values["wall"] == wall.upper()
+        elif profiled and diagnostic.values["side"] == "+y":
+            assert diagnostic.values["end_cell_m"] == y_cells[-1]
+            assert diagnostic.values["mesh_height_ratio"] == height / y_cells[-1]
+    source = [d for d in findings if d.code == "msl.source_absorber_clearance"]
+    assert len(source) == 1
+    end_cell = x_cells[-1] if profiled and reverse else U
+    assert source[0].values["source_clearance_m"] == pytest.approx(distance)
+    assert source[0].values["recommended_clearance_m"] == pytest.approx(max((4 / 3) * height, 4 * end_cell))
+    assert source[0].values["feed_m"] == feed
+    assert source[0].values["side"] == ("+x" if reverse else "−x")

@@ -416,7 +416,7 @@ def _check_msl_port_geometry(
     1. **Lateral clearance** from the port trace footprint's solved sheet edge
        to each realized interior/absorber interface node. The shared
        ``solved_sheet_span`` model includes 0.35 of the outside cell at a free
-       edge. No absorber-depth buffer enters a realized distance. For an
+       edge. No absorber-depth buffer enters either distance. For an
        absorbing face the threshold is ``max((2.2/3)*h_sub, 2.2*e)``, where
        ``e`` is that face's absorber end cell. PEC/PMC walls retain 2*h_sub.
        Warn strictly below the threshold. The absorbing rule is the smallest
@@ -426,8 +426,9 @@ def _check_msl_port_geometry(
        Meeting it makes no passivity claim. The port footprint is its declared
        trace plane, including when attached to the face of a thick conductor;
        this does not introduce a solved-volume edge model. Without a realized
-       grid, retain the legacy declared-distance/buffer and 2*h_sub predicate,
-       explicitly reporting that the realized clearance was not inspected.
+       grid, use declared trace edges and domain faces, with the same thresholds
+       and measurement scope. Read e from that side's declared profile end cell,
+       or dx without a profile; disclose that declared coordinates were used.
 
     2. **Normal source resolution**: recommend at least four intervals
        between the validated ground and trace conductor planes. Check 2b
@@ -648,9 +649,9 @@ def _check_msl_port_geometry(
                 trace_y_lo, trace_y_hi, y_centre, float(domain[_iw]),
             )
         y_abs_lo, _width_cell_lo = clearance_face(_msl_grid, _clearance_nodes, domain, dx,
-                                                cpml_thick_lo[_iw], _width_ax, _iw, "lo")
+                                                cpml_thick_lo[_iw], _width_ax, _iw, "lo", getattr(self, f"_{_width_ax}_profile"))
         y_abs_hi, _width_cell_hi = clearance_face(_msl_grid, _clearance_nodes, domain, dx,
-                                                cpml_thick_hi[_iw], _width_ax, _iw, "hi")
+                                                cpml_thick_hi[_iw], _width_ax, _iw, "hi", getattr(self, f"_{_width_ax}_profile"))
         clearance_lo = trace_y_lo - y_abs_lo
         clearance_hi = y_abs_hi - trace_y_hi
         for side, c, thick, cell, end in (
@@ -674,7 +675,7 @@ def _check_msl_port_geometry(
                                 side=side,
                                 lateral_clearance_m=c,
                                 edge_origin=("solved trace edge" if _clearance_nodes is not None
-                                             else "declared trace edge with legacy depth buffer"),
+                                             else "declared trace edge"),
                                 clearance_height_ratio=c / h_sub,
                                 evidence=evidence,
                                 recommended_clearance_m=recommended,
@@ -829,7 +830,7 @@ def _check_msl_port_geometry(
         _feed_end = "lo" if _dir_sign > 0 else "hi"
         _feed_thick = (cpml_thick_lo if _dir_sign > 0 else cpml_thick_hi)[_ip]
         _feed_face, _feed_cell = clearance_face(
-            _msl_grid, _clearance_nodes, domain, dx, _feed_thick, _prop_ax, _ip, _feed_end)
+            _msl_grid, _clearance_nodes, domain, dx, _feed_thick, _prop_ax, _ip, _feed_end, _prop_profile)
         _clearance_feed = _feed_node if _clearance_nodes is not None else x_feed
         x_clearance = (_clearance_feed - _feed_face) * _dir_sign
         recommended, evidence = clearance_rule(_clearance_nodes is not None, self._boundary_spec,

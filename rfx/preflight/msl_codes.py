@@ -98,8 +98,8 @@ TEMPLATES = {
     "term and {threshold_end_cells:g} end cells (end cell {end_cell_m:um|.6g}µm).",
     "clearance_wall": "The {wall} wall threshold is 2 h_sub.",
     "clearance_inactive": "The {wall} face has no active absorber; the existing threshold is 2 h_sub.",
-    "clearance_unrealized": "Realized clearance was not inspected: no concrete grid "
-    "was available. The legacy declared-distance/depth-buffer predicate uses 2 h_sub.",
+    "clearance_unrealized": "The realized grid was not available, so the distance "
+    "was read on declared coordinates.",
     "material_column": " Separately, the declared-material column has {material_slots} "
     "same-permittivity sample slot(s), extent {material_extent_m:um|.1f}µm. "
     "This material extent is not the conductor-plane gap.",
