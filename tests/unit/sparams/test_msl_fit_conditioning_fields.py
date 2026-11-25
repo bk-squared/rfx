@@ -14,6 +14,7 @@ from jax import enable_x64
 from rfx import Simulation
 from rfx.errors import AccuracyWarning, RfxRefusal
 from rfx.grid import Grid
+from rfx.measurement.msl_waves import _msl_fit_conditioning
 from rfx.probes import msl_wave_decomp as decomp
 from rfx.sources.msl_port import MSLPort, msl_probe_x_coords_n
 from rfx.sparams._msl_stages import _check_msl_extraction
@@ -63,7 +64,7 @@ def test_exact_projected_derivative_on_unequal_positions():
         v_fit = a * forward + g * backward
         expected.append(np.linalg.norm(v_fit) / (b * np.linalg.norm(perpendicular)))
     with enable_x64(False):
-        span, amplification = decomp._msl_fit_conditioning(
+        span, amplification = _msl_fit_conditioning(
             *(jnp.asarray(value) for value in (x, beta, alpha, gamma)))
     np.testing.assert_allclose(span, beta * (x[-1] - x[0]), rtol=1e-6)
     np.testing.assert_allclose(amplification, expected, rtol=2e-5)
@@ -83,7 +84,7 @@ def test_fabricated_record_amplitude_invariance():
     amplifications = []
     with enable_x64(False):
         for scale in (1.0, 1e-3, 1e3):
-            _, amplification = decomp._msl_fit_conditioning(
+            _, amplification = _msl_fit_conditioning(
                 jnp.asarray(x), jnp.array([beta]),
                 jnp.array([scale * alpha]), jnp.array([scale * gamma]))
             amplifications.append(np.asarray(amplification))
@@ -111,9 +112,9 @@ def test_negative_x_probe_span_matches_mirrored_record():
     perpendicular = column - waves @ np.linalg.lstsq(waves, column, rcond=None)[0]
     expected = np.linalg.norm(v_fit) / (beta * np.linalg.norm(perpendicular))
     with enable_x64(False):
-        span, amplification = decomp._msl_fit_conditioning(
+        span, amplification = _msl_fit_conditioning(
             jnp.asarray(x), jnp.array([beta]), jnp.array([alpha]), jnp.array([gamma]))
-        mirrored_span, mirrored_amplification = decomp._msl_fit_conditioning(
+        mirrored_span, mirrored_amplification = _msl_fit_conditioning(
             jnp.asarray(-x), jnp.array([beta]),
             jnp.array([np.conj(alpha)]), jnp.array([np.conj(gamma)]))
     assert np.all(np.asarray(span) > 0)
