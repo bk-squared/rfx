@@ -54,18 +54,23 @@ def _response(pole, frequency, lorentz):
 
 def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
                         smoothing_eps=(), waveguide_ports=(), valid=None, design_box=None):
-    """Read the largest volume sqrt(abs(eps(f)*mu)) without a callback.
+    """Bound the volume index over {0} union [f_lo, f_hi] for any pole count.
+
+    Per cell read sqrt(abs(mu)*(abs(eps_inf) + sum(mask_p*M_p))), where
+    M_p is each pole's largest absolute susceptibility over that set.
+    The band spans the supplied read bins. Debye M_p is abs(delta_eps);
+    Lorentz M_p reads zero, both band ends and its own in-band peak.
 
     Capacitor records and wire contour corrections do not describe echo paths.
     Smoothing includes every dielectric shape's eps, never an occupied inverse.
-    Concrete susceptibilities are evaluated in host float64, one frequency at
-    a time; traced poles use float32 with relative margin eps32*(1+w0/(2*delta))
+    Concrete pole maxima are evaluated in host float64; traced poles use
+    float32 with relative margin eps32*(1+w0/(2*delta))
     per Lorentz pole. Traced read bins use device float32 samples and band
     tests, with eps32 for the Debye/background response plus
     eps32*(1+w0/delta) per Lorentz pole. Multiplication by this margin and
     the final upward ULP each add at most eps32 relative error.
     Without dispersion traced bins do not enter n_max.
-    Each map cell is sampled at its own in-band peak too.
+    Each map cell contributes its own pole maximum.
     An undamped in-band resonance raises concretely. Traced zero Lorentz
     damping becomes infinity even outside the band, where its error margin
     is unbounded, so the device window judgement cannot pass.
@@ -102,7 +107,11 @@ def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
         bins = np.unique(np.concatenate([np.asarray(cfg.freqs, np.float64) for cfg in configs]))
     if (dp or lp) and not bins.size:
         raise ValueError('the dispersive material read band is unavailable')
-    samples = [0., *bins]
+    response = jnp.abs(eps)
+    for pole, mask in dp:
+        xp = jnp if _live(tuple(pole)) else np
+        maximum = jnp.asarray(xp.abs(pole.delta_eps), jnp.float32)
+        response = response + (maximum if mask is None else jnp.where(mask, maximum, 0.))
     invalid = jnp.asarray(False)
     margin = jnp.float32(np.finfo(np.float32).eps if traced_bins else 0.)
     for pole, mask in lp:
@@ -110,7 +119,11 @@ def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
         w0, delta = (xp.asarray(v, dtype=np.float64 if xp is np else jnp.float32) for v in (pole.omega_0, pole.delta))
         peak = xp.sqrt(xp.maximum(w0**2 - 2 * delta**2, 0.)) / (2 * xp.pi)
         in_band = (peak >= bins.min()) & (peak <= bins.max())
-        samples.append(xp.where(in_band, peak, 0.))
+        maximum = xp.abs(_response(pole, 0., True))
+        for frequency in (bins.min(), bins.max(), xp.where(in_band, peak, 0.)):
+            maximum = xp.maximum(maximum, xp.abs(_response(pole, frequency, True)))
+        maximum = jnp.asarray(maximum, jnp.float32)
+        response = response + (maximum if mask is None else jnp.where(mask, maximum, 0.))
         resonance = w0 / (2 * xp.pi)
         bad = (w0 > 0) & (delta == 0) & (resonance >= bins.min()) & (resonance <= bins.max())
         if xp is jnp:
@@ -124,17 +137,10 @@ def realized_echo_bound(grid, materials, *, freqs=(), debye=None, lorentz=None,
             margin = margin + np.finfo(np.float32).eps * jnp.max(
                 jnp.where(w0 > 0, 1 + w0 / jnp.where(
                     delta > 0, delta if traced_bins else 2 * delta, jnp.inf), 0.))
-    n = jnp.float32(1.)
-    for frequency in samples:
-        response = eps.astype(jnp.complex64)
-        for rows, is_lorentz in ((dp, False), (lp, True)):
-            for pole, mask in rows:
-                chi = jnp.asarray(_response(pole, frequency, is_lorentz), jnp.complex64)
-                response = response + (chi if mask is None else jnp.where(mask, chi, 0.))
-        values = jnp.sqrt(jnp.abs(response * mu))
-        if valid is not None:
-            values = jnp.where(valid, values, 0.)
-        n = jnp.maximum(n, jnp.max(values))
+    values = jnp.sqrt(response * jnp.abs(mu))
+    if valid is not None:
+        values = jnp.where(valid, values, 0.)
+    n = jnp.maximum(jnp.float32(1.), jnp.max(values))
     for shape_eps in smoothing_eps:
         n = jnp.maximum(n, jnp.sqrt(jnp.max(jnp.asarray(shape_eps, jnp.float32)) * jnp.max(mu)))
     n = _up(jnp.where(invalid, jnp.inf, n * (1 + margin)))
