@@ -2,6 +2,7 @@
 from dataclasses import replace
 from types import SimpleNamespace
 import re
+import sys
 
 import jax
 import jax.numpy as jnp
@@ -111,7 +112,7 @@ def test_reference_substrate(monkeypatch, face, kind, inside):
     properties = {'debye': {'debye_poles': [DebyePole(delta_eps=1., tau=8e-12)]},
                   'magnetic': {'mu_r': 2.}, 'kerr': {'chi3': 1e-20}}[kind]
     sim.add_material('substrate', eps_r=2., **properties)
-    lo, hi = ((.001, .002) if face == 'top' else (.038, .039))
+    lo, hi = ((.001, .002) if face == 'top' else (.050, .051))
     if inside:
         lo, hi = (.010, .011)
     sim.add(Box((.003, .003, lo), (.009, .009, hi)), material='substrate')
@@ -140,7 +141,7 @@ def test_bore_material(monkeypatch, kind):
     elif kind == 'rlc':
         sim.add_lumped_rlc((.0075, .006, .010), R=50., topology='parallel', component='ex')
     else:
-        z = .038 if kind == 'sheet_aperture' else .010
+        z = .050 if kind == 'sheet_aperture' else .010
         sim.add_thin_conductor(Box((.005, .005, z), (.008, .008, z)),
             sigma_bulk=1e4 if kind.startswith('sheet') else 1 / (377 * 35e-6), thickness=35e-6,
             **({'surface_impedance_f0': 9e9} if kind.startswith('sheet') else {}))
@@ -268,7 +269,7 @@ def test_settling_keeps_user_probes():
         start = np.array((.006, .006, (plane - grid.pad_z_lo) * grid.dx))
         expected = max(expected, off + int(np.ceil(np.linalg.norm(start - point) / (299792458 * dt))))
     assert expected != result.settling_source_end_index
-    print(f'user-probe source end={expected}, coax-plane source end={result.settling_source_end_index}')
+    print(f'user-probe source end={expected}, coax-plane source end={result.settling_source_end_index}', file=sys.stderr)
     check_probe_records(result.settling_probe_source_end_index, expected)
 
 
@@ -304,12 +305,12 @@ def check_plate(root, captured, ref, face):
 @pytest.mark.parametrize('face', ['top', 'bottom'])
 def test_plate_at_reference(monkeypatch, face):
     sim = scene(face)
-    ref_z = .002 if face == 'top' else .038
+    ref_z = .002 if face == 'top' else .050
     lo, hi = (ref_z, ref_z+.001) if face == 'top' else (ref_z-.001, ref_z)
     sim.add(Box((.003, .003, lo), (.009, .009, hi)), material='pec')
     captured = capture(monkeypatch, sim, 'run')
     root = sim.realized_geometry().conductors
-    check_plate(root, captured, 8 if face == 'top' else 80, face)
+    check_plate(root, captured, 8 if face == 'top' else 104, face)
 
 
 def check_report(report, expected_cells, expected_edges):
@@ -369,7 +370,7 @@ def check_enclosed_line(captured, error, sim, top):
     assert captured['sources'] and captured['mag_sources']
     grid = captured['grid']
     port = sim._coaxial_ports[0]
-    tip = grid.position_to_index((.006, .006, .040))[2]
+    tip = grid.position_to_index((.006, .006, .052))[2]
     x = (np.arange(grid.shape[0]) - grid.pad_x_lo) * grid.dx - port.position[0]
     y = (np.arange(grid.shape[1]) - grid.pad_y_lo) * grid.dx - port.position[1]
     radial = x[:, None] ** 2 + y[None, :] ** 2 < port.outer_radius ** 2
@@ -397,7 +398,7 @@ def test_span_metal_refused(monkeypatch, entry):
     from rfx.model.coax_line import coax_port_layout
     from rfx.model.coax_port import stamp_coax_pin
     sim, _ = enclosed_line_scene()
-    metal = Box((.0075, .006, .0385), (.008, .0065, .039))
+    metal = Box((.0075, .006, .0505), (.008, .0065, .051))
     sim.add(metal, material='pec')
     grid = sim._build_grid()
     port = sim._coaxial_ports[0]
@@ -408,13 +409,13 @@ def test_span_metal_refused(monkeypatch, entry):
     assert any(np.any(e) for e in metal_edges)
     assert not any(np.any(a & b) for a, b in zip(pin_edges, metal_edges))
     ref = layout.reference_index
-    tip = grid.position_to_index((.006, .006, .040))[2]
+    tip = grid.position_to_index((.006, .006, .052))[2]
     message = (f"add_coaxial_port(): user PEC in front of the reference plane inside the bore, "
                f"between the reference node {ref} and the pin's tip node {tip}; "
                "name the pin contact in terminates=; a named entry that also reaches the outer "
                "conductor terminates the line in a short at the reference plane")
     error = refusal(monkeypatch, sim, entry, re.escape(message))
-    print(str(error))
+    print(str(error), file=sys.stderr)
 
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
@@ -450,7 +451,7 @@ def test_realized_coax_before_run(entry, pin_length):
     metadata = result.coax_port_metadata['coax_port:0:mode:0']
     print({f.name: (len(getattr(before, f.name)) if f.name in ('pin_cells', 'cleared_bore_cells')
            else tuple(map(len, before.cleared_bore_edges)) if f.name == 'cleared_bore_edges'
-           else getattr(before, f.name)) for f in fields(before)})
+           else getattr(before, f.name)) for f in fields(before)}, file=sys.stderr)
     check_realized_coax(before, after, metadata, pin_length)
 
 
@@ -465,11 +466,11 @@ def check_realized_coax_refusal(row, error):
 def test_realized_coax_refusal_before_run(monkeypatch, entry):
     from rfx.realized_geometry import realized_geometry
     sim, _ = enclosed_line_scene()
-    sim.add(Box((.0075, .006, .0385), (.008, .0065, .039)), material='pec')
+    sim.add(Box((.0075, .006, .0505), (.008, .0065, .051)), material='pec')
     record = realized_geometry(sim)
     assert record.conductors is not None
     assert record.realization_table is not None
     row = record.ports[0]
     error = refusal(monkeypatch, sim, entry, r'user PEC in front.*pin.s tip node')
-    print(row)
+    print(row, file=sys.stderr)
     check_realized_coax_refusal(row, error)

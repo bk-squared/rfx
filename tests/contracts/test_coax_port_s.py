@@ -237,7 +237,7 @@ def test_wave_metadata(open_results):
         np.testing.assert_allclose(left, right, rtol=0, atol=1e-4 * np.max(np.abs(left)))
     for data in metadata:
         positions = np.asarray(data['plane_positions_m'], dtype=np.float64)
-        np.testing.assert_allclose(positions, .004 + .002 * np.arange(12), rtol=1e-6)
+        np.testing.assert_allclose(positions, .0125 + .002 * np.arange(12), rtol=1e-6)
         voltages = np.asarray(data['plane_voltages'], dtype=np.complex128)
         middle = voltages[1:-1]
         recurrence = np.sum((voltages[:-2] + voltages[2:]) * middle.conj(), axis=0)

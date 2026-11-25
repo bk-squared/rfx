@@ -88,7 +88,7 @@ def test_admission_conditions(entry, gate, pattern):
                   'lateral': {'position': (.0025, .006, .002)}}[gate]
         sim._coaxial_ports[0] = sim._coaxial_ports[0]._replace(**fields)
     elif gate == 'ntff_shell':
-        sim._ntff = ((.004, .001, .001), (.011, .011, .039))
+        sim._ntff = ((.004, .001, .001), (.011, .011, .051))
     elif gate == 'ntff_pin':
-        sim._ntff = ((.001, .001, .003), (.011, .011, .039))
+        sim._ntff = ((.001, .001, .003), (.011, .011, .051))
     check_refusal(sim, lane, options, pattern)

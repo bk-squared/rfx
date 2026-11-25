@@ -2183,21 +2183,21 @@
               ]
             },
             "z": {
-              "declared_extent_um": 60000.0,
+              "declared_extent_um": 80000.0,
               "declared_um": [
                 0.0,
-                60000.0
+                80000.0
               ],
               "face_residual_um": [
                 0.0,
                 0.0
               ],
-              "mesh_extent_um": 60000.0,
-              "n_cells": 150,
-              "realized_extent_um": 60000.0,
+              "mesh_extent_um": 80000.0,
+              "n_cells": 200,
+              "realized_extent_um": 80000.0,
               "realized_um": [
                 0.0,
-                60000.0
+                80000.0
               ]
             }
           },

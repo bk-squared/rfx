@@ -41,7 +41,7 @@ raise SystemExit(pytest.main(['tests/contracts/test_coax_power.py', '-q', '-s',
 '''
     result = subprocess.run([sys.executable, '-c', script], capture_output=True,
                             text=True, env=dict(os.environ, PYTEST_ADDOPTS=''))
-    print(f'V2 mutation {mutation}: exit={result.returncode}\n{result.stdout}\n{result.stderr}')
+    print(f'V2 mutation {mutation}: exit={result.returncode}\n{result.stdout}\n{result.stderr}', file=sys.stderr)
     assert result.returncode == expected
     if expected:
         assert 'AssertionError' in result.stdout

@@ -95,7 +95,7 @@ def test_run_against_calculator(monkeypatch):
             for leaf, (left, right) in enumerate(zip(jax.tree_util.tree_leaves(a),
                                                     jax.tree_util.tree_leaves(translated))):
                 compare(f'{name}.{i}.leaf.{leaf}', left, right)
-    print(f'B1 all materials, PEC edges and translated drive leaves: array_equal; setback={setback}')
+    print(f'B1 all materials, PEC edges and translated drive leaves: array_equal; setback={setback}', file=sys.stderr)
     print(f'S1 B1 shielded model: {layout}', file=sys.stderr)
 
 
@@ -297,7 +297,7 @@ def test_named_pin_contact_is_allowed(monkeypatch):
 
 def test_ntff_must_contain_realized_shell(monkeypatch):
     sim = scene()
-    sim.add_ntff_box((.003, .003, .001), (.009, .009, .039), freqs=[5e9])
+    sim.add_ntff_box((.003, .003, .001), (.009, .009, .051), freqs=[5e9])
     with pytest.raises(NotImplementedError, match='NTFF box must contain the realized shell'):
         capture(monkeypatch, sim, 'run')
 

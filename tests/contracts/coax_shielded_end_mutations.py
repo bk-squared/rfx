@@ -41,7 +41,7 @@ raise SystemExit(pytest.main(['tests/contracts/test_coax_shielded_end.py', '-q',
     script = 'MUTATION = '+repr(mutation)+'\nCHECK = '+repr(check)+'\n'+script
     result = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True,
                             env=dict(os.environ, PYTEST_ADDOPTS=''))
-    print(f'S7 mutation {mutation}: exit={result.returncode}\n{result.stdout}\n{result.stderr}')
+    print(f'S7 mutation {mutation}: exit={result.returncode}\n{result.stdout}\n{result.stderr}', file=sys.stderr)
     assert result.returncode == 1
     assert message in result.stdout
 
