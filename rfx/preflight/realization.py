@@ -559,11 +559,17 @@ class _CampaignStaticsContext:
                         solved, cast(GridCoords, self.coords), cast(GridCoords, self.centres), self.cell_sizes,
                         name=entry.material_name, grid=self.grid)
             except self._NARROW_EXCS as exc:
+                from rfx.model.conductor_planes import merged_plane_remedy
+                merge_text = merged_plane_remedy(label, (lo, hi) if lo is not None else None,
+                                                  (getattr(sim, "_auto_z_merges", ())
+                                                   if sim._declared_mesh["_dx"] is None else ()))
+                error = str(exc) if isinstance(exc, ValueError) else f"{type(exc).__name__}: {exc}"
+                if merge_text:
+                    error += " " + merge_text
                 out.append(_EntryRealization(
                     label=label, name=entry.material_name, shape=section, declared_shape=entry.shape,
                     kind="refused",
-                    error=(str(exc) if isinstance(exc, ValueError)
-                           else f"{type(exc).__name__}: {exc}"),
+                    error=error,
                     lo=lo, hi=hi))
                 continue
             if cells is not None:
@@ -893,3 +899,38 @@ def _validate_cfg_assembly(self, _w) -> None:
 
 
 _validate_cfg_assembly.__qualname__ = "_PreflightMixin._validate_cfg_assembly"
+
+
+def realization_node_inputs(sim, record, grid):
+    """Retain the declared bounds and interior node lines for the judge."""
+    from rfx.geometry.csg import Box
+    declarations = {f'geometry[{i}]': e.shape for i, e in enumerate(sim._geometry)}
+    declarations.update({f'thin_conductor[{i}]': e.shape for i, e in enumerate(sim._thin_conductors)})
+    bounds = {label: (None if (b := _shape_bounds(shape)) is None else
+                      tuple(tuple(float(v) for v in side) for side in b[:2]))
+              for label, shape in declarations.items()}
+    neighbours = tuple(b for b in bounds.values() if b is not None)
+    lines = tuple(tuple(float(v) for v in record.nodes[a][
+        d.padding[0]:d.padding[0] + d.n_cells + 1]) for a, d in enumerate(record.domain))
+    original_domain = getattr(sim._unresolved_domain, "declared", sim._unresolved_domain)
+    domain = tuple(original_domain[a] if a < len(original_domain) and original_domain[a] > 0
+                   else d.declared_length_m
+                   for a, d in enumerate(record.domain))
+    out = {}
+    for entity in record.entities:
+        b = bounds.get(entity.label)
+        if b is None:
+            continue
+        plane_spec = entity.plane
+        if entity.kind == 'lossy' and plane_spec is None:
+            from rfx.model.thin_conductors import dc_film_plane
+            a, k = dc_film_plane(declarations[entity.label], grid)
+            plane_spec = (a, k, float(record.nodes[a][k]))
+        if entity.kind in ('sheet', 'lossy') and plane_spec is not None:
+            a, _, plane = plane_spec
+            out[entity.label] = ((lines[a], b, a, neighbours, plane,
+                                  (0., domain[a])),)
+        elif entity.kind == 'volume' and isinstance(declarations.get(entity.label), Box):
+            if not entity.continued_faces and not any(record.periodic):
+                out[entity.label] = tuple((lines[a], b, a) for a in range(3))
+    return out

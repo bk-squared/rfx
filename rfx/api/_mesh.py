@@ -90,6 +90,7 @@ class _MeshMixin:
         inputs = (
             *(state.get(name) for name in names),
             state["_freq_max"], state["_boundary"],
+            state.get("_snap"), state.get("_refinement"),
             *geometry, *sheets,
             *(item for pair in state["_materials"].items() for item in pair),
         )
@@ -110,6 +111,14 @@ class _MeshMixin:
                 "Auto mesh requires static geometry and materials; supply "
                 "dx= explicitly (and fixed profiles) before tracing design inputs."
             ) from exc
+        if config.z_rebuild_reason is not None and state.get("_refinement") is not None:
+            label, plane = config.z_rebuild_reason
+            raise RfxRefusal(
+                f"{label}'s plane at z={plane:.12g} m ({plane*1e3:g} mm) needs automatic z "
+                f"grading, which conflicts with add_refinement. Move that plane to a multiple "
+                f"of dx={config.dx:.12g} m, or pass dx= so the plane lies on its lattice, "
+                "or remove the refinement.")
+        state["_auto_z_merges"] = config.z_merges
         resolved = dict(declared, _dx=config.dx)
         if config.dz_profile is not None and declared["_dz_profile"] is None:
             resolved["_dz_profile"] = config.dz_profile
@@ -162,6 +171,7 @@ class _MeshMixin:
             dt_override=(self._dt_pin if all(self._declared_mesh[key] is None
                          for key in ("_dx_profile", "_dy_profile", "_dz_profile")) else None),
             thin_conductors=self._thin_conductors,
+            snap=self._snap,
         )
 
         return config

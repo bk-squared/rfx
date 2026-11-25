@@ -96,6 +96,8 @@ class FeatureInfo(NamedTuple):
     estimated_Q: float
     z_features: list = []
     z_sheet_planes: list = []
+    z_conductor_planes: list = []
+    z_conductors: list = []
 
 
 def _sheet_z_plane(shape) -> float | None:
@@ -147,8 +149,12 @@ def analyze_features(geometry: list, materials: dict, pec_threshold: float = 1e6
     max_loss_tangent = 0.0
     z_features = []
     z_sheet_planes = []
+    z_conductor_planes = []
+    z_conductors = []
+    from rfx.geometry.csg import Box
+    thin_shapes = {id(getattr(tc, "shape", tc)) for tc in thin_conductors or ()}
 
-    for shape, mat_name in geometry:
+    for geometry_index, (shape, mat_name) in enumerate(geometry):
         mat = materials.get(mat_name, {})
         sigma = mat.get("sigma", 0.0) if isinstance(mat, dict) else getattr(mat, "sigma", 0.0)
         eps_r = mat.get("eps_r", 1.0) if isinstance(mat, dict) else getattr(mat, "eps_r", 1.0)
@@ -182,15 +188,22 @@ def analyze_features(geometry: list, materials: dict, pec_threshold: float = 1e6
         z_thickness = z_hi - z_lo
         if z_thickness > 1e-12 and sigma < pec_threshold:
             z_features.append((z_lo, z_hi, eps_r))
-        if sigma >= pec_threshold:
+        if sigma >= pec_threshold and id(shape) not in thin_shapes:
+            if isinstance(shape, Box) and all(d > 0 for d in dims):
+                z_conductor_planes.extend((z_lo, z_hi))
+                z_conductors.append((shape, False, f"geometry[{geometry_index}]"))
             plane = _sheet_z_plane(shape)
             if plane is not None and z_thickness <= 1e-12:
                 z_sheet_planes.append(plane)
+                z_conductor_planes.append(plane)
+                z_conductors.append((shape, True, f"geometry[{geometry_index}]"))
 
-    for tc in thin_conductors or ():
+    for thin_index, tc in enumerate(thin_conductors or ()):
         plane = _sheet_z_plane(getattr(tc, "shape", tc))
         if plane is not None:
             z_sheet_planes.append(plane)
+            z_conductor_planes.append(plane)
+            z_conductors.append((getattr(tc, "shape", tc), True, f"thin_conductor[{thin_index}]"))
 
     if all_corners_lo:
         bbox_lo = tuple(min(c[i] for c in all_corners_lo) for i in range(3))
@@ -213,6 +226,8 @@ def analyze_features(geometry: list, materials: dict, pec_threshold: float = 1e6
         estimated_Q=estimated_Q,
         z_features=z_features,
         z_sheet_planes=sorted(set(z_sheet_planes)),
+        z_conductor_planes=sorted(set(z_conductor_planes)),
+        z_conductors=z_conductors,
     )
 
 
@@ -233,6 +248,8 @@ class SimConfig:
     dz_profile: np.ndarray | None = None
     boundary: str = "cpml"
     offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    z_rebuild_reason: tuple | None = None
+    z_merges: tuple = ()
 
     @property
     def grid_shape(self) -> tuple[int, int, int]:
@@ -344,6 +361,7 @@ def auto_configure(
     thin_conductors: Iterable[ThinConductor] | None = (),
     domain: tuple[float, float, float] | None = None,
     dt_override: float | None = None,
+    snap: str = "strict",
 ) -> SimConfig:
     """Derive all simulation parameters from geometry + frequency range.
 
@@ -419,6 +437,7 @@ def auto_configure(
         raise ValueError(f"accuracy must be 'draft', 'standard', or 'high', got {accuracy!r}")
     preset = presets[accuracy]
 
+    thin_conductors = tuple(thin_conductors or ())
     features = analyze_features(geometry, materials,
                                 thin_conductors=thin_conductors)
     warnings = []
@@ -491,6 +510,14 @@ def auto_configure(
     sheet_planes = [z + offset[2] for z in features.z_sheet_planes
                     if 0 <= z + offset[2] <= domain[2]]
 
+    conductor_planes = [z + offset[2] for z in features.z_conductor_planes
+                        if 0 <= z + offset[2] <= domain[2]]
+
+    def resolved_z(column):
+        return _accepted_dz_profile(
+            z_features, column, dx, sheet_planes, conductor_planes,
+            features.z_conductors, geometry, offset, needs_nonuniform_z, snap)
+
     min_cpml_thickness = preset["pml_frac"] * lambda_max
     min_cpml_cells = int(np.ceil(min_cpml_thickness / dx))
     cpml_cells = {"draft": 6, "standard": 8, "high": 12}[accuracy]
@@ -502,10 +529,7 @@ def auto_configure(
                        if declared_domain is None else declared_domain)
             _cpml_cells_now = int(np.ceil(min_cpml_thickness / dx))
             _cpml = max(_cpml_cells_now, cpml_cells)
-            _dz_prof = (_make_dz_profile(
-                            z_features, _domain[2], dx,
-                            sheet_planes=sheet_planes)
-                        if needs_nonuniform_z else None)
+            _dz_prof, _reason, _merges = resolved_z(_domain[2])
             from rfx.stepping.vector_pad import planned_extents
             _nx, _ny, _nz = planned_extents(_auto_grid_shape(_domain, dx, _cpml, _dz_prof),
                                             graded=_dz_prof is not None)
@@ -530,10 +554,8 @@ def auto_configure(
                 f"Consider reducing domain size or using mixed precision."
             )
 
-    dz_profile = None
-    if needs_nonuniform_z:
-        dz_profile = _make_dz_profile(z_features, domain[2], dx,
-                                      sheet_planes=sheet_planes)
+    dz_profile, z_rebuild_reason, z_merges = resolved_z(domain[2])
+    if dz_profile is not None:
         warnings.append(
             f"Non-uniform z mesh enabled: {len(dz_profile)} cells, "
             f"dz={np.min(dz_profile)*1e3:.3f}–{np.max(dz_profile)*1e3:.3f} mm"
@@ -578,6 +600,7 @@ def auto_configure(
         source_info = "CPML boundary: J-source with Cb/dV normalization (Meep convention)"
 
     return SimConfig(
+        z_rebuild_reason=z_rebuild_reason, z_merges=tuple(z_merges),
         dx=dx,
         domain=domain,
         cpml_layers=cpml_layers,
@@ -805,6 +828,7 @@ def _band_smooth_post_thirds(
     dx: float,
     min_cells: int,
     max_ratio: float = 1.3,
+    free_planes=(),
 ) -> np.ndarray:
     """Hand the post-thirds auto-z array to the band-profile engine.
 
@@ -824,6 +848,11 @@ def _band_smooth_post_thirds(
     edges = np.concatenate([[0.0], np.cumsum(cells)])
 
     segs: list[_BandSeg] = []
+    def free_segments(lo, hi):
+        points = [lo] + [p for p in free_planes if lo + 1e-12 < p < hi - 1e-12] + [hi]
+        return [_BandSeg(length=b-a, target=float(dx), protected=False)
+                for a, b in zip(points[:-1], points[1:])]
+
     prev_end = 0
     for (lo, hi), meta, (s_lo, s_hi) in zip(feature_bounds, block_meta,
                                             split_flags):
@@ -837,19 +866,23 @@ def _band_smooth_post_thirds(
                 "preserves interface edges?"
             )
         if i > prev_end:
-            segs.append(_BandSeg(
-                length=float(np.sum(cells[prev_end:i])), target=float(dx),
-                protected=False))
+            if free_planes:
+                segs.extend(free_segments(float(edges[prev_end]), float(edges[i])))
+            else:
+                segs.append(_BandSeg(length=float(np.sum(cells[prev_end:i])),
+                                     target=float(dx), protected=False))
         segs.append(_BandSeg(
             length=float(thickness), target=float(dz_feat), protected=True,
-            min_cells=int(min_cells), split_lo=bool(s_lo),
+            min_cells=int(min(min_cells, n_feat)), split_lo=bool(s_lo),
             split_hi=bool(s_hi),
             verbatim=tuple(float(c) for c in cells[i:j])))
         prev_end = j
     if prev_end < len(cells):
-        segs.append(_BandSeg(
-            length=float(np.sum(cells[prev_end:])), target=float(dx),
-            protected=False))
+        if free_planes:
+            segs.extend(free_segments(float(edges[prev_end]), float(edges[-1])))
+        else:
+            segs.append(_BandSeg(length=float(np.sum(cells[prev_end:])),
+                                 target=float(dx), protected=False))
 
     return _build_band_profile(segs, float(max_ratio))
 
@@ -979,3 +1012,114 @@ def _round_dx(dx: float) -> float:
     candidates = [n for n in nice if n <= mantissa + 1e-9]
     best = candidates[-1] if candidates else nice[0]
     return best * (10 ** exp)
+
+
+def _accepted_dz_profile(z_features, domain_z, dx, sheets, planes, conductors,
+                         geometry, offset, graded, snap):
+    """Return today's column verbatim until its z realization would refuse."""
+    from rfx.geometry.rasterize_grid import GridCoords, sheet_spec_from_shape
+    from rfx.model.conductor_planes import conductor_node_miss
+    from rfx.preflight.realization import _shape_bounds
+    today = (_make_dz_profile(z_features, domain_z, dx, sheet_planes=sheets)
+             if graded else None)
+    if snap == 'declared' or not conductors:
+        return today, None, ()
+    z_nodes = (np.r_[0., np.cumsum(today)] if today is not None
+               else np.arange(int(np.ceil(domain_z / dx)) + 1, dtype=np.float64) * dx)
+    shifted = []
+    for shape, _ in geometry:
+        b = _shape_bounds(shape)
+        if b is not None:
+            shifted.append(tuple(tuple(float(side[a]) + offset[a] for a in range(3)) for side in b[:2]))
+    reason = None
+    for shape, sheet, label in conductors:
+        bounds = _shape_bounds(shape)
+        if bounds is None:
+            continue
+        b = tuple(tuple(float(side[a]) + offset[a] for a in range(3)) for side in bounds[:2])
+        if b[1][2] < 0 or b[0][2] > domain_z:
+            continue
+        plane = None
+        if sheet:
+            axes = [np.asarray([bounds[0][a], .5*(bounds[0][a]+bounds[1][a]), bounds[1][a]],
+                               dtype=np.float64) for a in range(2)] + [z_nodes-offset[2]]
+            coords = GridCoords(*axes, tuple(len(n) for n in axes))
+            sizes = tuple(np.diff(n) for n in axes)
+            spec = sheet_spec_from_shape(shape, coords, sizes, normal_axis=2)
+            plane = float(z_nodes[spec.plane])
+        miss = conductor_node_miss(z_nodes, b, 2, shifted, plane, (0., domain_z))
+        if miss.refused:
+            offending = (max((b[0][2], b[1][2]), key=lambda p: float(np.min(abs(z_nodes-p))))
+                         if not sheet else .5 * (b[0][2] + b[1][2]))
+            reason = (label, offending)
+            break
+    if reason is None:
+        return today, None, ()
+    thin_intervals = []
+    for shape, _, label in conductors:
+        if label.startswith("thin_conductor["):
+            bounds = _shape_bounds(shape)
+            if bounds is not None:
+                thin_intervals.append(tuple(float(side[2]) + offset[2] for side in bounds[:2]))
+    rebuilt, merges = _conductor_dz_profile(
+        z_features, domain_z, dx, 4, planes, thin_intervals)
+    return rebuilt, reason, merges
+
+
+def _conductor_dz_profile(z_features, domain_z, dx, min_cells, conductor_planes,
+                           thin_intervals=()):
+    """Split runs and blocks; a thin midpoint may merge onto its own face."""
+    boundaries = sorted({0., float(domain_z)} | {float(p) for f in z_features for p in f[:2]})
+
+    def covered(lo, hi):
+        return any(a <= .5 * (lo + hi) <= b for a, b, _ in z_features)
+
+    def target(p):
+        for lo, hi in zip(boundaries[:-1], boundaries[1:]):
+            if lo <= p <= hi and covered(lo, hi):
+                n = max(min_cells, int(np.ceil((hi-lo)/dx - _FEATURE_CELL_QUOTIENT_TOL)))
+                return (hi-lo)/n
+        return dx
+
+    retained = list(boundaries)
+    merges = []
+    for p in sorted(set(float(p) for p in conductor_planes if 0 <= p <= domain_z)):
+        thin_faces = [face for lo, hi in thin_intervals if abs(.5*(lo+hi)-p) < 1e-12
+                      for face in (lo, hi) if 0 <= face <= domain_z]
+        nearest = min(retained + thin_faces, key=lambda q: abs(q-p))
+        if abs(nearest-p) <= _CUT_MERGE_FRACTION * target(p):
+            if nearest not in retained:
+                retained.append(nearest)
+            if nearest != p:
+                merges.append((p, nearest))
+        else:
+            retained.append(p)
+    retained.sort()
+    cells, outer, feature_bounds, block_meta = [], [], [], []
+    for lo, hi in zip(boundaries[:-1], boundaries[1:]):
+        span = hi-lo
+        if not covered(lo, hi):
+            cells.extend(_uniform_run(span, dx, [p-lo for p in retained]))
+            continue
+        n = max(min_cells, int(np.ceil(span/dx - _FEATURE_CELL_QUOTIENT_TOL)))
+        dz = span/n
+        pieces = [lo] + [p for p in retained if lo < p < hi] + [hi]
+        lengths = [b-a for a, b in zip(pieces[:-1], pieces[1:])]
+        counts = [max(1, int(round(t/dz))) for t in lengths]
+        counts[int(np.argmax(lengths))] += max(0, min_cells - sum(counts))
+        outer.append(len(cells))
+        for a, b, count in zip(pieces[:-1], pieces[1:], counts):
+            start = len(cells)
+            cells.extend([(b-a)/count] * count)
+            feature_bounds.append((a, b))
+            block_meta.append((b-a, count, (b-a)/count, start, len(cells)))
+        outer.append(len(cells))
+    split_flags = []
+    for _, _, _, start, end in block_meta:
+        split_flags.append(tuple(i in outer and 0 < i < len(cells) and
+            min(cells[i-1], cells[i])/3 >= _MIN_THIRDS_SUBCELL_M for i in (start, end)))
+    post = apply_thirds_rule(cells, outer)
+    profile = _band_smooth_post_thirds(
+        post, feature_bounds, block_meta, split_flags, dx, min_cells,
+        max_ratio=1.3, free_planes=retained)
+    return profile, merges
