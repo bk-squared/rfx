@@ -547,7 +547,7 @@ def _group_growing_poles(poles):
     growth and reciprocal e-folding time. Any discarded member makes the
     group's rule discarded growing. Groups are ordered by descending growth.
     """
-    groups = []
+    groups: list[list[dict]] = []
     for pole in poles:
         matches = []
         for index, group in enumerate(groups):
@@ -644,7 +644,7 @@ def _channel_tail_witness(records, dt, source_end, freqs, *, identification: Ide
     share = np.zeros(bins.size)
     error = np.zeros(bins.size)
     contributions = {}
-    growing_poles = []
+    growing_poles: list[dict] = []
     drive_share = np.zeros(bins.size)
     dropped_names = [[] for _ in bins]
     kept_count = np.zeros(bins.size, dtype=int)
