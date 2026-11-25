@@ -167,6 +167,11 @@ from pathlib import Path
 
 import matplotlib
 
+_PHI_ZERO_INDEX = 0
+_PHI_180_INDEX = 24
+_PHI_90_INDEX = 12
+_PHI_270_INDEX = 36
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -188,44 +193,29 @@ from rfx.mesh_edges import EDGE_OFFSET, edge_aware_profiles
 C0 = 2.998e8
 EPS0 = 8.8541878e-12
 
-# ---- Geometry: identical to the openEMS "Simple Patch Antenna" tutorial ----
-PATCH_W = 32.0e-3          # x extent of the patch
-PATCH_L = 40.0e-3          # y extent of the patch
+PATCH_W = 32.0e-3
+PATCH_L = 40.0e-3
 SUB_EPS_R = 3.38
 SUB_THICK = 1.524e-3
 TAN_DELTA = 1.0e-3
-GP_SIZE = 60.0e-3          # finite ground plane, 60 x 60 mm
-FEED_OFFSET_X = -6.0e-3    # probe feed 6 mm off centre
+GP_SIZE = 60.0e-3
+FEED_OFFSET_X = -6.0e-3
 F_DESIGN = 2.2e9
 SIGMA_SUB = 2 * math.pi * 2.45e9 * EPS0 * SUB_EPS_R * TAN_DELTA
 
-# openEMS reference for the identical geometry in this box, finest of three
-# converged meshes (VESSL 369367270650; see the module docstring).
 OPENEMS_F_RES = 2.4436e9
 OPENEMS_D_DBI = 6.83
 
-# ---- Mesh and domain (coarse on purpose: dx = 2 mm, 22 min measured) ----
 DX = 2.0e-3
 N_CPML = 8
-N_SUB = 4                  # fine cells across the substrate thickness
+N_SUB = 4
 DZ_SUB = SUB_THICK / N_SUB
-MARGIN_XY = 85.0e-3        # air beyond the ground-plane edge, x and y
+MARGIN_XY = 85.0e-3
 AIR_BELOW = 30.0e-3
-# 84 mm keeps the top NTFF face half a wavelength above the patch at F_DESIGN
-# at the measured 22-minute runtime.  The openEMS reference uses the same
-# air distances.
 AIR_ABOVE = 84.0e-3
 
-# run(until_decay=1e-3) also stops on this fixture: the interior energy fell to
-# 1e-3 of its after-drive value at step 48 850, 1.9 times the 25 832 steps of
-# NUM_PERIODS, and the probe fell to 1e-3 of its peak (measured 2026-10-27).
-# The static charge field of issue #388 came from the old pulse's DC content;
-# the default GaussianPulse integrates to zero since 2.0.
 NUM_PERIODS = 125
 
-# Far-field bins: a ladder around the expected coarse-grid resonance plus one
-# bin near the second ring-down mode, so every harminv candidate gets a
-# far-field verdict.
 NTFF_FREQS = np.array([2.0e9, 2.1e9, 2.2e9, 2.3e9, 2.4e9, 2.5e9, 2.8e9])
 
 OUTPUT_PATH = Path(__file__).with_name("output") / "patch_antenna_cuts.png"
@@ -272,15 +262,6 @@ def build_simulation():
     dom_y = GP_SIZE + 2 * MARGIN_XY
     cx, cy = dom_x / 2, dom_y / 2
 
-    # Fine band: N_SUB substrate cells and nothing else.  The ground and the
-    # patch are FOIL — zero thickness — so under the lattice ownership
-    # contract (#931) they are declared as SHEETS on the substrate's two node
-    # planes and own no cell.  Before the contract this band reserved one cell
-    # for each foil (1 + N_SUB + 1) so that the old single-wall rule would put
-    # a wall on the substrate face; that reserved ground cell then sat INSIDE
-    # the realized cavity carrying vacuum, and the cavity read 1.905 mm
-    # instead of the declared 1.524 mm.  A sheet has no cell to fill, so the
-    # reservation is gone and the realized cavity is the declared one.
     raw_dz = np.concatenate([
         np.full(n_below, DX),
         np.full(N_SUB, DZ_SUB),
@@ -290,10 +271,6 @@ def build_simulation():
     edges = np.insert(np.cumsum(dz_profile), 0, 0.0)
     z_total = float(edges[-1])
 
-    # DERIVE the stack z coordinates from where smooth_grading actually put the
-    # fine band.  Do NOT reuse AIR_BELOW: the inserted transition cells shift
-    # the band upward, and a stack placed at the pre-smoothing coordinate can
-    # land on coarse cells.  (nonuniform_patch_demo.py shows the mesh anatomy.)
     fine = np.where(np.isclose(dz_profile, DZ_SUB, rtol=1e-6))[0]
     if len(fine) < N_SUB:
         raise RuntimeError(
@@ -301,14 +278,9 @@ def build_simulation():
             f"cells, found {len(fine)}"
         )
     f0 = int(fine[0])
-    # The two foils sit ON the substrate's faces, which are exact node planes
-    # of the built mesh.  A sheet is declared as a zero-thickness Box, so
-    # these two numbers are both the declaration and the realization.
     z_sub_lo, z_sub_hi = float(edges[f0]), float(edges[f0 + N_SUB])
     z_gnd, z_patch = z_sub_lo, z_sub_hi
 
-    # Verify the realized rasterization, then fail loudly on a mismatch: a
-    # substrate on the wrong cells produces a wrong resonance, not a crash.
     centers = 0.5 * (edges[:-1] + edges[1:])
     sub_cells = int(np.sum((centers >= z_sub_lo) & (centers < z_sub_hi)))
     print(
@@ -333,9 +305,6 @@ def build_simulation():
     probe_x, probe_y = feed_x + 4e-3, feed_y + 4e-3
     pad = (N_CPML + 3) * DX
 
-    # edge_aware_profiles grades x and y (1.86-2 mm) so a node sits 0.35 cell
-    # inside every sheet edge, and puts the feed, the probe and the NTFF faces
-    # on nodes.  The check after the build asserts the result.
     profiles = edge_aware_profiles(
         (dom_x, dom_y, z_total), DX,
         sheets=[ground, patch], solids=[substrate],
@@ -355,26 +324,10 @@ def build_simulation():
     )
     sim.add_material("sub", eps_r=SUB_EPS_R, sigma=SIGMA_SUB)
 
-    # Ground plane and patch are FOIL: 35 um of copper on a 1524 um board is
-    # below any cell this model can afford, and the openEMS reference draws
-    # them as zero-thickness metal too.  Declare them as SHEETS
-    # (add_thin_conductor with a zero-thickness Box).  A sheet is a footprint
-    # on ONE node plane: it owns no cell, writes no permittivity, and zeroes
-    # the two in-plane E components on its plane while the normal E through it
-    # stays live.  The declared plane IS the realized plane here because both
-    # faces of the substrate are exact nodes of the built mesh.
-    #
-    # Declaring the same foil as a Box (a VOLUME) would be a different model:
-    # a volume shorts every edge incident to its cells, so a one-cell Box
-    # realizes walls on BOTH its faces with the cell between them shorted —
-    # correct for a plate, wrong for foil, and it would put 381 um of metal
-    # into a 1524 um board.
     sim.add_thin_conductor(ground)
     sim.add(substrate, material="sub")
     sim.add_thin_conductor(patch)
 
-    # Soft Ez source through the substrate at the feed point; once the patch
-    # resonates, the radiated field is patch-dominated, not feed-dominated.
     src_z = z_sub_lo + DZ_SUB * 1.5
     sim.add_source(
         position=(feed_x, feed_y, src_z),
@@ -388,11 +341,6 @@ def build_simulation():
     box_hi = (dom_x - pad, dom_y - pad, z_total - pad)
     sim.add_ntff_box(corner_lo=box_lo, corner_hi=box_hi, freqs=NTFF_FREQS)
 
-    # ---- Build-time realization check (no solve) ----
-    # The declared conductor planes must BE the realized ones.  Two sheets,
-    # so exactly two tangential-wall planes along z, at the substrate's two
-    # faces and nowhere else — in particular no wall one plane above the
-    # patch, which is what the reserved patch cell used to add.
     z_nodes, sheets, wall_planes = realized_z_wall_planes(sim)
     k_gnd = int(np.argmin(np.abs(z_nodes - z_gnd)))
     k_patch = int(np.argmin(np.abs(z_nodes - z_patch)))
@@ -482,9 +430,9 @@ def principal_cut(power_f, phi_index_pos, phi_index_neg):
     ``power_f`` is the (n_theta, n_phi) power at one frequency on the
     theta = 0..180 deg, phi = 0..360 deg sphere grid.
     """
-    n_half = 91  # theta = 0..90 deg at 1 deg spacing
-    pos = power_f[:n_half, phi_index_pos]           # angle = +theta
-    neg = power_f[:n_half, phi_index_neg][::-1]     # angle = -theta
+    n_half = 91
+    pos = power_f[:n_half, phi_index_pos]
+    neg = power_f[:n_half, phi_index_neg][::-1]
     angle = np.concatenate([-np.arange(90, 0, -1.0), np.arange(0, 91, 1.0)])
     return angle, np.concatenate([neg[:-1], pos])
 
@@ -516,7 +464,6 @@ def main():
     result = sim.run(num_periods=NUM_PERIODS)
     print(f"FDTD run: {time.time() - t_run:.0f} s")
 
-    # ---- Settling witness FIRST: no frequency is quotable before it ----
     ts = np.asarray(result.time_series).ravel()
     dt = float(result.dt)
     envelope = np.abs(ts)
@@ -535,7 +482,6 @@ def main():
             "carry transient error. Raise NUM_PERIODS and rerun."
         )
 
-    # ---- Full mode list: the patch rings at more than one frequency ----
     modes = [
         m
         for m in matrix_pencil(ts[int(len(ts) * 0.3) :], dt, 1.0e9, 3.5e9)
@@ -552,7 +498,6 @@ def main():
         "sits at one point in the substrate. The radiator is identified below."
     )
 
-    # ---- Far-field verdict per candidate bin ----
     theta = np.linspace(0, np.pi, 181)
     phi = np.linspace(0, 2 * np.pi, 49)
     ff = compute_far_field_jax(result.ntff_data, result.ntff_box, result.grid, theta, phi)
@@ -570,7 +515,6 @@ def main():
             f"theta = {peak_theta_deg[k]:5.1f} deg | D = {d_dbi[k]:.2f} dBi"
         )
 
-    # The radiating mode: broadside beam AND the radiated-power peak.
     broadside = peak_theta_deg <= 15.0
     if not broadside.any():
         raise RuntimeError("no monitored bin shows a broadside beam — inspect the pattern")
@@ -591,9 +535,8 @@ def main():
             "probe, but the far field does not select it."
         )
 
-    # ---- Principal-plane cuts + headline numbers ----
-    angle_xz, cut_xz = principal_cut(power[k_star], 0, 24)   # phi = 0 / 180 deg
-    angle_yz, cut_yz = principal_cut(power[k_star], 12, 36)  # phi = 90 / 270 deg
+    angle_xz, cut_xz = principal_cut(power[k_star], _PHI_ZERO_INDEX, _PHI_180_INDEX)
+    angle_yz, cut_yz = principal_cut(power[k_star], _PHI_90_INDEX, _PHI_270_INDEX)
     hpbw_xz = half_power_beamwidth_deg(angle_xz, cut_xz)
     hpbw_yz = half_power_beamwidth_deg(angle_yz, cut_yz)
     print(
@@ -626,7 +569,6 @@ def main():
         "not a pass against the former board's envelope."
     )
 
-    # ---- Save the far-field cuts ----
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(5.6, 3.4), constrained_layout=True)
     floor = 1e-4

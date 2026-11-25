@@ -15,7 +15,7 @@
    "code": "floating_port",
    "disposition": "intended",
    "reason": "The demo never time-steps: its docstring is 'Create a shareable rfx artifact bundle (scene + mesh + report) WITHOUT running FDTD', and main() only calls export_artifact_bundle(). The advisory is about excitation coupling during a solve (a single-cell port in substrate cannot drive the patch TM mode, issue #71); this scene has no patch and no solve, and the advisory itself is part of what the exported review report carries. No number this example prints depends on the port.",
-   "ref": "examples/tutorials/artifact_report_demo.py:1-13,46-58",
+   "ref": "examples/tutorials/artifact_report_demo.py:1-13,44-56",
    "rows": 1,
    "variant": "examples/tutorials/artifact_report_demo.py::build_demo_simulation::default"
   },
@@ -29,7 +29,7 @@
    "code": "no_sources",
    "disposition": "intended",
    "reason": "make_sim() is the shared EMPTY domain factory -- 'Build the small open domain shared by every material example'. The script always follows it with add_sample(), which adds the source and probe. The advisory therefore describes the half-built simulation this build-only gate audits, not anything the example runs: the six end-to-end solves in main() all go through add_sample() first. It is a statement about the audited entry point, not about the example's physics.",
-   "ref": "examples/tutorials/materials_and_dispersion.py:41-57",
+   "ref": "examples/tutorials/materials_and_dispersion.py:43-59",
    "rows": 1,
    "variant": "examples/tutorials/materials_and_dispersion.py::make_sim::default"
   },
@@ -37,11 +37,11 @@
    "anchor": [
     [
      "sim.add_material(\"fr4\", eps_r=eps_r, sigma=0.0)",
-     "# metal's sigma_bulk makes this a lossless PEC sheet and that `thickness`"
+     "sim.add_material(\"fr4\", eps_r=eps_r, sigma=0.0)"
     ],
     [
-     "# FR4 is modelled lossless (sigma=0) so preflight's infinite-Q advisory will",
-     "# finding about this geometry."
+     "FR4 is modelled lossless (sigma = 0), so the printed Q values are those of the lossless model and include no dielectric loss.",
+     "FR4 is modelled lossless (sigma = 0), so the printed Q values are those of the lossless model and include no dielectric loss."
     ],
     [
      "for m in modes:",
@@ -51,7 +51,7 @@
    "code": "lossless_q",
    "disposition": "intended",
    "reason": "The tutorial deliberately models FR4 with sigma=0. The printed harminv Q values describe that lossless model; they do not include FR4 dielectric loss. main() prints the lossless_q advisory before the solve.",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:307-310,467-473,539-540",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:293,376,463-464",
    "rows": 1,
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
@@ -77,7 +77,7 @@
    "code": "ntff_near_field",
    "disposition": "intended",
    "reason": "Teaching point 3 of the tutorial: 'Every face should sit at least half a wavelength from the radiator where the domain allows. The face below the ground plane cannot: it sits 6 mm below the ground. Preflight flags it, the run quotes the warning verbatim, and a solver-to-solver cross-check backs the placement. Preflight output is part of the result; do not suppress it.' The placement is cross-checked against openEMS at the design-mode bin: D 6.59 dBi against openEMS 6.83 dBi, -0.24 dB (module docstring).",
-   "ref": "examples/tutorials/patch_antenna_demo.py:33-45,112-117,387-389,512-516",
+   "ref": "examples/tutorials/patch_antenna_demo.py:33-45,112-117,340-342,460-464",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
@@ -88,28 +88,36 @@
      "with the project."
     ],
     [
+     "design-mode bin backs the placement. Preflight reports four advisories:",
+     "``ntff_near_field``, ``ntff_small_ground_plane``,"
+    ],
+    [
      "print(f\"preflight advisories: {len(list(report))}\")",
      "result = sim.run(num_periods=NUM_PERIODS)"
     ]
    ],
    "code": "ntff_small_ground_plane",
    "disposition": "intended",
-   "reason": "The geometry is the openEMS 'Simple Patch Antenna' tutorial verbatim -- a 60 x 60 mm finite ground plane -- and the finite plane is the structure under test, not an oversight. main()'s comment lists this row among the advisories expected on this fixture: 'ntff_small_ground_plane for finite-ground diffraction'; the openEMS reference solves the same finite ground plane.",
-   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,512-516",
+   "reason": "The geometry is the openEMS 'Simple Patch Antenna' tutorial verbatim -- a 60 x 60 mm finite ground plane -- and the finite plane is the structure under test, not an oversight. The module docstring names ntff_small_ground_plane among the four advisories preflight reports on this fixture, and the openEMS reference solves the same finite ground plane.",
+   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,39-40,460-464",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
   {
    "anchor": [
     [
-     "#     num_periods=20 the record is 2.4 far-boundary round trips long, and",
-     "# that is the interesting part: it reports the layout in guide wavelengths"
+     "def build_coaxial_port() -> Simulation:",
+     "\"\"\"Build a coax declaration for the line calculators."
+    ],
+    [
+     "coaxial = build_coaxial_port()",
+     "print(f\"Coax build-only advisory observed: {expected_build_only_advisory}\")"
     ]
    ],
    "code": "no_sources",
    "disposition": "intended",
-   "reason": "The tutorial ASSERTS this row. main(): 'Because this model deliberately ends after construction, general preflight should report that there is no generic run source', then expected_build_only_advisory = bool(coaxial_report.by_code('no_sources')) and prints it. A missing row here would be the defect.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:332-339",
+   "reason": "The coax model is a build-only declaration for the line calculators: build_coaxial_port() declares the coax port and no generic run source, so general preflight reports no_sources. main() reads that row as expected_build_only_advisory = bool(coaxial_report.by_code('no_sources')) and prints it. A missing row here would be the defect.",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:215-216,276-280",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_coaxial_port::default"
   },
@@ -770,7 +778,7 @@
    "code": "geometry_in_absorber",
    "disposition": "intended",
    "reason": "The interface example deliberately extends the dielectric half-space through the absorbing layers, avoiding an unintended rear slab face. The displayed physical domain stops before those layers; absorber-region fields are not interpreted as material physics.",
-   "ref": "examples/visualization/field_movies.py:5-10,62-72",
+   "ref": "examples/visualization/field_movies.py:5-10,62-70",
    "rows": 2,
    "variant": "examples/visualization/field_movies.py::build_simulation::dielectric"
   },
@@ -788,7 +796,7 @@
    "code": "lossless_q",
    "disposition": "intended",
    "reason": "The example intentionally uses an ideal nondispersive dielectric to show a finite pulse meeting an interface. It does not extract Q, resonance lifetime, or loss and names this scope explicitly.",
-   "ref": "examples/visualization/field_movies.py:5-10,62-72",
+   "ref": "examples/visualization/field_movies.py:5-10,62-70",
    "rows": 1,
    "variant": "examples/visualization/field_movies.py::build_simulation::dielectric"
   },
@@ -806,7 +814,7 @@
    "code": "mesh_resolution",
    "disposition": "intended",
    "reason": "The 1 mm grid is a qualitative teaching mesh, not a phase-accuracy calculation: at the declared 12 GHz band edge the dielectric has only 12.5 cells per wavelength. The example retains this advisory and makes no convergence or phase-velocity error claim.",
-   "ref": "examples/visualization/field_movies.py:5-10,62-72",
+   "ref": "examples/visualization/field_movies.py:5-10,62-70",
    "rows": 3,
    "variant": "examples/visualization/field_movies.py::build_simulation::dielectric"
   },
@@ -814,13 +822,13 @@
    "anchor": [
     [
      "def sim_factory(dx: float) -> Simulation:",
-     "# Probe on the -z side"
+     "sim.add_source((sx, sy, 0.004), \"ez\", amplitude_kind=\"current\")"
     ]
    ],
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=6, x_hi=6, y_lo=6, y_hi=6, z_lo=6, z_hi=6. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/inverse_design/progressive_demo.py:103-115 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/inverse_design/progressive_demo.py:103-113 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/inverse_design/progressive_demo.py::sim_factory::dx=1.0mm"
   },
@@ -828,13 +836,13 @@
    "anchor": [
     [
      "def sim_factory(dx: float) -> Simulation:",
-     "# Probe on the -z side"
+     "sim.add_source((sx, sy, 0.004), \"ez\", amplitude_kind=\"current\")"
     ]
    ],
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=6, x_hi=6, y_lo=6, y_hi=6, z_lo=6, z_hi=6. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/inverse_design/progressive_demo.py:103-115 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/inverse_design/progressive_demo.py:103-113 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/inverse_design/progressive_demo.py::sim_factory::dx=0.5mm"
   },
@@ -862,7 +870,7 @@
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=3, x_hi=3, y_lo=3, y_hi=3, z_lo=3, z_hi=3. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/tutorials/materials_and_dispersion.py:41-49 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/tutorials/materials_and_dispersion.py:43-51 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/tutorials/materials_and_dispersion.py::make_sim::default"
   },
@@ -876,7 +884,7 @@
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=4, x_hi=4, y_lo=4, y_hi=4, z_lo=4, z_hi=4. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:48-60 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:39-54 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_generic_port_demo::add_component=False"
   },
@@ -890,7 +898,7 @@
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=4, x_hi=4, y_lo=4, y_hi=4, z_lo=4, z_hi=4. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:48-60 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:39-54 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_generic_port_demo::add_component=True"
   },
@@ -904,7 +912,7 @@
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=3, x_hi=3, y_lo=3, y_hi=3, z_lo=3, z_hi=3. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:114-140 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:88-112 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
@@ -918,7 +926,7 @@
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=4, x_hi=4. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:233-245 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:184-196 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_waveguide_ports::default"
   },
@@ -958,13 +966,13 @@
     ],
     [
      "\"Microstrip port setup ready: \"",
-     "# propagates.  Neither preflight call reports an error."
+     "waveguide = build_waveguide_ports()"
     ]
    ],
    "code": "msl_port_geometry",
    "disposition": "intended",
    "reason": "#1138: edge-aware x/y profiles grade the propagation axis; this tutorial builds the MSL setup only. The skipped automatic offset solve is reported without claiming fitted Z0/beta or a settled S-matrix. (Two earlier probe-clearance rows named this tutorial's own finite ground sheet as the reflector, at -11.25 mm; a conductor at the port's ground reference is no longer a reflector candidate, so they are gone.)",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:114-162,318-324",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:88-132,260-264",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
@@ -1195,7 +1203,7 @@
    "code": "thin_conductor_thickness_unmodelled",
    "disposition": "intended",
    "reason": "This example declares its copper with add_thin_conductor at the API's default 35 um, solved with zero thickness, on a 1.5 mm substrate (t/h 2.33 %). The advisory states that the declared thickness is not in the model and that a strip or patch on this substrate reads electrically long by about 0.27 % (#1523 table); that is true of this example and is the known limitation 'Conductor thickness is not solved' in docs/guides/known_limitations.md. The ground sheet (thin_conductors[0]) covers the substrate footprint and is not reported; only the patch (thin_conductors[1]) is.",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:157,314-316",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:156,294-296",
    "rows": 1,
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
@@ -1206,14 +1214,14 @@
      "with the project."
     ],
     [
-     "# correct for a plate, wrong for foil, and it would put 381 um of metal",
+     "sim.add_thin_conductor(ground)",
      "sim.add_thin_conductor(ground)"
     ]
    ],
    "code": "thin_conductor_thickness_unmodelled",
    "disposition": "intended",
    "reason": "This example declares its copper with add_thin_conductor at the API's default 35 um, solved with zero thickness, on a 1.524 mm substrate (t/h 2.3 %). The advisory states that the declared thickness is not in the model and that a strip or patch on this substrate reads electrically long by about 0.27 % (#1523 table); that is true of this example and is the known limitation 'Conductor thickness is not solved' in docs/guides/known_limitations.md. The ground sheet (thin_conductors[0]) covers the substrate footprint and is not reported; only the patch (thin_conductors[1]) is.",
-   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,370-372",
+   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,327",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
@@ -1224,14 +1232,14 @@
      "clearance exceeds twice the substrate height."
     ],
     [
-     "# FOIL IS A SHEET, A PLATE IS A VOLUME.  A microstrip ground plane and its",
+     "sim.add_thin_conductor(ground)",
      "common = {"
     ]
    ],
    "code": "thin_conductor_thickness_unmodelled",
    "disposition": "intended",
    "reason": "This example declares its copper with add_thin_conductor at the API's default 35 um, solved with zero thickness, on a 1 mm substrate (t/h 3.5 %). The advisory states that the declared thickness is not in the model and that a strip or patch on this substrate reads electrically long by about 0.37 % (#1523 table); that is true of this example and is the known limitation 'Conductor thickness is not solved' in docs/guides/known_limitations.md. The ground sheet (thin_conductors[0]) covers the substrate footprint and is not reported; only the trace (thin_conductors[1]) is.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:116-119,172-194",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:90-93,142-149",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
@@ -1245,7 +1253,7 @@
    "code": "realization",
    "disposition": "intended",
    "reason": "the demo never time-steps; the warning is part of the exported report. z: realized 1 cells (0.001 m), declared 1 cells (0.001 m).",
-   "ref": "examples/tutorials/artifact_report_demo.py:39-40",
+   "ref": "examples/tutorials/artifact_report_demo.py:37-38",
    "rows": 1,
    "variant": "examples/tutorials/artifact_report_demo.py::build_demo_simulation::default"
   },
@@ -1263,7 +1271,7 @@
    "code": "realization",
    "disposition": "intended",
    "reason": "true positive on the substrate overhang; the patch metal is on nodes. x: realized 62 cells (0.05937 m), declared 62.6579080344 cells (0.06 m).",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:280-281,315",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:271-272,295",
    "rows": 1,
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
@@ -1272,16 +1280,12 @@
     [
      "px_lo, px_hi = cx - PATCH_W / 2, cx + PATCH_W / 2",
      "py_lo, py_hi = cy - PATCH_L / 2, cy + PATCH_L / 2"
-    ],
-    [
-     "# Soft Ez source through the substrate at the feed point; once the patch",
-     "# Soft Ez source through the substrate at the feed point; once the patch"
     ]
    ],
    "code": "realization",
    "disposition": "intended",
    "reason": "true positive on the substrate overhang; the patch metal is on nodes. x: realized 30 cells (0.0586 m), declared 30.7167235495 cells (0.06 m).",
-   "ref": "examples/tutorials/patch_antenna_demo.py:327-328,376",
+   "ref": "examples/tutorials/patch_antenna_demo.py:299-300",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
@@ -1299,7 +1303,7 @@
    "code": "realization",
    "disposition": "intended",
    "reason": "true positive on the substrate; strip and ports silent. y: realized 36 cells (0.00835125 m), declared 36.641221374 cells (0.0085 m).",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:134-143,189-192",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:108-115,144-147",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },

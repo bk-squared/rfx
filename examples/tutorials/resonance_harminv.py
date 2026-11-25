@@ -57,8 +57,6 @@ def build_cavity() -> Simulation:
         boundary=BoundarySpec.uniform("pec"),
     )
 
-    # These off-centre positions couple to TE101 and TE102.  TE102 is made a
-    # little louder on purpose, so amplitude order cannot choose TE101 for us.
     sim.add_source(
         (0.37 * A, 0.41 * B, 0.20 * D),
         component="ey",
@@ -84,8 +82,6 @@ def extract_modes(result) -> list[MatrixPencilMode]:
         1.50 * F_TE101,
         min_Q=1.0,
         max_modes=12,
-        # decimate="auto" is the default; it keeps the full time span while
-        # removing samples that the band-limited analysis does not need.
     )
 
 
@@ -114,13 +110,9 @@ def relative_error_percent(mode: MatrixPencilMode) -> float:
 def main() -> None:
     sim = build_cavity()
 
-    # Expect "All checks passed" and no lossless-dielectric advisory.  This is
-    # a vacuum cavity with closed PEC walls.  That advisory would appear for a
-    # perfectly lossless dielectric placed in an open CPML model, where an
-    # idealized material can make a resonance Q misleading.
     report = sim.preflight()
     loss_advisory = bool(report.by_code("lossless_q"))
-    if len(report):   # PreflightReport refuses bool() (#980)
+    if len(report):
         raise RuntimeError("Vacuum cavity has unexpected preflight advisories")
     print(f"Vacuum-cavity loss advisory observed: {loss_advisory}")
 
@@ -140,8 +132,6 @@ def main() -> None:
     print_mode_list("Short record", short_modes)
     print_mode_list("Long record", long_modes)
 
-    # harminv returns amplitude order, strongest first.  We deliberately use
-    # analytic proximity instead: source and probe placement decide loudness.
     short_te101 = nearest_te101(short_modes)
     long_te101 = nearest_te101(long_modes)
     short_error = relative_error_percent(short_te101)

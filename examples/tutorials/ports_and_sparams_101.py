@@ -29,24 +29,18 @@ from rfx import (
 )
 
 
-# Port decision tree:
-#
-# microstrip line                 -> sim.add_msl_port(...)
-# hollow rectangular guide       -> sim.add_waveguide_port(...)
-# coax                            -> sim.add_coaxial_port(...)
-# generic lumped feed or load    -> sim.add_port(...)
-# R/L/C component in the circuit -> sim.add_lumped_rlc(...)
 
 PORT_POSITION = (9.3e-3, 9.3e-3, 9.3e-3)
-# One cell along x from the feed — see build_generic_port_demo() for why the
-# component is not co-located with it.
 RLC_POSITION = (9.3e-3 + 0.020 / 15, 9.3e-3, 9.3e-3)
 S11_FREQS = np.asarray([4.5e9, 5.0e9, 5.5e9], dtype=np.float32)
 S11_STEPS = 600
 
 
 def build_generic_port_demo(*, add_component: bool) -> Simulation:
-    """Build the tiny lumped-feed model used for the live S11 runs."""
+    """Build the tiny lumped-feed model used for the live S11 runs.
+
+    When the series R+C component is enabled, resistance below roughly 180 ohms at its cell can produce non-finite fields.
+    """
     sim = Simulation(
         freq_max=10.0e9,
         domain=(0.020, 0.020, 0.020),
@@ -61,24 +55,6 @@ def build_generic_port_demo(*, add_component: bool) -> Simulation:
         waveform=GaussianPulse(f0=5.0e9, bandwidth=0.9),
     )
     if add_component:
-        # add_lumped_rlc() represents a circuit component; it is not another
-        # port.  Two non-zero values select the full series RLC update.
-        #
-        # It sits ONE CELL from the feed, not on it.  A driven port reads S11
-        # from the V/I pair at its own cell, where the current is what leaves
-        # that cell into the surrounding field.  A component inside the feed
-        # cell is in parallel with the source rather than in the network the
-        # port measures, so it changes the drive level and not S11: measured
-        # here, co-located moved max |S11| by 0.00000 and one cell away by
-        # 0.00868; one cell away now prints 0.0015 (re-run 2026-10-11, VESSL
-        # 369367270246; the co-located case was not re-run).  The component
-        # is in the model either way — it changes the fields — but only the second placement is something S11 can show.
-        #
-        # R is 500 ohm and not 50 for a separate reason: a series R+C on a
-        # cell that carries no port conductance is unstable below roughly
-        # 180 ohm and drives the fields to non-finite values with nothing
-        # warning (scripts/diagnostics/lumped_rlc_adjacent_to_port_nan.py).
-        # C follows R to keep the element's effect visible in this band.
         sim.add_lumped_rlc(
             RLC_POSITION,
             component="ez",
@@ -93,8 +69,6 @@ def run_generic_s11(*, add_component: bool) -> np.ndarray:
     """Preflight and run one inexpensive generic-port reflection case."""
     sim = build_generic_port_demo(add_component=add_component)
 
-    # Both generic-port models report their four-layer absorber.  The explicit
-    # call makes the complete report visible once, so run() skips its repeat.
     report = sim.preflight()
     if any(issue.code != "thin_absorber" for issue in report):
         raise RuntimeError("Generic-port setup has unexpected advisories")
@@ -134,8 +108,6 @@ def build_microstrip_ports() -> Simulation:
     ground = Box((0.75e-3, 0.75e-3, 1.25e-3), (19.25e-3, 9.25e-3, 1.25e-3))
     substrate = Box((0.75e-3, 0.75e-3, 1.25e-3), (19.25e-3, 9.25e-3, 2.25e-3))
     trace = Box((0.75e-3, 4.50e-3, 2.25e-3), (19.25e-3, 5.50e-3, 2.25e-3))
-    # Translate the board and ports together to leave 12 mm extra margin.
-    # Eight interior cells beside each absorber retain the 0.25 mm target.
     def shifted(box):
         return Box(tuple(v + margin if a < 2 else v for a, v in enumerate(box.corner_lo)),
                    tuple(v + margin if a < 2 else v for a, v in enumerate(box.corner_hi)))
@@ -148,8 +120,6 @@ def build_microstrip_ports() -> Simulation:
         return Box(tuple(v - pad if a < 2 else v for a, v in enumerate(box.corner_lo)),
                    tuple(v - pad if a < 2 else v for a, v in enumerate(box.corner_hi)))
 
-    # Build the graded interior separately, then attach exactly eight uniform
-    # cells at each end. All declarations below stay at their drawn coordinates.
     profiles = edge_aware_profiles(
         (domain[0] - 2 * pad, domain[1] - 2 * pad, domain[2]), 0.25e-3, boundary_cell=edge_dx,
         sheets=[interior_box(ground), interior_box(trace)],
@@ -169,21 +139,6 @@ def build_microstrip_ports() -> Simulation:
     )
     sim.add_material("substrate", eps_r=3.2, sigma=0.01)
 
-    # FOIL IS A SHEET, A PLATE IS A VOLUME.  A microstrip ground plane and its
-    # trace are etched copper foil — tens of microns on a 1 mm board — so they
-    # are declared with ``add_thin_conductor`` on ZERO-THICKNESS Boxes.  A
-    # sheet is a footprint on ONE node plane: it owns no cell, writes no
-    # permittivity, zeroes the two in-plane E components on its plane, and
-    # leaves the E through it live.  That is the whole model of a foil, and it
-    # is the answer for every etched conductor in this repository.
-    #
-    # ``sim.add(Box(...), material="pec")`` is the OTHER declaration — a
-    # VOLUME.  A volume shorts every E edge incident to one of its cells, so a
-    # drawn slab realizes walls on BOTH of its faces with the interior shorted.
-    # That is right for a plate, an iris, a post or a machined wall, and wrong
-    # for foil.  Both of these conductors used to be drawn as 0.5 mm PEC slabs
-    # (two cells each), which put 1 mm of solid metal into a 2 mm stack-up.
-    # Lattice ownership contract, #931 §1.1-§1.3.
     sim.add_thin_conductor(ground)
     sim.add(
         substrate,
@@ -209,10 +164,6 @@ def build_microstrip_ports() -> Simulation:
         **common,
     )
 
-    # A one-cell wire port on a microstrip badly undersamples the mode field
-    # between strip and ground.  Use add_msl_port() for microstrip.
-    #
-    # Build-time check from the same public record the Result carries.
     record = sim.realized_geometry()
     walls = record.wall_planes(2)
     z_nodes = record.nodes[2]
@@ -277,8 +228,6 @@ def build_coaxial_port() -> Simulation:
         dx=0.4e-3,
         boundary="cpml",
     )
-    # The 1.42 mm annulus between the pin and outer conductor spans more than
-    # 3.5 cells at this dx.  A coaxial TEM field needs radial resolution.
     sim.add_coaxial_port(
         (0.004, 0.004, 0.030),
         face="top",
@@ -303,15 +252,8 @@ def main() -> None:
     max_change = float(np.max(np.abs(loaded_s11 - unloaded_s11)))
     print(f"RLC changed max |S11| by: {max_change:.4f}")
 
-    # Registered RLC elements affect run() and the uniform, single-device
-    # forward() path.  To optimize R/L/C values with jax.grad, pass tracers as
-    # forward(..., rlc_values_override={0: {"R": R, "C": C}}).  Registered
-    # constants are still in the model but do not become variables themselves.
 
     microstrip = build_microstrip_ports()
-    # Expect the MSL-family checks to pass.  Only construction and preflight
-    # are needed here; a settled microstrip S-matrix costs much more than the
-    # small generic-port demonstrations above.
     microstrip_report = microstrip.preflight()
     microstrip_route = microstrip.preflight_sparameters(calculator="msl")
     print(
@@ -320,31 +262,6 @@ def main() -> None:
     )
 
     waveguide = build_waveguide_ports()
-    # The 20 mm broad wall gives TE10 a 7.49 GHz cutoff, so the 8 GHz source
-    # propagates.  Neither preflight call reports an error.
-    #
-    # The waveguide S-parameter preflight also runs three SETUP audits that
-    # speak in input units, and two of them have something to say about this
-    # small teaching model, so readiness is read off report.ok (no
-    # error-severity finding) rather than off an empty report:
-    #
-    #   * record_shorter_than_far_boundary_round_trip -- at the default
-    #     num_periods=20 the record is 2.4 far-boundary round trips long, and
-    #     the message names the num_periods that reaches 3.
-    #   * port_index_mirror_known_e_plane_offset -- informational: the '-'
-    #     port's E correction sits one cell inward of its mirror image, a known
-    #     constant of the source, not an asymmetry in this geometry.
-    #
-    # The third audit, layout_measured_from_band_low_edge, is silent here and
-    # that is the interesting part: it reports the layout in guide wavelengths
-    # only when the band's lowest bin is within 6 % of the port's own discrete
-    # cutoff, and 8.0 / 7.4871 = 1.0685 sits just outside.  Move the source
-    # down toward 7.8 GHz and the note appears.
-    #
-    # Two codes this model does NOT draw, for completeness: a band whose lowest
-    # frequency sits at or below the port's own cutoff reports
-    # record_far_boundary_band_below_cutoff and no ratio, and a grid or mode
-    # solve that fails reports waveguide_setup_audit_skipped instead of raising.
     waveguide_report = waveguide.preflight()
     waveguide_route = waveguide.preflight_sparameters(calculator="waveguide")
     print(
