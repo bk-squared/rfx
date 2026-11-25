@@ -5,7 +5,7 @@ Ring-down completion uses the same limit and reports its reason when it cannot j
 When coverage and this limit both refuse a record, the coverage warning starts with "no ring-down settling witness" and includes both reasons.
 `run(until_identified=True)` waits for the same window: on a lumped port driving a parallel-plate line shorted 310 mm away, the stop moves from 1,000 to 9,500 steps, and the window then holds at least 2.05 round trips.
 A fail stays a fail; only a pass becomes "cannot judge".
-The limit's largest refractive index is read on the device from the permittivity and permeability arrays the time step uses: material overrides, design regions, smoothed shapes, a coaxial line's fill and each `vmap_material_sweep` member's own arrays; a dispersive medium counts at its largest index over the read band.
+The limit's largest refractive index is read on the device from the permittivity and permeability arrays the time step uses: material overrides, design regions, smoothed shapes, a coaxial line's fill and each `vmap_material_sweep` member's own arrays; a dispersive medium uses the static permittivity's magnitude plus each pole's largest |χ| over the read band to bound the index throughout the band.
 The index is rounded up by one float32 unit in the last place and carries no derivative, so a record on the edge reads "cannot judge" and material gradients are unchanged.
 `run()` and `forward()` return the same `settling_echo_bound` (D, g, n_max and tau_max as float32 arrays) on every path, under `jax.jit`, `vmap` and `grad`, with no host callback.
 The slab R/T tutorial uses 4800 steps instead of 1200 so its identification window holds 2.05 longest round trips and both runs pass the settling witness.
