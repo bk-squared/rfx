@@ -11,7 +11,7 @@ def port_owner(sim, grid, conductors, frequencies):
     release = getattr(conductors, 'coax_bore_release', None)
     layout = release.layout if release is not None else coax_port_layout(
         grid, port, absorber_pads=tuple(getattr(grid, f'pad_{a}_{s}')
-            for a in 'xyz' for s in ('lo', 'hi')), ntff=sim._ntff)
+            for a in 'xyz' for s in ('lo', 'hi')), ntff=sim._ntff, freq_max=sim._freq_max)
     return coax_owner(grid, port_id=0, plane_indices=layout.plane_indices,
         center_xy=port.position[:2], pin_radius=port.pin_radius,
         outer_radius=port.outer_radius, frequencies=() if frequencies is None else frequencies,
@@ -89,7 +89,7 @@ def declared_drive(sim, grid, port):
     from rfx.model.coax_line import coax_port_layout
     from rfx.sources.sources import GaussianPulse
     layout = coax_port_layout(grid, port, absorber_pads=tuple(getattr(grid, f'pad_{a}_{s}')
-        for a in 'xyz' for s in ('lo', 'hi')), ntff=sim._ntff)
+        for a in 'xyz' for s in ('lo', 'hi')), ntff=sim._ntff, freq_max=sim._freq_max)
     waveform = port.excitation or GaussianPulse(f0=sim._freq_max / 2, bandwidth=0.8)
     delta = .5 * grid.dt + .5 * grid.dx * np.sqrt(2.1) / 299792458
     e_plane = layout.source_index + (port.face == 'top')

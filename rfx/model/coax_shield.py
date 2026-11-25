@@ -12,7 +12,8 @@ from rfx.model.coax_stamp import PTFE_EPS_R, stamp_coaxial_short_plane
 def shield_coax_end(grid, materials, cells, entities, *, end, center_xy,
                     outer_radius, z_lo_index, z_hi_index):
     """Trim only the pin, restore its fill, and retain the cap as an entity."""
-    gap = max(2, int(np.ceil(float(outer_radius) / float(grid.dx))))
+    from rfx.model.coax_planes import fill_gap_cells
+    gap = fill_gap_cells(outer_radius, grid.dx)
     top = end.port.face == 'top'
     cap_index = z_hi_index if top else z_lo_index
     window = (slice(cap_index - gap, cap_index + 1) if top

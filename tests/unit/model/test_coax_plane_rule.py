@@ -205,12 +205,53 @@ def test_refuses_freq_max_at_cutoff():
     assert str(caught.value).startswith("coaxial line: freq_max 10 GHz is at or above the TE11 cutoff 9.56216 GHz")
 
 
+@pytest.mark.parametrize("outer_radius,dz,expected", [
+    (6.5e-3, 1e-3, 7),
+    (2.055e-3, 2.5e-4, 9),
+    (0.5e-3, 1e-3, 2),
+])
+def test_fill_gap_cells(outer_radius, dz, expected):
+    assert coax_planes.fill_gap_cells(outer_radius, dz) == expected
+
+
 def test_refuses_phase_step_at_pi():
     with pytest.raises(RfxRefusal) as caught:
         coax_planes.coax_plane_rule(**dict(SCENE, kappa=4.0))
     assert type(caught.value) is RfxRefusal
     assert str(caught.value).startswith("coaxial line: the phase step between planes at freq_max is")
     assert "at or above pi" in str(caught.value)
+
+
+def test_phase_remedy_kappa_only():
+    with pytest.raises(RfxRefusal) as excinfo:
+        coax_planes.coax_plane_rule(**dict(SCENE, kappa=4.0, dz=1e-3))
+    assert type(excinfo.value) is RfxRefusal
+    assert str(excinfo.value).endswith("use a kappa at most 1.5708 rad (default 0.54)")
+
+
+def test_phase_remedy_dz_only():
+    bound = 299792458.0 / (2 * 4.5e9 * np.sqrt(2.1))
+    with pytest.raises(RfxRefusal) as excinfo:
+        coax_planes.coax_plane_rule(**dict(SCENE, kappa=0.54, dz=1.01 * bound))
+    assert type(excinfo.value) is RfxRefusal
+    text = str(excinfo.value)
+    assert text.endswith("use a dz below 22.9863 mm")
+    assert "kappa" not in text
+
+
+@pytest.mark.parametrize("line", [SCENE, SMA], ids=["scene", "sma"])
+def test_admits_dz_below_phase_bound(line):
+    bound = 299792458.0 / (2 * line["freq_max"] * np.sqrt(2.1))
+    result = coax_planes.coax_plane_rule(**dict(line, dz=0.99 * bound))
+    assert result.spacing == 1
+
+
+def test_phase_remedy_dz_and_kappa():
+    bound = 299792458.0 / (2 * 4.5e9 * np.sqrt(2.1))
+    with pytest.raises(RfxRefusal) as excinfo:
+        coax_planes.coax_plane_rule(**dict(SCENE, kappa=4.0, dz=1.01 * bound))
+    assert type(excinfo.value) is RfxRefusal
+    assert str(excinfo.value).endswith("use a dz below 22.9863 mm and a kappa at most 1.5708 rad (default 0.54)")
 
 
 def test_refuses_start_search_bound(monkeypatch):

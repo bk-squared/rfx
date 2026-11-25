@@ -962,7 +962,7 @@ def _coax_grid_condition(sim, grid, args):
         return True
     pads = tuple(getattr(grid, f'pad_{axis}_{side}') for axis in 'xyz' for side in ('lo', 'hi'))
     try:
-        coax_port_layout(grid, sim._coaxial_ports[0], absorber_pads=pads, ntff=sim._ntff)
+        coax_port_layout(grid, sim._coaxial_ports[0], absorber_pads=pads, ntff=sim._ntff, freq_max=sim._freq_max)
     except RfxUnsupported as error:
         return str(error)
     return True

@@ -32,6 +32,7 @@ from rfx.grid import C0
 
 
 KAPPA = 0.54
+KAPPA_PHASE_LIMIT = np.pi / 2
 TOLERANCE = 1e-2
 JUNCTION_TOLERANCE_FRACTION = 0.8
 SOURCE_TOLERANCE_FRACTION = 0.1
@@ -125,6 +126,11 @@ def _fit_reflection(z, V):
     return B*np.exp(g*z0)/(A*np.exp(-g*z0))
 
 
+def fill_gap_cells(outer_radius, dz):
+    """Cells of restored fill between a shielded end's cap and the trimmed pin."""
+    return max(GAP_FLOOR_CELLS, int(np.ceil(float(outer_radius) / float(dz))))
+
+
 def _line_inputs(inner, outer, eps_r, dz, freq_max, freq_min, kappa):
     kc1 = _cutoff_wavenumber(inner, outer, 1)
     kc2 = _cutoff_wavenumber(inner, outer, 2)
@@ -138,7 +144,7 @@ def _line_inputs(inner, outer, eps_r, dz, freq_max, freq_min, kappa):
     a2 = np.sqrt(kc2**2 - b**2)
     D_c = int(np.ceil(kappa/b[-1]/dz - SPACING_ROUNDING))
     n_hi = int(np.ceil(DECAY_LENGTHS/(np.sqrt(kc1**2 - b[-1]**2)*dz)))
-    g_s = max(GAP_FLOOR_CELLS, int(np.ceil(outer/dz)))
+    g_s = fill_gap_cells(outer, dz)
     return _LineInputs(dz, f, b, a1, a2, D_c, n_hi, g_s, kc1, kc2, fc1)
 
 
@@ -252,8 +258,14 @@ def _coax_plane_rule(inner, outer, eps_r, dz, freq_max, freq_min, kappa, toleran
             f"coaxial line: kappa {kappa:.6g} rad gives a plane spacing of 0 cells at dz {dz*1e3:.6g} mm; use a larger kappa")
     phase = inputs.beta[-1]*D_c*dz
     if phase >= np.pi:
+        remedies = []
+        if dz >= np.pi / inputs.beta[-1]:
+            remedies.append(f"a dz below {np.pi / inputs.beta[-1] * 1e3:.6g} mm")
+        if kappa > KAPPA_PHASE_LIMIT:
+            remedies.append(f"a kappa at most {KAPPA_PHASE_LIMIT:.6g} rad (default {KAPPA:g})")
         raise RfxRefusal(
-            f"coaxial line: the phase step between planes at freq_max is {phase:.6g} rad, at or above pi, so the plane recurrence cannot separate the wavenumber from its alias; use a smaller kappa or a finer dz")
+            f"coaxial line: the phase step between planes at freq_max is {phase:.6g} rad, at or above pi, so the plane recurrence cannot separate the wavenumber from its alias; use "
+            + " and ".join(remedies))
     t_c = JUNCTION_TOLERANCE_FRACTION*tolerance
     t_s = SOURCE_TOLERANCE_FRACTION*tolerance
     one, every = _start_errors(inputs)

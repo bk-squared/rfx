@@ -100,7 +100,7 @@ def assemble_coax_port(sim, grid, materials, root, sources, mag_sources, *, n_st
     from rfx.model.conductors import coax_kernel_conductors
     port = sim._coaxial_ports[0]
     pads = tuple(getattr(grid, f'pad_{a}_{s}') for a in 'xyz' for s in ('lo', 'hi'))
-    layout = coax_port_layout(grid, port, absorber_pads=pads, ntff=sim._ntff)
+    layout = coax_port_layout(grid, port, absorber_pads=pads, ntff=sim._ntff, freq_max=sim._freq_max)
     bore = np.zeros(grid.shape, bool)
     bore[:, :, layout.z_lo_index:layout.z_hi_index + 1] = radial_mask(grid, port, port.outer_radius)[:, :, None]
     edge_bore = [bore.copy() for _ in range(3)]
@@ -111,7 +111,7 @@ def assemble_coax_port(sim, grid, materials, root, sources, mag_sources, *, n_st
     _refuse_front_pec(sim, root, port, layout)
     root = clear_coax_bore(root, bore, layout, edge_bore=edge_bore)
     layout, line = build_coax_port_line(grid, materials, port, absorber_pads=pads,
-        ntff=sim._ntff, n_steps=n_steps)
+        ntff=sim._ntff, n_steps=n_steps, freq_max=sim._freq_max)
     root = replace(root, coax_bore_release=replace(root.coax_bore_release, z_tem_ohm=line.ends[0].z_tem_ohm))
     pin = stamp_coax_pin(grid, port, layout)
     if pin.any():

@@ -81,6 +81,7 @@ FREQ_MIN_DIVISOR = 10
 
 
 def coax_freq_min(freq_min: float | None, freq_max: float) -> float:
+    """Bottom of a coaxial port's band in Hz: freq_max / FREQ_MIN_DIVISOR when freq_min is None, else freq_min, refused outside (0, freq_max)."""
     if freq_min is None:
         return freq_max / FREQ_MIN_DIVISOR
     value = float(freq_min)

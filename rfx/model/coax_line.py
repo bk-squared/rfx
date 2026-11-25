@@ -3,7 +3,9 @@
 from dataclasses import dataclass
 from typing import Any, NamedTuple
 
+from rfx.model.coax_planes import PLANE_COUNT, coax_plane_rule
 from rfx.model.coax_stamp import (
+    PTFE_EPS_R,
     build_coaxial_tem_plane_source_specs,
     stamp_coaxial_annular_resistor,
     stamp_coaxial_line,
@@ -55,7 +57,7 @@ def build_coax_line(
     """Stamp a common line, shield declared ends, then build feeds and sources.
 
     Shielded ends retain the extremity cell as a PEC cap and leave
-    max(2, ceil(outer_radius / dx)) fill cells between it and the pin.
+    the rule's gap of fill cells (coax_plane_rule) between it and the pin.
     Open ends retain the calculators' original masks and entity inventory.
 
     finish_line(materials, shell_inner_radius, pec_cells) returns materials
@@ -111,19 +113,24 @@ class CoaxPortLayout:
     reference_index: int
 
 
-def coax_port_layout(grid, port, *, absorber_pads, ntff=None):
+def coax_port_layout(grid, port, *, absorber_pads, ntff=None, freq_max):
     """Lay out the uniform port behind its declared reference node.
 
     Pads are the six per-face cell counts in x-lo, x-hi, y-lo, y-hi,
     z-lo, z-hi order. A bottom line is a node mirror, including its
-    cell ownership, of the corresponding top line. The source end is shielded:
-    its pin end, feed and already-rounded source move inward by g + 1 cells,
-    g = max(2, ceil(outer_radius / dx)). The reference, shell extremity and
-    twelve planes stay fixed; the minimum grows from 61 to 62 + g cells.
+    cell ownership, of the corresponding top line.
+    The planes, the source clearance and the minimum line length come from
+    coax_plane_rule for the band port.freq_min to freq_max. Plane k sits
+    start + k * spacing cells from the reference. The source end moves inward
+    by gap + 1 cells. A line shorter than min_cells is refused, naming the
+    cells to add. The grid must be rfx.grid.Grid.
     """
     import numpy as np
     from rfx.errors import RfxUnsupported
     from rfx.model.coax_stamp import SHELL_THICKNESS_M
+    from rfx.grid import Grid
+    if not isinstance(grid, Grid):
+        raise RfxUnsupported(f"add_coaxial_port(): the plane layout needs the uniform grid; got {type(grid).__name__}")
     dx = float(grid.dx)
     room: list[tuple[str, float]] = []
     for axis, name in enumerate('xy'):
@@ -156,9 +163,12 @@ def coax_port_layout(grid, port, *, absorber_pads, ntff=None):
     direction = 1 if port.face == 'top' else -1
     far = (grid.shape[2] - int(absorber_pads[5]) - 2 if direction == 1
            else int(absorber_pads[4]) + 1)
+    end = 'z absorber'
     if ntff is not None:
         lo, hi = ntff[:2]
         bound = int(grid.position_to_index(hi if direction == 1 else lo)[2]) - 2 * direction
+        if direction * (bound - far) < 0:
+            end = 'NTFF box'
         far = min(far, bound) if direction == 1 else max(far, bound)
         for axis in (0, 1):
             if not (lo[axis] < port.position[axis] - port.outer_radius
@@ -172,24 +182,29 @@ def coax_port_layout(grid, port, *, absorber_pads, ntff=None):
     source = int(round(((nominal - grid.pad_z_lo) * dz - dz / 2)
                        / float(np.asarray(grid.cells(2))[0]))) + grid.pad_z_lo
     source = ref + direction * (source - ref)
-    gap = max(2, int(np.ceil(float(port.outer_radius) / dx)))
-    setback = gap + 1
+    rule = coax_plane_rule(inner_radius=port.pin_radius, outer_radius=port.outer_radius,
+                           eps_r=PTFE_EPS_R, dz=dz, freq_max=freq_max, freq_min=port.freq_min)
+    setback = rule.gap + 1
     source -= direction * setback
-    planes = tuple(ref + direction * (8 + 4 * k) for k in range(12))
-    if distance < 60 + setback or direction * (source - planes[-1]) < 4:
+    planes = tuple(ref + direction * (rule.start + rule.spacing * k) for k in range(PLANE_COUNT))
+    if distance < rule.min_cells:
+        L = rule.min_cells
+        N = L - distance
         raise RfxUnsupported(
-            f'add_coaxial_port(): domain too short; needs at least {61 + setback} line cells for the shielded source end '
-            f'(12 planes, start 8, spacing 4, source clearance 4, feed setback 3, shield gap {gap})')
+            f"add_coaxial_port(): domain too short; needs at least {L} line cells ({L * dz * 1e3:.6g} mm) for the band "
+            f"{port.freq_min / 1e9:.6g} to {freq_max / 1e9:.6g} GHz, and the line has {distance} cells "
+            f"({distance * dz * 1e3:.6g} mm) from the reference to the {end}; lengthen the line by {N} cells "
+            f"({N * dz * 1e3:.6g} mm), or raise freq_min=")
     return CoaxPortLayout(ref if direction == 1 else far - 1,
                           far if direction == 1 else ref - 1,
                           far - direction * (1 + setback), source, planes, ref)
 
 
 def build_coax_port_line(grid, materials, port, *, absorber_pads, ntff=None,
-                         n_steps, finish_line=None):
+                         n_steps, finish_line=None, freq_max):
     """Build the single uniform port with the calculator's feed and TEM drive."""
     from rfx.sources.coaxial_port import coaxial_tem_characteristic_impedance
-    layout = coax_port_layout(grid, port, absorber_pads=absorber_pads, ntff=ntff)
+    layout = coax_port_layout(grid, port, absorber_pads=absorber_pads, ntff=ntff, freq_max=freq_max)
     end = CoaxLineEnd(layout.feed_index, layout.source_index, layout.plane_indices,
                       float(coaxial_tem_characteristic_impedance(
                           port.pin_radius, port.outer_radius)), port, shielded=True)

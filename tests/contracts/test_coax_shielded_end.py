@@ -12,8 +12,8 @@ from tests.contracts.test_coax_port_model_and_drive import capture
                         for face in ('top', 'bottom')])
 def shielded(request, monkeypatch):
     dx, face = request.param
-    reference = .002 if face == 'top' else .038
-    sim = Simulation(freq_max=11e9, domain=(.012, .012, .040), dx=dx,
+    reference = .002 if face == 'top' else .044
+    sim = Simulation(freq_max=11e9, domain=(.012, .012, .046), dx=dx,
                      boundary='cpml', cpml_layers=4, snap='declared')
     sim.add(Box((0., 0., reference), (.012, .012, reference)), material='pec')
     sim.add_coaxial_port((.006, .006, reference), face=face, pin_length=0.)
