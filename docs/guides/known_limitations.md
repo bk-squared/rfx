@@ -617,10 +617,12 @@ the line more air below the top absorber, or keep the default 16 layers.
 
 Tracker: #3068
 
-The absorber depth changes the S a microstrip line returns. On a set of line
-boards, S with 8 CPML layers differs from S with 32 layers by up to 2.3×10⁻²
-(the largest entry difference over the band). With 12 layers the difference is
-at most 8.2×10⁻⁴. These numbers are diagnostic, not a judged threshold.
+On a microstrip thru line (3 cells per substrate height), S with 8 CPML
+layers differs from S with 32 layers by up to 2.8×10⁻³ (the largest entry
+difference over the band) when the strip's solved edge is 2.2 cells from the
+side absorbers. The difference falls to 1.9×10⁻⁴ at 36 cells. With 16 layers
+(the default) it is at most 6.1×10⁻⁵. These numbers are diagnostic, not a
+judged threshold.
 
 With 8 layers a passive line can also return |S_ij| above 1. On one line board
 (3 cells per substrate height) it reaches 1.0006 when the strip's solved edge
