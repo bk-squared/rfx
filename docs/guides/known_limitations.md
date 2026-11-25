@@ -797,6 +797,7 @@ moves S with the complex propagation constant α + jβ for every port kind.
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).
 
 The echo-delay bound does not cover a return whose path exceeds the domain diagonal, such as a meander, a slow-wave structure or several bounces.
+On dispersive media the echo bound covers the phase index; the group delay near a resonance can exceed it: below a Lorentz pole at 8 GHz (eps_inf 4, κ = ω0², δ = 0.1·ω0) read over 2–4 GHz the group index at 4 GHz is 2.479 against the bound's 2.307, and below a pole at 9 GHz with ω0/δ = 57 (eps_inf 2, mu_r 1.5) over 0–12 GHz it reaches 47.9 at 8.78 GHz against 6.74.
 The settling verdict reads the S entry's record-end error: a channel's tail share can exceed 1e-2 at a band-edge bin while the S error stays below it (shorted line at 38 ns, 13.49 GHz: 1.07e-2 against 0.0048).
 
 ### A completed forward ring-down value can have a failed lazy report without warning.
