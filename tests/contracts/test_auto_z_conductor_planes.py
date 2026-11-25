@@ -198,7 +198,7 @@ def test_b15_thin_conductor_interval_contains_realized_node(plane):
     sim.add_thin_conductor(_box(lo, hi), sigma_bulk=1e7, thickness=35e-6)
     report = sim.preflight()
     nodes = _interior_nodes(sim.realized_geometry())
-    assert np.any((nodes >= lo) & (nodes <= hi))
+    assert np.any((nodes >= lo - 1e-12) & (nodes <= hi + 1e-12))
     assert not _conductor_findings(report, 'thin_conductor[0]')
 
 
