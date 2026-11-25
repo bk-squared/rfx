@@ -1461,8 +1461,9 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
         The fit's sensitivity of β (and of Z0) to a departure of the probe
         voltages from one forward-plus-backward wave, per probe (the fit's
         conditioning). It is not an error estimate. Equal to
-        sqrt(N)/(Re(beta_fit)*sigma_perp), where sigma_perp is the norm of
-        the beta derivative at fitted alpha/gamma after projection off the
+        ‖V_fit‖/(Re β·σ⊥), where V_fit is the fitted wave at the probes
+        and σ⊥ is the norm of the beta derivative at fitted alpha/gamma
+        after projection off the
         two wave columns, using positions in metres. From each port's own
         driven run. Formed under stop_gradient; ``None`` while tracing.
     """
@@ -1556,7 +1557,8 @@ class MixedSMatrixResult(MSLFeedPlaneFields):
     fit_amplification : (n_msl, n_freqs) float, optional
         The fit's sensitivity of β (and of Z0) to a departure of the probe
         voltages from one forward-plus-backward wave, per probe (the fit's
-        conditioning). It is not an error estimate. Same definition as
+        conditioning). It is not an error estimate. Equal to
+        ‖V_fit‖/(Re β·σ⊥), with the same definition as
         :attr:`MSLSMatrixResult.fit_amplification`, in MSL registration order
         from each port's own driven run. Formed under stop_gradient.
         The mixed calculator refuses tracing.

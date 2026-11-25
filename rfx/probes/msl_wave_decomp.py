@@ -515,8 +515,11 @@ def _msl_fit_conditioning(x, beta, alpha, gamma):
     Centering changes only the wave amplitudes. Subtracting a multiple of
     sin(beta*y) from the beta column leaves its orthogonal residual unchanged:
     y*cos(beta*y) becomes y*(cos(beta*y) - sinc(beta*y/pi)). This exact
-    identity avoids subtracting a first-order column from a second-order
-    residual in float32; no small-phase series is used. QR uses the equivalent
+    identity avoids cancellation for the odd term only. The even term
+    cos(beta*y) - sinc(beta*y/pi) ≈ -(beta*y)**2/3 still subtracts two
+    numbers near 1 in float32; it dominates sigma_perp only near a voltage
+    null at the centre (a + g ≈ 0). No small-phase series is used.
+    QR uses the equivalent
     well-scaled wave basis {cos(beta*y), y*sinc(beta*y/pi)}.
     """
     x, beta, alpha, gamma = jax.tree.map(
@@ -536,9 +539,10 @@ def _msl_fit_conditioning(x, beta, alpha, gamma):
         q, _ = jnp.linalg.qr(basis, mode="reduced")
         residual = column - q @ (q.conj().T @ column)
         sigma = jnp.linalg.norm(residual)
-        return jnp.sqrt(jnp.asarray(x.size, dtype=x.dtype)) / (jnp.real(b) * sigma)
+        v_fit = a * jnp.exp(-1j * phase) + g * jnp.exp(1j * phase)
+        return jnp.linalg.norm(v_fit) / (jnp.real(b) * sigma)
 
-    return (jnp.real(beta) * (x[-1] - x[0]),
+    return (jnp.real(beta) * jnp.abs(x[-1] - x[0]),
             jax.vmap(per_bin)(beta, alpha, gamma))
 
 
@@ -597,7 +601,8 @@ def extract_msl_nprobe(
                      (and of Z0) to a departure of the probe voltages from one
                      forward-plus-backward wave, per probe (the fit's
                      conditioning). It is not an error estimate. Computed as
-                     sqrt(N)/(Re(beta)*sigma_perp), with the beta derivative
+                     ‖V_fit‖/(Re β·σ⊥), where V_fit is the fitted wave at
+                     the probes and σ⊥ is the norm of the beta derivative
                      at fitted alpha/gamma projected off both wave columns.
                      Detached from AD.
         ``z0_hj`` : the passed-through analytic Z0 (or ``None``).

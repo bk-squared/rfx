@@ -13,7 +13,9 @@ from jax import enable_x64
 
 from rfx import Simulation
 from rfx.errors import AccuracyWarning, RfxRefusal
+from rfx.grid import Grid
 from rfx.probes import msl_wave_decomp as decomp
+from rfx.sources.msl_port import MSLPort, msl_probe_x_coords_n
 from rfx.sparams._msl_stages import _check_msl_extraction
 from tests.unit.sparams.test_msl_spatial_driver import (
     FREQS, _build_case, _install_manufactured_backends, _knob,
@@ -58,12 +60,67 @@ def test_exact_projected_derivative_on_unequal_positions():
         waves = np.column_stack((forward, backward))
         column = -1j * x * a * forward + 1j * x * g * backward
         perpendicular = column - waves @ np.linalg.lstsq(waves, column, rcond=None)[0]
-        expected.append(np.sqrt(x.size) / (b * np.linalg.norm(perpendicular)))
+        v_fit = a * forward + g * backward
+        expected.append(np.linalg.norm(v_fit) / (b * np.linalg.norm(perpendicular)))
     with enable_x64(False):
         span, amplification = decomp._msl_fit_conditioning(
             *(jnp.asarray(value) for value in (x, beta, alpha, gamma)))
     np.testing.assert_allclose(span, beta * (x[-1] - x[0]), rtol=1e-6)
     np.testing.assert_allclose(amplification, expected, rtol=2e-5)
+
+
+def test_fabricated_record_amplitude_invariance():
+    """A relative voltage departure has dimensionless, amplitude-invariant gain."""
+    x = np.arange(5) * 2e-4
+    beta = 0.3 / (x[-1] - x[0])
+    alpha, gamma = 1.0, 0.01j
+    forward, backward = np.exp(-1j * beta * x), np.exp(1j * beta * x)
+    v_fit = alpha * forward + gamma * backward
+    waves = np.column_stack((forward, backward))
+    column = -1j * x * alpha * forward + 1j * x * gamma * backward
+    perpendicular = column - waves @ np.linalg.lstsq(waves, column, rcond=None)[0]
+    expected = np.linalg.norm(v_fit) / (beta * np.linalg.norm(perpendicular))
+    amplifications = []
+    with enable_x64(False):
+        for scale in (1.0, 1e-3, 1e3):
+            _, amplification = decomp._msl_fit_conditioning(
+                jnp.asarray(x), jnp.array([beta]),
+                jnp.array([scale * alpha]), jnp.array([scale * gamma]))
+            amplifications.append(np.asarray(amplification))
+    np.testing.assert_allclose(amplifications, expected, rtol=1e-5)
+    np.testing.assert_allclose(amplifications, np.broadcast_to(amplifications[0], (3, 1)),
+                               rtol=1e-5)
+
+
+def test_negative_x_probe_span_matches_mirrored_record():
+    """The production -x ladder has a positive phase span and mirrored gain."""
+    dx = 1e-4
+    grid = Grid(1e9, (100 * dx, 8 * dx, 8 * dx), dx=dx, cpml_layers=0)
+    port = MSLPort(70 * dx, dx, 2 * dx, 0.0, dx, "-x", 50.0)
+    x = np.asarray(msl_probe_x_coords_n(
+        grid, port, 5, n_offset_cells=29, n_spacing_cells=2))
+    assert np.all(np.diff(x) < 0)
+    x = x - x[0]
+    length = 8 * dx
+    beta = 0.3 / length
+    alpha, gamma = 1.0 + 0.2j, 0.01j
+    forward, backward = np.exp(-1j * beta * x), np.exp(1j * beta * x)
+    v_fit = alpha * forward + gamma * backward
+    waves = np.column_stack((forward, backward))
+    column = -1j * x * alpha * forward + 1j * x * gamma * backward
+    perpendicular = column - waves @ np.linalg.lstsq(waves, column, rcond=None)[0]
+    expected = np.linalg.norm(v_fit) / (beta * np.linalg.norm(perpendicular))
+    with enable_x64(False):
+        span, amplification = decomp._msl_fit_conditioning(
+            jnp.asarray(x), jnp.array([beta]), jnp.array([alpha]), jnp.array([gamma]))
+        mirrored_span, mirrored_amplification = decomp._msl_fit_conditioning(
+            jnp.asarray(-x), jnp.array([beta]),
+            jnp.array([np.conj(alpha)]), jnp.array([np.conj(gamma)]))
+    assert np.all(np.asarray(span) > 0)
+    np.testing.assert_allclose(span, beta * length, rtol=1e-6)
+    np.testing.assert_allclose(mirrored_span, beta * length, rtol=1e-6)
+    np.testing.assert_allclose(amplification, expected, rtol=1e-5)
+    np.testing.assert_allclose(amplification, mirrored_amplification, rtol=1e-5)
 
 
 def test_extractor_fields_are_detached_under_jit_and_vmap():
@@ -81,6 +138,7 @@ def test_extractor_fields_are_detached_under_jit_and_vmap():
     batched = jax.jit(jax.vmap(fields))(jnp.array([1.0, 2.0]))
     assert batched.shape == (2, 2, 2)
     assert np.isfinite(batched).all()
+    np.testing.assert_allclose(batched[0], batched[1], rtol=1e-5)
 
 
 def test_s_and_gradient_are_bit_identical_with_zero_fields(monkeypatch, tmp_path, capsys):
