@@ -329,8 +329,6 @@ def _adam_multistart(
         produced a non-finite loss at every iterate — fail-closed rather
         than returning a NaN optimum.  A single start preserves the legacy
         fail-soft contract (warn + return the last finite design).
-
-    Each entry of ``results`` has the order ``(loss_history, ret_latent, score)``.
     """
     if step_clamp is not None and step_clamp <= 0:
         raise ValueError(f"optimize: step_clamp must be > 0, got {step_clamp}")
