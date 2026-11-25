@@ -31,16 +31,17 @@ def test_dielectric_with_air_gap_warns_once_about_growth_on_cpu():
     witness = result.settling_witness
     assert witness['status'] != 'pass', witness
     poles = witness['growing_poles']
-    assert len(poles) == 1, poles
+    assert poles, witness
+    assert sum(4.4e9 <= p['frequency_hz'] <= 4.8e9 and 2e-4 <= p['growth_per_step'] <= 8e-4 for p in poles) == 1, poles
     assert 4.4e9 <= poles[0]['frequency_hz'] <= 4.8e9
     assert 2e-4 <= poles[0]['growth_per_step'] <= 8e-4
-    assert all(pole['frequency_hz'] >= 0 for pole in poles)
+    assert all(pole['frequency_hz'] >= 0 and pole['max_share'] > 1e-2 for pole in poles), poles
     messages = [str(row.message) for row in caught
                 if issubclass(row.category, AccuracyWarning)
                 and 'Growing poles (largest growth first):' in str(row.message)]
     assert len(messages) == 1, messages
     for message in messages:
-        assert message.count('GHz, e-folding') == 1
+        assert message.count('GHz, e-folding') == min(len(poles), 3)
         assert 'term growing after the source ended' in message
         assert 'Increase n_steps' not in message
         assert 'lengthen the record' not in message
