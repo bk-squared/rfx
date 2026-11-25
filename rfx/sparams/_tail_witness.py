@@ -12,7 +12,7 @@ from typing import NamedTuple
 from rfx.ringdown import identify, judge_growing_poles, _static_pole, _fit_residues, RingdownPole
 from rfx.measurement.record_end import (IdentificationOps, TailShareWitness,
                                          _pole_contributions as _record_pole_contributions,
-                                         _rounding_only_records, record_end_error)
+                                         _rounding_only_records, merge_growing_poles, record_end_error)
 
 _IDENTIFICATION = IdentificationOps(
     identify, judge_growing_poles, _static_pole, _fit_residues, RingdownPole)
@@ -156,4 +156,5 @@ def combine_witness_details(*rows):
     missing = [row for row in rows if row['status'] in {'absent', 'undetermined'}]
     worst = missing[0] if missing else max(rows, key=lambda row: row['db'])
     return {**worst, 'reason': '; '.join(row['reason'] for row in missing),
+            'growing_poles': merge_growing_poles(*(row.get('growing_poles', ()) for row in rows)),
             'runs': rows}

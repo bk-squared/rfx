@@ -598,8 +598,8 @@ class IdentificationOps:
     RingdownPole: Callable
 
 
-def _pole_contributions(model, series, bins, denominator, record_s, *, identification: IdentificationOps, growth=None):
-    """Return per-bin maxima over fitted pole terms and channels by rule."""
+def _pole_contributions(model, series, bins, denominator, record_s, *, identification: IdentificationOps, growth=None, growing_poles=None):
+    """Return per-bin maxima and collect above-bar growing poles when requested."""
     from rfx.measurement.ringdown_tail import plain_dft
 
     judge_growing_poles = identification.judge_growing_poles
@@ -628,6 +628,15 @@ def _pole_contributions(model, series, bins, denominator, record_s, *, identific
     if growth is None:
         growth = judge_growing_poles(model, round(record_s / model.dt), bins, denominator)
     values = {"kept non-static growing": growth.growing_share_per_bin}
+
+    def collect(pole_s, max_share, rule):
+        if growing_poles is not None and max_share > 1e-2:
+            rate = float(pole_s.real * model.dt)
+            growing_poles.append(dict(
+                frequency_hz=float(pole_s.imag / (2 * np.pi)),
+                growth_per_step=rate, e_folding_steps=1 / rate,
+                max_share=float(max_share), rule=rule))
+
     for rule, selected in indices.items():
         value = np.zeros(len(bins))
         if rule == 'non-decaying sinusoidal':
@@ -639,9 +648,52 @@ def _pole_contributions(model, series, bins, denominator, record_s, *, identific
             samples = np.exp((time - time[-1]) * model.s_growing[k])[:, None] * joint[k]
             with np.errstate(divide='ignore', invalid='ignore'):
                 ratio = np.abs(plain_dft(samples, model.dt, bins)) / denominator
+            collect(model.s_growing[k], np.max(ratio), rule)
             value = np.maximum(value, np.max(ratio, axis=1))
         values[rule] = value
     return values
+
+
+def _group_growing_poles(poles):
+    """Group physical poles across windows, channels and conjugate members.
+
+    Absolute frequencies must agree within 1e-4 of their larger value and
+    growth per step within 1e-2 of its larger value. The largest-share
+    member supplies the nonnegative frequency; the largest growth supplies
+    growth and reciprocal e-folding time. Any discarded member makes the
+    group's rule discarded growing. Groups are ordered by descending growth.
+    """
+    groups: list[list[dict]] = []
+    for pole in poles:
+        matches = []
+        for index, group in enumerate(groups):
+            for member in group:
+                f1, f2 = abs(pole['frequency_hz']), abs(member['frequency_hz'])
+                g1, g2 = pole['growth_per_step'], member['growth_per_step']
+                if (abs(f1 - f2) <= 1e-4 * max(f1, f2)
+                        and abs(g1 - g2) <= 1e-2 * max(g1, g2)):
+                    matches.append(index)
+                    break
+        members = [pole]
+        for index in reversed(matches):
+            members.extend(groups.pop(index))
+        groups.append(members)
+    grouped = []
+    for members in groups:
+        largest_share = max(members, key=lambda row: row['max_share'])
+        growth = max(row['growth_per_step'] for row in members)
+        grouped.append(dict(
+            frequency_hz=abs(largest_share['frequency_hz']),
+            growth_per_step=growth, e_folding_steps=1 / growth,
+            max_share=largest_share['max_share'],
+            rule=('discarded growing' if any(row['rule'] == 'discarded growing' for row in members)
+                  else 'kept non-static growing')))
+    return tuple(sorted(grouped, key=lambda row: row['growth_per_step'], reverse=True))
+
+
+def merge_growing_poles(*groups):
+    """Merge the growing-pole records of several runs by the grouping one run uses."""
+    return _group_growing_poles(tuple(pole for group in groups for pole in group))
 
 
 class TailShareWitness(NamedTuple):
@@ -665,6 +717,7 @@ class TailShareWitness(NamedTuple):
     second_tails_per_channel: object = None
     window_starts: object = None
     record_end_error_second_per_entry: object = None
+    growing_poles: tuple = ()
     echo_bound: object = None
 
 
@@ -708,6 +761,7 @@ def _channel_tail_witness(records, dt, source_end, freqs, *, identification: Ide
     share = np.zeros(bins.size)
     error = np.zeros(bins.size)
     contributions = {}
+    growing_poles: list[dict] = []
     drive_share = np.zeros(bins.size)
     dropped_names = [[] for _ in bins]
     kept_count = np.zeros(bins.size, dtype=int)
@@ -718,7 +772,7 @@ def _channel_tail_witness(records, dt, source_end, freqs, *, identification: Ide
                 if any(dropped_names) else [])
 
     def unavailable(status, reason):
-        return TailShareWitness(float('nan'), share + drive_share, float(bins[np.argmax(share + drive_share)]) if bins.size and np.any(share + drive_share) else float('nan'), status, reason, error, contributions, skipped_records=skipped, drive_share_per_bin=() if known_drives is None else drive_share, dropped_per_bin=dropped_rows())
+        return TailShareWitness(float('nan'), share + drive_share, float(bins[np.argmax(share + drive_share)]) if bins.size and np.any(share + drive_share) else float('nan'), status, reason, error, contributions, skipped_records=skipped, drive_share_per_bin=() if known_drives is None else drive_share, dropped_per_bin=dropped_rows(), growing_poles=_group_growing_poles(growing_poles))
 
     if records and len(skipped) == len(records):
         return unavailable('undetermined', 'every record is rounding only: ' + ', '.join(row['name'] for row in skipped))
@@ -839,7 +893,7 @@ def _channel_tail_witness(records, dt, source_end, freqs, *, identification: Ide
                                  if np.any(dropped) else growth)
                 if not growth_status.ok:
                     reasons.append(f"{label}: growing-pole judge {growth_status.status}: {growth_status.reason}")
-                for rule, value in _pole_contributions(model, series, bins, window_denom, n*dt, identification=identification, growth=growth).items():
+                for rule, value in _pole_contributions(model, series, bins, window_denom, n*dt, identification=identification, growth=growth, growing_poles=growing_poles).items():
                     contributions[rule] = np.maximum(contributions.get(rule, np.zeros(len(bins))), value)
                     if rule == "kept non-static growing":
                         continue
@@ -898,7 +952,7 @@ def _channel_tail_witness(records, dt, source_end, freqs, *, identification: Ide
     worst = int(np.argmax(share))
     db = float(20 * np.log10(max(share[worst], np.finfo(float).tiny)))
     return TailShareWitness(db, share, float(bins[worst]),
-                            'pass' if share[worst] <= 1e-2 else 'fail', '; '.join(zero_reasons), error, contributions, skipped_records=skipped, drive_share_per_bin=() if known_drives is None else drive_share, dropped_per_bin=dropped_rows())
+                            'pass' if share[worst] <= 1e-2 else 'fail', '; '.join(zero_reasons), error, contributions, skipped_records=skipped, drive_share_per_bin=() if known_drives is None else drive_share, dropped_per_bin=dropped_rows(), growing_poles=_group_growing_poles(growing_poles))
 
 
 

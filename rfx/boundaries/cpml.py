@@ -136,7 +136,7 @@ def _cpml_profile(
     dx : float
         Cell size (meters).
     order : int
-        Polynomial grading order.  Default 2 (quadratic, matching Meep).
+        Polynomial grading order.  Default 3 (cubic).
     kappa_max : float
         Maximum κ stretching parameter. 1.0 = standard CPML (no stretching).
         Values > 1 improve evanescent wave absorption.
