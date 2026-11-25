@@ -613,6 +613,23 @@ early or a coarse mesh. That advice does not fit this case: these records ring
 down to −86 to −95 dB, and a finer mesh makes the excess slightly larger. Give
 the line more air below the top absorber, or keep the default 16 layers.
 
+### On a microstrip line, 8 CPML layers change S, and |S| can exceed 1 near the side absorbers.
+
+Tracker: #3034
+
+The absorber depth changes the S a microstrip line returns. On a set of line
+boards, S with 8 CPML layers differs from S with 32 layers by up to 2.3×10⁻²
+(the largest entry difference over the band). With 12 layers the difference is
+at most 8.2×10⁻⁴. These numbers are diagnostic, not a judged threshold.
+
+With 8 layers a passive line can also return |S_ij| above 1. On one line board
+(3 cells per substrate height) it reaches 1.0006 when the strip's solved edge
+is 0.733 h_sub (2.2 cells) from the side absorbers. It falls as the strip moves
+away, to 1.000001 at 27 cells, and is not seen with 16 or 32 layers. Its cause is
+not named. The lateral-clearance advisory does not remove it: a board that
+meets the advisory can still show it with 8 layers. Keep 16 layers (the
+default) or more when |S| or passivity matters.
+
 ### The fitted microstrip propagation constant differs from the Hammerstad–Jensen closed form, and the difference is not attributed.
 
 Tracker: none — accepted limitation (diagnostic, does not enter the result: tests/unit/sparams/test_msl_fitted_beta_does_not_enter_s.py::test_s_is_bit_identical_when_the_fitted_beta_is_wrong)
