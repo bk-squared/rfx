@@ -370,7 +370,7 @@ def compute_mixed_s_matrix(
     )
     S = jnp.asarray(S, dtype=_complex_dtype)
 
-    z0_msl_fit, beta_railed_msl = _mixed_stages._fit_mixed_impedance(
+    z0_msl_fit, beta_railed_msl, fit_span_phase, fit_amplification = _mixed_stages._fit_mixed_impedance(
         beta0_per_port, entries, i_msl, jax, jnp, n_freqs_used,
         n_lw, n_msl, probe_xs, v_lad, z0_hj_per_port,
     )
@@ -504,6 +504,8 @@ def compute_mixed_s_matrix(
         S_wave=s_wave_full,
         magnitude_channel=magnitude_channel,
         beta_railed=beta_railed_msl,
+        fit_span_phase=fit_span_phase,
+        fit_amplification=fit_amplification,
         probe_clearance=probe_clearance,
         reference_plane_offsets_m=plane_offsets_all,
         shift_beta=shift_beta_all,
@@ -583,6 +585,8 @@ def compute_mixed_s_matrix(
             # substituted into S (sign unstable; see the block
             # above). Magnitude only: no sign claim is made.
             "z0_msl_fit_abs": z0_msl_fit,
+            "fit_span_phase": fit_span_phase,
+            "fit_amplification": fit_amplification,
             "box_lw_flux": box_lw,
             "plane_msl_flux": plane_msl,
         }

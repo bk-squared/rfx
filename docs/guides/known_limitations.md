@@ -658,7 +658,7 @@ At 0.50 GHz the returned `Z0` ran from 43.0 to 69.9 Ω on this one line.
 The 63 %, the 38 % and the 69.9 Ω sit where the `beta` scan stopped at its ±35 % limit, which its warning names (0.50 GHz, on 2 of the 26 layouts). On ports that warning did not name, the change still reached 25 % in `Z0` at 0.50 GHz, and 18 % in `Z0` and 22 % in `beta` at 0.81 GHz.
 `probe_clearance` was `satisfied` on every layout and `reliable` was True at 0.50–1.74 GHz on every layout, so neither marks these bins.
 Neither fitted value enters S: across these layouts no S entry changed by more than 5.0e-4 at any bin.
-The `Z0` warning fired on 3 of the 26 layouts, at 0.50 GHz, and advises a finer mesh. With the probe counts fixed in cells, a finer mesh shortens the span and the phase across it, so that advice does not apply here.
+The `Z0` warning fired on 3 of the 26 layouts, at 0.50 GHz. It now points to `fit_span_phase` and `fit_amplification` and no longer advises a finer mesh: with the probe counts fixed in cells, a finer mesh shortens the span and the phase across it.
 Do not quote `Z0` or `beta` from a bin where the phase across the probes is below about 0.045 rad, where the change exceeded 2 % on this board.
 That edge comes from one board on one mesh; no layout with a longer probe span was measured.
 

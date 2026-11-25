@@ -509,6 +509,39 @@ def _estimate_beta(
     return beta, railed
 
 
+def _msl_fit_conditioning(x, beta, alpha, gamma):
+    """Return phase span and per-probe fit conditioning, detached from AD.
+
+    Centering changes only the wave amplitudes. Subtracting a multiple of
+    sin(beta*y) from the beta column leaves its orthogonal residual unchanged:
+    y*cos(beta*y) becomes y*(cos(beta*y) - sinc(beta*y/pi)). This exact
+    identity avoids subtracting a first-order column from a second-order
+    residual in float32; no small-phase series is used. QR uses the equivalent
+    well-scaled wave basis {cos(beta*y), y*sinc(beta*y/pi)}.
+    """
+    x, beta, alpha, gamma = jax.tree.map(
+        jax.lax.stop_gradient, (x, beta, alpha, gamma))
+    centre = jnp.mean(x)
+    y = x - centre
+
+    def per_bin(b, a, g):
+        a = a * jnp.exp(-1j * b * centre)
+        g = g * jnp.exp(1j * b * centre)
+        phase = b * y
+        cosine = jnp.cos(phase)
+        sinc = jnp.sinc(phase / jnp.pi)
+        column = (-(a + g) * y * jnp.sin(phase)
+                  + 1j * (g - a) * y * (cosine - sinc))
+        basis = jnp.stack((cosine, y * sinc), axis=-1)
+        q, _ = jnp.linalg.qr(basis, mode="reduced")
+        residual = column - q @ (q.conj().T @ column)
+        sigma = jnp.linalg.norm(residual)
+        return jnp.sqrt(jnp.asarray(x.size, dtype=x.dtype)) / (jnp.real(b) * sigma)
+
+    return (jnp.real(beta) * (x[-1] - x[0]),
+            jax.vmap(per_bin)(beta, alpha, gamma))
+
+
 def extract_msl_nprobe(
     v: jnp.ndarray,
     x: jnp.ndarray,
@@ -557,6 +590,16 @@ def extract_msl_nprobe(
                      node, or refined β within half a grid step of a
                      window limit).  The returned ``beta``/``z0`` at such
                      a bin are the scan-window limit, NOT a measurement; do not quote them.
+        ``fit_span_phase`` : (n_freqs,) real — the line's phase across the
+                     probes at that bin, the quantity the known-limitations
+                     entry conditions on. Detached from AD.
+        ``fit_amplification`` : (n_freqs,) real — the fit's sensitivity of β
+                     (and of Z0) to a departure of the probe voltages from one
+                     forward-plus-backward wave, per probe (the fit's
+                     conditioning). It is not an error estimate. Computed as
+                     sqrt(N)/(Re(beta)*sigma_perp), with the beta derivative
+                     at fitted alpha/gamma projected off both wave columns.
+                     Detached from AD.
         ``z0_hj`` : the passed-through analytic Z0 (or ``None``).
 
     Notes
@@ -583,6 +626,7 @@ def extract_msl_nprobe(
         return alpha, gamma, beta, residual, railed
 
     alpha, gamma, beta, residual, beta_railed = jax.vmap(_per_freq)(v, beta0)
+    fit_span_phase, fit_amplification = _msl_fit_conditioning(x, beta, alpha, gamma)
 
     z0 = (alpha - gamma) / (i1 + eps)
     s11 = gamma / (alpha + eps)
@@ -598,5 +642,7 @@ def extract_msl_nprobe(
         q=q,
         residual=residual,
         beta_railed=beta_railed,
+        fit_span_phase=fit_span_phase,
+        fit_amplification=fit_amplification,
         z0_hj=z0_hj,
     )
