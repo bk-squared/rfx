@@ -16,6 +16,8 @@ those bins unreliable and warns.  Do not read ``|S11| > 1`` there as physics.
 Run as::
 
     python examples/tutorials/ports_and_sparams_101.py
+
+The lumped R+C sits one cell from the feed because a component inside the feed cell is in parallel with the source, which changes the drive level but not S11.
 """
 
 from __future__ import annotations
@@ -39,7 +41,7 @@ S11_STEPS = 600
 def build_generic_port_demo(*, add_component: bool) -> Simulation:
     """Build the tiny lumped-feed model used for the live S11 runs.
 
-    When the series R+C component is enabled, resistance below roughly 180 ohms at its cell can produce non-finite fields.
+    When the series R+C component is enabled on a cell that carries no port conductance, resistance below roughly 180 ohms can produce non-finite fields.
     """
     sim = Simulation(
         freq_max=10.0e9,

@@ -44,6 +44,10 @@
      "FR4 is modelled lossless (sigma = 0), so the printed Q values are those of the lossless model and include no dielectric loss."
     ],
     [
+     "print(\"\\n[4] Preflight (advisories below are part of the result):\")",
+     "sim.preflight(strict=False)"
+    ],
+    [
      "for m in modes:",
      "print(f\"  f = {m.freq/1e9:.4f} GHz   Q = {m.Q:5.1f}   amp = {m.amplitude:.2e}\")"
     ]
@@ -51,7 +55,7 @@
    "code": "lossless_q",
    "disposition": "intended",
    "reason": "The tutorial deliberately models FR4 with sigma=0. The printed harminv Q values describe that lossless model; they do not include FR4 dielectric loss. main() prints the lossless_q advisory before the solve.",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:293,376,463-464",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:293,376,437-438,463-464",
    "rows": 1,
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
@@ -117,7 +121,7 @@
    "code": "no_sources",
    "disposition": "intended",
    "reason": "The coax model is a build-only declaration for the line calculators: build_coaxial_port() declares the coax port and no generic run source, so general preflight reports no_sources. main() reads that row as expected_build_only_advisory = bool(coaxial_report.by_code('no_sources')) and prints it. A missing row here would be the defect.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:215-216,276-280",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:217-218,278-282",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_coaxial_port::default"
   },
@@ -884,7 +888,7 @@
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=4, x_hi=4, y_lo=4, y_hi=4, z_lo=4, z_hi=4. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:39-54 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:41-56 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_generic_port_demo::add_component=False"
   },
@@ -898,7 +902,7 @@
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=4, x_hi=4, y_lo=4, y_hi=4, z_lo=4, z_hi=4. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:39-54 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:41-56 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_generic_port_demo::add_component=True"
   },
@@ -912,7 +916,7 @@
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=3, x_hi=3, y_lo=3, y_hi=3, z_lo=3, z_hi=3. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:88-112 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:90-114 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
@@ -926,7 +930,7 @@
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=4, x_hi=4. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:184-196 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:186-198 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_waveguide_ports::default"
   },
@@ -972,7 +976,7 @@
    "code": "msl_port_geometry",
    "disposition": "intended",
    "reason": "#1138: edge-aware x/y profiles grade the propagation axis; this tutorial builds the MSL setup only. The skipped automatic offset solve is reported without claiming fitted Z0/beta or a settled S-matrix. (Two earlier probe-clearance rows named this tutorial's own finite ground sheet as the reflector, at -11.25 mm; a conductor at the port's ground reference is no longer a reflector candidate, so they are gone.)",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:88-132,260-264",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:90-134,262-266",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
@@ -1239,7 +1243,7 @@
    "code": "thin_conductor_thickness_unmodelled",
    "disposition": "intended",
    "reason": "This example declares its copper with add_thin_conductor at the API's default 35 um, solved with zero thickness, on a 1 mm substrate (t/h 3.5 %). The advisory states that the declared thickness is not in the model and that a strip or patch on this substrate reads electrically long by about 0.37 % (#1523 table); that is true of this example and is the known limitation 'Conductor thickness is not solved' in docs/guides/known_limitations.md. The ground sheet (thin_conductors[0]) covers the substrate footprint and is not reported; only the trace (thin_conductors[1]) is.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:90-93,142-149",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:92-95,144-151",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
@@ -1303,7 +1307,7 @@
    "code": "realization",
    "disposition": "intended",
    "reason": "true positive on the substrate; strip and ports silent. y: realized 36 cells (0.00835125 m), declared 36.641221374 cells (0.0085 m).",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:108-115,144-147",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:110-117,146-149",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
