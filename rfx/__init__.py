@@ -1,5 +1,7 @@
-"""rfx — JAX-based RF FDTD electromagnetic simulator."""
-# The runtime guard must execute before the public JAX-dependent imports.
+"""rfx — JAX-based RF FDTD electromagnetic simulator.
+
+The runtime guard must execute before the public JAX-dependent imports.
+"""
 # ruff: noqa: F401, E402
 
 __version__ = "2.3.0.dev0"
@@ -24,12 +26,6 @@ from rfx.api import (
     ADMemoryActionHint, ADMemoryExplainabilityReport,
     ADMemoryPreflightReport, ADCompiledMemoryCertificate,
     MeshIntelligenceReport,
-    # Gradient record-length witness. Flat import so ``rfx.<name>`` reaches it.
-    # Deliberately NOT in ``__all__`` below: that list is a curated star surface
-    # whose length tests/contracts/test_forward_docstring_contract.py caps. The
-    # value-side witness is no precedent in either direction — ``settling_verdict``
-    # reaches callers only as ``rfx.api._sparams.settling_verdict``, a private
-    # module path, so these two names are more reachable than it, not less.
     GradientRecordLengthWitness, gradient_record_length_witness,
 )
 from rfx.ad_diagnostics import (
@@ -110,8 +106,6 @@ from rfx.measurement.farfield import (
     compute_far_field,
     compute_far_field_jax,
 )
-# The block current-moment pattern: an explicit rfx import, outside the
-# curated star surface, like the NTFF surface interchange below.
 from rfx.current_moments import current_moment_far_field
 from rfx.measurement.rcs import compute_rcs
 from rfx.rcs import compute_rcs_jax, RCSResult, ScatteringResponse
@@ -121,8 +115,6 @@ from rfx.antenna import (
     antenna_bandwidth, BandwidthResult,
     plot_antenna_summary,
 )
-# Opt-in surface interchange: explicit rfx imports, outside the curated star
-# surface, like the snapshot persistence helpers below.
 from rfx.ntff_surface import NTFFSurface, export_ntff_surface
 from rfx.optimize import (
     DesignRegion,
@@ -179,8 +171,6 @@ from rfx.visualize3d import (
 )
 from rfx.animation import save_field_animation
 from rfx.simulation import SnapshotSpec
-# where and when each recorded field sample sits. On the package, not
-# on the curated star surface (``__all__``), like save_snapshots.
 from rfx.snapshots import SnapshotAxes, snapshot_axes, field_sample_coords
 from rfx.checkpoint import (
     save_state, load_state, save_snapshots, load_snapshots,
@@ -212,7 +202,6 @@ from rfx.probes.probes import (
     FluxMonitor, init_flux_monitor, update_flux_monitor, flux_spectrum,
     subtract_flux_monitors,
 )
-# Reachable as rfx.renormalize_power_waves; kept off the curated star surface.
 from rfx.sparams._port_reference import renormalize_power_waves
 from rfx.sweep import parametric_sweep, SweepResult, plot_sweep
 from rfx.vmap_sweep import vmap_material_sweep, VmapSweepResult
@@ -253,13 +242,11 @@ __all__ = [
     "RfxError", "RfxRefusal", "RfxUnsupported",
     "RfxWarning", "AccuracyWarning", "ConfigurationWarning",
     "Diagnostic",
-    # grid / core simulation entry points
     "Grid", "NonUniformGrid", "make_nonuniform_grid",
     "make_band_profile",
     "Simulation", "run", "run_until_decay", "run_nonuniform",
     "make_source", "make_probe", "make_port_source", "make_current_source",
     "SimResult", "SnapshotSpec",
-    # result + S-matrix types
     "Result", "ForwardResult", "WaveguideSParamResult", "WaveguideSMatrixResult",
     "MSLProbeClearance", "MSLSMatrixResult", "MixedSMatrixResult",
     "AD_MemoryEstimate", "ADMemoryPlan", "ADMemoryComponent",
@@ -276,42 +263,30 @@ __all__ = [
     "select_epsilon_constrained",
     "checkify_invariants", "check_finite", "check_positive",
     "check_bounds", "check_courant_number",
-    # geometry
     "Box", "Sphere", "Cylinder", "PolylineWire", "CurvedPatch", "Via",
     "MeshShape",
     "PCBLayer", "Stackup",
-    # microstrip closed-form synthesis / analysis
     "microstrip_impedance", "microstrip_eps_eff", "microstrip_width",
-    # sources / waveforms / ports (builder classes; not per-step kernels)
     "GaussianPulse", "ModulatedGaussian", "CWSource", "CustomWaveform",
     "WaveguidePort", "WaveguidePortConfig", "CoaxialPort",
     "FloquetPort",
-    # high-level S-parameter / port extractors (AD-contract-classified surface)
     "extract_waveguide_s_matrix", "extract_waveguide_sparams",
     "extract_waveguide_s11", "extract_waveguide_s21",
     "extract_s_matrix_wire", "compute_floquet_s_params",
     "compute_rcs", "compute_rcs_jax", "RCSResult", "ScatteringResponse",
-    # materials / dispersion / fitting
     "DebyePole", "LorentzPole", "RelativeStrength", "drude_pole", "lorentz_pole",
     "LorentzPoleMap", "drude_pole_map", "lorentz_pole_map",
     "ThinConductor", "MATERIAL_LIBRARY",
-    # lattice ownership contract: the one realization of conductor
-    # geometry as PEC E edges, and the two helpers every consumer reads.
-    # ``SheetSpec`` / ``WireSpec`` stay OFF the star surface (declaration
-    # records the rasterizer produces, not something a user constructs) —
-    # they are still importable as ``rfx.SheetSpec``.
     "realized_pec_edge_masks", "realized_wall_planes", "edge_is_pec",
     "load_material_csv", "fit_debye", "fit_lorentz", "eval_debye", "eval_lorentz",
     "plot_material_fit", "DebyeFitResult", "LorentzFitResult",
     "differentiable_material_fit", "MaterialFitResult", "sparam_loss",
-    # far-field / antenna
     "NTFFBox", "NTFFData", "FarFieldResult", "make_ntff_box",
     "compute_far_field", "compute_far_field_jax", "radiation_pattern", "directivity",
     "axial_ratio", "axial_ratio_dB", "polarization_tilt", "polarization_sense",
     "antenna_gain", "antenna_gain_dB", "antenna_efficiency",
     "half_power_beamwidth", "front_to_back_ratio",
     "antenna_bandwidth", "BandwidthResult", "plot_antenna_summary",
-    # optimization / inverse design + objectives
     "DesignRegion", "OptimizeResult", "optimize",
     "minimize", "MinimizeResult", "MMASubproblemCapWarning",
     "GradientCheckResult", "gradient_check",
@@ -321,32 +296,24 @@ __all__ = [
     "maximize_directivity", "minimize_reflected_energy",
     "maximize_transmitted_energy", "steer_probe_array",
     "dft_field", "field_energy", "field_softmax", "jacobian_fwd",
-    # sweeps / batch
     "parametric_sweep", "SweepResult", "plot_sweep",
     "vmap_material_sweep", "VmapSweepResult",
     "ParameterSweep", "BatchCaseResult", "run_batch_with_manifest",
     "summarize_batch_manifest",
-    # probes / measurements / spectral
     "wire_port_voltage", "wire_port_current",
     "FluxMonitor", "flux_spectrum", "subtract_flux_monitors",
     "matrix_pencil", "matrix_pencil_from_probe", "MatrixPencilMode",
-    # eigenmode (optional scipy)
     "WaveguideMode", "solve_waveguide_modes",
-    # lumped
     "LumpedRLCSpec",
-    # auto config / mesh planning / convergence / amr
     "auto_configure", "SimConfig", "analyze_features",
     "MeshPlan", "plan_mesh", "plan_simulation_mesh",
     "convergence_study", "ConvergenceResult", "richardson_extrapolation",
     "quick_convergence",
-    # de-embedding
     "deembed_port_extension", "deembed_thru",
-    # validation entry points
     "PortValidationIssue", "PortValidationReport",
     "validate_port_smatrix", "assert_port_smatrix_valid",
     "normalize_port_smatrix", "compare_replayed_smatrix",
     "replay_smatrix_from_vi_dump",
-    # io / touchstone / artifacts / checkpoint
     "TouchstoneData", "read_touchstone", "read_touchstone_full", "write_touchstone",
     "network_quality_metrics",
     "save_optimization_result", "load_optimization_result",
@@ -354,12 +321,10 @@ __all__ = [
     "save_experiment_report", "save_simulation_dataset",
     "ArtifactBundle", "export_artifact_bundle",
     "save_state", "load_state",
-    # visualization
     "plot_field_slice",
     "plot_s_params", "plot_radiation_pattern",
     "plot_time_series", "plot_rcs", "plot_smith",
     "plot_geometry_3d", "plot_field_3d", "save_field_vtk", "save_field_animation",
-    # surrogate
     "export_training_data", "export_geometry_sdf",
 ]
 

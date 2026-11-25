@@ -58,8 +58,6 @@ def full_aperture(sim, entry, grid):
             from rfx.runners.nonuniform import _range_to_slice_nu
             span, _ = _range_to_slice_nu(grid, axis, requested)
         else:
-            # Like _range_to_slice, position_to_index retains the input
-            # scalar division dtype and uses nearest_uniform_index.
             lo, hi = [0., 0., 0.], [0., 0., 0.]
             lo[index], hi[index] = requested
             span = (grid.position_to_index(lo)[index], grid.position_to_index(hi)[index] + 1)
@@ -71,7 +69,6 @@ def full_aperture(sim, entry, grid):
 
 
 def guide_faces(sim, grid):
-    # Addendum 5c(1): only a zero-depth absorbing face was rewritten on main.
     zero_depth = {face.name for face in grid_face_depths(grid) if face.realized == 0}
     return frozenset(f"{axis}_{side}"
                      for entry in sim._waveguide_ports if full_aperture(sim, entry, grid)
@@ -105,8 +102,6 @@ def _record_defaults(sim, grid):
                 sim._boundary_default_warned = state
         grid._waveguide_admission = (incompatible, _guide_declaration(sim, faces), explicit, state)
     if sim._waveguide_ports and not explicit:
-        # The uniform legacy grid already has these electric backing walls.
-        # Do not change pads, allocation axes, or the NU operator.
         grid.boundary_depths = tuple(
             replace(face, kind=Kind.PEC)
             if face.name in faces and face.realized == 0 and face.kind == Kind.ABSORBER else face
@@ -125,8 +120,6 @@ def build_grid(sim, *, extra_waveguide_axes=""):
     axes = {face.name[0] for face in declared if face.kind == Kind.ABSORBER}
     axes.update(port_axes)
     if sim._waveguide_ports:
-        # Judge on exactly the former lattice: changing pads also changes an
-        # axis from nearest-cell wall sizing to covering-cell absorber sizing.
         reference = _build_uniform_grid(sim, port_axes)
         admission_faces = guide_faces(sim, reference)
         if not boundary_was_explicit(sim):
@@ -195,8 +188,6 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
     for index, (axis, kind) in enumerate(axis_kinds(depths).items()):
         if kind != "wall" or (axis == "z" and sim._mode.startswith("2d")):
             continue
-        # The lattice counts a periodic axis without its closing node, whatever
-        # the face table says (a PEC box with a Floquet port, refused later).
         if axis in getattr(grid, "periodic_axes", ""):
             continue
         if getattr(sim, f"_d{axis}_profile") is not None:
@@ -210,7 +201,7 @@ def judge_wall_axes(sim, grid, *, boundary_depths=None):
             cells = interior_cells(widths, getattr(grid, f"pad_{axis}_lo"),
                                    getattr(grid, f"pad_{axis}_hi"))
             n, solved = len(cells), float(sum(cells))
-            cell = float(cells[0])  # an unprofiled axis has one interior width
+            cell = float(cells[0])
         else:
             span = grid.interior[index]
             n = span.stop - span.start - 1
@@ -331,7 +322,6 @@ def admit_waveguide(sim, *, lane="dispatch", edges=True):
 
 
 def _admit_graded_guide(sim, lane, edges=True):
-    # Addendum 5f: full guides require explicitly declared transverse PEC.
     grid = sim._build_realized_grid()
     faces = sorted({f"{axis}_{side}"
                     for entry in sim._waveguide_ports if full_aperture(sim, entry, grid)
@@ -478,25 +468,21 @@ def _waveguide_section_cut(cfg, bounds, record, *, pec_nodes=None):
 
 
 def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks, grid):
-    """Judge thin update operands, exempting only the guide's pinned walls."""
+    """Judge thin update operands, exempting only the guide's pinned walls.
+
+    An E edge surrounded by four cells closed by PEC edges on all twelve sides represents PEC volume rather than a thin element.
+    """
     import numpy as np
     from rfx._traced_check import traced_check
     from rfx.model.operands import operands_at
 
     rule = OPERAND_RULES["waveguide_port_section"]
     normal = "xyz".index(cfg.normal_axis)
-    # H corrects cell x_index - 1 (+) or x_index (-). Its front node,
-    # shared with the source plane, is x_index in either direction.
     nodes = [cfg.x_index, cfg.ref_x]
     from rfx.model.waveguide_mesh import host_index
     nodes.extend(host_index(grid, cfg.normal_axis, p) for p in cfg.segment_planes)
     pec_nodes = (min(nodes), max(nodes) + 1)
     behind = cfg.x_index - 1 if cfg.direction.startswith("+") else cfg.x_index + 1
-    # An E edge whose four neighbouring cells are each closed by PEC edges on
-    # all twelve sides lies inside a conductor: that is the PEC-volume medium,
-    # not a thin element. A face edge (any neighbour open) is still judged.
-    # Read from the realized edges alone, on every path; a traced run reads
-    # the same concrete masks through the host callback.
     edges = {r.component: r.array for r in records
              if r.name.startswith("pec_edge_masks.") and r.array.ndim == 3}
     full_edges = tuple(edges[c] for c in "xyz") if len(edges) == 3 else ()
@@ -565,8 +551,6 @@ def _refuse_waveguide_section_thin_elements(cfg, bounds, records, wall_masks, gr
                         plane = [slice(None)] * bad.ndim
                         plane[start + normal] = local
                         bad[tuple(plane)] = False
-                # A tangential E edge on either transverse bounding node is
-                # an aperture wall, including a wall built from PEC volumes.
                 for axis in range(3):
                     if axis == "xyz".index(cfg.normal_axis) or axis == component:
                         continue
@@ -613,12 +597,8 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
     wall_masks = wall_edge_masks(grid.shape, resolve_wall_faces(
         grid, tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz"))[0])
 
-    # Scalar cell media and PEC volume from the one realized operand list:
-    # Thin elements are judged separately from the scalar medium below.
     scalar = ("materials.eps_r", "materials.sigma", "materials.mu_r")
     updates_scalar = ("debye", "lorentz", "kerr_chi3", "pec_mask", "pec_occupancy")
-    # The shared list does not classify per-component material leaves: enumerate a
-    # scalar view and judge those components below (sigma) or refuse them (eps_r, mu_r).
     split = tuple(f for f in ("eps_r", "sigma", "mu_r")
                   if isinstance(getattr(materials, f), (tuple, list)))
     view = materials._replace(**{f: jnp.zeros(()) for f in split})
@@ -632,8 +612,6 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
     if isinstance(materials.sigma, (tuple, list)):
         operands.extend((name, array, 0, "conductivity")
                         for name, array in _leaves(materials.sigma, "materials.sigma"))
-    # Explicit component overrides must describe this same scalar medium.
-    # Scalar-cell enumeration deliberately excludes wall-derived component means.
     for key in ("aniso_eps", "aniso_inv_eps"):
         value = updates.get(key)
         if value is not None:
@@ -642,9 +620,6 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
                 weights = updates.get("conformal_weights")
                 if (key == "aniso_eps" and weights is not None
                         and ".nodes." not in name and component in ("0", "1", "2")):
-                    # finish_tensor_operands applies eps_edge / safe_w for
-                    # conformal PEC. That known geometric factor is not a
-                    # material anisotropy; any residual mismatch still refuses.
                     weight = weights[int(component)]
                     array = array * jnp.where(weight > 0, weight, 1.0)
                 operands.append((name, array, None, "anisotropic permittivity"))
@@ -671,8 +646,6 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
     def resolve(cfg, multimode):
         bounds = waveguide_segment_cells(cfg, grid)
         prefix = f"Waveguide port {cfg.port_name!r}: section cells {bounds}: "
-        # Lumped stamps also appear in scalar conductivity. Name the stamp
-        # first; PEC edges follow the existing PEC-volume medium judgement.
         _refuse_waveguide_section_thin_elements(cfg, bounds, other_records, wall_masks, grid)
         for field in ("eps_r", "mu_r"):
             if isinstance(getattr(materials, field), (tuple, list)):
@@ -701,15 +674,11 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
                 else:
                     eps = scalars.get("materials.eps_r", 1.0)
                     target = 1 / eps if name.startswith("aniso_inv_eps") else eps
-                    # Node smoothing owns off-diagonal and PEC keep records; compare
-                    # explicit diagonal components here, not its geometric metadata.
                     if ".nodes." in name:
                         continue
                     bad = ~np.isclose(host, target, rtol=2e-7, atol=0)
                     component = name.rsplit(".", 1)[-1]
                     if component in ("0", "1", "2") and host.ndim == 3:
-                        # Wall smoothing averages with exterior vacuum only on
-                        # tangential edges that the PEC update pins to zero.
                         pinned = np.asarray(section(wall_masks[int(component)], bounds, cfg, name)[0])
                         bad &= ~pinned
                 if np.any(bad):
@@ -752,7 +721,6 @@ def resolve_waveguide_section_medium(waveguide_ports, grid, materials, updates,
             return matches, "; ".join(descriptions)
 
         if traced:
-            # Only a driven port consumes its probe waves for its own S21.
             def judge_traced(*values):
                 medium = judge(*values[:len(arrays)])
                 if not driven_waveguide_indices([cfg], amplitude_field="src_amp"):
