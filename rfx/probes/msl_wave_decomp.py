@@ -515,10 +515,12 @@ def _msl_fit_conditioning(x, beta, alpha, gamma):
     Centering changes only the wave amplitudes. Subtracting a multiple of
     sin(beta*y) from the beta column leaves its orthogonal residual unchanged:
     y*cos(beta*y) becomes y*(cos(beta*y) - sinc(beta*y/pi)). This exact
-    identity avoids cancellation for the odd term only. The even term
-    cos(beta*y) - sinc(beta*y/pi) ≈ -(beta*y)**2/3 still subtracts two
-    numbers near 1 in float32; it dominates sigma_perp only near a voltage
-    null at the centre (a + g ≈ 0). No small-phase series is used.
+    identity removes the projection of a first-order column from the odd
+    term y*cos(beta*y), but cos(beta*y) - sinc(beta*y/pi) ≈ -(beta*y)**2/3
+    still subtracts two numbers near 1 in float32. The odd term dominates
+    sigma_perp only near a voltage null at the centre (a + g ≈ 0); the even
+    term -(a + g)*y*sin(beta*y) has no such cancellation. No small-phase
+    series is used.
     QR uses the equivalent
     well-scaled wave basis {cos(beta*y), y*sinc(beta*y/pi)}.
     """
