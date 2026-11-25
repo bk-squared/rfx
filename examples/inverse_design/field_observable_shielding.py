@@ -53,62 +53,35 @@ from rfx.observables import field_softmax
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# ---------------------------------------------------------------------------
-# Geometry. Normal-incidence TFSF forces periodic y/z + CPML-x internally
-# (rfx/runners/uniform.py, "all other TFSF" branch) regardless of the
-# boundary spec passed at construction, so a thin transverse domain (the
-# same 1D-equivalent trick examples/inverse_design/multilayer_ar_coating.py
-# uses) is valid here too -- it keeps this CPU-fast.
-# ---------------------------------------------------------------------------
-DX = 2.5e-3          # m
-NX_INTERIOR = 60      # requested-domain cell count in x (CPML pads OUTSIDE this)
+DX = 2.5e-3
+NX_INTERIOR = 60
 NY_INTERIOR = 6
 NZ_INTERIOR = 6
 CPML_LAYERS = 8
-TFSF_MARGIN = 3        # add_tfsf_source(margin=) default, named explicitly below
+TFSF_MARGIN = 3
 F0 = 6.0e9
 BANDWIDTH = 0.5
 FREQ_MAX = 8.0e9
 
-# Shield (design region): a 7-layer dielectric stack, physical x-range.
 SHIELD_X_LO_M = 0.050
-SHIELD_X_HI_M = 0.0675   # 7 layers * DX
+SHIELD_X_HI_M = 0.0675
 N_LAYERS = 7
 
-# Leakage monitors, both BEHIND the shield, two depths.
 LEAK_NEAR_X_M = 0.080
 LEAK_FAR_X_M = 0.130
 
 EPS_MIN, EPS_MAX = 1.0, 6.0
-# field_softmax sharpness: BETA is now DIMENSIONLESS (rfx.observables.
-# field_softmax auto-scales internally as beta_eff = beta /
-# stop_gradient(max(vals)), so beta_eff * max(vals) == BETA identically
-# regardless of the field's physical units -- see field_softmax's own
-# docstring). This example's raw |field|^2 sits around 1e-22 at this
-# geometry (the same tiny-absolute-unit convention documented for NTFF
-# power elsewhere in this repo, e.g. maximize_directivity's docstring
-# notes ~1e-27 raw values), which is exactly the magnitude the OLD
-# unscaled beta had to be hand-tuned against (previously BETA=2e24, so
-# that beta*max(vals) cleared the log(count)/beta noise floor). With
-# auto-scaling that hand-tuning is no longer needed: measured (this
-# script's fixture) val0/grad_max stay finite and well-behaved across
-# BETA in [1, 50], tightening from val0=1.42e-21 at BETA=1 toward the
-# true max as BETA grows (val0=2.03e-22 at BETA=50); BETA=20 sits
-# comfortably past this fixture's log(count) noise floor with margin
-# without over-sharpening the gradient.
 BETA = 20.0
 N_STEPS = 500
 N_ITERS = 12
-# Gradient descent step: this script prints |grad|_max = 1.287e-25 at the
-# first iteration (BETA=20; measured 2026-11-09). With LR = 1e22 a step
-# moves the most-sensitive layer's eps_r by about 1e-3, so the 12
-# iterations move eps_r by at most 0.02 and lower the loss by about 0.01 %
-# (printed as "0.0% reduction"): the run shows the gradient path through
-# field_softmax, not a converged shield.
 LR = 1.0e22
 
 
 def _build_sim() -> Simulation:
+    """Build the shielding model without solving.
+
+    The point probe supplies a local envelope settling witness rather than domain-integrated energy.
+    """
     sim = Simulation(
         freq_max=FREQ_MAX,
         domain=(NX_INTERIOR * DX, NY_INTERIOR * DX, NZ_INTERIOR * DX),
@@ -128,11 +101,6 @@ def _build_sim() -> Simulation:
         axis="x", coordinate=LEAK_FAR_X_M, component="ez",
         freqs=jnp.asarray([F0]), name="leak_far",
     )
-    # Settling-witness-only probe (see PART 4 below) -- the established
-    # single-point envelope-in-dB convention this repo's TFSF/patch
-    # examples use (examples/tutorials/patch_antenna_demo.py), not a
-    # domain-integrated energy (forward() does not expose full-domain
-    # snapshots on the differentiable path).
     sim.add_probe(position=(LEAK_NEAR_X_M, NY_INTERIOR * DX / 2, NZ_INTERIOR * DX / 2), component="ez")
     return sim
 
@@ -154,7 +122,7 @@ def _assert_design_region_inside_tfsf_box(grid):
     x_lo_tfsf, x_hi_tfsf = offset, nx - offset - 1
     shield_lo, shield_hi = _shield_index_range(grid)
     leak_far_idx = grid.position_to_index((LEAK_FAR_X_M, 0.0, 0.0))[0]
-    pad = 2  # cells of extra safety clearance beyond the box edge
+    pad = 2
     assert x_lo_tfsf + pad < shield_lo, (
         f"shield lo index {shield_lo} too close to TFSF box lo {x_lo_tfsf}"
     )
@@ -202,11 +170,6 @@ def main() -> None:
         )
         return objective(result)
 
-    # This is the composition the design contract names directly:
-    #   lambda p: field_softmax(["leak_near", "leak_far"], beta=BETA)(
-    #       sim.forward(eps_override=_build_eps(sim, grid, p))
-    #   )
-    # `loss_fn` above is exactly that, spelled out for readability.
 
     p0 = jnp.full(N_LAYERS, 2.0, dtype=jnp.float32)
 
@@ -239,8 +202,6 @@ def main() -> None:
         "descent did not reduce worst-case leakage -- check LR/BETA"
     )
 
-    # ---- PART 4: ring-down settling witness (repo convention: quote
-    # end-of-run energy in dB vs post-source peak; -40 dB bar) -----------
     print("\n[4/5] Settling witness on the FINAL design (mandatory before "
           "any frequency-domain number above is trusted) ...")
     final_result = sim.forward(
@@ -260,9 +221,8 @@ def main() -> None:
         f"-> {'SETTLED' if settled else 'UNDER-SETTLED (raise N_STEPS and rerun)'}"
     )
 
-    # ---- PART 5: plots ------------------------------------------------------
     print("\n[5/5] Plotting ...")
-    eps_arr = np.stack(eps_trace)  # (N_ITERS+1, N_LAYERS)
+    eps_arr = np.stack(eps_trace)
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
 
     axes[0].semilogy(range(len(loss_trace)), loss_trace, "o-", lw=2)

@@ -19,8 +19,6 @@ from pathlib import Path
 import sys
 import tempfile
 
-# Allow `python examples/tutorials/artifact_report_demo.py` from a source checkout
-# before the package is installed in editable mode.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))

@@ -9,6 +9,8 @@ gradient.  A central finite-difference cross-check is then computed and
 compared, confirming the AD gradient is accurate to within 5%.
 
 Run:  python examples/inverse_design/differentiable_s11_design.py
+
+``_WR90_DX`` must divide both ``_WR90_A`` and ``_WR90_B`` to preserve the declared WR-90 aperture.
 """
 
 from __future__ import annotations
@@ -22,37 +24,12 @@ import numpy as np
 
 from rfx import Simulation
 
-# ---------------------------------------------------------------------------
-# WR-90 geometry. The companion CPU-feasibility gate is
-# test_waveguide_s_matrix_ad_end_to_end (tests/unit/autodiff/test_sparam_ad_end_to_end.py);
-# it keeps its own dx = 2 mm and a shorter 50 mm domain, so the two are no
-# longer cell-for-cell identical (see the dx note below).
-# ---------------------------------------------------------------------------
 
-_WR90_A = 22.86e-3    # broad wall (m)
-_WR90_B = 10.16e-3    # narrow wall (m)
-# Cell size: dx must DIVIDE both wall dimensions, or the guide the solve
-# rasterizes is not the WR-90 guide the numbers below are computed from.
-# 22.86 / 10.16 = 9/4, so 22.86e-3 / 18 = 10.16e-3 / 8 = 1.27 mm is the
-# coarsest common divisor at a usable resolution. The previous 2 mm
-# divided neither: the mode template and cutoff were built from a
-# 22.000 x 10.000 mm aperture while every comment here quoted 22.86 x
-# 10.16 mm (issue #738 — preflight's port_aperture_snap now says so, and
-# this example aborted on it).
-_WR90_DX = 1.27e-3    # cell size (m)
-# Domain length: ports must clear the CPML absorber (issue #149 — the
-# original LX=0.05 with cpml_layers=8 x dx=2mm put BOTH port planes inside
-# the 16mm absorber; sim.preflight() flags exactly this).
-_WR90_LX = 0.10       # domain length (m)
+_WR90_A = 22.86e-3
+_WR90_B = 10.16e-3
+_WR90_DX = 1.27e-3
+_WR90_LX = 0.10
 
-# TE10 cutoff for WR-90: c/(2a) ≈ 6.56 GHz; all freqs here are above cutoff
-# AND below 0.90 x fc_TE20 = 11.8 GHz (preflight's next-mode contamination
-# bound — the original 8-12 GHz band tripped it at the top edge). Those
-# numbers hold on the REALIZED guide only because dx divides a and b;
-# preflight reports no aperture-snap finding on this setup (issue #738).
-# f0 is set explicitly at band center — a source centered at/below cutoff
-# launches an evanescent crawl whose extracted S grows with n_steps
-# (issue #150; preflight code "port_source_below_cutoff" now guards this).
 WR90_FREQS = jnp.linspace(8e9, 11.5e9, 8)
 _WR90_F0 = 9.75e9
 
@@ -92,9 +69,6 @@ def build_simulation() -> Simulation:
     return sim
 
 
-# ---------------------------------------------------------------------------
-# Objective: |S11|^2 summed over all frequencies, w.r.t. a scalar design eps
-# ---------------------------------------------------------------------------
 
 def _make_objective(sim: Simulation, eps_base: jnp.ndarray, design: jnp.ndarray):
     """Return a scalar objective(alpha) = sum_f |S11(f)|^2.
@@ -126,24 +100,17 @@ if __name__ == "__main__":
     print("=" * 70)
 
     sim = build_simulation()
-    # Preflight runs VISIBLY (never optimize against a setup you have not
-    # preflighted — issues #149/#150 both hid behind suppressed warnings).
     issues = sim.preflight()
-    if len(issues):   # PreflightReport refuses bool() (#980)
+    if len(issues):
         raise SystemExit(f"preflight reported {len(issues)} issue(s) — fix the setup first")
-    # freeze_mesh() is the public call that returns the built grid, whose
-    # shape eps_override must have. Both ports are registered by now, so the
-    # padding it fixes is final.
     grid = sim.freeze_mesh()
     eps_base = jnp.ones(grid.shape, dtype=jnp.float32)
-    # Design slab x = 40-60 mm, clear of both ports' reference planes.
     lo, hi = (grid.index_of("x", x) for x in (0.040, 0.060))
     design = jnp.zeros(grid.shape, dtype=jnp.float32).at[lo:hi].set(1.0)
     alpha0 = jnp.float32(1.0)
 
     objective = _make_objective(sim, eps_base, design)
 
-    # --- Forward pass (sanity check) ----------------------------------------
     print("\n[1/3] Forward pass …")
     t0 = time.time()
     with warnings.catch_warnings():
@@ -161,7 +128,6 @@ if __name__ == "__main__":
     assert s_max <= 1.2, f"|S| = {s_max:.4f} physically implausible"
     assert s_max > 0.0, "|S| = 0 everywhere — broken forward pass"
 
-    # --- AD gradient ----------------------------------------------------------
     print("\n[2/3] AD gradient via jax.grad …")
     loss_val, g = jax.value_and_grad(objective)(alpha0)
     g_ad = float(g)
@@ -170,7 +136,6 @@ if __name__ == "__main__":
     assert jnp.isfinite(g), f"AD gradient is not finite: {g}"
     assert abs(g_ad) > 1e-10, f"AD gradient is effectively zero: {g_ad:.3e}"
 
-    # --- FD cross-check -------------------------------------------------------
     print("\n[3/3] Central finite-difference cross-check …")
     h = 1e-3
     f_plus = float(objective(jnp.float32(alpha0 + h)))
@@ -183,7 +148,6 @@ if __name__ == "__main__":
     wall = time.time() - t0
     print(f"\n  Wall time: {wall:.1f} s")
 
-    # --- Assertions -----------------------------------------------------------
     assert rel_err < 0.05, (
         f"AD vs FD mismatch: AD={g_ad:.4e} FD={g_fd:.4e} "
         f"rel_err={rel_err:.3e} (threshold 5%)"

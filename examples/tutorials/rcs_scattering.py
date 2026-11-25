@@ -51,8 +51,6 @@ DX = (C0 / F0) / 40.0
 CPML_LAYERS = 8
 N_STEPS = 800
 
-# The grid uses DX on x, y and z: draw the sphere's axial extrema on
-# nodes 14 and 26, keeping its electrical size close to ka = 1.
 RADIUS = 6 * DX
 CENTER = (20 * DX,) * 3
 SPHERE = Sphere(center=CENTER, radius=RADIUS)
@@ -70,17 +68,8 @@ def build_preflight_model() -> Simulation:
         boundary="cpml",
         cpml_layers=CPML_LAYERS,
     )
-    # A solid sphere is a VOLUME, and that is what sim.add(..., material="pec")
-    # declares under the lattice ownership contract (#931): the primal cells
-    # whose CENTRES lie inside the shape, with every E edge incident to one of
-    # them zeroed.  A sphere centred on a node therefore realizes symmetric
-    # about its centre.  The other declaration, add_thin_conductor, is for foil
-    # — a footprint on one node plane, zero thickness — and a sphere is not
-    # foil.
     sim.add(SPHERE, material="pec")
 
-    # This is the plane wave used for the setup check.  The production call
-    # below creates the same +x, Ez-polarized TFSF illumination itself.
     sim.add_tfsf_source(
         f0=F0,
         bandwidth=BANDWIDTH,
@@ -93,7 +82,10 @@ def build_preflight_model() -> Simulation:
 
 
 def build_rcs_inputs() -> tuple[Grid, MaterialArrays]:
-    """Rasterize the conducting sphere for the functional RCS API."""
+    """Rasterize the conducting sphere for the functional RCS API.
+
+    The conductivity fill approximates the conductor as a lossy volume rather than an exact PEC edge set.
+    """
     grid = Grid(
         freq_max=FREQ_MAX,
         domain=(DOMAIN, DOMAIN, DOMAIN),
@@ -101,15 +93,6 @@ def build_rcs_inputs() -> tuple[Grid, MaterialArrays]:
         cpml_layers=CPML_LAYERS,
     )
 
-    # A large conductivity STANDS IN for the PEC sphere on the material grid:
-    # compute_rcs() takes material arrays, not a Simulation, so the conductor
-    # reaches it as a lossy fill rather than as a realized PEC edge set.  The
-    # ownership contract fences this path out on purpose (#931 §1.8): a
-    # sigma-filled cell is a lossy-volume model with fields decaying inside it,
-    # not PEC realization, and the two are not silently equated.  One
-    # consequence is visible below — rasterize() samples at NODE coordinates
-    # while a PEC volume samples at cell CENTRES, so the two spheres differ by
-    # their rim cells.
     eps_r, sigma = rasterize(grid, [(SPHERE, 1.0, 1.0e7)])
     materials = MaterialArrays(
         eps_r=eps_r,
@@ -120,27 +103,19 @@ def build_rcs_inputs() -> tuple[Grid, MaterialArrays]:
 
 
 def main() -> None:
+    """Run the sphere scattering tutorial and print its results.
+
+    For the +x incident wave, polar angle 90 degrees and azimuth 180 degrees denote backscatter.
+    """
     sim = build_preflight_model()
 
-    # Expect "All checks passed": the sphere stays away from the absorbing
-    # cells, and the TFSF boundary has vacuum on both sides.  compute_rcs() is
-    # a functional API, so this matching Simulation makes its public setup
-    # checks visible without reaching into private state.
     report = sim.preflight()
-    if len(report):   # PreflightReport refuses bool() (#980)
+    if len(report):
         raise RuntimeError("Sphere scattering setup has unexpected advisories")
     print(f"TFSF plane-wave setup ready: {not len(report)}")
 
     grid, materials = build_rcs_inputs()
 
-    # The two spheres, side by side.  Nothing used to check that the sphere
-    # preflight audits and the sphere compute_rcs() measures are the same
-    # object.  They are close, and they are NOT the same rasterization: the
-    # PEC volume takes the cells whose centres are inside the sphere, the
-    # sigma fill takes the cells whose lower-corner NODE is inside it.  Both
-    # are compared against the analytic volume so a real divergence — a wrong
-    # radius, a wrong centre, a sphere that vanished — fails here instead of
-    # showing up as a quiet 3 dB in the RCS.
     record = sim.realized_geometry()
     solved_mm = tuple(axis.extent_m * 1e3 for axis in record.entities[0].axes)
     print(f"Sphere drawn diameter: {2 * RADIUS * 1e3:.5f} mm; "
@@ -160,10 +135,6 @@ def main() -> None:
                 "explains"
             )
 
-    # compute_rcs() creates the TFSF source and collection box, runs the
-    # target, and transforms the collected fields to the requested angles.
-    # Always request the empty reference: without it, residual incident field
-    # is included in the angular pattern.
     result = compute_rcs(
         grid,
         materials,
@@ -183,8 +154,6 @@ def main() -> None:
         subtract_incident_reference=True,
     )
 
-    # For +x incidence, (theta=pi/2, phi=pi) is backscatter.  It is the final
-    # sample in this H-plane cut, after the empty-reference subtraction.
     report_record_coverage("RCS run", result.settling_witness)
     backscatter = float(np.asarray(result.rcs_linear)[0, 0, -1])
     if not np.isfinite(backscatter) or backscatter <= 0.0:

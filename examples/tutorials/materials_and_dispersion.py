@@ -18,6 +18,8 @@ Run as::
 
 Five very small simulations run at the end: a library material, lossless and
 lossy custom materials, and one material for each dispersion model.
+
+``EPSILON_0`` is the vacuum permittivity in farads per metre.
 """
 
 from __future__ import annotations
@@ -32,7 +34,7 @@ DX = 1.0e-3
 FREQ_MAX = 8.0e9
 N_STEPS = 100
 
-EPSILON_0 = 8.854_187_812_8e-12  # vacuum permittivity, F/m
+EPSILON_0 = 8.854_187_812_8e-12
 FR4_EPS_R = 4.4
 FR4_TAN_DELTA = 0.02
 LOSS_FREQUENCY = 5.0e9
@@ -74,29 +76,17 @@ def has_infinite_q_advisory(findings: list[str]) -> bool:
 
 
 def main() -> None:
-    # MATERIAL_LIBRARY is part of the public rfx package. Its keys are the
-    # names accepted by sim.add(..., material="name") without registration.
-    # Printing the sorted keys is safer than copying a list that may grow.
     print(f"Public material names: {sorted(MATERIAL_LIBRARY)}")
 
-    # Library material: pass the string directly. There is no add_material()
-    # call here; "fr4" resolves from the public catalog.
     library_sim = make_sim()
     add_sample(library_sim, "fr4")
 
-    # Custom material: eps_r sets stored electric energy. sigma sets loss in
-    # siemens per metre. Setting sigma to zero deliberately makes this lossless.
     lossless_sim = make_sim()
     lossless_sim.add_material("fr4_lossless", eps_r=FR4_EPS_R, sigma=0.0)
     add_sample(lossless_sim, "fr4_lossless")
 
-    # Expect a preflight advisory now: the open box contains a dielectric with
-    # no loss, so a resonance study would give an artificially infinite Q.
     lossless_findings = lossless_sim.preflight()
 
-    # A datasheet loss tangent becomes conductivity at the frequency where the
-    # value is specified:
-    # sigma = 2 * pi * f * epsilon_0 * eps_r * tan_delta
     fr4_sigma = (
         2.0
         * np.pi
@@ -109,12 +99,8 @@ def main() -> None:
     lossy_sim.add_material("fr4_lossy", eps_r=FR4_EPS_R, sigma=fr4_sigma)
     add_sample(lossy_sim, "fr4_lossy")
 
-    # Expect no infinite-Q advisory here: sigma represents the laminate loss.
     lossy_findings = lossy_sim.preflight()
 
-    # Debye relaxation is useful when polarization follows the field with a
-    # characteristic time tau. eps_r is the high-frequency baseline and
-    # delta_eps is the pole's added low-frequency permittivity.
     debye_sim = make_sim()
     debye_sim.add_material(
         "debye_demo",
@@ -123,8 +109,6 @@ def main() -> None:
     )
     add_sample(debye_sim, "debye_demo")
 
-    # A Lorentz pole describes a damped material resonance. omega_0 is its
-    # angular frequency, delta is damping, and kappa is coupling strength.
     omega_0 = 2.0 * np.pi * 6.0e9
     lorentz_sim = make_sim()
     lorentz_sim.add_material(
@@ -140,8 +124,6 @@ def main() -> None:
     )
     add_sample(lorentz_sim, "lorentz_demo")
 
-    # The catalog material and both dispersive materials already include a
-    # loss mechanism, so these preflight calls should not report infinite Q.
     library_sim.preflight()
     debye_sim.preflight()
     lorentz_sim.preflight()

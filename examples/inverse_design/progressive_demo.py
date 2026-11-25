@@ -109,18 +109,12 @@ def sim_factory(dx: float) -> Simulation:
         boundary=BoundarySpec.uniform("cpml"),
         cpml_layers=6,
     )
-    # Source on the +z side
     sx, sy = DOMAIN[0] / 2, DOMAIN[1] / 2
     sim.add_source((sx, sy, 0.004), "ez", amplitude_kind="current")
-    # Probe on the -z side
     sim.add_probe((sx, sy, 0.020), "ez")
     return sim
 
 
-# Reference power, set in main() before the optimizer runs. Dividing the loss
-# by it puts the reported value at O(1) and, with it, the GRADIENT clear of the
-# ``eps_adam = 1e-8`` floor in the Adam update (``rfx/optimize.py``). See
-# "Loss scale" in the module docstring.
 LOSS_REF = 1.0
 
 
@@ -133,9 +127,6 @@ def reference_power(dx: float) -> float:
 
 
 def objective(result):
-    # Maximise AVERAGE power at the probe. ``mean`` (not ``sum``) keeps the
-    # loss roughly scale-invariant across stages with different n_steps;
-    # otherwise the stage boundary jumps for reasons unrelated to the design.
     return -jnp.mean(result.time_series[:, 0] ** 2) / LOSS_REF
 
 
@@ -147,10 +138,6 @@ def main():
         ProgressiveStage(dx=0.5e-3, n_iters=5, lr=0.05, num_periods=10.0),
     ]
 
-    # One extra forward at the coarse dx fixes the loss scale (see "Loss
-    # scale" in the module docstring). One reference for BOTH stages, not one
-    # per stage: a per-stage reference would divide the mesh-change jump away
-    # and hide it.
     LOSS_REF = reference_power(schedule[0].dx)
     print(f"Loss reference (mean probe power, un-optimized, "
           f"dx={schedule[0].dx * 1e3:.1f} mm): {LOSS_REF:.4e}")
@@ -165,8 +152,6 @@ def main():
           f"({len(result.loss_history)} iterations)")
     print(f"Stage boundaries: {result.stage_boundaries}")
     print(f"Final eps_design shape: {result.final_eps_design.shape}")
-    # Report PER STAGE. A single first->last figure spans the dx change
-    # between stages, so it mixes optimizer progress with the mesh-change jump.
     bounds = list(result.stage_boundaries)
     for i, (lo, hi) in enumerate(zip(bounds[:-1], bounds[1:]), start=1):
         first, last = result.loss_history[lo], result.loss_history[hi - 1]
@@ -182,7 +167,6 @@ def main():
 
     fig, axes = plt.subplots(1, 3, figsize=(15, 4))
 
-    # Loss curve with stage boundaries
     ax = axes[0]
     ax.plot(result.loss_history, "o-", linewidth=1.3)
     for b in result.stage_boundaries[1:-1]:
@@ -192,7 +176,6 @@ def main():
     ax.set_title("progressive_optimize loss history")
     ax.grid(True, alpha=0.3)
 
-    # Coarse-stage eps_design slice
     eps_coarse = np.asarray(result.stages[0].eps_design)
     mid = eps_coarse.shape[2] // 2
     axes[1].imshow(eps_coarse[:, :, mid].T, origin="lower",
@@ -202,7 +185,6 @@ def main():
     )
     axes[1].set_xlabel("x cell"); axes[1].set_ylabel("y cell")
 
-    # Fine-stage eps_design slice
     eps_fine = np.asarray(result.stages[-1].eps_design)
     mid = eps_fine.shape[2] // 2
     im = axes[2].imshow(eps_fine[:, :, mid].T, origin="lower",

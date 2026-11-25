@@ -361,7 +361,8 @@ def _install_wrapped(patch, helper, *, psi_only=False):
     real = slab_wrap_uniform.prepare_uniform
 
     def prepare(grid, materials, pec_edges, sources, probes, layout, mesh, **kwargs):
-        slabs, nx_per = _staged(materials, layout.n_devices)
+        slabs, nx_per = _staged(
+            materials[1] if isinstance(materials, list) else materials, layout.n_devices)
         means = [helper(slab, nx_per, layout.nx, rank=rank,
                         high_wall=unpadded_high_walls(grid))
                  for rank, slab in enumerate(slabs)]

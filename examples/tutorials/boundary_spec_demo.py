@@ -70,34 +70,18 @@ from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 
-DOMAIN = (0.01, 0.01, 0.005)   # 10 x 10 x 5 mm toy box
+DOMAIN = (0.01, 0.01, 0.005)
 DX = 0.5e-3
 
 
-# The four patterns, in the order the tutorial walks them. Declared at module
-# scope (rather than inline in main) so the #737 example-fidelity gate can name
-# one and build it: ``tests/_example_fidelity_lib.CLASSIFICATION`` looks each
-# spec up here by label, so the gate audits THESE specs, not a copy of them.
 PATTERNS: tuple[tuple[str, BoundarySpec], ...] = (
-    # 1) OPEN box — the default for anything that radiates.
     ("open box", BoundarySpec.uniform("cpml")),
 
-    # 2) Antenna over a ground plane — one PEC face (the ground), open
-    #    everywhere else. Per-face control uses Boundary(lo=..., hi=...).
-    #    For a FINITE ground plane declare a SHEET inside an all-CPML domain
-    #    instead — sim.add_thin_conductor(Box(...)) with the two corners on the
-    #    ground plane's own z, i.e. zero thickness (see the header).  A
-    #    boundary ground is infinite, which turns the antenna into a cavity and
-    #    shifts its resonance.  Do not reach for a PEC Box here: a Box is a
-    #    VOLUME and a ground plane is foil.
     ("ground plane", BoundarySpec(
         x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml"))),
 
-    # 3) CLOSED cavity — all PEC. Use with harminv for resonances; do not
-    #    expect fields to decay (energy is conserved).
     ("closed cavity", BoundarySpec.uniform("pec")),
 
-    # 4) Periodic unit cell — infinite array in x/y, open in z.
     ("periodic cell", BoundarySpec(x="periodic", y="periodic", z="cpml")),
 )
 
