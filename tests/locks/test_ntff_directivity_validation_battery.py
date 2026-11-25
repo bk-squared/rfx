@@ -654,9 +654,9 @@ def test_nonuniform_lane_power_calibration_and_slot():
 
     Measured on this tree at 515 steps: D = 1.761135618 dBi against the uniform
     rung's 1.761134975, ratio 0.497860278 against 0.497861110, settling -93.41 dB.
-    Mutations measured at 400 steps, same fixture: E stamped at n*dt -> ratio 0.492221, D err
-    0.010 dB; NTFF accumulate moved above the NU E update -> ratio 0.506219,
-    D err 0.011 dB. Both cross the gates.
+    At this record length the assertions check settling, directivity and the
+    NTFF-to-flux power ratio against the uniform lane. Historical slot
+    mutations at 400 steps do not establish mutation sensitivity at 515 steps.
     """
     base_rung = _run_rung(BASE_DX_M, 515)
     sim = _build_nu_sim(BASE_DX_M, _NU_Z_CELLS)

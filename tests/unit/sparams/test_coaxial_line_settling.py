@@ -52,10 +52,11 @@ def test_short_line_settling_after_feed_absorbs_return():
 
 @pytest.mark.slow_physics
 def test_matched_line_settling_uses_source_end():
-    """The matched load passes on the shortest record the echo bound accepts.
+    """The 1,668-step matched load covers every coax plane and passes -40 dB.
 
     At 1,668 steps the main window starts at 834, after the source end at
-    550. No accepted record starts its halfway window before the source end.
+    550, so this record checks the accepted window and channel coverage;
+    it does not exercise a source end later than the halfway window.
     """
     result = _run(1668, termination="matched")
     print(

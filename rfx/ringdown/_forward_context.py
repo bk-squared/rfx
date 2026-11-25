@@ -135,8 +135,8 @@ class _ForwardReportContext:
         With traced axes, the run's accumulators and channels were made on the
         realized mesh of that design step, so they are read with that mesh's
         grid and port weights, through a copy of the plan; the stored plan
-        keeps the template grid. Its echo bound is rebuilt from the realized
-        host widths too, so nominal-width rounding cannot change its witness.
+        keeps the template grid. When the result carries ``res._echo_index``,
+        a copy of the plan uses that realized bound for the report's witness.
         On the uniform lane the plain S goes into
         ``run()``'s container for the lane's single wire port
         (``rfx/runners/uniform.py``): (1, 1, nf) complex64, whatever the
