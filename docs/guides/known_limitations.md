@@ -950,6 +950,22 @@ where the two agree.
 
 ## Absorbing boundaries
 
+### A dielectric near a CPML face can hold a field that grows after the source ends
+
+Tracker: #3034
+
+S-parameters from a record of such a structure change with record length without
+settling. The settling witness reports this growth, and the warning names the
+identified growing pole, its e-folding time in steps and its largest share at the
+read bins. A passive structure cannot gain energy after its source ends; a longer
+record carries a larger error from this term.
+
+In a WR-90-size guide with a 22.86 × 2.406 mm cross-section, an eps_r 10 slab
+2.406 mm thick and 2.0 mm from the CPML face holds a TE10 field near 4.76 GHz that
+grows by a factor e about every 3,050 steps at dt 0.765 ps. The measured TE10 growth
+rate falls with distance d close to exp(-2 alpha d), where alpha is the mode's evanescent
+attenuation constant, so a mode near its cutoff falls slowly with distance.
+
 ### Magnetic faces require the single-device second-order Yee image.
 
 Tracker: none — accepted limitation (refused at default: tests/unit/sparams/test_pmc_waveguide_refusal.py::test_pmc_waveguide_mode_solver_refuses)

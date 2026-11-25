@@ -58,8 +58,13 @@ def _warn_if_ringdown_truncated(
          if unknown[i] else f"{_label(i)}: {values[i]:+.1f} dB")
         for i in np.flatnonzero(hot)
     )
+    from rfx.measurement.record_end import merge_growing_poles
+
+    poles = merge_growing_poles(*(witnesses[i].get('growing_poles', ())
+                                 for i in np.flatnonzero(hot)
+                                 if witnesses is not None and i < len(witnesses)))
     consequence_text = f" {consequence}." if consequence else ""
-    if any(not unknown[i] for i in np.flatnonzero(hot)):
+    if not poles and any(not unknown[i] for i in np.flatnonzero(hot)):
         consequence_text += " A failing record-end witness means lengthen the record."
     memory_refused = witnesses is not None and any(
         unknown[i] and 'rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES' in witnesses[i]['reason']
@@ -68,11 +73,24 @@ def _warn_if_ringdown_truncated(
               f"Increase {knob} and check identification before quoting ")
     drive = max((float(np.max(row['drive_share_per_bin'])) for i, row in enumerate(witnesses or ())
                  if i < len(hot) and hot[i] and len(row.get('drive_share_per_bin', ()))), default=0.)
-    if drive > 0:
+    if drive > 0 and not poles:
         advice = (f"Up to {drive:.3g} of that share is the port's known drive beyond the record (a waveguide "
                   "port's H near cutoff decays as t^-3/2). Run a longer fixed record: until_decay stops on field "
                   "energy and does not judge this per-bin budget, and until_identified does not yet admit "
                   "waveguide ports. " + advice)
+    if poles:
+        named = "; ".join(
+            f"{pole['frequency_hz'] / 1e9:.6g} GHz, e-folding {pole['e_folding_steps']:,.6g} steps, "
+            f"max share {pole['max_share']:.6g}"
+            for pole in poles[:3])
+        if len(poles) > 3:
+            named += f"; and {len(poles) - 3} more"
+        advice = (
+            "The recorded fields contain a term growing after the source ended. "
+            "A passive structure cannot gain energy after its source ends. "
+            "A longer record carries a larger error from this term. "
+            f"Growing poles (largest growth first): {named}. "
+            "No passing value witness supports quoting ")
     warnings.warn(
         "ring-down settling witness NOT PASSED (pole-tail amplitude threshold "
         f"{_SETTLING_WITNESS_DB:.0f} dB): {per_run}. The {record} "
