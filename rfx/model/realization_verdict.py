@@ -133,6 +133,8 @@ def judge_realization(table, snap):
                       row.model == "cell-centre footprint; node plane")
         if plane_only:
             mismatch = False
+        if not mismatch:
+            quantity = "centroid shift exceeds 0.25 cell"
         if row.family in ("sheet", "lossy") and node_misses:
             mismatch = mismatch or sheet_plane_mismatch
         if sheet_plane_mismatch:
@@ -166,8 +168,6 @@ def judge_realization(table, snap):
                     "its dz_profile replaces the automatic z mesh.")
             elif "z" in bad_axes:
                 remedy = _merged_plane_remedy(table, row) or remedy
-        if not mismatch:
-            quantity = "centroid shift exceeds 0.25 cell"
         for a in axes:
             if a.declared_intervals_m:
                 detail += (f"; {a.axis} periodic union declared {a.declared_intervals_m} m, "

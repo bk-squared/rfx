@@ -228,3 +228,22 @@ def test_b18_periodic_rebuild_keeps_realized_xy_lattice():
         cells = np.asarray(record.cell_sizes[axis])[d.padding[0]:d.padding[0] + d.n_cells]
         np.testing.assert_allclose(cells, PERIODIC_DX, rtol=1e-12, atol=0.)
     assert not [i for i in _conductor_findings(report, 'geometry[0]') if i.severity == 'error']
+
+
+def test_b19_zero_node_sheet_is_reported_by_preflight():
+    sim = _model()
+    sim.add(Box((.0203, .0203, .0075), (.0204, .0204, .0075)), material='pec')
+    report = sim.preflight()
+    assert any(i.code == 'pec_zero_cells' and i.severity == 'error' for i in report)
+
+
+@pytest.mark.parametrize('resolve_first', [True, False], ids=['resolved-first', 'port-first'])
+def test_b20_floquet_declaration_updates_realized_lattice(resolve_first):
+    sim = Simulation(freq_max=10e9, domain=(PERIOD, PERIOD, .02), boundary='cpml')
+    plane = 3 * .0012262
+    sim.add(Box((0., 0., plane), (PERIOD, PERIOD, plane)), material='pec')
+    if resolve_first:
+        sim._resolve_mesh()
+    sim.add_floquet_port(.015, axis='z')
+    assert sim._resolve_mesh()['_dz_profile'] is None
+    assert not sim.preflight().errors

@@ -91,6 +91,8 @@ class _MeshMixin:
             *(state.get(name) for name in names),
             state["_freq_max"], state["_boundary"],
             state.get("_snap"), state.get("_refinement"),
+            state.get("_periodic_axes"), state.get("_tfsf"),
+            *state.get("_waveguide_ports", ()), *state.get("_floquet_ports", ()),
             *geometry, *sheets,
             *(item for pair in state["_materials"].items() for item in pair),
         )
@@ -134,6 +136,14 @@ class _MeshMixin:
             AutoMeshWarning, stacklevel=user_stacklevel(),
         )
         for message in config.warnings:
+            if (resolved["_dz_profile"] is not config.dz_profile
+                    and message.startswith("Non-uniform z mesh enabled:")):
+                profile = resolved["_dz_profile"]
+                if profile is None:
+                    continue
+                message = (
+                    f"Non-uniform z mesh enabled: {len(profile)} cells, "
+                    f"dz={np.min(profile)*1e3:.3f}–{np.max(profile)*1e3:.3f} mm")
             warnings.warn(message, AutoMeshWarning, stacklevel=user_stacklevel())
         return resolved
 
@@ -182,16 +192,19 @@ class _MeshMixin:
             if label.startswith("thin_conductor["):
                 thin_intervals.append((lo, hi))
             if sheet:
-                tc = (self._thin_conductors[int(label[len("thin_conductor["):-1])]
-                      if label.startswith("thin_conductor[") else None)
-                if tc is not None and not tc.is_pec:
-                    axis, k = dc_film_plane(shape, context.grid)
-                else:
-                    spec = sheet_spec_from_shape(
-                        shape, context.coords, context.cell_sizes, normal_axis=2,
-                        grid=context.grid)
-                    axis, k = 2, spec.plane
-                plane = float(context.nodes[axis][k])
+                try:
+                    tc = (self._thin_conductors[int(label[len("thin_conductor["):-1])]
+                          if label.startswith("thin_conductor[") else None)
+                    if tc is not None and not tc.is_pec:
+                        axis, k = dc_film_plane(shape, context.grid)
+                    else:
+                        spec = sheet_spec_from_shape(
+                            shape, context.coords, context.cell_sizes, normal_axis=2,
+                            grid=context.grid)
+                        axis, k = 2, spec.plane
+                    plane = float(context.nodes[axis][k])
+                except context._NARROW_EXCS:
+                    continue
             miss = conductor_node_miss(
                 z_nodes, bounds, 2, neighbours, plane, (0., original["_domain"][2]))
             if miss.refused and reason is None:
