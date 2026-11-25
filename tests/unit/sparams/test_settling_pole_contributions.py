@@ -109,3 +109,49 @@ def test_combined_witness_keeps_growth_from_every_run():
     larger = {**growing, 'growing_poles': ({**pole, 'max_share': 2.},)}
     combined = combine_witness_details(missing, growing, larger)
     assert combined['growing_poles'] == ({**pole, 'max_share': 2.},)
+
+
+def test_real_growing_term_in_two_channels_has_one_positive_frequency_pole():
+    from rfx.sparams._tail_witness import tail_share_witness
+
+    dt, frequency, growth = .765e-12, 4.76e9, 3.28e-4
+    steps = np.arange(1600)
+    signal = np.exp((growth + 2j*np.pi*frequency*dt) * steps).real
+    channels = np.column_stack((signal, .5 * signal))
+    witness = tail_share_witness([('record', channels)], dt, 100,
+                                  [frequency, -frequency], freq_max=10e9)
+    assert witness.status == 'undetermined', witness.reason
+    assert len(witness.growing_poles) == 1, witness.growing_poles
+    pole = witness.growing_poles[0]
+    assert pole['frequency_hz'] > 0
+    assert abs(pole['frequency_hz'] / 4.76e9 - 1) < .01
+    assert abs(pole['growth_per_step'] / 3.28e-4 - 1) < .05
+    assert abs(pole['e_folding_steps'] / 3048.780487804878 - 1) < .05
+    assert pole['rule'] == 'discarded growing'
+
+
+def test_physical_pole_group_uses_largest_share_frequency_and_largest_growth():
+    from rfx.measurement.record_end import _group_growing_poles
+
+    entries = (
+        dict(frequency_hz=4.76e9, growth_per_step=4e-4,
+             e_folding_steps=2500., max_share=1., rule='kept non-static growing'),
+        dict(frequency_hz=-4.7603e9, growth_per_step=4.01e-4,
+             e_folding_steps=1 / 4.01e-4, max_share=3., rule='kept non-static growing'),
+        dict(frequency_hz=4.7601e9, growth_per_step=4.02e-4,
+             e_folding_steps=1 / 4.02e-4, max_share=2., rule='discarded growing'),
+        dict(frequency_hz=-4.762e9, growth_per_step=4e-4,
+             e_folding_steps=2500., max_share=4., rule='kept non-static growing'),
+        dict(frequency_hz=4.76e9, growth_per_step=4.2e-4,
+             e_folding_steps=1 / 4.2e-4, max_share=5., rule='discarded growing'),
+    )
+    expected = (
+        dict(frequency_hz=4.76e9, growth_per_step=4.2e-4,
+             e_folding_steps=1 / 4.2e-4, max_share=5., rule='discarded growing'),
+        dict(frequency_hz=4.7603e9, growth_per_step=4.02e-4,
+             e_folding_steps=1 / 4.02e-4, max_share=3., rule='discarded growing'),
+        dict(frequency_hz=4.762e9, growth_per_step=4e-4,
+             e_folding_steps=2500., max_share=4., rule='kept non-static growing'),
+    )
+    assert _group_growing_poles(entries) == expected
+    assert _group_growing_poles(()) == ()
