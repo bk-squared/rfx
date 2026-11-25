@@ -121,12 +121,14 @@ class _MeshMixin:
             domain = declared["_domain"]
             resolved["_domain"] = (domain[0], domain[1], float(np.sum(config.dz_profile)))
         state["_mesh_resolution"] = (inputs, resolved)
+        resolution_succeeded = False
         try:
             resolved = self._resolve_conductor_z(config, inputs, resolved)
-        except Exception:
-            state.pop("_mesh_resolution", None)
-            self._clear_resolution_inspection()
-            raise
+            resolution_succeeded = True
+        finally:
+            if not resolution_succeeded:
+                state.pop("_mesh_resolution", None)
+                self._clear_resolution_inspection()
         state["_mesh_resolution"] = (inputs, resolved)
         warnings.warn(
             f"Auto mesh: dx={resolved['_dx'] * 1e3:.3f}mm "
@@ -171,12 +173,15 @@ class _MeshMixin:
             return original
         try:
             context = _CampaignStaticsContext(self)
-        except Exception:
+        except _CampaignStaticsContext._NARROW_EXCS:
             return original
         if context.error is not None:
             return original
         lines = context.interior_node_lines()
         z_nodes = lines[2]
+        period = (float(z_nodes[-1] + context.spacings[2][
+            context.grid.shape[2] - context.grid.pad_z_hi - 1] - z_nodes[0])
+            if "z" in getattr(context.grid, "periodic_axes", "") else None)
         neighbours = tuple(b[:2] for entry in (*self._geometry, *self._thin_conductors)
                            if (b := _shape_bounds(entry.shape)) is not None)
         reason = None
@@ -207,7 +212,7 @@ class _MeshMixin:
                 except context._NARROW_EXCS:
                     continue
             miss = conductor_node_miss(
-                z_nodes, bounds, 2, neighbours, plane, (0., original["_domain"][2]))
+                z_nodes, bounds, 2, neighbours, plane, (0., original["_domain"][2]), period)
             if miss.refused and reason is None:
                 offending = (.5 * (lo + hi) if sheet else
                              max((lo, hi), key=lambda p: float(np.min(abs(z_nodes-p)))))

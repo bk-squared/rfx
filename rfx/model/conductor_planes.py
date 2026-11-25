@@ -17,7 +17,8 @@ class ConductorMiss(NamedTuple):
         return self.subcell or abs(self.extent_percent) > 1. or self.delta > .01 * self.length
 
 
-def conductor_node_miss(nodes, bounds, axis, neighbours=(), plane=None, domain_bounds=None):
+def conductor_node_miss(nodes, bounds, axis, neighbours=(), plane=None, domain_bounds=None,
+                        period=None):
     """Compare a Box window or an already realized sheet plane on one axis.
 
     Sheet planes are supplied by sheet_spec_from_shape or dc_film_plane,
@@ -39,13 +40,17 @@ def conductor_node_miss(nodes, bounds, axis, neighbours=(), plane=None, domain_b
         return ConductorMiss(percent, subcell, 0., float('inf'))
     from rfx.geometry.rasterize_grid import _local_cell
     tol = max(float(node_tie_tol(p, _local_cell(nodes, widths, p))) for p in (lo, hi))
-    delta = max(lo - plane, plane - hi, 0.)
+    images = (plane,) if period is None else (plane, plane + period, plane - period)
+    delta = min(max(lo - p, p - hi, 0.) for p in images)
     delta = 0. if delta <= tol else delta
     other = [a for a in range(3) if a != axis]
-    planes = list(domain_bounds if domain_bounds is not None else (nodes[0], nodes[-1]))
+    planes = (list(domain_bounds if domain_bounds is not None else (nodes[0], nodes[-1]))
+              if period is None else [])
     for blo, bhi in neighbours:
         if all(min(bounds[1][a], bhi[a]) > max(bounds[0][a], blo[a]) for a in other):
             planes.extend((float(blo[axis]), float(bhi[axis])))
+    if period is not None:
+        planes = [p + shift for p in planes for shift in (0., period, -period)] + [lo - period, hi + period]
     below = [p for p in planes if p < lo - tol]
     above = [p for p in planes if p > hi + tol]
     layers = ([lo - max(below)] if below else []) + ([min(above) - hi] if above else [])

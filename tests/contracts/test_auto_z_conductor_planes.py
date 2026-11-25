@@ -1,4 +1,6 @@
 """Declared conductor planes and refusals before any time step."""
+import re
+
 import numpy as np
 import pytest
 
@@ -104,6 +106,9 @@ def test_b4_literal_automatic_xy_remedy():
     record = automatic.realized_geometry()
     dx = float(np.diff(_interior_nodes(record, 0))[0])
     assert any(f'dx={dx:.12g} m' in str(i) for i in issues)
+    with pytest.raises(RfxRefusal, match=re.escape(f'dx={dx:.12g} m') +
+                       r'[\s\S]*edge_aware_profiles\('):
+        automatic.run(n_steps=1)
     profiles = edge_aware_profiles(DOMAIN, dx, solids=[board, plate], axes='xyz')
     sim = Simulation(freq_max=10e9, domain=DOMAIN, boundary='cpml', dx=dx, **profiles)
     sim.add(board, material='fr4')
@@ -247,3 +252,17 @@ def test_b20_floquet_declaration_updates_realized_lattice(resolve_first):
     sim.add_floquet_port(.015, axis='z')
     assert sim._resolve_mesh()['_dz_profile'] is None
     assert not sim.preflight().errors
+
+
+@pytest.mark.parametrize('plane', [.010, .0098], ids=['b21a-period', 'b21b-off-plane'])
+def test_b21_periodic_lossy_sheet_plane(plane):
+    sim = Simulation(20e9, (.010, .006, .004), dx=.001, cpml_layers=0, snap='strict',
+                     boundary=BoundarySpec(x='periodic', y='pec', z='pec'))
+    sim.add_thin_conductor(Box((plane, .001, .001), (plane, .005, .003)),
+                           thickness=35e-6, sigma_bulk=1e4)
+    issues = [i for i in sim.preflight() if i.severity == 'error' and i.code == 'realization']
+    if plane == .010:
+        assert not issues
+    else:
+        assert any('thin_conductor[0]' in str(i) and 'δ=0.0002 m' in str(i)
+                   and 'L=0.01 m' in str(i) for i in issues)

@@ -923,6 +923,8 @@ def realization_node_inputs(sim, record, grid, *, active_axes):
                    else d.declared_length_m
                    for a, d in enumerate(record.domain))
     out = {}
+    periods = {a: d.length_m for a, d in enumerate(record.domain)
+               if d.axis in getattr(grid, "periodic_axes", "")}
     for entity in record.entities:
         b = bounds.get(entity.label)
         if b is None or entity.kind not in ('sheet', 'lossy'):
@@ -937,5 +939,5 @@ def realization_node_inputs(sim, record, grid, *, active_axes):
             if 'xyz'[a] not in active_axes:
                 continue
             out[entity.label] = ((lines[a], b, a, neighbours, plane,
-                                  (0., domain[a])),)
+                                  (0., domain[a]), periods.get(a)),)
     return out
