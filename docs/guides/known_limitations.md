@@ -615,7 +615,7 @@ the line more air below the top absorber, or keep the default 16 layers.
 
 ### On a microstrip line, 8 CPML layers change S, and |S| can exceed 1 near the side absorbers.
 
-Tracker: #3034
+Tracker: #3068
 
 The absorber depth changes the S a microstrip line returns. On a set of line
 boards, S with 8 CPML layers differs from S with 32 layers by up to 2.3×10⁻²
