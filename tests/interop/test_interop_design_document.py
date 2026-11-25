@@ -2120,6 +2120,33 @@ def test_terminated_conductor_references_survive_the_design_round_trip(thin):
     assert not np.asarray(sheets[1].footprint)[-2:].any()
 
 
+@pytest.mark.parametrize("kwargs,expected", [({"freq_min": 1.2e9}, 1.2e9), ({}, 6e8)],
+                         ids=["explicit", "default"])
+def test_coaxial_freq_min_survives_the_design_round_trip(kwargs, expected):
+    sim = Simulation(freq_max=6e9, domain=(0.040, 0.040, 0.020), dx=5e-4, boundary="pec")
+    sim.add_coaxial_port(
+        (0.020, 0.020, 0.020), "top", pin_length=4e-3,
+        pin_radius=0.6e-3, outer_radius=2.0e-3, **kwargs,
+    )
+    document = design_to_dict(sim)
+    assert document["excitations"]["coaxial_ports"][0]["freq_min"] == expected
+    rebuilt = simulation_from_design(json.loads(json.dumps(document)))
+    assert rebuilt._coaxial_ports[0].freq_min == expected
+
+
+def test_coaxial_entry_without_freq_min_is_refused():
+    sim = Simulation(freq_max=6e9, domain=(0.040, 0.040, 0.020), dx=5e-4, boundary="pec")
+    sim.add_coaxial_port(
+        (0.020, 0.020, 0.020), "top", pin_length=4e-3,
+        pin_radius=0.6e-3, outer_radius=2.0e-3,
+    )
+    document = design_to_dict(sim)
+    del document["excitations"]["coaxial_ports"][0]["freq_min"]
+    with pytest.raises(UnsupportedDesignFeature) as excinfo:
+        simulation_from_design(document)
+    assert "missing=['freq_min']" in str(excinfo.value)
+
+
 @pytest.mark.parametrize("explicit_empty", (False, True))
 def test_msl_default_remains_lazy_through_design_round_trip(explicit_empty):
     sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,

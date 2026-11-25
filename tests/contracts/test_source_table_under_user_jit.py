@@ -201,7 +201,7 @@ def test_coax_staggered_samples_under_user_jit(monkeypatch):
     waveform = GaussianPulse(f0=2.4e9, bandwidth=1.2)
     port = CoaxialPort(position=(4e-3, 4e-3, 2e-3), face="bottom",
                        pin_length=2e-3, pin_radius=.635e-3, outer_radius=2.055e-3,
-                       impedance=50., excitation=waveform)
+                       impedance=50., excitation=waveform, freq_min=1e9)
 
     def build():
         return build_coaxial_tem_plane_source_specs(grid=grid, port=port, n_steps=2000)

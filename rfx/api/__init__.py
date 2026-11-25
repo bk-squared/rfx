@@ -767,6 +767,7 @@ class Simulation(
         impedance: float = 50.0,
         waveform: Callable[[float], float] | Callable[[jax.Array], jax.Array] | None = None,
         terminates: object = None,
+        freq_min: float | None = None,
     ) -> "Simulation":
         """Add an SMA-style coaxial probe port.
 
@@ -779,6 +780,7 @@ class Simulation(
         outer_radius : float — outer conductor radius (default 2.055mm)
         impedance : float — port impedance (default 50 ohm)
         waveform : excitation pulse (default GaussianPulse at freq_max/2)
+        freq_min : float — bottom of the port's band (default freq_max/10); the line is laid out for freq_min to freq_max, and a requested bin below freq_min is refused
         """
         _admit_declaration("Simulation.add_coaxial_port", locals())
         if waveform is None:
@@ -787,6 +789,7 @@ class Simulation(
         terminated = resolve_terminates(
             self, terminates, port=f"add_coaxial_port at {position}")
 
+        from rfx.sources.coaxial_port import coax_freq_min
         self._coaxial_ports.append(CoaxialPort(
             position=position,
             face=face,
@@ -795,6 +798,7 @@ class Simulation(
             outer_radius=outer_radius,
             impedance=impedance,
             excitation=waveform,
+            freq_min=coax_freq_min(freq_min, self._freq_max),
             terminates=terminated,
         ))
         return self

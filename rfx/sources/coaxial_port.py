@@ -24,7 +24,7 @@ The pin protrudes into the cavity; direction depends on the face:
 
 from __future__ import annotations
 
-from rfx.errors import AccuracyWarning
+from rfx.errors import AccuracyWarning, RfxRefusal
 from typing import NamedTuple
 
 import jax
@@ -77,6 +77,18 @@ from rfx.measurement.coax_records import (
 
 
 
+FREQ_MIN_DIVISOR = 10
+
+
+def coax_freq_min(freq_min: float | None, freq_max: float) -> float:
+    if freq_min is None:
+        return freq_max / FREQ_MIN_DIVISOR
+    value = float(freq_min)
+    if not 0 < value < freq_max:
+        raise RfxRefusal(f"add_coaxial_port(): freq_min must lie between 0 and freq_max = {freq_max / 1e9:.6g} GHz; got {value!r} Hz; pass freq_min= inside that band")
+    return value
+
+
 class CoaxialPort(NamedTuple):
     """SMA-style coaxial probe port for cavity coupling.
 
@@ -100,6 +112,7 @@ class CoaxialPort(NamedTuple):
         Port reference impedance in ohms. Default 50.
     excitation : object
         Source waveform (GaussianPulse, ModulatedGaussian, etc.).
+    freq_min : float — bottom of the declared band in Hz; the plane layout serves freq_min to the Simulation's freq_max.
     """
 
     position: tuple
@@ -109,6 +122,7 @@ class CoaxialPort(NamedTuple):
     outer_radius: float
     impedance: float
     excitation: object
+    freq_min: float
     terminates: tuple = ()
 
 

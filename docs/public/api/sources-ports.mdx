@@ -292,8 +292,10 @@ Experimental uniform coax ports: same-line calculator equality, run()/forward() 
 ```text
 add_coaxial_port(position, face="top", *, pin_length=0.005,
                  pin_radius=0.000635, outer_radius=0.002055, impedance=50.0,
-                 waveform=None, terminates=None) -> Simulation
+                 waveform=None, terminates=None, freq_min=None) -> Simulation
 ```
+
+`freq_min` (default freq_max/10) is the bottom of the band the port's planes are laid out for; a requested frequency below it is refused.
 
 The coaxial calculators build their own line, TEM source, probe planes and
 termination. The port supplies the x/y centre, `face`, the two radii, the

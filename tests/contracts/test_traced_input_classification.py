@@ -154,8 +154,8 @@ def test_t1_every_parameter_and_value_field_has_exactly_one_state():
         fn = getattr(Simulation, owner.split(".")[1])
         assert names == tuple(p.name for p in _parameters(fn, drop_first=True))
     counts = Counter(rows.get((o, p), rows.get((o, "*")))[0].split(":", 1)[0] for o, p in covered)
-    assert len(covered) == 636
-    assert counts["static"] == 86
+    assert len(covered) == 637
+    assert counts["static"] == 87
     assert counts["undecided"] == 460
     assert state_counts() == {state: counts[state] for state in (
         "traceable", "value_only", "static", "undecided", "no_number", "forwards")}
@@ -220,6 +220,7 @@ STATIC_CASES = (
     ('Simulation.add_coaxial_port', 'pin_radius', 'scalar', 'Simulation.add_coaxial_port(pin_radius='),
     ('Simulation.add_coaxial_port', 'outer_radius', 'scalar', 'Simulation.add_coaxial_port(outer_radius='),
     ('Simulation.add_coaxial_port', 'impedance', 'scalar', 'Simulation.add_coaxial_port(impedance='),
+    ('Simulation.add_coaxial_port', 'freq_min', 'scalar', 'Simulation.add_coaxial_port(freq_min='),
     ('Simulation.add_coaxial_port', 'position', 'tuple', 'Simulation.add_coaxial_port(position='),
     ('Simulation.add_current_moment_monitor', 'corner_lo', 'tuple', 'Simulation.add_current_moment_monitor(corner_lo='),
     ('Simulation.add_current_moment_monitor', 'corner_hi', 'tuple', 'Simulation.add_current_moment_monitor(corner_hi='),

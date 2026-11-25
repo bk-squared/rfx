@@ -446,6 +446,7 @@ _COAXIAL_PORT_FIELDS: dict[str, _F] = {
     "outer_radius": _NUM,
     "impedance": _NUM,
     "excitation": _WAVEFORM,
+    "freq_min": _NUM,
 }
 
 _TFSF_FIELDS = document_fields(_NUM, _INT, _STR, _BOOL, _opt)
@@ -1633,6 +1634,7 @@ def simulation_from_design(document: Any) -> Any:
             outer_radius=values["outer_radius"],
             impedance=values["impedance"],
             waveform=values["excitation"],
+            freq_min=values["freq_min"],
             terminates=_termination_inputs(sim, values["terminates"]),
         )
 

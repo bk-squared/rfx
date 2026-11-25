@@ -127,6 +127,7 @@ ROWS = (
     ('Simulation.add_coaxial_port', 'impedance', 'static', 'S1: rfx/sources/coaxial_port.py::CoaxialPort stores the static port reference; rfx/measurement/coax_port.py::coax_port_s11 uses the declared impedance'),
     ('Simulation.add_coaxial_port', 'waveform', 'undecided', 'step 2 decides; rules did not decide; rfx/api/__init__.py:883'),
     ('Simulation.add_coaxial_port', 'terminates', 'undecided', 'step 2 decides; rules did not decide; rfx/api/__init__.py:883'),
+    ('Simulation.add_coaxial_port', 'freq_min', 'static', 'S1: rfx/sources/coaxial_port.py::coax_freq_min resolves freq_min to the static band bottom stored on CoaxialPort'),
     ('Simulation.add_current_moment_monitor', 'corner_lo', 'static', 'S2: SHAPE-77,SHAPE-83; INDEX/STRUCTURE with VALIDITY only; no nominal twin or traced metric use'),
     ('Simulation.add_current_moment_monitor', 'corner_hi', 'static', 'S2: SHAPE-77,SHAPE-83; INDEX/STRUCTURE with VALIDITY only; no nominal twin or traced metric use'),
     ('Simulation.add_current_moment_monitor', 'block_size', 'static', 'S2: SHAPE-52,SHAPE-77; INDEX/STRUCTURE with VALIDITY only; no nominal twin or traced metric use'),
