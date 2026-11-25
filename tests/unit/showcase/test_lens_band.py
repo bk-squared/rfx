@@ -44,8 +44,9 @@ def test_lens_band(monkeypatch, tmp_path):
         assert data.y_lo.shape[0] == 21
         assert data.z_lo.shape[0] == 21
         calls = []
+        echo_bound = object()
         saved = SimpleNamespace(ntff_data=data, time_series=np.zeros((1, 4)),
-                                settling_source_end_index=0)
+                                settling_source_end_index=0, settling_echo_bound=echo_bound)
         def forward(**kwargs):
             calls.append(kwargs)
             return saved
@@ -55,6 +56,7 @@ def test_lens_band(monkeypatch, tmp_path):
             return SimpleNamespace(E_theta=jnp.ones(shape) * 1e-14, E_phi=jnp.zeros(shape))
         witness = namedtuple("Witness", "status share_per_bin")
         def settling(channels, dt, end, freqs, **kwargs):
+            assert kwargs["echo_bound"] is echo_bound
             np.testing.assert_allclose(freqs, expected, atol=1e3, rtol=0)
             return witness("pass", [0.] * 21)
         monkeypatch.setattr(model.sim, "forward", forward)
