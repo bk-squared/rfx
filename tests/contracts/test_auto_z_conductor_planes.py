@@ -1,5 +1,7 @@
 """Declared conductor planes and refusals before any time step."""
 import re
+import tracemalloc
+import warnings
 
 import numpy as np
 import pytest
@@ -280,3 +282,21 @@ def test_b22_periodic_z_keeps_uniform_resolution(plane):
     else:
         assert any('geometry[0]' in str(i) and 'z sheet plane miss' in str(i)
                    for i in issues)
+
+
+def test_b23_mesh_resolution_avoids_dense_sheet_footprint():
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        sim = Simulation(freq_max=5e9, domain=(.003, .003, .003), boundary='pec')
+        sim.add_thin_conductor(
+            Box((.001, .001, .0015), (.002, .002, .0015 + 35e-6)),
+            sigma_bulk=5.8e7, thickness=35e-6)
+        tracemalloc.start()
+        try:
+            resolved = sim._resolve_mesh()
+            peak = tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+    n = round(.003 / resolved['_dx']) + 1
+    assert n**3 >= 32 * 2**20
+    assert peak < n**3 / 16
