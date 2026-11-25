@@ -24,11 +24,11 @@ def quiet():
     jax.clear_caches()
 
 
-def scene(path):
+def scene(path, *, boundary='pec'):
     options = {'dx_profile': np.full(12, .001)} if (
         path.startswith('graded') or path == 'distributed_nu') else {}
     return Simulation(freq_max=20e9, domain=(.012, .011, .008), dx=.001,
-                      boundary='pec', **options)
+                      boundary=boundary, cpml_layers=2, **options)
 
 
 def invoke(sim, path, *, ports=False):
@@ -52,13 +52,13 @@ def channel(sim, kind, bins):
     elif kind == 'ntff':
         sim.add_ntff_box((.002, .002, .002), (.010, .009, .006), freqs=bins)
     else:
-        sim.add_current_moment_monitor((.002, .002, .002), (.004, .004, .004),
+        sim.add_current_moment_monitor((.002, .002, .002), (.010, .009, .006),
                                        block_size=.001, freqs=bins)
 
 
 @pytest.mark.parametrize('path', PATHS)
 def test_declared_bins_equal_returned_channels(path):
-    sim = scene(path)
+    sim = scene(path, boundary='cpml')
     for kind, frequency in zip(('plane', 'flux', 'ntff', 'moments'),
                                (5.1e9, 6.1e9, 7.1e9, 8.1e9)):
         channel(sim, kind, np.array([frequency], dtype=np.float32))
