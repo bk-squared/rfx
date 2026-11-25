@@ -91,8 +91,9 @@ class _MeshMixin:
             *(state.get(name) for name in names),
             state["_freq_max"], state["_boundary"],
             state.get("_snap"), state.get("_refinement"),
-            state.get("_periodic_axes"), state.get("_tfsf"),
-            *state.get("_waveguide_ports", ()), *state.get("_floquet_ports", ()),
+            state.get("_periodic_axes"), *state.get("_floquet_ports", ()),
+            *(getattr(entry, name, None) for entry in state.get("_waveguide_ports", ())
+              for name in ("direction", "x_range", "y_range", "z_range")),
             *geometry, *sheets,
             *(item for pair in state["_materials"].items() for item in pair),
         )
