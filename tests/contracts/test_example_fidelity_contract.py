@@ -426,8 +426,16 @@ _REF_URL_PREFIX = "https://github.com/bk-squared/rfx/"
 _MIN_REASON_WORDS = 12
 
 
-def _check_ref(where: str, ref: str) -> None:
-    """Every pointer in *ref* resolves: a real file, a line inside it."""
+def _check_ref(where: str, ref: str, anchor: list[list[str]]) -> None:
+    """Every pointer resolves and its chunk ends still carry their anchor text."""
+    assert isinstance(anchor, list) and all(
+        isinstance(item, list) and len(item) == 2
+        and all(isinstance(text, str) for text in item)
+        for item in anchor
+    ), f"{where}: anchor must be a list of two-string lists, got {anchor!r}"
+    assert all(first and last for first, last in anchor), (
+        f"{where}: anchor texts must be non-empty, got {anchor!r}")
+    anchor_index = 0
     parts = [part.strip() for part in ref.split("|")]
     assert parts and all(parts), (
         f"{where}: ref has an empty pointer -- {ref!r}")
@@ -443,7 +451,8 @@ def _check_ref(where: str, ref: str) -> None:
         assert path.is_file(), (
             f"{where}: ref names {match.group('path')!r}, which is not a file "
             "in the tree -- a pointer nobody can follow is not evidence")
-        n_lines = len(path.read_text(encoding="utf-8").splitlines())
+        lines = path.read_text(encoding="utf-8").splitlines()
+        n_lines = len(lines)
         for chunk in match.group("spec").split(","):
             bounds = _REF_CHUNK_RE.match(chunk)
             assert bounds, f"{where}: ref line spec {chunk!r} is not N or N-M"
@@ -453,6 +462,54 @@ def _check_ref(where: str, ref: str) -> None:
                 f"{where}: ref points at {match.group('path')}:{chunk}, but "
                 f"that file has {n_lines} lines -- the reason cannot be read "
                 "there")
+            assert anchor_index < len(anchor), (
+                f"{where}: anchor length {len(anchor)} is less than the number "
+                "of ref line chunks")
+            first, last = anchor[anchor_index]
+            anchor_index += 1
+            for which, number, expected in (
+                ("first", start, first), ("last", end, last),
+            ):
+                found = lines[number - 1].strip()
+                assert found == expected, (
+                    f"{where}: {match.group('path')}:{start}-{end} {which} end "
+                    f"expected anchor text {expected!r}, found {found!r}; "
+                    "point the ref at the line that carries the anchor text, "
+                    "or, when the cited code itself changed, update ref and "
+                    "anchor together")
+    assert anchor_index == len(anchor), (
+        f"{where}: anchor length {len(anchor)} does not equal the number "
+        f"of ref line chunks {anchor_index}")
+
+
+def test_ref_shifted_by_one_line_fails_its_anchor() -> None:
+    """Moving every ref chunk one line either way must invalidate its anchor."""
+    for entry in lib.load_advisory_classification():
+        where = f"{entry.get('variant')} :: {entry.get('code')}"
+        for delta in (1, -1):
+            shifted_parts = []
+            starts = []
+            for part in entry["ref"].split("|"):
+                part = part.strip()
+                if part.startswith("https://github.com/bk-squared/rfx/"):
+                    shifted_parts.append(part)
+                    continue
+                path, spec = part.rsplit(":", 1)
+                shifted_chunks = []
+                for chunk in spec.split(","):
+                    bounds = chunk.split("-")
+                    start = int(bounds[0])
+                    end = int(bounds[-1])
+                    starts.append(start)
+                    shifted_chunks.append(
+                        str(start + delta) if len(bounds) == 1
+                        else f"{start + delta}-{end + delta}")
+                shifted_parts.append(path + ":" + ",".join(shifted_chunks))
+            if not starts or (delta == -1 and min(starts) <= 1):
+                continue
+            shifted_ref = " | ".join(shifted_parts)
+            with pytest.raises(AssertionError):
+                _check_ref(where, shifted_ref, entry["anchor"])
 
 
 def test_advisory_classifications_are_well_formed() -> None:
@@ -464,13 +521,14 @@ def test_advisory_classifications_are_well_formed() -> None:
     ref check used to be ``ref.strip()``, which ``a.py:1`` passes; a pointer
     nobody can follow is the same as no evidence, and the whole value of this
     file is that a reader can go and check.
+    The ref's lines must still carry their anchor text.
 
     ``defect-open`` additionally needs an integer issue number, so a row
     cannot be parked as a known defect with nothing tracking it.
     """
     for entry in lib.load_advisory_classification():
         where = f"{entry.get('variant')} :: {entry.get('code')}"
-        for field in ("variant", "code", "rows", "disposition", "reason", "ref"):
+        for field in ("variant", "code", "rows", "disposition", "reason", "ref", "anchor"):
             assert field in entry, f"{where}: classification entry lacks {field!r}"
         assert entry["disposition"] in lib.ADVISORY_DISPOSITIONS, (
             f"{where}: unknown disposition {entry['disposition']!r} -- "
@@ -486,7 +544,7 @@ def test_advisory_classifications_are_well_formed() -> None:
         assert entry["ref"].strip(), (
             f"{where}: ref must point at the lines (or the issue) the reason "
             "is read from")
-        _check_ref(where, entry["ref"])
+        _check_ref(where, entry["ref"], entry["anchor"])
         if entry["disposition"] == "defect-open":
             assert isinstance(entry.get("issue"), int), (
                 f"{where}: 'defect-open' requires an integer issue number -- "

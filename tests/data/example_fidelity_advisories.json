@@ -1,15 +1,31 @@
 {
- "_comment": "Per-row disposition for every preflight advisory pinned in example_fidelity_snapshot.json (#737 item 1). The snapshot pins WHAT each audited example emits; this file says WHY each of those rows is there, so the gate is a zero-UNEXPLAINED-advisory bar rather than a drift pin. Entries are keyed by (variant, code) and carry the number of pinned rows that pair covers -- rows that share a code on one variant are the same condition on different ports, axes or entities, and the snapshot already pins each one's full text. test_example_fidelity_contract.py asserts the mapping is a bijection and that the row counts add up, so a new advisory, a removed one, or a stale entry all fail. disposition: 'intended' = the example deliberately shows or tolerates this condition (reason cites the example's own docstring/comment or the physics); 'defect-open' = the example should not emit this and the fix needs work beyond this file's PR, with the issue number that tracks it. A defect small enough to fix leaves no entry -- the row is gone from the snapshot instead. validation/crossval/* scripts are frozen research records (#928): their rows are classified here, never edited.",
+ "_comment": "Per-row disposition for every preflight advisory pinned in example_fidelity_snapshot.json (#737 item 1). The snapshot pins WHAT each audited example emits; this file says WHY each of those rows is there, so the gate is a zero-UNEXPLAINED-advisory bar rather than a drift pin. Entries are keyed by (variant, code) and carry the number of pinned rows that pair covers -- rows that share a code on one variant are the same condition on different ports, axes or entities, and the snapshot already pins each one's full text. test_example_fidelity_contract.py asserts the mapping is a bijection and that the row counts add up, so a new advisory, a removed one, or a stale entry all fail. disposition: 'intended' = the example deliberately shows or tolerates this condition (reason cites the example's own docstring/comment or the physics); 'defect-open' = the example should not emit this and the fix needs work beyond this file's PR, with the issue number that tracks it. A defect small enough to fix leaves no entry -- the row is gone from the snapshot instead. validation/crossval/* scripts are frozen research records (#928): their rows are classified here, never edited. anchor holds, for each line chunk of ref, the stripped text of its first and last lines, and the contract asserts the file still has that text there, so a ref moved by an edit above it fails.",
  "entries": [
   {
+   "anchor": [
+    [
+     "\"\"\"Create a shareable rfx artifact bundle (scene + mesh + report) without running FDTD.",
+     "\"\"\""
+    ],
+    [
+     "def main() -> None:",
+     "print(bundle.root)"
+    ]
+   ],
    "code": "floating_port",
    "disposition": "intended",
    "reason": "The demo never time-steps: its docstring is 'Create a shareable rfx artifact bundle (scene + mesh + report) WITHOUT running FDTD', and main() only calls export_artifact_bundle(). The advisory is about excitation coupling during a solve (a single-cell port in substrate cannot drive the patch TM mode, issue #71); this scene has no patch and no solve, and the advisory itself is part of what the exported review report carries. No number this example prints depends on the port.",
-   "ref": "examples/tutorials/artifact_report_demo.py:1-13,45-58",
+   "ref": "examples/tutorials/artifact_report_demo.py:1-13,46-58",
    "rows": 1,
    "variant": "examples/tutorials/artifact_report_demo.py::build_demo_simulation::default"
   },
   {
+   "anchor": [
+    [
+     "def make_sim() -> Simulation:",
+     "sim.add_probe((0.010, 0.008, 0.008), component=\"ez\")"
+    ]
+   ],
    "code": "no_sources",
    "disposition": "intended",
    "reason": "make_sim() is the shared EMPTY domain factory -- 'Build the small open domain shared by every material example'. The script always follows it with add_sample(), which adds the source and probe. The advisory therefore describes the half-built simulation this build-only gate audits, not anything the example runs: the six end-to-end solves in main() all go through add_sample() first. It is a statement about the audited entry point, not about the example's physics.",
@@ -18,6 +34,20 @@
    "variant": "examples/tutorials/materials_and_dispersion.py::make_sim::default"
   },
   {
+   "anchor": [
+    [
+     "sim.add_material(\"fr4\", eps_r=eps_r, sigma=0.0)",
+     "# metal's sigma_bulk makes this a lossless PEC sheet and that `thickness`"
+    ],
+    [
+     "# FR4 is modelled lossless (sigma=0) so preflight's infinite-Q advisory will",
+     "# finding about this geometry."
+    ],
+    [
+     "for m in modes:",
+     "print(f\"  f = {m.freq/1e9:.4f} GHz   Q = {m.Q:5.1f}   amp = {m.amplitude:.2e}\")"
+    ]
+   ],
    "code": "lossless_q",
    "disposition": "intended",
    "reason": "The tutorial deliberately models FR4 with sigma=0. The printed harminv Q values describe that lossless model; they do not include FR4 dielectric loss. main() prints the lossless_q advisory before the solve.",
@@ -26,6 +56,24 @@
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
   {
+   "anchor": [
+    [
+     "3. Near-to-far-field (NTFF) box placement.  Every face should sit at least half",
+     "model."
+    ],
+    [
+     "the realized cavity is the declared one and the run asserts it at build",
+     "49-sample phi grid below repeats the 0/2pi seam and the radiated-power sum"
+    ],
+    [
+     "box_lo = (pad, pad, max(pad, z_gnd - 3 * DX))",
+     "sim.add_ntff_box(corner_lo=box_lo, corner_hi=box_hi, freqs=NTFF_FREQS)"
+    ],
+    [
+     "print(f\"preflight advisories: {len(list(report))}\")",
+     "result = sim.run(num_periods=NUM_PERIODS)"
+    ]
+   ],
    "code": "ntff_near_field",
    "disposition": "intended",
    "reason": "Teaching point 3 of the tutorial: 'Every face should sit at least half a wavelength from the radiator where the domain allows. The face below the ground plane cannot: it sits 6 mm below the ground. Preflight flags it, the run quotes the warning verbatim, and a solver-to-solver cross-check backs the placement. Preflight output is part of the result; do not suppress it.' The placement is cross-checked against openEMS at the design-mode bin: D 6.59 dBi against openEMS 6.83 dBi, -0.24 dB (module docstring).",
@@ -34,6 +82,16 @@
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
   {
+   "anchor": [
+    [
+     "Geometry: the openEMS \"Simple Patch Antenna\" tutorial \u2014 a 32 x 40 mm patch on a",
+     "with the project."
+    ],
+    [
+     "print(f\"preflight advisories: {len(list(report))}\")",
+     "result = sim.run(num_periods=NUM_PERIODS)"
+    ]
+   ],
    "code": "ntff_small_ground_plane",
    "disposition": "intended",
    "reason": "The geometry is the openEMS 'Simple Patch Antenna' tutorial verbatim -- a 60 x 60 mm finite ground plane -- and the finite plane is the structure under test, not an oversight. main()'s comment lists this row among the advisories expected on this fixture: 'ntff_small_ground_plane for finite-ground diffraction'; the openEMS reference solves the same finite ground plane.",
@@ -42,6 +100,12 @@
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
   {
+   "anchor": [
+    [
+     "#     num_periods=20 the record is 2.4 far-boundary round trips long, and",
+     "# that is the interesting part: it reports the layout in guide wavelengths"
+    ]
+   ],
    "code": "no_sources",
    "disposition": "intended",
    "reason": "The tutorial ASSERTS this row. main(): 'Because this model deliberately ends after construction, general preflight should report that there is no generic run source', then expected_build_only_advisory = bool(coaxial_report.by_code('no_sources')) and prints it. A missing row here would be the defect.",
@@ -50,6 +114,12 @@
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_coaxial_port::default"
   },
   {
+   "anchor": [
+    [
+     "transfer-matrix result is available as a sanity witness. The grid is kept coarse",
+     "matches the lossless analytic Fresnel reference."
+    ]
+   ],
    "code": "lossless_q",
    "disposition": "intended",
    "reason": "Docstring: 'Preflight will flag the under-resolution and the lossless slab -- both are expected here: this is a fast method demo, we measure R/T (not Q), and a lossless slab is what matches the lossless analytic Fresnel reference.' The advisory's own text carves this out ('Harmless if you are not measuring Q').",
@@ -58,6 +128,12 @@
    "variant": "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=True"
   },
   {
+   "anchor": [
+    [
+     "transfer-matrix result is available as a sanity witness. The grid is kept coarse",
+     "matches the lossless analytic Fresnel reference."
+    ]
+   ],
    "code": "mesh_resolution",
    "disposition": "intended",
    "reason": "Same docstring sentence: the grid 'is kept coarse for speed; halving dx reduces the error toward the analytic curve', and the under-resolution is named as expected. Three rows = the three axes of the one dielectric.",
@@ -66,111 +142,214 @@
    "variant": "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=True"
   },
   {
+   "anchor": [
+    [
+     "Decision quantity: rho(f) = +v_dft/i_dft at the driven wire port's mid cell,",
+     "are pre-declared in the protocol; this script only evaluates them."
+    ],
+    [
+     "def build(nu: bool, r_load: float | None, boundary: str = \"pec\"):",
+     "return sim"
+    ]
+   ],
    "code": "mesh_resolution",
    "disposition": "intended",
    "reason": "The 2 mm gap the advisory measures is the fixture's defining dimension: two PEC bars at z = 5 mm and z = 7 mm with the driven wire port in between, and the build-time check asserts exactly those wall planes ([3, 4, 5, 7, 8, 9] mm). The decision quantity is rho(f) = v/i at the driven cell against a known external load, which is a circuit-law measurement on that gap, not a propagation measurement that needs cells per wavelength.",
-   "ref": "validation/research/issue683_sampling_order_decision.py:19-21,90-112",
+   "ref": "validation/research/issue683_sampling_order_decision.py:19-21,91-113",
    "rows": 1,
    "variant": "validation/research/issue683_sampling_order_decision.py::build::nu-matched"
   },
   {
+   "anchor": [
+    [
+     "Two arms on bit-identical geometry:",
+     "POST = NU lane, uniform-valued dz_profile, run()   (samples AFTER injection)"
+    ],
+    [
+     "def build(nu: bool, r_load: float | None, boundary: str = \"pec\"):",
+     "return sim"
+    ]
+   ],
    "code": "wire_port_dead_cell_classification_unavailable",
    "disposition": "intended",
    "reason": "The variant IS the NU arm: 'POST = NU lane, uniform-valued dz_profile, run()' is one of the two arms the experiment compares, so dz_profile is set by construction. The advisory reports an rfx limitation (the shared wire-port primitive covers the uniform path only, issue #544), not a property of this fixture, and the fixture answers it directly: RC.assert_wall_planes checks the realized live/dead terminals the advisory asks the reader to inspect.",
-   "ref": "validation/research/issue683_sampling_order_decision.py:6-8,90-112",
+   "ref": "validation/research/issue683_sampling_order_decision.py:6-8,91-113",
    "rows": 2,
    "variant": "validation/research/issue683_sampling_order_decision.py::build::nu-matched"
   },
   {
+   "anchor": [
+    [
+     "def build_fix_a(load: str | float, *, dx=DX_A, nz=NZ_A, extent=EXTENT_A):",
+     "return sim"
+    ]
+   ],
    "code": "assembly_refusal",
    "disposition": "defect-open",
    "issue": 737,
    "reason": "run() refuses this variant: the four one-cell PEC columns of the 'short' load short the wire port's only extent cell (ez edge at (0.005, 0.005, 0.0035)-(0.004) m), so the port has no live cell to terminate or drive (#318). The fixture predates that admission rule; preflight used to print a clean pass for a model run() raises on, and now reports the same refusal as an error. The variant has to be redrawn (port moved off the shorting columns) or removed by whoever owns the falsifier script.",
-   "ref": "validation/research/issue764_wireport_norm_falsifiers.py:71-129",
+   "ref": "validation/research/issue764_wireport_norm_falsifiers.py:72-130",
    "rows": 1,
    "variant": "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short"
   },
   {
+   "anchor": [
+    [
+     "Pre-declaration (binding, committed BEFORE this file existed):",
+     "docs/design_notes/issue764_wireport_norm_predeclaration.md"
+    ],
+    [
+     "def build_fix_a(load: str | float, *, dx=DX_A, nz=NZ_A, extent=EXTENT_A):",
+     "return sim"
+    ]
+   ],
    "code": "mesh_resolution",
    "disposition": "intended",
    "reason": "Every row is a deliberate feature of the FIX-A falsifier fixture. The 'short' load is four 1-cell PEC columns bridging the 1 mm gap between two electrode plates ('pec' x/y-extent 500 um = 1.0 cells), and the gap rows (1000 um = 2 cells along z, 500 um = 1 cell along x/y, and the 0-cell gaps where the columns touch the plates) are the terminals the experiment measures rho(f) across. The pre-declaration binds this geometry; the build asserts the realized wall planes rather than trusting a thickness convention.",
-   "ref": "validation/research/issue764_wireport_norm_falsifiers.py:3-4,71-129",
+   "ref": "validation/research/issue764_wireport_norm_falsifiers.py:3-4,72-130",
    "rows": 13,
    "variant": "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short"
   },
   {
+   "anchor": [
+    [
+     "#",
+     "material=\"pec\")"
+    ]
+   ],
    "code": "pec_box_one_cell",
    "disposition": "intended",
    "reason": "The four one-cell PEC volumes named by the advisory ARE the shorting columns of the 'short' load. 'Realized as a filled slab with walls on BOTH faces' is what a short across the gap has to be, and the script's own comment makes that the point: 'a volume realizes walls at BOTH its faces and shorts every normal edge between them at ANY thickness, so the gap faces at z = 3.5 mm and z = 4.5 mm are terminals by construction'.",
-   "ref": "validation/research/issue764_wireport_norm_falsifiers.py:92-111",
+   "ref": "validation/research/issue764_wireport_norm_falsifiers.py:93-112",
    "rows": 1,
    "variant": "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short"
   },
   {
+   "anchor": [
+    [
+     "NU lane only (POST-injection ordering, measured correct per #683). Every",
+     "named."
+    ],
+    [
+     "# Build-time (no solve): the declared terminals ARE the realized wall",
+     "label=\"FIX-A electrode plates\", tol_m=1e-12)"
+    ]
+   ],
    "code": "wire_port_dead_cell_classification_unavailable",
    "disposition": "intended",
    "reason": "Same as issue683: the battery is declared 'NU lane only (POST-injection ordering, measured correct per #683)' and runs with an explicit dz_profile, so the uniform-only dead-cell classifier (#544) cannot speak. The fixture replaces it with an explicit build-time terminal assertion.",
-   "ref": "validation/research/issue764_wireport_norm_falsifiers.py:5-9,119-128",
+   "ref": "validation/research/issue764_wireport_norm_falsifiers.py:6-9,120-129",
    "rows": 1,
    "variant": "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short"
   },
   {
+   "anchor": [
+    [
+     "def build_fix_t(*, nu: bool, drive: int | None, pulse=None):",
+     "def build_fix_t(*, nu: bool, drive: int | None, pulse=None):"
+    ]
+   ],
    "code": "off_lattice_design_edges",
    "disposition": "intended",
    "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The off-lattice row reports the displacement of each solved sheet face from the drawing. 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent).  The mesh and numerical targets are retained, with this residual visible to the user.",
-   "ref": "validation/research/issue770_offdiag_adjudication.py:93 | https://github.com/bk-squared/rfx/issues/1138",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:94 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0"
   },
   {
+   "anchor": [
+    [
+     "# Canonical THRU battery geometry, verbatim constants",
+     "DX = 0.5e-3"
+    ],
+    [
+     "def build_fix_t(*, nu: bool, drive: int | None, pulse=None):",
+     "return sim"
+    ],
+    [
+     "def preflight_verbatim(sim, label):",
+     "return codes, issues"
+    ]
+   ],
    "code": "pec_faces_finite_pec",
    "disposition": "intended",
    "reason": "FIX-T is the canonical two-port THRU battery fixture, verbatim: a microstrip trace over a z_lo PEC ground (boundary z=Boundary(lo='pec', hi='cpml')). Infinite ground + finite trace is the microstrip model. The harness prints every preflight row verbatim per arm (preflight_verbatim()).",
-   "ref": "validation/research/issue770_offdiag_adjudication.py:38-40,93-120,123-129",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:39-41,94-122,125-131",
    "rows": 1,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0"
   },
   {
+   "anchor": [
+    [
+     "def build_fix_t(*, nu: bool, drive: int | None, pulse=None):",
+     "def build_fix_t(*, nu: bool, drive: int | None, pulse=None):"
+    ]
+   ],
    "code": "sheet_effective_size",
    "disposition": "intended",
    "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The sheet-size row reports the solved in-plane extent, including the free-edge offset. 2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%).  The mesh and numerical targets are retained, with this residual visible to the user.",
-   "ref": "validation/research/issue770_offdiag_adjudication.py:93 | https://github.com/bk-squared/rfx/issues/1138",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:94 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0"
   },
   {
+   "anchor": [
+    [
+     "def build_fix_t(*, nu: bool, drive: int | None, pulse=None):",
+     "cpml_layers=CPML_LAYERS, **kw)"
+    ]
+   ],
    "code": "wire_port_dead_cell_classification_unavailable",
    "disposition": "intended",
    "reason": "The nu-drive0 variant is the NU arm of the adjudication (nu=True sets a uniform-valued dz_profile so the NU lane runs the same geometry); the advisory is the uniform-only-classifier limitation (#544), one row per wire port.",
-   "ref": "validation/research/issue770_offdiag_adjudication.py:93-101",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:94-103",
    "rows": 2,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0"
   },
   {
+   "anchor": [
+    [
+     "def build_fix_t(*, nu: bool, drive: int | None, pulse=None):",
+     "def build_fix_t(*, nu: bool, drive: int | None, pulse=None):"
+    ]
+   ],
    "code": "off_lattice_design_edges",
    "disposition": "intended",
    "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The off-lattice row reports the displacement of each solved sheet face from the drawing. 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent).  The mesh and numerical targets are retained, with this residual visible to the user.",
-   "ref": "validation/research/issue770_offdiag_adjudication.py:93 | https://github.com/bk-squared/rfx/issues/1138",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:94 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both"
   },
   {
+   "anchor": [
+    [
+     "def build_fix_t(*, nu: bool, drive: int | None, pulse=None):",
+     "return sim"
+    ]
+   ],
    "code": "pec_faces_finite_pec",
    "disposition": "intended",
    "reason": "Same fixture on the uniform lane (nu=False): microstrip ground on the z_lo PEC face, finite PEC trace.",
-   "ref": "validation/research/issue770_offdiag_adjudication.py:93-120",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:94-122",
    "rows": 1,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both"
   },
   {
+   "anchor": [
+    [
+     "def build_fix_t(*, nu: bool, drive: int | None, pulse=None):",
+     "def build_fix_t(*, nu: bool, drive: int | None, pulse=None):"
+    ]
+   ],
    "code": "sheet_effective_size",
    "disposition": "intended",
    "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The sheet-size row reports the solved in-plane extent, including the free-edge offset. 2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%).  The mesh and numerical targets are retained, with this residual visible to the user.",
-   "ref": "validation/research/issue770_offdiag_adjudication.py:93 | https://github.com/bk-squared/rfx/issues/1138",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:94 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both"
   },
   {
+   "anchor": [],
    "code": "line_stub_behind_port",
    "disposition": "intended",
    "reason": "The existing graded validation geometry is retained under #1512: its through-line extends from x=0 to 24 mm behind ports at x=2 and 22 mm. Each realized tail is 2.032 mm, with eps_eff=2.869386, an open-end extension of 0.105 mm and quarter-wave frequency 20.6997 GHz on the effective length, outside the refusal interval for the 0..7 GHz band. Both findings are tolerated to preserve the geometry underlying the historical readings; they refer to through-line tails, not the intentional mid-line notch branch.",
@@ -179,14 +358,26 @@
    "variant": "validation/research/multiband_nu/msl_notch_graded.py::build_graded::A_off"
   },
   {
+   "anchor": [
+    [
+     "EPS_R_SUBSTRATE = 3.66",
+     "CPML_LAYERS = 8"
+    ]
+   ],
    "code": "lossless_q",
    "disposition": "intended",
    "reason": "The substrate is declared lossless because both frozen records are: the openEMS tutorial and the Palace run solve eps_r 3.66 with no tan_delta, and this arm is compared with them. The arm quotes a notch FREQUENCY and an |S21| magnitude, never a Q, and it carries the case's own ring-down witness (-40 dB) to show the record ended after the lossless stub stopped ringing.",
-   "ref": "tests/crossval/msl_notch_filter/test_msl_notch_filter.py:95-101",
+   "ref": "tests/crossval/msl_notch_filter/test_msl_notch_filter.py:117-123",
    "rows": 1,
    "variant": "validation/research/multiband_nu/msl_notch_graded.py::build_graded::A_off"
   },
   {
+   "anchor": [
+    [
+     "\"\"\"The MSL open-stub notch filter on a three-axis band-graded mesh.",
+     "The board, the estimator, the comparison and every threshold come from the case"
+    ]
+   ],
    "code": "pec_faces_finite_pec",
    "disposition": "intended",
    "reason": "The board IS a microstrip: its ground is the z_lo PEC face and its line and stub are finite PEC sheets on the substrate top, which is the configuration this advisory describes. The crossval case this arm extends declares the same boundary (BoundarySpec z lo='pec') and both external records -- openEMS's own MSL_NotchFilter tutorial and the Palace FEM run -- are taken on an infinite ground plane, so a finite one would be the wrong board, not a safer one.",
@@ -195,6 +386,12 @@
    "variant": "validation/research/multiband_nu/msl_notch_graded.py::build_graded::A_off"
   },
   {
+   "anchor": [
+    [
+     "\"\"\"W4 \u2014 supraconvergence of the P-C microstrip-type resonator (F-S4)",
+     "\"\"\""
+    ]
+   ],
    "code": "mesh_resolution",
    "disposition": "intended",
    "reason": "The study IS a mesh-refinement study: 'Arms: multiband P-C at s in {1, 1.5, 2, 3}; uniform-fine control at the same scales; reference = uniform-fine at s=2/3.' The audited variant is the s = 1.5 arm, so a coarse-cell advisory on the substrate (10.7 cells/lambda_eff) and the superstrate (15.0, exactly at the bar) is the arm doing its job -- supraconvergence is measured BY running under-resolved arms against a fine reference. Silencing it would delete the observable.",
@@ -203,6 +400,12 @@
    "variant": "validation/research/multiband_nu/w4_supraconvergence.py::build_sim::s1.5_multiband"
   },
   {
+   "anchor": [
+    [
+     "\"\"\"W4 REDESIGN (W4R) \u2014 supraconvergence of the P-C resonator observed",
+     "2. Knife-edge-free drawing (the actual root cause, found once the port"
+    ]
+   ],
    "code": "mesh_resolution",
    "disposition": "intended",
    "reason": "The study IS a mesh-refinement study: 'Arms: multiband P-C at s in {1, 1.5, 2, 3}; uniform-fine control at the same scales; reference = uniform-fine at s=2/3.' The audited variant is the s = 1.5 arm, so a coarse-cell advisory on the substrate (10.7 cells/lambda_eff) and the superstrate (15.0, exactly at the bar) is the arm doing its job -- supraconvergence is measured BY running under-resolved arms against a fine reference. Silencing it would delete the observable.",
@@ -211,118 +414,227 @@
    "variant": "validation/research/multiband_nu/w4r_port_supraconvergence.py::build_sim::s1.5_multiband"
   },
   {
+   "anchor": [
+    [
+     "2. a centered homogeneous dielectric cavity is rejected by production",
+     "validation with precise fail-closed reasons,"
+    ]
+   ],
    "code": "mesh_resolution",
    "disposition": "intended",
-   "reason": "This variant exists to be REJECTED: the script is 'intentionally conservative' and demonstrates that 'a centered homogeneous dielectric cavity is rejected by production validation with precise fail-closed reasons'. The advisory reads 'dielectric on x: 12.5 cells per lambda_eff ... Need >=15'; the coarse mesh is the case under test, and no observable is claimed from this arm.",
-   "ref": "validation/research/subgrid/13_subgrid_material_validation.py:3-18",
+   "reason": "This variant exists to be REJECTED: the script demonstrates that 'a centered homogeneous dielectric cavity is rejected by production validation with precise fail-closed reasons'. The advisory reads 'dielectric on x: 12.5 cells per lambda_eff ... Need >=15'; the coarse mesh is the case under test, and no observable is claimed from this arm.",
+   "ref": "validation/research/subgrid/13_subgrid_material_validation.py:11-12",
    "rows": 3,
    "variant": "validation/research/subgrid/13_subgrid_material_validation.py::build_dielectric_subgrid::dielectric_centered"
   },
   {
+   "anchor": [
+    [
+     "3. the same dielectric cavity is solved on the uniform reference lane and",
+     "not a promoted production case."
+    ]
+   ],
    "code": "mesh_resolution",
    "disposition": "intended",
    "reason": "The uniform arm deliberately reuses the rejected case's mesh so the two are comparable: it 'is solved on the uniform reference lane and checked against the analytic TM110 resonance, proving that the material setup is physically meaningful even though that centered subgrid case is [rejected]'. Its claim is checked against a closed form, which is what makes 12.5 cells/lambda_eff acceptable to state.",
-   "ref": "validation/research/subgrid/13_subgrid_material_validation.py:3-20",
+   "ref": "validation/research/subgrid/13_subgrid_material_validation.py:13-16",
    "rows": 3,
    "variant": "validation/research/subgrid/13_subgrid_material_validation.py::build_uniform_reference::uniform_reference"
   },
   {
+   "anchor": [
+    [
+     "def build_thru(pulse: GaussianPulse,",
+     "def build_thru(pulse: GaussianPulse,"
+    ]
+   ],
    "code": "off_lattice_design_edges",
    "disposition": "intended",
    "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The off-lattice row reports the displacement of each solved sheet face from the drawing. 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent).  The mesh and numerical targets are retained, with this residual visible to the user.",
-   "ref": "validation/research/thru_feedpost_deembed.py:75 | https://github.com/bk-squared/rfx/issues/1138",
+   "ref": "validation/research/thru_feedpost_deembed.py:76 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::band-pulse"
   },
   {
+   "anchor": [
+    [
+     "sim = Simulation(snap=\"declared\",",
+     ")"
+    ],
+    [
+     "THRU_CODES = [\"mesh_resolution\", \"pec_faces_finite_pec\", \"uncoded\"]",
+     "THRU_CODES = [\"mesh_resolution\", \"pec_faces_finite_pec\", \"uncoded\"]"
+    ]
+   ],
    "code": "pec_faces_finite_pec",
    "disposition": "intended",
    "reason": "The battery-verbatim THRU: a foil microstrip trace (zero-thickness PEC Box) over a z_lo PEC ground face. Infinite ground + finite trace is the microstrip model. The consumer harness pins this code in its own expected-code list (THRU_CODES) so a change in the fixture's emissions fails there too.",
-   "ref": "validation/research/thru_feedpost_deembed.py:84-105 | validation/research/thru_feedpost_twoseg_extraction.py:321",
+   "ref": "validation/research/thru_feedpost_deembed.py:86-103 | validation/research/thru_feedpost_twoseg_extraction.py:323",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::band-pulse"
   },
   {
+   "anchor": [
+    [
+     "def build_thru(pulse: GaussianPulse,",
+     "def build_thru(pulse: GaussianPulse,"
+    ]
+   ],
    "code": "sheet_effective_size",
    "disposition": "intended",
    "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The sheet-size row reports the solved in-plane extent, including the free-edge offset. 2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%).  The mesh and numerical targets are retained, with this residual visible to the user.",
-   "ref": "validation/research/thru_feedpost_deembed.py:75 | https://github.com/bk-squared/rfx/issues/1138",
+   "ref": "validation/research/thru_feedpost_deembed.py:76 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::band-pulse"
   },
   {
+   "anchor": [
+    [
+     "def build_thru(pulse: GaussianPulse,",
+     "def build_thru(pulse: GaussianPulse,"
+    ]
+   ],
    "code": "off_lattice_design_edges",
    "disposition": "intended",
    "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The off-lattice row reports the displacement of each solved sheet face from the drawing. 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent).  The mesh and numerical targets are retained, with this residual visible to the user.",
-   "ref": "validation/research/thru_feedpost_deembed.py:75 | https://github.com/bk-squared/rfx/issues/1138",
+   "ref": "validation/research/thru_feedpost_deembed.py:76 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::insitu-refplane"
   },
   {
+   "anchor": [
+    [
+     "sim = Simulation(snap=\"declared\",",
+     ")"
+    ],
+    [
+     "THRU_CODES = [\"mesh_resolution\", \"pec_faces_finite_pec\", \"uncoded\"]",
+     "THRU_CODES = [\"mesh_resolution\", \"pec_faces_finite_pec\", \"uncoded\"]"
+    ]
+   ],
    "code": "pec_faces_finite_pec",
    "disposition": "intended",
    "reason": "The battery-verbatim THRU: a foil microstrip trace (zero-thickness PEC Box) over a z_lo PEC ground face. Infinite ground + finite trace is the microstrip model. The consumer harness pins this code in its own expected-code list (THRU_CODES) so a change in the fixture's emissions fails there too.",
-   "ref": "validation/research/thru_feedpost_deembed.py:84-105 | validation/research/thru_feedpost_twoseg_extraction.py:321",
+   "ref": "validation/research/thru_feedpost_deembed.py:86-103 | validation/research/thru_feedpost_twoseg_extraction.py:323",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::insitu-refplane"
   },
   {
+   "anchor": [
+    [
+     "def build_thru(pulse: GaussianPulse,",
+     "def build_thru(pulse: GaussianPulse,"
+    ]
+   ],
    "code": "sheet_effective_size",
    "disposition": "intended",
    "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The sheet-size row reports the solved in-plane extent, including the free-edge offset. 2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%).  The mesh and numerical targets are retained, with this residual visible to the user.",
-   "ref": "validation/research/thru_feedpost_deembed.py:75 | https://github.com/bk-squared/rfx/issues/1138",
+   "ref": "validation/research/thru_feedpost_deembed.py:76 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::insitu-refplane"
   },
   {
+   "anchor": [
+    [
+     "def build_singlepost(pulse: GaussianPulse,",
+     "def build_singlepost(pulse: GaussianPulse,"
+    ]
+   ],
    "code": "off_lattice_design_edges",
    "disposition": "intended",
    "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The off-lattice row reports the displacement of each solved sheet face from the drawing. 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 21mm, worst face residual 175\u00b5m (0.83% of the extent).  The mesh and numerical targets are retained, with this residual visible to the user.",
-   "ref": "validation/research/thru_feedpost_twoseg_extraction.py:216 | https://github.com/bk-squared/rfx/issues/1138",
+   "ref": "validation/research/thru_feedpost_twoseg_extraction.py:217 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_twoseg_extraction.py::build_singlepost::refplane-n10"
   },
   {
+   "anchor": [
+    [
+     "def build_singlepost(pulse: GaussianPulse,",
+     "return sim"
+    ],
+    [
+     "SINGLEPOST_CODES = [\"mesh_resolution\", \"pec_faces_finite_pec\",",
+     "\"refplane_partial_optin\", \"uncoded\"]"
+    ]
+   ],
    "code": "pec_faces_finite_pec",
    "disposition": "intended",
    "reason": "Same microstrip line as build_thru, single-post arm: z_lo PEC ground, finite PEC trace. Pinned in SINGLEPOST_CODES.",
-   "ref": "validation/research/thru_feedpost_twoseg_extraction.py:216-252,325-326",
+   "ref": "validation/research/thru_feedpost_twoseg_extraction.py:217-254,327-328",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_twoseg_extraction.py::build_singlepost::refplane-n10"
   },
   {
+   "anchor": [
+    [
+     "# refplane_partial_optin is the DELIBERATE design: only the driven port",
+     "\"refplane_partial_optin\", \"uncoded\"]"
+    ]
+   ],
    "code": "refplane_partial_optin",
    "disposition": "intended",
    "reason": "Stated as deliberate in the script, next to the code list that pins it: 'refplane_partial_optin is the DELIBERATE design: only the driven port opts into the plane instrument (the passive far termination stays on the default path; the harness consumes raw plane accumulators only).' The advisory's failure mode (off-diagonal S entries silently on the legacy path) cannot bite a harness that reads the raw plane accumulators of the driven port and never asks for an off-diagonal S entry.",
-   "ref": "validation/research/thru_feedpost_twoseg_extraction.py:322-326",
+   "ref": "validation/research/thru_feedpost_twoseg_extraction.py:324-328",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_twoseg_extraction.py::build_singlepost::refplane-n10"
   },
   {
+   "anchor": [
+    [
+     "def build_singlepost(pulse: GaussianPulse,",
+     "def build_singlepost(pulse: GaussianPulse,"
+    ]
+   ],
    "code": "sheet_effective_size",
    "disposition": "intended",
    "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The sheet-size row reports the solved in-plane extent, including the free-edge offset. 2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 21mm, nodes cover 21mm, solved as 21.35mm (+1.67%).  The mesh and numerical targets are retained, with this residual visible to the user.",
-   "ref": "validation/research/thru_feedpost_twoseg_extraction.py:216 | https://github.com/bk-squared/rfx/issues/1138",
+   "ref": "validation/research/thru_feedpost_twoseg_extraction.py:217 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_twoseg_extraction.py::build_singlepost::refplane-n10"
   },
   {
+   "anchor": [
+    [
+     "box_z_lo = cpml_t + m",
+     "cx, cy = Lx / 2.0, Ly / 2.0"
+    ],
+    [
+     "sim.add_ntff_box(corner_lo=box_lo, corner_hi=box_hi, freqs=[f0])",
+     "(cx + plate_half, cy + plate_half, float(plate_z))), material=\"pec\")"
+    ]
+   ],
    "code": "ntff_near_field",
    "disposition": "intended",
    "reason": "The NTFF box keeps lambda/2 from the superstrate edge (cx_min = cpml + margin + half + lambda/2); the reflector's solved edge lies EDGE_OFFSET (0.35) of a cell beyond the superstrate width, so each lateral box face is 47.05 mm (0.47 lambda) from the plate on the SMOKE mesh. That has been the solved geometry since the plate was snapped to whole cells; the advisory became visible when the plate was drawn at its solved size instead of being run with snap='declared' and skip_preflight=True. The far-field numbers are unchanged by the redraw (bare +4.92, optimized +7.20 dBi on SMOKE).",
-   "ref": "validation/tmtt_paper/beam_steering_superstrate.py:180-195,232-260",
+   "ref": "validation/tmtt_paper/beam_steering_superstrate.py:196-210,248-276",
    "rows": 4,
    "variant": "validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default"
   },
   {
+   "anchor": [
+    [
+     "\"\"\"Beam-steering dielectric superstrate over a reflector-backed dipole.",
+     "equivalence)."
+    ],
+    [
+     "cpml_layers = 10",
+     "cpml_t = cpml_layers * dx"
+    ],
+    [
+     "sim.add_ntff_box(corner_lo=box_lo, corner_hi=box_hi, freqs=[f0])",
+     "(cx + plate_half, cy + plate_half, float(plate_z))), material=\"pec\")"
+    ]
+   ],
    "code": "ntff_small_ground_plane",
    "disposition": "intended",
    "reason": "The finite reflector is the structure: 'An x-oriented electric dipole (Ex point source) sits a quarter wavelength above a finite PEC reflector plate'. The advisory says the pattern will carry ground-plane edge diffraction, which is exactly what a sub-wavelength plate does and what the steering objective optimizes against. It reads 0.89 lambda since the plate is drawn at its solved size (2*half + 0.7 cell); the solved plate is the same as before.",
-   "ref": "validation/tmtt_paper/beam_steering_superstrate.py:1-23,156-176,232-260",
+   "ref": "validation/tmtt_paper/beam_steering_superstrate.py:1-38,172-192,248-276",
    "rows": 1,
    "variant": "validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default"
   },
   {
+   "anchor": [],
    "code": "line_stub_behind_port",
    "disposition": "intended",
    "reason": "The tuning validation keeps its existing through-line and historical readings under #1512. Ports at x=1.6 and 31.6 mm leave realized tails of 1.651 and 1.524 mm, with quarter-wave frequencies 25.1897 and 27.1529 GHz at eps_eff=2.869386 on the effective lengths (open-end extension 0.105 mm). These lie outside the refusal interval for 0..9 GHz (and the 6 GHz target). The builder has no notch branch yet; both advisories describe the through-line tails and are deliberately retained without changing geometry.",
@@ -331,38 +643,76 @@
    "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
   },
   {
+   "anchor": [
+    [
+     "\"\"\"MSL open-stub notch tuning \u2014 differentiable inverse design.",
+     "-----------------------------------"
+    ],
+    [
+     "# ---------------------------------------------------------------------------",
+     "DX = 127e-6                            # h_sub / 2 \u2014 2 substrate cells."
+    ]
+   ],
    "code": "lossless_q",
    "disposition": "intended",
    "reason": "The demo's observable is the |S21|^2 notch of a shunt open stub as a function of stub LENGTH, optimized by jax.grad; the references it is scored against (the analytic quarter-wave stub length, the brute-force L scan on the same lossless board) are lossless. A dielectric loss tangent would move the notch DEPTH, which the demo reports as a design output of its own cost surface and not against any measured board.",
-   "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:1-30,138-142",
+   "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:1-45,154-158",
    "rows": 1,
    "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
   },
   {
+   "anchor": [
+    [
+     "H_SUB = 254e-6",
+     "# by"
+    ]
+   ],
    "code": "msl_port_geometry",
    "disposition": "intended",
    "reason": "The 2 normal intervals the advisory counts are the declared mesh: DX = 127e-6 with the comment 'h_sub / 2 -- 2 substrate cells. Demo geometry of record. Refining to 80 um (cv06b standard) gives a cleaner eps_eff staircase but exposes a dx-fragility in the plane lane (|S21|^2 > 1 unphysical) that is a follow-up; for now the demo runs at h_sub/2 where the extractor is well behaved.' One row per MSL port.",
-   "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:140-152",
+   "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:156-168",
    "rows": 2,
    "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
   },
   {
+   "anchor": [
+    [
+     "# The through-line trace is FOIL and is declared as a SHEET on the",
+     "material=\"pec\")"
+    ]
+   ],
    "code": "off_lattice_design_edges",
    "disposition": "intended",
    "reason": "Disclosed in the source with the arithmetic that makes it unavoidable: 'The residual +5.8% width error is NOT fixable by redrawing: W_TRACE / DX = 4.72 is not an integer, and gcd(254 um, 600 um) = 2 um, so no sane uniform dx puts both the substrate top and both trace edges on node lines. That is disclosed here, not absorbed.' The substrate face, which the port checks key off, IS on a node (H_SUB / DX = 2 exactly). Measured at the solved edges (#1375): geometry[1] 'pec' (sheet) y: extent 600\u00b5m, worst face residual 47.55\u00b5m (7.92% of the extent); the strip drawn 1524-2124 um is solved 1479.55-2076.45 um (596.9 um, -0.52 %), so sheet_effective_size is silent and this row is its placement.",
-   "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:242-259",
+   "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:252-269",
    "rows": 1,
    "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
   },
   {
+   "anchor": [
+    [
+     "sim = Simulation(",
+     "sim.add_msl_port(position=(PORT_MARGIN, y_trace, 0.0),"
+    ]
+   ],
    "code": "pec_faces_finite_pec",
    "disposition": "intended",
    "reason": "Microstrip model again: the board's ground is the z_lo PEC face and the through-line trace plus the stub are the finite PEC sheets.",
-   "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:230-262",
+   "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:240-280",
    "rows": 1,
    "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
   },
   {
+   "anchor": [
+    [
+     "What is measured",
+     "derivative of it would move too."
+    ],
+    [
+     "import json",
+     "import numpy as np"
+    ]
+   ],
    "code": "mesh_resolution",
    "disposition": "intended",
    "reason": "The 0.5 mm cell is the fixture, not a choice this script is free to make: the number it measures is the published central-difference slope of the SAME board at the SAME mesh, and refining the cell would compare a different antenna against it. The coarse-mesh staircase offset is what the published ladder already quantified; this script measures the DERIVATIVE at that mesh, and its own convergence witnesses are the h ladder and the 2x record, not a finer cell.",
@@ -371,6 +721,16 @@
    "variant": "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell"
   },
   {
+   "anchor": [
+    [
+     "resonant length is made longer by STRETCHING the x cells between its two node",
+     "never moves off the lattice, and there is no metal inside a cell anywhere."
+    ],
+    [
+     "J_LO = int(round((CTR - FIXTURE[\"patch_y\"] / 2) / DX))   # 13",
+     "J_HI = int(round((CTR + FIXTURE[\"patch_y\"] / 2) / DX))   # 23"
+    ]
+   ],
    "code": "nu_grading_reaches_absorber",
    "disposition": "intended",
    "reason": "The deformation IS the experiment: eight cells inside the patch's +x node line stretch and the eight just outside shrink, and those eight end four cells short of the x_hi absorber runway, so the grading reaches it by construction. The window is the published one, kept so the slope is comparable; the end-of-run energy witness the script records (-116 dB of peak at the record used, -122 dB at twice it) is what says the absorber is not returning the transition's reflection into the band.",
@@ -379,6 +739,16 @@
    "variant": "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell"
   },
   {
+   "anchor": [
+    [
+     "d = d.at[np.asarray(OUT_CELLS)].add(-delta / len(OUT_CELLS))",
+     "err.append(f\"L realizes {row['realized_L_m']:.9g} against a declared \""
+    ],
+    [
+     "boundary=\"cpml\", cpml_layers=c[\"cpml\"],",
+     "z_g, z_p = K_GND * DX, K_PATCH * DX"
+    ]
+   ],
    "code": "wire_port_dead_cell_classification_unavailable",
    "disposition": "intended",
    "reason": "The non-uniform mesh is the design variable here, so dx_profile is set by construction and the shared dead-cell primitive (uniform-grid only, issue #544) cannot run. The advisory names an rfx limitation rather than a property of this feed: the port spans the three substrate cells between the ground and patch node planes, both conductors are declared by node index, and the script asserts the realized feed node and the realized patch length on every mesh before any resonance is read off it.",
@@ -387,6 +757,16 @@
    "variant": "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell"
   },
   {
+   "anchor": [
+    [
+     "JAX_PLATFORMS=cpu PYTHONPATH=. python examples/visualization/field_movies.py --case all",
+     "time comes from Result.snapshot_axes. No phasor replay or interpolated frames."
+    ],
+    [
+     "raise ValueError(f\"Unknown variant: {variant}\")",
+     "waveform_type = ModulatedGaussian if variant == \"cavity\" else GaussianPulse"
+    ]
+   ],
    "code": "geometry_in_absorber",
    "disposition": "intended",
    "reason": "The interface example deliberately extends the dielectric half-space through the absorbing layers, avoiding an unintended rear slab face. The displayed physical domain stops before those layers; absorber-region fields are not interpreted as material physics.",
@@ -395,6 +775,16 @@
    "variant": "examples/visualization/field_movies.py::build_simulation::dielectric"
   },
   {
+   "anchor": [
+    [
+     "JAX_PLATFORMS=cpu PYTHONPATH=. python examples/visualization/field_movies.py --case all",
+     "time comes from Result.snapshot_axes. No phasor replay or interpolated frames."
+    ],
+    [
+     "raise ValueError(f\"Unknown variant: {variant}\")",
+     "waveform_type = ModulatedGaussian if variant == \"cavity\" else GaussianPulse"
+    ]
+   ],
    "code": "lossless_q",
    "disposition": "intended",
    "reason": "The example intentionally uses an ideal nondispersive dielectric to show a finite pulse meeting an interface. It does not extract Q, resonance lifetime, or loss and names this scope explicitly.",
@@ -403,6 +793,16 @@
    "variant": "examples/visualization/field_movies.py::build_simulation::dielectric"
   },
   {
+   "anchor": [
+    [
+     "JAX_PLATFORMS=cpu PYTHONPATH=. python examples/visualization/field_movies.py --case all",
+     "time comes from Result.snapshot_axes. No phasor replay or interpolated frames."
+    ],
+    [
+     "raise ValueError(f\"Unknown variant: {variant}\")",
+     "waveform_type = ModulatedGaussian if variant == \"cavity\" else GaussianPulse"
+    ]
+   ],
    "code": "mesh_resolution",
    "disposition": "intended",
    "reason": "The 1 mm grid is a qualitative teaching mesh, not a phase-accuracy calculation: at the declared 12 GHz band edge the dielectric has only 12.5 cells per wavelength. The example retains this advisory and makes no convergence or phase-velocity error claim.",
@@ -411,22 +811,40 @@
    "variant": "examples/visualization/field_movies.py::build_simulation::dielectric"
   },
   {
+   "anchor": [
+    [
+     "def sim_factory(dx: float) -> Simulation:",
+     "# Probe on the -z side"
+    ]
+   ],
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=6, x_hi=6, y_lo=6, y_hi=6, z_lo=6, z_hi=6. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/inverse_design/progressive_demo.py:98-110 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/inverse_design/progressive_demo.py:103-115 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/inverse_design/progressive_demo.py::sim_factory::dx=1.0mm"
   },
   {
+   "anchor": [
+    [
+     "def sim_factory(dx: float) -> Simulation:",
+     "# Probe on the -z side"
+    ]
+   ],
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=6, x_hi=6, y_lo=6, y_hi=6, z_lo=6, z_hi=6. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/inverse_design/progressive_demo.py:98-110 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/inverse_design/progressive_demo.py:103-115 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/inverse_design/progressive_demo.py::sim_factory::dx=0.5mm"
   },
   {
+   "anchor": [
+    [
+     "VALID_GAP = 19.5e-3",
+     "domain=(DOMAIN, DOMAIN, DOMAIN),"
+    ]
+   ],
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=6, x_hi=6, y_lo=6, y_hi=6, z_lo=6, z_hi=6. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
@@ -435,6 +853,12 @@
    "variant": "examples/tutorials/antenna_farfield_pattern.py::build_simulation::default"
   },
   {
+   "anchor": [
+    [
+     "def make_sim() -> Simulation:",
+     ")"
+    ]
+   ],
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=3, x_hi=3, y_lo=3, y_hi=3, z_lo=3, z_hi=3. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
@@ -443,22 +867,40 @@
    "variant": "examples/tutorials/materials_and_dispersion.py::make_sim::default"
   },
   {
+   "anchor": [
+    [
+     "def build_generic_port_demo(*, add_component: bool) -> Simulation:",
+     "impedance=50.0,"
+    ]
+   ],
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=4, x_hi=4, y_lo=4, y_hi=4, z_lo=4, z_hi=4. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:50-62 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:48-60 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_generic_port_demo::add_component=False"
   },
   {
+   "anchor": [
+    [
+     "def build_generic_port_demo(*, add_component: bool) -> Simulation:",
+     "impedance=50.0,"
+    ]
+   ],
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=4, x_hi=4, y_lo=4, y_hi=4, z_lo=4, z_hi=4. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:50-62 | https://github.com/bk-squared/rfx/issues/1272",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:48-60 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_generic_port_demo::add_component=True"
   },
   {
+   "anchor": [
+    [
+     "\"\"\"Build a short, lossy microstrip line with the correct modal ports.",
+     "return Box(tuple(v + margin if a < 2 else v for a, v in enumerate(box.corner_lo)),"
+    ]
+   ],
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=3, x_hi=3, y_lo=3, y_hi=3, z_lo=3, z_hi=3. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
@@ -467,6 +909,12 @@
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
   {
+   "anchor": [
+    [
+     "print(",
+     "freq_max=10.0e9,"
+    ]
+   ],
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=4, x_hi=4. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
@@ -475,6 +923,12 @@
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_waveguide_ports::default"
   },
   {
+   "anchor": [
+    [
+     "def build_simulation() -> Simulation:",
+     "waveform=GaussianPulse(f0=F0, bandwidth=0.8),"
+    ]
+   ],
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=4, x_hi=4, y_lo=4, y_hi=4, z_lo=4, z_hi=4. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
@@ -483,6 +937,12 @@
    "variant": "examples/tutorials/run_control_and_fields.py::build_simulation::default"
   },
   {
+   "anchor": [
+    [
+     "def build(delta, *, pin_dt=True):",
+     "sigma = (2 * np.pi * c[\"f0\"] * 8.8541878128e-12 * c[\"eps_r\"]"
+    ]
+   ],
    "code": "thin_absorber",
    "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=6, x_hi=6, y_lo=6, y_hi=6, z_lo=6, z_hi=6. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
@@ -491,6 +951,16 @@
    "variant": "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell"
   },
   {
+   "anchor": [
+    [
+     "\"\"\"Build a short, lossy microstrip line with the correct modal ports.",
+     "freq_max=6.0e9,"
+    ],
+    [
+     "\"Microstrip port setup ready: \"",
+     "# propagates.  Neither preflight call reports an error."
+    ]
+   ],
    "code": "msl_port_geometry",
    "disposition": "intended",
    "reason": "#1138: edge-aware x/y profiles grade the propagation axis; this tutorial builds the MSL setup only. The skipped automatic offset solve is reported without claiming fitted Z0/beta or a settled S-matrix. (Two earlier probe-clearance rows named this tutorial's own finite ground sheet as the reflector, at -11.25 mm; a conductor at the port's ground reference is no longer a reflector candidate, so they are gone.)",
@@ -499,6 +969,7 @@
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
   {
+   "anchor": [],
    "code": "line_stub_behind_port",
    "disposition": "intended",
    "reason": "The tutorial keeps its geometry and mesh under #1512, like the two validation notch builders: its through-line leaves realized tails of 3.1625 mm (declared 3.25 mm) behind both ports. With eps_eff=2.405090 and an open-end extension of 0.3645 mm the effective length is 3.527 mm and its quarter-wave frequency 13.7022 GHz, outside the refusal interval for the 0..6 GHz read. Both findings are advisory; the geometry is deliberately unchanged.",
@@ -507,62 +978,130 @@
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
   {
+   "anchor": [
+    [
+     "def report(sim, issues, *, root=None, material_overrides=()):",
+     "grid = root.grid if root is not None else sim._build_realized_grid()"
+    ]
+   ],
    "code": "tfsf_transverse_periodic",
    "disposition": "intended",
    "reason": "The realized transverse material arrays are invariant; PR3a retains the padded periodic wrap and reports the faces solved periodically.",
-   "ref": "rfx/boundaries/tfsf.py:201-208",
+   "ref": "rfx/boundaries/tfsf.py:329-335",
    "rows": 1,
    "variant": "examples/inverse_design/field_observable_shielding.py::_build_sim::default"
   },
   {
+   "anchor": [
+    [
+     "def report(sim, issues, *, root=None, material_overrides=()):",
+     "grid = root.grid if root is not None else sim._build_realized_grid()"
+    ]
+   ],
    "code": "tfsf_transverse_periodic",
    "disposition": "intended",
    "reason": "The realized transverse material arrays are invariant; PR3a retains the padded periodic wrap and reports the faces solved periodically.",
-   "ref": "rfx/boundaries/tfsf.py:201-208",
+   "ref": "rfx/boundaries/tfsf.py:329-335",
    "rows": 1,
    "variant": "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=False"
   },
   {
+   "anchor": [
+    [
+     "def report(sim, issues, *, root=None, material_overrides=()):",
+     "grid = root.grid if root is not None else sim._build_realized_grid()"
+    ]
+   ],
    "code": "tfsf_transverse_periodic",
    "disposition": "intended",
    "reason": "The realized transverse material arrays are invariant; PR3a retains the padded periodic wrap and reports the faces solved periodically.",
-   "ref": "rfx/boundaries/tfsf.py:201-208",
+   "ref": "rfx/boundaries/tfsf.py:329-335",
    "rows": 1,
    "variant": "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=True"
   },
   {
+   "anchor": [
+    [
+     "\"\"\"Issue #683 decision experiment: wire-port V/I sampling order.",
+     "Two arms on bit-identical geometry:"
+    ],
+    [
+     "sim.add_port(position=(X_DRV, PORT_Y, PORT_Z), component=\"ez\",",
+     "direction=\"+x\")"
+    ]
+   ],
    "code": "wire_port_no_radius",
    "disposition": "intended",
    "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
-   "ref": "validation/research/issue683_sampling_order_decision.py:1-6,96-104",
+   "ref": "validation/research/issue683_sampling_order_decision.py:1-6,97-105",
    "rows": 1,
    "variant": "validation/research/issue683_sampling_order_decision.py::build::nu-matched"
   },
   {
+   "anchor": [
+    [
+     "\"\"\"Issue #764 falsifier battery: whole-port driven-diagonal normalization.",
+     "NU lane only (POST-injection ordering, measured correct per #683). Every"
+    ],
+    [
+     "sim.add_port(position=(DRV_XY[0], DRV_XY[1], GAP_Z0), component=\"ez\",",
+     "impedance=z_col, extent=extent, excite=False)"
+    ]
+   ],
    "code": "wire_port_no_radius",
    "disposition": "intended",
    "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
-   "ref": "validation/research/issue764_wireport_norm_falsifiers.py:1-6,106-118",
+   "ref": "validation/research/issue764_wireport_norm_falsifiers.py:1-6,107-119",
    "rows": 1,
    "variant": "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short"
   },
   {
+   "anchor": [
+    [
+     "\"\"\"Issue #770 adjudication harness: off-diagonal receive channel vs external physics.",
+     "Measurement-only (F-A6): spy capture + offline algebra; no shipped"
+    ],
+    [
+     "for idx, (x, d) in enumerate(((X1, \"-x\"), (X2, \"+x\"))):",
+     "waveform=(pulse if exc else None), direction=d)"
+    ]
+   ],
    "code": "wire_port_no_radius",
    "disposition": "intended",
    "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
-   "ref": "validation/research/issue770_offdiag_adjudication.py:1-6,111-115",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:1-6,112-116",
    "rows": 1,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0"
   },
   {
+   "anchor": [
+    [
+     "\"\"\"Issue #770 adjudication harness: off-diagonal receive channel vs external physics.",
+     "Measurement-only (F-A6): spy capture + offline algebra; no shipped"
+    ],
+    [
+     "for idx, (x, d) in enumerate(((X1, \"-x\"), (X2, \"+x\"))):",
+     "waveform=(pulse if exc else None), direction=d)"
+    ]
+   ],
    "code": "wire_port_no_radius",
    "disposition": "intended",
    "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
-   "ref": "validation/research/issue770_offdiag_adjudication.py:1-6,111-115",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:1-6,112-116",
    "rows": 1,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both"
   },
   {
+   "anchor": [
+    [
+     "\"\"\"M6: the resonance moves with the patch length, and AD knows how fast.",
+     "lines: the 8 cells inside the +x edge each grow by ``delta/8`` and the 8 just"
+    ],
+    [
+     "sim.add_port(position=(I_PORT * DX, CTR, z_g), component=\"ez\",",
+     "waveform=GaussianPulse(f0=c[\"f0\"], bandwidth=0.9))"
+    ]
+   ],
    "code": "wire_port_no_radius",
    "disposition": "intended",
    "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
@@ -571,38 +1110,88 @@
    "variant": "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell"
   },
   {
+   "anchor": [
+    [
+     "\"\"\"THRU feed-post de-embedding harness (disposition (b) on the held #683 gate).",
+     "extractor is edited. Every gate below is evaluated verbatim from the"
+    ],
+    [
+     "sim.add_port(position=(X1, Y_MID, 0.0), component=\"ez\", impedance=Z0,",
+     "extent=H, waveform=pulse, direction=\"+x\", **kw)"
+    ]
+   ],
    "code": "wire_port_no_radius",
    "disposition": "intended",
    "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
-   "ref": "validation/research/thru_feedpost_deembed.py:1-6,105-108",
+   "ref": "validation/research/thru_feedpost_deembed.py:1-7,106-109",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::band-pulse"
   },
   {
+   "anchor": [
+    [
+     "\"\"\"THRU feed-post de-embedding harness (disposition (b) on the held #683 gate).",
+     "extractor is edited. Every gate below is evaluated verbatim from the"
+    ],
+    [
+     "sim.add_port(position=(X1, Y_MID, 0.0), component=\"ez\", impedance=Z0,",
+     "extent=H, waveform=pulse, direction=\"+x\", **kw)"
+    ]
+   ],
    "code": "wire_port_no_radius",
    "disposition": "intended",
    "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
-   "ref": "validation/research/thru_feedpost_deembed.py:1-6,105-108",
+   "ref": "validation/research/thru_feedpost_deembed.py:1-7,106-109",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::insitu-refplane"
   },
   {
+   "anchor": [
+    [
+     "\"\"\"THRU feed-post two-segment extraction \u2014 attempt 3 harness.",
+     "Measurement-only: battery-verbatim thru fixture (imported byte-shared"
+    ],
+    [
+     "sim.add_port(position=(X1, Y_MID, 0.0), component=\"ez\", impedance=Z0,",
+     "impedance=Z0, extent=H, excite=False, direction=\"+x\")"
+    ]
+   ],
    "code": "wire_port_no_radius",
    "disposition": "intended",
    "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
-   "ref": "validation/research/thru_feedpost_twoseg_extraction.py:1-6,248-251",
+   "ref": "validation/research/thru_feedpost_twoseg_extraction.py:1-6,249-252",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_twoseg_extraction.py::build_singlepost::refplane-n10"
   },
   {
+   "anchor": [
+    [
+     "\"\"\"Lumped voltage-current (V-I) port S-parameter gradient check.",
+     "Run (CPU, about 20 minutes, most of it the float64 finite differences):"
+    ],
+    [
+     "def build_sim(kind: str, dut: str, dx: float, *, drive: str = DEFAULT_DRIVE,",
+     "return sim"
+    ]
+   ],
    "code": "source_decoupled",
    "disposition": "intended",
    "reason": "The scene is the one-cell parallel-plate TEM channel of the lumped/wire port battery: PEC plates on z, PMC side walls on y one cell apart, so the lumped port's Ez edge necessarily lies on the y_lo magnetic-wall plane. The advisory itself states that the Yee magnetic image keeps tangential E on that face coupled to the interior and that a lumped port there describes the full symmetric object; the check's G1 gate confirms the port couples (mean |S11|^2 = 0.25).",
-   "ref": "validation/tmtt_paper/lumped_port_gradient_check.py:1-60 | scripts/diagnostics/lumped_wire_chain_battery_measure.py:559-592",
+   "ref": "validation/tmtt_paper/lumped_port_gradient_check.py:1-63 | scripts/diagnostics/lumped_wire_chain_battery_measure.py:559-591",
    "rows": 1,
    "variant": "validation/tmtt_paper/lumped_port_gradient_check.py::build::default"
   },
   {
+   "anchor": [
+    [
+     "h_sub     = 1.5e-3",
+     "h_sub     = 1.5e-3"
+    ],
+    [
+     "sim.add_thin_conductor(ground)",
+     "sim.add_thin_conductor(patch)"
+    ]
+   ],
    "code": "thin_conductor_thickness_unmodelled",
    "disposition": "intended",
    "reason": "This example declares its copper with add_thin_conductor at the API's default 35 um, solved with zero thickness, on a 1.5 mm substrate (t/h 2.33 %). The advisory states that the declared thickness is not in the model and that a strip or patch on this substrate reads electrically long by about 0.27 % (#1523 table); that is true of this example and is the known limitation 'Conductor thickness is not solved' in docs/guides/known_limitations.md. The ground sheet (thin_conductors[0]) covers the substrate footprint and is not reported; only the patch (thin_conductors[1]) is.",
@@ -611,6 +1200,16 @@
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
   {
+   "anchor": [
+    [
+     "Geometry: the openEMS \"Simple Patch Antenna\" tutorial \u2014 a 32 x 40 mm patch on a",
+     "with the project."
+    ],
+    [
+     "# correct for a plate, wrong for foil, and it would put 381 um of metal",
+     "sim.add_thin_conductor(ground)"
+    ]
+   ],
    "code": "thin_conductor_thickness_unmodelled",
    "disposition": "intended",
    "reason": "This example declares its copper with add_thin_conductor at the API's default 35 um, solved with zero thickness, on a 1.524 mm substrate (t/h 2.3 %). The advisory states that the declared thickness is not in the model and that a strip or patch on this substrate reads electrically long by about 0.27 % (#1523 table); that is true of this example and is the known limitation 'Conductor thickness is not solved' in docs/guides/known_limitations.md. The ground sheet (thin_conductors[0]) covers the substrate footprint and is not reported; only the patch (thin_conductors[1]) is.",
@@ -619,6 +1218,16 @@
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
   {
+   "anchor": [
+    [
+     "The metal and dielectric end before the absorbing cells. The 1 mm",
+     "clearance exceeds twice the substrate height."
+    ],
+    [
+     "# FOIL IS A SHEET, A PLATE IS A VOLUME.  A microstrip ground plane and its",
+     "common = {"
+    ]
+   ],
    "code": "thin_conductor_thickness_unmodelled",
    "disposition": "intended",
    "reason": "This example declares its copper with add_thin_conductor at the API's default 35 um, solved with zero thickness, on a 1 mm substrate (t/h 3.5 %). The advisory states that the declared thickness is not in the model and that a strip or patch on this substrate reads electrically long by about 0.37 % (#1523 table); that is true of this example and is the known limitation 'Conductor thickness is not solved' in docs/guides/known_limitations.md. The ground sheet (thin_conductors[0]) covers the substrate footprint and is not reported; only the trace (thin_conductors[1]) is.",
@@ -627,6 +1236,12 @@
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
   {
+   "anchor": [
+    [
+     "sim.add_material(\"substrate\", eps_r=3.55, sigma=0.0027)",
+     "sim.add(Box((2e-3, 2e-3, 0.5e-3), (8e-3, 8e-3, 1.5e-3)), material=\"substrate\")"
+    ]
+   ],
    "code": "realization",
    "disposition": "intended",
    "reason": "the demo never time-steps; the warning is part of the exported report. z: realized 1 cells (0.001 m), declared 1 cells (0.001 m).",
@@ -635,6 +1250,16 @@
    "variant": "examples/tutorials/artifact_report_demo.py::build_demo_simulation::default"
   },
   {
+   "anchor": [
+    [
+     "ground = Box((gx_lo, gy_lo, z_gnd), (gx_hi, gy_hi, z_gnd))",
+     "substrate = Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_hi))"
+    ],
+    [
+     "sim.add(substrate, material=\"fr4\")",
+     "sim.add(substrate, material=\"fr4\")"
+    ]
+   ],
    "code": "realization",
    "disposition": "intended",
    "reason": "true positive on the substrate overhang; the patch metal is on nodes. x: realized 62 cells (0.05937 m), declared 62.6579080344 cells (0.06 m).",
@@ -643,6 +1268,16 @@
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
   {
+   "anchor": [
+    [
+     "px_lo, px_hi = cx - PATCH_W / 2, cx + PATCH_W / 2",
+     "py_lo, py_hi = cy - PATCH_L / 2, cy + PATCH_L / 2"
+    ],
+    [
+     "# Soft Ez source through the substrate at the feed point; once the patch",
+     "# Soft Ez source through the substrate at the feed point; once the patch"
+    ]
+   ],
    "code": "realization",
    "disposition": "intended",
    "reason": "true positive on the substrate overhang; the patch metal is on nodes. x: realized 30 cells (0.0586 m), declared 30.7167235495 cells (0.06 m).",
@@ -651,6 +1286,16 @@
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
   {
+   "anchor": [
+    [
+     "ground = Box((0.75e-3, 0.75e-3, 1.25e-3), (19.25e-3, 9.25e-3, 1.25e-3))",
+     "ground, substrate, trace = map(shifted, (ground, substrate, trace))"
+    ],
+    [
+     "substrate,",
+     "sim.add_thin_conductor(trace)"
+    ]
+   ],
    "code": "realization",
    "disposition": "intended",
    "reason": "true positive on the substrate; strip and ports silent. y: realized 36 cells (0.00835125 m), declared 36.641221374 cells (0.0085 m).",
@@ -659,6 +1304,12 @@
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
   {
+   "anchor": [
+    [
+     "z_g, z_p = K_GND * DX, K_PATCH * DX",
+     "material=\"sub\")"
+    ]
+   ],
    "code": "realization",
    "disposition": "intended",
    "reason": "the variant lengthens the patch by half a cell by growing the 8 cells inside its +x edge (m6_wire_port_ad.py:1-14, 133-138); the substrate drawn 10 mm is then solved 10.125 mm.",
@@ -667,6 +1318,12 @@
    "variant": "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell"
   },
   {
+   "anchor": [
+    [
+     "sim.add(Box((0, 0, 0), (LX, LY, H_SUB)), material=\"ro4350b\")",
+     "material=\"pec\")"
+    ]
+   ],
    "code": "realization",
    "disposition": "intended",
    "reason": "centroid only; the strip width the notch depends on is solved within 1 %. x: realized 262 cells (0.033274 m), declared 261.417322835 cells (0.0332 m).",
