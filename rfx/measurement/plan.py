@@ -546,7 +546,10 @@ def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
     owners.extend(waveguide_owners(sim, grid, n_steps, nu))
     supplied = {owner.id: owner for owner in calculator_owners}
     if sim._coaxial_ports and path in ('run_uniform', 'fwd_uniform') and conductors is not None:
-        from .coax_port import port_owner
+        from .coax_port import port_owner, refuse_bins_outside_band
+        if frequencies is not None:
+            refuse_bins_outside_band(frequencies, freq_min=sim._coaxial_ports[0].freq_min,
+                freq_max=sim._freq_max, entry='run(s_param_freqs=...)' if path == 'run_uniform' else 'forward(port_s11_freqs=...)')
         owner = port_owner(sim, grid, conductors, frequencies)
         supplied.setdefault(owner.id, owner)
     for attr, kind in (('_msl_ports', 'msl'), ('_coaxial_ports', 'coax')):

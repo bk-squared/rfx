@@ -243,7 +243,7 @@ def run_uniform(
     passive_diagnostic = passive_record_diagnostic(sim)
     from rfx.measurement.prepared import attach_measurement
     if sim._coaxial_ports and compute_s_params is not False and s_param_freqs is None:
-        s_param_freqs = jnp.linspace(sim._freq_max / 10, sim._freq_max, 50, dtype=jnp.float32)
+        s_param_freqs = jnp.linspace(sim._coaxial_ports[0].freq_min, sim._freq_max, 50, dtype=jnp.float32)
     attach_measurement(sim, conductors, n_steps=sizing_n, path='run_uniform',
                        frequencies=s_param_freqs if compute_s_params is None or compute_s_params or passive_diagnostic else None)
     _msl_geometry_edges = pec_edge_masks  # before ANY port clearing

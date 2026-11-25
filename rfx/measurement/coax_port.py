@@ -3,6 +3,27 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from rfx.errors import RfxRefusal
+
+
+def refuse_bins_outside_band(frequencies, *, freq_min, freq_max, entry):
+    """Refuse requested bins outside the coaxial port's closed frequency band."""
+    bins = np.ravel(np.asarray(frequencies))
+    if bins.size == 0:
+        return None
+    if bins.dtype.kind != 'f':
+        bins = bins.astype(np.float64)
+    lo = bins[bins < np.asarray(freq_min, bins.dtype)].astype(np.float64)
+    hi = bins[bins > np.asarray(freq_max, bins.dtype)].astype(np.float64)
+    if lo.size or hi.size:
+        message = f"{entry}: requested bins outside the coaxial port's band {freq_min / 1e9:.6g} to {freq_max / 1e9:.6g} GHz"
+        if lo.size:
+            message += f"; {lo.size} below freq_min, the lowest at {lo.min() / 1e9:.6g} GHz: request bins at or above freq_min, or pass a lower freq_min= to add_coaxial_port()"
+        if hi.size:
+            message += f"; {hi.size} above freq_max, the highest at {hi.max() / 1e9:.6g} GHz: request bins at or below freq_max, or raise the Simulation's freq_max"
+        raise RfxRefusal(message)
+    return None
+
 
 def port_owner(sim, grid, conductors, frequencies):
     from rfx.model.coax_line import coax_port_layout
