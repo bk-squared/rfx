@@ -281,6 +281,55 @@ def refuse_slab_cells(materials, grid, layout, mesh, dt=None):
                                 in_program=mesh.size < 2)
 
 
+def _publish_materials(products, layout, mesh, device):
+    """Publish each input/fill once, releasing it before the next copy.
+
+    Raw records, component increments and full update operands share the
+    neutral-value declaration. Increments publish zero; full epsilon and
+    permeability operands publish one. Unknown leaves are refused by
+    material_rule, never guessed by name.
+    """
+    from rfx.stepping.slab import pole_fill
+    staged, inverse, loss = products
+    products.clear()
+    has_loss = loss is not None
+    tree = paths = leaf = None
+    trees = [staged, inverse, None if loss is None else loss[0],
+             None if loss is None else loss[1]]
+    definitions, outputs, leaves = [], [], []
+    for tree_index, tree in enumerate(trees):
+        paths, definition = jax.tree_util.tree_flatten_with_path(tree)
+        definitions.append(definition)
+        outputs.append([None] * len(paths))
+        for index, (path, leaf) in enumerate(paths):
+            kind = (material_kind(path) if tree_index == 0 and
+                    hasattr(leaf, 'ndim') and leaf.ndim >= (3 if device is not None else 4)
+                    else None if tree_index == 0 else 'sigma' if tree_index == 3 else 'eps_r')
+            leaves.append((tree_index, index, leaf, kind))
+    groups = []
+    for tree_index, index, leaf, kind in leaves:
+        if kind is None:
+            outputs[tree_index][index] = leaf
+            continue
+        fill = pole_fill(kind)
+        for group in groups:
+            if group[0] is leaf and group[1:3] == [fill.alignment, fill.physical]:
+                group[4].append((tree_index, index))
+                break
+        else:
+            groups.append([leaf, fill.alignment, fill.physical, kind, [(tree_index, index)]])
+    del staged, inverse, loss, trees, tree, paths, leaves, leaf
+    for group in groups:
+        value = (cut(group[0], layout, group[3], mesh=mesh) if device is not None else
+                 product_rows(group[0], layout, mesh, group[3]))
+        for tree_index, index in group[4]:
+            outputs[tree_index][index] = value
+        group[0] = None
+    staged, inverse, low, high = [definition.unflatten(values)
+        for definition, values in zip(definitions, outputs)]
+    return staged, inverse, (low, high) if has_loss else None
+
+
 def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=False,
                       debye=False, lorentz=False, _material_inputs=(), uniform=False):
     """Realize uniform materials per slab; retain graded host staging.
@@ -297,6 +346,8 @@ def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=Fal
     """
     from rfx.model.occupancy import with_edge_keep
     from rfx.stepping.absorber import graded_cpml_operands
+    if isinstance(materials, list):
+        materials = materials.pop()
     refuse_slab_cells(materials, grid, layout, mesh)
     device = None
     if not uniform:
@@ -325,24 +376,9 @@ def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=Fal
         widths = stage_x_widths(grid, rows, mesh)
         staged, inverse, loss = uniform_apply(local, inputs, indices, occ, widths,
                                               mesh=mesh, row_count=layout.nx_local + 1)
-    def publish(a, kind):
-        return (cut(a, layout, kind, mesh=mesh) if device is not None else
-                product_rows(a, layout, mesh, kind))
-    def finish(path, a):
-        if not hasattr(a, 'ndim') or a.ndim < (3 if device is not None else 4):
-            return a
-        # Raw records, component increments and full update operands all
-        # share the same neutral-value declaration. Increments publish zero;
-        # the full epsilon and permeability operands publish one.
-        # Unknown leaves are refused by material_rule, never guessed by name.
-        kind = material_kind(path)
-        return publish(a, kind)
-    staged = jax.tree_util.tree_map_with_path(finish, staged)
-    inverse = jax.tree.map(lambda a: publish(a, 'eps_r'), inverse)
-    if loss is not None:
-        loss = (jax.tree.map(lambda a: publish(a, 'eps_r'), loss[0]),
-                jax.tree.map(lambda a: publish(a, 'sigma'), loss[1]))
-    return staged, inverse, loss
+    products = [staged, inverse, loss]
+    del staged, inverse, loss, materials, inputs
+    return _publish_materials(products, layout, mesh, device)
 
 
 def _uniform_dispersion(inputs, dt, poles, masks, grid, layout, mesh, family):
