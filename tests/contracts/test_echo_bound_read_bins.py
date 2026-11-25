@@ -72,7 +72,7 @@ def test_declared_bins_equal_returned_channels(path):
 
 
 def lorentz_scene(path, kind):
-    sim = scene(path)
+    sim = scene(path, boundary='cpml' if kind == 'ntff' else 'pec')
     w0 = 2 * np.pi * 8e9
     delta, strength = .1 * w0, w0**2
     dense = np.linspace(0., 20e9, 200001)
@@ -86,20 +86,24 @@ def lorentz_scene(path, kind):
                      lorentz_poles=[LorentzPole(w0, delta, strength)])
     sim.add(Box((0., 0., 0.), (.012, .011, .008)), material='lorentz')
     channel(sim, kind, np.array([frequency]))
-    return sim, expected
+    peak = np.sqrt(w0**2 - 2 * delta**2) / (2 * np.pi)
+    samples = np.array([0., stored, peak if peak == stored else 0.])
+    omega = 2 * np.pi * samples
+    upper = np.sqrt(4. + np.max(np.abs(strength / (w0**2 - omega**2 + 2j * delta * omega))))
+    return sim, expected, upper
 
 
 @pytest.mark.parametrize('path,kind', [(path, 'plane') for path in PATHS] +
                          [('uniform-run', 'flux'), ('uniform-run', 'ntff')])
 def test_lorentz_read_bin_bounds_phase_index(path, kind):
-    sim, expected = lorentz_scene(path, kind)
+    sim, expected, upper = lorentz_scene(path, kind)
     result = invoke(sim, path)
     actual = float(result.settling_echo_bound['n_max'])
-    assert expected <= actual <= expected * (1 + 2**-20), (path, kind, expected, actual)
+    assert expected <= actual <= upper * (1 + 2**-20), (path, kind, expected, actual)
 
 
 def test_traced_s_bins_include_concrete_channel_bins():
-    sim, expected = lorentz_scene('uniform-forward', 'plane')
+    sim, expected, upper = lorentz_scene('uniform-forward', 'plane')
     sim.add_port((.008, .006, .004), 'ez', impedance=50.)
     bins = jax.jit(lambda s: declared_read_bins(sim, s))(jnp.asarray(S_BINS))
     np.testing.assert_array_equal(np.sort(np.asarray(bins)),
@@ -108,4 +112,4 @@ def test_traced_s_bins_include_concrete_channel_bins():
         n_steps=2, port_s11_freqs=s, skip_preflight=True).settling_echo_bound)(jnp.asarray(S_BINS))
     eps32 = np.finfo(np.float32).eps
     margin = (1 + eps32 * (2 + 10)) * (1 + eps32)**2 - 1
-    assert expected <= float(actual['n_max']) <= expected * (1 + margin)
+    assert expected <= float(actual['n_max']) <= upper * (1 + margin)

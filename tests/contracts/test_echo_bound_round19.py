@@ -29,14 +29,16 @@ def declared_index(name):
     if name == 'M-mu':
         return np.sqrt(8.), np.sqrt(8.)
     if name == 'M-debye':
-        return np.sqrt(5.), np.sqrt(5.)
+        return np.sqrt(np.abs(4.) + np.abs(1.)), np.sqrt(5.)
     if name == 'M-lorentz':
         w0 = 2 * np.pi * 8e9
         delta = .15 * w0
-        bins = np.array([0., 20e9, np.sqrt(w0*w0 - 2*delta*delta) / (2*np.pi)])
-        response = 4. + .4*w0*w0 / (w0*w0 - (2*np.pi*bins)**2 + 2j*delta*(2*np.pi*bins))
-        n = max(1., float(np.max(np.sqrt(np.abs(response)))))
-        return n, n
+        strength = .4 * w0**2
+        maximum = strength / (2 * delta * np.sqrt(w0**2 - delta**2))
+        old_bins = np.array([0., 20e9, np.sqrt(w0**2 - 2*delta**2) / (2*np.pi)])
+        omega = 2 * np.pi * old_bins
+        old_response = 4. + strength / (w0**2 - omega**2 + 2j*delta*omega)
+        return np.sqrt(4. + maximum), float(np.max(np.sqrt(np.abs(old_response))))
     if name.startswith('M-') or name in ('C-smooth', 'C-full-tensor'):
         return 2., 2.
     return 1., 1.
@@ -274,10 +276,8 @@ def test_dispersive_forward_reads_traced_port_bins(medium, band):
     if medium == 'lorentz' and min(bins) <= peak <= max(bins):
         samples.append(peak)
     omega = 2 * np.pi * np.asarray(samples)
-    response = (4. + 1. / (1 + 1j * omega * 1e-11) if medium == 'debye' else
-                4. + strength / (w0**2 - omega**2 + 2j * delta * omega)
-                if medium == 'lorentz' else np.ones(len(samples)))
-    expected = max(1., float(np.max(np.sqrt(np.abs(response)))))
+    maximum = np.max(np.abs(strength / (w0**2 - omega**2 + 2j * delta * omega)))
+    expected = np.sqrt(4. + maximum) if medium == 'lorentz' else np.sqrt(5.) if medium == 'debye' else 1.
     assert abs(float(eager['n_max']) - expected) <= 2 * np.spacing(np.float32(expected))
     eps32 = np.finfo(np.float32).eps
     response_margin = eps32 * (1 + (1 + w0 / delta if medium == 'lorentz' else 0))
