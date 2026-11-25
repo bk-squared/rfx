@@ -560,7 +560,7 @@ def _msl_clearance_findings(sim, diagnostic_id):
 
 
 def test_msl_x_clearance_legacy_buffer_case_is_now_clear():
-    """600um snaps to 640um, above max(4/3*254um, 4*80um)."""
+    """600um snaps to node 7 (560um), above max(4/3*254um, 4*80um)."""
     assert not _msl_clearance_findings(
         _msl_x_clearance_sim(dx=80e-6, port_x=0.6e-3),
         "msl.source_absorber_clearance")
