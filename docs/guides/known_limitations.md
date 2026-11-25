@@ -646,6 +646,7 @@ Tracker: #3065
 At bins where the line's phase across that span (`beta` times its length) is small, the fitted values change when parts of the board far from the probes change.
 The cause is not isolated. Two identical builds give bit-identical values, so it is not run noise.
 One board was measured: εr 3.66, h 254 µm, strip declared 600 µm and solved 651.9 µm (cells of h/3), 5 probes 2 cells apart (0.677 mm), 0.5–5 GHz in 30 bins.
+Every number in this entry is from float32 runs, rfx's default precision.
 Only the feed's distance from the domain's x faces (3.6 to 65.6 cells) and the CPML depth (8, 16 and 32 layers) changed. Each of the other 23 layouts was compared bin by bin with the 47.6-cell layout of the same depth (4.53–5 GHz is marked unreliable on those reference layouts and was not compared):
 
 | phase across the probes | bins | largest change in `Z0` | largest change in `beta` |
