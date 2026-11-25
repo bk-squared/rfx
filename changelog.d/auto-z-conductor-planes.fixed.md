@@ -1,10 +1,10 @@
 ### Fixed — Automatic z meshes retain conductor planes (#PR)
 
-Previously, the plate under FR-4 was refused at +6.81 % extent miss,
-and a sheet in air solved 0.17 mm off its declared plane with a warning.
-Automatic z meshes now rebuild around conductor planes when their z
-realization would be refused. Sheets and lossy films are checked on their
-normal axis against the neighbouring layer extents, including explicit meshes.
-Close planes merge with an explanation and an explicit mesh remedy;
-x/y refusals print the automatic dx and profiles needed to replace the mesh.
-A model that passes today keeps its profile.
+Previously, a model without `dx=` could be refused for the mesh rfx built for it: a PEC plate under FR-4
+solved 6.81 % thicker than declared, and a sheet in air solved 0.17 mm off its declared plane with only a warning.
+The automatic z mesh is kept unchanged unless a conductor would be refused on it; only then is z rebuilt with
+every conductor plane on a node, no cell below a quarter of the local cell. A model that passes today keeps its mesh.
+A sheet or lossy film whose solved plane misses its declared plane by more than 1 % of the thinner adjacent layer
+is now refused on every mesh, an explicit `dx=` included (a warning under `snap="declared"`).
+`add_refinement` on a model that needs this rebuild is refused with the conflict named. 2-D modes are unchanged.
+The x/y refusal now prints the automatic `dx` and the `edge_aware_profiles(..., axes="xyz")` call that replaces the mesh.
