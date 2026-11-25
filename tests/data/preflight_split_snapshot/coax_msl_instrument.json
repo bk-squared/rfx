@@ -197,23 +197,6 @@
         "loc": null,
         "numbers": [
           0.0,
-          600.0,
-          300.0,
-          600.0,
-          800.0,
-          600.0,
-          2.0,
-          0.0,
-          0.0
-        ],
-        "severity": "warning",
-        "source": "_check_msl_port_geometry"
-      },
-      {
-        "code": "msl_port_geometry",
-        "loc": null,
-        "numbers": [
-          0.0,
           3.0,
           300.0,
           3.0,
@@ -234,7 +217,7 @@
       }
     ],
     "n_errors": 0,
-    "n_issues": 15,
+    "n_issues": 14,
     "ok": true
   },
   "preflight_sparameters": {

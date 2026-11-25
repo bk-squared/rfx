@@ -8,6 +8,9 @@ generation; --show-archive verifies and prints the frozen historical data
 without a solve, model re-evaluation, or file writes. No current Z0 accuracy
 bound follows from this archive. The build helpers below remain available
 only for geometry-drift checks; material extents are not conductor gaps.
+The hash-frozen source JSON contains historical MSL clearance warnings. Their
+absorber-depth buffer, absorbing-face 2 h_sub rule and Z0 bias figures were
+superseded by #3062; its recorded output and measurement bytes stay frozen.
 
 The original explanation below describes the historical operation.
 
@@ -53,7 +56,8 @@ agreement (see above), not read from a log file.
 
 The dx=80µm/60µm knife-edge is structural, not incidental: at every
 ALIGNED dx, the trace's lower face sits at
-``yc - W/2 = 2*h_sub + 8*dx`` in the sweep's fixed-clearance geometry,
+``yc - W/2 = 2*h_sub + 8*dx`` in the sweep's historical fixed-clearance geometry
+(this formula is retained layout, not the current preflight threshold),
 which lands EXACTLY on a lattice node for integer h_sub/dx — so aligned
 vs. misaligned board realization is a property of the geometry formula,
 not a coincidence of these six dx values.

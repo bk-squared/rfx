@@ -1,17 +1,17 @@
 """MSL wording with centre-sampled material-column counts and extents."""
 
 TEXT_0 = (
-    "MSL port 'checked' (trace W=488µm, h_sub=244µm): lateral clearance to −y absorbing "
-    'boundary = 244µm (domain edge + 244.1µm calibrated CPML buffer) < recommended 488µm '
-    '(= 2·h_sub). Fringing field will be clipped → Z0 may be biased HIGH by ~8%, mesh-conv'
-    ' may diverge. Increase domain y-extent OR move port further from sidewall.'
+    "MSL port 'checked' (trace W=488µm, h_sub=244µm): lateral clearance from declared trace edge "
+    'with legacy depth buffer to −y face = 244µm (1 h_sub) < recommended 488µm. Realized clearance '
+    'was not inspected: no concrete grid was available. The legacy declared-distance/depth-buffer '
+    'predicate uses 2 h_sub. Increase domain y-extent OR move port further from sidewall.'
 )
 
 TEXT_1 = (
-    "MSL port 'checked' (trace W=488µm, h_sub=244µm): lateral clearance to +y absorbing "
-    'boundary = 244µm (domain edge + 244.1µm calibrated CPML buffer) < recommended 488µm '
-    '(= 2·h_sub). Fringing field will be clipped → Z0 may be biased HIGH by ~8%, mesh-conv'
-    ' may diverge. Increase domain y-extent OR move port further from sidewall.'
+    "MSL port 'checked' (trace W=488µm, h_sub=244µm): lateral clearance from declared trace edge "
+    'with legacy depth buffer to +y face = 244µm (1 h_sub) < recommended 488µm. Realized clearance '
+    'was not inspected: no concrete grid was available. The legacy declared-distance/depth-buffer '
+    'predicate uses 2 h_sub. Increase domain y-extent OR move port further from sidewall.'
 )
 
 TEXT_2 = (
@@ -29,10 +29,10 @@ TEXT_2 = (
 )
 
 TEXT_3 = (
-    "MSL port 'checked' at x=0.49mm, direction='+x': distance to nearest x-CPML = 244µm "
-    '(domain edge + 244.1µm calibrated CPML buffer) < recommended 488µm (= 2·h_sub). '
-    'Source-side CPML reflection may inflate |S11|. Move port further from boundary OR '
-    'increase domain x-extent.'
+    "MSL port 'checked' at x=0.49mm, direction='+x': feed distance to −x face = 244µm (1 h_sub) < "
+    'recommended 488µm. Realized clearance was not inspected: no concrete grid was available. The '
+    'legacy declared-distance/depth-buffer predicate uses 2 h_sub. Move port further from boundary '
+    'OR increase domain x-extent.'
 )
 
 TEXT_4 = (
@@ -56,19 +56,7 @@ TEXT_4 = (
     '2·h, which one fixture cannot separate from h).'
 )
 
-TEXT_5 = (
-    "MSL port 'checked' (trace W=488µm, h_sub=275µm): lateral clearance to −y absorbing "
-    'boundary = 244µm (domain edge + 244.1µm calibrated CPML buffer) < recommended 549µm '
-    '(= 2·h_sub). Fringing field will be clipped → Z0 may be biased HIGH by ~8%, mesh-conv'
-    ' may diverge. Increase domain y-extent OR move port further from sidewall.'
-)
 
-TEXT_6 = (
-    "MSL port 'checked' (trace W=488µm, h_sub=275µm): lateral clearance to +y absorbing "
-    'boundary = 244µm (domain edge + 244.1µm calibrated CPML buffer) < recommended 549µm '
-    '(= 2·h_sub). Fringing field will be clipped → Z0 may be biased HIGH by ~8%, mesh-conv'
-    ' may diverge. Increase domain y-extent OR move port further from sidewall.'
-)
 
 TEXT_7 = (
     "MSL port 'checked': only 2 normal interval(s) between the validated ground and trace "
@@ -113,12 +101,6 @@ TEXT_8 = (
     'z=0.0µm and trace z=274.7µm.'
 )
 
-TEXT_9 = (
-    "MSL port 'checked' at x=0.49mm, direction='+x': distance to nearest x-CPML = 244µm "
-    '(domain edge + 244.1µm calibrated CPML buffer) < recommended 549µm (= 2·h_sub). '
-    'Source-side CPML reflection may inflate |S11|. Move port further from boundary OR '
-    'increase domain x-extent.'
-)
 
 TEXT_10 = (
     "MSL port 'checked' (direction='+x'): n_probe_offset=3 puts probe 0 366.2µm "
@@ -141,19 +123,7 @@ TEXT_10 = (
     '2·h, which one fixture cannot separate from h).'
 )
 
-TEXT_11 = (
-    "MSL port 'checked' (trace W=488µm, h_sub=543µm): lateral clearance to −y absorbing "
-    'boundary = 244µm (domain edge + 244.1µm calibrated CPML buffer) < recommended 1086µm '
-    '(= 2·h_sub). Fringing field will be clipped → Z0 may be biased HIGH by ~12%, mesh-'
-    'conv may diverge. Increase domain y-extent OR move port further from sidewall.'
-)
 
-TEXT_12 = (
-    "MSL port 'checked' (trace W=488µm, h_sub=543µm): lateral clearance to +y absorbing "
-    'boundary = 244µm (domain edge + 244.1µm calibrated CPML buffer) < recommended 1086µm '
-    '(= 2·h_sub). Fringing field will be clipped → Z0 may be biased HIGH by ~12%, mesh-'
-    'conv may diverge. Increase domain y-extent OR move port further from sidewall.'
-)
 
 TEXT_13 = (
     "MSL port 'checked': conductor-plane separation differs from the declared height by "
@@ -167,10 +137,11 @@ TEXT_13 = (
 )
 
 TEXT_14 = (
-    "MSL port 'checked' at x=0.49mm, direction='+x': distance to nearest x-CPML = 244µm "
-    '(domain edge + 244.1µm calibrated CPML buffer) < recommended 1086µm (= 2·h_sub). '
-    'Source-side CPML reflection may inflate |S11|. Move port further from boundary OR '
-    'increase domain x-extent.'
+    "MSL port 'checked' at x=0.49mm, direction='+x': feed distance to −x face = 488µm (0.898876 "
+    'h_sub) < recommended 724µm. The absorbing-face threshold is the smallest clearance measured at'
+    ' 3 cells per h_sub. S below this clearance is not measured. This mesh (4.45 cells per h_sub) '
+    'was not measured; the threshold uses the larger of the measured height term and 4 end cells '
+    '(end cell 122.07µm). Move port further from boundary OR increase domain x-extent.'
 )
 
 TEXT_15 = (
@@ -335,19 +306,7 @@ TEXT_24 = (
     'extracted Z0/S11 independently.'
 )
 
-TEXT_25 = (
-    "MSL port 'opposite' (trace W=488µm, h_sub=244µm): lateral clearance to −y absorbing "
-    'boundary = 244µm (domain edge + 244.1µm calibrated CPML buffer) < recommended 488µm '
-    '(= 2·h_sub). Fringing field will be clipped → Z0 may be biased HIGH by ~8%, mesh-conv'
-    ' may diverge. Increase domain y-extent OR move port further from sidewall.'
-)
 
-TEXT_26 = (
-    "MSL port 'opposite' (trace W=488µm, h_sub=244µm): lateral clearance to +y absorbing "
-    'boundary = 244µm (domain edge + 244.1µm calibrated CPML buffer) < recommended 488µm '
-    '(= 2·h_sub). Fringing field will be clipped → Z0 may be biased HIGH by ~8%, mesh-conv'
-    ' may diverge. Increase domain y-extent OR move port further from sidewall.'
-)
 
 TEXT_27 = (
     "MSL port 'opposite': only 2 normal interval(s) between the validated ground and trace"
@@ -545,32 +504,21 @@ TEXT_47 = (
 
 GOLDEN = {
     'uniform/base': [
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_4,
     ],
     'uniform/alignment': [
-        TEXT_5,
-        TEXT_6,
         TEXT_7,
         TEXT_8,
-        TEXT_9,
         TEXT_10,
     ],
     'uniform/gap_difference': [
-        TEXT_11,
-        TEXT_12,
         TEXT_13,
         TEXT_14,
         TEXT_15,
     ],
     'uniform/clamped': [
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_16,
         TEXT_17,
     ],
@@ -583,75 +531,46 @@ GOLDEN = {
         TEXT_19,
     ],
     'uniform/near_absorber': [
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_20,
     ],
     'uniform/reflector': [
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_21,
         TEXT_4,
     ],
     'uniform/automatic_placement': [
         TEXT_22,
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_23,
     ],
     'uniform/cross_feed': [
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_24,
-        TEXT_25,
-        TEXT_26,
         TEXT_27,
         TEXT_28,
         TEXT_29,
     ],
     'uniform/assembly_unavailable': [
         TEXT_30,
-        TEXT_0,
-        TEXT_1,
-        TEXT_3,
         TEXT_4,
     ],
     'uniform/attachment_unavailable': [
         TEXT_31,
-        TEXT_0,
-        TEXT_1,
-        TEXT_3,
         TEXT_4,
     ],
     'uniform/placement_unavailable': [
         TEXT_32,
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_4,
     ],
     'uniform/placement_note': [
         TEXT_33,
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_4,
     ],
     'uniform/incomplete_scan': [
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_34,
         TEXT_35,
         TEXT_4,
@@ -675,32 +594,21 @@ GOLDEN = {
         TEXT_41,
     ],
     'graded/base': [
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_4,
     ],
     'graded/alignment': [
-        TEXT_5,
-        TEXT_6,
         TEXT_7,
         TEXT_42,
-        TEXT_9,
         TEXT_10,
     ],
     'graded/gap_difference': [
-        TEXT_11,
-        TEXT_12,
         TEXT_13,
         TEXT_14,
         TEXT_15,
     ],
     'graded/clamped': [
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_43,
         TEXT_44,
     ],
@@ -713,36 +621,22 @@ GOLDEN = {
         TEXT_19,
     ],
     'graded/near_absorber': [
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_20,
     ],
     'graded/reflector': [
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_21,
         TEXT_4,
     ],
     'graded/automatic_placement': [
         TEXT_22,
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_23,
     ],
     'graded/cross_feed': [
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_24,
-        TEXT_25,
-        TEXT_26,
         TEXT_27,
         TEXT_45,
         TEXT_46,
@@ -750,39 +644,24 @@ GOLDEN = {
     ],
     'graded/assembly_unavailable': [
         TEXT_30,
-        TEXT_0,
-        TEXT_1,
-        TEXT_3,
         TEXT_4,
     ],
     'graded/attachment_unavailable': [
         TEXT_31,
-        TEXT_0,
-        TEXT_1,
-        TEXT_3,
         TEXT_4,
     ],
     'graded/placement_unavailable': [
         TEXT_32,
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_4,
     ],
     'graded/placement_note': [
         TEXT_33,
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_4,
     ],
     'graded/incomplete_scan': [
-        TEXT_0,
-        TEXT_1,
         TEXT_2,
-        TEXT_3,
         TEXT_34,
         TEXT_35,
         TEXT_4,

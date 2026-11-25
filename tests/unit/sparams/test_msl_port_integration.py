@@ -70,7 +70,9 @@ now the intended one, so Re(Z0) sits 3.6 % below the declared board's
 Hammerstad–Jensen anchor of 47.89 Ω instead of 20 % above it, and the
 reflection the port sees against its own 50 Ω reference falls 5.7×.
 Nothing was widened; nothing was translated.
-LY uses fixed physical lateral clearance (≥2·h_sub each side) because microstrip fringing extends ~2·h_sub laterally.
+LY retains this fixture's historical generous lateral margin. Current preflight
+reads solved-sheet edges against realized interfaces and uses
+max((2.2/3)*h_sub, 2.2 end cells) on absorbing faces.
 """
 
 from __future__ import annotations

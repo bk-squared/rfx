@@ -57,26 +57,26 @@ def _build_sim(*, dx: float, ly: float, port_x: float = 2e-3,
 
 
 def _msl_warnings(sim: Simulation) -> list[str]:
-    return [m for m in sim.preflight() if "MSL port" in m]
+    return [m for m in sim.preflight() if m.code == "msl_port_geometry"]
 
 
 def _normal_interval_warnings(messages):
     return [message for message in messages if "only " in message and "normal interval(s)" in message]
 
 
-def test_clearance_warning_fires_on_narrow_ly():
+def test_clearance_silent_when_solved_edges_clear_new_threshold():
     sim = _build_sim(dx=80e-6, ly=W_TRACE + 6 * 80e-6)
     msgs = _msl_warnings(sim)
-    lateral = [m for m in msgs if "lateral clearance" in m]
-    assert len(lateral) >= 1, f"expected lateral-clearance warning; got: {msgs}"
-    assert "508µm" in lateral[0], lateral[0]
-    assert "y-extent" in lateral[0] or "sidewall" in lateral[0], lateral[0]
+    lateral = [m for m in msgs if m.code == "msl_port_geometry"
+               and m.diagnostic.code == "msl.lateral_clearance"]
+    assert not lateral, f"solved gaps 212/292µm exceed max(186.27, 176)µm: {msgs}"
 
 
 def test_clearance_silent_on_wide_ly():
     sim = _build_sim(dx=40e-6, ly=W_TRACE + 8 * H_SUB)
     msgs = _msl_warnings(sim)
-    lateral = [m for m in msgs if "lateral clearance" in m]
+    lateral = [m for m in msgs if m.code == "msl_port_geometry"
+               and m.diagnostic.code == "msl.lateral_clearance"]
     assert len(lateral) == 0, (
         f"expected no lateral-clearance warning at LY=W+8·h_sub, got: {lateral}"
     )
@@ -179,11 +179,12 @@ def test_substrate_resolution_silent_at_6_cells():
     assert len(sub) == 0, f"expected no substrate-cell warning, got: {sub}"
 
 
-def test_port_close_to_cpml_warning():
+def test_port_four_hundred_um_clears_new_feed_threshold():
     sim = _build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB, port_x=400e-6)
     msgs = _msl_warnings(sim)
-    cpml = [m for m in msgs if "x-CPML" in m]
-    assert len(cpml) >= 1, f"expected x-CPML clearance warning, got: {msgs}"
+    cpml = [m for m in msgs if m.code == "msl_port_geometry"
+            and m.diagnostic.code == "msl.source_absorber_clearance"]
+    assert not cpml, f"realized feed 400µm exceeds max(338.67, 320)µm: {msgs}"
 
 
 def test_well_setup_msl_port_zero_warnings():
@@ -294,7 +295,7 @@ def test_mixed_cell_silent_at_dx_70_above_danger():
 def test_strict_mode_raises_on_bad_geometry():
     """preflight(strict=True) must raise instead of warning. Strict raises
     on the first issue encountered — for the narrow-LY geometry that may be
-    the trace-thickness, lateral-clearance, or substrate-cell warning. We
+    the trace-thickness or substrate-cell warning. We
     just check that strict mode does raise (vs returning warnings list)."""
     sim = _build_sim(dx=80e-6, ly=W_TRACE + 6 * 80e-6)
     with pytest.raises(ValueError):

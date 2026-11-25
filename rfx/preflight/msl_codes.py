@@ -86,13 +86,20 @@ TEMPLATES = {
     "width_low_side": "−{width_axis}",
     "width_high_side": "+{width_axis}",
     "lateral_clearance": "MSL port '{port_name}' (trace W={trace_width_m:um|.0f}µm, "
-    "h_sub={substrate_height_m:um|.0f}µm): lateral clearance to {side} "
-    "absorbing boundary = {lateral_clearance_m:um|.0f}µm (domain edge + "
-    "{cpml_buffer_m:len|} calibrated CPML buffer) < recommended "
-    "{recommended_clearance_m:um|.0f}µm (= 2·h_sub). Fringing field will be "
-    "clipped → Z0 may be biased HIGH by ~{bias_fraction:percent|.0f}%, "
-    "mesh-conv may diverge. Increase domain {width_axis}-extent OR move port "
-    "further from sidewall.",
+    "h_sub={substrate_height_m:um|.0f}µm): lateral clearance from {edge_origin} "
+    "to {side} face = {lateral_clearance_m:um|.0f}µm "
+    "({clearance_height_ratio:.6g} h_sub) < recommended "
+    "{recommended_clearance_m:um|.0f}µm. {evidence} "
+    "Increase domain {width_axis}-extent OR move port further from sidewall.",
+    "clearance_measured": "The absorbing-face threshold is the smallest clearance "
+    "measured at 3 cells per h_sub. S below this clearance is not measured.",
+    "clearance_unmeasured": "This mesh ({mesh_height_ratio:.6g} cells per h_sub) "
+    "was not measured; the threshold uses the larger of the measured height "
+    "term and {threshold_end_cells:g} end cells (end cell {end_cell_m:um|.6g}µm).",
+    "clearance_wall": "The {wall} wall threshold is 2 h_sub.",
+    "clearance_inactive": "The {wall} face has no active absorber; the existing threshold is 2 h_sub.",
+    "clearance_unrealized": "Realized clearance was not inspected: no concrete grid "
+    "was available. The legacy declared-distance/depth-buffer predicate uses 2 h_sub.",
     "material_column": " Separately, the declared-material column has {material_slots} "
     "same-permittivity sample slot(s), extent {material_extent_m:um|.1f}µm. "
     "This material extent is not the conductor-plane gap.",
@@ -160,13 +167,10 @@ TEMPLATES = {
     "geometry difference does not predict a Z0 change or establish an "
     "extractor accuracy bound.",
     "source_absorber_clearance": "MSL port '{port_name}' at {propagation_axis}={feed_m:mm|.2f}mm, "
-    "direction={direction!r}: distance to nearest "
-    "{propagation_axis}-CPML = {source_clearance_m:um|.0f}µm (domain "
-    "edge + {source_buffer_m:len|} calibrated CPML buffer) < "
-    "recommended {recommended_clearance_m:um|.0f}µm (= 2·h_sub). "
-    "Source-side CPML reflection may inflate |S11|. Move port "
-    "further from boundary OR increase domain "
-    "{propagation_axis}-extent.",
+    "direction={direction!r}: feed distance to {side} face = "
+    "{source_clearance_m:um|.0f}µm ({clearance_height_ratio:.6g} h_sub) < "
+    "recommended {recommended_clearance_m:um|.0f}µm. {evidence} "
+    "Move port further from boundary OR increase domain {propagation_axis}-extent.",
     "ladder_ramp": "the probe ladder crosses cells of more than one size on the "
     "{propagation_axis} runway, so a probe-offset in CELLS does not name one "
     "distance here",
@@ -530,6 +534,8 @@ class CodeDefinition:
 
 
 _FRAGMENTS = {
+    "lateral_clearance": ("clearance_measured", "clearance_unmeasured", "clearance_wall", "clearance_inactive", "clearance_unrealized"),
+    "source_absorber_clearance": ("clearance_measured", "clearance_unmeasured", "clearance_wall", "clearance_inactive", "clearance_unrealized"),
     "reflector_scan_incomplete": ("reflector_bounds_remedy",),
     "normal_resolution": ("conductor_gap", "material_column", "declared_faces"),
     "trace_face_alignment": (
@@ -600,8 +606,6 @@ STATIC_VALUES = {
         "upstream_wavelength_divisor": 4, "near_field_height_ratio": 5,
         "reflector_wavelength_divisor": 4,
     },
-    "lateral_clearance": {"recommended_height_ratio": 2},
-    "source_absorber_clearance": {"recommended_height_ratio": 2},
     "normal_resolution": {"recommended_normal_intervals": 4},
     "near_field_scope": {
         "reference_width_height_ratio": 2,

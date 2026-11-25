@@ -13,10 +13,10 @@ N = r'([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)'
 L = N + r'\s*(µm|um|mm|nm|m)'
 SCALE = {'m': 1., 'mm': 1e-3, 'µm': 1e-6, 'um': 1e-6, 'nm': 1e-9}
 LENGTHS = {
+    'end_cell_m': r'end cell ' + L,
     'trace_width_m': 'trace W=' + L,
     'substrate_height_m': r'(?:h_sub=|declared height=)' + L,
-    'lateral_clearance_m': 'absorbing boundary = ' + L,
-    'cpml_buffer_m': r'domain edge \+ ' + L + ' calibrated',
+    'lateral_clearance_m': 'face = ' + L,
     'recommended_clearance_m': 'recommended ' + L,
     'conductor_gap_m': 'conductor-plane gap=' + L,
     'ground_m': r'from [xyz]=' + L,
@@ -26,8 +26,7 @@ LENGTHS = {
     'declared_ground_m': r'declared ground [xyz]=' + L,
     'declared_trace_m': r'(?:and trace [xyz]=|declared trace plane at [xyz]=)' + L,
     'feed_m': r"' at [xyz]=" + L,
-    'source_clearance_m': r'CPML = ' + L,
-    'source_buffer_m': r'domain edge \+ ' + L + ' calibrated',
+    'source_clearance_m': r'face = ' + L,
     'first_probe_distance_m': r'(?:puts probe 0 |grid puts probe 0 |, probe 0 )' + L,
     'standoff_m': r'standoff of \d+ cells \(' + L,
     'decay_length_m': '2·h_sub/π = ' + L,
@@ -48,7 +47,9 @@ LENGTHS = {
     'automatic_height_m': r'automatic offset counts 5·h_sub = ' + L,
 }
 SCALARS = {
-    'bias_fraction': (r'biased HIGH by ~' + N + '%', .01),
+    "clearance_height_ratio": (r"µm \(" + N + " h_sub", 1),
+    "mesh_height_ratio": (r"This mesh \(" + N + " cells per h_sub", 1),
+    "threshold_end_cells": (r"and " + N + " end cells", 1),
     'normal_intervals': (r'(?:only |over )' + N + ' normal interval', 1),
     'material_slots': (r'column has ' + N + ' same-permittivity', 1),
     'near_field_offset_cells': (r'n_probe_offset=' + N + ' puts', 1),

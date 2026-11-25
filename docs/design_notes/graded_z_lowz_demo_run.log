@@ -1,3 +1,5 @@
+SUPERSESSION NOTE (#3062): Historical preflight output below is preserved verbatim, not re-run. The MSL lateral/source clearance messages using a calibrated CPML buffer, 2 h_sub on absorbing faces or a Z0 bias percentage are superseded by #3062. Current clearance is from the solved sheet edge (feed: realized node) to the realized interface, without L dx; absorbing thresholds are max((2.2/3)*h_sub, 2.2*e) lateral and max((4/3)*h_sub, 4*e) feed. Measured at 3 cells per h_sub on one board, 8-32 layers against a 12 h_sub reference; other meshes and S below the thresholds were not measured. Meeting a threshold does not establish passivity. PEC/PMC walls retain 2 h_sub.
+
 Z0_HJ=25.4359 ohm  eps_eff_HJ=2.8770
 arm A: nz=37 dz=63.5um  dt=1.897e-13
 arm B: nz=24 dz_min=21.17um dt=6.905e-14

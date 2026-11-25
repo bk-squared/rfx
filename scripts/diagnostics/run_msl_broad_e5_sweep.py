@@ -149,6 +149,10 @@ def case_geometry_params(case: CaseSpec) -> dict:
     mixed-cell danger zone in [0.10, 0.40] fractional part of h_sub/dx).
     A sanity check then verifies dx also satisfies the wavelength
     criterion ``dx <= lambda_g_min / 20`` over the band.
+
+    Retain the historical sweep layout's generous port margin. Its
+    layer-dependent formula is fixture geometry, not the current preflight
+    rule: realized feed clearance uses max((4/3)*h_sub, 4 end cells).
     """
     sub = SUBSTRATES[case.substrate_key]
     band = BANDS[case.band_key]
@@ -173,10 +177,6 @@ def case_geometry_params(case: CaseSpec) -> dict:
     air_top_m = 6.0 * sub.h_sub_m
     cpml_layers = 8
 
-    # Port margin: must clear CPML pad AND give ≥ 2·h_sub buffer between
-    # port and CPML inner face (rfx warning, strict ``<``). Add a 1.1×
-    # safety factor on the h_sub buffer so we don't sit exactly on the
-    # warning threshold.
     port_margin = max(
         (cpml_layers + 4) * dx,
         cpml_layers * dx + 2.2 * sub.h_sub_m,

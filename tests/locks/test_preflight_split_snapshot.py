@@ -27,6 +27,14 @@ stack_snapped_patch gains a spacing warning. The existing sheet spacing
 messages name conductor kinds and the solids remedy.
 Regenerated with this module's RFX_PREFLIGHT_SNAPSHOT_UPDATE generator.
 
+SNAPSHOT CHANGE (#3062), hand-computed without regeneration or a scene build.
+msl_x_clearance loses two lateral and one feed advisory; msl_y_clearance
+loses two lateral advisories; coax_msl_instrument loses its lateral advisory.
+The realized distances clear the new thresholds without the depth buffer.
+msl_conductor_plane_mismatch retains its feed finding with 8 mm = 1.6 h_sub,
+a 10 mm threshold, and explicit zero-active-absorber wording. Other rows,
+comparison tolerances and numeric baselines are unchanged.
+
 Structured snapshot policy
 --------------------------
 Pin report codes, locations, counts, severity, source and emission order.

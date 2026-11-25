@@ -74,10 +74,9 @@
         "numbers": [
           8.0,
           8000.0,
-          0.0,
+          1.6,
           10000.0,
-          2.0,
-          11.0
+          2.0
         ],
         "severity": "warning",
         "source": "_check_msl_port_geometry"
