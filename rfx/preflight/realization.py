@@ -411,8 +411,10 @@ class _CampaignStaticsContext:
             self.grid = grid
             self.nodes = nodes
             self.spacings = spacings
+            from rfx.boundaries.tfsf import run_periodic_flags
+
             pf = getattr(sim, "_periodic_flags", None)
-            self.periodic = (cast(tuple[bool, bool, bool], tuple(bool(p) for p in pf())) if callable(pf)
+            self.periodic = (run_periodic_flags(sim) if callable(pf)
                              else periodic_flags_from_axes(
                                  getattr(sim, "_periodic_axes", "")))
         except self._NARROW_EXCS as exc:

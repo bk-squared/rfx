@@ -1,4 +1,5 @@
-"""Live Yee halos and a single post-scan probe reduction, checked against the full exchange."""
+"""Live Yee halos and a single post-scan probe reduction, checked against the full exchange.
+The 16 ULP gate allows the 1--2 ULP rounding seen earlier on JAX 0.4.33 with fusion enabled."""
 
 from contextlib import contextmanager
 from functools import partial
@@ -83,9 +84,6 @@ def _full_sample(st, mesh, n_prb, specs, owners, **_kwargs):
 @contextmanager
 def _reference(patch, *, exchange=True, probes=True):
     def local_call(function, *args, **kwargs):
-        # The frozen reference already spells the local numerical operation.
-        # The production wrapper supplies its shard_map, so adapt only the
-        # reference's map boundary; its body and expected values stay intact.
         with patch_attribute.object(sys.modules[__name__], 'shard_map', lambda f, **kw: f):
             return function(*args, **kwargs)
 
@@ -119,8 +117,6 @@ def _reference(patch, *, exchange=True, probes=True):
                         if sample_table is not invariants['probe_table']:
                             return project(state, sample_table)
                         total = local_call(_full_sample, state, mesh, table.n_channels, specs, owners)
-                        # The after-scan sum gets this replicated reference
-                        # once, from rank zero, rather than once per rank.
                         return jnp.where(lax.axis_index('x') == 0, total, jnp.zeros_like(total))
 
                     with patch_attribute.object(projector, 'project', sample):
@@ -135,9 +131,8 @@ def _reference(patch, *, exchange=True, probes=True):
 
 
 def _build_model(boundary, n_devices, model="composed", source_kind="field"):
+    """PEC retains a reflecting face for the exchange checks."""
     layers = 1 if boundary == "cpml" else 0
-    # PEC retains a reflecting face and all seam/material/halo checks;
-    # these tests measure exchange, not the deferred distributed PMC image.
     spec = boundary if model == "plain" else BoundarySpec(
         x=boundary, y=Boundary(lo="pec", hi=boundary), z=boundary)
     sim = Simulation(freq_max=15e9, domain=((16 - 2 * layers) * 1e-3, 4e-3, 4e-3),
@@ -146,9 +141,6 @@ def _build_model(boundary, n_devices, model="composed", source_kind="field"):
     nx = grid.shape[0]
     assert nx == 17 and nx % n_devices != 0, grid.shape
     width = (nx + n_devices - 1) // n_devices
-    # Two devices have no interior rank: witness both sides of their seam.
-    # With 3/4, rank 1 is interior and both its first and last real cells
-    # have a source and all six probes, as do their adjacent seam cells.
     indices = sorted({width - 1, width, 2 * width - 1, 2 * width}
                      if n_devices > 2 else {width - 1, width})
     positions = [((i - grid.pad_x_lo) * grid.dx, 2e-3, 2e-3) for i in indices]
@@ -187,12 +179,6 @@ def _run(boundary, n_devices, model="composed", source_kind="field"):
             **{c: np.asarray(getattr(result.state, c)) for c in _FIELDS}}
 
 
-# Wrong halo data moves a seam-adjacent value by a sizeable fraction of the
-# field within a step or two; float32 rounding of the same arithmetic moves it
-# by a few ULPs. The minimal exchange is bit-identical to the full one on JAX
-# 0.10.2 with default flags, and on 0.4.33 with fusion disabled; with fusion on,
-# 0.4.33 compiles the shorter program differently and a model with every
-# feature moves by 1-2 ULP. The gate allows rounding and nothing larger.
 _ROUNDING_ULPS = 16
 
 
@@ -255,14 +241,11 @@ def _poison_case(patch, boundary, n_devices):
 
 
 def _subprocess_case(kind, boundary, n_devices, model="composed"):
-    # Pin the tree under test: an editable install elsewhere would otherwise win in
-    # the child and the 3/4-device cases would test that tree instead (review).
+    """The child must import the tree under test because an editable install elsewhere would otherwise win."""
     repo = str(Path(__file__).resolve().parents[3])
     path = [repo] + [p for p in os.environ.get("PYTHONPATH", "").split(os.pathsep) if p]
     env = dict(os.environ, XLA_FLAGS=f"--xla_force_host_platform_device_count={n_devices}",
                JAX_PLATFORMS="cpu", PYTHONPATH=os.pathsep.join(path))
-    # Reuse the parent's font cache instead of rebuilding it in every child
-    # when the user's default matplotlib directory is read-only.
     env.setdefault("MPLCONFIGDIR", matplotlib.get_configdir())
     proc = subprocess.run([sys.executable, str(Path(__file__).resolve()), kind,
                            boundary, str(n_devices), model], env=env,
@@ -295,7 +278,8 @@ def test_dead_ghosts(monkeypatch, boundary, n_devices):
 
 
 def _loop_collectives(hlo):
-    """Parse actual while bodies and their callees, not metadata substrings."""
+    """Parse actual while bodies and their callees, not metadata substrings.
+    An async start/done pair counts as one logical collective."""
     computations = {}
     current = None
     for line in hlo.splitlines():
@@ -327,7 +311,6 @@ def _loop_collectives(hlo):
     for op in ("collective-permute", "all-reduce", "all-gather", "all-to-all"):
         matches = [line.strip() for line in lines
                    if re.search(rf"\s{op}(?:-start|-done)?\(", line)]
-        # Async start/done is one logical collective; require balanced pairs.
         starts = sum(f" {op}-start(" in line for line in matches)
         dones = sum(f" {op}-done(" in line for line in matches)
         assert starts == dones, (op, matches)
@@ -347,9 +330,6 @@ def _compiled_hlo(patch, source_kind="field", grad=False):
                 materials = invariants['materials']
 
                 def loss(eps, ranks):
-                    # The wrapped loop receives component means explicitly.
-                    # Keep the Yee and CPML material operands tied together
-                    # while observing this loop and its transpose.
                     components = materials.components._replace(eps_update=eps)
                     inputs = dict(invariants,
                         materials=materials._replace(components=components),
@@ -365,7 +345,7 @@ def _compiled_hlo(patch, source_kind="field", grad=False):
                 compiled = entry.lower(*a, **k).compile()
                 result = compiled(*a, **k)
             captured.append(compiled.as_text())
-            assert result[1].shape[1] == 2  # Owner samples, reduced after this call.
+            assert result[1].shape[1] == 2
             return result
         return run
 

@@ -14,11 +14,11 @@ from tests.contracts.boundary_fields import component, field_nodes, is_aux
 
 
 def scene(axis, cells, cpml=False):
+    """Leaving x unpadded makes ten physical cells exercise a short last slab."""
     widths = np.full(cells, .001)
     widths[3:5] = (.0009, .0011)
     boundaries = dict.fromkeys('xyz', 'pec')
     if cpml:
-        # Keep x unpadded so cells=10 still pins the short last slab.
         boundaries.update({a: 'cpml' for a in 'yz' if a != axis})
     boundaries[axis] = Boundary('pec', 'pmc')
     sim = Simulation(freq_max=12e9, domain=(cells * .001, .006, .006), dx=.001,
@@ -36,7 +36,6 @@ def ghost_rows(carry, shape, devices, axis):
     if a == 0 and component(states[0], 0).shape != shape:
         per_rank = (shape[0] + devices - 1) // devices
         stride = per_rank + 2
-        # Check every stored copy of the physical high ghost, including halos.
         rows = [r * stride + shape[0] - 1 - r * per_rank + 1
                 for r in range(devices)
                 if 0 <= shape[0] - 1 - r * per_rank + 1 < stride]
@@ -56,7 +55,9 @@ def ghost_rows(carry, shape, devices, axis):
 
 @contextmanager
 def observe(monkeypatch, shape, devices, axis, anchor, mode):
-    """Identity taps inspect primal, JVP and VJP carries without modifying them."""
+    """Identity taps inspect primal, JVP and VJP carries without modifying them.
+    The outer scalar must not become an extra JIT input with a device-placed zero VJP.
+    """
     records = []
     original = jax.lax.scan
 
@@ -95,9 +96,6 @@ def observe(monkeypatch, shape, devices, axis, anchor, mode):
             if mode == 'jvp':
                 initial = tangent_tap(initial, anchor)
             elif mode == 'vjp':
-                # Keep even a constant initial carry on the reverse tape via
-                # the scan's own differentiable inputs. The outer scalar must
-                # not become an extra jit input with a device-placed zero VJP.
                 _, constants = jax.closure_convert(
                     lambda carry, values: original(function, carry, values, *args, **kwargs),
                     initial, xs)
@@ -122,8 +120,6 @@ def assert_records(records, mode):
 
 
 def devices_for(count, two_devices):
-    # Root conftest initializes the CPU host devices before importing JAX. The PR lane has
-    # two; the three-device cases run in validation.yml's weekly three-device job.
     return two_devices if count == 2 else host_devices(count)
 
 
@@ -157,7 +153,6 @@ def test_builder_scan_entry(monkeypatch, two_devices, axis, cells, count, entry,
 
 
 def upml_scene(axis):
-    # Uniform grid; UPML on the two transverse axes, PEC/PMC on the PMC axis.
     boundaries = {a: 'upml' for a in 'xyz'}
     boundaries[axis] = Boundary('pec', 'pmc')
     sim = Simulation(freq_max=12e9, domain=(.010, .008, .008), dx=.001,
@@ -198,7 +193,6 @@ def test_ad_scan_entry(monkeypatch, two_devices, count, mode, chunk, cpml):
             result = sim.forward(eps_override=jnp.ones(shape) * parameter,
                 devices=devices if count > 1 else None, distributed=count > 1, n_steps=5, checkpoint=True,
                 checkpoint_every=chunk, skip_preflight=True)
-            # Keep the observation list alive through traced execution/rematerialisation.
             records.append(observed)
             return result.time_series
 

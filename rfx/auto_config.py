@@ -353,9 +353,11 @@ def auto_configure(
     freq_range : (f_min, f_max) in Hz
     materials : dict of material definitions (name -> {eps_r, sigma, ...})
     accuracy : "draft", "standard", or "high"
-        draft:    10 cells/λ, 0.15λ margin  (fast, ~10% error)
-        standard: 20 cells/λ, 0.25λ margin  (~3% error)
-        high:     40 cells/λ, 0.50λ margin  (~1% error)
+        draft:    10 cells/λ, 0.15λ margin  (fast)
+        standard: 20 cells/λ, 0.25λ margin
+        high:     40 cells/λ, 0.50λ margin
+        No test measures the accuracy at these resolutions; a mesh
+        series decides it.
     boundary : "cpml" or "pec"
         Boundary condition type. Determines source type recommendation:
         - "cpml": J-source with Cb/dV normalization (Meep convention)

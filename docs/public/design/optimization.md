@@ -87,7 +87,7 @@ nothing is left.
 |---|---|
 | `n_steps` / `num_periods` | record length per iteration (default 20 periods at `freq_max`). Fewer steps use less memory, but the run must still contain the response you optimize. |
 | `jit` | default `None`: compile the loss and gradient once and reuse them in every iteration, on one device (`distributed=True` stays uncompiled). Much faster on real models. See the caveats below. |
-| `checkpoint_segments` | segmented checkpointing on a uniform mesh, for about `sqrt(n_steps)` memory at about 2x compute. Must divide `n_steps`. See [Memory Reduction](/rfx/run/memory-and-speed/). |
+| `checkpoint_segments` | segmented checkpointing on a uniform mesh, for about `sqrt(n_steps)` memory at about 2x compute. Must divide `n_steps`. See [Reduce Memory Use](/rfx/run/memory-and-speed/). |
 | `checkpoint_every` | the non-uniform-mesh counterpart (a chunk size in steps). |
 | `n_starts=N`, `seed` | `N` restarts from random latents; returns the best one. Helps only on a multimodal loss. |
 | `best_iterate=True` | return the lowest-loss iterate visited, not the last one. |
@@ -165,7 +165,7 @@ including ones that change the total radiated power (conductors, loss,
 large permittivity changes). `log_ratio=False` raises `ValueError` because it gives wrong-sign gradients
 for power-changing variables; use the default. NTFF objectives cost more than probe
 objectives, so iterate on a coarse mesh and check the final design with
-[Far-Field and RCS](/rfx/measure/far-field-and-rcs/).
+[Far-Field & Radar Cross Section](/rfx/measure/far-field-and-rcs/).
 
 ### Objectives for a finished `run()`
 
@@ -315,6 +315,63 @@ the loss and gradient are finite at every value you evaluate, as the `assert`
 does, and keep an optimizer's R inside a physical range (for example, optimize
 a bounded latent variable).
 
+## Optimize a few scalar parameters
+
+`rfx.minimize(fun, x0, *, bounds=None, method="adam", worst_case=False,
+n_iters=50, lr=None, best_iterate=False, jit=True)` minimizes a JAX-traceable
+objective of a one-dimensional parameter vector, such as a component value or
+a few dimensions that enter through overrides. `optimize()` above is for a
+design region.
+
+| `method` | Bounds | Step |
+|---|---|---|
+| `"adam"` (default) | optional; with bounds, Adam steps a latent `u` with `x = lo + (hi - lo) * sigmoid(u)` | `lr`, default 0.01 |
+| `"projected_adam"` | required | Adam on the box variable in [0, 1], clipped to the box; `lr`, default 0.01 |
+| `"mma"` | required | the method of moving asymptotes (Svanberg); no learning rate |
+| `"gcmma"` | required | the globally convergent form of MMA: each step's model of the objective is made more conservative until the trial point's objective lies under the model's value there, within 50 units in the last place of \|f\|; after the inner-step cap the trial is accepted anyway and `GCMMAInnerCapWarning` says it is not conservative; no learning rate |
+
+- `bounds`: one `(min, max)` pair per parameter, finite and strictly ordered.
+  `x0` must lie inside. The values `fun` receives are clipped to the box.
+- `worst_case=True`, with `method="mma"` only: `fun` returns a vector of
+  nonnegative quantities, for example \|S11\|² at several frequencies as linear
+  power (not dB), and MMA minimizes its largest entry.
+- `n_iters`: the number of iterates at which the gradient is evaluated. There
+  is no convergence test; read `history`.
+- `best_iterate=True` returns the finite iterate with the lowest objective
+  instead of the last one.
+
+```python
+import jax.numpy as jnp
+import numpy as np
+import rfx
+
+# The point whose largest squared distance to three points is smallest:
+# the circumcentre of the triangle.
+points = jnp.asarray([[0.0, 0.0], [1.0, 0.1], [0.35, 0.9]])
+fun = lambda x: jnp.sum((x - points) ** 2, axis=1)
+res = rfx.minimize(fun, [1.3, -0.4], bounds=[(-1.0, 2.0)] * 2,
+                   method="mma", worst_case=True, n_iters=40)
+print(np.asarray(res.x), res.fun, res.nfev)
+
+# The series resistor of the section above, bounded to 10-1000 ohm.
+res_r = rfx.minimize(lambda x: load_loss(x[0]), [200.0],
+                     bounds=[(10.0, 1000.0)], method="gcmma", n_iters=10)
+print(float(res_r.x[0]), res_r.fun)
+```
+
+`MinimizeResult` holds `x`, the last evaluated iterate, and `fun`, its
+objective; `history` and `x_history` over the finite iterates; `nfev`, every
+evaluation including GCMMA trial points (not the one forward evaluation that
+`worst_case` makes first to scale the objective); `solves` and
+`solves_history`, the forward, reverse and forward-mode passes; `subproblem_caps`, the MMA and GCMMA subproblems
+that reached their solver cap (`MMASubproblemCapWarning` says so); and
+`stopped_nonfinite`, true when an evaluation was not finite and fewer than
+`n_iters` iterates were recorded. An invalid method, bounds, start or
+`n_iters`,
+or `worst_case` with another method, raises `RfxRefusal`
+(`tests/unit/autodiff/test_minimize.py`,
+`tests/unit/autodiff/test_minimize_gcmma.py`).
+
 ## Limits
 
 - **Loss near zero with a clean finite-difference check**: the observation
@@ -331,6 +388,6 @@ a bounded latent variable).
   mesh with a wire port and a conductor, or a host read in your objective.
   Every iteration then recompiles; remove the host read, or pass `jit=False`.
 - **Out of memory in the backward pass**: use a design box, segmented
-  checkpointing or fewer steps. See [Memory Reduction](/rfx/run/memory-and-speed/).
+  checkpointing or fewer steps. See [Reduce Memory Use](/rfx/run/memory-and-speed/).
 
 Compare several objectives with [Pareto fronts and selection rules](/rfx/design/pareto/).

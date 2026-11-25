@@ -96,8 +96,6 @@ def publish(setup, layout, mesh, *, staged_state=False):
     ctx = setup.step_fn_inv.context
     grid = ctx.cpml_grid
     spacing_names = ('dx_x_lo', 'dx_x_hi', 'dx_y_lo', 'dx_y_hi', 'dz_lo', 'dz_hi')
-    # Capture the original objects before stripping, exactly as the legacy
-    # runner does. No dtype conversion or grid-metadata reconstruction.
     electric = {name: getattr(ctx.cpml_params, name) for name in spacing_names}
     magnetic = ({name: getattr(ctx.cpml_params.magnetic, name) for name in spacing_names}
                 if ctx.cpml_params.magnetic is not None else {})
@@ -109,8 +107,6 @@ def publish(setup, layout, mesh, *, staged_state=False):
                                magnetic=profiles(params.magnetic))
 
     params = profiles(ctx.cpml_params)
-    # A leading rank dimension makes every profile a dynamic shard input.
-    # apply removes that singleton rank dimension inside the local step.
     params = jax.tree.map(lambda a: place(jnp.broadcast_to(a, (layout.n_devices,) + a.shape),
                              NamedSharding(mesh, P('x'))), params)
     fields = {}

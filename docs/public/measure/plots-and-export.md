@@ -62,6 +62,8 @@ from rfx import plot_time_series
 fig = plot_time_series(result.time_series, result.dt, labels=["probe"])
 ```
 
+Each column is drawn at its sampling time, E at (n + 1)·dt and H at (n + ½)·dt; a record holding H probes passes `components=` with one field name per column in registration order.
+
 ### Field slice
 
 `plot_field_slice` plots one component of the final field state on a plane.
@@ -91,7 +93,7 @@ fig = plot_radiation_pattern(ff, freq_idx=0)
 ```
 
 `plot_rcs(rcs_result, freq_idx=0, polar=True)` plots the `RCSResult` from
-`compute_rcs`. Both are covered on [Far-Field & RCS](/rfx/measure/far-field-and-rcs/).
+`compute_rcs`. Both are covered on [Far-Field & Radar Cross Section](/rfx/measure/far-field-and-rcs/).
 
 ## Field snapshots
 

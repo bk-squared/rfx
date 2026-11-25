@@ -96,7 +96,7 @@ The low-level functions and records changed as follows.
 1.x ran each of these, but solved something other than what was declared: an
 input left out, a boundary changed, metal moved. 2.0 raises before the first
 time step, and the message names the input, the solver path and the way
-through. [Refusals](/rfx/check/refusals/) explains how they read, and the
+through. [Refused inputs](/rfx/check/refusals/) explains how they read, and the
 [support page](/rfx/support/) lists every refused input per solver path.
 
 **Geometry and conductors**
@@ -223,7 +223,7 @@ size of each change and the test that pins it.
   each frequency a result reads from the poles still ringing after the source
   ends, and ignores a static field the source leaves behind. A run that passed
   in 1.x can fail now, and the reverse. See
-  [Simulation time](/rfx/check/simulation-time/).
+  [Is the run long enough?](/rfx/check/simulation-time/).
 - **Rectangular waveguide ports** in `run()` report S at the port's own plane,
   the plane `compute_waveguide_s_matrix()` uses; S11 used to sit `ref_offset`
   cells inside the port. Magnitudes above cutoff do not change; the phases of

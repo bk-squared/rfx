@@ -70,7 +70,6 @@ def test_float64_record_end_times(entry, lane, source):
     row = ('_tfsf', 'plane_wave') if source == 'tfsf' else ('_materials', 'eps')
     with observe_times() as observed:
         sim = build(row, 'run_' + lane, precision='float64')
-        # Capture also checks the diagnostic's independently sampled raw drive.
         with _realized.capture():
             result = (sim.run(n_steps=12, compute_s_params=False, skip_preflight=True)
                       if entry == 'run' else sim.forward(n_steps=12, checkpoint=False, skip_preflight=True))
@@ -93,10 +92,10 @@ def test_float64_until_decay_times(lane, flux):
 
 @pytest.mark.parametrize('lane', ('uniform', 'nonuniform'))
 def test_float64_ringdown_source_times(lane):
+    """An early pulse keeps the source-off refusal independent of precision."""
     from rfx.ringdown import RingdownRun, RingdownForward, RingdownStop, RingdownSpec
     with observe_times() as observed:
         sim = build(('_materials', 'eps'), 'run_' + lane, precision='float64')
-        # One early pulse keeps source-off refusal independent of precision.
         sim._ports[0] = replace(sim._ports[0], waveform=lambda t: jnp.where(t == 0, 1., 0.))
         grid = sim._build_realized_grid()
         for cls in (RingdownRun, RingdownForward, RingdownStop):
@@ -149,6 +148,7 @@ def test_float64_port_sampling(lane, source):
 
 
 def test_uniform_eigenmode_time_grid():
+    """An empty edge set isolates time sampling from the spatial mode solve."""
     from types import SimpleNamespace
     from rfx.sources.msl_port import make_msl_port_sources_jm
     previous = sys.getprofile()
@@ -166,8 +166,6 @@ def test_uniform_eigenmode_time_grid():
             warnings.simplefilter('ignore', UserWarning)
             sim = build(('_materials', 'eps'), 'run_uniform', precision='float64')
             grid = sim._build_realized_grid()
-            # No spatial edges are needed to observe the actual sampler's two
-            # time grids; the mode solve does not participate in time sampling.
             em = SimpleNamespace(j_grid_lo=0, k_grid_lo=0, n_y_grid=1, n_z_grid=1, cell_indices=[])
             port = SimpleNamespace(excitation=lambda t: jnp.cos(t * 2e10), direction='+x')
             sys.setprofile(inspect)

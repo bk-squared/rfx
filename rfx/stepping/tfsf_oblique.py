@@ -37,13 +37,11 @@ def apply_methodB_e(state, cfg: MethodBConfig, st: MethodBState, dx: float, dt: 
     h1d = st.h1d
     ez = state.ez
 
-    # x-faces: Ez sees d(Hy)/dx ; Hy_inc = +cosθ·h1d
     inc = _gather(h1d, cfg.xlo_h_base, cfg.xlo_h_w0, cfg.xlo_h_w1)
     ez = ez.at[cfg.x_lo, cfg.y_lo:cfg.y_hi + 1, :].add((-ce * ct * inc)[:, None])
     inc = _gather(h1d, cfg.xhi_h_base, cfg.xhi_h_w0, cfg.xhi_h_w1)
     ez = ez.at[cfg.x_hi + 1, cfg.y_lo:cfg.y_hi + 1, :].add((ce * ct * inc)[:, None])
 
-    # y-faces: Ez sees d(Hx)/dy ; Hx_inc = -sinθ·h1d
     inc = _gather(h1d, cfg.ylo_h_base, cfg.ylo_h_w0, cfg.ylo_h_w1)
     ez = ez.at[cfg.x_lo:cfg.x_hi + 1, cfg.y_lo, :].add((-ce * sn * inc)[:, None])
     inc = _gather(h1d, cfg.yhi_h_base, cfg.yhi_h_w0, cfg.yhi_h_w1)
@@ -65,13 +63,11 @@ def apply_methodB_h(state, cfg: MethodBConfig, st: MethodBState, dx: float, dt: 
     e1d = st.e1d
     hx, hy = state.hx, state.hy
 
-    # x-faces: Hy from Ez_inc (E-node projection at x_lo / x_hi+1)
     inc = _gather(e1d, cfg.xlo_e_base, cfg.xlo_e_w0, cfg.xlo_e_w1)
     hy = hy.at[cfg.x_lo - 1, cfg.y_lo:cfg.y_hi + 1, :].add((-ch * inc)[:, None])
     inc = _gather(e1d, cfg.xhi_e_base, cfg.xhi_e_w0, cfg.xhi_e_w1)
     hy = hy.at[cfg.x_hi, cfg.y_lo:cfg.y_hi + 1, :].add((ch * inc)[:, None])
 
-    # y-faces: Hx from Ez_inc (E-node projection at y_lo / y_hi+1)
     inc = _gather(e1d, cfg.ylo_e_base, cfg.ylo_e_w0, cfg.ylo_e_w1)
     hx = hx.at[cfg.x_lo:cfg.x_hi + 1, cfg.y_lo - 1, :].add((ch * inc)[:, None])
     inc = _gather(e1d, cfg.yhi_e_base, cfg.yhi_e_w0, cfg.yhi_e_w1)

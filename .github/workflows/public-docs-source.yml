@@ -15,7 +15,8 @@ on:
       - "scripts/showcase/patch_sensitivity.py"
       - "scripts/build_public_docs_bundle.py"
       - "scripts/requirements-public-docs.txt"
-      - "tests/unit/docs/**"
+      - "tests/contracts/test_public_docs_block_runner.py"
+      - "tests/contracts/test_public_docs_bundle.py"
       - "docs/guides/*support_matrix.json"
       - "docs/agent/**"
       - "docs/guides/public_docs_architecture.md"
@@ -38,7 +39,8 @@ on:
       - "scripts/showcase/patch_sensitivity.py"
       - "scripts/build_public_docs_bundle.py"
       - "scripts/requirements-public-docs.txt"
-      - "tests/unit/docs/**"
+      - "tests/contracts/test_public_docs_block_runner.py"
+      - "tests/contracts/test_public_docs_bundle.py"
       - "docs/guides/*support_matrix.json"
       - "docs/agent/**"
       - "docs/guides/public_docs_architecture.md"
@@ -107,7 +109,7 @@ jobs:
         run: pip install -r scripts/requirements-public-docs.txt -e ".[dev]"
 
       - name: Check publication boundaries
-        run: pytest -q tests/unit/docs/test_public_docs_bundle.py
+        run: pytest -q tests/contracts/test_public_docs_bundle.py
 
       - name: Generate the pinned API and LLM documentation bundle
         run: python scripts/build_public_docs_bundle.py --output-dir docs/_build/public-docs

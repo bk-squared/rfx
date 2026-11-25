@@ -346,6 +346,7 @@ ROWS = (
     ('Simulation.compute_msl_s_matrix', 'checkpoint_segments', 'static', 'S1: WAVE-37,WAVE-64; nested forward checkpoint count'),
     ('Simulation.compute_msl_s_matrix', 'enforce_passivity', 'undecided', 'step 2 decides; rules did not decide; rfx/sparams/msl.py:63'),
     ('Simulation.compute_msl_s_matrix', 'report_every', 'undecided', 'step 2 decides; rules did not decide; rfx/sparams/msl.py:63'),
+    ('Simulation.compute_msl_s_matrix', 'devices', 'undecided', 'step 2 decides; annotation admits a number; step 2 decides'),
     ('Simulation.compute_s_matrix', 'method', 'no_number', 'annotation str | None; rfx/sparams/dispatch.py:374'),
     ('Simulation.compute_s_matrix', 'lane', 'no_number', 'annotation str | None; rfx/sparams/dispatch.py:374'),
     ('Simulation.compute_s_matrix', 'kwargs', 'forwards:Simulation.compute_waveguide_s_matrix,Simulation.compute_msl_s_matrix,Simulation.compute_coaxial_line_reflection,Simulation.compute_coaxial_two_port,Simulation.compute_coax_msl_transition,Simulation.compute_mixed_s_matrix', 'rfx/sparams/dispatch.py:483-494'),

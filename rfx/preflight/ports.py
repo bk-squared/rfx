@@ -1,52 +1,7 @@
-"""Lumped/wire-port and coaxial-port preflight.
+"""Lumped/wire-port preflight for measurement planes and realized PEC edges.
 
-The ports family asks what the LATTICE does to a
-port after it is drawn: whether a coaxial pin meets registered PEC at its
-junction plane and is shorted by geometry rather than by the port,
-where ``reference_plane_cells`` puts the measurement planes, which of a port's, source's or probe's field components the
-realized
-PEC edge set has FROZEN (with the dead-cell
-advisories, the end-gap finding and the non-uniform skip), and
-whether a single-cell port is floating mid-substrate with nothing to drive
-against.
-
-The move is gated on the committed advisory-text snapshot every
-``sim.preflight()`` fixture renders
-(``tests/locks/test_preflight_split_snapshot.py``), whose corpus was extended
-first. The extension was chosen by a CALL CENSUS, as legs 3 to 5 were. All
-six bodies below were entered -- the family sits on
-``_validate_simulation_config``'s unconditional spine, so 54 or 55 of the 57
-fixtures called each, and ``_wire_port_cell_centers`` twice as the helper it
-is -- while THREE emitted nothing: the coax junction check (the only body of
-the ports_coax family, and the corpus had no shorted junction), both
-reference-plane advisories, and the floating-port advisory, whose predicate
-wants a driven single-cell port inside a dielectric with NO conductor one
-cell away along its own component axis -- the configuration every
-patch-antenna fixture in the suite deliberately does not have. Five new
-fixtures close those, plus the two codes of ``_validate_cfg_port_inside_pec``
-the corpus had never reached. The lock module's own docstring carries the
-measurement.
-
-Import contract, inherited from ``rfx.api._preflight``: import ONLY external
-``rfx.*`` / stdlib / jax / numpy, never ``rfx.api`` -- that keeps
-``rfx/api/__init__.py`` the sole composition point and the import graph
-acyclic.
-
-The one module-level name this leg moved, ``_component_is_dead`` with its
-``_H_LOOP`` curl-loop table, is NOT here: it went to
-:mod:`rfx.preflight._common`, because its second reader
-(``_RealizedPEC.component_is_dead``) stays in the facade until the
-realization leg and a leg module may not import from the facade. That is leg
-2's ``_sorted_box_corners`` decision, re-derived on this leg's own AST scope
-walk rather than inherited from the split inventory -- which is what leg 5's
-``_local_cell`` finding made mandatory.
-
-Two cross-family edges leave this module and both are ``self.`` lookups on
-the composed ``Simulation``, so neither costs an import:
-``_check_coaxial_port_junction_aperture`` calls ``self._port_realized_edges``
-and ``_validate_cfg_port_inside_pec`` calls ``self._campaign_ctx``, both of
-which stay in the facade with the realization family. The third,
-``self._wire_port_cell_centers``, is intra-module.
+The checks report frozen field components, end gaps and floating ports.
+They read the campaign's realized conductor set through the composed simulation.
 """
 
 from __future__ import annotations
@@ -69,152 +24,6 @@ from rfx.preflight._common import (
 
 
 _HALF_NODE_PAIRING_CELL_FRACTION = 1e-6
-
-
-def _check_coaxial_port_junction_aperture(self) -> None:
-    """Advise when a coaxial port's pin meets REGISTERED PEC at its
-    junction plane — a short by geometry, not by the port.
-
-    Root cause this names: ``_assemble_materials`` is PEC-OR-only
-    (``pec_mask = pec_mask | mask``, rfx/api/_compile.py) and there is
-    no CSG subtraction shape, so a ground plane declared as a full PEC
-    sheet with a dielectric "clearance hole" declared AFTER it stays
-    solid. The committed coax-MSL junction fixture was built exactly
-    that way; its settled run measured S00 = (-0.9928, -0.0048) at
-    6 GHz — the pin was terminated in a short by the ground sheet, and
-    no check said so (the fixture's only structural test asserted
-    pin-column PEC continuity, trivially true through a solid sheet).
-
-    What is measured: on the PRODUCTION assembly's REALIZED conductor
-    set (:meth:`_port_realized_edges`, sim.add geometry and thin
-    conductors only — the coax stub the compute_coaxial_* /
-    compute_coax_msl_transition methods stamp into eps/sigma is not
-    registered geometry and is not read here), at the port's
-    junction plane ``k = position_to_index(position)[axis]``, the
-    count of NODES CARRYING A TANGENTIAL WALL in the FIRST dielectric
-    ring outside the pin. "Carries a wall" is the lattice ownership
-    contract's own test: some E edge tangential to the
-    port axis and incident to the node is PEC — which is what a sheet
-    ground at plane ``k`` and a volume ground whose face lies on
-    plane ``k`` both put there, and what a primal CELL mask never
-    marked for a volume's far face (the class). The ring is
-    defined ON THE LATTICE: ``a + dx/sqrt(2) < r <= min(a +
-    dx/sqrt(2) + dx, shell_inner)`` with ``r`` the node distance from
-    the port centre and ``shell_inner = b``, the radius
-    ``stamp_coaxial_line`` realizes for the wall's inner face. That used
-    to be ``b - min(dx, (b - a)/2)``, a wall one cell thick whose inner
-    radius moved with the mesh; the wall now starts at the declared
-    outer radius and is a fixed thickness in metres. The inner
-    bound is the pin's own reach: a PEC volume is centre-sampled
-    (§1.1) and every node of an occupied cell carries its wall, so
-    the pin's OWN nodes extend to at most ``a + dx/sqrt(2)`` (half
-    the cell diagonal past its radius); a node beyond that cannot be
-    a corner of a pin cell, so anything there is OTHER registered
-    conductor. The earlier ``a + dx/2`` bound was calibrated to the
-    node-sampled knife-edge footprint and would count the
-    pin's own realized rim.
-
-    Deliberately NOT the full ``a < r < shell_inner`` annulus: a
-    clearance hole narrower than the shell (the fixture's predeclared
-    0.4 mm hole under a 0.5 mm shell_inner leaves a one-cell ground
-    lip, 32/68 of that annulus PEC) is a valid launch and the wide
-    rule would flag the fix.
-
-    Report-only (severity "warning", no refusal): a calibration short
-    built from REGISTERED PEC would trip it and is the user's call.
-    The repo's own calibration short comes from
-    ``stamp_coaxial_short_plane``, which reports cells the lane realizes
-    as PEC EDGES rather than registered geometry, so no current lane does.
-    Not audited (silent by construction, disclosed here): the
-    non-uniform lane, 2-D mode, and a port whose position does not map
-    into the grid (the compiler rejects that separately). Measured on
-    the example snapshot (tests/contracts/test_example_fidelity_contract.py):
-    the one coaxial variant has 0 PEC cells in the ring, so no
-    snapshot row changes.
-    """
-    import warnings as _w
-
-    if not self._coaxial_ports:
-        return
-    if (self._dx_profile is not None or self._dy_profile is not None
-            or self._dz_profile is not None):
-        return
-    from rfx.sources.coaxial_port import _FACE_CONFIG
-
-    grid = self._build_grid()
-    if getattr(grid, "is_2d", False):
-        return
-    realized = self._port_realized_edges(grid)
-    if realized is None:
-        return
-    dx = float(grid.cells("x")[0])
-    pads = (int(grid.pad_x_lo), int(grid.pad_y_lo), int(grid.pad_z_lo))
-    axis_names = ("x", "y", "z")
-    for n, port in enumerate(self._coaxial_ports):
-        cfg = _FACE_CONFIG.get(str(port.face))
-        if cfg is None:
-            continue
-        axis = axis_names.index(cfg[0])
-        pos = tuple(float(v) for v in port.position)
-        try:
-            idx = grid.position_to_index(pos)
-        except ValueError:
-            continue
-        k = int(idx[axis])
-        t1, t2 = [a for a in range(3) if a != axis]
-        a = float(port.pin_radius)
-        b = float(port.outer_radius)
-        shell_inner = b
-        c1 = (np.arange(grid.shape[t1]) - pads[t1]) * dx - pos[t1]
-        c2 = (np.arange(grid.shape[t2]) - pads[t2]) * dx - pos[t2]
-        r = np.hypot(c1[:, None], c2[None, :])
-        if not (0 <= k < grid.shape[axis]):
-            continue
-        plane = realized.wall_nodes_on_plane(axis, k)
-        r_lo = a + dx / math.sqrt(2.0)
-        r_hi = min(r_lo + dx, shell_inner)
-        ring = (r > r_lo) & (r <= r_hi)
-        n_ring = int(np.count_nonzero(ring))
-        if n_ring == 0:
-            continue
-        n_pec = int(np.count_nonzero(plane & ring))
-        if n_pec == 0:
-            continue
-        outside = plane & (r > r_lo) & (r <= b)
-        r_first = float(r[outside].min()) if outside.any() else float("nan")
-        _w.warn(
-            PreflightWarning(
-                f"Coaxial port {n} (face='{port.face}', pin r="
-                f"{a * 1e6:.0f} um, outer r={b * 1e6:.0f} um): at its "
-                f"junction plane ({axis_names[axis]}="
-                f"{pos[axis] * 1e3:.3f} mm, node {k - pads[axis]}) "
-                f"{n_pec}/{n_ring} nodes of the FIRST dielectric ring "
-                f"outside the pin ({r_lo * 1e6:.0f} < r <= "
-                f"{r_hi * 1e6:.0f} um; lattice-based bounds, so the "
-                f"pin's own realized rim, at most r = {a * 1e6:.0f} um "
-                f"+ dx/sqrt(2), is excluded) carry a REALIZED PEC wall "
-                f"— the first registered conductor outside the pin "
-                f"sits at r = {r_first * 1e6:.1f} um. The pin is "
-                f"terminated in a short by registered geometry at this "
-                f"plane. The assembly is PEC-OR-only: a ground sheet "
-                f"declared as a full plane with a dielectric 'hole' "
-                f"declared AFTER it stays solid (S00 = "
-                f"-0.9928 at 6 GHz measured on exactly that fixture). "
-                f"If a clearance aperture was intended, build the "
-                f"conductor WITH the hole (a patterned sheet shape via "
-                f"add_thin_conductor, or an annular volume); if this "
-                f"short is the intended calibration standard, no "
-                f"action is needed (report-only).",
-                **finding_subjects(self, objects=(port, *(e for e in self._campaign_ctx().entry_realizations()
-                    if e.is_pec and np.any(e.footprint_on_plane(axis, k, realized.periodic, grid.shape) & ring)))),
-                code="coaxial_port_junction_short",
-                source="_check_coaxial_port_junction_aperture",
-                loc=f"coaxial_port[{n}] face={port.face}",
-            ),
-            stacklevel=4,
-        )
-
-
 
 
 def _validate_cfg_refplane_placement(self, _w) -> None:
@@ -1239,9 +1048,6 @@ def preflight_wire_port_radius(sim, warn) -> None:
         loc=", ".join(f"_ports[{f['index']}]" for f in findings),
     ), stacklevel=3)
 
-_check_coaxial_port_junction_aperture.__qualname__ = (
-    "_PreflightMixin._check_coaxial_port_junction_aperture"
-)
 _validate_cfg_refplane_placement.__qualname__ = (
     "_PreflightMixin._validate_cfg_refplane_placement"
 )

@@ -20,16 +20,21 @@ gives S-parameters for it:
 | rectangular waveguide | `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` |
 | coaxial line | `add_coaxial_port(...)` | experimental uniform `run()` / `forward()`; `compute_coaxial_line_reflection()`, `compute_coaxial_two_port()` |
 
-Port families cannot be mixed in one S-parameter calculation. If you are not
-sure which calculator a model needs, `sim.s_matrix_lane()` tells you without
-running anything, and `sim.compute_s_matrix(**kwargs)` calls it for you. The
-one exception is a lumped/wire-only model, which `compute_s_matrix` refuses:
-call `run(compute_s_params=True)` for those.
+Each calculator takes one port family, apart from two that join families:
+`compute_mixed_s_matrix()` (lumped or wire plus microstrip) is experimental,
+and `compute_coax_msl_transition()` is deprecated (see [Limits](#limits)). If
+you are not sure which calculator a model needs, `sim.s_matrix_lane()` tells
+you without running anything, and `sim.compute_s_matrix(**kwargs)` calls it
+for you. `compute_s_matrix` refuses a model with only lumped or wire ports: call
+`run(compute_s_params=True)` for those.
 
 ## Waveforms
 
-Point sources and lumped/wire ports take a waveform object. Waveguide and TFSF
-sources take `f0` and `bandwidth` directly.
+Point sources and lumped/wire ports take a waveform object. Waveguide ports
+take `f0` and `bandwidth` as arguments and accept only
+`waveform="modulated_gaussian"`. TFSF sources take `f0` and `bandwidth` and
+name their pulse with a string (`"differentiated_gaussian"`,
+`"modulated_gaussian"` or `"continuous_wave"`), or take a `CustomWaveform`.
 
 ```python
 import jax.numpy as jnp
@@ -37,7 +42,7 @@ from rfx import CustomWaveform, CWSource, GaussianPulse, ModulatedGaussian
 
 pulse = GaussianPulse(f0=2.4e9, bandwidth=0.5)       # broadband, no carrier
 burst = ModulatedGaussian(f0=3e9, bandwidth=0.6)     # carrier with a Gaussian envelope
-cw = CWSource(f0=5.8e9, ramp_steps=50)               # sinusoid, tapered on over 50 cycles
+cw = CWSource(f0=5.8e9, ramp_steps=50)               # sinusoid, tapered on over 50 cycles of f0
 
 def chirp(t):
     rate = (4e9 - 1e9) / 10e-9
@@ -54,11 +59,14 @@ sweep = CustomWaveform(func=chirp)                   # any JAX-traceable f(t)
 | `CustomWaveform` | whatever `func` gives | chirps, measured drive signals |
 
 `bandwidth` is fractional. When you omit `waveform`, rfx uses
-`GaussianPulse(f0=freq_max/2, bandwidth=0.8)`.
+`GaussianPulse(f0=freq_max/2, bandwidth=0.8)`. Despite its name,
+`ramp_steps` counts cycles of `f0`, not time steps.
 
 `GaussianPulse` starts from zero and its time integral is zero, so a soft
-source driven by it leaves no static field behind. Its `cutoff` (the number of
-`tau` before the peak) must be at least 2.5.
+source driven by it leaves no static field behind. Both Gaussian pulses have
+the width τ = 1/(π·f0·bandwidth) and peak at t0 = `cutoff`·τ after the start.
+For `GaussianPulse`, `cutoff` (default 3) must be at least 2.5; a smaller one
+is refused. `ModulatedGaussian` defaults to `cutoff=5`.
 
 ## Point sources
 
@@ -80,13 +88,18 @@ sim.add_source((0.025, 0.025, 0.010), "ez",
 
 Always pass `amplitude_kind`:
 
-- `"current"`: the amplitude is a current moment in A·m. The injected power does
-  not change when you refine the mesh. Use this by default.
-- `"field"`: the amplitude is added to E each step, in V/m.
+- `"current"`: the waveform's amplitude (its `amplitude`, or the value a
+  `CustomWaveform` returns) is a current moment in A·m, a source strength
+  that does not refer to the cell. Use this by default.
+- `"field"`: the waveform's amplitude is added to E each step, in V/m.
 
 Omitting it or passing `None` selects `"current"` and warns once per simulation.
-The default is boundary- and mesh-independent on Yee paths.
-Tested in `tests/unit/sources/test_source_amplitude_kind.py`.
+`tests/unit/sources/test_source_amplitude_kind.py` checks that omitting the kind
+gives the same record as `"current"`, bit for bit, on a closed and an open
+uniform mesh and on a graded mesh, and that `"current"` gives the
+same probe record on a uniform and a graded mesh of equal cells (scale within
+1×10⁻⁵). How the injected power changes when you refine the mesh has not been
+measured.
 
 ### Polarized sources
 
@@ -108,7 +121,16 @@ axial ratio or handedness.
 
 `add_tfsf_source` launches a plane wave inside a total-field region, for
 scattering and RCS. It travels along x (`"+x"` or `"-x"`) with `"ez"` or `"ey"`
-polarization, and needs a CPML boundary.
+polarization, and needs CPML on the two x faces; UPML is refused. By default
+the plane wave fills the whole y-z cross-section. On the uniform mesh the
+faces across the beam (y, and z in 3-D; only z for an oblique
+`method="methodB"` source) are then solved periodic: with the
+default boundary or `boundary="cpml"`, preflight notes it, and a face declared
+CPML, PMC or PEC on those axes is refused. A structure that is not uniform
+across those faces is refused unless you declare them periodic, and it then
+repeats across them as an array. A graded mesh keeps the declared side faces
+and refuses such a structure. `closed_box=True` builds a
+finite total-field box instead and needs `boundary="cpml"` on all six faces.
 
 ```python
 scatter = Simulation(freq_max=8e9, domain=(0.06, 0.06, 0.06), dx=3e-3,
@@ -120,22 +142,26 @@ scatter.add_tfsf_source(f0=5e9, bandwidth=0.4, polarization="ez",
 For oblique incidence, set `angle_deg` and choose `method`:
 
 - `method="bloch"` (default): a periodic unit cell, for infinite arrays and
-  surfaces. Its fields are complex, and frequency monitors do not account for
-  that.
+  surfaces. Its fields are complex, so an NTFF box, DFT planes, flux monitors,
+  `snapshot=` and `until_decay=` are refused with it; probes and the final
+  `state` come back as physical fields. For monitor data around a compact
+  scatterer, use method B.
 - `method="methodB"`: an open domain around a compact scatterer. It needs
   `polarization="ez"`, `direction="+x"` and a uniform grid.
 
-With `waveform=None` (the default), normal incidence, closed boxes and method B
-launch a differentiated Gaussian; oblique Bloch launches a modulated Gaussian.
-Method B honours the declared pulse and bandwidth. Explicit
+With `waveform=None` (the default), the pulse depends on the launch: a
+differentiated Gaussian at normal incidence, with `closed_box=True` and with
+method B, and a modulated Gaussian for oblique Bloch. Method B honours the declared pulse and bandwidth. Explicit
 `waveform="differentiated_gaussian"` on oblique Bloch is refused: its fixed
-transverse wavenumber carries an MG around `f0`. Declare
+transverse wavenumber is right only near `f0`, so it can carry only a
+modulated Gaussian centred on `f0`. Declare
 `waveform="modulated_gaussian"`, leave it unset, or use `method="methodB"`
-for an open domain. Every modulated Gaussian peaks at t0 = 5τ, oblique Bloch included.
+for an open domain. Every modulated Gaussian the plane wave launches peaks at
+t0 = 5τ, oblique Bloch included.
 
 TFSF cannot share a simulation with any port, and `add_tfsf_source` also
 refuses when a point source is already declared. It is not a port and gives no
-S-parameters. For RCS, see [Far-Field and RCS](/rfx/measure/far-field-and-rcs/).
+S-parameters. For RCS, see [Far-Field & Radar Cross Section](/rfx/measure/far-field-and-rcs/).
 
 ## Lumped and wire ports
 
@@ -146,9 +172,9 @@ port to use for a discrete feed, a probe feed, or a component's terminals.
 - With `extent`, it is a **wire port** that spans `extent` metres along its
   component axis, from `position` to `position + extent`. Use it to bridge a
   gap between two conductors, such as a probe feed through a substrate.
-- `radius=` declares the wire port's probe-pin radius, within the local
-  thin-probe mesh restrictions. If omitted, the effective pin radius follows
-  the mesh and its series inductance changes under refinement.
+- `radius=` declares the wire port's probe-pin radius, at most 0.2 of the
+  transverse cell (a larger one is refused). If omitted, the pin acts as a wire
+  of about 0.2 cell radius, so its series inductance changes under refinement.
 
 ```python
 sim = Simulation(freq_max=6e9, domain=(0.05, 0.05, 0.02), dx=2.5e-3,
@@ -173,16 +199,12 @@ Touchstone export.
 
 ### Getting accurate S11
 
-- **Resolve the wavelength.** Use about **60 cells per wavelength** at the
-  highest frequency you care about. At 60 cells per wavelength, one-port |S11|
-  lands within 0.54 dB of the closed form on resistive loads, and exactly on a
-  short or open. At 30 cells per wavelength, magnitudes are within 1.1 dB,
-  and the line's phase-crossing frequencies sit 1.7–2.9 % from the closed
-  form. These figures come from the lumped and wire port tests, which measure
-  `forward(port_s11_freqs=...)` on a one-cell parallel-plate line.
+- **Resolve the wavelength.** Start from about **60 cells per wavelength** at
+  the highest frequency you care about. No current test measures the accuracy
+  at that resolution; a mesh series decides it
+  ([Is the mesh fine enough?](/rfx/check/mesh-convergence/)).
 - **Know the reference plane.** A one-cell port reads its voltage at the port
   node and its current half a cell toward the line.
-- Lumped and wire ports give identical S11 on the same cells.
 
 ### Completing a short record
 
@@ -216,8 +238,12 @@ and the checks. `report.ok` is decided by comparing completions from two
 different windows of the record. These checks catch a bad fit. They are not an
 error bound.
 
-`ringdown=` works with wire ports on a fixed-length record: one port on a
-uniform mesh, or several on a graded mesh. The source must be off in the
+`ringdown=` works with wire ports on a fixed-length record: one wire port on a
+uniform mesh, and one or several on a graded mesh. Several wire ports on a
+uniform mesh are refused: there `run()` builds S from one separate run per
+port, driving each in turn, while the completion fits the port records of
+the one run it is given. Use a graded mesh, where one run fills the driven
+column. The source must be off in the
 second half of the record. Lumped, microstrip, waveguide and coaxial ports,
 TFSF, `until_decay` and `devices=` are refused.
 `forward(..., ringdown=RingdownSpec())` puts the same completion inside the
@@ -266,8 +292,9 @@ trace under them.
 
 `add_lumped_rlc` puts a resistor, inductor, capacitor or RLC combination on
 one grid edge. It is **not a port**: it has no reference impedance. To measure
-the reflection it presents, drive the line with `add_port(...)` and use the
-RLC element as the load.
+the reflection it presents, drive the line with `add_port(...)` and put the RLC
+element on the line as the load, a cell or more from the port cell: on the port
+cell it sits in parallel with the source, and S11 does not see it.
 
 ```python
 sim.add_lumped_rlc((0.03, 0.02, 0.01), "ez", R=50.0, C=0.2e-12)
@@ -284,7 +311,8 @@ wave amplitudes from a row of probe planes downstream of the feed. Use
 `compute_msl_s_matrix()`, not `run(compute_s_params=True)`:
 
 ```python
-# Run from the repository root to use the tutorial's edge-aware board.
+# Needs a clone of the rfx repository (the pip package has no examples/);
+# run from the repository root.
 from examples.tutorials.ports_and_sparams_101 import build_microstrip_ports
 
 board = build_microstrip_ports()
@@ -322,9 +350,9 @@ too little signal to trust.
 The builder in `examples/tutorials/ports_and_sparams_101.py` uses a
 44 × 34 mm domain, edge-aware x/y profiles, and a uniform z profile of 16 cells of 0.25 mm. It
 builds and preflights this board without solving it in the tutorial; the
-calculation above runs it. The tutorial's live generic-port S11 examples
-use `S11_STEPS = 600` each. This board is coarse for speed, so check the fitted
-Z0 against the closed form.
+calculation above runs it. This board is coarse for speed, so check `msl.Z0`,
+the line impedance the port fits from its probe planes, against the
+Hammerstad–Jensen closed form in `msl.line_impedances`.
 S11 and S21 use the measured V and I, referred to each port's declared
 `impedance=` (default 50 Ω); the fitted Z0 does not enter S. Refine before
 you quote Z0.
@@ -376,28 +404,34 @@ propagation constant and impedance the port then uses. Anything else there
 is refused; start it beyond the reference plane.
 
 Compute the matrix with `guide.compute_waveguide_s_matrix(normalize=...)`.
-`waveform="differentiated_gaussian"` is refused on waveguide ports: its
-zero-phase incident filter wraps the precursor to the end of the run and
-re-injects it there. Use `waveform="modulated_gaussian"` (the default).
+`waveform="differentiated_gaussian"` is refused on waveguide ports. The port
+builds its incident wave by filtering the pulse to the band, and for this
+pulse the part of the filtered wave before the peak wraps around to the end of
+the record, so the port launches a second pulse there; an empty matched WR-90
+guide read S21 off by up to 11 dB and S11 up to 1 dB too high over three
+record lengths (measured; record kept with the project). Use `waveform="modulated_gaussian"` (the
+default).
 [Waveguide Ports](/rfx/guide/waveguide-ports/) covers normalization,
 calibration planes and junctions.
 
 ## Coaxial ports
 
-`add_coaxial_port(...)` builds a coax line, matched feed, TEM drive and voltage planes in experimental uniform single-device `run()` and `forward()`. `position` is the reference plane; `face="top"` or `"bottom"` selects the feed side and `pin_length` extends the pin toward the device. `run(compute_s_params=True, s_param_freqs=...)` and `forward(port_s11_freqs=...)` read S11 at that plane using the built line impedance, then renormalize it to `impedance`. The radii, `pin_length` and `impedance` are static declarations; PEC occupancy elsewhere can be differentiated. The coaxial calculators remain available with their own line layouts and limits.
+A coaxial port is used in two ways, and its arguments mean different things in each.
+
+**In `run()` and `forward()` (experimental).** `add_coaxial_port(...)` builds a coax line, matched feed, TEM drive and voltage planes in uniform single-device `run()` and `forward()`. `position` is the reference plane; `face="top"` or `"bottom"` selects the feed side and `pin_length` extends the pin toward the device. `run(compute_s_params=True, s_param_freqs=...)` and `forward(port_s11_freqs=...)` read S11 at that plane using the built line impedance, then renormalize it to `impedance`. The radii, `pin_length` and `impedance` are static declarations; PEC occupancy elsewhere can be differentiated. The coaxial calculators remain available with their own line layouts and limits.
 
 Uniform mesh, one device, one coax port and no other S-port family; face top or bottom, float32, three-dimensional second-order Yee, CPML on all six faces, no periodic axis or TF/SF. The shell needs at least one whole cell from every lateral absorber, enough axial room for the line, and an NTFF box, when declared, containing the whole port. No conformal PEC, subpixel smoothing, eps_override or sigma_override.
 
 Experimental uniform coax ports: same-line calculator equality, run()/forward() equality, bottom-feed, NTFF-leakage and occupancy-gradient checks define the validation scope; the antenna-level result against an independent solver is not yet shown.
 
-The coaxial calculators build their own line: a coax along z with a matched
-feed, a TEM source, and a row of probe planes. You register one
+**With the coaxial calculators.** The calculators build their own line: a coax
+along z with a matched feed, a TEM source, and a row of probe planes. You register one
 `add_coaxial_port` for the cross-section (its x/y centre, radii and
 waveform) and call a calculator:
 
 - `compute_coaxial_line_reflection(termination=...)`: one port. The line ends
-  in `"short"` or a `"matched"` load; `dut_impedance=R` makes the load a
-  resistor.
+  in a `"short"`, an `"open"` or a `"matched"` load; with `"matched"`,
+  `dut_impedance=R` makes the load a resistor.
 - `compute_coaxial_two_port()`: a through line with a port at each end.
 
 ```python
@@ -423,14 +457,17 @@ What the calculators need:
   coaxial port with `face="top"`, and nothing else in the model: no geometry,
   sheets, probes, monitors or other ports. The calculator refuses extras
   rather than ignoring them.
-- The port's z position, `pin_length` and `impedance` do not place the line
-  or set its loads. Use `feed_impedance=` and `dut_impedance=`.
+- Here the port's z position, `pin_length` and `impedance` do not place the
+  line or set its loads, unlike in `run()` and `forward()`. Use
+  `feed_impedance=` and `dut_impedance=`.
 
 Getting an accurate result:
 
 - **Use at least 4 cells across the annulus** (between pin and outer
-  conductor). Raise `freq_max` to shrink the cell. `status` reports
-  `"under_resolved"` below about 3.5. The example above uses 3.8 for speed.
+  conductor). `status` reports `"under_resolved"` below about 3.5. The example
+  above passes no `dx`, so the cell is a twentieth of the wavelength at
+  `freq_max`, 0.375 mm at 40 GHz: 3.8 cells across the 1.42 mm annulus, for
+  speed. Pass a smaller `dx`, or raise `freq_max`, to shrink the cell.
 - **Keep the probe span physical.** Probe planes are placed in cells
   (`probe_start_cells`, `probe_spacing_cells`), so refining the mesh shortens
   the length the phase fit sees. Scale the spacing up when you refine.
@@ -442,15 +479,18 @@ Getting an accurate result:
 
 - **Sources give no S-parameters.** `add_source`, polarized sources and TFSF
   have no impedance. Use a port and its calculator.
-- **One port family per calculation.** Mixed lumped + microstrip and
-  coax-to-microstrip calculators exist but are experimental; measure each line
-  with its own calculator instead.
+- **One port family per calculation.** Mixed lumped + microstrip is experimental.
+  The coax-to-microstrip calculator is refused by default (deprecated; removed after 2.3).
+  Measure each line with its own calculator instead.
 - **Circular polarization** from `add_polarized_source` is unverified.
-- **Lumped/wire ports** need about 60 cells per wavelength for S11 within
-  about 0.5 dB. `forward(port_s11_freqs=...)` works on either mesh; over
-  several devices see [Run on several devices](/rfx/run/multi-device/).
+- **Lumped/wire ports**: start from about 60 cells per wavelength; no current
+  test measures S11's accuracy there, so a mesh series decides it.
+  `forward(port_s11_freqs=...)` works on either mesh; over
+  several devices see [Multi-device runs](/rfx/run/multi-device/).
   Wire ports on a graded mesh are experimental.
-- **Microstrip** `mode="eigenmode"` is unsupported. Graded-mesh microstrip has
+- **Microstrip** `mode="eigenmode"` runs only for an x-directed port on a
+  uniform mesh on one device and is refused elsewhere. Its S-parameters are
+  not validated; use the default `"laplace"`. Graded-mesh microstrip has
   no external comparison yet. Subgridding and TFSF are refused.
 - **Coax** calculators are checked on one
   geometry family, and only azimuthally symmetric discontinuities.

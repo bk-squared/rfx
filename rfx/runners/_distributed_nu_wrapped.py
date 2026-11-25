@@ -16,7 +16,8 @@ def run_wrapped(sg, materials, pec_mask, n_steps, sources, probes, *,
                 devices, occupancy, checkpoint_every, n_warmup,
                 emit_time_series, gather_final_state, material_drive,
                 debye=None, lorentz=None, cpml=False, cpml_state=None, port_plan=None,
-                prepare_only=False, slab_records=None, rlc_metas=(), measurement=None):
+                prepare_only=False, slab_records=None, rlc_metas=(),
+                sheet_impedance=None, sheet_coeffs=None, measurement=None):
     """Prepare local invariants; optionally defer steps until cell inputs die."""
     devices = jax.devices()[:sg.n_devices] if devices is None else devices
     if len(devices) != sg.n_devices:
@@ -32,6 +33,7 @@ def run_wrapped(sg, materials, pec_mask, n_steps, sources, probes, *,
         pec_mask=pec_mask, occupancy=occupancy, debye=debye, lorentz=lorentz,
         cpml=cpml, cpml_state=cpml_state, emit_time_series=emit_time_series,
         material_drive=material_drive, port_plan=port_plan, rlc_metas=rlc_metas,
+        sheet_impedance=sheet_impedance, sheet_coeffs=sheet_coeffs,
         measurement=measurement)
     invariants, carry = split(setup.invariants, setup.carry_init, layout, mesh,
                                waveforms=setup.src_waveforms, dt=grid.dt)
@@ -53,14 +55,17 @@ def run_prepared(setup, layout, mesh, invariants, carry, waves, advance, *,
     from rfx.runners import distributed_nu as nu
     if slab_records is not None and slab_records.layouts:
         carry = dict(carry, records=slab_records.initial())
+        invariants = dict(invariants, record_operands=slab_records.operands())
         field_advance = advance
 
         def advance(carry, xs, invariants, *, ranks):
             fields = {key: value for key, value in carry.items() if key != "records"}
             previous = slab_records.prepare(fields['fdtd'], ranks=ranks)
-            final, samples = field_advance(fields, xs, invariants, ranks=ranks)
+            field_inputs = {k: v for k, v in invariants.items() if k != "record_operands"}
+            final, samples = field_advance(fields, xs, field_inputs, ranks=ranks)
             final['records'] = slab_records.update(carry['records'], final['fdtd'],
-                slab_records.grid.dt, xs[0], ranks=ranks, previous=previous)
+                slab_records.grid.dt, xs[0], ranks=ranks, previous=previous,
+                operands=invariants["record_operands"])
             return final, samples
 
     final, records = run_steps(carry, invariants, waves, mesh_ranks(mesh), advance,

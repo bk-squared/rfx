@@ -59,8 +59,6 @@ def test_ntff_concrete_frequencies_use_their_maximum():
 
 
 def test_ntff_malformed_concrete_frequencies_raise():
-    # Conversion and size inspection succeed; reading the maximum as a real
-    # frequency fails. A fallback around float(jnp.max(...)) must not hide it.
     freqs = jnp.asarray([5e9 + 1j])
     assert freqs.size == 1
     with pytest.raises(TypeError):
@@ -92,8 +90,6 @@ def _small_sim():
     return Simulation(freq_max=10e9, domain=(0.008,) * 3, dx=0.001, boundary="pec")
 
 
-# Each case enters the production handler through its actual caller. The return
-# value is the field exposed to a reader, not an assertion about source syntax.
 G5_CASES = (
     "host_poles", "linear_accumulators", "invariance",
     "import_rfx", "import_jax", "jax_devices", "jax_config", "core_deps",
@@ -104,11 +100,10 @@ G5_CASES = (
 
 
 def _g5_call(case, monkeypatch, error):
+    """The host_poles callback executes synchronously so JAX does not wrap the exception in XlaRuntimeError at the device boundary."""
     fail = _raising(error)
     if case == "host_poles":
         from rfx.ringdown._jax import host_poles
-        # Execute the callback synchronously so JAX does not wrap the exception
-        # in XlaRuntimeError at the device boundary.
         monkeypatch.setattr(jax, "pure_callback", lambda fn, shapes, *a, **kw: fn(*a))
         return lambda: host_poles(fail, jnp.ones(4), 1, 0.1, [1.0])[2]
     if case == "linear_accumulators":
@@ -208,8 +203,6 @@ def _g5_call(case, monkeypatch, error):
         sim = _small_sim()
         sim.add(Box((0.002,) * 3, (0.004,) * 3), material="pec")
         record = sim.realized_geometry()
-        # The record preserves a failed rasterization; the report reconstructs
-        # that error for the unbounded conductor's finding.
         row = replace(record.entities[0], mask_error=f"{error.__name__}: {MESSAGE}")
         table = replace(record.realization_table, rows=tuple(
             replace(table_row, declared_bounds_m=None) if table_row.label == "geometry[0]" else table_row

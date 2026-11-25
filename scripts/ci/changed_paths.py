@@ -87,6 +87,7 @@ CODE_FILES: frozenset[str] = frozenset(
         ".github/workflows/pr-tests.yml",
         "scripts/ci/changed_paths.py",
         "scripts/ci/classify_changes.sh",
+        "scripts/ci/select_notcode_tests.py",
     }
 )
 

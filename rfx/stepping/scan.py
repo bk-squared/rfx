@@ -53,7 +53,6 @@ def _scan_with_opaque_operands(f, init, xs, length, kwargs, anchor):
     leading = [a.shape[0] for a in jax.tree_util.tree_leaves(xs)
                if hasattr(a, "shape")]
     if (length == 0) or (leading and leading[0] == 0):
-        # A zero-length scan runs nothing; its outputs are empty.
         return jax.lax.scan(f, init, xs, length=length, **kwargs)
     x0 = None if xs is None else jax.tree_util.tree_map(lambda a: a[0], xs)
     closed, out_shape = jax.make_jaxpr(f, return_shape=True)(init, x0)

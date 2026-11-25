@@ -81,7 +81,7 @@ class GradedStepContext:
     ntff_box: NTFFBox | None
     _accumulate_cm: Callable | None
     emit_time_series: bool
-    x_face_frame: Mapping[str, tuple[int, int]] | None = None  # Axis -> static (lo, hi) physical rows.
+    x_face_frame: Mapping[str, tuple[int, int]] | None = None
     port_record_specs: tuple | None = None
     port_acc_indices: tuple = ()
     cpml_spacings: tuple | None = None
@@ -154,17 +154,12 @@ def make_graded_step(
         table = frame.invariants.get('port_table')
         dtype = frame.st.ex.dtype
         if table is None and dtype not in port_tables:
-            # Graded widths are JAX arrays: evaluate the weights once, outside
-            # the traced step, as they were before the table (a coefficient
-            # formed inside the loop is rounded by its context).
             with jax.ensure_compile_time_eval():
                 port_tables[dtype] = port_table(ctx.grid, port_specs, nu=True,
                                                 boundary=ctx.curl_boundary, dtype=dtype)
         return port_tables[dtype] if table is None else table
 
     def before_sources(frame: GradedFrame):
-        # The reference reads the V row's own weight, so a traced width
-        # (a dz_profile design variable) stays a tracer.
         frame.port_refs = pre_injection_samples(frame.st, port_specs, None, table=graded_port_table(frame))
         frame.new_port_refs = [ref_dft_update(
             accs[4], frame.port_refs[acc_indices[p]], frame.step_idx, ctx.sp_freqs, ctx.dt)
@@ -182,8 +177,6 @@ def make_graded_step(
         frame.design_box_coeffs = frame.invariants["design_box_coeffs"]
         frame.step_idx, frame.src_vals = frame.xs
         frame.st = frame.carry["fdtd"]
-        # E^n at each lumped RLC edge, read before the E update (the
-        # series element is solved together with its edge field).
         frame.rlc_e_prev = (
             tuple(getattr(frame.st, m.component)[m.i, m.j, m.k] for m in ctx.rlc_metas)
             if ctx.use_lumped_rlc and ctx.slab_rlc is None else ())
@@ -191,14 +184,10 @@ def make_graded_step(
             from rfx.stepping.slab_lumped import read
             frame.rlc_e_prev = read(frame.st, ctx.rlc_metas, *ctx.slab_rlc)
 
-        # E^n on the slab, before anything in this step writes E (the H
-        # update below does not touch it). Slab-sized so the reverse-mode
-        # tape carries the slab and not the domain.
         if ctx.use_current_moments:
             frame.e_prev_slab = ctx._slab_e_snapshot(frame.st, ctx.current_moments)
 
     def h_update(frame: GradedFrame):
-        # H update (non-uniform)
         frame.st = update_h_nu(frame.st, frame.materials, ctx.dt, frame.invariants["inv_dx_h"], ctx.inv_dy_h, ctx.inv_dz_h,
                          cell_sizes=(frame.invariants["dx_arr"], dy_cells, dz_cells),
                          high_wall=high_wall, periodic=ctx.curl_boundary.periodic)
@@ -228,14 +217,9 @@ def make_graded_step(
             frame.tfsf_h_state = update_tfsf_1d_h(ctx.tfsf_cfg, frame.carry["tfsf"], ctx.grid.dx, ctx.dt)
 
     def e_update(frame: GradedFrame):
-        # Snapshot E^n for the sheet operator (it REPLACES the
-        # standard update at masked tangential edges with A*E^n + B*curlH).
         frame.e_prev_sheet = (frame.st.ex, frame.st.ey, frame.st.ez) if ctx.use_sheet_impedance else None
-        # the design box REDOES the E update at its own cells from
-        # the pre-update state (E^n and the same H^{n+1/2}).
         frame.st_prev_design = frame.st if ctx.use_design_box else None
 
-        # E update: use ADE-aware path when dispersive materials are present
         frame.debye_new = None
         frame.lorentz_new = None
         if ctx.use_debye or ctx.use_lorentz:
@@ -257,10 +241,6 @@ def make_graded_step(
             frame.st = update_e_nu(frame.st, frame.materials, ctx.dt, frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz,
                              boundary=ctx.curl_boundary, high_wall=high_wall)
 
-        # design box: redo the E update at the design cells from the
-        # traced permittivity, on the graded-mesh curl. Same slot as the
-        # uniform lane — immediately after the E update, on the same H,
-        # before anything that reads or writes E.
         if ctx.use_design_box:
             from rfx.stepping.yee import update_e_box
             frame.st = update_e_box(
@@ -311,12 +291,6 @@ def make_graded_step(
 
     def constitutive(frame: GradedFrame):
         """Apply sheets, then domain faces, then lumped constitutive laws."""
-        # node-thin surface-impedance sheet operator. Contract slot:
-        # AFTER apply_pec_mask/apply_pec_occupancy, BEFORE domain faces
-        # (PEC wins on overlap), lumped updates, sources and port sampling.
-        # curlH comes from
-        # the SAME shared stencil helper update_e_nu uses, on the same
-        # H^{n+1/2} the E update consumed.
         if ctx.use_sheet_impedance:
             frame.st = apply_pec_faces(frame.st, ctx.wall_loss_faces)
             from rfx.core.yee import curl_h_nu as _curl_h_nu
@@ -329,12 +303,10 @@ def make_graded_step(
             frame.st = _apply_sheet_e(frame.st, frame.e_prev_sheet, _curls,
                                 frame.sheet_impedance, frame.sheet_coeffs)
 
-        # PEC, per face
         frame.st = apply_pec_faces(frame.st, ctx._pec_faces_frozen,
                                    frame=ctx.x_face_frame, owned=frame.invariants.get("owns_x"),
                                    normal_ghost_faces=ctx.wall_loss_faces)
 
-        # Lumped RLC ADE update (after E update + boundaries, before sources)
         frame.new_rlc_states = None
         if ctx.use_lumped_rlc:
             from rfx.stepping.lumped import update_rlc_elements
@@ -345,11 +317,9 @@ def make_graded_step(
                 *(() if ctx.slab_rlc is None else ctx.slab_rlc))
 
     def sources(frame: GradedFrame):
-        # Sources (point sources + wire port excitation)
         frame.st = inject_drives(frame.st, frame.invariants["drives"], frame.src_vals)
 
     def after_sources(frame: GradedFrame):
-        # Record the completed fields after the canonical source corrections.
         frame.new_waveguide_port_accs = None
         if ctx.use_waveguide_ports:
             from rfx.measurement.modal import write_waveguide_record
@@ -367,7 +337,6 @@ def make_graded_step(
                     v_inc_t=accs[4],
                     n_steps_recorded=accs[5],
                 )
-                # TFSF-style corrections applied earlier at canonical slots.
                 cfg_updated = write_waveguide_record(cfg, waveguide_values[4*port:4*port+4], frame.st.step, ctx.dt)
                 frame.new_waveguide_port_accs.append((
                     cfg_updated.v_probe_t,
@@ -378,31 +347,6 @@ def make_graded_step(
                     cfg_updated.n_steps_recorded,
                 ))
 
-        # Wire port V/I DFT accumulation.
-        #
-        # Ordering: AFTER source injection. Measurement
-        # (docs/design_notes/issue683_sampling_order_decision_protocol.md section 9)
-        # establishes that this
-        # slot is the terminal-consistent, physically correct one.  The
-        # known-load circuit law holds only for the post-injection pair
-        # (n*a = +0.9987/+0.9950, n*|b| = 0.08/0.32 Ohm over a six-point
-        # R_L sweep at both decision bins), and the post-injection E is
-        # the true field level E^{n+1} of the discrete update
-        # (Ampere-identity residual 2.3e-7 vs 3.25 pre-injection).  The
-        # once-CONTESTED known-load sweep was settled by that protocol run
-        # (gates G0-G2 all passed; the earlier independent repro's fixture
-        # had failed to load the port), and the once-UNEXAMINED Ampere
-        # identity was examined in the same run (section 7).
-        #
-        # The uniform lane uses this same POST slot for its physical
-        # V/I/V_port channels, with a pre-injection drive sample as a separate
-        # calibration reference for its off-diagonal decomposition (see
-        # docs/design_notes/issue683_decomposer_flip_predeclaration.md).
-        # This lane's decomposition is calibrated in the POST frame directly,
-        # so it needs no separate reference channel.
-        #
-        # PASSIVE ports are unaffected either way: I reads H only, and the
-        # source loop writes E only, at the SOURCE cell.
         frame.new_wire_sp = None
         if port_specs:
             frame.new_wire_sp = []
@@ -425,29 +369,23 @@ def make_graded_step(
         if ctx.use_flux_monitors:
             frame.new_flux_monitors = flux(frame.st, frame.carry["flux_monitors"], ctx.flux_meta, ctx.dt, frame.step_idx)
 
-        # NTFF: accumulate tangential E/H DFT on 6 box faces
         frame.new_ntff = None
         if ctx.use_ntff:
             from rfx.farfield import accumulate_ntff
             frame.new_ntff = accumulate_ntff(frame.carry["ntff"], frame.st, ctx.ntff_box, ctx.dt, frame.step_idx)
 
-        # Block current moments — same slot as the NTFF box: E at (n+1)*dt,
-        # H at (n+1/2)*dt, with the feed current already injected.
         frame.new_cm = None
         if ctx.use_current_moments:
             frame.new_cm = ctx._accumulate_cm(
                 frame.carry["current_moments"], frame.st, frame.e_prev_slab, ctx.current_moments,
                 ctx.dt, frame.step_idx)
 
-        # TFSF 1D auxiliary E-field update (mirrors uniform scan body:
-        # called AFTER sources, closes the leapfrog step).
         frame.tfsf_new = None
         if ctx.use_tfsf:
             from rfx.sources.tfsf import update_tfsf_1d_e
             t_tfsf = frame.step_idx.astype(jnp.float32) * ctx.dt
             frame.tfsf_new = update_tfsf_1d_e(ctx.tfsf_cfg, frame.tfsf_h_state, ctx.grid.dx, ctx.dt, t_tfsf)
 
-        # Probes
         if ctx.emit_time_series and frame.invariants["probe_table"].n_channels:
             table = frame.invariants["probe_table"]
             nodes = _host_probe_nodes(table)
@@ -496,8 +434,6 @@ def make_graded_step(
     attachments = {point: () for point in HookPoint}
     attachments[HookPoint.BEFORE_SOURCES] = (before_sources,) if port_specs else ()
     slab = ctx.x_face_frame is not None
-    # Slab observers read owned rows from the exchanged state, so the
-    # ghost write does not need to preserve a separate pre-exchange E.
     attachments[HookPoint.AFTER_SOURCES] = () if slab else (after_sources,)
     attachments[HookPoint.STEP_END] = (after_sources,) if slab else ()
     for point, extra in (hooks or {}).items():

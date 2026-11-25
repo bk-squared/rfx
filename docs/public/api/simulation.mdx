@@ -19,7 +19,8 @@ Simulation(freq_max, domain, *, boundary="cpml", cpml_layers=16,
            dz_profile=None, dx_profile=None, dy_profile=None, dt=None,
            dt_min_cell=None, precision="float32", solver="yee",
            stencil_order=2, nominal_profiles=None,
-           interface_eps="sampled", snap="strict")
+           interface_eps="sampled", snap="strict",
+           pec_occupancy_model="edge_keep")
 ```
 
 ```python
@@ -37,25 +38,27 @@ sim = Simulation(
 
 | Argument | Meaning |
 |---|---|
-| `freq_max` | Highest frequency you care about, in Hz. It sets the default time step, the default `dx` and the mesh checks in preflight. |
+| `freq_max` | Highest frequency you care about, in Hz. It sets the default `dx` and the mesh checks in preflight. The time step follows from the smallest cell (the Courant limit), so `freq_max` sets it only through the default `dx`. |
 | `domain` | `(Lx, Ly, Lz)` in metres. On a graded axis, pass `0` for that axis and the size comes from the profile's sum. |
-| `dx` | Cell size in metres. If omitted, rfx derives it from `freq_max`. |
+| `dx` | Cell size in metres. If omitted, rfx uses a twentieth of the shortest wavelength, `c / freq_max / 20`, on a uniform mesh; for a mesh planned from your geometry see [Non-Uniform Mesh](/rfx/model/domain-mesh/). A graded x or y profile needs an explicit `dx` (the cell next to the boundary). |
 | `boundary` | `"cpml"` (default), `"pec"`, `"upml"`, or a `BoundarySpec` for per-face control, including `"pmc"` and `"periodic"`. See [Core Concepts](/rfx/start/concepts/#boundaries). |
 | `cpml_layers` | Absorber thickness in cells (default 16). rfx adds the absorber **outside** `domain` on each CPML face, so the whole domain is interior. Keep sources and structures a few cells from its edge. |
 | `dx_profile`, `dy_profile`, `dz_profile` | Cell sizes along an axis, for a graded mesh. See [Non-Uniform Mesh](/rfx/model/domain-mesh/). |
 | `mode` | `"3d"` (default), `"2d_tmz"` (Ez, Hx, Hy) or `"2d_tez"` (Hz, Ex, Ey). |
 | `precision` | `"float32"` (default), `"float64"` (enable JAX x64 first) or `"mixed"` (float16 fields). Float64 runs on one device, on a uniform or graded mesh; mixed on a uniform mesh on one device. |
-| `pec_occupancy_model` | `"edge_keep"` (default) scales the E-edge update; `"kottke"` converts occupancy to an inverse-permittivity tensor on single-device uniform `forward()` and topology. Graded `forward()` (including distributed) refuses `"kottke"` with an occupancy input. Uniform distributed `forward()` refuses occupancy overrides; `run()` has no occupancy input. |
+| `pec_occupancy_model` | How a relaxed metal occupancy (`pec_occupancy_override` in `forward()`) enters the update. `"edge_keep"` (default) scales the E-edge update; `"kottke"` converts occupancy to an inverse-permittivity tensor on single-device uniform `forward()` and `topology_optimize()`. Graded `forward()` (including distributed) refuses `"kottke"` with an occupancy input. Uniform distributed `forward()` refuses occupancy overrides; `run()` has no occupancy input. |
 | `solver` | `"yee"` (default). `"adi"` was removed in 2.1 and is refused by name. |
 | `stencil_order` | `2` (default) or `4`. Order 4 only runs on a uniform, PEC or periodic, non-dispersive model. |
 | `dt`, `dt_min_cell` | Pin the time step on a graded mesh (for mesh-as-design-variable work). Refused on a uniform mesh. |
+| `interface_eps` | The permittivity an E edge on a dielectric interface takes. `"sampled"` (default): the value assembled for each cell. `"dual_average"`: the area-weighted mean of the four cells around each E edge, on a graded mesh on one device (`run()` and `forward()`); it is refused with thin conductors, lumped RLC, Debye or Lorentz materials, `subpixel_smoothing`, `eps_override`, traced profiles and a graded periodic axis. |
 
 Set the occupancy model when constructing `Simulation`, before tracing or calling
 `forward()`. The removed `RFX_PEC_OCC_KOTTKE` environment variable raises at
 construction while set, even to `0`; unset it and use the constructor option.
 
-Put PEC faces in a `BoundarySpec`. Neither
-is a finite ground plane: for that, draw a sheet with `add_thin_conductor()`.
+A PEC boundary (`boundary="pec"`, or a PEC face in a `BoundarySpec`) is an
+infinite wall, not a finite ground plane: for that, draw a sheet with
+`add_thin_conductor()`.
 
 ## Building the model
 
@@ -66,11 +69,11 @@ Every `add_*` method returns the simulation, so calls can be chained.
 | `add_material(name, *, eps_r, sigma, mu_r, ...)` | register a named material | [Geometry & Materials](/rfx/api/geometry-materials/) |
 | `add(shape, *, material)` | fill a shape with a material | [Geometry & Materials](/rfx/api/geometry-materials/) |
 | `add_thin_conductor(shape, ...)` | a zero-thickness metal sheet | [Geometry & Materials](/rfx/api/geometry-materials/) |
-| `add_source`, `add_polarized_source`, `add_tfsf_source` | field excitation, no impedance | [Sources & Ports](/rfx/api/sources-ports/) |
-| `add_port`, `add_msl_port`, `add_waveguide_port`, `add_coaxial_port` | ports for S-parameters | [Sources & Ports](/rfx/api/sources-ports/) |
-| `add_lumped_rlc` | an R/L/C element in one cell | [Sources & Ports](/rfx/api/sources-ports/) |
+| `add_source`, `add_polarized_source`, `add_tfsf_source` | field excitation, no impedance | [Sources and Ports API](/rfx/api/sources-ports/) |
+| `add_port`, `add_msl_port`, `add_waveguide_port`, `add_coaxial_port` | ports for S-parameters | [Sources and Ports API](/rfx/api/sources-ports/) |
+| `add_lumped_rlc` | an R/L/C element in one cell | [Sources and Ports API](/rfx/api/sources-ports/) |
 | `add_probe`, `add_vector_probe`, `add_dft_plane_probe`, `add_flux_monitor`, `add_ntff_box` | observables | [Results & Observables](/rfx/api/results/) |
-| `add_refinement(z_range, *, ratio=4, ...)` | a finer z slab (subgridding) | refused by default; with `validation="research"`, only `run()` on a uniform mesh accepts it |
+| `add_refinement(z_range, *, ratio=4, ..., validation="production")` | a finer z slab (subgridding) | refused with the default `validation="production"`; with `validation="research"`, only `run()` on a uniform mesh accepts it |
 
 ```python
 sim.add_material("slab", eps_r=3.0, sigma=0.01)
@@ -86,7 +89,7 @@ sim.add_probe((0.030, 0.015, 0.015), "ez")
 | Method | Returns | Use |
 |---|---|---|
 | `preflight(*, strict=False, check_ntff=True, check_resolution=True, ...)` | `PreflightReport` | Setup errors and warnings. `run()` calls it for you. |
-| `preflight_sparameters(*, calculator="run", strict=False, ...)` | `PreflightReport` | Is this port family valid for the S-parameter calculator you plan to call? See [Sources & Ports](/rfx/api/sources-ports/#checking-a-calculator-before-the-run). |
+| `preflight_sparameters(*, calculator="run", strict=False, ...)` | `PreflightReport` | Is this port family valid for the S-parameter calculator you plan to call? See [Sources and Ports API](/rfx/api/sources-ports/#checking-a-calculator-before-the-run). |
 | `fidelity_report(print_report=True)` | report | Where each shape actually landed on the grid, next to what you drew. |
 | `freeze_mesh()` | `Grid` or `NonUniformGrid` | Fix the mesh now, so you can read grid indices before placing more geometry. |
 | `plan_mesh(*, n_steps=None, available_memory_gb=None, sparameter_calculator=None, ...)` | `MeshPlan` | A serializable summary of the mesh, memory estimate and checks. See [Automation](/rfx/api/functions/). |
@@ -101,8 +104,9 @@ sim.fidelity_report()
 ```
 
 `PreflightReport` is a list of coded issues. Read `.ok`, `.errors`,
-`.warnings`, `.infos` or `.by_code(code)`. Don't test it with `if report:`: that
-raises `TypeError`, because an advisory-only report is non-empty but fine.
+`.warnings`, `.infos` or `.by_code(code)`. Testing the report itself for
+truth (`if report`) raises `TypeError`: as a list, a clean report is empty and
+reads false, while a report with only advisories is non-empty and reads true.
 `strict=True` raises on any finding, warnings included; for an errors-only
 check call `report.raise_for_failure()` on a normal report.
 
@@ -121,7 +125,8 @@ in `to_dict()` and let a UI select objects or highlight cells.
 ```text
 run(*, n_steps=None, num_periods=20.0, until_decay=None,
     decay_check_interval=50, decay_min_steps=100, decay_max_steps=50000,
-    decay_energy_consecutive=2, ..., checkpoint=False,
+    decay_energy_consecutive=2, radiated_flux_box=None,
+    flux_env_checks=4, ..., checkpoint=False,
     compute_s_params=None, s_param_freqs=None, s_param_n_steps=None,
     snapshot=None, subpixel_smoothing=False, conformal_pec=None,
     conformal_min_weight=0.1, devices=None, exchange_interval=1,
@@ -142,38 +147,46 @@ print(result.time_series.shape, result.settling_witness["status"])
 | `num_periods=P` | P periods at `freq_max` (default 20, used when nothing else is given) |
 | `until_decay=1e-3` | step until the interior field energy falls to that fraction of its largest value after the source ended, up to `decay_max_steps` |
 
-Without `radiated_flux_box`, `until_decay` watches the total interior field
-energy relative to its largest value after the drive ends. This applies to
-uniform meshes with closed or absorbing boundaries and graded meshes with
-absorbing boundaries. A lossless closed PEC box generally reaches the step
+`radiated_flux_box=(lower corner, upper corner)` in metres, a closed box
+around the radiator and clear of the CPML, makes `until_decay` watch the power
+flowing out through that box instead: the run stops once the drive has ended
+and the largest |power| of the last `flux_env_checks` checks has stayed below
+`until_decay` times its largest value since the run began for
+`decay_energy_consecutive` checks in a row. The box needs `boundary="cpml"`
+or `"upml"`. Without it, `until_decay` watches the total interior field
+energy relative to its largest value after the drive ends. The energy rule
+applies to uniform meshes with closed or absorbing boundaries and to graded
+meshes with absorbing boundaries. A lossless closed PEC box generally reaches the step
 cap; a lossy box can stop when its energy decays. The public graded-mesh runner
-still refuses closed-boundary `until_decay` (set `n_steps`). Use a fixed
-`n_steps` in convergence studies.
+still refuses closed-boundary `until_decay` (set `n_steps`). In a convergence
+study, give the same physical record length on every mesh: the same `num_periods`, or an
+`n_steps` scaled to each mesh's time step.
 
 **Other arguments you will use:**
 
 | Argument | Meaning |
 |---|---|
 | `compute_s_params=True`, `s_param_freqs=` | S-parameters for lumped and wire ports (`add_port`) only. Other port families have their own calculator. |
-| `snapshot=SnapshotSpec(interval=10, components=("ez",), slice_axis=None, slice_index=None)` | Record field snapshots. See [Visualization and Analysis](/rfx/measure/plots-and-export/). |
+| `snapshot=SnapshotSpec(interval=10, components=("ez",), slice_axis=None, slice_index=None)` | Record field snapshots. See [Visualization & Result Analysis](/rfx/measure/plots-and-export/). |
 | `report_every=N` | Print progress (steps, rate, ETA) every N steps. Does not change the result. |
-| `subpixel_smoothing=True` | Smoothed permittivity at dielectric interfaces. Only the diagonal of the averaged tensor is kept, so a curved interface converges first order: an εr 38 cylinder's resonance reads about 1 % high at 0.5 mm. |
-| `subpixel_smoothing="full_tensor"` | The full averaged tensor, off-diagonal terms included: second order at a curved dielectric interface, on uniform and graded meshes, one device. It refuses some inputs that `True` runs on a uniform mesh (`boundary="upml"`, `compute_waveguide_s_matrix`, conformal PEC, a traced `eps_r`); see [Support Boundaries](/rfx/support/). |
+| `subpixel_smoothing=True` | Smoothed permittivity at dielectric interfaces. Only the diagonal of the averaged tensor is kept, so a curved interface converges first order (measured: on graded meshes the three lowest modes of an εr 4 sphere in a PEC box converge at slopes 0.99–1.01, and an εr 38 cylinder's TE01δ resonance reads about 1 % high at 0.5 mm cells; records kept with the project). |
+| `subpixel_smoothing="full_tensor"` | The full averaged tensor, off-diagonal terms included: second order at a curved dielectric interface (measured on the same εr 4 sphere; not measured on high-contrast rods), on uniform and graded meshes, one device. It refuses some inputs that `True` runs on a uniform mesh (`boundary="upml"`, `compute_waveguide_s_matrix`, conformal PEC, a traced `eps_r`); see [Support](/rfx/support/). |
 | `subpixel_smoothing="kottke_pec"` | Experimental. Also smooths metal faces, but it is not recommended for metal: on every measured case with a metal face off the grid it was farther from the reference than the staircase. A run that uses it with a PEC volume warns. For curved metal use `conformal_pec=True`. |
 | `conformal_pec=True` | Cut-cell updates at curved metal: each cut edge and face uses its PEC-free length and area. On a PEC sphere it is closer to Mie than the staircase, but the error falls only first order with the cell size, and every run with it warns. Judge a curved body by a mesh series. |
-| `ringdown=RingdownSpec(...)` | Complete a wire port's S-parameters when the record was cut while the structure still rings. See below. |
+| `ringdown=RingdownSpec(...)` | Complete a wire port's S-parameters, or the spectra of field probes, when the record was cut while the structure still rings. See below. |
 | `devices=[...]` | Run across several devices (x-slab decomposition). `exchange_interval` must stay 1. |
-| `skip_preflight=True` | Skip advisories only, for both `run()` and `forward()`. Realization refusals still apply; `snap='declared'` warns on geometry size misses. |
+| `skip_preflight=True` | Skip preflight, its errors included, for both `run()` and `forward()`. Refusals outside preflight still apply, such as those about the realized geometry and those of inputs the solver path does not implement; `snap='declared'` warns on geometry size misses. |
 
 A run argument that the selected solver path does not implement **raises
-before the first step**, for example snapshots on a graded mesh. The one exception is `report_every`, which only prints
+before the first step**, for example snapshots on a graded mesh on one device. The one exception is `report_every`, which only prints
 progress: the graded, subgridded and multi-device paths ignore it with a
 warning.
 
 **Warnings after the run.** `run()` warns when a probe recorded no field,
 when a Gaussian-pulse probe record had not rung down (end of record above
-−40 dB of peak), and when `time_series` or lumped/wire `s_params` contain
-NaN/Inf or an `|S|` above 1.1. These checks cover only those arrays. For
+−40 dB of peak), when `time_series` or lumped/wire `s_params` contain
+NaN/Inf, when the largest singular value of S exceeds 1.01 at a frequency, and
+when any entry of a lumped/wire S has magnitude above 1.1. These checks cover only those arrays. For
 DFT planes, flux and NTFF data, check `np.isfinite(...)` yourself. No warning
 does not mean the run converged.
 
@@ -190,17 +203,38 @@ poles and the checks. `report.ok` is decided by comparing the completions from
 comparison cannot be formed and a shorter second window is compared instead
 (`W2` in the report), which can read the error low. Neither comparison is an
 error bound. The source must be off in
-the fit window. It covers wire ports (one port on a uniform mesh, or a graded
-mesh) with a fixed `n_steps`. Other ports, TFSF, `until_decay` and `devices=`
+the fit window. It covers wire ports (one wire port on a uniform mesh, one or
+several on a graded mesh) with a fixed `n_steps`. Other ports, a plane wave, `until_decay` and `devices=`
 are refused with the reason. `s_params` is `None` when the report says no
 completion was produced.
+
+**Field-probe spectra.** With `RingdownSpec(identification_probes=(((x, y, z), "ez"), ...),
+probe_freqs=(...))` rfx completes the spectra of those probes instead of port
+S-parameters. The model is driven by soft sources only, or by a closed-box plane
+wave (`add_tfsf_source(closed_box=True)`) at normal incidence along x whose
+waveform is the default differentiated Gaussian; other plane waves and
+waveforms are refused by name. `result.ringdown.probe_spectra` holds the
+completed spectra, shape (frequencies, probes), at `probe_freqs`, each on its
+own field's time grid (E at (n + 1)·dt, H at (n + ½)·dt for row n), and
+`result.ringdown.s_params` is `None`. With `probe_normalization="incident"` on
+a closed-box plane wave, every probe must be an `ey` or `ez` probe inside the
+total-field box (another component, or a probe outside the box, is refused),
+and its spectrum is divided by the incident E spectrum at its x plane. A probe
+behind a shield then gives its transfer function X from one run, and
+20 log10 |1/X| is the shielding effectiveness;
+`result.ringdown.report.incident_spectra` holds the divisor. Port S-parameters and probe spectra need separate runs. Probe
+completion forms no passivity check, because a field spectrum has no passivity
+bound, and `until_identified=True` is refused with it
+(`tests/unit/sparams/test_ringdown_probe_channels.py`,
+`tests/unit/sparams/test_ringdown_incident_normalization.py`).
 
 ## `forward()`: the differentiable path
 
 `forward()` runs the same physics with only the outputs a loss function needs,
 so it can sit inside `jax.grad`, `jax.value_and_grad` or `jax.jit`. It
-returns a `ForwardResult` with `time_series`, `s_params`/`freqs` (lumped/wire
-S11 vectors when `port_s11_freqs=` is set), `ntff_data`, `dft_planes`, `grid`
+returns a `ForwardResult` with `time_series`, `s_params`/`freqs` (with `port_s11_freqs=`,
+the lumped/wire S-matrix of shape (ports, ports, frequencies), with the driven
+port's column filled and the others NaN), `ntff_data`, `dft_planes`, `grid`
 and `dt`.
 
 ```text
@@ -238,15 +272,48 @@ print(jax.grad(loss)(3.0))
 | `eps_override`, `sigma_override`, `mu_r_override` | whole-grid material arrays, shape `grid.shape`; they replace the registered materials everywhere |
 | `design_box=` with `design_eps_override=` / `design_sigma_override=` / `design_occupancy_override=` | a box-sized design region; far less reverse-mode memory than a whole-grid override (pass `checkpoint=False` with it) |
 | `pec_occupancy_override` | relaxed metal occupancy in [0, 1] |
-| `port_s11_freqs=` | lumped/wire S11 vectors, on either mesh; over several devices see [Run on several devices](/rfx/run/multi-device/) |
+| `port_s11_freqs=` | lumped/wire S at these frequencies, shape (ports, ports, frequencies), with the driven port's column filled; on either mesh; over several devices see [Multi-device runs](/rfx/run/multi-device/) |
 | `rlc_values_override={index: {"R": ..., "L": ..., "C": ...}}` | values of registered `add_lumped_rlc` elements |
 
+**`gradient="adjoint"`.** The default `gradient="autodiff"` differentiates the
+time stepping in reverse mode. `gradient="adjoint"` computes the gradient with
+respect to `design_eps_override` in a `design_box` by reciprocity instead: it
+stores the design cells' DFTs at the objective's frequencies and runs a second
+ordinary forward simulation. The objective reads DFT planes, E or H, and the
+far-field data of an NTFF box, all at the same positive frequencies below the
+Nyquist frequency, on a uniform mesh on one device. Every plane, and every NTFF
+face with the cells beside it, must stay clear of the absorber with one cell to
+spare: at least one cell beyond the CPML layers, or at least two cells from each
+wall without CPML. A DFT plane with no `region` spans the whole grid and is
+refused, so give it a `region`. It returns the gradient of the settled spectrum
+only. `ForwardResult.adjoint_settling` divides the largest
+\|E\| on the design cells' edges over the last period of the lowest frequency by
+its record maximum: above about 1e-2 the record has not settled, and a small value proves
+nothing, so judge the gradient with `gradient_record_length_witness`, which
+compares it with the gradient of a longer record (see
+[Gradients](/rfx/design/gradients/)). Refused by name: a graded mesh,
+`distributed=True`, `ringdown=`; every port, lumped RLC element and
+`port_s11_freqs`; a plane-wave source; Debye, Lorentz and Kerr media and
+anisotropic tensors; UPML, Bloch or periodic axes and PMC faces; conformal PEC,
+PEC and design occupancy and surface-impedance sheets; flux and current-moment
+monitors; a non-Yee solver, `stencil_order=4` and `precision="mixed"`;
+`design_sigma_override` and every other override (permittivity, conductivity,
+permeability, PEC and occupancy masks, `rlc_values_override`); a call without
+`design_box` and `design_eps_override`; and an objective read from
+`time_series`
+(`tests/unit/autodiff/test_reciprocity_adjoint.py`,
+`tests/unit/autodiff/test_adjoint_farfield.py`).
+
 **Per-cell versus per-edge conductivity in a design box.** A single
-`design_sigma_override` array is per **cell**. rfx averages the four cells
-around each E edge, and that average also reaches the edge layer on the box's
-plus faces. A 3-tuple `(sigma_x, sigma_y, sigma_z)` is per **edge** at the box
-indices and is written as-is. If a per-edge design needs that plus-face layer,
-declare the box one cell larger on that side.
+`design_sigma_override` array gives one value per **cell**. Each E edge takes
+the mean of the four cells around it, so the E edges on the box's plus faces
+(the faces at larger index), whose index along that axis is one past the box's
+last cell, also change with the design, because two of their four cells lie
+inside the box. A 3-tuple
+`(sigma_x, sigma_y, sigma_z)` gives one value per **edge**, written as-is at
+the box's own indices, so those edges on the plus faces keep the run's own
+conductivity. If a per-edge design needs them, declare the box one cell larger
+on that side.
 
 Keep anything that changes array shapes, the geometry list or the solver path
 outside the function you differentiate. A combination the differentiable path
@@ -254,7 +321,7 @@ does not support raises instead of returning a zero gradient. A model with
 `add_refinement` is refused by `forward()`. Guides:
 [Autodiff and Adjoint](/rfx/design/gradients/),
 [Inverse Design](/rfx/design/optimization/),
-[Memory Reduction](/rfx/run/memory-and-speed/).
+[Reduce Memory Use](/rfx/run/memory-and-speed/).
 
 ## S-parameter calculators
 
@@ -264,7 +331,7 @@ Each port family has its own calculator method on `Simulation`:
 and wire ports use `run(compute_s_params=True)`. `compute_s_matrix(method=None,
 **kwargs)` picks the right method from the registered ports and forwards your
 arguments. `s_matrix_lane()` tells you which one it would pick without running
-anything. Details: [Sources & Ports](/rfx/api/sources-ports/#s-parameter-calculators).
+anything. Details: [Sources and Ports API](/rfx/api/sources-ports/#s-parameter-calculators).
 
 ## `Simulation.auto()`
 
@@ -291,15 +358,15 @@ geometry instead, use `auto_configure` or `plan_mesh` on the
 These are documented in the [generated reference](/rfx/api/generated/):
 `estimate_ad_memory`, `plan_ad_memory`, `ad_memory_preflight` and
 `explain_ad_memory` (reverse-mode memory, see
-[Memory Reduction](/rfx/run/memory-and-speed/)); `export_scene`,
+[Reduce Memory Use](/rfx/run/memory-and-speed/)); `export_scene`,
 `export_artifact_bundle` and `artifact_report` (saving a model and its
 results); `conductor_mask`.
 
 ## Limits
 
-- A graded mesh accepts fewer features than a uniform one. Snapshots, coaxial
-  ports, UPML and Floquet ports raise there. See
-  [Support Boundaries](/rfx/support/).
+- A graded mesh accepts fewer features than a uniform one. Coaxial ports, UPML
+  and Floquet ports raise there, and so do snapshots on one device
+  (`run(devices=...)` takes them). See [Support](/rfx/support/).
 - `add_refinement` is refused by default (`validation="production"`); with
   `validation="research"` only `run()` on a uniform mesh accepts it, with a
   warning. `forward()`, `optimize()` and `topology_optimize()` refuse a refined

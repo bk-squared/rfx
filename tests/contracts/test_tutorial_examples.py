@@ -222,6 +222,50 @@ def test_resonance_harminv_tutorial_runs():
     assert math.isfinite(long_error) and long_error < short_error
 
 
+def test_slab_rt_flux_monitor_tutorial_runs():
+    """Pin that both runs form a passing ring-down witness from their flux-plane probes.
+
+    The 0.02 bound on the two analytic means sits above the 0.012 the tutorial
+    prints for both; the tutorial's docstring puts that gap to the Fresnel
+    curve on its coarse grid. A table whose mean departure from the curve
+    exceeds 0.02 fails.
+    """
+    output = _run_tutorial("slab_rt_flux_monitor.py")
+
+    witnesses = re.findall(
+        r"^\s+(reference|slab) run: settling witness pass, (-?\d+) dB \(bar -40 dB\)$",
+        output,
+        flags=re.MULTILINE,
+    )
+    assert len(witnesses) == 2
+    assert {run for run, _ in witnesses} == {"reference", "slab"}
+    assert all(int(db) <= -40 for _, db in witnesses)
+
+    monitors = re.findall(
+        r"^\s+flux monitor (refl|trans): covered \(drive past the plane by step \d+, record 1200 steps\)$",
+        output,
+        flags=re.MULTILINE,
+    )
+    assert len(monitors) == 4
+
+    rows = re.findall(
+        r"^\s+\d+\.\d\s+-?\d+\.\d{3}\s+-?\d+\.\d{3}\s+\d+\.\d{3}\s+\|\s+-?\d+\.\d{3}\s+-?\d+\.\d{3}$",
+        output,
+        flags=re.MULTILINE,
+    )
+    assert len(rows) == 21
+    assert "all finite: True" in output
+
+    t_match = re.search(r"mean \|T - T_analytic\| = ([^\s]+)", output)
+    r_match = re.search(r"mean \|R - R_analytic\| = ([^\s]+)", output)
+    assert t_match is not None
+    assert r_match is not None
+    t_error = float(t_match.group(1))
+    r_error = float(r_match.group(1))
+    assert math.isfinite(t_error) and t_error <= 0.02
+    assert math.isfinite(r_error) and r_error <= 0.02
+
+
 def test_pareto_front_sweep_runs(tmp_path):
     """Run the CPU example once, measuring startup plus solve and JSON output."""
     import json

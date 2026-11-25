@@ -32,9 +32,17 @@ What this tutorial teaches, in order:
 
 3. Near-to-far-field (NTFF) box placement.  Every face should sit at least half
    a wavelength from the radiator where the domain allows.  The face below the
-   ground plane cannot: it sits 6 mm below the ground.  Preflight flags it, the
-   run quotes the warning verbatim, and a solver-to-solver cross-check backs the
-   placement.  Preflight output is part of the result; do not suppress it.
+   ground plane cannot, because the domain holds only 30 mm of air below the
+   ground plane; its realized face sits 5.285 mm below the ground, with the
+   ground plane between the radiator and that face. Preflight flags it, the
+   run quotes the warning verbatim, and a cross-check against openEMS at the
+   design-mode bin backs the placement. Preflight reports four advisories:
+   ``ntff_near_field``, ``ntff_small_ground_plane``,
+   ``thin_conductor_thickness_unmodelled`` and ``realization`` (the substrate
+   realizes 58.6 × 58.6 mm rather than its drawn 60 × 60 mm). Preflight output
+   is part of the result; do not suppress it. The former sheet-board lock used
+   a different board; its directivity reading and envelope do not gate this
+   model.
 
 4. A settling witness (end-of-run envelope vs post-source peak, -40 dB bar) is
    printed BEFORE any frequency is quoted.
@@ -143,10 +151,12 @@ a 10 GB card ran out of memory in the far-field step); a 24 GB card runs it.
 settling bar near 115 on the average slope, and the multi-mode tail beats
 rather than decaying smoothly.  The corrected board's cavity is thinner and
 its modes are higher-Q, so that ladder is not transferable; what is measured
-on it is the endpoint, -48.4 dB at 125 periods (369367270265), SETTLED with
-8.4 dB of margin (-45.4 dB on the pre-#1375 board, 369367259175; -50.9 dB on
-the pre-contract one).  The witness below re-measures the end-of-run envelope
-every run — trust it over this paragraph.
+on it is an endpoint settled below the -40 dB bar at 125 periods (-45.4 dB on
+an earlier version of this board and -50.9 dB on the pre-contract one).  The
+witness below re-measures the end-of-run envelope every run — trust it over
+this paragraph. The research run of this geometry recorded f_res = 2.2147 GHz
+and D = 6.71 dBi at the 40 mm cross mode, not at the design mode this demo
+reports.
 """
 
 from __future__ import annotations
@@ -206,15 +216,6 @@ AIR_BELOW = 30.0e-3
 # air distances.
 AIR_ABOVE = 84.0e-3
 
-# 125 periods settles this fixture past the -40 dB bar: measured -48.4 dB,
-# SETTLED (VESSL 369367270265; -48.2 dB before #1546, 369367265975).  On the pre-contract board, endpoints
-# -36.5 dB at 90 periods and -52.6 dB at 204 put the bar near 115 on the
-# average slope, but the multi-mode tail beats
-# rather than decaying smoothly, so trust the printed witness over slope
-# extrapolation.  (The research run of this geometry recorded f_res =
-# 2.2147 GHz and D = 6.71 dBi at the 40 mm cross mode, not at the design mode
-# this demo reports.)
-#
 # run(until_decay=1e-3) also stops on this fixture: the interior energy fell to
 # 1e-3 of its after-drive value at step 48 850, 1.9 times the 25 832 steps of
 # NUM_PERIODS, and the probe fell to 1e-3 of its peak (measured 2026-10-27).
@@ -383,13 +384,6 @@ def build_simulation():
     )
     sim.add_probe(position=(probe_x, probe_y, src_z), component="ez")
 
-    # NTFF box.  Side and top faces keep >= lambda/2-class clearance.  The
-    # bottom face cannot: the domain holds only 30 mm of air below the ground
-    # plane, so that face sits 6 mm below the ground and preflight flags it (the
-    # warning is quoted in the run output).  The ground plane sits between the
-    # radiator and that face, and the placement is cross-checked against openEMS
-    # at the design-mode bin.  The former sheet-board lock used a different
-    # board; its directivity reading and envelope do not gate this model.
     box_lo = (pad, pad, max(pad, z_gnd - 3 * DX))
     box_hi = (dom_x - pad, dom_y - pad, z_total - pad)
     sim.add_ntff_box(corner_lo=box_lo, corner_hi=box_hi, freqs=NTFF_FREQS)
@@ -434,7 +428,8 @@ def build_simulation():
         return "(" + ", ".join(f"{float(c) * 1e3:.2f}" for c in v) + ")"
 
     print(
-        "realized in-plane (x lo, x hi, y lo, y hi) mm: patch nodes "
+        "realized in-plane (x lo, x hi, y lo, y hi) mm; 'solved' is the "
+        "0.35-cell edge model's value: patch nodes "
         f"{_mm(nodes_span[k_patch])}, ground nodes {_mm(nodes_span[k_gnd])} | "
         + " | ".join(f"{name} {_mm(got)}"
                      for name, (_want, got, _tol) in checks.items()))
@@ -452,7 +447,7 @@ def build_simulation():
         f"NTFF clearances: ground-plane edge -> side face "
         f"{(gx_lo - box_lo[0]) * 1e3:.1f} mm | patch top -> top face "
         f"{(box_hi[2] - z_patch) * 1e3:.1f} mm | ground -> bottom face "
-        f"{(z_gnd - box_lo[2]) * 1e3:.1f} mm"
+        f"{(z_nodes[k_gnd] - z_nodes[np.argmin(np.abs(z_nodes - box_lo[2]))]) * 1e3:.3f} mm"
     )
     print(
         f"  (lambda/2 = {lam_design / 2 * 1e3:.1f} mm at {F_DESIGN / 1e9:.1f} GHz, "
@@ -613,11 +608,17 @@ def main():
         f"{OPENEMS_F_RES / 1e9:.4f} GHz: {dev_pct:+.2f}% — the design mode "
         "is measured on the registered board. The former far-field lock "
         "used a different board and does not gate this result. "
-        "The patch's last nodes lie 0.35 cell inside its drawn edges; with "
-        "z cells about a fifth of the in-plane cell the edge offset was "
-        "measured only for a free sheet in vacuum, not on a substrate face, "
-        "so the solved size is not known; refine the mesh to measure the "
-        "discretization error."
+        "The 'patch solved' and 'ground solved' sizes printed at build are "
+        "the 0.35-cell edge model's values: the mesh puts each sheet's last "
+        "nodes 0.35 cell inside its drawn edges. Here the z cells beside the "
+        "sheets are 0.38 to 0.50 mm, 0.19 to 0.27 of the 1.86-2 mm in-plane "
+        "cell. Near these ratios the offset was measured in vacuum only: "
+        "0.26 cell for a free sheet (z cell 1/5 and 1/4 of the in-plane cell), "
+        "extrapolated over three meshes, and 0.31 cell for a strip three cells "
+        "above a ground plane (1/4), from one mesh and not checked on finer "
+        "meshes. On a substrate face, with a different z cell on each side, "
+        "as here, it has not been measured, so the patch's solved size is "
+        "not known; refine the mesh to measure the discretization error."
     )
     print(
         f"  D {d_dbi[k_star]:.2f} dBi vs openEMS {OPENEMS_D_DBI:.2f} dBi "

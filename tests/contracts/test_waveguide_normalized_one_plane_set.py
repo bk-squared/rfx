@@ -43,6 +43,7 @@ def build_simulation(pair, *, graded=False, slab=True):
 
 @pytest.mark.parametrize("graded", [True], ids=["graded"])
 def test_normalized_one_plane_set(graded):
+    """A passive lossless slab cannot amplify a coherent incident vector."""
     matrices = []
     for pair in ((10, 90), (20, 80)):
         result = build_simulation(pair, graded=graded).compute_waveguide_s_matrix(
@@ -50,12 +51,10 @@ def test_normalized_one_plane_set(graded):
         )
         s = np.asarray(result.s_params, dtype=np.complex128)
         matrices.append(s)
-        # A passive lossless slab cannot amplify any coherent incident vector.
         sigma_max = np.linalg.svd(np.moveaxis(s, 2, 0), compute_uv=False)[:, 0]
         assert np.all(sigma_max - 1 <= 1e-2), (pair, sigma_max)
         assert result.s21_phase_residual_deg_rms is not None
     rotations = np.angle(matrices[1] * np.conj(matrices[0]))
-    # Wrap the doubled residual before dividing, never a reflection angle.
     doubled = 2 * rotations[1, 0] - rotations[0, 0] - rotations[1, 1]
     residual_deg = np.degrees(np.angle(np.exp(1j * doubled))) / 2
     assert np.all(np.abs(residual_deg) <= 2), residual_deg
@@ -63,9 +62,9 @@ def test_normalized_one_plane_set(graded):
 
 @pytest.mark.parametrize("graded", [True], ids=["graded"])
 def test_empty_guide_preserves_single_run_transmission(graded):
+    """Equal graded cells use the uniform single-run reference because the graded lane refuses unnormalized solves."""
     sim = build_simulation((10, 90), graded=graded, slab=False)
     normalized = sim.compute_waveguide_s_matrix(num_periods=40, normalize=True)
-    # The graded lane refuses False; equal cells admit the uniform single run.
     single_sim = build_simulation((10, 90), slab=False) if graded else sim
     single = single_sim.compute_waveguide_s_matrix(num_periods=40, normalize=False)
     s_true = np.asarray(normalized.s_params, dtype=np.complex128)

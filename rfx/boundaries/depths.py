@@ -100,9 +100,11 @@ def simulation_face_depths(sim):
     """
     if sim._waveguide_ports and not sim._uses_nonuniform_mesh:
         return sim._build_grid().boundary_depths
+    from rfx.boundaries.tfsf import run_periodic_flags
+
     return resolve_face_depths(
         sim._boundary_spec, budget=sim._cpml_layers,
-        periodic_axes="".join(a for a, yes in zip("xyz", sim._periodic_flags()) if yes), mode=sim._mode,
+        periodic_axes="".join(a for a, yes in zip("xyz", run_periodic_flags(sim)) if yes), mode=sim._mode,
     )
 
 

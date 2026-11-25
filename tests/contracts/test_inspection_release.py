@@ -4,6 +4,7 @@ Lifetime checks use tiny CPU solves, not RF accuracy assertions. Every
 constructor used by audit contexts and assembly-backed views is observed
 without retaining its products. Run the two-device rows in a fresh process
 with XLA_FLAGS=--xla_force_host_platform_device_count=2.
+Lumped S inspection uses run or forward because public compute_s_matrix refuses lumped ports.
 """
 import gc
 import weakref
@@ -19,8 +20,6 @@ COAX = ('compute_coaxial_line_reflection', 'compute_coaxial_two_port',
         'compute_coax_msl_transition')
 CALCULATORS = ('compute_msl_s_matrix', 'compute_waveguide_s_matrix', *COAX,
                'compute_mixed_s_matrix')
-# Public compute_s_matrix() refuses lumped ports; run()/forward() below
-# exercise the supported lumped S path instead.
 MEMOS = ('_pf_campaign_ctx', '_realized_geometry_record', '_coax_geometry')
 
 
@@ -61,8 +60,7 @@ def _released(sim, refs):
 
 
 def _prime(sim):
-    # A solve must release a record kept by a prior inspection as well as
-    # contexts it creates itself. Do not retain the returned record here.
+    """A solve must release inspection state retained before the solve as well as state created during the solve."""
     sim.realized_geometry()
     assert sim._pf_campaign_ctx is not None
     assert sim._realized_geometry_record is not None
@@ -108,6 +106,7 @@ def _coax():
 
 
 def _calculator(name):
+    """The 600-step coax witness allows the pulse to reach the probe planes."""
     if name in ('compute_msl_s_matrix', 'compute_mixed_s_matrix'):
         sim = _msl(mixed=name == 'compute_mixed_s_matrix')
         kw = dict(n_steps=24, freqs=np.array([4e9, 6e9, 8e9]))
@@ -120,7 +119,6 @@ def _calculator(name):
                     boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'})
         return sim, dict(n_steps=24, normalize=False)
     if name in COAX[:2]:
-        # Fewer steps leave the probe planes at zero before pulse arrival.
         return _coax(), dict(n_steps=600, freqs=np.array([6e9, 8e9, 10e9]),
                             probe_count=3, probe_start_cells=4, probe_spacing_cells=2)
     if name == 'compute_coax_msl_transition':
@@ -143,7 +141,6 @@ def test_solve_releases_inspection(entry, lane, contexts):
     if lane == 'subgridded':
         if entry == 'forward':
             pytest.skip('forward() refuses refinement; there is no subgridded forward lane on CPU or GPU')
-        # Same CPU refinement as test_subgrid_requires_experimental.
         sim = Simulation(10e9, (.008, .008, .016), dx=.002, boundary='pec')
         sim.add_refinement((0., .012), ratio=2, validation='research')
         sim.add_source((.004, .004, .004), 'ez', amplitude_kind='field')
@@ -174,20 +171,19 @@ def test_lumped_solve_releases_inspection(entry, contexts):
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 @pytest.mark.parametrize('graded', [False, True])
 def test_ntff_solve_releases_inspection(entry, graded, contexts):
+    """The near-sheet NTFF box bypasses clearance preflight to isolate inspection lifetime."""
     sim = _model(graded=graded, boundary='cpml')
-    # A conductor inside the box exercises the NTFF realized-geometry reader.
     sim.add(Box(((2 - .35) * .001, (2 - .35) * .001, .005),
                 ((6 + .35) * .001, (6 + .35) * .001, .005)), material='pec')
     sim.add_ntff_box((.001, .001, .001), (.007, .007, .007), freqs=[4e9])
     _prime(sim)
-    # The box sits closer than lambda/2 to the sheet, which preflight refuses; this checks lifetime, not the far field.
     result = getattr(sim, entry)(n_steps=2, skip_preflight=True)
     del result
     _released(sim, contexts)
 
 
 def test_topology_optimize_releases_inspection(contexts):
-    # Review P2: the optimization's solves bypass _dispatch_plan.
+    """Optimization solves must release inspection state even when they bypass dispatch planning."""
     from rfx.topology import TopologyDesignRegion, topology_optimize
     sim = _model()
     _prime(sim)
@@ -236,7 +232,6 @@ def test_inspection_reuses_until_explicit_release(entry, graded, contexts, monke
     assert contexts['audit'][0]() is ctx
     if entry == 'realized_geometry':
         assert first is second
-    # Populate all three slots, including the coax stamp on this tiny model.
     record = sim.realized_geometry()
     sim._coax_geometry = (ctx, record.conductors)
     record_ref = weakref.ref(record)
@@ -244,7 +239,7 @@ def test_inspection_reuses_until_explicit_release(entry, graded, contexts, monke
     del first, second, ctx, record
     assert sim.clear_inspection_cache() is None
     _released(sim, contexts)
-    assert record_ref() is None  # m2: leaving the record must fail this row.
+    assert record_ref() is None
     rebuilt = getattr(sim, entry)()
     assert len(contexts['audit']) == len(assemblies) == 2
     del rebuilt

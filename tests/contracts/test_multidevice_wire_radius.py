@@ -65,6 +65,7 @@ def declared_cells(ports):
 
 
 def scene(mesh, boundary, name, *, radius=True, column=None, length=.0175):
+    """The two one-cell PEC plates meet the wire's end nodes at their inner faces."""
     real_nx = int(round(length/D))
     walls = (BoundarySpec(x=boundary, y=boundary, z='pec')
              if name != 'R2' else boundary)
@@ -76,7 +77,6 @@ def scene(mesh, boundary, name, *, radius=True, column=None, length=.0175):
     grid = sim._build_realized_grid()
     seam = (grid.shape[0]+DEVICES-1)//DEVICES
     ports, probes = definitions(name, seam, grid.axis_pads)
-    # R2's wire drives two one-cell PEC plates; their inner faces sit on the wire's end nodes.
     plates = (seam-3, seam+2) if name == 'R2' else ()
     if mesh == 'graded':
         stencil_x = set(plates)
@@ -350,8 +350,7 @@ def published_materials():
 
 @pytest.mark.parametrize('mesh', ['uniform', 'graded'])
 def test_published_increments(mesh):
-    # 52 nodes at 17.5 mm divide by 2. The next whole-cell length has
-    # 53 nodes, so both two and three ranks have alignment rows.
+    """Increasing the length from 17.5 mm to 18 mm changes 52 stored nodes to 53 so both two and three ranks need alignment rows."""
     length_mm = 17.5
     while True:
         length = length_mm / 1000

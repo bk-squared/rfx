@@ -158,13 +158,6 @@ def run_uniform(
                 ": the sheet operator assumes the plain isotropic "
                 "E update at its edges (Stage-1/2 conformal and Kottke "
                 "lanes do not apply the sheet operator).")
-        if debye_spec is not None or lorentz_spec is not None:
-            raise ValueError(
-                "surface-impedance (surface_impedance_f0) sheets combined "
-                "with dispersive (Debye/Lorentz) materials in one run are "
-                "not supported: the sheet operator would "
-                "silently override the ADE dispersion update at its "
-                "edges. Remove the dispersive material or the f0 sheet.")
 
     from rfx.model.tensor_operands import refuse_tensor_conflicts
     refuse_tensor_conflicts(sim, grid, subpixel_smoothing=subpixel_smoothing,

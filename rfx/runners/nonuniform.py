@@ -1128,13 +1128,6 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         # v1 fences (loud, never silent): the sheet operator replaces the
         # standard E update at its edges, which is only correct against the
         # plain isotropic update_e_nu path.
-        if debye_spec is not None or lorentz_spec is not None:
-            raise ValueError(
-                "surface-impedance (surface_impedance_f0) sheets combined "
-                "with dispersive (Debye/Lorentz) materials in one run are "
-                "not supported: the sheet operator would "
-                "silently override the ADE dispersion update at its edges. "
-                "Remove the dispersive material or the f0 sheet.")
         if aniso_eps is not None:
             raise ValueError(
                 "surface-impedance (surface_impedance_f0) sheets combined "

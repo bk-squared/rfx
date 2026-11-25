@@ -38,10 +38,10 @@ def tail_dft(model: RingdownModel, n_last: int, freqs) -> np.ndarray:
     if s.size == 0:
         return np.zeros((freqs.size, c.shape[1]), dtype=np.complex128)
     n1 = int(n_last) + 1
-    wdt = 2.0 * np.pi * freqs * dt                                  # (nf,)
-    amp = _cmul(np.exp(s * dt * (n1 - int(model.n_ref)))[:, None], c)   # (K, C)
-    zn1 = np.exp(-1j * wdt * n1)                                    # (nf,)
-    one_minus = -np.expm1(s[None, :] * dt - 1j * wdt[:, None])      # (nf, K)
+    wdt = 2.0 * np.pi * freqs * dt
+    amp = _cmul(np.exp(s * dt * (n1 - int(model.n_ref)))[:, None], c)
+    zn1 = np.exp(-1j * wdt * n1)
+    one_minus = -np.expm1(s[None, :] * dt - 1j * wdt[:, None])
     return dt * ((zn1[:, None] / one_minus) @ amp)
 
 
@@ -55,9 +55,9 @@ def _pole_tails(model: RingdownModel, n_last: int, freqs) -> np.ndarray:
         return np.zeros((freqs.size, 0, c.shape[1]), dtype=np.complex128)
     n1 = int(n_last) + 1
     wdt = 2.0 * np.pi * freqs * dt
-    amp = _cmul(np.exp(s * dt * (n1 - int(model.n_ref)))[:, None], c)   # (K, C)
+    amp = _cmul(np.exp(s * dt * (n1 - int(model.n_ref)))[:, None], c)
     zn1 = np.exp(-1j * wdt * n1)
-    one_minus = -np.expm1(s[None, :] * dt - 1j * wdt[:, None])          # (nf, K)
+    one_minus = -np.expm1(s[None, :] * dt - 1j * wdt[:, None])
     return dt * _cmul((zn1[:, None] / one_minus)[:, :, None], amp[None, :, :])
 
 

@@ -91,7 +91,7 @@ def accumulator_coverage(result, *, sim=None, tfsf=None, n_steps=None):
             waveguide_ports=getattr(result, "waveguide_ports", None),
             tfsf_angle_deg=getattr(result, "tfsf_angle_deg", None), return_detail=True)
         verdict = (reason if end is None else "covered" if 0 <= end < n_record else
-                   f"cannot judge: the record ends at step {n_record} before the field leaves {name} (step {end})")
+                   f"cannot judge: the record ends at step {n_record}, before the drive has passed {name} (step {end}: the drive's end plus a light-speed transit)")
         entries.append((name, end, n_record, verdict))
     return AccumulatorCoverage(tuple(entries))
 

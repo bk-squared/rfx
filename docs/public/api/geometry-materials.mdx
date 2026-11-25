@@ -31,7 +31,7 @@ domain = (0.04, 0.03, 0.02)
 board = Box((0.005, 0.005, 0.004), (0.035, 0.025, 0.0056))
 ground = Box((0.005, 0.005, 0.004), (0.035, 0.025, 0.004))
 patch = Box((0.012, 0.010, 0.0056), (0.028, 0.020, 0.0056))
-# Last sheet nodes 0.35 cell inside the drawn edges; board faces on nodes.
+# Last sheet nodes 0.35 cell inside the drawn edges; board z faces on nodes.
 sim = Simulation(freq_max=5e9, domain=domain, dx=1e-3, boundary="cpml",
                  **edge_aware_profiles(domain, 1e-3, sheets=[ground, patch],
                                        solids=[board], axes="xyz"))
@@ -52,7 +52,7 @@ sim.add_material("plasma",                              # 10 GHz plasma frequenc
 | `sigma` | conductivity in S/m. At or above `1e6` the material is a perfect conductor (see below). |
 | `mu_r` | relative permeability |
 | `debye_poles` | list of `DebyePole(delta_eps, tau)`: Δε = εs − ε∞, τ in seconds |
-| `lorentz_poles` | list of `LorentzPole`. Build them with `lorentz_pole(delta_eps, omega_0, delta)` or `drude_pole(omega_p, gamma)` (all rates in rad/s) rather than by hand. A pole set above its own time-step limit on the model's cells is refused when the model is assembled (an optical-frequency metal such as gold always is on RF cells). |
+| `lorentz_poles` | list of `LorentzPole`. Build them with `lorentz_pole(delta_eps, omega_0, delta)` or `drude_pole(omega_p, gamma)` (all rates in rad/s) rather than by hand. A pole adds κ / (ω0² − ω² + 2jδω) to ε (time convention exp(+jωt)): `lorentz_pole` sets κ = Δε·ω0², so `delta` is half the damping rate; `drude_pole` sets ω0 = 0, κ = ωp² and δ = γ/2. A pole set above its own time-step limit on the model's cells is refused when the model is assembled (an optical-frequency metal such as gold always is on RF cells). |
 | `chi3` | Kerr (third-order) nonlinearity |
 
 **Library materials** need no `add_material` call: `"vacuum"`, `"air"`,
@@ -72,7 +72,14 @@ on a metal sheet, use `add_thin_conductor(..., surface_impedance_f0=f0)`.
 eps_inf=None, tau="free")` and `fit_lorentz(...)` fit poles to complex permittivity data;
 `load_material_csv(path, ...)` reads it from a CSV file. See the
 [generated reference](/rfx/api/generated/).
-For `fit_debye`, `tau="placed"` uses log-spaced times in the data span; both modes and `fit_lorentz` bound a free `eps_inf` at 1. `fit_lorentz` keeps resonances inside the data span and uses starts spread across it.
+`fit_debye` fits the relaxation times inside the span of the data, from
+1/(2π·f_hi) to 1/(2π·f_lo), where f_hi and f_lo are the highest and lowest
+frequency in `freqs` (f_lo at least 1 Hz), with `tau="free"` (the default); with
+`tau="placed"` it fixes them log-spaced over that span and fits only the pole
+strengths. When you do not pass `eps_inf`, `fit_debye` and `fit_lorentz` fit
+it too, never below 1. `fit_lorentz` keeps every resonance inside the data
+span; it starts from several resonance sets spread across the span and keeps
+the best fit.
 
 ## Placing shapes
 
@@ -100,9 +107,9 @@ sim.add(Via(center=(0.015, 0.020), drill_radius=0.3e-3, pad_radius=0.6e-3,
 | `Box` | `Box(corner_lo, corner_hi)` | axis-aligned block; a zero-thickness `Box` is a sheet |
 | `Sphere` | `Sphere(center, radius)` | |
 | `Cylinder` | `Cylinder(center, radius, height, axis="z")` | `center` is the middle of the cylinder, not its base |
-| `PolylineWire` | `PolylineWire(points, radius)` | a wire through the given vertices; `radius=0` selects the legacy filament, while a positive PEC radius must resolve as a volume wire |
+| `PolylineWire` | `PolylineWire(points, radius)` | a wire through the given vertices; `radius=0` makes a filament on grid edges, and a positive radius makes a volume wire, refused below half the smallest local cell |
 | `Via` | `Via(*, center, drill_radius, pad_radius, layers, material="pec")` | a PCB via with pads; `center` is `(x, y)` and `layers` is a list of `(z_bottom, z_top)` |
-| `CurvedPatch` | `CurvedPatch(*, center, length, width, radius, axis="x")` | a patch bent along `axis`, built from flat segments |
+| `CurvedPatch` | `CurvedPatch(*, center, length, width, radius, axis="x")` | a metal sheet bent along `axis` (`"x"` or `"y"`) into a circular arc of the given radius R: `center` is the middle of the sheet at its lowest point, and at distance s from it along `axis` the sheet lies R − √(R² − s²) higher in z, for s from −`length`/2 to +`length`/2; it is built from zero-thickness z-normal segments about one cell long, each a sheet on its own node plane. Add it with `add(..., material="pec")`. Its rise, R − √(R² − (`length`/2)²), is judged like any drawn extent: with the default `snap="strict"` the run is refused when the realized height differs from the rise by more than 1 %. Choose `length` and `radius` so that the rise lands on a node, or pass `snap="declared"` to `Simulation` to turn the miss into a warning |
 | `MeshShape` | `MeshShape.from_file(path, *, scale, translate=(0.0, 0.0, 0.0))` | CAD import, see below |
 
 `sim.fidelity_report()` prints where every shape actually landed next to what
@@ -135,13 +142,26 @@ sim.add_thin_conductor(patch, surface_impedance_f0=3e9)
 ```
 
 - With the default `sigma_bulk` (copper) the sheet is **lossless PEC**, and rfx
-  warns once to say so. `thickness` and `eps_r` are then not used.
+  warns once to say so. `thickness` is then not used.
+- `eps_r` must stay at 1; any other value is refused. The sheet takes the
+  permittivity of the cells around it, so declare the substrate with
+  `add(..., material=...)`.
 - `surface_impedance_f0=f0` adds conductor loss as a surface resistance
   matched at `f0`. The sheet keeps exactly the same footprint, so `f0` changes
   the loss and never the geometry. Combinations the loss model does not
   support raise.
 - `sigma_bulk < 1e6` makes a resistive sheet whose sheet conductance is
   `sigma_bulk * thickness`.
+
+Preflight takes a PEC sheet's in-plane free edge to lie 0.35 cell beyond its
+last node and refuses a sheet predicted more than 1 % off its drawn size. In
+the example above, `edge_aware_profiles` puts the last nodes 0.35 cell inside
+the drawn edges and the board's top and bottom faces on nodes. The board's x
+and y faces lie on the ground's edges, where the edge rule wins, so they land
+on the ground's last nodes, 0.35 cell inside. The ground and patch lie on the
+board's faces, where that offset has not been measured;
+[Check the model on the grid](/rfx/check/model-on-grid/#accuracy) lists where
+it has.
 
 A metal plate or wall that really is thick is a **volume**:
 `add(Box(...), material="pec")`. A PEC volume has walls at both drawn faces
@@ -154,11 +174,14 @@ a PEC volume already gets both faces.
 
 - Metal with `sigma >= 1e6` S/m is lossless. For ohmic loss, use a sheet with
   `surface_impedance_f0` or a below-threshold `sigma`.
-- A shape face between two grid planes snaps to the nearest plane. For thin
-  layers, choose `dx` or a graded profile so the faces fall on grid planes, and
-  check with `fidelity_report()`.
-- A sheet declared through `add_thin_conductor` must be one grid plane thick.
-  A PEC shape that is thinner than a cell but not zero is refused
+- A dielectric or PEC-volume face between two grid planes snaps to the nearest
+  plane, and a sheet to the nearest node plane; a sheet's in-plane edge follows
+  the 0.35-cell rule under [Metal sheets](#metal-sheets). For thin layers,
+  choose `dx` or a graded profile so the faces fall on grid planes, and check
+  with `fidelity_report()`.
+- A sheet declared through `add_thin_conductor` lands on one node plane; give
+  the shape zero thickness along its normal. A shape thicker than one cell
+  along its normal is refused (declare it with `add()`). A PEC shape that is thinner than a cell but not zero is refused
   (`pec_box_subcell`); see
   [How conductors land on the lattice](/rfx/model/conductors/#how-conductors-land-on-the-lattice).
 - `MeshShape` geometry is not differentiable.

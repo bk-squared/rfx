@@ -508,10 +508,11 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_nonuniform=carries("the per-step node-thin operator"),
             run_subgridded=refuses("surface_impedance_f0 sheets refused", raises=F0),
 
-            run_distributed=refuses("surface_impedance_f0 sheets refused", raises=F0),
+            run_distributed=carries("one-device sheet operator on each slab; legacy steps refuse (#2219)"),
+            run_distributed_nu=carries("one-device sheet operator on each slab; legacy steps refuse (#2219)"),
             fwd_uniform=carries("the per-step node-thin operator"),
             fwd_nonuniform=carries("the per-step node-thin operator"),
-            fwd_distributed_nu=refuses("surface_impedance_f0 sheets refused", raises=F0),
+            fwd_distributed_nu=carries("one-device sheet operator on each slab; legacy steps refuse (#2219)"),
 
         ),
     },
@@ -596,7 +597,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_distributed=carries("whole-grid laplace/uniform stamp, owning-slab drive; eigenmode refused"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=refuses("microstrip forward has no gradient parity bar", raises="add_msl_port() port(s)"),
+        fwd_distributed_nu=carries("laplace/uniform forward, including material overrides; eigenmode refused"),
 
     )},
     "_waveguide_ports": {"waveguide_port": lanes(
@@ -1689,8 +1690,8 @@ for _features in TABLE.values():
     for _cells in _features.values():
         if "run_distributed" in _cells:
             _cells["fwd_distributed"] = _cells["run_distributed"]
-TABLE["_msl_ports"]["msl_port"]["fwd_distributed"] = refuses(
-    "microstrip forward has no gradient parity bar", raises="add_msl_port() port(s)")
+TABLE["_msl_ports"]["msl_port"]["fwd_distributed"] = carries(
+    "laplace/uniform forward fields; uniform overrides and eigenmode refused")
 TABLE["_coaxial_ports"]["coax_port"]["fwd_distributed"] = FWD_COAX
 TABLE["_pec_occupancy_model"]["kottke"]["fwd_distributed"] = refuses(
     "uniform distributed forward refuses the occupancy override", raises="pec_occupancy_override")

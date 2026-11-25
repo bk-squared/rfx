@@ -1,4 +1,6 @@
 """Shared owner cuts and post-scan reductions for slab measurements."""
+from typing import NamedTuple
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -48,12 +50,26 @@ def cut_probe_table(table, layout, mesh):
     return jax.tree.map(lambda a: _place(a, mesh), (tuple(terms), order, sorted_ids))
 
 
+class TableMetadata(NamedTuple):
+    components: tuple[str, ...]
+    n_channels: int
+    channel_names: tuple[str, ...]
+
+
+def table_metadata(table):
+    """The fields needed to restore a table from explicit array operands."""
+    if table is None:
+        return None
+    return TableMetadata(tuple(t.component for t in table.components),
+                         table.n_channels, table.channel_names)
+
+
 def local_table(table, payload):
     """Restore a canonical sample table from one rank's array payload."""
     from rfx.measurement.projector import ComponentTerms, SampleTable
     parts, order, ids = jax.tree.map(lambda a: a[0], payload)
-    return SampleTable(tuple(ComponentTerms(t.component, *p)
-                       for t, p in zip(table.components, parts)),
+    return SampleTable(tuple(ComponentTerms(component, *p)
+                       for component, p in zip(table.components, parts)),
                        table.n_channels, table.channel_names, order, ids)
 
 
@@ -69,9 +85,6 @@ def sum_partials(final, mesh, ranks):
             records = []
             for partial, total in zip(values['sparam_time_records'], totals['sparam_time_records']):
                 ref = partial[0, :, -1]
-                # Only the midpoint owner contributes a reference; other
-                # ranks contribute +0. Preserve its signed zero in the
-                # stop-gradient time record, which ordinary psum erases.
                 negative_zero = jax.lax.psum(((ref == 0) & jnp.signbit(ref)).astype(jnp.int32), 'x') > 0
                 ref_total = total[:, -1]
                 ref_total = jnp.where((ref_total == 0) & negative_zero,

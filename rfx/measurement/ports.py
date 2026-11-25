@@ -18,8 +18,6 @@ def _metric_scalar(value):
 
 
 def _port_cells(grid, axis, nu):
-    # Match _build_wp_meta: concrete x/y solver stores widened to f64;
-    # z arithmetic stays in its solver dtype, including the dual addition.
     if not nu:
         return np.asarray(host_cells(grid, axis))
     import jax
@@ -51,7 +49,6 @@ def lumped_wire_owner(grid, component, live_cells, *, nu, pmc_faces, periodic,
     widths = _port_cells(grid, axis, nu)
     voltage = tuple(Node(component, *p, -_metric_scalar(widths[p[axis]])) for p in live)
     v = (Node(component, *mid, -_metric_scalar(widths[mid[axis]])),)
-    # Ampere circulation: each H term is weighted by its own dual edge.
     pairs = {'ez': (('hy', 0, 1), ('hx', 1, -1)),
              'ex': (('hz', 1, 1), ('hy', 2, -1)),
              'ey': (('hx', 2, 1), ('hz', 0, -1))}
@@ -75,7 +72,6 @@ def lumped_wire_owner(grid, component, live_cells, *, nu, pmc_faces, periodic,
             if periodic[back_axis] or grid.shape[back_axis] == 1:
                 back[back_axis] %= grid.shape[back_axis]
             else:
-                # h_neighbor's zero exterior contributes no sampled node.
                 continue
         current.append(Node(h_component, *back, -sign*width*(2 if factor == 0 else 1)))
     channels = [Channel('V', 'E', v), Channel('I', 'H', tuple(current))]
@@ -93,7 +89,7 @@ def waveguide_owners(sim, grid, n_steps, nu):
     from rfx.measurement.waveguide_planes import admit_waveguide_entries
     from rfx.preflight.waveguide import resolve_waveguide_port_freqs
     from rfx.runners.nonuniform import _build_waveguide_port_config_nu
-    admit_waveguide_entries(sim)  # the graded builder does not re-check planes
+    admit_waveguide_entries(sim)
     result = []
     for i, entry in enumerate(sim._waveguide_ports):
         freqs = jnp.asarray(resolve_waveguide_port_freqs(sim, entry))
@@ -121,7 +117,6 @@ def waveguide_owner(grid, cfg, *, port_id=0, mode_id=0):
             nodes = []
             for component, profile in zip(components, profiles):
                 weighted = np.asarray(profile) * area
-                # Adjoint of the actual edge-clamped transverse H average.
                 if kind == 'H':
                     for a, offset in reversed(tuple(enumerate(cfg.h_offset))):
                         if offset == 0:
@@ -130,8 +125,6 @@ def waveguide_owner(grid, cfg, *, port_id=0, mode_id=0):
                             raise ValueError('unsupported waveguide H offset')
                         bar = .25 * weighted
                         expanded = 2.0 * bar
-                        # Keep the sampler's transpose addition order, including
-                        # the two clamped endpoints, in its profile dtype.
                         low, high = [slice(None)]*2, [slice(None)]*2
                         low[a], high[a] = 0, -1
                         expanded[tuple(high)] += bar[tuple(high)]
@@ -168,6 +161,8 @@ def msl_owner(grid, *, port_id, direction, voltage_indices, span, trace_planes,
     Arguments are the calculator setup's span, PEC trace planes and H stencil,
     not feed-profile normalization. Indices use the same propagation/width/z
     frame as msl_cross_section_span. No measurement convention is changed.
+
+    The transverse current frame uses the right-handed orders ``(y, z)`` about +x and ``(z, x)`` about +y.
     """
     from rfx.model.graded_admission import refuse_window_cells
     for a in range(3):
@@ -185,7 +180,6 @@ def msl_owner(grid, *, port_id, direction, voltage_indices, span, trace_planes,
             nodes.append(Node('ez', *idx, float(cells[2][k])))
         channels.append(Channel(f'V:{number}', 'E', tuple(nodes),
                                 e_time_offset=offset, h_time_offset=offset))
-    # Current uses the right-handed transverse frame (a,b), including for y ports.
     a, b = ((1, 2) if prop == 0 else (2, 0))
     alo, ahi, blo, bhi = ((span['w_lo'], span['w_hi'], *trace_planes) if prop == 0
                           else (*trace_planes, span['w_lo'], span['w_hi']))

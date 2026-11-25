@@ -9,6 +9,32 @@ moves that week's pull request forward; it never adds a second one. Prices are r
 significant figures when merged, so a refresh rewrites only the prices that moved. Before this
 rule, four re-pricings in two weeks changed about 144,000 lines.
 
+2026-11-24: fast prices re-priced. `regen-durations` run
+[45225898938](https://github.com/bk-squared/rfx/actions/runs/45225898938) (`lanes=fast`, main
+`d1b6a03403`), normalised to the EPYC 7763 with the unchanged 2026-10-29 factors below. All 20 jobs
+uploaded artifacts; none needed log pricing. Job 10 ran on a CPU with no factor (Xeon 6975P-C)
+and was not merged; its 1,287 previously priced tests keep their old prices and 61 stay unpriced.
+No result-line gap exceeds its artifact value by 600 s (largest excess 100.4 s);
+each artifact sum is 1.79-2.97 % below its session time. The unchanged
+full-inventory-or-freshly-measured prune rule drops 777 old entries at `d1b6a03403`; all freshly
+measured IDs are in the full collection. Merged in the 10-29 order
+(old file, jobs 1-9, 11-20; job 10 excluded), rounded to two significant figures:
+31,579 → **34,590 entries in the file**, of which **2,067 carried unchanged** (not re-measured).
+The explicit fast collection (`not gpu and not slow and not slow_physics`, 34,792 tests on macOS,
+CAD extra present) has 653 unpriced tests, down from 4,441; the default addopts additionally excludes
+`docs_consistency`. Full collection: 36,602 tests, 5,800 → 2,012 unpriced.
+pytest-split predicts 32.6-35.1 min per shard (7763 basis), versus old
+28.6-37.7 min; the old split under new prices costs 25.8-44.6 min.
+Check on 168 readings from the 10 most recent green pr-tests code runs, using each shard's own test list:
+normalised actual / new-price prediction median 1.018, p10 0.914, p90 1.200,
+range 0.774-1.370; 32 group readings on CPUs absent from the factor table were excluded;
+all retained readings use existing factors, with no refit. Each retained run has at least 15 usable groups.
+All 277 previously unpriced IDs measured by regen shard 18 are now priced, including 67 in
+`tests/unit/runners/test_realized_port_drives.py`; `tests/unit/runners/test_realized_model_cells.py`
+already had prices for all 291 collected IDs. The regen shard contains 1,142 tests at this head.
+`.test_durations_weekly` unchanged: only the fast lane was measured.
+Inputs, scripts, readings and file-price details: the refresh record.
+
 2026-11-13: fast prices re-priced. `regen-durations` run
 [43386942054](https://github.com/bk-squared/rfx/actions/runs/43386942054) (`lanes=fast`, main
 `e5058e49d`), normalised to the EPYC 7763 with the unchanged 2026-10-29 factors below. All 20 jobs

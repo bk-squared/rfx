@@ -1,5 +1,4 @@
 """Material realization and slab inputs for the canonical graded step."""
-from contextlib import nullcontext
 from functools import lru_cache
 from types import SimpleNamespace
 from typing import Any
@@ -207,8 +206,7 @@ def _whole_material_rows(value, layout):
         if isinstance(a, jax.Array):
             # NumPy readback caches shard wrappers on its JAX source. Read a
             # producer-owned copy so caller-held mesh inputs retain none.
-            with jax.ensure_compile_time_eval():
-                a = a.copy()
+            a = a.copy()
         a = np.asarray(a)
         if a.ndim != 4:
             return a
@@ -220,7 +218,7 @@ def _whole_material_rows(value, layout):
 
 def _host_products(producer, device, *inputs):
     """Release every whole-grid JAX product before placing any mesh shards."""
-    with jax.default_device(device), jax.ensure_compile_time_eval():
+    with jax.default_device(device):
         products = producer(*inputs)
         host = jax.tree.map(lambda a: np.asarray(a) if isinstance(a, jax.Array) else a, products)
         del products
@@ -262,8 +260,7 @@ def refuse_slab_cells(materials, grid, layout, mesh, dt=None):
                 stop = start + layout.nx_local
                 offset = layout.ghost_width
             if isinstance(value, jax.Array) and not isinstance(value, jax.core.Tracer):
-                with jax.ensure_compile_time_eval():
-                    value = value.copy()
+                value = value.copy()
                 for shard in value.addressable_shards:
                     s = shard.index[0]
                     left, right = s.start or 0, s.stop or value.shape[0]
@@ -304,9 +301,8 @@ def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=Fal
     device = None
     if not uniform:
         device, _ = _material_host_device(materials, occupancy, _material_inputs, mesh=mesh)
-    with jax.ensure_compile_time_eval() if device is not None else nullcontext():
-        inputs = input_materials(materials, layout, mesh)
-        occ = uniform_from_cut(occupancy, layout, mesh, outside=0)
+    inputs = input_materials(materials, layout, mesh)
+    occ = uniform_from_cut(occupancy, layout, mesh, outside=0)
     model_grid = _host_arrays(grid) if device is not None else grid
     from rfx.geometry.rasterize_grid import unpadded_high_walls
     high_wall = unpadded_high_walls(grid)
@@ -396,8 +392,7 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
                             if isinstance(a, (jax.Array, jax.core.Tracer, np.ndarray)) else a,
                             poles)
     masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
-    with jax.ensure_compile_time_eval() if device is not None else nullcontext():
-        inputs = input_materials(materials, layout, mesh)
+    inputs = input_materials(materials, layout, mesh)
     rows = uniform_slab_rows(layout)
     indices = place(jnp.asarray(rows.indices), NamedSharding(mesh, P('x')))
     staged_masks = (None if device is not None else
@@ -428,9 +423,8 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
                     metadata.extend(found)
                 return tuple((r.eps_low, r.sigma_low, r.sigma_high, r.count, r.occupied, r.mu_low) for r in found)
             # Concrete inputs give concrete records under an outer jit too, so the judge sees values.
-            with jax.ensure_compile_time_eval() if device is not None else nullcontext():
-                values = jax.checkpoint(jax.vmap(extrema))(inputs)
-                values = _owner_records_map(mesh, view.rank)(mesh_ranks(mesh), values)
+            values = jax.checkpoint(jax.vmap(extrema))(inputs)
+            values = _owner_records_map(mesh, view.rank)(mesh_ranks(mesh), values)
             records.append(tuple(r._replace(eps_low=v[0], sigma_low=v[1], sigma_high=v[2], count=v[3], occupied=v[4], mu_low=v[5])
                                  for r, v in zip(metadata, values)))
         judge_pole_sets(combine_pole_extremes(records), dt, courant_budget(grid),
@@ -459,8 +453,7 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family, *, debye_s
         def publish(a, name):
             a = cut(a, layout, family + '_' + name, dt=dt, mesh=mesh)
             if name not in spatial:
-                with jax.ensure_compile_time_eval():
-                    a = _pole_first_map(mesh)(a)
+                a = _pole_first_map(mesh)(a)
             return a
         coeffs = type(coeffs)(*(jax.tree.map(lambda a: publish(a, name), value)
             for name, value in zip(coeffs._fields, coeffs)))
@@ -493,7 +486,7 @@ def finish(invariants, carry, layout, mesh, *, waveforms, dt=None):
 def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
                 pec_mask=None, occupancy=None, debye=None, lorentz=None,
                 cpml=False, cpml_state=None, emit_time_series=True, material_drive=None, port_plan=None,
-                rlc_metas=(), measurement=None):
+                rlc_metas=(), sheet_impedance=None, sheet_coeffs=None, measurement=None):
     """Build the wrapped setup without a whole-domain _build_nu_scan."""
     from rfx.boundaries.setup import nonuniform_boundaries
     from rfx.boundaries.axes import resolve_cpml_axes
@@ -501,6 +494,8 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     from rfx.stepping.graded import GradedStepContext, make_graded_step
     from rfx.measurement.projector import plan_tables
     from rfx.core.drives import drive_layout
+    from rfx.stepping.slab_sheets import cut_sheets
+    sheet_impedance, sheet_coeffs = cut_sheets(sheet_impedance, sheet_coeffs, layout, mesh)
     # Pole masks/parameters can be traced even when the cell arrays are fixed.
     pole_inputs = (None if debye is None else debye[0], None if lorentz is None else lorentz[0])
     device, reason = _material_host_device(materials, occupancy, pole_inputs, mesh=mesh)
@@ -544,9 +539,8 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     if measurement is None:
         raise ValueError('the wrapped graded step reads its probe and port tables '
                          'from the attached measurement plan; none was given')
-    with jax.ensure_compile_time_eval():
-        tables = plan_tables(measurement, n_probes=len(probes),
-                             port_specs=() if port_plan is None else port_plan.specs, dtype=zeros.dtype)
+    tables = plan_tables(measurement, n_probes=len(probes),
+                         port_specs=() if port_plan is None else port_plan.specs, dtype=zeros.dtype)
     if debye is not None:
         carry['debye'] = debye[1]
     if lorentz is not None:
@@ -564,7 +558,7 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
         pec_occupancy=(product_rows(occupancy, layout, mesh, 'pec_occupancy')
                        if occupancy is not None and occupancy.ndim == 4 else occupancy), pec_static_edge_masks=None, cpml_inv_eps_r=inverse, e_loss=loss,
         debye_coeffs=None if debye is None else debye[0], lorentz_coeffs=None if lorentz is None else lorentz[0],
-        aniso_eps=None, sheet_impedance=None, sheet_coeffs=None, design_box_coeffs=None)
+        aniso_eps=None, sheet_impedance=sheet_impedance, sheet_coeffs=sheet_coeffs, design_box_coeffs=None)
     from rfx.stepping.slab_lumped import initial
     if rlc_metas:
         carry['rlc_states'] = initial(rlc_metas, layout, mesh, zeros.dtype)
@@ -573,7 +567,7 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
         inv_dz_h=grid.inv_dz_h, grid=grid, use_tfsf=False, tfsf_cfg=None, use_waveguide_ports=False,
         waveguide_meta=(), waveguide_port_metrics=(), use_cpml=use_cpml, apply_cpml_h=apply_cpml_h,
         cpml_params=params, cpml_grid=cpml_grid, cpml_axes_eff=axes, use_pmc_faces=use_pmc,
-        _pmc_faces_frozen=pmc_faces, use_sheet_impedance=False, use_design_box=False,
+        _pmc_faces_frozen=pmc_faces, use_sheet_impedance=sheet_impedance is not None, use_design_box=False,
         use_debye=debye is not None, use_lorentz=lorentz is not None, inv_dy=grid.inv_dy,
         inv_dz=grid.inv_dz, curl_boundary=curl_boundary, apply_cpml_e=apply_cpml_e_step,
         _pec_faces_frozen=pec_faces, use_pec_edges=pec_mask is not None, use_pec_occupancy=occupancy is not None,

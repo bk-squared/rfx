@@ -26,15 +26,14 @@ def warn_kottke_pec_volume(sim, subpixel_smoothing):
         shape = entry.shape
         lo, hi = getattr(shape, "corner_lo", None), getattr(shape, "corner_hi", None)
         if lo is not None and hi is not None and _box_zero_axes(lo, hi):
-            continue  # A zero-thickness Box declares a sheet, not a volume.
+            continue
         if getattr(shape, "points", None) is not None and shape.radius == 0:
-            continue  # A zero-radius PolylineWire declares a filament.
+            continue
         message = (
             "subpixel_smoothing='kottke_pec' with a PEC volume is "
             "experimental, not recommended for metal; see known limitations, "
             '"A metal face resting on a dielectric between grid nodes"'
         )
-        # The first closed curved PEC body takes precedence over other PEC volumes.
         if isinstance(shape, Sphere) or (
             isinstance(shape, Cylinder)
             and (is_tracer(shape.height) or float(shape.height) > 0)

@@ -24,6 +24,18 @@ will flag the under-resolution and the lossless slab — both are expected here:
 this is a fast method demo, we measure R/T (not Q), and a lossless slab is what
 matches the lossless analytic Fresnel reference.
 
+Record-end guard: a flux spectrum is a DFT over the record, so the record must
+hold the whole response. Each run carries a six-component probe
+(``add_vector_probe``) on each flux plane; from those records rfx forms the
+ring-down witness, the share of each frequency bin that a tail beyond the
+record would still add (bar 1e-2, i.e. -40 dB). ``report_record_coverage``
+stops the script unless that witness passes and both monitors are covered; the
+step it prints per monitor is a geometric bound on the drive's passage, not a
+sign that the response has died away. Both runs use one fixed 1200-step
+record and no decay stop. At that record the witness reads about -139 dB for
+the reference run and -92 dB for the slab run; at 2400 or 4800 steps the
+printed R/T table does not change.
+
 Public docs:
   - docs/agent/recipe-rt-measurement.mdx   (canonical two-run pattern)
   - docs/public/measure/s-parameters.mdx   (flux monitors as non-port observables)
@@ -118,15 +130,11 @@ def build_sim(with_slab: bool) -> Simulation:
     sim.add_tfsf_source(f0=F0, bandwidth=BW, polarization="ez", direction="+x")
     sim.add_flux_monitor(axis="x", coordinate=REFL_X, freqs=FREQS_RT, name="refl")
     sim.add_flux_monitor(axis="x", coordinate=TRANS_X, freqs=FREQS_RT, name="trans")
+    sim.add_vector_probe((REFL_X, Y_CENTER, 0.0))
+    sim.add_vector_probe((TRANS_X, Y_CENTER, 0.0))
     return sim
 
 
-# One fixed record for both runs. The field leaves the reflection plane by
-# step 605 (the record-end guard printed below). A decay stop is not used: in
-# the vacuum run the pulse has left before the drive ends, so the stop's
-# reference is a 1e-9 remainder at the lattice cutoff (about 106 GHz) and the
-# run went to its 50,000-step cap. R and T in 4-14 GHz move by at most 2e-5
-# when the record grows to 2400 or 4800 steps.
 N_STEPS = 1200
 
 
@@ -191,15 +199,24 @@ def main():
 
 
 def report_record_coverage(label, witness):
-    """Print the run's record-end guard and stop if a monitor is not covered."""
-    rows = (witness or {}).get("coverage", ())
-    print(f"  {label}: settling witness {(witness or {}).get('status')}")
+    """Print the run's record-end guards and stop unless the ring-down witness passes and every monitor is covered."""
+    witness = witness or {}
+    status = witness.get("status")
+    reason = witness.get("reason")
+    db = witness.get("db")
+    rows = witness.get("coverage", ())
+    if isinstance(db, (int, float)) and np.isfinite(db):
+        print(f"  {label}: settling witness {status}, {db:.0f} dB (bar -40 dB)")
+    else:
+        print(f"  {label}: settling witness {status}")
     for row in rows:
-        print(f"    {row['name']}: {row['verdict']} (field leaves at step "
+        print(f"    {row['name']}: {row['verdict']} (drive past the plane by step "
               f"{row['end_step']}, record {row['n_record']} steps)")
     uncovered = [row["name"] for row in rows if row["verdict"] != "covered"]
     if not rows or uncovered:
-        raise RuntimeError(f"{label}: the record ends before the field leaves {uncovered or 'the monitors'}")
+        raise RuntimeError(f"{label}: the record ends before the drive has passed {uncovered or 'the monitors'}")
+    if status != "pass":
+        raise RuntimeError(f"{label}: the ring-down witness reads {status} ({reason}); lengthen N_STEPS")
 
 
 if __name__ == "__main__":

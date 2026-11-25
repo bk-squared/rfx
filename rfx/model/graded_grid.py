@@ -52,6 +52,9 @@ class NonUniformGrid(NamedTuple):
     that side even when the axis as a whole uses CPML. For back-compat
     the six fields default to ``cpml_layers`` on every face (the
     pre-per-face-allocation symmetric layout).
+
+    Under a caller's ``jax.jit`` with x64 off, ``dx_arr_f64``,
+    ``dy_arr_f64`` and ``dz_f64`` come back as float32.
     On non-periodic axes, the trailing cell-width entry supplies the final electric node and contributes no physical extent.
     """
     nx: int
@@ -555,12 +558,11 @@ def e_node_dual_spacings(profile_full):
 
         dual[k] = (d[k-1] + d[k]) / 2     (k >= 1);   dual[0] = d[0]
 
-    which is exactly ``1/inv_d_e``. An f0 sheet uses this node dual;
-    a DC fold uses the occupied cell's primal width ``d[k]`` before the
-    E-edge mean, realizing ``sigma_bulk * thickness`` integrated over duals.
-    The Leontovich measurement gave ratios 1.2021 on a 0.25/0.50 mm
-    transition and 0.6214 on a 1.00/0.25 mm transition against a matched mesh
-    (expected 1.000), motivating the node dual for f0 sheets.
+    which is exactly ``1/inv_d_e``. An f0 sheet and a DC film fold both
+    divide by this node dual, so each realizes its declared sheet resistance
+    on a grading step. Dividing an f0 sheet by the primal width ``d[k]`` gave
+    attenuation ratios 1.2021 on a 0.25/0.50 mm transition and 0.6214 on a
+    1.00/0.25 mm transition against a matched mesh (expected 1.000).
 
     Computed as ``(d[k-1]+d[k])/2`` rather than ``1/inv_d_e`` so a uniform
     profile returns the cell size bit-exactly (``0.5*(d+d) == d`` in

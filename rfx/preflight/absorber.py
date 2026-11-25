@@ -70,7 +70,7 @@ and it reads no ``pec_geometry`` module global -- it holds only
 
 from __future__ import annotations
 
-from rfx._internal._precision import resolve_coefficient_dtype
+from rfx.boundaries.tfsf import run_periodic_flags
 from rfx.preflight._not_judged import is_tracer_error, not_judged
 
 from rfx.preflight._subjects import finding_subjects, absorber_region
@@ -454,7 +454,11 @@ def _validate_cfg_absorber_budget_vs_grid(self, _w, dx: float) -> None:
         )
 
 def _preflight_face_layers(self) -> dict[str, int]:
-    """Realized absorbing pads; §7 Addendum 3 includes waveguide rewrites."""
+    """Absorbing depth per face as the time step runs it.
+
+    A TF/SF-wrapped face is zero although the grid allocates its pad.
+    Waveguide rewrites are included (§7 Addendum 3).
+    """
     from rfx.boundaries.depths import simulation_face_depths
 
     return {face.name: face.realized for face in simulation_face_depths(self)}
@@ -1375,17 +1379,11 @@ def _validate_cfg_thin_absorber(self, _w, dx) -> None:
 
     try:
         grid = self._build_realized_grid()
-        periodic = self._periodic_flags()
+        periodic = run_periodic_flags(self)
         if self._uses_nonuniform_mesh:
             cpml_axes = "".join(ax for ax in "xyz" if ax not in (self._periodic_axes or ""))
         else:
             cpml_axes = grid.cpml_axes
-            if self._tfsf is not None:
-                from rfx.sources.tfsf import tfsf_from_declaration
-                from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
-                entry = self._tfsf
-                cfg, _ = tfsf_from_declaration(entry, grid, self._freq_max, bounds_only=True, dtype=resolve_coefficient_dtype(self._precision))
-                periodic, _ = tfsf_boundary_flags(cfg, grid)
     except (ValueError, TypeError, AttributeError, KeyError, IndexError, NotImplementedError) as _traced_exc:
         if is_tracer_error(_traced_exc):
             not_judged(None, "_validate_cfg_thin_absorber")

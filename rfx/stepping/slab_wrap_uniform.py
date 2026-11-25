@@ -23,7 +23,8 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None, exchange_inte
     E exchange follows the PEC mask and sources: a neighbour's next H update
     reads the completed seam plane. H exchange precedes the local E update.
     """
-    from rfx.stepping.slab_measurements import local_table
+    from rfx.stepping.slab_measurements import local_table, table_metadata
+    table, port_table = table_metadata(table), table_metadata(port_table)
     context = replace(context, x_face_frame={'x': (
         layout.ghost_width, layout.ghost_width + layout.nx_per_rank - layout.pad_x)})
 
@@ -76,6 +77,7 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None, exchange_inte
         drives = jax.tree.map(lambda a: a[0], inputs['drives'])
         ctx = replace(context, materials=inputs['materials'],
             pec_edge_masks=inputs['pec_edge_masks'],
+            sheet_impedance=inputs.get('sheet_impedance'),
             debye_coeffs=inputs.get('debye_coeffs'),
             lorentz_coeffs=inputs.get('lorentz_coeffs'),
             drives=StepDrives(drives, None))
@@ -140,7 +142,7 @@ def wrap_uniform(context, layout, mesh, *, table, port_table=None, exchange_inte
 def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
                     *, n_steps, boundary, debye_spec, lorentz_spec, port_plan,
                     record_vref=True, tfsf=None, exchange_interval=1, rlc_metas=(),
-                    measurement=None):
+                    sheet_impedance=None, measurement=None):
     """Form every spatial step operand from its owning slab's material rows."""
     from types import SimpleNamespace
     from jax.sharding import NamedSharding
@@ -153,6 +155,13 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
     from rfx.stepping.slab_setup import realize_materials, stage_dispersion, input_materials
     from rfx.stepping.slab_wrap import cut, split
     from rfx.stepping.slab import place
+    from rfx.stepping.slab_sheets import cut_sheets
+    from rfx.materials.thin_conductor import sheet_update_coeffs
+
+    sheet_coeffs = (None if sheet_impedance is None else
+                    sheet_update_coeffs(sheet_impedance.sigma_sheet, materials, grid.dt))
+    sheet_impedance, sheet_coeffs = cut_sheets(
+        sheet_impedance, sheet_coeffs, layout, mesh, uniform=True)
 
     sharding = NamedSharding(mesh, P('x'))
     replicated = NamedSharding(mesh, P())
@@ -185,6 +194,7 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
         use_waveguide_ports=False, use_pec_faces=bool(pec_faces),
         use_pmc_faces=bool(pmc_faces), use_aniso_inv=False, aniso_inv_eps_smooth=False,
         use_pec_edges=pec_edges is not None, use_pec_occupancy=False,
+        use_sheet_impedance=sheet_impedance is not None,
         use_conformal=False, use_wire_sparams=bool(wires), use_lumped_sparams=bool(lumped),
         use_lumped_rlc=bool(rlc_metas), use_kerr=False, use_snapshot=False, use_monitor=False,
         use_flux_window=False, cpml_grid=grid, cpml_axes='xyz',
@@ -232,7 +242,8 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
     table = tables['probe_table']
     inputs = dict(materials=local_materials,
         pec_edge_masks=cut(pec_edges, layout, 'pec_edge', mesh=mesh),
-        cpml_inv_eps_r=inverse, e_loss=loss, sheet_coeffs=None, conformal_zero_masks=None,
+        cpml_inv_eps_r=inverse, e_loss=loss, sheet_coeffs=sheet_coeffs,
+        sheet_impedance=sheet_impedance, conformal_zero_masks=None,
         drives=drive_layout([(s.i, s.j, s.k, s.component) for s in sources], jnp.float32),
         probe_table=table)
     port_table = port_plan.table if port_plan.specs else None
@@ -277,7 +288,7 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
 
 def run_wrapped_uniform(operands, sources, probes, layout, mesh, records, *, n_steps,
                 boundary, dispersion, port_plan, record_vref=True, tfsf=None,
-                exchange_interval=1, rlc_metas=(), measurement=None):
+                exchange_interval=1, rlc_metas=(), sheet_impedance=None, measurement=None):
     """Transfer dense setup operands to slabs before entering the time loop."""
     grid, materials, pec_edges = operands
     operands.clear()
@@ -287,6 +298,7 @@ def run_wrapped_uniform(operands, sources, probes, layout, mesh, records, *, n_s
         n_steps=n_steps, boundary=boundary, debye_spec=debye_spec,
         lorentz_spec=lorentz_spec, port_plan=port_plan, record_vref=record_vref,
         tfsf=tfsf, exchange_interval=exchange_interval, rlc_metas=rlc_metas,
+        sheet_impedance=sheet_impedance,
         measurement=measurement)
     del materials, pec_edges, debye_spec, lorentz_spec
     return run_prepared(prepared, records, mesh, n_steps=n_steps)
@@ -299,13 +311,16 @@ def run_prepared(prepared, records, mesh, *, n_steps):
     from rfx.stepping.slab_wrap import run_steps
     carry, invariants, waves, field_advance = prepared
     carry = dict(carry, records=records.initial())
+    invariants = dict(invariants, record_operands=records.operands())
 
     def advance(carry, xs, invariants, *, ranks):
         fields = {key: value for key, value in carry.items() if key != 'records'}
         previous = records.prepare(fields['fdtd'], ranks=ranks)
-        final, samples = field_advance(fields, xs, invariants, ranks=ranks)
+        field_inputs = {k: v for k, v in invariants.items() if k != "record_operands"}
+        final, samples = field_advance(fields, xs, field_inputs, ranks=ranks)
         final['records'] = records.update(carry['records'], final['fdtd'],
-            records.grid.dt, xs[0], ranks=ranks, previous=previous)
+            records.grid.dt, xs[0], ranks=ranks, previous=previous,
+            operands=invariants["record_operands"])
         return final, samples
 
     ranks = mesh_ranks(mesh)

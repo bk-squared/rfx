@@ -70,7 +70,7 @@ sim.add_source(
 )
 ```
 
-This is a soft point source that drives `Ez` in one cell. `amplitude_kind="current"`
+This is a soft point source that drives `Ez` at one grid edge. `amplitude_kind="current"`
 means the waveform amplitude is a current moment I(t) in A·m: a current times
 the length it flows along. Always pass it
 explicitly. A point source has no impedance, so it gives fields, resonances and
@@ -168,7 +168,8 @@ both closed and absorbing uniform meshes, relative to its largest value after
 the drive ends. A lossless closed PEC box generally reaches `decay_max_steps`;
 a lossy box can stop once its energy decays. The public graded-mesh runner
 still refuses closed-boundary `until_decay`; use a fixed `n_steps` there.
-Also use a fixed `n_steps` when comparing runs in a convergence study.
+When comparing runs in a convergence study, give the same physical record length on every mesh: the same `num_periods`, or an
+`n_steps` scaled to each mesh's time step.
 
 ## Where to go next
 

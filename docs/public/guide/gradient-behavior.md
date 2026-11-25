@@ -13,9 +13,11 @@ three checks to run before you trust a gradient. For the background, see
 
 ## Three checks before you optimize
 
-The examples share one small model: a lossy dielectric slab between a soft
-source and a probe in open space, on a coarse 2 mm mesh so each check runs in
-seconds.
+The examples share one small model: a lossy block between a soft source and a
+probe in open space, on a coarse 2 mm mesh so each check runs in seconds. The
+design variable `eps0` is passed as `eps_override`, which replaces the
+permittivity of every cell, so the solved model is εr 4 everywhere and the
+block differs from its surroundings only by its conductivity, σ = 0.01 S/m.
 
 ```python
 import jax

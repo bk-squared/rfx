@@ -50,7 +50,6 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
     refuse_unsupported_distributed_features(
         self,
         lane=lane,
-        allow_msl_run=entry == "run",
         diagnostics=_diagnostics,
     )
     from rfx.runners._admission import admit_conformal_floor
@@ -118,15 +117,12 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
         until_decay=until_decay,
         conformal_pec=_dist_conformal,
         **({} if report_every is None else {"report_every": report_every}))
-    from rfx.materials.thin_conductor import refuse_f0_sheets
     if _forward_port_s11:
         from rfx.model.wall_loss import refuse_wall_loss
         refuse_wall_loss(self, "distributed multi-device forward()")
-        refuse_f0_sheets(self._thin_conductors, "distributed multi-device forward()")
     else:
         from rfx.model.wall_loss import refuse_wall_loss
         refuse_wall_loss(self, "distributed multi-device run()")
-        refuse_f0_sheets(self._thin_conductors, "distributed multi-device run()")
     from rfx.runners._admission import admit_run_s_matrix
     admit_run_s_matrix(self, compute_s_params=compute_s_params,
                        conformal_pec=conformal_pec, distributed=True)
@@ -174,7 +170,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
             dt=grid.dt,
             freq_range=(self._freq_max / 10, self._freq_max, self._boundary),
             realized_geometry=geometry_record,
-            **{key: result.get(key) for key in ("dft_planes", "flux_monitors",
+            **{key: result.get(key) for key in ("dft_planes", "dft_time_records", "flux_monitors",
                 "ntff_data", "ntff_box", "current_moment_data", "current_moment_monitor",
                 "snapshots", "snapshot_axes")},
         )
@@ -182,7 +178,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
         from rfx.runners.distributed_v2 import run_distributed
         _res = run_distributed(
             self,
-            lane=plan.lane,
+            lane="fwd_distributed" if _forward_port_s11 else plan.lane,
             n_steps=n_steps,
             devices=devices,
             diagnostics=_diagnostics,

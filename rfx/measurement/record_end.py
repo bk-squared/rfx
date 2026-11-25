@@ -246,8 +246,6 @@ def source_end_step(drives, n_steps, dt, *, tolerance=1e-6,
         raw = np.asarray(samples)
         w = (np.abs(raw.astype(np.complex128)) if np.iscomplexobj(raw)
              else np.abs(np.asarray(raw, dtype=np.float64)))
-        # A recorded table may lack the scan's last step (the waveguide
-        # port does not write it); it then speaks for the steps it holds.
         if w.ndim != 1 or not n_steps - 1 <= len(w) <= n_steps:
             rows.append(None)
             available = False
@@ -299,8 +297,6 @@ def injection_end(n_steps, dt, *, records=None, grid=None, sim=None,
     """
     from rfx.core.jax_utils import is_tracer
 
-    # (name, samples, reach), or (name, None, (kind, reason)) for a drive
-    # whose table cannot be read; evaluated in this order.
     from rfx.sources._sampling import field_time_step
     dt = field_time_step(dt, getattr(sim, "_precision", None))
     drives = []
@@ -405,7 +401,7 @@ def drive_end(grid, max_steps, *, sources=(), mag_sources=(), tfsf=None,
         if kind == "ok":
             end = max(end, value)
         elif kind == "still_on":
-            return None   # still on at max_steps
+            return None
         elif name.startswith("waveguide port"):
             raise ValueError(
                 f"until_decay: {name} was initialised without dt, so "
@@ -449,7 +445,7 @@ def _declared_drives(sim, n_steps, grid, have_configs, drives, refuse, tfsf_angl
             continue
         import jax
         from rfx.floquet import floquet_port_source
-        with jax.ensure_compile_time_eval():  # the declared pulse is concrete under a trace
+        with jax.ensure_compile_time_eval():
             center, spec = floquet_port_source(grid, pe, sim._freq_max, sim._domain, n_steps, dtype=resolve_coefficient_dtype(sim._precision))
             table = np.asarray(spec.waveform)
         drives.append((name, table, _points_reach([np.asarray(center)])))

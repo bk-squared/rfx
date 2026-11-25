@@ -1,4 +1,7 @@
-"""Single-device stepping order."""
+"""Single-device stepping order.
+
+H reaches n+1/2 before E reaches n+1.
+"""
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
@@ -29,10 +32,6 @@ class Kernel(str, Enum):
     PEC = "pec"
 
 
-# H reaches n+1/2 before E reaches n+1. Incident-field and absorber
-# corrections belong to the corresponding lane boundary operation.
-# Constitutive sheets/RLC consume the E update before electric drives.
-# Conductors precede sheets/RLC and sources in today's single-device order.
 STEP_SEQUENCE: tuple[Kernel | HookPoint, ...] = (
     Kernel.H_UPDATE,
     Kernel.H_BOUNDARY,
@@ -65,7 +64,6 @@ def compose(
     """
     sequence = STEP_SEQUENCE
     if Kernel.HE_UPDATE in kernels:
-        # The baked-PEC kernel spans both curls; neither internal hook exists.
         for point in (HookPoint.AFTER_H, HookPoint.AFTER_E_UPDATE):
             if attachments.get(point):
                 raise ValueError(f"combined H/E fast path requires empty {point.value} attachments")

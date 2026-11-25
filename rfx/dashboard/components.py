@@ -304,13 +304,16 @@ def display_field_slice(state, grid, component: str = "ez", axis: str = "z") -> 
         st.image(normalized, caption=f"{component} slice ({axis})", use_container_width=True)
 
 
-def display_time_series(time_series: np.ndarray, dt: float) -> None:
-    """Plot probe time series."""
+def display_time_series(time_series: np.ndarray, dt: float, components=None) -> None:
+    """Plot each probe at its sampling times; omitted components default to E."""
+    from rfx.measurement.plan import record_sample_times
+
     st = _require_st()
     ts = np.asarray(time_series)
     if ts.ndim == 1:
         ts = ts[:, np.newaxis]
     n_steps = ts.shape[0]
+    t_ns = record_sample_times(dt, n_steps, components, n_cols=ts.shape[1]) * 1e9
 
     try:
         import matplotlib
@@ -318,9 +321,8 @@ def display_time_series(time_series: np.ndarray, dt: float) -> None:
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots(figsize=(8, 3.5))
-        t_ns = np.arange(n_steps) * dt * 1e9
         for i in range(ts.shape[1]):
-            ax.plot(t_ns, ts[:, i], lw=0.8, label=f"Probe {i + 1}")
+            ax.plot(t_ns[:, i], ts[:, i], lw=0.8, label=f"Probe {i + 1}")
         ax.set_xlabel("Time (ns)")
         ax.set_ylabel("Amplitude")
         ax.set_title("Probe Time Series")
@@ -332,12 +334,17 @@ def display_time_series(time_series: np.ndarray, dt: float) -> None:
         plt.close(fig)
     except ImportError:
         import pandas as pd
-        t_ns = np.arange(n_steps) * dt * 1e9
-        data = {"Time (ns)": t_ns}
-        for i in range(ts.shape[1]):
-            data[f"Probe {i + 1}"] = ts[:, i]
-        df = pd.DataFrame(data).set_index("Time (ns)")
-        st.line_chart(df)
+        fields = tuple(components) if components is not None else ('ez',) * ts.shape[1]
+        for kind in ('e', 'h'):
+            columns = [i for i, component in enumerate(fields) if component.startswith(kind)]
+            if not columns:
+                continue
+            data = {"Time (ns)": t_ns[:, columns[0]]}
+            for i in columns:
+                data[f"Probe {i + 1}"] = ts[:, i]
+            df = pd.DataFrame(data).set_index("Time (ns)")
+            st.caption(f"{kind.upper()} probes")
+            st.line_chart(df)
 
 
 def export_touchstone(s_params: np.ndarray, freqs: np.ndarray) -> bytes:

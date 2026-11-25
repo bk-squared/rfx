@@ -7,6 +7,7 @@ assembly retains the host-array placement after process_allgather.
 
 from rfx.errors import RfxUnsupported
 from functools import partial
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -18,15 +19,17 @@ from rfx.runners._rank import rank_shard_map
 from rfx.runners._distributed_ntff import SlabNTFF
 from rfx.stepping.record_join import join_owned, packed_pieces, record_bytes
 from rfx.stepping.slab import place
+from rfx.stepping.slab_moments import (snapshot_bounds, moment_operands,
+                                       moment_metadata, local_monitor)
 from rfx.measurement import accumulators
 from rfx.measurement.plane_records import time_recorded_dft_selection
 
 
-def refuse_record_options(sim, options):
+def refuse_record_options(sim, options, *, run=False):
     names = [name for name in ("record_dft", "dft_time_records", "dft_planes",
                                "flux_monitors", "current_moments")
              if options.get(name) is not None and options.get(name) is not False]
-    if any(time_recorded_dft_selection(sim)):
+    if not run and any(time_recorded_dft_selection(sim)):
         names.append("dft_time_records (record_dft from _time_recorded_dft_planes)")
     if names:
         raise RfxUnsupported(f"{', '.join(names)} is not supported on the distributed record path")
@@ -60,11 +63,15 @@ class Packed:
         flat = jnp.concatenate([a.ravel() for a in arrays]) if arrays else jnp.zeros(0, self.dtype)
         return jnp.pad(flat, (0, self.capacity - flat.size))
 
-    def mapped(self, buffer, state, step, branches, *, ranks, previous=None):
-        inputs = (buffer, state, step)
-        specs = (P("x"), _field_specs(state), P())
+    def mapped(self, buffer, state, step, branches, *, ranks, previous=None, operands=None):
+        inputs: tuple[Any, ...] = (buffer, state, step)
+        specs: tuple[Any, ...] = (P("x"), _field_specs(state), P())
         if previous is not None:
             inputs += (previous,)
+            specs += (P("x"),)
+
+        if operands is not None:
+            inputs += (operands,)
             specs += (P("x"),)
 
         @partial(rank_shard_map, mesh=self.mesh, in_specs=specs,
@@ -188,6 +195,74 @@ class PlaneRecords(Packed):
                      for t, values in zip(self.templates, result))
 
 
+class TimePlaneRecords:
+    """Selected real plane frames, with histories outside the rank conditional."""
+
+    def __init__(self, mesh, templates, shape, nx_per, n_steps, dtype):
+        layout = PlaneRecords(mesh, templates, shape, nx_per)
+        self.mesh, self.templates, self.parts = mesh, templates, layout.parts
+        self.frames, self.dtype = n_steps, dtype
+        self.shapes = []
+        for number, template in enumerate(templates):
+            widths = [meta[-1][1] - meta[-1][0] for part in self.parts
+                      for index, meta, _ in part if index == number]
+            self.shapes.append((max(widths), template.accumulator.shape[2]))
+
+    def initial(self):
+        return tuple(place(np.zeros((self.mesh.size, self.frames) + shape, self.dtype),
+                           NamedSharding(self.mesh, P("x"))) for shape in self.shapes)
+
+    def update(self, buffer, state, dt, step, *, ranks):
+        branches = []
+        for part in self.parts:
+            def branch(fields, part=part):
+                frames = [jnp.zeros(shape, self.dtype) for shape in self.shapes]
+                for number, (channel, axis, index, _, region), _ in part:
+                    value = accumulators.plane_sample(fields, channel.name, axis, index, region)
+                    frames[number] = jnp.pad(value, tuple((0, cap - size) for cap, size in
+                                            zip(self.shapes[number], value.shape))).astype(self.dtype)
+                return tuple(frames)
+            branches.append(branch)
+
+        @partial(rank_shard_map, mesh=self.mesh,
+                 in_specs=(P("x"), _field_specs(state), P()), out_specs=P("x"), check_rep=False)
+        def apply(local, fields, n, *, rank):
+            frames = lax.switch(rank, branches, fields)
+            return tuple(lax.stop_gradient(lax.dynamic_update_slice(
+                history, value[None, None], (0, n, 0, 0)))
+                for history, value in zip(local, frames))
+        return apply(ranks, buffer, state, step)
+
+    def assemble(self, buffer, *, multi_process=False):
+        shapes = [(self.frames,) + t.accumulator.shape[1:] for t in self.templates]
+        record_size = sum(int(np.prod(s)) for s in shapes) * np.dtype(self.dtype).itemsize
+        result = []
+        for number, (history, shape) in enumerate(zip(buffer, shapes)):
+            owners = []
+            for part in self.parts:
+                pieces = []
+                for index, meta, destinations in part:
+                    if index == number:
+                        region = meta[-1]
+                        extent = (self.frames, region[1] - region[0], region[3] - region[2])
+                        pieces.append((0, (self.frames,) + self.shapes[number],
+                                       (0, destinations[0].start or 0, 0), extent))
+                owners.append(pieces)
+            if multi_process:
+                value = np.zeros(shape, self.dtype)
+                for rank, pieces in enumerate(owners):
+                    for _, _, destination, extent in pieces:
+                        rows = slice(destination[1], destination[1] + extent[1])
+                        value[:, rows] = np.asarray(history[rank])[:, :extent[1]]
+            else:
+                value = join_owned(history, owners, shape, self.dtype, mesh=self.mesh,
+                                   kind="time_planes", record_size=record_size,
+                                   x_axis=None if self.templates[number].axis == 0 else 1)
+                value = lax.stop_gradient(value)
+            result.append(value)
+        return tuple(result)
+
+
 class SnapshotRecords:
     """Separate component histories; only one frame is written per step."""
     def __init__(self, mesh, grid, nx_per, spec, n_steps, dtype):
@@ -303,23 +378,27 @@ class MomentRecords(Packed):
     def prepare(self, state, *, ranks):
         from rfx.current_moments import slab_e_snapshot
         branches = []
-        for m in self.parts:
+        for m in map(snapshot_bounds, self.parts):
             def branch(args, m=m):
                 _, fields, _ = args
                 return self.previous.pack(slab_e_snapshot(fields, m))
             branches.append(branch)
-        return self.previous.mapped(self.previous.initial(), state, 0, branches, ranks=ranks)
+        start = jnp.zeros((self.mesh.size, self.previous.capacity), self.previous.dtype)
+        return self.previous.mapped(start, state, 0, branches, ranks=ranks)
 
-    def update(self, buffer, state, dt, step, *, ranks, previous):
+    def operands(self):
+        return moment_operands(self.parts, self.mesh)
+
+    def update(self, buffer, state, dt, step, *, ranks, previous, operands):
         from rfx.current_moments import accumulate_current_moments
         branches = []
-        for rank, m in enumerate(self.parts):
+        for rank, m in enumerate(map(moment_metadata, self.parts)):
             def branch(args, rank=rank, m=m):
-                local, fields, n, old = args
+                local, fields, n, old, weights = args
                 return self.pack(accumulate_current_moments(
-                    self.unpack(local[0], rank), fields, self.previous.unpack(old[0], rank), m, dt, n))
+                    self.unpack(local[0], rank), fields, self.previous.unpack(old[0], rank), local_monitor(m, weights), dt, n))
             branches.append(branch)
-        return self.mapped(buffer, state, step, branches, ranks=ranks, previous=previous)
+        return self.mapped(buffer, state, step, branches, ranks=ranks, previous=previous, operands=operands)
 
     def assemble(self, buffer, *, multi_process=False):
         if multi_process:
@@ -346,16 +425,16 @@ class SlabRecords:
         from rfx.measurement.setup import build_planes
         from rfx.measurement.flux_weights import build_flux_monitor_cfgs
         from rfx.current_moments import monitor_for_simulation
-        self.layouts, self.sim, self.grid = {}, sim, grid
+        self.layouts: dict[str, Any] = {}
+        self.sim, self.grid = sim, grid
         self.ntff_box = None
         if sim._ntff is not None:
             from rfx.farfield import make_ntff_box
             self.ntff_box = make_ntff_box(grid, *sim._ntff)
             self.layouts["ntff"] = SlabNTFF(self.ntff_box, grid.shape, nx_per, mesh, field_dtype)
-        with jax.ensure_compile_time_eval():
-            planes = build_planes(sim, grid, n_steps)
-            flux = build_flux_monitor_cfgs(sim, grid, n_steps)
-            monitor = monitor_for_simulation(sim, grid, sim._periodic_flags())
+        planes = build_planes(sim, grid, n_steps)
+        flux = build_flux_monitor_cfgs(sim, grid, n_steps)
+        monitor = monitor_for_simulation(sim, grid, sim._periodic_flags())
         for what, template in (("a DFT plane probe", planes), ("a flux monitor", flux),
                                ("a current-moment monitor", monitor)):
             if any(isinstance(leaf, jax.core.Tracer) for leaf in jax.tree.leaves(template)):
@@ -368,6 +447,10 @@ class SlabRecords:
             raise NotImplementedError("x-normal flux at global x index 0 is not supported on the distributed path; use one device")
         if planes:
             self.layouts["planes"] = PlaneRecords(mesh, planes, grid.shape, nx_per)
+        selected = tuple(p for p, keep in zip(planes, time_recorded_dft_selection(sim)) if keep)
+        if selected:
+            self.layouts["time_planes"] = TimePlaneRecords(
+                mesh, selected, grid.shape, nx_per, n_steps, field_dtype)
         if flux:
             self.layouts["flux"] = PlaneRecords(mesh, flux, grid.shape, nx_per, flux=True,
                 window_from_state=not sim._uses_nonuniform_mesh)
@@ -383,9 +466,12 @@ class SlabRecords:
     def prepare(self, state, *, ranks):
         return self.layouts["moments"].prepare(state, ranks=ranks) if "moments" in self.layouts else None
 
-    def update(self, buffer, state, dt, step, *, ranks, previous):
+    def operands(self):
+        return {"moments": self.layouts["moments"].operands()} if "moments" in self.layouts else {}
+
+    def update(self, buffer, state, dt, step, *, ranks, previous, operands):
         return {kind: layout.update(buffer[kind], state, dt, step, ranks=ranks,
-                                    **({"previous": previous} if kind == "moments" else {}))
+                                    **({"previous": previous, "operands": operands[kind]} if kind == "moments" else {}))
                 for kind, layout in self.layouts.items()}
 
     def assemble(self, buffers, *, multi_process):
@@ -401,6 +487,9 @@ class SlabRecords:
                       current_moment_data=values.get("moments"), current_moment_monitor=self.monitor)
         if "planes" in values:
             result["dft_planes"] = {e.name: p for e, p in zip(self.sim._dft_planes, values["planes"])}
+        if "time_planes" in values:
+            from rfx.measurement.plane_records import named_plane_records
+            result["dft_time_records"] = named_plane_records(self.sim, values["time_planes"])
         if "flux" in values:
             result["flux_monitors"] = {e.name: m for e, m in zip(self.sim._flux_monitors, values["flux"])}
         if "snapshots" in values:

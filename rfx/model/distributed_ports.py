@@ -35,6 +35,9 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                        lorentz=lorentz_spec is not None, pmc=bool(sim._boundary_spec.pmc_faces())) != 'wrapped':
             raise NotImplementedError('Graded multi-device ports require the wrapped step; PMC port faces are not supported.')
     admit(sim, lane, diagnostics=diagnostics)
+    if pec_occupancy_override is not None:
+        from rfx.materials.thin_conductor import refuse_f0_sheets
+        refuse_f0_sheets(sim._thin_conductors, "graded multi-device design region (pec_occupancy_override)")
     from rfx.stepping.slab_lumped import fold
     overridden = eps_override is not None or sigma_override is not None
     # Current-source pole terms are independent of the override, as before.
@@ -43,6 +46,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
     field_dtype = resolve_field_dtype(sim._precision) or jnp.float32
     drive_model = sc.dispersive_drive_model(fold(sim, grid, materials), debye_spec, lorentz_spec, grid,
                                           in_program=in_program, field_dtype=field_dtype)
+    drawn_eps = materials.eps_r if overridden and lane == "fwd_distributed_nu" else None
     if overridden:
         materials = apply_material_overrides(materials, eps_override=eps_override,
             sigma_override=sigma_override, judge=(lorentz_spec, grid, debye_spec), in_program=in_program)
@@ -50,7 +54,8 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
     if pec_mask_override is not None:
         cells = pec_mask_override if cells is None else cells | pec_mask_override
     conductors = conductor_model.kernel_conductors(sim, grid, materials, cells,
-        sheets, wires, periodic=(False,) * 3, root=conductors)
+        sheets, wires, periodic=(False,) * 3, root=conductors,
+        sheet_specs=conductors.sheet_impedance)
     from rfx.measurement.prepared import attach_measurement
     from rfx.measurement.port_s_contract import passive_record_diagnostic
     attach_measurement(sim, conductors, n_steps=n_steps, path=lane,
@@ -58,13 +63,10 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                        overrides={'eps_r': eps_override, 'sigma': sigma_override,
                                   'pec_mask': pec_mask_override,
                                   'pec_occupancy': pec_occupancy_override})
-    # run(report_every=...) bypasses declaration_setup even though slabs ignore
-    # the progress option. Keep its host cell sizes concrete under an outer jit.
-    with jax.ensure_compile_time_eval():
-        ports = assemble_graded_ports(sim, grid, materials, materials, conductors,
-            pec_edge_masks=conductors.pec_edges, sizing_n=n_steps,
-            lane='fwd_nonuniform' if lane == 'fwd_distributed_nu' else 'run_nonuniform',
-            s_param_freqs=s_param_freqs, msl=lane == "run_distributed_nu")
+    ports = assemble_graded_ports(sim, grid, materials, materials, conductors,
+        pec_edge_masks=conductors.pec_edges, sizing_n=n_steps,
+        lane='fwd_nonuniform' if lane == 'fwd_distributed_nu' else 'run_nonuniform',
+        s_param_freqs=s_param_freqs, msl=True, msl_drawn_eps=drawn_eps)
     materials, conductors = ports.materials, ports.conductors
     drives = {}
     for index, drive in ports.drives:
@@ -84,52 +86,55 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                     masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
                     if any(m is None or np.any(np.asarray(m)[window]) for m in masks):
                         raise NotImplementedError('Graded multi-device port overrides on Debye/Lorentz live edges are not measured by the step2-graded-port-s design (D3b).')
-    # The same region-bypassing run route needs concrete drive samples and scales.
-    with jax.ensure_compile_time_eval():
-        queue = PortSourceQueue()
-        material_drive: list[tuple[Any, Any] | tuple[Any, Any, Any, Any] | None] = []
-        for index, pe in enumerate(sim._ports):
-            if pe.is_soft_source:
-                cell = _grid_metric.field_index(grid, pe.position, pe.component)
-                if overridden and not needs_scale(pe.amplitude_kind, 'cb_over_dv'):
-                    volume, _ = current_source_volume(grid, cell, pe.component)
-                    queue.append((*cell, pe.component, current_source_samples(grid, pe.waveform, n_steps, dtype='float32')))
-                    material_drive.append((volume, sc.debye_pole_term(drive_model, cell, pe.component, grid.dt)))
-                elif ports_present and not overridden:
-                    queue.defer(make_current_source, grid, cell, pe.component, pe.waveform,
-                        n_steps, amplitude_kind=pe.amplitude_kind, dtype='float32')
-                    material_drive.append(None)
-                else:
-                    queue.append(make_current_source(grid, cell, pe.component, pe.waveform,
-                        n_steps, drive_model, amplitude_kind=pe.amplitude_kind, dtype='float32'))
-                    material_drive.append(None)
-            for cell, component, waveform, sigma_port, unit_field in drives.get(index, ()):
-                if overridden:
-                    queue.append((*cell, component, current_source_samples(grid, waveform, n_steps, dtype='float32')))
-                    material_drive.append((None, 0., sigma_port, unit_field))
-                else:
-                    queue.defer(_port_drive_source, grid, cell, component, waveform, n_steps,
-                        sigma_port=sigma_port, unit_field=unit_field, dtype='float32')
-                    material_drive.append(None)
-        for cell, component, waveform, sigma_port, unit_field in drives.get(len(sim._ports), ()):
+    queue = PortSourceQueue()
+    material_drive: list[tuple[Any, Any] | tuple[Any, Any, Any, Any] | None] = []
+    for index, pe in enumerate(sim._ports):
+        if pe.is_soft_source:
+            cell = _grid_metric.field_index(grid, pe.position, pe.component)
+            if overridden and not needs_scale(pe.amplitude_kind, 'cb_over_dv'):
+                volume, _ = current_source_volume(grid, cell, pe.component)
+                queue.append((*cell, pe.component, current_source_samples(grid, pe.waveform, n_steps, dtype='float32')))
+                material_drive.append((volume, sc.debye_pole_term(drive_model, cell, pe.component, grid.dt)))
+            elif ports_present and not overridden:
+                queue.defer(make_current_source, grid, cell, pe.component, pe.waveform,
+                    n_steps, amplitude_kind=pe.amplitude_kind, dtype='float32')
+                material_drive.append(None)
+            else:
+                queue.append(make_current_source(grid, cell, pe.component, pe.waveform,
+                    n_steps, drive_model, amplitude_kind=pe.amplitude_kind, dtype='float32'))
+                material_drive.append(None)
+        for cell, component, waveform, sigma_port, unit_field in drives.get(index, ()):
+            if overridden:
+                queue.append((*cell, component, current_source_samples(grid, waveform, n_steps, dtype='float32')))
+                material_drive.append((None, 0., sigma_port, unit_field))
+            else:
+                queue.defer(_port_drive_source, grid, cell, component, waveform, n_steps,
+                    sigma_port=sigma_port, unit_field=unit_field, dtype='float32')
+                material_drive.append(None)
+    for cell, component, waveform, sigma_port, unit_field in drives.get(len(sim._ports), ()):
+        if overridden:
+            queue.append((*cell, component, current_source_samples(grid, waveform, n_steps, dtype='float32')))
+            material_drive.append((None, 0., sigma_port, unit_field))
+        else:
             queue.defer(_port_drive_source, grid, cell, component, waveform, n_steps,
                         sigma_port=sigma_port, unit_field=unit_field, dtype='float32')
             material_drive.append(None)
-        if (ports_present or sim._msl_ports) and not overridden:
-            from rfx.model.materials import with_components
-            final_drive_model = with_components(materials, grid, periodic=(False,) * 3,
-                debye_spec=debye_spec, lorentz_spec=lorentz_spec, field_dtype=field_dtype)
-        else:
-            final_drive_model = materials
-        sources = [SourceSpec(int(i), int(j), int(k), component, jnp.asarray(waveform))
-                   for i, j, k, component, waveform in queue.resolve(final_drive_model)]
+    if (ports_present or sim._msl_ports) and not overridden:
+        from rfx.model.materials import with_components
+        final_drive_model = with_components(materials, grid, periodic=(False,) * 3,
+            debye_spec=debye_spec, lorentz_spec=lorentz_spec, field_dtype=field_dtype)
+    else:
+        final_drive_model = materials
+    sources = [SourceSpec(int(i), int(j), int(k), component, jnp.asarray(waveform))
+               for i, j, k, component, waveform in queue.resolve(final_drive_model)]
     conductors, pec_occupancy_override = conductor_model.prepare_port_occupancy(
         conductors, (), pec_occupancy_override, None, sim=sim, occupancy_mesh=mesh)
     from rfx.stepping.prepared import stage
     conductors = stage(conductors, materials=materials)
     conductors, record = conductor_model.at_kernel(sim, conductors,
-        lane=lane, pec_edges=conductors.pec_edges)
-    return conductors._prepared_owner or conductors, materials, cells, conductors.pec_edges, record, sources, tuple(material_drive), ports.port_specs, pec_occupancy_override
+        lane=lane, pec_edges=conductors.pec_edges,
+        sheet_operator=conductors.sheet_context(conductors.pec_edges))
+    return conductors._prepared_owner or conductors, materials, cells, conductors.pec_edges, conductors.sheet_operator, record, sources, tuple(material_drive), ports.port_specs, pec_occupancy_override
 
 
 def refuse_unsupported_distributed_features(sim, **kwargs):

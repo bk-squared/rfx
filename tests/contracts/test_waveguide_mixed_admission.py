@@ -31,8 +31,7 @@ def _public_call(sim, path):
 
 
 def _stored_tfsf_call(sim, path):
-    # Public TFSF boundary checks can reject this declaration before a runner.
-    # Exercise the runner's own admission with a stored, valid source entry.
+    """A stored TFSF entry isolates runner admission from the public boundary checks."""
     source = Simulation(freq_max=20e9, domain=(.030, .020, .012), dx=.002,
                         boundary="cpml", cpml_layers=2)
     source.add_tfsf_source(f0=10e9, margin=1)

@@ -465,7 +465,18 @@ def compute_s_matrix(self, *, method: str | None = None, lane: str | None = None
     if chosen == "compute_coaxial_two_port":
         return self.compute_coaxial_two_port(**kwargs)
     if chosen == "compute_coax_msl_transition":
-        return self.compute_coax_msl_transition(**kwargs)
+        warnings.warn(
+            "compute_coax_msl_transition is not supported and will be removed after rfx 2.3: "
+            "the coax-to-microstrip transition matrix it returns is not passive.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", message="compute_coax_msl_transition is not supported",
+                category=DeprecationWarning,
+            )
+            return self.compute_coax_msl_transition(**kwargs)
     if chosen == "compute_mixed_s_matrix":
         return self.compute_mixed_s_matrix(**kwargs)
 

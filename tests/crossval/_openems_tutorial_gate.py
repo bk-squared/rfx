@@ -690,7 +690,7 @@ def _energy_progress(log_text: str) -> dict:
             continue
         try:
             db = float(m.group(2).replace(" ", ""))
-        except ValueError:  # pragma: no cover - "inf"/"nan" while the peak is 0
+        except ValueError:  # pragma: no cover
             continue
         if not np.isfinite(db):
             continue

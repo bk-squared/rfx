@@ -14,7 +14,7 @@ from rfx.stepping.rank import rank_shard_map
 from rfx.stepping.remat import segmented_scan
 from rfx.stepping.sequence import HookPoint
 from rfx.stepping.slab import cut, cut_pole_coeffs, cut_poles, place, material_kind
-from rfx.stepping.slab_measurements import _nodes, cut_probe_table, local_table
+from rfx.stepping.slab_measurements import _nodes, cut_probe_table, local_table, table_metadata
 
 
 def select_step(*, cpml=False, debye=False, lorentz=False, ports=False,
@@ -37,13 +37,20 @@ def record_step_kind(grid, debye_spec, lorentz_spec, boundary_spec, *, ports=Fal
         lorentz=lorentz_spec is not None, pmc=bool(boundary_spec.pmc_faces()), ports=ports))
 
 
-def runner_step_kind(grid, **flags):
-    """The step a direct runner call takes: the one the grid recorded, else the decision from flags."""
+def runner_step_kind(grid, *, sheet=None, **flags):
+    """The step a direct runner call takes: the one the grid recorded, else the decision from flags.
+
+    The legacy step has no sheet operator, so a surface-impedance sheet
+    context is refused here, where the legacy kind is chosen, before any step.
+    """
     step_kind = grid.step_kind
     if step_kind is None:
         step_kind = select_step(**flags)
     if flags.get('ports') and step_kind != 'wrapped':
         raise NotImplementedError('Graded multi-device ports require the wrapped step; PMC and periodic x are not supported.')
+    if step_kind != 'wrapped':
+        from rfx.materials.thin_conductor import refuse_f0_sheets
+        refuse_f0_sheets((), "graded multi-device legacy step", context=sheet)
     return step_kind
 
 
@@ -200,6 +207,7 @@ def split(invariants, carry, layout, mesh, *, waveforms, dt=None, staged=False):
 def wrap(step, layout, mesh, *, table, port_table=None):
     """Execute the supplied graded step on each slab, attaching two copies."""
     from rfx.runners.distributed_nu import _exchange_h_ghosts_nu, _exchange_e_ghosts_nu
+    table, port_table = table_metadata(table), table_metadata(port_table)
     context = replace(step.context, x_face_frame={'x': (
         layout.ghost_width, layout.ghost_width + layout.nx_per_rank - layout.pad_x)})
 

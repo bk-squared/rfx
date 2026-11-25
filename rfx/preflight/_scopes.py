@@ -11,7 +11,6 @@ CODE_SCOPE = {
     'body_flush_on_absorber': 'object',
     'campaign_statics_traced_mesh': 'model',
     'campaign_statics_unavailable': 'model',
-    'coaxial_port_junction_short': 'object',
     'conductor_in_thin_absorber': 'object',
     'congruent_conductor_rasterization_parity': 'object',
     'dc_film_area': 'object',

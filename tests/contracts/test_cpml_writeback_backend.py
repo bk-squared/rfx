@@ -77,14 +77,12 @@ def _emit(measurements, record_property):
 @pytest.mark.parametrize("steps", (pytest.param(240, marks=pytest.mark.slow),
                                    pytest.param(480, marks=pytest.mark.slow)))
 def test_selected_backend_probe_plain_vs_jit(graded, steps, record_property):
+    """An earlier CPU measurement found padded-form spreads of 32 and 63 ULP with S11 accumulation requested, versus zero without it."""
     from tests.unit.autodiff.test_forward_jit_contract import _lumped_open, _run
 
     sim = _lumped_open(graded)
 
     def solve():
-        # On CPU the padded form's spread depends on requesting S11
-        # accumulation, not on returning S11: 32 / 63 ULP with the
-        # request, 0 without it.
         return _run(sim, graded, None if graded else "s", "box", steps, None)
 
     measurements = []
@@ -116,6 +114,7 @@ def _field_comparison(a, b, label, record_property, *, assert_bar, kind="step"):
 @pytest.mark.gpu_gate
 @pytest.mark.parametrize("lane", (pytest.param("uniform", marks=pytest.mark.slow), "graded"))
 def test_selected_backend_six_fields_against_other_form(monkeypatch, lane, record_property):
+    """An earlier 400-step Mac arm64 measurement found slab compiled-versus-uncompiled differences of 0.1–0.2% of the E peak and at least a tenth of the H peak, motivating eager CPU comparison."""
     from tests.contracts._cpml_writeback_scene import build
 
     backend = jax.default_backend()
@@ -131,14 +130,8 @@ def test_selected_backend_six_fields_against_other_form(monkeypatch, lane, recor
             return {key: np.asarray(getattr(result.state, key))
                     for key in ("ex", "ey", "ez", "hx", "hy", "hz")}
 
-    # On GPU the two compiled forms are compared (measured bitwise on seven card
-    # classes). On CPU this scene is a poor compiled witness whatever the form:
-    # the current source leaves a static ez of 3e5 at its cell, and the slab
-    # form alone differs from its own uncompiled result by 0.1-0.2 % of the E
-    # peak and a tenth or more of the H peak (measured, Mac arm64, 400 steps).
-    # There the two forms are compared uncompiled, where they are bit-equal.
     eager = backend == "cpu"
-    steps = 40 if eager else 400     # uncompiled steps cost 0.3 s each
+    steps = 40 if eager else 400
     try:
         _field_comparison(fields(selected, eager), fields(other, eager),
                           f"{backend}/{lane}/{'eager' if eager else 'compiled'}/{steps}",

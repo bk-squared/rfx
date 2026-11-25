@@ -21,8 +21,8 @@ def plain_dft(y, dt, freqs, block=DFT_BLOCK):
     B = int(min(block, n))
     nb = -(-n // B)
     w = -2.0 * np.pi * freqs * float(dt)
-    k_blk = np.exp(1j * np.outer(w, np.arange(B, dtype=np.float64)))           # (nf, B)
-    z_off = np.exp(1j * np.outer(np.arange(nb, dtype=np.float64) * B, w))      # (nb, nf)
+    k_blk = np.exp(1j * np.outer(w, np.arange(B, dtype=np.float64)))
+    z_off = np.exp(1j * np.outer(np.arange(nb, dtype=np.float64) * B, w))
     yp = jnp.zeros((nb * B, C), dtype=rdt).at[:n].set(y.astype(rdt))
     yb = yp.reshape(nb, B, C).astype(cdt)
     inner = jnp.einsum("fm,bmc->bfc", jnp.asarray(k_blk, dtype=cdt), yb, precision=HIGHEST)
@@ -48,12 +48,12 @@ def tail_dft(s, c, n_ref, n_last, dt, freqs, tail_arg=None, *, mask=None):
     zN1 = jnp.asarray(np.exp(-2j * np.pi * freqs * dt * (int(n_last) + 1)), dtype=cdt)
     sdt = s * dt
     if tail_arg is None:
-        logz = jnp.asarray(-2j * np.pi * freqs * dt, dtype=cdt)               # (nf,)
-        one_minus_lz = -jnp.expm1(sdt[None, :] + logz[:, None])               # (nf, K)
+        logz = jnp.asarray(-2j * np.pi * freqs * dt, dtype=cdt)
+        one_minus_lz = -jnp.expm1(sdt[None, :] + logz[:, None])
     else:
         dsdt = (s - jax.lax.stop_gradient(s)) * dt
         one_minus_lz = -jnp.expm1(tail_arg + dsdt[None, :])
-    amp = jnp.exp(sdt * float(int(n_last) + 1 - int(n_ref)))[:, None] * c     # (K, C)
+    amp = jnp.exp(sdt * float(int(n_last) + 1 - int(n_ref)))[:, None] * c
     if mask is not None:
         one_minus_lz = jnp.where(mask[None, :], one_minus_lz, 1)
         amp = jnp.where(mask[:, None], amp, 0)

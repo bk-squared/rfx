@@ -32,7 +32,7 @@ def _scene(kind):
 
 
 def _loss(sim, kind, *, checkpoint=False):
-    # These entries must stay concrete when only epsilon is differentiated.
+    """Conductivity entries remain concrete when only permittivity is differentiated."""
     edge_zeros = tuple(jnp.zeros((3, 3, 3), jnp.float32) for _ in range(3))
 
     def loss(eps):
@@ -40,7 +40,6 @@ def _loss(sim, kind, *, checkpoint=False):
         if kind == "designed-sigma":
             options["design_sigma_override"] = eps * .005
         elif kind == "held-edge-tuple":
-            # Replaces the load in sig_c; the held background restores it.
             options["design_sigma_override"] = edge_zeros
         result = sim.forward(
             design_box=BOX, design_eps_override=eps,
@@ -57,14 +56,11 @@ def _loss(sim, kind, *, checkpoint=False):
     ("held", 4), ("held-edge-tuple", 4),
 ])
 def test_saved_window_residuals(kind, arrays, capsys):
+    """The saved tape counts the four written nodes per axis for three declared cells, excluding the minus-side computation context."""
     sim = _scene(kind)
     eps = jnp.full((3, 3, 3), 2., jnp.float32)
-    # print_saved_residuals linearizes the objective as reverse-mode grad
-    # does. jit also pins the concrete-background proof under an outer trace.
     print_saved_residuals(jax.jit(_loss(sim, kind)), eps)
     saved = capsys.readouterr().out
-    # Three declared cells write four nodes on each axis; the minus-side
-    # computation context is not saved. Counts come from the design table.
     windows = re.findall(r"f32\[80,4,4,4\]", saved)
     assert len(windows) == arrays, saved
 
@@ -76,12 +72,11 @@ def test_saved_window_residuals(kind, arrays, capsys):
     if not checkpoint
 ])
 def test_value_and_gradient_bits_against_original_builder(kind, checkpoint, monkeypatch):
+    """The all-false reference pins derivatives without stopping Ca."""
     sim = _scene(kind)
     loss = _loss(sim, kind, checkpoint=checkpoint)
     eps = jnp.linspace(1.5, 3., 27, dtype=jnp.float32).reshape((3, 3, 3))
     actual = jax.jit(jax.value_and_grad(lambda e: loss(e)))(eps)
-    # All-False restores main's coefficient graph: no stop_gradient on Ca.
-    # This also catches unconditional stopping in the lossy mutation (m2).
     monkeypatch.setattr(material_model, "_design_box_constant_ca",
                         lambda *args, **kwargs: (False, False, False))
     reference = jax.jit(jax.value_and_grad(lambda e: loss(e)))(eps)
@@ -99,6 +94,7 @@ def test_value_and_gradient_bits_against_original_builder(kind, checkpoint, monk
     if not (segments == 2 and (nfreq == 5 or (nfreq == 2 and design == 'occupancy')))
 ])
 def test_estimate_write_window(design, step_bytes, checkpoint, segments, nfreq):
+    """One complex64 phase per frequency is independent of the 2x3 plane area."""
     sim = _scene("lossless")
     if nfreq:
         sim.add_dft_plane_probe(axis="x", coordinate=.020, component="ez",
@@ -108,7 +104,6 @@ def test_estimate_write_window(design, step_bytes, checkpoint, segments, nfreq):
         STEPS, design_box=BOX, design=design, checkpoint=checkpoint,
         checkpoint_segments=segments)
     assert estimate.tape_window_cells == 64
-    # One complex64 phase per frequency, independent of the 2x3 plane area.
     assert estimate.tape_step_bytes == step_bytes + nfreq * 8
 
 
@@ -152,10 +147,10 @@ def test_observation_residuals_match_box_estimate(feature, components, nfreq, ca
 
 
 def test_unsegmented_checkpoint_bound_is_unchanged():
+    """The checkpoint estimate retains the six-array computation-window bound."""
     estimate = _scene("lossless").estimate_ad_memory(
         STEPS, design_box=BOX, checkpoint=True)
     assert estimate.tape_is_bound
-    # Amendment 1 leaves the old six-array computation-window bound alone.
     assert estimate.tape_window_cells == 125
     assert estimate.tape_step_bytes == estimate.carry_bytes + 3000
 

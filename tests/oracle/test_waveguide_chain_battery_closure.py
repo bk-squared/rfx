@@ -400,7 +400,7 @@ def measure_closure_witness(dx: float = RUNG_DX_M) -> dict:
 
 @pytest.fixture(scope="module")
 def witness() -> dict:
-    if not WITNESS.exists():  # pragma: no cover - the artifact is committed
+    if not WITNESS.exists():  # pragma: no cover
         pytest.fail(f"missing closure witness artifact {WITNESS.relative_to(REPO)}; "
                     "regenerate with scripts/diagnostics/"
                     "waveguide_chain_battery_closure_measure.py")

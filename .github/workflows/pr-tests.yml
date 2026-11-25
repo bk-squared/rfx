@@ -10,7 +10,7 @@ name: pr-tests
 #
 # Path-aware since 2026-09-18: the `changes` job decides whether this event
 # touched anything the physics suite can observe; the twenty shards run only
-# contracts when it did not. Their NAMES are unchanged, which is
+# contracts and selected readers when it did not. Their NAMES are unchanged, which is
 # what the ruleset reads. The contract tests run either way.
 # No push-to-main run: every merge lands a tree tested by its PR or batch run.
 # Measured 61/61 green push runs on 2026-10-29..11-01.
@@ -49,7 +49,7 @@ jobs:
   # The two heavy jobs below KEEP THEIR NAMES and still run on every event, so
   # the contexts main's ruleset requires (`guards-and-preflight`,
   # `fast-suite (1)`..`(20)`) are always reported. When this job says the diff is
-  # not code, the twenty shards run the contract tests, and
+  # not code, the twenty shards run contracts and selected readers, and
   # `guards-and-preflight` checks their collect-count floor instead of running
   # the guard suite. The contracts pin docs/, scripts/ and these
   # workflows, which is precisely what a "not code" diff changes.
@@ -67,6 +67,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       code_changed: ${{ steps.classify.outputs.code_changed }}
+      notcode_tests: ${{ steps.classify.outputs.notcode_tests }}
     steps:
       - name: Check out repository
         # fetch-depth: 0 — the classifier diffs base.sha...head.sha, and a
@@ -80,7 +81,8 @@ jobs:
         # Every input arrives through the environment. The decision is
         # scripts/ci/changed_paths.py (stdlib, unit-tested); the shell around it
         # is scripts/ci/classify_changes.sh, which answers `true` for every
-        # merge group and any diff it could not compute.
+        # merge group and any diff it could not compute. On a not-code diff it
+        # also names the tests that read a changed path (select_notcode_tests.py).
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
@@ -174,7 +176,7 @@ jobs:
       # pinned by test_the_lint_scope_covers_this_gates_own_script, or change
       # scripts/dev/prune_worktrees.py past test_prune_worktrees.py, and the
       # forbidding test would never run. So the contracts run on BOTH branches:
-      # in the twenty shards, contracts alone when the diff is not code and
+      # in the twenty shards, alongside selected readers when the diff is not code and
       # inside the whole tree when it is. This step checks the collect-count floor.
       - name: Contract tests — collect-count floor (the shards run the tests)
         if: needs.changes.outputs.code_changed == 'false'
@@ -318,10 +320,32 @@ jobs:
         # tests/contracts cannot deselect from a required gate, the explicit -m
         # for a CPU-safe run without the docs_consistency tests, --strict-markers
         # for marker typos. The collect-count floor is in guards-and-preflight.
-        run: >
-          pytest tests/contracts -q -ra -p no:cacheprovider
-          -o addopts="" -m "not gpu and not docs_consistency" --strict-markers
-          --splits 20 --group ${{ matrix.group }}
+        # Then the tests that read a changed path run under the code branch's
+        # own filter (default addopts); under 20 of them run unsplit in group 1.
+        env:
+          NOTCODE_TESTS: ${{ needs.changes.outputs.notcode_tests }}
+          SHARD_GROUP: ${{ matrix.group }}
+        run: |
+          pytest tests/contracts -q -ra -p no:cacheprovider -o addopts="" -m "not gpu and not docs_consistency" --strict-markers --splits 20 --group ${{ matrix.group }}
+          if [ -n "$NOTCODE_TESTS" ]; then
+            read -r -a selected_files <<< "$NOTCODE_TESTS"
+            collection="$RUNNER_TEMP/notcode-collection.txt"
+            status=0
+            python -m pytest -q -p no:cacheprovider --strict-markers --collect-only "${selected_files[@]}" > "$collection" || status=$?
+            cat "$collection"
+            if [ "$status" -ne 0 ] && [ "$status" -ne 5 ]; then exit "$status"; fi
+            collected=$(sed -nE 's/^([0-9]+)(\/[0-9]+)? tests? collected.*/\1/p; s/.* ([0-9]+) selected.*/\1/p' "$collection" | tail -1)
+            if [ "$status" -eq 5 ]; then collected=0; fi
+            if ! [[ "$collected" =~ ^[0-9]+$ ]]; then exit 1; fi
+            set -- --splits 20 --group "$SHARD_GROUP"
+            if [ "$collected" -lt 20 ]; then
+              if [ "$SHARD_GROUP" -ne 1 ]; then exit 0; fi
+              set --
+            fi
+            status=0
+            python -m pytest -q -ra -p no:cacheprovider --strict-markers "$@" "${selected_files[@]}" || status=$?
+            if [ "$status" -ne 0 ] && [ "$status" -ne 5 ]; then exit "$status"; fi
+          fi
 
       - name: Fast suite — Python ${{ matrix.python-version }}, shard ${{ matrix.group }} of 20
         if: needs.changes.outputs.code_changed != 'false'
