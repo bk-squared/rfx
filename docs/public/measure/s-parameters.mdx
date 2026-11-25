@@ -429,7 +429,7 @@ measured voltages and currents: the waves at the line's analytic impedance
 deviates from Hammerstad–Jensen does not by itself change S. To read the line
 itself (β from a two-line S21 phase, for example), bring S back with
 `rfx.renormalize_power_waves(S, msl.reference_impedances, msl.line_impedances)`.
-Refine the mesh before quoting Z0.
+Before quoting Z0, read `msl.fit_span_phase` and `msl.fit_amplification` at that bin: with the probe counts fixed in cells, a finer mesh shortens the probe span and does not make the fitted Z0 more accurate.
 
 S is referred to the feed plane you declared with `add_msl_port`, not to the
 first voltage probe further in. rfx moves the phase over the realized distance

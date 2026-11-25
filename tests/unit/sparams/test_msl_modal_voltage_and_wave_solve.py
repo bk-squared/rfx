@@ -919,6 +919,8 @@ def test_fitted_impedance_and_beta_cannot_change_production_s(tmp_path, monkeypa
             beta=jnp.full(v.shape[0], fit_value["beta"], dtype=jnp.complex64),
             q=jnp.ones(v.shape[0], dtype=jnp.complex64),
             beta_railed=jnp.zeros(v.shape[0], dtype=bool),
+            fit_span_phase=jnp.zeros(v.shape[0]),
+            fit_amplification=jnp.zeros(v.shape[0]),
         )
 
     monkeypatch.setattr(decomp, "extract_msl_nprobe", controlled_fit)
