@@ -134,13 +134,14 @@ def judge_realization(table, snap):
         if plane_only:
             mismatch = False
         if not mismatch:
-            quantity = "centroid shift exceeds 0.25 cell"
+            quantity = "centroid shift exceeds 0.25 cell" if centroid else ""
         if row.family in ("sheet", "lossy") and node_misses:
             mismatch = mismatch or sheet_plane_mismatch
         if sheet_plane_mismatch:
-            quantity += "; " + "; ".join(
+            plane_text = "; ".join(
                 f"{'xyz'[a]} sheet plane miss δ={m.delta:.12g} m, L={m.length:.12g} m (limit 1 % of L)"
                 for a, m in node_misses)
+            quantity = f"{quantity}; {plane_text}" if quantity else plane_text
         if not mismatch and not centroid:
             continue
         detail = "; ".join(
