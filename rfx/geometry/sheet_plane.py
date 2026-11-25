@@ -27,7 +27,12 @@ class _SheetPlaneSetup(NamedTuple):
 def _sheet_plane_setup(shape, coords: GridCoords, cell_sizes=None, *,
                        normal_axis=None, name=None, lane: str = "",
                        refuse_thick: bool = False, grid=None, nominal_grid=None):
-    """Resolve the shared static sheet geometry before footprint sampling."""
+    """Resolve the shared static sheet geometry before footprint sampling.
+
+    On a periodic in-plane axis the node line keeps its endpoint at the
+    period: endpoints stay distinct until edge enumeration, because folding
+    L into 0 here would either lose the final edge or add an edge near 0.
+    """
     from rfx._internal._grid_metric import node_tie_tol
     from rfx._internal._periodic import plane_coordinate
     from rfx.core.jax_utils import is_tracer
@@ -97,8 +102,6 @@ def _sheet_plane_setup(shape, coords: GridCoords, cell_sizes=None, *,
             "realizes a volume with both faces and a shorted interior).")
     plane = _nearest_plane(node_axes[a], mid, d_local,
                            what="sheet", name=name, axis=a)
-    # Tangential endpoints stay distinct until edge enumeration. Folding L
-    # into 0 here would either lose the final edge or add an edge near 0.
     node_axes = list(node_axes)
     periodic = getattr(grid, 'periodic_axes', '')
     for t in range(3):
