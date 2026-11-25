@@ -312,9 +312,10 @@ def _extract_waveguide_multimode(
 ):
     """Returned reference planes are absolute de-embedding target coordinates."""
     from rfx.measurement.echo_bound import runner_echo_bound
-    echo_bound = runner_echo_bound(self, grid, materials, debye=debye_spec,
-        lorentz=lorentz_spec, smoothing=subpixel_smoothing, waveguide_ports=[
-        cfg for raw in raw_cfgs for cfg in (raw if isinstance(raw, list) else [raw])])
+    from rfx.measurement.read_bins import declared_read_bins
+    configs = [cfg for raw in raw_cfgs for cfg in (raw if isinstance(raw, list) else [raw])]
+    echo_bound = runner_echo_bound(self, grid, materials, freqs=declared_read_bins(self, waveguide_ports=configs, include_monitors=False), debye=debye_spec,
+        lorentz=lorentz_spec, smoothing=subpixel_smoothing, waveguide_ports=configs)
     settling_details_mm = []
     port_mode_cfgs: list[list] = []
     for entry, raw in zip(entries, raw_cfgs):

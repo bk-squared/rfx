@@ -634,7 +634,8 @@ def compute_waveguide_s_matrix(
     # require remeasurement.
 
     from rfx.measurement.echo_bound import runner_echo_bound
-    echo_bound = runner_echo_bound(self, grid, materials, waveguide_ports=cfgs,
+    from rfx.measurement.read_bins import declared_read_bins
+    echo_bound = runner_echo_bound(self, grid, materials, freqs=declared_read_bins(self, waveguide_ports=cfgs, include_monitors=False), waveguide_ports=cfgs,
         debye=debye_spec, lorentz=lorentz_spec, smoothing=subpixel_smoothing)
     settling_details = []
     if normalize == "flux":

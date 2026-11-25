@@ -597,7 +597,8 @@ def _forward_from_materials(
     )
 
     from rfx.measurement.echo_bound import runner_echo_bound
-    echo_bound = runner_echo_bound(self, grid, materials, freqs=port_s11_freqs,
+    from rfx.measurement.read_bins import declared_read_bins
+    echo_bound = runner_echo_bound(self, grid, materials, freqs=declared_read_bins(self, _s11_freqs_arr, waveguide_ports=waveguide_ports),
         debye=debye_spec, lorentz=lorentz_spec, smoothing=subpixel_smoothing,
         waveguide_ports=waveguide_ports, design_box=design_box)
 

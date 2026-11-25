@@ -680,8 +680,9 @@ def run_uniform(
     # the early stop reads the record so far through the scan's
     # chunk hook, with the bins the single-wire fast path below reports.
     from rfx.measurement.echo_bound import runner_echo_bound
+    from rfx.measurement.read_bins import declared_read_bins
     echo_bound = runner_echo_bound(sim, grid, materials,
-        freqs=s_param_freqs if compute_s_params is not False else None,
+        freqs=declared_read_bins(sim, s_param_freqs if (lumped_sparam_specs or wire_sparam_specs or sim._coaxial_ports) and compute_s_params is not False else None, port_freqs=[spec.freqs for spec in (*lumped_sparam_specs, *wire_sparam_specs)], waveguide_ports=waveguide_ports),
         debye=debye_spec, lorentz=lorentz_spec, smoothing=subpixel_smoothing,
         waveguide_ports=waveguide_ports)
     _stop_kwargs = {}

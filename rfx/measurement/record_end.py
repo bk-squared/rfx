@@ -75,7 +75,8 @@ def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_po
     try:
         if sim is not None:
             materials, debye, lorentz, *_ = sim._assemble_materials(grid)
-            return runner_echo_bound(sim, grid, materials, freqs=freqs,
+            from rfx.measurement.read_bins import declared_read_bins
+            return runner_echo_bound(sim, grid, materials, freqs=declared_read_bins(sim, freqs, waveguide_ports=waveguide_ports),
                 debye=debye, lorentz=lorentz, waveguide_ports=waveguide_ports)
         if materials is None:
             raise ValueError('realized volume arrays are unavailable')

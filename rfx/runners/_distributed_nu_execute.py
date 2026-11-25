@@ -242,8 +242,9 @@ def execute_from_materials(
     sharded_grid = sharded_grid.select_step(debye_spec, lorentz_spec, self._boundary_spec, ports=bool(port_specs or self._msl_ports))
     sharded_materials = stage_forward_materials(materials, sharded_grid.layout, mesh, uniform=sharded_grid.step_kind == 'wrapped')
     from rfx.measurement.echo_bound import sharded_echo_bound
+    from rfx.measurement.read_bins import declared_read_bins
     echo_bound = sharded_echo_bound(self, grid, sharded_materials, sharded_grid, mesh,
-        freqs=s_param_freqs if not is_run or compute_s_params is not False else None,
+        freqs=declared_read_bins(self, None if port_plan is None else port_plan.sp_freqs),
         debye=debye_spec, lorentz=lorentz_spec)
     del materials
 
