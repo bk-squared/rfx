@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from rfx import Box, RfxRefusal, Simulation
+from rfx import BoundarySpec, Box, GaussianPulse, RfxRefusal, Simulation
 from rfx.mesh_edges import edge_aware_profiles
 
 
@@ -126,3 +126,104 @@ def test_b11_merged_sheet_names_declared_and_solved_planes():
     issues = _conductor_findings(sim.preflight(), 'geometry[1]')
     assert any(i.severity == 'error' and '0.00505 m' in str(i)
                and '0.005 m' in str(i) and 'merges' in str(i) for i in issues)
+
+
+def _tmz_model(lo, hi, **kwargs):
+    sim = Simulation(freq_max=10e9, domain=(.05, .05, .004),
+                     boundary='cpml', mode='2d_tmz', **kwargs)
+    sim.add(_box(lo, hi), material='pec')
+    sim.add_source((.002, .025, 0), 'ez', waveform=GaussianPulse(f0=5e9),
+                   amplitude_kind='field')
+    sim.add_probe((.048, .025, 0), 'ez')
+    return sim
+
+
+def test_b12a_two_d_keeps_uniform_resolution():
+    sim = _tmz_model(-.0007, .0013)
+    report = sim.preflight()
+    assert sim._resolve_mesh()['_dz_profile'] is None
+    assert not [i for i in report.errors if i.code in ('realization', 'assembly_fault')]
+
+
+def test_b12b_wall_top_keeps_uniform_resolution():
+    sim = Simulation(freq_max=10e9, domain=(.05, .05, .02015), boundary='pec')
+    sim.add(_box(.018, .02015), material='pec')
+    report = sim.preflight()
+    assert sim._resolve_mesh()['_dz_profile'] is None
+    assert not report.errors
+
+
+PERIOD = 20.6 * .00125
+PERIODIC_DX = PERIOD / 21
+
+
+def _periodic_sheet(plane):
+    sim = Simulation(freq_max=10e9, domain=(PERIOD, PERIOD, .02),
+                     boundary=BoundarySpec(x='periodic', y='periodic', z='cpml'))
+    sim.add(Box((0., 0., plane), (PERIOD, PERIOD, plane)), material='pec')
+    return sim
+
+
+@pytest.mark.parametrize('refined', [False, True], ids=['plain', 'refinement'])
+def test_b12c_realized_periodic_lattice_keeps_uniform_resolution(refined):
+    sim = _periodic_sheet(3 * PERIODIC_DX)
+    if refined:
+        sim.add_refinement((.009, .015), ratio=2, validation='research')
+    report = sim.preflight()
+    assert sim._resolve_mesh()['_dz_profile'] is None
+    assert not report.errors
+
+
+@pytest.mark.parametrize('dx', [None, .001], ids=['automatic', 'explicit'])
+def test_b13_two_d_box_judge_completes(dx):
+    sim = _tmz_model(0., .004, dx=dx)
+    report = sim.preflight()
+    assert not [i for i in report.errors if i.code == 'assembly_fault']
+
+
+@pytest.mark.parametrize('dx', [.0001, None], ids=['explicit', 'automatic'])
+def test_b14_touching_face_roundoff_is_a_tie(dx):
+    sim = _model(board=False, dx=dx)
+    sim.add(_box(.0005, .0005 + .0016), material='fr4')
+    sim.add(_box(.0021, .0021), material='pec')
+    assert not [i for i in _conductor_findings(sim.preflight(), 'geometry[1]')
+                if i.severity == 'error']
+
+
+@pytest.mark.parametrize('plane', [.0075, .0055], ids=['air', 'board'])
+def test_b15_thin_conductor_interval_contains_realized_node(plane):
+    sim = _model()
+    lo, hi = plane - 35e-6 / 2, plane + 35e-6 / 2
+    sim.add_thin_conductor(_box(lo, hi), sigma_bulk=1e7, thickness=35e-6)
+    report = sim.preflight()
+    nodes = _interior_nodes(sim.realized_geometry())
+    assert np.any((nodes >= lo) & (nodes <= hi))
+    assert not _conductor_findings(report, 'thin_conductor[0]')
+
+
+def test_b16_sheet_neighbour_sets_acceptance_length():
+    sim = _model(.00653, .00653, dx=.0005)
+    issues = _conductor_findings(sim.preflight(), 'geometry[1]')
+    assert any(i.severity == 'error' and 'sheet plane miss' in str(i)
+               and 'L=7e-05 m' in str(i) for i in issues)
+
+
+def test_b17_split_block_keeps_quarter_cell_floor():
+    sim = _model(.005104, .005104)
+    sim.preflight()
+    nodes = _interior_nodes(sim.realized_geometry())
+    assert np.min(abs(nodes - .005104)) <= 1e-12
+    assert np.min(np.diff(nodes)) >= .0001 - 1e-12
+
+
+def test_b18_periodic_rebuild_keeps_realized_xy_lattice():
+    plane = 3 * .00125
+    sim = _periodic_sheet(plane)
+    report = sim.preflight()
+    record = sim.realized_geometry()
+    assert np.min(abs(_interior_nodes(record) - plane)) <= 1e-12
+    for axis in (0, 1):
+        d = record.domain[axis]
+        cells = np.asarray(record.cell_sizes[axis])[d.padding[0]:d.padding[0] + d.n_cells]
+        np.testing.assert_allclose(cells, PERIODIC_DX, rtol=1e-12, atol=0.)
+    assert not [i for i in _conductor_findings(report, 'geometry[0]') if i.severity == 'error']

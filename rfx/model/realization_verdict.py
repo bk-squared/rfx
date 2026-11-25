@@ -129,13 +129,14 @@ def judge_realization(table, snap):
             quantity = "; ".join(
                 f"{a.axis} extent miss {a.miss_cells:+.12g} cells ({a.miss_percent:+.12g} %)"
                 for a in axes if a.miss_percent is not None)
-        if ((row.model == "solved sheet edges" and row.shape_name == "Box") or
-                row.model == "cell-centre footprint; node plane"):
+        plane_only = ((row.model == "solved sheet edges" and row.shape_name == "Box") or
+                      row.model == "cell-centre footprint; node plane")
+        if plane_only:
             mismatch = False
         if row.family in ("sheet", "lossy") and node_misses:
             mismatch = mismatch or sheet_plane_mismatch
         if sheet_plane_mismatch:
-            quantity = "; ".join(
+            quantity += "; " + "; ".join(
                 f"{'xyz'[a]} sheet plane miss δ={m.delta:.12g} m, L={m.length:.12g} m (limit 1 % of L)"
                 for a, m in node_misses)
         if not mismatch and not centroid:
@@ -155,7 +156,8 @@ def judge_realization(table, snap):
                   "to place nodes on the drawn edges.")
         if getattr(table, "automatic_dx", None) is not None and not dielectric:
             bad_axes = {"xyz"[a] for a, m in node_misses if m.refused}
-            bad_axes.update(a.axis for a in axes if a.miss_percent is not None and abs(a.miss_percent) > 1.)
+            if not plane_only and row.integral_comparison is None and row.area_miss_percent is None:
+                bad_axes.update(a.axis for a in axes if a.miss_percent is not None and abs(a.miss_percent) > 1.)
             if bad_axes & {"x", "y"}:
                 remedy = (
                     f"The automatic mesh is uniform along x and y; pass dx={table.automatic_dx:.12g} m "
@@ -163,7 +165,7 @@ def judge_realization(table, snap):
                     'solids=[<every box whose faces must be nodes>], axes="xyz"); '
                     "its dz_profile replaces the automatic z mesh.")
             elif "z" in bad_axes:
-                remedy = _merged_plane_remedy(table, row)
+                remedy = _merged_plane_remedy(table, row) or remedy
         if not mismatch:
             quantity = "centroid shift exceeds 0.25 cell"
         for a in axes:
@@ -433,6 +435,4 @@ def replay_legacy_findings(warnings, ctx, code):
 def _merged_plane_remedy(table, row):
     """Name the declared plane and the retained plane of an automatic merge."""
     from rfx.model.conductor_planes import merged_plane_remedy
-    return (merged_plane_remedy(row.label, row.declared_bounds_m, table.auto_z_merges) or
-            'Declare that part as a sheet (a zero-thickness Box or add_thin_conductor), '
-            'or pass dx= with a dz_profile.')
+    return merged_plane_remedy(row.label, row.declared_bounds_m, table.auto_z_merges)

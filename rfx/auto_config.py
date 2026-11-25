@@ -250,6 +250,7 @@ class SimConfig:
     offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
     z_rebuild_reason: tuple | None = None
     z_merges: tuple = ()
+    z_rebuild_inputs: tuple = ()
 
     @property
     def grid_shape(self) -> tuple[int, int, int]:
@@ -514,9 +515,9 @@ def auto_configure(
                         if 0 <= z + offset[2] <= domain[2]]
 
     def resolved_z(column):
-        return _accepted_dz_profile(
-            z_features, column, dx, sheet_planes, conductor_planes,
-            features.z_conductors, geometry, offset, needs_nonuniform_z, snap)
+        profile = (_make_dz_profile(z_features, column, dx, sheet_planes=sheet_planes)
+                   if needs_nonuniform_z else None)
+        return profile, None, ()
 
     min_cpml_thickness = preset["pml_frac"] * lambda_max
     min_cpml_cells = int(np.ceil(min_cpml_thickness / dx))
@@ -601,6 +602,7 @@ def auto_configure(
 
     return SimConfig(
         z_rebuild_reason=z_rebuild_reason, z_merges=tuple(z_merges),
+        z_rebuild_inputs=(z_features, conductor_planes, features.z_conductors),
         dx=dx,
         domain=domain,
         cpml_layers=cpml_layers,
@@ -829,6 +831,7 @@ def _band_smooth_post_thirds(
     min_cells: int,
     max_ratio: float = 1.3,
     free_planes=(),
+    thirds_floors=(),
 ) -> np.ndarray:
     """Hand the post-thirds auto-z array to the band-profile engine.
 
@@ -854,8 +857,8 @@ def _band_smooth_post_thirds(
                 for a, b in zip(points[:-1], points[1:])]
 
     prev_end = 0
-    for (lo, hi), meta, (s_lo, s_hi) in zip(feature_bounds, block_meta,
-                                            split_flags):
+    for block_index, ((lo, hi), meta, (s_lo, s_hi)) in enumerate(zip(
+            feature_bounds, block_meta, split_flags)):
         thickness, n_feat, dz_feat, _b_lo, _b_hi = meta
         i = int(np.argmin(np.abs(edges - lo)))
         j = int(np.argmin(np.abs(edges - hi)))
@@ -875,7 +878,8 @@ def _band_smooth_post_thirds(
             length=float(thickness), target=float(dz_feat), protected=True,
             min_cells=int(min(min_cells, n_feat)), split_lo=bool(s_lo),
             split_hi=bool(s_hi),
-            verbatim=tuple(float(c) for c in cells[i:j])))
+            verbatim=tuple(float(c) for c in cells[i:j]),
+            thirds_floor=thirds_floors[block_index] if thirds_floors else 0.0))
         prev_end = j
     if prev_end < len(cells):
         if free_planes:
@@ -1014,57 +1018,7 @@ def _round_dx(dx: float) -> float:
     return best * (10 ** exp)
 
 
-def _accepted_dz_profile(z_features, domain_z, dx, sheets, planes, conductors,
-                         geometry, offset, graded, snap):
-    """Return today's column verbatim until its z realization would refuse."""
-    from rfx.geometry.rasterize_grid import GridCoords, sheet_spec_from_shape
-    from rfx.grid import cells_spanning
-    from rfx.model.conductor_planes import conductor_node_miss
-    from rfx.preflight.realization import _shape_bounds
-    today = (_make_dz_profile(z_features, domain_z, dx, sheet_planes=sheets)
-             if graded else None)
-    if snap == 'declared' or not conductors:
-        return today, None, ()
-    z_nodes = (np.r_[0., np.cumsum(today)] if today is not None
-               else np.arange(cells_spanning(domain_z, dx) + 1, dtype=np.float64) * dx)
-    shifted = []
-    for shape, _ in geometry:
-        b = _shape_bounds(shape)
-        if b is not None:
-            shifted.append(tuple(tuple(float(side[a]) + offset[a] for a in range(3)) for side in b[:2]))
-    reason = None
-    for shape, sheet, label in conductors:
-        bounds = _shape_bounds(shape)
-        if bounds is None:
-            continue
-        b = tuple(tuple(float(side[a]) + offset[a] for a in range(3)) for side in bounds[:2])
-        if b[1][2] < 0 or b[0][2] > domain_z:
-            continue
-        plane = None
-        if sheet:
-            axes = [np.asarray([bounds[0][a], .5*(bounds[0][a]+bounds[1][a]), bounds[1][a]],
-                               dtype=np.float64) for a in range(2)] + [z_nodes-offset[2]]
-            coords = GridCoords(*axes, tuple(len(n) for n in axes))
-            sizes = tuple(np.diff(n) for n in axes)
-            spec = sheet_spec_from_shape(shape, coords, sizes, normal_axis=2)
-            plane = float(z_nodes[spec.plane])
-        miss = conductor_node_miss(z_nodes, b, 2, shifted, plane, (0., domain_z))
-        if miss.refused:
-            offending = (max((b[0][2], b[1][2]), key=lambda p: float(np.min(abs(z_nodes-p))))
-                         if not sheet else .5 * (b[0][2] + b[1][2]))
-            reason = (label, offending)
-            break
-    if reason is None:
-        return today, None, ()
-    thin_intervals = []
-    for shape, _, label in conductors:
-        if label.startswith("thin_conductor["):
-            bounds = _shape_bounds(shape)
-            if bounds is not None:
-                thin_intervals.append(tuple(float(side[2]) + offset[2] for side in bounds[:2]))
-    rebuilt, merges = _conductor_dz_profile(
-        z_features, domain_z, dx, 4, planes, thin_intervals)
-    return rebuilt, reason, merges
+_CONDUCTOR_THIRDS_FLOOR_FRACTION = .25
 
 
 def _conductor_dz_profile(z_features, domain_z, dx, min_cells, conductor_planes,
@@ -1096,7 +1050,7 @@ def _conductor_dz_profile(z_features, domain_z, dx, min_cells, conductor_planes,
         else:
             retained.append(p)
     retained.sort()
-    cells, outer, feature_bounds, block_meta = [], [], [], []
+    cells, outer, feature_bounds, block_meta, floors = [], [], [], [], []
     for lo, hi in zip(boundaries[:-1], boundaries[1:]):
         span = hi-lo
         if not covered(lo, hi):
@@ -1113,8 +1067,12 @@ def _conductor_dz_profile(z_features, domain_z, dx, min_cells, conductor_planes,
             start = len(cells)
             cells.extend([(b-a)/count] * count)
             feature_bounds.append((a, b))
+            floors.append(_CONDUCTOR_THIRDS_FLOOR_FRACTION * dz)
             block_meta.append((b-a, count, (b-a)/count, start, len(cells)))
         outer.append(len(cells))
+    outer = [i for i in outer if 0 < i < len(cells) and
+             min(cells[i-1], cells[i])/3 >= max(
+                 _MIN_THIRDS_SUBCELL_M, _CONDUCTOR_THIRDS_FLOOR_FRACTION * target(sum(cells[:i])))]
     split_flags = []
     for _, _, _, start, end in block_meta:
         split_flags.append(tuple(i in outer and 0 < i < len(cells) and
@@ -1122,5 +1080,5 @@ def _conductor_dz_profile(z_features, domain_z, dx, min_cells, conductor_planes,
     post = apply_thirds_rule(cells, outer)
     profile = _band_smooth_post_thirds(
         post, feature_bounds, block_meta, split_flags, dx, min_cells,
-        max_ratio=1.3, free_planes=retained)
+        max_ratio=1.3, free_planes=retained, thirds_floors=floors)
     return profile, merges

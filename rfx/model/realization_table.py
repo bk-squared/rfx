@@ -122,7 +122,8 @@ def realization_table(prepared) -> RealizationTable:
         return _traced_table(prepared)
     from rfx.preflight.realization import realization_node_inputs
     node_inputs = realization_node_inputs(
-        sim, record, getattr(record, "_quantity_grid", prepared.conductors.grid))
+        sim, record, getattr(record, "_quantity_grid", prepared.conductors.grid),
+        active_axes=tuple("xyz"[a] for a, n in enumerate(prepared.conductors.grid.shape) if n > 1))
     rows = []
     for entity in record.entities:
         axes = tuple(_axis(a.axis, a.declared_bounds_m, a.bounds_m, a.cell_size_m)

@@ -422,6 +422,12 @@ class _CampaignStaticsContext:
             self._assembly_exception = exc
 
 
+    def interior_node_lines(self):
+        """Read the context's float64 node spine without absorber padding."""
+        grid = self.grid
+        return tuple(nodes[pad:grid.shape[a] - getattr(grid, f"pad_{'xyz'[a]}_hi")]
+                     for a, (nodes, pad) in enumerate(zip(self.nodes, grid.axis_pads)))
+
     def realized(self, *, strict=False, defer_warnings=False):
         """:class:`_RealizedPEC` from the PRODUCTION assembly (with the
         sheet/wire collectors), once; ``None`` when the assembly
@@ -901,17 +907,17 @@ def _validate_cfg_assembly(self, _w) -> None:
 _validate_cfg_assembly.__qualname__ = "_PreflightMixin._validate_cfg_assembly"
 
 
-def realization_node_inputs(sim, record, grid):
+def realization_node_inputs(sim, record, grid, *, active_axes):
     """Retain the declared bounds and interior node lines for the judge."""
-    from rfx.geometry.csg import Box
     declarations = {f'geometry[{i}]': e.shape for i, e in enumerate(sim._geometry)}
     declarations.update({f'thin_conductor[{i}]': e.shape for i, e in enumerate(sim._thin_conductors)})
     bounds = {label: (None if (b := _shape_bounds(shape)) is None else
                       tuple(tuple(float(v) for v in side) for side in b[:2]))
               for label, shape in declarations.items()}
     neighbours = tuple(b for b in bounds.values() if b is not None)
-    lines = tuple(tuple(float(v) for v in record.nodes[a][
-        d.padding[0]:d.padding[0] + d.n_cells + 1]) for a, d in enumerate(record.domain))
+    lines = {a: tuple(float(v) for v in record.nodes[a][
+        d.padding[0]:d.padding[0] + d.n_cells + 1])
+        for a, d in enumerate(record.domain) if 'xyz'[a] in active_axes}
     original_domain = getattr(sim._unresolved_domain, "declared", sim._unresolved_domain)
     domain = tuple(original_domain[a] if a < len(original_domain) and original_domain[a] > 0
                    else d.declared_length_m
@@ -919,7 +925,7 @@ def realization_node_inputs(sim, record, grid):
     out = {}
     for entity in record.entities:
         b = bounds.get(entity.label)
-        if b is None:
+        if b is None or entity.kind not in ('sheet', 'lossy'):
             continue
         plane_spec = entity.plane
         if entity.kind == 'lossy' and plane_spec is None:
@@ -928,9 +934,8 @@ def realization_node_inputs(sim, record, grid):
             plane_spec = (a, k, float(record.nodes[a][k]))
         if entity.kind in ('sheet', 'lossy') and plane_spec is not None:
             a, _, plane = plane_spec
+            if 'xyz'[a] not in active_axes:
+                continue
             out[entity.label] = ((lines[a], b, a, neighbours, plane,
                                   (0., domain[a])),)
-        elif entity.kind == 'volume' and isinstance(declarations.get(entity.label), Box):
-            if not entity.continued_faces and not any(record.periodic):
-                out[entity.label] = tuple((lines[a], b, a) for a in range(3))
     return out

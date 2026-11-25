@@ -23,7 +23,7 @@ def conductor_node_miss(nodes, bounds, axis, neighbours=(), plane=None, domain_b
     Sheet planes are supplied by sheet_spec_from_shape or dc_film_plane,
     including when they are read back from a prepared realization record.
     """
-    from rfx._internal._grid_metric import half_open_volume_mask
+    from rfx._internal._grid_metric import half_open_volume_mask, node_tie_tol
     from rfx.geometry.rasterize_grid import _subcell_axes
     nodes = np.asarray(nodes, dtype=np.float64)
     widths = np.diff(nodes)
@@ -37,14 +37,17 @@ def conductor_node_miss(nodes, bounds, axis, neighbours=(), plane=None, domain_b
         drawn = max(0., min(hi, float(nodes[-1])) - max(lo, float(nodes[0])))
         percent = 100 * (extent - drawn) / drawn if drawn else 0.
         return ConductorMiss(percent, subcell, 0., float('inf'))
+    from rfx.geometry.rasterize_grid import _local_cell
+    tol = max(float(node_tie_tol(p, _local_cell(nodes, widths, p))) for p in (lo, hi))
     delta = max(lo - plane, plane - hi, 0.)
+    delta = 0. if delta <= tol else delta
     other = [a for a in range(3) if a != axis]
     planes = list(domain_bounds if domain_bounds is not None else (nodes[0], nodes[-1]))
     for blo, bhi in neighbours:
         if all(min(bounds[1][a], bhi[a]) > max(bounds[0][a], blo[a]) for a in other):
             planes.extend((float(blo[axis]), float(bhi[axis])))
-    below = [p for p in planes if p < lo]
-    above = [p for p in planes if p > hi]
+    below = [p for p in planes if p < lo - tol]
+    above = [p for p in planes if p > hi + tol]
     layers = ([lo - max(below)] if below else []) + ([min(above) - hi] if above else [])
     return ConductorMiss(0., False, delta, min(layers, default=float('inf')))
 

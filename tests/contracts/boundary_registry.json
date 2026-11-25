@@ -143,8 +143,8 @@
   ],
   "sites": [
     {
-      "file": "rfx/auto_config.py",
-      "function": "_accepted_dz_profile",
+      "file": "rfx/api/_mesh.py",
+      "function": "_MeshMixin._resolve_conductor_z",
       "kind": "roll/diff"
     },
     {
