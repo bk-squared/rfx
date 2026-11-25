@@ -23,7 +23,6 @@ def interval_coordinates(grid, axis, start, end):
 
 def _checked_interval(grid, axis, start, end):
     length = float(grid.domain[axis])
-    # Permit only expression roundoff at a declared endpoint, not a cell fraction.
     tol = 8 * math.ulp(length)
     lo, hi = sorted((float(start), float(end)))
     if not math.isfinite(lo + hi) or lo < -tol or hi > length + tol:
@@ -39,7 +38,7 @@ def plane_coordinate(grid, axis, coordinate):
     """Identify the seam plane before a nearest-plane distance check."""
     if "xyz"[axis] not in getattr(grid, "periodic_axes", ""):
         return coordinate
-    grid.index_of(axis, coordinate)  # retain the point API's out-of-grid refusal
+    grid.index_of(axis, coordinate)
     length = float(grid.domain[axis])
     return coordinate - length if coordinate > length - float(grid.cells(axis)[-1]) / 2 else coordinate
 
@@ -75,7 +74,6 @@ def periodic_shape(grid, shape):
             if not (is_tracer(lo[a]) or is_tracer(hi[a])) and lo[a] == hi[a]:
                 lo[a] = hi[a] = plane_coordinate(grid, a, lo[a])
         return replace(shape, corner_lo=tuple(lo), corner_hi=tuple(hi))
-    # A filament's vertices bound its edges; its radius does not bound a volume.
     points = getattr(shape, "points", None)
     if points is not None and float(shape.radius) < min(float(grid.cells(a)[0]) for a in range(3)) / 2:
         for p, q in zip(points, points[1:]):
@@ -89,13 +87,14 @@ def periodic_shape(grid, shape):
 
 
 def _fill_image_range(grid, shape, axis, *, closed_footprint=False, padding=0.):
-    """Static image indices whose declared bounds meet the base period."""
+    """Static image indices whose declared bounds meet the base period.
+
+    An unpadded concrete zero-width closed footprint on a multiple of the period represents one rim at node 0.
+    """
     from rfx.core.jax_utils import is_tracer
     from rfx.geometry.csg import Box, declared_bounds
     bounds = declared_bounds(shape)
     if bounds is None:
-        # Custom coordinate samplers without bounds cannot be validated.
-        # Built-in shapes (including MeshShape) all expose bounding_box.
         return (-1, 0, 1)
     lo, hi = bounds[0][axis], bounds[1][axis]
     length = float(grid.domain[axis])
@@ -113,9 +112,6 @@ def _fill_image_range(grid, shape, axis, *, closed_footprint=False, padding=0.):
                 raise ValueError(
                     f"periodic axis {'xyz'[axis]!r}: fill bounds [{a}, {b}] m "
                     f"must lie inside [-L, 2L] for traced bounds; L={length} m")
-            # Traced bounds get only the images -1, 0 and 1. A shape centred
-            # outside the base period can leave its copy across the opposite
-            # seam unread by the smoothing samples there.
             middle = 0.5 * (float(a) + float(b))
             if middle < -tol or middle > length + tol:
                 raise ValueError(
@@ -128,17 +124,10 @@ def _fill_image_range(grid, shape, axis, *, closed_footprint=False, padding=0.):
         return (-1, 0, 1)
     lo, hi = float(lo) - padding, float(hi) + padding
     if closed_footprint:
-        # Keep the two sheet rims distinct until E edges are enumerated.
-        # An image touching [0,L] at only one rim contributes that endpoint
-        # through the other rim's later fold, not an extra edge into a gap.
         def period_quotient(x):
             q = float(x) / length
             nearest = round(q)
-            # Preserve endpoint expression roundoff, including a bound one
-            # float step outside [0,L]; it must not add an exterior image.
             return nearest if abs(q - nearest) <= 8 * math.ulp(max(1., abs(q))) else q
-        # A footprint of zero width on a multiple of L is one rim, not none:
-        # it keeps the image that puts it on node 0.
         first = math.floor(period_quotient(lo))
         return range(first, max(math.ceil(period_quotient(hi)), first + 1))
     return range(math.floor(float(lo) / length),
