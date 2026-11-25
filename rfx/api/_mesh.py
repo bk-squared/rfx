@@ -159,7 +159,7 @@ class _MeshMixin:
     def _resolve_conductor_z(self, config, inputs, original):
         """Judge R0 on its solver grid, then realize a z-only replacement."""
         from rfx.auto_config import _conductor_dz_profile
-        from rfx.geometry.rasterize_grid import sheet_plane_from_shape
+        from rfx.geometry.sheet_plane import sheet_plane_from_shape
         from rfx.model.conductor_planes import conductor_node_miss
         from rfx.model.thin_conductors import dc_film_plane
         from rfx.preflight.realization import _CampaignStaticsContext, _shape_bounds
