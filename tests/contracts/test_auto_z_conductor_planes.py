@@ -2,7 +2,8 @@
 import numpy as np
 import pytest
 
-from rfx import BoundarySpec, Box, GaussianPulse, RfxRefusal, Simulation
+from rfx import Box, GaussianPulse, RfxRefusal, Simulation
+from rfx.boundaries.spec import BoundarySpec
 from rfx.mesh_edges import edge_aware_profiles
 
 
