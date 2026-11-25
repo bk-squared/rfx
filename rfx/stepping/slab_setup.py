@@ -308,7 +308,7 @@ def _publish_materials(products, layout, mesh, device):
                     hasattr(leaf, 'ndim') and leaf.ndim >= (3 if device is not None else 4)
                     else None if tree_index == 0 else 'sigma' if tree_index == 3 else 'eps_r')
             leaves.append((tree_index, index, leaf, kind))
-    groups = []
+    groups: list[list] = []
     for tree_index, index, leaf, kind in leaves:
         if kind is None:
             outputs[tree_index][index] = leaf
