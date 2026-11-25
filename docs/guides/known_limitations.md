@@ -638,6 +638,30 @@ this condition carries one shared text (`rfx.preflight.msl.MSL_PROBE_CLEARANCE_E
 Settled in #726 (closed): the guard and preflight used to contradict each other
 about this, and a measurement decided it.
 
+### Microstrip `Z0` and `beta` at the lowest bins change by tens of percent with parts of the board far from the probes, while S does not.
+
+Tracker: #3065
+
+`compute_msl_s_matrix(...)` fits each port's `Z0` and `beta` from the voltages at its probes, which span `(n_probes - 1) * n_probe_spacing` cells.
+At bins where the line's phase across that span (`beta` times its length) is small, the fitted values change when parts of the board far from the probes change.
+The cause is not isolated. Two identical builds give bit-identical values, so it is not run noise.
+One board was measured: εr 3.66, h 254 µm, strip declared 600 µm and solved 651.9 µm (cells of h/3), 5 probes 2 cells apart (0.677 mm), 0.5–5 GHz in 30 bins.
+Only the feed's distance from the domain's x faces (3.6 to 65.6 cells) and the CPML depth (8, 16 and 32 layers) changed. Each of the other 23 layouts was compared bin by bin with the 47.6-cell layout of the same depth (4.53–5 GHz is marked unreliable on those reference layouts and was not compared):
+
+| phase across the probes | bins | largest change in `Z0` | largest change in `beta` |
+|---|---|---|---|
+| 0.012–0.020 rad | 0.50–0.81 GHz | 63 % | 38 % |
+| 0.024–0.043 rad | 0.97–1.74 GHz | 5.4 % | 4.3 % |
+| 0.047–0.107 rad | 1.90–4.38 GHz | 1.4 % | 1.4 % |
+
+At 0.50 GHz the returned `Z0` ran from 43.0 to 69.9 Ω on this one line.
+The 63 %, the 38 % and the 69.9 Ω sit where the `beta` scan stopped at its ±35 % limit, which its warning names (0.50 GHz, on 2 of the 26 layouts). On ports that warning did not name, the change still reached 25 % in `Z0` at 0.50 GHz, and 18 % in `Z0` and 22 % in `beta` at 0.81 GHz.
+`probe_clearance` was `satisfied` on every layout and `reliable` was True at 0.50–1.74 GHz on every layout, so neither marks these bins.
+Neither fitted value enters S: across these layouts no S entry changed by more than 5.0e-4 at any bin.
+The `Z0` warning fired on 3 of the 26 layouts, at 0.50 GHz, and advises a finer mesh. With the probe counts fixed in cells, a finer mesh shortens the span and the phase across it, so that advice does not apply here.
+Do not quote `Z0` or `beta` from a bin where the phase across the probes is below about 0.045 rad, where the change exceeded 2 % on this board.
+That edge comes from one board on one mesh; no layout with a longer probe span was measured.
+
 ### On a straight microstrip, the MSL port's |S21| exceeds 0 dB near 10–12 GHz and depends on where the first probe sits: the port misreads power within about 10 mm of its plane.
 
 Tracker: #2270
