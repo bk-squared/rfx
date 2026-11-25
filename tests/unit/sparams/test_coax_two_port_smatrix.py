@@ -451,9 +451,9 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
 
     def _fake_run(grid_, materials, n_steps, *, boundary, cpml_axes, sources,
                  mag_sources, probes, dft_planes, return_state,
-                 pec_edge_masks=None, record_dft=False):
+                 pec_edge_masks=None, record_dft=False, measurement=None):
         """The explicit runner signature makes a new argument at the real call site raise TypeError instead of being silently absorbed."""
-        assert record_dft is True
+        assert record_dft is False and measurement is not None
         k0 = float(sources[0].k)
         drive_val = DRIVE_PORT1 if k0 > nz_mid else DRIVE_PORT2
         n_total = len(dft_planes)

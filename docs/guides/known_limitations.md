@@ -521,6 +521,21 @@ the 0.1 mm test mesh. With the whole-cell voltage, the short test fixture's |S21
 from 3.81 to 3.22 at 6 GHz and its column power from 14.6 to 10.5; the matrix is still
 far from passive, and the rest of the excess is not attributed.
 
+### The coax→microstrip transition and the mixed coax/microstrip S-matrix keep whole microstrip planes at every step.
+
+Tracker: #3069
+
+`compute_coax_msl_transition` keeps each x-normal Ez plane of its microstrip probes at every
+time step, and `compute_mixed_s_matrix` keeps its microstrip Ez and H planes, with
+no crop, at every step. Both read those records only to form the microstrip voltage (and, in
+the mixed S-matrix, the current) for the record-tail witness. Their memory therefore grows
+as each plane's transverse cells × steps.
+
+The coax one-port measured about 195 B of GPU memory per (transverse cell × step) for its 24
+recorded planes, about 8 B per plane: two copies of a 4 B value. A microstrip plane of
+the same size costs the same, by that law (an estimate; the microstrip planes were not
+measured). The coax planes of the three coax calculators no longer keep these records.
+
 ### On a radiating device, the coax calculators' S11 includes coupling from their open feed end.
 
 Tracker: #2975
