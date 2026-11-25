@@ -582,4 +582,5 @@ def _distributed_lumped_accumulators(sim, grid, ports, freqs, n_steps, devices, 
                                  i for i in range(len(ports)) if calculator_drive(i == drive)),
                              s_param_freqs=freqs, compute_s_params=True)
     return {"lumped": result.lumped_port_sparams, "wire": result.wire_port_sparams,
-            "sparam_time_records": result.sparam_time_records, "dt": result.dt}
+            "sparam_time_records": result.sparam_time_records, "dt": result.dt,
+            "settling_echo_bound": result.settling_echo_bound}
