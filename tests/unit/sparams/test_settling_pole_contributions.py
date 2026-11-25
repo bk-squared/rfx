@@ -68,7 +68,7 @@ def test_synthetic_growing_and_decaying_records_expose_poles():
     assert control.growing_poles == ()
 
 
-def test_kept_growing_pole_records_use_each_poles_own_tail_share():
+def test_kept_poles_inside_the_resolution_edge_are_not_named_as_growing():
     from rfx.sparams._tail_witness import tail_share_witness
 
     dt, n = 1e-12, 400
@@ -83,16 +83,7 @@ def test_kept_growing_pole_records_use_each_poles_own_tail_share():
     records = []
     _pole_contributions(model, np.zeros((n, 1)), bins, denominator, n*dt,
                         growing_poles=records)
-    assert len(records) == 1
-    pole = records[0]
-    assert pole['rule'] == 'kept non-static growing'
-    np.testing.assert_allclose(pole['frequency_hz'], 10e9)
-    np.testing.assert_allclose(pole['growth_per_step'], 1e-8)
-    np.testing.assert_allclose(pole['e_folding_steps'], 1e8)
-    lam = np.exp(poles[1] * dt)
-    expected = np.max((1 + abs(lam)**(2*n)) * dt * .1 * abs(lam)**200
-                      / abs(1 - lam*np.exp(-2j*np.pi*bins*dt)) / denominator[:, 0])
-    np.testing.assert_allclose(pole['max_share'], expected, rtol=1e-6)
+    assert records == []
     empty = tail_share_witness([], dt, 0, bins, freq_max=12e9)
     assert empty.growing_poles == ()
 
@@ -109,6 +100,10 @@ def test_combined_witness_keeps_growth_from_every_run():
     larger = {**growing, 'growing_poles': ({**pole, 'max_share': 2.},)}
     combined = combine_witness_details(missing, growing, larger)
     assert combined['growing_poles'] == ({**pole, 'max_share': 2.},)
+    other = {**growing, 'growing_poles': ({**pole, 'frequency_hz': 4.7601e9,
+                                            'growth_per_step': 3.29e-4, 'max_share': .5},)}
+    assert combine_witness_details(growing, other)['growing_poles'] == (
+        {**pole, 'growth_per_step': 3.29e-4, 'e_folding_steps': 1 / 3.29e-4},)
 
 
 def test_real_growing_term_in_two_channels_has_one_positive_frequency_pole():

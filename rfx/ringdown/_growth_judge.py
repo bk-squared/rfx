@@ -59,16 +59,12 @@ class GrowingPoleJudgement(NamedTuple):
     share_per_bin: np.ndarray
     worst: tuple | None
     growing_share_per_bin: np.ndarray | None = None
-    growing_pole_shares: tuple = ()
 
 
 def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
                         bar=1e-2, significance=1e-4,
                         horizon_denominator=None) -> GrowingPoleJudgement:
     """Judge kept non-static growing poles by their tail bound through ``2H``.
-
-    ``growing_pole_shares`` pairs each positive-rate original pole index with
-    its largest tail share over read bins and channels.
 
     ``H`` is at least the record length and covers a hundredfold decay of
     every significant resolved decaying pole. Unresolved poles of either sign
@@ -93,14 +89,13 @@ def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
     H, Hd, band = int(n_record), 0.0, math.nan
     share, worst = np.zeros(freqs.size), None
     positive_share = np.zeros(freqs.size)
-    positive_poles = ()
     grow, exempt = (growing_poles(model, n_record * model.dt, unit_tol)
                     if len(model.s) else ((), ()))
 
     def result(status, reason):
         return GrowingPoleJudgement(status, status == "pass", reason,
                                     len(grow), len(exempt), H, Hd, band, share, worst,
-                                    positive_share, positive_poles)
+                                    positive_share)
 
     if (not np.isfinite(model.s).all() or not np.isfinite(model.c).all()
             or not np.isfinite(freqs).all()
@@ -152,8 +147,6 @@ def judge_growing_poles(model, n_record, freqs, denominator, *, unit_tol=1e-6,
         share = np.max(values, axis=(1, 2))
         if np.any(rate > 0):
             positive_share = np.max(values[:, rate > 0, :], axis=(1, 2))
-            positive_poles = tuple((growing[k], float(np.max(values[:, k, :])))
-                                   for k in np.flatnonzero(rate > 0))
     f, k, ch = np.unravel_index(np.argmax(log_values), values.shape)
     worst = (float(s[k].imag / (2.0 * np.pi)), float(np.expm1(min(rate[k], log_max))),
              float(values[f, k, ch]))

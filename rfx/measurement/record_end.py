@@ -482,7 +482,7 @@ class IdentificationOps:
     RingdownPole: Callable
 
 
-def _pole_contributions(model, series, bins, denominator, record_s, *, identification: IdentificationOps, growth=None, growing_poles=None, growth_diagnostics=None):
+def _pole_contributions(model, series, bins, denominator, record_s, *, identification: IdentificationOps, growth=None, growing_poles=None):
     """Return per-bin maxima and collect above-bar growing poles when requested."""
     from rfx.measurement.ringdown_tail import plain_dft
 
@@ -521,8 +521,6 @@ def _pole_contributions(model, series, bins, denominator, record_s, *, identific
                 growth_per_step=rate, e_folding_steps=1 / rate,
                 max_share=float(max_share), rule=rule))
 
-    for k, max_share in (growth if growth_diagnostics is None else growth_diagnostics).growing_pole_shares:
-        collect(model.s[k], max_share, 'kept non-static growing')
     for rule, selected in indices.items():
         value = np.zeros(len(bins))
         if rule == 'non-decaying sinusoidal':
@@ -578,24 +576,8 @@ def _group_growing_poles(poles):
 
 
 def merge_growing_poles(*groups):
-    """Merge repeated fits of a pole, retaining the largest read-bin/channel share.
-
-    Fits within relative 1e-5 in frequency and growth represent the same pole;
-    its fastest fitted growth supplies the frequency and e-folding time.
-    """
-    merged = []
-    for group in groups:
-        for pole in group:
-            for index, previous in enumerate(merged):
-                if (pole['rule'] == previous['rule']
-                        and np.isclose(pole['frequency_hz'], previous['frequency_hz'], rtol=1e-5, atol=0.)
-                        and np.isclose(pole['growth_per_step'], previous['growth_per_step'], rtol=1e-5, atol=0.)):
-                    fastest = max((previous, pole), key=lambda row: row['growth_per_step'])
-                    merged[index] = {**fastest, 'max_share': max(previous['max_share'], pole['max_share'])}
-                    break
-            else:
-                merged.append(pole)
-    return tuple(sorted(merged, key=lambda row: row['growth_per_step'], reverse=True))
+    """Merge the growing-pole records of several runs by the grouping one run uses."""
+    return _group_growing_poles(tuple(pole for group in groups for pole in group))
 
 
 class TailShareWitness(NamedTuple):
@@ -794,7 +776,7 @@ def _channel_tail_witness(records, dt, source_end, freqs, *, identification: Ide
                                  if np.any(dropped) else growth)
                 if not growth_status.ok:
                     reasons.append(f"{label}: growing-pole judge {growth_status.status}: {growth_status.reason}")
-                for rule, value in _pole_contributions(model, series, bins, window_denom, n*dt, identification=identification, growth=growth, growing_poles=growing_poles, growth_diagnostics=growth_status).items():
+                for rule, value in _pole_contributions(model, series, bins, window_denom, n*dt, identification=identification, growth=growth, growing_poles=growing_poles).items():
                     contributions[rule] = np.maximum(contributions.get(rule, np.zeros(len(bins))), value)
                     if rule == "kept non-static growing":
                         continue
