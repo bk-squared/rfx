@@ -180,7 +180,7 @@ SCENES = {
         'lossless_q': [('geometry[2]',)], 'sheet_effective_size': [('geometry[1]',)],
         'off_lattice_design_edges': [('geometry[1]',)],
         'msl_port_conductor_planes': [('geometry[0]', 'msl_port[0]')],
-        'msl_port_geometry': [('msl_port[0]',), ('msl_port[0]',)]},
+        'msl_port_geometry': [('msl_port[0]',)] * 4},
     'ntff_pec_overlap_full': {
         'realization': [('geometry[0]',)],
         'ntff_pec_overlap': [('geometry[0]', 'ntff')],
@@ -615,12 +615,11 @@ def assert_target(sim, code, expected, **kwargs):
 
 
 def test_msl_declaration_identity():
-    """The launch-clearance and probe-ladder checks do not measure the substrate or conductor interval."""
+    """The lateral and launch clearance and probe-ladder checks do not measure the substrate or conductor interval."""
     from tests.unit.ports.test_msl_realized_port_contract import _model
     sim, _ = _model(port_top=11.)
     report = assert_target(sim, 'msl_port_conductor_planes', [('geometry[0]', 'msl_port[0]')])
-    assert [i.subjects for i in report.by_code('msl_port_geometry')] == [
-        ('msl_port[0]',), ('msl_port[0]',)]
+    assert [i.subjects for i in report.by_code('msl_port_geometry')] == [('msl_port[0]',)] * 4
 
 
 @pytest.mark.parametrize('kind', ['stub', 'uninspectable', 'unrealizable'])
