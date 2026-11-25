@@ -159,6 +159,8 @@ def prepare_uniform(grid, materials, pec_edges, sources, probes, layout, mesh,
     from rfx.materials.thin_conductor import sheet_update_coeffs
 
     if isinstance(materials, list):
+        if pec_edges is not None:
+            raise ValueError('materials list conflicts with separate pec_edges')
         owned = materials
         _, materials, pec_edges = owned
         owned.clear()

@@ -797,12 +797,23 @@ def _peak_pin(mode):
                 seen.append(True)
                 raise Observed
             result = original_input(cells, *args, **kwargs)
-            if mode == 'T3b' and not references:
-                references.extend(weakref.ref(a) for a in jax.tree.leaves(cells) if hasattr(a, 'ndim') and a.ndim)
+            if mode in ('T3b', 'T3c') and not references:
+                observed = cells if mode == 'T3b' else result
+                references.extend(weakref.ref(a) for a in jax.tree.leaves(observed) if hasattr(a, 'ndim') and a.ndim)
             return result
 
         def apply_checked(*args, **kwargs):
             assert references and all(ref() is None for ref in references), 'T3b cut cells are alive'
+            seen.append(True)
+            raise Observed
+
+        def apply_without_aliases(*args, **kwargs):
+            """Isolate caller ownership from raw records retained in the products."""
+            assert references and any(ref() is not None for ref in references)
+            return None, None, None
+
+        def publish_checked(products, layout, mesh, device):
+            assert references and all(ref() is None for ref in references), 'T3c staged pole_materials are alive'
             seen.append(True)
             raise Observed
 
@@ -818,6 +829,9 @@ def _peak_pin(mode):
                 patch.setattr(setup, 'input_materials', input_checked)
                 if mode == 'T3':
                     patch.setattr(uniform, 'run_wrapped_uniform', run_checked)
+                elif mode == 'T3c':
+                    patch.setattr(setup, 'uniform_apply', apply_without_aliases)
+                    patch.setattr(setup, '_publish_materials', publish_checked)
                 else:
                     patch.setattr(setup, 'uniform_apply', apply_checked)
             try:
@@ -836,7 +850,7 @@ def _peak_pin(mode):
     print('PEAK_PIN_OK', mode)
 
 
-@pytest.mark.parametrize('mode', ['T1', 'T2', 'T3', 'T3b', 'T4_uniform', 'T4_host', 'T4b'])
+@pytest.mark.parametrize('mode', ['T1', 'T2', 'T3', 'T3b', 'T3c', 'T4_uniform', 'T4_host', 'T4b'])
 def test_setup_peak_pins(mode):
     env = {**os.environ, 'JAX_PLATFORMS': 'cpu',
            'XLA_FLAGS': '--xla_force_host_platform_device_count=2',
@@ -845,6 +859,16 @@ def test_setup_peak_pins(mode):
                           'peak_pin', mode], env=env, text=True, capture_output=True, timeout=90)
     assert run.returncode == 0, run.stdout + run.stderr
     assert 'PEAK_PIN_OK ' + mode in run.stdout
+
+
+def test_prepare_uniform_refuses_list_with_separate_pec_edges():
+    from rfx.stepping.slab_wrap_uniform import prepare_uniform
+    owned = [None, None, None]
+    with pytest.raises(ValueError, match='materials list.*pec_edges'):
+        prepare_uniform(None, owned, object(), (), (), None, None,
+                        n_steps=1, boundary='pec', debye_spec=None,
+                        lorentz_spec=None, port_plan=None)
+    assert owned == [None, None, None]
 
 
 if __name__ == "__main__":

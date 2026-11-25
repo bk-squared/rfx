@@ -282,7 +282,9 @@ def refuse_slab_cells(materials, grid, layout, mesh, dt=None):
 
 
 def _publish_materials(products, layout, mesh, device):
-    """Publish each input/fill once, releasing it before the next copy.
+    """Publish each input/fill once.
+
+    An input is released once its last group is published.
 
     Raw records, component increments and full update operands share the
     neutral-value declaration. Increments publish zero; full epsilon and
