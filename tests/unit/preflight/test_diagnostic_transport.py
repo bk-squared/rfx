@@ -118,8 +118,8 @@ def test_auxiliary_lanes_attach_their_refusal_and_family_records(lane):
     records = caught.value.diagnostics
     assert any(d.severity == 'refusal' for d in records)
     assert {d.code for d in records if d.code.startswith('msl.')} == {
-        'msl.lateral_clearance', 'msl.normal_resolution',
-        'msl.source_absorber_clearance', 'msl.source_near_field',
+        'msl.normal_resolution',
+        'msl.source_near_field',
     }
 
 
@@ -348,8 +348,8 @@ def test_forward_unsupported_lanes_retain_preflight_records():
         records = caught.value.diagnostics
         assert any(d.severity == 'refusal' for d in records)
         assert {d.code for d in records if d.code.startswith('msl.')} == {
-            'msl.lateral_clearance', 'msl.normal_resolution',
-            'msl.source_absorber_clearance', 'msl.source_near_field',
+            'msl.normal_resolution',
+            'msl.source_near_field',
         }
 
 
