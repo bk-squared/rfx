@@ -211,7 +211,8 @@ def test_sharded_max_reads_the_high_index_shard(path):
 
 
 @pytest.mark.parametrize('scene,entry', [
-    ('dielectric', 'run'), ('dielectric', 'forward'), ('microstrip', 'run')])
+    ('dielectric', 'run'), ('dielectric', 'forward'),
+    ('microstrip', 'run'), ('microstrip', 'forward')])
 def test_one_and_multiple_devices_return_float32_jax_bound_leaves(entry, scene):
     """One declaration carries the same four device leaves eagerly and staged."""
     devices = jax.devices('cpu')[:2]
