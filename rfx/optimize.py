@@ -155,7 +155,10 @@ def _run_optimizer(
     opt, fun, x0, bounds, *, n_iters, m=0, jacobian="rev", jit,
     verbose=False, it_count=None, keep_iterates=False, name="optimize",
 ):
-    """Run one start, returning x, f0 history, optional iterates and solve counts."""
+    """Run one start, returning x, f0 history, optional iterates and solve counts.
+
+    Solve counts measure mathematical solves including non-finite evaluations, excluding tracing and retries.
+    """
     n_iters = operator.index(n_iters)
     if bounds is not None and not opt.native_box:
         raise ValueError('Bounds require an optimizer with native_box=True')
@@ -169,7 +172,6 @@ def _run_optimizer(
 
         def with_values(x):
             values = fun(x)
-            # has_aux returns the primal values from this same forward.
             return values, values
 
         transform = jax.jacrev if jacobian == "rev" else jax.jacfwd
@@ -188,9 +190,6 @@ def _run_optimizer(
         if req.iterate != req.need_grad:
             raise NotImplementedError('The optimizer loop requires iterate=True and need_grad=True')
         latent = req.x
-        # Count mathematical solves, including a non-finite evaluation, not
-        # tracing/retries: scalar = 1 forward + 1 reverse; jacrev = 1 forward
-        # + (m+1) reverse; jacfwd = x.size forward-mode, no extra forward.
         if not req.need_grad:
             if value_only is None:
                 value_only = _jit_with_fallback(fun, jit, name)
@@ -330,6 +329,8 @@ def _adam_multistart(
         produced a non-finite loss at every iterate — fail-closed rather
         than returning a NaN optimum.  A single start preserves the legacy
         fail-soft contract (warn + return the last finite design).
+
+    Each entry of ``results`` has the order ``(loss_history, ret_latent, score)``.
     """
     if step_clamp is not None and step_clamp <= 0:
         raise ValueError(f"optimize: step_clamp must be > 0, got {step_clamp}")
@@ -354,14 +355,12 @@ def _adam_multistart(
                 ret_latent = latent
                 score = loss_history[-1]
         else:
-            # No finite loss was recorded (diverged at iter 0): fail-soft,
-            # return the last-good design (== init_lat) with no score.
             ret_latent = latent
             score = None
         return loss_history, ret_latent, score
 
     all_histories: list[list[float]] = []
-    results = []  # (loss_history, ret_latent, score)
+    results = []
     for init_lat in latent_inits:
         lh, rl, sc = _run_one(init_lat)
         all_histories.append(lh)
@@ -377,8 +376,6 @@ def _adam_multistart(
         )
         return best_lat, best_lh, all_histories, best_start
     if len(latent_inits) == 1:
-        # Single-start fail-soft: preserve the legacy warn-and-return-last-good
-        # contract (tests/unit/api/test_result_finite_guard.py).
         lh, rl, _sc = results[0]
         return rl, lh, all_histories, 0
     raise RuntimeError(
@@ -527,10 +524,6 @@ def optimize(
         raise ValueError(f"optimize: n_starts must be >= 1, got {n_starts}")
     sim._auto_preflight(skip=skip_preflight, context="optimize")
 
-    # dispatch to NU or uniform grid. The differentiable pipeline
-    # is then the same (sim.forward with eps_override + pec_mask_override),
-    # so optimize() automatically inherits checkpoint_every, emit_time_series,
-    # and NU support as forward() gains them.
     is_nonuniform = (
         sim._dz_profile is not None
         or sim._dx_profile is not None
@@ -544,24 +537,10 @@ def optimize(
         from rfx.model.wall_loss import refuse_wall_loss
         refuse_wall_loss(sim, "optimize() non-uniform design")
         _refuse_f0(sim._thin_conductors, "optimize() non-uniform design")
-        # this assembly is BOOKKEEPING — it supplies base eps_r
-        # and the volume cell mask that ride into sim.forward() as
-        # eps_override / pec_mask_override. The sheets and wires collected
-        # here are NOT threaded onward on purpose: forward() re-assembles
-        # on its own lane and realizes them there with
-        # realized_pec_edge_masks, so passing them again would double the
-        # declaration. Collecting them is still required: the assembler
-        # refuses to hand back a pec_mask that silently omits a sheet, so
-        # the drop is a decision made here rather than an accident. The
-        # lanes forward() can route to either realize sheets or refuse
-        # them by name (the distributed non-uniform lane raises), so no
-        # route from here drops one.
         _opt_sheets: list = []
         _opt_wires: list = []
         base_materials, _, _, base_pec_mask = sim._assemble_materials_nu(
             grid, pec_sheets=_opt_sheets, pec_wires=_opt_wires)
-        # float(grid.dt): host-boundary context — called after _build_nonuniform_grid()
-        # outside any JIT trace, so grid.dt is always a Python float here.
         _n_steps_auto = steps_for_periods(grid.dt, sim._freq_max, num_periods)
     else:
         grid = sim._build_grid()
@@ -571,16 +550,12 @@ def optimize(
         from rfx.model.wall_loss import refuse_wall_loss
         refuse_wall_loss(sim, "optimize() design")
         _refuse_f0(sim._thin_conductors, "optimize() design")
-        # Bookkeeping assembly — see the non-uniform branch above.
         _opt_sheets: list = []
         _opt_wires: list = []
         base_materials, _, _, base_pec_mask, _, _, _ = sim._assemble_materials(
             grid, pec_sheets=_opt_sheets, pec_wires=_opt_wires)
         _n_steps_auto = grid.num_timesteps(num_periods=num_periods)
 
-    # Per-face clamp: using the symmetric ``pad_{axis}`` would
-    # over-clamp a design region against a PMC/PEC reflector face whose
-    # ``pad_lo`` or ``pad_hi`` is 0. Clamp each side to its own pad.
     pads_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)
     pads_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)
     dims = (grid.nx, grid.ny, grid.nz)
@@ -605,7 +580,7 @@ def optimize(
     base_eps_r = base_materials.eps_r
     _n_steps = n_steps if n_steps is not None else _n_steps_auto
 
-    it_count = [0]  # mutable counter for verbose inside forward()
+    it_count = [0]
 
     def forward(lat):
         """Forward pass: latent -> eps_override -> sim.forward() -> objective."""
@@ -632,7 +607,7 @@ def optimize(
             n_warmup=n_warmup,
             distributed=distributed,
             port_s11_freqs=port_s11_freqs,
-            skip_preflight=True,  # already done at optimize() entry
+            skip_preflight=True,
         )
         import inspect
         sig = inspect.signature(objective)
@@ -640,9 +615,6 @@ def optimize(
             return objective(result, ntff_box=result.ntff_box)
         return objective(result)
 
-    # Restart inits: start 0 is always ``init_latent`` (so n_starts=1 is the
-    # legacy single run, byte-identical); extras are i.i.d. standard-normal
-    # latents drawn from ``seed`` for reproducibility.
     latent_inits = [init_latent]
     if n_starts > 1:
         keys = jax.random.split(jax.random.PRNGKey(seed), n_starts - 1)
@@ -670,9 +642,6 @@ def optimize(
     )
 
 
-# ---------------------------------------------------------------------------
-# Gradient checking (AD vs finite-difference)
-# ---------------------------------------------------------------------------
 
 @dataclass
 class GradientCheckResult:
@@ -737,9 +706,6 @@ def gradient_check(
     from rfx.model.wall_loss import refuse_wall_loss
     refuse_wall_loss(sim, "gradient-check")
     _refuse_f0_gc(sim._thin_conductors, "gradient-check")
-    # Baseline eps_r only; the solve is sim.forward(), which assembles and
-    # realizes its own sheets and wires. Collect-and-drop so
-    # the omission is a decision at this call site, not an accident.
     assemble = (sim._assemble_materials_nu if sim._uses_nonuniform_mesh
                 else sim._assemble_materials)
     base_materials, *_ = assemble(grid, pec_sheets=[], pec_wires=[])
@@ -756,10 +722,8 @@ def gradient_check(
         result = sim.forward(eps_override=eps_r, checkpoint=True, **fwd_kw)
         return objective_fn(result)
 
-    # AD gradient
     ad_grad = jax.grad(loss_fn)(design_params)
 
-    # Finite-difference gradient (central)
     flat = design_params.ravel()
     fd_grad_flat = jnp.zeros_like(flat)
     n_params = flat.shape[0]
@@ -774,7 +738,6 @@ def gradient_check(
 
     fd_grad = fd_grad_flat.reshape(design_params.shape)
 
-    # Relative error
     ad_abs = float(jnp.max(jnp.abs(ad_grad)))
     fd_abs = float(jnp.max(jnp.abs(fd_grad)))
     diff = float(jnp.max(jnp.abs(ad_grad - fd_grad)))
@@ -787,9 +750,6 @@ def gradient_check(
     )
 
 
-# ---------------------------------------------------------------------------
-# Progressive multi-resolution orchestrator
-# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -936,8 +896,6 @@ def progressive_optimize(
         grid = (sim._build_nonuniform_grid()
                 if is_nonuniform else sim._build_grid())
 
-        # Compute this stage's design-region shape using the same logic
-        # as optimize() so upsample target is exact.
         if is_nonuniform:
             from rfx._internal._periodic import interval_indices
             lo_idx, hi_idx = map(list, interval_indices(grid, region.corner_lo, region.corner_hi))

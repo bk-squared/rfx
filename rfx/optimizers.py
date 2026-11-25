@@ -1,4 +1,7 @@
-"""Private ask/tell optimisers for the inverse-design loops."""
+"""Private ask/tell optimisers for the inverse-design loops.
+
+The MMA implementation follows Svanberg, MMA and GCMMA (2007), sections 3 and 5.
+"""
 
 from __future__ import annotations
 
@@ -21,7 +24,6 @@ def _box_in_dtype(xmin, xmax, dtype):
     if np.any(xmin >= xmax):
         raise ValueError('Box requires strictly ordered bounds')
     lower, upper = xmin.astype(dtype), xmax.astype(dtype)
-    # A nearest-rounded bound can lie outside the original float64 box.
     lower = np.where(lower < xmin, np.nextafter(lower, np.asarray(np.inf, dtype=dtype)), lower)
     upper = np.where(upper > xmax, np.nextafter(upper, np.asarray(-np.inf, dtype=dtype)), upper)
     if np.any(lower > upper):
@@ -54,7 +56,6 @@ class _AdamState:
     x: jnp.ndarray
     m: jnp.ndarray
     v: jnp.ndarray
-    # Keep bias correction in Python double precision, outside grad_fn's jit.
     it: int
 
 
@@ -75,7 +76,6 @@ class _Adam(_Optimizer[_AdamState]):
 
     def tell(self, state: _AdamState, request: _Request, value, grad,
              cons_values, cons_grads) -> _AdamState:
-        # Local import keeps the shared arithmetic in optimize without a cycle.
         from rfx.optimize import _adam_update
 
         step, m, v = _adam_update(
@@ -132,8 +132,6 @@ class _ProjectedAdam(_Optimizer[_ProjectedAdamState]):
         return state
 
 
-# Implemented from the equations in Svanberg, MMA and GCMMA (2007),
-# sections 3 and 5. No MATLAB implementation or GPL port is used here.
 @dataclass(frozen=True)
 class _MMASubproblemResult:
     x: np.ndarray
@@ -163,7 +161,6 @@ def _mma_subproblem(low, upp, alpha, beta, p, q, r, a0, a, c, d,
     )
     n, m = low.size, a.size
     x = (alpha + beta) / 2
-    # The order of w follows (5.9), with scalar z and zeta in length-one arrays.
     w = (x, np.ones(m), np.ones(1), np.ones(m),
          np.maximum(1, 1 / (x - alpha)), np.maximum(1, 1 / (beta - x)),
          np.maximum(1, c / 2), np.ones(1), np.ones(m))
@@ -197,7 +194,6 @@ def _mma_subproblem(low, upp, alpha, beta, p, q, r, a0, a, c, d,
         if np.max(np.abs(res)) < 0.9 * eps:
             if eps <= 1e-7:
                 break
-            # Pin the last level to avoid an extra decade from binary rounding.
             eps = max(1e-7, 0.1 * eps)
             res, data = residual(w, eps, data)
             continue
@@ -210,10 +206,8 @@ def _mma_subproblem(low, upp, alpha, beta, p, q, r, a0, a, c, d,
             )
             break
         x, y, z, lam, xi, eta, mu, zeta, s = w
-        # Reuse the quantities evaluated by the accepted line-search trial.
         invu, invl, pl, ql, psi, g = data
         G = p[1:] * invu**2 - q[1:] * invl**2
-        # Diagonal blocks and reduced residuals (5.15)-(5.18).
         Dx = 2 * pl * (invu * invu * invu) + 2 * ql * (invl * invl * invl) + xi / (x - alpha) + eta / (beta - x)
         Dy = d + mu / y
         Dly = s / lam + 1 / Dy
@@ -222,7 +216,6 @@ def _mma_subproblem(low, upp, alpha, beta, p, q, r, a0, a, c, d,
         tz = a0 - a @ lam - eps / z
         tly = g - a * z - y + r[1:] + eps / lam + ty / Dy
         if n > m:
-            # (5.20): retain z in the (m+1)-square system.
             matrix = np.empty((m + 1, m + 1))
             matrix[:m, :m] = np.diag(Dly) + np.einsum('ij,kj,j->ik', G, G, 1 / Dx)
             matrix[:m, m] = a
@@ -233,7 +226,6 @@ def _mma_subproblem(low, upp, alpha, beta, p, q, r, a0, a, c, d,
             dl, dz = sol[:m], sol[m:]
             dx = -(tx + np.einsum('i,ij->j', dl, G)) / Dx
         else:
-            # (5.22): retain z in the (n+1)-square system.
             matrix = np.empty((n + 1, n + 1))
             matrix[:n, :n] = np.diag(Dx) + np.einsum('ij,ik,i->jk', G, G, 1 / Dly)
             cross = -np.einsum('ij,i->j', G, a / Dly)
@@ -246,14 +238,12 @@ def _mma_subproblem(low, upp, alpha, beta, p, q, r, a0, a, c, d,
             dx, dz = sol[:n], sol[n:]
             dl = (np.einsum('ij,j->i', G, dx) - a * dz + tly) / Dly
         dy = (dl - ty) / Dy
-        # Recover the other five directions via (5.13).
         dw = (dx, dy, dz, dl,
               -xi * dx / (x - alpha) - xi + eps / (x - alpha),
               eta * dx / (beta - x) - eta + eps / (beta - x),
               -mu * dy / y - mu + eps / y,
               -zeta * dz / z - zeta + eps / z,
               -s * dl / lam - s + eps / lam)
-        # Largest t <= 1 retaining at least 1% of each positive distance (§5.4).
         rate = max(0.0, float(np.max(-dx / (x - alpha))),
                    float(np.max(dx / (beta - x))))
         for v, dv in zip(w[1:], dw[1:]):
@@ -337,7 +327,6 @@ class _MMA(_Optimizer[_MMAState]):
 
     @staticmethod
     def _design_point(x, dtype, shape, xmin, xmax):
-        # Round the solution before storing history or asking for an evaluation.
         rounded = np.asarray(x, dtype=dtype)
         lower, upper = _box_in_dtype(xmin, xmax, dtype)
         rounded = np.clip(rounded, lower, upper)
@@ -388,7 +377,6 @@ class _MMA(_Optimizer[_MMAState]):
         beta = np.minimum.reduce((state.xmax, upp - self.albefa * (upp - x), x + self.move * width))
         derivatives = np.concatenate((gradient.reshape(1, -1), df.reshape(self.m, x.size)))
         positive, negative = np.maximum(derivatives, 0), np.maximum(-derivatives, 0)
-        # (3.3)-(3.5), including the constraint rows without rescaling their data.
         p = (upp - x)**2 * (1.001 * positive + 0.001 * negative + self.raa0 / width)
         q = (x - low)**2 * (0.001 * positive + 1.001 * negative + self.raa0 / width)
         r = np.concatenate((f0.reshape(1), f)) - np.sum(p / (upp - x) + q / (x - low), axis=1)
