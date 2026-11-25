@@ -266,3 +266,17 @@ def test_b21_periodic_lossy_sheet_plane(plane):
     else:
         assert any('thin_conductor[0]' in str(i) and 'δ=0.0002 m' in str(i)
                    and 'L=0.01 m' in str(i) for i in issues)
+
+
+@pytest.mark.parametrize('plane', [.010, .0047], ids=['b22a-period', 'b22b-off-plane'])
+def test_b22_periodic_z_keeps_uniform_resolution(plane):
+    sim = Simulation(freq_max=10e9, domain=(.02, .02, .010),
+                     boundary=BoundarySpec(x='pec', y='pec', z='periodic'))
+    sim.add(Box((0., 0., plane), (.02, .02, plane)), material='pec')
+    assert sim._resolve_mesh()['_dz_profile'] is None
+    issues = [i for i in sim.preflight() if i.severity == 'error' and i.code == 'realization']
+    if plane == .010:
+        assert not issues
+    else:
+        assert any('geometry[0]' in str(i) and 'z sheet plane miss' in str(i)
+                   for i in issues)

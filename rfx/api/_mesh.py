@@ -177,11 +177,10 @@ class _MeshMixin:
             return original
         if context.error is not None:
             return original
+        if "z" in getattr(context.grid, "periodic_axes", ""):
+            return original
         lines = context.interior_node_lines()
         z_nodes = lines[2]
-        period = (float(z_nodes[-1] + context.spacings[2][
-            context.grid.shape[2] - context.grid.pad_z_hi - 1] - z_nodes[0])
-            if "z" in getattr(context.grid, "periodic_axes", "") else None)
         neighbours = tuple(b[:2] for entry in (*self._geometry, *self._thin_conductors)
                            if (b := _shape_bounds(entry.shape)) is not None)
         reason = None
@@ -212,7 +211,7 @@ class _MeshMixin:
                 except context._NARROW_EXCS:
                     continue
             miss = conductor_node_miss(
-                z_nodes, bounds, 2, neighbours, plane, (0., original["_domain"][2]), period)
+                z_nodes, bounds, 2, neighbours, plane, (0., original["_domain"][2]))
             if miss.refused and reason is None:
                 offending = (.5 * (lo + hi) if sheet else
                              max((lo, hi), key=lambda p: float(np.min(abs(z_nodes-p)))))
