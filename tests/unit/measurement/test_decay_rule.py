@@ -150,15 +150,29 @@ def test_drive_still_on_cap_has_no_level():
 
 
 @pytest.mark.parametrize("tau_max", [float("inf"), float("-inf"), float("nan"), -100.])
-def test_echo_ready_diagnostic_is_nan_when_no_step_can_be_formed(tau_max):
-    """Accepted non-finite bounds and an empty readiness search have no echo-ready step."""
+def test_enabled_decay_stop_refuses_unavailable_echo_bound(tau_max):
+    """An enabled decay stop requires a finite, non-negative echo delay bound."""
+    from types import SimpleNamespace
+
+    from rfx.errors import RfxRefusal
+    from rfx.measurement.decay import make_field_decay_stop
+
+    with pytest.raises(RfxRefusal, match="echo delay bound unavailable"):
+        make_field_decay_stop(
+            SimpleNamespace(dt=1.), materials=object(), thr=.1, min_steps=0,
+            interval=10, max_steps=30, n_end=0, echo_bound=dict(tau_max=tau_max))
+
+
+def test_echo_ready_diagnostic_is_nan_for_a_directly_edited_rule():
+    """A caller can still edit a rule to have no finite echo-ready step."""
     from types import SimpleNamespace
 
     from rfx.measurement.decay import make_field_decay_stop
 
     rule = make_field_decay_stop(
         SimpleNamespace(dt=1.), materials=object(), thr=.1, min_steps=0,
-        interval=10, max_steps=30, n_end=0, echo_bound=dict(tau_max=tau_max))
+        interval=10, max_steps=30, n_end=0, echo_bound=dict(tau_max=1.))
+    rule.echo_bound = dict(tau_max=float("inf"))
     diagnostic = finish_decay(rule, 30)
     assert diagnostic.values["criterion"] == "cap"
     assert diagnostic.values["stop_step"] == 30

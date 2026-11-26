@@ -405,6 +405,9 @@ def _decay_echo_bound(grid, materials, waveguide_ports, echo_bound, debye, loren
         grid, materials=materials, waveguide_ports=waveguide_ports, debye=debye, lorentz=lorentz))
     if bound.get('reason'):
         raise RfxRefusal(f"until_decay: {bound['reason']}; use fixed n_steps")
+    tau_max = float(bound['tau_max'])
+    if not math.isfinite(tau_max) or tau_max < 0:
+        raise RfxRefusal("until_decay: cannot judge: echo delay bound unavailable; use fixed n_steps")
     return bound
 
 
