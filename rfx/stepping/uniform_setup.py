@@ -245,6 +245,25 @@ def _resolve_design_occupancy(
     return _DesignOccupancyKeep(write=write, keep=keep)
 
 
+def _admit_lumped_rlc(materials, pec_edge_masks, use_conformal, use_aniso_inv,
+                      aniso_inv_eps_smooth, lumped_rlc_admission):
+    tensor = materials.components.tensor
+    aniso_inv_eps = tensor.inv_eps if tensor else None
+    conformal_zero_masks = (tuple(w == 0.0 for w in tensor.conformal_weights)
+                            if use_conformal and not use_aniso_inv else None)
+    if lumped_rlc_admission is not None and (use_conformal or
+            (use_aniso_inv and not aniso_inv_eps_smooth)):
+        from rfx.boundaries.pec import PEC_INV_THRESHOLD
+        from rfx.model.source_admission import refuse_shorted_lumped_rlc_applied
+        sim, conductors = lumped_rlc_admission
+        with jax.ensure_compile_time_eval():
+            frozen_masks = (tuple(inv < PEC_INV_THRESHOLD for inv in aniso_inv_eps)
+                            if use_aniso_inv else None)
+            refuse_shorted_lumped_rlc_applied(
+                sim, conductors, hard_edges=pec_edge_masks,
+                conformal_zero_masks=conformal_zero_masks, frozen_masks=frozen_masks)
+
+
 def _build_step_setup(
     grid: "Grid",
     materials: "MaterialArrays",
@@ -733,6 +752,12 @@ def _build_step_setup(
         update_rlc_elements=update_rlc_elements if use_lumped_rlc else None,
     )
 
+    lumped_rlc_admission = getattr(lumped_rlc, 'admission', None)
+    if lumped_rlc_admission is not None:
+        _admit_lumped_rlc(materials, pec_edge_masks, use_conformal, use_aniso_inv,
+                          aniso_inv_eps_smooth, lumped_rlc_admission)
+        lumped_rlc.admission = None
+
     return _SimSetup(
         carry_init=carry_init,
         ctx_kwargs=ctx_kwargs,
@@ -798,17 +823,8 @@ def core_step_invariants(ctx: _StepContext, *, measurement=None, dtype=None,
     if ctx.use_conformal and not ctx.use_aniso_inv:
         conformal_zero_masks = tuple(w == 0.0 for w in tensor.conformal_weights)
 
-    if lumped_rlc_admission is not None and (ctx.use_conformal or
-            (ctx.use_aniso_inv and not ctx.aniso_inv_eps_smooth)):
-        from rfx.boundaries.pec import PEC_INV_THRESHOLD
-        from rfx.model.source_admission import refuse_shorted_lumped_rlc_applied
-        sim, conductors = lumped_rlc_admission
-        with jax.ensure_compile_time_eval():
-            frozen_masks = (tuple(inv < PEC_INV_THRESHOLD for inv in aniso_inv_eps)
-                            if ctx.use_aniso_inv else None)
-            refuse_shorted_lumped_rlc_applied(
-                sim, conductors, hard_edges=ctx.pec_edge_masks,
-                conformal_zero_masks=conformal_zero_masks, frozen_masks=frozen_masks)
+    _admit_lumped_rlc(materials, ctx.pec_edge_masks, ctx.use_conformal,
+                      ctx.use_aniso_inv, ctx.aniso_inv_eps_smooth, lumped_rlc_admission)
 
     _aniso_is_live = not (ctx.use_debye or ctx.use_lorentz)
     if _aniso_is_live and aniso_inv_eps is not None:

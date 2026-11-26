@@ -82,7 +82,7 @@ def test_preflight_and_run_share_one_assembly(monkeypatch, lane, kernel_objects)
         root = kwargs['_conductors']
         assert root.mode == 'solve'
         assert len(root.sheets) == 1
-        seen.append(root)
+        seen.append(SimpleNamespace(pec_edges=root.pec_edges))
         return preflight(*args, **kwargs)
 
     monkeypatch.setattr(sim, '_preflight_impl', read)

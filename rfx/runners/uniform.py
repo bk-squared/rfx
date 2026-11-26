@@ -166,7 +166,7 @@ def run_uniform(
         lorentz_spec=lorentz_spec, pec_shapes=pec_shapes, kerr_chi3=kerr_chi3)
 
     if _setup_inputs is not None:
-        conductors, base_materials = _setup_inputs
+        conductors, base_materials, pec_mask = _setup_inputs
         _setup_inputs.clear()
     materials = base_materials
 
@@ -599,6 +599,7 @@ def run_uniform(
         debye_spec=debye_spec, lorentz_spec=lorentz_spec,
         field_dtype=field_dtype if field_dtype is not None else jnp.float32)
     materials = finish_conformal_mu(materials, conformal_areas)
+    del conformal_areas
     aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
     from rfx.model.tensor_operands import attach_run_tensor
     materials = attach_run_tensor(materials, aniso_eps, aniso_inv_eps, conformal_weights)

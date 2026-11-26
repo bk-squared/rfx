@@ -400,6 +400,7 @@ def run_nonuniform_until_decay(
     carry = setup.carry_init
     init_plane_records(carry, dft_planes, record_dft, max_steps)
     init_graded_records(carry, max_steps, setup)
+    setup = setup._replace(carry_init={})
 
     # Source table: pad/truncate to max_steps so every chunk slice is
     # full-length (mirrors the uniform run_until_decay pad/truncate).

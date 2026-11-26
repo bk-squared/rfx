@@ -198,6 +198,8 @@ def test_sigma_override_is_carried_with_smoothing(monkeypatch, graded):
     observed = []
 
     def capture(grid, materials, *args, **kwargs):
+        if isinstance(materials, list):
+            materials = materials.pop()
         np.testing.assert_array_equal(materials.sigma, np.full(grid.shape, .01, dtype=np.float32))
         assert materials.components.tensor.eps is not None
         observed.append(True)

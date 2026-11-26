@@ -8,7 +8,7 @@ import sys
 import pytest
 
 
-PATHS = ('bar', 'decay', 'graded', 'graded_decay', 'forward', 'graded_forward', 's')
+PATHS = ('bar', 'decay', 'graded', 'graded_decay', 'forward', 'graded_forward', 's', 'rlc')
 
 
 def cpu_environment(root=None):
@@ -45,6 +45,10 @@ def build_scene(variant='bar'):
     else:
         sim.add_port((8e-3, center[1], center[2]), 'ez', impedance=50.,
                      extent=.003, excite=True)
+    if variant == 'rlc':
+        from rfx import Box
+        sim.add(Box((.020, .003, .005), (.024, .007, .009)), material='pec')
+        sim.add_lumped_rlc((.032, .010, .014), 'ex', R=50., L=1e-9, topology='series')
     sim.add_dft_plane_probe(axis='z', coordinate=center[2],
                            freqs=jnp.asarray([3e9, 7.5e9, 12e9], jnp.float32), name='plane')
     sim.add_probe(center, 'ez')
@@ -89,6 +93,23 @@ def observe(path):
             kept.clear()
             kept.update((name, weakref.ref(getattr(product.materials, name)))
                         for name in names if getattr(product.materials, name) is not None)
+        if path == 'rlc':
+            from rfx.model.source_admission import LumpedRLCInputs
+            inputs = [value for value in (*args, *kwargs.values())
+                      if isinstance(value, LumpedRLCInputs)]
+            assert len(inputs) == 1
+            expected_ids = {field.name: id(getattr(product, field.name))
+                            for field in fields(product)}
+            def entry(*a, **k):
+                _, snapshot = inputs[0].admission
+                assert snapshot is not product
+                assert {field.name: id(getattr(snapshot, field.name))
+                        for field in fields(snapshot)} == expected_ids
+                del snapshot
+                return stepper(*a, **k)
+            result = original_advance(product, entry, *args, **kwargs)
+            assert inputs[0].admission is None
+            return result
         return original_advance(product, stepper, *args, **kwargs)
 
     def solve(*args, **kwargs):
@@ -159,7 +180,8 @@ def observe(path):
     elif 'forward' in path:
         result = sim.forward(n_steps=20, skip_preflight=True)
     else:
-        result = sim.run(n_steps=20, compute_s_params=False, skip_preflight=True)
+        result = sim.run(n_steps=20, compute_s_params=False, skip_preflight=True,
+                         **({"conformal_pec": True} if path == 'rlc' else {}))
     jax.block_until_ready(result if path == 's' else result.time_series)
     assert observations, (path, 'no time loop observed')
     print('PIN', path, observations, flush=True)

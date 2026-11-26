@@ -300,7 +300,7 @@ def run_after_admission(
     _uniform_call = functools.partial(
         run_uniform,
         self,
-        _setup_inputs=[conductors, base_materials],
+        _setup_inputs=[conductors, base_materials, pec_mask],
         diagnostics=_diagnostics,
         n_steps=n_steps,
         until_decay=until_decay,
@@ -324,7 +324,6 @@ def run_after_admission(
         grid=grid,
         debye_spec=debye_spec,
         lorentz_spec=lorentz_spec,
-        pec_mask=pec_mask,
         pec_sheets=tuple(_run_pec_sheets),
         pec_wires=tuple(_run_pec_wires),
         kerr_chi3=kerr_chi3,
@@ -334,7 +333,7 @@ def run_after_admission(
             {} if report_every is None else {"report_every": report_every, "report_label": report_label}
         ),
     )
-    del conductors, assembly_inputs, base_materials
+    del conductors, assembly_inputs, base_materials, pec_mask
     if ringdown is None:
         _res = _uniform_call()
     elif until_identified:

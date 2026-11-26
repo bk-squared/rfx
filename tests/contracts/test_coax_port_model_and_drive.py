@@ -1,5 +1,6 @@
 """S1 model and drive identity at the low-level runner handover."""
 import sys
+from copy import copy
 
 import jax
 import jax.numpy as jnp
@@ -23,7 +24,14 @@ def scene(face='top', **kwargs):
 
 
 def capture(monkeypatch, sim, entry):
+    from rfx.model import conductors
     seen = {}
+    at_kernel = conductors.at_kernel
+    def snapshot(*args, **kwargs):
+        product, record = at_kernel(*args, **kwargs)
+        seen['conductors'] = copy(product)
+        return product, record
+    monkeypatch.setattr(conductors, 'at_kernel', snapshot)
     def kernel(grid, materials, n_steps, **kwargs):
         if isinstance(materials, list):
             materials = materials.pop()
@@ -122,7 +130,7 @@ def test_bore_clears_plate(monkeypatch, entry):
     sim.add_probe((.009, .006, .005), 'ez')
     captured = capture(monkeypatch, sim, entry)
     record = sim.realized_geometry()
-    root = record.conductors
+    root = captured['conductors']
     release = root.coax_bore_release
     assert release is not None
     port_report = next(p for p in record.ports if p.kind == 'coaxial')

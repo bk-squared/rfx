@@ -3,6 +3,7 @@
 These entries unpack the solve-owned operands. Metadata holds a weak reference
 back to this product; no reporting assembly participates in stepping.
 """
+from copy import copy
 from dataclasses import fields
 
 
@@ -52,6 +53,13 @@ def advance(product, stepper, *args, _operand_layout="grid", **kwargs):
             from rfx.measurement.accumulators import validate_flux_prefix
             validate_flux_prefix(product._prepared_solve.sim, product.grid, plan,
                                  kwargs.get("flux_monitors") or ())
+        from rfx.model.source_admission import LumpedRLCInputs
+        admissions = [value for value in (*args, *kwargs.values())
+                      if isinstance(value, LumpedRLCInputs)]
+        for value in admissions:
+            sim, _ = value.admission
+            value.admission = (sim, copy(product))
+        del admissions
         release_dense(product)
     elif layout == "wrapped_uniform_slab":
         args.insert(0, [product.grid, product.materials, product.pec_edges])

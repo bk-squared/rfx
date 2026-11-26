@@ -271,7 +271,6 @@ def run(
     wire_port_sparams = wire_port_sparams or []
     lumped_port_sparams = lumped_port_sparams or []
     wire_refplane_sparams = wire_refplane_sparams or []
-    lumped_rlc_admission = getattr(lumped_rlc, 'admission', None)
     lumped_rlc = lumped_rlc or []
     mag_sources = mag_sources or []
 
@@ -404,11 +403,8 @@ def run(
         pad_plan=_pad,
     )
     # An attached plan supplies the probe and port tables (direct callers keep theirs).
-    admission_kwargs = ({} if lumped_rlc_admission is None else
-                        {"lumped_rlc_admission": lumped_rlc_admission})
-    _core_step = (make_core_step(_step_ctx, **admission_kwargs) if measurement is None else make_core_step(
-        _step_ctx, measurement=measurement, dtype=carry_init["fdtd"].ex.dtype,
-        **admission_kwargs))
+    _core_step = (make_core_step(_step_ctx) if measurement is None else make_core_step(
+        _step_ctx, measurement=measurement, dtype=carry_init["fdtd"].ex.dtype))
     from rfx.model.materials import kernel_context
     if gradient != "adjoint":
         _step_ctx = kernel_context(_step_ctx)
@@ -956,7 +952,6 @@ def run_until_decay(
     validate_uniform_waveguide_ports(grid, waveguide_ports, pec_axes, periodic)
     wire_port_sparams = wire_port_sparams or []
     lumped_port_sparams = lumped_port_sparams or []
-    lumped_rlc_admission = getattr(lumped_rlc, 'admission', None)
     lumped_rlc = lumped_rlc or []
     mag_sources = mag_sources or []
 
@@ -1068,12 +1063,9 @@ def run_until_decay(
     # The per-cell arrays are an argument of the jitted step, not constants
     # compiled into it (split_loop_invariants).
     from rfx.core.jax_utils import split_loop_invariants
-    admission_kwargs = ({} if lumped_rlc_admission is None else
-                        {"lumped_rlc_admission": lumped_rlc_admission})
     _inv_args, _inv_rebuild = split_loop_invariants(
-        core_step_invariants(_step_ctx, **admission_kwargs) if measurement is None else
-        core_step_invariants(_step_ctx, measurement=measurement, dtype=carry["fdtd"].ex.dtype,
-                             **admission_kwargs),
+        core_step_invariants(_step_ctx) if measurement is None else
+        core_step_invariants(_step_ctx, measurement=measurement, dtype=carry["fdtd"].ex.dtype),
         tuple(grid.shape if _pad is None else _pad.padded))
 
     @jax.jit
@@ -1204,6 +1196,9 @@ def run_until_decay(
 
     # Like scan_with_progress, call lax.scan directly: full chunks share
     # its executable and only the ragged tail needs another length.
+    _setup = _setup._replace(carry_init={})
+    _setup.ctx_kwargs["materials"] = None
+    _step_ctx = replace(_step_ctx, materials=None)
     pending_tail = None
     while actual_steps < max_steps:
         # All checks use completed counts k * check_interval.

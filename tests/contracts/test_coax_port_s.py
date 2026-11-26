@@ -112,7 +112,7 @@ def short_scene(legacy=False):
 def closure(side, sim, captured):
     """Flood the DUT side of the first plane, through the shell and disc bounds."""
     grid = captured['grid']
-    root = sim.realized_geometry().conductors
+    root = captured['conductors']
     layout = root.coax_bore_release.layout
     port = sim._coaxial_ports[0]
     cells = np.asarray(root.pec_cells)
@@ -310,7 +310,7 @@ def test_short_cells_and_native(monkeypatch):
     sim.add(Box((.0035, .0035, .002), (.0085, .0085, .002)), material='pec')
     with monkeypatch.context() as patch:
         actual = capture(patch, sim, 'run')
-    root = sim.realized_geometry().conductors
+    root = actual['conductors']
     ref = root.coax_bore_release.layout.reference_index
     recorded = {}
     def kernel(*args, **kwargs):
