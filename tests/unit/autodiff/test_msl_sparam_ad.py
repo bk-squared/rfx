@@ -507,7 +507,7 @@ def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     is tests/fixtures/msl_s_matrix_golden.json. The earlier migration records below are history.
 
     FIXTURE REPAIRED 2026-09-08 (#931): retain the 254 um
-    substrate, 600 um width and 10 mm launch-plane separation; align every declared face on
+    substrate, the 600 um drawn width (solved 635 um at dx = 50 um) and 10 mm launch-plane separation; align every declared face on
     dx=dy=50 um and dz=(50,50,38.5,38.5,38.5,38.5) um through the
     substrate, declare the foil at its actual interface, and hold domain/absorber thickness fixed under refinement.
     An explicit f0=5 GHz / bandwidth=.8 differentiated Gaussian covers all

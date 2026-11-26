@@ -8,7 +8,7 @@ lock measures the simulated line's beta by the two-line method -- two thrus
 identical except for length, probes at the auto offset on both -- and pins
 the closed form to it on one coarse board.
 
-Board: 1.2 mm strip on 0.8 mm of eps_r 2.2 (4 substrate cells), dx 0.2 mm,
+Board: 1.2 mm strip drawn (solved 1.34 mm under snap="declared") on 0.8 mm of eps_r 2.2 (4 substrate cells), dx 0.2 mm,
 ports at the strip ends 8.0 mm apart, plus a twin 36 cells (7.2 mm) longer
 (M2's ``choose_delta`` rule, 20-160 deg, applied to 2-12 GHz: no single
 length meets it over 2-18 GHz); ``n_probe_offset`` 20 (the auto value),
