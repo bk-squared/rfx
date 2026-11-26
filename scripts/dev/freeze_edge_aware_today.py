@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CROSSVAL = "tests/crossval/msl_notch_filter/test_msl_notch_filter.py"
 CALLER_FILES = (
     "tests/unit/nonuniform/test_edge_aware_profile.py",
+    "tests/contracts/test_auto_z_conductor_planes.py",
     "tests/contracts/test_sheet_end_junction.py",
     "tests/contracts/test_sheet_size_verdict.py",
     "tests/contracts/test_sheet_solved_edge_reports.py",

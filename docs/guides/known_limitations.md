@@ -418,23 +418,6 @@ the same process, completes with the GPU pool capped at about 5.6 GiB at a 0.46 
 memory. What to do: call `clear_inspection_cache()` after inspecting a model you will not solve, and drop any
 `realized_geometry()` record before a large solve.
 
-### The edge-aware mesh helper refuses some strip-to-absorber gaps that its own edge rule can build
-
-Tracker: #3067
-
-`rfx.mesh_edges.edge_aware_profiles` is the remedy the conductor-sheet size refusal names. Its rule: a free sheet edge
-lies 0.35 of its cell beyond the last node the sheet covers, the end cell is `dx`, and adjacent cells differ by at most
-a ratio of 1.3. For a strip whose free edge lies c·`dx` from the domain face, the helper refuses with
-`segment 0: span ... cannot hold its ramps at ratio <= 1.3` at some gaps where a profile under that rule exists. In the
-issue's reproduction (a 600 µm strip on a 254 µm substrate, `dx` = h/3), over c = 1.50 to 3.00 in steps of 0.05 it refuses c = 1.50–1.80, 2.20, 2.25, 2.35 and 2.55–2.80, all buildable, and builds
-c = 2.30, 2.40–2.50 and 2.85–3.00. Between c = 1.845 and 2.154 no profile under the rule exists; the refusal there is
-right, but it does not name the nearest gaps that can be built.
-
-What to do now: build that axis's profile by hand to the same rule and pass it as `Simulation(dy_profile=...)` (or the
-profile of the strip's axis): end cells `dx`, adjacent cells within a ratio of 1.3, and each free edge 0.35 of its cell
-past a node. The conductor-sheet size check in preflight then confirms the solved width. For a gap between 1.845 and
-2.154 cells, move the strip or resize the domain so the gap leaves that interval.
-
 ## Ports and extraction
 
 ### The staircased coax line can be 40–44 ohm for a drawn 48.6-ohm line.
