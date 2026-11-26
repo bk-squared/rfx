@@ -30,6 +30,9 @@ def scene(kind):
     if kind == 'ii':
         sim.add_material('magnetic', mu_r=2.)
         sim.add(Box((.005, .005, .005), (.012, .012, .012)), material='magnetic')
+    elif kind == 'iv':
+        sim.add_material('magnetic', mu_r=2.)
+        sim.add(Box((-.008, .005, .005), (.024, .012, .012)), material='magnetic')
     return sim
 
 
@@ -138,6 +141,10 @@ def solve(kind, steps, mode, receive, *, check_coefficients=False):
                                h_coefficients=h, h_row_factors=factors)
                 if absorb is not None:
                     checked['cpml_h_coefficients'] = absorb
+                if kind == 'iv':
+                    for lo in (True, False):
+                        window = window_reference(ctx, (1, 0, lo))
+                        assert np.any(np.asarray(mu[1])[window] == 2.), ('magnetic CPML slab', lo)
                 coefficients.append(ulp_counts(checked, assert_reference=False))
             jax.debug.callback(check, invariants['h_coefficients'],
                                invariants.get('cpml_h_coefficients'),
@@ -158,12 +165,12 @@ def solve(kind, steps, mode, receive, *, check_coefficients=False):
         return observed
 
     sim = scene(kind)
-    kwargs = dict(n_steps=steps, checkpoint=False, skip_preflight=True)
+    kwargs = dict(n_steps=steps, checkpoint=kind.startswith('vi-'), skip_preflight=True)
     gradient = None
     with patch.object(uniform, 'make_uniform_step', instrument):
-        if kind.startswith('iii'):
+        if kind.startswith(('iii-', 'vi-')):
             shape = sim._build_grid().shape
-            keyword = 'eps_override' if kind == 'iii-eps' else 'mu_r_override'
+            keyword = 'eps_override' if kind.endswith('-eps') else 'mu_r_override'
 
             def objective(value):
                 result = sim.forward(**kwargs, **{keyword: value})
@@ -172,16 +179,24 @@ def solve(kind, steps, mode, receive, *, check_coefficients=False):
             value, gradient = jax.jit(jax.value_and_grad(objective))(jnp.ones(shape, jnp.float32))
             jax.block_until_ready((value, gradient))
         else:
-            result = sim.forward(**kwargs)
+            if kind == 'v-decay':
+                kwargs.pop('n_steps')
+                result = sim.run(**kwargs, until_decay=1e-3, decay_max_steps=steps,
+                                 decay_check_interval=50, decay_min_steps=100)
+            elif kind == 'v-run':
+                result = sim.run(**kwargs)
+            else:
+                result = sim.forward(**kwargs)
             jax.block_until_ready(result.time_series)
     jax.effects_barrier()
     return gradient, coefficients
 
 
-@pytest.mark.parametrize('kind', ['i', 'ii', 'iii-eps', 'iii-mu'])
+@pytest.mark.parametrize('kind', ['i', 'ii', 'iii-eps', 'iii-mu', 'iv',
+                                  'v-run', 'v-decay', 'vi-eps', 'vi-mu'])
 @pytest.mark.parametrize('steps', [100, 200, 400])
 def test_four_conditions(kind, steps):
-    records, errors, peaks, bit_errors = {}, {}, {}, []
+    records, errors, h_errors, peaks, bit_errors = {}, {}, {}, {}, []
 
     def retain(index, *fields):
         records[int(index)] = tuple(np.array(field) for field in fields)
@@ -195,31 +210,43 @@ def test_four_conditions(kind, steps):
         expected = fields[:3]
         errors[index] = max(float(np.max(np.abs(np.asarray(a, np.float64) - b)))
                             for a, b in zip(records[index][:3], expected))
+        h_errors[index] = max(float(np.max(np.abs(np.asarray(a, np.float64) - b)))
+                              for a, b in zip(records[index][3:], fields[3:]))
         peaks[index] = max(float(np.max(np.abs(a))) for a in expected)
 
     new_gradient, counts = solve(kind, steps, 'new', retain, check_coefficients=True)
     frozen_gradient, _ = solve(kind, steps, 'frozen', frozen)
     old_gradient, _ = solve(kind, steps, 'old', old)
-    assert len(records) == len(errors) == len(peaks) == steps
-    assert max(bit_errors) == 0, ('condition 1', max(bit_errors))
-    error = np.array([errors[n] for n in range(steps)])
-    peak = np.array([peaks[n] for n in range(steps)])
+    completed = len(records)
+    assert sorted(records) == sorted(errors) == sorted(h_errors) == sorted(peaks) == list(range(completed))
+    assert 0 < completed <= steps if kind == 'v-decay' else completed == steps
+    error = np.array([errors[n] for n in range(completed)])
+    peak = np.array([peaks[n] for n in range(completed)])
     rhs = 1.2e-7 * np.cumsum(peak)
     scale = 1e-4 * peak.max()
     grad_error = grad_scale = 0.
+    gradient_bits = True
     if new_gradient is not None:
-        np.testing.assert_array_equal(np.asarray(new_gradient).view(np.uint32),
-                                      np.asarray(frozen_gradient).view(np.uint32))
+        gradient_bits = np.array_equal(np.asarray(new_gradient).view(np.uint32),
+                                       np.asarray(frozen_gradient).view(np.uint32))
         grad_error = float(np.max(np.abs(np.asarray(new_gradient, np.float64) - old_gradient)))
         grad_scale = 1e-4 * float(np.max(np.abs(old_gradient)))
         assert grad_scale > 0
-    print(f'H-fold scene={kind} steps={steps} bits={max(bit_errors)} '
+    condition_1 = max(bit_errors) == 0 and gradient_bits
+    condition_2 = max(c[2] for c in counts) <= 1
+    condition_3 = bool(np.all(error <= rhs) and error[-1] <= scale and grad_error <= grad_scale)
+    print(f'H-fold scene={kind} steps={completed} cap={steps} bits={max(bit_errors)} '
           f'max_E_delta={error.max():.17g} end_E_delta={error[-1]:.17g} '
+          f'max_H_delta={max(h_errors.values()):.17g} '
           f'growth_rhs_end={rhs[-1]:.17g} growth_max_excess={(error-rhs).max():.17g} '
           f'scale_1e-4={scale:.17g} ULP_0={sum(c[0] for c in counts)} '
           f'ULP_1={sum(c[1] for c in counts)} ULP_max={max(c[2] for c in counts)} '
           f'gradient_delta={grad_error:.17g} gradient_scale={grad_scale:.17g}', file=sys.stderr)
+    print(f'H-fold scene={kind} steps={completed} condition_1={"PASS" if condition_1 else "FAIL"} '
+          f'condition_2={"PASS" if condition_2 else "FAIL"} '
+          f'condition_3={"PASS" if condition_3 else "FAIL"}', file=sys.stderr)
     assert peak.max() > 0
+    assert condition_1, ('condition 1', max(bit_errors), gradient_bits)
     assert np.all(error <= rhs), ('condition 3 growth', float((error-rhs).max()))
     assert error[-1] <= scale, ('condition 3 scale', error[-1], scale)
     assert grad_error <= grad_scale, ('condition 3 gradient', grad_error, grad_scale)
