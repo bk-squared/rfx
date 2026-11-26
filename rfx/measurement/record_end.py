@@ -114,7 +114,7 @@ def with_echo_bound(db, witness, bound, dt):
     """
     row = {**witness, 'echo_bound': bound}
     refused = bool(row.get('echo_bound_refused'))
-    reasons = []
+    reasons: list[str | None] = []
     descendants = False
     for key in ('runs', 'groups'):
         if row.get(key):

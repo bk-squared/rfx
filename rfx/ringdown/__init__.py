@@ -814,7 +814,8 @@ class RingdownRun:
         self.n_steps = int(n_steps)
         self.grid = grid
         self.dt = grid.dt
-        self.echo_bound = None
+        self.echo_bound: dict[str, Any] | None = None
+        self.echo_dt: float | None
         try:
             self.echo_dt = float(grid.dt)
         except (TypeError, ValueError):
@@ -1751,14 +1752,15 @@ class RingdownStop:
                                f"its peak in [{0.5 * spec.window_start:g} T, T]")
 
         partial = peek()
-        self.base.echo_bound = partial.settling_echo_bound
-        if not np.isfinite(self.base.echo_bound["tau_max"]):
+        echo_bound = partial.settling_echo_bound
+        self.base.echo_bound = echo_bound
+        if not np.isfinite(echo_bound["tau_max"]):
             from rfx.errors import RfxRefusal
             raise RfxRefusal("until_identified: cannot judge: echo delay bound unavailable; use fixed n_steps")
         from rfx.measurement.record_end import ECHO_BOUND_FACTOR, echo_bound_reason
         if ((T - round(float(spec.window_start) * T)) * self.dt
-                < ECHO_BOUND_FACTOR * self.base.echo_bound['tau_max']):
-            return finish(note='(f) not held: ' + echo_bound_reason(self.base.echo_bound))
+                < ECHO_BOUND_FACTOR * echo_bound['tau_max']):
+            return finish(note='(f) not held: ' + echo_bound_reason(echo_bound))
 
         rr.echo_bound = self.base.echo_bound
         ts_all = np.asarray(partial.time_series)

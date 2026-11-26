@@ -149,6 +149,22 @@ def test_drive_still_on_cap_has_no_level():
     assert math.isnan(d.values["reached"]) and math.isnan(d.values["drive_end_step"])
 
 
+@pytest.mark.parametrize("tau_max", [float("inf"), float("-inf"), float("nan"), -100.])
+def test_echo_ready_diagnostic_is_nan_when_no_step_can_be_formed(tau_max):
+    """Accepted non-finite bounds and an empty readiness search have no echo-ready step."""
+    from types import SimpleNamespace
+
+    from rfx.measurement.decay import make_field_decay_stop
+
+    rule = make_field_decay_stop(
+        SimpleNamespace(dt=1.), materials=object(), thr=.1, min_steps=0,
+        interval=10, max_steps=30, n_end=0, echo_bound=dict(tau_max=tau_max))
+    diagnostic = finish_decay(rule, 30)
+    assert diagnostic.values["criterion"] == "cap"
+    assert diagnostic.values["stop_step"] == 30
+    assert math.isnan(diagnostic.values["echo_ready_step"])
+
+
 def test_forced_length_has_no_record():
     assert finish_decay(DecayStop(0., 0, 10, 2, 10, enabled=False), 30) is None
 

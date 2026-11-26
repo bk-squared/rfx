@@ -10,6 +10,9 @@ from rfx.geometry.smoothing import compute_smoothed_eps, compute_smoothed_eps_no
 from rfx.model.graded_admission import DeclaredZWarning
 
 
+PERIODIC_FLUX_STOP_STEPS = 380
+
+
 def _sim(graded):
     profiles = dict(dy_profile=np.full(7, .001), dz_profile=np.full(9, .001)) if graded else {}
     return Simulation(30e9, (.012, .007, .009), dx=.001, cpml_layers=0,
@@ -102,6 +105,7 @@ def test_periodic_eager_extractors_refuse(graded, wire):
 
 
 def test_periodic_flux_stop_matches_uniform():
+    """The stop waits until the identification window holds ECHO_BOUND_FACTOR longest round trips."""
     from rfx.sources.sources import GaussianPulse
 
     lengths = []
@@ -117,7 +121,8 @@ def test_periodic_flux_stop_matches_uniform():
                          decay_max_steps=3000, skip_preflight=True,
                          radiated_flux_box=((0., .003, .003), (.012, .013, .013)))
         lengths.append(len(result.time_series))
-    assert lengths[0] == lengths[1] == 200
+    assert lengths[0] == lengths[1]
+    assert lengths[0] == PERIODIC_FLUX_STOP_STEPS
 
 
 @pytest.mark.parametrize("seam", [False, True])

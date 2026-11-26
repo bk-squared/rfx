@@ -93,7 +93,7 @@ def port_record_witness(records, dt, source_end, freqs, *, freq_max, reader=None
             echo_bound = dict(tau_max=None, D=None, n_max=None, g=None,
                               reason='cannot judge: traced echo delay bound')
         else:
-            echo_bound = {key: value.item() if hasattr(value, 'item') else value
+            echo_bound = {key: value.item() if value is not None and hasattr(value, 'item') else value
                           for key, value in echo_bound.items()}
     db, detail = with_echo_bound(result.db, result._asdict(), echo_bound, dt)
     return db, {**detail, 'route': 's_channels',

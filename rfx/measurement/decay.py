@@ -554,12 +554,16 @@ def finish_decay(rule, steps, *, fired=False, flux=None, reporter=None,
     from rfx.measurement.record_end import ECHO_BOUND_FACTOR
     echo_values = {}
     if rule.echo_bound is not None:
-        echo_ready = next((count for count in range(rule.interval,
-                           2 * (int(math.ceil(ECHO_BOUND_FACTOR * float(rule.echo_bound['tau_max']) / float(rule.dt)))
-                                + (rule.n_end or 0) + rule.interval), rule.interval)
-                           if echo_stop_ready(rule, count)), None)
-        echo_values = {"echo_tau_max_s": float(rule.echo_bound['tau_max']),
-                       "echo_factor": float(ECHO_BOUND_FACTOR), "echo_ready_step": float(echo_ready)}
+        tau_max = float(rule.echo_bound['tau_max'])
+        echo_ready: int | None = None
+        if math.isfinite(tau_max):
+            echo_ready = next((count for count in range(rule.interval,
+                               2 * (int(math.ceil(ECHO_BOUND_FACTOR * tau_max / float(rule.dt)))
+                                    + (rule.n_end or 0) + rule.interval), rule.interval)
+                               if echo_stop_ready(rule, count)), None)
+        echo_values = {"echo_tau_max_s": tau_max,
+                       "echo_factor": float(ECHO_BOUND_FACTOR),
+                       "echo_ready_step": nan if echo_ready is None else float(echo_ready)}
     return Diagnostic(
         "until_decay.stop", "info" if criterion == "threshold" else "warning", criterion,
         message,
