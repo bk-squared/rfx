@@ -1,0 +1,5 @@
+### Changed — point probes use static field indices in the uniform one-device step (#PR)
+
+- The compiled step no longer gathers and segment-sums each point probe on every step.
+  Probe values are unchanged, except an exact −0.0 retains its sign.
+- The table read had added 26.9 µs per step to the 81³ uniform one-device gradient at JAX 0.10.2 (RTX A6000).
