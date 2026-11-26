@@ -128,28 +128,28 @@
   {
    "anchor": [
     [
-     "transfer-matrix result is available as a sanity witness. The grid is kept coarse",
-     "matches the lossless analytic Fresnel reference."
+     "transfer-matrix result is available as a sanity witness. The measured mean",
+     "a lossless slab is what matches the lossless analytic Fresnel reference."
     ]
    ],
    "code": "lossless_q",
    "disposition": "intended",
    "reason": "Docstring: 'Preflight will flag the under-resolution and the lossless slab -- both are expected here: this is a fast method demo, we measure R/T (not Q), and a lossless slab is what matches the lossless analytic Fresnel reference.' The advisory's own text carves this out ('Harmless if you are not measuring Q').",
-   "ref": "examples/tutorials/slab_rt_flux_monitor.py:21-25",
+   "ref": "examples/tutorials/slab_rt_flux_monitor.py:21-26",
    "rows": 1,
    "variant": "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=True"
   },
   {
    "anchor": [
     [
-     "transfer-matrix result is available as a sanity witness. The grid is kept coarse",
-     "matches the lossless analytic Fresnel reference."
+     "transfer-matrix result is available as a sanity witness. The measured mean",
+     "a lossless slab is what matches the lossless analytic Fresnel reference."
     ]
    ],
    "code": "mesh_resolution",
    "disposition": "intended",
    "reason": "Same docstring sentence: the grid 'is kept coarse for speed; halving dx reduces the error toward the analytic curve', and the under-resolution is named as expected. Three rows = the three axes of the one dielectric.",
-   "ref": "examples/tutorials/slab_rt_flux_monitor.py:21-25",
+   "ref": "examples/tutorials/slab_rt_flux_monitor.py:21-26",
    "rows": 3,
    "variant": "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=True"
   },

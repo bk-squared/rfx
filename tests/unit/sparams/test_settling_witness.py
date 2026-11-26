@@ -324,7 +324,7 @@ def test_settled_coax_two_port_stays_silent():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         res = _coax_two_port_sim().compute_coaxial_two_port(
-            n_steps=3000, freqs=_BAND)
+            n_steps=3409, freqs=_BAND)
 
     sd = np.asarray(res.settling_db)
     assert sd.shape == (2,)
@@ -625,3 +625,83 @@ def test_realized_conductor_planes_equal_the_declaration():
     sim = _msl_thru()
     assert_sheet_planes(sim, 2, [0., 0.0008], what="MSL thru ground and trace")
     assert_wall_planes(sim, 2, [0., 0.0008], what="MSL thru ground and trace")
+
+
+def test_growing_pole_warning_names_growth_without_longer_record_advice():
+    row = dict(status='undetermined', reason='discarded growing pole',
+               share_per_bin=np.array([1.]), growing_poles=({
+                   'frequency_hz': 4.76e9, 'growth_per_step': 3.28e-4,
+                   'e_folding_steps': 3048.780487804878, 'max_share': 1.,
+                   'rule': 'discarded growing'},))
+    hot = _catch(lambda: _warn_if_ringdown_truncated(
+        [np.nan], ('feed',), n_steps=40000, witnesses=[row]))
+    assert len(hot) == 1
+    message = str(hot[0].message)
+    assert '4.76 GHz' in message
+    assert 'e-folding 3,048.78 steps' in message
+    assert 'max share 1' in message
+    assert 'term growing after the source ended' in message
+    assert 'A passive structure cannot gain energy after its source ends.' in message
+    assert 'A longer record carries a larger error from this term.' in message
+    assert 'settling_db and settling_witness fields' in message
+    for text in ('Increase n_steps', 'Increase num_periods', 'lengthen the record',
+                 'Run a longer fixed record'):
+        assert text not in message
+
+
+@pytest.mark.parametrize('poles', [None, ()], ids=['missing', 'empty'])
+def test_undetermined_warning_without_growth_keeps_exact_text(poles):
+    row = dict(status='undetermined', reason='source end is unavailable',
+               share_per_bin=np.zeros(2))
+    if poles is not None:
+        row['growing_poles'] = poles
+    hot = _catch(lambda: _warn_if_ringdown_truncated(
+        [np.nan], ('feed',), n_steps=400, witnesses=[row]))
+    assert len(hot) == 1
+    assert str(hot[0].message) == (
+        'ring-down settling witness NOT PASSED (pole-tail amplitude threshold '
+        '-40 dB): port feed driven: undetermined (source end is unavailable). '
+        'The n_steps=400 record has no passing value witness. '
+        'Increase n_steps and check identification before quoting any S value '
+        "(see the result's settling_db and settling_witness fields).")
+
+
+@pytest.mark.parametrize('status,db', [('undetermined', np.nan), ('fail', -1.)],
+                         ids=['undetermined', 'fail'])
+@pytest.mark.parametrize('knob', ['n_steps', 'num_periods'])
+def test_growing_warning_caps_sorted_poles_and_preserves_output_context(status, db, knob):
+    poles = tuple(dict(frequency_hz=f * 1e9, growth_per_step=g,
+                      e_folding_steps=e, max_share=s, rule='discarded growing')
+                  for f, g, e, s in ((1., .001, 1000., .1), (4., .004, 250., .4),
+                                     (2., .002, 500., .2), (3., .003, 1000/3, .3)))
+    row = dict(status=status, reason='growth', share_per_bin=np.array([1.]),
+               growing_poles=poles, drive_share_per_bin=np.array([.1]))
+    hot = _catch(lambda: _warn_if_ringdown_truncated(
+        [db], ('feed',), witnesses=[row], **{knob: 40000},
+        consequence='DFT truncation is suspect', quoted_thing='a DFT value',
+        outputs_sentence=' Outputs read from this record: DFT planes.'))
+    assert len(hot) == 1
+    message = str(hot[0].message)
+    assert message.index('4 GHz') < message.index('3 GHz') < message.index('2 GHz')
+    assert '1 GHz' not in message
+    assert 'and 1 more' in message
+    assert 'DFT truncation is suspect.' in message
+    assert 'quoting a DFT value' in message
+    assert message.endswith(' Outputs read from this record: DFT planes.')
+    for text in ('Increase n_steps', 'Increase num_periods', 'lengthen the record',
+                 'Run a longer fixed record'):
+        assert text not in message
+
+
+def test_growing_poles_on_a_passing_row_do_not_change_hot_row_advice():
+    rows = [dict(status='undetermined', reason='source end is unavailable',
+                 share_per_bin=np.zeros(1)),
+            dict(status='pass', reason='', share_per_bin=np.zeros(1), growing_poles=({
+                'frequency_hz': 4.76e9, 'growth_per_step': 3.28e-4,
+                'e_folding_steps': 3048.780487804878, 'max_share': 1.,
+                'rule': 'discarded growing'},))]
+    hot = _catch(lambda: _warn_if_ringdown_truncated(
+        [np.nan, -60.], ('feed', 'load'), n_steps=400, witnesses=rows))
+    message = str(hot[0].message)
+    assert 'Increase n_steps' in message
+    assert '4.76 GHz' not in message

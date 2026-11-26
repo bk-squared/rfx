@@ -8,8 +8,10 @@ The first non-blank body line describes what changes for a user:
 The text must be non-empty, without angle brackets. `none` (case-insensitive)
 requires a reason after an em dash (—), en dash (–), or hyphen (-).
   Review: <who read it> (separate instance) - ACCEPT   |   ... - ACCEPT WITH CHANGES
-  Review: skipped - (a) <easily reverted pure docs/comment change>
-  Review: skipped - (b) <the maintainer instructed the skip>
+  Review: skipped - docs-only
+  Review: skipped - user waived (<when>)
+Replace `<when>` with the instruction's date and time, never its text.
+It must contain non-whitespace text and no `<`, `>`, `(` or `)`.
 An unedited `<...>` placeholder does not pass.
 
 `lane:*` labels appear on this PR automatically, from the paths it touches. They

@@ -156,6 +156,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics,
             compute_s_params=compute_s_params,
         )
         _res = Result(
+            settling_echo_bound=result['settling_echo_bound'],
             diagnostics=result.get("diagnostics", _diagnostics),
             state=result["final_state"],
             time_series=result["time_series"],
@@ -302,6 +303,7 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
         # The shared run adapter lends its rows only to this forward result.
         forget_kernel(sim)
     packed = pack_nu_forward_result(
+        settling_echo_bound=result.settling_echo_bound,
         realized_geometry=result.realized_geometry,
         diagnostics=result.diagnostics, time_series=result.time_series,
         grid=result.grid, dt=result.dt, dft_planes=result.dft_planes,

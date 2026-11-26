@@ -108,6 +108,12 @@ def test_strict_accepts_spacing(monkeypatch, mesh, case):
         assert np.all(shifts / DOMAIN[2] < 0.005)
     report = sim.preflight()
     assert not report.by_code(CODE)
+    if case == "shifted":
+        for label in ('geometry[0]', 'geometry[1]'):
+            assert any(row.severity == 'error' and label in str(row)
+                       and 'δ=4e-05 m' in str(row) and 'L=0.002 m' in str(row)
+                       for row in report.by_code('realization'))
+        return
     assert report.ok
     with pytest.raises(_ReachedRunner):
         sim.run(n_steps=1, compute_s_params=False)

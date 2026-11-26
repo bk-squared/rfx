@@ -91,6 +91,8 @@ def _assemble_msl_plane_records(records, *, entries, freqs_arr, grid, msl_ports,
     raw_beta_railed = jnp.zeros(
         (n_ports, n_ports, n_freqs_used), dtype=bool
     )
+    raw_fit_span_phase = jnp.zeros((n_ports, n_ports, n_freqs_used))
+    raw_fit_amplification = jnp.zeros_like(raw_fit_span_phase)
     wave_a: list[list] = [[None] * n_ports for _ in range(n_ports)]
     wave_b: list[list] = [[None] * n_ports for _ in range(n_ports)]
 
@@ -103,10 +105,12 @@ def _assemble_msl_plane_records(records, *, entries, freqs_arr, grid, msl_ports,
                 i_first_per_port, jnp, meta, msl_loop_current, msl_modal_voltage, msl_ports, p_idx,
                 planes, raw_3probe_dump_path, raw_i1_left, raw_i1_same_index, trace_k_per_port, v_per_port, variant,
             )
-            raw_v, raw_i1, raw_z0, raw_q, raw_beta_railed, res_p, z0_fit = _msl_stages._fit_msl_port(
+            (raw_v, raw_i1, raw_z0, raw_q, raw_beta_railed, res_p, z0_fit,
+             raw_fit_span_phase, raw_fit_amplification) = _msl_stages._fit_msl_port(
                 _complex_dtype, beta0_per_port, driven, extract_msl_nprobe, i_f, jnp, msl_axis_roles,
                 msl_ports, n_probes_per_port, p_idx, probe_xs, raw_beta_railed, raw_i1,
                 raw_q, raw_v, raw_z0, v_per_port, z0_hj_per_port,
+                raw_fit_span_phase, raw_fit_amplification,
             )
             if p_idx == driven:
                 v0_d = v_per_port[driven][0]
@@ -192,7 +196,7 @@ def _assemble_msl_plane_records(records, *, entries, freqs_arr, grid, msl_ports,
         grid, jnp, line_eps_per_port, msl_ports, probe_xs, renormalize_power_waves, z0_hj_per_port,
     )
 
-    return (S, Z0_per_run, beta_first, raw_v, raw_i1, raw_i1_left, raw_i1_same_index, raw_z0, raw_q, raw_beta_railed, msl_assembly, msl_cond_a, msl_planes, s_line_refs)
+    return (S, Z0_per_run, beta_first, raw_v, raw_i1, raw_i1_left, raw_i1_same_index, raw_z0, raw_q, raw_beta_railed, msl_assembly, msl_cond_a, msl_planes, raw_fit_span_phase, raw_fit_amplification, s_line_refs)
 
 
 def compute_msl_s_matrix(
@@ -318,11 +322,16 @@ def compute_msl_s_matrix(
     β (Hammerstad-Jensen ε_eff(0) with Kirschning-Jansen dispersion, from
     the port's width, height and substrate εr; ``shift_beta``). β is
     real, so the shift moves phase only. Measured against the simulated
-    line's two-line β: within 0.76 % on the resolved boards measured
-    (chain-battery thru at 100 µm, 50 µm and z-graded; εr 10.2 / h 0.6 mm
-    board), phase error at most 5.5e-3 rad; within 1.23 % on a 4-cell
-    substrate (0.8 mm εr 2.2, dx 0.2 mm), phase error at most 1.9e-2 rad
-    over 2-18 GHz (1.33e-2 up to 15 GHz).
+    line's two-line β on the resolved boards measured (chain-battery thru
+    at 100 µm, 50 µm and z-graded, and an εr 10.2 / h 0.6 mm board, all
+    with snap="declared", which solves the drawn 600 µm strip 670 µm wide
+    at 100 µm and 635 µm at 50 µm): with β at the solved width, -0.33 ...
+    +0.54 %, phase error at most 7.8e-3 rad; with β at the drawn width,
+    -0.76 ... +0.04 %, at most 5.5e-3 rad. On a 4-cell substrate (0.8 mm
+    εr 2.2, dx 0.2 mm, snap="declared", which solves its drawn 1.2 mm strip
+    1.34 mm wide): within 1.23 % with β at the drawn width, phase error at
+    most 1.9e-2 rad over 2-18 GHz (1.33e-2 up to 15 GHz); at the solved
+    width it was not recomputed.
     The phase-only shift is exact for a line whose
     Zc equals the reference R (the closed-form Z0). Under ``eps_override``
     β and that Z0 come from the permittivity the override sets under the
@@ -566,7 +575,7 @@ def compute_msl_s_matrix(
 
         plane_records.append((variant, ez_probe_names, h_probe_names, planes))
 
-    (S, Z0_per_run, beta_first, raw_v, raw_i1, raw_i1_left, raw_i1_same_index, raw_z0, raw_q, raw_beta_railed, msl_assembly, msl_cond_a, msl_planes, s_line_refs) = _assemble_msl_plane_records(
+    (S, Z0_per_run, beta_first, raw_v, raw_i1, raw_i1_left, raw_i1_same_index, raw_z0, raw_q, raw_beta_railed, msl_assembly, msl_cond_a, msl_planes, raw_fit_span_phase, raw_fit_amplification, s_line_refs) = _assemble_msl_plane_records(
         plane_records, entries=entries, freqs_arr=freqs_arr, grid=grid, msl_ports=msl_ports,
         n_probes_per_port=n_probes_per_port, probe_xs=probe_xs, h_stencils=h_stencils,
         dz_arr=dz_arr, port_idx_meta=port_idx_meta, beta0_per_port=beta0_per_port,
@@ -620,6 +629,8 @@ def compute_msl_s_matrix(
     # fitted beta. That dataflow separation does not rule out
     # contamination of the V/I shared with the fit.
     beta_railed = None
+    fit_span_phase = None
+    fit_amplification = None
     try:
         beta_railed = np.stack([
             np.asarray(
@@ -627,6 +638,12 @@ def compute_msl_s_matrix(
             )
             for p in range(n_ports)
         ]).astype(bool)
+        fit_span_phase = np.stack([
+            np.asarray(jax.lax.stop_gradient(raw_fit_span_phase[p, p, :]))
+            for p in range(n_ports)])
+        fit_amplification = np.stack([
+            np.asarray(jax.lax.stop_gradient(raw_fit_amplification[p, p, :]))
+            for p in range(n_ports)])
         _warn_msl_beta_scan_railed(
             beta_railed, freqs_arr,
             tuple(pe.name for pe in entries),
@@ -635,6 +652,8 @@ def compute_msl_s_matrix(
         # Cannot materialize while tracing; the eager forward
         # result still carries the mask.
         beta_railed = None
+        fit_span_phase = None
+        fit_amplification = None
 
     _msl_stages._check_msl_extraction(
         RfxRefusal, S, _diagnostics, diagnostic_refusal, entries, freqs_arr,
@@ -647,6 +666,7 @@ def compute_msl_s_matrix(
         grid, h_stencils, msl_assembly, msl_planes, n_ports, n_probes_per_port, n_steps,
         num_periods, raw_3probe_dump_path, raw_i1, raw_i1_left, raw_i1_same_index, raw_q,
         raw_v, raw_z0, s_line_refs, self,
+        raw_fit_span_phase, raw_fit_amplification,
     )
 
     # refer S from the line Z0 the waves were formed at to the
@@ -696,6 +716,8 @@ def compute_msl_s_matrix(
         assembly=msl_assembly,
         cond_a=msl_cond_a,
         beta_railed=beta_railed,
+        fit_span_phase=fit_span_phase,
+        fit_amplification=fit_amplification,
         probe_clearance=probe_clearance,
         reference_impedances=declared_refs.copy(),
         line_impedances=_reported(s_line_refs, (n_ports,)),

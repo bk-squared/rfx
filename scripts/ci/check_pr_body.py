@@ -26,7 +26,8 @@ text (not inside a code fence, an HTML comment or a ``<pre>`` block):
     Lane: lane:<label>
     Review: <who> (separate instance) - ACCEPT
     Review: <who> (separate instance) - ACCEPT WITH CHANGES
-    Review: skipped - (a) <why> | Review: skipped - (b) <why>
+    Review: skipped - docs-only
+    Review: skipped - user waived (<when>)
 
 ``Lane:`` must name a label that exists on the repository. The workflow passes
 the live set in ``LANE_LABELS`` (newline-separated, from ``gh label list``); a
@@ -60,14 +61,10 @@ cross-check either.
 unedited placeholder is not a review record, and this file's own remediation
 text would otherwise be a passing body.
 
-``Review: skipped`` covers the rule's only two exceptions, and the line has to
-say WHICH by opening the reason with the literal ``(a)`` or ``(b)``:
-
-    (a) an easily reverted pure docs/comment change
-    (b) an explicit instruction from the maintainer to skip
-
-That is what makes the exception auditable later; a bare "skipped - x" records
-nothing.
+``Review: skipped`` covers two exceptions: ``docs-only`` for an easily reverted
+pure docs/comment change, or ``user waived (<when>)`` for a maintainer instruction
+to skip. Replace ``<when>`` with the instruction's date and time, never its text.
+The value must contain non-whitespace text and no angle brackets or parentheses.
 
 A ``REJECT`` verdict never passes. Neither does a self-review: the line asserts
 a SEPARATE instance did the reading, and the check can only enforce that the
@@ -189,7 +186,10 @@ REVIEW_ACCEPT_RE = re.compile(
     + _DASH
     + r" (?P<verdict>ACCEPT|ACCEPT WITH CHANGES)$"
 )
-REVIEW_SKIPPED_RE = re.compile(r"^Review: skipped " + _DASH + r" \((?:a|b)\) .+$")
+REVIEW_SKIPPED_RE = re.compile(
+    r"^Review: skipped " + _DASH
+    + r" (?:docs-only|user waived \((?=[^<>()]*[^\s<>()])[^<>()]+\))$"
+)
 # Right shape, wrong content: a REJECT verdict, a separator nobody accepts, a
 # missing verdict. Worth naming, because "no `Review:` line" is a baffling
 # thing to read on a body that visibly has one.
@@ -543,9 +543,12 @@ def _check_review(lines: list[str]) -> list[str]:
         )
     if bad_skip:
         problem += (
-            f" Found a `Review: skipped` line that does not say which exception "
-            f"({bad_skip[0].strip()!r}): open the reason with `(a)` for an easily "
-            "reverted pure docs/comment change, or `(b)` for a skip instructed by the maintainer."
+            f" Found an invalid `Review: skipped` line ({bad_skip[0].strip()!r}): "
+            "use `Review: skipped - docs-only` or "
+            "`Review: skipped - user waived (<when>)`. Replace `<when>` with the "
+            "instruction's date and time, never its text; use non-whitespace text "
+            "with no `<`, `>`, `(` or `)` inside the parentheses. The separator "
+            f"must be {DASH_NAMES}."
         )
     problem += _adorned_hint(lines, "Review:")
     return [problem]
@@ -656,8 +659,8 @@ def failure_report(problems: list[str], env: dict[str, str] | None = None) -> st
         "Accepted `Review:` forms:",
         "  Review: <who read it> (separate instance) - ACCEPT",
         "  Review: <who read it> (separate instance) - ACCEPT WITH CHANGES",
-        "  Review: skipped - (a) <easily reverted pure docs/comment change>",
-        "  Review: skipped - (b) <the maintainer instructed the skip>",
+        "  Review: skipped - docs-only",
+        "  Review: skipped - user waived (<when>)",
         "",
         f"Allowed lanes ({lane_source}):",
     ]

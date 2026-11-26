@@ -418,7 +418,9 @@ def test_the_guard_only_tells_the_clearance_story_when_it_applies(monkeypatch):
     assert "standing-wave content at the probes is not the cause" in text
     assert preflight_msl.MSL_PROBE_CLEARANCE_EFFECT not in text
     assert preflight_msl.MSL_PROBE_CLEARANCE_GUIDANCE not in text
-    assert "rasterized board" in text and "refine the mesh" in text.lower()
+    assert "rasterized board" in text
+    assert "refine the mesh" not in text.lower()
+    assert "fit_span_phase" in text and "fit_amplification" in text
 
 
 def test_the_guard_tells_it_when_the_clearance_is_insufficient(monkeypatch):

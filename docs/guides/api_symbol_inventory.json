@@ -97,6 +97,9 @@
     "Diagnostic": {
       "kind": "class"
     },
+    "EdgeAwareProfileRefusal": {
+      "kind": "class"
+    },
     "FarFieldResult": {
       "kind": "class"
     },
@@ -446,7 +449,8 @@
         "waveform",
         "thin_conductors",
         "domain",
-        "dt_override"
+        "dt_override",
+        "snap"
       ]
     },
     "axial_ratio": {
@@ -946,7 +950,8 @@
         "aniso_inv_eps",
         "pec_edge_masks",
         "field_dtype",
-        "settling_details"
+        "settling_details",
+        "echo_bound"
       ]
     },
     "extract_s_matrix_wire": {
@@ -1008,6 +1013,7 @@
         "checkpoint_segments",
         "return_settling",
         "settling_details",
+        "echo_bound",
         "sheet_impedance",
         "pec_edge_masks",
         "field_dtype"
@@ -1992,6 +1998,7 @@
         "materials",
         "decay_by",
         "n_end",
+        "echo_bound",
         "check_interval",
         "min_steps",
         "max_steps",

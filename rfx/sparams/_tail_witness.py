@@ -5,13 +5,14 @@ names imported here stay importable from this module.
 """
 
 import numpy as np
+from collections.abc import Mapping
 from functools import partial
 from typing import NamedTuple
 
 from rfx.ringdown import identify, judge_growing_poles, _static_pole, _fit_residues, RingdownPole
 from rfx.measurement.record_end import (IdentificationOps, TailShareWitness,
                                          _pole_contributions as _record_pole_contributions,
-                                         _rounding_only_records, record_end_error)
+                                         _rounding_only_records, merge_growing_poles, record_end_error)
 
 _IDENTIFICATION = IdentificationOps(
     identify, judge_growing_poles, _static_pole, _fit_residues, RingdownPole)
@@ -20,13 +21,17 @@ _pole_contributions = partial(_record_pole_contributions, identification=_IDENTI
 
 def tail_share_witness(records, dt, source_end, freqs, *, freq_max, rounding_groups=None,
                        _record_results=None, known_drives=None, n_record=None,
-                       scale_groups=None, _channel_labels=None, reader=None):
+                       scale_groups=None, _channel_labels=None, reader=None,
+                       echo_bound: Mapping[str, float | str | None] | None = None):
     """Delegate the record-end rule, retaining the identity reader by default."""
-    return record_end_error(
+    result = record_end_error(
         records, dt, source_end, freqs, identification=_IDENTIFICATION, freq_max=freq_max,
         rounding_groups=rounding_groups, _record_results=_record_results,
         known_drives=known_drives, n_record=n_record, scale_groups=scale_groups,
         _channel_labels=_channel_labels, reader=reader)
+    from rfx.measurement.record_end import with_echo_bound
+    _, detail = with_echo_bound(result.db, result._asdict(), echo_bound, dt)
+    return result._replace(**{key: value for key, value in detail.items() if key in result._fields})
 
 
 def result_read_bins(result):
@@ -66,8 +71,13 @@ class SettlingChannels(NamedTuple):
                                   scale_groups=scale_groups, _channel_labels=_channel_labels, reader=reader)
 
 
-def port_record_witness(records, dt, source_end, freqs, *, freq_max, reader=None):
-    """Judge recorded S-channel matrices, one matrix per port."""
+def port_record_witness(records, dt, source_end, freqs, *, freq_max, reader=None,
+                        echo_bound: Mapping[str, float | str | None] | None = None):
+    """Judge recorded S-channel matrices, one matrix per port.
+
+    Drive witnesses are host reports: their bound retains scalar values,
+    including the exact float32 values returned by the realized reduction.
+    """
     from rfx.sparams._settling_groups import port_column_groups
 
     records = tuple(records)
@@ -76,7 +86,17 @@ def port_record_witness(records, dt, source_end, freqs, *, freq_max, reader=None
         tuple((record.id, record.samples) for record in records),
         dt, source_end, freqs, freq_max)
     result = channels.witness(scale_groups=groups, _channel_labels=labels, reader=reader)
-    return result.db, {**result._asdict(), 'route': 's_channels',
+    from rfx.measurement.record_end import with_echo_bound
+    if echo_bound is not None:
+        import jax
+        if any(isinstance(value, jax.core.Tracer) for value in jax.tree.leaves(echo_bound)):
+            echo_bound = dict(tau_max=None, D=None, n_max=None, g=None,
+                              reason='cannot judge: traced echo delay bound')
+        else:
+            echo_bound = {key: value.item() if value is not None and hasattr(value, 'item') else value
+                          for key, value in echo_bound.items()}
+    db, detail = with_echo_bound(result.db, result._asdict(), echo_bound, dt)
+    return db, {**detail, 'route': 's_channels',
                        'worst_record': None, 'per_record_db': {},
                        'skipped_records': list(result.skipped_records), 'source_dominated': False,
                        'reader_frame': None if reader is None else reader.get('frame'),
@@ -136,4 +156,5 @@ def combine_witness_details(*rows):
     missing = [row for row in rows if row['status'] in {'absent', 'undetermined'}]
     worst = missing[0] if missing else max(rows, key=lambda row: row['db'])
     return {**worst, 'reason': '; '.join(row['reason'] for row in missing),
+            'growing_poles': merge_growing_poles(*(row.get('growing_poles', ()) for row in rows)),
             'runs': rows}

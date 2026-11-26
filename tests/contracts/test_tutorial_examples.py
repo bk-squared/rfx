@@ -242,7 +242,7 @@ def test_slab_rt_flux_monitor_tutorial_runs():
     assert all(int(db) <= -40 for _, db in witnesses)
 
     monitors = re.findall(
-        r"^\s+flux monitor (refl|trans): covered \(drive past the plane by step \d+, record 1200 steps\)$",
+        r"^\s+flux monitor (refl|trans): covered \(drive past the plane by step \d+, record 4800 steps\)$",
         output,
         flags=re.MULTILINE,
     )

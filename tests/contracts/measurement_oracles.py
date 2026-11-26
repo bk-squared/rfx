@@ -53,13 +53,14 @@ def stamp(nu, family, kind):
     NORMAL_PERIODIC = False
     flux_meta = ((0, 1, bins, tuple(field_channel(c) for c in ('ey', 'ez', 'hy', 'hz')), ((0, 3, 0, 3),)*4, False, (.5, .5), NORMAL_PERIODIC),)
     env = dict(planes=planes, flux=flux, st=state, dt=1., step_idx=jnp.int32(3),
-               carry={'dft_planes': (acc,), 'flux_monitors': ((acc, acc, acc, acc),)},
+               carry={'dft_planes': ((acc, jnp.zeros_like(acc)),),
+                      'flux_monitors': (((acc, jnp.zeros_like(acc)),) * 4,)},
                dft_meta=dft_meta, flux_meta=flux_meta,
                ctx=SimpleNamespace(dft_meta=dft_meta, flux_meta=flux_meta, dt=1.))
     env['frame'] = SimpleNamespace(st=state, carry=env['carry'], step_idx=env['step_idx'])
     value = eval(compile(ast.Expression(calls[0]), '<production accumulator>', 'eval'), env)
     spectrum = value[0][0] if name == 'planes' else value[0][0 if kind == 'E' else 2]
-    return float(-jnp.angle(spectrum[0, 0, 0])/(2*jnp.pi*.01))
+    return float(-jnp.angle(spectrum[0][0, 0, 0])/(2*jnp.pi*.01))
 
 
 def flux_samples(nu, cfg, fields):

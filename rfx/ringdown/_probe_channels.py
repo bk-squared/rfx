@@ -171,7 +171,9 @@ def host_probe_report(plan, result, ts_all, n_user):
         witnesses.append(rd.RingdownWitness(nc.name, nc.value, nc.bar, False, nc.message))
         return None, rd.RingdownReport(**base, witnesses=tuple(witnesses),
                                       failure=f"{nc.name}: {nc.message}"), nc
-    return spectra, rd.RingdownReport(**base, witnesses=tuple(witnesses), **extra), None
+    from rfx.ringdown._echo import close_completion
+    return close_completion(plan, spectra, rd.RingdownReport(**base, witnesses=tuple(witnesses), **extra),
+                            grid=result.grid, dt=dt)
 
 
 def finish_probe_run(plan, result, n_user):
@@ -182,9 +184,13 @@ def finish_probe_run(plan, result, n_user):
     stripped = _user_geometry(result._replace(time_series=full[:, :n_user]), n_user, n_int)
     spectra, report, nc = plan._host_report(result, np.asarray(full), n_user)
     if nc is not None:
+        if nc.name == 'echo_bound':
+            spectra = np.full((len(plan.bins), len(plan._identification_columns())),
+                              np.nan, dtype=np.complex128)
+        value_note = 'NaN' if nc.name == 'echo_bound' else 'None'
         warnings.warn(
             f"ring-down completion not produced -- {nc.name} failed: {nc.message} "
-            "Result.ringdown.probe_spectra is None; every other output of this run is as without ringdown=.",
+            f"Result.ringdown.probe_spectra is {value_note}; every other output of this run is as without ringdown=.",
             AccuracyWarning, stacklevel=user_stacklevel())
     elif not report.ok:
         failed = ", ".join(f"{w.name} {w.value:.3e} (bar {w.bar:.3e})"
@@ -270,8 +276,12 @@ def traced_probe_completion(plan, result, channels):
         status.append(st)
         counts.append(count)
         budgets.append(k_max)
+    from rfx.ringdown._echo import forward_closing_factor
+    closing = forward_closing_factor(plan, dt, result.settling_echo_bound, dtype=rdt)
+    out = [value * closing for value in out]
     return rd.RingdownForwardResult(
         None, None, jnp.asarray(bins, dtype=rdt), channels, (), None,
         jnp.stack(status), consistency, jnp.stack(counts), jnp.asarray(budgets), ctx,
         poles=poles[0], poles_long=poles[1], pole_mask=masks[0], pole_mask_long=masks[1],
-        probe_spectra=out[0], probe_spectra_long=out[1], cells=cells)
+        probe_spectra=out[0], probe_spectra_long=out[1], cells=cells,
+        echo_index=result.settling_echo_bound)

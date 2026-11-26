@@ -46,7 +46,7 @@ MEASUREMENT_ROOTS = {
     'ntff_data', 'ntff_box', 's_params', 'freqs', 'freqs_hz',
     'lumped_port_sparams', 'wire_port_sparams', 'sparam_time_records',
     'waveguide_ports', 'waveguide_sparams', 'waveguide_port_flux',
-    'current_moment_data', 'current_moment_monitor', 'settling_witness',
+    'current_moment_data', 'current_moment_monitor', 'settling_witness', 'settling_echo_bound',
 }
 PACKAGING_ROOTS = {'state', 'realized_geometry', 'diagnostics'}
 
@@ -303,13 +303,15 @@ def build_c_pecbox(path):
 
 
 def build_c_sheet(path):
+    z = .0042 if 'graded' in path else .004
     return base_scene(path).add_thin_conductor(
-        Box(((14 - .35) * .001, (6 - .35) * .001, .004),
-            ((20 + .35) * .001, (14 + .35) * .001, .004)))
+        Box(((14 - .35) * .001, (6 - .35) * .001, z),
+            ((20 + .35) * .001, (14 + .35) * .001, z)))
 
 
 def build_c_film(path):
-    return base_scene(path).add_thin_conductor(Box((.014, .006, .004), (.020, .014, .004)), sigma_bulk=1e5)
+    z = .0042 if 'graded' in path else .004
+    return base_scene(path).add_thin_conductor(Box((.014, .006, z), (.020, .014, z)), sigma_bulk=1e5)
 
 
 def build_c_wire(path):
@@ -783,7 +785,7 @@ def equal_request_pair(declaration, path, direction, *, level=None, n_steps=150,
                            sim._freq_max, 50, host='graded' in path)}
     run = call('run', run_options if direction == 'a' else
                {**options, 'compute_s_params': False})
-    if direction == 'a':
+    if direction == 'a' and run['outcome'] != 'not_called':
         sim = BUILDERS[declaration](path)
         if sim._coaxial_ports or any(port.impedance != 0 for port in sim._ports):
             returned = run if level is None else run_l2(BUILDERS[declaration], 'run', path,

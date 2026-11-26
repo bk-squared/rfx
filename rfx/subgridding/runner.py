@@ -13,7 +13,6 @@ import jax.numpy as jnp
 from rfx.core.yee import FDTDState, MaterialArrays
 from rfx.stepping import update_h, update_e
 from rfx.boundaries.pec import apply_pec, apply_pec_mask
-# Patching rfx.boundaries.cpml.init_cpml later does not replace this bound import.
 from rfx.boundaries.cpml import init_cpml, apply_cpml_h, apply_cpml_e
 from rfx.grid import Grid
 from rfx.geometry.rasterize_grid import unpadded_high_walls, fine_high_walls
@@ -23,10 +22,13 @@ from rfx.subgridding.sbp_sat_3d import (
 )
 
 
+_TARGET_LOG_UPDATES = 20
+
+
 def run_subgridded(
     grid_c: Grid,
     mats_c: MaterialArrays,
-    grid_f,  # unused, kept for API compat
+    grid_f,
     mats_f: MaterialArrays,
     subgrid_config: SubgridConfig3D,
     n_steps: int,
@@ -78,33 +80,26 @@ def run_subgridded(
     from rfx.model.pole_stability import refuse_subgrid_cells
     refuse_subgrid_cells(mats_c, mats_f, grid_c, subgrid_config, dt)
 
-    # Override coarse grid dt to match the subgrid global timestep
-    # (fine grid CFL is more restrictive than coarse grid CFL)
     grid_c.dt = dt
 
-    # Initialize CPML on coarse grid
     cpml_params, cpml_state = init_cpml(grid_c)
 
-    # Initialize field states
     shape_c = (subgrid_config.nx_c, subgrid_config.ny_c, subgrid_config.nz_c)
     shape_f = (subgrid_config.nx_f, subgrid_config.ny_f, subgrid_config.nz_f)
 
     def z(s):
         return jnp.zeros(s, dtype=jnp.float32)
-    # Coarse fields
     ex_c, ey_c, ez_c = z(shape_c), z(shape_c), z(shape_c)
     hx_c, hy_c, hz_c = z(shape_c), z(shape_c), z(shape_c)
-    # Fine fields
     ex_f, ey_f, ez_f = z(shape_f), z(shape_f), z(shape_f)
     hx_f, hy_f, hz_f = z(shape_f), z(shape_f), z(shape_f)
 
-    # Time series storage
     n_probes = len(probe_indices_f)
     time_series = np.zeros((n_steps, max(n_probes, 1)), dtype=np.float32)
 
     import time as _time
     _t0 = _time.time()
-    _log_interval = max(n_steps // 20, 100)  # log ~20 times
+    _log_interval = max(n_steps // _TARGET_LOG_UPDATES, 100)
 
     ex_c, ex_f, ey_c, ey_f, ez_c, ez_f, hx_c, hx_f, hy_c, hy_f, hz_c, hz_f = run_subgridded_loop(
         _log_interval=_log_interval,
@@ -143,7 +138,6 @@ def run_subgridded(
         time_series=time_series,
     )
 
-    # Final states
     final_c = FDTDState(ex=ex_c, ey=ey_c, ez=ez_c,
                         hx=hx_c, hy=hy_c, hz=hz_c,
                         step=jnp.array(n_steps, dtype=jnp.int32))

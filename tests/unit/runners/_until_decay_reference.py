@@ -14,6 +14,7 @@ Retained DFT and S-parameter records follow the current runner interface.
 
 from __future__ import annotations
 
+from rfx.measurement.accumulators import plane_result, flux_result
 from rfx.geometry.rasterize_grid import unpadded_high_walls
 
 from rfx.simulation import (
@@ -389,7 +390,7 @@ def run_until_decay_reference(
     final_dft_planes = None
     if use_dft_planes:
         final_dft_planes = tuple(
-            (probe._replace(accumulator=acc) for probe, acc in zip(dft_planes, carry["dft_planes"]))
+            (plane_result(probe, acc[0]) for probe, acc in zip(dft_planes, carry["dft_planes"]))
         )
     final_waveguide_ports = None
     if use_waveguide_ports:
@@ -424,7 +425,7 @@ def run_until_decay_reference(
     if use_flux_monitors:
         final_flux_monitors = tuple(
             (
-                fm._replace(e1_dft=accs[0], e2_dft=accs[1], h1_dft=accs[2], h2_dft=accs[3])
+                flux_result(fm, tuple(a[0] for a in accs))
                 for fm, accs in zip(flux_monitors, carry["flux_monitors"])
             )
         )

@@ -334,23 +334,20 @@ Tracker: none — accepted limitation (refused at default: tests/contracts/test_
 
 On one device, a fixed-step `run()` inside a user `jax.jit` stays within the cross-trace bar of plain `run()` on Linux CPU (9 float32 ULP of the probe peak per step, 1e-4 of the peak summed over the record) for a point current source and for a lumped or wire port, on uniform and graded meshes. The same holds for `forward()` with a traced `eps_override` and a point source or a lumped port, and for `run(devices=...)` and `forward(distributed=True)` with a point source or a lumped or wire port, on uniform and graded meshes (`tests/contracts/test_user_jit_drive_and_probe.py`). Four requests are refused under a user `jax.jit`: on a uniform mesh, `run()`'s S-parameters of a single lumped or wire port (use `forward(port_s11_freqs=...)` or a plain `run()`); a closed-box plane wave on several devices; `until_decay`; and `report_every` (`test_host_control_keeps_its_user_jit_behavior`). Call these without an enclosing `jax.jit`.
 
-### One process with several GPUs: the per-GPU peak is set while the material coefficients are prepared, and on two GPUs it is higher than on one.
+### One process with several GPUs: GPU 0 builds the material arrays of the whole grid before they are cut into slabs, and on two GPUs that build sets GPU 0's setup peak.
 
 Tracker: #2150
 
-In one process, `sim.run(devices=...)` reaches its per-GPU memory peak before the first time step, while it prepares the
-material coefficients of each GPU's slab, not in the time loop.
+In one process, `sim.run(devices=...)` first builds the material arrays of the whole grid on GPU 0: permittivity,
+permeability, the conductivity with wires stamped in, and the port conductivity. Only then does it cut them into the
+per-GPU slabs. Those arrays cover the whole grid, not one slab.
 
 The case measured: on RTX A6000 GPUs, a 1024 x 64 x 192-cell box with a 3-cell wire port and a DFT plane, in float32.
-- The peak on the largest GPU is 1.680 GB on one GPU, 1.764 GB on two and 1.293 GB on three.
-- The time loop itself needs 0.923 GB per GPU on two GPUs and 0.617 GB on three.
+- On two GPUs, GPU 0 reaches 0.665 GB while it builds the whole-grid arrays, and the other GPU holds nothing yet.
+- The time loop needs 0.923 GB per GPU on two GPUs.
+- On two GPUs the largest per-GPU peak is 0.832 GB, set by the time loop.
 
-Mechanism: during that preparation, each GPU holds a separate copy of a material array for every place the model
-refers to it, beside the arrays being copied. GPU 0 also holds four material arrays of the whole grid. A second GPU
-therefore does not lower the per-GPU peak.
-
-What to do: size a run on several GPUs from a peak measured on the same number of GPUs. Do not assume that memory per
-GPU halves when the GPU count doubles.
+What to do: on several GPUs, size GPU 0 for the whole-grid material arrays as well as its own slab.
 → [#2150](https://github.com/bk-squared/rfx/issues/2150)
 
 ### A closed PEC box with a TF/SF plane wave runs 11.6 % slower per step on two GPUs than before the shared multi-device time step.
@@ -524,6 +521,34 @@ the 0.1 mm test mesh. With the whole-cell voltage, the short test fixture's |S21
 from 3.81 to 3.22 at 6 GHz and its column power from 14.6 to 10.5; the matrix is still
 far from passive, and the rest of the excess is not attributed.
 
+### The coax→microstrip transition and the mixed coax/microstrip S-matrix keep whole microstrip planes at every step.
+
+Tracker: #3069
+
+`compute_coax_msl_transition` keeps each x-normal Ez plane of its microstrip probes at every
+time step, and `compute_mixed_s_matrix` keeps its microstrip Ez and H planes, with
+no crop, at every step. Both read those records only to form the microstrip voltage (and, in
+the mixed S-matrix, the current) for the record-tail witness. Their memory therefore grows
+as each plane's transverse cells × steps.
+
+On one GPU, the transition's device memory grows by 317.8 kB per step from 200 to 800 steps
+with its coax plane records off; the coax source waveforms it stores are 1.5 kB per step of
+that, so almost all of it is the microstrip planes. The coax planes of the three coax
+calculators no longer keep these records.
+
+### The coax port's plane source keeps one waveform per aperture cell and component for the whole record.
+
+Tracker: #3074
+
+Every coax aperture cell with a nonzero TEM profile gets its own float32 electric and magnetic
+source waveform of `n_steps` samples, so the stored source grows as (aperture cells ×
+components) × steps × 4 B, and the device holds it more than once at its peak. This holds for
+the three coax calculators and for `add_coaxial_port()` on `run()` and `forward()`. On one GPU,
+the coax one-port of #3069 (256 stored waveforms, 1024 B per step) grows by 2.9 kB of device
+memory per step, about 0.21 GB at 74 000 steps (from that slope, an estimate). Its host memory
+grows by 12.2 kB per step; the cause of that growth is not known. What to do: nothing for
+records that fit; the fix is planned.
+
 ### On a radiating device, the coax calculators' S11 includes coupling from their open feed end.
 
 Tracker: #2975
@@ -570,12 +595,15 @@ and `result.sigma_max_excess` carries the per-bin amount. A passive structure
 cannot do that: read it as a record that ended before ring-down or a mesh too
 coarse for the geometry (`settling_db`, `reliable`), or as an absorber too close
 above the line (next entry), not as gain.
-`enforce_passivity=True` returns the projected matrix instead. On a reflecting fixture
-a test checks the raw S: the microstrip chain battery holds its maximum column power at
-or below 1.02 on the open-stub notch on the 25 µm mesh the claims rest on, in
-`tests/oracle/test_msl_chain_battery.py`. Read the current fixture for the
-measured notch and thru values. Coarser meshes are
-reported, not tested.
+`enforce_passivity=True` returns the projected matrix instead. On a reflecting
+fixture the raw S is what the record keeps: on settled 40-period records the
+microstrip chain battery's open-stub notch reaches a maximum column power of
+1.0012, 1.0022 and 1.0028 on 100, 50 and 25 µm cells
+(`ladder.notch.max_column_power` in `tests/fixtures/msl_chain_battery/fixture.json`),
+inside its 1.02 bar. Why the excess grows as the mesh refines is not
+established. No CI test judges the 50 and 25 µm values; the 100 µm drift lock
+(`tests/locks/test_msl_chain_battery_drift.py`) holds that mesh's live column
+power at or below 1.02.
 
 ### A microstrip S-matrix exceeds unit column power when the absorber above the line is close and thin.
 
@@ -616,6 +644,25 @@ early or a coarse mesh. That advice does not fit this case: these records ring
 down to −86 to −95 dB, and a finer mesh makes the excess slightly larger. Give
 the line more air below the top absorber, or keep the default 16 layers.
 
+### On a microstrip line, 8 CPML layers change S, and |S| can exceed 1 near the side absorbers.
+
+Tracker: #3068
+
+On a microstrip thru line (3 cells per substrate height), S with 8 CPML
+layers differs from S with 32 layers by up to 2.8×10⁻³ (the largest entry
+difference over the band) when the strip's solved edge is 2.2 cells from the
+side absorbers. The difference falls to 1.9×10⁻⁴ at 36 cells. With 16 layers
+(the default) it is at most 6.1×10⁻⁵. These numbers are diagnostic, not a
+judged threshold.
+
+With 8 layers a passive line can also return |S_ij| above 1. On one line board
+(3 cells per substrate height) it reaches 1.0006 when the strip's solved edge
+is 0.733 h_sub (2.2 cells) from the side absorbers. It falls as the strip moves
+away, to 1.000001 at 27 cells, and is not seen with 16 or 32 layers. Its cause is
+not named. The lateral-clearance advisory does not remove it: a board that
+meets the advisory can still show it with 8 layers. Keep 16 layers (the
+default) or more when |S| or passivity matters.
+
 ### The fitted microstrip propagation constant differs from the Hammerstad–Jensen closed form, and the difference is not attributed.
 
 Tracker: none — accepted limitation (diagnostic, does not enter the result: tests/unit/sparams/test_msl_fitted_beta_does_not_enter_s.py::test_s_is_bit_identical_when_the_fitted_beta_is_wrong)
@@ -640,6 +687,31 @@ fix is a longer uniform feed or a moved reference plane. Every warning about
 this condition carries one shared text (`rfx.preflight.msl.MSL_PROBE_CLEARANCE_EFFECT`).
 Settled in #726 (closed): the guard and preflight used to contradict each other
 about this, and a measurement decided it.
+
+### Microstrip `Z0` and `beta` at the lowest bins change by tens of percent with parts of the board far from the probes, while S does not.
+
+Tracker: #3065
+
+`compute_msl_s_matrix(...)` fits each port's `Z0` and `beta` from the voltages at its probes, which span `(n_probes - 1) * n_probe_spacing` cells.
+At bins where the line's phase across that span (`beta` times its length) is small, the fitted values change when parts of the board far from the probes change.
+The cause is not isolated. Two identical builds give bit-identical values, so it is not run noise.
+One board was measured: εr 3.66, h 254 µm, strip declared 600 µm and solved 651.9 µm (cells of h/3), 5 probes 2 cells apart (0.677 mm), 0.5–5 GHz in 30 bins.
+Every number in this entry is from float32 runs, rfx's default precision.
+Only the feed's distance from the domain's x faces (3.6 to 65.6 cells) and the CPML depth (8, 16 and 32 layers) changed. Each of the other 23 layouts was compared bin by bin with the 47.6-cell layout of the same depth (4.53–5 GHz is marked unreliable on those reference layouts and was not compared):
+
+| phase across the probes | bins | largest change in `Z0` | largest change in `beta` |
+|---|---|---|---|
+| 0.012–0.020 rad | 0.50–0.81 GHz | 63 % | 38 % |
+| 0.024–0.043 rad | 0.97–1.74 GHz | 5.4 % | 4.3 % |
+| 0.047–0.107 rad | 1.90–4.38 GHz | 1.4 % | 1.4 % |
+
+At 0.50 GHz the returned `Z0` ran from 43.0 to 69.9 Ω on this one line.
+The 63 %, the 38 % and the 69.9 Ω sit where the `beta` scan stopped at its ±35 % limit, which its warning names (0.50 GHz, on 2 of the 26 layouts). On ports that warning did not name, the change still reached 25 % in `Z0` at 0.50 GHz, and 18 % in `Z0` and 22 % in `beta` at 0.81 GHz.
+`probe_clearance` was `satisfied` on every layout and `reliable` was True at 0.50–1.74 GHz on every layout, so neither marks these bins.
+Neither fitted value enters S: across these layouts no S entry changed by more than 5.0e-4 at any bin.
+The `Z0` warning fired on 3 of the 26 layouts, at 0.50 GHz. It now points to `fit_span_phase` and `fit_amplification` and no longer advises a finer mesh: with the probe counts fixed in cells, a finer mesh shortens the span and the phase across it.
+Do not quote `Z0` or `beta` from a bin where the phase across the probes is below about 0.045 rad, where the change exceeded 2 % on this board.
+That edge comes from one board on one mesh; no layout with a longer probe span was measured.
 
 ### On a straight microstrip, the MSL port's |S21| exceeds 0 dB near 10–12 GHz and depends on where the first probe sits: the port misreads power within about 10 mm of its plane.
 
@@ -795,9 +867,28 @@ measurement.
 Until it is fixed, take the reference plane at the measuring plane, or correct |S| by the line's α yourself. The fix
 moves S with the complex propagation constant α + jβ for every port kind.
 
+### Port voltage, current and modal DFTs are still plain complex64 running sums
+
+Tracker: #3035
+
+The coax, lumped, wire, waveguide and Floquet port DFTs, the reference-plane V and I, the drive references, the
+ringdown emulation's V and I, the far-field block sums and the adjoint design-region sums add one complex64 term per
+step without compensation. The sum's error grows faster than the record: on a synthetic four-channel record it reaches
+4.0e-6 of the spectrum's peak at 36 500 steps and 5.4e-5 at 146 000 steps. DFT planes, flux monitors, point-probe DFTs
+and the replay of kept records are compensated and stay near float32 resolution. Port spectra formed after the run by
+replaying recorded port time series (`rfx/measurement/modal.py`, `rfx/probes/sparam_driver.py`) go through that replay
+and are compensated too; the running port sums listed above are not. The coax port S11 that `run()`
+returns is formed from these port sums. What to do: on records beyond about 30 000 steps, do not compare a port
+quantity with another route at 1e-5 or tighter, and check a passive |S| read just above 1 with a power balance before
+reading it as physics. The entry stays until the last site is fixed.
+
 ## Ring-down completion and the early stop
 
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).
+
+The echo-delay bound does not cover a return whose path exceeds the domain diagonal, such as a meander, a slow-wave structure or several bounces.
+On dispersive media the echo bound covers the phase index; the group delay near a resonance can exceed it: below a Lorentz pole at 8 GHz (eps_inf 4, κ = ω0², δ = 0.1·ω0) read over 2–4 GHz the group index at 4 GHz is 2.479 against the bound's 2.307, and below a pole at 9 GHz with ω0/δ = 57 (eps_inf 2, mu_r 1.5) over 0–12 GHz it reaches 47.9 at 8.78 GHz against 6.74.
+The settling verdict reads the S entry's record-end error: a channel's tail share can exceed 1e-2 at a band-edge bin while the S error stays below it (shorted line at 38 ns, 13.49 GHz: 1.07e-2 against 0.0048).
 
 ### A completed forward ring-down value can have a failed lazy report without warning.
 
@@ -928,6 +1019,22 @@ What to do: run `compute_rcs` with two record lengths, for example `n_steps` and
 where the two agree.
 
 ## Absorbing boundaries
+
+### A dielectric near a CPML face can hold a field that grows after the source ends
+
+Tracker: #3034
+
+S-parameters from a record of such a structure change with record length without
+settling. The settling witness reports this growth, and the warning names the
+identified growing pole, its e-folding time in steps and its largest share at the
+read bins. A passive structure cannot gain energy after its source ends; a longer
+record carries a larger error from this term.
+
+In a WR-90-size guide with a 22.86 × 2.406 mm cross-section, an eps_r 10 slab
+2.406 mm thick and 2.0 mm from the CPML face holds a TE10 field near 4.76 GHz that
+grows by a factor e about every 3,050 steps at dt 0.765 ps. The measured TE10 growth
+rate falls with distance d close to exp(-2 alpha d), where alpha is the mode's evanescent
+attenuation constant, so a mode near its cutoff falls slowly with distance.
 
 ### Magnetic faces require the single-device second-order Yee image.
 

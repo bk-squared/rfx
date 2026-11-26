@@ -149,9 +149,10 @@ def test_physics_cutover_does_not_exempt_lane_or_review() -> None:
         "Review: gpt-5.6-sol (separate instance) - ACCEPT WITH CHANGES",
         "Review: opus (separate instance) – ACCEPT",
         "Review: opus (separate instance) – ACCEPT WITH CHANGES",
-        "Review: skipped — (a) pure docs change, one paragraph, trivially reverted",
-        "Review: skipped - (b) the maintainer instructed the skip on 2026-09-18",
-        "Review: skipped – (a) one comment typo, reverted with one click",
+        "Review: skipped — docs-only",
+        "Review: skipped - docs-only",
+        "Review: skipped – docs-only",
+        "Review: skipped — user waived (2026-11-27 02:14 KST)",
     ],
     ids=[
         "accept-emdash",
@@ -160,9 +161,10 @@ def test_physics_cutover_does_not_exempt_lane_or_review() -> None:
         "accept-with-changes-hyphen",
         "accept-endash",
         "accept-with-changes-endash",
-        "skipped-a",
-        "skipped-b",
+        "skipped-emdash",
+        "skipped-hyphen",
         "skipped-endash",
+        "skipped-waived",
     ],
 )
 def test_accepted_review_forms(review: str) -> None:
@@ -283,7 +285,7 @@ def test_multiple_lane_lines_fail_and_name_every_line(lane_lines: tuple[str, ...
         ("Review: codex (separate instance) — REJECT", ACCEPT),
         (ACCEPT, "Review: malformed"),
         (ACCEPT, "Review: opus (separate instance) - ACCEPT WITH CHANGES"),
-        (ACCEPT, "Review: skipped - (a) one comment typo"),
+        (ACCEPT, "Review: skipped - docs-only"),
         (ACCEPT, "Review: skipped - x"),
         (ACCEPT, "Review: <who read it> (separate instance) - ACCEPT"),
         (ACCEPT, "**Review:** malformed"),
@@ -433,7 +435,10 @@ def test_failure_report_names_the_contract_and_the_fields() -> None:
     report = cpb.failure_report(cpb.check("", ENV), ENV)
     assert "Lane: lane:<name>" in report
     assert "(separate instance) - ACCEPT" in report
-    assert "Review: skipped - (a)" in report
+    assert "Review: skipped - docs-only" in report
+    assert "Review: skipped - user waived (<when>)" in report
+    assert "Review: skipped - (a)" not in report
+    assert "Review: skipped - (b)" not in report
     assert "scripts/ci/check_pr_body.py" in report
 
 
@@ -441,6 +446,14 @@ def test_failure_report_names_the_contract_and_the_fields() -> None:
     "review",
     [
         "Review: skipped - x",
+        "Review: skipped — (a) easily reverted docs-only change",
+        "Review: skipped - (b) the maintainer instructed the skip",
+        "Review: skipped — docs-only, one entry",
+        "Review: skipped — user waived",
+        "Review: skipped — user waived ()",
+        "Review: skipped — user waived (   )",
+        "Review: skipped — user waived (<date and time of the instruction, KST>)",
+        "Review: skipped — user waived (time (KST))",
         "Review: skipped — docs only",
         "Review: skipped - a) docs only",
         "Review: skipped - (c) I did not feel like it",
@@ -451,11 +464,14 @@ def test_skipped_without_a_named_exception_fails(review: str) -> None:
     problems = cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", review), ENV)
     assert len(problems) == 1
     assert "`Review:` line" in problems[0]
+    assert "Review: skipped - docs-only" in problems[0]
+    assert "Review: skipped - user waived (<when>)" in problems[0]
 
 
 def test_a_bare_skip_is_told_which_exceptions_exist() -> None:
     problems = cpb.check(body("Physics: none — CI process", "Lane: lane:ci-infra", "Review: skipped - x"), ENV)
-    assert "(a)" in problems[0] and "(b)" in problems[0]
+    assert "Review: skipped - docs-only" in problems[0]
+    assert "Review: skipped - user waived (<when>)" in problems[0]
 
 
 def test_lines_inside_a_code_fence_do_not_count() -> None:

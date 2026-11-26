@@ -333,7 +333,8 @@ def _score_msl_record(
                 _channels, source_end_index=_source_end,
                 dt=getattr(_ts_result, "dt", None) or grid.dt,
                 freqs=freqs_arr, freq_max=self._freq_max, return_detail=True,
-                scale_groups=_groups, _channel_labels=_labels)
+                scale_groups=_groups, _channel_labels=_labels,
+                echo_bound=_ts_result.settling_echo_bound)
     return settling_db_runs, settling_details
 
 
@@ -441,6 +442,7 @@ def _fit_msl_port(
     _complex_dtype, beta0_per_port, driven, extract_msl_nprobe, i_f, jnp, msl_axis_roles,
     msl_ports, n_probes_per_port, p_idx, probe_xs, raw_beta_railed, raw_i1,
     raw_q, raw_v, raw_z0, v_per_port, z0_hj_per_port,
+    raw_fit_span_phase, raw_fit_amplification,
 ):
     n_probes_p = n_probes_per_port[p_idx]
     v_stack = jnp.stack(v_per_port[p_idx], axis=-1)
@@ -462,7 +464,12 @@ def _fit_msl_port(
     raw_beta_railed = raw_beta_railed.at[driven, p_idx, :].set(
         jnp.asarray(res_p["beta_railed"], dtype=bool)
     )
-    return raw_v, raw_i1, raw_z0, raw_q, raw_beta_railed, res_p, z0_fit
+    raw_fit_span_phase = raw_fit_span_phase.at[driven, p_idx, :].set(
+        res_p["fit_span_phase"])
+    raw_fit_amplification = raw_fit_amplification.at[driven, p_idx, :].set(
+        res_p["fit_amplification"])
+    return (raw_v, raw_i1, raw_z0, raw_q, raw_beta_railed, res_p, z0_fit,
+            raw_fit_span_phase, raw_fit_amplification)
 
 
 def _check_msl_extraction(
@@ -521,8 +528,11 @@ def _check_msl_extraction(
                 _clearance_clause = (
                     " This port's probe clearance is satisfied, so "
                     "standing-wave content at the probes is not the "
-                    "cause; refine the mesh or reconcile the rasterized "
-                    "board with the declared one before quoting Z0.")
+                    "cause; read fit_span_phase and fit_amplification at that bin. "
+                    "A finer mesh at fixed cell counts shortens the probe span "
+                    "and does not make the fitted Z0 more accurate. Otherwise "
+                    "reconcile the rasterized board with the declared one "
+                    "(sim.fidelity_report()) before quoting Z0.")
             else:
                 _clearance_clause = (
                     " This port's probe clearance could not be "
@@ -559,7 +569,7 @@ def _dump_msl_record(
     S, Z0_per_run, _reported, beta_first, declared_refs, entries, freqs_arr,
     grid, h_stencils, msl_assembly, msl_planes, n_ports, n_probes_per_port, n_steps,
     num_periods, raw_3probe_dump_path, raw_i1, raw_i1_left, raw_i1_same_index, raw_q,
-    raw_v, raw_z0, s_line_refs, self,
+    raw_v, raw_z0, s_line_refs, self, raw_fit_span_phase, raw_fit_amplification,
 ):
     if raw_3probe_dump_path is not None:
         import json
@@ -674,6 +684,10 @@ def _dump_msl_record(
             production_smatrix=S,
             production_z0=Z0_per_run,
             production_beta=beta_first,
+            fit_span_phase=np.stack([
+                np.asarray(raw_fit_span_phase[p, p, :]) for p in range(n_ports)]),
+            fit_amplification=np.stack([
+                np.asarray(raw_fit_amplification[p, p, :]) for p in range(n_ports)]),
             port_names=np.asarray(tuple(pe.name for pe in entries), dtype=object),
             driven_port_indices=np.arange(n_ports, dtype=np.int64),
         )

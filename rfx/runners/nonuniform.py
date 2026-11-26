@@ -1200,6 +1200,12 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         tfsf=tfsf_pair, _feature_tfsf=True,
         emit_time_series=emit_time_series,
     )
+    from rfx.measurement.echo_bound import runner_echo_bound
+    from rfx.measurement.read_bins import declared_read_bins
+    echo_bound = runner_echo_bound(sim, grid, materials,
+        freqs=declared_read_bins(sim, None if sp_freqs is None else jnp.asarray(sp_freqs, jnp.float32), waveguide_ports=waveguide_port_cfgs),
+        debye=debye_spec, lorentz=lorentz_spec, smoothing=subpixel_smoothing,
+        waveguide_ports=waveguide_port_cfgs)
     if stop_fn is not None:
         # the chunked loop of the progress route (energy stop
         # off, min_steps past the end) with the caller's stop check.
@@ -1219,12 +1225,14 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 return _NS(time_series=d["time_series"],
                            wire_port_sparams=d.get("wire_port_sparams"),
                            lumped_port_sparams=d.get("lumped_port_sparams"),
-                           freqs=d.get("s_param_freqs"), grid=grid, dt=grid.dt)
+                           freqs=d.get("s_param_freqs"), grid=grid, dt=grid.dt,
+                           settling_echo_bound=echo_bound)
             return stop_fn(steps_done, partial)
 
         r = prepared_step.advance(stepping_product, run_nonuniform_until_decay,
             grid, materials,
             decay_by=0.0,
+            echo_bound=echo_bound,
             check_interval=int(stop_interval),
             min_steps=n_steps + 1,
             max_steps=n_steps,
@@ -1249,6 +1257,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         r = prepared_step.advance(stepping_product, run_nonuniform_until_decay,
             grid, materials,
             decay_by=until_decay,
+            echo_bound=echo_bound,
             n_end=n_end,
             advisory=advisory_inputs(sim, dt=grid.dt, n_table=decay_max_steps),
             check_interval=decay_check_interval,
@@ -1351,6 +1360,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     from rfx.model.design_admission import with_design_diagnostics
     from rfx.model.realization_transport import publish_forward_geometry as _forward_geometry
     return with_design_diagnostics(Result(
+        settling_echo_bound=echo_bound,
         diagnostics=tuple(diagnostics) + ((_stop,) if _stop is not None else ()),
         realized_geometry=(_forward_geometry(grid, geometry_record)
                            if lane == "fwd_nonuniform" else geometry_record),

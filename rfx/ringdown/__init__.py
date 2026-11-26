@@ -814,6 +814,12 @@ class RingdownRun:
         self.n_steps = int(n_steps)
         self.grid = grid
         self.dt = grid.dt
+        self.echo_bound: dict[str, Any] | None = None
+        self.echo_dt: float | None
+        try:
+            self.echo_dt = float(grid.dt)
+        except (TypeError, ValueError):
+            self.echo_dt = None
         self.n_start = int(round(float(spec.window_start) * self.n_steps))
         self.n_split = int(round(float(spec.split) * self.n_steps))
         self.n_long = _long_window_start(self.n_steps, spec.window_start)
@@ -945,6 +951,7 @@ class RingdownRun:
 
 
     def _finish(self, result, n_user: int):
+        self.echo_bound = result.settling_echo_bound
         if self.probe_mode:
             from rfx.ringdown._probe_channels import finish_probe_run
             return finish_probe_run(self, result, n_user)
@@ -961,12 +968,15 @@ class RingdownRun:
             n_user, n_int)
         S, report, nc = self._host_report(result, ts_all, n_user)
         if nc is not None:
+            refused_s = (np.full_like(np.asarray(result.s_params), np.nan)
+                         if nc.name == 'echo_bound' else None)
+            value_note = 'NaN' if nc.name == 'echo_bound' else 'None'
             warnings.warn(
                 f"ring-down completion not produced -- {nc.name} failed: "
-                f"{nc.message} Result.ringdown.s_params is None; every other "
+                f"{nc.message} Result.ringdown.s_params is {value_note}; every other "
                 "output of this run is as without ringdown=.", AccuracyWarning, stacklevel=user_stacklevel())
             return stripped._replace(ringdown=RingdownResult(
-                s_params=None, freqs=result.freqs, report=report))
+                s_params=refused_s, freqs=result.freqs, report=report))
         if not report.ok:
             failed = ", ".join(f"{w.name} {w.value:.3e} (bar {w.bar:.3e})"
                                + (f" -- {w.note}" if w.note else "")
@@ -1021,10 +1031,10 @@ class RingdownRun:
                                 w0_relative=state.get("w0_relative"),
                                 s_accumulator_roundoff=state.get(
                                     "s_accumulator_roundoff"), **report_extra)
-        return S, report, None
+        from rfx.ringdown._echo import close_completion
+        return close_completion(self, S, report, grid=result.grid, dt=dt)
 
-    @staticmethod
-    def _check_solver_step(result, step=None) -> None:
+    def _check_solver_step(self, result, step=None) -> None:
         """The run stepped at the grid's ``dt``, or ``_NotCompleted``.
 
         The completion (decimation plan, pole mapping ``log(lambda)/(D dt)``,
@@ -1641,8 +1651,9 @@ class RingdownStop:
         (:func:`_floor_pole`), the largest such decay time over the checks
         (c) rests on;
     (e) the report's passivity and growing-pole witnesses ok on this record,
+    (f) its identification window contains at least 2.05 longest round trips,
 
-    and ends the run at the first check where all five hold. The result is
+    and ends the run at the first check where all six hold. The result is
     ``RingdownRun(n_steps=T)`` finishing the ``T``-step record -- the code
     ``run(n_steps=T, ringdown=spec)`` runs -- with the stop report in
     ``Result.ringdown.stop``. When the record reaches ``n_max`` without a
@@ -1720,7 +1731,7 @@ class RingdownStop:
         return self._check(steps_done, peek).stop
 
     def _check(self, T: int, peek) -> RingdownStopCheck:
-        """Conditions (a)-(e) at a record of ``T`` steps, recorded on the schedule."""
+        """Conditions (a)-(f) at a record of ``T`` steps, recorded on the schedule."""
         import time
 
         t0 = time.perf_counter()
@@ -1741,6 +1752,17 @@ class RingdownStop:
                                f"its peak in [{0.5 * spec.window_start:g} T, T]")
 
         partial = peek()
+        echo_bound = partial.settling_echo_bound
+        self.base.echo_bound = echo_bound
+        if not np.isfinite(echo_bound["tau_max"]):
+            from rfx.errors import RfxRefusal
+            raise RfxRefusal("until_identified: cannot judge: echo delay bound unavailable; use fixed n_steps")
+        from rfx.measurement.record_end import ECHO_BOUND_FACTOR, echo_bound_reason
+        if ((T - round(float(spec.window_start) * T)) * self.dt
+                < ECHO_BOUND_FACTOR * echo_bound['tau_max']):
+            return finish(note='(f) not held: ' + echo_bound_reason(echo_bound))
+
+        rr.echo_bound = self.base.echo_bound
         ts_all = np.asarray(partial.time_series)
         try:
             pms, e_cols, h_cols = rr._rebuild_inputs(partial, ts_all, self.n_user)
@@ -2077,7 +2099,7 @@ class RingdownForward(RingdownRun):
         stripped = _user_geometry(result._replace(time_series=full[:, :n_user]), n_user, n_int)
         completed = self._traced(result, channels)
         warn_if_singular_value_exceeds_one(completed.s_params, completed.freqs, extractor="forward(ringdown)")
-        return stripped._replace(ringdown=completed)
+        return stripped._replace(ringdown=completed, settling_echo_bound=completed._echo_index)
 
     def _traced(self, result, channels) -> RingdownForwardResult:
         if self.probe_mode:
@@ -2195,12 +2217,15 @@ class RingdownForward(RingdownRun):
             status.append(st)
             pole_counts.append(count)
             pole_budgets.append(k_max)
+        from rfx.ringdown._echo import forward_closing_factor
+        closing = forward_closing_factor(self, dt, result.settling_echo_bound, dtype=rdt)
+        out = [value * closing for value in out]
         return RingdownForwardResult(out[0], out[1], result.freqs, channels, accs,
                                      result.s_params, jnp.stack(status), consistency,
                                      jnp.stack(pole_counts), jnp.asarray(pole_budgets), ctx,
                                      poles=poles[0], poles_long=poles[1],
                                      pole_mask=masks[0], pole_mask_long=masks[1],
-                                     cells=cells)
+                                     cells=cells, echo_index=result.settling_echo_bound)
 
 
 _LAZY_EXPORTS = {

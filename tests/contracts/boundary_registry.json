@@ -143,6 +143,26 @@
   ],
   "sites": [
     {
+      "file": "rfx/api/_mesh.py",
+      "function": "_MeshMixin._resolve_conductor_z",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/auto_config.py",
+      "function": "_band_smooth_post_thirds.free_segments",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/auto_config.py",
+      "function": "_conductor_dz_profile",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/auto_config.py",
+      "function": "_conductor_dz_profile.target",
+      "kind": "difference"
+    },
+    {
       "file": "rfx/auto_config.py",
       "function": "_make_dz_profile",
       "kind": "difference"
@@ -526,6 +546,11 @@
     {
       "file": "rfx/model/coax_stamp.py",
       "function": "_coaxial_tem_edge_profile",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/model/conductor_planes.py",
+      "function": "conductor_node_miss",
       "kind": "roll/diff"
     },
     {

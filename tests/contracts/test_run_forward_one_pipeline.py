@@ -608,8 +608,21 @@ def classify(declaration, path, level, differences, ids):
     finish(declaration, path, level, ids, matched, unexplained)
 
 
+def assert_graded_conductor_plane(declaration, path):
+    if declaration not in ('C-sheet', 'C-film') or 'graded' not in path:
+        return
+    from tests.contracts.run_forward_census import PROFILE
+
+    nodes = np.concatenate(([0.], np.cumsum(.001 * np.array(PROFILE))))
+    expected = 4 + int(np.flatnonzero(np.isclose(nodes, .0042, rtol=0, atol=1e-15))[0])
+    record = BUILDERS[declaration](path).realized_geometry()
+    entity, = (e for e in record.entities if e.label == 'thin_conductor[0]')
+    assert entity.plane[:2] == (2, expected)
+
+
 @pytest.mark.parametrize('declaration,path,direction', parameters(ASSEMBLY_ROWS, 'L1'))
 def test_assembly(declaration, path, direction):
+    assert_graded_conductor_plane(declaration, path)
     # Uniform seam spelling resolves before the step. Compare the complete ctx,
     # effective invariants, setup carry, actual scan init and xs. Graded compares
     # its scan builder, not the outer seam's conductor maps.
@@ -662,6 +675,7 @@ def test_assembly(declaration, path, direction):
 
 
 def check_fields(declaration, path, direction=None):
+    assert_graded_conductor_plane(declaration, path)
     port_s = direction == 'a' and declaration in ('P-lumped', 'P-lumped2', 'P-wire-driven') and path in ('uniform', 'graded')
     if port_s:
         pair = port_s_pair(declaration, path)
@@ -726,6 +740,23 @@ def test_fields(declaration, path, direction):
 @pytest.mark.parametrize('declaration,path,direction', parameters(FIELD_ROWS, 'L2', slow=True))
 def test_fields_slow(declaration, path, direction):
     check_fields(declaration, path, direction)
+
+
+@pytest.mark.parametrize('path', [pytest.param('graded', id='C-sheet-off-plane-graded')])
+def test_off_plane_sheet_shared_refusal(path):
+    from rfx import Box, RfxRefusal
+    from tests.contracts.run_forward_census import base_scene
+
+    messages = []
+    for entry in ('run', 'forward'):
+        sim = base_scene(path).add_thin_conductor(
+            Box(((14 - .35) * .001, (6 - .35) * .001, .004),
+                ((20 + .35) * .001, (14 + .35) * .001, .004)))
+        options = {'checkpoint': False} if entry == 'forward' else {}
+        with pytest.raises(RfxRefusal, match='z sheet plane miss') as caught:
+            getattr(sim, entry)(n_steps=150, skip_preflight=True, **options)
+        messages.append(str(caught.value))
+    assert messages[0] == messages[1]
 
 
 @pytest.mark.parametrize('declaration,path,direction', parameters(ADMISSION_ROWS, 'admission', slow=True))

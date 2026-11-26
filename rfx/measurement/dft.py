@@ -170,14 +170,33 @@ def phase(step, freqs, dt, kind='E', *, dtype=None, time_shift=0.):
     return _unit(step, _words(frequencies, float(dt), offset), dtype) * jnp.asarray(dt, dtype=real)
 
 
+def compensated_add(total, compensation, term):
+    """Return the compensated total and rounding compensation; read the total.
+
+    Complex components are compensated separately, in the input dtype.
+    For output cotangents (T, C), total and term receive T and the input
+    compensation receives -T, by cancellation of C. A scan's final
+    compensation alone therefore has zero cotangent to every term.
+    """
+    y = term - compensation
+    new_total = total + y
+    new_compensation = (new_total - total) - y
+    return new_total, new_compensation
+
+
 def accumulate(acc, sample, step, freqs, dt, kind='E', *, total_steps=1,
                window='rect', alpha=.5, window_step=None, time_shift=0.):
     """Add one sampled channel; field dimensions follow the frequency axis."""
-    weight = phase(step, freqs, dt, kind, dtype=acc.dtype, time_shift=time_shift)
+    if not isinstance(acc, tuple) or len(acc) != 2 or any(
+            not hasattr(a, 'shape') or not hasattr(a, 'dtype') for a in acc):
+        raise TypeError('accumulate requires a tuple of two arrays')
+    total, compensation = acc
+    weight = phase(step, freqs, dt, kind, dtype=total.dtype, time_shift=time_shift)
     weight *= dft_window_weight(step if window_step is None else window_step,
                                 total_steps, window, alpha)
     shape = weight.shape + (1,) * jnp.ndim(sample)
-    return (acc + jnp.asarray(sample)[None, ...] * weight.reshape(shape)).astype(acc.dtype)
+    term = (jnp.asarray(sample)[None, ...] * weight.reshape(shape)).astype(total.dtype)
+    return compensated_add(total, compensation, term)
 
 
 def transform(records, freqs, dt, kind='E', *, n_valid=None,
@@ -228,10 +247,11 @@ def _replay(records, spectrum, dt, limit, *, traced, offset, window, alpha):
             unit = _unit(n, spectrum, dtype)
         weight = unit * jnp.asarray(dt, dtype=real)
         weight *= jnp.broadcast_to(dft_window_weight(n, length, window, alpha), n.shape)[:, None]
-        return acc + jnp.einsum('nf,nm->fm', weight, block.astype(dtype),
-                                precision=jax.lax.Precision.HIGHEST), None
+        term = jnp.einsum('nf,nm->fm', weight, block.astype(dtype),
+                          precision=jax.lax.Precision.HIGHEST)
+        return compensated_add(*acc, term), None
 
-    total = jax.lax.scan(body, initial, (steps, flat.reshape(blocks, _BLOCK, -1)))[0]
+    total, _ = jax.lax.scan(body, (initial, initial), (steps, flat.reshape(blocks, _BLOCK, -1)))[0]
     return total.reshape(spectrum.shape[-1], *records.shape[1:])
 
 

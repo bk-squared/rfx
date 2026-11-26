@@ -71,7 +71,6 @@ def _dispatch_plan(
     diagnostics=(),
     n_steps: int | None,
     num_periods: float,
-    # forward-only inputs
     tfsf_material_overrides: tuple = (),
     tfsf_angle_override=None,
     distributed: bool = False,
@@ -80,7 +79,6 @@ def _dispatch_plan(
     emit_time_series: bool = True,
     checkpoint_every: int | None = None,
     n_warmup: int = 0,
-    # run-only inputs
     devices: list | None = None,
     exchange_interval: int = 1,
 ) -> _DispatchPlan:
@@ -118,23 +116,13 @@ def _dispatch_plan(
     from rfx.boundaries.features import admit_ntff, admit_waveguide
     from rfx.measurement import admit_waveguide_entries
     admit_waveguide_entries(self)
-    # A multi-device lane steps no waveguide port and refuses it below, so
-    # the aperture edges are not judged there, as on the runner entries.
     admit_waveguide(self, lane=f"{mode} dispatch",
                     edges=not (distributed or (devices is not None and len(devices) > 1)))
     admit_ntff(self, lane=f"{mode} dispatch")
     from rfx.boundaries.tfsf import admit_simulation
     admit_simulation(self, material_overrides=tfsf_material_overrides)
-    # Constructor checks cover explicit profiles only. Geometry can make
-    # auto mesh non-uniform later, so validate the declared solver against
-    # the completed mesh before ANY Yee lane (including distributed) wins
-    # dispatch. This is execution legality, independent of preflight.
     self._require_mode_the_nonuniform_lane_solves()
-    # Every non-uniform lane below, single-device and distributed, run()
-    # and forward(), has no subgrid and would drop a refinement.
     self._require_no_refinement_on_the_nonuniform_lane()
-    # A point feature one cell off a conductor drawn at the same half
-    # node; run() and forward(), both lanes.
     self._require_no_half_node_split()
     is_nonuniform = self._uses_nonuniform_mesh
 
@@ -161,7 +149,6 @@ def _dispatch_plan(
             raise NotImplementedError("closed_box TFSF requires CPML on all six domain faces")
 
     def _reject_lane_precision(lane: str) -> None:
-        # Only single-device graded Yee carries float64; mixed stays refused.
         if self._precision != "float32" and not (
             self._precision == "float64" and lane in {"run_nonuniform", "fwd_nonuniform"}
         ):
@@ -176,9 +163,6 @@ def _dispatch_plan(
                 "reach the uniform lane, where this knob is honoured."
             )
 
-    # One refusal for both entries (census: one raising line per refusal):
-    # forward() selects the multi-device lanes with distributed=True, run()
-    # with more than one device.
     multi_device = (distributed if mode == "forward"
                     else devices is not None and len(devices) > 1)
     if multi_device and is_nonuniform:
@@ -201,11 +185,6 @@ def _dispatch_plan(
         def _fwd_nu_n_steps() -> int:
             return self._nu_n_steps(num_periods)
 
-        # forward(checkpoint_segments=...) is currently wired only
-        # on the uniform single-device path. Reject loudly elsewhere — both
-        # for distributed=True and for non-uniform meshes — so users don't
-        # get a silent fall-back to the linear-memory scan that this kwarg
-        # was meant to fix.
         if checkpoint_segments is not None and is_nonuniform:
             raise NotImplementedError(
                 "forward(checkpoint_segments=...) is currently wired only "
@@ -214,19 +193,12 @@ def _dispatch_plan(
                 "distributed=True. NU support is tracked as a follow-up."
             )
 
-        # Phase 3: distributed dispatch (V3 lines 842-847).
         if distributed:
             if not is_nonuniform:
                 _n = n_steps if n_steps is not None else self._build_grid().num_timesteps(num_periods=num_periods)
                 _reject_lane_precision("run_distributed")
                 release_inspection(self)
                 return _admit_forward_plan(_DispatchPlan(lane="fwd_distributed", n_steps=_n))
-            # Uniform and graded distributed runners admit PMC faces.
-            # The curl reads the declared magnetic image; no separate
-            # post-H face write is dispatched here. Uniform slabs use
-            # assembled magnetic update factors, while graded slabs
-            # retain zero-padded inverse H spacings. Both preserve a
-            # zero-initialized stored high ghost at zero.
             self._reject_upml_on_nonuniform(
                 "distributed non-uniform forward()")
             _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
@@ -235,15 +207,12 @@ def _dispatch_plan(
             return _admit_forward_plan(_DispatchPlan(lane="fwd_distributed_nu", n_steps=_n))
 
         if is_nonuniform:
-            # Let the NU runner build grid/materials so it can apply the
-            # NU-aware pec_mask and port/source setup against per-axis widths.
             self._reject_upml_on_nonuniform("non-uniform forward()")
             _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
             _reject_lane_precision("fwd_nonuniform")
             release_inspection(self)
             return _admit_forward_plan(_DispatchPlan(lane="fwd_nonuniform", n_steps=_n))
 
-        # Uniform forward lane: the remaining kwargs are NU-only.
         if not emit_time_series:
             raise NotImplementedError(
                 "emit_time_series=False is currently only supported on the "
@@ -272,15 +241,11 @@ def _dispatch_plan(
                 "loss window (measured on the non-uniform lane"
                 ")."
             )
-        # n_steps for the uniform forward lane is resolved by the caller
-        # from the grid it builds and reuses for material assembly.
         release_inspection(self)
         return _admit_forward_plan(_DispatchPlan(lane="fwd_uniform", n_steps=n_steps))
 
-    # mode == "run"
     distributed_run = multi_device
 
-    # ---- Distributed multi-device lane ----
     if distributed_run:
         _n = n_steps
         if _n is None:
@@ -293,7 +258,6 @@ def _dispatch_plan(
         release_inspection(self)
         return _DispatchPlan(lane="run_distributed_nu" if is_nonuniform else "run_distributed", n_steps=_n)
 
-    # ---- Non-uniform mesh lane ----
     if is_nonuniform:
         self._reject_upml_on_nonuniform("non-uniform run()")
         _n = n_steps
@@ -304,14 +268,11 @@ def _dispatch_plan(
         return _DispatchPlan(lane="run_nonuniform", n_steps=_n)
 
 
-    # ---- Subgridded lane (n_steps resolved by caller — refinement ratio
-    # scaling needs the reused grid) ----
     if self._refinement is not None:
         _reject_lane_precision("run_subgridded")
         release_inspection(self)
         return _DispatchPlan(lane="run_subgridded", n_steps=n_steps)
 
-    # ---- Uniform lane (n_steps resolved by caller from the reused grid) ----
     release_inspection(self)
     return _DispatchPlan(lane="run_uniform", n_steps=n_steps)
 

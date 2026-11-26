@@ -5,6 +5,8 @@ Reviews are checked on merged PRs, or on each listed merge-train member.
 Accepted reviews pass. Claimed exceptions remain visible: maintainer instructions
 are informational, while docs/comment exceptions require a readable diff with
 unchanged Python ASTs after docstring removal and no other source-tree edits.
+The forms are ``docs-only`` and ``user waived (<when>)``; merged bodies with
+``(a) <why>`` and ``(b) <why>`` retain the same file-bound and informational rules.
 
 Issues need a lane label, regardless of their body headings. Data-budget
 exceptions remain failing rows. Milestone, unlinked and frozen-data rows remain
@@ -66,6 +68,10 @@ def _load(path: Path, name: str):
 _cpb = _load(_CHECK_PR_BODY, "rfx_check_pr_body")
 # The label name is the gate's own constant, for the same reason.
 _budget = _load(_DATA_BUDGET, "rfx_check_data_budget")
+
+LEGACY_REVIEW_SKIPPED_RE = re.compile(
+    r"^Review: skipped " + _cpb._DASH + r" \((?P<exception>a|b)\) .+$"
+)
 
 
 class Row(NamedTuple):
@@ -143,15 +149,26 @@ def _review_lines(body: str) -> List[str]:
 def review_state(body: str) -> tuple[str, str]:
     """``(state, detail)`` where state is ``ok``, ``skipped`` or ``missing``.
 
-    Uses the gate's own parser, so an accepted body is accepted here.
+    Uses the gate's parser and accepts one legacy exception line in merged bodies.
     """
     problems = _cpb._check_review(_cpb.body_lines(body or ""))
     skipped = [line for line in _review_lines(body) if line.startswith("Review: skipped")]
     if problems:
+        reviews = [line for line in _cpb.body_lines(body or "")
+                   if _cpb.deadorn(line).startswith("Review:")]
+        if len(reviews) == 1 and LEGACY_REVIEW_SKIPPED_RE.fullmatch(reviews[0]):
+            return "skipped", reviews[0].strip()
         return "missing", "no accepted `Review:` line"
     if skipped:
         return "skipped", skipped[0].strip()
     return "ok", ""
+
+
+def _review_is_waived(detail: str) -> bool:
+    legacy = LEGACY_REVIEW_SKIPPED_RE.fullmatch(detail)
+    if legacy:
+        return legacy.group("exception") == "b"
+    return bool(re.match(r"^Review: skipped " + _cpb._DASH + r" user waived \(", detail))
 
 
 def member_numbers(body: str) -> List[int]:
@@ -190,7 +207,7 @@ def review_result(pr: dict) -> tuple[str, str]:
     AST or non-Python source-tree path is named in the failing row.
     """
     state, detail = review_state(pr.get("body") or "")
-    if state != "skipped" or re.match(r"^Review: skipped " + _cpb._DASH + r" \(b\) ", detail):
+    if state != "skipped" or _review_is_waived(detail):
         return state, detail
     diff = pr.get("diff")
     files = diff.get("files") if isinstance(diff, dict) else None
@@ -476,7 +493,7 @@ def fetch_diff(record: dict, head: Optional[str] = None) -> Optional[dict]:
     additions and removals use an empty module on the absent side.
     """
     state, detail = review_state(record.get("body") or "")
-    if state != "skipped" or re.match(r"^Review: skipped " + _cpb._DASH + r" \(b\) ", detail):
+    if state != "skipped" or _review_is_waived(detail):
         return None
     base = record.get("baseRefOid")
     head = head or record.get("headRefOid")

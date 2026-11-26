@@ -568,7 +568,7 @@ def compute_waveguide_s_matrix(
             _homogeneous_reference_materials, _wg_pec_edge_masks, aniso_eps, aniso_inv_eps, conformal_weights, debye, entries,
             extract_multimode_s_matrix, extract_multimode_s_matrix_flux, grid, lorentz, materials, n_steps, normalize,
             np, raw_cfgs, ref_aniso_eps, ref_aniso_inv_eps, ref_conformal, reference_medium, resolve_reported_planes,
-            self, waveguide_plane_positions,
+            self, waveguide_plane_positions, debye_spec, lorentz_spec, subpixel_smoothing,
         )
         _warn_if_ringdown_truncated(
             settling_db_mm, tuple(port_names_mm), num_periods=float(num_periods),
@@ -633,6 +633,10 @@ def compute_waveguide_s_matrix(
     # conformal-PEC accuracy; accuracy measurements made with the mismatch
     # require remeasurement.
 
+    from rfx.measurement.echo_bound import runner_echo_bound
+    from rfx.measurement.read_bins import declared_read_bins
+    echo_bound = runner_echo_bound(self, grid, materials, freqs=declared_read_bins(self, waveguide_ports=cfgs, include_monitors=False), waveguide_ports=cfgs,
+        debye=debye_spec, lorentz=lorentz_spec, smoothing=subpixel_smoothing)
     settling_details = []
     if normalize == "flux":
         from rfx.core.yee import init_materials as _init_vacuum_materials
@@ -660,7 +664,7 @@ def compute_waveguide_s_matrix(
             pec_edge_masks=_wg_pec_edge_masks,
             ref_pec_edge_masks_per_port=ref_pec_edge_masks_per_port,
             checkpoint_segments=checkpoint_segments,
-            return_settling=True, settling_details=settling_details,
+            return_settling=True, settling_details=settling_details, echo_bound=echo_bound,
             sheet_impedance=_wg_sheet_ctx,
             field_dtype=self._resolve_field_dtype(),
         )
@@ -689,7 +693,7 @@ def compute_waveguide_s_matrix(
             ref_aniso_inv_eps=ref_aniso_inv_eps,
             pec_edge_masks=_wg_pec_edge_masks,
             checkpoint_segments=checkpoint_segments,
-            return_settling=True, settling_details=settling_details,
+            return_settling=True, settling_details=settling_details, echo_bound=echo_bound,
             sheet_impedance=_wg_sheet_ctx,
             field_dtype=self._resolve_field_dtype(),
         )
@@ -711,7 +715,7 @@ def compute_waveguide_s_matrix(
             aniso_inv_eps=aniso_inv_eps,
             pec_edge_masks=_wg_pec_edge_masks,
             checkpoint_segments=checkpoint_segments,
-            return_settling=True, settling_details=settling_details,
+            return_settling=True, settling_details=settling_details, echo_bound=echo_bound,
             sheet_impedance=_wg_sheet_ctx,
             field_dtype=self._resolve_field_dtype(),
         )
@@ -996,9 +1000,11 @@ def _compute_waveguide_s_matrix_nu(
         # the uniform normalized/flux lanes). NaN under tracing
         # propagates instead of being max()-eaten.
         _sd_dev, _detail_dev = settling_db_from_port_records(
-            [dev_wg[e.name] for e in original_entries], freq_max=self._freq_max, return_detail=True)
+            [dev_wg[e.name] for e in original_entries],
+            echo_bound=dev_result.settling_echo_bound, freq_max=self._freq_max, return_detail=True)
         _sd_ref, _detail_ref = settling_db_from_port_records(
-            [ref_wg[e.name] for e in original_entries], freq_max=self._freq_max, return_detail=True)
+            [ref_wg[e.name] for e in original_entries],
+            echo_bound=ref_result.settling_echo_bound, freq_max=self._freq_max, return_detail=True)
         settling_runs.append(
             float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
             else max(_sd_dev, _sd_ref))

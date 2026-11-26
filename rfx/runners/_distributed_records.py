@@ -134,7 +134,7 @@ class PlaneRecords(Packed):
                               if flux else (channel, axis, local_index, freqs, local_regions[0]))
                 part.append((number, local_meta, destinations))
             self.parts.append(part)
-            shapes.append(local_shapes)
+            shapes.append(local_shapes + local_shapes)
         dtype = templates[0][0].dtype
         super().__init__(mesh, shapes, dtype)
 
@@ -144,6 +144,8 @@ class PlaneRecords(Packed):
             def branch(args, rank=rank, part=part):
                 local, fields, n = args
                 arrays = self.unpack(local[0], rank)
+                k = len(arrays) // 2
+                arrays = list(zip(arrays[:k], arrays[k:]))
                 meta = [entry[1] for entry in part]
                 if self.flux:
                     grouped = [tuple(arrays[i:i + 4]) for i in range(0, len(arrays), 4)]
@@ -152,7 +154,7 @@ class PlaneRecords(Packed):
                     arrays = [a for group in values for a in group]
                 else:
                     arrays, _ = accumulators.planes(fields, arrays, meta, dt, n)
-                return self.pack(arrays)
+                return self.pack([a[0] for a in arrays] + [a[1] for a in arrays])
             branches.append(branch)
         return self.mapped(buffer, state, step, branches, ranks=ranks)
 
@@ -177,8 +179,8 @@ class PlaneRecords(Packed):
                                 mesh=self.mesh, kind="flux" if self.flux else "planes",
                                 record_size=record_size, x_axis=axes[number])
                       for component, a in enumerate(t[:4] if self.flux else (t.accumulator,))]
-            result.append(t._replace(**dict(zip(("e1_dft", "e2_dft", "h1_dft", "h2_dft")
-                                                if self.flux else ("accumulator",), values))))
+            result.append(accumulators.flux_result(t, values) if self.flux
+                          else accumulators.plane_result(t, values[0]))
         return tuple(result)
 
     def _assemble_host(self, buffer):
@@ -190,8 +192,8 @@ class PlaneRecords(Packed):
             for number, _, destinations in part:
                 for component, destination in enumerate(destinations):
                     result[number][component] = result[number][component].at[:, destination].set(next(arrays))
-        return tuple(t._replace(**dict(zip(("e1_dft", "e2_dft", "h1_dft", "h2_dft")
-                                           if self.flux else ("accumulator",), values)))
+        return tuple(accumulators.flux_result(t, values) if self.flux
+                     else accumulators.plane_result(t, values[0])
                      for t, values in zip(self.templates, result))
 
 

@@ -199,10 +199,10 @@ def _inline_history(mesh, cap, monkeypatch):
         jax.effects_barrier()
     w = np.concatenate(history).astype(np.float64)
     assert len(w) == cap
-    return w, built["n_end"]
+    return w, built["n_end"], float(forced.dt)
 
 
-def _declared_stop(w, n_end, *, interval, thr, min_steps, consecutive=2):
+def _declared_stop(w, n_end, *, interval, thr, min_steps, dt, consecutive=2):
     """The rule, written out: largest W over every boundary k*I (the floor
     1e-12 of it, counted only where W has stopped falling: >= 0.95 of the
     previous boundary's W per 50 steps), running-max reference over boundaries >= n_end."""
@@ -217,7 +217,8 @@ def _declared_stop(w, n_end, *, interval, thr, min_steps, consecutive=2):
         below = below + 1 if (w[count] < thr * ref or (w[count] < 1e-12 * largest and flat)) else 0
         if count >= min_steps:
             rows.append((count, w[count], ref))
-            if below >= consecutive:
+            tau_max = 2 * np.linalg.norm([.024, .022, .034]) * np.sqrt(6) / 299792458.0
+            if below >= consecutive and (count - max(n_end, round(count / 2))) * dt >= 2.05 * tau_max:
                 return count, rows
     return None, rows
 
@@ -228,8 +229,8 @@ def test_stop_is_the_declared_rule_on_an_independent_history(mesh, monkeypatch,
     """The absolute bar of 9 float32 ULP of the largest post-drive reference W_ref accompanies rtol=1e-4 because the graded-periodic arm64 error measured earlier was 1.26e-4 relative at W_ref/1.5e4 but 1.1e-5 absolute, below one float32 ULP of W_ref."""
     from rfx.runners import nonuniform as nu_runner
 
-    cap, thr, min_steps = 600, 1e-3, 100
-    w, n_end = _inline_history(mesh, cap, monkeypatch)
+    cap, thr, min_steps = 2400, 1e-3, 100
+    w, n_end, dt = _inline_history(mesh, cap, monkeypatch)
     loop, returned = nu_runner.run_nonuniform_until_decay, {}
 
     def keep(*args, **kwargs):
@@ -239,7 +240,7 @@ def test_stop_is_the_declared_rule_on_an_independent_history(mesh, monkeypatch,
     monkeypatch.setattr(nu_runner, "run_nonuniform_until_decay", keep)
     for interval in (50, 17):
         expected, rows = _declared_stop(w, n_end, interval=interval, thr=thr,
-                                        min_steps=min_steps)
+                                        min_steps=min_steps, dt=dt)
         result = _cube(mesh).run(until_decay=thr, decay_check_interval=interval,
                                  decay_min_steps=min_steps, decay_max_steps=cap - 1,
                                  skip_preflight=True)
@@ -256,10 +257,10 @@ def test_stop_is_the_declared_rule_on_an_independent_history(mesh, monkeypatch,
 
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
 def test_stopped_record_is_the_forced_prefix(mesh, record_property):
-    stopped = np.asarray(_cube(mesh).run(until_decay=1e-3, decay_max_steps=1000,
+    stopped = np.asarray(_cube(mesh).run(until_decay=1e-3, decay_max_steps=2400,
                                          skip_preflight=True).time_series)
     m = len(stopped)
-    assert m < 1000
+    assert m < 2400
     forced = np.asarray(_cube(mesh).run(until_decay=0, decay_max_steps=m + 60,
                                         skip_preflight=True).time_series)[:m]
     ulp = float(np.max(np.abs(stopped.astype(np.float64) - forced.astype(np.float64)))
@@ -432,7 +433,7 @@ def test_settling_verdict_leads_with_the_stop_line_on_a_cap():
                          skip_preflight=True)
     assert capped.settling_witness["reason"].startswith("until_decay ended at step 600"), \
         capped.settling_witness["reason"]
-    stopped = _cube("uniform").run(until_decay=1e-3, decay_max_steps=1000, skip_preflight=True)
+    stopped = _cube("uniform").run(until_decay=1e-3, decay_max_steps=2400, skip_preflight=True)
     assert not stopped.settling_witness["reason"].startswith("until_decay ended")
 
 
