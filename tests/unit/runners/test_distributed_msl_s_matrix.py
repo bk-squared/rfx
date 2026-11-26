@@ -102,7 +102,7 @@ def compare_records(actual, expected, actual_runs, expected_runs):
 def parity(scene_name, lane, n, length, monkeypatch, mutate=None):
     started = time.monotonic()
     scene = build_scene(scene_name + ('_graded' if lane == 'graded' else ''), excite_all=True)
-    if n == 2:
+    if n in (2, 3):
         grid = scene.sim._build_realized_grid()
         domain = [.012 if scene_name == 'T1' else .0124, .008, .0032]
         required = 2.05 * 2 * np.linalg.norm(domain) * np.sqrt(2.2) / 299792458.0 / float(grid.dt)
