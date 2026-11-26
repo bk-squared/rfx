@@ -68,7 +68,11 @@ from rfx.preflight._not_judged import is_tracer_error, not_judged
 
 from contextlib import contextmanager
 from contextvars import ContextVar
-from typing import cast
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from rfx.grid import Grid
+    from rfx.model.graded_grid import NonUniformGrid
 
 from rfx.geometry.rasterize_grid import GridCoords
 
@@ -422,6 +426,13 @@ class _CampaignStaticsContext:
             self._assembly_exception = exc
 
 
+    def interior_node_lines(self):
+        """Read the context's float64 node spine without absorber padding."""
+        grid = cast("Grid | NonUniformGrid", self.grid)
+        node_lines = cast(list[np.ndarray], self.nodes)
+        return tuple(nodes[pad:grid.shape[a] - getattr(grid, f"pad_{'xyz'[a]}_hi")]
+                     for a, (nodes, pad) in enumerate(zip(node_lines, grid.axis_pads)))
+
     def realized(self, *, strict=False, defer_warnings=False):
         """:class:`_RealizedPEC` from the PRODUCTION assembly (with the
         sheet/wire collectors), once; ``None`` when the assembly
@@ -559,11 +570,17 @@ class _CampaignStaticsContext:
                         solved, cast(GridCoords, self.coords), cast(GridCoords, self.centres), self.cell_sizes,
                         name=entry.material_name, grid=self.grid)
             except self._NARROW_EXCS as exc:
+                from rfx.model.conductor_planes import merged_plane_remedy
+                merge_text = merged_plane_remedy(label, (lo, hi) if lo is not None else None,
+                                                  (getattr(sim, "_auto_z_merges", ())
+                                                   if sim._declared_mesh["_dx"] is None else ()))
+                error = str(exc) if isinstance(exc, ValueError) else f"{type(exc).__name__}: {exc}"
+                if merge_text:
+                    error += " " + merge_text
                 out.append(_EntryRealization(
                     label=label, name=entry.material_name, shape=section, declared_shape=entry.shape,
                     kind="refused",
-                    error=(str(exc) if isinstance(exc, ValueError)
-                           else f"{type(exc).__name__}: {exc}"),
+                    error=error,
                     lo=lo, hi=hi))
                 continue
             if cells is not None:
@@ -893,3 +910,39 @@ def _validate_cfg_assembly(self, _w) -> None:
 
 
 _validate_cfg_assembly.__qualname__ = "_PreflightMixin._validate_cfg_assembly"
+
+
+def realization_node_inputs(sim, record, grid, *, active_axes):
+    """Retain the declared bounds and interior node lines for the judge."""
+    declarations = {f'geometry[{i}]': e.shape for i, e in enumerate(sim._geometry)}
+    declarations.update({f'thin_conductor[{i}]': e.shape for i, e in enumerate(sim._thin_conductors)})
+    bounds = {label: (None if (b := _shape_bounds(shape)) is None else
+                      tuple(tuple(float(v) for v in side) for side in b[:2]))
+              for label, shape in declarations.items()}
+    neighbours = tuple(b for b in bounds.values() if b is not None)
+    lines = {a: tuple(float(v) for v in record.nodes[a][
+        d.padding[0]:d.padding[0] + d.n_cells + 1])
+        for a, d in enumerate(record.domain) if 'xyz'[a] in active_axes}
+    original_domain = getattr(sim._unresolved_domain, "declared", sim._unresolved_domain)
+    domain = tuple(original_domain[a] if a < len(original_domain) and original_domain[a] > 0
+                   else d.declared_length_m
+                   for a, d in enumerate(record.domain))
+    out = {}
+    periods = {a: d.length_m for a, d in enumerate(record.domain)
+               if d.axis in getattr(grid, "periodic_axes", "")}
+    for entity in record.entities:
+        b = bounds.get(entity.label)
+        if b is None or entity.kind not in ('sheet', 'lossy'):
+            continue
+        plane_spec = entity.plane
+        if entity.kind == 'lossy' and plane_spec is None:
+            from rfx.model.thin_conductors import dc_film_plane
+            a, k = dc_film_plane(declarations[entity.label], grid)
+            plane_spec = (a, k, float(record.nodes[a][k]))
+        if entity.kind in ('sheet', 'lossy') and plane_spec is not None:
+            a, _, plane = plane_spec
+            if 'xyz'[a] not in active_axes:
+                continue
+            out[entity.label] = ((lines[a], b, a, neighbours, plane,
+                                  (0., domain[a]), periods.get(a)),)
+    return out

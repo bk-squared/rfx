@@ -42,6 +42,7 @@ class _BandSeg(NamedTuple):
     verbatim: tuple | None = None
     emax_lo: float | None = None
     emax_hi: float | None = None
+    thirds_floor: float = 0.0
 
 
 class _Anchor(NamedTuple):
@@ -308,6 +309,9 @@ def _band_realize_protected(seg: _BandSeg, lim_lo: float | None,
             n += 1
             continue
         break
+    if (seg.split_lo or seg.split_hi) and d / 3 < seg.thirds_floor:
+        return _band_realize_protected(
+            seg._replace(split_lo=False, split_hi=False, verbatim=None), lim_lo, lim_hi)
     cells = [d] * n
     if seg.split_lo:
         cells = [d / 3, d * 2 / 3] + cells[1:]
