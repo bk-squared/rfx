@@ -29,6 +29,8 @@ class EdgeAwareProfileRefusal(RfxRefusal):
     route_boundary_cell: float | None
     _rule: tuple[float, float, float | None, float]
     _route_follows_dx: bool
+    _single_axis: bool
+    _route_calls: list[tuple[str, float | None, float | None, str]]
 
 
 class RfxUnsupported(RfxRefusal, NotImplementedError):

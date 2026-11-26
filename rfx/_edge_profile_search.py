@@ -10,8 +10,11 @@ from math import ceil, log
 
 import numpy as np
 from scipy.optimize import linprog
+from scipy.sparse import csr_matrix, vstack
+from scipy.sparse.csgraph import structural_rank
+from scipy.sparse.linalg import lsqr
 
-from rfx.errors import EdgeAwareProfileRefusal, RfxRefusal
+from rfx.errors import EdgeAwareProfileRefusal
 
 
 _FLOOR = 0.1
@@ -57,9 +60,9 @@ def _solve(objective, inequalities, limits, equalities, targets, bounds, *, allo
     try:
         result = linprog(
             np.asarray(objective, dtype=np.float64),
-            A_ub=np.asarray(inequalities, dtype=np.float64) if len(inequalities) else None,
+            A_ub=_matrix(inequalities, len(bounds)) if len(inequalities) else None,
             b_ub=np.asarray(limits, dtype=np.float64) if len(limits) else None,
-            A_eq=np.asarray(equalities, dtype=np.float64) if len(equalities) else None,
+            A_eq=_matrix(equalities, len(bounds)) if len(equalities) else None,
             b_eq=np.asarray(targets, dtype=np.float64) if len(targets) else None,
             bounds=bounds, method="highs-ds", options=_OPTIONS,
         )
@@ -72,6 +75,29 @@ def _solve(objective, inequalities, limits, equalities, targets, bounds, *, allo
     if not result.success:
         raise RuntimeError(f"edge-aware linear solve failed: {result.message}")
     return result
+
+
+def _matrix(rows, size):
+    values, columns, starts = [], [], [0]
+    for row in rows:
+        for index, value in row.items():
+            if value:
+                columns.append(index)
+                values.append(value)
+        starts.append(len(values))
+    return csr_matrix((values, columns, starts), shape=(len(rows), size), dtype=np.float64)
+
+
+def _check_ceiling(lo, hi, dx, boundary_cell, *, minimum=0):
+    from rfx.model.graded_profile import _MAX_PROFILE_CELLS
+
+    free = hi - lo - (2.0 * boundary_cell if boundary_cell is not None else 0.0)
+    count = max(minimum, max(0, ceil(free / dx - 1e-9)) + (2 if boundary_cell is not None else 0))
+    if count > _MAX_PROFILE_CELLS:
+        raise ValueError(
+            f"band profile would need {count} cells, more than the "
+            f"{_MAX_PROFILE_CELLS} cell ceiling (a sliver segment or a "
+            "ratio close to 1 is driving the count)")
 
 
 def _bounds(event, floor):
@@ -130,20 +156,16 @@ def _run_problem(left, right, state, count, floor, ratio, *, external=False, len
     inequalities, limits = [], []
     for index in range(size - 1):
         for a, b in ((index, index + 1), (index + 1, index)):
-            row = np.zeros(size)
-            row[a], row[b] = 1.0, -ratio
-            inequalities.append(row)
+            inequalities.append({a: 1.0, b: -ratio})
             limits.append(0.0)
     equalities, targets = [], []
     span = np.ones(size)
     span[0], span[-1] = left.right, right.left
     if length:
-        equalities.append(span)
+        equalities.append(dict(enumerate(span)))
         targets.append(right.position - left.position)
     if right.face and not external:
-        row = np.zeros(size)
-        row[-1], row[-2] = 1.0, -1.0
-        equalities.append(row)
+        equalities.append({size - 1: 1.0, size - 2: -1.0})
         targets.append(0.0)
     return inequalities, limits, equalities, targets, bounds, span
 
@@ -208,32 +230,30 @@ def _backward(events, floor, ratio):
 
 def _exact_vertex(result, inequalities, limits, equalities, targets, bounds):
     """Re-solve every equality and active ratio/cell bound as one float64 system."""
-    rows, rhs = list(equalities), list(targets)
-    for row, limit in zip(inequalities, limits):
-        scale = max(abs(limit), float(np.max(np.abs(np.asarray(row) * result.x))), np.finfo(float).tiny)
-        if abs(float(np.dot(row, result.x)) - limit) <= 1e-9 * scale:
-            rows.append(row)
-            rhs.append(limit)
+    matrix = _matrix(inequalities, len(bounds))
+    limits = np.asarray(limits, dtype=np.float64)
+    scale = np.maximum(np.abs(limits), np.asarray(abs(matrix).multiply(abs(result.x)).max(axis=1).toarray()).ravel())
+    active = abs(matrix @ result.x - limits) <= 1e-9 * np.maximum(scale, np.finfo(float).tiny)
+    rows, rhs = [], list(targets) + list(limits[active])
     for index, (low, high) in enumerate(bounds):
         for bound in (low, high):
             if bound is not None and np.isfinite(bound) and abs(result.x[index] - bound) <= 1e-9 * max(abs(bound), np.finfo(float).tiny):
-                row = np.zeros(len(bounds))
-                row[index] = 1.0
-                rows.append(row)
+                rows.append({index: 1.0})
                 rhs.append(bound)
-    matrix = np.asarray(rows, dtype=np.float64)
+    matrix = vstack((_matrix(equalities, len(bounds)), matrix[active], _matrix(rows, len(bounds))), format="csr")
     target = np.asarray(rhs, dtype=np.float64)
     try:
-        exact, _, rank, _ = np.linalg.lstsq(matrix, target, rcond=None)
+        exact = lsqr(matrix, target, atol=1e-14, btol=1e-14, iter_lim=20 * len(bounds))[0]
     except np.linalg.LinAlgError as exc:
         raise RuntimeError(f"edge-aware active vertex solve failed: {exc}") from exc
-    if rank != len(bounds) or np.max(np.abs(matrix @ exact - target)) > 1e-9:
+    if structural_rank(matrix) != len(bounds) or np.max(np.abs(matrix @ exact - target)) > 1e-9:
         raise RuntimeError("edge-aware active vertex system is inconsistent or singular")
     return exact
 
 
 def _whole_axis(events, counts, floor, ratio):
-    bounds, spans, edge_indices = [], [], {}
+    bounds: list[tuple[float, float | None]] = []
+    spans, edge_indices = [], {}
     if not events[0].face:
         bounds.append(_bounds(events[0], floor))
     for left, right, count in zip(events, events[1:], counts):
@@ -253,22 +273,15 @@ def _whole_axis(events, counts, floor, ratio):
     bounds.append((floor, _CEILING))
     equalities, targets = [], []
     for terms, gap in spans:
-        row = np.zeros(cell_count + 1)
-        for index, coefficient in terms.items():
-            row[index] = coefficient
-        equalities.append(row)
+        equalities.append(terms)
         targets.append(gap)
     inequalities, limits = [], []
     for index in range(cell_count - 1):
         for a, b in ((index, index + 1), (index + 1, index)):
-            row = np.zeros(cell_count + 1)
-            row[a], row[b] = 1.0, -ratio
-            inequalities.append(row)
+            inequalities.append({a: 1.0, b: -ratio})
             limits.append(0.0)
     for index in range(cell_count):
-        row = np.zeros(cell_count + 1)
-        row[-1], row[index] = 1.0, -1.0
-        inequalities.append(row)
+        inequalities.append({cell_count: 1.0, index: -1.0})
         limits.append(0.0)
     objective = np.zeros(cell_count + 1)
     objective[-1] = -1.0
@@ -276,12 +289,32 @@ def _whole_axis(events, counts, floor, ratio):
     if result is None:
         raise RuntimeError("edge-aware interval path has no whole-axis vertex")
     exact = _exact_vertex(result, inequalities, limits, equalities, targets, bounds)
-    return exact[:-1], edge_indices
+    floor_star = max(floor, min(float(exact[-1]), *(high for _, high in bounds[:-1] if high is not None)))
+    bounds = [(max(low, floor_star), high) for low, high in bounds[:-1]]
+    inequalities = inequalities[:2 * (cell_count - 1)]
+    limits = limits[:2 * (cell_count - 1)]
+    for index in range(cell_count - 1):
+        for sign in (-1.0, 1.0):
+            inequalities.append({index: sign, index + 1: -sign, cell_count + index: -1.0})
+            limits.append(0.0)
+    bounds.extend([(0.0, None)] * (cell_count - 1))
+    objective = np.concatenate((np.zeros(cell_count), np.ones(cell_count - 1)))
+    result = _solve(objective, inequalities, limits, equalities, targets, bounds)
+    if result is None:
+        raise RuntimeError("edge-aware total-variation stage lost its optimal floor")
+    exact = _exact_vertex(result, inequalities, limits, equalities, targets, bounds)
+    return exact[:cell_count], edge_indices
 
 
 def _search_cells(lo, hi, dx, faces, edges, ratio, boundary_cell, edge_offset, *, feasible_only=False):
     """Return normalized cells and edge indices, or None for an empty feasible set."""
+    _check_ceiling(lo, hi, dx, boundary_cell)
     events = _events(lo, hi, dx, faces, edges, boundary_cell, edge_offset)
+    minimum = int(not events[0].face) + sum(
+        _count_window(left, right, _State(*_bounds(left, _FLOOR)), _FLOOR, ratio).start
+        + int(not right.face) for left, right in zip(events, events[1:])
+    )
+    _check_ceiling(lo, hi, dx, boundary_cell, minimum=minimum)
     forward = _forward(events, _FLOOR, ratio)
     backward = _backward(events, _FLOOR, ratio)
     if bool(forward[-1]) != bool(backward[0]):
@@ -298,7 +331,10 @@ def _search_cells(lo, hi, dx, faces, edges, ratio, boundary_cell, edge_offset, *
         else:
             high = middle
     final = _forward(events, low, ratio, costs=True)[-1]
+    if not final:
+        raise RuntimeError(f"edge-aware final interval set is empty: drawing={(lo, hi, faces, edges)!r}")
     state = min(final, key=lambda item: item.cost)
+    _check_ceiling(lo, hi, dx, boundary_cell, minimum=state.cost)
     counts = []
     while state.parent is not None:
         counts.append(state.count)
@@ -347,30 +383,51 @@ def _search_profile(lo, hi, dx, faces, edges, ratio, boundary_cell, edge_offset,
         raise RuntimeError(f"edge-aware search internal error on axis {axis}: {drawing}: {exc}") from exc
 
 
-def _find_route(drawings, dx, ratio, boundary_cell, edge_offset, *, pins_x=False):
-    """Scan the whole requested drawing; keep the building end of 12 bisections."""
+def _route_builds(drawings, candidate, ratio, pin, edge_offset, *, exact=False):
     from rfx.mesh_edges import _today_profile, edge_aware_profile
 
-    def builds(candidate):
-        pin = dx if pins_x else None if boundary_cell is None else float(boundary_cell)
-        if pin is None:
-            pin = candidate
-        for axis, lo, hi, faces, edges in drawings:
-            ordered = sorted(edges, key=lambda edge: edge.position)
+    for axis, lo, hi, faces, edges in drawings:
+        ordered = sorted(edges, key=lambda edge: edge.position)
+        try:
+            if exact:
+                with _axis_call(axis):
+                    edge_aware_profile(lo, hi, candidate, faces=faces, sheet_edges=ordered,
+                                       max_ratio=ratio, boundary_cell=pin, edge_offset=edge_offset)
+                continue
+            _today_profile(lo, hi, candidate, sorted({lo, hi, *faces}), ordered,
+                           ratio, pin, edge_offset)
+        except ValueError:
+            if exact:
+                return False
             try:
-                _today_profile(lo, hi, candidate, sorted({lo, hi, *faces}), ordered,
-                               ratio, pin, edge_offset)
+                _check_ceiling(lo, hi, candidate, pin)
             except ValueError:
-                try:
-                    feasible = _search_cells(lo, hi, candidate, faces, ordered, ratio, pin,
-                                             edge_offset, feasible_only=True)
-                except RuntimeError as exc:
-                    raise RuntimeError(f"route search failed on axis {axis}, drawing="
-                                       f"{(lo, hi, faces, edges)!r}: {exc}") from exc
-                if not feasible:
-                    return False
-        return True
+                return False
+            try:
+                feasible = _search_cells(lo, hi, candidate, faces, ordered, ratio, pin,
+                                         edge_offset, feasible_only=True)
+            except ValueError:
+                return False
+            except RuntimeError as exc:
+                raise RuntimeError(f"route search failed on axis {axis}, drawing="
+                                   f"{(lo, hi, faces, edges)!r}: {exc}") from exc
+            if not feasible:
+                return False
+    return True
 
+
+def _find_route(drawings, dx, ratio, boundary_cell, edge_offset, *, pins_x=False):
+    """Scan one axis group, retaining its building end through 12 bisections."""
+    def pin(candidate):
+        return dx if pins_x else candidate if boundary_cell is None else float(boundary_cell)
+
+    def builds(candidate):
+        return _route_builds(drawings, candidate, ratio, pin(candidate), edge_offset)
+
+    if builds(dx):
+        if not _route_builds(drawings, dx, ratio, pin(dx), edge_offset, exact=True):
+            raise RuntimeError(f"route feasibility lost its profile: drawing={drawings!r}")
+        return dx, pin(dx)
     refused = dx
     for step in range(1, 51):
         candidate = dx * (1.0 - 0.01 * step)
@@ -382,18 +439,9 @@ def _find_route(drawings, dx, ratio, boundary_cell, edge_offset, *, pins_x=False
                     building = middle
                 else:
                     refused = middle
-            pin = dx if pins_x else None if boundary_cell is None else float(boundary_cell)
-            if pin is None:
-                pin = building
-            for axis, lo, hi, faces, edges in drawings:
-                try:
-                    with _axis_call(axis):
-                        edge_aware_profile(lo, hi, building, faces=faces, sheet_edges=edges,
-                                           max_ratio=ratio, boundary_cell=pin,
-                                           edge_offset=edge_offset)
-                except RfxRefusal:
-                    raise RuntimeError(f"route feasibility lost its profile on axis {axis}")
-            return building, pin
+            if not _route_builds(drawings, building, ratio, pin(building), edge_offset, exact=True):
+                raise RuntimeError(f"route feasibility lost its profile: drawing={drawings!r}")
+            return building, pin(building)
         refused = candidate
     return None, None
 
@@ -481,40 +529,49 @@ def _refusal_text(refusal):
     ends = "free" if boundary_cell is None else repr(boundary_cell)
     lines.append(f"Rule: max_ratio={ratio!r}, edge_offset={edge_offset!r}, end cells={ends}, "
                  f"dx ceiling={dx!r} m (pinned ends exempt), dx/10 floor={dx / 10!r} m.")
-    if refusal.route_dx is None:
-        profile_name = "d<axis>_profile" if refusal.axis == "unspecified" else f"d{refusal.axis}_profile"
-        lines.append(f"No dx' builds down to dx/2; supply a hand {profile_name} "
-                     "obeying this rule and the drawn faces and sheet-edge offsets.")
-    else:
-        route = _inward(refusal.route_dx)
-        boundary = route if refusal._route_follows_dx else repr(refusal.route_boundary_cell)
-        lines.append(f"Use edge_aware_profiles(..., dx={route}, boundary_cell={boundary}), "
-                     "the largest dx' found below dx on a 1 % grid (12 bisection steps); "
-                     f"keep Simulation(dx={dx!r}) unchanged. This route builds the whole requested call.")
+    complete = True
+    for axes, route_dx, pin, printed in refusal._route_calls:
+        if route_dx is None:
+            complete = False
+            lines.append(f"No dx' builds group axes={axes!r} down to dx/2; "
+                         "move the drawing to one of the named nearest gaps.")
+            continue
+        boundary = printed if refusal._route_follows_dx and axes != "x" else repr(pin)
+        if refusal._single_axis:
+            call = f"edge_aware_profile(..., dx={printed}, boundary_cell={boundary})"
+        else:
+            call = f"edge_aware_profiles(..., axes={axes!r}, dx={printed}, boundary_cell={boundary})"
+        preference = "keeps dx" if route_dx == dx else "the largest dx' found below dx on a 1 % grid (12 bisection steps)"
+        lines.append(f"Use {call}, {preference}.")
+    if complete:
+        claim = "This route builds the whole axis" if refusal._single_axis else "These calls together build every requested axis"
+        lines.append(f"{claim}; keep Simulation(dx={dx!r}) unchanged.")
     return "\n".join(lines)
 
 
-def _complete_refusal(refusal, drawings, dx, ratio, boundary_cell, edge_offset, *, pins_x=False):
-    try:
-        refusal.route_dx, refusal.route_boundary_cell = _find_route(
-            drawings, dx, ratio, boundary_cell, edge_offset, pins_x=pins_x,
-        )
-    except RuntimeError as exc:
-        raise RuntimeError(f"edge-aware route internal error on axis {refusal.axis}, drawing={drawings!r}: {exc}") from exc
-    refusal._route_follows_dx = not pins_x and boundary_cell is None
-    if refusal.route_dx is not None:
-        from rfx.mesh_edges import edge_aware_profile
-
-        printed_dx = float(_inward(refusal.route_dx))
-        printed_pin = printed_dx if refusal._route_follows_dx else refusal.route_boundary_cell
-        for axis, lo, hi, faces, edges in drawings:
-            try:
-                with _axis_call(axis):
-                    edge_aware_profile(lo, hi, printed_dx, faces=faces, sheet_edges=edges,
-                                       max_ratio=ratio, boundary_cell=printed_pin,
-                                       edge_offset=edge_offset)
-            except RfxRefusal as exc:
-                raise RuntimeError(f"rounded route failed on axis {axis}, drawing={drawings!r}") from exc
+def _complete_refusal(refusal, drawings, dx, ratio, boundary_cell, edge_offset, *, single=False):
+    groups = [drawings] if single else [
+        [drawing for drawing in drawings if drawing[0] == "x"],
+        [drawing for drawing in drawings if drawing[0] in "yz"],
+    ]
+    refusal._single_axis = single
+    refusal._route_calls = []
+    refusal._route_follows_dx = boundary_cell is None
+    for group in filter(None, groups):
+        axes = "".join(drawing[0] for drawing in group)
+        pins_x = not single and axes == "x"
+        try:
+            route_dx, pin = _find_route(group, dx, ratio, boundary_cell, edge_offset, pins_x=pins_x)
+            printed = "none" if route_dx is None else repr(dx) if route_dx == dx else _inward(route_dx)
+            if route_dx is not None:
+                printed_pin = float(printed) if boundary_cell is None and not pins_x else pin
+                if not _route_builds(group, float(printed), ratio, printed_pin, edge_offset, exact=True):
+                    printed = repr(route_dx)
+        except RuntimeError as exc:
+            raise RuntimeError(f"edge-aware route internal error on axis {refusal.axis}, drawing={group!r}: {exc}") from exc
+        refusal._route_calls.append((axes, route_dx, pin, printed))
+        if any(drawing[0] == refusal.axis for drawing in group):
+            refusal.route_dx, refusal.route_boundary_cell = route_dx, pin
     refusal.args = (_refusal_text(refusal),)
     return refusal
 
@@ -536,5 +593,5 @@ def _fallback(lo, hi, dx, faces, edges, ratio, boundary_cell, edge_offset):
     refusal._route_follows_dx = False
     if not defer_route:
         _complete_refusal(refusal, [(axis, lo, hi, faces, edges)], dx, ratio,
-                          boundary_cell, edge_offset)
+                          boundary_cell, edge_offset, single=True)
     raise refusal
