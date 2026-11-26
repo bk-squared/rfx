@@ -336,8 +336,7 @@ def compute_coaxial_line_reflection(
     src_port = _CoaxPort(
         position=(center_xy[0], center_xy[1], (z_src - grid.pad_z_lo) * dz),
         face="top", pin_length=dz, pin_radius=a, outer_radius=b,
-        impedance=port.impedance,
-        freq_min=port.freq_min,
+        impedance=port.impedance, freq_min=port.freq_min,
         excitation=port.excitation if calculator_drive(True) else None,
     )
     line = build_coax_line(
@@ -784,15 +783,13 @@ def compute_coaxial_two_port(
     src_port_top = _CoaxPort(
         position=(center_xy[0], center_xy[1], (z_src_top - grid.pad_z_lo) * dz),
         face="top", pin_length=dz, pin_radius=a, outer_radius=b,
-        impedance=port.impedance,
-        freq_min=port.freq_min,
+        impedance=port.impedance, freq_min=port.freq_min,
         excitation=port.excitation if calculator_drive(True) else None,
     )
     src_port_bot = _CoaxPort(
         position=(center_xy[0], center_xy[1], (z_src_bot - grid.pad_z_lo) * dz),
         face="bottom", pin_length=dz, pin_radius=a, outer_radius=b,
-        impedance=port.impedance,
-        freq_min=port.freq_min,
+        impedance=port.impedance, freq_min=port.freq_min,
         excitation=port.excitation if calculator_drive(True) else None,
     )
     line = build_coax_line(
@@ -1379,8 +1376,7 @@ def compute_coax_msl_transition(
     src_port = _CoaxPort(
         position=(center_xy[0], center_xy[1], (z_src - grid.pad_z_lo) * dz),
         face="bottom", pin_length=dz, pin_radius=a, outer_radius=b,
-        impedance=port.impedance,
-        freq_min=port.freq_min,
+        impedance=port.impedance, freq_min=port.freq_min,
         excitation=port.excitation if calculator_drive(True) else None,
     )
     line = build_coax_line(
