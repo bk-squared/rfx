@@ -789,8 +789,11 @@ def test_source_comparison_propagates_parse_errors() -> None:
 
 
 @pytest.mark.parametrize("batch", [False, True])
-def test_maintainer_skip_is_informational(batch, batch_payload) -> None:
-    body = "Review: skipped — (b) maintainer instruction"
+@pytest.mark.parametrize("body", [
+    "Review: skipped — user waived (2026-11-27 02:14 KST)",
+    "Review: skipped — (b) maintainer instruction",
+], ids=["waived", "legacy-b"])
+def test_maintainer_skip_is_informational(batch, batch_payload, body) -> None:
     if batch:
         data = batch_payload
         next(iter(data["member_index"].values()))["body"] = body
@@ -799,6 +802,48 @@ def test_maintainer_skip_is_informational(batch, batch_payload) -> None:
     text, count = audit.report(data)
     assert count == 0
     assert body in text
+
+
+@pytest.mark.parametrize("body", [
+    "Review: skipped — docs-only",
+    "Review: skipped — (a) docs only, one paragraph, trivially reverted",
+], ids=["docs-only", "legacy-a"])
+def test_docs_skip_reads_files_and_counts_as_skipped(body, monkeypatch) -> None:
+    assert audit.review_state(body) == ("skipped", body)
+    record = pr(1, body)
+    assert audit.review_result(record) == ("missing", body + ": diff not read")
+    record["diff"] = {"files": [{"filename": "docs/guide.md"}]}
+    assert audit.review_result(record) == ("skipped", body)
+    record["diff"] = {"files": [{"filename": "rfx/core.py",
+                                 "before": "value = 1", "after": "value = 2"}]}
+    assert audit.review_result(record) == ("missing", body + ": rfx/core.py")
+    calls = []
+
+    def view(args):
+        calls.append(args)
+        return {"merge_base_commit": {"sha": "c" * 40},
+                "files": [{"filename": "docs/guide.md", "status": "modified"}]}
+
+    monkeypatch.setattr(audit, "_gh_one", view)
+    record.update(baseRefOid="a" * 40, headRefOid="b" * 40)
+    assert audit.fetch_diff(record)["files"] == [
+        {"filename": "docs/guide.md", "status": "modified"},
+    ]
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("body", [
+    "Review: skipped — user waived (2026-11-27 02:14 KST)",
+    "Review: skipped — (b) maintainer instruction",
+], ids=["waived", "legacy-b"])
+def test_waived_skip_does_not_fetch_files(body, monkeypatch) -> None:
+    def refuse(args):
+        raise AssertionError("unexpected file read")
+
+    monkeypatch.setattr(audit, "_gh_one", refuse)
+    assert audit.review_state(body) == ("skipped", body)
+    assert audit.fetch_diff({"body": body, "baseRefOid": "a" * 40,
+                             "headRefOid": "b" * 40}) is None
 
 
 def test_milestone_row_is_informational() -> None:

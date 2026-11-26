@@ -251,13 +251,16 @@ closes, because a line contradicting the
 angle-bracketed span is an unedited stub and fails; a name that merely contains
 brackets, such as `claude <noreply@anthropic.com>`, is fine.
 
-Two exceptions take a `Review: skipped` line, and the reason must open with the
-literal `(a)` or `(b)` so a later audit can tell which was claimed:
+Two exceptions take a `Review: skipped` line: an easily reverted pure docs/comment
+change, or a maintainer instruction to skip:
 
 ```
-Review: skipped — (a) <easily reverted pure docs/comment change>
-Review: skipped — (b) <the maintainer instructed the skip>
+Review: skipped — docs-only
+Review: skipped — user waived (<when>)
 ```
+
+Replace `<when>` with the instruction's date and time, never its text. The value
+must contain non-whitespace text and no `<`, `>`, `(` or `)`.
 
 The separator before the verdict may be an em dash, an en dash or a plain
 hyphen, and the failure text names all three. Both lines must start flush left:
@@ -298,7 +301,7 @@ It reports what no single-PR gate can see, over the last seven days:
 | row | why it is listed |
 |---|---|
 | merged PR with no accepted `Review:` line | checked on each listed merge-train member for batches; missing or invalid reviews make the run red |
-| merged PR claiming `Review: skipped` | informational for `(b)`; `(a)` requires readable files with no path under `rfx/`, `tests/` or `scripts/`, including each batch member |
+| merged PR claiming `Review: skipped` | informational for `user waived (<when>)` and legacy `(b)`; `docs-only` and legacy `(a)` require readable files with no path under `rfx/`, `tests/` or `scripts/`, including each batch member |
 | issue opened with no `lane:*` label | invisible to `gh issue list -l lane:...`, so no session can find it |
 | merged PR closing an issue outside every open milestone | informational campaign context; never red |
 | merged PR closing no issue | INFORMATIONAL only, never red: housekeeping legitimately closes nothing, and this was 65 of 102 merged PRs the week the report was written |

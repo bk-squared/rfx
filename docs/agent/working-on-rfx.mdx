@@ -171,9 +171,11 @@ finding list and confirms each one is closed, and a fresh-eyes review that recei
 list. The first looks at the places that were fixed; the second looks at what the
 fixing introduced.
 
-Two exceptions, and only two: (a) an easily reverted pure docs or comment change, and
-(b) the maintainer said to skip. Either one is recorded on the `Review: skipped` line with its
-literal `(a)` or `(b)`, so the weekly audit can say which was claimed.
+Two exceptions, and only two: an easily reverted pure docs or comment change uses
+`Review: skipped — docs-only`; a maintainer instruction to skip uses
+`Review: skipped — user waived (<when>)`. Replace `<when>` with the instruction's
+date and time, never its text. The value must contain non-whitespace text and no
+`<`, `>`, `(` or `)`. An em dash, en dash or hyphen may separate the form.
 
 ## Landing: the merge train
 
