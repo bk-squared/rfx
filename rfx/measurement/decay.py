@@ -31,6 +31,7 @@ from rfx._warning_origin import user_stacklevel
 from rfx.errors import AccuracyWarning, RfxRefusal
 
 import math
+from collections.abc import Mapping
 from typing import NamedTuple
 from dataclasses import dataclass, field
 
@@ -294,6 +295,8 @@ class DecayStop:
     last: tuple | None = None
     decay_checks: list = field(default_factory=list)
     n_d: int = 0
+    echo_bound: Mapping[str, float | str | None] | None = None
+    dt: float | None = None
 
     def __post_init__(self):
         if self.enabled and self.consecutive < 2:
@@ -325,7 +328,8 @@ class DecayStop:
         self.last = (count, w, self.ref, self.wmax)
         if count >= self.min_steps:
             self.decay_checks.append((count, w, self.ref))
-            if self.stop is None and self.below >= self.consecutive and count >= self.n_d:
+            if (self.stop is None and self.below >= self.consecutive and count >= self.n_d
+                    and echo_stop_ready(self, count)):
                 self.stop = count
                 self.criterion = ("threshold" if self.below_thr >= self.below
                                   else "float32_floor")
@@ -364,6 +368,8 @@ class FluxStop:
     stop: int | None = None
     history: list = field(default_factory=list)
     drive_reason: str | None = None
+    echo_bound: Mapping[str, float | str | None] | None = None
+    dt: float | None = None
 
     def check(self, count, power):
         if count % self.interval:
@@ -374,16 +380,42 @@ class FluxStop:
         if (self.n_end is not None and count >= max(self.min_steps, self.n_end, self.n_d)
                 and self.peak > 0.0 and env < self.thr * self.peak):
             self.below += 1
-            if self.stop is None and self.below >= self.consecutive and self.thr > 0:
+            if (self.stop is None and self.below >= self.consecutive and self.thr > 0
+                    and echo_stop_ready(self, count)):
                 self.stop = count
         else:
             self.below = 0
         return self.stop
 
 
+def echo_stop_ready(rule, count):
+    """A would-stop record must contain the complete identification window."""
+    from rfx.measurement.record_end import ECHO_BOUND_FACTOR
+
+    return (rule.echo_bound is None or
+            (int(count) - max(int(rule.n_end or 0), round(0.5 * int(count)))) * float(rule.dt)
+            >= ECHO_BOUND_FACTOR * float(rule.echo_bound['tau_max']))
+
+
+def _decay_echo_bound(grid, materials, waveguide_ports, echo_bound, debye, lorentz):
+    """Refuse an enabled decay stop when its global-domain bound is unavailable."""
+    from rfx.measurement.record_end import echo_delay_bound
+
+    bound = (echo_bound if echo_bound is not None else echo_delay_bound(
+        grid, materials=materials, waveguide_ports=waveguide_ports, debye=debye, lorentz=lorentz))
+    if bound.get('reason'):
+        raise RfxRefusal(f"until_decay: {bound['reason']}; use fixed n_steps")
+    tau_max = float(bound['tau_max'])
+    if not math.isfinite(tau_max) or tau_max < 0:
+        raise RfxRefusal("until_decay: cannot judge: echo delay bound unavailable; use fixed n_steps")
+    return bound
+
+
 def make_field_decay_stop(grid, *, thr, min_steps, interval, max_steps,
                           consecutive=2, env_checks=4, n_end=AUTO_END,
-                          sources=(), mag_sources=(), tfsf=None, waveguide_ports=()):
+                          sources=(), mag_sources=(), tfsf=None, waveguide_ports=(), materials=None,
+                          echo_bound: Mapping[str, float | str | None] | None = None,
+                          debye=None, lorentz=None, dt=None):
     """Resolve the applied-drive end for the radiated-flux stop."""
     drives = dict(sources=sources, mag_sources=mag_sources, tfsf=tfsf,
                   waveguide_ports=waveguide_ports)
@@ -392,6 +424,9 @@ def make_field_decay_stop(grid, *, thr, min_steps, interval, max_steps,
     n_d = known_drive_ready_step(waveguide_ports, interval) if thr > 0 else 0
     common = dict(thr=thr, min_steps=min_steps, interval=interval, n_end=n_end, n_d=n_d)
     rule = FluxStop(**common, consecutive=consecutive, env_checks=env_checks)
+    if thr > 0 and materials is not None:
+        rule.echo_bound = _decay_echo_bound(grid, materials, waveguide_ports, echo_bound, debye, lorentz)
+        rule.dt = float(grid.dt if dt is None else dt)
     if n_end is None and thr > 0:
         from rfx.measurement.record_end import injection_end
         _, rule.drive_reason, _ = injection_end(
@@ -403,7 +438,9 @@ def make_field_decay_stop(grid, *, thr, min_steps, interval, max_steps,
 def make_decay_stop(grid, materials, *, thr, min_steps, interval, consecutive,
                     criterion, max_steps, side_step, n_end=AUTO_END, rows=False, dx=None, absorbing=True,
                     sources=(), mag_sources=(), tfsf=None, waveguide_ports=(),
-                    periodic=(False, False, False)):
+                    periodic=(False, False, False),
+                    echo_bound: Mapping[str, float | str | None] | None = None,
+                    debye=None, lorentz=None, dt=None):
     """The rule and its W measurement for one loop.
 
     ``criterion``: the energy criterion is this run's stop rule (no flux
@@ -427,6 +464,8 @@ def make_decay_stop(grid, materials, *, thr, min_steps, interval, consecutive,
     rule = DecayStop(thr, min_steps, interval, consecutive, n_end, enabled)
     if enabled:
         rule.n_d = known_drive_ready_step(waveguide_ports, interval)
+        rule.echo_bound = _decay_echo_bound(grid, materials, waveguide_ports, echo_bound, debye, lorentz)
+        rule.dt = float(grid.dt if dt is None else dt)
     measure = (boundary_energy(grid, materials, side_step, dx=dx,
                                absorbing=absorbing, periodic=periodic)
                if n_end is not None else None)
@@ -515,11 +554,25 @@ def finish_decay(rule, steps, *, fired=False, flux=None, reporter=None,
         static_remnant_advisory(state, materials, grid, advisory["drives"], advisory["lossy"])
     if reporter is not None:
         reporter.note(f"{criterion} | {message}")
+    from rfx.measurement.record_end import ECHO_BOUND_FACTOR
+    echo_values = {}
+    if rule.echo_bound is not None:
+        tau_max = float(rule.echo_bound['tau_max'])
+        echo_ready: int | None = None
+        if math.isfinite(tau_max):
+            echo_ready = next((count for count in range(rule.interval,
+                               2 * (int(math.ceil(ECHO_BOUND_FACTOR * tau_max / float(rule.dt)))
+                                    + (rule.n_end or 0) + rule.interval), rule.interval)
+                               if echo_stop_ready(rule, count)), None)
+        echo_values = {"echo_tau_max_s": tau_max,
+                       "echo_factor": float(ECHO_BOUND_FACTOR),
+                       "echo_ready_step": nan if echo_ready is None else float(echo_ready)}
     return Diagnostic(
         "until_decay.stop", "info" if criterion == "threshold" else "warning", criterion,
         message,
         {"criterion": criterion, "requested_threshold": float(rule.thr),
          "reached": float(reached), "floor_ratio": float(floor_ratio),
+         **echo_values,
          "stop_step": int(steps),
          "drive_end_step": nan if rule.n_end is None else int(rule.n_end),
          "known_drive_ready_step": int(rule.n_d),

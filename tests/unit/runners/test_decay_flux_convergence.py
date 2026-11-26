@@ -253,7 +253,7 @@ def _T_peak(res, meep_freqs):
 
 
 @pytest.mark.gpu
-def test_issue169_decay_reaches_flux_converged_value():
+def test_issue169_decay_reaches_flux_converged_value(monkeypatch):
     """run_until_decay on a guided eps=12 sim must reach the converged flux.
 
     RESOLVED by Criterion A (total interior-domain-energy decay). On absorbing
@@ -280,9 +280,28 @@ def test_issue169_decay_reaches_flux_converged_value():
     domain that empties before that step the reference WAS the residual and
     the run went to the cap; the peak is now tracked from the first check,
     like the flux-stop branch beside it.
-    The 2500-step envelope leaves headroom above the earlier measured 2051-step stop.
+    The energy criterion must still hold by step 2500. The stop also waits
+    for the echo window from the realized physical x/y domain and eps=12,
+    rounded up to the next decay check.
     """
+    from rfx.measurement.decay import DecayStop
+
     _TOL = 0.02
+    check_interval = 50
+    energy_step = None
+    check = DecayStop.check
+
+    def observe_check(rule, count, energy):
+        nonlocal energy_step
+        result = check(rule, count, energy)
+        if (energy_step is None and rule.enabled and rule.n_end is not None
+                and count % rule.interval == 0
+                and count >= max(rule.min_steps, rule.n_d)
+                and rule.below_thr >= rule.consecutive):
+            energy_step = count
+        return result
+
+    monkeypatch.setattr(DecayStop, "check", observe_check)
 
     sim_truth, dt_s, a, meep_freqs, mon_pos = _build_guided(probe=False)
     n_truth = int(_TRUTH_UNITS * (a / _C0) / dt_s) + 150
@@ -295,7 +314,7 @@ def test_issue169_decay_reaches_flux_converged_value():
     decay_cap = int((_TRUTH_UNITS + 400.0) * (a / _C0) / dt_s) + 150
     res_decay = sim_decay.run(
         until_decay=1e-5,
-        decay_check_interval=50,
+        decay_check_interval=check_interval,
         decay_min_steps=2000,
         decay_max_steps=decay_cap,
         decay_monitor_component="ez",
@@ -304,17 +323,38 @@ def test_issue169_decay_reaches_flux_converged_value():
         skip_preflight=True,
     )
     stop_step = int(res_decay.time_series.shape[0])
+    stop, = (d for d in res_decay.diagnostics if d.code == "until_decay.stop")
+    grid = res_decay.grid
+    cpml_cells = int(_DPML * _RES)
+    physical_x = (grid.nx - 2 * cpml_cells - 1) * float(grid.dx)
+    physical_y = (grid.ny - 2 * cpml_cells - 1) * float(grid.dx)
+    diagonal = math.hypot(physical_x, physical_y)
+    tau_max = 2 * diagonal * math.sqrt(_EPS_WG) / 299_792_458.0
+    window_steps = math.ceil(2.05 * tau_max / float(grid.dt))
+    drive_end_step = int(stop.values["drive_end_step"])
+    echo_ready_step = next(
+        step for step in range(1, decay_cap + 1)
+        if step - max(drive_end_step, round(0.5 * step)) >= window_steps
+    )
+    stop_limit = (math.ceil(max(2500, echo_ready_step) / check_interval)
+                  * check_interval)
     T_stop, _ = _T_peak(res_decay, meep_freqs)
 
     assert stop_step < decay_cap, (
         f"decay run hit max_steps cap {decay_cap}; criterion never fired"
     )
 
-    assert stop_step <= 2500, (
-        f"decay stopped at step {stop_step}; with the slab continued through "
-        "its absorber pad the interior energy is ~1e-7 of peak by "
-        "decay_min_steps, so Criterion A must fire within a few checks of it. "
-        "A later stop means the domain is holding energy it should not."
+    assert energy_step is not None and energy_step <= 2500, (
+        f"energy criterion first held on consecutive checks at {energy_step}; "
+        "with the slab continued through its absorber pad, Criterion A must "
+        "hold by step 2500. A later energy check means the domain is holding "
+        "energy it should not."
+    )
+
+    assert stop_step <= stop_limit, (
+        f"decay stopped at step {stop_step}; expected at most {stop_limit}, "
+        "the first check at or after max(2500, echo-ready step "
+        f"{echo_ready_step}) for the realized eps=12 domain."
     )
 
     assert abs(T_stop - T_truth) <= _TOL * abs(T_truth), (

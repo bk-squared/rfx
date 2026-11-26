@@ -7,9 +7,13 @@ from tests.unit.sparams.test_coaxial_line_settling import _run
 
 
 @pytest.mark.slow_physics
-def test_short_line_voltage_null_at_1650_steps():
-    """The 1650-step choice leaves settling margin below -40 dB because settling measured earlier was -41.5 dB at 1500 steps versus -59.1 dB at 1650 steps."""
-    result = _run(1650, termination='short')
+def test_short_line_voltage_null_on_a_judged_record():
+    """The shortest echo-bound-accepted record is 1,668 steps.
+
+    Historically, settling was -41.5 dB at 1,500 steps and -59.1 dB at
+    1,650 steps; both records are too short for the current echo bound.
+    """
+    result = _run(1668, termination='short')
     assert result.settling_db <= -40., result.settling_db
     assert result.settling_witness['status'] == 'pass'
     target = float(np.asarray(result.freqs)[3])

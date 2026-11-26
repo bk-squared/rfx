@@ -61,7 +61,8 @@ def test_a_source_still_on_at_the_end_is_not_read_as_ended():
     drive = np.asarray(recorded(cfg, "v_inc_t"))
     assert drive.shape == (n_t,) and drive[-1] != 0
     assert source_end_step([(drive, 0.0)], n_t, cfg.dt) is None
-    _, detail = settling_db_from_port_records([cfg], return_detail=True)
+    _, detail = settling_db_from_port_records([cfg], return_detail=True,
+                                              echo_bound=result.settling_echo_bound)
     assert detail["status"] == "undetermined"
     assert "source end is unavailable" in detail["reason"], detail["reason"]
 

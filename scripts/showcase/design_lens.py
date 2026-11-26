@@ -490,7 +490,7 @@ class Model(common.ModelBase):
         traces = np.asarray(r.time_series)
         w = tail_share_witness(tuple((f"probe{i}", traces[:, i]) for i in range(4)),
                                self.grid.dt, r.settling_source_end_index, self.freqs,
-                               freq_max=12.6e9)
+                                freq_max=12.6e9, echo_bound=r.settling_echo_bound)
         return response, {"settling": w._asdict(), "settled": w.status == "pass",
                           "field_dtype": str(r.ntff_data.x_lo.dtype), **summary(response, freqs=self.freqs)}
 

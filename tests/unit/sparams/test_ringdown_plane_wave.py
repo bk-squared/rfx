@@ -169,7 +169,7 @@ def own_row(n):
     return float(np.max(r[int(round(0.5 * n)):n]))
 
 
-@pytest.mark.parametrize("n", [4000, 4003])
+@pytest.mark.parametrize("n", [4730, 4733])
 def test_the_plane_wave_row_is_its_face_read_level_over_the_main_window(n):
     result, (rows, _) = completed("run", n)
     report = result.ringdown.report
@@ -210,10 +210,10 @@ def test_an_early_window_holding_the_pulse_is_not_formed():
 @pytest.mark.parametrize("face_record", [False, True], ids=["carried line", "face record"])
 def test_run_and_forward_read_the_same_rows_and_spectra(face_record):
     from rfx.api._ad_memory_model import face_record_pays
-    cfg, _, _ = line(slotted_box()[0], 4000, line_steps="forward")
-    assert face_record_pays(cfg, 4000, checkpoint=face_record) is face_record
-    run, run_rows = completed("run", 4000)
-    fwd, fwd_rows = completed("forward", 4000, checkpoint=face_record)
+    cfg, _, _ = line(slotted_box()[0], 4730, line_steps="forward")
+    assert face_record_pays(cfg, 4730, checkpoint=face_record) is face_record
+    run, run_rows = completed("run", 4730)
+    fwd, fwd_rows = completed("forward", 4730, checkpoint=face_record)
     assert fwd_rows == run_rows
     a = np.asarray(fwd.ringdown.probe_spectra)
     b = np.asarray(run.ringdown.probe_spectra)
@@ -223,12 +223,12 @@ def test_run_and_forward_read_the_same_rows_and_spectra(face_record):
 
 @lru_cache(maxsize=None)
 def scaled_forward():
-    """``forward`` on the slotted box at 4,000 steps with its realized permittivity scaled."""
+    """``forward`` on the slotted box at 4,730 steps with its realized permittivity scaled."""
     sim, probes, _ = slotted_box()
     eps = jnp.asarray(np.asarray(sim.realized_geometry().materials.eps_r), jnp.float32)
 
     def spectra(scale):
-        return sim.forward(n_steps=4000, ringdown=probe_spec(probes), skip_preflight=True,
+        return sim.forward(n_steps=4730, ringdown=probe_spec(probes), skip_preflight=True,
                            eps_override=eps * scale).ringdown.probe_spectra
     return spectra, sim
 
@@ -246,8 +246,8 @@ def test_a_traced_forward_reads_the_plane_wave_at_the_untraced_level(transform):
     value, (rows, _) = checked(call)
     _, (plain, _) = checked(lambda: spectra(jnp.float32(1.0)))
     assert np.all(np.isfinite(np.asarray(value)))
-    n_end = pulse_end(level(*recorded_maxima(sim, 4000)[:2]))
-    start = window_starts(4000)["admission"]
+    n_end = pulse_end(level(*recorded_maxima(sim, 4730)[:2]))
+    start = window_starts(4730)["admission"]
     traced, untraced = ((start, r[0][1], window_class(start, r[0][1], n_end)) for r in (rows, plain))
     print(f"{transform}: traced row {rows}, untraced row {plain}, bit-equal {rows == plain}",
           file=sys.stderr)

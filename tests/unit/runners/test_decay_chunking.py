@@ -116,6 +116,10 @@ def _run(
             kwargs["record_dft"] = False
         if driver is run_until_decay_reference:
             kwargs.pop("measurement", None)
+            kwargs.pop("echo_bound", None)
+        else:
+            dt = float(args[0].dt)
+            kwargs["echo_bound"] = dict(tau_max=dt / 4, D=299792458. * dt / 8, n_max=1., g=1.)
         if captured["family_peaks"] is not None:
             kwargs["family_peaks"] = captured["family_peaks"]
         captured["grid"], captured["materials"] = args[:2]

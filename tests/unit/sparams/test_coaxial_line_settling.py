@@ -1,5 +1,7 @@
 """Physics anchor for the public coax one-port settling witness."""
 
+import sys
+
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -34,7 +36,7 @@ def test_short_line_settling_after_feed_absorbs_return():
     for n_steps, result in results.items():
         print(
             f"short n_steps={n_steps}: settling_db={result.settling_db}, "
-            f"status={result.settling_witness['status']}"
+            f"status={result.settling_witness['status']}", file=sys.stderr,
         )
     for n_steps, result in results.items():
         assert set(result.settling_witness["per_record_db"]) == expected_channels, n_steps
@@ -50,14 +52,16 @@ def test_short_line_settling_after_feed_absorbs_return():
 
 @pytest.mark.slow_physics
 def test_matched_line_settling_uses_source_end():
-    """The matched load has absorbed the pulse by the 0.42 ns source end, so
-    the 595-step line has settled. Its identification window [T/2, T] starts
-    before the source end, so only source-end handling decides this case.
+    """The 1,668-step matched load covers every coax plane and passes -40 dB.
+
+    At 1,668 steps the main window starts at 834, after the source end at
+    550, so this record checks the accepted window and channel coverage;
+    it does not exercise a source end later than the halfway window.
     """
-    result = _run(595, termination="matched")
+    result = _run(1668, termination="matched")
     print(
-        f"matched n_steps=595: settling_db={result.settling_db}, "
-        f"status={result.settling_witness['status']}"
+        f"matched n_steps=1668: settling_db={result.settling_db}, "
+        f"status={result.settling_witness['status']}", file=sys.stderr,
     )
     expected_channels = {f"coax/plane{k}/V" for k in range(12)} | {"probe0"}
     assert set(result.settling_witness["per_record_db"]) == expected_channels

@@ -40,7 +40,7 @@ def run_reflection_record(grid, materials, n_steps, *, spec, conductors, cpml_ax
     if eps_scale is None:
         ts = np.asarray(result.time_series)
         if ts.ndim == 2 and ts.shape[0] >= 10 and ts.shape[1] == len(witness_probes):
-            from rfx.measurement.record_end import injection_end
+            from rfx.measurement.record_end import injection_end, echo_delay_bound
             from rfx.sources.waveguide_port import settling_db_from_named_records
 
             source_end = injection_end(
@@ -57,5 +57,6 @@ def run_reflection_record(grid, materials, n_steps, *, spec, conductors, cpml_ax
                 scale_groups={**{f"coax/plane{pi}/V": "coax/V" for pi in range(len(probes_z))},
                               **{f"probe{i}": probe.component for i, probe in enumerate(witness_probes)}},
                 freqs=freqs, freq_max=freq_max, return_detail=True,
+                echo_bound=echo_delay_bound(grid, materials=materials, freqs=freqs),
             )
     return result, settling_db, settling_witness

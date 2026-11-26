@@ -58,7 +58,7 @@ def test_normal_h_mu_slab_has_second_order_complex_s(spectral_precision):
                 freqs=freqs, f0=9e9, bandwidth=.4, waveform='modulated_gaussian',
                 ref_offset=round(.002 / h), probe_offset=round(.004 / h),
                 reference_plane=reference)
-        result = sim.compute_waveguide_s_matrix(num_periods=60, normalize='flux')
+        result = sim.compute_waveguide_s_matrix(num_periods=96, normalize='flux')
         assert all(w['status'] == 'pass' for w in result.settling_witness)
         measured = np.asarray(result.s_params)[[0, 1], 0, :]
         errors.append(float(np.max(np.abs(measured - expected))))

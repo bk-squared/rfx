@@ -307,7 +307,7 @@ def _hand_accumulator_ends(result, sim):
 
 
 @pytest.mark.parametrize("accumulators", [("ntff",), ("dft",), ("flux",), ("ntff", "dft", "flux")])
-@pytest.mark.parametrize("n", [196, 300])
+@pytest.mark.parametrize("n", [196, 914])
 def test_s2b_r3_accumulator_coverage_and_forward(accumulators, n):
     sim = _s2b_scene_c(accumulators)
     with warnings.catch_warnings(record=True) as caught:
@@ -325,7 +325,7 @@ def test_s2b_r3_accumulator_coverage_and_forward(accumulators, n):
         reason = rows[0]["verdict"]
         assert reason == (f"cannot judge: the record ends at step {n}, before the drive has passed "
                           f"{rows[0]['name']} (step {rows[0]['end_step']}: the drive's end plus a light-speed transit)")
-        assert result.settling_witness["reason"] == reason
+        assert reason in result.settling_witness["reason"]
         from rfx.errors import AccuracyWarning
         assert len(coverage_warnings) == 1 and coverage_warnings[0].category is AccuracyWarning
         assert reason in str(coverage_warnings[0].message)
@@ -847,7 +847,7 @@ def test_s2_run_waits_for_applied_drive(graded, boundary, monkeypatch, record_pr
     monkeypatch.setattr(owner, name, observed)
     flux = boundary == "cpml"
     result = _s2_scene(graded, boundary).run(
-        until_decay=2., decay_min_steps=50, decay_max_steps=350,
+        until_decay=2., decay_min_steps=50, decay_max_steps=800,
         **({"radiated_flux_box": S2_BOX} if flux else {}), skip_preflight=True)
     (diagnostic,) = [d for d in result.diagnostics if d.code == "until_decay.stop"]
     values = diagnostic.values
@@ -856,7 +856,10 @@ def test_s2_run_waits_for_applied_drive(graded, boundary, monkeypatch, record_pr
     assert values["drive_end_step"] == ends[0]
     assert values["criterion"] == "threshold"
     assert values["quantity"] == ("radiated_flux" if flux else "conserved_energy")
-    assert values["stop_step"] == 250
+    tau_max = 2 * np.sqrt(3) * 0.04 / 299792458.0
+    expected = next(count for count in range(250, 801, 50)
+                    if (count - max(183, round(count / 2))) * result.dt >= 2.05 * tau_max)
+    assert values["stop_step"] == expected
     record_property("s2_stop", dict(values))
 
 
@@ -1308,7 +1311,7 @@ def s4_spg_records():
         return original(configs, **kwargs)
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(extraction, 'settling_db_from_port_records', observe)
-        for periods in (30, 40):
+        for periods in (30, 99):
             sim = _build_sim(np.linspace(4.5e9, 8.0e9, 10), solved_domain=True,
                 obstacles=[((0.05, 0.0, 0.0), (0.07, 0.04, 0.02), 4.0)],
                 waveform='modulated_gaussian')
@@ -1316,12 +1319,12 @@ def s4_spg_records():
             result = sim.compute_waveguide_s_matrix(num_periods=periods, normalize=False)
             elapsed = time.monotonic() - start
             results[periods] = (result, tuple(captured[-2:]), elapsed)
-            print(f'SP-g P{periods}: {elapsed:.6f} seconds')
+            print(f'SP-g P{periods}: {elapsed:.6f} seconds', file=sys.stderr)
     return results
 
 
 def test_s4_b8_realized_transit_window(s4_spg_records):
-    result, runs, _ = s4_spg_records[40]
+    result, runs, _ = s4_spg_records[99]
     for configs, witness in zip(runs, result.settling_witness):
         n, dt = len(configs[0].v_ref_t), configs[0].dt
         expected = 0
@@ -1339,15 +1342,15 @@ def test_s4_b8_realized_transit_window(s4_spg_records):
 
 def test_s4_spg_s11_lengthening_reduces_error(s4_spg_records):
     short = s4_spg_records[30][0].settling_witness[0]
-    long = s4_spg_records[40][0].settling_witness[0]
+    long = s4_spg_records[99][0].settling_witness[0]
     assert short['status_per_entry']['S11'] == 'fail', short
     e30 = short['record_end_error_per_entry']['S11'][-1]
-    e40 = long['record_end_error_per_entry']['S11'][-1]
+    e99 = long['record_end_error_per_entry']['S11'][-1]
     assert e30 > 1e-2
-    assert e40 < e30
+    assert e99 < e30
     assert long['status_per_entry']['S11'] == 'pass', long
-    assert e40 <= 1e-2
-    print(f'SP-g S11 at 8 GHz: P30 e_Q={e30:.12g}, P40 e_Q={e40:.12g}')
+    assert e99 <= 1e-2
+    print(f'SP-g S11 at 8 GHz: P30 e_Q={e30:.12g}, P99 e_Q={e99:.12g}', file=sys.stderr)
 
 
 def test_s4_spg_s22_windows_disagree(s4_spg_records):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from rfx.measurement.calculator_drive import calculator_drive
 
 from rfx.model.waveguide_aperture import validate_uniform_waveguide_ports
@@ -26,6 +27,7 @@ from rfx.model.waveguide_modes import (
 from rfx.measurement.waveguide_power import (
     power_wave_pair, finite_wave_ratio, mask_power_wave, power_wave_ratio, warn_power_waves,
 )
+from rfx.measurement.record_end import echo_delay_bound
 from rfx.measurement.settling import (
     settling_db_from_port_records,
 )
@@ -570,6 +572,7 @@ def extract_waveguide_s_matrix(
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
     settling_details: list | None = None,
+    echo_bound: Mapping[str, float | str | None] | None = None,
     sheet_impedance: object | None = None,
     pec_edge_masks: tuple | None = None,
     field_dtype: DTypeLike | None = None,
@@ -671,7 +674,7 @@ def extract_waveguide_s_matrix(
         if return_settling:
             from rfx.measurement.record_readers import waveguide_s_reader
             value, detail = settling_db_from_port_records(
-                final_cfgs, freq_max=getattr(grid, "freq_max", None),
+                final_cfgs, echo_bound=(echo_bound if echo_bound is not None else echo_delay_bound(grid, materials=materials, debye=debye, lorentz=lorentz, waveguide_ports=final_cfgs)), freq_max=getattr(grid, "freq_max", None),
                 return_detail=True, reader=waveguide_s_reader(final_cfgs, drive_idx))
             settling_runs.append(value)
             if settling_details is not None:
@@ -720,6 +723,7 @@ def extract_waveguide_s_matrix_flux(
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
     settling_details: list | None = None,
+    echo_bound: Mapping[str, float | str | None] | None = None,
     field_dtype=None,
 ) -> "jnp.ndarray | tuple[jnp.ndarray, np.ndarray]":
     """Hybrid power-flux magnitude + modal phase waveguide S-matrix.
@@ -950,9 +954,9 @@ def extract_waveguide_s_matrix_flux(
             # (review finding — max is the conservative composition; NaN
             # from a traced run propagates instead of being max()-eaten)
             _sd_dev, _detail_dev = settling_db_from_port_records(
-                dev_final_cfgs, freq_max=getattr(grid, "freq_max", None), return_detail=True)
+                dev_final_cfgs, echo_bound=(echo_bound if echo_bound is not None else echo_delay_bound(grid, materials=materials, debye=debye, lorentz=lorentz, waveguide_ports=dev_final_cfgs)), freq_max=getattr(grid, "freq_max", None), return_detail=True)
             _sd_ref, _detail_ref = settling_db_from_port_records(
-                ref_final_cfgs, freq_max=getattr(grid, "freq_max", None), return_detail=True)
+                ref_final_cfgs, echo_bound=(echo_delay_bound(grid, materials=ref_mat_drive, debye=ref_debye, lorentz=ref_lorentz, waveguide_ports=ref_final_cfgs)), freq_max=getattr(grid, "freq_max", None), return_detail=True)
             settling_runs.append(
                 float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
                 else max(_sd_dev, _sd_ref))
@@ -1057,6 +1061,7 @@ def extract_waveguide_s_params_normalized(
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
     settling_details: list | None = None,
+    echo_bound: Mapping[str, float | str | None] | None = None,
     sheet_impedance: object | None = None,
     pec_edge_masks: tuple | None = None,
     field_dtype=None,
@@ -1252,9 +1257,9 @@ def extract_waveguide_s_params_normalized(
             # worst over BOTH runs of the pair (same reasoning as the flux
             # variant: the reference run produces the normalization records)
             _sd_dev, _detail_dev = settling_db_from_port_records(
-                dev_final_cfgs, freq_max=getattr(grid, "freq_max", None), return_detail=True)
+                dev_final_cfgs, echo_bound=(echo_bound if echo_bound is not None else echo_delay_bound(grid, materials=materials, debye=debye, lorentz=lorentz, waveguide_ports=dev_final_cfgs)), freq_max=getattr(grid, "freq_max", None), return_detail=True)
             _sd_ref, _detail_ref = settling_db_from_port_records(
-                ref_final_cfgs, freq_max=getattr(grid, "freq_max", None), return_detail=True)
+                ref_final_cfgs, echo_bound=(echo_delay_bound(grid, materials=ref_materials, debye=ref_debye, lorentz=ref_lorentz, waveguide_ports=ref_final_cfgs)), freq_max=getattr(grid, "freq_max", None), return_detail=True)
             settling_runs.append(
                 float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
                 else max(_sd_dev, _sd_ref))
@@ -1299,6 +1304,7 @@ def extract_multimode_s_matrix(
     pec_edge_masks: tuple | None = None,
     field_dtype=None,
     settling_details: list | None = None,
+    echo_bound: Mapping[str, float | str | None] | None = None,
 ) -> tuple[jnp.ndarray, list[tuple[int, int, str, tuple[int, int]]]]:
     """Assemble a multi-mode waveguide S-matrix.
 
@@ -1409,7 +1415,7 @@ def extract_multimode_s_matrix(
         if settling_details is not None:
             from rfx.measurement.record_readers import waveguide_s_reader
             _, detail = settling_db_from_port_records(
-                final_cfgs, freq_max=getattr(grid, 'freq_max', None), return_detail=True,
+                final_cfgs, echo_bound=(echo_bound if echo_bound is not None else echo_delay_bound(grid, materials=materials, debye=debye, lorentz=lorentz, waveguide_ports=final_cfgs)), freq_max=getattr(grid, 'freq_max', None), return_detail=True,
                 reader=waveguide_s_reader(final_cfgs, drive_flat_idx))
             settling_details.append(detail)
         if len(final_cfgs) != n_total:
@@ -1480,6 +1486,7 @@ def extract_multimode_s_matrix_flux(
     pec_edge_masks: tuple | None = None,
     field_dtype=None,
     settling_details: list | None = None,
+    echo_bound: Mapping[str, float | str | None] | None = None,
 ) -> tuple[jnp.ndarray, list[tuple[int, int, str, tuple[int, int]]]]:
     """Power-flux multi-mode waveguide S-matrix.
 
@@ -1630,9 +1637,9 @@ def extract_multimode_s_matrix_flux(
         if settling_details is not None:
             from rfx.sparams._tail_witness import combine_witness_details
             _, ref_detail = settling_db_from_port_records(
-                ref_final_cfgs, freq_max=getattr(grid, 'freq_max', None), return_detail=True)
+                ref_final_cfgs, echo_bound=(echo_delay_bound(grid, materials=ref_materials, debye=ref_debye, lorentz=ref_lorentz, waveguide_ports=ref_final_cfgs)), freq_max=getattr(grid, 'freq_max', None), return_detail=True)
             _, dev_detail = settling_db_from_port_records(
-                dev_final_cfgs, freq_max=getattr(grid, 'freq_max', None), return_detail=True)
+                dev_final_cfgs, echo_bound=(echo_bound if echo_bound is not None else echo_delay_bound(grid, materials=materials, debye=debye, lorentz=lorentz, waveguide_ports=dev_final_cfgs)), freq_max=getattr(grid, 'freq_max', None), return_detail=True)
             settling_details.append(combine_witness_details(dev_detail, ref_detail))
         if len(dev_final_cfgs) != n_total:
             raise RuntimeError("multimode flux extraction expected one final config per channel")

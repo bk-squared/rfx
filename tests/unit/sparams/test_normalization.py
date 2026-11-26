@@ -225,7 +225,7 @@ def test_normalized_s_matrix_with_obstacle():
     )
 
     result = sim.compute_waveguide_s_matrix(
-        num_periods=30.0,
+        num_periods=57.0,
         normalize=True,
     )
     s = result.s_params
@@ -271,7 +271,7 @@ def test_normalization_preserves_reciprocity():
     )
 
     result = sim.compute_waveguide_s_matrix(
-        num_periods=30.0,
+        num_periods=49.0,
         normalize=True,
     )
     s = result.s_params

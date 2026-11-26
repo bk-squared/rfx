@@ -135,7 +135,9 @@ class _ForwardReportContext:
         With traced axes, the run's accumulators and channels were made on the
         realized mesh of that design step, so they are read with that mesh's
         grid and port weights, through a copy of the plan; the stored plan
-        keeps the template grid. On the uniform lane the plain S goes into
+        keeps the template grid. When the result carries ``res._echo_index``,
+        a copy of the plan uses that realized bound for the report's witness.
+        On the uniform lane the plain S goes into
         ``run()``'s container for the lane's single wire port
         (``rfx/runners/uniform.py``): (1, 1, nf) complex64, whatever the
         accumulator dtype (complex128 under x64).
@@ -156,6 +158,11 @@ class _ForwardReportContext:
             grid, metas = self._realized(res)
             plan = copy.copy(plan)
             plan.grid = grid
+            plan.echo_dt = float(grid.dt)
+        if res._echo_index is not None:
+            import copy
+            plan = copy.copy(plan)
+            plan.echo_bound = res._echo_index
         if plan.probe_mode:
             from rfx.ringdown._probe_channels import forward_probe_report
             return forward_probe_report(SimpleNamespace(plan=plan, grid=grid, step=self.step), res)
