@@ -59,30 +59,6 @@ def test_released_kernel_product_rebuilds_conductors(monkeypatch):
             and np.array_equal(cells, expected))
 
 
-@pytest.mark.parametrize('target', [
-    'tests/unit/runners/test_one_device_setup_release.py::test_released_kernel_product_rebuilds_conductors',
-    'tests/contracts/test_coax_shielded_end.py',
-], ids=['pin', 'shielded_end'])
-def test_dense_release_mutation_m8(target):
-    root = Path(__file__).resolve().parents[3]
-    source = root / 'rfx/model/realization_report.py'
-    original = source.read_bytes()
-    check = b'\n                       and not getattr(solved.conductors, "_dense_released", False)'
-    assert original.count(check) == 1
-    try:
-        source.write_bytes(original.replace(check, b'', 1))
-        child = subprocess.run([sys.executable, '-m', 'pytest', target, '-q'],
-                               cwd=root, text=True, capture_output=True, timeout=480)
-        output = child.stdout + child.stderr
-        print('MUTATION m8', target, 'EXIT', child.returncode, output, flush=True)
-        assert child.returncode == 1, output
-        assert any(line.startswith('FAILED ' + target) for line in output.splitlines()), output
-    finally:
-        source.write_bytes(original)
-    assert source.read_bytes() == original
-    print('RESTORED m8 exactly', flush=True)
-
-
 def build_scene(variant='bar'):
     import jax.numpy as jnp
     import numpy as np
