@@ -595,12 +595,15 @@ and `result.sigma_max_excess` carries the per-bin amount. A passive structure
 cannot do that: read it as a record that ended before ring-down or a mesh too
 coarse for the geometry (`settling_db`, `reliable`), or as an absorber too close
 above the line (next entry), not as gain.
-`enforce_passivity=True` returns the projected matrix instead. On a reflecting fixture
-a test checks the raw S: the microstrip chain battery holds its maximum column power at
-or below 1.02 on the open-stub notch on the 25 µm mesh the claims rest on, in
-`tests/oracle/test_msl_chain_battery.py`. Read the current fixture for the
-measured notch and thru values. Coarser meshes are
-reported, not tested.
+`enforce_passivity=True` returns the projected matrix instead. On a reflecting
+fixture the raw S is what the record keeps: on settled 40-period records the
+microstrip chain battery's open-stub notch reaches a maximum column power of
+1.0012, 1.0022 and 1.0028 on 100, 50 and 25 µm cells
+(`ladder.notch.max_column_power` in `tests/fixtures/msl_chain_battery/fixture.json`),
+inside its 1.02 bar. Why the excess grows as the mesh refines is not
+established. No CI test judges the 50 and 25 µm values; the 100 µm drift lock
+(`tests/locks/test_msl_chain_battery_drift.py`) holds that mesh's live column
+power at or below 1.02.
 
 ### A microstrip S-matrix exceeds unit column power when the absorber above the line is close and thin.
 

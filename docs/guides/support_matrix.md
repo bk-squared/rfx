@@ -81,13 +81,21 @@ tests. Optimization examples are evidence for their named objective only; they
 do not validate every result produced by the same simulation.
 
 Microstrip performance depends on the board, mesh and differentiation tape.
-The current microstrip chain battery recommends 100 µm cells for its board
-(`tests/oracle/test_msl_chain_battery.py`,
-`test_the_ladder_converges_and_sets_a_recommended_cell_size`). Its quarter-wave
-notch formula omits open-end extension and is not the physical notch reference.
-The chain-battery measurements in `tests/fixtures/msl_chain_battery/fixture.json`
-include memory and runtime observations: finer meshes can exceed device memory
-and reduce throughput. They are performance observations, not accuracy evidence.
+The microstrip chain battery (`tests/fixtures/msl_chain_battery/fixture.json`;
+each entry's `provenance` names the commit it was measured at) solves a 600 µm
+strip with a 12 mm open stub as drawn, on edge-aware graded cells of 100, 50
+and 25 µm, with a 40-period record. Its `ladder` block puts the stub notch at
+3.698, 3.702 and 3.703 GHz (successive-difference ratio 0.34), keeps every
+magnitude outside the notch core within 0.63 dB of the 25 µm curve, and records
+a maximum column power of 1.0012, 1.0022 and 1.0028. On those fields the 100 µm
+mesh is the coarsest inside the battery's bar. No CI test judges the ladder or
+the 25 µm column power: the CI check is the 100 µm drift lock
+(`tests/locks/test_msl_chain_battery_drift.py`, weekly GPU lane), which solves
+that mesh again and holds it to the stored S. The quarter-wave notch formula
+omits the open-end extension and is not the physical notch reference. The
+fixture also records memory and runtime per mesh: finer meshes can exceed
+device memory and reduce throughput. Those are performance observations, not
+accuracy evidence.
 The graded-notch runtime measurements are in a record kept with the project.
 The earlier substrate-cell recommendation predates the material-interface
 correction and must not be used as a current mesh rule; use the measured ladder

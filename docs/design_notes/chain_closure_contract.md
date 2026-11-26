@@ -1,6 +1,6 @@
 # Chain-closure contract (v2.0 per-family definition)
 
-> Documentation update (2026-10-03): The dated status table below predates the raw-MSL passivity gate on the reflecting notch DUT in `tests/oracle/test_msl_chain_battery.py`. Read that test and its fixture for the current gate; the table remains a historical inventory.
+> Documentation update (2026-11-26): The dated status table below predates the raw-MSL passivity check on the reflecting notch DUT. That check is now a field of the microstrip chain battery's fixture, `tests/fixtures/msl_chain_battery/fixture.json::ladder.notch.max_column_power[2] = 1.0028` at 25 µm, which no CI test judges; the 100 µm drift lock `tests/locks/test_msl_chain_battery_drift.py` holds the 100 µm mesh's live value to the same bar. The table remains a historical inventory.
 
 > The WR-90 inductive iris case was removed on 2026-09-22; the artifacts cited here are at commit e367e7bf.
 
@@ -172,7 +172,7 @@ where |S21| is above -20 dB; for a one-port it is the slope of the reflection ph
 where it reflects above -20 dB. It is within 1 % of the reference's slope over the same bins:
 `|slope_measured / slope_reference - 1| <= 0.01`. The reference spans the planes where the extractor
 references S, which are not always the feed planes: the coax two-port's feed planes, the microstrip
-S matrix's first probe planes (`rfx/sparams/msl.py:163-169`), the waveguide's recorded or requested
+S matrix's declared feed planes (`compute_msl_s_matrix` refers S there from its first probe planes), the waveguide's recorded or requested
 reference planes, the lumped and wire one-port's port node with the line's realized length. The bins
 have to be one contiguous run: across a transmission zero the unwrap can take the zero's half-turn
 either way, so a notch's slope is not read. The phase at a single bin is not judged. The batteries

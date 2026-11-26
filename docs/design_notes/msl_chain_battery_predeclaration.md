@@ -155,3 +155,7 @@ number.
    - Of the two lengths run, 40 is the shorter at which both rungs read at or below -40 dB.
    - Every stage except the pilot is re-run at 40 periods; the assembler joins solve records of
      one length only. A 40-period record above -40 dB is re-run longer.
+8. **Which test reads the fixture.** The replay test the "Execution" paragraph names was removed
+   before this regeneration. The only test that reads the fixture is the 100 um drift lock,
+   `tests/locks/test_msl_chain_battery_drift.py`; no CI test judges the ladder or the 50 and 25 um
+   entries.
