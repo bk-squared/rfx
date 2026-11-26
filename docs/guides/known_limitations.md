@@ -844,7 +844,9 @@ The coax, lumped, wire, waveguide and Floquet port DFTs, the reference-plane V a
 ringdown emulation's V and I, the far-field block sums and the adjoint design-region sums add one complex64 term per
 step without compensation. The sum's error grows faster than the record: on a synthetic four-channel record it reaches
 4.0e-6 of the spectrum's peak at 36 500 steps and 5.4e-5 at 146 000 steps. DFT planes, flux monitors, point-probe DFTs
-and the replay of kept records are compensated and stay near float32 resolution. The coax port S11 that `run()`
+and the replay of kept records are compensated and stay near float32 resolution. Port spectra formed after the run by
+replaying recorded port time series (`rfx/measurement/modal.py`, `rfx/probes/sparam_driver.py`) go through that replay
+and are compensated too; the running port sums listed above are not. The coax port S11 that `run()`
 returns is formed from these port sums. What to do: on records beyond about 30 000 steps, do not compare a port
 quantity with another route at 1e-5 or tighter, and check a passive |S| read just above 1 with a power balance before
 reading it as physics. The entry stays until the last site is fixed.
