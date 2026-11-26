@@ -305,6 +305,17 @@ def edge_aware_profile(
         a tenth of ``dx``.
     """
     lo, hi, dx = float(lo), float(hi), float(dx)
+    cap = float(max_ratio)
+    if not (np.isfinite(cap) and cap > 1.0):
+        raise ValueError(f"max_ratio must be a finite number > 1 (got {cap})")
+    if cap < 1.0001:
+        raise ValueError(
+            f"max_ratio must be >= {1.0001} (got {cap!r}): a 2x "
+            f"transition at that ratio already needs "
+            f"{int(np.ceil(np.log(2.0) / np.log(1.0001)))} cells, and "
+            "the plateau solve's cost grows with the ramp length")
+    if boundary_cell is not None and not (float(boundary_cell) > 0.0):
+        raise ValueError("boundary_cell must be > 0")
     if not (hi > lo and dx > 0.0):
         raise ValueError("need hi > lo and dx > 0")
     if not (0.0 <= edge_offset < 1.0):
