@@ -15,7 +15,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.dft_utils import dft_window_weight as _dft_window_weight
-from rfx.measurement.dft import phase as _dft_phase, accumulate as _accumulate
+from rfx.measurement.dft import phase as _dft_phase, accumulate as _accumulate, compensated_add
 from rfx.measurement.plan import field_channel
 from rfx.grid import Grid
 from rfx.stepping.probe_loop import resolve_extractor_axes
@@ -53,6 +53,7 @@ class DFTProbe(NamedTuple):
     total_steps: int
     window: str
     window_alpha: float
+    compensation: jnp.ndarray | None = None
 
 
 def init_dft_probe(
@@ -74,6 +75,7 @@ def init_dft_probe(
     _cdtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
     return DFTProbe(
         accumulator=jnp.zeros(len(freqs), dtype=_cdtype),
+        compensation=jnp.zeros(len(freqs), dtype=_cdtype),
         freqs=freqs,
         index=idx,
         component=component,
@@ -97,9 +99,10 @@ def update_dft_probe(
 
     phase = (_dft_phase(state.step-1, probe.freqs, dt, field_channel(probe.component)) / dt)
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window, probe.window_alpha)
-    new_acc = probe.accumulator + value * phase * dt * weight
+    compensation = jnp.zeros_like(probe.accumulator) if probe.compensation is None else probe.compensation
+    new_acc, compensation = compensated_add(probe.accumulator, compensation, value * phase * dt * weight)
 
-    return probe._replace(accumulator=new_acc)
+    return probe._replace(accumulator=new_acc, compensation=compensation)
 
 
 # ---------------------------------------------------------------------------
@@ -599,6 +602,7 @@ class DFTPlaneProbe(NamedTuple):
     window: str
     window_alpha: float
     region: tuple[int, int, int, int] | None = None
+    compensation: jnp.ndarray | None = None
 
 
 def init_dft_plane_probe(
@@ -650,7 +654,7 @@ def init_dft_plane_probe(
     _cdtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
     acc = jnp.zeros((nf,) + plane_shape, dtype=_cdtype)
     return DFTPlaneProbe(
-        accumulator=acc, freqs=freqs,
+        accumulator=acc, compensation=jnp.zeros_like(acc), freqs=freqs,
         component=component, axis=axis, index=index,
         total_steps=int(dft_total_steps),
         window=dft_window,
@@ -663,10 +667,12 @@ def update_dft_plane_probe(probe: DFTPlaneProbe, state, dt: float) -> DFTPlanePr
     """Accumulate a plane with its physical component clock."""
     from rfx.measurement.accumulators import plane_sample
     sample = plane_sample(state, probe.component, probe.axis, probe.index, probe.region)
-    return probe._replace(accumulator=_accumulate(
-        probe.accumulator, sample, state.step-1, probe.freqs, dt, field_channel(probe.component),
+    compensation = jnp.zeros_like(probe.accumulator) if probe.compensation is None else probe.compensation
+    total, compensation = _accumulate(
+        (probe.accumulator, compensation), sample, state.step-1, probe.freqs, dt, field_channel(probe.component),
         total_steps=probe.total_steps, window=probe.window, alpha=probe.window_alpha,
-        window_step=state.step))
+        window_step=state.step)
+    return probe._replace(accumulator=total, compensation=compensation)
 
 
 # ---------------------------------------------------------------------------
@@ -709,6 +715,10 @@ class FluxMonitor(NamedTuple):
     normal_h_zero: bool = False  # odd tangential-H image on a magnetic plane
     normal_h_weights: tuple[float, float] = (.5, .5)  # left/right half-cell planes
     normal_periodic: bool = False
+    c_e1_dft: jnp.ndarray | None = None
+    c_e2_dft: jnp.ndarray | None = None
+    c_h1_dft: jnp.ndarray | None = None
+    c_h2_dft: jnp.ndarray | None = None
 
 
 # Tangential field component names for each normal axis
@@ -789,6 +799,8 @@ def init_flux_monitor(
     return FluxMonitor(
         e1_dft=zeros1, e2_dft=zeros2,
         h1_dft=zeros2, h2_dft=zeros1,
+        c_e1_dft=jnp.zeros_like(zeros1), c_e2_dft=jnp.zeros_like(zeros2),
+        c_h1_dft=jnp.zeros_like(zeros2), c_h2_dft=jnp.zeros_like(zeros1),
         freqs=freqs, axis=axis, index=index,
         dA=dA, dA2=dA2, normal_h_zero=normal_h_zero,
         normal_h_weights=normal_h_weights, normal_periodic="xyz"[axis] in periodic_axes,
@@ -808,11 +820,15 @@ def update_flux_monitor(
     values = flux_samples(state, mon.axis, mon.index, _FLUX_COMPONENTS[mon.axis],
                           flux_regions(mon), mon.normal_h_zero, mon.normal_h_weights, mon.normal_periodic)
     names = ('e1_dft', 'e2_dft', 'h1_dft', 'h2_dft')
-    return mon._replace(**{
-        name: _accumulate(getattr(mon, name), value, state.step-1, mon.freqs, dt,
-                          'E' if k < 2 else 'H', total_steps=mon.total_steps,
-                          window=mon.window, alpha=mon.window_alpha, window_step=state.step)
-        for k, (name, value) in enumerate(zip(names, values))})
+    updates = {}
+    for k, (name, value) in enumerate(zip(names, values)):
+        total, compensation = getattr(mon, name), getattr(mon, 'c_' + name)
+        compensation = jnp.zeros_like(total) if compensation is None else compensation
+        updates[name], updates['c_' + name] = _accumulate(
+            (total, compensation), value, state.step-1, mon.freqs, dt,
+            'E' if k < 2 else 'H', total_steps=mon.total_steps,
+            window=mon.window, alpha=mon.window_alpha, window_step=state.step)
+    return mon._replace(**updates)
 
 
 def flux_spectrum(mon: FluxMonitor, *, exact_f64: bool = False) -> jnp.ndarray:
@@ -928,11 +944,12 @@ def _warn_if_flux_subnormal_flush(mon: FluxMonitor, flux) -> None:
 # ---------------------------------------------------------------------------
 
 _FLUX_ACCUMULATOR_FIELDS = ("e1_dft", "e2_dft", "h1_dft", "h2_dft")
+_FLUX_COMPENSATION_FIELDS = ("c_e1_dft", "c_e2_dft", "c_h1_dft", "c_h2_dft")
 # Everything that is NOT an accumulator describes WHICH plane, WHICH
 # frequencies and WHICH area weights the accumulators belong to. Derived from
 # ``_fields`` so a future FluxMonitor field is covered without editing here.
 _FLUX_METADATA_FIELDS = tuple(
-    name for name in FluxMonitor._fields if name not in _FLUX_ACCUMULATOR_FIELDS
+    name for name in FluxMonitor._fields if name not in _FLUX_ACCUMULATOR_FIELDS + _FLUX_COMPENSATION_FIELDS
 )
 
 
@@ -1041,6 +1058,7 @@ def subtract_flux_monitors(sample: FluxMonitor, ref: FluxMonitor) -> FluxMonitor
         e2_dft=sample.e2_dft - ref.e2_dft,
         h1_dft=sample.h1_dft - ref.h1_dft,
         h2_dft=sample.h2_dft - ref.h2_dft,
+        c_e1_dft=None, c_e2_dft=None, c_h1_dft=None, c_h2_dft=None,
     )
 
 

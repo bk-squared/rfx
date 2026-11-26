@@ -165,7 +165,7 @@ def design_adjoint_scan(ctx, initial, xs):
         magnetic: list[tuple[str, tuple[int | slice, ...], jax.Array]] = []
         for meta, a, b in zip(ctx.dft_meta, initial.get("dft_planes", ()),
                               last_bar.get("dft_planes", ())):
-            target = jnp.zeros_like(a) if isinstance(b, symbolic) else b
+            target = jnp.zeros_like(a[0]) if isinstance(b[0], symbolic) else b[0]
             entry = (meta[0].name, _plane_slice(meta, ctx.grid.shape), target)
             (electric if meta[0].name.startswith("e") else magnetic).append(entry)
         if ctx.use_ntff:

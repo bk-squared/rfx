@@ -389,7 +389,7 @@ def _raw_coefficient_results(n_steps):
                     return jax.lax.scan(step, carry, rows)
                 rows = jax.tree.map(lambda a: a.reshape((8, n_steps // 8) + a.shape[1:]), xs)
                 last, _ = jax.lax.scan(jax.checkpoint(segment), initial, rows)
-            spectrum = last["dft_planes"][0] / ctx.dt
+            spectrum = last["dft_planes"][0][0] / ctx.dt
             weights = jnp.arange(spectrum.size).reshape(spectrum.shape) + 1
             return jnp.sum(weights * jnp.abs(spectrum)**2)
 

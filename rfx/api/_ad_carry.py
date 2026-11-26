@@ -8,6 +8,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.api._ad_memory_types import ADMemoryUnavailable
+from rfx.measurement.accumulators import plane_carry, flux_carry
 
 
 def linear_accumulators(sim, grid, n_steps):
@@ -41,11 +42,10 @@ def linear_accumulators(sim, grid, n_steps):
         add("ntff", lambda: init_ntff_data(make_ntff_box(grid, lo, hi, freqs), field_dtype=dtype))
     if sim._dft_planes:
         from rfx.measurement.setup import build_planes
-        add("dft_planes", lambda: tuple(p.accumulator for p in build_planes(sim, grid, n_steps)))
+        add("dft_planes", lambda: plane_carry(build_planes(sim, grid, n_steps)))
     if sim._flux_monitors:
         from rfx.measurement.flux_weights import build_flux_monitor_cfgs
-        add("flux_monitors", lambda: tuple((m.e1_dft, m.e2_dft, m.h1_dft, m.h2_dft)
-            for m in build_flux_monitor_cfgs(sim, grid, n_steps, periodic=sim._periodic_flags())))
+        add("flux_monitors", lambda: flux_carry(build_flux_monitor_cfgs(sim, grid, n_steps, periodic=sim._periodic_flags())))
     return records, warnings
 
 

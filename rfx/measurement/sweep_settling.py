@@ -1,6 +1,8 @@
 """Adapt batched records to the same result witness run() uses."""
 import numpy as np
 
+from .accumulators import plane_result
+
 
 def sweep_member_witnesses(sim, grid, series, names, planes, accumulators):
     from rfx.api._spec import Result
@@ -8,7 +10,7 @@ def sweep_member_witnesses(sim, grid, series, names, planes, accumulators):
 
     dbs, witnesses = [], []
     for index, samples in enumerate(series):
-        realized = {name: plane._replace(accumulator=accumulators[name][index])
+        realized = {name: plane_result(plane, accumulators[name][index])
                     for name, plane in zip(names, planes)}
         result = Result(state=None, time_series=samples, s_params=None, freqs=None,
                         dft_planes=realized or None, grid=grid, dt=grid.dt)

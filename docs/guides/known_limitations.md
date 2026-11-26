@@ -836,6 +836,19 @@ measurement.
 Until it is fixed, take the reference plane at the measuring plane, or correct |S| by the line's α yourself. The fix
 moves S with the complex propagation constant α + jβ for every port kind.
 
+### Port voltage, current and modal DFTs are still plain complex64 running sums
+
+Tracker: #3035
+
+The coax, lumped, wire, waveguide and Floquet port DFTs, the reference-plane V and I, the drive references, the
+ringdown emulation's V and I, the far-field block sums and the adjoint design-region sums add one complex64 term per
+step without compensation. The sum's error grows faster than the record: on a synthetic four-channel record it reaches
+4.0e-6 of the spectrum's peak at 36 500 steps and 5.4e-5 at 146 000 steps. DFT planes, flux monitors, point-probe DFTs
+and the replay of kept records are compensated and stay near float32 resolution. The coax port S11 that `run()`
+returns is formed from these port sums. What to do: on records beyond about 30 000 steps, do not compare a port
+quantity with another route at 1e-5 or tighter, and check a passive |S| read just above 1 with a power balance before
+reading it as physics. The entry stays until the last site is fixed.
+
 ## Ring-down completion and the early stop
 
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).

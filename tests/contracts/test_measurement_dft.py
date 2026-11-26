@@ -47,7 +47,7 @@ def test_j7_stream_and_replay(kind, offset, length, window):
         n, sample = item
         return accumulate(acc, sample, n, freqs, dt, kind,
                           total_steps=length, window=window, alpha=.3), None
-    live = jax.jit(lambda: jax.lax.scan(body, initial, (jnp.arange(length), samples))[0])()
+    live = jax.jit(lambda: jax.lax.scan(body, (initial, initial), (jnp.arange(length), samples))[0][0])()
     replay = transform(samples, freqs, dt, kind, window=window, alpha=.3)
     assert np.max(np.abs(np.asarray(live) - np.asarray(replay))) <= 1e-4 * np.max(np.abs(live))
     from scipy.signal.windows import tukey

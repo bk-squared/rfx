@@ -128,15 +128,15 @@ def test_every_kernel_entry_takes_a_traced_dt_and_traced_bins(kind):
 
     def objective(d):
         """Flux metadata orders axis, index, bins, components, component regions, normal-H zero, normal-H weights and periodic-normal-axis flag."""
-        acc = accumulate(jnp.zeros(3, jnp.complex64), 0.7, 5, bins, d, kind)
+        acc = accumulate((jnp.zeros(3, jnp.complex64), jnp.zeros(3, jnp.complex64)), 0.7, 5, bins, d, kind)[0]
         ntff = phase(5, bins, d, kind, dtype=jnp.complex64)
         port = port_dft_phase(jnp.int32(5), jnp.asarray(bins), d, kind)
         state = SimpleNamespace(**{c: jnp.ones((3, 3, 3), jnp.float32)
                                    for c in ("ex", "ey", "ez", "hx", "hy", "hz")})
         meta = ((0, 1, bins, tuple(field_channel(c) for c in ("ey", "ez", "hy", "hz")),
                  ((0, 3, 0, 3),) * 4, False, (.5, .5), False),)
-        accs = (tuple(jnp.zeros((3, 3, 3), jnp.complex64) for _ in range(4)),)
-        flux_sum = sum(jnp.sum(a) for a in flux(state, accs, meta, d, 5)[0])
+        accs = (tuple((jnp.zeros((3, 3, 3), jnp.complex64), jnp.zeros((3, 3, 3), jnp.complex64)) for _ in range(4)),)
+        flux_sum = sum(jnp.sum(a[0]) for a in flux(state, accs, meta, d, 5)[0])
         tail = jnp.sum(transform(record, bins, d, kind)) + jnp.sum(half_step_current_phase(bins, d))
         return jnp.real(jnp.sum(acc) + jnp.sum(ntff) + jnp.sum(port) + flux_sum + tail)
 
