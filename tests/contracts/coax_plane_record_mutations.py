@@ -10,6 +10,7 @@ import numpy as np
 from tests.contracts.test_coax_plane_record_route import (
     LENGTHS, capture_case, check_p1, check_p2, check_p3, check_p4, check_p5,
 )
+from tests.contracts.test_coax_runner_memory_slope import K_BOUND, measure_row
 
 
 def _red(monkeypatch, pin, mutation, check, *, row="one", eps_scale=None, install):
@@ -167,3 +168,39 @@ def test_p5_last_coax_plane_dropped(monkeypatch):
         mp.setattr(waveguide_port, "settling_db_from_named_records", changed)
 
     _red(monkeypatch, "P5", "last_coax_plane_dropped", check_p5, install=install)
+
+
+def test_k_one_port_records_on():
+    row = measure_row("one", install=_record_all)
+    red = row["k"] > K_BOUND
+    print("MUTROW " + json.dumps(dict(pin="k", mutation="k_one_port_records_on",
+                                    red=red, k=row["k"])), file=sys.stderr, flush=True)
+    assert red, "k: one_port_records_on did not turn the pin red"
+
+
+def test_k_two_port_records_on():
+    row = measure_row("two", install=_record_all)
+    red = row["k"] > K_BOUND
+    print("MUTROW " + json.dumps(dict(pin="k", mutation="k_two_port_records_on",
+                                    red=red, k=row["k"])), file=sys.stderr, flush=True)
+    assert red, "k: two_port_records_on did not turn the pin red"
+
+
+def test_k_one_port_records_moved():
+    def install(mp):
+        import rfx.simulation as simulation
+        _record_all(mp)
+        original = simulation.run
+
+        def changed(*args, **kw):
+            result = original(*args, **kw)
+            return result._replace(snapshots={"moved": result.dft_time_records},
+                                   dft_time_records=())
+
+        mp.setattr(simulation, "run", changed)
+
+    row = measure_row("one", install=install)
+    red = row["k"] > K_BOUND
+    print("MUTROW " + json.dumps(dict(pin="k", mutation="k_one_port_records_moved",
+                                    red=red, k=row["k"])), file=sys.stderr, flush=True)
+    assert red, "k: one_port_records_moved did not turn the pin red"
