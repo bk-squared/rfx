@@ -368,6 +368,32 @@ def _pec_edges(sim, grid):
     return edges
 
 
+def flux_owner(grid, i, cfg, frequencies, *, availability, periodic):
+    from rfx.probes.probes import _FLUX_COMPONENTS
+    from .flux_weights import flux_regions, normal_h_neighbor
+    axis, index = cfg.axis, cfg.index
+    areas = (np.asarray(cfg.dA), np.asarray(cfg.dA2))
+    regions = flux_regions(cfg)
+    channels = []
+    for c, component in enumerate(_FLUX_COMPONENTS[axis]):
+        area = areas[(0, 1, 1, 0)[c]]
+        planes = (((index, 1.0),) if c < 2 else
+                  ((index, 0.0),) if cfg.normal_h_zero else
+                  ((normal_h_neighbor(index, grid.shape[axis], cfg.normal_periodic), cfg.normal_h_weights[0]), (index, cfg.normal_h_weights[1])))
+        nodes = _join_node_arrays([
+            replace(p, weight=np.full(len(p), weight),
+                    area=area.ravel().astype(np.float64))
+            for plane, weight in planes
+            for p in (_plane_nodes(grid, axis, plane, component, regions[c]),)])
+        channels.append(field_channel(component, nodes, box=(axis, index, regions[c]),
+                                e_time_offset=0., h_time_offset=0.))
+    return Owner(f'flux_plane:{i}', 'flux', tuple(channels), frequencies,
+                 known_differences=(), availability=availability,
+                 dft_window=cfg.window, dft_window_alpha=cfg.window_alpha,
+                 periodic=tuple(periodic),
+                 normal_h=(cfg.normal_h_zero, cfg.normal_h_weights, cfg.normal_periodic))
+
+
 def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
                            calculator_owners=(), conductors=None, pec_edges=_UNSET,
                            periodic=None, dft_window=_UNSET, staggered_area=False,
@@ -450,8 +476,7 @@ def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
         owners.append(Owner(f'dft_plane:{i}', 'dft_plane', (channel,),
                             _frequencies(sim, entry)))
     from rfx.probes.flux_region import resolve_flux_region
-    from rfx.probes.probes import _FLUX_COMPONENTS
-    from .flux_weights import grid_flux_monitor, flux_regions, monitor_periodic_flags, normal_h_neighbor
+    from .flux_weights import grid_flux_monitor, monitor_periodic_flags
     from rfx.boundaries.pec import resolve_wall_faces
     from rfx.boundaries.pmc import magnetic_image_faces
     flux_periodic = (periodic if periodic is not None else
@@ -475,27 +500,10 @@ def _build_measurement_plan(sim, grid, *, n_steps, path, frequencies,
                                 lo1=bounds[0], hi1=bounds[1], lo2=bounds[2], hi2=bounds[3],
                                 pmc_faces=(magnetic_image_faces(sim._boundary_spec.pmc_faces(), grid.shape)
                                            if nu else resolve_wall_faces(grid, flux_periodic)[1]))
-        areas = (np.asarray(cfg.dA), np.asarray(cfg.dA2))
-        regions = flux_regions(cfg)
-        channels = []
-        for c, component in enumerate(_FLUX_COMPONENTS[axis]):
-            area = areas[(0, 1, 1, 0)[c]]
-            planes = (((index, 1.0),) if c < 2 else
-                      ((index, 0.0),) if cfg.normal_h_zero else
-                      ((normal_h_neighbor(index, grid.shape[axis], cfg.normal_periodic), cfg.normal_h_weights[0]), (index, cfg.normal_h_weights[1])))
-            nodes = _join_node_arrays([
-                replace(p, weight=np.full(len(p), weight),
-                        area=area.ravel().astype(np.float64))
-                for plane, weight in planes
-                for p in (_plane_nodes(grid, axis, plane, component, regions[c]),)])
-            channels.append(field_channel(component, nodes, box=(axis, index, regions[c]),
-                                    e_time_offset=0., h_time_offset=0.))
-        owners.append(Owner(f'flux_plane:{i}', 'flux', tuple(channels), _frequencies(sim, entry),
-                            known_differences=(),
-                            availability='result missing' if path.startswith('fwd') else 'sampled',
-                            dft_window=cfg.window, dft_window_alpha=cfg.window_alpha,
-                            periodic=tuple(flux_periodic),
-                            normal_h=(cfg.normal_h_zero, cfg.normal_h_weights, cfg.normal_periodic)))
+        owners.append(flux_owner(
+            grid, i, cfg, _frequencies(sim, entry),
+            availability='result missing' if path.startswith('fwd') else 'sampled',
+            periodic=flux_periodic))
     edges = (_pec_edges(sim, grid) if pec_edges is _UNSET and
              any(p.is_port and p.extent is not None for p in sim._ports) else
              None if pec_edges is _UNSET else pec_edges)
