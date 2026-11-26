@@ -1702,15 +1702,19 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         dmag = np.abs(mag_a - mag_b)
         core = np.abs(Sa[1, 0, :]) <= 10 ** (-20.0 / 20.0)
         outside = ~core
-        # Moving both planes by the same Delta rotates S11 by 2*beta*Delta and
-        # S21 by beta*(Delta_1 + Delta_2) = 2*beta*Delta here.
         rot11 = np.angle(Sb[0, 0, :] * np.conj(Sa[0, 0, :]))
         rot21 = np.angle(Sb[1, 0, :] * np.conj(Sa[1, 0, :]))
-        # Each arm's OWN fitted beta gives its own prediction. They are stored
-        # separately: the two arms fit beta from different probe ladders, so a
-        # gap between the two predictions is itself a reading of the fit.
         pred = 2.0 * np.real(beta_a) * delta
         pred_shifted = 2.0 * np.real(beta_b) * delta
+        abs_s21 = np.abs(Sa[1, 0, :])
+        rotation_maxima = {}
+        for name, rotation in (("s11", rot11), ("s21", rot21)):
+            k = int(np.argmax(np.abs(rotation)))
+            rotation_maxima[f"max_abs_rotation_{name}"] = {
+                "rad": float(rotation[k]), "bin_index": k,
+                "bin_hz": float(a_rec["result"]["freqs_hz"][k]),
+                "abs_s21_at_bin": float(abs_s21[k]),
+            }
         fix["plane"] = {
             "provenance": fixture_provenance(pl["provenance"], index, "plane_50um.json"),
             "num_periods": pl["num_periods"], "rung_um": pl["rung_um"],
@@ -1730,23 +1734,12 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
             "n_bins_in_core": int(core.sum()),
             "rotation_s11_rad": rot11.astype(float).tolist(),
             "rotation_s21_rad": rot21.astype(float).tolist(),
-            "predicted_rotation_rad": pred.astype(float).tolist(),
-            "predicted_rotation_shifted_beta_rad": pred_shifted.astype(float).tolist(),
-            "rotation_s11_residual_rad": np.abs(
-                np.angle(np.exp(1j * (rot11 - pred)))).astype(float).tolist(),
-            "rotation_s21_residual_rad": np.abs(
-                np.angle(np.exp(1j * (rot21 - pred)))).astype(float).tolist(),
-            # The same residuals against the opposite sign. Which one is small
-            # says which phase convention the extractor carries; neither being
-            # small is the finding.
-            "rotation_s11_residual_opposite_sign_rad": np.abs(
-                np.angle(np.exp(1j * (rot11 + pred)))).astype(float).tolist(),
-            "rotation_s21_residual_opposite_sign_rad": np.abs(
-                np.angle(np.exp(1j * (rot21 + pred)))).astype(float).tolist(),
-            "max_rotation_residual_rad": float(np.max(np.abs(
-                np.angle(np.exp(1j * (rot11 - pred)))))),
-            "max_rotation_residual_opposite_sign_rad": float(np.max(np.abs(
-                np.angle(np.exp(1j * (rot11 + pred)))))),
+            "expected_rotation_rad": 0.0,
+            "expected_rotation_basis": "S is referred to the feed planes, which a probe-ladder move does not move",
+            "abs_s21_base": abs_s21.astype(float).tolist(),
+            **rotation_maxima,
+            "probe_plane_rotation_context_rad": pred.astype(float).tolist(),
+            "probe_plane_rotation_context_shifted_beta_rad": pred_shifted.astype(float).tolist(),
             "bar_magnitude_db": BAR["magnitude_db"],
         }
 
@@ -1755,7 +1748,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         **({k: DRIVES[chosen_drive][k] for k in ("f0", "bandwidth")}
            if chosen_drive in DRIVES else {}),
         "num_periods": chosen_periods,
-        "chosen_from": "the pilot's settling witness and per-bin reliability",
+        "chosen_from": "the drive from the pilot's settling witness and per-bin reliability; the record length from the notch's settling witness at 100 and 50 um, 40 and 60 periods (predeclaration addendum 7)",
     }
 
     fixture_out.parent.mkdir(parents=True, exist_ok=True)
