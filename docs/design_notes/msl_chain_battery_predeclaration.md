@@ -137,3 +137,21 @@ number.
    - Execution: one cluster GPU job per stage as in "Execution" above, on 24 GB cards. The AD stage
      runs on a 48 GB card, as addendum 3 says.
    - The bars, the stages, the record-length rule and the falsifiers above are unchanged.
+
+## Addendum 2026-11-26, second (appended after the 20-period records were read; the record length in item 7 was chosen from the settling of the notch records alone and written in the battery's record before any 40-period S was read)
+
+6. **Plane invariance expects no rotation.** Addendum 5 records S at the feed planes, and moving the
+   probe ladder does not move them. Stage 3b therefore reports the rotation of `angle(S11)` and
+   `angle(S21)` against 0, not against `2 beta Delta` and `beta (Delta_1 + Delta_2)`. Those
+   probe-plane values stay beside them as context, and `|S21|` is reported at the bin of each
+   largest rotation. The stage's verdict stays the magnitude falsifier above; no bar is set on the
+   rotation.
+7. **The record is 40 source periods at every rung.** The settling witness was replaced after item 1
+   was measured: it now judges each frequency bin from the poles left ringing after the source ends.
+   On it the 20-period notch records read -28.5 / -22.1 / -27.8 dB at 100 / 50 / 25 um. That is above
+   -40 dB, so under the record-length rule above they are not interpreted.
+   - The notch at 100 and 50 um was re-run at 40 and 60 periods. It reads -44.55 / -42.07 dB at 40
+     and -58.35 / -60.43 dB at 60.
+   - Of the two lengths run, 40 is the shorter at which both rungs read at or below -40 dB.
+   - Every stage except the pilot is re-run at 40 periods; the assembler joins solve records of
+     one length only. A 40-period record above -40 dB is re-run longer.
