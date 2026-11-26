@@ -387,13 +387,7 @@ def make_graded_step(
             frame.tfsf_new = update_tfsf_1d_e(ctx.tfsf_cfg, frame.tfsf_h_state, ctx.grid.dx, ctx.dt, t_tfsf)
 
         if ctx.emit_time_series and frame.invariants["probe_table"].n_channels:
-            table = frame.invariants["probe_table"]
-            nodes = _host_probe_nodes(table)
-            if nodes is None:
-                frame.probe_out = project(frame.st, table)
-            else:
-                samples = [getattr(frame.st, pc)[pi, pj, pk] for pc, pi, pj, pk in nodes]
-                frame.probe_out = jnp.stack(samples)
+            frame.probe_out = project(frame.st, frame.invariants["probe_table"])
         else:
             frame.probe_out = jnp.zeros(0)
 
@@ -459,23 +453,6 @@ def make_graded_step(
     step_fn.port_owners = port_owners(ctx.grid, port_specs, nu=True, boundary=ctx.curl_boundary)
     step_fn.port_acc_indices = acc_indices
     return step_fn
-
-
-def _host_probe_nodes(table):
-    """Keep the pre-table one-device program and gradient; leave slab tables to project."""
-    if any(not isinstance(index, np.ndarray) for terms in table.components for index in terms.indices):
-        return None
-    nodes = [None] * table.n_channels
-    for terms in table.components:
-        if isinstance(terms.channel_ids, jax.core.Tracer) or isinstance(terms.weights, jax.core.Tracer):
-            return None
-        for channel, i, j, k, weight in zip(np.asarray(terms.channel_ids), *terms.indices,
-                                          np.asarray(terms.weights), strict=True):
-            channel = int(channel)
-            if weight != 1.0 or not 0 <= channel < table.n_channels or nodes[channel] is not None:
-                return None
-            nodes[channel] = (terms.component, int(i), int(j), int(k))
-    return tuple(nodes) if all(node is not None for node in nodes) else None
 
 
 def graded_probe_table(prb_meta, grid_shape, *, dtype):

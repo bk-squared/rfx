@@ -56,6 +56,25 @@ class SampleTable(NamedTuple):
     order: np.ndarray
     segment_ids: np.ndarray
     boxes: tuple[BoxTerm, ...] = ()
+    direct: tuple[tuple[str, int, int, int], ...] | None = None
+
+
+def _host_probe_nodes(table):
+    """Select static reads for host tables with one weight-one node per channel."""
+    if table.boxes or any(not isinstance(index, np.ndarray)
+                          for terms in table.components for index in terms.indices):
+        return None
+    nodes = [None] * table.n_channels
+    for terms in table.components:
+        if isinstance(terms.channel_ids, jax.core.Tracer) or isinstance(terms.weights, jax.core.Tracer):
+            return None
+        for channel, i, j, k, weight in zip(np.asarray(terms.channel_ids), *terms.indices,
+                                          np.asarray(terms.weights), strict=True):
+            channel = int(channel)
+            if weight != 1.0 or not 0 <= channel < table.n_channels or nodes[channel] is not None:
+                return None
+            nodes[channel] = (terms.component, int(i), int(j), int(k))
+    return tuple(nodes) if all(node is not None for node in nodes) else None
 
 
 def sample_table(owners, *, dtype):
@@ -81,7 +100,8 @@ def sample_table(owners, *, dtype):
                 np.asarray(ids, dtype=np.int32), xp.asarray(weights, dtype=dtype)))
     ids = np.concatenate([t.channel_ids for t in terms]) if terms else np.empty(0, np.int32)
     order = np.argsort(ids, kind='stable').astype(np.int32)
-    return SampleTable(tuple(terms), len(channels), tuple(c.name for c in channels), order, ids[order], tuple(boxes))
+    table = SampleTable(tuple(terms), len(channels), tuple(c.name for c in channels), order, ids[order], tuple(boxes))
+    return table._replace(direct=_host_probe_nodes(table))
 
 
 def gather(state, table):
@@ -122,6 +142,8 @@ def combine(samples, table):
 
 def project(state, table):
     """Sample completed fields and evaluate all channels together."""
+    if table.direct is not None:
+        return jnp.stack([getattr(state, c)[i, j, k] for c, i, j, k in table.direct])
     if not table.boxes:
         return combine(gather(state, table), table)
     values: list = [None] * table.n_channels
