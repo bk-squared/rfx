@@ -5,6 +5,7 @@ G1 uses U1's bulk Yee estimate.
 from functools import lru_cache
 import json
 import math
+import sys
 import time
 
 import jax
@@ -67,12 +68,13 @@ def derivative(*, yee=False):
 def emit(label, **values):
     def serial(value):
         return value.tolist() if isinstance(value, (np.ndarray, np.generic)) else value
-    print('ONE_DRIVEN ' + json.dumps(dict(label=label, **values), default=serial), flush=True)
+    print('ONE_DRIVEN ' + json.dumps(dict(label=label, **values), default=serial), flush=True, file=sys.stderr)
 
 
 def witness(result):
     _, detail = settling_db_from_port_records(
-        tuple(result.waveguide_ports.values()), freq_max=7.9e9, return_detail=True)
+        tuple(result.waveguide_ports.values()), freq_max=7.9e9, return_detail=True,
+        echo_bound=result.settling_echo_bound)
     shares = np.asarray(detail['share_per_bin'])
     passed = detail['status'] == 'pass' and shares.shape == (10,) and np.isfinite(shares).all() and (shares <= .01).all()
     return bool(passed), detail

@@ -218,7 +218,13 @@ def test_nonuniform_assemblers(normalize, manufactured, monkeypatch):
         calls.append(ref)
         cfgs = {name: cfg._replace(v_ref_t=jnp.full(4, .5 if ref else 1.))
                 for name, cfg in zip(("left", "right"), manufactured)}
-        return Record(waveguide_ports=cfgs, waveguide_port_flux=[jnp.full(4, 4. if ref else 1.)]*2)
+        grid = sim._build_realized_grid()
+        materials, debye, lorentz, *_ = sim._assemble_materials_nu(grid)
+        from rfx.measurement.echo_bound import runner_echo_bound
+        echo_bound = runner_echo_bound(sim, grid, materials, debye=debye, lorentz=lorentz,
+                                       waveguide_ports=cfgs)
+        return Record(grid=grid, waveguide_ports=cfgs, settling_echo_bound=echo_bound,
+                      waveguide_port_flux=[jnp.full(4, 4. if ref else 1.)]*2)
 
     monkeypatch.setattr(runner, "run_nonuniform_path", run)
     with warnings.catch_warnings(record=True) as caught:

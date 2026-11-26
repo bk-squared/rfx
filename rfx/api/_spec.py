@@ -571,6 +571,7 @@ class Result(NamedTuple):
     sparam_time_records: tuple | None = None
     sparam_read_ids: object = None
     dft_time_records: object = None
+    settling_echo_bound: object = None
     diagnostics: tuple[Diagnostic, ...] = ()
 
     def find_resonances(self, freq_range=None, probe_idx=0,
@@ -938,6 +939,7 @@ class ForwardResult(NamedTuple):
     flux_monitors: object = None
     waveguide_ports: object = None
     waveguide_sparams: object = None
+    settling_echo_bound: object = None
     diagnostics: tuple[Diagnostic, ...] = ()
 
 

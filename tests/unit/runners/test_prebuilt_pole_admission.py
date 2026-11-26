@@ -27,6 +27,9 @@ def test_prebuilt_lorentz_is_judged(graded, decay):
     else:
         runner = run
     kwargs = dict(max_steps=2, min_steps=1, check_interval=1) if decay else dict(n_steps=2)
+    if decay:
+        dt = float(grid.dt)
+        kwargs['echo_bound'] = dict(tau_max=dt / 4, D=299792458. * dt / 8, n_max=1., g=1.)
     stable = init_lorentz([drude_pole(.25 / grid.dt, 0.)], materials, grid.dt, high_wall=unpadded_high_walls(grid))
     runner(grid, materials, lorentz=stable, **kwargs)
     unstable = init_lorentz([drude_pole(.45 / grid.dt, 0.)], materials, grid.dt, high_wall=unpadded_high_walls(grid))

@@ -596,6 +596,12 @@ def _forward_from_materials(
         field_dtype=self._resolve_field_dtype(),
     )
 
+    from rfx.measurement.echo_bound import runner_echo_bound
+    from rfx.measurement.read_bins import declared_read_bins
+    echo_bound = runner_echo_bound(self, grid, materials, freqs=declared_read_bins(self, _s11_freqs_arr, waveguide_ports=waveguide_ports),
+        debye=debye_spec, lorentz=lorentz_spec, smoothing=subpixel_smoothing,
+        waveguide_ports=waveguide_ports, design_box=design_box)
+
     from rfx.measurement import reconstruct_oblique_physical
     from rfx.sources.tfsf import is_tfsf_2d
     if tfsf_run is not None and is_tfsf_2d(tfsf_run[0]):
@@ -625,6 +631,7 @@ def _forward_from_materials(
                 if self._dft_planes else None
             ),
             "time_series": getattr(result, "time_series", None),
+            "settling_echo_bound": echo_bound,
             "dt": getattr(result, "dt", grid.dt),
             "flux_monitors": (
                 {
@@ -671,6 +678,7 @@ def _forward_from_materials(
         self, grid, result, diagnostics=diagnostics, s_params=s_params_out,
         freqs=freqs_out, current_moment_monitor=current_moments_fwd, coax_port_metadata=coax_metadata,
         realized_geometry=stepping_product._realization_record,
+        settling_echo_bound=echo_bound,
     )._replace(tfsf_angle_deg=tfsf_angle_override)), conductors.design_findings)
 
 

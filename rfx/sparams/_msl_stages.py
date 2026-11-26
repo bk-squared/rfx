@@ -333,7 +333,8 @@ def _score_msl_record(
                 _channels, source_end_index=_source_end,
                 dt=getattr(_ts_result, "dt", None) or grid.dt,
                 freqs=freqs_arr, freq_max=self._freq_max, return_detail=True,
-                scale_groups=_groups, _channel_labels=_labels)
+                scale_groups=_groups, _channel_labels=_labels,
+                echo_bound=_ts_result.settling_echo_bound)
     return settling_db_runs, settling_details
 
 

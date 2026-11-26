@@ -36,10 +36,10 @@ from rfx.measurement.farfield import compute_far_field
 from rfx.farfield import directivity
 
 SETTLING_MAX_DB = -40.0
-N_STEPS = 600
+N_STEPS = {"uniform-z-via-NU-path": 638, "graded-z": 767}
 
 
-def _nu_dipole_directivity(dz_profile):
+def _nu_dipole_directivity(dz_profile, n_steps):
     """The off-drive probe measures the field decaying rather than the source switching
     off; without it the run reports no settling_db at all."""
     sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, float(np.sum(dz_profile))), dx=1.5e-3,
@@ -51,7 +51,7 @@ def _nu_dipole_directivity(dz_profile):
         'The settling witness must be off the drive cell to measure field decay')
     sim.add_ntff_box(corner_lo=(0.010, 0.010, 0.010),
                      corner_hi=(0.020, 0.020, 0.020), freqs=[3e9])
-    res = sim.run(n_steps=N_STEPS)
+    res = sim.run(n_steps=n_steps)
     assert res.ntff_data is not None, "NU runner did not accumulate NTFF data"
     settling = getattr(res, "settling_db", None)
     assert settling is not None and settling < SETTLING_MAX_DB, (
@@ -70,6 +70,6 @@ def _nu_dipole_directivity(dz_profile):
 ])
 def test_nu_ntff_dipole_directivity(dz_profile, label):
     """Full-sphere directivity is in dBi."""
-    D = _nu_dipole_directivity(dz_profile)
+    D = _nu_dipole_directivity(dz_profile, N_STEPS[label])
     assert 1.76 - 0.3 < D < 1.76 + 0.3, \
         f"NU+NTFF {label} dipole D={D:.3f} dBi outside 1.76 +/- 0.3 dBi"

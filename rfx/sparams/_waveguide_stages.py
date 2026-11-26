@@ -308,9 +308,14 @@ def _extract_waveguide_multimode(
     _homogeneous_reference_materials, _wg_pec_edge_masks, aniso_eps, aniso_inv_eps, conformal_weights, debye, entries,
     extract_multimode_s_matrix, extract_multimode_s_matrix_flux, grid, lorentz, materials, n_steps, normalize,
     np, raw_cfgs, ref_aniso_eps, ref_aniso_inv_eps, ref_conformal, reference_medium, resolve_reported_planes,
-    self, waveguide_plane_positions,
+    self, waveguide_plane_positions, debye_spec=None, lorentz_spec=None, subpixel_smoothing=False,
 ):
     """Returned reference planes are absolute de-embedding target coordinates."""
+    from rfx.measurement.echo_bound import runner_echo_bound
+    from rfx.measurement.read_bins import declared_read_bins
+    configs = [cfg for raw in raw_cfgs for cfg in (raw if isinstance(raw, list) else [raw])]
+    echo_bound = runner_echo_bound(self, grid, materials, freqs=declared_read_bins(self, waveguide_ports=configs, include_monitors=False), debye=debye_spec,
+        lorentz=lorentz_spec, smoothing=subpixel_smoothing, waveguide_ports=configs)
     settling_details_mm = []
     port_mode_cfgs: list[list] = []
     for entry, raw in zip(entries, raw_cfgs):
@@ -350,7 +355,7 @@ def _extract_waveguide_multimode(
             aniso_inv_eps=aniso_inv_eps,
             pec_edge_masks=_wg_pec_edge_masks,
             field_dtype=self._resolve_field_dtype(),
-            settling_details=settling_details_mm,
+            settling_details=settling_details_mm, echo_bound=echo_bound,
         )
     elif normalize:
         raise ValueError(
@@ -376,7 +381,7 @@ def _extract_waveguide_multimode(
             aniso_inv_eps=aniso_inv_eps,
             pec_edge_masks=_wg_pec_edge_masks,
             field_dtype=self._resolve_field_dtype(),
-            settling_details=settling_details_mm,
+            settling_details=settling_details_mm, echo_bound=echo_bound,
         )
     reference_planes = np.array(desired_refs_mm, dtype=float)
     port_names_mm = []

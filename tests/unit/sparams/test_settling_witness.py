@@ -324,7 +324,7 @@ def test_settled_coax_two_port_stays_silent():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         res = _coax_two_port_sim().compute_coaxial_two_port(
-            n_steps=3000, freqs=_BAND)
+            n_steps=3409, freqs=_BAND)
 
     sd = np.asarray(res.settling_db)
     assert sd.shape == (2,)

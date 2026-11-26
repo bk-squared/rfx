@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import sys
 
 import jax
 import numpy as np
@@ -241,18 +242,26 @@ def test_every_other_output_is_byte_identical(short_runs):
 
 
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
-def test_w0_and_byte_identity_hold_under_scoped_x64(lane):
+def test_w0_and_byte_identity_hold_under_scoped_x64(lane, capsys):
     """Under x64 the uniform lane's port accumulators are complex128; the
     rebuild accumulates in the run's own dtype and assembles from it, so W0
     still holds and the run's outputs are unchanged."""
     from tests._x64_compat import enable_x64
 
     with enable_x64():
-        plain = _run(_box(lane), 600)
-        completed = _run(_box(lane), 600, ringdown=RingdownSpec())
+        sim = _box(lane)
+        dt = float(sim._build_realized_grid().dt)
+        required = 2.05 * 2 * np.linalg.norm([.012, .011, .005]) * np.sqrt(2.2) / 299792458.0 / dt
+        upper = 2 * int(np.ceil(required))
+        n_steps = max(600, next(n for n in range(upper - 2, upper + 2)
+                               if n - round(n / 2) >= required))
+        with capsys.disabled():
+            print(f"scoped_x64[{lane}]: n_steps={n_steps}, dt={dt:.17g} s", file=sys.stderr)
+        plain = _run(sim, n_steps)
+        completed = _run(_box(lane), n_steps, ringdown=RingdownSpec())
     w0 = completed.ringdown.report.witness("W0").value
     print(f"\n[{lane}, x64] W0 = {w0:.3g} of the peak; ULPs per array "
-          f"{completed.ringdown.report.w0_ulps}")
+          f"{completed.ringdown.report.w0_ulps}", file=sys.stderr)
     assert w0 <= rd.W0_REL_BAR
     for f in ("time_series", "s_params", "freqs"):
         assert np.array_equal(np.asarray(getattr(plain, f)),

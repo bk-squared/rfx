@@ -38,7 +38,7 @@ def test_gradient_witness_zero_bins_axis_and_nan():
 
 
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
-def test_identification_channels_reach_both_pencils_and_preserve_ports(lane, monkeypatch):
+def test_identification_channels_reach_both_pencils_and_preserve_ports(lane, monkeypatch, capsys):
     seen = []
     models = []
     original = rd.identify
@@ -53,10 +53,17 @@ def test_identification_channels_reach_both_pencils_and_preserve_ports(lane, mon
 
     monkeypatch.setattr(rd, "identify", identify)
     sim = _box(lane)
+    dt = float(sim._build_realized_grid().dt)
+    required = 2.05 * 2 * np.linalg.norm([.012, .011, .005]) * np.sqrt(2.2) / 299792458.0 / dt
+    upper = 2 * int(np.ceil(required))
+    n_steps = max(600, next(n for n in range(upper - 2, upper + 2)
+                           if n - round(n / 2) >= required))
+    with capsys.disabled():
+        print(f"identification_channels[{lane}]: n_steps={n_steps}, dt={dt:.17g} s", file=sys.stderr)
     declared = tuple(sim._probes)
     spec = rd.RingdownSpec(identification_probes=PROBES)
     kw = {"s_param_freqs": FREQS} if lane == "uniform" else {}
-    run = sim.run(n_steps=600, compute_s_params=True, skip_preflight=True, ringdown=spec, **kw)
+    run = sim.run(n_steps=n_steps, compute_s_params=True, skip_preflight=True, ringdown=spec, **kw)
     assert tuple(sim._probes) == declared
     model = models[0]
     expected = {float(p.imag / (2 * np.pi)): float(abs(c[-1]) / model.window_rms[-1])
@@ -64,11 +71,11 @@ def test_identification_channels_reach_both_pencils_and_preserve_ports(lane, mon
     for pole, shares in zip(run.ringdown.report.poles, run.ringdown.report.identification_amplitude_shares):
         assert shares[0] == pytest.approx(expected[pole.f_hz])
     run_channels = seen[0]
-    assert run_channels.shape == (600, 3)
+    assert run_channels.shape == (n_steps, 3)
     seen.clear()
     kw = {"port_s11_freqs": FREQS if lane == "uniform" else
           np.linspace(sim._freq_max / 10, sim._freq_max, 50)}
-    forward = sim.forward(n_steps=600, skip_preflight=True, ringdown=spec, **kw)
+    forward = sim.forward(n_steps=n_steps, skip_preflight=True, ringdown=spec, **kw)
     np.asarray(forward.ringdown.s_params)
     assert seen and all(y.shape[1] == 3 for y in seen)
     assert tuple(sim._probes) == declared
