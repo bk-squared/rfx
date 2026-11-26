@@ -637,74 +637,13 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     Returns the spec; raises ``ValueError`` on a zero footprint.
     """
     from rfx.boundaries.pec import SheetSpec
-    from rfx.materials.thin_conductor import sheet_bounds
+    from rfx.geometry.sheet_plane import _sheet_plane_setup
+    from rfx._internal._periodic import periodic_mask
 
-    if isinstance(shape, OrientedBox):
-        raise NotImplementedError(
-            "OrientedBox is a volume; axis-aligned sheet conversion is not implemented")
-
-    traced = _is_traced_coords(coords)
-    reference_grid = nominal_grid if nominal_grid is not None else grid
-    if traced and reference_grid is None:
-        raise RfxRefusal(
-            f"sheet {name!r}: a sheet's plane is a static integer, and this "
-            "mesh is a JAX tracer (mesh-as-design-variable), so the nearest "
-            "node plane cannot be resolved. Pin the mesh, or declare the "
-            "conductor as a volume.")
-    lo, hi = sheet_bounds(shape)
-    if lo is None or hi is None:
-        raise ValueError(
-            f"sheet {name!r}: shape {type(shape).__name__} has no axis-aligned "
-            "bounding box (Box corner_lo/corner_hi or Shape.bounding_box()), "
-            "so its normal and plane cannot be located.")
-    lo = tuple(float(v) for v in lo)
-    hi = tuple(float(v) for v in hi)
-    extents = [hi[i] - lo[i] for i in range(3)]
-    if normal_axis is None:
-        normal_axis = min(range(3), key=lambda i: extents[i])
-    a = int(normal_axis)
-    if traced:
-        if is_tracer(coords[a]):
-            raise RfxRefusal(
-                f"sheet {name!r}: a sheet's plane is a static integer, and "
-                f"normal axis {'xyz'[a]} is a JAX tracer; pin that axis or "
-                "declare the conductor as a volume.")
-        for axis in range(3):
-            if axis != a and is_tracer(coords[axis]) and 'xyz'[axis] not in (
-                    getattr(reference_grid, "nominal_cells", None) or {}):
-                raise RfxRefusal(
-                    f"sheet {name!r}: traced in-plane axis {'xyz'[axis]} needs "
-                    f"nominal_profiles; declare nominal_profiles for axis {'xyz'[axis]} "
-                    "or use add_pinned_sheet.")
-        from rfx.model.graded_grid import host_nominal_grid
-        with jax.ensure_compile_time_eval():
-            nominal = host_nominal_grid(reference_grid)
-            coords = coords_from_nonuniform_grid(nominal)
-            cell_sizes = cell_sizes_from_nonuniform_grid(nominal)
-    node_axes = footprint_sample_coords(
-        coords, tuple(t for t in range(3) if t != a), carrier="node")
-    if cell_sizes is None:
-        cell_sizes = tuple(axis_cell_sizes(n) for n in node_axes)
-    mid = 0.5 * (lo[a] + hi[a])
-    from rfx._internal._periodic import periodic_mask, plane_coordinate
-    requested_mid = mid
-    mid = plane_coordinate(grid, a, mid)
-    d_local = _local_cell(node_axes[a], cell_sizes[a], mid)
-    if refuse_thick and extents[a] > (d_local + node_tie_tol(lo[a], d_local)
-                                    + node_tie_tol(hi[a], d_local)):
-        raise ValueError(
-            f"add_thin_conductor: shape {name!r} is {extents[a]:.6g} m thick "
-            f"along {'xyz'[a]} against a local cell of {d_local:.6g} m — not a "
-            "sheet; use add() for a volume (the lattice ownership contract "
-            "realizes a volume with both faces and a shorted interior).")
-    plane = _nearest_plane(node_axes[a], mid, d_local,
-                           what="sheet", name=name, axis=a)
-    # Tangential endpoints stay distinct until edge enumeration. Folding L
-    # into 0 here would either lose the final edge or add an edge near 0.
-    node_axes = list(node_axes)
-    for t in range(3):
-        if t != a and 'xyz'[t] in getattr(grid, 'periodic_axes', ''):
-            node_axes[t] = np.append(node_axes[t], float(grid.domain[t]))
+    setup = _sheet_plane_setup(
+        shape, coords, cell_sizes, normal_axis=normal_axis, name=name, lane=lane,
+        refuse_thick=refuse_thick, grid=grid, nominal_grid=nominal_grid)
+    coords, cell_sizes, lo, hi, a, node_axes, requested_mid, plane = setup
     shape_3 = tuple(len(line) for line in node_axes)
     is_box = getattr(shape, "corner_lo", None) is not None
     if is_box:

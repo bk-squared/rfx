@@ -303,13 +303,15 @@ def build_c_pecbox(path):
 
 
 def build_c_sheet(path):
+    z = .0042 if 'graded' in path else .004
     return base_scene(path).add_thin_conductor(
-        Box(((14 - .35) * .001, (6 - .35) * .001, .004),
-            ((20 + .35) * .001, (14 + .35) * .001, .004)))
+        Box(((14 - .35) * .001, (6 - .35) * .001, z),
+            ((20 + .35) * .001, (14 + .35) * .001, z)))
 
 
 def build_c_film(path):
-    return base_scene(path).add_thin_conductor(Box((.014, .006, .004), (.020, .014, .004)), sigma_bulk=1e5)
+    z = .0042 if 'graded' in path else .004
+    return base_scene(path).add_thin_conductor(Box((.014, .006, z), (.020, .014, z)), sigma_bulk=1e5)
 
 
 def build_c_wire(path):

@@ -449,7 +449,8 @@
         "waveform",
         "thin_conductors",
         "domain",
-        "dt_override"
+        "dt_override",
+        "snap"
       ]
     },
     "axial_ratio": {

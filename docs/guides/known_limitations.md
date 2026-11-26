@@ -418,6 +418,23 @@ the same process, completes with the GPU pool capped at about 5.6 GiB at a 0.46 
 memory. What to do: call `clear_inspection_cache()` after inspecting a model you will not solve, and drop any
 `realized_geometry()` record before a large solve.
 
+### The edge-aware mesh helper refuses some strip-to-absorber gaps that its own edge rule can build
+
+Tracker: #3067
+
+`rfx.mesh_edges.edge_aware_profiles` is the remedy the conductor-sheet size refusal names. Its rule: a free sheet edge
+lies 0.35 of its cell beyond the last node the sheet covers, the end cell is `dx`, and adjacent cells differ by at most
+a ratio of 1.3. For a strip whose free edge lies c·`dx` from the domain face, the helper refuses with
+`segment 0: span ... cannot hold its ramps at ratio <= 1.3` at some gaps where a profile under that rule exists. In the
+issue's reproduction (a 600 µm strip on a 254 µm substrate, `dx` = h/3), over c = 1.50 to 3.00 in steps of 0.05 it refuses c = 1.50–1.80, 2.20, 2.25, 2.35 and 2.55–2.80, all buildable, and builds
+c = 2.30, 2.40–2.50 and 2.85–3.00. Between c = 1.845 and 2.154 no profile under the rule exists; the refusal there is
+right, but it does not name the nearest gaps that can be built.
+
+What to do now: build that axis's profile by hand to the same rule and pass it as `Simulation(dy_profile=...)` (or the
+profile of the strip's axis): end cells `dx`, adjacent cells within a ratio of 1.3, and each free edge 0.35 of its cell
+past a node. The conductor-sheet size check in preflight then confirms the solved width. For a gap between 1.845 and
+2.154 cells, move the strip or resize the domain so the gap leaves that interval.
+
 ## Ports and extraction
 
 ### The staircased coax line can be 40–44 ohm for a drawn 48.6-ohm line.
@@ -520,6 +537,34 @@ to the inner and outer conductors at half weight and so read 0.84 of the line vo
 the 0.1 mm test mesh. With the whole-cell voltage, the short test fixture's |S21| falls
 from 3.81 to 3.22 at 6 GHz and its column power from 14.6 to 10.5; the matrix is still
 far from passive, and the rest of the excess is not attributed.
+
+### The coax→microstrip transition and the mixed coax/microstrip S-matrix keep whole microstrip planes at every step.
+
+Tracker: #3069
+
+`compute_coax_msl_transition` keeps each x-normal Ez plane of its microstrip probes at every
+time step, and `compute_mixed_s_matrix` keeps its microstrip Ez and H planes, with
+no crop, at every step. Both read those records only to form the microstrip voltage (and, in
+the mixed S-matrix, the current) for the record-tail witness. Their memory therefore grows
+as each plane's transverse cells × steps.
+
+On one GPU, the transition's device memory grows by 317.8 kB per step from 200 to 800 steps
+with its coax plane records off; the coax source waveforms it stores are 1.5 kB per step of
+that, so almost all of it is the microstrip planes. The coax planes of the three coax
+calculators no longer keep these records.
+
+### The coax port's plane source keeps one waveform per aperture cell and component for the whole record.
+
+Tracker: #3074
+
+Every coax aperture cell with a nonzero TEM profile gets its own float32 electric and magnetic
+source waveform of `n_steps` samples, so the stored source grows as (aperture cells ×
+components) × steps × 4 B, and the device holds it more than once at its peak. This holds for
+the three coax calculators and for `add_coaxial_port()` on `run()` and `forward()`. On one GPU,
+the coax one-port of #3069 (256 stored waveforms, 1024 B per step) grows by 2.9 kB of device
+memory per step, about 0.21 GB at 74 000 steps (from that slope, an estimate). Its host memory
+grows by 12.2 kB per step; the cause of that growth is not known. What to do: nothing for
+records that fit; the fix is planned.
 
 ### On a radiating device, the coax calculators' S11 includes coupling from their open feed end.
 
