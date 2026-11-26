@@ -25,6 +25,64 @@ def test_one_device_setup_release(path):
     assert run.returncode == 0, run.stdout + run.stderr
 
 
+def test_released_kernel_product_rebuilds_conductors(monkeypatch):
+    import numpy as np
+    sim = build_scene('rlc')
+    expected = np.asarray(build_scene('rlc').realized_geometry().conductors.pec_cells)
+    assert expected.dtype == np.bool_
+    assert expected.shape == (64, 32, 40)
+    assert expected.any()
+    from rfx.stepping import prepared
+    held = []
+    original_release = prepared.release_dense
+
+    def release(product):
+        original_release(product)
+        held.append(product)
+
+    class Interrupted(Exception):
+        pass
+
+    def stepper(grid, materials, n_steps, **kwargs):
+        raise Interrupted
+
+    monkeypatch.setattr(prepared, 'release_dense', release)
+    monkeypatch.setattr('rfx.simulation.run', stepper)
+    with pytest.raises(Interrupted):
+        sim.run(n_steps=20, compute_s_params=False, skip_preflight=True)
+    assert len(held) == 1 and held[0]._dense_released
+    assert held[0].pec_cells is None
+    conductors = sim.realized_geometry().conductors
+    assert conductors is not held[0]
+    cells = np.asarray(conductors.pec_cells)
+    assert (cells.dtype == expected.dtype and cells.shape == expected.shape
+            and np.array_equal(cells, expected))
+
+
+@pytest.mark.parametrize('target', [
+    'tests/unit/runners/test_one_device_setup_release.py::test_released_kernel_product_rebuilds_conductors',
+    'tests/contracts/test_coax_shielded_end.py',
+], ids=['pin', 'shielded_end'])
+def test_dense_release_mutation_m8(target):
+    root = Path(__file__).resolve().parents[3]
+    source = root / 'rfx/model/realization_report.py'
+    original = source.read_bytes()
+    check = b'\n                       and not getattr(solved.conductors, "_dense_released", False)'
+    assert original.count(check) == 1
+    try:
+        source.write_bytes(original.replace(check, b'', 1))
+        child = subprocess.run([sys.executable, '-m', 'pytest', target, '-q'],
+                               cwd=root, text=True, capture_output=True, timeout=480)
+        output = child.stdout + child.stderr
+        print('MUTATION m8', target, 'EXIT', child.returncode, output, flush=True)
+        assert child.returncode == 1, output
+        assert any(line.startswith('FAILED ' + target) for line in output.splitlines()), output
+    finally:
+        source.write_bytes(original)
+    assert source.read_bytes() == original
+    print('RESTORED m8 exactly', flush=True)
+
+
 def build_scene(variant='bar'):
     import jax.numpy as jnp
     import numpy as np

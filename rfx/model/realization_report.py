@@ -37,7 +37,8 @@ def rebuild_view(sim, solved, smoothing, conformal=None):
     record = replace(record, realization_table=table, dt=solved.dt)
     object.__setattr__(root, "realization_table", table)
     object.__setattr__(record, "_conductors", getattr(solved, "_conductors")
-                       if solved.conductors is not None else root)
+                       if solved.conductors is not None
+                       and not getattr(solved.conductors, "_dense_released", False) else root)
     object.__setattr__(record, "_report_grid", root.grid)
     return record
 

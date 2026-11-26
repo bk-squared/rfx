@@ -29,6 +29,7 @@ def release_dense(product):
         sheets=(), wires=(), sheet_impedance=(), geometry_masks={}, assembly_entries=(),
         assembly=(), sheet_operator=None, _prepared_owner=None).items():
         object.__setattr__(product, name, value)
+    object.__setattr__(product, "_dense_released", True)
 
 
 def advance(product, stepper, *args, _operand_layout="grid", **kwargs):

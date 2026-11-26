@@ -130,7 +130,7 @@ def test_bore_clears_plate(monkeypatch, entry):
     sim.add_probe((.009, .006, .005), 'ez')
     captured = capture(monkeypatch, sim, entry)
     record = sim.realized_geometry()
-    root = captured['conductors']
+    root = record.conductors
     release = root.coax_bore_release
     assert release is not None
     port_report = next(p for p in record.ports if p.kind == 'coaxial')
