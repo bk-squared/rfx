@@ -3,7 +3,7 @@
 
 Runs the pre-declaration in
 ``docs/design_notes/msl_chain_battery_predeclaration.md`` against
-``Simulation.compute_msl_s_matrix`` on a uniform mesh with ``mode="laplace"``
+``Simulation.compute_msl_s_matrix`` on a graded mesh with ``mode="laplace"``
 ports and the RAW S (``enforce_passivity=False``, the shipped default).
 
 Every stage writes ONE JSON into ``--out``, persisted before anything optional
@@ -22,9 +22,9 @@ Stages::
     --assemble                                  arithmetic only, no FDTD
 
 The assembler joins the stage JSONs into
-``tests/fixtures/msl_chain_battery/fixture.json``; the replay test
-``tests/oracle/test_msl_chain_battery.py`` re-derives every assembled number
-from the stored S and compares it against the contract's bar.
+``tests/fixtures/msl_chain_battery/fixture.json`` with feed-plane S;
+``tests/locks/test_msl_chain_battery_drift.py`` compares the coarsest rung
+with a live solve. The assembler computes the ladder and its verdicts.
 
 This driver computes numbers. It writes no verdict sentence: where a reading
 of the numbers belongs, the fixture carries the measurement and the
@@ -71,7 +71,7 @@ from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff  # noqa: E402
 from tests._x64_compat import enable_x64  # noqa: E402  SCOPED x64 only
 
 SCHEMA = "rfx.msl_chain_battery"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PREDECLARATION = "docs/design_notes/msl_chain_battery_predeclaration.md"
 CONTRACT = "docs/design_notes/chain_closure_contract.md"
 DRIVER = "scripts/diagnostics/msl_chain_battery_measure.py"
@@ -298,6 +298,12 @@ def preflight_record(sim) -> dict:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         report = sim.preflight()
+    allowed = {"line_stub_behind_port", "pec_faces_finite_pec", "lossless_q",
+               "msl_port_geometry", "realization", "geometry_in_absorber"}
+    unexpected = [str(i) for i in report
+                  if i.code not in allowed or i.severity == "error"]
+    if unexpected:
+        raise RuntimeError(f"battery preflight requires review: {unexpected}")
     return {
         "n_findings": len(report),
         "ok": bool(report.ok),
@@ -348,12 +354,10 @@ def domain() -> tuple[float, float, float]:
 def build_sim(dx: float, dut: str, *, drive: str = DEFAULT_DRIVE,
               probe_offset: int | None = None, probe_spacing: int | None = None,
               precision: str = "float32", snap: str = "strict") -> Simulation:
-    """The board of the pre-declaration at one cell size.
+    """The board of the pre-declaration at one nominal mesh rung.
 
-    The ground is the PEC wall at the bottom of the domain — on the uniform
-    lane that is ``Boundary(lo="pec")`` on z, which is the same object the
-    non-uniform lane spells ``pec_faces={"zlo"}``: a wall, so the return
-    current is not carried by a finite sheet.
+    Both DUTs use the notch's edge-aware profiles, including the stub sheet.
+    The ground is the PEC wall ``Boundary(lo="pec")`` on z.
 
     The trace and the stub are ZERO-THICKNESS PEC sheets (equal z corners).
     Drawn with unequal corners the same Box is a volume and realizes a
@@ -362,32 +366,39 @@ def build_sim(dx: float, dut: str, *, drive: str = DEFAULT_DRIVE,
     if dut not in DUTS:
         raise ValueError(f"unknown dut {dut!r}; expected one of {DUTS}")
     lx, ly, lz = domain()
+    from rfx.mesh_edges import edge_aware_profiles
+
+    trace = Box((0.0, MARGIN_LAT, H_SUB),
+                (lx, MARGIN_LAT + W_TRACE, H_SUB))
+    stub = Box((lx / 2 - W_STUB / 2, MARGIN_LAT + W_TRACE, H_SUB),
+               (lx / 2 + W_STUB / 2, MARGIN_LAT + W_TRACE + L_STUB, H_SUB))
+    substrate = Box((0.0, 0.0, 0.0), (lx, ly, H_SUB))
+    profiles = edge_aware_profiles(
+        (lx, ly, lz), dx, sheets=[trace, stub], solids=[substrate],
+        faces={"x": [8 * dx, lx - 8 * dx, PORT_MARGIN, PORT_MARGIN + L_LINE],
+               "y": [8 * dx, ly - 8 * dx]}, axes="xy")
     sim = Simulation(snap=snap,
         freq_max=F_HI, domain=(lx, ly, lz), dx=dx, precision=precision,
         cpml_layers=CPML_LAYERS,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
+        **profiles,
     )
     sim.add_material("substrate", eps_r=EPS_R)
-    sim.add(Box((0.0, 0.0, 0.0), (lx, ly, H_SUB)), material="substrate")
+    sim.add(substrate, material="substrate")
 
     trace_y_lo = MARGIN_LAT
     trace_y_hi = MARGIN_LAT + W_TRACE
-    sim.add(Box((0.0, trace_y_lo, H_SUB), (lx, trace_y_hi, H_SUB)), material="pec")
+    sim.add(trace, material="pec")
 
     if dut == "notch":
-        xc = lx / 2.0
-        sim.add(Box((xc - W_STUB / 2.0, trace_y_hi, H_SUB),
-                    (xc + W_STUB / 2.0, trace_y_hi + L_STUB, H_SUB)),
-                material="pec")
+        sim.add(stub, material="pec")
 
     y_centre = 0.5 * (trace_y_lo + trace_y_hi)
     wf = GaussianPulse(**DRIVES[drive])
-    probe_kw = {}
-    if probe_offset is not None:
-        probe_kw["n_probe_offset"] = int(probe_offset)
-    if probe_spacing is not None:
-        probe_kw["n_probe_spacing"] = int(probe_spacing)
+    offset, spacing = probe_ladder(dx, dut)
+    probe_kw = {"n_probe_offset": offset if probe_offset is None else int(probe_offset),
+                "n_probe_spacing": spacing if probe_spacing is None else int(probe_spacing)}
     sim.add_msl_port(position=(PORT_MARGIN, y_centre, 0.0), width=W_TRACE,
                      height=H_SUB, direction="+x", impedance=50.0,
                      waveform=wf, **probe_kw)
@@ -395,6 +406,15 @@ def build_sim(dx: float, dut: str, *, drive: str = DEFAULT_DRIVE,
                      height=H_SUB, direction="-x", impedance=50.0,
                      waveform=wf, **probe_kw)
     return sim
+
+
+def probe_ladder(dx: float, dut: str) -> tuple[int, int]:
+    """The stored probe counts at a supported rung; other rungs are refused."""
+    rung = round(dx * 1e6)
+    if rung not in RUNGS_UM or abs(dx - rung * 1e-6) > 1e-12:
+        raise ValueError(f"unsupported battery rung {dx} m")
+    return {"notch": {100: (27, 3), 50: (53, 7), 25: (103, 15)},
+            "thru": {100: (18, 39), 50: (36, 80), 25: (71, 162)}}[dut][rung]
 
 
 def declared(dx: float, dut: str) -> dict:
@@ -414,7 +434,7 @@ def declared(dx: float, dut: str) -> dict:
         "domain_m": [lx, ly, lz],
         "cpml_layers": CPML_LAYERS,
         "substrate_cells_under_strip": H_SUB / dx,
-        "trace_cells_across": W_TRACE / dx,
+        "trace_nominal_cells_across": W_TRACE / dx,
         "port_plane_x_m": [PORT_MARGIN, PORT_MARGIN + L_LINE],
         "freqs_hz": [F_LO, F_HI, N_FREQS],
         "hj_z0_ohm": z0_hj,
@@ -424,7 +444,7 @@ def declared(dx: float, dut: str) -> dict:
         rec["w_stub_m"] = W_STUB
         rec["l_stub_m"] = L_STUB
         rec["stub_x_centre_m"] = lx / 2.0
-        rec["stub_cells_long"] = L_STUB / dx
+        rec["stub_nominal_cells_long"] = L_STUB / dx
         rec["f_notch_analytic_hz"] = C0 / (4.0 * L_STUB * math.sqrt(eps_eff))
     return rec
 
@@ -436,164 +456,130 @@ def declared(dx: float, dut: str) -> dict:
 # pins a different board and enforce_passivity=True).
 # ---------------------------------------------------------------------------
 
+def _profile_stats(nodes, cells, padding) -> dict:
+    """Interior profile statistics and contiguous runs of refined cell widths.
+
+    Run index bounds are half-open cell indices in the padded realized grid.
+    """
+    lo, hi = padding
+    end = len(cells) - hi - 1
+    widths = np.asarray(cells)[lo:end]
+    ratios = np.maximum(widths[1:] / widths[:-1], widths[:-1] / widths[1:])
+    changing = np.flatnonzero(np.abs(widths - widths.max()) > 1e-15)
+    groups = np.split(changing, np.flatnonzero(np.diff(changing) > 1) + 1)
+    runs = [{"cell_range": [int(g[0] + lo), int(g[-1] + lo + 1)],
+             "bounds_m": [float(nodes[g[0] + lo]), float(nodes[g[-1] + lo + 1])]}
+            for g in groups if len(g)]
+    return {"n": len(widths), "min_cell_m": float(widths.min()),
+            "max_cell_m": float(widths.max()),
+            "max_adjacent_ratio": float(ratios.max()) if len(ratios) else 1.0,
+            "graded_runs": runs}
+
+
 def realized_geometry(sim: Simulation, dx: float, dut: str) -> dict:
-    from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
-    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
-
-    grid = sim._build_grid()
-    sheets: list = []
-    wires: list = []
-    assembled = sim._assemble_materials(grid, pec_sheets=sheets, pec_wires=wires)
-    materials, pec_mask = assembled[0], assembled[3]
-    if pec_mask is None and not sheets and not wires:
-        raise RuntimeError("realized_geometry: this build has no conductor at all")
-    edges = realized_pec_edge_masks(pec_mask, sheets=tuple(sheets), wires=tuple(wires),
-                                    periodic=sim._periodic_flags())
-    mx, my, _mz = (np.asarray(e) for e in edges)
-    gc = coords_from_uniform_grid(grid)
-    nodes = (np.asarray(gc.x), np.asarray(gc.y), np.asarray(gc.z))
-
-    planes = realized_wall_planes(edges, 2)
-    if len(planes) != 1:
-        raise RuntimeError(
-            "realized_geometry: the metal of this board is zero-thickness sheets on "
-            f"ONE node plane, but the realization has tangential walls at z planes "
-            f"{planes} — two planes is what a cell-thick volume trace realizes")
-    k = int(planes[0])
-
-    ex_per_row = mx[:, :, k].sum(axis=0)
-    if not ex_per_row.any():
-        raise RuntimeError("realized_geometry: no Ex edge on the sheet plane — no "
-                           "metal runs along the propagation axis")
-    trace_rows = np.flatnonzero(ex_per_row == ex_per_row.max())
-    if trace_rows.size < 2 or trace_rows.max() - trace_rows.min() + 1 != trace_rows.size:
-        raise RuntimeError(
-            f"realized_geometry: the longest Ex rows are {trace_rows.tolist()} — the "
-            "main line does not realize as one contiguous block of rows")
-    j0, j1 = int(trace_rows.min()), int(trace_rows.max())
-    n_rows = j1 - j0 + 1
-
-    # The substrate under the strip, counted as CELLS from the realized eps
-    # array along the column through the trace centre.
-    eps = np.asarray(materials.eps_r)
-    i_mid = eps.shape[0] // 2
-    j_mid = (j0 + j1) // 2
-    col = eps[i_mid, j_mid, :]
-    sub_cells = int(np.count_nonzero(col > 1.0 + 1e-6))
-
+    """Read solved sheets, seam metal, profiles and probe nodes without stepping."""
+    geo = sim.realized_geometry()
+    from rfx.model.realization_verdict import admit_table
+    admit_table(sim, geo.conductors)
+    grid = sim._build_realized_grid()
+    nodes = tuple(np.asarray(a) for a in geo.nodes)
+    sheets = [e for e in geo.entities if e.kind == "sheet"]
+    if len(sheets) != (2 if dut == "notch" else 1):
+        raise RuntimeError(f"expected battery sheets, got {[e.kind for e in geo.entities]}")
+    trace = sheets[0]
+    k = int(np.argmin(np.abs(nodes[2] - H_SUB)))
+    jt = int(np.flatnonzero(nodes[1] <= MARGIN_LAT + W_TRACE + 1e-15)[-1])
+    bounds = {"trace": {a.axis: list(a.bounds_m) for a in trace.axes}}
+    free_edges = {"trace_y": list(trace.axes[1].bounds_m)}
+    eps = np.asarray(geo.materials.eps_r)
+    i_mid = int(np.argmin(np.abs(nodes[0] - domain()[0] / 2)))
+    j_mid = int(np.argmin(np.abs(nodes[1] - (MARGIN_LAT + W_TRACE / 2))))
     rec = {
-        "grid_shape": [int(s) for s in grid.shape],
+        "lane": geo.lane, "snap": geo.snap,
+        "grid_shape": list(grid.shape), "node_shape": [len(a) for a in nodes],
         "n_cells": int(np.prod(grid.shape)),
-        "dt_s": float(grid.dt),
-        "sheet_plane_k": k,
-        "sheet_plane_z_m": float(nodes[2][k]),
-        "n_pec_sheets": len(sheets),
-        "n_pec_volume_cells": 0 if pec_mask is None else int(np.asarray(pec_mask).sum()),
-        "trace_rows": [j0, j1],
-        "trace_n_rows": n_rows,
-        "trace_y_m": [float(nodes[1][j0]), float(nodes[1][j1])],
-        # GEOMETRIC width: the node span the sheet's longitudinal edges occupy.
-        "trace_w_geometric_m": float(nodes[1][j1] - nodes[1][j0]),
-        # ELECTRICAL width: n_rows * dx, the quasi-TEM filament convention.
-        "trace_w_electrical_m": n_rows * dx,
-        "substrate_cells_under_strip": sub_cells,
-        "n_ex_edges": int(mx.sum()),
-        "n_ey_edges": int(my.sum()),
+        "dt_s": float(geo.dt), "sheet_plane_k": k,
+        "sheet_plane_z_m": float(nodes[2][k]), "n_pec_sheets": len(sheets),
+        "n_pec_volume_cells": 0 if geo.pec_mask is None else int(np.asarray(geo.pec_mask).sum()),
+        "solved_bounds_m": bounds, "free_edges_m": free_edges,
+        "trace_y_m": list(trace.axes[1].bounds_m),
+        "trace_w_geometric_m": float(trace.axes[1].extent_m),
+        "trace_cells_across": int(np.count_nonzero(
+            (nodes[1] >= trace.axes[1].bounds_m[0] - 1e-15)
+            & (nodes[1] <= trace.axes[1].bounds_m[1] + 1e-15))) - 1,
+        "substrate_cells_under_strip": int(np.count_nonzero(eps[i_mid, j_mid, :] > 1 + 1e-6)),
+        "profiles": {a: _profile_stats(nodes[i], geo.cell_sizes[i], geo.domain[i].padding)
+                     for i, a in enumerate("xyz")},
+        "seam": None,
     }
-
     if dut == "notch":
-        stub_cols = np.flatnonzero(my[:, j1:, k].any(axis=1))
-        if stub_cols.size == 0:
-            raise RuntimeError("realized_geometry: no Ey edge above the main line — "
-                               "the stub is not connected to the trace")
-        i0, i1 = int(stub_cols.min()), int(stub_cols.max())
-        stub_edges = np.flatnonzero(my[i0:i1 + 1, :, k].any(axis=0))
-        stub_open = int(stub_edges.max()) + 1
-        y_centre = 0.5 * (float(nodes[1][j0]) + float(nodes[1][j1]))
-        rec.update({
-            "stub_cols": [i0, i1],
-            "stub_n_cols": i1 - i0 + 1,
-            "stub_x_m": [float(nodes[0][i0]), float(nodes[0][i1])],
-            "stub_w_geometric_m": float(nodes[0][i1] - nodes[0][i0]),
-            "stub_w_electrical_m": (i1 - i0 + 1) * dx,
-            "stub_len_m": float(nodes[1][stub_open]) - float(nodes[1][j1]),
-            "stub_len_centreline_m": float(nodes[1][stub_open]) - y_centre,
-            "stub_open_node_j": stub_open,
-        })
-    else:
-        if my[:, j1:, k].any():
-            raise RuntimeError("realized_geometry: the thru control realized Ey edges "
-                               "above the main line — it has a stub")
-
-    entries = sim._resolve_msl_probe_entries(grid)
+        stub = sheets[1]
+        bounds["stub"] = {a.axis: list(a.bounds_m) for a in stub.axes}
+        free_edges["stub_x"] = list(stub.axes[0].bounds_m)
+        free_edges["stub_open_y"] = [float(stub.axes[1].bounds_m[1])]
+        xc = domain()[0] / 2
+        ix = np.flatnonzero((nodes[0] >= xc - W_STUB / 2 - 1e-15)
+                            & (nodes[0] <= xc + W_STUB / 2 + 1e-15))
+        metal = np.asarray(geo.edge_masks[1])
+        rec["seam"] = {"metal_nodes": int(metal[ix, jt, k].sum()),
+                       "stub_x_nodes": len(ix),
+                       "outside_metal": bool(metal[int(ix[0]) - 1, jt, k]),
+                       "stub_y_free_ends": list(stub.axes[1].free_ends)}
+        rec.update({"stub_x_m": list(stub.axes[0].bounds_m),
+                    "stub_w_geometric_m": float(stub.axes[0].extent_m),
+                    "stub_len_m": float(stub.axes[1].bounds_m[1] - trace.axes[1].bounds_m[1]),
+                    "stub_len_centreline_m": float(stub.axes[1].bounds_m[1]
+                                                   - (MARGIN_LAT + W_TRACE / 2))})
     ports = []
-    for e in entries:
-        axis = 0 if e.direction[1] == "x" else 1
-        sgn = 1.0 if e.direction[0] == "+" else -1.0
-        feed = e.position[axis]
-        xs = [feed + sgn * (e.n_probe_offset + n * e.n_probe_spacing) * dx
-              for n in range(e.n_probes)]
-        ports.append({
-            "name": e.name,
-            "direction": e.direction,
-            "feed_plane_m": float(feed),
-            "n_probe_offset": int(e.n_probe_offset),
-            "n_probe_spacing": int(e.n_probe_spacing),
-            "n_probes": int(e.n_probes),
-            "probe_planes_m": [float(x) for x in xs],
-            "waveform": {"f0": float(e.waveform.f0), "bandwidth": float(e.waveform.bandwidth),
-                         "amplitude": float(e.waveform.amplitude),
-                         "cutoff": float(e.waveform.cutoff)},
-        })
+    for e in sim._resolve_msl_probe_entries(grid):
+        sign = 1 if e.direction[0] == "+" else -1
+        feed_index = int(np.argmin(np.abs(nodes[0] - e.position[0])))
+        indices = [feed_index + sign * (e.n_probe_offset + n * e.n_probe_spacing)
+                   for n in range(e.n_probes)]
+        ports.append({"name": e.name, "direction": e.direction,
+                      "feed_plane_m": float(nodes[0][feed_index]),
+                      "n_probe_offset": int(e.n_probe_offset),
+                      "n_probe_spacing": int(e.n_probe_spacing), "n_probes": int(e.n_probes),
+                      "probe_planes_m": [float(nodes[0][i]) for i in indices],
+                      "waveform": {k: float(getattr(e.waveform, k))
+                                   for k in ("f0", "bandwidth", "amplitude", "cutoff")}})
     rec["ports"] = ports
     return rec
 
 
 def assert_realized(sim: Simulation, dx: float, dut: str) -> dict:
-    """Refuse to solve unless the realized board IS the declared board.
+    """Refuse before any step unless free edges, seam, substrate and ladders agree.
 
-    No FDTD step runs here. A PEC sheet is solved about 0.35 cell wider at each
-    free edge, so the tolerance on a width is one cell; what this catches is a
-    lost or gained row, a sheet snapped to the wrong node plane, a foil
-    re-declared as a volume, and a mesh on which h_sub stops landing on a node.
+    Explicit ladder overrides are checked against their declarations, including
+    the plane stage's shifted offset. Free sheet edges have a 1 nm tolerance.
     """
     m = realized_geometry(sim, dx, dut)
-    d = declared(dx, dut)
-    problems = []
-    if m["n_pec_sheets"] != (2 if dut == "notch" else 1):
-        problems.append(f"{m['n_pec_sheets']} PEC sheet(s) classified, expected "
-                        f"{2 if dut == 'notch' else 1}")
-    if m["n_pec_volume_cells"]:
-        problems.append(f"{m['n_pec_volume_cells']} PEC VOLUME cell(s) realized; both "
-                        "metal entries must be zero-thickness sheets")
-    if abs(m["sheet_plane_z_m"] - H_SUB) > 1e-12:
-        problems.append(f"sheet plane at z={m['sheet_plane_z_m']*1e6:.4f} um, declared "
-                        f"substrate top {H_SUB*1e6:.4f} um")
-    if m["substrate_cells_under_strip"] != round(H_SUB / dx):
-        problems.append(f"{m['substrate_cells_under_strip']} substrate cells under the "
-                        f"strip, declared {round(H_SUB / dx)}")
-    if abs(m["trace_w_geometric_m"] - W_TRACE) > dx:
-        problems.append(f"realized trace width {m['trace_w_geometric_m']*1e6:.2f} um is "
-                        f"more than one cell ({dx*1e6:.1f} um) from the declared "
-                        f"{W_TRACE*1e6:.1f} um")
+    expected = {"trace_y": [MARGIN_LAT, MARGIN_LAT + W_TRACE]}
     if dut == "notch":
-        if abs(m["stub_w_geometric_m"] - W_STUB) > dx:
-            problems.append(f"realized stub width {m['stub_w_geometric_m']*1e6:.2f} um is "
-                            f"more than one cell from the declared {W_STUB*1e6:.1f} um")
-        if abs(m["stub_len_m"] - L_STUB) > dx:
-            problems.append(f"realized stub length {m['stub_len_m']*1e6:.2f} um is more "
-                            f"than one cell from the declared {L_STUB*1e6:.1f} um")
-        if m["trace_n_rows"] != m["stub_n_cols"]:
-            problems.append(f"trace realizes {m['trace_n_rows']} rows and the stub "
-                            f"{m['stub_n_cols']} — they are declared the same width")
-    for p in m["ports"]:
-        if abs(p["feed_plane_m"] - round(p["feed_plane_m"] / dx) * dx) > 1e-12:
-            problems.append(f"port {p['name']} feed plane {p['feed_plane_m']} m is not on "
-                            "a node line")
-    if problems:
-        raise RuntimeError(
-            "assert_realized: the realized board is not the declared board — refusing "
-            "to solve. " + "; ".join(problems) + f" [declared: {d}] [measured: {m}]")
+        xc = domain()[0] / 2
+        expected.update({"stub_x": [xc - W_STUB / 2, xc + W_STUB / 2],
+                         "stub_open_y": [MARGIN_LAT + W_TRACE + L_STUB]})
+    for name, drawn in expected.items():
+        if not np.allclose(m["free_edges_m"][name], drawn, rtol=0, atol=1e-9):
+            raise AssertionError(f"battery free edge {name}: {m['free_edges_m'][name]} != {drawn}")
+    if dut == "notch":
+        seam = m["seam"]
+        if (seam["metal_nodes"] != seam["stub_x_nodes"] or seam["outside_metal"]
+                or seam["stub_y_free_ends"] != [False, True]):
+            raise AssertionError(f"battery trace-stub seam: {seam}")
+    if m["n_pec_volume_cells"] or abs(m["sheet_plane_z_m"] - H_SUB) > 1e-12:
+        raise AssertionError(f"battery sheet plane or volume: {m}")
+    if m["substrate_cells_under_strip"] != {100: 3, 50: 6, 25: 12}[round(dx * 1e6)]:
+        raise AssertionError(f"battery substrate cells: {m['substrate_cells_under_strip']}")
+    defaults = probe_ladder(dx, dut)
+    for p, e, feed in zip(m["ports"], sim._msl_ports, (PORT_MARGIN, PORT_MARGIN + L_LINE), strict=True):
+        if abs(p["feed_plane_m"] - feed) > 1e-12:
+            raise AssertionError(f"battery feed plane: {p}")
+        ladder = (e.n_probe_offset, e.n_probe_spacing)
+        expected_ladder = tuple(default if value is None else value
+                                for value, default in zip(ladder, defaults))
+        if (p["n_probe_offset"], p["n_probe_spacing"]) != expected_ladder:
+            raise AssertionError(f"battery probe ladder: {p} != {expected_ladder}")
     return m
 
 
@@ -610,6 +596,7 @@ def _result_record(res) -> dict:
                    for k, v in vars(c).items()})
     return {
         "freqs_hz": _f(res.freqs),
+        "reference_plane": "feed",
         "S": _c(res.S),
         "port_names": list(res.port_names),
         "Z0": _c(res.Z0),
@@ -649,6 +636,7 @@ def _base(args, stage: str, dut: str | None, dx: float | None) -> dict:
     return {
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
+        "reference_plane": "feed",
         "stage": stage,
         "dut": dut,
         "rung_um": None if dx is None else dx * 1e6,
@@ -664,11 +652,17 @@ def _base(args, stage: str, dut: str | None, dx: float | None) -> dict:
 # stage: cost estimate (printed before any solve)
 # ---------------------------------------------------------------------------
 
+def step_count(grid, num_periods: float) -> int:
+    """Use the realized Courant step and the driver's declared maximum frequency."""
+    from rfx.stepping.step_count import steps_for_periods
+    return steps_for_periods(grid.dt, F_HI, num_periods)
+
+
 def cost_estimate(dx: float, dut: str, num_periods: float) -> dict:
     sim = build_sim(dx, dut)
-    grid = sim._build_grid()
+    grid = sim._build_realized_grid()
     n = int(np.prod(grid.shape))
-    n_steps = int(grid.num_timesteps(num_periods=num_periods))
+    n_steps = step_count(grid, num_periods)
     # Field carry (6 arrays) + the CPML psi slabs, which are n_layers deep on
     # each absorbing face rather than full arrays.
     nx, ny, nz = (int(s) for s in grid.shape)
@@ -780,8 +774,8 @@ def _own_eps(sim, dtype=jnp.float32):
     """The simulation's OWN permittivity array, as the forward lane would build
     it. ``eps_override`` REPLACES the array, so handing this back is the no-op
     whose result must equal the untraced call's."""
-    grid = sim._build_grid()
-    materials = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
+    grid = sim._build_realized_grid()
+    materials = sim._assemble_materials_nu(grid, pec_sheets=[], pec_wires=[])[0]
     return jnp.asarray(np.asarray(materials.eps_r), dtype=dtype)
 
 
@@ -840,8 +834,9 @@ def stage_identity(args, out: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def _substrate_mask(sim) -> np.ndarray:
-    grid = sim._build_grid()
-    materials = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
+    """Select substrate samples from the graded assembly used by eps_override."""
+    grid = sim._build_realized_grid()
+    materials = sim._assemble_materials_nu(grid, pec_sheets=[], pec_wires=[])[0]
     eps = np.asarray(materials.eps_r)
     return eps > 1.0 + 1e-6
 
@@ -878,8 +873,8 @@ def stage_adfd(args, out: Path) -> None:
     geo = assert_realized(sim, dx, "notch")
     pf = preflight_record(sim)
     d = declared(dx, "notch")
-    grid = sim._build_grid()
-    n_steps = int(grid.num_timesteps(num_periods=args.num_periods))
+    grid = sim._build_realized_grid()
+    n_steps = step_count(grid, args.num_periods)
     segments = _closest_divisor(n_steps, int(np.sqrt(n_steps)))
     assert n_steps % segments == 0
     k_notch = int(np.argmin(np.abs(FREQS - d["f_notch_analytic_hz"])))
@@ -947,8 +942,10 @@ def stage_adfd(args, out: Path) -> None:
         with _Captured() as cap_fd:
             with enable_x64():
                 sim64 = build_sim(dx, "notch", drive=args.drive, precision="float64")
-                grid64 = sim64._build_grid()
-                if (grid64.shape, grid64.dx, grid64.dt) != (grid.shape, grid.dx, grid.dt):
+                assert_realized(sim64, dx, "notch")
+                grid64 = sim64._build_realized_grid()
+                if (grid64.shape != grid.shape or grid64.dt != grid.dt
+                        or any(not np.array_equal(grid64.cells(a), grid.cells(a)) for a in "xyz")):
                     raise RuntimeError("the float64 referee did not build the same "
                                        "discrete rig as the float32 run")
                 eps64 = _own_eps(sim64, jnp.float64)
@@ -998,7 +995,7 @@ def stage_adfd(args, out: Path) -> None:
 def stage_plane(args, out: Path) -> None:
     dx = args.rung * 1e-6
     base = build_sim(dx, "notch", drive=args.drive)
-    entries = base._resolve_msl_probe_entries(base._build_grid())
+    entries = base._resolve_msl_probe_entries(base._build_realized_grid())
     offsets = {int(e.n_probe_offset) for e in entries}
     spacings = {int(e.n_probe_spacing) for e in entries}
     if len(offsets) != 1 or len(spacings) != 1:
@@ -1013,7 +1010,7 @@ def stage_plane(args, out: Path) -> None:
         "drive": args.drive, "num_periods": float(args.num_periods),
         "declared": declared(dx, "notch"),
         "shift_cells": PLANE_SHIFT_CELLS,
-        "shift_m": PLANE_SHIFT_CELLS * dx,
+        "shift_m": None,
         "n_probe_spacing": spacing,
         "n_probe_offsets": [off0, off1],
         "arms": [],
@@ -1044,6 +1041,7 @@ def stage_plane(args, out: Path) -> None:
     p1 = rec["arms"][1]["realized"]["ports"]
     rec["realized_plane_displacement_m"] = [
         abs(b["probe_planes_m"][0] - a["probe_planes_m"][0]) for a, b in zip(p0, p1)]
+    rec["shift_m"] = rec["realized_plane_displacement_m"]
     rec["peak_memory"] = peak_memory()
     _write(out, rec)
 
@@ -1314,10 +1312,6 @@ def _notch_extrapolation(fix: dict, have: list[str], lad: dict) -> dict | None:
             **{f"order_{p}_frac": abs(limits[f"order_{p}_hz"] - f_dec) / f_dec
                for p in (1, 2)},
         }
-        # And against the same closed form fed each rung's SOLVED sheet size
-        # (trace W + 0.7 dx, stub L + 0.35 dx — the sheet-edge offset in
-        # rfx/mesh_edges.py). That reference moves with the rung, so it is
-        # listed per rung rather than collapsed to one number.
         entry["vs_analytic_solved_per_rung"] = [{
             "rung": k,
             "analytic_solved_hz": fix["solves"][k]["f_notch_analytic_solved_hz"],
@@ -1335,7 +1329,10 @@ def _load_stage(out: Path, name: str) -> dict | None:
     p = out / name
     if not p.exists():
         return None
-    return json.loads(p.read_text())
+    record = json.loads(p.read_text())
+    if record.get("schema_version") != 2 or record.get("reference_plane") != "feed":
+        raise ValueError(f"{p}: expected version-2 feed-plane stage JSON")
+    return record
 
 
 def stage_assemble(args, out: Path, fixture_out: Path) -> None:
@@ -1343,6 +1340,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
     fix = {
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
+        "reference_plane": "feed",
         "predeclaration": PREDECLARATION,
         "contract": CONTRACT,
         "driver": DRIVER,
@@ -1353,7 +1351,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         "battery_drive": None,
         "board": {k: v for k, v in declared(100e-6, "notch").items()
                   if k not in ("dx_m", "dx_um", "substrate_cells_under_strip",
-                               "trace_cells_across", "stub_cells_long")},
+                               "trace_nominal_cells_across", "stub_nominal_cells_long")},
         "freqs_hz": FREQS.astype(float).tolist(),
         "solves": {},
         "ladder": {},
@@ -1435,18 +1433,16 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 "z0_real_median_ohm": float(np.median(np.real(
                     np.asarray(rec["result"]["Z0"]["real"], dtype=float)))),
             }
-            # What a support-matrix line has to state about a cell size: cells
-            # per guided wavelength at the top of the band, and cells across
-            # the two smallest patterned dimensions.
             dx_r = rec["declared"]["dx_m"]
             eps_eff_hj = rec["declared"]["hj_eps_eff"]
             lam_g_hi = C0 / (freqs.max() * math.sqrt(eps_eff_hj))
             entry["resolution"] = {
                 "dx_m": dx_r,
-                "cells_per_guided_wavelength_at_f_max": lam_g_hi / dx_r,
+                "cells_per_guided_wavelength_at_f_max": lam_g_hi / max(
+                    p["max_cell_m"] for p in rec["realized"]["profiles"].values()),
                 "f_max_hz": float(freqs.max()),
-                "cells_across_substrate": rec["declared"]["h_sub_m"] / dx_r,
-                "cells_across_trace": rec["declared"]["w_trace_m"] / dx_r,
+                "cells_across_substrate": rec["realized"]["substrate_cells_under_strip"],
+                "cells_across_trace": rec["realized"]["trace_cells_across"],
                 "smallest_patterned_dimension_m": min(rec["declared"]["h_sub_m"],
                                                       rec["declared"]["w_trace_m"]),
             }
@@ -1485,7 +1481,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 # different length (it adds half the trace width) and is kept
                 # under its own name rather than folded in here.
                 _, eps_eff_real = hammerstad_jensen_z0_eps_eff(
-                    rec["realized"]["trace_w_electrical_m"], H_SUB, EPS_R)
+                    rec["realized"]["trace_w_geometric_m"], H_SUB, EPS_R)
                 f_an_real = C0 / (4.0 * rec["realized"]["stub_len_m"]
                                   * math.sqrt(eps_eff_real))
                 entry["f_notch_analytic_realized_hz"] = f_an_real
@@ -1500,22 +1496,11 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                     "bin": abs(notch["bin_hz"] - f_an_centre) / f_an_centre,
                     "interp": abs(notch["interp_hz"] - f_an_centre) / f_an_centre,
                 }
-                # And on the SOLVED size the pre-declaration names: a PEC
-                # sheet's edge is solved 0.35 cell beyond its last node, so
-                # the trace is W + 0.7 dx wide (two free edges) and the stub
-                # is L_stub + 0.35 dx long (one free end; the other joins the
-                # line). Three references, one measurement, no choice made
-                # here about which one the family should be read against.
-                dx_e = rec["declared"]["dx_m"]
-                _, eps_eff_solved = hammerstad_jensen_z0_eps_eff(
-                    W_TRACE + 0.7 * dx_e, H_SUB, EPS_R)
-                f_an_solved = C0 / (4.0 * (L_STUB + 0.35 * dx_e)
-                                    * math.sqrt(eps_eff_solved))
-                entry["solved_sheet_size_m"] = {
-                    "trace_w": W_TRACE + 0.7 * dx_e,
-                    "stub_len": L_STUB + 0.35 * dx_e,
-                    "rule": "a PEC sheet edge is solved 0.35 cell past its last node",
-                }
+                solved_w = rec["realized"]["trace_w_geometric_m"]
+                solved_len = rec["realized"]["stub_len_m"]
+                _, eps_eff_solved = hammerstad_jensen_z0_eps_eff(solved_w, H_SUB, EPS_R)
+                f_an_solved = C0 / (4.0 * solved_len * math.sqrt(eps_eff_solved))
+                entry["solved_sheet_size_m"] = {"trace_w": solved_w, "stub_len": solved_len}
                 entry["f_notch_analytic_solved_hz"] = f_an_solved
                 entry["notch_vs_analytic_solved_frac"] = {
                     "bin": abs(notch["bin_hz"] - f_an_solved) / f_an_solved,
