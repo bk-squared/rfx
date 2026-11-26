@@ -99,12 +99,12 @@ class RingdownForwardResult:
     __slots__ = ("s_params", "s_params_long", "freqs", "_channels", "_accs",
                  "_s_plain", "_status", "_consistency", "_pole_counts", "_pole_budgets",
                  "_ctx", "_report", "_poles", "_poles_long", "_pole_mask", "_pole_mask_long",
-                 "probe_spectra", "probe_spectra_long", "_cells")
+                 "probe_spectra", "probe_spectra_long", "_cells", "_echo_index")
 
     def __init__(self, s_params, s_params_long, freqs, channels, accs, s_plain,
                  status, consistency, pole_counts, pole_budgets, ctx, *, poles=None, poles_long=None,
                  pole_mask=None, pole_mask_long=None, probe_spectra=None, probe_spectra_long=None,
-                 cells=()):
+                 cells=(), echo_index=None):
         self.probe_spectra = probe_spectra
         self.probe_spectra_long = probe_spectra_long
         self.s_params = s_params
@@ -127,20 +127,21 @@ class RingdownForwardResult:
         self._pole_mask = jnp.empty(0, jnp.int32) if pole_mask is None else pole_mask
         self._pole_mask_long = jnp.empty(0, jnp.int32) if pole_mask_long is None else pole_mask_long
         self._cells = tuple(cells)
+        self._echo_index = echo_index
 
     def tree_flatten(self):
         return ((self.s_params, self.s_params_long, self.freqs, self._channels,
                  self._accs, self._s_plain, self._status, self._consistency,
                  self._pole_counts, self._pole_budgets, self.poles, self.poles_long,
                  self.pole_mask, self.pole_mask_long, self.probe_spectra, self.probe_spectra_long,
-                 self._cells), self._ctx)
+                 self._cells, self._echo_index), self._ctx)
 
     @classmethod
     def tree_unflatten(cls, ctx, children):
         return cls(*children[:10], ctx, poles=children[10], poles_long=children[11],
                    pole_mask=children[12], pole_mask_long=children[13],
                    probe_spectra=children[14], probe_spectra_long=children[15],
-                   cells=children[16])
+                   cells=children[16], echo_index=children[17])
 
     @property
     def poles(self):

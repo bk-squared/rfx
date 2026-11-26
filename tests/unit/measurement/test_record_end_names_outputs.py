@@ -85,7 +85,8 @@ def _row(status, reads):
     return dict(status=status, reads=reads, db={'fail': -20., 'pass': -80., 'absent': None}[status],
                 reason='no probe records the fields' if status == 'absent' else '',
                 worst_freq_hz=10e9, share_per_bin=np.array([.1 if status == 'fail' else 0.]),
-                error_per_bin=np.zeros(1), worst_record='probe0(ez)', source_dominated=False)
+                error_per_bin=np.zeros(1), worst_record='probe0(ez)', source_dominated=False,
+                window_starts={800: (400, 200, 800)})
 
 
 @pytest.mark.parametrize('s_status,field_status,spoken', [
@@ -99,7 +100,12 @@ def test_rows_warn_for_their_own_outputs(s_status, field_status, spoken):
     sim._flux_monitors, sim._current_moments = [object()], object()
     witness = combine_witness_details(_row(s_status, S), _row(field_status, FIELDS))
     sim._run_settling_witness = lambda result: (witness['db'], witness)
-    result = Result(state=None, time_series=None, s_params=np.ones((1, 1, 1)), freqs=SBINS)
+    grid = sim._build_realized_grid()
+    from rfx.measurement.echo_bound import runner_echo_bound
+    materials, debye, lorentz, *_ = sim._assemble_materials(grid)
+    echo_bound = runner_echo_bound(sim, grid, materials, debye=debye, lorentz=lorentz)
+    result = Result(state=None, time_series=None, s_params=np.ones((1, 1, 1)), freqs=SBINS,
+                    grid=grid, dt=grid.dt, settling_echo_bound=echo_bound)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
         sim._attach_run_settling_witness(result, n_steps=800)

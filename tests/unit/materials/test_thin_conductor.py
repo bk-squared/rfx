@@ -270,11 +270,13 @@ def test_thin_conductor_lossy_nonuniform_runs_no_skip_warn():
     dz = [dx] * N
     sim = Simulation(freq_max=10e9, domain=(L, L, 0), dx=dx, dz_profile=dz,
                      boundary="cpml", cpml_layers=6)
-    sim.add_thin_conductor(Box((9 * dx, 9 * dx, 15.5 * dx),
-                               (15 * dx, 15 * dx, 15.5 * dx)),
+    sim.add_thin_conductor(Box((9 * dx, 9 * dx, 15 * dx),
+                               (15 * dx, 15 * dx, 15 * dx)),
                            sigma_bulk=1.0e3, thickness=35e-6)
     sim.add_source(position=(6 * dx, L / 2, 10 * dx), component="ez",
                    waveform=GaussianPulse(f0=6e9, bandwidth=1.0))
+    entity, = (e for e in sim.realized_geometry().entities if e.label == 'thin_conductor[0]')
+    assert entity.plane[:2] == (2, 21)
     with warnings.catch_warnings(record=True) as w:
         warnings.simplefilter("always")
         res = sim.run(n_steps=10, skip_preflight=True)

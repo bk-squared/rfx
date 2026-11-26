@@ -5,6 +5,13 @@ inputs without triggering resolution. Declaration validation uses that snapshot;
 grid selection, execution and inspection use the resolved fields.
 """
 from __future__ import annotations
+from typing import Any, TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from rfx.geometry.rasterize_grid import GridCoords
+    from rfx.grid import Grid
+    from rfx.model.graded_grid import NonUniformGrid
+
 from rfx._warning_origin import user_stacklevel
 
 from rfx.errors import RfxRefusal, RfxUnsupported, RfxWarning
@@ -35,6 +42,12 @@ class _MeshField:
 
 
 class _MeshMixin:
+    if TYPE_CHECKING:
+        _mode: str
+        _snap: str
+        _geometry: list[Any]
+        _thin_conductors: list[Any]
+
     _dx = _MeshField()
     _domain = _MeshField()
     _dx_profile = _MeshField()
@@ -90,6 +103,10 @@ class _MeshMixin:
         inputs = (
             *(state.get(name) for name in names),
             state["_freq_max"], state["_boundary"],
+            state.get("_snap"), state.get("_refinement"),
+            state.get("_periodic_axes"), *state.get("_floquet_ports", ()),
+            *(getattr(entry, name, None) for entry in state.get("_waveguide_ports", ())
+              for name in ("direction", "x_range", "y_range", "z_range")),
             *geometry, *sheets,
             *(item for pair in state["_materials"].items() for item in pair),
         )
@@ -110,23 +127,141 @@ class _MeshMixin:
                 "Auto mesh requires static geometry and materials; supply "
                 "dx= explicitly (and fixed profiles) before tracing design inputs."
             ) from exc
+        state["_auto_z_merges"] = ()
         resolved = dict(declared, _dx=config.dx)
         if config.dz_profile is not None and declared["_dz_profile"] is None:
             resolved["_dz_profile"] = config.dz_profile
             domain = declared["_domain"]
             resolved["_domain"] = (domain[0], domain[1], float(np.sum(config.dz_profile)))
         state["_mesh_resolution"] = (inputs, resolved)
+        resolution_succeeded = False
+        try:
+            resolved = self._resolve_conductor_z(config, inputs, resolved)
+            resolution_succeeded = True
+        finally:
+            if not resolution_succeeded:
+                state.pop("_mesh_resolution", None)
+                self._clear_resolution_inspection()
+        state["_mesh_resolution"] = (inputs, resolved)
         warnings.warn(
-            f"Auto mesh: dx={config.dx * 1e3:.3f}mm "
-            f"({config.cells_per_wavelength:.0f} cells/λ)"
+            f"Auto mesh: dx={resolved['_dx'] * 1e3:.3f}mm "
+            f"({config.cells_per_wavelength * config.dx / resolved['_dx']:.0f} cells/λ)"
             + (f", non-uniform z ({len(resolved['_dz_profile'])} cells)"
                if resolved["_dz_profile"] is not None else "")
             + ". Set dx= explicitly to suppress.",
             AutoMeshWarning, stacklevel=user_stacklevel(),
         )
         for message in config.warnings:
+            if (resolved["_dz_profile"] is not config.dz_profile
+                    and message.startswith("Non-uniform z mesh enabled:")):
+                profile = resolved["_dz_profile"]
+                if profile is None:
+                    continue
+                message = (
+                    f"Non-uniform z mesh enabled: {len(profile)} cells, "
+                    f"dz={np.min(profile)*1e3:.3f}–{np.max(profile)*1e3:.3f} mm")
             warnings.warn(message, AutoMeshWarning, stacklevel=user_stacklevel())
         return resolved
+
+    def _clear_resolution_inspection(self):
+        """Release products whose grid belonged to an earlier resolution."""
+        from rfx.preflight.realization import release_inspection
+        release_inspection(self)
+        self.__dict__.pop("_realization_early_outcomes", None)
+
+    def _resolve_conductor_z(self, config, inputs, original):
+        """Judge R0 on its solver grid, then realize a z-only replacement."""
+        from rfx.auto_config import _conductor_dz_profile
+        from rfx.geometry.sheet_plane import sheet_plane_from_shape
+        from rfx.model.conductor_planes import conductor_node_miss
+        from rfx.model.thin_conductors import dc_film_plane
+        from rfx.preflight.realization import _CampaignStaticsContext, _shape_bounds
+
+        if self._mode.startswith("2d"):
+            return original
+        if self._snap == "declared":
+            return original
+        features, planes, conductors = config.z_rebuild_inputs
+        if not conductors:
+            return original
+        try:
+            context = _CampaignStaticsContext(self)
+        except _CampaignStaticsContext._NARROW_EXCS:
+            return original
+        if context.error is not None:
+            return original
+        grid = cast("Grid | NonUniformGrid", context.grid)
+        coords = cast("GridCoords", context.coords)
+        nodes = cast(list[np.ndarray], context.nodes)
+        if "z" in getattr(context.grid, "periodic_axes", ""):
+            return original
+        lines = context.interior_node_lines()
+        z_nodes = lines[2]
+        neighbours = tuple(b[:2] for entry in (*self._geometry, *self._thin_conductors)
+                           if (b := _shape_bounds(entry.shape)) is not None)
+        reason = None
+        thin_intervals = []
+        for shape, sheet, label in conductors:
+            bounds = _shape_bounds(shape)
+            if bounds is None:
+                continue
+            bounds = bounds[:2]
+            lo, hi = bounds[0][2], bounds[1][2]
+            if hi < 0 or lo > original["_domain"][2]:
+                continue
+            plane = None
+            if label.startswith("thin_conductor["):
+                thin_intervals.append((lo, hi))
+            if sheet:
+                try:
+                    tc = (self._thin_conductors[int(label[len("thin_conductor["):-1])]
+                          if label.startswith("thin_conductor[") else None)
+                    if tc is not None and not tc.is_pec:
+                        axis, k = dc_film_plane(shape, context.grid)
+                    else:
+                        k = sheet_plane_from_shape(
+                            shape, coords, context.cell_sizes, normal_axis=2,
+                            grid=context.grid)
+                        axis = 2
+                    plane = float(nodes[axis][k])
+                except context._NARROW_EXCS:
+                    continue
+            miss = conductor_node_miss(
+                z_nodes, bounds, 2, neighbours, plane, (0., original["_domain"][2]))
+            if miss.refused and reason is None:
+                offending = (.5 * (lo + hi) if sheet else
+                             max((lo, hi), key=lambda p: float(np.min(abs(z_nodes-p)))))
+                reason = (label, offending)
+        if reason is None:
+            return original
+        dx = float(grid.dx)
+        profile, merges = _conductor_dz_profile(
+            features, original["_domain"][2], dx, 4, planes, thin_intervals)
+        replacement = dict(original, _dx=dx, _dz_profile=profile)
+        domain = original["_domain"]
+        replacement["_domain"] = (domain[0], domain[1], float(np.sum(profile)))
+        self._clear_resolution_inspection()
+        self.__dict__["_mesh_resolution"] = (inputs, replacement)
+        rebuilt = _CampaignStaticsContext(self)
+        if rebuilt.error is not None:
+            raise cast(Exception, rebuilt._assembly_exception)
+        new_lines = rebuilt.interior_node_lines()
+        for a in range(2):
+            if lines[a].tobytes() != new_lines[a].tobytes():
+                raise RfxRefusal(
+                    f"Automatic z grading changes {'xy'[a]} nodes: "
+                    f"R0 cell sizes={np.diff(lines[a]).tolist()} m; "
+                    f"R1 cell sizes={np.diff(new_lines[a]).tolist()} m.")
+        label, plane = reason
+        if self.__dict__.get("_refinement") is not None:
+            raise RfxRefusal(
+                f"{label}'s plane at z={plane:.12g} m ({plane*1e3:g} mm) needs automatic z "
+                f"grading, which conflicts with add_refinement. Move that plane to a multiple "
+                f"of dx={dx:.12g} m, or pass dx= so the plane lies on its lattice, "
+                "or remove the refinement.")
+        self._clear_resolution_inspection()
+        self.__dict__["_auto_z_merges"] = tuple(merges)
+        return replacement
 
     def _auto_configure_mesh(self):
         """Compute the host-side auto-mesh proposal; _resolve_mesh owns it."""
@@ -162,6 +297,7 @@ class _MeshMixin:
             dt_override=(self._dt_pin if all(self._declared_mesh[key] is None
                          for key in ("_dx_profile", "_dy_profile", "_dz_profile")) else None),
             thin_conductors=self._thin_conductors,
+            snap=self._snap,
         )
 
         return config

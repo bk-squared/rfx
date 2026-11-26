@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from rfx.measurement.accumulators import plane_result, flux_result
 from rfx.model.waveguide_aperture import validate_uniform_waveguide_ports
 
@@ -757,6 +758,7 @@ def run_until_decay(
     *,
     decay_by: float = 1e-3,
     n_end: int | None = AUTO_END,
+    echo_bound: Mapping[str, float | str | None] | None = None,
     check_interval: int = 50,
     min_steps: int = 100,
     max_steps: int = 50_000,
@@ -1148,9 +1150,9 @@ def run_until_decay(
 
     # The after-drive energy stop (rfx.measurement.decay), read at k * check_interval.
     energy_stop, energy = make_decay_stop(
-        grid, _setup.ctx_kwargs["materials"], thr=decay_by, min_steps=min_steps,
+        grid, _setup.ctx_kwargs["materials"], dt=_setup.dt, thr=decay_by, min_steps=min_steps,
         interval=check_interval, consecutive=decay_energy_consecutive, n_end=n_end,
-        criterion=not use_flux_stop, max_steps=max_steps, sources=sources,
+        criterion=not use_flux_stop, echo_bound=echo_bound, debye=debye, lorentz=lorentz, max_steps=max_steps, sources=sources,
         absorbing=bool(boundary in ("cpml", "upml") and grid.cpml_layers > 0
                        and padded_axes(grid, drop_periodic_axes(cpml_axes, _setup.periodic))),
         mag_sources=mag_sources, tfsf=tfsf, waveguide_ports=waveguide_ports, dx=dx,
@@ -1159,9 +1161,11 @@ def run_until_decay(
     stop_rule = energy_stop
     if use_flux_stop:
         stop_rule = make_field_decay_stop(
-            grid, thr=decay_by, min_steps=min_steps, interval=check_interval,
+            grid, materials=_setup.ctx_kwargs["materials"], dt=_setup.dt,
+            thr=decay_by, min_steps=min_steps, interval=check_interval,
             max_steps=max_steps, consecutive=decay_energy_consecutive,
             env_checks=flux_env_checks, n_end=n_end, sources=sources,
+            echo_bound=echo_bound, debye=debye, lorentz=lorentz,
             mag_sources=mag_sources, tfsf=tfsf, waveguide_ports=waveguide_ports)
     decayed_fired = False  # did the energy criterion fire (vs silently cap-hit)?
     probe_chunks = []

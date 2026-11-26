@@ -40,6 +40,122 @@ TRACED = "cannot judge: traced"
 STILL_ON = "cannot judge: {source} still injecting at the record end"
 _COMPONENT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
 
+ECHO_BOUND_FACTOR = 2.05
+"""Minimum longest round trips inside an identification window."""
+
+
+def _echo_bound_unavailable_reason(exc):
+    """Keep tracer refusals independent of the trace's argument names."""
+    from jax.errors import JAXTypeError
+
+    detail = "traced operands" if isinstance(exc, JAXTypeError) else str(exc)
+    return f"cannot judge: echo delay bound unavailable: {detail}; pass echo_bound="
+
+
+def echo_group_factor(configs):
+    """Only each guide's propagating read bins carry its delayed echo."""
+    g = 1.0
+    for cfg in configs:
+        read = np.asarray(cfg.freqs, dtype=np.float64)
+        cutoff = float(cfg.f_cutoff)
+        propagating = read[read > cutoff]
+        if propagating.size:
+            g = min(g, float(np.sqrt(1 - (cutoff / np.min(propagating))**2)))
+    return g
+
+
+def echo_delay_bound(grid, *, sim=None, materials=None, freqs=None, waveguide_ports=(),
+                     debye=None, lorentz=None):
+    """Compatibility entry: realize cells before reading the device quantity.
+
+    Production runners attach their own bound. A raw ADE coefficient tuple
+    carries no physical susceptibility spec and is explicitly refused here.
+    """
+    from rfx.measurement.echo_bound import realized_echo_bound, runner_echo_bound
+    try:
+        if sim is not None:
+            materials, debye, lorentz, *_ = sim._assemble_materials(grid)
+            from rfx.measurement.read_bins import declared_read_bins
+            return runner_echo_bound(sim, grid, materials, freqs=declared_read_bins(sim, freqs, waveguide_ports=waveguide_ports),
+                debye=debye, lorentz=lorentz, waveguide_ports=waveguide_ports)
+        if materials is None:
+            raise ValueError('realized volume arrays are unavailable')
+        if debye is not None or lorentz is not None:
+            raise ValueError('low-level dispersive physical pole specs are unavailable')
+        return realized_echo_bound(grid, materials, freqs=freqs, waveguide_ports=waveguide_ports)
+    except (TypeError, ValueError, AttributeError, OverflowError) as exc:
+        return dict(tau_max=None, D=None, n_max=None, g=None,
+                    reason=_echo_bound_unavailable_reason(exc))
+
+
+def echo_delay_bound_on_grid(grid, bound):
+    """Compatibility regridding of a supplied realized bound, without transport."""
+    from rfx.measurement.echo_bound import bound_on_grid
+    if bound.get('reason'):
+        return bound
+    return bound_on_grid(grid, bound['n_max'], group=bound['g'])
+
+
+def echo_bound_reason(bound):
+    """Explain a refused identification window using the shared bound."""
+    if bound.get('reason'):
+        return bound['reason']
+    return (f"cannot judge: the record ends less than {ECHO_BOUND_FACTOR:g} longest round trips "
+            f"({ECHO_BOUND_FACTOR:g}·τ_max = {ECHO_BOUND_FACTOR * bound['tau_max'] * 1e9:.6g} ns) "
+            "after the identification window starts; a reflection still on its way, "
+            "or one seen fewer than twice, is not visible in the record")
+
+
+def with_echo_bound(db, witness, bound, dt):
+    """Close every passing row using its own recorded identification windows.
+
+    Coverage may already have demoted a pass; its reason is retained. Synthetic
+    records with no geometry explicitly carry ``echo_bound=None``.
+    """
+    row = {**witness, 'echo_bound': bound}
+    refused = bool(row.get('echo_bound_refused'))
+    reasons: list[str | None] = []
+    descendants = False
+    for key in ('runs', 'groups'):
+        if row.get(key):
+            descendants = True
+            children = [with_echo_bound(child.get('db'), child, bound, dt)[1]
+                        for child in row[key]]
+            row[key] = children
+            refused |= any(child.get('echo_bound_refused') for child in children)
+            reasons.extend(child.get('echo_bound_reason') for child in children
+                           if child.get('echo_bound_refused'))
+            entries = {name: status for child in children
+                       for name, status in (child.get('status_per_entry') or {}).items()}
+            if entries:
+                row['status_per_entry'] = entries
+    tail_status = row.get('tail_status', row.get('status'))
+    if not descendants and bound is not None and (tail_status == 'pass' or
+                              'pass' in (row.get('status_per_entry') or {}).values()):
+        windows = row.get('window_starts') or {}
+        unavailable = bound.get('reason') or dt is None or not windows
+        short = unavailable or any((int(n) - starts[0]) * float(dt)
+                                   < ECHO_BOUND_FACTOR * bound['tau_max']
+                                   for n, starts in windows.items())
+        if short:
+            refused = True
+            reasons.append(echo_bound_reason(bound) if not unavailable or bound.get('reason') else
+                           'cannot judge: echo delay bound identification window unavailable')
+    if refused:
+        reason = row.get('reason') or ''
+        for extra in dict.fromkeys(r for r in reasons if r):
+            if extra not in reason:
+                reason = '; '.join(filter(None, (reason, extra)))
+        row.update(reason=reason, echo_bound_refused=True,
+                   echo_bound_reason=next((r for r in reasons if r), row.get('echo_bound_reason')))
+        if tail_status == 'pass':
+            row.update(status='undetermined', db=float('nan'))
+            db = float('nan')
+        if not descendants and row.get('status_per_entry'):
+            row['status_per_entry'] = {name: 'undetermined' if value == 'pass' else value
+                                       for name, value in row['status_per_entry'].items()}
+    return db, row
+
 
 def drive_tail_share(drives, dt, n_record, freqs) -> np.ndarray:
     """Known drive beyond a record / inside it, per bin, maximized over drives.
@@ -602,6 +718,7 @@ class TailShareWitness(NamedTuple):
     window_starts: object = None
     record_end_error_second_per_entry: object = None
     growing_poles: tuple = ()
+    echo_bound: object = None
 
 
 def _channel_tail_witness(records, dt, source_end, freqs, *, identification: IdentificationOps, freq_max, rounding_groups=None,

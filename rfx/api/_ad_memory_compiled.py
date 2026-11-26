@@ -49,7 +49,7 @@ def _inexact_leaves(value):
 def _measured_outputs(result):
     measured = ("time_series", "waveguide_ports", "waveguide_sparams")
     for name, value in result._asdict().items():
-        if name not in (*measured, "grid") and _inexact_leaves(value):
+        if name not in (*measured, "grid", "settling_echo_bound") and _inexact_leaves(value):
             raise ADMemoryUnavailable(f"compiled AD memory: output {name} not measured")
     return tuple(leaf for name in measured
                  for leaf in _inexact_leaves(getattr(result, name)))
@@ -63,8 +63,8 @@ def compiled_estimate(sim, n_steps, *, available_memory_gb, checkpoint_every,
     The inputs are abstract float32 permittivity and conductivity grids plus
     one cotangent per inexact time_series/waveguide port record leaf. Multiple
     cotangents vmap the pullback. Other inexact output arrays except grid
-    coordinates are unmeasured and refused, as are warmup steps and a plan
-    that does not segment the run.
+    coordinates and the stopped echo bound are unmeasured and refused, as are
+    warmup steps and a plan that does not segment the run.
 
     R_res is read after compilation while traced, lowered and compiled objects
     are alive. It includes values evaluated during tracing (device arrays held

@@ -75,9 +75,11 @@ def forward_settling_witness(result):
                     if result.settling_probe_source_end_index is not None
                     else result.settling_source_end_index),
         port_source_end=result.settling_source_end_index, warn=False)
-    witness = {k: v for k, v in witness.items() if k != 'groups'}
     from rfx.measurement.coverage import AccumulatorCoverage, with_coverage
-    return with_coverage(db, witness, result.settling_coverage or AccumulatorCoverage())
+    from rfx.measurement.record_end import with_echo_bound
+    db, witness = with_coverage(db, witness, result.settling_coverage or AccumulatorCoverage())
+    db, witness = with_echo_bound(db, witness, result.settling_echo_bound, result.dt)
+    return db, {key: value for key, value in witness.items() if key != 'groups'}
 
 
 def build_settling_witness(result, *, bins, dt, freq_max, probe_info,
@@ -104,12 +106,14 @@ def build_settling_witness(result, *, bins, dt, freq_max, probe_info,
         from rfx.measurement.record_readers import result_port_s_reader
         db, detail = port_record_witness(
             records, dt, port_source_end, bins, freq_max=freq_max,
-            reader=result_port_s_reader(result, records))
+            reader=result_port_s_reader(result, records),
+            echo_bound=getattr(result, 'settling_echo_bound', None))
         rows.append({**detail, 'reads': ('S-parameters',)})
     if getattr(result, 'waveguide_ports', None):
         db, detail = settling_db_from_port_records(
             result.waveguide_ports.values(), freqs=bins,
-            freq_max=freq_max, return_detail=True)
+            freq_max=freq_max, return_detail=True,
+            echo_bound=getattr(result, 'settling_echo_bound', None))
         rows.append({**detail, 'reads': ('S-parameters',)})
     probe_db, probe_detail = probe_record_settling_witness(
         getattr(result, 'time_series', None), probe_info, warn=warn,

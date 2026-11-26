@@ -184,7 +184,7 @@ def test_1_path_refusals_precede_cpu_backend():
 
 
 @pytest.mark.parametrize("field", [name for name in ForwardResult._fields if name not in (
-    "time_series", "waveguide_ports", "waveguide_sparams", "grid")])
+    "time_series", "waveguide_ports", "waveguide_sparams", "grid", "settling_echo_bound")])
 def test_1_unmeasured_output_refusal(harness, field):
     """Every other inexact output invalidates the differentiated FDTD device-peak estimate."""
     harness.sim.extra[field] = {"nested": [jnp.ones(1, dtype=jnp.complex64)]}

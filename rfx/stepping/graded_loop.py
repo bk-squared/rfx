@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from rfx.model.waveguide_aperture import validate_graded_waveguide_ports
 
 from typing import TYPE_CHECKING
@@ -257,6 +258,7 @@ def run_nonuniform_until_decay(
     cpml_axes: str | None = None,
     decay_by: float = 1e-3,
     n_end: int | None = AUTO_END,
+    echo_bound: Mapping[str, float | str | None] | None = None,
     check_interval: int = 50,
     min_steps: int = 100,
     max_steps: int = 50_000,
@@ -435,17 +437,19 @@ def run_nonuniform_until_decay(
     from rfx.sources._sampling import field_time_step
     measurement_grid = grid._replace(dt=field_time_step(grid.dt, field_dtype))
     energy_stop, energy = make_decay_stop(
-        measurement_grid, materials, thr=decay_by, min_steps=min_steps, interval=check_interval,
-        consecutive=decay_energy_consecutive, n_end=n_end, criterion=not use_flux_stop,
+        measurement_grid, materials, dt=measurement_grid.dt, thr=decay_by, min_steps=min_steps, interval=check_interval,
+        consecutive=decay_energy_consecutive, n_end=n_end, criterion=not use_flux_stop, echo_bound=echo_bound, debye=debye, lorentz=lorentz,
         rows=True, max_steps=max_steps, sources=sources, tfsf=tfsf, absorbing=bool(absorbing),
         waveguide_ports=waveguide_ports, side_step=(lambda c, xs, inv: _stop_side_step(c, xs, inv)[0],
                                                     lambda n: one_step_xs(n, src_waveforms), inv_args))
     stop_rule = energy_stop
     if use_flux_stop:
         stop_rule = make_field_decay_stop(
-            measurement_grid, thr=decay_by, min_steps=min_steps, interval=check_interval,
+            measurement_grid, materials=materials, dt=measurement_grid.dt,
+            thr=decay_by, min_steps=min_steps, interval=check_interval,
             max_steps=max_steps, consecutive=decay_energy_consecutive,
             env_checks=flux_env_checks, n_end=n_end, sources=sources,
+            echo_bound=echo_bound, debye=debye, lorentz=lorentz,
             tfsf=tfsf, waveguide_ports=waveguide_ports)
     decayed_fired = False  # did the energy criterion fire (vs cap-hit)?
     ys_chunks = []

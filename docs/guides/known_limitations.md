@@ -521,6 +521,34 @@ the 0.1 mm test mesh. With the whole-cell voltage, the short test fixture's |S21
 from 3.81 to 3.22 at 6 GHz and its column power from 14.6 to 10.5; the matrix is still
 far from passive, and the rest of the excess is not attributed.
 
+### The coax→microstrip transition and the mixed coax/microstrip S-matrix keep whole microstrip planes at every step.
+
+Tracker: #3069
+
+`compute_coax_msl_transition` keeps each x-normal Ez plane of its microstrip probes at every
+time step, and `compute_mixed_s_matrix` keeps its microstrip Ez and H planes, with
+no crop, at every step. Both read those records only to form the microstrip voltage (and, in
+the mixed S-matrix, the current) for the record-tail witness. Their memory therefore grows
+as each plane's transverse cells × steps.
+
+On one GPU, the transition's device memory grows by 317.8 kB per step from 200 to 800 steps
+with its coax plane records off; the coax source waveforms it stores are 1.5 kB per step of
+that, so almost all of it is the microstrip planes. The coax planes of the three coax
+calculators no longer keep these records.
+
+### The coax port's plane source keeps one waveform per aperture cell and component for the whole record.
+
+Tracker: #3074
+
+Every coax aperture cell with a nonzero TEM profile gets its own float32 electric and magnetic
+source waveform of `n_steps` samples, so the stored source grows as (aperture cells ×
+components) × steps × 4 B, and the device holds it more than once at its peak. This holds for
+the three coax calculators and for `add_coaxial_port()` on `run()` and `forward()`. On one GPU,
+the coax one-port of #3069 (256 stored waveforms, 1024 B per step) grows by 2.9 kB of device
+memory per step, about 0.21 GB at 74 000 steps (from that slope, an estimate). Its host memory
+grows by 12.2 kB per step; the cause of that growth is not known. What to do: nothing for
+records that fit; the fix is planned.
+
 ### On a radiating device, the coax calculators' S11 includes coupling from their open feed end.
 
 Tracker: #2975
@@ -567,12 +595,15 @@ and `result.sigma_max_excess` carries the per-bin amount. A passive structure
 cannot do that: read it as a record that ended before ring-down or a mesh too
 coarse for the geometry (`settling_db`, `reliable`), or as an absorber too close
 above the line (next entry), not as gain.
-`enforce_passivity=True` returns the projected matrix instead. On a reflecting fixture
-a test checks the raw S: the microstrip chain battery holds its maximum column power at
-or below 1.02 on the open-stub notch on the 25 µm mesh the claims rest on, in
-`tests/oracle/test_msl_chain_battery.py`. Read the current fixture for the
-measured notch and thru values. Coarser meshes are
-reported, not tested.
+`enforce_passivity=True` returns the projected matrix instead. On a reflecting
+fixture the raw S is what the record keeps: on settled 40-period records the
+microstrip chain battery's open-stub notch reaches a maximum column power of
+1.0012, 1.0022 and 1.0028 on 100, 50 and 25 µm cells
+(`ladder.notch.max_column_power` in `tests/fixtures/msl_chain_battery/fixture.json`),
+inside its 1.02 bar. Why the excess grows as the mesh refines is not
+established. No CI test judges the 50 and 25 µm values; the 100 µm drift lock
+(`tests/locks/test_msl_chain_battery_drift.py`) holds that mesh's live column
+power at or below 1.02.
 
 ### A microstrip S-matrix exceeds unit column power when the absorber above the line is close and thin.
 
@@ -854,6 +885,10 @@ reading it as physics. The entry stays until the last site is fixed.
 ## Ring-down completion and the early stop
 
 Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).
+
+The echo-delay bound does not cover a return whose path exceeds the domain diagonal, such as a meander, a slow-wave structure or several bounces.
+On dispersive media the echo bound covers the phase index; the group delay near a resonance can exceed it: below a Lorentz pole at 8 GHz (eps_inf 4, κ = ω0², δ = 0.1·ω0) read over 2–4 GHz the group index at 4 GHz is 2.479 against the bound's 2.307, and below a pole at 9 GHz with ω0/δ = 57 (eps_inf 2, mu_r 1.5) over 0–12 GHz it reaches 47.9 at 8.78 GHz against 6.74.
+The settling verdict reads the S entry's record-end error: a channel's tail share can exceed 1e-2 at a band-edge bin while the S error stays below it (shorted line at 38 ns, 13.49 GHz: 1.07e-2 against 0.0048).
 
 ### A completed forward ring-down value can have a failed lazy report without warning.
 

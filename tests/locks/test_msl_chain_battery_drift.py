@@ -3,19 +3,20 @@ solved again and held to their stored S.
 
 The battery (``tests/fixtures/msl_chain_battery/fixture.json``) is a 600 um
 microstrip on 300 um of eps_r = 3.66 over a ground wall, 20 mm between its two
-ports, with a 12 mm open stub at the midpoint. The stub is a quarter wavelength
-long near 3.71 GHz, where it shorts the line: |S21| falls to a transmission zero
-and the power reflects.
+ports, with a 12 mm open stub at the midpoint, solved as drawn on edge-aware
+graded x and y cells. The stub is a quarter wavelength long near 3.71 GHz, where
+it shorts the line: |S21| falls to a transmission zero and the power reflects.
 
-Its replay test (``tests/oracle/test_msl_chain_battery.py``) reads the stored S
-only, and that is how the notch moved by 3.3 % on the 100 um mesh when a Yee E
-component started taking the mean of its four incident cells' permittivity
-(#1213) without a test noticing. Re-measured after that change, the 100 um mesh
-puts the notch at 3.681 GHz, 0.81 % below the closed form's 3.711 GHz, and it
-is the coarsest mesh the battery recommends. This file builds the 100 um board
-again with the battery's own driver, refuses to solve unless the realized trace,
-stub, substrate and ports are the recorded ones, solves it, and holds the live
-S to the stored S with the bar the battery is judged by:
+No other test reads the fixture, so no CI test judges its ladder or its 25 um
+column power; this lock is the check that the code still produces the 100 um
+rung's numbers. On that rung the stored record puts the notch at 3.698 GHz,
+0.35 % below the quarter-wave closed form's 3.711 GHz. The closed form omits the
+open-end extension, so that figure places the notch and does not grade it. This
+file builds the 100 um board again on the notch's edge-aware profiles with the
+battery's own driver under strict admission, refuses to solve unless the
+realized trace, stub, substrate and ports are the recorded ones, solves it with
+the recorded drive and record length, and holds the live S to the stored S with
+the bar the battery is judged by:
 
 * the notch frequency — the vertex of the parabola through |S21|^2 at the
   minimum bin and its two neighbours, the battery's own estimator — within 1 %;
@@ -23,61 +24,53 @@ S to the stored S with the bar the battery is judged by:
   where the stored |S21| is at or below -20 dB. Inside the core the depth is a
   difference of two near-zeros and is compared with nothing;
 * the phase of S21 turning the same way with frequency as it does in the
-  record (falling, about 11 rad across the band), fitted outside the core. A
-  conjugated S (the other time convention) keeps every magnitude and the notch
-  frequency and flips only this;
+  record: the sign of the least-squares slope of its unwrapped phase, fitted
+  outside the core (falling, -2.02 rad/GHz on the stored record). A conjugated
+  S (the other time convention) keeps every magnitude and the notch frequency
+  and flips only this;
 * the record's own verdicts at this mesh — the record settles below -40 dB,
   column power at most 1.02, reciprocity at most 0.02 — hold for the live S.
 
-The thru is the same board without the stub, built and checked the same way
-before any step. It has no frequency feature to place, and a line that grows
-longer electrically transmits exactly as before, so its magnitude says nothing
-about its length. Its lock holds:
+The thru is the same board without the stub, on the notch's cells, built and
+checked the same way before any step. It has no frequency feature to place, and
+a line that grows longer electrically transmits exactly as before, so its
+magnitude says nothing about its length. Its lock holds:
 
 * |S21| within 2 dB at every bin, and |S11| under the -20 dB bound the battery
   holds the thru's reflection to;
 * the electrical length of S21 within 1 % of the record's: the least-squares
-  slope of its unwrapped phase against frequency, live over stored. The stored record was taken at the first probe
-  planes, 16.4 mm apart. ``compute_msl_s_matrix`` now reports S at the feed
-  planes (20.0 mm apart), so
-  the live S is compared at the probe-0 planes the record was taken at:
-  ``tests/_msl_probe0.probe0_s`` undoes the shift with the result's own
-  ``shift_beta`` and ``reference_plane_offsets_m``. Every pin here is a
-  probe-0-plane quantity; read at the feed planes the slope is 22 % longer;
+  slope of its unwrapped phase against frequency, live over stored;
 * the phase direction and the record's verdicts, as for the notch.
 
-The notch's own slope is not read this way: across its transmission zero the
-unwrapped phase can take the zero's half-turn either way (-11.06 or -1.8 rad
-across the band on this record), so its slope measures the unwrap, not the line.
+Live and stored S are compared directly at the feed planes.
+
+The notch's own slope is not read as an electrical length: across its
+transmission zero the unwrapped phase can take the zero's half-turn either way,
+depending on where the zero falls between bins, so its slope measures the
+unwrap, not the line.
 
 A red here means the stored battery describes a different solver from the one
 under test. The remedy is to measure the battery again, not to move anything in
 this file.
 
-Lane: gpu and slow, the gpu step of the weekly A6000 lane
-(run by the merge-train runner on Mac, remi gpu-a6000). Its gpu selection excludes crossval_ladder. The historical run of
-2026-09-23 at 3247dc0e ended gpu_rc=0 with 171 passed. Wall time: 60 s on the
-A6000 for the notch (run 369367264070); 75 s for the notch and 68 s for the
-thru on an RTX 3080 (run 369367264556). The notch's solve takes 34 min on four
-VESSL CPU cores (run 369367264068), which keeps both off the CPU lanes.
-
-The trace's y extent and the stub's x extent are solved 11.667 % larger than drawn,
-so this lock pins the stored S-parameters, not those sizes.
+Lane: gpu and slow, the gpu step of the weekly A6000 lane (run by the
+merge-train runner on Mac, remi gpu-a6000). Its gpu selection excludes
+crossval_ladder. At the recorded 40 source periods each solve takes about 66 s
+on an RTX A6000 (the stage records' solve wall time, not the job's).
 """
 LOCK_PROVENANCE = {
     "fixture": "tests/fixtures/msl_chain_battery/fixture.json",
     "generator": "scripts/diagnostics/msl_chain_battery_measure.py",
-    "commit": "d160dcf1",
-    "date": "2026-09-23",
-    "run_id": "369367263991 (notch), 369367263992 (thru)",
-    "host": "VESSL gpu-rtx4090, jax 0.6.2 cuda, float32",
-    "pinned_until": "2027-03-23",
+    "commit": "f26760e288",
+    "date": "2026-11-26",
+    "run_id": "absorber-battery-ea-settle-f2rhs (notch), absorber-battery-ea-p40-100-50-47mmr (thru)",
+    "host": "remi gpu-a6000 (RTX A6000), jax 0.10.2 cuda, float32",
+    "pinned_until": "2027-05-26",
 }
 
 import json
 
 import numpy as np
-from tests._msl_probe0 import line_s, probe0_s
 import pytest
 
 from tests import _chain_battery_drift as drift
@@ -111,9 +104,11 @@ def _solve_live(fixture, driver, key: str, dut: str):
     guard, or when the realized trace, stub, substrate, ports or drive differ
     from the record's.
 
-    ``_solve_live`` returns the live S at the probe-0 planes and the line Z0 the record
-    was taken at, not at the feed planes and the declared impedance=.
+    ``_solve_live`` returns the live and stored S directly at the feed planes,
+    with the declared port reference impedances.
     """
+    assert fixture["schema_version"] == 2
+    assert fixture["reference_plane"] == "feed"
     entry = fixture["solves"][key]
     assert entry["provenance"]["commit"].startswith(LOCK_PROVENANCE["commit"]), (
         f"{key} was measured at {entry['provenance']['commit']}, but this guard's "
@@ -121,7 +116,7 @@ def _solve_live(fixture, driver, key: str, dut: str):
         "again and the guard was not moved to the new records")
     dx = RUNG_UM * 1e-6
 
-    sim = driver.build_sim(dx, dut, drive=entry["drive"], snap="declared")
+    sim = driver.build_sim(dx, dut, drive=entry["drive"], snap="strict")
     live_geometry = driver.assert_realized(sim, dx, dut)
     moved = drift.realized_differences(entry["realized"], live_geometry)
     assert not moved, drift.stale_record(
@@ -132,7 +127,7 @@ def _solve_live(fixture, driver, key: str, dut: str):
     freqs = np.asarray(entry["freqs_hz"], dtype=float)
     np.testing.assert_allclose(np.asarray(result.freqs, dtype=float), freqs,
                                rtol=1e-6, atol=0.0)
-    return entry, result, freqs, drift.complex_array(entry["S"]), np.asarray(probe0_s(result, line_s(result)))
+    return entry, result, freqs, drift.complex_array(entry["S"]), np.asarray(result.S)
 
 
 def _verdict_findings(driver, entry, result, live) -> list[str]:

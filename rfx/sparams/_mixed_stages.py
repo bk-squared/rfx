@@ -520,7 +520,8 @@ def _score_mixed_record(
             settling_db_runs[run_idx], settling_details[run_idx] = settling_db_from_named_records(
                 _channels, source_end_index=_source_end, dt=raw.get("dt", grid.dt),
                 freqs=freqs_arr, freq_max=self._freq_max, return_detail=True,
-                scale_groups=_groups, _channel_labels=_labels)
+                scale_groups=_groups, _channel_labels=_labels,
+                echo_bound=raw['settling_echo_bound'])
 
     return settling_db_runs, settling_details
 

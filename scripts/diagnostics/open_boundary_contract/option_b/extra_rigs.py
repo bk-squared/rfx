@@ -56,7 +56,7 @@ def measure_waveguide(args, out):
         db = 20*np.log10(np.maximum(abs(s11), 1e-30))
         row.update(freqs_Hz=np.asarray(cfg.freqs), S11=s11, S11_db=db,
                    max_S11_db=float(db.max()), max_abs_S=float(abs(s11).max()),
-                   settling_db=settling_db_from_port_records([cfg]),
+                   settling_db=settling_db_from_port_records([cfg], echo_bound=rec.last_result.settling_echo_bound),
                    aperture_m=[float(cfg.a), float(cfg.b)], cutoff_Hz=float(cfg.f_cutoff), status='complete')
         np.savez_compressed(out / 'modal_records.npz',
                             **{k: np.asarray(getattr(cfg, k)) for k in ('v_probe_t','v_ref_t','i_probe_t','i_ref_t','v_inc_t')})

@@ -56,7 +56,7 @@ planes (`refl_x`, `trans_x`, `freqs_rt`), the probes' `y_center` and the record
 length `n_steps`; the complete
 `examples/tutorials/slab_rt_flux_monitor.py` is the runnable reference. The
 tutorial uses a lossless, dispersionless slab (εr = 4, no pole) and a fixed
-1200-step record.
+4800-step record.
 
 ```python
 import numpy as np
@@ -125,8 +125,10 @@ record length (`total_steps`) or DFT window.
 A flux spectrum is a DFT over the record, so a record that ends while the field
 still rings leaves part of the response out of every bin. The template uses one
 fixed `n_steps` for both runs and asserts the ring-down witness of detail (e),
-which judges that per frequency bin. The tutorial's 1200-step record passes it
-at about −139 dB for the reference run and −92 dB for the slab run.
+which judges that per frequency bin. The tutorial's 4800-step record passes it
+at about −126 dB for the reference run and −111 dB for the slab run. Its
+identification window must hold 2.05 of the domain's longest round trips:
+5.47 ns for the slab run, within the record's 5.60 ns window.
 
 `run(until_decay=1e-5)` also gave a passing witness on both runs, measured on
 the tutorial's slab and on a Lorentz slab (8 mm, εr∞ = 2, one pole at 10 GHz).
@@ -135,8 +137,8 @@ Three things differ from a fixed record:
 - In both measured cases the vacuum reference run did not reach the requested
   1e-5: its field energy stopped falling at 1e-13 to 3e-13 of the drive's peak
   energy, and the run ended on the float32 floor with an `AccuracyWarning`.
-- On the tutorial's slab that reference run lasted 25,900 steps, about 22 times
-  the 1200-step record, and R and T came out the same as the tutorial's to three
+- On the tutorial's slab that reference run lasted 25,900 steps, about 5.4 times
+  the 4800-step record, and R and T came out the same as the tutorial's to three
   decimals (the template's 20 CPML layers against the tutorial's 10).
 - Under `until_decay` the `n_steps` argument is ignored; the run stops at the
   latest at `decay_max_steps`.
@@ -195,8 +197,8 @@ The tutorial puts an `add_vector_probe` on each plane. It records every
 component at that point; in 2-D TMz the witness skips the components that stay
 at zero or at rounding level, judged against the largest record of the same
 kind (E or H) in the same cell, and judges Ez and Hy. Point probes on Ez and Hy
-give the same witness values. At the tutorial's fixed 1200-step record the
-witness reads about −139 dB for the reference run and −92 dB for the slab run,
+give the same witness values. At the tutorial's fixed 4800-step record the
+witness reads about −126 dB for the reference run and −111 dB for the slab run,
 and the script stops if either run does not pass.
 
 The probe serves the witness only; R and T still come from the flux monitors

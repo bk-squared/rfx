@@ -141,7 +141,7 @@ def run_waveguide(out,dry):
         np.savez_compressed(out/'modal_records.npz',**{k:np.asarray(getattr(cfg,k)) for k in ('v_probe_t','v_ref_t','i_probe_t','i_ref_t','v_inc_t','e_inc_table','h_inc_table')})
         np.savez_compressed(out/'sparams.npz',S=s11[None,None,:],freqs_Hz=np.asarray(cfg.freqs))
         row.update(max_S11_db=float(20*np.log10(abs(s11).max())),max_column_power=float((abs(s11)**2).max()),
-                   worst_frequency_Hz=float(np.asarray(cfg.freqs)[np.argmax(abs(s11))]),settling_db=settling_db_from_port_records([cfg]))
+                   worst_frequency_Hz=float(np.asarray(cfg.freqs)[np.argmax(abs(s11))]),settling_db=settling_db_from_port_records([cfg], echo_bound=rec.last_result.settling_echo_bound))
         print('PASSIVITY_TEXT',row['shared_guard_warnings'],flush=True)
     except m.DryCaptured:
         row['status']='build-only'

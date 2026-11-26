@@ -20,13 +20,15 @@ def test_energy_stop_waits_for_known_drive(monkeypatch):
     monkeypatch.setattr(modes, 'incident_tables_uncut', lambda port: (e, h))
     monkeypatch.setattr(decay, 'boundary_energy', lambda *a, **kw: lambda *a: 0.)
     grid = SimpleNamespace(dt=1.)
+    echo_bound = dict(tau_max=.25, D=.125 * 299792458., n_max=1., g=1.)
     n_d = next(n for n in range(interval, length + 1, interval)
                if np.all(drive_tail_share([e, h], 1., n, cfg.freqs) <= 1e-2))
     assert n_d > 40
     assert decay.drive_end(grid, length, waveguide_ports=[cfg]) == 40
     rule, _ = decay.make_decay_stop(
         grid, None, thr=.1, min_steps=40, interval=interval, consecutive=2,
-        criterion=True, max_steps=length, side_step=None, waveguide_ports=[cfg])
+        criterion=True, max_steps=length, side_step=None, waveguide_ports=[cfg],
+        echo_bound=echo_bound)
     assert rule.n_d == n_d
     for n in range(interval, n_d, interval):
         assert rule.check(n, lambda: 1. if n <= 40 else .001) is None, (
@@ -34,7 +36,8 @@ def test_energy_stop_waits_for_known_drive(monkeypatch):
     assert rule.check(n_d, lambda: .001) == n_d
     capped, _ = decay.make_decay_stop(
         grid, None, thr=.1, min_steps=40, interval=interval, consecutive=2,
-        criterion=True, max_steps=100, side_step=None, waveguide_ports=[cfg])
+        criterion=True, max_steps=100, side_step=None, waveguide_ports=[cfg],
+        echo_bound=echo_bound)
     for n in range(interval, 101, interval):
         assert capped.check(n, lambda: 1. if n <= 40 else .001) is None
     diagnostic = decay.finish_decay(capped, 100)

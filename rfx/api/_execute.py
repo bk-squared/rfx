@@ -645,7 +645,7 @@ class _ExecuteMixin:
             flux_monitors=result.flux_monitors,
             waveguide_ports=result.waveguide_ports,
             waveguide_sparams=result.waveguide_sparams,
-            **{k: getattr(result, k, None) for k in ("wire_port_sparams", "lumped_port_sparams")},
+            **{k: getattr(result, k, None) for k in ("wire_port_sparams", "lumped_port_sparams", "settling_echo_bound")},
             sparam_time_records=getattr(result, "sparam_time_records", None),
             sparam_read_ids=getattr(result, "sparam_read_ids", None),
             dft_time_records=getattr(result, "dft_time_records", None),

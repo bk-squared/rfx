@@ -325,7 +325,8 @@ def compute_lumped_wire_s_matrix_via_scan(
                                          waveguide_reference_only=True)
             columns.append((record_order.index(j), np.asarray(record.s_params)[:, record_order.index(j)]))
             raw = {"sparam_time_records": record.sparam_time_records or (), "dt": record.dt,
-                   "wire": record.wire_port_sparams, "lumped": record.lumped_port_sparams}
+                   "wire": record.wire_port_sparams, "lumped": record.lumped_port_sparams,
+                   "settling_echo_bound": record.settling_echo_bound}
         elif devices is not None:
             raw = _distributed_lumped_accumulators(sim, grid, eligible, freqs,
                                                   n_steps, devices,
@@ -392,7 +393,8 @@ def compute_lumped_wire_s_matrix_via_scan(
                 whole_port=True if graded else None))
             settling_runs.append(port_record_witness(
                 time_records, raw.get("dt", grid.dt),
-                end, freqs, freq_max=sim._freq_max, reader=reader))
+                end, freqs, freq_max=sim._freq_max, reader=reader,
+                echo_bound=raw['settling_echo_bound']))
         if graded:
             continue
         accs = raw["wire"] if wire_mode else raw["lumped"]
@@ -580,4 +582,5 @@ def _distributed_lumped_accumulators(sim, grid, ports, freqs, n_steps, devices, 
                                  i for i in range(len(ports)) if calculator_drive(i == drive)),
                              s_param_freqs=freqs, compute_s_params=True)
     return {"lumped": result.lumped_port_sparams, "wire": result.wire_port_sparams,
-            "sparam_time_records": result.sparam_time_records, "dt": result.dt}
+            "sparam_time_records": result.sparam_time_records, "dt": result.dt,
+            "settling_echo_bound": result.settling_echo_bound}
