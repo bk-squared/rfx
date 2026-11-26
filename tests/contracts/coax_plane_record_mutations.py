@@ -38,7 +38,8 @@ def _red(monkeypatch, pin, mutation, check, *, row="one", eps_scale=None, instal
 
 def _frequency_mutation(mp, kind):
     from rfx.measurement import calculator_plan as module
-    from rfx.sparams import coax
+    from rfx.sparams import _coax_plane_measurement as measurement
+    assert module.calculator_plan is measurement.calculator_plan
     original = module.calculator_plan
 
     def changed(*args, **kw):
@@ -49,7 +50,7 @@ def _frequency_mutation(mp, kind):
             for owner in plan.owners))
 
     mp.setattr(module, "calculator_plan", changed)
-    mp.setattr(coax, "calculator_plan", changed)
+    mp.setattr(measurement, "calculator_plan", changed)
 
 
 def _record_all(mp):
@@ -65,6 +66,7 @@ def _record_all(mp):
 def _voltage_mutation(mp, transform):
     from rfx.measurement import calculator_plan as module
     from rfx.sparams import coax
+    assert module.coax_plane_voltages is coax.coax_plane_voltages
     original = module.coax_plane_voltages
 
     def changed(*args):
@@ -96,14 +98,15 @@ def test_p2_transition_records_all_on(monkeypatch):
 def test_p3_plane_indices_plus_one(monkeypatch):
     def install(mp):
         from rfx.measurement import ports
-        from rfx.sparams import coax
+        from rfx.sparams import _coax_plane_measurement as measurement
+        assert ports.coax_owner is measurement.coax_owner
         original = ports.coax_owner
 
         def changed(grid, **kw):
             return original(grid, **dict(kw, plane_indices=[p+1 for p in kw["plane_indices"]]))
 
         mp.setattr(ports, "coax_owner", changed)
-        mp.setattr(coax, "coax_owner", changed)
+        mp.setattr(measurement, "coax_owner", changed)
 
     _red(monkeypatch, "P3", "plane_indices_plus_one", check_p3, install=install)
 

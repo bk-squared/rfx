@@ -18,9 +18,8 @@ they do not run at import time.
 from __future__ import annotations
 
 from rfx.measurement.calculator_drive import calculator_drive
-from rfx.measurement.calculator_plan import calculator_plan, coax_plane_voltages
-from rfx.measurement.ports import coax_owner
-from rfx.measurement.flux_weights import monitor_periodic_flags
+from rfx.measurement.calculator_plan import coax_plane_voltages
+from rfx.sparams._coax_plane_measurement import coax_plane_measurement
 
 from rfx.sparams import _coax_msl_stages, _coax_oneport_record, _settling_groups
 from rfx.sparams._coax_messages import COAX_MSL_TRANSITION_REFUSAL_HINT
@@ -875,14 +874,11 @@ def compute_coaxial_two_port(
         )
         measurement_kwargs = {}
         if not _traced_eps:
-            owner = coax_owner(
-                grid, port_id=0, plane_indices=all_probes_z, center_xy=center_xy,
+            owner, measurement_kwargs["measurement"] = coax_plane_measurement(
+                self, grid, int(n_steps), plane_indices=all_probes_z, center_xy=center_xy,
                 pin_radius=a, outer_radius=b, frequencies=freqs,
-                pec_cell_mask=line.pec_cells)
-            measurement_kwargs["measurement"] = calculator_plan(
-                grid, int(n_steps), probes=witness_probes, planes=planes,
-                flux_monitors=_flux_run_kwargs.get("flux_monitors", ()),
-                flux_periodic=monitor_periodic_flags(self, grid), extra_owners=(owner,))
+                pec_cell_mask=line.pec_cells, probes=witness_probes, planes=planes,
+                flux_monitors=_flux_run_kwargs.get("flux_monitors", ()))
         result = _run(
             grid, materials, int(n_steps), boundary="cpml", cpml_axes=cpml_axes,
             sources=list(spec.electric_sources), mag_sources=list(spec.magnetic_sources),
@@ -1503,14 +1499,11 @@ def compute_coax_msl_transition(
                 self, grid, int(n_steps), entries=extra_flux_monitors)}
             if extra_flux_monitors else {}
         )
-        owner = coax_owner(
-            grid, port_id=0, plane_indices=probes_coax, center_xy=center_xy,
+        owner, measurement = coax_plane_measurement(
+            self, grid, int(n_steps), plane_indices=probes_coax, center_xy=center_xy,
             pin_radius=a, outer_radius=b, frequencies=freqs_jnp,
-            pec_cell_mask=line.pec_cells)
-        measurement = calculator_plan(
-            grid, int(n_steps), probes=witness_probes, planes=planes,
-            flux_monitors=_flux_run_kwargs.get("flux_monitors", ()),
-            flux_periodic=monitor_periodic_flags(self, grid), extra_owners=(owner,))
+            pec_cell_mask=line.pec_cells, probes=witness_probes, planes=planes,
+            flux_monitors=_flux_run_kwargs.get("flux_monitors", ()))
         result = _run(
             grid, materials, int(n_steps), boundary="cpml", cpml_axes="xyz",
             sources=sources, mag_sources=mag_sources, probes=witness_probes,
