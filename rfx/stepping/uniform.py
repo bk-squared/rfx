@@ -181,7 +181,8 @@ def make_uniform_step(
                 frame.st = update_h(frame.st, materials, dt, dx, periodic=periodic,
                     high_wall=high_wall, stencil_order=ctx.stencil_order, **bloch_args,
                     magnetic_factors=invariants["magnetic_factors"],
-                    h_row_factors=invariants["h_row_factors"])
+                    h_row_factors=invariants["h_row_factors"],
+                    h_coefficients=invariants.get("h_coefficients"))
 
     def h_boundary(frame: UniformFrame):
         """Correct incident H, absorb outgoing H, and damp conductor cells."""
@@ -196,7 +197,8 @@ def make_uniform_step(
                 frame.st, frame.cpml_new = absorb(
                     ctx.apply_cpml_h, frame.st, frame.carry["cpml"],
                     materials=materials, periodic=periodic,
-                    h_row_factors=invariants["h_row_factors"])
+                    h_row_factors=invariants["h_row_factors"],
+                    h_coefficients=invariants.get("cpml_h_coefficients"))
             if ctx.use_aniso_inv:
                 from rfx.boundaries.pec import apply_pec_h_mask, undriven_h_masks
                 _inv_xx, _inv_yy, _inv_zz = aniso_inv_eps
