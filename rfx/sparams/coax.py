@@ -18,6 +18,8 @@ they do not run at import time.
 from __future__ import annotations
 
 from rfx.measurement.calculator_drive import calculator_drive
+from rfx.measurement.calculator_plan import coax_plane_voltages
+from rfx.sparams._coax_plane_measurement import coax_plane_measurement
 
 from rfx.sparams import _coax_msl_stages, _coax_oneport_record, _settling_groups
 from rfx.sparams._coax_messages import COAX_MSL_TRANSITION_REFUSAL_HINT
@@ -870,12 +872,19 @@ def compute_coaxial_two_port(
                 self, grid, int(n_steps), entries=extra_flux_monitors)}
             if extra_flux_monitors else {}
         )
+        measurement_kwargs = {}
+        if not _traced_eps:
+            owner, measurement_kwargs["measurement"] = coax_plane_measurement(
+                self, grid, int(n_steps), plane_indices=all_probes_z, center_xy=center_xy,
+                pin_radius=a, outer_radius=b, frequencies=freqs,
+                pec_cell_mask=line.pec_cells, probes=witness_probes, planes=planes,
+                flux_monitors=_flux_run_kwargs.get("flux_monitors", ()))
         result = _run(
             grid, materials, int(n_steps), boundary="cpml", cpml_axes=cpml_axes,
             sources=list(spec.electric_sources), mag_sources=list(spec.magnetic_sources),
-            probes=witness_probes, dft_planes=planes, record_dft=True,
+            probes=witness_probes, dft_planes=planes, record_dft=False,
             pec_edge_masks=conductors.pec_edges, return_state=False,
-            **_flux_run_kwargs,
+            **_flux_run_kwargs, **measurement_kwargs,
         )
         if result.dft_planes is None:
             raise RuntimeError(
@@ -952,11 +961,9 @@ def compute_coaxial_two_port(
                 from rfx.sources.waveguide_port import settling_db_from_named_records
                 source_end = injection_end(len(ts), grid.dt, records=witness_probes, grid=grid,
                                            sources=spec.electric_sources, mag_sources=spec.magnetic_sources)
-                _plane_records = getattr(result, "dft_time_records", None)
-                _channels = [(f"coax/plane{pi}/V", np.asarray(coaxial_line_plane_voltage(
-                    grid, _plane_records[2*pi], _plane_records[2*pi+1],
-                    center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=all_probes_z[pi])))
-                    for pi in range(len(all_probes_z))] if _plane_records else []
+                voltages = coax_plane_voltages(result, owner)
+                _channels = [(f"coax/plane{pi}/V", voltages[:, pi])
+                             for pi in range(len(all_probes_z))] if voltages is not None else []
                 if _channels:
                     _channels.extend((f"probe{i}", ts[:, i]) for i in range(ts.shape[1]))
                 settling_db[drive_idx], settling_details[drive_idx] = settling_db_from_named_records(
@@ -1492,10 +1499,17 @@ def compute_coax_msl_transition(
                 self, grid, int(n_steps), entries=extra_flux_monitors)}
             if extra_flux_monitors else {}
         )
+        owner, measurement = coax_plane_measurement(
+            self, grid, int(n_steps), plane_indices=probes_coax, center_xy=center_xy,
+            pin_radius=a, outer_radius=b, frequencies=freqs_jnp,
+            pec_cell_mask=line.pec_cells, probes=witness_probes, planes=planes,
+            flux_monitors=_flux_run_kwargs.get("flux_monitors", ()))
         result = _run(
             grid, materials, int(n_steps), boundary="cpml", cpml_axes="xyz",
             sources=sources, mag_sources=mag_sources, probes=witness_probes,
-            dft_planes=planes, record_dft=True,
+            dft_planes=planes,
+            record_dft=(False,) * n_coax_planes + (True,) * len(xs_sorted),
+            measurement=measurement,
             pec_edge_masks=conductors.pec_edges,
             return_state=False,
             **_flux_run_kwargs,
@@ -1536,12 +1550,12 @@ def compute_coax_msl_transition(
             source_end = injection_end(len(ts), grid.dt, records=witness_probes, grid=grid,
                                        sources=sources, mag_sources=mag_sources)
             _plane_records = getattr(result, "dft_time_records", None)
-            _channels = []
+            if _plane_records and len(_plane_records) == len(xs_sorted):
+                _plane_records = (None,) * n_coax_planes + tuple(_plane_records)
+            voltages = coax_plane_voltages(result, owner)
+            _channels = [(f"coax/plane{pi}/V", voltages[:, pi])
+                         for pi in range(len(probes_coax))] if voltages is not None else []
             if _plane_records:
-                _channels.extend((f"coax/plane{pi}/V", np.asarray(coaxial_line_plane_voltage(
-                    grid, _plane_records[2*pi], _plane_records[2*pi+1],
-                    center_xy=center_xy, pin_radius=a, outer_radius=b, pec_cell_mask=line.pec_cells, plane_index=probes_coax[pi])))
-                    for pi in range(len(probes_coax)))
                 _channels.extend((f"msl/plane{pi}/V", np.asarray(msl_modal_voltage(
                     _plane_records[n_coax_planes+pi], j_centre=j_centre_msl,
                     k_lo=k_lo_msl, k_hi=k_trace_lo, dz_arr=dz_arr, dtype=_complex_dtype)))
