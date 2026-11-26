@@ -582,15 +582,16 @@ def watch_steps(monkeypatch, *, direct_replays=False):
         assert table.prepared() is root, "table was built from a separate assembly"
         stepped.append(table)
         layout = kwargs.get("_operand_layout", "grid")
+        material_item, pec_edges = root.materials, root.pec_edges
 
         def operands(*operands, **options):
             if layout in ("grid", "graded_slab"):
                 assert operands[0] is root.grid
-                assert operands[1] is root.materials
+                assert (operands[1][0] if isinstance(operands[1], list) else operands[1]) is material_item
                 if layout == "graded_slab":
                     assert operands[2] is root.pec_edges
                 elif "pec_edge_masks" in options:
-                    assert options["pec_edge_masks"] is root.pec_edges
+                    assert options["pec_edge_masks"] is pec_edges
             elif layout == "slab":
                 assert options["sharded_materials"] is root.materials
                 assert options["sharded_pec_mask"] is root.pec_edges

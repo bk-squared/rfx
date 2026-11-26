@@ -275,6 +275,8 @@ def _coax_two_port(monkeypatch, eps_scale=None, impedance=50.0):
             self.dt = dt
 
     def fake_run(grid_, materials, n_steps, *, probes, dft_planes, **_):
+        if isinstance(materials, list):
+            materials = materials.pop()
         seen["eps_r"] = materials.eps_r
         return _Run(len(dft_planes), len(probes), grid_.dt)
 

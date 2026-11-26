@@ -331,6 +331,7 @@ def compute_lumped_wire_s_matrix_via_scan(
                                                   n_steps, devices,
                                                   None if _main_wire_record else j)
         else:
+            from dataclasses import replace
             raw = sim._forward_from_materials(
                 grid,
                 materials,
@@ -345,7 +346,8 @@ def compute_lumped_wire_s_matrix_via_scan(
                 port_s11_freqs=freqs,
                 _sparam_drive_idx=j,
                 _return_raw_port_sparams=True,
-                sheet_impedance=_sheet_ctx, conductors=conductors,
+                sheet_impedance=_sheet_ctx,
+                conductors=replace(conductors, _prepared_owner=None),
                 conformal_pec=conformal_pec, subpixel_smoothing=subpixel_smoothing,
             )
 

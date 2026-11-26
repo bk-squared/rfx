@@ -1713,11 +1713,12 @@ class _ExecuteMixin:
         _fwd_call = functools.partial(
             self._forward_from_materials,
             grid,
-            materials,
+            None,
             debye_spec,
             lorentz_spec,
             subpixel_smoothing=subpixel_smoothing,
             conductors=conductors,
+            _setup_inputs=[materials],
             n_steps=n_steps,
             checkpoint=checkpoint,
             checkpoint_segments=checkpoint_segments,
@@ -1743,6 +1744,7 @@ class _ExecuteMixin:
             lane="fwd_uniform",
             diagnostics=_solve_assembly.diagnostics,
         )
+        del materials, assembly_inputs
         if ringdown is None:
             _res = _fwd_call()
         else:

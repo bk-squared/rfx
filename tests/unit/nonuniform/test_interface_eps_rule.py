@@ -100,6 +100,8 @@ def test_opt_in_reaches_stepper(monkeypatch):
     original = nu.run_nonuniform
     seen = []
     def capture(grid, materials, n_steps, **kwargs):
+        if isinstance(materials, list):
+            materials = materials.pop()
         widths = (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)
         assert kwargs.get("aniso_eps") is None
         for component, actual in enumerate(materials.components.tensor.eps):

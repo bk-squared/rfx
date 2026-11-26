@@ -1167,6 +1167,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     conductors, geometry_record = at_kernel(sim, conductors, lane=lane, pec_edges=pec_edge_masks, sheet_operator=sheet_ctx)
     pec_edge_masks = conductors.pec_edges
     sheet_ctx = conductors.sheet_operator
+    del materials, materials_drive, _drawn_eps_r, ports
     _shared_run_kwargs = dict(
         field_dtype=field_dtype,
         design_box=design_box,
@@ -1223,7 +1224,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             return stop_fn(steps_done, partial)
 
         r = prepared_step.advance(stepping_product, run_nonuniform_until_decay,
-            grid, materials,
+            grid, None,
             decay_by=0.0,
             check_interval=int(stop_interval),
             min_steps=n_steps + 1,
@@ -1247,7 +1248,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         # (forward-only host loop — mirrors uniform run_until_decay's
         # treatment of the grad-tape flag).
         r = prepared_step.advance(stepping_product, run_nonuniform_until_decay,
-            grid, materials,
+            grid, None,
             decay_by=until_decay,
             n_end=n_end,
             advisory=advisory_inputs(sim, dt=grid.dt, n_table=decay_max_steps),
@@ -1271,7 +1272,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         from rfx.progress import validate_report_every
         _re = validate_report_every(report_every, n_steps=n_steps)
         r = prepared_step.advance(stepping_product, run_nonuniform_until_decay,
-            grid, materials,
+            grid, None,
             decay_by=0.0,
             check_interval=_re,
             min_steps=n_steps + 1,
@@ -1291,7 +1292,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 "(the chunked loop is forward-only).",
                 ConfigurationWarning, stacklevel=user_stacklevel())
         r = prepared_step.advance(stepping_product, run_nonuniform,
-            grid, materials, n_steps,
+            grid, None, n_steps,
             checkpoint=checkpoint,
             checkpoint_every=checkpoint_every,
             n_warmup=n_warmup,

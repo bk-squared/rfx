@@ -72,6 +72,7 @@ def test_source_first_e_update(case):
     def _capture_coefficient_witness(*a, **kw):
         captured.update(kw)
         captured["args"] = a
+        captured["materials"] = a[1][0] if isinstance(a[1], list) else a[1]
         return original(*a, **kw)
 
     with patch.object(low, "run", _capture_coefficient_witness):

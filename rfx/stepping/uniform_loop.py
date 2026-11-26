@@ -110,6 +110,9 @@ def run(
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
+    ``materials`` accepts a ``MaterialArrays`` or a one-item list whose item
+    the stepper takes at entry. Direct material callers retain ownership.
+
     Parameters
     ----------
     grid : Grid
@@ -276,6 +279,8 @@ def run(
         raise ValueError("gradient must be 'autodiff' or 'adjoint'")
 
     # ---- shared setup (W6.2) ----
+    if isinstance(materials, list):
+        materials = materials.pop()
     _setup = _build_step_setup(
         measurement=measurement,
         grid=grid,
@@ -404,6 +409,11 @@ def run(
     _core_step = (make_core_step(_step_ctx, **admission_kwargs) if measurement is None else make_core_step(
         _step_ctx, measurement=measurement, dtype=carry_init["fdtd"].ex.dtype,
         **admission_kwargs))
+    from rfx.model.materials import kernel_context
+    if gradient != "adjoint":
+        _step_ctx = kernel_context(_step_ctx)
+        _setup.ctx_kwargs["materials"] = _step_ctx.materials
+        materials = _step_ctx.materials
 
     def step_fn(carry, xs):
         _step_idx, src_vals, mag_src_vals = xs
@@ -810,6 +820,9 @@ def run_until_decay(
 ) -> SimResult:
     """Run until the field energy left after the drive has decayed.
 
+    ``materials`` accepts a ``MaterialArrays`` or a one-item list whose item
+    the stepper takes at entry. Direct material callers retain ownership.
+
     Compiled scan chunks end at completed steps ``k * check_interval``; every
     stop check runs on the host at those boundaries. On a high-Q structure
     whose mode reaches the absorber, the stop can move by about 170 steps
@@ -948,6 +961,8 @@ def run_until_decay(
     mag_sources = mag_sources or []
 
     # ---- shared setup (W6.2) ----
+    if isinstance(materials, list):
+        materials = materials.pop()
     _setup = _build_step_setup(
         measurement=measurement,
         grid=grid,
@@ -1155,6 +1170,13 @@ def run_until_decay(
         mag_sources=mag_sources, tfsf=tfsf, waveguide_ports=waveguide_ports, dx=dx,
         periodic=_setup.periodic, side_step=(lambda c, xs, inv: jax.lax.scan(lambda cc, x: step_fn(
             cc, x, inv), c, xs)[0], lambda n: one_step_xs(n, src_waveforms, mag_src_waveforms), _inv_args))
+    from rfx.model.materials import kernel_context
+    _step_ctx = kernel_context(_step_ctx)
+    _setup.ctx_kwargs["materials"] = _step_ctx.materials
+    materials = materials._replace(
+        sigma_lumped=None, eps_r_lumped=None, components=None, edge_keep=None, sigma_film=None)
+    if advisory is not None and advisory["lossy"] is not None:
+        materials = materials._replace(sigma=None)
     stop_rule = energy_stop
     if use_flux_stop:
         stop_rule = make_field_decay_stop(

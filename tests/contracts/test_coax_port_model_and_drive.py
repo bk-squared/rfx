@@ -25,6 +25,8 @@ def scene(face='top', **kwargs):
 def capture(monkeypatch, sim, entry):
     seen = {}
     def kernel(grid, materials, n_steps, **kwargs):
+        if isinstance(materials, list):
+            materials = materials.pop()
         seen.update(grid=grid, materials=materials, **kwargs)
         raise Captured
     monkeypatch.setattr('rfx.simulation.run', kernel)

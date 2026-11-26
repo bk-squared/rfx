@@ -42,14 +42,17 @@ def advance(product, stepper, *args, _operand_layout="grid", **kwargs):
     attached = plan is not None and plan.path != "run_subgridded"
     if attached and layout in ("grid", "wrapped_uniform_slab", "graded_slab"):
         kwargs["measurement"] = plan
-    if layout == "grid":
+    if layout == "grid" and plan is not None and plan.path == "run_subgridded":
         args[:2] = product.grid, product.materials
+    elif layout == "grid":
+        args[:2] = product.grid, [product.materials]
         if "pec_edge_masks" in kwargs:
             kwargs["pec_edge_masks"] = product.pec_edges
         if attached:
             from rfx.measurement.accumulators import validate_flux_prefix
             validate_flux_prefix(product._prepared_solve.sim, product.grid, plan,
                                  kwargs.get("flux_monitors") or ())
+        release_dense(product)
     elif layout == "wrapped_uniform_slab":
         args.insert(0, [product.grid, product.materials, product.pec_edges])
         release_dense(product)

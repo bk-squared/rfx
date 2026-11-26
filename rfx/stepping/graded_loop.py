@@ -82,6 +82,9 @@ def run_nonuniform(
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
 
+    ``materials`` accepts a ``MaterialArrays`` or a one-item list whose item
+    the stepper takes at entry. Direct material callers retain ownership.
+
     Parameters
     ----------
     cpml_axes : str or None: axes with absorber pads when omitted; subsets accepted
@@ -97,6 +100,8 @@ def run_nonuniform(
         identical to the uniform path (acc += field * exp(-j2pi f t) * dt);
         dt is scalar on both paths so no per-axis weighting is required.
     """
+    if isinstance(materials, list):
+        materials = materials.pop()
     validate_graded_waveguide_ports(grid, waveguide_ports, pec_faces, pmc_faces)
     setup = _build_nu_scan(
         grid, materials, n_steps,
@@ -130,6 +135,7 @@ def run_nonuniform(
         design_box=design_box,
         measurement=measurement, field_dtype=field_dtype,
     )
+    del materials
     step_fn = setup.step_fn
     carry_init = setup.carry_init
     init_plane_records(carry_init, dft_planes, record_dft, n_steps)
@@ -301,6 +307,9 @@ def run_nonuniform_until_decay(
 ) -> dict:
     """Run non-uniform FDTD until the field energy left after the drive decays.
 
+    ``materials`` accepts a ``MaterialArrays`` or a one-item list whose item
+    the stepper takes at entry. Direct material callers retain ownership.
+
     A Python loop drives constant-length chunks (``chunk =
     check_interval`` steps), each the same ``recorded_scan`` of the SAME
     ``step_fn`` that :func:`run_nonuniform` runs, threading the SAME carry (NTFF Kahan
@@ -353,6 +362,8 @@ def run_nonuniform_until_decay(
     absorbing = grid.cpml_layers > 0 and padded_axes(grid, resolve_cpml_axes(grid, cpml_axes))
     refuse_radiated_flux_stop(radiated_flux_box, decay_by, "cpml" if absorbing else "pec")
 
+    if isinstance(materials, list):
+        materials = materials.pop()
     validate_graded_waveguide_ports(grid, waveguide_ports, pec_faces, pmc_faces)
     setup = _build_nu_scan(
         grid, materials, max_steps,
@@ -440,6 +451,10 @@ def run_nonuniform_until_decay(
         rows=True, max_steps=max_steps, sources=sources, tfsf=tfsf, absorbing=bool(absorbing),
         waveguide_ports=waveguide_ports, side_step=(lambda c, xs, inv: _stop_side_step(c, xs, inv)[0],
                                                     lambda n: one_step_xs(n, src_waveforms), inv_args))
+    materials = materials._replace(
+        sigma_lumped=None, eps_r_lumped=None, components=None, edge_keep=None, sigma_film=None)
+    if advisory is not None and advisory["lossy"] is not None:
+        materials = materials._replace(sigma=None)
     stop_rule = energy_stop
     if use_flux_stop:
         stop_rule = make_field_decay_stop(

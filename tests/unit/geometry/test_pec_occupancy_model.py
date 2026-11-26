@@ -39,7 +39,8 @@ def test_topology_occupancy_reaches_uniform_solve_with_kottke_tensor(monkeypatch
 
     def solve(*args, **kwargs):
         assert kwargs["pec_occupancy"] is None
-        tensor = args[1].components.tensor
+        materials = args[1].pop() if isinstance(args[1], list) else args[1]
+        tensor = materials.components.tensor
         assert tensor.inv_eps is not None and tensor.inv_eps_smooth
         assert kwargs["design_occupancy"] is None
         raise SolveReached

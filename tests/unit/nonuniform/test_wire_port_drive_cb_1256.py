@@ -328,6 +328,8 @@ def _drive_and_stepper_materials(sim, *, strip=None):
     stepped = {}
 
     def _scan(grid, materials, *a, **kw):
+        if isinstance(materials, list):
+            materials = materials.pop()
         stepped["materials"] = materials
         stepped["dt"] = float(grid.dt)
         raise _Built

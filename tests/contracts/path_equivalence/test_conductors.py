@@ -1,5 +1,6 @@
 """G1: production conductor products, persistent stages, and consumption replay."""
 from dataclasses import FrozenInstanceError
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -89,7 +90,7 @@ def test_preflight_and_run_share_one_assembly(monkeypatch, lane, kernel_objects)
     runner(n_steps=2)
     assert calls == [1]
     assert len(seen) == 1
-    assert seen[0].pec_edges is kernel_objects[-1].pec_edges
+    assert seen[0].pec_edges is kernel_objects.dense[-1].pec_edges
     assert audit_context.realized() is audit
     assert kernel_objects[-1] is not audit
 
@@ -115,13 +116,14 @@ def test_record_reads_kernel_after_port_clearing(monkeypatch, lane, kernel_objec
     monkeypatch.setattr(records, 'record_from_conductors', record_operand)
     result = sim.run(n_steps=2, skip_preflight=True, compute_s_params=False)
     final = kernel_objects[-1]
+    dense = kernel_objects.dense[-1]
     assert result.realized_geometry.conductors is final
-    assert not final.edges[2][idx]
+    assert not dense.edges[2][idx]
     assert final.provenance[-1].stage == 'port-edge-clearing'
     assert recorded[-1] is final
-    assert not recorded[-1].edges[2][idx]
+    assert not dense.edges[2][idx]
     assert sim._campaign_ctx().realized().edges[2][idx]
-    np.testing.assert_array_equal(sim.realized_geometry().edge_masks[2], final.edges[2])
+    np.testing.assert_array_equal(sim.realized_geometry().edge_masks[2], dense.edges[2])
 
 
 @pytest.mark.parametrize('graded', [False, True])
@@ -134,11 +136,13 @@ def test_two_device_conductors_are_the_same_object_fields(graded, two_device_tes
     b = build(('_geometry', 'pec_volume'), lane, graded=graded)
     a.run(n_steps=2, skip_preflight=True)
     ca = kernel_objects[-1]
+    ca_dense = kernel_objects.dense[-1]
     b.run(n_steps=2, skip_preflight=True, devices=jax.devices()[:2])
     cb = kernel_objects[-1]
-    for x, y in zip(ca.pec_edges, cb.pec_edges, strict=True):
+    cb_dense = kernel_objects.dense[-1]
+    for x, y in zip(ca_dense.pec_edges, cb_dense.pec_edges, strict=True):
         np.testing.assert_array_equal(x, y)
-    np.testing.assert_array_equal(ca.pec_cells, cb.pec_cells)
+    np.testing.assert_array_equal(ca_dense.pec_cells, cb_dense.pec_cells)
     assert ca.provenance == cb.provenance
     assert b._pf_campaign_ctx is None
 
@@ -215,7 +219,7 @@ def test_standalone_record_matches_port_cleared_kernel(lane, kernel_objects):
     sim.add(Box(point(4, 2, 2), point(6, 4, 4)), material='pec')
     standalone = sim.realized_geometry()
     sim.run(n_steps=2, skip_preflight=True, compute_s_params=False)
-    for a, b in zip(standalone.edge_masks, kernel_objects[-1].edges, strict=True):
+    for a, b in zip(standalone.edge_masks, kernel_objects.dense[-1].edges, strict=True):
         np.testing.assert_array_equal(a, b)
 
 
@@ -242,7 +246,7 @@ def test_sheet_operator_is_carried_by_kernel_object(monkeypatch, lane, kernel_ob
 
     monkeypatch.setattr(thin, 'build_sheet_impedance_ctx', capture)
     sim.run(n_steps=2, skip_preflight=True)
-    conductors = kernel_objects[-1]
+    conductors = kernel_objects.dense[-1]
     assert len(conductors.sheet_impedance) == 1
     assert conductors.sheet_operator is outputs[-1]
 
@@ -281,12 +285,17 @@ def two_device_test(request, tmp_path):
 def kernel_objects(monkeypatch):
     """Test-only retention; production Results must never own these arrays."""
     import rfx.model.conductors as products
-    captured = []
+    class Captures(list):
+        pass
+    captured = Captures()
+    captured.dense = []
     original = products.at_kernel
 
     def observe(*args, **kwargs):
         c, record = original(*args, **kwargs)
         captured.append(c)
+        captured.dense.append(SimpleNamespace(pec_cells=c.pec_cells, pec_edges=c.pec_edges,
+            sheet_impedance=c.sheet_impedance, sheet_operator=c.sheet_operator, edges=c.edges))
         return c, record
 
     monkeypatch.setattr(products, 'at_kernel', observe)

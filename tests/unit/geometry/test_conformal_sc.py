@@ -207,6 +207,8 @@ def test_waveguide_extractors_receive_e_and_h_operands(monkeypatch, normalize, m
     class Captured(Exception):
         pass
     def capture(grid, materials, n_steps, **kwargs):
+        if isinstance(materials, list):
+            materials = materials.pop()
         assert kwargs['aniso_eps'] is not None
         weights = kwargs['conformal_weights']
         i, _, _ = grid.position_to_index((.03, .0, .0))
