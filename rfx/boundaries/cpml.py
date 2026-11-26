@@ -986,7 +986,7 @@ def apply_cpml_h(
     if periodic is None:
         periodic = tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz")
     if h_coefficients is not None:
-        mu = ()
+        mu: tuple = ()
     elif magnetic_materials is None:
         mu = (1.0, 1.0, 1.0)
     else:
