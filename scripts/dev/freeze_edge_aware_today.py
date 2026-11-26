@@ -1,4 +1,4 @@
-"""Record base-branch profiles through pytest; the leader saves stdout's JSON.
+"""Record base-branch profiles through pytest; the JSON is written to stdout.
 
 Load with ``-p scripts.dev.freeze_edge_aware_today`` and explicitly name all
 caller test files. This is an extraction session: the crossval ladder visits
