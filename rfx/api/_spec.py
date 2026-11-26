@@ -1452,6 +1452,20 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
         own-drive diagonal is exactly the provenance of every fitted
         number this result carries (``Z0[i, :]`` comes from port *i*'s
         own driven run).  ``None`` while tracing.
+    fit_span_phase : (n_ports, n_freqs) float, optional
+        The line's phase across the probes at that bin, Re(beta_fit) times
+        their span in metres: the quantity the known-limitations entry
+        conditions on. From each port's own driven run, beside ``beta_railed``.
+        Formed under stop_gradient; ``None`` while tracing.
+    fit_amplification : (n_ports, n_freqs) float, optional
+        The fit's sensitivity of β (and of Z0) to a departure of the probe
+        voltages from one forward-plus-backward wave, per probe (the fit's
+        conditioning). It is not an error estimate. Equal to
+        ‖V_fit‖/(Re β·σ⊥), where V_fit is the fitted wave at the probes
+        and σ⊥ is the norm of the beta derivative at fitted alpha/gamma
+        after projection off the
+        two wave columns, using positions in metres. From each port's own
+        driven run. Formed under stop_gradient; ``None`` while tracing.
     """
     S: np.ndarray
     freqs: np.ndarray
@@ -1465,6 +1479,8 @@ class MSLSMatrixResult(MSLFeedPlaneFields):
     assembly: str | None = None
     cond_a: np.ndarray | None = None
     beta_railed: np.ndarray | None = None
+    fit_span_phase: np.ndarray | None = None
+    fit_amplification: np.ndarray | None = None
     probe_clearance: tuple[MSLProbeClearance, ...] | None = None
     reference_impedances: np.ndarray | None = None
     sigma_max_excess: np.ndarray | None = None
@@ -1532,6 +1548,20 @@ class MixedSMatrixResult(MSLFeedPlaneFields):
         a True bin means that diagnostic's β/|Zc| are the scan-window
         limit, not a measurement. Fitted beta/Z0 do not enter S, but
         this does not certify their shared measured V/I.
+    fit_span_phase : (n_msl, n_freqs) float, optional
+        The line's phase across the probes at that bin, the quantity the
+        known-limitations entry conditions on. Same definition as
+        :attr:`MSLSMatrixResult.fit_span_phase`, in MSL registration order
+        from each port's own driven run, beside ``beta_railed``.
+        Formed under stop_gradient. The mixed calculator refuses tracing.
+    fit_amplification : (n_msl, n_freqs) float, optional
+        The fit's sensitivity of β (and of Z0) to a departure of the probe
+        voltages from one forward-plus-backward wave, per probe (the fit's
+        conditioning). It is not an error estimate. Equal to
+        ‖V_fit‖/(Re β·σ⊥), with the same definition as
+        :attr:`MSLSMatrixResult.fit_amplification`, in MSL registration order
+        from each port's own driven run. Formed under stop_gradient.
+        The mixed calculator refuses tracing.
     S_raw / passivity_correction :
         As in :class:`MSLSMatrixResult` — set only when the passivity
         projection touched at least one bin.
@@ -1547,6 +1577,8 @@ class MixedSMatrixResult(MSLFeedPlaneFields):
     S_raw: np.ndarray | None = None
     passivity_correction: np.ndarray | None = None
     beta_railed: np.ndarray | None = None
+    fit_span_phase: np.ndarray | None = None
+    fit_amplification: np.ndarray | None = None
     S_wave: np.ndarray | None = None
     magnitude_channel: str = "wave"
     probe_clearance: tuple[MSLProbeClearance, ...] | None = None

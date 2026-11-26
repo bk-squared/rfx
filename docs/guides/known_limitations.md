@@ -334,15 +334,20 @@ Tracker: none — accepted limitation (refused at default: tests/contracts/test_
 
 On one device, a fixed-step `run()` inside a user `jax.jit` stays within the cross-trace bar of plain `run()` on Linux CPU (9 float32 ULP of the probe peak per step, 1e-4 of the peak summed over the record) for a point current source and for a lumped or wire port, on uniform and graded meshes. The same holds for `forward()` with a traced `eps_override` and a point source or a lumped port, and for `run(devices=...)` and `forward(distributed=True)` with a point source or a lumped or wire port, on uniform and graded meshes (`tests/contracts/test_user_jit_drive_and_probe.py`). Four requests are refused under a user `jax.jit`: on a uniform mesh, `run()`'s S-parameters of a single lumped or wire port (use `forward(port_s11_freqs=...)` or a plain `run()`); a closed-box plane wave on several devices; `until_decay`; and `report_every` (`test_host_control_keeps_its_user_jit_behavior`). Call these without an enclosing `jax.jit`.
 
-### One process with several GPUs: peak memory per GPU stops falling after two GPUs.
+### One process with several GPUs: GPU 0 builds the material arrays of the whole grid before they are cut into slabs, and on two GPUs that build sets GPU 0's setup peak.
 
 Tracker: #2150
 
-In one process, `sim.run(devices=...)` needs about as much memory per GPU on three GPUs as on two. On three RTX A6000
-GPUs a 1024 x 21 x 192-cell box peaks at 552.5 MB on one GPU and at 270.5 MB per GPU on both two and three, although
-the compiled time step falls from 233.2 MB to 156.1 MB. The peak is reached on every GPU after the time loop; which
-buffer holds it is not yet found. A third GPU therefore does not let a model fit that two GPUs cannot hold.
-What to do: size a run on three or more GPUs in one process from its two-GPU peak.
+In one process, `sim.run(devices=...)` first builds the material arrays of the whole grid on GPU 0: permittivity,
+permeability, the conductivity with wires stamped in, and the port conductivity. Only then does it cut them into the
+per-GPU slabs. Those arrays cover the whole grid, not one slab.
+
+The case measured: on RTX A6000 GPUs, a 1024 x 64 x 192-cell box with a 3-cell wire port and a DFT plane, in float32.
+- On two GPUs, GPU 0 reaches 0.665 GB while it builds the whole-grid arrays, and the other GPU holds nothing yet.
+- The time loop needs 0.923 GB per GPU on two GPUs.
+- On two GPUs the largest per-GPU peak is 0.832 GB, set by the time loop.
+
+What to do: on several GPUs, size GPU 0 for the whole-grid material arrays as well as its own slab.
 → [#2150](https://github.com/bk-squared/rfx/issues/2150)
 
 ### A closed PEC box with a TF/SF plane wave runs 11.6 % slower per step on two GPUs than before the shared multi-device time step.
@@ -625,6 +630,25 @@ early or a coarse mesh. That advice does not fit this case: these records ring
 down to −86 to −95 dB, and a finer mesh makes the excess slightly larger. Give
 the line more air below the top absorber, or keep the default 16 layers.
 
+### On a microstrip line, 8 CPML layers change S, and |S| can exceed 1 near the side absorbers.
+
+Tracker: #3068
+
+On a microstrip thru line (3 cells per substrate height), S with 8 CPML
+layers differs from S with 32 layers by up to 2.8×10⁻³ (the largest entry
+difference over the band) when the strip's solved edge is 2.2 cells from the
+side absorbers. The difference falls to 1.9×10⁻⁴ at 36 cells. With 16 layers
+(the default) it is at most 6.1×10⁻⁵. These numbers are diagnostic, not a
+judged threshold.
+
+With 8 layers a passive line can also return |S_ij| above 1. On one line board
+(3 cells per substrate height) it reaches 1.0006 when the strip's solved edge
+is 0.733 h_sub (2.2 cells) from the side absorbers. It falls as the strip moves
+away, to 1.000001 at 27 cells, and is not seen with 16 or 32 layers. Its cause is
+not named. The lateral-clearance advisory does not remove it: a board that
+meets the advisory can still show it with 8 layers. Keep 16 layers (the
+default) or more when |S| or passivity matters.
+
 ### The fitted microstrip propagation constant differs from the Hammerstad–Jensen closed form, and the difference is not attributed.
 
 Tracker: none — accepted limitation (diagnostic, does not enter the result: tests/unit/sparams/test_msl_fitted_beta_does_not_enter_s.py::test_s_is_bit_identical_when_the_fitted_beta_is_wrong)
@@ -649,6 +673,31 @@ fix is a longer uniform feed or a moved reference plane. Every warning about
 this condition carries one shared text (`rfx.preflight.msl.MSL_PROBE_CLEARANCE_EFFECT`).
 Settled in #726 (closed): the guard and preflight used to contradict each other
 about this, and a measurement decided it.
+
+### Microstrip `Z0` and `beta` at the lowest bins change by tens of percent with parts of the board far from the probes, while S does not.
+
+Tracker: #3065
+
+`compute_msl_s_matrix(...)` fits each port's `Z0` and `beta` from the voltages at its probes, which span `(n_probes - 1) * n_probe_spacing` cells.
+At bins where the line's phase across that span (`beta` times its length) is small, the fitted values change when parts of the board far from the probes change.
+The cause is not isolated. Two identical builds give bit-identical values, so it is not run noise.
+One board was measured: εr 3.66, h 254 µm, strip declared 600 µm and solved 651.9 µm (cells of h/3), 5 probes 2 cells apart (0.677 mm), 0.5–5 GHz in 30 bins.
+Every number in this entry is from float32 runs, rfx's default precision.
+Only the feed's distance from the domain's x faces (3.6 to 65.6 cells) and the CPML depth (8, 16 and 32 layers) changed. Each of the other 23 layouts was compared bin by bin with the 47.6-cell layout of the same depth (4.53–5 GHz is marked unreliable on those reference layouts and was not compared):
+
+| phase across the probes | bins | largest change in `Z0` | largest change in `beta` |
+|---|---|---|---|
+| 0.012–0.020 rad | 0.50–0.81 GHz | 63 % | 38 % |
+| 0.024–0.043 rad | 0.97–1.74 GHz | 5.4 % | 4.3 % |
+| 0.047–0.107 rad | 1.90–4.38 GHz | 1.4 % | 1.4 % |
+
+At 0.50 GHz the returned `Z0` ran from 43.0 to 69.9 Ω on this one line.
+The 63 %, the 38 % and the 69.9 Ω sit where the `beta` scan stopped at its ±35 % limit, which its warning names (0.50 GHz, on 2 of the 26 layouts). On ports that warning did not name, the change still reached 25 % in `Z0` at 0.50 GHz, and 18 % in `Z0` and 22 % in `beta` at 0.81 GHz.
+`probe_clearance` was `satisfied` on every layout and `reliable` was True at 0.50–1.74 GHz on every layout, so neither marks these bins.
+Neither fitted value enters S: across these layouts no S entry changed by more than 5.0e-4 at any bin.
+The `Z0` warning fired on 3 of the 26 layouts, at 0.50 GHz. It now points to `fit_span_phase` and `fit_amplification` and no longer advises a finer mesh: with the probe counts fixed in cells, a finer mesh shortens the span and the phase across it.
+Do not quote `Z0` or `beta` from a bin where the phase across the probes is below about 0.045 rad, where the change exceeded 2 % on this board.
+That edge comes from one board on one mesh; no layout with a longer probe span was measured.
 
 ### On a straight microstrip, the MSL port's |S21| exceeds 0 dB near 10–12 GHz and depends on where the first probe sits: the port misreads power within about 10 mm of its plane.
 
@@ -937,6 +986,22 @@ What to do: run `compute_rcs` with two record lengths, for example `n_steps` and
 where the two agree.
 
 ## Absorbing boundaries
+
+### A dielectric near a CPML face can hold a field that grows after the source ends
+
+Tracker: #3034
+
+S-parameters from a record of such a structure change with record length without
+settling. The settling witness reports this growth, and the warning names the
+identified growing pole, its e-folding time in steps and its largest share at the
+read bins. A passive structure cannot gain energy after its source ends; a longer
+record carries a larger error from this term.
+
+In a WR-90-size guide with a 22.86 × 2.406 mm cross-section, an eps_r 10 slab
+2.406 mm thick and 2.0 mm from the CPML face holds a TE10 field near 4.76 GHz that
+grows by a factor e about every 3,050 steps at dt 0.765 ps. The measured TE10 growth
+rate falls with distance d close to exp(-2 alpha d), where alpha is the mode's evanescent
+attenuation constant, so a mode near its cutoff falls slowly with distance.
 
 ### Magnetic faces require the single-device second-order Yee image.
 

@@ -671,8 +671,210 @@ def test_dispersion_slabs_in_subprocess(mode, marker):
     assert marker in run.stdout, run.stdout
 
 
+def _buffer_key(value):
+    return tuple((shard.device.id, shard.data.unsafe_buffer_pointer())
+                 for shard in value.addressable_shards)
+
+
+def _byte_equal(actual, expected):
+    actual, expected = np.asarray(actual), np.asarray(expected)
+    assert actual.dtype == expected.dtype
+    assert actual.shape == expected.shape
+    assert actual.tobytes() == expected.tobytes()
+
+
+def _peak_pin(mode):
+    import weakref
+    from rfx.stepping import slab_setup as setup
+    from rfx.stepping import slab_wrap_uniform as uniform
+    from rfx.stepping.slab import Slab, pole_fill, material_kind, cut
+    from rfx.stepping.slab_view import product_rows
+    mesh = Mesh(np.asarray(jax.devices('cpu')[:2]), ('x',))
+    layout = Slab(15, 2)
+    publish = setup._publish_materials
+
+    def entries(products, host):
+        staged, inverse, loss = products
+        records = []
+        for path, value in jax.tree_util.tree_flatten_with_path(staged)[0]:
+            if hasattr(value, 'ndim') and value.ndim >= (3 if host else 4):
+                records.append((value, material_kind(path)))
+        records.extend((a, 'eps_r') for a in jax.tree.leaves(inverse))
+        if loss is not None:
+            for tree, kind in zip(loss, ('eps_r', 'sigma')):
+                records.extend((a, kind) for a in jax.tree.leaves(tree))
+        return records
+
+    if mode in ('T1', 'T2'):
+        references, pairs = [], []
+
+        def owned():
+            shape = (2, layout.nx_local + 1, 3, 4)
+            a = jax.device_put(jnp.arange(np.prod(shape), dtype=jnp.float32).reshape(shape),
+                               NamedSharding(mesh, P('x')))
+            b = a + 2
+            products = [MaterialArrays(a, b, a), (a, a), ((a, a), (b, b))]
+            references.extend((weakref.ref(a), weakref.ref(b)))
+            pairs.extend((_buffer_key(value), pole_fill(kind)) for value, kind in entries(products, False))
+            return products
+
+        calls = []
+        def observed(value, *args, **kwargs):
+            if not references:
+                return product_rows(value, *args, **kwargs)
+            if calls and value is not references[calls[-1]]():
+                assert references[calls[-1]]() is None, 'T1 previous group input is alive'
+            calls.append(next(i for i, ref in enumerate(references) if ref() is value))
+            return product_rows(value, *args, **kwargs)
+
+        if mode == 'T1':
+            class TailObserved(Exception):
+                pass
+
+            def record(products):
+                for value, _ in entries(products, False):
+                    if all(ref() is not value for ref in references):
+                        references.append(weakref.ref(value))
+
+            def checked(products, layout, mesh, device):
+                assert device is None
+                record(products)
+                publish(products, layout, mesh, device)
+                assert all(ref() is None for ref in references)
+                raise TailObserved
+
+            with pytest.MonkeyPatch.context() as patch:
+                patch.setattr(setup, '_publish_materials', checked)
+                patch.setattr(setup, 'product_rows', observed)
+                try:
+                    _build_box('cpml_lorentz').run(n_steps=3, devices=jax.devices('cpu')[:2],
+                        skip_preflight=True, compute_s_params=False)
+                except TailObserved:
+                    pass
+            assert calls and len(calls) == len(references)
+        else:
+            result = publish(owned(), layout, mesh, None)
+            assert len({_buffer_key(a) for a in jax.tree.leaves(result)}) == len(set(pairs)), 'T2 duplicate output buffers'
+    elif mode == 'T4b':
+        shape = (2, layout.nx_local + 1, 3, 4)
+        value = jnp.arange(np.prod(shape), dtype=jnp.float32).reshape(shape)
+        result = publish([MaterialArrays(value, value, None), None, None], layout, mesh, None)[0]
+        assert _buffer_key(result.eps_r) != _buffer_key(result.sigma), 'T4b fills were merged'
+        _byte_equal(result.eps_r, product_rows(value, layout, mesh, 'eps_r'))
+        _byte_equal(result.sigma, product_rows(value, layout, mesh, 'sigma'))
+    else:
+        seen = []
+        class Observed(Exception):
+            pass
+
+        if mode.startswith('T4'):
+            def checked(products, layout, mesh, device):
+                staged, inverse, loss = products
+                def per_path(path, a):
+                    if not hasattr(a, 'ndim') or a.ndim < (3 if device is not None else 4):
+                        return a
+                    return per_leaf(a, material_kind(path))
+                def per_leaf(a, kind):
+                    return (cut(a, layout, kind, mesh=mesh) if device is not None else
+                            product_rows(a, layout, mesh, kind))
+                expected = (jax.tree_util.tree_map_with_path(per_path, staged),
+                            jax.tree.map(lambda a: per_leaf(a, 'eps_r'), inverse),
+                            None if loss is None else tuple(jax.tree.map(
+                                lambda a: per_leaf(a, kind), tree)
+                                for tree, kind in zip(loss, ('eps_r', 'sigma'))))
+                del staged, inverse, loss
+                result = publish(products, layout, mesh, device)
+                assert jax.tree.structure(result) == jax.tree.structure(expected)
+                for actual, reference in zip(jax.tree.leaves(result), jax.tree.leaves(expected)):
+                    _byte_equal(actual, reference)
+                seen.append(device is not None)
+                raise Observed
+        references = []
+        original_input = setup.input_materials
+        def input_checked(cells, *args, **kwargs):
+            if mode == 'T3':
+                assert references and references[0]() is None, 'T3 dense eps_r is alive'
+                seen.append(True)
+                raise Observed
+            result = original_input(cells, *args, **kwargs)
+            if mode in ('T3b', 'T3c') and not references:
+                observed = cells if mode == 'T3b' else result
+                references.extend(weakref.ref(a) for a in jax.tree.leaves(observed) if hasattr(a, 'ndim') and a.ndim)
+            return result
+
+        def apply_checked(*args, **kwargs):
+            assert references and all(ref() is None for ref in references), 'T3b cut cells are alive'
+            seen.append(True)
+            raise Observed
+
+        def apply_without_aliases(*args, **kwargs):
+            """Isolate caller ownership from raw records retained in the products."""
+            assert references and any(ref() is not None for ref in references)
+            return None, None, None
+
+        def publish_checked(products, layout, mesh, device):
+            assert references and all(ref() is None for ref in references), 'T3c staged pole_materials are alive'
+            seen.append(True)
+            raise Observed
+
+        original_run = uniform.run_wrapped_uniform
+        def run_checked(operands, *args, **kwargs):
+            references.append(weakref.ref(operands[1].eps_r))
+            return original_run(operands, *args, **kwargs)
+
+        with pytest.MonkeyPatch.context() as patch:
+            if mode.startswith('T4'):
+                patch.setattr(setup, '_publish_materials', checked)
+            else:
+                patch.setattr(setup, 'input_materials', input_checked)
+                if mode == 'T3':
+                    patch.setattr(uniform, 'run_wrapped_uniform', run_checked)
+                elif mode == 'T3c':
+                    patch.setattr(setup, 'uniform_apply', apply_without_aliases)
+                    patch.setattr(setup, '_publish_materials', publish_checked)
+                else:
+                    patch.setattr(setup, 'uniform_apply', apply_checked)
+            try:
+                if mode == 'T4_host':
+                    from tests.unit.runners.test_distributed_nu_whole_grid_materials import staged_scene
+                    scene = staged_scene(2, 'debye')
+                    setup.realize_materials(scene.inputs, scene.grid, scene.layout, scene.mesh,
+                                            scene.occ, cpml=True, debye=True)
+                else:
+                    _build_box('cpml_lorentz' if mode == 'T4_uniform' else 'cpml').run(
+                        n_steps=3, devices=jax.devices('cpu')[:2], skip_preflight=True,
+                        compute_s_params=False)
+            except Observed:
+                pass
+        assert seen == ([True] if mode == 'T4_host' else [False] if mode == 'T4_uniform' else [True]), seen
+    print('PEAK_PIN_OK', mode)
+
+
+@pytest.mark.parametrize('mode', ['T1', 'T2', 'T3', 'T3b', 'T3c', 'T4_uniform', 'T4_host', 'T4b'])
+def test_setup_peak_pins(mode):
+    env = {**os.environ, 'JAX_PLATFORMS': 'cpu',
+           'XLA_FLAGS': '--xla_force_host_platform_device_count=2',
+           'PYTHONPATH': str(Path(__file__).resolve().parents[3])}
+    run = subprocess.run([sys.executable, '-W', 'ignore', str(Path(__file__).resolve()),
+                          'peak_pin', mode], env=env, text=True, capture_output=True, timeout=90)
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert 'PEAK_PIN_OK ' + mode in run.stdout
+
+
+def test_prepare_uniform_refuses_list_with_separate_pec_edges():
+    from rfx.stepping.slab_wrap_uniform import prepare_uniform
+    owned = [None, None, None]
+    with pytest.raises(ValueError, match='materials list.*pec_edges'):
+        prepare_uniform(None, owned, object(), (), (), None, None,
+                        n_steps=1, boundary='pec', debye_spec=None,
+                        lorentz_spec=None, port_plan=None)
+    assert owned == [None, None, None]
+
+
 if __name__ == "__main__":
-    if sys.argv[1] == 'setup':
+    if sys.argv[1] == 'peak_pin':
+        _peak_pin(sys.argv[2])
+    elif sys.argv[1] == 'setup':
         _measure_setup(sys.argv[2])
     elif sys.argv[1] == "direct_dispersion":
         _direct_dispersion_slabs()

@@ -196,8 +196,6 @@ NAMED_EXCEPTIONS = (
      'States that the private folders are ignored, not a pointer into their content.'),
     ('.github/workflows/lint.yml', '# A public clone does not contain docs/agent-memory/, docs/research_notes/,',
      'States that the private folders are absent from a public clone, not a pointer into their content.'),
-    ('examples/inverse_design/multilayer_ar_coating.py', '# Results are dropped into  docs/research_notes/ar_coating_meep_*.json',
-     'Describes the Meep result path read by the example; behaviour.'),
     ('scripts/memory_reduction_planning_artifact.py', 'default=Path(', "an argparse default into the repository's gitignored note folder; behaviour"),
     ('scripts/diagnostics/build_msl_openems_sparameter_comparison.py', 'DEFAULT_REFERENCE =', "an argparse default into the repository's gitignored note folder; behaviour"),
     ('tests/contracts/test_public_text_has_no_pi_or_agent_traces.py', '', 'The pin holds the patterns and synthetic cases, and its only hits are such text.'),

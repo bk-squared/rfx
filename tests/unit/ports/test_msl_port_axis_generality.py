@@ -358,9 +358,8 @@ def test_port_conductance_uses_the_propagation_axis_cell_size():
 
 
 def _msl_warnings(sim):
-    """MSL-port advisories from ``preflight()`` (same helper shape as
-    ``tests/unit/ports/test_msl_port_preflight.py``: the report is a list of str)."""
-    return [m for m in sim.preflight() if "MSL port" in m]
+    """MSL-port findings from the public preflight report, selected by code."""
+    return [m for m in sim.preflight() if m.code == "msl_port_geometry"]
 
 
 def _board(domain, direction, feed, lat_c, *, trace_len_axis, dx=DX):
@@ -402,7 +401,8 @@ def test_lateral_clearance_check_fires_on_the_width_axis_for_a_y_port():
     tight = W_TRACE + 2 * (0.2 * H_SUB)
     sim = _board((tight, L_PROP, LZ), "+y", PORT_MARGIN, tight / 2.0,
                  trace_len_axis="y")
-    msgs = [m for m in _msl_warnings(sim) if "lateral clearance" in m]
+    msgs = [m for m in _msl_warnings(sim) if m.code == "msl_port_geometry"
+            and m.diagnostic.code == "msl.lateral_clearance"]
     assert msgs, "lateral-clearance check did not fire on the width axis"
     joined = " ".join(msgs)
     assert "−x" in joined or "+x" in joined, (
@@ -412,7 +412,8 @@ def test_lateral_clearance_check_fires_on_the_width_axis_for_a_y_port():
     assert "domain x-extent" in joined
     ok = _board((L_LAT, L_PROP, LZ), "+y", PORT_MARGIN, L_LAT / 2.0,
                 trace_len_axis="y")
-    assert not [m for m in _msl_warnings(ok) if "lateral clearance" in m]
+    assert not [m for m in _msl_warnings(ok) if m.code == "msl_port_geometry"
+                and m.diagnostic.code == "msl.lateral_clearance"]
 
 
 def test_port_to_cpml_check_fires_on_the_propagation_axis_for_a_y_port():
@@ -421,14 +422,16 @@ def test_port_to_cpml_check_fires_on_the_propagation_axis_for_a_y_port():
     """
     sim = _board((L_LAT, L_PROP, LZ), "+y", 0.2 * H_SUB, L_LAT / 2.0,
                  trace_len_axis="y")
-    msgs = [m for m in _msl_warnings(sim) if "distance to nearest" in m]
+    msgs = [m for m in _msl_warnings(sim) if m.code == "msl_port_geometry"
+            and m.diagnostic.code == "msl.source_absorber_clearance"]
     assert msgs, "port-to-CPML check did not fire on the propagation axis"
     joined = " ".join(msgs)
-    assert "y-CPML" in joined, f"must name the y CPML for a +y port: {joined}"
+    assert {m.diagnostic.values["side"] for m in msgs} == {"−y"}
     assert "domain y-extent" in joined
     ok = _board((L_LAT, L_PROP, LZ), "-y", 0.2 * H_SUB, L_LAT / 2.0,
                 trace_len_axis="y")
-    assert not [m for m in _msl_warnings(ok) if "distance to nearest" in m]
+    assert not [m for m in _msl_warnings(ok) if m.code == "msl_port_geometry"
+                and m.diagnostic.code == "msl.source_absorber_clearance"]
 
 
 @pytest.mark.parametrize("direction", ["+x", "-x", "+y", "-y"])

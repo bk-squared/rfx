@@ -91,15 +91,10 @@ def save_ez_slice(plane: np.ndarray) -> tuple[int, int]:
 def main() -> None:
     sim = build_simulation()
 
-    # Expect the four-layer absorber advisory: the source and probe are inside
-    # the open domain, with no geometry in the absorber.  The explicit call
-    # keeps the full report visible; each run below skips the duplicate check.
     report = sim.preflight()
     if any(issue.code != "thin_absorber" for issue in report):
         raise RuntimeError("Run-control setup has unexpected advisories")
 
-    # Fixed n_steps means exactly 120 updates.  It makes no promise that the
-    # pulse has left the domain, so use it when an update count is the decision.
     fixed_result = sim.run(
         n_steps=FIXED_STEPS,
         compute_s_params=False,
@@ -107,9 +102,6 @@ def main() -> None:
     )
     print(f"Fixed n_steps samples: {fixed_result.time_series.shape[0]}")
 
-    # num_periods counts periods of freq_max.  A value of 0.1 is absurdly
-    # short here.  Expect a warning such as "run ended at 0.0 dB of peak":
-    # a level near 0 dB says the response was clipped near its largest value.
     with warnings.catch_warnings(record=True) as clipped_warnings:
         warnings.simplefilter("always")
         clipped_result = sim.run(
@@ -123,9 +115,6 @@ def main() -> None:
     print(f"Source-period samples: {clipped_result.time_series.shape[0]}")
     print(f"Truncation advisory: {clipped_messages[0]}")
 
-    # until_decay=1e-3 finishes when total field energy in the non-absorbing
-    # interior stays below one thousandth of its peak on consecutive checks.
-    # It overrides the fixed-count choices and is recommended for ring-down.
     with warnings.catch_warnings(record=True) as decay_warnings:
         warnings.simplefilter("always")
         decay_result = sim.run(
@@ -140,9 +129,6 @@ def main() -> None:
     print(f"Until-decay samples: {decay_result.time_series.shape[0]}")
     print(f"Until-decay truncation advisory observed: {bool(decay_messages)}")
 
-    # Probe samples have shape (time updates, probes).  The final state keeps
-    # complete Yee-grid arrays.  Slice each electric component through the
-    # middle z plane; a different plane is only a different array index.
     print(f"Probe time_series shape: {decay_result.time_series.shape}")
     ex = np.abs(np.asarray(decay_result.state.ex))
     ey = np.abs(np.asarray(decay_result.state.ey))

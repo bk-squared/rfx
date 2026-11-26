@@ -71,7 +71,6 @@ __all__ = [
 ]
 
 
-# Lazy compatibility exports avoid a cycle with the moved implementation.
 _LAZY_EXPORTS = {
     "scan_with_progress": "rfx.stepping.progress_scan",
 }

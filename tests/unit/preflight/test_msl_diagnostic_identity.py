@@ -14,8 +14,8 @@ from tests._msl_diagnostic_cases import captured_cases, structure
 
 ROOT = Path(__file__).resolve().parents[3]
 EXPECTED = {
-    'msl.lateral_clearance', 'msl.normal_resolution',
-    'msl.source_absorber_clearance', 'msl.source_near_field',
+    'msl.normal_resolution',
+    'msl.source_near_field',
 }
 
 
