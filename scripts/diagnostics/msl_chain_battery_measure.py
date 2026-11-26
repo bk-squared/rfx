@@ -620,18 +620,6 @@ def solve(sim, *, num_periods: float, freqs=None, **kw):
         num_periods=float(num_periods), **kw)
 
 
-def _closest_divisor(n: int, target: int) -> int:
-    """Divisor of ``n`` nearest ``target`` — checkpoint_segments must divide
-    n_steps exactly (padding would shift the DFT accumulator windows)."""
-    best = 1
-    for d in range(1, int(n ** 0.5) + 1):
-        if n % d == 0:
-            for cand in (d, n // d):
-                if abs(cand - target) < abs(best - target):
-                    best = cand
-    return best
-
-
 def _base(args, stage: str, dut: str | None, dx: float | None) -> dict:
     return {
         "schema": SCHEMA,
@@ -868,6 +856,11 @@ def _fd_ulp_span(f_plus: float, f_minus: float, dtype) -> float:
 
 
 def stage_adfd(args, out: Path) -> None:
+    """Use graded rematerialization chunks nearest sqrt(n_steps).
+
+    The implied carry count is n_steps / checkpoint_every + checkpoint_every;
+    the chunked scan preserves the requested record length without padding.
+    """
     dx = args.rung * 1e-6
     sim = build_sim(dx, "notch", drive=args.drive)
     geo = assert_realized(sim, dx, "notch")
@@ -875,8 +868,7 @@ def stage_adfd(args, out: Path) -> None:
     d = declared(dx, "notch")
     grid = sim._build_realized_grid()
     n_steps = step_count(grid, args.num_periods)
-    segments = _closest_divisor(n_steps, int(np.sqrt(n_steps)))
-    assert n_steps % segments == 0
+    checkpoint_every = max(1, int(round(np.sqrt(n_steps))))
     k_notch = int(np.argmin(np.abs(FREQS - d["f_notch_analytic_hz"])))
 
     rec = _base(args, "adfd", "notch", dx)
@@ -885,7 +877,8 @@ def stage_adfd(args, out: Path) -> None:
         "num_periods": float(args.num_periods),
         "declared": d, "realized": geo, "preflight": pf,
         "theta0": AD_THETA0, "fd_h": AD_FD_H,
-        "n_steps": n_steps, "checkpoint_segments": segments,
+        "n_steps": n_steps, "checkpoint_every": checkpoint_every,
+        "checkpoint_carry_count": n_steps / checkpoint_every + checkpoint_every,
         "min_fd_ulp_span": MIN_FD_ULP_SPAN,
         "device": [str(d) for d in jax.devices()],
         "device_kind": [getattr(d, "device_kind", "?") for d in jax.devices()],
@@ -918,7 +911,7 @@ def stage_adfd(args, out: Path) -> None:
                 r = simx.compute_msl_s_matrix(freqs=jnp.asarray(FREQS),
                                               num_periods=float(args.num_periods),
                                               eps_override=eps,
-                                              checkpoint_segments=segments)
+                                              checkpoint_every=checkpoint_every)
             if which == "band_mean_s21_sq":
                 return _band_mean_s21_sq(r.S, FREQS, *AD_BAND)
             return _re_s21_s11_conj_at(r.S, k_notch)
@@ -1678,7 +1671,8 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
             "num_periods": ad["num_periods"],
             "rung_um": ad["rung_um"],
             "theta0": ad["theta0"], "fd_h": ad["fd_h"],
-            "checkpoint_segments": ad["checkpoint_segments"],
+            "checkpoint_every": ad["checkpoint_every"],
+            "checkpoint_carry_count": ad["checkpoint_carry_count"],
             "n_steps": ad["n_steps"],
             "min_fd_ulp_span": ad["min_fd_ulp_span"],
             "objectives": ad["objectives"],
