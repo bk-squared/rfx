@@ -590,6 +590,16 @@
     },
     {
       "file": "rfx/model/pole_stability.py",
+      "function": "refuse_subluminal_cells.cell_courant_maybe",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/model/pole_stability.py",
+      "function": "refuse_subluminal_cells.cell_courant_maybe",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/model/pole_stability.py",
       "function": "refuse_subluminal_cells.check",
       "kind": "roll/diff"
     },

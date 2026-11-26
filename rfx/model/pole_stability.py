@@ -253,6 +253,44 @@ def refuse_subluminal_cells(materials, grid, dt=None, *, budget=None, periodic=N
             f"largest stable step = {stable:.16g} s; dt/stable = {float(step)/stable:.9g}. "
             f"To run: {remedy}; or raise eps_r / eps_inf / mu_r to 1.")
 
+    def cell_courant_maybe(eps, mu, box_eps, step, *widths):
+        """Delta covers operand-dtype rounding so every host-failed cell remains a possible refusal."""
+        import jax.numpy as jnp
+
+        if isinstance(eps, (tuple, list)):
+            eps = jnp.min(jnp.stack([jnp.asarray(e) for e in eps]), axis=0)
+        eps = jnp.asarray(eps)
+        dtype = jnp.promote_types(eps.dtype, jnp.float32)
+        eps = eps.astype(dtype)
+        if box_eps is not None:
+            b = design_box.bounds
+            eps = eps.at[tuple(slice(b[2*a], b[2*a+1]) for a in range(3))].set(box_eps)
+        product = eps if mu is None else eps * jnp.asarray(mu, dtype)
+        delta = jnp.asarray(2. ** -16, dtype)
+        if conservative == 'conformal':
+            return product < 1. + delta
+        local = jnp.zeros(product.shape, dtype)
+        for axis, sizes in enumerate(widths):
+            sizes = jnp.atleast_1d(jnp.asarray(sizes, dtype))
+            size = product.shape[axis] if axis or x_range is None else x_range[1]
+            if sizes.size == size - 1:
+                sizes = jnp.concatenate((sizes, sizes[-1:]))
+            previous, following = jnp.roll(sizes, 1), jnp.roll(sizes, -1)
+            if not periodic[axis]:
+                previous = previous.at[0].set(sizes[0])
+                following = following.at[-1].set(sizes[-1])
+            near = jnp.minimum(sizes, jnp.minimum(previous, following))
+            rows = slice(*x_range) if axis == 0 and x_range is not None else slice(None)
+            shape = [1] * product.ndim
+            shape[axis] = near[rows].size
+            local = local + jnp.asarray(C0**2, dtype) / near[rows].reshape(shape)**2
+        local = local * jnp.asarray(factor, dtype)
+        if conservative is not None:
+            local = jnp.full(product.shape, conservative, dtype)
+        step = jnp.asarray(step, dtype)
+        return ((product < 1. + delta) &
+                (step**2 * local * (1. + delta) > product * (1. + ROOT_TOLERANCE)))
+
     operands = jax.tree.map(_concrete, (eps, mu, box_eps, dt, *widths))
     leaves, tree = jax.tree.flatten(operands)
     members = _eager_batch_members(leaves)
@@ -263,6 +301,17 @@ def refuse_subluminal_cells(materials, grid, dt=None, *, budget=None, periodic=N
     if not in_program and any(_is_abstract(v) for v in leaves):
         return
     if any(_is_abstract(v) for v in leaves) and _host_checks_unavailable():
+        return
+    if any(_is_abstract(v) for v in leaves):
+        import jax.numpy as jnp
+
+        maybe = cell_courant_maybe(*operands)
+        n = jnp.sum(maybe)
+
+        def host_branch():
+            traced_check('cell Courant limit', 'time-step stability', check, *operands, ordered=True)
+
+        jax.lax.cond(n > 0, host_branch, lambda: None)
         return
     traced_check('cell Courant limit', 'time-step stability', check, *operands, ordered=True)
 
