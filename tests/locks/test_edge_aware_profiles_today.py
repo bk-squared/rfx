@@ -19,9 +19,9 @@ from rfx.mesh_edges import SheetEdge, edge_aware_profile
 LOCK_PROVENANCE = {
     "fixture": "tests/fixtures/edge_aware_profiles_today/fixture.json",
     "generator": "scripts/dev/freeze_edge_aware_today.py",
-    "commit": "00ef9f3ecb19984e1bd23fa11348c8c5bdb03514",
+    "commit": "e0237d6890b6d518d0593f332b0fae8f1aec88d5",
     "date": "2026-11-26",
-    "run_id": "lr-nu-261126022038-r67s2",
+    "run_id": "lr-nu-261126072858-z5km4",
     "host": "remi cluster cpu, rfx-gate image, Linux x86_64 glibc 2.35, numpy 2.4.6, jax 0.10.2",
     "pinned_until": "2027-03-26",
 }
