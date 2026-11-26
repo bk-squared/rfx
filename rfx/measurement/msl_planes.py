@@ -29,14 +29,19 @@ singular values (passivity) and cond(A) do not change. beta depends only on
 Python floats, so no gradient flows through it.
 
 Accuracy of the closed-form beta against the simulated line (two-line beta,
-two lines differing only in length, probes at the auto offset):
-within 0.76 % on every
-bin of the resolved boards measured (the microstrip chain battery thru at
-100 um, 50 um and on a z-graded substrate, and an eps_r 10.2 / h 0.6 mm
-board), where the shift's phase error 2 L |beta - beta_2L| is at most
-5.5e-3 rad; within 1.23 % on a 4-cell substrate (0.8 mm of eps_r 2.2,
-dx 0.2 mm, 2-18 GHz, L = 4 mm), where the phase error is at most 1.9e-2 rad
-(at most 1.33e-2 rad up to 15 GHz).
+two lines differing only in length, probes at the auto offset), as
+beta / beta_2L - 1 on every bin of the resolved boards measured: the
+microstrip chain battery thru at 100 um, 50 um and on a z-graded substrate,
+and an eps_r 10.2 / h 0.6 mm board, all built with snap="declared", which
+solves the drawn 600 um strip 670 um wide at 100 um cells and 635 um wide
+at 50 um. With the closed form at the solved width it is -0.33 ... +0.54 %,
+where the shift's phase error 2 L |beta - beta_2L| is at most 7.8e-3 rad;
+with it at the drawn 600 um, -0.76 ... +0.04 % and at most 5.5e-3 rad.
+On a 4-cell substrate (0.8 mm of eps_r 2.2, dx 0.2 mm, 2-18 GHz, L = 4 mm,
+snap="declared", which solves its drawn 1.2 mm strip 1.34 mm wide) it is
+within 1.23 % at the drawn width, where the phase error is at most
+1.9e-2 rad (at most 1.33e-2 rad up to 15 GHz); at the solved width it was
+not recomputed.
 
 Scope. The shift is a pure phase factor, which is exact for a line whose
 characteristic impedance equals the power-wave reference R of the port (the

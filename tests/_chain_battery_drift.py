@@ -1,13 +1,13 @@
 """What the three chain-battery drift guards in ``tests/locks/`` share.
 
 Each port family's chain battery stores the complex S it measured
-(``tests/fixtures/<family>_chain_battery/fixture.json``) and its replay test
-re-derives every verdict from that stored S. The replay solves nothing, so a
-change that moves the solved line leaves it green on records that no longer
-describe the code: when a Yee E component started taking the mean of its four
-incident cells' permittivity (#1213), the microstrip battery's stub notch moved
-from 2.62 % above the quarter-wave closed form to 0.81 % below it on the
-100 um mesh, and nothing noticed.
+(``tests/fixtures/<family>_chain_battery/fixture.json``). A check that reads
+only that stored S solves nothing, so a change that moves the solved line
+leaves it green on records that no longer describe the code: when a Yee E
+component started taking the mean of its four incident cells' permittivity
+(#1213), the microstrip battery's stub notch on its earlier uniform 100 um mesh
+moved from 2.62 % above the quarter-wave closed form to 0.81 % below it, and
+nothing noticed.
 
 The guards solve the CHEAPEST rung of each battery again, with the battery's
 own driver so that the live case is the recorded case, check that the grid it
