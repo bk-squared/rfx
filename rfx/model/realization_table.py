@@ -61,6 +61,7 @@ class RealizationRow:
     domain_geometry: tuple = ()
     domain_face_cells_m: tuple = ()
     edge_note: str | None = None
+    node_check_inputs: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -79,6 +80,8 @@ class RealizationTable:
     not_evaluated_reason: str | None = field(default=None, repr=False, compare=False)
     active_axes: tuple = field(default=("x", "y", "z"), repr=False, compare=False)
     periods: dict = field(default_factory=dict, repr=False, compare=False)
+    automatic_dx: float | None = None
+    auto_z_merges: tuple = ()
 
     def row(self, label):
         return next(row for row in self.rows if row.label == label)
@@ -117,6 +120,10 @@ def realization_table(prepared) -> RealizationTable:
     record, sim = prepared.record, prepared.sim
     if record is None:
         return _traced_table(prepared)
+    from rfx.preflight.realization import realization_node_inputs
+    node_inputs = realization_node_inputs(
+        sim, record, getattr(record, "_quantity_grid", prepared.conductors.grid),
+        active_axes=tuple("xyz"[a] for a, n in enumerate(prepared.conductors.grid.shape) if n > 1))
     rows = []
     for entity in record.entities:
         axes = tuple(_axis(a.axis, a.declared_bounds_m, a.bounds_m, a.cell_size_m)
@@ -180,7 +187,7 @@ def realization_table(prepared) -> RealizationTable:
             status=entity.error or entity.mask_error or (
                 "not judged: edge not measured" if entity.edge_note == "edge not measured"
                 else "evaluated"), model=model,
-            edge_note=entity.edge_note,
+            edge_note=entity.edge_note, node_check_inputs=node_inputs.get(entity.label, ()),
             declared_area_m2=declared, realized_area_m2=realized,
             area_equivalent_length_m=None if realized is None else float(np.sqrt(realized)),
             area_miss_percent=None if not declared or realized is None else
@@ -223,6 +230,10 @@ def realization_table(prepared) -> RealizationTable:
     rows = _traced_sheet_rows(interior_rows(read_rows(rows, quantity_grid, sim), record), sim, prepared.conductors)
     return RealizationTable(rows, prepared.lane,
                             weakref.ref(prepared.conductors),
+                            automatic_dx=(float(quantity_grid.dx)
+                                if sim._declared_mesh["_dx"] is None
+                                and (sim._geometry or sim._thin_conductors) else None),
+                            auto_z_merges=tuple(getattr(sim, "_auto_z_merges", ())),
                             active_axes=tuple("xyz"[a] for a, n in enumerate(prepared.conductors.grid.shape) if n > 1),
                             periods={d.axis: d.length_m for d in record.domain
                                      if d.axis in getattr(prepared.conductors.grid, "periodic_axes", "")})
