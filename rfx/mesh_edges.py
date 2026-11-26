@@ -297,12 +297,28 @@ def edge_aware_profile(
     cells, or a gap narrower than ``2*(1 - edge_offset)`` cells, is meshed
     with smaller edge cells rather than refused).
 
+    The existing construction runs first and preserves its successful outputs.
+    On construction failure, forward and mirrored interval searches enforce
+    the ratio, faces and distinct edge cells, with a ``dx`` ceiling and a
+    ``dx/10`` floor (R6). Pinned end cells are exempt from the ceiling. The
+    floor applies only to the search. Free ends are face events. The search
+    maximizes the smallest cell, then minimizes the number of cells.
+
     Raises
     ------
     ValueError
-        When two constraints cannot both be met -- a face inside an edge
-        cell, or two edge cells that would overlap even after shrinking to
-        a tenth of ``dx``.
+        Invalid inputs, including max_ratio or boundary_cell.
+    rfx.errors.RfxRefusal
+        No profile satisfies the search rule. ``axis`` identifies the axis
+        ("unspecified" for this single-axis API). ``blocked_runs`` contains
+        dictionaries with exact float ``lo``, ``hi``, ``gap``, ``nearest_below``
+        and ``nearest_above`` (missing neighbours are None). ``diagnostic_kind``
+        is "local" for locally impossible runs, or "forward" for the first
+        empty forward set. Only ``route_dx`` and ``route_boundary_cell`` name
+        a whole-axis building route; both are None when none is found down
+        to dx/2. Printed limits are rounded inward to six significant digits.
+    RuntimeError
+        A structure declared feasible fails exact vertex/profile checks.
     """
     lo, hi, dx = float(lo), float(hi), float(dx)
     cap = float(max_ratio)
@@ -330,6 +346,17 @@ def edge_aware_profile(
                 f"sheet edge at {e.position:g} m is outside ({lo:g}, {hi:g})")
     fixed = sorted({lo, hi, *(float(f) for f in faces)})
 
+    _chain_pairs(edges, fixed, edge_offset)
+    try:
+        return _today_profile(lo, hi, dx, fixed, edges, max_ratio, boundary_cell, edge_offset)
+    except ValueError:
+        from rfx._edge_profile_search import _fallback
+
+        return _fallback(lo, hi, dx, fixed, edges, cap, boundary_cell, edge_offset)
+
+
+def _today_profile(lo, hi, dx, fixed, edges, max_ratio, boundary_cell, edge_offset):
+    """The original construction, including all partner toggles, runs first."""
     def _profile(partner_edges):
         best = None
         last_error = None
@@ -479,6 +506,25 @@ def edge_aware_profiles(
         asked for -- pass it as ``Simulation(..., dx=dx, **profiles)`` and
         draw the geometry at its TRUE size.
 
+    Construction successes are preserved. Otherwise an interval search uses
+    cells in [dx/10, dx], with pinned ends exempt from the ceiling; R6's floor
+    binds only that search. A refusal's dx' route checks every requested axis,
+    keeping Simulation(dx=dx) unchanged: end cells stay at dx if x is requested,
+    otherwise at boundary_cell, or at dx' when boundary_cell is omitted.
+
+    Raises
+    ------
+    rfx.errors.RfxRefusal
+        ``axis`` names the refused axis. ``blocked_runs`` lists exact float
+        lo, hi, gap, nearest_below and nearest_above per run (None if absent).
+        ``diagnostic_kind`` is "local" or "forward"; gap limits describe that
+        run only. ``route_dx`` and ``route_boundary_cell`` describe the route
+        for the whole call, or are None if none builds down to dx/2.
+    ValueError
+        Invalid drawing or input parameters.
+    RuntimeError
+        A feasible structure fails exact vertex/profile checks.
+
     Example
     -------
     >>> patch = Box((xc - L/2, yc - W/2, h), (xc + L/2, yc + W/2, h))
@@ -493,7 +539,7 @@ def edge_aware_profiles(
         raise ValueError("axes must be a non-empty subset of 'xyz'")
     extra = {k: [float(v) for v in vals] for k, vals in (faces or {}).items()}
     pin = float(dx) if boundary_cell is None else float(boundary_cell)
-    out = {}
+    drawings = []
     for a in axes:
         k = names[a]
         hi_dom = float(domain[k])
@@ -557,10 +603,20 @@ def edge_aware_profiles(
                     "edge if it has to sit on a node.", ConfigurationWarning, stacklevel=2)
         axis_faces = [f for f in axis_faces + declared
                       if tol < f < hi_dom - tol and round(f / tol) not in edge_pos]
-        prof = edge_aware_profile(
-            0.0, hi_dom, dx, faces=axis_faces,
-            sheet_edges=list(axis_edges.values()), max_ratio=max_ratio,
-            boundary_cell=pin, edge_offset=edge_offset)
+        drawings.append((a, 0.0, hi_dom, axis_faces, list(axis_edges.values())))
+    from rfx._edge_profile_search import _axis_call, _complete_refusal
+    from rfx.errors import RfxRefusal
+
+    out = {}
+    for a, lo, hi, axis_faces, axis_edges in drawings:
+        try:
+            with _axis_call(a):
+                prof = edge_aware_profile(
+                    lo, hi, dx, faces=axis_faces, sheet_edges=axis_edges,
+                    max_ratio=max_ratio, boundary_cell=pin, edge_offset=edge_offset)
+        except RfxRefusal as exc:
+            raise _complete_refusal(exc, drawings, float(dx), float(max_ratio),
+                                    boundary_cell, edge_offset, pins_x="x" in axes) from None
         out[f"d{a}_profile"] = prof.cells
     return out
 
