@@ -106,3 +106,34 @@ number.
    component takes the mean eps and sigma of the four cells incident to its edge; before it, Ex, Ey
    and Ez all took the one cell that owns the edge. The fixture was measured before that change (at
    `d22b3400` and `2078ba2a`), so the whole battery above was re-run, unchanged, at one commit on main.
+
+## Addendum 2026-11-26 (written before the regenerated battery's first solve)
+
+5. **The board is solved as drawn.** The fixture's rungs solved the trace as `W + 0.7 dx` and the stub
+   as `L_stub + 0.35 dx`: a 670 / 635 / 617.5 um trace and a 12.035 / 12.0175 / 12.00875 mm stub at
+   100 / 50 / 25 um. The ladder therefore changed the structure together with the mesh, and the
+   convergence verdicts above do not rest on one structure. The battery is measured again on one
+   structure.
+   - The x and y cells at each rung come from `rfx.mesh_edges.edge_aware_profiles`. Its inputs are
+     the trace and the stub as sheets, the substrate as a solid, and node planes at the two port
+     planes and 8 cells in from each absorber face. z stays uniform: `h` and the air are whole cells
+     at every rung.
+   - Admission is `snap="strict"`.
+   - The thru is built on the notch's cells at the same rung, so the stub is the only difference
+     between the two DUTs.
+   - Before any step, the driver asserts four things:
+     - the trace, the stub's width and the stub's open end are solved within 1 nm of the drawing;
+     - the stub joins the trace over its whole width;
+     - the port planes are the declared ones;
+     - the probe ladders are the ones below.
+   - The probe ladders are the ones the fixture recorded, set explicitly, because the automatic
+     probe-offset solve does not run on a graded propagation axis. In cells at 100 / 50 / 25 um:
+     - notch: offset 27, 53, 103 and spacing 3, 7, 15;
+     - thru: offset 18, 36, 71 and spacing 39, 80, 162;
+     - the plane stage: offsets 53 and 63, spacing 7, at 50 um.
+   - S is recorded at the feed planes, as `compute_msl_s_matrix` returns it.
+   - Lane under test: the non-uniform (graded) mesh. The lane line at the top of this note, and the
+     paragraph of "Board" on the 0.35-cell growth, describe the earlier fixture only.
+   - Execution: one cluster GPU job per stage as in "Execution" above, on 24 GB cards. The AD stage
+     runs on a 48 GB card, as addendum 3 says.
+   - The bars, the stages, the record-length rule and the falsifiers above are unchanged.
