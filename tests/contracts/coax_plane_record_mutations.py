@@ -113,6 +113,12 @@ def test_p3_voltage_columns_reversed(monkeypatch):
          install=lambda mp: _voltage_mutation(mp, lambda v: v[:, ::-1]))
 
 
+def test_p3_voltage_column_zero_repeated(monkeypatch):
+    _red(monkeypatch, "P3", "voltage_column_zero_repeated", check_p3,
+         install=lambda mp: _voltage_mutation(
+             mp, lambda v: np.repeat(v[:, :1], v.shape[1], axis=1)))
+
+
 def test_p4_one_port_eps_records_on(monkeypatch):
     _red(monkeypatch, "P4", "one_port_eps_records_on", check_p4, eps_scale=1.01,
          install=_record_all)
@@ -121,6 +127,23 @@ def test_p4_one_port_eps_records_on(monkeypatch):
 def test_p4_two_port_eps_records_on(monkeypatch):
     _red(monkeypatch, "P4", "two_port_eps_records_on", check_p4, row="two", eps_scale=1.01,
          install=_record_all)
+
+
+def test_p4_one_port_eps_measurement_on(monkeypatch):
+    def install(mp):
+        import rfx.simulation as simulation
+        from rfx.measurement.calculator_plan import calculator_plan
+        original = simulation.run
+
+        def changed(grid, materials, n_steps, **kw):
+            measurement = calculator_plan(
+                grid, n_steps, probes=kw["probes"], planes=kw["dft_planes"])
+            return original(grid, materials, n_steps, **dict(kw, measurement=measurement))
+
+        mp.setattr(simulation, "run", changed)
+
+    _red(monkeypatch, "P4", "one_port_eps_measurement_on", check_p4, eps_scale=1.01,
+         install=install)
 
 
 def test_p5_missing_voltages(monkeypatch):

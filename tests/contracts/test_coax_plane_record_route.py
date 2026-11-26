@@ -109,13 +109,12 @@ def capture_case(row, n, *, eps_scale=None, install=None, check=None):
         return actual
 
     def voltage(grid, ex, ey, **kw):
-        # Read the exact, unchanged Gamma-path keywords rather than the new owner.
         for call in receipt.calls:
             for pi, plane in enumerate(call["actual"].dft_planes[::2]):
                 if plane.accumulator is ex and pi < COUNTS[row][0]:
                     call["voltage_kwargs"][pi] = kw
                     recorded = call.get("recorded")
-                    if recorded is not None:
+                    if recorded is not None and pi not in call["post"]:
                         call["post"][pi] = np.asarray(original_voltage(
                             grid, recorded.dft_time_records[2*pi], recorded.dft_time_records[2*pi+1], **kw))
         return original_voltage(grid, ex, ey, **kw)
@@ -176,8 +175,9 @@ def check_p2(receipt):
 
 def check_p3(receipt):
     for drive, call in enumerate(receipt.calls):
-        owner, = (o for o in call["kwargs"]["measurement"].owners if o.kind == "coax")
-        vin = plan_module.coax_plane_voltages(call["recorded"], owner)
+        channels = dict(receipt.witnesses[drive][0])
+        vin = np.stack([channels[f"coax/plane{pi}/V"]
+                        for pi in range(COUNTS[receipt.row][0])], axis=1)
         assert vin is not None and vin.dtype == np.complex128
         assert len(call["post"]) == COUNTS[receipt.row][0]
         post = np.stack([call["post"][i] for i in range(COUNTS[receipt.row][0])], axis=1)
@@ -250,3 +250,11 @@ def test_eps_scale_p4(row):
         del receipt
         jax.clear_caches()
         gc.collect()
+
+
+def test_calculator_plan_flux_monitors_need_periodic():
+    with pytest.raises(TypeError, match=(
+        r"^calculator_plan\(\) needs flux_periodic when flux_monitors are given\.$"
+    )):
+        plan_module.calculator_plan(
+            None, 1, probes=(object(),), planes=(), flux_monitors=(object(),))

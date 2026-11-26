@@ -8,6 +8,8 @@ from .plan import (
 
 def calculator_plan(grid, n_steps, *, probes, planes, flux_monitors=(),
                     flux_periodic=None, extra_owners=()):
+    if flux_monitors and flux_periodic is None:
+        raise TypeError("calculator_plan() needs flux_periodic when flux_monitors are given.")
     owners = [Owner(f"witness:{i}", "probe", (field_channel(
         probe.component, (Node(probe.component, probe.i, probe.j, probe.k, 1.0),),
         e_time_offset=0., h_time_offset=0.),)) for i, probe in enumerate(probes)]
