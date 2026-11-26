@@ -1236,7 +1236,7 @@ def test_segmented_plan_clears_resolved_graded_flux_warning(box, budget):
     assert plan.selected_estimate.warning is None
     assert plan.selected_estimate.carry_warnings == full.carry_warnings == ()
     assert {row["name"] for row in plan.selected_estimate.excluded_linear} == {
-        f"flux_monitors[0][{i}]" for i in range(4)}
+        f"flux_monitors[0][{i}][{j}]" for i in range(4) for j in range(2)}
 
 
 def test_u_shaped_in_chunk_with_minimum_near_balanced_size():

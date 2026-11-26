@@ -22,10 +22,10 @@ def test_periodic_normal_plane_uses_the_last_h_plane():
     sampled = update_flux_monitor(mon, state, 1.)
     np.testing.assert_array_equal(sampled.h1_dft, 4.)
     np.testing.assert_array_equal(sampled.h2_dft, 12.)
-    accs = [(mon.e1_dft, mon.e2_dft, mon.h1_dft, mon.h2_dft)]
+    accs = [tuple((a, jnp.zeros_like(a)) for a in mon[:4])]
     streamed, = flux(state, accs, flux_metadata([mon], window=True), 1., 0)
-    np.testing.assert_array_equal(streamed[2], sampled.h1_dft)
-    np.testing.assert_array_equal(streamed[3], sampled.h2_dft)
+    np.testing.assert_array_equal(streamed[2][0], sampled.h1_dft)
+    np.testing.assert_array_equal(streamed[3][0], sampled.h2_dft)
     owner, = build_measurement_plan(sim, grid, n_steps=1).owners
     for channel in owner.channels[2:]:
         assert {n.i for n in channel.nodes} == {0, grid.shape[0]-1}

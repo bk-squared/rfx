@@ -49,6 +49,7 @@ def test_record_storage(n_devices, monkeypatch, tmp_path):
                 shares["ntff"][rank] += a[:, max(0, left - box.i_lo):max(0, right - box.i_lo)].nbytes if right > left else 0
     del reference
     gc.collect()
+    arrays_per_owner = {"planes": 2, "flux": 2, "snapshots": 1, "moments": 1, "ntff": 1, "moment_previous_e": 1}
     rows = {}
     original = records.SlabRecords.initial
 
@@ -68,8 +69,8 @@ def test_record_storage(n_devices, monkeypatch, tmp_path):
             actual = [sum(a.addressable_shards[rank].data.nbytes for a in leaves)
                       for rank in range(n_devices)]
             rows[kind] = dict(per_device_bytes=actual, owner_bytes=shares[kind],
-                              largest_owner_bytes=max(shares[kind]))
-            assert actual == [max(shares[kind])] * n_devices, ("record owner byte bound", kind, rows[kind])
+                              largest_owner_bytes=max(shares[kind]), arrays_per_owner=arrays_per_owner[kind])
+            assert actual == [arrays_per_owner[kind] * max(shares[kind])] * n_devices, ("record owner byte bound", kind, rows[kind])
         for layout in self.layouts.values():
             for name in ("templates", "monitor"):
                 for value in jax.tree.leaves(getattr(layout, name, ())):
