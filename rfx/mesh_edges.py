@@ -349,20 +349,20 @@ def edge_aware_profile(
                 f"sheet edge at {e.position:g} m is outside ({lo:g}, {hi:g})")
     fixed = sorted({lo, hi, *(float(f) for f in faces)})
     for face in fixed:
-        if not lo <= face <= hi:
+        if not lo - 1e-9 * dx <= face <= hi + 1e-9 * dx:
             raise ValueError(f"face at {face:g} m is outside ({lo:g}, {hi:g})")
 
     _chain_pairs(edges, fixed, edge_offset)
     try:
         return _today_profile(lo, hi, dx, fixed, edges, max_ratio, boundary_cell, edge_offset)
     except ValueError as exc:
+        from rfx._edge_profile_search import _check_ceiling, _fallback
+
+        _check_ceiling(lo, hi, dx, boundary_cell)
         if cap < 1.02:
             exc.args = (f"{exc}\nthe exact search runs for max_ratio >= 1.02; "
                         "raise max_ratio to let it look for a profile.",)
             raise
-        from rfx._edge_profile_search import _check_ceiling, _fallback
-
-        _check_ceiling(lo, hi, dx, boundary_cell)
         return _fallback(lo, hi, dx, fixed, edges, cap, boundary_cell, edge_offset)
 
 
@@ -533,8 +533,9 @@ def edge_aware_profiles(
         ``diagnostic_kind`` is "local" or "forward"; gap limits describe that
         run only. ``route_dx`` and ``route_boundary_cell`` describe the route
         for the refused axis's group, or are None if none builds down to dx/2.
-        The message names each group's call, or asks to move the drawing
-        to a named gap when a group has no route.
+        The message lists blocked runs under every refused axis's name and
+        names each group's call. When a group has no route, it asks to move
+        the drawing only if a blocked run in that group has a named gap.
     ValueError
         Invalid drawing or input parameters.
     RuntimeError

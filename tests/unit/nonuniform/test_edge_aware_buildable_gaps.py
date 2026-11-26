@@ -11,7 +11,8 @@ from rfx.mesh_edges import EDGE_OFFSET, SheetEdge, edge_aware_profile, edge_awar
 
 
 H, W, LX = 254e-6, 600e-6, 12e-3
-DX, LZ = H / 3.0, H + 1.5e-3
+DX = H / 3.0
+LZ = H + 18.0 * DX
 RATIO = 1.3
 OUTSIDE = 1.0 - EDGE_OFFSET
 LOWER = 1.0 + OUTSIDE
@@ -36,14 +37,30 @@ def _profiles(c, *, dx=DX, boundary_cell=None, axes="y", max_ratio=RATIO):
                                boundary_cell=boundary_cell, max_ratio=max_ratio)
 
 
-def _check_preflight(c, profiles):
+def _preflight(c, profiles):
     domain, strip, slab = _drawing(c)
     sim = Simulation(10e9, domain, dx=DX, boundary="pec", **profiles)
     sim.add_material("substrate", eps_r=2.2)
     sim.add(slab, material="substrate")
     sim.add(strip, material="pec")
     sim.add_source((LX / 2.0, domain[1] / 2.0, H + 3.0 * DX), component="ez")
-    assert not sim.preflight().by_code("sheet_effective_size")
+    report = sim.preflight()
+    assert not report.by_code("assembly_refusal"), str(report.by_code("assembly_refusal"))
+    assert not report.by_code("assembly_fault"), str(report.by_code("assembly_fault"))
+    return report
+
+
+def _check_preflight(c, profiles):
+    findings = _preflight(c, profiles).by_code("sheet_effective_size")
+    cells = {name: np.asarray(values).tolist() for name, values in profiles.items()}
+    assert not findings, f"c={c!r}, findings={findings!r}, profiles={cells!r}"
+
+
+def test_uniform_y_cells_expose_the_conductor_sheet_size_finding():
+    domain, _, _ = _drawing(2.0)
+    cells = np.full(int(np.ceil(domain[1] / DX)), DX)
+    findings = _preflight(2.0, {"dy_profile": cells}).by_code("sheet_effective_size")
+    assert findings
 
 
 def _direction_changes(c, cells, dx=DX):
@@ -200,7 +217,49 @@ def test_an_outside_face_is_an_input_error_before_search(monkeypatch, face):
         edge_aware_profile(0.0, 2.0, 1.0, faces=[face])
 
 
-def test_the_cell_ceiling_is_preserved_before_any_search_lp(monkeypatch):
+def test_a_face_one_ulp_beyond_the_axis_keeps_todays_cells():
+    plain = edge_aware_profile(0.0, 10.0, 1.0, boundary_cell=1.0)
+    tolerance_face = edge_aware_profile(0.0, 10.0, 1.0, boundary_cell=1.0,
+                                        faces=[np.nextafter(10.0, np.inf)])
+    assert len(tolerance_face.cells) == 10
+    assert np.array_equal(tolerance_face.cells, plain.cells), (
+        f"without face={plain.cells.tolist()!r}, with face={tolerance_face.cells.tolist()!r}")
+
+
+def test_the_refusal_names_blocked_runs_under_each_refused_axis():
+    side = W + 4.0 * DX
+    strip = Box((2.0 * DX, 2.0 * DX, H), (side - 2.0 * DX, side - 2.0 * DX, H))
+    slab = Box((0.0, 0.0, 0.0), (side, side, H))
+    with pytest.raises(RfxRefusal) as caught:
+        edge_aware_profiles((side, side, LZ), DX, sheets=[strip], solids=[slab], axes="xy")
+    refusal = caught.value
+    assert refusal.axis == "x"
+    assert len(refusal.blocked_runs) == 2
+    sections = str(refusal).split("Axis x:\n", 1)[1].split("Axis y:\n", 1)
+    for section in (sections[0], sections[1].split("Rule:", 1)[0]):
+        assert section.count("gap=") == 2
+        assert section.count("nearest_below=") == 2
+        assert section.count("nearest_above=") == 2
+
+
+@pytest.mark.parametrize("boundary_cell", [0.01, 2.0])
+def test_no_named_gap_explains_the_pinned_end_and_offers_no_gap_move(boundary_cell):
+    with pytest.raises(RfxRefusal) as caught:
+        edge_aware_profile(0.0, 10.0, 1.0, boundary_cell=boundary_cell,
+                           sheet_edges=[SheetEdge(0.001, +1)])
+    refusal = caught.value
+    assert refusal.blocked_runs
+    assert all(run["nearest_below"] is None and run["nearest_above"] is None
+               for run in refusal.blocked_runs)
+    text = str(refusal)
+    assert text.count("no gap closes this run under the rule") == len(refusal.blocked_runs)
+    assert f"The pinned end cell {boundary_cell!r} m" in text
+    assert ("below the dx/10 floor" if boundary_cell < 0.1 else "above the dx ceiling") in text
+    assert "move the drawing" not in text
+
+
+@pytest.mark.parametrize("max_ratio", [RATIO, 1.01])
+def test_the_cell_ceiling_is_preserved_before_any_search_lp(monkeypatch, max_ratio):
     from rfx import _edge_profile_search as search
     from rfx.model import graded_profile
 
@@ -213,7 +272,7 @@ def test_the_cell_ceiling_is_preserved_before_any_search_lp(monkeypatch):
     message = ("band profile would need 600 cells, more than the 500 cell ceiling "
                "(a sliver segment or a ratio close to 1 is driving the count)")
     with pytest.raises(ValueError) as caught:
-        edge_aware_profile(0.0, 600.0, 1.0)
+        edge_aware_profile(0.0, 600.0, 1.0, max_ratio=max_ratio)
     assert str(caught.value) == message
 
 

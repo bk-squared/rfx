@@ -517,15 +517,29 @@ def _inward(value, *, upward=False):
 def _refusal_text(refusal):
     dx, ratio, boundary_cell, edge_offset = refusal._rule
     lines = [f"edge-aware axis {refusal.axis} cannot close under the cell rule."]
-    for run in refusal.blocked_runs:
-        below = _inward(run["nearest_below"])
-        above = _inward(run["nearest_above"], upward=True)
-        where = f"[{run['lo']!r}, {run['hi']!r}] m, gap={run['gap']!r} m ({run['gap'] / dx:.9g} dx)"
-        limits = f"nearest_below={below} m and nearest_above={above} m"
-        if refusal.diagnostic_kind == "local":
-            lines.append(f"{where}: this gap closes for no cell sizes at its ends; it closes at {limits}.")
-        else:
-            lines.append(f"{where}: {limits} closes this run with everything to its left as drawn.")
+    named_axes = set()
+    for axis, kind, runs, lo, hi in refusal._axis_diagnostics:
+        lines.append(f"Axis {axis}:")
+        for run in runs:
+            where = f"[{run['lo']!r}, {run['hi']!r}] m, gap={run['gap']!r} m ({run['gap'] / dx:.9g} dx)"
+            if run["nearest_below"] is None and run["nearest_above"] is None:
+                lines.append(f"{where}: no gap closes this run under the rule.")
+                if boundary_cell is not None and (run["lo"] == lo or run["hi"] == hi):
+                    if boundary_cell < dx / 10:
+                        lines.append(f"The pinned end cell {boundary_cell!r} m is below the dx/10 floor "
+                                     f"{dx / 10!r} m and prevents this run from closing.")
+                    elif boundary_cell > dx:
+                        lines.append(f"The pinned end cell {boundary_cell!r} m is above the dx ceiling "
+                                     f"{dx!r} m and prevents this run from closing.")
+                continue
+            named_axes.add(axis)
+            below = _inward(run["nearest_below"])
+            above = _inward(run["nearest_above"], upward=True)
+            limits = f"nearest_below={below} m and nearest_above={above} m"
+            if kind == "local":
+                lines.append(f"{where}: this gap closes for no cell sizes at its ends; it closes at {limits}.")
+            else:
+                lines.append(f"{where}: {limits} closes this run with everything to its left as drawn.")
     ends = "free" if boundary_cell is None else repr(boundary_cell)
     lines.append(f"Rule: max_ratio={ratio!r}, edge_offset={edge_offset!r}, end cells={ends}, "
                  f"dx ceiling={dx!r} m (pinned ends exempt), dx/10 floor={dx / 10!r} m.")
@@ -533,8 +547,8 @@ def _refusal_text(refusal):
     for axes, route_dx, pin, printed in refusal._route_calls:
         if route_dx is None:
             complete = False
-            lines.append(f"No dx' builds group axes={axes!r} down to dx/2; "
-                         "move the drawing to one of the named nearest gaps.")
+            remedy = "; move the drawing to one of the named nearest gaps" if any(axis in axes for axis in named_axes) else ""
+            lines.append(f"No dx' builds group axes={axes!r} down to dx/2{remedy}.")
             continue
         boundary = printed if refusal._route_follows_dx and axes != "x" else repr(pin)
         if refusal._single_axis:
@@ -550,6 +564,23 @@ def _refusal_text(refusal):
 
 
 def _complete_refusal(refusal, drawings, dx, ratio, boundary_cell, edge_offset, *, single=False):
+    from rfx.mesh_edges import edge_aware_profile
+
+    refusal._axis_diagnostics = []
+    for axis, lo, hi, faces, edges in drawings:
+        if axis == refusal.axis:
+            diagnostic = refusal
+        else:
+            try:
+                with _axis_call(axis):
+                    edge_aware_profile(lo, hi, dx, faces=faces, sheet_edges=edges, max_ratio=ratio,
+                                       boundary_cell=dx if boundary_cell is None else boundary_cell,
+                                       edge_offset=edge_offset)
+            except EdgeAwareProfileRefusal as exc:
+                diagnostic = exc
+            else:
+                continue
+        refusal._axis_diagnostics.append((axis, diagnostic.diagnostic_kind, diagnostic.blocked_runs, lo, hi))
     groups = [drawings] if single else [
         [drawing for drawing in drawings if drawing[0] == "x"],
         [drawing for drawing in drawings if drawing[0] in "yz"],

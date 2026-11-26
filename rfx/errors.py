@@ -31,6 +31,7 @@ class EdgeAwareProfileRefusal(RfxRefusal):
     _route_follows_dx: bool
     _single_axis: bool
     _route_calls: list[tuple[str, float | None, float | None, str]]
+    _axis_diagnostics: list[tuple[str, _Literal["local", "forward"], list[_EdgeAwareBlockedRun], float, float]]
 
 
 class RfxUnsupported(RfxRefusal, NotImplementedError):
