@@ -103,6 +103,11 @@ def cases(graded=False):
     )
     sim._build_realized_grid = lambda: (_ for _ in ()).throw(ValueError('grid unavailable'))
     yield 'unavailable_grid_extrapolation', sim
+    sim = structure(graded, offset=40)
+    sim._geometry[-1] = replace(sim._geometry[-1], shape=Box((4 * U, U, 2 * U), (32 * U, 11 * U, 2 * U)))
+    sim._msl_ports[0] = replace(sim._msl_ports[0], width=10 * U)
+    sim._build_realized_grid = lambda: (_ for _ in ()).throw(ValueError('grid unavailable'))
+    yield 'unavailable_grid_wide_trace', sim
     yield (
         "near_absorber",
         structure(

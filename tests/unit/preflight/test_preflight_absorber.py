@@ -19,9 +19,8 @@ Sections, each formerly its own file:
    a valid 90.678mm domain). Post-review additions: the distinct
    ``absorber_proximity`` advisory (H1/M3: a coordinate interior but within
    2 cells of an active absorber boundary) and the MSL consumer's explicit,
-   separately-calibrated ``cpml_layers*dx`` buffer (MH2/M5: the 2026-05-04
-   ledger rule ``LY >= W + 2*(2*h_sub + 8*dx)``, restored ON TOP OF the
-   exterior-frame boundary). The manual mutation falsifier (swapping the
+   solved-edge clearance to the realized interface (#3062), independent of
+   absorber depth. The manual mutation falsifier (swapping the
    lo/hi roles in ``_absorber_boundary_for_axis`` reds 22 tests, the
    NON-firing controls) is recorded in the pre-merge file's git history.
 2. **``_validate_cfg_geometry_in_cpml`` reporting contract (issue #660)** —
@@ -60,8 +59,8 @@ Sections, each formerly its own file:
    (continued by neither lane), a dispersive material (section 3's subject)
    and a non-absorbing boundary. Reuses section 3's ``DP_`` fixtures.
 
-Every assertion, tolerance, fixture value and parametrisation of the
-absorbed files is kept verbatim.
+The absorbed fixtures retain their geometry and tolerances. The MSL clearance
+assertions follow the solved-edge/interface rule introduced by #3062.
 Non-periodic NonUniformGrid extents end at the outermost node because the cell-width array's trailing duplicate is not physical extent.
 """
 
@@ -554,67 +553,53 @@ def _msl_y_clearance_sim(dx: float, ly: float, cpml_layers: int = 8) -> Simulati
     return sim
 
 
-def test_msl_x_cpml_clearance_fires_on_ledger_negative_clearance_case():
-    """The exact 2026-05-04 ledger regression: dx=80um, cpml_layers=8 ->
-    calibrated buffer 640um; port at x=600um is INSIDE the buffered
-    margin (clearance = 600 - 640 = -40um < 0), the "trace ended up
-    INSIDE the CPML overlap region" case the calibration fixed. Dropping
-    the buffer (an earlier pass of this PR) silently went silent here."""
-    issues = _msl_x_clearance_sim(dx=80e-6, port_x=0.6e-3).preflight(strict=False)
-    hits = [m for m in issues if "x-CPML" in m]
-    assert hits, f"port inside the calibrated buffer must warn; got {issues!r}"
-    assert any("calibrated CPML buffer" in m for m in hits), hits
+def _msl_clearance_findings(sim, diagnostic_id):
+    return [finding for finding in sim.preflight(strict=False)
+            if finding.code == "msl_port_geometry"
+            and finding.diagnostic.code == diagnostic_id]
 
 
-def test_msl_x_cpml_clearance_silent_once_past_buffer_plus_recommended():
-    """Non-firing control: dx=100um, cpml_layers=8 -> buffer=800um,
-    recommended=2*h_sub=508um, total=1308um. Port at x=1400um clears
-    both -> silent."""
-    issues = _msl_x_clearance_sim(dx=100e-6, port_x=1.4e-3).preflight(strict=False)
-    hits = [m for m in issues if "x-CPML" in m]
-    assert not hits, f"port past buffer+recommended must not warn; got {hits}"
+def test_msl_x_clearance_legacy_buffer_case_is_now_clear():
+    """600um snaps to node 7 (560um), above max(4/3*254um, 4*80um)."""
+    assert not _msl_clearance_findings(
+        _msl_x_clearance_sim(dx=80e-6, port_x=0.6e-3),
+        "msl.source_absorber_clearance")
 
 
-def test_msl_x_cpml_clearance_fires_when_genuinely_too_close():
-    """Positive control: port at x=300um is inside the buffer alone
-    (dx=100um, cpml_layers=8 -> buffer=800um) — must warn."""
-    issues = _msl_x_clearance_sim(dx=100e-6, port_x=0.3e-3).preflight(strict=False)
-    hits = [m for m in issues if "x-CPML" in m]
-    assert hits, f"port with real 300um clearance must warn; got {issues!r}"
+def test_msl_x_clearance_silent_above_threshold():
+    """1400um exceeds max(4/3*254um, 4*100um), without a depth buffer."""
+    assert not _msl_clearance_findings(
+        _msl_x_clearance_sim(dx=100e-6, port_x=1.4e-3),
+        "msl.source_absorber_clearance")
 
 
-def test_msl_y_clearance_fires_on_ledger_ly_w_plus_6dx():
-    """Ledger reproduction: the PRE-calibration ``LY = W + 6*dx`` geometry
-    (dx=80um, cpml_layers=8) that motivated the 2026-05-04 fix must still
-    warn under the restored buffer."""
+def test_msl_x_clearance_fires_when_genuinely_too_close():
+    """300um is below max(4/3*254um, 4*100um) = 400um."""
+    assert _msl_clearance_findings(
+        _msl_x_clearance_sim(dx=100e-6, port_x=0.3e-3),
+        "msl.source_absorber_clearance")
+
+
+def test_msl_y_clearance_legacy_w_plus_6dx_is_now_clear():
+    """Covered nodes 240..800um solve at 212..828um; both gaps exceed 186um."""
     ly = _W_TRACE + 6 * 80e-6
-    issues = _msl_y_clearance_sim(dx=80e-6, ly=ly).preflight(strict=False)
-    hits = [m for m in issues if "lateral clearance" in m]
-    assert hits, f"pre-calibration LY=W+6dx must warn; got {issues!r}"
-    assert any("calibrated CPML buffer" in m for m in hits), hits
+    assert not _msl_clearance_findings(
+        _msl_y_clearance_sim(dx=80e-6, ly=ly), "msl.lateral_clearance")
 
 
-def test_msl_y_clearance_silent_on_ledger_calibrated_ly():
-    """Ledger reproduction: the CALIBRATED ``LY >= W + 2*(2*h_sub + 8*dx)``
-    geometry must be silent."""
+def test_msl_y_clearance_silent_on_legacy_wide_domain():
+    """The former buffered geometry also clears the solved-edge threshold."""
     ly = _W_TRACE + 2 * (2 * _H_SUB + 8 * 80e-6)
-    issues = _msl_y_clearance_sim(dx=80e-6, ly=ly).preflight(strict=False)
-    hits = [m for m in issues if "lateral clearance" in m]
-    assert not hits, f"calibrated LY must not warn; got {hits}"
+    assert not _msl_clearance_findings(
+        _msl_y_clearance_sim(dx=80e-6, ly=ly), "msl.lateral_clearance")
 
 
-def test_msl_clearance_buffer_scales_with_cpml_layers_not_hardcoded_8():
-    """MH2: the ledger's "8*dx" is that specific fixture's cpml_layers=8,
-    not a hardcoded constant — doubling cpml_layers must double the
-    buffer and therefore still fire at a clearance that would clear a
-    fixed-800um buffer.
-    At dx = 100 um with 16 layers, the 1600 um buffer excludes the port at 1400 um that clears an 800 um buffer."""
-    issues = _msl_x_clearance_sim(dx=100e-6, port_x=1.4e-3, cpml_layers=16).preflight(
-        strict=False
-    )
-    hits = [m for m in issues if "x-CPML" in m]
-    assert hits, f"doubled cpml_layers must double the buffer and warn; got {issues!r}"
-    assert any("1.6mm calibrated CPML buffer" in m for m in hits), hits
+@pytest.mark.parametrize("layers", [8, 16, 32])
+def test_msl_clearance_is_independent_of_absorber_depth(layers):
+    """1400um stays above the same 400um feed threshold at every depth."""
+    assert not _msl_clearance_findings(
+        _msl_x_clearance_sim(dx=100e-6, port_x=1.4e-3, cpml_layers=layers),
+        "msl.source_absorber_clearance")
 
 
 

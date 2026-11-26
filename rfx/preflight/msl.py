@@ -64,6 +64,7 @@ from rfx.preflight.msl_codes import msl_text, msl_diagnostic, msl_join, msl_valu
 from rfx._internal._grid_metric import is_one_cell_size
 from rfx.preflight._subjects import finding_subjects
 from rfx.preflight._msl_subjects import conductor_owners, _msl_realized_substrate
+from rfx.preflight._msl_clearance import clearance_face, clearance_rule, clearance_span
 from rfx.core.jax_utils import is_tracer
 from rfx.preflight._common import (
     _fmt_len, report_tracer_error,
@@ -412,42 +413,22 @@ def _check_msl_port_geometry(
 
     Check clearance, substrate resolution and probe placement before a mesh sweep.
 
-    1. **Lateral clearance** from trace edge to nearest absorbing
-       boundary (CPML/PML) or PEC sidewall must be ≥ 2·h_sub.
-       Microstrip fringing fields decay as exp(-π·d/h_sub); the
-       5%-amplitude tail sits at d ≈ 0.95·h_sub. A ≥ 2·h_sub margin
-       keeps Z0 bias under ~5% (verified by fixed-LY mesh-conv
-       sweep).
-
-       The reference position is
-       ``_absorber_boundary_for_axis``'s exterior-frame edge (y=0 /
-       y=domain[1], x=0 / x=domain[0] when that face is CPML/UPML- or
-       PEC/PMC-backed) PLUS an EXPLICIT, separately-calibrated buffer
-       equal to the active CPML depth on that face
-       (``cpml_thick_{lo,hi}`` = n_cpml·dx). The buffer is not a
-       restatement of "where the absorber starts" (that question is
-       answered by the helper alone, and the absorber does start
-       exactly at the edge);
-       it is a SEPARATE, empirically-measured MSL-specific margin.
-       With the pre-calibration
-       ``LY = W + 6·dx`` at dx=80µm, cpml_layers=8, "the trace ended
-       up INSIDE the CPML overlap region (negative clearance)" and
-       Z0 drifted UP with mesh refinement (54→60Ω) instead of
-       converging to Hammerstad's 47.89Ω; the fix widened the
-       required geometry to ``LY >= W + 2·(2·h_sub + 8·dx)`` — i.e.
-       per-side clearance >= ``2·h_sub`` beyond a buffer of
-       ``8·dx`` = ``cpml_layers·dx`` in that fixture (the "8" is
-       that calibration's ``cpml_layers``, not a hardcoded constant
-       — this reads it back out as ``cpml_thick_{lo,hi}`` so it
-       scales with whatever ``cpml_layers`` is actually configured).
-       A PEC/PMC face (``cpml_thick=0`` there) gets no buffer: the
-       calibration's concern is CPML near-field stretching, which
-       does not apply to a hard reflector. Dropping this buffer
-       entirely silently re-admits the
-       negative-clearance configuration the calibration
-       closed — measured on this repo's own
-       ``tests/unit/ports/test_msl_port_preflight.py`` fixture: 3 advisories at
-       base (pre-drop), 0 on the buffer-dropped branch.
+    1. **Lateral clearance** from the port trace footprint's solved sheet edge
+       to each realized interior/absorber interface node. The shared
+       ``solved_sheet_span`` model includes 0.35 of the outside cell at a free
+       edge. No absorber-depth buffer enters either distance. For an
+       absorbing face the threshold is ``max((2.2/3)*h_sub, 2.2*e)``, where
+       ``e`` is that face's absorber end cell. PEC/PMC walls retain 2*h_sub.
+       Warn strictly below the threshold. The absorbing rule is the smallest
+       clearance measured on one board at one mesh (3 cells per h_sub,
+       8 to 32 layers, S compared against a 12*h_sub reference). Other meshes
+       are marked not measured; S below the threshold is not measured.
+       Meeting it makes no passivity claim. The port footprint is its declared
+       trace plane, including when attached to the face of a thick conductor;
+       this does not introduce a solved-volume edge model. Without a realized
+       grid, use declared trace edges and domain faces, with the same thresholds
+       and measurement scope. Read e from that side's declared profile end cell,
+       or dx without a profile; disclose that declared coordinates were used.
 
     2. **Normal source resolution**: recommend at least four intervals
        between the validated ground and trace conductor planes. Check 2b
@@ -470,9 +451,13 @@ def _check_msl_port_geometry(
        frozen Z0 establishes a current bound. Preserve the artifacts; any quantitative
        re-solve needs a new, consistently qualified geometry/measurement record.
 
-    3. **Port-to-CPML distance** in propagation direction ≥ 2·h_sub.
-       Source-side CPML reflection inflates |S11| if the port is
-       too close.
+    3. **Feed clearance** from ``profile_node_at``'s realized feed node to
+       the realized interface on the side the port faces away from, without
+       an absorber-depth buffer. The absorbing threshold is
+       ``max((4/3)*h_sub, 4*e)``; PEC/PMC walls retain 2*h_sub. Its smallest
+       measured distance has the same one-board, 3-cells-per-h_sub,
+       8-to-32-layer, 12*h_sub-reference scope as item 1. Other meshes and
+       S below this clearance are not measured; no Z0 bias is predicted.
 
     5. **Probe 0 inside the port's OWN feed near field**.
        Checks 4/4a/4b all look DOWNSTREAM of the probes — at a
@@ -509,6 +494,7 @@ def _check_msl_port_geometry(
 
     from rfx.sources.msl_port import (
         _MSL_AXIS_INDEX as _MSL_AX,
+        _msl_grid_geometry,
         msl_axis_roles as _msl_axis_roles,
         msl_port_from_entry as _msl_port_from_entry,
         msl_probe_x_coords_n as _probe_x_coords_n,
@@ -648,38 +634,35 @@ def _check_msl_port_geometry(
             except (ValueError, TypeError, NotImplementedError) as _traced_exc:
                 report_tracer_error(_traced_exc, "_check_msl_port_geometry")
                 pass
-        recommended = 2.0 * h_sub
+        _clearance_nodes = None
+        if _msl_grid is not None:
+            try:
+                _clearance_nodes, _ = _msl_grid_geometry(_msl_grid)
+            except (ValueError, TypeError, NotImplementedError) as exc:
+                report_tracer_error(exc, "_check_msl_port_geometry")
 
         trace_y_lo = y_centre - w_trace / 2.0
         trace_y_hi = y_centre + w_trace / 2.0
-        ly = float(domain[_iw])
-        _ly_lo_b, _ly_hi_b = _absorber_boundary_for_axis(
-            ly, cpml_thick_lo[_iw], cpml_thick_hi[_iw]
-        )
-        y_abs_lo = (_ly_lo_b if _ly_lo_b is not None else 0.0) + cpml_thick_lo[_iw]
-        y_abs_hi = (_ly_hi_b if _ly_hi_b is not None else ly) - cpml_thick_hi[_iw]
+        if _clearance_nodes is not None:
+            trace_y_lo, trace_y_hi = clearance_span(
+                _msl_grid, _clearance_nodes[_iw], _width_ax,
+                trace_y_lo, trace_y_hi, y_centre, float(domain[_iw]),
+            )
+        y_abs_lo, _width_cell_lo = clearance_face(_msl_grid, _clearance_nodes, domain, dx,
+                                                cpml_thick_lo[_iw], _width_ax, _iw, "lo", getattr(self, f"_d{_width_ax}_profile"))
+        y_abs_hi, _width_cell_hi = clearance_face(_msl_grid, _clearance_nodes, domain, dx,
+                                                cpml_thick_hi[_iw], _width_ax, _iw, "hi", getattr(self, f"_d{_width_ax}_profile"))
         clearance_lo = trace_y_lo - y_abs_lo
         clearance_hi = y_abs_hi - trace_y_hi
-        for side, c, buf in (
-            (
-                msl_text(
-                    "width_low_side",
-                    width_axis=_width_ax,
-                ),
-                clearance_lo,
-                cpml_thick_lo[_iw],
-            ),
-            (
-                msl_text(
-                    "width_high_side",
-                    width_axis=_width_ax,
-                ),
-                clearance_hi,
-                cpml_thick_hi[_iw],
-            ),
+        for side, c, thick, cell, end in (
+            (msl_text("width_low_side", width_axis=_width_ax, side=f"−{_width_ax}"), clearance_lo,
+             cpml_thick_lo[_iw], _width_cell_lo, "lo"),
+            (msl_text("width_high_side", width_axis=_width_ax, side=f"+{_width_ax}"), clearance_hi,
+             cpml_thick_hi[_iw], _width_cell_hi, "hi"),
         ):
+            recommended, evidence = clearance_rule(_clearance_nodes is not None, self._boundary_spec,
+                                                   _width_ax, end, h_sub, thick, cell, 2.2)
             if c < recommended:
-                pct = max(0.0, (1.0 - c / recommended)) * 15.0
                 _w.warn(
                     PreflightWarning(
                         msl_diagnostic(
@@ -691,9 +674,11 @@ def _check_msl_port_geometry(
                                 substrate_height_m=h_sub,
                                 side=side,
                                 lateral_clearance_m=c,
-                                cpml_buffer_m=buf,
+                                edge_origin=("solved trace edge" if _clearance_nodes is not None
+                                             else "declared trace edge"),
+                                clearance_height_ratio=c / h_sub,
+                                evidence=evidence,
                                 recommended_clearance_m=recommended,
-                                bias_fraction=msl_value(pct / 100.0, pct),
                                 width_axis=_width_ax,
                             ),
                             subject=pe.name,
@@ -842,23 +827,15 @@ def _check_msl_port_geometry(
                 stacklevel=3,
             )
 
-        _lx_lo_b, _lx_hi_b = _absorber_boundary_for_axis(
-            float(domain[_ip]), cpml_thick_lo[_ip], cpml_thick_hi[_ip]
-        )
-        x_abs_lo = (_lx_lo_b if _lx_lo_b is not None else 0.0) + cpml_thick_lo[_ip]
-        x_abs_hi = (
-            (_lx_hi_b if _lx_hi_b is not None else float(domain[_ip]))
-            - cpml_thick_hi[_ip]
-        )
-        x_clearance = (
-            x_feed - x_abs_lo if _dir_sign > 0
-            else x_abs_hi - x_feed
-        )
+        _feed_end = "lo" if _dir_sign > 0 else "hi"
+        _feed_thick = (cpml_thick_lo if _dir_sign > 0 else cpml_thick_hi)[_ip]
+        _feed_face, _feed_cell = clearance_face(
+            _msl_grid, _clearance_nodes, domain, dx, _feed_thick, _prop_ax, _ip, _feed_end, _prop_profile)
+        _clearance_feed = _feed_node if _clearance_nodes is not None else x_feed
+        x_clearance = (_clearance_feed - _feed_face) * _dir_sign
+        recommended, evidence = clearance_rule(_clearance_nodes is not None, self._boundary_spec,
+                                               _prop_ax, _feed_end, h_sub, _feed_thick, _feed_cell, 4.0)
         if x_clearance < recommended:
-            _x_buf = (
-                cpml_thick_lo[_ip] if _dir_sign > 0
-                else cpml_thick_hi[_ip]
-            )
             _w.warn(
                 PreflightWarning(
                     msl_diagnostic(
@@ -867,10 +844,12 @@ def _check_msl_port_geometry(
                             "source_absorber_clearance",
                             port_name=pe.name,
                             propagation_axis=_prop_ax,
-                            feed_m=x_feed,
+                            feed_m=_clearance_feed,
                             direction=pe.direction,
                             source_clearance_m=x_clearance,
-                            source_buffer_m=_x_buf,
+                            clearance_height_ratio=x_clearance / h_sub,
+                            side=f"{chr(8722) if _dir_sign > 0 else chr(43)}{_prop_ax}",
+                            evidence=evidence,
                             recommended_clearance_m=recommended,
                         ),
                         subject=pe.name,

@@ -521,6 +521,34 @@ the 0.1 mm test mesh. With the whole-cell voltage, the short test fixture's |S21
 from 3.81 to 3.22 at 6 GHz and its column power from 14.6 to 10.5; the matrix is still
 far from passive, and the rest of the excess is not attributed.
 
+### The coax→microstrip transition and the mixed coax/microstrip S-matrix keep whole microstrip planes at every step.
+
+Tracker: #3069
+
+`compute_coax_msl_transition` keeps each x-normal Ez plane of its microstrip probes at every
+time step, and `compute_mixed_s_matrix` keeps its microstrip Ez and H planes, with
+no crop, at every step. Both read those records only to form the microstrip voltage (and, in
+the mixed S-matrix, the current) for the record-tail witness. Their memory therefore grows
+as each plane's transverse cells × steps.
+
+On one GPU, the transition's device memory grows by 317.8 kB per step from 200 to 800 steps
+with its coax plane records off; the coax source waveforms it stores are 1.5 kB per step of
+that, so almost all of it is the microstrip planes. The coax planes of the three coax
+calculators no longer keep these records.
+
+### The coax port's plane source keeps one waveform per aperture cell and component for the whole record.
+
+Tracker: #3074
+
+Every coax aperture cell with a nonzero TEM profile gets its own float32 electric and magnetic
+source waveform of `n_steps` samples, so the stored source grows as (aperture cells ×
+components) × steps × 4 B, and the device holds it more than once at its peak. This holds for
+the three coax calculators and for `add_coaxial_port()` on `run()` and `forward()`. On one GPU,
+the coax one-port of #3069 (256 stored waveforms, 1024 B per step) grows by 2.9 kB of device
+memory per step, about 0.21 GB at 74 000 steps (from that slope, an estimate). Its host memory
+grows by 12.2 kB per step; the cause of that growth is not known. What to do: nothing for
+records that fit; the fix is planned.
+
 ### On a radiating device, the coax calculators' S11 includes coupling from their open feed end.
 
 Tracker: #2975
@@ -613,6 +641,25 @@ early or a coarse mesh. That advice does not fit this case: these records ring
 down to −86 to −95 dB, and a finer mesh makes the excess slightly larger. Give
 the line more air below the top absorber, or keep the default 16 layers.
 
+### On a microstrip line, 8 CPML layers change S, and |S| can exceed 1 near the side absorbers.
+
+Tracker: #3068
+
+On a microstrip thru line (3 cells per substrate height), S with 8 CPML
+layers differs from S with 32 layers by up to 2.8×10⁻³ (the largest entry
+difference over the band) when the strip's solved edge is 2.2 cells from the
+side absorbers. The difference falls to 1.9×10⁻⁴ at 36 cells. With 16 layers
+(the default) it is at most 6.1×10⁻⁵. These numbers are diagnostic, not a
+judged threshold.
+
+With 8 layers a passive line can also return |S_ij| above 1. On one line board
+(3 cells per substrate height) it reaches 1.0006 when the strip's solved edge
+is 0.733 h_sub (2.2 cells) from the side absorbers. It falls as the strip moves
+away, to 1.000001 at 27 cells, and is not seen with 16 or 32 layers. Its cause is
+not named. The lateral-clearance advisory does not remove it: a board that
+meets the advisory can still show it with 8 layers. Keep 16 layers (the
+default) or more when |S| or passivity matters.
+
 ### The fitted microstrip propagation constant differs from the Hammerstad–Jensen closed form, and the difference is not attributed.
 
 Tracker: none — accepted limitation (diagnostic, does not enter the result: tests/unit/sparams/test_msl_fitted_beta_does_not_enter_s.py::test_s_is_bit_identical_when_the_fitted_beta_is_wrong)
@@ -646,6 +693,7 @@ Tracker: #3065
 At bins where the line's phase across that span (`beta` times its length) is small, the fitted values change when parts of the board far from the probes change.
 The cause is not isolated. Two identical builds give bit-identical values, so it is not run noise.
 One board was measured: εr 3.66, h 254 µm, strip declared 600 µm and solved 651.9 µm (cells of h/3), 5 probes 2 cells apart (0.677 mm), 0.5–5 GHz in 30 bins.
+Every number in this entry is from float32 runs, rfx's default precision.
 Only the feed's distance from the domain's x faces (3.6 to 65.6 cells) and the CPML depth (8, 16 and 32 layers) changed. Each of the other 23 layouts was compared bin by bin with the 47.6-cell layout of the same depth (4.53–5 GHz is marked unreliable on those reference layouts and was not compared):
 
 | phase across the probes | bins | largest change in `Z0` | largest change in `beta` |
@@ -658,7 +706,7 @@ At 0.50 GHz the returned `Z0` ran from 43.0 to 69.9 Ω on this one line.
 The 63 %, the 38 % and the 69.9 Ω sit where the `beta` scan stopped at its ±35 % limit, which its warning names (0.50 GHz, on 2 of the 26 layouts). On ports that warning did not name, the change still reached 25 % in `Z0` at 0.50 GHz, and 18 % in `Z0` and 22 % in `beta` at 0.81 GHz.
 `probe_clearance` was `satisfied` on every layout and `reliable` was True at 0.50–1.74 GHz on every layout, so neither marks these bins.
 Neither fitted value enters S: across these layouts no S entry changed by more than 5.0e-4 at any bin.
-The `Z0` warning fired on 3 of the 26 layouts, at 0.50 GHz, and advises a finer mesh. With the probe counts fixed in cells, a finer mesh shortens the span and the phase across it, so that advice does not apply here.
+The `Z0` warning fired on 3 of the 26 layouts, at 0.50 GHz. It now points to `fit_span_phase` and `fit_amplification` and no longer advises a finer mesh: with the probe counts fixed in cells, a finer mesh shortens the span and the phase across it.
 Do not quote `Z0` or `beta` from a bin where the phase across the probes is below about 0.045 rad, where the change exceeded 2 % on this board.
 That edge comes from one board on one mesh; no layout with a longer probe span was measured.
 

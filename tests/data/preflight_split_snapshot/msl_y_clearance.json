@@ -123,40 +123,6 @@
         "loc": null,
         "numbers": [
           0.0,
-          600.0,
-          254.0,
-          -400.0,
-          640.0,
-          508.0,
-          2.0,
-          0.0,
-          27.0
-        ],
-        "severity": "warning",
-        "source": "_check_msl_port_geometry"
-      },
-      {
-        "code": "msl_port_geometry",
-        "loc": null,
-        "numbers": [
-          0.0,
-          600.0,
-          254.0,
-          -400.0,
-          640.0,
-          508.0,
-          2.0,
-          0.0,
-          27.0
-        ],
-        "severity": "warning",
-        "source": "_check_msl_port_geometry"
-      },
-      {
-        "code": "msl_port_geometry",
-        "loc": null,
-        "numbers": [
-          0.0,
           3.0,
           240.0,
           3.0,
@@ -279,7 +245,7 @@
       }
     ],
     "n_errors": 0,
-    "n_issues": 13,
+    "n_issues": 11,
     "ok": true
   },
   "preflight_sparameters": {

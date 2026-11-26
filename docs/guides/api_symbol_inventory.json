@@ -97,6 +97,9 @@
     "Diagnostic": {
       "kind": "class"
     },
+    "EdgeAwareProfileRefusal": {
+      "kind": "class"
+    },
     "FarFieldResult": {
       "kind": "class"
     },
@@ -446,7 +449,8 @@
         "waveform",
         "thin_conductors",
         "domain",
-        "dt_override"
+        "dt_override",
+        "snap"
       ]
     },
     "axial_ratio": {

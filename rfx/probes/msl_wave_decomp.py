@@ -33,7 +33,7 @@ from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 
-from rfx.measurement.msl_waves import _lstsq_alpha_gamma
+from rfx.measurement.msl_waves import _lstsq_alpha_gamma, _msl_fit_conditioning
 from rfx.measurement.phasors import exp_j
 
 
@@ -557,6 +557,17 @@ def extract_msl_nprobe(
                      node, or refined β within half a grid step of a
                      window limit).  The returned ``beta``/``z0`` at such
                      a bin are the scan-window limit, NOT a measurement; do not quote them.
+        ``fit_span_phase`` : (n_freqs,) real — the line's phase across the
+                     probes at that bin, the quantity the known-limitations
+                     entry conditions on. Detached from AD.
+        ``fit_amplification`` : (n_freqs,) real — the fit's sensitivity of β
+                     (and of Z0) to a departure of the probe voltages from one
+                     forward-plus-backward wave, per probe (the fit's
+                     conditioning). It is not an error estimate. Computed as
+                     ‖V_fit‖/(Re β·σ⊥), where V_fit is the fitted wave at
+                     the probes and σ⊥ is the norm of the beta derivative
+                     at fitted alpha/gamma projected off both wave columns.
+                     Detached from AD.
         ``z0_hj`` : the passed-through analytic Z0 (or ``None``).
 
     Notes
@@ -583,6 +594,7 @@ def extract_msl_nprobe(
         return alpha, gamma, beta, residual, railed
 
     alpha, gamma, beta, residual, beta_railed = jax.vmap(_per_freq)(v, beta0)
+    fit_span_phase, fit_amplification = _msl_fit_conditioning(x, beta, alpha, gamma)
 
     z0 = (alpha - gamma) / (i1 + eps)
     s11 = gamma / (alpha + eps)
@@ -598,5 +610,7 @@ def extract_msl_nprobe(
         q=q,
         residual=residual,
         beta_railed=beta_railed,
+        fit_span_phase=fit_span_phase,
+        fit_amplification=fit_amplification,
         z0_hj=z0_hj,
     )

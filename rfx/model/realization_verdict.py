@@ -64,7 +64,11 @@ def judge_realization(table, snap):
                     **table_subjects(table, tuple(r for r in table.rows
                         if r.status.startswith("not evaluated: traced") or r.traced_inputs))))
             continue
-        if row.status == "not judged: edge not measured":
+        from rfx.model.conductor_planes import conductor_node_miss
+        node_misses = [(args[2], conductor_node_miss(*args))
+                       for args in getattr(row, "node_check_inputs", ())]
+        sheet_plane_mismatch = row.family in ("sheet", "lossy") and any(m.refused for _, m in node_misses)
+        if row.status == "not judged: edge not measured" and not sheet_plane_mismatch:
             table.judged.add(row.label)
             findings.append(PreflightIssue(
                 f"realization {row.label} ({row.family}): not judged: edge not measured; "
@@ -72,7 +76,7 @@ def judge_realization(table, snap):
                 severity="warning", code="realization", loc=row.label, source="judge_realization",
                 **table_subjects(table, (owner,), axes=row.axes)))
             continue
-        if row.status == "not judged: no reference":
+        if row.status == "not judged: no reference" and not sheet_plane_mismatch:
             table.judged.add(row.label)
             findings.append(PreflightIssue(
                 f"realization {row.label} ({row.family}): not judged: no reference; "
@@ -81,7 +85,7 @@ def judge_realization(table, snap):
                 code="realization", loc=row.label, source="judge_realization",
                 **table_subjects(table, (owner,), axes=row.axes)))
             continue
-        if row.status != "evaluated":
+        if row.status != "evaluated" and not sheet_plane_mismatch:
             continue
         table.judged.add(row.label)
         if row.family == "legacy":
@@ -125,9 +129,19 @@ def judge_realization(table, snap):
             quantity = "; ".join(
                 f"{a.axis} extent miss {a.miss_cells:+.12g} cells ({a.miss_percent:+.12g} %)"
                 for a in axes if a.miss_percent is not None)
-        if ((row.model == "solved sheet edges" and row.shape_name == "Box") or
-                row.model == "cell-centre footprint; node plane"):
+        plane_only = ((row.model == "solved sheet edges" and row.shape_name == "Box") or
+                      row.model == "cell-centre footprint; node plane")
+        if plane_only:
             mismatch = False
+        if not mismatch:
+            quantity = "centroid shift exceeds 0.25 cell" if centroid else ""
+        if row.family in ("sheet", "lossy") and node_misses:
+            mismatch = mismatch or sheet_plane_mismatch
+        if sheet_plane_mismatch:
+            plane_text = "; ".join(
+                f"{'xyz'[a]} sheet plane miss δ={m.delta:.12g} m, L={m.length:.12g} m (limit 1 % of L)"
+                for a, m in node_misses)
+            quantity = f"{quantity}; {plane_text}" if quantity else plane_text
         if not mismatch and not centroid:
             continue
         detail = "; ".join(
@@ -143,8 +157,18 @@ def judge_realization(table, snap):
                   if dielectric else
                   "Move the edge to a node, refine, or use rfx.mesh_edges.edge_aware_profiles "
                   "to place nodes on the drawn edges.")
-        if not mismatch:
-            quantity = "centroid shift exceeds 0.25 cell"
+        if getattr(table, "automatic_dx", None) is not None and not dielectric:
+            bad_axes = {"xyz"[a] for a, m in node_misses if m.refused}
+            if not plane_only and row.integral_comparison is None and row.area_miss_percent is None:
+                bad_axes.update(a.axis for a in axes if a.miss_percent is not None and abs(a.miss_percent) > 1.)
+            if bad_axes & {"x", "y"}:
+                remedy = (
+                    f"The automatic mesh is uniform along x and y; pass dx={table.automatic_dx:.12g} m "
+                    "and the profiles from rfx.mesh_edges.edge_aware_profiles(domain, dx, "
+                    'solids=[<every box whose faces must be nodes>], axes="xyz"); '
+                    "its dz_profile replaces the automatic z mesh.")
+            elif "z" in bad_axes:
+                remedy = _merged_plane_remedy(table, row) or remedy
         for a in axes:
             if a.declared_intervals_m:
                 detail += (f"; {a.axis} periodic union declared {a.declared_intervals_m} m, "
@@ -160,7 +184,8 @@ def judge_realization(table, snap):
             loc=row.label, source="judge_realization",
             **table_subjects(table, (owner,), axes=row.axes))
         setattr(finding, "_realization_axes", tuple(a.axis for a in axes
-            if a.miss_percent is not None and abs(a.miss_percent) > 1.))
+            if a.miss_percent is not None and abs(a.miss_percent) > 1.) +
+            tuple("xyz"[a] for a, m in node_misses if m.refused))
         base_label = row.label.split("/", 1)[0]
         previous = next((f for f in table.findings + findings
                          if f.code == "realization" and f.loc == base_label), None)
@@ -406,3 +431,9 @@ def replay_legacy_findings(warnings, ctx, code):
             warnings.warn(PreflightWarning(str(finding), code=finding.code,
                 severity=finding.severity, loc=finding.loc, source=finding.source,
                 **retained_subjects(finding)))
+
+
+def _merged_plane_remedy(table, row):
+    """Name the declared plane and the retained plane of an automatic merge."""
+    from rfx.model.conductor_planes import merged_plane_remedy
+    return merged_plane_remedy(row.label, row.declared_bounds_m, table.auto_z_merges)

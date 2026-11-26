@@ -533,6 +533,8 @@ def _fit_mixed_impedance(
     from rfx.probes.msl_wave_decomp import extract_msl_nprobe
     z0_msl_fit = np.full((n_msl, n_freqs_used), np.nan)
     beta_railed_msl = np.zeros((n_msl, n_freqs_used), dtype=bool)
+    fit_span_phase = np.full((n_msl, n_freqs_used), np.nan)
+    fit_amplification = np.full_like(fit_span_phase, np.nan)
     for d in range(n_msl):
         run_d = n_lw + d
         n_p = len(probe_xs[d])
@@ -549,6 +551,10 @@ def _fit_mixed_impedance(
         beta_railed_msl[d, :] = np.asarray(
             jax.lax.stop_gradient(res_fit["beta_railed"])
         ).astype(bool)
+        fit_span_phase[d, :] = np.asarray(
+            jax.lax.stop_gradient(res_fit["fit_span_phase"]))
+        fit_amplification[d, :] = np.asarray(
+            jax.lax.stop_gradient(res_fit["fit_amplification"]))
 
         _dev = float(np.max(
             np.abs(z0_msl_fit[d, :] - z0_hj_per_port[d])
@@ -568,7 +574,7 @@ def _fit_mixed_impedance(
                 "plane sensitivity before interpreting S.", AccuracyWarning,
                 stacklevel=3,
             )
-    return z0_msl_fit, beta_railed_msl
+    return z0_msl_fit, beta_railed_msl, fit_span_phase, fit_amplification
 
 
 def _shift_mixed_planes(
