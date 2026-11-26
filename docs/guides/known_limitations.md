@@ -531,10 +531,23 @@ no crop, at every step. Both read those records only to form the microstrip volt
 the mixed S-matrix, the current) for the record-tail witness. Their memory therefore grows
 as each plane's transverse cells × steps.
 
-The coax one-port measured about 195 B of GPU memory per (transverse cell × step) for its 24
-recorded planes, about 8 B per plane: two copies of a 4 B value. A microstrip plane of
-the same size costs the same, by that law (an estimate; the microstrip planes were not
-measured). The coax planes of the three coax calculators no longer keep these records.
+On one GPU, the transition's device memory grows by 317.8 kB per step from 200 to 800 steps
+with its coax plane records off; the coax source waveforms it stores are 1.5 kB per step of
+that, so almost all of it is the microstrip planes. The coax planes of the three coax
+calculators no longer keep these records.
+
+### The coax port's plane source keeps one waveform per aperture cell and component for the whole record.
+
+Tracker: #3074
+
+Every coax aperture cell with a nonzero TEM profile gets its own float32 electric and magnetic
+source waveform of `n_steps` samples, so the stored source grows as (aperture cells ×
+components) × steps × 4 B, and the device holds it more than once at its peak. This holds for
+the three coax calculators and for `add_coaxial_port()` on `run()` and `forward()`. On one GPU,
+the coax one-port of #3069 (256 stored waveforms, 1024 B per step) grows by 2.9 kB of device
+memory per step, about 0.21 GB at 74 000 steps (from that slope, an estimate). Its host memory
+grows by 12.2 kB per step; the cause of that growth is not known. What to do: nothing for
+records that fit; the fix is planned.
 
 ### On a radiating device, the coax calculators' S11 includes coupling from their open feed end.
 
