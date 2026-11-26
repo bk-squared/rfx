@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from rfx.measurement.accumulators import plane_carry, flux_carry
+
 from rfx._internal._uniform_specs import (
     DesignBoxSpec,
     DesignOccupancySpec,
@@ -518,7 +520,7 @@ def _build_step_setup(
         validate_monitor_carries(ntff, current_moments, carry_init)
 
     if use_dft_planes:
-        carry_init["dft_planes"] = tuple(probe.accumulator for probe in dft_planes)
+        carry_init["dft_planes"] = plane_carry(dft_planes)
 
     if use_waveguide_ports:
         carry_init["waveguide_port_accs"] = tuple(
@@ -579,9 +581,7 @@ def _build_step_setup(
         from rfx.measurement.accumulators import flux_metadata
         flux_meta_8 = flux_metadata(flux_monitors, window=False)
         flux_meta_11 = flux_metadata(flux_monitors, window=True)
-        carry_init["flux_monitors"] = tuple(
-            (fm.e1_dft, fm.e2_dft, fm.h1_dft, fm.h2_dft) for fm in flux_monitors
-        )
+        carry_init["flux_monitors"] = flux_carry(flux_monitors)
 
     rlc_meta: tuple = ()
     if use_lumped_rlc:

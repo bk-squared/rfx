@@ -19,14 +19,16 @@ AD_MEMORY_WORKING_CARRIES = 6.5
 def box_observation_residual_bytes(excluded):
     """Read streaming observation phase sizes from the realized carry leaves.
 
-    print_saved_residuals on a box saves (nf, 1, 1) per plane/flux
-    component, not its spatial accumulator. NTFF shares one (nf, 1, 1, 4)
+    Each DFT-plane and flux accumulator is a (total, compensation) pair.
+    print_saved_residuals on a box saves only the total's (nf, 1, 1) phase
+    per plane/flux component, not its spatial accumulator. NTFF shares one (nf, 1, 1, 4)
     phase across all faces; neither face sums nor Kahan compensation are
     per-step residuals. Frequency count and dtype come from read_carry.
     """
     size = 0
     for leaf in excluded:
-        if leaf["name"].startswith(("dft_planes[", "flux_monitors[")):
+        if (leaf["name"].startswith(("dft_planes[", "flux_monitors["))
+                and leaf["name"].endswith("[0]")):
             size += leaf["bytes"] // math.prod(leaf["shape"][1:])
         elif leaf["name"] == "ntff.x_lo":
             size += leaf["bytes"] // math.prod(leaf["shape"][1:-1])

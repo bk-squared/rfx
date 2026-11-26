@@ -7,6 +7,7 @@ from typing import Any, NamedTuple
 
 import jax.numpy as jnp
 
+from rfx.measurement.accumulators import plane_carry, flux_carry
 from rfx._internal import _realized
 from rfx.boundaries.axes import resolve_cpml_axes
 from rfx.core.drives import drive_layout
@@ -469,7 +470,7 @@ def _build_nu_scan(
     sp_freqs, wp_meta, use_wire_ports = graded_accumulators(wire_ports, grid, s_param_freqs, carry_init)
 
     if use_dft_planes:
-        carry_init["dft_planes"] = tuple(probe.accumulator for probe in dft_planes)
+        carry_init["dft_planes"] = plane_carry(dft_planes)
         from rfx.measurement.accumulators import plane_metadata
         dft_meta = plane_metadata(dft_planes)
     else:
@@ -478,10 +479,7 @@ def _build_nu_scan(
     if use_flux_monitors:
         from rfx.measurement.accumulators import flux_metadata
         flux_meta = flux_metadata(flux_monitors, window=True)
-        carry_init["flux_monitors"] = tuple(
-            (fm.e1_dft, fm.e2_dft, fm.h1_dft, fm.h2_dft)
-            for fm in flux_monitors
-        )
+        carry_init["flux_monitors"] = flux_carry(flux_monitors)
     else:
         flux_meta = ()
 

@@ -78,7 +78,8 @@ def _build_vmap_scan_fn(
     use_pec_edges = pec_edge_masks is not None
     use_dft = len(dft_probes) > 0
     dft_meta = plane_metadata(dft_probes)
-    dft_acc_init = tuple(p.accumulator for p in dft_probes)
+    from rfx.measurement.accumulators import plane_carry
+    dft_acc_init = plane_carry(dft_probes)
 
     if use_cpml:
         from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
@@ -166,7 +167,7 @@ def _build_vmap_scan_fn(
         if pad is not None:
             init_carry = vector_pad.pad_carry(init_carry, pad)
         final_carry, time_series = jax.lax.scan(step_fn, init_carry, xs)
-        final_dft_accs = final_carry.get("dft_planes", ())
+        final_dft_accs = tuple(p[0] for p in final_carry.get("dft_planes", ()))
         return time_series, final_dft_accs
 
     return run_one

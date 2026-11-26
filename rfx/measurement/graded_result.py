@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import jax
 
+from rfx.measurement.accumulators import plane_result, flux_result
 from rfx.measurement.time_records import with_graded_records
 
 if TYPE_CHECKING:
@@ -41,13 +42,13 @@ def assemble_graded_result(setup: _NUScanSetup, final: dict, time_series, n_reco
 
     if use_dft_planes:
         result["dft_planes"] = tuple(
-            probe._replace(accumulator=acc)
+            plane_result(probe, acc[0])
             for probe, acc in zip(dft_planes, final["dft_planes"])
         )
 
     if use_flux_monitors:
         result["flux_monitors"] = tuple(
-            mon._replace(e1_dft=e1, e2_dft=e2, h1_dft=h1, h2_dft=h2)
+            flux_result(mon, (e1[0], e2[0], h1[0], h2[0]))
             for mon, (e1, e2, h1, h2) in zip(
                 flux_monitors, final["flux_monitors"]
             )

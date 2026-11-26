@@ -1,7 +1,28 @@
 """Path-independent plane sampling and streaming DFT accumulation."""
+import jax.numpy as jnp
+
 from .dft import accumulate
 from .plan import field_channel
 from .flux_weights import normal_h_neighbor
+
+
+def plane_carry(probes):
+    return tuple((p.accumulator, jnp.zeros_like(p.accumulator)
+                  if p.compensation is None else p.compensation) for p in probes)
+
+
+def flux_carry(monitors):
+    return tuple(tuple((a, jnp.zeros_like(a) if c is None else c)
+                       for a, c in zip(m[:4], m[-4:])) for m in monitors)
+
+
+def plane_result(probe, total):
+    return probe._replace(accumulator=total, compensation=None)
+
+
+def flux_result(monitor, totals):
+    return monitor._replace(**dict(zip(('e1_dft', 'e2_dft', 'h1_dft', 'h2_dft'), totals)),
+                            c_e1_dft=None, c_e2_dft=None, c_h1_dft=None, c_h2_dft=None)
 
 
 def plane_sample(state, component, axis, index, region=None):

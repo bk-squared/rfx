@@ -135,7 +135,7 @@ def test_core_field_dtype(monkeypatch, normalize, n_modes, expected_runs,
         def checked_step(*args, **kwargs):
             result = step(*args, **kwargs)
             for accumulators in result[0].get("flux_monitors", ()):
-                assert all(acc.dtype == expected_complex for acc in accumulators)
+                assert all(acc.dtype == expected_complex for pair in accumulators for acc in pair)
             return result
 
         return checked_step

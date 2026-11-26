@@ -200,7 +200,7 @@ def test_carry_contract(feature, graded):
     if feature == "flux" and graded:
         assert estimate.warning is None
         assert {row["name"] for row in estimate.excluded_linear} == {
-            f"flux_monitors[0][{i}]" for i in range(4)}
+            f"flux_monitors[0][{i}][{j}]" for i in range(4) for j in range(2)}
         rows = []
         for n in (800, 1600):
             def objective(eps, sigma):
@@ -234,11 +234,11 @@ def test_carry_contract(feature, graded):
     if sim._dft_planes:
         from rfx.measurement.setup import build_planes
         expected.extend(jax.tree_util.tree_leaves(jax.eval_shape(
-            lambda: tuple(p.accumulator for p in build_planes(sim, grid, 4)))))
+            lambda: tuple((p.accumulator, p.compensation) for p in build_planes(sim, grid, 4)))))
     if sim._flux_monitors:
         from rfx.measurement.flux_weights import build_flux_monitor_cfgs
         expected.extend(jax.tree_util.tree_leaves(jax.eval_shape(lambda: tuple(
-            (m.e1_dft, m.e2_dft, m.h1_dft, m.h2_dft)
+            tuple((a, a) for a in m[:4])
             for m in build_flux_monitor_cfgs(sim, grid, 4, periodic=sim._periodic_flags())))))
     excluded = Counter((tuple(r["shape"]), r["dtype"]) for r in estimate.excluded_linear)
     assert excluded == Counter((tuple(a.shape), str(a.dtype)) for a in expected), "declared linear accumulators must be excluded exactly (including NTFF)"

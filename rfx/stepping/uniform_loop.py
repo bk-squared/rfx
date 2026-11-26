@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from rfx.measurement.accumulators import plane_result, flux_result
 from rfx.model.waveguide_aperture import validate_uniform_waveguide_ports
 
 from typing import TYPE_CHECKING
@@ -677,14 +678,14 @@ def run(
     final_dft_planes = None
     if use_dft_planes:
         final_dft_planes = tuple(
-            probe._replace(accumulator=acc)
+            plane_result(probe, acc[0])
             for probe, acc in zip(dft_planes, final_carry["dft_planes"])
         )
 
     final_flux_monitors = None
     if use_flux_monitors:
         final_flux_monitors = tuple(
-            fm._replace(e1_dft=accs[0], e2_dft=accs[1], h1_dft=accs[2], h2_dft=accs[3])
+            flux_result(fm, tuple(a[0] for a in accs))
             for fm, accs in zip(flux_monitors, final_carry["flux_monitors"])
         )
 
@@ -1264,7 +1265,7 @@ def run_until_decay(
     final_dft_planes = None
     if use_dft_planes:
         final_dft_planes = tuple(
-            probe._replace(accumulator=acc)
+            plane_result(probe, acc[0])
             for probe, acc in zip(dft_planes, carry["dft_planes"])
         )
 
@@ -1295,7 +1296,7 @@ def run_until_decay(
     final_flux_monitors = None
     if use_flux_monitors:
         final_flux_monitors = tuple(
-            fm._replace(e1_dft=accs[0], e2_dft=accs[1], h1_dft=accs[2], h2_dft=accs[3])
+            flux_result(fm, tuple(a[0] for a in accs))
             for fm, accs in zip(flux_monitors, carry["flux_monitors"])
         )
 
